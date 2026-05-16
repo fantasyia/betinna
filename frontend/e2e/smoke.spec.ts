@@ -41,7 +41,8 @@ test('Test 2 — REP redirected to /403 quando acessa /admin', async ({ page }) 
 test('Test 3 — Fidelidade nav invisible pra GERENTE', async ({ page }) => {
   await login(page, TEST_USERS.GERENTE);
   // Element não deve estar visível ou nem existir
-  await expect(page.getByTestId('fidelidade-nav')).toHaveCount(0);
+  // testId pattern: nav-{path} (sem barra) — veja SidebarNavItem data-testid
+  await expect(page.getByTestId('nav-fidelidade')).toHaveCount(0);
 });
 
 // ─── Test 4 — Health endpoint público ──────────────────────────────────
