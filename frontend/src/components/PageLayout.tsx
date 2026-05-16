@@ -12,6 +12,7 @@ const NAV_ITEMS: Array<{
   { to: '/clientes', label: 'Clientes', permission: 'clientes.view' },
   { to: '/pedidos', label: 'Pedidos' },
   { to: '/propostas', label: 'Propostas' },
+  { to: '/amostras', label: 'Amostras' },
   { to: '/leads', label: 'Leads' },
   { to: '/comissoes', label: 'Comissões' },
   { to: '/whatsapp', label: 'WhatsApp', permission: 'whatsapp.pessoal' },
