@@ -31,6 +31,7 @@ const AgendaPage = lazy(() => import('@/pages/AgendaPage'));
 const AprovacoesPage = lazy(() => import('@/pages/AprovacoesPage'));
 const InboxPage = lazy(() => import('@/pages/InboxPage'));
 const IntegracoesPage = lazy(() => import('@/pages/IntegracoesPage'));
+const MinhasIntegracoesPage = lazy(() => import('@/pages/MinhasIntegracoesPage'));
 
 function PageSuspense({ children }: { children: React.ReactNode }) {
   return (
@@ -249,6 +250,18 @@ const router = createBrowserRouter([
         <ProtectedRoute allowedRoles={['ADMIN', 'DIRECTOR', 'GERENTE']}>
           <PageSuspense>
             <IntegracoesPage />
+          </PageSuspense>
+        </ProtectedRoute>
+      </ErrorBoundary>
+    ),
+  },
+  {
+    path: '/minhas-integracoes',
+    element: (
+      <ErrorBoundary>
+        <ProtectedRoute>
+          <PageSuspense>
+            <MinhasIntegracoesPage />
           </PageSuspense>
         </ProtectedRoute>
       </ErrorBoundary>
