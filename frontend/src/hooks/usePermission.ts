@@ -49,7 +49,12 @@ export type Permission =
   | 'whatsapp.pessoal'
   // Relatórios
   | 'relatorios.view'
-  | 'relatorios.export';
+  | 'relatorios.export'
+  // Campanhas (marketing)
+  | 'campanhas.view'
+  | 'campanhas.create'
+  | 'campanhas.edit'
+  | 'campanhas.delete';
 
 /**
  * Matriz role × permission.
@@ -74,6 +79,10 @@ const PERMISSION_MATRIX: Record<UserRole, ReadonlySet<Permission>> = {
     'whatsapp.pessoal',
     'relatorios.view',
     'relatorios.export',
+    'campanhas.view',
+    'campanhas.create',
+    'campanhas.edit',
+    'campanhas.delete',
   ]),
   DIRECTOR: new Set<Permission>([
     'fidelidade.view',
@@ -87,6 +96,10 @@ const PERMISSION_MATRIX: Record<UserRole, ReadonlySet<Permission>> = {
     'whatsapp.pessoal',
     'relatorios.view',
     'relatorios.export',
+    'campanhas.view',
+    'campanhas.create',
+    'campanhas.edit',
+    'campanhas.delete',
   ]),
   GERENTE: new Set<Permission>([
     'clientes.view',
@@ -95,6 +108,9 @@ const PERMISSION_MATRIX: Record<UserRole, ReadonlySet<Permission>> = {
     'comissoes.team',
     'whatsapp.pessoal',
     'relatorios.view',
+    'campanhas.view',
+    'campanhas.create',
+    'campanhas.edit',
   ]),
   SAC: new Set<Permission>([
     'clientes.view',

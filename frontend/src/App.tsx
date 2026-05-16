@@ -28,6 +28,7 @@ const ConfiguracoesPage = lazy(() => import('@/pages/ConfiguracoesPage'));
 const ProfilePage = lazy(() => import('@/pages/ProfilePage'));
 const TagsPage = lazy(() => import('@/pages/TagsPage'));
 const FluxosPage = lazy(() => import('@/pages/FluxosPage'));
+const CampanhasPage = lazy(() => import('@/pages/CampanhasPage'));
 const PermissoesPage = lazy(() => import('@/pages/PermissoesPage'));
 const RelatoriosPage = lazy(() => import('@/pages/RelatoriosPage'));
 const PedidosPage = lazy(() => import('@/pages/PedidosPage'));
@@ -260,6 +261,18 @@ const router = createBrowserRouter([
         <ProtectedRoute allowedRoles={['ADMIN', 'DIRECTOR', 'GERENTE']}>
           <PageSuspense>
             <FluxosPage />
+          </PageSuspense>
+        </ProtectedRoute>
+      </ErrorBoundary>
+    ),
+  },
+  {
+    path: '/campanhas',
+    element: (
+      <ErrorBoundary>
+        <ProtectedRoute requirePermission="campanhas.view">
+          <PageSuspense>
+            <CampanhasPage />
           </PageSuspense>
         </ProtectedRoute>
       </ErrorBoundary>

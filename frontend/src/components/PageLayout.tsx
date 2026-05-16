@@ -79,6 +79,7 @@ const SECTIONS: NavSection[] = [
   {
     title: 'Automação',
     items: [
+      { to: '/campanhas', label: 'Campanhas', emoji: '📣', permission: 'campanhas.view' },
       { to: '/fluxos', label: 'Fluxos', emoji: '⚡' },
       { to: '/integracoes', label: 'Integrações', emoji: '🔌', allowedRoles: ['ADMIN', 'DIRECTOR', 'GERENTE'] },
       { to: '/minhas-integracoes', label: 'Minhas integrações', emoji: '🔗' },
@@ -161,6 +162,7 @@ function Sidebar() {
     'whatsapp.pessoal': usePermission('whatsapp.pessoal'),
     'admin.panel': usePermission('admin.panel'),
     'relatorios.view': usePermission('relatorios.view'),
+    'campanhas.view': usePermission('campanhas.view'),
   } as const;
 
   function canSee(item: NavItem): boolean {
