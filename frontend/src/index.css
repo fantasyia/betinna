@@ -1,0 +1,135 @@
+/* ─── Global styles — Polish 2026-05-16 ───────────────────────────────
+ *
+ * Pequeno reset + Inter font + hover/focus states globais.
+ * Mantém compatibilidade com inline styles existentes — só polish.
+ */
+
+/* Inter via Google Fonts. Sans-serif moderna, ótima legibilidade em UI. */
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
+
+* {
+  box-sizing: border-box;
+}
+
+html, body {
+  margin: 0;
+  padding: 0;
+  font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto,
+    'Helvetica Neue', Arial, sans-serif;
+  font-size: 14px;
+  line-height: 1.5;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  text-rendering: optimizeLegibility;
+  background: #f7f8fa;
+  color: #0f172a;
+}
+
+#root {
+  min-height: 100vh;
+}
+
+h1, h2, h3, h4, h5, h6 {
+  margin: 0;
+  font-weight: 600;
+  line-height: 1.3;
+  letter-spacing: -0.01em;
+  color: #0f172a;
+}
+
+h1 { font-size: 24px; }
+h2 { font-size: 18px; }
+h3 { font-size: 16px; }
+
+a {
+  color: #6366f1;
+  text-decoration: none;
+  transition: color 0.15s ease;
+}
+a:hover {
+  color: #4f46e5;
+  text-decoration: underline;
+}
+
+/* ─── Buttons — hover sutil em qualquer <button> ─────────────────────── */
+button {
+  font-family: inherit;
+  cursor: pointer;
+  transition: filter 0.15s ease, transform 0.05s ease, box-shadow 0.15s ease;
+}
+button:not(:disabled):hover {
+  filter: brightness(0.95);
+}
+button:not(:disabled):active {
+  transform: translateY(1px);
+}
+button:disabled {
+  cursor: not-allowed;
+  opacity: 0.6;
+}
+
+/* ─── Inputs — focus ring com cor primária ─────────────────────────── */
+input:focus, select:focus, textarea:focus {
+  border-color: #6366f1 !important;
+  box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.12) !important;
+}
+
+input::placeholder, textarea::placeholder {
+  color: #94a3b8;
+}
+
+/* Auto-fill: força mesma cor de fundo (Chrome cria amarelão feio) */
+input:-webkit-autofill,
+input:-webkit-autofill:hover,
+input:-webkit-autofill:focus {
+  -webkit-text-fill-color: #0f172a;
+  -webkit-box-shadow: 0 0 0px 1000px #ffffff inset;
+  transition: background-color 5000s ease-in-out 0s;
+}
+
+/* ─── Table rows: hover sutil ─────────────────────────────────────────── */
+table tbody tr {
+  transition: background 0.15s ease;
+}
+table tbody tr:hover {
+  background: #f9fafb !important;
+}
+
+/* ─── Skeleton pulse ─────────────────────────────────────────────────── */
+@keyframes pulse {
+  0%, 100% { opacity: 0.6; }
+  50% { opacity: 0.3; }
+}
+
+/* ─── Modal backdrop blur ────────────────────────────────────────────── */
+[data-testid="modal-overlay"] {
+  backdrop-filter: blur(2px);
+}
+
+/* ─── Scrollbar — mais discreta ─────────────────────────────────────── */
+::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: #cdd1d8;
+  border-radius: 999px;
+  border: 2px solid #f7f8fa;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: #94a3b8;
+}
+
+/* ─── Selection ─────────────────────────────────────────────────────── */
+::selection {
+  background: #6366f130;
+  color: #0f172a;
+}
+
+/* ─── Print: esconde nav, expandindo conteúdo ────────────────────────── */
+@media print {
+  nav { display: none !important; }
+}

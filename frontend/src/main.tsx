@@ -3,6 +3,7 @@ import { createRoot } from 'react-dom/client';
 import App from './App';
 import { ToastProvider } from '@/components/toast';
 import { initSentry } from '@/lib/sentry';
+import './index.css';
 
 initSentry();
 
