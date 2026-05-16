@@ -10,6 +10,7 @@ const NAV_ITEMS: Array<{
 }> = [
   { to: '/dashboard', label: 'Dashboard' },
   { to: '/clientes', label: 'Clientes', permission: 'clientes.view' },
+  { to: '/produtos', label: 'Produtos' },
   { to: '/pedidos', label: 'Pedidos' },
   { to: '/propostas', label: 'Propostas' },
   { to: '/amostras', label: 'Amostras' },
