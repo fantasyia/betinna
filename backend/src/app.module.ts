@@ -116,16 +116,19 @@ import { SharedUtilsModule } from '@shared/utils/shared-utils.module';
         storage:
           env.get('NODE_ENV') === 'test'
             ? undefined // in-memory pra tests
-            : new ThrottlerStorageRedisService(
-                // buildRedisOptions aplica TLS automaticamente em Railway production
-                new IORedis(
-                  env.get('REDIS_URL'),
-                  buildRedisOptions({
-                    maxRetriesPerRequest: null,
-                    enableReadyCheck: false,
-                  }),
-                ),
-              ),
+            : (() => {
+                // buildRedisOptions detecta TLS pelo scheme da URL (rediss:// vs redis://)
+                const redisUrl = env.get('REDIS_URL');
+                return new ThrottlerStorageRedisService(
+                  new IORedis(
+                    redisUrl,
+                    buildRedisOptions(redisUrl, {
+                      maxRetriesPerRequest: null,
+                      enableReadyCheck: false,
+                    }),
+                  ),
+                );
+              })(),
       }),
     }),
 
@@ -136,7 +139,7 @@ import { SharedUtilsModule } from '@shared/utils/shared-utils.module';
     BullModule.forRootAsync({
       inject: [EnvService],
       useFactory: (env: EnvService) => ({
-        // buildBullMqConnection aplica TLS automaticamente em Railway production
+        // buildBullMqConnection detecta TLS pelo scheme da URL (rediss:// vs redis://)
         connection: buildBullMqConnection(env.get('REDIS_URL')),
         defaultJobOptions: {
           removeOnComplete: { count: 1000 },

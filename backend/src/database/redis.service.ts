@@ -26,10 +26,11 @@ export class RedisService implements OnModuleInit, OnModuleDestroy {
   constructor(private readonly env: EnvService) {}
 
   async onModuleInit(): Promise<void> {
-    // buildRedisOptions aplica TLS automaticamente em Railway production
+    // buildRedisOptions detecta TLS pelo scheme da URL (rediss:// vs redis://)
+    const redisUrl = this.env.get('REDIS_URL');
     this.clientInstance = new IORedis(
-      this.env.get('REDIS_URL'),
-      buildRedisOptions({
+      redisUrl,
+      buildRedisOptions(redisUrl, {
         // Necessário pra BullMQ-compat e evitar reconnect storms
         maxRetriesPerRequest: null,
       }),
