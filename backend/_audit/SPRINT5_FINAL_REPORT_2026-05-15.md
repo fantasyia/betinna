@@ -291,11 +291,38 @@ Procedimento em `docs/monitoring.md` → seção "Playbook de incident response"
 **Não-bloqueante para produção. Lista priorizada:**
 
 ### 🎯 Prioridade ALTA — primeiros 30 dias pós-launch
-1. **CI/CD primeiro deploy** — fazer primeiro push pra main e validar que todos os 4 workflows executam
-2. **UptimeRobot configurado** — 3 monitores ativos + email alerts (1h de trabalho)
-3. **Backup verificado** — confirmar que 1º backup do dia 03:00 UTC subiu no S3
-4. **Smoke E2E pós-deploy** — rodar `npx playwright test` contra produção e anexar resultado ao Sprint 5 docs
-5. **Lighthouse real** — `lhci autorun` contra produção, verificar scores reais
+1. **⚠️ Migrations versionadas (CRÍTICO antes de go-live com clientes reais)** — O projeto inteiro foi
+   desenvolvido com `prisma db push` direto, sem nunca gerar migration files. A pasta
+   `backend/prisma/migrations/` está vazia. Em produção real, `db push` é destrutivo (pode
+   dropar colunas/tabelas sem aviso em mudanças "incompatíveis"). Atualmente Railway aplicou
+   schema via `db push` (38 tabelas criadas) e funciona, mas qualquer alteração futura precisa
+   passar por migration file pra ser rastreável e segura.
+
+   **Comando para gerar migration baseline (rodar ANTES de aceitar o 1º cliente real):**
+   ```bash
+   cd backend
+   # 1. Gera SQL do schema atual contra DB vazio (baseline)
+   mkdir -p prisma/migrations/0_init
+   npx prisma migrate diff \
+     --from-empty \
+     --to-schema-datamodel prisma/schema.prisma \
+     --script > prisma/migrations/0_init/migration.sql
+
+   # 2. Marca migration como já-aplicada no DB Railway (sem rerodar)
+   railway run --service api npx prisma migrate resolve --applied 0_init
+
+   # 3. A partir daí, TODA mudança de schema é via:
+   railway run --service api npx prisma migrate dev --name "descricao_da_mudanca"
+   # E em deploy:
+   railway run --service api npx prisma migrate deploy
+   ```
+
+   CI workflow (`ci.yml`) já chama `prisma migrate deploy` — só passa a funcionar após o baseline existir.
+2. **CI/CD primeiro deploy** — fazer primeiro push pra main e validar que todos os 4 workflows executam
+3. **UptimeRobot configurado** — 3 monitores ativos + email alerts (1h de trabalho)
+4. **Backup verificado** — confirmar que 1º backup do dia 03:00 UTC subiu no S3
+5. **Smoke E2E pós-deploy** — rodar `npx playwright test` contra produção e anexar resultado ao Sprint 5 docs
+6. **Lighthouse real** — `lhci autorun` contra produção, verificar scores reais
 
 ### 🚀 Prioridade MÉDIA — primeiros 90 dias
 1. **Frontend completo** — integração com módulos backend (clientes, pedidos, comissões, propostas)
