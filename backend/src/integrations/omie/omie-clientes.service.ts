@@ -77,16 +77,15 @@ export class OmieClientesService {
         const payload = OmieMapper.clienteToPrismaUpsert(empresaId, o);
         if (!payload) continue;
 
-        const existing = await this.prisma.cliente.findUnique({
-          where: { codigoOmie: payload.create.codigoOmie ?? undefined },
-          select: { id: true, empresaId: true },
-        });
-        if (existing && existing.empresaId !== empresaId) {
-          this.logger.warn(
-            `Cliente ${payload.create.codigoOmie} pertence a outra empresa — pulando`,
-          );
-          continue;
-        }
+        // ALTA-A1: codigoOmie agora é unique composto (empresaId, codigoOmie).
+        // Busca apenas dentro desta empresa — sem risco de colisão cross-tenant.
+        const codigoOmie = payload.create.codigoOmie;
+        const existing = codigoOmie
+          ? await this.prisma.cliente.findUnique({
+              where: { empresaId_codigoOmie: { empresaId, codigoOmie } },
+              select: { id: true },
+            })
+          : null;
 
         if (existing) {
           await this.prisma.cliente.update({
