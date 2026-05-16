@@ -20,10 +20,7 @@ export class ShopeeOAuthController {
   @ApiOperation({ summary: 'Inicia shop authorization Shopee — redireciona pro partner authorize' })
   async start(@CurrentUser() user: AuthenticatedUser): Promise<{ url: string }> {
     if (!user.empresaIdAtiva) {
-      throw new ForbiddenException(
-        'Empresa não definida',
-        ErrorCode.TENANT_ACCESS_DENIED,
-      );
+      throw new ForbiddenException('Empresa não definida', ErrorCode.TENANT_ACCESS_DENIED);
     }
     const url = await this.oauth.buildAuthUrl(user.empresaIdAtiva);
     return { url };
@@ -54,8 +51,9 @@ export class ShopeeOAuthController {
   }
 
   private html(res: Response, ok: boolean, msg: string): void {
-    const safe = String(msg).replace(/[<>&"']/g, (c) =>
-      ({ '<': '&lt;', '>': '&gt;', '&': '&amp;', '"': '&quot;', "'": '&#39;' }[c] ?? c),
+    const safe = String(msg).replace(
+      /[<>&"']/g,
+      (c) => ({ '<': '&lt;', '>': '&gt;', '&': '&amp;', '"': '&quot;', "'": '&#39;' })[c] ?? c,
     );
     res
       .status(ok ? 200 : 400)

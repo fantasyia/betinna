@@ -48,8 +48,7 @@ export class ComissoesController {
   @Roles('ADMIN', 'DIRECTOR', 'GERENTE')
   @Audit({ action: 'fechar_mes', resource: 'comissao' })
   @ApiOperation({
-    summary:
-      'Fecha o mês: agrega pedidos comissionáveis (ENVIADO_OMIE+) e cria/atualiza registros',
+    summary: 'Fecha o mês: agrega pedidos comissionáveis (ENVIADO_OMIE+) e cria/atualiza registros',
   })
   fecharMes(
     @CurrentUser() user: AuthenticatedUser,

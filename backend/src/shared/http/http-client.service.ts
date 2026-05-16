@@ -1,9 +1,5 @@
 import { Injectable, Logger } from '@nestjs/common';
-import {
-  type HttpRequestOptions,
-  type HttpResponse,
-  HttpClientError,
-} from './http-client.types';
+import { type HttpRequestOptions, type HttpResponse, HttpClientError } from './http-client.types';
 
 /**
  * HTTP client compartilhado por todas as integrações externas.
@@ -94,11 +90,7 @@ export class HttpClientService {
         // Retry em 5xx ou 429
         if (status >= 500 || status === 429) {
           if (attempt < maxAttempts) {
-            const wait = this.computeBackoff(
-              attempt,
-              retryBaseMs,
-              responseHeaders['retry-after'],
-            );
+            const wait = this.computeBackoff(attempt, retryBaseMs, responseHeaders['retry-after']);
             this.logger.warn(
               `[${integration}] ${method} ${url} → ${status} (tent ${attempt}/${maxAttempts}). Retry em ${wait}ms`,
             );
@@ -158,8 +150,7 @@ export class HttpClientService {
         };
       } catch (err) {
         clearTimeout(timer);
-        const isAbort =
-          err instanceof DOMException && err.name === 'AbortError';
+        const isAbort = err instanceof DOMException && err.name === 'AbortError';
         const isNetwork =
           err instanceof TypeError ||
           (err as { code?: string } | undefined)?.code === 'ECONNRESET' ||
@@ -235,19 +226,13 @@ export class HttpClientService {
 
   // ─── helpers privados ─────────────────────────────────────────────────
 
-  private normalizeHeaders(
-    headers: Record<string, string>,
-    body: unknown,
-  ): Record<string, string> {
+  private normalizeHeaders(headers: Record<string, string>, body: unknown): Record<string, string> {
     const out: Record<string, string> = {
       accept: 'application/json',
-      ...Object.fromEntries(
-        Object.entries(headers).map(([k, v]) => [k.toLowerCase(), v]),
-      ),
+      ...Object.fromEntries(Object.entries(headers).map(([k, v]) => [k.toLowerCase(), v])),
     };
     if (body !== undefined && body !== null && !out['content-type']) {
-      out['content-type'] =
-        typeof body === 'string' ? 'text/plain' : 'application/json';
+      out['content-type'] = typeof body === 'string' ? 'text/plain' : 'application/json';
     }
     return out;
   }
@@ -279,11 +264,7 @@ export class HttpClientService {
    * Backoff exponencial honrando Retry-After.
    * Retry-After: pode ser segundos (number) ou data HTTP.
    */
-  private computeBackoff(
-    attempt: number,
-    baseMs: number,
-    retryAfter?: string,
-  ): number {
+  private computeBackoff(attempt: number, baseMs: number, retryAfter?: string): number {
     if (retryAfter) {
       const asNum = Number(retryAfter);
       if (!Number.isNaN(asNum) && asNum > 0) return Math.min(asNum * 1000, 30_000);
@@ -316,17 +297,14 @@ export class HttpClientService {
     outcome: 'ok' | 'client_error' | 'failed' | 'network_error',
   ): void {
     const safeBody = body !== undefined ? this.redact(body, redactKeys) : undefined;
-    const level =
-      outcome === 'ok' ? 'log' : outcome === 'client_error' ? 'warn' : 'error';
+    const level = outcome === 'ok' ? 'log' : outcome === 'client_error' ? 'warn' : 'error';
     const summary = `[${integration}] ${method} ${url} → ${status} (${attempts}t, ${durationMs}ms)`;
     if (level === 'log') this.logger.log(summary);
     else if (level === 'warn') this.logger.warn(summary);
     else this.logger.error(summary);
 
     if (process.env.LOG_LEVEL === 'debug' && safeBody !== undefined) {
-      this.logger.debug(
-        `[${integration}] body: ${JSON.stringify(safeBody).slice(0, 500)}`,
-      );
+      this.logger.debug(`[${integration}] body: ${JSON.stringify(safeBody).slice(0, 500)}`);
     }
   }
 

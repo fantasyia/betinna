@@ -160,9 +160,7 @@ export class ClientesService {
       data: {
         ...rest,
         empresaId: user.empresaIdAtiva,
-        tags: tagIds
-          ? { create: tagIds.map((tagId) => ({ tagId })) }
-          : undefined,
+        tags: tagIds ? { create: tagIds.map((tagId) => ({ tagId })) } : undefined,
       },
       include: clienteInclude,
     });
@@ -217,11 +215,7 @@ export class ClientesService {
   }
 
   // ─── Atribuir representante ─────────────────────────────────────────────
-  async assignRep(
-    user: AuthenticatedUser,
-    id: string,
-    dto: AssignRepDto,
-  ): Promise<ClienteWithRel> {
+  async assignRep(user: AuthenticatedUser, id: string, dto: AssignRepDto): Promise<ClienteWithRel> {
     // findById já filtra por baseWhere (empresa + scope GERENTE)
     const existing = await this.findById(user, id);
 
@@ -251,10 +245,7 @@ export class ClientesService {
     // Controller (@Roles) já bloqueou REP. Aqui aplicamos scope GERENTE
     // para impedir gerente de uma equipe reatribuir clientes de outra.
     if (!user.empresaIdAtiva) {
-      throw new ForbiddenException(
-        'Empresa não definida',
-        ErrorCode.TENANT_ACCESS_DENIED,
-      );
+      throw new ForbiddenException('Empresa não definida', ErrorCode.TENANT_ACCESS_DENIED);
     }
     const empresaId = user.empresaIdAtiva;
 
@@ -298,11 +289,7 @@ export class ClientesService {
   }
 
   // ─── Tags ───────────────────────────────────────────────────────────────
-  async setTags(
-    user: AuthenticatedUser,
-    id: string,
-    dto: SetTagsDto,
-  ): Promise<ClienteWithRel> {
+  async setTags(user: AuthenticatedUser, id: string, dto: SetTagsDto): Promise<ClienteWithRel> {
     const existing = await this.findById(user, id);
     if (dto.tagIds.length > 0) {
       await this.assertTagsValidas(existing.empresaId, dto.tagIds);
@@ -340,10 +327,7 @@ export class ClientesService {
     try {
       await this.prisma.cliente.deleteMany({ where: { id, empresaId: existing.empresaId } });
     } catch (err) {
-      if (
-        err instanceof Prisma.PrismaClientKnownRequestError &&
-        err.code === 'P2003'
-      ) {
+      if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === 'P2003') {
         throw new BusinessRuleException(
           'Cliente possui pedidos, propostas ou outros vínculos. Inative o cliente em vez de excluir.',
         );

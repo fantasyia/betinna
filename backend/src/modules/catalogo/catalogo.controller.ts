@@ -95,13 +95,9 @@ export class CatalogoController {
   @Get('preview')
   @RequirePermissions({ module: 'catalogo', action: 'view' })
   @ApiOperation({
-    summary:
-      'Preview do catálogo aplicado a um cliente (preço negociado + markup do rep)',
+    summary: 'Preview do catálogo aplicado a um cliente (preço negociado + markup do rep)',
   })
-  preview(
-    @CurrentUser() user: AuthenticatedUser,
-    @Query('clienteId') clienteId: string,
-  ) {
+  preview(@CurrentUser() user: AuthenticatedUser, @Query('clienteId') clienteId: string) {
     return this.catalogo.previewParaCliente(user, clienteId);
   }
 

@@ -50,7 +50,7 @@ export class ClientesController {
   @RequirePermissions({ module: 'clientes', action: 'view' })
   @ApiOperation({ summary: 'Catálogo de listas dinâmicas disponíveis' })
   listasDisponiveis() {
-    return this.listas.definicoes.map(({ where, ...meta }) => meta);
+    return this.listas.definicoes.map(({ where: _where, ...meta }) => meta);
   }
 
   @Get()

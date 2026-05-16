@@ -27,11 +27,7 @@ export class MLOrdersService {
    * Listar pedidos do seller recentes (default últimos 30 dias) — usado pelo
    * cron de fallback.
    */
-  async listarRecentes(
-    empresaId: string,
-    sellerId: string,
-    desdeIso?: string,
-  ): Promise<MLOrder[]> {
+  async listarRecentes(empresaId: string, sellerId: string, desdeIso?: string): Promise<MLOrder[]> {
     const desde = desdeIso ?? new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString();
     const params = new URLSearchParams({
       seller: sellerId,
@@ -39,10 +35,7 @@ export class MLOrdersService {
       sort: 'date_desc',
       limit: '50',
     });
-    const r = await this.ml.get<{ results: MLOrder[] }>(
-      empresaId,
-      `/orders/search?${params}`,
-    );
+    const r = await this.ml.get<{ results: MLOrder[] }>(empresaId, `/orders/search?${params}`);
     return r.results ?? [];
   }
 

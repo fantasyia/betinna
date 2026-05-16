@@ -15,10 +15,9 @@ export const periodoSchema = z
     periodo: z.enum(PERIODOS).optional(),
     representanteId: z.string().cuid().optional(),
   })
-  .refine(
-    (d) => !d.de || !d.ate || d.de <= d.ate,
-    { message: 'Data inicial (de) deve ser <= data final (ate)' },
-  )
+  .refine((d) => !d.de || !d.ate || d.de <= d.ate, {
+    message: 'Data inicial (de) deve ser <= data final (ate)',
+  })
   .transform((d) => {
     if (d.periodo) {
       const agora = new Date();

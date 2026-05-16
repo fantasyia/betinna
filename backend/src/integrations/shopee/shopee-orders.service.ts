@@ -1,10 +1,7 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { PrismaService } from '@database/prisma.service';
 import { ShopeeClientService } from './shopee-client.service';
-import type {
-  ShopeeOrder,
-  ShopeeOrderListResponse,
-} from './shopee.types';
+import type { ShopeeOrder, ShopeeOrderListResponse } from './shopee.types';
 
 const PATH_ORDER_LIST = '/api/v2/order/get_order_list';
 const PATH_ORDER_DETAIL = '/api/v2/order/get_order_detail';
@@ -27,16 +24,12 @@ export class ShopeeOrdersService {
   async listarRecentes(empresaId: string, dias = 15): Promise<string[]> {
     const now = Math.floor(Date.now() / 1000);
     const from = now - dias * 24 * 60 * 60;
-    const r = await this.shopee.getShop<ShopeeOrderListResponse>(
-      empresaId,
-      PATH_ORDER_LIST,
-      {
-        time_range_field: 'create_time',
-        time_from: from,
-        time_to: now,
-        page_size: 50,
-      },
-    );
+    const r = await this.shopee.getShop<ShopeeOrderListResponse>(empresaId, PATH_ORDER_LIST, {
+      time_range_field: 'create_time',
+      time_from: from,
+      time_to: now,
+      page_size: 50,
+    });
     return (r.response?.order_list ?? []).map((o) => o.order_sn);
   }
 

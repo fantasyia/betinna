@@ -73,13 +73,9 @@ export class OmiePedidosService {
       },
     });
 
-    await this.integracoes
-      .registrarSyncOk(pedido.empresaId, 'omie')
-      .catch(() => {});
+    await this.integracoes.registrarSyncOk(pedido.empresaId, 'omie').catch(() => {});
 
-    this.logger.log(
-      `Pedido ${pedido.numero} → OMIE ${numeroOmie} (${response.descricao_status})`,
-    );
+    this.logger.log(`Pedido ${pedido.numero} → OMIE ${numeroOmie} (${response.descricao_status})`);
 
     return {
       pedidoId,
@@ -110,9 +106,7 @@ export class OmiePedidosService {
           desconto: item.desconto,
         }),
       ),
-      observacoes: pedido.observacoes
-        ? { obs_venda: pedido.observacoes }
-        : undefined,
+      observacoes: pedido.observacoes ? { obs_venda: pedido.observacoes } : undefined,
     };
   }
 }

@@ -15,7 +15,10 @@ describe('AmazonMessagingService.listarAcoesPermitidas', () => {
     client.get.mockResolvedValueOnce({
       _links: {
         actions: [
-          { href: '/messaging/v1/orders/X/messages/confirmDeliveryDetails', name: 'confirmDeliveryDetails' },
+          {
+            href: '/messaging/v1/orders/X/messages/confirmDeliveryDetails',
+            name: 'confirmDeliveryDetails',
+          },
           { href: '/messaging/v1/orders/X/messages/unexpectedProblem', name: 'unexpectedProblem' },
         ],
       },

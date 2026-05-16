@@ -35,9 +35,7 @@ export class EmpresasController {
   @Get()
   @Roles('ADMIN')
   @ApiOperation({ summary: 'Lista empresas (somente Admin)' })
-  list(
-    @Query(new ZodValidationPipe(listEmpresasSchema)) query: ListEmpresasDto,
-  ) {
+  list(@Query(new ZodValidationPipe(listEmpresasSchema)) query: ListEmpresasDto) {
     return this.empresas.list(query);
   }
 
@@ -52,9 +50,7 @@ export class EmpresasController {
   @Roles('ADMIN')
   @Audit({ action: 'create', resource: 'empresa', resourceIdFrom: 'response.id' })
   @ApiOperation({ summary: 'Cria uma nova empresa (somente Admin)' })
-  create(
-    @Body(new ZodValidationPipe(createEmpresaSchema)) dto: CreateEmpresaDto,
-  ) {
+  create(@Body(new ZodValidationPipe(createEmpresaSchema)) dto: CreateEmpresaDto) {
     return this.empresas.create(dto);
   }
 

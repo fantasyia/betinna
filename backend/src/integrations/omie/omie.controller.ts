@@ -32,10 +32,7 @@ export class OmieController {
   @ApiOperation({ summary: 'Status da integração OMIE (modo demo, configurada, último sync)' })
   status(@CurrentUser() user: AuthenticatedUser) {
     if (!user.empresaIdAtiva) {
-      throw new ForbiddenException(
-        'Empresa não definida',
-        ErrorCode.TENANT_ACCESS_DENIED,
-      );
+      throw new ForbiddenException('Empresa não definida', ErrorCode.TENANT_ACCESS_DENIED);
     }
     return {
       demoMode: this.omieClient.isDemoMode(),
@@ -56,10 +53,7 @@ export class OmieController {
     @Query(new ZodValidationPipe(syncQuerySchema)) query: SyncQueryDto,
   ) {
     if (!user.empresaIdAtiva) {
-      throw new ForbiddenException(
-        'Empresa não definida',
-        ErrorCode.TENANT_ACCESS_DENIED,
-      );
+      throw new ForbiddenException('Empresa não definida', ErrorCode.TENANT_ACCESS_DENIED);
     }
     return this.clientesSvc.sync(user.empresaIdAtiva, { modo: query.modo });
   }
@@ -77,10 +71,7 @@ export class OmieController {
     @Query(new ZodValidationPipe(syncQuerySchema)) query: SyncQueryDto,
   ) {
     if (!user.empresaIdAtiva) {
-      throw new ForbiddenException(
-        'Empresa não definida',
-        ErrorCode.TENANT_ACCESS_DENIED,
-      );
+      throw new ForbiddenException('Empresa não definida', ErrorCode.TENANT_ACCESS_DENIED);
     }
     return this.produtosSvc.sync(user.empresaIdAtiva, { modo: query.modo });
   }
@@ -93,10 +84,7 @@ export class OmieController {
   })
   async forcarTudo(@CurrentUser() user: AuthenticatedUser) {
     if (!user.empresaIdAtiva) {
-      throw new ForbiddenException(
-        'Empresa não definida',
-        ErrorCode.TENANT_ACCESS_DENIED,
-      );
+      throw new ForbiddenException('Empresa não definida', ErrorCode.TENANT_ACCESS_DENIED);
     }
     const empresaId = user.empresaIdAtiva;
     const [clientes, produtos] = await Promise.all([

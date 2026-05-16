@@ -68,7 +68,9 @@ describe('sanitize PII', () => {
   });
 
   it('processa arrays', () => {
-    const result = sanitize([{ password: 'x' }, { password: 'y' }]) as Array<Record<string, string>>;
+    const result = sanitize([{ password: 'x' }, { password: 'y' }]) as Array<
+      Record<string, string>
+    >;
     expect(result[0].password).toBe('[REDACTED]');
     expect(result[1].password).toBe('[REDACTED]');
   });

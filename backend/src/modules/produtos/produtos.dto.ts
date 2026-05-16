@@ -24,9 +24,7 @@ export type UpdateProdutoDto = z.infer<typeof updateProdutoSchema>;
 export const listProdutosSchema = z.object({
   page: z.coerce.number().int().positive().default(1),
   limit: z.coerce.number().int().positive().max(100).default(20),
-  sortBy: z
-    .enum(['nome', 'criadoEm', 'precoTabela', 'popularidade', 'estoque'])
-    .default('nome'),
+  sortBy: z.enum(['nome', 'criadoEm', 'precoTabela', 'popularidade', 'estoque']).default('nome'),
   sortOrder: z.enum(['asc', 'desc']).default('asc'),
   search: z.string().optional(),
   linha: z.string().optional(),

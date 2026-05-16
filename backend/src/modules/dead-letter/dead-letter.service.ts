@@ -39,8 +39,7 @@ export class DeadLetterService {
     const errMsg = error instanceof Error ? error.message : String(error);
     const stack = error instanceof Error ? error.stack?.slice(0, 4000) : undefined;
     const data = originalJob.data as Record<string, unknown>;
-    const empresaId =
-      typeof data?.empresaId === 'string' ? (data.empresaId as string) : undefined;
+    const empresaId = typeof data?.empresaId === 'string' ? (data.empresaId as string) : undefined;
 
     const payload: DeadLetterJobData = {
       originalQueue,

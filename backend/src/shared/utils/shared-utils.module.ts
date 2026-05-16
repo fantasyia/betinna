@@ -15,17 +15,7 @@ import { WebhookAntiReplayService } from './webhook-anti-replay.service';
  */
 @Global()
 @Module({
-  providers: [
-    CronLockService,
-    IdempotencyService,
-    SequenceService,
-    WebhookAntiReplayService,
-  ],
-  exports: [
-    CronLockService,
-    IdempotencyService,
-    SequenceService,
-    WebhookAntiReplayService,
-  ],
+  providers: [CronLockService, IdempotencyService, SequenceService, WebhookAntiReplayService],
+  exports: [CronLockService, IdempotencyService, SequenceService, WebhookAntiReplayService],
 })
 export class SharedUtilsModule {}

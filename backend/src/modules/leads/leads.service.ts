@@ -18,11 +18,7 @@ import type {
   MoverEtapaDto,
   UpdateLeadDto,
 } from './leads.dto';
-import {
-  PROBABILIDADE_POR_ETAPA,
-  SLA_DIAS_POR_ETAPA,
-  TRANSICOES_ETAPA,
-} from './leads.constants';
+import { PROBABILIDADE_POR_ETAPA, SLA_DIAS_POR_ETAPA, TRANSICOES_ETAPA } from './leads.constants';
 
 const leadInclude = {
   representante: { select: { id: true, nome: true, email: true } },
@@ -43,10 +39,7 @@ export class LeadsService {
 
   private requireEmpresa(user: AuthenticatedUser): string {
     if (!user.empresaIdAtiva) {
-      throw new ForbiddenException(
-        'Empresa não definida',
-        ErrorCode.TENANT_ACCESS_DENIED,
-      );
+      throw new ForbiddenException('Empresa não definida', ErrorCode.TENANT_ACCESS_DENIED);
     }
     return user.empresaIdAtiva;
   }
@@ -79,14 +72,14 @@ export class LeadsService {
       // Aging: leads não fechados cuja etapaDesde passou do SLA da etapa
       // Implementado como OR por etapa pra simplificar (sem post-process)
       const agora = new Date();
-      const agingConds: Prisma.LeadWhereInput[] = (['NOVO', 'QUALIFICANDO', 'PROPOSTA', 'NEGOCIACAO'] as LeadEtapa[]).map(
-        (etapa) => ({
-          etapa,
-          etapaDesde: {
-            lte: new Date(agora.getTime() - SLA_DIAS_POR_ETAPA[etapa] * 24 * 60 * 60 * 1000),
-          },
-        }),
-      );
+      const agingConds: Prisma.LeadWhereInput[] = (
+        ['NOVO', 'QUALIFICANDO', 'PROPOSTA', 'NEGOCIACAO'] as LeadEtapa[]
+      ).map((etapa) => ({
+        etapa,
+        etapaDesde: {
+          lte: new Date(agora.getTime() - SLA_DIAS_POR_ETAPA[etapa] * 24 * 60 * 60 * 1000),
+        },
+      }));
       conds.push({ OR: agingConds });
     }
     if (conds.length > 0) where.AND = conds;
@@ -165,11 +158,7 @@ export class LeadsService {
     return lead;
   }
 
-  async update(
-    user: AuthenticatedUser,
-    id: string,
-    dto: UpdateLeadDto,
-  ): Promise<LeadWithRel> {
+  async update(user: AuthenticatedUser, id: string, dto: UpdateLeadDto): Promise<LeadWithRel> {
     const existing = await this.findById(user, id);
     if (existing.etapa === 'GANHO' || existing.etapa === 'PERDIDO') {
       throw new BusinessRuleException(
@@ -186,17 +175,11 @@ export class LeadsService {
     return this.prisma.lead.findUniqueOrThrow({ where: { id }, include: leadInclude });
   }
 
-  async moverEtapa(
-    user: AuthenticatedUser,
-    id: string,
-    dto: MoverEtapaDto,
-  ): Promise<LeadWithRel> {
+  async moverEtapa(user: AuthenticatedUser, id: string, dto: MoverEtapaDto): Promise<LeadWithRel> {
     const lead = await this.findById(user, id);
     const transicoesValidas = TRANSICOES_ETAPA[lead.etapa];
     if (!transicoesValidas.includes(dto.etapa)) {
-      throw new BusinessRuleException(
-        `Transição inválida: ${lead.etapa} → ${dto.etapa}`,
-      );
+      throw new BusinessRuleException(`Transição inválida: ${lead.etapa} → ${dto.etapa}`);
     }
 
     const data: Prisma.LeadUpdateInput = {
@@ -222,7 +205,10 @@ export class LeadsService {
       where: { id, empresaId: lead.empresaId },
       data,
     });
-    const updated = await this.prisma.lead.findUniqueOrThrow({ where: { id }, include: leadInclude });
+    const updated = await this.prisma.lead.findUniqueOrThrow({
+      where: { id },
+      include: leadInclude,
+    });
     this.logger.log(
       `Lead ${lead.id} movido ${lead.etapa} → ${dto.etapa}${dto.motivo ? ` (${dto.motivo})` : ''}`,
     );
@@ -266,7 +252,13 @@ export class LeadsService {
    * Útil pra dashboard executivo.
    */
   async resumoPipeline(user: AuthenticatedUser): Promise<{
-    porEtapa: Array<{ etapa: LeadEtapa; quantidade: number; valorTotal: number; probabilidade: number; ponderado: number }>;
+    porEtapa: Array<{
+      etapa: LeadEtapa;
+      quantidade: number;
+      valorTotal: number;
+      probabilidade: number;
+      ponderado: number;
+    }>;
     pipelineTotal: number;
     pipelinePonderado: number;
     aging: number;
@@ -278,7 +270,9 @@ export class LeadsService {
       _count: { _all: true },
       _sum: { valorEstimado: true },
     });
-    const porEtapa = (['NOVO', 'QUALIFICANDO', 'PROPOSTA', 'NEGOCIACAO', 'GANHO', 'PERDIDO'] as LeadEtapa[]).map((etapa) => {
+    const porEtapa = (
+      ['NOVO', 'QUALIFICANDO', 'PROPOSTA', 'NEGOCIACAO', 'GANHO', 'PERDIDO'] as LeadEtapa[]
+    ).map((etapa) => {
       const g = grouped.find((x) => x.etapa === etapa);
       const valorTotal = g?._sum.valorEstimado ?? 0;
       const probabilidade = PROBABILIDADE_POR_ETAPA[etapa];
@@ -296,14 +290,14 @@ export class LeadsService {
 
     // Conta leads em aging
     const agora = new Date();
-    const agingConds: Prisma.LeadWhereInput[] = (['NOVO', 'QUALIFICANDO', 'PROPOSTA', 'NEGOCIACAO'] as LeadEtapa[]).map(
-      (etapa) => ({
-        etapa,
-        etapaDesde: {
-          lte: new Date(agora.getTime() - SLA_DIAS_POR_ETAPA[etapa] * 24 * 60 * 60 * 1000),
-        },
-      }),
-    );
+    const agingConds: Prisma.LeadWhereInput[] = (
+      ['NOVO', 'QUALIFICANDO', 'PROPOSTA', 'NEGOCIACAO'] as LeadEtapa[]
+    ).map((etapa) => ({
+      etapa,
+      etapaDesde: {
+        lte: new Date(agora.getTime() - SLA_DIAS_POR_ETAPA[etapa] * 24 * 60 * 60 * 1000),
+      },
+    }));
     const aging = await this.prisma.lead.count({
       where: { ...where, AND: [{ OR: agingConds }] },
     });
@@ -322,9 +316,7 @@ export class LeadsService {
       select: { id: true },
     });
     if (!rep) {
-      throw new BusinessRuleException(
-        'Representante inválido, inativo ou não vinculado à empresa',
-      );
+      throw new BusinessRuleException('Representante inválido, inativo ou não vinculado à empresa');
     }
   }
 }

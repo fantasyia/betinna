@@ -2,10 +2,7 @@ import { Injectable, Logger } from '@nestjs/common';
 import { IntegrationException } from '@shared/errors/app-exception';
 import { ErrorCode } from '@shared/errors/error-codes';
 import { AmazonClientService } from './amazon-client.service';
-import type {
-  AmazonMessagingActionsResponse,
-  AmazonPermittedAction,
-} from './amazon.types';
+import type { AmazonMessagingActionsResponse, AmazonPermittedAction } from './amazon.types';
 
 /**
  * Messaging API da Amazon SP-API.
@@ -52,19 +49,11 @@ export class AmazonMessagingService {
     return links.map((l) => l.name);
   }
 
-  async confirmarEntrega(
-    empresaId: string,
-    amazonOrderId: string,
-    texto: string,
-  ): Promise<void> {
+  async confirmarEntrega(empresaId: string, amazonOrderId: string, texto: string): Promise<void> {
     await this.postAction(empresaId, amazonOrderId, 'confirmDeliveryDetails', { text: texto });
   }
 
-  async confirmarPedido(
-    empresaId: string,
-    amazonOrderId: string,
-    texto: string,
-  ): Promise<void> {
+  async confirmarPedido(empresaId: string, amazonOrderId: string, texto: string): Promise<void> {
     await this.postAction(empresaId, amazonOrderId, 'confirmOrderDetails', { text: texto });
   }
 
@@ -72,19 +61,12 @@ export class AmazonMessagingService {
    * Reporta problema inesperado. Use quando precisa avisar o comprador sobre
    * algo errado (item indisponível, atraso significativo, etc.).
    */
-  async reportarProblema(
-    empresaId: string,
-    amazonOrderId: string,
-    texto: string,
-  ): Promise<void> {
+  async reportarProblema(empresaId: string, amazonOrderId: string, texto: string): Promise<void> {
     await this.postAction(empresaId, amazonOrderId, 'unexpectedProblem', { text: texto });
   }
 
   /** Solicita info ao comprador (uso comum: confirmar endereço). */
-  async solicitarInformacao(
-    empresaId: string,
-    amazonOrderId: string,
-  ): Promise<void> {
+  async solicitarInformacao(empresaId: string, amazonOrderId: string): Promise<void> {
     await this.postAction(empresaId, amazonOrderId, 'getCustomerInformation', {});
   }
 

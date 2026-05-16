@@ -1,8 +1,5 @@
 import { Injectable, Logger } from '@nestjs/common';
-import type {
-  MarketplaceIncidentStatus,
-  MarketplaceIncidentTipo,
-} from '@prisma/client';
+import type { MarketplaceIncidentStatus, MarketplaceIncidentTipo } from '@prisma/client';
 import { IncidentsService } from '@modules/incidents/incidents.service';
 import { InboxService } from '@modules/inbox/inbox.service';
 import { ShopeeClientService } from './shopee-client.service';

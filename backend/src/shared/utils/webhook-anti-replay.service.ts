@@ -20,13 +20,7 @@ const MAX_TIMESTAMP_SKEW_MS = 5 * 60 * 1000;
  */
 const SIGNATURE_TTL_SECONDS = 10 * 60;
 
-export type WebhookProvider =
-  | 'omie'
-  | 'meta'
-  | 'shopee'
-  | 'tiktok'
-  | 'mercadolivre'
-  | 'iugu';
+export type WebhookProvider = 'omie' | 'meta' | 'shopee' | 'tiktok' | 'mercadolivre' | 'iugu';
 
 export interface AntiReplayResult {
   /** true = primeira vez vendo essa assinatura, prosseguir com processamento */
@@ -80,23 +74,15 @@ export class WebhookAntiReplayService {
     if (timestamp !== undefined && timestamp !== null && timestamp !== '') {
       const tsMs = this.parseTimestamp(timestamp);
       if (tsMs === null) {
-        this.logger.warn(
-          `Webhook ${provider}: timestamp inválido (${timestamp}) — rejeitado`,
-        );
-        throw new UnauthorizedException(
-          'Webhook timestamp inválido',
-          ErrorCode.AUTH_INVALID_TOKEN,
-        );
+        this.logger.warn(`Webhook ${provider}: timestamp inválido (${timestamp}) — rejeitado`);
+        throw new UnauthorizedException('Webhook timestamp inválido', ErrorCode.AUTH_INVALID_TOKEN);
       }
       const skewMs = Math.abs(Date.now() - tsMs);
       if (skewMs > MAX_TIMESTAMP_SKEW_MS) {
         this.logger.warn(
           `Webhook ${provider}: timestamp fora da janela (skew=${Math.round(skewMs / 1000)}s) — rejeitado como replay`,
         );
-        throw new UnauthorizedException(
-          'Webhook expired',
-          ErrorCode.AUTH_EXPIRED_TOKEN,
-        );
+        throw new UnauthorizedException('Webhook expired', ErrorCode.AUTH_EXPIRED_TOKEN);
       }
     }
 

@@ -124,10 +124,7 @@ export class UsersController {
   @Post(':id/reenviar-convite')
   @Roles('ADMIN')
   @Audit({ action: 'resend_invite', resource: 'usuario', resourceIdFrom: 'params.id' })
-  resendInvite(
-    @CurrentUser() caller: AuthenticatedUser,
-    @Param('id') id: string,
-  ) {
+  resendInvite(@CurrentUser() caller: AuthenticatedUser, @Param('id') id: string) {
     return this.users.resendInvite(caller, id);
   }
 }

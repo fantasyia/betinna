@@ -50,22 +50,15 @@ async function bootstrap(): Promise<void> {
   app.enableShutdownHooks();
 
   const serviceType = process.env.SERVICE_TYPE ?? 'worker';
-  logger.log(
-    `🛠️  Betinna.ai Worker rodando · SERVICE_TYPE=${serviceType} · PID=${process.pid}`,
-  );
-  logger.log(
-    `   BullMQ queues ativas (campanha-envio, fluxo-execucao, dead-letter)`,
-  );
-  logger.log(
-    `   Cron schedulers ativos — CronLockService garante singleton via Redis`,
-  );
+  logger.log(`🛠️  Betinna.ai Worker rodando · SERVICE_TYPE=${serviceType} · PID=${process.pid}`);
+  logger.log(`   BullMQ queues ativas (campanha-envio, fluxo-execucao, dead-letter)`);
+  logger.log(`   Cron schedulers ativos — CronLockService garante singleton via Redis`);
 
   // Mantém o processo vivo. Sinais de shutdown são tratados por enableShutdownHooks.
   // Sem app.listen() — Worker não escuta porta.
 }
 
 bootstrap().catch((err) => {
-  // eslint-disable-next-line no-console
   console.error('Falha fatal no bootstrap do Worker:', err);
   process.exit(1);
 });

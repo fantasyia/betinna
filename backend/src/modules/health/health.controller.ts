@@ -1,9 +1,4 @@
-import {
-  Controller,
-  Get,
-  HttpException,
-  HttpStatus,
-} from '@nestjs/common';
+import { Controller, Get, HttpException, HttpStatus } from '@nestjs/common';
 import { InjectQueue } from '@nestjs/bullmq';
 import type { Queue } from 'bullmq';
 import { ApiOperation, ApiTags } from '@nestjs/swagger';
@@ -79,9 +74,7 @@ export class HealthController {
     ]);
 
     const overallStatus: 'ok' | 'degraded' =
-      db.status === 'ok' && redis.status === 'ok' && queues.status === 'ok'
-        ? 'ok'
-        : 'degraded';
+      db.status === 'ok' && redis.status === 'ok' && queues.status === 'ok' ? 'ok' : 'degraded';
 
     const payload = {
       status: overallStatus,
@@ -134,9 +127,7 @@ export class HealthController {
     }
   }
 
-  private async checkBullMq(): Promise<
-    DependencyCheck & { queues?: Record<string, number> }
-  > {
+  private async checkBullMq(): Promise<DependencyCheck & { queues?: Record<string, number> }> {
     const started = Date.now();
     try {
       // Para cada queue, conta jobs ativos+waiting. Se BullMQ responder, tá OK.

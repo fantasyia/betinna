@@ -161,12 +161,7 @@ export type MLClaimStatus =
   | 'closed_with_response'
   | string;
 
-export type MLClaimStage =
-  | 'claim'
-  | 'dispute'
-  | 'recontact'
-  | 'none'
-  | string;
+export type MLClaimStage = 'claim' | 'dispute' | 'recontact' | 'none' | string;
 
 export interface MLClaim {
   id: number;

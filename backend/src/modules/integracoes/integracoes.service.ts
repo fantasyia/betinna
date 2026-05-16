@@ -62,10 +62,7 @@ export class IntegracoesService {
 
   private requireEmpresa(user: AuthenticatedUser): string {
     if (!user.empresaIdAtiva) {
-      throw new ForbiddenException(
-        'Empresa não definida',
-        ErrorCode.TENANT_ACCESS_DENIED,
-      );
+      throw new ForbiddenException('Empresa não definida', ErrorCode.TENANT_ACCESS_DENIED);
     }
     return user.empresaIdAtiva;
   }
@@ -99,10 +96,7 @@ export class IntegracoesService {
    * Cria ou atualiza conexão. Criptografa as credenciais antes de salvar.
    * Invalida o cache pra forçar reload no próximo uso.
    */
-  async conectar(
-    user: AuthenticatedUser,
-    dto: ConectarDto,
-  ): Promise<ConexaoPublica> {
+  async conectar(user: AuthenticatedUser, dto: ConectarDto): Promise<ConexaoPublica> {
     const empresaId = this.requireEmpresa(user);
     const enc = this.crypto.encrypt(JSON.stringify(dto.credenciais));
 
@@ -129,10 +123,7 @@ export class IntegracoesService {
   /**
    * Desativa a conexão (não apaga — mantém histórico).
    */
-  async desconectar(
-    user: AuthenticatedUser,
-    servico: ServicoEmpresa,
-  ): Promise<{ ok: true }> {
+  async desconectar(user: AuthenticatedUser, servico: ServicoEmpresa): Promise<{ ok: true }> {
     const empresaId = this.requireEmpresa(user);
     const existing = await this.prisma.integracaoConexao.findUnique({
       where: { empresaId_servico: { empresaId, servico } },
@@ -167,14 +158,10 @@ export class IntegracoesService {
       where: { empresaId_servico: { empresaId, servico } },
     });
     if (!conexao) {
-      throw new BusinessRuleException(
-        `Integração ${servico} não configurada para esta empresa`,
-      );
+      throw new BusinessRuleException(`Integração ${servico} não configurada para esta empresa`);
     }
     if (!conexao.ativo) {
-      throw new BusinessRuleException(
-        `Integração ${servico} está desativada para esta empresa`,
-      );
+      throw new BusinessRuleException(`Integração ${servico} está desativada para esta empresa`);
     }
 
     let credenciais: Record<string, unknown>;
@@ -183,9 +170,7 @@ export class IntegracoesService {
       credenciais = JSON.parse(raw);
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
-      throw new BusinessRuleException(
-        `Falha ao descriptografar credenciais de ${servico}: ${msg}`,
-      );
+      throw new BusinessRuleException(`Falha ao descriptografar credenciais de ${servico}: ${msg}`);
     }
 
     const value: ConexaoDescriptada = {
@@ -211,10 +196,7 @@ export class IntegracoesService {
   }
 
   /** Marca uma falha — incrementa errosRecentes pra detectar saúde. */
-  async registrarSyncErro(
-    empresaId: string,
-    servico: ServicoEmpresa,
-  ): Promise<void> {
+  async registrarSyncErro(empresaId: string, servico: ServicoEmpresa): Promise<void> {
     await this.prisma.integracaoConexao.updateMany({
       where: { empresaId, servico },
       data: { errosRecentes: { increment: 1 } },

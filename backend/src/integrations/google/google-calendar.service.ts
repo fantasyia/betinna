@@ -33,10 +33,7 @@ export class GoogleCalendarService {
 
   async criarEvento(usuarioId: string, params: GoogleEventCreateParams): Promise<GoogleEvent> {
     if (params.fim <= params.inicio) {
-      throw new IntegrationException(
-        'fim deve ser depois de inicio',
-        ErrorCode.INTEGRATION_ERROR,
-      );
+      throw new IntegrationException('fim deve ser depois de inicio', ErrorCode.INTEGRATION_ERROR);
     }
     const token = await this.oauth.getAccessToken(usuarioId);
     const tz = params.timezone ?? DEFAULT_TZ;

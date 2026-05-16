@@ -45,10 +45,7 @@ export class UsuarioIntegracoesController {
   }
 
   @Get(':servico')
-  findByServico(
-    @CurrentUser() user: AuthenticatedUser,
-    @Param('servico') servico: ServicoUsuario,
-  ) {
+  findByServico(@CurrentUser() user: AuthenticatedUser, @Param('servico') servico: ServicoUsuario) {
     return this.svc.findByServico(user, servico);
   }
 
@@ -64,11 +61,12 @@ export class UsuarioIntegracoesController {
 
   @Delete(':servico')
   @HttpCode(HttpStatus.OK)
-  @Audit({ action: 'desconectar', resource: 'usuario-integracao', resourceIdFrom: 'params.servico' })
-  desconectar(
-    @CurrentUser() user: AuthenticatedUser,
-    @Param('servico') servico: ServicoUsuario,
-  ) {
+  @Audit({
+    action: 'desconectar',
+    resource: 'usuario-integracao',
+    resourceIdFrom: 'params.servico',
+  })
+  desconectar(@CurrentUser() user: AuthenticatedUser, @Param('servico') servico: ServicoUsuario) {
     return this.svc.desconectar(user, servico);
   }
 }

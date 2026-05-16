@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { IntegrationException, UnauthorizedException } from '@shared/errors/app-exception';
 import { MLOAuthService } from './ml-oauth.service';
 

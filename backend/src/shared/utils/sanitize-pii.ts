@@ -68,7 +68,10 @@ function maskEmail(s: string): string {
   if (i < 1) return s;
   const local = s.slice(0, i);
   const domain = s.slice(i);
-  const visible = local.length <= 2 ? local[0] : `${local[0]}${'*'.repeat(local.length - 2)}${local[local.length - 1]}`;
+  const visible =
+    local.length <= 2
+      ? local[0]
+      : `${local[0]}${'*'.repeat(local.length - 2)}${local[local.length - 1]}`;
   return `${visible}${domain}`;
 }
 

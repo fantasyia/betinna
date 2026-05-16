@@ -23,10 +23,7 @@ import type { RedisOptions } from 'ioredis';
  * @param overrides options específicas do caller (maxRetriesPerRequest etc.)
  * @returns RedisOptions com TLS aplicado APENAS se URL começa com `rediss://`
  */
-export function buildRedisOptions(
-  redisUrl: string,
-  overrides: RedisOptions = {},
-): RedisOptions {
+export function buildRedisOptions(redisUrl: string, overrides: RedisOptions = {}): RedisOptions {
   const baseOptions: RedisOptions = {
     // Sane defaults — sobreescrevíveis via overrides
     enableReadyCheck: true,

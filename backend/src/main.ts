@@ -31,7 +31,7 @@ async function bootstrap(): Promise<void> {
   // Valor "1" = confia em 1 hop (o proxy imediato — Railway). Não use "true"
   // em produção pública porque permite spoof via XFF de origem desconhecida.
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const expressInstance = (app.getHttpAdapter().getInstance() as any);
+  const expressInstance = app.getHttpAdapter().getInstance() as any;
   if (typeof expressInstance.set === 'function') {
     expressInstance.set('trust proxy', 1);
     // Desabilita ETag automático do Express. Em APIs JSON autenticadas,
@@ -67,10 +67,7 @@ async function bootstrap(): Promise<void> {
       .setTitle('Betinna.ai · API')
       .setDescription('Backend da plataforma comercial Betinna.ai')
       .setVersion('0.1.0')
-      .addBearerAuth(
-        { type: 'http', scheme: 'bearer', bearerFormat: 'JWT' },
-        'access-token',
-      )
+      .addBearerAuth({ type: 'http', scheme: 'bearer', bearerFormat: 'JWT' }, 'access-token')
       .addServer(`http://localhost:${env.get('PORT')}`)
       .build();
     const doc = SwaggerModule.createDocument(app, config);
@@ -87,11 +84,12 @@ async function bootstrap(): Promise<void> {
 
   const url = `http://localhost:${port}`;
   // eslint-disable-next-line no-console
-  console.log(`\n🚀 Betinna.ai backend rodando\n   ${url}/${env.get('API_PREFIX')}/health\n   ${url}/docs (Swagger)\n`);
+  console.log(
+    `\n🚀 Betinna.ai backend rodando\n   ${url}/${env.get('API_PREFIX')}/health\n   ${url}/docs (Swagger)\n`,
+  );
 }
 
 bootstrap().catch((err) => {
-  // eslint-disable-next-line no-console
   console.error('Falha fatal no bootstrap:', err);
   process.exit(1);
 });

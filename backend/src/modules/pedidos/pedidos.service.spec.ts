@@ -163,7 +163,11 @@ describe('PedidosService', () => {
     ]);
     prisma.usuario.findUnique.mockResolvedValue({ tetoDesconto: 5 });
     prisma.pedido.count.mockResolvedValue(0);
-    prisma.pedido.create.mockResolvedValue({ id: 'ped-1', numero: 'PED-0001', status: 'AGUARDANDO_APROVACAO' });
+    prisma.pedido.create.mockResolvedValue({
+      id: 'ped-1',
+      numero: 'PED-0001',
+      status: 'AGUARDANDO_APROVACAO',
+    });
     prisma.pedido.findUnique.mockResolvedValue({
       id: 'ped-1',
       numero: 'PED-0001',

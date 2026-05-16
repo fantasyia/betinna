@@ -71,10 +71,7 @@ export class UsuarioIntegracoesService {
     return c ? this.toPublic(c) : null;
   }
 
-  async conectar(
-    user: AuthenticatedUser,
-    dto: ConectarUsuarioDto,
-  ): Promise<ConexaoUsuarioPublica> {
+  async conectar(user: AuthenticatedUser, dto: ConectarUsuarioDto): Promise<ConexaoUsuarioPublica> {
     return this.conectarInterno(user.id, dto.servico, dto.credenciais);
   }
 
@@ -131,14 +128,10 @@ export class UsuarioIntegracoesService {
       where: { usuarioId_servico: { usuarioId, servico } },
     });
     if (!conexao) {
-      throw new BusinessRuleException(
-        `Integração ${servico} não configurada para este usuário`,
-      );
+      throw new BusinessRuleException(`Integração ${servico} não configurada para este usuário`);
     }
     if (!conexao.ativo) {
-      throw new BusinessRuleException(
-        `Integração ${servico} está desativada para este usuário`,
-      );
+      throw new BusinessRuleException(`Integração ${servico} está desativada para este usuário`);
     }
 
     let credenciais: Record<string, unknown>;
@@ -147,9 +140,7 @@ export class UsuarioIntegracoesService {
       credenciais = JSON.parse(raw);
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
-      throw new BusinessRuleException(
-        `Falha ao descriptografar credenciais de ${servico}: ${msg}`,
-      );
+      throw new BusinessRuleException(`Falha ao descriptografar credenciais de ${servico}: ${msg}`);
     }
 
     const value: ConexaoUsuarioDescriptada = {

@@ -8,7 +8,9 @@ import type { CreateEmpresaDto, ListEmpresasDto, UpdateEmpresaDto } from './empr
 export class EmpresasService {
   constructor(private readonly prisma: PrismaService) {}
 
-  async list(params: ListEmpresasDto): Promise<Paginated<Awaited<ReturnType<typeof this.findById>>>> {
+  async list(
+    params: ListEmpresasDto,
+  ): Promise<Paginated<Awaited<ReturnType<typeof this.findById>>>> {
     const where = {
       ...(params.search
         ? {

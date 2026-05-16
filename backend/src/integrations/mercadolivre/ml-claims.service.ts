@@ -1,8 +1,5 @@
 import { Injectable, Logger } from '@nestjs/common';
-import type {
-  MarketplaceIncidentStatus,
-  MarketplaceIncidentTipo,
-} from '@prisma/client';
+import type { MarketplaceIncidentStatus, MarketplaceIncidentTipo } from '@prisma/client';
 import { IncidentsService } from '@modules/incidents/incidents.service';
 import { InboxService } from '@modules/inbox/inbox.service';
 import { MLClientService } from './ml-client.service';
@@ -50,10 +47,7 @@ export class MLClaimsService {
     return r.data ?? [];
   }
 
-  async listarMensagens(
-    empresaId: string,
-    claimId: string | number,
-  ): Promise<MLClaimMessage[]> {
+  async listarMensagens(empresaId: string, claimId: string | number): Promise<MLClaimMessage[]> {
     const r = await this.ml.get<{ messages: MLClaimMessage[] }>(
       empresaId,
       `/post-purchase/v1/claims/${claimId}/messages`,

@@ -1,9 +1,4 @@
-import {
-  Injectable,
-  Logger,
-  type OnModuleDestroy,
-  type OnModuleInit,
-} from '@nestjs/common';
+import { Injectable, Logger, type OnModuleDestroy, type OnModuleInit } from '@nestjs/common';
 import IORedis, { type Redis } from 'ioredis';
 import { EnvService } from '@config/env.service';
 import { buildRedisOptions } from './redis-options';
@@ -103,16 +98,7 @@ export class RedisService implements OnModuleInit, OnModuleDestroy {
    *
    * Retorna o valor retornado pelo script (string|number|null|Array).
    */
-  async eval(
-    script: string,
-    keys: string[],
-    args: Array<string | number>,
-  ): Promise<unknown> {
-    return this.clientInstance.eval(
-      script,
-      keys.length,
-      ...keys,
-      ...args.map(String),
-    );
+  async eval(script: string, keys: string[], args: Array<string | number>): Promise<unknown> {
+    return this.clientInstance.eval(script, keys.length, ...keys, ...args.map(String));
   }
 }

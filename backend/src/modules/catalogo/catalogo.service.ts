@@ -96,10 +96,7 @@ export class CatalogoService {
     return items as CatalogoItem[];
   }
 
-  async upsertItem(
-    user: AuthenticatedUser,
-    dto: UpsertCatalogoItemDto,
-  ): Promise<CatalogoItem> {
+  async upsertItem(user: AuthenticatedUser, dto: UpsertCatalogoItemDto): Promise<CatalogoItem> {
     const empresaId = this.requireEmpresa(user);
     await this.assertProdutoDaEmpresa(empresaId, dto.produtoId);
 
@@ -138,9 +135,7 @@ export class CatalogoService {
       where: { id: { in: ids }, empresaId },
     });
     if (count !== ids.length) {
-      throw new BusinessRuleException(
-        'Um ou mais produtos não pertencem à sua empresa',
-      );
+      throw new BusinessRuleException('Um ou mais produtos não pertencem à sua empresa');
     }
     await this.prisma.$transaction(
       dto.itens.map((item) =>
@@ -191,10 +186,7 @@ export class CatalogoService {
    * Mostra qual preço o cliente vai ver — usando preço negociado
    * quando houver e aplicando o markup do rep sobre o resultado.
    */
-  async previewParaCliente(
-    user: AuthenticatedUser,
-    clienteId: string,
-  ): Promise<PreviewItem[]> {
+  async previewParaCliente(user: AuthenticatedUser, clienteId: string): Promise<PreviewItem[]> {
     // Valida acesso ao cliente (também garante mesma empresa que o rep)
     const empresaId = this.requireEmpresa(user);
     await this.clientes.findById(user, clienteId);
@@ -254,9 +246,7 @@ export class CatalogoService {
       select: { id: true },
     });
     if (!produto) {
-      throw new BusinessRuleException(
-        'Produto inexistente, inativo ou de outra empresa',
-      );
+      throw new BusinessRuleException('Produto inexistente, inativo ou de outra empresa');
     }
   }
 }

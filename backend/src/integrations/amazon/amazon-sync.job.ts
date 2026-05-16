@@ -62,10 +62,7 @@ export class AmazonSyncJob {
     return this.sincronizarEmpresa(empresaId, horas);
   }
 
-  private async sincronizarEmpresa(
-    empresaId: string,
-    horas = 24,
-  ): Promise<{ orders: number }> {
+  private async sincronizarEmpresa(empresaId: string, horas = 24): Promise<{ orders: number }> {
     let ordersCount = 0;
     try {
       const list = await this.orders.listarRecentes(empresaId, horas);

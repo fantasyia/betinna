@@ -1,12 +1,4 @@
-import {
-  Body,
-  Controller,
-  HttpCode,
-  HttpStatus,
-  Logger,
-  Post,
-  Req,
-} from '@nestjs/common';
+import { Body, Controller, HttpCode, HttpStatus, Logger, Post, Req } from '@nestjs/common';
 import { Throttle, seconds } from '@nestjs/throttler';
 import { ApiOperation, ApiTags } from '@nestjs/swagger';
 import type { Request } from 'express';
@@ -82,9 +74,7 @@ export class MLWebhookController {
 
     const empresaId = await this.oauth.resolverPorUserId(String(body.user_id));
     if (!empresaId) {
-      this.logger.warn(
-        `Webhook ML user_id=${body.user_id} sem IntegracaoConexao — ignorado`,
-      );
+      this.logger.warn(`Webhook ML user_id=${body.user_id} sem IntegracaoConexao — ignorado`);
       return { ok: false };
     }
 
@@ -180,16 +170,13 @@ export class MLWebhookController {
       .map((s) => normalizeIp(s))
       .filter(Boolean);
     // Fallback aos IPs documentados em src/constants/providers.ts quando env vazio
-    const whitelist =
-      configured.length > 0 ? configured : Array.from(ML_WEBHOOK_IPS_DEFAULT);
+    const whitelist = configured.length > 0 ? configured : Array.from(ML_WEBHOOK_IPS_DEFAULT);
 
     // Em produção, whitelist VAZIA é rejeição. O env schema já bloqueia isso
     // no boot, mas defesa em profundidade aqui também.
     if (whitelist.length === 0) {
       if (this.env.isProduction) {
-        this.logger.error(
-          'ML_WEBHOOK_IP_WHITELIST vazia em produção — webhook rejeitado',
-        );
+        this.logger.error('ML_WEBHOOK_IP_WHITELIST vazia em produção — webhook rejeitado');
         return false;
       }
       this.logger.warn('ML_WEBHOOK_IP_WHITELIST vazia (dev) — aceita qualquer IP');

@@ -39,10 +39,7 @@ export class AmostrasService {
 
   private requireEmpresa(user: AuthenticatedUser): string {
     if (!user.empresaIdAtiva) {
-      throw new ForbiddenException(
-        'Empresa não definida',
-        ErrorCode.TENANT_ACCESS_DENIED,
-      );
+      throw new ForbiddenException('Empresa não definida', ErrorCode.TENANT_ACCESS_DENIED);
     }
     return user.empresaIdAtiva;
   }
@@ -56,10 +53,7 @@ export class AmostrasService {
     return where;
   }
 
-  async list(
-    user: AuthenticatedUser,
-    params: ListAmostrasDto,
-  ): Promise<Paginated<AmostraWithRel>> {
+  async list(user: AuthenticatedUser, params: ListAmostrasDto): Promise<Paginated<AmostraWithRel>> {
     const where: Prisma.AmostraWhereInput = { ...(await this.baseWhere(user)) };
     const conds: Prisma.AmostraWhereInput[] = [];
     if (params.status) conds.push({ status: params.status });
@@ -123,8 +117,7 @@ export class AmostrasService {
         enviadoEm,
         followUpEm,
         status: 'ENVIADA',
-        representanteNome:
-          dto.representanteNome ?? (user.role === 'REP' ? user.nome : undefined),
+        representanteNome: dto.representanteNome ?? (user.role === 'REP' ? user.nome : undefined),
       },
       include: amostraInclude,
     });
@@ -136,7 +129,10 @@ export class AmostrasService {
     dto: UpdateAmostraDto,
   ): Promise<AmostraWithRel> {
     const existing = await this.findById(user, id);
-    await this.prisma.amostra.updateMany({ where: { id, empresaId: existing.empresaId }, data: dto });
+    await this.prisma.amostra.updateMany({
+      where: { id, empresaId: existing.empresaId },
+      data: dto,
+    });
     return this.prisma.amostra.findUniqueOrThrow({ where: { id }, include: amostraInclude });
   }
 
@@ -146,7 +142,10 @@ export class AmostrasService {
     dto: ChangeAmostraStatusDto,
   ): Promise<AmostraWithRel> {
     const existing = await this.findById(user, id);
-    await this.prisma.amostra.updateMany({ where: { id, empresaId: existing.empresaId }, data: { status: dto.status } });
+    await this.prisma.amostra.updateMany({
+      where: { id, empresaId: existing.empresaId },
+      data: { status: dto.status },
+    });
     return this.prisma.amostra.findUniqueOrThrow({ where: { id }, include: amostraInclude });
   }
 

@@ -52,8 +52,9 @@ export class GoogleOAuthController {
   }
 
   private html(res: Response, ok: boolean, msg: string): void {
-    const safeMsg = String(msg).replace(/[<>&"']/g, (c) =>
-      ({ '<': '&lt;', '>': '&gt;', '&': '&amp;', '"': '&quot;', "'": '&#39;' }[c] ?? c),
+    const safeMsg = String(msg).replace(
+      /[<>&"']/g,
+      (c) => ({ '<': '&lt;', '>': '&gt;', '&': '&amp;', '"': '&quot;', "'": '&#39;' })[c] ?? c,
     );
     res
       .status(ok ? 200 : 400)

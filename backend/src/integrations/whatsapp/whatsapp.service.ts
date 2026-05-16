@@ -35,8 +35,8 @@ export class WhatsAppService implements CanalAdapter, OnModuleInit {
     ctx?: CanalAdapterContexto,
   ): Promise<{ externalId?: string }> {
     const owner = ctx?.proprietarioId
-      ? ({ type: 'USUARIO' as const, id: ctx.proprietarioId })
-      : ({ type: 'EMPRESA' as const, id: empresaId });
+      ? { type: 'USUARIO' as const, id: ctx.proprietarioId }
+      : { type: 'EMPRESA' as const, id: empresaId };
     if (!this.sessions.estaConectado(owner)) {
       throw new BusinessRuleException(
         owner.type === 'USUARIO'
@@ -49,8 +49,8 @@ export class WhatsAppService implements CanalAdapter, OnModuleInit {
 
   async estaDisponivel(empresaId: string, proprietarioId?: string | null): Promise<boolean> {
     const owner = proprietarioId
-      ? ({ type: 'USUARIO' as const, id: proprietarioId })
-      : ({ type: 'EMPRESA' as const, id: empresaId });
+      ? { type: 'USUARIO' as const, id: proprietarioId }
+      : { type: 'EMPRESA' as const, id: empresaId };
     return this.sessions.estaConectado(owner);
   }
 }

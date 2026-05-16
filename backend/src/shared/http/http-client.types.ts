@@ -56,9 +56,7 @@ export class HttpClientError extends Error {
     public readonly attempts: number,
     public readonly cause?: Error,
   ) {
-    super(
-      `HTTP ${method} ${url} falhou após ${attempts} tentativa(s) com status ${status}`,
-    );
+    super(`HTTP ${method} ${url} falhou após ${attempts} tentativa(s) com status ${status}`);
     this.name = 'HttpClientError';
   }
 }

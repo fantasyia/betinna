@@ -158,9 +158,7 @@ export class OmieMapper {
     if (!dateStr) return null;
     // Aceita "dd/MM/yyyy" ou "dd/MM/yyyy HH:mm:ss"
     const combinado = timeStr ? `${dateStr} ${timeStr}` : dateStr;
-    const m = combinado.match(
-      /^(\d{2})\/(\d{2})\/(\d{4})(?:\s+(\d{2}):(\d{2})(?::(\d{2}))?)?$/,
-    );
+    const m = combinado.match(/^(\d{2})\/(\d{2})\/(\d{4})(?:\s+(\d{2}):(\d{2})(?::(\d{2}))?)?$/);
     if (!m) return null;
     return new Date(
       Date.UTC(

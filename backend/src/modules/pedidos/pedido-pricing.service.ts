@@ -9,15 +9,15 @@ export interface ItemInput {
 export interface ItemTotal {
   subtotal: number; // qtd * preco
   desconto: number; // valor absoluto descontado
-  total: number;    // subtotal - desconto
+  total: number; // subtotal - desconto
 }
 
 export interface PedidoTotals {
-  subtotal: number;       // soma dos itens sem desconto geral
-  totalItens: number;     // soma dos itens com desconto por item
-  descontoGeral: number;  // valor absoluto do desconto geral aplicado
-  total: number;          // totalItens - descontoGeral
-  comissao: number;       // total * % comissão (default 5%)
+  subtotal: number; // soma dos itens sem desconto geral
+  totalItens: number; // soma dos itens com desconto por item
+  descontoGeral: number; // valor absoluto do desconto geral aplicado
+  total: number; // totalItens - descontoGeral
+  comissao: number; // total * % comissão (default 5%)
   maxDescontoPercentual: number; // maior desconto entre itens e geral
 }
 
@@ -52,11 +52,7 @@ export class PedidoPricingService {
    * @param descontoGeralPct desconto % aplicado sobre o totalItens (0-50)
    * @param comissaoPct % de comissão (default 5)
    */
-  pedidoTotals(
-    itens: ItemInput[],
-    descontoGeralPct: number,
-    comissaoPct = 5,
-  ): PedidoTotals {
+  pedidoTotals(itens: ItemInput[], descontoGeralPct: number, comissaoPct = 5): PedidoTotals {
     const totaisItens = itens.map((i) => this.itemTotal(i));
     const subtotal = this.round(totaisItens.reduce((s, t) => s + t.subtotal, 0));
     const totalItens = this.round(totaisItens.reduce((s, t) => s + t.total, 0));

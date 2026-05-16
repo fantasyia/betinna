@@ -78,14 +78,29 @@ function avaliarCondicao(config: CondicaoConfig, ctx: ExecucaoContexto): 'true' 
   const ref = config.valor;
   let resultado: boolean;
   switch (config.operador) {
-    case 'eq': resultado = val == ref; break;
-    case 'neq': resultado = val != ref; break;
-    case 'gt': resultado = Number(val) > Number(ref); break;
-    case 'lt': resultado = Number(val) < Number(ref); break;
-    case 'gte': resultado = Number(val) >= Number(ref); break;
-    case 'lte': resultado = Number(val) <= Number(ref); break;
-    case 'contains': resultado = String(val).includes(String(ref)); break;
-    default: resultado = false;
+    case 'eq':
+      resultado = val == ref;
+      break;
+    case 'neq':
+      resultado = val != ref;
+      break;
+    case 'gt':
+      resultado = Number(val) > Number(ref);
+      break;
+    case 'lt':
+      resultado = Number(val) < Number(ref);
+      break;
+    case 'gte':
+      resultado = Number(val) >= Number(ref);
+      break;
+    case 'lte':
+      resultado = Number(val) <= Number(ref);
+      break;
+    case 'contains':
+      resultado = String(val).includes(String(ref));
+      break;
+    default:
+      resultado = false;
   }
   return resultado ? 'true' : 'false';
 }
@@ -130,13 +145,8 @@ export class FluxoExecutorService {
     // Defesa em profundidade: nenhuma execução roda sem empresaId.
     // Auditoria 2026-05-15 — sem isso, ações faziam writes cross-tenant.
     if (!execucao.empresaId) {
-      this.logger.error(
-        `Execução ${execucaoId} sem empresaId — fluxo malformado, abortando`,
-      );
-      await this.marcarFalhou(
-        execucaoId,
-        'empresaId ausente na execução — fluxo inválido',
-      );
+      this.logger.error(`Execução ${execucaoId} sem empresaId — fluxo malformado, abortando`);
+      await this.marcarFalhou(execucaoId, 'empresaId ausente na execução — fluxo inválido');
       return;
     }
     if (execucao.status === 'CANCELADO') {
@@ -180,9 +190,7 @@ export class FluxoExecutorService {
     }
 
     // Registra log do passo
-    const logStatus = sucesso
-      ? ('CONCLUIDO' as const)
-      : ('FALHOU' as const);
+    const logStatus = sucesso ? ('CONCLUIDO' as const) : ('FALHOU' as const);
     await this.prisma.fluxoExecucaoLog.create({
       data: {
         execucaoId,
@@ -203,9 +211,10 @@ export class FluxoExecutorService {
     }
 
     // Determina próximos nós
-    const labelParaNavegar = no.tipo === 'CONDICAO'
-      ? avaliarCondicao(no.config as unknown as CondicaoConfig, contexto)
-      : null;
+    const labelParaNavegar =
+      no.tipo === 'CONDICAO'
+        ? avaliarCondicao(no.config as unknown as CondicaoConfig, contexto)
+        : null;
 
     const proximosNoIds = arestas
       .filter((e: FluxoEdge) => e.sourceNoId === noId)
@@ -356,9 +365,7 @@ export class FluxoExecutorService {
           select: { email: true, nome: true },
         });
         if (!cliente) {
-          throw new Error(
-            `Cliente ${clienteId} não encontrado na empresa ${empresaId}`,
-          );
+          throw new Error(`Cliente ${clienteId} não encontrado na empresa ${empresaId}`);
         }
         email = cliente.email ?? undefined;
       }
@@ -392,9 +399,7 @@ export class FluxoExecutorService {
         select: { representanteId: true },
       });
       if (!cliente) {
-        throw new Error(
-          `Cliente ${clienteId} não encontrado na empresa ${empresaId}`,
-        );
+        throw new Error(`Cliente ${clienteId} não encontrado na empresa ${empresaId}`);
       }
       representanteId = cliente.representanteId ?? undefined;
     }
@@ -509,9 +514,7 @@ export class FluxoExecutorService {
       select: { id: true },
     });
     if (!rep) {
-      throw new Error(
-        `Rep ${cfg.representanteId} não pertence à empresa ${empresaId}`,
-      );
+      throw new Error(`Rep ${cfg.representanteId} não pertence à empresa ${empresaId}`);
     }
 
     if (clienteId) {
@@ -532,7 +535,8 @@ export class FluxoExecutorService {
         throw new Error(`Lead ${leadId} não encontrado na empresa ${empresaId}`);
       }
     }
-    if (!clienteId && !leadId) throw new Error('contexto sem clienteId nem leadId para ATRIBUIR_REP');
+    if (!clienteId && !leadId)
+      throw new Error('contexto sem clienteId nem leadId para ATRIBUIR_REP');
     return { representanteId: cfg.representanteId, clienteId, leadId };
   }
 

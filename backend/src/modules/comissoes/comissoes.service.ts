@@ -6,13 +6,8 @@ import {
   ForbiddenException,
   NotFoundException,
 } from '@shared/errors/app-exception';
-import { ErrorCode } from '@shared/errors/error-codes';
 import { RepScopeService } from '@shared/scope/rep-scope.service';
-import {
-  empresaFilter,
-  getCallerEmpresaId,
-  isGlobalAdmin,
-} from '@shared/utils/auth-context';
+import { empresaFilter, getCallerEmpresaId, isGlobalAdmin } from '@shared/utils/auth-context';
 import type { AuthenticatedUser } from '@shared/types/authenticated-user';
 import { type Paginated, buildPaginated } from '@shared/types/pagination';
 import type { FecharMesDto, ListComissoesDto, MarcarPagoDto } from './comissoes.dto';
@@ -110,7 +105,10 @@ export class ComissoesService {
    * AUDITORIA P0 — todos os registros de Comissao têm `empresaId` e `calculadoEm`
    * gravados explicitamente (snapshot do momento do fechamento).
    */
-  async fecharMes(user: AuthenticatedUser, dto: FecharMesDto): Promise<{
+  async fecharMes(
+    user: AuthenticatedUser,
+    dto: FecharMesDto,
+  ): Promise<{
     ok: true;
     mes: number;
     ano: number;
@@ -172,15 +170,15 @@ export class ComissoesService {
       where: { id: { in: repIds } },
       select: { id: true, comissaoPadrao: true },
     });
-    const pctPorRep = new Map(
-      repsConfig.map((r) => [r.id, r.comissaoPadrao ?? null]),
-    );
+    const pctPorRep = new Map(repsConfig.map((r) => [r.id, r.comissaoPadrao ?? null]));
 
     const agora = new Date();
 
     await this.prisma.$transaction(
       aggregated
-        .filter((row): row is typeof row & { representanteId: string } => row.representanteId !== null)
+        .filter(
+          (row): row is typeof row & { representanteId: string } => row.representanteId !== null,
+        )
         .map((row) => {
           const totalVendas = row._sum.total ?? 0;
           const totalComissao = row._sum.comissao ?? 0;

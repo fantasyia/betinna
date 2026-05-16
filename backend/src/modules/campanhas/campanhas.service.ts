@@ -92,10 +92,7 @@ export class CampanhasService {
 
   // ─── CRUD ────────────────────────────────────────────────────────────────
 
-  async list(
-    user: AuthenticatedUser,
-    params: ListCampanhasDto,
-  ): Promise<Paginated<CampanhaList>> {
+  async list(user: AuthenticatedUser, params: ListCampanhasDto): Promise<Paginated<CampanhaList>> {
     const where: Prisma.CampanhaWhereInput = { ...(await this.baseWhere(user)) };
     const conds: Prisma.CampanhaWhereInput[] = [];
 
@@ -190,9 +187,7 @@ export class CampanhasService {
   ): Promise<CampanhaDetalhe> {
     const existing = await this.findById(user, id);
     if (!['RASCUNHO', 'PAUSADA'].includes(existing.status)) {
-      throw new BusinessRuleException(
-        `Campanha em ${existing.status} não pode ser agendada`,
-      );
+      throw new BusinessRuleException(`Campanha em ${existing.status} não pode ser agendada`);
     }
     await this.prisma.campanha.update({
       where: { id },

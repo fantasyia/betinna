@@ -101,10 +101,7 @@ export class MetaOAuthService {
     const empresaId = await this.verifyState(state);
 
     // 1. code → short-lived user token
-    const shortLived = await this.graph.exchangeCode(
-      code,
-      this.env.get('META_GRAPH_REDIRECT_URI'),
-    );
+    const shortLived = await this.graph.exchangeCode(code, this.env.get('META_GRAPH_REDIRECT_URI'));
     // 2. → long-lived (~60 dias)
     const longLived = await this.graph.exchangeLongLived(shortLived.access_token);
     const userToken = longLived.access_token;
@@ -167,7 +164,10 @@ export class MetaOAuthService {
   async resolverPorAccount(
     servico: 'facebook' | 'instagram',
     externalAccountId: string,
-  ): Promise<{ empresaId: string; credenciais: FacebookCredenciais | InstagramCredenciais } | null> {
+  ): Promise<{
+    empresaId: string;
+    credenciais: FacebookCredenciais | InstagramCredenciais;
+  } | null> {
     const conn = await this.prisma.integracaoConexao.findFirst({
       where: { servico, externalAccountId, ativo: true },
     });

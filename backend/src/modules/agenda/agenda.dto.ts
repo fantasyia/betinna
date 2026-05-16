@@ -8,14 +8,21 @@ const dateLike = z.coerce.date();
 export const createAgendaItemSchema = z.object({
   titulo: z.string().min(1).max(200),
   data: dateLike,
-  duracao: z.coerce.number().int().positive().max(60 * 24).default(60), // minutos
+  duracao: z.coerce
+    .number()
+    .int()
+    .positive()
+    .max(60 * 24)
+    .default(60), // minutos
   tipo: agendaTipoEnum.default('VISITA'),
   observacao: z.string().max(2000).optional(),
   clienteId: z.string().cuid().optional(),
   /** Quando true e o user tem Google Calendar conectado, espelha no Google. */
   espelharGoogle: z.coerce.boolean().default(true),
   /** Convidados opcionais (apenas se espelhar). */
-  participantes: z.array(z.object({ email: z.string().email(), nome: z.string().optional() })).optional(),
+  participantes: z
+    .array(z.object({ email: z.string().email(), nome: z.string().optional() }))
+    .optional(),
 });
 export type CreateAgendaItemDto = z.infer<typeof createAgendaItemSchema>;
 

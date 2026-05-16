@@ -52,7 +52,8 @@ export class RelatoriosController {
   @Get('comissoes')
   @RequirePermissions({ module: 'relatorios', action: 'view' })
   @ApiOperation({
-    summary: 'Comissões: total pago / a pagar por período, detalhamento por rep e tipo (REP/GERENTE)',
+    summary:
+      'Comissões: total pago / a pagar por período, detalhamento por rep e tipo (REP/GERENTE)',
   })
   comissoes(
     @CurrentUser() user: AuthenticatedUser,

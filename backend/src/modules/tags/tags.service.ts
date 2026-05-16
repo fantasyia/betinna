@@ -2,10 +2,7 @@ import { Injectable, Logger } from '@nestjs/common';
 import { Prisma, type Tag } from '@prisma/client';
 import { PrismaService } from '@database/prisma.service';
 import { BusinessRuleException, NotFoundException } from '@shared/errors/app-exception';
-import {
-  empresaFilter,
-  getCallerEmpresaId,
-} from '@shared/utils/auth-context';
+import { empresaFilter, getCallerEmpresaId } from '@shared/utils/auth-context';
 import type { AuthenticatedUser } from '@shared/types/authenticated-user';
 import type { CreateTagDto, ListTagsDto, UpdateTagDto } from './tags.dto';
 

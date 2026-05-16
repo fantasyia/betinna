@@ -11,12 +11,7 @@ import { NotasPrivadasService } from './notas-privadas.service';
 @Module({
   imports: [TagsModule],
   controllers: [ClientesController, NotasPrivadasController, DocumentosController],
-  providers: [
-    ClientesService,
-    ListasDinamicasService,
-    NotasPrivadasService,
-    DocumentosService,
-  ],
+  providers: [ClientesService, ListasDinamicasService, NotasPrivadasService, DocumentosService],
   exports: [ClientesService, ListasDinamicasService],
 })
 export class ClientesModule {}

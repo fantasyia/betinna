@@ -1,14 +1,8 @@
 import { Injectable } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { PrismaService } from '@database/prisma.service';
-import { ForbiddenException } from '@shared/errors/app-exception';
-import { ErrorCode } from '@shared/errors/error-codes';
 import { RepScopeService } from '@shared/scope/rep-scope.service';
-import {
-  empresaFilter,
-  getCallerEmpresaId,
-  isGlobalAdmin,
-} from '@shared/utils/auth-context';
+import { getCallerEmpresaId } from '@shared/utils/auth-context';
 import type { AuthenticatedUser } from '@shared/types/authenticated-user';
 import type { PeriodoDto } from './relatorios.dto';
 
@@ -127,13 +121,7 @@ export class RelatoriosService {
         rf,
       );
 
-    const [
-      aggrAtual,
-      aggrAnterior,
-      porStatus,
-      porRepGrp,
-      pedidosEntregues,
-    ] = await Promise.all([
+    const [aggrAtual, aggrAnterior, porStatus, porRepGrp, pedidosEntregues] = await Promise.all([
       this.prisma.pedido.aggregate({
         where: { ...baseWhere(de, ate), status: statusReceita },
         _sum: { total: true },
@@ -227,7 +215,9 @@ export class RelatoriosService {
         _sum: { valorEstimado: true },
       }),
       this.prisma.lead.count({ where: { ...baseFilter, criadoEm: { gte: de, lte: ate } } }),
-      this.prisma.lead.count({ where: { ...baseFilter, criadoEm: { gte: prev.de, lte: prev.ate } } }),
+      this.prisma.lead.count({
+        where: { ...baseFilter, criadoEm: { gte: prev.de, lte: prev.ate } },
+      }),
       this.prisma.lead.count({
         where: { ...baseFilter, etapa: 'GANHO', fechadoEm: { gte: de, lte: ate } },
       }),
@@ -275,8 +265,7 @@ export class RelatoriosService {
     const totalAtivos = porEtapa
       .filter((e) => !['GANHO', 'PERDIDO'].includes(e.etapa))
       .reduce((s, e) => s + e._count._all, 0);
-    const taxaConversao =
-      criadosAtual > 0 ? Math.round((ganhosAtual / criadosAtual) * 100) : 0;
+    const taxaConversao = criadosAtual > 0 ? Math.round((ganhosAtual / criadosAtual) * 100) : 0;
 
     const repIds = porRep.map((r) => r.representanteId);
     const nomes = await this.nomesReps(repIds);
@@ -542,13 +531,14 @@ export class RelatoriosService {
 
     // Métricas de destinatários agregadas
     const campanhaIds = campanhasList.map((c) => c.id);
-    const destGrp = campanhaIds.length > 0
-      ? await this.prisma.campanhaDestinatario.groupBy({
-          by: ['campanhaId', 'status'],
-          where: { campanhaId: { in: campanhaIds } },
-          _count: { _all: true },
-        })
-      : [];
+    const destGrp =
+      campanhaIds.length > 0
+        ? await this.prisma.campanhaDestinatario.groupBy({
+            by: ['campanhaId', 'status'],
+            where: { campanhaId: { in: campanhaIds } },
+            _count: { _all: true },
+          })
+        : [];
 
     const destPorCampanha: Record<string, Record<string, number>> = {};
     for (const d of destGrp) {
@@ -568,12 +558,9 @@ export class RelatoriosService {
       periodo: { de, ate },
       totalCampanhas: campanhasList.length,
       totalDestinatarios,
-      taxaEnvio: totalDestinatarios > 0
-        ? Math.round((totalEnviados / totalDestinatarios) * 100)
-        : 0,
-      taxaLeitura: totalEnviados > 0
-        ? Math.round((totalLidos / totalEnviados) * 100)
-        : 0,
+      taxaEnvio:
+        totalDestinatarios > 0 ? Math.round((totalEnviados / totalDestinatarios) * 100) : 0,
+      taxaLeitura: totalEnviados > 0 ? Math.round((totalLidos / totalEnviados) * 100) : 0,
       porCanal: porCanal.map((c) => ({ canal: c.canal, count: c._count._all })),
       porStatus: porStatus.map((s) => ({ status: s.status, count: s._count._all })),
       campanhas: campanhasList.map((c) => {
@@ -617,7 +604,11 @@ export class RelatoriosService {
       return w;
     };
 
-    type AmostraGrpRow = { status: string; _count: { _all: number }; _sum: { valor: number | null } | null };
+    type AmostraGrpRow = {
+      status: string;
+      _count: { _all: number };
+      _sum: { valor: number | null } | null;
+    };
     const [porStatusAgg, totalAtual, totalAnterior] = await Promise.all([
       this.prisma.amostra.groupBy({
         by: ['status'],

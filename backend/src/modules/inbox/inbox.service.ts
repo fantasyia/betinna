@@ -61,10 +61,7 @@ export class InboxService {
 
   private requireEmpresa(user: AuthenticatedUser): string {
     if (!user.empresaIdAtiva) {
-      throw new ForbiddenException(
-        'Empresa não definida',
-        ErrorCode.TENANT_ACCESS_DENIED,
-      );
+      throw new ForbiddenException('Empresa não definida', ErrorCode.TENANT_ACCESS_DENIED);
     }
     return user.empresaIdAtiva;
   }
@@ -223,9 +220,7 @@ export class InboxService {
     const conv = await this.findById(user, conversationId);
     const adapter = this.registry.obter(conv.canal);
     if (!adapter) {
-      throw new BusinessRuleException(
-        `Canal ${conv.canal} não tem adapter registrado`,
-      );
+      throw new BusinessRuleException(`Canal ${conv.canal} não tem adapter registrado`);
     }
     const disponivel = await adapter.estaDisponivel(conv.empresaId, conv.proprietarioId);
     if (!disponivel) {
@@ -272,9 +267,7 @@ export class InboxService {
         where: { id: msg.id },
         data: { status: MessageStatus.FAILED, meta: { erro: m } },
       });
-      throw new BusinessRuleException(
-        `Falha ao enviar pelo canal ${conv.canal}: ${m}`,
-      );
+      throw new BusinessRuleException(`Falha ao enviar pelo canal ${conv.canal}: ${m}`);
     }
   }
 

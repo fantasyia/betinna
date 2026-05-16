@@ -4,6 +4,7 @@ import makeWASocket, {
   DisconnectReason,
   fetchLatestBaileysVersion,
   makeCacheableSignalKeyStore,
+  type ConnectionState,
   type WASocket,
   type proto,
 } from '@whiskeysockets/baileys';
@@ -12,11 +13,7 @@ import { EnvService } from '@config/env.service';
 import { PrismaService } from '@database/prisma.service';
 import { InboxService } from '@modules/inbox/inbox.service';
 import { BusinessRuleException } from '@shared/errors/app-exception';
-import {
-  WhatsAppAuthState,
-  ownerKey,
-  type WhatsAppOwner,
-} from './whatsapp-auth-state';
+import { WhatsAppAuthState, ownerKey, type WhatsAppOwner } from './whatsapp-auth-state';
 import type { WhatsAppSessionInfo, WhatsAppSessionStatus } from './whatsapp.types';
 
 interface SessionContext {
@@ -119,7 +116,7 @@ export class WhatsAppSessionService implements OnModuleInit, OnModuleDestroy {
       ctx.desligadoManualmente = true;
       if (ctx.reconectTimer) clearTimeout(ctx.reconectTimer);
       try {
-        ctx.sock.end(new Error('shutdown'));
+        void ctx.sock.end(new Error('shutdown'));
       } catch {
         // ignore
       }
@@ -140,18 +137,13 @@ export class WhatsAppSessionService implements OnModuleInit, OnModuleDestroy {
     return this.iniciar({ type: 'USUARIO', id: usuarioId }, empresaId);
   }
 
-  private async iniciar(
-    owner: WhatsAppOwner,
-    empresaId: string,
-  ): Promise<WhatsAppSessionInfo> {
+  private async iniciar(owner: WhatsAppOwner, empresaId: string): Promise<WhatsAppSessionInfo> {
     const key = ownerKey(owner);
     const existente = this.sessions.get(key);
     if (existente) return existente.info;
     await this.criarSessao(owner, empresaId, false);
     const ctx = this.sessions.get(key);
-    return ctx
-      ? ctx.info
-      : this.infoVazia(owner, empresaId, 'ERROR', 'falha ao iniciar');
+    return ctx ? ctx.info : this.infoVazia(owner, empresaId, 'ERROR', 'falha ao iniciar');
   }
 
   async desconectarEmpresa(empresaId: string): Promise<void> {
@@ -169,7 +161,7 @@ export class WhatsAppSessionService implements OnModuleInit, OnModuleDestroy {
     if (ctx.reconectTimer) clearTimeout(ctx.reconectTimer);
     try {
       await ctx.sock.logout().catch(() => undefined);
-      ctx.sock.end(undefined);
+      void ctx.sock.end(undefined);
     } catch {
       // ignore
     }
@@ -196,12 +188,16 @@ export class WhatsAppSessionService implements OnModuleInit, OnModuleDestroy {
 
   statusEmpresa(empresaId: string): WhatsAppSessionInfo {
     const ctx = this.sessions.get(ownerKey({ type: 'EMPRESA', id: empresaId }));
-    return ctx ? ctx.info : this.infoVazia({ type: 'EMPRESA', id: empresaId }, empresaId, 'DISCONNECTED');
+    return ctx
+      ? ctx.info
+      : this.infoVazia({ type: 'EMPRESA', id: empresaId }, empresaId, 'DISCONNECTED');
   }
 
   statusUsuario(usuarioId: string, empresaId: string): WhatsAppSessionInfo {
     const ctx = this.sessions.get(ownerKey({ type: 'USUARIO', id: usuarioId }));
-    return ctx ? ctx.info : this.infoVazia({ type: 'USUARIO', id: usuarioId }, empresaId, 'DISCONNECTED');
+    return ctx
+      ? ctx.info
+      : this.infoVazia({ type: 'USUARIO', id: usuarioId }, empresaId, 'DISCONNECTED');
   }
 
   /** True se sessão owner está conectada (CONNECTED). */
@@ -220,9 +216,7 @@ export class WhatsAppSessionService implements OnModuleInit, OnModuleDestroy {
   ): Promise<{ externalId?: string }> {
     const ctx = this.sessions.get(ownerKey(owner));
     if (!ctx || ctx.info.status !== 'CONNECTED') {
-      throw new BusinessRuleException(
-        `Sessão WhatsApp ${ownerKey(owner)} não está conectada`,
-      );
+      throw new BusinessRuleException(`Sessão WhatsApp ${ownerKey(owner)} não está conectada`);
     }
     const jid = this.normalizarJid(peerId);
     const r = await ctx.sock.sendMessage(jid, { text: texto });
@@ -256,7 +250,7 @@ export class WhatsAppSessionService implements OnModuleInit, OnModuleDestroy {
       },
       printQRInTerminal: false,
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      logger: { level: 'silent', child: () => ({} as any) } as any,
+      logger: { level: 'silent', child: () => ({}) as any } as any,
       browser: ['Betinna.ai', 'Chrome', '1.0.0'],
     });
 
@@ -274,9 +268,7 @@ export class WhatsAppSessionService implements OnModuleInit, OnModuleDestroy {
       sock,
       auth,
       info,
-      reconectTentativas: isReconexao
-        ? (this.sessions.get(key)?.reconectTentativas ?? 0)
-        : 0,
+      reconectTentativas: isReconexao ? (this.sessions.get(key)?.reconectTentativas ?? 0) : 0,
       reconectTimer: null,
       desligadoManualmente: false,
     };
@@ -297,10 +289,7 @@ export class WhatsAppSessionService implements OnModuleInit, OnModuleDestroy {
     });
   }
 
-  private handleConnectionUpdate(
-    ctx: SessionContext,
-    u: Partial<import('@whiskeysockets/baileys').ConnectionState>,
-  ): void {
+  private handleConnectionUpdate(ctx: SessionContext, u: Partial<ConnectionState>): void {
     const key = ownerKey(ctx.owner);
     if (u.qr) {
       ctx.info.status = 'QR_PENDING';
@@ -351,9 +340,7 @@ export class WhatsAppSessionService implements OnModuleInit, OnModuleDestroy {
       return;
     }
     const delay = Math.min(30_000, 1000 * 2 ** Math.min(6, ctx.reconectTentativas));
-    this.logger.warn(
-      `[${key}] reconectando em ${delay}ms (tentativa ${ctx.reconectTentativas})`,
-    );
+    this.logger.warn(`[${key}] reconectando em ${delay}ms (tentativa ${ctx.reconectTentativas})`);
     ctx.info.status = 'CONNECTING';
     ctx.reconectTimer = setTimeout(() => {
       void this.criarSessao(ctx.owner, ctx.empresaId, true).catch((err) => {
@@ -391,9 +378,7 @@ export class WhatsAppSessionService implements OnModuleInit, OnModuleDestroy {
         tipo,
         conteudo,
         externalId: m.key.id ?? undefined,
-        data: m.messageTimestamp
-          ? new Date(Number(m.messageTimestamp) * 1000)
-          : undefined,
+        data: m.messageTimestamp ? new Date(Number(m.messageTimestamp) * 1000) : undefined,
         mediaMime,
         proprietarioId,
         meta: { jid: peerId, ownerKey: ownerKey(ctx.owner) },
@@ -401,9 +386,7 @@ export class WhatsAppSessionService implements OnModuleInit, OnModuleDestroy {
     }
   }
 
-  private extrairConteudo(
-    msg: proto.IMessage | null | undefined,
-  ): {
+  private extrairConteudo(msg: proto.IMessage | null | undefined): {
     conteudo: string;
     tipo: 'TEXT' | 'IMAGE' | 'AUDIO' | 'VIDEO' | 'DOCUMENT' | 'STICKER' | 'LOCATION' | 'CONTACT';
     mediaMime?: string;

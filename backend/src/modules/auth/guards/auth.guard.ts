@@ -5,10 +5,7 @@ import { EnvService } from '@config/env.service';
 import { PrismaService } from '@database/prisma.service';
 import { RedisService } from '@database/redis.service';
 import { IS_PUBLIC_KEY } from '@shared/decorators/public.decorator';
-import {
-  ForbiddenException,
-  UnauthorizedException,
-} from '@shared/errors/app-exception';
+import { ForbiddenException, UnauthorizedException } from '@shared/errors/app-exception';
 import { ErrorCode } from '@shared/errors/error-codes';
 import type { AuthenticatedUser } from '@shared/types/authenticated-user';
 import { SupabaseAuthService } from '../supabase-auth.service';
@@ -208,10 +205,7 @@ export class AuthGuard implements CanActivate {
     return null;
   }
 
-  private resolveEmpresaAtiva(
-    empresaIds: string[],
-    requested: string | null,
-  ): string | null {
+  private resolveEmpresaAtiva(empresaIds: string[], requested: string | null): string | null {
     if (requested) {
       if (!empresaIds.includes(requested)) {
         throw new ForbiddenException(

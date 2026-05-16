@@ -7,7 +7,11 @@ import { IntegrationException, UnauthorizedException } from '@shared/errors/app-
 import { ErrorCode } from '@shared/errors/error-codes';
 import { HttpClientService } from '@shared/http/http-client.service';
 import { HttpClientError } from '@shared/http/http-client.types';
-import type { GoogleCalendarCredenciais, GoogleTokenResponse, GoogleUserInfo } from './google.types';
+import type {
+  GoogleCalendarCredenciais,
+  GoogleTokenResponse,
+  GoogleUserInfo,
+} from './google.types';
 
 const AUTH_URL = 'https://accounts.google.com/o/oauth2/v2/auth';
 const TOKEN_URL = 'https://oauth2.googleapis.com/token';

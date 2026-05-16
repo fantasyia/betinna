@@ -26,7 +26,8 @@ export class IncidentsController {
 
   @Get()
   @ApiOperation({
-    summary: 'Lista incidentes (filtros: canal, tipo, status, clienteId, aguardandoMim, prazoUrgente)',
+    summary:
+      'Lista incidentes (filtros: canal, tipo, status, clienteId, aguardandoMim, prazoUrgente)',
   })
   list(
     @CurrentUser() user: AuthenticatedUser,

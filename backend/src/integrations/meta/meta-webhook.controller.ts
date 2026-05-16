@@ -18,18 +18,11 @@ import type { Request } from 'express';
 import { EnvService } from '@config/env.service';
 import { InboxService } from '@modules/inbox/inbox.service';
 import { Public } from '@shared/decorators/public.decorator';
-import {
-  ForbiddenException,
-  UnauthorizedException,
-} from '@shared/errors/app-exception';
+import { ForbiddenException, UnauthorizedException } from '@shared/errors/app-exception';
 import { WebhookSignatureUtil } from '@shared/http/webhook-signature.util';
 import { WebhookAntiReplayService } from '@shared/utils/webhook-anti-replay.service';
 import { MetaOAuthService } from './meta-oauth.service';
-import type {
-  MetaMessagingEvent,
-  MetaWebhookEntry,
-  MetaWebhookEnvelope,
-} from './meta.types';
+import type { MetaMessagingEvent, MetaWebhookEntry, MetaWebhookEnvelope } from './meta.types';
 
 /**
  * Receiver de webhooks da Meta (Messenger + Instagram Direct).
@@ -152,10 +145,7 @@ export class MetaWebhookController {
 
   // ─── Internos ────────────────────────────────────────────────────────
 
-  private async processarEntry(
-    canal: MessageChannel,
-    entry: MetaWebhookEntry,
-  ): Promise<void> {
+  private async processarEntry(canal: MessageChannel, entry: MetaWebhookEntry): Promise<void> {
     const accountId = entry.id;
     const servico = canal === 'FACEBOOK' ? 'facebook' : 'instagram';
     const resolved = await this.oauth.resolverPorAccount(servico, accountId);

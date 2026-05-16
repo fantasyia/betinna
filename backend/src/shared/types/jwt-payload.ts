@@ -1,5 +1,4 @@
 import type { JWTPayload } from 'jose';
-import type { UserRole } from '@prisma/client';
 
 /**
  * Claims do JWT emitido pelo Supabase Auth.

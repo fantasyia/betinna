@@ -30,7 +30,9 @@ const fluxoInclude = {
 
 type FluxoWithRel = Prisma.FluxoGetPayload<{ include: typeof fluxoInclude }>;
 
-const execucaoInclude = { logs: { orderBy: { iniciadoEm: 'asc' as const } } } satisfies Prisma.FluxoExecucaoInclude;
+const execucaoInclude = {
+  logs: { orderBy: { iniciadoEm: 'asc' as const } },
+} satisfies Prisma.FluxoExecucaoInclude;
 type ExecucaoWithLogs = Prisma.FluxoExecucaoGetPayload<{ include: typeof execucaoInclude }>;
 
 @Injectable()
@@ -377,7 +379,10 @@ export class FluxosService {
       );
     }
     if (fluxo.status === 'ARQUIVADO') {
-      throw new BusinessRuleException('Fluxo arquivado não pode ser testado', ErrorCode.BUSINESS_RULE_VIOLATION);
+      throw new BusinessRuleException(
+        'Fluxo arquivado não pode ser testado',
+        ErrorCode.BUSINESS_RULE_VIOLATION,
+      );
     }
 
     const triggerNo = fluxo.nos.find((n) => n.tipo === 'TRIGGER');
@@ -412,7 +417,13 @@ export class FluxosService {
   async metricas(
     user: AuthenticatedUser,
     id: string,
-  ): Promise<{ total: number; concluidos: number; falhos: number; emExecucao: number; taxaSucesso: number }> {
+  ): Promise<{
+    total: number;
+    concluidos: number;
+    falhos: number;
+    emExecucao: number;
+    taxaSucesso: number;
+  }> {
     await this.findOne(user, id);
 
     const [total, concluidos, falhos, emExecucao] = await Promise.all([

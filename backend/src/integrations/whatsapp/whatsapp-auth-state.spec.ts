@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { initAuthCreds, BufferJSON } from '@whiskeysockets/baileys';
-import { CryptoUtil } from '@shared/utils/crypto.util';
+// CryptoUtil is not used directly in tests — auth state handles encryption internally.
 import { WhatsAppAuthState, ownerKey } from './whatsapp-auth-state';
 
 /**
@@ -15,19 +15,27 @@ function makePrismaMock() {
   const integracaoConexaoStore = new Map<string, { credenciais: unknown }>();
   return {
     integracaoConexao: {
-      findUnique: vi.fn(async (args: { where: { empresaId_servico: { empresaId: string; servico: string } } }) => {
-        const k = `${args.where.empresaId_servico.empresaId}:${args.where.empresaId_servico.servico}`;
-        const row = integracaoConexaoStore.get(k);
-        return row ? { credenciais: row.credenciais } : null;
-      }),
-      upsert: vi.fn(async (args: { where: { empresaId_servico: { empresaId: string; servico: string } }; create: { credenciais: unknown }; update: { credenciais: unknown } }) => {
-        const k = `${args.where.empresaId_servico.empresaId}:${args.where.empresaId_servico.servico}`;
-        const existing = integracaoConexaoStore.get(k);
-        integracaoConexaoStore.set(k, {
-          credenciais: existing ? args.update.credenciais : args.create.credenciais,
-        });
-        return { credenciais: integracaoConexaoStore.get(k)!.credenciais };
-      }),
+      findUnique: vi.fn(
+        async (args: { where: { empresaId_servico: { empresaId: string; servico: string } } }) => {
+          const k = `${args.where.empresaId_servico.empresaId}:${args.where.empresaId_servico.servico}`;
+          const row = integracaoConexaoStore.get(k);
+          return row ? { credenciais: row.credenciais } : null;
+        },
+      ),
+      upsert: vi.fn(
+        async (args: {
+          where: { empresaId_servico: { empresaId: string; servico: string } };
+          create: { credenciais: unknown };
+          update: { credenciais: unknown };
+        }) => {
+          const k = `${args.where.empresaId_servico.empresaId}:${args.where.empresaId_servico.servico}`;
+          const existing = integracaoConexaoStore.get(k);
+          integracaoConexaoStore.set(k, {
+            credenciais: existing ? args.update.credenciais : args.create.credenciais,
+          });
+          return { credenciais: integracaoConexaoStore.get(k)!.credenciais };
+        },
+      ),
       deleteMany: vi.fn(async () => ({ count: 1 })),
     },
     usuarioIntegracao: {

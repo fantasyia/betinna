@@ -44,7 +44,11 @@ describe('LeadsService', () => {
 
   beforeEach(() => {
     prisma = makePrismaMock();
-    svc = new LeadsService(prisma as never, makeRepScope() as never, { disparar: vi.fn() } as never);
+    svc = new LeadsService(
+      prisma as never,
+      makeRepScope() as never,
+      { disparar: vi.fn() } as never,
+    );
   });
 
   describe('rep filtering', () => {
@@ -91,15 +95,30 @@ describe('LeadsService', () => {
 
   describe('máquina de estados', () => {
     it('rejeita transição inválida (NOVO → GANHO direto)', async () => {
-      prisma.lead.findFirst.mockResolvedValue({ id: 'l1', empresaId: 'emp-1', representanteId: 'rep-1', etapa: 'NOVO' });
+      prisma.lead.findFirst.mockResolvedValue({
+        id: 'l1',
+        empresaId: 'emp-1',
+        representanteId: 'rep-1',
+        etapa: 'NOVO',
+      });
       await expect(
         svc.moverEtapa(fakeUser(), 'l1', { etapa: 'GANHO', motivo: 'qualquer' }),
       ).rejects.toBeInstanceOf(BusinessRuleException);
     });
 
     it('aceita NOVO → QUALIFICANDO', async () => {
-      const fakeLead = { id: 'l1', empresaId: 'emp-1', representanteId: 'rep-1', etapa: 'QUALIFICANDO' };
-      prisma.lead.findFirst.mockResolvedValue({ id: 'l1', empresaId: 'emp-1', representanteId: 'rep-1', etapa: 'NOVO' });
+      const fakeLead = {
+        id: 'l1',
+        empresaId: 'emp-1',
+        representanteId: 'rep-1',
+        etapa: 'QUALIFICANDO',
+      };
+      prisma.lead.findFirst.mockResolvedValue({
+        id: 'l1',
+        empresaId: 'emp-1',
+        representanteId: 'rep-1',
+        etapa: 'NOVO',
+      });
       prisma.lead.updateMany.mockResolvedValue({ count: 1 });
       prisma.lead.findUniqueOrThrow.mockResolvedValue(fakeLead);
       const result = await svc.moverEtapa(fakeUser(), 'l1', { etapa: 'QUALIFICANDO' });
@@ -109,7 +128,12 @@ describe('LeadsService', () => {
     });
 
     it('PROPOSTA → GANHO requer motivo (validado no DTO, mas confirma também aqui)', async () => {
-      prisma.lead.findFirst.mockResolvedValue({ id: 'l1', empresaId: 'emp-1', representanteId: 'rep-1', etapa: 'PROPOSTA' });
+      prisma.lead.findFirst.mockResolvedValue({
+        id: 'l1',
+        empresaId: 'emp-1',
+        representanteId: 'rep-1',
+        etapa: 'PROPOSTA',
+      });
       prisma.lead.updateMany.mockResolvedValue({ count: 1 });
       prisma.lead.findUniqueOrThrow.mockResolvedValue({ id: 'l1', etapa: 'GANHO' });
       await svc.moverEtapa(fakeUser(), 'l1', { etapa: 'GANHO', motivo: 'Cliente VIP fechou' });
@@ -135,14 +159,24 @@ describe('LeadsService', () => {
     });
 
     it('GANHO é terminal — bloqueia qualquer transição', async () => {
-      prisma.lead.findFirst.mockResolvedValue({ id: 'l1', empresaId: 'emp-1', representanteId: 'rep-1', etapa: 'GANHO' });
-      await expect(
-        svc.moverEtapa(fakeUser(), 'l1', { etapa: 'NOVO' }),
-      ).rejects.toBeInstanceOf(BusinessRuleException);
+      prisma.lead.findFirst.mockResolvedValue({
+        id: 'l1',
+        empresaId: 'emp-1',
+        representanteId: 'rep-1',
+        etapa: 'GANHO',
+      });
+      await expect(svc.moverEtapa(fakeUser(), 'l1', { etapa: 'NOVO' })).rejects.toBeInstanceOf(
+        BusinessRuleException,
+      );
     });
 
     it('Lead fechado não pode ser editado (update simples)', async () => {
-      prisma.lead.findFirst.mockResolvedValue({ id: 'l1', empresaId: 'emp-1', representanteId: 'rep-1', etapa: 'GANHO' });
+      prisma.lead.findFirst.mockResolvedValue({
+        id: 'l1',
+        empresaId: 'emp-1',
+        representanteId: 'rep-1',
+        etapa: 'GANHO',
+      });
       await expect(svc.update(fakeUser(), 'l1', { score: 80 })).rejects.toBeInstanceOf(
         BusinessRuleException,
       );

@@ -1,17 +1,10 @@
 import { Injectable, Logger } from '@nestjs/common';
-import type {
-  MarketplaceIncidentStatus,
-  MarketplaceIncidentTipo,
-} from '@prisma/client';
+import type { MarketplaceIncidentStatus, MarketplaceIncidentTipo } from '@prisma/client';
 import { EnvService } from '@config/env.service';
 import { IncidentsService } from '@modules/incidents/incidents.service';
 import { InboxService } from '@modules/inbox/inbox.service';
 import { TikTokClientService } from './tiktok-client.service';
-import type {
-  TikTokReturn,
-  TikTokReturnListResponse,
-  TikTokReturnStatus,
-} from './tiktok.types';
+import type { TikTokReturn, TikTokReturnListResponse, TikTokReturnStatus } from './tiktok.types';
 
 /**
  * Returns / Refunds da TikTok Shop.
@@ -81,11 +74,7 @@ export class TikTokReturnsService {
     );
   }
 
-  async anexarEvidencia(
-    empresaId: string,
-    returnId: string,
-    imagens: string[],
-  ): Promise<void> {
+  async anexarEvidencia(empresaId: string, returnId: string, imagens: string[]): Promise<void> {
     await this.tiktok.post(
       empresaId,
       `/return_refund/${this.apiVersion}/returns/${encodeURIComponent(returnId)}/seller_evidence`,

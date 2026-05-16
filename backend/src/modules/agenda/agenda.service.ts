@@ -11,16 +11,8 @@ import {
 import { ErrorCode } from '@shared/errors/error-codes';
 import { RepScopeService } from '@shared/scope/rep-scope.service';
 import type { AuthenticatedUser } from '@shared/types/authenticated-user';
-import {
-  empresaFilter,
-  getCallerEmpresaId,
-  isGlobalAdmin,
-} from '@shared/utils/auth-context';
-import type {
-  CreateAgendaItemDto,
-  ListAgendaDto,
-  UpdateAgendaItemDto,
-} from './agenda.dto';
+import { empresaFilter, getCallerEmpresaId } from '@shared/utils/auth-context';
+import type { CreateAgendaItemDto, ListAgendaDto, UpdateAgendaItemDto } from './agenda.dto';
 
 const agendaInclude = {
   cliente: { select: { id: true, nome: true, cidade: true } },
@@ -49,10 +41,7 @@ export class AgendaService {
     private readonly repScope: RepScopeService,
   ) {}
 
-  async create(
-    user: AuthenticatedUser,
-    dto: CreateAgendaItemDto,
-  ): Promise<AgendaItemWithCliente> {
+  async create(user: AuthenticatedUser, dto: CreateAgendaItemDto): Promise<AgendaItemWithCliente> {
     // AUDITORIA 2026-05-15: AgendaItem agora tem empresaId obrigatório.
     // Vem da empresa ativa do JWT — NUNCA do body.
     const empresaId = getCallerEmpresaId(user);
@@ -159,7 +148,10 @@ export class AgendaService {
         clienteId: dto.clienteId === undefined ? existing.clienteId : dto.clienteId,
       },
     });
-    const updated = await this.prisma.agendaItem.findUniqueOrThrow({ where: { id }, include: agendaInclude });
+    const updated = await this.prisma.agendaItem.findUniqueOrThrow({
+      where: { id },
+      include: agendaInclude,
+    });
 
     if (existing.googleEventId) {
       try {
@@ -237,10 +229,7 @@ export class AgendaService {
 
   private async assertClienteVisivel(user: AuthenticatedUser, clienteId: string): Promise<void> {
     if (!user.empresaIdAtiva) {
-      throw new ForbiddenException(
-        'Empresa não definida',
-        ErrorCode.TENANT_ACCESS_DENIED,
-      );
+      throw new ForbiddenException('Empresa não definida', ErrorCode.TENANT_ACCESS_DENIED);
     }
     const c = await this.prisma.cliente.findFirst({
       where: { id: clienteId, empresaId: user.empresaIdAtiva },
@@ -248,10 +237,7 @@ export class AgendaService {
     });
     if (!c) throw new NotFoundException('Cliente', clienteId);
     const scope = await this.repScope.getRepIds(user);
-    if (
-      scope !== null &&
-      (c.representanteId === null || !scope.includes(c.representanteId))
-    ) {
+    if (scope !== null && (c.representanteId === null || !scope.includes(c.representanteId))) {
       throw new BusinessRuleException('Cliente fora da sua carteira');
     }
   }

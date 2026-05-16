@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { IntegrationException, UnauthorizedException } from '@shared/errors/app-exception';
 import { GoogleOAuthService } from './google-oauth.service';
 
@@ -57,7 +57,13 @@ describe('GoogleOAuthService state JWT (CSRF protection)', () => {
     const http = makeHttp();
     http.post.mockResolvedValueOnce({
       status: 200,
-      data: { access_token: 'at', refresh_token: 'rt', expires_in: 3600, scope: '', token_type: 'Bearer' },
+      data: {
+        access_token: 'at',
+        refresh_token: 'rt',
+        expires_in: 3600,
+        scope: '',
+        token_type: 'Bearer',
+      },
     });
     http.get.mockResolvedValueOnce({ status: 200, data: { sub: 'g1', email: 'a@gmail.com' } });
 
@@ -100,7 +106,9 @@ describe('GoogleOAuthService state JWT (CSRF protection)', () => {
       makeHttp() as never,
       makeUserIntegracoes() as never,
     );
-    await expect(svc.exchangeCode('code', 'not-a-jwt')).rejects.toBeInstanceOf(UnauthorizedException);
+    await expect(svc.exchangeCode('code', 'not-a-jwt')).rejects.toBeInstanceOf(
+      UnauthorizedException,
+    );
   });
 
   it('rejeita quando Google não devolve refresh_token', async () => {

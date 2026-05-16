@@ -74,17 +74,11 @@ describe('PedidoPricingService', () => {
 
   describe('excedeTetoDesconto', () => {
     it('retorna true se max desconto > teto', () => {
-      const totals = svc.pedidoTotals(
-        [{ quantidade: 1, precoUnitario: 100, desconto: 15 }],
-        0,
-      );
+      const totals = svc.pedidoTotals([{ quantidade: 1, precoUnitario: 100, desconto: 15 }], 0);
       expect(svc.excedeTetoDesconto(totals, 10)).toBe(true);
     });
     it('retorna false se max desconto <= teto', () => {
-      const totals = svc.pedidoTotals(
-        [{ quantidade: 1, precoUnitario: 100, desconto: 5 }],
-        0,
-      );
+      const totals = svc.pedidoTotals([{ quantidade: 1, precoUnitario: 100, desconto: 5 }], 0);
       expect(svc.excedeTetoDesconto(totals, 10)).toBe(false);
       expect(svc.excedeTetoDesconto(totals, 5)).toBe(false);
     });

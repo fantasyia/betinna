@@ -2,10 +2,7 @@ import { Injectable, Logger } from '@nestjs/common';
 import { createHash } from 'node:crypto';
 import { EnvService } from '@config/env.service';
 import { RedisService } from '@database/redis.service';
-import {
-  ForbiddenException,
-  IntegrationException,
-} from '@shared/errors/app-exception';
+import { ForbiddenException, IntegrationException } from '@shared/errors/app-exception';
 import { ErrorCode } from '@shared/errors/error-codes';
 import type { AuthenticatedUser } from '@shared/types/authenticated-user';
 import { AuthGuard } from './guards/auth.guard';
@@ -128,18 +125,14 @@ export class RefreshTokenService {
         // OK — token aceito (primeira vez, idempotente, ou rotação válida)
         return;
       case 'REUSE':
-        this.logger.error(
-          `Refresh token reuse detectado userId=${userId} — invalidando sessões`,
-        );
+        this.logger.error(`Refresh token reuse detectado userId=${userId} — invalidando sessões`);
         await this.invalidateAllSessions(userId);
         throw new ForbiddenException(
           'Token reuse detectado — todas as sessões foram invalidadas',
           ErrorCode.AUTH_INVALID_TOKEN,
         );
       default:
-        this.logger.error(
-          `Resultado inesperado de Lua rotate: ${JSON.stringify(result)}`,
-        );
+        this.logger.error(`Resultado inesperado de Lua rotate: ${JSON.stringify(result)}`);
         throw new IntegrationException(
           'Falha inesperada no refresh tracking',
           ErrorCode.INTEGRATION_ERROR,

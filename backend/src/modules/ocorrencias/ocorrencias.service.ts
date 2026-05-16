@@ -53,10 +53,7 @@ export class OcorrenciasService {
 
   private requireEmpresa(user: AuthenticatedUser): string {
     if (!user.empresaIdAtiva) {
-      throw new ForbiddenException(
-        'Empresa não definida',
-        ErrorCode.TENANT_ACCESS_DENIED,
-      );
+      throw new ForbiddenException('Empresa não definida', ErrorCode.TENANT_ACCESS_DENIED);
     }
     return user.empresaIdAtiva;
   }
@@ -149,9 +146,7 @@ export class OcorrenciasService {
         select: { id: true },
       });
       if (!pedido) {
-        throw new BusinessRuleException(
-          'Pedido informado não pertence à mesma empresa/cliente',
-        );
+        throw new BusinessRuleException('Pedido informado não pertence à mesma empresa/cliente');
       }
     }
 
@@ -164,9 +159,7 @@ export class OcorrenciasService {
         select: { id: true },
       });
       if (!resp) {
-        throw new BusinessRuleException(
-          'Responsável não vinculado à empresa',
-        );
+        throw new BusinessRuleException('Responsável não vinculado à empresa');
       }
     }
 
@@ -271,9 +264,7 @@ export class OcorrenciasService {
       throw new BusinessRuleException(`Ocorrência já está em status ${dto.status}`);
     }
     if (existing.status === 'RESOLVIDA' && dto.status === 'CANCELADA') {
-      throw new BusinessRuleException(
-        'Ocorrência resolvida não pode ser cancelada',
-      );
+      throw new BusinessRuleException('Ocorrência resolvida não pode ser cancelada');
     }
     await this.prisma.$transaction(async (tx) => {
       await tx.ocorrencia.updateMany({

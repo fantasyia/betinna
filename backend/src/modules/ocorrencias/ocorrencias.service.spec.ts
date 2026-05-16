@@ -51,7 +51,11 @@ const fakeUser = (overrides: Partial<AuthenticatedUser> = {}): AuthenticatedUser
 describe('OcorrenciasService', () => {
   let prisma: ReturnType<typeof makePrismaMock>;
   let svc: OcorrenciasService;
-  let sequenceMock: { next: ReturnType<typeof vi.fn>; peek: ReturnType<typeof vi.fn>; seedFromDb: ReturnType<typeof vi.fn> };
+  let sequenceMock: {
+    next: ReturnType<typeof vi.fn>;
+    peek: ReturnType<typeof vi.fn>;
+    seedFromDb: ReturnType<typeof vi.fn>;
+  };
 
   beforeEach(() => {
     prisma = makePrismaMock();
@@ -114,7 +118,12 @@ describe('OcorrenciasService', () => {
       prisma.cliente.findFirst.mockResolvedValue({ id: 'c1', representanteId: null });
       prisma.ocorrencia.count.mockResolvedValue(0);
       prisma.ocorrencia.create.mockResolvedValue({ id: 'o1', slaVenceEm: new Date() });
-      prisma.ocorrencia.findFirst.mockResolvedValue({ id: 'o1', empresaId: 'emp-1', clienteId: 'c1', cliente: { id: 'c1', nome: 'Cliente X', cnpj: null, representanteId: null } });
+      prisma.ocorrencia.findFirst.mockResolvedValue({
+        id: 'o1',
+        empresaId: 'emp-1',
+        clienteId: 'c1',
+        cliente: { id: 'c1', nome: 'Cliente X', cnpj: null, representanteId: null },
+      });
 
       await svc.create(fakeUser(), {
         clienteId: 'c1',
@@ -136,7 +145,12 @@ describe('OcorrenciasService', () => {
       // SequenceService retorna o próximo (auditoria 2026-05-15 P0-4)
       sequenceMock.next.mockResolvedValueOnce(43);
       prisma.ocorrencia.create.mockResolvedValue({ id: 'o1' });
-      prisma.ocorrencia.findFirst.mockResolvedValue({ id: 'o1', empresaId: 'emp-1', clienteId: 'c1', cliente: { id: 'c1', nome: 'Cliente X', cnpj: null, representanteId: null } });
+      prisma.ocorrencia.findFirst.mockResolvedValue({
+        id: 'o1',
+        empresaId: 'emp-1',
+        clienteId: 'c1',
+        cliente: { id: 'c1', nome: 'Cliente X', cnpj: null, representanteId: null },
+      });
       await svc.create(fakeUser(), {
         clienteId: 'c1',
         tipo: 'PRAZO',
@@ -153,7 +167,12 @@ describe('OcorrenciasService', () => {
       prisma.cliente.findFirst.mockResolvedValue({ id: 'c1', representanteId: null });
       prisma.ocorrencia.count.mockResolvedValue(0);
       prisma.ocorrencia.create.mockResolvedValue({ id: 'o1' });
-      prisma.ocorrencia.findFirst.mockResolvedValue({ id: 'o1', empresaId: 'emp-1', clienteId: 'c1', cliente: { id: 'c1', nome: 'Cliente X', cnpj: null, representanteId: null } });
+      prisma.ocorrencia.findFirst.mockResolvedValue({
+        id: 'o1',
+        empresaId: 'emp-1',
+        clienteId: 'c1',
+        cliente: { id: 'c1', nome: 'Cliente X', cnpj: null, representanteId: null },
+      });
       await svc.create(fakeUser(), {
         clienteId: 'c1',
         tipo: 'PRAZO',
@@ -174,9 +193,9 @@ describe('OcorrenciasService', () => {
         empresaId: 'emp-1',
         status: 'RESOLVIDA',
       });
-      await expect(
-        svc.resolver(fakeUser(), 'o1', { resolucao: 'X' }),
-      ).rejects.toBeInstanceOf(BusinessRuleException);
+      await expect(svc.resolver(fakeUser(), 'o1', { resolucao: 'X' })).rejects.toBeInstanceOf(
+        BusinessRuleException,
+      );
     });
 
     it('rejeita resolver ocorrência cancelada', async () => {
@@ -185,9 +204,9 @@ describe('OcorrenciasService', () => {
         empresaId: 'emp-1',
         status: 'CANCELADA',
       });
-      await expect(
-        svc.resolver(fakeUser(), 'o1', { resolucao: 'X' }),
-      ).rejects.toBeInstanceOf(BusinessRuleException);
+      await expect(svc.resolver(fakeUser(), 'o1', { resolucao: 'X' })).rejects.toBeInstanceOf(
+        BusinessRuleException,
+      );
     });
 
     it('marca como RESOLVIDA, registra resolução e cria comentário sistêmico', async () => {
@@ -213,9 +232,9 @@ describe('OcorrenciasService', () => {
         empresaId: 'emp-1',
         status: 'ABERTA',
       });
-      await expect(
-        svc.changeStatus(fakeUser(), 'o1', { status: 'ABERTA' }),
-      ).rejects.toBeInstanceOf(BusinessRuleException);
+      await expect(svc.changeStatus(fakeUser(), 'o1', { status: 'ABERTA' })).rejects.toBeInstanceOf(
+        BusinessRuleException,
+      );
     });
 
     it('rejeita cancelar resolvida', async () => {

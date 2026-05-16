@@ -19,13 +19,12 @@ export class WebhookSignatureUtil {
    * @param secret    Segredo compartilhado
    * @returns true se válida
    */
-  static verifyHmacSha256(
-    rawBody: Buffer | string,
-    signature: string,
-    secret: string,
-  ): boolean {
+  static verifyHmacSha256(rawBody: Buffer | string, signature: string, secret: string): boolean {
     if (!signature || !secret) return false;
-    const cleanSig = signature.replace(/^sha256=/, '').trim().toLowerCase();
+    const cleanSig = signature
+      .replace(/^sha256=/, '')
+      .trim()
+      .toLowerCase();
     if (!/^[0-9a-f]+$/i.test(cleanSig)) return false;
 
     const computed = createHmac('sha256', secret)

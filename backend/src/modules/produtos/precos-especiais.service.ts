@@ -4,10 +4,7 @@ import { PrismaService } from '@database/prisma.service';
 import { ClientesService } from '@modules/clientes/clientes.service';
 import { BusinessRuleException, NotFoundException } from '@shared/errors/app-exception';
 import type { AuthenticatedUser } from '@shared/types/authenticated-user';
-import type {
-  BulkUpsertPrecoEspecialDto,
-  UpsertPrecoEspecialDto,
-} from './precos-especiais.dto';
+import type { BulkUpsertPrecoEspecialDto, UpsertPrecoEspecialDto } from './precos-especiais.dto';
 
 const precoInclude = {
   produto: {
@@ -83,9 +80,7 @@ export class PrecosEspeciaisService {
       select: { id: true },
     });
     if (produtos.length !== produtoIds.length) {
-      throw new BusinessRuleException(
-        'Um ou mais produtos não pertencem à empresa do cliente',
-      );
+      throw new BusinessRuleException('Um ou mais produtos não pertencem à empresa do cliente');
     }
     await this.prisma.$transaction(
       dto.itens.map((item) =>
@@ -122,18 +117,13 @@ export class PrecosEspeciaisService {
     });
   }
 
-  private async assertProdutoDaMesmaEmpresa(
-    empresaId: string,
-    produtoId: string,
-  ): Promise<void> {
+  private async assertProdutoDaMesmaEmpresa(empresaId: string, produtoId: string): Promise<void> {
     const produto = await this.prisma.produto.findFirst({
       where: { id: produtoId, empresaId },
       select: { id: true },
     });
     if (!produto) {
-      throw new BusinessRuleException(
-        'Produto não pertence à empresa deste cliente',
-      );
+      throw new BusinessRuleException('Produto não pertence à empresa deste cliente');
     }
   }
 }

@@ -88,11 +88,7 @@ export class OmieWebhookController {
       // Sprint 3 FIX 1: anti-replay (timestamp window + signature dedup).
       // OMIE pode enviar `X-Omie-Timestamp` (opcional). Sem ele, fallback pra
       // dedup por signature dentro de 10min.
-      const replay = await this.antiReplay.checkAndMarkWebhook(
-        'omie',
-        signature,
-        omieTimestamp,
-      );
+      const replay = await this.antiReplay.checkAndMarkWebhook('omie', signature, omieTimestamp);
       if (!replay.fresh) {
         // Já processado — ACK idempotente sem reprocessar
         return { ok: true };

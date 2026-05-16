@@ -88,11 +88,7 @@ export class DocumentosService implements OnModuleInit {
     });
   }
 
-  async upload(
-    user: AuthenticatedUser,
-    clienteId: string,
-    file: UploadInput,
-  ): Promise<Documento> {
+  async upload(user: AuthenticatedUser, clienteId: string, file: UploadInput): Promise<Documento> {
     if (!file.buffer || file.size === 0) {
       throw new BusinessRuleException('Arquivo vazio');
     }
@@ -113,12 +109,10 @@ export class DocumentosService implements OnModuleInit {
     const safeName = file.filename.replace(/[^\w.\-]/g, '_').slice(0, 80);
     const storagePath = `${cliente.empresaId}/${clienteId}/${ts}_${safeName}${ext ? `.${ext}` : ''}`;
 
-    const { error } = await this.storage.storage
-      .from(BUCKET)
-      .upload(storagePath, file.buffer, {
-        contentType: file.mimetype,
-        upsert: false,
-      });
+    const { error } = await this.storage.storage.from(BUCKET).upload(storagePath, file.buffer, {
+      contentType: file.mimetype,
+      upsert: false,
+    });
     if (error) {
       throw new IntegrationException(`Falha ao subir arquivo: ${error.message}`);
     }
@@ -149,9 +143,7 @@ export class DocumentosService implements OnModuleInit {
       .from(BUCKET)
       .createSignedUrl(doc.url, SIGNED_URL_EXPIRES);
     if (error || !data?.signedUrl) {
-      throw new IntegrationException(
-        `Falha ao gerar URL: ${error?.message ?? 'sem retorno'}`,
-      );
+      throw new IntegrationException(`Falha ao gerar URL: ${error?.message ?? 'sem retorno'}`);
     }
     return { signedUrl: data.signedUrl, expiresIn: SIGNED_URL_EXPIRES, nome: doc.nome };
   }

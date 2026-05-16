@@ -118,10 +118,7 @@ export class UsersService {
     let empresaIdFiltro = params.empresaId;
     if (!isGlobalAdmin(user)) {
       if (!user.empresaIdAtiva) {
-        throw new ForbiddenException(
-          'Empresa não definida',
-          ErrorCode.TENANT_ACCESS_DENIED,
-        );
+        throw new ForbiddenException('Empresa não definida', ErrorCode.TENANT_ACCESS_DENIED);
       }
       if (empresaIdFiltro && empresaIdFiltro !== user.empresaIdAtiva) {
         throw new ForbiddenException(
@@ -143,9 +140,7 @@ export class UsersService {
         : {}),
       ...(params.role ? { role: params.role } : {}),
       ...(params.status ? { status: params.status } : {}),
-      ...(empresaIdFiltro
-        ? { empresas: { some: { empresaId: empresaIdFiltro } } }
-        : {}),
+      ...(empresaIdFiltro ? { empresas: { some: { empresaId: empresaIdFiltro } } } : {}),
     };
 
     const [total, items] = await Promise.all([
@@ -179,10 +174,7 @@ export class UsersService {
     if (!isGlobalAdmin(caller)) {
       const callerEmpresa = caller.empresaIdAtiva;
       if (!callerEmpresa) {
-        throw new ForbiddenException(
-          'Empresa não definida',
-          ErrorCode.TENANT_ACCESS_DENIED,
-        );
+        throw new ForbiddenException('Empresa não definida', ErrorCode.TENANT_ACCESS_DENIED);
       }
       const compartilham = target.empresas.some((e) => e.empresaId === callerEmpresa);
       if (!compartilham) {
@@ -240,7 +232,7 @@ export class UsersService {
         regiao: dto.regiao,
         tetoDesconto: dto.tetoDesconto ?? (dto.role === 'REP' ? 5 : null),
         comissaoPadrao: dto.comissaoPadrao ?? (dto.role === 'REP' ? 5 : null),
-        gerenteId: dto.role === 'REP' ? dto.gerenteId ?? null : null,
+        gerenteId: dto.role === 'REP' ? (dto.gerenteId ?? null) : null,
         empresas: {
           create: dto.empresaIds.map((empresaId) => ({ empresaId })),
         },
@@ -268,9 +260,8 @@ export class UsersService {
     }
     // Trocar role pra algo != REP zera gerenteId
     const dataPatch: Prisma.UsuarioUpdateInput = { ...rest };
-    if (gerenteId !== undefined) dataPatch.gerente = gerenteId
-      ? { connect: { id: gerenteId } }
-      : { disconnect: true };
+    if (gerenteId !== undefined)
+      dataPatch.gerente = gerenteId ? { connect: { id: gerenteId } } : { disconnect: true };
     if (dto.role && dto.role !== 'REP') {
       dataPatch.gerente = { disconnect: true };
     }
@@ -326,9 +317,7 @@ export class UsersService {
   ): Promise<void> {
     const user = await this.loadAndAssertScope(caller, id);
     if (user.role !== 'REP') {
-      throw new BusinessRuleException(
-        'Apenas representantes têm teto de desconto configurável',
-      );
+      throw new BusinessRuleException('Apenas representantes têm teto de desconto configurável');
     }
     // Re-verify scope inside transaction to close TOCTOU window.
     // Usuario has no empresaId column; scope is via UsuarioEmpresa join table.
@@ -365,9 +354,7 @@ export class UsersService {
   ): Promise<void> {
     const user = await this.loadAndAssertScope(caller, id);
     if (user.role !== 'REP' && user.role !== 'GERENTE') {
-      throw new BusinessRuleException(
-        'Comissão configurável apenas para REP ou GERENTE',
-      );
+      throw new BusinessRuleException('Comissão configurável apenas para REP ou GERENTE');
     }
     // Re-verify scope inside transaction to close TOCTOU window.
     // Usuario has no empresaId column; scope is via UsuarioEmpresa join table.
@@ -390,10 +377,7 @@ export class UsersService {
     });
   }
 
-  async resendInvite(
-    caller: AuthenticatedUser,
-    id: string,
-  ): Promise<{ ok: true; sentTo: string }> {
+  async resendInvite(caller: AuthenticatedUser, id: string): Promise<{ ok: true; sentTo: string }> {
     const user = await this.loadAndAssertScope(caller, id);
     if (user.status !== 'PENDENTE') {
       throw new BusinessRuleException('Usuário não está com convite pendente');

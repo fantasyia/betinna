@@ -55,9 +55,7 @@ export class OmieSyncJob {
         this.logger.warn(`Sync OMIE falhou pra empresa ${empresaId}: ${msg}`);
       }
     }
-    this.logger.log(
-      `Sync OMIE diário concluído: ${okCount} ok, ${falhasCount} falha(s)`,
-    );
+    this.logger.log(`Sync OMIE diário concluído: ${okCount} ok, ${falhasCount} falha(s)`);
   }
 
   /**

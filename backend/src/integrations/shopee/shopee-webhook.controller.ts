@@ -72,9 +72,7 @@ export class ShopeeWebhookController {
     const isProd = this.env.isProduction;
     if (!partnerKey || !partnerId) {
       if (isProd) {
-        this.logger.error(
-          'SHOPEE_PARTNER_KEY/PARTNER_ID ausente em produção — webhook rejeitado',
-        );
+        this.logger.error('SHOPEE_PARTNER_KEY/PARTNER_ID ausente em produção — webhook rejeitado');
         throw new UnauthorizedException('webhook secret não configurado');
       }
       this.logger.warn('SHOPEE_PARTNER_KEY ausente (dev) — aceita sem HMAC');
@@ -93,11 +91,7 @@ export class ShopeeWebhookController {
 
       // Sprint 3 FIX 1: anti-replay. Shopee envia `timestamp` no body (unix seconds).
       const ts = (body as { timestamp?: number })?.timestamp;
-      const replay = await this.antiReplay.checkAndMarkWebhook(
-        'shopee',
-        signature,
-        ts,
-      );
+      const replay = await this.antiReplay.checkAndMarkWebhook('shopee', signature, ts);
       if (!replay.fresh) {
         return { ok: true };
       }
@@ -115,9 +109,7 @@ export class ShopeeWebhookController {
 
     const empresaId = await this.oauth.resolverPorShopId(String(shopId));
     if (!empresaId) {
-      this.logger.warn(
-        `Webhook Shopee shop_id=${shopId} sem IntegracaoConexao — ignorado`,
-      );
+      this.logger.warn(`Webhook Shopee shop_id=${shopId} sem IntegracaoConexao — ignorado`);
       return { ok: false };
     }
 
@@ -148,8 +140,7 @@ export class ShopeeWebhookController {
       case 15:
       case 16: {
         // returns / refunds / seller proof / dispute escalation
-        const returnSn =
-          (env.data?.['return_sn'] as string) ?? (env.data?.['returnsn'] as string);
+        const returnSn = (env.data?.['return_sn'] as string) ?? (env.data?.['returnsn'] as string);
         if (!returnSn) return;
         const ret = await this.returns.obter(empresaId, returnSn);
         await this.returns.processarReturn(empresaId, ret);
@@ -158,8 +149,7 @@ export class ShopeeWebhookController {
       case 7: {
         // chat message
         const conversationId =
-          (env.data?.['conversation_id'] as string) ??
-          (env.data?.['conversation_id'] as string);
+          (env.data?.['conversation_id'] as string) ?? (env.data?.['conversation_id'] as string);
         if (!conversationId) return;
         await this.chat.processarConversation(empresaId, conversationId);
         return;

@@ -11,13 +11,7 @@ const channelEnum = z.enum([
   'MARKETPLACE_TIKTOK',
 ]);
 
-const tipoEnum = z.enum([
-  'RECLAMACAO',
-  'DEVOLUCAO',
-  'MEDIACAO',
-  'DISPUTA',
-  'CANCELAMENTO',
-]);
+const tipoEnum = z.enum(['RECLAMACAO', 'DEVOLUCAO', 'MEDIACAO', 'DISPUTA', 'CANCELAMENTO']);
 
 const statusEnum = z.enum([
   'ABERTO',

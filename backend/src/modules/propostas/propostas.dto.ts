@@ -13,9 +13,7 @@ export const createPropostaSchema = z.object({
   clienteId: z.string().cuid(),
   itens: z.array(propostaItemInputSchema).min(1),
   formaPagamento: z.nativeEnum(PagamentoForma).default('BOLETO'),
-  condicaoPagamento: z
-    .enum(['avista', '15dias', '30dias', '30_60', '30_60_90'])
-    .default('30dias'),
+  condicaoPagamento: z.enum(['avista', '15dias', '30dias', '30_60', '30_60_90']).default('30dias'),
   prazoEntrega: z.coerce.date().optional(),
   descontoGeral: z.number().min(0).max(50).default(0),
   probabilidade: z.number().int().min(0).max(100).default(50),

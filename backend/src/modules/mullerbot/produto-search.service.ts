@@ -37,20 +37,66 @@ export interface ProdutoRelevante {
 @Injectable()
 export class ProdutoSearchService {
   private static readonly STOPWORDS = new Set([
-    'a', 'o', 'e', 'de', 'da', 'do', 'das', 'dos', 'um', 'uma', 'que', 'pra', 'para',
-    'em', 'com', 'sem', 'sobre', 'tem', 'tens', 'há', 'ha', 'eu', 'voce', 'você',
-    'qual', 'quais', 'como', 'quanto', 'quem', 'onde', 'quando', 'porque', 'meu', 'minha',
-    'no', 'na', 'nos', 'nas', 'me', 'te', 'se', 'mas', 'ou', 'esse', 'essa', 'isso',
-    'aquele', 'aquela', 'aquilo', 'oi', 'olá', 'tudo', 'bem', 'obrigado', 'obrigada',
+    'a',
+    'o',
+    'e',
+    'de',
+    'da',
+    'do',
+    'das',
+    'dos',
+    'um',
+    'uma',
+    'que',
+    'pra',
+    'para',
+    'em',
+    'com',
+    'sem',
+    'sobre',
+    'tem',
+    'tens',
+    'há',
+    'ha',
+    'eu',
+    'voce',
+    'você',
+    'qual',
+    'quais',
+    'como',
+    'quanto',
+    'quem',
+    'onde',
+    'quando',
+    'porque',
+    'meu',
+    'minha',
+    'no',
+    'na',
+    'nos',
+    'nas',
+    'me',
+    'te',
+    'se',
+    'mas',
+    'ou',
+    'esse',
+    'essa',
+    'isso',
+    'aquele',
+    'aquela',
+    'aquilo',
+    'oi',
+    'olá',
+    'tudo',
+    'bem',
+    'obrigado',
+    'obrigada',
   ]);
 
   constructor(private readonly prisma: PrismaService) {}
 
-  async buscar(
-    empresaId: string,
-    consulta: string,
-    limit = 5,
-  ): Promise<ProdutoRelevante[]> {
+  async buscar(empresaId: string, consulta: string, limit = 5): Promise<ProdutoRelevante[]> {
     const tokens = this.tokenize(consulta);
     if (tokens.length === 0) return [];
 
@@ -86,7 +132,7 @@ export class ProdutoSearchService {
     return s
       .toLowerCase()
       .normalize('NFD')
-      // eslint-disable-next-line no-misleading-character-class
+
       .replace(/[̀-ͯ]/g, '') // remove acentos
       .split(/[^a-z0-9]+/)
       .filter((t) => t.length >= 3 && !ProdutoSearchService.STOPWORDS.has(t));
@@ -128,7 +174,7 @@ export class ProdutoSearchService {
     return s
       .toLowerCase()
       .normalize('NFD')
-      // eslint-disable-next-line no-misleading-character-class
+
       .replace(/[̀-ͯ]/g, '');
   }
 }

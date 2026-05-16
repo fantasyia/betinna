@@ -47,15 +47,11 @@ export const DEFAULT_PERMISSIONS: PermissionMatrix = {
 
   // Diretor: acesso total ao operacional
   DIRECTOR: Object.fromEntries(
-    MODULES.map(
-      (m) => [m, ['view', 'create', 'edit', 'approve', 'export'] as ActionName[]],
-    ),
+    MODULES.map((m) => [m, ['view', 'create', 'edit', 'approve', 'export'] as ActionName[]]),
   ) as Partial<Record<ModuleName, ActionName[]>>,
 
   GERENTE: Object.fromEntries(
-    MODULES.filter(
-      (m) => m !== 'config' && m !== 'integracoes' && m !== 'audit_log',
-    ).map((m) => [
+    MODULES.filter((m) => m !== 'config' && m !== 'integracoes' && m !== 'audit_log').map((m) => [
       m,
       // 'approve' permite ao gerente decidir aprovações de desconto
       ['view', 'create', 'edit', 'approve', 'export'] as ActionName[],

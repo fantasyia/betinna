@@ -68,10 +68,7 @@ export class FluxoTriggersJob {
       where: {
         empresaId,
         status: { not: 'INATIVO' },
-        OR: [
-          { ultimoPedidoEm: { lt: corte } },
-          { ultimoPedidoEm: null },
-        ],
+        OR: [{ ultimoPedidoEm: { lt: corte } }, { ultimoPedidoEm: null }],
       },
       select: { id: true, nome: true, representanteId: true },
       take: 50, // lote máximo por rodada pra não sobrecarregar
@@ -133,9 +130,7 @@ export class FluxoTriggersJob {
     }
 
     if (amostras.length > 0) {
-      this.logger.log(
-        `AMOSTRA_FOLLOWUP: ${amostras.length} amostra(s) em empresa ${empresaId}`,
-      );
+      this.logger.log(`AMOSTRA_FOLLOWUP: ${amostras.length} amostra(s) em empresa ${empresaId}`);
     }
   }
 }

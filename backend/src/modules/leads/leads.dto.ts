@@ -41,9 +41,7 @@ export type MoverEtapaDto = z.infer<typeof moverEtapaSchema>;
 export const listLeadsSchema = z.object({
   page: z.coerce.number().int().positive().default(1),
   limit: z.coerce.number().int().positive().max(100).default(20),
-  sortBy: z
-    .enum(['criadoEm', 'valorEstimado', 'score', 'etapaDesde'])
-    .default('criadoEm'),
+  sortBy: z.enum(['criadoEm', 'valorEstimado', 'score', 'etapaDesde']).default('criadoEm'),
   sortOrder: z.enum(['asc', 'desc']).default('desc'),
   search: z.string().optional(),
   etapa: z.nativeEnum(LeadEtapa).optional(),

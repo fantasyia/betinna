@@ -29,9 +29,9 @@ const BLOCKED_HOSTS = new Set<string>([
   '0.0.0.0',
   '::1',
   // cloud metadata services
-  '169.254.169.254',          // AWS EC2 / GCP / DigitalOcean / Oracle Cloud
+  '169.254.169.254', // AWS EC2 / GCP / DigitalOcean / Oracle Cloud
   'metadata.google.internal', // GCP
-  'metadata.azure.com',       // Azure (alguns endpoints)
+  'metadata.azure.com', // Azure (alguns endpoints)
   'instance-data.ec2.internal',
 ]);
 
@@ -40,7 +40,7 @@ const BLOCKED_HOSTS = new Set<string>([
  * Verificação via prefixo numérico após DNS resolve.
  */
 interface IpV4Range {
-  prefix: number;  // máscara em bits
+  prefix: number; // máscara em bits
   network: number; // representação numérica do início da faixa
 }
 
@@ -90,7 +90,12 @@ function isPrivateIpv6(ip: string): boolean {
   const lower = ip.toLowerCase();
   if (lower === '::1' || lower === '::') return true;
   if (lower.startsWith('fc') || lower.startsWith('fd')) return true; // fc00::/7
-  if (lower.startsWith('fe8') || lower.startsWith('fe9') || lower.startsWith('fea') || lower.startsWith('feb')) {
+  if (
+    lower.startsWith('fe8') ||
+    lower.startsWith('fe9') ||
+    lower.startsWith('fea') ||
+    lower.startsWith('feb')
+  ) {
     return true; // fe80::/10
   }
   // IPv4-mapped — formato decimal `::ffff:127.0.0.1`
@@ -134,9 +139,7 @@ export async function assertSafeUrl(url: string): Promise<URL> {
   }
 
   if (!ALLOWED_SCHEMES.has(parsed.protocol)) {
-    throw new SsrfBlockedError(
-      `Schema ${parsed.protocol} não permitida (apenas http/https)`,
-    );
+    throw new SsrfBlockedError(`Schema ${parsed.protocol} não permitida (apenas http/https)`);
   }
 
   // Node.js URL retorna hostname IPv6 com brackets `[fd00::1]` — strip pra
@@ -166,14 +169,10 @@ export async function assertSafeUrl(url: string): Promise<URL> {
       const resolved = await dnsLookup(hostname, { all: true });
       for (const r of resolved) {
         if (r.family === 4 && isPrivateIpv4(r.address)) {
-          throw new SsrfBlockedError(
-            `Hostname ${hostname} resolve para IP privado ${r.address}`,
-          );
+          throw new SsrfBlockedError(`Hostname ${hostname} resolve para IP privado ${r.address}`);
         }
         if (r.family === 6 && isPrivateIpv6(r.address)) {
-          throw new SsrfBlockedError(
-            `Hostname ${hostname} resolve para IPv6 privado ${r.address}`,
-          );
+          throw new SsrfBlockedError(`Hostname ${hostname} resolve para IPv6 privado ${r.address}`);
         }
       }
     } catch (err) {

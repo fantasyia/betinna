@@ -11,10 +11,7 @@ const SCORE_MAX = 100;
 
 export const createClienteSchema = z.object({
   nome: z.string().trim().min(2).max(200),
-  cnpj: z
-    .string()
-    .regex(CNPJ_PATTERN, 'CNPJ deve seguir o formato 00.000.000/0001-00')
-    .optional(),
+  cnpj: z.string().regex(CNPJ_PATTERN, 'CNPJ deve seguir o formato 00.000.000/0001-00').optional(),
   codigoOmie: z.string().max(50).optional(),
   email: z.string().email().optional(),
   telefone: z.string().min(TEL_MIN).max(30).optional(),

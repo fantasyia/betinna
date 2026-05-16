@@ -77,9 +77,7 @@ export const listFluxosSchema = z.object({
 export const listExecucoesSchema = z.object({
   page: z.coerce.number().int().positive().default(1),
   limit: z.coerce.number().int().min(1).max(100).default(20),
-  status: z
-    .enum(['PENDENTE', 'EM_EXECUCAO', 'CONCLUIDO', 'FALHOU', 'CANCELADO'])
-    .optional(),
+  status: z.enum(['PENDENTE', 'EM_EXECUCAO', 'CONCLUIDO', 'FALHOU', 'CANCELADO']).optional(),
 });
 
 // ─── Testar fluxo (execução manual) ─────────────────────────────────

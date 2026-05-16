@@ -4,10 +4,7 @@ import { SignJWT, jwtVerify } from 'jose';
 import { EnvService } from '@config/env.service';
 import { PrismaService } from '@database/prisma.service';
 import { IntegracoesService } from '@modules/integracoes/integracoes.service';
-import {
-  IntegrationException,
-  UnauthorizedException,
-} from '@shared/errors/app-exception';
+import { IntegrationException, UnauthorizedException } from '@shared/errors/app-exception';
 import { ErrorCode } from '@shared/errors/error-codes';
 import { HttpClientService } from '@shared/http/http-client.service';
 import { HttpClientError } from '@shared/http/http-client.types';
@@ -75,7 +72,10 @@ export class MLOAuthService {
     return `${AUTH_URL_BR}?${params}`;
   }
 
-  async processCallback(code: string, state: string): Promise<{ empresaId: string; userId: string }> {
+  async processCallback(
+    code: string,
+    state: string,
+  ): Promise<{ empresaId: string; userId: string }> {
     const empresaId = await this.verifyState(state);
 
     const tokenRes = await this.exchangeCode(code);

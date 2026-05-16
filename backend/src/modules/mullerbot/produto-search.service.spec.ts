@@ -74,9 +74,7 @@ describe('ProdutoSearchService.buscar', () => {
   });
 
   it('retorna vazio quando nenhum token relevante bate', async () => {
-    const svc = new ProdutoSearchService(
-      makePrisma([PROD_AZEITE, PROD_OLEO]) as never,
-    );
+    const svc = new ProdutoSearchService(makePrisma([PROD_AZEITE, PROD_OLEO]) as never);
     const r = await svc.buscar('emp-1', 'oi tudo bem?'); // só stopwords
     expect(r).toHaveLength(0);
   });

@@ -3,10 +3,7 @@ import { EnvService } from '@config/env.service';
 import { PrismaService } from '@database/prisma.service';
 import { InboxService } from '@modules/inbox/inbox.service';
 import { TikTokClientService } from './tiktok-client.service';
-import type {
-  TikTokOrder,
-  TikTokOrderListResponse,
-} from './tiktok.types';
+import type { TikTokOrder, TikTokOrderListResponse } from './tiktok.types';
 
 /**
  * Pedidos TikTok Shop. Persiste em `MarketplaceOrder(plataforma=TIKTOK)`.

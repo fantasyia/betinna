@@ -18,17 +18,7 @@ import { MetaWebhookController } from './meta-webhook.controller';
  */
 @Module({
   controllers: [MetaOAuthController, MetaWebhookController],
-  providers: [
-    MetaGraphClientService,
-    MetaOAuthService,
-    FacebookService,
-    InstagramService,
-  ],
-  exports: [
-    MetaGraphClientService,
-    MetaOAuthService,
-    FacebookService,
-    InstagramService,
-  ],
+  providers: [MetaGraphClientService, MetaOAuthService, FacebookService, InstagramService],
+  exports: [MetaGraphClientService, MetaOAuthService, FacebookService, InstagramService],
 })
 export class MetaModule {}

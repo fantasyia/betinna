@@ -83,13 +83,14 @@ export class CampanhaIaService {
 
   // ─── 1. Geração de conteúdo ──────────────────────────────────────────────
 
-  async gerarConteudo(
-    user: AuthenticatedUser,
-    dto: GerarConteudoDto,
-  ): Promise<ConteudoGerado> {
+  async gerarConteudo(user: AuthenticatedUser, dto: GerarConteudoDto): Promise<ConteudoGerado> {
     const empresaId = this.requireEmpresa(user);
     const creds = await this.resolverCredenciais(user.id);
-    const modelo = dto.modelo ?? creds.model ?? this.env.get('MULLERBOT_MODEL') ?? CampanhaIaService.DEFAULT_MODEL;
+    const modelo =
+      dto.modelo ??
+      creds.model ??
+      this.env.get('MULLERBOT_MODEL') ??
+      CampanhaIaService.DEFAULT_MODEL;
     const perfil = await this.perfilEmpresa(empresaId);
 
     const systemPrompt = `Você é um especialista em marketing B2B para empresas de alimentos, bebidas, químicos e embalagens no Brasil.
@@ -103,9 +104,10 @@ REGRAS OBRIGATÓRIAS:
 5. Retorne SOMENTE JSON válido no formato abaixo, sem texto adicional`;
 
     const numVar = dto.numVariacoes ?? 2;
-    const variacoesSchema = numVar > 0
-      ? `"variacoes": [${Array(numVar).fill('{"mensagemWa":"...","assunto":"..."}').join(',')}],`
-      : '"variacoes": [],';
+    const variacoesSchema =
+      numVar > 0
+        ? `"variacoes": [${Array(numVar).fill('{"mensagemWa":"...","assunto":"..."}').join(',')}],`
+        : '"variacoes": [],';
 
     const userMessage = `
 EMPRESA: ${perfil.nomeEmpresa}${perfil.ramo ? ` (${perfil.ramo})` : ''}
@@ -135,7 +137,9 @@ Retorne JSON exato:
       dicas: [],
     });
 
-    this.logger.log(`IA gerou conteúdo para campanha · objetivo="${dto.objetivo.slice(0, 50)}" · modelo=${modelo}`);
+    this.logger.log(
+      `IA gerou conteúdo para campanha · objetivo="${dto.objetivo.slice(0, 50)}" · modelo=${modelo}`,
+    );
     return {
       ...parsed,
       modelo,
@@ -157,9 +161,10 @@ Retorne JSON exato:
 Sua tarefa é melhorar mensagens de campanha de marketing para aumentar taxa de resposta e conversão.
 Retorne SOMENTE JSON válido, sem texto adicional.`;
 
-    const canalInstr = dto.canal === 'WHATSAPP'
-      ? 'WhatsApp (máximo 280 chars na versão melhorada, sem markdown)'
-      : 'Email (pode usar formatação HTML básica)';
+    const canalInstr =
+      dto.canal === 'WHATSAPP'
+        ? 'WhatsApp (máximo 280 chars na versão melhorada, sem markdown)'
+        : 'Email (pode usar formatação HTML básica)';
 
     const userMessage = `
 CANAL: ${canalInstr}

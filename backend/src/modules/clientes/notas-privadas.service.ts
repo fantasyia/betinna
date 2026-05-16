@@ -55,10 +55,7 @@ export class NotasPrivadasService {
     });
     if (!nota) throw new NotFoundException('Nota', notaId);
     if (nota.usuarioId !== user.id && user.role !== 'ADMIN') {
-      throw new ForbiddenException(
-        'Você só pode editar suas próprias notas',
-        ErrorCode.FORBIDDEN,
-      );
+      throw new ForbiddenException('Você só pode editar suas próprias notas', ErrorCode.FORBIDDEN);
     }
     return this.prisma.notaPrivada.update({
       where: { id: notaId },
@@ -73,10 +70,7 @@ export class NotasPrivadasService {
     });
     if (!nota) throw new NotFoundException('Nota', notaId);
     if (nota.usuarioId !== user.id && user.role !== 'ADMIN') {
-      throw new ForbiddenException(
-        'Você só pode excluir suas próprias notas',
-        ErrorCode.FORBIDDEN,
-      );
+      throw new ForbiddenException('Você só pode excluir suas próprias notas', ErrorCode.FORBIDDEN);
     }
     await this.prisma.notaPrivada.delete({ where: { id: notaId } });
   }

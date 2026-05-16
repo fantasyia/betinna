@@ -48,10 +48,7 @@ export class MullerBotService {
 
   async perguntar(user: AuthenticatedUser, dto: PerguntarDto): Promise<MullerBotResposta> {
     if (!user.empresaIdAtiva) {
-      throw new ForbiddenException(
-        'Empresa não definida',
-        ErrorCode.TENANT_ACCESS_DENIED,
-      );
+      throw new ForbiddenException('Empresa não definida', ErrorCode.TENANT_ACCESS_DENIED);
     }
     const creds = await this.resolverCredenciais(user);
     const modelo = dto.modelo ?? creds.model ?? this.env.get('MULLERBOT_MODEL');
@@ -59,17 +56,11 @@ export class MullerBotService {
     const maxOutputTokens = dto.maxOutputTokens ?? this.env.get('MULLERBOT_MAX_OUTPUT_TOKENS');
 
     // 1. Busca produtos relevantes (top-K)
-    const produtos = await this.produtoSearch.buscar(
-      user.empresaIdAtiva,
-      dto.pergunta,
-      dto.topK,
-    );
+    const produtos = await this.produtoSearch.buscar(user.empresaIdAtiva, dto.pergunta, dto.topK);
 
     // 2. Verifica orçamento: pergunta sozinha não pode estourar
     const overheadTokens =
-      this.estimarTokens(SYSTEM_PROMPT) +
-      this.estimarTokens(dto.pergunta) +
-      SAFETY_MARGIN_TOKENS;
+      this.estimarTokens(SYSTEM_PROMPT) + this.estimarTokens(dto.pergunta) + SAFETY_MARGIN_TOKENS;
     if (overheadTokens >= maxInputTokens) {
       throw new BusinessRuleException(
         `Pergunta muito longa: estima ${overheadTokens} tokens, limite é ${maxInputTokens}. Reduza o texto.`,
@@ -78,20 +69,14 @@ export class MullerBotService {
 
     // 3. Monta user message respeitando orçamento — pode truncar catálogo
     const orcamentoCatalogo = maxInputTokens - overheadTokens;
-    const {
-      userMessage,
-      produtosIncluidos,
-      tokensEstimados,
-      truncados,
-    } = this.montarUserMessage(dto.pergunta, produtos, orcamentoCatalogo);
+    const { userMessage, produtosIncluidos, tokensEstimados, truncados } = this.montarUserMessage(
+      dto.pergunta,
+      produtos,
+      orcamentoCatalogo,
+    );
 
     // 4. Chama OpenAI
-    const resultado = await this.chamarOpenAI(
-      creds,
-      modelo,
-      userMessage,
-      maxOutputTokens,
-    );
+    const resultado = await this.chamarOpenAI(creds, modelo, userMessage, maxOutputTokens);
 
     this.logger.log(
       `MullerBot resposta usuario=${user.id} modelo=${modelo} produtos=${produtosIncluidos.length}/${produtos.length} truncados=${truncados} tokens_in=${resultado.tokensIn ?? '?'} tokens_out=${resultado.tokensOut ?? '?'}`,
@@ -218,11 +203,7 @@ export class MullerBotService {
     };
   }
 
-  private formatarProduto(
-    p: ProdutoRelevante,
-    indice: number,
-    incluirDescricao: boolean,
-  ): string {
+  private formatarProduto(p: ProdutoRelevante, indice: number, incluirDescricao: boolean): string {
     const linhas: Array<string | null> = [
       `${indice}. ${p.nome}${p.sku ? ` (SKU ${p.sku})` : ''}`,
       p.marca ? `   Marca: ${p.marca}` : null,

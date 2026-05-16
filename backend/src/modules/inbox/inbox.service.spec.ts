@@ -259,11 +259,9 @@ describe('InboxService.responder', () => {
     });
     prisma.conversation.update.mockResolvedValueOnce({});
 
-    const r = await svc.responder(
-      fakeUser({ role: 'ADMIN' as UserRole }),
-      'conv-1',
-      { texto: 'resposta' },
-    );
+    const r = await svc.responder(fakeUser({ role: 'ADMIN' as UserRole }), 'conv-1', {
+      texto: 'resposta',
+    });
     expect(r.status).toBe('SENT');
     // Adapter agora recebe `ctx` (proprietarioId + metadata) como 4º argumento
     expect(enviar).toHaveBeenCalledWith(
@@ -352,13 +350,14 @@ describe('InboxService.atribuir', () => {
     });
     prisma.usuario.findFirst.mockResolvedValueOnce({ id: 'u2' });
     prisma.conversation.updateMany.mockResolvedValueOnce({ count: 1 });
-    prisma.conversation.findUniqueOrThrow.mockResolvedValueOnce({ id: 'conv-1', atribuidoId: 'u2' });
+    prisma.conversation.findUniqueOrThrow.mockResolvedValueOnce({
+      id: 'conv-1',
+      atribuidoId: 'u2',
+    });
 
-    const r = await svc.atribuir(
-      fakeUser({ role: 'ADMIN' as UserRole }),
-      'conv-1',
-      { atribuidoId: 'u2' },
-    );
+    const r = await svc.atribuir(fakeUser({ role: 'ADMIN' as UserRole }), 'conv-1', {
+      atribuidoId: 'u2',
+    });
     expect(r.atribuidoId).toBe('u2');
   });
 });

@@ -29,7 +29,9 @@ export class FluxoExecutorProcessor extends WorkerHost {
 
   async process(job: Job<FluxoStepJobData>): Promise<void> {
     const { execucaoId, noId } = job.data;
-    this.logger.debug(`Job ${job.id}: exec=${execucaoId} no=${noId} (tentativa ${job.attemptsMade + 1})`);
+    this.logger.debug(
+      `Job ${job.id}: exec=${execucaoId} no=${noId} (tentativa ${job.attemptsMade + 1})`,
+    );
     await this.executor.executarPasso(execucaoId, noId);
   }
 

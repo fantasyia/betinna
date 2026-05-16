@@ -3,13 +3,18 @@ import type { Cliente, ClienteOmieStatus, ClienteStatus, UserRole } from '@prism
 import { ClientesService } from './clientes.service';
 import { ListasDinamicasService } from './listas-dinamicas.service';
 import type { AuthenticatedUser } from '@shared/types/authenticated-user';
-import { ForbiddenException, BusinessRuleException, NotFoundException } from '@shared/errors/app-exception';
+import {
+  ForbiddenException,
+  BusinessRuleException,
+  NotFoundException,
+} from '@shared/errors/app-exception';
 
 /**
  * Mock leve do PrismaService.
  * Cada teste pode sobrescrever os métodos que usa.
  */
-type Tx = { cliente: any; clienteTag: any; usuario: any; tag: any };
+type MockModel = Record<string, ReturnType<typeof vi.fn>>;
+type Tx = { cliente: MockModel; clienteTag: MockModel; usuario: MockModel; tag: MockModel };
 const makePrismaMock = () => {
   const tx: Tx = {
     cliente: {
@@ -93,9 +98,9 @@ describe('ClientesService', () => {
   describe('tenant isolation', () => {
     it('lança Forbidden se usuário sem empresa ativa', async () => {
       const user = fakeUser({ empresaIdAtiva: null });
-      await expect(service.list(user, { page: 1, limit: 20, sortBy: 'criadoEm', sortOrder: 'desc' })).rejects.toBeInstanceOf(
-        ForbiddenException,
-      );
+      await expect(
+        service.list(user, { page: 1, limit: 20, sortBy: 'criadoEm', sortOrder: 'desc' }),
+      ).rejects.toBeInstanceOf(ForbiddenException);
     });
 
     it('filtra por empresaIdAtiva ao listar', async () => {
@@ -137,7 +142,9 @@ describe('ClientesService', () => {
     it('rep não consegue ver cliente de outro rep (findFirst com filtro retorna null)', async () => {
       const user = fakeUser({ role: 'REP', id: 'rep-77' });
       prisma.cliente.findFirst.mockResolvedValue(null);
-      await expect(service.findById(user, 'cli-de-outro-rep')).rejects.toBeInstanceOf(NotFoundException);
+      await expect(service.findById(user, 'cli-de-outro-rep')).rejects.toBeInstanceOf(
+        NotFoundException,
+      );
     });
   });
 

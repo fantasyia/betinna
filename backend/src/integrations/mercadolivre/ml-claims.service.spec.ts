@@ -50,7 +50,9 @@ describe('MLClaimsService.processarClaim — mapping', () => {
 
   it('claim type=return → DEVOLUCAO + categoria DEVOLUCAO', async () => {
     await svc.processarClaim('emp-1', { ...baseClaim, type: 'return', stage: 'claim' });
-    const [params] = inbox.processarMensagemEntrante.mock.calls[0] as [{ meta: { categoria: string } }];
+    const [params] = inbox.processarMensagemEntrante.mock.calls[0] as [
+      { meta: { categoria: string } },
+    ];
     expect(params.meta.categoria).toBe('DEVOLUCAO');
     const inc = incidents.registrarIncidente.mock.calls[0][0] as { tipo: string };
     expect(inc.tipo).toBe('DEVOLUCAO');
@@ -110,9 +112,21 @@ describe('MLClaimsService.processarClaim — mapping', () => {
     // primeira call obter() já não é feita aqui — só listarMensagens
     client.get.mockResolvedValueOnce({
       messages: [
-        { date_created: '2026-01-02T10:00:00.000-03:00', message: 'comprador msg 1', sender_role: 'complainant' },
-        { date_created: '2026-01-02T11:00:00.000-03:00', message: 'minha msg', sender_role: 'respondent' },
-        { date_created: '2026-01-02T12:00:00.000-03:00', message: 'mediator msg', sender_role: 'mediator' },
+        {
+          date_created: '2026-01-02T10:00:00.000-03:00',
+          message: 'comprador msg 1',
+          sender_role: 'complainant',
+        },
+        {
+          date_created: '2026-01-02T11:00:00.000-03:00',
+          message: 'minha msg',
+          sender_role: 'respondent',
+        },
+        {
+          date_created: '2026-01-02T12:00:00.000-03:00',
+          message: 'mediator msg',
+          sender_role: 'mediator',
+        },
       ],
     });
     inbox.processarMensagemEntrante.mockClear();

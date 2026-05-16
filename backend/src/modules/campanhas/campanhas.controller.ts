@@ -50,7 +50,9 @@ export class CampanhasController {
 
   @Get('resumo')
   @RequirePermissions({ module: 'campanhas', action: 'view' })
-  @ApiOperation({ summary: 'Dashboard de campanhas (contagens por status + alcance últimos 30 dias)' })
+  @ApiOperation({
+    summary: 'Dashboard de campanhas (contagens por status + alcance últimos 30 dias)',
+  })
   resumo(@CurrentUser() user: AuthenticatedUser) {
     return this.campanhas.resumo(user);
   }
@@ -202,7 +204,9 @@ export class CampanhasController {
   @Post(':id/pausar')
   @RequirePermissions({ module: 'campanhas', action: 'edit' })
   @Audit({ action: 'pausar', resource: 'campanha', resourceIdFrom: 'params.id' })
-  @ApiOperation({ summary: 'Pausa campanha em ENVIANDO (jobs pendentes são ignorados pelo processor)' })
+  @ApiOperation({
+    summary: 'Pausa campanha em ENVIANDO (jobs pendentes são ignorados pelo processor)',
+  })
   pausar(@CurrentUser() user: AuthenticatedUser, @Param('id') id: string) {
     return this.campanhas.pausar(user, id);
   }

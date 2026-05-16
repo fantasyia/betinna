@@ -6,11 +6,11 @@ import { PrismaService } from '@database/prisma.service';
  */
 export interface ResolvedPrice {
   produtoId: string;
-  precoBase: number;       // preço de tabela do produto
-  precoFinal: number;      // preço efetivo após preço negociado e descontos
-  descontoBase: number;    // % de desconto base negociado para o cliente
-  negociado: boolean;      // true se há ClientePrecoEspecial
-  vigente: boolean;        // false se a tabela negociada está expirada
+  precoBase: number; // preço de tabela do produto
+  precoFinal: number; // preço efetivo após preço negociado e descontos
+  descontoBase: number; // % de desconto base negociado para o cliente
+  negociado: boolean; // true se há ClientePrecoEspecial
+  vigente: boolean; // false se a tabela negociada está expirada
 }
 
 /**
@@ -167,9 +167,7 @@ export class PricingService {
         result.set(p.id, {
           produtoId: p.id,
           precoBase: p.precoTabela,
-          precoFinal: vigente
-            ? this.applyDiscount(e.precoEspecial, e.descontoBase)
-            : p.precoTabela,
+          precoFinal: vigente ? this.applyDiscount(e.precoEspecial, e.descontoBase) : p.precoTabela,
           descontoBase: vigente ? e.descontoBase : 0,
           negociado: true,
           vigente,

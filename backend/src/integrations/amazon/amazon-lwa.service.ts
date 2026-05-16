@@ -4,10 +4,7 @@ import { SignJWT, jwtVerify } from 'jose';
 import { EnvService } from '@config/env.service';
 import { PrismaService } from '@database/prisma.service';
 import { IntegracoesService } from '@modules/integracoes/integracoes.service';
-import {
-  IntegrationException,
-  UnauthorizedException,
-} from '@shared/errors/app-exception';
+import { IntegrationException, UnauthorizedException } from '@shared/errors/app-exception';
 import { ErrorCode } from '@shared/errors/error-codes';
 import { HttpClientService } from '@shared/http/http-client.service';
 import { HttpClientError } from '@shared/http/http-client.types';
@@ -108,9 +105,7 @@ export class AmazonLwaService {
       marketplaceId: this.env.get('AMAZON_MARKETPLACE_ID'),
     };
     await this.persistir(empresaId, creds);
-    this.logger.log(
-      `Amazon conectada empresa=${empresaId} selling_partner_id=${sellingPartnerId}`,
-    );
+    this.logger.log(`Amazon conectada empresa=${empresaId} selling_partner_id=${sellingPartnerId}`);
     return { empresaId, sellingPartnerId };
   }
 
@@ -185,10 +180,7 @@ export class AmazonLwaService {
         retries: 2,
       });
       if (!res.data?.access_token) {
-        throw new IntegrationException(
-          'Amazon LWA sem access_token',
-          ErrorCode.INTEGRATION_ERROR,
-        );
+        throw new IntegrationException('Amazon LWA sem access_token', ErrorCode.INTEGRATION_ERROR);
       }
       return res.data;
     } catch (err) {

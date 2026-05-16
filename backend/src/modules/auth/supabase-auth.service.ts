@@ -3,10 +3,7 @@ import { createRemoteJWKSet, jwtVerify } from 'jose';
 import { EnvService } from '@config/env.service';
 import { UnauthorizedException } from '@shared/errors/app-exception';
 import { ErrorCode } from '@shared/errors/error-codes';
-import {
-  isValidJwtPayload,
-  type SupabaseJwtPayload,
-} from '@shared/types/jwt-payload';
+import { isValidJwtPayload, type SupabaseJwtPayload } from '@shared/types/jwt-payload';
 
 /**
  * Valida JWTs emitidos pelo Supabase Auth.

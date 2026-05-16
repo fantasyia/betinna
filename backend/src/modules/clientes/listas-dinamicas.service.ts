@@ -59,10 +59,7 @@ export class ListasDinamicasService {
       descricao: 'Score entre 30 e 60 ou status em risco',
       cor: '#d97706',
       where: {
-        OR: [
-          { status: 'RISCO' },
-          { AND: [{ score: { gte: 30 } }, { score: { lt: 60 } }] },
-        ],
+        OR: [{ status: 'RISCO' }, { AND: [{ score: { gte: 30 } }, { score: { lt: 60 } }] }],
       },
     },
     {

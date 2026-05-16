@@ -138,7 +138,11 @@ describe('ComissoesService', () => {
 
     it('ignora reps sem gerente na agregação de gerente', async () => {
       prisma.pedido.groupBy.mockResolvedValue([
-        { representanteId: 'rep-orphan', _sum: { total: 5_000, comissao: 250 }, _count: { _all: 2 } },
+        {
+          representanteId: 'rep-orphan',
+          _sum: { total: 5_000, comissao: 250 },
+          _count: { _all: 2 },
+        },
       ]);
       prisma.usuario.findMany
         .mockResolvedValueOnce([{ id: 'rep-orphan', comissaoPadrao: 5 }])
@@ -161,9 +165,9 @@ describe('ComissoesService', () => {
     });
 
     it('rejeita SAC', async () => {
-      await expect(
-        svc.resumoDoRep(fakeUser({ role: 'SAC' as UserRole })),
-      ).rejects.toBeInstanceOf(ForbiddenException);
+      await expect(svc.resumoDoRep(fakeUser({ role: 'SAC' as UserRole }))).rejects.toBeInstanceOf(
+        ForbiddenException,
+      );
     });
   });
 

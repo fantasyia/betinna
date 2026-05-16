@@ -68,10 +68,7 @@ export function initSentry(): void {
  * Captura uma exceção no Sentry (manual, fora do auto-capture).
  * Útil para workers BullMQ que não passam pelo middleware HTTP.
  */
-export function captureException(
-  err: unknown,
-  context?: Record<string, unknown>,
-): void {
+export function captureException(err: unknown, context?: Record<string, unknown>): void {
   if (!process.env.SENTRY_DSN) return;
   Sentry.captureException(err, {
     extra: context ? (sanitize(context) as Record<string, unknown>) : undefined,

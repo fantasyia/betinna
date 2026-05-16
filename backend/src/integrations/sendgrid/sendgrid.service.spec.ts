@@ -54,12 +54,15 @@ describe('SendGridService', () => {
     expect(r).toEqual({ status: 202, messageId: 'abc123' });
     const [url, opts] = http.post.mock.calls[0];
     expect(url).toContain('/v3/mail/send');
-    const body = (opts as { body: { from: { email: string }; subject: string; content: unknown[] } })
-      .body;
+    const body = (
+      opts as { body: { from: { email: string }; subject: string; content: unknown[] } }
+    ).body;
     expect(body.from.email).toBe('rep@empresa.com');
     expect(body.subject).toBe('Olá');
     expect(body.content).toContainEqual({ type: 'text/html', value: '<p>oi</p>' });
-    expect((opts as { headers: Record<string, string> }).headers.Authorization).toBe('Bearer SG-user-key');
+    expect((opts as { headers: Record<string, string> }).headers.Authorization).toBe(
+      'Bearer SG-user-key',
+    );
   });
 
   it('aceita destinatário como objeto e como array', async () => {
@@ -96,9 +99,9 @@ describe('SendGridService', () => {
   });
 
   it('rejeita quando não tem assunto nem template', async () => {
-    await expect(
-      svc.enviar('u1', { para: 'a@b.com', texto: 't' } as never),
-    ).rejects.toBeInstanceOf(IntegrationException);
+    await expect(svc.enviar('u1', { para: 'a@b.com', texto: 't' } as never)).rejects.toBeInstanceOf(
+      IntegrationException,
+    );
   });
 
   it('rejeita quando não tem corpo nem template', async () => {
@@ -131,7 +134,10 @@ describe('SendGridService', () => {
   describe('enviarSistemico', () => {
     it('usa SENDGRID_API_KEY do env', async () => {
       await svc.enviarSistemico({ para: 'sys@dest.com', assunto: 'x', texto: 'y' });
-      const opts = http.post.mock.calls[0][1] as { headers: Record<string, string>; body: { from: { email: string } } };
+      const opts = http.post.mock.calls[0][1] as {
+        headers: Record<string, string>;
+        body: { from: { email: string } };
+      };
       expect(opts.headers.Authorization).toBe('Bearer env-key');
       expect(opts.body.from.email).toBe('sys@betinna.ai');
     });

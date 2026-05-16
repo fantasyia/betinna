@@ -4,10 +4,7 @@ import { SignJWT, jwtVerify } from 'jose';
 import { EnvService } from '@config/env.service';
 import { PrismaService } from '@database/prisma.service';
 import { IntegracoesService } from '@modules/integracoes/integracoes.service';
-import {
-  IntegrationException,
-  UnauthorizedException,
-} from '@shared/errors/app-exception';
+import { IntegrationException, UnauthorizedException } from '@shared/errors/app-exception';
 import { ErrorCode } from '@shared/errors/error-codes';
 import { HttpClientService } from '@shared/http/http-client.service';
 import { HttpClientError } from '@shared/http/http-client.types';
@@ -70,10 +67,7 @@ export class ShopeeOAuthService {
   }
 
   private signer(): ShopeeSigner {
-    return new ShopeeSigner(
-      this.env.get('SHOPEE_PARTNER_ID'),
-      this.env.get('SHOPEE_PARTNER_KEY'),
-    );
+    return new ShopeeSigner(this.env.get('SHOPEE_PARTNER_ID'), this.env.get('SHOPEE_PARTNER_KEY'));
   }
 
   async buildAuthUrl(empresaId: string): Promise<string> {

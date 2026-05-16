@@ -246,16 +246,10 @@ export class PedidosService {
   }
 
   // ─── Atualizar (apenas rascunho ou aguardando aprovação) ────────────────
-  async update(
-    user: AuthenticatedUser,
-    id: string,
-    dto: UpdatePedidoDto,
-  ): Promise<PedidoWithRel> {
+  async update(user: AuthenticatedUser, id: string, dto: UpdatePedidoDto): Promise<PedidoWithRel> {
     const existing = await this.findById(user, id);
     if (!['RASCUNHO', 'AGUARDANDO_APROVACAO'].includes(existing.status)) {
-      throw new BusinessRuleException(
-        `Pedido em status ${existing.status} não pode ser editado`,
-      );
+      throw new BusinessRuleException(`Pedido em status ${existing.status} não pode ser editado`);
     }
     await this.prisma.pedido.updateMany({
       where: { id, empresaId: existing.empresaId },
@@ -296,7 +290,10 @@ export class PedidosService {
       where: { id, empresaId: pedido.empresaId },
       data: { status: proximo as never },
     });
-    const updated = await this.prisma.pedido.findUniqueOrThrow({ where: { id }, include: pedidoInclude });
+    const updated = await this.prisma.pedido.findUniqueOrThrow({
+      where: { id },
+      include: pedidoInclude,
+    });
     this.logger.log(`Pedido ${pedido.numero}: ${pedido.status} → ${proximo}`);
 
     // Trigger: PEDIDO_ENTREGUE
@@ -452,7 +449,10 @@ export class PedidosService {
 
     const calc: ItemInput[] = itens.map((i) => {
       const resolved = priceMap.get(i.produtoId);
-      const preco = i.precoUnitarioOverride ?? resolved?.precoFinal ?? produtosMap.get(i.produtoId)!.precoTabela;
+      const preco =
+        i.precoUnitarioOverride ??
+        resolved?.precoFinal ??
+        produtosMap.get(i.produtoId)!.precoTabela;
       return { quantidade: i.quantidade, precoUnitario: preco, desconto: i.desconto };
     });
 

@@ -94,8 +94,8 @@ describe('FluxosService', () => {
       prisma.fluxo.create.mockResolvedValue({ id: 'f1' });
       const fluxoComRel = fakeFluxo({ id: 'f1', nome: 'Novo Fluxo' });
       prisma.fluxo.findUniqueOrThrow.mockResolvedValue(fluxoComRel);
-      prisma.$transaction.mockImplementation(
-        async (fn: (tx: unknown) => Promise<unknown>) => fn(prisma),
+      prisma.$transaction.mockImplementation(async (fn: (tx: unknown) => Promise<unknown>) =>
+        fn(prisma),
       );
 
       const result = await svc.create(fakeUser(), { nome: 'Novo Fluxo', nos: [], arestas: [] });
@@ -147,10 +147,12 @@ describe('FluxosService', () => {
         nos: [{ id: 'n1', tipo: 'TRIGGER', acaoTipo: null }],
         arestas: [],
       });
-      prisma.fluxo.findFirst.mockResolvedValue(fakeFluxo({
-        triggerTipo: 'LEAD_CRIADO',
-        nos: [{ id: 'n1', tipo: 'TRIGGER', acaoTipo: null }],
-      }));
+      prisma.fluxo.findFirst.mockResolvedValue(
+        fakeFluxo({
+          triggerTipo: 'LEAD_CRIADO',
+          nos: [{ id: 'n1', tipo: 'TRIGGER', acaoTipo: null }],
+        }),
+      );
       prisma.fluxo.update.mockResolvedValue({});
       prisma.fluxo.findUniqueOrThrow.mockResolvedValue(fluxoAtivado);
 
@@ -216,10 +218,10 @@ describe('FluxosService', () => {
     it('calcula taxaSucesso corretamente', async () => {
       prisma.fluxo.findFirst.mockResolvedValue(fakeFluxo());
       prisma.fluxoExecucao.count
-        .mockResolvedValueOnce(10)  // total
-        .mockResolvedValueOnce(8)   // concluidos
-        .mockResolvedValueOnce(1)   // falhos
-        .mockResolvedValueOnce(1);  // emExecucao
+        .mockResolvedValueOnce(10) // total
+        .mockResolvedValueOnce(8) // concluidos
+        .mockResolvedValueOnce(1) // falhos
+        .mockResolvedValueOnce(1); // emExecucao
 
       const m = await svc.metricas(fakeUser(), 'fluxo-1');
       expect(m.total).toBe(10);
@@ -245,9 +247,9 @@ describe('interpolate', () => {
   });
 
   it('substitui variável aninhada', () => {
-    expect(
-      interpolate('Empresa: {{empresa.nome}}', { empresa: { nome: 'Betinna' } }),
-    ).toBe('Empresa: Betinna');
+    expect(interpolate('Empresa: {{empresa.nome}}', { empresa: { nome: 'Betinna' } })).toBe(
+      'Empresa: Betinna',
+    );
   });
 
   it('mantém placeholder quando variável não existe', () => {

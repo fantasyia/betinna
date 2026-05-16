@@ -40,10 +40,7 @@ export class OmieProdutosService {
     private readonly integracoes: IntegracoesService,
   ) {}
 
-  async sync(
-    empresaId: string,
-    options: OmieSyncOptions = {},
-  ): Promise<OmieProdutosSyncResult> {
+  async sync(empresaId: string, options: OmieSyncOptions = {}): Promise<OmieProdutosSyncResult> {
     const start = Date.now();
     const modo: OmieSyncModo = options.modo ?? 'incremental';
     const desde = modo === 'incremental' ? await this.obterUltimoSync(empresaId) : undefined;

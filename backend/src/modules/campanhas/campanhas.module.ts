@@ -18,12 +18,7 @@ import { CampanhasService } from './campanhas.service';
     IntegracoesModule, // expõe UsuarioIntegracoesService para CampanhaIaService
   ],
   controllers: [CampanhasController],
-  providers: [
-    CampanhasService,
-    CampanhaIaService,
-    CampanhaEnvioProcessor,
-    CampanhaSchedulerJob,
-  ],
+  providers: [CampanhasService, CampanhaIaService, CampanhaEnvioProcessor, CampanhaSchedulerJob],
   exports: [CampanhasService, CampanhaIaService],
 })
 export class CampanhasModule {}

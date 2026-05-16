@@ -1,10 +1,7 @@
 import { createHmac } from 'node:crypto';
 import { describe, expect, it, vi } from 'vitest';
 import type { Request } from 'express';
-import {
-  ForbiddenException,
-  UnauthorizedException,
-} from '@shared/errors/app-exception';
+import { ForbiddenException, UnauthorizedException } from '@shared/errors/app-exception';
 import { MetaWebhookController } from './meta-webhook.controller';
 import type { MetaWebhookEnvelope } from './meta.types';
 
@@ -130,9 +127,9 @@ describe('MetaWebhookController.receive (POST events)', () => {
       makeOAuth({ empresaId: 'emp-1' }) as never,
       makeAntiReplay() as never,
     );
-    await expect(
-      ctrl.receive(fakeReq(rawBody), undefined, envelope),
-    ).rejects.toBeInstanceOf(UnauthorizedException);
+    await expect(ctrl.receive(fakeReq(rawBody), undefined, envelope)).rejects.toBeInstanceOf(
+      UnauthorizedException,
+    );
   });
 
   it('aceita HMAC válido e despacha pra InboxService', async () => {

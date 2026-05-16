@@ -108,10 +108,7 @@ export class SendGridService {
     }
   }
 
-  private buildRequest(
-    creds: SendGridCredenciais,
-    params: SendGridEnviarParams,
-  ): SendGridRequest {
+  private buildRequest(creds: SendGridCredenciais, params: SendGridEnviarParams): SendGridRequest {
     const para = this.normalizaPara(params.para);
     const from = params.from ?? { email: creds.fromEmail, name: creds.fromName };
 
@@ -149,9 +146,7 @@ export class SendGridService {
     return req;
   }
 
-  private normalizaPara(
-    para: SendGridEnviarParams['para'],
-  ): SendGridDestinatario[] {
+  private normalizaPara(para: SendGridEnviarParams['para']): SendGridDestinatario[] {
     if (typeof para === 'string') return [{ email: para }];
     if (Array.isArray(para)) return para;
     return [para];

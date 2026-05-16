@@ -1,14 +1,7 @@
 import { Injectable, Logger } from '@nestjs/common';
-import {
-  type MarketplaceIncident,
-  type Prisma,
-  MarketplaceIncidentStatus,
-} from '@prisma/client';
+import { type MarketplaceIncident, type Prisma, MarketplaceIncidentStatus } from '@prisma/client';
 import { PrismaService } from '@database/prisma.service';
-import {
-  ForbiddenException,
-  NotFoundException,
-} from '@shared/errors/app-exception';
+import { ForbiddenException, NotFoundException } from '@shared/errors/app-exception';
 import { ErrorCode } from '@shared/errors/error-codes';
 import type { AuthenticatedUser } from '@shared/types/authenticated-user';
 import { type Paginated, buildPaginated } from '@shared/types/pagination';
@@ -50,10 +43,7 @@ export class IncidentsService {
 
   private requireEmpresa(user: AuthenticatedUser): string {
     if (!user.empresaIdAtiva) {
-      throw new ForbiddenException(
-        'Empresa não definida',
-        ErrorCode.TENANT_ACCESS_DENIED,
-      );
+      throw new ForbiddenException('Empresa não definida', ErrorCode.TENANT_ACCESS_DENIED);
     }
     return user.empresaIdAtiva;
   }
@@ -141,7 +131,9 @@ export class IncidentsService {
       this.prisma.marketplaceIncident.count({
         where: {
           ...baseWhere,
-          status: { in: [MarketplaceIncidentStatus.AGUARDANDO_VENDEDOR, MarketplaceIncidentStatus.ABERTO] },
+          status: {
+            in: [MarketplaceIncidentStatus.AGUARDANDO_VENDEDOR, MarketplaceIncidentStatus.ABERTO],
+          },
         },
       }),
       this.prisma.marketplaceIncident.count({

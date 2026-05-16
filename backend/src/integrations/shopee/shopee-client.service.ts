@@ -78,17 +78,13 @@ export class ShopeeClientService {
     const url = `${baseUrl}${path}?${params}`;
 
     try {
-      const res = await this.http.request<T & { error?: string; message?: string }>(
-        method,
-        url,
-        {
-          body,
-          integration: 'shopee',
-          redactKeys: ['access_token', 'partner_id', 'sign'],
-          retries: 1,
-          timeoutMs: 30_000,
-        },
-      );
+      const res = await this.http.request<T & { error?: string; message?: string }>(method, url, {
+        body,
+        integration: 'shopee',
+        redactKeys: ['access_token', 'partner_id', 'sign'],
+        retries: 1,
+        timeoutMs: 30_000,
+      });
       // Shopee usa HTTP 200 mesmo com erro no payload
       const data = res.data as { error?: string; message?: string } | undefined;
       if (data && data.error) {

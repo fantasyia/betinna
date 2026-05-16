@@ -52,10 +52,7 @@ export class IntegracoesController {
 
   @Get(':servico')
   @Roles('ADMIN', 'DIRECTOR', 'GERENTE')
-  findByServico(
-    @CurrentUser() user: AuthenticatedUser,
-    @Param('servico') servico: ServicoEmpresa,
-  ) {
+  findByServico(@CurrentUser() user: AuthenticatedUser, @Param('servico') servico: ServicoEmpresa) {
     return this.integracoes.findByServico(user, servico);
   }
 
@@ -76,10 +73,7 @@ export class IntegracoesController {
   @Roles('ADMIN', 'DIRECTOR')
   @HttpCode(HttpStatus.OK)
   @Audit({ action: 'desconectar', resource: 'integracao', resourceIdFrom: 'params.servico' })
-  desconectar(
-    @CurrentUser() user: AuthenticatedUser,
-    @Param('servico') servico: ServicoEmpresa,
-  ) {
+  desconectar(@CurrentUser() user: AuthenticatedUser, @Param('servico') servico: ServicoEmpresa) {
     return this.integracoes.desconectar(user, servico);
   }
 }

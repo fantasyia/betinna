@@ -1,9 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import {
-  buildBullMqConnection,
-  buildRedisOptions,
-  isTlsUrl,
-} from './redis-options';
+import { buildBullMqConnection, buildRedisOptions, isTlsUrl } from './redis-options';
 
 /**
  * Hotfix 2026-05-16 — TLS detection deve ser pelo SCHEME da URL,
@@ -124,9 +120,7 @@ describe('redis-options — TLS detection by URL scheme', () => {
       // Cenário exato do crash loop:
       //   REDIS_URL=redis://default:senha@redis.railway.internal:6379
       //   RAILWAY_ENVIRONMENT pode estar setada ou não — não importa
-      const opts = buildRedisOptions(
-        'redis://default:senha@redis.railway.internal:6379',
-      );
+      const opts = buildRedisOptions('redis://default:senha@redis.railway.internal:6379');
       expect(opts.tls).toBeUndefined();
     });
   });

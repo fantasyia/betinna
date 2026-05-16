@@ -44,10 +44,7 @@ export class PropostasService {
 
   private requireEmpresa(user: AuthenticatedUser): string {
     if (!user.empresaIdAtiva) {
-      throw new ForbiddenException(
-        'Empresa não definida',
-        ErrorCode.TENANT_ACCESS_DENIED,
-      );
+      throw new ForbiddenException('Empresa não definida', ErrorCode.TENANT_ACCESS_DENIED);
     }
     return user.empresaIdAtiva;
   }
@@ -149,9 +146,7 @@ export class PropostasService {
       include: propostaInclude,
     });
 
-    this.logger.log(
-      `Proposta ${created.numero} criada — valor R$${totals.total.toFixed(2)}`,
-    );
+    this.logger.log(`Proposta ${created.numero} criada — valor R$${totals.total.toFixed(2)}`);
     return created;
   }
 
@@ -162,9 +157,7 @@ export class PropostasService {
   ): Promise<PropostaWithRel> {
     const existing = await this.findById(user, id);
     if (existing.status === 'ACEITA' || existing.status === 'RECUSADA') {
-      throw new BusinessRuleException(
-        `Proposta em status ${existing.status} não pode ser editada`,
-      );
+      throw new BusinessRuleException(`Proposta em status ${existing.status} não pode ser editada`);
     }
     await this.prisma.proposta.updateMany({
       where: { id, empresaId: existing.empresaId },
@@ -205,14 +198,10 @@ export class PropostasService {
     const proposta = await this.findById(user, id);
 
     if (proposta.status !== 'ACEITA') {
-      throw new BusinessRuleException(
-        'Apenas propostas aceitas podem ser convertidas em pedido',
-      );
+      throw new BusinessRuleException('Apenas propostas aceitas podem ser convertidas em pedido');
     }
     if (proposta.pedidoId) {
-      throw new BusinessRuleException(
-        `Proposta já foi convertida no pedido ${proposta.pedidoId}`,
-      );
+      throw new BusinessRuleException(`Proposta já foi convertida no pedido ${proposta.pedidoId}`);
     }
 
     // AUDITORIA P0-4: número via SequenceService atomic (anti-race)
@@ -255,9 +244,7 @@ export class PropostasService {
       });
       return pedido;
     });
-    this.logger.log(
-      `Proposta ${proposta.numero} convertida no pedido ${result.numero}`,
-    );
+    this.logger.log(`Proposta ${proposta.numero} convertida no pedido ${result.numero}`);
     return { pedidoId: result.id, numero: result.numero };
   }
 
@@ -273,9 +260,7 @@ export class PropostasService {
       EXPIRADA: ['ENVIADA'], // pode reenviar
     };
     if (!transicoes[from]?.includes(to)) {
-      throw new BusinessRuleException(
-        `Transição inválida: ${from} → ${to}`,
-      );
+      throw new BusinessRuleException(`Transição inválida: ${from} → ${to}`);
     }
   }
 

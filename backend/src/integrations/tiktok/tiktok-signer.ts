@@ -53,11 +53,7 @@ export class TikTokSigner {
    * o HMAC SHA-256 hex de `<app_key><timestamp><rawBody>` com `app_secret`
    * como key. `timestamp` vem no header `x-timestamp` ou no próprio payload.
    */
-  verifyWebhook(
-    rawBody: Buffer | string,
-    signature: string,
-    timestamp?: number | string,
-  ): boolean {
+  verifyWebhook(rawBody: Buffer | string, signature: string, timestamp?: number | string): boolean {
     if (!signature) return false;
     // Auditoria 2026-05-15: aceitar timestamp ausente abria caminho pra forja.
     // Agora timestamp é OBRIGATÓRIO — sem ele, rejeita.

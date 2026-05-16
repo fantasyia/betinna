@@ -2,12 +2,12 @@
  * Status agregado de uma sessão Baileys vista do app.
  */
 export type WhatsAppSessionStatus =
-  | 'DISCONNECTED'   // sem sessão ativa
-  | 'CONNECTING'     // socket abrindo, ainda sem QR/auth
-  | 'QR_PENDING'     // aguardando escaneamento de QR code (primeiro pareamento)
-  | 'CONNECTED'      // socket conectado e pareado
-  | 'LOGGED_OUT'     // logout explícito (precisa reconectar e parear)
-  | 'ERROR';         // erro persistente
+  | 'DISCONNECTED' // sem sessão ativa
+  | 'CONNECTING' // socket abrindo, ainda sem QR/auth
+  | 'QR_PENDING' // aguardando escaneamento de QR code (primeiro pareamento)
+  | 'CONNECTED' // socket conectado e pareado
+  | 'LOGGED_OUT' // logout explícito (precisa reconectar e parear)
+  | 'ERROR'; // erro persistente
 
 /**
  * Owner type da sessão:

@@ -105,9 +105,7 @@ export class AprovacoesService {
       );
     }
     if (apr.representanteId === user.id) {
-      throw new BusinessRuleException(
-        'Você não pode aprovar a própria solicitação',
-      );
+      throw new BusinessRuleException('Você não pode aprovar a própria solicitação');
     }
 
     const result = await this.prisma.$transaction(async (tx) => {
@@ -129,9 +127,7 @@ export class AprovacoesService {
       return updated;
     });
 
-    this.logger.log(
-      `Aprovação ${apr.id} APROVADA por ${user.email} (pedido ${apr.pedidoId})`,
-    );
+    this.logger.log(`Aprovação ${apr.id} APROVADA por ${user.email} (pedido ${apr.pedidoId})`);
 
     // Trigger: PEDIDO_APROVADO
     const pedido = result.pedido;

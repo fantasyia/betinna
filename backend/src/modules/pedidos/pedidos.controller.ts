@@ -56,8 +56,7 @@ export class PedidosController {
   @RequirePermissions({ module: 'pedidos', action: 'create' })
   @Audit({ action: 'create', resource: 'pedido', resourceIdFrom: 'response.id' })
   @ApiOperation({
-    summary:
-      'Cria pedido. Dispara aprovação automática se desconto > teto do rep.',
+    summary: 'Cria pedido. Dispara aprovação automática se desconto > teto do rep.',
   })
   create(
     @CurrentUser() user: AuthenticatedUser,
@@ -81,7 +80,8 @@ export class PedidosController {
   @RequirePermissions({ module: 'pedidos', action: 'edit' })
   @Audit({ action: 'avancar_status', resource: 'pedido', resourceIdFrom: 'params.id' })
   @ApiOperation({
-    summary: 'Avança status do pedido (ENVIADO_OMIE→PAGO→EM_SEPARACAO→ENVIADO→ENTREGUE). Dispara trigger PEDIDO_ENTREGUE.',
+    summary:
+      'Avança status do pedido (ENVIADO_OMIE→PAGO→EM_SEPARACAO→ENVIADO→ENTREGUE). Dispara trigger PEDIDO_ENTREGUE.',
   })
   avancarStatus(@CurrentUser() user: AuthenticatedUser, @Param('id') id: string) {
     return this.pedidos.avancarStatus(user, id);

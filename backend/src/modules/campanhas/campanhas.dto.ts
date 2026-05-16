@@ -34,14 +34,14 @@ export const createCampanhaSchema = z
     // Agendamento opcional — se fornecido, campanha já fica AGENDADA
     agendadoPara: z.coerce.date().optional(),
   })
-  .refine(
-    (d) => d.canal === 'EMAIL' || d.mensagemWa !== undefined,
-    { message: 'mensagemWa é obrigatório para canais com WhatsApp', path: ['mensagemWa'] },
-  )
-  .refine(
-    (d) => d.canal === 'WHATSAPP' || d.mensagemEmail !== undefined,
-    { message: 'mensagemEmail é obrigatório para canais com email', path: ['mensagemEmail'] },
-  );
+  .refine((d) => d.canal === 'EMAIL' || d.mensagemWa !== undefined, {
+    message: 'mensagemWa é obrigatório para canais com WhatsApp',
+    path: ['mensagemWa'],
+  })
+  .refine((d) => d.canal === 'WHATSAPP' || d.mensagemEmail !== undefined, {
+    message: 'mensagemEmail é obrigatório para canais com email',
+    path: ['mensagemEmail'],
+  });
 
 export type CreateCampanhaDto = z.infer<typeof createCampanhaSchema>;
 
@@ -65,11 +65,9 @@ export type UpdateCampanhaDto = z.infer<typeof updateCampanhaSchema>;
 // ─── Agendar ──────────────────────────────────────────────────────────────────
 
 export const agendarCampanhaSchema = z.object({
-  agendadoPara: z.coerce
-    .date()
-    .refine((d) => d.getTime() > Date.now(), {
-      message: 'agendadoPara deve ser uma data futura',
-    }),
+  agendadoPara: z.coerce.date().refine((d) => d.getTime() > Date.now(), {
+    message: 'agendadoPara deve ser uma data futura',
+  }),
 });
 
 export type AgendarCampanhaDto = z.infer<typeof agendarCampanhaSchema>;

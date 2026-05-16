@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import type { UserRole } from '@prisma/client';
 import {
   BusinessRuleException,
@@ -97,9 +97,9 @@ describe('MullerBotService.perguntar — credenciais', () => {
       makeUserIntegracoes() as never,
       makeProdutoSearch() as never,
     );
-    await expect(
-      svc.perguntar(fakeUser(), { pergunta: 'oi', topK: 5 }),
-    ).rejects.toBeInstanceOf(IntegrationException);
+    await expect(svc.perguntar(fakeUser(), { pergunta: 'oi', topK: 5 })).rejects.toBeInstanceOf(
+      IntegrationException,
+    );
   });
 
   it('usa credencial OpenAI do usuário quando configurada', async () => {

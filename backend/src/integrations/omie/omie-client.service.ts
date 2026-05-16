@@ -115,9 +115,7 @@ export class OmieClientService {
       // OMIE pode responder 200 com faultstring
       const data = res.data as unknown;
       if (this.isFault(data)) {
-        await this.integracoes
-          .registrarSyncErro(empresaId, 'omie')
-          .catch(() => {});
+        await this.integracoes.registrarSyncErro(empresaId, 'omie').catch(() => {});
         throw new IntegrationException(
           `OMIE.${call}: ${data.faultcode} — ${data.faultstring}`,
           ErrorCode.OMIE_ERROR,
@@ -128,9 +126,7 @@ export class OmieClientService {
     } catch (err) {
       if (err instanceof IntegrationException) throw err;
       if (err instanceof HttpClientError) {
-        await this.integracoes
-          .registrarSyncErro(empresaId, 'omie')
-          .catch(() => {});
+        await this.integracoes.registrarSyncErro(empresaId, 'omie').catch(() => {});
         const detail =
           typeof err.body === 'object' && err.body !== null
             ? JSON.stringify(err.body).slice(0, 300)
@@ -141,10 +137,7 @@ export class OmieClientService {
         );
       }
       const msg = err instanceof Error ? err.message : String(err);
-      throw new IntegrationException(
-        `OMIE ${call} falhou: ${msg}`,
-        ErrorCode.OMIE_ERROR,
-      );
+      throw new IntegrationException(`OMIE ${call} falhou: ${msg}`, ErrorCode.OMIE_ERROR);
     }
   }
 
@@ -169,16 +162,11 @@ export class OmieClientService {
     registrosPorPagina = 50,
   ): Promise<OmieListarProdutosResponse> {
     if (this.isDemoMode()) return this.demo.listarProdutos(pagina);
-    return this.chamar<OmieListarProdutosResponse>(
-      empresaId,
-      'geral/produtos/',
-      'ListarProdutos',
-      {
-        pagina,
-        registros_por_pagina: registrosPorPagina,
-        apenas_importado_api: 'N',
-      },
-    );
+    return this.chamar<OmieListarProdutosResponse>(empresaId, 'geral/produtos/', 'ListarProdutos', {
+      pagina,
+      registros_por_pagina: registrosPorPagina,
+      apenas_importado_api: 'N',
+    });
   }
 
   async incluirPedido(

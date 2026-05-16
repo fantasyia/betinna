@@ -67,9 +67,7 @@ export class TikTokWebhookController {
     const isProd = this.env.isProduction;
     if (!appKey || !appSecret) {
       if (isProd) {
-        this.logger.error(
-          'TIKTOK_APP_KEY/APP_SECRET ausente em produção — webhook rejeitado',
-        );
+        this.logger.error('TIKTOK_APP_KEY/APP_SECRET ausente em produção — webhook rejeitado');
         throw new UnauthorizedException('webhook secret não configurado');
       }
       this.logger.warn('TIKTOK_APP_SECRET ausente (dev) — aceita sem HMAC');
@@ -86,11 +84,7 @@ export class TikTokWebhookController {
       }
 
       // Sprint 3 FIX 1: anti-replay. TikTok envia `x-timestamp` (unix seconds).
-      const replay = await this.antiReplay.checkAndMarkWebhook(
-        'tiktok',
-        signature,
-        timestamp,
-      );
+      const replay = await this.antiReplay.checkAndMarkWebhook('tiktok', signature, timestamp);
       if (!replay.fresh) {
         return { ok: true };
       }
@@ -108,9 +102,7 @@ export class TikTokWebhookController {
 
     const empresaId = await this.oauth.resolverPorShopId(String(shopId));
     if (!empresaId) {
-      this.logger.warn(
-        `Webhook TikTok shop_id=${shopId} sem IntegracaoConexao — ignorado`,
-      );
+      this.logger.warn(`Webhook TikTok shop_id=${shopId} sem IntegracaoConexao — ignorado`);
       return { ok: false };
     }
 

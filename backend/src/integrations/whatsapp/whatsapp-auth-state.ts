@@ -133,7 +133,7 @@ export class WhatsAppAuthState {
           const entries = data[cat];
           if (!entries) continue;
           // eslint-disable-next-line @typescript-eslint/no-explicit-any
-          const bucket = ((this.state.keys[cat] ??= {} as any) as Record<string, unknown>);
+          const bucket = (this.state.keys[cat] ??= {} as any) as Record<string, unknown>;
           for (const id of Object.keys(entries)) {
             const value = (entries as Record<string, unknown>)[id];
             if (value === null || value === undefined) {
@@ -185,9 +185,7 @@ export class WhatsAppAuthState {
       this.saveTimer = null;
       void this.persistir().catch((err) => {
         const m = err instanceof Error ? err.message : String(err);
-        this.logger.warn(
-          `Falha persistindo auth state pra ${ownerKey(this.owner)}: ${m}`,
-        );
+        this.logger.warn(`Falha persistindo auth state pra ${ownerKey(this.owner)}: ${m}`);
       });
     }, WhatsAppAuthState.SAVE_DEBOUNCE_MS);
   }

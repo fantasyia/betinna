@@ -49,9 +49,7 @@ export class ComissoesFechamentoJob {
       this.logger.debug('Fechamento mensal: nenhuma empresa ativa');
       return;
     }
-    this.logger.log(
-      `Fechamento mensal ${mes}/${ano} iniciado para ${empresas.length} empresa(s)`,
-    );
+    this.logger.log(`Fechamento mensal ${mes}/${ano} iniciado para ${empresas.length} empresa(s)`);
 
     let okCount = 0;
     let falhasCount = 0;

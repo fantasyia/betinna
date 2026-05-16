@@ -5,11 +5,7 @@ import { ErrorCode } from '@shared/errors/error-codes';
 import { HttpClientService } from '@shared/http/http-client.service';
 import { HttpClientError } from '@shared/http/http-client.types';
 import { AmazonLwaService } from './amazon-lwa.service';
-import {
-  AMAZON_SPAPI_HOSTS,
-  AMAZON_SPAPI_SANDBOX_HOSTS,
-  type AmazonRegion,
-} from './amazon.types';
+import { AMAZON_SPAPI_HOSTS, AMAZON_SPAPI_SANDBOX_HOSTS, type AmazonRegion } from './amazon.types';
 
 /**
  * HTTP client low-level pra Amazon SP-API.

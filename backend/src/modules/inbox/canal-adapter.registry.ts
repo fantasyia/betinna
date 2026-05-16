@@ -16,9 +16,7 @@ export class CanalAdapterRegistry {
 
   registrar(adapter: CanalAdapter): void {
     if (this.adapters.has(adapter.canal)) {
-      this.logger.warn(
-        `Adapter para canal ${adapter.canal} já registrado — sobrescrevendo`,
-      );
+      this.logger.warn(`Adapter para canal ${adapter.canal} já registrado — sobrescrevendo`);
     }
     this.adapters.set(adapter.canal, adapter);
     this.logger.log(`Adapter registrado: ${adapter.canal}`);
