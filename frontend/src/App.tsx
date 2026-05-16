@@ -20,6 +20,7 @@ const AdminPage = lazy(() => import('@/pages/AdminPage'));
 const FidelidadePage = lazy(() => import('@/pages/FidelidadePage'));
 const ForbiddenPage = lazy(() => import('@/pages/ForbiddenPage'));
 const ClientesPage = lazy(() => import('@/pages/ClientesPage'));
+const ClienteDetailPage = lazy(() => import('@/pages/ClienteDetailPage'));
 const PedidosPage = lazy(() => import('@/pages/PedidosPage'));
 const ComissoesPage = lazy(() => import('@/pages/ComissoesPage'));
 const LeadsPage = lazy(() => import('@/pages/LeadsPage'));
@@ -130,6 +131,18 @@ const router = createBrowserRouter([
         <ProtectedRoute requirePermission="clientes.view">
           <PageSuspense>
             <ClientesPage />
+          </PageSuspense>
+        </ProtectedRoute>
+      </ErrorBoundary>
+    ),
+  },
+  {
+    path: '/clientes/:id',
+    element: (
+      <ErrorBoundary>
+        <ProtectedRoute requirePermission="clientes.view">
+          <PageSuspense>
+            <ClienteDetailPage />
           </PageSuspense>
         </ProtectedRoute>
       </ErrorBoundary>

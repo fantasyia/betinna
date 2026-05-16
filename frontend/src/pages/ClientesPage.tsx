@@ -1,4 +1,5 @@
 import { useMemo, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { api, ApiError } from '@/lib/api';
 import { useApiQuery, type PaginatedResponse } from '@/hooks/useApiQuery';
 import { usePermission } from '@/hooks/usePermission';
@@ -49,6 +50,7 @@ const OMIE_COLORS: Record<OmieStatus, string> = {
 };
 
 export default function ClientesPage() {
+  const navigate = useNavigate();
   const canEdit = usePermission('clientes.edit');
   const canBulk = usePermission('clientes.bulkAssign');
 
@@ -79,15 +81,10 @@ export default function ClientesPage() {
   } = useApiQuery<PaginatedResponse<Cliente>>(listPath);
   const { data: listasMeta } = useApiQuery<Lista[]>('/clientes/listas');
 
-  // Modal de criação/edição
-  const [editing, setEditing] = useState<Cliente | null>(null);
+  // Modal de criação rápida (edição vai pra /clientes/:id)
   const [creating, setCreating] = useState(false);
-  const closeModal = () => {
-    setEditing(null);
-    setCreating(false);
-  };
   const onSaved = () => {
-    closeModal();
+    setCreating(false);
     refetch();
   };
 
@@ -136,17 +133,16 @@ export default function ClientesPage() {
     {
       key: 'actions',
       header: '',
-      render: (c) =>
-        canEdit ? (
-          <button
-            type="button"
-            data-testid={`cliente-edit-${c.id}`}
-            onClick={() => setEditing(c)}
-            style={{ ...btnSecondary, padding: '0.25rem 0.625rem', fontSize: 12 }}
-          >
-            Editar
-          </button>
-        ) : null,
+      render: (c) => (
+        <button
+          type="button"
+          data-testid={`cliente-open-${c.id}`}
+          onClick={() => navigate(`/clientes/${c.id}`)}
+          style={{ ...btnSecondary, padding: '0.25rem 0.625rem', fontSize: 12 }}
+        >
+          Abrir
+        </button>
+      ),
     },
   ];
 
@@ -245,11 +241,11 @@ export default function ClientesPage() {
         )}
       </div>
 
-      {(creating || editing) && (
+      {creating && (
         <ClienteFormModal
           open
-          cliente={editing}
-          onClose={closeModal}
+          cliente={null}
+          onClose={() => setCreating(false)}
           onSaved={onSaved}
         />
       )}
