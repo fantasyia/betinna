@@ -15,6 +15,7 @@ const NAV_ITEMS: Array<{
   { to: '/aprovacoes', label: 'Aprovações' },
   { to: '/propostas', label: 'Propostas' },
   { to: '/amostras', label: 'Amostras' },
+  { to: '/inbox', label: 'Inbox' },
   { to: '/ocorrencias', label: 'SAC' },
   { to: '/leads', label: 'Leads' },
   { to: '/agenda', label: 'Agenda' },
