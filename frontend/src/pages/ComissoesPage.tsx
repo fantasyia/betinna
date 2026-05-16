@@ -48,7 +48,9 @@ function fmtPct(p: number) {
 
 export default function ComissoesPage() {
   const canViewOwn = usePermission('comissoes.own');
-  const canViewAll = usePermission('comissoes.all') || usePermission('comissoes.team');
+  const canViewAllGlobal = usePermission('comissoes.all');
+  const canViewTeam = usePermission('comissoes.team');
+  const canViewAll = canViewAllGlobal || canViewTeam;
 
   return (
     <PageLayout title="Comissões">
@@ -165,8 +167,9 @@ function StatBox({
 // ─── Lista admin (ADMIN/DIRECTOR/GERENTE) ──────────────────────────────
 
 function ListaAdmin() {
-  const canManage =
-    usePermission('comissoes.all') || usePermission('comissoes.team');
+  const canManageAll = usePermission('comissoes.all');
+  const canManageTeam = usePermission('comissoes.team');
+  const canManage = canManageAll || canManageTeam;
   const [page, setPage] = useState(1);
   const now = new Date();
   const [mes, setMes] = useState<number | ''>(now.getMonth() + 1);

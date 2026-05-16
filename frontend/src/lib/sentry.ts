@@ -55,7 +55,7 @@ export function captureError(err: unknown, extra?: Record<string, unknown>): voi
     ...buildContext(),
   };
   // ND-JSON pro Railway/Cloudwatch
-  // eslint-disable-next-line no-console
+   
   console.error(JSON.stringify(payload));
 
   // Quando Sentry estiver habilitado, enviar via beacon:
@@ -87,7 +87,7 @@ export function initSentry(): void {
   });
 
   if (ENABLED) {
-    // eslint-disable-next-line no-console
+     
     console.info('[Sentry] habilitado (DSN configurado)');
   }
 }

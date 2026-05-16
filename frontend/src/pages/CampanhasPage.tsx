@@ -142,7 +142,9 @@ function fmtPct(v: number) {
 // ─── Page ─────────────────────────────────────────────────────────────────────
 
 export default function CampanhasPage() {
-  const canCreate = usePermission('campanhas.create') || usePermission('campanhas.edit');
+  const canCreatePerm = usePermission('campanhas.create');
+  const canEditPerm = usePermission('campanhas.edit');
+  const canCreate = canCreatePerm || canEditPerm;
   const role = useRole();
   const canManage = ['ADMIN', 'DIRECTOR', 'GERENTE'].includes(role ?? '');
   const toast = useToast();

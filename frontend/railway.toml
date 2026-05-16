@@ -14,7 +14,7 @@ buildCommand = "npm install && npm run build"
 [deploy]
 # Para Railway static site: usar `npx serve dist -l $PORT`
 # Como alternativa, configurar como static hosting no dashboard.
-startCommand = "npx serve dist -l ${PORT:-4173} -s"
+startCommand = "./node_modules/.bin/serve dist -l ${PORT:-4173} -s"
 healthcheckPath = "/"
 healthcheckTimeout = 10
 restartPolicyType = "ON_FAILURE"

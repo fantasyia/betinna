@@ -182,7 +182,7 @@ function PermissionMatrix({ role }: { role: Role }) {
 
   async function toggle(modulo: string, field: 'podeVer' | 'podeEditar', next: boolean) {
     const current = perms.get(modulo) ?? { podeVer: false, podeEditar: false };
-    let updated = { ...current, [field]: next };
+    const updated = { ...current, [field]: next };
     // Regra: se desativa Ver, também desativa Editar
     if (field === 'podeVer' && !next) updated.podeEditar = false;
     // Regra: se ativa Editar, também ativa Ver
