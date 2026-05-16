@@ -1,0 +1,161 @@
+# =====================================================================
+# Backup automatizado · Betinna.ai (Sprint 5 FIX 6)
+#
+# Roda diariamente às 03:00 UTC (00:00 BRT) e em workflow_dispatch manual.
+#
+# Fluxo:
+#   1. pg_dump Railway Postgres (-Fc custom format, -Z9 max compression)
+#   2. Upload para S3-compatible (Cloudflare R2 default — bucket privado)
+#   3. Retention: keep últimos 30 daily backups, apaga os mais velhos
+#
+# Secrets exigidos no GitHub:
+#   DATABASE_URL       — Railway Postgres connection string (prod)
+#   S3_BUCKET          — nome do bucket (ex: `betinna-backups`)
+#   S3_ACCESS_KEY      — access key id
+#   S3_SECRET_KEY      — secret access key
+#   S3_ENDPOINT        — endpoint URL (R2: https://<account>.r2.cloudflarestorage.com)
+#   S3_REGION          — região (R2: `auto`, AWS: `us-east-1`)
+#
+# Notification:
+#   - Issue automaticamente criado no GitHub se backup falhar
+#   - Sucesso é silencioso (não polui inbox)
+# =====================================================================
+
+name: Backup PostgreSQL
+
+on:
+  schedule:
+    - cron: '0 3 * * *' # 03:00 UTC daily
+  workflow_dispatch:
+    inputs:
+      reason:
+        description: 'Razão do backup manual (ex: pre-deploy)'
+        required: false
+        default: 'manual'
+
+concurrency:
+  group: backup-${{ github.workflow }}
+  cancel-in-progress: false # backups não devem cancelar uns aos outros
+
+env:
+  RETENTION_DAYS: 30
+
+jobs:
+  backup:
+    name: pg_dump + upload to S3-compatible
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install postgresql-client + awscli
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y postgresql-client
+          # awscli funciona com qualquer S3-compatible (R2, MinIO, Wasabi)
+          pip install awscli --quiet
+
+      - name: Generate timestamp
+        id: ts
+        run: echo "timestamp=$(date -u +%Y%m%d_%H%M%S)" >> $GITHUB_OUTPUT
+
+      - name: pg_dump
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+        run: |
+          set -e
+          TS="${{ steps.ts.outputs.timestamp }}"
+          DUMP_FILE="betinna_${TS}.dump"
+
+          echo "→ Iniciando pg_dump (custom format, compression 9)..."
+          pg_dump "$DATABASE_URL" \
+            --format=custom \
+            --compress=9 \
+            --no-owner \
+            --no-acl \
+            --verbose \
+            --file="$DUMP_FILE" 2>&1 | tail -20
+
+          ls -lh "$DUMP_FILE"
+          echo "DUMP_FILE=$DUMP_FILE" >> $GITHUB_ENV
+
+      - name: Upload to S3-compatible
+        env:
+          AWS_ACCESS_KEY_ID: ${{ secrets.S3_ACCESS_KEY }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.S3_SECRET_KEY }}
+          AWS_DEFAULT_REGION: ${{ secrets.S3_REGION }}
+        run: |
+          set -e
+          S3_KEY="daily/${{ env.DUMP_FILE }}"
+          echo "→ Upload pra s3://${{ secrets.S3_BUCKET }}/$S3_KEY..."
+
+          # --endpoint-url permite R2/MinIO/etc
+          aws s3 cp "$DUMP_FILE" \
+            "s3://${{ secrets.S3_BUCKET }}/$S3_KEY" \
+            --endpoint-url "${{ secrets.S3_ENDPOINT }}" \
+            --no-progress
+
+          # Confirm upload
+          aws s3 ls "s3://${{ secrets.S3_BUCKET }}/$S3_KEY" \
+            --endpoint-url "${{ secrets.S3_ENDPOINT }}"
+
+          echo "✅ Backup uploaded: $S3_KEY"
+
+      - name: Retention — delete backups > ${{ env.RETENTION_DAYS }} days
+        env:
+          AWS_ACCESS_KEY_ID: ${{ secrets.S3_ACCESS_KEY }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.S3_SECRET_KEY }}
+          AWS_DEFAULT_REGION: ${{ secrets.S3_REGION }}
+        run: |
+          set -e
+          CUTOFF=$(date -u -d "${{ env.RETENTION_DAYS }} days ago" +%Y%m%d)
+          echo "→ Deletando backups anteriores a $CUTOFF..."
+
+          aws s3 ls "s3://${{ secrets.S3_BUCKET }}/daily/" \
+            --endpoint-url "${{ secrets.S3_ENDPOINT }}" \
+            | grep -oE 'betinna_[0-9]{8}_[0-9]{6}\.dump' \
+            | while read -r FILE; do
+                DATE=$(echo "$FILE" | grep -oE '[0-9]{8}' | head -1)
+                if [[ "$DATE" < "$CUTOFF" ]]; then
+                  echo "  delete $FILE (date $DATE < $CUTOFF)"
+                  aws s3 rm "s3://${{ secrets.S3_BUCKET }}/daily/$FILE" \
+                    --endpoint-url "${{ secrets.S3_ENDPOINT }}"
+                fi
+              done || echo "Sem backups antigos pra remover"
+
+      - name: Summary
+        run: |
+          echo "## Backup Summary 📦" >> $GITHUB_STEP_SUMMARY
+          echo "- File: \`${{ env.DUMP_FILE }}\`" >> $GITHUB_STEP_SUMMARY
+          echo "- Location: \`s3://${{ secrets.S3_BUCKET }}/daily/${{ env.DUMP_FILE }}\`" >> $GITHUB_STEP_SUMMARY
+          echo "- Retention: $RETENTION_DAYS days" >> $GITHUB_STEP_SUMMARY
+          echo "- Restore via: \`docs/restore-runbook.md\`" >> $GITHUB_STEP_SUMMARY
+
+      - name: Notify on failure
+        if: failure()
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const title = `🚨 Backup falhou — ${new Date().toISOString().slice(0,10)}`;
+            const body = `Backup automatizado falhou em \`${context.runId}\`.
+
+            **Workflow:** ${context.workflow}
+            **Run:** ${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}
+
+            **Próximos passos:**
+            1. Inspecionar logs do workflow run
+            2. Validar secrets DATABASE_URL, S3_* ainda válidos
+            3. Confirmar Railway Postgres acessível externamente
+            4. Rodar backup manualmente via \`workflow_dispatch\`
+
+            cc: @${context.actor}`;
+
+            await github.rest.issues.create({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              title,
+              body,
+              labels: ['ops', 'urgent', 'backup'],
+            });

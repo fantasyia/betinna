@@ -1,0 +1,75 @@
+﻿# Dependencies
+node_modules/
+**/node_modules/
+.pnp
+.pnp.js
+
+# Build outputs
+dist/
+build/
+**/dist/
+**/build/
+.next/
+.vite/
+
+# Environment files (NEVER commit)
+.env
+.env.local
+.env.*.local
+.env.development
+.env.production
+.env.test
+**/.env
+**/.env.local
+**/.env.*.local
+**/.env.development
+**/.env.production
+**/.env.test
+!.env.example
+!**/.env.example
+!env.example.railway.txt
+
+# Logs
+logs/
+*.log
+npm-debug.log*
+yarn-debug.log*
+pnpm-debug.log*
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Testing
+coverage/
+.nyc_output/
+playwright-report/
+test-results/
+**/playwright-report/
+**/test-results/
+
+# Backups
+backups/
+*.dump
+*.sql.gz
+*.tsbuildinfo
+
+# WhatsApp local session (dev only)
+.wwebjs_auth/
+.wwebjs_cache/
+session/
+**/session/
+
+# Prisma dev
+**/prisma/migrations/dev/
+**/dev.db*
+
+# Misc
+*.local
+.vercel

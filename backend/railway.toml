@@ -1,0 +1,25 @@
+# =====================================================================
+# Railway config — Backend API service (Betinna.ai)
+# Sprint 4 FIX 1
+#
+# Uso: criar Railway service apontando para o repo, root directory = /backend
+# Railway lê este arquivo automaticamente.
+# =====================================================================
+
+[build]
+builder = "DOCKERFILE"
+dockerfilePath = "Dockerfile"
+
+[deploy]
+# Railway injeta PORT — main.ts já usa env.get('PORT')
+startCommand = "npm run start:prod"
+healthcheckPath = "/api/v1/health"
+healthcheckTimeout = 30
+restartPolicyType = "ON_FAILURE"
+restartPolicyMaxRetries = 3
+# Sleep aplicativo após 5min de inatividade? Mantenha desligado em prod —
+# crons + BullMQ schedulers precisam de uptime contínuo.
+# sleepApplication = false
+
+[[deploy.regions]]
+region = "us-east1-eqdc4a"

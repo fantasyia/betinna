@@ -1,0 +1,120 @@
+# =====================================================================
+# Security scan — Betinna.ai (Sprint 5 FIX 2)
+#
+# Roda:
+#   - Toda terça às 06:00 UTC (cron weekly)
+#   - Em todo PR pra main
+#   - Manualmente via workflow_dispatch
+#
+# Quebra o build se:
+#   - npm audit reporta HIGH ou CRITICAL
+#   - Prisma schema inválido
+#   - gitleaks/truffleHog encontra secret hardcoded
+# =====================================================================
+
+name: Security
+
+on:
+  schedule:
+    - cron: '0 6 * * 2' # Terça 06:00 UTC
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  group: security-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  NODE_VERSION: '20'
+
+jobs:
+  # ─── npm audit (backend + frontend) ──────────────────────────────────
+  npm-audit:
+    name: npm audit (HIGH+ vulnerabilities)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    strategy:
+      matrix:
+        service: [backend, frontend]
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+
+      - name: npm audit ${{ matrix.service }}
+        working-directory: ./${{ matrix.service }}
+        run: |
+          echo "→ Auditando ${{ matrix.service }} para HIGH+ vulnerabilities..."
+          npm audit --audit-level=high
+        # Quebra se HIGH ou CRITICAL encontrado. MODERATE+LOW são apenas
+        # informativos (uniformidade com policy de deps transitivas).
+
+  # ─── Prisma validate ─────────────────────────────────────────────────
+  prisma-validate:
+    name: Prisma schema validate
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'npm'
+          cache-dependency-path: backend/package-lock.json
+
+      - name: Install backend deps
+        working-directory: ./backend
+        run: npm ci --prefer-offline --no-audit
+
+      - name: Prisma validate
+        working-directory: ./backend
+        run: npx prisma validate
+
+  # ─── gitleaks — secret scanning ──────────────────────────────────────
+  gitleaks:
+    name: gitleaks (hardcoded secrets)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0 # gitleaks varre history
+
+      - name: Run gitleaks
+        uses: gitleaks/gitleaks-action@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          # GITLEAKS_LICENSE só pra usuários >100 contributors — opcional
+          # GITLEAKS_LICENSE: ${{ secrets.GITLEAKS_LICENSE }}
+        # gitleaks já falha o build se achar secret — sem `continue-on-error`.
+
+  # ─── Resumo (fail se qualquer job acima falhou) ──────────────────────
+  summary:
+    name: Security summary
+    runs-on: ubuntu-latest
+    needs: [npm-audit, prisma-validate, gitleaks]
+    if: always()
+
+    steps:
+      - name: Check all checks passed
+        run: |
+          if [[ "${{ needs.npm-audit.result }}" != "success" ]] || \
+             [[ "${{ needs.prisma-validate.result }}" != "success" ]] || \
+             [[ "${{ needs.gitleaks.result }}" != "success" ]]; then
+            echo "❌ Security scan FALHOU — investigar antes de merge"
+            exit 1
+          fi
+          echo "✅ Todos os security checks passaram"

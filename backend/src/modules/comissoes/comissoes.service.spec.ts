@@ -1,0 +1,238 @@
+import { beforeEach, describe, expect, it, vi } from 'vitest';
+import type { UserRole } from '@prisma/client';
+import { ForbiddenException } from '@shared/errors/app-exception';
+import type { AuthenticatedUser } from '@shared/types/authenticated-user';
+import { ComissoesService } from './comissoes.service';
+
+const makePrismaMock = () => ({
+  comissao: {
+    findUnique: vi.fn(),
+    findFirst: vi.fn(),
+    findMany: vi.fn().mockResolvedValue([]),
+    count: vi.fn(),
+    upsert: vi.fn(),
+    update: vi.fn(),
+    updateMany: vi.fn(),
+  },
+  pedido: { groupBy: vi.fn() },
+  usuario: { findMany: vi.fn() },
+  $transaction: vi.fn(async (ops: unknown[]) => {
+    // Cada item é uma Promise dos `prisma.comissao.upsert(...)` retornadas
+    return Promise.all(ops as Promise<unknown>[]);
+  }),
+});
+
+const makeRepScope = () => ({
+  getRepIds: vi.fn(async (u: AuthenticatedUser) => {
+    if (u.role === 'REP') return [u.id];
+    if (u.role === 'GERENTE') return [];
+    return null;
+  }),
+});
+
+const fakeUser = (overrides: Partial<AuthenticatedUser> = {}): AuthenticatedUser => ({
+  id: 'admin-1',
+  email: 'admin@betinna.ai',
+  nome: 'Admin',
+  role: 'ADMIN' as UserRole,
+  empresaIds: ['emp-1'],
+  empresaIdAtiva: 'emp-1',
+  ...overrides,
+});
+
+describe('ComissoesService', () => {
+  let prisma: ReturnType<typeof makePrismaMock>;
+  let svc: ComissoesService;
+
+  beforeEach(() => {
+    prisma = makePrismaMock();
+    svc = new ComissoesService(prisma as never, makeRepScope() as never);
+    prisma.comissao.upsert.mockImplementation((args: { create: unknown }) =>
+      Promise.resolve(args.create),
+    );
+  });
+
+  describe('fecharMes', () => {
+    it('retorna zeros quando não há pedidos comissionáveis', async () => {
+      prisma.pedido.groupBy.mockResolvedValue([]);
+      const out = await svc.fecharMes(fakeUser(), { mes: 4, ano: 2026, reprocessar: false });
+      expect(out).toMatchObject({
+        representantes: 0,
+        gerentes: 0,
+        totalVendas: 0,
+        totalComissao: 0,
+      });
+    });
+
+    it('grava comissão REP por representanteId agregado', async () => {
+      prisma.pedido.groupBy.mockResolvedValue([
+        {
+          representanteId: 'rep-1',
+          _sum: { total: 10_000, comissao: 500 },
+          _count: { _all: 4 },
+        },
+      ]);
+      // findMany #1: repsConfig pra snapshot de percentual
+      // findMany #2: reps com gerenteId
+      prisma.usuario.findMany
+        .mockResolvedValueOnce([{ id: 'rep-1', comissaoPadrao: 5 }])
+        .mockResolvedValueOnce([{ id: 'rep-1', gerenteId: null }]);
+
+      const out = await svc.fecharMes(fakeUser(), { mes: 4, ano: 2026, reprocessar: false });
+
+      expect(out.representantes).toBe(1);
+      expect(out.gerentes).toBe(0);
+      expect(out.totalVendas).toBe(10_000);
+      expect(out.totalComissao).toBe(500);
+
+      const upsertCall = prisma.comissao.upsert.mock.calls[0][0];
+      expect(upsertCall.create).toMatchObject({
+        empresaId: 'emp-1',
+        representanteId: 'rep-1',
+        tipo: 'REP',
+        totalVendas: 10_000,
+        totalComissao: 500,
+        qtdPedidos: 4,
+        percentual: 5, // AUDITORIA P0-2: snapshot do comissaoPadrao
+      });
+    });
+
+    it('calcula comissão do GERENTE somando vendas dos reps × comissaoPadrao', async () => {
+      prisma.pedido.groupBy.mockResolvedValue([
+        { representanteId: 'rep-1', _sum: { total: 10_000, comissao: 500 }, _count: { _all: 4 } },
+        { representanteId: 'rep-2', _sum: { total: 20_000, comissao: 1_000 }, _count: { _all: 6 } },
+      ]);
+      // findMany #1: reps (com gerenteId), #2: gerentes
+      prisma.usuario.findMany
+        // #1 repsConfig pra snapshot de percentual REP
+        .mockResolvedValueOnce([
+          { id: 'rep-1', comissaoPadrao: 5 },
+          { id: 'rep-2', comissaoPadrao: 5 },
+        ])
+        // #2 reps com gerenteId
+        .mockResolvedValueOnce([
+          { id: 'rep-1', gerenteId: 'ger-1' },
+          { id: 'rep-2', gerenteId: 'ger-1' },
+        ])
+        // #3 gerentes
+        .mockResolvedValueOnce([{ id: 'ger-1', comissaoPadrao: 2 }]);
+
+      const out = await svc.fecharMes(fakeUser(), { mes: 4, ano: 2026, reprocessar: false });
+
+      expect(out.gerentes).toBe(1);
+      // 2 reps × 500/1000 = 1500 + gerente 2% sobre 30000 = 600 → 2100
+      expect(out.totalComissao).toBe(2_100);
+
+      const gerenteUpsert = prisma.comissao.upsert.mock.calls.find(
+        (c: unknown[]) =>
+          (c[0] as { create?: { representanteId?: string } }).create?.representanteId === 'ger-1',
+      );
+      expect((gerenteUpsert?.[0] as { create: unknown }).create).toMatchObject({
+        tipo: 'GERENTE',
+        percentual: 2,
+        totalVendas: 30_000,
+        totalComissao: 600,
+        qtdPedidos: 0,
+      });
+    });
+
+    it('ignora reps sem gerente na agregação de gerente', async () => {
+      prisma.pedido.groupBy.mockResolvedValue([
+        { representanteId: 'rep-orphan', _sum: { total: 5_000, comissao: 250 }, _count: { _all: 2 } },
+      ]);
+      prisma.usuario.findMany
+        .mockResolvedValueOnce([{ id: 'rep-orphan', comissaoPadrao: 5 }])
+        .mockResolvedValueOnce([{ id: 'rep-orphan', gerenteId: null }]);
+
+      const out = await svc.fecharMes(fakeUser(), { mes: 4, ano: 2026, reprocessar: false });
+      expect(out.representantes).toBe(1);
+      expect(out.gerentes).toBe(0);
+      // 2 findMany (repsConfig + reps) — não há gerente pra buscar
+      expect(prisma.usuario.findMany).toHaveBeenCalledTimes(2);
+    });
+  });
+
+  describe('resumoDoRep', () => {
+    it('aceita GERENTE consultando o próprio resumo', async () => {
+      prisma.comissao.findMany.mockResolvedValue([]);
+      await expect(
+        svc.resumoDoRep(fakeUser({ id: 'ger-1', role: 'GERENTE' as UserRole })),
+      ).resolves.toBeDefined();
+    });
+
+    it('rejeita SAC', async () => {
+      await expect(
+        svc.resumoDoRep(fakeUser({ role: 'SAC' as UserRole })),
+      ).rejects.toBeInstanceOf(ForbiddenException);
+    });
+  });
+
+  describe('list — rep scope', () => {
+    it('REP vê só as próprias comissões', async () => {
+      prisma.comissao.count.mockResolvedValue(0);
+      prisma.comissao.findMany.mockResolvedValue([]);
+      await svc.list(fakeUser({ id: 'rep-7', role: 'REP' as UserRole }), {
+        page: 1,
+        limit: 10,
+      });
+      const where = prisma.comissao.findMany.mock.calls[0][0].where;
+      expect(where.representanteId).toEqual({ in: ['rep-7'] });
+    });
+  });
+
+  describe('multi-tenant (auditoria 2026-05-15 P0-1)', () => {
+    it('DIRECTOR fica restrito à própria empresa (filtra empresaId)', async () => {
+      prisma.comissao.count.mockResolvedValue(0);
+      prisma.comissao.findMany.mockResolvedValue([]);
+      await svc.list(fakeUser({ role: 'DIRECTOR' as UserRole, empresaIdAtiva: 'emp-2' }), {
+        page: 1,
+        limit: 10,
+      });
+      const where = prisma.comissao.findMany.mock.calls[0][0].where;
+      expect(where.empresaId).toBe('emp-2');
+    });
+
+    it('ADMIN vê cross-tenant (sem filtro empresaId)', async () => {
+      prisma.comissao.count.mockResolvedValue(0);
+      prisma.comissao.findMany.mockResolvedValue([]);
+      await svc.list(fakeUser({ role: 'ADMIN' as UserRole }), { page: 1, limit: 10 });
+      const where = prisma.comissao.findMany.mock.calls[0][0].where;
+      expect(where.empresaId).toBeUndefined();
+    });
+
+    it('GERENTE filtra empresaId E reps sob gerência', async () => {
+      const repScope = makeRepScope();
+      repScope.getRepIds.mockResolvedValue(['rep-a', 'rep-b']);
+      svc = new ComissoesService(prisma as never, repScope as never);
+      prisma.comissao.count.mockResolvedValue(0);
+      prisma.comissao.findMany.mockResolvedValue([]);
+      await svc.list(fakeUser({ role: 'GERENTE' as UserRole, empresaIdAtiva: 'emp-1' }), {
+        page: 1,
+        limit: 10,
+      });
+      const where = prisma.comissao.findMany.mock.calls[0][0].where;
+      expect(where.empresaId).toBe('emp-1');
+      expect(where.representanteId).toEqual({ in: ['rep-a', 'rep-b'] });
+    });
+  });
+
+  describe('marcarPago — idempotente (auditoria P0-4)', () => {
+    it('updateMany com pago=false condicional — count===0 lança BusinessRule', async () => {
+      // findById → comissão existente
+      prisma.comissao.findFirst = vi.fn().mockResolvedValue({
+        id: 'com-1',
+        representanteId: 'rep-1',
+        pago: true,
+      });
+      prisma.comissao.updateMany = vi.fn().mockResolvedValue({ count: 0 });
+
+      const { BusinessRuleException } = await import('@shared/errors/app-exception');
+      await expect(
+        svc.marcarPago(fakeUser(), 'com-1', { reciboUrl: 'http://x' }),
+      ).rejects.toBeInstanceOf(BusinessRuleException);
+      // Confirma que o where filtrou por pago: false (proteção race condition)
+      const callArgs = (prisma.comissao.updateMany as ReturnType<typeof vi.fn>).mock.calls[0][0];
+      expect(callArgs.where.pago).toBe(false);
+    });
+  });
+});

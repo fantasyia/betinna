@@ -1,0 +1,46 @@
+# Gitleaks config — Betinna.ai (Sprint 5 FIX 2)
+#
+# Extends default rules + allows known patterns que NÃO são secrets reais:
+#  - placeholders em .env.example, env.example.railway.txt
+#  - keys de teste em specs (CryptoUtil tests, JWT tests)
+#  - IPs públicos documentados (ML_WEBHOOK_IPS_DEFAULT)
+
+[extend]
+useDefault = true
+
+[[rules]]
+id = "supabase-anon-key"
+description = "Supabase Anon Key (JWT format)"
+regex = '''eyJhbGci[A-Za-z0-9._-]{100,}'''
+secretGroup = 0
+keywords = ["eyJhbGci"]
+
+[allowlist]
+description = "Paths/regexes onde secrets-like são esperados (test fixtures, env examples)"
+paths = [
+  '''(.*?)(jpg|gif|doc|pdf|bin|svg|socket)$''',
+  '''.env.example''',
+  '''.env.example.railway.txt''',
+  '''env.example.railway.txt''',
+  '''.*\.spec\.ts$''',
+  '''.*\.test\.ts$''',
+  '''_audit/.*''',
+  '''CHANGELOG.md''',
+  '''README.md''',
+  '''docs/.*\.md$''',
+]
+
+regexes = [
+  # Placeholders óbvios
+  '''(?i)(your[-_]?secret|placeholder|xxxxxxxx|example_token|<ref>|\[REF\])''',
+  # JWT de teste / dummy
+  '''eyJhbGci[A-Za-z0-9._-]{0,80}fake''',
+  # 64 chars hex zerados (chave teste do CryptoUtil)
+  '''0{64}''',
+  '''1{64}''',
+  # IPs públicos de ML documentados em constants/providers.ts
+  '''54\.88\.218\.97''',
+  '''18\.215\.140\.160''',
+  '''18\.213\.114\.129''',
+  '''18\.206\.34\.84''',
+]

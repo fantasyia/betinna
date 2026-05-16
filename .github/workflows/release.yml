@@ -1,0 +1,110 @@
+# =====================================================================
+# Release automation — Betinna.ai (Sprint 5 FIX 7)
+#
+# Quando você empurra uma tag `v*.*.*`, este workflow:
+#   1. Extrai a seção correspondente do CHANGELOG.md
+#   2. Cria GitHub Release com aquela seção como body
+#   3. Anexa artefatos do build (backend dist + frontend dist) ao Release
+#
+# Como criar uma release:
+#   git tag v1.0.0
+#   git push origin v1.0.0
+# =====================================================================
+
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*.*.*'
+
+permissions:
+  contents: write # GitHub Release needs
+
+jobs:
+  release:
+    name: Build artifacts + create GitHub Release
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      # ─── Backend build ─────────────────────────────────────────────
+      - name: Backend — install + build
+        working-directory: ./backend
+        run: |
+          npm ci --prefer-offline --no-audit
+          npx prisma generate
+          npm run build
+
+      - name: Backend — pack dist
+        working-directory: ./backend
+        run: tar -czf ../backend-dist-${{ github.ref_name }}.tar.gz dist/ prisma/ package.json
+
+      # ─── Frontend build ────────────────────────────────────────────
+      - name: Frontend — install + build
+        working-directory: ./frontend
+        env:
+          VITE_API_URL: https://betinna-api.up.railway.app
+          VITE_SUPABASE_URL: https://placeholder.supabase.co
+          VITE_SUPABASE_ANON_KEY: placeholder
+        run: |
+          npm ci --prefer-offline --no-audit
+          npm run build
+
+      - name: Frontend — pack dist
+        working-directory: ./frontend
+        run: tar -czf ../frontend-dist-${{ github.ref_name }}.tar.gz dist/
+
+      # ─── Extract CHANGELOG section ─────────────────────────────────
+      - name: Extract CHANGELOG section for ${{ github.ref_name }}
+        id: changelog
+        run: |
+          VERSION="${{ github.ref_name }}"
+          # Remove o `v` do prefixo: v1.0.0 → 1.0.0
+          VERSION_NO_V="${VERSION#v}"
+
+          # Extrai a seção do CHANGELOG entre `## [VERSION]` e o próximo `## [`
+          SECTION=$(awk -v ver="$VERSION_NO_V" '
+            /^## \[/ {
+              if (capture) exit
+              if ($0 ~ "\\[" ver "\\]") capture = 1
+            }
+            capture { print }
+          ' CHANGELOG.md)
+
+          if [ -z "$SECTION" ]; then
+            echo "❌ Versão $VERSION_NO_V não encontrada no CHANGELOG.md"
+            echo "Adicione uma seção '## [$VERSION_NO_V] — YYYY-MM-DD' antes de criar a tag."
+            exit 1
+          fi
+
+          # Salva como output multi-linha
+          {
+            echo "section<<EOF"
+            echo "$SECTION"
+            echo "EOF"
+          } >> "$GITHUB_OUTPUT"
+
+          # Também escreve em arquivo pra usar como body
+          echo "$SECTION" > release-body.md
+
+      # ─── Create GitHub Release ─────────────────────────────────────
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ github.ref_name }}
+          name: ${{ github.ref_name }}
+          body_path: release-body.md
+          draft: false
+          prerelease: ${{ contains(github.ref_name, '-rc.') || contains(github.ref_name, '-beta.') || contains(github.ref_name, '-alpha.') }}
+          files: |
+            backend-dist-${{ github.ref_name }}.tar.gz
+            frontend-dist-${{ github.ref_name }}.tar.gz

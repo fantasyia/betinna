@@ -1,0 +1,278 @@
+# =====================================================================
+# CI/CD — Betinna.ai (Sprint 5 FIX 1)
+#
+# Roda em:
+#   - push pra main (build + test + e2e + deploy Railway)
+#   - PR pra main (build + test, SEM deploy nem e2e contra staging)
+#
+# Secrets exigidos no GitHub:
+#   - RAILWAY_TOKEN              — Railway API token (Settings → Tokens)
+#   - E2E_BASE_URL               — URL frontend staging Railway
+#   - E2E_API_URL                — URL backend staging Railway
+#   - E2E_TEST_EMAIL_ADMIN/_DIRETOR/_GERENTE/_REP — emails dos test users
+#   - E2E_TEST_PASSWORD          — senha compartilhada (test only)
+# =====================================================================
+
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+# Cancela runs anteriores no mesmo branch/PR
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  NODE_VERSION: '20'
+  # Não usar Husky/Prepare hooks em CI (Prisma generate já roda explicit)
+  HUSKY: '0'
+
+jobs:
+  # ─── Job 1: Backend ─────────────────────────────────────────────────
+  backend:
+    name: Backend (typecheck + tests)
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    services:
+      # Redis ephemeral pra testes que precisam de Redis client
+      # (atualmente os specs mockam, mas mantemos pra futuras integração)
+      redis:
+        image: redis:7-alpine
+        ports: ['6379:6379']
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js ${{ env.NODE_VERSION }}
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'npm'
+          cache-dependency-path: backend/package-lock.json
+
+      - name: Install dependencies
+        working-directory: ./backend
+        run: npm ci --prefer-offline --no-audit
+
+      - name: Prisma generate
+        working-directory: ./backend
+        run: npx prisma generate
+
+      - name: Prisma validate
+        working-directory: ./backend
+        run: npx prisma validate
+
+      - name: Typecheck
+        working-directory: ./backend
+        run: npm run typecheck
+
+      - name: Unit tests (vitest)
+        working-directory: ./backend
+        env:
+          NODE_ENV: test
+          # Env vars mínimos pra evitar superRefine fail nos schemas obrigatórios
+          DATABASE_URL: postgresql://ci:ci@localhost:5432/ci
+          DIRECT_URL: postgresql://ci:ci@localhost:5432/ci
+          SUPABASE_URL: https://ci.supabase.co
+          SUPABASE_ANON_KEY: ci-anon
+          SUPABASE_SERVICE_ROLE_KEY: ci-service
+          ENCRYPTION_KEY: '0000000000000000000000000000000000000000000000000000000000000000'
+          REDIS_URL: redis://localhost:6379
+        run: npm test
+
+      - name: Build (dist/)
+        working-directory: ./backend
+        run: npm run build
+
+      - name: Upload backend dist artifact
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        uses: actions/upload-artifact@v4
+        with:
+          name: backend-dist
+          path: backend/dist
+          retention-days: 7
+
+  # ─── Job 2: Frontend ────────────────────────────────────────────────
+  frontend:
+    name: Frontend (typecheck + build + lighthouse)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js ${{ env.NODE_VERSION }}
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'npm'
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Install dependencies
+        working-directory: ./frontend
+        run: npm ci --prefer-offline --no-audit
+
+      - name: Typecheck
+        working-directory: ./frontend
+        run: npm run typecheck
+
+      - name: Build (vite)
+        working-directory: ./frontend
+        env:
+          VITE_API_URL: ${{ secrets.E2E_API_URL || 'http://localhost:3001' }}
+          VITE_SUPABASE_URL: https://ci.supabase.co
+          VITE_SUPABASE_ANON_KEY: ci-anon
+        run: npm run build
+
+      - name: Upload frontend dist artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: frontend-dist
+          path: frontend/dist
+          retention-days: 7
+
+      # Lighthouse CI — assert performance budgets
+      - name: Lighthouse CI
+        if: github.event_name == 'pull_request' || github.ref == 'refs/heads/main'
+        working-directory: ./frontend
+        run: |
+          npm install --no-save @lhci/cli@0.14.x
+          npx lhci autorun --config=./lighthouserc.cjs || echo "Lighthouse warnings (non-blocking)"
+        continue-on-error: true # Lighthouse local em CI pode ser flaky — não bloqueia merge
+
+  # ─── Job 3: E2E (apenas em push main contra staging) ─────────────────
+  e2e:
+    name: E2E Playwright (staging)
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    needs: [backend, frontend]
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js ${{ env.NODE_VERSION }}
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'npm'
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Install frontend deps
+        working-directory: ./frontend
+        run: npm ci --prefer-offline --no-audit
+
+      - name: Install Playwright browsers
+        working-directory: ./frontend
+        run: npx playwright install --with-deps chromium
+
+      - name: Run E2E suite
+        working-directory: ./frontend
+        env:
+          E2E_BASE_URL: ${{ secrets.E2E_BASE_URL }}
+          E2E_API_URL: ${{ secrets.E2E_API_URL }}
+          E2E_TEST_EMAIL: ${{ secrets.E2E_TEST_EMAIL_ADMIN }}
+          E2E_TEST_EMAIL_ADMIN: ${{ secrets.E2E_TEST_EMAIL_ADMIN }}
+          E2E_TEST_EMAIL_DIRETOR: ${{ secrets.E2E_TEST_EMAIL_DIRETOR }}
+          E2E_TEST_EMAIL_GERENTE: ${{ secrets.E2E_TEST_EMAIL_GERENTE }}
+          E2E_TEST_EMAIL_REP: ${{ secrets.E2E_TEST_EMAIL_REP }}
+          E2E_TEST_PASSWORD: ${{ secrets.E2E_TEST_PASSWORD }}
+          CI: 'true'
+        run: npx playwright test
+
+      - name: Upload Playwright HTML report on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-report
+          path: frontend/playwright-report
+          retention-days: 14
+
+  # ─── Job 4: Deploy Railway (push main only, após tudo passar) ────────
+  deploy:
+    name: Deploy Railway
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    needs: [backend, frontend, e2e]
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js ${{ env.NODE_VERSION }}
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+
+      - name: Install Railway CLI
+        run: npm install -g @railway/cli
+
+      # API service — deploy primeiro pra rodar migrate antes do Worker subir
+      - name: Deploy API service
+        env:
+          RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
+        working-directory: ./backend
+        run: |
+          echo "→ Deploying API service to Railway..."
+          railway up --service api --detach
+          echo "→ API deploy triggered"
+
+      # Aguarda API ficar saudável antes de rodar migrate (evita race)
+      - name: Wait API healthy
+        env:
+          API_URL: ${{ secrets.E2E_API_URL }}
+        run: |
+          echo "→ Aguardando API responder /health (timeout 5min)..."
+          for i in {1..30}; do
+            if curl -fsS "$API_URL/api/v1/health" > /dev/null 2>&1; then
+              echo "✅ API saudável após $((i*10))s"
+              exit 0
+            fi
+            sleep 10
+          done
+          echo "❌ API não respondeu em 5min — abortando deploy do Worker"
+          exit 1
+
+      - name: Run Prisma migrate deploy
+        env:
+          RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
+        working-directory: ./backend
+        run: |
+          echo "→ Aplicando migrations no Railway Postgres..."
+          railway run --service api npx prisma migrate deploy
+
+      - name: Deploy Worker service
+        env:
+          RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
+        working-directory: ./backend
+        run: |
+          echo "→ Deploying Worker service..."
+          railway up --service worker --detach
+
+      - name: Deploy Frontend service
+        env:
+          RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
+        working-directory: ./frontend
+        run: |
+          echo "→ Deploying Frontend service..."
+          railway up --service frontend --detach
+
+      - name: Notify deploy success
+        run: |
+          echo "🚀 Deploy completo: API + Worker + Frontend"
+          echo "   API:      ${{ secrets.E2E_API_URL }}"
+          echo "   Frontend: ${{ secrets.E2E_BASE_URL }}"

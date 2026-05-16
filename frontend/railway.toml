@@ -1,0 +1,24 @@
+# =====================================================================
+# Railway config — Frontend service (Betinna.ai)
+# Sprint 4 FIX 5
+#
+# Deploy como static site:
+#  - build: vite build → dist/
+#  - serve: Railway serve dist/ via static hosting
+# =====================================================================
+
+[build]
+builder = "NIXPACKS"
+buildCommand = "npm install && npm run build"
+
+[deploy]
+# Para Railway static site: usar `npx serve dist -l $PORT`
+# Como alternativa, configurar como static hosting no dashboard.
+startCommand = "npx serve dist -l ${PORT:-4173} -s"
+healthcheckPath = "/"
+healthcheckTimeout = 10
+restartPolicyType = "ON_FAILURE"
+restartPolicyMaxRetries = 3
+
+# `-s` (SPA mode): serve index.html para qualquer rota não encontrada.
+# Combinado com public/_redirects, garante React Router funcionando.

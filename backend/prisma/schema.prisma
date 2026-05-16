@@ -1,0 +1,1342 @@
+// =====================================================================
+// BETINNA.AI — Schema do banco
+// Modelado a partir do protótipo HTML, pronto para evoluir conforme features
+// Banco: PostgreSQL (Supabase)
+// =====================================================================
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
+  directUrl = env("DIRECT_URL")
+}
+
+// ─── ENUMS ────────────────────────────────────────────────────────────
+
+enum UserRole {
+  ADMIN
+  DIRECTOR
+  GERENTE
+  SAC
+  REP
+}
+
+enum UserStatus {
+  ATIVO
+  PENDENTE
+  INATIVO
+}
+
+enum ClienteStatus {
+  ATIVO
+  NOVO
+  RISCO
+  CRITICO
+  INATIVO
+}
+
+enum ClienteOmieStatus {
+  ATIVO
+  BLOQUEADO
+}
+
+enum PedidoStatus {
+  RASCUNHO
+  AGUARDANDO_APROVACAO
+  ENVIADO_OMIE
+  PAGO
+  EM_SEPARACAO
+  ENVIADO
+  ENTREGUE
+  CANCELADO
+}
+
+enum PedidoOrigem {
+  REP_APP
+  WHATSAPP
+  OMIE
+  MARKETPLACE_ML
+  MARKETPLACE_SHOPEE
+  MARKETPLACE_AMAZON
+  MARKETPLACE_TIKTOK
+  EMAIL
+  FORMULARIO
+}
+
+enum PagamentoForma {
+  BOLETO
+  PIX
+}
+
+enum PropostaStatus {
+  RASCUNHO
+  ENVIADA
+  NEGOCIACAO
+  AGUARDANDO_ASSINATURA
+  ACEITA
+  RECUSADA
+  EXPIRADA
+}
+
+enum LeadEtapa {
+  NOVO
+  QUALIFICANDO
+  PROPOSTA
+  NEGOCIACAO
+  GANHO
+  PERDIDO
+}
+
+enum CanalOrigem {
+  WHATSAPP
+  INSTAGRAM
+  FACEBOOK
+  FORMULARIO
+  EMAIL
+  TELEFONE
+  INDICACAO
+}
+
+enum AprovacaoStatus {
+  PENDENTE
+  APROVADA
+  REJEITADA
+}
+
+enum AmostraStatus {
+  ENVIADA
+  AGUARDANDO_FOLLOWUP
+  CONVERTIDA
+  NAO_CONVERTEU
+  VENCIDA
+}
+
+enum OcorrenciaTipo {
+  ENTREGA
+  QUALIDADE
+  PRAZO
+  PRODUTO
+  FINANCEIRO
+  OUTRO
+}
+
+enum OcorrenciaStatus {
+  ABERTA
+  EM_ANDAMENTO
+  RESOLVIDA
+  CANCELADA
+}
+
+enum AgendaTipo {
+  VISITA
+  LIGACAO
+  REUNIAO
+  ENTREGA
+  TAREFA
+}
+
+enum MarketplacePlatform {
+  ML
+  SHOPEE
+  AMAZON
+  TIKTOK
+}
+
+enum MarketplaceMsgStatus {
+  URGENTE
+  PENDENTE
+  RESPONDIDA
+}
+
+enum MessageChannel {
+  WHATSAPP
+  INSTAGRAM
+  FACEBOOK
+  EMAIL
+  // Marketplaces (perguntas/mensagens diretas em ML/Shopee/Amazon/TikTok)
+  MARKETPLACE_ML
+  MARKETPLACE_SHOPEE
+  MARKETPLACE_AMAZON
+  MARKETPLACE_TIKTOK
+}
+
+enum MessageDirection {
+  INBOUND // do cliente pra nós
+  OUTBOUND // de nós pro cliente
+}
+
+enum MessageType {
+  TEXT
+  IMAGE
+  AUDIO
+  VIDEO
+  DOCUMENT
+  STICKER
+  LOCATION
+  CONTACT
+  SYSTEM // notificações (atribuição, status, etc) — geradas pelo app
+}
+
+enum MessageStatus {
+  PENDING    // criada localmente, aguardando envio
+  SENT       // enviada ao provider
+  DELIVERED  // entregue ao destinatário
+  READ       // lida pelo destinatário
+  FAILED     // falha no envio
+  RECEIVED   // mensagem entrante (sempre esse status pra INBOUND)
+}
+
+enum ConversationStatus {
+  ABERTA
+  PENDENTE   // aguardando resposta nossa
+  RESOLVIDA
+  ARQUIVADA
+}
+
+/**
+ * Tipo de conversa no contexto SAC marketplace.
+ * - PRE_VENDA   : pergunta de comprador em anúncio (questions ML/IG/FB)
+ * - POS_VENDA   : chat normal após compra
+ * - RECLAMACAO  : chat anexado a uma reclamação/claim
+ * - MEDIACAO    : escalado pro marketplace mediar
+ * - DEVOLUCAO   : chat de return/refund
+ * - DISPUTA     : disputa formal
+ * - GERAL       : conversa não-classificada (default — WhatsApp, e-mail, etc.)
+ */
+enum ConversationCategoria {
+  GERAL
+  PRE_VENDA
+  POS_VENDA
+  RECLAMACAO
+  MEDIACAO
+  DEVOLUCAO
+  DISPUTA
+}
+
+enum MarketplaceIncidentTipo {
+  RECLAMACAO
+  DEVOLUCAO
+  MEDIACAO
+  DISPUTA
+  CANCELAMENTO
+}
+
+enum MarketplaceIncidentStatus {
+  ABERTO
+  AGUARDANDO_VENDEDOR  // marketplace está esperando nossa ação
+  AGUARDANDO_COMPRADOR
+  EM_MEDIACAO
+  RESOLVIDO
+  EXPIRADO
+  CANCELADO
+}
+
+// ─── MULTI-TENANT ─────────────────────────────────────────────────────
+
+model Empresa {
+  id          String   @id @default(cuid())
+  nome        String
+  cnpj        String?  @unique
+  ramo        String?
+  cidade      String?
+  uf          String?
+  subtitulo   String?
+  plano       String   @default("Pro")
+  ativo       Boolean  @default(true)
+  criadoEm    DateTime @default(now())
+  atualizadoEm DateTime @updatedAt
+
+  usuarios       UsuarioEmpresa[]
+  clientes       Cliente[]
+  produtos       Produto[]
+  pedidos        Pedido[]
+  propostas      Proposta[]
+  leads          Lead[]
+  ocorrencias    Ocorrencia[]
+  amostras       Amostra[]
+  campanhas      Campanha[]
+  fluxos         Fluxo[]
+  comissoes      Comissao[]
+  sequencias     EmpresaSequence[]
+  agendaItens    AgendaItem[]
+  tags           Tag[]
+  marketplaceMsgs MarketplaceMsg[]
+  marketplaceOrders MarketplaceOrder[]
+  conversations    Conversation[]
+  marketplaceIncidents MarketplaceIncident[]
+
+  @@index([ativo])
+}
+
+// ─── USUÁRIOS / AUTH ──────────────────────────────────────────────────
+
+model Usuario {
+  id           String     @id @default(cuid()) // mesmo id do Supabase Auth
+  email        String     @unique
+  nome         String
+  telefone     String?
+  avatar       String?
+  role         UserRole
+  status       UserStatus @default(PENDENTE)
+  ultimoAcesso DateTime?
+  criadoEm     DateTime   @default(now())
+  atualizadoEm DateTime   @updatedAt
+
+  // se for rep
+  regiao            String?
+  tetoDesconto      Float?  @default(5) // % máximo sem aprovação
+  comissaoPadrao    Float?  @default(5) // %
+  apiKeyOpenAI      String? // criptografada
+  googleCalendarToken String? // criptografada
+
+  // Hierarquia rep → gerente. Apenas REP pode ter gerenteId (apontando pra um GERENTE).
+  // REP sem gerente → carteira gerida pelo DIRECTOR/ADMIN (catch-all).
+  gerenteId String?
+  gerente   Usuario? @relation("RepGerente", fields: [gerenteId], references: [id], onDelete: SetNull)
+  reps      Usuario[] @relation("RepGerente")
+
+  empresas      UsuarioEmpresa[]
+  pedidosCriados Pedido[] @relation("PedidoRep")
+  pedidosAprovados Pedido[] @relation("PedidoAprovador")
+  clientesAtribuidos Cliente[]
+  agendaItens   AgendaItem[]
+  aprovacoes    AprovacaoDesconto[] @relation("AprovacaoRep")
+  aprovacoesGerente AprovacaoDesconto[] @relation("AprovacaoGerente")
+  notasPrivadas NotaPrivada[]
+  comissoes     Comissao[]
+  leads         Lead[]       @relation("LeadRep")
+  ocorrenciasAtendidas Ocorrencia[] @relation("OcorrenciaResp")
+  ocorrenciasCriadas   Ocorrencia[] @relation("OcorrenciaCriador")
+  comentariosOcorrencia OcorrenciaComentario[]
+  integracoesUsuario UsuarioIntegracao[]
+  conversationsAtribuidas Conversation[] @relation("ConversationAtribuido")
+  conversationsProprietario Conversation[] @relation("ConversationProprietario")
+  mensagensEnviadas Message[] @relation("MessageAutor")
+  campanhasCriadas Campanha[]
+
+  @@index([role])
+  @@index([status])
+  @@index([gerenteId])
+}
+
+model UsuarioEmpresa {
+  id        String  @id @default(cuid())
+  usuarioId String
+  empresaId String
+
+  usuario Usuario @relation(fields: [usuarioId], references: [id], onDelete: Cascade)
+  empresa Empresa @relation(fields: [empresaId], references: [id], onDelete: Cascade)
+
+  @@unique([usuarioId, empresaId])
+  @@index([empresaId])
+}
+
+model Permissao {
+  id      String   @id @default(cuid())
+  role    UserRole
+  modulo  String   // dashboard, kanban, clientes, pedidos, etc
+  podeVer Boolean  @default(true)
+  podeEditar Boolean @default(false)
+
+  @@unique([role, modulo])
+}
+
+// ─── CLIENTES (CRM) ───────────────────────────────────────────────────
+
+model Cliente {
+  id           String        @id @default(cuid())
+  empresaId    String
+  codigoOmie   String?       @unique
+  nome         String
+  cnpj         String?
+  email        String?
+  telefone     String?
+  segmento     String?
+  cidade       String?
+  uf           String?
+  regiao       String?
+  status       ClienteStatus @default(NOVO)
+  omieStatus   ClienteOmieStatus @default(ATIVO) // só ativo/bloqueado importa
+  score        Int           @default(50)
+  prazoPagamento Int         @default(30) // dias
+  limiteCredito Float?
+  ultimoPedidoEm DateTime?
+  representanteId String?
+  criadoEm     DateTime      @default(now())
+  atualizadoEm DateTime      @updatedAt
+
+  empresa       Empresa  @relation(fields: [empresaId], references: [id], onDelete: Cascade)
+  representante Usuario? @relation(fields: [representanteId], references: [id])
+
+  pedidos      Pedido[]
+  propostas    Proposta[]
+  ocorrencias  Ocorrencia[]
+  amostras     Amostra[]
+  precos       ClientePrecoEspecial[]
+  documentos   Documento[]
+  notasPrivadas NotaPrivada[]
+  tags         ClienteTag[]
+  agendaItens  AgendaItem[]
+  leads        Lead[]
+  conversations Conversation[]
+  marketplaceIncidents MarketplaceIncident[]
+  campanhasDestinatarios CampanhaDestinatario[]
+
+  @@index([empresaId])
+  @@index([representanteId])
+  @@index([status])
+  @@index([omieStatus])
+}
+
+model Tag {
+  id        String @id @default(cuid())
+  /// Tenant scope — auditoria 2026-05-15 P0. Antes globalmente única,
+  /// agora cada empresa tem seu próprio conjunto de tags.
+  empresaId String
+  nome      String
+  cor       String @default("#7c3aed")
+
+  empresa Empresa @relation(fields: [empresaId], references: [id], onDelete: Cascade)
+  clientes ClienteTag[]
+
+  @@unique([empresaId, nome])
+  @@index([empresaId])
+}
+
+model ClienteTag {
+  clienteId String
+  tagId     String
+  cliente   Cliente @relation(fields: [clienteId], references: [id], onDelete: Cascade)
+  tag       Tag     @relation(fields: [tagId], references: [id], onDelete: Cascade)
+  @@id([clienteId, tagId])
+}
+
+model NotaPrivada {
+  id        String   @id @default(cuid())
+  clienteId String
+  usuarioId String
+  texto     String
+  criadoEm  DateTime @default(now())
+
+  cliente Cliente @relation(fields: [clienteId], references: [id], onDelete: Cascade)
+  usuario Usuario @relation(fields: [usuarioId], references: [id], onDelete: Cascade)
+
+  @@index([clienteId])
+}
+
+model Documento {
+  id        String   @id @default(cuid())
+  clienteId String
+  nome      String
+  tipo      String // pdf, img, xls...
+  url       String // Supabase Storage
+  tamanho   Int? // bytes
+  criadoEm  DateTime @default(now())
+
+  cliente Cliente @relation(fields: [clienteId], references: [id], onDelete: Cascade)
+
+  @@index([clienteId])
+}
+
+// ─── PRODUTOS / CATÁLOGO ──────────────────────────────────────────────
+
+model Produto {
+  id            String   @id @default(cuid())
+  empresaId     String
+  codigoOmie    String?
+  sku           String?
+  nome          String
+  descricao     String?  @db.Text
+  marca         String?
+  linha         String? // Alimentos, Químicos, Bebidas, Embalagens
+  categoria     String?
+  unidade       String? // cx 12un, 1kg, etc
+  precoTabela   Float
+  precoFabrica  Float
+  imagem        String? // emoji ou URL
+  popularidade  Int      @default(0)
+  estoque       Int      @default(0)
+  ativo         Boolean  @default(true)
+  criadoEm      DateTime @default(now())
+  atualizadoEm  DateTime @updatedAt
+
+  empresa Empresa @relation(fields: [empresaId], references: [id], onDelete: Cascade)
+
+  precosEspeciais ClientePrecoEspecial[]
+  pedidoItens   PedidoItem[]
+  catalogoReps  RepCatalogoItem[]
+
+  // Unicidade por empresa — duas empresas podem ter mesmo SKU
+  @@unique([empresaId, sku])
+  @@unique([empresaId, codigoOmie])
+  @@index([empresaId, linha])
+  @@index([empresaId, ativo])
+}
+
+model ClientePrecoEspecial {
+  id            String  @id @default(cuid())
+  clienteId     String
+  produtoId     String
+  precoEspecial Float
+  descontoBase  Float   @default(0) // %
+  validoAte     DateTime?
+
+  cliente Cliente @relation(fields: [clienteId], references: [id], onDelete: Cascade)
+  produto Produto @relation(fields: [produtoId], references: [id], onDelete: Cascade)
+
+  @@unique([clienteId, produtoId])
+  @@index([clienteId])
+}
+
+model RepCatalogoItem {
+  id        String  @id @default(cuid())
+  usuarioId String  // rep
+  produtoId String
+  markup    Float   @default(0) // % aplicado pelo rep
+  criadoEm  DateTime @default(now())
+
+  produto Produto @relation(fields: [produtoId], references: [id], onDelete: Cascade)
+
+  @@unique([usuarioId, produtoId])
+  @@index([usuarioId])
+}
+
+// ─── PEDIDOS ──────────────────────────────────────────────────────────
+
+model Pedido {
+  id              String       @id @default(cuid())
+  numero          String       // PED-XXXX — unicidade por empresa (@@unique abaixo)
+  numeroOmie      String?      @unique
+  empresaId       String
+  clienteId       String
+  representanteId String?
+  aprovadorId     String?
+
+  origem          PedidoOrigem @default(REP_APP)
+  status          PedidoStatus @default(RASCUNHO)
+  formaPagamento  PagamentoForma @default(BOLETO)
+  condicaoPagamento String?    // "avista", "30dias", "30_60", "30_60_90"
+  prazoEntrega    DateTime?
+
+  subtotal        Float        @default(0)
+  descontoGeral   Float        @default(0) // %
+  total           Float        @default(0)
+  comissao        Float        @default(0)
+
+  observacoes     String?      @db.Text
+  motivoDesconto  String?      // pra aprovação
+
+  criadoEm        DateTime     @default(now())
+  atualizadoEm    DateTime     @updatedAt
+  enviadoOmieEm   DateTime?
+  pagoEm          DateTime?
+
+  empresa         Empresa  @relation(fields: [empresaId], references: [id], onDelete: Cascade)
+  cliente         Cliente  @relation(fields: [clienteId], references: [id])
+  representante   Usuario? @relation("PedidoRep", fields: [representanteId], references: [id])
+  aprovador       Usuario? @relation("PedidoAprovador", fields: [aprovadorId], references: [id])
+
+  itens           PedidoItem[]
+  aprovacaoDesconto AprovacaoDesconto?
+
+  @@unique([empresaId, numero])
+  @@index([empresaId])
+  @@index([clienteId])
+  @@index([representanteId])
+  @@index([status])
+}
+
+model PedidoItem {
+  id           String @id @default(cuid())
+  pedidoId     String
+  produtoId    String
+  quantidade   Int
+  precoUnitario Float
+  desconto     Float  @default(0) // %
+  total        Float
+  negociado    Boolean @default(false)
+
+  pedido  Pedido  @relation(fields: [pedidoId], references: [id], onDelete: Cascade)
+  produto Produto @relation(fields: [produtoId], references: [id])
+
+  @@index([pedidoId])
+}
+
+model AprovacaoDesconto {
+  id            String          @id @default(cuid())
+  pedidoId      String          @unique
+  representanteId String
+  gerenteId     String?
+  descontoSolicitado Float
+  motivo        String          @db.Text
+  status        AprovacaoStatus @default(PENDENTE)
+  comentarioAprovador String?
+  criadoEm      DateTime        @default(now())
+  resolvidoEm   DateTime?
+
+  pedido         Pedido  @relation(fields: [pedidoId], references: [id], onDelete: Cascade)
+  representante  Usuario @relation("AprovacaoRep", fields: [representanteId], references: [id])
+  gerente        Usuario? @relation("AprovacaoGerente", fields: [gerenteId], references: [id])
+
+  @@index([status])
+}
+
+// ─── PROPOSTAS ────────────────────────────────────────────────────────
+
+model Proposta {
+  id              String         @id @default(cuid())
+  numero          String         // PROP-XXXX — unicidade por empresa (@@unique abaixo)
+  empresaId       String
+  clienteId       String
+  representanteId String?
+
+  status          PropostaStatus @default(RASCUNHO)
+  probabilidade   Int            @default(50)
+  validoAte       DateTime?
+
+  formaPagamento  PagamentoForma @default(BOLETO)
+  condicaoPagamento String?
+  prazoEntrega    DateTime?
+
+  subtotal        Float          @default(0)
+  descontoGeral   Float          @default(0)
+  valor           Float          @default(0)
+  comissaoEstimada Float         @default(0)
+
+  observacoes     String?        @db.Text
+  pdfUrl          String?
+
+  /** Quando a proposta foi convertida em pedido (se foi) */
+  pedidoId        String?        @unique
+  convertidaEm    DateTime?
+
+  criadoEm        DateTime       @default(now())
+  atualizadoEm    DateTime       @updatedAt
+
+  empresa Empresa  @relation(fields: [empresaId], references: [id], onDelete: Cascade)
+  cliente Cliente  @relation(fields: [clienteId], references: [id])
+  itens   PropostaItem[]
+
+  @@unique([empresaId, numero])
+  @@index([empresaId])
+  @@index([clienteId])
+  @@index([representanteId])
+  @@index([status])
+}
+
+model PropostaItem {
+  id           String  @id @default(cuid())
+  propostaId   String
+  produtoId    String
+  produtoNome  String  // snapshot pra não quebrar se produto for desativado
+  quantidade   Int
+  precoUnitario Float
+  desconto     Float   @default(0)
+  total        Float
+  negociado    Boolean @default(false)
+
+  proposta Proposta @relation(fields: [propostaId], references: [id], onDelete: Cascade)
+
+  @@index([propostaId])
+}
+
+// ─── KANBAN / LEADS ───────────────────────────────────────────────────
+
+model Lead {
+  id              String       @id @default(cuid())
+  empresaId       String
+  representanteId String?
+  clienteId       String?      // populado quando ganho vira cliente
+
+  nome            String
+  cidade          String?
+  uf              String?
+  segmento        String?
+  contatoNome     String?
+  contatoEmail    String?
+  contatoTelefone String?
+  valorEstimado   Float        @default(0)
+  canalOrigem     CanalOrigem  @default(WHATSAPP)
+
+  etapa           LeadEtapa    @default(NOVO)
+  score           Int          @default(50)
+  proximaAcao     String?
+  observacoes     String?      @db.Text
+
+  motivoGanho     String?
+  motivoPerda     String?
+  pedidoId        String?      // se ganho gerou pedido
+  /** Quando a etapa atual começou (usado pra calcular dias na etapa) */
+  etapaDesde      DateTime     @default(now())
+  fechadoEm       DateTime?    // preenchido em GANHO ou PERDIDO
+
+  criadoEm        DateTime     @default(now())
+  atualizadoEm    DateTime     @updatedAt
+
+  empresa       Empresa  @relation(fields: [empresaId], references: [id], onDelete: Cascade)
+  representante Usuario? @relation("LeadRep", fields: [representanteId], references: [id])
+  cliente       Cliente? @relation(fields: [clienteId], references: [id])
+
+  @@index([empresaId, etapa])
+  @@index([empresaId, representanteId])
+  @@index([clienteId])
+}
+
+// ─── OCORRÊNCIAS (SAC) ────────────────────────────────────────────────
+
+model Ocorrencia {
+  id              String           @id @default(cuid())
+  numero          String           // OCO-XXXX por empresa
+  empresaId       String
+  clienteId       String
+  pedidoId        String?
+  responsavelId   String?          // quem está cuidando
+  criadoPorId     String?          // quem abriu
+
+  tipo            OcorrenciaTipo
+  severidade      String           @default("media") // baixa | media | alta | critica
+  status          OcorrenciaStatus @default(ABERTA)
+
+  titulo          String
+  descricao       String           @db.Text
+  slaHoras        Int              @default(24)
+  slaVenceEm      DateTime         // calculado a partir de criadoEm + slaHoras
+  resolvidoEm     DateTime?
+  resolucao       String?          @db.Text
+
+  criadoEm        DateTime         @default(now())
+  atualizadoEm    DateTime         @updatedAt
+
+  empresa     Empresa  @relation(fields: [empresaId], references: [id], onDelete: Cascade)
+  cliente     Cliente  @relation(fields: [clienteId], references: [id])
+  responsavel Usuario? @relation("OcorrenciaResp", fields: [responsavelId], references: [id])
+  criadoPor   Usuario? @relation("OcorrenciaCriador", fields: [criadoPorId], references: [id])
+  comentarios OcorrenciaComentario[]
+
+  @@unique([empresaId, numero])
+  @@index([empresaId, status])
+  @@index([empresaId, responsavelId])
+  @@index([clienteId])
+}
+
+model OcorrenciaComentario {
+  id            String   @id @default(cuid())
+  ocorrenciaId  String
+  autorId       String?
+  autorNome     String
+  texto         String   @db.Text
+  /** True quando é um evento de sistema (mudança de status, atribuição). */
+  isSistema     Boolean  @default(false)
+  criadoEm      DateTime @default(now())
+
+  ocorrencia Ocorrencia @relation(fields: [ocorrenciaId], references: [id], onDelete: Cascade)
+  autor      Usuario?   @relation(fields: [autorId], references: [id])
+
+  @@index([ocorrenciaId])
+}
+
+// ─── AMOSTRAS ─────────────────────────────────────────────────────────
+
+model Amostra {
+  id            String        @id @default(cuid())
+  empresaId     String
+  clienteId     String
+  produtoNome   String
+  valor         Float
+  notaFiscal    String?
+  enviadoEm     DateTime
+  followUpEm    DateTime?
+  status        AmostraStatus @default(ENVIADA)
+  representanteNome String?
+
+  empresa Empresa @relation(fields: [empresaId], references: [id], onDelete: Cascade)
+  cliente Cliente @relation(fields: [clienteId], references: [id])
+
+  @@index([empresaId])
+  @@index([status])
+}
+
+// ─── COMISSÕES ────────────────────────────────────────────────────────
+
+enum ComissaoTipo {
+  REP
+  GERENTE
+}
+
+model Comissao {
+  id              String   @id @default(cuid())
+  /// Tenant da comissão. CRÍTICO pra isolamento multi-tenant em queries.
+  /// Em caso de rep multi-empresa, distingue o fechamento por tenant.
+  empresaId       String
+  representanteId String
+  /// REP: comissão direta sobre os próprios pedidos.
+  /// GERENTE: comissão calculada como soma das vendas dos REPs sob sua gerência × `Usuario.comissaoPadrao`.
+  tipo            ComissaoTipo @default(REP)
+  /// % usada no cálculo. Snapshot do `Usuario.comissaoPadrao` no momento do fechamento
+  /// (preserva o valor mesmo se o diretor alterar a % depois). null pra registros
+  /// antigos onde a comissão veio dos pedidos.
+  percentual      Float?
+  /// Timestamp do snapshot — quando a comissão foi calculada/congelada.
+  calculadoEm     DateTime @default(now())
+  mes             Int
+  ano             Int
+  totalVendas     Float
+  totalComissao   Float
+  qtdPedidos      Int
+  pago            Boolean  @default(false)
+  pagoEm          DateTime?
+  reciboUrl       String?
+  criadoEm        DateTime @default(now())
+
+  empresa       Empresa @relation(fields: [empresaId], references: [id], onDelete: Cascade)
+  representante Usuario @relation(fields: [representanteId], references: [id])
+
+  @@unique([empresaId, representanteId, ano, mes])
+  @@index([empresaId])
+  @@index([tipo])
+}
+
+// ─── AGENDA ───────────────────────────────────────────────────────────
+
+model AgendaItem {
+  id            String     @id @default(cuid())
+  /// Tenant scope explícito — auditoria 2026-05-15 P0 multi-tenant.
+  /// Antes derivado via `usuario.empresas[0]`; agora explícito pra filtrar em queries.
+  empresaId     String
+  usuarioId     String
+  clienteId     String?
+  titulo        String
+  data          DateTime
+  duracao       Int        @default(60) // minutos
+  tipo          AgendaTipo @default(VISITA)
+  observacao    String?    @db.Text
+  googleEventId String?
+  criadoEm      DateTime   @default(now())
+
+  empresa Empresa  @relation(fields: [empresaId], references: [id], onDelete: Cascade)
+  usuario Usuario  @relation(fields: [usuarioId], references: [id], onDelete: Cascade)
+  cliente Cliente? @relation(fields: [clienteId], references: [id])
+
+  @@index([empresaId])
+  @@index([usuarioId])
+  @@index([empresaId, data])
+  @@index([data])
+}
+
+// ─── FLUXOS / AUTOMAÇÃO ───────────────────────────────────────────────
+
+enum FluxoStatus {
+  RASCUNHO
+  ATIVO
+  PAUSADO
+  ARQUIVADO
+}
+
+enum FluxoNoTipo {
+  TRIGGER   // ponto de entrada — 1 por fluxo
+  CONDICAO  // bifurcação baseada em dados do contexto (dois caminhos: true/false)
+  ACAO      // executa uma ação concreta (enviar msg, criar tarefa, etc.)
+  DELAY     // espera N minutos/horas antes de prosseguir
+}
+
+enum FluxoTriggerTipo {
+  LEAD_CRIADO
+  LEAD_ETAPA_MUDOU
+  PEDIDO_APROVADO
+  PEDIDO_ENTREGUE
+  OCORRENCIA_ABERTA
+  CLIENTE_INATIVO_30D   // cron-driven — clientes sem pedido há ≥ N dias
+  AMOSTRA_FOLLOWUP      // cron-driven — amostras no prazo de follow-up
+  CRON_AGENDADO         // expressão cron customizável pelo admin
+}
+
+enum FluxoAcaoTipo {
+  ENVIAR_WHATSAPP   // envia mensagem pelo WhatsApp da empresa
+  ENVIAR_EMAIL      // envia e-mail sistêmico via SendGrid
+  CRIAR_TAREFA      // cria AgendaItem (TAREFA) pro representante do cliente
+  MUDAR_TAG         // adiciona ou remove tag em cliente
+  MOVER_LEAD_ETAPA  // avança lead para a próxima etapa
+  ATRIBUIR_REP      // atribui representante ao cliente/lead
+  WEBHOOK_EXTERNO   // POST JSON pra URL externa configurada
+}
+
+enum FluxoExecucaoStatus {
+  PENDENTE
+  EM_EXECUCAO
+  CONCLUIDO
+  FALHOU
+  CANCELADO
+}
+
+/**
+ * Fluxo de automação visual.
+ * O grafo é composto por FluxoNos (nós) conectados por FluxoEdges (arestas).
+ */
+model Fluxo {
+  id           String           @id @default(cuid())
+  empresaId    String
+  nome         String
+  descricao    String?
+  status       FluxoStatus      @default(RASCUNHO)
+  versao       Int              @default(1)
+  /// Tipo do trigger raiz (define o evento que dispara o fluxo).
+  triggerTipo  FluxoTriggerTipo?
+  /// Config extra do trigger: p.ex. { cronExpr: "0 9 * * 1", diasInativo: 30 }
+  triggerConfig Json?
+  criadoEm     DateTime         @default(now())
+  atualizadoEm DateTime         @updatedAt
+
+  empresa   Empresa         @relation(fields: [empresaId], references: [id], onDelete: Cascade)
+  nos       FluxoNo[]
+  arestas   FluxoEdge[]
+  execucoes FluxoExecucao[]
+
+  @@index([empresaId, status])
+  @@index([empresaId, triggerTipo])
+}
+
+/**
+ * Nó do fluxo (trigger / condição / ação / delay).
+ * `config` é um JSON livre cujo schema depende do tipo:
+ *  - TRIGGER:   { } (vazio — config fica em Fluxo.triggerConfig)
+ *  - CONDICAO:  { campo: "lead.etapa", operador: "eq"|"neq"|"gt"|"lt"|"contains", valor: "NEGOCIACAO" }
+ *  - DELAY:     { valor: 2, unidade: "minutos"|"horas"|"dias" }
+ *  - ACAO (ENVIAR_WHATSAPP): { mensagem: "Olá {{cliente.nome}}..." }
+ *  - ACAO (ENVIAR_EMAIL):    { assunto: "...", corpo: "..." }
+ *  - ACAO (CRIAR_TAREFA):    { titulo: "...", tipo: "TAREFA", diasApartirDeHoje: 1 }
+ *  - ACAO (MUDAR_TAG):       { tagNome: "...", operacao: "adicionar"|"remover" }
+ *  - ACAO (MOVER_LEAD_ETAPA): { etapa: "NEGOCIACAO" }
+ *  - ACAO (ATRIBUIR_REP):    { representanteId: "..." }
+ *  - ACAO (WEBHOOK_EXTERNO): { url: "https://...", headers: {}, payload: {} }
+ *  - ACAO (tipo): também inclui acaoTipo: FluxoAcaoTipo
+ */
+model FluxoNo {
+  id       String      @id @default(cuid())
+  fluxoId  String
+  tipo     FluxoNoTipo
+  /// Tipo de ação (só para tipo=ACAO).
+  acaoTipo FluxoAcaoTipo?
+  titulo   String
+  config   Json        @default("{}")
+  /// Posição no canvas visual (usada pelo frontend).
+  posX     Float       @default(0)
+  posY     Float       @default(0)
+
+  fluxo    Fluxo       @relation(fields: [fluxoId], references: [id], onDelete: Cascade)
+  saidas   FluxoEdge[] @relation("EdgeSource")
+  entradas FluxoEdge[] @relation("EdgeTarget")
+
+  @@index([fluxoId])
+}
+
+/**
+ * Aresta (conexão) entre dois nós.
+ * `label`: para nós CONDICAO: "true" | "false"; para outros: null.
+ */
+model FluxoEdge {
+  id         String  @id @default(cuid())
+  fluxoId    String
+  sourceNoId String
+  targetNoId String
+  label      String? // "true" | "false" para nós CONDICAO
+
+  fluxo    Fluxo   @relation(fields: [fluxoId], references: [id], onDelete: Cascade)
+  sourceNo FluxoNo @relation("EdgeSource", fields: [sourceNoId], references: [id], onDelete: Cascade)
+  targetNo FluxoNo @relation("EdgeTarget", fields: [targetNoId], references: [id], onDelete: Cascade)
+
+  @@unique([fluxoId, sourceNoId, targetNoId, label])
+  @@index([fluxoId])
+  @@index([sourceNoId])
+}
+
+/**
+ * Instância de execução de um fluxo (criada ao disparar o trigger).
+ * `contexto` contém os dados do evento: clienteId, pedidoId, leadId, etc.
+ * Cada passo do fluxo é rastreado em FluxoExecucaoLog.
+ */
+model FluxoExecucao {
+  id         String              @id @default(cuid())
+  fluxoId    String
+  empresaId  String
+  status     FluxoExecucaoStatus @default(PENDENTE)
+  /// Dados do evento que disparou: { clienteId, pedidoId, leadId, ocorrenciaId, ... }
+  contexto   Json
+  /// ID do job BullMQ ativo (para monitoramento).
+  jobId      String?
+  iniciouEm  DateTime?
+  terminouEm DateTime?
+  erroMsg    String?             @db.Text
+  tentativas Int                 @default(0)
+  criadoEm   DateTime            @default(now())
+
+  fluxo  Fluxo              @relation(fields: [fluxoId], references: [id])
+  logs   FluxoExecucaoLog[]
+
+  @@index([fluxoId, status])
+  @@index([empresaId])
+  @@index([criadoEm])
+}
+
+/**
+ * Log de cada passo dentro de uma execução.
+ * Permite rastrear exatamente onde o fluxo falhou ou o que cada nó fez.
+ */
+model FluxoExecucaoLog {
+  id          String              @id @default(cuid())
+  execucaoId  String
+  /// Qual nó foi executado.
+  noId        String?
+  noTitulo    String?
+  status      FluxoExecucaoStatus
+  /// Input passado ao nó (contexto + config interpolada).
+  input       Json?
+  /// Output do nó (resultado da ação).
+  output      Json?
+  erroMsg     String?             @db.Text
+  iniciadoEm  DateTime            @default(now())
+  terminadoEm DateTime?
+
+  execucao FluxoExecucao @relation(fields: [execucaoId], references: [id], onDelete: Cascade)
+
+  @@index([execucaoId])
+}
+
+// ─── CAMPANHAS ────────────────────────────────────────────────────────
+
+enum CampanhaStatus {
+  RASCUNHO
+  AGENDADA
+  ENVIANDO
+  ENVIADA
+  PAUSADA
+  CANCELADA
+}
+
+enum CampanhaCanal {
+  WHATSAPP
+  EMAIL
+  WHATSAPP_EMAIL
+}
+
+enum DestinatarioStatus {
+  PENDENTE
+  ENVIADO
+  LIDO
+  ERRO
+}
+
+model Campanha {
+  id              String         @id @default(cuid())
+  empresaId       String
+  criadoPorId     String
+  nome            String
+  canal           CampanhaCanal  @default(WHATSAPP)
+  status          CampanhaStatus @default(RASCUNHO)
+  // Segmentação — todos vazios = toda a base da empresa
+  segTagIds       String[]       @default([])
+  segRepIds       String[]       @default([])
+  segClienteIds   String[]       @default([])
+  // Contexto IA
+  objetivo        String?        @db.Text  // objetivo da campanha (usado pela IA para gerar/analisar)
+  usarIaPersonalizacao Boolean   @default(false) // se true, processor personaliza mensagem por cliente
+  // Conteúdo
+  assunto         String?        // subject do email
+  mensagemWa      String?        @db.Text
+  mensagemEmail   String?        @db.Text
+  // Execução
+  agendadoPara    DateTime?
+  iniciadoEm      DateTime?
+  finalizadoEm    DateTime?
+  criadoEm        DateTime       @default(now())
+  atualizadoEm    DateTime       @updatedAt
+
+  empresa      Empresa               @relation(fields: [empresaId], references: [id], onDelete: Cascade)
+  criadoPor    Usuario               @relation(fields: [criadoPorId], references: [id])
+  destinatarios CampanhaDestinatario[]
+
+  @@index([empresaId])
+  @@index([status])
+  @@index([agendadoPara])
+}
+
+model CampanhaDestinatario {
+  id          String             @id @default(cuid())
+  campanhaId  String
+  clienteId   String
+  email       String?
+  telefone    String?
+  status      DestinatarioStatus @default(PENDENTE)
+  erro        String?            @db.Text
+  enviadoEm   DateTime?
+  lido        Boolean            @default(false)
+  lidoEm      DateTime?
+  criadoEm    DateTime           @default(now())
+
+  campanha Campanha @relation(fields: [campanhaId], references: [id], onDelete: Cascade)
+  cliente  Cliente  @relation(fields: [clienteId], references: [id], onDelete: Cascade)
+
+  @@index([campanhaId])
+  @@index([clienteId])
+  @@index([campanhaId, status])
+}
+
+// ─── MARKETPLACES ─────────────────────────────────────────────────────
+
+// ─── INBOX / MENSAGERIA UNIFICADA ─────────────────────────────────────
+// Conversation = thread de mensagens com um peer (telefone/conta/email).
+// Modelagem canal-agnóstica: WhatsApp hoje, IG/FB/email/marketplaces depois.
+//
+// `peerId` é o identificador externo do interlocutor no canal:
+//   - WhatsApp: JID do contato (ex: "5511999998888@s.whatsapp.net")
+//   - IG/FB: ID da página/conta
+//   - Email: endereço
+//
+// `peerNome` é o nome exibido (pushName no WhatsApp, etc), pode mudar com o tempo.
+// `clienteId` é resolvido por match — telefone normalizado bate com Cliente.telefone.
+model Conversation {
+  id           String              @id @default(cuid())
+  empresaId    String
+  canal        MessageChannel
+  peerId       String              // identificador externo do interlocutor no canal
+  peerNome     String?             // nome exibido (pushName do WhatsApp, etc.)
+  /// Quando a conversa vem de uma sessão Baileys pessoal (WhatsApp do rep),
+  /// aponta pro `Usuario` dono dessa sessão. NULL = conversa de canal escopo
+  /// empresa (WhatsApp central, IG, FB, marketplaces, etc.).
+  /// Permite múltiplas conversas com o mesmo `peerId` por canais pessoais
+  /// distintos (ex: o mesmo cliente fala com o rep João e com o rep Maria).
+  proprietarioId String?
+  clienteId    String?             // resolvido por match telefone/e-mail; pode ser null pra contato anônimo
+  atribuidoId  String?             // usuário responsável pelo atendimento
+  status       ConversationStatus    @default(ABERTA)
+  categoria    ConversationCategoria @default(GERAL)
+  naoLidas     Int                 @default(0)
+  ultimaMsgEm  DateTime?
+  ultimaMsgPreview String?         @db.VarChar(140)
+  /// Metadados canal-específicos (ex: ML packId, itemId, claimId; Shopee chatRoomId).
+  metadata     Json?
+  /// Quando a conversa está atrelada a um incidente (reclamação/devolução/disputa).
+  incidentId   String?
+  criadoEm     DateTime            @default(now())
+  atualizadoEm DateTime            @updatedAt
+
+  empresa     Empresa  @relation(fields: [empresaId], references: [id], onDelete: Cascade)
+  cliente     Cliente? @relation(fields: [clienteId], references: [id])
+  atribuido   Usuario? @relation("ConversationAtribuido", fields: [atribuidoId], references: [id])
+  proprietario Usuario? @relation("ConversationProprietario", fields: [proprietarioId], references: [id])
+  incident    MarketplaceIncident? @relation(fields: [incidentId], references: [id])
+  mensagens   Message[]
+
+  // Unique composto inclui proprietarioId pra permitir múltiplas conversas
+  // com o mesmo peer em sessões diferentes (WhatsApp empresa vs do rep João vs
+  // do rep Maria). Postgres trata NULLs como distintos na unique key — mas o
+  // upsert no InboxService usa findFirst manual pra garantir 1-by-1.
+  @@index([empresaId, canal, peerId, proprietarioId])
+  @@index([empresaId])
+  @@index([clienteId])
+  @@index([atribuidoId])
+  @@index([proprietarioId])
+  @@index([status])
+  @@index([categoria])
+  @@index([incidentId])
+  @@index([ultimaMsgEm])
+}
+
+model Message {
+  id              String           @id @default(cuid())
+  conversationId  String
+  direction       MessageDirection
+  tipo            MessageType      @default(TEXT)
+  conteudo        String           @db.Text
+  /// ID externo da mensagem no provider (ex: WhatsApp messageKey.id). Usado pra idempotência.
+  externalId      String?
+  status          MessageStatus    @default(PENDING)
+  /// URL/path de mídia (se aplicável). Para WhatsApp armazenamos via Supabase Storage no futuro.
+  mediaUrl        String?
+  mediaMime       String?
+  /// Quando OUTBOUND e gerado por um usuário (não bot/sistema)
+  autorUsuarioId  String?
+  /// Metadados específicos do canal (livre)
+  meta            Json?
+  criadoEm        DateTime         @default(now())
+  atualizadoEm    DateTime         @updatedAt
+
+  conversation Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  autor        Usuario?     @relation("MessageAutor", fields: [autorUsuarioId], references: [id])
+
+  @@unique([conversationId, externalId])
+  @@index([conversationId])
+  @@index([direction])
+  @@index([status])
+  @@index([criadoEm])
+}
+
+// ─── INCIDENTES MARKETPLACE (reclamação/devolução/mediação/disputa) ──
+// Modelo unificado pra Mercado Livre claims, Shopee returns/disputes, Amazon
+// A-to-Z guarantees, TikTok disputes. Cada marketplace mapeia seu status
+// específico pro nosso enum genérico.
+model MarketplaceIncident {
+  id              String                     @id @default(cuid())
+  empresaId       String
+  canal           MessageChannel
+  /// ID externo do incidente no marketplace (claim id, dispute id, etc.).
+  externalId      String
+  tipo            MarketplaceIncidentTipo
+  status          MarketplaceIncidentStatus  @default(ABERTO)
+  /// Motivo informado pelo comprador (texto livre + código quando aplicável).
+  motivo          String?                    @db.Text
+  motivoCodigo    String?
+  /// ID do pedido externo (marketplace) relacionado.
+  pedidoExternoId String?
+  clienteId       String?
+  /// Valor envolvido (BRL). Quando aplicável (devolução, reembolso).
+  valor           Float?
+  valorReembolso  Float?
+  /// SLA do marketplace pra próxima ação do vendedor. ML pune resposta lenta.
+  prazoResposta   DateTime?
+  /// Resumo curto pra UI.
+  resumo          String?                    @db.VarChar(280)
+  /// Dados crus específicos do marketplace (livre-formato pra auditoria/debug).
+  metadata        Json?
+  abertoEm        DateTime                   @default(now())
+  atualizadoEm    DateTime                   @updatedAt
+  resolvidoEm     DateTime?
+
+  empresa  Empresa        @relation(fields: [empresaId], references: [id], onDelete: Cascade)
+  cliente  Cliente?       @relation(fields: [clienteId], references: [id])
+  /// Quando o incidente tem chat anexado (ex: ML claim messages).
+  conversations Conversation[]
+
+  @@unique([canal, externalId])
+  @@index([empresaId])
+  @@index([canal, status])
+  @@index([clienteId])
+  @@index([prazoResposta])
+  @@index([abertoEm])
+}
+
+// ─── MARKETPLACE LEGACY (será migrado pra Inbox/Conversation depois) ──
+
+model MarketplaceMsg {
+  id              String               @id @default(cuid())
+  empresaId       String
+  plataforma      MarketplacePlatform
+  externoId       String? // id da pergunta na plataforma
+  comprador       String
+  produtoNome     String
+  produtoDesc     String? @db.Text
+  pergunta        String  @db.Text
+  resposta        String? @db.Text
+  status          MarketplaceMsgStatus @default(PENDENTE)
+  respondidoBot   Boolean @default(false)
+  respondidoEm    DateTime?
+  criadoEm        DateTime @default(now())
+
+  empresa Empresa @relation(fields: [empresaId], references: [id], onDelete: Cascade)
+
+  @@index([empresaId])
+  @@index([plataforma])
+  @@index([status])
+}
+
+model MarketplaceOrder {
+  id            String              @id @default(cuid())
+  empresaId     String
+  plataforma    MarketplacePlatform
+  numeroExterno String
+  comprador     String
+  produtoNome   String
+  quantidade    Int
+  valor         Float
+  status        String              @default("pago") // pago, enviado, entregue, cancelado
+  rastreio      String?
+  slaEnvio      Int                 @default(48) // horas
+  pedidoEm      DateTime            @default(now())
+  enviadoEm     DateTime?
+  entregueEm    DateTime?
+
+  empresa Empresa @relation(fields: [empresaId], references: [id], onDelete: Cascade)
+
+  @@unique([plataforma, numeroExterno])
+  @@index([empresaId])
+  @@index([status])
+}
+
+// ─── INTEGRAÇÕES (tokens criptografados) ──────────────────────────────
+
+model IntegracaoConexao {
+  id          String   @id @default(cuid())
+  empresaId   String
+  servico     String   // omie, ml, shopee, amazon, tiktok, whatsapp, instagram, fb
+  ativo       Boolean  @default(false)
+  credenciais Json     // criptografada na app
+  /// ID externo da conta vinculada (não-cifrado, indexável). Ex: pageId pro Facebook,
+  /// IGSID pro Instagram. Usado pra routing reverso do webhook → empresa.
+  externalAccountId String?
+  ultimoSync  DateTime?
+  errosRecentes Int    @default(0)
+  criadoEm    DateTime @default(now())
+  atualizadoEm DateTime @updatedAt
+
+  @@unique([empresaId, servico])
+  @@index([empresaId])
+  @@index([servico, externalAccountId])
+}
+
+// Integrações com escopo USUÁRIO (não empresa). Cada rep tem sua própria conexão.
+// Usado por: sendgrid (e-mail pessoal do rep), google_calendar (agenda do rep),
+// openai/anthropic (chave pessoal pra MullerBot, se opt-in).
+model UsuarioIntegracao {
+  id          String   @id @default(cuid())
+  usuarioId   String
+  servico     String   // sendgrid, google_calendar, openai, anthropic
+  ativo       Boolean  @default(false)
+  credenciais Json     // criptografada na app
+  ultimoSync  DateTime?
+  errosRecentes Int    @default(0)
+  criadoEm    DateTime @default(now())
+  atualizadoEm DateTime @updatedAt
+
+  usuario Usuario @relation(fields: [usuarioId], references: [id], onDelete: Cascade)
+
+  @@unique([usuarioId, servico])
+  @@index([usuarioId])
+}
+
+// ─── AUDIT LOG ────────────────────────────────────────────────────────
+
+model AuditLog {
+  id        String   @id @default(cuid())
+  usuarioId String?
+  empresaId String?
+  acao      String   // create, update, delete, login, etc
+  recurso   String   // cliente, pedido, etc
+  recursoId String?
+  detalhes  Json?
+  ip        String?
+  criadoEm  DateTime @default(now())
+
+  @@index([usuarioId])
+  @@index([empresaId])
+  @@index([criadoEm])
+}
+
+// ─── SEQUÊNCIAS ATÔMICAS POR EMPRESA ──────────────────────────────────
+// Substitui o padrão race-condition `count() + 1` no `gerarNumero*`.
+// Cada (empresaId, tipo) tem um contador atômico — incrementado via Redis
+// INCR e persistido aqui para sobreviver a reinício do Redis.
+// Tipos atuais: 'pedido', 'proposta', 'ocorrencia'.
+model EmpresaSequence {
+  id        String   @id @default(cuid())
+  empresaId String
+  tipo      String   // 'pedido' | 'proposta' | 'ocorrencia' | 'nf' | ...
+  ultimo    Int      @default(0)
+  atualizadoEm DateTime @updatedAt
+
+  empresa Empresa @relation(fields: [empresaId], references: [id], onDelete: Cascade)
+
+  @@unique([empresaId, tipo])
+  @@index([empresaId])
+}

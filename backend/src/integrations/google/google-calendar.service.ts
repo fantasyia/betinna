@@ -1,0 +1,163 @@
+import { Injectable, Logger } from '@nestjs/common';
+import { IntegrationException } from '@shared/errors/app-exception';
+import { ErrorCode } from '@shared/errors/error-codes';
+import { HttpClientService } from '@shared/http/http-client.service';
+import { HttpClientError } from '@shared/http/http-client.types';
+import { GoogleOAuthService } from './google-oauth.service';
+import type {
+  GoogleEvent,
+  GoogleEventCreateParams,
+  GoogleEventsListResponse,
+} from './google.types';
+
+const CALENDAR_BASE = 'https://www.googleapis.com/calendar/v3/calendars/primary';
+const DEFAULT_TZ = 'America/Sao_Paulo';
+
+/**
+ * Wrapper do Google Calendar API v3 (calendar `primary` do usuário).
+ *
+ * Todas operações usam o access_token resolvido via GoogleOAuthService
+ * (que faz refresh automático quando necessário).
+ *
+ * Cobre o caso de uso "agenda do rep": criar/listar/atualizar/cancelar visitas.
+ * Não toca em outros calendários do usuário.
+ */
+@Injectable()
+export class GoogleCalendarService {
+  private readonly logger = new Logger(GoogleCalendarService.name);
+
+  constructor(
+    private readonly http: HttpClientService,
+    private readonly oauth: GoogleOAuthService,
+  ) {}
+
+  async criarEvento(usuarioId: string, params: GoogleEventCreateParams): Promise<GoogleEvent> {
+    if (params.fim <= params.inicio) {
+      throw new IntegrationException(
+        'fim deve ser depois de inicio',
+        ErrorCode.INTEGRATION_ERROR,
+      );
+    }
+    const token = await this.oauth.getAccessToken(usuarioId);
+    const tz = params.timezone ?? DEFAULT_TZ;
+    const body: GoogleEvent = {
+      summary: params.titulo,
+      description: params.descricao,
+      location: params.local,
+      start: { dateTime: params.inicio.toISOString(), timeZone: tz },
+      end: { dateTime: params.fim.toISOString(), timeZone: tz },
+      attendees: params.participantes?.map((p) => ({ email: p.email, displayName: p.nome })),
+      reminders: { useDefault: true },
+    };
+    return this.call<GoogleEvent>('POST', `${CALENDAR_BASE}/events`, token, body);
+  }
+
+  async atualizarEvento(
+    usuarioId: string,
+    eventId: string,
+    params: Partial<GoogleEventCreateParams>,
+  ): Promise<GoogleEvent> {
+    const token = await this.oauth.getAccessToken(usuarioId);
+    const tz = params.timezone ?? DEFAULT_TZ;
+    const body: Partial<GoogleEvent> = {};
+    if (params.titulo !== undefined) body.summary = params.titulo;
+    if (params.descricao !== undefined) body.description = params.descricao;
+    if (params.local !== undefined) body.location = params.local;
+    if (params.inicio) body.start = { dateTime: params.inicio.toISOString(), timeZone: tz };
+    if (params.fim) body.end = { dateTime: params.fim.toISOString(), timeZone: tz };
+    if (params.participantes) {
+      body.attendees = params.participantes.map((p) => ({ email: p.email, displayName: p.nome }));
+    }
+    return this.call<GoogleEvent>(
+      'PATCH',
+      `${CALENDAR_BASE}/events/${encodeURIComponent(eventId)}`,
+      token,
+      body,
+    );
+  }
+
+  async deletarEvento(usuarioId: string, eventId: string): Promise<void> {
+    const token = await this.oauth.getAccessToken(usuarioId);
+    try {
+      await this.http.delete(`${CALENDAR_BASE}/events/${encodeURIComponent(eventId)}`, {
+        headers: { Authorization: `Bearer ${token}` },
+        integration: 'google',
+        retries: 1,
+      });
+    } catch (err) {
+      // 404/410 — evento já não existe, considerar idempotente
+      if (err instanceof HttpClientError && (err.status === 404 || err.status === 410)) {
+        return;
+      }
+      throw this.wrapError(err);
+    }
+  }
+
+  async listarEventos(
+    usuarioId: string,
+    inicio: Date,
+    fim: Date,
+    maxResults = 50,
+  ): Promise<GoogleEvent[]> {
+    const token = await this.oauth.getAccessToken(usuarioId);
+    const params = new URLSearchParams({
+      timeMin: inicio.toISOString(),
+      timeMax: fim.toISOString(),
+      singleEvents: 'true',
+      orderBy: 'startTime',
+      maxResults: maxResults.toString(),
+    });
+    const res = await this.callRaw<GoogleEventsListResponse>(
+      'GET',
+      `${CALENDAR_BASE}/events?${params}`,
+      token,
+    );
+    return res.items ?? [];
+  }
+
+  // ─── Internos ──────────────────────────────────────────────────────────
+
+  private async call<T>(
+    method: 'GET' | 'POST' | 'PATCH' | 'DELETE',
+    url: string,
+    token: string,
+    body?: unknown,
+  ): Promise<T> {
+    return this.callRaw<T>(method, url, token, body);
+  }
+
+  private async callRaw<T>(
+    method: 'GET' | 'POST' | 'PATCH' | 'DELETE',
+    url: string,
+    token: string,
+    body?: unknown,
+  ): Promise<T> {
+    try {
+      const res = await this.http.request<T>(method, url, {
+        headers: { Authorization: `Bearer ${token}` },
+        body,
+        integration: 'google',
+        redactKeys: ['authorization'],
+        retries: 1,
+      });
+      return res.data;
+    } catch (err) {
+      throw this.wrapError(err);
+    }
+  }
+
+  private wrapError(err: unknown): Error {
+    if (err instanceof HttpClientError) {
+      const detail =
+        typeof err.body === 'object' && err.body !== null
+          ? JSON.stringify(err.body).slice(0, 300)
+          : String(err.body ?? '').slice(0, 300);
+      return new IntegrationException(
+        `Google Calendar HTTP ${err.status}: ${detail}`,
+        ErrorCode.INTEGRATION_ERROR,
+      );
+    }
+    if (err instanceof Error) return err;
+    return new Error(String(err));
+  }
+}

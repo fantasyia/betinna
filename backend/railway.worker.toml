@@ -1,0 +1,28 @@
+# =====================================================================
+# Railway config — Worker service (Betinna.ai)
+# Sprint 4 FIX 4
+#
+# Uso: Railway service separado, mesmo repo + root /backend.
+# No dashboard Railway: aponte este service para usar /backend/railway.worker.toml
+# ou mude o startCommand manualmente para "npm run worker".
+#
+# Worker NÃO escuta porta — Railway aceita "no port" para Worker services.
+# =====================================================================
+
+[build]
+builder = "DOCKERFILE"
+dockerfilePath = "Dockerfile"
+
+[deploy]
+startCommand = "npm run worker"
+# Worker não tem healthcheck HTTP — Railway considera saudável se processo
+# está rodando (PID alive). Para health profundo, usar logs estruturados.
+restartPolicyType = "ON_FAILURE"
+restartPolicyMaxRetries = 5
+# Worker é background only — não responde HTTP, então sleep não se aplica.
+
+# SERVICE_TYPE deve ser setado no Worker service:
+# Railway dashboard → Worker service → Variables → SERVICE_TYPE = worker
+
+[[deploy.regions]]
+region = "us-east1-eqdc4a"
