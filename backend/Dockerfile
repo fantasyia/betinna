@@ -23,7 +23,6 @@ RUN npm ci --include=dev
 
 # Copia código e builda
 COPY src ./src
-COPY test ./test
 RUN npm run build && \
     npm prune --production
 
@@ -52,12 +51,9 @@ COPY --from=builder --chown=betinna:betinna /app/package.json ./package.json
 USER betinna
 
 ENV NODE_ENV=production
-ENV PORT=3001
 
-EXPOSE 3001
-
-HEALTHCHECK --interval=30s --timeout=10s --retries=3 --start-period=40s \
-  CMD curl -f http://localhost:3001/api/v1/health || exit 1
+# Railway injects PORT dynamically — do not hardcode
+# HEALTHCHECK removed - Railway has its own healthcheck via /api/v1/health
 
 # dist/main.js é a entry point do NestJS após build
 CMD ["node", "dist/main.js"]
