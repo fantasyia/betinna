@@ -12,6 +12,7 @@ const NAV_ITEMS: Array<{
   { to: '/clientes', label: 'Clientes', permission: 'clientes.view' },
   { to: '/produtos', label: 'Produtos' },
   { to: '/pedidos', label: 'Pedidos' },
+  { to: '/aprovacoes', label: 'Aprovações' },
   { to: '/propostas', label: 'Propostas' },
   { to: '/amostras', label: 'Amostras' },
   { to: '/ocorrencias', label: 'SAC' },
