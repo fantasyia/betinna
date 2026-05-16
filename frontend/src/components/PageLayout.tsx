@@ -11,6 +11,7 @@ const NAV_ITEMS: Array<{
   { to: '/dashboard', label: 'Dashboard' },
   { to: '/clientes', label: 'Clientes', permission: 'clientes.view' },
   { to: '/produtos', label: 'Produtos' },
+  { to: '/catalogo', label: 'Meu catálogo' },
   { to: '/pedidos', label: 'Pedidos' },
   { to: '/aprovacoes', label: 'Aprovações' },
   { to: '/propostas', label: 'Propostas' },
