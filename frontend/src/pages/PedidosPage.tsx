@@ -7,6 +7,8 @@ import { StateView } from '@/components/StateView';
 import { FilterBar, SearchInput } from '@/components/FilterBar';
 import { Modal } from '@/components/Modal';
 import { Select, FormField, Textarea } from '@/components/FormField';
+import { useToast } from '@/components/toast';
+import { exportToCsv } from '@/lib/csv';
 import { badge, btn, btnDanger, btnSecondary, card, colors } from '@/components/styles';
 
 type PedidoStatus =
@@ -82,10 +84,40 @@ function fmtDate(d: string | null | undefined) {
 }
 
 export default function PedidosPage() {
+  const toast = useToast();
   const [page, setPage] = useState(1);
   const [search, setSearch] = useState('');
   const [status, setStatus] = useState<string>('');
   const [selected, setSelected] = useState<string | null>(null);
+  const [exporting, setExporting] = useState(false);
+
+  async function handleExport() {
+    setExporting(true);
+    try {
+      const query: Record<string, string> = {};
+      if (search.trim()) query.search = search.trim();
+      if (status) query.status = status;
+      const { count } = await exportToCsv<Pedido>({
+        endpoint: '/pedidos',
+        query,
+        filename: `pedidos-${new Date().toISOString().slice(0, 10)}.csv`,
+        columns: [
+          { header: 'Número', value: (p) => String(p.numero) },
+          { header: 'Número OMIE', value: (p) => p.numeroOmie ?? '' },
+          { header: 'Cliente', value: (p) => p.cliente?.nome ?? '' },
+          { header: 'Representante', value: (p) => p.representante?.nome ?? '' },
+          { header: 'Total (R$)', value: (p) => p.total.toFixed(2).replace('.', ',') },
+          { header: 'Status', value: (p) => STATUS_LABEL[p.status] },
+          { header: 'Criado em', value: (p) => fmtDate(p.criadoEm) },
+        ],
+      });
+      toast.success(`${count} pedido${count === 1 ? '' : 's'} exportado${count === 1 ? '' : 's'}`, 'CSV baixado');
+    } catch (err) {
+      toast.error('Falha ao exportar', err instanceof ApiError ? err.message : undefined);
+    } finally {
+      setExporting(false);
+    }
+  }
 
   const listPath = useMemo(() => {
     const qs = new URLSearchParams({ page: String(page), limit: '20' });
@@ -153,7 +185,20 @@ export default function PedidosPage() {
   ];
 
   return (
-    <PageLayout title="Pedidos">
+    <PageLayout
+      title="Pedidos"
+      actions={
+        <button
+          type="button"
+          data-testid="pedido-export-btn"
+          onClick={handleExport}
+          disabled={exporting}
+          style={{ ...btnSecondary, opacity: exporting ? 0.6 : 1 }}
+        >
+          {exporting ? 'Exportando…' : '📥 Exportar CSV'}
+        </button>
+      }
+    >
       <div style={card}>
         <FilterBar>
           <SearchInput

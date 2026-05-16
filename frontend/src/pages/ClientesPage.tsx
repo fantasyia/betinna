@@ -12,6 +12,7 @@ import { Modal } from '@/components/Modal';
 import { AsyncCombobox } from '@/components/AsyncCombobox';
 import { useToast } from '@/components/toast';
 import { isValidCNPJ, maskCNPJ, maskTelefone, normalizeUF, stripMask } from '@/lib/masks';
+import { exportToCsv } from '@/lib/csv';
 import { badge, btn, btnDanger, btnSecondary, card, colors } from '@/components/styles';
 
 interface RepOpt {
@@ -61,8 +62,10 @@ const OMIE_COLORS: Record<OmieStatus, string> = {
 
 export default function ClientesPage() {
   const navigate = useNavigate();
+  const toast = useToast();
   const canEdit = usePermission('clientes.edit');
   const canBulk = usePermission('clientes.bulkAssign');
+  const [exporting, setExporting] = useState(false);
 
   // Filtros / paginação
   const [page, setPage] = useState(1);
@@ -212,20 +215,65 @@ export default function ClientesPage() {
     },
   ];
 
+  async function handleExport() {
+    setExporting(true);
+    try {
+      const query: Record<string, string> = {};
+      if (search.trim()) query.search = search.trim();
+      if (status) query.status = status;
+      if (omie) query.omieStatus = omie;
+      if (lista) query.lista = lista;
+      const { count } = await exportToCsv<Cliente>({
+        endpoint: '/clientes',
+        query,
+        filename: `clientes-${new Date().toISOString().slice(0, 10)}.csv`,
+        columns: [
+          { header: 'Nome', value: (c) => c.nome },
+          { header: 'CNPJ', value: (c) => c.cnpj ?? '' },
+          { header: 'E-mail', value: (c) => c.email ?? '' },
+          { header: 'Telefone', value: (c) => c.telefone ?? '' },
+          { header: 'Cidade', value: (c) => c.cidade ?? '' },
+          { header: 'UF', value: (c) => c.uf ?? '' },
+          { header: 'Segmento', value: (c) => c.segmento ?? '' },
+          { header: 'Status', value: (c) => c.status },
+          { header: 'OMIE', value: (c) => c.omieStatus },
+          { header: 'Score', value: (c) => c.score },
+          { header: 'Representante', value: (c) => c.representante?.nome ?? '' },
+        ],
+      });
+      toast.success(`${count} cliente${count === 1 ? '' : 's'} exportado${count === 1 ? '' : 's'}`, 'CSV baixado');
+    } catch (err) {
+      toast.error('Falha ao exportar', err instanceof ApiError ? err.message : undefined);
+    } finally {
+      setExporting(false);
+    }
+  }
+
   return (
     <PageLayout
       title="Clientes"
       actions={
-        canEdit ? (
+        <div style={{ display: 'flex', gap: '0.5rem' }}>
           <button
             type="button"
-            data-testid="cliente-new-btn"
-            onClick={() => setCreating(true)}
-            style={btn}
+            data-testid="cliente-export-btn"
+            onClick={handleExport}
+            disabled={exporting}
+            style={{ ...btnSecondary, opacity: exporting ? 0.6 : 1 }}
           >
-            + Novo cliente
+            {exporting ? 'Exportando…' : '📥 Exportar CSV'}
           </button>
-        ) : null
+          {canEdit && (
+            <button
+              type="button"
+              data-testid="cliente-new-btn"
+              onClick={() => setCreating(true)}
+              style={btn}
+            >
+              + Novo cliente
+            </button>
+          )}
+        </div>
       }
     >
       <div style={card}>
