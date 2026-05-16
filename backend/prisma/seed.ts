@@ -64,17 +64,37 @@ async function main(): Promise<void> {
       userId = existing.id;
       console.log(`  ✓ Admin já existe no Postgres (${userId})`);
     } else {
-      const { data, error } = await supabase.auth.admin.createUser({
-        email: ADMIN_EMAIL,
-        password: ADMIN_PASS,
-        email_confirm: true,
-        user_metadata: { nome: ADMIN_NOME, role: 'ADMIN' },
-      });
-      if (error || !data.user) {
-        console.error('  ✗ Falha ao criar admin no Supabase:', error?.message);
-        throw error ?? new Error('Falha desconhecida');
+      // Verifica se o admin já existe no Supabase Auth — pode acontecer quando
+      // alguém criou via dashboard manualmente OU o seed foi pelo meio
+      // anteriormente (Supabase ok, Postgres falhou).
+      let supabaseUserId: string | null = null;
+      try {
+        const { data: usersData } = await supabase.auth.admin.listUsers();
+        const found = usersData?.users?.find((u) => u.email === ADMIN_EMAIL);
+        if (found) {
+          supabaseUserId = found.id;
+          console.log(`  ✓ Admin já existe no Supabase Auth (${supabaseUserId}) — sincronizando com Postgres`);
+        }
+      } catch (err) {
+        console.warn(`  ⚠ Não consegui listar users do Supabase: ${err instanceof Error ? err.message : err}`);
       }
-      userId = data.user.id;
+
+      if (supabaseUserId) {
+        userId = supabaseUserId;
+      } else {
+        const { data, error } = await supabase.auth.admin.createUser({
+          email: ADMIN_EMAIL,
+          password: ADMIN_PASS,
+          email_confirm: true,
+          user_metadata: { nome: ADMIN_NOME, role: 'ADMIN' },
+        });
+        if (error || !data.user) {
+          console.error('  ✗ Falha ao criar admin no Supabase:', error?.message);
+          throw error ?? new Error('Falha desconhecida');
+        }
+        userId = data.user.id;
+        console.log(`  ✓ Admin criado no Supabase: ${ADMIN_EMAIL} / senha: ${ADMIN_PASS}`);
+      }
 
       await prisma.usuario.create({
         data: {
@@ -86,7 +106,7 @@ async function main(): Promise<void> {
           empresas: { create: { empresaId: empresa.id } },
         },
       });
-      console.log(`  ✓ Admin criado: ${ADMIN_EMAIL} / senha: ${ADMIN_PASS}`);
+      console.log(`  ✓ Admin sincronizado no Postgres (${userId})`);
     }
   }
 
