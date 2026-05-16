@@ -1,0 +1,344 @@
+import { describe, expect, it, vi, beforeEach } from 'vitest';
+import type { UserRole } from '@prisma/client';
+import {
+  BusinessRuleException,
+  ForbiddenException,
+  NotFoundException,
+} from '@shared/errors/app-exception';
+import type { AuthenticatedUser } from '@shared/types/authenticated-user';
+import { IntegracoesService } from './integracoes.service';
+
+// ---------------------------------------------------------------------------
+// Mock CryptoUtil — sem crypto real em testes unitários
+// ---------------------------------------------------------------------------
+vi.mock('@shared/utils/crypto.util', () => ({
+  CryptoUtil: vi.fn().mockImplementation(() => ({
+    encrypt: vi.fn((text: string) => `enc:${text}`),
+    decrypt: vi.fn((text: string) => {
+      if (text.startsWith('enc:')) return text.slice(4);
+      throw new Error('Invalid ciphertext');
+    }),
+  })),
+}));
+
+// ---------------------------------------------------------------------------
+// Helpers
+// ---------------------------------------------------------------------------
+
+type MockModel = Record<string, ReturnType<typeof vi.fn>>;
+
+const makePrismaMock = () => ({
+  integracaoConexao: {
+    findMany: vi.fn(),
+    findUnique: vi.fn(),
+    upsert: vi.fn(),
+    update: vi.fn(),
+    updateMany: vi.fn(),
+  } satisfies MockModel,
+});
+
+const makeEnv = () => ({
+  get: vi.fn((k: string): string => {
+    const map: Record<string, string> = {
+      ENCRYPTION_KEY: 'a'.repeat(64), // 32 bytes hex fake
+    };
+    return map[k] ?? '';
+  }),
+});
+
+const fakeUser = (overrides: Partial<AuthenticatedUser> = {}): AuthenticatedUser => ({
+  id: 'admin-1',
+  email: 'admin@betinna.ai',
+  nome: 'Admin',
+  role: 'ADMIN' as UserRole,
+  empresaIds: ['emp-1'],
+  empresaIdAtiva: 'emp-1',
+  ...overrides,
+});
+
+const fakeConexao = (overrides: Record<string, unknown> = {}) => ({
+  id: 'conn-1',
+  empresaId: 'emp-1',
+  servico: 'omie',
+  ativo: true,
+  credenciais: 'enc:{"appKey":"key123","appSecret":"secret"}',
+  externalAccountId: null,
+  ultimoSync: null,
+  errosRecentes: 0,
+  criadoEm: new Date('2026-01-01'),
+  atualizadoEm: new Date('2026-01-01'),
+  ...overrides,
+});
+
+// ---------------------------------------------------------------------------
+// Suite
+// ---------------------------------------------------------------------------
+
+describe('IntegracoesService', () => {
+  let prisma: ReturnType<typeof makePrismaMock>;
+  let env: ReturnType<typeof makeEnv>;
+  let service: IntegracoesService;
+
+  beforeEach(() => {
+    prisma = makePrismaMock();
+    env = makeEnv();
+    service = new IntegracoesService(prisma as never, env as never);
+  });
+
+  // -------------------------------------------------------------------------
+  // list
+  // -------------------------------------------------------------------------
+
+  describe('list', () => {
+    it('retorna conexões da empresa sem credenciais expostas', async () => {
+      prisma.integracaoConexao.findMany.mockResolvedValue([fakeConexao()]);
+
+      const result = await service.list(fakeUser(), {});
+
+      expect(result).toHaveLength(1);
+      // Credenciais mascaradas (null) na saída pública
+      expect(result[0].credenciais).toBeNull();
+      // Mas campos detectados
+      expect(result[0].credenciaisConfiguradas).toBe(true);
+      expect(result[0].camposCredenciais).toContain('appKey');
+    });
+
+    it('filtra por empresaId do usuário', async () => {
+      prisma.integracaoConexao.findMany.mockResolvedValue([]);
+
+      await service.list(fakeUser({ empresaIdAtiva: 'emp-5' }), {});
+
+      const args = prisma.integracaoConexao.findMany.mock.calls[0][0];
+      expect(args.where.empresaId).toBe('emp-5');
+    });
+
+    it('filtra por servico quando passado', async () => {
+      prisma.integracaoConexao.findMany.mockResolvedValue([]);
+
+      await service.list(fakeUser(), { servico: 'omie' as never });
+
+      const args = prisma.integracaoConexao.findMany.mock.calls[0][0];
+      expect(args.where.servico).toBe('omie');
+    });
+
+    it('filtra por ativo quando passado', async () => {
+      prisma.integracaoConexao.findMany.mockResolvedValue([]);
+
+      await service.list(fakeUser(), { ativo: false });
+
+      const args = prisma.integracaoConexao.findMany.mock.calls[0][0];
+      expect(args.where.ativo).toBe(false);
+    });
+
+    it('lança ForbiddenException sem empresaIdAtiva', async () => {
+      await expect(
+        service.list(fakeUser({ empresaIdAtiva: null }), {}),
+      ).rejects.toBeInstanceOf(ForbiddenException);
+    });
+  });
+
+  // -------------------------------------------------------------------------
+  // findByServico
+  // -------------------------------------------------------------------------
+
+  describe('findByServico', () => {
+    it('retorna conexão pública quando encontrada', async () => {
+      prisma.integracaoConexao.findUnique.mockResolvedValue(fakeConexao());
+
+      const result = await service.findByServico(fakeUser(), 'omie' as never);
+
+      expect(result).not.toBeNull();
+      expect(result!.servico).toBe('omie');
+    });
+
+    it('retorna null quando não existe', async () => {
+      prisma.integracaoConexao.findUnique.mockResolvedValue(null);
+
+      const result = await service.findByServico(fakeUser(), 'shopee' as never);
+
+      expect(result).toBeNull();
+    });
+  });
+
+  // -------------------------------------------------------------------------
+  // conectar
+  // -------------------------------------------------------------------------
+
+  describe('conectar', () => {
+    it('upserta conexão com credenciais criptografadas', async () => {
+      const conn = fakeConexao();
+      prisma.integracaoConexao.upsert.mockResolvedValue(conn);
+
+      const result = await service.conectar(fakeUser(), {
+        servico: 'omie' as never,
+        credenciais: { appKey: 'k', appSecret: 's' },
+      });
+
+      expect(result.credenciaisConfiguradas).toBe(true);
+
+      // Verifica que credenciais foram criptografadas antes de salvar
+      const upsertArgs = prisma.integracaoConexao.upsert.mock.calls[0][0];
+      const savedCreds = upsertArgs.create.credenciais as string;
+      expect(savedCreds).toMatch(/^enc:/); // mock prefix
+    });
+
+    it('invalida o cache após upsert', async () => {
+      prisma.integracaoConexao.upsert.mockResolvedValue(fakeConexao());
+
+      // Popula cache manualmente via obterCredenciaisInternas
+      prisma.integracaoConexao.findUnique.mockResolvedValue(fakeConexao({ ativo: true }));
+      await service.obterCredenciaisInternas('emp-1', 'omie' as never);
+      // Agora conectar deve invalidar
+      await service.conectar(fakeUser(), {
+        servico: 'omie' as never,
+        credenciais: { appKey: 'new' },
+      });
+      // Próximo obterCredenciaisInternas deve ir ao banco de novo
+      prisma.integracaoConexao.findUnique.mockResolvedValue(fakeConexao({ ativo: true }));
+      await service.obterCredenciaisInternas('emp-1', 'omie' as never);
+
+      // findUnique chamado 2x: primeira consulta + após invalidação
+      expect(prisma.integracaoConexao.findUnique).toHaveBeenCalledTimes(2);
+    });
+
+    it('lança ForbiddenException sem empresaIdAtiva', async () => {
+      await expect(
+        service.conectar(fakeUser({ empresaIdAtiva: null }), {
+          servico: 'omie' as never,
+          credenciais: {},
+        }),
+      ).rejects.toBeInstanceOf(ForbiddenException);
+    });
+  });
+
+  // -------------------------------------------------------------------------
+  // desconectar
+  // -------------------------------------------------------------------------
+
+  describe('desconectar', () => {
+    it('desativa conexão existente', async () => {
+      prisma.integracaoConexao.findUnique.mockResolvedValue(fakeConexao({ ativo: true }));
+      prisma.integracaoConexao.update.mockResolvedValue(fakeConexao({ ativo: false }));
+
+      const result = await service.desconectar(fakeUser(), 'omie' as never);
+
+      expect(result).toEqual({ ok: true });
+      const updateArgs = prisma.integracaoConexao.update.mock.calls[0][0];
+      expect(updateArgs.data.ativo).toBe(false);
+    });
+
+    it('lança NotFoundException quando conexão não existe', async () => {
+      prisma.integracaoConexao.findUnique.mockResolvedValue(null);
+
+      await expect(service.desconectar(fakeUser(), 'omie' as never)).rejects.toBeInstanceOf(
+        NotFoundException,
+      );
+      expect(prisma.integracaoConexao.update).not.toHaveBeenCalled();
+    });
+  });
+
+  // -------------------------------------------------------------------------
+  // obterCredenciaisInternas
+  // -------------------------------------------------------------------------
+
+  describe('obterCredenciaisInternas', () => {
+    it('retorna credenciais descriptografadas', async () => {
+      const conn = fakeConexao({
+        credenciais: 'enc:{"appKey":"key123","appSecret":"s3cr3t"}',
+        ativo: true,
+      });
+      prisma.integracaoConexao.findUnique.mockResolvedValue(conn);
+
+      const result = await service.obterCredenciaisInternas('emp-1', 'omie' as never);
+
+      expect(result.credenciais).toEqual({ appKey: 'key123', appSecret: 's3cr3t' });
+    });
+
+    it('cacheia resultado e não consulta o banco na 2a chamada', async () => {
+      const conn = fakeConexao({ ativo: true });
+      prisma.integracaoConexao.findUnique.mockResolvedValue(conn);
+
+      await service.obterCredenciaisInternas('emp-1', 'omie' as never);
+      await service.obterCredenciaisInternas('emp-1', 'omie' as never); // cache hit
+
+      expect(prisma.integracaoConexao.findUnique).toHaveBeenCalledTimes(1);
+    });
+
+    it('lança BusinessRuleException quando conexão não existe', async () => {
+      prisma.integracaoConexao.findUnique.mockResolvedValue(null);
+
+      await expect(
+        service.obterCredenciaisInternas('emp-1', 'omie' as never),
+      ).rejects.toBeInstanceOf(BusinessRuleException);
+    });
+
+    it('lança BusinessRuleException quando conexão está inativa', async () => {
+      const conn = fakeConexao({ ativo: false });
+      prisma.integracaoConexao.findUnique.mockResolvedValue(conn);
+
+      await expect(
+        service.obterCredenciaisInternas('emp-1', 'omie' as never),
+      ).rejects.toBeInstanceOf(BusinessRuleException);
+    });
+
+    it('lança BusinessRuleException quando credenciais corrompidas', async () => {
+      const conn = fakeConexao({ credenciais: 'dados_invalidos_sem_prefixo', ativo: true });
+      prisma.integracaoConexao.findUnique.mockResolvedValue(conn);
+
+      await expect(
+        service.obterCredenciaisInternas('emp-1', 'omie' as never),
+      ).rejects.toBeInstanceOf(BusinessRuleException);
+    });
+  });
+
+  // -------------------------------------------------------------------------
+  // registrarSyncOk / registrarSyncErro
+  // -------------------------------------------------------------------------
+
+  describe('registrarSyncOk', () => {
+    it('atualiza ultimoSync e zera errosRecentes', async () => {
+      prisma.integracaoConexao.updateMany.mockResolvedValue({ count: 1 });
+
+      await service.registrarSyncOk('emp-1', 'omie' as never);
+
+      const args = prisma.integracaoConexao.updateMany.mock.calls[0][0];
+      expect(args.data.errosRecentes).toBe(0);
+      expect(args.data.ultimoSync).toBeInstanceOf(Date);
+    });
+  });
+
+  describe('registrarSyncErro', () => {
+    it('incrementa errosRecentes', async () => {
+      prisma.integracaoConexao.updateMany.mockResolvedValue({ count: 1 });
+
+      await service.registrarSyncErro('emp-1', 'omie' as never);
+
+      const args = prisma.integracaoConexao.updateMany.mock.calls[0][0];
+      expect(args.data.errosRecentes).toEqual({ increment: 1 });
+    });
+  });
+
+  // -------------------------------------------------------------------------
+  // listarAtivasPorServico
+  // -------------------------------------------------------------------------
+
+  describe('listarAtivasPorServico', () => {
+    it('retorna mapeamento empresaId/conexaoId de conexões ativas', async () => {
+      prisma.integracaoConexao.findMany.mockResolvedValue([
+        { id: 'conn-1', empresaId: 'emp-1' },
+        { id: 'conn-2', empresaId: 'emp-2' },
+      ]);
+
+      const result = await service.listarAtivasPorServico('omie' as never);
+
+      expect(result).toEqual([
+        { empresaId: 'emp-1', conexaoId: 'conn-1' },
+        { empresaId: 'emp-2', conexaoId: 'conn-2' },
+      ]);
+
+      const args = prisma.integracaoConexao.findMany.mock.calls[0][0];
+      expect(args.where.servico).toBe('omie');
+      expect(args.where.ativo).toBe(true);
+    });
+  });
+});
