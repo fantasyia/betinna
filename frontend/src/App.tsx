@@ -22,6 +22,10 @@ const ForbiddenPage = lazy(() => import('@/pages/ForbiddenPage'));
 const ClientesPage = lazy(() => import('@/pages/ClientesPage'));
 const ClienteDetailPage = lazy(() => import('@/pages/ClienteDetailPage'));
 const CatalogoPage = lazy(() => import('@/pages/CatalogoPage'));
+const MullerBotPage = lazy(() => import('@/pages/MullerBotPage'));
+const MarketplaceIncidentsPage = lazy(() => import('@/pages/MarketplaceIncidentsPage'));
+const ConfiguracoesPage = lazy(() => import('@/pages/ConfiguracoesPage'));
+const ProfilePage = lazy(() => import('@/pages/ProfilePage'));
 const PedidosPage = lazy(() => import('@/pages/PedidosPage'));
 const ComissoesPage = lazy(() => import('@/pages/ComissoesPage'));
 const LeadsPage = lazy(() => import('@/pages/LeadsPage'));
@@ -156,6 +160,78 @@ const router = createBrowserRouter([
         <ProtectedRoute>
           <PageSuspense>
             <CatalogoPage />
+          </PageSuspense>
+        </ProtectedRoute>
+      </ErrorBoundary>
+    ),
+  },
+  {
+    path: '/mullerbot',
+    element: (
+      <ErrorBoundary>
+        <ProtectedRoute>
+          <PageSuspense>
+            <MullerBotPage />
+          </PageSuspense>
+        </ProtectedRoute>
+      </ErrorBoundary>
+    ),
+  },
+  {
+    path: '/incidentes',
+    element: (
+      <ErrorBoundary>
+        <ProtectedRoute allowedRoles={['ADMIN', 'DIRECTOR', 'GERENTE', 'SAC']}>
+          <PageSuspense>
+            <MarketplaceIncidentsPage />
+          </PageSuspense>
+        </ProtectedRoute>
+      </ErrorBoundary>
+    ),
+  },
+  {
+    path: '/configuracoes',
+    element: (
+      <ErrorBoundary>
+        <ProtectedRoute allowedRoles={['ADMIN']}>
+          <PageSuspense>
+            <ConfiguracoesPage />
+          </PageSuspense>
+        </ProtectedRoute>
+      </ErrorBoundary>
+    ),
+  },
+  {
+    path: '/perfil',
+    element: (
+      <ErrorBoundary>
+        <ProtectedRoute>
+          <PageSuspense>
+            <ProfilePage />
+          </PageSuspense>
+        </ProtectedRoute>
+      </ErrorBoundary>
+    ),
+  },
+  {
+    path: '/usuarios',
+    element: (
+      <ErrorBoundary>
+        <ProtectedRoute allowedRoles={['ADMIN', 'DIRECTOR', 'GERENTE']}>
+          <PageSuspense>
+            <ProfilePage />
+          </PageSuspense>
+        </ProtectedRoute>
+      </ErrorBoundary>
+    ),
+  },
+  {
+    path: '/usuarios/:id',
+    element: (
+      <ErrorBoundary>
+        <ProtectedRoute allowedRoles={['ADMIN', 'DIRECTOR', 'GERENTE']}>
+          <PageSuspense>
+            <ProfilePage />
           </PageSuspense>
         </ProtectedRoute>
       </ErrorBoundary>

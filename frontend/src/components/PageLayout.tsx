@@ -17,13 +17,18 @@ const NAV_ITEMS: Array<{
   { to: '/propostas', label: 'Propostas' },
   { to: '/amostras', label: 'Amostras' },
   { to: '/inbox', label: 'Inbox' },
+  { to: '/incidentes', label: 'Incidentes' },
   { to: '/ocorrencias', label: 'SAC' },
+  { to: '/mullerbot', label: 'MullerBot' },
   { to: '/leads', label: 'Leads' },
   { to: '/agenda', label: 'Agenda' },
   { to: '/comissoes', label: 'Comissões' },
   { to: '/whatsapp', label: 'WhatsApp', permission: 'whatsapp.pessoal' },
   { to: '/integracoes', label: 'Integrações' },
   { to: '/minhas-integracoes', label: 'Minhas integrações' },
+  { to: '/perfil', label: 'Meu perfil' },
+  { to: '/usuarios', label: 'Usuários' },
+  { to: '/configuracoes', label: 'Configurações' },
   { to: '/admin', label: 'Admin', permission: 'admin.panel' },
 ];
 
