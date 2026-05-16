@@ -90,6 +90,7 @@ const SECTIONS: NavSection[] = [
     items: [
       { to: '/perfil', label: 'Meu perfil', emoji: '👤' },
       { to: '/usuarios', label: 'Usuários', emoji: '👨‍💼', allowedRoles: ['ADMIN', 'DIRECTOR', 'GERENTE'] },
+      { to: '/fidelidade', label: 'Fidelidade', emoji: '🏆', permission: 'fidelidade.view' },
       { to: '/configuracoes', label: 'Configurações', emoji: '⚙️', allowedRoles: ['ADMIN'] },
       { to: '/permissoes', label: 'Permissões', emoji: '🔐', allowedRoles: ['ADMIN'] },
       { to: '/admin', label: 'Admin Panel', emoji: '🛡️', permission: 'admin.panel' },
@@ -163,6 +164,7 @@ function Sidebar() {
     'admin.panel': usePermission('admin.panel'),
     'relatorios.view': usePermission('relatorios.view'),
     'campanhas.view': usePermission('campanhas.view'),
+    'fidelidade.view': usePermission('fidelidade.view'),
   } as const;
 
   function canSee(item: NavItem): boolean {
