@@ -47,9 +47,10 @@ interface CachedUser {
 export class AuthGuard implements CanActivate {
   private readonly logger = new Logger(AuthGuard.name);
   private readonly cacheTtlSeconds: number;
-  // Memória local pra throttle de ultimoAcesso (não precisa Redis pra isto)
-  private readonly ultimoAcessoTouched = new Map<string, number>();
-  private static readonly ULTIMO_ACESSO_THROTTLE_MS = 5 * 60 * 1000;
+  // Throttle de ultimoAcesso — usa Redis com TTL (cluster-safe + sem memory leak).
+  // Hardening 2026-05-16 (ALTA-4): substitui Map<string,number> em memória que
+  // crescia indefinidamente e dava double-write em multi-replica.
+  private static readonly ULTIMO_ACESSO_THROTTLE_SECONDS = 5 * 60; // 5min
 
   constructor(
     private readonly reflector: Reflector,
@@ -168,16 +169,26 @@ export class AuthGuard implements CanActivate {
     await redis.del(`auth:user:${userId}`);
   }
 
-  /** Atualiza ultimoAcesso de forma throttled (no máximo 1x a cada 5min/user). */
+  /**
+   * Atualiza `ultimoAcesso` de forma throttled (no máximo 1x a cada 5min/user).
+   *
+   * Hardening 2026-05-16 (ALTA-4): usa Redis `SET NX EX` em vez de Map em memória.
+   *  - Sem memory leak (TTL automático)
+   *  - Cluster-safe (locks atômicos entre réplicas)
+   *  - Fail-open: se Redis cair, escreve no DB normalmente (não é crítico)
+   */
   private touchUltimoAcesso(userId: string): void {
-    const now = Date.now();
-    const last = this.ultimoAcessoTouched.get(userId) ?? 0;
-    if (now - last < AuthGuard.ULTIMO_ACESSO_THROTTLE_MS) return;
-    this.ultimoAcessoTouched.set(userId, now);
-    this.prisma.usuario
-      .update({ where: { id: userId }, data: { ultimoAcesso: new Date() } })
+    const key = `auth:touched:${userId}`;
+    this.redis
+      .setNxEx(key, '1', AuthGuard.ULTIMO_ACESSO_THROTTLE_SECONDS)
+      .then((acquired) => {
+        if (!acquired) return; // throttle ativo, outro request já escreveu
+        return this.prisma.usuario
+          .update({ where: { id: userId }, data: { ultimoAcesso: new Date() } })
+          .then(() => undefined);
+      })
       .catch(() => {
-        /* não-crítico */
+        /* não-crítico — telemetria de ultimoAcesso é best-effort */
       });
   }
 

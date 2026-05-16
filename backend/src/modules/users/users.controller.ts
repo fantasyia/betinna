@@ -65,25 +65,29 @@ export class UsersController {
   @Roles('ADMIN')
   @Audit({ action: 'update', resource: 'usuario', resourceIdFrom: 'params.id' })
   update(
+    @CurrentUser() caller: AuthenticatedUser,
     @Param('id') id: string,
     @Body(new ZodValidationPipe(updateUserSchema)) dto: UpdateUserDto,
   ) {
-    return this.users.update(id, dto);
+    return this.users.update(caller, id, dto);
   }
 
   @Put(':id/ativar')
   @Roles('ADMIN')
   @Audit({ action: 'activate', resource: 'usuario', resourceIdFrom: 'params.id' })
-  activate(@Param('id') id: string) {
-    return this.users.setStatus(id, 'ATIVO');
+  activate(@CurrentUser() caller: AuthenticatedUser, @Param('id') id: string) {
+    return this.users.setStatus(caller, id, 'ATIVO');
   }
 
   @Delete(':id')
   @Roles('ADMIN')
   @HttpCode(HttpStatus.NO_CONTENT)
   @Audit({ action: 'deactivate', resource: 'usuario', resourceIdFrom: 'params.id' })
-  async deactivate(@Param('id') id: string): Promise<void> {
-    await this.users.setStatus(id, 'INATIVO');
+  async deactivate(
+    @CurrentUser() caller: AuthenticatedUser,
+    @Param('id') id: string,
+  ): Promise<void> {
+    await this.users.setStatus(caller, id, 'INATIVO');
   }
 
   @Put(':id/teto-desconto')
@@ -91,10 +95,11 @@ export class UsersController {
   @Audit({ action: 'set_discount_limit', resource: 'usuario', resourceIdFrom: 'params.id' })
   @ApiOperation({ summary: 'Define o teto de desconto autônomo de um rep' })
   async setDiscountLimit(
+    @CurrentUser() caller: AuthenticatedUser,
     @Param('id') id: string,
     @Body(new ZodValidationPipe(updateRepDiscountLimitSchema)) dto: UpdateRepDiscountLimitDto,
   ): Promise<{ ok: true }> {
-    await this.users.setRepDiscountLimit(id, dto);
+    await this.users.setRepDiscountLimit(caller, id, dto);
     return { ok: true };
   }
 
@@ -107,18 +112,22 @@ export class UsersController {
       'REP: comissão sobre os próprios pedidos. GERENTE: sobre o total de vendas dos REPs sob sua gerência.',
   })
   async setComissao(
+    @CurrentUser() caller: AuthenticatedUser,
     @Param('id') id: string,
     @Body(new ZodValidationPipe(updateComissaoPercentualSchema))
     dto: UpdateComissaoPercentualDto,
   ): Promise<{ ok: true }> {
-    await this.users.setComissaoPercentual(id, dto);
+    await this.users.setComissaoPercentual(caller, id, dto);
     return { ok: true };
   }
 
   @Post(':id/reenviar-convite')
   @Roles('ADMIN')
   @Audit({ action: 'resend_invite', resource: 'usuario', resourceIdFrom: 'params.id' })
-  resendInvite(@Param('id') id: string) {
-    return this.users.resendInvite(id);
+  resendInvite(
+    @CurrentUser() caller: AuthenticatedUser,
+    @Param('id') id: string,
+  ) {
+    return this.users.resendInvite(caller, id);
   }
 }

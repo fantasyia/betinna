@@ -94,4 +94,25 @@ export class RedisService implements OnModuleInit, OnModuleDestroy {
   async set(key: string, value: string | number): Promise<void> {
     await this.clientInstance.set(key, String(value));
   }
+
+  /**
+   * EVAL — executa script Lua atomicamente no Redis.
+   *
+   * Útil pra compare-and-swap (CAS) e operações multi-key que precisam ser
+   * indivisíveis (ex.: refresh token rotation com detecção de reuse).
+   *
+   * Retorna o valor retornado pelo script (string|number|null|Array).
+   */
+  async eval(
+    script: string,
+    keys: string[],
+    args: Array<string | number>,
+  ): Promise<unknown> {
+    return this.clientInstance.eval(
+      script,
+      keys.length,
+      ...keys,
+      ...args.map(String),
+    );
+  }
 }

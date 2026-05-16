@@ -63,6 +63,51 @@ export class UsersService {
     });
   }
 
+  /**
+   * Hardening 2026-05-16 (ALTA-2 audit): garante que o `caller` só pode
+   * mutar usuários que pertencem à sua empresa ativa.
+   *
+   * - ADMIN: bypass total (cross-tenant)
+   * - DIRECTOR/GERENTE: só age em usuários vinculados à `empresaIdAtiva`
+   * - Outros: bloqueado
+   *
+   * Use em update/setStatus/setRepDiscountLimit/setComissaoPercentual/resendInvite.
+   * Retorna o user encontrado (com empresas) pra evitar findUnique duplicado.
+   */
+  private async loadAndAssertScope(
+    caller: AuthenticatedUser,
+    targetId: string,
+  ): Promise<{
+    id: string;
+    email: string;
+    nome: string;
+    role: UserRole;
+    status: 'ATIVO' | 'PENDENTE' | 'INATIVO';
+    empresas: Array<{ empresaId: string }>;
+  }> {
+    const user = await this.prisma.usuario.findUnique({
+      where: { id: targetId },
+      include: { empresas: { select: { empresaId: true } } },
+    });
+    if (!user) throw new NotFoundException('Usuário', targetId);
+    if (isGlobalAdmin(caller)) return user;
+    const callerEmpresa = caller.empresaIdAtiva;
+    if (!callerEmpresa) {
+      throw new ForbiddenException(
+        'Empresa não definida no contexto',
+        ErrorCode.TENANT_ACCESS_DENIED,
+      );
+    }
+    const inScope = user.empresas.some((e) => e.empresaId === callerEmpresa);
+    if (!inScope) {
+      throw new ForbiddenException(
+        'Usuário não pertence à sua empresa',
+        ErrorCode.TENANT_ACCESS_DENIED,
+      );
+    }
+    return user;
+  }
+
   async list(user: AuthenticatedUser, params: ListUsersDto): Promise<Paginated<unknown>> {
     // AUDITORIA 2026-05-15 P0: ADMIN pode filtrar por qualquer empresa.
     // DIRECTOR/GERENTE só podem ver usuários da própria empresa ativa.
@@ -208,9 +253,8 @@ export class UsersService {
     return this.serialize(created);
   }
 
-  async update(id: string, dto: UpdateUserDto) {
-    const user = await this.prisma.usuario.findUnique({ where: { id } });
-    if (!user) throw new NotFoundException('Usuário', id);
+  async update(caller: AuthenticatedUser, id: string, dto: UpdateUserDto) {
+    const user = await this.loadAndAssertScope(caller, id);
 
     const { empresaIds, gerenteId, ...rest } = dto;
 
@@ -252,9 +296,8 @@ export class UsersService {
     return result;
   }
 
-  async setStatus(id: string, status: 'ATIVO' | 'INATIVO') {
-    const user = await this.prisma.usuario.findUnique({ where: { id } });
-    if (!user) throw new NotFoundException('Usuário', id);
+  async setStatus(caller: AuthenticatedUser, id: string, status: 'ATIVO' | 'INATIVO') {
+    const user = await this.loadAndAssertScope(caller, id);
 
     // Quando GERENTE é desativado, os REPs sob sua gerência viram órfãos.
     // gerenteId=null → carteira gerida pelo DIRECTOR/ADMIN (catch-all).
@@ -276,9 +319,12 @@ export class UsersService {
     return updated;
   }
 
-  async setRepDiscountLimit(id: string, dto: UpdateRepDiscountLimitDto): Promise<void> {
-    const user = await this.prisma.usuario.findUnique({ where: { id } });
-    if (!user) throw new NotFoundException('Usuário', id);
+  async setRepDiscountLimit(
+    caller: AuthenticatedUser,
+    id: string,
+    dto: UpdateRepDiscountLimitDto,
+  ): Promise<void> {
+    const user = await this.loadAndAssertScope(caller, id);
     if (user.role !== 'REP') {
       throw new BusinessRuleException(
         'Apenas representantes têm teto de desconto configurável',
@@ -298,11 +344,11 @@ export class UsersService {
    * GERENTE → comissão sobre o total de vendas dos REPs sob sua gerência
    */
   async setComissaoPercentual(
+    caller: AuthenticatedUser,
     id: string,
     dto: UpdateComissaoPercentualDto,
   ): Promise<void> {
-    const user = await this.prisma.usuario.findUnique({ where: { id } });
-    if (!user) throw new NotFoundException('Usuário', id);
+    const user = await this.loadAndAssertScope(caller, id);
     if (user.role !== 'REP' && user.role !== 'GERENTE') {
       throw new BusinessRuleException(
         'Comissão configurável apenas para REP ou GERENTE',
@@ -314,9 +360,11 @@ export class UsersService {
     });
   }
 
-  async resendInvite(id: string): Promise<{ ok: true; sentTo: string }> {
-    const user = await this.prisma.usuario.findUnique({ where: { id } });
-    if (!user) throw new NotFoundException('Usuário', id);
+  async resendInvite(
+    caller: AuthenticatedUser,
+    id: string,
+  ): Promise<{ ok: true; sentTo: string }> {
+    const user = await this.loadAndAssertScope(caller, id);
     if (user.status !== 'PENDENTE') {
       throw new BusinessRuleException('Usuário não está com convite pendente');
     }

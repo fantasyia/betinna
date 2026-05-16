@@ -1,10 +1,7 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { createRemoteJWKSet, jwtVerify } from 'jose';
 import { EnvService } from '@config/env.service';
-import {
-  ForbiddenException,
-  UnauthorizedException,
-} from '@shared/errors/app-exception';
+import { UnauthorizedException } from '@shared/errors/app-exception';
 import { ErrorCode } from '@shared/errors/error-codes';
 import {
   isValidJwtPayload,
@@ -54,9 +51,20 @@ export class SupabaseAuthService {
 
     try {
       // Tenta HS256 primeiro se temos o secret (mais comum em projetos Supabase)
+      //
+      // Hardening sprint 2026-05-16 (CRIT-2 + ALTA-1):
+      // - `audience: 'authenticated'`: Supabase emite tokens com aud="authenticated";
+      //   sem checar isso, qualquer JWT do mesmo project (service_role, etc) passaria.
+      // - `algorithms: ['HS256']`: algorithm pinning explícito. Evita confusion attack
+      //   se header `alg` for forjado pra algo inesperado.
+      // - `clockTolerance: '30s'`: tolerância pra clock skew entre Supabase e Railway
+      //   (MED-1) — evita rejeição falsa de tokens recém-emitidos.
       if (this.hsSecret) {
         const { payload } = await jwtVerify(token, this.hsSecret, {
           issuer: this.issuer,
+          audience: 'authenticated',
+          algorithms: ['HS256'],
+          clockTolerance: '30s',
         });
         if (!isValidJwtPayload(payload)) {
           throw new UnauthorizedException('Token sem subject', ErrorCode.AUTH_INVALID_TOKEN);
@@ -68,6 +76,9 @@ export class SupabaseAuthService {
       if (this.jwksClient) {
         const { payload } = await jwtVerify(token, this.jwksClient, {
           issuer: this.issuer,
+          audience: 'authenticated',
+          algorithms: ['RS256'],
+          clockTolerance: '30s',
         });
         if (!isValidJwtPayload(payload)) {
           throw new UnauthorizedException('Token sem subject', ErrorCode.AUTH_INVALID_TOKEN);
@@ -75,12 +86,18 @@ export class SupabaseAuthService {
         return payload;
       }
 
-      throw new ForbiddenException(
-        'SUPABASE_JWT_SECRET não configurado',
+      // Configuração faltando — issue de deployment, não de auth. 503 (Service Unavailable)
+      // seria mais correto que 403; usamos UnauthorizedException com mensagem clara
+      // por compatibilidade com o resto do sistema (frontend reage a 401 redirecionando).
+      this.logger.error(
+        'Nem SUPABASE_JWT_SECRET nem JWKS disponíveis — auth completamente desativada',
+      );
+      throw new UnauthorizedException(
+        'Servidor de autenticação não configurado',
         ErrorCode.AUTH_INVALID_TOKEN,
       );
     } catch (error) {
-      if (error instanceof UnauthorizedException || error instanceof ForbiddenException) {
+      if (error instanceof UnauthorizedException) {
         throw error;
       }
       const message = error instanceof Error ? error.message : 'Token inválido';

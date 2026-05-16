@@ -9,6 +9,7 @@ import {
 } from '@nestjs/common';
 import { Throttle, seconds } from '@nestjs/throttler';
 import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
+import { timingSafeEqual } from 'node:crypto';
 import type {
   CanalOrigem,
   ClienteStatus,
@@ -30,6 +31,24 @@ import { ErrorCode } from '@shared/errors/error-codes';
 import { ZodValidationPipe } from '@shared/pipes/zod-validation.pipe';
 import type { AuthenticatedUser } from '@shared/types/authenticated-user';
 import { RefreshTokenService } from './refresh-token.service';
+
+/**
+ * Comparação constant-time pra evitar timing attack em tokens de bootstrap.
+ *
+ * Se strings têm comprimentos diferentes, dummy compare pra manter tempo
+ * constante mesmo na rejeição (Node `timingSafeEqual` lança RangeError em
+ * tamanhos diferentes — bypassamos comparando dummy de mesmo tamanho).
+ */
+function safeTokenEquals(provided: string, expected: string): boolean {
+  const providedBuf = Buffer.from(provided, 'utf8');
+  const expectedBuf = Buffer.from(expected, 'utf8');
+  if (providedBuf.length !== expectedBuf.length) {
+    // Compara dummy de mesmo tamanho pra não vazar comprimento via timing
+    timingSafeEqual(expectedBuf, expectedBuf);
+    return false;
+  }
+  return timingSafeEqual(providedBuf, expectedBuf);
+}
 
 const refreshTrackSchema = z.object({
   refreshToken: z.string().min(20),
@@ -102,9 +121,9 @@ export class AuthController {
     @CurrentUser() user: AuthenticatedUser,
     @Body(new ZodValidationPipe(refreshTrackSchema)) dto: RefreshTrackDto,
   ): Promise<void> {
-    await this.refreshTokens.assertCurrent(user.id, dto.refreshToken);
-    // Marca o novo como atual — se passou assertCurrent (ou primeira vez), promove
-    await this.refreshTokens.markCurrent(user.id, dto.refreshToken);
+    // Hardening 2026-05-16 (ALTA-2): operação atômica CAS via Lua substitui
+    // pair (assertCurrent + markCurrent) que tinha race condition entre tabs.
+    await this.refreshTokens.registerCurrent(user.id, dto.refreshToken);
   }
 
   /**
@@ -124,6 +143,8 @@ export class AuthController {
    */
   @Post('bootstrap')
   @Public()
+  // Rate limit estrito — endpoint privilegiado
+  @Throttle({ default: { limit: 3, ttl: seconds(15 * 60) } })
   @HttpCode(HttpStatus.OK)
   @ApiOperation({
     summary:
@@ -146,7 +167,8 @@ export class AuthController {
       );
     }
     const provided = (auth ?? '').replace(/^Bearer\s+/i, '').trim();
-    if (provided !== expectedToken) {
+    // CRIT-1 fix: timing-safe compare evita ataque caractere-a-caractere
+    if (!safeTokenEquals(provided, expectedToken)) {
       throw new UnauthorizedException(
         'Token de bootstrap inválido',
         ErrorCode.AUTH_REQUIRED,
@@ -245,6 +267,7 @@ export class AuthController {
    */
   @Post('seed-demo')
   @Public()
+  @Throttle({ default: { limit: 3, ttl: seconds(15 * 60) } })
   @HttpCode(HttpStatus.OK)
   @ApiOperation({
     summary: 'Popula o banco com dados de exemplo. Requer BOOTSTRAP_TOKEN.',
@@ -261,7 +284,8 @@ export class AuthController {
       );
     }
     const provided = (auth ?? '').replace(/^Bearer\s+/i, '').trim();
-    if (provided !== expectedToken) {
+    // CRIT-1 fix: timing-safe compare
+    if (!safeTokenEquals(provided, expectedToken)) {
       throw new UnauthorizedException(
         'Token inválido',
         ErrorCode.AUTH_REQUIRED,

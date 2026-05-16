@@ -355,9 +355,11 @@ export class PedidosService {
       }
     }
 
-    // Verifica novamente o status OMIE do cliente (pode ter sido bloqueado)
-    const cliente = await this.prisma.cliente.findUnique({
-      where: { id: pedido.clienteId },
+    // Verifica novamente o status OMIE do cliente (pode ter sido bloqueado).
+    // Hardening: filtro por empresaId — defesa em profundidade mesmo que
+    // clienteId já tenha vindo de pedido validado pelo tenant.
+    const cliente = await this.prisma.cliente.findFirst({
+      where: { id: pedido.clienteId, empresaId: pedido.empresaId },
       select: { omieStatus: true },
     });
     if (!cliente || cliente.omieStatus !== 'ATIVO') {

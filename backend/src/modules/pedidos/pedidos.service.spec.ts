@@ -245,7 +245,7 @@ describe('PedidosService', () => {
       status: 'RASCUNHO',
       aprovacaoDesconto: null,
     });
-    prisma.cliente.findUnique.mockResolvedValue({ omieStatus: 'BLOQUEADO' });
+    prisma.cliente.findFirst.mockResolvedValue({ omieStatus: 'BLOQUEADO' });
 
     await expect(svc.enviarParaOmie(fakeUser(), 'ped-1')).rejects.toBeInstanceOf(
       BusinessRuleException,
@@ -261,7 +261,8 @@ describe('PedidosService', () => {
       status: 'RASCUNHO',
       aprovacaoDesconto: null,
     });
-    prisma.cliente.findUnique.mockResolvedValue({ omieStatus: 'ATIVO' });
+    // Sprint 1 ALTA fix: cliente lookup agora usa findFirst({id, empresaId})
+    prisma.cliente.findFirst.mockResolvedValue({ omieStatus: 'ATIVO' });
     // findByIdInternal (chamado depois do push) — OmiePedidosService está mockado,
     // então simulamos o estado pós-envio direto aqui
     prisma.pedido.findUnique.mockResolvedValue({
