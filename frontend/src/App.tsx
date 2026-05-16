@@ -19,6 +19,10 @@ const WhatsAppPage = lazy(() => import('@/pages/WhatsAppPage'));
 const AdminPage = lazy(() => import('@/pages/AdminPage'));
 const FidelidadePage = lazy(() => import('@/pages/FidelidadePage'));
 const ForbiddenPage = lazy(() => import('@/pages/ForbiddenPage'));
+const ClientesPage = lazy(() => import('@/pages/ClientesPage'));
+const PedidosPage = lazy(() => import('@/pages/PedidosPage'));
+const ComissoesPage = lazy(() => import('@/pages/ComissoesPage'));
+const LeadsPage = lazy(() => import('@/pages/LeadsPage'));
 
 function PageSuspense({ children }: { children: React.ReactNode }) {
   return (
@@ -105,6 +109,54 @@ const router = createBrowserRouter([
         <ProtectedRoute requirePermission="admin.panel">
           <PageSuspense>
             <AdminPage />
+          </PageSuspense>
+        </ProtectedRoute>
+      </ErrorBoundary>
+    ),
+  },
+  {
+    path: '/clientes',
+    element: (
+      <ErrorBoundary>
+        <ProtectedRoute requirePermission="clientes.view">
+          <PageSuspense>
+            <ClientesPage />
+          </PageSuspense>
+        </ProtectedRoute>
+      </ErrorBoundary>
+    ),
+  },
+  {
+    path: '/pedidos',
+    element: (
+      <ErrorBoundary>
+        <ProtectedRoute>
+          <PageSuspense>
+            <PedidosPage />
+          </PageSuspense>
+        </ProtectedRoute>
+      </ErrorBoundary>
+    ),
+  },
+  {
+    path: '/leads',
+    element: (
+      <ErrorBoundary>
+        <ProtectedRoute>
+          <PageSuspense>
+            <LeadsPage />
+          </PageSuspense>
+        </ProtectedRoute>
+      </ErrorBoundary>
+    ),
+  },
+  {
+    path: '/comissoes',
+    element: (
+      <ErrorBoundary>
+        <ProtectedRoute>
+          <PageSuspense>
+            <ComissoesPage />
           </PageSuspense>
         </ProtectedRoute>
       </ErrorBoundary>
