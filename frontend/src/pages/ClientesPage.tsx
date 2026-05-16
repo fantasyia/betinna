@@ -11,7 +11,7 @@ import { FormField, Input, Select } from '@/components/FormField';
 import { Modal } from '@/components/Modal';
 import { AsyncCombobox } from '@/components/AsyncCombobox';
 import { useToast } from '@/components/toast';
-import { maskCNPJ, maskTelefone, normalizeUF } from '@/lib/masks';
+import { isValidCNPJ, maskCNPJ, maskTelefone, normalizeUF, stripMask } from '@/lib/masks';
 import { badge, btn, btnDanger, btnSecondary, card, colors } from '@/components/styles';
 
 interface RepOpt {
@@ -20,7 +20,7 @@ interface RepOpt {
   email?: string;
 }
 
-type ClienteStatus = 'NOVO' | 'PROSPECT' | 'ATIVO' | 'INATIVO';
+type ClienteStatus = 'ATIVO' | 'NOVO' | 'RISCO' | 'CRITICO' | 'INATIVO';
 type OmieStatus = 'ATIVO' | 'BLOQUEADO';
 
 interface Cliente {
@@ -47,9 +47,10 @@ interface Lista {
 }
 
 const STATUS_COLORS: Record<ClienteStatus, string> = {
-  NOVO: colors.warning,
-  PROSPECT: '#0891b2',
   ATIVO: colors.success,
+  NOVO: '#0891b2',
+  RISCO: colors.warning,
+  CRITICO: colors.danger,
   INATIVO: colors.muted,
 };
 
@@ -246,9 +247,10 @@ export default function ClientesPage() {
             }}
           >
             <option value="">Todos status</option>
-            <option value="NOVO">Novo</option>
-            <option value="PROSPECT">Prospect</option>
             <option value="ATIVO">Ativo</option>
+            <option value="NOVO">Novo</option>
+            <option value="RISCO">Em risco</option>
+            <option value="CRITICO">Crítico</option>
             <option value="INATIVO">Inativo</option>
           </Select>
           <Select
@@ -526,6 +528,21 @@ function ClienteFormModal({
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
+
+    // Validação client-side antes de chamar API
+    if (form.cnpj.trim() && !isValidCNPJ(form.cnpj)) {
+      setError('CNPJ inválido. Confira os dígitos verificadores.');
+      return;
+    }
+    if (form.uf.trim() && form.uf.trim().length !== 2) {
+      setError('UF deve ter 2 letras (ex: SP, RJ).');
+      return;
+    }
+    if (form.telefone.trim() && stripMask(form.telefone).length < 10) {
+      setError('Telefone incompleto — informe DDD + número.');
+      return;
+    }
+
     setSaving(true);
     setError(null);
 
@@ -648,9 +665,10 @@ function ClienteFormModal({
               value={form.status}
               onChange={(e) => setField('status', e.target.value as ClienteStatus)}
             >
-              <option value="NOVO">Novo</option>
-              <option value="PROSPECT">Prospect</option>
               <option value="ATIVO">Ativo</option>
+              <option value="NOVO">Novo</option>
+              <option value="RISCO">Em risco</option>
+              <option value="CRITICO">Crítico</option>
               <option value="INATIVO">Inativo</option>
             </Select>
           </FormField>

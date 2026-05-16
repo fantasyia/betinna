@@ -13,7 +13,7 @@ import { badge, btn, btnDanger, btnSecondary, card, colors } from '@/components/
 
 // ─── Tipos compartilhados ────────────────────────────────────────────
 
-type ClienteStatus = 'NOVO' | 'PROSPECT' | 'ATIVO' | 'INATIVO';
+type ClienteStatus = 'ATIVO' | 'NOVO' | 'RISCO' | 'CRITICO' | 'INATIVO';
 type OmieStatus = 'ATIVO' | 'BLOQUEADO';
 
 interface Cliente {
@@ -69,9 +69,10 @@ interface ProdutoOpt {
 }
 
 const STATUS_COLOR: Record<ClienteStatus, string> = {
-  NOVO: colors.warning,
-  PROSPECT: '#0891b2',
   ATIVO: colors.success,
+  NOVO: '#0891b2',
+  RISCO: colors.warning,
+  CRITICO: colors.danger,
   INATIVO: colors.muted,
 };
 const OMIE_COLOR: Record<OmieStatus, string> = {
@@ -367,9 +368,10 @@ function DadosTab({
                 setForm((s) => ({ ...s, status: e.target.value as ClienteStatus }))
               }
             >
-              <option value="NOVO">Novo</option>
-              <option value="PROSPECT">Prospect</option>
               <option value="ATIVO">Ativo</option>
+              <option value="NOVO">Novo</option>
+              <option value="RISCO">Em risco</option>
+              <option value="CRITICO">Crítico</option>
               <option value="INATIVO">Inativo</option>
             </Select>
           </FormField>
