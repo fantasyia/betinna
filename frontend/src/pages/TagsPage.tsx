@@ -7,6 +7,7 @@ import { StateView } from '@/components/StateView';
 import { FilterBar, SearchInput } from '@/components/FilterBar';
 import { Modal } from '@/components/Modal';
 import { FormField, Input } from '@/components/FormField';
+import { useToast } from '@/components/toast';
 import { btn, btnDanger, btnSecondary, card, colors } from '@/components/styles';
 
 interface Tag {
@@ -25,6 +26,7 @@ const PRESET_COLORS = [
 
 export default function TagsPage() {
   const role = useRole();
+  const toast = useToast();
   const canEdit = ['ADMIN', 'DIRECTOR', 'GERENTE'].includes(role ?? '');
 
   const [search, setSearch] = useState('');
@@ -49,9 +51,10 @@ export default function TagsPage() {
     if (!confirm(msg)) return;
     try {
       await api.delete(`/tags/${t.id}`);
+      toast.success('Tag excluída');
       refetch();
     } catch (err) {
-      alert(err instanceof ApiError ? err.message : 'Falha');
+      toast.error('Falha ao excluir tag', err instanceof ApiError ? err.message : undefined);
     }
   }
 

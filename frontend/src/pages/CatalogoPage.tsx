@@ -7,6 +7,7 @@ import { StateView } from '@/components/StateView';
 import { Modal } from '@/components/Modal';
 import { FormField, Input, Select } from '@/components/FormField';
 import { AsyncCombobox } from '@/components/AsyncCombobox';
+import { useToast } from '@/components/toast';
 import { badge, btn, btnDanger, btnSecondary, card, colors } from '@/components/styles';
 
 interface CatalogoItem {
@@ -56,6 +57,7 @@ function fmtBRL(v: number) {
 }
 
 export default function CatalogoPage() {
+  const toast = useToast();
   const { data, loading, error, refetch } = useApiQuery<CatalogoItem[] | { data: CatalogoItem[] }>(
     '/catalogo',
   );
@@ -79,9 +81,10 @@ export default function CatalogoPage() {
   async function updateMarkup(produtoId: string, markup: number) {
     try {
       await api.put('/catalogo/item', { produtoId, markup });
+      toast.success('Markup atualizado');
       refetch();
     } catch (err) {
-      alert(err instanceof ApiError ? err.message : 'Falha');
+      toast.error('Falha ao atualizar markup', err instanceof ApiError ? err.message : undefined);
     }
   }
 
@@ -89,9 +92,10 @@ export default function CatalogoPage() {
     if (!confirm('Remover este produto do seu catálogo?')) return;
     try {
       await api.delete(`/catalogo/item/${produtoId}`);
+      toast.success('Produto removido do catálogo');
       refetch();
     } catch (err) {
-      alert(err instanceof ApiError ? err.message : 'Falha');
+      toast.error('Falha ao remover', err instanceof ApiError ? err.message : undefined);
     }
   }
 

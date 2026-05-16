@@ -10,6 +10,8 @@ import { FilterBar, SearchInput } from '@/components/FilterBar';
 import { FormField, Input, Select } from '@/components/FormField';
 import { Modal } from '@/components/Modal';
 import { AsyncCombobox } from '@/components/AsyncCombobox';
+import { useToast } from '@/components/toast';
+import { maskCNPJ, maskTelefone, normalizeUF } from '@/lib/masks';
 import { badge, btn, btnDanger, btnSecondary, card, colors } from '@/components/styles';
 
 interface RepOpt {
@@ -594,8 +596,10 @@ function ClienteFormModal({
             <Input
               id="f-cnpj"
               value={form.cnpj}
-              onChange={(e) => setField('cnpj', e.target.value)}
+              onChange={(e) => setField('cnpj', maskCNPJ(e.target.value))}
               placeholder="00.000.000/0001-00"
+              maxLength={18}
+              inputMode="numeric"
             />
           </FormField>
           <FormField label="Segmento" htmlFor="f-seg">
@@ -617,7 +621,10 @@ function ClienteFormModal({
             <Input
               id="f-tel"
               value={form.telefone}
-              onChange={(e) => setField('telefone', e.target.value)}
+              onChange={(e) => setField('telefone', maskTelefone(e.target.value))}
+              placeholder="(00) 00000-0000"
+              maxLength={15}
+              inputMode="tel"
             />
           </FormField>
           <FormField label="Cidade" htmlFor="f-cidade">
@@ -632,7 +639,7 @@ function ClienteFormModal({
               id="f-uf"
               maxLength={2}
               value={form.uf}
-              onChange={(e) => setField('uf', e.target.value.toUpperCase())}
+              onChange={(e) => setField('uf', normalizeUF(e.target.value))}
             />
           </FormField>
           <FormField label="Status" htmlFor="f-status">
@@ -704,15 +711,17 @@ function ClienteFormModal({
 }
 
 function DeleteClienteButton({ id, onDeleted }: { id: string; onDeleted: () => void }) {
+  const toast = useToast();
   const [confirming, setConfirming] = useState(false);
   const [busy, setBusy] = useState(false);
   async function doDelete() {
     setBusy(true);
     try {
       await api.delete(`/clientes/${id}`);
+      toast.success('Cliente excluído');
       onDeleted();
     } catch (err) {
-      alert(err instanceof ApiError ? err.message : 'Falha ao excluir');
+      toast.error('Falha ao excluir', err instanceof ApiError ? err.message : undefined);
     } finally {
       setBusy(false);
     }

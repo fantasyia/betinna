@@ -10,6 +10,8 @@ import { StateView } from '@/components/StateView';
 import { FilterBar, SearchInput } from '@/components/FilterBar';
 import { Modal } from '@/components/Modal';
 import { FormField, Input, Select } from '@/components/FormField';
+import { useToast } from '@/components/toast';
+import { maskTelefone } from '@/lib/masks';
 import { badge, btn, btnSecondary, card, colors } from '@/components/styles';
 
 type UserRole = 'ADMIN' | 'DIRECTOR' | 'GERENTE' | 'SAC' | 'REP';
@@ -216,6 +218,7 @@ function UsersList() {
 
 function UserDetail({ userId, isOwnProfile }: { userId: string; isOwnProfile: boolean }) {
   const role = useRole();
+  const toast = useToast();
   const canEdit = role === 'ADMIN' || (isOwnProfile && role !== null);
   const isAdmin = role === 'ADMIN';
   const canSetTeto = isAdmin; // backend: ADMIN only
@@ -235,7 +238,7 @@ function UserDetail({ userId, isOwnProfile }: { userId: string; isOwnProfile: bo
     setActionError(null);
     try {
       await api.post(`/users/${data.id}/reenviar-convite`);
-      alert('Convite reenviado.');
+      toast.success('Convite reenviado', `E-mail enviado pra ${data.email}`);
     } catch (err) {
       setActionError(err instanceof ApiError ? err.message : 'Falha');
     } finally {
@@ -543,8 +546,11 @@ function EditUserModal({
           <FormField label="Telefone">
             <Input
               value={form.telefone}
-              onChange={(e) => setForm((s) => ({ ...s, telefone: e.target.value }))}
+              onChange={(e) => setForm((s) => ({ ...s, telefone: maskTelefone(e.target.value) }))}
               disabled={!canSave}
+              placeholder="(00) 00000-0000"
+              maxLength={15}
+              inputMode="tel"
             />
           </FormField>
           <FormField label="Região">

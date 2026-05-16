@@ -7,6 +7,7 @@ import { StateView } from '@/components/StateView';
 import { FilterBar, SearchInput } from '@/components/FilterBar';
 import { Modal } from '@/components/Modal';
 import { FormField, Input, Select, Textarea } from '@/components/FormField';
+import { useToast } from '@/components/toast';
 import { badge, btn, btnDanger, btnSecondary, card, colors } from '@/components/styles';
 
 interface Produto {
@@ -59,15 +60,17 @@ export default function ProdutosPage() {
     return `/produtos?${qs.toString()}`;
   }, [page, search, linha, categoria, marca, ativo, semEstoque]);
 
+  const toast = useToast();
   const { data: pageResp, loading, error, refetch } = useApiQuery<PaginatedResponse<Produto>>(listPath);
   const { data: facets } = useApiQuery<Facets>('/produtos/facets');
 
   async function toggleAtivo(p: Produto) {
     try {
       await api.put(`/produtos/${p.id}/ativo`, { ativo: !p.ativo });
+      toast.success(p.ativo ? 'Produto desativado' : 'Produto ativado');
       refetch();
     } catch (err) {
-      alert(err instanceof ApiError ? err.message : 'Falha');
+      toast.error('Falha ao mudar status', err instanceof ApiError ? err.message : undefined);
     }
   }
 

@@ -5,6 +5,7 @@ import { PageLayout } from '@/components/PageLayout';
 import { StateView } from '@/components/StateView';
 import { Modal } from '@/components/Modal';
 import { FormField, Input, Select, Textarea } from '@/components/FormField';
+import { maskTelefone, normalizeUF } from '@/lib/masks';
 import { badge, btn, btnDanger, btnSecondary, colors } from '@/components/styles';
 
 type LeadEtapa = 'NOVO' | 'QUALIFICANDO' | 'PROPOSTA' | 'NEGOCIACAO' | 'GANHO' | 'PERDIDO';
@@ -512,7 +513,7 @@ function LeadFormModal({
               id="l-uf"
               maxLength={2}
               value={form.uf}
-              onChange={(e) => setF('uf', e.target.value.toUpperCase())}
+              onChange={(e) => setF('uf', normalizeUF(e.target.value))}
             />
           </FormField>
           <FormField label="Segmento" htmlFor="l-seg">
@@ -535,7 +536,7 @@ function LeadFormModal({
             <Input id="l-cn" value={form.contatoNome} onChange={(e) => setF('contatoNome', e.target.value)} />
           </FormField>
           <FormField label="Contato (telefone)" htmlFor="l-ct">
-            <Input id="l-ct" value={form.contatoTelefone} onChange={(e) => setF('contatoTelefone', e.target.value)} />
+            <Input id="l-ct" value={form.contatoTelefone} onChange={(e) => setF('contatoTelefone', maskTelefone(e.target.value))} placeholder="(00) 00000-0000" maxLength={15} inputMode="tel" />
           </FormField>
           <FormField label="Contato (e-mail)" htmlFor="l-ce">
             <Input id="l-ce" type="email" value={form.contatoEmail} onChange={(e) => setF('contatoEmail', e.target.value)} />

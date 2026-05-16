@@ -5,6 +5,7 @@ import { PageLayout } from '@/components/PageLayout';
 import { StateView } from '@/components/StateView';
 import { Modal } from '@/components/Modal';
 import { FormField, Select, Textarea } from '@/components/FormField';
+import { useToast } from '@/components/toast';
 import { badge, btn, btnSecondary, card, colors } from '@/components/styles';
 
 type Canal =
@@ -367,6 +368,7 @@ function ConversationThread({
   pollBump: number;
   onChanged: () => void;
 }) {
+  const toast = useToast();
   const detailPath = useMemo(() => `/inbox/${id}?_t=${pollBump}`, [id, pollBump]);
   const msgsPath = useMemo(() => `/inbox/${id}/mensagens?limit=80&_t=${pollBump}`, [id, pollBump]);
 
@@ -416,11 +418,12 @@ function ConversationThread({
   async function mudarStatus(novo: ConversationStatus) {
     try {
       await api.patch(`/inbox/${id}/status`, { status: novo });
+      toast.success('Status atualizado');
       conv.refetch();
       onChanged();
       setStatusOpen(false);
     } catch (err) {
-      alert(err instanceof ApiError ? err.message : 'Falha');
+      toast.error('Falha ao mudar status', err instanceof ApiError ? err.message : undefined);
     }
   }
 

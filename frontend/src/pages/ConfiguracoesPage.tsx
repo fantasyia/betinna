@@ -8,6 +8,8 @@ import { StateView } from '@/components/StateView';
 import { FilterBar, SearchInput } from '@/components/FilterBar';
 import { Modal } from '@/components/Modal';
 import { FormField, Input, Select } from '@/components/FormField';
+import { useToast } from '@/components/toast';
+import { maskCNPJ, normalizeUF } from '@/lib/masks';
 import { badge, btn, btnDanger, btnSecondary, card, colors } from '@/components/styles';
 
 type Plano = 'Free' | 'Pro' | 'Enterprise';
@@ -42,6 +44,7 @@ function fmtDate(d: string | null | undefined) {
 
 export default function ConfiguracoesPage() {
   const role = useRole();
+  const toast = useToast();
   const isAdmin = role === 'ADMIN';
 
   const [page, setPage] = useState(1);
@@ -65,12 +68,14 @@ export default function ConfiguracoesPage() {
     try {
       if (emp.ativo) {
         await api.delete(`/empresas/${emp.id}`);
+        toast.success(`${emp.nome} desativada`);
       } else {
         await api.put(`/empresas/${emp.id}/ativar`);
+        toast.success(`${emp.nome} ativada`);
       }
       refetch();
     } catch (err) {
-      alert(err instanceof ApiError ? err.message : 'Falha');
+      toast.error('Falha ao mudar status', err instanceof ApiError ? err.message : undefined);
     }
   }
 
@@ -348,8 +353,10 @@ function EmpresaFormModal({
           <FormField label="CNPJ" hint="00.000.000/0001-00">
             <Input
               value={form.cnpj}
-              onChange={(e) => setForm((s) => ({ ...s, cnpj: e.target.value }))}
+              onChange={(e) => setForm((s) => ({ ...s, cnpj: maskCNPJ(e.target.value) }))}
               placeholder="00.000.000/0001-00"
+              maxLength={18}
+              inputMode="numeric"
             />
           </FormField>
           <FormField label="Plano">
@@ -384,7 +391,7 @@ function EmpresaFormModal({
             <Input
               maxLength={2}
               value={form.uf}
-              onChange={(e) => setForm((s) => ({ ...s, uf: e.target.value.toUpperCase() }))}
+              onChange={(e) => setForm((s) => ({ ...s, uf: normalizeUF(e.target.value) }))}
             />
           </FormField>
         </div>

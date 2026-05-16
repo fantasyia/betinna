@@ -8,6 +8,7 @@ import { StateView } from '@/components/StateView';
 import { FilterBar, SearchInput } from '@/components/FilterBar';
 import { Modal } from '@/components/Modal';
 import { FormField, Input, Select, Textarea } from '@/components/FormField';
+import { useToast } from '@/components/toast';
 import { badge, btn, btnDanger, btnSecondary, card, colors } from '@/components/styles';
 
 type FluxoStatus = 'RASCUNHO' | 'ATIVO' | 'PAUSADO' | 'ARQUIVADO';
@@ -117,6 +118,7 @@ function fmtDate(d: string | null | undefined) {
 
 export default function FluxosPage() {
   const role = useRole();
+  const toast = useToast();
   const canEdit = ['ADMIN', 'DIRECTOR'].includes(role ?? '');
 
   const [page, setPage] = useState(1);
@@ -140,12 +142,14 @@ export default function FluxosPage() {
     try {
       if (action === 'arquivar') {
         await api.delete(`/fluxos/${id}`);
+        toast.success('Fluxo arquivado');
       } else {
         await api.post(`/fluxos/${id}/${action}`);
+        toast.success(`Fluxo ${action === 'ativar' ? 'ativado' : 'pausado'}`);
       }
       refetch();
     } catch (err) {
-      alert(err instanceof ApiError ? err.message : 'Falha');
+      toast.error('Falha na operação', err instanceof ApiError ? err.message : undefined);
     }
   }
 
@@ -329,6 +333,7 @@ function FluxoDetailModal({
   onClose: () => void;
   onChanged: () => void;
 }) {
+  const toast = useToast();
   const { data, loading, error, refetch } = useApiQuery<FluxoDetail>(`/fluxos/${id}`);
   const metricas = useApiQuery<Metricas>(`/fluxos/${id}/metricas`);
   const execucoes = useApiQuery<PaginatedResponse<Execucao>>(`/fluxos/${id}/execucoes?limit=10`);
@@ -356,9 +361,10 @@ function FluxoDetailModal({
     if (!confirm('Cancelar esta execução?')) return;
     try {
       await api.post(`/fluxos/execucoes/${execucaoId}/cancelar`);
+      toast.success('Execução cancelada');
       execucoes.refetch();
     } catch (err) {
-      alert(err instanceof ApiError ? err.message : 'Falha');
+      toast.error('Falha ao cancelar', err instanceof ApiError ? err.message : undefined);
     }
   }
 

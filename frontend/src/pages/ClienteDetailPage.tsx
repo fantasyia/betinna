@@ -7,6 +7,8 @@ import { StateView } from '@/components/StateView';
 import { Modal } from '@/components/Modal';
 import { FormField, Input, Select, Textarea } from '@/components/FormField';
 import { AsyncCombobox } from '@/components/AsyncCombobox';
+import { useToast } from '@/components/toast';
+import { maskCNPJ, maskTelefone, normalizeUF } from '@/lib/masks';
 import { badge, btn, btnDanger, btnSecondary, card, colors } from '@/components/styles';
 
 // ─── Tipos compartilhados ────────────────────────────────────────────
@@ -317,7 +319,10 @@ function DadosTab({
           <FormField label="CNPJ">
             <Input
               value={form.cnpj}
-              onChange={(e) => setForm((s) => ({ ...s, cnpj: e.target.value }))}
+              onChange={(e) => setForm((s) => ({ ...s, cnpj: maskCNPJ(e.target.value) }))}
+              placeholder="00.000.000/0001-00"
+              maxLength={18}
+              inputMode="numeric"
             />
           </FormField>
           <FormField label="Segmento">
@@ -336,7 +341,10 @@ function DadosTab({
           <FormField label="Telefone">
             <Input
               value={form.telefone}
-              onChange={(e) => setForm((s) => ({ ...s, telefone: e.target.value }))}
+              onChange={(e) => setForm((s) => ({ ...s, telefone: maskTelefone(e.target.value) }))}
+              placeholder="(00) 00000-0000"
+              maxLength={15}
+              inputMode="tel"
             />
           </FormField>
           <FormField label="Cidade">
@@ -349,9 +357,7 @@ function DadosTab({
             <Input
               maxLength={2}
               value={form.uf}
-              onChange={(e) =>
-                setForm((s) => ({ ...s, uf: e.target.value.toUpperCase() }))
-              }
+              onChange={(e) => setForm((s) => ({ ...s, uf: normalizeUF(e.target.value) }))}
             />
           </FormField>
           <FormField label="Status">
@@ -445,6 +451,7 @@ function DadosTab({
 // ─── Tab Notas privadas ──────────────────────────────────────────────
 
 function NotasTab({ clienteId }: { clienteId: string }) {
+  const toast = useToast();
   const { data, loading, error, refetch } = useApiQuery<NotaPrivada[] | { data: NotaPrivada[] }>(
     `/clientes/${clienteId}/notas`,
   );
@@ -474,9 +481,10 @@ function NotasTab({ clienteId }: { clienteId: string }) {
     if (!confirm('Excluir esta nota?')) return;
     try {
       await api.delete(`/clientes/${clienteId}/notas/${id}`);
+      toast.success('Nota excluída');
       refetch();
     } catch (err) {
-      alert(err instanceof ApiError ? err.message : 'Falha');
+      toast.error('Falha ao excluir', err instanceof ApiError ? err.message : undefined);
     }
   }
 
@@ -653,6 +661,7 @@ function EditNotaModal({
 // ─── Tab Documentos ──────────────────────────────────────────────────
 
 function DocumentosTab({ clienteId }: { clienteId: string }) {
+  const toast = useToast();
   const { data, loading, error, refetch } = useApiQuery<Documento[] | { data: Documento[] }>(
     `/clientes/${clienteId}/documentos`,
   );
@@ -705,7 +714,7 @@ function DocumentosTab({ clienteId }: { clienteId: string }) {
       const r = await api.get<{ url: string }>(`/clientes/${clienteId}/documentos/${docId}/download`);
       window.open(r.url, '_blank', 'noopener');
     } catch (err) {
-      alert(err instanceof ApiError ? err.message : 'Falha');
+      toast.error('Falha ao gerar link', err instanceof ApiError ? err.message : undefined);
     }
   }
 
@@ -713,9 +722,10 @@ function DocumentosTab({ clienteId }: { clienteId: string }) {
     if (!confirm('Excluir este documento? Não pode ser desfeito.')) return;
     try {
       await api.delete(`/clientes/${clienteId}/documentos/${docId}`);
+      toast.success('Documento excluído');
       refetch();
     } catch (err) {
-      alert(err instanceof ApiError ? err.message : 'Falha');
+      toast.error('Falha ao excluir', err instanceof ApiError ? err.message : undefined);
     }
   }
 
@@ -798,6 +808,7 @@ function DocumentosTab({ clienteId }: { clienteId: string }) {
 // ─── Tab Preços especiais ────────────────────────────────────────────
 
 function PrecosTab({ clienteId }: { clienteId: string }) {
+  const toast = useToast();
   const { data, loading, error, refetch } = useApiQuery<PrecoEspecial[] | { data: PrecoEspecial[] }>(
     `/clientes/${clienteId}/precos-especiais`,
   );
@@ -808,9 +819,10 @@ function PrecosTab({ clienteId }: { clienteId: string }) {
     if (!confirm('Remover este preço especial?')) return;
     try {
       await api.delete(`/clientes/${clienteId}/precos-especiais/${produtoId}`);
+      toast.success('Preço especial removido');
       refetch();
     } catch (err) {
-      alert(err instanceof ApiError ? err.message : 'Falha');
+      toast.error('Falha ao remover', err instanceof ApiError ? err.message : undefined);
     }
   }
 
