@@ -8,7 +8,7 @@ CREATE TYPE "UserRole" AS ENUM ('ADMIN', 'DIRECTOR', 'GERENTE', 'SAC', 'REP');
 CREATE TYPE "UserStatus" AS ENUM ('ATIVO', 'PENDENTE', 'INATIVO');
 
 -- CreateEnum
-CREATE TYPE "ClienteStatus" AS ENUM ('ATIVO', 'NOVO', 'RISCO', 'CRITICO', 'INATIVO');
+CREATE TYPE "ClienteStatus" AS ENUM ('ATIVO', 'NOVO', 'PROSPECT', 'RISCO', 'CRITICO', 'INATIVO');
 
 -- CreateEnum
 CREATE TYPE "ClienteOmieStatus" AS ENUM ('ATIVO', 'BLOQUEADO');
@@ -29,7 +29,7 @@ CREATE TYPE "PropostaStatus" AS ENUM ('RASCUNHO', 'ENVIADA', 'NEGOCIACAO', 'AGUA
 CREATE TYPE "LeadEtapa" AS ENUM ('NOVO', 'QUALIFICANDO', 'PROPOSTA', 'NEGOCIACAO', 'GANHO', 'PERDIDO');
 
 -- CreateEnum
-CREATE TYPE "CanalOrigem" AS ENUM ('WHATSAPP', 'INSTAGRAM', 'FACEBOOK', 'FORMULARIO', 'EMAIL', 'TELEFONE', 'INDICACAO');
+CREATE TYPE "CanalOrigem" AS ENUM ('WHATSAPP', 'INSTAGRAM', 'FACEBOOK', 'FORMULARIO', 'SITE', 'EMAIL', 'TELEFONE', 'INDICACAO', 'OUTRO');
 
 -- CreateEnum
 CREATE TYPE "AprovacaoStatus" AS ENUM ('PENDENTE', 'APROVADA', 'REJEITADA');
@@ -804,9 +804,6 @@ CREATE UNIQUE INDEX "UsuarioEmpresa_usuarioId_empresaId_key" ON "UsuarioEmpresa"
 CREATE UNIQUE INDEX "Permissao_role_modulo_key" ON "Permissao"("role", "modulo");
 
 -- CreateIndex
-CREATE UNIQUE INDEX "Cliente_codigoOmie_key" ON "Cliente"("codigoOmie");
-
--- CreateIndex
 CREATE INDEX "Cliente_empresaId_idx" ON "Cliente"("empresaId");
 
 -- CreateIndex
@@ -817,6 +814,9 @@ CREATE INDEX "Cliente_status_idx" ON "Cliente"("status");
 
 -- CreateIndex
 CREATE INDEX "Cliente_omieStatus_idx" ON "Cliente"("omieStatus");
+
+-- CreateIndex
+CREATE UNIQUE INDEX "Cliente_empresaId_codigoOmie_key" ON "Cliente"("empresaId", "codigoOmie");
 
 -- CreateIndex
 CREATE INDEX "Tag_empresaId_idx" ON "Tag"("empresaId");
