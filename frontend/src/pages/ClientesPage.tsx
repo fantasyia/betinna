@@ -9,7 +9,14 @@ import { StateView } from '@/components/StateView';
 import { FilterBar, SearchInput } from '@/components/FilterBar';
 import { FormField, Input, Select } from '@/components/FormField';
 import { Modal } from '@/components/Modal';
+import { AsyncCombobox } from '@/components/AsyncCombobox';
 import { badge, btn, btnDanger, btnSecondary, card, colors } from '@/components/styles';
+
+interface RepOpt {
+  id: string;
+  nome: string;
+  email?: string;
+}
 
 type ClienteStatus = 'NOVO' | 'PROSPECT' | 'ATIVO' | 'INATIVO';
 type OmieStatus = 'ATIVO' | 'BLOQUEADO';
@@ -88,7 +95,63 @@ export default function ClientesPage() {
     refetch();
   };
 
+  // Bulk selection (apenas quando canBulk)
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [bulkOpen, setBulkOpen] = useState(false);
+  const currentPageIds = page$?.data.map((c) => c.id) ?? [];
+  const allCurrentSelected =
+    currentPageIds.length > 0 && currentPageIds.every((id) => selectedIds.has(id));
+  function toggleOne(id: string) {
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  }
+  function toggleAllCurrent() {
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      if (allCurrentSelected) {
+        for (const id of currentPageIds) next.delete(id);
+      } else {
+        for (const id of currentPageIds) next.add(id);
+      }
+      return next;
+    });
+  }
+  function clearSelection() {
+    setSelectedIds(new Set());
+  }
+
   const columns: Column<Cliente>[] = [
+    ...(canBulk
+      ? [
+          {
+            key: 'select',
+            header: (
+              <input
+                type="checkbox"
+                data-testid="bulk-select-all"
+                checked={allCurrentSelected}
+                onChange={toggleAllCurrent}
+                aria-label="Selecionar todos da página"
+              />
+            ) as React.ReactNode,
+            render: (c: Cliente) => (
+              <input
+                type="checkbox"
+                data-testid={`bulk-select-${c.id}`}
+                checked={selectedIds.has(c.id)}
+                onChange={() => toggleOne(c.id)}
+                onClick={(e) => e.stopPropagation()}
+                aria-label={`Selecionar ${c.nome}`}
+              />
+            ),
+            width: 32,
+          } as Column<Cliente>,
+        ]
+      : []),
     {
       key: 'nome',
       header: 'Cliente',
@@ -234,12 +297,59 @@ export default function ClientesPage() {
           )}
         </StateView>
 
-        {canBulk && (
-          <p style={{ fontSize: 12, color: colors.muted, marginTop: '0.5rem' }}>
-            Dica: você tem permissão de atribuição em massa. (UI em sessão futura.)
-          </p>
-        )}
       </div>
+
+      {/* Floating bulk action bar */}
+      {canBulk && selectedIds.size > 0 && (
+        <div
+          data-testid="bulk-bar"
+          style={{
+            position: 'fixed',
+            bottom: 24,
+            left: '50%',
+            transform: 'translateX(-50%)',
+            background: colors.text,
+            color: '#fff',
+            borderRadius: 999,
+            padding: '0.625rem 1.25rem',
+            display: 'flex',
+            alignItems: 'center',
+            gap: '1rem',
+            boxShadow: '0 8px 24px rgba(0,0,0,0.25)',
+            zIndex: 100,
+            fontSize: 14,
+          }}
+        >
+          <span data-testid="bulk-count">
+            <strong>{selectedIds.size}</strong> cliente{selectedIds.size === 1 ? '' : 's'} selecionado{selectedIds.size === 1 ? '' : 's'}
+          </span>
+          <button
+            type="button"
+            data-testid="bulk-assign-open"
+            onClick={() => setBulkOpen(true)}
+            style={{ ...btn, padding: '0.375rem 1rem' }}
+          >
+            Atribuir representante
+          </button>
+          <button
+            type="button"
+            data-testid="bulk-clear"
+            onClick={clearSelection}
+            style={{
+              background: 'transparent',
+              border: '1px solid #ffffff66',
+              color: '#fff',
+              padding: '0.375rem 1rem',
+              borderRadius: 6,
+              cursor: 'pointer',
+              fontFamily: 'inherit',
+              fontSize: 13,
+            }}
+          >
+            Limpar
+          </button>
+        </div>
+      )}
 
       {creating && (
         <ClienteFormModal
@@ -249,7 +359,114 @@ export default function ClientesPage() {
           onSaved={onSaved}
         />
       )}
+      {bulkOpen && (
+        <BulkAssignModal
+          clienteIds={Array.from(selectedIds)}
+          onClose={() => setBulkOpen(false)}
+          onDone={() => {
+            setBulkOpen(false);
+            clearSelection();
+            refetch();
+          }}
+        />
+      )}
     </PageLayout>
+  );
+}
+
+function BulkAssignModal({
+  clienteIds,
+  onClose,
+  onDone,
+}: {
+  clienteIds: string[];
+  onClose: () => void;
+  onDone: () => void;
+}) {
+  const [rep, setRep] = useState<RepOpt | null>(null);
+  const [removeRep, setRemoveRep] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  async function submit() {
+    setBusy(true);
+    setError(null);
+    try {
+      await api.post('/clientes/atribuir-rep-massa', {
+        clienteIds,
+        representanteId: removeRep ? null : rep?.id,
+      });
+      onDone();
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : 'Falha');
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  const valid = removeRep || rep !== null;
+
+  return (
+    <Modal
+      open
+      onClose={onClose}
+      title={`Atribuir rep em ${clienteIds.length} cliente${clienteIds.length === 1 ? '' : 's'}`}
+      footer={
+        <>
+          <button type="button" onClick={onClose} style={btnSecondary}>
+            Cancelar
+          </button>
+          <button
+            type="button"
+            data-testid="bulk-confirm"
+            onClick={submit}
+            disabled={busy || !valid}
+            style={{ ...btn, opacity: busy || !valid ? 0.6 : 1 }}
+          >
+            {busy ? 'Aplicando…' : removeRep ? 'Remover rep dos selecionados' : 'Atribuir'}
+          </button>
+        </>
+      }
+    >
+      <FormField label="Representante" hint={removeRep ? 'Vai remover rep atual de todos' : 'Cada selecionado vai ficar com este rep'}>
+        <AsyncCombobox<RepOpt>
+          testId="bulk-rep-picker"
+          endpoint="/users"
+          placeholder="Buscar representante…"
+          getLabel={(r) => r.nome}
+          getSubLabel={(r) => r.email ?? null}
+          getId={(r) => r.id}
+          value={rep}
+          onChange={(r) => {
+            setRep(r);
+            if (r) setRemoveRep(false);
+          }}
+          extraQuery={{ role: 'REP' }}
+          disabled={removeRep}
+        />
+      </FormField>
+      <label
+        style={{
+          display: 'flex',
+          alignItems: 'center',
+          gap: '0.5rem',
+          fontSize: 13,
+          marginTop: '0.5rem',
+        }}
+      >
+        <input
+          type="checkbox"
+          data-testid="bulk-remove-rep"
+          checked={removeRep}
+          onChange={(e) => {
+            setRemoveRep(e.target.checked);
+            if (e.target.checked) setRep(null);
+          }}
+        />
+        Remover representante (deixar sem rep)
+      </label>
+      {error && <p style={{ color: colors.danger, fontSize: 13, marginTop: '0.5rem' }}>{error}</p>}
+    </Modal>
   );
 }
 

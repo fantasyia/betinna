@@ -26,6 +26,9 @@ const MullerBotPage = lazy(() => import('@/pages/MullerBotPage'));
 const MarketplaceIncidentsPage = lazy(() => import('@/pages/MarketplaceIncidentsPage'));
 const ConfiguracoesPage = lazy(() => import('@/pages/ConfiguracoesPage'));
 const ProfilePage = lazy(() => import('@/pages/ProfilePage'));
+const TagsPage = lazy(() => import('@/pages/TagsPage'));
+const FluxosPage = lazy(() => import('@/pages/FluxosPage'));
+const PermissoesPage = lazy(() => import('@/pages/PermissoesPage'));
 const PedidosPage = lazy(() => import('@/pages/PedidosPage'));
 const ComissoesPage = lazy(() => import('@/pages/ComissoesPage'));
 const LeadsPage = lazy(() => import('@/pages/LeadsPage'));
@@ -232,6 +235,42 @@ const router = createBrowserRouter([
         <ProtectedRoute allowedRoles={['ADMIN', 'DIRECTOR', 'GERENTE']}>
           <PageSuspense>
             <ProfilePage />
+          </PageSuspense>
+        </ProtectedRoute>
+      </ErrorBoundary>
+    ),
+  },
+  {
+    path: '/tags',
+    element: (
+      <ErrorBoundary>
+        <ProtectedRoute requirePermission="clientes.view">
+          <PageSuspense>
+            <TagsPage />
+          </PageSuspense>
+        </ProtectedRoute>
+      </ErrorBoundary>
+    ),
+  },
+  {
+    path: '/fluxos',
+    element: (
+      <ErrorBoundary>
+        <ProtectedRoute allowedRoles={['ADMIN', 'DIRECTOR', 'GERENTE']}>
+          <PageSuspense>
+            <FluxosPage />
+          </PageSuspense>
+        </ProtectedRoute>
+      </ErrorBoundary>
+    ),
+  },
+  {
+    path: '/permissoes',
+    element: (
+      <ErrorBoundary>
+        <ProtectedRoute allowedRoles={['ADMIN']}>
+          <PageSuspense>
+            <PermissoesPage />
           </PageSuspense>
         </ProtectedRoute>
       </ErrorBoundary>

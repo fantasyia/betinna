@@ -20,6 +20,8 @@ const NAV_ITEMS: Array<{
   { to: '/incidentes', label: 'Incidentes' },
   { to: '/ocorrencias', label: 'SAC' },
   { to: '/mullerbot', label: 'MullerBot' },
+  { to: '/fluxos', label: 'Fluxos' },
+  { to: '/tags', label: 'Tags' },
   { to: '/leads', label: 'Leads' },
   { to: '/agenda', label: 'Agenda' },
   { to: '/comissoes', label: 'Comissões' },
@@ -29,6 +31,7 @@ const NAV_ITEMS: Array<{
   { to: '/perfil', label: 'Meu perfil' },
   { to: '/usuarios', label: 'Usuários' },
   { to: '/configuracoes', label: 'Configurações' },
+  { to: '/permissoes', label: 'Permissões' },
   { to: '/admin', label: 'Admin', permission: 'admin.panel' },
 ];
 
