@@ -1,0 +1,760 @@
+import { useMemo, useState } from 'react';
+import { useApiQuery } from '@/hooks/useApiQuery';
+import { PageLayout } from '@/components/PageLayout';
+import { StateView } from '@/components/StateView';
+import { Select } from '@/components/FormField';
+import { BarChart, Funnel, Donut, KPICard, type FunnelStage, type DonutSlice } from '@/components/charts';
+import { badge, card, colors } from '@/components/styles';
+
+type Periodo = 'mes' | 'trimestre' | 'semestre' | 'ano';
+type Tab = 'overview' | 'vendas' | 'funil' | 'comissoes' | 'sac' | 'amostras' | 'campanhas';
+
+// ─── Tipos das responses do backend ──────────────────────────────────
+
+interface VendasResp {
+  periodo: { de: string; ate: string };
+  faturamento: { atual: number; anterior: number; variacao: number };
+  receitaRealizada: number;
+  totalPedidos: number;
+  ticketMedio: number;
+  porStatus: Array<{ status: string; count: number; total: number }>;
+  porRep: Array<{ repId: string; repNome: string; pedidos: number; total: number }>;
+}
+
+interface FunilResp {
+  periodo: { de: string; ate: string };
+  funilAtual: Array<{ etapa: string; count: number; valorEstimado: number }>;
+  totalAtivos: number;
+  criados: { atual: number; anterior: number; variacao: number };
+  ganhos: { atual: number; anterior: number; variacao: number };
+  perdidos: number;
+  taxaConversao: number;
+  agingMedioPorEtapa: Record<string, number>;
+  porRep: Array<{ repId: string; repNome: string; leads: number; valorEstimado: number }>;
+}
+
+interface ComissoesResp {
+  periodo: { de: string; ate: string };
+  totalPago: number;
+  totalAPagar: number;
+  porRep: Array<{
+    repId: string;
+    repNome: string;
+    tipo: 'REP' | 'GERENTE';
+    valor: number;
+    pago: boolean;
+  }>;
+}
+
+interface SacResp {
+  periodo: { de: string; ate: string };
+  total: number;
+  abertas: number;
+  emAndamento: number;
+  resolvidas: number;
+  slaEstourado: number;
+  tempoMedioResolucaoHoras?: number;
+  porSeveridade: Array<{ severidade: string; count: number }>;
+  porTipo: Array<{ tipo: string; count: number }>;
+}
+
+interface AmostrasResp {
+  periodo: { de: string; ate: string };
+  enviadas: number;
+  convertidas: number;
+  naoConverteram: number;
+  expiradas: number;
+  taxaConversao: number;
+  valorConvertido: number;
+}
+
+interface CampanhasResp {
+  periodo: { de: string; ate: string };
+  total: number;
+  totalEnvios: number;
+  totalLeituras: number;
+  taxaLeitura: number;
+  porCanal: Array<{ canal: string; envios: number; leituras: number }>;
+}
+
+interface DashboardResp {
+  vendas: VendasResp;
+  funil: FunilResp;
+  sac: SacResp;
+  amostras: AmostrasResp;
+  campanhas: CampanhasResp;
+}
+
+// ─── Helpers ─────────────────────────────────────────────────────────
+
+function fmtBRL(v: number) {
+  return new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(v);
+}
+function fmtBRLCompact(v: number) {
+  if (v >= 1_000_000) return `R$ ${(v / 1_000_000).toFixed(1)}M`;
+  if (v >= 1_000) return `R$ ${(v / 1_000).toFixed(1)}k`;
+  return fmtBRL(v);
+}
+
+const STATUS_LABEL_PT: Record<string, string> = {
+  RASCUNHO: 'Rascunho',
+  AGUARDANDO_APROVACAO: 'Aguardando aprovação',
+  ENVIADO_OMIE: 'Enviado OMIE',
+  PAGO: 'Pago',
+  EM_SEPARACAO: 'Em separação',
+  ENVIADO: 'Enviado',
+  ENTREGUE: 'Entregue',
+  CANCELADO: 'Cancelado',
+};
+const STATUS_COLOR_PT: Record<string, string> = {
+  RASCUNHO: colors.muted,
+  AGUARDANDO_APROVACAO: colors.warning,
+  ENVIADO_OMIE: '#0891b2',
+  PAGO: colors.success,
+  EM_SEPARACAO: '#7c3aed',
+  ENVIADO: '#0284c7',
+  ENTREGUE: colors.success,
+  CANCELADO: colors.danger,
+};
+
+const ETAPA_LABEL: Record<string, string> = {
+  NOVO: 'Novo',
+  QUALIFICANDO: 'Qualificando',
+  PROPOSTA: 'Proposta',
+  NEGOCIACAO: 'Negociação',
+  GANHO: 'Ganho',
+  PERDIDO: 'Perdido',
+};
+const ETAPA_COLOR: Record<string, string> = {
+  NOVO: '#0891b2',
+  QUALIFICANDO: '#7c3aed',
+  PROPOSTA: colors.warning,
+  NEGOCIACAO: '#d97706',
+  GANHO: colors.success,
+  PERDIDO: colors.danger,
+};
+
+const SEV_COLOR: Record<string, string> = {
+  baixa: colors.muted,
+  media: '#0891b2',
+  alta: colors.warning,
+  critica: colors.danger,
+};
+
+// ─── Página principal ────────────────────────────────────────────────
+
+export default function RelatoriosPage() {
+  const [tab, setTab] = useState<Tab>('overview');
+  const [periodo, setPeriodo] = useState<Periodo>('mes');
+
+  const qs = useMemo(() => `?periodo=${periodo}`, [periodo]);
+
+  return (
+    <PageLayout
+      title="Relatórios"
+      actions={
+        <Select
+          value={periodo}
+          data-testid="periodo-select"
+          onChange={(e) => setPeriodo(e.target.value as Periodo)}
+          style={{ minWidth: 160 }}
+        >
+          <option value="mes">Mês atual</option>
+          <option value="trimestre">Últimos 90 dias</option>
+          <option value="semestre">Últimos 180 dias</option>
+          <option value="ano">Ano atual</option>
+        </Select>
+      }
+    >
+      {/* Tabs */}
+      <div
+        role="tablist"
+        style={{
+          display: 'flex',
+          gap: 0,
+          borderBottom: `1px solid ${colors.border}`,
+          marginBottom: '1rem',
+          overflowX: 'auto',
+        }}
+      >
+        <TabButton current={tab} value="overview" onChange={setTab}>
+          Visão geral
+        </TabButton>
+        <TabButton current={tab} value="vendas" onChange={setTab}>
+          Vendas
+        </TabButton>
+        <TabButton current={tab} value="funil" onChange={setTab}>
+          Funil
+        </TabButton>
+        <TabButton current={tab} value="comissoes" onChange={setTab}>
+          Comissões
+        </TabButton>
+        <TabButton current={tab} value="sac" onChange={setTab}>
+          SAC
+        </TabButton>
+        <TabButton current={tab} value="amostras" onChange={setTab}>
+          Amostras
+        </TabButton>
+        <TabButton current={tab} value="campanhas" onChange={setTab}>
+          Campanhas
+        </TabButton>
+      </div>
+
+      {tab === 'overview' && <OverviewTab qs={qs} />}
+      {tab === 'vendas' && <VendasTab qs={qs} />}
+      {tab === 'funil' && <FunilTab qs={qs} />}
+      {tab === 'comissoes' && <ComissoesTab qs={qs} />}
+      {tab === 'sac' && <SacTab qs={qs} />}
+      {tab === 'amostras' && <AmostrasTab qs={qs} />}
+      {tab === 'campanhas' && <CampanhasTab qs={qs} />}
+    </PageLayout>
+  );
+}
+
+function TabButton({
+  current,
+  value,
+  onChange,
+  children,
+}: {
+  current: Tab;
+  value: Tab;
+  onChange: (t: Tab) => void;
+  children: React.ReactNode;
+}) {
+  const active = current === value;
+  return (
+    <button
+      type="button"
+      role="tab"
+      aria-selected={active}
+      data-testid={`relatorios-tab-${value}`}
+      onClick={() => onChange(value)}
+      style={{
+        background: 'transparent',
+        border: 'none',
+        borderBottom: `2px solid ${active ? colors.primary : 'transparent'}`,
+        padding: '0.625rem 1rem',
+        cursor: 'pointer',
+        fontFamily: 'inherit',
+        color: active ? colors.primary : colors.muted,
+        fontWeight: active ? 600 : 500,
+        fontSize: 14,
+        marginBottom: -1,
+        whiteSpace: 'nowrap',
+      }}
+    >
+      {children}
+    </button>
+  );
+}
+
+// ─── Tab: Overview ───────────────────────────────────────────────────
+
+function OverviewTab({ qs }: { qs: string }) {
+  const { data, loading, error, refetch } = useApiQuery<DashboardResp>(`/relatorios/dashboard${qs}`);
+
+  return (
+    <StateView loading={loading} error={error} onRetry={refetch}>
+      {data && (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+          {/* KPIs */}
+          <div
+            style={{
+              display: 'grid',
+              gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))',
+              gap: '0.75rem',
+            }}
+          >
+            <KPICard
+              label="Faturamento"
+              value={fmtBRLCompact(data.vendas.faturamento.atual)}
+              variacao={data.vendas.faturamento.variacao}
+            />
+            <KPICard label="Pedidos" value={String(data.vendas.totalPedidos)} />
+            <KPICard
+              label="Ticket médio"
+              value={fmtBRL(data.vendas.ticketMedio)}
+            />
+            <KPICard
+              label="Taxa conversão leads"
+              value={`${data.funil.taxaConversao}%`}
+              color={data.funil.taxaConversao > 30 ? colors.success : data.funil.taxaConversao > 15 ? colors.warning : colors.danger}
+            />
+            <KPICard
+              label="SLA estourado"
+              value={String(data.sac.slaEstourado)}
+              color={data.sac.slaEstourado > 0 ? colors.danger : colors.success}
+            />
+            <KPICard
+              label="Amostras convertidas"
+              value={`${data.amostras.taxaConversao}%`}
+              hint={`${data.amostras.convertidas}/${data.amostras.enviadas}`}
+            />
+          </div>
+
+          {/* Resumo Vendas + Funil */}
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
+            <div style={card}>
+              <h3 style={{ margin: '0 0 0.75rem', fontSize: 15 }}>Top representantes (vendas)</h3>
+              <BarChart
+                data={data.vendas.porRep.slice(0, 5).map((r) => ({
+                  label: r.repNome,
+                  sublabel: `${r.pedidos} pedido${r.pedidos === 1 ? '' : 's'}`,
+                  value: r.total,
+                }))}
+                formatValue={fmtBRLCompact}
+              />
+            </div>
+            <div style={card}>
+              <h3 style={{ margin: '0 0 0.75rem', fontSize: 15 }}>Funil de leads</h3>
+              <Funnel
+                stages={data.funil.funilAtual.map((e) => ({
+                  label: ETAPA_LABEL[e.etapa] ?? e.etapa,
+                  value: e.count,
+                  color: ETAPA_COLOR[e.etapa],
+                }))}
+              />
+            </div>
+          </div>
+        </div>
+      )}
+    </StateView>
+  );
+}
+
+// ─── Tab: Vendas ─────────────────────────────────────────────────────
+
+function VendasTab({ qs }: { qs: string }) {
+  const { data, loading, error, refetch } = useApiQuery<VendasResp>(`/relatorios/vendas${qs}`);
+
+  return (
+    <StateView loading={loading} error={error} onRetry={refetch}>
+      {data && (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+          <div
+            style={{
+              display: 'grid',
+              gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))',
+              gap: '0.75rem',
+            }}
+          >
+            <KPICard
+              label="Faturamento total"
+              value={fmtBRL(data.faturamento.atual)}
+              variacao={data.faturamento.variacao}
+              hint={`Período anterior: ${fmtBRL(data.faturamento.anterior)}`}
+            />
+            <KPICard
+              label="Receita realizada"
+              value={fmtBRL(data.receitaRealizada)}
+              hint="Apenas pedidos ENTREGUE"
+              color={colors.success}
+            />
+            <KPICard label="Total de pedidos" value={String(data.totalPedidos)} />
+            <KPICard label="Ticket médio" value={fmtBRL(data.ticketMedio)} />
+          </div>
+
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
+            <div style={card}>
+              <h3 style={{ margin: '0 0 0.75rem', fontSize: 15 }}>Pedidos por status</h3>
+              <Donut
+                slices={data.porStatus.map((s) => ({
+                  label: STATUS_LABEL_PT[s.status] ?? s.status,
+                  value: s.count,
+                  color: STATUS_COLOR_PT[s.status] ?? colors.muted,
+                }))}
+              />
+            </div>
+            <div style={card}>
+              <h3 style={{ margin: '0 0 0.75rem', fontSize: 15 }}>Faturamento por status</h3>
+              <BarChart
+                data={data.porStatus
+                  .filter((s) => s.total > 0)
+                  .map((s) => ({
+                    label: STATUS_LABEL_PT[s.status] ?? s.status,
+                    sublabel: `${s.count} pedido${s.count === 1 ? '' : 's'}`,
+                    value: s.total,
+                    color: STATUS_COLOR_PT[s.status] ?? colors.muted,
+                  }))}
+                formatValue={fmtBRLCompact}
+              />
+            </div>
+          </div>
+
+          <div style={card}>
+            <h3 style={{ margin: '0 0 0.75rem', fontSize: 15 }}>Ranking representantes</h3>
+            <BarChart
+              data={data.porRep.map((r) => ({
+                label: r.repNome,
+                sublabel: `${r.pedidos} pedido${r.pedidos === 1 ? '' : 's'}`,
+                value: r.total,
+              }))}
+              maxBars={20}
+              formatValue={fmtBRLCompact}
+            />
+          </div>
+        </div>
+      )}
+    </StateView>
+  );
+}
+
+// ─── Tab: Funil ──────────────────────────────────────────────────────
+
+function FunilTab({ qs }: { qs: string }) {
+  const { data, loading, error, refetch } = useApiQuery<FunilResp>(`/relatorios/funil${qs}`);
+
+  return (
+    <StateView loading={loading} error={error} onRetry={refetch}>
+      {data && (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+          <div
+            style={{
+              display: 'grid',
+              gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))',
+              gap: '0.75rem',
+            }}
+          >
+            <KPICard label="Leads ativos" value={String(data.totalAtivos)} />
+            <KPICard
+              label="Criados"
+              value={String(data.criados.atual)}
+              variacao={data.criados.variacao}
+            />
+            <KPICard
+              label="Ganhos"
+              value={String(data.ganhos.atual)}
+              variacao={data.ganhos.variacao}
+              color={colors.success}
+            />
+            <KPICard
+              label="Perdidos"
+              value={String(data.perdidos)}
+              color={data.perdidos > 0 ? colors.danger : colors.muted}
+            />
+            <KPICard
+              label="Taxa conversão"
+              value={`${data.taxaConversao}%`}
+              color={data.taxaConversao > 30 ? colors.success : data.taxaConversao > 15 ? colors.warning : colors.danger}
+            />
+          </div>
+
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
+            <div style={card}>
+              <h3 style={{ margin: '0 0 0.75rem', fontSize: 15 }}>Funil atual</h3>
+              <Funnel
+                stages={data.funilAtual.map((e) => ({
+                  label: ETAPA_LABEL[e.etapa] ?? e.etapa,
+                  value: e.count,
+                  color: ETAPA_COLOR[e.etapa],
+                })) as FunnelStage[]}
+              />
+            </div>
+            <div style={card}>
+              <h3 style={{ margin: '0 0 0.75rem', fontSize: 15 }}>Valor estimado por etapa</h3>
+              <BarChart
+                data={data.funilAtual.map((e) => ({
+                  label: ETAPA_LABEL[e.etapa] ?? e.etapa,
+                  value: e.valorEstimado,
+                  color: ETAPA_COLOR[e.etapa],
+                }))}
+                formatValue={fmtBRLCompact}
+              />
+            </div>
+          </div>
+
+          {Object.keys(data.agingMedioPorEtapa).length > 0 && (
+            <div style={card}>
+              <h3 style={{ margin: '0 0 0.75rem', fontSize: 15 }}>
+                Aging médio por etapa (dias parados)
+              </h3>
+              <BarChart
+                data={Object.entries(data.agingMedioPorEtapa).map(([etapa, dias]) => ({
+                  label: ETAPA_LABEL[etapa] ?? etapa,
+                  value: dias,
+                  color: dias > 14 ? colors.warning : ETAPA_COLOR[etapa],
+                }))}
+                formatValue={(v) => `${v}d`}
+              />
+            </div>
+          )}
+
+          <div style={card}>
+            <h3 style={{ margin: '0 0 0.75rem', fontSize: 15 }}>Leads por representante</h3>
+            <BarChart
+              data={data.porRep.map((r) => ({
+                label: r.repNome,
+                sublabel: `${r.leads} lead${r.leads === 1 ? '' : 's'}`,
+                value: r.valorEstimado,
+              }))}
+              maxBars={20}
+              formatValue={fmtBRLCompact}
+            />
+          </div>
+        </div>
+      )}
+    </StateView>
+  );
+}
+
+// ─── Tab: Comissões ──────────────────────────────────────────────────
+
+function ComissoesTab({ qs }: { qs: string }) {
+  const { data, loading, error, refetch } = useApiQuery<ComissoesResp>(`/relatorios/comissoes${qs}`);
+
+  return (
+    <StateView loading={loading} error={error} onRetry={refetch}>
+      {data && (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+          <div
+            style={{
+              display: 'grid',
+              gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))',
+              gap: '0.75rem',
+            }}
+          >
+            <KPICard
+              label="Total pago"
+              value={fmtBRL(data.totalPago)}
+              color={colors.success}
+            />
+            <KPICard
+              label="Total a pagar"
+              value={fmtBRL(data.totalAPagar)}
+              color={data.totalAPagar > 0 ? colors.warning : colors.muted}
+            />
+            <KPICard
+              label="Total geral"
+              value={fmtBRL(data.totalPago + data.totalAPagar)}
+            />
+          </div>
+
+          <div style={card}>
+            <h3 style={{ margin: '0 0 0.75rem', fontSize: 15 }}>Comissões por representante</h3>
+            <BarChart
+              data={data.porRep.map((r) => ({
+                label: r.repNome,
+                sublabel: r.pago ? '✓ pago' : '⏳ a pagar',
+                value: r.valor,
+                color: r.pago ? colors.success : colors.warning,
+              }))}
+              maxBars={20}
+              formatValue={fmtBRLCompact}
+            />
+            <p style={{ fontSize: 12, color: colors.muted, marginTop: '0.75rem' }}>
+              Tipo: REP = comissão de pedidos próprios; GERENTE = % sobre vendas dos reps da
+              gerência.
+            </p>
+          </div>
+        </div>
+      )}
+    </StateView>
+  );
+}
+
+// ─── Tab: SAC ────────────────────────────────────────────────────────
+
+function SacTab({ qs }: { qs: string }) {
+  const { data, loading, error, refetch } = useApiQuery<SacResp>(`/relatorios/sac${qs}`);
+
+  return (
+    <StateView loading={loading} error={error} onRetry={refetch}>
+      {data && (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+          <div
+            style={{
+              display: 'grid',
+              gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))',
+              gap: '0.75rem',
+            }}
+          >
+            <KPICard label="Total ocorrências" value={String(data.total)} />
+            <KPICard label="Abertas" value={String(data.abertas)} color={colors.warning} />
+            <KPICard label="Em andamento" value={String(data.emAndamento)} color="#0891b2" />
+            <KPICard
+              label="Resolvidas"
+              value={String(data.resolvidas)}
+              color={colors.success}
+            />
+            <KPICard
+              label="SLA estourado"
+              value={String(data.slaEstourado)}
+              color={data.slaEstourado > 0 ? colors.danger : colors.muted}
+            />
+            {data.tempoMedioResolucaoHoras !== undefined && (
+              <KPICard
+                label="Tempo médio resolução"
+                value={`${data.tempoMedioResolucaoHoras}h`}
+              />
+            )}
+          </div>
+
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
+            <div style={card}>
+              <h3 style={{ margin: '0 0 0.75rem', fontSize: 15 }}>Por severidade</h3>
+              <Donut
+                slices={
+                  data.porSeveridade.map((s) => ({
+                    label: s.severidade.toUpperCase(),
+                    value: s.count,
+                    color: SEV_COLOR[s.severidade] ?? colors.muted,
+                  })) as DonutSlice[]
+                }
+              />
+            </div>
+            <div style={card}>
+              <h3 style={{ margin: '0 0 0.75rem', fontSize: 15 }}>Por tipo</h3>
+              <BarChart
+                data={data.porTipo.map((t) => ({
+                  label: t.tipo,
+                  value: t.count,
+                }))}
+              />
+            </div>
+          </div>
+        </div>
+      )}
+    </StateView>
+  );
+}
+
+// ─── Tab: Amostras ───────────────────────────────────────────────────
+
+function AmostrasTab({ qs }: { qs: string }) {
+  const { data, loading, error, refetch } = useApiQuery<AmostrasResp>(`/relatorios/amostras${qs}`);
+
+  return (
+    <StateView loading={loading} error={error} onRetry={refetch}>
+      {data && (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+          <div
+            style={{
+              display: 'grid',
+              gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))',
+              gap: '0.75rem',
+            }}
+          >
+            <KPICard label="Enviadas" value={String(data.enviadas)} />
+            <KPICard
+              label="Convertidas"
+              value={String(data.convertidas)}
+              color={colors.success}
+            />
+            <KPICard
+              label="Não converteram"
+              value={String(data.naoConverteram)}
+              color={colors.muted}
+            />
+            <KPICard
+              label="Expiradas"
+              value={String(data.expiradas)}
+              color={data.expiradas > 0 ? colors.warning : colors.muted}
+            />
+            <KPICard
+              label="Taxa conversão"
+              value={`${data.taxaConversao}%`}
+              color={data.taxaConversao > 30 ? colors.success : data.taxaConversao > 15 ? colors.warning : colors.danger}
+            />
+            <KPICard
+              label="Valor convertido"
+              value={fmtBRL(data.valorConvertido)}
+              hint="Pedidos gerados a partir de amostras"
+            />
+          </div>
+
+          <div style={card}>
+            <h3 style={{ margin: '0 0 0.75rem', fontSize: 15 }}>Distribuição</h3>
+            <Donut
+              slices={[
+                {
+                  label: 'Convertidas',
+                  value: data.convertidas,
+                  color: colors.success,
+                },
+                {
+                  label: 'Não converteram',
+                  value: data.naoConverteram,
+                  color: colors.muted,
+                },
+                {
+                  label: 'Expiradas',
+                  value: data.expiradas,
+                  color: colors.warning,
+                },
+                {
+                  label: 'Pendentes',
+                  value: Math.max(
+                    0,
+                    data.enviadas - data.convertidas - data.naoConverteram - data.expiradas,
+                  ),
+                  color: '#0891b2',
+                },
+              ]}
+            />
+          </div>
+        </div>
+      )}
+    </StateView>
+  );
+}
+
+// ─── Tab: Campanhas ──────────────────────────────────────────────────
+
+function CampanhasTab({ qs }: { qs: string }) {
+  const { data, loading, error, refetch } = useApiQuery<CampanhasResp>(`/relatorios/campanhas${qs}`);
+
+  return (
+    <StateView loading={loading} error={error} onRetry={refetch}>
+      {data && (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+          <div
+            style={{
+              display: 'grid',
+              gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))',
+              gap: '0.75rem',
+            }}
+          >
+            <KPICard label="Campanhas" value={String(data.total)} />
+            <KPICard label="Total de envios" value={String(data.totalEnvios)} />
+            <KPICard label="Total de leituras" value={String(data.totalLeituras)} />
+            <KPICard
+              label="Taxa de leitura"
+              value={`${data.taxaLeitura}%`}
+              color={data.taxaLeitura > 50 ? colors.success : data.taxaLeitura > 25 ? colors.warning : colors.danger}
+            />
+          </div>
+
+          {data.porCanal.length > 0 ? (
+            <div style={card}>
+              <h3 style={{ margin: '0 0 0.75rem', fontSize: 15 }}>Performance por canal</h3>
+              <BarChart
+                data={data.porCanal.map((c) => ({
+                  label: c.canal,
+                  sublabel: `${c.envios > 0 ? Math.round((c.leituras / c.envios) * 100) : 0}% leitura`,
+                  value: c.envios,
+                }))}
+              />
+            </div>
+          ) : (
+            <div style={card}>
+              <p style={{ color: colors.muted, fontSize: 13, margin: 0 }}>
+                Nenhuma campanha no período. Quando você criar campanhas via Fluxos de Automação,
+                as métricas aparecem aqui.
+              </p>
+            </div>
+          )}
+
+          <div style={card}>
+            <p style={{ color: colors.muted, fontSize: 12, margin: 0 }}>
+              💡 Módulo de Campanhas (CRUD direto, sem fluxo) está planejado pra próxima fase.
+              Por enquanto, campanhas são disparadas via Fluxos de Automação (trigger →{' '}
+              <span style={badge('#0891b2')}>ENVIAR_WHATSAPP</span> /{' '}
+              <span style={badge('#0891b2')}>ENVIAR_EMAIL</span>).
+            </p>
+          </div>
+        </div>
+      )}
+    </StateView>
+  );
+}

@@ -9,6 +9,7 @@ const NAV_ITEMS: Array<{
   permission?: Parameters<typeof usePermission>[0];
 }> = [
   { to: '/dashboard', label: 'Dashboard' },
+  { to: '/relatorios', label: 'Relatórios', permission: 'relatorios.view' },
   { to: '/clientes', label: 'Clientes', permission: 'clientes.view' },
   { to: '/produtos', label: 'Produtos' },
   { to: '/catalogo', label: 'Meu catálogo' },
@@ -64,6 +65,7 @@ function NavBar() {
     'clientes.view': usePermission('clientes.view'),
     'whatsapp.pessoal': usePermission('whatsapp.pessoal'),
     'admin.panel': usePermission('admin.panel'),
+    'relatorios.view': usePermission('relatorios.view'),
   } as const;
   return (
     <nav
