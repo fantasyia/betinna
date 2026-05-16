@@ -251,9 +251,12 @@ export class OcorrenciasService {
       data.slaVenceEm = new Date(existing.criadoEm.getTime() + slaHoras * 60 * 60 * 1000);
     }
 
-    return this.prisma.ocorrencia.update({
-      where: { id },
+    await this.prisma.ocorrencia.updateMany({
+      where: { id, empresaId: existing.empresaId },
       data,
+    });
+    return this.prisma.ocorrencia.findUniqueOrThrow({
+      where: { id },
       include: ocorrenciaIncludeDetalhe,
     });
   }
@@ -273,8 +276,8 @@ export class OcorrenciasService {
       );
     }
     await this.prisma.$transaction(async (tx) => {
-      await tx.ocorrencia.update({
-        where: { id },
+      await tx.ocorrencia.updateMany({
+        where: { id, empresaId: existing.empresaId },
         data: { status: dto.status },
       });
       await tx.ocorrenciaComentario.create({
@@ -305,8 +308,8 @@ export class OcorrenciasService {
       throw new BusinessRuleException('Ocorrência cancelada não pode ser resolvida');
     }
     await this.prisma.$transaction(async (tx) => {
-      await tx.ocorrencia.update({
-        where: { id },
+      await tx.ocorrencia.updateMany({
+        where: { id, empresaId: existing.empresaId },
         data: {
           status: 'RESOLVIDA',
           resolucao: dto.resolucao,

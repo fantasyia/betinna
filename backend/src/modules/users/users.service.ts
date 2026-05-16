@@ -330,9 +330,24 @@ export class UsersService {
         'Apenas representantes têm teto de desconto configurável',
       );
     }
-    await this.prisma.usuario.update({
-      where: { id },
-      data: { tetoDesconto: dto.tetoDesconto },
+    // Re-verify scope inside transaction to close TOCTOU window.
+    // Usuario has no empresaId column; scope is via UsuarioEmpresa join table.
+    const callerEmpresa = caller.empresaIdAtiva ?? user.empresas[0]?.empresaId;
+    await this.prisma.$transaction(async (tx) => {
+      const stillInScope = await tx.usuarioEmpresa.findFirst({
+        where: { usuarioId: id, empresaId: callerEmpresa },
+        select: { usuarioId: true },
+      });
+      if (!stillInScope) {
+        throw new ForbiddenException(
+          'Usuário não pertence à sua empresa',
+          ErrorCode.TENANT_ACCESS_DENIED,
+        );
+      }
+      await tx.usuario.update({
+        where: { id },
+        data: { tetoDesconto: dto.tetoDesconto },
+      });
     });
   }
 
@@ -354,9 +369,24 @@ export class UsersService {
         'Comissão configurável apenas para REP ou GERENTE',
       );
     }
-    await this.prisma.usuario.update({
-      where: { id },
-      data: { comissaoPadrao: dto.comissaoPadrao },
+    // Re-verify scope inside transaction to close TOCTOU window.
+    // Usuario has no empresaId column; scope is via UsuarioEmpresa join table.
+    const callerEmpresa = caller.empresaIdAtiva ?? user.empresas[0]?.empresaId;
+    await this.prisma.$transaction(async (tx) => {
+      const stillInScope = await tx.usuarioEmpresa.findFirst({
+        where: { usuarioId: id, empresaId: callerEmpresa },
+        select: { usuarioId: true },
+      });
+      if (!stillInScope) {
+        throw new ForbiddenException(
+          'Usuário não pertence à sua empresa',
+          ErrorCode.TENANT_ACCESS_DENIED,
+        );
+      }
+      await tx.usuario.update({
+        where: { id },
+        data: { comissaoPadrao: dto.comissaoPadrao },
+      });
     });
   }
 

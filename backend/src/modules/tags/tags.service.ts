@@ -64,21 +64,21 @@ export class TagsService {
   }
 
   async update(user: AuthenticatedUser, id: string, dto: UpdateTagDto): Promise<Tag> {
-    // findById já valida tenant
-    await this.findById(user, id);
+    const existing = await this.findById(user, id);
     try {
-      return await this.prisma.tag.update({ where: { id }, data: dto });
+      await this.prisma.tag.updateMany({ where: { id, empresaId: existing.empresaId }, data: dto });
     } catch (err) {
       if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === 'P2002') {
         throw new BusinessRuleException(`Já existe tag com o nome "${dto.nome}" nesta empresa`);
       }
       throw err;
     }
+    return this.prisma.tag.findUniqueOrThrow({ where: { id } });
   }
 
   async remove(user: AuthenticatedUser, id: string): Promise<void> {
-    await this.findById(user, id);
-    await this.prisma.tag.delete({ where: { id } });
+    const existing = await this.findById(user, id);
+    await this.prisma.tag.deleteMany({ where: { id, empresaId: existing.empresaId } });
   }
 
   /**

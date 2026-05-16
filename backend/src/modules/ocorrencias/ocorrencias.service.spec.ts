@@ -13,7 +13,10 @@ const makePrismaMock = () => {
       count: vi.fn(),
       create: vi.fn(),
       update: vi.fn(),
+      updateMany: vi.fn(),
+      findUniqueOrThrow: vi.fn(),
       delete: vi.fn(),
+      deleteMany: vi.fn(),
       groupBy: vi.fn(),
     },
     ocorrenciaComentario: { create: vi.fn() },
@@ -188,15 +191,15 @@ describe('OcorrenciasService', () => {
     });
 
     it('marca como RESOLVIDA, registra resolução e cria comentário sistêmico', async () => {
-      // findById chama findFirst antes do update e depois (pra retornar com timeline)
+      // findById chama findFirst antes do updateMany e depois (pra retornar com timeline)
       prisma.ocorrencia.findFirst
         .mockResolvedValueOnce({ id: 'o1', empresaId: 'emp-1', status: 'ABERTA' })
         .mockResolvedValueOnce({ id: 'o1', empresaId: 'emp-1', status: 'RESOLVIDA' });
-      prisma.ocorrencia.update.mockResolvedValue({ id: 'o1', status: 'RESOLVIDA' });
+      prisma.ocorrencia.updateMany.mockResolvedValue({ count: 1 });
 
       const r = await svc.resolver(fakeUser(), 'o1', { resolucao: 'Trocado por outro lote' });
       expect(r.status).toBe('RESOLVIDA');
-      const data = prisma.ocorrencia.update.mock.calls[0][0].data;
+      const data = prisma.ocorrencia.updateMany.mock.calls[0][0].data;
       expect(data.status).toBe('RESOLVIDA');
       expect(data.resolvidoEm).toBeInstanceOf(Date);
       expect(prisma.ocorrenciaComentario.create).toHaveBeenCalled();

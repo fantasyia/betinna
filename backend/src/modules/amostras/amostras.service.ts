@@ -135,12 +135,9 @@ export class AmostrasService {
     id: string,
     dto: UpdateAmostraDto,
   ): Promise<AmostraWithRel> {
-    await this.findById(user, id);
-    return this.prisma.amostra.update({
-      where: { id },
-      data: dto,
-      include: amostraInclude,
-    });
+    const existing = await this.findById(user, id);
+    await this.prisma.amostra.updateMany({ where: { id, empresaId: existing.empresaId }, data: dto });
+    return this.prisma.amostra.findUniqueOrThrow({ where: { id }, include: amostraInclude });
   }
 
   async changeStatus(
@@ -148,16 +145,13 @@ export class AmostrasService {
     id: string,
     dto: ChangeAmostraStatusDto,
   ): Promise<AmostraWithRel> {
-    await this.findById(user, id);
-    return this.prisma.amostra.update({
-      where: { id },
-      data: { status: dto.status },
-      include: amostraInclude,
-    });
+    const existing = await this.findById(user, id);
+    await this.prisma.amostra.updateMany({ where: { id, empresaId: existing.empresaId }, data: { status: dto.status } });
+    return this.prisma.amostra.findUniqueOrThrow({ where: { id }, include: amostraInclude });
   }
 
   async remove(user: AuthenticatedUser, id: string): Promise<void> {
-    await this.findById(user, id);
-    await this.prisma.amostra.delete({ where: { id } });
+    const existing = await this.findById(user, id);
+    await this.prisma.amostra.deleteMany({ where: { id, empresaId: existing.empresaId } });
   }
 }

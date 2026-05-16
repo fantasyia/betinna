@@ -11,7 +11,10 @@ const makePrismaMock = () => ({
     count: vi.fn(),
     create: vi.fn(),
     update: vi.fn(),
+    updateMany: vi.fn(),
+    findUniqueOrThrow: vi.fn(),
     delete: vi.fn(),
+    deleteMany: vi.fn(),
     groupBy: vi.fn(),
   },
   usuario: { findFirst: vi.fn() },
@@ -95,19 +98,22 @@ describe('LeadsService', () => {
     });
 
     it('aceita NOVO → QUALIFICANDO', async () => {
+      const fakeLead = { id: 'l1', empresaId: 'emp-1', representanteId: 'rep-1', etapa: 'QUALIFICANDO' };
       prisma.lead.findFirst.mockResolvedValue({ id: 'l1', empresaId: 'emp-1', representanteId: 'rep-1', etapa: 'NOVO' });
-      prisma.lead.update.mockResolvedValue({ id: 'l1', etapa: 'QUALIFICANDO' });
+      prisma.lead.updateMany.mockResolvedValue({ count: 1 });
+      prisma.lead.findUniqueOrThrow.mockResolvedValue(fakeLead);
       const result = await svc.moverEtapa(fakeUser(), 'l1', { etapa: 'QUALIFICANDO' });
       expect(result.etapa).toBe('QUALIFICANDO');
-      const data = prisma.lead.update.mock.calls[0][0].data;
+      const data = prisma.lead.updateMany.mock.calls[0][0].data;
       expect(data.etapaDesde).toBeInstanceOf(Date);
     });
 
     it('PROPOSTA → GANHO requer motivo (validado no DTO, mas confirma também aqui)', async () => {
       prisma.lead.findFirst.mockResolvedValue({ id: 'l1', empresaId: 'emp-1', representanteId: 'rep-1', etapa: 'PROPOSTA' });
-      prisma.lead.update.mockResolvedValue({ id: 'l1', etapa: 'GANHO' });
+      prisma.lead.updateMany.mockResolvedValue({ count: 1 });
+      prisma.lead.findUniqueOrThrow.mockResolvedValue({ id: 'l1', etapa: 'GANHO' });
       await svc.moverEtapa(fakeUser(), 'l1', { etapa: 'GANHO', motivo: 'Cliente VIP fechou' });
-      const data = prisma.lead.update.mock.calls[0][0].data;
+      const data = prisma.lead.updateMany.mock.calls[0][0].data;
       expect(data.motivoGanho).toBe('Cliente VIP fechou');
       expect(data.fechadoEm).toBeInstanceOf(Date);
     });
@@ -119,9 +125,10 @@ describe('LeadsService', () => {
         representanteId: 'rep-1',
         etapa: 'PERDIDO',
       });
-      prisma.lead.update.mockResolvedValue({ id: 'l1', etapa: 'NOVO' });
+      prisma.lead.updateMany.mockResolvedValue({ count: 1 });
+      prisma.lead.findUniqueOrThrow.mockResolvedValue({ id: 'l1', etapa: 'NOVO' });
       await svc.moverEtapa(fakeUser(), 'l1', { etapa: 'NOVO' });
-      const data = prisma.lead.update.mock.calls[0][0].data;
+      const data = prisma.lead.updateMany.mock.calls[0][0].data;
       expect(data.motivoPerda).toBeNull();
       expect(data.motivoGanho).toBeNull();
       expect(data.fechadoEm).toBeNull();

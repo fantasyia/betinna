@@ -172,7 +172,7 @@ export class InboxService {
     dto: AtribuirDto,
   ): Promise<ConversationWithRel> {
     // findById valida visibilidade (REP só vê WhatsApp da carteira dele)
-    await this.findById(user, id);
+    const existing = await this.findById(user, id);
     // REP não pode reatribuir conversas — função gerencial
     if (user.role === 'REP') {
       throw new ForbiddenException(
@@ -187,9 +187,12 @@ export class InboxService {
       });
       if (!exists) throw new NotFoundException('Usuario', dto.atribuidoId);
     }
-    return this.prisma.conversation.update({
-      where: { id },
+    await this.prisma.conversation.updateMany({
+      where: { id, empresaId: existing.empresaId },
       data: { atribuidoId: dto.atribuidoId },
+    });
+    return this.prisma.conversation.findUniqueOrThrow({
+      where: { id },
       include: conversationInclude,
     });
   }
@@ -199,10 +202,13 @@ export class InboxService {
     id: string,
     dto: AlterarStatusDto,
   ): Promise<ConversationWithRel> {
-    await this.findById(user, id);
-    return this.prisma.conversation.update({
-      where: { id },
+    const existing = await this.findById(user, id);
+    await this.prisma.conversation.updateMany({
+      where: { id, empresaId: existing.empresaId },
       data: { status: dto.status },
+    });
+    return this.prisma.conversation.findUniqueOrThrow({
+      where: { id },
       include: conversationInclude,
     });
   }

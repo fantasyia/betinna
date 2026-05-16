@@ -38,7 +38,7 @@ export class OmieMapper {
       status: o.inativo === 'S' ? ('INATIVO' as const) : ('ATIVO' as const),
     };
     return {
-      where: { codigoOmie },
+      where: { empresaId_codigoOmie: { empresaId, codigoOmie } },
       create: data,
       update: {
         nome: data.nome,

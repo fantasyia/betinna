@@ -179,11 +179,11 @@ export class LeadsService {
     if (dto.representanteId) {
       await this.assertRepValido(existing.empresaId, dto.representanteId);
     }
-    return this.prisma.lead.update({
-      where: { id },
+    await this.prisma.lead.updateMany({
+      where: { id, empresaId: existing.empresaId },
       data: dto,
-      include: leadInclude,
     });
+    return this.prisma.lead.findUniqueOrThrow({ where: { id }, include: leadInclude });
   }
 
   async moverEtapa(
@@ -218,11 +218,11 @@ export class LeadsService {
       data.fechadoEm = null;
     }
 
-    const updated = await this.prisma.lead.update({
-      where: { id },
+    await this.prisma.lead.updateMany({
+      where: { id, empresaId: lead.empresaId },
       data,
-      include: leadInclude,
     });
+    const updated = await this.prisma.lead.findUniqueOrThrow({ where: { id }, include: leadInclude });
     this.logger.log(
       `Lead ${lead.id} movido ${lead.etapa} → ${dto.etapa}${dto.motivo ? ` (${dto.motivo})` : ''}`,
     );
@@ -249,16 +249,16 @@ export class LeadsService {
     if (dto.representanteId) {
       await this.assertRepValido(lead.empresaId, dto.representanteId);
     }
-    return this.prisma.lead.update({
-      where: { id },
+    await this.prisma.lead.updateMany({
+      where: { id, empresaId: lead.empresaId },
       data: { representanteId: dto.representanteId },
-      include: leadInclude,
     });
+    return this.prisma.lead.findUniqueOrThrow({ where: { id }, include: leadInclude });
   }
 
   async remove(user: AuthenticatedUser, id: string): Promise<void> {
-    await this.findById(user, id);
-    await this.prisma.lead.delete({ where: { id } });
+    const existing = await this.findById(user, id);
+    await this.prisma.lead.deleteMany({ where: { id, empresaId: existing.empresaId } });
   }
 
   /**

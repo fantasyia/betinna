@@ -51,9 +51,9 @@ describe('OmieMapper.clienteToPrismaUpsert', () => {
     expect(r!.create.telefone).toBe('(11) 99999-1111');
   });
 
-  it('converte codigo_cliente_omie pra string no upsert key', () => {
+  it('converte codigo_cliente_omie pra string no upsert key (multi-tenant composite)', () => {
     const r = OmieMapper.clienteToPrismaUpsert('emp-1', baseCliente);
-    expect(r!.where.codigoOmie).toBe('1001');
+    expect(r!.where).toEqual({ empresaId_codigoOmie: { empresaId: 'emp-1', codigoOmie: '1001' } });
   });
 
   it('campos opcionais ausentes viram null', () => {

@@ -257,11 +257,11 @@ export class PedidosService {
         `Pedido em status ${existing.status} não pode ser editado`,
       );
     }
-    return this.prisma.pedido.update({
-      where: { id },
+    await this.prisma.pedido.updateMany({
+      where: { id, empresaId: existing.empresaId },
       data: dto,
-      include: pedidoInclude,
     });
+    return this.prisma.pedido.findUniqueOrThrow({ where: { id }, include: pedidoInclude });
   }
 
   // ─── Avançar status (ENVIADO → ENTREGUE, etc.) ─────────────────────────
@@ -292,11 +292,11 @@ export class PedidosService {
       );
     }
 
-    const updated = await this.prisma.pedido.update({
-      where: { id },
+    await this.prisma.pedido.updateMany({
+      where: { id, empresaId: pedido.empresaId },
       data: { status: proximo as never },
-      include: pedidoInclude,
     });
+    const updated = await this.prisma.pedido.findUniqueOrThrow({ where: { id }, include: pedidoInclude });
     this.logger.log(`Pedido ${pedido.numero}: ${pedido.status} → ${proximo}`);
 
     // Trigger: PEDIDO_ENTREGUE
@@ -323,16 +323,16 @@ export class PedidosService {
     if (['ENTREGUE', 'CANCELADO'].includes(existing.status)) {
       throw new BusinessRuleException(`Pedido em status ${existing.status} não pode ser cancelado`);
     }
-    return this.prisma.pedido.update({
-      where: { id },
+    await this.prisma.pedido.updateMany({
+      where: { id, empresaId: existing.empresaId },
       data: {
         status: 'CANCELADO',
         observacoes: dto.motivo
           ? `${existing.observacoes ? existing.observacoes + '\n' : ''}[Cancelado] ${dto.motivo}`
           : existing.observacoes,
       },
-      include: pedidoInclude,
     });
+    return this.prisma.pedido.findUniqueOrThrow({ where: { id }, include: pedidoInclude });
   }
 
   // ─── Enviar pra OMIE ────────────────────────────────────────────────────

@@ -29,6 +29,8 @@ const makePrismaMock = () => ({
     upsert: vi.fn(),
     create: vi.fn(),
     update: vi.fn(),
+    updateMany: vi.fn(),
+    findUniqueOrThrow: vi.fn(),
   },
   message: {
     findFirst: vi.fn(),
@@ -349,7 +351,8 @@ describe('InboxService.atribuir', () => {
       peerId: 'x',
     });
     prisma.usuario.findFirst.mockResolvedValueOnce({ id: 'u2' });
-    prisma.conversation.update.mockResolvedValueOnce({ id: 'conv-1', atribuidoId: 'u2' });
+    prisma.conversation.updateMany.mockResolvedValueOnce({ count: 1 });
+    prisma.conversation.findUniqueOrThrow.mockResolvedValueOnce({ id: 'conv-1', atribuidoId: 'u2' });
 
     const r = await svc.atribuir(
       fakeUser({ role: 'ADMIN' as UserRole }),

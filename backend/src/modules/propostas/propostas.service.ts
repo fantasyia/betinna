@@ -166,11 +166,11 @@ export class PropostasService {
         `Proposta em status ${existing.status} não pode ser editada`,
       );
     }
-    return this.prisma.proposta.update({
-      where: { id },
+    await this.prisma.proposta.updateMany({
+      where: { id, empresaId: existing.empresaId },
       data: dto,
-      include: propostaInclude,
     });
+    return this.prisma.proposta.findUniqueOrThrow({ where: { id }, include: propostaInclude });
   }
 
   async changeStatus(
@@ -180,17 +180,17 @@ export class PropostasService {
   ): Promise<PropostaWithRel> {
     const existing = await this.findById(user, id);
     this.assertTransicaoValida(existing.status, dto.status);
-    const data: Prisma.PropostaUpdateInput = { status: dto.status };
+    const data: Prisma.PropostaUpdateManyMutationInput = { status: dto.status };
     if (dto.motivo) {
       data.observacoes = existing.observacoes
         ? `${existing.observacoes}\n[${dto.status}] ${dto.motivo}`
         : `[${dto.status}] ${dto.motivo}`;
     }
-    return this.prisma.proposta.update({
-      where: { id },
+    await this.prisma.proposta.updateMany({
+      where: { id, empresaId: existing.empresaId },
       data,
-      include: propostaInclude,
     });
+    return this.prisma.proposta.findUniqueOrThrow({ where: { id }, include: propostaInclude });
   }
 
   /**
@@ -249,8 +249,8 @@ export class PropostasService {
         },
         select: { id: true, numero: true },
       });
-      await tx.proposta.update({
-        where: { id: proposta.id },
+      await tx.proposta.updateMany({
+        where: { id: proposta.id, empresaId: proposta.empresaId },
         data: { pedidoId: pedido.id, convertidaEm: new Date() },
       });
       return pedido;

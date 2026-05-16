@@ -349,7 +349,7 @@ model Permissao {
 model Cliente {
   id           String        @id @default(cuid())
   empresaId    String
-  codigoOmie   String?       @unique
+  codigoOmie   String?
   nome         String
   cnpj         String?
   email        String?
@@ -385,6 +385,7 @@ model Cliente {
   marketplaceIncidents MarketplaceIncident[]
   campanhasDestinatarios CampanhaDestinatario[]
 
+  @@unique([empresaId, codigoOmie])
   @@index([empresaId])
   @@index([representanteId])
   @@index([status])

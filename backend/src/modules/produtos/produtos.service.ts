@@ -121,9 +121,12 @@ export class ProdutosService {
       await this.assertCodigoOmieUnico(existing.empresaId, dto.codigoOmie);
     }
 
-    return this.prisma.produto.update({
-      where: { id },
+    await this.prisma.produto.updateMany({
+      where: { id, empresaId: existing.empresaId },
       data: dto,
+    });
+    return this.prisma.produto.findUniqueOrThrow({
+      where: { id },
       include: produtoInclude,
     });
   }
@@ -133,27 +136,33 @@ export class ProdutosService {
     id: string,
     dto: UpdateEstoqueDto,
   ): Promise<ProdutoWithRel> {
-    await this.findById(user, id);
-    return this.prisma.produto.update({
-      where: { id },
+    const existing = await this.findById(user, id);
+    await this.prisma.produto.updateMany({
+      where: { id, empresaId: existing.empresaId },
       data: { estoque: dto.estoque },
+    });
+    return this.prisma.produto.findUniqueOrThrow({
+      where: { id },
       include: produtoInclude,
     });
   }
 
   async setAtivo(user: AuthenticatedUser, id: string, dto: AtivarDto): Promise<ProdutoWithRel> {
-    await this.findById(user, id);
-    return this.prisma.produto.update({
-      where: { id },
+    const existing = await this.findById(user, id);
+    await this.prisma.produto.updateMany({
+      where: { id, empresaId: existing.empresaId },
       data: { ativo: dto.ativo },
+    });
+    return this.prisma.produto.findUniqueOrThrow({
+      where: { id },
       include: produtoInclude,
     });
   }
 
   async remove(user: AuthenticatedUser, id: string): Promise<void> {
-    await this.findById(user, id);
+    const existing = await this.findById(user, id);
     try {
-      await this.prisma.produto.delete({ where: { id } });
+      await this.prisma.produto.deleteMany({ where: { id, empresaId: existing.empresaId } });
     } catch (err) {
       if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === 'P2003') {
         throw new BusinessRuleException(

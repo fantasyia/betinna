@@ -150,7 +150,7 @@ export class ClientesService {
     }
 
     if (dto.cnpj) await this.assertCnpjUnico(user.empresaIdAtiva, dto.cnpj);
-    if (dto.codigoOmie) await this.assertCodigoOmieUnico(dto.codigoOmie);
+    if (dto.codigoOmie) await this.assertCodigoOmieUnico(user.empresaIdAtiva, dto.codigoOmie);
     if (dto.tagIds && dto.tagIds.length > 0) {
       await this.assertTagsValidas(user.empresaIdAtiva, dto.tagIds);
     }
@@ -193,7 +193,7 @@ export class ClientesService {
       await this.assertCnpjUnico(existing.empresaId, dto.cnpj);
     }
     if (dto.codigoOmie && dto.codigoOmie !== existing.codigoOmie) {
-      await this.assertCodigoOmieUnico(dto.codigoOmie);
+      await this.assertCodigoOmieUnico(existing.empresaId, dto.codigoOmie);
     }
     if (dto.tagIds) await this.assertTagsValidas(existing.empresaId, dto.tagIds);
 
@@ -208,11 +208,11 @@ export class ClientesService {
           });
         }
       }
-      return tx.cliente.update({
-        where: { id },
+      await tx.cliente.updateMany({
+        where: { id, empresaId: existing.empresaId },
         data: rest,
-        include: clienteInclude,
       });
+      return tx.cliente.findUniqueOrThrow({ where: { id }, include: clienteInclude });
     });
   }
 
@@ -223,7 +223,7 @@ export class ClientesService {
     dto: AssignRepDto,
   ): Promise<ClienteWithRel> {
     // findById já filtra por baseWhere (empresa + scope GERENTE)
-    await this.findById(user, id);
+    const existing = await this.findById(user, id);
 
     if (dto.representanteId) {
       await this.assertRepValido(user.empresaIdAtiva!, dto.representanteId);
@@ -237,11 +237,11 @@ export class ClientesService {
         );
       }
     }
-    return this.prisma.cliente.update({
-      where: { id },
+    await this.prisma.cliente.updateMany({
+      where: { id, empresaId: existing.empresaId },
       data: { representanteId: dto.representanteId },
-      include: clienteInclude,
     });
+    return this.prisma.cliente.findUniqueOrThrow({ where: { id }, include: clienteInclude });
   }
 
   async bulkAssignRep(
@@ -325,20 +325,20 @@ export class ClientesService {
     id: string,
     dto: UpdateOmieStatusDto,
   ): Promise<ClienteWithRel> {
-    await this.findById(user, id);
-    return this.prisma.cliente.update({
-      where: { id },
+    const existing = await this.findById(user, id);
+    await this.prisma.cliente.updateMany({
+      where: { id, empresaId: existing.empresaId },
       data: { omieStatus: dto.omieStatus },
-      include: clienteInclude,
     });
+    return this.prisma.cliente.findUniqueOrThrow({ where: { id }, include: clienteInclude });
   }
 
   // ─── Remoção ────────────────────────────────────────────────────────────
   async remove(user: AuthenticatedUser, id: string): Promise<void> {
-    await this.findById(user, id);
+    const existing = await this.findById(user, id);
     // FK em pedidos/propostas usa onDelete default (RESTRICT). Lance erro claro.
     try {
-      await this.prisma.cliente.delete({ where: { id } });
+      await this.prisma.cliente.deleteMany({ where: { id, empresaId: existing.empresaId } });
     } catch (err) {
       if (
         err instanceof Prisma.PrismaClientKnownRequestError &&
@@ -366,14 +366,14 @@ export class ClientesService {
     }
   }
 
-  private async assertCodigoOmieUnico(codigoOmie: string): Promise<void> {
+  private async assertCodigoOmieUnico(empresaId: string, codigoOmie: string): Promise<void> {
     const existe = await this.prisma.cliente.findUnique({
-      where: { codigoOmie },
+      where: { empresaId_codigoOmie: { empresaId, codigoOmie } },
       select: { id: true },
     });
     if (existe) {
       throw new BusinessRuleException(
-        `Já existe cliente com código OMIE ${codigoOmie}`,
+        `Já existe cliente com código OMIE ${codigoOmie} nesta empresa`,
         ErrorCode.ALREADY_EXISTS,
       );
     }

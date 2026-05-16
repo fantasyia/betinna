@@ -111,7 +111,13 @@ export class OmieWebhookController {
     const codigoOmie = parsed.data.codigo_cliente_omie.toString();
     const novoOmieStatus = parsed.data.bloqueado === 'S' ? 'BLOQUEADO' : 'ATIVO';
 
-    const cliente = await this.prisma.cliente.findUnique({
+    // codigoOmie agora é único dentro de cada empresa (@@unique [empresaId, codigoOmie]).
+    // O webhook OMIE não inclui empresaId no payload, então usamos findFirst.
+    // Em ambiente multi-tenant real, diferentes empresas OMIE têm suas próprias
+    // sequências de código — colisão entre tenants é improvável, mas caso ocorra,
+    // o primeiro match será atualizado. Evolução futura: endpoint por empresa
+    // `/webhooks/omie/:empresaToken/cliente-status`.
+    const cliente = await this.prisma.cliente.findFirst({
       where: { codigoOmie },
       select: { id: true, empresaId: true, omieStatus: true, nome: true },
     });

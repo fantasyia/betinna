@@ -148,8 +148,8 @@ export class AgendaService {
       await this.assertClienteVisivel(user, dto.clienteId);
     }
 
-    const updated = await this.prisma.agendaItem.update({
-      where: { id },
+    await this.prisma.agendaItem.updateMany({
+      where: { id, empresaId: existing.empresaId },
       data: {
         titulo: dto.titulo ?? existing.titulo,
         data: dto.data ?? existing.data,
@@ -158,8 +158,8 @@ export class AgendaService {
         observacao: dto.observacao === undefined ? existing.observacao : dto.observacao,
         clienteId: dto.clienteId === undefined ? existing.clienteId : dto.clienteId,
       },
-      include: agendaInclude,
     });
+    const updated = await this.prisma.agendaItem.findUniqueOrThrow({ where: { id }, include: agendaInclude });
 
     if (existing.googleEventId) {
       try {
@@ -198,7 +198,7 @@ export class AgendaService {
         this.logger.warn(`Falha ao deletar evento Google ${existing.googleEventId}: ${msg}`);
       }
     }
-    await this.prisma.agendaItem.delete({ where: { id } });
+    await this.prisma.agendaItem.deleteMany({ where: { id, empresaId: existing.empresaId } });
     return { ok: true };
   }
 
