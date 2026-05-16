@@ -15,6 +15,62 @@ deferido pra não travar o desenvolvimento.
   - ✅ Service `api` já existente (rodando há ~30min antes do bootstrap)
   - Próximo push valida pipeline end-to-end automaticamente
 
+- **2026-05-16 — Smoke test pós-deploy** (sessão de debug — 8 bugs encontrados):
+  1. ✅ Worker rodava como API → Custom Start Command = `npm run worker` + DIRECT_URL + REDIS_URL
+  2. ✅ CORS bloqueando frontend → adicionou `https://frontend-production-fd70.up.railway.app` em `CORS_ORIGINS` do api
+  3. ✅ Validação prod exige 5 webhook secrets → placeholders no Railway (OMIE_WEBHOOK_SECRET, META_GRAPH_APP_SECRET, META_GRAPH_VERIFY_TOKEN, SHOPEE_PARTNER_KEY, TIKTOK_APP_SECRET)
+  4. ✅ ErrorBoundary crash `?.user.role` quando session.user vinha undefined → defensive `?.user?.role` no auth-store.ts e usePermission.ts (commit `ad31a9e`)
+  5. ✅ Express ETag → 304 com body vazio quebrando /auth/me → `etag: false` + `cache: no-store` no fetch (commit `687fc61`)
+  6. ✅ `VITE_API_URL` sem `https://` → frontend fazia chamada relativa, recebia HTML do SPA → editar var pra ter `https://`
+  7. ✅ Admin no Supabase Auth mas não no Postgres (seed nunca rodou em prod) → endpoint `/auth/bootstrap` protegido por token + first-run check (commit `5fa7b98`)
+  8. ✅ Dashboard endpoint retornava versão REDUZIDA dos dados sem porRep/funilAtual → frontend crashava em `.length` de undefined → backend agora retorna shape completo + frontend defensivo (commit `be6c7c9`)
+
+- **2026-05-16 — Tools criadas pra setup zero-touch futuro:**
+  - `POST /api/v1/auth/bootstrap` — sincroniza admin Supabase Auth ↔ Postgres
+  - `POST /api/v1/auth/seed-demo` — popula banco com clientes, produtos, pedidos, leads, amostras, ocorrências de exemplo
+  - Ambos protegidos por `BOOTSTRAP_TOKEN` env var (mesmo token) + first-run checks
+
+## 🎯 Tech debt descoberto durante smoke test (corrigir depois)
+
+### TD-A — Schema mismatch frontend ↔ backend em enums
+
+**ClienteStatus:**
+- Schema Prisma: `ATIVO | NOVO | RISCO | CRITICO | INATIVO`
+- Frontend usa: `ATIVO | NOVO | PROSPECT | INATIVO`
+- **Bug:** Salvar cliente com status "PROSPECT" via UI vai falhar no backend (Prisma rejeita)
+- **Fix:** Alinhar enum — ou frontend remove PROSPECT, ou adiciona RISCO/CRITICO; ou backend adiciona PROSPECT
+
+**CanalOrigem (Lead):**
+- Schema: `WHATSAPP | INSTAGRAM | FACEBOOK | FORMULARIO | EMAIL | TELEFONE | INDICACAO`
+- Frontend: `WHATSAPP | INSTAGRAM | FACEBOOK | EMAIL | INDICACAO | SITE | OUTRO`
+- **Bug:** "SITE" e "OUTRO" rejeitados pelo backend
+- **Fix:** Trocar SITE → FORMULARIO no frontend (já significam mesma coisa)
+
+### TD-B — RelatoriosService.dashboard() retornava shape diferente das chamadas individuais
+
+Fixado em `be6c7c9` — dashboard agora inclui `vendas.porRep`, `vendas.porStatus`, `funil.funilAtual`, `sac.emAndamento`, `sac.resolvidas`. Outras chamadas (/vendas, /funil etc) já retornavam tudo.
+
+**Lição:** quando um endpoint compõe vários, **sempre devolver o shape completo dos sub-endpoints** ou documentar explicitamente o subset. Documentação no Swagger ajuda.
+
+### TD-C — Railway Postgres ≠ Supabase Postgres
+
+Confusão durante setup: SQL rodado no Supabase SQL Editor não chega no banco do app (que é Railway Postgres plugin).
+
+**Decisão futura:** consolidar em UM Postgres. Sugestão: usar Supabase Postgres (já temos lá pra Auth), parar de usar Railway Postgres plugin. Simplifica:
+- 1 lugar pra dados
+- SQL Editor do Supabase funciona pra debug
+- Backups gerenciados pelo Supabase
+- Free tier do Railway sobrando
+
+Pra fazer essa migração:
+1. Trocar `DATABASE_URL` no api/worker → URL pooler do Supabase (transaction mode `6543`)
+2. Trocar `DIRECT_URL` → URL direta do Supabase (`5432`)
+3. Rodar migrations no Supabase
+4. Migrar dados existentes (se houver) com `pg_dump` + `pg_restore`
+5. Remover Railway Postgres plugin
+
+**Quando fazer:** antes do primeiro cliente real. Agora ainda tá ok porque banco está quase vazio.
+
 ---
 
 ## ✅ O que já funciona automaticamente
