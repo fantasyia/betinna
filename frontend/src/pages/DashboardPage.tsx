@@ -80,98 +80,107 @@ export default function DashboardPage() {
 
       {canSeeRelatorios ? (
         <StateView loading={loading} error={error} onRetry={refetch}>
-          {data && (
-            <>
-              {/* KPI cards */}
-              <div
-                style={{
-                  display: 'grid',
-                  gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))',
-                  gap: '0.75rem',
-                  marginBottom: '1rem',
-                }}
-              >
-                <KPICard
-                  label="Faturamento (mês)"
-                  value={fmtBRLCompact(data.vendas.faturamento.atual)}
-                  variacao={data.vendas.faturamento.variacao}
-                />
-                <KPICard label="Pedidos" value={String(data.vendas.totalPedidos)} />
-                <KPICard
-                  label="Ticket médio"
-                  value={fmtBRL(data.vendas.ticketMedio || 0)}
-                />
-                <KPICard
-                  label="Leads ativos"
-                  value={String(data.funil.totalAtivos)}
-                />
-                <KPICard
-                  label="Taxa conversão"
-                  value={`${data.funil.taxaConversao}%`}
-                  color={
-                    data.funil.taxaConversao > 30
-                      ? colors.success
-                      : data.funil.taxaConversao > 15
-                      ? colors.warning
-                      : colors.danger
-                  }
-                />
-                <KPICard
-                  label="SLA estourado (SAC)"
-                  value={String(data.sac.slaEstourado)}
-                  color={data.sac.slaEstourado > 0 ? colors.danger : colors.success}
-                />
-              </div>
+          {data && (() => {
+            // Defensive defaults — qualquer campo do response pode vir undefined
+            // se o backend tiver dados zerados ou parciais.
+            const vendas = data.vendas ?? ({} as DashboardResp['vendas']);
+            const funil = data.funil ?? ({} as DashboardResp['funil']);
+            const sac = data.sac ?? ({} as DashboardResp['sac']);
+            const faturamento = vendas.faturamento ?? { atual: 0, anterior: 0, variacao: 0 };
+            const porRep = vendas.porRep ?? [];
+            const funilAtual = funil.funilAtual ?? [];
+            const totalPedidos = vendas.totalPedidos ?? 0;
+            const ticketMedio = vendas.ticketMedio ?? 0;
+            const totalAtivos = funil.totalAtivos ?? 0;
+            const taxaConversao = funil.taxaConversao ?? 0;
+            const slaEstourado = sac.slaEstourado ?? 0;
 
-              {/* Charts */}
-              <div
-                style={{
-                  display: 'grid',
-                  gridTemplateColumns: '1fr 1fr',
-                  gap: '1rem',
-                  marginBottom: '1rem',
-                }}
-              >
-                <div style={card}>
-                  <h2 style={{ margin: '0 0 0.75rem', fontSize: 15 }}>
-                    Top representantes (vendas)
-                  </h2>
-                  {data.vendas.porRep.length === 0 ? (
-                    <p style={{ color: colors.muted, fontSize: 13 }}>
-                      Nenhuma venda registrada no período. Comece criando um pedido.
-                    </p>
-                  ) : (
-                    <BarChart
-                      data={data.vendas.porRep.slice(0, 5).map((r) => ({
-                        label: r.repNome,
-                        sublabel: `${r.pedidos} pedido${r.pedidos === 1 ? '' : 's'}`,
-                        value: r.total,
-                      }))}
-                      formatValue={fmtBRLCompact}
-                    />
-                  )}
+            return (
+              <>
+                {/* KPI cards */}
+                <div
+                  style={{
+                    display: 'grid',
+                    gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))',
+                    gap: '0.75rem',
+                    marginBottom: '1rem',
+                  }}
+                >
+                  <KPICard
+                    label="Faturamento (mês)"
+                    value={fmtBRLCompact(faturamento.atual)}
+                    variacao={faturamento.variacao}
+                  />
+                  <KPICard label="Pedidos" value={String(totalPedidos)} />
+                  <KPICard label="Ticket médio" value={fmtBRL(ticketMedio)} />
+                  <KPICard label="Leads ativos" value={String(totalAtivos)} />
+                  <KPICard
+                    label="Taxa conversão"
+                    value={`${taxaConversao}%`}
+                    color={
+                      taxaConversao > 30
+                        ? colors.success
+                        : taxaConversao > 15
+                        ? colors.warning
+                        : colors.danger
+                    }
+                  />
+                  <KPICard
+                    label="SLA estourado (SAC)"
+                    value={String(slaEstourado)}
+                    color={slaEstourado > 0 ? colors.danger : colors.success}
+                  />
                 </div>
 
-                <div style={card}>
-                  <h2 style={{ margin: '0 0 0.75rem', fontSize: 15 }}>Funil de leads</h2>
-                  {data.funil.funilAtual.length === 0 ||
-                  data.funil.funilAtual.every((e) => e.count === 0) ? (
-                    <p style={{ color: colors.muted, fontSize: 13 }}>
-                      Sem leads ainda. Comece a captação em /leads.
-                    </p>
-                  ) : (
-                    <Funnel
-                      stages={data.funil.funilAtual.map((e) => ({
-                        label: ETAPA_LABEL[e.etapa] ?? e.etapa,
-                        value: e.count,
-                        color: ETAPA_COLOR[e.etapa],
-                      }))}
-                    />
-                  )}
+                {/* Charts */}
+                <div
+                  style={{
+                    display: 'grid',
+                    gridTemplateColumns: '1fr 1fr',
+                    gap: '1rem',
+                    marginBottom: '1rem',
+                  }}
+                >
+                  <div style={card}>
+                    <h2 style={{ margin: '0 0 0.75rem', fontSize: 15 }}>
+                      Top representantes (vendas)
+                    </h2>
+                    {porRep.length === 0 ? (
+                      <p style={{ color: colors.muted, fontSize: 13 }}>
+                        Nenhuma venda registrada no período. Comece criando um pedido.
+                      </p>
+                    ) : (
+                      <BarChart
+                        data={porRep.slice(0, 5).map((r) => ({
+                          label: r.repNome,
+                          sublabel: `${r.pedidos} pedido${r.pedidos === 1 ? '' : 's'}`,
+                          value: r.total,
+                        }))}
+                        formatValue={fmtBRLCompact}
+                      />
+                    )}
+                  </div>
+
+                  <div style={card}>
+                    <h2 style={{ margin: '0 0 0.75rem', fontSize: 15 }}>Funil de leads</h2>
+                    {funilAtual.length === 0 || funilAtual.every((e) => e.count === 0) ? (
+                      <p style={{ color: colors.muted, fontSize: 13 }}>
+                        Sem leads ainda. Comece a captação em /leads.
+                      </p>
+                    ) : (
+                      <Funnel
+                        stages={funilAtual.map((e) => ({
+                          label: ETAPA_LABEL[e.etapa] ?? e.etapa,
+                          value: e.count,
+                          color: ETAPA_COLOR[e.etapa],
+                        }))}
+                      />
+                    )}
+                  </div>
                 </div>
-              </div>
-            </>
-          )}
+              </>
+            );
+          })()}
         </StateView>
       ) : (
         <p style={{ color: colors.muted }}>
@@ -195,7 +204,7 @@ export default function DashboardPage() {
       </div>
 
       {/* Status do sistema */}
-      {data && data.vendas.totalPedidos === 0 && (
+      {data && (data.vendas?.totalPedidos ?? 0) === 0 && (
         <div
           style={{
             ...card,
