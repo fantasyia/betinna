@@ -48,11 +48,17 @@ interface ComissoesResp {
 
 interface SacResp {
   periodo: { de: string; ate: string };
-  total: number;
+  // Backend retorna total como objeto { atual, anterior, variacao } —
+  // mantemos opcional pra retrocompatibilidade
+  total?: { atual: number; anterior: number; variacao: number } | number;
   abertas: number;
   emAndamento: number;
   resolvidas: number;
+  canceladas?: number;
   slaEstourado: number;
+  /** Backend usa `tmrHoras` */
+  tmrHoras?: number;
+  /** Alias antigo — mantido pra retrocompatibilidade */
   tempoMedioResolucaoHoras?: number;
   porSeveridade: Array<{ severidade: string; count: number }>;
   porTipo: Array<{ tipo: string; count: number }>;
@@ -62,19 +68,30 @@ interface AmostrasResp {
   periodo: { de: string; ate: string };
   enviadas: number;
   convertidas: number;
-  naoConverteram: number;
+  /** Calculado client-side; backend não retorna direto */
+  naoConverteram?: number;
   expiradas: number;
   taxaConversao: number;
+  /** Backend devolve valorConvertido + valorTotal */
   valorConvertido: number;
+  valorTotal?: number;
+  porStatus?: Array<{ status: string; count: number; valor: number }>;
 }
 
 interface CampanhasResp {
   periodo: { de: string; ate: string };
-  total: number;
-  totalEnvios: number;
-  totalLeituras: number;
+  /** Backend usa totalCampanhas */
+  totalCampanhas?: number;
+  /** Alias antigo */
+  total?: number;
+  totalDestinatarios?: number;
+  /** Alias antigo */
+  totalEnvios?: number;
+  totalLeituras?: number;
+  taxaEnvio?: number;
   taxaLeitura: number;
-  porCanal: Array<{ canal: string; envios: number; leituras: number }>;
+  porCanal?: Array<{ canal: string; count?: number; envios?: number; leituras?: number }>;
+  porStatus?: Array<{ status: string; count: number }>;
 }
 
 interface DashboardResp {
@@ -560,7 +577,16 @@ function SacTab({ qs }: { qs: string }) {
 
   return (
     <StateView loading={loading} error={error} onRetry={refetch}>
-      {data && (
+      {data && (() => {
+        // Defensive defaults — backend pode retornar campos undefined
+        const total =
+          typeof data.total === 'object' && data.total !== null
+            ? data.total.atual
+            : (data.total as number | undefined) ?? 0;
+        const tmr = data.tmrHoras ?? data.tempoMedioResolucaoHoras;
+        const porSeveridade = data.porSeveridade ?? [];
+        const porTipo = data.porTipo ?? [];
+        return (
         <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
           <div
             style={{
@@ -569,23 +595,23 @@ function SacTab({ qs }: { qs: string }) {
               gap: '0.75rem',
             }}
           >
-            <KPICard label="Total ocorrências" value={String(data.total)} />
-            <KPICard label="Abertas" value={String(data.abertas)} color={colors.warning} />
-            <KPICard label="Em andamento" value={String(data.emAndamento)} color="#0891b2" />
+            <KPICard label="Total ocorrências" value={String(total)} />
+            <KPICard label="Abertas" value={String(data.abertas ?? 0)} color={colors.warning} />
+            <KPICard label="Em andamento" value={String(data.emAndamento ?? 0)} color="#0891b2" />
             <KPICard
               label="Resolvidas"
-              value={String(data.resolvidas)}
+              value={String(data.resolvidas ?? 0)}
               color={colors.success}
             />
             <KPICard
               label="SLA estourado"
-              value={String(data.slaEstourado)}
-              color={data.slaEstourado > 0 ? colors.danger : colors.muted}
+              value={String(data.slaEstourado ?? 0)}
+              color={(data.slaEstourado ?? 0) > 0 ? colors.danger : colors.muted}
             />
-            {data.tempoMedioResolucaoHoras !== undefined && (
+            {tmr !== undefined && (
               <KPICard
                 label="Tempo médio resolução"
-                value={`${data.tempoMedioResolucaoHoras}h`}
+                value={`${tmr}h`}
               />
             )}
           </div>
@@ -595,7 +621,7 @@ function SacTab({ qs }: { qs: string }) {
               <h3 style={{ margin: '0 0 0.75rem', fontSize: 15 }}>Por severidade</h3>
               <Donut
                 slices={
-                  data.porSeveridade.map((s) => ({
+                  porSeveridade.map((s) => ({
                     label: s.severidade.toUpperCase(),
                     value: s.count,
                     color: SEV_COLOR[s.severidade] ?? colors.muted,
@@ -606,7 +632,7 @@ function SacTab({ qs }: { qs: string }) {
             <div style={card}>
               <h3 style={{ margin: '0 0 0.75rem', fontSize: 15 }}>Por tipo</h3>
               <BarChart
-                data={data.porTipo.map((t) => ({
+                data={porTipo.map((t) => ({
                   label: t.tipo,
                   value: t.count,
                 }))}
@@ -614,7 +640,8 @@ function SacTab({ qs }: { qs: string }) {
             </div>
           </div>
         </div>
-      )}
+        );
+      })()}
     </StateView>
   );
 }
@@ -626,7 +653,18 @@ function AmostrasTab({ qs }: { qs: string }) {
 
   return (
     <StateView loading={loading} error={error} onRetry={refetch}>
-      {data && (
+      {data && (() => {
+        const enviadas = data.enviadas ?? 0;
+        const convertidas = data.convertidas ?? 0;
+        const expiradas = data.expiradas ?? 0;
+        // Calcula naoConverteram se backend não retornou (algumas versões não)
+        const naoConverteram =
+          data.naoConverteram ??
+          // fallback: usa porStatus.NAO_CONVERTEU se existir
+          data.porStatus?.find((s) => s.status === 'NAO_CONVERTEU')?.count ?? 0;
+        const taxaConversao = data.taxaConversao ?? 0;
+        const valorConvertido = data.valorConvertido ?? 0;
+        return (
         <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
           <div
             style={{
@@ -635,30 +673,30 @@ function AmostrasTab({ qs }: { qs: string }) {
               gap: '0.75rem',
             }}
           >
-            <KPICard label="Enviadas" value={String(data.enviadas)} />
+            <KPICard label="Enviadas" value={String(enviadas)} />
             <KPICard
               label="Convertidas"
-              value={String(data.convertidas)}
+              value={String(convertidas)}
               color={colors.success}
             />
             <KPICard
               label="Não converteram"
-              value={String(data.naoConverteram)}
+              value={String(naoConverteram)}
               color={colors.muted}
             />
             <KPICard
               label="Expiradas"
-              value={String(data.expiradas)}
-              color={data.expiradas > 0 ? colors.warning : colors.muted}
+              value={String(expiradas)}
+              color={expiradas > 0 ? colors.warning : colors.muted}
             />
             <KPICard
               label="Taxa conversão"
-              value={`${data.taxaConversao}%`}
-              color={data.taxaConversao > 30 ? colors.success : data.taxaConversao > 15 ? colors.warning : colors.danger}
+              value={`${taxaConversao}%`}
+              color={taxaConversao > 30 ? colors.success : taxaConversao > 15 ? colors.warning : colors.danger}
             />
             <KPICard
               label="Valor convertido"
-              value={fmtBRL(data.valorConvertido)}
+              value={fmtBRL(valorConvertido)}
               hint="Pedidos gerados a partir de amostras"
             />
           </div>
@@ -669,24 +707,24 @@ function AmostrasTab({ qs }: { qs: string }) {
               slices={[
                 {
                   label: 'Convertidas',
-                  value: data.convertidas,
+                  value: convertidas,
                   color: colors.success,
                 },
                 {
                   label: 'Não converteram',
-                  value: data.naoConverteram,
+                  value: naoConverteram,
                   color: colors.muted,
                 },
                 {
                   label: 'Expiradas',
-                  value: data.expiradas,
+                  value: expiradas,
                   color: colors.warning,
                 },
                 {
                   label: 'Pendentes',
                   value: Math.max(
                     0,
-                    data.enviadas - data.convertidas - data.naoConverteram - data.expiradas,
+                    enviadas - convertidas - naoConverteram - expiradas,
                   ),
                   color: '#0891b2',
                 },
@@ -694,7 +732,8 @@ function AmostrasTab({ qs }: { qs: string }) {
             />
           </div>
         </div>
-      )}
+        );
+      })()}
     </StateView>
   );
 }
@@ -706,7 +745,14 @@ function CampanhasTab({ qs }: { qs: string }) {
 
   return (
     <StateView loading={loading} error={error} onRetry={refetch}>
-      {data && (
+      {data && (() => {
+        // Backend usa totalCampanhas / totalDestinatarios; legados podem usar
+        // total / totalEnvios. Tolera ambos.
+        const totalCamp = data.totalCampanhas ?? data.total ?? 0;
+        const totalEnvios = data.totalDestinatarios ?? data.totalEnvios ?? 0;
+        const taxaLeitura = data.taxaLeitura ?? 0;
+        const porCanal = data.porCanal ?? [];
+        return (
         <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
           <div
             style={{
@@ -715,24 +761,24 @@ function CampanhasTab({ qs }: { qs: string }) {
               gap: '0.75rem',
             }}
           >
-            <KPICard label="Campanhas" value={String(data.total)} />
-            <KPICard label="Total de envios" value={String(data.totalEnvios)} />
-            <KPICard label="Total de leituras" value={String(data.totalLeituras)} />
+            <KPICard label="Campanhas" value={String(totalCamp)} />
+            <KPICard label="Total de envios" value={String(totalEnvios)} />
+            <KPICard label="Taxa de envio" value={`${data.taxaEnvio ?? 0}%`} />
             <KPICard
               label="Taxa de leitura"
-              value={`${data.taxaLeitura}%`}
-              color={data.taxaLeitura > 50 ? colors.success : data.taxaLeitura > 25 ? colors.warning : colors.danger}
+              value={`${taxaLeitura}%`}
+              color={taxaLeitura > 50 ? colors.success : taxaLeitura > 25 ? colors.warning : colors.danger}
             />
           </div>
 
-          {data.porCanal.length > 0 ? (
+          {porCanal.length > 0 ? (
             <div style={card}>
               <h3 style={{ margin: '0 0 0.75rem', fontSize: 15 }}>Performance por canal</h3>
               <BarChart
-                data={data.porCanal.map((c) => ({
+                data={porCanal.map((c) => ({
                   label: c.canal,
-                  sublabel: `${c.envios > 0 ? Math.round((c.leituras / c.envios) * 100) : 0}% leitura`,
-                  value: c.envios,
+                  sublabel: `${c.count ?? c.envios ?? 0} campanha${(c.count ?? c.envios ?? 0) === 1 ? '' : 's'}`,
+                  value: c.count ?? c.envios ?? 0,
                 }))}
               />
             </div>
@@ -754,7 +800,8 @@ function CampanhasTab({ qs }: { qs: string }) {
             </p>
           </div>
         </div>
-      )}
+        );
+      })()}
     </StateView>
   );
 }

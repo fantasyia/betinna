@@ -680,16 +680,25 @@ export class RelatoriosService {
         receitaRealizada: vendasData.receitaRealizada,
         totalPedidos: vendasData.totalPedidos,
         ticketMedio: vendasData.ticketMedio,
+        // Incluir top reps pro dashboard mostrar BarChart (limitado a 5 pelo
+        // frontend; aqui devolve o array completo pro caller usar como
+        // quiser)
+        porRep: vendasData.porRep,
+        porStatus: vendasData.porStatus,
       },
       funil: {
         totalAtivos: funilData.totalAtivos,
         criados: funilData.criados,
         ganhos: funilData.ganhos,
         taxaConversao: funilData.taxaConversao,
+        // Incluir snapshot do funil pra renderizar visual no dashboard
+        funilAtual: funilData.funilAtual,
       },
       sac: {
         total: sacData.total,
         abertas: sacData.abertas,
+        emAndamento: sacData.emAndamento,
+        resolvidas: sacData.resolvidas,
         slaEstourado: sacData.slaEstourado,
         tmrHoras: sacData.tmrHoras,
       },
