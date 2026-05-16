@@ -58,6 +58,7 @@ function fmtBRLCompact(v: number) {
 export default function DashboardPage() {
   const role = useRole();
   const canSeeRelatorios = usePermission('relatorios.view');
+  const canSeeCampanhas = usePermission('campanhas.view');
 
   const { data, loading, error, refetch } = useApiQuery<DashboardResp>(
     canSeeRelatorios ? '/relatorios/dashboard?periodo=mes' : null,
@@ -199,6 +200,7 @@ export default function DashboardPage() {
           <QuickAction to="/agenda" label="Agenda" emoji="📅" />
           <QuickAction to="/comissoes" label="Comissões" emoji="💰" />
           <QuickAction to="/catalogo" label="Meu catálogo" emoji="📦" />
+          {canSeeCampanhas && <QuickAction to="/campanhas" label="Campanhas" emoji="📣" />}
           <QuickAction to="/integracoes" label="Integrações" emoji="🔌" />
         </div>
       </div>
