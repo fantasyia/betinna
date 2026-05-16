@@ -14,9 +14,11 @@ type CanalOrigem =
   | 'INSTAGRAM'
   | 'FACEBOOK'
   | 'FORMULARIO'
+  | 'SITE'
   | 'EMAIL'
   | 'TELEFONE'
-  | 'INDICACAO';
+  | 'INDICACAO'
+  | 'OUTRO';
 
 interface Lead {
   id: string;
@@ -70,9 +72,11 @@ const CANAIS: CanalOrigem[] = [
   'INSTAGRAM',
   'FACEBOOK',
   'FORMULARIO',
+  'SITE',
   'EMAIL',
   'TELEFONE',
   'INDICACAO',
+  'OUTRO',
 ];
 
 function fmtBRL(v: number) {

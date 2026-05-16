@@ -33,6 +33,7 @@ enum UserStatus {
 enum ClienteStatus {
   ATIVO
   NOVO
+  PROSPECT
   RISCO
   CRITICO
   INATIVO
@@ -95,9 +96,11 @@ enum CanalOrigem {
   INSTAGRAM
   FACEBOOK
   FORMULARIO
+  SITE
   EMAIL
   TELEFONE
   INDICACAO
+  OUTRO
 }
 
 enum AprovacaoStatus {

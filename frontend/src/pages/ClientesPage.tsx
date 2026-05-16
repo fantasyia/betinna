@@ -21,7 +21,7 @@ interface RepOpt {
   email?: string;
 }
 
-type ClienteStatus = 'ATIVO' | 'NOVO' | 'RISCO' | 'CRITICO' | 'INATIVO';
+type ClienteStatus = 'ATIVO' | 'NOVO' | 'PROSPECT' | 'RISCO' | 'CRITICO' | 'INATIVO';
 type OmieStatus = 'ATIVO' | 'BLOQUEADO';
 
 interface Cliente {
@@ -50,6 +50,7 @@ interface Lista {
 const STATUS_COLORS: Record<ClienteStatus, string> = {
   ATIVO: colors.success,
   NOVO: '#0891b2',
+  PROSPECT: '#7c3aed',
   RISCO: colors.warning,
   CRITICO: colors.danger,
   INATIVO: colors.muted,
@@ -297,6 +298,7 @@ export default function ClientesPage() {
             <option value="">Todos status</option>
             <option value="ATIVO">Ativo</option>
             <option value="NOVO">Novo</option>
+            <option value="PROSPECT">Prospect</option>
             <option value="RISCO">Em risco</option>
             <option value="CRITICO">Crítico</option>
             <option value="INATIVO">Inativo</option>
@@ -715,6 +717,7 @@ function ClienteFormModal({
             >
               <option value="ATIVO">Ativo</option>
               <option value="NOVO">Novo</option>
+              <option value="PROSPECT">Prospect</option>
               <option value="RISCO">Em risco</option>
               <option value="CRITICO">Crítico</option>
               <option value="INATIVO">Inativo</option>
