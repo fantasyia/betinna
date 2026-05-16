@@ -21,6 +21,7 @@ const NAV_ITEMS: Array<{
   { to: '/agenda', label: 'Agenda' },
   { to: '/comissoes', label: 'Comissões' },
   { to: '/whatsapp', label: 'WhatsApp', permission: 'whatsapp.pessoal' },
+  { to: '/integracoes', label: 'Integrações' },
   { to: '/admin', label: 'Admin', permission: 'admin.panel' },
 ];
 
