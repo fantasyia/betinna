@@ -34,6 +34,12 @@ async function bootstrap(): Promise<void> {
   const expressInstance = (app.getHttpAdapter().getInstance() as any);
   if (typeof expressInstance.set === 'function') {
     expressInstance.set('trust proxy', 1);
+    // Desabilita ETag automático do Express. Em APIs JSON autenticadas,
+    // ETag causa 304 em /auth/me e similares — o browser cacheia e fetch
+    // do frontend recebe body vazio ao receber 304, quebrando o fluxo
+    // de login. APIs REST não devem usar HTTP cache validation por default.
+    // Auditoria 2026-05-16 — login travado em produção.
+    expressInstance.set('etag', false);
   }
 
   // Segurança HTTP

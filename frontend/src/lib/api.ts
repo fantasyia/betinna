@@ -75,6 +75,11 @@ async function request<T>(path: string, opts: RequestOpts = {}): Promise<T> {
       body: opts.body !== undefined ? JSON.stringify(opts.body) : undefined,
       // credentials: 'include' permite cookie httpOnly do refresh token
       credentials: 'include',
+      // `no-store` previne que browser cacheie respostas e envie
+      // conditional requests (If-None-Match), o que causaria 304 com body
+      // vazio em endpoints autenticados como /auth/me.
+      // Auditoria 2026-05-16 — login travado em produção.
+      cache: 'no-store',
       signal: controller.signal,
     });
   } catch (err) {
