@@ -125,8 +125,9 @@ function getSnapshot() {
  */
 export function usePermission(permission: Permission): boolean {
   const session = useSyncExternalStore(subscribeAuth, getSnapshot, getSnapshot);
-  if (!session?.user.role) return false;
-  return PERMISSION_MATRIX[session.user.role].has(permission);
+  const role = session?.user?.role;
+  if (!role) return false;
+  return PERMISSION_MATRIX[role].has(permission);
 }
 
 /**
@@ -143,5 +144,5 @@ export function hasPermission(role: UserRole | null, permission: Permission): bo
  */
 export function useRole(): UserRole | null {
   const session = useSyncExternalStore(subscribeAuth, getSnapshot, getSnapshot);
-  return session?.user.role ?? null;
+  return session?.user?.role ?? null;
 }

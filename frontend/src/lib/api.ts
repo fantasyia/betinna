@@ -58,8 +58,9 @@ async function request<T>(path: string, opts: RequestOpts = {}): Promise<T> {
     if (sess?.accessToken) {
       headers['Authorization'] = `Bearer ${sess.accessToken}`;
     }
-    if (opts.empresaId ?? sess?.user.empresaIdAtiva) {
-      headers['X-Empresa-Id'] = opts.empresaId ?? sess!.user.empresaIdAtiva!;
+    const empresaId = opts.empresaId ?? sess?.user?.empresaIdAtiva;
+    if (empresaId) {
+      headers['X-Empresa-Id'] = empresaId;
     }
   }
 

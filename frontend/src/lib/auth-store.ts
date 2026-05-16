@@ -32,7 +32,7 @@ export function setSession(next: AuthSession | null): void {
     };
     if (w.__BETINNA_E2E__) {
       w.__authToken__ = next?.accessToken ?? null;
-      w.__empresaIdAtiva__ = next?.user.empresaIdAtiva ?? null;
+      w.__empresaIdAtiva__ = next?.user?.empresaIdAtiva ?? null;
     }
   }
 }
@@ -50,10 +50,10 @@ export function subscribe(listener: (s: AuthSession | null) => void): () => void
 
 /** Helper pra checar role atual do user. Retorna null se não autenticado. */
 export function currentRole() {
-  return session?.user.role ?? null;
+  return session?.user?.role ?? null;
 }
 
 /** Helper pra empresa ativa atual. */
 export function currentEmpresaId() {
-  return session?.user.empresaIdAtiva ?? null;
+  return session?.user?.empresaIdAtiva ?? null;
 }
