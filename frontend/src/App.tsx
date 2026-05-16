@@ -27,6 +27,7 @@ const PropostasPage = lazy(() => import('@/pages/PropostasPage'));
 const AmostrasPage = lazy(() => import('@/pages/AmostrasPage'));
 const OcorrenciasPage = lazy(() => import('@/pages/OcorrenciasPage'));
 const ProdutosPage = lazy(() => import('@/pages/ProdutosPage'));
+const AgendaPage = lazy(() => import('@/pages/AgendaPage'));
 
 function PageSuspense({ children }: { children: React.ReactNode }) {
   return (
@@ -197,6 +198,18 @@ const router = createBrowserRouter([
         <ProtectedRoute>
           <PageSuspense>
             <ProdutosPage />
+          </PageSuspense>
+        </ProtectedRoute>
+      </ErrorBoundary>
+    ),
+  },
+  {
+    path: '/agenda',
+    element: (
+      <ErrorBoundary>
+        <ProtectedRoute>
+          <PageSuspense>
+            <AgendaPage />
           </PageSuspense>
         </ProtectedRoute>
       </ErrorBoundary>

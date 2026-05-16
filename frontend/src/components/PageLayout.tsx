@@ -16,6 +16,7 @@ const NAV_ITEMS: Array<{
   { to: '/amostras', label: 'Amostras' },
   { to: '/ocorrencias', label: 'SAC' },
   { to: '/leads', label: 'Leads' },
+  { to: '/agenda', label: 'Agenda' },
   { to: '/comissoes', label: 'Comissões' },
   { to: '/whatsapp', label: 'WhatsApp', permission: 'whatsapp.pessoal' },
   { to: '/admin', label: 'Admin', permission: 'admin.panel' },
