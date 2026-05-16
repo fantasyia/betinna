@@ -1,136 +1,275 @@
-import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { api, ApiError } from '@/lib/api';
-import { usePermission, useRole } from '@/hooks/usePermission';
+import { useApiQuery } from '@/hooks/useApiQuery';
+import { useRole, usePermission } from '@/hooks/usePermission';
+import { PageLayout } from '@/components/PageLayout';
+import { StateView } from '@/components/StateView';
+import { KPICard, Funnel, BarChart } from '@/components/charts';
+import { btn, btnSecondary, card, colors } from '@/components/styles';
 
-interface ResumoVendas {
-  faturamento: { atual: number };
-  totalPedidos: number;
+interface DashboardResp {
+  vendas: {
+    faturamento: { atual: number; anterior: number; variacao: number };
+    totalPedidos: number;
+    ticketMedio: number;
+    porRep: Array<{ repId: string; repNome: string; pedidos: number; total: number }>;
+  };
+  funil: {
+    funilAtual: Array<{ etapa: string; count: number; valorEstimado: number }>;
+    totalAtivos: number;
+    taxaConversao: number;
+  };
+  sac: {
+    abertas: number;
+    slaEstourado: number;
+  };
+  amostras: {
+    enviadas: number;
+    convertidas: number;
+    taxaConversao: number;
+  };
 }
 
-/**
- * DashboardPage — exemplo de página com 3 estados (loading / error / empty)
- * + RBAC condicional na navegação. Sprint 4 FIX 6.
- */
+const ETAPA_LABEL: Record<string, string> = {
+  NOVO: 'Novo',
+  QUALIFICANDO: 'Qualificando',
+  PROPOSTA: 'Proposta',
+  NEGOCIACAO: 'Negociação',
+  GANHO: 'Ganho',
+  PERDIDO: 'Perdido',
+};
+const ETAPA_COLOR: Record<string, string> = {
+  NOVO: '#0891b2',
+  QUALIFICANDO: '#7c3aed',
+  PROPOSTA: colors.warning,
+  NEGOCIACAO: '#d97706',
+  GANHO: colors.success,
+  PERDIDO: colors.danger,
+};
+
+function fmtBRL(v: number) {
+  return new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(v);
+}
+function fmtBRLCompact(v: number) {
+  if (v >= 1_000_000) return `R$ ${(v / 1_000_000).toFixed(1)}M`;
+  if (v >= 1_000) return `R$ ${(v / 1_000).toFixed(1)}k`;
+  return fmtBRL(v);
+}
+
 export default function DashboardPage() {
   const role = useRole();
-  const canSeeFidelidade = usePermission('fidelidade.view');
-  const canSeeMullerBotConfig = usePermission('mullerbot.config');
-  const canSeeAdmin = usePermission('admin.panel');
-  const canBulkAssign = usePermission('clientes.bulkAssign');
+  const canSeeRelatorios = usePermission('relatorios.view');
 
-  const [data, setData] = useState<ResumoVendas | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-
-  useEffect(() => {
-    let cancelled = false;
-    async function load() {
-      setLoading(true);
-      setError(null);
-      try {
-        const r = await api.get<ResumoVendas>('/relatorios/vendas?periodo=mes');
-        if (!cancelled) setData(r);
-      } catch (err) {
-        if (!cancelled) {
-          setError(err instanceof ApiError ? err.message : 'Erro ao carregar');
-        }
-      } finally {
-        if (!cancelled) setLoading(false);
-      }
-    }
-    void load();
-    return () => {
-      cancelled = true;
-    };
-  }, []);
-
-  function retry() {
-    setError(null);
-    setLoading(true);
-    setData(null);
-    // Trigger reload — simples
-    window.location.reload();
-  }
+  const { data, loading, error, refetch } = useApiQuery<DashboardResp>(
+    canSeeRelatorios ? '/relatorios/dashboard?periodo=mes' : null,
+  );
 
   return (
-    <div style={{ padding: '2rem', fontFamily: 'system-ui, sans-serif' }}>
-      <header style={{ marginBottom: '2rem' }}>
-        <h1 data-testid="dashboard-title">Dashboard</h1>
-        <p style={{ color: '#666' }}>
-          Logado como <strong>{role}</strong>
+    <PageLayout
+      title="Dashboard"
+      actions={
+        canSeeRelatorios ? (
+          <Link to="/relatorios" style={{ ...btnSecondary, textDecoration: 'none' }}>
+            Ver relatórios completos →
+          </Link>
+        ) : undefined
+      }
+    >
+      <p style={{ marginTop: 0, color: colors.muted, fontSize: 14 }}>
+        Bem-vindo! Você está logado como <strong>{role}</strong>.
+      </p>
+
+      {canSeeRelatorios ? (
+        <StateView loading={loading} error={error} onRetry={refetch}>
+          {data && (
+            <>
+              {/* KPI cards */}
+              <div
+                style={{
+                  display: 'grid',
+                  gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))',
+                  gap: '0.75rem',
+                  marginBottom: '1rem',
+                }}
+              >
+                <KPICard
+                  label="Faturamento (mês)"
+                  value={fmtBRLCompact(data.vendas.faturamento.atual)}
+                  variacao={data.vendas.faturamento.variacao}
+                />
+                <KPICard label="Pedidos" value={String(data.vendas.totalPedidos)} />
+                <KPICard
+                  label="Ticket médio"
+                  value={fmtBRL(data.vendas.ticketMedio || 0)}
+                />
+                <KPICard
+                  label="Leads ativos"
+                  value={String(data.funil.totalAtivos)}
+                />
+                <KPICard
+                  label="Taxa conversão"
+                  value={`${data.funil.taxaConversao}%`}
+                  color={
+                    data.funil.taxaConversao > 30
+                      ? colors.success
+                      : data.funil.taxaConversao > 15
+                      ? colors.warning
+                      : colors.danger
+                  }
+                />
+                <KPICard
+                  label="SLA estourado (SAC)"
+                  value={String(data.sac.slaEstourado)}
+                  color={data.sac.slaEstourado > 0 ? colors.danger : colors.success}
+                />
+              </div>
+
+              {/* Charts */}
+              <div
+                style={{
+                  display: 'grid',
+                  gridTemplateColumns: '1fr 1fr',
+                  gap: '1rem',
+                  marginBottom: '1rem',
+                }}
+              >
+                <div style={card}>
+                  <h2 style={{ margin: '0 0 0.75rem', fontSize: 15 }}>
+                    Top representantes (vendas)
+                  </h2>
+                  {data.vendas.porRep.length === 0 ? (
+                    <p style={{ color: colors.muted, fontSize: 13 }}>
+                      Nenhuma venda registrada no período. Comece criando um pedido.
+                    </p>
+                  ) : (
+                    <BarChart
+                      data={data.vendas.porRep.slice(0, 5).map((r) => ({
+                        label: r.repNome,
+                        sublabel: `${r.pedidos} pedido${r.pedidos === 1 ? '' : 's'}`,
+                        value: r.total,
+                      }))}
+                      formatValue={fmtBRLCompact}
+                    />
+                  )}
+                </div>
+
+                <div style={card}>
+                  <h2 style={{ margin: '0 0 0.75rem', fontSize: 15 }}>Funil de leads</h2>
+                  {data.funil.funilAtual.length === 0 ||
+                  data.funil.funilAtual.every((e) => e.count === 0) ? (
+                    <p style={{ color: colors.muted, fontSize: 13 }}>
+                      Sem leads ainda. Comece a captação em /leads.
+                    </p>
+                  ) : (
+                    <Funnel
+                      stages={data.funil.funilAtual.map((e) => ({
+                        label: ETAPA_LABEL[e.etapa] ?? e.etapa,
+                        value: e.count,
+                        color: ETAPA_COLOR[e.etapa],
+                      }))}
+                    />
+                  )}
+                </div>
+              </div>
+            </>
+          )}
+        </StateView>
+      ) : (
+        <p style={{ color: colors.muted }}>
+          Você não tem permissão pra ver relatórios. Use o menu acima pra navegar.
         </p>
-      </header>
+      )}
 
-      <nav style={{ display: 'flex', gap: '1rem', flexWrap: 'wrap', marginBottom: '2rem' }}>
-        <Link to="/clientes">Clientes</Link>
-        <Link to="/pedidos">Pedidos</Link>
-        <Link to="/comissoes">Comissões</Link>
-        <Link to="/whatsapp">WhatsApp</Link>
+      {/* Quick actions */}
+      <div style={card}>
+        <h2 style={{ marginTop: 0, fontSize: 15 }}>Atalhos</h2>
+        <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
+          <QuickAction to="/clientes" label="Clientes" emoji="👥" />
+          <QuickAction to="/pedidos" label="Pedidos" emoji="🛒" />
+          <QuickAction to="/leads" label="Leads (Kanban)" emoji="📊" />
+          <QuickAction to="/inbox" label="Inbox" emoji="💬" />
+          <QuickAction to="/agenda" label="Agenda" emoji="📅" />
+          <QuickAction to="/comissoes" label="Comissões" emoji="💰" />
+          <QuickAction to="/catalogo" label="Meu catálogo" emoji="📦" />
+          <QuickAction to="/integracoes" label="Integrações" emoji="🔌" />
+        </div>
+      </div>
 
-        {/* Sprint 4 FIX 6 — RBAC condicional */}
-        {canSeeFidelidade && (
-          <Link to="/fidelidade" data-testid="fidelidade-nav">
-            Fidelidade
-          </Link>
-        )}
-        {canSeeMullerBotConfig && (
-          <Link to="/mullerbot/config" data-testid="mullerbot-config-nav">
-            MullerBot Config
-          </Link>
-        )}
-        {canSeeAdmin && (
-          <Link to="/admin" data-testid="admin-nav">
-            Admin
-          </Link>
-        )}
-        {canBulkAssign && (
-          <button data-testid="bulk-assign-btn" type="button">
-            Atribuir Rep em Massa
-          </button>
-        )}
-      </nav>
+      {/* Status do sistema */}
+      {data && data.vendas.totalPedidos === 0 && (
+        <div
+          style={{
+            ...card,
+            marginTop: '1rem',
+            background: '#fafbfc',
+          }}
+        >
+          <h3 style={{ marginTop: 0, fontSize: 14 }}>👋 Primeiros passos</h3>
+          <p style={{ fontSize: 13, color: colors.muted, marginBottom: '0.75rem' }}>
+            Você está em uma instância nova. Pra começar a operar:
+          </p>
+          <ol style={{ fontSize: 13, color: colors.muted, paddingLeft: 20, lineHeight: 1.7 }}>
+            <li>
+              <Link to="/integracoes" style={{ color: colors.primary }}>
+                Conectar OMIE
+              </Link>{' '}
+              → sync de clientes + produtos
+            </li>
+            <li>
+              <Link to="/usuarios" style={{ color: colors.primary }}>
+                Convidar usuários
+              </Link>{' '}
+              → adicionar reps e gerentes
+            </li>
+            <li>
+              <Link to="/clientes" style={{ color: colors.primary }}>
+                Cadastrar clientes
+              </Link>{' '}
+              ou importar via OMIE
+            </li>
+            <li>
+              <Link to="/produtos" style={{ color: colors.primary }}>
+                Catálogo de produtos
+              </Link>{' '}
+              ou importar via OMIE
+            </li>
+            <li>
+              <Link to="/pedidos" style={{ color: colors.primary }}>
+                Criar primeiro pedido
+              </Link>
+            </li>
+          </ol>
+        </div>
+      )}
+    </PageLayout>
+  );
+}
 
-      {/* Sprint 4 FIX 6 — 3 estados: loading, error, empty */}
-      <section style={{ background: '#fff', padding: '1.5rem', borderRadius: 8 }}>
-        <h2>Faturamento do mês</h2>
-        {loading && (
-          <div data-testid="loading-skeleton">
-            <div
-              style={{
-                width: '180px',
-                height: '32px',
-                background: '#eee',
-                borderRadius: 4,
-                animation: 'pulse 1.5s ease-in-out infinite',
-              }}
-            />
-          </div>
-        )}
-        {!loading && error && (
-          <div data-testid="error-state">
-            <p style={{ color: '#dc2626' }}>{error}</p>
-            <button onClick={retry} type="button" data-testid="retry-btn">
-              Tentar novamente
-            </button>
-          </div>
-        )}
-        {!loading && !error && data && data.totalPedidos === 0 && (
-          <div data-testid="empty-state">
-            <p style={{ color: '#666' }}>
-              Sem vendas registradas neste mês. Comece criando um pedido.
-            </p>
-          </div>
-        )}
-        {!loading && !error && data && data.totalPedidos > 0 && (
-          <div data-testid="dashboard-data">
-            <p style={{ fontSize: '2rem', fontWeight: 600 }}>
-              R$ {data.faturamento.atual.toFixed(2)}
-            </p>
-            <p style={{ color: '#666' }}>{data.totalPedidos} pedidos</p>
-          </div>
-        )}
-      </section>
-    </div>
+function QuickAction({
+  to,
+  label,
+  emoji,
+}: {
+  to: string;
+  label: string;
+  emoji: string;
+}) {
+  return (
+    <Link
+      to={to}
+      style={{
+        ...btn,
+        textDecoration: 'none',
+        background: colors.surface,
+        color: colors.text,
+        border: `1px solid ${colors.border}`,
+        display: 'inline-flex',
+        alignItems: 'center',
+        gap: '0.375rem',
+        fontSize: 13,
+      }}
+    >
+      <span>{emoji}</span>
+      <span>{label}</span>
+    </Link>
   );
 }
