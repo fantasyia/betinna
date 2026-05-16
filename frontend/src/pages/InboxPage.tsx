@@ -5,6 +5,7 @@ import { PageLayout } from '@/components/PageLayout';
 import { StateView } from '@/components/StateView';
 import { Modal } from '@/components/Modal';
 import { FormField, Select, Textarea } from '@/components/FormField';
+import { SearchInput } from '@/components/FilterBar';
 import { useToast } from '@/components/toast';
 import { badge, btn, btnSecondary, card, colors } from '@/components/styles';
 
@@ -44,6 +45,12 @@ interface Mensagem {
   autor?: { id: string; nome: string } | null;
   mediaUrl?: string | null;
   mediaMime?: string | null;
+}
+
+interface UsuarioMinimo {
+  id: string;
+  nome: string;
+  role: string;
 }
 
 const CANAL_LABEL: Record<Canal, string> = {
@@ -117,6 +124,7 @@ export default function InboxPage() {
   const [canal, setCanal] = useState<string>('');
   const [status, setStatus] = useState<string>('');
   const [filterMeu, setFilterMeu] = useState<string>('');
+  const [search, setSearch] = useState<string>('');
   const [selectedId, setSelectedId] = useState<string | null>(null);
 
   // Bump aumenta a cada poll pra forçar refetch dos hooks
@@ -132,8 +140,9 @@ export default function InboxPage() {
     if (status) qs.set('status', status);
     if (filterMeu === 'meu') qs.set('meu', 'true');
     if (filterMeu === 'nao_atribuidas') qs.set('naoAtribuidas', 'true');
+    if (search.trim()) qs.set('search', search.trim());
     return `/inbox?${qs.toString()}`;
-  }, [canal, status, filterMeu, pollBump]);
+  }, [canal, status, filterMeu, search, pollBump]);
 
   const { data: pageResp, loading, error, refetch } =
     useApiQuery<PaginatedResponse<Conversation>>(listPath);
@@ -168,6 +177,11 @@ export default function InboxPage() {
           }}
         >
           <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem', marginBottom: '0.5rem' }}>
+            <SearchInput
+              value={search}
+              onChange={(v) => setSearch(v)}
+              placeholder="Buscar conversa…"
+            />
             <Select
               data-testid="inbox-canal"
               value={canal}
@@ -379,6 +393,7 @@ function ConversationThread({
   const [sending, setSending] = useState(false);
   const [sendError, setSendError] = useState<string | null>(null);
   const [statusOpen, setStatusOpen] = useState(false);
+  const [atribuirOpen, setAtribuirOpen] = useState(false);
 
   // Auto-scroll pro fim quando msgs chegam
   const endRef = useRef<HTMLDivElement | null>(null);
@@ -464,11 +479,14 @@ function ConversationThread({
               >
                 {STATUS_LABEL[c.status]}
               </button>
-              {c.atribuido && (
-                <span style={{ fontSize: 12, color: colors.muted }}>
-                  → {c.atribuido.nome}
-                </span>
-              )}
+              <button
+                type="button"
+                data-testid="inbox-atribuir-btn"
+                onClick={() => setAtribuirOpen(true)}
+                style={{ ...btnSecondary, padding: '2px 10px', fontSize: 11 }}
+              >
+                {c.atribuido ? `→ ${c.atribuido.nome}` : 'Atribuir'}
+              </button>
             </div>
           </>
         ) : (
@@ -563,6 +581,14 @@ function ConversationThread({
       {statusOpen && c && (
         <StatusModal current={c.status} onClose={() => setStatusOpen(false)} onPick={mudarStatus} />
       )}
+      {atribuirOpen && c && (
+        <AtribuirModal
+          conversaId={id}
+          atribuidoAtual={c.atribuido ?? null}
+          onClose={() => setAtribuirOpen(false)}
+          onDone={() => { setAtribuirOpen(false); conv.refetch(); onChanged(); }}
+        />
+      )}
     </>
   );
 }
@@ -599,6 +625,83 @@ function StatusModal({
                 <span style={badge(STATUS_COLOR[s])}>{STATUS_LABEL[s]}</span>
               </button>
             ))}
+        </div>
+      </FormField>
+    </Modal>
+  );
+}
+
+function AtribuirModal({
+  conversaId,
+  atribuidoAtual,
+  onClose,
+  onDone,
+}: {
+  conversaId: string;
+  atribuidoAtual: { id: string; nome: string } | null;
+  onClose: () => void;
+  onDone: () => void;
+}) {
+  const toast = useToast();
+  const { data: usersResp } = useApiQuery<PaginatedResponse<UsuarioMinimo>>('/users?limit=100&status=ATIVO');
+  const [busy, setBusy] = useState(false);
+
+  async function atribuir(userId: string | null) {
+    setBusy(true);
+    try {
+      await api.patch(`/inbox/${conversaId}/atribuir`, { atribuidoId: userId });
+      toast.success(userId ? 'Conversa atribuída' : 'Atribuição removida');
+      onDone();
+    } catch (err) {
+      toast.error('Falha ao atribuir', err instanceof ApiError ? err.message : undefined);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  const users = usersResp?.data ?? [];
+
+  return (
+    <Modal open onClose={onClose} title="Atribuir conversa">
+      <FormField label="Selecione o responsável">
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+          {atribuidoAtual && (
+            <button
+              type="button"
+              data-testid="atribuir-ninguem"
+              disabled={busy}
+              onClick={() => atribuir(null)}
+              style={{ ...btnSecondary, textAlign: 'left', fontSize: 13 }}
+            >
+              ✕ Remover atribuição
+            </button>
+          )}
+          {users.map((u) => (
+            <button
+              key={u.id}
+              type="button"
+              data-testid={`atribuir-user-${u.id}`}
+              disabled={busy || u.id === atribuidoAtual?.id}
+              onClick={() => atribuir(u.id)}
+              style={{
+                ...btnSecondary,
+                textAlign: 'left',
+                fontSize: 13,
+                opacity: u.id === atribuidoAtual?.id ? 0.5 : 1,
+              }}
+            >
+              <strong>{u.nome}</strong>
+              <span style={{ marginLeft: '0.375rem', color: colors.muted, fontSize: 11 }}>
+                ({u.role})
+              </span>
+              {u.id === atribuidoAtual?.id && (
+                <span style={{ marginLeft: 4, color: colors.success, fontSize: 11 }}>✓ atual</span>
+              )}
+            </button>
+          ))}
+          {users.length === 0 && (
+            <p style={{ color: colors.muted, fontSize: 13, margin: 0 }}>Carregando usuários…</p>
+          )}
         </div>
       </FormField>
     </Modal>
