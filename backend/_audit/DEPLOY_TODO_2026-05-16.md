@@ -6,6 +6,17 @@ deferido pra não travar o desenvolvimento.
 
 ---
 
+## 📅 Histórico de setup
+
+- **2026-05-16 — Bootstrap inicial deploy** (este commit):
+  - ✅ `RAILWAY_TOKEN` adicionado ao GitHub Secrets
+  - ✅ Service `frontend` criado (Railpack + `npx serve dist -l $PORT -s`)
+  - ✅ Service `worker` criado (Dockerfile + `npm run worker` + `SERVICE_TYPE=worker`)
+  - ✅ Service `api` já existente (rodando há ~30min antes do bootstrap)
+  - Próximo push valida pipeline end-to-end automaticamente
+
+---
+
 ## ✅ O que já funciona automaticamente
 
 Cada push em `main` dispara:
