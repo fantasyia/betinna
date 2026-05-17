@@ -1,10 +1,11 @@
 import { Component, type ErrorInfo, type ReactNode } from 'react';
+import { captureError } from '@/lib/sentry';
 
 /**
- * ErrorBoundary — Sprint 4 FIX 6.
+ * ErrorBoundary — captura erros de render em sub-tree React.
  *
- * Captura erros de render em sub-tree React. Logs apenas — NÃO envia PII pra
- * Sentry (Sentry só recebe via beforeSend sanitizado no backend).
+ * Reporta ao Sentry via `captureError` (que redacta PII antes de enviar).
+ * Quando DSN não configurado, cai pra log estruturado no console.
  *
  * Uso:
  *   <ErrorBoundary>
@@ -31,10 +32,10 @@ export class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundarySt
   }
 
   componentDidCatch(error: Error, errorInfo: ErrorInfo): void {
-     
-    console.error('ErrorBoundary capturou:', error, errorInfo.componentStack);
-    // Em produção, mandar pra Sentry frontend (se habilitado)
-    // Sentry.captureException(error, { extra: { componentStack: errorInfo.componentStack } });
+    captureError(error, {
+      source: 'react-error-boundary',
+      componentStack: errorInfo.componentStack,
+    });
   }
 
   retry = (): void => {

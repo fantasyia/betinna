@@ -1,16 +1,24 @@
 /**
  * Sentry frontend — opt-in via VITE_SENTRY_DSN no env.
  *
- * Não instalamos `@sentry/react` como dependência hard porque:
- *  - MVP não tem operação de produção real ainda
- *  - Dep adiciona ~30KB ao bundle
- *  - Quando ativar, adicionar `@sentry/react` ao package.json + descomentar
+ * Sem DSN configurado: cai pra log estruturado no console (Railway/CloudWatch
+ * capturam como ND-JSON). Com DSN: envia pro Sentry real via @sentry/react.
  *
- * Por enquanto, captura erros via window.onerror + window.onunhandledrejection
- * e loga estruturado no console (Railway captura como ND-JSON).
+ * O que captura:
+ *  - Erros não tratados (window.onerror)
+ *  - Promise rejections não tratadas (window.onunhandledrejection)
+ *  - Erros de render via <SentryErrorBoundary> no App.tsx
+ *  - Erros explicitamente via captureError() (api.ts, error handlers)
+ *
+ * Privacidade:
+ *  - sendDefaultPii: false (Sentry não envia ip/email do user)
+ *  - REDACT_PATTERNS striping password/token/bearer/apikey em mensagens
+ *  - beforeSend re-aplica redaction em messages, stack, breadcrumbs
  */
+import * as Sentry from '@sentry/react';
 
 const DSN = (import.meta.env.VITE_SENTRY_DSN as string | undefined) ?? '';
+const ENV = (import.meta.env.MODE as string | undefined) ?? 'development';
 const ENABLED = DSN.length > 0;
 
 /** Lista de patterns que NÃO devem ir pro log (PII / ruído conhecido). */
@@ -44,27 +52,6 @@ function buildContext(): ErrorContext {
   };
 }
 
-export function captureError(err: unknown, extra?: Record<string, unknown>): void {
-  const message = err instanceof Error ? err.message : String(err);
-  const stack = err instanceof Error ? err.stack : undefined;
-  const payload = {
-    level: 'error' as const,
-    message: redact(message),
-    stack: stack ? redact(stack) : undefined,
-    extra: extra ? redactObject(extra) : undefined,
-    ...buildContext(),
-  };
-  // ND-JSON pro Railway/Cloudwatch
-   
-  console.error(JSON.stringify(payload));
-
-  // Quando Sentry estiver habilitado, enviar via beacon:
-  if (ENABLED) {
-    // TODO: integrar @sentry/react ou enviar via fetch beacon pro DSN
-    // Por ora, só o log estruturado.
-  }
-}
-
 function redactObject(obj: Record<string, unknown>): Record<string, unknown> {
   const out: Record<string, unknown> = {};
   for (const [k, v] of Object.entries(obj)) {
@@ -75,9 +62,81 @@ function redactObject(obj: Record<string, unknown>): Record<string, unknown> {
   return out;
 }
 
+export function captureError(err: unknown, extra?: Record<string, unknown>): void {
+  const message = err instanceof Error ? err.message : String(err);
+  const stack = err instanceof Error ? err.stack : undefined;
+  const payload = {
+    level: 'error' as const,
+    message: redact(message),
+    stack: stack ? redact(stack) : undefined,
+    extra: extra ? redactObject(extra) : undefined,
+    ...buildContext(),
+  };
+  // ND-JSON pro Railway/CloudWatch — sempre, mesmo com Sentry ligado.
+   
+  console.error(JSON.stringify(payload));
+
+  if (ENABLED) {
+    Sentry.captureException(err instanceof Error ? err : new Error(message), {
+      extra: extra ? redactObject(extra) : undefined,
+    });
+  }
+}
+
 export function initSentry(): void {
   if (typeof window === 'undefined') return;
 
+  if (ENABLED) {
+    Sentry.init({
+      dsn: DSN,
+      environment: ENV,
+      // Em prod amostramos 10% das transactions pra controlar custo.
+      // Em dev/staging tudo pra debug.
+      tracesSampleRate: ENV === 'production' ? 0.1 : 1.0,
+      // Session replay tem custo extra — manter desligado por enquanto.
+      replaysSessionSampleRate: 0,
+      replaysOnErrorSampleRate: 0,
+      // Sentry não envia PII automaticamente.
+      sendDefaultPii: false,
+      beforeSend(event) {
+        // Strip user PII (defesa em profundidade)
+        if (event.user) {
+          delete event.user.email;
+          delete event.user.ip_address;
+          delete event.user.username;
+        }
+        // Redact message
+        if (event.message) event.message = redact(event.message);
+        // Redact stack trace frames
+        if (event.exception?.values) {
+          for (const v of event.exception.values) {
+            if (v.value) v.value = redact(v.value);
+          }
+        }
+        // Strip Authorization header de requests capturados
+        if (event.request?.headers) {
+          const h = event.request.headers as Record<string, string>;
+          if (h.authorization) h.authorization = '[REDACTED]';
+          if (h.Authorization) h.Authorization = '[REDACTED]';
+          if (h.cookie) h.cookie = '[REDACTED]';
+        }
+        // Redact breadcrumbs data (podem conter tokens em fetch URLs)
+        if (event.breadcrumbs) {
+          for (const b of event.breadcrumbs) {
+            if (b.message) b.message = redact(b.message);
+            if (b.data && typeof b.data === 'object') {
+              b.data = redactObject(b.data as Record<string, unknown>);
+            }
+          }
+        }
+        return event;
+      },
+    });
+     
+    console.info(`[Sentry] inicializado env=${ENV}`);
+  }
+
+  // Fallback handlers: capturam mesmo se DSN não configurado (cai pro log)
   window.addEventListener('error', (e) => {
     captureError(e.error ?? e.message, { source: 'window.error' });
   });
@@ -85,9 +144,24 @@ export function initSentry(): void {
   window.addEventListener('unhandledrejection', (e) => {
     captureError(e.reason, { source: 'unhandledrejection' });
   });
+}
 
-  if (ENABLED) {
-     
-    console.info('[Sentry] habilitado (DSN configurado)');
+/**
+ * Atualiza o user no Sentry quando login acontece. Não enviamos email/ip por
+ * privacidade (beforeSend strip), só o `id` (UUID Supabase) que serve pra
+ * correlacionar erros sem expor PII.
+ */
+export function setSentryUser(userId: string | null): void {
+  if (!ENABLED) return;
+  if (userId) {
+    Sentry.setUser({ id: userId });
+  } else {
+    Sentry.setUser(null);
   }
 }
+
+/**
+ * ErrorBoundary do @sentry/react — captura erros de render.
+ * Importar do consumer: `import { SentryErrorBoundary } from '@/lib/sentry'`.
+ */
+export const SentryErrorBoundary = Sentry.ErrorBoundary;

@@ -15,6 +15,7 @@
  */
 import type { AuthSession, AuthenticatedUser } from '@/types/auth';
 import { supabase } from './supabase';
+import { setSentryUser } from './sentry';
 
 let session: AuthSession | null = null;
 const listeners = new Set<(s: AuthSession | null) => void>();
@@ -32,6 +33,9 @@ export function isInitializing(): boolean {
 
 export function setSession(next: AuthSession | null): void {
   session = next;
+  // Mantém o Sentry user em sync. id apenas (sem email/PII) — beforeSend
+  // do sentry.ts strip qualquer PII residual de qualquer jeito.
+  setSentryUser(next?.user?.id ?? null);
   for (const l of listeners) l(next);
   // E2E helper. Expõe token na window APENAS quando `window.__BETINNA_E2E__ === true`
   // (setado por Playwright via init script). Em produção, sempre undefined.
