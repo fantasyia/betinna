@@ -84,9 +84,7 @@ describe('ShopeeClientService', () => {
     });
 
     it('embrulha HttpClientError em IntegrationException', async () => {
-      http.request.mockRejectedValue(
-        new HttpClientError(500, { msg: 'down' }, 'u', 'GET', 1),
-      );
+      http.request.mockRejectedValue(new HttpClientError(500, { msg: 'down' }, 'u', 'GET', 1));
 
       await expect(service.getShop('emp-1', '/x')).rejects.toBeInstanceOf(IntegrationException);
     });

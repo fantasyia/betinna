@@ -138,7 +138,11 @@ describe('CampanhaIaService', () => {
         ),
       );
 
-      await service.gerarConteudo(fakeUser(), { objetivo: 'vender', tom: 'formal', canal: 'WHATSAPP' });
+      await service.gerarConteudo(fakeUser(), {
+        objetivo: 'vender',
+        tom: 'formal',
+        canal: 'WHATSAPP',
+      });
 
       // Deve ter chamado OpenAI com o token do usuário
       const headers = http.post.mock.calls[0][1].headers;
@@ -159,7 +163,11 @@ describe('CampanhaIaService', () => {
         ),
       );
 
-      await service.gerarConteudo(fakeUser(), { objetivo: 'vender', tom: 'formal', canal: 'WHATSAPP' });
+      await service.gerarConteudo(fakeUser(), {
+        objetivo: 'vender',
+        tom: 'formal',
+        canal: 'WHATSAPP',
+      });
 
       const headers = http.post.mock.calls[0][1].headers;
       expect(headers.Authorization).toBe('Bearer env-openai-key');

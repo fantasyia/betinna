@@ -1,9 +1,6 @@
 import { describe, expect, it, vi, beforeEach } from 'vitest';
 import type { UserRole } from '@prisma/client';
-import {
-  ForbiddenException,
-  NotFoundException,
-} from '@shared/errors/app-exception';
+import { ForbiddenException, NotFoundException } from '@shared/errors/app-exception';
 import type { AuthenticatedUser } from '@shared/types/authenticated-user';
 import { AmostrasService } from './amostras.service';
 
@@ -267,10 +264,7 @@ describe('AmostrasService', () => {
       prisma.cliente.findFirst.mockResolvedValue({ id: 'cli-1', representanteId: 'rep-77' });
       prisma.amostra.create.mockResolvedValue(fakeAmostra());
 
-      await service.create(
-        fakeUser({ role: 'REP', id: 'rep-77', nome: 'João Rep' }),
-        baseDto,
-      );
+      await service.create(fakeUser({ role: 'REP', id: 'rep-77', nome: 'João Rep' }), baseDto);
 
       const data = prisma.amostra.create.mock.calls[0][0].data;
       expect(data.representanteNome).toBe('João Rep');
@@ -349,9 +343,9 @@ describe('AmostrasService', () => {
     it('lança NotFoundException quando amostra não existe', async () => {
       prisma.amostra.findFirst.mockResolvedValue(null);
 
-      await expect(
-        service.update(fakeUser(), 'nao-existe', { valor: 200 }),
-      ).rejects.toBeInstanceOf(NotFoundException);
+      await expect(service.update(fakeUser(), 'nao-existe', { valor: 200 })).rejects.toBeInstanceOf(
+        NotFoundException,
+      );
       expect(prisma.amostra.updateMany).not.toHaveBeenCalled();
     });
   });

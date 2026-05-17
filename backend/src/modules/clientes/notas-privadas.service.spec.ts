@@ -85,7 +85,9 @@ describe('NotasPrivadasService', () => {
     it('propaga NotFoundException se cliente não existe', async () => {
       clientes.findById.mockRejectedValue(new NotFoundException('Cliente', 'nao-existe'));
 
-      await expect(service.list(fakeUser(), 'nao-existe')).rejects.toBeInstanceOf(NotFoundException);
+      await expect(service.list(fakeUser(), 'nao-existe')).rejects.toBeInstanceOf(
+        NotFoundException,
+      );
     });
   });
 
@@ -186,7 +188,9 @@ describe('NotasPrivadasService', () => {
       prisma.notaPrivada.findFirst.mockResolvedValue(nota);
       prisma.notaPrivada.delete.mockResolvedValue(nota);
 
-      await expect(service.remove(fakeUser({ id: 'user-1' }), 'cli-1', 'nota-1')).resolves.toBeUndefined();
+      await expect(
+        service.remove(fakeUser({ id: 'user-1' }), 'cli-1', 'nota-1'),
+      ).resolves.toBeUndefined();
 
       expect(prisma.notaPrivada.delete).toHaveBeenCalledWith({ where: { id: 'nota-1' } });
     });

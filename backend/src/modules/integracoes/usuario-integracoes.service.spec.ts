@@ -175,7 +175,10 @@ describe('UsuarioIntegracoesService', () => {
       // Popula cache
       await service.obterCredenciaisInternas('user-1', 'openai' as never);
       // Conectar invalida o cache
-      await service.conectar(fakeUser(), { servico: 'openai' as never, credenciais: { apiKey: 'new' } });
+      await service.conectar(fakeUser(), {
+        servico: 'openai' as never,
+        credenciais: { apiKey: 'new' },
+      });
       // Próxima chamada deve ir ao banco de novo
       await service.obterCredenciaisInternas('user-1', 'openai' as never);
 

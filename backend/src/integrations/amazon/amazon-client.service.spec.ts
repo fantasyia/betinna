@@ -102,7 +102,13 @@ describe('AmazonClientService', () => {
   describe('tratamento de erros', () => {
     it('embrulha HttpClientError em IntegrationException', async () => {
       http.request.mockRejectedValue(
-        new HttpClientError(403, { errors: [{ code: 'Forbidden', message: 'No access' }] }, 'u', 'GET', 1),
+        new HttpClientError(
+          403,
+          { errors: [{ code: 'Forbidden', message: 'No access' }] },
+          'u',
+          'GET',
+          1,
+        ),
       );
 
       try {

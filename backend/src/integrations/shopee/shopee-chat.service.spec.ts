@@ -104,9 +104,7 @@ describe('ShopeeChatService', () => {
     it('mapeia tipo=order como CONTACT com order_sn no texto', async () => {
       shopee.getShop.mockResolvedValue({
         response: {
-          messages: [
-            fakeMessage({ message_type: 'order', content: { order_sn: 'ORD-X' } }),
-          ],
+          messages: [fakeMessage({ message_type: 'order', content: { order_sn: 'ORD-X' } })],
         },
       });
 

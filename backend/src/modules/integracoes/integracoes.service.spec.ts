@@ -131,9 +131,9 @@ describe('IntegracoesService', () => {
     });
 
     it('lança ForbiddenException sem empresaIdAtiva', async () => {
-      await expect(
-        service.list(fakeUser({ empresaIdAtiva: null }), {}),
-      ).rejects.toBeInstanceOf(ForbiddenException);
+      await expect(service.list(fakeUser({ empresaIdAtiva: null }), {})).rejects.toBeInstanceOf(
+        ForbiddenException,
+      );
     });
   });
 

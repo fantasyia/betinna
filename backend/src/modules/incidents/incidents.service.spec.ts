@@ -91,9 +91,9 @@ describe('IncidentsService', () => {
     });
 
     it('REP → ForbiddenException (incidentes restritos a SAC/gerência)', async () => {
-      await expect(
-        service.list(fakeUser({ role: 'REP' }), baseParams),
-      ).rejects.toBeInstanceOf(ForbiddenException);
+      await expect(service.list(fakeUser({ role: 'REP' }), baseParams)).rejects.toBeInstanceOf(
+        ForbiddenException,
+      );
     });
 
     it('lança ForbiddenException sem empresaIdAtiva', async () => {
@@ -184,18 +184,14 @@ describe('IncidentsService', () => {
       prisma.marketplaceIncident.count.mockResolvedValue(0);
       prisma.marketplaceIncident.findMany.mockResolvedValue([]);
 
-      await expect(
-        service.list(fakeUser({ role: 'ADMIN' }), baseParams),
-      ).resolves.toBeDefined();
+      await expect(service.list(fakeUser({ role: 'ADMIN' }), baseParams)).resolves.toBeDefined();
     });
 
     it('GERENTE pode listar incidentes', async () => {
       prisma.marketplaceIncident.count.mockResolvedValue(0);
       prisma.marketplaceIncident.findMany.mockResolvedValue([]);
 
-      await expect(
-        service.list(fakeUser({ role: 'GERENTE' }), baseParams),
-      ).resolves.toBeDefined();
+      await expect(service.list(fakeUser({ role: 'GERENTE' }), baseParams)).resolves.toBeDefined();
     });
   });
 
@@ -225,9 +221,9 @@ describe('IncidentsService', () => {
     });
 
     it('REP → ForbiddenException', async () => {
-      await expect(
-        service.findById(fakeUser({ role: 'REP' }), 'inc-1'),
-      ).rejects.toBeInstanceOf(ForbiddenException);
+      await expect(service.findById(fakeUser({ role: 'REP' }), 'inc-1')).rejects.toBeInstanceOf(
+        ForbiddenException,
+      );
       expect(prisma.marketplaceIncident.findFirst).not.toHaveBeenCalled();
     });
 
@@ -264,15 +260,15 @@ describe('IncidentsService', () => {
     });
 
     it('REP → ForbiddenException', async () => {
-      await expect(
-        service.resumo(fakeUser({ role: 'REP' })),
-      ).rejects.toBeInstanceOf(ForbiddenException);
+      await expect(service.resumo(fakeUser({ role: 'REP' }))).rejects.toBeInstanceOf(
+        ForbiddenException,
+      );
     });
 
     it('lança ForbiddenException sem empresaIdAtiva', async () => {
-      await expect(
-        service.resumo(fakeUser({ empresaIdAtiva: null })),
-      ).rejects.toBeInstanceOf(ForbiddenException);
+      await expect(service.resumo(fakeUser({ empresaIdAtiva: null }))).rejects.toBeInstanceOf(
+        ForbiddenException,
+      );
     });
 
     it('usa empresaId correto no baseWhere das 4 queries paralelas', async () => {
@@ -313,7 +309,11 @@ describe('IncidentsService', () => {
     });
 
     it('atualiza incidente existente (upsert idempotente)', async () => {
-      const existing = { id: 'inc-1', status: MarketplaceIncidentStatus.ABERTO, atualizadoEm: new Date() };
+      const existing = {
+        id: 'inc-1',
+        status: MarketplaceIncidentStatus.ABERTO,
+        atualizadoEm: new Date(),
+      };
       prisma.marketplaceIncident.findUnique.mockResolvedValue(existing);
       prisma.marketplaceIncident.update.mockResolvedValue(fakeIncident());
 
@@ -414,7 +414,11 @@ describe('IncidentsService', () => {
     });
 
     it('vincula conversationId ao incidente quando fornecido (atualização)', async () => {
-      const existing = { id: 'inc-1', status: MarketplaceIncidentStatus.ABERTO, atualizadoEm: new Date() };
+      const existing = {
+        id: 'inc-1',
+        status: MarketplaceIncidentStatus.ABERTO,
+        atualizadoEm: new Date(),
+      };
       prisma.marketplaceIncident.findUnique.mockResolvedValue(existing);
       prisma.marketplaceIncident.update.mockResolvedValue(fakeIncident());
       prisma.conversation.update.mockResolvedValue({});

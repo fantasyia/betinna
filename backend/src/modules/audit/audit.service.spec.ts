@@ -97,9 +97,7 @@ describe('AuditService', () => {
     it('não lança quando prisma.create falha (swallows error)', async () => {
       prisma.auditLog.create.mockRejectedValue(new Error('DB timeout'));
 
-      await expect(
-        service.logSync({ acao: 'SYNC', recurso: 'omie' }),
-      ).resolves.toBeUndefined();
+      await expect(service.logSync({ acao: 'SYNC', recurso: 'omie' })).resolves.toBeUndefined();
     });
   });
 });

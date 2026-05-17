@@ -121,8 +121,8 @@ describe('RefreshTokenService', () => {
 
       const [_script, _keys, argv] = redis.eval.mock.calls[0];
       // Hash deve ser hexadecimal de 32 chars (SHA-256 truncado)
-      expect((argv[0] as string)).toMatch(/^[0-9a-f]{32}$/);
-      expect((argv[0] as string)).not.toBe(token); // não é o token cru
+      expect(argv[0] as string).toMatch(/^[0-9a-f]{32}$/);
+      expect(argv[0] as string).not.toBe(token); // não é o token cru
     });
   });
 

@@ -280,9 +280,9 @@ describe('ProdutosService', () => {
       const p = fakeProduto({ precoTabela: 50, precoFabrica: 40 });
       prisma.produto.findFirst.mockResolvedValue(p);
 
-      await expect(
-        service.update(fakeUser(), 'p-1', { precoFabrica: 60 }),
-      ).rejects.toBeInstanceOf(BusinessRuleException);
+      await expect(service.update(fakeUser(), 'p-1', { precoFabrica: 60 })).rejects.toBeInstanceOf(
+        BusinessRuleException,
+      );
       expect(prisma.produto.updateMany).not.toHaveBeenCalled();
     });
 
@@ -360,9 +360,7 @@ describe('ProdutosService', () => {
       prisma.produto.findFirst.mockResolvedValue(p);
       prisma.produto.deleteMany.mockRejectedValue(makeP2003());
 
-      await expect(service.remove(fakeUser(), 'p-1')).rejects.toBeInstanceOf(
-        BusinessRuleException,
-      );
+      await expect(service.remove(fakeUser(), 'p-1')).rejects.toBeInstanceOf(BusinessRuleException);
     });
 
     it('relança erros que não são P2003', async () => {
@@ -414,9 +412,9 @@ describe('ProdutosService', () => {
     });
 
     it('lança ForbiddenException sem empresaIdAtiva', async () => {
-      await expect(
-        service.facets(fakeUser({ empresaIdAtiva: null })),
-      ).rejects.toBeInstanceOf(ForbiddenException);
+      await expect(service.facets(fakeUser({ empresaIdAtiva: null }))).rejects.toBeInstanceOf(
+        ForbiddenException,
+      );
     });
   });
 });

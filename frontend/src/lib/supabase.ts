@@ -27,7 +27,7 @@ const anon = import.meta.env.VITE_SUPABASE_ANON_KEY as string;
 if (!url || !anon) {
   // Falha alta visibilidade na inicialização — sem isso o app fica num
   // estado quebrado e o user só vê erros de auth genéricos.
-  // eslint-disable-next-line no-console
+   
   console.error(
     '[supabase] VITE_SUPABASE_URL ou VITE_SUPABASE_ANON_KEY ausentes — auth não vai funcionar',
   );

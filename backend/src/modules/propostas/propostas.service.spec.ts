@@ -224,7 +224,9 @@ describe('PropostasService', () => {
       prisma.produto.findMany.mockResolvedValue([
         { id: 'p-1', nome: 'Produto A', ativo: true, precoTabela: 50 },
       ]);
-      prisma.proposta.create.mockResolvedValue(fakeProposta({ status: 'RASCUNHO', numero: 'PROP-0001' }));
+      prisma.proposta.create.mockResolvedValue(
+        fakeProposta({ status: 'RASCUNHO', numero: 'PROP-0001' }),
+      );
 
       await service.create(fakeUser(), baseDto);
 
@@ -298,16 +300,18 @@ describe('PropostasService', () => {
       prisma.proposta.updateMany.mockResolvedValue({ count: 1 });
       prisma.proposta.findUniqueOrThrow.mockResolvedValue(fakeProposta({ observacoes: 'Obs' }));
 
-      await expect(service.update(fakeUser(), 'prop-1', { observacoes: 'Obs' })).resolves.toBeDefined();
+      await expect(
+        service.update(fakeUser(), 'prop-1', { observacoes: 'Obs' }),
+      ).resolves.toBeDefined();
     });
 
     it('lança BusinessRuleException para proposta ACEITA', async () => {
       const prop = fakeProposta({ status: 'ACEITA' });
       prisma.proposta.findFirst.mockResolvedValue(prop);
 
-      await expect(service.update(fakeUser(), 'prop-1', { observacoes: 'X' })).rejects.toBeInstanceOf(
-        BusinessRuleException,
-      );
+      await expect(
+        service.update(fakeUser(), 'prop-1', { observacoes: 'X' }),
+      ).rejects.toBeInstanceOf(BusinessRuleException);
       expect(prisma.proposta.updateMany).not.toHaveBeenCalled();
     });
 
@@ -398,7 +402,10 @@ describe('PropostasService', () => {
       prisma.proposta.updateMany.mockResolvedValue({ count: 1 });
       prisma.proposta.findUniqueOrThrow.mockResolvedValue(fakeProposta({ status: 'RECUSADA' }));
 
-      await service.changeStatus(fakeUser(), 'prop-1', { status: 'RECUSADA', motivo: 'Preço alto' });
+      await service.changeStatus(fakeUser(), 'prop-1', {
+        status: 'RECUSADA',
+        motivo: 'Preço alto',
+      });
 
       const args = prisma.proposta.updateMany.mock.calls[0][0];
       expect(args.data.observacoes).toContain('Nota inicial');

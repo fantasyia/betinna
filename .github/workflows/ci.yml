@@ -108,6 +108,10 @@ jobs:
         working-directory: ./backend
         run: npx prisma validate
 
+      - name: Lint (zero warnings)
+        working-directory: ./backend
+        run: npx eslint "{src,test}/**/*.ts" --max-warnings 0
+
       - name: Typecheck
         working-directory: ./backend
         run: npm run typecheck
@@ -157,6 +161,10 @@ jobs:
       - name: Install dependencies
         working-directory: ./frontend
         run: npm ci --prefer-offline --no-audit
+
+      - name: Lint (zero warnings)
+        working-directory: ./frontend
+        run: npx eslint . --max-warnings 0
 
       - name: Typecheck
         working-directory: ./frontend

@@ -86,12 +86,14 @@ const fakeDoc = (overrides: Record<string, unknown> = {}) => ({
   ...overrides,
 });
 
-const fakeFile = (overrides: Partial<{
-  filename: string;
-  mimetype: string;
-  size: number;
-  buffer: Buffer;
-}> = {}) => ({
+const fakeFile = (
+  overrides: Partial<{
+    filename: string;
+    mimetype: string;
+    size: number;
+    buffer: Buffer;
+  }> = {},
+) => ({
   filename: 'contrato.pdf',
   mimetype: 'application/pdf',
   size: 102400,
@@ -117,7 +119,10 @@ describe('DocumentosService', () => {
     clientes = makeClientesMock();
     mockListBuckets.mockResolvedValue({ data: [{ name: 'cliente-documentos' }] });
     mockUpload.mockResolvedValue({ error: null });
-    mockCreateSignedUrl.mockResolvedValue({ data: { signedUrl: 'https://signed.url/doc' }, error: null });
+    mockCreateSignedUrl.mockResolvedValue({
+      data: { signedUrl: 'https://signed.url/doc' },
+      error: null,
+    });
     mockRemove.mockResolvedValue({ error: null });
     service = new DocumentosService(prisma as never, env as never, clientes as never);
     await service.onModuleInit();
@@ -149,7 +154,9 @@ describe('DocumentosService', () => {
     it('propaga NotFoundException se cliente não existe', async () => {
       clientes.findById.mockRejectedValue(new NotFoundException('Cliente', 'nao-existe'));
 
-      await expect(service.list(fakeUser(), 'nao-existe')).rejects.toBeInstanceOf(NotFoundException);
+      await expect(service.list(fakeUser(), 'nao-existe')).rejects.toBeInstanceOf(
+        NotFoundException,
+      );
     });
   });
 
@@ -172,7 +179,11 @@ describe('DocumentosService', () => {
     it('salva storagePath (não URL assinada) no banco', async () => {
       prisma.documento.create.mockResolvedValue(fakeDoc());
 
-      await service.upload(fakeUser(), 'cli-1', fakeFile({ filename: 'foto.png', mimetype: 'image/png' }));
+      await service.upload(
+        fakeUser(),
+        'cli-1',
+        fakeFile({ filename: 'foto.png', mimetype: 'image/png' }),
+      );
 
       const data = prisma.documento.create.mock.calls[0][0].data;
       // url é o storagePath, não uma URL assinada
@@ -202,16 +213,20 @@ describe('DocumentosService', () => {
     it('lança IntegrationException quando Supabase retorna erro', async () => {
       mockUpload.mockResolvedValue({ error: { message: 'Storage error' } });
 
-      await expect(
-        service.upload(fakeUser(), 'cli-1', fakeFile()),
-      ).rejects.toBeInstanceOf(IntegrationException);
+      await expect(service.upload(fakeUser(), 'cli-1', fakeFile())).rejects.toBeInstanceOf(
+        IntegrationException,
+      );
       expect(prisma.documento.create).not.toHaveBeenCalled();
     });
 
     it('determina tipo correto para PDF', async () => {
       prisma.documento.create.mockResolvedValue(fakeDoc({ tipo: 'pdf' }));
 
-      await service.upload(fakeUser(), 'cli-1', fakeFile({ filename: 'doc.pdf', mimetype: 'application/pdf' }));
+      await service.upload(
+        fakeUser(),
+        'cli-1',
+        fakeFile({ filename: 'doc.pdf', mimetype: 'application/pdf' }),
+      );
 
       const data = prisma.documento.create.mock.calls[0][0].data;
       expect(data.tipo).toBe('pdf');
@@ -220,7 +235,11 @@ describe('DocumentosService', () => {
     it('determina tipo correto para imagem', async () => {
       prisma.documento.create.mockResolvedValue(fakeDoc({ tipo: 'img' }));
 
-      await service.upload(fakeUser(), 'cli-1', fakeFile({ filename: 'foto.jpg', mimetype: 'image/jpeg' }));
+      await service.upload(
+        fakeUser(),
+        'cli-1',
+        fakeFile({ filename: 'foto.jpg', mimetype: 'image/jpeg' }),
+      );
 
       const data = prisma.documento.create.mock.calls[0][0].data;
       expect(data.tipo).toBe('img');
@@ -238,7 +257,11 @@ describe('DocumentosService', () => {
         mockUpload.mockResolvedValue({ error: null });
 
         await expect(
-          service.upload(fakeUser(), 'cli-1', fakeFile({ mimetype: mime, filename: `file.${mime.split('/')[1]}` })),
+          service.upload(
+            fakeUser(),
+            'cli-1',
+            fakeFile({ mimetype: mime, filename: `file.${mime.split('/')[1]}` }),
+          ),
         ).resolves.toBeDefined();
       }
     });

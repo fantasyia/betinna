@@ -148,9 +148,7 @@ describe('OmiePedidosService', () => {
     });
 
     it('inclui observações no payload quando presentes', async () => {
-      prisma.pedido.findUnique.mockResolvedValue(
-        fakePedido({ observacoes: 'Entregar manhã' }),
-      );
+      prisma.pedido.findUnique.mockResolvedValue(fakePedido({ observacoes: 'Entregar manhã' }));
       omie.incluirPedido.mockResolvedValue(fakeOmieResponse());
 
       await service.enviarPedido('ped-1');

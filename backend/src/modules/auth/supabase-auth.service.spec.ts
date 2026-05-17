@@ -6,13 +6,11 @@ import { SupabaseAuthService } from './supabase-auth.service';
 // Mock jose — sem JWTs reais em testes unitários
 // ---------------------------------------------------------------------------
 
-const { mockJwtVerify, mockCreateRemoteJWKSet, mockDecodeProtectedHeader } = vi.hoisted(
-  () => ({
-    mockJwtVerify: vi.fn(),
-    mockCreateRemoteJWKSet: vi.fn(() => 'fake-jwks-client'),
-    mockDecodeProtectedHeader: vi.fn(() => ({ alg: 'HS256' })),
-  }),
-);
+const { mockJwtVerify, mockCreateRemoteJWKSet, mockDecodeProtectedHeader } = vi.hoisted(() => ({
+  mockJwtVerify: vi.fn(),
+  mockCreateRemoteJWKSet: vi.fn(() => 'fake-jwks-client'),
+  mockDecodeProtectedHeader: vi.fn(() => ({ alg: 'HS256' })),
+}));
 
 vi.mock('jose', () => ({
   jwtVerify: mockJwtVerify,

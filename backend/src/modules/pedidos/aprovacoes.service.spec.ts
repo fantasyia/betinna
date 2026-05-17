@@ -161,7 +161,10 @@ describe('AprovacoesService', () => {
       prisma.aprovacaoDesconto.count.mockResolvedValue(0);
       prisma.aprovacaoDesconto.findMany.mockResolvedValue([]);
 
-      await service.list(fakeUser({ role: 'ADMIN' }), { ...baseParams, status: 'PENDENTE' as never });
+      await service.list(fakeUser({ role: 'ADMIN' }), {
+        ...baseParams,
+        status: 'PENDENTE' as never,
+      });
 
       const where = prisma.aprovacaoDesconto.findMany.mock.calls[0][0].where;
       expect(where.status).toBe('PENDENTE');
@@ -171,10 +174,10 @@ describe('AprovacoesService', () => {
       prisma.aprovacaoDesconto.count.mockResolvedValue(0);
       prisma.aprovacaoDesconto.findMany.mockResolvedValue([]);
 
-      await service.list(
-        fakeUser({ role: 'GERENTE' }),
-        { ...baseParams, representanteId: 'rep-a' },
-      );
+      await service.list(fakeUser({ role: 'GERENTE' }), {
+        ...baseParams,
+        representanteId: 'rep-a',
+      });
 
       const where = prisma.aprovacaoDesconto.findMany.mock.calls[0][0].where;
       expect(where.representanteId).toBe('rep-a');
@@ -184,10 +187,10 @@ describe('AprovacoesService', () => {
       prisma.aprovacaoDesconto.count.mockResolvedValue(0);
       prisma.aprovacaoDesconto.findMany.mockResolvedValue([]);
 
-      await service.list(
-        fakeUser({ role: 'GERENTE' }),
-        { ...baseParams, representanteId: 'rep-fora' },
-      );
+      await service.list(fakeUser({ role: 'GERENTE' }), {
+        ...baseParams,
+        representanteId: 'rep-fora',
+      });
 
       const where = prisma.aprovacaoDesconto.findMany.mock.calls[0][0].where;
       expect(where.representanteId).toBe('__none__');
@@ -231,18 +234,16 @@ describe('AprovacoesService', () => {
       const apr = fakeAprovacao({ representanteId: 'rep-fora' });
       prisma.aprovacaoDesconto.findFirst.mockResolvedValue(apr);
 
-      await expect(
-        service.findById(fakeUser({ role: 'GERENTE' }), 'apr-1'),
-      ).rejects.toBeInstanceOf(ForbiddenException);
+      await expect(service.findById(fakeUser({ role: 'GERENTE' }), 'apr-1')).rejects.toBeInstanceOf(
+        ForbiddenException,
+      );
     });
 
     it('ADMIN acessa qualquer aprovação sem restrição de scope', async () => {
       const apr = fakeAprovacao({ representanteId: 'qualquer-rep' });
       prisma.aprovacaoDesconto.findFirst.mockResolvedValue(apr);
 
-      await expect(
-        service.findById(fakeUser({ role: 'ADMIN' }), 'apr-1'),
-      ).resolves.toBeDefined();
+      await expect(service.findById(fakeUser({ role: 'ADMIN' }), 'apr-1')).resolves.toBeDefined();
     });
 
     it('lança ForbiddenException sem empresaIdAtiva', async () => {
@@ -267,7 +268,11 @@ describe('AprovacoesService', () => {
       txMock.aprovacaoDesconto.update.mockResolvedValue(updatedApr);
       txMock.pedido.update.mockResolvedValue({});
 
-      const result = await service.aprovar(fakeUser({ role: 'ADMIN', id: 'admin-1' }), 'apr-1', dto);
+      const result = await service.aprovar(
+        fakeUser({ role: 'ADMIN', id: 'admin-1' }),
+        'apr-1',
+        dto,
+      );
 
       expect(result.status).toBe('APROVADA');
       expect(txMock.aprovacaoDesconto.update).toHaveBeenCalledWith(
@@ -312,9 +317,9 @@ describe('AprovacoesService', () => {
       const apr = fakeAprovacao({ representanteId: 'rep-a', status: 'PENDENTE' });
       prisma.aprovacaoDesconto.findFirst.mockResolvedValue(apr);
 
-      await expect(
-        service.aprovar(fakeUser({ role: 'SAC' }), 'apr-1', dto),
-      ).rejects.toBeInstanceOf(ForbiddenException);
+      await expect(service.aprovar(fakeUser({ role: 'SAC' }), 'apr-1', dto)).rejects.toBeInstanceOf(
+        ForbiddenException,
+      );
     });
 
     it('lança BusinessRuleException para aprovação já resolvida (não PENDENTE)', async () => {
@@ -351,7 +356,11 @@ describe('AprovacoesService', () => {
       prisma._tx.aprovacaoDesconto.update.mockResolvedValue(updatedApr);
       prisma._tx.pedido.update.mockResolvedValue({});
 
-      const result = await service.rejeitar(fakeUser({ role: 'ADMIN', id: 'admin-1' }), 'apr-1', dto);
+      const result = await service.rejeitar(
+        fakeUser({ role: 'ADMIN', id: 'admin-1' }),
+        'apr-1',
+        dto,
+      );
 
       expect(result.status).toBe('REJEITADA');
       expect(prisma._tx.pedido.update).toHaveBeenCalledWith(

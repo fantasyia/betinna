@@ -264,9 +264,9 @@ describe('CatalogoService', () => {
     });
 
     it('lança ForbiddenException sem empresaIdAtiva', async () => {
-      await expect(
-        service.clear(fakeUser({ empresaIdAtiva: null })),
-      ).rejects.toBeInstanceOf(ForbiddenException);
+      await expect(service.clear(fakeUser({ empresaIdAtiva: null }))).rejects.toBeInstanceOf(
+        ForbiddenException,
+      );
     });
   });
 

@@ -51,7 +51,10 @@ const fakeClienteOmie = (codigo: number, dataAlteracao = '2026-02-01') => ({
   info: undefined,
 });
 
-const fakeListarClientesResponse = (clientes: ReturnType<typeof fakeClienteOmie>[], totalPaginas = 1) => ({
+const fakeListarClientesResponse = (
+  clientes: ReturnType<typeof fakeClienteOmie>[],
+  totalPaginas = 1,
+) => ({
   clientes_cadastro: clientes,
   total_de_paginas: totalPaginas,
   total_de_registros: clientes.length,
@@ -101,9 +104,7 @@ describe('OmieClientesService', () => {
     });
 
     it('atualiza cliente quando já existe (findUnique retorna registro)', async () => {
-      omie.listarClientes.mockResolvedValue(
-        fakeListarClientesResponse([fakeClienteOmie(1)]),
-      );
+      omie.listarClientes.mockResolvedValue(fakeListarClientesResponse([fakeClienteOmie(1)]));
       prisma.cliente.findUnique.mockResolvedValue({ id: 'cli-existente' });
 
       const result = await service.sync('emp-1', { modo: 'completo' });
@@ -114,9 +115,7 @@ describe('OmieClientesService', () => {
     });
 
     it('insere cliente quando não existe', async () => {
-      omie.listarClientes.mockResolvedValue(
-        fakeListarClientesResponse([fakeClienteOmie(1)]),
-      );
+      omie.listarClientes.mockResolvedValue(fakeListarClientesResponse([fakeClienteOmie(1)]));
       prisma.cliente.findUnique.mockResolvedValue(null);
 
       const result = await service.sync('emp-1', { modo: 'completo' });
@@ -148,9 +147,7 @@ describe('OmieClientesService', () => {
 
     it('pula cliente quando mapper retorna null (dados inválidos)', async () => {
       // codigo_cliente_omie = 0 → mapper retorna null no stub
-      omie.listarClientes.mockResolvedValue(
-        fakeListarClientesResponse([fakeClienteOmie(0)]),
-      );
+      omie.listarClientes.mockResolvedValue(fakeListarClientesResponse([fakeClienteOmie(0)]));
 
       const result = await service.sync('emp-1', { modo: 'completo' });
 

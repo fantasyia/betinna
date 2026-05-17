@@ -1,6 +1,10 @@
 import { describe, expect, it, vi, beforeEach } from 'vitest';
 import type { UserRole } from '@prisma/client';
-import { BusinessRuleException, ForbiddenException, NotFoundException } from '@shared/errors/app-exception';
+import {
+  BusinessRuleException,
+  ForbiddenException,
+  NotFoundException,
+} from '@shared/errors/app-exception';
 import type { AuthenticatedUser } from '@shared/types/authenticated-user';
 import { CampanhasService, toWhatsAppJid } from './campanhas.service';
 
@@ -124,12 +128,20 @@ describe('CampanhasService', () => {
     const noEmp = fakeUser({ empresaIdAtiva: null });
 
     it('list', async () => {
-      await expect(service.list(noEmp, { page: 1, limit: 20 })).rejects.toBeInstanceOf(ForbiddenException);
+      await expect(service.list(noEmp, { page: 1, limit: 20 })).rejects.toBeInstanceOf(
+        ForbiddenException,
+      );
     });
 
     it('create', async () => {
       await expect(
-        service.create(noEmp, { nome: 'X', canal: 'EMAIL', segTagIds: [], segRepIds: [], segClienteIds: [] }),
+        service.create(noEmp, {
+          nome: 'X',
+          canal: 'EMAIL',
+          segTagIds: [],
+          segRepIds: [],
+          segClienteIds: [],
+        }),
       ).rejects.toBeInstanceOf(ForbiddenException);
     });
   });
@@ -193,7 +205,9 @@ describe('CampanhasService', () => {
     it('lança NotFoundException quando não encontrada', async () => {
       prisma.campanha.findFirst.mockResolvedValue(null);
 
-      await expect(service.findById(fakeUser(), 'inexistente')).rejects.toBeInstanceOf(NotFoundException);
+      await expect(service.findById(fakeUser(), 'inexistente')).rejects.toBeInstanceOf(
+        NotFoundException,
+      );
     });
   });
 
@@ -295,7 +309,9 @@ describe('CampanhasService', () => {
     it('lança BusinessRuleException se status não é RASCUNHO nem CANCELADA', async () => {
       prisma.campanha.findFirst.mockResolvedValue(fakeCampanha({ status: 'ENVIANDO' }));
 
-      await expect(service.remove(fakeUser(), 'camp-1')).rejects.toBeInstanceOf(BusinessRuleException);
+      await expect(service.remove(fakeUser(), 'camp-1')).rejects.toBeInstanceOf(
+        BusinessRuleException,
+      );
     });
   });
 
@@ -362,7 +378,9 @@ describe('CampanhasService', () => {
       prisma.campanha.updateMany.mockResolvedValue({ count: 1 });
       prisma.cliente.findMany.mockResolvedValue([]);
 
-      await expect(service.disparar(fakeUser(), 'camp-1')).rejects.toBeInstanceOf(BusinessRuleException);
+      await expect(service.disparar(fakeUser(), 'camp-1')).rejects.toBeInstanceOf(
+        BusinessRuleException,
+      );
 
       expect(prisma.campanha.update).toHaveBeenCalledWith(
         expect.objectContaining({ data: { status: 'RASCUNHO', iniciadoEm: null } }),
@@ -375,10 +393,7 @@ describe('CampanhasService', () => {
         .mockResolvedValueOnce(fakeCampanha({ status: 'ENVIANDO' }));
       prisma.campanha.updateMany.mockResolvedValue({ count: 1 });
       prisma.cliente.findMany.mockResolvedValue([fakeCliente('cli-1'), fakeCliente('cli-2')]);
-      prisma.campanhaDestinatario.findMany.mockResolvedValue([
-        { id: 'dest-1' },
-        { id: 'dest-2' },
-      ]);
+      prisma.campanhaDestinatario.findMany.mockResolvedValue([{ id: 'dest-1' }, { id: 'dest-2' }]);
 
       await service.disparar(fakeUser(), 'camp-1');
 
@@ -409,7 +424,9 @@ describe('CampanhasService', () => {
       prisma.campanha.findFirst.mockResolvedValue(fakeCampanha({ status: 'RASCUNHO' }));
       prisma.campanha.updateMany.mockResolvedValue({ count: 0 }); // lock não conseguiu
 
-      await expect(service.disparar(fakeUser(), 'camp-1')).rejects.toBeInstanceOf(BusinessRuleException);
+      await expect(service.disparar(fakeUser(), 'camp-1')).rejects.toBeInstanceOf(
+        BusinessRuleException,
+      );
     });
 
     it('remove destinatários PENDENTE anteriores antes de criar novos', async () => {
@@ -449,7 +466,9 @@ describe('CampanhasService', () => {
     it('lança BusinessRuleException se não está em ENVIANDO', async () => {
       prisma.campanha.findFirst.mockResolvedValue(fakeCampanha({ status: 'RASCUNHO' }));
 
-      await expect(service.pausar(fakeUser(), 'camp-1')).rejects.toBeInstanceOf(BusinessRuleException);
+      await expect(service.pausar(fakeUser(), 'camp-1')).rejects.toBeInstanceOf(
+        BusinessRuleException,
+      );
     });
   });
 
@@ -469,7 +488,9 @@ describe('CampanhasService', () => {
     it('lança BusinessRuleException se já está em ENVIADA ou CANCELADA', async () => {
       prisma.campanha.findFirst.mockResolvedValue(fakeCampanha({ status: 'ENVIADA' }));
 
-      await expect(service.cancelar(fakeUser(), 'camp-1')).rejects.toBeInstanceOf(BusinessRuleException);
+      await expect(service.cancelar(fakeUser(), 'camp-1')).rejects.toBeInstanceOf(
+        BusinessRuleException,
+      );
     });
   });
 

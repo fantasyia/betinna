@@ -93,10 +93,7 @@ describe('MLQuestionsService', () => {
 
       const r = await service.listarNaoRespondidas('emp-1', 'seller-x', 25);
 
-      expect(ml.get).toHaveBeenCalledWith(
-        'emp-1',
-        expect.stringContaining('/questions/search?'),
-      );
+      expect(ml.get).toHaveBeenCalledWith('emp-1', expect.stringContaining('/questions/search?'));
       const url = ml.get.mock.calls[0][1];
       expect(url).toContain('seller_id=seller-x');
       expect(url).toContain('status=UNANSWERED');

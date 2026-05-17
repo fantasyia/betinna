@@ -78,10 +78,7 @@ describe('AmazonOrdersService', () => {
 
       await service.obter('emp-1', '123-4567890-1234567');
 
-      expect(amazon.get).toHaveBeenCalledWith(
-        'emp-1',
-        '/orders/v0/orders/123-4567890-1234567',
-      );
+      expect(amazon.get).toHaveBeenCalledWith('emp-1', '/orders/v0/orders/123-4567890-1234567');
     });
 
     it('obterItens retorna array vazio quando ausente', async () => {

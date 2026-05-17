@@ -110,7 +110,9 @@ describe('RelatoriosService', () => {
     });
 
     it('comissoes', async () => {
-      await expect(service.comissoes(noEmp, basePeriodo)).rejects.toBeInstanceOf(ForbiddenException);
+      await expect(service.comissoes(noEmp, basePeriodo)).rejects.toBeInstanceOf(
+        ForbiddenException,
+      );
     });
 
     it('sac', async () => {
@@ -129,7 +131,9 @@ describe('RelatoriosService', () => {
   describe('vendas', () => {
     it('retorna estrutura esperada (faturamento, porStatus, porRep)', async () => {
       prisma.pedido.aggregate
-        .mockResolvedValueOnce(makeAggrResult({ _sum: { total: 5000 }, _count: { _all: 10 }, _avg: { total: 500 } }))
+        .mockResolvedValueOnce(
+          makeAggrResult({ _sum: { total: 5000 }, _count: { _all: 10 }, _avg: { total: 500 } }),
+        )
         .mockResolvedValueOnce(makeAggrResult({ _sum: { total: 2500 }, _count: { _all: 5 } }))
         .mockResolvedValueOnce(makeAggrResult({ _sum: { total: 1000 }, _count: { _all: 2 } }));
 
@@ -148,7 +152,9 @@ describe('RelatoriosService', () => {
 
     it('calcula variação% corretamente — 5000 vs 2500 = +100%', async () => {
       prisma.pedido.aggregate
-        .mockResolvedValueOnce(makeAggrResult({ _sum: { total: 5000 }, _count: { _all: 5 }, _avg: { total: 1000 } }))
+        .mockResolvedValueOnce(
+          makeAggrResult({ _sum: { total: 5000 }, _count: { _all: 5 }, _avg: { total: 1000 } }),
+        )
         .mockResolvedValueOnce(makeAggrResult({ _sum: { total: 2500 }, _count: { _all: 3 } }))
         .mockResolvedValueOnce(makeAggrResult({ _sum: { total: 3000 } }));
 
@@ -159,7 +165,9 @@ describe('RelatoriosService', () => {
 
     it('variação = 100 quando anterior é zero e atual > 0', async () => {
       prisma.pedido.aggregate
-        .mockResolvedValueOnce(makeAggrResult({ _sum: { total: 1000 }, _count: { _all: 1 }, _avg: { total: 1000 } }))
+        .mockResolvedValueOnce(
+          makeAggrResult({ _sum: { total: 1000 }, _count: { _all: 1 }, _avg: { total: 1000 } }),
+        )
         .mockResolvedValueOnce(makeAggrResult({ _sum: { total: 0 }, _count: { _all: 0 } }))
         .mockResolvedValueOnce(makeAggrResult({ _sum: { total: 0 } }));
 

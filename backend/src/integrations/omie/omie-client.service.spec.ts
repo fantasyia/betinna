@@ -10,7 +10,12 @@ vi.mock('./omie.demo', () => ({
       return { clientes_cadastro: [], total_de_paginas: 1, total_de_registros: 0, pagina: 1 };
     }
     listarProdutos() {
-      return { produto_servico_cadastro: [], total_de_paginas: 1, total_de_registros: 0, pagina: 1 };
+      return {
+        produto_servico_cadastro: [],
+        total_de_paginas: 1,
+        total_de_registros: 0,
+        pagina: 1,
+      };
     }
     incluirPedido() {
       return {
@@ -161,7 +166,12 @@ describe('OmieClientService', () => {
         integracoes as never,
       );
       http.post.mockResolvedValue({
-        data: { produto_servico_cadastro: [], total_de_paginas: 1, pagina: 1, total_de_registros: 0 },
+        data: {
+          produto_servico_cadastro: [],
+          total_de_paginas: 1,
+          pagina: 1,
+          total_de_registros: 0,
+        },
       });
 
       await service.listarProdutos('emp-1', 1);
@@ -254,7 +264,12 @@ describe('OmieClientService', () => {
         integracoes as never,
       );
       http.post.mockResolvedValue({
-        data: { produto_servico_cadastro: [], total_de_paginas: 1, pagina: 1, total_de_registros: 0 },
+        data: {
+          produto_servico_cadastro: [],
+          total_de_paginas: 1,
+          pagina: 1,
+          total_de_registros: 0,
+        },
       });
 
       await service.listarProdutos('emp-1', 1);
@@ -279,7 +294,12 @@ describe('OmieClientService', () => {
       });
 
       await service.incluirPedido('emp-1', {
-        cabecalho: { codigo_cliente: 1, codigo_pedido_integracao: 'P', data_previsao: '01/01/2026', quantidade_itens: 1 },
+        cabecalho: {
+          codigo_cliente: 1,
+          codigo_pedido_integracao: 'P',
+          data_previsao: '01/01/2026',
+          quantidade_itens: 1,
+        },
         det: [],
       });
 

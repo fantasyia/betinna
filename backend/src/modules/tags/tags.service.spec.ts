@@ -223,9 +223,9 @@ describe('TagsService', () => {
     it('lança BusinessRuleException em conflito de nome (P2002)', async () => {
       prisma.tag.create.mockRejectedValue(makePrismaP2002());
 
-      await expect(
-        service.create(fakeUser(), { nome: 'VIP' }),
-      ).rejects.toBeInstanceOf(BusinessRuleException);
+      await expect(service.create(fakeUser(), { nome: 'VIP' })).rejects.toBeInstanceOf(
+        BusinessRuleException,
+      );
     });
 
     it('relança erros que não são P2002', async () => {
@@ -284,9 +284,9 @@ describe('TagsService', () => {
       prisma.tag.findFirst.mockResolvedValue(fakeTagWithCount());
       prisma.tag.updateMany.mockRejectedValue(makePrismaP2002());
 
-      await expect(
-        service.update(fakeUser(), 'tag-1', { nome: 'VIP' }),
-      ).rejects.toBeInstanceOf(BusinessRuleException);
+      await expect(service.update(fakeUser(), 'tag-1', { nome: 'VIP' })).rejects.toBeInstanceOf(
+        BusinessRuleException,
+      );
     });
 
     it('relança erros que não são P2002 durante update', async () => {

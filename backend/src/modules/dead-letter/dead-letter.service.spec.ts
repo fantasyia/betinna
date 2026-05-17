@@ -176,7 +176,11 @@ describe('DeadLetterService', () => {
       const removeMock = vi.fn().mockResolvedValue(undefined);
       queue.getJob.mockResolvedValue({
         id: 'dl-1',
-        data: { originalQueue: 'campanha-envio', originalJobName: 'enviar', originalData: { x: 1 } },
+        data: {
+          originalQueue: 'campanha-envio',
+          originalJobName: 'enviar',
+          originalData: { x: 1 },
+        },
         remove: removeMock,
       });
 

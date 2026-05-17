@@ -156,10 +156,7 @@ export class SupabaseAuthService {
     return payload;
   }
 
-  private async verifyJWKS(
-    token: string,
-    alg: 'RS256' | 'ES256',
-  ): Promise<SupabaseJwtPayload> {
+  private async verifyJWKS(token: string, alg: 'RS256' | 'ES256'): Promise<SupabaseJwtPayload> {
     const { payload } = await jwtVerify(token, this.jwksClient!, {
       issuer: this.issuerVariants,
       audience: 'authenticated',

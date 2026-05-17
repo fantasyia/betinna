@@ -88,17 +88,19 @@ const fakeUser = (overrides: Partial<AuthenticatedUser> = {}): AuthenticatedUser
   ...overrides,
 });
 
-const fakeDbUser = (overrides: Partial<{
-  id: string;
-  email: string;
-  nome: string;
-  role: UserRole;
-  status: UserStatus;
-  empresas: Array<{ empresaId: string }>;
-  gerenteId: string | null;
-  tetoDesconto: number | null;
-  comissaoPadrao: number | null;
-}> = {}) => ({
+const fakeDbUser = (
+  overrides: Partial<{
+    id: string;
+    email: string;
+    nome: string;
+    role: UserRole;
+    status: UserStatus;
+    empresas: Array<{ empresaId: string }>;
+    gerenteId: string | null;
+    tetoDesconto: number | null;
+    comissaoPadrao: number | null;
+  }> = {},
+) => ({
   id: 'user-1',
   email: 'rep@betinna.ai',
   nome: 'Rep Teste',
@@ -252,7 +254,10 @@ describe('UsersService', () => {
       const dbUser = fakeDbUser({ empresas: [{ empresaId: 'emp-1' }] });
       prisma.usuario.findUnique.mockResolvedValue(dbUser);
 
-      const result = await service.findById(fakeUser({ role: 'DIRECTOR', empresaIdAtiva: 'emp-1' }), 'user-1');
+      const result = await service.findById(
+        fakeUser({ role: 'DIRECTOR', empresaIdAtiva: 'emp-1' }),
+        'user-1',
+      );
 
       expect(result).toEqual(dbUser);
     });
@@ -304,7 +309,11 @@ describe('UsersService', () => {
       prisma.usuario.findUnique.mockResolvedValue(dbUser);
 
       await expect(
-        service.setStatus(fakeUser({ role: 'DIRECTOR', empresaIdAtiva: 'emp-1' }), 'user-1', 'ATIVO'),
+        service.setStatus(
+          fakeUser({ role: 'DIRECTOR', empresaIdAtiva: 'emp-1' }),
+          'user-1',
+          'ATIVO',
+        ),
       ).rejects.toBeInstanceOf(ForbiddenException);
     });
 
@@ -650,7 +659,10 @@ describe('UsersService', () => {
     it('lança BusinessRuleException quando Supabase retorna erro', async () => {
       prisma.usuario.findUnique.mockResolvedValue(null);
       prisma.empresa.findMany.mockResolvedValue([{ id: 'emp-1', ativo: true }]);
-      mockInviteUserByEmail.mockResolvedValue({ data: { user: null }, error: { message: 'email invalid' } });
+      mockInviteUserByEmail.mockResolvedValue({
+        data: { user: null },
+        error: { message: 'email invalid' },
+      });
 
       await expect(service.create(baseDto)).rejects.toBeInstanceOf(BusinessRuleException);
       expect(prisma.usuario.create).not.toHaveBeenCalled();
@@ -663,9 +675,9 @@ describe('UsersService', () => {
         .mockResolvedValueOnce(null);
       prisma.empresa.findMany.mockResolvedValue([{ id: 'emp-1', ativo: true }]);
 
-      await expect(service.create({ ...baseDto, gerenteId: 'gerente-fake' })).rejects.toBeInstanceOf(
-        NotFoundException,
-      );
+      await expect(
+        service.create({ ...baseDto, gerenteId: 'gerente-fake' }),
+      ).rejects.toBeInstanceOf(NotFoundException);
     });
 
     it('valida gerenteId: lança BusinessRuleException se apontado não for GERENTE', async () => {

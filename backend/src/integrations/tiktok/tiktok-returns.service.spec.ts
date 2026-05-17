@@ -1,7 +1,9 @@
 import { describe, expect, it, vi, beforeEach } from 'vitest';
 import { TikTokReturnsService } from './tiktok-returns.service';
 
-const makeTikTokMock = () => ({ post: vi.fn().mockResolvedValue({ data: { return_records: [] } }) });
+const makeTikTokMock = () => ({
+  post: vi.fn().mockResolvedValue({ data: { return_records: [] } }),
+});
 
 const makeEnvMock = () => ({
   get: vi.fn((k: string) => (k === 'TIKTOK_API_VERSION' ? '202309' : '')),

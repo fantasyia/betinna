@@ -128,11 +128,9 @@ describe('ShopeeReturnsService', () => {
     it('aceitarOferta chama POST /returns/accept_offer', async () => {
       await service.aceitarOferta('emp-1', 'RT-1');
 
-      expect(shopee.postShop).toHaveBeenCalledWith(
-        'emp-1',
-        '/api/v2/returns/accept_offer',
-        { return_sn: 'RT-1' },
-      );
+      expect(shopee.postShop).toHaveBeenCalledWith('emp-1', '/api/v2/returns/accept_offer', {
+        return_sn: 'RT-1',
+      });
     });
   });
 });
