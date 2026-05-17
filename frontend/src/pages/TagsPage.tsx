@@ -263,8 +263,24 @@ function TagFormModal({
             data-testid="tag-cor-hex"
             value={cor}
             onChange={(e) => setCor(e.target.value)}
+            onBlur={(e) => {
+              // Normaliza no blur: adiciona '#', completa pra 6 chars, lowercase.
+              // Se inválido, reverte pro último válido (state inicial).
+              const raw = e.target.value.trim().toLowerCase();
+              const candidate = raw.startsWith('#') ? raw : `#${raw}`;
+              if (/^#[0-9a-f]{6}$/.test(candidate)) {
+                setCor(candidate);
+              } else if (/^#[0-9a-f]{3}$/.test(candidate)) {
+                // Aceita short hex (#RGB) expandindo pra #RRGGBB
+                const c = candidate;
+                setCor(`#${c[1]}${c[1]}${c[2]}${c[2]}${c[3]}${c[3]}`);
+              }
+              // Inválido: mantém o que tá. UI mostra erro via pattern HTML5 +
+              // o backend (Zod) rejeita no submit.
+            }}
             placeholder="#RRGGBB"
             pattern="^#[0-9a-fA-F]{6}$"
+            title="Hex color no formato #RRGGBB (ex: #7c3aed)"
           />
         </FormField>
         <div

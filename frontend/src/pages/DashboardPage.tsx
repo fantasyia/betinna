@@ -148,7 +148,10 @@ export default function DashboardPage() {
                     </h2>
                     {porRep.length === 0 ? (
                       <p style={{ color: colors.muted, fontSize: 13 }}>
-                        Nenhuma venda registrada no período. Comece criando um pedido.
+                        Nenhuma venda registrada no período.{' '}
+                        <Link to="/pedidos" style={{ color: colors.primary }}>
+                          Criar pedido →
+                        </Link>
                       </p>
                     ) : (
                       <BarChart
@@ -166,7 +169,10 @@ export default function DashboardPage() {
                     <h2 style={{ margin: '0 0 0.75rem', fontSize: 15 }}>Funil de leads</h2>
                     {funilAtual.length === 0 || funilAtual.every((e) => e.count === 0) ? (
                       <p style={{ color: colors.muted, fontSize: 13 }}>
-                        Sem leads ainda. Comece a captação em /leads.
+                        Sem leads ainda.{' '}
+                        <Link to="/leads" style={{ color: colors.primary }}>
+                          Captar lead →
+                        </Link>
                       </p>
                     ) : (
                       <Funnel

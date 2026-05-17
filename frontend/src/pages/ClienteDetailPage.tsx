@@ -456,10 +456,11 @@ function DadosTab({
 
 function NotasTab({ clienteId }: { clienteId: string }) {
   const toast = useToast();
-  const { data, loading, error, refetch } = useApiQuery<NotaPrivada[] | { data: NotaPrivada[] }>(
+  // api.get já desempacota o envelope `{success, data, meta}` retornando T direto.
+  const { data, loading, error, refetch } = useApiQuery<NotaPrivada[]>(
     `/clientes/${clienteId}/notas`,
   );
-  const notas: NotaPrivada[] = Array.isArray(data) ? data : data?.data ?? [];
+  const notas: NotaPrivada[] = data ?? [];
 
   const [texto, setTexto] = useState('');
   const [creating, setCreating] = useState(false);
@@ -666,18 +667,43 @@ function EditNotaModal({
 
 function DocumentosTab({ clienteId }: { clienteId: string }) {
   const toast = useToast();
-  const { data, loading, error, refetch } = useApiQuery<Documento[] | { data: Documento[] }>(
+  const { data, loading, error, refetch } = useApiQuery<Documento[]>(
     `/clientes/${clienteId}/documentos`,
   );
-  const docs: Documento[] = Array.isArray(data) ? data : data?.data ?? [];
+  const docs: Documento[] = data ?? [];
   const [uploading, setUploading] = useState(false);
   const [uploadError, setUploadError] = useState<string | null>(null);
+
+  // Tipos aceitos pelo Storage do backend (Supabase signed URLs).
+  // Mantém em sync com `documentos.controller` se mudar.
+  const ALLOWED_MIME = new Set([
+    'application/pdf',
+    'image/png',
+    'image/jpeg',
+    'image/webp',
+    'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', // .xlsx
+    'application/vnd.ms-excel', // .xls
+    'application/msword', // .doc
+    'application/vnd.openxmlformats-officedocument.wordprocessingml.document', // .docx
+    'text/csv',
+    'text/plain',
+  ]);
 
   async function handleFile(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0];
     if (!file) return;
     if (file.size > 10 * 1024 * 1024) {
       setUploadError('Arquivo maior que 10MB — não suportado');
+      e.target.value = '';
+      return;
+    }
+    // Valida mimetype antes de gastar upload — backend rejeita igual mas
+    // economiza tempo de rede + dá feedback imediato.
+    if (file.type && !ALLOWED_MIME.has(file.type)) {
+      setUploadError(
+        `Tipo "${file.type}" não suportado. Aceitos: PDF, imagens (PNG/JPG/WebP), planilhas (XLSX/XLS/CSV), documentos (DOC/DOCX), TXT.`,
+      );
+      e.target.value = '';
       return;
     }
     setUploading(true);
@@ -813,10 +839,10 @@ function DocumentosTab({ clienteId }: { clienteId: string }) {
 
 function PrecosTab({ clienteId }: { clienteId: string }) {
   const toast = useToast();
-  const { data, loading, error, refetch } = useApiQuery<PrecoEspecial[] | { data: PrecoEspecial[] }>(
+  const { data, loading, error, refetch } = useApiQuery<PrecoEspecial[]>(
     `/clientes/${clienteId}/precos-especiais`,
   );
-  const precos: PrecoEspecial[] = Array.isArray(data) ? data : data?.data ?? [];
+  const precos: PrecoEspecial[] = data ?? [];
   const [adding, setAdding] = useState(false);
 
   async function delPreco(produtoId: string) {

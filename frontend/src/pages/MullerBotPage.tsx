@@ -75,11 +75,26 @@ export default function MullerBotPage() {
   async function enviar(e?: React.FormEvent) {
     e?.preventDefault();
     const q = pergunta.trim();
+    // Validação client-side (backend valida com Zod). Aqui só os checks
+    // óbvios pra evitar request inútil.
     if (!q) return;
+    if (q.length > 2000) {
+      setError('Pergunta muito longa (máx 2000 chars). Encurte e tente de novo.');
+      return;
+    }
+    if (topK < 1 || topK > 20) {
+      setError('topK deve estar entre 1 e 20.');
+      return;
+    }
     setBusy(true);
     setError(null);
     try {
-      const payload: Record<string, unknown> = { pergunta: q, topK };
+      // Payload tipado em vez de `Record<string, unknown>` — mais seguro contra
+      // typos e fica fácil de evoluir junto com o backend DTO.
+      const payload: { pergunta: string; topK: number; modelo?: string } = {
+        pergunta: q,
+        topK,
+      };
       if (modelo.trim()) payload.modelo = modelo.trim();
       const r = await api.post<PerguntarResponse>('/mullerbot/perguntar', payload);
       const item: QAItem = {

@@ -67,6 +67,7 @@ export default function ClientesPage() {
   const canEdit = usePermission('clientes.edit');
   const canBulk = usePermission('clientes.bulkAssign');
   const [exporting, setExporting] = useState(false);
+  const [exportProgress, setExportProgress] = useState<{ page: number; total: number } | null>(null);
 
   // Filtros / paginação
   const [page, setPage] = useState(1);
@@ -218,6 +219,7 @@ export default function ClientesPage() {
 
   async function handleExport() {
     setExporting(true);
+    setExportProgress(null);
     try {
       const query: Record<string, string> = {};
       if (search.trim()) query.search = search.trim();
@@ -228,6 +230,7 @@ export default function ClientesPage() {
         endpoint: '/clientes',
         query,
         filename: `clientes-${new Date().toISOString().slice(0, 10)}.csv`,
+        onProgress: (page, total) => setExportProgress({ page, total }),
         columns: [
           { header: 'Nome', value: (c) => c.nome },
           { header: 'CNPJ', value: (c) => c.cnpj ?? '' },
@@ -247,6 +250,7 @@ export default function ClientesPage() {
       toast.error('Falha ao exportar', err instanceof ApiError ? err.message : undefined);
     } finally {
       setExporting(false);
+      setExportProgress(null);
     }
   }
 
@@ -260,9 +264,17 @@ export default function ClientesPage() {
             data-testid="cliente-export-btn"
             onClick={handleExport}
             disabled={exporting}
-            style={{ ...btnSecondary, opacity: exporting ? 0.6 : 1 }}
+            style={{
+              ...btnSecondary,
+              opacity: exporting ? 0.6 : 1,
+              cursor: exporting ? 'progress' : 'pointer',
+            }}
           >
-            {exporting ? 'Exportando…' : '📥 Exportar CSV'}
+            {exporting
+              ? exportProgress
+                ? `Exportando ${exportProgress.page}/${exportProgress.total}…`
+                : 'Exportando…'
+              : '📥 Exportar CSV'}
           </button>
           {canEdit && (
             <button

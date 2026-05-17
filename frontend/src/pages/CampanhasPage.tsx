@@ -708,6 +708,7 @@ function IAPanel({ campanha }: { campanha: CampanhaDetail }) {
               ...btnSecondary,
               fontSize: 12,
               opacity: tool.disabled ? 0.4 : 1,
+              cursor: tool.disabled ? 'not-allowed' : 'pointer',
               background: iaMode === tool.key ? colors.primaryLight : undefined,
               color: iaMode === tool.key ? colors.primary : undefined,
               borderColor: iaMode === tool.key ? colors.primary : undefined,

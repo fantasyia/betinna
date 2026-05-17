@@ -279,15 +279,30 @@ function FeedbackModal({ onClose }: { onClose: () => void }) {
             data-testid="fidelidade-submit"
             disabled={texto.trim().length === 0}
             onClick={() => {
-              const existing = localStorage.getItem('fidelidade_feedback') ?? '';
-              const merged =
-                existing +
-                (existing ? '\n\n' : '') +
-                `[${new Date().toISOString()}]\n${texto}`;
-              localStorage.setItem('fidelidade_feedback', merged);
-              alert(
-                'Feedback registrado localmente. Quando o módulo entrar, vamos consultar.',
-              );
+              // localStorage tem cota ~5MB por origem. Em browsers com armazenamento
+              // cheio (modo privado, restrição de cookies, etc), `setItem` lança
+              // QuotaExceededError. Captura + fallback evita travar a página.
+              try {
+                const existing = localStorage.getItem('fidelidade_feedback') ?? '';
+                // Limita acúmulo a ~100KB pra não bater quota com uso prolongado.
+                const truncated = existing.length > 100_000 ? existing.slice(-50_000) : existing;
+                const merged =
+                  truncated +
+                  (truncated ? '\n\n' : '') +
+                  `[${new Date().toISOString()}]\n${texto}`;
+                localStorage.setItem('fidelidade_feedback', merged);
+                alert(
+                  'Feedback registrado localmente. Quando o módulo entrar, vamos consultar.',
+                );
+              } catch (err) {
+                // Quota cheia ou storage desabilitado — não bloqueia o user.
+                 
+                console.warn('localStorage indisponível pra feedback:', err);
+                alert(
+                  'Não conseguimos salvar localmente (armazenamento cheio ou desabilitado). ' +
+                    'Anote o feedback em outro lugar até o módulo entrar.',
+                );
+              }
               onClose();
             }}
             style={{ ...btn, opacity: texto.trim().length === 0 ? 0.6 : 1 }}

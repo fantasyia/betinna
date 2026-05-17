@@ -220,6 +220,22 @@ export default function InboxPage() {
           </div>
 
           <div style={{ flex: 1, overflowY: 'auto', margin: '0 -0.75rem', padding: '0 0.75rem' }}>
+            {/* Refetch silencioso (já tem dados): indicação fininha pro user
+                saber que tá atualizando, sem flash de skeleton. */}
+            {loading && pageResp && (
+              <div
+                style={{
+                  fontSize: 11,
+                  color: colors.muted,
+                  padding: '0.25rem 0.5rem',
+                  textAlign: 'center',
+                  fontStyle: 'italic',
+                }}
+                data-testid="inbox-refreshing"
+              >
+                Atualizando…
+              </div>
+            )}
             <StateView
               loading={loading && !pageResp}
               error={error}
@@ -557,7 +573,12 @@ function ConversationThread({
               data-testid="inbox-send-btn"
               disabled={sending || resposta.trim().length === 0}
               onClick={enviar}
-              style={{ ...btn, opacity: sending || resposta.trim().length === 0 ? 0.6 : 1 }}
+              style={{
+                ...btn,
+                opacity: sending || resposta.trim().length === 0 ? 0.6 : 1,
+                cursor:
+                  sending || resposta.trim().length === 0 ? 'not-allowed' : 'pointer',
+              }}
             >
               {sending ? 'Enviando…' : 'Enviar'}
             </button>

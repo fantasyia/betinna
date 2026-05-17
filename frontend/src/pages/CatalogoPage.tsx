@@ -83,13 +83,19 @@ export default function CatalogoPage() {
     return { totalItens, markupMedio, semMarkup };
   }, [itens]);
 
+  // Sinaliza qual linha está com request de markup em curso (feedback visual)
+  const [savingMarkup, setSavingMarkup] = useState<string | null>(null);
+
   async function updateMarkup(produtoId: string, markup: number) {
+    setSavingMarkup(produtoId);
     try {
       await api.put('/catalogo/item', { produtoId, markup });
       toast.success('Markup atualizado');
       refetch();
     } catch (err) {
       toast.error('Falha ao atualizar markup', err instanceof ApiError ? err.message : undefined);
+    } finally {
+      setSavingMarkup(null);
     }
   }
 
@@ -143,36 +149,39 @@ export default function CatalogoPage() {
     {
       key: 'markup',
       header: 'Markup %',
-      render: (i) => (
-        <input
-          type="number"
-          min={0}
-          max={100}
-          step="0.1"
-          value={i.markup}
-          data-testid={`markup-input-${i.produtoId}`}
-          onChange={(e) => {
-            const v = Number(e.target.value);
-            if (!Number.isNaN(v)) {
-              // Optimistic update visual seria complexo — confirmar no blur
-            }
-          }}
-          onBlur={(e) => {
-            const v = Number(e.target.value);
-            if (!Number.isNaN(v) && v !== i.markup) {
-              updateMarkup(i.produtoId, v);
-            }
-          }}
-          style={{
-            width: 70,
-            padding: '0.25rem 0.5rem',
-            border: `1px solid ${colors.borderStrong}`,
-            borderRadius: 4,
-            fontSize: 14,
-            fontFamily: 'inherit',
-          }}
-        />
-      ),
+      render: (i) => {
+        const isSaving = savingMarkup === i.produtoId;
+        return (
+          <input
+            type="number"
+            min={0}
+            max={100}
+            step="0.1"
+            // Uncontrolled — `key` força reset quando i.markup muda externamente
+            // (após refetch). Permite digitar livremente entre re-renders.
+            key={`${i.produtoId}-${i.markup}`}
+            defaultValue={i.markup}
+            disabled={isSaving}
+            data-testid={`markup-input-${i.produtoId}`}
+            onBlur={(e) => {
+              const v = Number(e.target.value);
+              if (!Number.isNaN(v) && v !== i.markup) {
+                void updateMarkup(i.produtoId, v);
+              }
+            }}
+            style={{
+              width: 70,
+              padding: '0.25rem 0.5rem',
+              border: `1px solid ${isSaving ? colors.warning : colors.borderStrong}`,
+              borderRadius: 4,
+              fontSize: 14,
+              fontFamily: 'inherit',
+              background: isSaving ? '#fff8e1' : undefined,
+              cursor: isSaving ? 'progress' : 'text',
+            }}
+          />
+        );
+      },
     },
     {
       key: 'final',

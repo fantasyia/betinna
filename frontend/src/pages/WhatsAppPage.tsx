@@ -211,7 +211,25 @@ function SessionPanel({ scope, canManage }: { scope: Scope; canManage: boolean }
       {loading && !info ? (
         <p style={{ color: colors.muted }}>Carregando status…</p>
       ) : error && !info ? (
-        <p style={{ color: colors.danger }}>{error}</p>
+        <div
+          style={{
+            padding: '0.875rem 1rem',
+            background: '#fef2f2',
+            border: '1px solid #fecaca',
+            borderRadius: 6,
+            color: '#991b1b',
+          }}
+        >
+          <strong style={{ display: 'block', marginBottom: 4 }}>
+            Não foi possível obter status do WhatsApp.
+          </strong>
+          <span style={{ fontSize: 13 }}>
+            {error}
+            {error.toLowerCase().includes('not found') || error.includes('404')
+              ? ' — WhatsApp ainda não conectado. Clique em "Conectar" para parear.'
+              : ' — Verifique se o backend está rodando ou tente novamente.'}
+          </span>
+        </div>
       ) : (
         <>
           <header

@@ -69,7 +69,12 @@ export function downloadCsv(filename: string, csv: string): void {
 export async function fetchAllPages<T>(
   basePath: string,
   extraQuery: Record<string, string> = {},
-  options: { pageSize?: number; maxPages?: number } = {},
+  options: {
+    pageSize?: number;
+    maxPages?: number;
+    /** Callback opcional pra feedback de progresso na UI. */
+    onProgress?: (current: number, total: number) => void;
+  } = {},
 ): Promise<T[]> {
   const pageSize = options.pageSize ?? 100;
   const maxPages = options.maxPages ?? 10;
@@ -83,6 +88,7 @@ export async function fetchAllPages<T>(
     const items = Array.isArray(resp) ? resp : resp.data ?? [];
     result.push(...items);
     const totalPages = (resp as { pagination?: { totalPages: number } })?.pagination?.totalPages;
+    options.onProgress?.(page, Math.min(totalPages ?? page, maxPages));
     if (!totalPages || page >= totalPages) break;
   }
 
@@ -107,10 +113,13 @@ export async function exportToCsv<T>(args: {
   columns: CsvColumn<T>[];
   maxPages?: number;
   pageSize?: number;
+  /** Callback opcional — chamado a cada página completa pra UI mostrar progresso. */
+  onProgress?: (current: number, total: number) => void;
 }): Promise<{ count: number }> {
   const all = await fetchAllPages<T>(args.endpoint, args.query ?? {}, {
     maxPages: args.maxPages,
     pageSize: args.pageSize,
+    onProgress: args.onProgress,
   });
   const csv = toCsv(all, args.columns);
   downloadCsv(args.filename, csv);

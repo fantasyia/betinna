@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useMemo, useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import { api, ApiError } from '@/lib/api';
 import { useApiQuery, type PaginatedResponse } from '@/hooks/useApiQuery';
@@ -480,12 +480,10 @@ function EditUserModal({
   // Só ADMIN pode salvar — usuário comum tem que pedir pra ADMIN
   // (endpoint PATCH /users/:id é restrito a ADMIN; sem `/users/me`)
   const canSave = isAdmin;
-
-  useEffect(() => {
-    if (!canSave) {
-      setError('Apenas ADMIN pode editar usuários no momento. Peça pro admin alterar.');
-    }
-  }, [canSave]);
+  // Banner informativo (linha sutil) em vez de error trancante.
+  // Antes: useEffect setava setError() logo na montagem → modal abria com
+  // mensagem "erro" e usuário achava que algo quebrou. Agora é um aviso
+  // calmo e o botão Cancelar continua funcionando normalmente.
 
   async function submit(e: React.FormEvent) {
     e.preventDefault();
@@ -534,6 +532,22 @@ function EditUserModal({
       }
     >
       <form id="user-edit-form" onSubmit={submit}>
+        {!canSave && (
+          <div
+            style={{
+              padding: '0.625rem 0.75rem',
+              marginBottom: '0.875rem',
+              background: '#fef3c7',
+              border: '1px solid #facc15',
+              borderRadius: 6,
+              fontSize: 13,
+              color: '#78350f',
+            }}
+          >
+            Apenas ADMIN pode salvar alterações. Você pode visualizar os campos
+            abaixo, mas precisa pedir pro admin alterar.
+          </div>
+        )}
         <FormField label="Nome" required>
           <Input
             value={form.nome}

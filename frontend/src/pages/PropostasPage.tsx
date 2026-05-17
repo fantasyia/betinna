@@ -859,7 +859,20 @@ function ItemRow({
         min={0}
         step="0.01"
         value={item.precoUnitarioOverride}
-        onChange={(e) => onChange({ precoUnitarioOverride: e.target.value })}
+        onChange={(e) => {
+          // Aceita só dígitos, ponto/vírgula e vazio. Normaliza vírgula→ponto.
+          const v = e.target.value.replace(',', '.');
+          if (v === '' || /^\d*\.?\d*$/.test(v)) {
+            onChange({ precoUnitarioOverride: v });
+          }
+        }}
+        onBlur={(e) => {
+          // Clamp negativo a 0; ignora NaN/vazio.
+          const n = parseFloat(e.target.value);
+          if (Number.isFinite(n) && n < 0) {
+            onChange({ precoUnitarioOverride: '0' });
+          }
+        }}
         data-testid={`${testId}-override`}
         aria-label="Preço override"
         placeholder="preço"
