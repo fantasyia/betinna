@@ -14,7 +14,6 @@
     "test:e2e:ui": "playwright test --ui"
   },
   "dependencies": {
-    "@supabase/supabase-js": "^2.105.4",
     "jose": "^5.9.6",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",

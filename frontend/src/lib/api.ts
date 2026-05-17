@@ -14,7 +14,7 @@
  *
  * Em testes E2E (Playwright), VITE_API_URL aponta pra Railway staging URL.
  */
-import { clearSession, getSession } from './auth-store';
+import { clearSession, getSession, refreshAccessToken } from './auth-store';
 
 const BASE_URL =
   (import.meta.env.VITE_API_URL as string | undefined) ?? 'http://localhost:3001';
@@ -44,7 +44,7 @@ interface RequestOpts {
   timeoutMs?: number;
 }
 
-async function request<T>(path: string, opts: RequestOpts = {}): Promise<T> {
+async function request<T>(path: string, opts: RequestOpts = {}, retryWithRefresh = true): Promise<T> {
   const url = path.startsWith('http')
     ? path
     : `${BASE_URL}${API_PREFIX}${path.startsWith('/') ? path : `/${path}`}`;
@@ -95,10 +95,19 @@ async function request<T>(path: string, opts: RequestOpts = {}): Promise<T> {
   }
   clearTimeout(timer);
 
-  // 401 → invalida sessão local + manda pra /login (router decide)
+  // 401 → tenta refresh via cookie httpOnly (D47); se ok, retry da request
+  // original; se não, limpa sessão e propaga erro pra router redirecionar.
+  if (response.status === 401 && retryWithRefresh && !opts.skipAuth) {
+    const refreshed = await refreshAccessToken();
+    if (refreshed) {
+      // Retry sem refresh-loop (retryWithRefresh=false na recursão)
+      return request<T>(path, opts, false);
+    }
+    clearSession();
+    throw new ApiError(401, 'AUTH_REQUIRED', 'Não autenticado');
+  }
   if (response.status === 401) {
     clearSession();
-    // Frontend ouve mudança via subscribe — router redireciona
     throw new ApiError(401, 'AUTH_REQUIRED', 'Não autenticado');
   }
 

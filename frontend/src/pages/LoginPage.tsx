@@ -2,21 +2,25 @@ import { useState, type FormEvent } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { api, ApiError } from '@/lib/api';
 import { setSession } from '@/lib/auth-store';
-import { supabase } from '@/lib/supabase';
 import type { AuthenticatedUser } from '@/types/auth';
 
 /**
- * LoginPage — refatorado 2026-05-17.
+ * LoginPage — refatorado 2026-05-17 (D47: cookie httpOnly).
  *
  * Fluxo:
- *  1. `supabase.auth.signInWithPassword` — SDK persiste sessão em localStorage
- *     com PKCE (sobrevive F5) e habilita refresh transparente
- *  2. Backend `/auth/me` retorna AuthenticatedUser via JWT validado
- *  3. setSession() coloca AuthenticatedUser em memória
- *  4. F5 → main.tsx chama bootstrapAuthFromSupabase() que reusa essa sessão
+ *  1. `POST /api/v1/auth/login` no backend → backend fala com Supabase Auth
+ *     REST, set cookie httpOnly com refresh, retorna access+expiresAt+userId
+ *  2. `GET /api/v1/auth/me` → carrega AuthenticatedUser completo (role,
+ *     empresas, etc — campos que NÃO vêm do JWT)
+ *  3. setSession() põe accessToken em memória + agenda refresh transparente
+ *  4. F5 → main.tsx chama bootstrapAuthFromBackend() que faz POST /refresh
+ *     usando o cookie (frontend nem vê o refresh token)
  *
- * Antes: usávamos `fetch` direto, ignorando o `refresh_token` → F5 deslogava.
+ * Antes: SDK Supabase guardava refresh em localStorage (vulnerável a XSS).
+ * Agora o backend é o único que conhece o refresh.
  */
+
+const API_BASE = (import.meta.env.VITE_API_URL as string | undefined) ?? 'http://localhost:3001';
 
 export default function LoginPage() {
   const [email, setEmail] = useState('');
@@ -32,36 +36,44 @@ export default function LoginPage() {
     setLoading(true);
     setError(null);
     try {
-      const { data, error: authError } = await supabase.auth.signInWithPassword({
-        email,
-        password,
+      // POST /auth/login no backend — set cookie httpOnly com refresh, retorna access
+      const loginRes = await fetch(`${API_BASE}/api/v1/auth/login`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include', // receber Set-Cookie
+        body: JSON.stringify({ email, password }),
       });
-      if (authError) {
-        throw new Error(authError.message);
+      if (!loginRes.ok) {
+        const body = (await loginRes.json().catch(() => null)) as
+          | { error?: { message?: string } }
+          | null;
+        throw new Error(body?.error?.message ?? 'Credenciais inválidas');
       }
-      const sb = data.session;
-      if (!sb?.access_token) {
-        throw new Error('Sessão não retornada pelo Supabase — credenciais inválidas?');
-      }
+      const loginJson = (await loginRes.json()) as {
+        data: { accessToken: string; expiresAt: number; userId: string };
+      };
+      const { accessToken, expiresAt } = loginJson.data;
 
-      // Set session em memória ANTES do /auth/me chamar (que precisa do token)
+      // Set session em memória ANTES do /auth/me chamar (precisa do token)
       setSession({
-        accessToken: sb.access_token,
+        accessToken,
         user: { id: '', email: '', nome: '', role: 'REP', empresaIds: [], empresaIdAtiva: null },
-        expiresAt: (sb.expires_at ?? 0) * 1000,
+        expiresAt,
       });
 
       // Backend retorna AuthenticatedUser completo via /auth/me
       const me = await api.get<AuthenticatedUser>('/auth/me');
       setSession({
-        accessToken: sb.access_token,
+        accessToken,
         user: me,
-        expiresAt: (sb.expires_at ?? 0) * 1000,
+        expiresAt,
       });
 
       navigate(from, { replace: true });
     } catch (err) {
-      setError(err instanceof ApiError ? err.message : err instanceof Error ? err.message : 'Erro desconhecido');
+      setError(
+        err instanceof ApiError ? err.message : err instanceof Error ? err.message : 'Erro desconhecido',
+      );
     } finally {
       setLoading(false);
     }

@@ -1,27 +1,33 @@
 /**
- * Auth store — pub/sub minimal sincronizado com Supabase SDK.
+ * Auth store — pub/sub minimal com refresh via cookie httpOnly (D47).
  *
- * **Política de armazenamento (atualizada 2026-05-17):**
+ * **Política de armazenamento (atualizada 2026-05-17, upgrade D47):**
  *  - `accessToken` vive em MEMÓRIA (este módulo) — não em localStorage
- *  - `refreshToken` é gerenciado pelo Supabase SDK (`lib/supabase.ts`),
- *    que persiste em localStorage com PKCE
- *  - SDK faz refresh transparente ~60s antes do access expirar e emite
- *    evento `onAuthStateChange` que atualiza este store
- *  - `bootstrapAuthFromSupabase()` é chamado no boot do App (`main.tsx`)
- *    pra reconstituir sessão após F5
+ *  - `refreshToken` é gerenciado pelo BACKEND em cookie httpOnly (não
+ *    acessível via JS, imune a XSS)
+ *  - `bootstrapAuthFromBackend()` chamado no boot tenta refresh via cookie
+ *  - Refresh transparente agendado por timer baseado em `expiresAt`
  *
- * Antes da atualização: F5 limpava memória e nada restaurava → /login.
- * Agora: SDK lê refreshToken do localStorage, faz refresh, popula este store.
+ * Antes (sessão anterior): refresh em localStorage via Supabase SDK
+ * (vulnerável a XSS). Agora o frontend nem vê o refresh — só fala com
+ * `/api/v1/auth/login`, `/auth/refresh`, `/auth/signout` (cookies httpOnly).
  */
 import type { AuthSession, AuthenticatedUser } from '@/types/auth';
-import { supabase } from './supabase';
 import { setSentryUser } from './sentry';
+
+const API_BASE = (import.meta.env.VITE_API_URL as string | undefined) ?? 'http://localhost:3001';
+
+/** Margem antes do exp pra agendar refresh transparente. */
+const REFRESH_MARGIN_MS = 60_000;
 
 let session: AuthSession | null = null;
 const listeners = new Set<(s: AuthSession | null) => void>();
 /** Estado de inicialização — UI pode mostrar spinner em vez de redirect prematuro. */
 let initializing = true;
 const initListeners = new Set<(loading: boolean) => void>();
+
+/** Timer do refresh transparente. */
+let refreshTimer: ReturnType<typeof setTimeout> | null = null;
 
 export function getSession(): AuthSession | null {
   return session;
@@ -36,6 +42,8 @@ export function setSession(next: AuthSession | null): void {
   // Mantém o Sentry user em sync. id apenas (sem email/PII) — beforeSend
   // do sentry.ts strip qualquer PII residual de qualquer jeito.
   setSentryUser(next?.user?.id ?? null);
+  // Agenda refresh transparente quando há sessão.
+  scheduleRefresh(next);
   for (const l of listeners) l(next);
   // E2E helper. Expõe token na window APENAS quando `window.__BETINNA_E2E__ === true`
   // (setado por Playwright via init script). Em produção, sempre undefined.
@@ -53,10 +61,14 @@ export function setSession(next: AuthSession | null): void {
 }
 
 export function clearSession(): void {
+  cancelRefresh();
   setSession(null);
-  // Também invalida no Supabase pra remover refreshToken do localStorage
-  void supabase.auth.signOut().catch(() => {
-    /* já desconectado */
+  // Apaga cookie httpOnly no backend + revoga refresh no Supabase
+  void fetch(`${API_BASE}/api/v1/auth/signout`, {
+    method: 'POST',
+    credentials: 'include',
+  }).catch(() => {
+    /* best-effort */
   });
 }
 
@@ -87,14 +99,12 @@ export function currentEmpresaId() {
   return session?.user?.empresaIdAtiva ?? null;
 }
 
-// ─── Bootstrap & sync com Supabase SDK ──────────────────────────────────
+// ─── Bootstrap & refresh transparente ───────────────────────────────────
 
 /** Busca AuthenticatedUser completo do backend usando o access token atual. */
 async function fetchMe(accessToken: string): Promise<AuthenticatedUser | null> {
   try {
-    const baseUrl =
-      (import.meta.env.VITE_API_URL as string | undefined) ?? 'http://localhost:3001';
-    const res = await fetch(`${baseUrl}/api/v1/auth/me`, {
+    const res = await fetch(`${API_BASE}/api/v1/auth/me`, {
       headers: { Authorization: `Bearer ${accessToken}` },
     });
     if (!res.ok) return null;
@@ -106,78 +116,84 @@ async function fetchMe(accessToken: string): Promise<AuthenticatedUser | null> {
 }
 
 /**
- * Chamado uma vez no boot do App (main.tsx ou App raiz).
- *
- * 1. Pergunta ao Supabase SDK se há sessão persistida (refresh já feito)
- * 2. Se há, carrega `/auth/me` do backend e popula o store
- * 3. Subscribe a `onAuthStateChange` pra ficar sincronizado em refresh, signOut,
- *    troca de empresa, etc.
- *
- * Retorna a sessão inicial (ou null). UI pode usar `isInitializing()` durante
- * a primeira chamada pra mostrar spinner em vez de redirecionar pro /login.
+ * Faz refresh via backend (`POST /auth/refresh` que lê cookie httpOnly).
+ * Retorna a nova sessão ou null se cookie inválido/ausente.
  */
-export async function bootstrapAuthFromSupabase(): Promise<AuthSession | null> {
+export async function refreshAccessToken(): Promise<AuthSession | null> {
   try {
-    const { data } = await supabase.auth.getSession();
-    const sb = data.session;
-    if (!sb?.access_token) {
+    const res = await fetch(`${API_BASE}/api/v1/auth/refresh`, {
+      method: 'POST',
+      credentials: 'include', // envia cookie httpOnly
+    });
+    if (!res.ok) {
       setSession(null);
       return null;
     }
-    const me = await fetchMe(sb.access_token);
+    const json = (await res.json()) as {
+      data?: { accessToken: string; expiresAt: number; userId: string };
+    };
+    const data = json.data;
+    if (!data?.accessToken) {
+      setSession(null);
+      return null;
+    }
+    // Busca AuthenticatedUser do backend (role, empresas, etc — não vem do JWT)
+    const me = await fetchMe(data.accessToken);
     if (!me) {
-      // Token presente mas /auth/me falhou — pode ser que o user foi deletado
-      // no DB enquanto a sessão ainda era válida no Supabase. Limpa.
       setSession(null);
       return null;
     }
     const next: AuthSession = {
-      accessToken: sb.access_token,
+      accessToken: data.accessToken,
       user: me,
-      expiresAt: (sb.expires_at ?? 0) * 1000,
+      expiresAt: data.expiresAt,
     };
     setSession(next);
     return next;
+  } catch {
+    setSession(null);
+    return null;
+  }
+}
+
+/**
+ * Chamado uma vez no boot do App (main.tsx).
+ *
+ * Tenta `POST /auth/refresh` (lê cookie httpOnly). Se cookie válido,
+ * popula store; se não, fica sem sessão (UI mostra login).
+ */
+export async function bootstrapAuthFromBackend(): Promise<AuthSession | null> {
+  try {
+    return await refreshAccessToken();
   } finally {
     setInitializing(false);
   }
 }
 
 /**
- * Assina `onAuthStateChange` do SDK para manter o store em sync com:
- *  - TOKEN_REFRESHED (refresh transparente do SDK ~60s antes do exp)
- *  - SIGNED_OUT (logout em outra aba — multi-tab consistency)
- *  - SIGNED_IN (login via SDK — usado pelo LoginPage)
+ * Agenda refresh transparente ~60s antes do access expirar. Quando dispara,
+ * chama o backend (que lê cookie e troca por novo access). Reagenda quando
+ * a nova sessão chega.
  *
- * Idempotente — chama apenas uma vez no main.tsx.
+ * Cancela timer anterior (idempotente) — toda mudança de sessão re-agenda.
  */
-export function startSupabaseAuthSync(): () => void {
-  const { data } = supabase.auth.onAuthStateChange((event, sb) => {
-    if (event === 'SIGNED_OUT' || !sb) {
-      setSession(null);
-      return;
-    }
-    // Para TOKEN_REFRESHED, USER_UPDATED, etc — atualiza só accessToken/expiresAt
-    // preservando o `user` do store (vem do backend, não do JWT).
-    const current = getSession();
-    if (current) {
-      setSession({
-        ...current,
-        accessToken: sb.access_token,
-        expiresAt: (sb.expires_at ?? 0) * 1000,
-      });
-    } else {
-      // SIGNED_IN sem store prévio — busca /auth/me
-      void fetchMe(sb.access_token).then((me) => {
-        if (me) {
-          setSession({
-            accessToken: sb.access_token,
-            user: me,
-            expiresAt: (sb.expires_at ?? 0) * 1000,
-          });
-        }
-      });
-    }
-  });
-  return () => data.subscription.unsubscribe();
+function scheduleRefresh(s: AuthSession | null): void {
+  cancelRefresh();
+  if (!s?.expiresAt) return;
+  const msUntil = s.expiresAt - Date.now() - REFRESH_MARGIN_MS;
+  if (msUntil <= 0) {
+    // Token já expirado ou prestes a — refresh imediato
+    void refreshAccessToken();
+    return;
+  }
+  refreshTimer = setTimeout(() => {
+    void refreshAccessToken();
+  }, msUntil);
+}
+
+function cancelRefresh(): void {
+  if (refreshTimer) {
+    clearTimeout(refreshTimer);
+    refreshTimer = null;
+  }
 }

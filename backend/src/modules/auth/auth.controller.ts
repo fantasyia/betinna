@@ -1,4 +1,5 @@
-import { Body, Controller, Get, Headers, HttpCode, HttpStatus, Post } from '@nestjs/common';
+import { Body, Controller, Get, Headers, HttpCode, HttpStatus, Post, Req, Res } from '@nestjs/common';
+import type { Request, Response } from 'express';
 import { Throttle, seconds } from '@nestjs/throttler';
 import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
 import { timingSafeEqual } from 'node:crypto';
@@ -19,6 +20,7 @@ import { ForbiddenException, UnauthorizedException } from '@shared/errors/app-ex
 import { ErrorCode } from '@shared/errors/error-codes';
 import { ZodValidationPipe } from '@shared/pipes/zod-validation.pipe';
 import type { AuthenticatedUser } from '@shared/types/authenticated-user';
+import { AuthSessionService } from './auth-session.service';
 import { RefreshTokenService } from './refresh-token.service';
 
 /**
@@ -43,6 +45,13 @@ const refreshTrackSchema = z.object({
   refreshToken: z.string().min(20),
 });
 type RefreshTrackDto = z.infer<typeof refreshTrackSchema>;
+
+// D47: login com cookie httpOnly (refresh nunca toca JS)
+const loginSchema = z.object({
+  email: z.string().email(),
+  password: z.string().min(6),
+});
+type LoginDto = z.infer<typeof loginSchema>;
 
 const bootstrapSchema = z.object({
   email: z.string().email(),
@@ -69,6 +78,7 @@ export class AuthController {
     private readonly refreshTokens: RefreshTokenService,
     private readonly prisma: PrismaService,
     private readonly env: EnvService,
+    private readonly authSession: AuthSessionService,
   ) {}
 
   @Get('me')
@@ -80,9 +90,61 @@ export class AuthController {
   }
 
   /**
-   * Logout — invalida cache do AuthGuard + refresh tracking.
-   * Frontend DEVE também chamar `supabase.auth.signOut()` para invalidar
-   * o refresh token no Supabase (revoke).
+   * Login com cookie httpOnly (D47 — 2026-05-17).
+   *
+   * Antes: frontend chamava Supabase Auth direto via SDK e refresh ficava
+   * em localStorage (vulnerável a XSS). Agora o BACKEND troca credenciais
+   * por tokens e set o refresh em cookie httpOnly; o frontend só vê o
+   * access (em memória).
+   *
+   * Throttle estrito (10/15min do controller) já cobre brute force.
+   */
+  @Post('login')
+  @Public()
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Login com cookie httpOnly. Retorna accessToken+expiresAt.' })
+  async login(
+    @Body(new ZodValidationPipe(loginSchema)) dto: LoginDto,
+    @Res({ passthrough: true }) res: Response,
+  ): Promise<{ accessToken: string; expiresAt: number; userId: string }> {
+    return this.authSession.login(dto.email, dto.password, res);
+  }
+
+  /**
+   * Refresh do access token via cookie httpOnly. Retorna novo accessToken e
+   * atualiza o cookie (Supabase rotaciona o refresh em cada uso).
+   */
+  @Post('refresh')
+  @Public()
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Refresh do accessToken via cookie httpOnly' })
+  async refresh(
+    @Req() req: Request,
+    @Res({ passthrough: true }) res: Response,
+  ): Promise<{ accessToken: string; expiresAt: number; userId: string }> {
+    return this.authSession.refresh(req, res);
+  }
+
+  /**
+   * Logout completo: revoga refresh no Supabase + apaga cookie + invalida
+   * cache local. Endpoint público (não exige token válido) — pode ser chamado
+   * mesmo com sessão expirada pra limpar cookie residual.
+   */
+  @Post('signout')
+  @Public()
+  @HttpCode(HttpStatus.NO_CONTENT)
+  @ApiOperation({ summary: 'Logout completo: revoga Supabase + apaga cookie httpOnly' })
+  async signoutSession(
+    @Req() req: Request,
+    @Res({ passthrough: true }) res: Response,
+  ): Promise<void> {
+    await this.authSession.signout(req, res);
+  }
+
+  /**
+   * Logout legado — invalida cache do AuthGuard + refresh tracking.
+   * Continua funcionando pra clientes antigos que ainda usam o SDK Supabase
+   * direto. Novos clientes devem usar POST /auth/signout.
    */
   @Post('logout')
   @HttpCode(HttpStatus.NO_CONTENT)

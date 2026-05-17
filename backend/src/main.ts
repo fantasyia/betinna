@@ -6,6 +6,7 @@ initSentry();
 
 import { NestFactory } from '@nestjs/core';
 import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
+import cookieParser from 'cookie-parser';
 import helmet from 'helmet';
 import { Logger as PinoLogger } from 'nestjs-pino';
 import { AppModule } from './app.module';
@@ -48,6 +49,9 @@ async function bootstrap(): Promise<void> {
       crossOriginResourcePolicy: { policy: 'cross-origin' },
     }),
   );
+
+  // Cookies httpOnly (refresh token de auth — D47)
+  app.use(cookieParser());
 
   // CORS
   app.enableCors({

@@ -202,7 +202,7 @@ describe('TagsService', () => {
       const tag = fakeTag();
       prisma.tag.create.mockResolvedValue(tag);
 
-      const result = await service.create(fakeUser({ empresaIdAtiva: 'emp-1' }), { nome: 'VIP' });
+      const result = await service.create(fakeUser({ empresaIdAtiva: 'emp-1' }), { nome: 'VIP', cor: '#7c3aed' });
 
       expect(result).toEqual(tag);
       const data = prisma.tag.create.mock.calls[0][0].data;
@@ -214,7 +214,7 @@ describe('TagsService', () => {
       // Mesmo que o corpo viesse com empresaId, o service usa getCallerEmpresaId(user)
       prisma.tag.create.mockResolvedValue(fakeTag());
 
-      await service.create(fakeUser({ empresaIdAtiva: 'emp-correto' }), { nome: 'Tag X' });
+      await service.create(fakeUser({ empresaIdAtiva: 'emp-correto' }), { nome: 'Tag X', cor: '#7c3aed' });
 
       const data = prisma.tag.create.mock.calls[0][0].data;
       expect(data.empresaId).toBe('emp-correto');
@@ -223,7 +223,7 @@ describe('TagsService', () => {
     it('lança BusinessRuleException em conflito de nome (P2002)', async () => {
       prisma.tag.create.mockRejectedValue(makePrismaP2002());
 
-      await expect(service.create(fakeUser(), { nome: 'VIP' })).rejects.toBeInstanceOf(
+      await expect(service.create(fakeUser(), { nome: 'VIP', cor: '#7c3aed' })).rejects.toBeInstanceOf(
         BusinessRuleException,
       );
     });
@@ -232,13 +232,13 @@ describe('TagsService', () => {
       const internalError = new Error('DB connection error');
       prisma.tag.create.mockRejectedValue(internalError);
 
-      await expect(service.create(fakeUser(), { nome: 'VIP' })).rejects.toBe(internalError);
+      await expect(service.create(fakeUser(), { nome: 'VIP', cor: '#7c3aed' })).rejects.toBe(internalError);
     });
 
     it('lança ForbiddenException quando usuário não tem empresaIdAtiva', async () => {
       const user = fakeUser({ role: 'GERENTE', empresaIdAtiva: null });
 
-      await expect(service.create(user, { nome: 'Nova' })).rejects.toBeInstanceOf(
+      await expect(service.create(user, { nome: 'Nova', cor: '#7c3aed' })).rejects.toBeInstanceOf(
         ForbiddenException,
       );
     });
@@ -284,7 +284,7 @@ describe('TagsService', () => {
       prisma.tag.findFirst.mockResolvedValue(fakeTagWithCount());
       prisma.tag.updateMany.mockRejectedValue(makePrismaP2002());
 
-      await expect(service.update(fakeUser(), 'tag-1', { nome: 'VIP' })).rejects.toBeInstanceOf(
+      await expect(service.update(fakeUser(), 'tag-1', { nome: 'VIP', cor: '#7c3aed' })).rejects.toBeInstanceOf(
         BusinessRuleException,
       );
     });
