@@ -279,9 +279,11 @@ function ServicoCard({
   const meta = SERVICOS[servico];
   const conectado = conexao?.ativo;
   const role = useRole();
-  // D45: serviços com requerDirector só aceitam role DIRECTOR (nem ADMIN bypassa).
+  // D48: serviços com requerDirector aceitam DIRECTOR (mandatário do tenant)
+  // OU ADMIN (master da plataforma, opera cross-tenant). Outros papéis veem
+  // a página mas não conseguem operar.
   const requerDirector = SERVICOS_REQUEREM_DIRECTOR.has(servico);
-  const podeOperar = !requerDirector || role === 'DIRECTOR';
+  const podeOperar = !requerDirector || role === 'DIRECTOR' || role === 'ADMIN';
 
   return (
     <div
@@ -337,9 +339,9 @@ function ServicoCard({
                   fontSize: 9,
                   padding: '1px 5px',
                 }}
-                title="Apenas o DIRETOR pode conectar este serviço (D45)"
+                title="Apenas DIRETOR ou ADMIN pode conectar este serviço (D45/D48)"
               >
-                diretor-only
+                diretor/admin
               </span>
             )}
           </div>
@@ -392,7 +394,7 @@ function ServicoCard({
             }}
             data-testid={`bloqueado-${servico}`}
           >
-            Apenas o DIRETOR pode conectar este serviço.
+            Apenas DIRETOR ou ADMIN pode conectar este serviço.
           </span>
         )}
         {podeOperar && !conectado && (

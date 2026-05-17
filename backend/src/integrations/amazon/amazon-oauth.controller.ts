@@ -16,7 +16,7 @@ export class AmazonOAuthController {
 
   @Get('oauth/start')
   @ApiBearerAuth()
-  @Roles('DIRECTOR')
+  @Roles('ADMIN', 'DIRECTOR')
   @ApiOperation({
     summary:
       'Inicia OAuth Selling Partner — redireciona pro Seller Central. **DIRETOR-only (D45)**.',

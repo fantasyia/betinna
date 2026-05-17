@@ -33,7 +33,7 @@ export class WhatsAppController {
   }
 
   @Post('conectar')
-  @Roles('DIRECTOR')
+  @Roles('ADMIN', 'DIRECTOR')
   // Throttle estrito: WhatsApp pairing é processo caro (gera QR + escuta socket).
   // 5 req/hora por user previne abuse / accidental loops.
   @Throttle({ default: { limit: 5, ttl: seconds(60 * 60) } })
@@ -48,7 +48,7 @@ export class WhatsAppController {
   }
 
   @Delete('desconectar')
-  @Roles('DIRECTOR')
+  @Roles('ADMIN', 'DIRECTOR')
   @HttpCode(HttpStatus.OK)
   @Audit({ action: 'whatsapp_empresa_desconectar', resource: 'integracao' })
   @ApiOperation({ summary: 'Desconecta WhatsApp empresa. **DIRETOR-only (D45)**.' })
@@ -59,7 +59,7 @@ export class WhatsAppController {
   }
 
   @Delete('resetar')
-  @Roles('DIRECTOR')
+  @Roles('ADMIN', 'DIRECTOR')
   @HttpCode(HttpStatus.OK)
   @Audit({ action: 'whatsapp_empresa_resetar', resource: 'integracao' })
   @ApiOperation({

@@ -16,7 +16,7 @@ export class ShopeeOAuthController {
 
   @Get('oauth/start')
   @ApiBearerAuth()
-  @Roles('DIRECTOR')
+  @Roles('ADMIN', 'DIRECTOR')
   @ApiOperation({
     summary:
       'Inicia shop authorization Shopee — redireciona pro partner authorize. **DIRETOR-only (D45)**.',

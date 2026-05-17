@@ -55,7 +55,7 @@ export class EmpresasController {
   }
 
   @Patch(':id')
-  @Roles('DIRECTOR')
+  @Roles('ADMIN', 'DIRECTOR')
   @Audit({ action: 'update', resource: 'empresa', resourceIdFrom: 'params.id' })
   @ApiOperation({
     summary: 'Atualiza uma empresa. **DIRETOR-only (D46)** — afeta dados fiscais (CNPJ, razão).',
@@ -68,7 +68,7 @@ export class EmpresasController {
   }
 
   @Put(':id/ativar')
-  @Roles('DIRECTOR')
+  @Roles('ADMIN', 'DIRECTOR')
   @Audit({ action: 'activate', resource: 'empresa', resourceIdFrom: 'params.id' })
   @ApiOperation({ summary: 'Reativa empresa desativada. **DIRETOR-only (D46)**.' })
   activate(@Param('id') id: string) {
@@ -76,7 +76,7 @@ export class EmpresasController {
   }
 
   @Delete(':id')
-  @Roles('DIRECTOR')
+  @Roles('ADMIN', 'DIRECTOR')
   @HttpCode(HttpStatus.NO_CONTENT)
   @Audit({ action: 'deactivate', resource: 'empresa', resourceIdFrom: 'params.id' })
   @ApiOperation({ summary: 'Desativa uma empresa (soft). **DIRETOR-only (D46)**.' })

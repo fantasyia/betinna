@@ -45,11 +45,12 @@ function fmtDate(d: string | null | undefined) {
 export default function ConfiguracoesPage() {
   const role = useRole();
   const toast = useToast();
-  // D46 (2026-05-17): listar empresas é ADMIN+DIRECTOR; criar NOVA é ADMIN-only
-  // (setup multi-tenant); editar/ativar/desativar é DIRECTOR-only (dados fiscais).
+  // D46+D48: listar e editar empresas = ADMIN (master cross-tenant) OU
+  // DIRECTOR (mandatário do tenant). Criar nova continua ADMIN-only (setup
+  // multi-tenant — DIRECTOR não cria outro tenant, é mandatário do dele).
   const podeListar = role === 'ADMIN' || role === 'DIRECTOR';
   const podeCriarEmpresa = role === 'ADMIN';
-  const podeEditarEmpresa = role === 'DIRECTOR';
+  const podeEditarEmpresa = role === 'ADMIN' || role === 'DIRECTOR';
 
   const [page, setPage] = useState(1);
   const [search, setSearch] = useState('');

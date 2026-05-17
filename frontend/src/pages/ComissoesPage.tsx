@@ -167,10 +167,10 @@ function StatBox({
 // ─── Lista admin (ADMIN/DIRECTOR/GERENTE) ──────────────────────────────
 
 function ListaAdmin() {
-  // D46 (2026-05-17): fechar mês + marcar pago + desmarcar pago são DIRECTOR-only.
-  // Ver continua aberto pra ADMIN/GERENTE (auditoria). Operar a folha = só diretor.
+  // D46+D48: fechar mês / marcar pago / desmarcar = DIRECTOR (mandatário do
+  // tenant) OU ADMIN (master da plataforma). GERENTE só visualiza.
   const role = useRole();
-  const canManage = role === 'DIRECTOR';
+  const canManage = role === 'DIRECTOR' || role === 'ADMIN';
   const [page, setPage] = useState(1);
   const now = new Date();
   const [mes, setMes] = useState<number | ''>(now.getMonth() + 1);

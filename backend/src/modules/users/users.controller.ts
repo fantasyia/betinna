@@ -91,7 +91,7 @@ export class UsersController {
   }
 
   @Put(':id/teto-desconto')
-  @Roles('DIRECTOR')
+  @Roles('ADMIN', 'DIRECTOR')
   @Audit({ action: 'set_discount_limit', resource: 'usuario', resourceIdFrom: 'params.id' })
   @ApiOperation({
     summary:
@@ -107,7 +107,7 @@ export class UsersController {
   }
 
   @Put(':id/comissao')
-  @Roles('DIRECTOR')
+  @Roles('ADMIN', 'DIRECTOR')
   @Audit({ action: 'set_comissao', resource: 'usuario', resourceIdFrom: 'params.id' })
   @ApiOperation({
     summary:

@@ -221,10 +221,10 @@ function UserDetail({ userId, isOwnProfile }: { userId: string; isOwnProfile: bo
   const toast = useToast();
   const canEdit = role === 'ADMIN' || (isOwnProfile && role !== null);
   const isAdmin = role === 'ADMIN';
-  // D46 (2026-05-17): teto-desconto e comissão são DIRECTOR-only (decisão
-  // financeira/contratual). ADMIN não mexe mais nisso.
-  const canSetTeto = role === 'DIRECTOR';
-  const canSetComissao = role === 'DIRECTOR';
+  // D46+D48: teto-desconto e comissão = DIRECTOR (mandatário do tenant) OU
+  // ADMIN (master da plataforma). Outros papéis bloqueados.
+  const canSetTeto = role === 'DIRECTOR' || role === 'ADMIN';
+  const canSetComissao = role === 'DIRECTOR' || role === 'ADMIN';
 
   const { data, loading, error, refetch } = useApiQuery<User>(`/users/${userId}`);
 

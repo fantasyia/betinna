@@ -45,7 +45,7 @@ export class ComissoesController {
   }
 
   @Post('fechar-mes')
-  @Roles('DIRECTOR')
+  @Roles('ADMIN', 'DIRECTOR')
   @Audit({ action: 'fechar_mes', resource: 'comissao' })
   @ApiOperation({
     summary:
@@ -60,7 +60,7 @@ export class ComissoesController {
   }
 
   @Put(':id/pagar')
-  @Roles('DIRECTOR')
+  @Roles('ADMIN', 'DIRECTOR')
   @Audit({ action: 'marcar_pago', resource: 'comissao', resourceIdFrom: 'params.id' })
   @ApiOperation({
     summary: 'Marca comissão como paga. **DIRETOR-only (D46)** — libera registro financeiro.',
@@ -74,7 +74,7 @@ export class ComissoesController {
   }
 
   @Put(':id/desmarcar-pago')
-  @Roles('DIRECTOR')
+  @Roles('ADMIN', 'DIRECTOR')
   @Audit({ action: 'desmarcar_pago', resource: 'comissao', resourceIdFrom: 'params.id' })
   @ApiOperation({
     summary:

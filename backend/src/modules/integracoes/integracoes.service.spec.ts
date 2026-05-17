@@ -213,52 +213,38 @@ describe('IntegracoesService', () => {
       ).rejects.toBeInstanceOf(ForbiddenException);
     });
 
-    // D45 — guard de DIRECTOR para OMIE
-    describe('D45: OMIE requer DIRECTOR', () => {
-      it('ADMIN não pode conectar OMIE (mesmo sendo bypass-all em outras permissões)', async () => {
-        prisma.integracaoConexao.upsert.mockResolvedValue(fakeConexao());
+    // D48: requerDirector aceita DIRECTOR (mandatário do tenant) OU ADMIN
+    // (master da plataforma — opera cross-tenant como suporte/override).
+    // Outros papéis seguem bloqueados.
+    describe('D48: requerDirector aceita DIRECTOR ou ADMIN', () => {
+      it.each(['GERENTE', 'REP', 'SAC'] as const)(
+        '%s não pode conectar OMIE (sem escopo cross-tenant nem mandato de tenant)',
+        async (role) => {
+          await expect(
+            service.conectar(fakeUser({ role: role as UserRole }), {
+              servico: 'omie' as never,
+              credenciais: {},
+            }),
+          ).rejects.toBeInstanceOf(ForbiddenException);
+        },
+      );
 
-        await expect(
-          service.conectar(fakeUser({ role: 'ADMIN' as UserRole }), {
-            servico: 'omie' as never,
-            credenciais: { appKey: 'k', appSecret: 's' },
-          }),
-        ).rejects.toBeInstanceOf(ForbiddenException);
-        expect(prisma.integracaoConexao.upsert).not.toHaveBeenCalled();
-      });
-
-      it('GERENTE não pode conectar OMIE', async () => {
-        await expect(
-          service.conectar(fakeUser({ role: 'GERENTE' as UserRole }), {
-            servico: 'omie' as never,
-            credenciais: {},
-          }),
-        ).rejects.toBeInstanceOf(ForbiddenException);
-      });
-
-      it('REP não pode conectar OMIE', async () => {
-        await expect(
-          service.conectar(fakeUser({ role: 'REP' as UserRole }), {
-            servico: 'omie' as never,
-            credenciais: {},
-          }),
-        ).rejects.toBeInstanceOf(ForbiddenException);
-      });
-
-      it('SAC não pode conectar OMIE', async () => {
-        await expect(
-          service.conectar(fakeUser({ role: 'SAC' as UserRole }), {
-            servico: 'omie' as never,
-            credenciais: {},
-          }),
-        ).rejects.toBeInstanceOf(ForbiddenException);
-      });
-
-      it('DIRECTOR pode conectar OMIE', async () => {
+      it('DIRECTOR pode conectar OMIE (mandatário do tenant)', async () => {
         prisma.integracaoConexao.upsert.mockResolvedValue(fakeConexao());
 
         await expect(
           service.conectar(fakeUser({ role: 'DIRECTOR' as UserRole }), {
+            servico: 'omie' as never,
+            credenciais: { appKey: 'k', appSecret: 's' },
+          }),
+        ).resolves.toBeDefined();
+      });
+
+      it('ADMIN pode conectar OMIE (master da plataforma — cross-tenant override)', async () => {
+        prisma.integracaoConexao.upsert.mockResolvedValue(fakeConexao());
+
+        await expect(
+          service.conectar(fakeUser({ role: 'ADMIN' as UserRole }), {
             servico: 'omie' as never,
             credenciais: { appKey: 'k', appSecret: 's' },
           }),
@@ -275,10 +261,10 @@ describe('IntegracoesService', () => {
         'instagram',
         'facebook',
       ] as const)(
-        'ADMIN não pode conectar %s (todas as integrações empresa são DIRECTOR-only)',
+        'GERENTE bloqueado em %s (todas as integrações empresa)',
         async (servico) => {
           await expect(
-            service.conectar(fakeUser({ role: 'ADMIN' as UserRole }), {
+            service.conectar(fakeUser({ role: 'GERENTE' as UserRole }), {
               servico: servico as never,
               credenciais: {},
             }),
@@ -315,14 +301,21 @@ describe('IntegracoesService', () => {
       expect(prisma.integracaoConexao.update).not.toHaveBeenCalled();
     });
 
-    // D45 — guard de DIRECTOR para OMIE
-    it('ADMIN não pode desconectar OMIE (D45)', async () => {
+    // D48 — DIRECTOR ou ADMIN pode desconectar; outros papéis bloqueados
+    it('ADMIN pode desconectar OMIE (master da plataforma)', async () => {
       prisma.integracaoConexao.findUnique.mockResolvedValue(fakeConexao({ ativo: true }));
 
       await expect(
         service.desconectar(fakeUser({ role: 'ADMIN' as UserRole }), 'omie' as never),
+      ).resolves.toBeDefined();
+    });
+
+    it('GERENTE não pode desconectar OMIE (sem escopo cross-tenant)', async () => {
+      prisma.integracaoConexao.findUnique.mockResolvedValue(fakeConexao({ ativo: true }));
+
+      await expect(
+        service.desconectar(fakeUser({ role: 'GERENTE' as UserRole }), 'omie' as never),
       ).rejects.toBeInstanceOf(ForbiddenException);
-      expect(prisma.integracaoConexao.update).not.toHaveBeenCalled();
     });
   });
 

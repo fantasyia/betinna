@@ -45,7 +45,7 @@ export class OmieController {
   }
 
   @Post('sync/clientes')
-  @Roles('DIRECTOR')
+  @Roles('ADMIN', 'DIRECTOR')
   @Audit({ action: 'sync_clientes_omie', resource: 'integracao' })
   @ApiOperation({
     summary:
@@ -64,7 +64,7 @@ export class OmieController {
   }
 
   @Post('sync/produtos')
-  @Roles('DIRECTOR')
+  @Roles('ADMIN', 'DIRECTOR')
   @Audit({ action: 'sync_produtos_omie', resource: 'integracao' })
   @ApiOperation({
     summary:
@@ -83,7 +83,7 @@ export class OmieController {
   }
 
   @Post('sync/forcar')
-  @Roles('DIRECTOR')
+  @Roles('ADMIN', 'DIRECTOR')
   @Audit({ action: 'sync_forcar_omie', resource: 'integracao' })
   @ApiOperation({
     summary:

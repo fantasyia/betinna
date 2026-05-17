@@ -68,15 +68,21 @@ export class IntegracoesService {
   }
 
   /**
-   * D45: serviços com `requerDirector=true` (ex: OMIE) só aceitam role DIRECTOR.
-   * ADMIN NÃO é bypass aqui — diferente de outras permissões. Razão: integração
-   * com ERP afeta dados fiscais/contábeis críticos e responsabilidade contratual
-   * é do diretor da empresa, não do operacional de TI.
+   * D45 (revisto D48): serviços com `requerDirector=true` (OMIE, marketplaces,
+   * social, WhatsApp empresa) só aceitam DIRECTOR ou ADMIN.
+   *
+   * Hierarquia conceitual:
+   * - DIRECTOR = mandatário do TENANT — decide config do tenant dele
+   * - ADMIN    = MASTER da PLATAFORMA — pode operar em qualquer tenant como
+   *              suporte/override (cross-tenant)
+   *
+   * Outros papéis (GERENTE/SAC/REP) continuam bloqueados — eles não decidem
+   * config de tenant nem têm escopo cross-tenant.
    */
   private assertDirectorRequerido(user: AuthenticatedUser, servico: ServicoEmpresa): void {
-    if (servicoRequerDirector(servico) && user.role !== 'DIRECTOR') {
+    if (servicoRequerDirector(servico) && user.role !== 'DIRECTOR' && user.role !== 'ADMIN') {
       throw new ForbiddenException(
-        `Apenas o DIRETOR pode conectar/desconectar a integração ${servico}`,
+        `Apenas DIRETOR (do tenant) ou ADMIN (master da plataforma) pode conectar/desconectar a integração ${servico}`,
         ErrorCode.FORBIDDEN,
       );
     }

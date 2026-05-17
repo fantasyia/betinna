@@ -16,7 +16,7 @@ export class MLOAuthController {
 
   @Get('oauth/start')
   @ApiBearerAuth()
-  @Roles('DIRECTOR')
+  @Roles('ADMIN', 'DIRECTOR')
   @ApiOperation({ summary: 'Inicia OAuth com Mercado Livre. **DIRETOR-only (D45)**.' })
   async start(@CurrentUser() user: AuthenticatedUser): Promise<{ url: string }> {
     if (!user.empresaIdAtiva) {
