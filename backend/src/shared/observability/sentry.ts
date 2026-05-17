@@ -2,15 +2,19 @@ import * as Sentry from '@sentry/node';
 import { sanitize } from '@shared/utils/sanitize-pii';
 
 /**
- * Inicialização do Sentry (Sprint 3 FIX 5).
+ * Inicialização do Sentry (Sprint 3 FIX 5 + APM 2026-05-17).
  *
  * Chamado em `main.ts` ANTES de qualquer outra coisa (precisa interceptar
- * uncaught exceptions desde o boot).
+ * uncaught exceptions desde o boot — `import { initSentry } from ...; initSentry();`
+ * é a primeira linha executável do bootstrap).
  *
  * Características:
  *  - DSN vem de `SENTRY_DSN` (env). Se vazio, Sentry fica desligado (no-op).
  *  - `environment` = NODE_ENV
- *  - `tracesSampleRate` 0.1 em prod, 1.0 em dev (custo vs visibility)
+ *  - **APM**: `tracesSampleRate` configurável via `SENTRY_TRACES_SAMPLE_RATE`
+ *    (0–1, default 0.1 em prod, 1.0 em dev). Integrações auto-instrumentam
+ *    Express (rotas), HTTP (requests externos), Prisma (queries SQL) e
+ *    Redis — sem código manual. Spans aparecem na timeline do Performance.
  *  - `beforeSend` aplica `sanitize()` em data + remove `user.email/ip_address`
  *  - Captura uncaught exceptions e unhandled rejections automaticamente
  */
@@ -23,10 +27,23 @@ export function initSentry(): void {
   }
 
   const env = process.env.NODE_ENV ?? 'development';
+  // tracesSampleRate: 1.0 em dev (sem custo), config explícita em prod (default 0.1).
+  // Sentry tracing v10+ auto-instrumenta http/express/prisma/redis se as libs
+  // estiverem instaladas — não precisa registrar integration manualmente.
+  const tracesSampleRate =
+    process.env.SENTRY_TRACES_SAMPLE_RATE !== undefined
+      ? Number(process.env.SENTRY_TRACES_SAMPLE_RATE)
+      : env === 'production'
+        ? 0.1
+        : 1.0;
+
   Sentry.init({
     dsn,
     environment: env,
-    tracesSampleRate: env === 'production' ? 0.1 : 1.0,
+    tracesSampleRate,
+    // Auto-instrumentação Node v10+: http, express, prisma, redis, fs, console.
+    // Mantemos defaultIntegrations e adicionamos prisma explicitamente.
+    integrations: [Sentry.prismaIntegration()],
     sendDefaultPii: false, // Sentry não envia PII automaticamente
     beforeSend(event) {
       // Strip PII do usuário (mesmo que sendDefaultPii=false, defesa em profundidade)

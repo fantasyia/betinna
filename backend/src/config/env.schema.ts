@@ -145,6 +145,16 @@ export const envSchema = z
 
     // Observability
     SENTRY_DSN: z.string().optional().default(''),
+    /** Sample rate de traces (0–1). 0.1 = 10% das requests instrumentadas. Em prod, manter baixo pra controlar custo. */
+    SENTRY_TRACES_SAMPLE_RATE: z.coerce.number().min(0).max(1).default(0.1),
+
+    // LGPD — retenção de dados (cron `retention-cleanup-mensal` purga registros antigos)
+    /** Meses de retenção do AuditLog. Default 24m (2 anos) — atende LGPD/CCPA. 0 desabilita purga. */
+    LGPD_AUDIT_RETENTION_MONTHS: z.coerce.number().int().min(0).default(24),
+    /** Meses de retenção das Message da Inbox. Default 24m. 0 desabilita purga. */
+    LGPD_MESSAGES_RETENTION_MONTHS: z.coerce.number().int().min(0).default(24),
+    /** Meses de retenção das Notificacao já lidas. Default 6m. 0 desabilita purga. */
+    LGPD_NOTIFICACOES_RETENTION_MONTHS: z.coerce.number().int().min(0).default(6),
 
     // Auth / Cache
     /** TTL do cache de AuthGuard em Redis. Mantenha curto pra refletir mudanças de role rapidamente. */

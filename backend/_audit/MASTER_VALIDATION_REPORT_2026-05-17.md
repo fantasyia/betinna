@@ -12,7 +12,7 @@
 
 | Métrica | Resultado |
 |---|---|
-| Backend tests | **1354 passing** / 93 spec files |
+| Backend tests | **1362 passing** / 94 spec files (após P2 batch — +8 specs retention) |
 | Frontend E2E | 108 specs / 13 files (cobertura: auth, RBAC, CRUD, inbox, fidelidade, notificações, onboarding, pedidos, relatórios, catálogo, audit, import, métricas) |
 | `npm audit` backend | **0 vulnerabilities** |
 | `npm audit` frontend | **0 vulnerabilities** |
@@ -263,9 +263,9 @@ API oficial Nest que respeita `rawBody: true` (HMAC dos webhooks continua funcio
 ## 12. Pendências P2/P3 (não bloqueantes)
 
 ### P2 (melhoria recomendada antes do scale)
-1. **GitHub Actions workflow CI** (`.github/workflows/ci.yml`) rodando lint/test/build antes do deploy Railway.
-2. **Política LGPD de retenção** — cron mensal purgando `AuditLog`/`Message` > 24 meses.
-3. **APM tracing distribuído** (Sentry Performance ou OpenTelemetry) — Prometheus básico já existe.
+1. ~~GitHub Actions workflow CI~~ — ✅ **Já existia** (`.github/workflows/ci.yml` com 5 jobs: check-secrets, backend, frontend, e2e, deploy Railway). Também `backup.yml`, `release.yml`, `security.yml`.
+2. ~~Política LGPD de retenção~~ — ✅ **Implementado nesta rodada**: `RetentionCleanupJob` (cron dia 2 às 05:00 UTC) com 3 retentions configuráveis via env (`LGPD_AUDIT_RETENTION_MONTHS=24`, `LGPD_MESSAGES_RETENTION_MONTHS=24`, `LGPD_NOTIFICACOES_RETENTION_MONTHS=6`). Auto-registra purga no AuditLog pra transparência. 8 specs cobrem (lock, env disable, cutoff, failure-resilience).
+3. ~~APM tracing distribuído~~ — ✅ **Implementado nesta rodada**: Sentry v10 com auto-instrumentação (http/express/prisma/redis) + `setupExpressErrorHandler` + `tracesSampleRate` configurável via `SENTRY_TRACES_SAMPLE_RATE` (default 0.1 prod / 1.0 dev). Spans automáticos de queries SQL Prisma + chamadas HTTP outbound.
 
 ### P3 (defensivo)
 1. **`omie-pedidos.service.ts:48`** — adicionar filtro explícito `empresaId` no findUnique (defensivo, hoje é seguro pelo caller).

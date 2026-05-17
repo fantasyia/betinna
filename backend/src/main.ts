@@ -4,6 +4,7 @@ import 'reflect-metadata';
 import { initSentry } from '@shared/observability/sentry';
 initSentry();
 
+import * as Sentry from '@sentry/node';
 import { NestFactory } from '@nestjs/core';
 import { NestExpressApplication } from '@nestjs/platform-express';
 import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
@@ -92,6 +93,13 @@ async function bootstrap(): Promise<void> {
     SwaggerModule.setup('docs', app, doc, {
       swaggerOptions: { persistAuthorization: true },
     });
+  }
+
+  // APM Sentry: error handler do Express. Captura exceptions que escaparam
+  // do AllExceptionsFilter (raro, mas dá segurança extra). No-op se SENTRY_DSN
+  // estiver vazio. Precisa ser ANTES do listen.
+  if (process.env.SENTRY_DSN) {
+    Sentry.setupExpressErrorHandler(expressInstance);
   }
 
   // Encerramento gracioso
