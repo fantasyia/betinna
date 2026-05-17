@@ -45,7 +45,11 @@ function fmtDate(d: string | null | undefined) {
 export default function ConfiguracoesPage() {
   const role = useRole();
   const toast = useToast();
-  const isAdmin = role === 'ADMIN';
+  // D46 (2026-05-17): listar empresas é ADMIN+DIRECTOR; criar NOVA é ADMIN-only
+  // (setup multi-tenant); editar/ativar/desativar é DIRECTOR-only (dados fiscais).
+  const podeListar = role === 'ADMIN' || role === 'DIRECTOR';
+  const podeCriarEmpresa = role === 'ADMIN';
+  const podeEditarEmpresa = role === 'DIRECTOR';
 
   const [page, setPage] = useState(1);
   const [search, setSearch] = useState('');
@@ -61,7 +65,7 @@ export default function ConfiguracoesPage() {
   }, [page, search, ativo]);
 
   const { data: pageResp, loading, error, refetch } = useApiQuery<PaginatedResponse<Empresa>>(
-    isAdmin ? listPath : null,
+    podeListar ? listPath : null,
   );
 
   async function toggleAtivo(emp: Empresa) {
@@ -79,11 +83,11 @@ export default function ConfiguracoesPage() {
     }
   }
 
-  if (!isAdmin) {
+  if (!podeListar) {
     return (
       <PageLayout title="Configurações">
         <div style={card}>
-          <p>Apenas ADMIN pode acessar configurações de empresas.</p>
+          <p>Apenas ADMIN ou DIRETOR pode acessar configurações de empresas.</p>
         </div>
       </PageLayout>
     );
@@ -115,21 +119,26 @@ export default function ConfiguracoesPage() {
     {
       key: 'ativo',
       header: 'Status',
-      render: (e) => (
-        <button
-          type="button"
-          data-testid={`emp-toggle-${e.id}`}
-          onClick={() => toggleAtivo(e)}
-          style={{
-            ...badge(e.ativo ? colors.success : colors.muted),
-            cursor: 'pointer',
-            border: 'none',
-            fontFamily: 'inherit',
-          }}
-        >
-          {e.ativo ? 'ativo' : 'inativo'}
-        </button>
-      ),
+      render: (e) =>
+        podeEditarEmpresa ? (
+          <button
+            type="button"
+            data-testid={`emp-toggle-${e.id}`}
+            onClick={() => toggleAtivo(e)}
+            style={{
+              ...badge(e.ativo ? colors.success : colors.muted),
+              cursor: 'pointer',
+              border: 'none',
+              fontFamily: 'inherit',
+            }}
+          >
+            {e.ativo ? 'ativo' : 'inativo'}
+          </button>
+        ) : (
+          <span style={badge(e.ativo ? colors.success : colors.muted)}>
+            {e.ativo ? 'ativo' : 'inativo'}
+          </span>
+        ),
     },
     {
       key: 'criado',
@@ -139,16 +148,21 @@ export default function ConfiguracoesPage() {
     {
       key: 'actions',
       header: '',
-      render: (e) => (
-        <button
-          type="button"
-          data-testid={`emp-edit-${e.id}`}
-          onClick={() => setEditing(e)}
-          style={{ ...btnSecondary, padding: '0.25rem 0.625rem', fontSize: 12 }}
-        >
-          Editar
-        </button>
-      ),
+      render: (e) =>
+        podeEditarEmpresa ? (
+          <button
+            type="button"
+            data-testid={`emp-edit-${e.id}`}
+            onClick={() => setEditing(e)}
+            style={{ ...btnSecondary, padding: '0.25rem 0.625rem', fontSize: 12 }}
+          >
+            Editar
+          </button>
+        ) : (
+          <span style={{ fontSize: 11, color: colors.muted, fontStyle: 'italic' }}>
+            só diretor
+          </span>
+        ),
     },
   ];
 
@@ -156,14 +170,16 @@ export default function ConfiguracoesPage() {
     <PageLayout
       title="Configurações — Empresas"
       actions={
-        <button
-          type="button"
-          data-testid="emp-new"
-          onClick={() => setCreating(true)}
-          style={btn}
-        >
-          + Nova empresa
-        </button>
+        podeCriarEmpresa ? (
+          <button
+            type="button"
+            data-testid="emp-new"
+            onClick={() => setCreating(true)}
+            style={btn}
+          >
+            + Nova empresa
+          </button>
+        ) : undefined
       }
     >
       <div style={card}>

@@ -91,9 +91,12 @@ export class UsersController {
   }
 
   @Put(':id/teto-desconto')
-  @Roles('ADMIN')
+  @Roles('DIRECTOR')
   @Audit({ action: 'set_discount_limit', resource: 'usuario', resourceIdFrom: 'params.id' })
-  @ApiOperation({ summary: 'Define o teto de desconto autônomo de um rep' })
+  @ApiOperation({
+    summary:
+      'Define o teto de desconto autônomo de um rep. **DIRETOR-only (D46)** — decisão financeira.',
+  })
   async setDiscountLimit(
     @CurrentUser() caller: AuthenticatedUser,
     @Param('id') id: string,
@@ -104,12 +107,13 @@ export class UsersController {
   }
 
   @Put(':id/comissao')
-  @Roles('ADMIN', 'DIRECTOR')
+  @Roles('DIRECTOR')
   @Audit({ action: 'set_comissao', resource: 'usuario', resourceIdFrom: 'params.id' })
   @ApiOperation({
     summary:
       'Define a % de comissão de um REP ou GERENTE. ' +
-      'REP: comissão sobre os próprios pedidos. GERENTE: sobre o total de vendas dos REPs sob sua gerência.',
+      'REP: comissão sobre os próprios pedidos. GERENTE: sobre o total de vendas dos REPs sob sua gerência. ' +
+      '**DIRETOR-only (D46)** — cláusula contratual.',
   })
   async setComissao(
     @CurrentUser() caller: AuthenticatedUser,

@@ -45,10 +45,12 @@ export class ComissoesController {
   }
 
   @Post('fechar-mes')
-  @Roles('ADMIN', 'DIRECTOR', 'GERENTE')
+  @Roles('DIRECTOR')
   @Audit({ action: 'fechar_mes', resource: 'comissao' })
   @ApiOperation({
-    summary: 'Fecha o mês: agrega pedidos comissionáveis (ENVIADO_OMIE+) e cria/atualiza registros',
+    summary:
+      'Fecha o mês: agrega pedidos comissionáveis (ENVIADO_OMIE+) e cria/atualiza registros. ' +
+      '**DIRETOR-only (D46)** — determina valores a pagar aos reps.',
   })
   fecharMes(
     @CurrentUser() user: AuthenticatedUser,
@@ -58,8 +60,11 @@ export class ComissoesController {
   }
 
   @Put(':id/pagar')
-  @Roles('ADMIN', 'DIRECTOR', 'GERENTE')
+  @Roles('DIRECTOR')
   @Audit({ action: 'marcar_pago', resource: 'comissao', resourceIdFrom: 'params.id' })
+  @ApiOperation({
+    summary: 'Marca comissão como paga. **DIRETOR-only (D46)** — libera registro financeiro.',
+  })
   marcarPago(
     @CurrentUser() user: AuthenticatedUser,
     @Param('id') id: string,
@@ -69,8 +74,12 @@ export class ComissoesController {
   }
 
   @Put(':id/desmarcar-pago')
-  @Roles('ADMIN', 'DIRECTOR')
+  @Roles('DIRECTOR')
   @Audit({ action: 'desmarcar_pago', resource: 'comissao', resourceIdFrom: 'params.id' })
+  @ApiOperation({
+    summary:
+      'Reverte pagamento de comissão. **DIRETOR-only (D46)** — operação sensível, gera audit.',
+  })
   desmarcarPago(@CurrentUser() user: AuthenticatedUser, @Param('id') id: string) {
     return this.comissoes.desmarcarPago(user, id);
   }

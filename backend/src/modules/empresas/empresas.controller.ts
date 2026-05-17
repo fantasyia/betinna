@@ -55,9 +55,11 @@ export class EmpresasController {
   }
 
   @Patch(':id')
-  @Roles('ADMIN')
+  @Roles('DIRECTOR')
   @Audit({ action: 'update', resource: 'empresa', resourceIdFrom: 'params.id' })
-  @ApiOperation({ summary: 'Atualiza uma empresa' })
+  @ApiOperation({
+    summary: 'Atualiza uma empresa. **DIRETOR-only (D46)** — afeta dados fiscais (CNPJ, razão).',
+  })
   update(
     @Param('id') id: string,
     @Body(new ZodValidationPipe(updateEmpresaSchema)) dto: UpdateEmpresaDto,
@@ -66,17 +68,18 @@ export class EmpresasController {
   }
 
   @Put(':id/ativar')
-  @Roles('ADMIN')
+  @Roles('DIRECTOR')
   @Audit({ action: 'activate', resource: 'empresa', resourceIdFrom: 'params.id' })
+  @ApiOperation({ summary: 'Reativa empresa desativada. **DIRETOR-only (D46)**.' })
   activate(@Param('id') id: string) {
     return this.empresas.activate(id);
   }
 
   @Delete(':id')
-  @Roles('ADMIN')
+  @Roles('DIRECTOR')
   @HttpCode(HttpStatus.NO_CONTENT)
   @Audit({ action: 'deactivate', resource: 'empresa', resourceIdFrom: 'params.id' })
-  @ApiOperation({ summary: 'Desativa uma empresa (soft)' })
+  @ApiOperation({ summary: 'Desativa uma empresa (soft). **DIRETOR-only (D46)**.' })
   async deactivate(@Param('id') id: string): Promise<void> {
     await this.empresas.deactivate(id);
   }

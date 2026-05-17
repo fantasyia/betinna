@@ -221,8 +221,10 @@ function UserDetail({ userId, isOwnProfile }: { userId: string; isOwnProfile: bo
   const toast = useToast();
   const canEdit = role === 'ADMIN' || (isOwnProfile && role !== null);
   const isAdmin = role === 'ADMIN';
-  const canSetTeto = isAdmin; // backend: ADMIN only
-  const canSetComissao = isAdmin || role === 'DIRECTOR';
+  // D46 (2026-05-17): teto-desconto e comissão são DIRECTOR-only (decisão
+  // financeira/contratual). ADMIN não mexe mais nisso.
+  const canSetTeto = role === 'DIRECTOR';
+  const canSetComissao = role === 'DIRECTOR';
 
   const { data, loading, error, refetch } = useApiQuery<User>(`/users/${userId}`);
 

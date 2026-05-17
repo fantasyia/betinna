@@ -1,7 +1,7 @@
 import { useMemo, useState } from 'react';
 import { api, ApiError } from '@/lib/api';
 import { useApiQuery, type PaginatedResponse } from '@/hooks/useApiQuery';
-import { usePermission } from '@/hooks/usePermission';
+import { usePermission, useRole } from '@/hooks/usePermission';
 import { PageLayout } from '@/components/PageLayout';
 import { Table, Pagination, type Column } from '@/components/Table';
 import { StateView } from '@/components/StateView';
@@ -167,9 +167,10 @@ function StatBox({
 // ─── Lista admin (ADMIN/DIRECTOR/GERENTE) ──────────────────────────────
 
 function ListaAdmin() {
-  const canManageAll = usePermission('comissoes.all');
-  const canManageTeam = usePermission('comissoes.team');
-  const canManage = canManageAll || canManageTeam;
+  // D46 (2026-05-17): fechar mês + marcar pago + desmarcar pago são DIRECTOR-only.
+  // Ver continua aberto pra ADMIN/GERENTE (auditoria). Operar a folha = só diretor.
+  const role = useRole();
+  const canManage = role === 'DIRECTOR';
   const [page, setPage] = useState(1);
   const now = new Date();
   const [mes, setMes] = useState<number | ''>(now.getMonth() + 1);
