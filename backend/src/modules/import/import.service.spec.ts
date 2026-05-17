@@ -1,0 +1,254 @@
+import { beforeEach, describe, expect, it, vi } from 'vitest';
+import type { UserRole } from '@prisma/client';
+import { ForbiddenException } from '@shared/errors/app-exception';
+import type { AuthenticatedUser } from '@shared/types/authenticated-user';
+import { ImportService } from './import.service';
+
+const fakeUser = (overrides: Partial<AuthenticatedUser> = {}): AuthenticatedUser => ({
+  id: 'u1',
+  email: 'u@x.com',
+  nome: 'U',
+  role: 'ADMIN' as UserRole,
+  empresaIds: ['emp-1'],
+  empresaIdAtiva: 'emp-1',
+  ...overrides,
+});
+
+const makePrisma = () => ({
+  cliente: {
+    findFirst: vi.fn().mockResolvedValue(null),
+    create: vi.fn().mockResolvedValue({ id: 'cli-novo' }),
+    update: vi.fn().mockResolvedValue({ id: 'cli-existente' }),
+  },
+  produto: {
+    findFirst: vi.fn().mockResolvedValue(null),
+    create: vi.fn().mockResolvedValue({ id: 'prod-novo' }),
+    update: vi.fn().mockResolvedValue({ id: 'prod-existente' }),
+  },
+});
+
+describe('ImportService.importarClientes', () => {
+  let prisma: ReturnType<typeof makePrisma>;
+  let svc: ImportService;
+
+  beforeEach(() => {
+    prisma = makePrisma();
+    svc = new ImportService(prisma as never);
+  });
+
+  it('REP recebe ForbiddenException', async () => {
+    await expect(
+      svc.importarClientes(fakeUser({ role: 'REP' as UserRole }), {
+        csv: 'nome\nCliente A',
+        dryRun: false,
+        onDuplicate: 'skip',
+      }),
+    ).rejects.toBeInstanceOf(ForbiddenException);
+  });
+
+  it('SAC recebe ForbiddenException', async () => {
+    await expect(
+      svc.importarClientes(fakeUser({ role: 'SAC' as UserRole }), {
+        csv: 'nome\nCliente A',
+        dryRun: false,
+        onDuplicate: 'skip',
+      }),
+    ).rejects.toBeInstanceOf(ForbiddenException);
+  });
+
+  it('importa CSV simples com header', async () => {
+    const csv = 'nome,cnpj,email\nCliente A,12.345.678/0001-90,a@a.com\nCliente B,,b@b.com';
+    const r = await svc.importarClientes(fakeUser(), {
+      csv,
+      dryRun: false,
+      onDuplicate: 'skip',
+    });
+    expect(r.total).toBe(2);
+    expect(r.criados).toBe(2);
+    expect(prisma.cliente.create).toHaveBeenCalledTimes(2);
+  });
+
+  it('aceita separador ponto-e-vírgula (pt-BR Excel)', async () => {
+    const csv = 'nome;email\nCliente A;a@a.com';
+    const r = await svc.importarClientes(fakeUser(), {
+      csv,
+      dryRun: false,
+      onDuplicate: 'skip',
+    });
+    expect(r.criados).toBe(1);
+  });
+
+  it('rejeita linha sem nome', async () => {
+    const csv = 'nome,email\n,sem-nome@a.com';
+    const r = await svc.importarClientes(fakeUser(), {
+      csv,
+      dryRun: false,
+      onDuplicate: 'skip',
+    });
+    expect(r.criados).toBe(0);
+    expect(r.erros).toBe(1);
+    expect(r.detalhes[0]?.motivo).toContain('nome');
+  });
+
+  it('onDuplicate=skip pula registros existentes', async () => {
+    prisma.cliente.findFirst.mockResolvedValueOnce({ id: 'cli-velho' });
+    const csv = 'nome,cnpj\nCliente A,12.345.678/0001-90';
+    const r = await svc.importarClientes(fakeUser(), {
+      csv,
+      dryRun: false,
+      onDuplicate: 'skip',
+    });
+    expect(r.pulados).toBe(1);
+    expect(r.criados).toBe(0);
+    expect(prisma.cliente.create).not.toHaveBeenCalled();
+  });
+
+  it('onDuplicate=update atualiza existente', async () => {
+    prisma.cliente.findFirst.mockResolvedValueOnce({ id: 'cli-velho' });
+    const csv = 'nome,cnpj\nCliente A,12.345.678/0001-90';
+    const r = await svc.importarClientes(fakeUser(), {
+      csv,
+      dryRun: false,
+      onDuplicate: 'update',
+    });
+    expect(r.atualizados).toBe(1);
+    expect(prisma.cliente.update).toHaveBeenCalled();
+  });
+
+  it('onDuplicate=error reporta erro', async () => {
+    prisma.cliente.findFirst.mockResolvedValueOnce({ id: 'cli-velho' });
+    const csv = 'nome,cnpj\nCliente A,12.345.678/0001-90';
+    const r = await svc.importarClientes(fakeUser(), {
+      csv,
+      dryRun: false,
+      onDuplicate: 'error',
+    });
+    expect(r.erros).toBe(1);
+  });
+
+  it('dryRun não chama create/update', async () => {
+    const csv = 'nome\nCliente Novo';
+    const r = await svc.importarClientes(fakeUser(), {
+      csv,
+      dryRun: true,
+      onDuplicate: 'skip',
+    });
+    expect(r.criados).toBe(1);
+    expect(r.dryRun).toBe(true);
+    expect(prisma.cliente.create).not.toHaveBeenCalled();
+  });
+
+  it('CNPJ inválido vira null (mas continua importando)', async () => {
+    const csv = 'nome,cnpj\nCliente A,123';
+    const r = await svc.importarClientes(fakeUser(), {
+      csv,
+      dryRun: false,
+      onDuplicate: 'skip',
+    });
+    expect(r.criados).toBe(1);
+    const arg = prisma.cliente.create.mock.calls[0][0];
+    expect(arg.data.cnpj).toBeNull();
+  });
+
+  it('aceita headers em PT-BR alternativos (razao_social, e-mail)', async () => {
+    const csv = 'razao_social,e-mail\nMinha Empresa,contato@e.com';
+    const r = await svc.importarClientes(fakeUser(), {
+      csv,
+      dryRun: false,
+      onDuplicate: 'skip',
+    });
+    expect(r.criados).toBe(1);
+    const arg = prisma.cliente.create.mock.calls[0][0];
+    expect(arg.data.nome).toBe('Minha Empresa');
+    expect(arg.data.email).toBe('contato@e.com');
+  });
+
+  it('detalhes limitados a 100 linhas', async () => {
+    const lines = ['nome'];
+    for (let i = 0; i < 150; i++) lines.push(`Cliente ${i}`);
+    const csv = lines.join('\n');
+    const r = await svc.importarClientes(fakeUser(), {
+      csv,
+      dryRun: false,
+      onDuplicate: 'skip',
+    });
+    expect(r.total).toBe(150);
+    expect(r.detalhes).toHaveLength(100);
+  });
+});
+
+describe('ImportService.importarProdutos', () => {
+  let prisma: ReturnType<typeof makePrisma>;
+  let svc: ImportService;
+
+  beforeEach(() => {
+    prisma = makePrisma();
+    svc = new ImportService(prisma as never);
+  });
+
+  it('GERENTE recebe ForbiddenException (produtos é DIRECTOR/ADMIN)', async () => {
+    await expect(
+      svc.importarProdutos(fakeUser({ role: 'GERENTE' as UserRole }), {
+        csv: 'nome,preco\nProd A,10',
+        dryRun: false,
+        onDuplicate: 'skip',
+      }),
+    ).rejects.toBeInstanceOf(ForbiddenException);
+  });
+
+  it('parsea preço pt-BR "1.234,56" (em CSV com separador ;)', async () => {
+    const csv = 'nome;preco\nProd Caro;1.234,56';
+    const r = await svc.importarProdutos(fakeUser(), {
+      csv,
+      dryRun: false,
+      onDuplicate: 'skip',
+    });
+    expect(r.criados).toBe(1);
+    const arg = prisma.produto.create.mock.calls[0][0];
+    expect(arg.data.precoTabela).toBeCloseTo(1234.56);
+  });
+
+  it('parsea preço en-US "1234.56"', async () => {
+    const csv = 'nome,preco\nProd,99.99';
+    await svc.importarProdutos(fakeUser(), {
+      csv,
+      dryRun: false,
+      onDuplicate: 'skip',
+    });
+    const arg = prisma.produto.create.mock.calls[0][0];
+    expect(arg.data.precoTabela).toBeCloseTo(99.99);
+  });
+
+  it('rejeita preço inválido', async () => {
+    const csv = 'nome,preco\nProd X,nao-e-numero';
+    const r = await svc.importarProdutos(fakeUser(), {
+      csv,
+      dryRun: false,
+      onDuplicate: 'skip',
+    });
+    expect(r.criados).toBe(0);
+    expect(r.erros).toBe(1);
+  });
+
+  it('precoFabrica = precoTabela × 0.7 (heurística)', async () => {
+    const csv = 'nome,preco\nProd,100';
+    await svc.importarProdutos(fakeUser(), {
+      csv,
+      dryRun: false,
+      onDuplicate: 'skip',
+    });
+    const arg = prisma.produto.create.mock.calls[0][0];
+    expect(arg.data.precoFabrica).toBeCloseTo(70);
+  });
+
+  it('unidade default UN quando não informada', async () => {
+    const csv = 'nome,preco\nProd,10';
+    await svc.importarProdutos(fakeUser(), {
+      csv,
+      dryRun: false,
+      onDuplicate: 'skip',
+    });
+    const arg = prisma.produto.create.mock.calls[0][0];
+    expect(arg.data.unidade).toBe('UN');
+  });
+});
