@@ -36,8 +36,8 @@
 
 | Role | Acesso |
 |---|---|
-| `ADMIN` | Total — bypass no PermissionsGuard |
-| `DIRECTOR` | Total |
+| `ADMIN` | Total — bypass no PermissionsGuard. **Exceção: OMIE ERP (D45) é DIRECTOR-only** — ADMIN pode ver status pra debug mas não conecta nem desconecta. |
+| `DIRECTOR` | Total. **Único papel que pode conectar OMIE ERP (D45)** — afeta dados fiscais/contábeis, responsabilidade contratual do decisor. |
 | `GERENTE` | Gestão operacional sem config/integrações. **Vê apenas carteira dos REPs sob sua gerência** (`Usuario.gerenteId = gerente.id`). Pode ter vários REPs abaixo. |
 | `SAC` | Atendimento ao cliente (Inbox marketplaces/redes sociais + ocorrências). Permissões adicionais configuráveis pelo Admin via UI. |
 | `REP` | Apenas a própria carteira (filtro automático em listas). **Inbox limitada ao próprio WhatsApp pessoal** (qualquer pessoa que ele conversar — cliente, prospect, fornecedor) — não acessa marketplaces nem redes sociais. |
@@ -129,6 +129,7 @@
 | D42 | **Anti-órfão: ao desativar GERENTE, `gerenteId` dos seus REPs vira `null` automaticamente** | Sem cleanup, REP fica apontando pra alguém inativo → carteira invisível. `setStatus(INATIVO)` em users service faz updateMany pré-update. Reps caem no catch-all do DIRECTOR. |
 | D43 | **Cron mensal `ComissoesFechamentoJob` — dia 1 às 04:00 UTC** fecha o mês anterior pra todas as empresas ativas | Idempotente (`reprocessar=false` skipa quem já fechou manual). Falha por empresa loga e segue. Usa `system-cron` AuthenticatedUser. |
 | D44 | **BullMQ para Fluxos de Automação** (não cron in-process) — step-by-step, 1 job por nó | Volume esperado alto desde o lançamento. BullMQ garante retry, delay natural (DELAY nodes), visibilidade na fila e zero perda em crash. `FluxoEventBusService` dispara silenciosamente — falha no bus não derruba operação principal. Fila `fluxo-execucao`, concorrência 5 no processor. |
+| D45 | **OMIE ERP é DIRECTOR-only** — conectar, desconectar e forçar sync exigem role `DIRECTOR`. ADMIN NÃO bypassa (diferente do resto do sistema). | Conectar ERP altera dados fiscais/contábeis críticos da empresa; a responsabilidade contratual é do diretor, não do operacional de TI. Implementado via flag `SERVICO_METADATA.requerDirector` + guard `IntegracoesService.assertDirectorRequerido` (ponto único). ADMIN pode VER status (`GET /integracoes/omie/status`) para debug, mas não pode mexer. Demais integrações (whatsapp, marketplaces, social) continuam ADMIN+DIRECTOR. |
 
 ## 6. Status dos módulos
 

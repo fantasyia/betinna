@@ -44,12 +44,34 @@ export type ServicoTipo =
 /** 'ambos' indica que o serviço aceita ambos os escopos (ex: WhatsApp empresa OU pessoal). */
 export type ServicoEscopo = 'empresa' | 'usuario' | 'ambos';
 
-/** Metadados sobre cada serviço — usados em docs/UI. */
+/**
+ * Metadados sobre cada serviço — usados em docs/UI.
+ *
+ * `requerDirector` (D45 — 2026-05-17): quando true, apenas usuários com role
+ * DIRECTOR podem conectar/desconectar/forçar sync deste serviço. ADMIN é
+ * bypass-all em todas as outras permissões, MAS NÃO neste flag — é um
+ * privilégio reservado ao decisor da empresa (não ao operacional/TI).
+ *
+ * OMIE = true porque conectar o ERP altera dados fiscais/contábeis críticos
+ * e a responsabilidade contratual é do diretor (não do admin de sistema).
+ */
 export const SERVICO_METADATA: Record<
   ServicoIntegracao,
-  { nome: string; tipo: ServicoTipo; escopo: ServicoEscopo; obrigatorio: boolean }
+  {
+    nome: string;
+    tipo: ServicoTipo;
+    escopo: ServicoEscopo;
+    obrigatorio: boolean;
+    requerDirector?: boolean;
+  }
 > = {
-  omie: { nome: 'OMIE ERP', tipo: 'erp', escopo: 'empresa', obrigatorio: true },
+  omie: {
+    nome: 'OMIE ERP',
+    tipo: 'erp',
+    escopo: 'empresa',
+    obrigatorio: true,
+    requerDirector: true,
+  },
   whatsapp: { nome: 'WhatsApp (Baileys)', tipo: 'mensageria', escopo: 'ambos', obrigatorio: false },
   mercadolivre: {
     nome: 'Mercado Livre',
@@ -72,6 +94,14 @@ export const SERVICO_METADATA: Record<
   openai: { nome: 'OpenAI', tipo: 'ia', escopo: 'usuario', obrigatorio: false },
   anthropic: { nome: 'Anthropic Claude', tipo: 'ia', escopo: 'usuario', obrigatorio: false },
 };
+
+/**
+ * Retorna true se o serviço requer role DIRECTOR para conectar/desconectar.
+ * Centralizado pra UI + backend usarem mesma fonte da verdade.
+ */
+export function servicoRequerDirector(servico: ServicoIntegracao): boolean {
+  return SERVICO_METADATA[servico].requerDirector === true;
+}
 
 export function isServicoEmpresa(s: string): s is ServicoEmpresa {
   return (SERVICOS_EMPRESA as readonly string[]).includes(s);

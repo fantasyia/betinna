@@ -28,8 +28,12 @@ export class OmieController {
   ) {}
 
   @Get('status')
-  @Roles('ADMIN', 'DIRECTOR', 'GERENTE')
-  @ApiOperation({ summary: 'Status da integração OMIE (modo demo, configurada, último sync)' })
+  @Roles('ADMIN', 'DIRECTOR')
+  @ApiOperation({
+    summary:
+      'Status da integração OMIE (modo demo, configurada, último sync). ADMIN pode ver para debug; ' +
+      'conectar/sincronizar é exclusivo do DIRETOR (D45).',
+  })
   status(@CurrentUser() user: AuthenticatedUser) {
     if (!user.empresaIdAtiva) {
       throw new ForbiddenException('Empresa não definida', ErrorCode.TENANT_ACCESS_DENIED);
@@ -41,11 +45,12 @@ export class OmieController {
   }
 
   @Post('sync/clientes')
-  @Roles('ADMIN', 'DIRECTOR', 'GERENTE')
+  @Roles('DIRECTOR')
   @Audit({ action: 'sync_clientes_omie', resource: 'integracao' })
   @ApiOperation({
     summary:
-      'Sincroniza clientes do OMIE. modo=incremental (default) só importa alterados; modo=completo força tudo.',
+      'Sincroniza clientes do OMIE. modo=incremental (default) só importa alterados; ' +
+      'modo=completo força tudo. **DIRETOR-only (D45)** — afeta dados fiscais.',
   })
   @ApiQuery({ name: 'modo', enum: ['incremental', 'completo'], required: false })
   syncClientes(
@@ -59,11 +64,12 @@ export class OmieController {
   }
 
   @Post('sync/produtos')
-  @Roles('ADMIN', 'DIRECTOR', 'GERENTE')
+  @Roles('DIRECTOR')
   @Audit({ action: 'sync_produtos_omie', resource: 'integracao' })
   @ApiOperation({
     summary:
-      'Sincroniza produtos do OMIE. modo=incremental (default) só importa alterados; modo=completo força tudo.',
+      'Sincroniza produtos do OMIE. modo=incremental (default) só importa alterados; ' +
+      'modo=completo força tudo. **DIRETOR-only (D45)** — afeta catálogo da empresa.',
   })
   @ApiQuery({ name: 'modo', enum: ['incremental', 'completo'], required: false })
   syncProdutos(
@@ -77,10 +83,12 @@ export class OmieController {
   }
 
   @Post('sync/forcar')
-  @Roles('ADMIN', 'DIRECTOR')
+  @Roles('DIRECTOR')
   @Audit({ action: 'sync_forcar_omie', resource: 'integracao' })
   @ApiOperation({
-    summary: 'Força sincronização COMPLETA de clientes + produtos (ignora último sync).',
+    summary:
+      'Força sincronização COMPLETA de clientes + produtos (ignora último sync). ' +
+      '**DIRETOR-only (D45)** — operação destrutiva que re-baixa todo o catálogo OMIE.',
   })
   async forcarTudo(@CurrentUser() user: AuthenticatedUser) {
     if (!user.empresaIdAtiva) {

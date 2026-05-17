@@ -11,7 +11,7 @@ import { ErrorCode } from '@shared/errors/error-codes';
 import type { AuthenticatedUser } from '@shared/types/authenticated-user';
 import { CryptoUtil } from '@shared/utils/crypto.util';
 import type { ConectarDto, ListConexoesDto } from './integracoes.dto';
-import type { ServicoEmpresa } from './integracoes.constants';
+import { servicoRequerDirector, type ServicoEmpresa } from './integracoes.constants';
 
 /**
  * Conexão decriptada (uso interno por serviços de integração).
@@ -67,6 +67,21 @@ export class IntegracoesService {
     return user.empresaIdAtiva;
   }
 
+  /**
+   * D45: serviços com `requerDirector=true` (ex: OMIE) só aceitam role DIRECTOR.
+   * ADMIN NÃO é bypass aqui — diferente de outras permissões. Razão: integração
+   * com ERP afeta dados fiscais/contábeis críticos e responsabilidade contratual
+   * é do diretor da empresa, não do operacional de TI.
+   */
+  private assertDirectorRequerido(user: AuthenticatedUser, servico: ServicoEmpresa): void {
+    if (servicoRequerDirector(servico) && user.role !== 'DIRECTOR') {
+      throw new ForbiddenException(
+        `Apenas o DIRETOR pode conectar/desconectar a integração ${servico}`,
+        ErrorCode.FORBIDDEN,
+      );
+    }
+  }
+
   /** Lista conexões da empresa do usuário (sem credenciais). */
   async list(user: AuthenticatedUser, params: ListConexoesDto): Promise<ConexaoPublica[]> {
     const empresaId = this.requireEmpresa(user);
@@ -98,6 +113,10 @@ export class IntegracoesService {
    */
   async conectar(user: AuthenticatedUser, dto: ConectarDto): Promise<ConexaoPublica> {
     const empresaId = this.requireEmpresa(user);
+    // D45 (2026-05-17): integrações marcadas `requerDirector` exigem role
+    // DIRECTOR — nem ADMIN bypassa. OMIE é a primeira (afeta dados
+    // fiscais/contábeis críticos, decisão contratual do diretor).
+    this.assertDirectorRequerido(user, dto.servico);
     const enc = this.crypto.encrypt(JSON.stringify(dto.credenciais));
 
     const conexao = await this.prisma.integracaoConexao.upsert({
@@ -125,6 +144,8 @@ export class IntegracoesService {
    */
   async desconectar(user: AuthenticatedUser, servico: ServicoEmpresa): Promise<{ ok: true }> {
     const empresaId = this.requireEmpresa(user);
+    // D45: mesmo guard de DIRECTOR — quem conectou pode desconectar.
+    this.assertDirectorRequerido(user, servico);
     const existing = await this.prisma.integracaoConexao.findUnique({
       where: { empresaId_servico: { empresaId, servico } },
     });

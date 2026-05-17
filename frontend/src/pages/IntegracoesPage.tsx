@@ -1,11 +1,16 @@
 import { useCallback, useEffect, useState } from 'react';
 import { api, ApiError } from '@/lib/api';
 import { useApiQuery } from '@/hooks/useApiQuery';
+import { useRole } from '@/hooks/usePermission';
 import { PageLayout } from '@/components/PageLayout';
 import { StateView } from '@/components/StateView';
 import { Modal } from '@/components/Modal';
 import { FormField, Input } from '@/components/FormField';
 import { badge, btn, btnDanger, btnSecondary, card, colors } from '@/components/styles';
+
+// D45 (2026-05-17): integrações que só DIRECTOR pode conectar/desconectar.
+// Mantém em sync com SERVICO_METADATA.requerDirector no backend.
+const SERVICOS_REQUEREM_DIRECTOR: ReadonlySet<string> = new Set(['omie']);
 
 // ─── Catálogo de serviços empresa ─────────────────────────────────────
 
@@ -261,6 +266,10 @@ function ServicoCard({
 }) {
   const meta = SERVICOS[servico];
   const conectado = conexao?.ativo;
+  const role = useRole();
+  // D45: serviços com requerDirector só aceitam role DIRECTOR (nem ADMIN bypassa).
+  const requerDirector = SERVICOS_REQUEREM_DIRECTOR.has(servico);
+  const podeOperar = !requerDirector || role === 'DIRECTOR';
 
   return (
     <div
@@ -308,6 +317,19 @@ function ServicoCard({
                 obrigatório
               </span>
             )}
+            {requerDirector && (
+              <span
+                style={{
+                  marginLeft: 6,
+                  ...badge(colors.danger),
+                  fontSize: 9,
+                  padding: '1px 5px',
+                }}
+                title="Apenas o DIRETOR pode conectar este serviço (D45)"
+              >
+                diretor-only
+              </span>
+            )}
           </div>
         </div>
         <span
@@ -349,7 +371,19 @@ function ServicoCard({
 
       {/* Botões inferiores */}
       <div style={{ display: 'flex', gap: '0.375rem', marginTop: 'auto', flexWrap: 'wrap' }}>
-        {!conectado && (
+        {!podeOperar && (
+          <span
+            style={{
+              fontSize: 11,
+              color: colors.muted,
+              fontStyle: 'italic',
+            }}
+            data-testid={`bloqueado-${servico}`}
+          >
+            Apenas o DIRETOR pode conectar este serviço.
+          </span>
+        )}
+        {podeOperar && !conectado && (
           <button
             type="button"
             data-testid={`conectar-${servico}`}
@@ -359,10 +393,10 @@ function ServicoCard({
             Conectar
           </button>
         )}
-        {conectado && servico === 'omie' && (
+        {podeOperar && conectado && servico === 'omie' && (
           <TestOmieButton onDone={onRefetch} />
         )}
-        {conectado && (
+        {podeOperar && conectado && (
           <>
             <button
               type="button"
