@@ -2,26 +2,21 @@ import { useState, type FormEvent } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { api, ApiError } from '@/lib/api';
 import { setSession } from '@/lib/auth-store';
+import { supabase } from '@/lib/supabase';
 import type { AuthenticatedUser } from '@/types/auth';
 
 /**
- * LoginPage — Sprint 4 FIX 6.
+ * LoginPage — refatorado 2026-05-17.
  *
  * Fluxo:
- *  1. User envia email + senha
- *  2. Frontend chama Supabase Auth (signInWithPassword) — gerencia refresh token httpOnly
- *  3. Backend `/auth/me` retorna AuthenticatedUser via JWT validado
- *  4. setSession() armazena em MEMÓRIA (não localStorage)
+ *  1. `supabase.auth.signInWithPassword` — SDK persiste sessão em localStorage
+ *     com PKCE (sobrevive F5) e habilita refresh transparente
+ *  2. Backend `/auth/me` retorna AuthenticatedUser via JWT validado
+ *  3. setSession() coloca AuthenticatedUser em memória
+ *  4. F5 → main.tsx chama bootstrapAuthFromSupabase() que reusa essa sessão
  *
- * Note: por simplicidade aqui usamos `fetch` direto pro Supabase Auth.
- * Em prod, considerar `@supabase/supabase-js` que gerencia o refresh cookie.
+ * Antes: usávamos `fetch` direto, ignorando o `refresh_token` → F5 deslogava.
  */
-
-interface LoginResponse {
-  access_token: string;
-  expires_at: number;
-  user?: { id: string; email: string };
-}
 
 export default function LoginPage() {
   const [email, setEmail] = useState('');
@@ -37,36 +32,31 @@ export default function LoginPage() {
     setLoading(true);
     setError(null);
     try {
-      // Supabase Auth direct call — em prod use @supabase/supabase-js
-      const supabaseUrl = import.meta.env.VITE_SUPABASE_URL as string;
-      const supabaseKey = import.meta.env.VITE_SUPABASE_ANON_KEY as string;
-      const authResponse = await fetch(`${supabaseUrl}/auth/v1/token?grant_type=password`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          apikey: supabaseKey,
-        },
-        body: JSON.stringify({ email, password }),
+      const { data, error: authError } = await supabase.auth.signInWithPassword({
+        email,
+        password,
       });
-      if (!authResponse.ok) {
-        const body = await authResponse.json().catch(() => null);
-        throw new Error(body?.error_description ?? body?.msg ?? 'Credenciais inválidas');
+      if (authError) {
+        throw new Error(authError.message);
       }
-      const auth = (await authResponse.json()) as LoginResponse;
+      const sb = data.session;
+      if (!sb?.access_token) {
+        throw new Error('Sessão não retornada pelo Supabase — credenciais inválidas?');
+      }
 
       // Set session em memória ANTES do /auth/me chamar (que precisa do token)
       setSession({
-        accessToken: auth.access_token,
+        accessToken: sb.access_token,
         user: { id: '', email: '', nome: '', role: 'REP', empresaIds: [], empresaIdAtiva: null },
-        expiresAt: auth.expires_at * 1000,
+        expiresAt: (sb.expires_at ?? 0) * 1000,
       });
 
       // Backend retorna AuthenticatedUser completo via /auth/me
       const me = await api.get<AuthenticatedUser>('/auth/me');
       setSession({
-        accessToken: auth.access_token,
+        accessToken: sb.access_token,
         user: me,
-        expiresAt: auth.expires_at * 1000,
+        expiresAt: (sb.expires_at ?? 0) * 1000,
       });
 
       navigate(from, { replace: true });

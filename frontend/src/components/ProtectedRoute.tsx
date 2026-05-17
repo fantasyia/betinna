@@ -1,6 +1,7 @@
-import type { ReactNode } from 'react';
+import { useSyncExternalStore, type ReactNode } from 'react';
 import { Navigate, useLocation } from 'react-router-dom';
 import { useRole, hasPermission, type Permission } from '@/hooks/usePermission';
+import { isInitializing, subscribeInitializing } from '@/lib/auth-store';
 import type { UserRole } from '@/types/auth';
 
 /**
@@ -39,6 +40,28 @@ export function ProtectedRoute({
 }: ProtectedRouteProps) {
   const role = useRole();
   const location = useLocation();
+  // Bootstrap em curso: o SDK do Supabase está restaurando sessão do localStorage.
+  // Mostra placeholder em vez de redirecionar pro /login (que apareceria por
+  // ~200ms em todo F5 — UX péssima).
+  const booting = useSyncExternalStore(subscribeInitializing, isInitializing, isInitializing);
+
+  if (booting) {
+    return (
+      <div
+        style={{
+          minHeight: '100vh',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          color: '#888',
+          fontSize: 14,
+        }}
+        data-testid="auth-bootstrap"
+      >
+        Carregando…
+      </div>
+    );
+  }
 
   // Não autenticado → login
   if (!role) {
