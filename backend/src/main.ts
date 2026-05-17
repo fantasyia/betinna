@@ -5,6 +5,7 @@ import { initSentry } from '@shared/observability/sentry';
 initSentry();
 
 import { NestFactory } from '@nestjs/core';
+import { NestExpressApplication } from '@nestjs/platform-express';
 import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
 import cookieParser from 'cookie-parser';
 import helmet from 'helmet';
@@ -13,11 +14,20 @@ import { AppModule } from './app.module';
 import { EnvService } from '@config/env.service';
 
 async function bootstrap(): Promise<void> {
-  const app = await NestFactory.create(AppModule, {
+  const app = await NestFactory.create<NestExpressApplication>(AppModule, {
     bufferLogs: true,
     // Preserva o body raw em req.rawBody — necessário para verificação HMAC em webhooks (OMIE, Meta, etc.)
     rawBody: true,
   });
+
+  // Body parser limit explícito — default Express 100KB conflitava com:
+  //   • Import CSV (`csvBody.csv` schema aceita até 1MB)
+  //   • Webhooks com payload grande (Meta/OMIE com vários eventos batched)
+  // Auditoria 2026-05-17 (P1): subir limite pra 2MB cobre os casos legítimos
+  // sem virar vetor de DoS (rate-limit + AuthGuard global continuam ativos).
+  // Usa `useBodyParser` (API oficial Nest) que respeita rawBody:true acima.
+  app.useBodyParser('json', { limit: '2mb' });
+  app.useBodyParser('urlencoded', { extended: true, limit: '2mb' });
 
   // Logger Pino como logger global
   app.useLogger(app.get(PinoLogger));
