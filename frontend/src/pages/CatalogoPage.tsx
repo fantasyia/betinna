@@ -61,7 +61,12 @@ export default function CatalogoPage() {
   const { data, loading, error, refetch } = useApiQuery<CatalogoItem[] | { data: CatalogoItem[] }>(
     '/catalogo',
   );
-  const itens: CatalogoItem[] = Array.isArray(data) ? data : data?.data ?? [];
+  // useMemo evita nova ref a cada render — o useMemo de `stats` abaixo
+  // depende dessa lista; sem isso eslint-react-hooks reclama.
+  const itens: CatalogoItem[] = useMemo(
+    () => (Array.isArray(data) ? data : data?.data ?? []),
+    [data],
+  );
 
   const [adding, setAdding] = useState(false);
   const [markupGlobal, setMarkupGlobal] = useState(false);
