@@ -49,6 +49,14 @@ export const envSchema = z
     OMIE_DEMO_MODE: z.union([z.boolean(), z.string().transform((s) => s === 'true')]).default(true),
     OMIE_BASE_URL: z.string().url().default('https://app.omie.com.br/api/v1'),
     OMIE_TIMEOUT_MS: z.coerce.number().int().positive().default(30000),
+    /**
+     * Ratio aplicado em precoTabela pra estimar precoFabrica quando o
+     * produto OMIE não tem essa info explícita. Default 0.7 (preço fábrica
+     * = 70% do preço tabela), ajustável por empresa via env. Quando OMIE
+     * tabela_de_preco for integrada, esse fallback fica só pra casos onde
+     * o produto não está em nenhuma tabela auxiliar.
+     */
+    OMIE_PRECO_FABRICA_RATIO: z.coerce.number().min(0).max(1).default(0.7),
 
     // WhatsApp Business Cloud
     WHATSAPP_ACCESS_TOKEN: z.string().optional().default(''),

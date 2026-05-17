@@ -72,7 +72,13 @@ describe('OmieProdutosService', () => {
     prisma = makePrismaMock();
     omie = makeOmieClientMock();
     integracoes = makeIntegracoesMock();
-    service = new OmieProdutosService(prisma as never, omie as never, integracoes as never);
+    const env = { get: vi.fn().mockReturnValue(0.7) };
+    service = new OmieProdutosService(
+      prisma as never,
+      omie as never,
+      integracoes as never,
+      env as never,
+    );
   });
 
   // -------------------------------------------------------------------------

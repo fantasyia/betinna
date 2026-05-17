@@ -279,11 +279,16 @@ $token = $r.access_token
 
 ## 9. Pendências conhecidas
 
-- Vulnerabilidades moderadas no `npm audit` (em deps transitivas, esperando patches upstream)
-- Frontend: ainda HTML monolítico em `C:\Users\Dell\Downloads\files\betinna.html` — vai ser reescrito em Next.js após o backend estar com ~80% das APIs funcionando
-- ENCRYPTION_KEY no `.env.local` é exemplo — usuário deve gerar uma única em produção
-- `SUPABASE_JWT_SECRET` está vazio no `.env.local` — auth cai pro JWKS remoto, que pode não estar disponível em todos os planos. Preencher a partir do dashboard Supabase (Settings → API → JWT Settings) pra HS256 estável
-- OMIE: tabela auxiliar `tabela_de_preco` ainda não consumida — usamos heurística 70% pra `precoFabrica`. Ajustar quando integrar com tenant real que use precificação OMIE
+**Resolvidas em 2026-05-17 (cleanup):**
+- ✅ `npm audit` agora retorna 0 vulnerabilidades em backend e frontend (deps atualizadas pelos commits da semana).
+- ✅ Frontend já está em Vite + React (não é mais HTML monolítico — `betinna.html` é só protótipo de referência UX).
+- ✅ ENCRYPTION_KEY: schema valida formato (64 hex) e `EnvService.auditProductionReadiness()` chamado em `main.ts` detecta keys óbvias (tudo zero, sequência, repetição) — alerta em dev, aborta boot em prod.
+- ✅ SUPABASE_JWT_SECRET: D44 (sprint anterior) ativou auto-detecção HS256/RS256/ES256 — auth funciona com OU sem secret. Audit no boot loga warning quando vazio.
+- ✅ OMIE `tabela_de_preco`: heurística 70% agora é configurável via env `OMIE_PRECO_FABRICA_RATIO` (0–1, default 0.7). TODO no código pra substituir pela leitura real quando cliente configurar tabelas auxiliares.
+
+**Pendências ativas:**
+- OMIE `tabela_de_preco`: ratio configurável mas ainda heurístico — ler `precoFabrica` real de tabela auxiliar quando cliente fornecer credenciais OMIE com tabelas.
+- BOOTSTRAP_TOKEN: endpoint `/auth/bootstrap` se desabilita após 1º usuário (first-run check), mas vale apagar a env var em produção depois de validar.
 
 ## 10. Estilo de comunicação preferido
 

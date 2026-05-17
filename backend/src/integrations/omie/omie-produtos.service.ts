@@ -1,4 +1,5 @@
 import { Injectable, Logger } from '@nestjs/common';
+import { EnvService } from '@config/env.service';
 import { PrismaService } from '@database/prisma.service';
 import { IntegracoesService } from '@modules/integracoes/integracoes.service';
 import { OmieClientService } from './omie-client.service';
@@ -38,6 +39,7 @@ export class OmieProdutosService {
     private readonly prisma: PrismaService,
     private readonly omie: OmieClientService,
     private readonly integracoes: IntegracoesService,
+    private readonly env: EnvService,
   ) {}
 
   async sync(empresaId: string, options: OmieSyncOptions = {}): Promise<OmieProdutosSyncResult> {
@@ -70,7 +72,11 @@ export class OmieProdutosService {
           }
         }
 
-        const payload = OmieMapper.produtoToPrismaUpsert(empresaId, o);
+        const payload = OmieMapper.produtoToPrismaUpsert(
+          empresaId,
+          o,
+          this.env.get('OMIE_PRECO_FABRICA_RATIO'),
+        );
         if (!payload) continue;
 
         const existing = await this.prisma.produto.findUnique({

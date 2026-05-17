@@ -54,12 +54,27 @@ export class OmieMapper {
   }
 
   /**
+   * Ratio default pra estimar precoFabrica a partir de precoTabela.
+   * Configurável via env `OMIE_PRECO_FABRICA_RATIO`. Único call-site
+   * (OmieProdutosService) injeta o ratio do env; tests usam o default.
+   *
+   * TODO: integrar OMIE `tabela_de_preco` (ListarTabelasPreco + por produto)
+   * pra ler precoFabrica REAL. Heurística fica como fallback pra produtos
+   * que não estão em nenhuma tabela auxiliar.
+   */
+  static readonly DEFAULT_PRECO_FABRICA_RATIO = 0.7;
+
+  /**
    * Converte um OmieProduto em payload de upsert.
    * Usa codigo (SKU) + codigo_produto (codigoOmie) pra identificar.
+   *
+   * @param ratio fração aplicada em precoTabela para estimar precoFabrica.
+   *   Default 0.7 (70%). Aceita 0–1.
    */
   static produtoToPrismaUpsert(
     empresaId: string,
     o: OmieProduto,
+    ratio: number = OmieMapper.DEFAULT_PRECO_FABRICA_RATIO,
   ): {
     where: Prisma.ProdutoWhereUniqueInput;
     create: Prisma.ProdutoUncheckedCreateInput;
@@ -69,9 +84,11 @@ export class OmieMapper {
     if (!codigoOmie) return null;
 
     const precoTabela = o.valor_unitario ?? 0;
-    // Sem campo de preço de fábrica no OMIE base — usamos 70% como heurística inicial.
-    // Em produção, ler de uma tabela auxiliar OMIE (tabela_de_preco) ou outro endpoint.
-    const precoFabrica = Number((precoTabela * 0.7).toFixed(2));
+    // Heurística: precoFabrica = precoTabela * ratio (default 70%).
+    // TODO: substituir por consulta a OMIE `tabela_de_preco` quando o cliente
+    // configurar tabelas auxiliares. Ratio configurável via env por empresa.
+    const safeRatio = ratio >= 0 && ratio <= 1 ? ratio : OmieMapper.DEFAULT_PRECO_FABRICA_RATIO;
+    const precoFabrica = Number((precoTabela * safeRatio).toFixed(2));
 
     return {
       where: { empresaId_codigoOmie: { empresaId, codigoOmie } },

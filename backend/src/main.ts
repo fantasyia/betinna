@@ -24,6 +24,10 @@ async function bootstrap(): Promise<void> {
 
   const env = app.get(EnvService);
 
+  // Audita config (ENCRYPTION_KEY fraca, OMIE em demo em prod, etc).
+  // Em produção, problemas críticos abortam o boot — corrija antes de subir.
+  env.enforceProductionReadiness();
+
   // Trust proxy — necessário pra que `req.ip` reflita o IP REAL do cliente
   // quando rodamos atrás de proxies (Railway, Nginx, Cloudflare).
   // Sem isso, `req.ip` é sempre o IP do proxy e o ML IP whitelist pode ser
