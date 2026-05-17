@@ -100,7 +100,22 @@ describe('AprovacoesService', () => {
     prisma = makePrismaMock();
     repScope = makeRepScopeMock();
     bus = makeBusMock();
-    service = new AprovacoesService(prisma as never, repScope as never, bus as never);
+    service = new AprovacoesService(
+      prisma as never,
+      repScope as never,
+      bus as never,
+      {
+        criarParaUsuario: vi.fn().mockResolvedValue(null),
+        criarParaRole: vi.fn().mockResolvedValue(0),
+      } as never,
+      {
+        enviarAprovacaoResolvida: vi.fn().mockResolvedValue({ ok: true }),
+        enviarBoasVindas: vi.fn().mockResolvedValue({ ok: true }),
+        enviarComissaoFechada: vi.fn().mockResolvedValue({ ok: true }),
+        enviarOcorrenciaCritica: vi.fn().mockResolvedValue({ ok: true }),
+        enviarAmostraFollowup: vi.fn().mockResolvedValue({ ok: true }),
+      } as never,
+    );
   });
 
   // -------------------------------------------------------------------------

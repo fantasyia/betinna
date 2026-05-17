@@ -2,6 +2,7 @@ import { Injectable } from '@nestjs/common';
 import { PrismaService } from '@database/prisma.service';
 import { ClientesService } from '@modules/clientes/clientes.service';
 import { PricingService } from '@modules/produtos/pricing.service';
+import { CatalogShareService } from './catalog-share.service';
 import {
   BusinessRuleException,
   ForbiddenException,
@@ -55,6 +56,7 @@ export class CatalogoService {
     private readonly prisma: PrismaService,
     private readonly clientes: ClientesService,
     private readonly pricing: PricingService,
+    private readonly share: CatalogShareService,
   ) {}
 
   private requireEmpresa(user: AuthenticatedUser): string {
@@ -215,13 +217,31 @@ export class CatalogoService {
 
   /**
    * Compartilhar catálogo com cliente (WhatsApp / PDF / Link público).
-   * Por enquanto registra audit log e retorna uma URL fictícia.
-   * Quando integrarmos WhatsApp Business + Storage, gera link real.
+   *
+   * Sprint 2026-05-17 (audit fix): gera JWT signed com TTL (default 7d).
+   * URL final: `/catalogo/share/<token>` — endpoint público `:token` decodifica
+   * e retorna preview SE token válido e não expirado.
+   *
+   * Segurança:
+   *  - Token assinado HS256 com secret derivada da ENCRYPTION_KEY
+   *  - Expira em 7 dias (config via CATALOG_SHARE_TTL_SECONDS)
+   *  - Cliente clica no link → backend valida → mostra preview
+   *  - Sem token válido = 401 Unauthorized
    */
   async shareWithClient(
     user: AuthenticatedUser,
     dto: ShareCatalogDto,
-  ): Promise<{ ok: true; canal: string; clienteId: string; itens: number; previewUrl: string }> {
+  ): Promise<{
+    ok: true;
+    canal: string;
+    clienteId: string;
+    itens: number;
+    token: string;
+    previewUrl: string;
+  }> {
+    if (!user.empresaIdAtiva) {
+      throw new BusinessRuleException('Empresa não definida');
+    }
     const cliente = await this.clientes.findById(user, dto.clienteId);
     const items = await this.previewParaCliente(user, dto.clienteId);
     if (items.length === 0) {
@@ -229,14 +249,49 @@ export class CatalogoService {
         'Seu catálogo está vazio. Adicione produtos antes de compartilhar.',
       );
     }
-    // URL placeholder — implementação real vem com integração de WhatsApp / Storage de PDFs
-    const previewUrl = `/catalogo/share/${user.id}/${cliente.id}`;
+    const token = await this.share.gerar({
+      repId: user.id,
+      clienteId: cliente.id,
+      empresaId: user.empresaIdAtiva,
+    });
     return {
       ok: true,
       canal: dto.canal,
       clienteId: cliente.id,
       itens: items.length,
-      previewUrl,
+      token,
+      previewUrl: `/catalogo/share/${token}`,
+    };
+  }
+
+  /**
+   * Acessa preview do catálogo via token público (sem auth).
+   * Usado pelo endpoint `GET /catalogo/share/:token`.
+   */
+  async resolverShareToken(
+    token: string,
+  ): Promise<{ rep: { id: string; nome: string }; produtos: unknown[] }> {
+    const payload = await this.share.validar(token);
+    // Reconstruir AuthenticatedUser mínimo pra reuso de previewParaCliente
+    const rep = await this.prisma.usuario.findUnique({
+      where: { id: payload.repId },
+      select: { id: true, nome: true, status: true, role: true },
+    });
+    if (!rep || rep.status !== 'ATIVO' || rep.role !== 'REP') {
+      throw new BusinessRuleException('Representante não encontrado ou inativo. Link inválido.');
+    }
+    const fakeAuth: AuthenticatedUser = {
+      id: rep.id,
+      email: '',
+      nome: rep.nome,
+      role: rep.role,
+      empresaIds: [payload.empresaId],
+      empresaIdAtiva: payload.empresaId,
+    };
+    const produtos = await this.previewParaCliente(fakeAuth, payload.clienteId);
+    return {
+      rep: { id: rep.id, nome: rep.nome },
+      produtos,
     };
   }
 

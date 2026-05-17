@@ -14,6 +14,8 @@ import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
 import { Audit } from '@shared/decorators/audit.decorator';
 import { CurrentUser } from '@shared/decorators/current-user.decorator';
 import { RequirePermissions } from '@shared/decorators/permissions.decorator';
+import { Public } from '@shared/decorators/public.decorator';
+import { Throttle, seconds } from '@nestjs/throttler';
 import { ZodValidationPipe } from '@shared/pipes/zod-validation.pipe';
 import type { AuthenticatedUser } from '@shared/types/authenticated-user';
 import {
@@ -104,11 +106,26 @@ export class CatalogoController {
   @Post('share')
   @RequirePermissions({ module: 'catalogo', action: 'edit' })
   @Audit({ action: 'share_catalog', resource: 'catalogo_rep' })
-  @ApiOperation({ summary: 'Compartilha catálogo com cliente (WhatsApp/PDF/Link)' })
+  @ApiOperation({ summary: 'Compartilha catálogo com cliente (gera token JWT 7d)' })
   share(
     @CurrentUser() user: AuthenticatedUser,
     @Body(new ZodValidationPipe(shareCatalogSchema)) dto: ShareCatalogDto,
   ) {
     return this.catalogo.shareWithClient(user, dto);
+  }
+
+  /**
+   * Endpoint público — cliente acessa preview via link compartilhado.
+   * Sem auth. Token JWT signed valida; falha = 401.
+   * Throttle 30/min por IP pra evitar brute force de tokens.
+   */
+  @Public()
+  @Get('share/:token')
+  @Throttle({ default: { limit: 30, ttl: seconds(60) } })
+  @ApiOperation({
+    summary: 'Acessa preview do catálogo via token público (sem auth). TTL ~7 dias.',
+  })
+  acessarShare(@Param('token') token: string) {
+    return this.catalogo.resolverShareToken(token);
   }
 }

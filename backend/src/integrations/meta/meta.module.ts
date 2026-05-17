@@ -2,6 +2,7 @@ import { Module } from '@nestjs/common';
 import { FacebookService } from './facebook.service';
 import { InstagramService } from './instagram.service';
 import { MetaGraphClientService } from './meta-graph-client.service';
+import { MetaMediaService } from './meta-media.service';
 import { MetaOAuthController } from './meta-oauth.controller';
 import { MetaOAuthService } from './meta-oauth.service';
 import { MetaWebhookController } from './meta-webhook.controller';
@@ -18,7 +19,19 @@ import { MetaWebhookController } from './meta-webhook.controller';
  */
 @Module({
   controllers: [MetaOAuthController, MetaWebhookController],
-  providers: [MetaGraphClientService, MetaOAuthService, FacebookService, InstagramService],
-  exports: [MetaGraphClientService, MetaOAuthService, FacebookService, InstagramService],
+  providers: [
+    MetaGraphClientService,
+    MetaOAuthService,
+    MetaMediaService,
+    FacebookService,
+    InstagramService,
+  ],
+  exports: [
+    MetaGraphClientService,
+    MetaOAuthService,
+    MetaMediaService,
+    FacebookService,
+    InstagramService,
+  ],
 })
 export class MetaModule {}

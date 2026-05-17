@@ -1,4 +1,5 @@
 import { Injectable, Logger } from '@nestjs/common';
+import { logContext } from '@shared/utils/log-context';
 import { type HttpRequestOptions, type HttpResponse, HttpClientError } from './http-client.types';
 
 /**
@@ -233,6 +234,14 @@ export class HttpClientService {
     };
     if (body !== undefined && body !== null && !out['content-type']) {
       out['content-type'] = typeof body === 'string' ? 'text/plain' : 'application/json';
+    }
+    // Propaga requestId pra downstream (cross-service correlation). Útil em
+    // integrações que ecoam o header de volta nos logs.
+    if (!out['x-request-id']) {
+      const ctx = logContext.getStore();
+      if (ctx?.requestId) {
+        out['x-request-id'] = ctx.requestId;
+      }
     }
     return out;
   }

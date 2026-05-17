@@ -1,6 +1,8 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, Logger } from '@nestjs/common';
+import { createHash } from 'node:crypto';
 import { Prisma } from '@prisma/client';
 import { PrismaService } from '@database/prisma.service';
+import { RedisService } from '@database/redis.service';
 import { RepScopeService } from '@shared/scope/rep-scope.service';
 import { getCallerEmpresaId } from '@shared/utils/auth-context';
 import type { AuthenticatedUser } from '@shared/types/authenticated-user';
@@ -28,12 +30,63 @@ function arredondar(v: number | null | undefined): number {
 
 // ─── Service ─────────────────────────────────────────────────────────────────
 
+/**
+ * TTL do cache de relatórios em segundos. Curto pra refletir mudanças rápido
+ * (60s = janela de tolerância pra refreshes consecutivos). Override via env
+ * `RELATORIOS_CACHE_TTL`.
+ */
+const CACHE_TTL_SECONDS = parseInt(process.env.RELATORIOS_CACHE_TTL ?? '60', 10) || 60;
+
 @Injectable()
 export class RelatoriosService {
+  private readonly logger = new Logger(RelatoriosService.name);
+
   constructor(
     private readonly prisma: PrismaService,
     private readonly repScope: RepScopeService,
+    private readonly redis: RedisService,
   ) {}
+
+  /**
+   * Chave determinística pra cache. Inclui:
+   *  - empresaId (multi-tenant)
+   *  - userId + role (escopo de visibilidade — REP só vê próprios; GERENTE só subordinados)
+   *  - nome do relatório
+   *  - hash dos params (período)
+   *
+   * Mudou qualquer um → cache invalida automaticamente.
+   */
+  private cacheKey(user: AuthenticatedUser, relatorio: string, params: PeriodoDto): string {
+    const raw = JSON.stringify({
+      empresaId: user.empresaIdAtiva,
+      userId: user.id,
+      role: user.role,
+      relatorio,
+      params,
+    });
+    const hash = createHash('sha256').update(raw).digest('hex').slice(0, 24);
+    return `rel:${relatorio}:${hash}`;
+  }
+
+  private async withCache<T>(key: string, compute: () => Promise<T>): Promise<T> {
+    try {
+      const cached = await this.redis.get(key);
+      if (cached) {
+        return JSON.parse(cached) as T;
+      }
+    } catch (err) {
+      this.logger.warn(
+        `Cache miss (erro) ${key}: ${err instanceof Error ? err.message : String(err)}`,
+      );
+    }
+    const result = await compute();
+    try {
+      await this.redis.setEx(key, JSON.stringify(result), CACHE_TTL_SECONDS);
+    } catch {
+      // best-effort
+    }
+    return result;
+  }
 
   // ─── Auth ─────────────────────────────────────────────────────────────
 
@@ -102,6 +155,12 @@ export class RelatoriosService {
   // ─── 1. Vendas ────────────────────────────────────────────────────────
 
   async vendas(user: AuthenticatedUser, params: PeriodoDto) {
+    return this.withCache(this.cacheKey(user, 'vendas', params), () =>
+      this.vendasInternal(user, params),
+    );
+  }
+
+  private async vendasInternal(user: AuthenticatedUser, params: PeriodoDto) {
     const empresaId = this.requireEmpresa(user);
     const rf = await this.repFilter(user, params.representanteId);
     const { de, ate } = params;
@@ -187,6 +246,12 @@ export class RelatoriosService {
   // ─── 2. Funil de leads ────────────────────────────────────────────────
 
   async funil(user: AuthenticatedUser, params: PeriodoDto) {
+    return this.withCache(this.cacheKey(user, 'funil', params), () =>
+      this.funilInternal(user, params),
+    );
+  }
+
+  private async funilInternal(user: AuthenticatedUser, params: PeriodoDto) {
     const empresaId = this.requireEmpresa(user);
     const rf = await this.repFilter(user, params.representanteId);
     const { de, ate } = params;
@@ -303,6 +368,12 @@ export class RelatoriosService {
   // ─── 3. Comissões ─────────────────────────────────────────────────────
 
   async comissoes(user: AuthenticatedUser, params: PeriodoDto) {
+    return this.withCache(this.cacheKey(user, 'comissoes', params), () =>
+      this.comissoesInternal(user, params),
+    );
+  }
+
+  private async comissoesInternal(user: AuthenticatedUser, params: PeriodoDto) {
     const empresaId = this.requireEmpresa(user);
     const rf = await this.repFilter(user, params.representanteId);
     const { de, ate } = params;
@@ -387,6 +458,10 @@ export class RelatoriosService {
   // ─── 4. SAC / Ocorrências ─────────────────────────────────────────────
 
   async sac(user: AuthenticatedUser, params: PeriodoDto) {
+    return this.withCache(this.cacheKey(user, 'sac', params), () => this.sacInternal(user, params));
+  }
+
+  private async sacInternal(user: AuthenticatedUser, params: PeriodoDto) {
     const empresaId = this.requireEmpresa(user);
     const rf = await this.repFilter(user, params.representanteId);
     const { de, ate } = params;
@@ -490,6 +565,12 @@ export class RelatoriosService {
   // ─── 5. Campanhas ─────────────────────────────────────────────────────
 
   async campanhas(user: AuthenticatedUser, params: PeriodoDto) {
+    return this.withCache(this.cacheKey(user, 'campanhas', params), () =>
+      this.campanhasInternal(user, params),
+    );
+  }
+
+  private async campanhasInternal(user: AuthenticatedUser, params: PeriodoDto) {
     const empresaId = this.requireEmpresa(user);
     const { de, ate } = params;
 
@@ -587,6 +668,12 @@ export class RelatoriosService {
   // ─── 6. Amostras ──────────────────────────────────────────────────────
 
   async amostras(user: AuthenticatedUser, params: PeriodoDto) {
+    return this.withCache(this.cacheKey(user, 'amostras', params), () =>
+      this.amostrasInternal(user, params),
+    );
+  }
+
+  private async amostrasInternal(user: AuthenticatedUser, params: PeriodoDto) {
     const empresaId = this.requireEmpresa(user);
     const rf = await this.repFilter(user, params.representanteId);
     const { de, ate } = params;
@@ -653,16 +740,118 @@ export class RelatoriosService {
     };
   }
 
-  // ─── 7. Dashboard executivo ───────────────────────────────────────────
+  // ─── 7. Fidelidade ────────────────────────────────────────────────────
+
+  /**
+   * KPIs de fidelidade: pontos creditados/resgatados/ajustados no período,
+   * saldo total acumulado da empresa, top clientes por saldo, e taxa de uso
+   * (% de pontos resgatados sobre creditados).
+   *
+   * Não respeita `repFilter` — fidelidade é cross-rep por natureza (decisão
+   * comercial do tenant). Filtragem por rep poderia esconder o efeito real
+   * do programa em campanhas que cruzam carteiras.
+   */
+  async fidelidade(user: AuthenticatedUser, params: PeriodoDto) {
+    return this.withCache(this.cacheKey(user, 'fidelidade', params), () =>
+      this.fidelidadeInternal(user, params),
+    );
+  }
+
+  private async fidelidadeInternal(user: AuthenticatedUser, params: PeriodoDto) {
+    const empresaId = this.requireEmpresa(user);
+    const de = new Date(params.de);
+    const ate = new Date(params.ate);
+
+    const where = (dStart: Date, dEnd: Date) => ({
+      empresaId,
+      criadoEm: { gte: dStart, lte: dEnd },
+    });
+
+    type MovGrpRow = {
+      tipo: string;
+      _sum: { pontos: number | null } | null;
+      _count: { _all: number };
+    };
+
+    const [movPorTipo, saldoAgg, programa, topClientes] = await Promise.all([
+      this.prisma.movimentoFidelidade.groupBy({
+        by: ['tipo'],
+        where: where(de, ate),
+        _sum: { pontos: true },
+        _count: { _all: true },
+      }) as unknown as Promise<MovGrpRow[]>,
+      this.prisma.saldoFidelidade.aggregate({
+        where: { empresaId },
+        _sum: { pontos: true },
+        _count: { _all: true },
+      }),
+      this.prisma.programaFidelidade.findUnique({ where: { empresaId } }),
+      this.prisma.saldoFidelidade.findMany({
+        where: { empresaId, pontos: { gt: 0 } },
+        orderBy: { pontos: 'desc' },
+        take: 5,
+        select: {
+          pontos: true,
+          cliente: { select: { id: true, nome: true } },
+        },
+      }),
+    ]);
+
+    const byTipo: Record<string, { pontos: number; count: number }> = {};
+    for (const m of movPorTipo) {
+      byTipo[m.tipo] = { pontos: m._sum?.pontos ?? 0, count: m._count._all };
+    }
+
+    const creditados = byTipo['GANHO_PEDIDO']?.pontos ?? 0;
+    const resgatados = Math.abs(byTipo['RESGATE']?.pontos ?? 0);
+    const estornados = Math.abs(byTipo['ESTORNO_PEDIDO']?.pontos ?? 0);
+    const expirados = Math.abs(byTipo['EXPIRACAO']?.pontos ?? 0);
+    const ajustados = byTipo['AJUSTE_MANUAL']?.pontos ?? 0;
+
+    return {
+      periodo: { de, ate },
+      programaAtivo: programa?.ativo ?? false,
+      clientesNoPrograma: saldoAgg._count?._all ?? 0,
+      saldoTotal: saldoAgg._sum?.pontos ?? 0,
+      noPeriodo: {
+        creditados,
+        resgatados,
+        estornados,
+        expirados,
+        ajustados,
+        totalMovimentos: movPorTipo.reduce((s, m) => s + m._count._all, 0),
+      },
+      taxaUso: creditados > 0 ? Math.round((resgatados / creditados) * 100) : 0,
+      topClientes: topClientes.map((t) => ({
+        cliente: t.cliente,
+        pontos: t.pontos,
+      })),
+    };
+  }
+
+  // ─── 8. Dashboard executivo ───────────────────────────────────────────
 
   async dashboard(user: AuthenticatedUser, params: PeriodoDto) {
-    const [vendasData, funilData, sacData, campanhasData, amostrasData] = await Promise.all([
-      this.vendas(user, params),
-      this.funil(user, params),
-      this.sac(user, params),
-      this.campanhas(user, params),
-      this.amostras(user, params),
-    ]);
+    // Dashboard agrega 6 áreas em paralelo — query pesada. Cache TTL=60s pra
+    // absorver F5 consecutivos sem ficar com dados velhos. Cache invalida
+    // automaticamente em refresh manual da página (URL params diferentes).
+    return this.withCache(this.cacheKey(user, 'dashboard', params), () =>
+      this.dashboardInternal(user, params),
+    );
+  }
+
+  private async dashboardInternal(user: AuthenticatedUser, params: PeriodoDto) {
+    // Chama versões Internal (sem cache) — dashboard tem seu próprio cache;
+    // não vale pagar 2x o overhead de SHA + Redis get/set por área.
+    const [vendasData, funilData, sacData, campanhasData, amostrasData, fidelidadeData] =
+      await Promise.all([
+        this.vendasInternal(user, params),
+        this.funilInternal(user, params),
+        this.sacInternal(user, params),
+        this.campanhasInternal(user, params),
+        this.amostrasInternal(user, params),
+        this.fidelidadeInternal(user, params),
+      ]);
 
     return {
       periodo: { de: params.de, ate: params.ate },
@@ -703,6 +892,14 @@ export class RelatoriosService {
         total: amostrasData.total,
         taxaConversao: amostrasData.taxaConversao,
         valorConvertido: amostrasData.valorConvertido,
+      },
+      fidelidade: {
+        programaAtivo: fidelidadeData.programaAtivo,
+        clientesNoPrograma: fidelidadeData.clientesNoPrograma,
+        saldoTotal: fidelidadeData.saldoTotal,
+        creditados: fidelidadeData.noPeriodo.creditados,
+        resgatados: fidelidadeData.noPeriodo.resgatados,
+        taxaUso: fidelidadeData.taxaUso,
       },
     };
   }

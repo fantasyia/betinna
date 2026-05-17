@@ -8,6 +8,8 @@ import {
 } from '@shared/errors/app-exception';
 import { ErrorCode } from '@shared/errors/error-codes';
 import { FluxoEventBusService } from '@modules/fluxos/fluxo-event-bus.service';
+import { NotificacoesService } from '@modules/notificacoes/notificacoes.service';
+import { TransactionalEmailService } from '@integrations/sendgrid/transactional-email.service';
 import { RepScopeService } from '@shared/scope/rep-scope.service';
 import type { AuthenticatedUser } from '@shared/types/authenticated-user';
 import { type Paginated, buildPaginated } from '@shared/types/pagination';
@@ -49,6 +51,8 @@ export class OcorrenciasService {
     private readonly repScope: RepScopeService,
     private readonly bus: FluxoEventBusService,
     private readonly sequence: SequenceService,
+    private readonly notificacoes: NotificacoesService,
+    private readonly email: TransactionalEmailService,
   ) {}
 
   private requireEmpresa(user: AuthenticatedUser): string {
@@ -205,6 +209,22 @@ export class OcorrenciasService {
 
     const ocorrencia = await this.findById(user, created.id);
 
+    // Notifica gerentes + SAC quando severidade alta/crítica
+    if (['CRITICA', 'ALTA'].includes(ocorrencia.severidade)) {
+      void this.notificacoes.criarParaRole({
+        empresaId,
+        roles: ['GERENTE', 'DIRECTOR', 'SAC'],
+        tipo: 'OCORRENCIA_ABERTA',
+        prioridade: ocorrencia.severidade === 'CRITICA' ? 'URGENTE' : 'ALTA',
+        titulo: `Ocorrência ${ocorrencia.severidade} aberta`,
+        mensagem: `${ocorrencia.numero} · ${ocorrencia.titulo}`,
+        link: `/ocorrencias/${ocorrencia.id}`,
+        metadata: { ocorrenciaId: ocorrencia.id, severidade: ocorrencia.severidade },
+      });
+      // E-mail transacional pra cada GERENTE+DIRECTOR+SAC ativo da empresa
+      void this.notificarEmailOcorrenciaCritica(empresaId, ocorrencia, slaHoras);
+    }
+
     // Trigger: OCORRENCIA_ABERTA
     void this.bus.disparar(empresaId, 'OCORRENCIA_ABERTA', {
       ocorrenciaId: ocorrencia.id,
@@ -317,6 +337,21 @@ export class OcorrenciasService {
         },
       });
     });
+
+    // Notifica o criador que sua ocorrência foi resolvida
+    if (existing.criadoPorId && existing.criadoPorId !== user.id) {
+      void this.notificacoes.criarParaUsuario({
+        empresaId: existing.empresaId,
+        usuarioId: existing.criadoPorId,
+        tipo: 'OCORRENCIA_RESOLVIDA',
+        prioridade: 'NORMAL',
+        titulo: 'Ocorrência resolvida',
+        mensagem: `${existing.numero} foi marcada como resolvida.`,
+        link: `/ocorrencias/${existing.id}`,
+        metadata: { ocorrenciaId: existing.id },
+      });
+    }
+
     return this.findById(user, id);
   }
 
@@ -398,5 +433,42 @@ export class OcorrenciasService {
   private async gerarNumero(empresaId: string): Promise<string> {
     const seq = await this.sequence.next(empresaId, 'ocorrencia');
     return `OCO-${seq.toString().padStart(4, '0')}`;
+  }
+
+  /**
+   * Best-effort: envia e-mail pros usuários ativos com papéis gerenciais
+   * notificando da ocorrência crítica/alta. Falha não interrompe nada.
+   */
+  private async notificarEmailOcorrenciaCritica(
+    empresaId: string,
+    ocorrencia: { id: string; numero: string; titulo: string; severidade: string },
+    slaHoras: number,
+  ): Promise<void> {
+    try {
+      const destinatarios = await this.prisma.usuario.findMany({
+        where: {
+          status: 'ATIVO',
+          role: { in: ['GERENTE', 'DIRECTOR', 'SAC'] },
+          empresas: { some: { empresaId } },
+        },
+        select: { email: true, nome: true },
+      });
+      for (const d of destinatarios) {
+        if (!d.email) continue;
+        void this.email.enviarOcorrenciaCritica({
+          para: d.email,
+          destinatarioNome: d.nome,
+          ocorrenciaId: ocorrencia.id,
+          numero: ocorrencia.numero,
+          titulo: ocorrencia.titulo,
+          severidade: ocorrencia.severidade as 'CRITICA' | 'ALTA',
+          slaHoras,
+        });
+      }
+    } catch (err) {
+      this.logger.warn(
+        `Falha enviando e-mails de ocorrência crítica: ${err instanceof Error ? err.message : String(err)}`,
+      );
+    }
   }
 }

@@ -18,6 +18,7 @@ import { PrismaService } from '@database/prisma.service';
 import { Public } from '@shared/decorators/public.decorator';
 import { UnauthorizedException } from '@shared/errors/app-exception';
 import { WebhookSignatureUtil } from '@shared/http/webhook-signature.util';
+import { NotificacoesService } from '@modules/notificacoes/notificacoes.service';
 import { WebhookAntiReplayService } from '@shared/utils/webhook-anti-replay.service';
 
 const webhookClienteStatusSchema = z.object({
@@ -50,6 +51,7 @@ export class OmieWebhookController {
     private readonly prisma: PrismaService,
     private readonly env: EnvService,
     private readonly antiReplay: WebhookAntiReplayService,
+    private readonly notificacoes: NotificacoesService,
   ) {}
 
   @Public()
@@ -136,6 +138,27 @@ export class OmieWebhookController {
     this.logger.log(
       `Cliente ${cliente.nome} (${codigoOmie}) → omieStatus=${novoOmieStatus} via webhook`,
     );
+
+    // Notifica REP responsável quando cliente foi bloqueado (precisa ação)
+    if (novoOmieStatus === 'BLOQUEADO') {
+      const c = await this.prisma.cliente.findUnique({
+        where: { id: cliente.id },
+        select: { representanteId: true },
+      });
+      if (c?.representanteId) {
+        void this.notificacoes.criarParaUsuario({
+          empresaId: cliente.empresaId,
+          usuarioId: c.representanteId,
+          tipo: 'CLIENTE_BLOQUEADO',
+          prioridade: 'ALTA',
+          titulo: 'Cliente bloqueado no OMIE',
+          mensagem: `${cliente.nome} foi bloqueado. Pedidos novos não passam até resolver com o financeiro.`,
+          link: `/clientes/${cliente.id}`,
+          metadata: { clienteId: cliente.id, codigoOmie },
+        });
+      }
+    }
+
     return { ok: true };
   }
 }

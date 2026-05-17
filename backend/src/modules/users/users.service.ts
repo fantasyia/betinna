@@ -5,6 +5,7 @@ import { EnvService } from '@config/env.service';
 import { PrismaService } from '@database/prisma.service';
 import { RedisService } from '@database/redis.service';
 import { AuthGuard } from '@modules/auth/guards/auth.guard';
+import { TransactionalEmailService } from '@integrations/sendgrid/transactional-email.service';
 import {
   BusinessRuleException,
   ConflictException,
@@ -43,6 +44,7 @@ export class UsersService {
     private readonly prisma: PrismaService,
     private readonly env: EnvService,
     private readonly redis: RedisService,
+    private readonly email: TransactionalEmailService,
   ) {
     this.supabaseAdmin = createClient(
       this.env.get('SUPABASE_URL'),
@@ -242,6 +244,16 @@ export class UsersService {
       },
     });
     this.logger.log(`Usuário criado: ${created.email} (${created.role})`);
+
+    // E-mail de boas-vindas — complementa o magic link do Supabase com
+    // contexto da empresa + CTA pro frontend. Best-effort.
+    const empresaNome = created.empresas?.[0]?.empresa?.nome ?? 'sua empresa';
+    void this.email.enviarBoasVindas({
+      para: created.email,
+      nome: created.nome,
+      empresaNome,
+    });
+
     return this.serialize(created);
   }
 

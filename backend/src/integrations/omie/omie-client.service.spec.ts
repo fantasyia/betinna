@@ -234,6 +234,117 @@ describe('OmieClientService', () => {
     });
   });
 
+  // -------------------------------------------------------------------------
+  // Retry exponencial em faults transient (audit fix 2026-05-17)
+  // -------------------------------------------------------------------------
+
+  describe('retry em fault retryable', () => {
+    beforeEach(() => {
+      integracoes.obterCredenciaisInternas.mockResolvedValue({
+        credenciais: { appKey: 'k', appSecret: 's' },
+      });
+    });
+
+    it('retenta em fault "sem comunicação" e tem sucesso na 2ª tentativa', async () => {
+      const service = new OmieClientService(
+        http as never,
+        makeEnvMock() as never,
+        integracoes as never,
+      );
+      // Primeira tentativa: fault transient. Segunda: sucesso.
+      http.post
+        .mockResolvedValueOnce({
+          data: { faultcode: 'SOAP-ENV:Server', faultstring: 'Sem comunicação com o servidor' },
+        })
+        .mockResolvedValueOnce({
+          data: { clientes_cadastro: [], total_de_registros: 0, pagina: 1, total_de_paginas: 1 },
+        });
+
+      const r = await service.listarClientes('emp-1', 1);
+      expect(r).toBeDefined();
+      expect(http.post).toHaveBeenCalledTimes(2);
+    });
+
+    it('retenta em fault "tempo limite excedido"', async () => {
+      const service = new OmieClientService(
+        http as never,
+        makeEnvMock() as never,
+        integracoes as never,
+      );
+      http.post
+        .mockResolvedValueOnce({
+          data: { faultcode: 'SOAP-ENV:Server', faultstring: 'Timeout' },
+        })
+        .mockResolvedValueOnce({
+          data: { clientes_cadastro: [], total_de_registros: 0, pagina: 1, total_de_paginas: 1 },
+        });
+
+      await service.listarClientes('emp-1', 1);
+      expect(http.post).toHaveBeenCalledTimes(2);
+    });
+
+    it('NÃO retenta em fault definitivo (cliente não encontrado)', async () => {
+      const service = new OmieClientService(
+        http as never,
+        makeEnvMock() as never,
+        integracoes as never,
+      );
+      http.post.mockResolvedValue({
+        data: { faultcode: 'CRM-001', faultstring: 'Cliente não encontrado' },
+      });
+
+      await expect(service.listarClientes('emp-1', 1)).rejects.toBeInstanceOf(IntegrationException);
+      // Só 1 tentativa: fault permanente não retenta
+      expect(http.post).toHaveBeenCalledTimes(1);
+    });
+
+    it('NÃO retenta em fault de credencial inválida', async () => {
+      const service = new OmieClientService(
+        http as never,
+        makeEnvMock() as never,
+        integracoes as never,
+      );
+      http.post.mockResolvedValue({
+        data: { faultcode: 'SOAP-ENV:Client-401', faultstring: 'App Key inválida' },
+      });
+
+      await expect(service.listarClientes('emp-1', 1)).rejects.toBeInstanceOf(IntegrationException);
+      expect(http.post).toHaveBeenCalledTimes(1);
+    });
+
+    it('esgota 3 tentativas em fault transient persistente e lança', async () => {
+      const service = new OmieClientService(
+        http as never,
+        makeEnvMock() as never,
+        integracoes as never,
+      );
+      http.post.mockResolvedValue({
+        data: { faultcode: 'SOAP-ENV:Server', faultstring: 'Servidor em manutenção' },
+      });
+
+      await expect(service.listarClientes('emp-1', 1)).rejects.toBeInstanceOf(IntegrationException);
+      expect(http.post).toHaveBeenCalledTimes(3);
+    });
+
+    it('retenta em rate limit ("aguarde alguns segundos")', async () => {
+      const service = new OmieClientService(
+        http as never,
+        makeEnvMock() as never,
+        integracoes as never,
+      );
+      http.post
+        .mockResolvedValueOnce({
+          data: { faultcode: 'SOAP-ENV:Server', faultstring: 'Aguarde alguns segundos' },
+        })
+        .mockResolvedValueOnce({
+          data: { clientes_cadastro: [], total_de_registros: 0, pagina: 1, total_de_paginas: 1 },
+        });
+
+      await service.listarClientes('emp-1', 1);
+      expect(http.post).toHaveBeenCalledTimes(2);
+    });
+  });
+
   describe('endpoints de alto nível', () => {
     beforeEach(() => {
       integracoes.obterCredenciaisInternas.mockResolvedValue({

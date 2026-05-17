@@ -131,7 +131,18 @@ describe('UsersService', () => {
     prisma = makePrismaMock();
     env = makeEnv();
     redis = makeRedis();
-    service = new UsersService(prisma as never, env as never, redis as never);
+    service = new UsersService(
+      prisma as never,
+      env as never,
+      redis as never,
+      {
+        enviarBoasVindas: vi.fn().mockResolvedValue({ ok: true }),
+        enviarAprovacaoResolvida: vi.fn().mockResolvedValue({ ok: true }),
+        enviarComissaoFechada: vi.fn().mockResolvedValue({ ok: true }),
+        enviarOcorrenciaCritica: vi.fn().mockResolvedValue({ ok: true }),
+        enviarAmostraFollowup: vi.fn().mockResolvedValue({ ok: true }),
+      } as never,
+    );
     mockInviteUserByEmail.mockReset();
   });
 

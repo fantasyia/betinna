@@ -3,6 +3,7 @@ import type { Response, Request } from 'express';
 import { EnvService } from '@config/env.service';
 import { UnauthorizedException, IntegrationException } from '@shared/errors/app-exception';
 import { ErrorCode } from '@shared/errors/error-codes';
+import { addBreadcrumb } from '@shared/observability/sentry';
 
 /**
  * Sessão de auth via cookie httpOnly (D47 — 2026-05-17).
@@ -55,25 +56,26 @@ export class AuthSessionService {
     password: string,
     res: Response,
   ): Promise<{ accessToken: string; expiresAt: number; userId: string }> {
-    const tokenRes = await fetch(
-      `${this.supabaseUrl}/auth/v1/token?grant_type=password`,
-      {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          apikey: this.supabaseAnonKey,
-        },
-        body: JSON.stringify({ email, password }),
+    const tokenRes = await fetch(`${this.supabaseUrl}/auth/v1/token?grant_type=password`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        apikey: this.supabaseAnonKey,
       },
-    );
+      body: JSON.stringify({ email, password }),
+    });
 
     if (!tokenRes.ok) {
-      const body = (await tokenRes.json().catch(() => null)) as
-        | { error_description?: string; msg?: string }
-        | null;
+      const body = (await tokenRes.json().catch(() => null)) as {
+        error_description?: string;
+        msg?: string;
+      } | null;
       const msg = body?.error_description ?? body?.msg ?? 'Credenciais inválidas';
+      addBreadcrumb('auth', 'login-failed', { status: tokenRes.status }, 'warning');
       throw new UnauthorizedException(msg, ErrorCode.AUTH_INVALID_TOKEN);
     }
+
+    addBreadcrumb('auth', 'login-success');
 
     const data = (await tokenRes.json()) as {
       access_token?: string;
@@ -110,17 +112,14 @@ export class AuthSessionService {
       );
     }
 
-    const tokenRes = await fetch(
-      `${this.supabaseUrl}/auth/v1/token?grant_type=refresh_token`,
-      {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          apikey: this.supabaseAnonKey,
-        },
-        body: JSON.stringify({ refresh_token: refreshToken }),
+    const tokenRes = await fetch(`${this.supabaseUrl}/auth/v1/token?grant_type=refresh_token`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        apikey: this.supabaseAnonKey,
       },
-    );
+      body: JSON.stringify({ refresh_token: refreshToken }),
+    });
 
     if (!tokenRes.ok) {
       // Refresh token inválido/expirado/revogado → apaga cookie e força login

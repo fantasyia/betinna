@@ -12,6 +12,8 @@ import type { AuthenticatedUser } from '@shared/types/authenticated-user';
 import { type Paginated, buildPaginated } from '@shared/types/pagination';
 import type { DecidirAprovacaoDto, ListAprovacoesDto } from './aprovacoes.dto';
 import { FluxoEventBusService } from '@modules/fluxos/fluxo-event-bus.service';
+import { NotificacoesService } from '@modules/notificacoes/notificacoes.service';
+import { TransactionalEmailService } from '@integrations/sendgrid/transactional-email.service';
 
 const aprovacaoInclude = {
   pedido: {
@@ -43,6 +45,8 @@ export class AprovacoesService {
     private readonly prisma: PrismaService,
     private readonly repScope: RepScopeService,
     private readonly bus: FluxoEventBusService,
+    private readonly notificacoes: NotificacoesService,
+    private readonly email: TransactionalEmailService,
   ) {}
 
   async list(
@@ -129,6 +133,31 @@ export class AprovacoesService {
 
     this.logger.log(`Aprovação ${apr.id} APROVADA por ${user.email} (pedido ${apr.pedidoId})`);
 
+    // Notifica o REP que sua aprovação foi resolvida (APROVADA)
+    if (apr.representanteId) {
+      void this.notificacoes.criarParaUsuario({
+        empresaId: result.pedido.empresaId,
+        usuarioId: apr.representanteId,
+        tipo: 'APROVACAO_RESOLVIDA',
+        prioridade: 'NORMAL',
+        titulo: 'Desconto aprovado',
+        mensagem: `Pedido ${result.pedido.numero} foi liberado. Você pode enviar ao OMIE agora.`,
+        link: `/pedidos/${result.pedido.id}`,
+        metadata: { pedidoId: result.pedido.id, status: 'APROVADA' },
+      });
+      // E-mail transacional (best-effort)
+      if (apr.representante?.email) {
+        void this.email.enviarAprovacaoResolvida({
+          para: apr.representante.email,
+          repNome: apr.representante.nome,
+          pedidoId: result.pedido.id,
+          pedidoNumero: result.pedido.numero,
+          status: 'APROVADA',
+          comentario: dto.comentario,
+        });
+      }
+    }
+
     // Trigger: PEDIDO_APROVADO
     const pedido = result.pedido;
     void this.bus.disparar(pedido.empresaId, 'PEDIDO_APROVADO', {
@@ -178,6 +207,31 @@ export class AprovacoesService {
     this.logger.log(
       `Aprovação ${apr.id} REJEITADA por ${user.email} → pedido ${apr.pedidoId} cancelado`,
     );
+
+    // Notifica o REP que sua aprovação foi rejeitada
+    if (apr.representanteId) {
+      void this.notificacoes.criarParaUsuario({
+        empresaId: result.pedido.empresaId,
+        usuarioId: apr.representanteId,
+        tipo: 'APROVACAO_RESOLVIDA',
+        prioridade: 'ALTA',
+        titulo: 'Desconto rejeitado',
+        mensagem: `Pedido ${result.pedido.numero} foi cancelado. Motivo: ${dto.comentario ?? 'sem motivo informado'}`,
+        link: `/pedidos/${result.pedido.id}`,
+        metadata: { pedidoId: result.pedido.id, status: 'REJEITADA' },
+      });
+      // E-mail transacional (best-effort)
+      if (apr.representante?.email) {
+        void this.email.enviarAprovacaoResolvida({
+          para: apr.representante.email,
+          repNome: apr.representante.nome,
+          pedidoId: result.pedido.id,
+          pedidoNumero: result.pedido.numero,
+          status: 'REJEITADA',
+          comentario: dto.comentario,
+        });
+      }
+    }
     return result;
   }
 

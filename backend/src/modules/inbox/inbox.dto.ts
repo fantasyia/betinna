@@ -40,6 +40,35 @@ export const responderSchema = z.object({
 });
 export type ResponderDto = z.infer<typeof responderSchema>;
 
+/**
+ * Envia mídia através da conversa.
+ *
+ * - storagePath: bucket whatsapp-media (path retornado por upload anterior)
+ * - url: URL pública (use com cautela — pode expirar)
+ * - Pelo menos um dos dois é obrigatório
+ *
+ * Para áudio de voz (PTT), passar tipo=AUDIO + ptt=true.
+ */
+export const responderMidiaSchema = z
+  .object({
+    tipo: z.enum(['IMAGE', 'VIDEO', 'AUDIO', 'DOCUMENT']),
+    caption: z.string().max(1024).optional(),
+    fileName: z.string().max(255).optional(),
+    mimetype: z.string().max(120).optional(),
+    ptt: z.boolean().optional(),
+    storagePath: z.string().max(500).optional(),
+    url: z.string().url().max(2000).optional(),
+  })
+  .refine((d) => Boolean(d.storagePath || d.url), {
+    message: 'Forneça storagePath ou url',
+    path: ['storagePath'],
+  })
+  .refine((d) => d.tipo !== 'DOCUMENT' || Boolean(d.fileName), {
+    message: 'fileName obrigatório para DOCUMENT',
+    path: ['fileName'],
+  });
+export type ResponderMidiaDto = z.infer<typeof responderMidiaSchema>;
+
 export const atribuirSchema = z.object({
   /** null pra desatribuir. */
   atribuidoId: z.string().cuid().nullable(),
@@ -50,3 +79,27 @@ export const alterarStatusSchema = z.object({
   status: statusEnum,
 });
 export type AlterarStatusDto = z.infer<typeof alterarStatusSchema>;
+
+/**
+ * Bulk operations — Sprint atual. SAC/Gerência precisa aplicar ação em N
+ * conversations selecionadas (resolver fila, atribuir lote pra um SAC,
+ * arquivar antigas).
+ *
+ * Limite 200 ids por operação — passa disso, frontend faz batches.
+ * Limite força paginação consciente e evita locks longos no Postgres.
+ */
+export const bulkIdsSchema = z.object({
+  ids: z.array(z.string().min(1)).min(1).max(200),
+});
+
+export const bulkAtribuirSchema = bulkIdsSchema.extend({
+  atribuidoId: z.string().cuid().nullable(),
+});
+export type BulkAtribuirDto = z.infer<typeof bulkAtribuirSchema>;
+
+export const bulkAlterarStatusSchema = bulkIdsSchema.extend({
+  status: statusEnum,
+});
+export type BulkAlterarStatusDto = z.infer<typeof bulkAlterarStatusSchema>;
+
+export type BulkIdsDto = z.infer<typeof bulkIdsSchema>;

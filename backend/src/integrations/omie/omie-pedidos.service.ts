@@ -4,6 +4,8 @@ import { PrismaService } from '@database/prisma.service';
 import { IntegracoesService } from '@modules/integracoes/integracoes.service';
 import { BusinessRuleException } from '@shared/errors/app-exception';
 import { ErrorCode } from '@shared/errors/error-codes';
+import { addBreadcrumb } from '@shared/observability/sentry';
+import { MetricsService } from '@shared/observability/metrics.service';
 import { OmieClientService } from './omie-client.service';
 import { OmieMapper } from './omie.mapper';
 import type { OmieIncluirPedidoParam } from './omie.types';
@@ -39,6 +41,7 @@ export class OmiePedidosService {
     private readonly prisma: PrismaService,
     private readonly omie: OmieClientService,
     private readonly integracoes: IntegracoesService,
+    private readonly metrics: MetricsService,
   ) {}
 
   async enviarPedido(pedidoId: string): Promise<OmiePedidoEnvioResult> {
@@ -59,10 +62,33 @@ export class OmiePedidosService {
       );
     }
 
+    addBreadcrumb('omie', 'push-start', {
+      pedidoId,
+      pedidoNumero: pedido.numero,
+      empresaId: pedido.empresaId,
+      itens: pedido.itens.length,
+    });
+
+    const stopTimer = this.metrics.omiePushDuration.startTimer();
     const payload = this.buildPayload(pedido as PedidoComItens);
-    const response = await this.omie.incluirPedido(pedido.empresaId, payload);
+    let response;
+    try {
+      response = await this.omie.incluirPedido(pedido.empresaId, payload);
+    } catch (err) {
+      stopTimer();
+      this.metrics.omiePush.inc({ empresa: pedido.empresaId, status: 'error' });
+      throw err;
+    }
+    stopTimer();
+    this.metrics.omiePush.inc({ empresa: pedido.empresaId, status: 'success' });
 
     const numeroOmie = response.numero_pedido?.toString() ?? response.codigo_pedido.toString();
+
+    addBreadcrumb('omie', 'push-success', {
+      pedidoId,
+      numeroOmie,
+      codigoStatusOmie: response.codigo_status,
+    });
 
     await this.prisma.pedido.update({
       where: { id: pedidoId },

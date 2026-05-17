@@ -84,6 +84,19 @@ describe('PedidosService', () => {
       repScopeMock as never,
       { disparar: vi.fn() } as never,
       sequenceMock as never,
+      {
+        creditarPedidoAprovado: vi.fn().mockResolvedValue(null),
+        estornarPedidoCancelado: vi.fn().mockResolvedValue(null),
+      } as never,
+      {
+        criarParaUsuario: vi.fn().mockResolvedValue(null),
+        criarParaRole: vi.fn().mockResolvedValue(0),
+      } as never,
+      {
+        pedidosCriados: { inc: vi.fn() },
+        omiePush: { inc: vi.fn() },
+        notificacoesEnviadas: { inc: vi.fn() },
+      } as never,
     );
   });
 

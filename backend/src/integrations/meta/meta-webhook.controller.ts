@@ -20,7 +20,9 @@ import { InboxService } from '@modules/inbox/inbox.service';
 import { Public } from '@shared/decorators/public.decorator';
 import { ForbiddenException, UnauthorizedException } from '@shared/errors/app-exception';
 import { WebhookSignatureUtil } from '@shared/http/webhook-signature.util';
+import { addBreadcrumb } from '@shared/observability/sentry';
 import { WebhookAntiReplayService } from '@shared/utils/webhook-anti-replay.service';
+import { MetaMediaService } from './meta-media.service';
 import { MetaOAuthService } from './meta-oauth.service';
 import type { MetaMessagingEvent, MetaWebhookEntry, MetaWebhookEnvelope } from './meta.types';
 
@@ -53,6 +55,7 @@ export class MetaWebhookController {
     private readonly inbox: InboxService,
     private readonly oauth: MetaOAuthService,
     private readonly antiReplay: WebhookAntiReplayService,
+    private readonly media: MetaMediaService,
   ) {}
 
   // ─── Verificação (GET handshake) ─────────────────────────────────────
@@ -102,9 +105,11 @@ export class MetaWebhookController {
         throw new UnauthorizedException('rawBody ausente');
       }
       if (!signature || !WebhookSignatureUtil.verifyHmacSha256(rawBody, signature, secret)) {
+        addBreadcrumb('webhook', 'meta-invalid-signature', {}, 'warning');
         this.logger.warn('Meta webhook com assinatura inválida — descartado');
         throw new UnauthorizedException('assinatura inválida');
       }
+      addBreadcrumb('webhook', 'meta-signature-ok');
 
       // Sprint 3 FIX 1: anti-replay. Meta envia `entry[].time` (timestamp do evento).
       const envelopeForTs = body as MetaWebhookEnvelope;
@@ -164,8 +169,31 @@ export class MetaWebhookController {
       const peerId = ev.sender?.id;
       if (!peerId) continue;
 
-      const { conteudo, tipo, mediaUrl, mediaMime } = this.extrairConteudo(ev);
+      const { conteudo, tipo, mediaUrl: cdnUrl, mediaMime } = this.extrairConteudo(ev);
       if (!conteudo && tipo === 'TEXT') continue;
+
+      // Mídia: baixa do CDN da Meta e arquiva no Supabase Storage (best-effort).
+      // URLs do CDN expiram — persistindo garantimos histórico durável.
+      let mediaUrl: string | undefined = cdnUrl;
+      let mimeFinal = mediaMime;
+      if (
+        cdnUrl &&
+        (canal === 'FACEBOOK' || canal === 'INSTAGRAM') &&
+        (tipo === 'IMAGE' || tipo === 'VIDEO' || tipo === 'AUDIO' || tipo === 'DOCUMENT')
+      ) {
+        const stored = await this.media.baixarEArmazenar({
+          cdnUrl,
+          empresaId: resolved.empresaId,
+          canal,
+          peerId,
+          msgId: ev.message.mid,
+        });
+        if (stored) {
+          mediaUrl = stored.storagePath;
+          if (!mimeFinal && stored.mime) mimeFinal = stored.mime;
+        }
+        // se falhou, mantém cdnUrl como fallback temporário
+      }
 
       await this.inbox.processarMensagemEntrante({
         empresaId: resolved.empresaId,
@@ -176,7 +204,7 @@ export class MetaWebhookController {
         externalId: ev.message.mid,
         data: ev.timestamp ? new Date(ev.timestamp) : undefined,
         mediaUrl,
-        mediaMime,
+        mediaMime: mimeFinal,
         meta: { accountId, raw: ev.message },
       });
     }

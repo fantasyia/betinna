@@ -69,6 +69,17 @@ describe('OcorrenciasService', () => {
       makeRepScope() as never,
       { disparar: vi.fn() } as never,
       sequenceMock as never,
+      {
+        criarParaUsuario: vi.fn().mockResolvedValue(null),
+        criarParaRole: vi.fn().mockResolvedValue(0),
+      } as never,
+      {
+        enviarOcorrenciaCritica: vi.fn().mockResolvedValue({ ok: true }),
+        enviarAprovacaoResolvida: vi.fn().mockResolvedValue({ ok: true }),
+        enviarBoasVindas: vi.fn().mockResolvedValue({ ok: true }),
+        enviarComissaoFechada: vi.fn().mockResolvedValue({ ok: true }),
+        enviarAmostraFollowup: vi.fn().mockResolvedValue({ ok: true }),
+      } as never,
     );
   });
 

@@ -12,6 +12,7 @@ import { HttpClientError } from '@shared/http/http-client.types';
 import type { AuthenticatedUser } from '@shared/types/authenticated-user';
 import type { PerguntarDto } from './mullerbot.dto';
 import type { LlmCredenciais, MullerBotResposta } from './mullerbot.types';
+import { MullerBotCacheService, type HistoricoMsg } from './mullerbot-cache.service';
 import { ProdutoSearchService, type ProdutoRelevante } from './produto-search.service';
 
 const SYSTEM_PROMPT = `Você é o MullerBot, assistente comercial da Betinna.ai.
@@ -44,6 +45,7 @@ export class MullerBotService {
     private readonly env: EnvService,
     private readonly userIntegracoes: UsuarioIntegracoesService,
     private readonly produtoSearch: ProdutoSearchService,
+    private readonly cache: MullerBotCacheService,
   ) {}
 
   async perguntar(user: AuthenticatedUser, dto: PerguntarDto): Promise<MullerBotResposta> {
@@ -75,14 +77,45 @@ export class MullerBotService {
       orcamentoCatalogo,
     );
 
-    // 4. Chama OpenAI
-    const resultado = await this.chamarOpenAI(creds, modelo, userMessage, maxOutputTokens);
+    // 4. Cache: tenta hit ANTES de gastar OpenAI.
+    // Cache só vale pra perguntas SEM histórico — com histórico, mesmas perguntas
+    // podem ter respostas diferentes dependendo do contexto anterior.
+    const cacheKey =
+      !dto.sessionId && !dto.semCache
+        ? this.cache.buildAnswerKey({
+            empresaId: user.empresaIdAtiva,
+            modelo,
+            pergunta: dto.pergunta,
+            produtoIds: produtosIncluidos.map((p) => p.id),
+          })
+        : null;
+    if (cacheKey) {
+      const cached = await this.cache.getAnswer(cacheKey);
+      if (cached) {
+        this.logger.log(
+          `MullerBot CACHE HIT usuario=${user.id} pergunta="${dto.pergunta.slice(0, 60)}"`,
+        );
+        return cached;
+      }
+    }
 
-    this.logger.log(
-      `MullerBot resposta usuario=${user.id} modelo=${modelo} produtos=${produtosIncluidos.length}/${produtos.length} truncados=${truncados} tokens_in=${resultado.tokensIn ?? '?'} tokens_out=${resultado.tokensOut ?? '?'}`,
+    // 5. Carrega histórico se sessionId fornecido
+    const historico = dto.sessionId ? await this.cache.getHistorico(user.id, dto.sessionId) : [];
+
+    // 6. Chama OpenAI (com histórico injetado, se houver)
+    const resultado = await this.chamarOpenAI(
+      creds,
+      modelo,
+      userMessage,
+      maxOutputTokens,
+      historico,
     );
 
-    return {
+    this.logger.log(
+      `MullerBot resposta usuario=${user.id} modelo=${modelo} produtos=${produtosIncluidos.length}/${produtos.length} truncados=${truncados} tokens_in=${resultado.tokensIn ?? '?'} tokens_out=${resultado.tokensOut ?? '?'} histTurns=${historico.length / 2}`,
+    );
+
+    const resposta: MullerBotResposta = {
       resposta: resultado.texto,
       produtosUsados: produtosIncluidos.map((p) => ({
         id: p.id,
@@ -98,6 +131,22 @@ export class MullerBotService {
       tokensIn: resultado.tokensIn,
       tokensOut: resultado.tokensOut,
     };
+
+    // 7. Persiste cache + histórico (best-effort)
+    if (cacheKey) {
+      void this.cache.setAnswer(cacheKey, resposta);
+    }
+    if (dto.sessionId) {
+      void this.cache.pushTurn(user.id, dto.sessionId, dto.pergunta, resultado.texto);
+    }
+
+    return resposta;
+  }
+
+  // ─── Histórico (acesso público pra controller) ────────────────────────
+
+  async limparHistorico(user: AuthenticatedUser, sessionId: string): Promise<{ ok: true }> {
+    return this.cache.limparHistorico(user.id, sessionId);
   }
 
   // ─── Credenciais (OpenAI only) ────────────────────────────────────────
@@ -229,7 +278,18 @@ export class MullerBotService {
     modelo: string,
     userMessage: string,
     maxOutputTokens: number,
+    historico: HistoricoMsg[] = [],
   ): Promise<{ texto: string; tokensIn?: number; tokensOut?: number }> {
+    // Constrói array de mensagens: system + histórico (alternando user/assistant)
+    // + pergunta atual. OpenAI espera ordem cronológica.
+    const messages: Array<{ role: 'system' | 'user' | 'assistant'; content: string }> = [
+      { role: 'system', content: SYSTEM_PROMPT },
+    ];
+    for (const h of historico) {
+      messages.push({ role: h.role, content: h.content });
+    }
+    messages.push({ role: 'user', content: userMessage });
+
     try {
       const res = await this.http.post<{
         choices: Array<{ message?: { content?: string } }>;
@@ -238,10 +298,7 @@ export class MullerBotService {
         body: {
           model: modelo,
           max_tokens: maxOutputTokens,
-          messages: [
-            { role: 'system', content: SYSTEM_PROMPT },
-            { role: 'user', content: userMessage },
-          ],
+          messages,
         },
         headers: { Authorization: `Bearer ${creds.apiKey}` },
         integration: 'openai',

@@ -260,17 +260,14 @@ describe('IntegracoesService', () => {
         'tiktok',
         'instagram',
         'facebook',
-      ] as const)(
-        'GERENTE bloqueado em %s (todas as integrações empresa)',
-        async (servico) => {
-          await expect(
-            service.conectar(fakeUser({ role: 'GERENTE' as UserRole }), {
-              servico: servico as never,
-              credenciais: {},
-            }),
-          ).rejects.toBeInstanceOf(ForbiddenException);
-        },
-      );
+      ] as const)('GERENTE bloqueado em %s (todas as integrações empresa)', async (servico) => {
+        await expect(
+          service.conectar(fakeUser({ role: 'GERENTE' as UserRole }), {
+            servico: servico as never,
+            credenciais: {},
+          }),
+        ).rejects.toBeInstanceOf(ForbiddenException);
+      });
     });
   });
 

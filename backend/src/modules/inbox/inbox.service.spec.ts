@@ -38,6 +38,7 @@ const makePrismaMock = () => ({
     findMany: vi.fn(),
     create: vi.fn(),
     update: vi.fn(),
+    updateMany: vi.fn(),
   },
   cliente: {
     findFirst: vi.fn(),
@@ -359,6 +360,92 @@ describe('InboxService.atribuir', () => {
       atribuidoId: 'u2',
     });
     expect(r.atribuidoId).toBe('u2');
+  });
+});
+
+describe('InboxService bulk operations', () => {
+  let prisma: ReturnType<typeof makePrismaMock>;
+  let svc: InboxService;
+
+  beforeEach(() => {
+    prisma = makePrismaMock();
+    svc = new InboxService(prisma as never, new CanalAdapterRegistry());
+  });
+
+  it('bulkAtribuir — REP bloqueado', async () => {
+    await expect(
+      svc.bulkAtribuir(fakeUser({ role: 'REP' as UserRole }), ['c1', 'c2'], 'u2'),
+    ).rejects.toBeInstanceOf(ForbiddenException);
+  });
+
+  it('bulkAtribuir — NotFoundException quando alvo não existe', async () => {
+    prisma.usuario.findFirst.mockResolvedValueOnce(null);
+    await expect(
+      svc.bulkAtribuir(fakeUser({ role: 'ADMIN' as UserRole }), ['c1'], 'inexistente'),
+    ).rejects.toThrow();
+  });
+
+  it('bulkAtribuir — passa atribuidoId=null pra desatribuir sem checar usuário', async () => {
+    prisma.conversation.updateMany.mockResolvedValueOnce({ count: 5 });
+    const r = await svc.bulkAtribuir(
+      fakeUser({ role: 'ADMIN' as UserRole }),
+      ['c1', 'c2', 'c3', 'c4', 'c5'],
+      null,
+    );
+    expect(r.atualizados).toBe(5);
+    expect(prisma.usuario.findFirst).not.toHaveBeenCalled();
+  });
+
+  it('bulkAtribuir — updateMany aplica where do escopo do usuário', async () => {
+    prisma.usuario.findFirst.mockResolvedValueOnce({ id: 'u2' });
+    prisma.conversation.updateMany.mockResolvedValueOnce({ count: 2 });
+    await svc.bulkAtribuir(fakeUser({ role: 'ADMIN' as UserRole }), ['c1', 'c2'], 'u2');
+    const args = prisma.conversation.updateMany.mock.calls[0][0] as {
+      where: { id: { in: string[] } };
+      data: { atribuidoId: string };
+    };
+    expect(args.where.id).toEqual({ in: ['c1', 'c2'] });
+    expect(args.data.atribuidoId).toBe('u2');
+  });
+
+  it('bulkAlterarStatus — atualiza status em lote', async () => {
+    prisma.conversation.updateMany.mockResolvedValueOnce({ count: 3 });
+    const r = await svc.bulkAlterarStatus(
+      fakeUser({ role: 'GERENTE' as UserRole }),
+      ['c1', 'c2', 'c3'],
+      'RESOLVIDA',
+    );
+    expect(r.atualizados).toBe(3);
+    const args = prisma.conversation.updateMany.mock.calls[0][0] as { data: { status: string } };
+    expect(args.data.status).toBe('RESOLVIDA');
+  });
+
+  it('bulkArquivar — atalho que aplica status ARQUIVADA', async () => {
+    prisma.conversation.updateMany.mockResolvedValueOnce({ count: 10 });
+    const r = await svc.bulkArquivar(fakeUser({ role: 'SAC' as UserRole }), ['c1']);
+    expect(r.atualizados).toBe(10);
+    const args = prisma.conversation.updateMany.mock.calls[0][0] as { data: { status: string } };
+    expect(args.data.status).toBe('ARQUIVADA');
+  });
+
+  it('bulkMarcarLidas — só atualiza mensagens INBOUND não-READ', async () => {
+    prisma.conversation.findMany.mockResolvedValueOnce([{ id: 'c1' }, { id: 'c2' }]);
+    prisma.message.updateMany.mockResolvedValueOnce({ count: 12 });
+    const r = await svc.bulkMarcarLidas(fakeUser({ role: 'SAC' as UserRole }), ['c1', 'c2']);
+    expect(r.atualizados).toBe(12);
+    const args = prisma.message.updateMany.mock.calls[0][0] as {
+      where: { direction: string };
+      data: { status: string };
+    };
+    expect(args.where.direction).toBe('INBOUND');
+    expect(args.data.status).toBe('READ');
+  });
+
+  it('bulkMarcarLidas — retorna 0 quando user não tem acesso a nenhuma conversation', async () => {
+    prisma.conversation.findMany.mockResolvedValueOnce([]);
+    const r = await svc.bulkMarcarLidas(fakeUser({ role: 'SAC' as UserRole }), ['c1', 'c2']);
+    expect(r.atualizados).toBe(0);
+    expect(prisma.message.updateMany).not.toHaveBeenCalled();
   });
 });
 

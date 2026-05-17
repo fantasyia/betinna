@@ -55,7 +55,9 @@ export class HealthController {
    */
   @Roles('ADMIN')
   @Get('deep')
-  @ApiOperation({ summary: 'Deep health check (ADMIN only) — DB + Redis + BullMQ' })
+  @ApiOperation({
+    summary: 'Deep health (ADMIN only) — DB + Redis + BullMQ + Supabase + integrações ativas',
+  })
   async deep(): Promise<{
     status: 'ok' | 'degraded';
     timestamp: string;
@@ -65,23 +67,29 @@ export class HealthController {
       database: DependencyCheck;
       redis: DependencyCheck;
       bullmq: DependencyCheck & { queues?: Record<string, number> };
+      supabase: DependencyCheck;
+      integracoes: DependencyCheck & { conectadas?: Record<string, number> };
     };
   }> {
-    const [db, redis, queues] = await Promise.all([
+    const [db, redis, queues, supabase, integracoes] = await Promise.all([
       this.checkDatabase(),
       this.checkRedis(),
       this.checkBullMq(),
+      this.checkSupabase(),
+      this.checkIntegracoes(),
     ]);
 
+    // supabase + integracoes são `degraded` aceitável (não bloqueia liveness)
+    const criticalOk = db.status === 'ok' && redis.status === 'ok' && queues.status === 'ok';
     const overallStatus: 'ok' | 'degraded' =
-      db.status === 'ok' && redis.status === 'ok' && queues.status === 'ok' ? 'ok' : 'degraded';
+      criticalOk && supabase.status !== 'down' ? 'ok' : 'degraded';
 
     const payload = {
       status: overallStatus,
       timestamp: new Date().toISOString(),
       uptime: process.uptime(),
       env: this.env.get('NODE_ENV'),
-      checks: { database: db, redis, bullmq: queues },
+      checks: { database: db, redis, bullmq: queues, supabase, integracoes },
     };
 
     if (overallStatus !== 'ok') {
@@ -89,6 +97,74 @@ export class HealthController {
       throw new HttpException(payload, HttpStatus.SERVICE_UNAVAILABLE);
     }
     return payload;
+  }
+
+  /**
+   * Supabase Auth liveness — ping `/auth/v1/health` (endpoint público).
+   * Usa fetch direto pra não puxar SDK pesado.
+   */
+  private async checkSupabase(): Promise<DependencyCheck> {
+    const started = Date.now();
+    const supabaseUrl = this.env.get('SUPABASE_URL');
+    if (!supabaseUrl) {
+      return { status: 'down', latencyMs: 0, error: 'SUPABASE_URL não configurado' };
+    }
+    try {
+      const controller = new AbortController();
+      const timeout = setTimeout(() => controller.abort(), 5_000);
+      const res = await fetch(`${supabaseUrl}/auth/v1/health`, {
+        signal: controller.signal,
+      });
+      clearTimeout(timeout);
+      return {
+        status: res.ok ? 'ok' : 'degraded',
+        latencyMs: Date.now() - started,
+        error: res.ok ? null : `HTTP ${res.status}`,
+      };
+    } catch (err) {
+      return {
+        status: 'down',
+        latencyMs: Date.now() - started,
+        error: err instanceof Error ? err.message : String(err),
+      };
+    }
+  }
+
+  /**
+   * Integrações — conta conexões ATIVAS por serviço. Não chama APIs externas
+   * (rate limit + custo). Só uma fotografia do estado registrado no DB.
+   *
+   * Status:
+   *  - 'ok' se há ≥ 1 integração conectada
+   *  - 'degraded' se nenhuma (cliente pode não ter setado nada — não é erro)
+   */
+  private async checkIntegracoes(): Promise<
+    DependencyCheck & { conectadas?: Record<string, number> }
+  > {
+    const started = Date.now();
+    try {
+      const conectadas = await this.prisma.integracaoConexao.groupBy({
+        by: ['servico'],
+        where: { ativo: true },
+        _count: true,
+      });
+      type GbRow = { servico: string; _count: number };
+      const rows = conectadas as unknown as GbRow[];
+      const total = rows.reduce((s, c) => s + (c._count ?? 0), 0);
+      const porServico: Record<string, number> = {};
+      for (const c of rows) porServico[c.servico] = c._count ?? 0;
+      return {
+        status: total > 0 ? 'ok' : 'degraded',
+        latencyMs: Date.now() - started,
+        conectadas: porServico,
+      };
+    } catch (err) {
+      return {
+        status: 'down',
+        latencyMs: Date.now() - started,
+        error: err instanceof Error ? err.message : String(err),
+      };
+    }
   }
 
   // ─── Checks individuais ─────────────────────────────────────────────────

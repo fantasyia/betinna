@@ -3,6 +3,7 @@ import { Cron } from '@nestjs/schedule';
 import { EnvService } from '@config/env.service';
 import { PrismaService } from '@database/prisma.service';
 import { CronLockService } from '@shared/utils/cron-lock.service';
+import { TransactionalEmailService } from '@integrations/sendgrid/transactional-email.service';
 import { FluxoEventBusService } from './fluxo-event-bus.service';
 
 /**
@@ -25,6 +26,7 @@ export class FluxoTriggersJob {
     private readonly bus: FluxoEventBusService,
     private readonly env: EnvService,
     private readonly cronLock: CronLockService,
+    private readonly email: TransactionalEmailService,
   ) {}
 
   @Cron('*/30 * * * *', { name: 'fluxo-triggers-temporais', timeZone: 'UTC' })
@@ -106,7 +108,14 @@ export class FluxoTriggersJob {
         followUpEm: { lte: agora },
       },
       include: {
-        cliente: { select: { id: true, nome: true, representanteId: true } },
+        cliente: {
+          select: {
+            id: true,
+            nome: true,
+            representanteId: true,
+            representante: { select: { id: true, nome: true, email: true } },
+          },
+        },
       },
       take: 50,
     });
@@ -122,6 +131,22 @@ export class FluxoTriggersJob {
         representanteId: amostra.cliente.representanteId,
         produtoNome: amostra.produtoNome,
       });
+
+      // E-mail transacional pro REP responsável (best-effort)
+      if (amostra.cliente.representante?.email) {
+        const diasDesdeEnvio = Math.max(
+          1,
+          Math.floor((agora.getTime() - amostra.enviadoEm.getTime()) / (1000 * 60 * 60 * 24)),
+        );
+        void this.email.enviarAmostraFollowup({
+          para: amostra.cliente.representante.email,
+          repNome: amostra.cliente.representante.nome,
+          clienteNome: amostra.cliente.nome,
+          produtoNome: amostra.produtoNome,
+          diasDesdeEnvio,
+        });
+      }
+
       // Muda status pra evitar re-disparo
       await this.prisma.amostra.update({
         where: { id: amostra.id },

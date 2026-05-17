@@ -14,6 +14,7 @@ import { PrismaService } from '@database/prisma.service';
 import { InboxService } from '@modules/inbox/inbox.service';
 import { BusinessRuleException } from '@shared/errors/app-exception';
 import { WhatsAppAuthState, ownerKey, type WhatsAppOwner } from './whatsapp-auth-state';
+import { WhatsAppMediaService } from './whatsapp-media.service';
 import type { WhatsAppSessionInfo, WhatsAppSessionStatus } from './whatsapp.types';
 
 interface SessionContext {
@@ -55,6 +56,7 @@ export class WhatsAppSessionService implements OnModuleInit, OnModuleDestroy {
     private readonly prisma: PrismaService,
     private readonly env: EnvService,
     private readonly inbox: InboxService,
+    private readonly media: WhatsAppMediaService,
   ) {}
 
   // ─── Lifecycle ────────────────────────────────────────────────────────
@@ -223,6 +225,117 @@ export class WhatsAppSessionService implements OnModuleInit, OnModuleDestroy {
     return { externalId: r?.key?.id ?? undefined };
   }
 
+  /**
+   * Envia mídia (imagem/vídeo/áudio/documento) via Baileys.
+   *
+   * Aceita 3 formas de fornecer o conteúdo (ordem de preferência):
+   *  1. `buffer`: bytes diretos (sem rede). Ideal pra forwarding (já temos no Storage).
+   *  2. `storagePath`: caminho no bucket `whatsapp-media`. Service resolve signed URL
+   *     e Baileys baixa de lá.
+   *  3. `url`: URL pública já acessível. Use com cautela — não passar URLs CDN
+   *     de outros provedores que podem expirar.
+   *
+   * `tipo` controla a estrutura WAMessage:
+   *  - IMAGE / VIDEO: caption opcional, mimetype auto
+   *  - AUDIO: PTT (voice note) toggle
+   *  - DOCUMENT: fileName + mimetype obrigatórios
+   *
+   * Limites WhatsApp:
+   *  - Imagem: 5 MB
+   *  - Vídeo: 16 MB
+   *  - Áudio: 16 MB
+   *  - Documento: 100 MB
+   * Excedendo, a Meta retorna erro do Baileys que propagamos como BusinessRule.
+   */
+  async enviarMidia(
+    owner: WhatsAppOwner,
+    peerId: string,
+    params: {
+      tipo: 'IMAGE' | 'VIDEO' | 'AUDIO' | 'DOCUMENT';
+      caption?: string;
+      mimetype?: string;
+      fileName?: string;
+      ptt?: boolean;
+      buffer?: Buffer;
+      url?: string;
+      storagePath?: string;
+    },
+  ): Promise<{ externalId?: string }> {
+    const ctx = this.sessions.get(ownerKey(owner));
+    if (!ctx || ctx.info.status !== 'CONNECTED') {
+      throw new BusinessRuleException(`Sessão WhatsApp ${ownerKey(owner)} não está conectada`);
+    }
+
+    // Resolve fonte do binário
+    let mediaSource: { url: string } | Buffer;
+    if (params.buffer) {
+      mediaSource = params.buffer;
+    } else if (params.storagePath) {
+      const signed = await this.media.signedUrl(params.storagePath, 300);
+      if (!signed) {
+        throw new BusinessRuleException(
+          'Falha ao gerar URL de mídia do Storage — verifique o storagePath',
+        );
+      }
+      mediaSource = { url: signed };
+    } else if (params.url) {
+      mediaSource = { url: params.url };
+    } else {
+      throw new BusinessRuleException(
+        'Forneça buffer, storagePath ou url pra enviar mídia WhatsApp',
+      );
+    }
+
+    const jid = this.normalizarJid(peerId);
+    let waMessage: Parameters<typeof ctx.sock.sendMessage>[1];
+
+    switch (params.tipo) {
+      case 'IMAGE':
+        waMessage = {
+          image: mediaSource,
+          caption: params.caption,
+          mimetype: params.mimetype ?? 'image/jpeg',
+        };
+        break;
+      case 'VIDEO':
+        waMessage = {
+          video: mediaSource,
+          caption: params.caption,
+          mimetype: params.mimetype ?? 'video/mp4',
+        };
+        break;
+      case 'AUDIO':
+        waMessage = {
+          audio: mediaSource,
+          mimetype: params.mimetype ?? 'audio/ogg; codecs=opus',
+          ptt: params.ptt ?? false,
+        };
+        break;
+      case 'DOCUMENT':
+        if (!params.fileName) {
+          throw new BusinessRuleException('fileName obrigatório para DOCUMENT');
+        }
+        waMessage = {
+          document: mediaSource,
+          mimetype: params.mimetype ?? 'application/pdf',
+          fileName: params.fileName,
+          caption: params.caption,
+        };
+        break;
+      default:
+        throw new BusinessRuleException(`Tipo de mídia não suportado: ${String(params.tipo)}`);
+    }
+
+    try {
+      const r = await ctx.sock.sendMessage(jid, waMessage);
+      return { externalId: r?.key?.id ?? undefined };
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      this.logger.warn(`Falha enviando mídia WhatsApp ${ownerKey(owner)} → ${peerId}: ${msg}`);
+      throw new BusinessRuleException(`Falha ao enviar mídia WhatsApp: ${msg}`);
+    }
+  }
+
   // ─── Implementação interna ────────────────────────────────────────────
 
   private async criarSessao(
@@ -362,12 +475,26 @@ export class WhatsAppSessionService implements OnModuleInit, OnModuleDestroy {
       if (peerId.endsWith('@g.us') || peerId.endsWith('@broadcast')) continue;
       if (peerId === 'status@broadcast') continue;
 
-      const { conteudo, tipo, mediaMime } = this.extrairConteudo(m.message);
+      const { conteudo, tipo, mediaMime, extras } = this.extrairConteudo(m.message);
       if (!conteudo && tipo === 'TEXT') continue;
 
       // Quando owner=USUARIO, passa proprietarioId pra Conversation ficar
       // atrelada à sessão do rep. Empresa = null (conversa "compartilhada").
       const proprietarioId = ctx.owner.type === 'USUARIO' ? ctx.owner.id : undefined;
+
+      // Mídia: tenta baixar e armazenar em Supabase Storage (best-effort).
+      // Se falhar, segue com placeholder no `conteudo` (`[imagem]` etc).
+      let mediaUrl: string | undefined;
+      if (tipo !== 'TEXT' && tipo !== 'LOCATION' && tipo !== 'CONTACT') {
+        const path = await this.media.baixarEArmazenar({
+          message: m,
+          empresaId: ctx.empresaId,
+          peerId,
+          mediaMime,
+          msgId: m.key.id ?? undefined,
+        });
+        if (path) mediaUrl = path;
+      }
 
       await this.inbox.processarMensagemEntrante({
         empresaId: ctx.empresaId,
@@ -380,8 +507,9 @@ export class WhatsAppSessionService implements OnModuleInit, OnModuleDestroy {
         externalId: m.key.id ?? undefined,
         data: m.messageTimestamp ? new Date(Number(m.messageTimestamp) * 1000) : undefined,
         mediaMime,
+        mediaUrl,
         proprietarioId,
-        meta: { jid: peerId, ownerKey: ownerKey(ctx.owner) },
+        meta: { jid: peerId, ownerKey: ownerKey(ctx.owner), ...(extras ?? {}) },
       });
     }
   }
@@ -390,6 +518,8 @@ export class WhatsAppSessionService implements OnModuleInit, OnModuleDestroy {
     conteudo: string;
     tipo: 'TEXT' | 'IMAGE' | 'AUDIO' | 'VIDEO' | 'DOCUMENT' | 'STICKER' | 'LOCATION' | 'CONTACT';
     mediaMime?: string;
+    /** Dados estruturados específicos do tipo — vão pra `Message.meta`. */
+    extras?: Record<string, unknown>;
   } {
     if (!msg) return { conteudo: '', tipo: 'TEXT' };
     if (msg.conversation) return { conteudo: msg.conversation, tipo: 'TEXT' };
@@ -401,6 +531,9 @@ export class WhatsAppSessionService implements OnModuleInit, OnModuleDestroy {
         conteudo: msg.imageMessage.caption ?? '[imagem]',
         tipo: 'IMAGE',
         mediaMime: msg.imageMessage.mimetype ?? undefined,
+        extras: msg.imageMessage.fileLength
+          ? { fileLength: Number(msg.imageMessage.fileLength) }
+          : undefined,
       };
     }
     if (msg.videoMessage) {
@@ -408,6 +541,12 @@ export class WhatsAppSessionService implements OnModuleInit, OnModuleDestroy {
         conteudo: msg.videoMessage.caption ?? '[vídeo]',
         tipo: 'VIDEO',
         mediaMime: msg.videoMessage.mimetype ?? undefined,
+        extras: {
+          ...(msg.videoMessage.seconds ? { duracaoSeg: msg.videoMessage.seconds } : {}),
+          ...(msg.videoMessage.fileLength
+            ? { fileLength: Number(msg.videoMessage.fileLength) }
+            : {}),
+        },
       };
     }
     if (msg.audioMessage) {
@@ -415,6 +554,10 @@ export class WhatsAppSessionService implements OnModuleInit, OnModuleDestroy {
         conteudo: '[áudio]',
         tipo: 'AUDIO',
         mediaMime: msg.audioMessage.mimetype ?? undefined,
+        extras: {
+          ...(msg.audioMessage.seconds ? { duracaoSeg: msg.audioMessage.seconds } : {}),
+          ...(msg.audioMessage.ptt ? { ptt: true } : {}), // voice note
+        },
       };
     }
     if (msg.documentMessage) {
@@ -422,18 +565,73 @@ export class WhatsAppSessionService implements OnModuleInit, OnModuleDestroy {
         conteudo: msg.documentMessage.fileName ?? '[documento]',
         tipo: 'DOCUMENT',
         mediaMime: msg.documentMessage.mimetype ?? undefined,
+        extras: {
+          ...(msg.documentMessage.fileName ? { fileName: msg.documentMessage.fileName } : {}),
+          ...(msg.documentMessage.fileLength
+            ? { fileLength: Number(msg.documentMessage.fileLength) }
+            : {}),
+          ...(msg.documentMessage.pageCount ? { pageCount: msg.documentMessage.pageCount } : {}),
+        },
       };
     }
     if (msg.stickerMessage) return { conteudo: '[sticker]', tipo: 'STICKER' };
     if (msg.locationMessage) {
       const lat = msg.locationMessage.degreesLatitude ?? 0;
       const lng = msg.locationMessage.degreesLongitude ?? 0;
-      return { conteudo: `[localização] ${lat},${lng}`, tipo: 'LOCATION' };
+      return {
+        conteudo: `[localização] ${lat},${lng}`,
+        tipo: 'LOCATION',
+        extras: {
+          latitude: lat,
+          longitude: lng,
+          ...(msg.locationMessage.name ? { nome: msg.locationMessage.name } : {}),
+          ...(msg.locationMessage.address ? { endereco: msg.locationMessage.address } : {}),
+          /**
+           * Link clicável Google Maps — usado pelo frontend pra renderizar
+           * preview/CTA "abrir no mapa" sem precisar reconstruir.
+           */
+          mapsUrl: `https://www.google.com/maps?q=${lat},${lng}`,
+        },
+      };
     }
     if (msg.contactMessage) {
-      return { conteudo: msg.contactMessage.displayName ?? '[contato]', tipo: 'CONTACT' };
+      const displayName = msg.contactMessage.displayName ?? '[contato]';
+      const vcard = msg.contactMessage.vcard ?? '';
+      // Parse simples do vCard pra extrair TEL + EMAIL (best-effort, formato vCard 3.0)
+      const telefones = this.parseVCardField(vcard, 'TEL');
+      const emails = this.parseVCardField(vcard, 'EMAIL');
+      const nome = this.parseVCardField(vcard, 'FN')[0] ?? displayName;
+      return {
+        conteudo: displayName,
+        tipo: 'CONTACT',
+        extras: {
+          nome,
+          ...(telefones.length > 0 ? { telefones } : {}),
+          ...(emails.length > 0 ? { emails } : {}),
+        },
+      };
     }
     return { conteudo: '', tipo: 'TEXT' };
+  }
+
+  /**
+   * Extrai campos de um vCard 3.0/4.0 — parser tolerante.
+   * Procura linhas começando com `<FIELD>:` ou `<FIELD>;...:` e devolve valores.
+   * Ex: vCard com `TEL;TYPE=CELL:+5511999998888` → `parseVCardField(v, 'TEL') === ['+5511999998888']`
+   */
+  private parseVCardField(vcard: string, field: string): string[] {
+    if (!vcard) return [];
+    const lines = vcard.split(/\r?\n/);
+    const out: string[] = [];
+    const upper = field.toUpperCase();
+    for (const line of lines) {
+      // Match: FIELD[;params]:value
+      const m = /^([A-Z]+)(;[^:]*)?:(.+)$/u.exec(line.trim());
+      if (m && m[1].toUpperCase() === upper && m[3]) {
+        out.push(m[3].trim());
+      }
+    }
+    return out;
   }
 
   private normalizarJid(peerId: string): string {

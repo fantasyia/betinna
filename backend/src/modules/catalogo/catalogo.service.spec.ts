@@ -83,7 +83,19 @@ describe('CatalogoService', () => {
     prisma = makePrismaMock();
     clientes = makeClientesMock();
     pricing = makePricingMock();
-    service = new CatalogoService(prisma as never, clientes as never, pricing as never);
+    service = new CatalogoService(
+      prisma as never,
+      clientes as never,
+      pricing as never,
+      {
+        gerar: vi.fn().mockResolvedValue('fake.jwt.token'),
+        validar: vi.fn().mockResolvedValue({
+          repId: 'rep-1',
+          clienteId: 'cli-1',
+          empresaId: 'emp-1',
+        }),
+      } as never,
+    );
   });
 
   // -------------------------------------------------------------------------
@@ -347,8 +359,10 @@ describe('CatalogoService', () => {
       expect(result.canal).toBe('WHATSAPP');
       expect(result.clienteId).toBe('cli-1');
       expect(result.itens).toBe(1);
-      expect(result.previewUrl).toContain('rep-1');
-      expect(result.previewUrl).toContain('cli-1');
+      // Agora previewUrl é `/catalogo/share/<token>` (JWT) em vez de
+      // ids brutos. Verifica que tem token e o resultado inclui o campo.
+      expect(result.previewUrl).toMatch(/^\/catalogo\/share\/.+/);
+      expect(result.token).toBe('fake.jwt.token');
     });
 
     it('lança BusinessRuleException quando catálogo está vazio', async () => {

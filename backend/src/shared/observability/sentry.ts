@@ -74,3 +74,33 @@ export function captureException(err: unknown, context?: Record<string, unknown>
     extra: context ? (sanitize(context) as Record<string, unknown>) : undefined,
   });
 }
+
+/**
+ * Adiciona breadcrumb (rastro) na timeline do Sentry. Aparece junto da próxima
+ * exceção capturada, dando contexto do que aconteceu antes do erro.
+ *
+ * Usado em paths críticos onde a sequência de eventos importa pro debug:
+ * auth flow, push pro OMIE, processamento de webhook, fechamento de mês.
+ *
+ * No-op quando Sentry desligado (SENTRY_DSN vazio).
+ *
+ * @param category — agrupador (ex: 'auth', 'omie', 'webhook')
+ * @param message  — descrição curta do evento
+ * @param data     — payload contextual (será sanitizado de PII)
+ * @param level    — info (default) | warning | error
+ */
+export function addBreadcrumb(
+  category: string,
+  message: string,
+  data?: Record<string, unknown>,
+  level: 'info' | 'warning' | 'error' = 'info',
+): void {
+  if (!process.env.SENTRY_DSN) return;
+  Sentry.addBreadcrumb({
+    category,
+    message,
+    level,
+    data: data ? (sanitize(data) as Record<string, unknown>) : undefined,
+    timestamp: Date.now() / 1000,
+  });
+}

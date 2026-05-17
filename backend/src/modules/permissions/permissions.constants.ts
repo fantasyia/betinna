@@ -26,6 +26,7 @@ export const MODULES = [
   'agenda',
   'integracoes',
   'audit_log',
+  'fidelidade',
 ] as const;
 
 export type ModuleName = (typeof MODULES)[number];
@@ -97,5 +98,8 @@ export const DEFAULT_PERMISSIONS: PermissionMatrix = {
     metas: ['view'],
     agenda: ['view', 'create', 'edit', 'delete'],
     config: ['view', 'edit'], // só pra editar dados próprios + integrações de usuário
+    // Rep vê + faz resgate de pontos pra clientes da carteira.
+    // Configuração do programa segue DIRECTOR-only (via @Roles no controller).
+    fidelidade: ['view', 'edit'],
   },
 };

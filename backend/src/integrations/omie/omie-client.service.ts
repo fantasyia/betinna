@@ -103,26 +103,51 @@ export class OmieClientService {
       param: [param],
     };
 
-    try {
-      const res = await this.http.post<unknown>(url, {
-        body: envelope,
-        timeoutMs: this.env.get('OMIE_TIMEOUT_MS'),
-        integration: 'omie',
-        redactKeys: ['app_key', 'app_secret'],
-        retries: 2,
-      });
+    // Retry exponencial em aplicação: HttpClient já retentaria 5xx/429,
+    // mas OMIE devolve faultstring transient (timeouts, manutenção) com HTTP 200.
+    // Vamos re-tentar APENAS quando isRetryableFault.
+    const MAX_FAULT_RETRIES = 3;
+    let faultAttempt = 0;
+    let ultimoFault: { faultcode: string; faultstring: string } | null = null;
 
-      // OMIE pode responder 200 com faultstring
-      const data = res.data as unknown;
-      if (this.isFault(data)) {
-        await this.integracoes.registrarSyncErro(empresaId, 'omie').catch(() => {});
-        throw new IntegrationException(
-          `OMIE.${call}: ${data.faultcode} — ${data.faultstring}`,
-          ErrorCode.OMIE_ERROR,
-        );
+    try {
+      while (faultAttempt < MAX_FAULT_RETRIES) {
+        faultAttempt++;
+        const res = await this.http.post<unknown>(url, {
+          body: envelope,
+          timeoutMs: this.env.get('OMIE_TIMEOUT_MS'),
+          integration: 'omie',
+          redactKeys: ['app_key', 'app_secret'],
+          retries: 2, // HttpClient: retry interno em 5xx/429
+        });
+
+        const data = res.data as unknown;
+        if (this.isFault(data)) {
+          ultimoFault = { faultcode: data.faultcode, faultstring: data.faultstring };
+          if (this.isRetryableFault(ultimoFault.faultstring) && faultAttempt < MAX_FAULT_RETRIES) {
+            // Backoff exponencial: 500ms, 1500ms, 4500ms
+            const wait = 500 * Math.pow(3, faultAttempt - 1);
+            this.logger.warn(
+              `OMIE.${call} fault retryable (${ultimoFault.faultcode}). Tentativa ${faultAttempt}/${MAX_FAULT_RETRIES}, esperando ${wait}ms`,
+            );
+            await new Promise((r) => setTimeout(r, wait));
+            continue;
+          }
+          await this.integracoes.registrarSyncErro(empresaId, 'omie').catch(() => {});
+          throw new IntegrationException(
+            `OMIE.${call}: ${ultimoFault.faultcode} — ${ultimoFault.faultstring}`,
+            ErrorCode.OMIE_ERROR,
+          );
+        }
+
+        return data as TResp;
       }
 
-      return data as TResp;
+      // Esgotou tentativas com fault
+      throw new IntegrationException(
+        `OMIE.${call} falhou após ${MAX_FAULT_RETRIES} tentativas: ${ultimoFault?.faultcode} — ${ultimoFault?.faultstring}`,
+        ErrorCode.OMIE_ERROR,
+      );
     } catch (err) {
       if (err instanceof IntegrationException) throw err;
       if (err instanceof HttpClientError) {
@@ -190,6 +215,37 @@ export class OmieClientService {
       typeof data === 'object' &&
       data !== null &&
       typeof (data as { faultstring?: unknown }).faultstring === 'string'
+    );
+  }
+
+  /**
+   * Identifica faults da OMIE que valem a pena retentar.
+   *
+   * OMIE retorna HTTP 200 com `faultstring` mesmo em erros transients:
+   *  - "Sem comunicação com o servidor"
+   *  - "Tempo limite excedido"
+   *  - "Servidor em manutenção"
+   *  - Rate limit ("Aguarde alguns segundos antes de fazer nova requisição")
+   *
+   * Faults definitivos (NÃO retentar):
+   *  - "Cliente não encontrado" (data inconsistente)
+   *  - "App Key inválida" (credencial errada)
+   *  - "Campo X obrigatório" (validação)
+   */
+  private isRetryableFault(faultstring: string): boolean {
+    const s = faultstring.toLowerCase();
+    return (
+      s.includes('sem comunicação') ||
+      s.includes('tempo limite') ||
+      s.includes('timeout') ||
+      s.includes('manutenção') ||
+      s.includes('manutencao') ||
+      s.includes('indisponível') ||
+      s.includes('indisponivel') ||
+      s.includes('aguarde') ||
+      s.includes('limite de requisições') ||
+      s.includes('try again') ||
+      s.includes('temporariamente')
     );
   }
 }

@@ -46,7 +46,21 @@ describe('ComissoesService', () => {
 
   beforeEach(() => {
     prisma = makePrismaMock();
-    svc = new ComissoesService(prisma as never, makeRepScope() as never);
+    svc = new ComissoesService(
+      prisma as never,
+      makeRepScope() as never,
+      {
+        criarParaUsuario: vi.fn().mockResolvedValue(null),
+        criarParaRole: vi.fn().mockResolvedValue(0),
+      } as never,
+      {
+        enviarComissaoFechada: vi.fn().mockResolvedValue({ ok: true }),
+        enviarBoasVindas: vi.fn().mockResolvedValue({ ok: true }),
+        enviarAprovacaoResolvida: vi.fn().mockResolvedValue({ ok: true }),
+        enviarOcorrenciaCritica: vi.fn().mockResolvedValue({ ok: true }),
+        enviarAmostraFollowup: vi.fn().mockResolvedValue({ ok: true }),
+      } as never,
+    );
     prisma.comissao.upsert.mockImplementation((args: { create: unknown }) =>
       Promise.resolve(args.create),
     );
@@ -207,7 +221,14 @@ describe('ComissoesService', () => {
     it('GERENTE filtra empresaId E reps sob gerência', async () => {
       const repScope = makeRepScope();
       repScope.getRepIds.mockResolvedValue(['rep-a', 'rep-b']);
-      svc = new ComissoesService(prisma as never, repScope as never);
+      svc = new ComissoesService(
+        prisma as never,
+        repScope as never,
+        {
+          criarParaUsuario: vi.fn().mockResolvedValue(null),
+          criarParaRole: vi.fn().mockResolvedValue(0),
+        } as never,
+      );
       prisma.comissao.count.mockResolvedValue(0);
       prisma.comissao.findMany.mockResolvedValue([]);
       await svc.list(fakeUser({ role: 'GERENTE' as UserRole, empresaIdAtiva: 'emp-1' }), {

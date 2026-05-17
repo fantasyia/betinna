@@ -2,6 +2,9 @@ import { Injectable, Logger } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { PrismaService } from '@database/prisma.service';
 import { OmiePedidosService } from '@integrations/omie/omie-pedidos.service';
+import { FidelidadeService } from '@modules/fidelidade/fidelidade.service';
+import { NotificacoesService } from '@modules/notificacoes/notificacoes.service';
+import { MetricsService } from '@shared/observability/metrics.service';
 import { FluxoEventBusService } from '@modules/fluxos/fluxo-event-bus.service';
 import { PricingService } from '@modules/produtos/pricing.service';
 import {
@@ -54,6 +57,9 @@ export class PedidosService {
     private readonly repScope: RepScopeService,
     private readonly bus: FluxoEventBusService,
     private readonly sequence: SequenceService,
+    private readonly fidelidade: FidelidadeService,
+    private readonly notificacoes: NotificacoesService,
+    private readonly metrics: MetricsService,
   ) {}
 
   // ─── Acesso ────────────────────────────────────────────────────────────
@@ -192,6 +198,25 @@ export class PedidosService {
       `Pedido ${pedido.numero} criado (${pedido.status}) — total R$${totals.total.toFixed(2)}`,
     );
 
+    this.metrics.pedidosCriados.inc({
+      empresa: pedido.empresaId,
+      requer_aprovacao: requerAprovacao ? 'true' : 'false',
+    });
+
+    // Notifica gerentes+diretores se entrou em aprovação
+    if (requerAprovacao && representanteId) {
+      void this.notificacoes.criarParaRole({
+        empresaId: pedido.empresaId,
+        roles: ['GERENTE', 'DIRECTOR'],
+        tipo: 'APROVACAO_PENDENTE',
+        prioridade: 'ALTA',
+        titulo: 'Aprovação de desconto pendente',
+        mensagem: `Pedido ${pedido.numero} (${totals.maxDescontoPercentual.toFixed(1)}% desconto) aguarda decisão.`,
+        link: `/aprovacoes`,
+        metadata: { pedidoId: pedido.id, representanteId },
+      });
+    }
+
     return this.findByIdInternal(pedido.id);
   }
 
@@ -329,6 +354,11 @@ export class PedidosService {
           : existing.observacoes,
       },
     });
+
+    // Estorna pontos de fidelidade se houver GANHO_PEDIDO prévio.
+    // Idempotente e best-effort (não derruba o cancelamento).
+    void this.fidelidade.estornarPedidoCancelado(id);
+
     return this.prisma.pedido.findUniqueOrThrow({ where: { id }, include: pedidoInclude });
   }
 
@@ -370,6 +400,16 @@ export class PedidosService {
     // OmiePedidosService já atualiza Pedido (status, numeroOmie, enviadoOmieEm)
     // e registra sync OK na IntegracaoConexao.
     await this.omiePedidos.enviarPedido(id);
+
+    // Trigger fidelidade: credita pontos pro cliente. Best-effort
+    // (FidelidadeService captura erros internamente) e idempotente
+    // via @@unique([pedidoId, tipo='GANHO_PEDIDO']).
+    void this.fidelidade.creditarPedidoAprovado({
+      empresaId: pedido.empresaId,
+      clienteId: pedido.clienteId,
+      pedidoId: pedido.id,
+      valorPedido: Number(pedido.total),
+    });
 
     return this.findByIdInternal(id);
   }

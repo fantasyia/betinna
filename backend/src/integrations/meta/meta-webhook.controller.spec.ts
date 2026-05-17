@@ -53,6 +53,10 @@ describe('MetaWebhookController.verify (GET handshake)', () => {
       makeInbox() as never,
       makeOAuth() as never,
       makeAntiReplay() as never,
+      {
+        baixarEArmazenar: vi.fn(async () => null),
+        signedUrl: vi.fn(async () => null),
+      } as never,
     );
     expect(ctrl.verify('subscribe', 'verify-123', 'desafio-xyz')).toBe('desafio-xyz');
   });
@@ -63,6 +67,10 @@ describe('MetaWebhookController.verify (GET handshake)', () => {
       makeInbox() as never,
       makeOAuth() as never,
       makeAntiReplay() as never,
+      {
+        baixarEArmazenar: vi.fn(async () => null),
+        signedUrl: vi.fn(async () => null),
+      } as never,
     );
     expect(() => ctrl.verify('subscribe', 'errado', 'x')).toThrow(ForbiddenException);
   });
@@ -73,6 +81,10 @@ describe('MetaWebhookController.verify (GET handshake)', () => {
       makeInbox() as never,
       makeOAuth() as never,
       makeAntiReplay() as never,
+      {
+        baixarEArmazenar: vi.fn(async () => null),
+        signedUrl: vi.fn(async () => null),
+      } as never,
     );
     expect(() => ctrl.verify('unsubscribe', 'verify-123', 'x')).toThrow(ForbiddenException);
   });
@@ -83,6 +95,10 @@ describe('MetaWebhookController.verify (GET handshake)', () => {
       makeInbox() as never,
       makeOAuth() as never,
       makeAntiReplay() as never,
+      {
+        baixarEArmazenar: vi.fn(async () => null),
+        signedUrl: vi.fn(async () => null),
+      } as never,
     );
     expect(() => ctrl.verify('subscribe', 'qualquer', 'x')).toThrow(ForbiddenException);
   });
@@ -114,6 +130,10 @@ describe('MetaWebhookController.receive (POST events)', () => {
       makeInbox() as never,
       makeOAuth({ empresaId: 'emp-1' }) as never,
       makeAntiReplay() as never,
+      {
+        baixarEArmazenar: vi.fn(async () => null),
+        signedUrl: vi.fn(async () => null),
+      } as never,
     );
     await expect(
       ctrl.receive(fakeReq(rawBody), 'sha256=deadbeef', envelope),
@@ -126,6 +146,10 @@ describe('MetaWebhookController.receive (POST events)', () => {
       makeInbox() as never,
       makeOAuth({ empresaId: 'emp-1' }) as never,
       makeAntiReplay() as never,
+      {
+        baixarEArmazenar: vi.fn(async () => null),
+        signedUrl: vi.fn(async () => null),
+      } as never,
     );
     await expect(ctrl.receive(fakeReq(rawBody), undefined, envelope)).rejects.toBeInstanceOf(
       UnauthorizedException,
@@ -140,6 +164,10 @@ describe('MetaWebhookController.receive (POST events)', () => {
       inbox as never,
       oauth as never,
       makeAntiReplay() as never,
+      {
+        baixarEArmazenar: vi.fn(async () => null),
+        signedUrl: vi.fn(async () => null),
+      } as never,
     );
     const r = await ctrl.receive(fakeReq(rawBody), sign(rawBody), envelope);
     expect(r.ok).toBe(true);
@@ -163,6 +191,10 @@ describe('MetaWebhookController.receive (POST events)', () => {
       inbox as never,
       oauth as never,
       makeAntiReplay() as never,
+      {
+        baixarEArmazenar: vi.fn(async () => null),
+        signedUrl: vi.fn(async () => null),
+      } as never,
     );
     const r = await ctrl.receive(fakeReq(rawBody), sign(rawBody), envelope);
     expect(r.ok).toBe(true);
@@ -194,6 +226,10 @@ describe('MetaWebhookController.receive (POST events)', () => {
       inbox as never,
       makeOAuth({ empresaId: 'emp-1' }) as never,
       makeAntiReplay() as never,
+      {
+        baixarEArmazenar: vi.fn(async () => null),
+        signedUrl: vi.fn(async () => null),
+      } as never,
     );
     await ctrl.receive(fakeReq(raw), sign(raw), envelopeEcho);
     expect(inbox.processarMensagemEntrante).not.toHaveBeenCalled();
@@ -225,6 +261,10 @@ describe('MetaWebhookController.receive (POST events)', () => {
       inbox as never,
       oauth as never,
       makeAntiReplay() as never,
+      {
+        baixarEArmazenar: vi.fn(async () => null),
+        signedUrl: vi.fn(async () => null),
+      } as never,
     );
     await ctrl.receive(fakeReq(raw), sign(raw), env);
     expect(oauth.resolverPorAccount).toHaveBeenCalledWith('instagram', 'ig-1');
@@ -261,6 +301,10 @@ describe('MetaWebhookController.receive (POST events)', () => {
       inbox as never,
       makeOAuth({ empresaId: 'emp-1' }) as never,
       makeAntiReplay() as never,
+      {
+        baixarEArmazenar: vi.fn(async () => null),
+        signedUrl: vi.fn(async () => null),
+      } as never,
     );
     await ctrl.receive(fakeReq(raw), sign(raw), env);
     expect(inbox.processarMensagemEntrante).toHaveBeenCalledWith(

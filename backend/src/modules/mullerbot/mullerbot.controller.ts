@@ -1,4 +1,5 @@
-import { Body, Controller, HttpCode, HttpStatus, Post } from '@nestjs/common';
+import { Body, Controller, Delete, HttpCode, HttpStatus, Param, Post } from '@nestjs/common';
+import { Throttle, seconds } from '@nestjs/throttler';
 import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
 import { Audit } from '@shared/decorators/audit.decorator';
 import { CurrentUser } from '@shared/decorators/current-user.decorator';
@@ -15,14 +16,25 @@ export class MullerBotController {
 
   @Post('perguntar')
   @HttpCode(HttpStatus.OK)
+  // Bucket dedicado pra MullerBot: chamada à OpenAI custa $ + latência alta.
+  // 30 req/min é generoso pra uso normal, freia abuso/loop.
+  @Throttle({ default: { limit: 30, ttl: seconds(60) } })
   @Audit({ action: 'mullerbot_perguntar', resource: 'mullerbot' })
   @ApiOperation({
-    summary: 'Pergunta com RAG sobre catálogo de produtos (importado do OMIE)',
+    summary:
+      'Pergunta com RAG sobre catálogo de produtos. Cache de respostas (sem sessão) e histórico opcional via sessionId.',
   })
   perguntar(
     @CurrentUser() user: AuthenticatedUser,
     @Body(new ZodValidationPipe(perguntarSchema)) dto: PerguntarDto,
   ) {
     return this.bot.perguntar(user, dto);
+  }
+
+  @Delete('historico/:sessionId')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Limpa histórico conversacional da sessão' })
+  limparHistorico(@CurrentUser() user: AuthenticatedUser, @Param('sessionId') sessionId: string) {
+    return this.bot.limparHistorico(user, sessionId);
   }
 }

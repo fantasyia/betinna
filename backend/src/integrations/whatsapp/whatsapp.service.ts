@@ -53,4 +53,27 @@ export class WhatsAppService implements CanalAdapter, OnModuleInit {
       : { type: 'EMPRESA' as const, id: empresaId };
     return this.sessions.estaConectado(owner);
   }
+
+  /**
+   * Envia mídia (imagem/vídeo/áudio/documento) através do WhatsApp.
+   * Encaminha pra WhatsAppSessionService — esta classe é só fachada.
+   */
+  async enviarMidia(
+    empresaId: string,
+    peerId: string,
+    params: Parameters<typeof this.sessions.enviarMidia>[2],
+    ctx?: CanalAdapterContexto,
+  ): Promise<{ externalId?: string }> {
+    const owner = ctx?.proprietarioId
+      ? { type: 'USUARIO' as const, id: ctx.proprietarioId }
+      : { type: 'EMPRESA' as const, id: empresaId };
+    if (!this.sessions.estaConectado(owner)) {
+      throw new BusinessRuleException(
+        owner.type === 'USUARIO'
+          ? 'Seu WhatsApp pessoal não está conectado.'
+          : 'WhatsApp da empresa não está conectado.',
+      );
+    }
+    return this.sessions.enviarMidia(owner, peerId, params);
+  }
 }

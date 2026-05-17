@@ -59,6 +59,16 @@ const makeProdutoSearch = (resultado: unknown[] = []) => ({
   buscar: vi.fn(async () => resultado),
 });
 
+/** Cache stub — sempre miss, não persiste nada. Não interfere nos asserts. */
+const makeCache = () => ({
+  buildAnswerKey: vi.fn(() => 'mb:answer:test'),
+  getAnswer: vi.fn(async () => null),
+  setAnswer: vi.fn(async () => undefined),
+  getHistorico: vi.fn(async () => []),
+  pushTurn: vi.fn(async () => undefined),
+  limparHistorico: vi.fn(async () => ({ ok: true as const })),
+});
+
 const PRODUTO_BASE = {
   id: 'p1',
   nome: 'Óleo de Girassol 5L',
@@ -81,6 +91,7 @@ describe('MullerBotService.perguntar — credenciais', () => {
       makeEnv() as never,
       makeUserIntegracoes() as never,
       makeProdutoSearch() as never,
+      makeCache() as never,
     );
     await expect(
       svc.perguntar(fakeUser({ empresaIdAtiva: undefined }), {
@@ -96,6 +107,7 @@ describe('MullerBotService.perguntar — credenciais', () => {
       makeEnv() as never,
       makeUserIntegracoes() as never,
       makeProdutoSearch() as never,
+      makeCache() as never,
     );
     await expect(svc.perguntar(fakeUser(), { pergunta: 'oi', topK: 5 })).rejects.toBeInstanceOf(
       IntegrationException,
@@ -112,6 +124,7 @@ describe('MullerBotService.perguntar — credenciais', () => {
       makeEnv() as never,
       ui as never,
       makeProdutoSearch() as never,
+      makeCache() as never,
     );
     const r = await svc.perguntar(fakeUser(), { pergunta: 'tem óleo?', topK: 5 });
     expect(r.modelo).toBe('gpt-4o-mini');
@@ -126,6 +139,7 @@ describe('MullerBotService.perguntar — credenciais', () => {
       makeEnv({ OPENAI_API_KEY: 'sk-env-disponivel' }) as never,
       makeUserIntegracoes() as never,
       makeProdutoSearch() as never,
+      makeCache() as never,
     );
     // REP explícito: mesmo com OPENAI_API_KEY no env, deve falhar
     await expect(
@@ -141,6 +155,7 @@ describe('MullerBotService.perguntar — credenciais', () => {
       makeEnv({ OPENAI_API_KEY: 'sk-env' }) as never,
       makeUserIntegracoes() as never,
       makeProdutoSearch() as never,
+      makeCache() as never,
     );
     const r = await svc.perguntar(fakeUser({ role: 'SAC' as UserRole }), {
       pergunta: 'tem óleo?',
@@ -160,6 +175,7 @@ describe('MullerBotService.perguntar — limite de tokens', () => {
       makeEnv({ OPENAI_API_KEY: 'sk', MULLERBOT_MAX_INPUT_TOKENS: 100 }) as never,
       makeUserIntegracoes() as never,
       makeProdutoSearch() as never,
+      makeCache() as never,
     );
     const perguntaLonga = 'x'.repeat(5000); // ~1250 tokens
     await expect(
@@ -181,6 +197,7 @@ describe('MullerBotService.perguntar — limite de tokens', () => {
       makeEnv({ OPENAI_API_KEY: 'sk', MULLERBOT_MAX_INPUT_TOKENS: 4000 }) as never,
       makeUserIntegracoes() as never,
       makeProdutoSearch(produtos) as never,
+      makeCache() as never,
     );
     const r = await svc.perguntar(fakeUser(), { pergunta: 'tem isso?', topK: 5 });
     expect(r.produtosUsados).toHaveLength(3);
@@ -204,6 +221,7 @@ describe('MullerBotService.perguntar — limite de tokens', () => {
       makeEnv({ OPENAI_API_KEY: 'sk', MULLERBOT_MAX_INPUT_TOKENS: 500 }) as never,
       makeUserIntegracoes() as never,
       makeProdutoSearch(produtos) as never,
+      makeCache() as never,
     );
     const r = await svc.perguntar(fakeUser(), { pergunta: 'oi', topK: 10 });
     expect(r.produtosUsados.length).toBeLessThan(10);
@@ -218,6 +236,7 @@ describe('MullerBotService.perguntar — limite de tokens', () => {
       makeEnv({ OPENAI_API_KEY: 'sk', MULLERBOT_MAX_OUTPUT_TOKENS: 256 }) as never,
       makeUserIntegracoes() as never,
       makeProdutoSearch([PRODUTO_BASE]) as never,
+      makeCache() as never,
     );
     await svc.perguntar(fakeUser(), { pergunta: 'oi', topK: 5 });
     const [, opts] = http.post.mock.calls[0] as [string, { body: { max_tokens: number } }];
@@ -231,6 +250,7 @@ describe('MullerBotService.perguntar — limite de tokens', () => {
       makeEnv({ OPENAI_API_KEY: 'sk' }) as never,
       makeUserIntegracoes() as never,
       makeProdutoSearch([PRODUTO_BASE]) as never,
+      makeCache() as never,
     );
     await svc.perguntar(fakeUser(), { pergunta: 'oi', topK: 5, maxOutputTokens: 512 });
     const [, opts] = http.post.mock.calls[0] as [string, { body: { max_tokens: number } }];
@@ -246,6 +266,7 @@ describe('MullerBotService.perguntar — montagem do prompt', () => {
       makeEnv({ OPENAI_API_KEY: 'sk' }) as never,
       makeUserIntegracoes() as never,
       makeProdutoSearch([]) as never,
+      makeCache() as never,
     );
     await svc.perguntar(fakeUser(), { pergunta: 'qual o preço?', topK: 5 });
     const [, opts] = http.post.mock.calls[0] as [
@@ -263,6 +284,7 @@ describe('MullerBotService.perguntar — montagem do prompt', () => {
       makeEnv({ OPENAI_API_KEY: 'sk', MULLERBOT_MAX_INPUT_TOKENS: 4000 }) as never,
       makeUserIntegracoes() as never,
       makeProdutoSearch([PRODUTO_BASE]) as never,
+      makeCache() as never,
     );
     await svc.perguntar(fakeUser(), { pergunta: 'tem óleo?', topK: 5 });
     const [, opts] = http.post.mock.calls[0] as [

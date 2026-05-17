@@ -83,7 +83,15 @@ describe('OmiePedidosService', () => {
     prisma = makePrismaMock();
     omie = makeOmieClientMock();
     integracoes = makeIntegracoesMock();
-    service = new OmiePedidosService(prisma as never, omie as never, integracoes as never);
+    service = new OmiePedidosService(
+      prisma as never,
+      omie as never,
+      integracoes as never,
+      {
+        omiePush: { inc: vi.fn() },
+        omiePushDuration: { startTimer: vi.fn().mockReturnValue(() => undefined) },
+      } as never,
+    );
   });
 
   describe('enviarPedido', () => {

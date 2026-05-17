@@ -1,9 +1,10 @@
 import { Injectable, Logger } from '@nestjs/common';
 import {
   type Conversation,
+  type ConversationStatus,
   type Message,
   type MessageChannel,
-  type Prisma,
+  Prisma,
   MessageDirection,
   MessageStatus,
 } from '@prisma/client';
@@ -133,6 +134,35 @@ export class InboxService {
     return conv;
   }
 
+  /**
+   * Retorna `mediaUrl` (storage path) de uma mensagem, validando acesso.
+   * Usado por `GET /inbox/messages/:id/media` pra gerar signed URL.
+   */
+  async getMessageMediaPath(
+    user: AuthenticatedUser,
+    messageId: string,
+  ): Promise<{ canal: string; storagePath: string; mime: string | null } | null> {
+    const msg = await this.prisma.message.findUnique({
+      where: { id: messageId },
+      select: {
+        mediaUrl: true,
+        mediaMime: true,
+        conversation: {
+          select: {
+            id: true,
+            canal: true,
+            empresaId: true,
+            proprietarioId: true,
+          },
+        },
+      },
+    });
+    if (!msg || !msg.mediaUrl) return null;
+    // Reaproveita findById pra validar visibilidade da conversation
+    await this.findById(user, msg.conversation.id);
+    return { canal: msg.conversation.canal, storagePath: msg.mediaUrl, mime: msg.mediaMime };
+  }
+
   async listMensagens(
     user: AuthenticatedUser,
     conversationId: string,
@@ -210,6 +240,78 @@ export class InboxService {
     });
   }
 
+  // ─── Bulk operations ─────────────────────────────────────────────────
+
+  /**
+   * Atribui N conversations a um único usuário (ou desatribui se atribuidoId=null).
+   * REP bloqueado (gerencial, D38).
+   *
+   * Filtra pelo escopo do user — IDs que ele não pode ver não são atualizados.
+   * Retorna o count real de updates aplicados (pode ser menor que ids.length).
+   */
+  async bulkAtribuir(
+    user: AuthenticatedUser,
+    ids: string[],
+    atribuidoId: string | null,
+  ): Promise<{ atualizados: number }> {
+    if (user.role === 'REP') {
+      throw new ForbiddenException(
+        'Apenas gerência pode reatribuir conversas',
+        ErrorCode.TENANT_ACCESS_DENIED,
+      );
+    }
+    if (atribuidoId) {
+      const exists = await this.prisma.usuario.findFirst({
+        where: { id: atribuidoId },
+        select: { id: true },
+      });
+      if (!exists) throw new NotFoundException('Usuario', atribuidoId);
+    }
+    const where: Prisma.ConversationWhereInput = { id: { in: ids }, ...this.baseWhere(user) };
+    const r = await this.prisma.conversation.updateMany({
+      where,
+      data: { atribuidoId },
+    });
+    return { atualizados: r.count };
+  }
+
+  async bulkAlterarStatus(
+    user: AuthenticatedUser,
+    ids: string[],
+    status: ConversationStatus,
+  ): Promise<{ atualizados: number }> {
+    const where: Prisma.ConversationWhereInput = { id: { in: ids }, ...this.baseWhere(user) };
+    const r = await this.prisma.conversation.updateMany({
+      where,
+      data: { status },
+    });
+    return { atualizados: r.count };
+  }
+
+  /** Atalho semântico: bulkArquivar = bulkAlterarStatus(ARQUIVADA). */
+  async bulkArquivar(user: AuthenticatedUser, ids: string[]): Promise<{ atualizados: number }> {
+    return this.bulkAlterarStatus(user, ids, 'ARQUIVADA');
+  }
+
+  /** Atalho: marca todas mensagens das conversations como lidas. */
+  async bulkMarcarLidas(user: AuthenticatedUser, ids: string[]): Promise<{ atualizados: number }> {
+    // Permissão padrão de inbox — mesmo escopo de leitura
+    const visibles = await this.prisma.conversation.findMany({
+      where: { id: { in: ids }, ...this.baseWhere(user) },
+      select: { id: true },
+    });
+    if (visibles.length === 0) return { atualizados: 0 };
+    const r = await this.prisma.message.updateMany({
+      where: {
+        conversationId: { in: visibles.map((c) => c.id) },
+        direction: MessageDirection.INBOUND,
+        status: { in: [MessageStatus.RECEIVED, MessageStatus.DELIVERED, MessageStatus.SENT] },
+      },
+      data: { status: MessageStatus.READ },
+    });
+    return { atualizados: r.count };
+  }
+
   // ─── Resposta (OUTBOUND) ─────────────────────────────────────────────
 
   async responder(
@@ -268,6 +370,98 @@ export class InboxService {
         data: { status: MessageStatus.FAILED, meta: { erro: m } },
       });
       throw new BusinessRuleException(`Falha ao enviar pelo canal ${conv.canal}: ${m}`);
+    }
+  }
+
+  /**
+   * Envia mídia OUTBOUND. Hoje suporta canal WHATSAPP — outros canais
+   * lançam BusinessRule até ganharem implementação.
+   *
+   * Fluxo:
+   *  1. Valida visibilidade da conversation
+   *  2. Cria Message com tipo correspondente em PENDING
+   *  3. Chama WhatsAppService.enviarMidia diretamente (não passa pelo
+   *     CanalAdapterRegistry porque adapters atuais só implementam enviarTexto)
+   *  4. Atualiza status pra SENT + externalId
+   *
+   * Forçamos canal=WHATSAPP no MVP. Quando outros adapters ganharem
+   * `enviarMidia`, generaliza.
+   */
+  async responderComMidia(
+    user: AuthenticatedUser,
+    conversationId: string,
+    params: {
+      tipo: 'IMAGE' | 'VIDEO' | 'AUDIO' | 'DOCUMENT';
+      caption?: string;
+      fileName?: string;
+      mimetype?: string;
+      ptt?: boolean;
+      storagePath?: string;
+      url?: string;
+    },
+    whatsapp: {
+      enviarMidia: (
+        empresaId: string,
+        peerId: string,
+        p: Parameters<InboxService['responderComMidia']>[2],
+        ctx?: { proprietarioId?: string | null },
+      ) => Promise<{ externalId?: string }>;
+    },
+  ): Promise<Message> {
+    const conv = await this.findById(user, conversationId);
+    if (conv.canal !== 'WHATSAPP') {
+      throw new BusinessRuleException(
+        `Envio de mídia ainda não suportado no canal ${conv.canal}. Por enquanto, só WhatsApp.`,
+      );
+    }
+
+    const tipoMessage = params.tipo;
+    const conteudoPlaceholder =
+      params.caption ??
+      (params.tipo === 'DOCUMENT' && params.fileName
+        ? params.fileName
+        : { IMAGE: '[imagem]', VIDEO: '[vídeo]', AUDIO: '[áudio]', DOCUMENT: '[documento]' }[
+            params.tipo
+          ]);
+
+    const msg = await this.prisma.message.create({
+      data: {
+        conversationId,
+        direction: MessageDirection.OUTBOUND,
+        tipo: tipoMessage,
+        conteudo: conteudoPlaceholder,
+        status: MessageStatus.PENDING,
+        autorUsuarioId: user.id,
+        mediaUrl: params.storagePath ?? params.url ?? null,
+        mediaMime: params.mimetype ?? null,
+      },
+    });
+
+    try {
+      const r = await whatsapp.enviarMidia(conv.empresaId, conv.peerId, params, {
+        proprietarioId: conv.proprietarioId,
+      });
+      const atualizada = await this.prisma.message.update({
+        where: { id: msg.id },
+        data: { status: MessageStatus.SENT, externalId: r.externalId ?? null },
+      });
+      await this.prisma.conversation.update({
+        where: { id: conversationId },
+        data: {
+          ultimaMsgEm: atualizada.criadoEm,
+          ultimaMsgPreview: this.preview(conteudoPlaceholder),
+          status: conv.status === 'PENDENTE' ? 'ABERTA' : conv.status,
+        },
+      });
+      return atualizada;
+    } catch (err) {
+      const m = err instanceof Error ? err.message : String(err);
+      this.logger.warn(`Falha enviando mídia ${msg.id}: ${m}`);
+      await this.prisma.message.update({
+        where: { id: msg.id },
+        data: { status: MessageStatus.FAILED, meta: { erro: m } },
+      });
+      throw new BusinessRuleException(`Falha ao enviar mídia: ${m}`);
     }
   }
 
@@ -382,6 +576,8 @@ export class InboxService {
     clienteId: string | null,
   ): Promise<Conversation> {
     const propId = p.proprietarioId ?? null;
+
+    // Lookup primeiro
     const existente = await this.prisma.conversation.findFirst({
       where: {
         empresaId: p.empresaId,
@@ -399,18 +595,43 @@ export class InboxService {
         },
       });
     }
-    return this.prisma.conversation.create({
-      data: {
-        empresaId: p.empresaId,
-        canal: p.canal,
-        peerId: p.peerId,
-        peerNome: p.peerNome ?? null,
-        proprietarioId: propId,
-        clienteId,
-        status: 'PENDENTE',
-        naoLidas: 0,
-      },
-    });
+
+    // Race protection (Auditoria 2026-05-17, M2): duas mensagens simultâneas do
+    // mesmo peer poderiam fazer find+create em paralelo e criar 2 conversations.
+    // Postgres não permite `@@unique` direto pq `proprietarioId` é nullable
+    // (NULLs distintos). Mitigação: tenta create e captura P2002; se cair em
+    // duplicate (vencido pelo outro racer), refaz o lookup.
+    try {
+      return await this.prisma.conversation.create({
+        data: {
+          empresaId: p.empresaId,
+          canal: p.canal,
+          peerId: p.peerId,
+          peerNome: p.peerNome ?? null,
+          proprietarioId: propId,
+          clienteId,
+          status: 'PENDENTE',
+          naoLidas: 0,
+        },
+      });
+    } catch (err) {
+      // Prisma error P2002 = unique constraint violation. Caso o cliente tenha
+      // adicionado `@@unique` parcial via migration manual no Postgres
+      // (recomendado quando volume crescer), o create vai falhar — neste caso
+      // o racer já criou; basta buscar de novo.
+      if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === 'P2002') {
+        const reload = await this.prisma.conversation.findFirst({
+          where: {
+            empresaId: p.empresaId,
+            canal: p.canal,
+            peerId: p.peerId,
+            proprietarioId: propId,
+          },
+        });
+        if (reload) return reload;
+      }
+      throw err;
+    }
   }
 
   /** Remove caracteres não-numéricos. Retorna null se sobrar < 8 dígitos. */

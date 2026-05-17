@@ -20,4 +20,6 @@ export interface MullerBotResposta {
   tokensInEstimados: number;
   tokensIn?: number;
   tokensOut?: number;
+  /** True quando resposta veio do cache (sem chamar OpenAI). */
+  cacheHit?: boolean;
 }

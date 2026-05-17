@@ -98,4 +98,17 @@ export class RelatoriosController {
   ) {
     return this.relatorios.amostras(user, params);
   }
+
+  @Get('fidelidade')
+  @RequirePermissions({ module: 'relatorios', action: 'view' })
+  @ApiOperation({
+    summary:
+      'Fidelidade: pontos creditados/resgatados/expirados, saldo total, taxa de uso, top clientes',
+  })
+  fidelidade(
+    @CurrentUser() user: AuthenticatedUser,
+    @Query(new ZodValidationPipe(periodoSchema)) params: PeriodoDto,
+  ) {
+    return this.relatorios.fidelidade(user, params);
+  }
 }

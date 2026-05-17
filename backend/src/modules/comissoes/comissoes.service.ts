@@ -6,6 +6,9 @@ import {
   ForbiddenException,
   NotFoundException,
 } from '@shared/errors/app-exception';
+import { NotificacoesService } from '@modules/notificacoes/notificacoes.service';
+import { TransactionalEmailService } from '@integrations/sendgrid/transactional-email.service';
+import { addBreadcrumb } from '@shared/observability/sentry';
 import { RepScopeService } from '@shared/scope/rep-scope.service';
 import { empresaFilter, getCallerEmpresaId, isGlobalAdmin } from '@shared/utils/auth-context';
 import type { AuthenticatedUser } from '@shared/types/authenticated-user';
@@ -31,6 +34,8 @@ export class ComissoesService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly repScope: RepScopeService,
+    private readonly notificacoes: NotificacoesService,
+    private readonly email: TransactionalEmailService,
   ) {}
 
   /**
@@ -314,9 +319,34 @@ export class ComissoesService {
       }, 0);
     }
 
+    addBreadcrumb('comissoes', 'fechamento-completo', {
+      empresaId,
+      mes: dto.mes,
+      ano: dto.ano,
+      reps: aggregated.length,
+      gerentes: gerentesProcessados,
+      totalVendas: totalVendasAgg,
+      totalComissao: totalComissaoAgg,
+    });
+
     this.logger.log(
       `Fechamento ${dto.mes}/${dto.ano} (empresa ${empresaId}): ${aggregated.length} reps + ${gerentesProcessados} gerentes · R$${totalVendasAgg.toFixed(2)} vendas · R$${totalComissaoAgg.toFixed(2)} comissão`,
     );
+
+    // Notifica REPs e GERENTEs envolvidos no fechamento
+    void this.notificacoes.criarParaRole({
+      empresaId,
+      roles: ['REP', 'GERENTE'],
+      tipo: 'COMISSAO_FECHADA',
+      prioridade: 'NORMAL',
+      titulo: `Comissão ${dto.mes}/${dto.ano} fechada`,
+      mensagem: `Mês fechou com R$${totalVendasAgg.toFixed(2)} em vendas. Confira sua linha em /comissoes.`,
+      link: '/comissoes',
+      metadata: { ano: dto.ano, mes: dto.mes },
+    });
+
+    // E-mail transacional personalizado por rep (busca os valores individuais)
+    void this.notificarEmailFechamento(empresaId, dto.mes, dto.ano);
 
     return {
       ok: true,
@@ -351,7 +381,19 @@ export class ComissoesService {
     if (count === 0) {
       throw new BusinessRuleException('Comissão já está marcada como paga');
     }
-    return this.findById(user, id);
+    const result = await this.findById(user, id);
+    // Notifica o REP/GERENTE que sua comissão foi paga
+    void this.notificacoes.criarParaUsuario({
+      empresaId: result.empresaId,
+      usuarioId: result.representanteId,
+      tipo: 'COMISSAO_PAGA',
+      prioridade: 'NORMAL',
+      titulo: 'Comissão paga',
+      mensagem: `Comissão de ${result.mes}/${result.ano} (R$ ${result.totalComissao.toFixed(2)}) marcada como paga.`,
+      link: '/comissoes',
+      metadata: { comissaoId: result.id, ano: result.ano, mes: result.mes },
+    });
+    return result;
   }
 
   async desmarcarPago(user: AuthenticatedUser, id: string): Promise<ComissaoWithRel> {
@@ -415,5 +457,42 @@ export class ComissoesService {
       totalAReceberAnoAtual: totalAReceber,
       historico,
     };
+  }
+
+  /**
+   * Best-effort: pra cada rep com comissão fechada do mês, manda e-mail
+   * personalizado com seus números individuais. Loop por rep — uma falha
+   * não bloqueia os outros.
+   */
+  private async notificarEmailFechamento(
+    empresaId: string,
+    mes: number,
+    ano: number,
+  ): Promise<void> {
+    try {
+      const comissoes = await this.prisma.comissao.findMany({
+        where: { empresaId, mes, ano },
+        select: {
+          totalVendas: true,
+          totalComissao: true,
+          representante: { select: { email: true, nome: true, status: true } },
+        },
+      });
+      for (const c of comissoes) {
+        if (!c.representante?.email || c.representante.status !== 'ATIVO') continue;
+        void this.email.enviarComissaoFechada({
+          para: c.representante.email,
+          repNome: c.representante.nome,
+          mes,
+          ano,
+          totalVendas: c.totalVendas,
+          totalComissao: c.totalComissao,
+        });
+      }
+    } catch (err) {
+      this.logger.warn(
+        `Falha enviando e-mails de fechamento: ${err instanceof Error ? err.message : String(err)}`,
+      );
+    }
   }
 }
