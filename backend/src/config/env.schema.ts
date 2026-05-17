@@ -12,6 +12,12 @@ export const envSchema = z
     API_PREFIX: z.string().default('api/v1'),
     LOG_LEVEL: z.enum(['fatal', 'error', 'warn', 'info', 'debug', 'trace']).default('info'),
     CORS_ORIGINS: z.string().default('http://localhost:3000'),
+    /**
+     * URL pública do frontend — usada em links de e-mail transacional
+     * (botão "Acessar Betinna.ai", deep-links pra pedido/ocorrência).
+     * Default: primeiro CORS_ORIGINS.
+     */
+    FRONTEND_URL: z.string().url().optional(),
 
     // Database
     DATABASE_URL: z.string().url(),

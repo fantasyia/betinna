@@ -2,7 +2,8 @@ import { Module, type MiddlewareConsumer, type NestModule } from '@nestjs/common
 import { APP_FILTER, APP_INTERCEPTOR } from '@nestjs/core';
 import { BullModule } from '@nestjs/bullmq';
 import { ScheduleModule } from '@nestjs/schedule';
-import { ThrottlerGuard, ThrottlerModule, seconds } from '@nestjs/throttler';
+import { ThrottlerModule, seconds } from '@nestjs/throttler';
+import { TenantThrottlerGuard } from '@shared/guards/tenant-throttler.guard';
 import { ThrottlerStorageRedisService } from '@nest-lab/throttler-storage-redis';
 import IORedis from 'ioredis';
 import { APP_GUARD } from '@nestjs/core';
@@ -23,6 +24,9 @@ import { WhatsAppModule } from '@integrations/whatsapp/whatsapp.module';
 import { CampanhasModule } from '@modules/campanhas/campanhas.module';
 import { DeadLetterModule } from '@modules/dead-letter/dead-letter.module';
 import { RelatoriosModule } from '@modules/relatorios/relatorios.module';
+import { FidelidadeModule } from '@modules/fidelidade/fidelidade.module';
+import { NotificacoesModule } from '@modules/notificacoes/notificacoes.module';
+import { ImportModule } from '@modules/import/import.module';
 import { FluxosModule } from '@modules/fluxos/fluxos.module';
 import { AgendaModule } from '@modules/agenda/agenda.module';
 import { IncidentsModule } from '@modules/incidents/incidents.module';
@@ -46,6 +50,7 @@ import { PropostasModule } from '@modules/propostas/propostas.module';
 import { TagsModule } from '@modules/tags/tags.module';
 import { UsersModule } from '@modules/users/users.module';
 import { AllExceptionsFilter } from '@shared/filters/all-exceptions.filter';
+import { MetricsModule } from '@shared/observability/metrics.module';
 import { HttpModule } from '@shared/http/http.module';
 import { ResponseInterceptor } from '@shared/interceptors/response.interceptor';
 import { RepScopeModule } from '@shared/scope/rep-scope.module';
@@ -152,6 +157,7 @@ import { SharedUtilsModule } from '@shared/utils/shared-utils.module';
     HttpModule,
     RepScopeModule,
     SharedUtilsModule,
+    MetricsModule,
 
     // Módulos do domínio
     AuditModule,
@@ -171,6 +177,9 @@ import { SharedUtilsModule } from '@shared/utils/shared-utils.module';
     OcorrenciasModule,
     AgendaModule,
     FluxosModule,
+    FidelidadeModule,
+    NotificacoesModule,
+    ImportModule,
     CampanhasModule,
     RelatoriosModule,
     DeadLetterModule,
@@ -194,7 +203,10 @@ import { SharedUtilsModule } from '@shared/utils/shared-utils.module';
   providers: [
     { provide: APP_FILTER, useClass: AllExceptionsFilter },
     { provide: APP_INTERCEPTOR, useClass: ResponseInterceptor },
-    { provide: APP_GUARD, useClass: ThrottlerGuard },
+    // TenantThrottlerGuard estende ThrottlerGuard padrão usando empresaId
+    // como chave (cai pro IP quando não há user). Resolve cenários de NAT
+    // compartilhado entre tenants.
+    { provide: APP_GUARD, useClass: TenantThrottlerGuard },
   ],
 })
 export class AppModule implements NestModule {

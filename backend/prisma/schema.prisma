@@ -264,12 +264,17 @@ model Empresa {
   fluxos         Fluxo[]
   comissoes      Comissao[]
   sequencias     EmpresaSequence[]
+  programaFidelidade   ProgramaFidelidade?
+  recompensasFidelidade RecompensaFidelidade[]
+  saldosFidelidade     SaldoFidelidade[]
+  movimentosFidelidade MovimentoFidelidade[]
   agendaItens    AgendaItem[]
   tags           Tag[]
   marketplaceMsgs MarketplaceMsg[]
   marketplaceOrders MarketplaceOrder[]
   conversations    Conversation[]
   marketplaceIncidents MarketplaceIncident[]
+  notificacoes     Notificacao[]
 
   @@index([ativo])
 }
@@ -319,6 +324,7 @@ model Usuario {
   conversationsProprietario Conversation[] @relation("ConversationProprietario")
   mensagensEnviadas Message[] @relation("MessageAutor")
   campanhasCriadas Campanha[]
+  notificacoes  Notificacao[]
 
   @@index([role])
   @@index([status])
@@ -387,12 +393,16 @@ model Cliente {
   conversations Conversation[]
   marketplaceIncidents MarketplaceIncident[]
   campanhasDestinatarios CampanhaDestinatario[]
+  saldoFidelidade        SaldoFidelidade?
+  movimentosFidelidade   MovimentoFidelidade[]
 
   @@unique([empresaId, codigoOmie])
   @@index([empresaId])
   @@index([representanteId])
   @@index([status])
   @@index([omieStatus])
+  // Lista "novos clientes" e ordenação cronológica
+  @@index([empresaId, criadoEm])
 }
 
 model Tag {
@@ -545,12 +555,17 @@ model Pedido {
 
   itens           PedidoItem[]
   aprovacaoDesconto AprovacaoDesconto?
+  movimentosFidelidade MovimentoFidelidade[]
 
   @@unique([empresaId, numero])
   @@index([empresaId])
   @@index([clienteId])
   @@index([representanteId])
   @@index([status])
+  // Auditoria 2026-05-17: query mais comum no dashboard de vendas é
+  // agregar por (empresa, status, período). Índice composto reduz scan.
+  @@index([empresaId, status, criadoEm])
+  @@index([empresaId, criadoEm])
 }
 
 model PedidoItem {
@@ -687,6 +702,8 @@ model Lead {
   @@index([empresaId, etapa])
   @@index([empresaId, representanteId])
   @@index([clienteId])
+  // Aging por etapa (dashboard funil): WHERE etapaDesde < cutoff
+  @@index([empresaId, etapa, etapaDesde])
 }
 
 // ─── OCORRÊNCIAS (SAC) ────────────────────────────────────────────────
@@ -724,6 +741,9 @@ model Ocorrencia {
   @@index([empresaId, status])
   @@index([empresaId, responsavelId])
   @@index([clienteId])
+  // SLA dashboard: WHERE empresaId AND status='ABERTA' AND slaVenceEm < now
+  @@index([empresaId, severidade])
+  @@index([empresaId, slaVenceEm])
 }
 
 model OcorrenciaComentario {
@@ -801,6 +821,9 @@ model Comissao {
   @@unique([empresaId, representanteId, ano, mes])
   @@index([empresaId])
   @@index([tipo])
+  // Relatório mensal: WHERE empresaId AND ano=Y AND mes=M (sem filtro de rep)
+  @@index([empresaId, ano, mes])
+  @@index([empresaId, pago])
 }
 
 // ─── AGENDA ───────────────────────────────────────────────────────────
@@ -1327,6 +1350,112 @@ model AuditLog {
   @@index([criadoEm])
 }
 
+// ─── PROGRAMA DE FIDELIDADE ────────────────────────────────────────────
+// MVP B2B: cliente acumula pontos a cada pedido, resgata por recompensas
+// (desconto% / desconto valor / brinde).
+//
+// Decisões:
+// - 1 programa por empresa (singleton via @unique). DIRECTOR/ADMIN configura.
+// - TTL de pontos em meses (default 12) — expiração rodada por cron.
+// - Trigger automático: pedido ENVIADO_OMIE/ENTREGUE → gera MovimentoFidelidade
+//   GANHO_PEDIDO. Re-cancelamento gera MovimentoFidelidade ESTORNO_PEDIDO.
+// - Idempotência: @@unique([pedidoId, tipo]) impede dupla creditação.
+// - Saldo é DESNORMALIZADO em SaldoFidelidade.pontos. Cada movimento atualiza
+//   o saldo atomicamente dentro de transaction. Cron mensal recalcula como
+//   safety net contra drift.
+enum MovimentoFidelidadeTipo {
+  GANHO_PEDIDO     // pedido aprovado → ganha pontos
+  ESTORNO_PEDIDO   // pedido cancelado → estorna pontos do GANHO_PEDIDO
+  RESGATE          // cliente resgata recompensa
+  EXPIRACAO        // pontos expiraram (cron mensal)
+  AJUSTE_MANUAL    // DIRECTOR/ADMIN ajusta manualmente (motivo obrigatório)
+}
+
+enum RecompensaTipo {
+  DESCONTO_PERCENTUAL   // valor em % (0–100)
+  DESCONTO_VALOR        // valor em R$
+  BRINDE                // valor opcional (descrição texto)
+}
+
+model ProgramaFidelidade {
+  id                 String   @id @default(cuid())
+  empresaId          String   @unique          // singleton por empresa
+  nome               String   @default("Programa de Fidelidade")
+  ativo              Boolean  @default(true)
+  // Quantos pontos ganha por R$ 1 gasto. Default 1.
+  // Decimal pra permitir 0.5 (1 ponto a cada R$ 2) ou 2 (multiplicador).
+  pontosPorReal      Decimal  @default(1) @db.Decimal(10, 4)
+  // TTL de pontos em meses. 0 = nunca expira.
+  ttlMeses           Int      @default(12)
+  // Pedidos abaixo desse valor não geram pontos.
+  valorMinimoPedido  Decimal  @default(0) @db.Decimal(10, 2)
+  criadoEm           DateTime @default(now())
+  atualizadoEm       DateTime @updatedAt
+
+  empresa Empresa @relation(fields: [empresaId], references: [id], onDelete: Cascade)
+}
+
+model RecompensaFidelidade {
+  id              String          @id @default(cuid())
+  empresaId       String
+  nome            String
+  descricao       String?
+  custoPontos     Int
+  tipo            RecompensaTipo
+  valor           Decimal?        @db.Decimal(10, 2)
+  // null = estoque ilimitado. Decrementa em cada resgate.
+  estoque         Int?
+  ativo           Boolean         @default(true)
+  criadoEm        DateTime        @default(now())
+  atualizadoEm    DateTime        @updatedAt
+
+  empresa     Empresa               @relation(fields: [empresaId], references: [id], onDelete: Cascade)
+  movimentos  MovimentoFidelidade[]
+
+  @@index([empresaId, ativo])
+}
+
+model SaldoFidelidade {
+  id            String   @id @default(cuid())
+  empresaId     String
+  clienteId     String   @unique         // 1 saldo por cliente (1:1)
+  pontos        Int      @default(0)
+  atualizadoEm  DateTime @updatedAt
+  criadoEm      DateTime @default(now())
+
+  empresa  Empresa @relation(fields: [empresaId], references: [id], onDelete: Cascade)
+  cliente  Cliente @relation(fields: [clienteId], references: [id], onDelete: Cascade)
+
+  @@index([empresaId])
+}
+
+model MovimentoFidelidade {
+  id              String                  @id @default(cuid())
+  empresaId       String
+  clienteId       String
+  tipo            MovimentoFidelidadeTipo
+  // Positivo = ganho/ajuste+; Negativo = resgate/expiração/ajuste-.
+  pontos          Int
+  // Origens (preenchidas conforme o tipo):
+  pedidoId        String?
+  recompensaId    String?
+  motivo          String?                  // obrigatório só pra AJUSTE_MANUAL
+  criadoPorId     String?
+  criadoEm        DateTime                @default(now())
+
+  empresa     Empresa               @relation(fields: [empresaId], references: [id], onDelete: Cascade)
+  cliente     Cliente               @relation(fields: [clienteId], references: [id], onDelete: Cascade)
+  pedido      Pedido?               @relation(fields: [pedidoId], references: [id], onDelete: SetNull)
+  recompensa  RecompensaFidelidade? @relation(fields: [recompensaId], references: [id], onDelete: SetNull)
+
+  // Idempotência: 1 movimento por (pedido, tipo). Permite re-execução
+  // segura do trigger. Para tipos sem pedidoId (RESGATE/EXPIRACAO/AJUSTE),
+  // pedidoId é null e o constraint não aplica (Postgres permite múltiplos NULLs).
+  @@unique([pedidoId, tipo])
+  @@index([empresaId, clienteId, criadoEm])
+  @@index([empresaId, tipo])
+}
+
 // ─── SEQUÊNCIAS ATÔMICAS POR EMPRESA ──────────────────────────────────
 // Substitui o padrão race-condition `count() + 1` no `gerarNumero*`.
 // Cada (empresaId, tipo) tem um contador atômico — incrementado via Redis
@@ -1343,4 +1472,51 @@ model EmpresaSequence {
 
   @@unique([empresaId, tipo])
   @@index([empresaId])
+}
+
+// ─── NOTIFICAÇÕES IN-APP ──────────────────────────────────────────────
+// Notificações persistidas por usuário. Criadas por triggers (aprovação
+// pendente, ocorrência crítica, comissão fechada, pedido aprovado, etc).
+// Marca como lida sem deletar — extrato fica.
+
+enum NotificacaoTipo {
+  APROVACAO_PENDENTE       // gerente: aprovação aguardando
+  APROVACAO_RESOLVIDA      // rep: sua aprovação foi aprovada/rejeitada
+  OCORRENCIA_ABERTA        // sac/gerente: nova ocorrência crítica
+  OCORRENCIA_RESOLVIDA     // criador: sua ocorrência foi resolvida
+  PEDIDO_APROVADO          // rep: pedido foi pra OMIE
+  COMISSAO_FECHADA         // rep/gerente: mês fechou, valor disponível
+  COMISSAO_PAGA            // rep/gerente: marcado como pago
+  MENSAGEM_INBOX           // qualquer: nova mensagem inbox
+  AMOSTRA_FOLLOWUP         // rep: amostra precisa follow-up
+  LEAD_INATIVO             // rep: lead 7 dias na mesma etapa
+  CLIENTE_BLOQUEADO        // rep: cliente da carteira ficou BLOQUEADO no OMIE
+  GENERICO                 // notificação manual/admin
+}
+
+enum NotificacaoPrioridade {
+  BAIXA
+  NORMAL
+  ALTA
+  URGENTE
+}
+
+model Notificacao {
+  id           String                @id @default(cuid())
+  empresaId    String
+  usuarioId    String                // destinatário
+  tipo         NotificacaoTipo
+  prioridade   NotificacaoPrioridade @default(NORMAL)
+  titulo       String                // ex: "Aprovação pendente"
+  mensagem     String                // ex: "Pedido PED-0042 com 25% desconto..."
+  link         String?               // rota frontend para deep-link, ex: "/aprovacoes/123"
+  metadata     Json?                 // contexto extra (pedidoId, ocorrenciaId, etc)
+  lidaEm       DateTime?
+  criadoEm     DateTime              @default(now())
+
+  empresa Empresa @relation(fields: [empresaId], references: [id], onDelete: Cascade)
+  usuario Usuario @relation(fields: [usuarioId], references: [id], onDelete: Cascade)
+
+  @@index([usuarioId, lidaEm, criadoEm])
+  @@index([empresaId, criadoEm])
 }
