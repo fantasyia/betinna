@@ -1,6 +1,7 @@
 import { useEffect, useState, type ReactNode } from 'react';
 import { Link, useLocation } from 'react-router-dom';
 import { useRole, usePermission } from '@/hooks/usePermission';
+import { NotificationBell } from '@/components/NotificationBell';
 import { colors, radius, shadows, spacing } from './styles';
 
 /** Breakpoint mobile (tablets+ acima disso). */
@@ -427,6 +428,7 @@ function MobileTopBar({
           {role}
         </span>
       )}
+      <NotificationBell />
     </header>
   );
 }
@@ -522,11 +524,10 @@ export function PageLayout({
             >
               {title}
             </h1>
-            {actions && (
-              <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
-                {actions}
-              </div>
-            )}
+            <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+              {actions}
+              <NotificationBell />
+            </div>
           </header>
         )}
         {/* Em mobile, actions ficam num strip embaixo do título mobile */}

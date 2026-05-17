@@ -13,6 +13,9 @@ import { AsyncCombobox } from '@/components/AsyncCombobox';
 import { useToast } from '@/components/toast';
 import { isValidCNPJ, maskCNPJ, maskTelefone, normalizeUF, stripMask } from '@/lib/masks';
 import { exportToCsv } from '@/lib/csv';
+import { exportToXlsx } from '@/lib/xlsx';
+import { exportToDocx } from '@/lib/docx';
+import { exportToPdf } from '@/lib/pdf';
 import { badge, btn, btnDanger, btnSecondary, card, colors } from '@/components/styles';
 
 interface RepOpt {
@@ -217,7 +220,7 @@ export default function ClientesPage() {
     },
   ];
 
-  async function handleExport() {
+  async function handleExport(formato: 'csv' | 'xlsx' | 'docx' | 'pdf') {
     setExporting(true);
     setExportProgress(null);
     try {
@@ -226,26 +229,60 @@ export default function ClientesPage() {
       if (status) query.status = status;
       if (omie) query.omieStatus = omie;
       if (lista) query.lista = lista;
-      const { count } = await exportToCsv<Cliente>({
-        endpoint: '/clientes',
-        query,
-        filename: `clientes-${new Date().toISOString().slice(0, 10)}.csv`,
-        onProgress: (page, total) => setExportProgress({ page, total }),
-        columns: [
-          { header: 'Nome', value: (c) => c.nome },
-          { header: 'CNPJ', value: (c) => c.cnpj ?? '' },
-          { header: 'E-mail', value: (c) => c.email ?? '' },
-          { header: 'Telefone', value: (c) => c.telefone ?? '' },
-          { header: 'Cidade', value: (c) => c.cidade ?? '' },
-          { header: 'UF', value: (c) => c.uf ?? '' },
-          { header: 'Segmento', value: (c) => c.segmento ?? '' },
-          { header: 'Status', value: (c) => c.status },
-          { header: 'OMIE', value: (c) => c.omieStatus },
-          { header: 'Score', value: (c) => c.score },
-          { header: 'Representante', value: (c) => c.representante?.nome ?? '' },
-        ],
-      });
-      toast.success(`${count} cliente${count === 1 ? '' : 's'} exportado${count === 1 ? '' : 's'}`, 'CSV baixado');
+      const data = new Date().toISOString().slice(0, 10);
+      const columns = [
+        { header: 'Nome', value: (c: Cliente) => c.nome },
+        { header: 'CNPJ', value: (c: Cliente) => c.cnpj ?? '' },
+        { header: 'E-mail', value: (c: Cliente) => c.email ?? '' },
+        { header: 'Telefone', value: (c: Cliente) => c.telefone ?? '' },
+        { header: 'Cidade', value: (c: Cliente) => c.cidade ?? '' },
+        { header: 'UF', value: (c: Cliente) => c.uf ?? '' },
+        { header: 'Segmento', value: (c: Cliente) => c.segmento ?? '' },
+        { header: 'Status', value: (c: Cliente) => c.status },
+        { header: 'OMIE', value: (c: Cliente) => c.omieStatus },
+        { header: 'Score', value: (c: Cliente) => c.score },
+        { header: 'Representante', value: (c: Cliente) => c.representante?.nome ?? '' },
+      ];
+      const filename = `clientes-${data}.${formato}`;
+      let count = 0;
+      if (formato === 'csv') {
+        ({ count } = await exportToCsv<Cliente>({
+          endpoint: '/clientes',
+          query,
+          filename,
+          onProgress: (page, total) => setExportProgress({ page, total }),
+          columns,
+        }));
+      } else if (formato === 'xlsx') {
+        ({ count } = await exportToXlsx<Cliente>({
+          endpoint: '/clientes',
+          query,
+          filename,
+          onProgress: (page, total) => setExportProgress({ page, total }),
+          columns,
+        }));
+      } else if (formato === 'docx') {
+        ({ count } = await exportToDocx<Cliente>({
+          endpoint: '/clientes',
+          query,
+          filename,
+          titulo: 'Lista de Clientes',
+          onProgress: (page, total) => setExportProgress({ page, total }),
+          columns,
+        }));
+      } else {
+        ({ count } = await exportToPdf<Cliente>({
+          endpoint: '/clientes',
+          query,
+          filename,
+          titulo: 'Lista de Clientes',
+          columns,
+        }));
+      }
+      toast.success(
+        `${count} cliente${count === 1 ? '' : 's'} exportado${count === 1 ? '' : 's'}`,
+        `${formato.toUpperCase()} baixado`,
+      );
     } catch (err) {
       toast.error('Falha ao exportar', err instanceof ApiError ? err.message : undefined);
     } finally {
@@ -262,7 +299,7 @@ export default function ClientesPage() {
           <button
             type="button"
             data-testid="cliente-export-btn"
-            onClick={handleExport}
+            onClick={() => handleExport('csv')}
             disabled={exporting}
             style={{
               ...btnSecondary,
@@ -274,7 +311,34 @@ export default function ClientesPage() {
               ? exportProgress
                 ? `Exportando ${exportProgress.page}/${exportProgress.total}…`
                 : 'Exportando…'
-              : '📥 Exportar CSV'}
+              : '📥 CSV'}
+          </button>
+          <button
+            type="button"
+            data-testid="cliente-export-xlsx-btn"
+            onClick={() => handleExport('xlsx')}
+            disabled={exporting}
+            style={{ ...btnSecondary, opacity: exporting ? 0.6 : 1 }}
+          >
+            📊 Excel
+          </button>
+          <button
+            type="button"
+            data-testid="cliente-export-docx-btn"
+            onClick={() => handleExport('docx')}
+            disabled={exporting}
+            style={{ ...btnSecondary, opacity: exporting ? 0.6 : 1 }}
+          >
+            📄 Word
+          </button>
+          <button
+            type="button"
+            data-testid="cliente-export-pdf-btn"
+            onClick={() => handleExport('pdf')}
+            disabled={exporting}
+            style={{ ...btnSecondary, opacity: exporting ? 0.6 : 1 }}
+          >
+            📕 PDF
           </button>
           {canEdit && (
             <button

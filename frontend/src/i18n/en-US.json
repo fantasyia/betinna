@@ -1,0 +1,111 @@
+{
+  "common": {
+    "loading": "Loading…",
+    "save": "Save",
+    "saving": "Saving…",
+    "cancel": "Cancel",
+    "confirm": "Confirm",
+    "delete": "Delete",
+    "edit": "Edit",
+    "create": "Create",
+    "search": "Search",
+    "filter": "Filter",
+    "clear": "Clear",
+    "back": "Back",
+    "next": "Next",
+    "previous": "Previous",
+    "close": "Close",
+    "yes": "Yes",
+    "no": "No",
+    "actions": "Actions",
+    "status": "Status",
+    "created_at": "Created at",
+    "updated_at": "Updated at",
+    "no_results": "No results found",
+    "error_generic": "Something went wrong. Please try again.",
+    "success": "Success",
+    "page_of": "Page {{current}} of {{total}}"
+  },
+  "auth": {
+    "login": "Sign in",
+    "logout": "Sign out",
+    "email": "Email",
+    "password": "Password",
+    "forgot_password": "Forgot password",
+    "invalid_credentials": "Invalid email or password",
+    "session_expired": "Your session has expired. Please sign in again."
+  },
+  "nav": {
+    "dashboard": "Dashboard",
+    "clientes": "Customers",
+    "pedidos": "Orders",
+    "propostas": "Quotes",
+    "produtos": "Products",
+    "catalogo": "Catalog",
+    "leads": "Leads",
+    "ocorrencias": "Tickets",
+    "amostras": "Samples",
+    "comissoes": "Commissions",
+    "agenda": "Calendar",
+    "fluxos": "Flows",
+    "campanhas": "Campaigns",
+    "fidelidade": "Loyalty",
+    "mullerbot": "MullerBot",
+    "inbox": "Inbox",
+    "relatorios": "Reports",
+    "integracoes": "Integrations",
+    "admin": "Admin",
+    "perfil": "Profile",
+    "notificacoes": "Notifications"
+  },
+  "roles": {
+    "ADMIN": "Admin (Platform)",
+    "DIRECTOR": "Director",
+    "GERENTE": "Manager",
+    "SAC": "Support",
+    "REP": "Sales Rep"
+  },
+  "export": {
+    "csv": "CSV",
+    "excel": "Excel",
+    "word": "Word",
+    "pdf": "PDF",
+    "exporting": "Exporting…",
+    "exported_count": "{{count}} record exported",
+    "exported_count_plural": "{{count}} records exported"
+  },
+  "pedidos": {
+    "title": "Orders",
+    "new": "New order",
+    "numero": "Number",
+    "cliente": "Customer",
+    "representante": "Sales rep",
+    "total": "Total",
+    "status": {
+      "RASCUNHO": "Draft",
+      "AGUARDANDO_APROVACAO": "Awaiting approval",
+      "APROVADO": "Approved",
+      "ENVIADO_OMIE": "Sent to ERP",
+      "CANCELADO": "Cancelled"
+    }
+  },
+  "fidelidade": {
+    "title": "Loyalty program",
+    "saldo": "Points balance",
+    "extrato": "Statement",
+    "recompensas": "Rewards",
+    "resgatar": "Redeem",
+    "ajustar": "Manual adjustment",
+    "ranking": "Ranking",
+    "programa_ativo": "Active program",
+    "programa_pausado": "Paused program"
+  },
+  "notificacoes": {
+    "title": "Notifications",
+    "nao_lidas": "{{count}} unread",
+    "nao_lidas_plural": "{{count}} unread",
+    "marcar_todas_lidas": "Mark all as read",
+    "vazio": "No notifications yet",
+    "ver_todas": "See all"
+  }
+}

@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { api, ApiError } from '@/lib/api';
 import { PageLayout } from '@/components/PageLayout';
 import { FormField, Select, Textarea } from '@/components/FormField';
+import { Markdown } from '@/components/Markdown';
 import { badge, btn, btnSecondary, card, colors } from '@/components/styles';
 
 interface MullerProduto {
@@ -214,9 +215,10 @@ export default function MullerBotPage() {
                         fontSize: 14,
                       }}
                     >
-                      <p style={{ margin: 0, whiteSpace: 'pre-wrap', lineHeight: 1.5 }}>
-                        {qa.resposta}
-                      </p>
+                      <Markdown
+                        content={qa.resposta}
+                        style={{ fontSize: 14, lineHeight: 1.5 }}
+                      />
                       {qa.produtos.length > 0 && (
                         <div style={{ marginTop: '0.75rem', borderTop: `1px solid ${colors.border}`, paddingTop: '0.5rem' }}>
                           <div style={{ fontSize: 11, color: colors.muted, textTransform: 'uppercase', letterSpacing: 0.3, marginBottom: 4 }}>

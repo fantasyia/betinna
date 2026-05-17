@@ -1,0 +1,111 @@
+{
+  "common": {
+    "loading": "Carregando…",
+    "save": "Salvar",
+    "saving": "Salvando…",
+    "cancel": "Cancelar",
+    "confirm": "Confirmar",
+    "delete": "Apagar",
+    "edit": "Editar",
+    "create": "Criar",
+    "search": "Buscar",
+    "filter": "Filtrar",
+    "clear": "Limpar",
+    "back": "Voltar",
+    "next": "Próximo",
+    "previous": "Anterior",
+    "close": "Fechar",
+    "yes": "Sim",
+    "no": "Não",
+    "actions": "Ações",
+    "status": "Status",
+    "created_at": "Criado em",
+    "updated_at": "Atualizado em",
+    "no_results": "Nenhum resultado encontrado",
+    "error_generic": "Algo deu errado. Tente novamente.",
+    "success": "Sucesso",
+    "page_of": "Página {{current}} de {{total}}"
+  },
+  "auth": {
+    "login": "Entrar",
+    "logout": "Sair",
+    "email": "E-mail",
+    "password": "Senha",
+    "forgot_password": "Esqueci minha senha",
+    "invalid_credentials": "E-mail ou senha inválidos",
+    "session_expired": "Sua sessão expirou. Faça login novamente."
+  },
+  "nav": {
+    "dashboard": "Dashboard",
+    "clientes": "Clientes",
+    "pedidos": "Pedidos",
+    "propostas": "Propostas",
+    "produtos": "Produtos",
+    "catalogo": "Catálogo",
+    "leads": "Leads",
+    "ocorrencias": "Ocorrências",
+    "amostras": "Amostras",
+    "comissoes": "Comissões",
+    "agenda": "Agenda",
+    "fluxos": "Fluxos",
+    "campanhas": "Campanhas",
+    "fidelidade": "Fidelidade",
+    "mullerbot": "MullerBot",
+    "inbox": "Inbox",
+    "relatorios": "Relatórios",
+    "integracoes": "Integrações",
+    "admin": "Admin",
+    "perfil": "Perfil",
+    "notificacoes": "Notificações"
+  },
+  "roles": {
+    "ADMIN": "Admin (Plataforma)",
+    "DIRECTOR": "Diretor",
+    "GERENTE": "Gerente",
+    "SAC": "SAC",
+    "REP": "Representante"
+  },
+  "export": {
+    "csv": "CSV",
+    "excel": "Excel",
+    "word": "Word",
+    "pdf": "PDF",
+    "exporting": "Exportando…",
+    "exported_count": "{{count}} registro exportado",
+    "exported_count_plural": "{{count}} registros exportados"
+  },
+  "pedidos": {
+    "title": "Pedidos",
+    "new": "Novo pedido",
+    "numero": "Número",
+    "cliente": "Cliente",
+    "representante": "Representante",
+    "total": "Total",
+    "status": {
+      "RASCUNHO": "Rascunho",
+      "AGUARDANDO_APROVACAO": "Aguardando aprovação",
+      "APROVADO": "Aprovado",
+      "ENVIADO_OMIE": "Enviado ao OMIE",
+      "CANCELADO": "Cancelado"
+    }
+  },
+  "fidelidade": {
+    "title": "Programa de Fidelidade",
+    "saldo": "Saldo de pontos",
+    "extrato": "Extrato",
+    "recompensas": "Recompensas",
+    "resgatar": "Resgatar",
+    "ajustar": "Ajuste manual",
+    "ranking": "Ranking",
+    "programa_ativo": "Programa ativo",
+    "programa_pausado": "Programa pausado"
+  },
+  "notificacoes": {
+    "title": "Notificações",
+    "nao_lidas": "{{count}} não lida",
+    "nao_lidas_plural": "{{count}} não lidas",
+    "marcar_todas_lidas": "Marcar todas como lidas",
+    "vazio": "Nenhuma notificação ainda",
+    "ver_todas": "Ver todas"
+  }
+}

@@ -13,6 +13,7 @@ import { FormField, Input, Select } from '@/components/FormField';
 import { useToast } from '@/components/toast';
 import { maskTelefone } from '@/lib/masks';
 import { badge, btn, btnSecondary, card, colors } from '@/components/styles';
+import { startOnboarding } from '@/components/OnboardingTour';
 
 type UserRole = 'ADMIN' | 'DIRECTOR' | 'GERENTE' | 'SAC' | 'REP';
 type UserStatus = 'ATIVO' | 'PENDENTE' | 'INATIVO';
@@ -387,6 +388,24 @@ function UserDetail({ userId, isOwnProfile }: { userId: string; isOwnProfile: bo
                   <Link to="/minhas-integracoes" style={{ color: colors.primary }}>
                     Minhas integrações →
                   </Link>
+                  <div style={{ marginTop: '0.75rem' }}>
+                    <button
+                      type="button"
+                      data-testid="restart-tour-btn"
+                      onClick={startOnboarding}
+                      style={{
+                        background: 'transparent',
+                        border: 'none',
+                        color: colors.primary,
+                        cursor: 'pointer',
+                        padding: 0,
+                        fontSize: 12,
+                        textAlign: 'left',
+                      }}
+                    >
+                      🎓 Reiniciar tour de onboarding
+                    </button>
+                  </div>
                 </div>
               )}
             </div>

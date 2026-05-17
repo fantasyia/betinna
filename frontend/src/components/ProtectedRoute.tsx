@@ -2,6 +2,7 @@ import { useSyncExternalStore, type ReactNode } from 'react';
 import { Navigate, useLocation } from 'react-router-dom';
 import { useRole, hasPermission, type Permission } from '@/hooks/usePermission';
 import { isInitializing, subscribeInitializing } from '@/lib/auth-store';
+import { OnboardingTour } from '@/components/OnboardingTour';
 import type { UserRole } from '@/types/auth';
 
 /**
@@ -78,5 +79,10 @@ export function ProtectedRoute({
     return <Navigate to="/403" replace />;
   }
 
-  return <>{children}</>;
+  return (
+    <>
+      {children}
+      <OnboardingTour />
+    </>
+  );
 }

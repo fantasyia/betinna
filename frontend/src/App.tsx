@@ -43,6 +43,7 @@ const AprovacoesPage = lazy(() => import('@/pages/AprovacoesPage'));
 const InboxPage = lazy(() => import('@/pages/InboxPage'));
 const IntegracoesPage = lazy(() => import('@/pages/IntegracoesPage'));
 const MinhasIntegracoesPage = lazy(() => import('@/pages/MinhasIntegracoesPage'));
+const NotificacoesPage = lazy(() => import('@/pages/NotificacoesPage'));
 
 function PageSuspense({ children }: { children: React.ReactNode }) {
   return (
@@ -93,6 +94,18 @@ const router = createBrowserRouter([
         <ProtectedRoute>
           <PageSuspense>
             <DashboardPage />
+          </PageSuspense>
+        </ProtectedRoute>
+      </ErrorBoundary>
+    ),
+  },
+  {
+    path: '/notificacoes',
+    element: (
+      <ErrorBoundary>
+        <ProtectedRoute>
+          <PageSuspense>
+            <NotificacoesPage />
           </PageSuspense>
         </ProtectedRoute>
       </ErrorBoundary>

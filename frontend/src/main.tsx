@@ -4,9 +4,25 @@ import App from './App';
 import { ToastProvider } from '@/components/toast';
 import { initSentry } from '@/lib/sentry';
 import { bootstrapAuthFromBackend } from '@/lib/auth-store';
+import { registerPwa } from '@/lib/pwa';
+import { initI18n } from '@/lib/i18n';
 import './index.css';
 
 initSentry();
+initI18n();
+
+// PWA — registra service worker, pergunta antes de aplicar update.
+// Em dev (sem plugin) é no-op.
+void registerPwa({
+  onNeedRefresh: (accept) => {
+    if (
+      typeof window !== 'undefined' &&
+      window.confirm('Nova versão do app disponível. Recarregar agora?')
+    ) {
+      void accept();
+    }
+  },
+});
 
 const root = document.getElementById('root');
 if (!root) throw new Error('#root não encontrado no index.html');

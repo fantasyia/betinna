@@ -9,6 +9,9 @@ import { Modal } from '@/components/Modal';
 import { Select, FormField, Textarea } from '@/components/FormField';
 import { useToast } from '@/components/toast';
 import { exportToCsv } from '@/lib/csv';
+import { exportToXlsx } from '@/lib/xlsx';
+import { exportToDocx } from '@/lib/docx';
+import { exportToPdf } from '@/lib/pdf';
 import { badge, btn, btnDanger, btnSecondary, card, colors } from '@/components/styles';
 
 type PedidoStatus =
@@ -91,27 +94,57 @@ export default function PedidosPage() {
   const [selected, setSelected] = useState<string | null>(null);
   const [exporting, setExporting] = useState(false);
 
-  async function handleExport() {
+  async function handleExport(formato: 'csv' | 'xlsx' | 'docx' | 'pdf') {
     setExporting(true);
     try {
       const query: Record<string, string> = {};
       if (search.trim()) query.search = search.trim();
       if (status) query.status = status;
-      const { count } = await exportToCsv<Pedido>({
-        endpoint: '/pedidos',
-        query,
-        filename: `pedidos-${new Date().toISOString().slice(0, 10)}.csv`,
-        columns: [
-          { header: 'Número', value: (p) => String(p.numero) },
-          { header: 'Número OMIE', value: (p) => p.numeroOmie ?? '' },
-          { header: 'Cliente', value: (p) => p.cliente?.nome ?? '' },
-          { header: 'Representante', value: (p) => p.representante?.nome ?? '' },
-          { header: 'Total (R$)', value: (p) => p.total.toFixed(2).replace('.', ',') },
-          { header: 'Status', value: (p) => STATUS_LABEL[p.status] },
-          { header: 'Criado em', value: (p) => fmtDate(p.criadoEm) },
-        ],
-      });
-      toast.success(`${count} pedido${count === 1 ? '' : 's'} exportado${count === 1 ? '' : 's'}`, 'CSV baixado');
+      const filename = `pedidos-${new Date().toISOString().slice(0, 10)}.${formato}`;
+      const columns = [
+        { header: 'Número', value: (p: Pedido) => String(p.numero) },
+        { header: 'Número OMIE', value: (p: Pedido) => p.numeroOmie ?? '' },
+        { header: 'Cliente', value: (p: Pedido) => p.cliente?.nome ?? '' },
+        { header: 'Representante', value: (p: Pedido) => p.representante?.nome ?? '' },
+        {
+          header: 'Total (R$)',
+          value: (p: Pedido) =>
+            formato === 'xlsx' ? p.total : p.total.toFixed(2).replace('.', ','),
+        },
+        { header: 'Status', value: (p: Pedido) => STATUS_LABEL[p.status] },
+        { header: 'Criado em', value: (p: Pedido) => fmtDate(p.criadoEm) },
+      ];
+      let count = 0;
+      if (formato === 'csv') {
+        ({ count } = await exportToCsv<Pedido>({ endpoint: '/pedidos', query, filename, columns }));
+      } else if (formato === 'xlsx') {
+        ({ count } = await exportToXlsx<Pedido>({
+          endpoint: '/pedidos',
+          query,
+          filename,
+          columns,
+        }));
+      } else if (formato === 'docx') {
+        ({ count } = await exportToDocx<Pedido>({
+          endpoint: '/pedidos',
+          query,
+          filename,
+          titulo: 'Lista de Pedidos',
+          columns,
+        }));
+      } else {
+        ({ count } = await exportToPdf<Pedido>({
+          endpoint: '/pedidos',
+          query,
+          filename,
+          titulo: 'Lista de Pedidos',
+          columns,
+        }));
+      }
+      toast.success(
+        `${count} pedido${count === 1 ? '' : 's'} exportado${count === 1 ? '' : 's'}`,
+        `${formato.toUpperCase()} baixado`,
+      );
     } catch (err) {
       toast.error('Falha ao exportar', err instanceof ApiError ? err.message : undefined);
     } finally {
@@ -188,15 +221,44 @@ export default function PedidosPage() {
     <PageLayout
       title="Pedidos"
       actions={
-        <button
-          type="button"
-          data-testid="pedido-export-btn"
-          onClick={handleExport}
-          disabled={exporting}
-          style={{ ...btnSecondary, opacity: exporting ? 0.6 : 1 }}
-        >
-          {exporting ? 'Exportando…' : '📥 Exportar CSV'}
-        </button>
+        <div style={{ display: 'flex', gap: '0.5rem' }}>
+          <button
+            type="button"
+            data-testid="pedido-export-btn"
+            onClick={() => handleExport('csv')}
+            disabled={exporting}
+            style={{ ...btnSecondary, opacity: exporting ? 0.6 : 1 }}
+          >
+            {exporting ? 'Exportando…' : '📥 CSV'}
+          </button>
+          <button
+            type="button"
+            data-testid="pedido-export-xlsx-btn"
+            onClick={() => handleExport('xlsx')}
+            disabled={exporting}
+            style={{ ...btnSecondary, opacity: exporting ? 0.6 : 1 }}
+          >
+            📊 Excel
+          </button>
+          <button
+            type="button"
+            data-testid="pedido-export-docx-btn"
+            onClick={() => handleExport('docx')}
+            disabled={exporting}
+            style={{ ...btnSecondary, opacity: exporting ? 0.6 : 1 }}
+          >
+            📄 Word
+          </button>
+          <button
+            type="button"
+            data-testid="pedido-export-pdf-btn"
+            onClick={() => handleExport('pdf')}
+            disabled={exporting}
+            style={{ ...btnSecondary, opacity: exporting ? 0.6 : 1 }}
+          >
+            📕 PDF
+          </button>
+        </div>
       }
     >
       <div style={card}>
