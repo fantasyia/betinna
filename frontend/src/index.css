@@ -133,3 +133,21 @@ table tbody tr:hover {
 @media print {
   nav { display: none !important; }
 }
+
+/* ─── Mobile (< 768px): ajustes globais ─────────────────────────────── */
+@media (max-width: 767px) {
+  /* iOS auto-zoom em inputs com font-size < 16px é UX horrível.
+     Sobe pra 16px em campos editáveis pra evitar zoom involuntário. */
+  input, select, textarea {
+    font-size: 16px !important;
+  }
+  /* Tap target mínimo (Apple HIG = 44, Material = 48 — 36 já evita
+     dedinho missar). Mantém compactness em desktop. */
+  button {
+    min-height: 36px;
+  }
+  /* Headings menores em mobile pra economizar viewport vertical */
+  h1 { font-size: 20px; }
+  h2 { font-size: 16px; }
+  h3 { font-size: 14px; }
+}

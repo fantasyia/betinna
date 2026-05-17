@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { api, ApiError } from '@/lib/api';
 import { useApiQuery, type PaginatedResponse } from '@/hooks/useApiQuery';
-import { PageLayout } from '@/components/PageLayout';
+import { PageLayout, useIsMobile } from '@/components/PageLayout';
 import { StateView } from '@/components/StateView';
 import { Modal } from '@/components/Modal';
 import { FormField, Select, Textarea } from '@/components/FormField';
@@ -147,26 +147,36 @@ export default function InboxPage() {
   const { data: pageResp, loading, error, refetch } =
     useApiQuery<PaginatedResponse<Conversation>>(listPath);
 
-  // Quando lista carregar e não houver conversa selecionada, seleciona a 1a
+  const isMobile = useIsMobile();
+
+  // Em desktop: auto-seleciona 1ª conversa pra preencher a coluna direita.
+  // Em mobile: deixa a lista visível inicialmente (user escolhe o que abrir).
   useEffect(() => {
-    if (!selectedId && pageResp && pageResp.data.length > 0) {
+    if (!selectedId && pageResp && pageResp.data.length > 0 && !isMobile) {
       setSelectedId(pageResp.data[0].id);
     }
-  }, [pageResp, selectedId]);
+  }, [pageResp, selectedId, isMobile]);
+
+  // Em mobile: mostra OU lista OU thread (não ambos).
+  // showList: lista visível. showThread: thread visível.
+  const showList = !isMobile || selectedId === null;
+  const showThread = !isMobile || selectedId !== null;
 
   return (
     <PageLayout title="Inbox">
       <div
         style={{
           display: 'grid',
-          gridTemplateColumns: 'minmax(320px, 380px) 1fr',
+          // Mobile: 1 coluna (apenas o painel ativo). Desktop: lista + thread.
+          gridTemplateColumns: isMobile ? '1fr' : 'minmax(320px, 380px) 1fr',
           gap: '1rem',
           alignItems: 'stretch',
-          height: 'calc(100vh - 200px)',
+          height: isMobile ? 'calc(100vh - 140px)' : 'calc(100vh - 200px)',
           minHeight: 500,
         }}
       >
-        {/* Lista de conversas */}
+        {/* Lista de conversas — em mobile, só visível quando nenhuma conversa selecionada */}
+        {showList && (
         <div
           style={{
             ...card,
@@ -259,8 +269,10 @@ export default function InboxPage() {
             </StateView>
           </div>
         </div>
+        )}
 
-        {/* Thread */}
+        {/* Thread — em mobile, só visível quando uma conversa está selecionada */}
+        {showThread && (
         <div
           style={{
             ...card,
@@ -276,6 +288,7 @@ export default function InboxPage() {
               id={selectedId}
               pollBump={pollBump}
               onChanged={refetch}
+              onBack={isMobile ? () => setSelectedId(null) : undefined}
             />
           ) : (
             <div
@@ -292,6 +305,7 @@ export default function InboxPage() {
             </div>
           )}
         </div>
+        )}
       </div>
     </PageLayout>
   );
@@ -393,10 +407,13 @@ function ConversationThread({
   id,
   pollBump,
   onChanged,
+  onBack,
 }: {
   id: string;
   pollBump: number;
   onChanged: () => void;
+  /** Em mobile, volta pra lista de conversas. Undefined em desktop. */
+  onBack?: () => void;
 }) {
   const toast = useToast();
   const detailPath = useMemo(() => `/inbox/${id}?_t=${pollBump}`, [id, pollBump]);
@@ -475,12 +492,42 @@ function ConversationThread({
       >
         {c ? (
           <>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', minWidth: 0, flex: 1 }}>
+              {onBack && (
+                <button
+                  type="button"
+                  data-testid="inbox-back-btn"
+                  onClick={onBack}
+                  aria-label="Voltar para lista"
+                  style={{
+                    minWidth: 36,
+                    minHeight: 36,
+                    padding: 0,
+                    background: 'transparent',
+                    border: `1px solid ${colors.border}`,
+                    borderRadius: 6,
+                    fontSize: 16,
+                    cursor: 'pointer',
+                    color: colors.text,
+                  }}
+                >
+                  ←
+                </button>
+              )}
               <span style={{ ...badge(CANAL_COLOR[c.canal]) }}>
                 {CANAL_LABEL[c.canal]}
               </span>
-              <div>
-                <strong>{c.cliente?.nome ?? c.peerNome ?? c.peer}</strong>
+              <div style={{ minWidth: 0, flex: 1, overflow: 'hidden' }}>
+                <strong
+                  style={{
+                    display: 'block',
+                    overflow: 'hidden',
+                    textOverflow: 'ellipsis',
+                    whiteSpace: 'nowrap',
+                  }}
+                >
+                  {c.cliente?.nome ?? c.peerNome ?? c.peer}
+                </strong>
                 {c.peer && (c.cliente?.nome || c.peerNome) && (
                   <div style={{ fontSize: 11, color: colors.muted }}>{c.peer}</div>
                 )}

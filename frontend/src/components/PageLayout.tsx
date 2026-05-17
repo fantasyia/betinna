@@ -1,7 +1,33 @@
-import { type ReactNode } from 'react';
+import { useEffect, useState, type ReactNode } from 'react';
 import { Link, useLocation } from 'react-router-dom';
 import { useRole, usePermission } from '@/hooks/usePermission';
 import { colors, radius, shadows, spacing } from './styles';
+
+/** Breakpoint mobile (tablets+ acima disso). */
+const MOBILE_BREAKPOINT = 768;
+
+/**
+ * Hook pra detectar viewport mobile reativo (window resize).
+ * SSR-safe: retorna `false` em ambientes sem `window`.
+ *
+ * Exportado pra páginas com layout multi-coluna (Inbox, etc) decidirem
+ * mostrar lista OU detalhe em vez de side-by-side em telas estreitas.
+ */
+// eslint-disable-next-line react-refresh/only-export-components -- hook coexiste com PageLayout component nesse arquivo; mover quebraria HMR pouco e ganharia pouco
+export function useIsMobile(): boolean {
+  const [isMobile, setIsMobile] = useState(() =>
+    typeof window !== 'undefined' && window.innerWidth < MOBILE_BREAKPOINT,
+  );
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    const mq = window.matchMedia(`(max-width: ${MOBILE_BREAKPOINT - 1}px)`);
+    const handler = (e: MediaQueryListEvent) => setIsMobile(e.matches);
+    setIsMobile(mq.matches);
+    mq.addEventListener('change', handler);
+    return () => mq.removeEventListener('change', handler);
+  }, []);
+  return isMobile;
+}
 
 /**
  * PageLayout — sidebar vertical + main area.
@@ -153,7 +179,15 @@ function SidebarNavItem({ item, active }: { item: NavItem; active: boolean }) {
 
 // ─── Sidebar ────────────────────────────────────────────────────────
 
-function Sidebar() {
+function Sidebar({
+  isMobile,
+  isOpen,
+  onClose,
+}: {
+  isMobile: boolean;
+  isOpen: boolean;
+  onClose: () => void;
+}) {
   const role = useRole();
   const location = useLocation();
 
@@ -177,8 +211,12 @@ function Sidebar() {
     return location.pathname === to || location.pathname.startsWith(to + '/');
   }
 
+  // Em mobile, sidebar é drawer overlay. Em desktop, fixa.
+  const transform = isMobile && !isOpen ? 'translateX(-100%)' : 'translateX(0)';
+
   return (
     <aside
+      data-testid="sidebar"
       style={{
         position: 'fixed',
         top: 0,
@@ -189,7 +227,15 @@ function Sidebar() {
         borderRight: `1px solid ${colors.border}`,
         display: 'flex',
         flexDirection: 'column',
-        zIndex: 50,
+        zIndex: isMobile ? 100 : 50,
+        transform,
+        transition: isMobile ? 'transform 0.22s ease' : undefined,
+        boxShadow: isMobile && isOpen ? shadows.md : undefined,
+      }}
+      onClick={(e) => {
+        // Fecha drawer ao clicar num link (mobile). Detecta navegação por
+        // bubbling do click em anchor.
+        if (isMobile && (e.target as HTMLElement).closest('a')) onClose();
       }}
     >
       {/* Logo */}
@@ -305,25 +351,101 @@ function Sidebar() {
   );
 }
 
-// ─── Mobile menu button (toggle visual — sem implementar overlay agora) ──
+// ─── Mobile top bar (hamburger + title + role badge) ─────────────────
 
-function MobileMenuBar() {
-  // Placeholder pra futura responsividade. Por ora só mostra info do role
+function MobileTopBar({
+  title,
+  onToggleSidebar,
+}: {
+  title: string;
+  onToggleSidebar: () => void;
+}) {
   const role = useRole();
   return (
-    <div
+    <header
       style={{
-        display: 'none', // habilitado via media query no CSS global se precisar
+        position: 'sticky',
+        top: 0,
+        zIndex: 40,
+        display: 'flex',
+        alignItems: 'center',
+        gap: spacing.sm,
         padding: '10px 14px',
         background: colors.surface,
         borderBottom: `1px solid ${colors.border}`,
+        minHeight: 56,
       }}
     >
-      <strong style={{ color: colors.primary }}>Betinna.ai</strong>
-      <span style={{ marginLeft: 'auto', fontSize: 12, color: colors.muted }}>
-        {role ?? '—'}
-      </span>
-    </div>
+      <button
+        type="button"
+        data-testid="mobile-menu-toggle"
+        onClick={onToggleSidebar}
+        aria-label="Abrir menu"
+        style={{
+          width: 40,
+          height: 40,
+          minWidth: 40,
+          padding: 0,
+          background: 'transparent',
+          border: `1px solid ${colors.border}`,
+          borderRadius: radius.md,
+          fontSize: 20,
+          color: colors.text,
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          cursor: 'pointer',
+        }}
+      >
+        ☰
+      </button>
+      <strong
+        data-testid="mobile-page-title"
+        style={{
+          fontSize: 15,
+          flex: 1,
+          minWidth: 0,
+          overflow: 'hidden',
+          textOverflow: 'ellipsis',
+          whiteSpace: 'nowrap',
+          color: colors.text,
+        }}
+      >
+        {title}
+      </strong>
+      {role && (
+        <span
+          style={{
+            fontSize: 10,
+            fontWeight: 700,
+            padding: '3px 7px',
+            borderRadius: radius.full,
+            background: (ROLE_COLOR[role] ?? colors.muted) + '1F',
+            color: ROLE_COLOR[role] ?? colors.muted,
+          }}
+        >
+          {role}
+        </span>
+      )}
+    </header>
+  );
+}
+
+// ─── Backdrop pra fechar drawer mobile clicando fora ─────────────────
+
+function MobileBackdrop({ onClick }: { onClick: () => void }) {
+  return (
+    <div
+      data-testid="mobile-sidebar-backdrop"
+      onClick={onClick}
+      style={{
+        position: 'fixed',
+        inset: 0,
+        background: 'rgba(15, 23, 42, 0.5)',
+        zIndex: 90,
+        backdropFilter: 'blur(2px)',
+      }}
+    />
   );
 }
 
@@ -338,45 +460,89 @@ export function PageLayout({
   actions?: ReactNode;
   children: ReactNode;
 }) {
+  const isMobile = useIsMobile();
+  const [sidebarOpen, setSidebarOpen] = useState(false);
+  const location = useLocation();
+
+  // Fecha drawer ao trocar de rota (proteção extra além do click handler na Sidebar)
+  useEffect(() => {
+    setSidebarOpen(false);
+  }, [location.pathname]);
+
+  // Trava scroll do body quando drawer mobile aberta
+  useEffect(() => {
+    if (isMobile && sidebarOpen) {
+      const prev = document.body.style.overflow;
+      document.body.style.overflow = 'hidden';
+      return () => {
+        document.body.style.overflow = prev;
+      };
+    }
+  }, [isMobile, sidebarOpen]);
+
   return (
     <div style={{ background: colors.bg, minHeight: '100vh' }}>
-      <Sidebar />
-      <MobileMenuBar />
+      <Sidebar
+        isMobile={isMobile}
+        isOpen={sidebarOpen}
+        onClose={() => setSidebarOpen(false)}
+      />
+      {isMobile && sidebarOpen && <MobileBackdrop onClick={() => setSidebarOpen(false)} />}
+      {isMobile && (
+        <MobileTopBar title={title} onToggleSidebar={() => setSidebarOpen((v) => !v)} />
+      )}
       <main
         style={{
-          marginLeft: SIDEBAR_WIDTH,
-          padding: '24px 32px 40px',
-          minHeight: '100vh',
+          marginLeft: isMobile ? 0 : SIDEBAR_WIDTH,
+          padding: isMobile ? '16px 14px 32px' : '24px 32px 40px',
+          minHeight: isMobile ? 'calc(100vh - 56px)' : '100vh',
         }}
       >
-        <header
-          style={{
-            display: 'flex',
-            justifyContent: 'space-between',
-            alignItems: 'center',
-            marginBottom: 24,
-            gap: 16,
-            flexWrap: 'wrap',
-          }}
-        >
-          <h1
-            data-testid="page-title"
+        {/* Header da página: oculto em mobile (já tem MobileTopBar) */}
+        {!isMobile && (
+          <header
             style={{
-              margin: 0,
-              fontSize: 22,
-              fontWeight: 700,
-              color: colors.text,
-              letterSpacing: -0.3,
+              display: 'flex',
+              justifyContent: 'space-between',
+              alignItems: 'center',
+              marginBottom: 24,
+              gap: 16,
+              flexWrap: 'wrap',
             }}
           >
-            {title}
-          </h1>
-          {actions && (
-            <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
-              {actions}
-            </div>
-          )}
-        </header>
+            <h1
+              data-testid="page-title"
+              style={{
+                margin: 0,
+                fontSize: 22,
+                fontWeight: 700,
+                color: colors.text,
+                letterSpacing: -0.3,
+              }}
+            >
+              {title}
+            </h1>
+            {actions && (
+              <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+                {actions}
+              </div>
+            )}
+          </header>
+        )}
+        {/* Em mobile, actions ficam num strip embaixo do título mobile */}
+        {isMobile && actions && (
+          <div
+            style={{
+              display: 'flex',
+              gap: 8,
+              alignItems: 'center',
+              flexWrap: 'wrap',
+              marginBottom: 16,
+            }}
+          >
+            {actions}
+          </div>
+        )}
         {children}
       </main>
     </div>
