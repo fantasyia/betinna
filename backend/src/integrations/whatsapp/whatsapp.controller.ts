@@ -33,13 +33,14 @@ export class WhatsAppController {
   }
 
   @Post('conectar')
-  @Roles('ADMIN', 'DIRECTOR')
+  @Roles('DIRECTOR')
   // Throttle estrito: WhatsApp pairing é processo caro (gera QR + escuta socket).
   // 5 req/hora por user previne abuse / accidental loops.
   @Throttle({ default: { limit: 5, ttl: seconds(60 * 60) } })
   @Audit({ action: 'whatsapp_empresa_conectar', resource: 'integracao' })
   @ApiOperation({
-    summary: 'Inicia sessão Baileys da empresa. Primeiro pareamento retorna QR.',
+    summary:
+      'Inicia sessão Baileys da empresa. Primeiro pareamento retorna QR. **DIRETOR-only (D45)**.',
   })
   async conectar(@CurrentUser() user: AuthenticatedUser) {
     const empresaId = this.requireEmpresa(user);
@@ -47,9 +48,10 @@ export class WhatsAppController {
   }
 
   @Delete('desconectar')
-  @Roles('ADMIN', 'DIRECTOR')
+  @Roles('DIRECTOR')
   @HttpCode(HttpStatus.OK)
   @Audit({ action: 'whatsapp_empresa_desconectar', resource: 'integracao' })
+  @ApiOperation({ summary: 'Desconecta WhatsApp empresa. **DIRETOR-only (D45)**.' })
   async desconectar(@CurrentUser() user: AuthenticatedUser) {
     const empresaId = this.requireEmpresa(user);
     await this.sessions.desconectarEmpresa(empresaId);
@@ -57,11 +59,12 @@ export class WhatsAppController {
   }
 
   @Delete('resetar')
-  @Roles('ADMIN', 'DIRECTOR')
+  @Roles('DIRECTOR')
   @HttpCode(HttpStatus.OK)
   @Audit({ action: 'whatsapp_empresa_resetar', resource: 'integracao' })
   @ApiOperation({
-    summary: 'Apaga credenciais do WhatsApp empresa — próxima conexão exige novo QR',
+    summary:
+      'Apaga credenciais do WhatsApp empresa — próxima conexão exige novo QR. **DIRETOR-only (D45)**.',
   })
   async resetar(@CurrentUser() user: AuthenticatedUser) {
     const empresaId = this.requireEmpresa(user);

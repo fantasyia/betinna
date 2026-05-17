@@ -16,8 +16,8 @@ export class MLOAuthController {
 
   @Get('oauth/start')
   @ApiBearerAuth()
-  @Roles('ADMIN', 'DIRECTOR')
-  @ApiOperation({ summary: 'Inicia OAuth com Mercado Livre' })
+  @Roles('DIRECTOR')
+  @ApiOperation({ summary: 'Inicia OAuth com Mercado Livre. **DIRETOR-only (D45)**.' })
   async start(@CurrentUser() user: AuthenticatedUser): Promise<{ url: string }> {
     if (!user.empresaIdAtiva) {
       throw new ForbiddenException('Empresa não definida', ErrorCode.TENANT_ACCESS_DENIED);

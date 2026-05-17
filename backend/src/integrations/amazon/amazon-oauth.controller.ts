@@ -16,9 +16,10 @@ export class AmazonOAuthController {
 
   @Get('oauth/start')
   @ApiBearerAuth()
-  @Roles('ADMIN', 'DIRECTOR')
+  @Roles('DIRECTOR')
   @ApiOperation({
-    summary: 'Inicia OAuth Selling Partner — redireciona pro Seller Central',
+    summary:
+      'Inicia OAuth Selling Partner — redireciona pro Seller Central. **DIRETOR-only (D45)**.',
   })
   async start(@CurrentUser() user: AuthenticatedUser): Promise<{ url: string }> {
     if (!user.empresaIdAtiva) {

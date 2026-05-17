@@ -16,9 +16,10 @@ export class MetaOAuthController {
 
   @Get('oauth/start')
   @ApiBearerAuth()
-  @Roles('ADMIN', 'DIRECTOR')
+  @Roles('DIRECTOR')
   @ApiOperation({
-    summary: 'Inicia OAuth com Facebook (escopo: Pages + IG Messaging)',
+    summary:
+      'Inicia OAuth com Facebook (escopo: Pages + IG Messaging). **DIRETOR-only (D45)**.',
   })
   async start(@CurrentUser() user: AuthenticatedUser): Promise<{ url: string }> {
     if (!user.empresaIdAtiva) {

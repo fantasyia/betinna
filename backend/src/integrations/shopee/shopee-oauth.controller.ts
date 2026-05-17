@@ -16,8 +16,11 @@ export class ShopeeOAuthController {
 
   @Get('oauth/start')
   @ApiBearerAuth()
-  @Roles('ADMIN', 'DIRECTOR')
-  @ApiOperation({ summary: 'Inicia shop authorization Shopee — redireciona pro partner authorize' })
+  @Roles('DIRECTOR')
+  @ApiOperation({
+    summary:
+      'Inicia shop authorization Shopee — redireciona pro partner authorize. **DIRETOR-only (D45)**.',
+  })
   async start(@CurrentUser() user: AuthenticatedUser): Promise<{ url: string }> {
     if (!user.empresaIdAtiva) {
       throw new ForbiddenException('Empresa não definida', ErrorCode.TENANT_ACCESS_DENIED);

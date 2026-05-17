@@ -265,16 +265,26 @@ describe('IntegracoesService', () => {
         ).resolves.toBeDefined();
       });
 
-      it('ADMIN PODE conectar serviços sem requerDirector (ex: whatsapp)', async () => {
-        prisma.integracaoConexao.upsert.mockResolvedValue(fakeConexao({ servico: 'whatsapp' }));
-
-        await expect(
-          service.conectar(fakeUser({ role: 'ADMIN' as UserRole }), {
-            servico: 'whatsapp' as never,
-            credenciais: {},
-          }),
-        ).resolves.toBeDefined();
-      });
+      it.each([
+        'omie',
+        'whatsapp',
+        'mercadolivre',
+        'shopee',
+        'amazon',
+        'tiktok',
+        'instagram',
+        'facebook',
+      ] as const)(
+        'ADMIN não pode conectar %s (todas as integrações empresa são DIRECTOR-only)',
+        async (servico) => {
+          await expect(
+            service.conectar(fakeUser({ role: 'ADMIN' as UserRole }), {
+              servico: servico as never,
+              credenciais: {},
+            }),
+          ).rejects.toBeInstanceOf(ForbiddenException);
+        },
+      );
     });
   });
 
