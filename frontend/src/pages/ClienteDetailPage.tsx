@@ -8,6 +8,7 @@ import { Modal } from '@/components/Modal';
 import { FormField, Input, Select, Textarea } from '@/components/FormField';
 import { AsyncCombobox } from '@/components/AsyncCombobox';
 import { NovoPedidoDialog } from '@/components/NovoPedidoDialog';
+import { useConfirm } from '@/hooks/useConfirm';
 import { useToast } from '@/components/toast';
 import { maskCNPJ, maskTelefone, normalizeUF } from '@/lib/masks';
 import { badge, btn, btnDanger, btnSecondary, card, colors } from '@/components/styles';
@@ -1281,6 +1282,7 @@ function NotasTab({ clienteId }: { clienteId: string }) {
   const [creating, setCreating] = useState(false);
   const [error2, setError2] = useState<string | null>(null);
   const [editing, setEditing] = useState<NotaPrivada | null>(null);
+  const [confirmAsync, ConfirmDialog] = useConfirm();
 
   async function addNota() {
     if (!texto.trim()) return;
@@ -1298,7 +1300,13 @@ function NotasTab({ clienteId }: { clienteId: string }) {
   }
 
   async function delNota(id: string) {
-    if (!confirm('Excluir esta nota?')) return;
+    const ok = await confirmAsync({
+      title: 'Excluir esta nota?',
+      message: 'Essa ação não pode ser desfeita.',
+      confirmLabel: 'Excluir',
+      variant: 'danger',
+    });
+    if (!ok) return;
     try {
       await api.delete(`/clientes/${clienteId}/notas/${id}`);
       toast.success('Nota excluída');
@@ -1407,6 +1415,7 @@ function NotasTab({ clienteId }: { clienteId: string }) {
           }}
         />
       )}
+      {ConfirmDialog}
     </div>
   );
 }
@@ -1488,6 +1497,7 @@ function DocumentosTab({ clienteId }: { clienteId: string }) {
   const docs: Documento[] = data ?? [];
   const [uploading, setUploading] = useState(false);
   const [uploadError, setUploadError] = useState<string | null>(null);
+  const [confirmAsync, ConfirmDialog] = useConfirm();
 
   // Tipos aceitos pelo Storage do backend (Supabase signed URLs).
   // Mantém em sync com `documentos.controller` se mudar.
@@ -1564,7 +1574,13 @@ function DocumentosTab({ clienteId }: { clienteId: string }) {
   }
 
   async function delDoc(docId: string) {
-    if (!confirm('Excluir este documento? Não pode ser desfeito.')) return;
+    const ok = await confirmAsync({
+      title: 'Excluir este documento?',
+      message: 'Essa ação não pode ser desfeita.',
+      confirmLabel: 'Excluir',
+      variant: 'danger',
+    });
+    if (!ok) return;
     try {
       await api.delete(`/clientes/${clienteId}/documentos/${docId}`);
       toast.success('Documento excluído');
@@ -1646,6 +1662,7 @@ function DocumentosTab({ clienteId }: { clienteId: string }) {
           ))}
         </ul>
       </StateView>
+      {ConfirmDialog}
     </div>
   );
 }
@@ -1659,9 +1676,16 @@ function PrecosTab({ clienteId }: { clienteId: string }) {
   );
   const precos: PrecoEspecial[] = data ?? [];
   const [adding, setAdding] = useState(false);
+  const [confirmAsync, ConfirmDialog] = useConfirm();
 
   async function delPreco(produtoId: string) {
-    if (!confirm('Remover este preço especial?')) return;
+    const ok = await confirmAsync({
+      title: 'Remover este preço especial?',
+      message: 'O cliente voltará a pagar o preço padrão pra este produto.',
+      confirmLabel: 'Remover',
+      variant: 'danger',
+    });
+    if (!ok) return;
     try {
       await api.delete(`/clientes/${clienteId}/precos-especiais/${produtoId}`);
       toast.success('Preço especial removido');
@@ -1756,6 +1780,7 @@ function PrecosTab({ clienteId }: { clienteId: string }) {
           }}
         />
       )}
+      {ConfirmDialog}
     </div>
   );
 }

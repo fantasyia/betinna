@@ -9,6 +9,7 @@ import { FilterBar, SearchInput } from '@/components/FilterBar';
 import { Modal } from '@/components/Modal';
 import { FormField, Input, Select, Textarea } from '@/components/FormField';
 import { useToast } from '@/components/toast';
+import { useConfirm } from '@/hooks/useConfirm';
 import { badge, btn, btnDanger, btnSecondary, card, colors } from '@/components/styles';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -396,6 +397,7 @@ function CampanhaDetailModal({
   const { data: metricas } = useApiQuery<Metricas>(`/campanhas/${id}/metricas`);
   const [tab, setTab] = useState<DetailTab>('info');
   const [acting, setActing] = useState(false);
+  const [confirmAsync, ConfirmDialog] = useConfirm();
 
   async function callAction(action: 'disparar' | 'pausar' | 'cancelar') {
     setActing(true);
@@ -450,7 +452,16 @@ function CampanhaDetailModal({
                 type="button"
                 data-testid="campanha-cancelar"
                 disabled={acting}
-                onClick={() => { if (confirm('Cancelar esta campanha?')) callAction('cancelar'); }}
+                onClick={async () => {
+                  const ok = await confirmAsync({
+                    title: 'Cancelar esta campanha?',
+                    message:
+                      'A campanha não dispara mais. Mensagens já enviadas continuam.',
+                    confirmLabel: 'Cancelar campanha',
+                    variant: 'danger',
+                  });
+                  if (ok) void callAction('cancelar');
+                }}
                 style={btnDanger}
               >
                 Cancelar
@@ -593,6 +604,7 @@ function CampanhaDetailModal({
           </>
         )}
       </StateView>
+      {ConfirmDialog}
     </Modal>
   );
 }

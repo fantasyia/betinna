@@ -7,6 +7,7 @@ import { StateView } from '@/components/StateView';
 import { FilterBar, SearchInput } from '@/components/FilterBar';
 import { Modal } from '@/components/Modal';
 import { FormField, Input } from '@/components/FormField';
+import { useConfirm } from '@/hooks/useConfirm';
 import { useToast } from '@/components/toast';
 import { btn, btnDanger, btnSecondary, card, colors } from '@/components/styles';
 
@@ -42,13 +43,20 @@ export default function TagsPage() {
 
   const [editing, setEditing] = useState<Tag | null>(null);
   const [creating, setCreating] = useState(false);
+  const [confirmAsync, ConfirmDialog] = useConfirm();
 
   async function delTag(t: Tag) {
-    const msg =
+    const message =
       t.clientesCount && t.clientesCount > 0
-        ? `Excluir a tag "${t.nome}"? Ela está em uso em ${t.clientesCount} cliente${t.clientesCount === 1 ? '' : 's'} — sairá deles também.`
-        : `Excluir a tag "${t.nome}"?`;
-    if (!confirm(msg)) return;
+        ? `A tag está em uso em ${t.clientesCount} cliente${t.clientesCount === 1 ? '' : 's'} — sairá deles também.`
+        : 'Não pode ser desfeito.';
+    const ok = await confirmAsync({
+      title: `Excluir a tag "${t.nome}"?`,
+      message,
+      confirmLabel: 'Excluir',
+      variant: 'danger',
+    });
+    if (!ok) return;
     try {
       await api.delete(`/tags/${t.id}`);
       toast.success('Tag excluída');
@@ -165,6 +173,7 @@ export default function TagsPage() {
           }}
         />
       )}
+      {ConfirmDialog}
     </PageLayout>
   );
 }

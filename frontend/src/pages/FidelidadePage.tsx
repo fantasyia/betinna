@@ -5,6 +5,7 @@ import { FormField, Input, Select, Textarea } from '@/components/FormField';
 import { badge, btn, btnSecondary, card, colors } from '@/components/styles';
 import { api, ApiError } from '@/lib/api';
 import { usePermission, useRole } from '@/hooks/usePermission';
+import { useConfirm } from '@/hooks/useConfirm';
 
 /**
  * Programa Fidelidade — backend integrado (D45/D48).
@@ -790,6 +791,7 @@ function RecompensaModal({
   const [ativo, setAtivo] = useState(editing?.ativo ?? true);
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
+  const [confirmAsync, ConfirmDialog] = useConfirm();
 
   async function salvar() {
     setBusy(true);
@@ -819,7 +821,13 @@ function RecompensaModal({
 
   async function desativar() {
     if (!editing) return;
-    if (!confirm(`Desativar "${editing.nome}"?`)) return;
+    const ok = await confirmAsync({
+      title: `Desativar "${editing.nome}"?`,
+      message: 'A recompensa some da lista mas o histórico de resgates fica preservado.',
+      confirmLabel: 'Desativar',
+      variant: 'danger',
+    });
+    if (!ok) return;
     setBusy(true);
     try {
       await api.delete(`/fidelidade/recompensas/${editing.id}`);
@@ -832,6 +840,7 @@ function RecompensaModal({
   }
 
   return (
+    <>
     <Modal
       open
       onClose={onClose}
@@ -911,6 +920,8 @@ function RecompensaModal({
         </FormField>
       )}
     </Modal>
+    {ConfirmDialog}
+    </>
   );
 }
 

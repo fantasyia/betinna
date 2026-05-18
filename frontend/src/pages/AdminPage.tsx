@@ -5,6 +5,7 @@ import { PageLayout } from '@/components/PageLayout';
 import { StateView } from '@/components/StateView';
 import { Table, type Column } from '@/components/Table';
 import { useToast } from '@/components/toast';
+import { useConfirm } from '@/hooks/useConfirm';
 import { badge, btn, btnSecondary, card, colors } from '@/components/styles';
 
 /**
@@ -165,9 +166,17 @@ function DeadLetterSection() {
     '/admin/dead-letter',
   );
   const jobs: DeadLetterJob[] = Array.isArray(data) ? data : data?.data ?? [];
+  const [confirmAsync, ConfirmDialog] = useConfirm();
 
   async function retry(jobId: string) {
-    if (!confirm('Reenviar este job pra queue original? Use com cuidado — se a causa raiz não foi corrigida, vai falhar de novo.')) return;
+    const ok = await confirmAsync({
+      title: 'Reenviar este job?',
+      message:
+        'Vai voltar pra queue original. Se a causa raiz não foi corrigida, vai falhar de novo.',
+      confirmLabel: 'Reenviar',
+      variant: 'danger',
+    });
+    if (!ok) return;
     try {
       await api.post(`/admin/dead-letter/${jobId}/retry`);
       toast.success('Job reenviado', `${jobId} voltou pra queue original`);
@@ -264,6 +273,7 @@ function DeadLetterSection() {
       >
         <Table data={jobs} columns={columns} rowKey={(j) => j.id} />
       </StateView>
+      {ConfirmDialog}
     </section>
   );
 }

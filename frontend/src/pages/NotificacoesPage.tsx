@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { PageLayout } from '@/components/PageLayout';
 import { Select } from '@/components/FormField';
+import { useConfirm } from '@/hooks/useConfirm';
 import { api, ApiError } from '@/lib/api';
 import { badge, btn, btnSecondary, card, colors } from '@/components/styles';
 
@@ -59,6 +60,7 @@ export default function NotificacoesPage() {
   const [filtroPrioridade, setFiltroPrioridade] = useState<Notificacao['prioridade'] | ''>('');
   const [loading, setLoading] = useState(true);
   const [err, setErr] = useState<string | null>(null);
+  const [confirmAsync, ConfirmDialog] = useConfirm();
 
   const load = useCallback(
     async (p = 1) => {
@@ -110,7 +112,13 @@ export default function NotificacoesPage() {
   }
 
   async function deletar(id: string) {
-    if (!confirm('Apagar esta notificação?')) return;
+    const ok = await confirmAsync({
+      title: 'Apagar esta notificação?',
+      message: 'Não fica no histórico depois de apagada.',
+      confirmLabel: 'Apagar',
+      variant: 'danger',
+    });
+    if (!ok) return;
     try {
       await api.delete(`/notificacoes/${id}`);
       void load(page);
@@ -296,6 +304,7 @@ export default function NotificacoesPage() {
           </button>
         </div>
       )}
+      {ConfirmDialog}
     </PageLayout>
   );
 }
