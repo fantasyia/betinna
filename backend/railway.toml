@@ -12,9 +12,16 @@ dockerfilePath = "Dockerfile"
 
 [deploy]
 # Railway injeta PORT — main.ts já usa env.get('PORT')
-startCommand = "npm run start:prod"
+#
+# IMPORTANTE: startCommand AQUI sobrescreve o CMD do Dockerfile.
+# Mantemos a lógica do CMD do Dockerfile (deploy-migrations.js + start)
+# replicada aqui pra garantir que rode quando Railway lê o railway.toml.
+#
+# Sem isso, migrations novas nunca eram aplicadas em prod (P2021 em Notificacao etc).
+startCommand = "node scripts/deploy-migrations.js && node dist/main.js"
 healthcheckPath = "/api/v1/health"
-healthcheckTimeout = 30
+# Timeout ampliado: migrations + boot Nest podem levar 60-90s na primeira vez.
+healthcheckTimeout = 120
 restartPolicyType = "ON_FAILURE"
 restartPolicyMaxRetries = 3
 # Sleep aplicativo após 5min de inatividade? Mantenha desligado em prod —
