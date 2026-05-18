@@ -399,7 +399,9 @@ export class PedidosService {
     // Push real pro OMIE (demo mode retorna número fake mas o fluxo é idêntico).
     // OmiePedidosService já atualiza Pedido (status, numeroOmie, enviadoOmieEm)
     // e registra sync OK na IntegracaoConexao.
-    await this.omiePedidos.enviarPedido(id);
+    // P3 defensive: passa empresaId pro OMIE service filtrar findFirst também.
+    // user.empresaIdAtiva pode ser null em system-cron contexts; convertemos pra undefined.
+    await this.omiePedidos.enviarPedido(id, user.empresaIdAtiva ?? undefined);
 
     // Trigger fidelidade: credita pontos pro cliente. Best-effort
     // (FidelidadeService captura erros internamente) e idempotente

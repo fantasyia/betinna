@@ -20,7 +20,7 @@ vi.mock('./omie.mapper', () => ({
 
 const makePrismaMock = () => ({
   pedido: {
-    findUnique: vi.fn(),
+    findFirst: vi.fn(),
     update: vi.fn().mockResolvedValue({}),
   },
 });
@@ -96,13 +96,13 @@ describe('OmiePedidosService', () => {
 
   describe('enviarPedido', () => {
     it('lança BusinessRuleException quando pedido não existe', async () => {
-      prisma.pedido.findUnique.mockResolvedValue(null);
+      prisma.pedido.findFirst.mockResolvedValue(null);
 
       await expect(service.enviarPedido('ped-999')).rejects.toBeInstanceOf(BusinessRuleException);
     });
 
     it('lança BusinessRuleException quando cliente não tem codigoOmie', async () => {
-      prisma.pedido.findUnique.mockResolvedValue(
+      prisma.pedido.findFirst.mockResolvedValue(
         fakePedido({ cliente: { id: 'cli-1', codigoOmie: null, nome: 'X' } }),
       );
 
@@ -111,7 +111,7 @@ describe('OmiePedidosService', () => {
     });
 
     it('envia pedido pra OMIE e atualiza status local', async () => {
-      prisma.pedido.findUnique.mockResolvedValue(fakePedido());
+      prisma.pedido.findFirst.mockResolvedValue(fakePedido());
       omie.incluirPedido.mockResolvedValue(fakeOmieResponse());
 
       const result = await service.enviarPedido('ped-1');
@@ -133,7 +133,7 @@ describe('OmiePedidosService', () => {
     });
 
     it('usa codigo_pedido como fallback quando numero_pedido está ausente', async () => {
-      prisma.pedido.findUnique.mockResolvedValue(fakePedido());
+      prisma.pedido.findFirst.mockResolvedValue(fakePedido());
       omie.incluirPedido.mockResolvedValue(fakeOmieResponse({ numero_pedido: undefined }));
 
       const result = await service.enviarPedido('ped-1');
@@ -142,7 +142,7 @@ describe('OmiePedidosService', () => {
     });
 
     it('payload inclui cabeçalho com codigo_cliente e codigo_pedido_integracao', async () => {
-      prisma.pedido.findUnique.mockResolvedValue(fakePedido());
+      prisma.pedido.findFirst.mockResolvedValue(fakePedido());
       omie.incluirPedido.mockResolvedValue(fakeOmieResponse());
 
       await service.enviarPedido('ped-1');
@@ -156,7 +156,7 @@ describe('OmiePedidosService', () => {
     });
 
     it('inclui observações no payload quando presentes', async () => {
-      prisma.pedido.findUnique.mockResolvedValue(fakePedido({ observacoes: 'Entregar manhã' }));
+      prisma.pedido.findFirst.mockResolvedValue(fakePedido({ observacoes: 'Entregar manhã' }));
       omie.incluirPedido.mockResolvedValue(fakeOmieResponse());
 
       await service.enviarPedido('ped-1');
@@ -166,7 +166,7 @@ describe('OmiePedidosService', () => {
     });
 
     it('omite observacoes do payload quando vazias', async () => {
-      prisma.pedido.findUnique.mockResolvedValue(fakePedido({ observacoes: null }));
+      prisma.pedido.findFirst.mockResolvedValue(fakePedido({ observacoes: null }));
       omie.incluirPedido.mockResolvedValue(fakeOmieResponse());
 
       await service.enviarPedido('ped-1');
@@ -176,7 +176,7 @@ describe('OmiePedidosService', () => {
     });
 
     it('registra sync OK ao concluir (best-effort, ignora falha)', async () => {
-      prisma.pedido.findUnique.mockResolvedValue(fakePedido());
+      prisma.pedido.findFirst.mockResolvedValue(fakePedido());
       omie.incluirPedido.mockResolvedValue(fakeOmieResponse());
       integracoes.registrarSyncOk.mockRejectedValue(new Error('DB down'));
 
@@ -192,7 +192,7 @@ describe('OmiePedidosService', () => {
           { quantidade: 3, precoUnitario: 30, desconto: 0, produto: { codigoOmie: '3', sku: 'C' } },
         ],
       });
-      prisma.pedido.findUnique.mockResolvedValue(pedidoTresItens);
+      prisma.pedido.findFirst.mockResolvedValue(pedidoTresItens);
       omie.incluirPedido.mockResolvedValue(fakeOmieResponse());
 
       await service.enviarPedido('ped-1');

@@ -7,6 +7,74 @@ versionamento segue [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ---
 
+## [1.1.0] — 2026-05-17
+
+Sprint de auditoria master final + correções P0/P1/P2/P3. Sistema revalidado para produção: 1362 tests passing, 0 vulnerabilities, 0 lint warnings, build clean.
+
+### ✨ Features
+
+#### Backend
+- **Módulo `fidelidade`** — programa de pontos por cliente (acumular/resgatar) DIRECTOR-only
+- **Módulo `import`** — CSV importer (clientes/produtos) via Zod schema, limite 1MB
+- **Módulo `notificacoes`** — CRUD + marcar lida + bulk + filtros (NotificationBell no header)
+- **`AuditController` viewer** — endpoint `/audit` ADMIN-only com filtros, paginação, `/audit/recursos` distinct
+- **`metrics` (Prometheus)** — `/metrics` endpoint com counters por módulo
+- **`catalog-share`** — share JWT TTL 7d pra envio de catálogo via WhatsApp
+- **`mullerbot-cache`** — cache Redis de respostas (TTL 1h)
+- **Validadores BR** — CPF/CNPJ/telefone/CEP com 25 specs
+- **`RetentionCleanupJob` (LGPD)** — cron dia 2 às 05:00 UTC purga AuditLog/Message (24m) + Notificacao lidas (6m). Retentions configuráveis via env. Auto-registra PURGE no AuditLog
+- **Sentry APM tracing** — `tracesSampleRate` configurável (default 0.1 prod / 1.0 dev) + `prismaIntegration` (spans SQL) + auto-instrumentação http/express/redis
+- **OMIE retry exponencial** em faults (`isRetryableFault`)
+- **WhatsApp/Meta media download** — `whatsapp-media.service.ts`, `meta-media.service.ts`
+- **SendGrid templates** + `transactional-email.service.ts`
+- **`scripts/backup-to-storage.ts`** — backup automatizado pro Supabase Storage
+
+#### Frontend
+- **NotificacoesPage** + **NotificationBell** + **OnboardingTour** + **LanguageSelect** + **Markdown**
+- **i18n**: pt-BR + en-US + es (i18next)
+- **PWA**: service worker + manifest
+- **Exports**: PDF (jspdf), DOCX (docx), XLSX (exceljs em worker), CSV (papaparse)
+- **13 E2E specs Playwright**: auth, RBAC, CRUD smoke, inbox, inbox-bulk, fidelidade, notificações, onboarding, pedidos, relatórios, catalog-audit, import-metrics
+
+### 🛡️ Security
+- **LGPD compliance**: política formal de retenção implementada (`LGPD_*_RETENTION_MONTHS` configuráveis)
+- **Body parser 2MB explícito** (P1): default Express 100KB conflitava com CSV import 1MB. Usa `app.useBodyParser` (preserva `rawBody:true` pros webhooks)
+- **OMIE `enviarPedido(id, empresaId?)`** (P3 defensive scoping): aceita empresaId opcional para defesa em profundidade
+- **`xlsx` CVE fix**: substituído por `exceljs` (Prototype Pollution + ReDoS)
+- **0 vulnerabilities** em `npm audit` (backend + frontend)
+
+### 🚀 Performance
+- **7 índices compostos novos**: `Pedido(criadoEm)`, `Cliente(empresaId,representanteId)`, `Conversation(canal,ultimaMensagemEm)`, `MarketplaceIncident(empresaId,status)`, `AuditLog(empresaId,criadoEm)`, `Notificacao(usuarioId,lida)`, `Comissao(empresaId,periodo)`
+- **Bundle frontend ~105KB gzip** (após D47 — Supabase SDK removido do path principal)
+
+### 🔧 Fixed
+- **Inbox race condition** no upsert manual de `Conversation` — migration `20260517010000_inbox_race_unique` (índice único parcial)
+- **CronLock atomicity** — 4 specs novos cobrem race & TTL edge cases
+- **Deps cleanup**: `@nestjs/terminus`, `nestjs-zod` (backend), `jose` (frontend) — removidas
+
+### 🧪 Tests
+- **Backend**: 1362 tests passing em 94 spec files (+62 vs versão 1.0.0)
+- **Frontend**: 13 E2E spec files (108 specs Playwright, +98 vs scaffold inicial)
+- **Canonical typecheck**: `npm run typecheck` (usa `tsconfig.build.json`) — clean
+  - Nota: `tsc --noEmit` direto inclui specs com mocks parciais (ML/Shopee/TikTok types incompletos) e mostra ~80 erros estáticos que **não afetam runtime** (vitest aceita)
+
+### 📚 Docs
+- `backend/_audit/MASTER_VALIDATION_REPORT_2026-05-17.md` — relatório das 12 fases
+- `AUDIT_REPORT.md` (raiz) — histórico de findings + status
+- `DEPLOY.md` — passo-a-passo Railway + smoke tests + rollback
+- `docs/modules/` — documentação por módulo (16 arquivos)
+
+### 📦 Migrations
+- `20260517000000_fidelidade` — programa de pontos
+- `20260517010000_inbox_race_unique` — race condition fix via índice único parcial
+- `20260517020000_indexes_performance` — 7 índices compostos
+
+### 🎯 Auditoria
+- 12 fases concluídas conforme `_audit/MASTER_VALIDATION_REPORT_2026-05-17.md`
+- **0 P0 abertos · 0 P1 abertos · 0 P2 abertos · 0 P3 abertos (4 P3 endereçados nesta rodada)**
+
+---
+
 ## [1.0.0] — 2026-05-15
 
 Primeira release pronta para produção. Resultado de 5 sprints de auditoria

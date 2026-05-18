@@ -44,9 +44,18 @@ export class OmiePedidosService {
     private readonly metrics: MetricsService,
   ) {}
 
-  async enviarPedido(pedidoId: string): Promise<OmiePedidoEnvioResult> {
-    const pedido = await this.prisma.pedido.findUnique({
-      where: { id: pedidoId },
+  /**
+   * Envia pedido pro OMIE.
+   *
+   * @param pedidoId  id do Pedido
+   * @param empresaId tenant esperado — quando informado, filtra também por empresaId
+   *                  (defense in depth contra callers futuros que passem ID cru).
+   *                  O caller principal (`PedidosService.enviarParaOmie`) já
+   *                  validou tenant via `findById(user, id)`, então é opcional.
+   */
+  async enviarPedido(pedidoId: string, empresaId?: string): Promise<OmiePedidoEnvioResult> {
+    const pedido = await this.prisma.pedido.findFirst({
+      where: empresaId ? { id: pedidoId, empresaId } : { id: pedidoId },
       include: {
         itens: { include: { produto: true } },
         cliente: true,
