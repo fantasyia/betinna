@@ -84,7 +84,7 @@ export default function FormulariosPage() {
   return (
     <PageLayout
       title="Formulários"
-      description="Capture leads com formulários públicos. Cada submissão gera um Lead no Pipeline."
+      description="Capture leads com formulários públicos. Cada submissão gera um Lead no Funil."
       actions={
         <Button
           onClick={() => setEditing('new')}

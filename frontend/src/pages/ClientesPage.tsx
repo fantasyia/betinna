@@ -1276,6 +1276,7 @@ function ClienteFormModal({
             minLength={2}
             maxLength={200}
             placeholder="Razão social ou nome fantasia"
+            autoFocus
           />
         </Field>
 

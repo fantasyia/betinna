@@ -265,7 +265,7 @@ export default function DashboardPage() {
                     <div className="flex flex-wrap gap-2">
                       <QuickAction to="/clientes" label="Clientes" icon={Briefcase} tone="primary" />
                       <QuickAction to="/pedidos" label="Pedidos" icon={ShoppingCart} tone="secondary" />
-                      <QuickAction to="/leads" label="Pipeline" icon={Target} tone="blue" />
+                      <QuickAction to="/leads" label="Funil" icon={Target} tone="blue" />
                       <QuickAction to="/inbox" label="Inbox" icon={MessageSquare} tone="magenta" />
                       <QuickAction to="/agenda" label="Agenda" icon={CalendarDays} tone="primary" />
                       <QuickAction to="/comissoes" label="Comissões" icon={Wallet} tone="success" />
