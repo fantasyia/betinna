@@ -1132,42 +1132,44 @@ function ClienteFormModal({
     e.preventDefault();
     setError(null);
 
-    if (!isEdit) {
-      const required = [
-        ['nome', form.nome, 'Nome obrigatório.', 2],
-        ['cnpj', form.cnpj, 'CNPJ obrigatório.'],
-        ['email', form.email, 'E-mail obrigatório.'],
-        ['telefone', form.telefone, 'Telefone obrigatório.'],
-        ['segmento', form.segmento, 'Segmento obrigatório.'],
-        ['cep', form.cep, 'CEP obrigatório.'],
-        ['endereco', form.endereco, 'Endereço (logradouro) obrigatório.'],
-        ['numero', form.numero, 'Número obrigatório.'],
-        ['bairro', form.bairro, 'Bairro obrigatório.'],
-        ['cidade', form.cidade, 'Cidade obrigatória.'],
-        ['uf', form.uf, 'UF obrigatória.'],
-      ] as const;
-      for (const [, value, msg, min] of required) {
-        const v = String(value).trim();
-        if (!v || (typeof min === 'number' && v.length < min)) {
-          setError(msg);
-          return;
-        }
+    // Campos obrigatórios — aplicam em CREATE e EDIT.
+    // Mesmo em edição, o cliente precisa ter todos os campos preenchidos
+    // antes de salvar (não aceita salvar parcial).
+    const required = [
+      ['nome', form.nome, 'Nome obrigatório.', 2],
+      ['cnpj', form.cnpj, 'CNPJ obrigatório.'],
+      ['email', form.email, 'E-mail obrigatório.'],
+      ['telefone', form.telefone, 'Telefone obrigatório.'],
+      ['segmento', form.segmento, 'Segmento obrigatório.'],
+      ['cep', form.cep, 'CEP obrigatório.'],
+      ['endereco', form.endereco, 'Endereço (logradouro) obrigatório.'],
+      ['numero', form.numero, 'Número obrigatório.'],
+      ['bairro', form.bairro, 'Bairro obrigatório.'],
+      ['cidade', form.cidade, 'Cidade obrigatória.'],
+      ['uf', form.uf, 'UF obrigatória.'],
+    ] as const;
+    for (const [, value, msg, min] of required) {
+      const v = String(value).trim();
+      if (!v || (typeof min === 'number' && v.length < min)) {
+        setError(msg);
+        return;
       }
     }
 
-    if (form.cnpj.trim() && !isValidCNPJ(form.cnpj)) {
+    // Validações de formato
+    if (!isValidCNPJ(form.cnpj)) {
       setError('CNPJ inválido. Confira os dígitos verificadores.');
       return;
     }
-    if (form.uf.trim() && form.uf.trim().length !== 2) {
+    if (form.uf.trim().length !== 2) {
       setError('UF deve ter 2 letras (ex: SP, RJ).');
       return;
     }
-    if (form.telefone.trim() && stripMask(form.telefone).length < 10) {
+    if (stripMask(form.telefone).length < 10) {
       setError('Telefone incompleto — informe DDD + número.');
       return;
     }
-    if (form.cep.trim() && stripMask(form.cep).length !== 8) {
+    if (stripMask(form.cep).length !== 8) {
       setError('CEP deve ter 8 dígitos.');
       return;
     }
@@ -1255,7 +1257,7 @@ function ClienteFormModal({
               placeholder="00.000.000/0001-00"
               maxLength={18}
               inputMode="numeric"
-              required={!isEdit}
+              required
             />
           </Field>
           <Field label="Segmento" required>
@@ -1263,7 +1265,7 @@ function ClienteFormModal({
               value={form.segmento}
               onChange={(e) => setField('segmento', e.target.value)}
               placeholder="Ex: Restaurante, Supermercado…"
-              required={!isEdit}
+              required
               maxLength={60}
             />
           </Field>
@@ -1273,7 +1275,7 @@ function ClienteFormModal({
               leftIcon={<Mail />}
               value={form.email}
               onChange={(e) => setField('email', e.target.value)}
-              required={!isEdit}
+              required
               maxLength={200}
               placeholder="contato@empresa.com.br"
             />
@@ -1286,7 +1288,7 @@ function ClienteFormModal({
               placeholder="(00) 00000-0000"
               maxLength={15}
               inputMode="tel"
-              required={!isEdit}
+              required
             />
           </Field>
         </div>
@@ -1303,7 +1305,7 @@ function ClienteFormModal({
                 placeholder="00000-000"
                 maxLength={9}
                 inputMode="numeric"
-                required={!isEdit}
+                required
               />
             </Field>
             <Field label="Logradouro" required>
@@ -1312,7 +1314,7 @@ function ClienteFormModal({
                 onChange={(e) => setField('endereco', e.target.value)}
                 placeholder="Rua, avenida, etc."
                 maxLength={200}
-                required={!isEdit}
+                required
               />
             </Field>
             <Field label="Número" required>
@@ -1320,7 +1322,7 @@ function ClienteFormModal({
                 value={form.numero}
                 onChange={(e) => setField('numero', e.target.value)}
                 maxLength={20}
-                required={!isEdit}
+                required
               />
             </Field>
           </div>
@@ -1338,7 +1340,7 @@ function ClienteFormModal({
                 value={form.bairro}
                 onChange={(e) => setField('bairro', e.target.value)}
                 maxLength={100}
-                required={!isEdit}
+                required
               />
             </Field>
             <Field label="Cidade" required>
@@ -1346,7 +1348,7 @@ function ClienteFormModal({
                 value={form.cidade}
                 onChange={(e) => setField('cidade', e.target.value)}
                 maxLength={100}
-                required={!isEdit}
+                required
               />
             </Field>
             <Field label="UF" required>
@@ -1355,7 +1357,7 @@ function ClienteFormModal({
                 value={form.uf}
                 onChange={(e) => setField('uf', normalizeUF(e.target.value))}
                 placeholder="SP"
-                required={!isEdit}
+                required
               />
             </Field>
           </div>
