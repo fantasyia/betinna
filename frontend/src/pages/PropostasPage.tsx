@@ -1,4 +1,5 @@
-import { useMemo, useState, type ReactNode } from 'react';
+import { useEffect, useMemo, useState, type ReactNode } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import {
   Search,
   Plus,
@@ -175,11 +176,24 @@ function fmtDate(d: string | null | undefined) {
 // ─── Page principal ──────────────────────────────────────────
 
 export default function PropostasPage() {
+  const [searchParams, setSearchParams] = useSearchParams();
   const [page, setPage] = useState(1);
   const [search, setSearch] = useState('');
   const [status, setStatus] = useState('');
   const [selected, setSelected] = useState<string | null>(null);
   const [creating, setCreating] = useState(false);
+
+  // Auto-abre drawer quando vem com ?highlight=ID
+  useEffect(() => {
+    const highlight = searchParams.get('highlight');
+    if (highlight && highlight !== selected) {
+      setSelected(highlight);
+      const next = new URLSearchParams(searchParams);
+      next.delete('highlight');
+      setSearchParams(next, { replace: true });
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [searchParams]);
 
   const listPath = useMemo(() => {
     const qs = new URLSearchParams({ page: String(page), limit: '20' });

@@ -1,4 +1,5 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { api, ApiError } from '@/lib/api';
 import { useApiQuery, type PaginatedResponse } from '@/hooks/useApiQuery';
 import { PageLayout } from '@/components/PageLayout';
@@ -76,11 +77,24 @@ function daysUntil(d: string | null | undefined): number | null {
 }
 
 export default function AmostrasPage() {
+  const [searchParams, setSearchParams] = useSearchParams();
   const [page, setPage] = useState(1);
   const [status, setStatus] = useState('');
   const [vencidas, setVencidas] = useState('');
   const [selected, setSelected] = useState<string | null>(null);
   const [creating, setCreating] = useState(false);
+
+  // Auto-abre drawer quando vem com ?highlight=ID
+  useEffect(() => {
+    const highlight = searchParams.get('highlight');
+    if (highlight && highlight !== selected) {
+      setSelected(highlight);
+      const next = new URLSearchParams(searchParams);
+      next.delete('highlight');
+      setSearchParams(next, { replace: true });
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [searchParams]);
 
   const listPath = useMemo(() => {
     const qs = new URLSearchParams({ page: String(page), limit: '20' });
