@@ -9,7 +9,7 @@ import { ErrorCode } from '@shared/errors/error-codes';
 import type { AuthenticatedUser } from '@shared/types/authenticated-user';
 import type { UpsertMetaDto } from './metas.dto';
 
-interface MetaComProgresso {
+export interface MetaComProgresso {
   id: string;
   titulo: string;
   descricao: string | null;
@@ -155,9 +155,13 @@ export class MetasService {
     if (meta.alvoTipo === 'REP' && meta.alvoId) {
       where.representanteId = meta.alvoId;
     } else if (meta.alvoTipo === 'GERENTE' && meta.alvoId) {
-      // Pega todos os reps do gerente
+      // Pega todos os reps do gerente.
+      // Usuario.empresas é uma junction table (UsuarioEmpresa[]) — filtra via `some`.
       const reps = await this.prisma.usuario.findMany({
-        where: { gerenteId: meta.alvoId, empresaIds: { has: empresaId } },
+        where: {
+          gerenteId: meta.alvoId,
+          empresas: { some: { empresaId } },
+        },
         select: { id: true },
       });
       where.representanteId = { in: reps.map((r) => r.id) };
