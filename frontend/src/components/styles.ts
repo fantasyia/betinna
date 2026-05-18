@@ -45,30 +45,29 @@ export const colors = {
   /** Quase invisível (placeholders, hints). */
   mutedLight: '#9892a8',
 
-  // ─── Brand (Betinna roxo+ciano) ─────────────────────────────────
-  /** Primária — roxo profundo. */
-  primary: '#31137C',
-  primaryHover: '#250E62',
-  /** Bg sutil de hover/active states do primário. */
-  primaryLight: '#f0ecfa',
-  /** Texto sobre primary (branco quente). */
-  primaryContrast: '#F8F7F2',
+  // ─── Brand (cores oficiais brandbook Betinna) ────────────────────
+  /** Primária — navy oficial. */
+  primary: '#201554',
+  primaryHover: '#15093c',
+  primaryLight: '#ecebf3',
+  primaryContrast: '#ffffff',
 
-  /** Secundária — ciano. Usar com parcimônia em chips/acentos. */
-  secondary: '#4AC9E3',
-  secondaryHover: '#2db5cf',
-  secondaryLight: '#e6f9fc',
+  /** Secundária — ciano oficial. */
+  secondary: '#2bcae5',
+  secondaryHover: '#1ba8c0',
+  secondaryLight: '#defaff',
 
-  /** Acento — magenta. Pra estados especiais (premium, destaque). */
-  magenta: '#BB29BB',
-  magentaLight: '#faeafa',
+  /** Acento — magenta oficial (rosa). */
+  magenta: '#bd1fbf',
+  magentaHover: '#a01aa1',
+  magentaLight: '#fae6fa',
 
   /** Azul — accent terciário. */
   blue: '#5C88DA',
   blueLight: '#eaf0fb',
 
-  /** Navy — usar em sidebar/header escuro opcional. */
-  navy: '#221551',
+  /** Navy — alias da primary. */
+  navy: '#201554',
 
   // ─── Semânticas ─────────────────────────────────────────────────
   danger: '#c43c3c',

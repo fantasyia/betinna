@@ -17,7 +17,9 @@ import {
   Hash,
   Building2,
   AlertCircle,
+  Receipt,
 } from 'lucide-react';
+import { NovoPedidoDialog, type ClienteOpt } from '@/components/NovoPedidoDialog';
 import { api, ApiError } from '@/lib/api';
 import { useApiQuery, type PaginatedResponse } from '@/hooks/useApiQuery';
 import { usePermission } from '@/hooks/usePermission';
@@ -157,6 +159,7 @@ export default function ClientesPage() {
   const [creating, setCreating] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [detailId, setDetailId] = useState<string | null>(null);
+  const [novoPedidoFor, setNovoPedidoFor] = useState<ClienteOpt | null>(null);
 
   const onSaved = () => {
     setCreating(false);
@@ -562,9 +565,23 @@ export default function ClientesPage() {
             setDetailId(null);
             refetch();
           }}
+          onCreatePedido={(c) => {
+            setNovoPedidoFor(c);
+            setDetailId(null);
+          }}
           isMobile={isMobile}
         />
       )}
+
+      <NovoPedidoDialog
+        open={novoPedidoFor !== null}
+        clientePreSelecionado={novoPedidoFor}
+        onClose={() => setNovoPedidoFor(null)}
+        onCreated={(pedidoId) => {
+          setNovoPedidoFor(null);
+          navigate(`/pedidos?highlight=${pedidoId}`);
+        }}
+      />
 
       {creating && (
         <ClienteFormModal open cliente={null} onClose={() => setCreating(false)} onSaved={onSaved} />
@@ -791,12 +808,14 @@ function ClienteDetailDrawer({
   onClose,
   onEdit,
   onDeleted,
+  onCreatePedido,
   isMobile,
 }: {
   id: string;
   onClose: () => void;
   onEdit: () => void;
   onDeleted: () => void;
+  onCreatePedido: (c: ClienteOpt) => void;
   isMobile: boolean;
 }) {
   const { data, loading } = useApiQuery<Cliente>(`/clientes/${id}`);
@@ -814,6 +833,17 @@ function ClienteDetailDrawer({
           <>
             <DeleteClienteButton id={id} onDeleted={onDeleted} />
             <div className="flex-1" />
+            <Button
+              variant="secondary"
+              size="sm"
+              data-testid="cliente-criar-pedido"
+              onClick={() =>
+                onCreatePedido({ id: data.id, nome: data.nome, cnpj: data.cnpj ?? null })
+              }
+              leftIcon={<Receipt className="h-3.5 w-3.5" />}
+            >
+              Criar pedido
+            </Button>
             <Button
               variant="secondary"
               onClick={() => navigate(`/clientes/${id}`)}

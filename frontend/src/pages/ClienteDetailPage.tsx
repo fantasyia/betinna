@@ -7,6 +7,7 @@ import { StateView } from '@/components/StateView';
 import { Modal } from '@/components/Modal';
 import { FormField, Input, Select, Textarea } from '@/components/FormField';
 import { AsyncCombobox } from '@/components/AsyncCombobox';
+import { NovoPedidoDialog } from '@/components/NovoPedidoDialog';
 import { useToast } from '@/components/toast';
 import { maskCNPJ, maskTelefone, normalizeUF } from '@/lib/masks';
 import { badge, btn, btnDanger, btnSecondary, card, colors } from '@/components/styles';
@@ -106,6 +107,7 @@ export default function ClienteDetailPage() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
   const [tab, setTab] = useState<Tab>('dados');
+  const [criarPedido, setCriarPedido] = useState(false);
 
   const { data: cliente, loading, error, refetch } = useApiQuery<Cliente>(
     id ? `/clientes/${id}` : null,
@@ -123,9 +125,21 @@ export default function ClienteDetailPage() {
     <PageLayout
       title={cliente ? cliente.nome : 'Cliente'}
       actions={
-        <Link to="/clientes" style={{ ...btnSecondary, textDecoration: 'none' }}>
-          ← Voltar pra lista
-        </Link>
+        <div style={{ display: 'flex', gap: '0.5rem' }}>
+          {cliente && (
+            <button
+              type="button"
+              data-testid="cliente-page-criar-pedido"
+              onClick={() => setCriarPedido(true)}
+              style={btn}
+            >
+              + Criar pedido
+            </button>
+          )}
+          <Link to="/clientes" style={{ ...btnSecondary, textDecoration: 'none' }}>
+            ← Voltar pra lista
+          </Link>
+        </div>
       }
     >
       <StateView loading={loading && !cliente} error={error} onRetry={refetch}>
@@ -199,6 +213,18 @@ export default function ClienteDetailPage() {
           </>
         )}
       </StateView>
+
+      {cliente && (
+        <NovoPedidoDialog
+          open={criarPedido}
+          clientePreSelecionado={{ id: cliente.id, nome: cliente.nome, cnpj: cliente.cnpj ?? null }}
+          onClose={() => setCriarPedido(false)}
+          onCreated={(pedidoId) => {
+            setCriarPedido(false);
+            navigate(`/pedidos?highlight=${pedidoId}`);
+          }}
+        />
+      )}
     </PageLayout>
   );
 }

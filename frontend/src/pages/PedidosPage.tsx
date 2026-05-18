@@ -22,7 +22,9 @@ import {
   Hash,
   Pencil,
   XCircle,
+  Plus,
 } from 'lucide-react';
+import { NovoPedidoDialog } from '@/components/NovoPedidoDialog';
 import { api, ApiError } from '@/lib/api';
 import { useApiQuery, type PaginatedResponse } from '@/hooks/useApiQuery';
 import { PageLayout } from '@/components/PageLayout';
@@ -252,6 +254,7 @@ export default function PedidosPage() {
     }
   }
 
+  const [creating, setCreating] = useState(false);
   const filtersActive = !!status || !!search.trim();
 
   return (
@@ -262,7 +265,18 @@ export default function PedidosPage() {
           ? `${pageResp.pagination.total.toLocaleString('pt-BR')} pedidos no total`
           : undefined
       }
-      actions={<ExportMenu exporting={exporting} onExport={handleExport} />}
+      actions={
+        <>
+          <ExportMenu exporting={exporting} onExport={handleExport} />
+          <Button
+            data-testid="pedido-new-btn"
+            onClick={() => setCreating(true)}
+            leftIcon={<Plus className="h-3.5 w-3.5" />}
+          >
+            Novo pedido
+          </Button>
+        </>
+      }
     >
       <Card padding="none" className="overflow-hidden">
         {/* Toolbar */}
@@ -438,6 +452,16 @@ export default function PedidosPage() {
           }}
         />
       )}
+
+      <NovoPedidoDialog
+        open={creating}
+        onClose={() => setCreating(false)}
+        onCreated={(pedidoId) => {
+          setCreating(false);
+          refetch();
+          setSelected(pedidoId);
+        }}
+      />
     </PageLayout>
   );
 }

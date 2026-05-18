@@ -1,0 +1,391 @@
+import { useEffect, useState } from 'react';
+import { Plus, Trash2, AlertCircle, CheckCircle2, Receipt } from 'lucide-react';
+import { api, ApiError } from '@/lib/api';
+import { AsyncCombobox } from '@/components/AsyncCombobox';
+import { useToast } from '@/components/toast';
+import {
+  Button,
+  Card,
+  Dialog,
+  Field,
+  IconButton,
+  Input,
+  Select,
+  Textarea,
+} from '@/components/ui';
+import { cn } from '@/lib/cn';
+
+/**
+ * NovoPedidoDialog — modal pra criar pedido novo.
+ *
+ * Reusável em PedidosPage (sem cliente pré-selecionado) e em ClientesPage
+ * (com cliente pré-selecionado).
+ */
+
+type PagamentoForma = 'BOLETO' | 'PIX' | 'TED' | 'CARTAO' | 'DINHEIRO';
+type CondicaoPgto = 'avista' | '15dias' | '30dias' | '30_60' | '30_60_90';
+
+interface ClienteOpt {
+  id: string;
+  nome: string;
+  cnpj?: string | null;
+}
+
+interface ProdutoOpt {
+  id: string;
+  nome: string;
+  sku?: string | null;
+  precoTabela?: number;
+}
+
+interface FormItem {
+  uiKey: string;
+  produto: ProdutoOpt | null;
+  quantidade: number;
+  desconto: number;
+  precoUnitarioOverride: string;
+}
+
+function newFormItem(): FormItem {
+  return {
+    uiKey: Math.random().toString(36).slice(2),
+    produto: null,
+    quantidade: 1,
+    desconto: 0,
+    precoUnitarioOverride: '',
+  };
+}
+
+const FORMAS: PagamentoForma[] = ['BOLETO', 'PIX', 'TED', 'CARTAO', 'DINHEIRO'];
+const CONDICOES: { value: CondicaoPgto; label: string }[] = [
+  { value: 'avista', label: 'À vista' },
+  { value: '15dias', label: '15 dias' },
+  { value: '30dias', label: '30 dias' },
+  { value: '30_60', label: '30/60' },
+  { value: '30_60_90', label: '30/60/90' },
+];
+
+function fmtBRL(v: number) {
+  return new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(v);
+}
+
+export function NovoPedidoDialog({
+  open,
+  clientePreSelecionado,
+  onClose,
+  onCreated,
+}: {
+  open: boolean;
+  /** Quando informado, pré-seleciona o cliente e esconde o seletor. */
+  clientePreSelecionado?: ClienteOpt | null;
+  onClose: () => void;
+  onCreated: (pedidoId: string) => void;
+}) {
+  const toast = useToast();
+  const [cliente, setCliente] = useState<ClienteOpt | null>(clientePreSelecionado ?? null);
+  const [itens, setItens] = useState<FormItem[]>([newFormItem()]);
+  const [formaPagamento, setFormaPagamento] = useState<PagamentoForma>('BOLETO');
+  const [condicaoPagamento, setCondicaoPagamento] = useState<CondicaoPgto>('30dias');
+  const [descontoGeral, setDescontoGeral] = useState(0);
+  const [observacoes, setObservacoes] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (clientePreSelecionado) setCliente(clientePreSelecionado);
+  }, [clientePreSelecionado]);
+
+  function setItem(idx: number, patch: Partial<FormItem>) {
+    setItens((arr) => arr.map((it, i) => (i === idx ? { ...it, ...patch } : it)));
+  }
+  function removeItem(idx: number) {
+    setItens((arr) => (arr.length > 1 ? arr.filter((_, i) => i !== idx) : arr));
+  }
+  function addItem() {
+    setItens((arr) => [...arr, newFormItem()]);
+  }
+
+  // Preview de total client-side
+  const subtotal = itens.reduce((acc, it) => {
+    if (!it.produto) return acc;
+    const unit = it.precoUnitarioOverride.trim()
+      ? Number(it.precoUnitarioOverride) || 0
+      : it.produto.precoTabela ?? 0;
+    const bruto = unit * it.quantidade;
+    return acc + bruto * (1 - it.desconto / 100);
+  }, 0);
+  const total = subtotal * (1 - descontoGeral / 100);
+
+  const valid =
+    cliente !== null &&
+    itens.length > 0 &&
+    itens.every((it) => it.produto !== null && it.quantidade >= 1);
+
+  async function submit(e: React.FormEvent) {
+    e.preventDefault();
+    if (!cliente || !valid) return;
+    setBusy(true);
+    setError(null);
+    const payload: Record<string, unknown> = {
+      clienteId: cliente.id,
+      itens: itens.map((it) => {
+        const obj: Record<string, unknown> = {
+          produtoId: it.produto!.id,
+          quantidade: it.quantidade,
+          desconto: it.desconto,
+        };
+        if (it.precoUnitarioOverride.trim()) {
+          obj.precoUnitarioOverride = Number(it.precoUnitarioOverride);
+        }
+        return obj;
+      }),
+      formaPagamento,
+      condicaoPagamento,
+      descontoGeral,
+    };
+    if (observacoes.trim()) payload.observacoes = observacoes.trim();
+
+    try {
+      const r = await api.post<{ id: string }>('/pedidos', payload);
+      toast.success('Pedido criado');
+      onCreated(r.id);
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : 'Falha ao criar pedido');
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <Dialog
+      open={open}
+      onClose={onClose}
+      title="Novo pedido"
+      description={clientePreSelecionado ? `Cliente: ${clientePreSelecionado.nome}` : undefined}
+      size="xl"
+      footer={
+        <>
+          <Button variant="secondary" onClick={onClose}>
+            Cancelar
+          </Button>
+          <Button
+            type="submit"
+            form="pedido-form"
+            data-testid="pedido-save-btn"
+            disabled={!valid}
+            loading={busy}
+            leftIcon={<CheckCircle2 className="h-3.5 w-3.5" />}
+          >
+            Criar pedido
+          </Button>
+        </>
+      }
+    >
+      <form id="pedido-form" onSubmit={submit} className="flex flex-col gap-4">
+        {!clientePreSelecionado && (
+          <Field label="Cliente" required>
+            <AsyncCombobox<ClienteOpt>
+              testId="cliente-picker"
+              endpoint="/clientes"
+              placeholder="Buscar cliente por nome ou CNPJ…"
+              getLabel={(c) => c.nome}
+              getSubLabel={(c) => c.cnpj ?? null}
+              getId={(c) => c.id}
+              value={cliente}
+              onChange={setCliente}
+            />
+          </Field>
+        )}
+
+        <section>
+          <div className="flex items-center justify-between mb-2">
+            <h4 className="text-[10px] font-semibold uppercase tracking-wider text-muted">
+              Itens ({itens.length})
+            </h4>
+            <Button
+              type="button"
+              variant="ghost"
+              size="sm"
+              onClick={addItem}
+              leftIcon={<Plus className="h-3 w-3" />}
+              data-testid="pedido-add-item"
+            >
+              Adicionar item
+            </Button>
+          </div>
+          <div className="flex flex-col gap-2">
+            {itens.map((it, idx) => (
+              <ItemRow
+                key={it.uiKey}
+                item={it}
+                onChange={(patch) => setItem(idx, patch)}
+                onRemove={itens.length > 1 ? () => removeItem(idx) : null}
+                testId={`item-${idx}`}
+              />
+            ))}
+          </div>
+        </section>
+
+        <section>
+          <h4 className="text-[10px] font-semibold uppercase tracking-wider text-muted mb-2">
+            Pagamento
+          </h4>
+          <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
+            <Field label="Forma">
+              <Select
+                value={formaPagamento}
+                onChange={(e) => setFormaPagamento(e.target.value as PagamentoForma)}
+              >
+                {FORMAS.map((f) => (
+                  <option key={f} value={f}>
+                    {f}
+                  </option>
+                ))}
+              </Select>
+            </Field>
+            <Field label="Condição">
+              <Select
+                value={condicaoPagamento}
+                onChange={(e) => setCondicaoPagamento(e.target.value as CondicaoPgto)}
+              >
+                {CONDICOES.map((c) => (
+                  <option key={c.value} value={c.value}>
+                    {c.label}
+                  </option>
+                ))}
+              </Select>
+            </Field>
+            <Field label="Desconto geral (%)">
+              <Input
+                type="number"
+                min={0}
+                max={50}
+                step="0.1"
+                value={descontoGeral}
+                onChange={(e) => setDescontoGeral(Number(e.target.value))}
+              />
+            </Field>
+          </div>
+        </section>
+
+        <Field label="Observações" hint="Notas internas, prazos especiais…">
+          <Textarea
+            value={observacoes}
+            onChange={(e) => setObservacoes(e.target.value)}
+            rows={3}
+          />
+        </Field>
+
+        <Card variant="outline" padding="md" className="bg-primary/5 border-primary/30">
+          <div className="flex items-center justify-between gap-3">
+            <div>
+              <div className="text-[11px] uppercase tracking-wider text-muted">Total estimado</div>
+              <div className="text-2xl font-bold text-text tabular tracking-tight flex items-center gap-2">
+                <Receipt className="h-5 w-5 text-primary" />
+                {fmtBRL(total)}
+              </div>
+            </div>
+            <div className="text-right text-[11px] text-muted tabular">
+              <div>Subtotal: {fmtBRL(subtotal)}</div>
+              {descontoGeral > 0 && <div>Desconto geral: {descontoGeral}%</div>}
+              <div className="text-muted-light mt-1">Backend recalcula no save.</div>
+            </div>
+          </div>
+        </Card>
+
+        {error && (
+          <div className="px-3 py-2 rounded-md bg-danger/10 border border-danger/30 text-danger text-sm flex items-start gap-2">
+            <AlertCircle className="h-4 w-4 mt-0.5 shrink-0" />
+            {error}
+          </div>
+        )}
+      </form>
+    </Dialog>
+  );
+}
+
+function ItemRow({
+  item,
+  onChange,
+  onRemove,
+  testId,
+}: {
+  item: FormItem;
+  onChange: (patch: Partial<FormItem>) => void;
+  onRemove: (() => void) | null;
+  testId: string;
+}) {
+  return (
+    <div
+      data-testid={testId}
+      className={cn(
+        'grid grid-cols-[1fr_70px_70px_90px_32px] gap-2 items-start p-2.5',
+        'rounded-md border border-border bg-bg-alt',
+      )}
+    >
+      <AsyncCombobox<ProdutoOpt>
+        testId={`${testId}-produto`}
+        endpoint="/produtos"
+        placeholder="Buscar produto…"
+        getLabel={(p) => p.nome}
+        getSubLabel={(p) =>
+          [p.sku, p.precoTabela !== undefined ? fmtBRL(p.precoTabela) : null]
+            .filter(Boolean)
+            .join(' · ')
+        }
+        getId={(p) => p.id}
+        value={item.produto}
+        onChange={(p) => onChange({ produto: p })}
+      />
+      <Input
+        type="number"
+        min={1}
+        value={item.quantidade}
+        onChange={(e) => onChange({ quantidade: Math.max(1, Number(e.target.value)) })}
+        data-testid={`${testId}-qt`}
+        aria-label="Quantidade"
+      />
+      <Input
+        type="number"
+        min={0}
+        max={80}
+        step="0.1"
+        value={item.desconto}
+        onChange={(e) => onChange({ desconto: Number(e.target.value) })}
+        data-testid={`${testId}-desc`}
+        aria-label="Desconto %"
+        placeholder="% desc"
+      />
+      <Input
+        type="number"
+        min={0}
+        step="0.01"
+        value={item.precoUnitarioOverride}
+        onChange={(e) => {
+          const v = e.target.value.replace(',', '.');
+          if (v === '' || /^\d*\.?\d*$/.test(v)) {
+            onChange({ precoUnitarioOverride: v });
+          }
+        }}
+        data-testid={`${testId}-override`}
+        aria-label="Preço override"
+        placeholder="preço"
+      />
+      {onRemove ? (
+        <IconButton
+          aria-label="Remover item"
+          variant="danger"
+          size="sm"
+          icon={<Trash2 />}
+          onClick={onRemove}
+          data-testid={`${testId}-remove`}
+          className="self-center"
+        />
+      ) : (
+        <span />
+      )}
+    </div>
+  );
+}
+
+export type { ClienteOpt };

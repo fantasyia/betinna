@@ -6,7 +6,11 @@ import { initSentry } from '@/lib/sentry';
 import { bootstrapAuthFromBackend } from '@/lib/auth-store';
 import { registerPwa } from '@/lib/pwa';
 import { initI18n } from '@/lib/i18n';
+import { bootstrapTheme } from '@/hooks/useTheme';
 import './index.css';
+
+// Aplica tema (light/dark) ANTES de renderizar pra evitar flash
+bootstrapTheme();
 
 initSentry();
 initI18n();

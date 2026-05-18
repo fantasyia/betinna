@@ -37,11 +37,14 @@ import {
   Star,
   Target as TargetIcon,
   PieChart as PieChartIcon,
+  Sun,
+  Moon,
   type LucideIcon,
 } from 'lucide-react';
 import { useRole, usePermission } from '@/hooks/usePermission';
 import { NotificationBell } from '@/components/NotificationBell';
 import { Avatar } from '@/components/ui';
+import { useTheme } from '@/hooks/useTheme';
 import { cn } from '@/lib/cn';
 
 /**
@@ -255,29 +258,28 @@ function Sidebar({
         if (isMobile && (e.target as HTMLElement).closest('a')) onClose();
       }}
     >
-      {/* Logo + workspace switcher */}
-      <div className="flex items-center gap-2.5 px-3.5 py-3 border-b border-border">
-        <div
-          className={cn(
-            'flex h-8 w-8 items-center justify-center rounded-lg',
-            'bg-gradient-brand text-white font-extrabold text-base',
-            'shadow-md',
-          )}
-          style={{ fontFamily: 'var(--font-display)' }}
-        >
-          B
+      {/* Logo oficial + dark mode toggle */}
+      <div className="flex items-center justify-between gap-2 px-3.5 py-3 border-b border-border">
+        <div className="flex items-center gap-2 min-w-0">
+          <img
+            src="/betinna-symbol.svg"
+            alt="Betinna.ai"
+            className="h-8 w-8 shrink-0"
+            draggable={false}
+          />
+          <div className="flex flex-col min-w-0">
+            <strong
+              className="text-base font-extrabold leading-tight tracking-tight text-text"
+              style={{ fontFamily: 'var(--font-display)' }}
+            >
+              Betinna<span className="text-magenta">.ai</span>
+            </strong>
+            <span className="text-[10px] text-muted leading-tight uppercase tracking-wider">
+              {role ? ROLE_LABEL[role] ?? role : 'Sem sessão'}
+            </span>
+          </div>
         </div>
-        <div className="flex flex-col min-w-0">
-          <strong
-            className="text-base font-bold text-text leading-tight tracking-tight"
-            style={{ fontFamily: 'var(--font-display)' }}
-          >
-            Betinna<span className="text-primary">.ai</span>
-          </strong>
-          <span className="text-[10px] text-muted leading-tight">
-            {role ? ROLE_LABEL[role] ?? role : 'Sem sessão'}
-          </span>
-        </div>
+        <ThemeToggle />
       </div>
 
       {/* Quick search (placeholder pra futuro cmdk) */}
@@ -338,6 +340,28 @@ function Sidebar({
 }
 
 // ─── Mobile top bar ─────────────────────────────────────────────────
+
+// ─── Theme toggle ──────────────────────────────────────────────
+
+function ThemeToggle() {
+  const [theme, , toggle] = useTheme();
+  return (
+    <button
+      type="button"
+      onClick={toggle}
+      aria-label={theme === 'dark' ? 'Trocar para light mode' : 'Trocar para dark mode'}
+      title={theme === 'dark' ? 'Light mode' : 'Dark mode'}
+      className={cn(
+        'flex h-7 w-7 items-center justify-center rounded-md shrink-0',
+        'border border-border bg-surface text-text-subtle',
+        'hover:bg-primary/10 hover:text-primary hover:border-primary/40',
+        'transition-colors',
+      )}
+    >
+      {theme === 'dark' ? <Sun className="h-3.5 w-3.5" /> : <Moon className="h-3.5 w-3.5" />}
+    </button>
+  );
+}
 
 function MobileTopBar({
   title,

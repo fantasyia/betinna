@@ -50,6 +50,7 @@ export default {
         },
         magenta: {
           DEFAULT: 'var(--magenta)',
+          hover: 'var(--magenta-hover)',
           light: 'var(--magenta-light)',
         },
         blue: {
