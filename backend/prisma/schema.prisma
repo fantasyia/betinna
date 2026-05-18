@@ -487,6 +487,9 @@ model Produto {
   imagem        String? // emoji ou URL
   popularidade  Int      @default(0)
   estoque       Int      @default(0)
+  /// Timestamp da última vez que estoque foi sincronizado (sync 30min OU webhook OMIE).
+  /// Usado pelo frontend pra mostrar "atualizado há X min" e detectar dados stale.
+  estoqueAtualizadoEm DateTime?
   ativo         Boolean  @default(true)
   criadoEm      DateTime @default(now())
   atualizadoEm  DateTime @updatedAt

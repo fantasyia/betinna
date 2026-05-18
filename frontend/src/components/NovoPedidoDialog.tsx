@@ -1,5 +1,15 @@
 import { useEffect, useState } from 'react';
-import { Plus, Trash2, AlertCircle, CheckCircle2, Receipt } from 'lucide-react';
+import {
+  Plus,
+  Trash2,
+  AlertCircle,
+  CheckCircle2,
+  Receipt,
+  PackageX,
+  PackageCheck,
+  Package,
+  AlertTriangle,
+} from 'lucide-react';
 import { api, ApiError } from '@/lib/api';
 import { AsyncCombobox } from '@/components/AsyncCombobox';
 import { useToast } from '@/components/toast';
@@ -36,6 +46,10 @@ interface ProdutoOpt {
   nome: string;
   sku?: string | null;
   precoTabela?: number;
+  /** Estoque atual sincronizado do OMIE (sync 30min ou webhook). */
+  estoque?: number;
+  /** ISO timestamp do último sync. */
+  estoqueAtualizadoEm?: string | null;
 }
 
 interface FormItem {
@@ -315,28 +329,54 @@ function ItemRow({
   onRemove: (() => void) | null;
   testId: string;
 }) {
+  const estoque = item.produto?.estoque;
+  // Avisos:
+  //  - vermelho: produto selecionado com estoque 0 → OMIE vai gerar OP de reposição
+  //  - amarelo : quantidade > estoque disponível → vende mais do que tem; OMIE puxa pra produção
+  const semEstoque = item.produto !== null && (estoque ?? 0) <= 0;
+  const excedeEstoque =
+    item.produto !== null && estoque !== undefined && estoque > 0 && item.quantidade > estoque;
+
   return (
     <div
       data-testid={testId}
       className={cn(
         'grid grid-cols-[1fr_70px_70px_90px_32px] gap-2 items-start p-2.5',
-        'rounded-md border border-border bg-bg-alt',
+        'rounded-md border bg-bg-alt',
+        semEstoque
+          ? 'border-danger/40'
+          : excedeEstoque
+            ? 'border-warning/40'
+            : 'border-border',
       )}
     >
-      <AsyncCombobox<ProdutoOpt>
-        testId={`${testId}-produto`}
-        endpoint="/produtos"
-        placeholder="Buscar produto…"
-        getLabel={(p) => p.nome}
-        getSubLabel={(p) =>
-          [p.sku, p.precoTabela !== undefined ? fmtBRL(p.precoTabela) : null]
-            .filter(Boolean)
-            .join(' · ')
-        }
-        getId={(p) => p.id}
-        value={item.produto}
-        onChange={(p) => onChange({ produto: p })}
-      />
+      <div className="flex flex-col gap-1">
+        <AsyncCombobox<ProdutoOpt>
+          testId={`${testId}-produto`}
+          endpoint="/produtos"
+          placeholder="Buscar produto…"
+          getLabel={(p) => p.nome}
+          getSubLabel={(p) =>
+            [
+              p.sku,
+              p.precoTabela !== undefined ? fmtBRL(p.precoTabela) : null,
+              p.estoque !== undefined ? estoqueLabel(p.estoque) : null,
+            ]
+              .filter(Boolean)
+              .join(' · ')
+          }
+          getId={(p) => p.id}
+          value={item.produto}
+          onChange={(p) => onChange({ produto: p })}
+        />
+        {item.produto && (
+          <StockHint
+            estoque={estoque}
+            quantidade={item.quantidade}
+            testId={`${testId}-stock-hint`}
+          />
+        )}
+      </div>
       <Input
         type="number"
         min={1}
@@ -384,6 +424,83 @@ function ItemRow({
       ) : (
         <span />
       )}
+    </div>
+  );
+}
+
+function estoqueLabel(estoque: number): string {
+  if (estoque <= 0) return 'sem estoque';
+  if (estoque < 10) return `${estoque} un (baixo)`;
+  return `${estoque} un em estoque`;
+}
+
+/**
+ * Hint inline com semáforo de estoque.
+ *
+ * NÃO bloqueia o pedido em nenhum caso — só sinaliza. Por design (D-estoque):
+ * mesmo sem estoque, o pedido vai pro OMIE e o OMIE gera Ordem de Produção
+ * (OP) pra repor ou produzir sob demanda.
+ */
+function StockHint({
+  estoque,
+  quantidade,
+  testId,
+}: {
+  estoque: number | undefined;
+  quantidade: number;
+  testId?: string;
+}) {
+  if (estoque === undefined) {
+    return (
+      <div
+        data-testid={testId}
+        className="flex items-center gap-1 text-[10px] text-muted px-1"
+      >
+        <Package className="h-2.5 w-2.5" />
+        Estoque ainda não sincronizado
+      </div>
+    );
+  }
+  if (estoque <= 0) {
+    return (
+      <div
+        data-testid={testId}
+        className="flex items-center gap-1 text-[10px] text-danger px-1"
+      >
+        <PackageX className="h-2.5 w-2.5" />
+        <strong>Sem estoque</strong> — pode lançar; OMIE gera OP de reposição
+      </div>
+    );
+  }
+  if (quantidade > estoque) {
+    return (
+      <div
+        data-testid={testId}
+        className="flex items-center gap-1 text-[10px] text-warning px-1"
+      >
+        <AlertTriangle className="h-2.5 w-2.5" />
+        Quantidade ({quantidade}) maior que estoque ({estoque}) — OMIE produz o restante
+      </div>
+    );
+  }
+  if (estoque < 10) {
+    return (
+      <div
+        data-testid={testId}
+        className="flex items-center gap-1 text-[10px] text-warning px-1"
+      >
+        <Package className="h-2.5 w-2.5" />
+        Estoque baixo: {estoque} un
+      </div>
+    );
+  }
+  return (
+    <div
+      data-testid={testId}
+      className="flex items-center gap-1 text-[10px] text-success px-1"
+    >
+      <PackageCheck className="h-2.5 w-2.5" />
+      {estoque} un disponíveis
     </div>
   );
 }

@@ -139,7 +139,7 @@ export class ProdutosService {
     const existing = await this.findById(user, id);
     await this.prisma.produto.updateMany({
       where: { id, empresaId: existing.empresaId },
-      data: { estoque: dto.estoque },
+      data: { estoque: dto.estoque, estoqueAtualizadoEm: new Date() },
     });
     return this.prisma.produto.findUniqueOrThrow({
       where: { id },

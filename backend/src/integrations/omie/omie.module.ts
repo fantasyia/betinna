@@ -3,6 +3,7 @@ import { NotificacoesModule } from '@modules/notificacoes/notificacoes.module';
 import { OmieClientService } from './omie-client.service';
 import { OmieClientesService } from './omie-clientes.service';
 import { OmieController } from './omie.controller';
+import { OmieEstoqueJob } from './omie-estoque.job';
 import { OmiePedidosService } from './omie-pedidos.service';
 import { OmieProdutosService } from './omie-produtos.service';
 import { OmieSyncJob } from './omie-sync.job';
@@ -28,6 +29,7 @@ import { OmieWebhookController } from './omie-webhook.controller';
     OmieProdutosService,
     OmiePedidosService,
     OmieSyncJob,
+    OmieEstoqueJob,
   ],
   exports: [
     OmieClientService,
@@ -35,6 +37,7 @@ import { OmieWebhookController } from './omie-webhook.controller';
     OmieProdutosService,
     OmiePedidosService,
     OmieSyncJob,
+    OmieEstoqueJob,
   ],
 })
 export class OmieModule {}

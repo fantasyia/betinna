@@ -33,6 +33,8 @@ export interface CatalogoItem {
     precoFabrica: number;
     popularidade: number;
     ativo: boolean;
+    estoque: number;
+    estoqueAtualizadoEm: Date | null;
   };
 }
 
@@ -90,6 +92,8 @@ export class CatalogoService {
             precoFabrica: true,
             popularidade: true,
             ativo: true,
+            estoque: true,
+            estoqueAtualizadoEm: true,
           },
         },
       },
@@ -120,6 +124,8 @@ export class CatalogoService {
             precoFabrica: true,
             popularidade: true,
             ativo: true,
+            estoque: true,
+            estoqueAtualizadoEm: true,
           },
         },
       },

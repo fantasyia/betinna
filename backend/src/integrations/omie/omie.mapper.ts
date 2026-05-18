@@ -90,6 +90,7 @@ export class OmieMapper {
     const safeRatio = ratio >= 0 && ratio <= 1 ? ratio : OmieMapper.DEFAULT_PRECO_FABRICA_RATIO;
     const precoFabrica = Number((precoTabela * safeRatio).toFixed(2));
 
+    const now = new Date();
     return {
       where: { empresaId_codigoOmie: { empresaId, codigoOmie } },
       create: {
@@ -103,6 +104,7 @@ export class OmieMapper {
         precoTabela,
         precoFabrica,
         estoque: o.quantidade_estoque ?? 0,
+        estoqueAtualizadoEm: now,
         ativo: o.inativo !== 'S',
       },
       update: {
@@ -114,6 +116,7 @@ export class OmieMapper {
         precoTabela,
         precoFabrica,
         estoque: o.quantidade_estoque ?? 0,
+        estoqueAtualizadoEm: now,
         ativo: o.inativo !== 'S',
       },
     };

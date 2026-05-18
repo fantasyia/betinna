@@ -14,6 +14,9 @@ import {
   CheckCircle2,
   MessageSquare,
   Tag as TagIcon,
+  PackageX,
+  PackageCheck,
+  RefreshCw,
 } from 'lucide-react';
 import { api, ApiError } from '@/lib/api';
 import { useApiQuery } from '@/hooks/useApiQuery';
@@ -59,6 +62,9 @@ interface CatalogoItem {
     precoFabrica: number;
     precoTabela: number;
     imagem?: string | null;
+    estoque?: number;
+    /** ISO string do timestamp do último sync de estoque (cron 30min ou webhook OMIE). */
+    estoqueAtualizadoEm?: string | null;
   };
   markup: number;
   precoFinal?: number;
@@ -70,6 +76,8 @@ interface ProdutoOpt {
   sku?: string | null;
   precoFabrica?: number;
   precoTabela?: number;
+  estoque?: number;
+  estoqueAtualizadoEm?: string | null;
 }
 
 interface ClienteOpt {
@@ -98,6 +106,45 @@ function fmtBRLCompact(v: number) {
   return fmtBRL(v);
 }
 
+/**
+ * "atualizado há X" — string relativa amigável.
+ * Considera stale acima de 45min (3× o sync de 30min — margem de segurança).
+ */
+function fmtRelativo(iso: string | null | undefined): { label: string; stale: boolean } {
+  if (!iso) return { label: 'sem dado', stale: true };
+  const t = new Date(iso).getTime();
+  if (Number.isNaN(t)) return { label: 'sem dado', stale: true };
+  const diffMs = Date.now() - t;
+  const min = Math.floor(diffMs / 60000);
+  const stale = min > 45;
+  if (min < 1) return { label: 'agora', stale };
+  if (min < 60) return { label: `há ${min} min`, stale };
+  const h = Math.floor(min / 60);
+  if (h < 24) return { label: `há ${h}h`, stale };
+  const d = Math.floor(h / 24);
+  return { label: `há ${d}d`, stale };
+}
+
+/**
+ * Semáforo de estoque seguindo o brandbook:
+ *  - 0       → vermelho (danger)
+ *  - 1–9     → amarelo (warning)
+ *  - 10+     → verde (success)
+ *  - undefined → cinza (sem dado, ainda não sincronizado)
+ */
+function stockTone(estoque: number | undefined): {
+  variant: 'success' | 'warning' | 'danger' | 'neutral';
+  label: string;
+  icon: typeof Package;
+} {
+  if (estoque === undefined || estoque === null) {
+    return { variant: 'neutral', label: 'sem dado', icon: Package };
+  }
+  if (estoque <= 0) return { variant: 'danger', label: 'sem estoque', icon: PackageX };
+  if (estoque < 10) return { variant: 'warning', label: `${estoque} un`, icon: Package };
+  return { variant: 'success', label: `${estoque} un`, icon: PackageCheck };
+}
+
 // ─── Page principal ──────────────────────────────────────────
 
 export default function CatalogoPage() {
@@ -121,13 +168,20 @@ export default function CatalogoPage() {
   const stats = useMemo(() => {
     const totalItens = itens.length;
     const markupMedio = totalItens > 0 ? itens.reduce((s, i) => s + i.markup, 0) / totalItens : 0;
-    const semMarkup = itens.filter((i) => i.markup === 0).length;
+    const semEstoque = itens.filter((i) => (i.produto?.estoque ?? 0) <= 0).length;
     const valorTotal = itens.reduce((s, i) => {
       const fabrica = i.produto?.precoFabrica ?? 0;
       const final = i.precoFinal ?? fabrica * (1 + i.markup / 100);
       return s + final;
     }, 0);
-    return { totalItens, markupMedio, semMarkup, valorTotal };
+    // Estoque mais antigo do catálogo (= mais stale) — usado pra alerta global
+    const oldestSync = itens.reduce<string | null>((oldest, i) => {
+      const t = i.produto?.estoqueAtualizadoEm;
+      if (!t) return oldest;
+      if (!oldest) return t;
+      return new Date(t).getTime() < new Date(oldest).getTime() ? t : oldest;
+    }, null);
+    return { totalItens, markupMedio, semEstoque, valorTotal, oldestSync };
   }, [itens]);
 
   const filtered = useMemo(() => {
@@ -212,10 +266,14 @@ export default function CatalogoPage() {
           value={`${stats.markupMedio.toFixed(1)}%`}
         />
         <Stat
-          label="Sem markup (0%)"
-          icon={<AlertCircle className={stats.semMarkup > 0 ? 'text-warning' : 'text-muted'} />}
-          value={stats.semMarkup.toLocaleString('pt-BR')}
-          hint={stats.semMarkup > 0 ? 'revisar antes de compartilhar' : 'tudo configurado'}
+          label="Sem estoque"
+          icon={<PackageX className={stats.semEstoque > 0 ? 'text-danger' : 'text-muted'} />}
+          value={stats.semEstoque.toLocaleString('pt-BR')}
+          hint={
+            stats.semEstoque > 0
+              ? 'rep pode lançar — OMIE gera OP de reposição'
+              : 'tudo disponível'
+          }
         />
         <Stat
           label="Valor agregado"
@@ -224,6 +282,11 @@ export default function CatalogoPage() {
           hint="soma dos preços finais"
         />
       </div>
+
+      {/* Banner de sync (mostra "atualizado há X" + alerta de stale) */}
+      {itens.length > 0 && (
+        <SyncBanner oldestSync={stats.oldestSync} />
+      )}
 
       {/* Toolbar */}
       <Card padding="none" className="overflow-hidden">
@@ -331,6 +394,32 @@ export default function CatalogoPage() {
   );
 }
 
+// ─── Sync banner ───────────────────────────────────────────────
+
+function SyncBanner({ oldestSync }: { oldestSync: string | null }) {
+  const rel = fmtRelativo(oldestSync);
+  return (
+    <div
+      className={cn(
+        'mb-4 px-3 py-2 rounded-md text-sm flex items-center gap-2 border',
+        rel.stale
+          ? 'bg-warning/10 border-warning/30 text-warning'
+          : 'bg-success/5 border-success/20 text-success',
+      )}
+      data-testid="catalogo-sync-banner"
+    >
+      <RefreshCw className={cn('h-3.5 w-3.5 shrink-0', rel.stale && 'animate-pulse')} />
+      <span className="flex-1">
+        Estoque sincronizado do OMIE <strong className="font-semibold">{rel.label}</strong>
+        {rel.stale && ' — pode estar desatualizado'}
+      </span>
+      <span className="text-[10px] uppercase tracking-wider text-muted">
+        sync auto 30min + webhook
+      </span>
+    </div>
+  );
+}
+
 // ─── Produto card ──────────────────────────────────────────────
 
 function ProdutoCard({
@@ -359,8 +448,8 @@ function ProdutoCard({
         confirmDelete && 'border-danger',
       )}
     >
-      {/* Image (or placeholder) */}
-      <div className="aspect-[5/3] bg-bg-alt border-b border-border flex items-center justify-center overflow-hidden">
+      {/* Image (or placeholder) + stock badge sobreposto */}
+      <div className="aspect-[5/3] bg-bg-alt border-b border-border flex items-center justify-center overflow-hidden relative">
         {item.produto?.imagem ? (
           <img
             src={item.produto.imagem}
@@ -370,6 +459,7 @@ function ProdutoCard({
         ) : (
           <Package className="h-8 w-8 text-muted-light" />
         )}
+        <StockBadge produto={item.produto} testId={`stock-${item.produtoId}`} />
       </div>
 
       {/* Header */}
@@ -485,6 +575,41 @@ function ProdutoCard({
         </div>
       )}
     </Card>
+  );
+}
+
+// ─── Stock badge ───────────────────────────────────────────────
+
+function StockBadge({
+  produto,
+  testId,
+}: {
+  produto?: CatalogoItem['produto'];
+  testId?: string;
+}) {
+  const tone = stockTone(produto?.estoque);
+  const rel = fmtRelativo(produto?.estoqueAtualizadoEm);
+  const Icon = tone.icon;
+  const colorClass =
+    tone.variant === 'success'
+      ? 'bg-success/15 text-success border-success/30'
+      : tone.variant === 'warning'
+        ? 'bg-warning/15 text-warning border-warning/30'
+        : tone.variant === 'danger'
+          ? 'bg-danger/15 text-danger border-danger/30'
+          : 'bg-muted/15 text-muted border-muted/30';
+  return (
+    <div
+      className={cn(
+        'absolute top-2 right-2 inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-semibold border backdrop-blur-sm',
+        colorClass,
+      )}
+      data-testid={testId}
+      title={`Estoque: ${tone.label} · sync ${rel.label}`}
+    >
+      <Icon className="h-2.5 w-2.5" />
+      <span className="tabular">{tone.label}</span>
+    </div>
   );
 }
 
