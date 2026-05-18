@@ -47,6 +47,9 @@ COPY --from=builder --chown=betinna:betinna /app/node_modules ./node_modules
 COPY --from=builder --chown=betinna:betinna /app/dist ./dist
 COPY --from=builder --chown=betinna:betinna /app/prisma ./prisma
 COPY --from=builder --chown=betinna:betinna /app/package.json ./package.json
+# scripts/ contém deploy-migrations.sh — copia também pra CI/CD futuro,
+# mas a migration agora roda inline no CMD (alpine não tem bash por default).
+COPY --from=builder --chown=betinna:betinna /app/prisma/migrations ./prisma/migrations
 
 USER betinna
 
@@ -55,5 +58,8 @@ ENV NODE_ENV=production
 # Railway injects PORT dynamically — do not hardcode
 # HEALTHCHECK removed - Railway has its own healthcheck via /api/v1/health
 
-# dist/main.js é a entry point do NestJS após build
-CMD ["node", "dist/main.js"]
+# Roda Prisma migrate deploy ANTES de subir o app. Se falhar, container
+# encerra com não-zero e Railway restart policy reage. Idempotente
+# (migrações já aplicadas são skipped). Resolve o caso de adicionar
+# novas migrations sem rodar manualmente em prod.
+CMD ["sh", "-c", "npx prisma migrate deploy && node dist/main.js"]
