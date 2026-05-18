@@ -1,0 +1,8 @@
+# Pinagem do Node pra Railway/Nixpacks.
+#
+# Por quê: `serialize-javascript@7.0.5` (dep transitiva via @rollup/plugin-terser
+# usada pelo Vite 6) chama `crypto.getRandomValues` como global no module load,
+# o que só existe a partir do Node 19+. Sem pinar, Nixpacks usa Node 18 e o
+# build do Vite crasha em "ReferenceError: crypto is not defined".
+[phases.setup]
+nixPkgs = ["nodejs_20", "npm-10_x"]
