@@ -1793,9 +1793,6 @@ function PrecoFormModal({
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const valid =
-    produto !== null && precoEspecial.trim() !== '' && Number(precoEspecial) > 0;
-
   const desconto = useMemo(() => {
     if (!produto?.precoTabela || !precoEspecial) return null;
     const pe = Number(precoEspecial);
@@ -1805,7 +1802,15 @@ function PrecoFormModal({
 
   async function submit(e: React.FormEvent) {
     e.preventDefault();
-    if (!produto || !valid) return;
+    if (!produto) {
+      setError('Selecione um produto.');
+      return;
+    }
+    const pe = Number(precoEspecial);
+    if (!precoEspecial.trim() || Number.isNaN(pe) || pe <= 0) {
+      setError('Informe um preço especial maior que zero.');
+      return;
+    }
     setBusy(true);
     setError(null);
     const payload: Record<string, unknown> = {
@@ -1839,8 +1844,8 @@ function PrecoFormModal({
             type="submit"
             form="preco-form"
             data-testid="preco-save"
-            disabled={busy || !valid}
-            style={{ ...btn, opacity: busy || !valid ? 0.6 : 1 }}
+            disabled={busy}
+            style={{ ...btn, opacity: busy ? 0.6 : 1 }}
           >
             {busy ? 'Salvando…' : 'Salvar preço'}
           </button>

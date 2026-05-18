@@ -171,14 +171,26 @@ export function NovoPedidoDialog({
   }, 0);
   const total = subtotal * (1 - descontoGeral / 100);
 
-  const valid =
-    cliente !== null &&
-    itens.length > 0 &&
-    itens.every((it) => it.produto !== null && it.quantidade >= 1);
-
   async function submit(e: React.FormEvent) {
     e.preventDefault();
-    if (!cliente || !valid) return;
+    if (!cliente) {
+      setError('Selecione um cliente.');
+      return;
+    }
+    if (itens.length === 0) {
+      setError('Adicione ao menos um item.');
+      return;
+    }
+    const semProduto = itens.findIndex((it) => !it.produto);
+    if (semProduto !== -1) {
+      setError(`Selecione o produto do item ${semProduto + 1}.`);
+      return;
+    }
+    const qtInvalida = itens.findIndex((it) => it.quantidade < 1);
+    if (qtInvalida !== -1) {
+      setError(`Quantidade do item ${qtInvalida + 1} precisa ser pelo menos 1.`);
+      return;
+    }
     setBusy(true);
     setError(null);
 
@@ -263,7 +275,6 @@ export function NovoPedidoDialog({
             type="submit"
             form="pedido-form"
             data-testid="pedido-save-btn"
-            disabled={!valid}
             loading={busy}
             leftIcon={<CheckCircle2 className="h-3.5 w-3.5" />}
           >
