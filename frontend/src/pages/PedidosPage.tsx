@@ -194,6 +194,7 @@ export default function PedidosPage() {
   const [status, setStatus] = useState<string>('');
   const [selected, setSelected] = useState<string | null>(null);
   const [exporting, setExporting] = useState(false);
+  const [periodo, setPeriodo] = useState<'todos' | '30d' | '90d' | '12m'>('todos');
 
   // Abre drawer automaticamente quando vem com ?highlight=ID
   // (usado em navegações vindas de outras páginas — cliente tab pedidos,
@@ -214,8 +215,14 @@ export default function PedidosPage() {
     const qs = new URLSearchParams({ page: String(page), limit: '20' });
     if (search.trim()) qs.set('search', search.trim());
     if (status) qs.set('status', status);
+    if (periodo !== 'todos') {
+      const dias = periodo === '30d' ? 30 : periodo === '90d' ? 90 : 365;
+      const inicio = new Date();
+      inicio.setDate(inicio.getDate() - dias);
+      qs.set('dataInicio', inicio.toISOString());
+    }
     return `/pedidos?${qs.toString()}`;
-  }, [page, search, status]);
+  }, [page, search, status, periodo]);
 
   const { data: pageResp, loading, error, refetch } = useApiQuery<PaginatedResponse<Pedido>>(listPath);
 
@@ -273,7 +280,7 @@ export default function PedidosPage() {
   }
 
   const [creating, setCreating] = useState(false);
-  const filtersActive = !!status || !!search.trim();
+  const filtersActive = !!status || !!search.trim() || periodo !== 'todos';
 
   return (
     <PageLayout
@@ -324,6 +331,19 @@ export default function PedidosPage() {
               </option>
             ))}
           </Select>
+          <Select
+            data-testid="filter-periodo"
+            value={periodo}
+            onChange={(e) => {
+              setPeriodo(e.target.value as typeof periodo);
+              setPage(1);
+            }}
+          >
+            <option value="todos">Todos os tempos</option>
+            <option value="30d">Últimos 30 dias</option>
+            <option value="90d">Últimos 90 dias</option>
+            <option value="12m">Últimos 12 meses</option>
+          </Select>
           {filtersActive && (
             <Button
               variant="ghost"
@@ -331,6 +351,7 @@ export default function PedidosPage() {
               onClick={() => {
                 setSearch('');
                 setStatus('');
+                setPeriodo('todos');
                 setPage(1);
               }}
               leftIcon={<XIcon className="h-3 w-3" />}
