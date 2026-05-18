@@ -70,6 +70,9 @@ interface PedidoDetail {
   criadoEm: string;
   numeroOmie?: string | null;
   enviadoOmieEm?: string | null;
+  /** Quando este pedido foi criado via Duplicar, aponta pro original. */
+  pedidoOrigem?: { id: string; numero: string | number } | null;
+  pedidoOrigemId?: string | null;
   subtotal?: number;
   descontoTotal?: number;
   descontoGeral?: number;
@@ -338,6 +341,26 @@ export default function PedidoDetailPage() {
           <div className="grid gap-4 lg:grid-cols-3">
             {/* Coluna principal — timeline + itens */}
             <div className="lg:col-span-2 flex flex-col gap-4">
+              {/* Banner de rastreabilidade — pedido duplicado */}
+              {data.pedidoOrigem && (
+                <div
+                  data-testid="pedido-origem-banner"
+                  className="px-3 py-2 rounded-md bg-info/10 border border-info/30 text-sm text-text flex items-center gap-2"
+                >
+                  <Copy className="h-3.5 w-3.5 text-info shrink-0" />
+                  <span className="flex-1">
+                    Este pedido é uma cópia de{' '}
+                    <Link
+                      to={`/pedidos/${data.pedidoOrigem.id}`}
+                      className="font-semibold text-primary hover:underline"
+                    >
+                      #{data.pedidoOrigem.numero}
+                    </Link>
+                    .
+                  </span>
+                </div>
+              )}
+
               {/* Header card com total + status */}
               <Card variant="outline" padding="md" className="bg-bg-alt">
                 <div className="flex items-start justify-between gap-3 flex-wrap">

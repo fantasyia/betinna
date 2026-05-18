@@ -82,7 +82,15 @@ const OMIE_COLOR: Record<OmieStatus, string> = {
   BLOQUEADO: colors.danger,
 };
 
-type Tab = 'dados' | 'pedidos' | 'notas' | 'documentos' | 'precos';
+type Tab =
+  | 'dados'
+  | 'pedidos'
+  | 'propostas'
+  | 'amostras'
+  | 'ocorrencias'
+  | 'notas'
+  | 'documentos'
+  | 'precos';
 
 interface PedidoLite {
   id: string;
@@ -232,6 +240,15 @@ export default function ClienteDetailPage() {
               <TabButton current={tab} value="pedidos" onChange={setTab}>
                 Pedidos
               </TabButton>
+              <TabButton current={tab} value="propostas" onChange={setTab}>
+                Propostas
+              </TabButton>
+              <TabButton current={tab} value="amostras" onChange={setTab}>
+                Amostras
+              </TabButton>
+              <TabButton current={tab} value="ocorrencias" onChange={setTab}>
+                Ocorrências
+              </TabButton>
               <TabButton current={tab} value="notas" onChange={setTab}>
                 Notas privadas
               </TabButton>
@@ -251,6 +268,9 @@ export default function ClienteDetailPage() {
               />
             )}
             {tab === 'pedidos' && <PedidosTab clienteId={cliente.id} />}
+            {tab === 'propostas' && <PropostasTab clienteId={cliente.id} />}
+            {tab === 'amostras' && <AmostrasTab clienteId={cliente.id} />}
+            {tab === 'ocorrencias' && <OcorrenciasTab clienteId={cliente.id} />}
             {tab === 'notas' && <NotasTab clienteId={cliente.id} />}
             {tab === 'documentos' && <DocumentosTab clienteId={cliente.id} />}
             {tab === 'precos' && <PrecosTab clienteId={cliente.id} />}
@@ -860,6 +880,392 @@ const pedidoTd: React.CSSProperties = {
   borderBottom: `1px solid ${colors.border}`,
   verticalAlign: 'middle',
 };
+
+// ─── Tab Propostas ─────────────────────────────────────────────────
+
+type PropostaStatus =
+  | 'RASCUNHO'
+  | 'ENVIADA'
+  | 'NEGOCIACAO'
+  | 'AGUARDANDO_ASSINATURA'
+  | 'ACEITA'
+  | 'RECUSADA'
+  | 'EXPIRADA';
+
+interface PropostaLite {
+  id: string;
+  numero: string | number;
+  status: PropostaStatus;
+  valor: number;
+  probabilidade: number;
+  validoAte?: string | null;
+  criadoEm: string;
+}
+
+const PROPOSTA_STATUS_LABEL: Record<PropostaStatus, string> = {
+  RASCUNHO: 'Rascunho',
+  ENVIADA: 'Enviada',
+  NEGOCIACAO: 'Negociação',
+  AGUARDANDO_ASSINATURA: 'Aguardando assinatura',
+  ACEITA: 'Aceita',
+  RECUSADA: 'Recusada',
+  EXPIRADA: 'Expirada',
+};
+
+const PROPOSTA_STATUS_COLOR: Record<PropostaStatus, string> = {
+  RASCUNHO: colors.muted,
+  ENVIADA: colors.info,
+  NEGOCIACAO: colors.warning,
+  AGUARDANDO_ASSINATURA: colors.warning,
+  ACEITA: colors.success,
+  RECUSADA: colors.danger,
+  EXPIRADA: colors.muted,
+};
+
+function PropostasTab({ clienteId }: { clienteId: string }) {
+  const navigate = useNavigate();
+  const { data, loading, error, refetch } = useApiQuery<{ data: PropostaLite[] }>(
+    `/propostas?clienteId=${clienteId}&limit=50&sortBy=criadoEm&sortOrder=desc`,
+  );
+  const propostas = data?.data ?? [];
+
+  return (
+    <div style={card}>
+      <header
+        style={{
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'space-between',
+          marginBottom: '0.75rem',
+        }}
+      >
+        <h3 style={{ margin: 0, fontSize: 15 }}>
+          Propostas deste cliente
+          {propostas.length > 0 && (
+            <span style={{ fontSize: 12, color: colors.muted, marginLeft: 8, fontWeight: 400 }}>
+              ({propostas.length})
+            </span>
+          )}
+        </h3>
+        <button
+          type="button"
+          onClick={() => navigate(`/propostas?clienteId=${clienteId}`)}
+          style={{ ...btnSecondary, padding: '0.25rem 0.625rem', fontSize: 12 }}
+        >
+          Ver na lista geral
+        </button>
+      </header>
+
+      <StateView
+        loading={loading}
+        error={error}
+        empty={!loading && !error && propostas.length === 0}
+        emptyMessage="Sem propostas pra este cliente."
+        onRetry={refetch}
+      >
+        <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 14 }}>
+          <thead>
+            <tr>
+              <th style={pedidoTh}>Número</th>
+              <th style={pedidoTh}>Status</th>
+              <th style={{ ...pedidoTh, textAlign: 'right' }}>Valor</th>
+              <th style={{ ...pedidoTh, textAlign: 'right' }}>Prob.</th>
+              <th style={pedidoTh}>Validade</th>
+              <th style={pedidoTh}>Data</th>
+            </tr>
+          </thead>
+          <tbody>
+            {propostas.map((p) => (
+              <tr
+                key={p.id}
+                style={{ cursor: 'pointer' }}
+                onClick={() => navigate(`/propostas?highlight=${p.id}`)}
+                data-testid={`cliente-proposta-row-${p.id}`}
+              >
+                <td style={pedidoTd}>
+                  <strong>#{p.numero}</strong>
+                </td>
+                <td style={pedidoTd}>
+                  <span style={badge(PROPOSTA_STATUS_COLOR[p.status])}>
+                    {PROPOSTA_STATUS_LABEL[p.status]}
+                  </span>
+                </td>
+                <td style={{ ...pedidoTd, textAlign: 'right', fontWeight: 600 }}>
+                  {fmtBRL(p.valor)}
+                </td>
+                <td style={{ ...pedidoTd, textAlign: 'right', color: colors.muted }}>
+                  {p.probabilidade}%
+                </td>
+                <td style={{ ...pedidoTd, color: colors.muted }}>
+                  {p.validoAte ? fmtDateShort(p.validoAte) : '—'}
+                </td>
+                <td style={{ ...pedidoTd, color: colors.muted }}>{fmtDate(p.criadoEm)}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </StateView>
+    </div>
+  );
+}
+
+// ─── Tab Amostras ──────────────────────────────────────────────────
+
+type AmostraStatus =
+  | 'ENVIADA'
+  | 'AGUARDANDO_FOLLOWUP'
+  | 'CONVERTIDA'
+  | 'NAO_CONVERTEU'
+  | 'VENCIDA';
+
+interface AmostraLite {
+  id: string;
+  produtoNome: string;
+  valor: number;
+  notaFiscal?: string | null;
+  enviadoEm?: string | null;
+  followUpEm?: string | null;
+  status: AmostraStatus;
+}
+
+const AMOSTRA_STATUS_LABEL: Record<AmostraStatus, string> = {
+  ENVIADA: 'Enviada',
+  AGUARDANDO_FOLLOWUP: 'Aguardando follow-up',
+  CONVERTIDA: 'Convertida',
+  NAO_CONVERTEU: 'Não converteu',
+  VENCIDA: 'Vencida',
+};
+
+const AMOSTRA_STATUS_COLOR: Record<AmostraStatus, string> = {
+  ENVIADA: colors.info,
+  AGUARDANDO_FOLLOWUP: colors.warning,
+  CONVERTIDA: colors.success,
+  NAO_CONVERTEU: colors.danger,
+  VENCIDA: colors.muted,
+};
+
+function AmostrasTab({ clienteId }: { clienteId: string }) {
+  const navigate = useNavigate();
+  const { data, loading, error, refetch } = useApiQuery<{ data: AmostraLite[] }>(
+    `/amostras?clienteId=${clienteId}&limit=50&sortBy=criadoEm&sortOrder=desc`,
+  );
+  const amostras = data?.data ?? [];
+
+  return (
+    <div style={card}>
+      <header
+        style={{
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'space-between',
+          marginBottom: '0.75rem',
+        }}
+      >
+        <h3 style={{ margin: 0, fontSize: 15 }}>
+          Amostras enviadas
+          {amostras.length > 0 && (
+            <span style={{ fontSize: 12, color: colors.muted, marginLeft: 8, fontWeight: 400 }}>
+              ({amostras.length})
+            </span>
+          )}
+        </h3>
+        <button
+          type="button"
+          onClick={() => navigate(`/amostras?clienteId=${clienteId}`)}
+          style={{ ...btnSecondary, padding: '0.25rem 0.625rem', fontSize: 12 }}
+        >
+          Ver na lista geral
+        </button>
+      </header>
+
+      <StateView
+        loading={loading}
+        error={error}
+        empty={!loading && !error && amostras.length === 0}
+        emptyMessage="Nenhuma amostra enviada pra este cliente."
+        onRetry={refetch}
+      >
+        <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 14 }}>
+          <thead>
+            <tr>
+              <th style={pedidoTh}>Produto</th>
+              <th style={pedidoTh}>Status</th>
+              <th style={{ ...pedidoTh, textAlign: 'right' }}>Valor</th>
+              <th style={pedidoTh}>Enviado</th>
+              <th style={pedidoTh}>Follow-up</th>
+            </tr>
+          </thead>
+          <tbody>
+            {amostras.map((a) => (
+              <tr
+                key={a.id}
+                style={{ cursor: 'pointer' }}
+                onClick={() => navigate(`/amostras?highlight=${a.id}`)}
+                data-testid={`cliente-amostra-row-${a.id}`}
+              >
+                <td style={pedidoTd}>
+                  <strong>{a.produtoNome}</strong>
+                  {a.notaFiscal && (
+                    <div style={{ fontSize: 11, color: colors.muted }}>NF {a.notaFiscal}</div>
+                  )}
+                </td>
+                <td style={pedidoTd}>
+                  <span style={badge(AMOSTRA_STATUS_COLOR[a.status])}>
+                    {AMOSTRA_STATUS_LABEL[a.status]}
+                  </span>
+                </td>
+                <td style={{ ...pedidoTd, textAlign: 'right', fontWeight: 600 }}>
+                  {fmtBRL(a.valor)}
+                </td>
+                <td style={{ ...pedidoTd, color: colors.muted }}>
+                  {a.enviadoEm ? fmtDateShort(a.enviadoEm) : '—'}
+                </td>
+                <td style={{ ...pedidoTd, color: colors.muted }}>
+                  {a.followUpEm ? fmtDateShort(a.followUpEm) : '—'}
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </StateView>
+    </div>
+  );
+}
+
+// ─── Tab Ocorrências ───────────────────────────────────────────────
+
+type OcorrenciaStatus = 'ABERTA' | 'EM_ANDAMENTO' | 'RESOLVIDA' | 'CANCELADA';
+type Severidade = 'baixa' | 'media' | 'alta' | 'critica';
+
+interface OcorrenciaLite {
+  id: string;
+  numero: string | number;
+  titulo: string;
+  status: OcorrenciaStatus;
+  severidade: Severidade;
+  slaVenceEm?: string | null;
+  criadoEm: string;
+}
+
+const OCORRENCIA_STATUS_LABEL: Record<OcorrenciaStatus, string> = {
+  ABERTA: 'Aberta',
+  EM_ANDAMENTO: 'Em andamento',
+  RESOLVIDA: 'Resolvida',
+  CANCELADA: 'Cancelada',
+};
+
+const OCORRENCIA_STATUS_COLOR: Record<OcorrenciaStatus, string> = {
+  ABERTA: colors.warning,
+  EM_ANDAMENTO: colors.info,
+  RESOLVIDA: colors.success,
+  CANCELADA: colors.muted,
+};
+
+const SEVERIDADE_COLOR: Record<Severidade, string> = {
+  baixa: colors.muted,
+  media: colors.info,
+  alta: colors.warning,
+  critica: colors.danger,
+};
+
+function OcorrenciasTab({ clienteId }: { clienteId: string }) {
+  const navigate = useNavigate();
+  const { data, loading, error, refetch } = useApiQuery<{ data: OcorrenciaLite[] }>(
+    `/ocorrencias?clienteId=${clienteId}&limit=50&sortBy=criadoEm&sortOrder=desc`,
+  );
+  const ocorrencias = data?.data ?? [];
+
+  return (
+    <div style={card}>
+      <header
+        style={{
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'space-between',
+          marginBottom: '0.75rem',
+        }}
+      >
+        <h3 style={{ margin: 0, fontSize: 15 }}>
+          Ocorrências
+          {ocorrencias.length > 0 && (
+            <span style={{ fontSize: 12, color: colors.muted, marginLeft: 8, fontWeight: 400 }}>
+              ({ocorrencias.length})
+            </span>
+          )}
+        </h3>
+        <button
+          type="button"
+          onClick={() => navigate(`/ocorrencias?clienteId=${clienteId}`)}
+          style={{ ...btnSecondary, padding: '0.25rem 0.625rem', fontSize: 12 }}
+        >
+          Ver na lista geral
+        </button>
+      </header>
+
+      <StateView
+        loading={loading}
+        error={error}
+        empty={!loading && !error && ocorrencias.length === 0}
+        emptyMessage="Nenhuma ocorrência aberta pra este cliente."
+        onRetry={refetch}
+      >
+        <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 14 }}>
+          <thead>
+            <tr>
+              <th style={pedidoTh}>Número</th>
+              <th style={pedidoTh}>Título</th>
+              <th style={pedidoTh}>Severidade</th>
+              <th style={pedidoTh}>Status</th>
+              <th style={pedidoTh}>SLA</th>
+              <th style={pedidoTh}>Data</th>
+            </tr>
+          </thead>
+          <tbody>
+            {ocorrencias.map((o) => {
+              const slaVencido =
+                o.slaVenceEm &&
+                ['ABERTA', 'EM_ANDAMENTO'].includes(o.status) &&
+                new Date(o.slaVenceEm).getTime() < Date.now();
+              return (
+                <tr
+                  key={o.id}
+                  style={{ cursor: 'pointer' }}
+                  onClick={() => navigate(`/ocorrencias?highlight=${o.id}`)}
+                  data-testid={`cliente-ocorrencia-row-${o.id}`}
+                >
+                  <td style={pedidoTd}>
+                    <strong>#{o.numero}</strong>
+                  </td>
+                  <td style={pedidoTd}>{o.titulo}</td>
+                  <td style={pedidoTd}>
+                    <span style={badge(SEVERIDADE_COLOR[o.severidade])}>{o.severidade}</span>
+                  </td>
+                  <td style={pedidoTd}>
+                    <span style={badge(OCORRENCIA_STATUS_COLOR[o.status])}>
+                      {OCORRENCIA_STATUS_LABEL[o.status]}
+                    </span>
+                  </td>
+                  <td
+                    style={{
+                      ...pedidoTd,
+                      color: slaVencido ? colors.danger : colors.muted,
+                      fontWeight: slaVencido ? 600 : 400,
+                    }}
+                  >
+                    {o.slaVenceEm
+                      ? `${fmtDateShort(o.slaVenceEm)}${slaVencido ? ' (vencido)' : ''}`
+                      : '—'}
+                  </td>
+                  <td style={{ ...pedidoTd, color: colors.muted }}>{fmtDate(o.criadoEm)}</td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      </StateView>
+    </div>
+  );
+}
 
 // ─── Tab Notas privadas ──────────────────────────────────────────────
 

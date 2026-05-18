@@ -39,6 +39,8 @@ const pedidoInclude = {
     },
   },
   aprovacaoDesconto: true,
+  // Rastreabilidade: pedido original (quando este foi duplicado).
+  pedidoOrigem: { select: { id: true, numero: true } },
 } satisfies Prisma.PedidoInclude;
 
 type PedidoWithRel = Prisma.PedidoGetPayload<{ include: typeof pedidoInclude }>;
