@@ -16,6 +16,7 @@ WORKDIR /app
 # Copia manifests primeiro pra cache de layers
 COPY package.json package-lock.json* ./
 COPY prisma ./prisma/
+COPY scripts ./scripts/
 COPY tsconfig*.json nest-cli.json ./
 
 # Instala TODAS as deps (incluindo dev) para build
@@ -47,9 +48,8 @@ COPY --from=builder --chown=betinna:betinna /app/node_modules ./node_modules
 COPY --from=builder --chown=betinna:betinna /app/dist ./dist
 COPY --from=builder --chown=betinna:betinna /app/prisma ./prisma
 COPY --from=builder --chown=betinna:betinna /app/package.json ./package.json
-# scripts/ contém deploy-migrations.sh — copia também pra CI/CD futuro,
-# mas a migration agora roda inline no CMD (alpine não tem bash por default).
-COPY --from=builder --chown=betinna:betinna /app/prisma/migrations ./prisma/migrations
+# scripts/ inclui deploy-migrations.js (smart, baseline-aware) — usado no CMD
+COPY --from=builder --chown=betinna:betinna /app/scripts ./scripts
 
 USER betinna
 
@@ -58,8 +58,8 @@ ENV NODE_ENV=production
 # Railway injects PORT dynamically — do not hardcode
 # HEALTHCHECK removed - Railway has its own healthcheck via /api/v1/health
 
-# Roda Prisma migrate deploy ANTES de subir o app. Se falhar, container
-# encerra com não-zero e Railway restart policy reage. Idempotente
-# (migrações já aplicadas são skipped). Resolve o caso de adicionar
-# novas migrations sem rodar manualmente em prod.
-CMD ["sh", "-c", "npx prisma migrate deploy && node dist/main.js"]
+# Roda smart migrate deploy (Node, sem bash) ANTES de subir o app.
+# Lida com 3 cenários: DB vazio, DB via db push (sem _prisma_migrations) e
+# DB via migrations. Idempotente. Se falhar, container exit code != 0 e
+# Railway aplica restart policy.
+CMD ["sh", "-c", "node scripts/deploy-migrations.js && node dist/main.js"]
