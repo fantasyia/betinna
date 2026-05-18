@@ -1,20 +1,55 @@
 import { useEffect, useState, type ReactNode } from 'react';
 import { Link, useLocation } from 'react-router-dom';
+import {
+  LayoutDashboard,
+  BarChart3,
+  ShoppingCart,
+  CheckSquare,
+  FileText,
+  Gift,
+  Wallet,
+  Users,
+  Target,
+  CalendarDays,
+  Tags,
+  Package,
+  Sparkles,
+  MessageSquare,
+  AlertTriangle,
+  ShieldAlert,
+  Bot,
+  Smartphone,
+  Megaphone,
+  Zap,
+  Plug,
+  Link as LinkIcon,
+  UserCircle,
+  Briefcase,
+  Trophy,
+  Settings,
+  KeyRound,
+  Shield,
+  Menu,
+  X,
+  ChevronRight,
+  Search,
+  type LucideIcon,
+} from 'lucide-react';
 import { useRole, usePermission } from '@/hooks/usePermission';
 import { NotificationBell } from '@/components/NotificationBell';
-import { colors, radius, shadows, spacing } from './styles';
-
-/** Breakpoint mobile (tablets+ acima disso). */
-const MOBILE_BREAKPOINT = 768;
+import { Avatar } from '@/components/ui';
+import { cn } from '@/lib/cn';
 
 /**
- * Hook pra detectar viewport mobile reativo (window resize).
- * SSR-safe: retorna `false` em ambientes sem `window`.
+ * PageLayout — design system v2 (dark, lucide icons, Linear-style).
  *
- * Exportado pra páginas com layout multi-coluna (Inbox, etc) decidirem
- * mostrar lista OU detalhe em vez de side-by-side em telas estreitas.
+ * Sidebar fixa 240px desktop / drawer mobile. Nav agrupada por contexto.
+ * Topbar com breadcrumb opcional, search global (placeholder), actions, sino.
  */
-// eslint-disable-next-line react-refresh/only-export-components -- hook coexiste com PageLayout component nesse arquivo; mover quebraria HMR pouco e ganharia pouco
+
+const MOBILE_BREAKPOINT = 768;
+
+// eslint-disable-next-line react-refresh/only-export-components
 export function useIsMobile(): boolean {
   const [isMobile, setIsMobile] = useState(() =>
     typeof window !== 'undefined' && window.innerWidth < MOBILE_BREAKPOINT,
@@ -30,28 +65,13 @@ export function useIsMobile(): boolean {
   return isMobile;
 }
 
-/**
- * PageLayout — sidebar vertical + main area.
- *
- * Polish 2026-05-16: substituiu nav horizontal por sidebar fixa com
- * navegação agrupada em seções. Padrão SaaS moderno (Linear/Notion).
- *
- * Sidebar:
- *  - 240px fixa
- *  - Logo + nav agrupada (Visão geral / Vendas / CRM / Atendimento / Admin)
- *  - User role badge no rodapé
- *  - Hover suave + active state com pill
- *
- * Mobile: sidebar vira hamburger (toggle) — implementação simples,
- * pode evoluir.
- */
-
 interface NavItem {
   to: string;
   label: string;
-  emoji?: string;
+  icon: LucideIcon;
   permission?: Parameters<typeof usePermission>[0];
   allowedRoles?: Array<'ADMIN' | 'DIRECTOR' | 'GERENTE' | 'SAC' | 'REP'>;
+  badge?: 'new' | 'beta';
 }
 
 interface NavSection {
@@ -61,119 +81,116 @@ interface NavSection {
 
 const SECTIONS: NavSection[] = [
   {
-    title: 'Visão geral',
+    title: 'Principal',
     items: [
-      { to: '/dashboard', label: 'Dashboard', emoji: '🏠' },
-      { to: '/relatorios', label: 'Relatórios', emoji: '📊', permission: 'relatorios.view' },
+      { to: '/dashboard', label: 'Dashboard', icon: LayoutDashboard },
+      { to: '/inbox', label: 'Inbox', icon: MessageSquare },
+      { to: '/leads', label: 'Pipeline', icon: Target },
+      { to: '/relatorios', label: 'Relatórios', icon: BarChart3, permission: 'relatorios.view' },
     ],
   },
   {
     title: 'Vendas',
     items: [
-      { to: '/pedidos', label: 'Pedidos', emoji: '🛒' },
-      { to: '/aprovacoes', label: 'Aprovações', emoji: '✓' },
-      { to: '/propostas', label: 'Propostas', emoji: '📋' },
-      { to: '/amostras', label: 'Amostras', emoji: '🎁' },
-      { to: '/comissoes', label: 'Comissões', emoji: '💰' },
-    ],
-  },
-  {
-    title: 'CRM',
-    items: [
-      { to: '/clientes', label: 'Clientes', emoji: '👥', permission: 'clientes.view' },
-      { to: '/leads', label: 'Leads', emoji: '🎯' },
-      { to: '/agenda', label: 'Agenda', emoji: '📅' },
-      { to: '/tags', label: 'Tags', emoji: '🏷️' },
+      { to: '/clientes', label: 'Clientes', icon: Briefcase, permission: 'clientes.view' },
+      { to: '/pedidos', label: 'Pedidos', icon: ShoppingCart },
+      { to: '/aprovacoes', label: 'Aprovações', icon: CheckSquare },
+      { to: '/propostas', label: 'Propostas', icon: FileText },
+      { to: '/amostras', label: 'Amostras', icon: Gift },
+      { to: '/comissoes', label: 'Comissões', icon: Wallet },
     ],
   },
   {
     title: 'Catálogo',
     items: [
-      { to: '/produtos', label: 'Produtos', emoji: '📦' },
-      { to: '/catalogo', label: 'Meu catálogo', emoji: '⭐' },
+      { to: '/produtos', label: 'Produtos', icon: Package },
+      { to: '/catalogo', label: 'Meu catálogo', icon: Sparkles },
     ],
   },
   {
     title: 'Atendimento',
     items: [
-      { to: '/inbox', label: 'Inbox', emoji: '💬' },
-      { to: '/ocorrencias', label: 'SAC', emoji: '🚨' },
-      { to: '/incidentes', label: 'Incidentes', emoji: '⚠️' },
-      { to: '/mullerbot', label: 'MullerBot', emoji: '🤖' },
-      { to: '/whatsapp', label: 'WhatsApp', emoji: '📱', permission: 'whatsapp.pessoal' },
+      { to: '/ocorrencias', label: 'SAC', icon: AlertTriangle },
+      { to: '/incidentes', label: 'Marketplaces', icon: ShieldAlert },
+      { to: '/mullerbot', label: 'MullerBot', icon: Bot },
+      { to: '/whatsapp', label: 'WhatsApp', icon: Smartphone, permission: 'whatsapp.pessoal' },
     ],
   },
   {
     title: 'Automação',
     items: [
-      { to: '/campanhas', label: 'Campanhas', emoji: '📣', permission: 'campanhas.view' },
-      { to: '/fluxos', label: 'Fluxos', emoji: '⚡' },
-      { to: '/integracoes', label: 'Integrações', emoji: '🔌', allowedRoles: ['ADMIN', 'DIRECTOR', 'GERENTE'] },
-      { to: '/minhas-integracoes', label: 'Minhas integrações', emoji: '🔗' },
+      { to: '/campanhas', label: 'Campanhas', icon: Megaphone, permission: 'campanhas.view' },
+      { to: '/fluxos', label: 'Fluxos', icon: Zap },
+      { to: '/integracoes', label: 'Integrações', icon: Plug, allowedRoles: ['ADMIN', 'DIRECTOR', 'GERENTE'] },
+      { to: '/minhas-integracoes', label: 'Minhas integrações', icon: LinkIcon },
+    ],
+  },
+  {
+    title: 'CRM',
+    items: [
+      { to: '/agenda', label: 'Agenda', icon: CalendarDays },
+      { to: '/tags', label: 'Tags', icon: Tags },
+      { to: '/fidelidade', label: 'Fidelidade', icon: Trophy, permission: 'fidelidade.view' },
     ],
   },
   {
     title: 'Administração',
     items: [
-      { to: '/perfil', label: 'Meu perfil', emoji: '👤' },
-      { to: '/usuarios', label: 'Usuários', emoji: '👨‍💼', allowedRoles: ['ADMIN', 'DIRECTOR', 'GERENTE'] },
-      { to: '/fidelidade', label: 'Fidelidade', emoji: '🏆', permission: 'fidelidade.view' },
-      { to: '/configuracoes', label: 'Configurações', emoji: '⚙️', allowedRoles: ['ADMIN'] },
-      { to: '/permissoes', label: 'Permissões', emoji: '🔐', allowedRoles: ['ADMIN'] },
-      { to: '/admin', label: 'Admin Panel', emoji: '🛡️', permission: 'admin.panel' },
+      { to: '/perfil', label: 'Meu perfil', icon: UserCircle },
+      { to: '/usuarios', label: 'Usuários', icon: Users, allowedRoles: ['ADMIN', 'DIRECTOR', 'GERENTE'] },
+      { to: '/configuracoes', label: 'Configurações', icon: Settings, allowedRoles: ['ADMIN'] },
+      { to: '/permissoes', label: 'Permissões', icon: KeyRound, allowedRoles: ['ADMIN'] },
+      { to: '/admin', label: 'Admin Panel', icon: Shield, permission: 'admin.panel' },
     ],
   },
 ];
 
 const SIDEBAR_WIDTH = 240;
 
-const ROLE_COLOR: Record<string, string> = {
-  ADMIN: '#7c3aed',
-  DIRECTOR: colors.primary,
-  GERENTE: colors.info,
-  SAC: colors.warning,
-  REP: colors.success,
+const ROLE_LABEL: Record<string, string> = {
+  ADMIN: 'Admin',
+  DIRECTOR: 'Diretor',
+  GERENTE: 'Gerente',
+  SAC: 'SAC',
+  REP: 'Representante',
 };
 
 // ─── Sidebar nav item ────────────────────────────────────────────────
 
 function SidebarNavItem({ item, active }: { item: NavItem; active: boolean }) {
+  const Icon = item.icon;
   return (
     <Link
       to={item.to}
       data-testid={`nav-${item.to.replace('/', '')}`}
-      style={{
-        display: 'flex',
-        alignItems: 'center',
-        gap: spacing.sm,
-        padding: '7px 12px',
-        margin: '1px 0',
-        borderRadius: radius.md,
-        textDecoration: 'none',
-        color: active ? colors.primary : colors.textSubtle,
-        background: active ? colors.primaryLight : 'transparent',
-        fontWeight: active ? 600 : 500,
-        fontSize: 13,
-        transition: 'background 0.12s ease, color 0.12s ease',
-        whiteSpace: 'nowrap',
-        overflow: 'hidden',
-        textOverflow: 'ellipsis',
-      }}
-      onMouseEnter={(e) => {
-        if (!active) {
-          e.currentTarget.style.background = colors.surfaceHover;
-          e.currentTarget.style.color = colors.text;
-        }
-      }}
-      onMouseLeave={(e) => {
-        if (!active) {
-          e.currentTarget.style.background = 'transparent';
-          e.currentTarget.style.color = colors.textSubtle;
-        }
-      }}
+      className={cn(
+        'group flex items-center gap-2.5 px-2.5 py-1.5 my-px rounded-md text-sm font-medium',
+        'transition-colors duration-100',
+        'whitespace-nowrap overflow-hidden text-ellipsis',
+        active
+          ? 'bg-surface-hover text-text'
+          : 'text-text-subtle hover:bg-surface-hover hover:text-text',
+      )}
     >
-      {item.emoji && <span style={{ fontSize: 14, opacity: 0.9 }}>{item.emoji}</span>}
-      <span>{item.label}</span>
+      <Icon
+        className={cn(
+          'shrink-0 h-[15px] w-[15px]',
+          active ? 'text-primary' : 'text-muted group-hover:text-text-subtle',
+        )}
+        strokeWidth={active ? 2.25 : 2}
+      />
+      <span className="flex-1 truncate">{item.label}</span>
+      {item.badge && (
+        <span
+          className={cn(
+            'px-1.5 py-px rounded-sm text-[9px] font-bold uppercase tracking-wide',
+            item.badge === 'new' && 'bg-primary/15 text-primary',
+            item.badge === 'beta' && 'bg-info/15 text-info',
+          )}
+        >
+          {item.badge}
+        </span>
+      )}
     </Link>
   );
 }
@@ -192,7 +209,6 @@ function Sidebar({
   const role = useRole();
   const location = useLocation();
 
-  // Pré-resolve permissions pra todos os items
   const perms = {
     'clientes.view': usePermission('clientes.view'),
     'whatsapp.pessoal': usePermission('whatsapp.pessoal'),
@@ -212,147 +228,102 @@ function Sidebar({
     return location.pathname === to || location.pathname.startsWith(to + '/');
   }
 
-  // Em mobile, sidebar é drawer overlay. Em desktop, fixa.
-  const transform = isMobile && !isOpen ? 'translateX(-100%)' : 'translateX(0)';
-
   return (
     <aside
       data-testid="sidebar"
+      className={cn(
+        'fixed top-0 left-0 bottom-0 z-50',
+        'flex flex-col bg-bg-alt border-r border-border',
+        isMobile ? 'transition-transform duration-200 ease-out' : '',
+      )}
       style={{
-        position: 'fixed',
-        top: 0,
-        left: 0,
-        bottom: 0,
         width: SIDEBAR_WIDTH,
-        background: colors.surface,
-        borderRight: `1px solid ${colors.border}`,
-        display: 'flex',
-        flexDirection: 'column',
+        transform: isMobile && !isOpen ? 'translateX(-100%)' : 'translateX(0)',
         zIndex: isMobile ? 100 : 50,
-        transform,
-        transition: isMobile ? 'transform 0.22s ease' : undefined,
-        boxShadow: isMobile && isOpen ? shadows.md : undefined,
       }}
       onClick={(e) => {
-        // Fecha drawer ao clicar num link (mobile). Detecta navegação por
-        // bubbling do click em anchor.
         if (isMobile && (e.target as HTMLElement).closest('a')) onClose();
       }}
     >
-      {/* Logo */}
-      <div
-        style={{
-          padding: '16px 18px',
-          borderBottom: `1px solid ${colors.border}`,
-          display: 'flex',
-          alignItems: 'center',
-          gap: spacing.sm,
-        }}
-      >
+      {/* Logo + workspace switcher */}
+      <div className="flex items-center gap-2.5 px-3.5 py-3 border-b border-border">
         <div
-          style={{
-            width: 28,
-            height: 28,
-            background: `linear-gradient(135deg, ${colors.primary} 0%, #8b5cf6 100%)`,
-            borderRadius: radius.md,
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            color: '#fff',
-            fontWeight: 700,
-            fontSize: 14,
-            boxShadow: shadows.sm,
-          }}
+          className={cn(
+            'flex h-7 w-7 items-center justify-center rounded',
+            'bg-primary text-primary-contrast font-bold text-sm',
+            'shadow-[inset_0_-1px_0_rgba(0,0,0,0.2)]',
+          )}
         >
           B
         </div>
-        <strong style={{ fontSize: 16, color: colors.text, letterSpacing: -0.2 }}>
-          Betinna<span style={{ color: colors.primary }}>.ai</span>
-        </strong>
+        <div className="flex flex-col min-w-0">
+          <strong className="text-sm font-semibold text-text leading-tight tracking-tight">
+            Betinna.ai
+          </strong>
+          <span className="text-[10px] text-muted leading-tight">
+            {role ? ROLE_LABEL[role] ?? role : 'Sem sessão'}
+          </span>
+        </div>
+      </div>
+
+      {/* Quick search (placeholder pra futuro cmdk) */}
+      <div className="px-3 py-2.5 border-b border-border">
+        <div
+          className={cn(
+            'flex items-center gap-2 h-7 px-2 rounded',
+            'bg-surface border border-border text-muted text-xs',
+            'cursor-pointer hover:bg-surface-hover hover:border-border-strong transition-colors',
+          )}
+          title="Buscar (em breve)"
+        >
+          <Search className="h-3 w-3" />
+          <span className="flex-1">Buscar…</span>
+          <kbd className="text-[10px] font-mono text-muted-light bg-bg px-1 rounded border border-border">
+            ⌘K
+          </kbd>
+        </div>
       </div>
 
       {/* Nav scrollable */}
-      <nav style={{ flex: 1, overflowY: 'auto', padding: '10px 10px 16px' }}>
+      <nav className="flex-1 overflow-y-auto px-2 py-2.5">
         {SECTIONS.map((section) => {
           const visibleItems = section.items.filter(canSee);
           if (visibleItems.length === 0) return null;
           return (
-            <div key={section.title} style={{ marginBottom: spacing.md }}>
-              <div
-                style={{
-                  fontSize: 10,
-                  fontWeight: 700,
-                  textTransform: 'uppercase',
-                  letterSpacing: 0.8,
-                  color: colors.mutedLight,
-                  padding: '6px 12px',
-                }}
-              >
+            <div key={section.title} className="mb-3">
+              <div className="px-2.5 pt-2 pb-1 text-[10px] font-semibold uppercase tracking-wider text-muted-light">
                 {section.title}
               </div>
               {visibleItems.map((item) => (
-                <SidebarNavItem
-                  key={item.to}
-                  item={item}
-                  active={isActive(item.to)}
-                />
+                <SidebarNavItem key={item.to} item={item} active={isActive(item.to)} />
               ))}
             </div>
           );
         })}
       </nav>
 
-      {/* User badge */}
-      <div
-        style={{
-          padding: '12px 14px',
-          borderTop: `1px solid ${colors.border}`,
-          display: 'flex',
-          alignItems: 'center',
-          gap: spacing.sm,
-          background: colors.bgAlt,
-        }}
+      {/* User card no rodapé */}
+      <Link
+        to="/perfil"
+        className={cn(
+          'flex items-center gap-2.5 px-3 py-2.5 border-t border-border',
+          'hover:bg-surface-hover transition-colors group',
+        )}
       >
-        <div
-          style={{
-            width: 32,
-            height: 32,
-            background: ROLE_COLOR[role ?? ''] + '1F',
-            color: ROLE_COLOR[role ?? ''] ?? colors.muted,
-            borderRadius: radius.full,
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            fontWeight: 700,
-            fontSize: 11,
-          }}
-        >
-          {role?.slice(0, 2) ?? '—'}
-        </div>
-        <div style={{ flex: 1, minWidth: 0 }}>
-          <div
-            style={{ fontSize: 12, fontWeight: 600, color: colors.text }}
-            data-testid="user-role"
-          >
-            {role ?? 'Sem sessão'}
+        <Avatar name={role ?? '—'} size="sm" />
+        <div className="flex-1 min-w-0">
+          <div className="text-sm font-medium text-text truncate">
+            {role ? ROLE_LABEL[role] ?? role : 'Sem sessão'}
           </div>
-          <Link
-            to="/perfil"
-            style={{
-              fontSize: 11,
-              color: colors.muted,
-              textDecoration: 'none',
-            }}
-          >
-            ver perfil →
-          </Link>
+          <div className="text-[11px] text-muted truncate">Ver perfil</div>
         </div>
-      </div>
+        <ChevronRight className="h-3.5 w-3.5 text-muted opacity-0 group-hover:opacity-100 transition-opacity" />
+      </Link>
     </aside>
   );
 }
 
-// ─── Mobile top bar (hamburger + title + role badge) ─────────────────
+// ─── Mobile top bar ─────────────────────────────────────────────────
 
 function MobileTopBar({
   title,
@@ -361,92 +332,35 @@ function MobileTopBar({
   title: string;
   onToggleSidebar: () => void;
 }) {
-  const role = useRole();
   return (
-    <header
-      style={{
-        position: 'sticky',
-        top: 0,
-        zIndex: 40,
-        display: 'flex',
-        alignItems: 'center',
-        gap: spacing.sm,
-        padding: '10px 14px',
-        background: colors.surface,
-        borderBottom: `1px solid ${colors.border}`,
-        minHeight: 56,
-      }}
-    >
+    <header className="sticky top-0 z-40 flex items-center gap-2 px-3 py-2.5 bg-bg-alt border-b border-border min-h-[52px]">
       <button
         type="button"
         data-testid="mobile-menu-toggle"
         onClick={onToggleSidebar}
         aria-label="Abrir menu"
-        style={{
-          width: 40,
-          height: 40,
-          minWidth: 40,
-          padding: 0,
-          background: 'transparent',
-          border: `1px solid ${colors.border}`,
-          borderRadius: radius.md,
-          fontSize: 20,
-          color: colors.text,
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'center',
-          cursor: 'pointer',
-        }}
+        className="inline-flex items-center justify-center h-9 w-9 rounded-md border border-border bg-surface text-text hover:bg-surface-hover transition-colors"
       >
-        ☰
+        <Menu className="h-4 w-4" />
       </button>
       <strong
         data-testid="mobile-page-title"
-        style={{
-          fontSize: 15,
-          flex: 1,
-          minWidth: 0,
-          overflow: 'hidden',
-          textOverflow: 'ellipsis',
-          whiteSpace: 'nowrap',
-          color: colors.text,
-        }}
+        className="flex-1 min-w-0 truncate text-sm font-semibold text-text tracking-tight"
       >
         {title}
       </strong>
-      {role && (
-        <span
-          style={{
-            fontSize: 10,
-            fontWeight: 700,
-            padding: '3px 7px',
-            borderRadius: radius.full,
-            background: (ROLE_COLOR[role] ?? colors.muted) + '1F',
-            color: ROLE_COLOR[role] ?? colors.muted,
-          }}
-        >
-          {role}
-        </span>
-      )}
       <NotificationBell />
     </header>
   );
 }
-
-// ─── Backdrop pra fechar drawer mobile clicando fora ─────────────────
 
 function MobileBackdrop({ onClick }: { onClick: () => void }) {
   return (
     <div
       data-testid="mobile-sidebar-backdrop"
       onClick={onClick}
-      style={{
-        position: 'fixed',
-        inset: 0,
-        background: 'rgba(15, 23, 42, 0.5)',
-        zIndex: 90,
-        backdropFilter: 'blur(2px)',
-      }}
+      className="fixed inset-0 z-[90] bg-black/60"
+      style={{ backdropFilter: 'blur(2px)' }}
     />
   );
 }
@@ -455,10 +369,12 @@ function MobileBackdrop({ onClick }: { onClick: () => void }) {
 
 export function PageLayout({
   title,
+  description,
   actions,
   children,
 }: {
   title: string;
+  description?: ReactNode;
   actions?: ReactNode;
   children: ReactNode;
 }) {
@@ -466,12 +382,10 @@ export function PageLayout({
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const location = useLocation();
 
-  // Fecha drawer ao trocar de rota (proteção extra além do click handler na Sidebar)
   useEffect(() => {
     setSidebarOpen(false);
   }, [location.pathname]);
 
-  // Trava scroll do body quando drawer mobile aberta
   useEffect(() => {
     if (isMobile && sidebarOpen) {
       const prev = document.body.style.overflow;
@@ -483,66 +397,38 @@ export function PageLayout({
   }, [isMobile, sidebarOpen]);
 
   return (
-    <div style={{ background: colors.bg, minHeight: '100vh' }}>
-      <Sidebar
-        isMobile={isMobile}
-        isOpen={sidebarOpen}
-        onClose={() => setSidebarOpen(false)}
-      />
+    <div className="bg-bg min-h-screen text-text">
+      <Sidebar isMobile={isMobile} isOpen={sidebarOpen} onClose={() => setSidebarOpen(false)} />
       {isMobile && sidebarOpen && <MobileBackdrop onClick={() => setSidebarOpen(false)} />}
-      {isMobile && (
-        <MobileTopBar title={title} onToggleSidebar={() => setSidebarOpen((v) => !v)} />
-      )}
+      {isMobile && <MobileTopBar title={title} onToggleSidebar={() => setSidebarOpen((v) => !v)} />}
       <main
-        style={{
-          marginLeft: isMobile ? 0 : SIDEBAR_WIDTH,
-          padding: isMobile ? '16px 14px 32px' : '24px 32px 40px',
-          minHeight: isMobile ? 'calc(100vh - 56px)' : '100vh',
-        }}
+        style={{ marginLeft: isMobile ? 0 : SIDEBAR_WIDTH }}
+        className={cn(
+          isMobile ? 'px-4 pb-10 pt-4' : 'px-8 pt-7 pb-12',
+          'min-h-screen',
+        )}
       >
-        {/* Header da página: oculto em mobile (já tem MobileTopBar) */}
         {!isMobile && (
-          <header
-            style={{
-              display: 'flex',
-              justifyContent: 'space-between',
-              alignItems: 'center',
-              marginBottom: 24,
-              gap: 16,
-              flexWrap: 'wrap',
-            }}
-          >
-            <h1
-              data-testid="page-title"
-              style={{
-                margin: 0,
-                fontSize: 22,
-                fontWeight: 700,
-                color: colors.text,
-                letterSpacing: -0.3,
-              }}
-            >
-              {title}
-            </h1>
-            <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+          <header className="flex items-start justify-between gap-4 mb-7 flex-wrap">
+            <div className="flex flex-col gap-1 min-w-0">
+              <h1
+                data-testid="page-title"
+                className="text-2xl font-bold tracking-tight text-text"
+              >
+                {title}
+              </h1>
+              {description && (
+                <p className="text-sm text-text-subtle">{description}</p>
+              )}
+            </div>
+            <div className="flex items-center gap-2 flex-wrap shrink-0">
               {actions}
               <NotificationBell />
             </div>
           </header>
         )}
-        {/* Em mobile, actions ficam num strip embaixo do título mobile */}
         {isMobile && actions && (
-          <div
-            style={{
-              display: 'flex',
-              gap: 8,
-              alignItems: 'center',
-              flexWrap: 'wrap',
-              marginBottom: 16,
-            }}
-          >
-            {actions}
-          </div>
+          <div className="flex items-center gap-2 flex-wrap mb-4">{actions}</div>
         )}
         {children}
       </main>
@@ -550,3 +436,5 @@ export function PageLayout({
   );
 }
 
+// Re-export pra eslint react-refresh rule (mantém compat com hooks acima)
+export { Menu as _MenuIcon, X as _XIcon };

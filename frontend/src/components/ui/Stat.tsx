@@ -1,0 +1,87 @@
+import { type ReactNode } from 'react';
+import { TrendingUp, TrendingDown, Minus } from 'lucide-react';
+import { cn } from '@/lib/cn';
+import { Card } from './Card';
+import { Sparkline } from './Sparkline';
+
+/**
+ * Stat — KPI card.
+ *
+ * Mostra valor primário grande + label + (opcional) delta vs período anterior +
+ * (opcional) sparkline. Padrão de dashboard SaaS.
+ */
+export function Stat({
+  label,
+  value,
+  hint,
+  delta,
+  deltaLabel,
+  icon,
+  trend,
+  spark,
+  sparkColor = 'currentColor',
+  className,
+}: {
+  label: string;
+  /** Valor formatado (ex: "R$ 24.530" ou "127"). */
+  value: ReactNode;
+  hint?: ReactNode;
+  /** Variação percentual (-100 a +Infinity). Positivo = verde, negativo = vermelho. */
+  delta?: number;
+  /** Label do delta (ex: "vs mês anterior"). */
+  deltaLabel?: string;
+  icon?: ReactNode;
+  /** Sobrepõe automatic trend from delta. */
+  trend?: 'up' | 'down' | 'flat';
+  spark?: number[];
+  sparkColor?: string;
+  className?: string;
+}) {
+  const computedTrend: 'up' | 'down' | 'flat' =
+    trend ?? (typeof delta === 'number' ? (delta > 0 ? 'up' : delta < 0 ? 'down' : 'flat') : 'flat');
+
+  const TrendIcon =
+    computedTrend === 'up' ? TrendingUp : computedTrend === 'down' ? TrendingDown : Minus;
+
+  const deltaColor =
+    computedTrend === 'up'
+      ? 'text-success'
+      : computedTrend === 'down'
+        ? 'text-danger'
+        : 'text-muted';
+
+  return (
+    <Card variant="default" padding="md" className={cn('flex flex-col gap-3', className)}>
+      <header className="flex items-start justify-between gap-2">
+        <div className="flex items-center gap-2 text-text-subtle min-w-0">
+          {icon && <span className="shrink-0 [&>svg]:h-3.5 [&>svg]:w-3.5">{icon}</span>}
+          <span className="text-xs font-medium uppercase tracking-wide truncate">{label}</span>
+        </div>
+        {typeof delta === 'number' && (
+          <span
+            className={cn(
+              'inline-flex items-center gap-0.5 text-xs font-semibold tabular',
+              deltaColor,
+            )}
+            title={deltaLabel}
+          >
+            <TrendIcon className="h-3 w-3" />
+            {delta > 0 ? '+' : ''}
+            {delta.toFixed(1)}%
+          </span>
+        )}
+      </header>
+      <div className="flex items-end justify-between gap-3">
+        <div className="flex flex-col gap-1 min-w-0">
+          <span className="text-2xl font-semibold text-text tabular tracking-tight">{value}</span>
+          {hint && <span className="text-xs text-muted">{hint}</span>}
+        </div>
+        {spark && spark.length > 1 && (
+          <div style={{ color: sparkColor }}>
+            <Sparkline data={spark} width={88} height={28} fill strokeWidth={1.5} />
+          </div>
+        )}
+      </div>
+    </Card>
+  );
+}

@@ -1,13 +1,49 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
+import {
+  Search,
+  ArrowLeft,
+  Send,
+  ChevronDown,
+  UserCheck,
+  CheckCircle2,
+  Inbox as InboxIcon,
+  Filter,
+  Image as ImageIcon,
+  FileText,
+  Video,
+  Mic,
+} from 'lucide-react';
 import { api, ApiError } from '@/lib/api';
 import { useApiQuery, type PaginatedResponse } from '@/hooks/useApiQuery';
 import { PageLayout, useIsMobile } from '@/components/PageLayout';
 import { StateView } from '@/components/StateView';
-import { Modal } from '@/components/Modal';
-import { FormField, Select, Textarea } from '@/components/FormField';
-import { SearchInput } from '@/components/FilterBar';
 import { useToast } from '@/components/toast';
-import { badge, btn, btnSecondary, card, colors } from '@/components/styles';
+import {
+  Avatar,
+  Badge,
+  Button,
+  Card,
+  ChannelBadge,
+  Dialog,
+  EmptyState,
+  IconButton,
+  Input,
+  Select,
+  Tabs,
+  Textarea,
+} from '@/components/ui';
+import { cn } from '@/lib/cn';
+
+/**
+ * InboxPage v2 — design system dark, layout WhatsApp-like.
+ *
+ * Match com o protótipo HTML/screenshot do usuário:
+ *  - Header com título grande + subtítulo de canais
+ *  - Search + tabs de canal (Todos/WA/IG/FB/EM/Marketplaces)
+ *  - Lista compacta com avatares, channel badges e dot de não-lida
+ *  - Chat pane com header sticky e bubble messages
+ *  - Mobile: single pane (lista ou thread)
+ */
 
 type Canal =
   | 'WHATSAPP'
@@ -64,39 +100,18 @@ const CANAL_LABEL: Record<Canal, string> = {
   MARKETPLACE_TIKTOK: 'TikTok Shop',
 };
 
-const CANAL_COLOR: Record<Canal, string> = {
-  WHATSAPP: '#22c55e',
-  INSTAGRAM: '#e1306c',
-  FACEBOOK: '#1877f2',
-  EMAIL: '#0891b2',
-  MARKETPLACE_ML: '#facc15',
-  MARKETPLACE_SHOPEE: '#ee4d2d',
-  MARKETPLACE_AMAZON: '#ff9900',
-  MARKETPLACE_TIKTOK: '#000',
-};
-
-const CANAL_ICON: Record<Canal, string> = {
-  WHATSAPP: '💬',
-  INSTAGRAM: '📷',
-  FACEBOOK: 'f',
-  EMAIL: '✉',
-  MARKETPLACE_ML: 'ML',
-  MARKETPLACE_SHOPEE: 'SP',
-  MARKETPLACE_AMAZON: 'AZ',
-  MARKETPLACE_TIKTOK: 'TT',
-};
-
-const STATUS_COLOR: Record<ConversationStatus, string> = {
-  ABERTA: '#0891b2',
-  PENDENTE: colors.warning,
-  RESOLVIDA: colors.success,
-  ARQUIVADA: colors.muted,
-};
 const STATUS_LABEL: Record<ConversationStatus, string> = {
   ABERTA: 'Aberta',
   PENDENTE: 'Pendente',
   RESOLVIDA: 'Resolvida',
   ARQUIVADA: 'Arquivada',
+};
+
+const STATUS_VARIANT: Record<ConversationStatus, 'info' | 'warning' | 'success' | 'neutral'> = {
+  ABERTA: 'info',
+  PENDENTE: 'warning',
+  RESOLVIDA: 'success',
+  ARQUIVADA: 'neutral',
 };
 
 const POLL_INTERVAL_MS = 10_000;
@@ -109,9 +124,11 @@ function fmtRelative(d: string | null | undefined): string {
   if (secs < 60) return 'agora';
   if (secs < 3600) return `${Math.floor(secs / 60)}min`;
   if (secs < 86400) return `${Math.floor(secs / 3600)}h`;
-  if (secs < 2592000) return `${Math.floor(secs / 86400)}d`;
-  return new Date(d).toLocaleDateString('pt-BR');
+  if (secs < 172800) return 'ontem';
+  if (secs < 604800) return `${Math.floor(secs / 86400)}d`;
+  return new Date(d).toLocaleDateString('pt-BR', { day: '2-digit', month: 'short' });
 }
+
 function fmtTime(d: string) {
   try {
     return new Date(d).toLocaleString('pt-BR', { dateStyle: 'short', timeStyle: 'short' });
@@ -120,19 +137,43 @@ function fmtTime(d: string) {
   }
 }
 
+function fmtHHMM(d: string) {
+  try {
+    return new Date(d).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
+  } catch {
+    return d;
+  }
+}
+
+// ─── Page principal ─────────────────────────────────────────────────
+
 export default function InboxPage() {
-  const [canal, setCanal] = useState<string>('');
+  const [canalTab, setCanalTab] = useState<string>('todos');
   const [status, setStatus] = useState<string>('');
   const [filterMeu, setFilterMeu] = useState<string>('');
   const [search, setSearch] = useState<string>('');
   const [selectedId, setSelectedId] = useState<string | null>(null);
-
-  // Bump aumenta a cada poll pra forçar refetch dos hooks
   const [pollBump, setPollBump] = useState(0);
+
   useEffect(() => {
     const i = setInterval(() => setPollBump((b) => b + 1), POLL_INTERVAL_MS);
     return () => clearInterval(i);
   }, []);
+
+  const canal = useMemo(() => {
+    const map: Record<string, Canal | ''> = {
+      todos: '',
+      wa: 'WHATSAPP',
+      ig: 'INSTAGRAM',
+      fb: 'FACEBOOK',
+      em: 'EMAIL',
+      ml: 'MARKETPLACE_ML',
+      shp: 'MARKETPLACE_SHOPEE',
+      amz: 'MARKETPLACE_AMAZON',
+      tt: 'MARKETPLACE_TIKTOK',
+    };
+    return map[canalTab] ?? '';
+  }, [canalTab]);
 
   const listPath = useMemo(() => {
     const qs = new URLSearchParams({ limit: '40', _t: String(pollBump) });
@@ -144,176 +185,155 @@ export default function InboxPage() {
     return `/inbox?${qs.toString()}`;
   }, [canal, status, filterMeu, search, pollBump]);
 
-  const { data: pageResp, loading, error, refetch } =
-    useApiQuery<PaginatedResponse<Conversation>>(listPath);
+  const {
+    data: pageResp,
+    loading,
+    error,
+    refetch,
+  } = useApiQuery<PaginatedResponse<Conversation>>(listPath);
 
   const isMobile = useIsMobile();
 
-  // Em desktop: auto-seleciona 1ª conversa pra preencher a coluna direita.
-  // Em mobile: deixa a lista visível inicialmente (user escolhe o que abrir).
   useEffect(() => {
     if (!selectedId && pageResp && pageResp.data.length > 0 && !isMobile) {
-      setSelectedId(pageResp.data[0].id);
+      setSelectedId(pageResp.data[0]!.id);
     }
   }, [pageResp, selectedId, isMobile]);
 
-  // Em mobile: mostra OU lista OU thread (não ambos).
-  // showList: lista visível. showThread: thread visível.
   const showList = !isMobile || selectedId === null;
   const showThread = !isMobile || selectedId !== null;
 
   return (
-    <PageLayout title="Inbox">
+    <PageLayout
+      title="Inbox unificada"
+      description="WhatsApp · Instagram · Facebook · E-mail · Marketplaces"
+    >
       <div
+        className={cn(
+          'grid gap-3',
+          isMobile ? 'grid-cols-1' : 'grid-cols-[minmax(320px,380px)_1fr]',
+        )}
         style={{
-          display: 'grid',
-          // Mobile: 1 coluna (apenas o painel ativo). Desktop: lista + thread.
-          gridTemplateColumns: isMobile ? '1fr' : 'minmax(320px, 380px) 1fr',
-          gap: '1rem',
-          alignItems: 'stretch',
-          height: isMobile ? 'calc(100vh - 140px)' : 'calc(100vh - 200px)',
+          height: isMobile ? 'calc(100vh - 130px)' : 'calc(100vh - 170px)',
           minHeight: 500,
         }}
       >
-        {/* Lista de conversas — em mobile, só visível quando nenhuma conversa selecionada */}
+        {/* ── Lista de conversas ───────────────────────────── */}
         {showList && (
-        <div
-          style={{
-            ...card,
-            padding: '0.75rem',
-            display: 'flex',
-            flexDirection: 'column',
-            overflow: 'hidden',
-          }}
-        >
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem', marginBottom: '0.5rem' }}>
-            <SearchInput
-              value={search}
-              onChange={(v) => setSearch(v)}
-              placeholder="Buscar conversa…"
-            />
-            <Select
-              data-testid="inbox-canal"
-              value={canal}
-              onChange={(e) => setCanal(e.target.value)}
-            >
-              <option value="">Todos os canais</option>
-              {(Object.keys(CANAL_LABEL) as Canal[]).map((c) => (
-                <option key={c} value={c}>
-                  {CANAL_LABEL[c]}
-                </option>
-              ))}
-            </Select>
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.5rem' }}>
-              <Select
-                data-testid="inbox-status"
-                value={status}
-                onChange={(e) => setStatus(e.target.value)}
-              >
-                <option value="">Todos status</option>
-                {(Object.keys(STATUS_LABEL) as ConversationStatus[]).map((s) => (
-                  <option key={s} value={s}>
-                    {STATUS_LABEL[s]}
-                  </option>
-                ))}
-              </Select>
-              <Select
-                data-testid="inbox-meu"
-                value={filterMeu}
-                onChange={(e) => setFilterMeu(e.target.value)}
-              >
-                <option value="">Todas</option>
-                <option value="meu">Minhas</option>
-                <option value="nao_atribuidas">Não atribuídas</option>
-              </Select>
-            </div>
-          </div>
-
-          <div style={{ flex: 1, overflowY: 'auto', margin: '0 -0.75rem', padding: '0 0.75rem' }}>
-            {/* Refetch silencioso (já tem dados): indicação fininha pro user
-                saber que tá atualizando, sem flash de skeleton. */}
-            {loading && pageResp && (
-              <div
-                style={{
-                  fontSize: 11,
-                  color: colors.muted,
-                  padding: '0.25rem 0.5rem',
-                  textAlign: 'center',
-                  fontStyle: 'italic',
-                }}
-                data-testid="inbox-refreshing"
-              >
-                Atualizando…
+          <Card
+            padding="none"
+            className="flex flex-col overflow-hidden"
+          >
+            {/* Search + tabs */}
+            <div className="p-3 border-b border-border flex flex-col gap-2.5">
+              <Input
+                leftIcon={<Search />}
+                placeholder="Buscar…"
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+              />
+              <Tabs
+                items={[
+                  { value: 'todos', label: 'Todos' },
+                  { value: 'wa', label: 'WA' },
+                  { value: 'ig', label: 'IG' },
+                  { value: 'fb', label: 'FB' },
+                  { value: 'em', label: 'EM' },
+                ]}
+                value={canalTab}
+                onChange={setCanalTab}
+              />
+              <div className="grid grid-cols-2 gap-2">
+                <Select
+                  data-testid="inbox-status"
+                  size="sm"
+                  value={status}
+                  onChange={(e) => setStatus(e.target.value)}
+                >
+                  <option value="">Todos status</option>
+                  {(Object.keys(STATUS_LABEL) as ConversationStatus[]).map((s) => (
+                    <option key={s} value={s}>
+                      {STATUS_LABEL[s]}
+                    </option>
+                  ))}
+                </Select>
+                <Select
+                  data-testid="inbox-meu"
+                  size="sm"
+                  value={filterMeu}
+                  onChange={(e) => setFilterMeu(e.target.value)}
+                >
+                  <option value="">Todas</option>
+                  <option value="meu">Minhas</option>
+                  <option value="nao_atribuidas">Não atribuídas</option>
+                </Select>
               </div>
-            )}
-            <StateView
-              loading={loading && !pageResp}
-              error={error}
-              empty={!loading && !error && (pageResp?.data.length ?? 0) === 0}
-              emptyMessage="Nenhuma conversa nesse filtro."
-              onRetry={refetch}
-            >
-              {pageResp && (
-                <ul style={{ listStyle: 'none', padding: 0, margin: 0 }}>
-                  {pageResp.data.map((c) => (
-                    <li key={c.id}>
-                      <ConversationCard
+            </div>
+
+            {/* Lista scrollable */}
+            <div className="flex-1 overflow-y-auto">
+              {loading && pageResp && (
+                <div
+                  className="text-[11px] text-muted px-3 py-1 text-center italic"
+                  data-testid="inbox-refreshing"
+                >
+                  Atualizando…
+                </div>
+              )}
+              <StateView
+                loading={loading && !pageResp}
+                error={error}
+                empty={!loading && !error && (pageResp?.data.length ?? 0) === 0}
+                emptyMessage="Nenhuma conversa nesse filtro."
+                onRetry={refetch}
+              >
+                {pageResp && (
+                  <ul className="flex flex-col">
+                    {pageResp.data.map((c) => (
+                      <ConversationItem
+                        key={c.id}
                         conv={c}
                         active={c.id === selectedId}
                         onClick={() => setSelectedId(c.id)}
                       />
-                    </li>
-                  ))}
-                </ul>
-              )}
-            </StateView>
-          </div>
-        </div>
+                    ))}
+                  </ul>
+                )}
+              </StateView>
+            </div>
+          </Card>
         )}
 
-        {/* Thread — em mobile, só visível quando uma conversa está selecionada */}
+        {/* ── Thread ────────────────────────────────────── */}
         {showThread && (
-        <div
-          style={{
-            ...card,
-            padding: 0,
-            display: 'flex',
-            flexDirection: 'column',
-            overflow: 'hidden',
-          }}
-        >
-          {selectedId ? (
-            <ConversationThread
-              key={selectedId}
-              id={selectedId}
-              pollBump={pollBump}
-              onChanged={refetch}
-              onBack={isMobile ? () => setSelectedId(null) : undefined}
-            />
-          ) : (
-            <div
-              style={{
-                flex: 1,
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                color: colors.muted,
-                fontSize: 14,
-              }}
-            >
-              Selecione uma conversa pra começar.
-            </div>
-          )}
-        </div>
+          <Card padding="none" className="flex flex-col overflow-hidden">
+            {selectedId ? (
+              <ConversationThread
+                key={selectedId}
+                id={selectedId}
+                pollBump={pollBump}
+                onChanged={refetch}
+                onBack={isMobile ? () => setSelectedId(null) : undefined}
+              />
+            ) : (
+              <EmptyState
+                size="lg"
+                icon={<InboxIcon />}
+                title="Selecione uma conversa"
+                description="Escolha uma conversa na lista pra ver o histórico e responder."
+                className="flex-1 border-0 bg-transparent"
+              />
+            )}
+          </Card>
         )}
       </div>
     </PageLayout>
   );
 }
 
-// ─── Lista item ──────────────────────────────────────────────────────
+// ─── Conversation item (linha da lista) ─────────────────────────────
 
-function ConversationCard({
+function ConversationItem({
   conv,
   active,
   onClick,
@@ -322,86 +342,102 @@ function ConversationCard({
   active: boolean;
   onClick: () => void;
 }) {
+  const name = conv.cliente?.nome ?? conv.peerNome ?? conv.peer;
+  const unread = (conv.naoLidas ?? 0) > 0;
+
   return (
-    <button
-      type="button"
-      data-testid={`conv-card-${conv.id}`}
-      onClick={onClick}
-      style={{
-        display: 'block',
-        width: '100%',
-        textAlign: 'left',
-        padding: '0.75rem 0.5rem',
-        background: active ? colors.primary + '10' : 'transparent',
-        border: 'none',
-        borderBottom: `1px solid ${colors.border}`,
-        cursor: 'pointer',
-        fontFamily: 'inherit',
-        color: colors.text,
-        borderLeft: `3px solid ${active ? colors.primary : 'transparent'}`,
-      }}
-    >
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '0.5rem' }}>
-        <span style={{ display: 'flex', alignItems: 'center', gap: '0.375rem' }}>
-          <span
-            title={CANAL_LABEL[conv.canal]}
-            style={{
-              ...badge(CANAL_COLOR[conv.canal]),
-              padding: '1px 6px',
-              fontSize: 9,
-            }}
-          >
-            {CANAL_ICON[conv.canal]}
-          </span>
-          <strong style={{ fontSize: 13 }}>
-            {conv.cliente?.nome ?? conv.peerNome ?? conv.peer}
-          </strong>
-        </span>
-        <span style={{ fontSize: 11, color: colors.muted }}>
-          {fmtRelative(conv.ultimaMensagemEm)}
-        </span>
-      </div>
-      <div
-        style={{
-          marginTop: 4,
-          fontSize: 12,
-          color: colors.muted,
-          overflow: 'hidden',
-          textOverflow: 'ellipsis',
-          whiteSpace: 'nowrap',
-        }}
+    <li>
+      <button
+        type="button"
+        data-testid={`conv-card-${conv.id}`}
+        onClick={onClick}
+        className={cn(
+          'w-full text-left px-3 py-3 flex items-start gap-3',
+          'border-b border-border last:border-b-0',
+          'transition-colors duration-100',
+          active
+            ? 'bg-surface-hover'
+            : 'bg-transparent hover:bg-surface-hover/60',
+          'relative',
+        )}
       >
-        {conv.ultimaMensagem ?? <em>(sem mensagens)</em>}
-      </div>
-      <div style={{ display: 'flex', gap: 4, marginTop: 6, alignItems: 'center' }}>
-        <span style={{ ...badge(STATUS_COLOR[conv.status]), fontSize: 9 }}>
-          {STATUS_LABEL[conv.status]}
-        </span>
-        {conv.atribuido && (
-          <span style={{ fontSize: 10, color: colors.muted }}>· {conv.atribuido.nome}</span>
-        )}
-        {conv.naoLidas !== undefined && conv.naoLidas > 0 && (
+        {/* Indicador lateral âmbar quando ativo */}
+        {active && (
           <span
-            style={{
-              marginLeft: 'auto',
-              background: colors.primary,
-              color: '#fff',
-              borderRadius: 999,
-              padding: '1px 7px',
-              fontSize: 11,
-              fontWeight: 700,
-            }}
-            data-testid={`conv-unread-${conv.id}`}
-          >
-            {conv.naoLidas}
-          </span>
+            aria-hidden
+            className="absolute left-0 top-1/2 -translate-y-1/2 h-8 w-0.5 rounded-r bg-primary"
+          />
         )}
-      </div>
-    </button>
+
+        <Avatar name={name} size="md" />
+
+        <div className="flex-1 min-w-0">
+          <div className="flex items-center justify-between gap-2 mb-0.5">
+            <div className="flex items-center gap-1.5 min-w-0">
+              {unread && (
+                <span
+                  aria-label="Não lida"
+                  className="h-1.5 w-1.5 rounded-full bg-primary shrink-0"
+                />
+              )}
+              <strong
+                className={cn(
+                  'truncate text-sm tracking-tight',
+                  unread ? 'text-text font-semibold' : 'text-text font-medium',
+                )}
+              >
+                {name}
+              </strong>
+              <ChannelBadge canal={conv.canal} size="sm" />
+            </div>
+            <span
+              className={cn(
+                'text-[11px] shrink-0 tabular',
+                unread ? 'text-primary font-semibold' : 'text-muted',
+              )}
+            >
+              {fmtRelative(conv.ultimaMensagemEm)}
+            </span>
+          </div>
+
+          <div
+            className={cn(
+              'text-xs truncate',
+              unread ? 'text-text-subtle' : 'text-muted',
+            )}
+          >
+            {conv.ultimaMensagem ?? <em className="text-muted-light">sem mensagens</em>}
+          </div>
+
+          {(conv.status !== 'ABERTA' || conv.atribuido || (conv.naoLidas ?? 0) > 1) && (
+            <div className="flex items-center gap-1.5 mt-1.5">
+              {conv.status !== 'ABERTA' && (
+                <Badge variant={STATUS_VARIANT[conv.status]} size="sm">
+                  {STATUS_LABEL[conv.status]}
+                </Badge>
+              )}
+              {conv.atribuido && (
+                <span className="text-[10px] text-muted truncate">
+                  · {conv.atribuido.nome}
+                </span>
+              )}
+              {(conv.naoLidas ?? 0) > 1 && (
+                <span
+                  data-testid={`conv-unread-${conv.id}`}
+                  className="ml-auto inline-flex items-center justify-center min-w-[18px] h-[18px] px-1.5 rounded-full bg-primary text-primary-contrast text-[10px] font-bold tabular"
+                >
+                  {conv.naoLidas}
+                </span>
+              )}
+            </div>
+          )}
+        </div>
+      </button>
+    </li>
   );
 }
 
-// ─── Thread ──────────────────────────────────────────────────────────
+// ─── Thread (chat pane) ────────────────────────────────────────────
 
 function ConversationThread({
   id,
@@ -412,12 +448,14 @@ function ConversationThread({
   id: string;
   pollBump: number;
   onChanged: () => void;
-  /** Em mobile, volta pra lista de conversas. Undefined em desktop. */
   onBack?: () => void;
 }) {
   const toast = useToast();
   const detailPath = useMemo(() => `/inbox/${id}?_t=${pollBump}`, [id, pollBump]);
-  const msgsPath = useMemo(() => `/inbox/${id}/mensagens?limit=80&_t=${pollBump}`, [id, pollBump]);
+  const msgsPath = useMemo(
+    () => `/inbox/${id}/mensagens?limit=80&_t=${pollBump}`,
+    [id, pollBump],
+  );
 
   const conv = useApiQuery<Conversation>(detailPath);
   const msgs = useApiQuery<{ data: Mensagem[] }>(msgsPath);
@@ -428,21 +466,17 @@ function ConversationThread({
   const [statusOpen, setStatusOpen] = useState(false);
   const [atribuirOpen, setAtribuirOpen] = useState(false);
 
-  // Auto-scroll pro fim quando msgs chegam
   const endRef = useRef<HTMLDivElement | null>(null);
   useEffect(() => {
-    endRef.current?.scrollIntoView({ behavior: 'smooth' });
+    endRef.current?.scrollIntoView({ behavior: 'smooth', block: 'end' });
   }, [msgs.data]);
 
-  // Marcar como lida quando abre / poll detecta nova mensagem inbound
   const lastMarkRef = useRef<string | null>(null);
   useEffect(() => {
     if (!conv.data) return;
     if (lastMarkRef.current === id && (conv.data.naoLidas ?? 0) === 0) return;
     lastMarkRef.current = id;
-    void api.post(`/inbox/${id}/marcar-lida`).catch(() => {
-      /* não-crítico */
-    });
+    void api.post(`/inbox/${id}/marcar-lida`).catch(() => {});
   }, [conv.data, id]);
 
   async function enviar() {
@@ -477,98 +511,66 @@ function ConversationThread({
 
   const c = conv.data;
   const messages = msgs.data?.data ?? [];
+  const lockedCompose = c && (c.status === 'RESOLVIDA' || c.status === 'ARQUIVADA');
 
   return (
     <>
-      <header
-        style={{
-          padding: '0.75rem 1rem',
-          borderBottom: `1px solid ${colors.border}`,
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'space-between',
-          gap: '0.5rem',
-        }}
-      >
+      {/* Thread header */}
+      <header className="px-4 py-3 border-b border-border flex items-center gap-3 bg-bg-alt">
         {c ? (
           <>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', minWidth: 0, flex: 1 }}>
-              {onBack && (
-                <button
-                  type="button"
-                  data-testid="inbox-back-btn"
-                  onClick={onBack}
-                  aria-label="Voltar para lista"
-                  style={{
-                    minWidth: 36,
-                    minHeight: 36,
-                    padding: 0,
-                    background: 'transparent',
-                    border: `1px solid ${colors.border}`,
-                    borderRadius: 6,
-                    fontSize: 16,
-                    cursor: 'pointer',
-                    color: colors.text,
-                  }}
-                >
-                  ←
-                </button>
-              )}
-              <span style={{ ...badge(CANAL_COLOR[c.canal]) }}>
-                {CANAL_LABEL[c.canal]}
-              </span>
-              <div style={{ minWidth: 0, flex: 1, overflow: 'hidden' }}>
-                <strong
-                  style={{
-                    display: 'block',
-                    overflow: 'hidden',
-                    textOverflow: 'ellipsis',
-                    whiteSpace: 'nowrap',
-                  }}
-                >
+            {onBack && (
+              <IconButton
+                aria-label="Voltar para lista"
+                variant="ghost"
+                size="md"
+                icon={<ArrowLeft />}
+                onClick={onBack}
+                data-testid="inbox-back-btn"
+              />
+            )}
+            <Avatar name={c.cliente?.nome ?? c.peerNome ?? c.peer} size="md" />
+            <div className="flex-1 min-w-0">
+              <div className="flex items-center gap-1.5">
+                <strong className="text-sm tracking-tight truncate text-text">
                   {c.cliente?.nome ?? c.peerNome ?? c.peer}
                 </strong>
-                {c.peer && (c.cliente?.nome || c.peerNome) && (
-                  <div style={{ fontSize: 11, color: colors.muted }}>{c.peer}</div>
-                )}
+                <ChannelBadge canal={c.canal} size="sm" />
+              </div>
+              <div className="text-[11px] text-muted truncate">
+                {c.peer && (c.cliente?.nome || c.peerNome) ? c.peer : CANAL_LABEL[c.canal]}
               </div>
             </div>
-            <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
-              <button
-                type="button"
-                data-testid="inbox-status-btn"
-                onClick={() => setStatusOpen(true)}
-                style={{ ...badge(STATUS_COLOR[c.status]), cursor: 'pointer', border: 'none', fontFamily: 'inherit' }}
-              >
+            <Button
+              type="button"
+              variant="secondary"
+              size="sm"
+              data-testid="inbox-status-btn"
+              onClick={() => setStatusOpen(true)}
+              rightIcon={<ChevronDown className="h-3 w-3" />}
+            >
+              <Badge variant={STATUS_VARIANT[c.status]} size="sm">
                 {STATUS_LABEL[c.status]}
-              </button>
-              <button
-                type="button"
-                data-testid="inbox-atribuir-btn"
-                onClick={() => setAtribuirOpen(true)}
-                style={{ ...btnSecondary, padding: '2px 10px', fontSize: 11 }}
-              >
-                {c.atribuido ? `→ ${c.atribuido.nome}` : 'Atribuir'}
-              </button>
-            </div>
+              </Badge>
+            </Button>
+            <Button
+              type="button"
+              variant="ghost"
+              size="sm"
+              data-testid="inbox-atribuir-btn"
+              onClick={() => setAtribuirOpen(true)}
+              leftIcon={<UserCheck className="h-3.5 w-3.5" />}
+            >
+              {c.atribuido ? c.atribuido.nome : 'Atribuir'}
+            </Button>
           </>
         ) : (
-          <span style={{ color: colors.muted }}>Carregando…</span>
+          <span className="text-muted text-sm">Carregando…</span>
         )}
       </header>
 
-      {/* Mensagens */}
-      <div
-        style={{
-          flex: 1,
-          overflowY: 'auto',
-          padding: '1rem',
-          background: '#fafbfc',
-          display: 'flex',
-          flexDirection: 'column',
-          gap: '0.5rem',
-        }}
-      >
+      {/* Messages */}
+      <div className="flex-1 overflow-y-auto px-4 py-4 bg-bg flex flex-col gap-2">
         <StateView
           loading={msgs.loading && messages.length === 0}
           error={msgs.error}
@@ -576,73 +578,67 @@ function ConversationThread({
           emptyMessage="Sem mensagens nesta conversa ainda."
           onRetry={msgs.refetch}
         >
-          {messages.map((m) => (
-            <MessageBubble key={m.id} msg={m} />
-          ))}
+          {messages.map((m, i) => {
+            const prev = i > 0 ? messages[i - 1] : null;
+            const showAuthor =
+              !prev || prev.direction !== m.direction || prev.autor?.id !== m.autor?.id;
+            return <MessageBubble key={m.id} msg={m} showAuthor={!!showAuthor} />;
+          })}
           <div ref={endRef} />
         </StateView>
       </div>
 
       {/* Compose */}
-      {c && !['RESOLVIDA', 'ARQUIVADA'].includes(c.status) && (
-        <div style={{ padding: '0.75rem 1rem', borderTop: `1px solid ${colors.border}` }}>
-          <Textarea
-            data-testid="inbox-compose"
-            placeholder="Digite sua resposta…"
-            value={resposta}
-            onChange={(e) => setResposta(e.target.value)}
-            onKeyDown={(e) => {
-              if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) {
-                e.preventDefault();
-                void enviar();
-              }
-            }}
-            style={{ minHeight: 60 }}
-            maxLength={4096}
-          />
-          <div
-            style={{
-              display: 'flex',
-              justifyContent: 'space-between',
-              alignItems: 'center',
-              marginTop: '0.5rem',
-            }}
-          >
-            <span style={{ fontSize: 11, color: colors.muted }}>
-              {sendError ? (
-                <span style={{ color: colors.danger }}>{sendError}</span>
-              ) : (
-                <>⌘/Ctrl + Enter pra enviar · {resposta.length}/4096</>
-              )}
-            </span>
-            <button
+      {c && !lockedCompose && (
+        <div className="px-4 py-3 border-t border-border bg-bg-alt">
+          <div className="flex items-end gap-2">
+            <Textarea
+              data-testid="inbox-compose"
+              placeholder="Digite sua resposta…"
+              value={resposta}
+              onChange={(e) => setResposta(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) {
+                  e.preventDefault();
+                  void enviar();
+                }
+              }}
+              className="min-h-[44px] max-h-32 resize-none"
+              maxLength={4096}
+            />
+            <Button
               type="button"
               data-testid="inbox-send-btn"
               disabled={sending || resposta.trim().length === 0}
+              loading={sending}
               onClick={enviar}
-              style={{
-                ...btn,
-                opacity: sending || resposta.trim().length === 0 ? 0.6 : 1,
-                cursor:
-                  sending || resposta.trim().length === 0 ? 'not-allowed' : 'pointer',
-              }}
+              size="md"
+              leftIcon={!sending ? <Send className="h-3.5 w-3.5" /> : undefined}
             >
-              {sending ? 'Enviando…' : 'Enviar'}
-            </button>
+              Enviar
+            </Button>
+          </div>
+          <div className="flex items-center justify-between mt-1.5">
+            <span className="text-[11px] text-muted">
+              {sendError ? (
+                <span className="text-danger">{sendError}</span>
+              ) : (
+                <>⌘/Ctrl + Enter</>
+              )}
+            </span>
+            <span className="text-[11px] text-muted tabular">
+              {resposta.length}/4096
+            </span>
           </div>
         </div>
       )}
-      {c && ['RESOLVIDA', 'ARQUIVADA'].includes(c.status) && (
-        <div
-          style={{
-            padding: '0.75rem 1rem',
-            borderTop: `1px solid ${colors.border}`,
-            textAlign: 'center',
-            color: colors.muted,
-            fontSize: 13,
-          }}
-        >
-          Conversa {STATUS_LABEL[c.status].toLowerCase()}. Reabra pra responder.
+
+      {c && lockedCompose && (
+        <div className="px-4 py-3 border-t border-border bg-bg-alt text-center">
+          <span className="inline-flex items-center gap-1.5 text-sm text-muted">
+            <CheckCircle2 className="h-4 w-4" />
+            Conversa {STATUS_LABEL[c.status].toLowerCase()}. Reabra pra responder.
+          </span>
         </div>
       )}
 
@@ -654,12 +650,80 @@ function ConversationThread({
           conversaId={id}
           atribuidoAtual={c.atribuido ?? null}
           onClose={() => setAtribuirOpen(false)}
-          onDone={() => { setAtribuirOpen(false); conv.refetch(); onChanged(); }}
+          onDone={() => {
+            setAtribuirOpen(false);
+            conv.refetch();
+            onChanged();
+          }}
         />
       )}
     </>
   );
 }
+
+// ─── Message bubble ──────────────────────────────────────────────
+
+function MessageBubble({ msg, showAuthor }: { msg: Mensagem; showAuthor: boolean }) {
+  const outbound = msg.direction === 'OUTBOUND';
+  const MediaIcon = msg.tipo === 'IMAGE'
+    ? ImageIcon
+    : msg.tipo === 'VIDEO'
+      ? Video
+      : msg.tipo === 'AUDIO'
+        ? Mic
+        : msg.tipo === 'DOCUMENT'
+          ? FileText
+          : null;
+
+  return (
+    <div
+      data-testid={`msg-${msg.id}`}
+      className={cn('flex', outbound ? 'justify-end' : 'justify-start')}
+    >
+      <div className="flex flex-col gap-0.5 max-w-[78%]">
+        {showAuthor && msg.autor?.nome && (
+          <span
+            className={cn(
+              'text-[10px] text-muted px-1',
+              outbound ? 'text-right' : 'text-left',
+            )}
+          >
+            {msg.autor.nome}
+          </span>
+        )}
+        <div
+          className={cn(
+            'px-3 py-2 text-sm leading-relaxed',
+            'border',
+            outbound
+              ? 'bg-primary/10 text-text border-primary/20 rounded-2xl rounded-br-sm'
+              : 'bg-surface text-text border-border rounded-2xl rounded-bl-sm',
+          )}
+        >
+          {msg.tipo !== 'TEXT' && MediaIcon && (
+            <div className="flex items-center gap-1.5 mb-1 text-xs text-muted">
+              <MediaIcon className="h-3.5 w-3.5" />
+              <span className="lowercase">{msg.tipo}</span>
+              {msg.mediaMime && <span className="text-muted-light">· {msg.mediaMime}</span>}
+            </div>
+          )}
+          {msg.texto && <p className="m-0 whitespace-pre-wrap">{msg.texto}</p>}
+        </div>
+        <span
+          className={cn(
+            'text-[10px] text-muted px-1 tabular',
+            outbound ? 'text-right' : 'text-left',
+          )}
+          title={fmtTime(msg.criadoEm)}
+        >
+          {fmtHHMM(msg.criadoEm)}
+        </span>
+      </div>
+    </div>
+  );
+}
+
+// ─── Modals ──────────────────────────────────────────────────
 
 function StatusModal({
   current,
@@ -671,31 +735,27 @@ function StatusModal({
   onPick: (s: ConversationStatus) => void;
 }) {
   return (
-    <Modal open onClose={onClose} title="Mudar status da conversa">
-      <FormField label="Selecione o novo status">
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
-          {(Object.keys(STATUS_LABEL) as ConversationStatus[])
-            .filter((s) => s !== current)
-            .map((s) => (
-              <button
-                key={s}
-                type="button"
-                data-testid={`status-${s}`}
-                onClick={() => onPick(s)}
-                style={{
-                  ...btnSecondary,
-                  textAlign: 'left',
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: '0.5rem',
-                }}
-              >
-                <span style={badge(STATUS_COLOR[s])}>{STATUS_LABEL[s]}</span>
-              </button>
-            ))}
-        </div>
-      </FormField>
-    </Modal>
+    <Dialog open onClose={onClose} title="Mudar status da conversa" size="sm">
+      <div className="flex flex-col gap-2">
+        {(Object.keys(STATUS_LABEL) as ConversationStatus[])
+          .filter((s) => s !== current)
+          .map((s) => (
+            <button
+              key={s}
+              type="button"
+              data-testid={`status-${s}`}
+              onClick={() => onPick(s)}
+              className={cn(
+                'w-full text-left px-3 py-2.5 rounded-md',
+                'bg-surface border border-border hover:bg-surface-hover hover:border-border-strong',
+                'transition-colors flex items-center gap-3',
+              )}
+            >
+              <Badge variant={STATUS_VARIANT[s]}>{STATUS_LABEL[s]}</Badge>
+            </button>
+          ))}
+      </div>
+    </Dialog>
   );
 }
 
@@ -711,8 +771,11 @@ function AtribuirModal({
   onDone: () => void;
 }) {
   const toast = useToast();
-  const { data: usersResp } = useApiQuery<PaginatedResponse<UsuarioMinimo>>('/users?limit=100&status=ATIVO');
+  const { data: usersResp } = useApiQuery<PaginatedResponse<UsuarioMinimo>>(
+    '/users?limit=100&status=ATIVO',
+  );
   const [busy, setBusy] = useState(false);
+  const [search, setSearch] = useState('');
 
   async function atribuir(userId: string | null) {
     setBusy(true);
@@ -727,95 +790,68 @@ function AtribuirModal({
     }
   }
 
-  const users = usersResp?.data ?? [];
+  const users = (usersResp?.data ?? []).filter((u) =>
+    u.nome.toLowerCase().includes(search.toLowerCase()),
+  );
 
   return (
-    <Modal open onClose={onClose} title="Atribuir conversa">
-      <FormField label="Selecione o responsável">
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+    <Dialog open onClose={onClose} title="Atribuir conversa" size="sm">
+      <div className="flex flex-col gap-3">
+        <Input
+          leftIcon={<Search />}
+          placeholder="Buscar usuário…"
+          value={search}
+          onChange={(e) => setSearch(e.target.value)}
+        />
+        <div className="flex flex-col gap-1.5 max-h-[300px] overflow-y-auto">
           {atribuidoAtual && (
             <button
               type="button"
               data-testid="atribuir-ninguem"
               disabled={busy}
               onClick={() => atribuir(null)}
-              style={{ ...btnSecondary, textAlign: 'left', fontSize: 13 }}
-            >
-              ✕ Remover atribuição
-            </button>
-          )}
-          {users.map((u) => (
-            <button
-              key={u.id}
-              type="button"
-              data-testid={`atribuir-user-${u.id}`}
-              disabled={busy || u.id === atribuidoAtual?.id}
-              onClick={() => atribuir(u.id)}
-              style={{
-                ...btnSecondary,
-                textAlign: 'left',
-                fontSize: 13,
-                opacity: u.id === atribuidoAtual?.id ? 0.5 : 1,
-              }}
-            >
-              <strong>{u.nome}</strong>
-              <span style={{ marginLeft: '0.375rem', color: colors.muted, fontSize: 11 }}>
-                ({u.role})
-              </span>
-              {u.id === atribuidoAtual?.id && (
-                <span style={{ marginLeft: 4, color: colors.success, fontSize: 11 }}>✓ atual</span>
+              className={cn(
+                'flex items-center gap-3 px-3 py-2 rounded-md text-left',
+                'bg-surface border border-border text-danger',
+                'hover:bg-danger/10 hover:border-danger/30 transition-colors',
               )}
+            >
+              <Filter className="h-3.5 w-3.5" />
+              Remover atribuição
             </button>
-          ))}
-          {users.length === 0 && (
-            <p style={{ color: colors.muted, fontSize: 13, margin: 0 }}>Carregando usuários…</p>
           )}
-        </div>
-      </FormField>
-    </Modal>
-  );
-}
-
-function MessageBubble({ msg }: { msg: Mensagem }) {
-  const outbound = msg.direction === 'OUTBOUND';
-  return (
-    <div
-      data-testid={`msg-${msg.id}`}
-      style={{
-        display: 'flex',
-        justifyContent: outbound ? 'flex-end' : 'flex-start',
-      }}
-    >
-      <div
-        style={{
-          maxWidth: '70%',
-          padding: '0.5rem 0.75rem',
-          borderRadius: 12,
-          background: outbound ? colors.primary : colors.surface,
-          color: outbound ? '#fff' : colors.text,
-          border: outbound ? 'none' : `1px solid ${colors.border}`,
-          fontSize: 14,
-          lineHeight: 1.4,
-        }}
-      >
-        {msg.texto && <p style={{ margin: 0, whiteSpace: 'pre-wrap' }}>{msg.texto}</p>}
-        {msg.tipo !== 'TEXT' && (
-          <p style={{ margin: '4px 0 0', fontSize: 11, opacity: 0.8 }}>
-            [{msg.tipo.toLowerCase()}{msg.mediaMime ? ` · ${msg.mediaMime}` : ''}]
-          </p>
-        )}
-        <div
-          style={{
-            fontSize: 10,
-            opacity: 0.7,
-            marginTop: 4,
-            textAlign: outbound ? 'right' : 'left',
-          }}
-        >
-          {msg.autor?.nome ? `${msg.autor.nome} · ` : ''}
-          {fmtTime(msg.criadoEm)}
+          {users.map((u) => {
+            const isCurrent = u.id === atribuidoAtual?.id;
+            return (
+              <button
+                key={u.id}
+                type="button"
+                data-testid={`atribuir-user-${u.id}`}
+                disabled={busy || isCurrent}
+                onClick={() => atribuir(u.id)}
+                className={cn(
+                  'flex items-center gap-3 px-3 py-2 rounded-md text-left',
+                  'bg-surface border border-border',
+                  'hover:bg-surface-hover hover:border-border-strong transition-colors',
+                  isCurrent && 'opacity-60 cursor-not-allowed',
+                )}
+              >
+                <Avatar name={u.nome} size="sm" />
+                <div className="flex-1 min-w-0">
+                  <div className="text-sm font-medium text-text truncate">{u.nome}</div>
+                  <div className="text-[11px] text-muted">{u.role}</div>
+                </div>
+                {isCurrent && <Badge variant="success" size="sm">Atual</Badge>}
+              </button>
+            );
+          })}
+          {users.length === 0 && (
+            <p className="text-muted text-sm m-0 py-4 text-center">
+              {usersResp ? 'Nenhum usuário encontrado.' : 'Carregando usuários…'}
+            </p>
+          )}
         </div>
       </div>
-    </div>
+    </Dialog>
   );
 }

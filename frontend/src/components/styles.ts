@@ -1,59 +1,86 @@
 import type { CSSProperties } from 'react';
 
 /**
- * Design tokens — paleta refinada estilo Linear/Notion.
+ * Design tokens — Betinna.ai design system (v2 dark, 2026-05-18).
  *
- * Polish 2026-05-16:
- *  - Paleta mais quente e moderna (neutros com matiz azul-cinza)
- *  - Sombras em camadas (sm/md/lg) em vez de bordas fortes
- *  - Spacing scale consistente (4/8/12/16/24/32)
- *  - Border-radius mais refinado (6/8/10)
- *  - Tipografia Inter via system stack
- *  - Hover states em botões e inputs
- *  - Cores com matiz mais saturada (azul indigo, verde sage, ambar)
+ * Identidade visual: dark sofisticado inspirado em Linear/Vercel.
+ *  - Paleta neutra com matiz frio (azul-cinza quase imperceptível)
+ *  - Acento âmbar #facc15 (igual protótipo) — usado com parcimônia
+ *  - Bordas sutis 1px, sem shadow agressiva
+ *  - Tipografia: Inter (UI) + JetBrains Mono (tabular/code)
+ *  - Motion: 150ms ease-out padrão
+ *
+ * Mantém a API original (colors, btn, card, badge, etc.) — todas as páginas
+ * existentes continuam funcionando, só ficam dark. Primitives novos em
+ * `components/ui/` usam essas mesmas variáveis via Tailwind/CSS vars.
  */
 
 export const colors = {
-  // Backgrounds
-  bg: '#f7f8fa',
-  bgAlt: '#fafbfc',
-  surface: '#ffffff',
-  surfaceHover: '#f9fafb',
+  // ─── Backgrounds (escala de elevação) ─────────────────────────
+  /** Base do app — onde nada flutua. */
+  bg: '#0a0a0a',
+  /** Variação sutil pra dividir seções (tabela header, sidebar footer). */
+  bgAlt: '#0f0f10',
+  /** Card padrão (1 nível acima do bg). */
+  surface: '#141416',
+  /** Hover de card/linha. */
+  surfaceHover: '#1a1a1d',
+  /** Card elevado (modal, popover, dropdown). */
+  surfaceElevated: '#1c1c20',
 
-  // Borders
-  border: '#e6e8ec',
-  borderStrong: '#cdd1d8',
-  borderFocus: '#6366f1',
+  // ─── Borders ──────────────────────────────────────────────────
+  /** Padrão — divisores e bordas de card. */
+  border: '#262629',
+  /** Mais visível — inputs, botões secundários. */
+  borderStrong: '#33333a',
+  /** Focus ring. */
+  borderFocus: '#facc15',
 
-  // Text
-  text: '#0f172a',
-  textSubtle: '#475569',
-  muted: '#64748b',
-  mutedLight: '#94a3b8',
+  // ─── Text ─────────────────────────────────────────────────────
+  /** Texto principal — quase branco. */
+  text: '#fafafa',
+  /** Texto secundário (descrições). */
+  textSubtle: '#a1a1aa',
+  /** Mudo (labels, captions). */
+  muted: '#71717a',
+  /** Quase invisível (placeholders, hints). */
+  mutedLight: '#52525b',
 
-  // Brand (indigo moderno em vez de azul básico)
-  primary: '#6366f1',
-  primaryHover: '#4f46e5',
-  primaryLight: '#eef2ff',
+  // ─── Brand (âmbar igual protótipo HTML) ───────────────────────
+  primary: '#facc15',
+  primaryHover: '#eab308',
+  primaryLight: '#422006',         // bg sutil pra estado ativo (15% âmbar em preto)
+  primaryContrast: '#0a0a0a',      // texto sobre primary
 
-  // Semânticas
-  danger: '#e11d48',
-  dangerHover: '#be123c',
-  dangerLight: '#fff1f2',
+  // ─── Semânticas ───────────────────────────────────────────────
+  danger: '#f43f5e',
+  dangerHover: '#e11d48',
+  dangerLight: '#3f1015',
 
-  success: '#10b981',
-  successHover: '#059669',
-  successLight: '#ecfdf5',
+  success: '#22c55e',
+  successHover: '#16a34a',
+  successLight: '#0f2818',
 
   warning: '#f59e0b',
   warningHover: '#d97706',
-  warningLight: '#fffbeb',
+  warningLight: '#3a230a',
 
-  info: '#0ea5e9',
-  infoLight: '#f0f9ff',
+  info: '#38bdf8',
+  infoHover: '#0ea5e9',
+  infoLight: '#0c2230',
+
+  // ─── Cores de canal (Inbox / Conversation) ────────────────────
+  channelWhatsapp: '#22c55e',
+  channelInstagram: '#e1306c',
+  channelFacebook: '#1877f2',
+  channelEmail: '#0891b2',
+  channelML: '#facc15',
+  channelShopee: '#ee4d2d',
+  channelAmazon: '#ff9900',
+  channelTiktok: '#ec4899',
 };
 
-/** Spacing scale — 4px base. Use múltiplos. */
+/** Spacing scale — 4px base. */
 export const spacing = {
   xs: 4,
   sm: 8,
@@ -64,12 +91,14 @@ export const spacing = {
   xxxl: 48,
 };
 
-/** Shadows em camadas — usar em vez de border quando dar elevação. */
+/** Shadows — quase imperceptíveis no dark, dão profundidade sem ruído. */
 export const shadows = {
-  sm: '0 1px 2px 0 rgba(15, 23, 42, 0.04)',
-  md: '0 1px 3px 0 rgba(15, 23, 42, 0.08), 0 1px 2px -1px rgba(15, 23, 42, 0.04)',
-  lg: '0 4px 12px -2px rgba(15, 23, 42, 0.08), 0 2px 4px -2px rgba(15, 23, 42, 0.04)',
-  xl: '0 20px 40px -8px rgba(15, 23, 42, 0.15), 0 8px 16px -4px rgba(15, 23, 42, 0.08)',
+  sm: '0 1px 2px 0 rgba(0, 0, 0, 0.3)',
+  md: '0 2px 6px -1px rgba(0, 0, 0, 0.4), 0 1px 3px -1px rgba(0, 0, 0, 0.3)',
+  lg: '0 8px 24px -4px rgba(0, 0, 0, 0.5), 0 2px 6px -2px rgba(0, 0, 0, 0.3)',
+  xl: '0 24px 48px -8px rgba(0, 0, 0, 0.6), 0 8px 16px -4px rgba(0, 0, 0, 0.4)',
+  /** Ring de foco — usado em inputs/botões com keyboard navigation. */
+  focusRing: '0 0 0 3px rgba(250, 204, 21, 0.15)',
 };
 
 /** Border radius scale. */
@@ -77,39 +106,74 @@ export const radius = {
   sm: 4,
   md: 6,
   lg: 8,
-  xl: 10,
+  xl: 12,
   full: 999,
 };
 
-/** Font stack — Inter no topo. Browser cai pro system se Inter não tiver instalada. */
-const fontStack =
+/** Type scale (font-size em px). */
+export const fontSize = {
+  xs: 11,
+  sm: 12,
+  base: 13,
+  md: 14,
+  lg: 15,
+  xl: 17,
+  '2xl': 20,
+  '3xl': 24,
+  '4xl': 30,
+};
+
+/** Motion / transitions. */
+export const motion = {
+  /** Padrão pra hover, color, bg. */
+  fast: '120ms cubic-bezier(0.4, 0, 0.2, 1)',
+  /** Padrão pra layout shift, slide. */
+  base: '180ms cubic-bezier(0.4, 0, 0.2, 1)',
+  /** Pra modal/drawer entrando. */
+  slow: '280ms cubic-bezier(0.16, 1, 0.3, 1)',
+};
+
+/** Font stacks. */
+const fontStackUI =
   '"Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif';
+const fontStackMono =
+  '"JetBrains Mono", "SF Mono", "Monaco", "Cascadia Code", "Roboto Mono", monospace';
+
+export const fonts = {
+  ui: fontStackUI,
+  mono: fontStackMono,
+};
+
+// ═══════════════════════════════════════════════════════════════
+// LEGACY STYLE OBJECTS — mantidos pras 30 páginas existentes.
+// Novos componentes devem usar primitives em `components/ui/*`.
+// ═══════════════════════════════════════════════════════════════
 
 export const card: CSSProperties = {
   background: colors.surface,
   border: `1px solid ${colors.border}`,
   borderRadius: radius.lg,
   padding: spacing.xl,
-  boxShadow: shadows.sm,
 };
 
 export const cardElevated: CSSProperties = {
   ...card,
+  background: colors.surfaceElevated,
   boxShadow: shadows.md,
 };
 
 export const btn: CSSProperties = {
   background: colors.primary,
-  color: '#fff',
+  color: colors.primaryContrast,
   border: 'none',
   borderRadius: radius.md,
   padding: '0.5rem 1rem',
-  fontWeight: 500,
-  fontSize: 14,
+  fontWeight: 600,
+  fontSize: 13,
   cursor: 'pointer',
-  fontFamily: fontStack,
-  transition: 'background 0.15s ease, transform 0.05s ease',
-  boxShadow: shadows.sm,
+  fontFamily: fontStackUI,
+  transition: `background ${motion.fast}, transform ${motion.fast}`,
+  letterSpacing: -0.1,
 };
 
 export const btnSecondary: CSSProperties = {
@@ -117,12 +181,13 @@ export const btnSecondary: CSSProperties = {
   background: colors.surface,
   color: colors.text,
   border: `1px solid ${colors.borderStrong}`,
-  boxShadow: 'none',
+  fontWeight: 500,
 };
 
 export const btnDanger: CSSProperties = {
   ...btn,
   background: colors.danger,
+  color: '#fff',
 };
 
 export const btnGhost: CSSProperties = {
@@ -130,7 +195,6 @@ export const btnGhost: CSSProperties = {
   background: 'transparent',
   border: 'none',
   padding: '0.25rem 0.5rem',
-  boxShadow: 'none',
 };
 
 export const input: CSSProperties = {
@@ -138,33 +202,35 @@ export const input: CSSProperties = {
   border: `1px solid ${colors.borderStrong}`,
   borderRadius: radius.md,
   padding: '0.5rem 0.75rem',
-  fontSize: 14,
-  fontFamily: fontStack,
-  background: colors.surface,
+  fontSize: 13,
+  fontFamily: fontStackUI,
+  background: colors.bg,
   color: colors.text,
   boxSizing: 'border-box',
-  transition: 'border-color 0.15s ease, box-shadow 0.15s ease',
+  transition: `border-color ${motion.fast}, box-shadow ${motion.fast}`,
   outline: 'none',
 };
 
 export const select: CSSProperties = {
   ...input,
   appearance: 'auto',
+  /* Garante setinha legível em dark */
+  colorScheme: 'dark',
 };
 
 export const label: CSSProperties = {
   display: 'block',
-  fontSize: 12,
+  fontSize: 11,
   fontWeight: 600,
   textTransform: 'uppercase',
   color: colors.muted,
-  marginBottom: 4,
-  letterSpacing: 0.4,
+  marginBottom: 6,
+  letterSpacing: 0.6,
 };
 
 export const pageWrap: CSSProperties = {
   padding: spacing.xxl,
-  fontFamily: fontStack,
+  fontFamily: fontStackUI,
   background: colors.bg,
   minHeight: '100vh',
   color: colors.text,
@@ -183,30 +249,31 @@ export const tableStyle: CSSProperties = {
   width: '100%',
   borderCollapse: 'separate',
   borderSpacing: 0,
-  fontSize: 14,
+  fontSize: 13,
 };
 
 export const th: CSSProperties = {
   textAlign: 'left',
-  padding: '0.625rem 0.875rem',
+  padding: '10px 14px',
   borderBottom: `1px solid ${colors.border}`,
   fontWeight: 600,
   color: colors.muted,
   fontSize: 11,
   textTransform: 'uppercase',
   background: colors.bgAlt,
-  letterSpacing: 0.5,
+  letterSpacing: 0.6,
 };
 
 export const td: CSSProperties = {
-  padding: '0.75rem 0.875rem',
+  padding: '12px 14px',
   borderBottom: `1px solid ${colors.border}`,
   verticalAlign: 'middle',
+  color: colors.text,
 };
 
 /**
  * Badge — chip arredondado com cor base.
- * Background fica 12% da cor (mais sutil que antes), texto sem uppercase pra leitura melhor.
+ * BG 12% opacidade da cor + cor sólida no texto. Funciona bem em dark.
  */
 export const badge = (color = colors.muted): CSSProperties => ({
   display: 'inline-flex',
@@ -215,8 +282,15 @@ export const badge = (color = colors.muted): CSSProperties => ({
   borderRadius: radius.full,
   fontSize: 11,
   fontWeight: 600,
-  background: color + '1F', // 12% opacidade
+  background: color + '24', // ~14% opacidade
   color,
   letterSpacing: 0.2,
   lineHeight: 1.6,
+  border: `1px solid ${color}1F`,
 });
+
+/** Tabular numbers — pra colunas de dinheiro/quantidade. */
+export const tabular: CSSProperties = {
+  fontFamily: fontStackMono,
+  fontVariantNumeric: 'tabular-nums',
+};
