@@ -58,8 +58,8 @@ ENV NODE_ENV=production
 # Railway injects PORT dynamically — do not hardcode
 # HEALTHCHECK removed - Railway has its own healthcheck via /api/v1/health
 
-# Roda smart migrate deploy (Node, sem bash) ANTES de subir o app.
-# Lida com 3 cenários: DB vazio, DB via db push (sem _prisma_migrations) e
-# DB via migrations. Idempotente. Se falhar, container exit code != 0 e
-# Railway aplica restart policy.
-CMD ["sh", "-c", "node scripts/deploy-migrations.js && node dist/main.js"]
+# Start wrapper: roda smart migrate + escolhe api/worker baseado em SERVICE_TYPE.
+# Railway: API service → SERVICE_TYPE=api, Worker service → SERVICE_TYPE=worker.
+# Idempotente. Se migration falhar, container exit code != 0 e Railway aplica
+# restart policy.
+CMD ["node", "scripts/start.js"]

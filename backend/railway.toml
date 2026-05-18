@@ -14,11 +14,15 @@ dockerfilePath = "Dockerfile"
 # Railway injeta PORT — main.ts já usa env.get('PORT')
 #
 # IMPORTANTE: startCommand AQUI sobrescreve o CMD do Dockerfile.
-# Mantemos a lógica do CMD do Dockerfile (deploy-migrations.js + start)
-# replicada aqui pra garantir que rode quando Railway lê o railway.toml.
+# `scripts/start.js` é compartilhado entre api E worker — escolhe entry baseado
+# em SERVICE_TYPE env var:
+#   - SERVICE_TYPE=api (default) → node dist/main.js (HTTP server)
+#   - SERVICE_TYPE=worker → node dist/worker.js (background only, sem HTTP)
 #
-# Sem isso, migrations novas nunca eram aplicadas em prod (P2021 em Notificacao etc).
-startCommand = "node scripts/deploy-migrations.js && node dist/main.js"
+# Configurar no Railway dashboard:
+#   - API service: SERVICE_TYPE=api (ou não setar, default é api)
+#   - Worker service: SERVICE_TYPE=worker
+startCommand = "node scripts/start.js"
 healthcheckPath = "/api/v1/health"
 # Timeout ampliado: migrations + boot Nest podem levar 60-90s na primeira vez.
 healthcheckTimeout = 120

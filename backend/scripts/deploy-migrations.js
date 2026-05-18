@@ -131,6 +131,11 @@ async function main() {
   process.exit(0);
 }
 
+// Permite usar este script como entry: roda migrate + spawn do app correto
+// baseado em SERVICE_TYPE env var. Quando chamado via `node scripts/deploy-migrations.js`
+// sem args, comporta-se como antes (só migrate). Quando chamado como
+// `node scripts/start.js` (alias), encadeia o app start.
+
 main().catch((err) => {
   log(`Erro fatal: ${err.message}`);
   process.exit(1);
