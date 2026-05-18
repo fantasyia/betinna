@@ -269,6 +269,8 @@ model Empresa {
   mullerBotPersona     MullerBotPersona?
   formularios          Formulario[]
   pesquisasNPS         PesquisaNPS[]
+  metas                Meta[]
+  segmentos            Segmento[]
   saldosFidelidade     SaldoFidelidade[]
   movimentosFidelidade MovimentoFidelidade[]
   agendaItens    AgendaItem[]
@@ -1387,6 +1389,58 @@ enum RecompensaTipo {
   DESCONTO_PERCENTUAL   // valor em % (0–100)
   DESCONTO_VALOR        // valor em R$
   BRINDE                // valor opcional (descrição texto)
+}
+
+/// Segmento — grupos de clientes definidos por regras visuais (filtros encadeáveis).
+/// Avaliado on-demand quando o user lista o segmento (não materializado).
+model Segmento {
+  id          String   @id @default(cuid())
+  empresaId   String
+  nome        String
+  descricao   String?  @db.Text
+  /// Estrutura JSON com condições + lógica (AND/OR).
+  /// Ex: { logic: 'AND', conditions: [{ campo: 'status', op: 'eq', valor: 'ATIVO' }, ...] }
+  regrasJson  Json
+  cor         String?  @default("#facc15")
+  ativo       Boolean  @default(true)
+  criadoEm    DateTime @default(now())
+  atualizadoEm DateTime @updatedAt
+
+  empresa Empresa @relation(fields: [empresaId], references: [id], onDelete: Cascade)
+
+  @@unique([empresaId, nome])
+  @@index([empresaId, ativo])
+}
+
+/// Metas — definição + acompanhamento por rep/gerente/equipe.
+/// Calcula atingimento agregando pedidos no período.
+model Meta {
+  id          String   @id @default(cuid())
+  empresaId   String
+  titulo      String
+  descricao   String?  @db.Text
+  /// Tipo: FATURAMENTO (somatório de pedido.total) ou PEDIDOS (contagem)
+  tipo        String   @default("FATURAMENTO")
+  /// Valor alvo (R$ pra FATURAMENTO, contagem pra PEDIDOS)
+  valorAlvo   Decimal  @db.Decimal(14, 2)
+  /// A quem se aplica: REP (representanteId), EMPRESA (toda), GERENTE (gerenteId)
+  alvoTipo    String   @default("REP")
+  /// ID do REP ou GERENTE (null se alvoTipo=EMPRESA)
+  alvoId      String?
+  /// Período: MES, TRIMESTRE, ANO
+  periodicidade String @default("MES")
+  /// Início do período (1º dia do mês/trimestre/ano)
+  inicio      DateTime
+  /// Fim do período (último dia)
+  fim         DateTime
+  ativo       Boolean  @default(true)
+  criadoEm    DateTime @default(now())
+  atualizadoEm DateTime @updatedAt
+
+  empresa Empresa @relation(fields: [empresaId], references: [id], onDelete: Cascade)
+
+  @@index([empresaId, ativo])
+  @@index([empresaId, alvoTipo, alvoId])
 }
 
 /// NPS — pesquisas de Net Promoter Score.

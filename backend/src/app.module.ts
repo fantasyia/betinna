@@ -27,6 +27,8 @@ import { RelatoriosModule } from '@modules/relatorios/relatorios.module';
 import { FidelidadeModule } from '@modules/fidelidade/fidelidade.module';
 import { FormulariosModule } from '@modules/formularios/formularios.module';
 import { NpsModule } from '@modules/nps/nps.module';
+import { MetasModule } from '@modules/metas/metas.module';
+import { SegmentosModule } from '@modules/segmentos/segmentos.module';
 import { NotificacoesModule } from '@modules/notificacoes/notificacoes.module';
 import { ImportModule } from '@modules/import/import.module';
 import { FluxosModule } from '@modules/fluxos/fluxos.module';
@@ -182,6 +184,8 @@ import { SharedUtilsModule } from '@shared/utils/shared-utils.module';
     FidelidadeModule,
     FormulariosModule,
     NpsModule,
+    MetasModule,
+    SegmentosModule,
     NotificacoesModule,
     ImportModule,
     CampanhasModule,

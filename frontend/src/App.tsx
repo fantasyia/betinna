@@ -28,6 +28,8 @@ const FormulariosPage = lazy(() => import('@/pages/FormulariosPage'));
 const FormularioPublicoPage = lazy(() => import('@/pages/FormularioPublicoPage'));
 const NpsPage = lazy(() => import('@/pages/NpsPage'));
 const NpsPublicoPage = lazy(() => import('@/pages/NpsPublicoPage'));
+const MetasPage = lazy(() => import('@/pages/MetasPage'));
+const SegmentosPage = lazy(() => import('@/pages/SegmentosPage'));
 const MarketplaceIncidentsPage = lazy(() => import('@/pages/MarketplaceIncidentsPage'));
 const ConfiguracoesPage = lazy(() => import('@/pages/ConfiguracoesPage'));
 const ProfilePage = lazy(() => import('@/pages/ProfilePage'));
@@ -410,6 +412,30 @@ const router = createBrowserRouter([
         <ProtectedRoute allowedRoles={['ADMIN', 'DIRECTOR', 'GERENTE']}>
           <PageSuspense>
             <NpsPage />
+          </PageSuspense>
+        </ProtectedRoute>
+      </ErrorBoundary>
+    ),
+  },
+  {
+    path: '/metas',
+    element: (
+      <ErrorBoundary>
+        <ProtectedRoute>
+          <PageSuspense>
+            <MetasPage />
+          </PageSuspense>
+        </ProtectedRoute>
+      </ErrorBoundary>
+    ),
+  },
+  {
+    path: '/segmentos',
+    element: (
+      <ErrorBoundary>
+        <ProtectedRoute allowedRoles={['ADMIN', 'DIRECTOR', 'GERENTE']}>
+          <PageSuspense>
+            <SegmentosPage />
           </PageSuspense>
         </ProtectedRoute>
       </ErrorBoundary>

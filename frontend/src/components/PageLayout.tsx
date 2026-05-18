@@ -35,6 +35,8 @@ import {
   Search,
   FormInput,
   Star,
+  Target as TargetIcon,
+  PieChart as PieChartIcon,
   type LucideIcon,
 } from 'lucide-react';
 import { useRole, usePermission } from '@/hooks/usePermission';
@@ -137,6 +139,8 @@ const SECTIONS: NavSection[] = [
       { to: '/tags', label: 'Tags', icon: Tags },
       { to: '/fidelidade', label: 'Fidelidade', icon: Trophy, permission: 'fidelidade.view' },
       { to: '/nps', label: 'NPS', icon: Star, allowedRoles: ['ADMIN', 'DIRECTOR', 'GERENTE'], badge: 'new' },
+      { to: '/metas', label: 'Metas', icon: TargetIcon, badge: 'new' },
+      { to: '/segmentos', label: 'Segmentação', icon: PieChartIcon, allowedRoles: ['ADMIN', 'DIRECTOR', 'GERENTE'], badge: 'new' },
     ],
   },
   {
