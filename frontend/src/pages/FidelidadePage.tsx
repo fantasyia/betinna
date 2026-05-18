@@ -1005,12 +1005,25 @@ function AjusteModal({
   const [err, setErr] = useState<string | null>(null);
 
   async function aplicar() {
+    if (!clienteId) {
+      setErr('Selecione um cliente.');
+      return;
+    }
+    const pontosNum = Number(pontos);
+    if (!pontos || Number.isNaN(pontosNum) || pontosNum === 0) {
+      setErr('Informe um valor de pontos diferente de zero.');
+      return;
+    }
+    if (motivo.trim().length < 3) {
+      setErr('Motivo precisa ter no mínimo 3 caracteres.');
+      return;
+    }
     setBusy(true);
     setErr(null);
     try {
       await api.post('/fidelidade/ajustar', {
         clienteId,
-        pontos: Number(pontos),
+        pontos: pontosNum,
         motivo,
       });
       onDone();
@@ -1020,8 +1033,6 @@ function AjusteModal({
       setBusy(false);
     }
   }
-
-  const valid = !!clienteId && !!pontos && Number(pontos) !== 0 && motivo.trim().length >= 3;
 
   return (
     <Modal
@@ -1036,8 +1047,8 @@ function AjusteModal({
           <button
             type="button"
             onClick={aplicar}
-            disabled={!valid || busy}
-            style={{ ...btn, opacity: !valid || busy ? 0.6 : 1 }}
+            disabled={busy}
+            style={{ ...btn, opacity: busy ? 0.6 : 1 }}
           >
             {busy ? 'Aplicando…' : 'Aplicar'}
           </button>

@@ -495,11 +495,13 @@ function CredentialsConnectModal({
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const valid = fields.every((f) => form[f.name].trim().length > 0);
-
   async function submit(e: React.FormEvent) {
     e.preventDefault();
-    if (!valid) return;
+    const faltando = fields.find((f) => form[f.name].trim().length === 0);
+    if (faltando) {
+      setError(`Preencha o campo "${faltando.label ?? faltando.name}".`);
+      return;
+    }
     setBusy(true);
     setError(null);
     try {
@@ -529,8 +531,8 @@ function CredentialsConnectModal({
             type="submit"
             form="user-creds-form"
             data-testid={`user-creds-save-${servico}`}
-            disabled={busy || !valid}
-            style={{ ...btn, opacity: busy || !valid ? 0.6 : 1 }}
+            disabled={busy}
+            style={{ ...btn, opacity: busy ? 0.6 : 1 }}
           >
             {busy ? 'Salvando…' : 'Salvar'}
           </button>

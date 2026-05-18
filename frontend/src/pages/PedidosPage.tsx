@@ -394,8 +394,31 @@ export default function PedidosPage() {
               title="Nenhum pedido encontrado"
               description={
                 filtersActive
-                  ? 'Tente ajustar os filtros.'
-                  : 'Crie o primeiro pedido a partir de Clientes → Novo pedido.'
+                  ? 'Tente ajustar os filtros pra encontrar o que procura.'
+                  : 'Comece criando o primeiro pedido — você pode selecionar o cliente no dialog.'
+              }
+              action={
+                filtersActive ? (
+                  <Button
+                    variant="secondary"
+                    onClick={() => {
+                      setSearch('');
+                      setStatus('');
+                      setPeriodo('todos');
+                      setPage(1);
+                    }}
+                    leftIcon={<XIcon className="h-3.5 w-3.5" />}
+                  >
+                    Limpar filtros
+                  </Button>
+                ) : (
+                  <Button
+                    onClick={() => setCreating(true)}
+                    leftIcon={<Plus className="h-3.5 w-3.5" />}
+                  >
+                    Criar primeiro pedido
+                  </Button>
+                )
               }
               className="m-6 border-0"
             />

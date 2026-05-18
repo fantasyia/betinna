@@ -1000,6 +1000,10 @@ function BulkAssignModal({
   const [error, setError] = useState<string | null>(null);
 
   async function submit() {
+    if (!removeRep && !rep) {
+      setError('Selecione um representante (ou marque "Remover rep atual").');
+      return;
+    }
     setBusy(true);
     setError(null);
     try {
@@ -1014,8 +1018,6 @@ function BulkAssignModal({
       setBusy(false);
     }
   }
-
-  const valid = removeRep || rep !== null;
 
   return (
     <Dialog
@@ -1032,7 +1034,6 @@ function BulkAssignModal({
           <Button
             data-testid="bulk-confirm"
             onClick={submit}
-            disabled={!valid}
             loading={busy}
           >
             {removeRep ? 'Remover rep' : 'Atribuir'}
