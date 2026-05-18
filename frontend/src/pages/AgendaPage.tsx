@@ -345,11 +345,20 @@ function AgendaFormModal({
   const [error, setError] = useState<string | null>(null);
   const [confirmDel, setConfirmDel] = useState(false);
 
-  const valid = titulo.trim().length >= 1 && data.length > 0 && duracao > 0;
-
   async function submit(e: React.FormEvent) {
     e.preventDefault();
-    if (!valid) return;
+    if (titulo.trim().length === 0) {
+      setError('Informe um título pra o compromisso.');
+      return;
+    }
+    if (!data) {
+      setError('Informe data e hora.');
+      return;
+    }
+    if (duracao <= 0) {
+      setError('Duração precisa ser maior que zero.');
+      return;
+    }
     setBusy(true);
     setError(null);
     const payload: Record<string, unknown> = {
@@ -430,8 +439,8 @@ function AgendaFormModal({
               type="submit"
               form="agenda-form"
               data-testid="agenda-save-btn"
-              disabled={busy || !valid}
-              style={{ ...btn, opacity: busy || !valid ? 0.6 : 1 }}
+              disabled={busy}
+              style={{ ...btn, opacity: busy ? 0.6 : 1 }}
             >
               {busy ? 'Salvando…' : 'Salvar'}
             </button>

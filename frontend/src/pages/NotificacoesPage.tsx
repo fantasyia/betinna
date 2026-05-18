@@ -34,6 +34,7 @@ const TIPO_LABEL: Record<string, string> = {
   AMOSTRA_FOLLOWUP: 'Amostra follow-up',
   LEAD_INATIVO: 'Lead inativo',
   CLIENTE_BLOQUEADO: 'Cliente bloqueado',
+  ESTOQUE_ZERADO: 'Estoque zerado',
   GENERICO: 'Notificação',
 };
 

@@ -379,12 +379,25 @@ function ProdutoFormModal({
 
   const precoTabela = Number(form.precoTabela);
   const precoFabrica = Number(form.precoFabrica);
-  const valid =
-    form.nome.trim().length >= 2 && precoTabela > 0 && precoFabrica > 0;
 
   async function submit(e: React.FormEvent) {
     e.preventDefault();
-    if (!valid) return;
+    if (form.nome.trim().length < 2) {
+      setError('Nome do produto precisa ter no mínimo 2 caracteres.');
+      return;
+    }
+    if (!(precoTabela > 0)) {
+      setError('Preço de tabela precisa ser maior que zero.');
+      return;
+    }
+    if (!(precoFabrica > 0)) {
+      setError('Preço de fábrica precisa ser maior que zero.');
+      return;
+    }
+    if (precoFabrica > precoTabela) {
+      setError('Preço de fábrica não pode ser maior que preço de tabela.');
+      return;
+    }
     setBusy(true);
     setError(null);
     const payload: Record<string, unknown> = {
@@ -469,8 +482,8 @@ function ProdutoFormModal({
               type="submit"
               form="prod-form"
               data-testid="prod-save-btn"
-              disabled={busy || !valid}
-              style={{ ...btn, opacity: busy || !valid ? 0.6 : 1 }}
+              disabled={busy}
+              style={{ ...btn, opacity: busy ? 0.6 : 1 }}
             >
               {busy ? 'Salvando…' : 'Salvar'}
             </button>

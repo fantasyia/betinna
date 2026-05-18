@@ -19,6 +19,7 @@ export type NotificacaoTipo =
   | 'AMOSTRA_FOLLOWUP'
   | 'LEAD_INATIVO'
   | 'CLIENTE_BLOQUEADO'
+  | 'ESTOQUE_ZERADO'
   | 'GENERICO';
 
 export type NotificacaoPrioridade = 'BAIXA' | 'NORMAL' | 'ALTA' | 'URGENTE';
