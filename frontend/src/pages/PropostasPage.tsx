@@ -1,14 +1,49 @@
-import { useMemo, useState } from 'react';
+import { useMemo, useState, type ReactNode } from 'react';
+import {
+  Search,
+  Plus,
+  ExternalLink,
+  ArrowRight,
+  AlertCircle,
+  FileText,
+  Calendar,
+  TrendingUp,
+  Percent,
+  CreditCard,
+  ShoppingCart,
+  Trash2,
+  CheckCircle2,
+  X as XIcon,
+  Package,
+} from 'lucide-react';
 import { api, ApiError } from '@/lib/api';
 import { useApiQuery, type PaginatedResponse } from '@/hooks/useApiQuery';
 import { PageLayout } from '@/components/PageLayout';
-import { Table, Pagination, type Column } from '@/components/Table';
 import { StateView } from '@/components/StateView';
-import { FilterBar, SearchInput } from '@/components/FilterBar';
-import { Modal } from '@/components/Modal';
-import { FormField, Input, Select, Textarea } from '@/components/FormField';
 import { AsyncCombobox } from '@/components/AsyncCombobox';
-import { badge, btn, btnDanger, btnSecondary, card, colors } from '@/components/styles';
+import {
+  Avatar,
+  Badge,
+  Button,
+  Card,
+  Dialog,
+  Drawer,
+  EmptyState,
+  Field,
+  IconButton,
+  Input,
+  Select,
+  Textarea,
+} from '@/components/ui';
+import { cn } from '@/lib/cn';
+
+/**
+ * PropostasPage v2 — design system dark, drawer detail + transitions visuais.
+ *
+ * - List page com cards de proposta + probabilidade barra
+ * - Drawer com lifecycle (transitions disponíveis em pílulas clicáveis)
+ * - Form Dialog grande com itens dinâmicos + preview de total
+ */
 
 type PropostaStatus =
   | 'RASCUNHO'
@@ -68,21 +103,24 @@ interface ProdutoOpt {
   precoTabela?: number;
 }
 
-const STATUS_COLOR: Record<PropostaStatus, string> = {
-  RASCUNHO: colors.muted,
-  ENVIADA: '#0891b2',
-  NEGOCIACAO: colors.warning,
-  AGUARDANDO_ASSINATURA: '#7c3aed',
-  ACEITA: colors.success,
-  RECUSADA: colors.danger,
-  EXPIRADA: colors.muted,
+const STATUS_VARIANT: Record<
+  PropostaStatus,
+  'neutral' | 'info' | 'warning' | 'primary' | 'success' | 'danger'
+> = {
+  RASCUNHO: 'neutral',
+  ENVIADA: 'info',
+  NEGOCIACAO: 'warning',
+  AGUARDANDO_ASSINATURA: 'primary',
+  ACEITA: 'success',
+  RECUSADA: 'danger',
+  EXPIRADA: 'neutral',
 };
 
 const STATUS_LABEL: Record<PropostaStatus, string> = {
   RASCUNHO: 'Rascunho',
   ENVIADA: 'Enviada',
   NEGOCIACAO: 'Em negociação',
-  AGUARDANDO_ASSINATURA: 'Aguardando assinatura',
+  AGUARDANDO_ASSINATURA: 'Aguard. assinatura',
   ACEITA: 'Aceita',
   RECUSADA: 'Recusada',
   EXPIRADA: 'Expirada',
@@ -108,8 +146,21 @@ const CONDICOES: { value: CondicaoPgto; label: string }[] = [
 
 const FORMAS: PagamentoForma[] = ['BOLETO', 'PIX', 'TED', 'CARTAO', 'DINHEIRO'];
 
+const TRANSITIONS: Partial<Record<PropostaStatus, PropostaStatus[]>> = {
+  RASCUNHO: ['ENVIADA', 'EXPIRADA'],
+  ENVIADA: ['NEGOCIACAO', 'AGUARDANDO_ASSINATURA', 'ACEITA', 'RECUSADA', 'EXPIRADA'],
+  NEGOCIACAO: ['AGUARDANDO_ASSINATURA', 'ACEITA', 'RECUSADA', 'EXPIRADA'],
+  AGUARDANDO_ASSINATURA: ['ACEITA', 'RECUSADA', 'EXPIRADA'],
+};
+
 function fmtBRL(v: number) {
   return new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(v);
+}
+
+function fmtBRLCompact(v: number) {
+  if (v >= 1_000_000) return `R$ ${(v / 1_000_000).toFixed(1)}M`;
+  if (v >= 1_000) return `R$ ${(v / 1_000).toFixed(1)}k`;
+  return fmtBRL(v);
 }
 
 function fmtDate(d: string | null | undefined) {
@@ -120,6 +171,8 @@ function fmtDate(d: string | null | undefined) {
     return d;
   }
 }
+
+// ─── Page principal ──────────────────────────────────────────
 
 export default function PropostasPage() {
   const [page, setPage] = useState(1);
@@ -136,82 +189,37 @@ export default function PropostasPage() {
   }, [page, search, status]);
 
   const { data: pageResp, loading, error, refetch } = useApiQuery<PaginatedResponse<Proposta>>(listPath);
-
-  const columns: Column<Proposta>[] = [
-    {
-      key: 'numero',
-      header: 'Proposta',
-      render: (p) => <strong>#{p.numero}</strong>,
-    },
-    {
-      key: 'cliente',
-      header: 'Cliente',
-      render: (p) => p.cliente?.nome ?? <em style={{ color: colors.muted }}>—</em>,
-    },
-    {
-      key: 'rep',
-      header: 'Rep',
-      render: (p) => p.representante?.nome ?? <em style={{ color: colors.muted }}>—</em>,
-    },
-    {
-      key: 'valor',
-      header: 'Valor',
-      render: (p) => <strong>{fmtBRL(p.valor)}</strong>,
-    },
-    {
-      key: 'prob',
-      header: 'Prob.',
-      render: (p) => `${p.probabilidade}%`,
-    },
-    {
-      key: 'status',
-      header: 'Status',
-      render: (p) => <span style={badge(STATUS_COLOR[p.status])}>{STATUS_LABEL[p.status]}</span>,
-    },
-    {
-      key: 'validade',
-      header: 'Validade',
-      render: (p) => fmtDate(p.validoAte),
-    },
-    {
-      key: 'actions',
-      header: '',
-      render: (p) => (
-        <button
-          type="button"
-          data-testid={`proposta-open-${p.id}`}
-          onClick={() => setSelected(p.id)}
-          style={{ ...btnSecondary, padding: '0.25rem 0.625rem', fontSize: 12 }}
-        >
-          Abrir
-        </button>
-      ),
-    },
-  ];
+  const filtersActive = !!status || !!search.trim();
 
   return (
     <PageLayout
       title="Propostas"
+      description={
+        pageResp?.pagination
+          ? `${pageResp.pagination.total.toLocaleString('pt-BR')} propostas no total`
+          : undefined
+      }
       actions={
-        <button
-          type="button"
+        <Button
           data-testid="proposta-new-btn"
           onClick={() => setCreating(true)}
-          style={btn}
+          leftIcon={<Plus className="h-3.5 w-3.5" />}
         >
-          + Nova proposta
-        </button>
+          Nova proposta
+        </Button>
       }
     >
-      <div style={card}>
-        <FilterBar>
-          <SearchInput
+      <Card padding="none" className="overflow-hidden">
+        <div className="flex flex-wrap items-center gap-2 px-4 py-3 border-b border-border">
+          <Input
+            leftIcon={<Search />}
+            placeholder="Cliente, número…"
             value={search}
-            onChange={(v) => {
-              setSearch(v);
+            onChange={(e) => {
+              setSearch(e.target.value);
               setPage(1);
             }}
-            placeholder="Cliente, número…"
+            className="max-w-md flex-1"
           />
           <Select
             data-testid="filter-status"
@@ -228,26 +236,141 @@ export default function PropostasPage() {
               </option>
             ))}
           </Select>
-        </FilterBar>
+          {filtersActive && (
+            <Button
+              variant="ghost"
+              size="sm"
+              leftIcon={<XIcon className="h-3 w-3" />}
+              onClick={() => {
+                setSearch('');
+                setStatus('');
+                setPage(1);
+              }}
+            >
+              Limpar
+            </Button>
+          )}
+        </div>
 
-        <StateView
-          loading={loading}
-          error={error}
-          empty={!loading && !error && (pageResp?.data.length ?? 0) === 0}
-          emptyMessage="Nenhuma proposta encontrada."
-          onRetry={refetch}
-        >
-          {pageResp && (
+        <StateView loading={loading} error={error} onRetry={refetch}>
+          {pageResp && pageResp.data.length === 0 && (
+            <EmptyState
+              icon={<FileText />}
+              title="Nenhuma proposta encontrada"
+              description={
+                filtersActive
+                  ? 'Ajuste os filtros pra ver mais resultados.'
+                  : 'Crie a primeira proposta pra começar.'
+              }
+              action={
+                !filtersActive ? (
+                  <Button onClick={() => setCreating(true)} leftIcon={<Plus className="h-3.5 w-3.5" />}>
+                    Nova proposta
+                  </Button>
+                ) : undefined
+              }
+              className="m-6 border-0"
+            />
+          )}
+          {pageResp && pageResp.data.length > 0 && (
             <>
-              <Table data={pageResp.data} columns={columns} rowKey={(p) => p.id} />
-              <Pagination pagination={pageResp.pagination} onPageChange={setPage} />
+              <div className="overflow-x-auto">
+                <table className="w-full">
+                  <thead>
+                    <tr className="border-b border-border bg-bg-alt">
+                      <Th>Proposta</Th>
+                      <Th>Cliente</Th>
+                      <Th>Representante</Th>
+                      <Th align="right">Valor</Th>
+                      <Th>Probabilidade</Th>
+                      <Th>Status</Th>
+                      <Th>Validade</Th>
+                      <th className="w-10" />
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {pageResp.data.map((p) => (
+                      <tr
+                        key={p.id}
+                        className={cn(
+                          'border-b border-border last:border-b-0 cursor-pointer transition-colors',
+                          p.id === selected ? 'bg-surface-hover' : 'hover:bg-surface-hover/60',
+                        )}
+                        onClick={() => setSelected(p.id)}
+                        data-testid={`proposta-row-${p.id}`}
+                      >
+                        <Td>
+                          <div className="flex flex-col">
+                            <strong className="text-sm text-text tabular">#{p.numero}</strong>
+                            {p.pedidoId && (
+                              <Badge variant="success" size="sm" className="w-fit mt-0.5">
+                                Pedido gerado
+                              </Badge>
+                            )}
+                          </div>
+                        </Td>
+                        <Td>
+                          {p.cliente ? (
+                            <div className="flex items-center gap-2 min-w-0">
+                              <Avatar name={p.cliente.nome} size="sm" />
+                              <span className="text-sm text-text truncate">{p.cliente.nome}</span>
+                            </div>
+                          ) : (
+                            <span className="text-muted-light italic text-sm">—</span>
+                          )}
+                        </Td>
+                        <Td>
+                          {p.representante ? (
+                            <div className="flex items-center gap-1.5 min-w-0">
+                              <Avatar name={p.representante.nome} size="xs" />
+                              <span className="text-sm text-text-subtle truncate">
+                                {p.representante.nome}
+                              </span>
+                            </div>
+                          ) : (
+                            <span className="text-muted-light italic text-sm">—</span>
+                          )}
+                        </Td>
+                        <Td align="right">
+                          <span className="text-sm font-semibold text-text tabular">
+                            {fmtBRL(p.valor)}
+                          </span>
+                        </Td>
+                        <Td>
+                          <ProbabilityPill prob={p.probabilidade} />
+                        </Td>
+                        <Td>
+                          <Badge variant={STATUS_VARIANT[p.status]}>{STATUS_LABEL[p.status]}</Badge>
+                        </Td>
+                        <Td>
+                          <span className="text-sm text-text-subtle tabular">
+                            {fmtDate(p.validoAte)}
+                          </span>
+                        </Td>
+                        <Td>
+                          <ExternalLink className="h-3.5 w-3.5 text-muted" />
+                        </Td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+
+              {pageResp.pagination.totalPages > 1 && (
+                <PaginationBar
+                  current={pageResp.pagination.page}
+                  total={pageResp.pagination.totalPages}
+                  totalItems={pageResp.pagination.total}
+                  onChange={setPage}
+                />
+              )}
             </>
           )}
         </StateView>
-      </div>
+      </Card>
 
       {selected && (
-        <PropostaDetailModal
+        <PropostaDetailDrawer
           id={selected}
           onClose={() => setSelected(null)}
           onChanged={() => {
@@ -257,7 +380,7 @@ export default function PropostasPage() {
         />
       )}
       {creating && (
-        <PropostaFormModal
+        <PropostaFormDialog
           onClose={() => setCreating(false)}
           onSaved={() => {
             setCreating(false);
@@ -269,16 +392,90 @@ export default function PropostasPage() {
   );
 }
 
-// ─── Detalhe ──────────────────────────────────────────────────────────
+// ─── Helpers locais ────────────────────────────────────────────
 
-const TRANSITIONS: Partial<Record<PropostaStatus, PropostaStatus[]>> = {
-  RASCUNHO: ['ENVIADA', 'EXPIRADA'],
-  ENVIADA: ['NEGOCIACAO', 'AGUARDANDO_ASSINATURA', 'ACEITA', 'RECUSADA', 'EXPIRADA'],
-  NEGOCIACAO: ['AGUARDANDO_ASSINATURA', 'ACEITA', 'RECUSADA', 'EXPIRADA'],
-  AGUARDANDO_ASSINATURA: ['ACEITA', 'RECUSADA', 'EXPIRADA'],
-};
+function Th({ children, align }: { children: ReactNode; align?: 'left' | 'right' }) {
+  return (
+    <th
+      className={cn(
+        'px-4 py-2.5 text-[11px] font-semibold uppercase tracking-wider text-muted',
+        align === 'right' ? 'text-right' : 'text-left',
+      )}
+    >
+      {children}
+    </th>
+  );
+}
 
-function PropostaDetailModal({
+function Td({
+  children,
+  align,
+  onClick,
+}: {
+  children: ReactNode;
+  align?: 'left' | 'right';
+  onClick?: (e: React.MouseEvent) => void;
+}) {
+  return (
+    <td
+      onClick={onClick}
+      className={cn('px-4 py-2.5 align-middle', align === 'right' ? 'text-right' : 'text-left')}
+    >
+      {children}
+    </td>
+  );
+}
+
+function ProbabilityPill({ prob }: { prob: number }) {
+  const tone = prob >= 70 ? 'success' : prob >= 30 ? 'warning' : 'danger';
+  const color =
+    tone === 'success' ? 'bg-success' : tone === 'warning' ? 'bg-warning' : 'bg-danger';
+  return (
+    <div className="flex items-center gap-2 min-w-[100px]">
+      <div className="flex-1 h-1.5 rounded-full bg-surface-hover overflow-hidden">
+        <div className={cn('h-full rounded-full', color)} style={{ width: `${prob}%` }} />
+      </div>
+      <span className="text-xs tabular text-text-subtle min-w-[32px] text-right">{prob}%</span>
+    </div>
+  );
+}
+
+function PaginationBar({
+  current,
+  total,
+  totalItems,
+  onChange,
+}: {
+  current: number;
+  total: number;
+  totalItems: number;
+  onChange: (p: number) => void;
+}) {
+  return (
+    <div className="flex items-center justify-between px-4 py-3 border-t border-border bg-bg-alt">
+      <span className="text-xs text-muted tabular">
+        Página {current} de {total} · {totalItems.toLocaleString('pt-BR')} no total
+      </span>
+      <div className="flex items-center gap-1">
+        <Button variant="ghost" size="sm" disabled={current <= 1} onClick={() => onChange(current - 1)}>
+          Anterior
+        </Button>
+        <Button
+          variant="ghost"
+          size="sm"
+          disabled={current >= total}
+          onClick={() => onChange(current + 1)}
+        >
+          Próxima
+        </Button>
+      </div>
+    </div>
+  );
+}
+
+// ─── Detail drawer ─────────────────────────────────────────────
+
+function PropostaDetailDrawer({
   id,
   onClose,
   onChanged,
@@ -328,221 +525,291 @@ function PropostaDetailModal({
   const exigeMotivo = transition === 'RECUSADA';
 
   return (
-    <Modal
+    <Drawer
       open
       onClose={onClose}
-      width={680}
       title={data ? `Proposta #${data.numero}` : 'Proposta'}
+      description={data?.cliente?.nome}
+      width="lg"
       footer={
-        <>
-          <button type="button" onClick={onClose} style={btnSecondary}>
-            Fechar
-          </button>
-          {data?.status === 'ACEITA' && !data.pedidoId && (
-            <button
-              type="button"
-              data-testid="proposta-converter"
-              disabled={busy}
-              onClick={doConverter}
-              style={btn}
-            >
-              {busy ? 'Convertendo…' : 'Converter em pedido'}
-            </button>
-          )}
-        </>
+        data?.status === 'ACEITA' && !data.pedidoId ? (
+          <Button
+            data-testid="proposta-converter"
+            onClick={doConverter}
+            loading={busy}
+            leftIcon={<ShoppingCart className="h-3.5 w-3.5" />}
+          >
+            Converter em pedido
+          </Button>
+        ) : undefined
       }
     >
       <StateView loading={loading} error={error} onRetry={refetch}>
         {data && (
-          <div>
-            <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center', marginBottom: '1rem' }}>
-              <span style={badge(STATUS_COLOR[data.status])}>{STATUS_LABEL[data.status]}</span>
-              <span style={{ color: colors.muted, fontSize: 13 }}>
-                Criada em {fmtDate(data.criadoEm)}
-              </span>
-              {data.pedidoId && (
-                <span style={{ ...badge(colors.success), marginLeft: 'auto' }}>
-                  Pedido gerado
-                </span>
-              )}
-            </div>
+          <div className="flex flex-col gap-5">
+            {/* Header card */}
+            <Card variant="outline" padding="md" className="bg-bg-alt">
+              <div className="flex items-start justify-between gap-3">
+                <div>
+                  <div className="text-[11px] uppercase tracking-wider text-muted mb-1">Valor</div>
+                  <div className="text-3xl font-bold text-text tabular tracking-tight">
+                    {fmtBRL(data.valor)}
+                  </div>
+                  <div className="mt-2 flex items-center gap-2 flex-wrap">
+                    <Badge variant={STATUS_VARIANT[data.status]}>{STATUS_LABEL[data.status]}</Badge>
+                    {data.pedidoId && (
+                      <Badge variant="success" size="sm">
+                        Pedido gerado
+                      </Badge>
+                    )}
+                  </div>
+                </div>
+                <div className="text-right shrink-0">
+                  <div className="text-[11px] uppercase tracking-wider text-muted mb-1">
+                    Probabilidade
+                  </div>
+                  <div className="text-2xl font-bold tabular text-text">{data.probabilidade}%</div>
+                </div>
+              </div>
+            </Card>
 
-            <dl
-              style={{
-                display: 'grid',
-                gridTemplateColumns: '1fr 1fr',
-                gap: '0.75rem',
-                fontSize: 14,
-              }}
-            >
-              <Info label="Cliente">{data.cliente?.nome ?? '—'}</Info>
-              <Info label="Representante">{data.representante?.nome ?? '—'}</Info>
-              <Info label="Subtotal">
-                {data.subtotal !== undefined ? fmtBRL(data.subtotal) : '—'}
-              </Info>
-              <Info label="Desconto total">
-                {data.descontoTotal !== undefined ? fmtBRL(data.descontoTotal) : '—'}
-              </Info>
-              <Info label="Valor">
-                <strong>{fmtBRL(data.valor)}</strong>
-              </Info>
-              <Info label="Probabilidade">{data.probabilidade}%</Info>
-              <Info label="Validade">{fmtDate(data.validoAte)}</Info>
-              <Info label="Pagamento">
-                {data.formaPagamento} · {data.condicaoPagamento}
-              </Info>
-            </dl>
-
-            {data.itens && data.itens.length > 0 && (
-              <div style={{ marginTop: '1.25rem' }}>
-                <h3 style={{ fontSize: 14, marginBottom: '0.5rem' }}>Itens</h3>
-                <Table
-                  data={data.itens}
-                  rowKey={(i) => i.id}
-                  columns={[
-                    {
-                      key: 'produto',
-                      header: 'Produto',
-                      render: (i) => i.produto?.nome ?? '—',
-                    },
-                    { key: 'qt', header: 'Qt', render: (i) => i.quantidade },
-                    {
-                      key: 'unit',
-                      header: 'Unit',
-                      render: (i) => fmtBRL(i.precoUnitario),
-                    },
-                    {
-                      key: 'desc',
-                      header: 'Desc%',
-                      render: (i) => `${i.desconto}%`,
-                    },
-                    {
-                      key: 'tot',
-                      header: 'Total',
-                      render: (i) => <strong>{fmtBRL(i.total)}</strong>,
-                    },
-                  ]}
+            {/* Info */}
+            <section>
+              <h4 className="text-[10px] font-semibold uppercase tracking-wider text-muted mb-2">
+                Resumo
+              </h4>
+              <div className="grid grid-cols-2 gap-2">
+                <InfoCell
+                  icon={<Calendar />}
+                  label="Criada em"
+                  value={fmtDate(data.criadoEm)}
+                />
+                <InfoCell icon={<Calendar />} label="Validade" value={fmtDate(data.validoAte)} />
+                <InfoCell
+                  icon={<CreditCard />}
+                  label="Pagamento"
+                  value={
+                    data.formaPagamento || data.condicaoPagamento
+                      ? `${data.formaPagamento ?? '—'} · ${data.condicaoPagamento ?? '—'}`
+                      : null
+                  }
+                />
+                <InfoCell
+                  icon={<Percent />}
+                  label="Desconto geral"
+                  value={
+                    data.descontoGeral !== undefined && data.descontoGeral > 0
+                      ? `${data.descontoGeral}%`
+                      : null
+                  }
+                />
+                <InfoCell
+                  icon={<TrendingUp />}
+                  label="Subtotal"
+                  value={data.subtotal !== undefined ? fmtBRL(data.subtotal) : null}
+                  mono
+                />
+                <InfoCell
+                  icon={<TrendingUp />}
+                  label="Desconto total"
+                  value={data.descontoTotal !== undefined ? fmtBRL(data.descontoTotal) : null}
+                  mono
                 />
               </div>
+            </section>
+
+            {/* Itens */}
+            {data.itens && data.itens.length > 0 && (
+              <section>
+                <h4 className="text-[10px] font-semibold uppercase tracking-wider text-muted mb-2">
+                  Itens ({data.itens.length})
+                </h4>
+                <div className="rounded-md border border-border overflow-hidden">
+                  <table className="w-full">
+                    <thead>
+                      <tr className="border-b border-border bg-bg-alt">
+                        <th className="text-left text-[10px] font-semibold uppercase tracking-wider text-muted px-3 py-2">
+                          Produto
+                        </th>
+                        <th className="text-right text-[10px] font-semibold uppercase tracking-wider text-muted px-3 py-2">
+                          Qt
+                        </th>
+                        <th className="text-right text-[10px] font-semibold uppercase tracking-wider text-muted px-3 py-2">
+                          Unit
+                        </th>
+                        <th className="text-right text-[10px] font-semibold uppercase tracking-wider text-muted px-3 py-2">
+                          Desc
+                        </th>
+                        <th className="text-right text-[10px] font-semibold uppercase tracking-wider text-muted px-3 py-2">
+                          Total
+                        </th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {data.itens.map((it) => (
+                        <tr key={it.id} className="border-b border-border last:border-b-0">
+                          <td className="px-3 py-2">
+                            <div className="text-sm text-text">{it.produto?.nome ?? '—'}</div>
+                            {it.produto?.sku && (
+                              <div className="text-[10px] text-muted tabular">
+                                SKU {it.produto.sku}
+                              </div>
+                            )}
+                          </td>
+                          <td className="px-3 py-2 text-right text-sm text-text tabular">
+                            {it.quantidade}
+                          </td>
+                          <td className="px-3 py-2 text-right text-sm text-text-subtle tabular">
+                            {fmtBRLCompact(it.precoUnitario)}
+                          </td>
+                          <td className="px-3 py-2 text-right text-sm text-text-subtle tabular">
+                            {it.desconto > 0 ? `${it.desconto}%` : '—'}
+                          </td>
+                          <td className="px-3 py-2 text-right text-sm font-semibold text-text tabular">
+                            {fmtBRL(it.total)}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </section>
             )}
 
             {data.observacoes && (
-              <div style={{ marginTop: '1rem' }}>
-                <h3 style={{ fontSize: 13, margin: 0, color: colors.muted, textTransform: 'uppercase', letterSpacing: 0.3 }}>
+              <section>
+                <h4 className="text-[10px] font-semibold uppercase tracking-wider text-muted mb-2">
                   Observações
-                </h3>
-                <p style={{ marginTop: 4, whiteSpace: 'pre-wrap' }}>{data.observacoes}</p>
-              </div>
+                </h4>
+                <p className="text-sm text-text-subtle leading-relaxed whitespace-pre-wrap m-0">
+                  {data.observacoes}
+                </p>
+              </section>
             )}
 
+            {/* Transitions */}
             {allowed.length > 0 && (
-              <div
-                style={{
-                  marginTop: '1.25rem',
-                  paddingTop: '1rem',
-                  borderTop: `1px solid ${colors.border}`,
-                }}
-              >
-                <h3 style={{ marginTop: 0, fontSize: 14 }}>Mudar status</h3>
-                <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap' }}>
+              <section className="pt-4 border-t border-border">
+                <h4 className="text-[10px] font-semibold uppercase tracking-wider text-muted mb-3">
+                  Mudar status
+                </h4>
+                <div className="flex flex-wrap gap-1.5 mb-3">
                   {allowed.map((s) => (
                     <button
                       key={s}
                       type="button"
                       data-testid={`proposta-status-${s}`}
                       onClick={() => setTransition(s)}
-                      style={{
-                        ...btnSecondary,
-                        padding: '0.25rem 0.625rem',
-                        fontSize: 12,
-                        borderColor: transition === s ? STATUS_COLOR[s] : undefined,
-                      }}
+                      className={cn(
+                        'flex items-center gap-1.5 h-7 px-3 rounded-md text-xs font-medium',
+                        'border transition-colors duration-100',
+                        transition === s
+                          ? 'bg-primary/15 border-primary/40 text-primary'
+                          : 'bg-surface border-border text-text-subtle hover:bg-surface-hover hover:border-border-strong hover:text-text',
+                      )}
                     >
-                      → {STATUS_LABEL[s]}
+                      <ArrowRight className="h-3 w-3" />
+                      {STATUS_LABEL[s]}
                     </button>
                   ))}
                 </div>
                 {transition && (
-                  <div style={{ marginTop: '0.75rem' }}>
+                  <div className="flex flex-col gap-3 rounded-md border border-primary/30 bg-primary/5 p-3">
+                    <p className="text-sm text-text">
+                      Mudar pra <strong>{STATUS_LABEL[transition]}</strong>?
+                    </p>
                     {exigeMotivo && (
-                      <FormField
-                        label="Motivo"
-                        htmlFor="prop-motivo"
-                        required
-                        hint="Obrigatório ao recusar"
-                      >
+                      <Field label="Motivo" required hint="Obrigatório ao recusar">
                         <Textarea
-                          id="prop-motivo"
                           data-testid="proposta-motivo-input"
                           value={motivo}
                           onChange={(e) => setMotivo(e.target.value)}
+                          placeholder="Por que recusada?"
+                          rows={3}
                         />
-                      </FormField>
+                      </Field>
                     )}
-                    <button
-                      type="button"
-                      data-testid="proposta-status-confirm"
-                      disabled={busy || (exigeMotivo && motivo.trim().length === 0)}
-                      onClick={doTransition}
-                      style={{ ...btn, opacity: busy ? 0.7 : 1 }}
-                    >
-                      {busy ? 'Aplicando…' : 'Confirmar mudança'}
-                    </button>
+                    <div className="flex items-center gap-2">
+                      <Button
+                        variant="secondary"
+                        size="sm"
+                        onClick={() => setTransition(null)}
+                      >
+                        Cancelar
+                      </Button>
+                      <Button
+                        size="sm"
+                        data-testid="proposta-status-confirm"
+                        disabled={exigeMotivo && motivo.trim().length === 0}
+                        loading={busy}
+                        onClick={doTransition}
+                        leftIcon={<CheckCircle2 className="h-3.5 w-3.5" />}
+                      >
+                        Confirmar
+                      </Button>
+                    </div>
                   </div>
                 )}
-              </div>
+              </section>
             )}
 
             {actionError && (
               <div
                 data-testid="action-error"
-                style={{
-                  ...card,
-                  borderColor: colors.danger,
-                  color: colors.danger,
-                  padding: '0.5rem 0.75rem',
-                  marginTop: '0.75rem',
-                }}
+                className="px-3 py-2 rounded-md bg-danger/10 border border-danger/30 text-danger text-sm flex items-start gap-2"
               >
+                <AlertCircle className="h-4 w-4 mt-0.5 shrink-0" />
                 {actionError}
               </div>
             )}
           </div>
         )}
       </StateView>
-    </Modal>
+    </Drawer>
   );
 }
 
-function Info({ label, children }: { label: string; children: React.ReactNode }) {
-  return (
-    <div>
-      <div
-        style={{
-          fontSize: 11,
-          textTransform: 'uppercase',
-          color: colors.muted,
-          marginBottom: 2,
-          letterSpacing: 0.3,
-          fontWeight: 600,
-        }}
-      >
-        {label}
+function InfoCell({
+  icon,
+  label,
+  value,
+  mono,
+}: {
+  icon: ReactNode;
+  label: string;
+  value?: string | null;
+  mono?: boolean;
+}) {
+  if (!value) {
+    return (
+      <div className="rounded-md border border-border bg-bg-alt px-3 py-2">
+        <div className="flex items-center gap-1.5 text-[10px] uppercase tracking-wider text-muted mb-1 [&>svg]:h-3 [&>svg]:w-3">
+          {icon}
+          <span>{label}</span>
+        </div>
+        <div className="text-sm text-muted-light italic">—</div>
       </div>
-      <div>{children}</div>
+    );
+  }
+  return (
+    <div className="rounded-md border border-border bg-bg-alt px-3 py-2">
+      <div className="flex items-center gap-1.5 text-[10px] uppercase tracking-wider text-muted mb-1 [&>svg]:h-3 [&>svg]:w-3">
+        {icon}
+        <span>{label}</span>
+      </div>
+      <div className={cn('text-sm text-text truncate', mono && 'tabular')}>{value}</div>
     </div>
   );
 }
 
-// ─── Create form ─────────────────────────────────────────────────────
+// ─── Form Dialog ─────────────────────────────────────────────
 
 interface FormItem {
-  /** UI-local id pra remover linha (não vai pro backend) */
   uiKey: string;
   produto: ProdutoOpt | null;
   quantidade: number;
   desconto: number;
-  precoUnitarioOverride: string; // string pra deixar input vazio
+  precoUnitarioOverride: string;
 }
 
 function newFormItem(): FormItem {
@@ -555,7 +822,7 @@ function newFormItem(): FormItem {
   };
 }
 
-function PropostaFormModal({
+function PropostaFormDialog({
   onClose,
   onSaved,
 }: {
@@ -583,7 +850,6 @@ function PropostaFormModal({
     setItens((arr) => [...arr, newFormItem()]);
   }
 
-  // Total estimado (preview client-side; backend recalcula)
   const subtotal = itens.reduce((acc, it) => {
     if (!it.produto) return acc;
     const unit =
@@ -637,30 +903,31 @@ function PropostaFormModal({
   }
 
   return (
-    <Modal
+    <Dialog
       open
       onClose={onClose}
-      width={760}
       title="Nova proposta"
+      size="xl"
       footer={
         <>
-          <button type="button" onClick={onClose} style={btnSecondary}>
+          <Button variant="secondary" onClick={onClose}>
             Cancelar
-          </button>
-          <button
+          </Button>
+          <Button
             type="submit"
             form="proposta-form"
             data-testid="proposta-save-btn"
-            disabled={busy || !valid}
-            style={{ ...btn, opacity: busy || !valid ? 0.6 : 1 }}
+            disabled={!valid}
+            loading={busy}
+            leftIcon={<CheckCircle2 className="h-3.5 w-3.5" />}
           >
-            {busy ? 'Salvando…' : 'Criar como rascunho'}
-          </button>
+            Criar como rascunho
+          </Button>
         </>
       }
     >
-      <form id="proposta-form" onSubmit={submit}>
-        <FormField label="Cliente" required>
+      <form id="proposta-form" onSubmit={submit} className="flex flex-col gap-4">
+        <Field label="Cliente" required>
           <AsyncCombobox<ClienteOpt>
             testId="cliente-picker"
             endpoint="/clientes"
@@ -671,128 +938,131 @@ function PropostaFormModal({
             value={cliente}
             onChange={setCliente}
           />
-        </FormField>
+        </Field>
 
-        <h3 style={{ fontSize: 14, margin: '0.75rem 0 0.5rem' }}>Itens</h3>
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
-          {itens.map((it, idx) => (
-            <ItemRow
-              key={it.uiKey}
-              item={it}
-              onChange={(patch) => setItem(idx, patch)}
-              onRemove={itens.length > 1 ? () => removeItem(idx) : null}
-              testId={`item-${idx}`}
-            />
-          ))}
-        </div>
-        <button
-          type="button"
-          data-testid="proposta-add-item"
-          onClick={addItem}
-          style={{ ...btnSecondary, marginTop: '0.5rem', fontSize: 13 }}
-        >
-          + Adicionar item
-        </button>
+        <section>
+          <div className="flex items-center justify-between mb-2">
+            <h4 className="text-[10px] font-semibold uppercase tracking-wider text-muted">
+              Itens ({itens.length})
+            </h4>
+            <Button
+              type="button"
+              variant="ghost"
+              size="sm"
+              onClick={addItem}
+              leftIcon={<Plus className="h-3 w-3" />}
+              data-testid="proposta-add-item"
+            >
+              Adicionar item
+            </Button>
+          </div>
+          <div className="flex flex-col gap-2">
+            {itens.map((it, idx) => (
+              <ItemRow
+                key={it.uiKey}
+                item={it}
+                onChange={(patch) => setItem(idx, patch)}
+                onRemove={itens.length > 1 ? () => removeItem(idx) : null}
+                testId={`item-${idx}`}
+              />
+            ))}
+          </div>
+        </section>
 
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '0.75rem', marginTop: '1rem' }}>
-          <FormField label="Forma de pagamento" htmlFor="prop-forma">
-            <Select
-              id="prop-forma"
-              value={formaPagamento}
-              onChange={(e) => setFormaPagamento(e.target.value as PagamentoForma)}
-            >
-              {FORMAS.map((f) => (
-                <option key={f} value={f}>
-                  {f}
-                </option>
-              ))}
-            </Select>
-          </FormField>
-          <FormField label="Condição" htmlFor="prop-cond">
-            <Select
-              id="prop-cond"
-              value={condicaoPagamento}
-              onChange={(e) => setCondicaoPagamento(e.target.value as CondicaoPgto)}
-            >
-              {CONDICOES.map((c) => (
-                <option key={c.value} value={c.value}>
-                  {c.label}
-                </option>
-              ))}
-            </Select>
-          </FormField>
-          <FormField label="Validade" htmlFor="prop-validade">
-            <Input
-              id="prop-validade"
-              type="date"
-              value={validoAte}
-              onChange={(e) => setValidoAte(e.target.value)}
-            />
-          </FormField>
-          <FormField label="Desconto geral (%)" htmlFor="prop-dg">
-            <Input
-              id="prop-dg"
-              type="number"
-              min={0}
-              max={50}
-              step="0.1"
-              value={descontoGeral}
-              onChange={(e) => setDescontoGeral(Number(e.target.value))}
-            />
-          </FormField>
-          <FormField label="Probabilidade (%)" htmlFor="prop-prob">
-            <Input
-              id="prop-prob"
-              type="number"
-              min={0}
-              max={100}
-              value={probabilidade}
-              onChange={(e) => setProbabilidade(Number(e.target.value))}
-            />
-          </FormField>
-        </div>
-        <FormField label="Observações" htmlFor="prop-obs">
+        <section>
+          <h4 className="text-[10px] font-semibold uppercase tracking-wider text-muted mb-2">
+            Pagamento & validade
+          </h4>
+          <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
+            <Field label="Forma de pagamento">
+              <Select
+                value={formaPagamento}
+                onChange={(e) => setFormaPagamento(e.target.value as PagamentoForma)}
+              >
+                {FORMAS.map((f) => (
+                  <option key={f} value={f}>
+                    {f}
+                  </option>
+                ))}
+              </Select>
+            </Field>
+            <Field label="Condição">
+              <Select
+                value={condicaoPagamento}
+                onChange={(e) => setCondicaoPagamento(e.target.value as CondicaoPgto)}
+              >
+                {CONDICOES.map((c) => (
+                  <option key={c.value} value={c.value}>
+                    {c.label}
+                  </option>
+                ))}
+              </Select>
+            </Field>
+            <Field label="Validade">
+              <Input
+                type="date"
+                value={validoAte}
+                onChange={(e) => setValidoAte(e.target.value)}
+              />
+            </Field>
+            <Field label="Desconto geral (%)">
+              <Input
+                type="number"
+                min={0}
+                max={50}
+                step="0.1"
+                value={descontoGeral}
+                onChange={(e) => setDescontoGeral(Number(e.target.value))}
+              />
+            </Field>
+            <Field label="Probabilidade (%)">
+              <Input
+                type="number"
+                min={0}
+                max={100}
+                value={probabilidade}
+                onChange={(e) => setProbabilidade(Number(e.target.value))}
+              />
+            </Field>
+          </div>
+        </section>
+
+        <Field label="Observações" hint="Notas internas, prazos especiais…">
           <Textarea
-            id="prop-obs"
             value={observacoes}
             onChange={(e) => setObservacoes(e.target.value)}
-            placeholder="Notas internas, prazos especiais…"
+            rows={3}
           />
-        </FormField>
+        </Field>
 
-        <div
-          style={{
-            display: 'flex',
-            justifyContent: 'space-between',
-            alignItems: 'center',
-            padding: '0.75rem',
-            background: '#fafbfc',
-            borderRadius: 6,
-            marginTop: '0.5rem',
-            border: `1px solid ${colors.border}`,
-          }}
-        >
-          <div>
-            <div style={{ fontSize: 12, color: colors.muted }}>Total estimado</div>
-            <div style={{ fontSize: 22, fontWeight: 700 }}>{fmtBRL(totalComDescGeral)}</div>
+        {/* Total preview */}
+        <Card variant="outline" padding="md" className="bg-primary/5 border-primary/30">
+          <div className="flex items-center justify-between gap-3">
+            <div>
+              <div className="text-[11px] uppercase tracking-wider text-muted">Total estimado</div>
+              <div className="text-2xl font-bold text-text tabular tracking-tight">
+                {fmtBRL(totalComDescGeral)}
+              </div>
+            </div>
+            <div className="text-right text-[11px] text-muted tabular">
+              <div>Subtotal: {fmtBRL(subtotal)}</div>
+              {descontoGeral > 0 && <div>Desconto geral: {descontoGeral}%</div>}
+              <div className="text-muted-light mt-1">Backend recalcula no save.</div>
+            </div>
           </div>
-          <div style={{ fontSize: 12, color: colors.muted, textAlign: 'right' }}>
-            Subtotal: {fmtBRL(subtotal)}
-            <br />
-            Backend recalcula no save.
-          </div>
-        </div>
+        </Card>
 
         {error && (
-          <p
+          <div
             data-testid="form-error"
-            style={{ color: colors.danger, fontSize: 13, marginTop: '0.5rem' }}
+            className="px-3 py-2 rounded-md bg-danger/10 border border-danger/30 text-danger text-sm flex items-start gap-2"
           >
+            <AlertCircle className="h-4 w-4 mt-0.5 shrink-0" />
             {error}
-          </p>
+          </div>
         )}
       </form>
-    </Modal>
+    </Dialog>
   );
 }
 
@@ -810,16 +1080,7 @@ function ItemRow({
   return (
     <div
       data-testid={testId}
-      style={{
-        display: 'grid',
-        gridTemplateColumns: '2fr 70px 70px 90px 32px',
-        gap: '0.5rem',
-        alignItems: 'start',
-        padding: '0.5rem',
-        background: '#fafbfc',
-        border: `1px solid ${colors.border}`,
-        borderRadius: 6,
-      }}
+      className="grid grid-cols-[1fr_70px_70px_90px_32px] gap-2 items-start p-2.5 rounded-md border border-border bg-bg-alt"
     >
       <AsyncCombobox<ProdutoOpt>
         testId={`${testId}-produto`}
@@ -860,17 +1121,9 @@ function ItemRow({
         step="0.01"
         value={item.precoUnitarioOverride}
         onChange={(e) => {
-          // Aceita só dígitos, ponto/vírgula e vazio. Normaliza vírgula→ponto.
           const v = e.target.value.replace(',', '.');
           if (v === '' || /^\d*\.?\d*$/.test(v)) {
             onChange({ precoUnitarioOverride: v });
-          }
-        }}
-        onBlur={(e) => {
-          // Clamp negativo a 0; ignora NaN/vazio.
-          const n = parseFloat(e.target.value);
-          if (Number.isFinite(n) && n < 0) {
-            onChange({ precoUnitarioOverride: '0' });
           }
         }}
         data-testid={`${testId}-override`}
@@ -878,18 +1131,22 @@ function ItemRow({
         placeholder="preço"
       />
       {onRemove ? (
-        <button
-          type="button"
+        <IconButton
+          aria-label="Remover item"
+          variant="danger"
+          size="sm"
+          icon={<Trash2 />}
           onClick={onRemove}
           data-testid={`${testId}-remove`}
-          style={{ ...btnDanger, padding: '0.5rem', fontSize: 16, lineHeight: 1 }}
-          aria-label="Remover item"
-        >
-          ×
-        </button>
+          className="self-center"
+        />
       ) : (
         <span />
       )}
     </div>
   );
 }
+
+// Mark _Package unused referenced (keep import for future use)
+const _kp = Package;
+void _kp;

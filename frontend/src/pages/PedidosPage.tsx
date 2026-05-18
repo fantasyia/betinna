@@ -1,18 +1,64 @@
-import { useMemo, useState } from 'react';
+import { useMemo, useState, type ReactNode } from 'react';
+import {
+  Search,
+  Download,
+  FileText,
+  FileSpreadsheet,
+  File,
+  ExternalLink,
+  X as XIcon,
+  Send,
+  ArrowRight,
+  Check,
+  AlertCircle,
+  ShoppingCart,
+  Calendar,
+  User,
+  CreditCard,
+  Receipt,
+  Truck,
+  CheckCircle2,
+  CircleDashed,
+  Hash,
+  Pencil,
+  XCircle,
+} from 'lucide-react';
 import { api, ApiError } from '@/lib/api';
 import { useApiQuery, type PaginatedResponse } from '@/hooks/useApiQuery';
 import { PageLayout } from '@/components/PageLayout';
-import { Table, Pagination, type Column } from '@/components/Table';
 import { StateView } from '@/components/StateView';
-import { FilterBar, SearchInput } from '@/components/FilterBar';
-import { Modal } from '@/components/Modal';
-import { Select, FormField, Textarea } from '@/components/FormField';
 import { useToast } from '@/components/toast';
 import { exportToCsv } from '@/lib/csv';
 import { exportToXlsx } from '@/lib/xlsx';
 import { exportToDocx } from '@/lib/docx';
 import { exportToPdf } from '@/lib/pdf';
-import { badge, btn, btnDanger, btnSecondary, card, colors } from '@/components/styles';
+import {
+  Avatar,
+  Badge,
+  Button,
+  Card,
+  Dialog,
+  Drawer,
+  EmptyState,
+  Field,
+  Input,
+  Select,
+  Textarea,
+} from '@/components/ui';
+import { cn } from '@/lib/cn';
+
+/**
+ * PedidosPage v2 — design system dark, timeline visual de status.
+ *
+ * - Toolbar com search + filtro status
+ * - Tabela com numero/cliente/rep/total tabular + status badge semântico
+ * - Click na row abre Drawer com:
+ *   * Timeline visual do ciclo de vida (Rascunho → ... → Entregue)
+ *   * Info grid (cliente, pagamento, subtotal, desconto, total)
+ *   * Itens
+ *   * Actions contextuais (Enviar OMIE, Avançar status, Cancelar)
+ * - Cancel via Dialog separado
+ */
 
 type PedidoStatus =
   | 'RASCUNHO'
@@ -49,23 +95,21 @@ interface PedidoDetail extends Pedido {
     desconto: number;
     total: number;
   }>;
+  /** Datas de cada transição — opcionais (se backend expor). */
+  enviadoEm?: string | null;
+  entregueEm?: string | null;
+  pagoEm?: string | null;
+  separacaoEm?: string | null;
+  canceladoEm?: string | null;
+  cancelMotivo?: string | null;
 }
 
-const STATUS_COLOR: Record<PedidoStatus, string> = {
-  RASCUNHO: colors.muted,
-  AGUARDANDO_APROVACAO: colors.warning,
-  ENVIADO_OMIE: '#0891b2',
-  PAGO: colors.success,
-  EM_SEPARACAO: '#7c3aed',
-  ENVIADO: '#0284c7',
-  ENTREGUE: colors.success,
-  CANCELADO: colors.danger,
-};
+// ─── Mapeamento de status ──────────────────────────────────────
 
 const STATUS_LABEL: Record<PedidoStatus, string> = {
   RASCUNHO: 'Rascunho',
   AGUARDANDO_APROVACAO: 'Aguardando aprovação',
-  ENVIADO_OMIE: 'Enviado OMIE',
+  ENVIADO_OMIE: 'Enviado ao OMIE',
   PAGO: 'Pago',
   EM_SEPARACAO: 'Em separação',
   ENVIADO: 'Enviado',
@@ -73,8 +117,49 @@ const STATUS_LABEL: Record<PedidoStatus, string> = {
   CANCELADO: 'Cancelado',
 };
 
+const STATUS_VARIANT: Record<
+  PedidoStatus,
+  'neutral' | 'warning' | 'info' | 'success' | 'primary' | 'danger'
+> = {
+  RASCUNHO: 'neutral',
+  AGUARDANDO_APROVACAO: 'warning',
+  ENVIADO_OMIE: 'info',
+  PAGO: 'success',
+  EM_SEPARACAO: 'primary',
+  ENVIADO: 'info',
+  ENTREGUE: 'success',
+  CANCELADO: 'danger',
+};
+
+const STATUS_ICON: Record<PedidoStatus, typeof Pencil> = {
+  RASCUNHO: Pencil,
+  AGUARDANDO_APROVACAO: CircleDashed,
+  ENVIADO_OMIE: Send,
+  PAGO: CreditCard,
+  EM_SEPARACAO: Receipt,
+  ENVIADO: Truck,
+  ENTREGUE: CheckCircle2,
+  CANCELADO: XCircle,
+};
+
+/** Fluxo principal — usado pra timeline (Cancelado é estado terminal off-flow). */
+const FLOW_STEPS: PedidoStatus[] = [
+  'RASCUNHO',
+  'ENVIADO_OMIE',
+  'PAGO',
+  'EM_SEPARACAO',
+  'ENVIADO',
+  'ENTREGUE',
+];
+
 function fmtBRL(v: number) {
   return new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(v);
+}
+
+function fmtBRLCompact(v: number) {
+  if (v >= 1_000_000) return `R$ ${(v / 1_000_000).toFixed(1)}M`;
+  if (v >= 1_000) return `R$ ${(v / 1_000).toFixed(1)}k`;
+  return fmtBRL(v);
 }
 
 function fmtDate(d: string | null | undefined) {
@@ -86,6 +171,17 @@ function fmtDate(d: string | null | undefined) {
   }
 }
 
+function fmtDateTime(d: string | null | undefined) {
+  if (!d) return '—';
+  try {
+    return new Date(d).toLocaleString('pt-BR', { dateStyle: 'short', timeStyle: 'short' });
+  } catch {
+    return d;
+  }
+}
+
+// ─── Page principal ────────────────────────────────────────────
+
 export default function PedidosPage() {
   const toast = useToast();
   const [page, setPage] = useState(1);
@@ -93,6 +189,15 @@ export default function PedidosPage() {
   const [status, setStatus] = useState<string>('');
   const [selected, setSelected] = useState<string | null>(null);
   const [exporting, setExporting] = useState(false);
+
+  const listPath = useMemo(() => {
+    const qs = new URLSearchParams({ page: String(page), limit: '20' });
+    if (search.trim()) qs.set('search', search.trim());
+    if (status) qs.set('status', status);
+    return `/pedidos?${qs.toString()}`;
+  }, [page, search, status]);
+
+  const { data: pageResp, loading, error, refetch } = useApiQuery<PaginatedResponse<Pedido>>(listPath);
 
   async function handleExport(formato: 'csv' | 'xlsx' | 'docx' | 'pdf') {
     setExporting(true);
@@ -118,12 +223,7 @@ export default function PedidosPage() {
       if (formato === 'csv') {
         ({ count } = await exportToCsv<Pedido>({ endpoint: '/pedidos', query, filename, columns }));
       } else if (formato === 'xlsx') {
-        ({ count } = await exportToXlsx<Pedido>({
-          endpoint: '/pedidos',
-          query,
-          filename,
-          columns,
-        }));
+        ({ count } = await exportToXlsx<Pedido>({ endpoint: '/pedidos', query, filename, columns }));
       } else if (formato === 'docx') {
         ({ count } = await exportToDocx<Pedido>({
           endpoint: '/pedidos',
@@ -152,124 +252,30 @@ export default function PedidosPage() {
     }
   }
 
-  const listPath = useMemo(() => {
-    const qs = new URLSearchParams({ page: String(page), limit: '20' });
-    if (search.trim()) qs.set('search', search.trim());
-    if (status) qs.set('status', status);
-    return `/pedidos?${qs.toString()}`;
-  }, [page, search, status]);
-
-  const { data: pageResp, loading, error, refetch } = useApiQuery<PaginatedResponse<Pedido>>(listPath);
-
-  const columns: Column<Pedido>[] = [
-    {
-      key: 'numero',
-      header: 'Pedido',
-      render: (p) => (
-        <div>
-          <strong>#{p.numero}</strong>
-          {p.numeroOmie && (
-            <div style={{ fontSize: 11, color: colors.muted }}>OMIE {p.numeroOmie}</div>
-          )}
-        </div>
-      ),
-    },
-    {
-      key: 'cliente',
-      header: 'Cliente',
-      render: (p) => p.cliente?.nome ?? <em style={{ color: colors.muted }}>—</em>,
-    },
-    {
-      key: 'rep',
-      header: 'Rep',
-      render: (p) => p.representante?.nome ?? <em style={{ color: colors.muted }}>—</em>,
-    },
-    {
-      key: 'total',
-      header: 'Total',
-      render: (p) => <strong>{fmtBRL(p.total)}</strong>,
-    },
-    {
-      key: 'status',
-      header: 'Status',
-      render: (p) => (
-        <span style={badge(STATUS_COLOR[p.status])}>{STATUS_LABEL[p.status]}</span>
-      ),
-    },
-    {
-      key: 'data',
-      header: 'Data',
-      render: (p) => fmtDate(p.criadoEm),
-    },
-    {
-      key: 'actions',
-      header: '',
-      render: (p) => (
-        <button
-          type="button"
-          data-testid={`pedido-open-${p.id}`}
-          onClick={() => setSelected(p.id)}
-          style={{ ...btnSecondary, padding: '0.25rem 0.625rem', fontSize: 12 }}
-        >
-          Abrir
-        </button>
-      ),
-    },
-  ];
+  const filtersActive = !!status || !!search.trim();
 
   return (
     <PageLayout
       title="Pedidos"
-      actions={
-        <div style={{ display: 'flex', gap: '0.5rem' }}>
-          <button
-            type="button"
-            data-testid="pedido-export-btn"
-            onClick={() => handleExport('csv')}
-            disabled={exporting}
-            style={{ ...btnSecondary, opacity: exporting ? 0.6 : 1 }}
-          >
-            {exporting ? 'Exportando…' : '📥 CSV'}
-          </button>
-          <button
-            type="button"
-            data-testid="pedido-export-xlsx-btn"
-            onClick={() => handleExport('xlsx')}
-            disabled={exporting}
-            style={{ ...btnSecondary, opacity: exporting ? 0.6 : 1 }}
-          >
-            📊 Excel
-          </button>
-          <button
-            type="button"
-            data-testid="pedido-export-docx-btn"
-            onClick={() => handleExport('docx')}
-            disabled={exporting}
-            style={{ ...btnSecondary, opacity: exporting ? 0.6 : 1 }}
-          >
-            📄 Word
-          </button>
-          <button
-            type="button"
-            data-testid="pedido-export-pdf-btn"
-            onClick={() => handleExport('pdf')}
-            disabled={exporting}
-            style={{ ...btnSecondary, opacity: exporting ? 0.6 : 1 }}
-          >
-            📕 PDF
-          </button>
-        </div>
+      description={
+        pageResp?.pagination
+          ? `${pageResp.pagination.total.toLocaleString('pt-BR')} pedidos no total`
+          : undefined
       }
+      actions={<ExportMenu exporting={exporting} onExport={handleExport} />}
     >
-      <div style={card}>
-        <FilterBar>
-          <SearchInput
+      <Card padding="none" className="overflow-hidden">
+        {/* Toolbar */}
+        <div className="flex flex-wrap items-center gap-2 px-4 py-3 border-b border-border">
+          <Input
+            leftIcon={<Search />}
+            placeholder="Cliente, número OMIE…"
             value={search}
-            onChange={(v) => {
-              setSearch(v);
+            onChange={(e) => {
+              setSearch(e.target.value);
               setPage(1);
             }}
-            placeholder="Cliente, número…"
+            className="max-w-md flex-1"
           />
           <Select
             data-testid="filter-status"
@@ -286,26 +292,144 @@ export default function PedidosPage() {
               </option>
             ))}
           </Select>
-        </FilterBar>
+          {filtersActive && (
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => {
+                setSearch('');
+                setStatus('');
+                setPage(1);
+              }}
+              leftIcon={<XIcon className="h-3 w-3" />}
+            >
+              Limpar
+            </Button>
+          )}
+        </div>
 
-        <StateView
-          loading={loading}
-          error={error}
-          empty={!loading && !error && (pageResp?.data.length ?? 0) === 0}
-          emptyMessage="Nenhum pedido encontrado."
-          onRetry={refetch}
-        >
-          {pageResp && (
+        <StateView loading={loading} error={error} onRetry={refetch}>
+          {pageResp && pageResp.data.length === 0 && (
+            <EmptyState
+              icon={<ShoppingCart />}
+              title="Nenhum pedido encontrado"
+              description={
+                filtersActive
+                  ? 'Tente ajustar os filtros.'
+                  : 'Crie o primeiro pedido a partir de Clientes → Novo pedido.'
+              }
+              className="m-6 border-0"
+            />
+          )}
+          {pageResp && pageResp.data.length > 0 && (
             <>
-              <Table data={pageResp.data} columns={columns} rowKey={(p) => p.id} />
-              <Pagination pagination={pageResp.pagination} onPageChange={setPage} />
+              <div className="overflow-x-auto">
+                <table className="w-full">
+                  <thead>
+                    <tr className="border-b border-border bg-bg-alt">
+                      <Th>Pedido</Th>
+                      <Th>Cliente</Th>
+                      <Th>Representante</Th>
+                      <Th align="right">Total</Th>
+                      <Th>Status</Th>
+                      <Th>Data</Th>
+                      <th className="w-10" />
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {pageResp.data.map((p) => {
+                      const isSelected = p.id === selected;
+                      const StatusIcon = STATUS_ICON[p.status];
+                      return (
+                        <tr
+                          key={p.id}
+                          className={cn(
+                            'border-b border-border last:border-b-0 cursor-pointer transition-colors',
+                            isSelected ? 'bg-surface-hover' : 'hover:bg-surface-hover/60',
+                          )}
+                          onClick={() => setSelected(p.id)}
+                          data-testid={`pedido-row-${p.id}`}
+                        >
+                          <Td>
+                            <div className="flex flex-col min-w-0">
+                              <strong className="text-sm text-text tabular font-semibold">
+                                #{p.numero}
+                              </strong>
+                              {p.numeroOmie && (
+                                <span className="text-[11px] text-muted tabular">
+                                  OMIE {p.numeroOmie}
+                                </span>
+                              )}
+                            </div>
+                          </Td>
+                          <Td>
+                            {p.cliente ? (
+                              <div className="flex items-center gap-2 min-w-0">
+                                <Avatar name={p.cliente.nome} size="sm" />
+                                <span className="text-sm text-text truncate">
+                                  {p.cliente.nome}
+                                </span>
+                              </div>
+                            ) : (
+                              <span className="text-muted-light italic text-sm">—</span>
+                            )}
+                          </Td>
+                          <Td>
+                            {p.representante ? (
+                              <div className="flex items-center gap-1.5 min-w-0">
+                                <Avatar name={p.representante.nome} size="xs" />
+                                <span className="text-sm text-text-subtle truncate">
+                                  {p.representante.nome}
+                                </span>
+                              </div>
+                            ) : (
+                              <span className="text-muted-light italic text-sm">—</span>
+                            )}
+                          </Td>
+                          <Td align="right">
+                            <span className="text-sm font-semibold text-text tabular">
+                              {fmtBRL(p.total)}
+                            </span>
+                          </Td>
+                          <Td>
+                            <Badge
+                              variant={STATUS_VARIANT[p.status]}
+                              className="inline-flex items-center gap-1"
+                            >
+                              <StatusIcon className="h-2.5 w-2.5" />
+                              {STATUS_LABEL[p.status]}
+                            </Badge>
+                          </Td>
+                          <Td>
+                            <span className="text-sm text-text-subtle tabular">
+                              {fmtDate(p.criadoEm)}
+                            </span>
+                          </Td>
+                          <Td>
+                            <ExternalLink className="h-3.5 w-3.5 text-muted" />
+                          </Td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+
+              {pageResp.pagination.totalPages > 1 && (
+                <PaginationBar
+                  current={pageResp.pagination.page}
+                  total={pageResp.pagination.totalPages}
+                  totalItems={pageResp.pagination.total}
+                  onChange={setPage}
+                />
+              )}
             </>
           )}
         </StateView>
-      </div>
+      </Card>
 
       {selected && (
-        <PedidoDetailModal
+        <PedidoDetailDrawer
           id={selected}
           onClose={() => setSelected(null)}
           onChanged={() => {
@@ -318,9 +442,142 @@ export default function PedidosPage() {
   );
 }
 
-// ─── Modal de detalhe ───────────────────────────────────────────────────
+// ─── Helpers locais ────────────────────────────────────────────
 
-function PedidoDetailModal({
+function Th({ children, align }: { children: ReactNode; align?: 'left' | 'right' }) {
+  return (
+    <th
+      className={cn(
+        'px-4 py-2.5 text-[11px] font-semibold uppercase tracking-wider text-muted',
+        align === 'right' ? 'text-right' : 'text-left',
+      )}
+    >
+      {children}
+    </th>
+  );
+}
+
+function Td({
+  children,
+  align,
+  onClick,
+}: {
+  children: ReactNode;
+  align?: 'left' | 'right';
+  onClick?: (e: React.MouseEvent) => void;
+}) {
+  return (
+    <td
+      onClick={onClick}
+      className={cn('px-4 py-2.5 align-middle', align === 'right' ? 'text-right' : 'text-left')}
+    >
+      {children}
+    </td>
+  );
+}
+
+function PaginationBar({
+  current,
+  total,
+  totalItems,
+  onChange,
+}: {
+  current: number;
+  total: number;
+  totalItems: number;
+  onChange: (p: number) => void;
+}) {
+  return (
+    <div className="flex items-center justify-between px-4 py-3 border-t border-border bg-bg-alt">
+      <span className="text-xs text-muted tabular">
+        Página {current} de {total} · {totalItems.toLocaleString('pt-BR')} no total
+      </span>
+      <div className="flex items-center gap-1">
+        <Button variant="ghost" size="sm" disabled={current <= 1} onClick={() => onChange(current - 1)}>
+          Anterior
+        </Button>
+        <Button
+          variant="ghost"
+          size="sm"
+          disabled={current >= total}
+          onClick={() => onChange(current + 1)}
+        >
+          Próxima
+        </Button>
+      </div>
+    </div>
+  );
+}
+
+// ─── Export menu ───────────────────────────────────────────────
+
+function ExportMenu({
+  exporting,
+  onExport,
+}: {
+  exporting: boolean;
+  onExport: (f: 'csv' | 'xlsx' | 'docx' | 'pdf') => void;
+}) {
+  const [open, setOpen] = useState(false);
+  if (exporting) {
+    return (
+      <Button variant="secondary" loading>
+        Exportando…
+      </Button>
+    );
+  }
+  return (
+    <div className="relative">
+      <Button
+        variant="secondary"
+        onClick={() => setOpen((v) => !v)}
+        leftIcon={<Download className="h-3.5 w-3.5" />}
+        data-testid="pedido-export-btn"
+      >
+        Exportar
+      </Button>
+      {open && (
+        <>
+          <div className="fixed inset-0 z-30" onClick={() => setOpen(false)} aria-hidden />
+          <div className="absolute right-0 top-full mt-1 z-40 min-w-[160px] bg-surface-elevated border border-border-strong rounded-md shadow-lg flex flex-col p-1 animate-fade-in">
+            <ExportItem icon={<FileText className="h-3.5 w-3.5" />} label="CSV" onClick={() => { setOpen(false); onExport('csv'); }} />
+            <ExportItem icon={<FileSpreadsheet className="h-3.5 w-3.5" />} label="Excel (XLSX)" testId="pedido-export-xlsx-btn" onClick={() => { setOpen(false); onExport('xlsx'); }} />
+            <ExportItem icon={<File className="h-3.5 w-3.5" />} label="Word (DOCX)" testId="pedido-export-docx-btn" onClick={() => { setOpen(false); onExport('docx'); }} />
+            <ExportItem icon={<File className="h-3.5 w-3.5" />} label="PDF" testId="pedido-export-pdf-btn" onClick={() => { setOpen(false); onExport('pdf'); }} />
+          </div>
+        </>
+      )}
+    </div>
+  );
+}
+
+function ExportItem({
+  icon,
+  label,
+  onClick,
+  testId,
+}: {
+  icon: ReactNode;
+  label: string;
+  onClick: () => void;
+  testId?: string;
+}) {
+  return (
+    <button
+      type="button"
+      data-testid={testId}
+      onClick={onClick}
+      className="flex items-center gap-2 px-2.5 py-1.5 text-left text-sm rounded text-text hover:bg-surface-hover transition-colors"
+    >
+      <span className="text-muted">{icon}</span>
+      {label}
+    </button>
+  );
+}
+
+// ─── Detail drawer ─────────────────────────────────────────────
+
+function PedidoDetailDrawer({
   id,
   onClose,
   onChanged,
@@ -332,6 +589,8 @@ function PedidoDetailModal({
   const { data, loading, error, refetch } = useApiQuery<PedidoDetail>(`/pedidos/${id}`);
   const [busy, setBusy] = useState<string | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
+  const [cancelOpen, setCancelOpen] = useState(false);
+  const [cancelMotivo, setCancelMotivo] = useState('');
 
   async function callAction(label: string, fn: () => Promise<unknown>) {
     setBusy(label);
@@ -347,153 +606,202 @@ function PedidoDetailModal({
     }
   }
 
-  const enviarOmie = () =>
-    callAction('enviar', () => api.post(`/pedidos/${id}/enviar-omie`));
-  const avancar = () =>
-    callAction('avancar', () => api.post(`/pedidos/${id}/avancar-status`));
-
-  const [cancelOpen, setCancelOpen] = useState(false);
-  const [cancelMotivo, setCancelMotivo] = useState('');
+  const enviarOmie = () => callAction('enviar', () => api.post(`/pedidos/${id}/enviar-omie`));
+  const avancar = () => callAction('avancar', () => api.post(`/pedidos/${id}/avancar-status`));
   const doCancel = () =>
     callAction('cancelar', () =>
-      api.post(`/pedidos/${id}/cancelar`, cancelMotivo.trim() ? { motivo: cancelMotivo.trim() } : {}),
+      api.post(
+        `/pedidos/${id}/cancelar`,
+        cancelMotivo.trim() ? { motivo: cancelMotivo.trim() } : {},
+      ),
     );
 
   return (
-    <Modal
+    <Drawer
       open
       onClose={onClose}
-      width={680}
       title={data ? `Pedido #${data.numero}` : 'Pedido'}
+      description={data?.numeroOmie ? `OMIE ${data.numeroOmie}` : undefined}
+      width="lg"
       footer={
-        <>
-          <button type="button" onClick={onClose} style={btnSecondary}>
-            Fechar
-          </button>
-          {data && data.status === 'RASCUNHO' && (
-            <button
-              type="button"
-              data-testid="pedido-enviar-omie"
-              disabled={busy !== null}
-              onClick={enviarOmie}
-              style={btn}
-            >
-              {busy === 'enviar' ? 'Enviando…' : 'Enviar pro OMIE'}
-            </button>
-          )}
-          {data &&
-            ['ENVIADO_OMIE', 'PAGO', 'EM_SEPARACAO', 'ENVIADO'].includes(data.status) && (
-              <button
-                type="button"
-                data-testid="pedido-avancar"
-                disabled={busy !== null}
-                onClick={avancar}
-                style={btn}
+        data && (
+          <>
+            {data.status === 'RASCUNHO' && (
+              <Button
+                data-testid="pedido-enviar-omie"
+                onClick={enviarOmie}
+                loading={busy === 'enviar'}
+                leftIcon={<Send className="h-3.5 w-3.5" />}
               >
-                {busy === 'avancar' ? 'Avançando…' : 'Avançar status'}
-              </button>
+                Enviar pro OMIE
+              </Button>
             )}
-          {data && data.status !== 'CANCELADO' && data.status !== 'ENTREGUE' && (
-            <button
-              type="button"
-              data-testid="pedido-cancelar"
-              disabled={busy !== null}
-              onClick={() => setCancelOpen(true)}
-              style={btnDanger}
-            >
-              Cancelar pedido
-            </button>
-          )}
-        </>
+            {['ENVIADO_OMIE', 'PAGO', 'EM_SEPARACAO', 'ENVIADO'].includes(data.status) && (
+              <Button
+                data-testid="pedido-avancar"
+                onClick={avancar}
+                loading={busy === 'avancar'}
+                rightIcon={<ArrowRight className="h-3.5 w-3.5" />}
+              >
+                Avançar status
+              </Button>
+            )}
+            {data.status !== 'CANCELADO' && data.status !== 'ENTREGUE' && (
+              <Button
+                variant="danger"
+                size="sm"
+                data-testid="pedido-cancelar"
+                onClick={() => setCancelOpen(true)}
+                leftIcon={<XCircle className="h-3.5 w-3.5" />}
+              >
+                Cancelar
+              </Button>
+            )}
+          </>
+        )
       }
     >
       <StateView loading={loading} error={error} onRetry={refetch}>
         {data && (
-          <div>
-            <div
-              style={{
-                display: 'flex',
-                gap: '0.5rem',
-                alignItems: 'center',
-                marginBottom: '1rem',
-              }}
-            >
-              <span style={badge(STATUS_COLOR[data.status])}>{STATUS_LABEL[data.status]}</span>
-              <span style={{ color: colors.muted, fontSize: 13 }}>
-                Criado em {fmtDate(data.criadoEm)}
-              </span>
-            </div>
-            <dl
-              style={{
-                display: 'grid',
-                gridTemplateColumns: '1fr 1fr',
-                gap: '0.75rem',
-                fontSize: 14,
-              }}
-            >
-              <Info label="Cliente">{data.cliente?.nome ?? '—'}</Info>
-              <Info label="Representante">{data.representante?.nome ?? '—'}</Info>
-              <Info label="Subtotal">{data.subtotal !== undefined ? fmtBRL(data.subtotal) : '—'}</Info>
-              <Info label="Desconto">
-                {data.descontoTotal !== undefined ? fmtBRL(data.descontoTotal) : '—'}
-              </Info>
-              <Info label="Total">
-                <strong>{fmtBRL(data.total)}</strong>
-              </Info>
-              <Info label="Pagamento">{data.formaPagamento ?? '—'}</Info>
-              {data.numeroOmie && <Info label="Número OMIE">{data.numeroOmie}</Info>}
-              {data.enviadoOmieEm && (
-                <Info label="Enviado OMIE">{fmtDate(data.enviadoOmieEm)}</Info>
-              )}
-            </dl>
+          <div className="flex flex-col gap-5">
+            {/* Header card com total + status */}
+            <Card variant="outline" padding="md" className="bg-bg-alt">
+              <div className="flex items-start justify-between gap-3">
+                <div>
+                  <div className="text-[11px] uppercase tracking-wider text-muted mb-1">
+                    Total do pedido
+                  </div>
+                  <div className="text-3xl font-bold text-text tracking-tight tabular">
+                    {fmtBRL(data.total)}
+                  </div>
+                  <div className="mt-2 flex items-center gap-2 flex-wrap">
+                    <Badge variant={STATUS_VARIANT[data.status]}>
+                      {STATUS_LABEL[data.status]}
+                    </Badge>
+                    {data.formaPagamento && (
+                      <Badge variant="outline" size="sm">
+                        {data.formaPagamento}
+                      </Badge>
+                    )}
+                  </div>
+                </div>
+              </div>
+            </Card>
 
-            {data.itens && data.itens.length > 0 && (
-              <div style={{ marginTop: '1.25rem' }}>
-                <h3 style={{ fontSize: 14, marginBottom: '0.5rem' }}>Itens</h3>
-                <Table
-                  data={data.itens}
-                  rowKey={(i) => i.id}
-                  columns={[
-                    {
-                      key: 'produto',
-                      header: 'Produto',
-                      render: (i) => i.produto?.nome ?? '—',
-                    },
-                    { key: 'qt', header: 'Qt', render: (i) => i.quantidade },
-                    {
-                      key: 'unit',
-                      header: 'Unit',
-                      render: (i) => fmtBRL(i.precoUnitario),
-                    },
-                    { key: 'desc', header: 'Desc', render: (i) => fmtBRL(i.desconto) },
-                    {
-                      key: 'tot',
-                      header: 'Total',
-                      render: (i) => <strong>{fmtBRL(i.total)}</strong>,
-                    },
-                  ]}
+            {/* Timeline */}
+            {data.status !== 'CANCELADO' && <StatusTimeline pedido={data} />}
+            {data.status === 'CANCELADO' && <CanceledNote pedido={data} />}
+
+            {/* Info grid */}
+            <section>
+              <h4 className="text-[10px] font-semibold uppercase tracking-wider text-muted mb-2">
+                Resumo
+              </h4>
+              <div className="grid grid-cols-2 gap-2">
+                <InfoCell
+                  icon={<User />}
+                  label="Cliente"
+                  value={data.cliente?.nome}
+                  avatar={data.cliente?.nome}
+                />
+                <InfoCell
+                  icon={<User />}
+                  label="Representante"
+                  value={data.representante?.nome}
+                  avatar={data.representante?.nome}
+                />
+                <InfoCell
+                  icon={<Calendar />}
+                  label="Criado em"
+                  value={fmtDateTime(data.criadoEm)}
+                />
+                {data.numeroOmie && (
+                  <InfoCell icon={<Hash />} label="OMIE" value={data.numeroOmie} mono />
+                )}
+                <InfoCell
+                  icon={<Receipt />}
+                  label="Subtotal"
+                  value={data.subtotal !== undefined ? fmtBRL(data.subtotal) : '—'}
+                  mono
+                />
+                <InfoCell
+                  icon={<Receipt />}
+                  label="Desconto"
+                  value={data.descontoTotal !== undefined ? fmtBRL(data.descontoTotal) : '—'}
+                  mono
                 />
               </div>
+            </section>
+
+            {/* Itens */}
+            {data.itens && data.itens.length > 0 && (
+              <section>
+                <h4 className="text-[10px] font-semibold uppercase tracking-wider text-muted mb-2">
+                  Itens ({data.itens.length})
+                </h4>
+                <div className="rounded-md border border-border overflow-hidden">
+                  <table className="w-full">
+                    <thead>
+                      <tr className="border-b border-border bg-bg-alt">
+                        <th className="text-left text-[10px] font-semibold uppercase tracking-wider text-muted px-3 py-2">
+                          Produto
+                        </th>
+                        <th className="text-right text-[10px] font-semibold uppercase tracking-wider text-muted px-3 py-2">
+                          Qt
+                        </th>
+                        <th className="text-right text-[10px] font-semibold uppercase tracking-wider text-muted px-3 py-2">
+                          Unit
+                        </th>
+                        <th className="text-right text-[10px] font-semibold uppercase tracking-wider text-muted px-3 py-2">
+                          Total
+                        </th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {data.itens.map((it) => (
+                        <tr key={it.id} className="border-b border-border last:border-b-0">
+                          <td className="px-3 py-2">
+                            <div className="text-sm text-text">{it.produto?.nome ?? '—'}</div>
+                            {it.produto?.sku && (
+                              <div className="text-[10px] text-muted tabular">
+                                SKU {it.produto.sku}
+                              </div>
+                            )}
+                          </td>
+                          <td className="px-3 py-2 text-right text-sm text-text tabular">
+                            {it.quantidade}
+                          </td>
+                          <td className="px-3 py-2 text-right text-sm text-text-subtle tabular">
+                            {fmtBRLCompact(it.precoUnitario)}
+                          </td>
+                          <td className="px-3 py-2 text-right text-sm font-semibold text-text tabular">
+                            {fmtBRL(it.total)}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </section>
             )}
 
             {data.observacao && (
-              <div style={{ marginTop: '1rem' }}>
-                <h3 style={{ fontSize: 14, marginBottom: '0.25rem' }}>Observação</h3>
-                <p style={{ fontSize: 14, color: colors.muted }}>{data.observacao}</p>
-              </div>
+              <section>
+                <h4 className="text-[10px] font-semibold uppercase tracking-wider text-muted mb-2">
+                  Observação
+                </h4>
+                <p className="text-sm text-text-subtle leading-relaxed whitespace-pre-wrap m-0">
+                  {data.observacao}
+                </p>
+              </section>
             )}
 
             {actionError && (
               <div
                 data-testid="action-error"
-                style={{
-                  ...card,
-                  borderColor: colors.danger,
-                  color: colors.danger,
-                  padding: '0.5rem 0.75rem',
-                  marginTop: '0.75rem',
-                }}
+                className="px-3 py-2 rounded-md bg-danger/10 border border-danger/30 text-danger text-sm flex items-start gap-2"
               >
+                <AlertCircle className="h-4 w-4 mt-0.5 shrink-0" />
                 {actionError}
               </div>
             )}
@@ -501,64 +809,198 @@ function PedidoDetailModal({
         )}
       </StateView>
 
-      {/* Submodal cancelar */}
-      <Modal
+      {/* Cancel dialog */}
+      <Dialog
         open={cancelOpen}
         onClose={() => setCancelOpen(false)}
-        title="Cancelar pedido"
+        title="Cancelar pedido?"
+        description="Essa ação não pode ser desfeita."
+        size="sm"
         footer={
           <>
-            <button
-              type="button"
-              onClick={() => setCancelOpen(false)}
-              style={btnSecondary}
-            >
+            <Button variant="secondary" onClick={() => setCancelOpen(false)}>
               Voltar
-            </button>
-            <button
-              type="button"
+            </Button>
+            <Button
+              variant="danger"
               data-testid="pedido-confirmar-cancelar"
-              disabled={busy !== null}
+              loading={busy === 'cancelar'}
               onClick={() => {
                 setCancelOpen(false);
                 void doCancel();
               }}
-              style={btnDanger}
+              leftIcon={<XCircle className="h-3.5 w-3.5" />}
             >
               Confirmar cancelamento
-            </button>
+            </Button>
           </>
         }
       >
-        <FormField label="Motivo (opcional)" htmlFor="cancel-motivo">
+        <Field label="Motivo" hint="Opcional, mas recomendado pro histórico">
           <Textarea
-            id="cancel-motivo"
             value={cancelMotivo}
             onChange={(e) => setCancelMotivo(e.target.value)}
-            placeholder="Ex: cliente desistiu, estoque indisponível…"
+            placeholder="Ex: cliente desistiu, estoque indisponível, troca de SKU…"
+            rows={3}
           />
-        </FormField>
-      </Modal>
-    </Modal>
+        </Field>
+      </Dialog>
+    </Drawer>
   );
 }
 
-function Info({ label, children }: { label: string; children: React.ReactNode }) {
+// ─── Status timeline ───────────────────────────────────────────
+
+function StatusTimeline({ pedido }: { pedido: PedidoDetail }) {
+  const currentIdx = FLOW_STEPS.indexOf(pedido.status);
+  // AGUARDANDO_APROVACAO fica entre RASCUNHO e ENVIADO_OMIE — branca da linha principal
+  const isAwaiting = pedido.status === 'AGUARDANDO_APROVACAO';
+
   return (
-    <div>
-      <div
-        style={{
-          fontSize: 11,
-          textTransform: 'uppercase',
-          color: colors.muted,
-          marginBottom: 2,
-          letterSpacing: 0.3,
-          fontWeight: 600,
-        }}
-      >
-        {label}
+    <section>
+      <h4 className="text-[10px] font-semibold uppercase tracking-wider text-muted mb-3">
+        Ciclo de vida
+      </h4>
+      {isAwaiting && (
+        <div className="mb-3 px-3 py-2 rounded-md bg-warning/10 border border-warning/30 text-warning text-sm flex items-center gap-2">
+          <CircleDashed className="h-4 w-4 shrink-0" />
+          Aguardando aprovação de desconto pra ir pro OMIE.
+        </div>
+      )}
+      <ol className="flex flex-col gap-0">
+        {FLOW_STEPS.map((step, idx) => {
+          const Icon = STATUS_ICON[step];
+          const isDone = currentIdx > idx;
+          const isCurrent = currentIdx === idx;
+          const isFuture = currentIdx < idx;
+          const dateField = stepDate(pedido, step);
+
+          return (
+            <li key={step} className="flex items-start gap-3 group relative">
+              {/* Vertical line */}
+              {idx < FLOW_STEPS.length - 1 && (
+                <span
+                  aria-hidden
+                  className={cn(
+                    'absolute left-[15px] top-8 bottom-0 w-px',
+                    isDone ? 'bg-success' : 'bg-border',
+                  )}
+                />
+              )}
+              {/* Icon */}
+              <div
+                className={cn(
+                  'relative flex h-8 w-8 items-center justify-center rounded-full border-2 shrink-0 z-10',
+                  isDone && 'bg-success border-success text-bg',
+                  isCurrent && 'bg-primary border-primary text-primary-contrast shadow-ring',
+                  isFuture && 'bg-bg border-border text-muted-light',
+                )}
+              >
+                {isDone ? <Check className="h-3.5 w-3.5" strokeWidth={3} /> : <Icon className="h-3.5 w-3.5" />}
+              </div>
+              {/* Content */}
+              <div className={cn('flex-1 pb-5', idx === FLOW_STEPS.length - 1 && 'pb-0')}>
+                <div className="flex items-center gap-2 flex-wrap">
+                  <span
+                    className={cn(
+                      'text-sm font-medium',
+                      isCurrent && 'text-text',
+                      isDone && 'text-text-subtle',
+                      isFuture && 'text-muted',
+                    )}
+                  >
+                    {STATUS_LABEL[step]}
+                  </span>
+                  {isCurrent && (
+                    <Badge variant="primary" size="sm">
+                      atual
+                    </Badge>
+                  )}
+                </div>
+                {dateField && (
+                  <span className="text-[11px] text-muted tabular">{fmtDateTime(dateField)}</span>
+                )}
+              </div>
+            </li>
+          );
+        })}
+      </ol>
+    </section>
+  );
+}
+
+function CanceledNote({ pedido }: { pedido: PedidoDetail }) {
+  return (
+    <div className="px-4 py-3 rounded-md bg-danger/10 border border-danger/30">
+      <div className="flex items-center gap-2 mb-1">
+        <XCircle className="h-4 w-4 text-danger" />
+        <strong className="text-sm text-danger">Pedido cancelado</strong>
+        {pedido.canceladoEm && (
+          <span className="text-[11px] text-muted tabular">{fmtDateTime(pedido.canceladoEm)}</span>
+        )}
       </div>
-      <div>{children}</div>
+      {pedido.cancelMotivo && (
+        <p className="text-sm text-text-subtle m-0">{pedido.cancelMotivo}</p>
+      )}
+    </div>
+  );
+}
+
+function stepDate(p: PedidoDetail, step: PedidoStatus): string | null | undefined {
+  switch (step) {
+    case 'RASCUNHO':
+      return p.criadoEm;
+    case 'ENVIADO_OMIE':
+      return p.enviadoOmieEm;
+    case 'PAGO':
+      return p.pagoEm;
+    case 'EM_SEPARACAO':
+      return p.separacaoEm;
+    case 'ENVIADO':
+      return p.enviadoEm;
+    case 'ENTREGUE':
+      return p.entregueEm;
+    default:
+      return null;
+  }
+}
+
+// ─── InfoCell ─────────────────────────────────────────────────
+
+function InfoCell({
+  icon,
+  label,
+  value,
+  avatar,
+  mono,
+}: {
+  icon: ReactNode;
+  label: string;
+  value?: string | null;
+  avatar?: string;
+  mono?: boolean;
+}) {
+  if (!value || value === '—') {
+    return (
+      <div className="rounded-md border border-border bg-bg-alt px-3 py-2">
+        <div className="flex items-center gap-1.5 text-[10px] uppercase tracking-wider text-muted mb-1 [&>svg]:h-3 [&>svg]:w-3">
+          {icon}
+          <span>{label}</span>
+        </div>
+        <div className="text-sm text-muted-light italic">—</div>
+      </div>
+    );
+  }
+  return (
+    <div className="rounded-md border border-border bg-bg-alt px-3 py-2">
+      <div className="flex items-center gap-1.5 text-[10px] uppercase tracking-wider text-muted mb-1 [&>svg]:h-3 [&>svg]:w-3">
+        {icon}
+        <span>{label}</span>
+      </div>
+      <div className="flex items-center gap-1.5">
+        {avatar && <Avatar name={avatar} size="xs" />}
+        <span className={cn('text-sm text-text truncate', mono && 'tabular')}>{value}</span>
+      </div>
     </div>
   );
 }
