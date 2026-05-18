@@ -20,8 +20,8 @@ import {
   Target,
   AlertCircle,
   Trash2,
-  GripVertical,
   TrendingUp,
+  ExternalLink,
 } from 'lucide-react';
 import { api, ApiError } from '@/lib/api';
 import { useApiQuery } from '@/hooks/useApiQuery';
@@ -324,7 +324,11 @@ export default function LeadsPage() {
             </div>
             <DragOverlay>
               {activeLead && (
-                <div className="rotate-2 opacity-90 shadow-xl">
+                <div
+                  className={cn(
+                    'rotate-2 shadow-xl border border-primary/40 bg-surface rounded-md p-2.5',
+                  )}
+                >
                   <LeadCardInner lead={activeLead} dragging />
                 </div>
               )}
@@ -430,6 +434,15 @@ function KanbanColumn({
 
 // ─── Draggable card ────────────────────────────────────────────
 
+/**
+ * Card inteiro é o "handle" de drag. O usuário pressiona o card e arrasta.
+ * Para abrir o detalhe sem arrastar, há um botão "Abrir" no canto superior
+ * direito (não conflita com drag — pointerdown nele para a propagação).
+ *
+ * dnd-kit's PointerSensor com distance=6 garante que cliques curtos não
+ * disparam drag, então um click rápido em outra parte do card também
+ * abre o detail.
+ */
 function DraggableLeadCard({
   lead,
   onClick,
@@ -440,103 +453,114 @@ function DraggableLeadCard({
   const { attributes, listeners, setNodeRef, isDragging } = useDraggable({
     id: lead.id,
   });
+
   return (
     <div
       ref={setNodeRef}
+      {...attributes}
+      {...listeners}
       data-testid={`lead-card-${lead.id}`}
+      role="button"
+      tabIndex={0}
+      onClick={(e) => {
+        // Se foi marcado como vindo do botão "Abrir", deixa passar.
+        // Senão, abre detail por click curto no card (drag não disparou).
+        if (!(e.target as HTMLElement).closest('[data-no-drag]')) {
+          onClick(lead);
+        }
+      }}
       className={cn(
-        'group relative',
+        'group relative bg-surface border border-border rounded-md p-2.5',
+        'hover:border-border-strong hover:bg-surface-hover transition-colors',
+        'cursor-grab active:cursor-grabbing touch-none select-none',
+        'focus:outline-none focus:ring-2 focus:ring-primary/30',
         isDragging && 'opacity-30',
       )}
     >
-      <LeadCardInner lead={lead} onClick={() => onClick(lead)} dragAttributes={{ ...attributes, ...listeners }} />
+      <LeadCardInner lead={lead} onOpenDetail={() => onClick(lead)} />
     </div>
   );
 }
 
 function LeadCardInner({
   lead,
-  onClick,
-  dragAttributes,
+  onOpenDetail,
   dragging,
 }: {
   lead: Lead;
-  onClick?: () => void;
-  dragAttributes?: Record<string, unknown>;
+  onOpenDetail?: () => void;
   dragging?: boolean;
 }) {
   return (
     <div
       className={cn(
-        'relative bg-surface border border-border rounded-md p-2.5',
-        'hover:border-border-strong hover:bg-surface-hover transition-colors',
-        dragging && 'shadow-xl border-primary/40',
+        'relative',
+        dragging && 'shadow-xl',
       )}
     >
-      <div className="flex items-start gap-2">
-        {/* Drag handle */}
+      {/* Botão "Abrir" no canto — único elemento que NÃO dispara drag */}
+      {onOpenDetail && (
         <button
           type="button"
-          aria-label="Arrastar"
-          {...dragAttributes}
+          aria-label="Abrir detalhes"
+          data-no-drag
+          onPointerDown={(e) => e.stopPropagation()}
+          onClick={(e) => {
+            e.stopPropagation();
+            onOpenDetail();
+          }}
           className={cn(
-            'shrink-0 -ml-1 mt-0.5 p-0.5 rounded text-muted-light cursor-grab',
-            'hover:text-text hover:bg-surface-hover',
-            'touch-none', // pra @dnd-kit funcionar em mobile
+            'absolute top-0 right-0 p-1 rounded-md text-muted-light',
+            'opacity-0 group-hover:opacity-100 transition-opacity',
+            'hover:text-primary hover:bg-surface-hover',
+            'focus:opacity-100 focus:outline-none focus:ring-1 focus:ring-primary/40',
           )}
         >
-          <GripVertical className="h-3.5 w-3.5" />
+          <ExternalLink className="h-3 w-3" />
         </button>
+      )}
 
-        {/* Content (click area) */}
-        <button
-          type="button"
-          onClick={onClick}
-          className="flex-1 min-w-0 text-left"
-        >
-          <div className="flex items-start gap-2 mb-1.5">
-            <Avatar name={lead.nome} size="xs" />
-            <div className="flex-1 min-w-0">
-              <div className="text-sm font-medium text-text leading-tight truncate">
-                {lead.nome}
-              </div>
-              {lead.contatoNome && (
-                <div className="text-[10px] text-muted truncate">
-                  {lead.contatoNome}
-                </div>
-              )}
+      <div className="flex items-start gap-2 mb-1.5 pr-5">
+        <Avatar name={lead.nome} size="xs" />
+        <div className="flex-1 min-w-0">
+          <div className="text-sm font-medium text-text leading-tight truncate">
+            {lead.nome}
+          </div>
+          {lead.contatoNome && (
+            <div className="text-[10px] text-muted truncate">
+              {lead.contatoNome}
             </div>
-          </div>
+          )}
+        </div>
+      </div>
 
-          <div className="flex items-center gap-1.5 mb-1.5 flex-wrap">
-            {lead.cidade && (
-              <span className="inline-flex items-center gap-0.5 text-[10px] text-muted">
-                <MapPin className="h-2.5 w-2.5" />
-                {lead.cidade}
-                {lead.uf ? `/${lead.uf}` : ''}
-              </span>
-            )}
-            {lead.segmento && (
-              <span className="inline-flex items-center gap-0.5 text-[10px] text-muted">
-                <Briefcase className="h-2.5 w-2.5" />
-                {lead.segmento}
-              </span>
-            )}
-          </div>
+      <div className="flex items-center gap-1.5 mb-1.5 flex-wrap">
+        {lead.cidade && (
+          <span className="inline-flex items-center gap-0.5 text-[10px] text-muted">
+            <MapPin className="h-2.5 w-2.5" />
+            {lead.cidade}
+            {lead.uf ? `/${lead.uf}` : ''}
+          </span>
+        )}
+        {lead.segmento && (
+          <span className="inline-flex items-center gap-0.5 text-[10px] text-muted">
+            <Briefcase className="h-2.5 w-2.5" />
+            {lead.segmento}
+          </span>
+        )}
+      </div>
 
-          <div className="flex items-center justify-between">
-            <span className="text-sm font-semibold text-text tabular tracking-tight">
-              {fmtBRLCompact(lead.valorEstimado)}
-            </span>
-            {lead.representante ? (
-              <Avatar name={lead.representante.nome} size="xs" />
-            ) : (
-              <Badge variant="neutral" size="sm">
-                sem rep
-              </Badge>
-            )}
-          </div>
-        </button>
+      <div className="flex items-center justify-between">
+        <span className="text-sm font-semibold text-text tabular tracking-tight">
+          {fmtBRLCompact(lead.valorEstimado)}
+        </span>
+        {lead.representante ? (
+          <Avatar name={lead.representante.nome} size="xs" />
+        ) : (
+          <Badge variant="neutral" size="sm">
+            sem rep
+          </Badge>
+        )}
       </div>
     </div>
   );
@@ -770,15 +794,61 @@ function LeadFormModal({
   });
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
 
   function setF<K extends keyof typeof form>(k: K, v: (typeof form)[K]) {
     setForm((s) => ({ ...s, [k]: v }));
+    // Limpa erro do campo conforme o user digita
+    if (fieldErrors[k as string]) {
+      setFieldErrors((errs) => {
+        const next = { ...errs };
+        delete next[k as string];
+        return next;
+      });
+    }
+  }
+
+  /**
+   * Validação client-side antes do submit. Espelho do createLeadSchema
+   * do backend — falhar aqui dá feedback imediato sem perder o roundtrip.
+   */
+  function validar(): Record<string, string> {
+    const errs: Record<string, string> = {};
+    const nome = form.nome.trim();
+    if (nome.length === 0) errs.nome = 'Nome é obrigatório';
+    else if (nome.length < 2) errs.nome = 'Nome precisa ter no mínimo 2 caracteres';
+    else if (nome.length > 200) errs.nome = 'Nome não pode passar de 200 caracteres';
+
+    if (form.uf && form.uf.trim().length !== 0 && form.uf.trim().length !== 2) {
+      errs.uf = 'UF precisa ter 2 caracteres';
+    }
+    if (form.contatoEmail.trim() && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(form.contatoEmail.trim())) {
+      errs.contatoEmail = 'E-mail inválido';
+    }
+    if (form.valorEstimado < 0) {
+      errs.valorEstimado = 'Valor não pode ser negativo';
+    }
+    if (form.score < 0 || form.score > 100) {
+      errs.score = 'Score deve estar entre 0 e 100';
+    }
+    return errs;
   }
 
   async function submit(e: React.FormEvent) {
     e.preventDefault();
+    const errs = validar();
+    if (Object.keys(errs).length > 0) {
+      setFieldErrors(errs);
+      // Foca o primeiro campo com erro
+      const first = document.querySelector<HTMLInputElement>(
+        `[data-testid="lead-${Object.keys(errs)[0]}-input"]`,
+      );
+      first?.focus();
+      return;
+    }
     setBusy(true);
     setError(null);
+    setFieldErrors({});
     const payload: Record<string, unknown> = {
       nome: form.nome.trim(),
       canalOrigem: form.canalOrigem,
@@ -823,7 +893,6 @@ function LeadFormModal({
             type="submit"
             form="lead-form"
             data-testid="lead-save-btn"
-            disabled={form.nome.trim().length < 2}
             loading={busy}
           >
             Criar lead
@@ -831,16 +900,15 @@ function LeadFormModal({
         </>
       }
     >
-      <form id="lead-form" onSubmit={submit} className="flex flex-col gap-3">
-        <Field label="Nome / Empresa" required>
+      <form id="lead-form" onSubmit={submit} className="flex flex-col gap-3" noValidate>
+        <Field label="Nome / Empresa" required error={fieldErrors.nome}>
           <Input
             data-testid="lead-nome-input"
             value={form.nome}
             onChange={(e) => setF('nome', e.target.value)}
-            minLength={2}
             maxLength={200}
-            required
             placeholder="Razão social ou nome do prospect"
+            autoFocus
           />
         </Field>
 
@@ -848,8 +916,9 @@ function LeadFormModal({
           <Field label="Cidade">
             <Input value={form.cidade} onChange={(e) => setF('cidade', e.target.value)} />
           </Field>
-          <Field label="UF">
+          <Field label="UF" error={fieldErrors.uf}>
             <Input
+              data-testid="lead-uf-input"
               maxLength={2}
               value={form.uf}
               onChange={(e) => setF('uf', normalizeUF(e.target.value))}
@@ -886,15 +955,17 @@ function LeadFormModal({
               inputMode="tel"
             />
           </Field>
-          <Field label="E-mail">
+          <Field label="E-mail" error={fieldErrors.contatoEmail}>
             <Input
+              data-testid="lead-contatoEmail-input"
               type="email"
               value={form.contatoEmail}
               onChange={(e) => setF('contatoEmail', e.target.value)}
             />
           </Field>
-          <Field label="Valor estimado">
+          <Field label="Valor estimado" error={fieldErrors.valorEstimado}>
             <Input
+              data-testid="lead-valorEstimado-input"
               type="number"
               min={0}
               step="0.01"
@@ -902,8 +973,9 @@ function LeadFormModal({
               onChange={(e) => setF('valorEstimado', Number(e.target.value))}
             />
           </Field>
-          <Field label="Score (0–100)">
+          <Field label="Score (0–100)" error={fieldErrors.score}>
             <Input
+              data-testid="lead-score-input"
               type="number"
               min={0}
               max={100}
