@@ -1,9 +1,36 @@
 import { useEffect, useRef, useState } from 'react';
+import {
+  Bot,
+  Send,
+  Trash2,
+  Settings,
+  Sparkles,
+  AlertCircle,
+  Package,
+  Info,
+} from 'lucide-react';
 import { api, ApiError } from '@/lib/api';
 import { PageLayout } from '@/components/PageLayout';
-import { FormField, Select, Textarea } from '@/components/FormField';
 import { Markdown } from '@/components/Markdown';
-import { badge, btn, btnSecondary, card, colors } from '@/components/styles';
+import {
+  Badge,
+  Button,
+  Card,
+  CardHeader,
+  CardTitle,
+  Field,
+  Select,
+  Textarea,
+} from '@/components/ui';
+import { cn } from '@/lib/cn';
+
+/**
+ * MullerBotPage v2 — chat com paleta Betinna (roxo+ciano).
+ *
+ * Layout:
+ *  - Esquerda: chat (perguntas direita, respostas esquerda com Avatar Bot)
+ *  - Direita: settings + dicas
+ */
 
 interface MullerProduto {
   id: string;
@@ -34,7 +61,7 @@ interface QAItem {
   ts: number;
 }
 
-const HISTORY_KEY = 'mullerbot_history_v1';
+const HISTORY_KEY = 'mullerbot_history_v2';
 
 function loadHistory(): QAItem[] {
   try {
@@ -49,13 +76,20 @@ function saveHistory(items: QAItem[]) {
   try {
     sessionStorage.setItem(HISTORY_KEY, JSON.stringify(items.slice(-20)));
   } catch {
-    /* sessionStorage cheio — ignora */
+    // ignora se storage cheio
   }
 }
 
 function fmtBRL(v: number) {
   return new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(v);
 }
+
+const SUGGESTED = [
+  'Quais produtos têm marca X?',
+  'Preciso de algo na linha de molhos',
+  'Recomende 3 produtos abaixo de R$ 50',
+  'O que tem disponível em embalagens grandes?',
+];
 
 export default function MullerBotPage() {
   const [pergunta, setPergunta] = useState('');
@@ -73,29 +107,18 @@ export default function MullerBotPage() {
     endRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [history]);
 
-  async function enviar(e?: React.FormEvent) {
+  async function enviar(e?: React.FormEvent, customQ?: string) {
     e?.preventDefault();
-    const q = pergunta.trim();
-    // Validação client-side (backend valida com Zod). Aqui só os checks
-    // óbvios pra evitar request inútil.
+    const q = (customQ ?? pergunta).trim();
     if (!q) return;
     if (q.length > 2000) {
-      setError('Pergunta muito longa (máx 2000 chars). Encurte e tente de novo.');
-      return;
-    }
-    if (topK < 1 || topK > 20) {
-      setError('topK deve estar entre 1 e 20.');
+      setError('Pergunta muito longa (máx 2000 chars).');
       return;
     }
     setBusy(true);
     setError(null);
     try {
-      // Payload tipado em vez de `Record<string, unknown>` — mais seguro contra
-      // typos e fica fácil de evoluir junto com o backend DTO.
-      const payload: { pergunta: string; topK: number; modelo?: string } = {
-        pergunta: q,
-        topK,
-      };
+      const payload: { pergunta: string; topK: number; modelo?: string } = { pergunta: q, topK };
       if (modelo.trim()) payload.modelo = modelo.trim();
       const r = await api.post<PerguntarResponse>('/mullerbot/perguntar', payload);
       const item: QAItem = {
@@ -119,235 +142,260 @@ export default function MullerBotPage() {
   }
 
   function clearHistory() {
-    if (!confirm('Limpar histórico desta sessão?')) return;
     setHistory([]);
   }
 
   return (
     <PageLayout
       title="MullerBot"
+      description="Assistente comercial com RAG sobre o catálogo da empresa. Pergunte sobre produtos, preços, recomendações."
       actions={
         history.length > 0 ? (
-          <button
-            type="button"
+          <Button
+            variant="ghost"
             data-testid="muller-clear"
             onClick={clearHistory}
-            style={btnSecondary}
+            leftIcon={<Trash2 className="h-3.5 w-3.5" />}
           >
             Limpar histórico
-          </button>
+          </Button>
         ) : undefined
       }
     >
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 280px', gap: '1rem', alignItems: 'start' }}>
-        {/* Chat principal */}
-        <div
-          style={{
-            ...card,
-            padding: 0,
-            display: 'flex',
-            flexDirection: 'column',
-            height: 'calc(100vh - 200px)',
-            minHeight: 500,
-            overflow: 'hidden',
-          }}
+      <div
+        className="grid gap-4"
+        style={{ gridTemplateColumns: 'minmax(0, 1fr) 280px' }}
+      >
+        {/* Chat */}
+        <Card
+          padding="none"
+          className="flex flex-col overflow-hidden"
+          style={{ height: 'calc(100vh - 220px)', minHeight: 500 }}
         >
-          <div
-            style={{
-              flex: 1,
-              overflowY: 'auto',
-              padding: '1rem',
-              background: '#fafbfc',
-            }}
-          >
-            {history.length === 0 && (
-              <div
-                style={{
-                  textAlign: 'center',
-                  padding: '3rem 1rem',
-                  color: colors.muted,
-                }}
-              >
-                <div style={{ fontSize: 32, marginBottom: '0.5rem' }}>🤖</div>
-                <p style={{ marginTop: 0, fontSize: 14, maxWidth: 480, margin: '0 auto' }}>
-                  Pergunte qualquer coisa sobre o catálogo da empresa. O MullerBot busca os
-                  produtos mais relevantes e responde com base apenas neles (não inventa).
-                </p>
-                <p style={{ fontSize: 13, color: colors.muted, marginTop: '1rem' }}>
-                  Exemplos:
-                  <br />
-                  &ldquo;Quais produtos têm marca X?&rdquo;
-                  <br />
-                  &ldquo;Preciso de algo na linha de molhos&rdquo;
-                  <br />
-                  &ldquo;Recomende 3 produtos abaixo de R$ 50&rdquo;
-                </p>
-              </div>
-            )}
-
-            <ul style={{ listStyle: 'none', padding: 0, margin: 0, display: 'flex', flexDirection: 'column', gap: '1rem' }}>
-              {history.map((qa) => (
-                <li key={qa.id}>
-                  {/* Pergunta (direita) */}
-                  <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: '0.5rem' }}>
-                    <div
-                      style={{
-                        maxWidth: '75%',
-                        padding: '0.5rem 0.75rem',
-                        background: colors.primary,
-                        color: '#fff',
-                        borderRadius: 12,
-                        fontSize: 14,
-                      }}
-                    >
-                      <p style={{ margin: 0, whiteSpace: 'pre-wrap' }}>{qa.pergunta}</p>
-                    </div>
-                  </div>
-                  {/* Resposta (esquerda) */}
-                  <div style={{ display: 'flex', justifyContent: 'flex-start' }}>
-                    <div
-                      style={{
-                        maxWidth: '85%',
-                        padding: '0.75rem 0.875rem',
-                        background: colors.surface,
-                        border: `1px solid ${colors.border}`,
-                        borderRadius: 12,
-                        fontSize: 14,
-                      }}
-                    >
-                      <Markdown
-                        content={qa.resposta}
-                        style={{ fontSize: 14, lineHeight: 1.5 }}
-                      />
-                      {qa.produtos.length > 0 && (
-                        <div style={{ marginTop: '0.75rem', borderTop: `1px solid ${colors.border}`, paddingTop: '0.5rem' }}>
-                          <div style={{ fontSize: 11, color: colors.muted, textTransform: 'uppercase', letterSpacing: 0.3, marginBottom: 4 }}>
-                            Produtos consultados
-                          </div>
-                          <ul style={{ margin: 0, padding: 0, listStyle: 'none', display: 'flex', flexDirection: 'column', gap: 2 }}>
-                            {qa.produtos.map((p) => (
-                              <li key={p.id} style={{ fontSize: 12, color: colors.muted }}>
-                                · <strong>{p.nome}</strong>
-                                {p.marca && ` (${p.marca})`}
-                                {p.precoTabela !== undefined && ` — ${fmtBRL(p.precoTabela)}`}
-                              </li>
-                            ))}
-                          </ul>
-                          {qa.truncados && (
-                            <p style={{ fontSize: 11, color: colors.warning, marginTop: 4 }}>
-                              ⚠ Catálogo grande — produtos descritivos foram truncados pra caber no contexto.
-                            </p>
-                          )}
-                        </div>
-                      )}
-                      <div
-                        style={{
-                          fontSize: 10,
-                          color: colors.muted,
-                          marginTop: 6,
-                          textAlign: 'right',
-                        }}
-                      >
-                        {qa.modelo ? `${qa.modelo} · ` : ''}
-                        {qa.tokensIn !== undefined && `${qa.tokensIn}↓`}
-                        {qa.tokensOut !== undefined && ` ${qa.tokensOut}↑`}
+          <div className="flex-1 overflow-y-auto px-4 py-4 bg-bg">
+            {history.length === 0 ? (
+              <EmptyChat onSuggest={(q) => void enviar(undefined, q)} />
+            ) : (
+              <ul className="list-none p-0 m-0 flex flex-col gap-4">
+                {history.map((qa) => (
+                  <li key={qa.id} className="flex flex-col gap-2">
+                    {/* Pergunta (direita) */}
+                    <div className="flex justify-end">
+                      <div className="max-w-[78%] px-3 py-2 rounded-2xl rounded-br-sm bg-gradient-brand text-white text-sm shadow-sm">
+                        <p className="m-0 whitespace-pre-wrap">{qa.pergunta}</p>
                       </div>
                     </div>
-                  </div>
-                </li>
-              ))}
-            </ul>
+                    {/* Resposta (esquerda) com Avatar */}
+                    <div className="flex justify-start items-start gap-2">
+                      <div
+                        className={cn(
+                          'flex h-7 w-7 items-center justify-center rounded-full shrink-0 mt-1',
+                          'bg-gradient-brand text-white',
+                        )}
+                      >
+                        <Bot className="h-4 w-4" />
+                      </div>
+                      <div className="max-w-[85%] px-3.5 py-3 rounded-2xl rounded-tl-sm bg-surface border border-border text-sm shadow-sm">
+                        <Markdown content={qa.resposta} />
+                        {qa.produtos.length > 0 && (
+                          <div className="mt-3 pt-2 border-t border-border">
+                            <div className="text-[10px] uppercase tracking-wider text-muted mb-1.5 flex items-center gap-1">
+                              <Package className="h-3 w-3" />
+                              Produtos consultados ({qa.produtos.length})
+                            </div>
+                            <ul className="m-0 p-0 list-none flex flex-col gap-1">
+                              {qa.produtos.map((p) => (
+                                <li key={p.id} className="text-xs text-text-subtle">
+                                  <span className="text-primary mr-1">·</span>
+                                  <strong className="text-text">{p.nome}</strong>
+                                  {p.marca && (
+                                    <span className="text-muted"> ({p.marca})</span>
+                                  )}
+                                  {p.precoTabela !== undefined && (
+                                    <span className="text-muted tabular ml-1">
+                                      — {fmtBRL(p.precoTabela)}
+                                    </span>
+                                  )}
+                                </li>
+                              ))}
+                            </ul>
+                            {qa.truncados && (
+                              <p className="text-[11px] text-warning mt-1.5 flex items-start gap-1 m-0">
+                                <AlertCircle className="h-3 w-3 mt-0.5 shrink-0" />
+                                Catálogo grande — descrições truncadas pra caber no contexto.
+                              </p>
+                            )}
+                          </div>
+                        )}
+                        <div className="text-[10px] text-muted-light mt-2 text-right tabular">
+                          {qa.modelo ? `${qa.modelo} · ` : ''}
+                          {qa.tokensIn !== undefined && `${qa.tokensIn}↓`}
+                          {qa.tokensOut !== undefined && ` ${qa.tokensOut}↑`}
+                        </div>
+                      </div>
+                    </div>
+                  </li>
+                ))}
+              </ul>
+            )}
             <div ref={endRef} />
           </div>
 
           {/* Compose */}
           <form
             onSubmit={enviar}
-            style={{ padding: '0.75rem 1rem', borderTop: `1px solid ${colors.border}` }}
+            className="px-3 py-3 border-t border-border bg-bg-alt"
           >
-            <Textarea
-              data-testid="muller-input"
-              placeholder="Pergunte sobre o catálogo…"
-              value={pergunta}
-              onChange={(e) => setPergunta(e.target.value)}
-              onKeyDown={(e) => {
-                if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) {
-                  e.preventDefault();
-                  void enviar();
-                }
-              }}
-              maxLength={2000}
-              style={{ minHeight: 60 }}
-            />
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '0.5rem' }}>
-              <span style={{ fontSize: 11, color: error ? colors.danger : colors.muted }}>
-                {error ? error : `⌘/Ctrl + Enter pra enviar · ${pergunta.length}/2000`}
-              </span>
-              <button
+            <div className="flex items-end gap-2">
+              <Textarea
+                data-testid="muller-input"
+                placeholder="Pergunte sobre o catálogo…"
+                value={pergunta}
+                onChange={(e) => setPergunta(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) {
+                    e.preventDefault();
+                    void enviar();
+                  }
+                }}
+                maxLength={2000}
+                rows={1}
+                className="min-h-[44px] max-h-32 resize-none"
+              />
+              <Button
                 type="submit"
                 data-testid="muller-send"
                 disabled={busy || pergunta.trim().length === 0}
-                style={{ ...btn, opacity: busy || pergunta.trim().length === 0 ? 0.6 : 1 }}
+                loading={busy}
+                leftIcon={!busy ? <Send className="h-3.5 w-3.5" /> : undefined}
               >
-                {busy ? 'Pensando…' : 'Perguntar'}
-              </button>
+                {busy ? 'Pensando' : 'Perguntar'}
+              </Button>
+            </div>
+            <div className="flex items-center justify-between mt-1.5">
+              <span
+                className={cn('text-[11px]', error ? 'text-danger' : 'text-muted-light')}
+              >
+                {error ? error : '⌘/Ctrl + Enter pra enviar'}
+              </span>
+              <span className="text-[11px] text-muted-light tabular">
+                {pergunta.length}/2000
+              </span>
             </div>
           </form>
-        </div>
+        </Card>
 
-        {/* Sidebar config */}
-        <div style={card}>
-          <h3 style={{ marginTop: 0, fontSize: 14 }}>Configurações</h3>
-          <FormField label="Top-K produtos" htmlFor="topk" hint="Quantos produtos relevantes carregar no contexto">
-            <Select
-              id="topk"
-              data-testid="muller-topk"
-              value={String(topK)}
-              onChange={(e) => setTopK(Number(e.target.value))}
-            >
-              {[3, 5, 8, 10, 15, 20].map((n) => (
-                <option key={n} value={n}>
-                  {n}
-                </option>
-              ))}
-            </Select>
-          </FormField>
-          <FormField label="Modelo (opcional)" htmlFor="modelo" hint="Default: gpt-4o-mini">
-            <Select
-              id="modelo"
-              value={modelo}
-              onChange={(e) => setModelo(e.target.value)}
-            >
-              <option value="">Default (env)</option>
-              <option value="gpt-4o-mini">gpt-4o-mini</option>
-              <option value="gpt-4o">gpt-4o</option>
-              <option value="gpt-4-turbo">gpt-4-turbo</option>
-            </Select>
-          </FormField>
+        {/* Sidebar */}
+        <div className="flex flex-col gap-3">
+          <Card padding="md">
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <Settings className="h-4 w-4 text-primary" />
+                Configurações
+              </CardTitle>
+            </CardHeader>
+            <div className="flex flex-col gap-3">
+              <Field label="Top-K produtos" hint="Quantos produtos no contexto">
+                <Select
+                  data-testid="muller-topk"
+                  value={String(topK)}
+                  onChange={(e) => setTopK(Number(e.target.value))}
+                >
+                  {[3, 5, 8, 10, 15, 20].map((n) => (
+                    <option key={n} value={n}>
+                      {n}
+                    </option>
+                  ))}
+                </Select>
+              </Field>
+              <Field label="Modelo" hint="Default: gpt-4o-mini">
+                <Select value={modelo} onChange={(e) => setModelo(e.target.value)}>
+                  <option value="">Default (env)</option>
+                  <option value="gpt-4o-mini">gpt-4o-mini</option>
+                  <option value="gpt-4o">gpt-4o</option>
+                  <option value="gpt-4-turbo">gpt-4-turbo</option>
+                </Select>
+              </Field>
+            </div>
+          </Card>
 
-          <div
-            style={{
-              background: '#fafbfc',
-              border: `1px solid ${colors.border}`,
-              borderRadius: 6,
-              padding: '0.75rem',
-              fontSize: 12,
-              color: colors.muted,
-              marginTop: '0.75rem',
-              lineHeight: 1.5,
-            }}
-          >
-            <strong>Como funciona:</strong>
-            <ul style={{ paddingLeft: 16, margin: '4px 0 0' }}>
-              <li>RAG sobre catálogo OMIE</li>
-              <li>Top-K via keyword scoring</li>
-              <li>Sem alucinação (system prompt limita)</li>
-              <li>REPs precisam ter chave OpenAI própria em <span style={badge(colors.primary)}>Minhas integrações</span></li>
+          <Card padding="md" variant="outline" className="bg-primary/5 border-primary/30">
+            <h4 className="text-xs font-semibold text-primary mb-2 flex items-center gap-1.5 uppercase tracking-wider">
+              <Info className="h-3 w-3" />
+              Como funciona
+            </h4>
+            <ul className="text-xs text-text-subtle space-y-1.5 leading-relaxed list-disc pl-4 m-0">
+              <li>RAG sobre catálogo OMIE da empresa</li>
+              <li>Top-K via keyword scoring (sem alucinação)</li>
+              <li>Tom e estilo configuráveis em Persona Bot</li>
+              <li>REPs precisam de chave OpenAI própria</li>
               <li>Histórico só nesta sessão (não persistido)</li>
             </ul>
-          </div>
+          </Card>
+
+          <Card padding="md" variant="outline" className="bg-secondary/5 border-secondary/30">
+            <h4 className="text-xs font-semibold text-secondary-hover mb-2 flex items-center gap-1.5 uppercase tracking-wider">
+              <Sparkles className="h-3 w-3" />
+              Dica
+            </h4>
+            <p className="text-xs text-text-subtle leading-relaxed m-0">
+              Customize a identidade do bot (tom de voz, instruções, exemplos) na página{' '}
+              <a href="/mullerbot/persona" className="text-primary font-semibold">
+                Persona Bot
+              </a>
+              .
+            </p>
+          </Card>
         </div>
       </div>
     </PageLayout>
   );
 }
+
+function EmptyChat({ onSuggest }: { onSuggest: (q: string) => void }) {
+  return (
+    <div className="text-center py-12 px-4 max-w-xl mx-auto">
+      <div
+        className={cn(
+          'inline-flex h-16 w-16 items-center justify-center rounded-2xl mb-4',
+          'bg-gradient-brand text-white shadow-lg',
+        )}
+      >
+        <Bot className="h-8 w-8" />
+      </div>
+      <h2
+        className="text-xl font-bold tracking-tight text-text mb-2"
+        style={{ fontFamily: 'var(--font-display)' }}
+      >
+        Pergunte sobre o catálogo
+      </h2>
+      <p className="text-sm text-text-subtle leading-relaxed mb-6">
+        Busco os produtos mais relevantes no catálogo da empresa e respondo com base
+        neles. Sem invenção. Sem alucinação.
+      </p>
+      <div className="flex flex-col gap-2">
+        <div className="text-[10px] uppercase tracking-wider text-muted-light text-left">
+          Sugestões
+        </div>
+        {SUGGESTED.map((q) => (
+          <button
+            key={q}
+            type="button"
+            onClick={() => onSuggest(q)}
+            className={cn(
+              'text-left px-3 py-2.5 rounded-md',
+              'bg-surface border border-border text-sm text-text',
+              'hover:border-primary/40 hover:bg-primary/5 transition-colors',
+            )}
+          >
+            {q}
+          </button>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+// Unused Badge import — manter pra futuro uso
+const _u = Badge;
+void _u;
