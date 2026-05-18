@@ -2,6 +2,7 @@ import { Injectable, Logger } from '@nestjs/common';
 import { EnvService } from '@config/env.service';
 import { PrismaService } from '@database/prisma.service';
 import { IntegracoesService } from '@modules/integracoes/integracoes.service';
+import { NotificacoesService } from '@modules/notificacoes/notificacoes.service';
 import { OmieClientService } from './omie-client.service';
 import { OmieMapper } from './omie.mapper';
 
@@ -40,6 +41,7 @@ export class OmieProdutosService {
     private readonly omie: OmieClientService,
     private readonly integracoes: IntegracoesService,
     private readonly env: EnvService,
+    private readonly notificacoes: NotificacoesService,
   ) {}
 
   async sync(empresaId: string, options: OmieSyncOptions = {}): Promise<OmieProdutosSyncResult> {
@@ -81,14 +83,37 @@ export class OmieProdutosService {
 
         const existing = await this.prisma.produto.findUnique({
           where: payload.where,
-          select: { id: true },
+          select: { id: true, estoque: true, nome: true },
         });
+        const novoEstoque =
+          typeof payload.update.estoque === 'number' ? payload.update.estoque : null;
+
         if (existing) {
           await this.prisma.produto.update({
             where: { id: existing.id },
             data: payload.update,
           });
           atualizados++;
+
+          // Notifica reps quando produto transiciona estoque > 0 → estoque <= 0
+          // (best-effort, async — não bloqueia o sync)
+          if (
+            novoEstoque !== null &&
+            existing.estoque > 0 &&
+            novoEstoque <= 0
+          ) {
+            void this.notificarEstoqueZerado(
+              empresaId,
+              existing.id,
+              existing.nome,
+            ).catch((err) => {
+              this.logger.warn(
+                `Falha notificando ESTOQUE_ZERADO produto=${existing.id}: ${
+                  err instanceof Error ? err.message : String(err)
+                }`,
+              );
+            });
+          }
         } else {
           await this.prisma.produto.create({ data: payload.create });
           inseridos++;
@@ -124,5 +149,65 @@ export class OmieProdutosService {
       select: { ultimoSync: true },
     });
     return conn?.ultimoSync ?? undefined;
+  }
+
+  /**
+   * Notifica reps que venderam o produto nos últimos 30 dias quando o
+   * estoque transiciona pra zero. Evita ruído: só notifica quem teve
+   * pedido recente (provavelmente vai querer vender de novo).
+   *
+   * Best-effort — falha aqui NUNCA derruba o sync OMIE.
+   */
+  private async notificarEstoqueZerado(
+    empresaId: string,
+    produtoId: string,
+    produtoNome: string,
+  ): Promise<void> {
+    const trintaDiasAtras = new Date();
+    trintaDiasAtras.setDate(trintaDiasAtras.getDate() - 30);
+
+    // Reps únicos que venderam este produto nos últimos 30 dias.
+    // Não incluímos pedidos CANCELADOS (não conta como interesse real).
+    const pedidos = await this.prisma.pedido.findMany({
+      where: {
+        empresaId,
+        criadoEm: { gte: trintaDiasAtras },
+        status: { not: 'CANCELADO' },
+        representanteId: { not: null },
+        itens: { some: { produtoId } },
+      },
+      select: { representanteId: true },
+      distinct: ['representanteId'],
+    });
+
+    const repIds = pedidos
+      .map((p) => p.representanteId)
+      .filter((id): id is string => id !== null);
+
+    if (repIds.length === 0) {
+      this.logger.debug(
+        `Produto ${produtoId} zerou estoque mas nenhum rep vendeu nos últimos 30d`,
+      );
+      return;
+    }
+
+    this.logger.log(
+      `Produto ${produtoId} (${produtoNome}) zerou estoque — notificando ${repIds.length} rep(s)`,
+    );
+
+    await Promise.all(
+      repIds.map((repId) =>
+        this.notificacoes.criarParaUsuario({
+          empresaId,
+          usuarioId: repId,
+          tipo: 'ESTOQUE_ZERADO',
+          prioridade: 'ALTA',
+          titulo: 'Produto sem estoque',
+          mensagem: `${produtoNome} zerou o estoque no OMIE. Pedidos novos vão gerar OP de reposição.`,
+          link: `/catalogo`,
+          metadata: { produtoId, produtoNome },
+        }),
+      ),
+    );
   }
 }

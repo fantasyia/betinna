@@ -70,6 +70,23 @@ function newFormItem(): FormItem {
   };
 }
 
+/**
+ * Estado inicial pra reusar valores de outro pedido (duplicar / clonar).
+ * Todos os campos são opcionais; se omitido, usa default.
+ */
+export interface NovoPedidoInicial {
+  itens?: Array<{
+    produto: ProdutoOpt;
+    quantidade: number;
+    desconto?: number;
+    precoUnitarioOverride?: number;
+  }>;
+  formaPagamento?: PagamentoForma;
+  condicaoPagamento?: CondicaoPgto;
+  descontoGeral?: number;
+  observacoes?: string;
+}
+
 const FORMAS: PagamentoForma[] = ['BOLETO', 'PIX', 'TED', 'CARTAO', 'DINHEIRO'];
 const CONDICOES: { value: CondicaoPgto; label: string }[] = [
   { value: 'avista', label: 'À vista' },
@@ -86,22 +103,40 @@ function fmtBRL(v: number) {
 export function NovoPedidoDialog({
   open,
   clientePreSelecionado,
+  inicial,
   onClose,
   onCreated,
 }: {
   open: boolean;
   /** Quando informado, pré-seleciona o cliente e esconde o seletor. */
   clientePreSelecionado?: ClienteOpt | null;
+  /** Valores iniciais (usado pra duplicar/clonar pedido existente). */
+  inicial?: NovoPedidoInicial | null;
   onClose: () => void;
   onCreated: (pedidoId: string) => void;
 }) {
   const toast = useToast();
   const [cliente, setCliente] = useState<ClienteOpt | null>(clientePreSelecionado ?? null);
-  const [itens, setItens] = useState<FormItem[]>([newFormItem()]);
-  const [formaPagamento, setFormaPagamento] = useState<PagamentoForma>('BOLETO');
-  const [condicaoPagamento, setCondicaoPagamento] = useState<CondicaoPgto>('30dias');
-  const [descontoGeral, setDescontoGeral] = useState(0);
-  const [observacoes, setObservacoes] = useState('');
+  const [itens, setItens] = useState<FormItem[]>(() =>
+    inicial?.itens && inicial.itens.length > 0
+      ? inicial.itens.map((it) => ({
+          uiKey: Math.random().toString(36).slice(2),
+          produto: it.produto,
+          quantidade: it.quantidade,
+          desconto: it.desconto ?? 0,
+          precoUnitarioOverride:
+            it.precoUnitarioOverride !== undefined ? String(it.precoUnitarioOverride) : '',
+        }))
+      : [newFormItem()],
+  );
+  const [formaPagamento, setFormaPagamento] = useState<PagamentoForma>(
+    inicial?.formaPagamento ?? 'BOLETO',
+  );
+  const [condicaoPagamento, setCondicaoPagamento] = useState<CondicaoPgto>(
+    inicial?.condicaoPagamento ?? '30dias',
+  );
+  const [descontoGeral, setDescontoGeral] = useState(inicial?.descontoGeral ?? 0);
+  const [observacoes, setObservacoes] = useState(inicial?.observacoes ?? '');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -174,8 +209,14 @@ export function NovoPedidoDialog({
     <Dialog
       open={open}
       onClose={onClose}
-      title="Novo pedido"
-      description={clientePreSelecionado ? `Cliente: ${clientePreSelecionado.nome}` : undefined}
+      title={inicial ? 'Duplicar pedido' : 'Novo pedido'}
+      description={
+        inicial
+          ? 'Edite os campos antes de criar. Preços serão recalculados pelo backend.'
+          : clientePreSelecionado
+            ? `Cliente: ${clientePreSelecionado.nome}`
+            : undefined
+      }
       size="xl"
       footer={
         <>

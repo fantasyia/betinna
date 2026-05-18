@@ -82,7 +82,46 @@ const OMIE_COLOR: Record<OmieStatus, string> = {
   BLOQUEADO: colors.danger,
 };
 
-type Tab = 'dados' | 'notas' | 'documentos' | 'precos';
+type Tab = 'dados' | 'pedidos' | 'notas' | 'documentos' | 'precos';
+
+interface PedidoLite {
+  id: string;
+  numero: string | number;
+  status:
+    | 'RASCUNHO'
+    | 'AGUARDANDO_APROVACAO'
+    | 'ENVIADO_OMIE'
+    | 'PAGO'
+    | 'EM_SEPARACAO'
+    | 'ENVIADO'
+    | 'ENTREGUE'
+    | 'CANCELADO';
+  total: number;
+  criadoEm: string;
+  numeroOmie?: string | null;
+}
+
+const PEDIDO_STATUS_LABEL: Record<PedidoLite['status'], string> = {
+  RASCUNHO: 'Rascunho',
+  AGUARDANDO_APROVACAO: 'Aguardando aprovação',
+  ENVIADO_OMIE: 'Enviado OMIE',
+  PAGO: 'Pago',
+  EM_SEPARACAO: 'Em separação',
+  ENVIADO: 'Enviado',
+  ENTREGUE: 'Entregue',
+  CANCELADO: 'Cancelado',
+};
+
+const PEDIDO_STATUS_COLOR: Record<PedidoLite['status'], string> = {
+  RASCUNHO: colors.muted,
+  AGUARDANDO_APROVACAO: colors.warning,
+  ENVIADO_OMIE: colors.info,
+  PAGO: colors.success,
+  EM_SEPARACAO: colors.primary,
+  ENVIADO: colors.info,
+  ENTREGUE: colors.success,
+  CANCELADO: colors.danger,
+};
 
 function fmtBRL(v: number) {
   return new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(v);
@@ -189,6 +228,9 @@ export default function ClienteDetailPage() {
               <TabButton current={tab} value="dados" onChange={setTab}>
                 Dados
               </TabButton>
+              <TabButton current={tab} value="pedidos" onChange={setTab}>
+                Pedidos
+              </TabButton>
               <TabButton current={tab} value="notas" onChange={setTab}>
                 Notas privadas
               </TabButton>
@@ -207,6 +249,7 @@ export default function ClienteDetailPage() {
                 onDeleted={() => navigate('/clientes')}
               />
             )}
+            {tab === 'pedidos' && <PedidosTab clienteId={cliente.id} />}
             {tab === 'notas' && <NotasTab clienteId={cliente.id} />}
             {tab === 'documentos' && <DocumentosTab clienteId={cliente.id} />}
             {tab === 'precos' && <PrecosTab clienteId={cliente.id} />}
@@ -477,6 +520,126 @@ function DadosTab({
     </div>
   );
 }
+
+// ─── Tab Pedidos ────────────────────────────────────────────────────
+
+function PedidosTab({ clienteId }: { clienteId: string }) {
+  const navigate = useNavigate();
+  const { data, loading, error, refetch } = useApiQuery<{
+    data: PedidoLite[];
+    pagination?: { total: number };
+  }>(`/pedidos?clienteId=${clienteId}&limit=50&sortBy=criadoEm&sortOrder=desc`);
+
+  const pedidos: PedidoLite[] = data?.data ?? [];
+
+  return (
+    <div style={card}>
+      <header
+        style={{
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'space-between',
+          marginBottom: '0.75rem',
+        }}
+      >
+        <h3 style={{ margin: 0, fontSize: 15 }}>
+          Pedidos deste cliente
+          {pedidos.length > 0 && (
+            <span style={{ fontSize: 12, color: colors.muted, marginLeft: 8, fontWeight: 400 }}>
+              ({pedidos.length}
+              {data?.pagination?.total && data.pagination.total > pedidos.length
+                ? ` de ${data.pagination.total}`
+                : ''}
+              )
+            </span>
+          )}
+        </h3>
+        <button
+          type="button"
+          onClick={() => navigate(`/pedidos?clienteId=${clienteId}`)}
+          style={{ ...btnSecondary, padding: '0.25rem 0.625rem', fontSize: 12 }}
+        >
+          Ver na lista geral
+        </button>
+      </header>
+
+      <StateView
+        loading={loading}
+        error={error}
+        empty={!loading && !error && pedidos.length === 0}
+        emptyMessage="Sem pedidos pra este cliente ainda."
+        onRetry={refetch}
+      >
+        <table
+          style={{
+            width: '100%',
+            borderCollapse: 'collapse',
+            fontSize: 14,
+            marginTop: '0.25rem',
+          }}
+        >
+          <thead>
+            <tr>
+              <th style={pedidoTh}>Número</th>
+              <th style={pedidoTh}>Status</th>
+              <th style={{ ...pedidoTh, textAlign: 'right' }}>Total</th>
+              <th style={pedidoTh}>Data</th>
+              <th style={pedidoTh}></th>
+            </tr>
+          </thead>
+          <tbody>
+            {pedidos.map((p) => (
+              <tr
+                key={p.id}
+                style={{ cursor: 'pointer' }}
+                onClick={() => navigate(`/pedidos/${p.id}`)}
+                data-testid={`cliente-pedido-row-${p.id}`}
+              >
+                <td style={pedidoTd}>
+                  <div style={{ fontWeight: 600 }}>#{p.numero}</div>
+                  {p.numeroOmie && (
+                    <div style={{ fontSize: 11, color: colors.muted }}>
+                      OMIE {p.numeroOmie}
+                    </div>
+                  )}
+                </td>
+                <td style={pedidoTd}>
+                  <span style={badge(PEDIDO_STATUS_COLOR[p.status])}>
+                    {PEDIDO_STATUS_LABEL[p.status]}
+                  </span>
+                </td>
+                <td style={{ ...pedidoTd, textAlign: 'right', fontWeight: 600 }}>
+                  {fmtBRL(p.total)}
+                </td>
+                <td style={{ ...pedidoTd, color: colors.muted }}>{fmtDate(p.criadoEm)}</td>
+                <td style={{ ...pedidoTd, textAlign: 'right' }}>
+                  <span style={{ color: colors.primary, fontSize: 12 }}>abrir →</span>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </StateView>
+    </div>
+  );
+}
+
+const pedidoTh: React.CSSProperties = {
+  textAlign: 'left',
+  padding: '0.5rem',
+  borderBottom: `1px solid ${colors.border}`,
+  fontSize: 11,
+  textTransform: 'uppercase',
+  color: colors.muted,
+  fontWeight: 600,
+  letterSpacing: 0.3,
+};
+
+const pedidoTd: React.CSSProperties = {
+  padding: '0.5rem',
+  borderBottom: `1px solid ${colors.border}`,
+  verticalAlign: 'middle',
+};
 
 // ─── Tab Notas privadas ──────────────────────────────────────────────
 

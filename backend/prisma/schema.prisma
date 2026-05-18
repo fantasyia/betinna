@@ -1708,6 +1708,7 @@ enum NotificacaoTipo {
   AMOSTRA_FOLLOWUP         // rep: amostra precisa follow-up
   LEAD_INATIVO             // rep: lead 7 dias na mesma etapa
   CLIENTE_BLOQUEADO        // rep: cliente da carteira ficou BLOQUEADO no OMIE
+  ESTOQUE_ZERADO           // rep: produto que ele vendeu nos últimos 30d zerou o estoque
   GENERICO                 // notificação manual/admin
 }
 
