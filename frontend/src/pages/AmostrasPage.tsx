@@ -483,11 +483,21 @@ function AmostraFormModal({
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const valid = cliente !== null && produtoNome.trim().length >= 2 && valor.trim() !== '';
-
   async function submit(e: React.FormEvent) {
     e.preventDefault();
-    if (!cliente || !valid) return;
+    if (!cliente) {
+      setError('Selecione um cliente.');
+      return;
+    }
+    if (produtoNome.trim().length < 2) {
+      setError('Nome do produto precisa ter no mínimo 2 caracteres.');
+      return;
+    }
+    const valorNum = Number(valor);
+    if (!valor.trim() || Number.isNaN(valorNum) || valorNum < 0) {
+      setError('Valor inválido — informe um número >= 0.');
+      return;
+    }
     setBusy(true);
     setError(null);
     const payload: Record<string, unknown> = {
@@ -522,8 +532,8 @@ function AmostraFormModal({
             type="submit"
             form="amostra-form"
             data-testid="amostra-save-btn"
-            disabled={busy || !valid}
-            style={{ ...btn, opacity: busy || !valid ? 0.6 : 1 }}
+            disabled={busy}
+            style={{ ...btn, opacity: busy ? 0.6 : 1 }}
           >
             {busy ? 'Salvando…' : 'Criar'}
           </button>

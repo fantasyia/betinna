@@ -861,14 +861,27 @@ function PropostaFormDialog({
   }, 0);
   const totalComDescGeral = subtotal * (1 - descontoGeral / 100);
 
-  const valid =
-    cliente !== null &&
-    itens.length > 0 &&
-    itens.every((it) => it.produto !== null && it.quantidade >= 1);
-
   async function submit(e: React.FormEvent) {
     e.preventDefault();
-    if (!cliente || !valid) return;
+    // Validação client-side com feedback claro
+    if (!cliente) {
+      setError('Selecione um cliente antes de criar a proposta.');
+      return;
+    }
+    if (itens.length === 0) {
+      setError('Adicione ao menos um item.');
+      return;
+    }
+    const semProduto = itens.findIndex((it) => !it.produto);
+    if (semProduto !== -1) {
+      setError(`Selecione o produto do item ${semProduto + 1}.`);
+      return;
+    }
+    const qtInvalida = itens.findIndex((it) => it.quantidade < 1);
+    if (qtInvalida !== -1) {
+      setError(`Quantidade do item ${qtInvalida + 1} precisa ser pelo menos 1.`);
+      return;
+    }
     setBusy(true);
     setError(null);
     const payload: Record<string, unknown> = {
@@ -917,7 +930,6 @@ function PropostaFormDialog({
             type="submit"
             form="proposta-form"
             data-testid="proposta-save-btn"
-            disabled={!valid}
             loading={busy}
             leftIcon={<CheckCircle2 className="h-3.5 w-3.5" />}
           >

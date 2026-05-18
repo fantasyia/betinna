@@ -640,12 +640,20 @@ function OcorrenciaFormModal({
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const valid =
-    cliente !== null && titulo.trim().length >= 3 && descricao.trim().length >= 3;
-
   async function submit(e: React.FormEvent) {
     e.preventDefault();
-    if (!cliente || !valid) return;
+    if (!cliente) {
+      setError('Selecione um cliente.');
+      return;
+    }
+    if (titulo.trim().length < 3) {
+      setError('Título precisa ter no mínimo 3 caracteres.');
+      return;
+    }
+    if (descricao.trim().length < 3) {
+      setError('Descrição precisa ter no mínimo 3 caracteres.');
+      return;
+    }
     setBusy(true);
     setError(null);
     try {
@@ -678,8 +686,8 @@ function OcorrenciaFormModal({
             type="submit"
             form="oc-form"
             data-testid="oc-save-btn"
-            disabled={busy || !valid}
-            style={{ ...btn, opacity: busy || !valid ? 0.6 : 1 }}
+            disabled={busy}
+            style={{ ...btn, opacity: busy ? 0.6 : 1 }}
           >
             {busy ? 'Criando…' : 'Criar'}
           </button>

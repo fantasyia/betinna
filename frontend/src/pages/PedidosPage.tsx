@@ -1,5 +1,5 @@
-import { useMemo, useState, type ReactNode } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useEffect, useMemo, useState, type ReactNode } from 'react';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import {
   Search,
   Download,
@@ -188,11 +188,27 @@ function fmtDateTime(d: string | null | undefined) {
 export default function PedidosPage() {
   const toast = useToast();
   const navigateTable = useNavigate();
+  const [searchParams, setSearchParams] = useSearchParams();
   const [page, setPage] = useState(1);
   const [search, setSearch] = useState('');
   const [status, setStatus] = useState<string>('');
   const [selected, setSelected] = useState<string | null>(null);
   const [exporting, setExporting] = useState(false);
+
+  // Abre drawer automaticamente quando vem com ?highlight=ID
+  // (usado em navegações vindas de outras páginas — cliente tab pedidos,
+  // duplicar/criar pedido).
+  useEffect(() => {
+    const highlight = searchParams.get('highlight');
+    if (highlight && highlight !== selected) {
+      setSelected(highlight);
+      // Limpa o param da URL após abrir pra não reabrir em re-renders
+      const next = new URLSearchParams(searchParams);
+      next.delete('highlight');
+      setSearchParams(next, { replace: true });
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [searchParams]);
 
   const listPath = useMemo(() => {
     const qs = new URLSearchParams({ page: String(page), limit: '20' });
