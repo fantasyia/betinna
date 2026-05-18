@@ -195,6 +195,8 @@ export default function PedidosPage() {
   const [selected, setSelected] = useState<string | null>(null);
   const [exporting, setExporting] = useState(false);
   const [periodo, setPeriodo] = useState<'todos' | '30d' | '90d' | '12m'>('todos');
+  // Filtro por cliente vindo da URL (ex: vindo da tab "Pedidos" do ClienteDetailPage)
+  const clienteIdFilter = searchParams.get('clienteId') || '';
 
   // Abre drawer automaticamente quando vem com ?highlight=ID
   // (usado em navegações vindas de outras páginas — cliente tab pedidos,
@@ -215,6 +217,7 @@ export default function PedidosPage() {
     const qs = new URLSearchParams({ page: String(page), limit: '20' });
     if (search.trim()) qs.set('search', search.trim());
     if (status) qs.set('status', status);
+    if (clienteIdFilter) qs.set('clienteId', clienteIdFilter);
     if (periodo !== 'todos') {
       const dias = periodo === '30d' ? 30 : periodo === '90d' ? 90 : 365;
       const inicio = new Date();
@@ -222,7 +225,7 @@ export default function PedidosPage() {
       qs.set('dataInicio', inicio.toISOString());
     }
     return `/pedidos?${qs.toString()}`;
-  }, [page, search, status, periodo]);
+  }, [page, search, status, periodo, clienteIdFilter]);
 
   const { data: pageResp, loading, error, refetch } = useApiQuery<PaginatedResponse<Pedido>>(listPath);
 
@@ -303,6 +306,29 @@ export default function PedidosPage() {
         </>
       }
     >
+      {clienteIdFilter && (
+        <div
+          data-testid="pedidos-cliente-filter-banner"
+          className="mb-3 px-3 py-2 rounded-md bg-info/10 border border-info/30 text-sm flex items-center gap-2"
+        >
+          <span className="flex-1 text-text">
+            Filtrando pelos pedidos de um cliente específico.
+          </span>
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={() => {
+              const next = new URLSearchParams(searchParams);
+              next.delete('clienteId');
+              setSearchParams(next, { replace: true });
+            }}
+            leftIcon={<XIcon className="h-3 w-3" />}
+          >
+            Ver todos
+          </Button>
+        </div>
+      )}
+
       <Card padding="none" className="overflow-hidden">
         {/* Toolbar */}
         <div className="flex flex-wrap items-center gap-2 px-4 py-3 border-b border-border">

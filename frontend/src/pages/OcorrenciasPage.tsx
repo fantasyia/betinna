@@ -114,15 +114,18 @@ export default function OcorrenciasPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [searchParams]);
 
+  const clienteIdFilter = searchParams.get('clienteId') || '';
+
   const listPath = useMemo(() => {
     const qs = new URLSearchParams({ page: String(page), limit: '20' });
     if (search.trim()) qs.set('search', search.trim());
     if (status) qs.set('status', status);
     if (severidade) qs.set('severidade', severidade);
     if (tipo) qs.set('tipo', tipo);
+    if (clienteIdFilter) qs.set('clienteId', clienteIdFilter);
     if (slaEstourado) qs.set('slaEstourado', slaEstourado);
     return `/ocorrencias?${qs.toString()}`;
-  }, [page, search, status, severidade, tipo, slaEstourado]);
+  }, [page, search, status, severidade, tipo, slaEstourado, clienteIdFilter]);
 
   const { data: pageResp, loading, error, refetch } = useApiQuery<PaginatedResponse<Ocorrencia>>(listPath);
   const { data: resumo } = useApiQuery<Resumo>('/ocorrencias/resumo');
@@ -209,6 +212,38 @@ export default function OcorrenciasPage() {
         </button>
       }
     >
+      {clienteIdFilter && (
+        <div
+          data-testid="ocorrencias-cliente-filter-banner"
+          style={{
+            marginBottom: 12,
+            padding: '0.5rem 0.75rem',
+            borderRadius: 6,
+            background: colors.infoLight,
+            border: `1px solid ${colors.info}`,
+            color: colors.text,
+            fontSize: 13,
+            display: 'flex',
+            alignItems: 'center',
+            gap: 8,
+          }}
+        >
+          <span style={{ flex: 1 }}>
+            Filtrando ocorrências de um cliente específico.
+          </span>
+          <button
+            type="button"
+            onClick={() => {
+              const next = new URLSearchParams(searchParams);
+              next.delete('clienteId');
+              setSearchParams(next, { replace: true });
+            }}
+            style={{ ...btnSecondary, padding: '0.25rem 0.625rem', fontSize: 12 }}
+          >
+            Ver todas
+          </button>
+        </div>
+      )}
       {resumo && (
         <div
           style={{
