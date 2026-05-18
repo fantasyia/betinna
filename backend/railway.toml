@@ -23,9 +23,9 @@ dockerfilePath = "Dockerfile"
 #   - API service: SERVICE_TYPE=api (ou não setar, default é api)
 #   - Worker service: SERVICE_TYPE=worker
 startCommand = "node scripts/start.js"
-healthcheckPath = "/api/v1/health"
-# Timeout ampliado: migrations + boot Nest podem levar 60-90s na primeira vez.
-healthcheckTimeout = 120
+# IMPORTANTE: healthcheckPath NÃO definido aqui — worker não tem HTTP server.
+# API service deve configurar `Health Check Path: /api/v1/health` no dashboard
+# Railway (Settings → Networking → Health Check). Worker fica sem healthcheck.
 restartPolicyType = "ON_FAILURE"
 restartPolicyMaxRetries = 3
 # Sleep aplicativo após 5min de inatividade? Mantenha desligado em prod —

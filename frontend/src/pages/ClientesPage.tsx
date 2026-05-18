@@ -812,6 +812,8 @@ function ClienteDetailDrawer({
       footer={
         data && (
           <>
+            <DeleteClienteButton id={id} onDeleted={onDeleted} />
+            <div className="flex-1" />
             <Button
               variant="secondary"
               onClick={() => navigate(`/clientes/${id}`)}
@@ -885,14 +887,7 @@ function ClienteDetailDrawer({
             )}
           </DetailSection>
 
-          <details className="pt-2 border-t border-border">
-            <summary className="text-xs text-muted cursor-pointer select-none">
-              Ações avançadas
-            </summary>
-            <div className="pt-3">
-              <DeleteClienteButton id={id} onDeleted={onDeleted} />
-            </div>
-          </details>
+          {/* Delete button moved to drawer footer pra discoverability */}
         </div>
       )}
     </Drawer>
