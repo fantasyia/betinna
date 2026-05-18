@@ -19,14 +19,14 @@
 :root {
   /* Backgrounds (escala light) */
   --bg: #F8F7F2;
-  --bg-alt: #fdfcf8;
+  --bg-alt: #f3f0e8;
   --surface: #ffffff;
-  --surface-hover: #f4f1e9;
+  --surface-hover: #f0ecfa;
   --surface-elevated: #ffffff;
 
-  /* Borders */
-  --border: #e0dbed;
-  --border-strong: #cdc3e0;
+  /* Borders — mais saturadas pra dar peso visual */
+  --border: #d6cfe8;
+  --border-strong: #b8aed1;
   --border-focus: #31137C;
 
   /* Text */

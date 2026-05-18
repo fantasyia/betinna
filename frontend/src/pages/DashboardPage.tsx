@@ -124,7 +124,7 @@ export default function DashboardPage() {
       actions={
         canSeeRelatorios ? (
           <Link to="/relatorios">
-            <Button variant="secondary" rightIcon={<ArrowRight className="h-3.5 w-3.5" />}>
+            <Button rightIcon={<ArrowRight className="h-3.5 w-3.5" />}>
               Ver relatórios completos
             </Button>
           </Link>
@@ -159,43 +159,45 @@ export default function DashboardPage() {
                     )}
                   >
                     <Stat
-                      label="Faturamento (mês)"
-                      icon={<DollarSign className="text-primary" />}
+                      label="Faturamento"
+                      icon={<DollarSign />}
+                      iconTone="primary"
                       value={fmtBRLCompact(faturamento.atual)}
-                      hint={faturamento.anterior > 0 ? `Anterior: ${fmtBRLCompact(faturamento.anterior)}` : undefined}
+                      hint={faturamento.anterior > 0 ? `Anterior: ${fmtBRLCompact(faturamento.anterior)}` : 'no mês'}
                       delta={faturamento.variacao || undefined}
                       sparkColor="var(--primary)"
                     />
                     <Stat
                       label="Pedidos"
-                      icon={<ShoppingCart className="text-info" />}
+                      icon={<ShoppingCart />}
+                      iconTone="secondary"
                       value={totalPedidos.toLocaleString('pt-BR')}
                       hint="no período"
                     />
                     <Stat
                       label="Ticket médio"
-                      icon={<Receipt className="text-info" />}
+                      icon={<Receipt />}
+                      iconTone="magenta"
                       value={fmtBRL(ticketMedio)}
                     />
                     <Stat
                       label="Leads ativos"
-                      icon={<Target className="text-info" />}
+                      icon={<Target />}
+                      iconTone="blue"
                       value={totalAtivos.toLocaleString('pt-BR')}
                       hint="no funil"
                     />
                     <Stat
                       label="Conversão"
-                      icon={<TrendingUp className="text-success" />}
+                      icon={<TrendingUp />}
+                      iconTone="success"
                       value={`${taxaConversao.toFixed(0)}%`}
                       trend={taxaConversao > 25 ? 'up' : taxaConversao > 10 ? 'flat' : 'down'}
                     />
                     <Stat
                       label="SLA estourado"
-                      icon={
-                        <AlertTriangle
-                          className={slaEstourado > 0 ? 'text-danger' : 'text-success'}
-                        />
-                      }
+                      icon={<AlertTriangle />}
+                      iconTone={slaEstourado > 0 ? 'danger' : 'success'}
                       value={slaEstourado.toLocaleString('pt-BR')}
                       hint={slaEstourado > 0 ? 'requer atenção' : 'tudo no prazo'}
                       trend={slaEstourado > 0 ? 'down' : 'up'}
@@ -261,17 +263,17 @@ export default function DashboardPage() {
                       <CardTitle>Atalhos rápidos</CardTitle>
                     </CardHeader>
                     <div className="flex flex-wrap gap-2">
-                      <QuickAction to="/clientes" label="Clientes" icon={Briefcase} />
-                      <QuickAction to="/pedidos" label="Pedidos" icon={ShoppingCart} />
-                      <QuickAction to="/leads" label="Pipeline" icon={Target} />
-                      <QuickAction to="/inbox" label="Inbox" icon={MessageSquare} />
-                      <QuickAction to="/agenda" label="Agenda" icon={CalendarDays} />
-                      <QuickAction to="/comissoes" label="Comissões" icon={Wallet} />
-                      <QuickAction to="/catalogo" label="Catálogo" icon={Sparkles} />
+                      <QuickAction to="/clientes" label="Clientes" icon={Briefcase} tone="primary" />
+                      <QuickAction to="/pedidos" label="Pedidos" icon={ShoppingCart} tone="secondary" />
+                      <QuickAction to="/leads" label="Pipeline" icon={Target} tone="blue" />
+                      <QuickAction to="/inbox" label="Inbox" icon={MessageSquare} tone="magenta" />
+                      <QuickAction to="/agenda" label="Agenda" icon={CalendarDays} tone="primary" />
+                      <QuickAction to="/comissoes" label="Comissões" icon={Wallet} tone="success" />
+                      <QuickAction to="/catalogo" label="Catálogo" icon={Sparkles} tone="secondary" />
                       {canSeeCampanhas && (
-                        <QuickAction to="/campanhas" label="Campanhas" icon={Megaphone} />
+                        <QuickAction to="/campanhas" label="Campanhas" icon={Megaphone} tone="magenta" />
                       )}
-                      <QuickAction to="/integracoes" label="Integrações" icon={Plug} />
+                      <QuickAction to="/integracoes" label="Integrações" icon={Plug} tone="blue" />
                     </div>
                   </Card>
 
@@ -375,20 +377,43 @@ function FunnelView({
   );
 }
 
+type QuickTone = 'primary' | 'secondary' | 'magenta' | 'blue' | 'success';
+
+const QA_TONE: Record<QuickTone, string> = {
+  primary:
+    'bg-primary/10 border-primary/30 text-primary hover:bg-primary/20 hover:border-primary',
+  secondary:
+    'bg-secondary/15 border-secondary/40 text-secondary-hover hover:bg-secondary/25 hover:border-secondary',
+  magenta:
+    'bg-magenta/10 border-magenta/30 text-magenta hover:bg-magenta/20 hover:border-magenta',
+  blue: 'bg-blue/10 border-blue/30 text-blue hover:bg-blue/20 hover:border-blue',
+  success:
+    'bg-success/10 border-success/30 text-success hover:bg-success/20 hover:border-success',
+};
+
 function QuickAction({
   to,
   label,
   icon: Icon,
+  tone = 'primary',
 }: {
   to: string;
   label: string;
   icon: LucideIcon;
+  tone?: QuickTone;
 }) {
   return (
-    <Link to={to}>
-      <Button variant="secondary" size="sm" leftIcon={<Icon className="h-3.5 w-3.5" />}>
-        {label}
-      </Button>
+    <Link
+      to={to}
+      className={cn(
+        'inline-flex items-center gap-1.5 h-8 px-3 rounded-md text-sm font-medium',
+        'border transition-all duration-100',
+        'hover:-translate-y-0.5 hover:shadow-sm',
+        QA_TONE[tone],
+      )}
+    >
+      <Icon className="h-3.5 w-3.5" />
+      {label}
     </Link>
   );
 }
@@ -403,10 +428,16 @@ function FirstStepsCard() {
   ];
 
   return (
-    <Card variant="outline" padding="md">
+    <Card
+      variant="default"
+      padding="md"
+      className="bg-gradient-to-br from-primary/5 via-secondary/5 to-magenta/5 border-primary/30"
+    >
       <CardHeader>
         <CardTitle className="flex items-center gap-2">
-          <Sparkles className="h-4 w-4 text-primary" />
+          <span className="flex h-6 w-6 items-center justify-center rounded-md bg-gradient-brand text-white">
+            <Sparkles className="h-3.5 w-3.5" />
+          </span>
           Primeiros passos
         </CardTitle>
         <CardDescription>Você está em uma instância nova. Comece por aqui:</CardDescription>
@@ -420,8 +451,8 @@ function FirstStepsCard() {
                 to={step.to}
                 className={cn(
                   'flex items-center gap-3 px-3 py-2.5 rounded-md',
-                  'bg-bg-alt border border-border hover:border-border-strong hover:bg-surface-hover',
-                  'transition-colors group',
+                  'bg-surface border border-border hover:border-primary/40 hover:bg-primary/5',
+                  'transition-all hover:-translate-y-0.5 hover:shadow-sm group',
                 )}
               >
                 <span className="flex h-7 w-7 items-center justify-center rounded-full bg-surface border border-border text-xs font-bold text-muted tabular shrink-0">

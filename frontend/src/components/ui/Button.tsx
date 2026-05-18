@@ -34,24 +34,26 @@ const buttonVariants = cva(
     variants: {
       variant: {
         primary: [
-          'bg-primary text-primary-contrast font-semibold',
-          'hover:bg-primary-hover',
+          'bg-primary text-white font-semibold',
+          'shadow-[0_1px_2px_0_rgba(49,19,124,0.3),inset_0_1px_0_0_rgba(255,255,255,0.15)]',
+          'hover:bg-primary-hover hover:shadow-[0_2px_8px_0_rgba(49,19,124,0.35),inset_0_1px_0_0_rgba(255,255,255,0.15)]',
         ],
         secondary: [
-          'bg-surface text-text border border-border-strong',
-          'hover:bg-surface-hover hover:border-muted',
+          'bg-surface text-primary border border-primary/30 font-semibold',
+          'hover:bg-primary/5 hover:border-primary/60',
         ],
         ghost: [
           'bg-transparent text-text-subtle',
-          'hover:bg-surface-hover hover:text-text',
+          'hover:bg-primary/8 hover:text-primary',
         ],
         danger: [
           'bg-danger text-white font-semibold',
-          'hover:brightness-110',
+          'shadow-[0_1px_2px_0_rgba(196,60,60,0.3)]',
+          'hover:brightness-110 hover:shadow-[0_2px_8px_0_rgba(196,60,60,0.35)]',
         ],
         subtle: [
-          'bg-surface-hover text-text border border-border',
-          'hover:bg-surface-elevated hover:border-border-strong',
+          'bg-primary-light text-primary border border-primary/20',
+          'hover:bg-primary/15 hover:border-primary/40',
         ],
       },
       size: {

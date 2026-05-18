@@ -174,20 +174,20 @@ function SidebarNavItem({ item, active }: { item: NavItem; active: boolean }) {
       to={item.to}
       data-testid={`nav-${item.to.replace('/', '')}`}
       className={cn(
-        'group flex items-center gap-2.5 px-2.5 py-1.5 my-px rounded-md text-sm font-medium',
-        'transition-colors duration-100',
+        'group relative flex items-center gap-2.5 px-2.5 py-1.5 my-px rounded-md text-sm font-medium',
+        'transition-all duration-100',
         'whitespace-nowrap overflow-hidden text-ellipsis',
         active
-          ? 'bg-surface-hover text-text'
-          : 'text-text-subtle hover:bg-surface-hover hover:text-text',
+          ? 'bg-primary/10 text-primary font-semibold shadow-[inset_3px_0_0_0_var(--primary)]'
+          : 'text-text-subtle hover:bg-primary/5 hover:text-primary',
       )}
     >
       <Icon
         className={cn(
           'shrink-0 h-[15px] w-[15px]',
-          active ? 'text-primary' : 'text-muted group-hover:text-text-subtle',
+          active ? 'text-primary' : 'text-muted group-hover:text-primary',
         )}
-        strokeWidth={active ? 2.25 : 2}
+        strokeWidth={active ? 2.5 : 2}
       />
       <span className="flex-1 truncate">{item.label}</span>
       {item.badge && (

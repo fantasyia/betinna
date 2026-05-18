@@ -25,15 +25,16 @@ import { cn } from '@/lib/cn';
 const cardVariants = cva('rounded-lg', {
   variants: {
     variant: {
-      default: 'bg-surface border border-border',
+      default: 'bg-surface border border-border shadow-sm',
       elevated: 'bg-surface-elevated border border-border-strong shadow-md',
       interactive: [
-        'bg-surface border border-border cursor-pointer',
-        'transition-[background,border-color,box-shadow] duration-100',
-        'hover:bg-surface-hover hover:border-border-strong',
+        'bg-surface border border-border shadow-sm cursor-pointer',
+        'transition-[background,border-color,box-shadow,transform] duration-100',
+        'hover:bg-surface-hover hover:border-primary/40 hover:shadow-md',
+        'hover:-translate-y-0.5',
       ],
       flat: 'bg-bg-alt',
-      outline: 'bg-transparent border border-border',
+      outline: 'bg-transparent border border-border-strong',
     },
     padding: {
       none: 'p-0',
