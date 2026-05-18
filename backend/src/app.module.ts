@@ -46,6 +46,7 @@ import { EmpresasModule } from '@modules/empresas/empresas.module';
 import { HealthModule } from '@modules/health/health.module';
 import { IntegracoesModule } from '@modules/integracoes/integracoes.module';
 import { LeadsModule } from '@modules/leads/leads.module';
+import { FunisModule } from '@modules/funis/funis.module';
 import { OcorrenciasModule } from '@modules/ocorrencias/ocorrencias.module';
 import { PedidosModule } from '@modules/pedidos/pedidos.module';
 import { PermissionsModule } from '@modules/permissions/permissions.module';
@@ -178,6 +179,7 @@ import { SharedUtilsModule } from '@shared/utils/shared-utils.module';
     ComissoesModule,
     AmostrasModule,
     LeadsModule,
+    FunisModule,
     OcorrenciasModule,
     AgendaModule,
     FluxosModule,

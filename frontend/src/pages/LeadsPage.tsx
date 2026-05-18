@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
+import { Link } from 'react-router-dom';
 import {
   DndContext,
   DragOverlay,
@@ -22,6 +23,7 @@ import {
   Trash2,
   TrendingUp,
   ExternalLink,
+  Settings,
 } from 'lucide-react';
 import { api, ApiError } from '@/lib/api';
 import { useApiQuery } from '@/hooks/useApiQuery';
@@ -74,24 +76,58 @@ interface Lead {
   valorEstimado: number;
   canalOrigem: CanalOrigem;
   etapa: LeadEtapa;
+  funilId?: string | null;
+  funilEtapaId?: string | null;
   score: number;
   proximaAcao?: string | null;
   observacoes?: string | null;
   representante?: { id: string; nome: string } | null;
+  funil?: { id: string; nome: string; cor: string } | null;
+  funilEtapa?: {
+    id: string;
+    nome: string;
+    cor: string;
+    ordem: number;
+    tipo: FunilEtapaTipo;
+    probabilidade: number;
+  } | null;
   criadoEm: string;
   etapaDesde?: string;
 }
 
-type KanbanResponse = Record<LeadEtapa, Lead[]>;
+type FunilEtapaTipo = 'ATIVA' | 'GANHO' | 'PERDIDO';
 
-const ETAPAS_PIPELINE: LeadEtapa[] = [
-  'NOVO',
-  'QUALIFICANDO',
-  'PROPOSTA',
-  'NEGOCIACAO',
-  'GANHO',
-  'PERDIDO',
-];
+interface FunilEtapaLite {
+  id: string;
+  nome: string;
+  cor: string;
+  ordem: number;
+  tipo: FunilEtapaTipo;
+  probabilidade: number;
+}
+
+interface KanbanResponse {
+  funil: {
+    id: string | null;
+    nome: string;
+    cor: string;
+    etapas: FunilEtapaLite[];
+  };
+  /** Mapa etapaId → leads (etapaId = FunilEtapa.id ou enum name no fallback) */
+  grupos: Record<string, Lead[]>;
+}
+
+interface FunilListItem {
+  id: string;
+  nome: string;
+  descricao?: string | null;
+  cor: string;
+  ordem: number;
+  ativo: boolean;
+  isPadrao: boolean;
+  etapas: FunilEtapaLite[];
+  _count?: { leads: number };
+}
 
 const ETAPA_LABEL: Record<LeadEtapa, string> = {
   NOVO: 'Novo',
@@ -112,15 +148,6 @@ const ETAPA_VARIANT: Record<
   NEGOCIACAO: 'warning',
   GANHO: 'success',
   PERDIDO: 'danger',
-};
-
-const ETAPA_ACCENT: Record<LeadEtapa, string> = {
-  NOVO: 'var(--info)',
-  QUALIFICANDO: 'var(--primary)',
-  PROPOSTA: 'var(--warning)',
-  NEGOCIACAO: 'var(--warning)',
-  GANHO: 'var(--success)',
-  PERDIDO: 'var(--danger)',
 };
 
 const CANAIS: CanalOrigem[] = [
@@ -160,11 +187,26 @@ function fmtBRLCompact(v: number) {
 
 export default function LeadsPage() {
   const toast = useToast();
-  const { data, loading, error, refetch } = useApiQuery<KanbanResponse>('/leads/kanban');
+  // Lista de funis pro seletor
+  const { data: funis } = useApiQuery<FunilListItem[]>('/funis');
+  const [funilSelecionadoId, setFunilSelecionadoId] = useState<string | null>(null);
+
+  // Quando carrega a lista, seta o padrão como selecionado se nenhum estiver
+  useEffect(() => {
+    if (funilSelecionadoId || !funis || funis.length === 0) return;
+    const padrao = funis.find((f) => f.isPadrao && f.ativo) ?? funis.find((f) => f.ativo) ?? funis[0];
+    setFunilSelecionadoId(padrao?.id ?? null);
+  }, [funis, funilSelecionadoId]);
+
+  const kanbanPath = funilSelecionadoId
+    ? `/leads/kanban?funilId=${funilSelecionadoId}`
+    : '/leads/kanban';
+  const { data, loading, error, refetch } = useApiQuery<KanbanResponse>(kanbanPath);
+
   const [creating, setCreating] = useState(false);
   const [selected, setSelected] = useState<Lead | null>(null);
 
-  // Optimistic state: clone do data pra mover localmente durante drag
+  // Optimistic state pra mover durante drag
   const [optimistic, setOptimistic] = useState<KanbanResponse | null>(null);
   useEffect(() => {
     setOptimistic(data ?? null);
@@ -173,10 +215,13 @@ export default function LeadsPage() {
   // Drag state
   const [activeLead, setActiveLead] = useState<Lead | null>(null);
 
-  // Reason dialog quando dropa em GANHO/PERDIDO
+  // Reason dialog quando dropa em etapa terminal (GANHO/PERDIDO)
   const [reasonDialog, setReasonDialog] = useState<{
     lead: Lead;
-    targetEtapa: LeadEtapa;
+    targetEtapaId: string;
+    targetEtapaNome: string;
+    targetTipo: FunilEtapaTipo;
+    sourceEtapaId: string;
   } | null>(null);
 
   const sensors = useSensors(
@@ -188,8 +233,8 @@ export default function LeadsPage() {
   function handleDragStart(event: DragStartEvent) {
     const id = String(event.active.id);
     if (!optimistic) return;
-    for (const etapa of ETAPAS_PIPELINE) {
-      const found = optimistic[etapa]?.find((l) => l.id === id);
+    for (const etapaId of Object.keys(optimistic.grupos)) {
+      const found = optimistic.grupos[etapaId]?.find((l) => l.id === id);
       if (found) {
         setActiveLead(found);
         return;
@@ -202,88 +247,98 @@ export default function LeadsPage() {
     const { active, over } = event;
     if (!over || !optimistic) return;
     const leadId = String(active.id);
-    const targetEtapa = String(over.id) as LeadEtapa;
-    if (!ETAPAS_PIPELINE.includes(targetEtapa)) return;
+    const targetEtapaId = String(over.id);
 
-    // Encontra lead
+    const targetEtapa = optimistic.funil.etapas.find((e) => e.id === targetEtapaId);
+    if (!targetEtapa) return;
+
+    // Encontra lead na grupos atual
     let lead: Lead | undefined;
-    let sourceEtapa: LeadEtapa | undefined;
-    for (const etapa of ETAPAS_PIPELINE) {
-      const found = optimistic[etapa]?.find((l) => l.id === leadId);
+    let sourceEtapaId: string | undefined;
+    for (const etapaId of Object.keys(optimistic.grupos)) {
+      const found = optimistic.grupos[etapaId]?.find((l) => l.id === leadId);
       if (found) {
         lead = found;
-        sourceEtapa = etapa;
+        sourceEtapaId = etapaId;
         break;
       }
     }
-    if (!lead || !sourceEtapa) return;
-    if (sourceEtapa === targetEtapa) return;
+    if (!lead || !sourceEtapaId) return;
+    if (sourceEtapaId === targetEtapaId) return;
 
-    // Etapas que exigem motivo abrem dialog
-    if (targetEtapa === 'GANHO' || targetEtapa === 'PERDIDO') {
-      setReasonDialog({ lead, targetEtapa });
+    // Terminais (GANHO/PERDIDO) abrem dialog pedindo motivo
+    if (targetEtapa.tipo === 'GANHO' || targetEtapa.tipo === 'PERDIDO') {
+      setReasonDialog({
+        lead,
+        targetEtapaId,
+        targetEtapaNome: targetEtapa.nome,
+        targetTipo: targetEtapa.tipo,
+        sourceEtapaId,
+      });
       return;
     }
 
-    // Otimisticamente move
-    moveLeadLocal(leadId, sourceEtapa, targetEtapa, lead);
-
-    // Chama API
-    try {
-      await api.put(`/leads/${leadId}/etapa`, { etapa: targetEtapa });
-      toast.success(`Movido para ${ETAPA_LABEL[targetEtapa]}`);
-      refetch();
-    } catch (err) {
-      toast.error('Falha ao mover lead', err instanceof ApiError ? err.message : undefined);
-      // Reverte (refetch pegará o estado real)
-      refetch();
-    }
+    moveLeadLocal(leadId, sourceEtapaId, targetEtapaId, lead);
+    await persistMove(leadId, targetEtapaId, targetEtapa.nome);
   }
 
   function moveLeadLocal(
     leadId: string,
-    from: LeadEtapa,
-    to: LeadEtapa,
+    fromEtapaId: string,
+    toEtapaId: string,
     lead: Lead,
   ) {
     setOptimistic((cur) => {
       if (!cur) return cur;
-      const next = { ...cur } as KanbanResponse;
-      next[from] = (next[from] ?? []).filter((l) => l.id !== leadId);
-      next[to] = [{ ...lead, etapa: to }, ...(next[to] ?? [])];
-      return next;
+      const grupos = { ...cur.grupos };
+      grupos[fromEtapaId] = (grupos[fromEtapaId] ?? []).filter((l) => l.id !== leadId);
+      grupos[toEtapaId] = [lead, ...(grupos[toEtapaId] ?? [])];
+      return { ...cur, grupos };
     });
   }
 
-  async function confirmMoveWithReason(motivo: string) {
-    if (!reasonDialog) return;
-    const { lead, targetEtapa } = reasonDialog;
-    setReasonDialog(null);
-    moveLeadLocal(lead.id, lead.etapa, targetEtapa, lead);
+  async function persistMove(leadId: string, etapaId: string, etapaNome: string, motivo?: string) {
     try {
-      await api.put(`/leads/${lead.id}/etapa`, { etapa: targetEtapa, motivo });
-      toast.success(`Lead marcado como ${ETAPA_LABEL[targetEtapa]}`);
+      // Se etapaId é um cuid (funil customizado), envia funilEtapaId.
+      // Senão, é o nome do enum legado.
+      const isFunilEtapa = optimistic?.funil.id !== null;
+      const payload: Record<string, unknown> = isFunilEtapa
+        ? { funilEtapaId: etapaId }
+        : { etapa: etapaId };
+      if (motivo) payload.motivo = motivo;
+      await api.put(`/leads/${leadId}/etapa`, payload);
+      toast.success(`Movido para ${etapaNome}`);
       refetch();
     } catch (err) {
-      toast.error('Falha ao mover', err instanceof ApiError ? err.message : undefined);
+      toast.error('Falha ao mover lead', err instanceof ApiError ? err.message : undefined);
       refetch();
     }
   }
 
+  async function confirmMoveWithReason(motivo: string) {
+    if (!reasonDialog) return;
+    const { lead, targetEtapaId, targetEtapaNome, sourceEtapaId } = reasonDialog;
+    setReasonDialog(null);
+    moveLeadLocal(lead.id, sourceEtapaId, targetEtapaId, lead);
+    await persistMove(lead.id, targetEtapaId, targetEtapaNome, motivo);
+  }
+
   const totals = useMemo(() => {
     if (!optimistic) return null;
-    const totalLeads = ETAPAS_PIPELINE.reduce(
-      (s, e) => s + (optimistic[e]?.length ?? 0),
-      0,
-    );
-    const ativos = ['NOVO', 'QUALIFICANDO', 'PROPOSTA', 'NEGOCIACAO'] as LeadEtapa[];
-    const totalAtivos = ativos.reduce(
-      (s, e) =>
-        s + (optimistic[e]?.reduce((ss, l) => ss + l.valorEstimado, 0) ?? 0),
-      0,
-    );
+    const etapas = optimistic.funil.etapas;
+    let totalLeads = 0;
+    let totalAtivos = 0;
+    for (const e of etapas) {
+      const leads = optimistic.grupos[e.id] ?? [];
+      totalLeads += leads.length;
+      if (e.tipo === 'ATIVA') {
+        totalAtivos += leads.reduce((s, l) => s + l.valorEstimado, 0);
+      }
+    }
     return { totalLeads, totalAtivos };
   }, [optimistic]);
+
+  const cols = optimistic?.funil.etapas.length ?? 6;
 
   return (
     <PageLayout
@@ -294,13 +349,38 @@ export default function LeadsPage() {
           : undefined
       }
       actions={
-        <Button
-          data-testid="lead-new-btn"
-          onClick={() => setCreating(true)}
-          leftIcon={<Plus className="h-3.5 w-3.5" />}
-        >
-          Novo lead
-        </Button>
+        <div className="flex items-center gap-2">
+          {funis && funis.length > 1 && (
+            <Select
+              data-testid="funil-selector"
+              value={funilSelecionadoId ?? ''}
+              onChange={(e) => setFunilSelecionadoId(e.target.value)}
+              className="min-w-[180px]"
+            >
+              {funis.map((f) => (
+                <option key={f.id} value={f.id}>
+                  {f.nome}
+                  {f.isPadrao ? ' (padrão)' : ''}
+                </option>
+              ))}
+            </Select>
+          )}
+          <Link
+            to="/funis"
+            className="inline-flex items-center gap-1.5 h-9 px-3 rounded-md text-sm font-medium text-text-subtle hover:text-primary hover:bg-surface-hover transition-colors"
+            data-testid="funis-manage-link"
+          >
+            <Settings className="h-3.5 w-3.5" />
+            Funis
+          </Link>
+          <Button
+            data-testid="lead-new-btn"
+            onClick={() => setCreating(true)}
+            leftIcon={<Plus className="h-3.5 w-3.5" />}
+          >
+            Novo lead
+          </Button>
+        </div>
       }
     >
       <StateView loading={loading && !optimistic} error={error} onRetry={refetch}>
@@ -312,23 +392,24 @@ export default function LeadsPage() {
             onDragEnd={handleDragEnd}
             onDragCancel={() => setActiveLead(null)}
           >
-            <div className="grid grid-cols-[repeat(6,minmax(260px,1fr))] gap-3 overflow-x-auto pb-2 -mx-1 px-1">
-              {ETAPAS_PIPELINE.map((etapa) => (
+            <div
+              className="grid gap-3 overflow-x-auto pb-2 -mx-1 px-1"
+              style={{
+                gridTemplateColumns: `repeat(${cols}, minmax(260px, 1fr))`,
+              }}
+            >
+              {optimistic.funil.etapas.map((etapa) => (
                 <KanbanColumn
-                  key={etapa}
+                  key={etapa.id}
                   etapa={etapa}
-                  leads={optimistic[etapa] ?? []}
+                  leads={optimistic.grupos[etapa.id] ?? []}
                   onCardClick={setSelected}
                 />
               ))}
             </div>
             <DragOverlay>
               {activeLead && (
-                <div
-                  className={cn(
-                    'rotate-2 shadow-xl border border-primary/40 bg-surface rounded-md p-2.5',
-                  )}
-                >
+                <div className="rotate-2 shadow-xl border border-primary/40 bg-surface rounded-md p-2.5">
                   <LeadCardInner lead={activeLead} dragging />
                 </div>
               )}
@@ -339,6 +420,11 @@ export default function LeadsPage() {
 
       {creating && (
         <LeadFormModal
+          funilSelecionado={
+            optimistic?.funil.id
+              ? { id: optimistic.funil.id, etapas: optimistic.funil.etapas }
+              : null
+          }
           onClose={() => setCreating(false)}
           onSaved={() => {
             setCreating(false);
@@ -360,7 +446,8 @@ export default function LeadsPage() {
 
       {reasonDialog && (
         <ReasonDialog
-          targetEtapa={reasonDialog.targetEtapa}
+          targetTipo={reasonDialog.targetTipo}
+          targetNome={reasonDialog.targetEtapaNome}
           leadNome={reasonDialog.lead.nome}
           onCancel={() => setReasonDialog(null)}
           onConfirm={confirmMoveWithReason}
@@ -377,16 +464,16 @@ function KanbanColumn({
   leads,
   onCardClick,
 }: {
-  etapa: LeadEtapa;
+  etapa: FunilEtapaLite;
   leads: Lead[];
   onCardClick: (l: Lead) => void;
 }) {
-  const { setNodeRef, isOver } = useDroppable({ id: etapa });
+  const { setNodeRef, isOver } = useDroppable({ id: etapa.id });
   const total = leads.reduce((s, l) => s + l.valorEstimado, 0);
 
   return (
     <div
-      data-testid={`kanban-col-${etapa}`}
+      data-testid={`kanban-col-${etapa.id}`}
       ref={setNodeRef}
       className={cn(
         'flex flex-col gap-2 rounded-lg p-2 min-h-[300px]',
@@ -398,12 +485,15 @@ function KanbanColumn({
       <header className="flex items-center justify-between px-1 py-1 sticky top-0 z-10 bg-bg-alt rounded">
         <div className="flex items-center gap-1.5">
           <span
-            className="h-1.5 w-1.5 rounded-full"
-            style={{ background: ETAPA_ACCENT[etapa] }}
+            className="h-1.5 w-1.5 rounded-full shrink-0"
+            style={{ background: etapa.cor }}
             aria-hidden
           />
-          <span className="text-sm font-semibold text-text tracking-tight">
-            {ETAPA_LABEL[etapa]}
+          <span
+            className="text-sm font-semibold text-text tracking-tight truncate"
+            title={etapa.nome}
+          >
+            {etapa.nome}
           </span>
           <span className="text-[10px] text-muted tabular bg-surface px-1.5 py-0.5 rounded-full border border-border">
             {leads.length}
@@ -718,23 +808,26 @@ function InfoCell({
 // ─── Reason dialog (GANHO/PERDIDO) ─────────────────────────────
 
 function ReasonDialog({
-  targetEtapa,
+  targetTipo,
+  targetNome,
   leadNome,
   onCancel,
   onConfirm,
 }: {
-  targetEtapa: LeadEtapa;
+  targetTipo: FunilEtapaTipo;
+  targetNome: string;
   leadNome: string;
   onCancel: () => void;
   onConfirm: (motivo: string) => void;
 }) {
   const [motivo, setMotivo] = useState('');
+  const isGanho = targetTipo === 'GANHO';
 
   return (
     <Dialog
       open
       onClose={onCancel}
-      title={`Marcar como ${ETAPA_LABEL[targetEtapa]}?`}
+      title={`Marcar como ${targetNome}?`}
       description={`${leadNome} — informe o motivo pra registrar no histórico.`}
       size="sm"
       footer={
@@ -745,7 +838,7 @@ function ReasonDialog({
           <Button
             disabled={motivo.trim().length === 0}
             onClick={() => onConfirm(motivo.trim())}
-            variant={targetEtapa === 'GANHO' ? 'primary' : 'danger'}
+            variant={isGanho ? 'primary' : 'danger'}
           >
             Confirmar
           </Button>
@@ -758,7 +851,7 @@ function ReasonDialog({
           value={motivo}
           onChange={(e) => setMotivo(e.target.value)}
           placeholder={
-            targetEtapa === 'GANHO'
+            isGanho
               ? 'Ex: Cliente fechou pedido após 3 reuniões. Decisor convencido pelo prazo.'
               : 'Ex: Cliente escolheu concorrente por preço.'
           }
@@ -772,9 +865,12 @@ function ReasonDialog({
 // ─── Form modal (Novo lead) ────────────────────────────────────
 
 function LeadFormModal({
+  funilSelecionado,
   onClose,
   onSaved,
 }: {
+  /** Funil selecionado no kanban — usa pra criar o lead no funil correto. */
+  funilSelecionado: { id: string; etapas: FunilEtapaLite[] } | null;
   onClose: () => void;
   onSaved: () => void;
 }) {
@@ -855,6 +951,12 @@ function LeadFormModal({
       valorEstimado: form.valorEstimado,
       score: form.score,
     };
+    // Cria no funil selecionado, na 1ª etapa ATIVA (se disponível)
+    if (funilSelecionado) {
+      payload.funilId = funilSelecionado.id;
+      const primeiraAtiva = funilSelecionado.etapas.find((e) => e.tipo === 'ATIVA');
+      if (primeiraAtiva) payload.funilEtapaId = primeiraAtiva.id;
+    }
     for (const k of [
       'cidade',
       'uf',

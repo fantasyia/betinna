@@ -12,6 +12,10 @@ export const createLeadSchema = z.object({
   valorEstimado: z.number().min(0).default(0),
   canalOrigem: z.nativeEnum(CanalOrigem).default('WHATSAPP'),
   etapa: z.nativeEnum(LeadEtapa).default('NOVO'),
+  /** Funil customizado. Se omitido, usa o funil padrão da empresa. */
+  funilId: z.string().cuid().optional(),
+  /** Etapa específica dentro do funil. Se omitida, usa a 1ª etapa ATIVA. */
+  funilEtapaId: z.string().cuid().optional(),
   score: z.number().int().min(0).max(100).default(50),
   proximaAcao: z.string().max(300).optional(),
   observacoes: z.string().max(2000).optional(),
@@ -22,13 +26,34 @@ export type CreateLeadDto = z.infer<typeof createLeadSchema>;
 export const updateLeadSchema = createLeadSchema.partial().omit({ etapa: true });
 export type UpdateLeadDto = z.infer<typeof updateLeadSchema>;
 
+/**
+ * Mover etapa aceita 2 formatos (XOR):
+ *  - `etapa: LeadEtapa` (enum legado — funil padrão)
+ *  - `funilEtapaId: cuid` (funil customizado — fonte da verdade)
+ *
+ * Backend resolve qual usar: se `funilEtapaId` vier, ignora `etapa` e
+ * deriva o enum a partir do `tipo` da FunilEtapa pra manter compat.
+ *
+ * `motivo` é obrigatório só quando a etapa destino for terminal
+ * (GANHO ou PERDIDO no enum legado, ou tipo GANHO/PERDIDO no funil custom).
+ */
 export const moverEtapaSchema = z
   .object({
-    etapa: z.nativeEnum(LeadEtapa),
+    etapa: z.nativeEnum(LeadEtapa).optional(),
+    funilEtapaId: z.string().cuid().optional(),
     motivo: z.string().max(500).optional(),
   })
   .superRefine((data, ctx) => {
-    if ((data.etapa === 'GANHO' || data.etapa === 'PERDIDO') && !data.motivo) {
+    if (!data.etapa && !data.funilEtapaId) {
+      ctx.addIssue({
+        code: 'custom',
+        path: ['etapa'],
+        message: 'Informe `etapa` (enum) ou `funilEtapaId` (custom)',
+      });
+    }
+    // Motivo obrigatório só pro enum legado — quando vem funilEtapaId, o
+    // backend valida usando o tipo da etapa (no service).
+    if (data.etapa && (data.etapa === 'GANHO' || data.etapa === 'PERDIDO') && !data.motivo) {
       ctx.addIssue({
         code: 'custom',
         path: ['motivo'],

@@ -258,6 +258,7 @@ model Empresa {
   pedidos        Pedido[]
   propostas      Proposta[]
   leads          Lead[]
+  funis          Funil[]
   ocorrencias    Ocorrencia[]
   amostras       Amostra[]
   campanhas      Campanha[]
@@ -703,7 +704,14 @@ model Lead {
   valorEstimado   Float        @default(0)
   canalOrigem     CanalOrigem  @default(WHATSAPP)
 
+  /// Etapa do funil padrão (legado). Mantido pra compat com dashboards e relatórios
+  /// que ainda agregam pelo enum. Quando `funilEtapaId` está setado, ele é a fonte
+  /// da verdade — esta coluna é sincronizada a partir do `tipo` da FunilEtapa.
   etapa           LeadEtapa    @default(NOVO)
+  /// Funil customizado ao qual este lead pertence. Se null, usa o funil legado.
+  funilId         String?
+  /// Etapa customizada dentro do funil. Quando setado, sobrescreve `etapa` na UI.
+  funilEtapaId    String?
   score           Int          @default(50)
   proximaAcao     String?
   observacoes     String?      @db.Text
@@ -718,15 +726,77 @@ model Lead {
   criadoEm        DateTime     @default(now())
   atualizadoEm    DateTime     @updatedAt
 
-  empresa       Empresa  @relation(fields: [empresaId], references: [id], onDelete: Cascade)
-  representante Usuario? @relation("LeadRep", fields: [representanteId], references: [id])
-  cliente       Cliente? @relation(fields: [clienteId], references: [id])
+  empresa       Empresa     @relation(fields: [empresaId], references: [id], onDelete: Cascade)
+  representante Usuario?    @relation("LeadRep", fields: [representanteId], references: [id])
+  cliente       Cliente?    @relation(fields: [clienteId], references: [id])
+  funil         Funil?      @relation(fields: [funilId], references: [id], onDelete: SetNull)
+  funilEtapa    FunilEtapa? @relation(fields: [funilEtapaId], references: [id], onDelete: SetNull)
 
   @@index([empresaId, etapa])
+  @@index([empresaId, funilId, funilEtapaId])
   @@index([empresaId, representanteId])
   @@index([clienteId])
   // Aging por etapa (dashboard funil): WHERE etapaDesde < cutoff
   @@index([empresaId, etapa, etapaDesde])
+}
+
+// ─── FUNIS CUSTOMIZADOS ───────────────────────────────────────────────
+// Inspirado no SimplesDesk: cada empresa cadastra múltiplos funis (Vendas
+// B2B, Inbound, Reativação, etc), cada um com suas etapas customizadas
+// (nome, cor, ordem, tipo). Leads pertencem a UM funil de cada vez.
+
+enum FunilEtapaTipo {
+  ATIVA   // estágio normal (movimentação livre)
+  GANHO   // terminal positivo
+  PERDIDO // terminal negativo
+}
+
+model Funil {
+  id           String   @id @default(cuid())
+  empresaId    String
+  nome         String
+  descricao    String?  @db.Text
+  /// Cor de destaque do funil (usada na badge do nome)
+  cor          String   @default("#201554")
+  /// Ordem de exibição na lista de funis
+  ordem        Int      @default(0)
+  ativo        Boolean  @default(true)
+  /// Apenas 1 funil padrão por empresa — usado quando lead é criado sem funil explícito
+  isPadrao     Boolean  @default(false)
+
+  criadoEm     DateTime @default(now())
+  atualizadoEm DateTime @updatedAt
+
+  empresa      Empresa      @relation(fields: [empresaId], references: [id], onDelete: Cascade)
+  etapas       FunilEtapa[]
+  leads        Lead[]
+
+  @@unique([empresaId, nome])
+  @@index([empresaId, ativo])
+}
+
+model FunilEtapa {
+  id            String         @id @default(cuid())
+  funilId       String
+  nome          String
+  /// Cor da etapa (badge no kanban)
+  cor           String         @default("#7c3aed")
+  /// Ordem dentro do funil
+  ordem         Int            @default(0)
+  tipo          FunilEtapaTipo @default(ATIVA)
+  /// 0-100 — peso para cálculo de pipeline ponderado
+  probabilidade Int            @default(50)
+  /// SLA em dias antes da etapa entrar em "aging"
+  slaDias       Int?
+
+  criadoEm      DateTime       @default(now())
+  atualizadoEm  DateTime       @updatedAt
+
+  funil         Funil  @relation(fields: [funilId], references: [id], onDelete: Cascade)
+  leads         Lead[]
+
+  @@unique([funilId, nome])
+  @@index([funilId, ordem])
 }
 
 // ─── OCORRÊNCIAS (SAC) ────────────────────────────────────────────────

@@ -23,6 +23,10 @@ import { PROBABILIDADE_POR_ETAPA, SLA_DIAS_POR_ETAPA, TRANSICOES_ETAPA } from '.
 const leadInclude = {
   representante: { select: { id: true, nome: true, email: true } },
   cliente: { select: { id: true, nome: true } },
+  funil: { select: { id: true, nome: true, cor: true } },
+  funilEtapa: {
+    select: { id: true, nome: true, cor: true, ordem: true, tipo: true, probabilidade: true },
+  },
 } satisfies Prisma.LeadInclude;
 
 type LeadWithRel = Prisma.LeadGetPayload<{ include: typeof leadInclude }>;
@@ -98,26 +102,125 @@ export class LeadsService {
   }
 
   /**
-   * View especial para o Kanban: agrupa todos os leads do usuário
-   * por etapa, sem paginação (assume volume controlado).
+   * View especial para o Kanban — agrupa leads por etapa.
+   *
+   * Quando `funilId` é informado, retorna agrupamento por FunilEtapa.id
+   * (formato dinâmico). Senão, agrupa pelo enum legado.
+   *
+   * Resposta inclui também as etapas (com cor/ordem/tipo) pra que o
+   * frontend renderize colunas customizadas sem fazer round-trip extra.
    */
-  async kanban(user: AuthenticatedUser): Promise<Record<LeadEtapa, LeadWithRel[]>> {
+  async kanban(
+    user: AuthenticatedUser,
+    funilId?: string,
+  ): Promise<{
+    funil: {
+      id: string | null;
+      nome: string;
+      cor: string;
+      etapas: Array<{
+        id: string;
+        nome: string;
+        cor: string;
+        ordem: number;
+        tipo: 'ATIVA' | 'GANHO' | 'PERDIDO';
+        probabilidade: number;
+      }>;
+    };
+    /** Mapa etapaId → leads. Quando enum legado, a key é o nome do enum. */
+    grupos: Record<string, LeadWithRel[]>;
+  }> {
+    const empresaId = this.requireEmpresa(user);
     const where = await this.baseWhere(user);
+
+    // Resolve o funil-alvo: explícito > padrão da empresa
+    let funil = funilId
+      ? await this.prisma.funil.findFirst({
+          where: { id: funilId, empresaId },
+          include: { etapas: { orderBy: { ordem: 'asc' } } },
+        })
+      : null;
+    if (!funil) {
+      funil = await this.prisma.funil.findFirst({
+        where: { empresaId, isPadrao: true, ativo: true },
+        include: { etapas: { orderBy: { ordem: 'asc' } } },
+      });
+    }
+    if (!funil) {
+      // Empresa sem funis ainda — pega o primeiro disponível
+      funil = await this.prisma.funil.findFirst({
+        where: { empresaId, ativo: true },
+        include: { etapas: { orderBy: { ordem: 'asc' } } },
+      });
+    }
+
+    if (funil) {
+      // Filtra leads desse funil + agrupa por funilEtapaId
+      const items = await this.prisma.lead.findMany({
+        where: { ...where, funilId: funil.id },
+        orderBy: { etapaDesde: 'desc' },
+        include: leadInclude,
+      });
+      const grupos: Record<string, LeadWithRel[]> = Object.fromEntries(
+        funil.etapas.map((e) => [e.id, [] as LeadWithRel[]]),
+      );
+      for (const lead of items) {
+        const key = lead.funilEtapaId ?? funil.etapas[0]?.id;
+        if (key && grupos[key]) grupos[key].push(lead);
+      }
+      return {
+        funil: {
+          id: funil.id,
+          nome: funil.nome,
+          cor: funil.cor,
+          etapas: funil.etapas.map((e) => ({
+            id: e.id,
+            nome: e.nome,
+            cor: e.cor,
+            ordem: e.ordem,
+            tipo: e.tipo,
+            probabilidade: e.probabilidade,
+          })),
+        },
+        grupos,
+      };
+    }
+
+    // Fallback: empresa sem funil → usa enum legado, formato similar
     const items = await this.prisma.lead.findMany({
       where,
       orderBy: { etapaDesde: 'desc' },
       include: leadInclude,
     });
-    const out: Record<LeadEtapa, LeadWithRel[]> = {
-      NOVO: [],
-      QUALIFICANDO: [],
-      PROPOSTA: [],
-      NEGOCIACAO: [],
-      GANHO: [],
-      PERDIDO: [],
+    const ENUM_ETAPAS: LeadEtapa[] = [
+      'NOVO',
+      'QUALIFICANDO',
+      'PROPOSTA',
+      'NEGOCIACAO',
+      'GANHO',
+      'PERDIDO',
+    ];
+    const grupos: Record<string, LeadWithRel[]> = Object.fromEntries(
+      ENUM_ETAPAS.map((e) => [e, [] as LeadWithRel[]]),
+    );
+    for (const lead of items) grupos[lead.etapa].push(lead);
+    return {
+      funil: {
+        id: null,
+        nome: 'Funil Padrão (legado)',
+        cor: '#201554',
+        etapas: ENUM_ETAPAS.map((nome, ordem) => ({
+          id: nome,
+          nome,
+          cor: '#7c3aed',
+          ordem,
+          tipo:
+            nome === 'GANHO' ? 'GANHO' : nome === 'PERDIDO' ? 'PERDIDO' : 'ATIVA',
+          probabilidade: 50,
+        })),
+      },
+      grupos,
     };
-    for (const lead of items) out[lead.etapa].push(lead);
-    return out;
   }
 
   async findById(user: AuthenticatedUser, id: string): Promise<LeadWithRel> {
@@ -137,11 +240,23 @@ export class LeadsService {
       await this.assertRepValido(empresaId, representanteId);
     }
 
+    // Resolve funil + etapa inicial. Se o user não informou funil, usa o
+    // padrão da empresa. Se a etapa-inicial específica não foi pedida,
+    // pega a primeira etapa ATIVA na ordem.
+    const { funilId, funilEtapaId } = await this.resolverFunilInicial(
+      empresaId,
+      dto.funilId,
+      dto.funilEtapaId,
+      dto.etapa,
+    );
+
     const lead = await this.prisma.lead.create({
       data: {
         ...dto,
         representanteId,
         empresaId,
+        funilId,
+        funilEtapaId,
         etapaDesde: new Date(),
       },
       include: leadInclude,
@@ -177,25 +292,79 @@ export class LeadsService {
 
   async moverEtapa(user: AuthenticatedUser, id: string, dto: MoverEtapaDto): Promise<LeadWithRel> {
     const lead = await this.findById(user, id);
-    const transicoesValidas = TRANSICOES_ETAPA[lead.etapa];
-    if (!transicoesValidas.includes(dto.etapa)) {
-      throw new BusinessRuleException(`Transição inválida: ${lead.etapa} → ${dto.etapa}`);
+
+    // 2 caminhos: funil custom (funilEtapaId) OU enum legado (etapa).
+    // Caminho custom é preferido quando informado.
+    let novaEtapaEnum: LeadEtapa;
+    let novoFunilEtapaId: string | null = lead.funilEtapaId;
+    let etapaTipo: 'ATIVA' | 'GANHO' | 'PERDIDO' = 'ATIVA';
+
+    if (dto.funilEtapaId) {
+      const novaEtapa = await this.prisma.funilEtapa.findFirst({
+        where: { id: dto.funilEtapaId },
+        include: { funil: { select: { id: true, empresaId: true } } },
+      });
+      if (!novaEtapa || novaEtapa.funil.empresaId !== lead.empresaId) {
+        throw new BusinessRuleException('Etapa de destino inválida');
+      }
+      // Lead muda de funil se a etapa pertencer a outro funil
+      novoFunilEtapaId = novaEtapa.id;
+      etapaTipo = novaEtapa.tipo;
+      // Mapeia o tipo da etapa pro enum legado pra manter compat
+      novaEtapaEnum =
+        novaEtapa.tipo === 'GANHO'
+          ? 'GANHO'
+          : novaEtapa.tipo === 'PERDIDO'
+            ? 'PERDIDO'
+            : // Heurística: ATIVA mapeia conforme ordem (0=NOVO, 1=QUAL, 2=PROP, 3+=NEGO)
+              novaEtapa.ordem === 0
+              ? 'NOVO'
+              : novaEtapa.ordem === 1
+                ? 'QUALIFICANDO'
+                : novaEtapa.ordem === 2
+                  ? 'PROPOSTA'
+                  : 'NEGOCIACAO';
+    } else if (dto.etapa) {
+      // Caminho legado — valida transição do enum
+      const transicoesValidas = TRANSICOES_ETAPA[lead.etapa];
+      if (!transicoesValidas.includes(dto.etapa)) {
+        throw new BusinessRuleException(`Transição inválida: ${lead.etapa} → ${dto.etapa}`);
+      }
+      novaEtapaEnum = dto.etapa;
+      etapaTipo =
+        dto.etapa === 'GANHO' ? 'GANHO' : dto.etapa === 'PERDIDO' ? 'PERDIDO' : 'ATIVA';
+    } else {
+      throw new BusinessRuleException('Informe `etapa` ou `funilEtapaId`');
+    }
+
+    // Motivo obrigatório pra GANHO/PERDIDO (validação espelhada do DTO mas
+    // re-checada aqui pra cobrir o caminho funilEtapaId).
+    if ((etapaTipo === 'GANHO' || etapaTipo === 'PERDIDO') && !dto.motivo) {
+      throw new BusinessRuleException(
+        `Motivo é obrigatório ao marcar como ${etapaTipo === 'GANHO' ? 'Ganho' : 'Perdido'}`,
+      );
     }
 
     const data: Prisma.LeadUpdateInput = {
-      etapa: dto.etapa,
+      etapa: novaEtapaEnum,
       etapaDesde: new Date(),
     };
-    if (dto.etapa === 'GANHO') {
+    if (novoFunilEtapaId !== lead.funilEtapaId) {
+      data.funilEtapa = { connect: { id: novoFunilEtapaId! } };
+    }
+    if (etapaTipo === 'GANHO') {
       data.motivoGanho = dto.motivo;
       data.fechadoEm = new Date();
     }
-    if (dto.etapa === 'PERDIDO') {
+    if (etapaTipo === 'PERDIDO') {
       data.motivoPerda = dto.motivo;
       data.fechadoEm = new Date();
     }
-    // Reabrir lead perdido: limpa motivos e fechadoEm
-    if (lead.etapa === 'PERDIDO' && dto.etapa === 'NOVO') {
+    // Reabrir lead fechado: limpa motivos e fechadoEm
+    if (
+      (lead.etapa === 'PERDIDO' || lead.etapa === 'GANHO') &&
+      etapaTipo === 'ATIVA'
+    ) {
       data.motivoPerda = null;
       data.motivoGanho = null;
       data.fechadoEm = null;
@@ -210,20 +379,81 @@ export class LeadsService {
       include: leadInclude,
     });
     this.logger.log(
-      `Lead ${lead.id} movido ${lead.etapa} → ${dto.etapa}${dto.motivo ? ` (${dto.motivo})` : ''}`,
+      `Lead ${lead.id} movido ${lead.etapa} → ${novaEtapaEnum}${dto.motivo ? ` (${dto.motivo})` : ''}`,
     );
 
     // Trigger: LEAD_ETAPA_MUDOU
     void this.bus.disparar(lead.empresaId, 'LEAD_ETAPA_MUDOU', {
       leadId: lead.id,
-      lead: { id: lead.id, nome: lead.nome, etapaAnterior: lead.etapa, novaEtapa: dto.etapa },
+      lead: {
+        id: lead.id,
+        nome: lead.nome,
+        etapaAnterior: lead.etapa,
+        novaEtapa: novaEtapaEnum,
+      },
       clienteId: lead.clienteId,
       representanteId: lead.representanteId,
       etapaAnterior: lead.etapa,
-      novaEtapa: dto.etapa,
+      novaEtapa: novaEtapaEnum,
     });
 
     return updated;
+  }
+
+  // ─── Funil resolver ──────────────────────────────────────────────
+  /**
+   * Determina funilId + funilEtapaId iniciais pra um novo lead.
+   *
+   * Prioridade:
+   *  1. Se `funilEtapaId` foi explícito → usa ele (deriva funilId do parent)
+   *  2. Se `funilId` foi explícito → usa ele + 1ª etapa ATIVA na ordem
+   *  3. Senão → usa funil padrão da empresa (isPadrao=true) + 1ª etapa ATIVA
+   *
+   * Se a empresa ainda não tem nenhum funil (caso extremo de seed novo),
+   * retorna null pra ambos — o lead fica com só o enum legado.
+   */
+  private async resolverFunilInicial(
+    empresaId: string,
+    funilIdInput: string | undefined,
+    funilEtapaIdInput: string | undefined,
+    etapaEnum: LeadEtapa | undefined,
+  ): Promise<{ funilId: string | null; funilEtapaId: string | null }> {
+    if (funilEtapaIdInput) {
+      const etapa = await this.prisma.funilEtapa.findFirst({
+        where: { id: funilEtapaIdInput, funil: { empresaId } },
+        select: { id: true, funilId: true },
+      });
+      if (!etapa) {
+        throw new BusinessRuleException('FunilEtapa inválida ou de outra empresa');
+      }
+      return { funilId: etapa.funilId, funilEtapaId: etapa.id };
+    }
+
+    let funilId: string | null = funilIdInput ?? null;
+    if (!funilId) {
+      const padrao = await this.prisma.funil.findFirst({
+        where: { empresaId, isPadrao: true, ativo: true },
+        select: { id: true },
+      });
+      funilId = padrao?.id ?? null;
+    }
+    if (!funilId) return { funilId: null, funilEtapaId: null };
+
+    // Pega a etapa correspondente ao enum (ou a 1ª ATIVA)
+    const etapas = await this.prisma.funilEtapa.findMany({
+      where: { funilId },
+      orderBy: { ordem: 'asc' },
+    });
+    if (etapas.length === 0) return { funilId, funilEtapaId: null };
+
+    // Tenta mapear o enum recebido pra etapa correspondente
+    let etapaDestino = etapas.find((e) => e.tipo === 'ATIVA');
+    if (etapaEnum === 'GANHO') {
+      etapaDestino = etapas.find((e) => e.tipo === 'GANHO') ?? etapaDestino;
+    } else if (etapaEnum === 'PERDIDO') {
+      etapaDestino = etapas.find((e) => e.tipo === 'PERDIDO') ?? etapaDestino;
+    }
+    return { funilId, funilEtapaId: etapaDestino?.id ?? etapas[0].id };
   }
 
   async atribuirRep(
