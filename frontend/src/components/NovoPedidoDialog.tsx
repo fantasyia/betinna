@@ -104,6 +104,7 @@ export function NovoPedidoDialog({
   open,
   clientePreSelecionado,
   inicial,
+  editandoPedidoId,
   onClose,
   onCreated,
 }: {
@@ -112,6 +113,11 @@ export function NovoPedidoDialog({
   clientePreSelecionado?: ClienteOpt | null;
   /** Valores iniciais (usado pra duplicar/clonar pedido existente). */
   inicial?: NovoPedidoInicial | null;
+  /**
+   * Quando informado, o submit faz PATCH em /pedidos/:id em vez de POST /pedidos.
+   * Backend permite editar itens só em RASCUNHO ou AGUARDANDO_APROVACAO.
+   */
+  editandoPedidoId?: string | null;
   onClose: () => void;
   onCreated: (pedidoId: string) => void;
 }) {
@@ -175,31 +181,53 @@ export function NovoPedidoDialog({
     if (!cliente || !valid) return;
     setBusy(true);
     setError(null);
-    const payload: Record<string, unknown> = {
-      clienteId: cliente.id,
-      itens: itens.map((it) => {
-        const obj: Record<string, unknown> = {
-          produtoId: it.produto!.id,
-          quantidade: it.quantidade,
-          desconto: it.desconto,
-        };
-        if (it.precoUnitarioOverride.trim()) {
-          obj.precoUnitarioOverride = Number(it.precoUnitarioOverride);
-        }
-        return obj;
-      }),
-      formaPagamento,
-      condicaoPagamento,
-      descontoGeral,
-    };
-    if (observacoes.trim()) payload.observacoes = observacoes.trim();
+
+    const itensPayload = itens.map((it) => {
+      const obj: Record<string, unknown> = {
+        produtoId: it.produto!.id,
+        quantidade: it.quantidade,
+        desconto: it.desconto,
+      };
+      if (it.precoUnitarioOverride.trim()) {
+        obj.precoUnitarioOverride = Number(it.precoUnitarioOverride);
+      }
+      return obj;
+    });
 
     try {
-      const r = await api.post<{ id: string }>('/pedidos', payload);
-      toast.success('Pedido criado');
-      onCreated(r.id);
+      if (editandoPedidoId) {
+        // Edit mode: PATCH sem clienteId (backend não aceita mudar cliente)
+        const editPayload: Record<string, unknown> = {
+          itens: itensPayload,
+          formaPagamento,
+          condicaoPagamento,
+          descontoGeral,
+        };
+        if (observacoes.trim()) editPayload.observacoes = observacoes.trim();
+        await api.patch(`/pedidos/${editandoPedidoId}`, editPayload);
+        toast.success('Pedido atualizado');
+        onCreated(editandoPedidoId);
+      } else {
+        const payload: Record<string, unknown> = {
+          clienteId: cliente.id,
+          itens: itensPayload,
+          formaPagamento,
+          condicaoPagamento,
+          descontoGeral,
+        };
+        if (observacoes.trim()) payload.observacoes = observacoes.trim();
+        const r = await api.post<{ id: string }>('/pedidos', payload);
+        toast.success('Pedido criado');
+        onCreated(r.id);
+      }
     } catch (err) {
-      setError(err instanceof ApiError ? err.message : 'Falha ao criar pedido');
+      setError(
+        err instanceof ApiError
+          ? err.message
+          : editandoPedidoId
+            ? 'Falha ao salvar alterações'
+            : 'Falha ao criar pedido',
+      );
     } finally {
       setBusy(false);
     }
@@ -209,13 +237,21 @@ export function NovoPedidoDialog({
     <Dialog
       open={open}
       onClose={onClose}
-      title={inicial ? 'Duplicar pedido' : 'Novo pedido'}
+      title={
+        editandoPedidoId
+          ? 'Editar pedido'
+          : inicial
+            ? 'Duplicar pedido'
+            : 'Novo pedido'
+      }
       description={
-        inicial
-          ? 'Edite os campos antes de criar. Preços serão recalculados pelo backend.'
-          : clientePreSelecionado
-            ? `Cliente: ${clientePreSelecionado.nome}`
-            : undefined
+        editandoPedidoId
+          ? 'Backend recalcula totais. Cliente não pode mudar.'
+          : inicial
+            ? 'Edite antes de criar. Preços serão recalculados pelo backend.'
+            : clientePreSelecionado
+              ? `Cliente: ${clientePreSelecionado.nome}`
+              : undefined
       }
       size="xl"
       footer={
@@ -231,7 +267,7 @@ export function NovoPedidoDialog({
             loading={busy}
             leftIcon={<CheckCircle2 className="h-3.5 w-3.5" />}
           >
-            Criar pedido
+            {editandoPedidoId ? 'Salvar alterações' : 'Criar pedido'}
           </Button>
         </>
       }

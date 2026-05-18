@@ -65,6 +65,16 @@ export class PedidosController {
     return this.pedidos.create(user, dto);
   }
 
+  @Post(':id/duplicar')
+  @RequirePermissions({ module: 'pedidos', action: 'create' })
+  @Audit({ action: 'duplicate', resource: 'pedido', resourceIdFrom: 'params.id' })
+  @ApiOperation({
+    summary: 'Duplica pedido existente. Preços são recalculados. Vincula pedidoOrigemId.',
+  })
+  duplicar(@CurrentUser() user: AuthenticatedUser, @Param('id') id: string) {
+    return this.pedidos.duplicar(user, id);
+  }
+
   @Patch(':id')
   @RequirePermissions({ module: 'pedidos', action: 'edit' })
   @Audit({ action: 'update', resource: 'pedido', resourceIdFrom: 'params.id' })

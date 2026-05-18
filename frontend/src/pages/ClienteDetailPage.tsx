@@ -184,6 +184,7 @@ export default function ClienteDetailPage() {
       <StateView loading={loading && !cliente} error={error} onRetry={refetch}>
         {cliente && (
           <>
+            <MetricasCard clienteId={cliente.id} />
             <div
               style={{
                 display: 'flex',
@@ -521,16 +522,181 @@ function DadosTab({
   );
 }
 
+// ─── Métricas card (header de venda) ─────────────────────────────────
+
+interface Metricas {
+  totalVendido: number;
+  ticketMedio: number;
+  pedidosCount: number;
+  ultimoPedidoEm: string | null;
+  vendidoNoMes: number;
+  pedidosNoMes: number;
+}
+
+function MetricasCard({ clienteId }: { clienteId: string }) {
+  const { data, loading } = useApiQuery<Metricas>(`/clientes/${clienteId}/metricas`);
+
+  if (loading) {
+    return (
+      <div
+        style={{
+          ...card,
+          padding: '0.75rem 1rem',
+          marginBottom: '0.75rem',
+          opacity: 0.5,
+          fontSize: 12,
+          color: colors.muted,
+        }}
+      >
+        Carregando métricas…
+      </div>
+    );
+  }
+  if (!data || data.pedidosCount === 0) {
+    return (
+      <div
+        style={{
+          ...card,
+          padding: '0.75rem 1rem',
+          marginBottom: '0.75rem',
+          fontSize: 13,
+          color: colors.muted,
+        }}
+      >
+        Cliente sem pedidos ainda.
+      </div>
+    );
+  }
+
+  return (
+    <div
+      data-testid="cliente-metricas"
+      style={{
+        ...card,
+        padding: '0.75rem 1rem',
+        marginBottom: '0.75rem',
+        display: 'grid',
+        gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))',
+        gap: '0.75rem',
+      }}
+    >
+      <MetricaItem label="Total vendido" value={fmtBRL(data.totalVendido)} highlight />
+      <MetricaItem label="Ticket médio" value={fmtBRL(data.ticketMedio)} />
+      <MetricaItem
+        label="Pedidos"
+        value={data.pedidosCount.toLocaleString('pt-BR')}
+        hint={
+          data.pedidosNoMes > 0 ? `${data.pedidosNoMes} no mês` : 'nenhum no mês'
+        }
+      />
+      <MetricaItem
+        label="Vendido no mês"
+        value={fmtBRL(data.vendidoNoMes)}
+        hint={data.vendidoNoMes > 0 ? 'mês corrente' : '—'}
+      />
+      <MetricaItem
+        label="Último pedido"
+        value={data.ultimoPedidoEm ? fmtDateShort(data.ultimoPedidoEm) : '—'}
+        hint={data.ultimoPedidoEm ? fmtRelativo(data.ultimoPedidoEm) : undefined}
+      />
+    </div>
+  );
+}
+
+function MetricaItem({
+  label,
+  value,
+  hint,
+  highlight,
+}: {
+  label: string;
+  value: string;
+  hint?: string;
+  highlight?: boolean;
+}) {
+  return (
+    <div>
+      <div
+        style={{
+          fontSize: 10,
+          color: colors.muted,
+          textTransform: 'uppercase',
+          letterSpacing: 0.5,
+          marginBottom: 2,
+        }}
+      >
+        {label}
+      </div>
+      <div
+        style={{
+          fontSize: highlight ? 18 : 15,
+          fontWeight: 600,
+          color: highlight ? colors.primary : colors.text,
+          fontVariantNumeric: 'tabular-nums',
+        }}
+      >
+        {value}
+      </div>
+      {hint && (
+        <div style={{ fontSize: 11, color: colors.muted, marginTop: 1 }}>{hint}</div>
+      )}
+    </div>
+  );
+}
+
+function fmtDateShort(iso: string): string {
+  try {
+    return new Date(iso).toLocaleDateString('pt-BR');
+  } catch {
+    return iso;
+  }
+}
+
+function fmtRelativo(iso: string): string {
+  try {
+    const t = new Date(iso).getTime();
+    const dias = Math.floor((Date.now() - t) / (1000 * 60 * 60 * 24));
+    if (dias < 1) return 'hoje';
+    if (dias === 1) return 'ontem';
+    if (dias < 30) return `há ${dias} dias`;
+    const meses = Math.floor(dias / 30);
+    if (meses < 12) return `há ${meses} ${meses === 1 ? 'mês' : 'meses'}`;
+    const anos = Math.floor(dias / 365);
+    return `há ${anos} ${anos === 1 ? 'ano' : 'anos'}`;
+  } catch {
+    return '';
+  }
+}
+
 // ─── Tab Pedidos ────────────────────────────────────────────────────
 
 function PedidosTab({ clienteId }: { clienteId: string }) {
   const navigate = useNavigate();
+  const [statusFiltro, setStatusFiltro] = useState<string>('');
+  const [periodo, setPeriodo] = useState<'todos' | '30d' | '90d' | '12m'>('todos');
+
+  // Constrói query string com filtros
+  const qs = new URLSearchParams({
+    clienteId,
+    limit: '50',
+    sortBy: 'criadoEm',
+    sortOrder: 'desc',
+  });
+  if (statusFiltro) qs.set('status', statusFiltro);
+  if (periodo !== 'todos') {
+    const dias = periodo === '30d' ? 30 : periodo === '90d' ? 90 : 365;
+    const inicio = new Date();
+    inicio.setDate(inicio.getDate() - dias);
+    qs.set('dataInicio', inicio.toISOString());
+  }
+
   const { data, loading, error, refetch } = useApiQuery<{
     data: PedidoLite[];
     pagination?: { total: number };
-  }>(`/pedidos?clienteId=${clienteId}&limit=50&sortBy=criadoEm&sortOrder=desc`);
+  }>(`/pedidos?${qs.toString()}`);
 
   const pedidos: PedidoLite[] = data?.data ?? [];
+  const filtrosAtivos = statusFiltro !== '' || periodo !== 'todos';
 
   return (
     <div style={card}>
@@ -540,6 +706,8 @@ function PedidosTab({ clienteId }: { clienteId: string }) {
           alignItems: 'center',
           justifyContent: 'space-between',
           marginBottom: '0.75rem',
+          gap: '0.5rem',
+          flexWrap: 'wrap',
         }}
       >
         <h3 style={{ margin: 0, fontSize: 15 }}>
@@ -562,6 +730,58 @@ function PedidosTab({ clienteId }: { clienteId: string }) {
           Ver na lista geral
         </button>
       </header>
+
+      {/* Filtros */}
+      <div
+        style={{
+          display: 'flex',
+          gap: '0.5rem',
+          marginBottom: '0.75rem',
+          alignItems: 'center',
+          flexWrap: 'wrap',
+        }}
+      >
+        <Select
+          data-testid="cliente-pedidos-status"
+          value={statusFiltro}
+          onChange={(e) => setStatusFiltro(e.target.value)}
+          style={{ width: 180 }}
+        >
+          <option value="">Todos status</option>
+          {(Object.keys(PEDIDO_STATUS_LABEL) as PedidoLite['status'][]).map((s) => (
+            <option key={s} value={s}>
+              {PEDIDO_STATUS_LABEL[s]}
+            </option>
+          ))}
+        </Select>
+        <Select
+          data-testid="cliente-pedidos-periodo"
+          value={periodo}
+          onChange={(e) => setPeriodo(e.target.value as typeof periodo)}
+          style={{ width: 160 }}
+        >
+          <option value="todos">Todos os tempos</option>
+          <option value="30d">Últimos 30 dias</option>
+          <option value="90d">Últimos 90 dias</option>
+          <option value="12m">Últimos 12 meses</option>
+        </Select>
+        {filtrosAtivos && (
+          <button
+            type="button"
+            onClick={() => {
+              setStatusFiltro('');
+              setPeriodo('todos');
+            }}
+            style={{
+              ...btnSecondary,
+              padding: '0.25rem 0.625rem',
+              fontSize: 11,
+            }}
+          >
+            Limpar
+          </button>
+        )}
+      </div>
 
       <StateView
         loading={loading}

@@ -30,7 +30,15 @@ export type CreatePedidoDto = z.infer<typeof createPedidoSchema>;
 
 export const updatePedidoSchema = createPedidoSchema
   .omit({ clienteId: true, itens: true })
-  .partial();
+  .partial()
+  .extend({
+    /**
+     * Quando fornecido, substitui TODOS os itens do pedido (replace).
+     * Backend recalcula subtotal/total/comissão. Só funciona em RASCUNHO
+     * ou AGUARDANDO_APROVACAO — outros status rejeitam.
+     */
+    itens: z.array(pedidoItemInputSchema).min(1).optional(),
+  });
 export type UpdatePedidoDto = z.infer<typeof updatePedidoSchema>;
 
 export const previewPedidoSchema = createPedidoSchema;

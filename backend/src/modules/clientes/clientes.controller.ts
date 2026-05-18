@@ -71,6 +71,15 @@ export class ClientesController {
     return this.clientes.findById(user, id);
   }
 
+  @Get(':id/metricas')
+  @RequirePermissions({ module: 'clientes', action: 'view' })
+  @ApiOperation({
+    summary: 'Métricas de vendas do cliente: total, ticket médio, último pedido, mês atual',
+  })
+  metricas(@CurrentUser() user: AuthenticatedUser, @Param('id') id: string) {
+    return this.clientes.metricas(user, id);
+  }
+
   @Post()
   @RequirePermissions({ module: 'clientes', action: 'create' })
   @Audit({ action: 'create', resource: 'cliente', resourceIdFrom: 'response.id' })

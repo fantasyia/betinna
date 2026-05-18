@@ -135,6 +135,69 @@ export class ClientesService {
     return cliente;
   }
 
+  // ─── Métricas de vendas ────────────────────────────────────────────────
+  /**
+   * Agregados de pedidos do cliente — usado pelo card de métricas na tela
+   * do cliente. Conta apenas pedidos não-cancelados.
+   *
+   * - totalVendido: soma de `pedido.total` (todos os tempos)
+   * - ticketMedio: média de `pedido.total`
+   * - pedidosCount: contagem
+   * - ultimoPedidoEm: data do mais recente (null se não tem)
+   * - vendidoNoMes: soma do mês corrente
+   * - pedidosNoMes: contagem do mês corrente
+   */
+  async metricas(
+    user: AuthenticatedUser,
+    id: string,
+  ): Promise<{
+    totalVendido: number;
+    ticketMedio: number;
+    pedidosCount: number;
+    ultimoPedidoEm: Date | null;
+    vendidoNoMes: number;
+    pedidosNoMes: number;
+  }> {
+    // Reaproveita findById só pra validar acesso (RBAC + scope GERENTE).
+    await this.findById(user, id);
+
+    const inicioMes = new Date();
+    inicioMes.setDate(1);
+    inicioMes.setHours(0, 0, 0, 0);
+
+    const [agg, ultimo, mesAgg] = await Promise.all([
+      this.prisma.pedido.aggregate({
+        where: { clienteId: id, status: { not: 'CANCELADO' } },
+        _sum: { total: true },
+        _avg: { total: true },
+        _count: { _all: true },
+      }),
+      this.prisma.pedido.findFirst({
+        where: { clienteId: id, status: { not: 'CANCELADO' } },
+        orderBy: { criadoEm: 'desc' },
+        select: { criadoEm: true },
+      }),
+      this.prisma.pedido.aggregate({
+        where: {
+          clienteId: id,
+          status: { not: 'CANCELADO' },
+          criadoEm: { gte: inicioMes },
+        },
+        _sum: { total: true },
+        _count: { _all: true },
+      }),
+    ]);
+
+    return {
+      totalVendido: agg._sum.total ?? 0,
+      ticketMedio: agg._avg.total ?? 0,
+      pedidosCount: agg._count._all,
+      ultimoPedidoEm: ultimo?.criadoEm ?? null,
+      vendidoNoMes: mesAgg._sum.total ?? 0,
+      pedidosNoMes: mesAgg._count._all,
+    };
+  }
+
   // ─── Criar ──────────────────────────────────────────────────────────────
   async create(user: AuthenticatedUser, dto: CreateClienteDto): Promise<ClienteWithRel> {
     if (!user.empresaIdAtiva) {

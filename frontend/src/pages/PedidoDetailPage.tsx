@@ -32,8 +32,6 @@ import {
   Card,
   Dialog,
   Field,
-  Input,
-  Select,
   Textarea,
 } from '@/components/ui';
 import { cn } from '@/lib/cn';
@@ -173,7 +171,6 @@ export default function PedidoDetailPage() {
   const [actionError, setActionError] = useState<string | null>(null);
   const [cancelOpen, setCancelOpen] = useState(false);
   const [cancelMotivo, setCancelMotivo] = useState('');
-  const [duplicarOpen, setDuplicarOpen] = useState(false);
   const [editOpen, setEditOpen] = useState(false);
 
   async function callAction(label: string, fn: () => Promise<unknown>) {
@@ -200,6 +197,22 @@ export default function PedidoDetailPage() {
         cancelMotivo.trim() ? { motivo: cancelMotivo.trim() } : {},
       ),
     );
+  /**
+   * Duplicar usa o endpoint dedicado do backend (POST /pedidos/:id/duplicar)
+   * que recalcula preços e seta pedidoOrigemId pra rastreabilidade.
+   */
+  async function duplicar() {
+    setBusy('duplicar');
+    setActionError(null);
+    try {
+      const r = await api.post<{ id: string }>(`/pedidos/${id}/duplicar`);
+      navigate(`/pedidos/${r.id}`);
+    } catch (err) {
+      setActionError(err instanceof ApiError ? err.message : 'Falha ao duplicar');
+    } finally {
+      setBusy(null);
+    }
+  }
 
   if (!id) {
     return (
@@ -266,7 +279,8 @@ export default function PedidoDetailPage() {
             <Button
               variant="secondary"
               size="md"
-              onClick={() => setDuplicarOpen(true)}
+              onClick={duplicar}
+              loading={busy === 'duplicar'}
               leftIcon={<Copy className="h-3.5 w-3.5" />}
               data-testid="pedido-duplicar"
             >
@@ -538,30 +552,19 @@ export default function PedidoDetailPage() {
         )}
       </StateView>
 
-      {/* Duplicar — abre NovoPedidoDialog com itens preenchidos */}
-      {duplicarOpen && inicialDuplicar && data?.cliente && (
+      {/* Edit — reusa NovoPedidoDialog em modo edição (PATCH com itens) */}
+      {editOpen && data && inicialDuplicar && data.cliente && (
         <NovoPedidoDialog
           open
+          editandoPedidoId={data.id}
           clientePreSelecionado={{
             id: data.cliente.id,
             nome: data.cliente.nome,
             cnpj: data.cliente.cnpj ?? null,
           }}
           inicial={inicialDuplicar}
-          onClose={() => setDuplicarOpen(false)}
-          onCreated={(novoId) => {
-            setDuplicarOpen(false);
-            navigate(`/pedidos/${novoId}`);
-          }}
-        />
-      )}
-
-      {/* Edit dialog — só campos editáveis (formaPagamento, condicao, desconto, obs) */}
-      {editOpen && data && (
-        <EditPedidoDialog
-          pedido={data}
           onClose={() => setEditOpen(false)}
-          onSaved={() => {
+          onCreated={() => {
             setEditOpen(false);
             refetch();
           }}
@@ -741,132 +744,6 @@ function stepDate(p: PedidoDetail, step: PedidoStatus): string | null | undefine
     default:
       return null;
   }
-}
-
-// ─── Edit dialog ───────────────────────────────────────────────
-
-/**
- * Edita campos editáveis de pedido em RASCUNHO ou AGUARDANDO_APROVACAO.
- * Backend (UpdatePedidoDto) NÃO permite mudar cliente/itens — pra mudar
- * itens, duplica e ajusta os itens lá.
- */
-function EditPedidoDialog({
-  pedido,
-  onClose,
-  onSaved,
-}: {
-  pedido: PedidoDetail;
-  onClose: () => void;
-  onSaved: () => void;
-}) {
-  const [formaPagamento, setFormaPagamento] = useState(pedido.formaPagamento ?? 'BOLETO');
-  const [condicaoPagamento, setCondicaoPagamento] = useState(
-    pedido.condicaoPagamento ?? '30dias',
-  );
-  const [descontoGeral, setDescontoGeral] = useState(pedido.descontoGeral ?? 0);
-  const [observacoes, setObservacoes] = useState(pedido.observacao ?? pedido.observacoes ?? '');
-  const [busy, setBusy] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-
-  async function save(e: React.FormEvent) {
-    e.preventDefault();
-    setBusy(true);
-    setError(null);
-    try {
-      const payload: Record<string, unknown> = {
-        formaPagamento,
-        condicaoPagamento,
-        descontoGeral,
-      };
-      if (observacoes.trim()) payload.observacoes = observacoes.trim();
-      await api.patch(`/pedidos/${pedido.id}`, payload);
-      onSaved();
-    } catch (err) {
-      setError(err instanceof ApiError ? err.message : 'Falha ao salvar');
-    } finally {
-      setBusy(false);
-    }
-  }
-
-  return (
-    <Dialog
-      open
-      onClose={onClose}
-      title={`Editar pedido #${pedido.numero}`}
-      description="Para mudar itens, use Duplicar e ajuste o novo pedido."
-      size="md"
-      footer={
-        <>
-          <Button variant="secondary" onClick={onClose}>
-            Cancelar
-          </Button>
-          <Button
-            type="submit"
-            form="edit-pedido-form"
-            data-testid="pedido-edit-save"
-            loading={busy}
-            leftIcon={<Check className="h-3.5 w-3.5" />}
-          >
-            Salvar alterações
-          </Button>
-        </>
-      }
-    >
-      <form id="edit-pedido-form" onSubmit={save} className="flex flex-col gap-3">
-        <div className="grid grid-cols-2 gap-3">
-          <Field label="Forma de pagamento">
-            <Select
-              value={formaPagamento}
-              onChange={(e) => setFormaPagamento(e.target.value)}
-            >
-              <option value="BOLETO">Boleto</option>
-              <option value="PIX">PIX</option>
-              <option value="TED">TED</option>
-              <option value="CARTAO">Cartão</option>
-              <option value="DINHEIRO">Dinheiro</option>
-            </Select>
-          </Field>
-          <Field label="Condição">
-            <Select
-              value={condicaoPagamento}
-              onChange={(e) => setCondicaoPagamento(e.target.value)}
-            >
-              <option value="avista">À vista</option>
-              <option value="15dias">15 dias</option>
-              <option value="30dias">30 dias</option>
-              <option value="30_60">30/60</option>
-              <option value="30_60_90">30/60/90</option>
-            </Select>
-          </Field>
-        </div>
-        <Field label="Desconto geral (%)" hint="Aplica sobre o subtotal — 0 a 50%">
-          <Input
-            type="number"
-            min={0}
-            max={50}
-            step="0.1"
-            value={descontoGeral}
-            onChange={(e) => setDescontoGeral(Number(e.target.value))}
-            data-testid="pedido-edit-desconto"
-          />
-        </Field>
-        <Field label="Observações">
-          <Textarea
-            value={observacoes}
-            onChange={(e) => setObservacoes(e.target.value)}
-            rows={3}
-            data-testid="pedido-edit-obs"
-          />
-        </Field>
-        {error && (
-          <div className="px-3 py-2 rounded-md bg-danger/10 border border-danger/30 text-danger text-sm flex items-start gap-2">
-            <AlertCircle className="h-4 w-4 mt-0.5 shrink-0" />
-            {error}
-          </div>
-        )}
-      </form>
-    </Dialog>
-  );
 }
 
 function InfoCell({

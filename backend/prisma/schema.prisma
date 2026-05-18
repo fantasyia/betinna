@@ -565,10 +565,16 @@ model Pedido {
   enviadoOmieEm   DateTime?
   pagoEm          DateTime?
 
+  /// Quando o pedido foi criado via "duplicar", aponta pro pedido original.
+  /// SetNull se o original for excluído — preserva o histórico do duplicado.
+  pedidoOrigemId  String?
+
   empresa         Empresa  @relation(fields: [empresaId], references: [id], onDelete: Cascade)
   cliente         Cliente  @relation(fields: [clienteId], references: [id])
   representante   Usuario? @relation("PedidoRep", fields: [representanteId], references: [id])
   aprovador       Usuario? @relation("PedidoAprovador", fields: [aprovadorId], references: [id])
+  pedidoOrigem    Pedido?  @relation("PedidoDuplicado", fields: [pedidoOrigemId], references: [id], onDelete: SetNull)
+  duplicados      Pedido[] @relation("PedidoDuplicado")
 
   itens           PedidoItem[]
   aprovacaoDesconto AprovacaoDesconto?

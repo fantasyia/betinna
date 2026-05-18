@@ -276,11 +276,141 @@ export class PedidosService {
     if (!['RASCUNHO', 'AGUARDANDO_APROVACAO'].includes(existing.status)) {
       throw new BusinessRuleException(`Pedido em status ${existing.status} não pode ser editado`);
     }
-    await this.prisma.pedido.updateMany({
-      where: { id, empresaId: existing.empresaId },
-      data: dto,
+
+    // Separa itens dos demais campos pra controle fino.
+    const { itens: novosItens, ...camposGenericos } = dto;
+
+    // Decide se precisa recalcular totais:
+    //  - sempre que itens mudarem
+    //  - sempre que descontoGeral mudar
+    const precisaRecalcular =
+      novosItens !== undefined || camposGenericos.descontoGeral !== undefined;
+
+    const itensFinais = novosItens
+      ? await this.resolveItens(existing.empresaId, existing.clienteId, novosItens)
+      : existing.itens.map((i) => ({
+          produtoId: i.produtoId,
+          quantidade: i.quantidade,
+          precoUnitario: i.precoUnitario,
+          desconto: i.desconto,
+          total: i.total,
+          negociado: i.negociado,
+        }));
+
+    const descontoGeralFinal = camposGenericos.descontoGeral ?? existing.descontoGeral;
+
+    let totalsRecalc: PedidoTotals | null = null;
+    if (precisaRecalcular) {
+      totalsRecalc = this.pedidoPricing.pedidoTotals(
+        itensFinais.map((i) => ({
+          quantidade: i.quantidade,
+          precoUnitario: i.precoUnitario,
+          desconto: i.desconto,
+        })),
+        descontoGeralFinal,
+        COMISSAO_PADRAO_PCT,
+      );
+
+      // Se mudou pra desconto acima do teto sem motivo, bloqueia.
+      const tetoRep = await this.tetoDoRepAtual(user);
+      const requerAprovacao = this.pedidoPricing.excedeTetoDesconto(totalsRecalc, tetoRep);
+      if (
+        requerAprovacao &&
+        !(camposGenericos.motivoDesconto ?? existing.motivoDesconto)
+      ) {
+        throw new BusinessRuleException(
+          'Desconto acima do teto requer justificativa em motivoDesconto',
+          ErrorCode.DESCONTO_ACIMA_TETO,
+        );
+      }
+    }
+
+    await this.prisma.$transaction(async (tx) => {
+      // Atualiza campos escalares (e totais quando recalculou)
+      await tx.pedido.update({
+        where: { id },
+        data: {
+          ...camposGenericos,
+          ...(totalsRecalc && {
+            subtotal: totalsRecalc.subtotal,
+            total: totalsRecalc.total,
+            comissao: totalsRecalc.comissao,
+          }),
+        },
+      });
+
+      // Se itens foram fornecidos, replace total
+      if (novosItens) {
+        await tx.pedidoItem.deleteMany({ where: { pedidoId: id } });
+        await tx.pedidoItem.createMany({
+          data: itensFinais.map((i) => ({
+            pedidoId: id,
+            produtoId: i.produtoId,
+            quantidade: i.quantidade,
+            precoUnitario: i.precoUnitario,
+            desconto: i.desconto,
+            total: i.total,
+            negociado: i.negociado,
+          })),
+        });
+      }
     });
-    return this.prisma.pedido.findUniqueOrThrow({ where: { id }, include: pedidoInclude });
+
+    return this.findByIdInternal(id);
+  }
+
+  // ─── Duplicar pedido ─────────────────────────────────────────────────
+  /**
+   * Cria um NOVO pedido como cópia do existente.
+   *
+   * - Itens, formaPagamento, condicao, descontoGeral, observacoes copiados
+   * - Preços recalculados pelo PricingService (preço pode ter mudado)
+   * - `pedidoOrigemId` aponta pro original (rastreabilidade)
+   * - Status inicial: RASCUNHO (ou AGUARDANDO_APROVACAO se desconto exceder teto)
+   * - Cliente: mesmo do original (passa pelo assertClienteValido — se cliente
+   *   estiver bloqueado/inativo, bloqueia o duplicado)
+   *
+   * Permissão idêntica a `create` — quem pode criar pode duplicar.
+   */
+  async duplicar(user: AuthenticatedUser, id: string): Promise<PedidoWithRel> {
+    const original = await this.findById(user, id);
+
+    const itens: PedidoItemInputDto[] = original.itens.map((i) => ({
+      produtoId: i.produtoId,
+      quantidade: i.quantidade,
+      desconto: i.desconto,
+      // Não copia precoUnitarioOverride — preço atual é o que vale
+    }));
+
+    if (itens.length === 0) {
+      throw new BusinessRuleException('Pedido original sem itens — nada a duplicar');
+    }
+
+    const novo = await this.create(user, {
+      clienteId: original.clienteId,
+      itens,
+      formaPagamento: original.formaPagamento,
+      condicaoPagamento:
+        (original.condicaoPagamento as CreatePedidoDto['condicaoPagamento']) ?? '30dias',
+      prazoEntrega: original.prazoEntrega ?? undefined,
+      descontoGeral: original.descontoGeral,
+      observacoes: original.observacoes
+        ? `Duplicado de #${original.numero}. ${original.observacoes}`
+        : `Duplicado de #${original.numero}`,
+      motivoDesconto: original.motivoDesconto ?? undefined,
+    });
+
+    // Marca a origem pra rastreabilidade
+    await this.prisma.pedido.update({
+      where: { id: novo.id },
+      data: { pedidoOrigemId: original.id },
+    });
+
+    this.logger.log(
+      `Pedido ${novo.numero} duplicado de ${original.numero} (id=${original.id})`,
+    );
+
+    return this.findByIdInternal(novo.id);
   }
 
   // ─── Avançar status (ENVIADO → ENTREGUE, etc.) ─────────────────────────
