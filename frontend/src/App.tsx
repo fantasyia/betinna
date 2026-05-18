@@ -40,6 +40,7 @@ const CampanhasPage = lazy(() => import('@/pages/CampanhasPage'));
 const PermissoesPage = lazy(() => import('@/pages/PermissoesPage'));
 const RelatoriosPage = lazy(() => import('@/pages/RelatoriosPage'));
 const PedidosPage = lazy(() => import('@/pages/PedidosPage'));
+const PedidoDetailPage = lazy(() => import('@/pages/PedidoDetailPage'));
 const ComissoesPage = lazy(() => import('@/pages/ComissoesPage'));
 const LeadsPage = lazy(() => import('@/pages/LeadsPage'));
 const PropostasPage = lazy(() => import('@/pages/PropostasPage'));
@@ -376,6 +377,18 @@ const router = createBrowserRouter([
         <ProtectedRoute>
           <PageSuspense>
             <PedidosPage />
+          </PageSuspense>
+        </ProtectedRoute>
+      </ErrorBoundary>
+    ),
+  },
+  {
+    path: '/pedidos/:id',
+    element: (
+      <ErrorBoundary>
+        <ProtectedRoute>
+          <PageSuspense>
+            <PedidoDetailPage />
           </PageSuspense>
         </ProtectedRoute>
       </ErrorBoundary>

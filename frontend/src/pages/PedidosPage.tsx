@@ -1,4 +1,5 @@
 import { useMemo, useState, type ReactNode } from 'react';
+import { useNavigate } from 'react-router-dom';
 import {
   Search,
   Download,
@@ -186,6 +187,7 @@ function fmtDateTime(d: string | null | undefined) {
 
 export default function PedidosPage() {
   const toast = useToast();
+  const navigateTable = useNavigate();
   const [page, setPage] = useState(1);
   const [search, setSearch] = useState('');
   const [status, setStatus] = useState<string>('');
@@ -419,8 +421,20 @@ export default function PedidosPage() {
                               {fmtDate(p.criadoEm)}
                             </span>
                           </Td>
-                          <Td>
-                            <ExternalLink className="h-3.5 w-3.5 text-muted" />
+                          <Td
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              navigateTable(`/pedidos/${p.id}`);
+                            }}
+                          >
+                            <button
+                              type="button"
+                              aria-label="Abrir página do pedido"
+                              data-testid={`pedido-row-open-${p.id}`}
+                              className="p-1 -m-1 rounded text-muted hover:text-primary hover:bg-surface-hover transition-colors"
+                            >
+                              <ExternalLink className="h-3.5 w-3.5" />
+                            </button>
                           </Td>
                         </tr>
                       );
@@ -610,6 +624,7 @@ function PedidoDetailDrawer({
   onClose: () => void;
   onChanged: () => void;
 }) {
+  const navigate = useNavigate();
   const { data, loading, error, refetch } = useApiQuery<PedidoDetail>(`/pedidos/${id}`);
   const [busy, setBusy] = useState<string | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
@@ -650,6 +665,16 @@ function PedidoDetailDrawer({
       footer={
         data && (
           <>
+            <Button
+              variant="secondary"
+              size="sm"
+              data-testid="pedido-abrir-pagina"
+              onClick={() => navigate(`/pedidos/${id}`)}
+              leftIcon={<ExternalLink className="h-3.5 w-3.5" />}
+            >
+              Abrir página
+            </Button>
+            <div className="flex-1" />
             {data.status === 'RASCUNHO' && (
               <Button
                 data-testid="pedido-enviar-omie"
