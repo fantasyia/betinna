@@ -360,10 +360,18 @@ model Cliente {
   empresaId    String
   codigoOmie   String?
   nome         String
+  // Dados fiscais e contato (obrigatórios via DTO; nullable no schema pra
+  // suportar legado e import OMIE sem todos os campos preenchidos)
   cnpj         String?
   email        String?
   telefone     String?
   segmento     String?
+  // Endereço completo
+  cep          String?
+  endereco     String?
+  numero       String?
+  complemento  String?
+  bairro       String?
   cidade       String?
   uf           String?
   regiao       String?

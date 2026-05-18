@@ -11,7 +11,7 @@ import { FormField, Input, Select } from '@/components/FormField';
 import { Modal } from '@/components/Modal';
 import { AsyncCombobox } from '@/components/AsyncCombobox';
 import { useToast } from '@/components/toast';
-import { isValidCNPJ, maskCNPJ, maskTelefone, normalizeUF, stripMask } from '@/lib/masks';
+import { isValidCNPJ, maskCEP, maskCNPJ, maskTelefone, normalizeUF, stripMask } from '@/lib/masks';
 import { exportToCsv } from '@/lib/csv';
 import { exportToXlsx } from '@/lib/xlsx';
 import { exportToDocx } from '@/lib/docx';
@@ -607,9 +607,14 @@ interface FormState {
   cnpj: string;
   email: string;
   telefone: string;
+  segmento: string;
+  cep: string;
+  endereco: string;
+  numero: string;
+  complemento: string;
+  bairro: string;
   cidade: string;
   uf: string;
-  segmento: string;
   status: ClienteStatus;
   omieStatus: OmieStatus;
   score: number;
@@ -617,17 +622,31 @@ interface FormState {
 }
 
 function emptyForm(c?: Cliente | null): FormState {
+  // Tipos do Cliente vindos da API podem não ter os campos novos ainda (até frontend atualizar).
+  // Cast bruto pra evitar erro de tipo enquanto a interface Cliente é atualizada.
+  const cc = (c ?? {}) as Cliente & {
+    cep?: string | null;
+    endereco?: string | null;
+    numero?: string | null;
+    complemento?: string | null;
+    bairro?: string | null;
+  };
   return {
-    nome: c?.nome ?? '',
-    cnpj: c?.cnpj ?? '',
-    email: c?.email ?? '',
-    telefone: c?.telefone ?? '',
-    cidade: c?.cidade ?? '',
-    uf: c?.uf ?? '',
-    segmento: c?.segmento ?? '',
-    status: c?.status ?? 'NOVO',
-    omieStatus: c?.omieStatus ?? 'ATIVO',
-    score: c?.score ?? 50,
+    nome: cc.nome ?? '',
+    cnpj: cc.cnpj ?? '',
+    email: cc.email ?? '',
+    telefone: cc.telefone ?? '',
+    segmento: cc.segmento ?? '',
+    cep: cc.cep ?? '',
+    endereco: cc.endereco ?? '',
+    numero: cc.numero ?? '',
+    complemento: cc.complemento ?? '',
+    bairro: cc.bairro ?? '',
+    cidade: cc.cidade ?? '',
+    uf: cc.uf ?? '',
+    status: cc.status ?? 'NOVO',
+    omieStatus: cc.omieStatus ?? 'ATIVO',
+    score: cc.score ?? 50,
     prazoPagamento: 30,
   };
 }
@@ -655,7 +674,58 @@ function ClienteFormModal({
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
 
-    // Validação client-side antes de chamar API
+    // Validação client-side antes de chamar API.
+    // Em CREATE, todos os campos são obrigatórios (espelha o DTO no backend).
+    // Em EDIT (PATCH), validações só rodam se o campo foi alterado.
+    if (!isEdit) {
+      // ─── Validações de campos obrigatórios ───
+      if (form.nome.trim().length < 2) {
+        setError('Nome obrigatório (mínimo 2 caracteres).');
+        return;
+      }
+      if (!form.cnpj.trim()) {
+        setError('CNPJ obrigatório.');
+        return;
+      }
+      if (!form.email.trim()) {
+        setError('E-mail obrigatório.');
+        return;
+      }
+      if (!form.telefone.trim()) {
+        setError('Telefone obrigatório.');
+        return;
+      }
+      if (!form.segmento.trim()) {
+        setError('Segmento obrigatório.');
+        return;
+      }
+      if (!form.cep.trim()) {
+        setError('CEP obrigatório.');
+        return;
+      }
+      if (!form.endereco.trim()) {
+        setError('Endereço (logradouro) obrigatório.');
+        return;
+      }
+      if (!form.numero.trim()) {
+        setError('Número obrigatório.');
+        return;
+      }
+      if (!form.bairro.trim()) {
+        setError('Bairro obrigatório.');
+        return;
+      }
+      if (!form.cidade.trim()) {
+        setError('Cidade obrigatória.');
+        return;
+      }
+      if (!form.uf.trim()) {
+        setError('UF obrigatória.');
+        return;
+      }
+    }
+
+    // ─── Validações de formato (rodam quando o campo está preenchido) ───
     if (form.cnpj.trim() && !isValidCNPJ(form.cnpj)) {
       setError('CNPJ inválido. Confira os dígitos verificadores.');
       return;
@@ -668,11 +738,15 @@ function ClienteFormModal({
       setError('Telefone incompleto — informe DDD + número.');
       return;
     }
+    if (form.cep.trim() && stripMask(form.cep).length !== 8) {
+      setError('CEP deve ter 8 dígitos.');
+      return;
+    }
 
     setSaving(true);
     setError(null);
 
-    // Strip campos vazios opcionais — backend Zod aceita undefined, não ''
+    // Em CREATE manda tudo. Em EDIT manda só o que tem valor (PATCH semântico).
     const payload: Record<string, unknown> = {
       nome: form.nome.trim(),
       status: form.status,
@@ -680,7 +754,19 @@ function ClienteFormModal({
       score: form.score,
       prazoPagamento: form.prazoPagamento,
     };
-    const optional = ['cnpj', 'email', 'telefone', 'cidade', 'uf', 'segmento'] as const;
+    const optional = [
+      'cnpj',
+      'email',
+      'telefone',
+      'segmento',
+      'cep',
+      'endereco',
+      'numero',
+      'complemento',
+      'bairro',
+      'cidade',
+      'uf',
+    ] as const;
     for (const k of optional) {
       const v = form[k].trim();
       if (v) payload[k] = v;
@@ -735,7 +821,7 @@ function ClienteFormModal({
           />
         </FormField>
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.75rem' }}>
-          <FormField label="CNPJ" htmlFor="f-cnpj" hint="00.000.000/0001-00">
+          <FormField label="CNPJ" required htmlFor="f-cnpj" hint="00.000.000/0001-00">
             <Input
               id="f-cnpj"
               value={form.cnpj}
@@ -743,24 +829,30 @@ function ClienteFormModal({
               placeholder="00.000.000/0001-00"
               maxLength={18}
               inputMode="numeric"
+              required={!isEdit}
             />
           </FormField>
-          <FormField label="Segmento" htmlFor="f-seg">
+          <FormField label="Segmento" required htmlFor="f-seg">
             <Input
               id="f-seg"
               value={form.segmento}
               onChange={(e) => setField('segmento', e.target.value)}
+              placeholder="Ex: Restaurante, Supermercado…"
+              required={!isEdit}
+              maxLength={60}
             />
           </FormField>
-          <FormField label="E-mail" htmlFor="f-email">
+          <FormField label="E-mail" required htmlFor="f-email">
             <Input
               id="f-email"
               type="email"
               value={form.email}
               onChange={(e) => setField('email', e.target.value)}
+              required={!isEdit}
+              maxLength={200}
             />
           </FormField>
-          <FormField label="Telefone" htmlFor="f-tel">
+          <FormField label="Telefone" required htmlFor="f-tel">
             <Input
               id="f-tel"
               value={form.telefone}
@@ -768,23 +860,85 @@ function ClienteFormModal({
               placeholder="(00) 00000-0000"
               maxLength={15}
               inputMode="tel"
+              required={!isEdit}
             />
           </FormField>
-          <FormField label="Cidade" htmlFor="f-cidade">
+        </div>
+        {/* ─── Endereço completo ─── */}
+        <h4 style={{ margin: '1rem 0 0.5rem', fontSize: 13, color: colors.muted }}>Endereço</h4>
+        <div style={{ display: 'grid', gridTemplateColumns: '160px 1fr 120px', gap: '0.75rem' }}>
+          <FormField label="CEP" required htmlFor="f-cep" hint="00000-000">
+            <Input
+              id="f-cep"
+              value={form.cep}
+              onChange={(e) => setField('cep', maskCEP(e.target.value))}
+              placeholder="00000-000"
+              maxLength={9}
+              inputMode="numeric"
+              required={!isEdit}
+            />
+          </FormField>
+          <FormField label="Endereço (logradouro)" required htmlFor="f-end">
+            <Input
+              id="f-end"
+              value={form.endereco}
+              onChange={(e) => setField('endereco', e.target.value)}
+              placeholder="Rua, avenida, etc."
+              maxLength={200}
+              required={!isEdit}
+            />
+          </FormField>
+          <FormField label="Número" required htmlFor="f-num">
+            <Input
+              id="f-num"
+              value={form.numero}
+              onChange={(e) => setField('numero', e.target.value)}
+              maxLength={20}
+              required={!isEdit}
+            />
+          </FormField>
+        </div>
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.75rem' }}>
+          <FormField label="Complemento" htmlFor="f-comp" hint="Opcional">
+            <Input
+              id="f-comp"
+              value={form.complemento}
+              onChange={(e) => setField('complemento', e.target.value)}
+              maxLength={100}
+            />
+          </FormField>
+          <FormField label="Bairro" required htmlFor="f-bairro">
+            <Input
+              id="f-bairro"
+              value={form.bairro}
+              onChange={(e) => setField('bairro', e.target.value)}
+              maxLength={100}
+              required={!isEdit}
+            />
+          </FormField>
+          <FormField label="Cidade" required htmlFor="f-cidade">
             <Input
               id="f-cidade"
               value={form.cidade}
               onChange={(e) => setField('cidade', e.target.value)}
+              maxLength={100}
+              required={!isEdit}
             />
           </FormField>
-          <FormField label="UF" htmlFor="f-uf">
+          <FormField label="UF" required htmlFor="f-uf">
             <Input
               id="f-uf"
               maxLength={2}
               value={form.uf}
               onChange={(e) => setField('uf', normalizeUF(e.target.value))}
+              placeholder="SP"
+              required={!isEdit}
             />
           </FormField>
+        </div>
+        {/* ─── Operação ─── */}
+        <h4 style={{ margin: '1rem 0 0.5rem', fontSize: 13, color: colors.muted }}>Operação</h4>
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.75rem' }}>
           <FormField label="Status" htmlFor="f-status">
             <Select
               id="f-status"

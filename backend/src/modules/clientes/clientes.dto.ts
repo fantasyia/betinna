@@ -1,24 +1,46 @@
 import { ClienteOmieStatus, ClienteStatus } from '@prisma/client';
 import { z } from 'zod';
+import { cnpjSchema, cepSchema, telefoneBrSchema } from '@shared/validators/br-validators';
 
 const clienteStatusEnum = z.nativeEnum(ClienteStatus);
 const omieStatusEnum = z.nativeEnum(ClienteOmieStatus);
 
-const CNPJ_PATTERN = /^\d{2}\.\d{3}\.\d{3}\/\d{4}-\d{2}$/;
-const TEL_MIN = 8;
 const SCORE_MIN = 0;
 const SCORE_MAX = 100;
 
+const UF_REGEX = /^[A-Z]{2}$/;
+
+/**
+ * Schema de criação de cliente — campos OBRIGATÓRIOS quando criado via API
+ * pelo frontend (form Novo Cliente). Tornar obrigatório aqui evita lixo no DB
+ * (clientes sem CNPJ/contato/endereço — impossíveis de atender de verdade).
+ *
+ * Schema do Prisma mantém nullable: clientes vindos do OMIE sync podem não ter
+ * todos os campos (legado), e isso é OK porque é importação automática.
+ *
+ * Validadores BR (CNPJ, CEP, telefone) verificam dígito + formato.
+ */
 export const createClienteSchema = z.object({
-  nome: z.string().trim().min(2).max(200),
-  cnpj: z.string().regex(CNPJ_PATTERN, 'CNPJ deve seguir o formato 00.000.000/0001-00').optional(),
+  nome: z.string().trim().min(2, 'Nome deve ter ao menos 2 caracteres').max(200),
+  cnpj: cnpjSchema,
+  email: z.string().trim().toLowerCase().email('E-mail inválido').max(200),
+  telefone: telefoneBrSchema,
+  segmento: z.string().trim().min(2, 'Segmento obrigatório').max(60),
+  // Endereço completo
+  cep: cepSchema,
+  endereco: z.string().trim().min(3, 'Endereço obrigatório').max(200),
+  numero: z.string().trim().min(1, 'Número obrigatório').max(20),
+  complemento: z.string().trim().max(100).optional().nullable(),
+  bairro: z.string().trim().min(2, 'Bairro obrigatório').max(100),
+  cidade: z.string().trim().min(2, 'Cidade obrigatória').max(100),
+  uf: z
+    .string()
+    .trim()
+    .toUpperCase()
+    .regex(UF_REGEX, 'UF deve ter 2 letras maiúsculas (ex: SP)'),
+  regiao: z.string().trim().max(60).optional(),
+  // Campos não obrigatórios pro form (sistema/integração)
   codigoOmie: z.string().max(50).optional(),
-  email: z.string().email().optional(),
-  telefone: z.string().min(TEL_MIN).max(30).optional(),
-  segmento: z.string().max(60).optional(),
-  cidade: z.string().max(100).optional(),
-  uf: z.string().length(2).optional(),
-  regiao: z.string().max(60).optional(),
   status: clienteStatusEnum.default('NOVO'),
   omieStatus: omieStatusEnum.default('ATIVO'),
   score: z.number().int().min(SCORE_MIN).max(SCORE_MAX).default(50),
@@ -29,6 +51,7 @@ export const createClienteSchema = z.object({
 });
 export type CreateClienteDto = z.infer<typeof createClienteSchema>;
 
+// Update: todos opcionais (PATCH semântico) — usuário pode editar 1 campo.
 export const updateClienteSchema = createClienteSchema.partial();
 export type UpdateClienteDto = z.infer<typeof updateClienteSchema>;
 
