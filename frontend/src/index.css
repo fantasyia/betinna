@@ -1,12 +1,14 @@
-/* ─── Global styles — Design System v2 (dark, 2026-05-18) ─────────
+/* ─── Global styles — Betinna Design System v3 (LIGHT, 2026-05-18) ──
  *
- * Fontes:
- *  - Inter pra UI (400/500/600/700)
- *  - JetBrains Mono pra dados tabulares
- * Identidade visual: dark sofisticado, scrollbar minimalista, selection âmbar.
+ * Paleta oficial Betinna.ai (do protótipo HTML):
+ *  - Bg creme #F8F7F2
+ *  - Primária roxo #31137C
+ *  - Secundária ciano #4AC9E3
+ *  - Magenta #BB29BB pra acentos
+ * Tipografia: Cabin (UI) + Fira Sans (display)
  */
 
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Cabin:wght@400;500;600;700&family=Fira+Sans:wght@400;500;600;700;800&family=Fira+Mono:wght@400;500&display=swap');
 
 /* ─── Tailwind base + components + utilities ──────────────────── */
 @tailwind base;
@@ -15,58 +17,74 @@
 
 /* ─── CSS variables — fonte da verdade dos tokens ─────────────── */
 :root {
-  /* Backgrounds (escala) */
-  --bg: #0a0a0a;
-  --bg-alt: #0f0f10;
-  --surface: #141416;
-  --surface-hover: #1a1a1d;
-  --surface-elevated: #1c1c20;
+  /* Backgrounds (escala light) */
+  --bg: #F8F7F2;
+  --bg-alt: #fdfcf8;
+  --surface: #ffffff;
+  --surface-hover: #f4f1e9;
+  --surface-elevated: #ffffff;
 
   /* Borders */
-  --border: #262629;
-  --border-strong: #33333a;
-  --border-focus: #facc15;
+  --border: #e0dbed;
+  --border-strong: #cdc3e0;
+  --border-focus: #31137C;
 
   /* Text */
-  --text: #fafafa;
-  --text-subtle: #a1a1aa;
-  --muted: #71717a;
-  --muted-light: #52525b;
+  --text: #101820;
+  --text-subtle: #3a3550;
+  --muted: #6b6580;
+  --muted-light: #9892a8;
 
-  /* Brand */
-  --primary: #facc15;
-  --primary-hover: #eab308;
-  --primary-light: #422006;
-  --primary-contrast: #0a0a0a;
+  /* Brand — Betinna roxo + ciano */
+  --primary: #31137C;
+  --primary-hover: #250E62;
+  --primary-light: #f0ecfa;
+  --primary-contrast: #F8F7F2;
+
+  --secondary: #4AC9E3;
+  --secondary-hover: #2db5cf;
+  --secondary-light: #e6f9fc;
+
+  --magenta: #BB29BB;
+  --magenta-light: #faeafa;
+
+  --blue: #5C88DA;
+  --blue-light: #eaf0fb;
+
+  --navy: #221551;
 
   /* Semânticas */
-  --danger: #f43f5e;
-  --success: #22c55e;
-  --warning: #f59e0b;
-  --info: #38bdf8;
+  --danger: #c43c3c;
+  --success: #2d8f5e;
+  --warning: #b07820;
+  --info: #5C88DA;
 
   /* Channels */
-  --channel-whatsapp: #22c55e;
+  --channel-whatsapp: #25d366;
   --channel-instagram: #e1306c;
   --channel-facebook: #1877f2;
   --channel-email: #0891b2;
-  --channel-ml: #facc15;
+  --channel-ml: #fbbf24;
   --channel-shopee: #ee4d2d;
   --channel-amazon: #ff9900;
-  --channel-tiktok: #ec4899;
+  --channel-tiktok: #ff0050;
 
   /* Radii */
   --radius-sm: 4px;
   --radius-md: 6px;
-  --radius-lg: 8px;
+  --radius-lg: 10px;
   --radius-xl: 12px;
 
   /* Fonts */
-  --font-ui: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
-  --font-mono: 'JetBrains Mono', 'SF Mono', 'Monaco', 'Cascadia Code', 'Roboto Mono', monospace;
+  --font-ui: 'Cabin', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+  --font-display: 'Fira Sans', 'Cabin', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  --font-mono: 'Fira Mono', 'SF Mono', 'Monaco', monospace;
 
-  /* Color scheme hint pro browser (dark form controls, scrollbar, etc) */
-  color-scheme: dark;
+  /* Gradiente assinatura (purple → cyan) */
+  --gradient-brand: linear-gradient(135deg, #31137C 0%, #4AC9E3 100%);
+
+  /* Color scheme hint pro browser (form controls, scrollbar, etc) */
+  color-scheme: light;
 }
 
 /* ─── Reset ──────────────────────────────────────────────────── */
@@ -88,8 +106,6 @@ body {
   text-rendering: optimizeLegibility;
   background: var(--bg);
   color: var(--text);
-  /* Fallback se Inter não carregou ainda */
-  font-feature-settings: 'cv02', 'cv03', 'cv04', 'cv11';
 }
 
 #root {
@@ -104,15 +120,16 @@ h4,
 h5,
 h6 {
   margin: 0;
-  font-weight: 600;
+  font-family: var(--font-display);
+  font-weight: 700;
   line-height: 1.25;
   letter-spacing: -0.02em;
   color: var(--text);
 }
 
 h1 {
-  font-size: 22px;
-  font-weight: 700;
+  font-size: 24px;
+  font-weight: 800;
 }
 h2 {
   font-size: 18px;
@@ -139,7 +156,6 @@ p {
   line-height: 1.6;
 }
 
-/* Tabular numbers — code, dados, dinheiro */
 code,
 pre,
 kbd,
@@ -149,7 +165,7 @@ kbd,
   font-variant-numeric: tabular-nums;
 }
 
-/* ─── Buttons globais (qualquer <button>) ────────────────────── */
+/* ─── Buttons globais ────────────────────────────────────────── */
 button {
   font-family: inherit;
   cursor: pointer;
@@ -168,12 +184,12 @@ button:disabled {
   opacity: 0.5;
 }
 
-/* ─── Inputs — focus ring com âmbar discreto ─────────────────── */
+/* ─── Inputs — focus ring com roxo Betinna ──────────────────── */
 input:focus,
 select:focus,
 textarea:focus {
   border-color: var(--primary) !important;
-  box-shadow: 0 0 0 3px rgba(250, 204, 21, 0.15) !important;
+  box-shadow: 0 0 0 3px rgba(49, 19, 124, 0.15) !important;
 }
 
 input::placeholder,
@@ -181,17 +197,16 @@ textarea::placeholder {
   color: var(--muted-light);
 }
 
-/* Chrome auto-fill: força mesma cor do tema (matar o amarelão default) */
 input:-webkit-autofill,
 input:-webkit-autofill:hover,
 input:-webkit-autofill:focus {
   -webkit-text-fill-color: var(--text);
-  -webkit-box-shadow: 0 0 0px 1000px var(--bg) inset;
+  -webkit-box-shadow: 0 0 0px 1000px var(--surface) inset;
   caret-color: var(--text);
   transition: background-color 5000s ease-in-out 0s;
 }
 
-/* ─── Table rows: hover sutil ─────────────────────────────────── */
+/* ─── Table rows ─────────────────────────────────────────────── */
 table tbody tr {
   transition: background 120ms ease;
 }
@@ -247,13 +262,13 @@ table tbody tr:hover {
   }
 }
 
-/* ─── Modal backdrop blur ────────────────────────────────────── */
+/* ─── Modal backdrop ─────────────────────────────────────────── */
 [data-testid='modal-overlay'] {
   backdrop-filter: blur(6px) saturate(140%);
-  background: rgba(0, 0, 0, 0.6);
+  background: rgba(34, 21, 81, 0.4);
 }
 
-/* ─── Scrollbar minimalista (Chrome/Edge/Safari) ─────────────── */
+/* ─── Scrollbar minimalista ──────────────────────────────────── */
 ::-webkit-scrollbar {
   width: 10px;
   height: 10px;
@@ -270,7 +285,6 @@ table tbody tr:hover {
   background: var(--muted);
 }
 
-/* Firefox */
 * {
   scrollbar-width: thin;
   scrollbar-color: var(--border-strong) transparent;
@@ -278,22 +292,21 @@ table tbody tr:hover {
 
 /* ─── Selection ─────────────────────────────────────────────── */
 ::selection {
-  background: rgba(250, 204, 21, 0.25);
+  background: rgba(49, 19, 124, 0.18);
   color: var(--text);
 }
 
-/* ─── Focus visible (keyboard navigation) ────────────────────── */
+/* ─── Focus visible ──────────────────────────────────────────── */
 :focus-visible {
   outline: 2px solid var(--primary);
   outline-offset: 2px;
 }
-/* Buttons usam box-shadow em vez de outline pra não cortar bordas */
 button:focus-visible {
   outline: none;
-  box-shadow: 0 0 0 3px rgba(250, 204, 21, 0.4);
+  box-shadow: 0 0 0 3px rgba(49, 19, 124, 0.35);
 }
 
-/* ─── Print: esconde nav, expandindo conteúdo ────────────────── */
+/* ─── Print ──────────────────────────────────────────────────── */
 @media print {
   body {
     background: #fff;
@@ -305,15 +318,13 @@ button:focus-visible {
   }
 }
 
-/* ─── Mobile (< 768px): ajustes globais ───────────────────────── */
+/* ─── Mobile (< 768px) ───────────────────────────────────────── */
 @media (max-width: 767px) {
-  /* iOS auto-zoom em inputs com font-size < 16px → mata UX. */
   input,
   select,
   textarea {
     font-size: 16px !important;
   }
-  /* Tap target mínimo. */
   button {
     min-height: 36px;
   }
@@ -326,4 +337,16 @@ button:focus-visible {
   h3 {
     font-size: 14px;
   }
+}
+
+/* ─── Brand gradient utility ─────────────────────────────────── */
+.bg-gradient-brand {
+  background: var(--gradient-brand);
+}
+.text-gradient-brand {
+  background: var(--gradient-brand);
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+  color: transparent;
 }

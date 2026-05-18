@@ -259,16 +259,20 @@ function Sidebar({
       <div className="flex items-center gap-2.5 px-3.5 py-3 border-b border-border">
         <div
           className={cn(
-            'flex h-7 w-7 items-center justify-center rounded',
-            'bg-primary text-primary-contrast font-bold text-sm',
-            'shadow-[inset_0_-1px_0_rgba(0,0,0,0.2)]',
+            'flex h-8 w-8 items-center justify-center rounded-lg',
+            'bg-gradient-brand text-white font-extrabold text-base',
+            'shadow-md',
           )}
+          style={{ fontFamily: 'var(--font-display)' }}
         >
           B
         </div>
         <div className="flex flex-col min-w-0">
-          <strong className="text-sm font-semibold text-text leading-tight tracking-tight">
-            Betinna.ai
+          <strong
+            className="text-base font-bold text-text leading-tight tracking-tight"
+            style={{ fontFamily: 'var(--font-display)' }}
+          >
+            Betinna<span className="text-primary">.ai</span>
           </strong>
           <span className="text-[10px] text-muted leading-tight">
             {role ? ROLE_LABEL[role] ?? role : 'Sem sessão'}

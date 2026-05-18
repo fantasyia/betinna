@@ -1,83 +1,101 @@
 import type { CSSProperties } from 'react';
 
 /**
- * Design tokens — Betinna.ai design system (v2 dark, 2026-05-18).
+ * Design tokens — Betinna.ai design system (v3 — paleta oficial Betinna, 2026-05-18).
  *
- * Identidade visual: dark sofisticado inspirado em Linear/Vercel.
- *  - Paleta neutra com matiz frio (azul-cinza quase imperceptível)
- *  - Acento âmbar #facc15 (igual protótipo) — usado com parcimônia
- *  - Bordas sutis 1px, sem shadow agressiva
- *  - Tipografia: Inter (UI) + JetBrains Mono (tabular/code)
- *  - Motion: 150ms ease-out padrão
+ * Identidade visual seguindo o protótipo HTML original:
+ *  - LIGHT theme com tons quentes (bg #F8F7F2 creme)
+ *  - Roxo profundo #31137C como primária
+ *  - Ciano #4AC9E3 como secundária (gradiente roxo→ciano é a assinatura)
+ *  - Magenta #BB29BB pra acentos especiais
+ *  - Tipografia: Cabin (UI) + Fira Sans (display/headings)
  *
- * Mantém a API original (colors, btn, card, badge, etc.) — todas as páginas
- * existentes continuam funcionando, só ficam dark. Primitives novos em
- * `components/ui/` usam essas mesmas variáveis via Tailwind/CSS vars.
+ * Mantém a mesma API de tokens (`colors.bg`, `colors.surface`, etc.) — todas as
+ * páginas existentes continuam funcionando, só trocam de paleta.
  */
 
 export const colors = {
-  // ─── Backgrounds (escala de elevação) ─────────────────────────
-  /** Base do app — onde nada flutua. */
-  bg: '#0a0a0a',
-  /** Variação sutil pra dividir seções (tabela header, sidebar footer). */
-  bgAlt: '#0f0f10',
-  /** Card padrão (1 nível acima do bg). */
-  surface: '#141416',
-  /** Hover de card/linha. */
-  surfaceHover: '#1a1a1d',
-  /** Card elevado (modal, popover, dropdown). */
-  surfaceElevated: '#1c1c20',
+  // ─── Backgrounds (escala de elevação, LIGHT) ───────────────────
+  /** Base do app — creme quente. */
+  bg: '#F8F7F2',
+  /** Variação sutil pra dividir seções. */
+  bgAlt: '#fdfcf8',
+  /** Card padrão (branco puro). */
+  surface: '#ffffff',
+  /** Hover de card/linha — bege bem sutil. */
+  surfaceHover: '#f4f1e9',
+  /** Card elevado (modal, popover). */
+  surfaceElevated: '#ffffff',
 
-  // ─── Borders ──────────────────────────────────────────────────
-  /** Padrão — divisores e bordas de card. */
-  border: '#262629',
+  // ─── Borders ────────────────────────────────────────────────────
+  /** Padrão — divisores e bordas de card (lilás bem clarinho). */
+  border: '#e0dbed',
   /** Mais visível — inputs, botões secundários. */
-  borderStrong: '#33333a',
-  /** Focus ring. */
-  borderFocus: '#facc15',
+  borderStrong: '#cdc3e0',
+  /** Focus ring — usa roxo primário. */
+  borderFocus: '#31137C',
 
-  // ─── Text ─────────────────────────────────────────────────────
-  /** Texto principal — quase branco. */
-  text: '#fafafa',
+  // ─── Text ───────────────────────────────────────────────────────
+  /** Texto principal — near-black com sutil tom azulado. */
+  text: '#101820',
   /** Texto secundário (descrições). */
-  textSubtle: '#a1a1aa',
+  textSubtle: '#3a3550',
   /** Mudo (labels, captions). */
-  muted: '#71717a',
+  muted: '#6b6580',
   /** Quase invisível (placeholders, hints). */
-  mutedLight: '#52525b',
+  mutedLight: '#9892a8',
 
-  // ─── Brand (âmbar igual protótipo HTML) ───────────────────────
-  primary: '#facc15',
-  primaryHover: '#eab308',
-  primaryLight: '#422006',         // bg sutil pra estado ativo (15% âmbar em preto)
-  primaryContrast: '#0a0a0a',      // texto sobre primary
+  // ─── Brand (Betinna roxo+ciano) ─────────────────────────────────
+  /** Primária — roxo profundo. */
+  primary: '#31137C',
+  primaryHover: '#250E62',
+  /** Bg sutil de hover/active states do primário. */
+  primaryLight: '#f0ecfa',
+  /** Texto sobre primary (branco quente). */
+  primaryContrast: '#F8F7F2',
 
-  // ─── Semânticas ───────────────────────────────────────────────
-  danger: '#f43f5e',
-  dangerHover: '#e11d48',
-  dangerLight: '#3f1015',
+  /** Secundária — ciano. Usar com parcimônia em chips/acentos. */
+  secondary: '#4AC9E3',
+  secondaryHover: '#2db5cf',
+  secondaryLight: '#e6f9fc',
 
-  success: '#22c55e',
-  successHover: '#16a34a',
-  successLight: '#0f2818',
+  /** Acento — magenta. Pra estados especiais (premium, destaque). */
+  magenta: '#BB29BB',
+  magentaLight: '#faeafa',
 
-  warning: '#f59e0b',
-  warningHover: '#d97706',
-  warningLight: '#3a230a',
+  /** Azul — accent terciário. */
+  blue: '#5C88DA',
+  blueLight: '#eaf0fb',
 
-  info: '#38bdf8',
-  infoHover: '#0ea5e9',
-  infoLight: '#0c2230',
+  /** Navy — usar em sidebar/header escuro opcional. */
+  navy: '#221551',
 
-  // ─── Cores de canal (Inbox / Conversation) ────────────────────
-  channelWhatsapp: '#22c55e',
+  // ─── Semânticas ─────────────────────────────────────────────────
+  danger: '#c43c3c',
+  dangerHover: '#a92e2e',
+  dangerLight: '#fce8e8',
+
+  success: '#2d8f5e',
+  successHover: '#1f7349',
+  successLight: '#e8f5ec',
+
+  warning: '#b07820',
+  warningHover: '#946420',
+  warningLight: '#faf0d8',
+
+  info: '#5C88DA',
+  infoHover: '#4773c0',
+  infoLight: '#eaf0fb',
+
+  // ─── Cores de canal (Inbox / Conversation) ──────────────────────
+  channelWhatsapp: '#25d366',
   channelInstagram: '#e1306c',
   channelFacebook: '#1877f2',
   channelEmail: '#0891b2',
-  channelML: '#facc15',
+  channelML: '#fbbf24',
   channelShopee: '#ee4d2d',
   channelAmazon: '#ff9900',
-  channelTiktok: '#ec4899',
+  channelTiktok: '#ff0050',
 };
 
 /** Spacing scale — 4px base. */
@@ -91,21 +109,21 @@ export const spacing = {
   xxxl: 48,
 };
 
-/** Shadows — quase imperceptíveis no dark, dão profundidade sem ruído. */
+/** Shadows — sutis pra light theme. */
 export const shadows = {
-  sm: '0 1px 2px 0 rgba(0, 0, 0, 0.3)',
-  md: '0 2px 6px -1px rgba(0, 0, 0, 0.4), 0 1px 3px -1px rgba(0, 0, 0, 0.3)',
-  lg: '0 8px 24px -4px rgba(0, 0, 0, 0.5), 0 2px 6px -2px rgba(0, 0, 0, 0.3)',
-  xl: '0 24px 48px -8px rgba(0, 0, 0, 0.6), 0 8px 16px -4px rgba(0, 0, 0, 0.4)',
+  sm: '0 1px 2px 0 rgba(49, 19, 124, 0.06)',
+  md: '0 2px 6px -1px rgba(49, 19, 124, 0.08), 0 1px 3px -1px rgba(49, 19, 124, 0.05)',
+  lg: '0 8px 24px -4px rgba(49, 19, 124, 0.12), 0 2px 6px -2px rgba(49, 19, 124, 0.06)',
+  xl: '0 24px 48px -8px rgba(49, 19, 124, 0.18), 0 8px 16px -4px rgba(49, 19, 124, 0.1)',
   /** Ring de foco — usado em inputs/botões com keyboard navigation. */
-  focusRing: '0 0 0 3px rgba(250, 204, 21, 0.15)',
+  focusRing: '0 0 0 3px rgba(49, 19, 124, 0.15)',
 };
 
 /** Border radius scale. */
 export const radius = {
   sm: 4,
   md: 6,
-  lg: 8,
+  lg: 10, // Betinna usa 10px como padrão
   xl: 12,
   full: 999,
 };
@@ -125,28 +143,29 @@ export const fontSize = {
 
 /** Motion / transitions. */
 export const motion = {
-  /** Padrão pra hover, color, bg. */
   fast: '120ms cubic-bezier(0.4, 0, 0.2, 1)',
-  /** Padrão pra layout shift, slide. */
   base: '180ms cubic-bezier(0.4, 0, 0.2, 1)',
-  /** Pra modal/drawer entrando. */
   slow: '280ms cubic-bezier(0.16, 1, 0.3, 1)',
 };
 
-/** Font stacks. */
+/** Font stacks — Cabin (UI) + Fira Sans (display). */
 const fontStackUI =
-  '"Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif';
-const fontStackMono =
-  '"JetBrains Mono", "SF Mono", "Monaco", "Cascadia Code", "Roboto Mono", monospace';
+  '"Cabin", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif';
+const fontStackDisplay =
+  '"Fira Sans", "Cabin", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif';
+const fontStackMono = '"Fira Mono", "SF Mono", "Monaco", monospace';
 
 export const fonts = {
   ui: fontStackUI,
+  display: fontStackDisplay,
   mono: fontStackMono,
 };
 
+/** Gradiente assinatura: roxo → ciano. */
+export const gradientBrand = `linear-gradient(135deg, ${colors.primary} 0%, ${colors.secondary} 100%)`;
+
 // ═══════════════════════════════════════════════════════════════
 // LEGACY STYLE OBJECTS — mantidos pras 30 páginas existentes.
-// Novos componentes devem usar primitives em `components/ui/*`.
 // ═══════════════════════════════════════════════════════════════
 
 export const card: CSSProperties = {
@@ -204,7 +223,7 @@ export const input: CSSProperties = {
   padding: '0.5rem 0.75rem',
   fontSize: 13,
   fontFamily: fontStackUI,
-  background: colors.bg,
+  background: colors.surface,
   color: colors.text,
   boxSizing: 'border-box',
   transition: `border-color ${motion.fast}, box-shadow ${motion.fast}`,
@@ -214,8 +233,7 @@ export const input: CSSProperties = {
 export const select: CSSProperties = {
   ...input,
   appearance: 'auto',
-  /* Garante setinha legível em dark */
-  colorScheme: 'dark',
+  colorScheme: 'light',
 };
 
 export const label: CSSProperties = {
@@ -273,7 +291,7 @@ export const td: CSSProperties = {
 
 /**
  * Badge — chip arredondado com cor base.
- * BG 12% opacidade da cor + cor sólida no texto. Funciona bem em dark.
+ * BG ~14% opacidade da cor + cor sólida no texto. Funciona bem em light.
  */
 export const badge = (color = colors.muted): CSSProperties => ({
   display: 'inline-flex',
@@ -282,11 +300,11 @@ export const badge = (color = colors.muted): CSSProperties => ({
   borderRadius: radius.full,
   fontSize: 11,
   fontWeight: 600,
-  background: color + '24', // ~14% opacidade
+  background: color + '20',
   color,
   letterSpacing: 0.2,
   lineHeight: 1.6,
-  border: `1px solid ${color}1F`,
+  border: `1px solid ${color}30`,
 });
 
 /** Tabular numbers — pra colunas de dinheiro/quantidade. */
