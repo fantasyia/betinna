@@ -78,14 +78,23 @@ export class EnvService {
       });
     }
 
-    // OMIE em demo mode em produção é red flag (dados mockados).
+    // OMIE em demo mode em produção é aviso (warning), não crítico.
+    //
+    // Justificativa do downgrade (2026-05-17): no estado de bootstrap, antes
+    // do primeiro tenant configurar OMIE, o sistema sobe em modo mock — isso
+    // é esperado e necessário (Railway precisa subir pra você fazer onboarding
+    // do primeiro cliente). Tornar crítico bloqueia deploy inicial.
+    //
+    // Quando você tiver tenant OMIE real: setar OMIE_DEMO_MODE=false no
+    // Railway zera o warning. Apenas warning preserva o sinal sem bloquear.
     if (env === 'production' && this.get('OMIE_DEMO_MODE') === true) {
       issues.push({
         key: 'OMIE_DEMO_MODE',
-        severity: 'critical',
+        severity: 'warning',
         message:
           'OMIE_DEMO_MODE=true em produção — sistema retorna dados mock em vez de ' +
-          'integrar com OMIE real. Defina OMIE_DEMO_MODE=false e configure credenciais.',
+          'integrar com OMIE real. Quando o primeiro tenant tiver credenciais OMIE, ' +
+          'defina OMIE_DEMO_MODE=false no Railway.',
       });
     }
 
