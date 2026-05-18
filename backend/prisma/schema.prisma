@@ -266,6 +266,9 @@ model Empresa {
   sequencias     EmpresaSequence[]
   programaFidelidade   ProgramaFidelidade?
   recompensasFidelidade RecompensaFidelidade[]
+  mullerBotPersona     MullerBotPersona?
+  formularios          Formulario[]
+  pesquisasNPS         PesquisaNPS[]
   saldosFidelidade     SaldoFidelidade[]
   movimentosFidelidade MovimentoFidelidade[]
   agendaItens    AgendaItem[]
@@ -403,6 +406,7 @@ model Cliente {
   campanhasDestinatarios CampanhaDestinatario[]
   saldoFidelidade        SaldoFidelidade?
   movimentosFidelidade   MovimentoFidelidade[]
+  respostasNPS           RespostaNPS[]            @relation("ClienteRespostaNPS")
 
   @@unique([empresaId, codigoOmie])
   @@index([empresaId])
@@ -1383,6 +1387,154 @@ enum RecompensaTipo {
   DESCONTO_PERCENTUAL   // valor em % (0–100)
   DESCONTO_VALOR        // valor em R$
   BRINDE                // valor opcional (descrição texto)
+}
+
+/// NPS — pesquisas de Net Promoter Score.
+/// Pesquisa tem prazo de envio (criadoEm → expiraEm), slug público pra responder.
+model PesquisaNPS {
+  id          String   @id @default(cuid())
+  empresaId   String
+  slug        String   @unique
+  titulo      String
+  descricao   String?  @db.Text
+  /// Mensagem exibida após responder
+  mensagemAgradecimento String? @db.Text
+  /// Pergunta principal (default: "O quanto você nos recomendaria?")
+  pergunta    String   @default("O quanto você nos recomendaria de 0 a 10?")
+  /// Pergunta de follow-up (default: "Por quê?")
+  perguntaFollowUp String? @default("Conta pra gente o que motivou essa nota")
+  ativo       Boolean  @default(true)
+  /// Quando expira (link vira inválido)
+  expiraEm    DateTime?
+  criadoEm    DateTime @default(now())
+  atualizadoEm DateTime @updatedAt
+
+  empresa   Empresa        @relation(fields: [empresaId], references: [id], onDelete: Cascade)
+  respostas RespostaNPS[]
+
+  @@index([empresaId, ativo])
+}
+
+model RespostaNPS {
+  id          String   @id @default(cuid())
+  pesquisaId  String
+  /// Nota de 0 a 10
+  nota        Int
+  /// Resposta textual do follow-up
+  comentario  String?  @db.Text
+  /// E-mail/telefone do respondente (pra contactar se promotor/detrator)
+  contato     String?
+  /// Cliente identificado (se a pesquisa veio por link tracking)
+  clienteId   String?
+  /// Categoria derivada: DETRATOR (0-6), PASSIVO (7-8), PROMOTOR (9-10)
+  categoria   String
+  ip          String?
+  userAgent   String?
+  criadoEm    DateTime @default(now())
+
+  pesquisa PesquisaNPS @relation(fields: [pesquisaId], references: [id], onDelete: Cascade)
+  cliente  Cliente?    @relation("ClienteRespostaNPS", fields: [clienteId], references: [id], onDelete: SetNull)
+
+  @@index([pesquisaId, criadoEm])
+  @@index([pesquisaId, categoria])
+  @@index([clienteId])
+}
+
+/// Form Builder — formulários públicos pra capturar leads.
+/// Acessível via /f/:slug (sem auth). Submit cria um Lead + FormularioResposta.
+model Formulario {
+  id          String   @id @default(cuid())
+  empresaId   String
+  /// Slug único pra URL pública (/f/:slug). Lowercase, sem acento.
+  slug        String   @unique
+  titulo      String
+  descricao   String?  @db.Text
+  /// Mensagem de sucesso pós-envio
+  mensagemSucesso String? @db.Text
+  /// Onde redirecionar após o submit (opcional)
+  redirectUrl String?
+  /// Quando true, novos envios criam Lead automaticamente
+  geraLead    Boolean  @default(true)
+  /// Etapa inicial do Lead quando criado por este form
+  leadEtapaInicial String? @default("NOVO")
+  /// Quem é notificado em cada submissão (lista de userIds)
+  notificarUsuarioIds Json?
+  ativo       Boolean  @default(true)
+  criadoEm    DateTime @default(now())
+  atualizadoEm DateTime @updatedAt
+
+  empresa  Empresa             @relation(fields: [empresaId], references: [id], onDelete: Cascade)
+  campos   FormularioCampo[]
+  respostas FormularioResposta[]
+
+  @@index([empresaId, ativo])
+}
+
+/// Campo de um Formulario. Order define a sequência na renderização.
+model FormularioCampo {
+  id           String   @id @default(cuid())
+  formularioId String
+  ordem        Int
+  /// Tipo do campo: TEXT, EMAIL, TEL, NUMERO, TEXTAREA, SELECT, CHECKBOX, RADIO
+  tipo         String
+  label        String
+  /// Nome interno (chave no JSON de respostas). Slug do label se vazio.
+  campo        String
+  placeholder  String?
+  obrigatorio  Boolean  @default(false)
+  /// Opções pra SELECT/RADIO/CHECKBOX (array de strings em JSON)
+  opcoes       Json?
+  /// Validação extra: { minLength?, maxLength?, pattern? }
+  validacao    Json?
+  /// Hint exibido abaixo do campo
+  hint         String?
+
+  formulario   Formulario @relation(fields: [formularioId], references: [id], onDelete: Cascade)
+
+  @@index([formularioId, ordem])
+}
+
+model FormularioResposta {
+  id           String   @id @default(cuid())
+  formularioId String
+  /// Dados submetidos (chave = campo.campo, valor = string)
+  dados        Json
+  /// IP do submitter (rate limit + abuse detection)
+  ip           String?
+  /// User-Agent capturado
+  userAgent    String?
+  /// Lead criado a partir dessa resposta (null se gerou Lead falhou ou geraLead=false)
+  leadId       String?
+  criadoEm     DateTime @default(now())
+
+  formulario Formulario @relation(fields: [formularioId], references: [id], onDelete: Cascade)
+
+  @@index([formularioId, criadoEm])
+  @@index([leadId])
+}
+
+/// Persona do MullerBot — tom/voz/exemplos customizados por empresa.
+/// O system prompt é compilado a partir desses campos pra dar identidade.
+/// Singleton por empresa (1 persona ativa por tenant).
+model MullerBotPersona {
+  id                String   @id @default(cuid())
+  empresaId         String   @unique
+  nome              String   @default("MullerBot")
+  /// Tom de voz: FORMAL, PROFISSIONAL, AMIGAVEL, DESCONTRAIDO, ENTUSIASMADO
+  tomVoz            String   @default("PROFISSIONAL")
+  /// Instruções extras anexadas ao system prompt base.
+  /// Ex: "Sempre cite o prazo de entrega. Use emojis com moderação."
+  instrucoes        String?  @db.Text
+  /// Exemplos de pergunta/resposta pro few-shot prompt (array JSON).
+  /// Ex: [{pergunta: "Tem óleo de soja?", resposta: "Sim, em três tamanhos..."}]
+  exemplosJson      Json?
+  /// Saudação opcional usada em mensagens iniciais (Inbox/templates).
+  saudacao          String?
+  ativo             Boolean  @default(true)
+  criadoEm          DateTime @default(now())
+  atualizadoEm      DateTime @updatedAt
+
+  empresa Empresa @relation(fields: [empresaId], references: [id], onDelete: Cascade)
 }
 
 model ProgramaFidelidade {

@@ -25,6 +25,8 @@ import { CampanhasModule } from '@modules/campanhas/campanhas.module';
 import { DeadLetterModule } from '@modules/dead-letter/dead-letter.module';
 import { RelatoriosModule } from '@modules/relatorios/relatorios.module';
 import { FidelidadeModule } from '@modules/fidelidade/fidelidade.module';
+import { FormulariosModule } from '@modules/formularios/formularios.module';
+import { NpsModule } from '@modules/nps/nps.module';
 import { NotificacoesModule } from '@modules/notificacoes/notificacoes.module';
 import { ImportModule } from '@modules/import/import.module';
 import { FluxosModule } from '@modules/fluxos/fluxos.module';
@@ -178,6 +180,8 @@ import { SharedUtilsModule } from '@shared/utils/shared-utils.module';
     AgendaModule,
     FluxosModule,
     FidelidadeModule,
+    FormulariosModule,
+    NpsModule,
     NotificacoesModule,
     ImportModule,
     CampanhasModule,

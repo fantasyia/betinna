@@ -23,6 +23,11 @@ const ClientesPage = lazy(() => import('@/pages/ClientesPage'));
 const ClienteDetailPage = lazy(() => import('@/pages/ClienteDetailPage'));
 const CatalogoPage = lazy(() => import('@/pages/CatalogoPage'));
 const MullerBotPage = lazy(() => import('@/pages/MullerBotPage'));
+const PersonaBotPage = lazy(() => import('@/pages/PersonaBotPage'));
+const FormulariosPage = lazy(() => import('@/pages/FormulariosPage'));
+const FormularioPublicoPage = lazy(() => import('@/pages/FormularioPublicoPage'));
+const NpsPage = lazy(() => import('@/pages/NpsPage'));
+const NpsPublicoPage = lazy(() => import('@/pages/NpsPublicoPage'));
 const MarketplaceIncidentsPage = lazy(() => import('@/pages/MarketplaceIncidentsPage'));
 const ConfiguracoesPage = lazy(() => import('@/pages/ConfiguracoesPage'));
 const ProfilePage = lazy(() => import('@/pages/ProfilePage'));
@@ -74,6 +79,28 @@ const router = createBrowserRouter([
       <ErrorBoundary>
         <PageSuspense>
           <LoginPage />
+        </PageSuspense>
+      </ErrorBoundary>
+    ),
+  },
+  {
+    // Página pública — sem auth, sem layout. Rota /f/:slug.
+    path: '/f/:slug',
+    element: (
+      <ErrorBoundary>
+        <PageSuspense>
+          <FormularioPublicoPage />
+        </PageSuspense>
+      </ErrorBoundary>
+    ),
+  },
+  {
+    // NPS público em /n/:slug
+    path: '/n/:slug',
+    element: (
+      <ErrorBoundary>
+        <PageSuspense>
+          <NpsPublicoPage />
         </PageSuspense>
       </ErrorBoundary>
     ),
@@ -191,6 +218,18 @@ const router = createBrowserRouter([
         <ProtectedRoute>
           <PageSuspense>
             <MullerBotPage />
+          </PageSuspense>
+        </ProtectedRoute>
+      </ErrorBoundary>
+    ),
+  },
+  {
+    path: '/mullerbot/persona',
+    element: (
+      <ErrorBoundary>
+        <ProtectedRoute allowedRoles={['ADMIN', 'DIRECTOR']}>
+          <PageSuspense>
+            <PersonaBotPage />
           </PageSuspense>
         </ProtectedRoute>
       </ErrorBoundary>
@@ -347,6 +386,30 @@ const router = createBrowserRouter([
         <ProtectedRoute>
           <PageSuspense>
             <LeadsPage />
+          </PageSuspense>
+        </ProtectedRoute>
+      </ErrorBoundary>
+    ),
+  },
+  {
+    path: '/formularios',
+    element: (
+      <ErrorBoundary>
+        <ProtectedRoute allowedRoles={['ADMIN', 'DIRECTOR', 'GERENTE']}>
+          <PageSuspense>
+            <FormulariosPage />
+          </PageSuspense>
+        </ProtectedRoute>
+      </ErrorBoundary>
+    ),
+  },
+  {
+    path: '/nps',
+    element: (
+      <ErrorBoundary>
+        <ProtectedRoute allowedRoles={['ADMIN', 'DIRECTOR', 'GERENTE']}>
+          <PageSuspense>
+            <NpsPage />
           </PageSuspense>
         </ProtectedRoute>
       </ErrorBoundary>

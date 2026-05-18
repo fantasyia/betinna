@@ -13,19 +13,11 @@ import type { AuthenticatedUser } from '@shared/types/authenticated-user';
 import type { PerguntarDto } from './mullerbot.dto';
 import type { LlmCredenciais, MullerBotResposta } from './mullerbot.types';
 import { MullerBotCacheService, type HistoricoMsg } from './mullerbot-cache.service';
+import { MullerBotPersonaService } from './persona.service';
 import { ProdutoSearchService, type ProdutoRelevante } from './produto-search.service';
 
-const SYSTEM_PROMPT = `Você é o MullerBot, assistente comercial da Betinna.ai.
-
-Responsabilidade: ajudar o representante comercial respondendo perguntas sobre o catálogo de produtos da empresa dele.
-
-Regras OBRIGATÓRIAS:
-1. Use APENAS o catálogo fornecido na mensagem do usuário. NÃO invente produtos, preços, especificações nem disponibilidade.
-2. Se a pergunta não puder ser respondida com o catálogo fornecido, diga claramente: "Não encontrei essa informação no catálogo. Confirme com a equipe comercial."
-3. Quando citar um produto, mencione nome + SKU (se disponível) entre parênteses. Ex: "Óleo de Girassol 5L (SKU OLE-GIR-5L)".
-4. Mantenha respostas concisas e diretas — 2-4 parágrafos curtos no máximo.
-5. NÃO repita o prompt nem mencione "catálogo fornecido" ou "MullerBot"; apenas responda naturalmente.
-6. Responda em português brasileiro.`;
+// SYSTEM_PROMPT agora vem do MullerBotPersonaService.compilarSystemPrompt
+// (configurável por empresa via UI /mullerbot/persona).
 
 /** Heurística simples: PT-BR ≈ 4 chars/token em GPT-4 tokenizer. Conservador. */
 const CHARS_PER_TOKEN = 4;
@@ -46,6 +38,7 @@ export class MullerBotService {
     private readonly userIntegracoes: UsuarioIntegracoesService,
     private readonly produtoSearch: ProdutoSearchService,
     private readonly cache: MullerBotCacheService,
+    private readonly persona: MullerBotPersonaService,
   ) {}
 
   async perguntar(user: AuthenticatedUser, dto: PerguntarDto): Promise<MullerBotResposta> {
@@ -57,12 +50,15 @@ export class MullerBotService {
     const maxInputTokens = this.env.get('MULLERBOT_MAX_INPUT_TOKENS');
     const maxOutputTokens = dto.maxOutputTokens ?? this.env.get('MULLERBOT_MAX_OUTPUT_TOKENS');
 
+    // 0. Compila system prompt usando persona ativa da empresa
+    const systemPrompt = await this.persona.compilarSystemPrompt(user.empresaIdAtiva);
+
     // 1. Busca produtos relevantes (top-K)
     const produtos = await this.produtoSearch.buscar(user.empresaIdAtiva, dto.pergunta, dto.topK);
 
     // 2. Verifica orçamento: pergunta sozinha não pode estourar
     const overheadTokens =
-      this.estimarTokens(SYSTEM_PROMPT) + this.estimarTokens(dto.pergunta) + SAFETY_MARGIN_TOKENS;
+      this.estimarTokens(systemPrompt) + this.estimarTokens(dto.pergunta) + SAFETY_MARGIN_TOKENS;
     if (overheadTokens >= maxInputTokens) {
       throw new BusinessRuleException(
         `Pergunta muito longa: estima ${overheadTokens} tokens, limite é ${maxInputTokens}. Reduza o texto.`,
@@ -106,6 +102,7 @@ export class MullerBotService {
     const resultado = await this.chamarOpenAI(
       creds,
       modelo,
+      systemPrompt,
       userMessage,
       maxOutputTokens,
       historico,
@@ -276,6 +273,7 @@ export class MullerBotService {
   private async chamarOpenAI(
     creds: LlmCredenciais,
     modelo: string,
+    systemPrompt: string,
     userMessage: string,
     maxOutputTokens: number,
     historico: HistoricoMsg[] = [],
@@ -283,7 +281,7 @@ export class MullerBotService {
     // Constrói array de mensagens: system + histórico (alternando user/assistant)
     // + pergunta atual. OpenAI espera ordem cronológica.
     const messages: Array<{ role: 'system' | 'user' | 'assistant'; content: string }> = [
-      { role: 'system', content: SYSTEM_PROMPT },
+      { role: 'system', content: systemPrompt },
     ];
     for (const h of historico) {
       messages.push({ role: h.role, content: h.content });

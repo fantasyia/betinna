@@ -33,6 +33,8 @@ import {
   X,
   ChevronRight,
   Search,
+  FormInput,
+  Star,
   type LucideIcon,
 } from 'lucide-react';
 import { useRole, usePermission } from '@/hooks/usePermission';
@@ -86,6 +88,7 @@ const SECTIONS: NavSection[] = [
       { to: '/dashboard', label: 'Dashboard', icon: LayoutDashboard },
       { to: '/inbox', label: 'Inbox', icon: MessageSquare },
       { to: '/leads', label: 'Pipeline', icon: Target },
+      { to: '/formularios', label: 'Formulários', icon: FormInput, allowedRoles: ['ADMIN', 'DIRECTOR', 'GERENTE'], badge: 'new' },
       { to: '/relatorios', label: 'Relatórios', icon: BarChart3, permission: 'relatorios.view' },
     ],
   },
@@ -113,6 +116,7 @@ const SECTIONS: NavSection[] = [
       { to: '/ocorrencias', label: 'SAC', icon: AlertTriangle },
       { to: '/incidentes', label: 'Marketplaces', icon: ShieldAlert },
       { to: '/mullerbot', label: 'MullerBot', icon: Bot },
+      { to: '/mullerbot/persona', label: 'Persona Bot', icon: Sparkles, allowedRoles: ['ADMIN', 'DIRECTOR'] },
       { to: '/whatsapp', label: 'WhatsApp', icon: Smartphone, permission: 'whatsapp.pessoal' },
     ],
   },
@@ -132,6 +136,7 @@ const SECTIONS: NavSection[] = [
       { to: '/agenda', label: 'Agenda', icon: CalendarDays },
       { to: '/tags', label: 'Tags', icon: Tags },
       { to: '/fidelidade', label: 'Fidelidade', icon: Trophy, permission: 'fidelidade.view' },
+      { to: '/nps', label: 'NPS', icon: Star, allowedRoles: ['ADMIN', 'DIRECTOR', 'GERENTE'], badge: 'new' },
     ],
   },
   {
