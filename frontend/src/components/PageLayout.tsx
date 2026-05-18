@@ -92,7 +92,7 @@ const SECTIONS: NavSection[] = [
     items: [
       { to: '/dashboard', label: 'Dashboard', icon: LayoutDashboard },
       { to: '/inbox', label: 'Inbox', icon: MessageSquare },
-      { to: '/leads', label: 'Pipeline', icon: Target },
+      { to: '/leads', label: 'Funil', icon: Target },
       { to: '/formularios', label: 'Formulários', icon: FormInput, allowedRoles: ['ADMIN', 'DIRECTOR', 'GERENTE'], badge: 'new' },
       { to: '/relatorios', label: 'Relatórios', icon: BarChart3, permission: 'relatorios.view' },
     ],

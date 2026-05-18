@@ -49,17 +49,25 @@ export const MOTIVOS_PERDA = [
 ];
 
 /**
- * Máquina de estados das transições de etapa.
- * Cada chave permite as listadas no array; arrays vazios são estados finais.
+ * Máquina de estados das transições de etapa do funil padrão.
  *
- * Reabrir um lead PERDIDO é permitido (volta pra NOVO).
- * GANHO é final.
+ * Sales tem ida e volta — cliente esfria, retorna pra qualificando; ou
+ * decide acelerar, pula direto pra negociação. Etapas ATIVAS são livres
+ * entre si pra refletir essa realidade.
+ *
+ * GANHO permite voltar pra NEGOCIACAO (pra reabrir caso tenha sido marcado
+ * por engano). PERDIDO permite reabrir em qualquer etapa ativa.
+ *
+ * Quando o lead pertence a um funil customizado (`Lead.funilId`), as
+ * transições vêm das etapas configuradas em `Funil.etapas` em vez deste.
  */
+const ATIVAS: LeadEtapa[] = ['NOVO', 'QUALIFICANDO', 'PROPOSTA', 'NEGOCIACAO'];
+
 export const TRANSICOES_ETAPA: Record<LeadEtapa, LeadEtapa[]> = {
-  NOVO: ['QUALIFICANDO', 'PERDIDO'],
-  QUALIFICANDO: ['PROPOSTA', 'NEGOCIACAO', 'PERDIDO'],
-  PROPOSTA: ['NEGOCIACAO', 'GANHO', 'PERDIDO'],
-  NEGOCIACAO: ['GANHO', 'PERDIDO'],
-  GANHO: [],
-  PERDIDO: ['NOVO'],
+  NOVO: [...ATIVAS.filter((e) => e !== 'NOVO'), 'GANHO', 'PERDIDO'],
+  QUALIFICANDO: [...ATIVAS.filter((e) => e !== 'QUALIFICANDO'), 'GANHO', 'PERDIDO'],
+  PROPOSTA: [...ATIVAS.filter((e) => e !== 'PROPOSTA'), 'GANHO', 'PERDIDO'],
+  NEGOCIACAO: [...ATIVAS.filter((e) => e !== 'NEGOCIACAO'), 'GANHO', 'PERDIDO'],
+  GANHO: ['NEGOCIACAO'],
+  PERDIDO: [...ATIVAS],
 };

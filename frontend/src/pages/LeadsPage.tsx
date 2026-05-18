@@ -287,7 +287,7 @@ export default function LeadsPage() {
 
   return (
     <PageLayout
-      title="Pipeline de leads"
+      title="Funil"
       description={
         totals
           ? `${totals.totalLeads} leads · ${fmtBRLCompact(totals.totalAtivos)} em ativo`
