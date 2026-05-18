@@ -121,6 +121,7 @@ const SECTIONS: NavSection[] = [
     items: [
       { to: '/campanhas', label: 'Campanhas', icon: Megaphone, permission: 'campanhas.view' },
       { to: '/fluxos', label: 'Fluxos', icon: Zap },
+      { to: '/fluxos/templates', label: 'Templates', icon: Sparkles, badge: 'new' },
       { to: '/integracoes', label: 'Integrações', icon: Plug, allowedRoles: ['ADMIN', 'DIRECTOR', 'GERENTE'] },
       { to: '/minhas-integracoes', label: 'Minhas integrações', icon: LinkIcon },
     ],

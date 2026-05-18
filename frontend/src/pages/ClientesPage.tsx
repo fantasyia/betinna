@@ -1,14 +1,28 @@
-import { useMemo, useState } from 'react';
+import { useMemo, useState, type ReactNode } from 'react';
 import { useNavigate } from 'react-router-dom';
+import {
+  Search,
+  Plus,
+  Download,
+  FileText,
+  FileSpreadsheet,
+  File,
+  X,
+  UserCog,
+  Trash2,
+  ExternalLink,
+  MapPin,
+  Mail,
+  Phone,
+  Hash,
+  Building2,
+  AlertCircle,
+} from 'lucide-react';
 import { api, ApiError } from '@/lib/api';
 import { useApiQuery, type PaginatedResponse } from '@/hooks/useApiQuery';
 import { usePermission } from '@/hooks/usePermission';
-import { PageLayout } from '@/components/PageLayout';
-import { Table, Pagination, type Column } from '@/components/Table';
+import { PageLayout, useIsMobile } from '@/components/PageLayout';
 import { StateView } from '@/components/StateView';
-import { FilterBar, SearchInput } from '@/components/FilterBar';
-import { FormField, Input, Select } from '@/components/FormField';
-import { Modal } from '@/components/Modal';
 import { AsyncCombobox } from '@/components/AsyncCombobox';
 import { useToast } from '@/components/toast';
 import { isValidCNPJ, maskCEP, maskCNPJ, maskTelefone, normalizeUF, stripMask } from '@/lib/masks';
@@ -16,7 +30,31 @@ import { exportToCsv } from '@/lib/csv';
 import { exportToXlsx } from '@/lib/xlsx';
 import { exportToDocx } from '@/lib/docx';
 import { exportToPdf } from '@/lib/pdf';
-import { badge, btn, btnDanger, btnSecondary, card, colors } from '@/components/styles';
+import {
+  Avatar,
+  Badge,
+  Button,
+  Card,
+  Checkbox,
+  Dialog,
+  Drawer,
+  EmptyState,
+  Field,
+  IconButton,
+  Input,
+  Select,
+} from '@/components/ui';
+import { cn } from '@/lib/cn';
+
+/**
+ * ClientesPage v2 — design system dark, list + detail panel.
+ *
+ * Layout:
+ *  - Toolbar: search + filtros + bulk bar contextual
+ *  - Tabela compacta com avatares, badges semânticos
+ *  - Click na row abre <Drawer> com detalhes do cliente (não navega)
+ *  - "Abrir página" no drawer → /clientes/:id
+ */
 
 interface RepOpt {
   id: string;
@@ -33,6 +71,11 @@ interface Cliente {
   cnpj?: string | null;
   email?: string | null;
   telefone?: string | null;
+  cep?: string | null;
+  endereco?: string | null;
+  numero?: string | null;
+  complemento?: string | null;
+  bairro?: string | null;
   cidade?: string | null;
   uf?: string | null;
   segmento?: string | null;
@@ -42,6 +85,7 @@ interface Cliente {
   representante?: { id: string; nome: string } | null;
   tags?: Array<{ id: string; nome: string; cor?: string | null }>;
   criadoEm?: string;
+  _count?: { pedidos?: number; propostas?: number; ocorrencias?: number; amostras?: number };
 }
 
 interface Lista {
@@ -50,18 +94,28 @@ interface Lista {
   descricao?: string;
 }
 
-const STATUS_COLORS: Record<ClienteStatus, string> = {
-  ATIVO: colors.success,
-  NOVO: '#0891b2',
-  PROSPECT: '#7c3aed',
-  RISCO: colors.warning,
-  CRITICO: colors.danger,
-  INATIVO: colors.muted,
+// Mapping status → Badge variant (semântico, sem hex)
+const STATUS_VARIANT: Record<ClienteStatus, 'success' | 'info' | 'primary' | 'warning' | 'danger' | 'neutral'> = {
+  ATIVO: 'success',
+  NOVO: 'info',
+  PROSPECT: 'primary',
+  RISCO: 'warning',
+  CRITICO: 'danger',
+  INATIVO: 'neutral',
 };
 
-const OMIE_COLORS: Record<OmieStatus, string> = {
-  ATIVO: colors.success,
-  BLOQUEADO: colors.danger,
+const STATUS_LABEL: Record<ClienteStatus, string> = {
+  ATIVO: 'Ativo',
+  NOVO: 'Novo',
+  PROSPECT: 'Prospect',
+  RISCO: 'Em risco',
+  CRITICO: 'Crítico',
+  INATIVO: 'Inativo',
+};
+
+const OMIE_VARIANT: Record<OmieStatus, 'success' | 'danger'> = {
+  ATIVO: 'success',
+  BLOQUEADO: 'danger',
 };
 
 export default function ClientesPage() {
@@ -69,6 +123,8 @@ export default function ClientesPage() {
   const toast = useToast();
   const canEdit = usePermission('clientes.edit');
   const canBulk = usePermission('clientes.bulkAssign');
+  const isMobile = useIsMobile();
+
   const [exporting, setExporting] = useState(false);
   const [exportProgress, setExportProgress] = useState<{ page: number; total: number } | null>(null);
 
@@ -79,7 +135,6 @@ export default function ClientesPage() {
   const [omie, setOmie] = useState<string>('');
   const [lista, setLista] = useState<string>('');
 
-  // Path memoizado pra useApiQuery re-fetch quando filtros mudam
   const listPath = useMemo(() => {
     const qs = new URLSearchParams();
     qs.set('page', String(page));
@@ -99,19 +154,23 @@ export default function ClientesPage() {
   } = useApiQuery<PaginatedResponse<Cliente>>(listPath);
   const { data: listasMeta } = useApiQuery<Lista[]>('/clientes/listas');
 
-  // Modal de criação rápida (edição vai pra /clientes/:id)
   const [creating, setCreating] = useState(false);
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [detailId, setDetailId] = useState<string | null>(null);
+
   const onSaved = () => {
     setCreating(false);
+    setEditingId(null);
     refetch();
   };
 
-  // Bulk selection (apenas quando canBulk)
+  // Bulk selection
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [bulkOpen, setBulkOpen] = useState(false);
   const currentPageIds = page$?.data.map((c) => c.id) ?? [];
   const allCurrentSelected =
     currentPageIds.length > 0 && currentPageIds.every((id) => selectedIds.has(id));
+
   function toggleOne(id: string) {
     setSelectedIds((prev) => {
       const next = new Set(prev);
@@ -123,102 +182,14 @@ export default function ClientesPage() {
   function toggleAllCurrent() {
     setSelectedIds((prev) => {
       const next = new Set(prev);
-      if (allCurrentSelected) {
-        for (const id of currentPageIds) next.delete(id);
-      } else {
-        for (const id of currentPageIds) next.add(id);
-      }
+      if (allCurrentSelected) for (const id of currentPageIds) next.delete(id);
+      else for (const id of currentPageIds) next.add(id);
       return next;
     });
   }
   function clearSelection() {
     setSelectedIds(new Set());
   }
-
-  const columns: Column<Cliente>[] = [
-    ...(canBulk
-      ? [
-          {
-            key: 'select',
-            header: (
-              <input
-                type="checkbox"
-                data-testid="bulk-select-all"
-                checked={allCurrentSelected}
-                onChange={toggleAllCurrent}
-                aria-label="Selecionar todos da página"
-              />
-            ) as React.ReactNode,
-            render: (c: Cliente) => (
-              <input
-                type="checkbox"
-                data-testid={`bulk-select-${c.id}`}
-                checked={selectedIds.has(c.id)}
-                onChange={() => toggleOne(c.id)}
-                onClick={(e) => e.stopPropagation()}
-                aria-label={`Selecionar ${c.nome}`}
-              />
-            ),
-            width: 32,
-          } as Column<Cliente>,
-        ]
-      : []),
-    {
-      key: 'nome',
-      header: 'Cliente',
-      render: (c) => (
-        <div>
-          <div style={{ fontWeight: 600 }}>{c.nome}</div>
-          {c.cnpj && (
-            <div style={{ fontSize: 12, color: colors.muted }}>{c.cnpj}</div>
-          )}
-        </div>
-      ),
-    },
-    {
-      key: 'local',
-      header: 'Local',
-      render: (c) =>
-        c.cidade ? `${c.cidade}${c.uf ? '/' + c.uf : ''}` : <em style={{ color: colors.muted }}>—</em>,
-    },
-    {
-      key: 'rep',
-      header: 'Representante',
-      render: (c) =>
-        c.representante?.nome ?? <em style={{ color: colors.muted }}>sem rep</em>,
-    },
-    {
-      key: 'status',
-      header: 'Status',
-      render: (c) => <span style={badge(STATUS_COLORS[c.status])}>{c.status}</span>,
-    },
-    {
-      key: 'omie',
-      header: 'OMIE',
-      render: (c) => (
-        <span style={badge(OMIE_COLORS[c.omieStatus])}>{c.omieStatus}</span>
-      ),
-    },
-    {
-      key: 'score',
-      header: 'Score',
-      render: (c) => <span style={{ fontWeight: 600 }}>{c.score}</span>,
-    },
-    {
-      key: 'actions',
-      header: '',
-      render: (c) => (
-        <button
-          type="button"
-          data-testid={`cliente-open-${c.id}`}
-          onClick={() => navigate(`/clientes/${c.id}`)}
-          style={{ ...btnSecondary, padding: '0.25rem 0.625rem', fontSize: 12 }}
-        >
-          Abrir
-        </button>
-      ),
-    },
-  ];
 
   async function handleExport(formato: 'csv' | 'xlsx' | 'docx' | 'pdf') {
     setExporting(true);
@@ -250,7 +221,7 @@ export default function ClientesPage() {
           endpoint: '/clientes',
           query,
           filename,
-          onProgress: (page, total) => setExportProgress({ page, total }),
+          onProgress: (p, t) => setExportProgress({ page: p, total: t }),
           columns,
         }));
       } else if (formato === 'xlsx') {
@@ -258,7 +229,7 @@ export default function ClientesPage() {
           endpoint: '/clientes',
           query,
           filename,
-          onProgress: (page, total) => setExportProgress({ page, total }),
+          onProgress: (p, t) => setExportProgress({ page: p, total: t }),
           columns,
         }));
       } else if (formato === 'docx') {
@@ -267,7 +238,7 @@ export default function ClientesPage() {
           query,
           filename,
           titulo: 'Lista de Clientes',
-          onProgress: (page, total) => setExportProgress({ page, total }),
+          onProgress: (p, t) => setExportProgress({ page: p, total: t }),
           columns,
         }));
       } else {
@@ -291,204 +262,318 @@ export default function ClientesPage() {
     }
   }
 
+  const filtersActive = status || omie || lista || search.trim();
+
   return (
     <PageLayout
       title="Clientes"
+      description={page$?.pagination ? `${page$.pagination.total.toLocaleString('pt-BR')} clientes no total` : undefined}
       actions={
-        <div style={{ display: 'flex', gap: '0.5rem' }}>
-          <button
-            type="button"
-            data-testid="cliente-export-btn"
-            onClick={() => handleExport('csv')}
-            disabled={exporting}
-            style={{
-              ...btnSecondary,
-              opacity: exporting ? 0.6 : 1,
-              cursor: exporting ? 'progress' : 'pointer',
-            }}
-          >
-            {exporting
-              ? exportProgress
-                ? `Exportando ${exportProgress.page}/${exportProgress.total}…`
-                : 'Exportando…'
-              : '📥 CSV'}
-          </button>
-          <button
-            type="button"
-            data-testid="cliente-export-xlsx-btn"
-            onClick={() => handleExport('xlsx')}
-            disabled={exporting}
-            style={{ ...btnSecondary, opacity: exporting ? 0.6 : 1 }}
-          >
-            📊 Excel
-          </button>
-          <button
-            type="button"
-            data-testid="cliente-export-docx-btn"
-            onClick={() => handleExport('docx')}
-            disabled={exporting}
-            style={{ ...btnSecondary, opacity: exporting ? 0.6 : 1 }}
-          >
-            📄 Word
-          </button>
-          <button
-            type="button"
-            data-testid="cliente-export-pdf-btn"
-            onClick={() => handleExport('pdf')}
-            disabled={exporting}
-            style={{ ...btnSecondary, opacity: exporting ? 0.6 : 1 }}
-          >
-            📕 PDF
-          </button>
+        <>
+          <ExportMenu
+            exporting={exporting}
+            progress={exportProgress}
+            onExport={handleExport}
+          />
           {canEdit && (
-            <button
-              type="button"
+            <Button
               data-testid="cliente-new-btn"
               onClick={() => setCreating(true)}
-              style={btn}
+              leftIcon={<Plus className="h-3.5 w-3.5" />}
             >
-              + Novo cliente
-            </button>
+              Novo cliente
+            </Button>
           )}
-        </div>
+        </>
       }
     >
-      <div style={card}>
-        <FilterBar>
-          <SearchInput
-            value={search}
-            onChange={(v) => {
-              setSearch(v);
-              setPage(1);
-            }}
-            placeholder="Nome, CNPJ, email…"
-          />
-          <Select
-            data-testid="filter-status"
-            value={status}
-            onChange={(e) => {
-              setStatus(e.target.value);
-              setPage(1);
-            }}
-          >
-            <option value="">Todos status</option>
-            <option value="ATIVO">Ativo</option>
-            <option value="NOVO">Novo</option>
-            <option value="PROSPECT">Prospect</option>
-            <option value="RISCO">Em risco</option>
-            <option value="CRITICO">Crítico</option>
-            <option value="INATIVO">Inativo</option>
-          </Select>
-          <Select
-            data-testid="filter-omie"
-            value={omie}
-            onChange={(e) => {
-              setOmie(e.target.value);
-              setPage(1);
-            }}
-          >
-            <option value="">Todos OMIE</option>
-            <option value="ATIVO">Ativos OMIE</option>
-            <option value="BLOQUEADO">Bloqueados OMIE</option>
-          </Select>
-          <Select
-            data-testid="filter-lista"
-            value={lista}
-            onChange={(e) => {
-              setLista(e.target.value);
-              setPage(1);
-            }}
-          >
-            <option value="">Listas dinâmicas</option>
-            {listasMeta?.map((l) => (
-              <option key={l.id} value={l.id}>
-                {l.nome}
-              </option>
-            ))}
-          </Select>
-        </FilterBar>
+      <Card padding="none" className="overflow-hidden">
+        {/* Toolbar */}
+        <div className="flex flex-col gap-3 px-4 py-3 border-b border-border">
+          <div className="flex flex-wrap items-center gap-2">
+            <Input
+              leftIcon={<Search />}
+              placeholder="Buscar por nome, CNPJ, e-mail…"
+              value={search}
+              onChange={(e) => {
+                setSearch(e.target.value);
+                setPage(1);
+              }}
+              className="max-w-md flex-1"
+            />
+            <Select
+              data-testid="filter-status"
+              size="md"
+              value={status}
+              onChange={(e) => {
+                setStatus(e.target.value);
+                setPage(1);
+              }}
+            >
+              <option value="">Todos status</option>
+              {(Object.keys(STATUS_LABEL) as ClienteStatus[]).map((s) => (
+                <option key={s} value={s}>
+                  {STATUS_LABEL[s]}
+                </option>
+              ))}
+            </Select>
+            <Select
+              data-testid="filter-omie"
+              size="md"
+              value={omie}
+              onChange={(e) => {
+                setOmie(e.target.value);
+                setPage(1);
+              }}
+            >
+              <option value="">Todos OMIE</option>
+              <option value="ATIVO">Ativos OMIE</option>
+              <option value="BLOQUEADO">Bloqueados OMIE</option>
+            </Select>
+            <Select
+              data-testid="filter-lista"
+              size="md"
+              value={lista}
+              onChange={(e) => {
+                setLista(e.target.value);
+                setPage(1);
+              }}
+            >
+              <option value="">Listas dinâmicas</option>
+              {listasMeta?.map((l) => (
+                <option key={l.id} value={l.id}>
+                  {l.nome}
+                </option>
+              ))}
+            </Select>
+            {filtersActive && (
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => {
+                  setSearch('');
+                  setStatus('');
+                  setOmie('');
+                  setLista('');
+                  setPage(1);
+                }}
+                leftIcon={<X className="h-3 w-3" />}
+              >
+                Limpar filtros
+              </Button>
+            )}
+          </div>
+        </div>
 
-        <StateView
-          loading={loading}
-          error={error}
-          empty={!loading && !error && (page$?.data.length ?? 0) === 0}
-          emptyMessage="Nenhum cliente encontrado com esses filtros."
-          onRetry={refetch}
-        >
-          {page$ && (
+        {/* Lista */}
+        <StateView loading={loading} error={error} onRetry={refetch}>
+          {page$ && page$.data.length === 0 && (
+            <EmptyState
+              icon={<Building2 />}
+              title="Nenhum cliente encontrado"
+              description={
+                filtersActive
+                  ? 'Tente ajustar os filtros ou limpar a busca.'
+                  : 'Cadastre o primeiro cliente ou importe via OMIE.'
+              }
+              action={
+                canEdit && !filtersActive ? (
+                  <Button onClick={() => setCreating(true)} leftIcon={<Plus className="h-3.5 w-3.5" />}>
+                    Novo cliente
+                  </Button>
+                ) : undefined
+              }
+              className="m-6 border-0"
+            />
+          )}
+          {page$ && page$.data.length > 0 && (
             <>
-              <Table
-                data={page$.data}
-                columns={columns}
-                rowKey={(c) => c.id}
-              />
-              <Pagination pagination={page$.pagination} onPageChange={setPage} />
+              {/* Tabela / cards */}
+              <div className="overflow-x-auto">
+                <table className="w-full">
+                  <thead>
+                    <tr className="border-b border-border bg-bg-alt">
+                      {canBulk && (
+                        <th className="w-10 px-4 py-2.5">
+                          <Checkbox
+                            data-testid="bulk-select-all"
+                            checked={allCurrentSelected}
+                            onChange={toggleAllCurrent}
+                            aria-label="Selecionar todos da página"
+                          />
+                        </th>
+                      )}
+                      <Th>Cliente</Th>
+                      <Th>Local</Th>
+                      <Th>Representante</Th>
+                      <Th>Status</Th>
+                      <Th>OMIE</Th>
+                      <Th align="right">Score</Th>
+                      <th className="w-10" />
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {page$.data.map((c) => {
+                      const selected = selectedIds.has(c.id);
+                      const isDetail = c.id === detailId;
+                      return (
+                        <tr
+                          key={c.id}
+                          className={cn(
+                            'border-b border-border last:border-b-0 cursor-pointer',
+                            'transition-colors duration-100',
+                            isDetail ? 'bg-surface-hover' : 'hover:bg-surface-hover/60',
+                          )}
+                          onClick={() => setDetailId(c.id)}
+                          data-testid={`cliente-row-${c.id}`}
+                        >
+                          {canBulk && (
+                            <td className="px-4 py-2.5" onClick={(e) => e.stopPropagation()}>
+                              <Checkbox
+                                data-testid={`bulk-select-${c.id}`}
+                                checked={selected}
+                                onChange={() => toggleOne(c.id)}
+                                aria-label={`Selecionar ${c.nome}`}
+                              />
+                            </td>
+                          )}
+                          <Td>
+                            <div className="flex items-center gap-2.5 min-w-0">
+                              <Avatar name={c.nome} size="sm" />
+                              <div className="min-w-0">
+                                <div className="text-sm font-medium text-text truncate">
+                                  {c.nome}
+                                </div>
+                                {c.cnpj && (
+                                  <div className="text-[11px] text-muted tabular">{c.cnpj}</div>
+                                )}
+                              </div>
+                            </div>
+                          </Td>
+                          <Td>
+                            {c.cidade ? (
+                              <span className="text-sm text-text-subtle">
+                                {c.cidade}
+                                {c.uf && <span className="text-muted">/{c.uf}</span>}
+                              </span>
+                            ) : (
+                              <span className="text-muted text-sm">—</span>
+                            )}
+                          </Td>
+                          <Td>
+                            {c.representante ? (
+                              <div className="flex items-center gap-2 min-w-0">
+                                <Avatar name={c.representante.nome} size="xs" />
+                                <span className="text-sm text-text truncate">
+                                  {c.representante.nome}
+                                </span>
+                              </div>
+                            ) : (
+                              <span className="text-muted text-xs italic">sem rep</span>
+                            )}
+                          </Td>
+                          <Td>
+                            <Badge variant={STATUS_VARIANT[c.status]}>{STATUS_LABEL[c.status]}</Badge>
+                          </Td>
+                          <Td>
+                            <Badge variant={OMIE_VARIANT[c.omieStatus]} size="sm">
+                              {c.omieStatus === 'ATIVO' ? 'Ativo' : 'Bloqueado'}
+                            </Badge>
+                          </Td>
+                          <Td align="right">
+                            <ScorePill score={c.score} />
+                          </Td>
+                          <Td onClick={(e) => e.stopPropagation()}>
+                            <IconButton
+                              aria-label="Abrir página completa"
+                              variant="ghost"
+                              size="sm"
+                              icon={<ExternalLink />}
+                              onClick={() => navigate(`/clientes/${c.id}`)}
+                              data-testid={`cliente-open-${c.id}`}
+                            />
+                          </Td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+
+              {/* Pagination */}
+              {page$.pagination.totalPages > 1 && (
+                <PaginationBar
+                  current={page$.pagination.page}
+                  total={page$.pagination.totalPages}
+                  totalItems={page$.pagination.total}
+                  onChange={setPage}
+                />
+              )}
             </>
           )}
         </StateView>
-
-      </div>
+      </Card>
 
       {/* Floating bulk action bar */}
       {canBulk && selectedIds.size > 0 && (
         <div
           data-testid="bulk-bar"
-          style={{
-            position: 'fixed',
-            bottom: 24,
-            left: '50%',
-            transform: 'translateX(-50%)',
-            background: colors.text,
-            color: '#fff',
-            borderRadius: 999,
-            padding: '0.625rem 1.25rem',
-            display: 'flex',
-            alignItems: 'center',
-            gap: '1rem',
-            boxShadow: '0 8px 24px rgba(0,0,0,0.25)',
-            zIndex: 100,
-            fontSize: 14,
-          }}
+          className={cn(
+            'fixed bottom-6 left-1/2 -translate-x-1/2 z-50',
+            'flex items-center gap-3 px-3 py-2',
+            'bg-surface-elevated border border-border-strong rounded-full shadow-xl',
+            'animate-slide-up',
+          )}
         >
-          <span data-testid="bulk-count">
-            <strong>{selectedIds.size}</strong> cliente{selectedIds.size === 1 ? '' : 's'} selecionado{selectedIds.size === 1 ? '' : 's'}
+          <span data-testid="bulk-count" className="text-sm text-text pl-2">
+            <strong className="text-primary">{selectedIds.size}</strong>{' '}
+            cliente{selectedIds.size === 1 ? '' : 's'} selecionado
+            {selectedIds.size === 1 ? '' : 's'}
           </span>
-          <button
-            type="button"
+          <Button
+            size="sm"
             data-testid="bulk-assign-open"
             onClick={() => setBulkOpen(true)}
-            style={{ ...btn, padding: '0.375rem 1rem' }}
+            leftIcon={<UserCog className="h-3.5 w-3.5" />}
           >
-            Atribuir representante
-          </button>
-          <button
-            type="button"
-            data-testid="bulk-clear"
+            Atribuir rep
+          </Button>
+          <IconButton
+            aria-label="Limpar seleção"
+            variant="ghost"
+            size="sm"
+            icon={<X />}
             onClick={clearSelection}
-            style={{
-              background: 'transparent',
-              border: '1px solid #ffffff66',
-              color: '#fff',
-              padding: '0.375rem 1rem',
-              borderRadius: 6,
-              cursor: 'pointer',
-              fontFamily: 'inherit',
-              fontSize: 13,
-            }}
-          >
-            Limpar
-          </button>
+            data-testid="bulk-clear"
+          />
         </div>
       )}
 
-      {creating && (
-        <ClienteFormModal
-          open
-          cliente={null}
-          onClose={() => setCreating(false)}
-          onSaved={onSaved}
+      {/* Detail drawer */}
+      {detailId && (
+        <ClienteDetailDrawer
+          id={detailId}
+          onClose={() => setDetailId(null)}
+          onEdit={() => {
+            setEditingId(detailId);
+            setDetailId(null);
+          }}
+          onDeleted={() => {
+            setDetailId(null);
+            refetch();
+          }}
+          isMobile={isMobile}
         />
       )}
+
+      {creating && (
+        <ClienteFormModal open cliente={null} onClose={() => setCreating(false)} onSaved={onSaved} />
+      )}
+
+      {editingId && (
+        <EditingFormLoader id={editingId} onClose={() => setEditingId(null)} onSaved={onSaved} />
+      )}
+
       {bulkOpen && (
         <BulkAssignModal
           clienteIds={Array.from(selectedIds)}
@@ -503,6 +588,377 @@ export default function ClientesPage() {
     </PageLayout>
   );
 }
+
+// ─── Helpers locais ────────────────────────────────────────────
+
+function Th({ children, align }: { children: ReactNode; align?: 'left' | 'right' }) {
+  return (
+    <th
+      className={cn(
+        'px-4 py-2.5 text-[11px] font-semibold uppercase tracking-wider text-muted',
+        align === 'right' ? 'text-right' : 'text-left',
+      )}
+    >
+      {children}
+    </th>
+  );
+}
+
+function Td({
+  children,
+  align,
+  onClick,
+}: {
+  children: ReactNode;
+  align?: 'left' | 'right';
+  onClick?: (e: React.MouseEvent) => void;
+}) {
+  return (
+    <td
+      onClick={onClick}
+      className={cn(
+        'px-4 py-2.5 align-middle',
+        align === 'right' ? 'text-right' : 'text-left',
+      )}
+    >
+      {children}
+    </td>
+  );
+}
+
+function ScorePill({ score }: { score: number }) {
+  const tone =
+    score >= 70 ? 'success' : score >= 40 ? 'warning' : 'danger';
+  return (
+    <Badge variant={tone} className="tabular min-w-[36px] justify-center">
+      {score}
+    </Badge>
+  );
+}
+
+function PaginationBar({
+  current,
+  total,
+  totalItems,
+  onChange,
+}: {
+  current: number;
+  total: number;
+  totalItems: number;
+  onChange: (p: number) => void;
+}) {
+  return (
+    <div className="flex items-center justify-between px-4 py-3 border-t border-border bg-bg-alt">
+      <span className="text-xs text-muted tabular">
+        Página {current} de {total} · {totalItems.toLocaleString('pt-BR')} no total
+      </span>
+      <div className="flex items-center gap-1">
+        <Button
+          variant="ghost"
+          size="sm"
+          disabled={current <= 1}
+          onClick={() => onChange(current - 1)}
+        >
+          Anterior
+        </Button>
+        <Button
+          variant="ghost"
+          size="sm"
+          disabled={current >= total}
+          onClick={() => onChange(current + 1)}
+        >
+          Próxima
+        </Button>
+      </div>
+    </div>
+  );
+}
+
+// ─── Export menu (botão único com dropdown nativo simples) ───────────
+
+function ExportMenu({
+  exporting,
+  progress,
+  onExport,
+}: {
+  exporting: boolean;
+  progress: { page: number; total: number } | null;
+  onExport: (f: 'csv' | 'xlsx' | 'docx' | 'pdf') => void;
+}) {
+  const [open, setOpen] = useState(false);
+
+  if (exporting) {
+    return (
+      <Button variant="secondary" loading>
+        {progress ? `Exportando ${progress.page}/${progress.total}…` : 'Exportando…'}
+      </Button>
+    );
+  }
+
+  return (
+    <div className="relative">
+      <Button
+        variant="secondary"
+        onClick={() => setOpen((v) => !v)}
+        leftIcon={<Download className="h-3.5 w-3.5" />}
+        data-testid="cliente-export-btn"
+      >
+        Exportar
+      </Button>
+      {open && (
+        <>
+          <div className="fixed inset-0 z-30" onClick={() => setOpen(false)} aria-hidden />
+          <div
+            className={cn(
+              'absolute right-0 top-full mt-1 z-40',
+              'min-w-[160px] bg-surface-elevated border border-border-strong rounded-md shadow-lg',
+              'flex flex-col p-1 animate-fade-in',
+            )}
+          >
+            <ExportMenuItem
+              icon={<FileText className="h-3.5 w-3.5" />}
+              label="CSV"
+              onClick={() => {
+                setOpen(false);
+                onExport('csv');
+              }}
+            />
+            <ExportMenuItem
+              icon={<FileSpreadsheet className="h-3.5 w-3.5" />}
+              label="Excel (XLSX)"
+              testId="cliente-export-xlsx-btn"
+              onClick={() => {
+                setOpen(false);
+                onExport('xlsx');
+              }}
+            />
+            <ExportMenuItem
+              icon={<File className="h-3.5 w-3.5" />}
+              label="Word (DOCX)"
+              testId="cliente-export-docx-btn"
+              onClick={() => {
+                setOpen(false);
+                onExport('docx');
+              }}
+            />
+            <ExportMenuItem
+              icon={<File className="h-3.5 w-3.5" />}
+              label="PDF"
+              testId="cliente-export-pdf-btn"
+              onClick={() => {
+                setOpen(false);
+                onExport('pdf');
+              }}
+            />
+          </div>
+        </>
+      )}
+    </div>
+  );
+}
+
+function ExportMenuItem({
+  icon,
+  label,
+  onClick,
+  testId,
+}: {
+  icon: ReactNode;
+  label: string;
+  onClick: () => void;
+  testId?: string;
+}) {
+  return (
+    <button
+      type="button"
+      data-testid={testId}
+      onClick={onClick}
+      className={cn(
+        'flex items-center gap-2 px-2.5 py-1.5 text-left text-sm rounded',
+        'text-text hover:bg-surface-hover transition-colors',
+      )}
+    >
+      <span className="text-muted">{icon}</span>
+      {label}
+    </button>
+  );
+}
+
+// ─── Detail drawer ─────────────────────────────────────────────
+
+function ClienteDetailDrawer({
+  id,
+  onClose,
+  onEdit,
+  onDeleted,
+  isMobile,
+}: {
+  id: string;
+  onClose: () => void;
+  onEdit: () => void;
+  onDeleted: () => void;
+  isMobile: boolean;
+}) {
+  const { data, loading } = useApiQuery<Cliente>(`/clientes/${id}`);
+  const navigate = useNavigate();
+
+  return (
+    <Drawer
+      open
+      onClose={onClose}
+      title={data?.nome ?? 'Cliente'}
+      description={data?.cnpj ? data.cnpj : undefined}
+      width={isMobile ? 'sm' : 'md'}
+      footer={
+        data && (
+          <>
+            <Button
+              variant="secondary"
+              onClick={() => navigate(`/clientes/${id}`)}
+              leftIcon={<ExternalLink className="h-3.5 w-3.5" />}
+            >
+              Abrir página
+            </Button>
+            <Button onClick={onEdit}>Editar</Button>
+          </>
+        )
+      }
+    >
+      {loading || !data ? (
+        <div className="flex flex-col gap-3">
+          <div className="h-16 rounded-md bg-surface-hover animate-pulse" />
+          <div className="h-32 rounded-md bg-surface-hover animate-pulse" />
+        </div>
+      ) : (
+        <div className="flex flex-col gap-5">
+          <div className="flex items-center gap-3">
+            <Avatar name={data.nome} size="xl" />
+            <div className="flex-1 min-w-0">
+              <h3 className="text-md font-semibold text-text tracking-tight truncate">
+                {data.nome}
+              </h3>
+              <div className="flex items-center gap-2 mt-1">
+                <Badge variant={STATUS_VARIANT[data.status]}>{STATUS_LABEL[data.status]}</Badge>
+                <Badge variant={OMIE_VARIANT[data.omieStatus]} size="sm">
+                  OMIE {data.omieStatus === 'ATIVO' ? 'ativo' : 'bloqueado'}
+                </Badge>
+                <ScorePill score={data.score} />
+              </div>
+            </div>
+          </div>
+
+          <DetailSection title="Contato">
+            <DetailRow icon={<Mail />} label="E-mail" value={data.email} />
+            <DetailRow icon={<Phone />} label="Telefone" value={data.telefone} />
+            <DetailRow icon={<Hash />} label="CNPJ" value={data.cnpj} mono />
+            <DetailRow icon={<Building2 />} label="Segmento" value={data.segmento} />
+          </DetailSection>
+
+          <DetailSection title="Endereço">
+            <DetailRow
+              icon={<MapPin />}
+              label="Endereço"
+              value={fmtEndereco(data)}
+            />
+            <DetailRow icon={<MapPin />} label="Bairro" value={data.bairro} />
+            <DetailRow
+              icon={<MapPin />}
+              label="Cidade"
+              value={data.cidade ? `${data.cidade}${data.uf ? ' · ' + data.uf : ''}` : null}
+            />
+            <DetailRow icon={<MapPin />} label="CEP" value={data.cep} mono />
+          </DetailSection>
+
+          <DetailSection title="Comercial">
+            <DetailRow
+              icon={<UserCog />}
+              label="Representante"
+              value={data.representante?.nome ?? null}
+            />
+            {data._count && (
+              <div className="grid grid-cols-2 gap-2 pt-2">
+                <MiniStat label="Pedidos" value={data._count.pedidos ?? 0} />
+                <MiniStat label="Propostas" value={data._count.propostas ?? 0} />
+                <MiniStat label="Amostras" value={data._count.amostras ?? 0} />
+                <MiniStat label="Ocorrências" value={data._count.ocorrencias ?? 0} />
+              </div>
+            )}
+          </DetailSection>
+
+          <details className="pt-2 border-t border-border">
+            <summary className="text-xs text-muted cursor-pointer select-none">
+              Ações avançadas
+            </summary>
+            <div className="pt-3">
+              <DeleteClienteButton id={id} onDeleted={onDeleted} />
+            </div>
+          </details>
+        </div>
+      )}
+    </Drawer>
+  );
+}
+
+function fmtEndereco(c: Cliente): string | null {
+  const parts: string[] = [];
+  if (c.endereco) parts.push(c.endereco);
+  if (c.numero) parts.push(`nº ${c.numero}`);
+  if (c.complemento) parts.push(c.complemento);
+  return parts.length > 0 ? parts.join(', ') : null;
+}
+
+function DetailSection({ title, children }: { title: string; children: ReactNode }) {
+  return (
+    <section>
+      <h4 className="text-[10px] font-semibold uppercase tracking-wider text-muted mb-2">
+        {title}
+      </h4>
+      <div className="flex flex-col gap-2">{children}</div>
+    </section>
+  );
+}
+
+function DetailRow({
+  icon,
+  label,
+  value,
+  mono,
+}: {
+  icon: ReactNode;
+  label: string;
+  value?: string | null;
+  mono?: boolean;
+}) {
+  if (!value) {
+    return (
+      <div className="flex items-center gap-2.5 text-sm">
+        <span className="shrink-0 w-4 h-4 text-muted-light [&>svg]:w-4 [&>svg]:h-4">{icon}</span>
+        <span className="text-muted-light">{label}:</span>
+        <span className="text-muted-light italic">não informado</span>
+      </div>
+    );
+  }
+  return (
+    <div className="flex items-start gap-2.5 text-sm">
+      <span className="shrink-0 w-4 h-4 text-muted mt-0.5 [&>svg]:w-4 [&>svg]:h-4">{icon}</span>
+      <span className="text-muted w-20 shrink-0">{label}:</span>
+      <span className={cn('text-text flex-1 min-w-0 break-words', mono && 'tabular')}>
+        {value}
+      </span>
+    </div>
+  );
+}
+
+function MiniStat({ label, value }: { label: string; value: number }) {
+  return (
+    <div className="rounded-md border border-border bg-bg-alt px-3 py-2">
+      <div className="text-[10px] uppercase tracking-wider text-muted">{label}</div>
+      <div className="text-lg font-semibold text-text tabular tracking-tight">{value}</div>
+    </div>
+  );
+}
+
+// ─── Bulk assign modal ─────────────────────────────────────────
 
 function BulkAssignModal({
   clienteIds,
@@ -537,28 +993,29 @@ function BulkAssignModal({
   const valid = removeRep || rep !== null;
 
   return (
-    <Modal
+    <Dialog
       open
       onClose={onClose}
       title={`Atribuir rep em ${clienteIds.length} cliente${clienteIds.length === 1 ? '' : 's'}`}
+      description={removeRep ? 'Vai remover o rep atual de todos.' : 'Cada selecionado vai ficar com este rep.'}
+      size="sm"
       footer={
         <>
-          <button type="button" onClick={onClose} style={btnSecondary}>
+          <Button variant="secondary" onClick={onClose}>
             Cancelar
-          </button>
-          <button
-            type="button"
+          </Button>
+          <Button
             data-testid="bulk-confirm"
             onClick={submit}
-            disabled={busy || !valid}
-            style={{ ...btn, opacity: busy || !valid ? 0.6 : 1 }}
+            disabled={!valid}
+            loading={busy}
           >
-            {busy ? 'Aplicando…' : removeRep ? 'Remover rep dos selecionados' : 'Atribuir'}
-          </button>
+            {removeRep ? 'Remover rep' : 'Atribuir'}
+          </Button>
         </>
       }
     >
-      <FormField label="Representante" hint={removeRep ? 'Vai remover rep atual de todos' : 'Cada selecionado vai ficar com este rep'}>
+      <Field label="Representante">
         <AsyncCombobox<RepOpt>
           testId="bulk-rep-picker"
           endpoint="/users"
@@ -574,33 +1031,46 @@ function BulkAssignModal({
           extraQuery={{ role: 'REP' }}
           disabled={removeRep}
         />
-      </FormField>
-      <label
-        style={{
-          display: 'flex',
-          alignItems: 'center',
-          gap: '0.5rem',
-          fontSize: 13,
-          marginTop: '0.5rem',
-        }}
-      >
-        <input
-          type="checkbox"
-          data-testid="bulk-remove-rep"
+      </Field>
+      <div className="mt-3">
+        <Checkbox
           checked={removeRep}
           onChange={(e) => {
             setRemoveRep(e.target.checked);
             if (e.target.checked) setRep(null);
           }}
+          label="Remover atribuição (deixar sem rep)"
         />
-        Remover representante (deixar sem rep)
-      </label>
-      {error && <p style={{ color: colors.danger, fontSize: 13, marginTop: '0.5rem' }}>{error}</p>}
-    </Modal>
+      </div>
+      {error && (
+        <div className="mt-3 px-3 py-2 rounded-md bg-danger/10 border border-danger/30 text-danger text-sm flex items-start gap-2">
+          <AlertCircle className="h-4 w-4 mt-0.5 shrink-0" />
+          {error}
+        </div>
+      )}
+    </Dialog>
   );
 }
 
-// ─── Modal de form ───────────────────────────────────────────────────────
+// ─── EditingFormLoader ──────────────────────────────────────────
+// Quando user clica "Editar" no drawer, precisamos do cliente completo.
+// Fetchamos e abrimos o form.
+
+function EditingFormLoader({
+  id,
+  onClose,
+  onSaved,
+}: {
+  id: string;
+  onClose: () => void;
+  onSaved: () => void;
+}) {
+  const { data, loading } = useApiQuery<Cliente>(`/clientes/${id}`);
+  if (loading || !data) return null;
+  return <ClienteFormModal open cliente={data} onClose={onClose} onSaved={onSaved} />;
+}
+
+// ─── Form modal (refeito com Dialog primitive) ──────────────────
 
 interface FormState {
   nome: string;
@@ -622,15 +1092,7 @@ interface FormState {
 }
 
 function emptyForm(c?: Cliente | null): FormState {
-  // Tipos do Cliente vindos da API podem não ter os campos novos ainda (até frontend atualizar).
-  // Cast bruto pra evitar erro de tipo enquanto a interface Cliente é atualizada.
-  const cc = (c ?? {}) as Cliente & {
-    cep?: string | null;
-    endereco?: string | null;
-    numero?: string | null;
-    complemento?: string | null;
-    bairro?: string | null;
-  };
+  const cc = c ?? ({} as Cliente);
   return {
     nome: cc.nome ?? '',
     cnpj: cc.cnpj ?? '',
@@ -673,59 +1135,31 @@ function ClienteFormModal({
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
+    setError(null);
 
-    // Validação client-side antes de chamar API.
-    // Em CREATE, todos os campos são obrigatórios (espelha o DTO no backend).
-    // Em EDIT (PATCH), validações só rodam se o campo foi alterado.
     if (!isEdit) {
-      // ─── Validações de campos obrigatórios ───
-      if (form.nome.trim().length < 2) {
-        setError('Nome obrigatório (mínimo 2 caracteres).');
-        return;
-      }
-      if (!form.cnpj.trim()) {
-        setError('CNPJ obrigatório.');
-        return;
-      }
-      if (!form.email.trim()) {
-        setError('E-mail obrigatório.');
-        return;
-      }
-      if (!form.telefone.trim()) {
-        setError('Telefone obrigatório.');
-        return;
-      }
-      if (!form.segmento.trim()) {
-        setError('Segmento obrigatório.');
-        return;
-      }
-      if (!form.cep.trim()) {
-        setError('CEP obrigatório.');
-        return;
-      }
-      if (!form.endereco.trim()) {
-        setError('Endereço (logradouro) obrigatório.');
-        return;
-      }
-      if (!form.numero.trim()) {
-        setError('Número obrigatório.');
-        return;
-      }
-      if (!form.bairro.trim()) {
-        setError('Bairro obrigatório.');
-        return;
-      }
-      if (!form.cidade.trim()) {
-        setError('Cidade obrigatória.');
-        return;
-      }
-      if (!form.uf.trim()) {
-        setError('UF obrigatória.');
-        return;
+      const required = [
+        ['nome', form.nome, 'Nome obrigatório.', 2],
+        ['cnpj', form.cnpj, 'CNPJ obrigatório.'],
+        ['email', form.email, 'E-mail obrigatório.'],
+        ['telefone', form.telefone, 'Telefone obrigatório.'],
+        ['segmento', form.segmento, 'Segmento obrigatório.'],
+        ['cep', form.cep, 'CEP obrigatório.'],
+        ['endereco', form.endereco, 'Endereço (logradouro) obrigatório.'],
+        ['numero', form.numero, 'Número obrigatório.'],
+        ['bairro', form.bairro, 'Bairro obrigatório.'],
+        ['cidade', form.cidade, 'Cidade obrigatória.'],
+        ['uf', form.uf, 'UF obrigatória.'],
+      ] as const;
+      for (const [, value, msg, min] of required) {
+        const v = String(value).trim();
+        if (!v || (typeof min === 'number' && v.length < min)) {
+          setError(msg);
+          return;
+        }
       }
     }
 
-    // ─── Validações de formato (rodam quando o campo está preenchido) ───
     if (form.cnpj.trim() && !isValidCNPJ(form.cnpj)) {
       setError('CNPJ inválido. Confira os dígitos verificadores.');
       return;
@@ -744,9 +1178,6 @@ function ClienteFormModal({
     }
 
     setSaving(true);
-    setError(null);
-
-    // Em CREATE manda tudo. Em EDIT manda só o que tem valor (PATCH semântico).
     const payload: Record<string, unknown> = {
       nome: form.nome.trim(),
       status: form.status,
@@ -773,11 +1204,8 @@ function ClienteFormModal({
     }
 
     try {
-      if (isEdit && cliente) {
-        await api.patch(`/clientes/${cliente.id}`, payload);
-      } else {
-        await api.post('/clientes', payload);
-      }
+      if (isEdit && cliente) await api.patch(`/clientes/${cliente.id}`, payload);
+      else await api.post('/clientes', payload);
       onSaved();
     } catch (err) {
       setError(err instanceof ApiError ? err.message : 'Erro ao salvar');
@@ -787,29 +1215,30 @@ function ClienteFormModal({
   }
 
   return (
-    <Modal
+    <Dialog
       open={open}
       onClose={onClose}
       title={isEdit ? 'Editar cliente' : 'Novo cliente'}
+      size="lg"
       footer={
         <>
-          <button type="button" onClick={onClose} style={btnSecondary}>
+          <Button variant="secondary" onClick={onClose}>
             Cancelar
-          </button>
-          <button
+          </Button>
+          <Button
             type="submit"
             form="cliente-form"
             data-testid="cliente-save-btn"
-            disabled={saving || form.nome.trim().length < 2}
-            style={{ ...btn, opacity: saving ? 0.7 : 1 }}
+            disabled={form.nome.trim().length < 2}
+            loading={saving}
           >
-            {saving ? 'Salvando…' : 'Salvar'}
-          </button>
+            {isEdit ? 'Salvar alterações' : 'Criar cliente'}
+          </Button>
         </>
       }
     >
-      <form id="cliente-form" onSubmit={handleSubmit}>
-        <FormField label="Nome" required htmlFor="f-nome">
+      <form id="cliente-form" onSubmit={handleSubmit} className="flex flex-col gap-4">
+        <Field label="Nome" required htmlFor="f-nome">
           <Input
             id="f-nome"
             data-testid="cliente-nome-input"
@@ -818,12 +1247,14 @@ function ClienteFormModal({
             required
             minLength={2}
             maxLength={200}
+            placeholder="Razão social ou nome fantasia"
           />
-        </FormField>
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.75rem' }}>
-          <FormField label="CNPJ" required htmlFor="f-cnpj" hint="00.000.000/0001-00">
+        </Field>
+
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+          <Field label="CNPJ" required hint="00.000.000/0001-00">
             <Input
-              id="f-cnpj"
+              data-testid="cliente-cnpj-input"
               value={form.cnpj}
               onChange={(e) => setField('cnpj', maskCNPJ(e.target.value))}
               placeholder="00.000.000/0001-00"
@@ -831,30 +1262,30 @@ function ClienteFormModal({
               inputMode="numeric"
               required={!isEdit}
             />
-          </FormField>
-          <FormField label="Segmento" required htmlFor="f-seg">
+          </Field>
+          <Field label="Segmento" required>
             <Input
-              id="f-seg"
               value={form.segmento}
               onChange={(e) => setField('segmento', e.target.value)}
               placeholder="Ex: Restaurante, Supermercado…"
               required={!isEdit}
               maxLength={60}
             />
-          </FormField>
-          <FormField label="E-mail" required htmlFor="f-email">
+          </Field>
+          <Field label="E-mail" required>
             <Input
-              id="f-email"
               type="email"
+              leftIcon={<Mail />}
               value={form.email}
               onChange={(e) => setField('email', e.target.value)}
               required={!isEdit}
               maxLength={200}
+              placeholder="contato@empresa.com.br"
             />
-          </FormField>
-          <FormField label="Telefone" required htmlFor="f-tel">
+          </Field>
+          <Field label="Telefone" required>
             <Input
-              id="f-tel"
+              leftIcon={<Phone />}
               value={form.telefone}
               onChange={(e) => setField('telefone', maskTelefone(e.target.value))}
               placeholder="(00) 00000-0000"
@@ -862,157 +1293,147 @@ function ClienteFormModal({
               inputMode="tel"
               required={!isEdit}
             />
-          </FormField>
+          </Field>
         </div>
-        {/* ─── Endereço completo ─── */}
-        <h4 style={{ margin: '1rem 0 0.5rem', fontSize: 13, color: colors.muted }}>Endereço</h4>
-        <div style={{ display: 'grid', gridTemplateColumns: '160px 1fr 120px', gap: '0.75rem' }}>
-          <FormField label="CEP" required htmlFor="f-cep" hint="00000-000">
-            <Input
-              id="f-cep"
-              value={form.cep}
-              onChange={(e) => setField('cep', maskCEP(e.target.value))}
-              placeholder="00000-000"
-              maxLength={9}
-              inputMode="numeric"
-              required={!isEdit}
-            />
-          </FormField>
-          <FormField label="Endereço (logradouro)" required htmlFor="f-end">
-            <Input
-              id="f-end"
-              value={form.endereco}
-              onChange={(e) => setField('endereco', e.target.value)}
-              placeholder="Rua, avenida, etc."
-              maxLength={200}
-              required={!isEdit}
-            />
-          </FormField>
-          <FormField label="Número" required htmlFor="f-num">
-            <Input
-              id="f-num"
-              value={form.numero}
-              onChange={(e) => setField('numero', e.target.value)}
-              maxLength={20}
-              required={!isEdit}
-            />
-          </FormField>
-        </div>
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.75rem' }}>
-          <FormField label="Complemento" htmlFor="f-comp" hint="Opcional">
-            <Input
-              id="f-comp"
-              value={form.complemento}
-              onChange={(e) => setField('complemento', e.target.value)}
-              maxLength={100}
-            />
-          </FormField>
-          <FormField label="Bairro" required htmlFor="f-bairro">
-            <Input
-              id="f-bairro"
-              value={form.bairro}
-              onChange={(e) => setField('bairro', e.target.value)}
-              maxLength={100}
-              required={!isEdit}
-            />
-          </FormField>
-          <FormField label="Cidade" required htmlFor="f-cidade">
-            <Input
-              id="f-cidade"
-              value={form.cidade}
-              onChange={(e) => setField('cidade', e.target.value)}
-              maxLength={100}
-              required={!isEdit}
-            />
-          </FormField>
-          <FormField label="UF" required htmlFor="f-uf">
-            <Input
-              id="f-uf"
-              maxLength={2}
-              value={form.uf}
-              onChange={(e) => setField('uf', normalizeUF(e.target.value))}
-              placeholder="SP"
-              required={!isEdit}
-            />
-          </FormField>
-        </div>
-        {/* ─── Operação ─── */}
-        <h4 style={{ margin: '1rem 0 0.5rem', fontSize: 13, color: colors.muted }}>Operação</h4>
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.75rem' }}>
-          <FormField label="Status" htmlFor="f-status">
-            <Select
-              id="f-status"
-              value={form.status}
-              onChange={(e) => setField('status', e.target.value as ClienteStatus)}
-            >
-              <option value="ATIVO">Ativo</option>
-              <option value="NOVO">Novo</option>
-              <option value="PROSPECT">Prospect</option>
-              <option value="RISCO">Em risco</option>
-              <option value="CRITICO">Crítico</option>
-              <option value="INATIVO">Inativo</option>
-            </Select>
-          </FormField>
-          <FormField label="OMIE" htmlFor="f-omie">
-            <Select
-              id="f-omie"
-              value={form.omieStatus}
-              onChange={(e) => setField('omieStatus', e.target.value as OmieStatus)}
-            >
-              <option value="ATIVO">Ativo</option>
-              <option value="BLOQUEADO">Bloqueado</option>
-            </Select>
-          </FormField>
-          <FormField label="Score (0–100)" htmlFor="f-score">
-            <Input
-              id="f-score"
-              type="number"
-              min={0}
-              max={100}
-              value={form.score}
-              onChange={(e) => setField('score', Number(e.target.value))}
-            />
-          </FormField>
-          <FormField label="Prazo pagamento (dias)" htmlFor="f-prazo">
-            <Input
-              id="f-prazo"
-              type="number"
-              min={0}
-              max={180}
-              value={form.prazoPagamento}
-              onChange={(e) => setField('prazoPagamento', Number(e.target.value))}
-            />
-          </FormField>
-        </div>
+
+        <section>
+          <h4 className="text-[10px] font-semibold uppercase tracking-wider text-muted mb-2">
+            Endereço
+          </h4>
+          <div className="grid gap-3 grid-cols-1 md:grid-cols-[160px_1fr_120px]">
+            <Field label="CEP" required hint="00000-000">
+              <Input
+                value={form.cep}
+                onChange={(e) => setField('cep', maskCEP(e.target.value))}
+                placeholder="00000-000"
+                maxLength={9}
+                inputMode="numeric"
+                required={!isEdit}
+              />
+            </Field>
+            <Field label="Logradouro" required>
+              <Input
+                value={form.endereco}
+                onChange={(e) => setField('endereco', e.target.value)}
+                placeholder="Rua, avenida, etc."
+                maxLength={200}
+                required={!isEdit}
+              />
+            </Field>
+            <Field label="Número" required>
+              <Input
+                value={form.numero}
+                onChange={(e) => setField('numero', e.target.value)}
+                maxLength={20}
+                required={!isEdit}
+              />
+            </Field>
+          </div>
+          <div className="grid gap-3 grid-cols-1 md:grid-cols-2 mt-3">
+            <Field label="Complemento" hint="Opcional">
+              <Input
+                value={form.complemento}
+                onChange={(e) => setField('complemento', e.target.value)}
+                maxLength={100}
+                placeholder="Sala, andar, bloco…"
+              />
+            </Field>
+            <Field label="Bairro" required>
+              <Input
+                value={form.bairro}
+                onChange={(e) => setField('bairro', e.target.value)}
+                maxLength={100}
+                required={!isEdit}
+              />
+            </Field>
+            <Field label="Cidade" required>
+              <Input
+                value={form.cidade}
+                onChange={(e) => setField('cidade', e.target.value)}
+                maxLength={100}
+                required={!isEdit}
+              />
+            </Field>
+            <Field label="UF" required>
+              <Input
+                maxLength={2}
+                value={form.uf}
+                onChange={(e) => setField('uf', normalizeUF(e.target.value))}
+                placeholder="SP"
+                required={!isEdit}
+              />
+            </Field>
+          </div>
+        </section>
+
+        <section>
+          <h4 className="text-[10px] font-semibold uppercase tracking-wider text-muted mb-2">
+            Operação
+          </h4>
+          <div className="grid gap-3 grid-cols-2 md:grid-cols-4">
+            <Field label="Status">
+              <Select
+                value={form.status}
+                onChange={(e) => setField('status', e.target.value as ClienteStatus)}
+              >
+                {(Object.keys(STATUS_LABEL) as ClienteStatus[]).map((s) => (
+                  <option key={s} value={s}>
+                    {STATUS_LABEL[s]}
+                  </option>
+                ))}
+              </Select>
+            </Field>
+            <Field label="OMIE">
+              <Select
+                value={form.omieStatus}
+                onChange={(e) => setField('omieStatus', e.target.value as OmieStatus)}
+              >
+                <option value="ATIVO">Ativo</option>
+                <option value="BLOQUEADO">Bloqueado</option>
+              </Select>
+            </Field>
+            <Field label="Score">
+              <Input
+                type="number"
+                min={0}
+                max={100}
+                value={form.score}
+                onChange={(e) => setField('score', Number(e.target.value))}
+              />
+            </Field>
+            <Field label="Prazo (dias)">
+              <Input
+                type="number"
+                min={0}
+                max={180}
+                value={form.prazoPagamento}
+                onChange={(e) => setField('prazoPagamento', Number(e.target.value))}
+              />
+            </Field>
+          </div>
+        </section>
+
         {error && (
           <div
             data-testid="form-error"
-            style={{
-              ...card,
-              borderColor: colors.danger,
-              color: colors.danger,
-              padding: '0.5rem 0.75rem',
-              marginTop: '0.5rem',
-            }}
+            className="px-3 py-2 rounded-md bg-danger/10 border border-danger/30 text-danger text-sm flex items-start gap-2"
           >
+            <AlertCircle className="h-4 w-4 mt-0.5 shrink-0" />
             {error}
           </div>
         )}
       </form>
-      {isEdit && cliente && (
-        <details style={{ marginTop: '1rem', fontSize: 12, color: colors.muted }}>
-          <summary>Ações avançadas</summary>
-          <DeleteClienteButton id={cliente.id} onDeleted={onSaved} />
-        </details>
-      )}
-    </Modal>
+    </Dialog>
   );
 }
+
+// ─── Delete cliente button ─────────────────────────────────────
 
 function DeleteClienteButton({ id, onDeleted }: { id: string; onDeleted: () => void }) {
   const toast = useToast();
   const [confirming, setConfirming] = useState(false);
   const [busy, setBusy] = useState(false);
+
   async function doDelete() {
     setBusy(true);
     try {
@@ -1025,26 +1446,35 @@ function DeleteClienteButton({ id, onDeleted }: { id: string; onDeleted: () => v
       setBusy(false);
     }
   }
+
   if (!confirming) {
     return (
-      <button
-        type="button"
+      <Button
+        variant="danger"
+        size="sm"
         onClick={() => setConfirming(true)}
-        style={{ ...btnDanger, marginTop: '0.5rem' }}
+        leftIcon={<Trash2 className="h-3.5 w-3.5" />}
       >
         Excluir cliente
-      </button>
+      </Button>
     );
   }
+
   return (
-    <div style={{ marginTop: '0.5rem', display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
-      <span style={{ color: colors.danger }}>Confirmar exclusão?</span>
-      <button type="button" disabled={busy} onClick={doDelete} style={btnDanger}>
-        {busy ? '…' : 'Sim, excluir'}
-      </button>
-      <button type="button" onClick={() => setConfirming(false)} style={btnSecondary}>
+    <div className="flex flex-wrap items-center gap-2">
+      <span className="text-sm text-danger">Confirmar exclusão?</span>
+      <Button
+        variant="danger"
+        size="sm"
+        disabled={busy}
+        loading={busy}
+        onClick={doDelete}
+      >
+        Sim, excluir
+      </Button>
+      <Button variant="secondary" size="sm" onClick={() => setConfirming(false)}>
         Cancelar
-      </button>
+      </Button>
     </div>
   );
 }

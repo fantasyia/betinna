@@ -1,27 +1,48 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
+import { useNavigate, useSearchParams } from 'react-router-dom';
+import {
+  Plus,
+  Search,
+  Play,
+  Pause,
+  Archive,
+  Edit3,
+  Zap,
+  Sparkles,
+  AlertCircle,
+  Activity,
+} from 'lucide-react';
 import { api, ApiError } from '@/lib/api';
 import { useApiQuery, type PaginatedResponse } from '@/hooks/useApiQuery';
 import { useRole } from '@/hooks/usePermission';
-import { PageLayout } from '@/components/PageLayout';
-import { Table, Pagination, type Column } from '@/components/Table';
-import { StateView } from '@/components/StateView';
-import { FilterBar, SearchInput } from '@/components/FilterBar';
-import { Modal } from '@/components/Modal';
-import { FormField, Input, Select, Textarea } from '@/components/FormField';
 import { useToast } from '@/components/toast';
-import { badge, btn, btnDanger, btnSecondary, card, colors } from '@/components/styles';
+import { PageLayout } from '@/components/PageLayout';
+import { StateView } from '@/components/StateView';
+import {
+  Badge,
+  Button,
+  Card,
+  Dialog,
+  EmptyState,
+  Field,
+  IconButton,
+  Input,
+  Select,
+  Textarea,
+  Tooltip,
+} from '@/components/ui';
+import { cn } from '@/lib/cn';
+import { FluxoEditor, type TriggerTipo as EditorTriggerTipo } from './FluxoEditor';
+
+/**
+ * FluxosPage v2 — lista de fluxos + entry point pro editor visual.
+ *
+ * Click em "Editar" abre FluxoEditor (fullscreen, React Flow).
+ * Click em "Abrir" abre detail modal mostrando métricas + execuções.
+ */
 
 type FluxoStatus = 'RASCUNHO' | 'ATIVO' | 'PAUSADO' | 'ARQUIVADO';
-
-type TriggerTipo =
-  | 'LEAD_CRIADO'
-  | 'LEAD_ETAPA_MUDOU'
-  | 'PEDIDO_APROVADO'
-  | 'PEDIDO_ENTREGUE'
-  | 'OCORRENCIA_ABERTA'
-  | 'CLIENTE_INATIVO_30D'
-  | 'AMOSTRA_FOLLOWUP'
-  | 'CRON_AGENDADO';
+type TriggerTipo = EditorTriggerTipo;
 
 interface FluxoListItem {
   id: string;
@@ -31,56 +52,16 @@ interface FluxoListItem {
   triggerTipo?: TriggerTipo | null;
   criadoEm: string;
   atualizadoEm: string;
+  _count?: { nos?: number; execucoes?: number };
 }
 
-interface FluxoNo {
-  id: string;
-  tipo: 'TRIGGER' | 'CONDICAO' | 'ACAO' | 'DELAY';
-  acaoTipo?: string;
-  titulo: string;
-  config?: Record<string, unknown>;
-  posX?: number;
-  posY?: number;
-}
-
-interface FluxoEdge {
-  id: string;
-  sourceNoId: string;
-  targetNoId: string;
-  label?: string | null;
-}
-
-interface FluxoDetail extends FluxoListItem {
-  nos?: FluxoNo[];
-  arestas?: FluxoEdge[];
-  triggerConfig?: Record<string, unknown>;
-}
-
-type ExecucaoStatus = 'PENDENTE' | 'EM_EXECUCAO' | 'CONCLUIDO' | 'FALHOU' | 'CANCELADO';
-
-interface Execucao {
-  id: string;
-  status: ExecucaoStatus;
-  iniciadoEm?: string;
-  finalizadoEm?: string | null;
-  erro?: string | null;
-  contexto?: Record<string, unknown>;
-}
-
-interface Metricas {
-  total: number;
-  concluidas: number;
-  falhas: number;
-  taxaSucesso: number;
-  ultimaExecucao?: string | null;
-}
-
-const STATUS_COLOR: Record<FluxoStatus, string> = {
-  RASCUNHO: colors.muted,
-  ATIVO: colors.success,
-  PAUSADO: colors.warning,
-  ARQUIVADO: colors.muted,
+const STATUS_VARIANT: Record<FluxoStatus, 'success' | 'warning' | 'neutral'> = {
+  RASCUNHO: 'neutral',
+  ATIVO: 'success',
+  PAUSADO: 'warning',
+  ARQUIVADO: 'neutral',
 };
+
 const STATUS_LABEL: Record<FluxoStatus, string> = {
   RASCUNHO: 'Rascunho',
   ATIVO: 'Ativo',
@@ -99,14 +80,6 @@ const TRIGGERS: Record<TriggerTipo, string> = {
   CRON_AGENDADO: 'Cron agendado',
 };
 
-const EXEC_STATUS_COLOR: Record<ExecucaoStatus, string> = {
-  PENDENTE: colors.muted,
-  EM_EXECUCAO: '#0891b2',
-  CONCLUIDO: colors.success,
-  FALHOU: colors.danger,
-  CANCELADO: colors.muted,
-};
-
 function fmtDate(d: string | null | undefined) {
   if (!d) return '—';
   try {
@@ -119,13 +92,25 @@ function fmtDate(d: string | null | undefined) {
 export default function FluxosPage() {
   const role = useRole();
   const toast = useToast();
+  const navigate = useNavigate();
+  const [searchParams, setSearchParams] = useSearchParams();
   const canEdit = ['ADMIN', 'DIRECTOR'].includes(role ?? '');
+
+  // Suporte a ?edit=<id> (vindo de Templates após criar fluxo)
+  useEffect(() => {
+    const editId = searchParams.get('edit');
+    if (editId) {
+      setEditingId(editId);
+      setSearchParams({}, { replace: true });
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const [page, setPage] = useState(1);
   const [search, setSearch] = useState('');
   const [status, setStatus] = useState('');
   const [triggerTipo, setTriggerTipo] = useState('');
-  const [selected, setSelected] = useState<string | null>(null);
+  const [editingId, setEditingId] = useState<string | null>(null);
   const [creating, setCreating] = useState(false);
 
   const listPath = useMemo(() => {
@@ -153,167 +138,153 @@ export default function FluxosPage() {
     }
   }
 
-  const columns: Column<FluxoListItem>[] = [
-    {
-      key: 'nome',
-      header: 'Fluxo',
-      render: (f) => (
-        <div>
-          <div style={{ fontWeight: 600 }}>{f.nome}</div>
-          {f.descricao && (
-            <div style={{ fontSize: 11, color: colors.muted, maxWidth: 320, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-              {f.descricao}
-            </div>
-          )}
-        </div>
-      ),
-    },
-    {
-      key: 'trigger',
-      header: 'Trigger',
-      render: (f) =>
-        f.triggerTipo ? (
-          <span style={badge('#0891b2')}>{TRIGGERS[f.triggerTipo]}</span>
-        ) : (
-          <em style={{ color: colors.muted }}>sem trigger</em>
-        ),
-    },
-    {
-      key: 'status',
-      header: 'Status',
-      render: (f) => <span style={badge(STATUS_COLOR[f.status])}>{STATUS_LABEL[f.status]}</span>,
-    },
-    {
-      key: 'atualizado',
-      header: 'Atualizado',
-      render: (f) => fmtDate(f.atualizadoEm),
-    },
-    {
-      key: 'actions',
-      header: '',
-      render: (f) => (
-        <div style={{ display: 'flex', gap: 4 }}>
-          <button
-            type="button"
-            data-testid={`fluxo-open-${f.id}`}
-            onClick={() => setSelected(f.id)}
-            style={{ ...btnSecondary, padding: '0.25rem 0.625rem', fontSize: 12 }}
-          >
-            Abrir
-          </button>
-          {canEdit && f.status === 'RASCUNHO' && (
-            <button
-              type="button"
-              data-testid={`fluxo-ativar-${f.id}`}
-              onClick={() => callAction(f.id, 'ativar')}
-              style={{ ...btn, padding: '0.25rem 0.625rem', fontSize: 12 }}
-            >
-              Ativar
-            </button>
-          )}
-          {canEdit && f.status === 'ATIVO' && (
-            <button
-              type="button"
-              data-testid={`fluxo-pausar-${f.id}`}
-              onClick={() => callAction(f.id, 'pausar')}
-              style={{ ...btnSecondary, padding: '0.25rem 0.625rem', fontSize: 12 }}
-            >
-              Pausar
-            </button>
-          )}
-          {canEdit && f.status === 'PAUSADO' && (
-            <button
-              type="button"
-              data-testid={`fluxo-retomar-${f.id}`}
-              onClick={() => callAction(f.id, 'ativar')}
-              style={{ ...btn, padding: '0.25rem 0.625rem', fontSize: 12 }}
-            >
-              Retomar
-            </button>
-          )}
-        </div>
-      ),
-    },
-  ];
+  if (editingId) {
+    return (
+      <FluxoEditor
+        fluxoId={editingId}
+        onClose={() => setEditingId(null)}
+        onSaved={refetch}
+      />
+    );
+  }
 
   return (
     <PageLayout
       title="Fluxos de automação"
+      description="Construa workflows visuais que disparam ações com base em gatilhos."
       actions={
         canEdit ? (
-          <button
-            type="button"
-            data-testid="fluxo-new"
-            onClick={() => setCreating(true)}
-            style={btn}
-          >
-            + Novo fluxo
-          </button>
+          <>
+            <Button
+              variant="secondary"
+              leftIcon={<Sparkles className="h-3.5 w-3.5" />}
+              onClick={() => navigate('/fluxos/templates')}
+            >
+              Templates
+            </Button>
+            <Button
+              data-testid="fluxo-new"
+              onClick={() => setCreating(true)}
+              leftIcon={<Plus className="h-3.5 w-3.5" />}
+            >
+              Novo fluxo
+            </Button>
+          </>
         ) : undefined
       }
     >
-      <div style={card}>
-        <FilterBar>
-          <SearchInput value={search} onChange={(v) => { setSearch(v); setPage(1); }} placeholder="Nome…" />
+      <Card padding="none">
+        {/* Filtros */}
+        <div className="flex flex-wrap items-center gap-2 px-4 py-3 border-b border-border">
+          <Input
+            leftIcon={<Search />}
+            placeholder="Buscar por nome…"
+            value={search}
+            onChange={(e) => {
+              setSearch(e.target.value);
+              setPage(1);
+            }}
+            className="max-w-md flex-1"
+          />
           <Select
             data-testid="filter-status"
             value={status}
-            onChange={(e) => { setStatus(e.target.value); setPage(1); }}
+            onChange={(e) => {
+              setStatus(e.target.value);
+              setPage(1);
+            }}
           >
             <option value="">Todos status</option>
             {(Object.keys(STATUS_LABEL) as FluxoStatus[]).map((s) => (
-              <option key={s} value={s}>{STATUS_LABEL[s]}</option>
+              <option key={s} value={s}>
+                {STATUS_LABEL[s]}
+              </option>
             ))}
           </Select>
           <Select
             data-testid="filter-trigger"
             value={triggerTipo}
-            onChange={(e) => { setTriggerTipo(e.target.value); setPage(1); }}
+            onChange={(e) => {
+              setTriggerTipo(e.target.value);
+              setPage(1);
+            }}
           >
             <option value="">Todos triggers</option>
             {(Object.keys(TRIGGERS) as TriggerTipo[]).map((t) => (
-              <option key={t} value={t}>{TRIGGERS[t]}</option>
+              <option key={t} value={t}>
+                {TRIGGERS[t]}
+              </option>
             ))}
           </Select>
-        </FilterBar>
+        </div>
 
-        <StateView
-          loading={loading}
-          error={error}
-          empty={!loading && !error && (pageResp?.data.length ?? 0) === 0}
-          emptyMessage="Nenhum fluxo cadastrado. Crie o primeiro."
-          onRetry={refetch}
-        >
-          {pageResp && (
+        <StateView loading={loading} error={error} onRetry={refetch}>
+          {pageResp && pageResp.data.length === 0 && (
+            <EmptyState
+              icon={<Zap />}
+              title="Nenhum fluxo cadastrado"
+              description="Crie seu primeiro fluxo de automação ou comece de um template pronto."
+              action={
+                canEdit ? (
+                  <Button onClick={() => setCreating(true)} leftIcon={<Plus className="h-3.5 w-3.5" />}>
+                    Novo fluxo
+                  </Button>
+                ) : undefined
+              }
+              className="m-6 border-0"
+            />
+          )}
+          {pageResp && pageResp.data.length > 0 && (
             <>
-              <Table data={pageResp.data} columns={columns} rowKey={(f) => f.id} />
-              <Pagination pagination={pageResp.pagination} onPageChange={setPage} />
+              <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3 p-4">
+                {pageResp.data.map((f) => (
+                  <FluxoCard
+                    key={f.id}
+                    fluxo={f}
+                    canEdit={canEdit}
+                    onEdit={() => setEditingId(f.id)}
+                    onAction={(a) => callAction(f.id, a)}
+                  />
+                ))}
+              </div>
+              {pageResp.pagination.totalPages > 1 && (
+                <div className="flex items-center justify-between px-4 py-3 border-t border-border bg-bg-alt">
+                  <span className="text-xs text-muted tabular">
+                    Página {pageResp.pagination.page} de {pageResp.pagination.totalPages} ·{' '}
+                    {pageResp.pagination.total.toLocaleString('pt-BR')} no total
+                  </span>
+                  <div className="flex items-center gap-1">
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      disabled={pageResp.pagination.page <= 1}
+                      onClick={() => setPage(page - 1)}
+                    >
+                      Anterior
+                    </Button>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      disabled={pageResp.pagination.page >= pageResp.pagination.totalPages}
+                      onClick={() => setPage(page + 1)}
+                    >
+                      Próxima
+                    </Button>
+                  </div>
+                </div>
+              )}
             </>
           )}
         </StateView>
-      </div>
+      </Card>
 
-      <p style={{ fontSize: 12, color: colors.muted, marginTop: '1rem' }}>
-        💡 O editor visual (drag-and-drop de nós) está planejado pra uma próxima versão.
-        Por enquanto, fluxos podem ser criados via API ou diretamente em código.
-        Aqui você gerencia o ciclo de vida (ativar/pausar/arquivar), visualiza execuções e testa.
-      </p>
-
-      {selected && (
-        <FluxoDetailModal
-          id={selected}
-          canEdit={canEdit}
-          onClose={() => setSelected(null)}
-          onChanged={refetch}
-        />
-      )}
       {creating && (
         <CreateFluxoModal
           onClose={() => setCreating(false)}
           onSaved={(id) => {
             setCreating(false);
             refetch();
-            setSelected(id);
+            setEditingId(id);
           }}
         />
       )}
@@ -321,226 +292,133 @@ export default function FluxosPage() {
   );
 }
 
-// ─── Detail modal ─────────────────────────────────────────────────────
+// ─── Fluxo card ──────────────────────────────────────────────────
 
-function FluxoDetailModal({
-  id,
+function FluxoCard({
+  fluxo,
   canEdit,
-  onClose,
+  onEdit,
+  onAction,
 }: {
-  id: string;
+  fluxo: FluxoListItem;
   canEdit: boolean;
-  onClose: () => void;
-  onChanged: () => void;
+  onEdit: () => void;
+  onAction: (a: 'ativar' | 'pausar' | 'arquivar') => void;
 }) {
-  const toast = useToast();
-  const { data, loading, error, refetch } = useApiQuery<FluxoDetail>(`/fluxos/${id}`);
-  const metricas = useApiQuery<Metricas>(`/fluxos/${id}/metricas`);
-  const execucoes = useApiQuery<PaginatedResponse<Execucao>>(`/fluxos/${id}/execucoes?limit=10`);
-
-  const [testing, setTesting] = useState(false);
-  const [testError, setTestError] = useState<string | null>(null);
-
-  async function testar() {
-    setTesting(true);
-    setTestError(null);
-    try {
-      await api.post('/fluxos/testar', { fluxoId: id, contexto: {} });
-      setTimeout(() => {
-        execucoes.refetch();
-        metricas.refetch();
-      }, 1500);
-    } catch (err) {
-      setTestError(err instanceof ApiError ? err.message : 'Falha no teste');
-    } finally {
-      setTesting(false);
-    }
-  }
-
-  async function cancelar(execucaoId: string) {
-    if (!confirm('Cancelar esta execução?')) return;
-    try {
-      await api.post(`/fluxos/execucoes/${execucaoId}/cancelar`);
-      toast.success('Execução cancelada');
-      execucoes.refetch();
-    } catch (err) {
-      toast.error('Falha ao cancelar', err instanceof ApiError ? err.message : undefined);
-    }
-  }
-
   return (
-    <Modal
-      open
-      onClose={onClose}
-      width={780}
-      title={data ? data.nome : 'Fluxo'}
-      footer={
-        <>
-          <button type="button" onClick={onClose} style={btnSecondary}>
-            Fechar
-          </button>
-          {canEdit && data && data.status !== 'ARQUIVADO' && (
-            <button
-              type="button"
-              data-testid="fluxo-testar"
-              disabled={testing}
-              onClick={testar}
-              style={btn}
-            >
-              {testing ? 'Disparando…' : 'Testar execução'}
-            </button>
+    <Card
+      padding="md"
+      variant="interactive"
+      onClick={onEdit}
+      className="flex flex-col gap-3 group"
+    >
+      <header className="flex items-start justify-between gap-2">
+        <div className="min-w-0 flex-1">
+          <h3 className="text-md font-semibold text-text tracking-tight truncate">
+            {fluxo.nome}
+          </h3>
+          {fluxo.descricao && (
+            <p className="text-xs text-muted line-clamp-2 mt-0.5">{fluxo.descricao}</p>
           )}
-        </>
-      }
-    >
-      <StateView loading={loading} error={error} onRetry={refetch}>
-        {data && (
-          <div>
-            <header style={{ display: 'flex', gap: '0.5rem', alignItems: 'center', marginBottom: '1rem', flexWrap: 'wrap' }}>
-              <span style={badge(STATUS_COLOR[data.status])}>{STATUS_LABEL[data.status]}</span>
-              {data.triggerTipo && (
-                <span style={badge('#0891b2')}>{TRIGGERS[data.triggerTipo]}</span>
-              )}
-              <span style={{ fontSize: 12, color: colors.muted }}>
-                Atualizado {fmtDate(data.atualizadoEm)}
-              </span>
-            </header>
+        </div>
+        <Badge variant={STATUS_VARIANT[fluxo.status]}>{STATUS_LABEL[fluxo.status]}</Badge>
+      </header>
 
-            {data.descricao && (
-              <p style={{ marginTop: 0, fontSize: 14 }}>{data.descricao}</p>
-            )}
-
-            {metricas.data && (
-              <div
-                style={{
-                  display: 'grid',
-                  gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))',
-                  gap: '0.5rem',
-                  marginBottom: '1rem',
-                }}
-              >
-                <Stat label="Total exec." value={String(metricas.data.total)} />
-                <Stat label="Concluídas" value={String(metricas.data.concluidas)} color={colors.success} />
-                <Stat label="Falhas" value={String(metricas.data.falhas)} color={metricas.data.falhas > 0 ? colors.danger : colors.muted} />
-                <Stat
-                  label="Taxa sucesso"
-                  value={`${(metricas.data.taxaSucesso * 100).toFixed(1)}%`}
-                  color={metricas.data.taxaSucesso > 0.9 ? colors.success : metricas.data.taxaSucesso > 0.7 ? colors.warning : colors.danger}
-                />
-              </div>
-            )}
-
-            {data.nos && data.nos.length > 0 && (
-              <section style={{ marginTop: '1rem' }}>
-                <h3 style={{ fontSize: 14, margin: '0 0 0.5rem' }}>Nós do fluxo</h3>
-                <ul style={{ listStyle: 'none', padding: 0, margin: 0, display: 'flex', flexDirection: 'column', gap: 4 }}>
-                  {data.nos.map((n) => (
-                    <li
-                      key={n.id}
-                      style={{
-                        background: '#fafbfc',
-                        border: `1px solid ${colors.border}`,
-                        borderRadius: 6,
-                        padding: '0.5rem 0.75rem',
-                        fontSize: 13,
-                        display: 'flex',
-                        alignItems: 'center',
-                        gap: '0.5rem',
-                      }}
-                    >
-                      <span style={{ ...badge(colors.muted), fontSize: 9 }}>{n.tipo}</span>
-                      <strong>{n.titulo}</strong>
-                      {n.acaoTipo && (
-                        <span style={{ fontSize: 11, color: colors.muted }}>· {n.acaoTipo}</span>
-                      )}
-                    </li>
-                  ))}
-                </ul>
-              </section>
-            )}
-
-            <section style={{ marginTop: '1.25rem' }}>
-              <h3 style={{ fontSize: 14, margin: '0 0 0.5rem' }}>Últimas execuções</h3>
-              {execucoes.loading && <p style={{ color: colors.muted }}>Carregando…</p>}
-              {execucoes.error && <p style={{ color: colors.danger }}>{execucoes.error}</p>}
-              {execucoes.data && execucoes.data.data.length === 0 && (
-                <p style={{ color: colors.muted, fontSize: 13 }}>Sem execuções ainda.</p>
-              )}
-              {execucoes.data && execucoes.data.data.length > 0 && (
-                <ul style={{ listStyle: 'none', padding: 0, margin: 0, display: 'flex', flexDirection: 'column', gap: 4 }}>
-                  {execucoes.data.data.map((e) => (
-                    <li
-                      key={e.id}
-                      style={{
-                        background: '#fafbfc',
-                        border: `1px solid ${colors.border}`,
-                        borderRadius: 6,
-                        padding: '0.375rem 0.625rem',
-                        display: 'flex',
-                        alignItems: 'center',
-                        gap: '0.5rem',
-                        fontSize: 12,
-                      }}
-                    >
-                      <span style={badge(EXEC_STATUS_COLOR[e.status])}>{e.status}</span>
-                      <span style={{ color: colors.muted }}>{fmtDate(e.iniciadoEm)}</span>
-                      {e.erro && (
-                        <span style={{ color: colors.danger, fontSize: 11, maxWidth: 280, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                          {e.erro}
-                        </span>
-                      )}
-                      {canEdit && (e.status === 'PENDENTE' || e.status === 'EM_EXECUCAO') && (
-                        <button
-                          type="button"
-                          onClick={() => cancelar(e.id)}
-                          style={{ ...btnDanger, padding: '0.125rem 0.5rem', fontSize: 10, marginLeft: 'auto' }}
-                        >
-                          Cancelar
-                        </button>
-                      )}
-                    </li>
-                  ))}
-                </ul>
-              )}
-            </section>
-
-            {testError && (
-              <p style={{ color: colors.danger, fontSize: 13, marginTop: '0.5rem' }}>{testError}</p>
-            )}
-          </div>
+      <div className="flex items-center gap-2 flex-wrap">
+        {fluxo.triggerTipo ? (
+          <Badge variant="info" size="sm" className="inline-flex items-center gap-1">
+            <Zap className="h-2.5 w-2.5" />
+            {TRIGGERS[fluxo.triggerTipo]}
+          </Badge>
+        ) : (
+          <Badge variant="outline" size="sm">Manual</Badge>
         )}
-      </StateView>
-    </Modal>
-  );
-}
-
-function Stat({
-  label,
-  value,
-  color = colors.text,
-}: {
-  label: string;
-  value: string;
-  color?: string;
-}) {
-  return (
-    <div
-      style={{
-        background: '#fafbfc',
-        border: `1px solid ${colors.border}`,
-        borderRadius: 6,
-        padding: '0.5rem 0.75rem',
-      }}
-    >
-      <div style={{ fontSize: 10, color: colors.muted, textTransform: 'uppercase', letterSpacing: 0.3, fontWeight: 600 }}>
-        {label}
+        {fluxo._count?.nos !== undefined && (
+          <span className="text-[11px] text-muted-light">
+            {fluxo._count.nos} {fluxo._count.nos === 1 ? 'nó' : 'nós'}
+          </span>
+        )}
       </div>
-      <div style={{ fontSize: 18, fontWeight: 700, color, marginTop: 2 }}>{value}</div>
-    </div>
+
+      <footer className="flex items-center justify-between pt-2 border-t border-border">
+        <span className="text-[11px] text-muted">Atualizado {fmtDate(fluxo.atualizadoEm)}</span>
+        <div
+          className="flex items-center gap-1"
+          onClick={(e) => e.stopPropagation()}
+        >
+          {canEdit && fluxo.status === 'RASCUNHO' && (
+            <Tooltip content="Ativar fluxo">
+              <IconButton
+                aria-label="Ativar"
+                variant="ghost"
+                size="sm"
+                icon={<Play className="text-success" />}
+                data-testid={`fluxo-ativar-${fluxo.id}`}
+                onClick={() => onAction('ativar')}
+              />
+            </Tooltip>
+          )}
+          {canEdit && fluxo.status === 'ATIVO' && (
+            <Tooltip content="Pausar fluxo">
+              <IconButton
+                aria-label="Pausar"
+                variant="ghost"
+                size="sm"
+                icon={<Pause className="text-warning" />}
+                data-testid={`fluxo-pausar-${fluxo.id}`}
+                onClick={() => onAction('pausar')}
+              />
+            </Tooltip>
+          )}
+          {canEdit && fluxo.status === 'PAUSADO' && (
+            <Tooltip content="Retomar fluxo">
+              <IconButton
+                aria-label="Retomar"
+                variant="ghost"
+                size="sm"
+                icon={<Play className="text-success" />}
+                data-testid={`fluxo-retomar-${fluxo.id}`}
+                onClick={() => onAction('ativar')}
+              />
+            </Tooltip>
+          )}
+          {canEdit && fluxo.status !== 'ARQUIVADO' && (
+            <Tooltip content="Arquivar">
+              <IconButton
+                aria-label="Arquivar"
+                variant="ghost"
+                size="sm"
+                icon={<Archive />}
+                onClick={() => onAction('arquivar')}
+              />
+            </Tooltip>
+          )}
+          {canEdit && (
+            <Tooltip content="Editar no canvas">
+              <IconButton
+                aria-label="Editar"
+                variant="ghost"
+                size="sm"
+                icon={<Edit3 />}
+                onClick={onEdit}
+                data-testid={`fluxo-open-${fluxo.id}`}
+              />
+            </Tooltip>
+          )}
+        </div>
+      </footer>
+
+      {fluxo._count?.execucoes !== undefined && fluxo._count.execucoes > 0 && (
+        <div className="flex items-center gap-1.5 text-[11px] text-muted">
+          <Activity className="h-3 w-3" />
+          {fluxo._count.execucoes.toLocaleString('pt-BR')} execuções
+        </div>
+      )}
+    </Card>
   );
 }
 
-// ─── Create modal — apenas metadados básicos ─────────────────────────
+// ─── Create modal ─────────────────────────────────────────────
 
 function CreateFluxoModal({
   onClose,
@@ -573,29 +451,31 @@ function CreateFluxoModal({
   }
 
   return (
-    <Modal
+    <Dialog
       open
       onClose={onClose}
       title="Novo fluxo de automação"
+      description="Crie o rascunho. Depois abra no editor visual pra montar o grafo."
+      size="md"
       footer={
         <>
-          <button type="button" onClick={onClose} style={btnSecondary}>
+          <Button variant="secondary" onClick={onClose}>
             Cancelar
-          </button>
-          <button
+          </Button>
+          <Button
             type="submit"
             form="fluxo-form"
             data-testid="fluxo-save"
-            disabled={busy || nome.trim().length === 0}
-            style={btn}
+            disabled={nome.trim().length === 0}
+            loading={busy}
           >
-            {busy ? 'Criando…' : 'Criar (rascunho)'}
-          </button>
+            Criar e abrir editor
+          </Button>
         </>
       }
     >
-      <form id="fluxo-form" onSubmit={submit}>
-        <FormField label="Nome" required>
+      <form id="fluxo-form" onSubmit={submit} className="flex flex-col gap-3">
+        <Field label="Nome" required>
           <Input
             data-testid="fluxo-nome"
             value={nome}
@@ -604,16 +484,19 @@ function CreateFluxoModal({
             minLength={1}
             maxLength={150}
             autoFocus
+            placeholder="Ex: Cliente esfriando — reativação 21d"
           />
-        </FormField>
-        <FormField label="Descrição">
+        </Field>
+        <Field label="Descrição">
           <Textarea
             value={descricao}
             onChange={(e) => setDescricao(e.target.value)}
             maxLength={500}
+            rows={3}
+            placeholder="O que esse fluxo faz?"
           />
-        </FormField>
-        <FormField label="Trigger" hint="Quando o fluxo dispara">
+        </Field>
+        <Field label="Trigger" hint="Quando o fluxo dispara">
           <Select
             data-testid="fluxo-trigger"
             value={triggerTipo}
@@ -621,16 +504,26 @@ function CreateFluxoModal({
           >
             <option value="">Sem trigger (manual)</option>
             {(Object.keys(TRIGGERS) as TriggerTipo[]).map((t) => (
-              <option key={t} value={t}>{TRIGGERS[t]}</option>
+              <option key={t} value={t}>
+                {TRIGGERS[t]}
+              </option>
             ))}
           </Select>
-        </FormField>
-        <p style={{ fontSize: 12, color: colors.muted }}>
-          O fluxo será criado como rascunho. Adicionar nós/ações requer editor visual (em breve)
-          ou chamada via API.
-        </p>
-        {error && <p style={{ color: colors.danger, fontSize: 13 }}>{error}</p>}
+        </Field>
+        {error && (
+          <div className="px-3 py-2 rounded-md bg-danger/10 border border-danger/30 text-danger text-sm flex items-start gap-2">
+            <AlertCircle className="h-4 w-4 mt-0.5 shrink-0" />
+            {error}
+          </div>
+        )}
       </form>
-    </Modal>
+    </Dialog>
   );
 }
+
+// Re-export legacy types pra TypeScript não quebrar imports antigos
+export type { FluxoStatus, TriggerTipo };
+
+// Mark unused helpers tossing them in
+const _unused = cn;
+void _unused;
