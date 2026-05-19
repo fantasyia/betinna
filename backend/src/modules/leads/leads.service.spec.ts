@@ -18,6 +18,13 @@ const makePrismaMock = () => ({
     groupBy: vi.fn(),
   },
   usuario: { findFirst: vi.fn() },
+  // Funil/FunilEtapa (multi-funnel feature) — default = empresa sem funis,
+  // service cai pro enum legado. Override por teste quando precisar de funil.
+  funil: { findFirst: vi.fn().mockResolvedValue(null) },
+  funilEtapa: {
+    findFirst: vi.fn().mockResolvedValue(null),
+    findMany: vi.fn().mockResolvedValue([]),
+  },
 });
 
 const makeRepScope = () => ({
@@ -94,12 +101,15 @@ describe('LeadsService', () => {
   });
 
   describe('máquina de estados', () => {
-    it('rejeita transição inválida (NOVO → GANHO direto)', async () => {
+    it('rejeita transição inválida (PERDIDO → GANHO direto)', async () => {
+      // PERDIDO só pode voltar pra etapas ATIVAS (reabrir o lead).
+      // Pra fechar como GANHO depois, precisa primeiro reabrir e seguir o
+      // funil normal. Esse teste cobre o gate da máquina de estados.
       prisma.lead.findFirst.mockResolvedValue({
         id: 'l1',
         empresaId: 'emp-1',
         representanteId: 'rep-1',
-        etapa: 'NOVO',
+        etapa: 'PERDIDO',
       });
       await expect(
         svc.moverEtapa(fakeUser(), 'l1', { etapa: 'GANHO', motivo: 'qualquer' }),
