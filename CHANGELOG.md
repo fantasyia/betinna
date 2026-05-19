@@ -7,6 +7,50 @@ versionamento segue [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ---
 
+## [1.1.1] — 2026-05-18
+
+Sprint de polish + correção de bugs reportados pós-1.1.0. Foco em qualidade
+visual (LoginPage no padrão brandbook) e estabilidade da suíte de testes.
+
+### 🎨 Visual
+- **LoginPage redesign completo** — refeito do zero seguindo `BRANDBOOK.md`:
+  - Background gradient radial navy escuro (`#15093c` → `#201554`)
+  - Card com glow magenta sutil + backdrop-blur, border radius 10px
+  - Tipografia oficial: Fira Sans Black (título) + Cabin (corpo)
+  - Inputs com focus ring ciano (`#2bcae5`) + box-shadow
+  - CTA magenta (`#bd1fbf`) com hover scale + lift
+  - Mensagens de erro humanizadas por status HTTP (401/429/5xx)
+  - Acessibilidade: `aria-label`, `aria-describedby`, `role=alert`, `autoFocus`
+  - Fade-in animation no mount, mobile responsive (max-w 440px)
+  - **Fluxo de auth D47 (cookie httpOnly) inalterado**
+
+### 🧪 Tests
+- **`mullerbot.service.spec.ts`** — 11 specs agora passando.
+  Causa: `MullerBotService` ganhou `MullerBotPersonaService` como 6º arg
+  (system prompt vem da persona configurável por empresa via UI
+  `/mullerbot/persona`). Adiciona `makePersona()` stub determinístico e
+  aplica em todos os 12 sítios de `new MullerBotService(...)`.
+- **`leads.service.spec.ts`** — 2 specs corrigidas:
+  - Adiciona mocks `funil.findFirst` e `funilEtapa.findFirst/findMany` (default `null`/`[]`) — multi-funnel feature não estava coberto.
+  - Atualiza teste de "transição inválida" de `NOVO → GANHO` (agora válido — pipeline real fecha venda direto do lead novo) para `PERDIDO → GANHO` (continua inválido — PERDIDO só pode voltar pra etapas ATIVAS).
+- **Total: 1362 / 1362 verde** (era 1349 / 1362).
+
+### 🛡️ Observability
+- **Sentry helpers `window.__BETINNA_*` validados em produção** — eventos
+  chegando no dashboard com eventId correlacionado. `__BETINNA_SENTRY__`
+  (status init), `__BETINNA_TEST_SENTRY__()` (test trigger + flush) e
+  `__BETINNA_SENTRY_SDK__` (SDK exposure pra debug) já em produção desde
+  v1.1.0 (commit `378bcf3`).
+
+### 🔧 Brandbook compliance
+- LoginPage **não usa mais** `#7c3aed` (Tailwind violet), `#BB29BB` ou
+  `#4AC9E3` (aproximações erradas listadas no Don'ts do BRANDBOOK).
+
+### 📦 Versão
+- `backend/package.json` e `frontend/package.json` finalmente sincronizados com CHANGELOG (estavam em `1.0.0` desde o lançamento).
+
+---
+
 ## [1.1.0] — 2026-05-17
 
 Sprint de auditoria master final + correções P0/P1/P2/P3. Sistema revalidado para produção: 1362 tests passing, 0 vulnerabilities, 0 lint warnings, build clean.
