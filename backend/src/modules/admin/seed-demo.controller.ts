@@ -1,4 +1,5 @@
 import { Body, Controller, Delete, Get, HttpCode, Post, Query } from '@nestjs/common';
+// Body usado só no POST; Query para GET e DELETE
 import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
 import { z } from 'zod';
 import { Audit } from '@shared/decorators/audit.decorator';
@@ -61,11 +62,14 @@ export class SeedDemoController {
 
   @Delete()
   @HttpCode(200)
-  @Audit({ action: 'seed_demo_wipe', resource: 'admin', resourceIdFrom: 'body.empresaId' })
+  @Audit({ action: 'seed_demo_wipe', resource: 'admin' })
   @ApiOperation({
     summary: 'Remove TODOS os records isDemo=true da empresa (não afeta dados reais).',
   })
-  wipe(@Body(new ZodValidationPipe(wipeSchema)) body: z.infer<typeof wipeSchema>) {
-    return this.svc.wipe(body.empresaId);
+  // Nota: DELETE usa query param em vez de body — convenção REST + alinha
+  // com `api.delete()` do frontend que não suporta body. Audit não captura
+  // resourceId (AuditResourceIdSource só aceita params/body/response).
+  wipe(@Query(new ZodValidationPipe(wipeSchema)) params: z.infer<typeof wipeSchema>) {
+    return this.svc.wipe(params.empresaId);
   }
 }
