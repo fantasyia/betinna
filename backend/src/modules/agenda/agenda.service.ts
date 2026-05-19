@@ -59,9 +59,15 @@ export class AgendaService {
         duracao: dto.duracao,
         tipo: dto.tipo,
         observacao: dto.observacao ?? null,
+        recorrencia: dto.recorrencia,
       },
       include: agendaInclude,
     });
+
+    // v1.5.0 — Gera instâncias filhas se for série recorrente
+    if (dto.recorrencia && dto.recorrencia !== 'NENHUMA') {
+      await this.gerarInstanciasRecorrentes(item, dto);
+    }
 
     if (dto.espelharGoogle) {
       const googleEventId = await this.tentarEspelharGoogle(user.id, item, dto.participantes);
@@ -75,9 +81,70 @@ export class AgendaService {
     }
 
     this.logger.log(
-      `Agenda criada [${item.tipo}] "${item.titulo}" usuário=${user.id} data=${item.data.toISOString()}`,
+      `Agenda criada [${item.tipo}] "${item.titulo}" usuário=${user.id} data=${item.data.toISOString()} recorrencia=${dto.recorrencia}`,
     );
     return item;
+  }
+
+  /**
+   * Gera N instâncias filhas a partir da regra de recorrência.
+   * - DIARIA: +1 dia
+   * - SEMANAL: +7 dias
+   * - QUINZENAL: +14 dias
+   * - MENSAL: +1 mês (mesmo dia)
+   * - ANUAL: +1 ano (mesmo dia)
+   *
+   * Filhas herdam tudo do parent e ficam apontando via parentId.
+   * Ocorrências - 1 (a primeira é o próprio parent).
+   */
+  private async gerarInstanciasRecorrentes(
+    parent: AgendaItem,
+    dto: CreateAgendaItemDto,
+  ): Promise<void> {
+    const ocorrencias = Math.max(1, Math.min(52, dto.recorrenciaOcorrencias ?? 12));
+    const filhas: Prisma.AgendaItemCreateManyInput[] = [];
+    for (let i = 1; i < ocorrencias; i++) {
+      const nextDate = this.proximaOcorrencia(parent.data, dto.recorrencia, i);
+      filhas.push({
+        empresaId: parent.empresaId,
+        usuarioId: parent.usuarioId,
+        clienteId: parent.clienteId,
+        titulo: parent.titulo,
+        data: nextDate,
+        duracao: parent.duracao,
+        tipo: parent.tipo,
+        observacao: parent.observacao,
+        recorrencia: parent.recorrencia,
+        parentId: parent.id,
+      });
+    }
+    if (filhas.length > 0) {
+      await this.prisma.agendaItem.createMany({ data: filhas });
+      this.logger.log(`Criadas ${filhas.length} instâncias recorrentes (parent=${parent.id})`);
+    }
+  }
+
+  private proximaOcorrencia(base: Date, recorrencia: string, offset: number): Date {
+    const d = new Date(base);
+    switch (recorrencia) {
+      case 'DIARIA':
+        d.setDate(d.getDate() + offset);
+        return d;
+      case 'SEMANAL':
+        d.setDate(d.getDate() + offset * 7);
+        return d;
+      case 'QUINZENAL':
+        d.setDate(d.getDate() + offset * 14);
+        return d;
+      case 'MENSAL':
+        d.setMonth(d.getMonth() + offset);
+        return d;
+      case 'ANUAL':
+        d.setFullYear(d.getFullYear() + offset);
+        return d;
+      default:
+        return d;
+    }
   }
 
   async list(user: AuthenticatedUser, params: ListAgendaDto): Promise<AgendaItemWithCliente[]> {
@@ -170,7 +237,11 @@ export class AgendaService {
     return updated;
   }
 
-  async delete(user: AuthenticatedUser, id: string): Promise<{ ok: true }> {
+  async delete(
+    user: AuthenticatedUser,
+    id: string,
+    scope: 'this' | 'this_and_future' | 'series' = 'this',
+  ): Promise<{ ok: true; deleted: number }> {
     // AUDITORIA: findFirst com empresaId filter
     const existing = await this.prisma.agendaItem.findFirst({
       where: { id, ...empresaFilter(user) },
@@ -190,8 +261,28 @@ export class AgendaService {
         this.logger.warn(`Falha ao deletar evento Google ${existing.googleEventId}: ${msg}`);
       }
     }
-    await this.prisma.agendaItem.deleteMany({ where: { id, empresaId: existing.empresaId } });
-    return { ok: true };
+
+    // v1.5.0 — Suporte a delete em série
+    const parentId = existing.parentId ?? existing.id;
+    let where: Prisma.AgendaItemWhereInput = { id, empresaId: existing.empresaId };
+
+    if (scope === 'series') {
+      // Apaga TUDO da série (parent + filhas)
+      where = {
+        empresaId: existing.empresaId,
+        OR: [{ id: parentId }, { parentId }],
+      };
+    } else if (scope === 'this_and_future') {
+      // Apaga este e tudo depois dele (na mesma série)
+      where = {
+        empresaId: existing.empresaId,
+        data: { gte: existing.data },
+        OR: [{ id: parentId }, { parentId }],
+      };
+    }
+
+    const result = await this.prisma.agendaItem.deleteMany({ where });
+    return { ok: true, deleted: result.count };
   }
 
   // ─── Helpers ──────────────────────────────────────────────────────────

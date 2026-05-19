@@ -964,6 +964,12 @@ model AgendaItem {
   googleEventId String?
   criadoEm      DateTime   @default(now())
 
+  // Recorrência (v1.5.0) — geração leve de instâncias filhas
+  recorrencia   Recorrencia @default(NENHUMA)
+  parentId      String?     // se é instância de série recorrente
+  parent        AgendaItem? @relation("AgendaRecorrencia", fields: [parentId], references: [id], onDelete: SetNull)
+  filhos        AgendaItem[] @relation("AgendaRecorrencia")
+
   empresa Empresa  @relation(fields: [empresaId], references: [id], onDelete: Cascade)
   usuario Usuario  @relation(fields: [usuarioId], references: [id], onDelete: Cascade)
   cliente Cliente? @relation(fields: [clienteId], references: [id])
@@ -972,6 +978,16 @@ model AgendaItem {
   @@index([usuarioId])
   @@index([empresaId, data])
   @@index([data])
+  @@index([parentId])
+}
+
+enum Recorrencia {
+  NENHUMA
+  DIARIA
+  SEMANAL
+  QUINZENAL
+  MENSAL
+  ANUAL
 }
 
 // ─── FLUXOS / AUTOMAÇÃO ───────────────────────────────────────────────
