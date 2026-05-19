@@ -4,7 +4,11 @@ import { PageLayout } from '@/components/PageLayout';
 import { StateView } from '@/components/StateView';
 import { Select } from '@/components/FormField';
 import { BarChart, Funnel, Donut, KPICard, type FunnelStage, type DonutSlice } from '@/components/charts';
-import { badge, card, colors } from '@/components/styles';
+import { badge, btnSecondary, card, colors } from '@/components/styles';
+import { toCsv, downloadCsv, type CsvColumn } from '@/lib/csv';
+import { rowsToXlsx } from '@/lib/xlsx';
+import { gerarPdf } from '@/lib/pdf';
+import { useToast } from '@/components/toast';
 
 type Periodo = 'mes' | 'trimestre' | 'semestre' | 'ano';
 type Tab =
@@ -371,6 +375,115 @@ function OverviewTab({ qs }: { qs: string }) {
 
 // ─── Tab: Vendas ─────────────────────────────────────────────────────
 
+/**
+ * Botões de export (CSV/Excel/PDF) reutilizáveis pra cada tab.
+ * Recebe rows + columns + título — gera arquivo pronto pra download.
+ */
+function ExportActions<T>({
+  filename,
+  titulo,
+  rows,
+  columns,
+  disabled,
+}: {
+  filename: string;
+  titulo: string;
+  rows: T[];
+  columns: CsvColumn<T>[];
+  disabled?: boolean;
+}) {
+  const toast = useToast();
+  const [busy, setBusy] = useState<'csv' | 'xlsx' | 'pdf' | null>(null);
+
+  async function doCsv() {
+    setBusy('csv');
+    try {
+      const csv = toCsv(rows, columns);
+      downloadCsv(`${filename}.csv`, csv);
+      toast.success(`${rows.length} linhas exportadas (CSV)`);
+    } catch (err) {
+      toast.error('Falha ao exportar CSV', err instanceof Error ? err.message : undefined);
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  async function doXlsx() {
+    setBusy('xlsx');
+    try {
+      await rowsToXlsx({ rows, filename: `${filename}.xlsx`, columns, sheetName: titulo });
+      toast.success(`${rows.length} linhas exportadas (Excel)`);
+    } catch (err) {
+      toast.error('Falha ao exportar Excel', err instanceof Error ? err.message : undefined);
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  async function doPdf() {
+    setBusy('pdf');
+    try {
+      const headers = columns.map((c) => c.header);
+      const tabela = {
+        cabecalho: headers,
+        linhas: rows.map((r) => columns.map((c) => c.value(r) ?? '')),
+      };
+      await gerarPdf({
+        filename: `${filename}.pdf`,
+        titulo,
+        subtitulo: `Gerado em ${new Date().toLocaleString('pt-BR')}`,
+        secoes: [{ tabela }],
+        orientacao: 'landscape',
+      });
+      toast.success(`${rows.length} linhas exportadas (PDF)`);
+    } catch (err) {
+      toast.error('Falha ao exportar PDF', err instanceof Error ? err.message : undefined);
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  const btn: React.CSSProperties = {
+    ...btnSecondary,
+    padding: '0.25rem 0.625rem',
+    fontSize: 12,
+    opacity: disabled || busy !== null ? 0.6 : 1,
+  };
+
+  return (
+    <div style={{ display: 'flex', gap: '0.375rem', alignItems: 'center' }}>
+      <span style={{ fontSize: 11, color: colors.muted }}>Exportar:</span>
+      <button
+        type="button"
+        disabled={disabled || busy !== null}
+        onClick={doCsv}
+        style={btn}
+        data-testid="export-csv"
+      >
+        {busy === 'csv' ? '…' : 'CSV'}
+      </button>
+      <button
+        type="button"
+        disabled={disabled || busy !== null}
+        onClick={doXlsx}
+        style={btn}
+        data-testid="export-xlsx"
+      >
+        {busy === 'xlsx' ? '…' : 'Excel'}
+      </button>
+      <button
+        type="button"
+        disabled={disabled || busy !== null}
+        onClick={doPdf}
+        style={btn}
+        data-testid="export-pdf"
+      >
+        {busy === 'pdf' ? '…' : 'PDF'}
+      </button>
+    </div>
+  );
+}
+
 function VendasTab({ qs }: { qs: string }) {
   const { data, loading, error, refetch } = useApiQuery<VendasResp>(`/relatorios/vendas${qs}`);
 
@@ -378,6 +491,20 @@ function VendasTab({ qs }: { qs: string }) {
     <StateView loading={loading} error={error} onRetry={refetch}>
       {data && (
         <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+          {/* Export actions */}
+          <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
+            <ExportActions
+              filename={`vendas-${new Date().toISOString().slice(0, 10)}`}
+              titulo="Relatório de Vendas"
+              rows={data.porRep}
+              columns={[
+                { header: 'Representante', value: (r) => r.repNome },
+                { header: 'Pedidos', value: (r) => r.pedidos },
+                { header: 'Total (R$)', value: (r) => r.total.toFixed(2).replace('.', ',') },
+              ]}
+              disabled={data.porRep.length === 0}
+            />
+          </div>
           <div
             style={{
               display: 'grid',
@@ -553,6 +680,20 @@ function ComissoesTab({ qs }: { qs: string }) {
     <StateView loading={loading} error={error} onRetry={refetch}>
       {data && (
         <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+          <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
+            <ExportActions
+              filename={`comissoes-${new Date().toISOString().slice(0, 10)}`}
+              titulo="Relatório de Comissões"
+              rows={data.porRep}
+              columns={[
+                { header: 'Representante', value: (r) => r.repNome },
+                { header: 'Tipo', value: (r) => r.tipo },
+                { header: 'Valor (R$)', value: (r) => r.valor.toFixed(2).replace('.', ',') },
+                { header: 'Status', value: (r) => (r.pago ? 'Pago' : 'A pagar') },
+              ]}
+              disabled={data.porRep.length === 0}
+            />
+          </div>
           <div
             style={{
               display: 'grid',
@@ -615,8 +756,26 @@ function SacTab({ qs }: { qs: string }) {
         const tmr = data.tmrHoras ?? data.tempoMedioResolucaoHoras;
         const porSeveridade = data.porSeveridade ?? [];
         const porTipo = data.porTipo ?? [];
+        // Junta severidade + tipo em uma única tabela pra export
+        const rowsExport = [
+          ...porSeveridade.map((s) => ({ grupo: 'Severidade', label: s.severidade, count: s.count })),
+          ...porTipo.map((t) => ({ grupo: 'Tipo', label: t.tipo, count: t.count })),
+        ];
         return (
         <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+          <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
+            <ExportActions
+              filename={`sac-${new Date().toISOString().slice(0, 10)}`}
+              titulo="Relatório SAC"
+              rows={rowsExport}
+              columns={[
+                { header: 'Grupo', value: (r) => r.grupo },
+                { header: 'Categoria', value: (r) => r.label },
+                { header: 'Quantidade', value: (r) => r.count },
+              ]}
+              disabled={rowsExport.length === 0}
+            />
+          </div>
           <div
             style={{
               display: 'grid',
