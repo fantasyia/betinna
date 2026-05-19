@@ -3,13 +3,16 @@ import { Link } from 'react-router-dom';
 import { api, ApiError } from '@/lib/api';
 import { useApiQuery, type PaginatedResponse } from '@/hooks/useApiQuery';
 import { useRole } from '@/hooks/usePermission';
+import { useEmpresaLogo } from '@/hooks/useEmpresaLogo';
 import { PageLayout } from '@/components/PageLayout';
 import { Table, Pagination, type Column } from '@/components/Table';
 import { StateView } from '@/components/StateView';
 import { FilterBar, SearchInput } from '@/components/FilterBar';
 import { Modal } from '@/components/Modal';
 import { FormField, Input, Select } from '@/components/FormField';
+import { LogoUploader } from '@/components/LogoUploader';
 import { useToast } from '@/components/toast';
+import { currentEmpresaId } from '@/lib/auth-store';
 import { maskCNPJ, normalizeUF } from '@/lib/masks';
 import { badge, btn, btnDanger, btnSecondary, card, colors } from '@/components/styles';
 
@@ -215,7 +218,9 @@ export default function ConfiguracoesPage() {
       )}
       {tab === 'avancado' && <AvancadoTab />}
       {tab === 'empresas' && (
-        <div style={card}>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+          <LogoSection canEdit={podeEditarEmpresa} />
+          <div style={card}>
         <FilterBar>
           <SearchInput
             value={search}
@@ -253,6 +258,7 @@ export default function ConfiguracoesPage() {
             </>
           )}
         </StateView>
+      </div>
       </div>
       )}
 
@@ -520,6 +526,42 @@ function AvancadoTab() {
           </Link>
         ))}
       </div>
+    </div>
+  );
+}
+
+// ─── Logo da empresa (v1.5.0) ──────────────────────────────────────────
+
+function LogoSection({ canEdit }: { canEdit: boolean }) {
+  const empresaId = currentEmpresaId();
+  const { logoUrl, reload, loading } = useEmpresaLogo(empresaId);
+
+  if (!empresaId) return null;
+
+  return (
+    <div style={{ ...card, padding: '1.25rem' }} data-testid="logo-section">
+      <div style={{ marginBottom: '0.75rem' }}>
+        <div style={{ fontSize: 14, fontWeight: 700, color: BRAND.navy }}>
+          🖼️ Logo da empresa
+        </div>
+        <div style={{ fontSize: 12, color: colors.muted, marginTop: 2 }}>
+          Aparece no header e na sidebar de todos os usuários. Fallback para o logo
+          Betinna quando ausente.
+        </div>
+      </div>
+      {!canEdit ? (
+        <div style={{ fontSize: 12, color: colors.muted, fontStyle: 'italic' }}>
+          Apenas ADMIN ou DIRECTOR pode trocar o logo.
+        </div>
+      ) : loading ? (
+        <div style={{ fontSize: 12, color: colors.muted }}>Carregando…</div>
+      ) : (
+        <LogoUploader
+          empresaId={empresaId}
+          currentLogoUrl={logoUrl}
+          onUploaded={reload}
+        />
+      )}
     </div>
   );
 }

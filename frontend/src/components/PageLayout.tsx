@@ -43,6 +43,7 @@ import {
   type LucideIcon,
 } from 'lucide-react';
 import { useRole, usePermission } from '@/hooks/usePermission';
+import { useEmpresaLogo } from '@/hooks/useEmpresaLogo';
 import { NotificationBell } from '@/components/NotificationBell';
 import { Avatar } from '@/components/ui';
 import { useTheme } from '@/hooks/useTheme';
@@ -170,6 +171,49 @@ const ROLE_LABEL: Record<string, string> = {
   REP: 'Representante',
 };
 
+// ─── Sidebar logo (com fallback do logo da empresa) ─────────────────────
+
+function SidebarLogo({ role }: { role: string | null }) {
+  const { logoUrl } = useEmpresaLogo();
+  return (
+    <div className="flex items-center justify-between gap-2 px-3.5 py-3 border-b border-border">
+      <div className="flex items-center gap-2 min-w-0">
+        {logoUrl ? (
+          <img
+            src={logoUrl}
+            alt="Logo da empresa"
+            className="h-8 w-8 shrink-0 object-contain rounded-[4px]"
+            draggable={false}
+            onError={(e) => {
+              // Fallback se logo falhar — esconde img, mostra Betinna
+              (e.currentTarget as HTMLImageElement).style.display = 'none';
+            }}
+          />
+        ) : (
+          <img
+            src="/betinna-symbol.svg"
+            alt="Betinna.ai"
+            className="h-8 w-8 shrink-0"
+            draggable={false}
+          />
+        )}
+        <div className="flex flex-col min-w-0">
+          <strong
+            className="text-base font-extrabold leading-tight tracking-tight text-text"
+            style={{ fontFamily: 'var(--font-display)' }}
+          >
+            Betinna<span className="text-magenta">.ai</span>
+          </strong>
+          <span className="text-[10px] text-muted leading-tight uppercase tracking-wider">
+            {role ? ROLE_LABEL[role] ?? role : 'Sem sessão'}
+          </span>
+        </div>
+      </div>
+      <ThemeToggle />
+    </div>
+  );
+}
+
 // ─── Sidebar nav item ────────────────────────────────────────────────
 
 function SidebarNavItem({ item, active }: { item: NavItem; active: boolean }) {
@@ -260,29 +304,8 @@ function Sidebar({
         if (isMobile && (e.target as HTMLElement).closest('a')) onClose();
       }}
     >
-      {/* Logo oficial + dark mode toggle */}
-      <div className="flex items-center justify-between gap-2 px-3.5 py-3 border-b border-border">
-        <div className="flex items-center gap-2 min-w-0">
-          <img
-            src="/betinna-symbol.svg"
-            alt="Betinna.ai"
-            className="h-8 w-8 shrink-0"
-            draggable={false}
-          />
-          <div className="flex flex-col min-w-0">
-            <strong
-              className="text-base font-extrabold leading-tight tracking-tight text-text"
-              style={{ fontFamily: 'var(--font-display)' }}
-            >
-              Betinna<span className="text-magenta">.ai</span>
-            </strong>
-            <span className="text-[10px] text-muted leading-tight uppercase tracking-wider">
-              {role ? ROLE_LABEL[role] ?? role : 'Sem sessão'}
-            </span>
-          </div>
-        </div>
-        <ThemeToggle />
-      </div>
+      {/* Logo oficial (ou logo da empresa quando configurado) + dark mode toggle */}
+      <SidebarLogo role={role} />
 
       {/* Quick search (placeholder pra futuro cmdk) */}
       <div className="px-3 py-2.5 border-b border-border">
