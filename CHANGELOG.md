@@ -7,6 +7,71 @@ versionamento segue [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ---
 
+## [1.4.0] — 2026-05-19
+
+Fechamento final da **SESSÃO MASTER 2** — entrega das últimas 2 frentes
+pendentes (AgendaPage drag + E2E coverage) e validação de que FluxoEditor
+(Parte 3) e FormularioBuilder (Parte 2) já estavam **implementados em
+sessões pré-Master 2** (descoberto durante audit, não precisaram refazer).
+
+### ✨ Features
+
+#### Frontend
+- **AgendaPage — drag & drop entre dias** — usa `@dnd-kit/core` (já no
+  projeto, sem dep nova):
+  - `DndContext` envolve o grid de 7 colunas
+  - `PointerSensor` com `activationConstraint distance:8` — click curto
+    abre modal de edição, drag-longo (>8px) move o compromisso
+  - `DayColumn` (novo) com `useDroppable`, id = data ISO do dia
+  - `DraggableItem` (novo) com `useDraggable`, mantém click=editar
+  - Visual feedback no drop target (background navy + border) e no item
+    sendo arrastado (opacity 0.5 + zIndex 100)
+  - `handleDragEnd` recalcula nova data preservando hora, faz
+    `PATCH /agenda/:id`, toast de feedback, refetch
+  - No-op se largado no mesmo dia (evita request desnecessário)
+  - Sem recorrência (defer — exige schema change `AgendaItem.recorrencia`)
+
+### 🧪 Tests
+- **5 specs E2E novos no Playwright** — 25 testes cobrindo features das
+  releases v1.1.1 → v1.3.0:
+  - `login-redesign.spec.ts` (6) — brandbook colors + fluxo login funcional
+  - `seed-demo.spec.ts` (4) — popular/limpar dataset + RBAC
+  - `audit-log.spec.ts` (5) — filtros + dropdown recurso + refresh
+  - `configuracoes-tabs.spec.ts` (5) — troca de aba + ARIA + conteúdo
+  - `mullerbot-session.spec.ts` (5) — sessionId localStorage + persist reload
+- Total: **13 spec files → 18** (+ 25 testes novos)
+
+### 🔍 Validações da auditoria
+
+Durante o trabalho desta sessão, foi confirmado por inspeção de código
+que as seguintes frentes do prompt original **já estavam entregues** em
+commits pré-Master 2 (não catalogadas no `MASTER_2_PROMPT_ORIGINAL.md`):
+
+- **FluxoEditor** (Parte 3) — 890 LOC em `src/pages/FluxoEditor.tsx` com
+  `@xyflow/react`, 3 colunas (palette + canvas + inspector), drag da
+  paleta, save via `PUT /fluxos/:id`. Integrado via `FluxosPage` em modo
+  fullscreen modal.
+- **FluxoTemplatesPage** — 626 LOC, biblioteca de templates pré-prontos.
+- **FormularioBuilder** (Parte 2) — `src/pages/FormularioBuilder.tsx`,
+  paleta de tipos de campo (8 tipos), editor de campos editáveis, preview
+  público, save via `PUT /formularios/:id`. Integrado via `FormulariosPage`.
+- Ambos com Markdown rendering, validação de slug, auto-naming.
+
+Decisão: **não duplicar trabalho**. As partes 2.FormularioBuilder e 3.
+FluxoEditor são marcadas como ✅ já existente no relatório final
+(`SESSAO_MASTER_2_FINAL_2026-05-19.md`).
+
+### 📦 Versão
+- `backend/package.json` e `frontend/package.json`: `1.3.0` → `1.4.0`
+  (minor — feature additive: drag + E2E coverage).
+
+### ⏭️ Único item explicitamente diferido
+- **AgendaPage recorrência** (RRULE/DAILY/WEEKLY/MONTHLY) — exige
+  schema change (`AgendaItem.recorrencia` enum + handler backend), fora
+  do escopo de patch UI.
+
+---
+
 ## [1.3.0] — 2026-05-19
 
 Sprint de continuação da Master 2 — entrega de **3 das 5 páginas da Parte 2**

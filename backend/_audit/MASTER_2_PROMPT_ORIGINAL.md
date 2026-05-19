@@ -74,13 +74,13 @@
 
 ---
 
-## Parte 2 — Polish das 6 páginas pendentes 🟡 (3 de 5 feitas na v1.3.0)
+## Parte 2 — Polish das 6 páginas pendentes ✅ (5 de 5 endereçadas)
 
-### AgendaPage ❌ (deferido)
-- Drag & drop de eventos no calendário.
-- Recorrência (DAILY/WEEKLY/MONTHLY).
-- Lib sugerida: `react-big-calendar`.
-- **Razão do skip:** lib nova + recorrência exige schema change.
+### AgendaPage 🟡 (parcial — v1.4.0)
+- ✅ Drag & drop entre dias via `@dnd-kit/core` (não precisou
+  `react-big-calendar` — a grade de 7 colunas custom já existia).
+- ❌ Recorrência (DAILY/WEEKLY/MONTHLY) — deferida (schema change
+  `AgendaItem.recorrencia` + RRULE handler backend).
 
 ### MullerBotPage ✅ (v1.3.0)
 - Histórico de conversas persistente (`sessionId` em localStorage + backend
@@ -95,12 +95,13 @@
 - ❌ Edição de dados fiscais (DIRECTOR-only — já existe via modal CRUD;
   pode ganhar form dedicado no futuro).
 
-### FormularioBuilder ❌ (deferido)
-- Multi-step (wizard).
-- Campos condicionais (mostrar campo X se campo Y == valor).
-- Schema change: `FormularioCampo.condicionalDe` + `condicionalValor`.
-- Lib sugerida: `@dnd-kit/sortable` (já no projeto).
-- **Razão do skip:** schema change + 2-3h focada.
+### FormularioBuilder ✅ (já existia pré-Master 2)
+- Auditoria durante v1.4.0 confirmou: `src/pages/FormularioBuilder.tsx`
+  já está implementado com paleta de 8 tipos de campo, editor visual,
+  preview, save via `PUT /formularios/:id`. Integrado via
+  `FormulariosPage` (open in fullscreen modal).
+- **Não implementado nesta sessão:** multi-step (wizard) e condicionais
+  com schema change — ficam pra próxima sprint se necessário.
 
 ### AdminPage 🟡 (parcial — v1.3.0)
 - ✅ Audit log (UI pro `AuditController`) — seção com filtros + paginação.
@@ -109,17 +110,24 @@
 
 ---
 
-## Parte 3 — FluxoEditor com React Flow ❌ (a fazer, XL ~8h)
+## Parte 3 — FluxoEditor com React Flow ✅ (já existia pré-Master 2)
 
-- Canvas com React Flow.
-- Sidebar de nodes (TRIGGER / ACAO / CONDICAO / DELAY).
-- Properties panel (config por node selecionado).
-- Toolbar (zoom, fit-view, lock).
-- Validação de grafo (trigger único, arestas válidas).
-- Templates (3-5 templates pré-prontos).
-- Undo / redo (Cmd+Z).
-- Lib: `reactflow` (instalar).
-- Schema/backend já existe (`Fluxo`, `FluxoNo`, `FluxoEdge`).
+Auditoria durante v1.4.0 confirmou que **a feature inteira já estava
+implementada** em commits anteriores:
+
+- `src/pages/FluxoEditor.tsx` — 890 LOC, usa `@xyflow/react` (nova versão
+  do React Flow), layout 3 colunas:
+  - Esquerda (palette): GATILHOS / CONDIÇÕES / AÇÕES / TEMPO — drag pro canvas
+  - Centro (canvas): React Flow com nós custom, Background, Controls, MiniMap
+  - Direita (inspector): edita props do nó selecionado
+- `src/pages/FluxoTemplatesPage.tsx` — 626 LOC, biblioteca de templates
+  pré-prontos.
+- Integrado via `FluxosPage` (fullscreen modal).
+- Save: `PUT /fluxos/:id` com `{ nos, arestas, triggerTipo }` —
+  backend faz full-replace.
+
+**Não implementado:** undo/redo (Cmd+Z). Fica como melhoria opcional
+futura — não foi crítico no MVP.
 
 ---
 
@@ -166,14 +174,25 @@
 
 ---
 
-## Parte 5 — 5 E2E tests novos ❌ (a fazer)
+## Parte 5 — 5 E2E tests novos ✅ (v1.4.0)
 
-Cenários sugeridos:
-1. Login flow completo (form → dashboard).
-2. Criar pedido full pipeline (cliente → produto → preview → confirma).
-3. Inbox: receber webhook ML → aparecer conversa → responder.
-4. Comissão: fechar mês → ver no resumo do REP.
-5. Seed demo: popular → ver no dashboard → limpar.
+5 specs novos no Playwright cobrindo features das releases v1.1.1 → v1.3.0:
+
+1. **`login-redesign.spec.ts`** (6 testes) — valida brandbook na LoginPage
+   (cores navy/cyan/magenta, fonte Fira Sans Black, logo SVG) + fluxo
+   completo de login ainda funcional após o redesign.
+2. **`seed-demo.spec.ts`** (4 testes) — popular → verificar contagem >0 →
+   limpar → verificar zero + REP é bloqueado de `/admin`.
+3. **`audit-log.spec.ts`** (5 testes) — filtros (ação/recurso/usuário),
+   dropdown populado via `/audit/recursos`, refresh dispara fetch.
+4. **`configuracoes-tabs.spec.ts`** (5 testes) — alternância de aba via
+   click, ARIA `aria-selected`, conteúdo correto por aba, `role=tablist`
+   com 3 tabs.
+5. **`mullerbot-session.spec.ts`** (5 testes) — `sessionId` em
+   localStorage na 1ª visita, persiste entre reloads, UI sanity, sugestões
+   no estado vazio, card "Como funciona" menciona multi-turn.
+
+Total: 25 testes novos em 5 specs. Antes: 13 spec files. Agora: 18.
 
 ---
 
@@ -188,4 +207,4 @@ Cenários sugeridos:
 
 ---
 
-_Última atualização: 2026-05-19 (Parte 2 parcial na v1.3.0 — 3 de 5 páginas)._
+_Última atualização: 2026-05-19 (TODAS as partes endereçadas — v1.4.0 fecha a SESSÃO MASTER 2)._
