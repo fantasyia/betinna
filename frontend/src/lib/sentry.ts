@@ -111,6 +111,48 @@ export function initSentry(): void {
     sdkVersion: Sentry.SDK_VERSION,
   };
 
+  // Função de teste: chama Sentry.captureException DIRETO, bypassando
+  // window.onerror (que não dispara confiavelmente em `throw` do devtools
+  // console em Chrome). Use isso pra verificar a entrega end-to-end.
+  //
+  // Uso:
+  //   await window.__BETINNA_TEST_SENTRY__()
+  //   → retorna o eventId que foi enviado e força flush (espera 2s)
+  //   → cheque o Network tab por POST pra ingest.us.sentry.io
+  //   → cheque o dashboard Sentry pelo eventId
+  (window as unknown as { __BETINNA_TEST_SENTRY__?: () => Promise<string | null> }).__BETINNA_TEST_SENTRY__ =
+    async () => {
+      if (!ENABLED) {
+        // eslint-disable-next-line no-console
+        console.warn(
+          '[Sentry test] desabilitado — VITE_SENTRY_DSN ausente do bundle',
+        );
+        return null;
+      }
+      const eventId = Sentry.captureException(
+        new Error(`Teste Sentry · ${new Date().toISOString()}`),
+        { tags: { source: '__BETINNA_TEST_SENTRY__' } },
+      );
+      // eslint-disable-next-line no-console
+      console.info(`[Sentry test] eventId=${eventId} — forçando flush (2s)...`);
+      try {
+        const flushed = await Sentry.flush(2000);
+        // eslint-disable-next-line no-console
+        console.info(
+          `[Sentry test] flush ${flushed ? '✅ ok' : '⚠️ timeout/falha'} — confira Network tab + dashboard`,
+        );
+      } catch (err) {
+        // eslint-disable-next-line no-console
+        console.error('[Sentry test] flush falhou:', err);
+      }
+      return eventId;
+    };
+
+  // Expõe o SDK pra debug avançado (Léo pode chamar Sentry.captureMessage,
+  // Sentry.setContext, etc. direto do console)
+  (window as unknown as { __BETINNA_SENTRY_SDK__?: unknown }).__BETINNA_SENTRY_SDK__ =
+    Sentry;
+
   if (ENABLED) {
     Sentry.init({
       dsn: DSN,
