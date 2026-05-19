@@ -14,10 +14,13 @@ import {
   AlertCircle,
   BarChart3,
   ArrowLeft,
+  Download,
+  Filter,
 } from 'lucide-react';
 import { api, ApiError } from '@/lib/api';
 import { useApiQuery } from '@/hooks/useApiQuery';
 import { useToast } from '@/components/toast';
+import { toCsv, downloadCsv } from '@/lib/csv';
 import { PageLayout } from '@/components/PageLayout';
 import { StateView } from '@/components/StateView';
 import {
@@ -32,6 +35,7 @@ import {
   Field,
   IconButton,
   Input,
+  Select,
   Stat,
   Switch,
   Textarea,
@@ -438,7 +442,34 @@ function PesquisaFormDialog({
 // ─── Dashboard ────────────────────────────────────────────
 
 function NpsDashboard({ id, onClose }: { id: string; onClose: () => void }) {
+  const toast = useToast();
   const { data, loading, error } = useApiQuery<NPSDashboard>(`/nps/${id}/dashboard`);
+  const [filtroCategoria, setFiltroCategoria] = useState<
+    '' | 'PROMOTOR' | 'PASSIVO' | 'DETRATOR'
+  >('');
+  const [filtroComentario, setFiltroComentario] = useState<'' | 'com' | 'sem'>('');
+
+  // Aplica filtros client-side nas respostas (já vêm carregadas do dashboard)
+  const respostasFiltradas = data?.respostas.filter((r) => {
+    if (filtroCategoria && r.categoria !== filtroCategoria) return false;
+    if (filtroComentario === 'com' && !r.comentario?.trim()) return false;
+    if (filtroComentario === 'sem' && r.comentario?.trim()) return false;
+    return true;
+  }) ?? [];
+
+  function exportarCsv() {
+    if (!data || respostasFiltradas.length === 0) return;
+    const csv = toCsv(respostasFiltradas, [
+      { header: 'Nota', value: (r) => r.nota },
+      { header: 'Categoria', value: (r) => r.categoria },
+      { header: 'Comentário', value: (r) => r.comentario ?? '' },
+      { header: 'Contato', value: (r) => r.contato ?? '' },
+      { header: 'Data', value: (r) => fmtDateTime(r.criadoEm) },
+    ]);
+    const slug = data.pesquisa.slug || 'pesquisa';
+    downloadCsv(`nps-${slug}-${new Date().toISOString().slice(0, 10)}.csv`, csv);
+    toast.success(`${respostasFiltradas.length} respostas exportadas`);
+  }
 
   return (
     <PageLayout
@@ -540,17 +571,64 @@ function NpsDashboard({ id, onClose }: { id: string; onClose: () => void }) {
               <NotaDistribuicao distribuicao={data.distribuicao} total={data.stats.total} />
             </Card>
 
-            {/* Respostas recentes */}
+            {/* Respostas com filtros + export */}
             <Card padding="md">
-              <CardHeader>
-                <CardTitle>Últimas respostas</CardTitle>
-                <CardDescription>{data.respostas.length} mais recentes</CardDescription>
+              <CardHeader className="flex flex-row items-center justify-between gap-3 flex-wrap">
+                <div>
+                  <CardTitle>Respostas</CardTitle>
+                  <CardDescription>
+                    {respostasFiltradas.length} de {data.respostas.length}{' '}
+                    {data.respostas.length === 1 ? 'resposta' : 'respostas'}
+                  </CardDescription>
+                </div>
+                <div className="flex items-center gap-2 flex-wrap">
+                  <Filter className="h-3.5 w-3.5 text-muted" aria-hidden />
+                  <Select
+                    data-testid="nps-filtro-categoria"
+                    value={filtroCategoria}
+                    onChange={(e) =>
+                      setFiltroCategoria(e.target.value as typeof filtroCategoria)
+                    }
+                    className="!w-auto"
+                  >
+                    <option value="">Todas categorias</option>
+                    <option value="PROMOTOR">Promotores (9-10)</option>
+                    <option value="PASSIVO">Passivos (7-8)</option>
+                    <option value="DETRATOR">Detratores (0-6)</option>
+                  </Select>
+                  <Select
+                    data-testid="nps-filtro-comentario"
+                    value={filtroComentario}
+                    onChange={(e) =>
+                      setFiltroComentario(e.target.value as typeof filtroComentario)
+                    }
+                    className="!w-auto"
+                  >
+                    <option value="">Todas</option>
+                    <option value="com">Com comentário</option>
+                    <option value="sem">Sem comentário</option>
+                  </Select>
+                  <Button
+                    variant="secondary"
+                    size="sm"
+                    onClick={exportarCsv}
+                    leftIcon={<Download className="h-3.5 w-3.5" />}
+                    disabled={respostasFiltradas.length === 0}
+                    data-testid="nps-export-csv"
+                  >
+                    Exportar CSV
+                  </Button>
+                </div>
               </CardHeader>
-              {data.respostas.length === 0 ? (
-                <p className="text-sm text-muted text-center py-4">Sem respostas ainda.</p>
+              {respostasFiltradas.length === 0 ? (
+                <p className="text-sm text-muted text-center py-4">
+                  {data.respostas.length === 0
+                    ? 'Sem respostas ainda. Compartilhe o link público pra começar a coletar.'
+                    : 'Nenhuma resposta bate com os filtros.'}
+                </p>
               ) : (
                 <div className="flex flex-col divide-y divide-border">
-                  {data.respostas.map((r) => (
+                  {respostasFiltradas.map((r) => (
                     <RespostaRow key={r.id} resposta={r} />
                   ))}
                 </div>
