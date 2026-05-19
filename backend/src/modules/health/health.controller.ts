@@ -203,6 +203,26 @@ export class HealthController {
     }
   }
 
+  /**
+   * Endpoint de teste manual do Sentry — ADMIN-only.
+   *
+   * Lança uma exceção crua que deve ser capturada pelo Sentry via
+   * AllExceptionsFilter (5xx). Use pra validar que a captura backend está
+   * funcionando end-to-end:
+   *
+   *   curl -X GET https://<host>/api/v1/health/__sentry_test \
+   *     -H "Authorization: Bearer <admin-token>"
+   *
+   * Resposta esperada: 500 do AllExceptionsFilter + evento aparecendo no
+   * dashboard Sentry com tag `path=/health/__sentry_test`.
+   */
+  @Roles('ADMIN')
+  @Get('__sentry_test')
+  @ApiOperation({ summary: 'Force throw para testar Sentry (ADMIN only)' })
+  async sentryTest(): Promise<never> {
+    throw new Error(`Sentry test from backend — ${new Date().toISOString()}`);
+  }
+
   private async checkBullMq(): Promise<DependencyCheck & { queues?: Record<string, number> }> {
     const started = Date.now();
     try {
