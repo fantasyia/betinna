@@ -249,6 +249,7 @@ model Empresa {
   subtitulo   String?
   plano       String   @default("Pro")
   ativo       Boolean  @default(true)
+  logoUrl     String?  // Path do logo no Supabase Storage (bucket empresa-logos)
   criadoEm    DateTime @default(now())
   atualizadoEm DateTime @updatedAt
 
