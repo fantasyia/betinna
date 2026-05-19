@@ -86,6 +86,31 @@ export function captureError(err: unknown, extra?: Record<string, unknown>): voi
 export function initSentry(): void {
   if (typeof window === 'undefined') return;
 
+  // Diagnóstico: expõe o estado da inicialização no `window` pra que Léo
+  // consiga validar no console do navegador sem precisar abrir Network tab.
+  //
+  // Uso no console:
+  //   window.__BETINNA_SENTRY__   →  { enabled, env, dsnPresent, dsnHost }
+  //
+  // Por que precisamos: `@sentry/react` v8+ NÃO expõe `window.Sentry` (é puro
+  // ES module). O teste `typeof window.Sentry === 'undefined'` que funcionava
+  // nos SDKs antigos via <script> tag não vale mais. Esse `__BETINNA_SENTRY__`
+  // dá o sinal explícito.
+  const dsnHost = DSN ? (() => {
+    try {
+      return new URL(DSN).host;
+    } catch {
+      return 'invalid-url';
+    }
+  })() : null;
+  (window as unknown as { __BETINNA_SENTRY__?: unknown }).__BETINNA_SENTRY__ = {
+    enabled: ENABLED,
+    env: ENV,
+    dsnPresent: ENABLED,
+    dsnHost,
+    sdkVersion: Sentry.SDK_VERSION,
+  };
+
   if (ENABLED) {
     Sentry.init({
       dsn: DSN,
@@ -132,8 +157,24 @@ export function initSentry(): void {
         return event;
       },
     });
-     
-    console.info(`[Sentry] inicializado env=${ENV}`);
+
+    // eslint-disable-next-line no-console
+    console.info(
+      `[Sentry] ✅ inicializado · env=${ENV} · sdk=${Sentry.SDK_VERSION} · host=${dsnHost}`,
+    );
+  } else {
+    // DSN ausente — log explícito pra evitar silêncio em produção.
+    // Causa MAIS COMUM: `VITE_SENTRY_DSN` não estava setada no Railway
+    // quando o serviço frontend foi BUILDADO. Vite congela env vars no
+    // bundle em build-time, não em runtime — setar a var depois do build
+    // não tem efeito até o próximo redeploy.
+    // eslint-disable-next-line no-console
+    console.warn(
+      '[Sentry] ⚠️ desabilitado · VITE_SENTRY_DSN não está no bundle. ' +
+        'Se a env var existe no Railway, é provável que tenha sido setada APÓS o ' +
+        'último build do serviço frontend. Faça um redeploy pra rebuildar com a ' +
+        'nova env. Vite injeta env vars em build-time, não runtime.',
+    );
   }
 
   // Fallback handlers: capturam mesmo se DSN não configurado (cai pro log)
