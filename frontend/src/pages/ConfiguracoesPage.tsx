@@ -1,4 +1,5 @@
 import { useMemo, useState } from 'react';
+import { Link } from 'react-router-dom';
 import { api, ApiError } from '@/lib/api';
 import { useApiQuery, type PaginatedResponse } from '@/hooks/useApiQuery';
 import { useRole } from '@/hooks/usePermission';
@@ -11,6 +12,15 @@ import { FormField, Input, Select } from '@/components/FormField';
 import { useToast } from '@/components/toast';
 import { maskCNPJ, normalizeUF } from '@/lib/masks';
 import { badge, btn, btnDanger, btnSecondary, card, colors } from '@/components/styles';
+
+// Cores oficiais brandbook usadas no tabs strip
+const BRAND = {
+  navy: '#201554',
+  cyan: '#2bcae5',
+  magenta: '#bd1fbf',
+} as const;
+
+type Tab = 'empresas' | 'plano' | 'avancado';
 
 type Plano = 'Free' | 'Pro' | 'Enterprise';
 
@@ -52,6 +62,7 @@ export default function ConfiguracoesPage() {
   const podeCriarEmpresa = role === 'ADMIN';
   const podeEditarEmpresa = role === 'ADMIN' || role === 'DIRECTOR';
 
+  const [tab, setTab] = useState<Tab>('empresas');
   const [page, setPage] = useState(1);
   const [search, setSearch] = useState('');
   const [ativo, setAtivo] = useState('');
@@ -169,9 +180,9 @@ export default function ConfiguracoesPage() {
 
   return (
     <PageLayout
-      title="Configurações — Empresas"
+      title="Configurações"
       actions={
-        podeCriarEmpresa ? (
+        podeCriarEmpresa && tab === 'empresas' ? (
           <button
             type="button"
             data-testid="emp-new"
@@ -183,7 +194,28 @@ export default function ConfiguracoesPage() {
         ) : undefined
       }
     >
-      <div style={card}>
+      {/* Tabs strip — brandbook colors */}
+      <div
+        role="tablist"
+        aria-label="Seções de configuração"
+        style={{
+          display: 'flex',
+          gap: '0.25rem',
+          borderBottom: `1px solid ${colors.border}`,
+          marginBottom: '1rem',
+        }}
+      >
+        <TabButton id="empresas" current={tab} onClick={setTab} label="🏢 Empresas" />
+        <TabButton id="plano" current={tab} onClick={setTab} label="💎 Plano" />
+        <TabButton id="avancado" current={tab} onClick={setTab} label="⚙️ Avançado" />
+      </div>
+
+      {tab === 'plano' && (
+        <PlanoTab empresas={pageResp?.data ?? []} loading={loading} error={error} />
+      )}
+      {tab === 'avancado' && <AvancadoTab />}
+      {tab === 'empresas' && (
+        <div style={card}>
         <FilterBar>
           <SearchInput
             value={search}
@@ -222,6 +254,7 @@ export default function ConfiguracoesPage() {
           )}
         </StateView>
       </div>
+      )}
 
       {(creating || editing) && (
         <EmpresaFormModal
@@ -238,6 +271,256 @@ export default function ConfiguracoesPage() {
         />
       )}
     </PageLayout>
+  );
+}
+
+// ─── Tab nav + alternative tab content ───────────────────────────────
+
+function TabButton({
+  id,
+  current,
+  onClick,
+  label,
+}: {
+  id: Tab;
+  current: Tab;
+  onClick: (t: Tab) => void;
+  label: string;
+}) {
+  const active = current === id;
+  return (
+    <button
+      role="tab"
+      aria-selected={active}
+      aria-controls={`tab-panel-${id}`}
+      data-testid={`config-tab-${id}`}
+      type="button"
+      onClick={() => onClick(id)}
+      style={{
+        padding: '0.625rem 1rem',
+        fontSize: 13,
+        fontWeight: active ? 700 : 500,
+        background: 'transparent',
+        border: 'none',
+        borderBottom: `2px solid ${active ? BRAND.magenta : 'transparent'}`,
+        color: active ? BRAND.navy : colors.muted,
+        cursor: 'pointer',
+        transition: 'color 120ms, border-color 120ms',
+        marginBottom: -1, // overlap border-bottom do container
+      }}
+    >
+      {label}
+    </button>
+  );
+}
+
+function PlanoTab({
+  empresas,
+  loading,
+  error,
+}: {
+  empresas: Empresa[];
+  loading: boolean;
+  error: string | null;
+}) {
+  const groups = empresas.reduce<Record<Plano, Empresa[]>>(
+    (acc, e) => {
+      acc[e.plano].push(e);
+      return acc;
+    },
+    { Free: [], Pro: [], Enterprise: [] },
+  );
+
+  return (
+    <div style={card} id="tab-panel-plano" role="tabpanel">
+      <h2 style={{ marginTop: 0, fontSize: 16, color: BRAND.navy }}>
+        💎 Distribuição de planos
+      </h2>
+      <p style={{ fontSize: 12, color: colors.muted, marginTop: 0 }}>
+        Resumo dos planos contratados por empresa. Para mudar o plano, use o botão
+        “Editar” na aba Empresas (ADMIN/DIRECTOR only — D46 financial gate).
+      </p>
+
+      <StateView loading={loading} error={error}>
+        <div
+          style={{
+            display: 'grid',
+            gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))',
+            gap: '0.75rem',
+            marginTop: '1rem',
+          }}
+        >
+          {(['Free', 'Pro', 'Enterprise'] as Plano[]).map((p) => (
+            <div
+              key={p}
+              style={{
+                padding: '1rem',
+                background: '#fafbfc',
+                border: `1px solid ${colors.border}`,
+                borderLeft: `3px solid ${PLANO_COLOR[p]}`,
+                borderRadius: 10,
+              }}
+            >
+              <div
+                style={{
+                  fontSize: 11,
+                  color: colors.muted,
+                  textTransform: 'uppercase',
+                  letterSpacing: 0.3,
+                  fontWeight: 600,
+                }}
+              >
+                Plano {p}
+              </div>
+              <div
+                style={{
+                  fontSize: 28,
+                  fontWeight: 800,
+                  fontFamily: 'var(--font-display)',
+                  color: BRAND.navy,
+                  marginTop: 4,
+                }}
+              >
+                {groups[p].length}
+              </div>
+              <div style={{ fontSize: 11, color: colors.muted, marginTop: 4 }}>
+                {groups[p].length === 1 ? 'empresa' : 'empresas'}
+              </div>
+              {groups[p].length > 0 && (
+                <ul
+                  style={{
+                    margin: '0.75rem 0 0',
+                    padding: 0,
+                    listStyle: 'none',
+                    fontSize: 12,
+                    color: colors.text,
+                    maxHeight: 120,
+                    overflowY: 'auto',
+                  }}
+                >
+                  {groups[p].slice(0, 5).map((e) => (
+                    <li
+                      key={e.id}
+                      style={{
+                        padding: '2px 0',
+                        whiteSpace: 'nowrap',
+                        overflow: 'hidden',
+                        textOverflow: 'ellipsis',
+                      }}
+                      title={e.nome}
+                    >
+                      · {e.nome}
+                    </li>
+                  ))}
+                  {groups[p].length > 5 && (
+                    <li style={{ fontSize: 11, color: colors.muted, marginTop: 4 }}>
+                      + {groups[p].length - 5} outras
+                    </li>
+                  )}
+                </ul>
+              )}
+            </div>
+          ))}
+        </div>
+      </StateView>
+    </div>
+  );
+}
+
+function AvancadoTab() {
+  const links: Array<{
+    to: string;
+    emoji: string;
+    title: string;
+    description: string;
+    color: string;
+  }> = [
+    {
+      to: '/integracoes',
+      emoji: '🔌',
+      title: 'Integrações',
+      description: 'OMIE, Meta, ML, Shopee, Amazon, TikTok, WhatsApp',
+      color: BRAND.cyan,
+    },
+    {
+      to: '/permissoes',
+      emoji: '🔐',
+      title: 'Permissões',
+      description: 'Matriz Role × Módulo (ver / editar)',
+      color: BRAND.magenta,
+    },
+    {
+      to: '/usuarios',
+      emoji: '👥',
+      title: 'Usuários',
+      description: 'Convites, papéis, teto de desconto, comissão',
+      color: BRAND.navy,
+    },
+    {
+      to: '/notificacoes',
+      emoji: '🔔',
+      title: 'Notificações',
+      description: 'Histórico de avisos do sistema',
+      color: BRAND.cyan,
+    },
+    {
+      to: '/admin',
+      emoji: '🛡️',
+      title: 'Painel admin',
+      description: 'Status, audit log, dead-letter, seed demo',
+      color: BRAND.magenta,
+    },
+    {
+      to: '/fluxos',
+      emoji: '⚡',
+      title: 'Fluxos de automação',
+      description: 'Triggers e ações via BullMQ',
+      color: BRAND.navy,
+    },
+  ];
+
+  return (
+    <div style={card} id="tab-panel-avancado" role="tabpanel">
+      <h2 style={{ marginTop: 0, fontSize: 16, color: BRAND.navy }}>
+        ⚙️ Áreas administrativas relacionadas
+      </h2>
+      <p style={{ fontSize: 12, color: colors.muted, marginTop: 0 }}>
+        Atalhos rápidos pras outras telas de configuração e administração.
+      </p>
+      <div
+        style={{
+          display: 'grid',
+          gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))',
+          gap: '0.75rem',
+          marginTop: '1rem',
+        }}
+      >
+        {links.map((l) => (
+          <Link
+            key={l.to}
+            to={l.to}
+            data-testid={`config-link-${l.to.replace(/\//g, '')}`}
+            style={{
+              padding: '0.875rem',
+              background: '#fafbfc',
+              border: `1px solid ${colors.border}`,
+              borderLeft: `3px solid ${l.color}`,
+              borderRadius: 10,
+              textDecoration: 'none',
+              color: colors.text,
+              display: 'block',
+              transition: 'border-color 120ms, transform 120ms',
+            }}
+          >
+            <div style={{ fontSize: 20, marginBottom: 4 }}>{l.emoji}</div>
+            <div style={{ fontWeight: 600, fontSize: 14, color: BRAND.navy }}>{l.title}</div>
+            <div style={{ fontSize: 12, color: colors.muted, marginTop: 2, lineHeight: 1.4 }}>
+              {l.description}
+            </div>
+          </Link>
+        ))}
+      </div>
+    </div>
   );
 }
 
