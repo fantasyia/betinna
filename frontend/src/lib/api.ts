@@ -14,12 +14,63 @@
  *
  * Em testes E2E (Playwright), VITE_API_URL aponta pra Railway staging URL.
  */
+import * as Sentry from '@sentry/react';
 import { clearSession, getSession, refreshAccessToken } from './auth-store';
 
 const BASE_URL =
   (import.meta.env.VITE_API_URL as string | undefined) ?? 'http://localhost:3001';
 const API_PREFIX = '/api/v1';
 const TIMEOUT_MS = 10_000;
+
+/**
+ * Adiciona breadcrumb estruturado pro Sentry antes de cada request.
+ * Aparece na timeline do Sentry junto da próxima exceção, dando contexto.
+ * No-op quando Sentry desabilitado (DSN ausente).
+ */
+function addRequestBreadcrumb(method: string, url: string): void {
+  try {
+    Sentry.addBreadcrumb({
+      category: 'http',
+      message: `${method} ${url}`,
+      level: 'info',
+      type: 'http',
+      data: { method, url },
+    });
+  } catch {
+    // Sentry pode não estar inicializado em dev — silencioso
+  }
+}
+
+/**
+ * Reporta erros HTTP no Sentry. Por padrão:
+ *  - 5xx → sempre captura (bug do nosso lado ou integração)
+ *  - 4xx → não captura (client error: validação, perm, etc — esperado)
+ *  - 401/403/404/422 → silencioso (fluxo normal de auth/perm/validação)
+ *  - 408/429 → captura como warning (timeout, rate limit — pode ser nosso problema)
+ */
+function reportApiError(error: ApiError, url: string, method: string): void {
+  try {
+    // 5xx sempre
+    if (error.status >= 500) {
+      Sentry.captureException(error, {
+        tags: { source: 'api-client', method, statusGroup: '5xx' },
+        extra: { url, status: error.status, code: error.code },
+      });
+      return;
+    }
+    // 408 timeout, 429 rate limit — captura como warning
+    if (error.status === 408 || error.status === 429 || error.code === 'TIMEOUT') {
+      Sentry.captureMessage(`API ${error.code}: ${method} ${url}`, {
+        level: 'warning',
+        tags: { source: 'api-client', method, statusGroup: error.status === 429 ? '429' : '408' },
+        extra: { status: error.status, code: error.code, message: error.message },
+      });
+    }
+    // 4xx esperados (auth/perm/validação) — não polui o Sentry
+  } catch {
+    // Sentry pode falhar — não derruba a operação principal
+  }
+}
 
 export class ApiError extends Error {
   constructor(
@@ -49,6 +100,10 @@ async function request<T>(path: string, opts: RequestOpts = {}, retryWithRefresh
     ? path
     : `${BASE_URL}${API_PREFIX}${path.startsWith('/') ? path : `/${path}`}`;
 
+  const method = opts.method ?? 'GET';
+  // Breadcrumb antes da request (Sentry timeline)
+  addRequestBreadcrumb(method, url);
+
   const headers: Record<string, string> = {
     'Content-Type': 'application/json',
   };
@@ -70,7 +125,7 @@ async function request<T>(path: string, opts: RequestOpts = {}, retryWithRefresh
   let response: Response;
   try {
     response = await fetch(url, {
-      method: opts.method ?? 'GET',
+      method,
       headers,
       body: opts.body !== undefined ? JSON.stringify(opts.body) : undefined,
       // credentials: 'include' permite cookie httpOnly do refresh token
@@ -85,13 +140,17 @@ async function request<T>(path: string, opts: RequestOpts = {}, retryWithRefresh
   } catch (err) {
     clearTimeout(timer);
     if (err instanceof DOMException && err.name === 'AbortError') {
-      throw new ApiError(0, 'TIMEOUT', `Requisição excedeu ${TIMEOUT_MS / 1000}s`);
+      const timeoutErr = new ApiError(0, 'TIMEOUT', `Requisição excedeu ${TIMEOUT_MS / 1000}s`);
+      reportApiError(timeoutErr, url, method);
+      throw timeoutErr;
     }
-    throw new ApiError(
+    const networkErr = new ApiError(
       0,
       'NETWORK_ERROR',
       err instanceof Error ? err.message : 'Falha de rede',
     );
+    reportApiError(networkErr, url, method);
+    throw networkErr;
   }
   clearTimeout(timer);
 
@@ -137,12 +196,14 @@ async function request<T>(path: string, opts: RequestOpts = {}, retryWithRefresh
   // 4xx/5xx — extrai mensagem do envelope padrão
   const errBody = await safeJson(response);
   const errObj = (errBody?.error ?? {}) as Record<string, unknown>;
-  throw new ApiError(
+  const apiErr = new ApiError(
     response.status,
     (errObj.code as string) ?? 'UNKNOWN_ERROR',
     (errObj.message as string) ?? `HTTP ${response.status}`,
     errObj.details,
   );
+  reportApiError(apiErr, url, method);
+  throw apiErr;
 }
 
 async function safeJson(res: Response): Promise<Record<string, unknown> | null> {
