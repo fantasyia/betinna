@@ -1,7 +1,7 @@
 {
   "name": "betinna-frontend",
   "private": true,
-  "version": "1.1.1",
+  "version": "1.2.0",
   "type": "module",
   "description": "Betinna.ai · Frontend (Vite + React + TypeScript)",
   "engines": {

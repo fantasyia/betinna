@@ -7,6 +7,65 @@ versionamento segue [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ---
 
+## [1.2.0] — 2026-05-19
+
+Sprint de continuação da Master 2 — entrega da **Parte 4 (Seed Demo)** inteira
+em 4 commits sequenciais (schema → service → endpoints → frontend), feature
+que estava deferida na v1.1.1.
+
+### ✨ Features
+
+#### Backend
+- **Novo módulo `admin`** (`src/modules/admin/`) — guarda-chuva pra ferramentas
+  administrativas cross-tenant. Por enquanto contém só seed-demo, vai crescer.
+- **`SeedDemoService`** — gera dataset realista de ~750 records numa empresa:
+  - 50 clientes (cidades/UFs/regiões variadas, prazos, limites)
+  - 200 produtos (4 linhas: Alimentos / Bebidas / Limpeza / Embalagens)
+  - 300 pedidos espalhados em 3 meses (status variados, itens reais com desconto)
+  - 50 propostas (status RASCUNHO/ENVIADA/NEGOCIACAO/ACEITA/RECUSADA/EXPIRADA)
+  - 30 conversas Inbox (WhatsApp/IG/FB/Email com mensagens realistas)
+  - 1 pesquisa NPS + 100 respostas (DETRATOR/PASSIVO/PROMOTOR distribuídos)
+  - 20 amostras (envio + follow-up de 7 dias)
+  - 3 meses × N reps de comissões fechadas
+  - `multiplier` em [0.1, 5] permite escalar dataset
+- **Endpoints `/admin/seed-demo`** (gate `@Roles('ADMIN', 'DIRECTOR')` + `@Audit`):
+  - `GET /admin/seed-demo/status?empresaId=` — contagens por modelo
+  - `POST /admin/seed-demo` `{ empresaId, multiplier? }` — popula (idempotente)
+  - `DELETE /admin/seed-demo?empresaId=` — limpa só `isDemo=true`
+- **Idempotência garantida** — `run()` sempre chama `wipe()` antes
+- **Safety**: `wipe()` filtra SEMPRE por `isDemo=true` (jamais toca dado real)
+
+#### Frontend
+- **Nova seção 📦 Dados de demonstração na AdminPage** — entre SystemStatus
+  e DeadLetterSection:
+  - Cards das 8 contagens com borda esquerda ciano (`#2bcae5`)
+  - Badge magenta (`#bd1fbf`) quando populado / cinza quando vazio
+  - Botão "Popular dataset demo" em magenta oficial com confirmação
+  - Botão "Limpar dados demo" outline danger com confirmação destrutiva
+  - Loading/error states via StateView, toast de feedback
+  - Border radius 10px (padrão Betinna)
+
+### 🗄️ Schema
+- **Migration `20260518100000_add_is_demo_flag`** — adiciona
+  `isDemo Boolean @default(false)` em 8 modelos: Cliente, Produto, Pedido,
+  Proposta, Amostra, Comissao, Conversation, RespostaNPS. Todos com índice
+  composto `@@index([empresaId, isDemo])` (RespostaNPS usa `@@index([isDemo])`
+  porque não tem empresaId direto — escopo via PesquisaNPS).
+- **Zero impacto em dados existentes** (aditiva, NOT NULL DEFAULT false).
+- **Prisma 6.19.3 mantido** — sem upgrade.
+
+### 🧪 Tests
+- **10 specs novas** no `seed-demo.service.spec.ts`: smoke + comportamento
+  crítico (wipe filtra isDemo=true, run chama wipe antes, multiplier escala
+  dataset, todos os createMany marcam isDemo=true).
+- **Total: 1372 / 1372 verde** (era 1362 na v1.1.1).
+
+### 📦 Versão
+- `backend/package.json` e `frontend/package.json`: `1.1.1` → `1.2.0` (minor,
+  porque adicionou feature nova — módulo admin completo).
+
+---
+
 ## [1.1.1] — 2026-05-18
 
 Sprint de polish + correção de bugs reportados pós-1.1.0. Foco em qualidade
