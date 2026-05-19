@@ -465,11 +465,14 @@ export function PageLayout({
       {isMobile && sidebarOpen && <MobileBackdrop onClick={() => setSidebarOpen(false)} />}
       {isMobile && <MobileTopBar title={title} onToggleSidebar={() => setSidebarOpen((v) => !v)} />}
       <main
+        id="main-content"
         style={{ marginLeft: isMobile ? 0 : SIDEBAR_WIDTH }}
         className={cn(
           isMobile ? 'px-4 pb-10 pt-4' : 'px-8 pt-7 pb-12',
           'min-h-screen',
         )}
+        // a11y: focus-visible permite ao usuário pular pra cá via skip-to-content
+        tabIndex={-1}
       >
         {!isMobile && (
           <header className="flex items-start justify-between gap-4 mb-7 flex-wrap">

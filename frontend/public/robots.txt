@@ -1,0 +1,44 @@
+# Betinna.ai — App interno B2B. Não indexar rotas autenticadas.
+User-agent: *
+
+# Públicas (formulários e NPS via slug) ficam abertas pra Google indexar
+# tudo o resto bloqueado (login, dashboard, etc).
+Allow: /f/
+Allow: /n/
+Allow: /
+Disallow: /login
+Disallow: /dashboard
+Disallow: /clientes
+Disallow: /pedidos
+Disallow: /propostas
+Disallow: /admin
+Disallow: /configuracoes
+Disallow: /perfil
+Disallow: /usuarios
+Disallow: /permissoes
+Disallow: /comissoes
+Disallow: /relatorios
+Disallow: /agenda
+Disallow: /inbox
+Disallow: /catalogo
+Disallow: /produtos
+Disallow: /campanhas
+Disallow: /fluxos
+Disallow: /leads
+Disallow: /funis
+Disallow: /metas
+Disallow: /segmentos
+Disallow: /amostras
+Disallow: /ocorrencias
+Disallow: /incidentes
+Disallow: /tags
+Disallow: /aprovacoes
+Disallow: /fidelidade
+Disallow: /integracoes
+Disallow: /minhas-integracoes
+Disallow: /mullerbot
+Disallow: /whatsapp
+Disallow: /notificacoes
+Disallow: /formularios
+Disallow: /nps
+Disallow: /api/
