@@ -7,6 +7,145 @@ versionamento segue [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ---
 
+## [1.5.0] — 2026-05-19
+
+Entrega da **SESSÃO MASTER 3** — follow-ups + features deferidas +
+performance + hardening + a11y. Foco em deixar o produto pronto para
+abertura aos primeiros clientes reais (GO/NO-GO).
+
+### ✨ Features
+
+#### Backend
+
+- **Upload de logo da empresa** (`@modules/empresas`)
+  - Schema: `Empresa.logoUrl String?`
+  - Migration `20260519000000_add_empresa_logo`
+  - `EmpresaLogoService` — upload/remove/getSignedUrl via Supabase Storage
+    (bucket `empresa-logos`, signed URL TTL 7 dias)
+  - Endpoints: `GET /empresas/:id/logo` (qualquer auth),
+    `POST /empresas/:id/logo` (ADMIN ou DIRECTOR),
+    `DELETE /empresas/:id/logo`
+  - Limites: 2MB, formatos PNG/JPG/WebP/SVG
+  - Substitui logo anterior (remove arquivo antigo do storage)
+
+- **AgendaItem recorrência** (`@modules/agenda`)
+  - Schema: `recorrencia` enum (NENHUMA/DIARIA/SEMANAL/QUINZENAL/MENSAL/ANUAL),
+    `parentId` self-FK
+  - Migration `20260519010000_add_agenda_recorrencia`
+  - Service gera N instâncias filhas (default 12, configurable 2-52) ao criar
+    com recorrência != NENHUMA — cálculo direto na data (sem dep RRULE)
+  - Delete suporta `scope`: `this` | `this_and_future` | `series`
+
+- **FormularioCampo multi-step** (`@modules/formularios`)
+  - Schema: `passo Int @default(1)`
+  - Migration `20260519020000_add_formulario_campo_passo`
+  - Service persiste/retorna `passo` no payload público
+
+#### Frontend
+
+- **LogoUploader** (`components/LogoUploader.tsx`)
+  - Drag-and-drop + click pra selecionar
+  - Preview imediato (data URL) antes do upload
+  - Validações client-side: tamanho, formato
+  - Warning suave se aspect ratio != 1:1 (não bloqueia)
+  - Botão "Remover" com `useConfirm` (dialog brandbook)
+  - Toasts success/error
+  - Brandbook: bordas tracejadas, hover magenta
+
+- **Logo da empresa no Sidebar** (`components/PageLayout.tsx`)
+  - Hook `useEmpresaLogo` busca signed URL (cache 7d)
+  - Fallback automático pro `betinna-symbol.svg` se logo falhar
+  - `onError` esconde img se URL expirar
+
+- **AgendaPage recorrência** UI
+  - Select 'Repetir' na criação (default: Não repetir)
+  - Input 'Quantas ocorrências' aparece quando recorrência != NENHUMA
+  - Select de escopo no delete (this/this_and_future/series) quando item é
+    parte de série
+
+- **FormularioBuilder multi-step** UI
+  - Input 'Passo' (1..10) no inspector lateral
+  - Novo campo herda o passo do último campo (continua no mesmo)
+
+- **FormularioPublicoPage multi-step**
+  - Detecta automaticamente quando há campos com `passo > 1`
+  - Progress bar "Passo X de N" + barra %
+  - Renderiza apenas campos do passo atual
+  - Botões Anterior/Próximo com validação antes de avançar
+  - Submit só no último passo
+  - Smooth scroll ao topo ao avançar (UX mobile)
+
+- **FluxoEditor undo/redo**
+  - History stack manual (max 50 snapshots) com `useRef` (zero deps externas)
+  - Push em: drop nó novo, conexão criada, edição inspector, delete nó
+  - Atalhos: Cmd/Ctrl+Z desfaz, Cmd/Ctrl+Shift+Z e Cmd/Ctrl+Y refazem
+  - Botões Undo/Redo na toolbar superior com tooltip indicando atalho
+  - Disabled state quando histórico vazio
+
+- **OnboardingTour aprimorado**
+  - Atalhos teclado: ESC pula, ← anterior, → próximo
+  - Focus automático no botão Próximo a cada step (focus trap leve)
+  - Body scroll lock quando aberto
+  - aria-live="polite" anuncia mudança de step
+  - Animações fade-in 200ms + slide-up 220ms cubic-bezier
+  - Visual brandbook (navy bg, magenta CTA, cyan acento, off-white texto)
+  - Hint de atalhos no rodapé do dialog
+
+- **PwaBanner** customizado (`components/PwaBanner.tsx`)
+  - Substituiu `window.confirm` feio do update
+  - Captura `beforeinstallprompt` → banner "Instalar Betinna.ai"
+  - Captura evento custom `pwa:needRefresh` → banner "Nova versão"
+  - Dismiss persistido em localStorage
+  - Reset no evento `appinstalled` (Chrome)
+  - Brandbook: navy bg + magenta CTA + cyan ícone + radius 10px
+
+### ⚡ Performance
+
+- **Bundle splitting otimizado** (`vite.config.ts`)
+  - manualChunks: react-vendor, reactflow, exports-xlsx, exports-pdf,
+    exports-docx, dnd-kit, sentry, i18n, icons
+  - Chunks pesados (xlsx 271KB, jspdf 128KB) ficam fora do path principal
+  - Páginas leves (Login/Dashboard) carregam ~40KB entry + react-vendor
+
+### 🎨 PWA Brandbook
+
+- Manifest com cores oficiais:
+  - `theme_color: #bd1fbf` (magenta)
+  - `background_color: #101820` (preto profundo)
+  - `short_name: 'Betinna'` (mais limpo na home screen)
+- Ícone: `betinna-symbol.svg` (purpose `any maskable`)
+
+### ♿ Acessibilidade (WCAG AA)
+
+- Skip-to-content link visível ao receber focus (radius 10px, brandbook)
+- `<main id="main-content">` com `tabIndex={-1}` pra receber focus
+- Atalho Tab no carregamento → "Pular para o conteúdo"
+
+### 🔍 SEO
+
+- `<title>` descritivo: "Betinna.ai — Plataforma comercial B2B"
+- Meta description expandida
+- Open Graph (og:type/title/description/image/locale)
+- Twitter Card summary
+- apple-touch-icon
+- `robots.txt`: bloqueia rotas autenticadas, libera `/f/` e `/n/` (públicas)
+- viewport-fit=cover (notch iPhone)
+- preconnect API URL (reduz RTT do primeiro fetch)
+- color-scheme light+dark
+
+### 📚 Documentação
+
+- `backend/docs/MIGRATIONS.md` — guia completo de migrations versionadas:
+  estrutura, criar nova migration, aplicar em prod, rollback, smart deploy
+  script (3 cenários), drift detection, db push vs migrate
+
+### 🚀 Deploy
+
+- Commit vazio força redeploy Railway frontend para catch-up com main
+  (bundle prod estava atrás por várias releases)
+
+---
+
 ## [1.4.0] — 2026-05-19
 
 Fechamento final da **SESSÃO MASTER 2** — entrega das últimas 2 frentes
