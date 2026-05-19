@@ -388,6 +388,9 @@ model Cliente {
   limiteCredito Float?
   ultimoPedidoEm DateTime?
   representanteId String?
+  /// Marca registros gerados pelo seed-demo (script /admin/seed-demo).
+  /// Permite limpeza seletiva sem mexer em dados reais do tenant.
+  isDemo       Boolean       @default(false)
   criadoEm     DateTime      @default(now())
   atualizadoEm DateTime      @updatedAt
 
@@ -418,6 +421,8 @@ model Cliente {
   @@index([omieStatus])
   // Lista "novos clientes" e ordenação cronológica
   @@index([empresaId, criadoEm])
+  // Seed demo: filtra/limpa registros do demo rapidamente
+  @@index([empresaId, isDemo])
 }
 
 model Tag {
@@ -492,6 +497,8 @@ model Produto {
   /// Usado pelo frontend pra mostrar "atualizado há X min" e detectar dados stale.
   estoqueAtualizadoEm DateTime?
   ativo         Boolean  @default(true)
+  /// Marca registros gerados pelo seed-demo.
+  isDemo        Boolean  @default(false)
   criadoEm      DateTime @default(now())
   atualizadoEm  DateTime @updatedAt
 
@@ -506,6 +513,8 @@ model Produto {
   @@unique([empresaId, codigoOmie])
   @@index([empresaId, linha])
   @@index([empresaId, ativo])
+  // Seed demo: filtra/limpa registros do demo rapidamente
+  @@index([empresaId, isDemo])
 }
 
 model ClientePrecoEspecial {
@@ -561,6 +570,9 @@ model Pedido {
   observacoes     String?      @db.Text
   motivoDesconto  String?      // pra aprovação
 
+  /// Marca registros gerados pelo seed-demo.
+  isDemo          Boolean      @default(false)
+
   criadoEm        DateTime     @default(now())
   atualizadoEm    DateTime     @updatedAt
   enviadoOmieEm   DateTime?
@@ -590,6 +602,8 @@ model Pedido {
   // agregar por (empresa, status, período). Índice composto reduz scan.
   @@index([empresaId, status, criadoEm])
   @@index([empresaId, criadoEm])
+  // Seed demo
+  @@index([empresaId, isDemo])
 }
 
 model PedidoItem {
@@ -652,6 +666,9 @@ model Proposta {
   observacoes     String?        @db.Text
   pdfUrl          String?
 
+  /// Marca registros gerados pelo seed-demo.
+  isDemo          Boolean        @default(false)
+
   /** Quando a proposta foi convertida em pedido (se foi) */
   pedidoId        String?        @unique
   convertidaEm    DateTime?
@@ -668,6 +685,8 @@ model Proposta {
   @@index([clienteId])
   @@index([representanteId])
   @@index([status])
+  // Seed demo
+  @@index([empresaId, isDemo])
 }
 
 model PropostaItem {
@@ -868,12 +887,16 @@ model Amostra {
   followUpEm    DateTime?
   status        AmostraStatus @default(ENVIADA)
   representanteNome String?
+  /// Marca registros gerados pelo seed-demo.
+  isDemo        Boolean       @default(false)
 
   empresa Empresa @relation(fields: [empresaId], references: [id], onDelete: Cascade)
   cliente Cliente @relation(fields: [clienteId], references: [id])
 
   @@index([empresaId])
   @@index([status])
+  // Seed demo
+  @@index([empresaId, isDemo])
 }
 
 // ─── COMISSÕES ────────────────────────────────────────────────────────
@@ -906,6 +929,8 @@ model Comissao {
   pago            Boolean  @default(false)
   pagoEm          DateTime?
   reciboUrl       String?
+  /// Marca registros gerados pelo seed-demo.
+  isDemo          Boolean  @default(false)
   criadoEm        DateTime @default(now())
 
   empresa       Empresa @relation(fields: [empresaId], references: [id], onDelete: Cascade)
@@ -917,6 +942,8 @@ model Comissao {
   // Relatório mensal: WHERE empresaId AND ano=Y AND mes=M (sem filtro de rep)
   @@index([empresaId, ano, mes])
   @@index([empresaId, pago])
+  // Seed demo
+  @@index([empresaId, isDemo])
 }
 
 // ─── AGENDA ───────────────────────────────────────────────────────────
@@ -1239,6 +1266,8 @@ model Conversation {
   metadata     Json?
   /// Quando a conversa está atrelada a um incidente (reclamação/devolução/disputa).
   incidentId   String?
+  /// Marca registros gerados pelo seed-demo.
+  isDemo       Boolean             @default(false)
   criadoEm     DateTime            @default(now())
   atualizadoEm DateTime            @updatedAt
 
@@ -1262,6 +1291,8 @@ model Conversation {
   @@index([categoria])
   @@index([incidentId])
   @@index([ultimaMsgEm])
+  // Seed demo
+  @@index([empresaId, isDemo])
 }
 
 model Message {
@@ -1563,6 +1594,8 @@ model RespostaNPS {
   categoria   String
   ip          String?
   userAgent   String?
+  /// Marca registros gerados pelo seed-demo.
+  isDemo      Boolean  @default(false)
   criadoEm    DateTime @default(now())
 
   pesquisa PesquisaNPS @relation(fields: [pesquisaId], references: [id], onDelete: Cascade)
@@ -1571,6 +1604,8 @@ model RespostaNPS {
   @@index([pesquisaId, criadoEm])
   @@index([pesquisaId, categoria])
   @@index([clienteId])
+  // Seed demo
+  @@index([isDemo])
 }
 
 /// Form Builder — formulários públicos pra capturar leads.
