@@ -74,6 +74,7 @@ export default function AdminPage() {
 
       <SystemStatus />
       <SeedDemoSection />
+      <AuditLogSection />
       <DeadLetterSection />
       <QuickLinksSection />
     </PageLayout>
@@ -515,6 +516,279 @@ function SeedStat({ label, value, accent }: { label: string; value: number; acce
         {value.toLocaleString('pt-BR')}
       </div>
     </div>
+  );
+}
+
+// ─── Audit log viewer ────────────────────────────────────────────────
+
+interface AuditLogEntry {
+  id: string;
+  usuarioId: string | null;
+  empresaId: string | null;
+  acao: string;
+  recurso: string;
+  recursoId: string | null;
+  ip: string | null;
+  criadoEm: string;
+  detalhes: Record<string, unknown> | null;
+}
+
+interface AuditListResponse {
+  data: AuditLogEntry[];
+  pagination: { page: number; limit: number; total: number; totalPages: number };
+}
+
+function AuditLogSection() {
+  const [filters, setFilters] = useState({ acao: '', recurso: '', usuarioId: '' });
+  const [page, setPage] = useState(1);
+  const limit = 20;
+
+  const params = new URLSearchParams({ page: String(page), limit: String(limit) });
+  if (filters.acao) params.set('acao', filters.acao);
+  if (filters.recurso) params.set('recurso', filters.recurso);
+  if (filters.usuarioId) params.set('usuarioId', filters.usuarioId);
+
+  const { data, loading, error, refetch } = useApiQuery<AuditListResponse>(
+    `/audit?${params.toString()}`,
+  );
+  const recursosQuery = useApiQuery<string[]>('/audit/recursos');
+
+  const entries = data?.data ?? [];
+  const totalPages = data?.pagination?.totalPages ?? 1;
+  const total = data?.pagination?.total ?? 0;
+
+  const columns: Column<AuditLogEntry>[] = [
+    {
+      key: 'when',
+      header: 'Quando',
+      render: (e) => (
+        <span style={{ fontSize: 11, color: colors.muted, whiteSpace: 'nowrap' }}>
+          {fmtDate(e.criadoEm)}
+        </span>
+      ),
+    },
+    {
+      key: 'who',
+      header: 'Usuário',
+      render: (e) => (
+        <span
+          style={{
+            fontSize: 11,
+            fontFamily: 'var(--font-mono)',
+            color: e.usuarioId ? colors.text : colors.muted,
+          }}
+        >
+          {e.usuarioId ?? '(system)'}
+        </span>
+      ),
+    },
+    {
+      key: 'acao',
+      header: 'Ação',
+      render: (e) => (
+        <span
+          style={{
+            ...badge(BRAND.cyan),
+            fontFamily: 'var(--font-mono)',
+            fontSize: 10,
+          }}
+        >
+          {e.acao}
+        </span>
+      ),
+    },
+    {
+      key: 'recurso',
+      header: 'Recurso',
+      render: (e) => (
+        <div style={{ fontSize: 12 }}>
+          <strong style={{ color: BRAND.navy }}>{e.recurso}</strong>
+          {e.recursoId && (
+            <div
+              style={{
+                fontSize: 10,
+                color: colors.muted,
+                fontFamily: 'var(--font-mono)',
+                marginTop: 2,
+              }}
+            >
+              {e.recursoId.length > 24 ? `${e.recursoId.slice(0, 24)}…` : e.recursoId}
+            </div>
+          )}
+        </div>
+      ),
+    },
+    {
+      key: 'ip',
+      header: 'IP',
+      render: (e) => (
+        <span style={{ fontSize: 11, color: colors.muted, fontFamily: 'var(--font-mono)' }}>
+          {e.ip ?? '—'}
+        </span>
+      ),
+    },
+  ];
+
+  return (
+    <section style={{ ...card, marginBottom: '1rem' }}>
+      <header
+        style={{
+          display: 'flex',
+          justifyContent: 'space-between',
+          alignItems: 'flex-start',
+          gap: '0.75rem',
+          flexWrap: 'wrap',
+          marginBottom: '0.75rem',
+        }}
+      >
+        <div>
+          <h2 style={{ margin: 0, fontSize: 16, color: BRAND.navy }}>📋 Audit log</h2>
+          <p style={{ fontSize: 12, color: colors.muted, margin: '0.25rem 0 0' }}>
+            Quem fez o quê, quando. Cobertura: todas as ações com `@Audit` decorator.
+            {total > 0 && ` ${total} registros no total.`}
+          </p>
+        </div>
+        <button
+          type="button"
+          data-testid="audit-refresh"
+          onClick={() => {
+            refetch();
+            recursosQuery.refetch();
+          }}
+          style={{ ...btnSecondary, padding: '0.375rem 0.875rem', fontSize: 12 }}
+        >
+          Atualizar
+        </button>
+      </header>
+
+      {/* Filtros */}
+      <div
+        style={{
+          display: 'flex',
+          gap: '0.5rem',
+          flexWrap: 'wrap',
+          marginBottom: '0.75rem',
+        }}
+      >
+        <input
+          type="text"
+          placeholder="Filtrar por ação (ex: update)"
+          value={filters.acao}
+          data-testid="audit-filter-acao"
+          onChange={(e) => {
+            setPage(1);
+            setFilters((f) => ({ ...f, acao: e.target.value }));
+          }}
+          style={{
+            padding: '0.375rem 0.625rem',
+            fontSize: 12,
+            border: `1px solid ${colors.border}`,
+            borderRadius: 10,
+            flex: '1 1 160px',
+            minWidth: 140,
+            background: colors.surface,
+          }}
+        />
+        <select
+          value={filters.recurso}
+          data-testid="audit-filter-recurso"
+          onChange={(e) => {
+            setPage(1);
+            setFilters((f) => ({ ...f, recurso: e.target.value }));
+          }}
+          style={{
+            padding: '0.375rem 0.625rem',
+            fontSize: 12,
+            border: `1px solid ${colors.border}`,
+            borderRadius: 10,
+            flex: '0 0 auto',
+            background: colors.surface,
+          }}
+        >
+          <option value="">Todos os recursos</option>
+          {(recursosQuery.data ?? []).map((r) => (
+            <option key={r} value={r}>
+              {r}
+            </option>
+          ))}
+        </select>
+        <input
+          type="text"
+          placeholder="Usuário (id)"
+          value={filters.usuarioId}
+          data-testid="audit-filter-user"
+          onChange={(e) => {
+            setPage(1);
+            setFilters((f) => ({ ...f, usuarioId: e.target.value }));
+          }}
+          style={{
+            padding: '0.375rem 0.625rem',
+            fontSize: 12,
+            border: `1px solid ${colors.border}`,
+            borderRadius: 10,
+            flex: '1 1 140px',
+            minWidth: 120,
+            background: colors.surface,
+            fontFamily: 'var(--font-mono)',
+          }}
+        />
+      </div>
+
+      <StateView
+        loading={loading}
+        error={error}
+        empty={!loading && !error && entries.length === 0}
+        emptyMessage="Nenhum evento encontrado com esses filtros."
+        onRetry={refetch}
+      >
+        <Table data={entries} columns={columns} rowKey={(e) => e.id} />
+        {totalPages > 1 && (
+          <div
+            style={{
+              display: 'flex',
+              justifyContent: 'space-between',
+              alignItems: 'center',
+              marginTop: '0.75rem',
+              fontSize: 12,
+            }}
+          >
+            <span style={{ color: colors.muted }}>
+              Página {page} de {totalPages}
+            </span>
+            <div style={{ display: 'flex', gap: '0.375rem' }}>
+              <button
+                type="button"
+                onClick={() => setPage((p) => Math.max(1, p - 1))}
+                disabled={page <= 1}
+                style={{
+                  ...btnSecondary,
+                  padding: '0.25rem 0.625rem',
+                  fontSize: 12,
+                  opacity: page <= 1 ? 0.5 : 1,
+                  cursor: page <= 1 ? 'not-allowed' : 'pointer',
+                }}
+              >
+                ← Anterior
+              </button>
+              <button
+                type="button"
+                onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
+                disabled={page >= totalPages}
+                style={{
+                  ...btnSecondary,
+                  padding: '0.25rem 0.625rem',
+                  fontSize: 12,
+                  opacity: page >= totalPages ? 0.5 : 1,
+                  cursor: page >= totalPages ? 'not-allowed' : 'pointer',
+                }}
+              >
+                Próxima →
+              </button>
+            </div>
+          </div>
+        )}
+      </StateView>
+    </section>
   );
 }
 
