@@ -40,8 +40,10 @@ test('Seed Demo — popular + verificar contagens > 0 + limpar volta a zero', as
   // Wipe só fica enabled quando há dados; se já está vazio, pula
   if (await wipeBtn.isEnabled().catch(() => false)) {
     await wipeBtn.click();
-    // Confirmação destrutiva
-    await page.getByRole('button', { name: /limpar dados demo/i }).click();
+    // Confirmação destrutiva — usa getByTestId('confirm-ok') ao invés de
+    // getByRole+name pra evitar strict-mode violation (o botão original
+    // "Limpar dados demo" e o de confirmação do useConfirm têm o mesmo label).
+    await page.getByTestId('confirm-ok').click();
     // Espera badge voltar pra "sem dataset"
     await expect(page.getByTestId('seed-demo-state')).toContainText(/sem dataset/i, {
       timeout: 15_000,
@@ -50,8 +52,8 @@ test('Seed Demo — popular + verificar contagens > 0 + limpar volta a zero', as
 
   // ─── Popular ─────────────────────────────────────────────────────
   await page.getByTestId('seed-demo-run').click();
-  // Confirmação de popular
-  await page.getByRole('button', { name: /^popular$/i }).click();
+  // Confirmação de popular — useConfirm renderiza um único confirm-ok visível
+  await page.getByTestId('confirm-ok').click();
   // Espera badge mostrar contagem (pode demorar ~10s pra criar 750+ records)
   await expect(page.getByTestId('seed-demo-state')).toContainText(/demo records/i, {
     timeout: 30_000,
@@ -59,7 +61,7 @@ test('Seed Demo — popular + verificar contagens > 0 + limpar volta a zero', as
 
   // ─── Limpar ──────────────────────────────────────────────────────
   await page.getByTestId('seed-demo-wipe').click();
-  await page.getByRole('button', { name: /limpar dados demo/i }).click();
+  await page.getByTestId('confirm-ok').click();
   await expect(page.getByTestId('seed-demo-state')).toContainText(/sem dataset/i, {
     timeout: 15_000,
   });
