@@ -7,6 +7,64 @@ versionamento segue [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ---
 
+## [1.3.0] — 2026-05-19
+
+Sprint de continuação da Master 2 — entrega de **3 das 5 páginas da Parte 2**
+em 3 commits sequenciais. Skipados nesta sessão (precisam libs novas ou
+schema change): AgendaPage drag/recorrência (react-big-calendar) e
+FormularioBuilder multi-step/condicional (dnd-kit + schema).
+
+### ✨ Features
+
+#### Frontend
+- **AdminPage 📋 Audit log viewer** — nova seção entre SeedDemo e DeadLetter:
+  - Lista paginada (20/pg) consumindo `GET /audit` (backend já existia
+    desde v1.1.0 mas sem UI)
+  - Filtros: ação (contains), recurso (dropdown via `/audit/recursos`),
+    usuarioId
+  - Colunas: Quando, Usuário, Ação (badge ciano), Recurso + recursoId, IP
+  - Paginação ← / → com disabled states
+  - Cores oficiais (#201554 navy nos títulos, #2bcae5 cyan nos badges,
+    radius 10px)
+
+- **MullerBotPage sessionId persistente** — contexto multi-turn server-side:
+  - `loadOrCreateSessionId()` gera UUID via `crypto.randomUUID()` na 1ª
+    visita, persiste em **localStorage** (sobrevive reload)
+  - Payload do `POST /mullerbot/perguntar` agora inclui `sessionId` sempre
+  - Backend já carregava histórico via `MullerBotCacheService.getHistorico`
+    e injetava na chamada do OpenAI — só faltava o frontend enviar
+  - Novo botão "Nova conversa" rotaciona id + chama
+    `DELETE /mullerbot/historico/:sessionId` (best-effort, Redis tem TTL)
+  - Botão antigo "Limpar histórico" virou "Limpar UI" (só local)
+
+- **ConfiguracoesPage tabs UX** — reorganização em 3 abas:
+  - 🏢 Empresas (default) — CRUD existente preservado integralmente
+  - 💎 Plano — visão agregada (3 cards Free/Pro/Enterprise com contagem,
+    lista das 5 primeiras empresas de cada plano)
+  - ⚙️ Avançado — hub de atalhos pra Integrações / Permissões / Usuários /
+    Notificações / Painel admin / Fluxos (cards com border-left colorido
+    brandbook, sem duplicar conteúdo)
+  - Tabs strip com ARIA correto (role=tablist/tab/tabpanel)
+  - Indicador ativo via bottom border magenta + texto navy bold
+  - Botão "+ Nova empresa" só aparece na aba Empresas
+
+### 📦 Versão
+- `backend/package.json` e `frontend/package.json`: `1.2.0` → `1.3.0`
+  (minor — 3 features de polish UX).
+
+### 🧪 Tests
+- **Backend: 1372 / 1372 verde** (sem regressão).
+- Frontend typecheck + build OK.
+
+### ⏭️ Deferido pra próxima sessão
+- **AgendaPage** — drag & drop + recorrência (`react-big-calendar`, 1-2h).
+- **FormularioBuilder** — multi-step + condicional (schema change
+  `FormularioCampo.condicionalDe/Valor` + dnd-kit, 2-3h).
+- **Parte 3** — FluxoEditor React Flow (8-12h, sprint dedicada).
+- **Parte 5** — 5 E2E specs novos (2-3h, sprint de QA).
+
+---
+
 ## [1.2.0] — 2026-05-19
 
 Sprint de continuação da Master 2 — entrega da **Parte 4 (Seed Demo)** inteira

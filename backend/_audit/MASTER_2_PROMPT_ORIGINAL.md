@@ -74,33 +74,38 @@
 
 ---
 
-## Parte 2 — Polish das 6 páginas pendentes ❌ (a fazer)
+## Parte 2 — Polish das 6 páginas pendentes 🟡 (3 de 5 feitas na v1.3.0)
 
-### AgendaPage
+### AgendaPage ❌ (deferido)
 - Drag & drop de eventos no calendário.
 - Recorrência (DAILY/WEEKLY/MONTHLY).
 - Lib sugerida: `react-big-calendar`.
+- **Razão do skip:** lib nova + recorrência exige schema change.
 
-### MullerBotPage
-- Histórico de conversas persistente (Redis cache já existe — `MullerBotCacheService`).
-- Configuração de prompts (já tem `MullerBotPersonaService` no backend).
-- Renderização markdown da resposta.
+### MullerBotPage ✅ (v1.3.0)
+- Histórico de conversas persistente (`sessionId` em localStorage + backend
+  carrega via `MullerBotCacheService.getHistorico`).
+- Botão "Nova conversa" rotaciona sessionId + limpa Redis (best-effort).
+- Markdown rendering já existia (commit anterior).
+- Configuração de prompts: link pra `/mullerbot/persona` (página separada).
 
-### ConfiguracoesPage
-- Tabs: Empresa / Integrações / Notificações / Permissões.
-- Upload de logo (multipart, signed URL Supabase Storage).
-- Edição de dados fiscais (DIRECTOR-only).
+### ConfiguracoesPage 🟡 (parcial — v1.3.0)
+- ✅ Tabs: Empresas / Plano / Avançado (hub).
+- ❌ Upload de logo (precisa endpoint multipart Supabase Storage).
+- ❌ Edição de dados fiscais (DIRECTOR-only — já existe via modal CRUD;
+  pode ganhar form dedicado no futuro).
 
-### FormularioBuilder
+### FormularioBuilder ❌ (deferido)
 - Multi-step (wizard).
 - Campos condicionais (mostrar campo X se campo Y == valor).
 - Schema change: `FormularioCampo.condicionalDe` + `condicionalValor`.
 - Lib sugerida: `@dnd-kit/sortable` (já no projeto).
+- **Razão do skip:** schema change + 2-3h focada.
 
-### AdminPage
-- Audit log (UI pro `AuditController` já existente).
-- 4 tabs: Usuários / Empresas / Audit / Sistema.
-- Ações admin (impersonate, force logout, etc).
+### AdminPage 🟡 (parcial — v1.3.0)
+- ✅ Audit log (UI pro `AuditController`) — seção com filtros + paginação.
+- ✅ Já tinha: SystemStatus, SeedDemo (v1.2.0), DeadLetter, QuickLinks.
+- ❌ Ações admin (impersonate, force logout) — não é prioridade no MVP.
 
 ---
 
@@ -183,4 +188,4 @@ Cenários sugeridos:
 
 ---
 
-_Última atualização: 2026-05-19 (Parte 4 fechada na v1.2.0)._
+_Última atualização: 2026-05-19 (Parte 2 parcial na v1.3.0 — 3 de 5 páginas)._
