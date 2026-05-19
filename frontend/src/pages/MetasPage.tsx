@@ -75,6 +75,26 @@ function fmtDate(d: string) {
   }
 }
 
+/**
+ * Calcula dias restantes pra meta fechar.
+ * Negativo se já passou; >365 trunca pra "1 ano+".
+ */
+function diasRestantes(fim: string): { texto: string; tone: 'normal' | 'warning' | 'danger' } {
+  try {
+    const fimMs = new Date(fim).getTime();
+    const agora = Date.now();
+    const dias = Math.ceil((fimMs - agora) / (1000 * 60 * 60 * 24));
+    if (dias < 0) return { texto: 'Encerrada', tone: 'danger' };
+    if (dias === 0) return { texto: 'Encerra hoje', tone: 'danger' };
+    if (dias === 1) return { texto: '1 dia restante', tone: 'warning' };
+    if (dias <= 7) return { texto: `${dias} dias restantes`, tone: 'warning' };
+    if (dias > 365) return { texto: '1 ano+', tone: 'normal' };
+    return { texto: `${dias} dias restantes`, tone: 'normal' };
+  } catch {
+    return { texto: '—', tone: 'normal' };
+  }
+}
+
 export default function MetasPage() {
   const toast = useToast();
   const { data, loading, error, refetch } = useApiQuery<MetaComProgresso[]>('/metas');
@@ -299,14 +319,18 @@ function MetaCard({
         </div>
       </div>
 
-      {/* Progress bar */}
-      <div className="relative h-2 rounded-full bg-surface-hover overflow-hidden">
+      {/* Progress bar com gradient brand (magenta → ciano) quando em andamento */}
+      <div className="relative h-2.5 rounded-full bg-surface-hover overflow-hidden">
         <div
-          className={cn(
-            'absolute inset-y-0 left-0 rounded-full transition-all',
-            completed ? 'bg-success' : meta.risco ? 'bg-warning' : 'bg-primary',
-          )}
-          style={{ width: `${pct}%` }}
+          className="absolute inset-y-0 left-0 rounded-full transition-all"
+          style={{
+            width: `${pct}%`,
+            background: completed
+              ? 'var(--success)'
+              : meta.risco
+                ? 'var(--warning)'
+                : 'linear-gradient(90deg, var(--primary) 0%, var(--secondary) 100%)',
+          }}
         />
       </div>
       <div className="flex items-center justify-between text-[11px] tabular">
@@ -319,6 +343,29 @@ function MetaCard({
           {fmtDate(meta.inicio)} → {fmtDate(meta.fim)}
         </span>
       </div>
+
+      {/* Dias restantes — cor dinâmica conforme proximidade */}
+      {(() => {
+        const dr = diasRestantes(meta.fim);
+        const toneClass =
+          dr.tone === 'danger'
+            ? 'text-danger bg-danger/10 border-danger/30'
+            : dr.tone === 'warning'
+              ? 'text-warning bg-warning/10 border-warning/30'
+              : 'text-muted bg-bg-alt border-border';
+        return (
+          <div
+            data-testid="meta-dias-restantes"
+            className={cn(
+              'inline-flex items-center gap-1 px-2 py-1 rounded-md border text-[11px] self-start',
+              toneClass,
+            )}
+          >
+            <Calendar className="h-3 w-3" />
+            {dr.texto}
+          </div>
+        );
+      })()}
 
       {meta.risco && (
         <div className="flex items-center gap-1.5 text-xs text-warning bg-warning/10 border border-warning/30 rounded-md px-2 py-1.5">
