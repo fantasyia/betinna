@@ -1,4 +1,13 @@
 import { useMemo, useState } from 'react';
+import {
+  DndContext,
+  PointerSensor,
+  useSensor,
+  useSensors,
+  useDraggable,
+  useDroppable,
+  type DragEndEvent,
+} from '@dnd-kit/core';
 import { api, ApiError } from '@/lib/api';
 import { useApiQuery } from '@/hooks/useApiQuery';
 import { PageLayout } from '@/components/PageLayout';
@@ -6,6 +15,7 @@ import { StateView } from '@/components/StateView';
 import { Modal } from '@/components/Modal';
 import { FormField, Input, Select, Textarea } from '@/components/FormField';
 import { AsyncCombobox } from '@/components/AsyncCombobox';
+import { useToast } from '@/components/toast';
 import { badge, btn, btnDanger, btnSecondary, card, colors } from '@/components/styles';
 
 type AgendaTipo = 'VISITA' | 'LIGACAO' | 'REUNIAO' | 'ENTREGA' | 'TAREFA';
@@ -75,10 +85,14 @@ function sameDay(a: Date, b: Date) {
 }
 
 export default function AgendaPage() {
+  const toast = useToast();
   const [weekStart, setWeekStart] = useState(() => startOfWeek(new Date()));
   const [filtroTipo, setFiltroTipo] = useState('');
   const [creating, setCreating] = useState<Date | null>(null);
   const [editing, setEditing] = useState<AgendaItem | null>(null);
+
+  // Sensor: começa drag só após 8px de movimento (evita conflito com click pra editar)
+  const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 8 } }));
 
   const weekEnd = addDays(weekStart, 7);
   const days = Array.from({ length: 7 }, (_, i) => addDays(weekStart, i));
@@ -112,6 +126,47 @@ export default function AgendaPage() {
   }, [items]);
 
   const today = new Date();
+
+  /**
+   * Drag de um AgendaItem entre colunas (dias da semana).
+   * - active.id = id do AgendaItem
+   * - over.id = ISO string do dia destino (gerado em useDroppable)
+   * Mantém hora original, troca só o dia. PATCH /agenda/:id no backend.
+   */
+  async function handleDragEnd(event: DragEndEvent) {
+    const { active, over } = event;
+    if (!over || !items) return;
+    const itemId = String(active.id);
+    const novoDiaIso = String(over.id);
+    const item = items.find((i) => i.id === itemId);
+    if (!item) return;
+
+    const dataAtual = new Date(item.data);
+    const novoDia = new Date(novoDiaIso);
+    // Se já está no mesmo dia, no-op (evita request desnecessário)
+    if (sameDay(dataAtual, novoDia)) return;
+
+    // Mantém hora/minuto/segundo, troca dia/mes/ano
+    novoDia.setHours(
+      dataAtual.getHours(),
+      dataAtual.getMinutes(),
+      dataAtual.getSeconds(),
+      0,
+    );
+    try {
+      await api.patch(`/agenda/${itemId}`, { data: novoDia.toISOString() });
+      toast.success(
+        'Compromisso movido',
+        `${item.titulo} → ${novoDia.toLocaleDateString('pt-BR', { weekday: 'short', day: '2-digit', month: '2-digit' })}`,
+      );
+      refetch();
+    } catch (err) {
+      toast.error(
+        'Não consegui mover o compromisso',
+        err instanceof ApiError ? err.message : 'Erro desconhecido',
+      );
+    }
+  }
 
   return (
     <PageLayout
@@ -184,113 +239,31 @@ export default function AgendaPage() {
         </div>
 
         <StateView loading={loading} error={error} onRetry={refetch}>
-          <div
-            style={{
-              display: 'grid',
-              gridTemplateColumns: 'repeat(7, minmax(140px, 1fr))',
-              gap: '0.5rem',
-              overflowX: 'auto',
-            }}
-          >
-            {days.map((d) => {
-              const dayItems = itemsByDay.get(d.toDateString()) ?? [];
-              const isToday = sameDay(d, today);
-              return (
-                <div
+          <DndContext sensors={sensors} onDragEnd={(e) => void handleDragEnd(e)}>
+            <div
+              style={{
+                display: 'grid',
+                gridTemplateColumns: 'repeat(7, minmax(140px, 1fr))',
+                gap: '0.5rem',
+                overflowX: 'auto',
+              }}
+            >
+              {days.map((d) => (
+                <DayColumn
                   key={d.toDateString()}
-                  data-testid={`agenda-day-${d.getDate()}`}
-                  style={{
-                    background: isToday ? colors.primary + '08' : '#fafbfc',
-                    border: `1px solid ${isToday ? colors.primary : colors.border}`,
-                    borderRadius: 6,
-                    padding: '0.5rem',
-                    minHeight: 200,
+                  day={d}
+                  isToday={sameDay(d, today)}
+                  items={itemsByDay.get(d.toDateString()) ?? []}
+                  onNew={() => {
+                    const at = new Date(d);
+                    at.setHours(9, 0, 0, 0);
+                    setCreating(at);
                   }}
-                >
-                  <header
-                    style={{
-                      display: 'flex',
-                      justifyContent: 'space-between',
-                      alignItems: 'center',
-                      marginBottom: '0.5rem',
-                      fontSize: 12,
-                      fontWeight: 600,
-                      color: isToday ? colors.primary : colors.text,
-                    }}
-                  >
-                    <span>{fmtDay(d)}</span>
-                    <button
-                      type="button"
-                      onClick={() => {
-                        const at = new Date(d);
-                        at.setHours(9, 0, 0, 0);
-                        setCreating(at);
-                      }}
-                      style={{
-                        background: 'transparent',
-                        border: 'none',
-                        color: colors.muted,
-                        cursor: 'pointer',
-                        fontSize: 16,
-                        lineHeight: 1,
-                        padding: 0,
-                      }}
-                      aria-label="Adicionar compromisso"
-                      title="Adicionar compromisso"
-                    >
-                      +
-                    </button>
-                  </header>
-                  {dayItems.length === 0 && (
-                    <p style={{ fontSize: 11, color: colors.muted, margin: 0, textAlign: 'center', padding: '0.5rem 0' }}>
-                      Livre
-                    </p>
-                  )}
-                  <ul style={{ listStyle: 'none', padding: 0, margin: 0, display: 'flex', flexDirection: 'column', gap: 4 }}>
-                    {dayItems.map((it) => (
-                      <li key={it.id}>
-                        <button
-                          type="button"
-                          data-testid={`agenda-item-${it.id}`}
-                          onClick={() => setEditing(it)}
-                          style={{
-                            display: 'block',
-                            width: '100%',
-                            textAlign: 'left',
-                            padding: '0.375rem 0.5rem',
-                            background: colors.surface,
-                            border: `1px solid ${colors.border}`,
-                            borderLeft: `3px solid ${TIPO_COLOR[it.tipo]}`,
-                            borderRadius: 4,
-                            cursor: 'pointer',
-                            fontFamily: 'inherit',
-                            color: colors.text,
-                            fontSize: 12,
-                          }}
-                        >
-                          <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
-                            <strong>{fmtTime(it.data)}</strong>
-                            <span style={{ color: colors.muted }}>· {it.duracao}min</span>
-                            {it.googleEventId && (
-                              <span title="Espelhado no Google Calendar" style={{ marginLeft: 'auto', fontSize: 10 }}>
-                                📅
-                              </span>
-                            )}
-                          </div>
-                          <div style={{ fontWeight: 500, marginTop: 2 }}>{it.titulo}</div>
-                          {it.cliente?.nome && (
-                            <div style={{ fontSize: 11, color: colors.muted, marginTop: 2 }}>
-                              {it.cliente.nome}
-                            </div>
-                          )}
-                        </button>
-                      </li>
-                    ))}
-                  </ul>
-                </div>
-              );
-            })}
-          </div>
+                  onItemClick={setEditing}
+                />
+              ))}
+            </div>
+          </DndContext>
         </StateView>
       </div>
 
@@ -315,6 +288,173 @@ export default function AgendaPage() {
         />
       )}
     </PageLayout>
+  );
+}
+
+// ─── Drag & drop helpers ─────────────────────────────────────────────
+
+/**
+ * DayColumn — droppable target. Aceita AgendaItem sendo arrastado de outro
+ * dia. `id` é a data ISO desse dia (key estável + interpretável no handleDragEnd).
+ */
+function DayColumn({
+  day,
+  isToday,
+  items,
+  onNew,
+  onItemClick,
+}: {
+  day: Date;
+  isToday: boolean;
+  items: AgendaItem[];
+  onNew: () => void;
+  onItemClick: (it: AgendaItem) => void;
+}) {
+  const { isOver, setNodeRef } = useDroppable({ id: day.toISOString() });
+
+  return (
+    <div
+      ref={setNodeRef}
+      data-testid={`agenda-day-${day.getDate()}`}
+      style={{
+        background: isOver
+          ? colors.primary + '18'
+          : isToday
+            ? colors.primary + '08'
+            : '#fafbfc',
+        border: `1px solid ${isOver ? colors.primary : isToday ? colors.primary : colors.border}`,
+        borderRadius: 6,
+        padding: '0.5rem',
+        minHeight: 200,
+        transition: 'background 120ms, border-color 120ms',
+      }}
+    >
+      <header
+        style={{
+          display: 'flex',
+          justifyContent: 'space-between',
+          alignItems: 'center',
+          marginBottom: '0.5rem',
+          fontSize: 12,
+          fontWeight: 600,
+          color: isToday ? colors.primary : colors.text,
+        }}
+      >
+        <span>{fmtDay(day)}</span>
+        <button
+          type="button"
+          onClick={onNew}
+          style={{
+            background: 'transparent',
+            border: 'none',
+            color: colors.muted,
+            cursor: 'pointer',
+            fontSize: 16,
+            lineHeight: 1,
+            padding: 0,
+          }}
+          aria-label="Adicionar compromisso"
+          title="Adicionar compromisso"
+        >
+          +
+        </button>
+      </header>
+      {items.length === 0 && (
+        <p
+          style={{
+            fontSize: 11,
+            color: colors.muted,
+            margin: 0,
+            textAlign: 'center',
+            padding: '0.5rem 0',
+          }}
+        >
+          Livre
+        </p>
+      )}
+      <ul
+        style={{
+          listStyle: 'none',
+          padding: 0,
+          margin: 0,
+          display: 'flex',
+          flexDirection: 'column',
+          gap: 4,
+        }}
+      >
+        {items.map((it) => (
+          <li key={it.id}>
+            <DraggableItem item={it} onClick={() => onItemClick(it)} />
+          </li>
+        ))}
+      </ul>
+    </div>
+  );
+}
+
+/**
+ * DraggableItem — botão (mantém click=edit) que também é draggable.
+ * PointerSensor com distance:8 garante que click-curto edita, drag-longo
+ * move pra outro dia.
+ */
+function DraggableItem({
+  item,
+  onClick,
+}: {
+  item: AgendaItem;
+  onClick: () => void;
+}) {
+  const { attributes, listeners, setNodeRef, transform, isDragging } = useDraggable({
+    id: item.id,
+  });
+  const style: React.CSSProperties = {
+    display: 'block',
+    width: '100%',
+    textAlign: 'left',
+    padding: '0.375rem 0.5rem',
+    background: colors.surface,
+    border: `1px solid ${colors.border}`,
+    borderLeft: `3px solid ${TIPO_COLOR[item.tipo]}`,
+    borderRadius: 4,
+    cursor: isDragging ? 'grabbing' : 'grab',
+    fontFamily: 'inherit',
+    color: colors.text,
+    fontSize: 12,
+    transform: transform ? `translate3d(${transform.x}px, ${transform.y}px, 0)` : undefined,
+    opacity: isDragging ? 0.5 : 1,
+    zIndex: isDragging ? 100 : undefined,
+    position: 'relative',
+    transition: isDragging ? 'none' : 'opacity 120ms',
+  };
+  return (
+    <button
+      ref={setNodeRef}
+      type="button"
+      data-testid={`agenda-item-${item.id}`}
+      onClick={onClick}
+      style={style}
+      {...listeners}
+      {...attributes}
+    >
+      <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+        <strong>{fmtTime(item.data)}</strong>
+        <span style={{ color: colors.muted }}>· {item.duracao}min</span>
+        {item.googleEventId && (
+          <span
+            title="Espelhado no Google Calendar"
+            style={{ marginLeft: 'auto', fontSize: 10 }}
+          >
+            📅
+          </span>
+        )}
+      </div>
+      <div style={{ fontWeight: 500, marginTop: 2 }}>{item.titulo}</div>
+      {item.cliente?.nome && (
+        <div style={{ fontSize: 11, color: colors.muted, marginTop: 2 }}>
+          {item.cliente.nome}
+        </div>
+      )}
+    </button>
   );
 }
 
