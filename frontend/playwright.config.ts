@@ -10,7 +10,9 @@ export default defineConfig({
   testDir: './e2e',
   fullyParallel: false, // Tests de rate limit precisam serial
   forbidOnly: !!process.env.CI,
-  retries: process.env.CI ? 2 : 0,
+  // 1 retry sempre — testes E2E contra prod sofrem com rate limit acumulado
+  // entre specs. Retry dá uma segunda chance após cool-down implícito.
+  retries: process.env.CI ? 2 : 1,
   workers: process.env.CI ? 1 : undefined,
   reporter: process.env.CI ? [['github'], ['html', { open: 'never' }]] : 'list',
 

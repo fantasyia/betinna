@@ -25,8 +25,10 @@ test('Test 1 — Login flow: ADMIN entra e vê dashboard', async ({ page }) => {
   await page.getByTestId('email').fill(TEST_USERS.ADMIN.email);
   await page.getByTestId('password').fill(TEST_USERS.ADMIN.password);
   await page.getByTestId('login-btn').click();
-  await expect(page).toHaveURL(/\/dashboard/);
-  await expect(page.getByTestId('dashboard-title')).toBeVisible();
+  await expect(page).toHaveURL(/\/dashboard/, { timeout: 15_000 });
+  // PageLayout renderiza <h1 data-testid="page-title"> — não existe
+  // "dashboard-title" no codebase (corrigido em auditoria E2E).
+  await expect(page.getByTestId('page-title')).toHaveText(/Dashboard/);
 });
 
 // ─── Test 2 — REP não acessa /admin ─────────────────────────────────────
@@ -82,6 +84,16 @@ test('Test 6 — Webhook OMIE rejeita HMAC inválido com 401', async ({ request 
 test('Test 7 — Rate limit: 11 requests rápidas em /auth/me retornam 429', async ({
   request,
 }) => {
+  // PROD: este teste consome a janela de rate limit (10req/15min por IP) e
+  // POLUI a suite — testes subsequentes que fazem login pegam 429. Skipa em
+  // produção pra rodar a suite inteira sem cascata.
+  // STAGING/DEV: roda normalmente (rate limit reseta rápido em ambientes
+  // isolados ou config relaxada).
+  test.skip(
+    /railway\.app/.test(API_URL) && /production/.test(API_URL),
+    'Test 7 não roda contra produção — rate-limit pollui suite (15min janela)',
+  );
+
   // Auth tem throttle de 10 req / 15min por IP
   const responses: number[] = [];
   for (let i = 0; i < 12; i++) {
