@@ -32,11 +32,12 @@ export default defineConfig({
       includeAssets: ['favicon.ico'],
       manifest: {
         name: 'Betinna.ai — Plataforma comercial B2B',
-        short_name: 'Betinna.ai',
+        short_name: 'Betinna',
         description:
           'CRM + pedidos OMIE + atendimento multicanal + automação comercial pra indústrias B2B',
-        theme_color: '#3b82f6',
-        background_color: '#ffffff',
+        // Brandbook v1.5.0 — magenta primary + preto profundo background
+        theme_color: '#bd1fbf',
+        background_color: '#101820',
         display: 'standalone',
         orientation: 'portrait-primary',
         scope: '/',
@@ -44,13 +45,16 @@ export default defineConfig({
         categories: ['business', 'productivity'],
         lang: 'pt-BR',
         icons: [
-          // Geramos os ícones a partir do favicon existente.
-          // Para produção, substituir por ícones dedicados (192/512/maskable).
+          {
+            src: '/betinna-symbol.svg',
+            sizes: '192x192 512x512',
+            type: 'image/svg+xml',
+            purpose: 'any maskable',
+          },
           {
             src: '/favicon.ico',
-            sizes: '192x192 512x512',
+            sizes: '32x32',
             type: 'image/x-icon',
-            purpose: 'any',
           },
         ],
       },
@@ -98,12 +102,38 @@ export default defineConfig({
     sourcemap: false,
     rollupOptions: {
       output: {
-        manualChunks: {
-          'react-vendor': ['react', 'react-dom', 'react-router-dom'],
+        // v1.5.0 — manualChunks otimizado pra splittear bibliotecas pesadas em chunks separados.
+        // Esses chunks só carregam quando o user entra na página que usa.
+        manualChunks: (id) => {
+          // Vendor core (React) — sempre carregado
+          if (
+            id.includes('node_modules/react/') ||
+            id.includes('node_modules/react-dom/') ||
+            id.includes('node_modules/react-router-dom/')
+          ) {
+            return 'react-vendor';
+          }
+          // ReactFlow só em FluxoEditor (~200KB)
+          if (id.includes('@xyflow/react')) return 'reactflow';
+          // Exports xlsx/pdf/docx (~600KB combined)
+          if (id.includes('node_modules/exceljs')) return 'exports-xlsx';
+          if (id.includes('node_modules/jspdf')) return 'exports-pdf';
+          if (id.includes('node_modules/docx')) return 'exports-docx';
+          // dnd-kit só em AgendaPage drag (~30KB)
+          if (id.includes('@dnd-kit')) return 'dnd-kit';
+          // Sentry (~80KB)
+          if (id.includes('@sentry')) return 'sentry';
+          // i18n
+          if (id.includes('node_modules/i18next')) return 'i18n';
+          // Icons (lucide) - sempre carregado mas separar reduz chunk principal
+          if (id.includes('node_modules/lucide-react')) return 'icons';
+          return undefined; // default chunk
         },
       },
     },
     target: 'es2020',
     minify: 'esbuild',
+    // Reportar chunks acima do limite via warning
+    chunkSizeWarningLimit: 600,
   },
 });
