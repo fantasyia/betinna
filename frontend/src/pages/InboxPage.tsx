@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import {
   Search,
   ArrowLeft,
@@ -12,12 +13,14 @@ import {
   FileText,
   Video,
   Mic,
+  Receipt,
 } from 'lucide-react';
 import { api, ApiError } from '@/lib/api';
 import { useApiQuery, type PaginatedResponse } from '@/hooks/useApiQuery';
 import { PageLayout, useIsMobile } from '@/components/PageLayout';
 import { StateView } from '@/components/StateView';
 import { useToast } from '@/components/toast';
+import { NovoPedidoDialog } from '@/components/NovoPedidoDialog';
 import {
   Avatar,
   Badge,
@@ -451,6 +454,7 @@ function ConversationThread({
   onBack?: () => void;
 }) {
   const toast = useToast();
+  const navigate = useNavigate();
   const detailPath = useMemo(() => `/inbox/${id}?_t=${pollBump}`, [id, pollBump]);
   const msgsPath = useMemo(
     () => `/inbox/${id}/mensagens?limit=80&_t=${pollBump}`,
@@ -465,6 +469,7 @@ function ConversationThread({
   const [sendError, setSendError] = useState<string | null>(null);
   const [statusOpen, setStatusOpen] = useState(false);
   const [atribuirOpen, setAtribuirOpen] = useState(false);
+  const [criarPedido, setCriarPedido] = useState(false);
 
   const endRef = useRef<HTMLDivElement | null>(null);
   useEffect(() => {
@@ -541,6 +546,19 @@ function ConversationThread({
                 {c.peer && (c.cliente?.nome || c.peerNome) ? c.peer : CANAL_LABEL[c.canal]}
               </div>
             </div>
+            {c.cliente?.id && (
+              <Button
+                type="button"
+                variant="ghost"
+                size="sm"
+                data-testid="inbox-criar-pedido-btn"
+                onClick={() => setCriarPedido(true)}
+                leftIcon={<Receipt className="h-3.5 w-3.5" />}
+                title="Criar pedido pra este cliente"
+              >
+                Pedido
+              </Button>
+            )}
             <Button
               type="button"
               variant="secondary"
@@ -654,6 +672,21 @@ function ConversationThread({
             setAtribuirOpen(false);
             conv.refetch();
             onChanged();
+          }}
+        />
+      )}
+      {criarPedido && c?.cliente?.id && (
+        <NovoPedidoDialog
+          open
+          clientePreSelecionado={{
+            id: c.cliente.id,
+            nome: c.cliente.nome,
+          }}
+          onClose={() => setCriarPedido(false)}
+          onCreated={(pedidoId) => {
+            setCriarPedido(false);
+            toast.success('Pedido criado a partir da conversa');
+            navigate(`/pedidos/${pedidoId}`);
           }}
         />
       )}
