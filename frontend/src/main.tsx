@@ -15,16 +15,23 @@ bootstrapTheme();
 initSentry();
 initI18n();
 
-// PWA — registra service worker, pergunta antes de aplicar update.
-// Em dev (sem plugin) é no-op.
+// PWA — registra service worker, dispara evento `pwa:needRefresh` quando
+// nova versão é detectada. PwaBanner (renderizado pelo App) escuta e mostra
+// banner customizado com brandbook. Fallback pra window.confirm caso o
+// componente não esteja montado por algum motivo.
 void registerPwa({
   onNeedRefresh: (accept) => {
-    if (
-      typeof window !== 'undefined' &&
-      window.confirm('Nova versão do app disponível. Recarregar agora?')
-    ) {
-      void accept();
-    }
+    if (typeof window === 'undefined') return;
+    // Emite evento que o componente PwaBanner escuta
+    window.dispatchEvent(
+      new CustomEvent('pwa:needRefresh', { detail: { accept } }),
+    );
+    // Fallback caso o banner não monte em 3s
+    setTimeout(() => {
+      if (window.confirm('Nova versão do app disponível. Recarregar agora?')) {
+        void accept();
+      }
+    }, 3000);
   },
 });
 
