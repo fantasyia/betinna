@@ -66,6 +66,8 @@ interface Campo {
   obrigatorio: boolean;
   opcoes?: string[];
   hint?: string;
+  /** v1.5.0 — Passo multi-step (1..10). Default 1. */
+  passo?: number;
 }
 
 export interface FormularioPayload {
@@ -192,12 +194,15 @@ export function FormularioBuilder({
   function addCampo(tipo: CampoTipo) {
     const ordem = campos.length;
     const label = `${CAMPO_LABEL[tipo]} ${ordem + 1}`;
+    // Pega o passo do último campo (novo campo entra no mesmo passo)
+    const passoAtual = campos.length > 0 ? (campos[campos.length - 1]!.passo ?? 1) : 1;
     const campo: Campo = {
       ordem,
       tipo,
       label,
       campo: fieldNameFromLabel(label),
       obrigatorio: false,
+      passo: passoAtual,
       opcoes:
         tipo === 'SELECT' || tipo === 'RADIO' || tipo === 'CHECKBOX'
           ? ['Opção 1', 'Opção 2']
@@ -600,6 +605,20 @@ function CampoInspector({
         onChange={(e) => onUpdate({ obrigatorio: e.target.checked })}
         label="Obrigatório"
       />
+
+      {/* v1.5.0 — Passo multi-step */}
+      <Field label="📑 Passo (multi-step)" hint="1 = único passo. Use 2, 3… pra dividir em páginas.">
+        <Input
+          type="number"
+          min={1}
+          max={10}
+          data-testid="campo-passo"
+          value={campo.passo ?? 1}
+          onChange={(e) =>
+            onUpdate({ passo: Math.max(1, Math.min(10, Number(e.target.value) || 1)) })
+          }
+        />
+      </Field>
 
       {hasOpcoes && (
         <div className="pt-2 border-t border-border">

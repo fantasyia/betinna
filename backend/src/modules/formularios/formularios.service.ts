@@ -106,6 +106,7 @@ export class FormulariosService {
             ? (c.validacao as unknown as Prisma.InputJsonValue)
             : Prisma.JsonNull,
           hint: c.hint ?? null,
+          passo: c.passo ?? 1,
         })),
       });
       return tx.formulario.findUniqueOrThrow({
@@ -163,6 +164,7 @@ export class FormulariosService {
         obrigatorio: c.obrigatorio,
         opcoes: c.opcoes ?? null,
         hint: c.hint,
+        passo: c.passo,
       })),
     };
   }

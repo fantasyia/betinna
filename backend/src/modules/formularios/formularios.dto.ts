@@ -35,6 +35,8 @@ export const campoSchema = z.object({
     })
     .optional(),
   hint: z.string().trim().max(200).optional(),
+  /** v1.5.0 — Passo multi-step (1..10). Default 1 = formulário single-step. */
+  passo: z.number().int().min(1).max(10).default(1),
 });
 export type CampoDto = z.infer<typeof campoSchema>;
 

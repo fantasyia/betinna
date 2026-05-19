@@ -1673,10 +1673,13 @@ model FormularioCampo {
   validacao    Json?
   /// Hint exibido abaixo do campo
   hint         String?
+  /// v1.5.0 — Passo multi-step (1..N). Default 1 = formulário single-step.
+  passo        Int      @default(1)
 
   formulario   Formulario @relation(fields: [formularioId], references: [id], onDelete: Cascade)
 
   @@index([formularioId, ordem])
+  @@index([formularioId, passo])
 }
 
 model FormularioResposta {
