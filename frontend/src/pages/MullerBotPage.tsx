@@ -62,6 +62,7 @@ interface QAItem {
 }
 
 const HISTORY_KEY = 'mullerbot_history_v2';
+const SESSION_KEY = 'mullerbot_session_v2';
 
 function loadHistory(): QAItem[] {
   try {
@@ -78,6 +79,39 @@ function saveHistory(items: QAItem[]) {
   } catch {
     // ignora se storage cheio
   }
+}
+
+/**
+ * sessionId persiste em localStorage (não sessionStorage) pra contexto
+ * sobreviver a reload de página. Backend usa esse id pra carregar histórico
+ * via MullerBotCacheService.getHistorico — assim o bot lembra o que foi
+ * dito em turnos anteriores e responde com contexto.
+ */
+function loadOrCreateSessionId(): string {
+  try {
+    const existing = localStorage.getItem(SESSION_KEY);
+    if (existing) return existing;
+    const novo = (typeof crypto !== 'undefined' && 'randomUUID' in crypto)
+      ? crypto.randomUUID()
+      : `mb-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+    localStorage.setItem(SESSION_KEY, novo);
+    return novo;
+  } catch {
+    // localStorage indisponível — usa id efêmero
+    return `mb-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+  }
+}
+
+function rotateSessionId(): string {
+  const novo = (typeof crypto !== 'undefined' && 'randomUUID' in crypto)
+    ? crypto.randomUUID()
+    : `mb-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+  try {
+    localStorage.setItem(SESSION_KEY, novo);
+  } catch {
+    // ignora
+  }
+  return novo;
 }
 
 function fmtBRL(v: number) {
@@ -98,6 +132,9 @@ export default function MullerBotPage() {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [history, setHistory] = useState<QAItem[]>(() => loadHistory());
+  // sessionId persiste em localStorage pra contexto multi-turn sobreviver
+  // a reload. "Nova conversa" rotaciona via rotateSessionId.
+  const [sessionId, setSessionId] = useState<string>(() => loadOrCreateSessionId());
   const endRef = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => {
@@ -118,7 +155,15 @@ export default function MullerBotPage() {
     setBusy(true);
     setError(null);
     try {
-      const payload: { pergunta: string; topK: number; modelo?: string } = { pergunta: q, topK };
+      // sessionId garante contexto multi-turn — backend usa pra carregar
+      // histórico via MullerBotCacheService.getHistorico e injetar como
+      // mensagens prévias na chamada do OpenAI.
+      const payload: {
+        pergunta: string;
+        topK: number;
+        modelo?: string;
+        sessionId: string;
+      } = { pergunta: q, topK, sessionId };
       if (modelo.trim()) payload.modelo = modelo.trim();
       const r = await api.post<PerguntarResponse>('/mullerbot/perguntar', payload);
       const item: QAItem = {
@@ -145,20 +190,49 @@ export default function MullerBotPage() {
     setHistory([]);
   }
 
+  /**
+   * "Nova conversa" — rotaciona sessionId no localStorage E pede ao backend
+   * pra limpar o histórico Redis associado (best-effort). Limpa também UI.
+   */
+  async function novaConversa() {
+    const oldSessionId = sessionId;
+    setSessionId(rotateSessionId());
+    setHistory([]);
+    setError(null);
+    // Best-effort: backend tem endpoint DELETE /mullerbot/historico/:sessionId.
+    // Falha silenciosa pra não bloquear UX — Redis tem TTL natural mesmo
+    // se a request falhar, o histórico expira sozinho.
+    try {
+      await api.delete(`/mullerbot/historico/${encodeURIComponent(oldSessionId)}`);
+    } catch {
+      // Sem problema — Redis TTL cuida disso
+    }
+  }
+
   return (
     <PageLayout
       title="MullerBot"
       description="Assistente comercial com RAG sobre o catálogo da empresa. Pergunte sobre produtos, preços, recomendações."
       actions={
         history.length > 0 ? (
-          <Button
-            variant="ghost"
-            data-testid="muller-clear"
-            onClick={clearHistory}
-            leftIcon={<Trash2 className="h-3.5 w-3.5" />}
-          >
-            Limpar histórico
-          </Button>
+          <div className="flex items-center gap-2">
+            <Button
+              variant="ghost"
+              data-testid="muller-clear"
+              onClick={clearHistory}
+              leftIcon={<Trash2 className="h-3.5 w-3.5" />}
+            >
+              Limpar UI
+            </Button>
+            <Button
+              variant="secondary"
+              data-testid="muller-nova-conversa"
+              onClick={() => void novaConversa()}
+              leftIcon={<Sparkles className="h-3.5 w-3.5" />}
+            >
+              Nova conversa
+            </Button>
+          </div>
         ) : undefined
       }
     >
@@ -329,7 +403,8 @@ export default function MullerBotPage() {
               <li>Top-K via keyword scoring (sem alucinação)</li>
               <li>Tom e estilo configuráveis em Persona Bot</li>
               <li>REPs precisam de chave OpenAI própria</li>
-              <li>Histórico só nesta sessão (não persistido)</li>
+              <li>Contexto multi-turn persistido server-side (Redis)</li>
+              <li>"Nova conversa" reseta contexto pro bot</li>
             </ul>
           </Card>
 
