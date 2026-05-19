@@ -951,6 +951,12 @@ function IAResultBlock({ label, text }: { label: string; text: string }) {
 
 // ─── Create modal ─────────────────────────────────────────────────────────────
 
+interface TagLite {
+  id: string;
+  nome: string;
+  clientesCount?: number;
+}
+
 function CreateCampanhaModal({
   onClose,
   onSaved,
@@ -965,14 +971,62 @@ function CreateCampanhaModal({
   const [mensagemEmail, setMensagemEmail] = useState('');
   const [assunto, setAssunto] = useState('');
   const [usarIa, setUsarIa] = useState(false);
+  const [segTagIds, setSegTagIds] = useState<string[]>([]);
+  const [agendado, setAgendado] = useState(false);
+  const [agendadoPara, setAgendadoPara] = useState('');
   const [busy, setBusy] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
+
+  // Lista de tags da empresa pra segmentação
+  const tagsQuery = useApiQuery<TagLite[] | { data: TagLite[] }>('/tags');
+  const tags: TagLite[] = Array.isArray(tagsQuery.data)
+    ? tagsQuery.data
+    : tagsQuery.data?.data ?? [];
 
   const precisaWa = canal !== 'EMAIL';
   const precisaEmail = canal !== 'WHATSAPP';
 
+  /** Substitui merge tags por valores exemplo pro preview. */
+  function preview(template: string): string {
+    return template
+      .replace(/\{\{?\s*nome\s*\}?\}/gi, 'João Silva')
+      .replace(/\{\{?\s*empresa\s*\}?\}/gi, 'Acme Ltda')
+      .replace(/\{\{?\s*cnpj\s*\}?\}/gi, '12.345.678/0001-99')
+      .replace(/\{\{?\s*rep\s*\}?\}/gi, 'Léo (você)');
+  }
+
+  function toggleTag(id: string) {
+    setSegTagIds((s) => (s.includes(id) ? s.filter((x) => x !== id) : [...s, id]));
+  }
+
   async function submit(e: React.FormEvent) {
     e.preventDefault();
+
+    // Validações client-side com mensagens claras
+    if (nome.trim().length === 0) {
+      setFormError('Informe um nome pra campanha.');
+      return;
+    }
+    if (precisaWa && mensagemWa.trim().length === 0) {
+      setFormError('Mensagem WhatsApp é obrigatória pra este canal.');
+      return;
+    }
+    if (precisaEmail && mensagemEmail.trim().length === 0) {
+      setFormError('Mensagem de e-mail é obrigatória pra este canal.');
+      return;
+    }
+    if (agendado) {
+      if (!agendadoPara) {
+        setFormError('Informe data e hora do agendamento.');
+        return;
+      }
+      const d = new Date(agendadoPara);
+      if (d.getTime() <= Date.now()) {
+        setFormError('Agendamento deve ser uma data futura.');
+        return;
+      }
+    }
+
     setBusy(true);
     setFormError(null);
     const payload: Record<string, unknown> = {
@@ -985,6 +1039,10 @@ function CreateCampanhaModal({
     if (precisaEmail) {
       payload.mensagemEmail = mensagemEmail.trim();
       if (assunto.trim()) payload.assunto = assunto.trim();
+    }
+    if (segTagIds.length > 0) payload.segTagIds = segTagIds;
+    if (agendado && agendadoPara) {
+      payload.agendadoPara = new Date(agendadoPara).toISOString();
     }
     try {
       const r = await api.post<{ id: string }>('/campanhas', payload);
@@ -1009,10 +1067,10 @@ function CreateCampanhaModal({
             type="submit"
             form="campanha-form"
             data-testid="campanha-save"
-            disabled={busy || nome.trim().length === 0 || (precisaWa && mensagemWa.trim().length === 0) || (precisaEmail && mensagemEmail.trim().length === 0)}
+            disabled={busy}
             style={{ ...btn, opacity: busy ? 0.6 : 1 }}
           >
-            {busy ? 'Criando…' : 'Criar (rascunho)'}
+            {busy ? 'Criando…' : agendado ? 'Agendar' : 'Criar (rascunho)'}
           </button>
         </>
       }
@@ -1096,6 +1154,134 @@ function CreateCampanhaModal({
           />
           ✨ Personalização IA por destinatário (usa tokens OpenAI)
         </label>
+
+        {/* ── Destinatários (segmentação por tags) ───────────────────── */}
+        <FormField label="Destinatários" hint="Sem tags selecionadas = toda a base ativa da empresa">
+          {tags.length === 0 ? (
+            <span style={{ fontSize: 12, color: colors.muted, fontStyle: 'italic' }}>
+              Nenhuma tag cadastrada — campanha será enviada pra toda a base
+            </span>
+          ) : (
+            <div
+              style={{
+                display: 'flex',
+                flexWrap: 'wrap',
+                gap: '0.375rem',
+                maxHeight: 110,
+                overflowY: 'auto',
+                padding: '0.25rem 0',
+              }}
+              data-testid="campanha-tags"
+            >
+              {tags.map((t) => {
+                const selected = segTagIds.includes(t.id);
+                return (
+                  <button
+                    key={t.id}
+                    type="button"
+                    onClick={() => toggleTag(t.id)}
+                    data-testid={`tag-pill-${t.id}`}
+                    style={{
+                      fontSize: 12,
+                      padding: '0.25rem 0.625rem',
+                      borderRadius: 999,
+                      border: `1px solid ${selected ? colors.primary : colors.border}`,
+                      background: selected ? colors.primaryLight ?? '#ecebf3' : 'transparent',
+                      color: selected ? colors.primary : colors.text,
+                      cursor: 'pointer',
+                      fontWeight: selected ? 600 : 400,
+                    }}
+                  >
+                    {t.nome}
+                    {t.clientesCount !== undefined && (
+                      <span style={{ marginLeft: 4, opacity: 0.6 }}>· {t.clientesCount}</span>
+                    )}
+                  </button>
+                );
+              })}
+            </div>
+          )}
+        </FormField>
+
+        {/* ── Agendamento ──────────────────────────────────────────── */}
+        <FormField label="Quando enviar">
+          <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center', flexWrap: 'wrap' }}>
+            <label style={{ display: 'flex', gap: '0.375rem', alignItems: 'center', fontSize: 13, cursor: 'pointer' }}>
+              <input
+                type="radio"
+                name="agendamento"
+                checked={!agendado}
+                onChange={() => setAgendado(false)}
+                data-testid="campanha-agora"
+              />
+              Agora (rascunho → disparar manual depois)
+            </label>
+            <label style={{ display: 'flex', gap: '0.375rem', alignItems: 'center', fontSize: 13, cursor: 'pointer' }}>
+              <input
+                type="radio"
+                name="agendamento"
+                checked={agendado}
+                onChange={() => setAgendado(true)}
+                data-testid="campanha-agendar"
+              />
+              Agendar
+            </label>
+            {agendado && (
+              <Input
+                type="datetime-local"
+                data-testid="campanha-data"
+                value={agendadoPara}
+                onChange={(e) => setAgendadoPara(e.target.value)}
+                style={{ maxWidth: 220 }}
+              />
+            )}
+          </div>
+        </FormField>
+
+        {/* ── Preview com merge tags substituídos ──────────────────── */}
+        {(precisaWa && mensagemWa.trim()) || (precisaEmail && mensagemEmail.trim()) ? (
+          <FormField label="Preview" hint="Como o cliente vai receber (com merge tags substituídos)">
+            <div
+              data-testid="campanha-preview"
+              style={{
+                background: colors.bgAlt,
+                border: `1px solid ${colors.border}`,
+                borderRadius: 8,
+                padding: '0.75rem',
+                fontSize: 13,
+                whiteSpace: 'pre-wrap',
+                color: colors.text,
+                maxHeight: 200,
+                overflowY: 'auto',
+              }}
+            >
+              {precisaWa && mensagemWa.trim() && (
+                <>
+                  <div style={{ fontSize: 10, color: colors.muted, marginBottom: 4, fontWeight: 600 }}>
+                    📱 WhatsApp
+                  </div>
+                  <div>{preview(mensagemWa)}</div>
+                </>
+              )}
+              {precisaWa && precisaEmail && mensagemWa.trim() && mensagemEmail.trim() && (
+                <hr style={{ margin: '0.5rem 0', border: 0, borderTop: `1px solid ${colors.border}` }} />
+              )}
+              {precisaEmail && mensagemEmail.trim() && (
+                <>
+                  <div style={{ fontSize: 10, color: colors.muted, marginBottom: 4, fontWeight: 600 }}>
+                    ✉️ E-mail
+                  </div>
+                  {assunto.trim() && (
+                    <div style={{ fontSize: 12, fontWeight: 600, marginBottom: 4 }}>
+                      {preview(assunto)}
+                    </div>
+                  )}
+                  <div>{preview(mensagemEmail)}</div>
+                </>
+              )}
+            </div>
+          </FormField>
+        ) : null}
 
         {formError && <p style={{ color: colors.danger, fontSize: 13, marginTop: '0.5rem' }}>{formError}</p>}
       </form>
