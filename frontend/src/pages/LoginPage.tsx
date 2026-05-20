@@ -67,19 +67,43 @@ export default function LoginPage() {
     if (loading) return;
     setLoading(true);
     setError(null);
+
+    // Diagnostic markers — confirmam que o handler está rodando até onde
+    // (em caso de loop em "Entrando..." infinito, ver console pra ver
+    // qual marker foi atingido). Hotpatch 2026-05-20.
+    // eslint-disable-next-line no-console
+    console.info('[login] 1. handleSubmit iniciado');
+
+    // Timeout defensivo: se Service Worker velho ou rede pendura o fetch,
+    // após 15s o AbortController força reject — finally roda, botão volta.
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => {
+      // eslint-disable-next-line no-console
+      console.warn('[login] ⚠️ timeout 15s — abortando fetch');
+      controller.abort();
+    }, 15_000);
+
     try {
+      // eslint-disable-next-line no-console
+      console.info('[login] 2. enviando fetch pra /auth/login', { API_BASE });
       const loginRes = await fetch(`${API_BASE}/api/v1/auth/login`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         credentials: 'include',
         body: JSON.stringify({ email, password }),
+        // Hotpatch: cache: 'no-store' evita Service Worker velho interceptar.
+        // signal: AbortController dá timeout — sem isso, fetch pendia indef.
+        cache: 'no-store',
+        signal: controller.signal,
       });
+      // eslint-disable-next-line no-console
+      console.info('[login] 3. resposta recebida', { status: loginRes.status });
+
       if (!loginRes.ok) {
         const body = (await loginRes.json().catch(() => null)) as
           | { error?: { message?: string } }
           | null;
         const msg = body?.error?.message;
-        // Mensagens mais humanas baseadas em status
         if (loginRes.status === 401) {
           throw new Error(msg ?? 'E-mail ou senha incorretos. Tente novamente.');
         }
@@ -101,20 +125,32 @@ export default function LoginPage() {
         user: { id: '', email: '', nome: '', role: 'REP', empresaIds: [], empresaIdAtiva: null },
         expiresAt,
       });
+      // eslint-disable-next-line no-console
+      console.info('[login] 4. session setada, buscando /auth/me');
 
       const me = await api.get<AuthenticatedUser>('/auth/me');
       setSession({ accessToken, user: me, expiresAt });
+      // eslint-disable-next-line no-console
+      console.info('[login] 5. tudo OK, navegando pra', from);
 
       navigate(from, { replace: true });
     } catch (err) {
+      // eslint-disable-next-line no-console
+      console.error('[login] ❌ erro capturado:', err);
+      const isAbort = err instanceof DOMException && err.name === 'AbortError';
       setError(
-        err instanceof ApiError
-          ? err.message
-          : err instanceof Error
+        isAbort
+          ? 'Servidor demorou demais pra responder. Tente novamente em alguns instantes.'
+          : err instanceof ApiError
             ? err.message
-            : 'Erro desconhecido. Tente novamente.',
+            : err instanceof Error
+              ? err.message
+              : 'Erro desconhecido. Tente novamente.',
       );
     } finally {
+      clearTimeout(timeoutId);
+      // eslint-disable-next-line no-console
+      console.info('[login] 6. finally — resetando loading');
       setLoading(false);
     }
   }
