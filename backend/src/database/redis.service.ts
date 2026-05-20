@@ -1,7 +1,7 @@
 import { Injectable, Logger, type OnModuleDestroy, type OnModuleInit } from '@nestjs/common';
-import IORedis, { type Redis } from 'ioredis';
+import { type Redis } from 'ioredis';
 import { EnvService } from '@config/env.service';
-import { buildRedisOptions } from './redis-options';
+import { createIORedisClient } from './redis-options';
 
 /**
  * Cliente Redis compartilhado.
@@ -24,26 +24,20 @@ export class RedisService implements OnModuleInit, OnModuleDestroy {
   constructor(private readonly env: EnvService) {}
 
   async onModuleInit(): Promise<void> {
-    // buildRedisOptions detecta TLS pelo scheme da URL (rediss:// vs redis://)
+    // createIORedisClient já attacha handler 'error' (evita unhandled event).
+    // Aqui passamos onError customizado pra deduplicar log spam.
     const redisUrl = this.env.get('REDIS_URL');
-    this.clientInstance = new IORedis(
+    this.clientInstance = createIORedisClient(
       redisUrl,
-      buildRedisOptions(redisUrl, {
-        // Necessário pra BullMQ-compat e evitar reconnect storms
-        maxRetriesPerRequest: null,
-      }),
+      { maxRetriesPerRequest: null },
+      (err) => {
+        const now = Date.now();
+        if (now - this.lastErrorLog > 30_000) {
+          this.logger.warn(`Redis error: ${err.message} (suprimindo logs duplicados por 30s)`);
+          this.lastErrorLog = now;
+        }
+      },
     );
-
-    this.clientInstance.on('error', (err) => {
-      // Hotpatch: deduplica logs de network error (ETIMEDOUT/ECONNREFUSED) —
-      // sem isso, ioredis loga 10x/s quando Redis está unreachable e os
-      // logs do Railway viram inviáveis.
-      const now = Date.now();
-      if (now - this.lastErrorLog > 30_000) {
-        this.logger.warn(`Redis error: ${err.message} (suprimindo logs duplicados por 30s)`);
-        this.lastErrorLog = now;
-      }
-    });
     this.clientInstance.on('connect', () => {
       this.lastErrorLog = 0; // reset throttle quando volta
       this.logger.log('Redis conectado');

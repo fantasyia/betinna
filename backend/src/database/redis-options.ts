@@ -1,4 +1,4 @@
-import type { RedisOptions } from 'ioredis';
+import IORedis, { type RedisOptions, type Redis } from 'ioredis';
 
 /**
  * Opções padronizadas para QUALQUER conexão Redis no projeto.
@@ -90,4 +90,36 @@ export function buildBullMqConnection(
 export function isTlsUrl(redisUrl: string): boolean {
   if (typeof redisUrl !== 'string') return false;
   return redisUrl.trim().toLowerCase().startsWith('rediss://');
+}
+
+/**
+ * Cria um cliente IORedis com handler de erro JÁ ATTACHED.
+ *
+ * CRÍTICO: ioredis (e qualquer EventEmitter do Node) MATA o processo se
+ * `error` é emitido sem listener. Em produção, quando Redis está down,
+ * ioredis emite 'error' a cada reconnect attempt — sem listener, o app
+ * inteiro cai.
+ *
+ * Sempre use este helper em vez de `new IORedis()` direto.
+ * Hotpatch 2026-05-20: ThrottlerStorageRedisService no app.module.ts
+ * usava `new IORedis` cru, derrubando o boot quando Redis estava fora.
+ *
+ * @param redisUrl URL completa do Redis (vem do env)
+ * @param overrides options específicas
+ * @param onError optional callback pra log custom (default: silencioso)
+ */
+export function createIORedisClient(
+  redisUrl: string,
+  overrides: RedisOptions = {},
+  onError?: (err: Error) => void,
+): Redis {
+  const client = new IORedis(redisUrl, buildRedisOptions(redisUrl, overrides));
+  // SEMPRE attach error handler — evita 'unhandled error event' que mata o processo
+  client.on('error', (err: Error) => {
+    if (onError) {
+      onError(err);
+    }
+    // Se onError não foi passado, silencioso. ioredis reconecta sozinho via retryStrategy.
+  });
+  return client;
 }
