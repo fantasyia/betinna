@@ -46,9 +46,30 @@ export class EmpresaLogoService implements OnModuleInit {
     );
   }
 
-  async onModuleInit(): Promise<void> {
+  /**
+   * Best-effort: garante bucket existe em background. **Não-bloqueante** —
+   * o Nest NÃO espera essa Promise terminar. Se Supabase Storage estiver
+   * lento/offline durante o boot, o app continua subindo normalmente.
+   *
+   * Fix hotpatch 2026-05-19: anteriormente esse onModuleInit era `await`-ado
+   * pelo Nest. Se a chamada `listBuckets()` ficasse pendurada (Supabase
+   * Storage com timeout silencioso, sem rejeitar a Promise), o boot da API
+   * inteira travava — sintoma observado em produção (healthcheck nunca
+   * respondia, frontend ficava em loading screen indefinido).
+   */
+  onModuleInit(): void {
+    // Fire-and-forget intencional — NÃO retornar a Promise.
+    void this.ensureBucket();
+  }
+
+  private async ensureBucket(): Promise<void> {
     try {
+      // Timeout defensivo: se listBuckets pendurar por mais de 10s, desiste.
+      const controller = new AbortController();
+      const timeout = setTimeout(() => controller.abort(), 10_000);
       const { data: buckets } = await this.storage.storage.listBuckets();
+      clearTimeout(timeout);
+
       if (!buckets?.some((b) => b.name === BUCKET)) {
         const { error } = await this.storage.storage.createBucket(BUCKET, {
           public: false,

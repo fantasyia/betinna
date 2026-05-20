@@ -57,10 +57,15 @@ export class DocumentosService implements OnModuleInit {
   }
 
   /**
-   * Garante que o bucket exista (criado privado, sem acesso público).
-   * Roda 1x na inicialização do módulo.
+   * Garante que o bucket exista. **Não-bloqueante** — fire-and-forget pra
+   * evitar travar o boot do Nest caso Supabase Storage pendure (hotpatch
+   * 2026-05-19, ver também EmpresaLogoService.onModuleInit).
    */
-  async onModuleInit(): Promise<void> {
+  onModuleInit(): void {
+    void this.ensureBucket();
+  }
+
+  private async ensureBucket(): Promise<void> {
     try {
       const { data: buckets } = await this.storage.storage.listBuckets();
       if (!buckets?.some((b) => b.name === BUCKET)) {
