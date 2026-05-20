@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, Logger } from '@nestjs/common';
 import { ThrottlerGuard, type ThrottlerRequest } from '@nestjs/throttler';
 
 interface RequestComUser {
@@ -25,6 +25,10 @@ interface RequestComUser {
  */
 @Injectable()
 export class TenantThrottlerGuard extends ThrottlerGuard {
+  private readonly customLogger = new Logger(TenantThrottlerGuard.name);
+  // Avoid log spam quando Redis está down — uma mensagem a cada 30s
+  private lastStorageErrorLog = 0;
+
   protected async getTracker(req: RequestComUser): Promise<string> {
     const empresaId = req.user?.empresaIdAtiva;
     if (empresaId) {
@@ -36,10 +40,44 @@ export class TenantThrottlerGuard extends ThrottlerGuard {
     return ip;
   }
 
-  // Quando a app envolve ThrottlerGuard via APP_GUARD, este método override
-  // serve só pra ser chamado quando @UseGuards explicit. A versão default
-  // do parent invoca getTracker dentro do handle().
+  /**
+   * Override do handleRequest pra fail-open quando storage (Redis) está
+   * fora.
+   *
+   * Hotpatch 2026-05-20: quando o Redis backing-store fica unreachable
+   * (ETIMEDOUT no `INCR` que conta requests), o `super.handleRequest`
+   * lançava exceção em CADA request — incluindo `/api/v1/health`. Isso
+   * fazia o healthcheck do Railway nunca passar mesmo com o app rodando.
+   *
+   * Decisão: prefere DISPONIBILIDADE sobre PROTEÇÃO. Em outage transiente
+   * do Redis, deixa todo tráfego passar (sem rate limit) em vez de
+   * retornar 500/timeout. Operador é notificado via Sentry + logs.
+   */
   protected async handleRequest(req: ThrottlerRequest): Promise<boolean> {
-    return super.handleRequest(req);
+    try {
+      return await super.handleRequest(req);
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      // Detecta erro de storage (Redis down) — fail-open.
+      // Outros erros (lógica do throttler, config) ainda propagam.
+      const isStorageError =
+        msg.includes('ETIMEDOUT') ||
+        msg.includes('ECONNREFUSED') ||
+        msg.includes('ECONNRESET') ||
+        msg.includes('ENOTFOUND') ||
+        msg.includes('Connection is closed');
+
+      if (isStorageError) {
+        const now = Date.now();
+        if (now - this.lastStorageErrorLog > 30_000) {
+          this.customLogger.warn(
+            `Throttler storage indisponível (${msg}) — fail-open ativo, requests passam sem rate limit.`,
+          );
+          this.lastStorageErrorLog = now;
+        }
+        return true; // fail-open: deixa request passar
+      }
+      throw err;
+    }
   }
 }

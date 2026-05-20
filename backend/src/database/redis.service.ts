@@ -17,6 +17,9 @@ import { buildRedisOptions } from './redis-options';
 export class RedisService implements OnModuleInit, OnModuleDestroy {
   private readonly logger = new Logger(RedisService.name);
   private clientInstance!: Redis;
+  // Hotpatch 2026-05-20: log throttle pra evitar spam quando Redis está down.
+  // Uma mensagem a cada 30s em vez de uma por reconnect attempt.
+  private lastErrorLog = 0;
 
   constructor(private readonly env: EnvService) {}
 
@@ -32,9 +35,17 @@ export class RedisService implements OnModuleInit, OnModuleDestroy {
     );
 
     this.clientInstance.on('error', (err) => {
-      this.logger.error(`Redis error: ${err.message}`);
+      // Hotpatch: deduplica logs de network error (ETIMEDOUT/ECONNREFUSED) —
+      // sem isso, ioredis loga 10x/s quando Redis está unreachable e os
+      // logs do Railway viram inviáveis.
+      const now = Date.now();
+      if (now - this.lastErrorLog > 30_000) {
+        this.logger.warn(`Redis error: ${err.message} (suprimindo logs duplicados por 30s)`);
+        this.lastErrorLog = now;
+      }
     });
     this.clientInstance.on('connect', () => {
+      this.lastErrorLog = 0; // reset throttle quando volta
       this.logger.log('Redis conectado');
     });
   }
