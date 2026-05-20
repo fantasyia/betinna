@@ -28,6 +28,27 @@ export function buildRedisOptions(redisUrl: string, overrides: RedisOptions = {}
     // Sane defaults — sobreescrevíveis via overrides
     enableReadyCheck: true,
     lazyConnect: false,
+    // Retry com backoff exponencial: 200ms → 400 → 800 → ... → cap 30s.
+    // Evita inundação de logs ETIMEDOUT quando o Redis está down (hotpatch
+    // 2026-05-19: worker fazia ~10 connect attempts por segundo).
+    retryStrategy: (times) => {
+      const delay = Math.min(200 * Math.pow(2, Math.min(times, 8)), 30_000);
+      return delay;
+    },
+    // Reconnect on error transiente (READONLY, ETIMEDOUT) — não nas falhas
+    // de auth/syntax. Default ioredis cobre ECONNRESET; estamos só sendo
+    // explícitos pra timeout do Railway.
+    reconnectOnError: (err) => {
+      const msg = err?.message ?? '';
+      return (
+        msg.includes('READONLY') ||
+        msg.includes('ETIMEDOUT') ||
+        msg.includes('ECONNRESET')
+      );
+    },
+    // Evita travar `await client.cmd()` indefinidamente quando Redis sumiu.
+    // Default é Infinity (ruim em prod). 5s permite o caller fallback/retry.
+    connectTimeout: 10_000,
     ...overrides,
   };
 
