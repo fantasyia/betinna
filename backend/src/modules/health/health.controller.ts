@@ -2,7 +2,6 @@ import { Controller, Get, HttpException, HttpStatus } from '@nestjs/common';
 import { InjectQueue } from '@nestjs/bullmq';
 import type { Queue } from 'bullmq';
 import { ApiOperation, ApiTags } from '@nestjs/swagger';
-import { SkipThrottle } from '@nestjs/throttler';
 import { PrismaService } from '@database/prisma.service';
 import { RedisService } from '@database/redis.service';
 import { EnvService } from '@config/env.service';
@@ -33,9 +32,7 @@ export class HealthController {
   /**
    * Liveness — endpoint público leve (sem dependências externas).
    * Usado por Docker healthcheck + Kubernetes liveness probe.
-   * @SkipThrottle: NÃO passa pelo throttler global (que toca Redis).
    */
-  @SkipThrottle()
   @Public()
   @Get()
   @ApiOperation({ summary: 'Liveness — sempre retorna ok se processo está vivo' })
