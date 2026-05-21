@@ -2,6 +2,7 @@ import { Controller, Get, HttpException, HttpStatus } from '@nestjs/common';
 import { InjectQueue } from '@nestjs/bullmq';
 import type { Queue } from 'bullmq';
 import { ApiOperation, ApiTags } from '@nestjs/swagger';
+import { SkipThrottle } from '@nestjs/throttler';
 import { PrismaService } from '@database/prisma.service';
 import { RedisService } from '@database/redis.service';
 import { EnvService } from '@config/env.service';
@@ -32,7 +33,18 @@ export class HealthController {
   /**
    * Liveness — endpoint público leve (sem dependências externas).
    * Usado por Docker healthcheck + Kubernetes liveness probe.
+   *
+   * CRÍTICO @SkipThrottle: o /health é chamado a cada ~5s pelo Railway
+   * healthcheck. Sem @SkipThrottle, cada chamada passa pelo
+   * TenantThrottlerGuard global que faz INCR no Redis — se o Redis está
+   * com latência alta (ex: passando por REDIS_PUBLIC_URL proxy), cada
+   * /health demora segundos. Excede o timeout do Railway → deploy fica
+   * "Unhealthy". Hotpatch 2026-05-20.
+   *
+   * Filosofia: liveness DEVE ser instantâneo. Sem auth, sem throttle,
+   * sem DB, sem Redis. Só process.uptime() — síncrono, microssegundos.
    */
+  @SkipThrottle()
   @Public()
   @Get()
   @ApiOperation({ summary: 'Liveness — sempre retorna ok se processo está vivo' })
