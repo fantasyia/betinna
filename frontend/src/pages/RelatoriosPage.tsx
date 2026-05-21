@@ -578,6 +578,20 @@ function VendasTab({ qs }: { qs: string }) {
 function FunilTab({ qs }: { qs: string }) {
   const { data, loading, error, refetch } = useApiQuery<FunilResp>(`/relatorios/funil${qs}`);
 
+  // Defesa em profundidade contra payload incompleto/edge cases —
+  // antes uma resposta sem `porRep` ou `agingMedioPorEtapa` derrubava
+  // o render inteiro pro ErrorBoundary (fix B6).
+  const funilAtual = data?.funilAtual ?? [];
+  const aging = data?.agingMedioPorEtapa ?? {};
+  const porRep = data?.porRep ?? [];
+  const totalAtivos = data?.totalAtivos ?? 0;
+  const criadosAtual = data?.criados?.atual ?? 0;
+  const criadosVariacao = data?.criados?.variacao;
+  const ganhosAtual = data?.ganhos?.atual ?? 0;
+  const ganhosVariacao = data?.ganhos?.variacao;
+  const perdidos = data?.perdidos ?? 0;
+  const taxaConversao = data?.taxaConversao ?? 0;
+
   return (
     <StateView loading={loading} error={error} onRetry={refetch}>
       {data && (
@@ -589,27 +603,27 @@ function FunilTab({ qs }: { qs: string }) {
               gap: '0.75rem',
             }}
           >
-            <KPICard label="Leads ativos" value={String(data.totalAtivos)} />
+            <KPICard label="Leads ativos" value={String(totalAtivos)} />
             <KPICard
               label="Criados"
-              value={String(data.criados.atual)}
-              variacao={data.criados.variacao}
+              value={String(criadosAtual)}
+              variacao={criadosVariacao}
             />
             <KPICard
               label="Ganhos"
-              value={String(data.ganhos.atual)}
-              variacao={data.ganhos.variacao}
+              value={String(ganhosAtual)}
+              variacao={ganhosVariacao}
               color={colors.success}
             />
             <KPICard
               label="Perdidos"
-              value={String(data.perdidos)}
-              color={data.perdidos > 0 ? colors.danger : colors.muted}
+              value={String(perdidos)}
+              color={perdidos > 0 ? colors.danger : colors.muted}
             />
             <KPICard
               label="Taxa conversão"
-              value={`${data.taxaConversao}%`}
-              color={data.taxaConversao > 30 ? colors.success : data.taxaConversao > 15 ? colors.warning : colors.danger}
+              value={`${taxaConversao}%`}
+              color={taxaConversao > 30 ? colors.success : taxaConversao > 15 ? colors.warning : colors.danger}
             />
           </div>
 
@@ -617,9 +631,9 @@ function FunilTab({ qs }: { qs: string }) {
             <div style={card}>
               <h3 style={{ margin: '0 0 0.75rem', fontSize: 15 }}>Funil atual</h3>
               <Funnel
-                stages={data.funilAtual.map((e) => ({
+                stages={funilAtual.map((e) => ({
                   label: ETAPA_LABEL[e.etapa] ?? e.etapa,
-                  value: e.count,
+                  value: e.count ?? 0,
                   color: ETAPA_COLOR[e.etapa],
                 })) as FunnelStage[]}
               />
@@ -627,9 +641,9 @@ function FunilTab({ qs }: { qs: string }) {
             <div style={card}>
               <h3 style={{ margin: '0 0 0.75rem', fontSize: 15 }}>Valor estimado por etapa</h3>
               <BarChart
-                data={data.funilAtual.map((e) => ({
+                data={funilAtual.map((e) => ({
                   label: ETAPA_LABEL[e.etapa] ?? e.etapa,
-                  value: e.valorEstimado,
+                  value: e.valorEstimado ?? 0,
                   color: ETAPA_COLOR[e.etapa],
                 }))}
                 formatValue={fmtBRLCompact}
@@ -637,16 +651,16 @@ function FunilTab({ qs }: { qs: string }) {
             </div>
           </div>
 
-          {Object.keys(data.agingMedioPorEtapa).length > 0 && (
+          {Object.keys(aging).length > 0 && (
             <div style={card}>
               <h3 style={{ margin: '0 0 0.75rem', fontSize: 15 }}>
                 Aging médio por etapa (dias parados)
               </h3>
               <BarChart
-                data={Object.entries(data.agingMedioPorEtapa).map(([etapa, dias]) => ({
+                data={Object.entries(aging).map(([etapa, dias]) => ({
                   label: ETAPA_LABEL[etapa] ?? etapa,
-                  value: dias,
-                  color: dias > 14 ? colors.warning : ETAPA_COLOR[etapa],
+                  value: dias ?? 0,
+                  color: (dias ?? 0) > 14 ? colors.warning : ETAPA_COLOR[etapa],
                 }))}
                 formatValue={(v) => `${v}d`}
               />
@@ -656,10 +670,10 @@ function FunilTab({ qs }: { qs: string }) {
           <div style={card}>
             <h3 style={{ margin: '0 0 0.75rem', fontSize: 15 }}>Leads por representante</h3>
             <BarChart
-              data={data.porRep.map((r) => ({
-                label: r.repNome,
-                sublabel: `${r.leads} lead${r.leads === 1 ? '' : 's'}`,
-                value: r.valorEstimado,
+              data={porRep.map((r) => ({
+                label: r.repNome ?? '—',
+                sublabel: `${r.leads ?? 0} lead${(r.leads ?? 0) === 1 ? '' : 's'}`,
+                value: r.valorEstimado ?? 0,
               }))}
               maxBars={20}
               formatValue={fmtBRLCompact}
