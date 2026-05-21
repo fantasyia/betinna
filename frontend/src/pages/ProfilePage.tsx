@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react';
-import { Link, useParams } from 'react-router-dom';
+import { Link, useLocation, useParams } from 'react-router-dom';
 import { api, ApiError } from '@/lib/api';
 import { useApiQuery, type PaginatedResponse } from '@/hooks/useApiQuery';
 import { useRole } from '@/hooks/usePermission';
@@ -56,15 +56,28 @@ function fmtDate(d: string | null | undefined) {
   }
 }
 
-// ─── Component principal: decide entre Profile (próprio) ou Users (admin) ──
+// ─── Component principal: decide entre Profile (próprio) ou Users (lista) ──
+//
+// Roteamento (fix R4 — 2026-05-21):
+//   /perfil           → SEMPRE meu próprio detalhe (mesmo se for ADMIN)
+//   /usuarios         → SEMPRE lista de usuários (com permissão de role)
+//   /usuarios/:id     → detalhe de outro usuário (admin abrindo)
+//
+// Antes a regra dependia só do `id`, então admin/director/gerente caíam
+// em UsersList em AMBAS as rotas — daí a sensação de 'tudo igual'.
 
 export default function ProfilePage() {
   const { id } = useParams<{ id?: string }>();
   const role = useRole();
   const session = getSession();
+  const location = useLocation();
 
+  // Decide visualização baseado na ROTA, não na role:
+  // - /usuarios sem id → lista (se tem permissão de gerenciar usuários)
+  // - /perfil ou /perfil/:id ou /usuarios/:id → detalhe
+  const isUsuariosRoute = location.pathname.startsWith('/usuarios');
   const isAdminOrDirector = role === 'ADMIN' || role === 'DIRECTOR' || role === 'GERENTE';
-  const showList = !id && isAdminOrDirector;
+  const showList = isUsuariosRoute && !id && isAdminOrDirector;
   const targetId = id ?? session?.user.id ?? null;
 
   if (showList) {
