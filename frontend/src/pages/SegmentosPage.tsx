@@ -11,7 +11,7 @@ import {
   AlertCircle,
   PieChart,
 } from 'lucide-react';
-import { api, ApiError } from '@/lib/api';
+import { api, apiErrorMessage } from '@/lib/api';
 import { useApiQuery } from '@/hooks/useApiQuery';
 import { useToast } from '@/components/toast';
 import { PageLayout } from '@/components/PageLayout';
@@ -134,7 +134,7 @@ export default function SegmentosPage() {
       refetch();
       setConfirmDelete(null);
     } catch (err) {
-      toast.error('Falha', err instanceof ApiError ? err.message : undefined);
+      toast.error('Falha', apiErrorMessage(err));
     } finally {
       setBusy(false);
     }
@@ -475,7 +475,7 @@ function SegmentoBuilder({
       toast.success(isNew ? 'Segmento criado' : 'Segmento atualizado');
       onSaved();
     } catch (err) {
-      setError(err instanceof ApiError ? err.message : 'Falha');
+      setError(apiErrorMessage(err));
     } finally {
       setSaving(false);
     }

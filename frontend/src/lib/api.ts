@@ -84,6 +84,36 @@ export class ApiError extends Error {
   }
 }
 
+/**
+ * Extrai uma mensagem AMIGÁVEL de erro pra mostrar ao usuário.
+ *
+ * Pro VALIDATION_ERROR do backend (Zod), o payload contém
+ * `details: [{ field, message }]`. Sem este helper, o frontend só vê a
+ * mensagem genérica "Dados inválidos" — inútil pra debugar qual campo
+ * está errado. Aqui pegamos o primeiro erro e formatamos como
+ * `"campo: mensagem"`.
+ *
+ * Pra outros erros, simplesmente retorna `err.message`.
+ */
+export function apiErrorMessage(err: unknown): string {
+  if (!(err instanceof ApiError)) {
+    return err instanceof Error ? err.message : 'Erro desconhecido';
+  }
+  // Validação Zod — extrai o primeiro detalhe com field+message
+  if (
+    err.code === 'VALIDATION_ERROR' &&
+    Array.isArray(err.details) &&
+    err.details.length > 0
+  ) {
+    const first = err.details[0] as { field?: string; message?: string };
+    const field = (first?.field ?? '').trim();
+    const msg = (first?.message ?? '').trim();
+    if (field && msg) return `${field}: ${msg}`;
+    if (msg) return msg;
+  }
+  return err.message;
+}
+
 interface RequestOpts {
   method?: 'GET' | 'POST' | 'PATCH' | 'PUT' | 'DELETE';
   body?: unknown;

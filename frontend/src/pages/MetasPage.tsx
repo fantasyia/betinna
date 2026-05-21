@@ -13,7 +13,7 @@ import {
   Building2,
   AlertCircle,
 } from 'lucide-react';
-import { api, ApiError } from '@/lib/api';
+import { api, apiErrorMessage } from '@/lib/api';
 import { useApiQuery } from '@/hooks/useApiQuery';
 import { useToast } from '@/components/toast';
 import { PageLayout } from '@/components/PageLayout';
@@ -111,7 +111,7 @@ export default function MetasPage() {
       refetch();
       setConfirmDelete(null);
     } catch (err) {
-      toast.error('Falha', err instanceof ApiError ? err.message : undefined);
+      toast.error('Falha', apiErrorMessage(err));
     } finally {
       setBusy(false);
     }
@@ -457,7 +457,7 @@ function MetaFormDialog({
       else await api.put(`/metas/${meta!.id}`, payload);
       onSaved();
     } catch (err) {
-      setError(err instanceof ApiError ? err.message : 'Falha');
+      setError(apiErrorMessage(err));
     } finally {
       setSaving(false);
     }
