@@ -3,6 +3,7 @@ import { api, ApiError } from '@/lib/api';
 import { useApiQuery, type PaginatedResponse } from '@/hooks/useApiQuery';
 import { usePermission, useRole } from '@/hooks/usePermission';
 import { PageLayout } from '@/components/PageLayout';
+import { VendasTabs } from '@/components/VendasTabs';
 import { Table, Pagination, type Column } from '@/components/Table';
 import { StateView } from '@/components/StateView';
 import { FilterBar } from '@/components/FilterBar';
@@ -54,6 +55,7 @@ export default function ComissoesPage() {
 
   return (
     <PageLayout title="Comissões">
+      <VendasTabs />
       {canViewOwn && <ResumoPessoal />}
       {canViewAll && <ListaAdmin />}
       {!canViewOwn && !canViewAll && (

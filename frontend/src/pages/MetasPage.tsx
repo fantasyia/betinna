@@ -17,6 +17,7 @@ import { api, apiErrorMessage } from '@/lib/api';
 import { useApiQuery } from '@/hooks/useApiQuery';
 import { useToast } from '@/components/toast';
 import { PageLayout } from '@/components/PageLayout';
+import { VendasTabs } from '@/components/VendasTabs';
 import { StateView } from '@/components/StateView';
 import { AsyncCombobox } from '@/components/AsyncCombobox';
 import {
@@ -136,6 +137,7 @@ export default function MetasPage() {
         </Button>
       }
     >
+      <VendasTabs />
       <StateView loading={loading} error={error} onRetry={refetch}>
         {data && data.length === 0 ? (
           <EmptyState

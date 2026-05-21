@@ -3,6 +3,7 @@ import { useSearchParams } from 'react-router-dom';
 import { api, ApiError } from '@/lib/api';
 import { useApiQuery, type PaginatedResponse } from '@/hooks/useApiQuery';
 import { PageLayout } from '@/components/PageLayout';
+import { VendasTabs } from '@/components/VendasTabs';
 import { Table, Pagination, type Column } from '@/components/Table';
 import { StateView } from '@/components/StateView';
 import { FilterBar } from '@/components/FilterBar';
@@ -201,6 +202,7 @@ export default function AmostrasPage() {
         </button>
       }
     >
+      <VendasTabs />
       {clienteIdFilter && (
         <div
           data-testid="amostras-cliente-filter-banner"

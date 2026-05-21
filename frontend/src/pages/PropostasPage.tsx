@@ -20,6 +20,7 @@ import {
 import { api, ApiError } from '@/lib/api';
 import { useApiQuery, type PaginatedResponse } from '@/hooks/useApiQuery';
 import { PageLayout } from '@/components/PageLayout';
+import { VendasTabs } from '@/components/VendasTabs';
 import { StateView } from '@/components/StateView';
 import { AsyncCombobox } from '@/components/AsyncCombobox';
 import {
@@ -226,6 +227,7 @@ export default function PropostasPage() {
         </Button>
       }
     >
+      <VendasTabs />
       {clienteIdFilter && (
         <div
           data-testid="propostas-cliente-filter-banner"

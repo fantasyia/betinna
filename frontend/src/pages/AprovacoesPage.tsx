@@ -13,6 +13,7 @@ import {
 import { api, ApiError } from '@/lib/api';
 import { useApiQuery, type PaginatedResponse } from '@/hooks/useApiQuery';
 import { PageLayout } from '@/components/PageLayout';
+import { VendasTabs } from '@/components/VendasTabs';
 import { StateView } from '@/components/StateView';
 import {
   Avatar,
@@ -112,6 +113,7 @@ export default function AprovacoesPage() {
           : 'Histórico de aprovações de desconto acima do teto do rep.'
       }
     >
+      <VendasTabs />
       <Card padding="none" className="overflow-hidden">
         {/* Toolbar com status tabs */}
         <div className="px-4 py-3 border-b border-border flex items-center gap-2 flex-wrap">
