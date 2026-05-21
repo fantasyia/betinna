@@ -21,6 +21,7 @@ import {
 import { api, ApiError } from '@/lib/api';
 import { useApiQuery } from '@/hooks/useApiQuery';
 import { PageLayout } from '@/components/PageLayout';
+import { CatalogoTabs } from '@/components/CatalogoTabs';
 import { StateView } from '@/components/StateView';
 import { AsyncCombobox } from '@/components/AsyncCombobox';
 import { useToast } from '@/components/toast';
@@ -253,6 +254,7 @@ export default function CatalogoPage() {
         </>
       }
     >
+      <CatalogoTabs />
       {/* Stats */}
       <div className="grid gap-3 grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 mb-4">
         <Stat

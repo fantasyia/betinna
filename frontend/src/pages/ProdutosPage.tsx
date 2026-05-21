@@ -2,6 +2,7 @@ import { useMemo, useState } from 'react';
 import { api, ApiError } from '@/lib/api';
 import { useApiQuery, type PaginatedResponse } from '@/hooks/useApiQuery';
 import { PageLayout } from '@/components/PageLayout';
+import { CatalogoTabs } from '@/components/CatalogoTabs';
 import { Table, Pagination, type Column } from '@/components/Table';
 import { StateView } from '@/components/StateView';
 import { FilterBar, SearchInput } from '@/components/FilterBar';
@@ -206,6 +207,7 @@ export default function ProdutosPage() {
         </button>
       }
     >
+      <CatalogoTabs />
       <div style={card}>
         <FilterBar>
           <SearchInput
