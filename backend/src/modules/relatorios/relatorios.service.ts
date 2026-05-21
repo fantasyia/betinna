@@ -740,96 +740,7 @@ export class RelatoriosService {
     };
   }
 
-  // ─── 7. Fidelidade ────────────────────────────────────────────────────
-
-  /**
-   * KPIs de fidelidade: pontos creditados/resgatados/ajustados no período,
-   * saldo total acumulado da empresa, top clientes por saldo, e taxa de uso
-   * (% de pontos resgatados sobre creditados).
-   *
-   * Não respeita `repFilter` — fidelidade é cross-rep por natureza (decisão
-   * comercial do tenant). Filtragem por rep poderia esconder o efeito real
-   * do programa em campanhas que cruzam carteiras.
-   */
-  async fidelidade(user: AuthenticatedUser, params: PeriodoDto) {
-    return this.withCache(this.cacheKey(user, 'fidelidade', params), () =>
-      this.fidelidadeInternal(user, params),
-    );
-  }
-
-  private async fidelidadeInternal(user: AuthenticatedUser, params: PeriodoDto) {
-    const empresaId = this.requireEmpresa(user);
-    const de = new Date(params.de);
-    const ate = new Date(params.ate);
-
-    const where = (dStart: Date, dEnd: Date) => ({
-      empresaId,
-      criadoEm: { gte: dStart, lte: dEnd },
-    });
-
-    type MovGrpRow = {
-      tipo: string;
-      _sum: { pontos: number | null } | null;
-      _count: { _all: number };
-    };
-
-    const [movPorTipo, saldoAgg, programa, topClientes] = await Promise.all([
-      this.prisma.movimentoFidelidade.groupBy({
-        by: ['tipo'],
-        where: where(de, ate),
-        _sum: { pontos: true },
-        _count: { _all: true },
-      }) as unknown as Promise<MovGrpRow[]>,
-      this.prisma.saldoFidelidade.aggregate({
-        where: { empresaId },
-        _sum: { pontos: true },
-        _count: { _all: true },
-      }),
-      this.prisma.programaFidelidade.findUnique({ where: { empresaId } }),
-      this.prisma.saldoFidelidade.findMany({
-        where: { empresaId, pontos: { gt: 0 } },
-        orderBy: { pontos: 'desc' },
-        take: 5,
-        select: {
-          pontos: true,
-          cliente: { select: { id: true, nome: true } },
-        },
-      }),
-    ]);
-
-    const byTipo: Record<string, { pontos: number; count: number }> = {};
-    for (const m of movPorTipo) {
-      byTipo[m.tipo] = { pontos: m._sum?.pontos ?? 0, count: m._count._all };
-    }
-
-    const creditados = byTipo['GANHO_PEDIDO']?.pontos ?? 0;
-    const resgatados = Math.abs(byTipo['RESGATE']?.pontos ?? 0);
-    const estornados = Math.abs(byTipo['ESTORNO_PEDIDO']?.pontos ?? 0);
-    const expirados = Math.abs(byTipo['EXPIRACAO']?.pontos ?? 0);
-    const ajustados = byTipo['AJUSTE_MANUAL']?.pontos ?? 0;
-
-    return {
-      periodo: { de, ate },
-      programaAtivo: programa?.ativo ?? false,
-      clientesNoPrograma: saldoAgg._count?._all ?? 0,
-      saldoTotal: saldoAgg._sum?.pontos ?? 0,
-      noPeriodo: {
-        creditados,
-        resgatados,
-        estornados,
-        expirados,
-        ajustados,
-        totalMovimentos: movPorTipo.reduce((s, m) => s + m._count._all, 0),
-      },
-      taxaUso: creditados > 0 ? Math.round((resgatados / creditados) * 100) : 0,
-      topClientes: topClientes.map((t) => ({
-        cliente: t.cliente,
-        pontos: t.pontos,
-      })),
-    };
-  }
-
-  // ─── 8. Dashboard executivo ───────────────────────────────────────────
+  // ─── 7. Dashboard executivo ───────────────────────────────────────────
 
   async dashboard(user: AuthenticatedUser, params: PeriodoDto) {
     // Dashboard agrega 6 áreas em paralelo — query pesada. Cache TTL=60s pra
@@ -843,14 +754,13 @@ export class RelatoriosService {
   private async dashboardInternal(user: AuthenticatedUser, params: PeriodoDto) {
     // Chama versões Internal (sem cache) — dashboard tem seu próprio cache;
     // não vale pagar 2x o overhead de SHA + Redis get/set por área.
-    const [vendasData, funilData, sacData, campanhasData, amostrasData, fidelidadeData] =
+    const [vendasData, funilData, sacData, campanhasData, amostrasData] =
       await Promise.all([
         this.vendasInternal(user, params),
         this.funilInternal(user, params),
         this.sacInternal(user, params),
         this.campanhasInternal(user, params),
         this.amostrasInternal(user, params),
-        this.fidelidadeInternal(user, params),
       ]);
 
     return {
@@ -892,14 +802,6 @@ export class RelatoriosService {
         total: amostrasData.total,
         taxaConversao: amostrasData.taxaConversao,
         valorConvertido: amostrasData.valorConvertido,
-      },
-      fidelidade: {
-        programaAtivo: fidelidadeData.programaAtivo,
-        clientesNoPrograma: fidelidadeData.clientesNoPrograma,
-        saldoTotal: fidelidadeData.saldoTotal,
-        creditados: fidelidadeData.noPeriodo.creditados,
-        resgatados: fidelidadeData.noPeriodo.resgatados,
-        taxaUso: fidelidadeData.taxaUso,
       },
     };
   }

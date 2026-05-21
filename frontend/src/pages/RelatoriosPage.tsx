@@ -18,8 +18,7 @@ type Tab =
   | 'comissoes'
   | 'sac'
   | 'amostras'
-  | 'campanhas'
-  | 'fidelidade';
+  | 'campanhas';
 
 // ─── Tipos das responses do backend ──────────────────────────────────
 
@@ -74,23 +73,6 @@ interface SacResp {
   tempoMedioResolucaoHoras?: number;
   porSeveridade: Array<{ severidade: string; count: number }>;
   porTipo: Array<{ tipo: string; count: number }>;
-}
-
-interface FidelidadeResp {
-  periodo: { de: string; ate: string };
-  programaAtivo: boolean;
-  clientesNoPrograma: number;
-  saldoTotal: number;
-  noPeriodo: {
-    creditados: number;
-    resgatados: number;
-    estornados: number;
-    expirados: number;
-    ajustados: number;
-    totalMovimentos: number;
-  };
-  taxaUso: number;
-  topClientes: Array<{ cliente: { id: string; nome: string }; pontos: number }>;
 }
 
 interface AmostrasResp {
@@ -241,9 +223,6 @@ export default function RelatoriosPage() {
         <TabButton current={tab} value="amostras" onChange={setTab}>
           Amostras
         </TabButton>
-        <TabButton current={tab} value="fidelidade" onChange={setTab}>
-          Fidelidade
-        </TabButton>
         <TabButton current={tab} value="campanhas" onChange={setTab}>
           Campanhas
         </TabButton>
@@ -256,7 +235,6 @@ export default function RelatoriosPage() {
       {tab === 'sac' && <SacTab qs={qs} />}
       {tab === 'amostras' && <AmostrasTab qs={qs} />}
       {tab === 'campanhas' && <CampanhasTab qs={qs} />}
-      {tab === 'fidelidade' && <FidelidadeTab qs={qs} />}
     </PageLayout>
   );
 }
@@ -936,125 +914,6 @@ function AmostrasTab({ qs }: { qs: string }) {
         </div>
         );
       })()}
-    </StateView>
-  );
-}
-
-// ─── Tab: Fidelidade ──────────────────────────────────────────────────
-
-function FidelidadeTab({ qs }: { qs: string }) {
-  const { data, loading, error, refetch } = useApiQuery<FidelidadeResp>(
-    `/relatorios/fidelidade${qs}`,
-  );
-
-  return (
-    <StateView loading={loading} error={error} onRetry={refetch}>
-      {data && (
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
-          <div
-            style={{
-              display: 'grid',
-              gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))',
-              gap: '0.75rem',
-            }}
-          >
-            <KPICard
-              label="Programa"
-              value={data.programaAtivo ? 'Ativo' : 'Pausado'}
-              color={data.programaAtivo ? colors.success : colors.muted}
-            />
-            <KPICard
-              label="Clientes pontuando"
-              value={String(data.clientesNoPrograma)}
-            />
-            <KPICard label="Saldo total" value={`${data.saldoTotal} pts`} />
-            <KPICard
-              label="Taxa de uso"
-              value={`${data.taxaUso}%`}
-              color={
-                data.taxaUso > 50
-                  ? colors.success
-                  : data.taxaUso > 20
-                    ? colors.warning
-                    : colors.muted
-              }
-              hint="Resgatados ÷ creditados no período"
-            />
-          </div>
-
-          <div
-            style={{
-              display: 'grid',
-              gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))',
-              gap: '0.75rem',
-            }}
-          >
-            <KPICard
-              label="Creditados"
-              value={`+${data.noPeriodo.creditados}`}
-              color={colors.success}
-              hint="Pontos gerados em pedidos aprovados"
-            />
-            <KPICard
-              label="Resgatados"
-              value={`-${data.noPeriodo.resgatados}`}
-              color={colors.primary}
-            />
-            <KPICard
-              label="Estornados"
-              value={`-${data.noPeriodo.estornados}`}
-              color={colors.warning}
-              hint="Pedidos cancelados após crédito"
-            />
-            <KPICard
-              label="Expirados"
-              value={`-${data.noPeriodo.expirados}`}
-              color={colors.muted}
-            />
-            <KPICard
-              label="Ajustes manuais"
-              value={
-                data.noPeriodo.ajustados >= 0
-                  ? `+${data.noPeriodo.ajustados}`
-                  : String(data.noPeriodo.ajustados)
-              }
-              color="#7c3aed"
-            />
-            <KPICard
-              label="Total de movimentos"
-              value={String(data.noPeriodo.totalMovimentos)}
-            />
-          </div>
-
-          {data.topClientes.length > 0 && (
-            <div style={card}>
-              <h3 style={{ margin: '0 0 0.75rem', fontSize: 15 }}>Top clientes por saldo</h3>
-              <BarChart
-                data={data.topClientes.map((t) => ({
-                  label: t.cliente.nome,
-                  sublabel: `${t.pontos} pts`,
-                  value: t.pontos,
-                }))}
-              />
-            </div>
-          )}
-
-          {!data.programaAtivo && (
-            <div
-              style={{
-                ...card,
-                background: '#fff8e7',
-                borderColor: '#fde68a',
-              }}
-            >
-              <p style={{ margin: 0, fontSize: 13, color: '#78350f' }}>
-                💡 O programa está pausado — não há crédito automático em pedidos novos. Ative em{' '}
-                <strong>Fidelidade → Configurar programa</strong>.
-              </p>
-            </div>
-          )}
-        </div>
-      )}
     </StateView>
   );
 }

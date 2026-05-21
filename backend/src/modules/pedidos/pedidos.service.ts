@@ -2,7 +2,6 @@ import { Injectable, Logger } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { PrismaService } from '@database/prisma.service';
 import { OmiePedidosService } from '@integrations/omie/omie-pedidos.service';
-import { FidelidadeService } from '@modules/fidelidade/fidelidade.service';
 import { NotificacoesService } from '@modules/notificacoes/notificacoes.service';
 import { MetricsService } from '@shared/observability/metrics.service';
 import { FluxoEventBusService } from '@modules/fluxos/fluxo-event-bus.service';
@@ -59,7 +58,6 @@ export class PedidosService {
     private readonly repScope: RepScopeService,
     private readonly bus: FluxoEventBusService,
     private readonly sequence: SequenceService,
-    private readonly fidelidade: FidelidadeService,
     private readonly notificacoes: NotificacoesService,
     private readonly metrics: MetricsService,
   ) {}
@@ -487,9 +485,8 @@ export class PedidosService {
       },
     });
 
-    // Estorna pontos de fidelidade se houver GANHO_PEDIDO prévio.
-    // Idempotente e best-effort (não derruba o cancelamento).
-    void this.fidelidade.estornarPedidoCancelado(id);
+    // Fidelidade removida do projeto Betinna (gerenciada agora no ERP do
+    // cliente). Não há mais estorno de pontos em cancelamento — limpo 2026-05-21.
 
     return this.prisma.pedido.findUniqueOrThrow({ where: { id }, include: pedidoInclude });
   }
@@ -535,15 +532,8 @@ export class PedidosService {
     // user.empresaIdAtiva pode ser null em system-cron contexts; convertemos pra undefined.
     await this.omiePedidos.enviarPedido(id, user.empresaIdAtiva ?? undefined);
 
-    // Trigger fidelidade: credita pontos pro cliente. Best-effort
-    // (FidelidadeService captura erros internamente) e idempotente
-    // via @@unique([pedidoId, tipo='GANHO_PEDIDO']).
-    void this.fidelidade.creditarPedidoAprovado({
-      empresaId: pedido.empresaId,
-      clienteId: pedido.clienteId,
-      pedidoId: pedido.id,
-      valorPedido: Number(pedido.total),
-    });
+    // Fidelidade removida do projeto Betinna (gerenciada no ERP do cliente).
+    // Não há mais crédito automático aqui — limpo 2026-05-21.
 
     return this.findByIdInternal(id);
   }

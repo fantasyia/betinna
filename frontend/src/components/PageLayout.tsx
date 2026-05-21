@@ -26,7 +26,6 @@ import {
   Link as LinkIcon,
   UserCircle,
   Briefcase,
-  Trophy,
   Settings,
   KeyRound,
   Shield,
@@ -143,7 +142,6 @@ const SECTIONS: NavSection[] = [
     items: [
       { to: '/agenda', label: 'Agenda', icon: CalendarDays },
       { to: '/tags', label: 'Tags', icon: Tags },
-      { to: '/fidelidade', label: 'Fidelidade', icon: Trophy, permission: 'fidelidade.view' },
       { to: '/nps', label: 'NPS', icon: Star, allowedRoles: ['ADMIN', 'DIRECTOR', 'GERENTE'], badge: 'new' },
       { to: '/metas', label: 'Metas', icon: TargetIcon, badge: 'new' },
       { to: '/segmentos', label: 'Segmentação', icon: PieChartIcon, allowedRoles: ['ADMIN', 'DIRECTOR', 'GERENTE'], badge: 'new' },
@@ -274,7 +272,6 @@ function Sidebar({
     'admin.panel': usePermission('admin.panel'),
     'relatorios.view': usePermission('relatorios.view'),
     'campanhas.view': usePermission('campanhas.view'),
-    'fidelidade.view': usePermission('fidelidade.view'),
   } as const;
 
   function canSee(item: NavItem): boolean {

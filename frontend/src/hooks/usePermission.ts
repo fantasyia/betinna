@@ -13,7 +13,7 @@
  * Role vem do JWT em MEMÓRIA — nunca de localStorage.
  *
  * Uso:
- *   const canSeeFidelidade = usePermission('fidelidade.view');
+ *   const canSeeRelatorios = usePermission('relatorios.view');
  *   const canBulkAssign = usePermission('clientes.bulkAssign');
  */
 import { useSyncExternalStore } from 'react';
@@ -27,9 +27,6 @@ import { getSession, subscribe } from '@/lib/auth-store';
  * Convenção: `modulo.acao` — case sensitive.
  */
 export type Permission =
-  // Fidelidade (módulo restrito DIRETOR per CLAUDE.md)
-  | 'fidelidade.view'
-  | 'fidelidade.edit'
   // MullerBot config — só DIRETOR
   | 'mullerbot.config'
   // Clientes
@@ -65,8 +62,6 @@ export type Permission =
  */
 const PERMISSION_MATRIX: Record<UserRole, ReadonlySet<Permission>> = {
   ADMIN: new Set<Permission>([
-    'fidelidade.view',
-    'fidelidade.edit',
     'mullerbot.config',
     'clientes.view',
     'clientes.edit',
@@ -85,8 +80,6 @@ const PERMISSION_MATRIX: Record<UserRole, ReadonlySet<Permission>> = {
     'campanhas.delete',
   ]),
   DIRECTOR: new Set<Permission>([
-    'fidelidade.view',
-    'fidelidade.edit',
     'mullerbot.config',
     'clientes.view',
     'clientes.edit',

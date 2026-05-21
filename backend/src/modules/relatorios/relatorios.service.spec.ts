@@ -54,16 +54,6 @@ const makePrismaMock = () => ({
   usuario: {
     findMany: vi.fn().mockResolvedValue([]),
   } satisfies MockModel,
-  movimentoFidelidade: {
-    groupBy: vi.fn().mockResolvedValue([]),
-  } satisfies MockModel,
-  saldoFidelidade: {
-    aggregate: vi.fn().mockResolvedValue({ _sum: { pontos: null }, _count: { _all: 0 } }),
-    findMany: vi.fn().mockResolvedValue([]),
-  } satisfies MockModel,
-  programaFidelidade: {
-    findUnique: vi.fn().mockResolvedValue(null),
-  } satisfies MockModel,
 });
 
 const makeRepScopeMock = () => ({
@@ -281,67 +271,6 @@ describe('RelatoriosService', () => {
     });
   });
 
-  // -------------------------------------------------------------------------
-  // fidelidade — estrutura, taxa de uso e top clientes
-  // -------------------------------------------------------------------------
-
-  describe('fidelidade', () => {
-    it('retorna estrutura zero quando não há movimentos', async () => {
-      const result = await service.fidelidade(fakeUser(), basePeriodo);
-
-      expect(result).toMatchObject({
-        programaAtivo: false,
-        clientesNoPrograma: 0,
-        saldoTotal: 0,
-        noPeriodo: {
-          creditados: 0,
-          resgatados: 0,
-          estornados: 0,
-          expirados: 0,
-          ajustados: 0,
-          totalMovimentos: 0,
-        },
-        taxaUso: 0,
-        topClientes: [],
-      });
-    });
-
-    it('calcula taxaUso = resgatados/creditados e top clientes', async () => {
-      prisma.movimentoFidelidade.groupBy.mockResolvedValue([
-        { tipo: 'GANHO_PEDIDO', _sum: { pontos: 1000 }, _count: { _all: 5 } },
-        { tipo: 'RESGATE', _sum: { pontos: -250 }, _count: { _all: 2 } },
-        { tipo: 'EXPIRACAO', _sum: { pontos: -50 }, _count: { _all: 1 } },
-      ]);
-      prisma.saldoFidelidade.aggregate.mockResolvedValue({
-        _sum: { pontos: 700 },
-        _count: { _all: 3 },
-      });
-      prisma.saldoFidelidade.findMany.mockResolvedValue([
-        { pontos: 400, cliente: { id: 'c1', nome: 'Cli A' } },
-        { pontos: 300, cliente: { id: 'c2', nome: 'Cli B' } },
-      ]);
-      prisma.programaFidelidade.findUnique.mockResolvedValue({ ativo: true });
-
-      const result = await service.fidelidade(fakeUser(), basePeriodo);
-
-      expect(result.programaAtivo).toBe(true);
-      expect(result.saldoTotal).toBe(700);
-      expect(result.clientesNoPrograma).toBe(3);
-      expect(result.noPeriodo.creditados).toBe(1000);
-      expect(result.noPeriodo.resgatados).toBe(250);
-      expect(result.noPeriodo.expirados).toBe(50);
-      expect(result.taxaUso).toBe(25);
-      expect(result.topClientes).toHaveLength(2);
-      expect(result.topClientes[0]?.cliente.nome).toBe('Cli A');
-    });
-
-    it('taxaUso = 0 quando não há créditos no período', async () => {
-      prisma.movimentoFidelidade.groupBy.mockResolvedValue([
-        { tipo: 'RESGATE', _sum: { pontos: -100 }, _count: { _all: 1 } },
-      ]);
-
-      const result = await service.fidelidade(fakeUser(), basePeriodo);
-      expect(result.taxaUso).toBe(0);
-    });
-  });
+  // Fidelidade removida do projeto Betinna em 2026-05-21 (decisão R1 lote 3).
+  // Tabelas no banco permanecem inalteradas — só endpoints/UI saíram.
 });

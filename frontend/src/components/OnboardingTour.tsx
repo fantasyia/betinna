@@ -92,15 +92,9 @@ const STEPS_DIRECTOR: Step[] = [
     route: '/comissoes',
   },
   {
-    icon: '🎁',
-    title: 'Programa fidelidade (opcional)',
-    body: 'Em /fidelidade você configura pontos por R$ gasto, validade e catálogo de recompensas. Crédito automático quando pedido aprovado vai pro OMIE.',
-    route: '/fidelidade',
-  },
-  {
     icon: '📊',
     title: 'Relatórios',
-    body: 'Em /relatorios você acompanha vendas, funil, comissões, SAC, amostras, fidelidade e campanhas — tudo com variação % vs período anterior.',
+    body: 'Em /relatorios você acompanha vendas, funil, comissões, SAC, amostras e campanhas — tudo com variação % vs período anterior.',
     route: '/relatorios',
   },
 ];

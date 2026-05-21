@@ -1,6 +1,5 @@
 import { Module } from '@nestjs/common';
 import { OmieModule } from '@integrations/omie/omie.module';
-import { FidelidadeModule } from '@modules/fidelidade/fidelidade.module';
 import { FluxosModule } from '@modules/fluxos/fluxos.module';
 import { NotificacoesModule } from '@modules/notificacoes/notificacoes.module';
 import { SendGridModule } from '@integrations/sendgrid/sendgrid.module';
@@ -16,7 +15,6 @@ import { PedidosService } from './pedidos.service';
     ProdutosModule,
     OmieModule,
     FluxosModule,
-    FidelidadeModule,
     NotificacoesModule,
     SendGridModule,
   ],

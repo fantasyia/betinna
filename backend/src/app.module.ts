@@ -26,7 +26,6 @@ import { WhatsAppModule } from '@integrations/whatsapp/whatsapp.module';
 import { CampanhasModule } from '@modules/campanhas/campanhas.module';
 import { DeadLetterModule } from '@modules/dead-letter/dead-letter.module';
 import { RelatoriosModule } from '@modules/relatorios/relatorios.module';
-import { FidelidadeModule } from '@modules/fidelidade/fidelidade.module';
 import { FormulariosModule } from '@modules/formularios/formularios.module';
 import { NpsModule } from '@modules/nps/nps.module';
 import { MetasModule } from '@modules/metas/metas.module';
@@ -186,7 +185,6 @@ import { SharedUtilsModule } from '@shared/utils/shared-utils.module';
     OcorrenciasModule,
     AgendaModule,
     FluxosModule,
-    FidelidadeModule,
     FormulariosModule,
     NpsModule,
     MetasModule,

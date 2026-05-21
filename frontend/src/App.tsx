@@ -18,7 +18,6 @@ const LoginPage = lazy(() => import('@/pages/LoginPage'));
 const DashboardPage = lazy(() => import('@/pages/DashboardPage'));
 const WhatsAppPage = lazy(() => import('@/pages/WhatsAppPage'));
 const AdminPage = lazy(() => import('@/pages/AdminPage'));
-const FidelidadePage = lazy(() => import('@/pages/FidelidadePage'));
 const ForbiddenPage = lazy(() => import('@/pages/ForbiddenPage'));
 const ClientesPage = lazy(() => import('@/pages/ClientesPage'));
 const ClienteDetailPage = lazy(() => import('@/pages/ClienteDetailPage'));
@@ -583,18 +582,6 @@ const router = createBrowserRouter([
         <ProtectedRoute>
           <PageSuspense>
             <ComissoesPage />
-          </PageSuspense>
-        </ProtectedRoute>
-      </ErrorBoundary>
-    ),
-  },
-  {
-    path: '/fidelidade',
-    element: (
-      <ErrorBoundary>
-        <ProtectedRoute requirePermission="fidelidade.view">
-          <PageSuspense>
-            <FidelidadePage />
           </PageSuspense>
         </ProtectedRoute>
       </ErrorBoundary>
