@@ -4,35 +4,14 @@ import {
   LayoutDashboard,
   BarChart3,
   ShoppingCart,
-  CheckSquare,
-  FileText,
-  Gift,
-  Wallet,
-  Users,
-  Target,
-  Funnel,
-  CalendarDays,
-  Tags,
   Package,
-  Sparkles,
   MessageSquare,
-  AlertTriangle,
-  Bot,
-  Smartphone,
-  Megaphone,
   Zap,
-  Plug,
-  Link as LinkIcon,
-  UserCircle,
   Briefcase,
   Settings,
-  Shield,
   Menu,
-  X,
   ChevronRight,
   Search,
-  Target as TargetIcon,
-  PieChart as PieChartIcon,
   Sun,
   Moon,
   type LucideIcon,
@@ -76,79 +55,74 @@ interface NavItem {
   permission?: Parameters<typeof usePermission>[0];
   allowedRoles?: Array<'ADMIN' | 'DIRECTOR' | 'GERENTE' | 'SAC' | 'REP'>;
   badge?: 'new' | 'beta';
+  /** Rotas filhas — usadas pra manter o item ativo quando o usuário está em
+   * uma sub-aba (ex: /pedidos ativa 'Vendas', /comissoes também). */
+  match?: string[];
 }
 
 interface NavSection {
-  title: string;
+  title?: string;
   items: NavItem[];
 }
 
+/**
+ * Navegação consolidada (Lote 9 / N1 — 2026-05-21):
+ * 8 abas principais; cada uma abre sua tela default e dentro tem
+ * sub-abas (componentes *Tabs em /components) com as opções relacionadas.
+ *
+ * Rotas default escolhidas pra ser acessíveis ao MAIOR número de papéis
+ * possíveis — assim REP/SAC não cai em /403 ao clicar na aba principal.
+ */
 const SECTIONS: NavSection[] = [
   {
-    title: 'Principal',
     items: [
-      { to: '/dashboard', label: 'Dashboard', icon: LayoutDashboard },
-      { to: '/inbox', label: 'Inbox', icon: MessageSquare },
-      { to: '/leads', label: 'Funil', icon: Target },
-      { to: '/funis', label: 'Configurar funis', icon: Funnel, allowedRoles: ['ADMIN', 'DIRECTOR', 'GERENTE'] },
-      { to: '/relatorios', label: 'Relatórios', icon: BarChart3, permission: 'relatorios.view' },
-    ],
-  },
-  {
-    title: 'Vendas',
-    items: [
-      { to: '/clientes', label: 'Clientes', icon: Briefcase, permission: 'clientes.view' },
-      { to: '/pedidos', label: 'Pedidos', icon: ShoppingCart },
-      { to: '/aprovacoes', label: 'Aprovações', icon: CheckSquare },
-      { to: '/propostas', label: 'Propostas', icon: FileText },
-      { to: '/amostras', label: 'Amostras', icon: Gift },
-      { to: '/comissoes', label: 'Comissões', icon: Wallet },
-    ],
-  },
-  {
-    title: 'Catálogo',
-    items: [
-      { to: '/produtos', label: 'Produtos', icon: Package },
-      { to: '/catalogo', label: 'Meu catálogo', icon: Sparkles },
-    ],
-  },
-  {
-    title: 'Atendimento',
-    items: [
-      // Atendimento unificado (R5): leva pro SAC interno; sub-aba "Marketplaces"
-      // disponível dentro da própria tela (componente AtendimentoTabs).
-      { to: '/ocorrencias', label: 'Atendimento', icon: AlertTriangle },
-      { to: '/mullerbot', label: 'MullerBot', icon: Bot },
-      { to: '/mullerbot/persona', label: 'Persona Bot', icon: Sparkles, allowedRoles: ['ADMIN', 'DIRECTOR'] },
-      { to: '/whatsapp', label: 'WhatsApp', icon: Smartphone, permission: 'whatsapp.pessoal' },
-    ],
-  },
-  {
-    title: 'Automação',
-    items: [
-      { to: '/campanhas', label: 'Campanhas', icon: Megaphone, permission: 'campanhas.view' },
-      { to: '/fluxos', label: 'Fluxos', icon: Zap },
-      { to: '/fluxos/templates', label: 'Templates', icon: Sparkles, badge: 'new' },
-      { to: '/integracoes', label: 'Integrações', icon: Plug, allowedRoles: ['ADMIN', 'DIRECTOR', 'GERENTE'] },
-      { to: '/minhas-integracoes', label: 'Minhas integrações', icon: LinkIcon },
-    ],
-  },
-  {
-    title: 'CRM',
-    items: [
-      { to: '/agenda', label: 'Agenda', icon: CalendarDays },
-      { to: '/tags', label: 'Tags', icon: Tags },
-      { to: '/metas', label: 'Metas', icon: TargetIcon, badge: 'new' },
-      { to: '/segmentos', label: 'Segmentação', icon: PieChartIcon, allowedRoles: ['ADMIN', 'DIRECTOR', 'GERENTE'], badge: 'new' },
-    ],
-  },
-  {
-    title: 'Administração',
-    items: [
-      { to: '/perfil', label: 'Meu perfil', icon: UserCircle },
-      { to: '/usuarios', label: 'Usuários', icon: Users, allowedRoles: ['ADMIN', 'DIRECTOR', 'GERENTE'] },
-      { to: '/configuracoes', label: 'Configurações', icon: Settings, allowedRoles: ['ADMIN'] },
-      { to: '/admin', label: 'Painel Admin', icon: Shield, permission: 'admin.panel' },
+      {
+        to: '/dashboard',
+        label: 'Dashboard',
+        icon: LayoutDashboard,
+      },
+      {
+        to: '/pedidos',
+        label: 'Vendas',
+        icon: ShoppingCart,
+        match: ['/aprovacoes', '/propostas', '/amostras', '/comissoes', '/metas'],
+      },
+      {
+        to: '/leads',
+        label: 'CRM',
+        icon: Briefcase,
+        match: ['/clientes', '/funis', '/tags', '/segmentos', '/agenda'],
+      },
+      {
+        to: '/inbox',
+        label: 'Atendimento',
+        icon: MessageSquare,
+        match: ['/ocorrencias', '/incidentes', '/whatsapp', '/mullerbot'],
+      },
+      {
+        to: '/produtos',
+        label: 'Catálogo',
+        icon: Package,
+        match: ['/catalogo'],
+      },
+      {
+        to: '/minhas-integracoes',
+        label: 'Automação',
+        icon: Zap,
+        match: ['/fluxos', '/campanhas', '/integracoes'],
+      },
+      {
+        to: '/relatorios',
+        label: 'Relatórios',
+        icon: BarChart3,
+        permission: 'relatorios.view',
+      },
+      {
+        to: '/perfil',
+        label: 'Sistema',
+        icon: Settings,
+        match: ['/usuarios', '/configuracoes', '/admin', '/permissoes'],
+      },
     ],
   },
 ];
@@ -274,8 +248,14 @@ function Sidebar({
     return true;
   }
 
-  function isActive(to: string): boolean {
-    return location.pathname === to || location.pathname.startsWith(to + '/');
+  function isActive(item: NavItem): boolean {
+    const path = location.pathname;
+    if (path === item.to) return true;
+    if (path.startsWith(item.to + '/')) return true;
+    if (item.match?.some((m) => path === m || path.startsWith(m + '/'))) {
+      return true;
+    }
+    return false;
   }
 
   return (
@@ -318,16 +298,18 @@ function Sidebar({
 
       {/* Nav scrollable */}
       <nav className="flex-1 overflow-y-auto px-2 py-2.5">
-        {SECTIONS.map((section) => {
+        {SECTIONS.map((section, idx) => {
           const visibleItems = section.items.filter(canSee);
           if (visibleItems.length === 0) return null;
           return (
-            <div key={section.title} className="mb-3">
-              <div className="px-2.5 pt-2 pb-1 text-[10px] font-semibold uppercase tracking-wider text-muted-light">
-                {section.title}
-              </div>
+            <div key={section.title ?? `section-${idx}`} className="mb-3">
+              {section.title && (
+                <div className="px-2.5 pt-2 pb-1 text-[10px] font-semibold uppercase tracking-wider text-muted-light">
+                  {section.title}
+                </div>
+              )}
               {visibleItems.map((item) => (
-                <SidebarNavItem key={item.to} item={item} active={isActive(item.to)} />
+                <SidebarNavItem key={item.to} item={item} active={isActive(item)} />
               ))}
             </div>
           );
@@ -494,4 +476,4 @@ export function PageLayout({
 }
 
 // Re-export pra eslint react-refresh rule (mantém compat com hooks acima)
-export { Menu as _MenuIcon, X as _XIcon };
+export { Menu as _MenuIcon };
