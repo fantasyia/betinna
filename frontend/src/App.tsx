@@ -24,7 +24,6 @@ const ClienteDetailPage = lazy(() => import('@/pages/ClienteDetailPage'));
 const CatalogoPage = lazy(() => import('@/pages/CatalogoPage'));
 const MullerBotPage = lazy(() => import('@/pages/MullerBotPage'));
 const PersonaBotPage = lazy(() => import('@/pages/PersonaBotPage'));
-const NpsPage = lazy(() => import('@/pages/NpsPage'));
 const NpsPublicoPage = lazy(() => import('@/pages/NpsPublicoPage'));
 const MetasPage = lazy(() => import('@/pages/MetasPage'));
 const SegmentosPage = lazy(() => import('@/pages/SegmentosPage'));
@@ -401,18 +400,6 @@ const router = createBrowserRouter([
         <ProtectedRoute>
           <PageSuspense>
             <FunisPage />
-          </PageSuspense>
-        </ProtectedRoute>
-      </ErrorBoundary>
-    ),
-  },
-  {
-    path: '/nps',
-    element: (
-      <ErrorBoundary>
-        <ProtectedRoute allowedRoles={['ADMIN', 'DIRECTOR', 'GERENTE']}>
-          <PageSuspense>
-            <NpsPage />
           </PageSuspense>
         </ProtectedRoute>
       </ErrorBoundary>

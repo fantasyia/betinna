@@ -33,7 +33,6 @@ import {
   X,
   ChevronRight,
   Search,
-  Star,
   Target as TargetIcon,
   PieChart as PieChartIcon,
   Sun,
@@ -140,7 +139,6 @@ const SECTIONS: NavSection[] = [
     items: [
       { to: '/agenda', label: 'Agenda', icon: CalendarDays },
       { to: '/tags', label: 'Tags', icon: Tags },
-      { to: '/nps', label: 'NPS', icon: Star, allowedRoles: ['ADMIN', 'DIRECTOR', 'GERENTE'], badge: 'new' },
       { to: '/metas', label: 'Metas', icon: TargetIcon, badge: 'new' },
       { to: '/segmentos', label: 'Segmentação', icon: PieChartIcon, allowedRoles: ['ADMIN', 'DIRECTOR', 'GERENTE'], badge: 'new' },
     ],
