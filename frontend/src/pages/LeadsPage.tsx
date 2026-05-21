@@ -29,6 +29,7 @@ import { api, ApiError } from '@/lib/api';
 import { useApiQuery } from '@/hooks/useApiQuery';
 import { useToast } from '@/components/toast';
 import { PageLayout } from '@/components/PageLayout';
+import { CrmTabs } from '@/components/CrmTabs';
 import { StateView } from '@/components/StateView';
 import { maskTelefone, normalizeUF } from '@/lib/masks';
 import {
@@ -383,6 +384,7 @@ export default function LeadsPage() {
         </div>
       }
     >
+      <CrmTabs />
       <StateView loading={loading && !optimistic} error={error} onRetry={refetch}>
         {optimistic && (
           <DndContext

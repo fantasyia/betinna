@@ -15,6 +15,7 @@ import { api, apiErrorMessage } from '@/lib/api';
 import { useApiQuery } from '@/hooks/useApiQuery';
 import { useToast } from '@/components/toast';
 import { PageLayout } from '@/components/PageLayout';
+import { CrmTabs } from '@/components/CrmTabs';
 import { StateView } from '@/components/StateView';
 import {
   Avatar,
@@ -167,6 +168,7 @@ export default function SegmentosPage() {
         </Button>
       }
     >
+      <CrmTabs />
       <StateView loading={loading} error={error} onRetry={refetch}>
         {data && data.length === 0 ? (
           <EmptyState

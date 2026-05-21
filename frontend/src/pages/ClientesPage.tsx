@@ -24,6 +24,7 @@ import { api, ApiError } from '@/lib/api';
 import { useApiQuery, type PaginatedResponse } from '@/hooks/useApiQuery';
 import { usePermission } from '@/hooks/usePermission';
 import { PageLayout, useIsMobile } from '@/components/PageLayout';
+import { CrmTabs } from '@/components/CrmTabs';
 import { StateView } from '@/components/StateView';
 import { AsyncCombobox } from '@/components/AsyncCombobox';
 import { useToast } from '@/components/toast';
@@ -290,6 +291,7 @@ export default function ClientesPage() {
         </>
       }
     >
+      <CrmTabs />
       <Card padding="none" className="overflow-hidden">
         {/* Toolbar */}
         <div className="flex flex-col gap-3 px-4 py-3 border-b border-border">

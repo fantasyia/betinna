@@ -3,6 +3,7 @@ import { api, ApiError } from '@/lib/api';
 import { useApiQuery } from '@/hooks/useApiQuery';
 import { useRole } from '@/hooks/usePermission';
 import { PageLayout } from '@/components/PageLayout';
+import { CrmTabs } from '@/components/CrmTabs';
 import { StateView } from '@/components/StateView';
 import { FilterBar, SearchInput } from '@/components/FilterBar';
 import { Modal } from '@/components/Modal';
@@ -82,6 +83,7 @@ export default function TagsPage() {
         ) : undefined
       }
     >
+      <CrmTabs />
       <div style={card}>
         <FilterBar>
           <SearchInput value={search} onChange={setSearch} placeholder="Buscar tag…" />
