@@ -48,14 +48,22 @@ interface CampanhaDetail extends Campanha {
   segClienteIds?: string[];
 }
 
+/**
+ * Métricas de campanha — alinhado com o que o backend retorna em
+ * GET /campanhas/:id/metricas. As taxas vêm em INTEIRO 0-100, NÃO em fração.
+ * (Fix B5 — antes o frontend esperava nomes errados e tratava taxas como
+ * fração, causando 'undefined' e 'NaN%' nos cards.)
+ */
 interface Metricas {
-  totalDestinatarios: number;
+  total: number;
+  pendentes: number;
   enviados: number;
-  falhas: number;
   lidos: number;
+  erros: number;
+  /** 0-100 (inteiro) */
   taxaEnvio: number;
+  /** 0-100 (inteiro) */
   taxaLeitura: number;
-  taxaErro: number;
 }
 
 interface Resumo {
@@ -136,8 +144,13 @@ function fmtDate(d: string | null | undefined) {
     return d;
   }
 }
-function fmtPct(v: number) {
-  return `${(v * 100).toFixed(1)}%`;
+/**
+ * Formata um número 0-100 como percentual (1 casa decimal).
+ * Robusto contra `undefined`/`NaN` — sempre retorna string válida.
+ */
+function fmtPct(v: number | undefined | null) {
+  const n = typeof v === 'number' && Number.isFinite(v) ? v : 0;
+  return `${n.toFixed(1)}%`;
 }
 
 // ─── Page ─────────────────────────────────────────────────────────────────────
@@ -569,29 +582,42 @@ function CampanhaDetailModal({
             {tab === 'metricas' && (
               <div>
                 {metricas ? (
-                  <>
-                    <div
-                      style={{
-                        display: 'grid',
-                        gridTemplateColumns: 'repeat(auto-fit, minmax(130px, 1fr))',
-                        gap: '0.75rem',
-                        marginBottom: '1rem',
-                      }}
-                    >
-                      <Stat label="Destinatários" value={String(metricas.totalDestinatarios)} />
-                      <Stat label="Enviados" value={String(metricas.enviados)} color={colors.success} />
-                      <Stat label="Falhas" value={String(metricas.falhas)} color={metricas.falhas > 0 ? colors.danger : colors.muted} />
-                      <Stat label="Lidos" value={String(metricas.lidos)} color="#0891b2" />
-                      <Stat label="Taxa envio" value={fmtPct(metricas.taxaEnvio)} color={colors.success} />
-                      <Stat label="Taxa leitura" value={fmtPct(metricas.taxaLeitura)} color="#0891b2" />
-                      <Stat label="Taxa erro" value={fmtPct(metricas.taxaErro)} color={metricas.taxaErro > 0.05 ? colors.danger : colors.muted} />
-                    </div>
-                    {metricas.totalDestinatarios === 0 && (
-                      <p style={{ color: colors.muted, fontSize: 13, marginTop: 0 }}>
-                        Campanha ainda não disparada ou sem destinatários.
-                      </p>
-                    )}
-                  </>
+                  (() => {
+                    // Normaliza defaults — proteção contra payload incompleto.
+                    const total = metricas.total ?? 0;
+                    const enviados = metricas.enviados ?? 0;
+                    const erros = metricas.erros ?? 0;
+                    const lidos = metricas.lidos ?? 0;
+                    const taxaEnvio = metricas.taxaEnvio ?? 0;
+                    const taxaLeitura = metricas.taxaLeitura ?? 0;
+                    // Backend não retorna taxaErro — calcula no client (0-100).
+                    const taxaErro = total > 0 ? (erros / total) * 100 : 0;
+                    return (
+                      <>
+                        <div
+                          style={{
+                            display: 'grid',
+                            gridTemplateColumns: 'repeat(auto-fit, minmax(130px, 1fr))',
+                            gap: '0.75rem',
+                            marginBottom: '1rem',
+                          }}
+                        >
+                          <Stat label="Destinatários" value={String(total)} />
+                          <Stat label="Enviados" value={String(enviados)} color={colors.success} />
+                          <Stat label="Falhas" value={String(erros)} color={erros > 0 ? colors.danger : colors.muted} />
+                          <Stat label="Lidos" value={String(lidos)} color="#0891b2" />
+                          <Stat label="Taxa envio" value={fmtPct(taxaEnvio)} color={colors.success} />
+                          <Stat label="Taxa leitura" value={fmtPct(taxaLeitura)} color="#0891b2" />
+                          <Stat label="Taxa erro" value={fmtPct(taxaErro)} color={taxaErro > 5 ? colors.danger : colors.muted} />
+                        </div>
+                        {total === 0 && (
+                          <p style={{ color: colors.muted, fontSize: 13, marginTop: 0 }}>
+                            Campanha ainda não disparada ou sem destinatários.
+                          </p>
+                        )}
+                      </>
+                    );
+                  })()
                 ) : (
                   <p style={{ color: colors.muted }}>Carregando métricas…</p>
                 )}
