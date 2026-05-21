@@ -10,7 +10,8 @@ import { IconButton } from './IconButton';
  * Acessibilidade:
  *  - role="dialog" + aria-modal
  *  - Escape fecha
- *  - Click no backdrop fecha (override: closeOnBackdrop=false)
+ *  - Click no backdrop NÃO fecha por padrão (decisão UX G4 — evita perda
+ *    acidental de dados). Habilitar via prop `closeOnBackdrop={true}`.
  *  - Trap focus básico (foco entra no modal ao abrir)
  *  - Body scroll lock enquanto aberto
  *
@@ -24,7 +25,7 @@ export function Dialog({
   children,
   footer,
   size = 'md',
-  closeOnBackdrop = true,
+  closeOnBackdrop = false,
   className,
 }: {
   open: boolean;

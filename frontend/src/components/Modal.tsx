@@ -44,7 +44,8 @@ export function Modal({ open, onClose, title, children, footer, width = 520 }: M
     <div
       data-testid="modal-overlay"
       role="presentation"
-      onClick={onClose}
+      // Overlay click NÃO fecha — só ESC e o botão X. Decisão UX (G4):
+      // evita perda acidental de dados ao clicar fora por engano.
       style={{
         position: 'fixed',
         inset: 0,
@@ -62,7 +63,6 @@ export function Modal({ open, onClose, title, children, footer, width = 520 }: M
         role="dialog"
         aria-modal="true"
         aria-label={title}
-        onClick={(e) => e.stopPropagation()}
         style={{
           background: colors.surface,
           // Mobile: bottom sheet com cantos arredondados só em cima

@@ -57,9 +57,7 @@ export function Drawer({
   return createPortal(
     <div
       data-testid="drawer-overlay"
-      onClick={(e) => {
-        if (e.target === e.currentTarget) onClose();
-      }}
+      // Overlay click NÃO fecha — só ESC e botão X (decisão UX G4).
       className="fixed inset-0 z-[100] flex"
       style={{ backdropFilter: 'blur(6px) saturate(140%)', background: 'rgba(0,0,0,0.6)' }}
     >
