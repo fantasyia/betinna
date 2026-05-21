@@ -17,6 +17,7 @@ import { useApiQuery, type PaginatedResponse } from '@/hooks/useApiQuery';
 import { useRole } from '@/hooks/usePermission';
 import { useToast } from '@/components/toast';
 import { PageLayout } from '@/components/PageLayout';
+import { AutomacaoTabs } from '@/components/AutomacaoTabs';
 import { StateView } from '@/components/StateView';
 import {
   Badge,
@@ -173,6 +174,7 @@ export default function FluxosPage() {
         ) : undefined
       }
     >
+      <AutomacaoTabs />
       <Card padding="none">
         {/* Filtros */}
         <div className="flex flex-wrap items-center gap-2 px-4 py-3 border-b border-border">

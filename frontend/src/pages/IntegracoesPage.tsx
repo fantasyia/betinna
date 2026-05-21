@@ -3,6 +3,7 @@ import { api, ApiError } from '@/lib/api';
 import { useApiQuery } from '@/hooks/useApiQuery';
 import { useRole } from '@/hooks/usePermission';
 import { PageLayout } from '@/components/PageLayout';
+import { AutomacaoTabs } from '@/components/AutomacaoTabs';
 import { StateView } from '@/components/StateView';
 import { Modal } from '@/components/Modal';
 import { FormField, Input } from '@/components/FormField';
@@ -215,6 +216,7 @@ export default function IntegracoesPage() {
 
   return (
     <PageLayout title="Integrações da empresa">
+      <AutomacaoTabs />
       <StateView loading={loading} error={error} onRetry={refetch}>
         <div
           style={{

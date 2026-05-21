@@ -3,6 +3,7 @@ import { api, ApiError } from '@/lib/api';
 import { useApiQuery, type PaginatedResponse } from '@/hooks/useApiQuery';
 import { usePermission, useRole } from '@/hooks/usePermission';
 import { PageLayout } from '@/components/PageLayout';
+import { AutomacaoTabs } from '@/components/AutomacaoTabs';
 import { Table, Pagination, type Column } from '@/components/Table';
 import { StateView } from '@/components/StateView';
 import { FilterBar, SearchInput } from '@/components/FilterBar';
@@ -299,6 +300,7 @@ export default function CampanhasPage() {
         ) : undefined
       }
     >
+      <AutomacaoTabs />
       {/* Resumo */}
       {resumo && (
         <div

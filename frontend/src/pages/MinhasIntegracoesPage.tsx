@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { api, ApiError } from '@/lib/api';
 import { useApiQuery } from '@/hooks/useApiQuery';
 import { PageLayout } from '@/components/PageLayout';
+import { AutomacaoTabs } from '@/components/AutomacaoTabs';
 import { StateView } from '@/components/StateView';
 import { Modal } from '@/components/Modal';
 import { FormField, Input } from '@/components/FormField';
@@ -156,6 +157,7 @@ export default function MinhasIntegracoesPage() {
 
   return (
     <PageLayout title="Minhas integrações">
+      <AutomacaoTabs />
       <p style={{ color: colors.muted, marginTop: 0, marginBottom: '1rem', fontSize: 14 }}>
         Conexões pessoais (suas, não da empresa). Cada usuário tem as próprias credenciais
         cifradas com AES-256-GCM.
