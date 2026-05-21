@@ -12,7 +12,7 @@ import {
   ArrowRight,
   Check,
 } from 'lucide-react';
-import { api, ApiError } from '@/lib/api';
+import { api, apiErrorMessage } from '@/lib/api';
 import { useToast } from '@/components/toast';
 import { PageLayout } from '@/components/PageLayout';
 import { Badge, Button, Card, CardHeader, CardTitle, Dialog } from '@/components/ui';
@@ -440,11 +440,15 @@ export default function FluxoTemplatesPage() {
   async function instantiate(template: FluxoTemplate) {
     setCreating(true);
     try {
+      // IMPORTANTE: backend schema (createFluxoNoSchema/createFluxoEdgeSchema)
+      // exige `id: z.string().min(1)` em TODO nó e TODA aresta. Sem isso,
+      // o Zod recusa o payload com 'Dados inválidos' (bug B4 fix 2026-05-21).
       const payload = {
         nome: template.nome,
         descricao: template.descricao,
         triggerTipo: template.triggerTipo,
         nos: template.nos.map((n) => ({
+          id: n.id, // ← obrigatório (referência das arestas usa esses ids)
           tipo: n.tipo,
           acaoTipo: n.acaoTipo,
           titulo: n.titulo,
@@ -452,7 +456,9 @@ export default function FluxoTemplatesPage() {
           posY: n.posY,
           config: n.config ?? {},
         })),
-        arestas: template.arestas.map((e) => ({
+        arestas: template.arestas.map((e, idx) => ({
+          // Aresta não tem id no template; gera id estável baseado no índice
+          id: `e_${idx}_${e.sourceNoId}_${e.targetNoId}`,
           sourceNoId: e.sourceNoId,
           targetNoId: e.targetNoId,
           label: e.label ?? null,
@@ -462,10 +468,7 @@ export default function FluxoTemplatesPage() {
       toast.success('Fluxo criado a partir do template');
       navigate(`/fluxos?edit=${r.id}`);
     } catch (err) {
-      toast.error(
-        'Falha ao criar fluxo',
-        err instanceof ApiError ? err.message : 'Tente novamente.',
-      );
+      toast.error('Falha ao criar fluxo', apiErrorMessage(err));
     } finally {
       setCreating(false);
       setConfirming(null);
