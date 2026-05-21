@@ -56,6 +56,18 @@ export const Input = forwardRef<HTMLInputElement, InputProps>(function Input(
   const hasRightIcon = !!rightIcon;
   const padX = size === 'lg' ? 12 : size === 'sm' ? 8 : 10;
 
+  // G3: força locale pt-BR em inputs de data. Ajuda em Firefox e alguns
+  // Chromes a renderizar como dd/mm/aaaa em vez de mm/dd/yyyy.
+  // Limitação conhecida: Chrome em SO em en-US ainda pode mostrar formato
+  // americano, mas o valor enviado ao backend continua ISO (yyyy-mm-dd).
+  const isDateLike =
+    props.type === 'date' ||
+    props.type === 'datetime-local' ||
+    props.type === 'month' ||
+    props.type === 'week' ||
+    props.type === 'time';
+  const langProp = isDateLike ? { lang: props.lang ?? 'pt-BR' } : {};
+
   if (!hasLeftIcon && !hasRightIcon) {
     return (
       <input
@@ -63,6 +75,7 @@ export const Input = forwardRef<HTMLInputElement, InputProps>(function Input(
         className={cn(inputVariants({ variant: effectiveVariant, size }), className)}
         style={{ paddingLeft: padX, paddingRight: padX, ...props.style }}
         {...props}
+        {...langProp}
       />
     );
   }
@@ -85,6 +98,7 @@ export const Input = forwardRef<HTMLInputElement, InputProps>(function Input(
       <input
         ref={ref}
         {...props}
+        {...langProp}
         className="flex-1 min-w-0 bg-transparent outline-none border-none p-0 placeholder:text-muted-light"
       />
       {rightIcon && (
