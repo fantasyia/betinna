@@ -129,15 +129,15 @@ export const radius = {
 
 /** Type scale (font-size em px). */
 export const fontSize = {
-  xs: 11,
-  sm: 12,
-  base: 13,
-  md: 14,
-  lg: 15,
-  xl: 17,
-  '2xl': 20,
-  '3xl': 24,
-  '4xl': 30,
+  xs: 12,
+  sm: 13,
+  base: 14,
+  md: 15,
+  lg: 16,
+  xl: 18,
+  '2xl': 22,
+  '3xl': 26,
+  '4xl': 32,
 };
 
 /** Motion / transitions. */
