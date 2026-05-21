@@ -11,6 +11,7 @@ import {
 } from 'lucide-react';
 import { api, ApiError } from '@/lib/api';
 import { PageLayout } from '@/components/PageLayout';
+import { AtendimentoTabs } from '@/components/AtendimentoTabs';
 import { Markdown } from '@/components/Markdown';
 import {
   Badge,
@@ -236,6 +237,7 @@ export default function MullerBotPage() {
         ) : undefined
       }
     >
+      <AtendimentoTabs />
       <div
         className="grid gap-4"
         style={{ gridTemplateColumns: 'minmax(0, 1fr) 280px' }}

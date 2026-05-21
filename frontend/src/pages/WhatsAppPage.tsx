@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { api, ApiError } from '@/lib/api';
 import { useRole } from '@/hooks/usePermission';
 import { PageLayout } from '@/components/PageLayout';
+import { AtendimentoTabs } from '@/components/AtendimentoTabs';
 import { alpha, badge, btn, btnDanger, btnSecondary, card, colors } from '@/components/styles';
 
 type Status =
@@ -67,6 +68,7 @@ export default function WhatsAppPage() {
 
   return (
     <PageLayout title="WhatsApp">
+      <AtendimentoTabs />
       {/* Tabs scope */}
       <div
         role="tablist"

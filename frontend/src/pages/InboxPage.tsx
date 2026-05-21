@@ -18,6 +18,7 @@ import {
 import { api, ApiError } from '@/lib/api';
 import { useApiQuery, type PaginatedResponse } from '@/hooks/useApiQuery';
 import { PageLayout, useIsMobile } from '@/components/PageLayout';
+import { AtendimentoTabs } from '@/components/AtendimentoTabs';
 import { StateView } from '@/components/StateView';
 import { useToast } from '@/components/toast';
 import { NovoPedidoDialog } from '@/components/NovoPedidoDialog';
@@ -211,6 +212,7 @@ export default function InboxPage() {
       title="Inbox unificada"
       description="WhatsApp · Instagram · Facebook · E-mail · Marketplaces"
     >
+      <AtendimentoTabs />
       <div
         className={cn(
           'grid gap-3',

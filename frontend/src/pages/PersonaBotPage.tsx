@@ -17,6 +17,7 @@ import { useApiQuery } from '@/hooks/useApiQuery';
 import { useToast } from '@/components/toast';
 import { useRole } from '@/hooks/usePermission';
 import { PageLayout } from '@/components/PageLayout';
+import { AtendimentoTabs } from '@/components/AtendimentoTabs';
 import {
   Badge,
   Button,
@@ -233,6 +234,7 @@ export default function PersonaBotPage() {
         </>
       }
     >
+      <AtendimentoTabs />
       <div className="grid grid-cols-1 lg:grid-cols-[1fr_320px] gap-4">
         {/* Coluna principal — edição */}
         <div className="flex flex-col gap-4">

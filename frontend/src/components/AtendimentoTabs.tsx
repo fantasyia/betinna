@@ -1,77 +1,72 @@
-import { Link, useLocation } from 'react-router-dom';
-import { AlertTriangle, ShieldAlert } from 'lucide-react';
-import { colors } from '@/components/styles';
+import {
+  MessageSquare,
+  AlertTriangle,
+  ShieldAlert,
+  Smartphone,
+  Bot,
+  Sparkles,
+} from 'lucide-react';
+import { useRole, usePermission } from '@/hooks/usePermission';
+import { SubTabsBar, type SubTab } from '@/components/SubTabsBar';
 
 /**
- * AtendimentoTabs — sub-abas compartilhadas entre OcorrenciasPage
- * (`/ocorrencias`) e MarketplaceIncidentsPage (`/incidentes`).
+ * AtendimentoTabs — sub-abas da aba principal "Atendimento".
  *
- * Decisão R5 (lote 3 — 2026-05-21): em vez de fundir 2 modelos de banco
- * diferentes, agrupamos visualmente as 2 telas como sub-abas de
- * "Atendimento". A sidebar agora tem um único item "Atendimento" que
- * leva pro SAC interno por default — uma vez lá, o usuário troca pra
- * Marketplaces via essas tabs.
+ * Histórico:
+ *  - R5 (lote 3): criado com 2 sub-abas (SAC interno + Marketplaces).
+ *  - N1.7 (lote 9): expandido pra incluir Inbox, WhatsApp, MullerBot,
+ *    Persona Bot — todas que faziam parte da seção "Atendimento" da
+ *    sidebar antiga viraram sub-abas aqui.
+ *
+ * Permissões espelham as definidas em App.tsx ProtectedRoute:
+ *  - /inbox              → todos
+ *  - /ocorrencias        → todos (SAC interno)
+ *  - /incidentes         → ADMIN/DIRECTOR/GERENTE/SAC
+ *  - /whatsapp           → permission 'whatsapp.pessoal'
+ *  - /mullerbot          → todos
+ *  - /mullerbot/persona  → ADMIN/DIRECTOR
  */
 export function AtendimentoTabs() {
-  const location = useLocation();
-  const isSac = location.pathname.startsWith('/ocorrencias');
-  const isMarketplace = location.pathname.startsWith('/incidentes');
+  const role = useRole();
+  const canWhatsApp = usePermission('whatsapp.pessoal');
 
-  return (
-    <div
-      role="tablist"
-      aria-label="Sub-abas de atendimento"
-      style={{
-        display: 'flex',
-        gap: 0,
-        borderBottom: `1px solid ${colors.border}`,
-        marginBottom: '1rem',
-        marginTop: '-0.5rem',
-      }}
-    >
-      <Tab to="/ocorrencias" active={isSac} icon={<AlertTriangle size={14} />} label="SAC interno" />
-      <Tab
-        to="/incidentes"
-        active={isMarketplace}
-        icon={<ShieldAlert size={14} />}
-        label="Marketplaces"
-      />
-    </div>
-  );
-}
+  const canMarketplaces =
+    role === 'ADMIN' ||
+    role === 'DIRECTOR' ||
+    role === 'GERENTE' ||
+    role === 'SAC';
+  const canPersona = role === 'ADMIN' || role === 'DIRECTOR';
 
-function Tab({
-  to,
-  active,
-  icon,
-  label,
-}: {
-  to: string;
-  active: boolean;
-  icon: React.ReactNode;
-  label: string;
-}) {
-  return (
-    <Link
-      to={to}
-      role="tab"
-      data-testid={`aten-tab-${to.replace('/', '')}`}
-      aria-selected={active}
-      style={{
-        padding: '0.625rem 1rem',
-        textDecoration: 'none',
-        borderBottom: `2px solid ${active ? colors.primary : 'transparent'}`,
-        fontSize: 14,
-        fontWeight: active ? 600 : 500,
-        color: active ? colors.primary : colors.muted,
-        display: 'inline-flex',
-        alignItems: 'center',
-        gap: 6,
-        marginBottom: -1,
-      }}
-    >
-      {icon}
-      {label}
-    </Link>
-  );
+  const tabs: SubTab[] = [];
+
+  tabs.push({ to: '/inbox', label: 'Inbox', icon: <MessageSquare size={14} /> });
+  tabs.push({
+    to: '/ocorrencias',
+    label: 'SAC interno',
+    icon: <AlertTriangle size={14} />,
+  });
+  if (canMarketplaces) {
+    tabs.push({
+      to: '/incidentes',
+      label: 'Marketplaces',
+      icon: <ShieldAlert size={14} />,
+    });
+  }
+  if (canWhatsApp) {
+    tabs.push({
+      to: '/whatsapp',
+      label: 'WhatsApp',
+      icon: <Smartphone size={14} />,
+    });
+  }
+  tabs.push({ to: '/mullerbot', label: 'MullerBot', icon: <Bot size={14} /> });
+  if (canPersona) {
+    tabs.push({
+      to: '/mullerbot/persona',
+      label: 'Persona Bot',
+      icon: <Sparkles size={14} />,
+    });
+  }
+
+  return <SubTabsBar tabs={tabs} ariaLabel="Sub-abas de Atendimento" />;
 }
