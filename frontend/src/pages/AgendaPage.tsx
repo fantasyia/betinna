@@ -16,7 +16,7 @@ import { Modal } from '@/components/Modal';
 import { FormField, Input, Select, Textarea } from '@/components/FormField';
 import { AsyncCombobox } from '@/components/AsyncCombobox';
 import { useToast } from '@/components/toast';
-import { badge, btn, btnDanger, btnSecondary, card, colors } from '@/components/styles';
+import { alpha, badge, btn, btnDanger, btnSecondary, card, colors } from '@/components/styles';
 
 type AgendaTipo = 'VISITA' | 'LIGACAO' | 'REUNIAO' | 'ENTREGA' | 'TAREFA';
 
@@ -321,10 +321,10 @@ function DayColumn({
       data-testid={`agenda-day-${day.getDate()}`}
       style={{
         background: isOver
-          ? colors.primary + '18'
+          ? alpha(colors.primary, 9)
           : isToday
-            ? colors.primary + '08'
-            : '#fafbfc',
+            ? alpha(colors.primary, 3)
+            : 'var(--bg-alt)',
         border: `1px solid ${isOver ? colors.primary : isToday ? colors.primary : colors.border}`,
         borderRadius: 6,
         padding: '0.5rem',

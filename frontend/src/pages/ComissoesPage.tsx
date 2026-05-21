@@ -8,7 +8,7 @@ import { StateView } from '@/components/StateView';
 import { FilterBar } from '@/components/FilterBar';
 import { Modal } from '@/components/Modal';
 import { FormField, Input, Select } from '@/components/FormField';
-import { badge, btn, btnSecondary, card, colors } from '@/components/styles';
+import { alpha, badge, btn, btnSecondary, card, colors } from '@/components/styles';
 
 type ComissaoTipo = 'REP' | 'GERENTE';
 
@@ -108,7 +108,7 @@ function ResumoPessoal() {
                     flex: '1 1 70px',
                     minWidth: 70,
                     padding: '0.5rem',
-                    background: m.pago ? colors.success + '15' : '#fafbfc',
+                    background: m.pago ? alpha(colors.success, 8) : 'var(--bg-alt)',
                     borderRadius: 6,
                     textAlign: 'center',
                     border: `1px solid ${colors.border}`,

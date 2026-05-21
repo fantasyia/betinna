@@ -9,7 +9,7 @@ import { FilterBar, SearchInput } from '@/components/FilterBar';
 import { Modal } from '@/components/Modal';
 import { FormField, Input, Select, Textarea } from '@/components/FormField';
 import { AsyncCombobox } from '@/components/AsyncCombobox';
-import { badge, btn, btnSecondary, card, colors } from '@/components/styles';
+import { alpha, badge, btn, btnSecondary, card, colors } from '@/components/styles';
 
 type OcorrenciaStatus = 'ABERTA' | 'EM_ANDAMENTO' | 'RESOLVIDA' | 'CANCELADA';
 type OcorrenciaTipo = 'ENTREGA' | 'QUALIDADE' | 'PRAZO' | 'PRODUTO' | 'FINANCEIRO' | 'OUTRO';
@@ -538,7 +538,7 @@ function OcorrenciaDetailModal({
             {data.resolucao && (
               <div
                 style={{
-                  background: colors.success + '15',
+                  background: alpha(colors.success, 8),
                   border: `1px solid ${colors.success}`,
                   borderRadius: 6,
                   padding: '0.75rem',

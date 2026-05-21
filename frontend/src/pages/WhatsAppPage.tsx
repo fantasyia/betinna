@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { api, ApiError } from '@/lib/api';
 import { useRole } from '@/hooks/usePermission';
 import { PageLayout } from '@/components/PageLayout';
-import { badge, btn, btnDanger, btnSecondary, card, colors } from '@/components/styles';
+import { alpha, badge, btn, btnDanger, btnSecondary, card, colors } from '@/components/styles';
 
 type Status =
   | 'DISCONNECTED'
@@ -314,7 +314,7 @@ function SessionPanel({ scope, canManage }: { scope: Scope; canManage: boolean }
               data-testid="connected-state"
               style={{
                 padding: '1rem',
-                background: colors.success + '15',
+                background: alpha(colors.success, 8),
                 border: `1px solid ${colors.success}`,
                 borderRadius: 8,
                 display: 'flex',
@@ -338,7 +338,7 @@ function SessionPanel({ scope, canManage }: { scope: Scope; canManage: boolean }
               data-testid="error-state"
               style={{
                 padding: '0.75rem',
-                background: colors.danger + '15',
+                background: alpha(colors.danger, 8),
                 border: `1px solid ${colors.danger}`,
                 borderRadius: 8,
                 color: colors.danger,
@@ -447,7 +447,7 @@ function SessionPanel({ scope, canManage }: { scope: Scope; canManage: boolean }
               style={{
                 marginTop: '0.75rem',
                 padding: '0.5rem 0.75rem',
-                background: colors.danger + '15',
+                background: alpha(colors.danger, 8),
                 border: `1px solid ${colors.danger}`,
                 borderRadius: 6,
                 color: colors.danger,

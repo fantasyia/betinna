@@ -1,92 +1,95 @@
 import type { CSSProperties } from 'react';
 
 /**
- * Design tokens — Betinna.ai design system (v3 — paleta oficial Betinna, 2026-05-18).
+ * Design tokens — Betinna.ai design system (v4 — CSS vars + dark mode, 2026-05-21).
  *
- * Identidade visual seguindo o protótipo HTML original:
- *  - LIGHT theme com tons quentes (bg #F8F7F2 creme)
- *  - Roxo profundo #31137C como primária
- *  - Ciano #4AC9E3 como secundária (gradiente roxo→ciano é a assinatura)
- *  - Magenta #BB29BB pra acentos especiais
+ * **G1 fix (2026-05-21):** as cores agora referenciam as CSS variables definidas
+ * em `index.css`. Isso faz com que os estilos legacy (objetos CSSProperties
+ * abaixo) **respeitem o dark mode automaticamente** — antes eram hex fixos.
+ *
+ * Identidade visual:
+ *  - LIGHT theme com bg creme #F8F7F2
+ *  - Navy #201554 como primária (#bd1fbf magenta vira primária no dark)
+ *  - Ciano #2bcae5 como secundária
  *  - Tipografia: Cabin (UI) + Fira Sans (display/headings)
  *
  * Mantém a mesma API de tokens (`colors.bg`, `colors.surface`, etc.) — todas as
- * páginas existentes continuam funcionando, só trocam de paleta.
+ * páginas existentes continuam funcionando, mas agora trocam de paleta com o tema.
  */
 
 export const colors = {
-  // ─── Backgrounds (escala de elevação, LIGHT) ───────────────────
-  /** Base do app — creme quente. */
-  bg: '#F8F7F2',
+  // ─── Backgrounds (CSS vars — trocam no dark mode) ─────────────────
+  /** Base do app — creme quente no light, navy no dark. */
+  bg: 'var(--bg)',
   /** Variação sutil pra dividir seções. */
-  bgAlt: '#fdfcf8',
-  /** Card padrão (branco puro). */
-  surface: '#ffffff',
-  /** Hover de card/linha — bege bem sutil. */
-  surfaceHover: '#f4f1e9',
+  bgAlt: 'var(--bg-alt)',
+  /** Card padrão (branco no light, navy-elevated no dark). */
+  surface: 'var(--surface)',
+  /** Hover de card/linha. */
+  surfaceHover: 'var(--surface-hover)',
   /** Card elevado (modal, popover). */
-  surfaceElevated: '#ffffff',
+  surfaceElevated: 'var(--surface-elevated)',
 
   // ─── Borders ────────────────────────────────────────────────────
-  /** Padrão — divisores e bordas de card (lilás bem clarinho). */
-  border: '#e0dbed',
+  /** Padrão — divisores e bordas de card. */
+  border: 'var(--border)',
   /** Mais visível — inputs, botões secundários. */
-  borderStrong: '#cdc3e0',
-  /** Focus ring — usa roxo primário. */
-  borderFocus: '#31137C',
+  borderStrong: 'var(--border-strong)',
+  /** Focus ring — primary no light, magenta no dark. */
+  borderFocus: 'var(--border-focus)',
 
   // ─── Text ───────────────────────────────────────────────────────
-  /** Texto principal — near-black com sutil tom azulado. */
-  text: '#101820',
+  /** Texto principal. */
+  text: 'var(--text)',
   /** Texto secundário (descrições). */
-  textSubtle: '#3a3550',
+  textSubtle: 'var(--text-subtle)',
   /** Mudo (labels, captions). */
-  muted: '#6b6580',
+  muted: 'var(--muted)',
   /** Quase invisível (placeholders, hints). */
-  mutedLight: '#9892a8',
+  mutedLight: 'var(--muted-light)',
 
-  // ─── Brand (cores oficiais brandbook Betinna) ────────────────────
-  /** Primária — navy oficial. */
-  primary: '#201554',
-  primaryHover: '#15093c',
-  primaryLight: '#ecebf3',
-  primaryContrast: '#ffffff',
+  // ─── Brand (CSS vars trocam no dark mode) ────────────────────────
+  /** Primária — navy no light, magenta no dark. */
+  primary: 'var(--primary)',
+  primaryHover: 'var(--primary-hover)',
+  primaryLight: 'var(--primary-light)',
+  primaryContrast: 'var(--primary-contrast)',
 
-  /** Secundária — ciano oficial. */
-  secondary: '#2bcae5',
-  secondaryHover: '#1ba8c0',
-  secondaryLight: '#defaff',
+  /** Secundária — ciano. */
+  secondary: 'var(--secondary)',
+  secondaryHover: 'var(--secondary-hover)',
+  secondaryLight: 'var(--secondary-light)',
 
-  /** Acento — magenta oficial (rosa). */
-  magenta: '#bd1fbf',
-  magentaHover: '#a01aa1',
-  magentaLight: '#fae6fa',
+  /** Acento — magenta. */
+  magenta: 'var(--magenta)',
+  magentaHover: 'var(--magenta-hover)',
+  magentaLight: 'var(--magenta-light)',
 
   /** Azul — accent terciário. */
-  blue: '#5C88DA',
-  blueLight: '#eaf0fb',
+  blue: 'var(--blue)',
+  blueLight: 'var(--blue-light)',
 
-  /** Navy — alias da primary. */
-  navy: '#201554',
+  /** Navy — fixo (não troca no dark). */
+  navy: 'var(--navy)',
 
-  // ─── Semânticas ─────────────────────────────────────────────────
-  danger: '#c43c3c',
+  // ─── Semânticas (CSS vars — tons brilham no dark) ────────────────
+  danger: 'var(--danger)',
   dangerHover: '#a92e2e',
   dangerLight: '#fce8e8',
 
-  success: '#2d8f5e',
+  success: 'var(--success)',
   successHover: '#1f7349',
   successLight: '#e8f5ec',
 
-  warning: '#b07820',
+  warning: 'var(--warning)',
   warningHover: '#946420',
   warningLight: '#faf0d8',
 
-  info: '#5C88DA',
+  info: 'var(--info)',
   infoHover: '#4773c0',
   infoLight: '#eaf0fb',
 
-  // ─── Cores de canal (Inbox / Conversation) ──────────────────────
+  // ─── Cores de canal (fixas — não trocam no dark) ─────────────────
   channelWhatsapp: '#25d366',
   channelInstagram: '#e1306c',
   channelFacebook: '#1877f2',
@@ -96,6 +99,24 @@ export const colors = {
   channelAmazon: '#ff9900',
   channelTiktok: '#ff0050',
 };
+
+/**
+ * Aplica opacidade a uma cor (suporta hex E `var(--token)`).
+ *
+ * Antes do G1, o app usava concatenação hex+alpha tipo `colors.primary + '18'`.
+ * Isso parou de funcionar quando `colors.primary` virou `var(--primary)` —
+ * `var(--primary)18` não é CSS válido. Este helper usa `color-mix()`, que
+ * funciona pra ambos.
+ *
+ * `color-mix()` é suportado em Chrome 111+, Firefox 113+, Safari 16.4+
+ * (o app já depende disso em index.css).
+ *
+ * @param color cor base — pode ser hex (`#201554`) ou CSS var (`var(--primary)`)
+ * @param pct percentual de opacidade 0–100 (ex: `alpha(colors.primary, 12)`)
+ */
+export function alpha(color: string, pct: number): string {
+  return `color-mix(in srgb, ${color} ${pct}%, transparent)`;
+}
 
 /** Spacing scale — 4px base. */
 export const spacing = {
@@ -290,7 +311,8 @@ export const td: CSSProperties = {
 
 /**
  * Badge — chip arredondado com cor base.
- * BG ~14% opacidade da cor + cor sólida no texto. Funciona bem em light.
+ * BG ~12% opacidade da cor + cor sólida no texto. Usa color-mix() pra
+ * funcionar tanto com hex quanto com CSS vars (var(--magenta) etc.).
  */
 export const badge = (color = colors.muted): CSSProperties => ({
   display: 'inline-flex',
@@ -299,11 +321,11 @@ export const badge = (color = colors.muted): CSSProperties => ({
   borderRadius: radius.full,
   fontSize: 11,
   fontWeight: 600,
-  background: color + '20',
+  background: alpha(color, 12),
   color,
   letterSpacing: 0.2,
   lineHeight: 1.6,
-  border: `1px solid ${color}30`,
+  border: `1px solid ${alpha(color, 19)}`,
 });
 
 /** Tabular numbers — pra colunas de dinheiro/quantidade. */

@@ -3,7 +3,7 @@ import { api, ApiError } from '@/lib/api';
 import { useApiQuery } from '@/hooks/useApiQuery';
 import { PageLayout } from '@/components/PageLayout';
 import { StateView } from '@/components/StateView';
-import { badge, card, colors } from '@/components/styles';
+import { alpha, badge, card, colors } from '@/components/styles';
 
 type Role = 'ADMIN' | 'DIRECTOR' | 'GERENTE' | 'SAC' | 'REP';
 
@@ -344,7 +344,7 @@ function PermissionMatrix({ role }: { role: Role }) {
               fontSize: 13,
               marginTop: '0.75rem',
               padding: '0.5rem 0.75rem',
-              background: colors.danger + '15',
+              background: alpha(colors.danger, 8),
               borderRadius: 6,
             }}
           >
