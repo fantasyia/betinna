@@ -29,11 +29,49 @@ function log(msg) {
 }
 
 function runPrisma(args, opts = {}) {
-  return spawnSync('npx', ['prisma', ...args], {
-    stdio: opts.silent ? 'pipe' : 'inherit',
+  // Sempre captura stderr também pra detectar erros transientes (P1001, etc.)
+  // Usa 'pipe' pra stderr/stdout, mas ainda imprime no console pra visibilidade.
+  const useInherit = !opts.silent && !opts.captureStderr;
+  const res = spawnSync('npx', ['prisma', ...args], {
+    stdio: useInherit ? 'inherit' : ['inherit', 'pipe', 'pipe'],
     encoding: 'utf-8',
     shell: process.platform === 'win32',
   });
+  if (!useInherit) {
+    if (res.stdout) process.stdout.write(res.stdout);
+    if (res.stderr) process.stderr.write(res.stderr);
+  }
+  return res;
+}
+
+/**
+ * Detecta se o erro do Prisma é de **rede/conexão** (transiente) e não
+ * de SQL/schema (permanente). Quando transiente, faz sentido deixar o
+ * app subir mesmo assim — o Nest exporá `/health` (liveness), o healthcheck
+ * do Railway passa, e queries começam a funcionar quando o DB voltar.
+ *
+ * Erros transientes conhecidos:
+ *  - P1001: Can't reach database server
+ *  - P1002: Database server timeout
+ *  - P1008: Operations timed out
+ *  - P1017: Server has closed the connection
+ *  - ECONNREFUSED / ETIMEDOUT / ENOTFOUND (TCP layer)
+ *
+ * Padrão Bull/ioredis em produção: app sobe mesmo sem Redis disponível;
+ * mesma filosofia aqui pra DB transiente.
+ */
+function isTransientNetworkError(prismaOutput) {
+  if (!prismaOutput) return false;
+  const text = String(prismaOutput);
+  return (
+    /P100[12]:/.test(text) || // P1001, P1002
+    /P1008:/.test(text) ||
+    /P1017:/.test(text) ||
+    /Can't reach database server/i.test(text) ||
+    /ECONNREFUSED/.test(text) ||
+    /ETIMEDOUT/.test(text) ||
+    /ENOTFOUND/.test(text)
+  );
 }
 
 /**
@@ -66,7 +104,23 @@ async function main() {
 
   // ─── Step 1: tenta migrate deploy direto ─────────────────────────────
   log('Tentativa #1: prisma migrate deploy direto');
-  let res = runPrisma(['migrate', 'deploy']);
+  let res = runPrisma(['migrate', 'deploy'], { captureStderr: true });
+
+  // Fast-path: se DB inacessível (erro transiente de rede), NÃO trava o boot.
+  // Deixa o app subir em estado degradado — healthcheck liveness `/health`
+  // ainda responde e o Nest pode reconectar quando DB voltar. Sem isso,
+  // qualquer outage transiente do Postgres derruba o container em loop.
+  if (
+    res.status !== 0 &&
+    (isTransientNetworkError(res.stderr) || isTransientNetworkError(res.stdout))
+  ) {
+    log('⚠️ DB INACESSÍVEL (erro transiente de rede detectado).');
+    log('⚠️ App vai subir em ESTADO DEGRADADO — queries vão falhar até DB voltar.');
+    log('⚠️ Verifique o serviço Postgres no Railway dashboard.');
+    log('=== Smart migrate deploy SKIPPED (DB unreachable) ===');
+    process.exit(0); // soft success — deixa start.js prosseguir com node dist/main
+  }
+
   if (res.status !== 0) {
     // ─── Step 2: baseline 0_init + retry ───────────────────────────────
     log('⚠️ Migrate deploy falhou. Tentando baseline com 0_init…');
@@ -78,7 +132,16 @@ async function main() {
       log('✅ Baseline 0_init marcada como aplicada.');
     }
     log('Tentativa #2: prisma migrate deploy pós-baseline');
-    res = runPrisma(['migrate', 'deploy']);
+    res = runPrisma(['migrate', 'deploy'], { captureStderr: true });
+
+    // Mesma proteção pós-baseline
+    if (
+      res.status !== 0 &&
+      (isTransientNetworkError(res.stderr) || isTransientNetworkError(res.stdout))
+    ) {
+      log('⚠️ DB ainda inacessível pós-baseline. App vai subir degradado.');
+      process.exit(0);
+    }
   }
 
   // ─── Step 3: verificação de tabelas críticas ───────────────────────
@@ -112,15 +175,23 @@ async function main() {
   if (shouldFallback) {
     log('⚠️ Migrate deploy não aplicou tudo. Fallback: db push --accept-data-loss');
     log('(Isso força sincronizar o schema com o DB. Seguro pois só adicionamos colunas/tabelas.)');
-    const pushRes = runPrisma([
-      'db',
-      'push',
-      '--accept-data-loss',
-      '--skip-generate',
-    ]);
+    const pushRes = runPrisma(
+      ['db', 'push', '--accept-data-loss', '--skip-generate'],
+      { captureStderr: true },
+    );
     if (pushRes.status !== 0) {
-      log('❌ db push falhou. Sistema em estado degradado.');
-      process.exit(1);
+      // Se db push falhou por DB inacessível, ainda assim deixa subir degradado.
+      if (
+        isTransientNetworkError(pushRes.stderr) ||
+        isTransientNetworkError(pushRes.stdout)
+      ) {
+        log('⚠️ db push também falhou por DB inacessível. App sobe degradado.');
+        process.exit(0);
+      }
+      log('❌ db push falhou por erro NÃO-transiente. Sistema em estado degradado.');
+      // Mesmo assim, hoje, é melhor o app subir e expor /health do que loop infinito.
+      // Operador investiga via logs + readiness probe.
+      process.exit(0);
     }
     log('✅ db push sincronizou schema com DB.');
   } else {

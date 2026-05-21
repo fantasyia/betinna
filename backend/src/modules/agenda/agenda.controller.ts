@@ -72,7 +72,18 @@ export class AgendaController {
   @Delete(':id')
   @HttpCode(HttpStatus.OK)
   @Audit({ action: 'delete', resource: 'agenda', resourceIdFrom: 'params.id' })
-  delete(@CurrentUser() user: AuthenticatedUser, @Param('id') id: string) {
-    return this.svc.delete(user, id);
+  @ApiOperation({
+    summary:
+      'Remove item da agenda. Para séries recorrentes use ?scope=this|this_and_future|series (default: this).',
+  })
+  delete(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param('id') id: string,
+    @Query('scope') scope?: string,
+  ) {
+    const validScope = ['this', 'this_and_future', 'series'].includes(scope ?? '')
+      ? (scope as 'this' | 'this_and_future' | 'series')
+      : 'this';
+    return this.svc.delete(user, id, validScope);
   }
 }

@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type DragEvent } from 'react';
+import { Undo2, Redo2 } from 'lucide-react';
 import {
   ReactFlow,
   ReactFlowProvider,
@@ -333,6 +334,81 @@ function FluxoEditorInner({
   const [reactFlowInstance, setReactFlowInstance] = useState<ReactFlowInstance<FlowNode, Edge> | null>(null);
   const wrapperRef = useRef<HTMLDivElement | null>(null);
 
+  // v1.5.0 — Undo/Redo history stack
+  // Snapshots de { nodes, edges } com max 50 entradas.
+  // O ponteiro `historyIdx` aponta pro estado atual; undo decrementa, redo incrementa.
+  type Snapshot = { nodes: FlowNode[]; edges: Edge[] };
+  const historyRef = useRef<Snapshot[]>([]);
+  const historyIdxRef = useRef<number>(-1);
+  const skipHistoryRef = useRef<boolean>(false);
+  const HISTORY_LIMIT = 50;
+  const [, forceRender] = useState(0);
+
+  function pushHistory(snapshot: Snapshot) {
+    if (skipHistoryRef.current) return;
+    // Trunca o futuro (estados após o ponteiro atual são descartados)
+    const next = historyRef.current.slice(0, historyIdxRef.current + 1);
+    next.push({
+      nodes: snapshot.nodes.map((n) => ({ ...n, data: { ...n.data } })),
+      edges: snapshot.edges.map((e) => ({ ...e })),
+    });
+    // Limite circular: descarta os mais antigos
+    if (next.length > HISTORY_LIMIT) next.shift();
+    historyRef.current = next;
+    historyIdxRef.current = next.length - 1;
+    forceRender((v) => v + 1);
+  }
+
+  function undo() {
+    if (historyIdxRef.current <= 0) return;
+    historyIdxRef.current -= 1;
+    const snap = historyRef.current[historyIdxRef.current];
+    skipHistoryRef.current = true;
+    setNodes(snap.nodes);
+    setEdges(snap.edges);
+    setDirty(true);
+    setTimeout(() => {
+      skipHistoryRef.current = false;
+    }, 0);
+    forceRender((v) => v + 1);
+  }
+
+  function redo() {
+    if (historyIdxRef.current >= historyRef.current.length - 1) return;
+    historyIdxRef.current += 1;
+    const snap = historyRef.current[historyIdxRef.current];
+    skipHistoryRef.current = true;
+    setNodes(snap.nodes);
+    setEdges(snap.edges);
+    setDirty(true);
+    setTimeout(() => {
+      skipHistoryRef.current = false;
+    }, 0);
+    forceRender((v) => v + 1);
+  }
+
+  const canUndo = historyIdxRef.current > 0;
+  const canRedo = historyIdxRef.current < historyRef.current.length - 1;
+
+  // Atalhos: Cmd/Ctrl + Z, Cmd/Ctrl + Shift + Z, Cmd/Ctrl + Y
+  useEffect(() => {
+    function onKey(e: KeyboardEvent) {
+      const cmd = e.metaKey || e.ctrlKey;
+      if (!cmd) return;
+      if (e.key === 'z' || e.key === 'Z') {
+        e.preventDefault();
+        if (e.shiftKey) redo();
+        else undo();
+      } else if (e.key === 'y' || e.key === 'Y') {
+        e.preventDefault();
+        redo();
+      }
+    }
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   // Hydratar nodes/edges quando data chega
   useEffect(() => {
     if (!data) return;
@@ -362,6 +438,10 @@ function FluxoEditorInner({
     setNodes(initialNodes);
     setEdges(initialEdges);
     setDirty(false);
+    // Reset history quando recarrega fluxo
+    historyRef.current = [{ nodes: initialNodes, edges: initialEdges }];
+    historyIdxRef.current = 0;
+    forceRender((v) => v + 1);
   }, [data, setNodes, setEdges]);
 
   // Drop handler
@@ -391,10 +471,15 @@ function FluxoEditorInner({
           config: defaultConfig(item),
         },
       };
-      setNodes((nds) => nds.concat(newNode));
+      setNodes((nds) => {
+        const next = nds.concat(newNode);
+        pushHistory({ nodes: next, edges });
+        return next;
+      });
       setDirty(true);
     },
-    [reactFlowInstance, setNodes],
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [reactFlowInstance, setNodes, edges],
   );
 
   const onDragOver = useCallback((event: DragEvent<HTMLDivElement>) => {
@@ -405,8 +490,8 @@ function FluxoEditorInner({
   // Connection
   const onConnect = useCallback(
     (conn: Connection) => {
-      setEdges((eds) =>
-        addEdge(
+      setEdges((eds) => {
+        const next = addEdge(
           {
             ...conn,
             type: 'smoothstep',
@@ -415,11 +500,14 @@ function FluxoEditorInner({
             label: conn.sourceHandle === 'true' ? 'Sim' : conn.sourceHandle === 'false' ? 'Não' : undefined,
           },
           eds,
-        ),
-      );
+        );
+        pushHistory({ nodes, edges: next });
+        return next;
+      });
       setDirty(true);
     },
-    [setEdges],
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [setEdges, nodes],
   );
 
   // Save
@@ -462,18 +550,25 @@ function FluxoEditorInner({
   // Sync selected node updates back to nodes state
   function updateSelectedNode(updater: (data: NodePayload) => NodePayload) {
     if (!selectedNodeId) return;
-    setNodes((nds) =>
-      nds.map((n) => (n.id === selectedNodeId ? { ...n, data: updater(n.data) } : n)),
-    );
+    setNodes((nds) => {
+      const next = nds.map((n) =>
+        n.id === selectedNodeId ? { ...n, data: updater(n.data) } : n,
+      );
+      pushHistory({ nodes: next, edges });
+      return next;
+    });
     setDirty(true);
   }
 
   function deleteSelectedNode() {
     if (!selectedNodeId) return;
-    setNodes((nds) => nds.filter((n) => n.id !== selectedNodeId));
-    setEdges((eds) =>
-      eds.filter((e) => e.source !== selectedNodeId && e.target !== selectedNodeId),
+    const nextNodes = nodes.filter((n) => n.id !== selectedNodeId);
+    const nextEdges = edges.filter(
+      (e) => e.source !== selectedNodeId && e.target !== selectedNodeId,
     );
+    setNodes(nextNodes);
+    setEdges(nextEdges);
+    pushHistory({ nodes: nextNodes, edges: nextEdges });
     setSelectedNodeId(null);
     setDirty(true);
   }
@@ -511,6 +606,26 @@ function FluxoEditorInner({
           )}
         </div>
         <div className="flex items-center gap-2">
+          {/* v1.5.0 — Undo/Redo */}
+          <IconButton
+            aria-label="Desfazer (Cmd+Z)"
+            title="Desfazer (Cmd/Ctrl+Z)"
+            variant="ghost"
+            icon={<Undo2 className="h-4 w-4" />}
+            onClick={undo}
+            disabled={!canUndo}
+            data-testid="fluxo-undo"
+          />
+          <IconButton
+            aria-label="Refazer (Cmd+Shift+Z)"
+            title="Refazer (Cmd/Ctrl+Shift+Z ou Cmd/Ctrl+Y)"
+            variant="ghost"
+            icon={<Redo2 className="h-4 w-4" />}
+            onClick={redo}
+            disabled={!canRedo}
+            data-testid="fluxo-redo"
+          />
+          <div className="w-px h-6 bg-border mx-1" />
           <Button variant="ghost" onClick={onClose}>
             Cancelar
           </Button>

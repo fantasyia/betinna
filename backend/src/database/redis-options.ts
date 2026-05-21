@@ -1,4 +1,4 @@
-import type { RedisOptions } from 'ioredis';
+import IORedis, { type RedisOptions, type Redis } from 'ioredis';
 
 /**
  * Opções padronizadas para QUALQUER conexão Redis no projeto.
@@ -28,6 +28,27 @@ export function buildRedisOptions(redisUrl: string, overrides: RedisOptions = {}
     // Sane defaults — sobreescrevíveis via overrides
     enableReadyCheck: true,
     lazyConnect: false,
+    // Retry com backoff exponencial: 200ms → 400 → 800 → ... → cap 30s.
+    // Evita inundação de logs ETIMEDOUT quando o Redis está down (hotpatch
+    // 2026-05-19: worker fazia ~10 connect attempts por segundo).
+    retryStrategy: (times) => {
+      const delay = Math.min(200 * Math.pow(2, Math.min(times, 8)), 30_000);
+      return delay;
+    },
+    // Reconnect on error transiente (READONLY, ETIMEDOUT) — não nas falhas
+    // de auth/syntax. Default ioredis cobre ECONNRESET; estamos só sendo
+    // explícitos pra timeout do Railway.
+    reconnectOnError: (err) => {
+      const msg = err?.message ?? '';
+      return (
+        msg.includes('READONLY') ||
+        msg.includes('ETIMEDOUT') ||
+        msg.includes('ECONNRESET')
+      );
+    },
+    // Evita travar `await client.cmd()` indefinidamente quando Redis sumiu.
+    // Default é Infinity (ruim em prod). 5s permite o caller fallback/retry.
+    connectTimeout: 10_000,
     ...overrides,
   };
 
@@ -69,4 +90,36 @@ export function buildBullMqConnection(
 export function isTlsUrl(redisUrl: string): boolean {
   if (typeof redisUrl !== 'string') return false;
   return redisUrl.trim().toLowerCase().startsWith('rediss://');
+}
+
+/**
+ * Cria um cliente IORedis com handler de erro JÁ ATTACHED.
+ *
+ * CRÍTICO: ioredis (e qualquer EventEmitter do Node) MATA o processo se
+ * `error` é emitido sem listener. Em produção, quando Redis está down,
+ * ioredis emite 'error' a cada reconnect attempt — sem listener, o app
+ * inteiro cai.
+ *
+ * Sempre use este helper em vez de `new IORedis()` direto.
+ * Hotpatch 2026-05-20: ThrottlerStorageRedisService no app.module.ts
+ * usava `new IORedis` cru, derrubando o boot quando Redis estava fora.
+ *
+ * @param redisUrl URL completa do Redis (vem do env)
+ * @param overrides options específicas
+ * @param onError optional callback pra log custom (default: silencioso)
+ */
+export function createIORedisClient(
+  redisUrl: string,
+  overrides: RedisOptions = {},
+  onError?: (err: Error) => void,
+): Redis {
+  const client = new IORedis(redisUrl, buildRedisOptions(redisUrl, overrides));
+  // SEMPRE attach error handler — evita 'unhandled error event' que mata o processo
+  client.on('error', (err: Error) => {
+    if (onError) {
+      onError(err);
+    }
+    // Se onError não foi passado, silencioso. ioredis reconecta sozinho via retryStrategy.
+  });
+  return client;
 }

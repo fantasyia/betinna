@@ -101,10 +101,30 @@ export function currentEmpresaId() {
 
 // ─── Bootstrap & refresh transparente ───────────────────────────────────
 
+/**
+ * Helper: fetch com timeout via AbortController.
+ * Hotpatch 2026-05-20: sem timeout, fetch pode ficar pendurado indefinido
+ * quando Service Worker velho intercepta ou backend não responde —
+ * isso travava o bootstrap (`isInitializing` nunca virava false).
+ */
+async function fetchWithTimeout(url: string, init: RequestInit, ms = 10_000): Promise<Response> {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), ms);
+  try {
+    return await fetch(url, {
+      ...init,
+      signal: controller.signal,
+      cache: 'no-store',
+    });
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
 /** Busca AuthenticatedUser completo do backend usando o access token atual. */
 async function fetchMe(accessToken: string): Promise<AuthenticatedUser | null> {
   try {
-    const res = await fetch(`${API_BASE}/api/v1/auth/me`, {
+    const res = await fetchWithTimeout(`${API_BASE}/api/v1/auth/me`, {
       headers: { Authorization: `Bearer ${accessToken}` },
     });
     if (!res.ok) return null;
@@ -121,7 +141,7 @@ async function fetchMe(accessToken: string): Promise<AuthenticatedUser | null> {
  */
 export async function refreshAccessToken(): Promise<AuthSession | null> {
   try {
-    const res = await fetch(`${API_BASE}/api/v1/auth/refresh`, {
+    const res = await fetchWithTimeout(`${API_BASE}/api/v1/auth/refresh`, {
       method: 'POST',
       credentials: 'include', // envia cookie httpOnly
     });

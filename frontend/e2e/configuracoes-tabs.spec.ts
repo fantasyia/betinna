@@ -40,9 +40,10 @@ test('Configurações — aba Avançado mostra hub de atalhos', async ({ page })
   await page.getByTestId('config-tab-avancado').click();
   // Tem header da seção
   await expect(page.locator('text=Áreas administrativas relacionadas')).toBeVisible();
-  // Tem ao menos um dos cards-link conhecidos
-  await expect(page.locator('a[href="/integracoes"]')).toBeVisible();
-  await expect(page.locator('a[href="/permissoes"]')).toBeVisible();
+  // Usa data-testid dedicado pra evitar conflito com link na sidebar nav
+  // (que também aponta /integracoes — strict mode violaria sem escopo).
+  await expect(page.getByTestId('config-link-integracoes')).toBeVisible();
+  await expect(page.getByTestId('config-link-permissoes')).toBeVisible();
 });
 
 test('Configurações — botão "+ Nova empresa" só aparece na aba Empresas', async ({ page }) => {

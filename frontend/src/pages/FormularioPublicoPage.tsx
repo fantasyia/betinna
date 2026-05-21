@@ -31,6 +31,8 @@ interface CampoPublico {
   obrigatorio: boolean;
   opcoes?: string[] | null;
   hint?: string | null;
+  /** v1.5.0 — passo multi-step (1..N). Default 1. */
+  passo?: number;
 }
 
 interface FormularioPublico {
@@ -54,6 +56,8 @@ export default function FormularioPublicoPage() {
     null,
   );
   const [hp, setHp] = useState(''); // honeypot
+  // v1.5.0 — Multi-step navigation
+  const [passoAtual, setPassoAtual] = useState(1);
 
   useEffect(() => {
     if (!slug) return;
@@ -78,6 +82,51 @@ export default function FormularioPublicoPage() {
     const current = (dados[campo] ?? []) as string[];
     const next = current.includes(op) ? current.filter((v) => v !== op) : [...current, op];
     setField(campo, next);
+  }
+
+  // v1.5.0 — Multi-step helpers
+  const passos = form ? Array.from(new Set(form.campos.map((c) => c.passo ?? 1))).sort((a, b) => a - b) : [];
+  const totalPassos = passos.length;
+  const isMultiStep = totalPassos > 1;
+  const camposPassoAtual = form ? form.campos.filter((c) => (c.passo ?? 1) === passoAtual) : [];
+  const isUltimoPasso = passoAtual === passos[passos.length - 1];
+
+  function validarPassoAtual(): string | null {
+    for (const campo of camposPassoAtual) {
+      if (campo.obrigatorio) {
+        const v = dados[campo.campo];
+        if (
+          v === undefined ||
+          (typeof v === 'string' && v.trim().length === 0) ||
+          (Array.isArray(v) && v.length === 0)
+        ) {
+          return `Preencha "${campo.label}"`;
+        }
+      }
+    }
+    return null;
+  }
+
+  function avancarPasso() {
+    const err = validarPassoAtual();
+    if (err) {
+      setError(err);
+      return;
+    }
+    setError(null);
+    const idx = passos.indexOf(passoAtual);
+    if (idx < passos.length - 1) {
+      setPassoAtual(passos[idx + 1]!);
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+    }
+  }
+
+  function voltarPasso() {
+    const idx = passos.indexOf(passoAtual);
+    if (idx > 0) {
+      setPassoAtual(passos[idx - 1]!);
+      setError(null);
+    }
   }
 
   async function handleSubmit(e: React.FormEvent) {
@@ -171,7 +220,31 @@ export default function FormularioPublicoPage() {
       </div>
 
       <form onSubmit={handleSubmit} className="mt-6 flex flex-col gap-4 px-2">
-        {form.campos.map((c) => (
+        {/* v1.5.0 — Progress bar multi-step */}
+        {isMultiStep && (
+          <div
+            className="flex flex-col gap-1.5"
+            data-testid="form-multistep-progress"
+            aria-label={`Passo ${passos.indexOf(passoAtual) + 1} de ${totalPassos}`}
+          >
+            <div className="flex justify-between text-xs text-text-subtle">
+              <span>
+                Passo {passos.indexOf(passoAtual) + 1} de {totalPassos}
+              </span>
+              <span>{Math.round(((passos.indexOf(passoAtual) + 1) / totalPassos) * 100)}%</span>
+            </div>
+            <div className="h-1.5 bg-border rounded-full overflow-hidden">
+              <div
+                className="h-full bg-primary transition-all"
+                style={{
+                  width: `${((passos.indexOf(passoAtual) + 1) / totalPassos) * 100}%`,
+                }}
+              />
+            </div>
+          </div>
+        )}
+
+        {camposPassoAtual.map((c) => (
           <FormField
             key={c.campo}
             campo={c}
@@ -200,15 +273,59 @@ export default function FormularioPublicoPage() {
           </div>
         )}
 
-        <Button
-          type="submit"
-          loading={submitting}
-          fullWidth
-          size="lg"
-          data-testid="form-submit"
-        >
-          Enviar
-        </Button>
+        {/* Botões: Anterior/Próximo se multi-step + último passo = submit */}
+        {isMultiStep && !isUltimoPasso ? (
+          <div className="flex gap-2">
+            <Button
+              type="button"
+              variant="secondary"
+              onClick={voltarPasso}
+              disabled={passoAtual === passos[0]}
+              data-testid="form-passo-anterior"
+            >
+              ← Anterior
+            </Button>
+            <Button
+              type="button"
+              onClick={avancarPasso}
+              fullWidth
+              size="lg"
+              data-testid="form-passo-proximo"
+            >
+              Próximo →
+            </Button>
+          </div>
+        ) : isMultiStep ? (
+          <div className="flex gap-2">
+            <Button
+              type="button"
+              variant="secondary"
+              onClick={voltarPasso}
+              data-testid="form-passo-anterior"
+            >
+              ← Anterior
+            </Button>
+            <Button
+              type="submit"
+              loading={submitting}
+              fullWidth
+              size="lg"
+              data-testid="form-submit"
+            >
+              Enviar
+            </Button>
+          </div>
+        ) : (
+          <Button
+            type="submit"
+            loading={submitting}
+            fullWidth
+            size="lg"
+            data-testid="form-submit"
+          >
+            Enviar
+          </Button>
+        )}
 
         <p className="text-[11px] text-muted-light text-center mt-2">
           Powered by <strong className="text-primary">Betinna.ai</strong>

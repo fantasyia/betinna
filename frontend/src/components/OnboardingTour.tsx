@@ -1,9 +1,16 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useSyncExternalStore } from 'react';
 import { useNavigate } from 'react-router-dom';
 import type { UserRole } from '@/types/auth';
 import { getSession, subscribe } from '@/lib/auth-store';
-import { btn, btnSecondary, colors } from '@/components/styles';
+
+// Brandbook
+const BRAND = {
+  navy: '#201554',
+  cyan: '#2bcae5',
+  magenta: '#bd1fbf',
+  bgDark: '#221551',
+} as const;
 
 /**
  * OnboardingTour — passo-a-passo introdutório por papel.
@@ -260,6 +267,7 @@ export function OnboardingTour() {
   const navigate = useNavigate();
   const [stepIdx, setStepIdx] = useState(0);
   const [visible, setVisible] = useState(false);
+  const nextBtnRef = useRef<HTMLButtonElement>(null);
 
   const user = session?.user;
   const userId = user?.id ?? null;
@@ -285,6 +293,48 @@ export function OnboardingTour() {
     return () => window.removeEventListener('onboarding:restart', onRestart);
   }, [userId, role]);
 
+  // Focus no botão Próximo ao entrar/avançar passo (focus trap leve)
+  useEffect(() => {
+    if (visible) {
+      const t = setTimeout(() => nextBtnRef.current?.focus(), 50);
+      return () => clearTimeout(t);
+    }
+  }, [visible, stepIdx]);
+
+  // Keyboard: ESC = pular, ← anterior, → próximo
+  useEffect(() => {
+    if (!visible) return;
+    function onKey(e: KeyboardEvent) {
+      if (e.key === 'Escape') {
+        e.preventDefault();
+        closeRef.current?.();
+      } else if (e.key === 'ArrowRight') {
+        e.preventDefault();
+        nextRef.current?.();
+      } else if (e.key === 'ArrowLeft') {
+        e.preventDefault();
+        prevRef.current?.();
+      }
+    }
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [visible]);
+
+  // Lock body scroll quando aberto
+  useEffect(() => {
+    if (!visible) return;
+    const prev = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+    return () => {
+      document.body.style.overflow = prev;
+    };
+  }, [visible]);
+
+  // Refs pra handlers usados via keyboard (evita closure stale)
+  const closeRef = useRef<() => void>();
+  const nextRef = useRef<() => void>();
+  const prevRef = useRef<() => void>();
+
   if (!visible || !userId || !role) return null;
 
   const steps = STEPS_BY_ROLE[role];
@@ -302,6 +352,7 @@ export function OnboardingTour() {
     if (persist && userId && role) markDone(userId, role);
     setVisible(false);
   }
+  closeRef.current = () => close(true);
 
   function next() {
     if (isLast) {
@@ -314,11 +365,13 @@ export function OnboardingTour() {
       navigate(upcoming.route);
     }
   }
+  nextRef.current = next;
 
   function prev() {
     if (isFirst) return;
     setStepIdx(stepIdx - 1);
   }
+  prevRef.current = prev;
 
   function goToStepRoute() {
     if (step.route) navigate(step.route);
@@ -330,33 +383,49 @@ export function OnboardingTour() {
       role="dialog"
       aria-modal="true"
       aria-labelledby="onboarding-title"
+      aria-describedby="onboarding-body"
       style={{
         position: 'fixed',
         inset: 0,
-        background: 'rgba(15, 23, 42, 0.55)',
+        background: 'rgba(16, 24, 32, 0.7)',
         zIndex: 9999,
         display: 'flex',
         alignItems: 'center',
         justifyContent: 'center',
         padding: '1rem',
-        fontFamily: 'system-ui, -apple-system, sans-serif',
-      }}
-      onClick={(e) => {
-        // Click no backdrop = pular (com confirm leve via prompt seria pesado)
-        if (e.target === e.currentTarget) {
-          /* não fecha — usuário deve usar Pular explicitamente */
-        }
+        backdropFilter: 'blur(4px)',
+        animation: 'tour-fade-in 200ms ease-out',
       }}
     >
+      {/* Animação keyframes */}
+      <style>
+        {`
+          @keyframes tour-fade-in {
+            from { opacity: 0; }
+            to { opacity: 1; }
+          }
+          @keyframes tour-slide-up {
+            from { transform: translateY(12px); opacity: 0; }
+            to { transform: translateY(0); opacity: 1; }
+          }
+        `}
+      </style>
       <div
+        key={stepIdx /* re-render anima cada step */}
         style={{
-          background: '#fff',
-          borderRadius: 12,
+          background: BRAND.bgDark,
+          color: '#F8F7F2',
+          borderRadius: 10,
           maxWidth: 480,
           width: '100%',
           padding: '1.5rem',
-          boxShadow: '0 20px 60px rgba(15, 23, 42, 0.35)',
+          boxShadow: '0 20px 60px rgba(0,0,0,0.5)',
+          fontFamily: 'var(--font-ui, Cabin, system-ui, sans-serif)',
+          animation: 'tour-slide-up 220ms cubic-bezier(0.16, 1, 0.3, 1)',
+          border: `1px solid ${BRAND.cyan}33`,
         }}
+        // aria-live anuncia mudança de step pra screen readers
+        aria-live="polite"
       >
         {/* Progress bar */}
         <div
@@ -373,7 +442,7 @@ export function OnboardingTour() {
                 flex: 1,
                 height: 4,
                 borderRadius: 2,
-                background: i <= stepIdx ? colors.primary : colors.border,
+                background: i <= stepIdx ? BRAND.magenta : 'rgba(248,247,242,0.15)',
                 transition: 'background 0.2s',
               }}
             />
@@ -388,12 +457,26 @@ export function OnboardingTour() {
             </div>
           )}
           <div style={{ flex: 1 }}>
-            <div style={{ fontSize: 11, color: colors.muted, fontWeight: 600 }}>
+            <div
+              style={{
+                fontSize: 11,
+                color: BRAND.cyan,
+                fontWeight: 600,
+                letterSpacing: '0.04em',
+                textTransform: 'uppercase',
+              }}
+            >
               Passo {stepIdx + 1} de {steps.length}
             </div>
             <h2
               id="onboarding-title"
-              style={{ margin: 0, fontSize: 18, color: colors.text }}
+              style={{
+                margin: 0,
+                fontSize: 20,
+                color: '#F8F7F2',
+                fontFamily: 'var(--font-display, "Fira Sans", system-ui)',
+                fontWeight: 800,
+              }}
             >
               {step.title}
             </h2>
@@ -402,10 +485,11 @@ export function OnboardingTour() {
 
         {/* Body */}
         <p
+          id="onboarding-body"
           style={{
             fontSize: 14,
             lineHeight: 1.6,
-            color: colors.text,
+            color: 'rgba(248,247,242,0.85)',
             margin: '0.75rem 0 1.25rem',
           }}
         >
@@ -417,9 +501,16 @@ export function OnboardingTour() {
             type="button"
             onClick={goToStepRoute}
             style={{
-              ...btnSecondary,
-              marginBottom: '1rem',
+              background: `${BRAND.cyan}22`,
+              color: BRAND.cyan,
+              border: `1px solid ${BRAND.cyan}55`,
+              borderRadius: 10,
+              padding: '0.5rem 0.875rem',
               fontSize: 12,
+              fontWeight: 600,
+              cursor: 'pointer',
+              marginBottom: '1rem',
+              transition: 'background 120ms',
             }}
           >
             Ir para {step.route} →
@@ -442,30 +533,72 @@ export function OnboardingTour() {
             style={{
               background: 'transparent',
               border: 'none',
-              color: colors.muted,
+              color: 'rgba(248,247,242,0.5)',
               fontSize: 13,
               cursor: 'pointer',
               padding: '0.5rem',
+              textDecoration: 'underline',
             }}
+            aria-label="Pular tour de onboarding"
           >
             Pular tour
           </button>
 
           <div style={{ display: 'flex', gap: 8 }}>
             {!isFirst && (
-              <button type="button" onClick={prev} style={btnSecondary}>
-                Anterior
+              <button
+                type="button"
+                onClick={prev}
+                style={{
+                  background: 'transparent',
+                  color: 'rgba(248,247,242,0.85)',
+                  border: '1px solid rgba(248,247,242,0.25)',
+                  borderRadius: 10,
+                  padding: '0.5rem 1rem',
+                  fontSize: 13,
+                  fontWeight: 600,
+                  cursor: 'pointer',
+                }}
+                aria-label="Passo anterior (atalho: seta esquerda)"
+              >
+                ← Anterior
               </button>
             )}
             <button
+              ref={nextBtnRef}
               type="button"
               onClick={next}
               data-testid="onboarding-next"
-              style={btn}
+              style={{
+                background: BRAND.magenta,
+                color: '#F8F7F2',
+                border: 'none',
+                borderRadius: 10,
+                padding: '0.5rem 1.25rem',
+                fontSize: 13,
+                fontWeight: 700,
+                cursor: 'pointer',
+                boxShadow: `0 4px 12px ${BRAND.magenta}55`,
+              }}
+              aria-label={isLast ? 'Concluir tour' : 'Próximo passo (atalho: seta direita)'}
             >
-              {isLast ? 'Concluir' : 'Próximo'}
+              {isLast ? 'Concluir 🎉' : 'Próximo →'}
             </button>
           </div>
+        </div>
+
+        {/* Hint de atalhos */}
+        <div
+          style={{
+            marginTop: '0.75rem',
+            paddingTop: '0.75rem',
+            borderTop: '1px solid rgba(248,247,242,0.1)',
+            fontSize: 11,
+            color: 'rgba(248,247,242,0.4)',
+            textAlign: 'center',
+          }}
+        >
+          Atalhos: <kbd>←</kbd> anterior · <kbd>→</kbd> próximo · <kbd>Esc</kbd> pular
         </div>
       </div>
     </div>

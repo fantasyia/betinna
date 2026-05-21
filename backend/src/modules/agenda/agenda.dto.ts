@@ -3,6 +3,16 @@ import { z } from 'zod';
 export const AGENDA_TIPOS = ['VISITA', 'LIGACAO', 'REUNIAO', 'ENTREGA', 'TAREFA'] as const;
 export const agendaTipoEnum = z.enum(AGENDA_TIPOS);
 
+export const RECORRENCIAS = [
+  'NENHUMA',
+  'DIARIA',
+  'SEMANAL',
+  'QUINZENAL',
+  'MENSAL',
+  'ANUAL',
+] as const;
+export const recorrenciaEnum = z.enum(RECORRENCIAS);
+
 const dateLike = z.coerce.date();
 
 export const createAgendaItemSchema = z.object({
@@ -23,6 +33,13 @@ export const createAgendaItemSchema = z.object({
   participantes: z
     .array(z.object({ email: z.string().email(), nome: z.string().optional() }))
     .optional(),
+  /** v1.5.0 — Recorrência. Default NENHUMA = item único. */
+  recorrencia: recorrenciaEnum.default('NENHUMA'),
+  /**
+   * v1.5.0 — Quantas ocorrências gerar (incluindo a primeira).
+   * Default 12. Ignorado quando recorrencia=NENHUMA.
+   */
+  recorrenciaOcorrencias: z.coerce.number().int().min(1).max(52).default(12),
 });
 export type CreateAgendaItemDto = z.infer<typeof createAgendaItemSchema>;
 

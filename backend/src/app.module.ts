@@ -5,13 +5,15 @@ import { ScheduleModule } from '@nestjs/schedule';
 import { ThrottlerModule, seconds } from '@nestjs/throttler';
 import { TenantThrottlerGuard } from '@shared/guards/tenant-throttler.guard';
 import { ThrottlerStorageRedisService } from '@nest-lab/throttler-storage-redis';
-import IORedis from 'ioredis';
 import { APP_GUARD } from '@nestjs/core';
 import { LoggerModule } from 'nestjs-pino';
 import { EnvModule } from '@config/env.module';
 import { EnvService } from '@config/env.service';
 import { PrismaModule } from '@database/prisma.module';
-import { buildBullMqConnection, buildRedisOptions } from '@database/redis-options';
+import {
+  buildBullMqConnection,
+  createIORedisClient,
+} from '@database/redis-options';
 import { AmazonModule } from '@integrations/amazon/amazon.module';
 import { GoogleModule } from '@integrations/google/google.module';
 import { MLModule } from '@integrations/mercadolivre/ml.module';
@@ -128,16 +130,15 @@ import { SharedUtilsModule } from '@shared/utils/shared-utils.module';
           env.get('NODE_ENV') === 'test'
             ? undefined // in-memory pra tests
             : (() => {
-                // buildRedisOptions detecta TLS pelo scheme da URL (rediss:// vs redis://)
+                // CRÍTICO: usa createIORedisClient que JÁ vem com handler 'error'
+                // attached. Sem isso, ioredis emite 'unhandled error event' em
+                // qualquer ETIMEDOUT e Node.js MATA o processo. Hotpatch 2026-05-20.
                 const redisUrl = env.get('REDIS_URL');
                 return new ThrottlerStorageRedisService(
-                  new IORedis(
-                    redisUrl,
-                    buildRedisOptions(redisUrl, {
-                      maxRetriesPerRequest: null,
-                      enableReadyCheck: false,
-                    }),
-                  ),
+                  createIORedisClient(redisUrl, {
+                    maxRetriesPerRequest: null,
+                    enableReadyCheck: false,
+                  }),
                 );
               })(),
       }),

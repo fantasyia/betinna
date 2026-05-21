@@ -12,7 +12,9 @@ test('Auth — login persiste e F5 mantém sessão (cookie httpOnly D47)', async
   // F5 dispara bootstrapAuthFromBackend que tenta refresh via cookie
   await page.reload();
   await expect(page).toHaveURL(/\/dashboard/);
-  await expect(page.getByTestId('dashboard-title')).toBeVisible();
+  // PageLayout renderiza <h1 data-testid="page-title">. Não há "dashboard-title"
+  // específico (corrigido em auditoria E2E — testid era um teste inventado).
+  await expect(page.getByTestId('page-title')).toHaveText(/Dashboard/);
 });
 
 test('Auth — senha errada mostra erro sem redirect', async ({ page }) => {

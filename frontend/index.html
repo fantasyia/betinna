@@ -2,13 +2,63 @@
 <html lang="pt-BR">
   <head>
     <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Betinna.ai</title>
-    <meta name="description" content="Plataforma comercial B2B Betinna.ai" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+    <meta name="theme-color" content="#bd1fbf" />
+    <meta name="color-scheme" content="light dark" />
+
+    <title>Betinna.ai — Plataforma comercial B2B</title>
+    <meta name="description" content="CRM + pedidos OMIE + atendimento multicanal + automação comercial pra indústrias B2B." />
+
+    <!-- Open Graph -->
+    <meta property="og:type" content="website" />
+    <meta property="og:title" content="Betinna.ai — Plataforma comercial B2B" />
+    <meta property="og:description" content="CRM + pedidos OMIE + atendimento multicanal + automação comercial pra indústrias B2B." />
+    <meta property="og:image" content="/betinna-symbol.svg" />
+    <meta property="og:locale" content="pt_BR" />
+
+    <!-- Twitter -->
+    <meta name="twitter:card" content="summary" />
+    <meta name="twitter:title" content="Betinna.ai" />
+    <meta name="twitter:description" content="Plataforma comercial B2B" />
+
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <link rel="apple-touch-icon" href="/betinna-symbol.svg" />
+
+    <!-- Preconnect crítico para reduzir RTT no fetch da API + fonts -->
+    <link rel="preconnect" href="https://api-production-9426.up.railway.app" crossorigin />
+
+    <style>
+      /* Skip-to-content link (a11y WCAG AA): visível ao receber focus */
+      .skip-to-content {
+        position: absolute;
+        top: -100px;
+        left: 8px;
+        background: #bd1fbf;
+        color: #F8F7F2;
+        padding: 8px 16px;
+        border-radius: 10px;
+        text-decoration: none;
+        font-weight: 700;
+        z-index: 99999;
+        transition: top 0.15s;
+      }
+      .skip-to-content:focus,
+      .skip-to-content:focus-visible {
+        top: 8px;
+        outline: 2px solid #2bcae5;
+        outline-offset: 2px;
+      }
+    </style>
   </head>
   <body>
+    <a href="#main-content" class="skip-to-content">Pular para o conteúdo</a>
     <div id="root"></div>
+    <noscript>
+      <div style="padding: 2rem; font-family: system-ui, sans-serif; max-width: 600px; margin: 4rem auto;">
+        <h1>JavaScript necessário</h1>
+        <p>O Betinna.ai precisa de JavaScript habilitado para funcionar. Por favor, habilite no seu navegador e recarregue a página.</p>
+      </div>
+    </noscript>
     <script type="module" src="/src/main.tsx"></script>
   </body>
 </html>

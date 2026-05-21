@@ -29,6 +29,9 @@ interface AgendaItem {
   observacao?: string | null;
   cliente?: { id: string; nome: string } | null;
   googleEventId?: string | null;
+  // v1.5.0 — recorrência
+  recorrencia?: 'NENHUMA' | 'DIARIA' | 'SEMANAL' | 'QUINZENAL' | 'MENSAL' | 'ANUAL';
+  parentId?: string | null;
 }
 
 interface ClienteOpt {
@@ -484,6 +487,11 @@ function AgendaFormModal({
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [confirmDel, setConfirmDel] = useState(false);
+  // v1.5.0 — Recorrência
+  type Recorrencia = 'NENHUMA' | 'DIARIA' | 'SEMANAL' | 'QUINZENAL' | 'MENSAL' | 'ANUAL';
+  const [recorrencia, setRecorrencia] = useState<Recorrencia>('NENHUMA');
+  const [recorrenciaOcorrencias, setRecorrenciaOcorrencias] = useState(12);
+  const [deleteScope, setDeleteScope] = useState<'this' | 'this_and_future' | 'series'>('this');
 
   async function submit(e: React.FormEvent) {
     e.preventDefault();
@@ -510,6 +518,11 @@ function AgendaFormModal({
     };
     if (observacao.trim()) payload.observacao = observacao.trim();
     if (cliente) payload.clienteId = cliente.id;
+    // v1.5.0 — recorrência só faz sentido em create
+    if (!isEdit && recorrencia !== 'NENHUMA') {
+      payload.recorrencia = recorrencia;
+      payload.recorrenciaOcorrencias = recorrenciaOcorrencias;
+    }
     try {
       if (isEdit && item) {
         await api.patch(`/agenda/${item.id}`, payload);
@@ -529,7 +542,8 @@ function AgendaFormModal({
     setBusy(true);
     setError(null);
     try {
-      await api.delete(`/agenda/${item.id}`);
+      const qs = new URLSearchParams({ scope: deleteScope }).toString();
+      await api.delete(`/agenda/${item.id}?${qs}`);
       onSaved();
     } catch (err) {
       setError(err instanceof ApiError ? err.message : 'Falha ao excluir');
@@ -537,6 +551,10 @@ function AgendaFormModal({
       setBusy(false);
     }
   }
+
+  // v1.5.0 — Detecta se este item é parte de série recorrente (parent ou filho)
+  const isRecorrente =
+    item != null && (item.recorrencia ? item.recorrencia !== 'NENHUMA' : false);
 
   return (
     <Modal
@@ -652,6 +670,65 @@ function AgendaFormModal({
             placeholder="Pauta da visita, contexto, lembretes…"
           />
         </FormField>
+
+        {/* v1.5.0 — Recorrência (apenas criar) */}
+        {!isEdit && (
+          <div
+            style={{
+              display: 'grid',
+              gridTemplateColumns: '1fr 1fr',
+              gap: '0.75rem',
+            }}
+          >
+            <FormField label="🔁 Repetir" htmlFor="ag-rec">
+              <Select
+                id="ag-rec"
+                data-testid="agenda-recorrencia"
+                value={recorrencia}
+                onChange={(e) => setRecorrencia(e.target.value as Recorrencia)}
+              >
+                <option value="NENHUMA">Não repetir</option>
+                <option value="DIARIA">Diariamente</option>
+                <option value="SEMANAL">Semanalmente</option>
+                <option value="QUINZENAL">A cada 2 semanas</option>
+                <option value="MENSAL">Mensalmente</option>
+                <option value="ANUAL">Anualmente</option>
+              </Select>
+            </FormField>
+            {recorrencia !== 'NENHUMA' && (
+              <FormField label="Quantas ocorrências" htmlFor="ag-ocor">
+                <Input
+                  id="ag-ocor"
+                  type="number"
+                  min={2}
+                  max={52}
+                  value={recorrenciaOcorrencias}
+                  onChange={(e) =>
+                    setRecorrenciaOcorrencias(Math.max(2, Math.min(52, Number(e.target.value))))
+                  }
+                />
+              </FormField>
+            )}
+          </div>
+        )}
+
+        {/* v1.5.0 — Escopo de delete em série */}
+        {isEdit && isRecorrente && confirmDel && (
+          <FormField label="Apagar qual?" htmlFor="ag-del-scope">
+            <Select
+              id="ag-del-scope"
+              data-testid="agenda-delete-scope"
+              value={deleteScope}
+              onChange={(e) =>
+                setDeleteScope(e.target.value as 'this' | 'this_and_future' | 'series')
+              }
+            >
+              <option value="this">Apenas este</option>
+              <option value="this_and_future">Este e os próximos</option>
+              <option value="series">Toda a série</option>
+            </Select>
+          </FormField>
+        )}
         <label
           style={{
             display: 'flex',
