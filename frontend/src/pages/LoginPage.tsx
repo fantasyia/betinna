@@ -241,7 +241,7 @@ export default function LoginPage() {
               autoComplete="email"
               autoFocus
               data-testid="email"
-              placeholder="voce@empresa.com.br"
+              placeholder="você@empresa.com.br"
               aria-label="Seu e-mail"
               aria-describedby={error ? 'login-error' : undefined}
               className="login-input w-full text-base"

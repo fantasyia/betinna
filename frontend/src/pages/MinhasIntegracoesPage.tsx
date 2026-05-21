@@ -51,7 +51,7 @@ const SERVICOS: Record<ServicoUsuario, ServicoMeta> = {
         name: 'fromEmail',
         label: 'E-mail remetente',
         type: 'text',
-        placeholder: 'voce@suaempresa.com',
+        placeholder: 'você@suaempresa.com',
         hint: 'Precisa estar verificado no SendGrid (Sender Authentication)',
       },
     ],
