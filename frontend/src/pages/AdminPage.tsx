@@ -4,6 +4,7 @@ import { api, ApiError } from '@/lib/api';
 import { currentEmpresaId } from '@/lib/auth-store';
 import { useApiQuery } from '@/hooks/useApiQuery';
 import { PageLayout } from '@/components/PageLayout';
+import { SistemaTabs } from '@/components/SistemaTabs';
 import { StateView } from '@/components/StateView';
 import { Table, type Column } from '@/components/Table';
 import { useToast } from '@/components/toast';
@@ -68,6 +69,7 @@ function fmtDate(d: string | null | undefined) {
 export default function AdminPage() {
   return (
     <PageLayout title="Painel Admin">
+      <SistemaTabs />
       <p style={{ color: colors.muted, marginTop: 0, fontSize: 14 }}>
         Ferramentas operacionais e atalhos restritos ao papel ADMIN.
       </p>

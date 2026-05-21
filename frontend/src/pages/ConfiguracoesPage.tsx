@@ -5,6 +5,7 @@ import { useApiQuery, type PaginatedResponse } from '@/hooks/useApiQuery';
 import { useRole } from '@/hooks/usePermission';
 import { useEmpresaLogo } from '@/hooks/useEmpresaLogo';
 import { PageLayout } from '@/components/PageLayout';
+import { SistemaTabs } from '@/components/SistemaTabs';
 import { Table, Pagination, type Column } from '@/components/Table';
 import { StateView } from '@/components/StateView';
 import { FilterBar, SearchInput } from '@/components/FilterBar';
@@ -197,6 +198,7 @@ export default function ConfiguracoesPage() {
         ) : undefined
       }
     >
+      <SistemaTabs />
       {/* Tabs strip — brandbook colors */}
       <div
         role="tablist"

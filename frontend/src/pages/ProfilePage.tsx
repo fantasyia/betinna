@@ -5,6 +5,7 @@ import { useApiQuery, type PaginatedResponse } from '@/hooks/useApiQuery';
 import { useRole } from '@/hooks/usePermission';
 import { getSession } from '@/lib/auth-store';
 import { PageLayout } from '@/components/PageLayout';
+import { SistemaTabs } from '@/components/SistemaTabs';
 import { Table, Pagination, type Column } from '@/components/Table';
 import { StateView } from '@/components/StateView';
 import { FilterBar, SearchInput } from '@/components/FilterBar';
@@ -169,6 +170,7 @@ function UsersList() {
 
   return (
     <PageLayout title="Usuários">
+      <SistemaTabs />
       <div style={card}>
         <FilterBar>
           <SearchInput
@@ -273,6 +275,7 @@ function UserDetail({ userId, isOwnProfile }: { userId: string; isOwnProfile: bo
         ) : undefined
       }
     >
+      <SistemaTabs />
       <StateView loading={loading} error={error} onRetry={refetch}>
         {data && (
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 280px', gap: '1rem', alignItems: 'start' }}>
