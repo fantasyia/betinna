@@ -130,15 +130,18 @@ import { SharedUtilsModule } from '@shared/utils/shared-utils.module';
             : (() => {
                 // buildRedisOptions detecta TLS pelo scheme da URL (rediss:// vs redis://)
                 const redisUrl = env.get('REDIS_URL');
-                return new ThrottlerStorageRedisService(
-                  new IORedis(
-                    redisUrl,
-                    buildRedisOptions(redisUrl, {
-                      maxRetriesPerRequest: null,
-                      enableReadyCheck: false,
-                    }),
-                  ),
+                const client = new IORedis(
+                  redisUrl,
+                  buildRedisOptions(redisUrl, {
+                    maxRetriesPerRequest: null,
+                    enableReadyCheck: false,
+                  }),
                 );
+                // CRÍTICO: attach handler 'error' senão Node.js mata o processo
+                // em qualquer ECONNRESET/ETIMEDOUT (unhandled error event do
+                // EventEmitter). Hotpatch mínimo necessário pra Redis via proxy.
+                client.on('error', () => { /* silencioso, ioredis reconecta */ });
+                return new ThrottlerStorageRedisService(client);
               })(),
       }),
     }),
