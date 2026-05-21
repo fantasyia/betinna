@@ -9,6 +9,7 @@ import { FilterBar, SearchInput } from '@/components/FilterBar';
 import { Modal } from '@/components/Modal';
 import { FormField, Input, Select, Textarea } from '@/components/FormField';
 import { AsyncCombobox } from '@/components/AsyncCombobox';
+import { AtendimentoTabs } from '@/components/AtendimentoTabs';
 import { alpha, badge, btn, btnSecondary, card, colors } from '@/components/styles';
 
 type OcorrenciaStatus = 'ABERTA' | 'EM_ANDAMENTO' | 'RESOLVIDA' | 'CANCELADA';
@@ -200,7 +201,8 @@ export default function OcorrenciasPage() {
 
   return (
     <PageLayout
-      title="Ocorrências / SAC"
+      title="Atendimento — SAC interno"
+      description="Tickets internos com SLA, severidade e tipos de ocorrência."
       actions={
         <button
           type="button"
@@ -212,6 +214,7 @@ export default function OcorrenciasPage() {
         </button>
       }
     >
+      <AtendimentoTabs />
       {clienteIdFilter && (
         <div
           data-testid="ocorrencias-cliente-filter-banner"

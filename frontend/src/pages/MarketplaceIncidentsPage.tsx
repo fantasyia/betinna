@@ -6,6 +6,7 @@ import { StateView } from '@/components/StateView';
 import { FilterBar } from '@/components/FilterBar';
 import { Modal } from '@/components/Modal';
 import { Select } from '@/components/FormField';
+import { AtendimentoTabs } from '@/components/AtendimentoTabs';
 import { badge, btnSecondary, card, colors } from '@/components/styles';
 
 type Canal =
@@ -201,7 +202,11 @@ export default function MarketplaceIncidentsPage() {
   ];
 
   return (
-    <PageLayout title="Reclamações / Devoluções (Marketplaces)">
+    <PageLayout
+      title="Atendimento — Marketplaces"
+      description="Reclamações, devoluções, mediações e disputas vindas dos marketplaces."
+    >
+      <AtendimentoTabs />
       {resumo && (
         <div
           style={{

@@ -17,7 +17,6 @@ import {
   Sparkles,
   MessageSquare,
   AlertTriangle,
-  ShieldAlert,
   Bot,
   Smartphone,
   Megaphone,
@@ -116,8 +115,9 @@ const SECTIONS: NavSection[] = [
   {
     title: 'Atendimento',
     items: [
-      { to: '/ocorrencias', label: 'SAC', icon: AlertTriangle },
-      { to: '/incidentes', label: 'Marketplaces', icon: ShieldAlert },
+      // Atendimento unificado (R5): leva pro SAC interno; sub-aba "Marketplaces"
+      // disponível dentro da própria tela (componente AtendimentoTabs).
+      { to: '/ocorrencias', label: 'Atendimento', icon: AlertTriangle },
       { to: '/mullerbot', label: 'MullerBot', icon: Bot },
       { to: '/mullerbot/persona', label: 'Persona Bot', icon: Sparkles, allowedRoles: ['ADMIN', 'DIRECTOR'] },
       { to: '/whatsapp', label: 'WhatsApp', icon: Smartphone, permission: 'whatsapp.pessoal' },
