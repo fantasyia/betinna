@@ -24,8 +24,6 @@ const ClienteDetailPage = lazy(() => import('@/pages/ClienteDetailPage'));
 const CatalogoPage = lazy(() => import('@/pages/CatalogoPage'));
 const MullerBotPage = lazy(() => import('@/pages/MullerBotPage'));
 const PersonaBotPage = lazy(() => import('@/pages/PersonaBotPage'));
-const FormulariosPage = lazy(() => import('@/pages/FormulariosPage'));
-const FormularioPublicoPage = lazy(() => import('@/pages/FormularioPublicoPage'));
 const NpsPage = lazy(() => import('@/pages/NpsPage'));
 const NpsPublicoPage = lazy(() => import('@/pages/NpsPublicoPage'));
 const MetasPage = lazy(() => import('@/pages/MetasPage'));
@@ -83,17 +81,6 @@ const router = createBrowserRouter([
       <ErrorBoundary>
         <PageSuspense>
           <LoginPage />
-        </PageSuspense>
-      </ErrorBoundary>
-    ),
-  },
-  {
-    // Página pública — sem auth, sem layout. Rota /f/:slug.
-    path: '/f/:slug',
-    element: (
-      <ErrorBoundary>
-        <PageSuspense>
-          <FormularioPublicoPage />
         </PageSuspense>
       </ErrorBoundary>
     ),
@@ -414,18 +401,6 @@ const router = createBrowserRouter([
         <ProtectedRoute>
           <PageSuspense>
             <FunisPage />
-          </PageSuspense>
-        </ProtectedRoute>
-      </ErrorBoundary>
-    ),
-  },
-  {
-    path: '/formularios',
-    element: (
-      <ErrorBoundary>
-        <ProtectedRoute allowedRoles={['ADMIN', 'DIRECTOR', 'GERENTE']}>
-          <PageSuspense>
-            <FormulariosPage />
           </PageSuspense>
         </ProtectedRoute>
       </ErrorBoundary>
