@@ -11,7 +11,7 @@ import { useConfirm } from '@/hooks/useConfirm';
 import { badge, btn, btnSecondary, card, colors } from '@/components/styles';
 
 /**
- * Admin Panel — apenas ADMIN.
+ * Painel Admin — apenas ADMIN.
  *
  * Centraliza ferramentas administrativas:
  *  - System status (versão do backend, ambiente, uptime)
@@ -67,7 +67,7 @@ function fmtDate(d: string | null | undefined) {
 
 export default function AdminPage() {
   return (
-    <PageLayout title="Painel administrativo">
+    <PageLayout title="Painel Admin">
       <p style={{ color: colors.muted, marginTop: 0, fontSize: 14 }}>
         Ferramentas operacionais e atalhos restritos ao papel ADMIN.
       </p>
@@ -76,6 +76,7 @@ export default function AdminPage() {
       <SeedDemoSection />
       <AuditLogSection />
       <DeadLetterSection />
+      <PermissoesGranularesSection />
       <QuickLinksSection />
     </PageLayout>
   );
@@ -792,6 +793,32 @@ function AuditLogSection() {
   );
 }
 
+// ─── Permissões granulares (link pra sub-página) ───────────────────────
+
+function PermissoesGranularesSection() {
+  return (
+    <section style={{ ...card, marginBottom: '1rem' }}>
+      <h2 style={{ marginTop: 0, fontSize: 16 }}>🔐 Permissões granulares</h2>
+      <p style={{ color: colors.muted, marginTop: 0, fontSize: 13, lineHeight: 1.5 }}>
+        Configure quais módulos cada papel (DIRECTOR, GERENTE, SAC, REP) pode <strong>ver</strong>
+        {' '}e <strong>editar</strong>. ADMIN sempre tem acesso total.
+      </p>
+      <Link
+        to="/permissoes"
+        data-testid="admin-open-permissoes"
+        style={{
+          ...btn,
+          textDecoration: 'none',
+          display: 'inline-block',
+          marginTop: '0.5rem',
+        }}
+      >
+        Abrir matriz de permissões →
+      </Link>
+    </section>
+  );
+}
+
 // ─── Quick links ──────────────────────────────────────────────────────
 
 function QuickLinksSection() {
@@ -807,12 +834,6 @@ function QuickLinksSection() {
       emoji: '🏢',
       title: 'Empresas',
       description: 'CRUD de empresas, plano, ativar/desativar',
-    },
-    {
-      to: '/permissoes',
-      emoji: '🔐',
-      title: 'Permissões',
-      description: 'Matriz Role × Módulo (ver / editar) por papel',
     },
     {
       to: '/integracoes',

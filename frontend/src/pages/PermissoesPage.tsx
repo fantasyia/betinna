@@ -1,9 +1,11 @@
 import { useEffect, useState } from 'react';
+import { Link } from 'react-router-dom';
+import { ArrowLeft } from 'lucide-react';
 import { api, ApiError } from '@/lib/api';
 import { useApiQuery } from '@/hooks/useApiQuery';
 import { PageLayout } from '@/components/PageLayout';
 import { StateView } from '@/components/StateView';
-import { alpha, badge, card, colors } from '@/components/styles';
+import { alpha, badge, btnSecondary, card, colors } from '@/components/styles';
 
 type Role = 'ADMIN' | 'DIRECTOR' | 'GERENTE' | 'SAC' | 'REP';
 
@@ -78,7 +80,25 @@ export default function PermissoesPage() {
   const [role, setRole] = useState<Role>('REP');
 
   return (
-    <PageLayout title="Permissões granulares">
+    <PageLayout
+      title="Permissões granulares"
+      actions={
+        <Link
+          to="/admin"
+          data-testid="perm-back-admin"
+          style={{
+            ...btnSecondary,
+            textDecoration: 'none',
+            display: 'inline-flex',
+            alignItems: 'center',
+            gap: 6,
+          }}
+        >
+          <ArrowLeft size={14} />
+          Voltar pro Painel Admin
+        </Link>
+      }
+    >
       <div style={{ marginBottom: '0.75rem' }}>
         <p style={{ margin: 0, color: colors.muted, fontSize: 14 }}>
           Configure quais módulos cada papel pode <strong>ver</strong> e <strong>editar</strong>.

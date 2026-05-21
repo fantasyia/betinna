@@ -27,7 +27,6 @@ import {
   UserCircle,
   Briefcase,
   Settings,
-  KeyRound,
   Shield,
   Menu,
   X,
@@ -149,8 +148,7 @@ const SECTIONS: NavSection[] = [
       { to: '/perfil', label: 'Meu perfil', icon: UserCircle },
       { to: '/usuarios', label: 'Usuários', icon: Users, allowedRoles: ['ADMIN', 'DIRECTOR', 'GERENTE'] },
       { to: '/configuracoes', label: 'Configurações', icon: Settings, allowedRoles: ['ADMIN'] },
-      { to: '/permissoes', label: 'Permissões', icon: KeyRound, allowedRoles: ['ADMIN'] },
-      { to: '/admin', label: 'Admin Panel', icon: Shield, permission: 'admin.panel' },
+      { to: '/admin', label: 'Painel Admin', icon: Shield, permission: 'admin.panel' },
     ],
   },
 ];
