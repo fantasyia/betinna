@@ -59,6 +59,15 @@ export class EmpresasController {
     return this.empresas.list(query);
   }
 
+  @Get('minhas')
+  @ApiOperation({
+    summary:
+      'Lista as empresas que o usuário pode acessar (ADMIN: todas ativas; demais: vinculadas).',
+  })
+  listMine(@CurrentUser() user: AuthenticatedUser) {
+    return this.empresas.listMine(user);
+  }
+
   @Get(':id')
   @Roles('ADMIN', 'GERENTE')
   @ApiOperation({ summary: 'Detalhes de uma empresa' })
