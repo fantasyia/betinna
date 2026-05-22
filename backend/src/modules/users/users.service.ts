@@ -54,6 +54,27 @@ export class UsersService {
   }
 
   /**
+   * Resolve a URL de redirect pós-convite (Supabase Auth).
+   *
+   * IMPORTANTE: o domínio resolvido aqui PRECISA estar autorizado em
+   *   Supabase → Auth → URL Configuration → Redirect URLs
+   * caso contrário o Supabase ignora e cai no `Site URL` (que é
+   * `http://localhost:3000` por default), gerando ERR_CONNECTION_REFUSED
+   * no email do user.
+   *
+   * Hotpatch 2026-05-22: antes calculava `SUPABASE_URL.replace('.supabase.co',
+   * '.app')` — produzia URL inexistente. Agora usa FRONTEND_URL (env)
+   * com fallback pra primeiro CORS_ORIGINS ou localhost (dev).
+   */
+  private resolveInviteRedirectUrl(): string {
+    const fromEnv = this.env.get('FRONTEND_URL');
+    if (fromEnv) return `${fromEnv.replace(/\/$/, '')}/welcome`;
+    const cors = this.env.get('CORS_ORIGINS').split(',')[0]?.trim();
+    const base = (cors ?? 'http://localhost:5173').replace(/\/$/, '');
+    return `${base}/welcome`;
+  }
+
+  /**
    * Invalida o cache de auth do usuário no Redis.
    * Chame após qualquer mudança que afete role, status, ou empresas vinculadas.
    */
@@ -238,7 +259,7 @@ export class UsersService {
     }
 
     // 3) Cria no Supabase Auth (envia convite por e-mail)
-    const redirectTo = `${this.env.get('SUPABASE_URL').replace('.supabase.co', '.app')}/welcome`;
+    const redirectTo = this.resolveInviteRedirectUrl();
     const { data: authData, error } = await this.supabaseAdmin.auth.admin.inviteUserByEmail(
       dto.email,
       { data: { nome: dto.nome, role: dto.role }, redirectTo },
@@ -426,7 +447,12 @@ export class UsersService {
     if (user.status !== 'PENDENTE') {
       throw new BusinessRuleException('Usuário não está com convite pendente');
     }
-    const { error } = await this.supabaseAdmin.auth.admin.inviteUserByEmail(user.email);
+    // Reenvio passa o MESMO redirectTo do create (senão Supabase cai no
+    // fallback Site URL = localhost:3000 — bug fix 2026-05-22)
+    const redirectTo = this.resolveInviteRedirectUrl();
+    const { error } = await this.supabaseAdmin.auth.admin.inviteUserByEmail(user.email, {
+      redirectTo,
+    });
     if (error) {
       throw new BusinessRuleException(`Falha ao reenviar convite: ${error.message}`);
     }
