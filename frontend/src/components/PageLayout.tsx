@@ -19,6 +19,7 @@ import {
 import { useRole, usePermission } from '@/hooks/usePermission';
 import { useEmpresaLogo } from '@/hooks/useEmpresaLogo';
 import { NotificationBell } from '@/components/NotificationBell';
+import { EmpresaSwitcher } from '@/components/EmpresaSwitcher';
 import { Avatar } from '@/components/ui';
 import { useTheme } from '@/hooks/useTheme';
 import { cn } from '@/lib/cn';
@@ -277,6 +278,9 @@ function Sidebar({
     >
       {/* Logo oficial (ou logo da empresa quando configurado) + dark mode toggle */}
       <SidebarLogo role={role} />
+
+      {/* Multi-tenant: trocar empresa ativa (ADMIN vê todas; demais só vinculadas) */}
+      <EmpresaSwitcher />
 
       {/* Quick search (placeholder pra futuro cmdk) */}
       <div className="px-3 py-2.5 border-b border-border">

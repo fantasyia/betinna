@@ -99,6 +99,34 @@ export function currentEmpresaId() {
   return session?.user?.empresaIdAtiva ?? null;
 }
 
+/**
+ * Troca a empresa ativa (multi-tenant). Atualiza o `empresaIdAtiva` no
+ * AuthSession em memória — todas as próximas chamadas de `api.*` vão
+ * passar essa empresa no header `X-Empresa-Id`.
+ *
+ * Importante: depois de chamar isso, **recarregue a página** pra limpar
+ * todos os caches em memória (useApiQuery, etc.). Misturar dados de
+ * dois tenants na mesma sessão = bug em potencial. Por isso o helper
+ * sempre dispara `window.location.reload()` no final.
+ */
+export function switchEmpresaAtiva(empresaId: string): void {
+  if (!session) return;
+  if (session.user.empresaIdAtiva === empresaId) return;
+  // Valida que a empresa pertence ao user (defesa em profundidade —
+  // o backend valida também, mas evita uma viagem inútil)
+  if (session.user.role !== 'ADMIN' && !session.user.empresaIds.includes(empresaId)) {
+    return;
+  }
+  setSession({
+    ...session,
+    user: { ...session.user, empresaIdAtiva: empresaId },
+  });
+  if (typeof window !== 'undefined') {
+    // Reload pra limpar caches em memória — evita misturar dados de tenants.
+    window.location.reload();
+  }
+}
+
 // ─── Bootstrap & refresh transparente ───────────────────────────────────
 
 /**
