@@ -97,10 +97,13 @@ export default function ProfilePage() {
 // ─── List (admin) ────────────────────────────────────────────────────
 
 function UsersList() {
+  const role = useRole();
+  const canInvite = role === 'ADMIN' || role === 'DIRECTOR';
   const [page, setPage] = useState(1);
   const [search, setSearch] = useState('');
   const [roleFilter, setRoleFilter] = useState('');
   const [statusFilter, setStatusFilter] = useState('');
+  const [creating, setCreating] = useState(false);
 
   const listPath = useMemo(() => {
     const qs = new URLSearchParams({ page: String(page), limit: '30' });
@@ -169,8 +172,33 @@ function UsersList() {
   ];
 
   return (
-    <PageLayout title="Usuários">
+    <PageLayout
+      title="Usuários"
+      actions={
+        canInvite ? (
+          <button
+            type="button"
+            data-testid="user-invite-btn"
+            onClick={() => setCreating(true)}
+            style={btn}
+          >
+            + Novo usuário
+          </button>
+        ) : undefined
+      }
+    >
       <SistemaTabs />
+      {creating && (
+        <ConvidarUsuarioModal
+          callerRole={role}
+          callerEmpresaId={getSession()?.user.empresaIdAtiva ?? null}
+          onClose={() => setCreating(false)}
+          onCreated={() => {
+            setCreating(false);
+            refetch();
+          }}
+        />
+      )}
       <div style={card}>
         <FilterBar>
           <SearchInput
@@ -783,6 +811,294 @@ function SetComissaoModal({
         />
       </FormField>
       {error && <p style={{ color: colors.danger, fontSize: 13 }}>{error}</p>}
+    </Modal>
+  );
+}
+
+// ─── Convidar novo usuário (U2 lote 4 — 2026-05-22) ──────────────────
+//
+// Modal usado pelo botão "+ Novo usuário" da UsersList. Faz POST /users —
+// backend cria no Supabase Auth e dispara e-mail de convite. Regras de
+// escopo no backend:
+//   - ADMIN: pode convidar qualquer papel pra qualquer(s) empresa(s)
+//   - DIRECTOR: só pra empresa ativa dele, e NÃO pode criar ADMIN/DIRECTOR
+//
+// Frontend reflete isso na UI: pra DIRECTOR esconde 'ADMIN' e 'DIRECTOR'
+// nas opções de papel; e força empresaIds = [empresa ativa do caller].
+
+interface EmpresaOpt {
+  id: string;
+  nome: string;
+}
+
+function ConvidarUsuarioModal({
+  callerRole,
+  callerEmpresaId,
+  onClose,
+  onCreated,
+}: {
+  callerRole: UserRole | null;
+  callerEmpresaId: string | null;
+  onClose: () => void;
+  onCreated: () => void;
+}) {
+  const toast = useToast();
+  const isDirector = callerRole === 'DIRECTOR';
+  const { data: empresas } = useApiQuery<EmpresaOpt[]>('/empresas/minhas');
+
+  const [nome, setNome] = useState('');
+  const [email, setEmail] = useState('');
+  const [telefone, setTelefone] = useState('');
+  const [novoRole, setNovoRole] = useState<UserRole>('REP');
+  const [regiao, setRegiao] = useState('');
+  const [empresaIds, setEmpresaIds] = useState<string[]>(
+    callerEmpresaId ? [callerEmpresaId] : [],
+  );
+  const [tetoDesconto, setTetoDesconto] = useState<number>(5);
+  const [comissaoPadrao, setComissaoPadrao] = useState<number>(5);
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState<string | null>(null);
+
+  // DIRECTOR só pode convidar GERENTE/SAC/REP — esconde ADMIN/DIRECTOR
+  const rolesPermitidos: UserRole[] = isDirector
+    ? ['GERENTE', 'SAC', 'REP']
+    : ['DIRECTOR', 'GERENTE', 'SAC', 'REP'];
+
+  function toggleEmpresa(id: string) {
+    setEmpresaIds((cur) =>
+      cur.includes(id) ? cur.filter((x) => x !== id) : [...cur, id],
+    );
+  }
+
+  async function submit(e: React.FormEvent) {
+    e.preventDefault();
+    setErr(null);
+    if (nome.trim().length < 2) {
+      setErr('Nome obrigatório (mínimo 2 caracteres).');
+      return;
+    }
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+      setErr('E-mail inválido.');
+      return;
+    }
+    if (empresaIds.length === 0) {
+      setErr('Selecione pelo menos uma empresa.');
+      return;
+    }
+    if (novoRole === 'REP' && !regiao.trim()) {
+      setErr('Região é obrigatória para representantes.');
+      return;
+    }
+    setBusy(true);
+    try {
+      const payload: Record<string, unknown> = {
+        nome: nome.trim(),
+        email: email.trim(),
+        role: novoRole,
+        empresaIds,
+      };
+      if (telefone.trim()) payload.telefone = telefone.trim();
+      if (regiao.trim()) payload.regiao = regiao.trim();
+      if (novoRole === 'REP') {
+        payload.tetoDesconto = tetoDesconto;
+      }
+      if (novoRole === 'REP' || novoRole === 'GERENTE') {
+        payload.comissaoPadrao = comissaoPadrao;
+      }
+      await api.post('/users', payload);
+      toast.success(
+        'Convite enviado',
+        `O usuário receberá um e-mail em ${email.trim()} pra criar a senha.`,
+      );
+      onCreated();
+    } catch (e2) {
+      setErr(e2 instanceof ApiError ? e2.message : 'Falha ao convidar usuário');
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <Modal
+      open
+      onClose={onClose}
+      title="Convidar novo usuário"
+      footer={
+        <>
+          <button type="button" onClick={onClose} style={btnSecondary}>
+            Cancelar
+          </button>
+          <button
+            type="submit"
+            form="invite-user-form"
+            data-testid="user-invite-save"
+            disabled={busy}
+            style={{ ...btn, opacity: busy ? 0.6 : 1 }}
+          >
+            {busy ? 'Enviando…' : 'Enviar convite'}
+          </button>
+        </>
+      }
+    >
+      <form id="invite-user-form" onSubmit={submit}>
+        <FormField label="Nome" htmlFor="inv-nome" required>
+          <Input
+            id="inv-nome"
+            data-testid="user-invite-nome"
+            value={nome}
+            onChange={(e) => setNome(e.target.value)}
+            placeholder="Nome completo"
+            autoFocus
+            required
+          />
+        </FormField>
+        <FormField label="E-mail" htmlFor="inv-email" required>
+          <Input
+            id="inv-email"
+            data-testid="user-invite-email"
+            type="email"
+            value={email}
+            onChange={(e) => setEmail(e.target.value)}
+            placeholder="email@empresa.com"
+            required
+          />
+        </FormField>
+        <FormField label="Telefone (opcional)" htmlFor="inv-tel">
+          <Input
+            id="inv-tel"
+            value={telefone}
+            onChange={(e) => setTelefone(e.target.value)}
+            placeholder="+55 11 91234-5678"
+          />
+        </FormField>
+        <FormField label="Papel" htmlFor="inv-role" required>
+          <Select
+            id="inv-role"
+            data-testid="user-invite-role"
+            value={novoRole}
+            onChange={(e) => setNovoRole(e.target.value as UserRole)}
+          >
+            {rolesPermitidos.map((r) => (
+              <option key={r} value={r}>
+                {r}
+              </option>
+            ))}
+          </Select>
+        </FormField>
+        {novoRole === 'REP' && (
+          <FormField
+            label="Região"
+            htmlFor="inv-regiao"
+            required
+            hint="Ex: SP-Capital, Sul, Norte… (usado em segmentação e relatórios)"
+          >
+            <Input
+              id="inv-regiao"
+              value={regiao}
+              onChange={(e) => setRegiao(e.target.value)}
+              placeholder="SP-Capital"
+            />
+          </FormField>
+        )}
+        {/* Empresas: ADMIN escolhe; DIRECTOR vê só sua empresa ativa (fixo) */}
+        <FormField label="Empresa(s) vinculada(s)" required>
+          {isDirector ? (
+            <div
+              style={{
+                padding: '0.5rem 0.75rem',
+                fontSize: 13,
+                background: colors.surfaceHover,
+                border: `1px solid ${colors.border}`,
+                borderRadius: 6,
+                color: colors.muted,
+              }}
+            >
+              {empresas?.find((e) => e.id === callerEmpresaId)?.nome ?? 'Sua empresa ativa'}
+              <div style={{ fontSize: 11, marginTop: 4 }}>
+                DIRECTOR só pode convidar pra empresa ativa.
+              </div>
+            </div>
+          ) : (
+            <div
+              style={{
+                display: 'flex',
+                flexDirection: 'column',
+                gap: 6,
+                maxHeight: 160,
+                overflowY: 'auto',
+                padding: '0.5rem',
+                border: `1px solid ${colors.border}`,
+                borderRadius: 6,
+              }}
+            >
+              {(empresas ?? []).map((emp) => (
+                <label
+                  key={emp.id}
+                  style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: 8,
+                    fontSize: 13,
+                    cursor: 'pointer',
+                  }}
+                >
+                  <input
+                    type="checkbox"
+                    checked={empresaIds.includes(emp.id)}
+                    onChange={() => toggleEmpresa(emp.id)}
+                  />
+                  {emp.nome}
+                </label>
+              ))}
+              {empresas && empresas.length === 0 && (
+                <span style={{ fontSize: 12, color: colors.muted }}>
+                  Nenhuma empresa disponível.
+                </span>
+              )}
+            </div>
+          )}
+        </FormField>
+        {novoRole === 'REP' && (
+          <FormField label="Teto de desconto (%)" htmlFor="inv-teto">
+            <Input
+              id="inv-teto"
+              type="number"
+              min={0}
+              max={100}
+              value={tetoDesconto}
+              onChange={(e) => setTetoDesconto(Number(e.target.value))}
+            />
+          </FormField>
+        )}
+        {(novoRole === 'REP' || novoRole === 'GERENTE') && (
+          <FormField
+            label="Comissão padrão (%)"
+            htmlFor="inv-com"
+            hint={
+              novoRole === 'GERENTE'
+                ? 'Sobre o total dos REPs sob gerência'
+                : 'Sobre os pedidos próprios'
+            }
+          >
+            <Input
+              id="inv-com"
+              type="number"
+              min={0}
+              max={100}
+              value={comissaoPadrao}
+              onChange={(e) => setComissaoPadrao(Number(e.target.value))}
+            />
+          </FormField>
+        )}
+        {err && (
+          <p
+            data-testid="user-invite-error"
+            style={{ color: colors.danger, fontSize: 13, marginTop: 8 }}
+          >
+            {err}
+          </p>
+        )}
+      </form>
     </Modal>
   );
 }

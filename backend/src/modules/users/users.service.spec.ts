@@ -614,7 +614,7 @@ describe('UsersService', () => {
       prisma.empresa.findMany.mockResolvedValue([{ id: 'emp-1', ativo: true }]);
       prisma.usuario.create.mockResolvedValue(fakeDbUser({ id: 'supabase-id-1' }));
 
-      await service.create(baseDto);
+      await service.create(fakeUser(), baseDto);
 
       const data = prisma.usuario.create.mock.calls[0][0].data;
       expect(data.id).toBe('supabase-id-1');
@@ -627,7 +627,7 @@ describe('UsersService', () => {
       prisma.empresa.findMany.mockResolvedValue([{ id: 'emp-1', ativo: true }]);
       prisma.usuario.create.mockResolvedValue(fakeDbUser());
 
-      await service.create({ ...baseDto, role: 'REP' });
+      await service.create(fakeUser(), { ...baseDto, role: 'REP' });
 
       const data = prisma.usuario.create.mock.calls[0][0].data;
       expect(data.tetoDesconto).toBe(5);
@@ -638,7 +638,7 @@ describe('UsersService', () => {
       prisma.empresa.findMany.mockResolvedValue([{ id: 'emp-1', ativo: true }]);
       prisma.usuario.create.mockResolvedValue(fakeDbUser({ role: 'GERENTE' }));
 
-      await service.create({ ...baseDto, role: 'GERENTE' });
+      await service.create(fakeUser(), { ...baseDto, role: 'GERENTE' });
 
       const data = prisma.usuario.create.mock.calls[0][0].data;
       expect(data.tetoDesconto).toBeNull();
@@ -647,7 +647,7 @@ describe('UsersService', () => {
     it('lança ConflictException para email já cadastrado', async () => {
       prisma.usuario.findUnique.mockResolvedValue(fakeDbUser());
 
-      await expect(service.create(baseDto)).rejects.toBeInstanceOf(ConflictException);
+      await expect(service.create(fakeUser(), baseDto)).rejects.toBeInstanceOf(ConflictException);
       expect(mockInviteUserByEmail).not.toHaveBeenCalled();
     });
 
@@ -655,7 +655,7 @@ describe('UsersService', () => {
       prisma.usuario.findUnique.mockResolvedValue(null);
       prisma.empresa.findMany.mockResolvedValue([]); // 0 de 1 pedido
 
-      await expect(service.create(baseDto)).rejects.toBeInstanceOf(NotFoundException);
+      await expect(service.create(fakeUser(), baseDto)).rejects.toBeInstanceOf(NotFoundException);
       expect(mockInviteUserByEmail).not.toHaveBeenCalled();
     });
 
@@ -663,7 +663,7 @@ describe('UsersService', () => {
       prisma.usuario.findUnique.mockResolvedValue(null);
       prisma.empresa.findMany.mockResolvedValue([{ id: 'emp-1', ativo: false }]);
 
-      await expect(service.create(baseDto)).rejects.toBeInstanceOf(BusinessRuleException);
+      await expect(service.create(fakeUser(), baseDto)).rejects.toBeInstanceOf(BusinessRuleException);
       expect(mockInviteUserByEmail).not.toHaveBeenCalled();
     });
 
@@ -675,7 +675,7 @@ describe('UsersService', () => {
         error: { message: 'email invalid' },
       });
 
-      await expect(service.create(baseDto)).rejects.toBeInstanceOf(BusinessRuleException);
+      await expect(service.create(fakeUser(), baseDto)).rejects.toBeInstanceOf(BusinessRuleException);
       expect(prisma.usuario.create).not.toHaveBeenCalled();
     });
 
@@ -687,7 +687,7 @@ describe('UsersService', () => {
       prisma.empresa.findMany.mockResolvedValue([{ id: 'emp-1', ativo: true }]);
 
       await expect(
-        service.create({ ...baseDto, gerenteId: 'gerente-fake' }),
+        service.create(fakeUser(), { ...baseDto, gerenteId: 'gerente-fake' }),
       ).rejects.toBeInstanceOf(NotFoundException);
     });
 
@@ -698,7 +698,7 @@ describe('UsersService', () => {
         .mockResolvedValueOnce({ role: 'REP' });
       prisma.empresa.findMany.mockResolvedValue([{ id: 'emp-1', ativo: true }]);
 
-      await expect(service.create({ ...baseDto, gerenteId: 'rep-1' })).rejects.toBeInstanceOf(
+      await expect(service.create(fakeUser(), { ...baseDto, gerenteId: 'rep-1' })).rejects.toBeInstanceOf(
         BusinessRuleException,
       );
     });

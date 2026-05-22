@@ -188,7 +188,39 @@ export class UsersService {
     return this.serialize(target);
   }
 
-  async create(dto: CreateUserDto) {
+  async create(caller: AuthenticatedUser, dto: CreateUserDto) {
+    // 0) Regras de escopo do CALLER (U2 — lote 4, 2026-05-22):
+    //    - ADMIN: pode criar em qualquer empresa, qualquer papel (mantido).
+    //    - DIRECTOR: só na própria empresa ativa e NÃO pode criar
+    //      ADMIN nem outro DIRECTOR (proteção contra escalada).
+    if (!isGlobalAdmin(caller)) {
+      if (caller.role !== 'DIRECTOR') {
+        throw new ForbiddenException(
+          'Apenas ADMIN ou DIRECTOR podem convidar usuários',
+          ErrorCode.FORBIDDEN,
+        );
+      }
+      if (dto.role === 'ADMIN' || dto.role === 'DIRECTOR') {
+        throw new BusinessRuleException(
+          'DIRECTOR não pode convidar outro DIRECTOR ou ADMIN',
+        );
+      }
+      const callerEmpresa = caller.empresaIdAtiva;
+      if (!callerEmpresa) {
+        throw new ForbiddenException(
+          'Empresa não definida no contexto',
+          ErrorCode.TENANT_ACCESS_DENIED,
+        );
+      }
+      // Força que o convite seja APENAS pra empresa ativa do DIRECTOR
+      const fora = dto.empresaIds.filter((id) => id !== callerEmpresa);
+      if (fora.length > 0) {
+        throw new BusinessRuleException(
+          'DIRECTOR só pode convidar usuários para a empresa ativa dele',
+        );
+      }
+    }
+
     // 1) Verifica conflito de e-mail no nosso banco
     const exists = await this.prisma.usuario.findUnique({ where: { email: dto.email } });
     if (exists) throw new ConflictException('Já existe usuário com este e-mail');

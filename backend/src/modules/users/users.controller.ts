@@ -54,11 +54,19 @@ export class UsersController {
   }
 
   @Post()
-  @Roles('ADMIN')
+  @Roles('ADMIN', 'DIRECTOR')
   @Audit({ action: 'invite', resource: 'usuario', resourceIdFrom: 'response.id' })
-  @ApiOperation({ summary: 'Convida um novo usuário (cria no Supabase + envia e-mail)' })
-  create(@Body(new ZodValidationPipe(createUserSchema)) dto: CreateUserDto) {
-    return this.users.create(dto);
+  @ApiOperation({
+    summary:
+      'Convida um novo usuário (cria no Supabase + envia e-mail). ADMIN pode' +
+      ' criar em qualquer empresa; DIRECTOR só na empresa ativa dele e não' +
+      ' pode criar ADMIN/DIRECTOR.',
+  })
+  create(
+    @CurrentUser() caller: AuthenticatedUser,
+    @Body(new ZodValidationPipe(createUserSchema)) dto: CreateUserDto,
+  ) {
+    return this.users.create(caller, dto);
   }
 
   @Patch(':id')
