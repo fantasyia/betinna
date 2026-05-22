@@ -1,7 +1,13 @@
 import { Injectable, Logger } from '@nestjs/common';
 import type { Response, Request } from 'express';
+import { createClient, type SupabaseClient } from '@supabase/supabase-js';
 import { EnvService } from '@config/env.service';
-import { UnauthorizedException, IntegrationException } from '@shared/errors/app-exception';
+import { PrismaService } from '@database/prisma.service';
+import {
+  BusinessRuleException,
+  IntegrationException,
+  UnauthorizedException,
+} from '@shared/errors/app-exception';
 import { ErrorCode } from '@shared/errors/error-codes';
 import { addBreadcrumb } from '@shared/observability/sentry';
 
@@ -35,8 +41,18 @@ export class AuthSessionService {
   private static readonly COOKIE_NAME = 'betinna_rt';
   private static readonly COOKIE_PATH = '/api/v1/auth';
   private static readonly COOKIE_MAX_AGE_MS = 30 * 24 * 60 * 60 * 1000; // 30 dias
+  private readonly supabaseAdmin: SupabaseClient;
 
-  constructor(private readonly env: EnvService) {}
+  constructor(
+    private readonly env: EnvService,
+    private readonly prisma: PrismaService,
+  ) {
+    this.supabaseAdmin = createClient(
+      this.env.get('SUPABASE_URL'),
+      this.env.get('SUPABASE_SERVICE_ROLE_KEY'),
+      { auth: { autoRefreshToken: false, persistSession: false } },
+    );
+  }
 
   private get supabaseUrl(): string {
     return this.env.get('SUPABASE_URL').replace(/\/$/, '');
@@ -152,6 +168,89 @@ export class AuthSessionService {
       expiresAt: (data.expires_at ?? 0) * 1000,
       userId: data.user.id,
     };
+  }
+
+  /**
+   * Finaliza o convite (welcome flow) — Lote 4 / U2 (2026-05-22).
+   *
+   * Fluxo do convite Supabase:
+   *  1. ADMIN/DIRECTOR chama POST /users → Supabase manda email com link
+   *     `<FRONTEND_URL>/welcome#access_token=...&type=invite`
+   *  2. Usuário clica → WelcomePage no front pega o access_token do hash
+   *     e chama POST /auth/welcome { accessToken, password }
+   *  3. Backend (este método): valida o access_token chamando
+   *     `GET /auth/v1/user` no Supabase → obtém { id, email }
+   *     Confere que o user é PENDENTE no nosso banco (idempotente:
+   *     se já ATIVO, segue mesmo assim)
+   *     Chama admin.updateUserById pra setar a senha + email_confirm=true
+   *     Marca status='ATIVO' no Usuario
+   *     Chama this.login(email, password, res) pra abrir sessão httpOnly
+   */
+  async welcomeFinalize(
+    accessToken: string,
+    password: string,
+    res: Response,
+  ): Promise<{ accessToken: string; expiresAt: number; userId: string }> {
+    if (!accessToken || accessToken.length < 20) {
+      throw new UnauthorizedException(
+        'Token de convite ausente ou inválido',
+        ErrorCode.AUTH_INVALID_TOKEN,
+      );
+    }
+    if (!password || password.length < 8) {
+      throw new BusinessRuleException('Senha deve ter no mínimo 8 caracteres');
+    }
+
+    // 1) Valida o accessToken no Supabase e obtém o user
+    const userRes = await fetch(`${this.supabaseUrl}/auth/v1/user`, {
+      method: 'GET',
+      headers: {
+        apikey: this.supabaseAnonKey,
+        Authorization: `Bearer ${accessToken}`,
+      },
+    });
+    if (!userRes.ok) {
+      throw new UnauthorizedException(
+        'Convite expirado ou inválido. Solicite reenvio.',
+        ErrorCode.AUTH_EXPIRED_TOKEN,
+      );
+    }
+    const supaUser = (await userRes.json()) as { id?: string; email?: string };
+    if (!supaUser.id || !supaUser.email) {
+      throw new IntegrationException(
+        'Resposta do Supabase incompleta',
+        ErrorCode.INTEGRATION_ERROR,
+      );
+    }
+
+    // 2) Seta a senha + confirma o e-mail via admin API
+    const { error: updErr } = await this.supabaseAdmin.auth.admin.updateUserById(supaUser.id, {
+      password,
+      email_confirm: true,
+    });
+    if (updErr) {
+      throw new BusinessRuleException(`Falha ao definir senha: ${updErr.message}`);
+    }
+
+    // 3) Marca o usuário como ATIVO no nosso banco (best-effort; se
+    //    não existir ainda, segue e o AuthGuard sincroniza depois)
+    try {
+      await this.prisma.usuario.update({
+        where: { id: supaUser.id },
+        data: { status: 'ATIVO' },
+      });
+    } catch (err) {
+      this.logger.warn(
+        `welcomeFinalize: não foi possível ativar Usuario ${supaUser.id}: ${
+          err instanceof Error ? err.message : err
+        }`,
+      );
+    }
+
+    addBreadcrumb('auth', 'welcome-finalized', { userId: supaUser.id });
+
+    // 4) Faz login completo (cria sessão httpOnly + retorna access)
+    return this.login(supaUser.email, password, res);
   }
 
   /** Logout: revoga no Supabase + apaga cookie. */

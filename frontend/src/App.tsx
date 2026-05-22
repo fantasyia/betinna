@@ -15,6 +15,7 @@ import { PwaBanner } from '@/components/PwaBanner';
 
 // Lazy-loaded pages — code splitting per route
 const LoginPage = lazy(() => import('@/pages/LoginPage'));
+const WelcomePage = lazy(() => import('@/pages/WelcomePage'));
 const DashboardPage = lazy(() => import('@/pages/DashboardPage'));
 const WhatsAppPage = lazy(() => import('@/pages/WhatsAppPage'));
 const AdminPage = lazy(() => import('@/pages/AdminPage'));
@@ -80,6 +81,17 @@ const router = createBrowserRouter([
       <ErrorBoundary>
         <PageSuspense>
           <LoginPage />
+        </PageSuspense>
+      </ErrorBoundary>
+    ),
+  },
+  {
+    // Página pública — finalização do convite (token no hash).
+    path: '/welcome',
+    element: (
+      <ErrorBoundary>
+        <PageSuspense>
+          <WelcomePage />
         </PageSuspense>
       </ErrorBoundary>
     ),

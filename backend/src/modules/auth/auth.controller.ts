@@ -63,6 +63,14 @@ const loginSchema = z.object({
 });
 type LoginDto = z.infer<typeof loginSchema>;
 
+// U2/lote 4: finaliza convite — frontend pega access_token do hash do
+// link Supabase + pede ao user pra definir senha
+const welcomeSchema = z.object({
+  accessToken: z.string().min(20, 'Token de convite inválido'),
+  password: z.string().min(8, 'Senha deve ter no mínimo 8 caracteres'),
+});
+type WelcomeDto = z.infer<typeof welcomeSchema>;
+
 const bootstrapSchema = z.object({
   email: z.string().email(),
   nome: z.string().min(2).max(150).optional().default('Diretor Betinna'),
@@ -118,6 +126,31 @@ export class AuthController {
     @Res({ passthrough: true }) res: Response,
   ): Promise<{ accessToken: string; expiresAt: number; userId: string }> {
     return this.authSession.login(dto.email, dto.password, res);
+  }
+
+  /**
+   * Finaliza o convite Supabase (U2 / lote 4 — 2026-05-22).
+   *
+   * O frontend `/welcome` extrai o `access_token` do hash do URL e chama
+   * este endpoint passando junto com a senha escolhida. Backend valida o
+   * token, seta a senha no Supabase, marca o usuário como ATIVO no nosso
+   * banco e abre a sessão httpOnly normal (mesmo retorno do login).
+   *
+   * Público (não exige token válido — o próprio body traz o token de
+   * convite). Rate limit do controller já cobre brute force.
+   */
+  @Post('welcome')
+  @Public()
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({
+    summary:
+      'Finaliza convite: valida token Supabase, seta senha, ativa usuário e abre sessão',
+  })
+  async welcome(
+    @Body(new ZodValidationPipe(welcomeSchema)) dto: WelcomeDto,
+    @Res({ passthrough: true }) res: Response,
+  ): Promise<{ accessToken: string; expiresAt: number; userId: string }> {
+    return this.authSession.welcomeFinalize(dto.accessToken, dto.password, res);
   }
 
   /**
