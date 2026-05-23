@@ -309,14 +309,20 @@ jobs:
           echo "❌ API não respondeu em 5min — abortando deploy do Worker"
           exit 1
 
-      - name: Run Prisma migrations
-        env:
-          RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
-        working-directory: ./backend
-        run: |
-          echo "→ Aplicando migrations via deploy-migrations.sh (smart baseline-aware)..."
-          chmod +x scripts/deploy-migrations.sh
-          railway run --service api bash scripts/deploy-migrations.sh
+      # Step "Run Prisma migrations" REMOVIDO em 2026-05-23.
+      #
+      # Era redundante e quebrava sempre:
+      #  - O container do api roda `scripts/start.js` no boot, que chama
+      #    `deploy-migrations.sh` ANTES de subir o servidor — migrations
+      #    aplicadas dentro da rede privada do Railway, com acesso ao
+      #    `postgres.railway.internal` (vide Deploy Logs do Railway).
+      #  - O step que estava aqui rodava `railway run` do runner do GitHub,
+      #    que tenta se conectar ao mesmo hostname `postgres.railway.internal`
+      #    de FORA da rede do Railway → P1001 "Can't reach database server".
+      #    Falsa falha que cancelava Deploy Worker + Deploy Frontend.
+      #
+      # Se o migrate de boot falhar no container, o healthcheck do Railway
+      # falha e o deploy é abortado lá mesmo — perda nula de cobertura.
 
       - name: Deploy Worker service
         env:
