@@ -355,6 +355,25 @@ export class WhatsAppSessionService implements OnModuleInit, OnModuleDestroy {
     const { state, saveCreds } = auth.build();
     const { version } = await fetchLatestBaileysVersion().catch(() => ({ version: undefined }));
 
+    // Logger silencioso pra Baileys — tem que implementar TODOS os métodos
+    // do pino (trace/debug/info/warn/error/fatal) senão Baileys crasha em
+    // shutdown chamando `logger.trace()`. Bug fix 2026-05-23 (TypeError:
+    // logger.trace is not a function no Sentry).
+
+    const noop = (): void => undefined;
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const silentLogger: any = {
+      level: 'silent',
+      trace: noop,
+      debug: noop,
+      info: noop,
+      warn: noop,
+      error: noop,
+      fatal: noop,
+      // child precisa retornar um logger com a mesma forma (referência recursiva)
+      child: () => silentLogger,
+    };
+
     const sock = makeWASocket({
       version,
       auth: {
@@ -362,8 +381,7 @@ export class WhatsAppSessionService implements OnModuleInit, OnModuleDestroy {
         keys: makeCacheableSignalKeyStore(state.keys),
       },
       printQRInTerminal: false,
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      logger: { level: 'silent', child: () => ({}) as any } as any,
+      logger: silentLogger,
       browser: ['Betinna.ai', 'Chrome', '1.0.0'],
     });
 

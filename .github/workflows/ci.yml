@@ -106,6 +106,12 @@ jobs:
 
       - name: Prisma validate
         working-directory: ./backend
+        env:
+          # Schema referencia env DATABASE_URL e DIRECT_URL via env() — sem
+          # essas vars o `prisma validate` falha com P1012. Valores fake
+          # bastam (validate não conecta no DB). Fix 2026-05-23.
+          DATABASE_URL: postgresql://ci:ci@localhost:5432/ci
+          DIRECT_URL: postgresql://ci:ci@localhost:5432/ci
         run: npx prisma validate
 
       - name: Lint (zero warnings)
