@@ -67,7 +67,15 @@ export default function WelcomePage() {
   const [mounted, setMounted] = useState(false);
 
   const hashParams = useMemo(() => parseHashParams(), []);
-  const linkValido = !!hashParams.accessToken && hashParams.type === 'invite';
+  // Aceitamos qualquer "fluxo de senha-nova" do Supabase: invite original,
+  // magic link e password recovery. Todos vêm com access_token no hash e
+  // o backend consegue setar a senha igual via admin.updateUserById.
+  // (Fix U2 2026-05-23 — antes só aceitava `type=invite`.)
+  const ACCEPTED_TYPES = ['invite', 'magiclink', 'recovery', 'signup'] as const;
+  const linkValido =
+    !!hashParams.accessToken &&
+    (!hashParams.type ||
+      (ACCEPTED_TYPES as readonly string[]).includes(hashParams.type));
 
   useEffect(() => {
     const t = setTimeout(() => setMounted(true), 10);

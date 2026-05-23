@@ -7,6 +7,7 @@ import {
   templateBoasVindas,
   templateComissaoFechada,
   templateOcorrenciaCritica,
+  templateReenvioConvite,
 } from './sendgrid-templates';
 
 /**
@@ -65,6 +66,20 @@ export class TransactionalEmailService {
       nome: params.nome,
       empresaNome: params.empresaNome,
       loginUrl: this.safeUrl('/login'),
+    });
+    return this.send(params.para, assunto, html);
+  }
+
+  async enviarReenvioConvite(params: {
+    para: string;
+    nome: string;
+    empresaNome: string;
+    inviteUrl: string;
+  }) {
+    const { assunto, html } = templateReenvioConvite({
+      nome: params.nome,
+      empresaNome: params.empresaNome,
+      inviteUrl: params.inviteUrl,
     });
     return this.send(params.para, assunto, html);
   }

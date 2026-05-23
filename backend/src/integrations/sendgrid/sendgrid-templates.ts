@@ -127,6 +127,39 @@ export function templateBoasVindas(p: BoasVindasParams): { assunto: string; html
   };
 }
 
+export interface ReenvioConviteParams {
+  nome: string;
+  empresaNome: string;
+  /** URL completa do action link do Supabase (já com token embutido). */
+  inviteUrl: string;
+}
+
+/**
+ * Template: reenvio de convite — usado quando um usuário PENDENTE ainda
+ * não definiu a senha e o admin/diretor clica em "Reenviar convite". O
+ * `inviteUrl` aqui já vem do Supabase `admin.generateLink({type:'invite'})`
+ * (Lote 4 / U2 fix — 2026-05-23).
+ */
+export function templateReenvioConvite(p: ReenvioConviteParams): {
+  assunto: string;
+  html: string;
+} {
+  return {
+    assunto: `Reenvio do convite — Betinna.ai (${p.empresaNome})`,
+    html: layout({
+      preheader: `Clique pra definir sua senha e acessar o ${p.empresaNome}.`,
+      title: `Olá, ${escapeHtml(p.nome)} 👋`,
+      bodyHtml: `
+        <p>Você foi convidado(a) pra acessar o <strong>${escapeHtml(p.empresaNome)}</strong> no Betinna.ai.</p>
+        <p>Como o convite anterior expirou ou não foi finalizado, segue um link novo válido por 24h:</p>
+        <p style="font-size:13px;color:#6b6580;">Se você não esperava este e-mail, pode ignorar.</p>
+      `,
+      ctaText: 'Definir senha e entrar',
+      ctaUrl: p.inviteUrl,
+    }),
+  };
+}
+
 export interface AprovacaoResolvidaParams {
   repNome: string;
   pedidoNumero: string;

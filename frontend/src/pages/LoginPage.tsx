@@ -62,6 +62,20 @@ export default function LoginPage() {
     return () => clearTimeout(t);
   }, []);
 
+  // Proteção: se o usuário chegou aqui com um token no hash da URL
+  // (ex: convite/magiclink/recovery do Supabase Dashboard sem redirect_to),
+  // redireciona pra /welcome preservando o hash — senão o token se perde
+  // e o user fica preso na tela de login sem senha (U2 hotpatch 2026-05-23).
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    const hash = window.location.hash;
+    if (hash && hash.includes('access_token=')) {
+      // Replace pra não deixar o hash no histórico apontando pra /login
+      window.history.replaceState({}, '', '/welcome' + hash);
+      window.location.reload();
+    }
+  }, []);
+
   async function handleSubmit(e: FormEvent<HTMLFormElement>) {
     e.preventDefault();
     if (loading) return;

@@ -443,20 +443,57 @@ export class UsersService {
   }
 
   async resendInvite(caller: AuthenticatedUser, id: string): Promise<{ ok: true; sentTo: string }> {
-    const user = await this.loadAndAssertScope(caller, id);
-    if (user.status !== 'PENDENTE') {
+    const userScope = await this.loadAndAssertScope(caller, id);
+    if (userScope.status !== 'PENDENTE') {
       throw new BusinessRuleException('Usuário não está com convite pendente');
     }
-    // Reenvio passa o MESMO redirectTo do create (senão Supabase cai no
-    // fallback Site URL = localhost:3000 — bug fix 2026-05-22)
+
+    // Bug fix 2026-05-23: `inviteUserByEmail` SÓ funciona pra criar novo
+    // usuário no Supabase Auth. Como o user já existe (status PENDENTE),
+    // a chamada retornava "A user with this email address has already been
+    // registered". A solução é usar `generateLink({ type: 'invite' })` que
+    // aceita user existente — porém o Supabase NÃO envia email automático
+    // pra esse método, então enviamos manualmente via SendGrid.
     const redirectTo = this.resolveInviteRedirectUrl();
-    const { error } = await this.supabaseAdmin.auth.admin.inviteUserByEmail(user.email, {
-      redirectTo,
+    const { data, error } = await this.supabaseAdmin.auth.admin.generateLink({
+      type: 'invite',
+      email: userScope.email,
+      options: { redirectTo },
     });
-    if (error) {
-      throw new BusinessRuleException(`Falha ao reenviar convite: ${error.message}`);
+    if (error || !data?.properties?.action_link) {
+      throw new BusinessRuleException(
+        `Falha ao reenviar convite: ${error?.message ?? 'sem action_link'}`,
+      );
     }
-    return { ok: true, sentTo: user.email };
+    const inviteUrl = data.properties.action_link;
+
+    // Busca o nome da empresa pra contexto do e-mail (best-effort)
+    let empresaNome = 'sua empresa';
+    try {
+      const primeiraEmpresa = userScope.empresas[0]?.empresaId;
+      if (primeiraEmpresa) {
+        const emp = await this.prisma.empresa.findUnique({
+          where: { id: primeiraEmpresa },
+          select: { nome: true },
+        });
+        if (emp?.nome) empresaNome = emp.nome;
+      }
+    } catch {
+      /* best-effort — usa fallback */
+    }
+
+    const sent = await this.email.enviarReenvioConvite({
+      para: userScope.email,
+      nome: userScope.nome,
+      empresaNome,
+      inviteUrl,
+    });
+    if (!sent.ok) {
+      this.logger.warn(
+        `Reenvio: link Supabase gerado, mas envio SendGrid falhou pra ${userScope.email}.`,
+      );
+    }
+    return { ok: true, sentTo: userScope.email };
   }
 
   /** Marca o usuário como ATIVO (chamado pelo onboarding após definir senha) */
