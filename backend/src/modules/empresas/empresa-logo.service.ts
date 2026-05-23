@@ -107,9 +107,7 @@ export class EmpresaLogoService implements OnModuleInit {
       );
     }
     if (!ALLOWED_MIMES.has(file.mimetype)) {
-      throw new BusinessRuleException(
-        `Formato não suportado. Use PNG, JPG, WebP ou SVG.`,
-      );
+      throw new BusinessRuleException(`Formato não suportado. Use PNG, JPG, WebP ou SVG.`);
     }
 
     const empresa = await this.prisma.empresa.findUnique({ where: { id: empresaId } });
@@ -129,12 +127,10 @@ export class EmpresaLogoService implements OnModuleInit {
     const ts = Date.now();
     const storagePath = `${empresaId}/${ts}_logo${ext ? `.${ext}` : ''}`;
 
-    const { error } = await this.storage.storage
-      .from(BUCKET)
-      .upload(storagePath, file.buffer, {
-        contentType: file.mimetype,
-        upsert: true,
-      });
+    const { error } = await this.storage.storage.from(BUCKET).upload(storagePath, file.buffer, {
+      contentType: file.mimetype,
+      upsert: true,
+    });
     if (error) {
       throw new IntegrationException(`Falha ao subir logo: ${error.message}`);
     }
@@ -173,9 +169,7 @@ export class EmpresaLogoService implements OnModuleInit {
    * Gera signed URL pra exibir o logo. Cache 7 dias (rotaciona quando troca).
    * Qualquer usuário autenticado pode obter o logo da própria empresa.
    */
-  async getSignedUrl(
-    empresaId: string,
-  ): Promise<{ signedUrl: string | null; expiresIn: number }> {
+  async getSignedUrl(empresaId: string): Promise<{ signedUrl: string | null; expiresIn: number }> {
     const empresa = await this.prisma.empresa.findUnique({
       where: { id: empresaId },
       select: { logoUrl: true },
@@ -199,9 +193,7 @@ export class EmpresaLogoService implements OnModuleInit {
   private assertCanManageLogo(user: AuthenticatedUser, empresaId: string): void {
     if (user.role === 'ADMIN') return;
     if (user.role === 'DIRECTOR' && user.empresaIds.includes(empresaId)) return;
-    throw new ForbiddenException(
-      'Apenas ADMIN ou DIRECTOR da empresa podem gerenciar o logo.',
-    );
+    throw new ForbiddenException('Apenas ADMIN ou DIRECTOR da empresa podem gerenciar o logo.');
   }
 
   private extensionFor(filename: string, mime: string): string {

@@ -10,10 +10,7 @@ import { LoggerModule } from 'nestjs-pino';
 import { EnvModule } from '@config/env.module';
 import { EnvService } from '@config/env.service';
 import { PrismaModule } from '@database/prisma.module';
-import {
-  buildBullMqConnection,
-  createIORedisClient,
-} from '@database/redis-options';
+import { buildBullMqConnection, createIORedisClient } from '@database/redis-options';
 import { AmazonModule } from '@integrations/amazon/amazon.module';
 import { GoogleModule } from '@integrations/google/google.module';
 import { MLModule } from '@integrations/mercadolivre/ml.module';

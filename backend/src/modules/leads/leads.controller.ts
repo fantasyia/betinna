@@ -71,10 +71,7 @@ export class LeadsController {
   @ApiOperation({
     summary: 'Leads agrupados por etapa. Aceita ?funilId pra escolher funil específico.',
   })
-  kanban(
-    @CurrentUser() user: AuthenticatedUser,
-    @Query('funilId') funilId?: string,
-  ) {
+  kanban(@CurrentUser() user: AuthenticatedUser, @Query('funilId') funilId?: string) {
     return this.leads.kanban(user, funilId);
   }
 

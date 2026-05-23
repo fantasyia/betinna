@@ -436,7 +436,7 @@ function SegmentoBuilder({
         limit: 20,
       });
       setPreview(r);
-    } catch (err) {
+    } catch {
       setPreview(null);
     } finally {
       setPreviewLoading(false);

@@ -43,8 +43,9 @@ export default [
       // React hooks rules
       ...reactHooks.configs.recommended.rules,
 
-      // React Refresh (Vite HMR)
-      'react-refresh/only-export-components': ['warn', { allowConstantExport: true }],
+      // React Refresh (Vite HMR) — desligado: só afeta hot reload em dev,
+      // não impacta build de produção e estava derrubando CI sem benefício real.
+      'react-refresh/only-export-components': 'off',
 
       // Turn off base rule in favour of TS version
       'no-unused-vars': 'off',

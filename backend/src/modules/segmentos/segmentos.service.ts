@@ -80,12 +80,12 @@ export class SegmentosService {
   }
 
   private async executar(empresaId: string, regras: RegrasDto, limit: number) {
-    const conditions = regras.conditions.map(toPrismaCondition).filter(Boolean) as Prisma.ClienteWhereInput[];
+    const conditions = regras.conditions
+      .map(toPrismaCondition)
+      .filter(Boolean) as Prisma.ClienteWhereInput[];
     const where: Prisma.ClienteWhereInput = {
       empresaId,
-      ...(regras.logic === 'OR'
-        ? { OR: conditions }
-        : { AND: conditions }),
+      ...(regras.logic === 'OR' ? { OR: conditions } : { AND: conditions }),
     };
 
     const [clientes, total] = await Promise.all([
@@ -143,7 +143,9 @@ function toPrismaCondition(c: ConditionDto): Prisma.ClienteWhereInput | null {
       return { [key]: { in: valor } } as unknown as Prisma.ClienteWhereInput;
     case 'contains':
       if (typeof valor !== 'string') return null;
-      return { [key]: { contains: valor, mode: 'insensitive' } } as unknown as Prisma.ClienteWhereInput;
+      return {
+        [key]: { contains: valor, mode: 'insensitive' },
+      } as unknown as Prisma.ClienteWhereInput;
     default:
       return null;
   }

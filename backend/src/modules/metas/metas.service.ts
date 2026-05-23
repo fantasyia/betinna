@@ -1,10 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { PrismaService } from '@database/prisma.service';
-import {
-  ForbiddenException,
-  NotFoundException,
-} from '@shared/errors/app-exception';
+import { ForbiddenException, NotFoundException } from '@shared/errors/app-exception';
 import { ErrorCode } from '@shared/errors/error-codes';
 import type { AuthenticatedUser } from '@shared/types/authenticated-user';
 import type { UpsertMetaDto } from './metas.dto';
@@ -107,7 +104,7 @@ export class MetasService {
       tipo: dto.tipo,
       valorAlvo: new Prisma.Decimal(dto.valorAlvo),
       alvoTipo: dto.alvoTipo,
-      alvoId: dto.alvoTipo === 'EMPRESA' ? null : dto.alvoId ?? null,
+      alvoId: dto.alvoTipo === 'EMPRESA' ? null : (dto.alvoId ?? null),
       periodicidade: dto.periodicidade,
       inicio: new Date(dto.inicio),
       fim: new Date(dto.fim),

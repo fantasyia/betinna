@@ -314,10 +314,7 @@ export class PedidosService {
       // Se mudou pra desconto acima do teto sem motivo, bloqueia.
       const tetoRep = await this.tetoDoRepAtual(user);
       const requerAprovacao = this.pedidoPricing.excedeTetoDesconto(totalsRecalc, tetoRep);
-      if (
-        requerAprovacao &&
-        !(camposGenericos.motivoDesconto ?? existing.motivoDesconto)
-      ) {
+      if (requerAprovacao && !(camposGenericos.motivoDesconto ?? existing.motivoDesconto)) {
         throw new BusinessRuleException(
           'Desconto acima do teto requer justificativa em motivoDesconto',
           ErrorCode.DESCONTO_ACIMA_TETO,
@@ -406,9 +403,7 @@ export class PedidosService {
       data: { pedidoOrigemId: original.id },
     });
 
-    this.logger.log(
-      `Pedido ${novo.numero} duplicado de ${original.numero} (id=${original.id})`,
-    );
+    this.logger.log(`Pedido ${novo.numero} duplicado de ${original.numero} (id=${original.id})`);
 
     return this.findByIdInternal(novo.id);
   }

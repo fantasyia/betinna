@@ -349,7 +349,7 @@ describe('AgendaService', () => {
 
       const result = await service.delete(fakeUser({ id: 'user-1' }), 'ag-1');
 
-      expect(result).toEqual({ ok: true });
+      expect(result).toEqual({ ok: true, deleted: 1 });
       const args = prisma.agendaItem.deleteMany.mock.calls[0][0];
       expect(args.where.id).toBe('ag-1');
       expect(args.where.empresaId).toBe('emp-1');
@@ -390,6 +390,7 @@ describe('AgendaService', () => {
 
       await expect(service.delete(fakeUser({ id: 'user-1' }), 'ag-1')).resolves.toEqual({
         ok: true,
+        deleted: 1,
       });
     });
   });

@@ -40,11 +40,7 @@ export function buildRedisOptions(redisUrl: string, overrides: RedisOptions = {}
     // explícitos pra timeout do Railway.
     reconnectOnError: (err) => {
       const msg = err?.message ?? '';
-      return (
-        msg.includes('READONLY') ||
-        msg.includes('ETIMEDOUT') ||
-        msg.includes('ECONNRESET')
-      );
+      return msg.includes('READONLY') || msg.includes('ETIMEDOUT') || msg.includes('ECONNRESET');
     },
     // Evita travar `await client.cmd()` indefinidamente quando Redis sumiu.
     // Default é Infinity (ruim em prod). 5s permite o caller fallback/retry.

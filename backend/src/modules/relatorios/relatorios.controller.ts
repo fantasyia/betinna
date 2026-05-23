@@ -98,5 +98,4 @@ export class RelatoriosController {
   ) {
     return this.relatorios.amostras(user, params);
   }
-
 }

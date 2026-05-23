@@ -101,11 +101,7 @@ export class FunisService {
     return this.findById(user, created.id);
   }
 
-  async update(
-    user: AuthenticatedUser,
-    id: string,
-    dto: UpdateFunilDto,
-  ): Promise<FunilWithRel> {
+  async update(user: AuthenticatedUser, id: string, dto: UpdateFunilDto): Promise<FunilWithRel> {
     const existing = await this.findById(user, id);
 
     if (dto.isPadrao && !existing.isPadrao) {
@@ -137,9 +133,7 @@ export class FunisService {
         where: { empresaId: existing.empresaId, id: { not: id } },
       });
       if (outros === 0) {
-        throw new BusinessRuleException(
-          'Não pode excluir o único funil. Crie outro funil antes.',
-        );
+        throw new BusinessRuleException('Não pode excluir o único funil. Crie outro funil antes.');
       }
     }
 

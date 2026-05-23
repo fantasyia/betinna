@@ -7,14 +7,11 @@ import type { AuthenticatedUser } from '@shared/types/authenticated-user';
 import type { UpsertPersonaDto, ExemploDto, TomVoz } from './persona.dto';
 
 const TOM_INSTRUCAO: Record<TomVoz, string> = {
-  FORMAL:
-    'Tom formal e respeitoso. Use "senhor"/"senhora", evite gírias e seja direto.',
-  PROFISSIONAL:
-    'Tom profissional e equilibrado. Linguagem clara, sem gírias, mas natural.',
+  FORMAL: 'Tom formal e respeitoso. Use "senhor"/"senhora", evite gírias e seja direto.',
+  PROFISSIONAL: 'Tom profissional e equilibrado. Linguagem clara, sem gírias, mas natural.',
   AMIGAVEL:
     'Tom amigável e caloroso. Trate o cliente como parceiro de longa data, sem perder profissionalismo.',
-  DESCONTRAIDO:
-    'Tom descontraído e leve. Pode usar expressões coloquiais e emojis com moderação.',
+  DESCONTRAIDO: 'Tom descontraído e leve. Pode usar expressões coloquiais e emojis com moderação.',
   ENTUSIASMADO:
     'Tom entusiasmado e energético. Destaque benefícios, use vocabulário positivo (ótimo, excelente).',
 };
@@ -142,9 +139,7 @@ export class MullerBotPersonaService {
     atualizadoEm: Date;
   }): PersonaResult {
     const tomVoz = (row.tomVoz as TomVoz) ?? 'PROFISSIONAL';
-    const exemplos = Array.isArray(row.exemplosJson)
-      ? (row.exemplosJson as ExemploDto[])
-      : [];
+    const exemplos = Array.isArray(row.exemplosJson) ? (row.exemplosJson as ExemploDto[]) : [];
     return {
       id: row.id,
       empresaId: row.empresaId,

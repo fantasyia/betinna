@@ -33,11 +33,7 @@ export const createClienteSchema = z.object({
   complemento: z.string().trim().max(100).optional().nullable(),
   bairro: z.string().trim().min(2, 'Bairro obrigatório').max(100),
   cidade: z.string().trim().min(2, 'Cidade obrigatória').max(100),
-  uf: z
-    .string()
-    .trim()
-    .toUpperCase()
-    .regex(UF_REGEX, 'UF deve ter 2 letras maiúsculas (ex: SP)'),
+  uf: z.string().trim().toUpperCase().regex(UF_REGEX, 'UF deve ter 2 letras maiúsculas (ex: SP)'),
   regiao: z.string().trim().max(60).optional(),
   // Campos não obrigatórios pro form (sistema/integração)
   codigoOmie: z.string().max(50).optional(),

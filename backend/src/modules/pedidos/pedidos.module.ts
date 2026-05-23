@@ -11,13 +11,7 @@ import { PedidosController } from './pedidos.controller';
 import { PedidosService } from './pedidos.service';
 
 @Module({
-  imports: [
-    ProdutosModule,
-    OmieModule,
-    FluxosModule,
-    NotificacoesModule,
-    SendGridModule,
-  ],
+  imports: [ProdutosModule, OmieModule, FluxosModule, NotificacoesModule, SendGridModule],
   controllers: [PedidosController, AprovacoesController],
   providers: [PedidosService, AprovacoesService, PedidoPricingService],
   exports: [PedidosService, AprovacoesService, PedidoPricingService],

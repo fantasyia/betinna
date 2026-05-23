@@ -19,9 +19,9 @@ export class EmpresasService {
    * Usado pelo `EmpresaSwitcher` na sidebar do frontend pra trocar de
    * tenant ativo via header `X-Empresa-Id`.
    */
-  async listMine(user: AuthenticatedUser): Promise<
-    Array<{ id: string; nome: string; logoUrl: string | null }>
-  > {
+  async listMine(
+    user: AuthenticatedUser,
+  ): Promise<Array<{ id: string; nome: string; logoUrl: string | null }>> {
     if (user.role === 'ADMIN') {
       // ADMIN cross-tenant: vê TODAS as empresas ativas
       return this.prisma.empresa.findMany({

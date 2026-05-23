@@ -237,7 +237,7 @@ function unmarkDone(userId: string, role: UserRole) {
  * Dispara o tour manualmente (botão "Reiniciar tour" no Profile).
  * Limpa a flag e força re-render do componente.
  */
-// eslint-disable-next-line react-refresh/only-export-components
+ 
 export function startOnboarding() {
   const session = getSession();
   if (!session?.user?.id || !session.user.role) return;

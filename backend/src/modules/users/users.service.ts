@@ -222,9 +222,7 @@ export class UsersService {
         );
       }
       if (dto.role === 'ADMIN' || dto.role === 'DIRECTOR') {
-        throw new BusinessRuleException(
-          'DIRECTOR não pode convidar outro DIRECTOR ou ADMIN',
-        );
+        throw new BusinessRuleException('DIRECTOR não pode convidar outro DIRECTOR ou ADMIN');
       }
       const callerEmpresa = caller.empresaIdAtiva;
       if (!callerEmpresa) {

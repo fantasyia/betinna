@@ -97,16 +97,8 @@ export class OmieProdutosService {
 
           // Notifica reps quando produto transiciona estoque > 0 → estoque <= 0
           // (best-effort, async — não bloqueia o sync)
-          if (
-            novoEstoque !== null &&
-            existing.estoque > 0 &&
-            novoEstoque <= 0
-          ) {
-            void this.notificarEstoqueZerado(
-              empresaId,
-              existing.id,
-              existing.nome,
-            ).catch((err) => {
+          if (novoEstoque !== null && existing.estoque > 0 && novoEstoque <= 0) {
+            void this.notificarEstoqueZerado(empresaId, existing.id, existing.nome).catch((err) => {
               this.logger.warn(
                 `Falha notificando ESTOQUE_ZERADO produto=${existing.id}: ${
                   err instanceof Error ? err.message : String(err)
@@ -180,14 +172,10 @@ export class OmieProdutosService {
       distinct: ['representanteId'],
     });
 
-    const repIds = pedidos
-      .map((p) => p.representanteId)
-      .filter((id): id is string => id !== null);
+    const repIds = pedidos.map((p) => p.representanteId).filter((id): id is string => id !== null);
 
     if (repIds.length === 0) {
-      this.logger.debug(
-        `Produto ${produtoId} zerou estoque mas nenhum rep vendeu nos últimos 30d`,
-      );
+      this.logger.debug(`Produto ${produtoId} zerou estoque mas nenhum rep vendeu nos últimos 30d`);
       return;
     }
 

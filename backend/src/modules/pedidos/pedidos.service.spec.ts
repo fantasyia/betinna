@@ -84,10 +84,7 @@ describe('PedidosService', () => {
       repScopeMock as never,
       { disparar: vi.fn() } as never,
       sequenceMock as never,
-      {
-        creditarPedidoAprovado: vi.fn().mockResolvedValue(null),
-        estornarPedidoCancelado: vi.fn().mockResolvedValue(null),
-      } as never,
+      // R1 (lote 3): Fidelidade removida do PedidosService — mock excluído.
       {
         criarParaUsuario: vi.fn().mockResolvedValue(null),
         criarParaRole: vi.fn().mockResolvedValue(0),

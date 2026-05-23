@@ -177,13 +177,7 @@ export class SeedDemoService {
     });
 
     // 4. Pedidos com itens
-    const pedidosCount = await this.seedPedidos(
-      empresaId,
-      clienteIds,
-      produtos,
-      reps,
-      N.pedidos,
-    );
+    const pedidosCount = await this.seedPedidos(empresaId, clienteIds, produtos, reps, N.pedidos);
 
     // 5. Propostas
     const propostasCount = await this.seedPropostas(
@@ -195,11 +189,7 @@ export class SeedDemoService {
     );
 
     // 6. Conversas + mensagens
-    const conversationsCount = await this.seedConversations(
-      empresaId,
-      clienteIds,
-      N.conversations,
-    );
+    const conversationsCount = await this.seedConversations(empresaId, clienteIds, N.conversations);
 
     // 7. NPS
     const respostasNpsCount = await this.seedNps(empresaId, clienteIds, N.respostasNps);
@@ -254,7 +244,7 @@ export class SeedDemoService {
         uf: c.uf,
         regiao: c.regiao,
         status: 'ATIVO' as const,
-        score: 30 + (i * 7) % 70,
+        score: 30 + ((i * 7) % 70),
         prazoPagamento: [15, 30, 45, 60][i % 4],
         limiteCredito: 5000 + (i % 10) * 1500,
         isDemo: true,
@@ -281,8 +271,8 @@ export class SeedDemoService {
         unidade: p.unidade,
         precoTabela,
         precoFabrica: Number((precoTabela * 0.7).toFixed(2)),
-        popularidade: (i % 100),
-        estoque: 50 + (i * 13) % 500,
+        popularidade: i % 100,
+        estoque: 50 + ((i * 13) % 500),
         ativo: true,
         isDemo: true,
       };
@@ -371,8 +361,7 @@ export class SeedDemoService {
             comissao,
             criadoEm,
             atualizadoEm: criadoEm,
-            enviadoOmieEm:
-              status === 'ENVIADO_OMIE' || status === 'ENTREGUE' ? criadoEm : null,
+            enviadoOmieEm: status === 'ENVIADO_OMIE' || status === 'ENTREGUE' ? criadoEm : null,
             isDemo: true,
             itens: { create: itens },
           },
@@ -447,7 +436,7 @@ export class SeedDemoService {
             representanteId: rep?.id ?? null,
             numero: `${baseNumero}-${String(i + 1).padStart(4, '0')}`,
             status,
-            probabilidade: 30 + (i * 11) % 60,
+            probabilidade: 30 + ((i * 11) % 60),
             validoAte: new Date(agora + 30 * 24 * 60 * 60 * 1000),
             subtotal: valor,
             valor,
@@ -487,7 +476,7 @@ export class SeedDemoService {
             status: i % 4 === 0 ? 'RESOLVIDA' : 'ABERTA',
             categoria: (['GERAL', 'PRE_VENDA', 'POS_VENDA'] as const)[i % 3],
             naoLidas: i % 4 === 0 ? 0 : 1 + (i % 3),
-            ultimaMsgEm: new Date(Date.now() - (i * 3600 * 1000)),
+            ultimaMsgEm: new Date(Date.now() - i * 3600 * 1000),
             ultimaMsgPreview: mensagens[mensagens.length - 1].slice(0, 140),
             isDemo: true,
             mensagens: {
@@ -614,7 +603,7 @@ export class SeedDemoService {
     let idx = 0;
     for (const m of meses) {
       for (const rep of reps) {
-        const totalVendas = 15000 + ((idx + 1) * 1750) % 80000;
+        const totalVendas = 15000 + (((idx + 1) * 1750) % 80000);
         const percentual = rep.comissaoPadrao ?? 5;
         const totalComissao = Number((totalVendas * (percentual / 100)).toFixed(2));
         data.push({
@@ -638,13 +627,13 @@ export class SeedDemoService {
   }
 
   private gerarCnpj(idx: number): string {
-    const base = (10000000 + (idx * 7919) % 89999999).toString();
+    const base = (10000000 + ((idx * 7919) % 89999999)).toString();
     return `${base.slice(0, 2)}.${base.slice(2, 5)}.${base.slice(5, 8)}/0001-${String((idx * 13) % 100).padStart(2, '0')}`;
   }
 
   private gerarTelefone(idx: number): string {
-    const ddd = (11 + (idx * 3) % 88).toString().padStart(2, '0');
-    const num = 90000000 + (idx * 7919) % 9999999;
+    const ddd = (11 + ((idx * 3) % 88)).toString().padStart(2, '0');
+    const num = 90000000 + ((idx * 7919) % 9999999);
     return `+55${ddd}${num}`;
   }
 }
@@ -669,43 +658,259 @@ export interface SeedDemoStatus {
 // ─── Datasets determinísticos ───────────────────────────────────────────
 
 const CLIENTES_DEMO = [
-  { nome: 'Padaria do Bairro', dominio: 'padariademo.com.br', segmento: 'PADARIA', cidade: 'São Paulo', uf: 'SP', regiao: 'Sudeste', cep: '01310-100' },
-  { nome: 'Mercado Central', dominio: 'mercadocentral.com.br', segmento: 'MERCADO', cidade: 'Rio de Janeiro', uf: 'RJ', regiao: 'Sudeste', cep: '20040-020' },
-  { nome: 'Restaurante Sabor', dominio: 'sabor.com.br', segmento: 'RESTAURANTE', cidade: 'Belo Horizonte', uf: 'MG', regiao: 'Sudeste', cep: '30130-010' },
-  { nome: 'Distribuidora Norte', dominio: 'distnorte.com.br', segmento: 'DISTRIBUIDOR', cidade: 'Manaus', uf: 'AM', regiao: 'Norte', cep: '69010-100' },
-  { nome: 'Lanchonete da Praça', dominio: 'lancheria.com.br', segmento: 'LANCHONETE', cidade: 'Curitiba', uf: 'PR', regiao: 'Sul', cep: '80010-010' },
-  { nome: 'Hotel Plaza', dominio: 'hotelplaza.com.br', segmento: 'HOTEL', cidade: 'Recife', uf: 'PE', regiao: 'Nordeste', cep: '50010-000' },
-  { nome: 'Confeitaria Doce', dominio: 'docebrasil.com.br', segmento: 'CONFEITARIA', cidade: 'Porto Alegre', uf: 'RS', regiao: 'Sul', cep: '90010-100' },
-  { nome: 'Pizzaria Bella', dominio: 'pizzariabella.com.br', segmento: 'PIZZARIA', cidade: 'Salvador', uf: 'BA', regiao: 'Nordeste', cep: '40010-000' },
-  { nome: 'Conveniência 24h', dominio: 'conv24h.com.br', segmento: 'CONVENIENCIA', cidade: 'Fortaleza', uf: 'CE', regiao: 'Nordeste', cep: '60010-010' },
-  { nome: 'Buffet Eventos', dominio: 'buffeteventos.com.br', segmento: 'BUFFET', cidade: 'Brasília', uf: 'DF', regiao: 'Centro-Oeste', cep: '70040-010' },
+  {
+    nome: 'Padaria do Bairro',
+    dominio: 'padariademo.com.br',
+    segmento: 'PADARIA',
+    cidade: 'São Paulo',
+    uf: 'SP',
+    regiao: 'Sudeste',
+    cep: '01310-100',
+  },
+  {
+    nome: 'Mercado Central',
+    dominio: 'mercadocentral.com.br',
+    segmento: 'MERCADO',
+    cidade: 'Rio de Janeiro',
+    uf: 'RJ',
+    regiao: 'Sudeste',
+    cep: '20040-020',
+  },
+  {
+    nome: 'Restaurante Sabor',
+    dominio: 'sabor.com.br',
+    segmento: 'RESTAURANTE',
+    cidade: 'Belo Horizonte',
+    uf: 'MG',
+    regiao: 'Sudeste',
+    cep: '30130-010',
+  },
+  {
+    nome: 'Distribuidora Norte',
+    dominio: 'distnorte.com.br',
+    segmento: 'DISTRIBUIDOR',
+    cidade: 'Manaus',
+    uf: 'AM',
+    regiao: 'Norte',
+    cep: '69010-100',
+  },
+  {
+    nome: 'Lanchonete da Praça',
+    dominio: 'lancheria.com.br',
+    segmento: 'LANCHONETE',
+    cidade: 'Curitiba',
+    uf: 'PR',
+    regiao: 'Sul',
+    cep: '80010-010',
+  },
+  {
+    nome: 'Hotel Plaza',
+    dominio: 'hotelplaza.com.br',
+    segmento: 'HOTEL',
+    cidade: 'Recife',
+    uf: 'PE',
+    regiao: 'Nordeste',
+    cep: '50010-000',
+  },
+  {
+    nome: 'Confeitaria Doce',
+    dominio: 'docebrasil.com.br',
+    segmento: 'CONFEITARIA',
+    cidade: 'Porto Alegre',
+    uf: 'RS',
+    regiao: 'Sul',
+    cep: '90010-100',
+  },
+  {
+    nome: 'Pizzaria Bella',
+    dominio: 'pizzariabella.com.br',
+    segmento: 'PIZZARIA',
+    cidade: 'Salvador',
+    uf: 'BA',
+    regiao: 'Nordeste',
+    cep: '40010-000',
+  },
+  {
+    nome: 'Conveniência 24h',
+    dominio: 'conv24h.com.br',
+    segmento: 'CONVENIENCIA',
+    cidade: 'Fortaleza',
+    uf: 'CE',
+    regiao: 'Nordeste',
+    cep: '60010-010',
+  },
+  {
+    nome: 'Buffet Eventos',
+    dominio: 'buffeteventos.com.br',
+    segmento: 'BUFFET',
+    cidade: 'Brasília',
+    uf: 'DF',
+    regiao: 'Centro-Oeste',
+    cep: '70040-010',
+  },
 ];
 
 const PRODUTOS_DEMO = [
-  { nome: 'Óleo de Girassol 900ml', descricao: 'Óleo refinado em garrafa pet de 900ml', marca: 'Soya', linha: 'Alimentos', categoria: 'Óleos', unidade: 'UN', precoBase: 8.5, skuPrefix: 'OLE' },
-  { nome: 'Açúcar Refinado 1kg', descricao: 'Pacote de 1kg açúcar cristal refinado', marca: 'União', linha: 'Alimentos', categoria: 'Açúcares', unidade: 'UN', precoBase: 5.2, skuPrefix: 'ACU' },
-  { nome: 'Farinha de Trigo 5kg', descricao: 'Farinha tipo 1 saco 5kg', marca: 'Dona Benta', linha: 'Alimentos', categoria: 'Farinhas', unidade: 'UN', precoBase: 18.9, skuPrefix: 'FAR' },
-  { nome: 'Leite Integral 1L', descricao: 'Leite UHT integral caixa 1 litro', marca: 'Italac', linha: 'Bebidas', categoria: 'Laticínios', unidade: 'UN', precoBase: 4.8, skuPrefix: 'LEI' },
-  { nome: 'Refrigerante Cola 2L', descricao: 'Garrafa pet 2 litros sabor cola', marca: 'Coca-Cola', linha: 'Bebidas', categoria: 'Refrigerantes', unidade: 'UN', precoBase: 9.9, skuPrefix: 'REF' },
-  { nome: 'Detergente Neutro 500ml', descricao: 'Detergente líquido neutro 500ml', marca: 'Ypê', linha: 'Limpeza', categoria: 'Detergentes', unidade: 'UN', precoBase: 3.5, skuPrefix: 'DET' },
-  { nome: 'Sabão em Pó 1kg', descricao: 'Sabão em pó concentrado 1kg', marca: 'Omo', linha: 'Limpeza', categoria: 'Lavar Roupa', unidade: 'UN', precoBase: 14.5, skuPrefix: 'SAB' },
-  { nome: 'Café Torrado 500g', descricao: 'Café torrado e moído pacote 500g', marca: 'Melitta', linha: 'Bebidas', categoria: 'Cafés', unidade: 'UN', precoBase: 18.0, skuPrefix: 'CAF' },
-  { nome: 'Embalagem Saco 5kg', descricao: 'Saco kraft natural 5kg pacote 100un', marca: 'EmbalaFácil', linha: 'Embalagens', categoria: 'Sacos', unidade: 'PCT', precoBase: 45.0, skuPrefix: 'EMB' },
-  { nome: 'Caixa Pizza 35cm', descricao: 'Caixa de pizza papelão 35cm pacote 50un', marca: 'EmbalaFácil', linha: 'Embalagens', categoria: 'Caixas', unidade: 'PCT', precoBase: 38.0, skuPrefix: 'CXP' },
-  { nome: 'Água Sanitária 2L', descricao: 'Água sanitária 2,5% galão 2 litros', marca: 'Q.boa', linha: 'Limpeza', categoria: 'Desinfetantes', unidade: 'UN', precoBase: 4.2, skuPrefix: 'AGU' },
-  { nome: 'Sal Refinado 1kg', descricao: 'Sal refinado iodado pacote 1kg', marca: 'Cisne', linha: 'Alimentos', categoria: 'Sal', unidade: 'UN', precoBase: 2.8, skuPrefix: 'SAL' },
+  {
+    nome: 'Óleo de Girassol 900ml',
+    descricao: 'Óleo refinado em garrafa pet de 900ml',
+    marca: 'Soya',
+    linha: 'Alimentos',
+    categoria: 'Óleos',
+    unidade: 'UN',
+    precoBase: 8.5,
+    skuPrefix: 'OLE',
+  },
+  {
+    nome: 'Açúcar Refinado 1kg',
+    descricao: 'Pacote de 1kg açúcar cristal refinado',
+    marca: 'União',
+    linha: 'Alimentos',
+    categoria: 'Açúcares',
+    unidade: 'UN',
+    precoBase: 5.2,
+    skuPrefix: 'ACU',
+  },
+  {
+    nome: 'Farinha de Trigo 5kg',
+    descricao: 'Farinha tipo 1 saco 5kg',
+    marca: 'Dona Benta',
+    linha: 'Alimentos',
+    categoria: 'Farinhas',
+    unidade: 'UN',
+    precoBase: 18.9,
+    skuPrefix: 'FAR',
+  },
+  {
+    nome: 'Leite Integral 1L',
+    descricao: 'Leite UHT integral caixa 1 litro',
+    marca: 'Italac',
+    linha: 'Bebidas',
+    categoria: 'Laticínios',
+    unidade: 'UN',
+    precoBase: 4.8,
+    skuPrefix: 'LEI',
+  },
+  {
+    nome: 'Refrigerante Cola 2L',
+    descricao: 'Garrafa pet 2 litros sabor cola',
+    marca: 'Coca-Cola',
+    linha: 'Bebidas',
+    categoria: 'Refrigerantes',
+    unidade: 'UN',
+    precoBase: 9.9,
+    skuPrefix: 'REF',
+  },
+  {
+    nome: 'Detergente Neutro 500ml',
+    descricao: 'Detergente líquido neutro 500ml',
+    marca: 'Ypê',
+    linha: 'Limpeza',
+    categoria: 'Detergentes',
+    unidade: 'UN',
+    precoBase: 3.5,
+    skuPrefix: 'DET',
+  },
+  {
+    nome: 'Sabão em Pó 1kg',
+    descricao: 'Sabão em pó concentrado 1kg',
+    marca: 'Omo',
+    linha: 'Limpeza',
+    categoria: 'Lavar Roupa',
+    unidade: 'UN',
+    precoBase: 14.5,
+    skuPrefix: 'SAB',
+  },
+  {
+    nome: 'Café Torrado 500g',
+    descricao: 'Café torrado e moído pacote 500g',
+    marca: 'Melitta',
+    linha: 'Bebidas',
+    categoria: 'Cafés',
+    unidade: 'UN',
+    precoBase: 18.0,
+    skuPrefix: 'CAF',
+  },
+  {
+    nome: 'Embalagem Saco 5kg',
+    descricao: 'Saco kraft natural 5kg pacote 100un',
+    marca: 'EmbalaFácil',
+    linha: 'Embalagens',
+    categoria: 'Sacos',
+    unidade: 'PCT',
+    precoBase: 45.0,
+    skuPrefix: 'EMB',
+  },
+  {
+    nome: 'Caixa Pizza 35cm',
+    descricao: 'Caixa de pizza papelão 35cm pacote 50un',
+    marca: 'EmbalaFácil',
+    linha: 'Embalagens',
+    categoria: 'Caixas',
+    unidade: 'PCT',
+    precoBase: 38.0,
+    skuPrefix: 'CXP',
+  },
+  {
+    nome: 'Água Sanitária 2L',
+    descricao: 'Água sanitária 2,5% galão 2 litros',
+    marca: 'Q.boa',
+    linha: 'Limpeza',
+    categoria: 'Desinfetantes',
+    unidade: 'UN',
+    precoBase: 4.2,
+    skuPrefix: 'AGU',
+  },
+  {
+    nome: 'Sal Refinado 1kg',
+    descricao: 'Sal refinado iodado pacote 1kg',
+    marca: 'Cisne',
+    linha: 'Alimentos',
+    categoria: 'Sal',
+    unidade: 'UN',
+    precoBase: 2.8,
+    skuPrefix: 'SAL',
+  },
 ];
 
 const MENSAGENS_DEMO: string[][] = [
-  ['Oi, tudo bem?', 'Olá! Em que posso ajudar?', 'Vocês têm óleo de girassol disponível?', 'Sim! Quer fazer o pedido?', 'Quero 20 caixas, por favor.'],
+  [
+    'Oi, tudo bem?',
+    'Olá! Em que posso ajudar?',
+    'Vocês têm óleo de girassol disponível?',
+    'Sim! Quer fazer o pedido?',
+    'Quero 20 caixas, por favor.',
+  ],
   ['Bom dia', 'Bom dia! Como posso ajudar?', 'Preciso de farinha de trigo urgente'],
-  ['Boa tarde', 'Olá! Tudo certo?', 'Vocês entregam em Manaus?', 'Sim, frete CIF acima de R$ 5.000.'],
+  [
+    'Boa tarde',
+    'Olá! Tudo certo?',
+    'Vocês entregam em Manaus?',
+    'Sim, frete CIF acima de R$ 5.000.',
+  ],
   ['Tem desconto à vista?', 'Sim, 3% pagando no boleto à vista.', 'Fechado!'],
-  ['Pedido chegou faltando 2 caixas', 'Vou verificar com o transportador. Pode me passar o número da nota?'],
+  [
+    'Pedido chegou faltando 2 caixas',
+    'Vou verificar com o transportador. Pode me passar o número da nota?',
+  ],
 ];
 
 const COMENTARIOS_NPS = {
-  PROMOTOR: ['Excelente atendimento!', 'Produtos de qualidade, entrega rápida.', 'Recomendo a todos os colegas.', 'Sempre que preciso atende muito bem.'],
-  PASSIVO: ['Bom, mas o prazo de entrega poderia melhorar.', 'Produtos ok, atendimento mediano.', 'Esperava algo um pouco melhor.'],
-  DETRATOR: ['Entrega atrasou 2 vezes seguidas.', 'Produto chegou com avaria.', 'Atendimento muito demorado.', 'Difícil falar com o representante.'],
+  PROMOTOR: [
+    'Excelente atendimento!',
+    'Produtos de qualidade, entrega rápida.',
+    'Recomendo a todos os colegas.',
+    'Sempre que preciso atende muito bem.',
+  ],
+  PASSIVO: [
+    'Bom, mas o prazo de entrega poderia melhorar.',
+    'Produtos ok, atendimento mediano.',
+    'Esperava algo um pouco melhor.',
+  ],
+  DETRATOR: [
+    'Entrega atrasou 2 vezes seguidas.',
+    'Produto chegou com avaria.',
+    'Atendimento muito demorado.',
+    'Difícil falar com o representante.',
+  ],
 } as const;

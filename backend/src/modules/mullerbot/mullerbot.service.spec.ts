@@ -75,8 +75,9 @@ const makeCache = () => ({
  * cálculo de tokens ser estável entre runs.
  */
 const makePersona = () => ({
-  compilarSystemPrompt: vi.fn(async (_empresaId: string) =>
-    'Você é a Bê, assistente comercial. Use APENAS o catálogo fornecido.',
+  compilarSystemPrompt: vi.fn(
+    async (_empresaId: string) =>
+      'Você é a Bê, assistente comercial. Use APENAS o catálogo fornecido.',
   ),
 });
 

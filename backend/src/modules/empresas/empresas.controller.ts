@@ -153,10 +153,7 @@ export class EmpresasController {
   @HttpCode(HttpStatus.NO_CONTENT)
   @Audit({ action: 'delete_logo', resource: 'empresa', resourceIdFrom: 'params.id' })
   @ApiOperation({ summary: 'Remove o logo da empresa' })
-  async removeLogo(
-    @CurrentUser() user: AuthenticatedUser,
-    @Param('id') id: string,
-  ): Promise<void> {
+  async removeLogo(@CurrentUser() user: AuthenticatedUser, @Param('id') id: string): Promise<void> {
     await this.logoService.remove(user, id);
   }
 }

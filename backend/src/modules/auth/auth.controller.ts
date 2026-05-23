@@ -143,8 +143,7 @@ export class AuthController {
   @Public()
   @HttpCode(HttpStatus.OK)
   @ApiOperation({
-    summary:
-      'Finaliza convite: valida token Supabase, seta senha, ativa usuário e abre sessão',
+    summary: 'Finaliza convite: valida token Supabase, seta senha, ativa usuário e abre sessão',
   })
   async welcome(
     @Body(new ZodValidationPipe(welcomeSchema)) dto: WelcomeDto,

@@ -27,17 +27,13 @@ export class RedisService implements OnModuleInit, OnModuleDestroy {
     // createIORedisClient já attacha handler 'error' (evita unhandled event).
     // Aqui passamos onError customizado pra deduplicar log spam.
     const redisUrl = this.env.get('REDIS_URL');
-    this.clientInstance = createIORedisClient(
-      redisUrl,
-      { maxRetriesPerRequest: null },
-      (err) => {
-        const now = Date.now();
-        if (now - this.lastErrorLog > 30_000) {
-          this.logger.warn(`Redis error: ${err.message} (suprimindo logs duplicados por 30s)`);
-          this.lastErrorLog = now;
-        }
-      },
-    );
+    this.clientInstance = createIORedisClient(redisUrl, { maxRetriesPerRequest: null }, (err) => {
+      const now = Date.now();
+      if (now - this.lastErrorLog > 30_000) {
+        this.logger.warn(`Redis error: ${err.message} (suprimindo logs duplicados por 30s)`);
+        this.lastErrorLog = now;
+      }
+    });
     this.clientInstance.on('connect', () => {
       this.lastErrorLog = 0; // reset throttle quando volta
       this.logger.log('Redis conectado');

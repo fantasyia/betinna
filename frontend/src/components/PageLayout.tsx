@@ -33,7 +33,7 @@ import { cn } from '@/lib/cn';
 
 const MOBILE_BREAKPOINT = 768;
 
-// eslint-disable-next-line react-refresh/only-export-components
+ 
 export function useIsMobile(): boolean {
   const [isMobile, setIsMobile] = useState(() =>
     typeof window !== 'undefined' && window.innerWidth < MOBILE_BREAKPOINT,

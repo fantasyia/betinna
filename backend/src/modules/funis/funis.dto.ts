@@ -35,9 +35,7 @@ export const createFunilSchema = z.object({
 });
 export type CreateFunilDto = z.infer<typeof createFunilSchema>;
 
-export const updateFunilSchema = createFunilSchema
-  .omit({ etapas: true })
-  .partial();
+export const updateFunilSchema = createFunilSchema.omit({ etapas: true }).partial();
 export type UpdateFunilDto = z.infer<typeof updateFunilSchema>;
 
 /** Reordena etapas em batch (passa lista completa de ids na ordem desejada). */

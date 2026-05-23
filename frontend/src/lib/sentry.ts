@@ -123,7 +123,7 @@ export function initSentry(): void {
   (window as unknown as { __BETINNA_TEST_SENTRY__?: () => Promise<string | null> }).__BETINNA_TEST_SENTRY__ =
     async () => {
       if (!ENABLED) {
-        // eslint-disable-next-line no-console
+         
         console.warn(
           '[Sentry test] desabilitado — VITE_SENTRY_DSN ausente do bundle',
         );
@@ -133,16 +133,16 @@ export function initSentry(): void {
         new Error(`Teste Sentry · ${new Date().toISOString()}`),
         { tags: { source: '__BETINNA_TEST_SENTRY__' } },
       );
-      // eslint-disable-next-line no-console
+       
       console.info(`[Sentry test] eventId=${eventId} — forçando flush (2s)...`);
       try {
         const flushed = await Sentry.flush(2000);
-        // eslint-disable-next-line no-console
+         
         console.info(
           `[Sentry test] flush ${flushed ? '✅ ok' : '⚠️ timeout/falha'} — confira Network tab + dashboard`,
         );
       } catch (err) {
-        // eslint-disable-next-line no-console
+         
         console.error('[Sentry test] flush falhou:', err);
       }
       return eventId;
@@ -200,7 +200,7 @@ export function initSentry(): void {
       },
     });
 
-    // eslint-disable-next-line no-console
+     
     console.info(
       `[Sentry] ✅ inicializado · env=${ENV} · sdk=${Sentry.SDK_VERSION} · host=${dsnHost}`,
     );
@@ -210,7 +210,7 @@ export function initSentry(): void {
     // quando o serviço frontend foi BUILDADO. Vite congela env vars no
     // bundle em build-time, não em runtime — setar a var depois do build
     // não tem efeito até o próximo redeploy.
-    // eslint-disable-next-line no-console
+     
     console.warn(
       '[Sentry] ⚠️ desabilitado · VITE_SENTRY_DSN não está no bundle. ' +
         'Se a env var existe no Railway, é provável que tenha sido setada APÓS o ' +

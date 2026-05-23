@@ -203,21 +203,29 @@ describe('SeedDemoService', () => {
       expect(prisma.cliente.deleteMany).toHaveBeenCalled();
       expect(prisma.cliente.createMany).toHaveBeenCalled();
       // Ordem: deleteMany invocado antes do createMany no order de invocação
-      const deleteOrder =
-        prisma.cliente.deleteMany.mock.invocationCallOrder[0];
-      const createOrder =
-        prisma.cliente.createMany.mock.invocationCallOrder[0];
+      const deleteOrder = prisma.cliente.deleteMany.mock.invocationCallOrder[0];
+      const createOrder = prisma.cliente.createMany.mock.invocationCallOrder[0];
       expect(deleteOrder).toBeLessThan(createOrder);
     });
 
     it('todos os createMany recebem isDemo=true em cada record', async () => {
       await svc.run('emp-1', 0.1);
 
-      const clientesData = prisma.cliente.createMany.mock.calls[0][0].data as Array<{ isDemo: boolean }>;
-      const produtosData = prisma.produto.createMany.mock.calls[0][0].data as Array<{ isDemo: boolean }>;
-      const amostrasData = prisma.amostra.createMany.mock.calls[0][0].data as Array<{ isDemo: boolean }>;
-      const respostasData = prisma.respostaNPS.createMany.mock.calls[0][0].data as Array<{ isDemo: boolean }>;
-      const comissoesData = prisma.comissao.createMany.mock.calls[0][0].data as Array<{ isDemo: boolean }>;
+      const clientesData = prisma.cliente.createMany.mock.calls[0][0].data as Array<{
+        isDemo: boolean;
+      }>;
+      const produtosData = prisma.produto.createMany.mock.calls[0][0].data as Array<{
+        isDemo: boolean;
+      }>;
+      const amostrasData = prisma.amostra.createMany.mock.calls[0][0].data as Array<{
+        isDemo: boolean;
+      }>;
+      const respostasData = prisma.respostaNPS.createMany.mock.calls[0][0].data as Array<{
+        isDemo: boolean;
+      }>;
+      const comissoesData = prisma.comissao.createMany.mock.calls[0][0].data as Array<{
+        isDemo: boolean;
+      }>;
 
       expect(clientesData.every((c) => c.isDemo === true)).toBe(true);
       expect(produtosData.every((p) => p.isDemo === true)).toBe(true);

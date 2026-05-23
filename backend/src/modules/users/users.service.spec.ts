@@ -13,8 +13,9 @@ import { UsersService } from './users.service';
 // Supabase mock (hoisted so vi.mock factory can close over it)
 // ---------------------------------------------------------------------------
 
-const { mockInviteUserByEmail } = vi.hoisted(() => ({
+const { mockInviteUserByEmail, mockGenerateLink } = vi.hoisted(() => ({
   mockInviteUserByEmail: vi.fn(),
+  mockGenerateLink: vi.fn(),
 }));
 
 vi.mock('@supabase/supabase-js', () => ({
@@ -22,6 +23,7 @@ vi.mock('@supabase/supabase-js', () => ({
     auth: {
       admin: {
         inviteUserByEmail: mockInviteUserByEmail,
+        generateLink: mockGenerateLink,
       },
     },
   })),
@@ -137,6 +139,7 @@ describe('UsersService', () => {
       redis as never,
       {
         enviarBoasVindas: vi.fn().mockResolvedValue({ ok: true }),
+        enviarReenvioConvite: vi.fn().mockResolvedValue({ ok: true }),
         enviarAprovacaoResolvida: vi.fn().mockResolvedValue({ ok: true }),
         enviarComissaoFechada: vi.fn().mockResolvedValue({ ok: true }),
         enviarOcorrenciaCritica: vi.fn().mockResolvedValue({ ok: true }),
@@ -144,6 +147,12 @@ describe('UsersService', () => {
       } as never,
     );
     mockInviteUserByEmail.mockReset();
+    mockGenerateLink.mockReset();
+    // Default: generateLink retorna um action_link válido (sucesso)
+    mockGenerateLink.mockResolvedValue({
+      data: { properties: { action_link: 'https://supabase/invite-link' } },
+      error: null,
+    });
   });
 
   // -------------------------------------------------------------------------
@@ -517,12 +526,14 @@ describe('UsersService', () => {
     it('reenvio com sucesso para usuário PENDENTE', async () => {
       const pendente = fakeDbUser({ status: 'PENDENTE', email: 'novo@empresa.com' });
       prisma.usuario.findUnique.mockResolvedValue(pendente);
-      mockInviteUserByEmail.mockResolvedValue({ error: null });
 
       const result = await service.resendInvite(fakeUser(), 'user-1');
 
       expect(result).toEqual({ ok: true, sentTo: 'novo@empresa.com' });
-      expect(mockInviteUserByEmail).toHaveBeenCalledWith('novo@empresa.com');
+      // Agora usa generateLink (não mais inviteUserByEmail) — U2 fix 2026-05-23
+      expect(mockGenerateLink).toHaveBeenCalledWith(
+        expect.objectContaining({ type: 'invite', email: 'novo@empresa.com' }),
+      );
     });
 
     it('lança BusinessRuleException se status não for PENDENTE', async () => {
@@ -532,13 +543,13 @@ describe('UsersService', () => {
       await expect(service.resendInvite(fakeUser(), 'user-1')).rejects.toBeInstanceOf(
         BusinessRuleException,
       );
-      expect(mockInviteUserByEmail).not.toHaveBeenCalled();
+      expect(mockGenerateLink).not.toHaveBeenCalled();
     });
 
     it('lança BusinessRuleException se Supabase retornar erro', async () => {
       const pendente = fakeDbUser({ status: 'PENDENTE' });
       prisma.usuario.findUnique.mockResolvedValue(pendente);
-      mockInviteUserByEmail.mockResolvedValue({ error: { message: 'rate limited' } });
+      mockGenerateLink.mockResolvedValue({ data: null, error: { message: 'rate limited' } });
 
       await expect(service.resendInvite(fakeUser(), 'user-1')).rejects.toBeInstanceOf(
         BusinessRuleException,
@@ -663,7 +674,9 @@ describe('UsersService', () => {
       prisma.usuario.findUnique.mockResolvedValue(null);
       prisma.empresa.findMany.mockResolvedValue([{ id: 'emp-1', ativo: false }]);
 
-      await expect(service.create(fakeUser(), baseDto)).rejects.toBeInstanceOf(BusinessRuleException);
+      await expect(service.create(fakeUser(), baseDto)).rejects.toBeInstanceOf(
+        BusinessRuleException,
+      );
       expect(mockInviteUserByEmail).not.toHaveBeenCalled();
     });
 
@@ -675,7 +688,9 @@ describe('UsersService', () => {
         error: { message: 'email invalid' },
       });
 
-      await expect(service.create(fakeUser(), baseDto)).rejects.toBeInstanceOf(BusinessRuleException);
+      await expect(service.create(fakeUser(), baseDto)).rejects.toBeInstanceOf(
+        BusinessRuleException,
+      );
       expect(prisma.usuario.create).not.toHaveBeenCalled();
     });
 
@@ -698,9 +713,9 @@ describe('UsersService', () => {
         .mockResolvedValueOnce({ role: 'REP' });
       prisma.empresa.findMany.mockResolvedValue([{ id: 'emp-1', ativo: true }]);
 
-      await expect(service.create(fakeUser(), { ...baseDto, gerenteId: 'rep-1' })).rejects.toBeInstanceOf(
-        BusinessRuleException,
-      );
+      await expect(
+        service.create(fakeUser(), { ...baseDto, gerenteId: 'rep-1' }),
+      ).rejects.toBeInstanceOf(BusinessRuleException);
     });
   });
 

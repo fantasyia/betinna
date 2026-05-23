@@ -133,11 +133,7 @@ export class NpsService {
     };
   }
 
-  async submitPublico(
-    slug: string,
-    dto: SubmitNpsDto,
-    meta: { ip?: string; userAgent?: string },
-  ) {
+  async submitPublico(slug: string, dto: SubmitNpsDto, meta: { ip?: string; userAgent?: string }) {
     const pesquisa = await this.prisma.pesquisaNPS.findFirst({
       where: { slug, ativo: true },
       select: { id: true, mensagemAgradecimento: true, empresaId: true, expiraEm: true },
@@ -174,7 +170,8 @@ export class NpsService {
     return {
       ok: true,
       message:
-        pesquisa.mensagemAgradecimento ?? 'Obrigado pela resposta! Seu feedback é muito importante.',
+        pesquisa.mensagemAgradecimento ??
+        'Obrigado pela resposta! Seu feedback é muito importante.',
     };
   }
 

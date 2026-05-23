@@ -206,7 +206,7 @@ function ToastCard({
   );
 }
 
-// eslint-disable-next-line react-refresh/only-export-components -- hook coexiste com Provider neste arquivo por simplicidade; mover pra hook próprio quebraria 10+ imports
+ 
 export function useToast(): ToastContextValue {
   const ctx = useContext(ToastContext);
   if (!ctx) {
@@ -220,11 +220,11 @@ export function useToast(): ToastContextValue {
  * Cuidado: só funciona depois do <ToastProvider> montar.
  */
 let globalToastRef: ToastContextValue | null = null;
-// eslint-disable-next-line react-refresh/only-export-components
+ 
 export function setGlobalToast(t: ToastContextValue) {
   globalToastRef = t;
 }
-// eslint-disable-next-line react-refresh/only-export-components
+ 
 export function globalToast(): ToastContextValue | null {
   return globalToastRef;
 }

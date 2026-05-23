@@ -214,8 +214,7 @@ export class LeadsService {
           nome,
           cor: '#7c3aed',
           ordem,
-          tipo:
-            nome === 'GANHO' ? 'GANHO' : nome === 'PERDIDO' ? 'PERDIDO' : 'ATIVA',
+          tipo: nome === 'GANHO' ? 'GANHO' : nome === 'PERDIDO' ? 'PERDIDO' : 'ATIVA',
           probabilidade: 50,
         })),
       },
@@ -331,8 +330,7 @@ export class LeadsService {
         throw new BusinessRuleException(`Transição inválida: ${lead.etapa} → ${dto.etapa}`);
       }
       novaEtapaEnum = dto.etapa;
-      etapaTipo =
-        dto.etapa === 'GANHO' ? 'GANHO' : dto.etapa === 'PERDIDO' ? 'PERDIDO' : 'ATIVA';
+      etapaTipo = dto.etapa === 'GANHO' ? 'GANHO' : dto.etapa === 'PERDIDO' ? 'PERDIDO' : 'ATIVA';
     } else {
       throw new BusinessRuleException('Informe `etapa` ou `funilEtapaId`');
     }
@@ -361,10 +359,7 @@ export class LeadsService {
       data.fechadoEm = new Date();
     }
     // Reabrir lead fechado: limpa motivos e fechadoEm
-    if (
-      (lead.etapa === 'PERDIDO' || lead.etapa === 'GANHO') &&
-      etapaTipo === 'ATIVA'
-    ) {
+    if ((lead.etapa === 'PERDIDO' || lead.etapa === 'GANHO') && etapaTipo === 'ATIVA') {
       data.motivoPerda = null;
       data.motivoGanho = null;
       data.fechadoEm = null;

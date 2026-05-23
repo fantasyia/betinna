@@ -754,14 +754,13 @@ export class RelatoriosService {
   private async dashboardInternal(user: AuthenticatedUser, params: PeriodoDto) {
     // Chama versões Internal (sem cache) — dashboard tem seu próprio cache;
     // não vale pagar 2x o overhead de SHA + Redis get/set por área.
-    const [vendasData, funilData, sacData, campanhasData, amostrasData] =
-      await Promise.all([
-        this.vendasInternal(user, params),
-        this.funilInternal(user, params),
-        this.sacInternal(user, params),
-        this.campanhasInternal(user, params),
-        this.amostrasInternal(user, params),
-      ]);
+    const [vendasData, funilData, sacData, campanhasData, amostrasData] = await Promise.all([
+      this.vendasInternal(user, params),
+      this.funilInternal(user, params),
+      this.sacInternal(user, params),
+      this.campanhasInternal(user, params),
+      this.amostrasInternal(user, params),
+    ]);
 
     return {
       periodo: { de: params.de, ate: params.ate },

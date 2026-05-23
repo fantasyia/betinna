@@ -39,7 +39,7 @@ if (typeof navigator !== 'undefined' && 'serviceWorker' in navigator) {
   navigator.serviceWorker.getRegistrations().then((regs) => {
     for (const reg of regs) {
       if (reg.waiting) {
-        // eslint-disable-next-line no-console
+         
         console.info('[pwa] SW novo aguardando, forçando skipWaiting…');
         reg.waiting.postMessage({ type: 'SKIP_WAITING' });
       }
@@ -53,7 +53,7 @@ if (typeof navigator !== 'undefined' && 'serviceWorker' in navigator) {
   navigator.serviceWorker.addEventListener('controllerchange', () => {
     if (refreshing) return;
     refreshing = true;
-    // eslint-disable-next-line no-console
+     
     console.info('[pwa] SW assumiu controle — recarregando página…');
     window.location.reload();
   });
