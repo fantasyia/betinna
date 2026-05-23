@@ -279,9 +279,14 @@ jobs:
       - name: Deploy API service
         env:
           RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
-        working-directory: ./backend
+        # IMPORTANTE: roda da RAIZ do monorepo (sem working-directory: ./backend).
+        # O serviço Railway 'api' está configurado com Root Directory = /backend,
+        # então ele precisa receber o snapshot com a pasta backend/ existente.
+        # Antes (com working-directory: ./backend), o upload mandava só o conteúdo
+        # da pasta — Railway abria o snapshot e não achava 'backend/' (erro:
+        # "no such file or directory: backend"). Fix 2026-05-23.
         run: |
-          echo "→ Deploying API service to Railway..."
+          echo "→ Deploying API service to Railway (from monorepo root)..."
           railway up --service api --detach
           echo "→ API deploy triggered"
 
@@ -316,17 +321,18 @@ jobs:
       - name: Deploy Worker service
         env:
           RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
-        working-directory: ./backend
+        # Mesmo motivo do API: roda da raiz pra Railway achar backend/
         run: |
-          echo "→ Deploying Worker service..."
+          echo "→ Deploying Worker service (from monorepo root)..."
           railway up --service worker --detach
 
       - name: Deploy Frontend service
         env:
           RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
-        working-directory: ./frontend
+        # Mesmo motivo: roda da raiz; Railway service 'frontend' tem
+        # Root Directory = /frontend configurado.
         run: |
-          echo "→ Deploying Frontend service..."
+          echo "→ Deploying Frontend service (from monorepo root)..."
           railway up --service frontend --detach
 
       - name: Notify deploy success
