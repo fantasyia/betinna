@@ -48,7 +48,6 @@ export default function ProdutosPage() {
   const [ativo, setAtivo] = useState('');
   const [semEstoque, setSemEstoque] = useState('');
   const [editing, setEditing] = useState<Produto | null>(null);
-  const [creating, setCreating] = useState(false);
 
   const listPath = useMemo(() => {
     const qs = new URLSearchParams({ page: String(page), limit: '20' });
@@ -196,16 +195,7 @@ export default function ProdutosPage() {
   return (
     <PageLayout
       title="Produtos"
-      actions={
-        <button
-          type="button"
-          data-testid="prod-new-btn"
-          onClick={() => setCreating(true)}
-          style={btn}
-        >
-          + Novo produto
-        </button>
-      }
+      description="Os produtos são sincronizados automaticamente do Omie. Para incluir ou alterar a ficha do produto, edite no Omie e aguarde a próxima sincronização."
     >
       <CatalogoTabs />
       <div style={card}>
@@ -304,16 +294,12 @@ export default function ProdutosPage() {
         </StateView>
       </div>
 
-      {(creating || editing) && (
+      {editing && (
         <ProdutoFormModal
           produto={editing}
-          onClose={() => {
-            setEditing(null);
-            setCreating(false);
-          }}
+          onClose={() => setEditing(null)}
           onSaved={() => {
             setEditing(null);
-            setCreating(false);
             refetch();
           }}
         />
