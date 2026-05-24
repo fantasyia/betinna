@@ -143,6 +143,13 @@ export const envSchema = z
     SENDGRID_FROM_EMAIL: z.string().email().default('noreply@betinna.ai'),
     SENDGRID_FROM_NAME: z.string().default('Betinna.ai'),
 
+    // Resend (alternativa preferida ao SendGrid pra e-mails sistêmicos)
+    // Quando RESEND_API_KEY está configurado, TransactionalEmailService usa
+    // Resend. Senão, cai pro SendGrid (legado). Cria conta em resend.com.
+    RESEND_API_KEY: z.string().optional().default(''),
+    RESEND_FROM_EMAIL: z.string().email().optional(),
+    RESEND_FROM_NAME: z.string().optional(),
+
     // Observability
     SENTRY_DSN: z.string().optional().default(''),
     /** Sample rate de traces (0–1). 0.1 = 10% das requests instrumentadas. Em prod, manter baixo pra controlar custo. */

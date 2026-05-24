@@ -1,5 +1,6 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { EnvService } from '@config/env.service';
+import { ResendService } from '@integrations/resend/resend.service';
 import { SendGridService } from './sendgrid.service';
 import {
   templateAmostraFollowup,
@@ -16,11 +17,12 @@ import {
  * Encapsula:
  *  - Construção da `frontendUrl` (deep links nos botões)
  *  - Escolha do template correto
- *  - Chamada do SendGridService.enviarSistemico (chave corporativa do env)
- *  - Tratamento best-effort: falha de e-mail nunca derruba a operação
+ *  - Chamada do provider: prefere Resend (resend.com) quando configurado,
+ *    fallback pro SendGrid (legado, ainda usado pra envios per-user)
  *
- * Quando SendGrid não tem API key (env vazio), `enviarSistemico` loga warn
- * e retorna status 0 — feature degrada graciosamente.
+ * Decisão Leo 2026-05-24: usar Resend como provider sistêmico (API mais
+ * simples, free tier 100/dia generoso). SendGrid permanece pra envios
+ * user-scoped (cada user tem própria credencial via UsuarioIntegracao).
  */
 @Injectable()
 export class TransactionalEmailService {
@@ -28,6 +30,7 @@ export class TransactionalEmailService {
 
   constructor(
     private readonly sg: SendGridService,
+    private readonly resend: ResendService,
     private readonly env: EnvService,
   ) {}
 
@@ -46,14 +49,21 @@ export class TransactionalEmailService {
   }
 
   private async send(para: string, assunto: string, html: string): Promise<{ ok: boolean }> {
+    // Prefere Resend quando configurado (provider sistêmico atual).
+    // Fallback pro SendGrid quando RESEND_API_KEY não está setada.
+    const provider = this.resend.isConfigured() ? 'resend' : 'sendgrid';
     try {
-      const r = await this.sg.enviarSistemico({ para, assunto, html });
-      return { ok: r.status >= 200 && r.status < 300 };
+      if (provider === 'resend') {
+        const r = await this.resend.enviar({ para, assunto, html });
+        return { ok: r.status >= 200 && r.status < 300 };
+      } else {
+        const r = await this.sg.enviarSistemico({ para, assunto, html });
+        return { ok: r.status >= 200 && r.status < 300 };
+      }
     } catch (err) {
       this.logger.warn(
-        `Falha enviando e-mail (best-effort) para=${para} assunto="${assunto.slice(0, 60)}": ${
-          err instanceof Error ? err.message : String(err)
-        }`,
+        `Falha enviando e-mail (best-effort, provider=${provider}) para=${para} ` +
+          `assunto="${assunto.slice(0, 60)}": ${err instanceof Error ? err.message : String(err)}`,
       );
       return { ok: false };
     }
