@@ -920,12 +920,14 @@ function ShareDialog({ onClose }: { onClose: () => void }) {
   const [error, setError] = useState<string | null>(null);
 
   async function share() {
-    if (!cliente) return;
     setBusy(true);
     setError(null);
     setResult(null);
     try {
-      const payload: Record<string, unknown> = { clienteId: cliente.id, canal };
+      // Cliente é opcional — quando ausente, gera link público "genérico"
+      // (preço de tabela × markup do rep, sem preço negociado).
+      const payload: Record<string, unknown> = { canal };
+      if (cliente) payload.clienteId = cliente.id;
       if (validoAte) payload.validoAte = validoAte;
       const r = await api.post<{ url?: string; pdfBase64?: string; sentToWhatsApp?: boolean }>(
         '/catalogo/share',
@@ -943,8 +945,8 @@ function ShareDialog({ onClose }: { onClose: () => void }) {
     <Dialog
       open
       onClose={onClose}
-      title="Compartilhar catálogo com cliente"
-      description="Envie o catálogo personalizado via WhatsApp, PDF ou link público."
+      title="Compartilhar catálogo"
+      description="Envie o catálogo via WhatsApp, PDF ou link público. Vincular cliente é opcional — sem cliente, o preço é o de tabela × seu markup."
       size="md"
       footer={
         !result ? (
@@ -954,7 +956,6 @@ function ShareDialog({ onClose }: { onClose: () => void }) {
             </Button>
             <Button
               data-testid="share-confirm"
-              disabled={!cliente}
               loading={busy}
               onClick={share}
               leftIcon={<Share2 className="h-3.5 w-3.5" />}
@@ -969,7 +970,10 @@ function ShareDialog({ onClose }: { onClose: () => void }) {
     >
       {!result ? (
         <div className="flex flex-col gap-3">
-          <Field label="Cliente" required>
+          <Field
+            label="Cliente (opcional)"
+            hint="Deixe em branco pra enviar pra qualquer pessoa (sem vínculo no sistema)"
+          >
             <AsyncCombobox<ClienteOpt>
               testId="share-cliente-picker"
               endpoint="/clientes"

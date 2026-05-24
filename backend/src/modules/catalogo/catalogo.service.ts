@@ -190,6 +190,29 @@ export class CatalogoService {
   }
 
   /**
+   * Preview "livre" do catálogo do rep — SEM cliente vinculado.
+   * Usa preço de tabela como base + markup do rep. Não considera
+   * preços negociados (não há cliente alvo).
+   *
+   * Usado quando o rep compartilha catálogo "pra qualquer pessoa"
+   * (envio livre via link público sem cadastro de cliente).
+   */
+  async previewSemCliente(user: AuthenticatedUser): Promise<PreviewItem[]> {
+    this.requireEmpresa(user);
+    const catalog = await this.listMyCatalog(user);
+    if (catalog.length === 0) return [];
+    return catalog.map((c) => {
+      const baseTrade = c.produto.precoTabela;
+      const precoFinal = Math.round(baseTrade * (1 + c.markup / 100) * 100) / 100;
+      return {
+        ...c,
+        precoFinal,
+        precoNegociado: false,
+      };
+    });
+  }
+
+  /**
    * Preview do catálogo do rep aplicado a um cliente específico.
    * Mostra qual preço o cliente vai ver — usando preço negociado
    * quando houver e aplicando o markup do rep sobre o resultado.
@@ -240,7 +263,7 @@ export class CatalogoService {
   ): Promise<{
     ok: true;
     canal: string;
-    clienteId: string;
+    clienteId: string | null;
     itens: number;
     token: string;
     previewUrl: string;
@@ -248,8 +271,16 @@ export class CatalogoService {
     if (!user.empresaIdAtiva) {
       throw new BusinessRuleException('Empresa não definida');
     }
-    const cliente = await this.clientes.findById(user, dto.clienteId);
-    const items = await this.previewParaCliente(user, dto.clienteId);
+    // Vínculo com cliente é OPCIONAL — share livre quando dto.clienteId vazio.
+    let clienteId: string | undefined;
+    let items: PreviewItem[];
+    if (dto.clienteId) {
+      const cliente = await this.clientes.findById(user, dto.clienteId);
+      items = await this.previewParaCliente(user, dto.clienteId);
+      clienteId = cliente.id;
+    } else {
+      items = await this.previewSemCliente(user);
+    }
     if (items.length === 0) {
       throw new BusinessRuleException(
         'Seu catálogo está vazio. Adicione produtos antes de compartilhar.',
@@ -257,13 +288,13 @@ export class CatalogoService {
     }
     const token = await this.share.gerar({
       repId: user.id,
-      clienteId: cliente.id,
+      clienteId,
       empresaId: user.empresaIdAtiva,
     });
     return {
       ok: true,
       canal: dto.canal,
-      clienteId: cliente.id,
+      clienteId: clienteId ?? null,
       itens: items.length,
       token,
       previewUrl: `/catalogo/share/${token}`,
@@ -294,7 +325,10 @@ export class CatalogoService {
       empresaIds: [payload.empresaId],
       empresaIdAtiva: payload.empresaId,
     };
-    const produtos = await this.previewParaCliente(fakeAuth, payload.clienteId);
+    // Token sem clienteId = share livre (sem vínculo). Preview "genérico".
+    const produtos = payload.clienteId
+      ? await this.previewParaCliente(fakeAuth, payload.clienteId)
+      : await this.previewSemCliente(fakeAuth);
     return {
       rep: { id: rep.id, nome: rep.nome },
       produtos,

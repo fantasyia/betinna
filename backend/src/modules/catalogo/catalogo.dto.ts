@@ -23,7 +23,12 @@ export const previewParaClienteSchema = z.object({
 export type PreviewParaClienteDto = z.infer<typeof previewParaClienteSchema>;
 
 export const shareCatalogSchema = z.object({
-  clienteId: z.string().cuid(),
+  /**
+   * Vincular cliente é OPCIONAL.
+   *  - Com clienteId: aplica preço negociado do cliente (se houver) + markup do rep.
+   *  - Sem clienteId: envio livre — preço tabela × markup do rep (preview "genérico").
+   */
+  clienteId: z.string().cuid().optional(),
   canal: z.enum(['whatsapp', 'pdf', 'link']),
   validoAte: z.coerce.date().optional(),
 });

@@ -31,8 +31,8 @@ const TTL_DEFAULT_SECONDS = 60 * 60 * 24 * 7; // 7 dias
 export interface SharePayload {
   /** ID do REP dono do catálogo */
   repId: string;
-  /** ID do cliente pra quem foi compartilhado */
-  clienteId: string;
+  /** ID do cliente pra quem foi compartilhado (opcional — share livre sem vínculo) */
+  clienteId?: string;
   /** ID da empresa (multi-tenant scope) */
   empresaId: string;
 }
@@ -59,11 +59,14 @@ export class CatalogShareService {
    * Gera token assinado com TTL. Default 7 dias, override por env.
    */
   async gerar(payload: SharePayload): Promise<string> {
-    return new SignJWT({
+    // `cid` é opcional — só inclui no JWT se houver clienteId.
+    // Token sem `cid` = share "livre" (sem cliente vinculado).
+    const claims: Record<string, string> = {
       sub: payload.repId,
-      cid: payload.clienteId,
       eid: payload.empresaId,
-    })
+    };
+    if (payload.clienteId) claims.cid = payload.clienteId;
+    return new SignJWT(claims)
       .setProtectedHeader({ alg: 'HS256' })
       .setIssuedAt()
       .setExpirationTime(`${this.ttlSeconds}s`)
@@ -77,9 +80,10 @@ export class CatalogShareService {
     try {
       const { payload } = await jwtVerify(token, this.secret);
       const repId = typeof payload.sub === 'string' ? payload.sub : null;
-      const clienteId = typeof payload.cid === 'string' ? payload.cid : null;
       const empresaId = typeof payload.eid === 'string' ? payload.eid : null;
-      if (!repId || !clienteId || !empresaId) {
+      // cid é opcional — token sem clienteId é share "livre" (sem vínculo).
+      const clienteId = typeof payload.cid === 'string' ? payload.cid : undefined;
+      if (!repId || !empresaId) {
         throw new BusinessRuleException('Token de compartilhamento mal formado');
       }
       return { repId, clienteId, empresaId };

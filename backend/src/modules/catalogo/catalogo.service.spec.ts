@@ -373,5 +373,29 @@ describe('CatalogoService', () => {
         service.shareWithClient(fakeUser(), { clienteId: 'cli-1', canal: 'WHATSAPP' }),
       ).rejects.toBeInstanceOf(BusinessRuleException);
     });
+
+    it('share livre sem clienteId — gera link público sem vínculo (C4)', async () => {
+      // Sem cliente: NÃO chama clientes.findById, usa previewSemCliente
+      prisma.repCatalogoItem.findMany.mockResolvedValue([fakeCatalogoItem()]);
+
+      const result = await service.shareWithClient(fakeUser(), { canal: 'whatsapp' } as never);
+
+      expect(result.ok).toBe(true);
+      expect(result.clienteId).toBeNull(); // sem vínculo
+      expect(result.itens).toBe(1);
+      expect(result.previewUrl).toMatch(/^\/catalogo\/share\/.+/);
+      // Não deve ter tentado buscar cliente
+      expect(clientes.findById).not.toHaveBeenCalled();
+      // Não deve ter chamado pricing (não há cliente alvo)
+      expect(pricing.priceForClientBatch).not.toHaveBeenCalled();
+    });
+
+    it('share livre — lança BusinessRuleException se catálogo vazio mesmo sem cliente', async () => {
+      prisma.repCatalogoItem.findMany.mockResolvedValue([]);
+
+      await expect(
+        service.shareWithClient(fakeUser(), { canal: 'whatsapp' } as never),
+      ).rejects.toBeInstanceOf(BusinessRuleException);
+    });
   });
 });
