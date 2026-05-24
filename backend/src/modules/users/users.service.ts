@@ -487,8 +487,17 @@ export class UsersService {
       inviteUrl,
     });
     if (!sent.ok) {
-      this.logger.warn(
-        `Reenvio: link Supabase gerado, mas envio SendGrid falhou pra ${userScope.email}.`,
+      // FIX 2026-05-24: antes a falha do SendGrid era silenciosa (best-effort).
+      // Pra reenvio de convite, isso é catastrófico — user nunca recebia o
+      // link mas o admin via "sucesso" no toast. Agora a falha é surfaced.
+      this.logger.error(
+        `Reenvio: link Supabase OK mas SendGrid FALHOU pra ${userScope.email}. ` +
+          `Verifique SENDGRID_API_KEY e SENDGRID_FROM_EMAIL no Railway.`,
+      );
+      throw new BusinessRuleException(
+        'Link de convite gerado mas falha ao enviar e-mail. ' +
+          'Verifique a configuração do SendGrid (SENDGRID_API_KEY + ' +
+          'SENDGRID_FROM_EMAIL verificado).',
       );
     }
     return { ok: true, sentTo: userScope.email };
