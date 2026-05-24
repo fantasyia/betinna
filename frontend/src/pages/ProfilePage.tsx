@@ -292,6 +292,42 @@ function UserDetail({ userId, isOwnProfile }: { userId: string; isOwnProfile: bo
     }
   }
 
+  async function desativarUsuario() {
+    if (!data) return;
+    const confirm = window.confirm(
+      `Desativar ${data.nome}?\n\nO usuário NÃO poderá mais fazer login, ` +
+        `mas o histórico (pedidos, comissões, audit log) é preservado. ` +
+        `Você pode reativar depois.`,
+    );
+    if (!confirm) return;
+    setBusy(true);
+    setActionError(null);
+    try {
+      await api.delete(`/users/${data.id}`);
+      toast.success('Usuário desativado', `${data.nome} não poderá mais entrar.`);
+      refetch();
+    } catch (err) {
+      setActionError(err instanceof ApiError ? err.message : 'Falha ao desativar');
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function reativarUsuario() {
+    if (!data) return;
+    setBusy(true);
+    setActionError(null);
+    try {
+      await api.put(`/users/${data.id}/ativar`);
+      toast.success('Usuário reativado', `${data.nome} pode entrar novamente.`);
+      refetch();
+    } catch (err) {
+      setActionError(err instanceof ApiError ? err.message : 'Falha ao reativar');
+    } finally {
+      setBusy(false);
+    }
+  }
+
   return (
     <PageLayout
       title={data ? data.nome : 'Perfil'}
@@ -411,9 +447,45 @@ function UserDetail({ userId, isOwnProfile }: { userId: string; isOwnProfile: bo
                   data-testid="user-resend-btn"
                   onClick={reenviarConvite}
                   disabled={busy}
-                  style={{ ...btnSecondary, width: '100%' }}
+                  style={{ ...btnSecondary, width: '100%', marginBottom: '0.5rem' }}
                 >
                   {busy ? 'Enviando…' : 'Reenviar convite'}
+                </button>
+              )}
+
+              {/* Desativar/Reativar — só ADMIN, nunca pra si próprio */}
+              {isAdmin && !isOwnProfile && data.status !== 'INATIVO' && (
+                <button
+                  type="button"
+                  data-testid="user-deactivate-btn"
+                  onClick={desativarUsuario}
+                  disabled={busy}
+                  style={{
+                    ...btnSecondary,
+                    width: '100%',
+                    color: colors.danger,
+                    borderColor: colors.danger,
+                    marginTop: '0.5rem',
+                  }}
+                >
+                  {busy ? 'Aguarde…' : 'Desativar usuário'}
+                </button>
+              )}
+              {isAdmin && !isOwnProfile && data.status === 'INATIVO' && (
+                <button
+                  type="button"
+                  data-testid="user-reactivate-btn"
+                  onClick={reativarUsuario}
+                  disabled={busy}
+                  style={{
+                    ...btnSecondary,
+                    width: '100%',
+                    color: colors.success,
+                    borderColor: colors.success,
+                    marginTop: '0.5rem',
+                  }}
+                >
+                  {busy ? 'Aguarde…' : 'Reativar usuário'}
                 </button>
               )}
 
