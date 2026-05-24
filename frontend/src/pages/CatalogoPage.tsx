@@ -13,7 +13,6 @@ import {
   Download,
   CheckCircle2,
   MessageSquare,
-  Tag as TagIcon,
   PackageX,
   PackageCheck,
   RefreshCw,
@@ -256,16 +255,11 @@ export default function CatalogoPage() {
     >
       <CatalogoTabs />
       {/* Stats */}
-      <div className="grid gap-3 grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 mb-4">
+      <div className="grid gap-3 grid-cols-1 sm:grid-cols-2 mb-4">
         <Stat
           label="Produtos no catálogo"
           icon={<Package className="text-info" />}
           value={stats.totalItens.toLocaleString('pt-BR')}
-        />
-        <Stat
-          label="Markup médio"
-          icon={<TrendingUp className="text-primary" />}
-          value={`${stats.markupMedio.toFixed(1)}%`}
         />
         <Stat
           label="Sem estoque"
@@ -276,12 +270,6 @@ export default function CatalogoPage() {
               ? 'rep pode lançar — OMIE gera OP de reposição'
               : 'tudo disponível'
           }
-        />
-        <Stat
-          label="Valor agregado"
-          icon={<TagIcon className="text-success" />}
-          value={fmtBRLCompact(stats.valorTotal)}
-          hint="soma dos preços finais"
         />
       </div>
 
