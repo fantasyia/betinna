@@ -9,7 +9,6 @@ import {
   TrendingDown,
   Package,
   AlertCircle,
-  Copy,
   Download,
   CheckCircle2,
   MessageSquare,
@@ -901,10 +900,10 @@ function PreviewClienteDialog({ onClose }: { onClose: () => void }) {
 
 function ShareDialog({ onClose }: { onClose: () => void }) {
   const [cliente, setCliente] = useState<ClienteOpt | null>(null);
-  const [canal, setCanal] = useState<'whatsapp' | 'pdf' | 'link'>('whatsapp');
+  const [canal, setCanal] = useState<'whatsapp' | 'pdf'>('whatsapp');
   const [validoAte, setValidoAte] = useState('');
   const [busy, setBusy] = useState(false);
-  const [result, setResult] = useState<{ url?: string; pdfBase64?: string; sentToWhatsApp?: boolean } | null>(null);
+  const [result, setResult] = useState<{ pdfBase64?: string; sentToWhatsApp?: boolean } | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   async function share() {
@@ -912,12 +911,11 @@ function ShareDialog({ onClose }: { onClose: () => void }) {
     setError(null);
     setResult(null);
     try {
-      // Cliente é opcional — quando ausente, gera link público "genérico"
-      // (preço de tabela × markup do rep, sem preço negociado).
+      // Cliente é opcional — quando ausente, usa preço de tabela × markup do rep.
       const payload: Record<string, unknown> = { canal };
       if (cliente) payload.clienteId = cliente.id;
       if (validoAte) payload.validoAte = validoAte;
-      const r = await api.post<{ url?: string; pdfBase64?: string; sentToWhatsApp?: boolean }>(
+      const r = await api.post<{ pdfBase64?: string; sentToWhatsApp?: boolean }>(
         '/catalogo/share',
         payload,
       );
@@ -934,7 +932,7 @@ function ShareDialog({ onClose }: { onClose: () => void }) {
       open
       onClose={onClose}
       title="Compartilhar catálogo"
-      description="Envie o catálogo via WhatsApp, PDF ou link público. Vincular cliente é opcional — sem cliente, o preço é o de tabela × seu markup."
+      description="Envie o catálogo via WhatsApp ou PDF. Vincular cliente é opcional — sem cliente, o preço é o de tabela × seu markup."
       size="md"
       footer={
         !result ? (
@@ -977,10 +975,9 @@ function ShareDialog({ onClose }: { onClose: () => void }) {
             <Select value={canal} onChange={(e) => setCanal(e.target.value as typeof canal)}>
               <option value="whatsapp">WhatsApp (envia direto)</option>
               <option value="pdf">PDF (baixa arquivo)</option>
-              <option value="link">Link público (envia por outro meio)</option>
             </Select>
           </Field>
-          <Field label="Validade" hint="Opcional — quando o link/preço expira">
+          <Field label="Validade" hint="Opcional — quando o preço expira">
             <Input
               type="date"
               value={validoAte}
@@ -1006,27 +1003,6 @@ function ShareDialog({ onClose }: { onClose: () => void }) {
               <MessageSquare className="h-4 w-4" />
               Enviado via WhatsApp pro cliente.
             </div>
-          )}
-
-          {result.url && (
-            <Field label="Link público gerado">
-              <div className="flex items-center gap-2">
-                <Input
-                  data-testid="share-url"
-                  value={result.url}
-                  readOnly
-                  onClick={(e) => (e.target as HTMLInputElement).select()}
-                />
-                <Button
-                  variant="secondary"
-                  size="md"
-                  onClick={() => navigator.clipboard.writeText(result.url ?? '')}
-                  leftIcon={<Copy className="h-3.5 w-3.5" />}
-                >
-                  Copiar
-                </Button>
-              </div>
-            </Field>
           )}
 
           {result.pdfBase64 && (

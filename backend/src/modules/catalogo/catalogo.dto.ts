@@ -29,7 +29,11 @@ export const shareCatalogSchema = z.object({
    *  - Sem clienteId: envio livre — preço tabela × markup do rep (preview "genérico").
    */
   clienteId: z.string().cuid().optional(),
-  canal: z.enum(['whatsapp', 'pdf', 'link']),
+  /**
+   * Canal de envio. 'link' foi REMOVIDO (não existia página front pra renderizar
+   * o preview público — apontava só pro endpoint JSON do backend).
+   */
+  canal: z.enum(['whatsapp', 'pdf']),
   validoAte: z.coerce.date().optional(),
 });
 export type ShareCatalogDto = z.infer<typeof shareCatalogSchema>;
