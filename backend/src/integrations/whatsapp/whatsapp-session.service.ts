@@ -487,7 +487,11 @@ export class WhatsAppSessionService implements OnModuleInit, OnModuleDestroy {
   ): Promise<void> {
     for (const m of mensagens) {
       if (!m.key) continue;
-      if (m.key.fromMe) continue;
+      // NÃO descarta fromMe — quando o dono do número responde pelo celular
+      // (ou outro dispositivo Multi-Device), Baileys emite com fromMe=true.
+      // Precisa aparecer na Betinna como OUTBOUND. Idempotência por externalId
+      // evita duplicar mensagens que a própria Betinna enviou.
+      const fromMe = m.key.fromMe === true;
       const peerId = m.key.remoteJid ?? '';
       if (!peerId) continue;
       if (peerId.endsWith('@g.us') || peerId.endsWith('@broadcast')) continue;
@@ -518,7 +522,9 @@ export class WhatsAppSessionService implements OnModuleInit, OnModuleDestroy {
         empresaId: ctx.empresaId,
         canal: 'WHATSAPP',
         peerId,
-        peerNome: m.pushName ?? undefined,
+        // pushName é o nome do REMETENTE. Quando fromMe=true, é o próprio
+        // dono — não popular peerNome (ConversaItem já tem o nome certo).
+        peerNome: fromMe ? undefined : (m.pushName ?? undefined),
         peerTelefone: this.jidParaTelefone(peerId),
         tipo,
         conteudo,
@@ -527,6 +533,7 @@ export class WhatsAppSessionService implements OnModuleInit, OnModuleDestroy {
         mediaMime,
         mediaUrl,
         proprietarioId,
+        direction: fromMe ? 'OUTBOUND' : 'INBOUND',
         meta: { jid: peerId, ownerKey: ownerKey(ctx.owner), ...(extras ?? {}) },
       });
     }

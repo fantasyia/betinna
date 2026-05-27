@@ -54,6 +54,14 @@ export interface MensagemEntranteParams {
   tipo: MessageType;
   conteudo: string;
   externalId?: string;
+  /**
+   * Direção da mensagem. Default INBOUND (recebida do peer).
+   * OUTBOUND quando o próprio número enviou (ex: dono respondeu pelo celular
+   * enquanto Baileys está pareado — `m.key.fromMe = true`).
+   * Idempotência por externalId garante que mensagens enviadas pela Betinna
+   * não sejam duplicadas quando o evento volta pelo socket.
+   */
+  direction?: 'INBOUND' | 'OUTBOUND';
   /** Data original da mensagem (default: agora). */
   data?: Date;
   mediaUrl?: string;

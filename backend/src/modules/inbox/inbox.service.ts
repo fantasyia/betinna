@@ -504,14 +504,23 @@ export class InboxService {
 
     const conv = await this.upsertConversation(params, clienteId);
 
+    // Direction: default INBOUND. OUTBOUND quando o próprio número enviou
+    // a mensagem (ex: dono respondeu pelo celular enquanto Baileys está
+    // pareado — Baileys emite messages.upsert com fromMe=true).
+    const direction =
+      params.direction === 'OUTBOUND'
+        ? MessageDirection.OUTBOUND
+        : MessageDirection.INBOUND;
+    const isInbound = direction === MessageDirection.INBOUND;
+
     const msg = await this.prisma.message.create({
       data: {
         conversationId: conv.id,
-        direction: MessageDirection.INBOUND,
+        direction,
         tipo: params.tipo,
         conteudo: params.conteudo,
         externalId: params.externalId ?? null,
-        status: MessageStatus.RECEIVED,
+        status: isInbound ? MessageStatus.RECEIVED : MessageStatus.SENT,
         mediaUrl: params.mediaUrl ?? null,
         mediaMime: params.mediaMime ?? null,
         meta: (params.meta as Prisma.InputJsonValue) ?? undefined,
@@ -519,13 +528,15 @@ export class InboxService {
       },
     });
 
+    // INBOUND: incrementa não-lidas e marca conversa como PENDENTE.
+    // OUTBOUND: só atualiza preview/timestamp — não muda contador nem status
+    // (não é uma mensagem pra ler/responder, foi o próprio dono que mandou).
     await this.prisma.conversation.update({
       where: { id: conv.id },
       data: {
         ultimaMsgEm: msg.criadoEm,
         ultimaMsgPreview: this.preview(params.conteudo),
-        naoLidas: { increment: 1 },
-        status: 'PENDENTE',
+        ...(isInbound ? { naoLidas: { increment: 1 }, status: 'PENDENTE' as const } : {}),
       },
     });
 
