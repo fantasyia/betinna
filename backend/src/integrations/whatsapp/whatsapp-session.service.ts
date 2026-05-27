@@ -438,6 +438,22 @@ export class WhatsAppSessionService implements OnModuleInit, OnModuleDestroy {
         this.logger.warn(`[${ownerKey(ctx.owner)}] Falha processando msgs entrantes: ${m}`);
       });
     });
+
+    // Após reconnect, Baileys emite messaging-history.set com TODAS as msgs
+    // recentes (últimas N do servidor WhatsApp). Crítico pra cobrir mensagens
+    // que chegaram durante o downtime (redeploy Railway). Idempotência por
+    // externalId previne duplicação das que a gente já tem.
+    sock.ev.on('messaging-history.set', (h) => {
+      const msgs = Array.isArray(h.messages) ? h.messages : [];
+      if (msgs.length === 0) return;
+      this.logger.log(
+        `[${ownerKey(ctx.owner)}] history sync: ${msgs.length} mensagens recebidas (syncType=${h.syncType ?? '?'}, isLatest=${h.isLatest ?? '?'})`,
+      );
+      void this.handleMensagensEntrantes(ctx, msgs).catch((err) => {
+        const m = err instanceof Error ? err.message : String(err);
+        this.logger.warn(`[${ownerKey(ctx.owner)}] Falha processando history sync: ${m}`);
+      });
+    });
   }
 
   private handleConnectionUpdate(ctx: SessionContext, u: Partial<ConnectionState>): void {
