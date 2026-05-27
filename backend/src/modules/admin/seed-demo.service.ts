@@ -87,50 +87,84 @@ export class SeedDemoService {
     await this.assertEmpresa(empresaId);
     this.logger.warn(`[seed-demo] WIPE empresa=${empresaId}`);
 
-    // Ordem importa: dependentes primeiro pra evitar FK violation.
-    // (Schema usa Cascade na maioria, mas explícito é mais seguro.)
-    const [
-      respostasNps,
-      amostras,
-      comissoes,
-      conversations,
-      propostas,
-      pedidos,
-      produtos,
-      clientes,
-    ] = await this.prisma.$transaction([
+    /**
+     * Best-effort: cada delete numa try/catch isolado.
+     *
+     * Antes: 8 deleteMany numa única `$transaction` atômica. Se um falhasse
+     * por FK violation (ex: PedidoItem.produto não tem cascade, e algum pedido
+     * REAL usa um produto DEMO), TODA a transação abortava com 500 —
+     * sem feedback útil pro usuário.
+     *
+     * Agora: cada operação é independente. O que dá pra deletar, vai.
+     * O que falhar, loga warning e continua. Usuário pode clicar de novo
+     * pra tentar limpar o que sobrou (após resolver as dependências).
+     */
+    const safe = async (
+      label: string,
+      op: () => Promise<{ count: number }>,
+    ): Promise<number> => {
+      try {
+        const r = await op();
+        return r.count;
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err);
+        this.logger.warn(`[seed-demo wipe] falha em ${label}: ${msg}`);
+        return 0;
+      }
+    };
+
+    // 1) Limpa PedidoItem que aponta pra produto demo SEM cascade.
+    //    PropostaItem não tem FK pro Produto no schema (só snapshot), não precisa.
+    await safe('pedidoItem(órfão de produto demo)', () =>
+      this.prisma.pedidoItem.deleteMany({
+        where: { produto: { empresaId, isDemo: true } },
+      }),
+    );
+
+    // 2) Limpa registros marcados isDemo=true (ordem: dependentes primeiro)
+    const respostasNps = await safe('respostasNPS', () =>
       this.prisma.respostaNPS.deleteMany({
         where: { isDemo: true, pesquisa: { empresaId } },
       }),
+    );
+    const amostras = await safe('amostras', () =>
       this.prisma.amostra.deleteMany({ where: { empresaId, isDemo: true } }),
+    );
+    const comissoes = await safe('comissoes', () =>
       this.prisma.comissao.deleteMany({ where: { empresaId, isDemo: true } }),
-      // Messages caem por cascade quando Conversation é deletada
+    );
+    const conversations = await safe('conversations', () =>
       this.prisma.conversation.deleteMany({ where: { empresaId, isDemo: true } }),
-      // PropostaItem cai por cascade quando Proposta é deletada
+    );
+    const propostas = await safe('propostas', () =>
       this.prisma.proposta.deleteMany({ where: { empresaId, isDemo: true } }),
-      // PedidoItem cai por cascade quando Pedido é deletado
+    );
+    const pedidos = await safe('pedidos', () =>
       this.prisma.pedido.deleteMany({ where: { empresaId, isDemo: true } }),
+    );
+    const produtos = await safe('produtos', () =>
       this.prisma.produto.deleteMany({ where: { empresaId, isDemo: true } }),
+    );
+    const clientes = await safe('clientes', () =>
       this.prisma.cliente.deleteMany({ where: { empresaId, isDemo: true } }),
-    ]);
+    );
 
-    // Limpa pesquisas NPS órfãs de demo
-    await this.prisma.pesquisaNPS.deleteMany({
-      where: {
-        empresaId,
-        slug: { startsWith: 'demo-nps-' },
-      },
-    });
+    // 3) Limpa pesquisas NPS órfãs de demo (best-effort também)
+    await safe('pesquisaNPS-demo', () =>
+      this.prisma.pesquisaNPS.deleteMany({
+        where: { empresaId, slug: { startsWith: 'demo-nps-' } },
+      }),
+    );
 
     return {
-      clientes: clientes.count,
-      produtos: produtos.count,
-      pedidos: pedidos.count,
-      propostas: propostas.count,
-      amostras: amostras.count,
-      comissoes: comissoes.count,
-      conversations: conversations.count,
-      respostasNps: respostasNps.count,
+      clientes,
+      produtos,
+      pedidos,
+      propostas,
+      amostras,
+      comissoes,
+      conversations,
+      respostasNps,
     };
   }
 
