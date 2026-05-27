@@ -69,8 +69,11 @@ interface Conversation {
   status: ConversationStatus;
   peer: string;
   peerNome?: string | null;
-  ultimaMensagem?: string | null;
-  ultimaMensagemEm?: string | null;
+  // Backend usa estes nomes (Prisma schema). Antes o frontend tinha
+  // `ultimaMensagem`/`ultimaMensagemEm` errado → tela mostrava sempre
+  // "sem mensagens" porque os campos vinham undefined. Fix 2026-05-27.
+  ultimaMsgPreview?: string | null;
+  ultimaMsgEm?: string | null;
   naoLidas?: number;
   cliente?: { id: string; nome: string } | null;
   atribuido?: { id: string; nome: string } | null;
@@ -401,7 +404,7 @@ function ConversationItem({
                 unread ? 'text-primary font-semibold' : 'text-muted',
               )}
             >
-              {fmtRelative(conv.ultimaMensagemEm)}
+              {fmtRelative(conv.ultimaMsgEm)}
             </span>
           </div>
 
@@ -411,7 +414,7 @@ function ConversationItem({
               unread ? 'text-text-subtle' : 'text-muted',
             )}
           >
-            {conv.ultimaMensagem ?? <em className="text-muted-light">sem mensagens</em>}
+            {conv.ultimaMsgPreview ?? <em className="text-muted-light">sem mensagens</em>}
           </div>
 
           {(conv.status !== 'ABERTA' || conv.atribuido || (conv.naoLidas ?? 0) > 1) && (
@@ -464,7 +467,8 @@ function ConversationThread({
   );
 
   const conv = useApiQuery<Conversation>(detailPath);
-  const msgs = useApiQuery<{ data: Mensagem[] }>(msgsPath);
+  // Backend retorna Message[] direto (não { data: [] }) — fix 2026-05-27.
+  const msgs = useApiQuery<Mensagem[]>(msgsPath);
 
   const [resposta, setResposta] = useState('');
   const [sending, setSending] = useState(false);
@@ -517,7 +521,7 @@ function ConversationThread({
   }
 
   const c = conv.data;
-  const messages = msgs.data?.data ?? [];
+  const messages = msgs.data ?? [];
   const lockedCompose = c && (c.status === 'RESOLVIDA' || c.status === 'ARQUIVADA');
 
   return (
