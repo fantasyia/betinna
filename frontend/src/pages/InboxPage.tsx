@@ -280,16 +280,9 @@ export default function InboxPage() {
               </div>
             </div>
 
-            {/* Lista scrollable */}
+            {/* Lista scrollable. Polling roda silenciosamente em background
+                (a cada POLL_INTERVAL_MS) — sem indicador visual pra não distrair. */}
             <div className="flex-1 overflow-y-auto">
-              {loading && pageResp && (
-                <div
-                  className="text-[11px] text-muted px-3 py-1 text-center italic"
-                  data-testid="inbox-refreshing"
-                >
-                  Atualizando…
-                </div>
-              )}
               <StateView
                 loading={loading && !pageResp}
                 error={error}
