@@ -767,13 +767,17 @@ function PedidoDetailDrawer({
 }) {
   const navigate = useNavigate();
   const role = useRole();
-  // P6 — cancelar pedido é DIRECTOR/ADMIN only (rep/gerente NÃO podem)
+  // P6 — cancelar pedido é DIRECTOR/ADMIN only.
+  // REP/GERENTE pode SOLICITAR cancelamento (P6.2) — diretor decide depois.
   const canCancel = role === 'DIRECTOR' || role === 'ADMIN';
+  const canRequestCancel = role === 'REP' || role === 'GERENTE';
   const { data, loading, error, refetch } = useApiQuery<PedidoDetail>(`/pedidos/${id}`);
   const [busy, setBusy] = useState<string | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
   const [cancelOpen, setCancelOpen] = useState(false);
   const [cancelMotivo, setCancelMotivo] = useState('');
+  const [requestCancelOpen, setRequestCancelOpen] = useState(false);
+  const [requestCancelMotivo, setRequestCancelMotivo] = useState('');
 
   async function callAction(label: string, fn: () => Promise<unknown>) {
     setBusy(label);
@@ -797,6 +801,12 @@ function PedidoDetailDrawer({
         `/pedidos/${id}/cancelar`,
         cancelMotivo.trim() ? { motivo: cancelMotivo.trim() } : {},
       ),
+    );
+  const doRequestCancel = () =>
+    callAction('solicitar-cancel', () =>
+      api.post(`/pedidos/${id}/solicitar-cancelamento`, {
+        motivo: requestCancelMotivo.trim(),
+      }),
     );
 
   return (
@@ -839,7 +849,7 @@ function PedidoDetailDrawer({
                 Avançar status
               </Button>
             )}
-            {/* P6 — botão Cancelar só pra DIRECTOR/ADMIN */}
+            {/* P6 — botão Cancelar direto só pra DIRECTOR/ADMIN */}
             {canCancel && data.status !== 'CANCELADO' && data.status !== 'ENTREGUE' && (
               <Button
                 variant="danger"
@@ -849,6 +859,18 @@ function PedidoDetailDrawer({
                 leftIcon={<XCircle className="h-3.5 w-3.5" />}
               >
                 Cancelar
+              </Button>
+            )}
+            {/* P6.2 — REP/GERENTE solicita cancelamento (diretor decide depois) */}
+            {canRequestCancel && data.status !== 'CANCELADO' && data.status !== 'ENTREGUE' && (
+              <Button
+                variant="secondary"
+                size="sm"
+                data-testid="pedido-solicitar-cancelar"
+                onClick={() => setRequestCancelOpen(true)}
+                leftIcon={<XCircle className="h-3.5 w-3.5" />}
+              >
+                Solicitar cancelamento
               </Button>
             )}
           </>
@@ -1036,6 +1058,54 @@ function PedidoDetailDrawer({
             onChange={(e) => setCancelMotivo(e.target.value)}
             placeholder="Ex: cliente desistiu, estoque indisponível, troca de SKU…"
             rows={3}
+          />
+        </Field>
+      </Dialog>
+
+      {/* P6.2 — Solicitar cancelamento dialog (rep/gerente) */}
+      <Dialog
+        open={requestCancelOpen}
+        onClose={() => setRequestCancelOpen(false)}
+        title="Solicitar cancelamento"
+        description="O diretor vai revisar e aprovar ou rejeitar. O pedido só é cancelado após aprovação."
+        size="sm"
+        footer={
+          <>
+            <Button variant="secondary" onClick={() => setRequestCancelOpen(false)}>
+              Voltar
+            </Button>
+            <Button
+              data-testid="pedido-confirmar-solicitar-cancelar"
+              loading={busy === 'solicitar-cancel'}
+              disabled={requestCancelMotivo.trim().length < 5}
+              onClick={() => {
+                setRequestCancelOpen(false);
+                const motivo = requestCancelMotivo;
+                setRequestCancelMotivo('');
+                void doRequestCancel().then(() => {
+                  // Restaura motivo se houve erro pra o usuário poder ajustar
+                  if (actionError) setRequestCancelMotivo(motivo);
+                });
+              }}
+              leftIcon={<XCircle className="h-3.5 w-3.5" />}
+            >
+              Enviar solicitação
+            </Button>
+          </>
+        }
+      >
+        <Field
+          label="Motivo"
+          required
+          hint="Mínimo 5 caracteres — diga ao diretor por que o pedido deve ser cancelado"
+        >
+          <Textarea
+            value={requestCancelMotivo}
+            onChange={(e) => setRequestCancelMotivo(e.target.value)}
+            placeholder="Ex: cliente cancelou compra por mudança de fornecedor; produto indisponível por 30 dias..."
+            rows={4}
+            maxLength={1000}
+            data-testid="solicitar-cancelar-motivo"
           />
         </Field>
       </Dialog>

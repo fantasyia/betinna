@@ -9,9 +9,11 @@ import {
   FileText,
   TrendingUp,
   Receipt,
+  Ban,
 } from 'lucide-react';
 import { api, ApiError } from '@/lib/api';
 import { useApiQuery, type PaginatedResponse } from '@/hooks/useApiQuery';
+import { useRole } from '@/hooks/usePermission';
 import { PageLayout } from '@/components/PageLayout';
 import { VendasTabs } from '@/components/VendasTabs';
 import { StateView } from '@/components/StateView';
@@ -81,7 +83,10 @@ function fmtDate(d: string | null | undefined) {
   }
 }
 
+type AprovacaoTab = 'descontos' | 'cancelamentos';
+
 export default function AprovacoesPage() {
+  const [tab, setTab] = useState<AprovacaoTab>('descontos');
   const [page, setPage] = useState(1);
   const [status, setStatus] = useState<string>('PENDENTE');
   const [selected, setSelected] = useState<string | null>(null);
@@ -106,14 +111,58 @@ export default function AprovacoesPage() {
 
   return (
     <PageLayout
-      title="Aprovações de desconto"
+      title="Aprovações"
       description={
-        status === 'PENDENTE'
-          ? 'Decisões aguardando sua aprovação.'
-          : 'Histórico de aprovações de desconto acima do teto do rep.'
+        tab === 'descontos'
+          ? status === 'PENDENTE'
+            ? 'Decisões aguardando sua aprovação.'
+            : 'Histórico de aprovações de desconto acima do teto do rep.'
+          : 'Solicitações de cancelamento de pedido feitas por rep/gerente.'
       }
     >
       <VendasTabs />
+
+      {/* Tab toggle: Descontos | Cancelamentos */}
+      <div className="mb-3 inline-flex items-center gap-1 p-1 bg-bg-alt rounded-md border border-border">
+        <button
+          type="button"
+          data-testid="tab-descontos"
+          onClick={() => {
+            setTab('descontos');
+            setPage(1);
+          }}
+          className={cn(
+            'inline-flex items-center gap-1.5 h-8 px-3 rounded text-sm font-medium transition-colors',
+            tab === 'descontos'
+              ? 'bg-surface text-text shadow-sm'
+              : 'text-text-subtle hover:text-text hover:bg-surface-hover',
+          )}
+        >
+          <Percent className="h-3.5 w-3.5" />
+          Descontos
+        </button>
+        <button
+          type="button"
+          data-testid="tab-cancelamentos"
+          onClick={() => {
+            setTab('cancelamentos');
+            setPage(1);
+          }}
+          className={cn(
+            'inline-flex items-center gap-1.5 h-8 px-3 rounded text-sm font-medium transition-colors',
+            tab === 'cancelamentos'
+              ? 'bg-surface text-text shadow-sm'
+              : 'text-text-subtle hover:text-text hover:bg-surface-hover',
+          )}
+        >
+          <Ban className="h-3.5 w-3.5" />
+          Cancelamentos
+        </button>
+      </div>
+
+      {tab === 'cancelamentos' ? (
+        <CancelamentosTab />
+      ) : (
       <Card padding="none" className="overflow-hidden">
         {/* Toolbar com status tabs */}
         <div className="px-4 py-3 border-b border-border flex items-center gap-2 flex-wrap">
@@ -179,7 +228,9 @@ export default function AprovacoesPage() {
         </StateView>
       </Card>
 
-      {selected && (
+      )}
+
+      {selected && tab === 'descontos' && (
         <AprovacaoDetailDialog
           id={selected}
           onClose={() => setSelected(null)}
@@ -190,6 +241,271 @@ export default function AprovacoesPage() {
         />
       )}
     </PageLayout>
+  );
+}
+
+// ─── P6.2 — Solicitações de cancelamento ──────────────────────────
+
+type CancelamentoStatus = 'PENDENTE' | 'APROVADA' | 'REJEITADA';
+
+interface CancelamentoSolicitacao {
+  id: string;
+  motivo: string;
+  status: CancelamentoStatus;
+  decisaoComentario?: string | null;
+  criadoEm: string;
+  decididoEm?: string | null;
+  solicitante?: { id: string; nome: string };
+  decididoPor?: { id: string; nome: string } | null;
+  pedido?: {
+    id: string;
+    numero: string | number;
+    total: number;
+    status: string;
+    cliente?: { id: string; nome: string };
+    representante?: { id: string; nome: string } | null;
+  };
+}
+
+const CANCEL_STATUS_VARIANT: Record<CancelamentoStatus, 'warning' | 'success' | 'danger'> = {
+  PENDENTE: 'warning',
+  APROVADA: 'success',
+  REJEITADA: 'danger',
+};
+
+const CANCEL_STATUS_LABEL: Record<CancelamentoStatus, string> = {
+  PENDENTE: 'Pendente',
+  APROVADA: 'Aprovada',
+  REJEITADA: 'Rejeitada',
+};
+
+function CancelamentosTab() {
+  const role = useRole();
+  const canDecide = role === 'DIRECTOR' || role === 'ADMIN';
+  const [status, setStatus] = useState<string>('PENDENTE');
+  const [page, setPage] = useState(1);
+  const [decidir, setDecidir] = useState<{
+    solicitacao: CancelamentoSolicitacao;
+    decisao: 'APROVADA' | 'REJEITADA';
+  } | null>(null);
+  const [comentario, setComentario] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const listPath = useMemo(() => {
+    const qs = new URLSearchParams({ page: String(page), limit: '20' });
+    if (status) qs.set('status', status);
+    return `/pedidos/cancelamentos?${qs.toString()}`;
+  }, [page, status]);
+
+  const { data: pageResp, loading, error: listError, refetch } =
+    useApiQuery<PaginatedResponse<CancelamentoSolicitacao>>(listPath);
+
+  async function confirmarDecisao() {
+    if (!decidir) return;
+    setBusy(true);
+    setError(null);
+    try {
+      await api.post(`/pedidos/cancelamentos/${decidir.solicitacao.id}/decidir`, {
+        decisao: decidir.decisao,
+        comentario: comentario.trim() || undefined,
+      });
+      setDecidir(null);
+      setComentario('');
+      refetch();
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : 'Falha ao decidir');
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <Card padding="none" className="overflow-hidden">
+      {/* Filtro por status */}
+      <div className="px-4 py-3 border-b border-border flex items-center gap-2 flex-wrap">
+        <div className="inline-flex items-center gap-1 p-1 bg-bg-alt rounded-md border border-border">
+          {(['', 'PENDENTE', 'APROVADA', 'REJEITADA'] as const).map((s) => {
+            const active = status === s;
+            const label = s === '' ? 'Todas' : CANCEL_STATUS_LABEL[s as CancelamentoStatus];
+            return (
+              <button
+                key={s || 'all'}
+                type="button"
+                onClick={() => {
+                  setStatus(s);
+                  setPage(1);
+                }}
+                className={cn(
+                  'inline-flex items-center gap-1.5 h-7 px-3 rounded text-xs font-medium transition-colors',
+                  active
+                    ? 'bg-surface text-text shadow-sm'
+                    : 'text-text-subtle hover:text-text hover:bg-surface-hover',
+                )}
+                data-testid={`cancel-filter-${s || 'all'}`}
+              >
+                {label}
+              </button>
+            );
+          })}
+        </div>
+      </div>
+
+      <StateView loading={loading} error={listError} onRetry={refetch}>
+        {pageResp && pageResp.data.length === 0 && (
+          <EmptyState
+            icon={<Ban />}
+            title="Nenhuma solicitação"
+            description={
+              status === 'PENDENTE'
+                ? 'Quando rep/gerente pedir cancelamento de pedido, aparece aqui.'
+                : 'Tente trocar o filtro de status.'
+            }
+            className="m-6 border-0"
+          />
+        )}
+        {pageResp && pageResp.data.length > 0 && (
+          <div className="flex flex-col divide-y divide-border">
+            {pageResp.data.map((c) => (
+              <div
+                key={c.id}
+                className="p-4 flex flex-col gap-2"
+                data-testid={`cancel-card-${c.id}`}
+              >
+                <header className="flex items-start justify-between gap-2">
+                  <div className="min-w-0 flex-1">
+                    <h4 className="text-sm font-semibold text-text">
+                      Pedido #{c.pedido?.numero ?? '—'}{' '}
+                      <span className="text-text-subtle font-normal">
+                        · {c.pedido?.cliente?.nome ?? '—'}
+                      </span>
+                    </h4>
+                    <div className="text-xs text-muted mt-0.5">
+                      Solicitado por <strong>{c.solicitante?.nome ?? '—'}</strong> em{' '}
+                      {new Date(c.criadoEm).toLocaleString('pt-BR', {
+                        dateStyle: 'short',
+                        timeStyle: 'short',
+                      })}
+                    </div>
+                  </div>
+                  <Badge variant={CANCEL_STATUS_VARIANT[c.status]}>
+                    {CANCEL_STATUS_LABEL[c.status]}
+                  </Badge>
+                </header>
+
+                <div className="px-3 py-2 rounded-md bg-bg-alt border border-border text-sm">
+                  <div className="text-[10px] uppercase tracking-wider text-muted mb-1">
+                    Motivo
+                  </div>
+                  <p className="m-0 whitespace-pre-wrap">{c.motivo}</p>
+                </div>
+
+                {c.status !== 'PENDENTE' && c.decididoPor && (
+                  <div className="text-xs text-muted">
+                    {c.status === 'APROVADA' ? 'Aprovada' : 'Rejeitada'} por{' '}
+                    <strong>{c.decididoPor.nome}</strong>
+                    {c.decididoEm &&
+                      ` em ${new Date(c.decididoEm).toLocaleString('pt-BR', {
+                        dateStyle: 'short',
+                        timeStyle: 'short',
+                      })}`}
+                    {c.decisaoComentario && (
+                      <p className="mt-1 m-0 italic">"{c.decisaoComentario}"</p>
+                    )}
+                  </div>
+                )}
+
+                {canDecide && c.status === 'PENDENTE' && (
+                  <div className="flex gap-2 mt-1">
+                    <Button
+                      variant="primary"
+                      size="sm"
+                      data-testid={`cancel-aprovar-${c.id}`}
+                      onClick={() => {
+                        setDecidir({ solicitacao: c, decisao: 'APROVADA' });
+                        setError(null);
+                      }}
+                      leftIcon={<CheckCircle2 className="h-3.5 w-3.5" />}
+                    >
+                      Aprovar e cancelar pedido
+                    </Button>
+                    <Button
+                      variant="secondary"
+                      size="sm"
+                      data-testid={`cancel-rejeitar-${c.id}`}
+                      onClick={() => {
+                        setDecidir({ solicitacao: c, decisao: 'REJEITADA' });
+                        setError(null);
+                      }}
+                      leftIcon={<XCircle className="h-3.5 w-3.5" />}
+                    >
+                      Rejeitar
+                    </Button>
+                  </div>
+                )}
+              </div>
+            ))}
+          </div>
+        )}
+      </StateView>
+
+      {decidir && (
+        <Dialog
+          open
+          onClose={() => {
+            setDecidir(null);
+            setComentario('');
+            setError(null);
+          }}
+          title={decidir.decisao === 'APROVADA' ? 'Aprovar cancelamento?' : 'Rejeitar solicitação?'}
+          description={
+            decidir.decisao === 'APROVADA'
+              ? `Vai cancelar o pedido #${decidir.solicitacao.pedido?.numero}. Não dá pra desfazer.`
+              : `A solicitação será registrada como rejeitada. O pedido continua ativo.`
+          }
+          size="sm"
+          footer={
+            <>
+              <Button
+                variant="secondary"
+                onClick={() => {
+                  setDecidir(null);
+                  setComentario('');
+                  setError(null);
+                }}
+              >
+                Voltar
+              </Button>
+              <Button
+                variant={decidir.decisao === 'APROVADA' ? 'primary' : 'danger'}
+                loading={busy}
+                onClick={() => void confirmarDecisao()}
+                data-testid="cancel-decidir-confirmar"
+              >
+                Confirmar {decidir.decisao === 'APROVADA' ? 'aprovação' : 'rejeição'}
+              </Button>
+            </>
+          }
+        >
+          <Field label="Comentário (opcional)" hint="Visível pro solicitante">
+            <Textarea
+              value={comentario}
+              onChange={(e) => setComentario(e.target.value)}
+              placeholder="Ex: cliente já recebeu o produto, não dá mais pra cancelar..."
+              rows={3}
+              maxLength={500}
+              data-testid="cancel-decidir-comentario"
+            />
+          </Field>
+          {error && (
+            <div className="mt-2 px-3 py-2 rounded-md bg-danger/10 border border-danger/30 text-danger text-sm flex items-start gap-2">
+              <AlertCircle className="h-4 w-4 mt-0.5 shrink-0" />
+              {error}
+            </div>
+          )}
+        </Dialog>
+      )}
+    </Card>
   );
 }
 
