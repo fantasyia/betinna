@@ -604,8 +604,11 @@ function ConversationThread({
           emptyMessage="Sem mensagens nesta conversa ainda."
           onRetry={msgs.refetch}
         >
-          {messages.map((m, i) => {
-            const prev = i > 0 ? messages[i - 1] : null;
+          {/* Backend retorna 'desc' (novas primeiro) por causa do cursor de
+              paginação (`antesDe`). UI inverte pra ordem cronológica clássica
+              de chat: antigas em cima, novas embaixo. */}
+          {[...messages].reverse().map((m, i, arr) => {
+            const prev = i > 0 ? arr[i - 1] : null;
             const showAuthor =
               !prev || prev.direction !== m.direction || prev.autor?.id !== m.autor?.id;
             return <MessageBubble key={m.id} msg={m} showAuthor={!!showAuthor} />;
@@ -704,6 +707,43 @@ function ConversationThread({
 
 // ─── Message bubble ──────────────────────────────────────────────
 
+/**
+ * Renderiza imagem de uma mensagem buscando a URL temporária do backend
+ * (signed URL Supabase com TTL ~7 dias). Endpoint: GET /inbox/messages/:id/media
+ */
+function MessageMediaImage({ msgId }: { msgId: string }) {
+  const { data, loading, error } = useApiQuery<{ url: string; mime: string | null }>(
+    `/inbox/messages/${msgId}/media`,
+  );
+  if (loading) {
+    return (
+      <div
+        data-testid={`msg-img-loading-${msgId}`}
+        className="h-32 w-48 bg-bg-alt animate-pulse rounded"
+      />
+    );
+  }
+  if (error || !data?.url) {
+    return (
+      <div className="text-xs text-muted italic flex items-center gap-1.5">
+        <ImageIcon className="h-3.5 w-3.5" />
+        Imagem indisponível
+      </div>
+    );
+  }
+  return (
+    <a href={data.url} target="_blank" rel="noopener noreferrer">
+      <img
+        src={data.url}
+        alt="Imagem da mensagem"
+        data-testid={`msg-img-${msgId}`}
+        className="max-w-[300px] max-h-[300px] rounded border border-border object-contain block"
+        loading="lazy"
+      />
+    </a>
+  );
+}
+
 function MessageBubble({ msg, showAuthor }: { msg: Mensagem; showAuthor: boolean }) {
   const outbound = msg.direction === 'OUTBOUND';
   const MediaIcon = msg.tipo === 'IMAGE'
@@ -741,14 +781,18 @@ function MessageBubble({ msg, showAuthor }: { msg: Mensagem; showAuthor: boolean
               : 'bg-surface text-text border-border rounded-2xl rounded-bl-sm',
           )}
         >
-          {msg.tipo !== 'TEXT' && MediaIcon && (
+          {msg.tipo !== 'TEXT' && MediaIcon && !(msg.tipo === 'IMAGE' && msg.mediaUrl) && (
             <div className="flex items-center gap-1.5 mb-1 text-xs text-muted">
               <MediaIcon className="h-3.5 w-3.5" />
               <span className="lowercase">{msg.tipo}</span>
               {msg.mediaMime && <span className="text-muted-light">· {msg.mediaMime}</span>}
             </div>
           )}
-          {msg.conteudo && <p className="m-0 whitespace-pre-wrap">{msg.conteudo}</p>}
+          {msg.tipo === 'IMAGE' && msg.mediaUrl && <MessageMediaImage msgId={msg.id} />}
+          {/* Esconde placeholder "[imagem]" quando a imagem real está renderizada acima */}
+          {msg.conteudo && !(msg.tipo === 'IMAGE' && msg.mediaUrl && msg.conteudo === '[imagem]') && (
+            <p className="m-0 whitespace-pre-wrap">{msg.conteudo}</p>
+          )}
         </div>
         <span
           className={cn(
