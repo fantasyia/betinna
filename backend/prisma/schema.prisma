@@ -82,6 +82,13 @@ enum PropostaStatus {
   EXPIRADA
 }
 
+/// Lote 6 / P6 — Solicitação de cancelamento de pedido (rep/gerente pede, diretor decide).
+enum PedidoCancelamentoStatus {
+  PENDENTE
+  APROVADA
+  REJEITADA
+}
+
 enum LeadEtapa {
   NOVO
   QUALIFICANDO
@@ -184,17 +191,17 @@ enum MessageType {
 }
 
 enum MessageStatus {
-  PENDING    // criada localmente, aguardando envio
-  SENT       // enviada ao provider
-  DELIVERED  // entregue ao destinatário
-  READ       // lida pelo destinatário
-  FAILED     // falha no envio
-  RECEIVED   // mensagem entrante (sempre esse status pra INBOUND)
+  PENDING // criada localmente, aguardando envio
+  SENT // enviada ao provider
+  DELIVERED // entregue ao destinatário
+  READ // lida pelo destinatário
+  FAILED // falha no envio
+  RECEIVED // mensagem entrante (sempre esse status pra INBOUND)
 }
 
 enum ConversationStatus {
   ABERTA
-  PENDENTE   // aguardando resposta nossa
+  PENDENTE // aguardando resposta nossa
   RESOLVIDA
   ARQUIVADA
 }
@@ -229,7 +236,7 @@ enum MarketplaceIncidentTipo {
 
 enum MarketplaceIncidentStatus {
   ABERTO
-  AGUARDANDO_VENDEDOR  // marketplace está esperando nossa ação
+  AGUARDANDO_VENDEDOR // marketplace está esperando nossa ação
   AGUARDANDO_COMPRADOR
   EM_MEDIACAO
   RESOLVIDO
@@ -240,48 +247,55 @@ enum MarketplaceIncidentStatus {
 // ─── MULTI-TENANT ─────────────────────────────────────────────────────
 
 model Empresa {
-  id          String   @id @default(cuid())
-  nome        String
-  cnpj        String?  @unique
-  ramo        String?
-  cidade      String?
-  uf          String?
-  subtitulo   String?
-  plano       String   @default("Pro")
-  ativo       Boolean  @default(true)
-  logoUrl     String?  // Path do logo no Supabase Storage (bucket empresa-logos)
-  criadoEm    DateTime @default(now())
+  id        String  @id @default(cuid())
+  nome      String
+  cnpj      String? @unique
+  ramo      String?
+  cidade    String?
+  uf        String?
+  subtitulo String?
+  plano     String  @default("Pro")
+  ativo     Boolean @default(true)
+  logoUrl   String? // Path do logo no Supabase Storage (bucket empresa-logos)
+
+  /// Lote 6 / B1 — Desconto à vista automático (0 = desligado).
+  /// Aplicado em PIX (descontoPixPct) e BOLETO+condição=avista (descontoBoletoAvistaPct).
+  /// Soma com descontoGeral do pedido/proposta. Configurável só pelo DIRECTOR.
+  descontoPixPct          Float? @default(0)
+  descontoBoletoAvistaPct Float? @default(0)
+
+  criadoEm     DateTime @default(now())
   atualizadoEm DateTime @updatedAt
 
-  usuarios       UsuarioEmpresa[]
-  clientes       Cliente[]
-  produtos       Produto[]
-  pedidos        Pedido[]
-  propostas      Proposta[]
-  leads          Lead[]
-  funis          Funil[]
-  ocorrencias    Ocorrencia[]
-  amostras       Amostra[]
-  campanhas      Campanha[]
-  fluxos         Fluxo[]
-  comissoes      Comissao[]
-  sequencias     EmpresaSequence[]
-  programaFidelidade   ProgramaFidelidade?
+  usuarios              UsuarioEmpresa[]
+  clientes              Cliente[]
+  produtos              Produto[]
+  pedidos               Pedido[]
+  propostas             Proposta[]
+  leads                 Lead[]
+  funis                 Funil[]
+  ocorrencias           Ocorrencia[]
+  amostras              Amostra[]
+  campanhas             Campanha[]
+  fluxos                Fluxo[]
+  comissoes             Comissao[]
+  sequencias            EmpresaSequence[]
+  programaFidelidade    ProgramaFidelidade?
   recompensasFidelidade RecompensaFidelidade[]
-  mullerBotPersona     MullerBotPersona?
-  formularios          Formulario[]
-  pesquisasNPS         PesquisaNPS[]
-  metas                Meta[]
-  segmentos            Segmento[]
-  saldosFidelidade     SaldoFidelidade[]
-  movimentosFidelidade MovimentoFidelidade[]
-  agendaItens    AgendaItem[]
-  tags           Tag[]
-  marketplaceMsgs MarketplaceMsg[]
-  marketplaceOrders MarketplaceOrder[]
-  conversations    Conversation[]
-  marketplaceIncidents MarketplaceIncident[]
-  notificacoes     Notificacao[]
+  mullerBotPersona      MullerBotPersona?
+  formularios           Formulario[]
+  pesquisasNPS          PesquisaNPS[]
+  metas                 Meta[]
+  segmentos             Segmento[]
+  saldosFidelidade      SaldoFidelidade[]
+  movimentosFidelidade  MovimentoFidelidade[]
+  agendaItens           AgendaItem[]
+  tags                  Tag[]
+  marketplaceMsgs       MarketplaceMsg[]
+  marketplaceOrders     MarketplaceOrder[]
+  conversations         Conversation[]
+  marketplaceIncidents  MarketplaceIncident[]
+  notificacoes          Notificacao[]
 
   @@index([ativo])
 }
@@ -301,37 +315,39 @@ model Usuario {
   atualizadoEm DateTime   @updatedAt
 
   // se for rep
-  regiao            String?
-  tetoDesconto      Float?  @default(5) // % máximo sem aprovação
-  comissaoPadrao    Float?  @default(5) // %
-  apiKeyOpenAI      String? // criptografada
+  regiao              String?
+  tetoDesconto        Float?  @default(5) // % máximo sem aprovação
+  comissaoPadrao      Float?  @default(5) // %
+  apiKeyOpenAI        String? // criptografada
   googleCalendarToken String? // criptografada
 
   // Hierarquia rep → gerente. Apenas REP pode ter gerenteId (apontando pra um GERENTE).
   // REP sem gerente → carteira gerida pelo DIRECTOR/ADMIN (catch-all).
   gerenteId String?
-  gerente   Usuario? @relation("RepGerente", fields: [gerenteId], references: [id], onDelete: SetNull)
+  gerente   Usuario?  @relation("RepGerente", fields: [gerenteId], references: [id], onDelete: SetNull)
   reps      Usuario[] @relation("RepGerente")
 
-  empresas      UsuarioEmpresa[]
-  pedidosCriados Pedido[] @relation("PedidoRep")
-  pedidosAprovados Pedido[] @relation("PedidoAprovador")
-  clientesAtribuidos Cliente[]
-  agendaItens   AgendaItem[]
-  aprovacoes    AprovacaoDesconto[] @relation("AprovacaoRep")
-  aprovacoesGerente AprovacaoDesconto[] @relation("AprovacaoGerente")
-  notasPrivadas NotaPrivada[]
-  comissoes     Comissao[]
-  leads         Lead[]       @relation("LeadRep")
-  ocorrenciasAtendidas Ocorrencia[] @relation("OcorrenciaResp")
-  ocorrenciasCriadas   Ocorrencia[] @relation("OcorrenciaCriador")
-  comentariosOcorrencia OcorrenciaComentario[]
-  integracoesUsuario UsuarioIntegracao[]
-  conversationsAtribuidas Conversation[] @relation("ConversationAtribuido")
-  conversationsProprietario Conversation[] @relation("ConversationProprietario")
-  mensagensEnviadas Message[] @relation("MessageAutor")
-  campanhasCriadas Campanha[]
-  notificacoes  Notificacao[]
+  empresas                  UsuarioEmpresa[]
+  pedidosCriados            Pedido[]                        @relation("PedidoRep")
+  pedidosAprovados          Pedido[]                        @relation("PedidoAprovador")
+  clientesAtribuidos        Cliente[]
+  agendaItens               AgendaItem[]
+  aprovacoes                AprovacaoDesconto[]             @relation("AprovacaoRep")
+  aprovacoesGerente         AprovacaoDesconto[]             @relation("AprovacaoGerente")
+  cancelamentosSolicitados  PedidoCancelamentoSolicitacao[] @relation("CancelamentoSolicitante")
+  cancelamentosDecididos    PedidoCancelamentoSolicitacao[] @relation("CancelamentoDecisor")
+  notasPrivadas             NotaPrivada[]
+  comissoes                 Comissao[]
+  leads                     Lead[]                          @relation("LeadRep")
+  ocorrenciasAtendidas      Ocorrencia[]                    @relation("OcorrenciaResp")
+  ocorrenciasCriadas        Ocorrencia[]                    @relation("OcorrenciaCriador")
+  comentariosOcorrencia     OcorrenciaComentario[]
+  integracoesUsuario        UsuarioIntegracao[]
+  conversationsAtribuidas   Conversation[]                  @relation("ConversationAtribuido")
+  conversationsProprietario Conversation[]                  @relation("ConversationProprietario")
+  mensagensEnviadas         Message[]                       @relation("MessageAutor")
+  campanhasCriadas          Campanha[]
+  notificacoes              Notificacao[]
 
   @@index([role])
   @@index([status])
@@ -339,7 +355,7 @@ model Usuario {
 }
 
 model UsuarioEmpresa {
-  id        String  @id @default(cuid())
+  id        String @id @default(cuid())
   usuarioId String
   empresaId String
 
@@ -351,11 +367,11 @@ model UsuarioEmpresa {
 }
 
 model Permissao {
-  id      String   @id @default(cuid())
-  role    UserRole
-  modulo  String   // dashboard, kanban, clientes, pedidos, etc
-  podeVer Boolean  @default(true)
-  podeEditar Boolean @default(false)
+  id         String   @id @default(cuid())
+  role       UserRole
+  modulo     String // dashboard, kanban, clientes, pedidos, etc
+  podeVer    Boolean  @default(true)
+  podeEditar Boolean  @default(false)
 
   @@unique([role, modulo])
 }
@@ -363,57 +379,57 @@ model Permissao {
 // ─── CLIENTES (CRM) ───────────────────────────────────────────────────
 
 model Cliente {
-  id           String        @id @default(cuid())
-  empresaId    String
-  codigoOmie   String?
-  nome         String
+  id              String            @id @default(cuid())
+  empresaId       String
+  codigoOmie      String?
+  nome            String
   // Dados fiscais e contato (obrigatórios via DTO; nullable no schema pra
   // suportar legado e import OMIE sem todos os campos preenchidos)
-  cnpj         String?
-  email        String?
-  telefone     String?
-  segmento     String?
+  cnpj            String?
+  email           String?
+  telefone        String?
+  segmento        String?
   // Endereço completo
-  cep          String?
-  endereco     String?
-  numero       String?
-  complemento  String?
-  bairro       String?
-  cidade       String?
-  uf           String?
-  regiao       String?
-  status       ClienteStatus @default(NOVO)
-  omieStatus   ClienteOmieStatus @default(ATIVO) // só ativo/bloqueado importa
-  score        Int           @default(50)
-  prazoPagamento Int         @default(30) // dias
-  limiteCredito Float?
-  ultimoPedidoEm DateTime?
+  cep             String?
+  endereco        String?
+  numero          String?
+  complemento     String?
+  bairro          String?
+  cidade          String?
+  uf              String?
+  regiao          String?
+  status          ClienteStatus     @default(NOVO)
+  omieStatus      ClienteOmieStatus @default(ATIVO) // só ativo/bloqueado importa
+  score           Int               @default(50)
+  prazoPagamento  Int               @default(30) // dias
+  limiteCredito   Float?
+  ultimoPedidoEm  DateTime?
   representanteId String?
   /// Marca registros gerados pelo seed-demo (script /admin/seed-demo).
   /// Permite limpeza seletiva sem mexer em dados reais do tenant.
-  isDemo       Boolean       @default(false)
-  criadoEm     DateTime      @default(now())
-  atualizadoEm DateTime      @updatedAt
+  isDemo          Boolean           @default(false)
+  criadoEm        DateTime          @default(now())
+  atualizadoEm    DateTime          @updatedAt
 
   empresa       Empresa  @relation(fields: [empresaId], references: [id], onDelete: Cascade)
   representante Usuario? @relation(fields: [representanteId], references: [id])
 
-  pedidos      Pedido[]
-  propostas    Proposta[]
-  ocorrencias  Ocorrencia[]
-  amostras     Amostra[]
-  precos       ClientePrecoEspecial[]
-  documentos   Documento[]
-  notasPrivadas NotaPrivada[]
-  tags         ClienteTag[]
-  agendaItens  AgendaItem[]
-  leads        Lead[]
-  conversations Conversation[]
-  marketplaceIncidents MarketplaceIncident[]
+  pedidos                Pedido[]
+  propostas              Proposta[]
+  ocorrencias            Ocorrencia[]
+  amostras               Amostra[]
+  precos                 ClientePrecoEspecial[]
+  documentos             Documento[]
+  notasPrivadas          NotaPrivada[]
+  tags                   ClienteTag[]
+  agendaItens            AgendaItem[]
+  leads                  Lead[]
+  conversations          Conversation[]
+  marketplaceIncidents   MarketplaceIncident[]
   campanhasDestinatarios CampanhaDestinatario[]
   saldoFidelidade        SaldoFidelidade?
   movimentosFidelidade   MovimentoFidelidade[]
-  respostasNPS           RespostaNPS[]            @relation("ClienteRespostaNPS")
+  respostasNPS           RespostaNPS[]          @relation("ClienteRespostaNPS")
 
   @@unique([empresaId, codigoOmie])
   @@index([empresaId])
@@ -434,7 +450,7 @@ model Tag {
   nome      String
   cor       String @default("#7c3aed")
 
-  empresa Empresa @relation(fields: [empresaId], references: [id], onDelete: Cascade)
+  empresa  Empresa      @relation(fields: [empresaId], references: [id], onDelete: Cascade)
   clientes ClienteTag[]
 
   @@unique([empresaId, nome])
@@ -446,6 +462,7 @@ model ClienteTag {
   tagId     String
   cliente   Cliente @relation(fields: [clienteId], references: [id], onDelete: Cascade)
   tag       Tag     @relation(fields: [tagId], references: [id], onDelete: Cascade)
+
   @@id([clienteId, tagId])
 }
 
@@ -479,35 +496,35 @@ model Documento {
 // ─── PRODUTOS / CATÁLOGO ──────────────────────────────────────────────
 
 model Produto {
-  id            String   @id @default(cuid())
-  empresaId     String
-  codigoOmie    String?
-  sku           String?
-  nome          String
-  descricao     String?  @db.Text
-  marca         String?
-  linha         String? // Alimentos, Químicos, Bebidas, Embalagens
-  categoria     String?
-  unidade       String? // cx 12un, 1kg, etc
-  precoTabela   Float
-  precoFabrica  Float
-  imagem        String? // emoji ou URL
-  popularidade  Int      @default(0)
-  estoque       Int      @default(0)
+  id                  String    @id @default(cuid())
+  empresaId           String
+  codigoOmie          String?
+  sku                 String?
+  nome                String
+  descricao           String?   @db.Text
+  marca               String?
+  linha               String? // Alimentos, Químicos, Bebidas, Embalagens
+  categoria           String?
+  unidade             String? // cx 12un, 1kg, etc
+  precoTabela         Float
+  precoFabrica        Float
+  imagem              String? // emoji ou URL
+  popularidade        Int       @default(0)
+  estoque             Int       @default(0)
   /// Timestamp da última vez que estoque foi sincronizado (sync 30min OU webhook OMIE).
   /// Usado pelo frontend pra mostrar "atualizado há X min" e detectar dados stale.
   estoqueAtualizadoEm DateTime?
-  ativo         Boolean  @default(true)
+  ativo               Boolean   @default(true)
   /// Marca registros gerados pelo seed-demo.
-  isDemo        Boolean  @default(false)
-  criadoEm      DateTime @default(now())
-  atualizadoEm  DateTime @updatedAt
+  isDemo              Boolean   @default(false)
+  criadoEm            DateTime  @default(now())
+  atualizadoEm        DateTime  @updatedAt
 
   empresa Empresa @relation(fields: [empresaId], references: [id], onDelete: Cascade)
 
   precosEspeciais ClientePrecoEspecial[]
-  pedidoItens   PedidoItem[]
-  catalogoReps  RepCatalogoItem[]
+  pedidoItens     PedidoItem[]
+  catalogoReps    RepCatalogoItem[]
 
   // Unicidade por empresa — duas empresas podem ter mesmo SKU
   @@unique([empresaId, sku])
@@ -519,11 +536,11 @@ model Produto {
 }
 
 model ClientePrecoEspecial {
-  id            String  @id @default(cuid())
+  id            String    @id @default(cuid())
   clienteId     String
   produtoId     String
   precoEspecial Float
-  descontoBase  Float   @default(0) // %
+  descontoBase  Float     @default(0) // %
   validoAte     DateTime?
 
   cliente Cliente @relation(fields: [clienteId], references: [id], onDelete: Cascade)
@@ -534,10 +551,10 @@ model ClientePrecoEspecial {
 }
 
 model RepCatalogoItem {
-  id        String  @id @default(cuid())
-  usuarioId String  // rep
+  id        String   @id @default(cuid())
+  usuarioId String // rep
   produtoId String
-  markup    Float   @default(0) // % aplicado pelo rep
+  markup    Float    @default(0) // % aplicado pelo rep
   criadoEm  DateTime @default(now())
 
   produto Produto @relation(fields: [produtoId], references: [id], onDelete: Cascade)
@@ -549,50 +566,51 @@ model RepCatalogoItem {
 // ─── PEDIDOS ──────────────────────────────────────────────────────────
 
 model Pedido {
-  id              String       @id @default(cuid())
-  numero          String       // PED-XXXX — unicidade por empresa (@@unique abaixo)
-  numeroOmie      String?      @unique
+  id              String  @id @default(cuid())
+  numero          String // PED-XXXX — unicidade por empresa (@@unique abaixo)
+  numeroOmie      String? @unique
   empresaId       String
   clienteId       String
   representanteId String?
   aprovadorId     String?
 
-  origem          PedidoOrigem @default(REP_APP)
-  status          PedidoStatus @default(RASCUNHO)
-  formaPagamento  PagamentoForma @default(BOLETO)
-  condicaoPagamento String?    // "avista", "30dias", "30_60", "30_60_90"
-  prazoEntrega    DateTime?
+  origem            PedidoOrigem   @default(REP_APP)
+  status            PedidoStatus   @default(RASCUNHO)
+  formaPagamento    PagamentoForma @default(BOLETO)
+  condicaoPagamento String? // "avista", "30dias", "30_60", "30_60_90"
+  prazoEntrega      DateTime?
 
-  subtotal        Float        @default(0)
-  descontoGeral   Float        @default(0) // %
-  total           Float        @default(0)
-  comissao        Float        @default(0)
+  subtotal      Float @default(0)
+  descontoGeral Float @default(0) // %
+  total         Float @default(0)
+  comissao      Float @default(0)
 
-  observacoes     String?      @db.Text
-  motivoDesconto  String?      // pra aprovação
+  observacoes    String? @db.Text
+  motivoDesconto String? // pra aprovação
 
   /// Marca registros gerados pelo seed-demo.
-  isDemo          Boolean      @default(false)
+  isDemo Boolean @default(false)
 
-  criadoEm        DateTime     @default(now())
-  atualizadoEm    DateTime     @updatedAt
-  enviadoOmieEm   DateTime?
-  pagoEm          DateTime?
+  criadoEm      DateTime  @default(now())
+  atualizadoEm  DateTime  @updatedAt
+  enviadoOmieEm DateTime?
+  pagoEm        DateTime?
 
   /// Quando o pedido foi criado via "duplicar", aponta pro pedido original.
   /// SetNull se o original for excluído — preserva o histórico do duplicado.
-  pedidoOrigemId  String?
+  pedidoOrigemId String?
 
-  empresa         Empresa  @relation(fields: [empresaId], references: [id], onDelete: Cascade)
-  cliente         Cliente  @relation(fields: [clienteId], references: [id])
-  representante   Usuario? @relation("PedidoRep", fields: [representanteId], references: [id])
-  aprovador       Usuario? @relation("PedidoAprovador", fields: [aprovadorId], references: [id])
-  pedidoOrigem    Pedido?  @relation("PedidoDuplicado", fields: [pedidoOrigemId], references: [id], onDelete: SetNull)
-  duplicados      Pedido[] @relation("PedidoDuplicado")
+  empresa       Empresa  @relation(fields: [empresaId], references: [id], onDelete: Cascade)
+  cliente       Cliente  @relation(fields: [clienteId], references: [id])
+  representante Usuario? @relation("PedidoRep", fields: [representanteId], references: [id])
+  aprovador     Usuario? @relation("PedidoAprovador", fields: [aprovadorId], references: [id])
+  pedidoOrigem  Pedido?  @relation("PedidoDuplicado", fields: [pedidoOrigemId], references: [id], onDelete: SetNull)
+  duplicados    Pedido[] @relation("PedidoDuplicado")
 
-  itens           PedidoItem[]
-  aprovacaoDesconto AprovacaoDesconto?
-  movimentosFidelidade MovimentoFidelidade[]
+  itens                    PedidoItem[]
+  aprovacaoDesconto        AprovacaoDesconto?
+  cancelamentoSolicitacoes PedidoCancelamentoSolicitacao[]
+  movimentosFidelidade     MovimentoFidelidade[]
 
   @@unique([empresaId, numero])
   @@index([empresaId])
@@ -608,14 +626,14 @@ model Pedido {
 }
 
 model PedidoItem {
-  id           String @id @default(cuid())
-  pedidoId     String
-  produtoId    String
-  quantidade   Int
+  id            String  @id @default(cuid())
+  pedidoId      String
+  produtoId     String
+  quantidade    Int
   precoUnitario Float
-  desconto     Float  @default(0) // %
-  total        Float
-  negociado    Boolean @default(false)
+  desconto      Float   @default(0) // %
+  total         Float
+  negociado     Boolean @default(false)
 
   pedido  Pedido  @relation(fields: [pedidoId], references: [id], onDelete: Cascade)
   produto Produto @relation(fields: [produtoId], references: [id])
@@ -624,61 +642,95 @@ model PedidoItem {
 }
 
 model AprovacaoDesconto {
-  id            String          @id @default(cuid())
-  pedidoId      String          @unique
-  representanteId String
-  gerenteId     String?
-  descontoSolicitado Float
-  motivo        String          @db.Text
-  status        AprovacaoStatus @default(PENDENTE)
+  id                  String          @id @default(cuid())
+  pedidoId            String          @unique
+  representanteId     String
+  gerenteId           String?
+  descontoSolicitado  Float
+  motivo              String          @db.Text
+  status              AprovacaoStatus @default(PENDENTE)
   comentarioAprovador String?
-  criadoEm      DateTime        @default(now())
-  resolvidoEm   DateTime?
+  criadoEm            DateTime        @default(now())
+  resolvidoEm         DateTime?
 
-  pedido         Pedido  @relation(fields: [pedidoId], references: [id], onDelete: Cascade)
-  representante  Usuario @relation("AprovacaoRep", fields: [representanteId], references: [id])
-  gerente        Usuario? @relation("AprovacaoGerente", fields: [gerenteId], references: [id])
+  pedido        Pedido   @relation(fields: [pedidoId], references: [id], onDelete: Cascade)
+  representante Usuario  @relation("AprovacaoRep", fields: [representanteId], references: [id])
+  gerente       Usuario? @relation("AprovacaoGerente", fields: [gerenteId], references: [id])
 
   @@index([status])
+}
+
+/// Lote 6 / P6 — Solicitação de cancelamento de pedido por REP/GERENTE.
+/// DIRECTOR/ADMIN decide; quando APROVADA, o pedido é efetivamente cancelado
+/// (status → CANCELADO) com o motivo gravado nas observações.
+model PedidoCancelamentoSolicitacao {
+  id                String                   @id @default(cuid())
+  pedidoId          String
+  solicitanteId     String
+  motivo            String                   @db.Text
+  status            PedidoCancelamentoStatus @default(PENDENTE)
+  decididoPorId     String?
+  decididoEm        DateTime?
+  decisaoComentario String?                  @db.Text
+  criadoEm          DateTime                 @default(now())
+  atualizadoEm      DateTime                 @updatedAt
+
+  pedido      Pedido   @relation(fields: [pedidoId], references: [id], onDelete: Cascade)
+  solicitante Usuario  @relation("CancelamentoSolicitante", fields: [solicitanteId], references: [id])
+  decididoPor Usuario? @relation("CancelamentoDecisor", fields: [decididoPorId], references: [id])
+
+  @@index([pedidoId])
+  @@index([status, criadoEm])
 }
 
 // ─── PROPOSTAS ────────────────────────────────────────────────────────
 
 model Proposta {
-  id              String         @id @default(cuid())
-  numero          String         // PROP-XXXX — unicidade por empresa (@@unique abaixo)
+  id              String  @id @default(cuid())
+  numero          String // PROP-XXXX — unicidade por empresa (@@unique abaixo)
   empresaId       String
   clienteId       String
   representanteId String?
 
-  status          PropostaStatus @default(RASCUNHO)
-  probabilidade   Int            @default(50)
-  validoAte       DateTime?
+  status        PropostaStatus @default(RASCUNHO)
+  probabilidade Int            @default(50)
+  validoAte     DateTime?
 
-  formaPagamento  PagamentoForma @default(BOLETO)
+  formaPagamento    PagamentoForma @default(BOLETO)
   condicaoPagamento String?
-  prazoEntrega    DateTime?
+  prazoEntrega      DateTime?
 
-  subtotal        Float          @default(0)
-  descontoGeral   Float          @default(0)
-  valor           Float          @default(0)
-  comissaoEstimada Float         @default(0)
+  subtotal         Float @default(0)
+  descontoGeral    Float @default(0)
+  valor            Float @default(0)
+  comissaoEstimada Float @default(0)
 
-  observacoes     String?        @db.Text
-  pdfUrl          String?
+  observacoes String? @db.Text
+  pdfUrl      String?
 
   /// Marca registros gerados pelo seed-demo.
-  isDemo          Boolean        @default(false)
+  isDemo Boolean @default(false)
 
-  /** Quando a proposta foi convertida em pedido (se foi) */
-  pedidoId        String?        @unique
-  convertidaEm    DateTime?
+  /**
+   * Quando a proposta foi convertida em pedido (se foi)
+   */
+  pedidoId     String?   @unique
+  convertidaEm DateTime?
 
-  criadoEm        DateTime       @default(now())
-  atualizadoEm    DateTime       @updatedAt
+  /// Lote 6 / C3 — Aceite externo do cliente via link público.
+  /// Quando o rep "envia pro cliente aprovar", gera token JWT único.
+  /// Cliente clica → página pública /proposta/aceite/<token> → aceitar/recusar.
+  /// Token usado uma vez (limpado após aceite/recusa). TTL default 7 dias.
+  aceiteToken    String?   @unique
+  aceiteExpiraEm DateTime?
+  aceitoEm       DateTime?
+  aceitoDoIp     String? // auditoria do aceite
 
-  empresa Empresa  @relation(fields: [empresaId], references: [id], onDelete: Cascade)
-  cliente Cliente  @relation(fields: [clienteId], references: [id])
+  criadoEm     DateTime @default(now())
+  atualizadoEm DateTime @updatedAt
+
+  empresa Empresa        @relation(fields: [empresaId], references: [id], onDelete: Cascade)
+  cliente Cliente        @relation(fields: [clienteId], references: [id])
   itens   PropostaItem[]
 
   @@unique([empresaId, numero])
@@ -691,15 +743,15 @@ model Proposta {
 }
 
 model PropostaItem {
-  id           String  @id @default(cuid())
-  propostaId   String
-  produtoId    String
-  produtoNome  String  // snapshot pra não quebrar se produto for desativado
-  quantidade   Int
+  id            String  @id @default(cuid())
+  propostaId    String
+  produtoId     String
+  produtoNome   String // snapshot pra não quebrar se produto for desativado
+  quantidade    Int
   precoUnitario Float
-  desconto     Float   @default(0)
-  total        Float
-  negociado    Boolean @default(false)
+  desconto      Float   @default(0)
+  total         Float
+  negociado     Boolean @default(false)
 
   proposta Proposta @relation(fields: [propostaId], references: [id], onDelete: Cascade)
 
@@ -709,10 +761,10 @@ model PropostaItem {
 // ─── KANBAN / LEADS ───────────────────────────────────────────────────
 
 model Lead {
-  id              String       @id @default(cuid())
+  id              String  @id @default(cuid())
   empresaId       String
   representanteId String?
-  clienteId       String?      // populado quando ganho vira cliente
+  clienteId       String? // populado quando ganho vira cliente
 
   nome            String
   cidade          String?
@@ -721,30 +773,32 @@ model Lead {
   contatoNome     String?
   contatoEmail    String?
   contatoTelefone String?
-  valorEstimado   Float        @default(0)
-  canalOrigem     CanalOrigem  @default(WHATSAPP)
+  valorEstimado   Float       @default(0)
+  canalOrigem     CanalOrigem @default(WHATSAPP)
 
   /// Etapa do funil padrão (legado). Mantido pra compat com dashboards e relatórios
   /// que ainda agregam pelo enum. Quando `funilEtapaId` está setado, ele é a fonte
   /// da verdade — esta coluna é sincronizada a partir do `tipo` da FunilEtapa.
-  etapa           LeadEtapa    @default(NOVO)
+  etapa        LeadEtapa @default(NOVO)
   /// Funil customizado ao qual este lead pertence. Se null, usa o funil legado.
-  funilId         String?
+  funilId      String?
   /// Etapa customizada dentro do funil. Quando setado, sobrescreve `etapa` na UI.
-  funilEtapaId    String?
-  score           Int          @default(50)
-  proximaAcao     String?
-  observacoes     String?      @db.Text
+  funilEtapaId String?
+  score        Int       @default(50)
+  proximaAcao  String?
+  observacoes  String?   @db.Text
 
-  motivoGanho     String?
-  motivoPerda     String?
-  pedidoId        String?      // se ganho gerou pedido
-  /** Quando a etapa atual começou (usado pra calcular dias na etapa) */
-  etapaDesde      DateTime     @default(now())
-  fechadoEm       DateTime?    // preenchido em GANHO ou PERDIDO
+  motivoGanho String?
+  motivoPerda String?
+  pedidoId    String? // se ganho gerou pedido
+  /**
+   * Quando a etapa atual começou (usado pra calcular dias na etapa)
+   */
+  etapaDesde  DateTime  @default(now())
+  fechadoEm   DateTime? // preenchido em GANHO ou PERDIDO
 
-  criadoEm        DateTime     @default(now())
-  atualizadoEm    DateTime     @updatedAt
+  criadoEm     DateTime @default(now())
+  atualizadoEm DateTime @updatedAt
 
   empresa       Empresa     @relation(fields: [empresaId], references: [id], onDelete: Cascade)
   representante Usuario?    @relation("LeadRep", fields: [representanteId], references: [id])
@@ -766,30 +820,30 @@ model Lead {
 // (nome, cor, ordem, tipo). Leads pertencem a UM funil de cada vez.
 
 enum FunilEtapaTipo {
-  ATIVA   // estágio normal (movimentação livre)
-  GANHO   // terminal positivo
+  ATIVA // estágio normal (movimentação livre)
+  GANHO // terminal positivo
   PERDIDO // terminal negativo
 }
 
 model Funil {
-  id           String   @id @default(cuid())
-  empresaId    String
-  nome         String
-  descricao    String?  @db.Text
+  id        String  @id @default(cuid())
+  empresaId String
+  nome      String
+  descricao String? @db.Text
   /// Cor de destaque do funil (usada na badge do nome)
-  cor          String   @default("#201554")
+  cor       String  @default("#201554")
   /// Ordem de exibição na lista de funis
-  ordem        Int      @default(0)
-  ativo        Boolean  @default(true)
+  ordem     Int     @default(0)
+  ativo     Boolean @default(true)
   /// Apenas 1 funil padrão por empresa — usado quando lead é criado sem funil explícito
-  isPadrao     Boolean  @default(false)
+  isPadrao  Boolean @default(false)
 
   criadoEm     DateTime @default(now())
   atualizadoEm DateTime @updatedAt
 
-  empresa      Empresa      @relation(fields: [empresaId], references: [id], onDelete: Cascade)
-  etapas       FunilEtapa[]
-  leads        Lead[]
+  empresa Empresa      @relation(fields: [empresaId], references: [id], onDelete: Cascade)
+  etapas  FunilEtapa[]
+  leads   Lead[]
 
   @@unique([empresaId, nome])
   @@index([empresaId, ativo])
@@ -809,11 +863,11 @@ model FunilEtapa {
   /// SLA em dias antes da etapa entrar em "aging"
   slaDias       Int?
 
-  criadoEm      DateTime       @default(now())
-  atualizadoEm  DateTime       @updatedAt
+  criadoEm     DateTime @default(now())
+  atualizadoEm DateTime @updatedAt
 
-  funil         Funil  @relation(fields: [funilId], references: [id], onDelete: Cascade)
-  leads         Lead[]
+  funil Funil  @relation(fields: [funilId], references: [id], onDelete: Cascade)
+  leads Lead[]
 
   @@unique([funilId, nome])
   @@index([funilId, ordem])
@@ -822,32 +876,32 @@ model FunilEtapa {
 // ─── OCORRÊNCIAS (SAC) ────────────────────────────────────────────────
 
 model Ocorrencia {
-  id              String           @id @default(cuid())
-  numero          String           // OCO-XXXX por empresa
-  empresaId       String
-  clienteId       String
-  pedidoId        String?
-  responsavelId   String?          // quem está cuidando
-  criadoPorId     String?          // quem abriu
+  id            String  @id @default(cuid())
+  numero        String // OCO-XXXX por empresa
+  empresaId     String
+  clienteId     String
+  pedidoId      String?
+  responsavelId String? // quem está cuidando
+  criadoPorId   String? // quem abriu
 
-  tipo            OcorrenciaTipo
-  severidade      String           @default("media") // baixa | media | alta | critica
-  status          OcorrenciaStatus @default(ABERTA)
+  tipo       OcorrenciaTipo
+  severidade String           @default("media") // baixa | media | alta | critica
+  status     OcorrenciaStatus @default(ABERTA)
 
-  titulo          String
-  descricao       String           @db.Text
-  slaHoras        Int              @default(24)
-  slaVenceEm      DateTime         // calculado a partir de criadoEm + slaHoras
-  resolvidoEm     DateTime?
-  resolucao       String?          @db.Text
+  titulo      String
+  descricao   String    @db.Text
+  slaHoras    Int       @default(24)
+  slaVenceEm  DateTime // calculado a partir de criadoEm + slaHoras
+  resolvidoEm DateTime?
+  resolucao   String?   @db.Text
 
-  criadoEm        DateTime         @default(now())
-  atualizadoEm    DateTime         @updatedAt
+  criadoEm     DateTime @default(now())
+  atualizadoEm DateTime @updatedAt
 
-  empresa     Empresa  @relation(fields: [empresaId], references: [id], onDelete: Cascade)
-  cliente     Cliente  @relation(fields: [clienteId], references: [id])
-  responsavel Usuario? @relation("OcorrenciaResp", fields: [responsavelId], references: [id])
-  criadoPor   Usuario? @relation("OcorrenciaCriador", fields: [criadoPorId], references: [id])
+  empresa     Empresa                @relation(fields: [empresaId], references: [id], onDelete: Cascade)
+  cliente     Cliente                @relation(fields: [clienteId], references: [id])
+  responsavel Usuario?               @relation("OcorrenciaResp", fields: [responsavelId], references: [id])
+  criadoPor   Usuario?               @relation("OcorrenciaCriador", fields: [criadoPorId], references: [id])
   comentarios OcorrenciaComentario[]
 
   @@unique([empresaId, numero])
@@ -860,14 +914,16 @@ model Ocorrencia {
 }
 
 model OcorrenciaComentario {
-  id            String   @id @default(cuid())
-  ocorrenciaId  String
-  autorId       String?
-  autorNome     String
-  texto         String   @db.Text
-  /** True quando é um evento de sistema (mudança de status, atribuição). */
-  isSistema     Boolean  @default(false)
-  criadoEm      DateTime @default(now())
+  id           String   @id @default(cuid())
+  ocorrenciaId String
+  autorId      String?
+  autorNome    String
+  texto        String   @db.Text
+  /**
+   * True quando é um evento de sistema (mudança de status, atribuição).
+   */
+  isSistema    Boolean  @default(false)
+  criadoEm     DateTime @default(now())
 
   ocorrencia Ocorrencia @relation(fields: [ocorrenciaId], references: [id], onDelete: Cascade)
   autor      Usuario?   @relation(fields: [autorId], references: [id])
@@ -878,18 +934,18 @@ model OcorrenciaComentario {
 // ─── AMOSTRAS ─────────────────────────────────────────────────────────
 
 model Amostra {
-  id            String        @id @default(cuid())
-  empresaId     String
-  clienteId     String
-  produtoNome   String
-  valor         Float
-  notaFiscal    String?
-  enviadoEm     DateTime
-  followUpEm    DateTime?
-  status        AmostraStatus @default(ENVIADA)
+  id                String        @id @default(cuid())
+  empresaId         String
+  clienteId         String
+  produtoNome       String
+  valor             Float
+  notaFiscal        String?
+  enviadoEm         DateTime
+  followUpEm        DateTime?
+  status            AmostraStatus @default(ENVIADA)
   representanteNome String?
   /// Marca registros gerados pelo seed-demo.
-  isDemo        Boolean       @default(false)
+  isDemo            Boolean       @default(false)
 
   empresa Empresa @relation(fields: [empresaId], references: [id], onDelete: Cascade)
   cliente Cliente @relation(fields: [clienteId], references: [id])
@@ -908,7 +964,7 @@ enum ComissaoTipo {
 }
 
 model Comissao {
-  id              String   @id @default(cuid())
+  id              String       @id @default(cuid())
   /// Tenant da comissão. CRÍTICO pra isolamento multi-tenant em queries.
   /// Em caso de rep multi-empresa, distingue o fechamento por tenant.
   empresaId       String
@@ -921,18 +977,18 @@ model Comissao {
   /// antigos onde a comissão veio dos pedidos.
   percentual      Float?
   /// Timestamp do snapshot — quando a comissão foi calculada/congelada.
-  calculadoEm     DateTime @default(now())
+  calculadoEm     DateTime     @default(now())
   mes             Int
   ano             Int
   totalVendas     Float
   totalComissao   Float
   qtdPedidos      Int
-  pago            Boolean  @default(false)
+  pago            Boolean      @default(false)
   pagoEm          DateTime?
   reciboUrl       String?
   /// Marca registros gerados pelo seed-demo.
-  isDemo          Boolean  @default(false)
-  criadoEm        DateTime @default(now())
+  isDemo          Boolean      @default(false)
+  criadoEm        DateTime     @default(now())
 
   empresa       Empresa @relation(fields: [empresaId], references: [id], onDelete: Cascade)
   representante Usuario @relation(fields: [representanteId], references: [id])
@@ -965,10 +1021,10 @@ model AgendaItem {
   criadoEm      DateTime   @default(now())
 
   // Recorrência (v1.5.0) — geração leve de instâncias filhas
-  recorrencia   Recorrencia @default(NENHUMA)
-  parentId      String?     // se é instância de série recorrente
-  parent        AgendaItem? @relation("AgendaRecorrencia", fields: [parentId], references: [id], onDelete: SetNull)
-  filhos        AgendaItem[] @relation("AgendaRecorrencia")
+  recorrencia Recorrencia  @default(NENHUMA)
+  parentId    String? // se é instância de série recorrente
+  parent      AgendaItem?  @relation("AgendaRecorrencia", fields: [parentId], references: [id], onDelete: SetNull)
+  filhos      AgendaItem[] @relation("AgendaRecorrencia")
 
   empresa Empresa  @relation(fields: [empresaId], references: [id], onDelete: Cascade)
   usuario Usuario  @relation(fields: [usuarioId], references: [id], onDelete: Cascade)
@@ -1000,10 +1056,10 @@ enum FluxoStatus {
 }
 
 enum FluxoNoTipo {
-  TRIGGER   // ponto de entrada — 1 por fluxo
-  CONDICAO  // bifurcação baseada em dados do contexto (dois caminhos: true/false)
-  ACAO      // executa uma ação concreta (enviar msg, criar tarefa, etc.)
-  DELAY     // espera N minutos/horas antes de prosseguir
+  TRIGGER // ponto de entrada — 1 por fluxo
+  CONDICAO // bifurcação baseada em dados do contexto (dois caminhos: true/false)
+  ACAO // executa uma ação concreta (enviar msg, criar tarefa, etc.)
+  DELAY // espera N minutos/horas antes de prosseguir
 }
 
 enum FluxoTriggerTipo {
@@ -1012,19 +1068,19 @@ enum FluxoTriggerTipo {
   PEDIDO_APROVADO
   PEDIDO_ENTREGUE
   OCORRENCIA_ABERTA
-  CLIENTE_INATIVO_30D   // cron-driven — clientes sem pedido há ≥ N dias
-  AMOSTRA_FOLLOWUP      // cron-driven — amostras no prazo de follow-up
-  CRON_AGENDADO         // expressão cron customizável pelo admin
+  CLIENTE_INATIVO_30D // cron-driven — clientes sem pedido há ≥ N dias
+  AMOSTRA_FOLLOWUP // cron-driven — amostras no prazo de follow-up
+  CRON_AGENDADO // expressão cron customizável pelo admin
 }
 
 enum FluxoAcaoTipo {
-  ENVIAR_WHATSAPP   // envia mensagem pelo WhatsApp da empresa
-  ENVIAR_EMAIL      // envia e-mail sistêmico via SendGrid
-  CRIAR_TAREFA      // cria AgendaItem (TAREFA) pro representante do cliente
-  MUDAR_TAG         // adiciona ou remove tag em cliente
-  MOVER_LEAD_ETAPA  // avança lead para a próxima etapa
-  ATRIBUIR_REP      // atribui representante ao cliente/lead
-  WEBHOOK_EXTERNO   // POST JSON pra URL externa configurada
+  ENVIAR_WHATSAPP // envia mensagem pelo WhatsApp da empresa
+  ENVIAR_EMAIL // envia e-mail sistêmico via SendGrid
+  CRIAR_TAREFA // cria AgendaItem (TAREFA) pro representante do cliente
+  MUDAR_TAG // adiciona ou remove tag em cliente
+  MOVER_LEAD_ETAPA // avança lead para a próxima etapa
+  ATRIBUIR_REP // atribui representante ao cliente/lead
+  WEBHOOK_EXTERNO // POST JSON pra URL externa configurada
 }
 
 enum FluxoExecucaoStatus {
@@ -1040,18 +1096,18 @@ enum FluxoExecucaoStatus {
  * O grafo é composto por FluxoNos (nós) conectados por FluxoEdges (arestas).
  */
 model Fluxo {
-  id           String           @id @default(cuid())
-  empresaId    String
-  nome         String
-  descricao    String?
-  status       FluxoStatus      @default(RASCUNHO)
-  versao       Int              @default(1)
+  id            String            @id @default(cuid())
+  empresaId     String
+  nome          String
+  descricao     String?
+  status        FluxoStatus       @default(RASCUNHO)
+  versao        Int               @default(1)
   /// Tipo do trigger raiz (define o evento que dispara o fluxo).
-  triggerTipo  FluxoTriggerTipo?
+  triggerTipo   FluxoTriggerTipo?
   /// Config extra do trigger: p.ex. { cronExpr: "0 9 * * 1", diasInativo: 30 }
   triggerConfig Json?
-  criadoEm     DateTime         @default(now())
-  atualizadoEm DateTime         @updatedAt
+  criadoEm      DateTime          @default(now())
+  atualizadoEm  DateTime          @updatedAt
 
   empresa   Empresa         @relation(fields: [empresaId], references: [id], onDelete: Cascade)
   nos       FluxoNo[]
@@ -1065,29 +1121,29 @@ model Fluxo {
 /**
  * Nó do fluxo (trigger / condição / ação / delay).
  * `config` é um JSON livre cujo schema depende do tipo:
- *  - TRIGGER:   { } (vazio — config fica em Fluxo.triggerConfig)
- *  - CONDICAO:  { campo: "lead.etapa", operador: "eq"|"neq"|"gt"|"lt"|"contains", valor: "NEGOCIACAO" }
- *  - DELAY:     { valor: 2, unidade: "minutos"|"horas"|"dias" }
- *  - ACAO (ENVIAR_WHATSAPP): { mensagem: "Olá {{cliente.nome}}..." }
- *  - ACAO (ENVIAR_EMAIL):    { assunto: "...", corpo: "..." }
- *  - ACAO (CRIAR_TAREFA):    { titulo: "...", tipo: "TAREFA", diasApartirDeHoje: 1 }
- *  - ACAO (MUDAR_TAG):       { tagNome: "...", operacao: "adicionar"|"remover" }
- *  - ACAO (MOVER_LEAD_ETAPA): { etapa: "NEGOCIACAO" }
- *  - ACAO (ATRIBUIR_REP):    { representanteId: "..." }
- *  - ACAO (WEBHOOK_EXTERNO): { url: "https://...", headers: {}, payload: {} }
- *  - ACAO (tipo): também inclui acaoTipo: FluxoAcaoTipo
+ * - TRIGGER:   { } (vazio — config fica em Fluxo.triggerConfig)
+ * - CONDICAO:  { campo: "lead.etapa", operador: "eq"|"neq"|"gt"|"lt"|"contains", valor: "NEGOCIACAO" }
+ * - DELAY:     { valor: 2, unidade: "minutos"|"horas"|"dias" }
+ * - ACAO (ENVIAR_WHATSAPP): { mensagem: "Olá {{cliente.nome}}..." }
+ * - ACAO (ENVIAR_EMAIL):    { assunto: "...", corpo: "..." }
+ * - ACAO (CRIAR_TAREFA):    { titulo: "...", tipo: "TAREFA", diasApartirDeHoje: 1 }
+ * - ACAO (MUDAR_TAG):       { tagNome: "...", operacao: "adicionar"|"remover" }
+ * - ACAO (MOVER_LEAD_ETAPA): { etapa: "NEGOCIACAO" }
+ * - ACAO (ATRIBUIR_REP):    { representanteId: "..." }
+ * - ACAO (WEBHOOK_EXTERNO): { url: "https://...", headers: {}, payload: {} }
+ * - ACAO (tipo): também inclui acaoTipo: FluxoAcaoTipo
  */
 model FluxoNo {
-  id       String      @id @default(cuid())
+  id       String         @id @default(cuid())
   fluxoId  String
   tipo     FluxoNoTipo
   /// Tipo de ação (só para tipo=ACAO).
   acaoTipo FluxoAcaoTipo?
   titulo   String
-  config   Json        @default("{}")
+  config   Json           @default("{}")
   /// Posição no canvas visual (usada pelo frontend).
-  posX     Float       @default(0)
-  posY     Float       @default(0)
+  posX     Float          @default(0)
+  posY     Float          @default(0)
 
   fluxo    Fluxo       @relation(fields: [fluxoId], references: [id], onDelete: Cascade)
   saidas   FluxoEdge[] @relation("EdgeSource")
@@ -1136,8 +1192,8 @@ model FluxoExecucao {
   tentativas Int                 @default(0)
   criadoEm   DateTime            @default(now())
 
-  fluxo  Fluxo              @relation(fields: [fluxoId], references: [id])
-  logs   FluxoExecucaoLog[]
+  fluxo Fluxo              @relation(fields: [fluxoId], references: [id])
+  logs  FluxoExecucaoLog[]
 
   @@index([fluxoId, status])
   @@index([empresaId])
@@ -1193,32 +1249,32 @@ enum DestinatarioStatus {
 }
 
 model Campanha {
-  id              String         @id @default(cuid())
-  empresaId       String
-  criadoPorId     String
-  nome            String
-  canal           CampanhaCanal  @default(WHATSAPP)
-  status          CampanhaStatus @default(RASCUNHO)
+  id                   String         @id @default(cuid())
+  empresaId            String
+  criadoPorId          String
+  nome                 String
+  canal                CampanhaCanal  @default(WHATSAPP)
+  status               CampanhaStatus @default(RASCUNHO)
   // Segmentação — todos vazios = toda a base da empresa
-  segTagIds       String[]       @default([])
-  segRepIds       String[]       @default([])
-  segClienteIds   String[]       @default([])
+  segTagIds            String[]       @default([])
+  segRepIds            String[]       @default([])
+  segClienteIds        String[]       @default([])
   // Contexto IA
-  objetivo        String?        @db.Text  // objetivo da campanha (usado pela IA para gerar/analisar)
-  usarIaPersonalizacao Boolean   @default(false) // se true, processor personaliza mensagem por cliente
+  objetivo             String?        @db.Text // objetivo da campanha (usado pela IA para gerar/analisar)
+  usarIaPersonalizacao Boolean        @default(false) // se true, processor personaliza mensagem por cliente
   // Conteúdo
-  assunto         String?        // subject do email
-  mensagemWa      String?        @db.Text
-  mensagemEmail   String?        @db.Text
+  assunto              String? // subject do email
+  mensagemWa           String?        @db.Text
+  mensagemEmail        String?        @db.Text
   // Execução
-  agendadoPara    DateTime?
-  iniciadoEm      DateTime?
-  finalizadoEm    DateTime?
-  criadoEm        DateTime       @default(now())
-  atualizadoEm    DateTime       @updatedAt
+  agendadoPara         DateTime?
+  iniciadoEm           DateTime?
+  finalizadoEm         DateTime?
+  criadoEm             DateTime       @default(now())
+  atualizadoEm         DateTime       @updatedAt
 
-  empresa      Empresa               @relation(fields: [empresaId], references: [id], onDelete: Cascade)
-  criadoPor    Usuario               @relation(fields: [criadoPorId], references: [id])
+  empresa       Empresa                @relation(fields: [empresaId], references: [id], onDelete: Cascade)
+  criadoPor     Usuario                @relation(fields: [criadoPorId], references: [id])
   destinatarios CampanhaDestinatario[]
 
   @@index([empresaId])
@@ -1227,17 +1283,17 @@ model Campanha {
 }
 
 model CampanhaDestinatario {
-  id          String             @id @default(cuid())
-  campanhaId  String
-  clienteId   String
-  email       String?
-  telefone    String?
-  status      DestinatarioStatus @default(PENDENTE)
-  erro        String?            @db.Text
-  enviadoEm   DateTime?
-  lido        Boolean            @default(false)
-  lidoEm      DateTime?
-  criadoEm    DateTime           @default(now())
+  id         String             @id @default(cuid())
+  campanhaId String
+  clienteId  String
+  email      String?
+  telefone   String?
+  status     DestinatarioStatus @default(PENDENTE)
+  erro       String?            @db.Text
+  enviadoEm  DateTime?
+  lido       Boolean            @default(false)
+  lidoEm     DateTime?
+  criadoEm   DateTime           @default(now())
 
   campanha Campanha @relation(fields: [campanhaId], references: [id], onDelete: Cascade)
   cliente  Cliente  @relation(fields: [clienteId], references: [id], onDelete: Cascade)
@@ -1261,39 +1317,39 @@ model CampanhaDestinatario {
 // `peerNome` é o nome exibido (pushName no WhatsApp, etc), pode mudar com o tempo.
 // `clienteId` é resolvido por match — telefone normalizado bate com Cliente.telefone.
 model Conversation {
-  id           String              @id @default(cuid())
-  empresaId    String
-  canal        MessageChannel
-  peerId       String              // identificador externo do interlocutor no canal
-  peerNome     String?             // nome exibido (pushName do WhatsApp, etc.)
+  id               String                @id @default(cuid())
+  empresaId        String
+  canal            MessageChannel
+  peerId           String // identificador externo do interlocutor no canal
+  peerNome         String? // nome exibido (pushName do WhatsApp, etc.)
   /// Quando a conversa vem de uma sessão Baileys pessoal (WhatsApp do rep),
   /// aponta pro `Usuario` dono dessa sessão. NULL = conversa de canal escopo
   /// empresa (WhatsApp central, IG, FB, marketplaces, etc.).
   /// Permite múltiplas conversas com o mesmo `peerId` por canais pessoais
   /// distintos (ex: o mesmo cliente fala com o rep João e com o rep Maria).
-  proprietarioId String?
-  clienteId    String?             // resolvido por match telefone/e-mail; pode ser null pra contato anônimo
-  atribuidoId  String?             // usuário responsável pelo atendimento
-  status       ConversationStatus    @default(ABERTA)
-  categoria    ConversationCategoria @default(GERAL)
-  naoLidas     Int                 @default(0)
-  ultimaMsgEm  DateTime?
-  ultimaMsgPreview String?         @db.VarChar(140)
+  proprietarioId   String?
+  clienteId        String? // resolvido por match telefone/e-mail; pode ser null pra contato anônimo
+  atribuidoId      String? // usuário responsável pelo atendimento
+  status           ConversationStatus    @default(ABERTA)
+  categoria        ConversationCategoria @default(GERAL)
+  naoLidas         Int                   @default(0)
+  ultimaMsgEm      DateTime?
+  ultimaMsgPreview String?               @db.VarChar(140)
   /// Metadados canal-específicos (ex: ML packId, itemId, claimId; Shopee chatRoomId).
-  metadata     Json?
+  metadata         Json?
   /// Quando a conversa está atrelada a um incidente (reclamação/devolução/disputa).
-  incidentId   String?
+  incidentId       String?
   /// Marca registros gerados pelo seed-demo.
-  isDemo       Boolean             @default(false)
-  criadoEm     DateTime            @default(now())
-  atualizadoEm DateTime            @updatedAt
+  isDemo           Boolean               @default(false)
+  criadoEm         DateTime              @default(now())
+  atualizadoEm     DateTime              @updatedAt
 
-  empresa     Empresa  @relation(fields: [empresaId], references: [id], onDelete: Cascade)
-  cliente     Cliente? @relation(fields: [clienteId], references: [id])
-  atribuido   Usuario? @relation("ConversationAtribuido", fields: [atribuidoId], references: [id])
-  proprietario Usuario? @relation("ConversationProprietario", fields: [proprietarioId], references: [id])
-  incident    MarketplaceIncident? @relation(fields: [incidentId], references: [id])
-  mensagens   Message[]
+  empresa      Empresa              @relation(fields: [empresaId], references: [id], onDelete: Cascade)
+  cliente      Cliente?             @relation(fields: [clienteId], references: [id])
+  atribuido    Usuario?             @relation("ConversationAtribuido", fields: [atribuidoId], references: [id])
+  proprietario Usuario?             @relation("ConversationProprietario", fields: [proprietarioId], references: [id])
+  incident     MarketplaceIncident? @relation(fields: [incidentId], references: [id])
+  mensagens    Message[]
 
   // Unique composto inclui proprietarioId pra permitir múltiplas conversas
   // com o mesmo peer em sessões diferentes (WhatsApp empresa vs do rep João vs
@@ -1313,23 +1369,23 @@ model Conversation {
 }
 
 model Message {
-  id              String           @id @default(cuid())
-  conversationId  String
-  direction       MessageDirection
-  tipo            MessageType      @default(TEXT)
-  conteudo        String           @db.Text
+  id             String           @id @default(cuid())
+  conversationId String
+  direction      MessageDirection
+  tipo           MessageType      @default(TEXT)
+  conteudo       String           @db.Text
   /// ID externo da mensagem no provider (ex: WhatsApp messageKey.id). Usado pra idempotência.
-  externalId      String?
-  status          MessageStatus    @default(PENDING)
+  externalId     String?
+  status         MessageStatus    @default(PENDING)
   /// URL/path de mídia (se aplicável). Para WhatsApp armazenamos via Supabase Storage no futuro.
-  mediaUrl        String?
-  mediaMime       String?
+  mediaUrl       String?
+  mediaMime      String?
   /// Quando OUTBOUND e gerado por um usuário (não bot/sistema)
-  autorUsuarioId  String?
+  autorUsuarioId String?
   /// Metadados específicos do canal (livre)
-  meta            Json?
-  criadoEm        DateTime         @default(now())
-  atualizadoEm    DateTime         @updatedAt
+  meta           Json?
+  criadoEm       DateTime         @default(now())
+  atualizadoEm   DateTime         @updatedAt
 
   conversation Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
   autor        Usuario?     @relation("MessageAutor", fields: [autorUsuarioId], references: [id])
@@ -1346,15 +1402,15 @@ model Message {
 // A-to-Z guarantees, TikTok disputes. Cada marketplace mapeia seu status
 // específico pro nosso enum genérico.
 model MarketplaceIncident {
-  id              String                     @id @default(cuid())
+  id              String                    @id @default(cuid())
   empresaId       String
   canal           MessageChannel
   /// ID externo do incidente no marketplace (claim id, dispute id, etc.).
   externalId      String
   tipo            MarketplaceIncidentTipo
-  status          MarketplaceIncidentStatus  @default(ABERTO)
+  status          MarketplaceIncidentStatus @default(ABERTO)
   /// Motivo informado pelo comprador (texto livre + código quando aplicável).
-  motivo          String?                    @db.Text
+  motivo          String?                   @db.Text
   motivoCodigo    String?
   /// ID do pedido externo (marketplace) relacionado.
   pedidoExternoId String?
@@ -1365,15 +1421,15 @@ model MarketplaceIncident {
   /// SLA do marketplace pra próxima ação do vendedor. ML pune resposta lenta.
   prazoResposta   DateTime?
   /// Resumo curto pra UI.
-  resumo          String?                    @db.VarChar(280)
+  resumo          String?                   @db.VarChar(280)
   /// Dados crus específicos do marketplace (livre-formato pra auditoria/debug).
   metadata        Json?
-  abertoEm        DateTime                   @default(now())
-  atualizadoEm    DateTime                   @updatedAt
+  abertoEm        DateTime                  @default(now())
+  atualizadoEm    DateTime                  @updatedAt
   resolvidoEm     DateTime?
 
-  empresa  Empresa        @relation(fields: [empresaId], references: [id], onDelete: Cascade)
-  cliente  Cliente?       @relation(fields: [clienteId], references: [id])
+  empresa       Empresa        @relation(fields: [empresaId], references: [id], onDelete: Cascade)
+  cliente       Cliente?       @relation(fields: [clienteId], references: [id])
   /// Quando o incidente tem chat anexado (ex: ML claim messages).
   conversations Conversation[]
 
@@ -1388,19 +1444,19 @@ model MarketplaceIncident {
 // ─── MARKETPLACE LEGACY (será migrado pra Inbox/Conversation depois) ──
 
 model MarketplaceMsg {
-  id              String               @id @default(cuid())
-  empresaId       String
-  plataforma      MarketplacePlatform
-  externoId       String? // id da pergunta na plataforma
-  comprador       String
-  produtoNome     String
-  produtoDesc     String? @db.Text
-  pergunta        String  @db.Text
-  resposta        String? @db.Text
-  status          MarketplaceMsgStatus @default(PENDENTE)
-  respondidoBot   Boolean @default(false)
-  respondidoEm    DateTime?
-  criadoEm        DateTime @default(now())
+  id            String               @id @default(cuid())
+  empresaId     String
+  plataforma    MarketplacePlatform
+  externoId     String? // id da pergunta na plataforma
+  comprador     String
+  produtoNome   String
+  produtoDesc   String?              @db.Text
+  pergunta      String               @db.Text
+  resposta      String?              @db.Text
+  status        MarketplaceMsgStatus @default(PENDENTE)
+  respondidoBot Boolean              @default(false)
+  respondidoEm  DateTime?
+  criadoEm      DateTime             @default(now())
 
   empresa Empresa @relation(fields: [empresaId], references: [id], onDelete: Cascade)
 
@@ -1435,18 +1491,18 @@ model MarketplaceOrder {
 // ─── INTEGRAÇÕES (tokens criptografados) ──────────────────────────────
 
 model IntegracaoConexao {
-  id          String   @id @default(cuid())
-  empresaId   String
-  servico     String   // omie, ml, shopee, amazon, tiktok, whatsapp, instagram, fb
-  ativo       Boolean  @default(false)
-  credenciais Json     // criptografada na app
+  id                String    @id @default(cuid())
+  empresaId         String
+  servico           String // omie, ml, shopee, amazon, tiktok, whatsapp, instagram, fb
+  ativo             Boolean   @default(false)
+  credenciais       Json // criptografada na app
   /// ID externo da conta vinculada (não-cifrado, indexável). Ex: pageId pro Facebook,
   /// IGSID pro Instagram. Usado pra routing reverso do webhook → empresa.
   externalAccountId String?
-  ultimoSync  DateTime?
-  errosRecentes Int    @default(0)
-  criadoEm    DateTime @default(now())
-  atualizadoEm DateTime @updatedAt
+  ultimoSync        DateTime?
+  errosRecentes     Int       @default(0)
+  criadoEm          DateTime  @default(now())
+  atualizadoEm      DateTime  @updatedAt
 
   @@unique([empresaId, servico])
   @@index([empresaId])
@@ -1457,15 +1513,15 @@ model IntegracaoConexao {
 // Usado por: sendgrid (e-mail pessoal do rep), google_calendar (agenda do rep),
 // openai/anthropic (chave pessoal pra MullerBot, se opt-in).
 model UsuarioIntegracao {
-  id          String   @id @default(cuid())
-  usuarioId   String
-  servico     String   // sendgrid, google_calendar, openai, anthropic
-  ativo       Boolean  @default(false)
-  credenciais Json     // criptografada na app
-  ultimoSync  DateTime?
-  errosRecentes Int    @default(0)
-  criadoEm    DateTime @default(now())
-  atualizadoEm DateTime @updatedAt
+  id            String    @id @default(cuid())
+  usuarioId     String
+  servico       String // sendgrid, google_calendar, openai, anthropic
+  ativo         Boolean   @default(false)
+  credenciais   Json // criptografada na app
+  ultimoSync    DateTime?
+  errosRecentes Int       @default(0)
+  criadoEm      DateTime  @default(now())
+  atualizadoEm  DateTime  @updatedAt
 
   usuario Usuario @relation(fields: [usuarioId], references: [id], onDelete: Cascade)
 
@@ -1479,8 +1535,8 @@ model AuditLog {
   id        String   @id @default(cuid())
   usuarioId String?
   empresaId String?
-  acao      String   // create, update, delete, login, etc
-  recurso   String   // cliente, pedido, etc
+  acao      String // create, update, delete, login, etc
+  recurso   String // cliente, pedido, etc
   recursoId String?
   detalhes  Json?
   ip        String?
@@ -1505,32 +1561,32 @@ model AuditLog {
 //   o saldo atomicamente dentro de transaction. Cron mensal recalcula como
 //   safety net contra drift.
 enum MovimentoFidelidadeTipo {
-  GANHO_PEDIDO     // pedido aprovado → ganha pontos
-  ESTORNO_PEDIDO   // pedido cancelado → estorna pontos do GANHO_PEDIDO
-  RESGATE          // cliente resgata recompensa
-  EXPIRACAO        // pontos expiraram (cron mensal)
-  AJUSTE_MANUAL    // DIRECTOR/ADMIN ajusta manualmente (motivo obrigatório)
+  GANHO_PEDIDO // pedido aprovado → ganha pontos
+  ESTORNO_PEDIDO // pedido cancelado → estorna pontos do GANHO_PEDIDO
+  RESGATE // cliente resgata recompensa
+  EXPIRACAO // pontos expiraram (cron mensal)
+  AJUSTE_MANUAL // DIRECTOR/ADMIN ajusta manualmente (motivo obrigatório)
 }
 
 enum RecompensaTipo {
-  DESCONTO_PERCENTUAL   // valor em % (0–100)
-  DESCONTO_VALOR        // valor em R$
-  BRINDE                // valor opcional (descrição texto)
+  DESCONTO_PERCENTUAL // valor em % (0–100)
+  DESCONTO_VALOR // valor em R$
+  BRINDE // valor opcional (descrição texto)
 }
 
 /// Segmento — grupos de clientes definidos por regras visuais (filtros encadeáveis).
 /// Avaliado on-demand quando o user lista o segmento (não materializado).
 model Segmento {
-  id          String   @id @default(cuid())
-  empresaId   String
-  nome        String
-  descricao   String?  @db.Text
+  id           String   @id @default(cuid())
+  empresaId    String
+  nome         String
+  descricao    String?  @db.Text
   /// Estrutura JSON com condições + lógica (AND/OR).
   /// Ex: { logic: 'AND', conditions: [{ campo: 'status', op: 'eq', valor: 'ATIVO' }, ...] }
-  regrasJson  Json
-  cor         String?  @default("#facc15")
-  ativo       Boolean  @default(true)
-  criadoEm    DateTime @default(now())
+  regrasJson   Json
+  cor          String?  @default("#facc15")
+  ativo        Boolean  @default(true)
+  criadoEm     DateTime @default(now())
   atualizadoEm DateTime @updatedAt
 
   empresa Empresa @relation(fields: [empresaId], references: [id], onDelete: Cascade)
@@ -1542,27 +1598,27 @@ model Segmento {
 /// Metas — definição + acompanhamento por rep/gerente/equipe.
 /// Calcula atingimento agregando pedidos no período.
 model Meta {
-  id          String   @id @default(cuid())
-  empresaId   String
-  titulo      String
-  descricao   String?  @db.Text
+  id            String   @id @default(cuid())
+  empresaId     String
+  titulo        String
+  descricao     String?  @db.Text
   /// Tipo: FATURAMENTO (somatório de pedido.total) ou PEDIDOS (contagem)
-  tipo        String   @default("FATURAMENTO")
+  tipo          String   @default("FATURAMENTO")
   /// Valor alvo (R$ pra FATURAMENTO, contagem pra PEDIDOS)
-  valorAlvo   Decimal  @db.Decimal(14, 2)
+  valorAlvo     Decimal  @db.Decimal(14, 2)
   /// A quem se aplica: REP (representanteId), EMPRESA (toda), GERENTE (gerenteId)
-  alvoTipo    String   @default("REP")
+  alvoTipo      String   @default("REP")
   /// ID do REP ou GERENTE (null se alvoTipo=EMPRESA)
-  alvoId      String?
+  alvoId        String?
   /// Período: MES, TRIMESTRE, ANO
-  periodicidade String @default("MES")
+  periodicidade String   @default("MES")
   /// Início do período (1º dia do mês/trimestre/ano)
-  inicio      DateTime
+  inicio        DateTime
   /// Fim do período (último dia)
-  fim         DateTime
-  ativo       Boolean  @default(true)
-  criadoEm    DateTime @default(now())
-  atualizadoEm DateTime @updatedAt
+  fim           DateTime
+  ativo         Boolean  @default(true)
+  criadoEm      DateTime @default(now())
+  atualizadoEm  DateTime @updatedAt
 
   empresa Empresa @relation(fields: [empresaId], references: [id], onDelete: Cascade)
 
@@ -1573,47 +1629,47 @@ model Meta {
 /// NPS — pesquisas de Net Promoter Score.
 /// Pesquisa tem prazo de envio (criadoEm → expiraEm), slug público pra responder.
 model PesquisaNPS {
-  id          String   @id @default(cuid())
-  empresaId   String
-  slug        String   @unique
-  titulo      String
-  descricao   String?  @db.Text
+  id                    String    @id @default(cuid())
+  empresaId             String
+  slug                  String    @unique
+  titulo                String
+  descricao             String?   @db.Text
   /// Mensagem exibida após responder
-  mensagemAgradecimento String? @db.Text
+  mensagemAgradecimento String?   @db.Text
   /// Pergunta principal (default: "O quanto você nos recomendaria?")
-  pergunta    String   @default("O quanto você nos recomendaria de 0 a 10?")
+  pergunta              String    @default("O quanto você nos recomendaria de 0 a 10?")
   /// Pergunta de follow-up (default: "Por quê?")
-  perguntaFollowUp String? @default("Conta pra gente o que motivou essa nota")
-  ativo       Boolean  @default(true)
+  perguntaFollowUp      String?   @default("Conta pra gente o que motivou essa nota")
+  ativo                 Boolean   @default(true)
   /// Quando expira (link vira inválido)
-  expiraEm    DateTime?
-  criadoEm    DateTime @default(now())
-  atualizadoEm DateTime @updatedAt
+  expiraEm              DateTime?
+  criadoEm              DateTime  @default(now())
+  atualizadoEm          DateTime  @updatedAt
 
-  empresa   Empresa        @relation(fields: [empresaId], references: [id], onDelete: Cascade)
+  empresa   Empresa       @relation(fields: [empresaId], references: [id], onDelete: Cascade)
   respostas RespostaNPS[]
 
   @@index([empresaId, ativo])
 }
 
 model RespostaNPS {
-  id          String   @id @default(cuid())
-  pesquisaId  String
+  id         String   @id @default(cuid())
+  pesquisaId String
   /// Nota de 0 a 10
-  nota        Int
+  nota       Int
   /// Resposta textual do follow-up
-  comentario  String?  @db.Text
+  comentario String?  @db.Text
   /// E-mail/telefone do respondente (pra contactar se promotor/detrator)
-  contato     String?
+  contato    String?
   /// Cliente identificado (se a pesquisa veio por link tracking)
-  clienteId   String?
+  clienteId  String?
   /// Categoria derivada: DETRATOR (0-6), PASSIVO (7-8), PROMOTOR (9-10)
-  categoria   String
-  ip          String?
-  userAgent   String?
+  categoria  String
+  ip         String?
+  userAgent  String?
   /// Marca registros gerados pelo seed-demo.
-  isDemo      Boolean  @default(false)
-  criadoEm    DateTime @default(now())
+  isDemo     Boolean  @default(false)
+  criadoEm   DateTime @default(now())
 
   pesquisa PesquisaNPS @relation(fields: [pesquisaId], references: [id], onDelete: Cascade)
   cliente  Cliente?    @relation("ClienteRespostaNPS", fields: [clienteId], references: [id], onDelete: SetNull)
@@ -1628,28 +1684,28 @@ model RespostaNPS {
 /// Form Builder — formulários públicos pra capturar leads.
 /// Acessível via /f/:slug (sem auth). Submit cria um Lead + FormularioResposta.
 model Formulario {
-  id          String   @id @default(cuid())
-  empresaId   String
+  id                  String   @id @default(cuid())
+  empresaId           String
   /// Slug único pra URL pública (/f/:slug). Lowercase, sem acento.
-  slug        String   @unique
-  titulo      String
-  descricao   String?  @db.Text
+  slug                String   @unique
+  titulo              String
+  descricao           String?  @db.Text
   /// Mensagem de sucesso pós-envio
-  mensagemSucesso String? @db.Text
+  mensagemSucesso     String?  @db.Text
   /// Onde redirecionar após o submit (opcional)
-  redirectUrl String?
+  redirectUrl         String?
   /// Quando true, novos envios criam Lead automaticamente
-  geraLead    Boolean  @default(true)
+  geraLead            Boolean  @default(true)
   /// Etapa inicial do Lead quando criado por este form
-  leadEtapaInicial String? @default("NOVO")
+  leadEtapaInicial    String?  @default("NOVO")
   /// Quem é notificado em cada submissão (lista de userIds)
   notificarUsuarioIds Json?
-  ativo       Boolean  @default(true)
-  criadoEm    DateTime @default(now())
-  atualizadoEm DateTime @updatedAt
+  ativo               Boolean  @default(true)
+  criadoEm            DateTime @default(now())
+  atualizadoEm        DateTime @updatedAt
 
-  empresa  Empresa             @relation(fields: [empresaId], references: [id], onDelete: Cascade)
-  campos   FormularioCampo[]
+  empresa   Empresa              @relation(fields: [empresaId], references: [id], onDelete: Cascade)
+  campos    FormularioCampo[]
   respostas FormularioResposta[]
 
   @@index([empresaId, ativo])
@@ -1657,7 +1713,7 @@ model Formulario {
 
 /// Campo de um Formulario. Order define a sequência na renderização.
 model FormularioCampo {
-  id           String   @id @default(cuid())
+  id           String  @id @default(cuid())
   formularioId String
   ordem        Int
   /// Tipo do campo: TEXT, EMAIL, TEL, NUMERO, TEXTAREA, SELECT, CHECKBOX, RADIO
@@ -1666,7 +1722,7 @@ model FormularioCampo {
   /// Nome interno (chave no JSON de respostas). Slug do label se vazio.
   campo        String
   placeholder  String?
-  obrigatorio  Boolean  @default(false)
+  obrigatorio  Boolean @default(false)
   /// Opções pra SELECT/RADIO/CHECKBOX (array de strings em JSON)
   opcoes       Json?
   /// Validação extra: { minLength?, maxLength?, pattern? }
@@ -1674,9 +1730,9 @@ model FormularioCampo {
   /// Hint exibido abaixo do campo
   hint         String?
   /// v1.5.0 — Passo multi-step (1..N). Default 1 = formulário single-step.
-  passo        Int      @default(1)
+  passo        Int     @default(1)
 
-  formulario   Formulario @relation(fields: [formularioId], references: [id], onDelete: Cascade)
+  formulario Formulario @relation(fields: [formularioId], references: [id], onDelete: Cascade)
 
   @@index([formularioId, ordem])
   @@index([formularioId, passo])
@@ -1705,96 +1761,96 @@ model FormularioResposta {
 /// O system prompt é compilado a partir desses campos pra dar identidade.
 /// Singleton por empresa (1 persona ativa por tenant).
 model MullerBotPersona {
-  id                String   @id @default(cuid())
-  empresaId         String   @unique
-  nome              String   @default("MullerBot")
+  id           String   @id @default(cuid())
+  empresaId    String   @unique
+  nome         String   @default("MullerBot")
   /// Tom de voz: FORMAL, PROFISSIONAL, AMIGAVEL, DESCONTRAIDO, ENTUSIASMADO
-  tomVoz            String   @default("PROFISSIONAL")
+  tomVoz       String   @default("PROFISSIONAL")
   /// Instruções extras anexadas ao system prompt base.
   /// Ex: "Sempre cite o prazo de entrega. Use emojis com moderação."
-  instrucoes        String?  @db.Text
+  instrucoes   String?  @db.Text
   /// Exemplos de pergunta/resposta pro few-shot prompt (array JSON).
   /// Ex: [{pergunta: "Tem óleo de soja?", resposta: "Sim, em três tamanhos..."}]
-  exemplosJson      Json?
+  exemplosJson Json?
   /// Saudação opcional usada em mensagens iniciais (Inbox/templates).
-  saudacao          String?
+  saudacao     String?
+  ativo        Boolean  @default(true)
+  criadoEm     DateTime @default(now())
+  atualizadoEm DateTime @updatedAt
+
+  empresa Empresa @relation(fields: [empresaId], references: [id], onDelete: Cascade)
+}
+
+model ProgramaFidelidade {
+  id                String   @id @default(cuid())
+  empresaId         String   @unique // singleton por empresa
+  nome              String   @default("Programa de Fidelidade")
   ativo             Boolean  @default(true)
+  // Quantos pontos ganha por R$ 1 gasto. Default 1.
+  // Decimal pra permitir 0.5 (1 ponto a cada R$ 2) ou 2 (multiplicador).
+  pontosPorReal     Decimal  @default(1) @db.Decimal(10, 4)
+  // TTL de pontos em meses. 0 = nunca expira.
+  ttlMeses          Int      @default(12)
+  // Pedidos abaixo desse valor não geram pontos.
+  valorMinimoPedido Decimal  @default(0) @db.Decimal(10, 2)
   criadoEm          DateTime @default(now())
   atualizadoEm      DateTime @updatedAt
 
   empresa Empresa @relation(fields: [empresaId], references: [id], onDelete: Cascade)
 }
 
-model ProgramaFidelidade {
-  id                 String   @id @default(cuid())
-  empresaId          String   @unique          // singleton por empresa
-  nome               String   @default("Programa de Fidelidade")
-  ativo              Boolean  @default(true)
-  // Quantos pontos ganha por R$ 1 gasto. Default 1.
-  // Decimal pra permitir 0.5 (1 ponto a cada R$ 2) ou 2 (multiplicador).
-  pontosPorReal      Decimal  @default(1) @db.Decimal(10, 4)
-  // TTL de pontos em meses. 0 = nunca expira.
-  ttlMeses           Int      @default(12)
-  // Pedidos abaixo desse valor não geram pontos.
-  valorMinimoPedido  Decimal  @default(0) @db.Decimal(10, 2)
-  criadoEm           DateTime @default(now())
-  atualizadoEm       DateTime @updatedAt
-
-  empresa Empresa @relation(fields: [empresaId], references: [id], onDelete: Cascade)
-}
-
 model RecompensaFidelidade {
-  id              String          @id @default(cuid())
-  empresaId       String
-  nome            String
-  descricao       String?
-  custoPontos     Int
-  tipo            RecompensaTipo
-  valor           Decimal?        @db.Decimal(10, 2)
+  id           String         @id @default(cuid())
+  empresaId    String
+  nome         String
+  descricao    String?
+  custoPontos  Int
+  tipo         RecompensaTipo
+  valor        Decimal?       @db.Decimal(10, 2)
   // null = estoque ilimitado. Decrementa em cada resgate.
-  estoque         Int?
-  ativo           Boolean         @default(true)
-  criadoEm        DateTime        @default(now())
-  atualizadoEm    DateTime        @updatedAt
+  estoque      Int?
+  ativo        Boolean        @default(true)
+  criadoEm     DateTime       @default(now())
+  atualizadoEm DateTime       @updatedAt
 
-  empresa     Empresa               @relation(fields: [empresaId], references: [id], onDelete: Cascade)
-  movimentos  MovimentoFidelidade[]
+  empresa    Empresa               @relation(fields: [empresaId], references: [id], onDelete: Cascade)
+  movimentos MovimentoFidelidade[]
 
   @@index([empresaId, ativo])
 }
 
 model SaldoFidelidade {
-  id            String   @id @default(cuid())
-  empresaId     String
-  clienteId     String   @unique         // 1 saldo por cliente (1:1)
-  pontos        Int      @default(0)
-  atualizadoEm  DateTime @updatedAt
-  criadoEm      DateTime @default(now())
+  id           String   @id @default(cuid())
+  empresaId    String
+  clienteId    String   @unique // 1 saldo por cliente (1:1)
+  pontos       Int      @default(0)
+  atualizadoEm DateTime @updatedAt
+  criadoEm     DateTime @default(now())
 
-  empresa  Empresa @relation(fields: [empresaId], references: [id], onDelete: Cascade)
-  cliente  Cliente @relation(fields: [clienteId], references: [id], onDelete: Cascade)
+  empresa Empresa @relation(fields: [empresaId], references: [id], onDelete: Cascade)
+  cliente Cliente @relation(fields: [clienteId], references: [id], onDelete: Cascade)
 
   @@index([empresaId])
 }
 
 model MovimentoFidelidade {
-  id              String                  @id @default(cuid())
-  empresaId       String
-  clienteId       String
-  tipo            MovimentoFidelidadeTipo
+  id           String                  @id @default(cuid())
+  empresaId    String
+  clienteId    String
+  tipo         MovimentoFidelidadeTipo
   // Positivo = ganho/ajuste+; Negativo = resgate/expiração/ajuste-.
-  pontos          Int
+  pontos       Int
   // Origens (preenchidas conforme o tipo):
-  pedidoId        String?
-  recompensaId    String?
-  motivo          String?                  // obrigatório só pra AJUSTE_MANUAL
-  criadoPorId     String?
-  criadoEm        DateTime                @default(now())
+  pedidoId     String?
+  recompensaId String?
+  motivo       String? // obrigatório só pra AJUSTE_MANUAL
+  criadoPorId  String?
+  criadoEm     DateTime                @default(now())
 
-  empresa     Empresa               @relation(fields: [empresaId], references: [id], onDelete: Cascade)
-  cliente     Cliente               @relation(fields: [clienteId], references: [id], onDelete: Cascade)
-  pedido      Pedido?               @relation(fields: [pedidoId], references: [id], onDelete: SetNull)
-  recompensa  RecompensaFidelidade? @relation(fields: [recompensaId], references: [id], onDelete: SetNull)
+  empresa    Empresa               @relation(fields: [empresaId], references: [id], onDelete: Cascade)
+  cliente    Cliente               @relation(fields: [clienteId], references: [id], onDelete: Cascade)
+  pedido     Pedido?               @relation(fields: [pedidoId], references: [id], onDelete: SetNull)
+  recompensa RecompensaFidelidade? @relation(fields: [recompensaId], references: [id], onDelete: SetNull)
 
   // Idempotência: 1 movimento por (pedido, tipo). Permite re-execução
   // segura do trigger. Para tipos sem pedidoId (RESGATE/EXPIRACAO/AJUSTE),
@@ -1810,10 +1866,10 @@ model MovimentoFidelidade {
 // INCR e persistido aqui para sobreviver a reinício do Redis.
 // Tipos atuais: 'pedido', 'proposta', 'ocorrencia'.
 model EmpresaSequence {
-  id        String   @id @default(cuid())
-  empresaId String
-  tipo      String   // 'pedido' | 'proposta' | 'ocorrencia' | 'nf' | ...
-  ultimo    Int      @default(0)
+  id           String   @id @default(cuid())
+  empresaId    String
+  tipo         String // 'pedido' | 'proposta' | 'ocorrencia' | 'nf' | ...
+  ultimo       Int      @default(0)
   atualizadoEm DateTime @updatedAt
 
   empresa Empresa @relation(fields: [empresaId], references: [id], onDelete: Cascade)
@@ -1828,19 +1884,19 @@ model EmpresaSequence {
 // Marca como lida sem deletar — extrato fica.
 
 enum NotificacaoTipo {
-  APROVACAO_PENDENTE       // gerente: aprovação aguardando
-  APROVACAO_RESOLVIDA      // rep: sua aprovação foi aprovada/rejeitada
-  OCORRENCIA_ABERTA        // sac/gerente: nova ocorrência crítica
-  OCORRENCIA_RESOLVIDA     // criador: sua ocorrência foi resolvida
-  PEDIDO_APROVADO          // rep: pedido foi pra OMIE
-  COMISSAO_FECHADA         // rep/gerente: mês fechou, valor disponível
-  COMISSAO_PAGA            // rep/gerente: marcado como pago
-  MENSAGEM_INBOX           // qualquer: nova mensagem inbox
-  AMOSTRA_FOLLOWUP         // rep: amostra precisa follow-up
-  LEAD_INATIVO             // rep: lead 7 dias na mesma etapa
-  CLIENTE_BLOQUEADO        // rep: cliente da carteira ficou BLOQUEADO no OMIE
-  ESTOQUE_ZERADO           // rep: produto que ele vendeu nos últimos 30d zerou o estoque
-  GENERICO                 // notificação manual/admin
+  APROVACAO_PENDENTE // gerente: aprovação aguardando
+  APROVACAO_RESOLVIDA // rep: sua aprovação foi aprovada/rejeitada
+  OCORRENCIA_ABERTA // sac/gerente: nova ocorrência crítica
+  OCORRENCIA_RESOLVIDA // criador: sua ocorrência foi resolvida
+  PEDIDO_APROVADO // rep: pedido foi pra OMIE
+  COMISSAO_FECHADA // rep/gerente: mês fechou, valor disponível
+  COMISSAO_PAGA // rep/gerente: marcado como pago
+  MENSAGEM_INBOX // qualquer: nova mensagem inbox
+  AMOSTRA_FOLLOWUP // rep: amostra precisa follow-up
+  LEAD_INATIVO // rep: lead 7 dias na mesma etapa
+  CLIENTE_BLOQUEADO // rep: cliente da carteira ficou BLOQUEADO no OMIE
+  ESTOQUE_ZERADO // rep: produto que ele vendeu nos últimos 30d zerou o estoque
+  GENERICO // notificação manual/admin
 }
 
 enum NotificacaoPrioridade {
@@ -1851,17 +1907,17 @@ enum NotificacaoPrioridade {
 }
 
 model Notificacao {
-  id           String                @id @default(cuid())
-  empresaId    String
-  usuarioId    String                // destinatário
-  tipo         NotificacaoTipo
-  prioridade   NotificacaoPrioridade @default(NORMAL)
-  titulo       String                // ex: "Aprovação pendente"
-  mensagem     String                // ex: "Pedido PED-0042 com 25% desconto..."
-  link         String?               // rota frontend para deep-link, ex: "/aprovacoes/123"
-  metadata     Json?                 // contexto extra (pedidoId, ocorrenciaId, etc)
-  lidaEm       DateTime?
-  criadoEm     DateTime              @default(now())
+  id         String                @id @default(cuid())
+  empresaId  String
+  usuarioId  String // destinatário
+  tipo       NotificacaoTipo
+  prioridade NotificacaoPrioridade @default(NORMAL)
+  titulo     String // ex: "Aprovação pendente"
+  mensagem   String // ex: "Pedido PED-0042 com 25% desconto..."
+  link       String? // rota frontend para deep-link, ex: "/aprovacoes/123"
+  metadata   Json? // contexto extra (pedidoId, ocorrenciaId, etc)
+  lidaEm     DateTime?
+  criadoEm   DateTime              @default(now())
 
   empresa Empresa @relation(fields: [empresaId], references: [id], onDelete: Cascade)
   usuario Usuario @relation(fields: [usuarioId], references: [id], onDelete: Cascade)

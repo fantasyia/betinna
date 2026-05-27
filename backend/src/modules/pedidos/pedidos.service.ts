@@ -20,9 +20,12 @@ import { type ItemInput, PedidoPricingService, type PedidoTotals } from './pedid
 import type {
   CancelarPedidoDto,
   CreatePedidoDto,
+  DecidirCancelamentoDto,
   ListPedidosDto,
+  ListSolicitacoesCancelamentoDto,
   PedidoItemInputDto,
   PreviewPedidoDto,
+  SolicitarCancelamentoDto,
   UpdatePedidoDto,
 } from './pedidos.dto';
 
@@ -484,6 +487,149 @@ export class PedidosService {
     // cliente). Não há mais estorno de pontos em cancelamento — limpo 2026-05-21.
 
     return this.prisma.pedido.findUniqueOrThrow({ where: { id }, include: pedidoInclude });
+  }
+
+  // ─── P6.2 — Solicitação de cancelamento (rep/gerente → diretor) ─────────
+
+  /**
+   * REP/GERENTE pede pra cancelar um pedido com justificativa. Cria solicitação
+   * PENDENTE — diretor/admin decide. NÃO cancela o pedido ainda.
+   */
+  async solicitarCancelamento(
+    user: AuthenticatedUser,
+    pedidoId: string,
+    dto: SolicitarCancelamentoDto,
+  ) {
+    const pedido = await this.findById(user, pedidoId); // valida tenant + scope rep
+    if (['ENTREGUE', 'CANCELADO'].includes(pedido.status)) {
+      throw new BusinessRuleException(
+        `Pedido em status ${pedido.status} não pode ser cancelado`,
+      );
+    }
+    // Não permite múltiplas solicitações PENDENTES pro mesmo pedido
+    const existePendente = await this.prisma.pedidoCancelamentoSolicitacao.findFirst({
+      where: { pedidoId, status: 'PENDENTE' },
+      select: { id: true },
+    });
+    if (existePendente) {
+      throw new BusinessRuleException(
+        'Já existe uma solicitação de cancelamento pendente pra este pedido',
+      );
+    }
+    const solicitacao = await this.prisma.pedidoCancelamentoSolicitacao.create({
+      data: {
+        pedidoId,
+        solicitanteId: user.id,
+        motivo: dto.motivo,
+      },
+      include: {
+        solicitante: { select: { id: true, nome: true } },
+        pedido: { select: { id: true, numero: true, total: true } },
+      },
+    });
+    this.logger.log(
+      `Solicitação de cancelamento #${solicitacao.id} criada pra pedido ${pedido.numero} ` +
+        `por ${user.nome} (${user.role})`,
+    );
+    return solicitacao;
+  }
+
+  /**
+   * Lista solicitações de cancelamento — visível pra DIRECTOR/ADMIN do tenant.
+   * REP/GERENTE só vê as próprias (filtra por solicitanteId).
+   */
+  async listSolicitacoesCancelamento(
+    user: AuthenticatedUser,
+    dto: ListSolicitacoesCancelamentoDto,
+  ): Promise<Paginated<unknown>> {
+    const empresaId = this.requireEmpresa(user);
+    const where: Prisma.PedidoCancelamentoSolicitacaoWhereInput = {
+      pedido: { empresaId },
+      ...(dto.status ? { status: dto.status } : {}),
+    };
+    // REP/GERENTE só vê suas próprias solicitações
+    if (user.role === 'REP' || user.role === 'GERENTE') {
+      where.solicitanteId = user.id;
+    }
+    const [data, total] = await Promise.all([
+      this.prisma.pedidoCancelamentoSolicitacao.findMany({
+        where,
+        include: {
+          solicitante: { select: { id: true, nome: true } },
+          decididoPor: { select: { id: true, nome: true } },
+          pedido: {
+            select: {
+              id: true,
+              numero: true,
+              total: true,
+              status: true,
+              cliente: { select: { id: true, nome: true } },
+              representante: { select: { id: true, nome: true } },
+            },
+          },
+        },
+        orderBy: { criadoEm: 'desc' },
+        skip: (dto.page - 1) * dto.limit,
+        take: dto.limit,
+      }),
+      this.prisma.pedidoCancelamentoSolicitacao.count({ where }),
+    ]);
+    return buildPaginated(data, total, dto.page, dto.limit);
+  }
+
+  /**
+   * DIRECTOR/ADMIN decide a solicitação. APROVADA dispara o cancelamento real
+   * do pedido (chamando cancelar() internamente). REJEITADA só grava decisão.
+   */
+  async decidirCancelamento(
+    user: AuthenticatedUser,
+    solicitacaoId: string,
+    dto: DecidirCancelamentoDto,
+  ) {
+    const empresaId = this.requireEmpresa(user);
+    const solicitacao = await this.prisma.pedidoCancelamentoSolicitacao.findFirst({
+      where: { id: solicitacaoId, pedido: { empresaId } },
+      include: { pedido: { select: { id: true, status: true, observacoes: true, empresaId: true } } },
+    });
+    if (!solicitacao) {
+      throw new NotFoundException('Solicitação de cancelamento');
+    }
+    if (solicitacao.status !== 'PENDENTE') {
+      throw new BusinessRuleException(
+        `Solicitação já está em status ${solicitacao.status} — não pode ser decidida novamente`,
+      );
+    }
+    if (dto.decisao === 'APROVADA') {
+      // Cancela o pedido de fato (concatena motivo + comentário do decisor nas observações)
+      const motivoFinal =
+        solicitacao.motivo +
+        (dto.comentario ? `\n[Aprovado por ${user.nome}] ${dto.comentario}` : '');
+      await this.prisma.pedido.updateMany({
+        where: { id: solicitacao.pedidoId, empresaId },
+        data: {
+          status: 'CANCELADO',
+          observacoes: `${solicitacao.pedido.observacoes ? solicitacao.pedido.observacoes + '\n' : ''}[Cancelado via solicitação #${solicitacao.id}] ${motivoFinal}`,
+        },
+      });
+    }
+    const updated = await this.prisma.pedidoCancelamentoSolicitacao.update({
+      where: { id: solicitacaoId },
+      data: {
+        status: dto.decisao,
+        decididoPorId: user.id,
+        decididoEm: new Date(),
+        decisaoComentario: dto.comentario,
+      },
+      include: {
+        solicitante: { select: { id: true, nome: true } },
+        decididoPor: { select: { id: true, nome: true } },
+        pedido: { select: { id: true, numero: true, status: true } },
+      },
+    });
+    this.logger.log(
+      `Solicitação #${solicitacaoId} ${dto.decisao} por ${user.nome} (${user.role})`,
+    );
+    return updated;
   }
 
   // ─── Enviar pra OMIE ────────────────────────────────────────────────────

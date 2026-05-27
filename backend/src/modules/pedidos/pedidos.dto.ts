@@ -1,4 +1,4 @@
-import { PagamentoForma, PedidoStatus } from '@prisma/client';
+import { PagamentoForma, PedidoCancelamentoStatus, PedidoStatus } from '@prisma/client';
 import { z } from 'zod';
 
 const QTY_MIN = 1;
@@ -62,3 +62,26 @@ export const cancelarPedidoSchema = z.object({
   motivo: z.string().max(500).optional(),
 });
 export type CancelarPedidoDto = z.infer<typeof cancelarPedidoSchema>;
+
+// ─── P6.2 — Solicitação de cancelamento (rep/gerente → diretor) ────────────
+
+export const solicitarCancelamentoSchema = z.object({
+  motivo: z
+    .string()
+    .min(5, 'Motivo precisa ter pelo menos 5 caracteres')
+    .max(1000, 'Motivo muito longo'),
+});
+export type SolicitarCancelamentoDto = z.infer<typeof solicitarCancelamentoSchema>;
+
+export const decidirCancelamentoSchema = z.object({
+  decisao: z.enum(['APROVADA', 'REJEITADA']),
+  comentario: z.string().max(500).optional(),
+});
+export type DecidirCancelamentoDto = z.infer<typeof decidirCancelamentoSchema>;
+
+export const listSolicitacoesCancelamentoSchema = z.object({
+  page: z.coerce.number().int().positive().default(1),
+  limit: z.coerce.number().int().positive().max(100).default(20),
+  status: z.nativeEnum(PedidoCancelamentoStatus).optional(),
+});
+export type ListSolicitacoesCancelamentoDto = z.infer<typeof listSolicitacoesCancelamentoSchema>;

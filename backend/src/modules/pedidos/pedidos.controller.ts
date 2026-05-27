@@ -9,13 +9,19 @@ import type { AuthenticatedUser } from '@shared/types/authenticated-user';
 import {
   type CancelarPedidoDto,
   type CreatePedidoDto,
+  type DecidirCancelamentoDto,
   type ListPedidosDto,
+  type ListSolicitacoesCancelamentoDto,
   type PreviewPedidoDto,
+  type SolicitarCancelamentoDto,
   type UpdatePedidoDto,
   cancelarPedidoSchema,
   createPedidoSchema,
+  decidirCancelamentoSchema,
   listPedidosSchema,
+  listSolicitacoesCancelamentoSchema,
   previewPedidoSchema,
+  solicitarCancelamentoSchema,
   updatePedidoSchema,
 } from './pedidos.dto';
 import { PedidosService } from './pedidos.service';
@@ -122,5 +128,60 @@ export class PedidosController {
   })
   enviarOmie(@CurrentUser() user: AuthenticatedUser, @Param('id') id: string) {
     return this.pedidos.enviarParaOmie(user, id);
+  }
+
+  // ─── P6.2 — Solicitação de cancelamento (rep/gerente → diretor) ────────
+
+  @Post(':id/solicitar-cancelamento')
+  @RequirePermissions({ module: 'pedidos', action: 'edit' })
+  @Audit({
+    action: 'solicitar_cancelamento',
+    resource: 'pedido',
+    resourceIdFrom: 'params.id',
+  })
+  @ApiOperation({
+    summary:
+      'REP/GERENTE solicita cancelamento de pedido com motivo. Diretor decide depois.',
+  })
+  solicitarCancelamento(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param('id') id: string,
+    @Body(new ZodValidationPipe(solicitarCancelamentoSchema)) dto: SolicitarCancelamentoDto,
+  ) {
+    return this.pedidos.solicitarCancelamento(user, id, dto);
+  }
+
+  @Get('cancelamentos')
+  @RequirePermissions({ module: 'pedidos', action: 'view' })
+  @ApiOperation({
+    summary:
+      'Lista solicitações de cancelamento. DIRECTOR/ADMIN vê todas do tenant; REP/GERENTE vê só as suas.',
+  })
+  listSolicitacoesCancelamento(
+    @CurrentUser() user: AuthenticatedUser,
+    @Query(new ZodValidationPipe(listSolicitacoesCancelamentoSchema))
+    query: ListSolicitacoesCancelamentoDto,
+  ) {
+    return this.pedidos.listSolicitacoesCancelamento(user, query);
+  }
+
+  @Post('cancelamentos/:id/decidir')
+  @Roles('ADMIN', 'DIRECTOR')
+  @RequirePermissions({ module: 'pedidos', action: 'edit' })
+  @Audit({
+    action: 'decidir_cancelamento',
+    resource: 'pedido_cancelamento_solicitacao',
+    resourceIdFrom: 'params.id',
+  })
+  @ApiOperation({
+    summary:
+      'DIRECTOR/ADMIN aprova ou rejeita uma solicitação de cancelamento. APROVADA → pedido vira CANCELADO.',
+  })
+  decidirCancelamento(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param('id') id: string,
+    @Body(new ZodValidationPipe(decidirCancelamentoSchema)) dto: DecidirCancelamentoDto,
+  ) {
+    return this.pedidos.decidirCancelamento(user, id, dto);
   }
 }
