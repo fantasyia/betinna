@@ -412,7 +412,10 @@ export class WhatsAppSessionService implements OnModuleInit, OnModuleDestroy {
     });
 
     sock.ev.on('messages.upsert', (u) => {
-      if (u.type !== 'notify') return;
+      // Aceita tanto 'notify' (tempo real) quanto 'append' (history sync após
+      // reconnect — ex: deploy Railway que restarta container). Idempotência
+      // por externalId garante que não duplica nada.
+      if (u.type !== 'notify' && u.type !== 'append') return;
       void this.handleMensagensEntrantes(ctx, u.messages).catch((err) => {
         const m = err instanceof Error ? err.message : String(err);
         this.logger.warn(`[${ownerKey(ctx.owner)}] Falha processando msgs entrantes: ${m}`);
@@ -498,7 +501,44 @@ export class WhatsAppSessionService implements OnModuleInit, OnModuleDestroy {
       if (peerId === 'status@broadcast') continue;
 
       const { conteudo, tipo, mediaMime, extras } = this.extrairConteudo(m.message);
-      if (!conteudo && tipo === 'TEXT') continue;
+      // Antes: descartava silenciosamente quando extrairConteudo caía no fallback
+      // (tipos não reconhecidos: reply citando, reação, edição, poll, lista,
+      // viewOnce, etc). Resultado: algumas mensagens "sumiam". Agora logamos
+      // quando descartamos pra ter visibilidade e SÓ pulamos casos claramente
+      // não-conteúdo (reactionMessage, protocolMessage, senderKeyDistribution).
+      if (!conteudo && tipo === 'TEXT') {
+        // Detecta tipos "silenciosos" que NÃO devem aparecer na inbox
+        // (eventos internos do WhatsApp, não mensagens de fato)
+        const isSilent =
+          !!m.message?.reactionMessage ||
+          !!m.message?.protocolMessage ||
+          !!m.message?.senderKeyDistributionMessage ||
+          !!m.message?.messageContextInfo;
+        if (isSilent) continue;
+        // Tipo desconhecido com conteúdo vazio → deixa passar como placeholder
+        // pra usuário ver "tem alguma coisa aqui que o sistema não suporta ainda".
+        // Lista keys do m.message pra debug.
+        const keys = m.message ? Object.keys(m.message).join(',') : '(null)';
+        this.logger.warn(
+          `[${ownerKey(ctx.owner)}] msg sem conteúdo extraível — tipos: ${keys}`,
+        );
+        // Salva com placeholder pra UX (sem perder a mensagem)
+        await this.inbox.processarMensagemEntrante({
+          empresaId: ctx.empresaId,
+          canal: 'WHATSAPP',
+          peerId,
+          peerNome: fromMe ? undefined : (m.pushName ?? undefined),
+          peerTelefone: this.jidParaTelefone(peerId),
+          tipo: 'TEXT',
+          conteudo: '[mensagem não suportada]',
+          externalId: m.key.id ?? undefined,
+          data: m.messageTimestamp ? new Date(Number(m.messageTimestamp) * 1000) : undefined,
+          proprietarioId: ctx.owner.type === 'USUARIO' ? ctx.owner.id : undefined,
+          direction: fromMe ? 'OUTBOUND' : 'INBOUND',
+          meta: { jid: peerId, ownerKey: ownerKey(ctx.owner), tiposBrutos: keys },
+        });
+        continue;
+      }
 
       // Quando owner=USUARIO, passa proprietarioId pra Conversation ficar
       // atrelada à sessão do rep. Empresa = null (conversa "compartilhada").
@@ -550,6 +590,25 @@ export class WhatsAppSessionService implements OnModuleInit, OnModuleDestroy {
     if (msg.conversation) return { conteudo: msg.conversation, tipo: 'TEXT' };
     if (msg.extendedTextMessage?.text) {
       return { conteudo: msg.extendedTextMessage.text, tipo: 'TEXT' };
+    }
+    // View-once: WhatsApp embute a mensagem real dentro de viewOnceMessage(V2).
+    // Desembrulha recursivamente pra extrair o conteúdo (imagem/vídeo/texto).
+    if (msg.viewOnceMessage?.message) {
+      return this.extrairConteudo(msg.viewOnceMessage.message);
+    }
+    if (msg.viewOnceMessageV2?.message) {
+      return this.extrairConteudo(msg.viewOnceMessageV2.message);
+    }
+    if (msg.viewOnceMessageV2Extension?.message) {
+      return this.extrairConteudo(msg.viewOnceMessageV2Extension.message);
+    }
+    // Mensagem editada: o texto novo vem em editedMessage.message.protocolMessage.editedMessage.
+    // Fallback: tenta extrair de editedMessage.message direto.
+    if (msg.editedMessage?.message) {
+      const inner = this.extrairConteudo(msg.editedMessage.message);
+      return inner.conteudo
+        ? { ...inner, conteudo: `${inner.conteudo} (editada)` }
+        : inner;
     }
     if (msg.imageMessage) {
       return {
