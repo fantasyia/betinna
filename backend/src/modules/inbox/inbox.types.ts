@@ -68,6 +68,12 @@ export interface MensagemEntranteParams {
    * Frontend usa pra renderizar avatar real em vez de iniciais.
    */
   peerAvatarUrl?: string;
+  /**
+   * Pra mensagens em GRUPO: nome do membro que mandou a mensagem (pushName).
+   * Frontend renderiza acima da bolha INBOUND ("João: oi pessoal").
+   * Em 1:1 fica undefined — quem mandou é o próprio peer já mostrado no header.
+   */
+  senderName?: string;
   /** Data original da mensagem (default: agora). */
   data?: Date;
   mediaUrl?: string;

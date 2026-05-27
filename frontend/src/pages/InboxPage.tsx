@@ -94,6 +94,12 @@ interface Mensagem {
   tipo: MessageType;
   criadoEm: string;
   autor?: { id: string; nome: string } | null;
+  /**
+   * Meta JSON da mensagem. Hoje pode conter:
+   * - senderName (pushName do membro que mandou — grupos)
+   * - jid, ownerKey (debug WhatsApp)
+   */
+  meta?: { senderName?: string | null } & Record<string, unknown>;
   mediaUrl?: string | null;
   mediaMime?: string | null;
 }
@@ -880,6 +886,10 @@ function MessageMediaImage({ msgId }: { msgId: string }) {
 
 function MessageBubble({ msg, showAuthor }: { msg: Mensagem; showAuthor: boolean }) {
   const outbound = msg.direction === 'OUTBOUND';
+  // Em mensagens INBOUND vindas de GRUPO, meta.senderName tem o nome do
+  // membro que mandou (ex: "João Silva"). Mostra acima da bolha pra dar
+  // contexto de quem é o autor.
+  const groupSender = !outbound ? msg.meta?.senderName : undefined;
   const MediaIcon = msg.tipo === 'IMAGE'
     ? ImageIcon
     : msg.tipo === 'VIDEO'
@@ -904,6 +914,15 @@ function MessageBubble({ msg, showAuthor }: { msg: Mensagem; showAuthor: boolean
             )}
           >
             {msg.autor.nome}
+          </span>
+        )}
+        {/* Grupo: nome do membro acima da bolha (estilo WhatsApp) */}
+        {groupSender && (
+          <span
+            className="text-[11px] font-semibold text-primary px-1"
+            data-testid={`msg-group-sender-${msg.id}`}
+          >
+            {groupSender}
           </span>
         )}
         <div

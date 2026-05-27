@@ -33,9 +33,16 @@ interface SessionContext {
    * (cacheado pra não tentar de novo a cada msg).
    */
   avatarCache: Map<string, { url: string | null; cachedAt: number }>;
+  /**
+   * Cache do subject (nome) de grupos por jid (`xxx@g.us`).
+   * TTL 30min — nomes mudam pouco. Valor null = falha ao buscar (cacheia
+   * pra não retentar a cada msg do mesmo grupo).
+   */
+  groupNameCache: Map<string, { name: string | null; cachedAt: number }>;
 }
 
 const AVATAR_TTL_MS = 30 * 60 * 1000; // 30min
+const GROUP_NAME_TTL_MS = 30 * 60 * 1000;
 
 /**
  * Gerencia sessões Baileys com **dois escopos**:
@@ -411,6 +418,7 @@ export class WhatsAppSessionService implements OnModuleInit, OnModuleDestroy {
       reconectTimer: null,
       desligadoManualmente: false,
       avatarCache: this.sessions.get(key)?.avatarCache ?? new Map(),
+      groupNameCache: this.sessions.get(key)?.groupNameCache ?? new Map(),
     };
     this.sessions.set(key, ctx);
 
@@ -506,8 +514,11 @@ export class WhatsAppSessionService implements OnModuleInit, OnModuleDestroy {
       const fromMe = m.key.fromMe === true;
       const peerId = m.key.remoteJid ?? '';
       if (!peerId) continue;
-      if (peerId.endsWith('@g.us') || peerId.endsWith('@broadcast')) continue;
+      // Mantém broadcasts e status do WhatsApp filtrados — não são conversas.
+      // Grupos (@g.us) AGORA passam — tratados com peerNome=subject + senderName.
+      if (peerId.endsWith('@broadcast')) continue;
       if (peerId === 'status@broadcast') continue;
+      const isGroup = peerId.endsWith('@g.us');
 
       const { conteudo, tipo, mediaMime, extras } = this.extrairConteudo(m.message);
       // Antes: descartava silenciosamente quando extrairConteudo caía no fallback
@@ -572,14 +583,24 @@ export class WhatsAppSessionService implements OnModuleInit, OnModuleDestroy {
       // a cada mensagem entrante — sem schema change, salvo em Conversation.metadata.
       const peerAvatarUrl = await this.obterAvatar(ctx, peerId);
 
+      // Em grupos, peerNome é o NOME DO GRUPO (subject) e senderName é
+      // quem mandou (pushName do membro). Em 1:1 peerNome=pushName e
+      // senderName fica vazio.
+      const peerNomeDef = isGroup
+        ? await this.obterNomeGrupo(ctx, peerId)
+        : fromMe
+          ? undefined
+          : (m.pushName ?? undefined);
+      const senderName = isGroup && !fromMe ? (m.pushName ?? undefined) : undefined;
+
       await this.inbox.processarMensagemEntrante({
         empresaId: ctx.empresaId,
         canal: 'WHATSAPP',
         peerId,
-        // pushName é o nome do REMETENTE. Quando fromMe=true, é o próprio
-        // dono — não popular peerNome (ConversaItem já tem o nome certo).
-        peerNome: fromMe ? undefined : (m.pushName ?? undefined),
-        peerTelefone: this.jidParaTelefone(peerId),
+        peerNome: peerNomeDef,
+        senderName,
+        // Grupos não têm telefone único — pula match por sufixo.
+        peerTelefone: isGroup ? undefined : this.jidParaTelefone(peerId),
         peerAvatarUrl,
         tipo,
         conteudo,
@@ -600,6 +621,32 @@ export class WhatsAppSessionService implements OnModuleInit, OnModuleDestroy {
    * a cada mensagem. Retorna undefined se peer não tiver foto ou se a busca falhar
    * (privacidade restrita, peer não existe, erro de rede, etc).
    */
+  /**
+   * Busca o subject (nome) de um grupo. Cacheado TTL 30min. Retorna undefined
+   * se falhar (não é grupo, sem permissão, erro de rede). Frontend cai pro jid
+   * cru nesses casos.
+   */
+  private async obterNomeGrupo(
+    ctx: SessionContext,
+    jid: string,
+  ): Promise<string | undefined> {
+    const now = Date.now();
+    const cached = ctx.groupNameCache.get(jid);
+    if (cached && now - cached.cachedAt < GROUP_NAME_TTL_MS) {
+      return cached.name ?? undefined;
+    }
+    try {
+      const meta = await ctx.sock.groupMetadata(jid);
+      const name = meta?.subject ?? null;
+      ctx.groupNameCache.set(jid, { name, cachedAt: now });
+      return name ?? undefined;
+    } catch {
+      // Sock não conectado, grupo inacessível, etc — cacheia null pra não retentar.
+      ctx.groupNameCache.set(jid, { name: null, cachedAt: now });
+      return undefined;
+    }
+  }
+
   private async obterAvatar(ctx: SessionContext, jid: string): Promise<string | undefined> {
     const now = Date.now();
     const cached = ctx.avatarCache.get(jid);

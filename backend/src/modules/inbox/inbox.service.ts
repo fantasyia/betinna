@@ -521,6 +521,11 @@ export class InboxService {
         : MessageDirection.INBOUND;
     const isInbound = direction === MessageDirection.INBOUND;
 
+    // Mescla senderName na meta pra renderizar autor da msg em grupos.
+    const metaFinal: Record<string, unknown> = {
+      ...(params.meta ?? {}),
+      ...(params.senderName ? { senderName: params.senderName } : {}),
+    };
     const msg = await this.prisma.message.create({
       data: {
         conversationId: conv.id,
@@ -531,7 +536,10 @@ export class InboxService {
         status: isInbound ? MessageStatus.RECEIVED : MessageStatus.SENT,
         mediaUrl: params.mediaUrl ?? null,
         mediaMime: params.mediaMime ?? null,
-        meta: (params.meta as Prisma.InputJsonValue) ?? undefined,
+        meta:
+          Object.keys(metaFinal).length > 0
+            ? (metaFinal as Prisma.InputJsonValue)
+            : undefined,
         criadoEm: params.data ?? new Date(),
       },
     });
