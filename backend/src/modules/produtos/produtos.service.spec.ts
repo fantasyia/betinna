@@ -85,7 +85,12 @@ describe('ProdutosService', () => {
   // -------------------------------------------------------------------------
 
   describe('list', () => {
-    const baseParams = { page: 1, limit: 20, sortBy: 'criadoEm', sortOrder: 'desc' as const };
+    const baseParams = {
+      page: 1,
+      limit: 20,
+      sortBy: 'criadoEm' as const,
+      sortOrder: 'desc' as const,
+    };
 
     it('lança ForbiddenException sem empresaIdAtiva', async () => {
       await expect(

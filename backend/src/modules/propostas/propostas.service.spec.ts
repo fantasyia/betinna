@@ -132,7 +132,12 @@ describe('PropostasService', () => {
   // -------------------------------------------------------------------------
 
   describe('list', () => {
-    const baseParams = { page: 1, limit: 20, sortBy: 'criadoEm', sortOrder: 'desc' as const };
+    const baseParams = {
+      page: 1,
+      limit: 20,
+      sortBy: 'criadoEm' as const,
+      sortOrder: 'desc' as const,
+    };
 
     it('lança ForbiddenException quando empresaIdAtiva ausente', async () => {
       await expect(
@@ -209,9 +214,15 @@ describe('PropostasService', () => {
   // -------------------------------------------------------------------------
 
   describe('create', () => {
+    // Spread defaults Zod aplicaria; em testes precisamos passar tudo
+    // explicito porque o tipo TS é o INPUT validado (sem defaults).
     const baseDto = {
       clienteId: 'cli-1',
       itens: [{ produtoId: 'p-1', quantidade: 2, desconto: 0 }],
+      formaPagamento: 'BOLETO' as const,
+      condicaoPagamento: '30dias' as const,
+      descontoGeral: 0,
+      probabilidade: 50,
     };
 
     it('cria proposta com status RASCUNHO e número gerado', async () => {

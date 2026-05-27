@@ -41,8 +41,7 @@ const fakeTag = (overrides: Partial<Tag> = {}): Tag => ({
   id: 'tag-1',
   empresaId: 'emp-1',
   nome: 'VIP',
-  criadoEm: new Date('2026-01-01'),
-  atualizadoEm: new Date('2026-01-01'),
+  cor: '#7c3aed',
   ...overrides,
 });
 
