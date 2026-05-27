@@ -195,7 +195,10 @@ export default function PedidosPage() {
   const [status, setStatus] = useState<string>('');
   const [selected, setSelected] = useState<string | null>(null);
   const [exporting, setExporting] = useState(false);
-  const [periodo, setPeriodo] = useState<'todos' | '30d' | '90d' | '12m'>('todos');
+  const [periodo, setPeriodo] = useState<'todos' | '30d' | '90d' | '12m' | 'custom'>('todos');
+  // Filtro custom de data (P5 — habilitado quando periodo = 'custom')
+  const [dataInicioCustom, setDataInicioCustom] = useState('');
+  const [dataFimCustom, setDataFimCustom] = useState('');
   // Filtro por cliente vindo da URL (ex: vindo da tab "Pedidos" do ClienteDetailPage)
   const clienteIdFilter = searchParams.get('clienteId') || '';
 
@@ -219,14 +222,22 @@ export default function PedidosPage() {
     if (search.trim()) qs.set('search', search.trim());
     if (status) qs.set('status', status);
     if (clienteIdFilter) qs.set('clienteId', clienteIdFilter);
-    if (periodo !== 'todos') {
+    if (periodo === 'custom') {
+      if (dataInicioCustom) qs.set('dataInicio', new Date(dataInicioCustom).toISOString());
+      if (dataFimCustom) {
+        // dataFim deve incluir o dia inteiro (até 23:59:59.999)
+        const fim = new Date(dataFimCustom);
+        fim.setHours(23, 59, 59, 999);
+        qs.set('dataFim', fim.toISOString());
+      }
+    } else if (periodo !== 'todos') {
       const dias = periodo === '30d' ? 30 : periodo === '90d' ? 90 : 365;
       const inicio = new Date();
       inicio.setDate(inicio.getDate() - dias);
       qs.set('dataInicio', inicio.toISOString());
     }
     return `/pedidos?${qs.toString()}`;
-  }, [page, search, status, periodo, clienteIdFilter]);
+  }, [page, search, status, periodo, dataInicioCustom, dataFimCustom, clienteIdFilter]);
 
   const { data: pageResp, loading, error, refetch } = useApiQuery<PaginatedResponse<Pedido>>(listPath);
 
@@ -284,7 +295,12 @@ export default function PedidosPage() {
   }
 
   const [creating, setCreating] = useState(false);
-  const filtersActive = !!status || !!search.trim() || periodo !== 'todos';
+  const filtersActive =
+    !!status ||
+    !!search.trim() ||
+    periodo !== 'todos' ||
+    !!dataInicioCustom ||
+    !!dataFimCustom;
 
   return (
     <PageLayout
@@ -363,7 +379,13 @@ export default function PedidosPage() {
             data-testid="filter-periodo"
             value={periodo}
             onChange={(e) => {
-              setPeriodo(e.target.value as typeof periodo);
+              const next = e.target.value as typeof periodo;
+              setPeriodo(next);
+              // Trocar de "custom" pra preset limpa as datas custom; vice-versa também
+              if (next !== 'custom') {
+                setDataInicioCustom('');
+                setDataFimCustom('');
+              }
               setPage(1);
             }}
           >
@@ -371,7 +393,35 @@ export default function PedidosPage() {
             <option value="30d">Últimos 30 dias</option>
             <option value="90d">Últimos 90 dias</option>
             <option value="12m">Últimos 12 meses</option>
+            <option value="custom">Período custom…</option>
           </Select>
+          {periodo === 'custom' && (
+            <>
+              <Input
+                data-testid="filter-data-inicio"
+                type="date"
+                value={dataInicioCustom}
+                onChange={(e) => {
+                  setDataInicioCustom(e.target.value);
+                  setPage(1);
+                }}
+                aria-label="Data início"
+                className="w-[150px]"
+              />
+              <span className="text-xs text-muted">até</span>
+              <Input
+                data-testid="filter-data-fim"
+                type="date"
+                value={dataFimCustom}
+                onChange={(e) => {
+                  setDataFimCustom(e.target.value);
+                  setPage(1);
+                }}
+                aria-label="Data fim"
+                className="w-[150px]"
+              />
+            </>
+          )}
           {filtersActive && (
             <Button
               variant="ghost"
@@ -380,6 +430,8 @@ export default function PedidosPage() {
                 setSearch('');
                 setStatus('');
                 setPeriodo('todos');
+                setDataInicioCustom('');
+                setDataFimCustom('');
                 setPage(1);
               }}
               leftIcon={<XIcon className="h-3 w-3" />}
