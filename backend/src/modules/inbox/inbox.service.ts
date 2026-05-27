@@ -598,11 +598,16 @@ export class InboxService {
       },
     });
     if (existente) {
+      // Mescla avatarUrl na metadata existente quando o adapter informa.
+      const nextMetadata = p.peerAvatarUrl
+        ? { ...((existente.metadata as Record<string, unknown> | null) ?? {}), avatarUrl: p.peerAvatarUrl }
+        : undefined;
       return this.prisma.conversation.update({
         where: { id: existente.id },
         data: {
           peerNome: p.peerNome ?? undefined,
           clienteId: clienteId ?? undefined,
+          ...(nextMetadata ? { metadata: nextMetadata as Prisma.InputJsonValue } : {}),
         },
       });
     }
@@ -623,6 +628,9 @@ export class InboxService {
           clienteId,
           status: 'PENDENTE',
           naoLidas: 0,
+          ...(p.peerAvatarUrl
+            ? { metadata: { avatarUrl: p.peerAvatarUrl } as Prisma.InputJsonValue }
+            : {}),
         },
       });
     } catch (err) {

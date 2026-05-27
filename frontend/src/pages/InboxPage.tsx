@@ -77,6 +77,11 @@ interface Conversation {
   naoLidas?: number;
   cliente?: { id: string; nome: string } | null;
   atribuido?: { id: string; nome: string } | null;
+  /**
+   * JSON com metadados canal-específicos. Hoje usado pra avatarUrl
+   * (foto de perfil do peer no WhatsApp).
+   */
+  metadata?: { avatarUrl?: string | null } & Record<string, unknown>;
 }
 
 interface Mensagem {
@@ -372,7 +377,7 @@ function ConversationItem({
           />
         )}
 
-        <Avatar name={name} size="md" />
+        <Avatar name={name} src={conv.metadata?.avatarUrl ?? undefined} size="md" />
 
         <div className="flex-1 min-w-0">
           <div className="flex items-center justify-between gap-2 mb-0.5">
@@ -535,7 +540,11 @@ function ConversationThread({
                 data-testid="inbox-back-btn"
               />
             )}
-            <Avatar name={c.cliente?.nome ?? c.peerNome ?? c.peer} size="md" />
+            <Avatar
+              name={c.cliente?.nome ?? c.peerNome ?? c.peer}
+              src={c.metadata?.avatarUrl ?? undefined}
+              size="md"
+            />
             <div className="flex-1 min-w-0">
               <div className="flex items-center gap-1.5">
                 <strong className="text-sm tracking-tight truncate text-text">

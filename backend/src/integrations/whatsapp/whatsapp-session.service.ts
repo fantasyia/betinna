@@ -27,7 +27,15 @@ interface SessionContext {
   reconectTentativas: number;
   reconectTimer: NodeJS.Timeout | null;
   desligadoManualmente: boolean;
+  /**
+   * Cache local de fotos de perfil por peerJid. URL temporária do CDN WhatsApp
+   * (~horas). TTL 30min — depois renova. Valor `null` = peer sem foto / privado
+   * (cacheado pra não tentar de novo a cada msg).
+   */
+  avatarCache: Map<string, { url: string | null; cachedAt: number }>;
 }
+
+const AVATAR_TTL_MS = 30 * 60 * 1000; // 30min
 
 /**
  * Gerencia sessões Baileys com **dois escopos**:
@@ -402,6 +410,7 @@ export class WhatsAppSessionService implements OnModuleInit, OnModuleDestroy {
       reconectTentativas: isReconexao ? (this.sessions.get(key)?.reconectTentativas ?? 0) : 0,
       reconectTimer: null,
       desligadoManualmente: false,
+      avatarCache: this.sessions.get(key)?.avatarCache ?? new Map(),
     };
     this.sessions.set(key, ctx);
 
@@ -558,6 +567,11 @@ export class WhatsAppSessionService implements OnModuleInit, OnModuleDestroy {
         if (path) mediaUrl = path;
       }
 
+      // Foto de perfil do peer (best-effort, cacheado por sessão).
+      // Baileys retorna URL temporária do CDN do WhatsApp (~horas). Atualizamos
+      // a cada mensagem entrante — sem schema change, salvo em Conversation.metadata.
+      const peerAvatarUrl = await this.obterAvatar(ctx, peerId);
+
       await this.inbox.processarMensagemEntrante({
         empresaId: ctx.empresaId,
         canal: 'WHATSAPP',
@@ -566,6 +580,7 @@ export class WhatsAppSessionService implements OnModuleInit, OnModuleDestroy {
         // dono — não popular peerNome (ConversaItem já tem o nome certo).
         peerNome: fromMe ? undefined : (m.pushName ?? undefined),
         peerTelefone: this.jidParaTelefone(peerId),
+        peerAvatarUrl,
         tipo,
         conteudo,
         externalId: m.key.id ?? undefined,
@@ -576,6 +591,30 @@ export class WhatsAppSessionService implements OnModuleInit, OnModuleDestroy {
         direction: fromMe ? 'OUTBOUND' : 'INBOUND',
         meta: { jid: peerId, ownerKey: ownerKey(ctx.owner), ...(extras ?? {}) },
       });
+    }
+  }
+
+  /**
+   * Busca foto de perfil do peer no WhatsApp Web (best-effort).
+   * Cacheado por SessionContext (TTL 30min) pra não bombardear `profilePictureUrl`
+   * a cada mensagem. Retorna undefined se peer não tiver foto ou se a busca falhar
+   * (privacidade restrita, peer não existe, erro de rede, etc).
+   */
+  private async obterAvatar(ctx: SessionContext, jid: string): Promise<string | undefined> {
+    const now = Date.now();
+    const cached = ctx.avatarCache.get(jid);
+    if (cached && now - cached.cachedAt < AVATAR_TTL_MS) {
+      return cached.url ?? undefined;
+    }
+    try {
+      const url = await ctx.sock.profilePictureUrl(jid, 'image');
+      ctx.avatarCache.set(jid, { url: url ?? null, cachedAt: now });
+      return url ?? undefined;
+    } catch {
+      // Peer sem foto, privacidade restrita, ou erro temporário — cacheia null
+      // pra não retentar a cada mensagem nas próximas 30min.
+      ctx.avatarCache.set(jid, { url: null, cachedAt: now });
+      return undefined;
     }
   }
 

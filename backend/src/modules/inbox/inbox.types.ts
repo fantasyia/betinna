@@ -62,6 +62,12 @@ export interface MensagemEntranteParams {
    * não sejam duplicadas quando o evento volta pelo socket.
    */
   direction?: 'INBOUND' | 'OUTBOUND';
+  /**
+   * URL temporária da foto de perfil do peer (WhatsApp: profilePictureUrl).
+   * Vai pra `Conversation.metadata.avatarUrl` (sem coluna dedicada — JSON).
+   * Frontend usa pra renderizar avatar real em vez de iniciais.
+   */
+  peerAvatarUrl?: string;
   /** Data original da mensagem (default: agora). */
   data?: Date;
   mediaUrl?: string;
