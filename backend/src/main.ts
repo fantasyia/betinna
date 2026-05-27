@@ -24,11 +24,11 @@ async function bootstrap(): Promise<void> {
   // Body parser limit explícito — default Express 100KB conflitava com:
   //   • Import CSV (`csvBody.csv` schema aceita até 1MB)
   //   • Webhooks com payload grande (Meta/OMIE com vários eventos batched)
-  // Auditoria 2026-05-17 (P1): subir limite pra 2MB cobre os casos legítimos
-  // sem virar vetor de DoS (rate-limit + AuthGuard global continuam ativos).
-  // Usa `useBodyParser` (API oficial Nest) que respeita rawBody:true acima.
-  app.useBodyParser('json', { limit: '2mb' });
-  app.useBodyParser('urlencoded', { extended: true, limit: '2mb' });
+  //   • Upload de mídia base64 pelo WhatsApp Inbox (imagem/áudio/doc até ~12MB raw)
+  // Subido pra 20MB em 2026-05-27 pra cobrir o upload de mídia. Rate-limit
+  // + AuthGuard global continuam ativos como proteção contra DoS.
+  app.useBodyParser('json', { limit: '20mb' });
+  app.useBodyParser('urlencoded', { extended: true, limit: '20mb' });
 
   // Logger Pino como logger global
   app.useLogger(app.get(PinoLogger));

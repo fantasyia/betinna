@@ -14,6 +14,7 @@ import {
   Video,
   Mic,
   Receipt,
+  Paperclip,
 } from 'lucide-react';
 import { api, ApiError } from '@/lib/api';
 import { useApiQuery, type PaginatedResponse } from '@/hooks/useApiQuery';
@@ -508,6 +509,63 @@ function ConversationThread({
     }
   }
 
+  // Refs pros 3 inputs file (escondidos — clicados pelos botões de anexar)
+  const imageInputRef = useRef<HTMLInputElement | null>(null);
+  const audioInputRef = useRef<HTMLInputElement | null>(null);
+  const documentInputRef = useRef<HTMLInputElement | null>(null);
+
+  /** Converte File → base64 puro (sem prefixo data:...). */
+  function fileToBase64(file: File): Promise<string> {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => {
+        const result = reader.result as string;
+        // result = "data:<mime>;base64,<base64>" — pega só a parte depois da vírgula
+        resolve(result.split(',')[1] ?? '');
+      };
+      reader.onerror = () => reject(reader.error);
+      reader.readAsDataURL(file);
+    });
+  }
+
+  async function enviarMidia(file: File, tipo: 'IMAGE' | 'AUDIO' | 'DOCUMENT') {
+    // Limite ~12MB raw (base64 fica ~16MB no JSON, dentro do body limit de 20MB)
+    const MAX_MB = 12;
+    if (file.size > MAX_MB * 1024 * 1024) {
+      setSendError(
+        `Arquivo muito grande (${(file.size / 1024 / 1024).toFixed(1)}MB). Limite ${MAX_MB}MB.`,
+      );
+      return;
+    }
+    setSending(true);
+    setSendError(null);
+    try {
+      const dataBase64 = await fileToBase64(file);
+      await api.post(`/inbox/${id}/responder-midia`, {
+        tipo,
+        mimetype: file.type || undefined,
+        fileName: tipo === 'DOCUMENT' ? file.name : undefined,
+        // Pra áudio, marca como PTT (voice note) — fica com player no WhatsApp
+        ptt: tipo === 'AUDIO' || undefined,
+        dataBase64,
+      });
+      msgs.refetch();
+      conv.refetch();
+      onChanged();
+    } catch (err) {
+      setSendError(err instanceof ApiError ? err.message : 'Falha ao enviar mídia');
+    } finally {
+      setSending(false);
+    }
+  }
+
+  function onFileSelected(e: React.ChangeEvent<HTMLInputElement>, tipo: 'IMAGE' | 'AUDIO' | 'DOCUMENT') {
+    const file = e.target.files?.[0];
+    e.target.value = ''; // permite re-selecionar o mesmo arquivo
+    if (!file) return;
+    void enviarMidia(file, tipo);
+  }
+
   async function mudarStatus(novo: ConversationStatus) {
     try {
       await api.patch(`/inbox/${id}/status`, { status: novo });
@@ -622,7 +680,68 @@ function ConversationThread({
       {/* Compose */}
       {c && !lockedCompose && (
         <div className="px-4 py-3 border-t border-border bg-bg-alt">
-          <div className="flex items-end gap-2">
+          {/* Inputs file escondidos (só clicados pelos botões abaixo) */}
+          <input
+            ref={imageInputRef}
+            type="file"
+            accept="image/*"
+            hidden
+            onChange={(e) => onFileSelected(e, 'IMAGE')}
+            data-testid="inbox-file-image"
+          />
+          <input
+            ref={audioInputRef}
+            type="file"
+            accept="audio/*"
+            hidden
+            onChange={(e) => onFileSelected(e, 'AUDIO')}
+            data-testid="inbox-file-audio"
+          />
+          <input
+            ref={documentInputRef}
+            type="file"
+            accept=".pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.txt,.csv,.zip,.rar"
+            hidden
+            onChange={(e) => onFileSelected(e, 'DOCUMENT')}
+            data-testid="inbox-file-document"
+          />
+
+          <div className="flex items-end gap-1.5">
+            {/* Botões de anexar — só pra canal WhatsApp por enquanto */}
+            {c.canal === 'WHATSAPP' && (
+              <div className="flex items-center gap-1 pb-1">
+                <button
+                  type="button"
+                  data-testid="inbox-attach-image"
+                  onClick={() => imageInputRef.current?.click()}
+                  disabled={sending}
+                  className="p-2 rounded-md text-muted hover:text-text hover:bg-surface-hover transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+                  title="Enviar imagem"
+                >
+                  <ImageIcon className="h-4 w-4" />
+                </button>
+                <button
+                  type="button"
+                  data-testid="inbox-attach-audio"
+                  onClick={() => audioInputRef.current?.click()}
+                  disabled={sending}
+                  className="p-2 rounded-md text-muted hover:text-text hover:bg-surface-hover transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+                  title="Enviar áudio (voice note)"
+                >
+                  <Mic className="h-4 w-4" />
+                </button>
+                <button
+                  type="button"
+                  data-testid="inbox-attach-document"
+                  onClick={() => documentInputRef.current?.click()}
+                  disabled={sending}
+                  className="p-2 rounded-md text-muted hover:text-text hover:bg-surface-hover transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+                  title="Enviar documento (PDF, DOC, XLS, etc)"
+                >
+                  <Paperclip className="h-4 w-4" />
+                </button>
+              </div>
+            )}
             <Textarea
               data-testid="inbox-compose"
               placeholder="Digite sua resposta…"
@@ -652,9 +771,22 @@ function ConversationThread({
           <div className="flex items-center justify-between mt-1.5">
             <span className="text-[11px] text-muted">
               {sendError ? (
-                <span className="text-danger">{sendError}</span>
+                <span className="text-danger">
+                  {sendError}
+                  {sendError.includes('pareado') || sendError.includes('conectado') ? (
+                    <>
+                      {' — '}
+                      <a
+                        href="/whatsapp"
+                        className="underline font-medium hover:text-danger-hover"
+                      >
+                        reconectar agora
+                      </a>
+                    </>
+                  ) : null}
+                </span>
               ) : (
-                <>⌘/Ctrl + Enter</>
+                <>⌘/Ctrl + Enter — anexar até 12MB</>
               )}
             </span>
             <span className="text-[11px] text-muted tabular">

@@ -58,10 +58,17 @@ export const responderMidiaSchema = z
     ptt: z.boolean().optional(),
     storagePath: z.string().max(500).optional(),
     url: z.string().url().max(2000).optional(),
+    /**
+     * Arquivo enviado direto pelo frontend em base64 (sem upload prévio).
+     * Limite ~15MB (12MB no JSON após overhead base64 ≈ 9MB raw).
+     * Frontend deve usar `FileReader.readAsDataURL` e tirar o prefixo
+     * `data:<mime>;base64,` antes de enviar (manda só a parte base64 pura).
+     */
+    dataBase64: z.string().max(20_000_000).optional(),
   })
-  .refine((d) => Boolean(d.storagePath || d.url), {
-    message: 'Forneça storagePath ou url',
-    path: ['storagePath'],
+  .refine((d) => Boolean(d.storagePath || d.url || d.dataBase64), {
+    message: 'Forneça storagePath, url ou dataBase64',
+    path: ['dataBase64'],
   })
   .refine((d) => d.tipo !== 'DOCUMENT' || Boolean(d.fileName), {
     message: 'fileName obrigatório para DOCUMENT',

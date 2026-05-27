@@ -398,12 +398,14 @@ export class InboxService {
       ptt?: boolean;
       storagePath?: string;
       url?: string;
+      /** Base64 puro (sem prefixo data:...) — convertido pra Buffer aqui. */
+      dataBase64?: string;
     },
     whatsapp: {
       enviarMidia: (
         empresaId: string,
         peerId: string,
-        p: Parameters<InboxService['responderComMidia']>[2],
+        p: Parameters<InboxService['responderComMidia']>[2] & { buffer?: Buffer },
         ctx?: { proprietarioId?: string | null },
       ) => Promise<{ externalId?: string }>;
     },
@@ -438,9 +440,15 @@ export class InboxService {
     });
 
     try {
-      const r = await whatsapp.enviarMidia(conv.empresaId, conv.peerId, params, {
-        proprietarioId: conv.proprietarioId,
-      });
+      // Converte base64 pra Buffer antes de mandar pro Baileys (que aceita buffer).
+      // Mantém storagePath/url também — adapter prioriza buffer > storagePath > url.
+      const buffer = params.dataBase64 ? Buffer.from(params.dataBase64, 'base64') : undefined;
+      const r = await whatsapp.enviarMidia(
+        conv.empresaId,
+        conv.peerId,
+        { ...params, buffer },
+        { proprietarioId: conv.proprietarioId },
+      );
       const atualizada = await this.prisma.message.update({
         where: { id: msg.id },
         data: { status: MessageStatus.SENT, externalId: r.externalId ?? null },
