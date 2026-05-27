@@ -81,7 +81,9 @@ interface Conversation {
 
 interface Mensagem {
   id: string;
-  texto?: string | null;
+  // Backend usa `conteudo` (Prisma schema). Antes o frontend tinha
+  // `texto` errado → bolha aparecia em branco. Fix 2026-05-27.
+  conteudo?: string | null;
   direction: MessageDirection;
   tipo: MessageType;
   criadoEm: string;
@@ -746,7 +748,7 @@ function MessageBubble({ msg, showAuthor }: { msg: Mensagem; showAuthor: boolean
               {msg.mediaMime && <span className="text-muted-light">· {msg.mediaMime}</span>}
             </div>
           )}
-          {msg.texto && <p className="m-0 whitespace-pre-wrap">{msg.texto}</p>}
+          {msg.conteudo && <p className="m-0 whitespace-pre-wrap">{msg.conteudo}</p>}
         </div>
         <span
           className={cn(
