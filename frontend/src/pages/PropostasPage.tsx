@@ -103,6 +103,8 @@ interface ProdutoOpt {
   nome: string;
   sku?: string | null;
   precoTabela?: number;
+  /** unidade de medida do produto (read-only — vem do Omie). Ex: "cx", "un", "kg". */
+  unidade?: string | null;
 }
 
 const STATUS_VARIANT: Record<
@@ -1009,6 +1011,19 @@ function PropostaFormDialog({
             </Button>
           </div>
           <div className="flex flex-col gap-2">
+            {/* Header row — labels visíveis pra cada coluna do item */}
+            {itens.length > 0 && (
+              <div
+                className="grid grid-cols-[1fr_70px_70px_90px_32px] gap-2 px-2.5 text-[10px] font-semibold uppercase tracking-wider text-muted"
+                aria-hidden="true"
+              >
+                <span>Produto</span>
+                <span>Qtde</span>
+                <span>% Desc.</span>
+                <span>Preço un.</span>
+                <span />
+              </div>
+            )}
             {itens.map((it, idx) => (
               <ItemRow
                 key={it.uiKey}
@@ -1148,14 +1163,25 @@ function ItemRow({
         value={item.produto}
         onChange={(p) => onChange({ produto: p })}
       />
-      <Input
-        type="number"
-        min={1}
-        value={item.quantidade}
-        onChange={(e) => onChange({ quantidade: Math.max(1, Number(e.target.value)) })}
-        data-testid={`${testId}-qt`}
-        aria-label="Quantidade"
-      />
+      <div className="flex items-center gap-1.5">
+        <Input
+          type="number"
+          min={1}
+          value={item.quantidade}
+          onChange={(e) => onChange({ quantidade: Math.max(1, Number(e.target.value)) })}
+          data-testid={`${testId}-qt`}
+          aria-label="Quantidade"
+          className="flex-1 min-w-0"
+        />
+        {/* Unidade vem do produto (read-only — sincronizado do Omie) */}
+        <span
+          className="text-[11px] text-muted whitespace-nowrap"
+          data-testid={`${testId}-unidade`}
+          title="Unidade de medida (vem do Omie)"
+        >
+          {item.produto?.unidade ?? 'un'}
+        </span>
+      </div>
       <Input
         type="number"
         min={0}
@@ -1165,7 +1191,7 @@ function ItemRow({
         onChange={(e) => onChange({ desconto: Number(e.target.value) })}
         data-testid={`${testId}-desc`}
         aria-label="Desconto %"
-        placeholder="% desc"
+        placeholder="%"
       />
       <Input
         type="number"
