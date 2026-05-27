@@ -124,6 +124,57 @@ export class WhatsAppMediaService implements OnModuleInit {
    * Gera signed URL temporária pra cliente acessar a mídia.
    * Usar no controller que retorna `Message[]` pra inbox.
    */
+  /**
+   * Upload de mídia OUTBOUND (enviada pela própria Betinna) no Storage.
+   * Sem isso, mensagens outbound de imagem/áudio/vídeo/doc não teriam
+   * mediaUrl e a UI mostraria só "[imagem]" sem renderizar o conteúdo.
+   *
+   * Retorna o storagePath ou null se falhar (best-effort: a mensagem
+   * ainda é enviada pelo Baileys, só não fica visualizável na Betinna).
+   */
+  async uploadOutbound(
+    empresaId: string,
+    peerId: string,
+    buffer: Buffer,
+    mimetype: string | undefined,
+    msgIdOpt?: string,
+  ): Promise<string | null> {
+    if (buffer.length === 0) return null;
+    if (buffer.length > MAX_BYTES) {
+      this.logger.warn(
+        `Mídia OUTBOUND muito grande (${buffer.length} bytes) — pulando upload empresa=${empresaId} peer=${peerId}`,
+      );
+      return null;
+    }
+    try {
+      const ext = extFromMime(mimetype);
+      const safePeer = peerId.replace(/[^\w]/g, '_').slice(0, 60);
+      const id = msgIdOpt ?? `out_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+      const path = `${empresaId}/${safePeer}/${id}${ext ? `.${ext}` : ''}`;
+      const { error } = await this.storage.storage.from(BUCKET).upload(path, buffer, {
+        contentType: mimetype ?? 'application/octet-stream',
+        upsert: false,
+      });
+      if (error) {
+        if (error.message.includes('already exists') || error.message.includes('Duplicate')) {
+          return path;
+        }
+        this.logger.warn(
+          `Falha upload mídia OUTBOUND empresa=${empresaId} peer=${peerId}: ${error.message}`,
+        );
+        return null;
+      }
+      return path;
+    } catch (err) {
+      this.logger.warn(
+        `Erro upload OUTBOUND empresa=${empresaId} peer=${peerId}: ${
+          err instanceof Error ? err.message : String(err)
+        }`,
+      );
+      return null;
+    }
+  }
+
   async signedUrl(storagePath: string, ttlSeconds = SIGNED_URL_TTL): Promise<string | null> {
     try {
       const { data, error } = await this.storage.storage

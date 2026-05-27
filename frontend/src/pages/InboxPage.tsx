@@ -13,6 +13,7 @@ import {
   FileText,
   Video,
   Mic,
+  Square,
   Receipt,
   Paperclip,
 } from 'lucide-react';
@@ -515,10 +516,79 @@ function ConversationThread({
     }
   }
 
-  // Refs pros 3 inputs file (escondidos — clicados pelos botões de anexar)
+  // Refs pros 2 inputs file (escondidos — clicados pelos botões de anexar)
+  // Áudio NÃO tem mais upload — só gravação via MediaRecorder.
+  // Paperclip cobre o caso de ter um áudio já gravado em arquivo.
   const imageInputRef = useRef<HTMLInputElement | null>(null);
-  const audioInputRef = useRef<HTMLInputElement | null>(null);
-  const documentInputRef = useRef<HTMLInputElement | null>(null);
+  const attachInputRef = useRef<HTMLInputElement | null>(null);
+
+  // Gravação de voice note (MediaRecorder API). Click no mic → grava;
+  // click de novo → para + envia direto.
+  const mediaRecorderRef = useRef<MediaRecorder | null>(null);
+  const audioChunksRef = useRef<BlobPart[]>([]);
+  const [recording, setRecording] = useState(false);
+  const [recordSeconds, setRecordSeconds] = useState(0);
+  const recordTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  async function startRecording() {
+    setSendError(null);
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      // webm/opus é amplamente suportado; Baileys + WhatsApp aceitam.
+      const recorder = new MediaRecorder(stream, {
+        mimeType: MediaRecorder.isTypeSupported('audio/webm;codecs=opus')
+          ? 'audio/webm;codecs=opus'
+          : 'audio/webm',
+      });
+      audioChunksRef.current = [];
+      recorder.ondataavailable = (e) => {
+        if (e.data.size > 0) audioChunksRef.current.push(e.data);
+      };
+      recorder.onstop = async () => {
+        // Para o stream — solta o mic (tira o indicador de gravação do navegador)
+        stream.getTracks().forEach((t) => t.stop());
+        const blob = new Blob(audioChunksRef.current, { type: recorder.mimeType });
+        if (blob.size === 0) return;
+        // Reusa o fluxo de enviar mídia: converte blob → file → base64 → envia
+        const file = new File([blob], `voice-${Date.now()}.webm`, { type: blob.type });
+        await enviarMidia(file, 'AUDIO');
+      };
+      recorder.start();
+      mediaRecorderRef.current = recorder;
+      setRecording(true);
+      setRecordSeconds(0);
+      recordTimerRef.current = setInterval(() => {
+        setRecordSeconds((s) => s + 1);
+      }, 1000);
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      setSendError(`Não consegui acessar o microfone: ${msg}`);
+    }
+  }
+
+  function stopRecording() {
+    if (!mediaRecorderRef.current) return;
+    mediaRecorderRef.current.stop();
+    mediaRecorderRef.current = null;
+    setRecording(false);
+    if (recordTimerRef.current) {
+      clearInterval(recordTimerRef.current);
+      recordTimerRef.current = null;
+    }
+  }
+
+  function cancelRecording() {
+    if (!mediaRecorderRef.current) return;
+    // Limpa chunks ANTES de parar pra onstop não enviar
+    audioChunksRef.current = [];
+    mediaRecorderRef.current.stop();
+    mediaRecorderRef.current = null;
+    setRecording(false);
+    if (recordTimerRef.current) {
+      clearInterval(recordTimerRef.current);
+      recordTimerRef.current = null;
+    }
+  }
 
   /** Converte File → base64 puro (sem prefixo data:...). */
   function fileToBase64(file: File): Promise<string> {
@@ -569,6 +639,19 @@ function ConversationThread({
     const file = e.target.files?.[0];
     e.target.value = ''; // permite re-selecionar o mesmo arquivo
     if (!file) return;
+    void enviarMidia(file, tipo);
+  }
+
+  /** Anexar: deduz tipo do mime do arquivo (imagem/áudio/vídeo/documento) */
+  function onAttachSelected(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    e.target.value = '';
+    if (!file) return;
+    const mime = file.type || '';
+    let tipo: 'IMAGE' | 'AUDIO' | 'DOCUMENT';
+    if (mime.startsWith('image/')) tipo = 'IMAGE';
+    else if (mime.startsWith('audio/')) tipo = 'AUDIO';
+    else tipo = 'DOCUMENT';
     void enviarMidia(file, tipo);
   }
 
@@ -686,7 +769,9 @@ function ConversationThread({
       {/* Compose */}
       {c && !lockedCompose && (
         <div className="px-4 py-3 border-t border-border bg-bg-alt">
-          {/* Inputs file escondidos (só clicados pelos botões abaixo) */}
+          {/* Inputs file escondidos (só clicados pelos botões abaixo).
+              Áudio NÃO tem input próprio — usa MediaRecorder (gravação).
+              Paperclip aceita qualquer arquivo (inclui áudio gravado externamente). */}
           <input
             ref={imageInputRef}
             type="file"
@@ -696,21 +781,48 @@ function ConversationThread({
             data-testid="inbox-file-image"
           />
           <input
-            ref={audioInputRef}
+            ref={attachInputRef}
             type="file"
-            accept="audio/*"
+            accept="*/*"
             hidden
-            onChange={(e) => onFileSelected(e, 'AUDIO')}
-            data-testid="inbox-file-audio"
+            onChange={onAttachSelected}
+            data-testid="inbox-file-attach"
           />
-          <input
-            ref={documentInputRef}
-            type="file"
-            accept=".pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.txt,.csv,.zip,.rar"
-            hidden
-            onChange={(e) => onFileSelected(e, 'DOCUMENT')}
-            data-testid="inbox-file-document"
-          />
+
+          {/* Estado de gravação ativa: mostra timer + botão parar + cancelar */}
+          {recording && (
+            <div
+              className="mb-2 px-3 py-2 rounded-md bg-danger/10 border border-danger/30 flex items-center gap-3"
+              data-testid="recording-active"
+            >
+              <span className="relative flex h-2.5 w-2.5">
+                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-danger opacity-75" />
+                <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-danger" />
+              </span>
+              <span className="text-sm tabular text-danger font-medium">
+                Gravando — {Math.floor(recordSeconds / 60)}:
+                {String(recordSeconds % 60).padStart(2, '0')}
+              </span>
+              <div className="flex-1" />
+              <button
+                type="button"
+                onClick={cancelRecording}
+                className="text-xs px-2 py-1 rounded text-muted hover:text-text hover:bg-surface-hover"
+                data-testid="inbox-record-cancel"
+              >
+                Cancelar
+              </button>
+              <button
+                type="button"
+                onClick={stopRecording}
+                className="text-xs px-2.5 py-1 rounded bg-primary text-primary-contrast font-medium hover:bg-primary-hover flex items-center gap-1.5"
+                data-testid="inbox-record-stop"
+              >
+                <Square className="h-3 w-3 fill-current" />
+                Enviar
+              </button>
+            </div>
+          )}
 
           <div className="flex items-end gap-1.5">
             {/* Botões de anexar — só pra canal WhatsApp por enquanto */}
@@ -720,7 +832,7 @@ function ConversationThread({
                   type="button"
                   data-testid="inbox-attach-image"
                   onClick={() => imageInputRef.current?.click()}
-                  disabled={sending}
+                  disabled={sending || recording}
                   className="p-2 rounded-md text-muted hover:text-text hover:bg-surface-hover transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
                   title="Enviar imagem"
                 >
@@ -728,21 +840,26 @@ function ConversationThread({
                 </button>
                 <button
                   type="button"
-                  data-testid="inbox-attach-audio"
-                  onClick={() => audioInputRef.current?.click()}
+                  data-testid="inbox-record-mic"
+                  onClick={recording ? stopRecording : () => void startRecording()}
                   disabled={sending}
-                  className="p-2 rounded-md text-muted hover:text-text hover:bg-surface-hover transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
-                  title="Enviar áudio (voice note)"
+                  className={cn(
+                    'p-2 rounded-md transition-colors disabled:opacity-40 disabled:cursor-not-allowed',
+                    recording
+                      ? 'text-danger bg-danger/10 hover:bg-danger/20'
+                      : 'text-muted hover:text-text hover:bg-surface-hover',
+                  )}
+                  title={recording ? 'Parar e enviar gravação' : 'Gravar voice note'}
                 >
                   <Mic className="h-4 w-4" />
                 </button>
                 <button
                   type="button"
-                  data-testid="inbox-attach-document"
-                  onClick={() => documentInputRef.current?.click()}
-                  disabled={sending}
+                  data-testid="inbox-attach-file"
+                  onClick={() => attachInputRef.current?.click()}
+                  disabled={sending || recording}
                   className="p-2 rounded-md text-muted hover:text-text hover:bg-surface-hover transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
-                  title="Enviar documento (PDF, DOC, XLS, etc)"
+                  title="Anexar arquivo (documento, áudio, vídeo)"
                 >
                   <Paperclip className="h-4 w-4" />
                 </button>

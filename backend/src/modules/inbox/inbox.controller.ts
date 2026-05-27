@@ -183,7 +183,7 @@ export class InboxController {
     @Param('id') id: string,
     @Body(new ZodValidationPipe(responderMidiaSchema)) dto: ResponderMidiaDto,
   ) {
-    return this.svc.responderComMidia(user, id, dto, this.whatsapp);
+    return this.svc.responderComMidia(user, id, dto, this.whatsapp, this.whatsappMedia);
   }
 
   // ─── Bulk operations ─────────────────────────────────────────────────

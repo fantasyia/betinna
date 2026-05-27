@@ -409,6 +409,15 @@ export class InboxService {
         ctx?: { proprietarioId?: string | null },
       ) => Promise<{ externalId?: string }>;
     },
+    whatsappMedia?: {
+      uploadOutbound: (
+        empresaId: string,
+        peerId: string,
+        buffer: Buffer,
+        mimetype: string | undefined,
+        msgIdOpt?: string,
+      ) => Promise<string | null>;
+    },
   ): Promise<Message> {
     const conv = await this.findById(user, conversationId);
     if (conv.canal !== 'WHATSAPP') {
@@ -426,6 +435,22 @@ export class InboxService {
             params.tipo
           ]);
 
+    // Converte base64 pra Buffer (será reusado pra upload + envio Baileys)
+    const buffer = params.dataBase64 ? Buffer.from(params.dataBase64, 'base64') : undefined;
+
+    // Upload do buffer pro Storage ANTES de criar a Message, pra ela já
+    // ter mediaUrl preenchido e a UI conseguir renderizar a imagem/áudio.
+    // Sem isso, mensagens OUTBOUND apareciam só como "[imagem]" sem preview.
+    let storagePath: string | null = params.storagePath ?? null;
+    if (!storagePath && buffer && whatsappMedia) {
+      storagePath = await whatsappMedia.uploadOutbound(
+        conv.empresaId,
+        conv.peerId,
+        buffer,
+        params.mimetype,
+      );
+    }
+
     const msg = await this.prisma.message.create({
       data: {
         conversationId,
@@ -434,15 +459,12 @@ export class InboxService {
         conteudo: conteudoPlaceholder,
         status: MessageStatus.PENDING,
         autorUsuarioId: user.id,
-        mediaUrl: params.storagePath ?? params.url ?? null,
+        mediaUrl: storagePath ?? params.url ?? null,
         mediaMime: params.mimetype ?? null,
       },
     });
 
     try {
-      // Converte base64 pra Buffer antes de mandar pro Baileys (que aceita buffer).
-      // Mantém storagePath/url também — adapter prioriza buffer > storagePath > url.
-      const buffer = params.dataBase64 ? Buffer.from(params.dataBase64, 'base64') : undefined;
       const r = await whatsapp.enviarMidia(
         conv.empresaId,
         conv.peerId,
