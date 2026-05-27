@@ -779,7 +779,13 @@ function ConversationThread({
               {sendError ? (
                 <span className="text-danger">
                   {sendError}
-                  {sendError.includes('pareado') || sendError.includes('conectado') ? (
+                  {/* Sugere reconectar quando o erro indica desconexão (estado
+                      ou pós-tentativa). Connection Closed = socket caiu durante
+                      envio; pareado/conectado = check inicial falhou. */}
+                  {sendError.includes('pareado') ||
+                  sendError.includes('conectado') ||
+                  sendError.toLowerCase().includes('connection closed') ||
+                  sendError.toLowerCase().includes('socket') ? (
                     <>
                       {' — '}
                       <a

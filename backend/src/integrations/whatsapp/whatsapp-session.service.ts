@@ -236,8 +236,42 @@ export class WhatsAppSessionService implements OnModuleInit, OnModuleDestroy {
       throw new BusinessRuleException(`Sessão WhatsApp ${ownerKey(owner)} não está conectada`);
     }
     const jid = this.normalizarJid(peerId);
-    const r = await ctx.sock.sendMessage(jid, { text: texto });
-    return { externalId: r?.key?.id ?? undefined };
+    try {
+      const r = await ctx.sock.sendMessage(jid, { text: texto });
+      return { externalId: r?.key?.id ?? undefined };
+    } catch (err) {
+      this.tratarFalhaSocket(ctx, err);
+      throw err;
+    }
+  }
+
+  /**
+   * Quando `sock.sendMessage` falha com erro de socket fechado, o status
+   * interno (`ctx.info.status`) pode estar dessincronizado (ainda CONNECTED).
+   * Marca como caído pra próximos sends falharem cedo (no check inicial) e
+   * dispara reconexão imediata em background. UX-wise o usuário vê erro 1x,
+   * próximo retry funciona já reconectado.
+   */
+  private tratarFalhaSocket(ctx: SessionContext, err: unknown): void {
+    const msg = (err instanceof Error ? err.message : String(err)).toLowerCase();
+    const isSocketDown =
+      msg.includes('connection closed') ||
+      msg.includes('connection lost') ||
+      msg.includes('timed out') ||
+      msg.includes('socket') ||
+      msg.includes('not open');
+    if (!isSocketDown) return;
+    const key = ownerKey(ctx.owner);
+    this.logger.warn(`[${key}] Socket WhatsApp caiu durante envio (${msg}) — reagendando reconexão`);
+    ctx.info.status = 'DISCONNECTED';
+    ctx.info.desde = new Date();
+    // Reconexão async — não bloqueia o erro que vai voltar pro usuário.
+    // Próxima tentativa do usuário vai pegar a sessão já reconectada (ou
+    // status DISCONNECTED claro pra reconectar via UI).
+    void this.criarSessao(ctx.owner, ctx.empresaId, true).catch((e) => {
+      const m = e instanceof Error ? e.message : String(e);
+      this.logger.warn(`[${key}] Reconexão pós-falha falhou: ${m}`);
+    });
   }
 
   /**
@@ -347,6 +381,7 @@ export class WhatsAppSessionService implements OnModuleInit, OnModuleDestroy {
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
       this.logger.warn(`Falha enviando mídia WhatsApp ${ownerKey(owner)} → ${peerId}: ${msg}`);
+      this.tratarFalhaSocket(ctx, err);
       throw new BusinessRuleException(`Falha ao enviar mídia WhatsApp: ${msg}`);
     }
   }
