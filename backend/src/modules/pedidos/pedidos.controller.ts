@@ -3,6 +3,7 @@ import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
 import { Audit } from '@shared/decorators/audit.decorator';
 import { CurrentUser } from '@shared/decorators/current-user.decorator';
 import { RequirePermissions } from '@shared/decorators/permissions.decorator';
+import { Roles } from '@shared/decorators/roles.decorator';
 import { ZodValidationPipe } from '@shared/pipes/zod-validation.pipe';
 import type { AuthenticatedUser } from '@shared/types/authenticated-user';
 import {
@@ -98,8 +99,13 @@ export class PedidosController {
   }
 
   @Post(':id/cancelar')
+  @Roles('ADMIN', 'DIRECTOR')
   @RequirePermissions({ module: 'pedidos', action: 'edit' })
   @Audit({ action: 'cancelar', resource: 'pedido', resourceIdFrom: 'params.id' })
+  @ApiOperation({
+    summary:
+      'Cancela pedido. Restrito a DIRECTOR/ADMIN (P6 — rep/gerente não pode cancelar).',
+  })
   cancelar(
     @CurrentUser() user: AuthenticatedUser,
     @Param('id') id: string,

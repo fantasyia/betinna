@@ -28,6 +28,7 @@ import {
 import { NovoPedidoDialog } from '@/components/NovoPedidoDialog';
 import { api, ApiError } from '@/lib/api';
 import { useApiQuery, type PaginatedResponse } from '@/hooks/useApiQuery';
+import { useRole } from '@/hooks/usePermission';
 import { PageLayout } from '@/components/PageLayout';
 import { VendasTabs } from '@/components/VendasTabs';
 import { StateView } from '@/components/StateView';
@@ -765,6 +766,9 @@ function PedidoDetailDrawer({
   onChanged: () => void;
 }) {
   const navigate = useNavigate();
+  const role = useRole();
+  // P6 — cancelar pedido é DIRECTOR/ADMIN only (rep/gerente NÃO podem)
+  const canCancel = role === 'DIRECTOR' || role === 'ADMIN';
   const { data, loading, error, refetch } = useApiQuery<PedidoDetail>(`/pedidos/${id}`);
   const [busy, setBusy] = useState<string | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
@@ -835,7 +839,8 @@ function PedidoDetailDrawer({
                 Avançar status
               </Button>
             )}
-            {data.status !== 'CANCELADO' && data.status !== 'ENTREGUE' && (
+            {/* P6 — botão Cancelar só pra DIRECTOR/ADMIN */}
+            {canCancel && data.status !== 'CANCELADO' && data.status !== 'ENTREGUE' && (
               <Button
                 variant="danger"
                 size="sm"
