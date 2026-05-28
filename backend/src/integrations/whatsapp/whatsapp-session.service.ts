@@ -480,13 +480,34 @@ export class WhatsAppSessionService implements OnModuleInit, OnModuleDestroy {
     // externalId previne duplicação das que a gente já tem.
     sock.ev.on('messaging-history.set', (h) => {
       const msgs = Array.isArray(h.messages) ? h.messages : [];
-      if (msgs.length === 0) return;
-      this.logger.log(
-        `[${ownerKey(ctx.owner)}] history sync: ${msgs.length} mensagens recebidas (syncType=${h.syncType ?? '?'}, isLatest=${h.isLatest ?? '?'})`,
-      );
-      void this.handleMensagensEntrantes(ctx, msgs).catch((err) => {
+      if (msgs.length > 0) {
+        this.logger.log(
+          `[${ownerKey(ctx.owner)}] history sync: ${msgs.length} mensagens (syncType=${h.syncType ?? '?'}, isLatest=${h.isLatest ?? '?'})`,
+        );
+        void this.handleMensagensEntrantes(ctx, msgs).catch((err) => {
+          const m = err instanceof Error ? err.message : String(err);
+          this.logger.warn(`[${ownerKey(ctx.owner)}] Falha processando history sync: ${m}`);
+        });
+      }
+      // No history sync também vêm os chats com unreadCount snapshot — sincroniza
+      // o contador de não-lidas inicial pra refletir o estado do WhatsApp.
+      const chats = Array.isArray(h.chats) ? h.chats : [];
+      if (chats.length > 0) {
+        void this.sincronizarUnreadCount(ctx, chats).catch((err) => {
+          const m = err instanceof Error ? err.message : String(err);
+          this.logger.warn(`[${ownerKey(ctx.owner)}] Falha sync unreadCount (history): ${m}`);
+        });
+      }
+    });
+
+    // Quando o user lê mensagens em OUTRO dispositivo (celular, WhatsApp Web),
+    // Baileys emite chats.update com o novo unreadCount do chat. Sincronizamos
+    // pra Betinna não mostrar contador "fake" alto quando o usuário já leu fora.
+    sock.ev.on('chats.update', (updates) => {
+      if (!Array.isArray(updates) || updates.length === 0) return;
+      void this.sincronizarUnreadCount(ctx, updates).catch((err) => {
         const m = err instanceof Error ? err.message : String(err);
-        this.logger.warn(`[${ownerKey(ctx.owner)}] Falha processando history sync: ${m}`);
+        this.logger.warn(`[${ownerKey(ctx.owner)}] Falha sync unreadCount (update): ${m}`);
       });
     });
   }
@@ -550,6 +571,44 @@ export class WhatsAppSessionService implements OnModuleInit, OnModuleDestroy {
         this.logger.warn(`[${key}] reconect falhou: ${m}`);
       });
     }, delay);
+  }
+
+  /**
+   * Sincroniza Conversation.naoLidas com o unreadCount do WhatsApp.
+   *
+   * Recebe array de chats do Baileys (vindos de chats.update ou
+   * messaging-history.set). Pra cada chat com unreadCount definido,
+   * atualiza a Conversation correspondente.
+   *
+   * Por que isso é necessário: a Betinna incrementa naoLidas a cada
+   * mensagem entrante. Mas se o user lê no celular (outro device pareado),
+   * o Baileys informa via chats.update e a Betinna precisa zerar/reduzir
+   * pra não ficar com contador "fake" alto.
+   */
+  private async sincronizarUnreadCount(
+    ctx: SessionContext,
+    chats: Array<{ id?: string | null; unreadCount?: number | null }>,
+  ): Promise<void> {
+    const proprietarioId = ctx.owner.type === 'USUARIO' ? ctx.owner.id : null;
+    for (const chat of chats) {
+      const jid = chat.id;
+      if (!jid || typeof jid !== 'string') continue;
+      // Ignora broadcasts/status — não temos Conversation pra eles.
+      if (jid.endsWith('@broadcast') || jid === 'status@broadcast') continue;
+      const unread = typeof chat.unreadCount === 'number' ? chat.unreadCount : null;
+      if (unread === null) continue;
+      // Clamp ≥ 0 (Baileys às vezes manda -1 pra "mute marker", ignoramos)
+      const safeUnread = Math.max(0, unread);
+      await this.prisma.conversation.updateMany({
+        where: {
+          empresaId: ctx.empresaId,
+          canal: 'WHATSAPP',
+          peerId: jid,
+          proprietarioId,
+        },
+        data: { naoLidas: safeUnread },
+      });
+    }
   }
 
   private async handleMensagensEntrantes(

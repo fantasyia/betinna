@@ -137,7 +137,10 @@ const STATUS_VARIANT: Record<ConversationStatus, 'info' | 'warning' | 'success' 
   ARQUIVADA: 'neutral',
 };
 
-const POLL_INTERVAL_MS = 10_000;
+// Polling silencioso a cada 4s — equilíbrio entre fluidez (mensagens novas
+// aparecem rápido) e carga do servidor. WebSocket/SSE seria ideal pra
+// real-time mas adiciona complexidade — fica pra depois.
+const POLL_INTERVAL_MS = 4_000;
 
 function fmtRelative(d: string | null | undefined): string {
   if (!d) return '';
@@ -1090,6 +1093,7 @@ function MessageMediaVideo({ msgId }: { msgId: string }) {
   const { data, loading, error } = useApiQuery<{ url: string; mime: string | null }>(
     `/inbox/messages/${msgId}/media`,
   );
+  const [playError, setPlayError] = useState(false);
   if (loading) {
     return (
       <div
@@ -1106,14 +1110,34 @@ function MessageMediaVideo({ msgId }: { msgId: string }) {
       </div>
     );
   }
+  const mime = data.mime ?? undefined;
+  if (playError) {
+    return (
+      <a
+        href={data.url}
+        target="_blank"
+        rel="noopener noreferrer"
+        download={`video-${msgId}.mp4`}
+        className="inline-flex items-center gap-2 px-3 py-2 rounded-md border border-border bg-bg-alt hover:bg-surface-hover transition-colors no-underline text-sm"
+      >
+        <Video className="h-4 w-4 text-primary shrink-0" />
+        <span>Baixar vídeo</span>
+        <Download className="h-3.5 w-3.5 text-muted" />
+      </a>
+    );
+  }
   return (
     <video
-      src={data.url}
       controls
       preload="metadata"
       data-testid={`msg-video-${msgId}`}
       className="max-w-[300px] max-h-[300px] rounded border border-border block bg-black"
-    />
+      onError={() => setPlayError(true)}
+    >
+      {mime ? <source src={data.url} type={mime} /> : null}
+      <source src={data.url} />
+      Seu navegador não suporta reprodução de vídeo.
+    </video>
   );
 }
 
@@ -1122,6 +1146,7 @@ function MessageMediaAudio({ msgId }: { msgId: string }) {
   const { data, loading, error } = useApiQuery<{ url: string; mime: string | null }>(
     `/inbox/messages/${msgId}/media`,
   );
+  const [playError, setPlayError] = useState(false);
   if (loading) {
     return (
       <div
@@ -1138,14 +1163,37 @@ function MessageMediaAudio({ msgId }: { msgId: string }) {
       </div>
     );
   }
+  // WhatsApp manda áudio em audio/ogg; codecs=opus (voice note) — alguns
+  // browsers velhos não tocam. Usamos <source type=...> pra dar dica e
+  // mostramos fallback de download quando onError dispara.
+  const mime = data.mime ?? undefined;
+  if (playError) {
+    return (
+      <a
+        href={data.url}
+        target="_blank"
+        rel="noopener noreferrer"
+        download={`audio-${msgId}.ogg`}
+        className="inline-flex items-center gap-2 px-3 py-2 rounded-md border border-border bg-bg-alt hover:bg-surface-hover transition-colors no-underline text-sm"
+      >
+        <Mic className="h-4 w-4 text-primary shrink-0" />
+        <span>Baixar áudio</span>
+        <Download className="h-3.5 w-3.5 text-muted" />
+      </a>
+    );
+  }
   return (
     <audio
-      src={data.url}
       controls
       preload="metadata"
       data-testid={`msg-audio-${msgId}`}
       className="max-w-[280px] block"
-    />
+      onError={() => setPlayError(true)}
+    >
+      {mime ? <source src={data.url} type={mime} /> : null}
+      <source src={data.url} />
+      Seu navegador não suporta reprodução de áudio.
+    </audio>
   );
 }
 
