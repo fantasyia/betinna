@@ -85,3 +85,17 @@ export const listSolicitacoesCancelamentoSchema = z.object({
   status: z.nativeEnum(PedidoCancelamentoStatus).optional(),
 });
 export type ListSolicitacoesCancelamentoDto = z.infer<typeof listSolicitacoesCancelamentoSchema>;
+
+// ─── B2 (Lote 6) — Ações em massa ──────────────────────────────────────────
+
+/** Lista de IDs pra operação em lote (máx 100 por chamada). */
+export const bulkPedidoIdsSchema = z.object({
+  ids: z.array(z.string().cuid()).min(1, 'Selecione ao menos 1 pedido').max(100),
+});
+export type BulkPedidoIdsDto = z.infer<typeof bulkPedidoIdsSchema>;
+
+export const bulkCancelarSchema = z.object({
+  ids: z.array(z.string().cuid()).min(1).max(100),
+  motivo: z.string().max(500).optional(),
+});
+export type BulkCancelarDto = z.infer<typeof bulkCancelarSchema>;

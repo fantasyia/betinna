@@ -190,11 +190,17 @@ function fmtDateTime(d: string | null | undefined) {
 export default function PedidosPage() {
   const toast = useToast();
   const navigateTable = useNavigate();
+  const role = useRole();
+  // B2 — cancelar em massa é DIRECTOR/ADMIN (segue P6)
+  const canCancelBulk = role === 'DIRECTOR' || role === 'ADMIN';
   const [searchParams, setSearchParams] = useSearchParams();
   const [page, setPage] = useState(1);
   const [search, setSearch] = useState('');
   const [status, setStatus] = useState<string>('');
   const [selected, setSelected] = useState<string | null>(null);
+  // B2 — seleção múltipla pra ações em massa
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [bulkBusy, setBulkBusy] = useState<'omie' | 'cancelar' | null>(null);
   const [exporting, setExporting] = useState(false);
   const [periodo, setPeriodo] = useState<'todos' | '30d' | '90d' | '12m' | 'custom'>('todos');
   // Filtro custom de data (P5 — habilitado quando periodo = 'custom')
@@ -302,6 +308,62 @@ export default function PedidosPage() {
     periodo !== 'todos' ||
     !!dataInicioCustom ||
     !!dataFimCustom;
+
+  // ─── B2 — Seleção múltipla + ações em massa ──────────────────────────
+  const rows = pageResp?.data ?? [];
+  function toggleSelect(id: string) {
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  }
+  function toggleSelectAll() {
+    setSelectedIds((prev) => {
+      // Se todos da página já selecionados, limpa; senão seleciona todos da página
+      const allSelected = rows.length > 0 && rows.every((p) => prev.has(p.id));
+      if (allSelected) return new Set();
+      return new Set(rows.map((p) => p.id));
+    });
+  }
+  function clearSelection() {
+    setSelectedIds(new Set());
+  }
+
+  async function runBulk(
+    tipo: 'omie' | 'cancelar',
+    motivo?: string,
+  ): Promise<void> {
+    const ids = Array.from(selectedIds);
+    if (ids.length === 0) return;
+    setBulkBusy(tipo);
+    try {
+      const path = tipo === 'omie' ? '/pedidos/bulk/enviar-omie' : '/pedidos/bulk/cancelar';
+      const body = tipo === 'omie' ? { ids } : { ids, motivo };
+      const res = await api.post<{ ok: number; falhas: Array<{ id: string; erro: string }> }>(
+        path,
+        body,
+      );
+      const acao = tipo === 'omie' ? 'enviados ao OMIE' : 'cancelados';
+      if (res.falhas.length === 0) {
+        toast.success(`${res.ok} pedido(s) ${acao}`);
+      } else {
+        toast.error(
+          `${res.ok} ok, ${res.falhas.length} falhou`,
+          res.falhas[0]?.erro ?? 'Ver detalhes',
+        );
+      }
+      clearSelection();
+      refetch();
+    } catch (err) {
+      toast.error('Falha na ação em massa', err instanceof ApiError ? err.message : undefined);
+    } finally {
+      setBulkBusy(null);
+    }
+  }
+
+  const allPageSelected = rows.length > 0 && rows.every((p) => selectedIds.has(p.id));
 
   return (
     <PageLayout
@@ -442,6 +504,59 @@ export default function PedidosPage() {
           )}
         </div>
 
+        {/* B2 — Barra de ações em massa (aparece quando há seleção) */}
+        {selectedIds.size > 0 && (
+          <div
+            className="flex flex-wrap items-center gap-2 px-4 py-2.5 border-b border-border bg-primary/5"
+            data-testid="bulk-actions-bar"
+          >
+            <span className="text-sm font-medium text-text">
+              {selectedIds.size} selecionado{selectedIds.size > 1 ? 's' : ''}
+            </span>
+            <div className="flex-1" />
+            <Button
+              variant="secondary"
+              size="sm"
+              data-testid="bulk-enviar-omie"
+              loading={bulkBusy === 'omie'}
+              disabled={bulkBusy !== null}
+              onClick={() => void runBulk('omie')}
+              leftIcon={<Send className="h-3.5 w-3.5" />}
+            >
+              Enviar ao OMIE
+            </Button>
+            {canCancelBulk && (
+              <Button
+                variant="danger"
+                size="sm"
+                data-testid="bulk-cancelar"
+                loading={bulkBusy === 'cancelar'}
+                disabled={bulkBusy !== null}
+                onClick={() => {
+                  if (
+                    window.confirm(
+                      `Cancelar ${selectedIds.size} pedido(s)? Esta ação não pode ser desfeita.`,
+                    )
+                  ) {
+                    void runBulk('cancelar');
+                  }
+                }}
+                leftIcon={<XCircle className="h-3.5 w-3.5" />}
+              >
+                Cancelar
+              </Button>
+            )}
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={clearSelection}
+              leftIcon={<XIcon className="h-3 w-3" />}
+            >
+              Limpar seleção
+            </Button>
+          </div>
+        )}
+
         <StateView loading={loading} error={error} onRetry={refetch}>
           {pageResp && pageResp.data.length === 0 && (
             <EmptyState
@@ -484,6 +599,16 @@ export default function PedidosPage() {
                 <table className="w-full">
                   <thead>
                     <tr className="border-b border-border bg-bg-alt">
+                      <th className="w-10 px-3 py-2.5 text-left">
+                        <input
+                          type="checkbox"
+                          data-testid="bulk-select-all"
+                          checked={allPageSelected}
+                          onChange={toggleSelectAll}
+                          aria-label="Selecionar todos"
+                          className="cursor-pointer"
+                        />
+                      </th>
                       <Th>Pedido</Th>
                       <Th>Cliente</Th>
                       <Th>Representante</Th>
@@ -502,11 +627,26 @@ export default function PedidosPage() {
                           key={p.id}
                           className={cn(
                             'border-b border-border last:border-b-0 cursor-pointer transition-colors',
-                            isSelected ? 'bg-surface-hover' : 'hover:bg-surface-hover/60',
+                            isSelected || selectedIds.has(p.id)
+                              ? 'bg-surface-hover'
+                              : 'hover:bg-surface-hover/60',
                           )}
                           onClick={() => setSelected(p.id)}
                           data-testid={`pedido-row-${p.id}`}
                         >
+                          <td
+                            className="w-10 px-3 py-2.5"
+                            onClick={(e) => e.stopPropagation()}
+                          >
+                            <input
+                              type="checkbox"
+                              data-testid={`bulk-select-${p.id}`}
+                              checked={selectedIds.has(p.id)}
+                              onChange={() => toggleSelect(p.id)}
+                              aria-label={`Selecionar pedido ${p.numero}`}
+                              className="cursor-pointer"
+                            />
+                          </td>
                           <Td>
                             <div className="flex flex-col min-w-0">
                               <strong className="text-sm text-text tabular font-semibold">

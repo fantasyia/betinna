@@ -646,6 +646,54 @@ export class PedidosService {
     return updated;
   }
 
+  // ─── B2 — Ações em massa (best-effort) ──────────────────────────────────
+
+  /**
+   * Envia vários pedidos pro OMIE. Best-effort: processa um por um, captura
+   * falhas individuais e retorna o resumo. Síncrono (sem BullMQ) — OMIE em
+   * demo e volume baixo no MVP; migra pra fila quando crescer.
+   */
+  async bulkEnviarOmie(
+    user: AuthenticatedUser,
+    ids: string[],
+  ): Promise<{ ok: number; falhas: Array<{ id: string; erro: string }> }> {
+    const falhas: Array<{ id: string; erro: string }> = [];
+    let ok = 0;
+    for (const id of ids) {
+      try {
+        await this.enviarParaOmie(user, id);
+        ok += 1;
+      } catch (err) {
+        falhas.push({ id, erro: err instanceof Error ? err.message : String(err) });
+      }
+    }
+    this.logger.log(`Bulk OMIE: ${ok} ok, ${falhas.length} falhas (user ${user.nome})`);
+    return { ok, falhas };
+  }
+
+  /**
+   * Cancela vários pedidos. DIRECTOR/ADMIN (gate no controller — P6).
+   * Best-effort: pedidos já entregues/cancelados caem em falhas, resto cancela.
+   */
+  async bulkCancelar(
+    user: AuthenticatedUser,
+    ids: string[],
+    motivo?: string,
+  ): Promise<{ ok: number; falhas: Array<{ id: string; erro: string }> }> {
+    const falhas: Array<{ id: string; erro: string }> = [];
+    let ok = 0;
+    for (const id of ids) {
+      try {
+        await this.cancelar(user, id, { motivo });
+        ok += 1;
+      } catch (err) {
+        falhas.push({ id, erro: err instanceof Error ? err.message : String(err) });
+      }
+    }
+    this.logger.log(`Bulk cancelar: ${ok} ok, ${falhas.length} falhas (user ${user.nome})`);
+    return { ok, falhas };
+  }
+
   // ─── Enviar pra OMIE ────────────────────────────────────────────────────
   async enviarParaOmie(user: AuthenticatedUser, id: string): Promise<PedidoWithRel> {
     const pedido = await this.findById(user, id);

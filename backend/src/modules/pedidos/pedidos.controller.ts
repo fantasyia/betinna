@@ -7,6 +7,8 @@ import { Roles } from '@shared/decorators/roles.decorator';
 import { ZodValidationPipe } from '@shared/pipes/zod-validation.pipe';
 import type { AuthenticatedUser } from '@shared/types/authenticated-user';
 import {
+  type BulkCancelarDto,
+  type BulkPedidoIdsDto,
   type CancelarPedidoDto,
   type CreatePedidoDto,
   type DecidirCancelamentoDto,
@@ -15,6 +17,8 @@ import {
   type PreviewPedidoDto,
   type SolicitarCancelamentoDto,
   type UpdatePedidoDto,
+  bulkCancelarSchema,
+  bulkPedidoIdsSchema,
   cancelarPedidoSchema,
   createPedidoSchema,
   decidirCancelamentoSchema,
@@ -42,6 +46,34 @@ export class PedidosController {
     @Body(new ZodValidationPipe(previewPedidoSchema)) dto: PreviewPedidoDto,
   ) {
     return this.pedidos.preview(user, dto);
+  }
+
+  // ─── B2 — Ações em massa ───────────────────────────────────────────────
+  // Declaradas ANTES de @Get(':id') / rotas paramétricas pra evitar colisão.
+
+  @Post('bulk/enviar-omie')
+  @RequirePermissions({ module: 'pedidos', action: 'edit' })
+  @Audit({ action: 'bulk_enviar_omie', resource: 'pedido' })
+  @ApiOperation({ summary: 'Envia vários pedidos ao OMIE (best-effort, máx 100).' })
+  bulkEnviarOmie(
+    @CurrentUser() user: AuthenticatedUser,
+    @Body(new ZodValidationPipe(bulkPedidoIdsSchema)) dto: BulkPedidoIdsDto,
+  ) {
+    return this.pedidos.bulkEnviarOmie(user, dto.ids);
+  }
+
+  @Post('bulk/cancelar')
+  @Roles('ADMIN', 'DIRECTOR')
+  @RequirePermissions({ module: 'pedidos', action: 'edit' })
+  @Audit({ action: 'bulk_cancelar', resource: 'pedido' })
+  @ApiOperation({
+    summary: 'Cancela vários pedidos (best-effort, máx 100). DIRECTOR/ADMIN-only (P6).',
+  })
+  bulkCancelar(
+    @CurrentUser() user: AuthenticatedUser,
+    @Body(new ZodValidationPipe(bulkCancelarSchema)) dto: BulkCancelarDto,
+  ) {
+    return this.pedidos.bulkCancelar(user, dto.ids, dto.motivo);
   }
 
   @Get()
