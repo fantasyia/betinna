@@ -1081,7 +1081,8 @@ function MessageMediaImage({ msgId }: { msgId: string }) {
         src={data.url}
         alt="Imagem da mensagem"
         data-testid={`msg-img-${msgId}`}
-        className="max-w-[300px] max-h-[300px] rounded border border-border object-contain block"
+        className="rounded border border-border block"
+        style={{ maxWidth: '320px', maxHeight: '360px', objectFit: 'contain' }}
         loading="lazy"
       />
     </a>
@@ -1131,7 +1132,11 @@ function MessageMediaVideo({ msgId }: { msgId: string }) {
       controls
       preload="metadata"
       data-testid={`msg-video-${msgId}`}
-      className="max-w-[300px] max-h-[300px] rounded border border-border block bg-black"
+      className="rounded border border-border block bg-black"
+      // style inline garante que vídeos verticais (formato celular) não
+      // ocupem a tela inteira. classes Tailwind arbitrárias `max-h-[Xpx]`
+      // às vezes sumiam no purge — inline é à prova de bala.
+      style={{ maxWidth: '320px', maxHeight: '360px', objectFit: 'contain' }}
       onError={() => setPlayError(true)}
     >
       {mime ? <source src={data.url} type={mime} /> : null}
