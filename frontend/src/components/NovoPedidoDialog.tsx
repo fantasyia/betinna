@@ -13,6 +13,7 @@ import {
 import { api, ApiError } from '@/lib/api';
 import { AsyncCombobox } from '@/components/AsyncCombobox';
 import { useToast } from '@/components/toast';
+import { useEmpresaConfig, descontoAVistaPct } from '@/hooks/useEmpresaConfig';
 import {
   Button,
   Card,
@@ -160,6 +161,10 @@ export function NovoPedidoDialog({
     setItens((arr) => [...arr, newFormItem()]);
   }
 
+  // B1 — config de desconto à vista da empresa ativa (pra preview)
+  const { data: empresaCfg } = useEmpresaConfig();
+  const descAVistaPctPreview = descontoAVistaPct(empresaCfg, formaPagamento, condicaoPagamento);
+
   // Preview de total client-side
   const subtotal = itens.reduce((acc, it) => {
     if (!it.produto) return acc;
@@ -169,7 +174,10 @@ export function NovoPedidoDialog({
     const bruto = unit * it.quantidade;
     return acc + bruto * (1 - it.desconto / 100);
   }, 0);
-  const total = subtotal * (1 - descontoGeral / 100);
+  // Soma desconto geral (manual) + desconto à vista (automático da empresa),
+  // capado em 90% pra não dar total negativo — mesma regra do backend.
+  const descontoTotalPct = Math.min(90, descontoGeral + descAVistaPctPreview);
+  const total = subtotal * (1 - descontoTotalPct / 100);
 
   async function submit(e: React.FormEvent) {
     e.preventDefault();
@@ -390,6 +398,11 @@ export function NovoPedidoDialog({
             <div className="text-right text-[11px] text-muted tabular">
               <div>Subtotal: {fmtBRL(subtotal)}</div>
               {descontoGeral > 0 && <div>Desconto geral: {descontoGeral}%</div>}
+              {descAVistaPctPreview > 0 && (
+                <div className="text-success">
+                  Desconto à vista: {descAVistaPctPreview}%
+                </div>
+              )}
               <div className="text-muted-light mt-1">Backend recalcula no save.</div>
             </div>
           </div>

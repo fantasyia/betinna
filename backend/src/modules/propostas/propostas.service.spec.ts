@@ -36,6 +36,7 @@ const makePrismaMock = () => {
     } satisfies MockModel,
     cliente: { findFirst: vi.fn() } satisfies MockModel,
     produto: { findMany: vi.fn() } satisfies MockModel,
+    empresa: { findUnique: vi.fn(async () => ({ descontoPixPct: 0, descontoBoletoAvistaPct: 0 })) } satisfies MockModel,
     $transaction: vi.fn(async (cb: (t: Tx) => unknown) => cb(tx)),
     _tx: tx, // expose for assertions
   };
@@ -55,6 +56,7 @@ const makePricing = () => ({
 
 const makePedidoPricing = () => ({
   pedidoTotals: vi.fn(() => ({ subtotal: 100, total: 100, comissao: 5 })),
+  descontoAVistaPct: vi.fn(() => 0),
   itemTotal: vi.fn((i: { quantidade: number; precoUnitario: number; desconto: number }) => ({
     total: i.quantidade * i.precoUnitario * (1 - i.desconto / 100),
   })),

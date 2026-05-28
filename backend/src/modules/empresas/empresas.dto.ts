@@ -11,6 +11,10 @@ export const createEmpresaSchema = z.object({
   uf: z.string().length(2).optional(),
   subtitulo: z.string().max(200).optional(),
   plano: z.enum(['Free', 'Pro', 'Enterprise']).default('Pro'),
+  // B1 (Lote 6) — Desconto à vista automático (0 = desligado). Máx 50%.
+  // Aplicado em PIX (descontoPixPct) e BOLETO+condição=avista (descontoBoletoAvistaPct).
+  descontoPixPct: z.number().min(0).max(50).optional(),
+  descontoBoletoAvistaPct: z.number().min(0).max(50).optional(),
 });
 
 export type CreateEmpresaDto = z.infer<typeof createEmpresaSchema>;

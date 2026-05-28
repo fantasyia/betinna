@@ -104,6 +104,12 @@ export class PedidosService {
     const empresaId = this.requireEmpresa(user);
     const cliente = await this.assertClienteValido(user, dto.clienteId);
     const items = await this.resolveItens(empresaId, cliente.id, dto.itens);
+    // B1 — desconto à vista automático conforme forma/condição + config da empresa
+    const descAVistaPct = await this.resolveDescontoAVista(
+      empresaId,
+      dto.formaPagamento,
+      dto.condicaoPagamento,
+    );
     const totals = this.pedidoPricing.pedidoTotals(
       items.map((i) => ({
         quantidade: i.quantidade,
@@ -112,6 +118,7 @@ export class PedidosService {
       })),
       dto.descontoGeral,
       COMISSAO_PADRAO_PCT,
+      descAVistaPct,
     );
     const tetoRep = await this.tetoDoRepAtual(user);
     const requerAprovacao = this.pedidoPricing.excedeTetoDesconto(totals, tetoRep);
@@ -123,6 +130,12 @@ export class PedidosService {
     const empresaId = this.requireEmpresa(user);
     const cliente = await this.assertClienteValido(user, dto.clienteId);
     const items = await this.resolveItens(empresaId, cliente.id, dto.itens);
+    // B1 — desconto à vista automático conforme forma/condição + config da empresa
+    const descAVistaPct = await this.resolveDescontoAVista(
+      empresaId,
+      dto.formaPagamento,
+      dto.condicaoPagamento,
+    );
     const totals = this.pedidoPricing.pedidoTotals(
       items.map((i) => ({
         quantidade: i.quantidade,
@@ -131,6 +144,7 @@ export class PedidosService {
       })),
       dto.descontoGeral,
       COMISSAO_PADRAO_PCT,
+      descAVistaPct,
     );
 
     const tetoRep = await this.tetoDoRepAtual(user);
@@ -785,6 +799,23 @@ export class PedidosService {
       select: { tetoDesconto: true },
     });
     return usuario?.tetoDesconto ?? 0;
+  }
+
+  /**
+   * B1 — Resolve o % de desconto à vista da empresa pra forma/condição dadas.
+   * Lê config da Empresa e delega a regra pro PedidoPricingService.
+   * Retorna 0 quando config zerada (feature desligada).
+   */
+  private async resolveDescontoAVista(
+    empresaId: string,
+    formaPagamento: string | null | undefined,
+    condicaoPagamento: string | null | undefined,
+  ): Promise<number> {
+    const empresa = await this.prisma.empresa.findUnique({
+      where: { id: empresaId },
+      select: { descontoPixPct: true, descontoBoletoAvistaPct: true },
+    });
+    return this.pedidoPricing.descontoAVistaPct(formaPagamento, condicaoPagamento, empresa);
   }
 
   /**

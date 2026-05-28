@@ -39,6 +39,9 @@ interface Empresa {
   plano: Plano;
   ativo: boolean;
   criadoEm?: string;
+  // B1 (Lote 6) — desconto à vista automático por empresa
+  descontoPixPct?: number | null;
+  descontoBoletoAvistaPct?: number | null;
 }
 
 const PLANO_COLOR: Record<Plano, string> = {
@@ -586,6 +589,8 @@ function EmpresaFormModal({
     uf: empresa?.uf ?? '',
     subtitulo: empresa?.subtitulo ?? '',
     plano: empresa?.plano ?? 'Pro',
+    descontoPixPct: String(empresa?.descontoPixPct ?? 0),
+    descontoBoletoAvistaPct: String(empresa?.descontoBoletoAvistaPct ?? 0),
   });
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -603,6 +608,11 @@ function EmpresaFormModal({
       const v = form[k].trim();
       if (v) payload[k] = v;
     }
+    // B1 — desconto à vista (sempre enviado, 0 = desligado). Clamp 0–50.
+    const pix = Math.min(50, Math.max(0, Number(form.descontoPixPct) || 0));
+    const boleto = Math.min(50, Math.max(0, Number(form.descontoBoletoAvistaPct) || 0));
+    payload.descontoPixPct = pix;
+    payload.descontoBoletoAvistaPct = boleto;
     try {
       if (isEdit && empresa) {
         await api.patch(`/empresas/${empresa.id}`, payload);
@@ -738,6 +748,48 @@ function EmpresaFormModal({
               onChange={(e) => setForm((s) => ({ ...s, uf: normalizeUF(e.target.value) }))}
             />
           </FormField>
+        </div>
+
+        {/* B1 — Desconto à vista automático */}
+        <div
+          style={{
+            marginTop: '1rem',
+            paddingTop: '1rem',
+            borderTop: `1px solid ${colors.border}`,
+          }}
+        >
+          <h4 style={{ margin: '0 0 0.25rem 0', fontSize: 14 }}>Desconto à vista automático</h4>
+          <p style={{ margin: '0 0 0.75rem 0', fontSize: 12, color: colors.muted }}>
+            Aplicado automaticamente em pedidos/propostas conforme a forma de pagamento.
+            Deixe 0 para desligar. O desconto à vista <strong>não</strong> conta pro teto
+            de aprovação do rep (é política da empresa).
+          </p>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.75rem' }}>
+            <FormField label="Pix (%)" hint="0–50%, aplicado em qualquer Pix">
+              <Input
+                data-testid="emp-desconto-pix"
+                type="number"
+                min={0}
+                max={50}
+                step="0.5"
+                value={form.descontoPixPct}
+                onChange={(e) => setForm((s) => ({ ...s, descontoPixPct: e.target.value }))}
+              />
+            </FormField>
+            <FormField label="Boleto à vista (%)" hint="0–50%, só boleto com condição à vista">
+              <Input
+                data-testid="emp-desconto-boleto"
+                type="number"
+                min={0}
+                max={50}
+                step="0.5"
+                value={form.descontoBoletoAvistaPct}
+                onChange={(e) =>
+                  setForm((s) => ({ ...s, descontoBoletoAvistaPct: e.target.value }))
+                }
+              />
+            </FormField>
+          </div>
         </div>
         {error && (
           <p data-testid="form-error" style={{ color: colors.danger, fontSize: 13 }}>

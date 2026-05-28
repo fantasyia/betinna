@@ -29,6 +29,10 @@ const makePrismaMock = () => {
     usuario: {
       findUnique: vi.fn(),
     },
+    empresa: {
+      // B1 — resolveDescontoAVista lê config da empresa. Default desligado (0).
+      findUnique: vi.fn(async () => ({ descontoPixPct: 0, descontoBoletoAvistaPct: 0 })),
+    },
   };
   return {
     ...tx,

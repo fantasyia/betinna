@@ -41,6 +41,29 @@ export class EmpresasService {
     return vinculos.map((v) => v.empresa);
   }
 
+  /**
+   * Retorna a empresa ATIVA do usuário (header X-Empresa-Id → empresaIdAtiva).
+   * Inclui campos de config (desconto à vista) usados no preview de pedido/proposta.
+   * Acessível por qualquer usuário autenticado (só lê config da própria empresa ativa).
+   */
+  async empresaAtual(user: AuthenticatedUser) {
+    if (!user.empresaIdAtiva) {
+      throw new NotFoundException('Empresa ativa', 'nenhuma');
+    }
+    const empresa = await this.prisma.empresa.findUnique({
+      where: { id: user.empresaIdAtiva },
+      select: {
+        id: true,
+        nome: true,
+        plano: true,
+        descontoPixPct: true,
+        descontoBoletoAvistaPct: true,
+      },
+    });
+    if (!empresa) throw new NotFoundException('Empresa', user.empresaIdAtiva);
+    return empresa;
+  }
+
   async list(
     params: ListEmpresasDto,
   ): Promise<Paginated<Awaited<ReturnType<typeof this.findById>>>> {

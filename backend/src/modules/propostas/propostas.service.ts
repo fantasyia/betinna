@@ -101,6 +101,16 @@ export class PropostasService {
     const empresaId = this.requireEmpresa(user);
     const cliente = await this.assertClienteValido(user, dto.clienteId);
     const items = await this.resolveItens(empresaId, cliente.id, dto.itens);
+    // B1 — desconto à vista automático conforme forma/condição + config da empresa
+    const empresaCfg = await this.prisma.empresa.findUnique({
+      where: { id: empresaId },
+      select: { descontoPixPct: true, descontoBoletoAvistaPct: true },
+    });
+    const descAVistaPct = this.pedidoPricing.descontoAVistaPct(
+      dto.formaPagamento,
+      dto.condicaoPagamento,
+      empresaCfg,
+    );
     const totals = this.pedidoPricing.pedidoTotals(
       items.map((i) => ({
         quantidade: i.quantidade,
@@ -109,6 +119,7 @@ export class PropostasService {
       })),
       dto.descontoGeral,
       COMISSAO_PADRAO_PCT,
+      descAVistaPct,
     );
 
     const representanteId = user.role === 'REP' ? user.id : null;

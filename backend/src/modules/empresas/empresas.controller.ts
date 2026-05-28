@@ -68,6 +68,15 @@ export class EmpresasController {
     return this.empresas.listMine(user);
   }
 
+  @Get('atual')
+  @ApiOperation({
+    summary:
+      'Config da empresa ATIVA (header X-Empresa-Id). Inclui descontos à vista — usado pra preview no front.',
+  })
+  empresaAtual(@CurrentUser() user: AuthenticatedUser) {
+    return this.empresas.empresaAtual(user);
+  }
+
   @Get(':id')
   @Roles('ADMIN', 'GERENTE')
   @ApiOperation({ summary: 'Detalhes de uma empresa' })
