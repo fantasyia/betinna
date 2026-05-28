@@ -490,9 +490,15 @@ function ConversationThread({
   const [criarPedido, setCriarPedido] = useState(false);
 
   const endRef = useRef<HTMLDivElement | null>(null);
+  // Só rola pra baixo quando a ÚLTIMA mensagem mudou (id diferente do polling
+  // anterior). Antes usava `msgs.data` como dep — como o polling cria nova
+  // referência de array a cada 4s, scrollIntoView era chamado toda hora,
+  // arrastando o usuário pra baixo quando ele rolava pra ler msg antiga.
+  const lastMsgIdForScroll =
+    msgs.data && msgs.data.length > 0 ? msgs.data[0].id : null;
   useEffect(() => {
     endRef.current?.scrollIntoView({ behavior: 'smooth', block: 'end' });
-  }, [msgs.data]);
+  }, [lastMsgIdForScroll]);
 
   const lastMarkRef = useRef<string | null>(null);
   useEffect(() => {
@@ -1056,7 +1062,7 @@ function ConversationThread({
  * (signed URL Supabase com TTL ~7 dias). Endpoint: GET /inbox/messages/:id/media
  */
 function MessageMediaImage({ msgId }: { msgId: string }) {
-  const { data, loading, error } = useApiQuery<{ url: string; mime: string | null }>(
+  const { data, loading, error, refetch } = useApiQuery<{ url: string; mime: string | null }>(
     `/inbox/messages/${msgId}/media`,
   );
   if (loading) {
@@ -1069,9 +1075,17 @@ function MessageMediaImage({ msgId }: { msgId: string }) {
   }
   if (error || !data?.url) {
     return (
-      <div className="text-xs text-muted italic flex items-center gap-1.5">
+      <div className="flex items-center gap-2 text-xs text-muted italic">
         <ImageIcon className="h-3.5 w-3.5" />
-        Imagem indisponível
+        <span>Imagem indisponível</span>
+        <button
+          type="button"
+          onClick={refetch}
+          className="not-italic text-primary hover:underline font-medium"
+          data-testid={`msg-img-retry-${msgId}`}
+        >
+          tentar de novo
+        </button>
       </div>
     );
   }
@@ -1091,7 +1105,7 @@ function MessageMediaImage({ msgId }: { msgId: string }) {
 
 /** Player de vídeo inline — controls nativos do browser. */
 function MessageMediaVideo({ msgId }: { msgId: string }) {
-  const { data, loading, error } = useApiQuery<{ url: string; mime: string | null }>(
+  const { data, loading, error, refetch } = useApiQuery<{ url: string; mime: string | null }>(
     `/inbox/messages/${msgId}/media`,
   );
   const [playError, setPlayError] = useState(false);
@@ -1105,9 +1119,16 @@ function MessageMediaVideo({ msgId }: { msgId: string }) {
   }
   if (error || !data?.url) {
     return (
-      <div className="text-xs text-muted italic flex items-center gap-1.5">
+      <div className="flex items-center gap-2 text-xs text-muted italic">
         <Video className="h-3.5 w-3.5" />
-        Vídeo indisponível
+        <span>Vídeo indisponível</span>
+        <button
+          type="button"
+          onClick={refetch}
+          className="not-italic text-primary hover:underline font-medium"
+        >
+          tentar de novo
+        </button>
       </div>
     );
   }
@@ -1148,7 +1169,7 @@ function MessageMediaVideo({ msgId }: { msgId: string }) {
 
 /** Player de áudio inline — controls nativos do browser. */
 function MessageMediaAudio({ msgId }: { msgId: string }) {
-  const { data, loading, error } = useApiQuery<{ url: string; mime: string | null }>(
+  const { data, loading, error, refetch } = useApiQuery<{ url: string; mime: string | null }>(
     `/inbox/messages/${msgId}/media`,
   );
   const [playError, setPlayError] = useState(false);
@@ -1162,9 +1183,16 @@ function MessageMediaAudio({ msgId }: { msgId: string }) {
   }
   if (error || !data?.url) {
     return (
-      <div className="text-xs text-muted italic flex items-center gap-1.5">
+      <div className="flex items-center gap-2 text-xs text-muted italic">
         <Mic className="h-3.5 w-3.5" />
-        Áudio indisponível
+        <span>Áudio indisponível</span>
+        <button
+          type="button"
+          onClick={refetch}
+          className="not-italic text-primary hover:underline font-medium"
+        >
+          tentar de novo
+        </button>
       </div>
     );
   }
@@ -1204,7 +1232,7 @@ function MessageMediaAudio({ msgId }: { msgId: string }) {
 
 /** Documento — link de download com nome + tamanho/mime. */
 function MessageMediaDocument({ msgId, fileName }: { msgId: string; fileName?: string }) {
-  const { data, loading, error } = useApiQuery<{ url: string; mime: string | null }>(
+  const { data, loading, error, refetch } = useApiQuery<{ url: string; mime: string | null }>(
     `/inbox/messages/${msgId}/media`,
   );
   if (loading) {
@@ -1217,9 +1245,16 @@ function MessageMediaDocument({ msgId, fileName }: { msgId: string; fileName?: s
   }
   if (error || !data?.url) {
     return (
-      <div className="text-xs text-muted italic flex items-center gap-1.5">
+      <div className="flex items-center gap-2 text-xs text-muted italic">
         <FileText className="h-3.5 w-3.5" />
-        Documento indisponível
+        <span>Documento indisponível</span>
+        <button
+          type="button"
+          onClick={refetch}
+          className="not-italic text-primary hover:underline font-medium"
+        >
+          tentar de novo
+        </button>
       </div>
     );
   }
