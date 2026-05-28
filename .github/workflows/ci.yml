@@ -267,6 +267,10 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+        with:
+          # fetch-depth: 2 → garante que paths-filter consegue comparar contra
+          # o commit anterior (default fetch-depth=1 só pega o HEAD)
+          fetch-depth: 2
 
       - name: Setup Node.js ${{ env.NODE_VERSION }}
         uses: actions/setup-node@v4
@@ -276,7 +280,48 @@ jobs:
       - name: Install Railway CLI
         run: npm install -g @railway/cli
 
+      # ─── Deploy seletivo (2026-05-28) ────────────────────────────────────
+      # Antes: deploya api+worker+frontend SEMPRE. Problema: redeploy do api
+      # mata a sessão Baileys do WhatsApp (in-memory) — downtime 10-40s a cada
+      # commit, mesmo quando o commit toca SÓ no frontend.
+      #
+      # Agora: detecta quais paths mudaram no commit e só restarta o serviço
+      # afetado. Mexer só no frontend NÃO reinicia o api/worker.
+      #
+      # Regras:
+      #   backend/** OU scripts/** OU package.json  → api + worker
+      #   frontend/**                               → frontend
+      #   só docs/.github/CHANGELOG                 → nada (deploy skipado)
+      - name: Detect changed paths
+        id: filter
+        uses: dorny/paths-filter@v3
+        with:
+          # Compara contra o commit anterior pra detectar o que mudou.
+          # Em main, base é o último commit (HEAD~1).
+          base: ${{ github.event.before }}
+          filters: |
+            backend:
+              - 'backend/**'
+              - 'scripts/**'
+              - 'Dockerfile'
+              - 'package.json'
+              - 'package-lock.json'
+            frontend:
+              - 'frontend/**'
+
+      - name: Summary changed paths
+        run: |
+          echo "→ Mudanças detectadas:"
+          echo "    backend (api+worker): ${{ steps.filter.outputs.backend }}"
+          echo "    frontend:             ${{ steps.filter.outputs.frontend }}"
+          if [ "${{ steps.filter.outputs.backend }}" != "true" ] && \
+             [ "${{ steps.filter.outputs.frontend }}" != "true" ]; then
+            echo "⚠️  Nenhum serviço de runtime tocado — deploy SKIPADO."
+            echo "   (mudanças foram só em docs/.github/CHANGELOG/etc)"
+          fi
+
       - name: Deploy API service
+        if: steps.filter.outputs.backend == 'true'
         env:
           RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
         # IMPORTANTE: roda da RAIZ do monorepo (sem working-directory: ./backend).
@@ -291,6 +336,7 @@ jobs:
           echo "→ API deploy triggered"
 
       - name: Wait API healthy
+        if: steps.filter.outputs.backend == 'true'
         env:
           API_URL: ${{ secrets.E2E_API_URL }}
         run: |
@@ -325,6 +371,7 @@ jobs:
       # falha e o deploy é abortado lá mesmo — perda nula de cobertura.
 
       - name: Deploy Worker service
+        if: steps.filter.outputs.backend == 'true'
         env:
           RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
         # Mesmo motivo do API: roda da raiz pra Railway achar backend/
@@ -333,6 +380,7 @@ jobs:
           railway up --service worker --detach
 
       - name: Deploy Frontend service
+        if: steps.filter.outputs.frontend == 'true'
         env:
           RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
         # Mesmo motivo: roda da raiz; Railway service 'frontend' tem
@@ -343,6 +391,18 @@ jobs:
 
       - name: Notify deploy success
         run: |
-          echo "🚀 Deploy completo: API + Worker + Frontend"
-          echo "   API:      ${{ secrets.E2E_API_URL }}"
-          echo "   Frontend: ${{ secrets.E2E_BASE_URL }}"
+          DEPLOYED=""
+          if [ "${{ steps.filter.outputs.backend }}" == "true" ]; then
+            DEPLOYED="$DEPLOYED API + Worker"
+          fi
+          if [ "${{ steps.filter.outputs.frontend }}" == "true" ]; then
+            if [ -n "$DEPLOYED" ]; then DEPLOYED="$DEPLOYED + "; fi
+            DEPLOYED="${DEPLOYED}Frontend"
+          fi
+          if [ -z "$DEPLOYED" ]; then
+            echo "ℹ️  Nenhum serviço deployado (mudanças foram só em docs/CI)"
+          else
+            echo "🚀 Deploy completo:$DEPLOYED"
+            echo "   API:      ${{ secrets.E2E_API_URL }}"
+            echo "   Frontend: ${{ secrets.E2E_BASE_URL }}"
+          fi
