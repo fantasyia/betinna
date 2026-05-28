@@ -523,72 +523,107 @@ function ConversationThread({
   const imageInputRef = useRef<HTMLInputElement | null>(null);
   const attachInputRef = useRef<HTMLInputElement | null>(null);
 
-  // Gravação de voice note (MediaRecorder API). Click no mic → grava;
-  // click de novo → para + envia direto.
+  // Gravação de voice note (MediaRecorder API).
+  // Estado: 'idle' (sem gravar) | 'recording' (capturando) | 'paused' (pausado).
+  type RecordingState = 'idle' | 'recording' | 'paused';
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const audioChunksRef = useRef<BlobPart[]>([]);
-  const [recording, setRecording] = useState(false);
+  // Flag de cancelamento — onstop checa pra descartar o áudio.
+  // useRef pra valor SÍNCRONO acessível dentro do callback (state seria stale).
+  const isCancellingRef = useRef(false);
+  const [recording, setRecording] = useState<RecordingState>('idle');
   const [recordSeconds, setRecordSeconds] = useState(0);
   const recordTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  function startTimer() {
+    if (recordTimerRef.current) clearInterval(recordTimerRef.current);
+    recordTimerRef.current = setInterval(() => setRecordSeconds((s) => s + 1), 1000);
+  }
+  function stopTimer() {
+    if (recordTimerRef.current) {
+      clearInterval(recordTimerRef.current);
+      recordTimerRef.current = null;
+    }
+  }
 
   async function startRecording() {
     setSendError(null);
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-      // webm/opus é amplamente suportado; Baileys + WhatsApp aceitam.
+      // webm/opus é o que browser oferece. Mas pra WhatsApp aceitar como voice
+      // note, mandamos com mimetype 'audio/ogg; codecs=opus' na hora do envio
+      // (o codec Opus é o mesmo, só o container que muda — WhatsApp tolera).
       const recorder = new MediaRecorder(stream, {
         mimeType: MediaRecorder.isTypeSupported('audio/webm;codecs=opus')
           ? 'audio/webm;codecs=opus'
           : 'audio/webm',
       });
       audioChunksRef.current = [];
+      isCancellingRef.current = false;
       recorder.ondataavailable = (e) => {
         if (e.data.size > 0) audioChunksRef.current.push(e.data);
       };
       recorder.onstop = async () => {
-        // Para o stream — solta o mic (tira o indicador de gravação do navegador)
+        // Sempre solta o mic ao parar (mesmo se cancelado), pra tirar o
+        // indicador vermelho de "gravando" do navegador.
         stream.getTracks().forEach((t) => t.stop());
+        // Cancelado: descarta sem enviar nada
+        if (isCancellingRef.current) {
+          audioChunksRef.current = [];
+          isCancellingRef.current = false;
+          return;
+        }
         const blob = new Blob(audioChunksRef.current, { type: recorder.mimeType });
         if (blob.size === 0) return;
-        // Reusa o fluxo de enviar mídia: converte blob → file → base64 → envia
-        const file = new File([blob], `voice-${Date.now()}.webm`, { type: blob.type });
+        // Voice note: força mime 'audio/ogg; codecs=opus' pra WhatsApp aceitar
+        // como voice note (push-to-talk). O conteúdo Opus interno é compatível.
+        const file = new File([blob], `voice-${Date.now()}.ogg`, {
+          type: 'audio/ogg; codecs=opus',
+        });
         await enviarMidia(file, 'AUDIO');
       };
       recorder.start();
       mediaRecorderRef.current = recorder;
-      setRecording(true);
+      setRecording('recording');
       setRecordSeconds(0);
-      recordTimerRef.current = setInterval(() => {
-        setRecordSeconds((s) => s + 1);
-      }, 1000);
+      startTimer();
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
       setSendError(`Não consegui acessar o microfone: ${msg}`);
     }
   }
 
+  function pauseRecording() {
+    if (!mediaRecorderRef.current || mediaRecorderRef.current.state !== 'recording') return;
+    mediaRecorderRef.current.pause();
+    setRecording('paused');
+    stopTimer();
+  }
+
+  function resumeRecording() {
+    if (!mediaRecorderRef.current || mediaRecorderRef.current.state !== 'paused') return;
+    mediaRecorderRef.current.resume();
+    setRecording('recording');
+    startTimer();
+  }
+
   function stopRecording() {
     if (!mediaRecorderRef.current) return;
+    isCancellingRef.current = false;
     mediaRecorderRef.current.stop();
     mediaRecorderRef.current = null;
-    setRecording(false);
-    if (recordTimerRef.current) {
-      clearInterval(recordTimerRef.current);
-      recordTimerRef.current = null;
-    }
+    setRecording('idle');
+    stopTimer();
   }
 
   function cancelRecording() {
     if (!mediaRecorderRef.current) return;
-    // Limpa chunks ANTES de parar pra onstop não enviar
-    audioChunksRef.current = [];
+    // Marca cancelamento ANTES do stop pra onstop saber que tem que descartar.
+    isCancellingRef.current = true;
     mediaRecorderRef.current.stop();
     mediaRecorderRef.current = null;
-    setRecording(false);
-    if (recordTimerRef.current) {
-      clearInterval(recordTimerRef.current);
-      recordTimerRef.current = null;
-    }
+    setRecording('idle');
+    stopTimer();
   }
 
   /** Converte File → base64 puro (sem prefixo data:...). */
@@ -790,18 +825,33 @@ function ConversationThread({
             data-testid="inbox-file-attach"
           />
 
-          {/* Estado de gravação ativa: mostra timer + botão parar + cancelar */}
-          {recording && (
+          {/* Estado de gravação ativa: timer + pausar/continuar + cancelar + enviar */}
+          {recording !== 'idle' && (
             <div
-              className="mb-2 px-3 py-2 rounded-md bg-danger/10 border border-danger/30 flex items-center gap-3"
+              className={cn(
+                'mb-2 px-3 py-2 rounded-md border flex items-center gap-3',
+                recording === 'recording'
+                  ? 'bg-danger/10 border-danger/30'
+                  : 'bg-warning/10 border-warning/30',
+              )}
               data-testid="recording-active"
             >
-              <span className="relative flex h-2.5 w-2.5">
-                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-danger opacity-75" />
-                <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-danger" />
-              </span>
-              <span className="text-sm tabular text-danger font-medium">
-                Gravando — {Math.floor(recordSeconds / 60)}:
+              {recording === 'recording' ? (
+                <span className="relative flex h-2.5 w-2.5">
+                  <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-danger opacity-75" />
+                  <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-danger" />
+                </span>
+              ) : (
+                <span className="inline-flex rounded-full h-2.5 w-2.5 bg-warning" />
+              )}
+              <span
+                className={cn(
+                  'text-sm tabular font-medium',
+                  recording === 'recording' ? 'text-danger' : 'text-warning',
+                )}
+              >
+                {recording === 'recording' ? 'Gravando' : 'Pausado'} —{' '}
+                {Math.floor(recordSeconds / 60)}:
                 {String(recordSeconds % 60).padStart(2, '0')}
               </span>
               <div className="flex-1" />
@@ -813,6 +863,27 @@ function ConversationThread({
               >
                 Cancelar
               </button>
+              {recording === 'recording' ? (
+                <button
+                  type="button"
+                  onClick={pauseRecording}
+                  className="text-xs px-2.5 py-1 rounded border border-border bg-surface hover:bg-surface-hover text-text font-medium"
+                  data-testid="inbox-record-pause"
+                  title="Pausar gravação"
+                >
+                  Pausar
+                </button>
+              ) : (
+                <button
+                  type="button"
+                  onClick={resumeRecording}
+                  className="text-xs px-2.5 py-1 rounded border border-border bg-surface hover:bg-surface-hover text-text font-medium"
+                  data-testid="inbox-record-resume"
+                  title="Continuar gravação"
+                >
+                  Continuar
+                </button>
+              )}
               <button
                 type="button"
                 onClick={stopRecording}
@@ -833,7 +904,7 @@ function ConversationThread({
                   type="button"
                   data-testid="inbox-attach-image"
                   onClick={() => imageInputRef.current?.click()}
-                  disabled={sending || recording}
+                  disabled={sending || recording !== 'idle'}
                   className="p-2 rounded-md text-muted hover:text-text hover:bg-surface-hover transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
                   title="Enviar imagem"
                 >
@@ -842,15 +913,21 @@ function ConversationThread({
                 <button
                   type="button"
                   data-testid="inbox-record-mic"
-                  onClick={recording ? stopRecording : () => void startRecording()}
-                  disabled={sending}
+                  // Mic só inicia gravação. Pausar/Continuar/Cancelar/Enviar
+                  // ficam nos botões do banner de gravação (sem ambiguidade).
+                  onClick={() => recording === 'idle' && void startRecording()}
+                  disabled={sending || recording !== 'idle'}
                   className={cn(
                     'p-2 rounded-md transition-colors disabled:opacity-40 disabled:cursor-not-allowed',
-                    recording
-                      ? 'text-danger bg-danger/10 hover:bg-danger/20'
+                    recording !== 'idle'
+                      ? 'text-danger bg-danger/10'
                       : 'text-muted hover:text-text hover:bg-surface-hover',
                   )}
-                  title={recording ? 'Parar e enviar gravação' : 'Gravar voice note'}
+                  title={
+                    recording === 'idle'
+                      ? 'Gravar voice note'
+                      : 'Gravação em andamento (use o banner acima)'
+                  }
                 >
                   <Mic className="h-4 w-4" />
                 </button>
@@ -858,7 +935,7 @@ function ConversationThread({
                   type="button"
                   data-testid="inbox-attach-file"
                   onClick={() => attachInputRef.current?.click()}
-                  disabled={sending || recording}
+                  disabled={sending || recording !== 'idle'}
                   className="p-2 rounded-md text-muted hover:text-text hover:bg-surface-hover transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
                   title="Anexar arquivo (documento, áudio, vídeo)"
                 >
