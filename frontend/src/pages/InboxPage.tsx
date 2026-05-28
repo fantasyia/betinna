@@ -497,7 +497,15 @@ function ConversationThread({
   const lastMsgIdForScroll =
     msgs.data && msgs.data.length > 0 ? msgs.data[0].id : null;
   useEffect(() => {
-    endRef.current?.scrollIntoView({ behavior: 'smooth', block: 'end' });
+    // Scroll imediato + scroll de segurança após 400ms.
+    // Necessário porque <audio>/<video> com preload=metadata ainda estão
+    // carregando dimensões — quando terminam, expandem altura e empurram
+    // layout. Sem o segundo scroll, último item fica cortado.
+    endRef.current?.scrollIntoView({ behavior: 'auto', block: 'end' });
+    const t = setTimeout(() => {
+      endRef.current?.scrollIntoView({ behavior: 'smooth', block: 'end' });
+    }, 400);
+    return () => clearTimeout(t);
   }, [lastMsgIdForScroll]);
 
   const lastMarkRef = useRef<string | null>(null);

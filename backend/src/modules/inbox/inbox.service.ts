@@ -352,13 +352,14 @@ export class InboxService {
         where: { id: msg.id },
         data: { status: MessageStatus.SENT, externalId: r.externalId ?? null },
       });
-      // Atualiza preview da conversa
+      // Atualiza preview da conversa + zera naoLidas (responder = leu)
       await this.prisma.conversation.update({
         where: { id: conversationId },
         data: {
           ultimaMsgEm: atualizada.criadoEm,
           ultimaMsgPreview: this.preview(dto.texto),
           status: conv.status === 'PENDENTE' ? 'ABERTA' : conv.status,
+          naoLidas: 0,
         },
       });
       return atualizada;
@@ -481,6 +482,7 @@ export class InboxService {
           ultimaMsgEm: atualizada.criadoEm,
           ultimaMsgPreview: this.preview(conteudoPlaceholder),
           status: conv.status === 'PENDENTE' ? 'ABERTA' : conv.status,
+          naoLidas: 0,
         },
       });
       return atualizada;
@@ -567,14 +569,17 @@ export class InboxService {
     });
 
     // INBOUND: incrementa não-lidas e marca conversa como PENDENTE.
-    // OUTBOUND: só atualiza preview/timestamp — não muda contador nem status
-    // (não é uma mensagem pra ler/responder, foi o próprio dono que mandou).
+    // OUTBOUND: zera naoLidas — o dono mandou mensagem (pelo celular ou outro
+    // dispositivo) = leu o que tinha pra responder. Sinaliza confiável de
+    // leitura mesmo quando o evento chats.update do Baileys não chega.
     await this.prisma.conversation.update({
       where: { id: conv.id },
       data: {
         ultimaMsgEm: msg.criadoEm,
         ultimaMsgPreview: this.preview(params.conteudo),
-        ...(isInbound ? { naoLidas: { increment: 1 }, status: 'PENDENTE' as const } : {}),
+        ...(isInbound
+          ? { naoLidas: { increment: 1 }, status: 'PENDENTE' as const }
+          : { naoLidas: 0 }),
       },
     });
 
