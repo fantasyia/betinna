@@ -75,6 +75,7 @@ export default function AdminPage() {
       </p>
 
       <SystemStatus />
+      <DbHealthSection />
       <SeedDemoSection />
       <AuditLogSection />
       <DeadLetterSection />
@@ -310,6 +311,209 @@ const BRAND = {
   magentaHover: '#a01aa1',
   danger: '#c43c3c',
 } as const;
+
+// ─── DB Health (tamanho do Postgres) ──────────────────────────────────
+
+interface DbHealthResponse {
+  totalBytes: number;
+  totalFmt: string;
+  tabelas: Array<{
+    tabela: string;
+    bytes: number;
+    tamanhoFmt: string;
+    linhasAprox: number;
+  }>;
+  medidoEm: string;
+}
+
+function DbHealthSection() {
+  const { data, loading, error, refetch } = useApiQuery<DbHealthResponse>('/admin/db-health');
+  const totalBytes = data?.totalBytes ?? 0;
+  // Alertas visuais por faixa de tamanho (limites de plano Railway Hobby ~1GB)
+  const alerta =
+    totalBytes > 5 * 1024 * 1024 * 1024
+      ? { texto: 'Banco grande — considere cleanup', cor: BRAND.danger }
+      : totalBytes > 1 * 1024 * 1024 * 1024
+        ? { texto: 'Atenção ao crescimento', cor: '#d97706' }
+        : null;
+
+  return (
+    <section style={{ ...card, marginBottom: '1rem' }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', marginBottom: '0.5rem' }}>
+        <h2 style={{ margin: 0, fontSize: 16 }}>💾 Saúde do banco</h2>
+        {data && (
+          <span
+            style={{
+              fontSize: 11,
+              color: colors.muted,
+              fontFamily: 'var(--font-mono)',
+            }}
+          >
+            atualizado em {new Date(data.medidoEm).toLocaleString('pt-BR')}
+          </span>
+        )}
+        <div style={{ flex: 1 }} />
+        <button
+          type="button"
+          onClick={refetch}
+          disabled={loading}
+          data-testid="db-health-refresh"
+          style={{
+            fontSize: 12,
+            padding: '0.25rem 0.625rem',
+            background: 'transparent',
+            color: colors.muted,
+            border: `1px solid ${colors.border}`,
+            borderRadius: 6,
+            cursor: 'pointer',
+          }}
+        >
+          {loading ? 'atualizando…' : 'Atualizar'}
+        </button>
+      </div>
+      <p style={{ fontSize: 12, color: colors.muted, margin: '0 0 0.75rem 0' }}>
+        Visibilidade de quanto cada tabela ocupa no Postgres. Use pra detectar
+        crescimento descontrolado antes do disco encher de novo.
+      </p>
+      <StateView loading={loading && !data} error={error} onRetry={refetch}>
+        {data && (
+          <>
+            <div
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: '1rem',
+                padding: '0.75rem 1rem',
+                background: alerta ? `${alerta.cor}15` : '#fafbfc',
+                border: `1px solid ${alerta ? alerta.cor : colors.border}`,
+                borderRadius: 6,
+                marginBottom: '0.75rem',
+              }}
+            >
+              <div>
+                <div
+                  style={{
+                    fontSize: 10,
+                    color: colors.muted,
+                    textTransform: 'uppercase',
+                    letterSpacing: 0.3,
+                    fontWeight: 600,
+                  }}
+                >
+                  Tamanho total do banco
+                </div>
+                <div
+                  style={{
+                    fontSize: 22,
+                    fontWeight: 700,
+                    color: alerta?.cor ?? colors.text,
+                    fontFamily: 'var(--font-mono)',
+                  }}
+                  data-testid="db-health-total"
+                >
+                  {data.totalFmt}
+                </div>
+              </div>
+              {alerta && (
+                <div
+                  style={{
+                    fontSize: 12,
+                    color: alerta.cor,
+                    fontWeight: 600,
+                  }}
+                >
+                  ⚠️ {alerta.texto}
+                </div>
+              )}
+            </div>
+            <div style={{ overflowX: 'auto' }}>
+              <table
+                style={{
+                  width: '100%',
+                  borderCollapse: 'collapse',
+                  fontSize: 12,
+                }}
+              >
+                <thead>
+                  <tr style={{ borderBottom: `1px solid ${colors.border}`, textAlign: 'left' }}>
+                    <th style={{ padding: '0.4rem 0.5rem', fontWeight: 600, color: colors.muted }}>
+                      Tabela
+                    </th>
+                    <th
+                      style={{
+                        padding: '0.4rem 0.5rem',
+                        fontWeight: 600,
+                        color: colors.muted,
+                        textAlign: 'right',
+                      }}
+                    >
+                      Tamanho
+                    </th>
+                    <th
+                      style={{
+                        padding: '0.4rem 0.5rem',
+                        fontWeight: 600,
+                        color: colors.muted,
+                        textAlign: 'right',
+                      }}
+                    >
+                      Linhas (aprox.)
+                    </th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {data.tabelas.slice(0, 20).map((t) => {
+                    const pct = totalBytes > 0 ? (t.bytes / totalBytes) * 100 : 0;
+                    return (
+                      <tr key={t.tabela} style={{ borderBottom: `1px solid ${colors.border}` }}>
+                        <td
+                          style={{
+                            padding: '0.4rem 0.5rem',
+                            fontFamily: 'var(--font-mono)',
+                          }}
+                        >
+                          {t.tabela}
+                        </td>
+                        <td
+                          style={{
+                            padding: '0.4rem 0.5rem',
+                            textAlign: 'right',
+                            fontFamily: 'var(--font-mono)',
+                          }}
+                        >
+                          {t.tamanhoFmt}
+                          <span
+                            style={{
+                              fontSize: 10,
+                              color: colors.muted,
+                              marginLeft: '0.4rem',
+                            }}
+                          >
+                            ({pct.toFixed(1)}%)
+                          </span>
+                        </td>
+                        <td
+                          style={{
+                            padding: '0.4rem 0.5rem',
+                            textAlign: 'right',
+                            color: colors.muted,
+                            fontFamily: 'var(--font-mono)',
+                          }}
+                        >
+                          {t.linhasAprox.toLocaleString('pt-BR')}
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          </>
+        )}
+      </StateView>
+    </section>
+  );
+}
 
 function SeedDemoSection() {
   const toast = useToast();
