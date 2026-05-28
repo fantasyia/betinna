@@ -16,6 +16,7 @@ import {
   Square,
   Receipt,
   Paperclip,
+  Download,
 } from 'lucide-react';
 import { api, ApiError } from '@/lib/api';
 import { useApiQuery, type PaginatedResponse } from '@/hooks/useApiQuery';
@@ -1007,6 +1008,115 @@ function MessageMediaImage({ msgId }: { msgId: string }) {
   );
 }
 
+/** Player de vídeo inline — controls nativos do browser. */
+function MessageMediaVideo({ msgId }: { msgId: string }) {
+  const { data, loading, error } = useApiQuery<{ url: string; mime: string | null }>(
+    `/inbox/messages/${msgId}/media`,
+  );
+  if (loading) {
+    return (
+      <div
+        data-testid={`msg-video-loading-${msgId}`}
+        className="h-40 w-64 bg-bg-alt animate-pulse rounded"
+      />
+    );
+  }
+  if (error || !data?.url) {
+    return (
+      <div className="text-xs text-muted italic flex items-center gap-1.5">
+        <Video className="h-3.5 w-3.5" />
+        Vídeo indisponível
+      </div>
+    );
+  }
+  return (
+    <video
+      src={data.url}
+      controls
+      preload="metadata"
+      data-testid={`msg-video-${msgId}`}
+      className="max-w-[300px] max-h-[300px] rounded border border-border block bg-black"
+    />
+  );
+}
+
+/** Player de áudio inline — controls nativos do browser. */
+function MessageMediaAudio({ msgId }: { msgId: string }) {
+  const { data, loading, error } = useApiQuery<{ url: string; mime: string | null }>(
+    `/inbox/messages/${msgId}/media`,
+  );
+  if (loading) {
+    return (
+      <div
+        data-testid={`msg-audio-loading-${msgId}`}
+        className="h-10 w-56 bg-bg-alt animate-pulse rounded"
+      />
+    );
+  }
+  if (error || !data?.url) {
+    return (
+      <div className="text-xs text-muted italic flex items-center gap-1.5">
+        <Mic className="h-3.5 w-3.5" />
+        Áudio indisponível
+      </div>
+    );
+  }
+  return (
+    <audio
+      src={data.url}
+      controls
+      preload="metadata"
+      data-testid={`msg-audio-${msgId}`}
+      className="max-w-[280px] block"
+    />
+  );
+}
+
+/** Documento — link de download com nome + tamanho/mime. */
+function MessageMediaDocument({ msgId, fileName }: { msgId: string; fileName?: string }) {
+  const { data, loading, error } = useApiQuery<{ url: string; mime: string | null }>(
+    `/inbox/messages/${msgId}/media`,
+  );
+  if (loading) {
+    return (
+      <div
+        data-testid={`msg-doc-loading-${msgId}`}
+        className="h-12 w-48 bg-bg-alt animate-pulse rounded"
+      />
+    );
+  }
+  if (error || !data?.url) {
+    return (
+      <div className="text-xs text-muted italic flex items-center gap-1.5">
+        <FileText className="h-3.5 w-3.5" />
+        Documento indisponível
+      </div>
+    );
+  }
+  const displayName = fileName ?? 'Documento';
+  return (
+    <a
+      href={data.url}
+      target="_blank"
+      rel="noopener noreferrer"
+      download={displayName}
+      data-testid={`msg-doc-${msgId}`}
+      className="inline-flex items-center gap-2 px-3 py-2 rounded-md border border-border bg-bg-alt hover:bg-surface-hover transition-colors no-underline"
+    >
+      <FileText className="h-5 w-5 text-primary shrink-0" />
+      <div className="flex flex-col min-w-0">
+        <span className="text-sm font-medium text-text truncate max-w-[200px]">
+          {displayName}
+        </span>
+        {data.mime && (
+          <span className="text-[10px] text-muted">{data.mime}</span>
+        )}
+      </div>
+      <Download className="h-3.5 w-3.5 text-muted ml-1" />
+    </a>
+  );
+}
+
 function MessageBubble({ msg, showAuthor }: { msg: Mensagem; showAuthor: boolean }) {
   const outbound = msg.direction === 'OUTBOUND';
   // Em mensagens INBOUND vindas de GRUPO, meta.senderName tem o nome do
@@ -1057,18 +1167,50 @@ function MessageBubble({ msg, showAuthor }: { msg: Mensagem; showAuthor: boolean
               : 'bg-surface text-text border-border rounded-2xl rounded-bl-sm',
           )}
         >
-          {msg.tipo !== 'TEXT' && MediaIcon && !(msg.tipo === 'IMAGE' && msg.mediaUrl) && (
-            <div className="flex items-center gap-1.5 mb-1 text-xs text-muted">
-              <MediaIcon className="h-3.5 w-3.5" />
-              <span className="lowercase">{msg.tipo}</span>
-              {msg.mediaMime && <span className="text-muted-light">· {msg.mediaMime}</span>}
-            </div>
-          )}
-          {msg.tipo === 'IMAGE' && msg.mediaUrl && <MessageMediaImage msgId={msg.id} />}
-          {/* Esconde placeholder "[imagem]" quando a imagem real está renderizada acima */}
-          {msg.conteudo && !(msg.tipo === 'IMAGE' && msg.mediaUrl && msg.conteudo === '[imagem]') && (
-            <p className="m-0 whitespace-pre-wrap">{msg.conteudo}</p>
-          )}
+          {/* Mídia renderizada inline quando temos mediaUrl pra IMAGE/VIDEO/AUDIO/DOCUMENT.
+              Sem mediaUrl, mostra só o ícone + tipo (fallback). */}
+          {(() => {
+            const hasMedia = !!msg.mediaUrl;
+            const isMediaType =
+              msg.tipo === 'IMAGE' ||
+              msg.tipo === 'VIDEO' ||
+              msg.tipo === 'AUDIO' ||
+              msg.tipo === 'DOCUMENT';
+            // Cabeçalho com ícone + tipo só quando NÃO temos o player real
+            // (pra IMAGE/VIDEO/AUDIO/DOCUMENT) — pra outros tipos (LOCATION,
+            // CONTACT, STICKER) sempre mostra cabeçalho.
+            const showHeader = msg.tipo !== 'TEXT' && MediaIcon && !(isMediaType && hasMedia);
+            return (
+              <>
+                {showHeader && (
+                  <div className="flex items-center gap-1.5 mb-1 text-xs text-muted">
+                    <MediaIcon className="h-3.5 w-3.5" />
+                    <span className="lowercase">{msg.tipo}</span>
+                    {msg.mediaMime && (
+                      <span className="text-muted-light">· {msg.mediaMime}</span>
+                    )}
+                  </div>
+                )}
+                {hasMedia && msg.tipo === 'IMAGE' && <MessageMediaImage msgId={msg.id} />}
+                {hasMedia && msg.tipo === 'VIDEO' && <MessageMediaVideo msgId={msg.id} />}
+                {hasMedia && msg.tipo === 'AUDIO' && <MessageMediaAudio msgId={msg.id} />}
+                {hasMedia && msg.tipo === 'DOCUMENT' && (
+                  <MessageMediaDocument msgId={msg.id} fileName={msg.conteudo ?? undefined} />
+                )}
+              </>
+            );
+          })()}
+          {/* Esconde placeholders "[imagem]"/"[vídeo]"/"[áudio]"/"[documento]" e
+              também o fileName cru de DOCUMENT (já mostrado pelo player) quando
+              o player real está renderizado acima. */}
+          {msg.conteudo &&
+            !(
+              msg.mediaUrl &&
+              (msg.conteudo === '[imagem]' ||
+                msg.conteudo === '[vídeo]' ||
+                msg.conteudo === '[áudio]' ||
+                msg.tipo === 'DOCUMENT')
+            ) && <p className="m-0 whitespace-pre-wrap">{msg.conteudo}</p>}
         </div>
         <span
           className={cn(
