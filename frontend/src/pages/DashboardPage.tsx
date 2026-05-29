@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import { Link } from 'react-router-dom';
 import {
   DollarSign,
@@ -16,10 +17,16 @@ import {
   Megaphone,
   MessageSquare,
   Sparkles,
+  SlidersHorizontal,
   type LucideIcon,
 } from 'lucide-react';
 import { useApiQuery } from '@/hooks/useApiQuery';
 import { useRole, usePermission } from '@/hooks/usePermission';
+import {
+  useDashboardPrefs,
+  DASHBOARD_MODULOS,
+  type DashboardModulo,
+} from '@/hooks/useDashboardPrefs';
 import { PageLayout } from '@/components/PageLayout';
 import { StateView } from '@/components/StateView';
 import {
@@ -32,6 +39,7 @@ import {
   EmptyState,
   Badge,
   Avatar,
+  Checkbox,
 } from '@/components/ui';
 import { cn } from '@/lib/cn';
 
@@ -103,6 +111,7 @@ export default function DashboardPage() {
   const role = useRole();
   const canSeeRelatorios = usePermission('relatorios.view');
   const canSeeCampanhas = usePermission('campanhas.view');
+  const { prefs, toggle } = useDashboardPrefs();
 
   const { data, loading, error, refetch } = useApiQuery<DashboardResp>(
     canSeeRelatorios ? '/relatorios/dashboard?periodo=mes' : null,
@@ -123,11 +132,14 @@ export default function DashboardPage() {
       }
       actions={
         canSeeRelatorios ? (
-          <Link to="/relatorios">
-            <Button rightIcon={<ArrowRight className="h-3.5 w-3.5" />}>
-              Ver relatórios completos
-            </Button>
-          </Link>
+          <div className="flex items-center gap-2">
+            <PersonalizarMenu prefs={prefs} onToggle={toggle} />
+            <Link to="/relatorios">
+              <Button rightIcon={<ArrowRight className="h-3.5 w-3.5" />}>
+                Ver relatórios completos
+              </Button>
+            </Link>
+          </div>
         ) : undefined
       }
     >
@@ -151,7 +163,20 @@ export default function DashboardPage() {
 
               return (
                 <div className="flex flex-col gap-5">
+                  {/* F7 — aviso quando tudo está oculto */}
+                  {!prefs.kpis && !prefs.topReps && !prefs.funil && !prefs.atalhos && (
+                    <Card padding="md">
+                      <EmptyState
+                        size="sm"
+                        icon={<SlidersHorizontal />}
+                        title="Dashboard vazio"
+                        description='Use "Personalizar" no topo pra escolher o que aparece aqui.'
+                      />
+                    </Card>
+                  )}
+
                   {/* KPI grid */}
+                  {prefs.kpis && (
                   <section
                     className={cn(
                       'grid gap-3',
@@ -203,10 +228,18 @@ export default function DashboardPage() {
                       trend={slaEstourado > 0 ? 'down' : 'up'}
                     />
                   </section>
+                  )}
 
                   {/* Top reps + Funil */}
-                  <section className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+                  {(prefs.topReps || prefs.funil) && (
+                  <section
+                    className={cn(
+                      'grid grid-cols-1 gap-4',
+                      prefs.topReps && prefs.funil ? 'lg:grid-cols-2' : 'lg:grid-cols-1',
+                    )}
+                  >
                     {/* Top reps */}
+                    {prefs.topReps && (
                     <Card padding="md">
                       <CardHeader>
                         <CardTitle>Top representantes</CardTitle>
@@ -230,8 +263,10 @@ export default function DashboardPage() {
                         <TopRepsList reps={porRep.slice(0, 5)} />
                       )}
                     </Card>
+                    )}
 
                     {/* Funil */}
+                    {prefs.funil && (
                     <Card padding="md">
                       <CardHeader>
                         <CardTitle>Funil de leads</CardTitle>
@@ -255,9 +290,12 @@ export default function DashboardPage() {
                         <FunnelView stages={funilAtual} />
                       )}
                     </Card>
+                    )}
                   </section>
+                  )}
 
                   {/* Quick actions */}
+                  {prefs.atalhos && (
                   <Card padding="md">
                     <CardHeader>
                       <CardTitle>Atalhos rápidos</CardTitle>
@@ -276,6 +314,7 @@ export default function DashboardPage() {
                       <QuickAction to="/integracoes" label="Integrações" icon={Plug} tone="blue" />
                     </div>
                   </Card>
+                  )}
 
                   {/* Onboarding card (só aparece se totalmente zerado) */}
                   {isEmpty && <FirstStepsCard />}
@@ -295,6 +334,58 @@ export default function DashboardPage() {
 }
 
 // ─── Componentes locais ──────────────────────────────────────────────
+
+/** F7 — menu pra ligar/desligar seções do dashboard (persistido por usuário). */
+function PersonalizarMenu({
+  prefs,
+  onToggle,
+}: {
+  prefs: Record<DashboardModulo, boolean>;
+  onToggle: (k: DashboardModulo) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  return (
+    <div className="relative">
+      <Button
+        variant="secondary"
+        onClick={() => setOpen((v) => !v)}
+        leftIcon={<SlidersHorizontal className="h-3.5 w-3.5" />}
+        data-testid="dashboard-personalizar"
+      >
+        Personalizar
+      </Button>
+      {open && (
+        <>
+          <div className="fixed inset-0 z-30" onClick={() => setOpen(false)} aria-hidden />
+          <div
+            className={cn(
+              'absolute right-0 top-full mt-1 z-40 min-w-[230px]',
+              'bg-surface-elevated border border-border-strong rounded-md shadow-lg p-2',
+              'flex flex-col gap-0.5 animate-fade-in',
+            )}
+          >
+            <div className="px-1.5 pb-1 text-[11px] font-semibold uppercase tracking-wider text-muted">
+              Mostrar no dashboard
+            </div>
+            {DASHBOARD_MODULOS.map((m) => (
+              <label
+                key={m.key}
+                className="flex items-center gap-2 px-1.5 py-1.5 rounded hover:bg-surface-hover cursor-pointer"
+              >
+                <Checkbox
+                  checked={prefs[m.key]}
+                  onChange={() => onToggle(m.key)}
+                  data-testid={`dashboard-toggle-${m.key}`}
+                />
+                <span className="text-sm text-text">{m.label}</span>
+              </label>
+            ))}
+          </div>
+        </>
+      )}
+    </div>
+  );
+}
 
 function TopRepsList({
   reps,
