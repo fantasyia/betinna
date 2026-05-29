@@ -77,6 +77,25 @@ export const bulkAssignRepSchema = z.object({
 });
 export type BulkAssignRepDto = z.infer<typeof bulkAssignRepSchema>;
 
+// CL1 (Lote 7) — ações em massa: tag, status, exclusão.
+export const bulkTagsSchema = z.object({
+  clienteIds: z.array(z.string().cuid()).min(1).max(500),
+  tagIds: z.array(z.string().cuid()).min(1).max(50),
+  modo: z.enum(['adicionar', 'remover']),
+});
+export type BulkTagsDto = z.infer<typeof bulkTagsSchema>;
+
+export const bulkStatusSchema = z.object({
+  clienteIds: z.array(z.string().cuid()).min(1).max(500),
+  status: clienteStatusEnum,
+});
+export type BulkStatusDto = z.infer<typeof bulkStatusSchema>;
+
+export const bulkDeleteSchema = z.object({
+  clienteIds: z.array(z.string().cuid()).min(1).max(500),
+});
+export type BulkDeleteDto = z.infer<typeof bulkDeleteSchema>;
+
 export const setTagsSchema = z.object({
   tagIds: z.array(z.string().cuid()),
 });

@@ -27,6 +27,7 @@ const makePrismaMock = () => {
       update: vi.fn(),
       updateMany: vi.fn(),
       delete: vi.fn(),
+      deleteMany: vi.fn(),
     },
     clienteTag: {
       deleteMany: vi.fn(),
@@ -286,6 +287,109 @@ describe('ClientesService', () => {
       await expect(
         service.bulkAssignRep(user, { clienteIds: ['c1'], representanteId: 'rep-1' }),
       ).rejects.toBeInstanceOf(ForbiddenException);
+    });
+  });
+
+  // ─── CL1 (Lote 7) — ações em massa ─────────────────────────────────────
+  describe('bulkSetTags', () => {
+    it('adicionar: cria ClienteTag pros clientes acessíveis (skipDuplicates)', async () => {
+      prisma.tag.count.mockResolvedValue(2); // 2 tags válidas
+      prisma.cliente.findMany.mockResolvedValue([{ id: 'c1' }, { id: 'c2' }]);
+      prisma.clienteTag.createMany.mockResolvedValue({ count: 4 });
+
+      const result = await service.bulkSetTags(fakeUser(), {
+        clienteIds: ['c1', 'c2'],
+        tagIds: ['t1', 't2'],
+        modo: 'adicionar',
+      });
+
+      expect(result).toEqual({ ok: true, afetados: 2 });
+      const args = prisma.clienteTag.createMany.mock.calls[0][0];
+      expect(args.skipDuplicates).toBe(true);
+      expect(args.data).toHaveLength(4); // 2 clientes × 2 tags
+    });
+
+    it('remover: deleta ClienteTag dos clientes acessíveis', async () => {
+      prisma.tag.count.mockResolvedValue(1);
+      prisma.cliente.findMany.mockResolvedValue([{ id: 'c1' }]);
+      prisma.clienteTag.deleteMany.mockResolvedValue({ count: 1 });
+
+      await service.bulkSetTags(fakeUser(), {
+        clienteIds: ['c1'],
+        tagIds: ['t1'],
+        modo: 'remover',
+      });
+
+      const args = prisma.clienteTag.deleteMany.mock.calls[0][0];
+      expect(args.where.clienteId).toEqual({ in: ['c1'] });
+      expect(args.where.tagId).toEqual({ in: ['t1'] });
+    });
+
+    it('lança quando uma tag não pertence à empresa', async () => {
+      prisma.tag.count.mockResolvedValue(1); // só 1 das 2 existe
+      await expect(
+        service.bulkSetTags(fakeUser(), {
+          clienteIds: ['c1'],
+          tagIds: ['t1', 't2'],
+          modo: 'adicionar',
+        }),
+      ).rejects.toBeInstanceOf(BusinessRuleException);
+    });
+
+    it('não faz nada quando nenhum cliente é acessível ao scope', async () => {
+      prisma.tag.count.mockResolvedValue(1);
+      prisma.cliente.findMany.mockResolvedValue([]); // scope não retorna nada
+      const result = await service.bulkSetTags(fakeUser(), {
+        clienteIds: ['c1'],
+        tagIds: ['t1'],
+        modo: 'adicionar',
+      });
+      expect(result.afetados).toBe(0);
+      expect(prisma.clienteTag.createMany).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('bulkUpdateStatus', () => {
+    it('atualiza status restringindo por empresa + scope', async () => {
+      prisma.cliente.updateMany.mockResolvedValue({ count: 3 });
+      const result = await service.bulkUpdateStatus(fakeUser(), {
+        clienteIds: ['c1', 'c2', 'c3'],
+        status: 'INATIVO' as ClienteStatus,
+      });
+      expect(result).toEqual({ ok: true, afetados: 3 });
+      const args = prisma.cliente.updateMany.mock.calls[0][0];
+      expect(args.where.empresaId).toBe('emp-1');
+      expect(args.where.id).toEqual({ in: ['c1', 'c2', 'c3'] });
+      expect(args.data).toEqual({ status: 'INATIVO' });
+    });
+  });
+
+  describe('bulkRemove', () => {
+    it('exclui em best-effort e reporta falhas por cliente', async () => {
+      // c1 OK; c2 tem vínculo (P2003 → BusinessRuleException no remove)
+      prisma.cliente.findFirst
+        .mockResolvedValueOnce(fakeCliente({ id: 'c1' }))
+        .mockResolvedValueOnce(fakeCliente({ id: 'c2' }));
+      prisma.cliente.findUniqueOrThrow.mockResolvedValue(fakeCliente());
+      prisma.cliente.deleteMany
+        .mockResolvedValueOnce({ count: 1 })
+        .mockRejectedValueOnce(
+          new BusinessRuleException('Cliente possui pedidos, propostas ou outros vínculos.'),
+        );
+
+      const result = await service.bulkRemove(fakeUser(), { clienteIds: ['c1', 'c2'] });
+
+      expect(result.excluidos).toBe(1);
+      expect(result.falhas).toHaveLength(1);
+      expect(result.falhas[0].id).toBe('c2');
+    });
+
+    it('cliente fora do escopo entra como falha (NotFound), não exclui', async () => {
+      prisma.cliente.findFirst.mockResolvedValue(null); // findById → NotFound
+      const result = await service.bulkRemove(fakeUser(), { clienteIds: ['c-alheio'] });
+      expect(result.excluidos).toBe(0);
+      expect(result.falhas).toHaveLength(1);
+      expect(prisma.cliente.deleteMany).not.toHaveBeenCalled();
     });
   });
 

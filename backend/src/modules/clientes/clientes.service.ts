@@ -13,6 +13,9 @@ import { type Paginated, buildPaginated } from '@shared/types/pagination';
 import type {
   AssignRepDto,
   BulkAssignRepDto,
+  BulkDeleteDto,
+  BulkStatusDto,
+  BulkTagsDto,
   CreateClienteDto,
   ListClientesDto,
   SetTagsDto,
@@ -51,6 +54,16 @@ export class ClientesService {
    * - Se GERENTE, filtra representanteId IN (REPs sob sua gerência)
    * - ADMIN/DIRECTOR/SAC: sem filtro de carteira
    */
+  private requireEmpresa(user: AuthenticatedUser): string {
+    if (!user.empresaIdAtiva) {
+      throw new ForbiddenException(
+        'Empresa não definida para esta requisição',
+        ErrorCode.TENANT_ACCESS_DENIED,
+      );
+    }
+    return user.empresaIdAtiva;
+  }
+
   private async baseWhere(user: AuthenticatedUser): Promise<Prisma.ClienteWhereInput> {
     if (!user.empresaIdAtiva) {
       throw new ForbiddenException(
@@ -341,6 +354,81 @@ export class ClientesService {
     });
 
     return { ok: true, afetados: count };
+  }
+
+  // ─── CL1 (Lote 7) — Ações em massa: tag, status, exclusão ───────────────
+
+  /**
+   * Resolve quais dos clienteIds informados o usuário pode mexer
+   * (empresa ativa + escopo de carteira do GERENTE/REP). Evita que um gerente
+   * altere clientes de outra equipe passando IDs arbitrários.
+   */
+  private async idsAcessiveis(user: AuthenticatedUser, clienteIds: string[]): Promise<string[]> {
+    const base = await this.baseWhere(user);
+    const rows = await this.prisma.cliente.findMany({
+      where: { ...base, id: { in: clienteIds } },
+      select: { id: true },
+    });
+    return rows.map((r) => r.id);
+  }
+
+  /** Aplica ou remove tags em vários clientes de uma vez. */
+  async bulkSetTags(
+    user: AuthenticatedUser,
+    dto: BulkTagsDto,
+  ): Promise<{ ok: true; afetados: number }> {
+    const empresaId = this.requireEmpresa(user);
+    await this.assertTagsValidas(empresaId, dto.tagIds);
+
+    const ids = await this.idsAcessiveis(user, dto.clienteIds);
+    if (ids.length === 0) return { ok: true, afetados: 0 };
+
+    if (dto.modo === 'adicionar') {
+      await this.prisma.clienteTag.createMany({
+        data: ids.flatMap((clienteId) => dto.tagIds.map((tagId) => ({ clienteId, tagId }))),
+        skipDuplicates: true,
+      });
+    } else {
+      await this.prisma.clienteTag.deleteMany({
+        where: { clienteId: { in: ids }, tagId: { in: dto.tagIds } },
+      });
+    }
+    return { ok: true, afetados: ids.length };
+  }
+
+  /** Muda o status de vários clientes de uma vez. */
+  async bulkUpdateStatus(
+    user: AuthenticatedUser,
+    dto: BulkStatusDto,
+  ): Promise<{ ok: true; afetados: number }> {
+    const base = await this.baseWhere(user);
+    const { count } = await this.prisma.cliente.updateMany({
+      where: { ...base, id: { in: dto.clienteIds } },
+      data: { status: dto.status },
+    });
+    return { ok: true, afetados: count };
+  }
+
+  /**
+   * Exclui vários clientes (best-effort). Cada cliente passa pelo remove()
+   * individual, que valida escopo e bloqueia exclusão de quem tem pedidos/
+   * propostas. Retorna quantos saíram e a lista de falhas com o motivo.
+   */
+  async bulkRemove(
+    user: AuthenticatedUser,
+    dto: BulkDeleteDto,
+  ): Promise<{ ok: true; excluidos: number; falhas: Array<{ id: string; erro: string }> }> {
+    const falhas: Array<{ id: string; erro: string }> = [];
+    let excluidos = 0;
+    for (const id of dto.clienteIds) {
+      try {
+        await this.remove(user, id);
+        excluidos += 1;
+      } catch (err) {
+        falhas.push({ id, erro: err instanceof Error ? err.message : String(err) });
+      }
+    }
+    return { ok: true, excluidos, falhas };
   }
 
   // ─── Tags ───────────────────────────────────────────────────────────────

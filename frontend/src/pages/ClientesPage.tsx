@@ -18,6 +18,8 @@ import {
   Building2,
   AlertCircle,
   Receipt,
+  Tag as TagIcon,
+  RefreshCw,
 } from 'lucide-react';
 import { NovoPedidoDialog, type ClienteOpt } from '@/components/NovoPedidoDialog';
 import { api, ApiError } from '@/lib/api';
@@ -169,7 +171,7 @@ export default function ClientesPage() {
 
   // Bulk selection
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
-  const [bulkOpen, setBulkOpen] = useState(false);
+  const [bulkAction, setBulkAction] = useState<'rep' | 'tags' | 'status' | 'delete' | null>(null);
   const currentPageIds = page$?.data.map((c) => c.id) ?? [];
   const allCurrentSelected =
     currentPageIds.length > 0 && currentPageIds.every((id) => selectedIds.has(id));
@@ -532,10 +534,37 @@ export default function ClientesPage() {
           <Button
             size="sm"
             data-testid="bulk-assign-open"
-            onClick={() => setBulkOpen(true)}
+            onClick={() => setBulkAction('rep')}
             leftIcon={<UserCog className="h-3.5 w-3.5" />}
           >
             Atribuir rep
+          </Button>
+          <Button
+            size="sm"
+            variant="secondary"
+            data-testid="bulk-tags-open"
+            onClick={() => setBulkAction('tags')}
+            leftIcon={<TagIcon className="h-3.5 w-3.5" />}
+          >
+            Tags
+          </Button>
+          <Button
+            size="sm"
+            variant="secondary"
+            data-testid="bulk-status-open"
+            onClick={() => setBulkAction('status')}
+            leftIcon={<RefreshCw className="h-3.5 w-3.5" />}
+          >
+            Status
+          </Button>
+          <Button
+            size="sm"
+            variant="danger"
+            data-testid="bulk-delete-open"
+            onClick={() => setBulkAction('delete')}
+            leftIcon={<Trash2 className="h-3.5 w-3.5" />}
+          >
+            Excluir
           </Button>
           <IconButton
             aria-label="Limpar seleção"
@@ -587,12 +616,45 @@ export default function ClientesPage() {
         <EditingFormLoader id={editingId} onClose={() => setEditingId(null)} onSaved={onSaved} />
       )}
 
-      {bulkOpen && (
+      {bulkAction === 'rep' && (
         <BulkAssignModal
           clienteIds={Array.from(selectedIds)}
-          onClose={() => setBulkOpen(false)}
+          onClose={() => setBulkAction(null)}
           onDone={() => {
-            setBulkOpen(false);
+            setBulkAction(null);
+            clearSelection();
+            refetch();
+          }}
+        />
+      )}
+      {bulkAction === 'tags' && (
+        <BulkTagsModal
+          clienteIds={Array.from(selectedIds)}
+          onClose={() => setBulkAction(null)}
+          onDone={() => {
+            setBulkAction(null);
+            clearSelection();
+            refetch();
+          }}
+        />
+      )}
+      {bulkAction === 'status' && (
+        <BulkStatusModal
+          clienteIds={Array.from(selectedIds)}
+          onClose={() => setBulkAction(null)}
+          onDone={() => {
+            setBulkAction(null);
+            clearSelection();
+            refetch();
+          }}
+        />
+      )}
+      {bulkAction === 'delete' && (
+        <BulkDeleteModal
+          clienteIds={Array.from(selectedIds)}
+          onClose={() => setBulkAction(null)}
+          onDone={() => {
+            setBulkAction(null);
             clearSelection();
             refetch();
           }}
@@ -1053,6 +1115,296 @@ function BulkAssignModal({
           label="Remover atribuição (deixar sem rep)"
         />
       </div>
+      {error && (
+        <div className="mt-3 px-3 py-2 rounded-md bg-danger/10 border border-danger/30 text-danger text-sm flex items-start gap-2">
+          <AlertCircle className="h-4 w-4 mt-0.5 shrink-0" />
+          {error}
+        </div>
+      )}
+    </Dialog>
+  );
+}
+
+// ─── CL1 (Lote 7) — Bulk: tags ─────────────────────────────────
+
+interface TagLite {
+  id: string;
+  nome: string;
+  cor?: string | null;
+}
+
+function BulkTagsModal({
+  clienteIds,
+  onClose,
+  onDone,
+}: {
+  clienteIds: string[];
+  onClose: () => void;
+  onDone: () => void;
+}) {
+  const toast = useToast();
+  const { data: tagsRaw } = useApiQuery<TagLite[] | { data: TagLite[] }>('/tags');
+  const tags: TagLite[] = Array.isArray(tagsRaw) ? tagsRaw : (tagsRaw?.data ?? []);
+  const [selected, setSelected] = useState<Set<string>>(new Set());
+  const [modo, setModo] = useState<'adicionar' | 'remover'>('adicionar');
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  function toggle(id: string) {
+    setSelected((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  }
+
+  async function submit() {
+    if (selected.size === 0) {
+      setError('Selecione ao menos uma tag.');
+      return;
+    }
+    setBusy(true);
+    setError(null);
+    try {
+      const res = await api.post<{ afetados: number }>('/clientes/tags-massa', {
+        clienteIds,
+        tagIds: Array.from(selected),
+        modo,
+      });
+      toast.success(
+        modo === 'adicionar' ? 'Tags aplicadas' : 'Tags removidas',
+        `${res.afetados} cliente${res.afetados === 1 ? '' : 's'} atualizado${res.afetados === 1 ? '' : 's'}`,
+      );
+      onDone();
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : 'Falha ao aplicar tags');
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <Dialog
+      open
+      onClose={onClose}
+      title={`Tags em ${clienteIds.length} cliente${clienteIds.length === 1 ? '' : 's'}`}
+      size="sm"
+      footer={
+        <>
+          <Button variant="secondary" onClick={onClose}>
+            Cancelar
+          </Button>
+          <Button data-testid="bulk-tags-confirm" onClick={submit} loading={busy}>
+            {modo === 'adicionar' ? 'Aplicar tags' : 'Remover tags'}
+          </Button>
+        </>
+      }
+    >
+      <div className="flex gap-2 mb-3">
+        <Button
+          size="sm"
+          variant={modo === 'adicionar' ? 'primary' : 'secondary'}
+          onClick={() => setModo('adicionar')}
+        >
+          Adicionar
+        </Button>
+        <Button
+          size="sm"
+          variant={modo === 'remover' ? 'primary' : 'secondary'}
+          onClick={() => setModo('remover')}
+        >
+          Remover
+        </Button>
+      </div>
+      {tags.length === 0 ? (
+        <p className="text-sm text-muted">Nenhuma tag cadastrada. Crie tags na aba Tags.</p>
+      ) : (
+        <div className="flex flex-col gap-1.5 max-h-64 overflow-y-auto">
+          {tags.map((t) => (
+            <Checkbox
+              key={t.id}
+              data-testid={`bulk-tag-${t.id}`}
+              checked={selected.has(t.id)}
+              onChange={() => toggle(t.id)}
+              label={t.nome}
+            />
+          ))}
+        </div>
+      )}
+      {error && (
+        <div className="mt-3 px-3 py-2 rounded-md bg-danger/10 border border-danger/30 text-danger text-sm flex items-start gap-2">
+          <AlertCircle className="h-4 w-4 mt-0.5 shrink-0" />
+          {error}
+        </div>
+      )}
+    </Dialog>
+  );
+}
+
+// ─── CL1 (Lote 7) — Bulk: status ───────────────────────────────
+
+function BulkStatusModal({
+  clienteIds,
+  onClose,
+  onDone,
+}: {
+  clienteIds: string[];
+  onClose: () => void;
+  onDone: () => void;
+}) {
+  const toast = useToast();
+  const [status, setStatus] = useState<ClienteStatus>('ATIVO');
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  async function submit() {
+    setBusy(true);
+    setError(null);
+    try {
+      const res = await api.post<{ afetados: number }>('/clientes/status-massa', {
+        clienteIds,
+        status,
+      });
+      toast.success(
+        'Status atualizado',
+        `${res.afetados} cliente${res.afetados === 1 ? '' : 's'} agora ${STATUS_LABEL[status]}`,
+      );
+      onDone();
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : 'Falha ao mudar status');
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <Dialog
+      open
+      onClose={onClose}
+      title={`Mudar status de ${clienteIds.length} cliente${clienteIds.length === 1 ? '' : 's'}`}
+      size="sm"
+      footer={
+        <>
+          <Button variant="secondary" onClick={onClose}>
+            Cancelar
+          </Button>
+          <Button data-testid="bulk-status-confirm" onClick={submit} loading={busy}>
+            Aplicar status
+          </Button>
+        </>
+      }
+    >
+      <Field label="Novo status">
+        <Select
+          data-testid="bulk-status-select"
+          value={status}
+          onChange={(e) => setStatus(e.target.value as ClienteStatus)}
+        >
+          {(Object.keys(STATUS_LABEL) as ClienteStatus[]).map((s) => (
+            <option key={s} value={s}>
+              {STATUS_LABEL[s]}
+            </option>
+          ))}
+        </Select>
+      </Field>
+      {error && (
+        <div className="mt-3 px-3 py-2 rounded-md bg-danger/10 border border-danger/30 text-danger text-sm flex items-start gap-2">
+          <AlertCircle className="h-4 w-4 mt-0.5 shrink-0" />
+          {error}
+        </div>
+      )}
+    </Dialog>
+  );
+}
+
+// ─── CL1 (Lote 7) — Bulk: excluir ──────────────────────────────
+
+function BulkDeleteModal({
+  clienteIds,
+  onClose,
+  onDone,
+}: {
+  clienteIds: string[];
+  onClose: () => void;
+  onDone: () => void;
+}) {
+  const toast = useToast();
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [result, setResult] = useState<{
+    excluidos: number;
+    falhas: Array<{ id: string; erro: string }>;
+  } | null>(null);
+
+  async function submit() {
+    setBusy(true);
+    setError(null);
+    try {
+      const res = await api.post<{
+        excluidos: number;
+        falhas: Array<{ id: string; erro: string }>;
+      }>('/clientes/excluir-massa', { clienteIds });
+      if (res.falhas.length === 0) {
+        toast.success(`${res.excluidos} cliente${res.excluidos === 1 ? '' : 's'} excluído${res.excluidos === 1 ? '' : 's'}`);
+        onDone();
+      } else {
+        // Parcial: mostra o que falhou e atualiza a lista por trás
+        setResult(res);
+      }
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : 'Falha ao excluir');
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <Dialog
+      open
+      onClose={result ? onDone : onClose}
+      title={`Excluir ${clienteIds.length} cliente${clienteIds.length === 1 ? '' : 's'}?`}
+      size="sm"
+      footer={
+        result ? (
+          <Button onClick={onDone}>Fechar</Button>
+        ) : (
+          <>
+            <Button variant="secondary" onClick={onClose}>
+              Cancelar
+            </Button>
+            <Button variant="danger" data-testid="bulk-delete-confirm" onClick={submit} loading={busy}>
+              Sim, excluir
+            </Button>
+          </>
+        )
+      }
+    >
+      {!result ? (
+        <p className="text-sm text-text-subtle">
+          Esta ação é permanente. Clientes com pedidos, propostas ou outros vínculos não serão
+          excluídos (o sistema avisa quais).
+        </p>
+      ) : (
+        <div className="flex flex-col gap-2 text-sm">
+          <p className="text-success font-medium">
+            {result.excluidos} excluído{result.excluidos === 1 ? '' : 's'} com sucesso.
+          </p>
+          {result.falhas.length > 0 && (
+            <div>
+              <p className="text-warning font-medium mb-1">
+                {result.falhas.length} não pôde{result.falhas.length === 1 ? '' : 'ram'} ser
+                excluído{result.falhas.length === 1 ? '' : 's'}:
+              </p>
+              <ul className="list-disc pl-5 text-muted text-xs max-h-40 overflow-y-auto">
+                {result.falhas.map((f) => (
+                  <li key={f.id}>{f.erro}</li>
+                ))}
+              </ul>
+            </div>
+          )}
+        </div>
+      )}
       {error && (
         <div className="mt-3 px-3 py-2 rounded-md bg-danger/10 border border-danger/30 text-danger text-sm flex items-start gap-2">
           <AlertCircle className="h-4 w-4 mt-0.5 shrink-0" />

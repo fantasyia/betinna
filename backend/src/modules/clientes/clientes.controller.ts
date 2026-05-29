@@ -22,6 +22,9 @@ import { ClientesService } from './clientes.service';
 import {
   type AssignRepDto,
   type BulkAssignRepDto,
+  type BulkDeleteDto,
+  type BulkStatusDto,
+  type BulkTagsDto,
   type CreateClienteDto,
   type ListClientesDto,
   type SetTagsDto,
@@ -29,6 +32,9 @@ import {
   type UpdateOmieStatusDto,
   assignRepSchema,
   bulkAssignRepSchema,
+  bulkDeleteSchema,
+  bulkStatusSchema,
+  bulkTagsSchema,
   createClienteSchema,
   listClientesSchema,
   setTagsSchema,
@@ -130,6 +136,45 @@ export class ClientesController {
     @Body(new ZodValidationPipe(bulkAssignRepSchema)) dto: BulkAssignRepDto,
   ) {
     return this.clientes.bulkAssignRep(user, dto);
+  }
+
+  // ─── CL1 (Lote 7) — Ações em massa ──────────────────────────────────────
+
+  @Post('tags-massa')
+  @RequirePermissions({ module: 'clientes', action: 'edit' })
+  @Audit({ action: 'bulk_set_tags', resource: 'cliente' })
+  @ApiOperation({ summary: 'Aplica ou remove tags em vários clientes de uma vez' })
+  bulkSetTags(
+    @CurrentUser() user: AuthenticatedUser,
+    @Body(new ZodValidationPipe(bulkTagsSchema)) dto: BulkTagsDto,
+  ) {
+    return this.clientes.bulkSetTags(user, dto);
+  }
+
+  @Post('status-massa')
+  @RequirePermissions({ module: 'clientes', action: 'edit' })
+  @Audit({ action: 'bulk_update_status', resource: 'cliente' })
+  @ApiOperation({ summary: 'Muda o status de vários clientes de uma vez' })
+  bulkUpdateStatus(
+    @CurrentUser() user: AuthenticatedUser,
+    @Body(new ZodValidationPipe(bulkStatusSchema)) dto: BulkStatusDto,
+  ) {
+    return this.clientes.bulkUpdateStatus(user, dto);
+  }
+
+  @Post('excluir-massa')
+  @RequirePermissions({ module: 'clientes', action: 'delete' })
+  @Audit({ action: 'bulk_delete', resource: 'cliente' })
+  @ApiOperation({
+    summary:
+      'Exclui vários clientes de uma vez (best-effort). Retorna quantos saíram e as falhas ' +
+      '(ex: cliente com pedidos/propostas não pode ser excluído).',
+  })
+  bulkRemove(
+    @CurrentUser() user: AuthenticatedUser,
+    @Body(new ZodValidationPipe(bulkDeleteSchema)) dto: BulkDeleteDto,
+  ) {
+    return this.clientes.bulkRemove(user, dto);
   }
 
   @Put(':id/tags')
