@@ -40,6 +40,9 @@ export type UpdateFunilDto = z.infer<typeof updateFunilSchema>;
 
 /** Reordena etapas em batch (passa lista completa de ids na ordem desejada). */
 export const reordenarEtapasSchema = z.object({
-  etapaIds: z.array(z.string().cuid()).min(1),
+  // F1-irmão (Lote 8): não valida `.cuid()` — etapas do funil padrão criado
+  // pela migration usam id `fet_<hash>` (não-cuid). O service valida que as
+  // etapas pertencem ao funil. `.cuid()` rejeitava com "Dados inválidos".
+  etapaIds: z.array(z.string().min(1)).min(1),
 });
 export type ReordenarEtapasDto = z.infer<typeof reordenarEtapasSchema>;
