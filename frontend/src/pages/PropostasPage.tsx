@@ -569,7 +569,9 @@ function PropostaDetailDrawer({
   }
 
   // ─── C2 — Exportar / enviar ──────────────────────────────────────────
-  const [exportBusy, setExportBusy] = useState<'pdf' | 'excel' | 'email' | null>(null);
+  const [exportBusy, setExportBusy] = useState<'pdf' | 'excel' | 'email' | 'aceite' | null>(null);
+  // C3 — link de aceite externo gerado
+  const [aceiteLink, setAceiteLink] = useState<string | null>(null);
 
   /** Converte base64 → Blob e dispara download no navegador. */
   function baixarBase64(base64: string, filename: string, mime: string) {
@@ -614,6 +616,23 @@ function PropostaDetailDrawer({
       toast.success('Proposta enviada', `E-mail enviado pra ${res.enviadoPara}`);
     } catch (err) {
       setActionError(err instanceof ApiError ? err.message : 'Falha ao enviar e-mail');
+    } finally {
+      setExportBusy(null);
+    }
+  }
+
+  // C3 — gera link de aceite externo pra enviar ao cliente
+  async function gerarAceite() {
+    setExportBusy('aceite');
+    setActionError(null);
+    try {
+      const res = await api.post<{ url: string; expiraEm: string }>(
+        `/propostas/${id}/enviar-aceite`,
+      );
+      setAceiteLink(res.url);
+      onChanged(); // status virou AGUARDANDO_ASSINATURA — atualiza lista
+    } catch (err) {
+      setActionError(err instanceof ApiError ? err.message : 'Falha ao gerar link de aceite');
     } finally {
       setExportBusy(null);
     }
@@ -680,7 +699,55 @@ function PropostaDetailDrawer({
               >
                 Enviar por e-mail
               </Button>
+              {/* C3 — link de aceite externo (oculto pra propostas já aceitas/recusadas) */}
+              {data.status !== 'ACEITA' && data.status !== 'RECUSADA' && (
+                <Button
+                  variant="primary"
+                  size="sm"
+                  data-testid="proposta-enviar-aceite"
+                  loading={exportBusy === 'aceite'}
+                  disabled={exportBusy !== null}
+                  onClick={() => void gerarAceite()}
+                  leftIcon={<ExternalLink className="h-3.5 w-3.5" />}
+                >
+                  Enviar pra cliente aprovar
+                </Button>
+              )}
             </div>
+
+            {/* C3 — link gerado: copiar pra enviar ao cliente */}
+            {aceiteLink && (
+              <div
+                className="px-3 py-2.5 rounded-md bg-success/10 border border-success/30"
+                data-testid="proposta-aceite-link"
+              >
+                <p className="text-sm font-medium text-text m-0 mb-1.5">
+                  Link de aprovação gerado — envie pro cliente:
+                </p>
+                <div className="flex items-center gap-2">
+                  <input
+                    readOnly
+                    value={aceiteLink}
+                    onClick={(e) => (e.target as HTMLInputElement).select()}
+                    className="flex-1 text-xs px-2 py-1.5 rounded border border-border bg-surface text-text-subtle font-mono"
+                  />
+                  <Button
+                    variant="secondary"
+                    size="sm"
+                    onClick={() => {
+                      void navigator.clipboard.writeText(aceiteLink);
+                      toast.success('Link copiado');
+                    }}
+                  >
+                    Copiar
+                  </Button>
+                </div>
+                <p className="text-[11px] text-muted m-0 mt-1.5">
+                  O cliente abre o link, vê a proposta e aceita/recusa. Ao aceitar, um pedido
+                  é criado automaticamente. Link válido por 7 dias.
+                </p>
+              </div>
+            )}
 
             {/* Header card */}
             <Card variant="outline" padding="md" className="bg-bg-alt">

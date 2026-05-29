@@ -1,7 +1,10 @@
-import { Body, Controller, Get, Param, Patch, Post, Put, Query } from '@nestjs/common';
+import { Body, Controller, Get, Ip, Param, Patch, Post, Put, Query } from '@nestjs/common';
+import { Throttle, seconds } from '@nestjs/throttler';
 import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
+import { z } from 'zod';
 import { Audit } from '@shared/decorators/audit.decorator';
 import { CurrentUser } from '@shared/decorators/current-user.decorator';
+import { Public } from '@shared/decorators/public.decorator';
 import { RequirePermissions } from '@shared/decorators/permissions.decorator';
 import { ZodValidationPipe } from '@shared/pipes/zod-validation.pipe';
 import type { AuthenticatedUser } from '@shared/types/authenticated-user';
@@ -15,13 +18,44 @@ import {
   listPropostasSchema,
   updatePropostaSchema,
 } from './propostas.dto';
+import { PropostaAceiteService } from './proposta-aceite.service';
 import { PropostasService } from './propostas.service';
+
+const decidirAceiteSchema = z.object({
+  decisao: z.enum(['ACEITA', 'RECUSADA']),
+});
 
 @ApiTags('propostas')
 @ApiBearerAuth()
 @Controller('propostas')
 export class PropostasController {
-  constructor(private readonly propostas: PropostasService) {}
+  constructor(
+    private readonly propostas: PropostasService,
+    private readonly aceite: PropostaAceiteService,
+  ) {}
+
+  // ─── C3 — Aceite externo (PÚBLICO, sem login) ───────────────────────────
+  // Declarados PRIMEIRO pra `aceite/:token` não colidir com `:id`.
+
+  @Public()
+  @Get('aceite/:token')
+  @Throttle({ default: { limit: 30, ttl: seconds(60) } })
+  @ApiOperation({ summary: 'Preview público da proposta via token de aceite (sem login).' })
+  aceitePreview(@Param('token') token: string) {
+    return this.aceite.resolverPreview(token);
+  }
+
+  @Public()
+  @Post('aceite/:token/decidir')
+  @Throttle({ default: { limit: 10, ttl: seconds(60) } })
+  @ApiOperation({ summary: 'Cliente aceita/recusa a proposta. Aceite gera pedido automático.' })
+  aceiteDecidir(
+    @Param('token') token: string,
+    @Body(new ZodValidationPipe(decidirAceiteSchema)) dto: { decisao: 'ACEITA' | 'RECUSADA' },
+    @Ip() ip: string,
+  ) {
+    return this.aceite.registrarDecisao(token, dto.decisao, ip);
+  }
 
   @Get()
   @RequirePermissions({ module: 'propostas', action: 'view' })
@@ -56,6 +90,17 @@ export class PropostasController {
   @ApiOperation({ summary: 'Envia a proposta (PDF anexo) por email pro cliente via Resend.' })
   enviarEmail(@CurrentUser() user: AuthenticatedUser, @Param('id') id: string) {
     return this.propostas.enviarPorEmail(user, id);
+  }
+
+  @Post(':id/enviar-aceite')
+  @RequirePermissions({ module: 'propostas', action: 'edit' })
+  @Audit({ action: 'enviar_aceite', resource: 'proposta', resourceIdFrom: 'params.id' })
+  @ApiOperation({
+    summary:
+      'C3 — Gera link público de aceite pra enviar ao cliente. Status vira AGUARDANDO_ASSINATURA.',
+  })
+  enviarAceite(@CurrentUser() user: AuthenticatedUser, @Param('id') id: string) {
+    return this.propostas.enviarParaAceite(user, id);
   }
 
   @Get(':id')

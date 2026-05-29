@@ -14,6 +14,7 @@ import { RepScopeService } from '@shared/scope/rep-scope.service';
 import type { AuthenticatedUser } from '@shared/types/authenticated-user';
 import { type Paginated, buildPaginated } from '@shared/types/pagination';
 import { SequenceService } from '@shared/utils/sequence.service';
+import { PropostaAceiteService } from './proposta-aceite.service';
 import { PropostaExportService, type PropostaExportData } from './proposta-export.service';
 import type {
   ChangeStatusDto,
@@ -44,7 +45,21 @@ export class PropostasService {
     private readonly sequence: SequenceService,
     private readonly exportSvc: PropostaExportService,
     private readonly resend: ResendService,
+    private readonly aceiteSvc: PropostaAceiteService,
   ) {}
+
+  /**
+   * C3 — Gera link de aceite externo pra proposta. Valida acesso do user
+   * (findById com escopo), depois delega ao PropostaAceiteService que salva
+   * o token + muda status. Retorna URL pública pra enviar ao cliente.
+   */
+  async enviarParaAceite(
+    user: AuthenticatedUser,
+    id: string,
+  ): Promise<{ token: string; url: string; expiraEm: Date }> {
+    const proposta = await this.findById(user, id); // valida tenant + scope
+    return this.aceiteSvc.gerarLink(proposta.id, proposta.empresaId, proposta.status);
+  }
 
   private requireEmpresa(user: AuthenticatedUser): string {
     if (!user.empresaIdAtiva) {

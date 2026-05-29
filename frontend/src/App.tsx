@@ -16,6 +16,7 @@ import { PwaBanner } from '@/components/PwaBanner';
 // Lazy-loaded pages — code splitting per route
 const LoginPage = lazy(() => import('@/pages/LoginPage'));
 const WelcomePage = lazy(() => import('@/pages/WelcomePage'));
+const PropostaAceitePage = lazy(() => import('@/pages/PropostaAceitePage'));
 const DashboardPage = lazy(() => import('@/pages/DashboardPage'));
 const WhatsAppPage = lazy(() => import('@/pages/WhatsAppPage'));
 const AdminPage = lazy(() => import('@/pages/AdminPage'));
@@ -92,6 +93,17 @@ const router = createBrowserRouter([
       <ErrorBoundary>
         <PageSuspense>
           <WelcomePage />
+        </PageSuspense>
+      </ErrorBoundary>
+    ),
+  },
+  {
+    // C3 — Página pública de aceite de proposta (token na URL, sem login).
+    path: '/proposta/aceite/:token',
+    element: (
+      <ErrorBoundary>
+        <PageSuspense>
+          <PropostaAceitePage />
         </PageSuspense>
       </ErrorBoundary>
     ),

@@ -129,6 +129,8 @@ describe('PropostasService', () => {
       // C2 — export service + resend (mocks; não exercitados nestes specs)
       { gerarPdf: vi.fn(), gerarExcel: vi.fn() } as never,
       { isConfigured: vi.fn(() => false), enviar: vi.fn() } as never,
+      // C3 — aceite service (mock; não exercitado nestes specs)
+      { gerarLink: vi.fn(), resolverPreview: vi.fn(), registrarDecisao: vi.fn() } as never,
     );
   });
 
