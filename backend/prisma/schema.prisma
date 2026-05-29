@@ -525,6 +525,7 @@ model Produto {
   precosEspeciais ClientePrecoEspecial[]
   pedidoItens     PedidoItem[]
   catalogoReps    RepCatalogoItem[]
+  amostras        Amostra[]
 
   // Unicidade por empresa — duas empresas podem ter mesmo SKU
   @@unique([empresaId, sku])
@@ -947,8 +948,20 @@ model Amostra {
   /// Marca registros gerados pelo seed-demo.
   isDemo            Boolean       @default(false)
 
-  empresa Empresa @relation(fields: [empresaId], references: [id], onDelete: Cascade)
-  cliente Cliente @relation(fields: [clienteId], references: [id])
+  /// Lote 6 / P7 — Remessa de amostra grátis pro OMIE.
+  /// produtoId (opcional) vincula a um Produto real pra obter codigoOmie/sku —
+  /// obrigatório só na hora de enviar pro OMIE (criação avulsa por nome continua valendo).
+  produtoId     String?
+  quantidade    Float     @default(1)
+  /// CFOP usado na remessa: "5911" (mesma UF) ou "6911" (interestadual). Resolvido no envio.
+  cfop          String?
+  /// Número da remessa retornado pelo OMIE após envio (null = ainda não enviada).
+  numeroOmie    String?
+  enviadoOmieEm DateTime?
+
+  empresa Empresa  @relation(fields: [empresaId], references: [id], onDelete: Cascade)
+  cliente Cliente  @relation(fields: [clienteId], references: [id])
+  produto Produto? @relation(fields: [produtoId], references: [id])
 
   @@index([empresaId])
   @@index([status])

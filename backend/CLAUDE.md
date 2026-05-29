@@ -168,7 +168,7 @@
 - [x] **PedidoPricingService** (cálculo de totais, descontos, comissão, max desconto)
 - [x] **Propostas** (CRUD + itens + máquina de estados + conversão em pedido)
 - [x] **Comissões** (fechamento de mês agregado REP + GERENTE com snapshot de %; `Comissao.tipo` discrimina; cron mensal `ComissoesFechamentoJob` dia 1/04:00 UTC; anti-órfão ao desativar gerente; resumo pessoal pra REP/GERENTE; pagamento)
-- [x] **Amostras** (CRUD + follow-up auto-calculado + workflow ENVIADA→CONVERTIDA)
+- [x] **Amostras** (CRUD + follow-up auto-calculado + workflow ENVIADA→CONVERTIDA + **P7 remessa OMIE de amostra grátis**: vincula `produtoId` opcional + `quantidade`; `POST /amostras/:id/enviar-omie` → `OmieAmostrasService.enviarAmostra` monta remessa CFOP 5911 (mesma UF) / 6911 (interestadual, resolve por `Empresa.uf` vs `Cliente.uf`) sem destaque de tributos — cenário fiscal opcional via `OMIE_CENARIO_IMPOSTO_AMOSTRA`; persiste `numeroOmie`/`enviadoOmieEm`/`cfop`. Reusa `OmieClientService.incluirPedido` (mesmo endpoint produtos/pedido/). Funciona em demo mode; validação dos códigos fiscais reais fica pro plugue do OMIE real)
 
 ### Fase 5 — Pipeline & Atendimento
 - [x] **Leads/Kanban** (CRUD + máquina de estados + won/loss + pipeline ponderado + aging)

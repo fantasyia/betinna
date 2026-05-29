@@ -25,6 +25,14 @@ const makePrismaMock = () => ({
   cliente: {
     findFirst: vi.fn(),
   } satisfies MockModel,
+  produto: {
+    findFirst: vi.fn(),
+  } satisfies MockModel,
+});
+
+/** Mock do OmieAmostrasService (P7 — envio de remessa pro OMIE). */
+const makeOmieAmostras = () => ({
+  enviarAmostra: vi.fn(),
 });
 
 /** Replica a regra real de RepScopeService. */
@@ -70,12 +78,14 @@ const fakeAmostra = (overrides: Record<string, unknown> = {}) => ({
 describe('AmostrasService', () => {
   let prisma: ReturnType<typeof makePrismaMock>;
   let repScope: ReturnType<typeof makeRepScope>;
+  let omieAmostras: ReturnType<typeof makeOmieAmostras>;
   let service: AmostrasService;
 
   beforeEach(() => {
     prisma = makePrismaMock();
     repScope = makeRepScope();
-    service = new AmostrasService(prisma as never, repScope as never);
+    omieAmostras = makeOmieAmostras();
+    service = new AmostrasService(prisma as never, repScope as never, omieAmostras as never);
   });
 
   // -------------------------------------------------------------------------
@@ -432,6 +442,79 @@ describe('AmostrasService', () => {
         NotFoundException,
       );
       expect(prisma.amostra.deleteMany).not.toHaveBeenCalled();
+    });
+  });
+
+  // -------------------------------------------------------------------------
+  // create — vínculo de produto (P7)
+  // -------------------------------------------------------------------------
+
+  describe('create com produtoId (P7)', () => {
+    const dtoComProduto = {
+      clienteId: 'cli-1',
+      produtoNome: 'Óleo 5L',
+      produtoId: 'prod-1',
+      quantidade: 2,
+      valor: 0,
+      diasFollowUp: 7,
+    };
+
+    it('persiste produtoId e quantidade quando produto pertence à empresa', async () => {
+      prisma.cliente.findFirst.mockResolvedValue({ id: 'cli-1', representanteId: null });
+      prisma.produto.findFirst.mockResolvedValue({ id: 'prod-1' });
+      prisma.amostra.create.mockResolvedValue(fakeAmostra());
+
+      await service.create(fakeUser(), dtoComProduto);
+
+      const data = prisma.amostra.create.mock.calls[0][0].data;
+      expect(data.produtoId).toBe('prod-1');
+      expect(data.quantidade).toBe(2);
+    });
+
+    it('lança NotFoundException quando produto não pertence à empresa', async () => {
+      prisma.cliente.findFirst.mockResolvedValue({ id: 'cli-1', representanteId: null });
+      prisma.produto.findFirst.mockResolvedValue(null);
+
+      await expect(service.create(fakeUser(), dtoComProduto)).rejects.toBeInstanceOf(
+        NotFoundException,
+      );
+      expect(prisma.amostra.create).not.toHaveBeenCalled();
+    });
+  });
+
+  // -------------------------------------------------------------------------
+  // enviarParaOmie (P7)
+  // -------------------------------------------------------------------------
+
+  describe('enviarParaOmie', () => {
+    it('delega pro OmieAmostrasService com id + empresaId e retorna { amostra, omie }', async () => {
+      const am = fakeAmostra({ empresaId: 'emp-1' });
+      const enviada = fakeAmostra({ empresaId: 'emp-1', numeroOmie: '123456' });
+      // 1ª findById (valida), 2ª findById (atualizada)
+      prisma.amostra.findFirst.mockResolvedValueOnce(am).mockResolvedValueOnce(enviada);
+      const omieResult = {
+        amostraId: 'am-1',
+        numeroOmie: '123456',
+        cfop: '5911',
+        codigoStatusOmie: '0',
+        descricaoStatusOmie: 'Pedido incluído com sucesso',
+      };
+      omieAmostras.enviarAmostra.mockResolvedValue(omieResult);
+
+      const result = await service.enviarParaOmie(fakeUser(), 'am-1');
+
+      expect(omieAmostras.enviarAmostra).toHaveBeenCalledWith('am-1', 'emp-1');
+      expect(result.omie).toEqual(omieResult);
+      expect(result.amostra.numeroOmie).toBe('123456');
+    });
+
+    it('lança NotFoundException (via findById) quando amostra não existe', async () => {
+      prisma.amostra.findFirst.mockResolvedValue(null);
+
+      await expect(service.enviarParaOmie(fakeUser(), 'nao-existe')).rejects.toBeInstanceOf(
+        NotFoundException,
+      );
+      expect(omieAmostras.enviarAmostra).not.toHaveBeenCalled();
     });
   });
 });

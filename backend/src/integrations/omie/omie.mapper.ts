@@ -145,6 +145,35 @@ export class OmieMapper {
     return { ide: {}, produto };
   }
 
+  /**
+   * Converte uma amostra → item OMIE de remessa de amostra grátis.
+   *
+   * Diferenças pro item de pedido normal:
+   *  - CFOP de remessa (5911 mesma UF / 6911 interestadual) é forçado;
+   *  - valor_unitario é o valor de REFERÊNCIA (a amostra é grátis, mas o OMIE
+   *    exige um valor pra base de cálculo/estatística);
+   *  - sem desconto (não faz sentido em remessa grátis).
+   */
+  static amostraItemToOmie(item: {
+    produtoCodigoOmie: string | null;
+    produtoSku: string | null;
+    quantidade: number;
+    valorReferencia: number;
+    cfop: string;
+  }): OmiePedidoItem {
+    const produto: OmiePedidoItem['produto'] = {
+      quantidade: item.quantidade,
+      valor_unitario: item.valorReferencia,
+      cfop: item.cfop,
+    };
+    if (item.produtoCodigoOmie) {
+      produto.codigo_produto = Number(item.produtoCodigoOmie);
+    } else if (item.produtoSku) {
+      produto.codigo_produto_integracao = item.produtoSku;
+    }
+    return { ide: {}, produto };
+  }
+
   /** Date → "dd/mm/aaaa" (formato OMIE). */
   static dateToOmie(date: Date): string {
     const d = date.getUTCDate().toString().padStart(2, '0');

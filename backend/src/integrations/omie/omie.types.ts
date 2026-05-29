@@ -114,6 +114,8 @@ export interface OmiePedidoItem {
     quantidade: number;
     valor_unitario: number;
     percentual_desconto?: number;
+    /** CFOP do item. Em remessa de amostra grátis: "5911" (mesma UF) ou "6911" (interestadual). */
+    cfop?: string;
   };
   observacao?: { obs_item?: string };
 }
@@ -132,6 +134,12 @@ export interface OmieIncluirPedidoParam {
     codigo_conta_corrente?: number;
     consumidor_final?: 'S' | 'N';
     enviar_email?: 'S' | 'N';
+    /**
+     * Cenário fiscal do OMIE. Em remessa de amostra grátis aponta pra um cenário
+     * "sem destaque de tributos" cadastrado na conta OMIE do cliente. Opcional:
+     * sem ele, o OMIE aplica a tributação padrão do produto + CFOP informado.
+     */
+    codigo_cenario_imposto?: number;
   };
   observacoes?: {
     obs_venda?: string;

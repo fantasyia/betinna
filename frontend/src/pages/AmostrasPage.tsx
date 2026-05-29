@@ -29,12 +29,33 @@ interface Amostra {
   status: AmostraStatus;
   representanteNome?: string | null;
   cliente?: { id: string; nome: string };
+  // P7 — remessa OMIE
+  produtoId?: string | null;
+  quantidade?: number;
+  produto?: {
+    id: string;
+    nome: string;
+    codigoOmie?: string | null;
+    sku?: string | null;
+    unidade?: string | null;
+  } | null;
+  cfop?: string | null;
+  numeroOmie?: string | null;
+  enviadoOmieEm?: string | null;
 }
 
 interface ClienteOpt {
   id: string;
   nome: string;
   cnpj?: string | null;
+}
+
+interface ProdutoOpt {
+  id: string;
+  nome: string;
+  sku?: string | null;
+  codigoOmie?: string | null;
+  unidade?: string | null;
 }
 
 const STATUS_COLOR: Record<AmostraStatus, string> = {
@@ -348,6 +369,19 @@ function AmostraDetailModal({
       setBusy(false);
     }
   }
+  // P7 — envia a amostra como remessa de amostra grátis pro OMIE
+  async function doEnviarOmie() {
+    setBusy(true);
+    setActionError(null);
+    try {
+      await api.post(`/amostras/${id}/enviar-omie`);
+      refetch();
+    } catch (err) {
+      setActionError(err instanceof ApiError ? err.message : 'Falha ao enviar remessa ao OMIE');
+    } finally {
+      setBusy(false);
+    }
+  }
 
   const TRANSITIONS: AmostraStatus[] = [
     'AGUARDANDO_FOLLOWUP',
@@ -417,11 +451,71 @@ function AmostraDetailModal({
             <dl style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.75rem', fontSize: 14 }}>
               <Info label="Cliente">{data.cliente?.nome ?? '—'}</Info>
               <Info label="Representante">{data.representanteNome ?? '—'}</Info>
-              <Info label="Valor">{fmtBRL(data.valor)}</Info>
+              <Info label="Produto (catálogo)">
+                {data.produto?.nome ?? <em style={{ color: colors.muted }}>não vinculado</em>}
+              </Info>
+              <Info label="Quantidade">{data.quantidade ?? 1}</Info>
+              <Info label="Valor de referência">{fmtBRL(data.valor)}</Info>
               <Info label="NF">{data.notaFiscal ?? '—'}</Info>
               <Info label="Enviada em">{fmtDate(data.enviadoEm)}</Info>
               <Info label="Follow-up em">{fmtDate(data.followUpEm)}</Info>
             </dl>
+
+            {/* P7 — Remessa de amostra grátis pro OMIE */}
+            <div
+              style={{
+                borderTop: `1px solid ${colors.border}`,
+                marginTop: '1rem',
+                paddingTop: '1rem',
+              }}
+            >
+              <h3 style={{ marginTop: 0, fontSize: 14 }}>Remessa OMIE (amostra grátis)</h3>
+              {data.numeroOmie ? (
+                <div
+                  data-testid="amostra-omie-enviada"
+                  style={{
+                    ...card,
+                    background: colors.successLight,
+                    borderColor: colors.success,
+                    padding: '0.625rem 0.75rem',
+                    fontSize: 13,
+                  }}
+                >
+                  ✅ Remessa enviada — OMIE <strong>#{data.numeroOmie}</strong>
+                  {data.cfop ? ` · CFOP ${data.cfop}` : ''}
+                  {data.enviadoOmieEm ? ` · ${fmtDate(data.enviadoOmieEm)}` : ''}
+                </div>
+              ) : (
+                <div>
+                  <p style={{ fontSize: 12, color: colors.muted, margin: '0 0 0.5rem' }}>
+                    Gera uma remessa de amostra grátis no OMIE (CFOP 5911/6911, sem destaque de
+                    tributos). Requer produto do catálogo vinculado e cliente sincronizado com OMIE.
+                  </p>
+                  {!data.produto && (
+                    <p
+                      data-testid="amostra-omie-sem-produto"
+                      style={{ fontSize: 12, color: colors.warning, margin: '0 0 0.5rem' }}
+                    >
+                      ⚠️ Esta amostra não tem produto do catálogo vinculado — edite e selecione um
+                      produto antes de enviar.
+                    </p>
+                  )}
+                  <button
+                    type="button"
+                    data-testid="amostra-enviar-omie"
+                    disabled={busy || !data.produto}
+                    onClick={doEnviarOmie}
+                    style={{
+                      ...btn,
+                      opacity: busy || !data.produto ? 0.5 : 1,
+                      cursor: busy || !data.produto ? 'not-allowed' : 'pointer',
+                    }}
+                  >
+                    {busy ? 'Enviando…' : 'Enviar remessa ao OMIE'}
+                  </button>
+                </div>
+              )}
+            </div>
 
             <div
               style={{
@@ -524,13 +618,21 @@ function AmostraFormModal({
   onSaved: () => void;
 }) {
   const [cliente, setCliente] = useState<ClienteOpt | null>(null);
+  const [produto, setProduto] = useState<ProdutoOpt | null>(null);
   const [produtoNome, setProdutoNome] = useState('');
+  const [quantidade, setQuantidade] = useState('1');
   const [valor, setValor] = useState('');
   const [notaFiscal, setNotaFiscal] = useState('');
   const [enviadoEm, setEnviadoEm] = useState('');
   const [diasFollowUp, setDiasFollowUp] = useState(5);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  // Ao escolher um produto do catálogo, preenche o nome automaticamente se vazio.
+  function onPickProduto(p: ProdutoOpt | null) {
+    setProduto(p);
+    if (p && !produtoNome.trim()) setProdutoNome(p.nome);
+  }
 
   async function submit(e: React.FormEvent) {
     e.preventDefault();
@@ -547,14 +649,21 @@ function AmostraFormModal({
       setError('Valor inválido — informe um número >= 0.');
       return;
     }
+    const qtdNum = Number(quantidade);
+    if (Number.isNaN(qtdNum) || qtdNum <= 0) {
+      setError('Quantidade inválida — informe um número maior que zero.');
+      return;
+    }
     setBusy(true);
     setError(null);
     const payload: Record<string, unknown> = {
       clienteId: cliente.id,
       produtoNome: produtoNome.trim(),
+      quantidade: qtdNum,
       valor: Number(valor),
       diasFollowUp,
     };
+    if (produto) payload.produtoId = produto.id;
     if (notaFiscal.trim()) payload.notaFiscal = notaFiscal.trim();
     if (enviadoEm) payload.enviadoEm = enviadoEm;
     try {
@@ -602,6 +711,21 @@ function AmostraFormModal({
             onChange={setCliente}
           />
         </FormField>
+        <FormField
+          label="Produto do catálogo"
+          hint="Opcional. Necessário pra enviar a remessa ao OMIE (puxa o código OMIE do produto)."
+        >
+          <AsyncCombobox<ProdutoOpt>
+            testId="produto-picker"
+            endpoint="/produtos"
+            placeholder="Buscar produto do catálogo…"
+            getLabel={(p) => p.nome}
+            getSubLabel={(p) => p.sku ?? p.codigoOmie ?? null}
+            getId={(p) => p.id}
+            value={produto}
+            onChange={onPickProduto}
+          />
+        </FormField>
         <FormField label="Produto" htmlFor="am-prod" required hint="Pode digitar mesmo se não estiver no catálogo">
           <Input
             id="am-prod"
@@ -613,8 +737,20 @@ function AmostraFormModal({
             required
           />
         </FormField>
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '0.75rem' }}>
-          <FormField label="Valor" htmlFor="am-val" required>
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.75rem' }}>
+          <FormField label="Quantidade" htmlFor="am-qtd" required hint="Amostra = quantidade reduzida">
+            <Input
+              id="am-qtd"
+              data-testid="amostra-quantidade-input"
+              type="number"
+              min={0}
+              step="0.01"
+              value={quantidade}
+              onChange={(e) => setQuantidade(e.target.value)}
+              required
+            />
+          </FormField>
+          <FormField label="Valor de referência" htmlFor="am-val" required hint="Valor unitário (a amostra é grátis)">
             <Input
               id="am-val"
               data-testid="amostra-valor-input"
@@ -626,6 +762,8 @@ function AmostraFormModal({
               required
             />
           </FormField>
+        </div>
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.75rem' }}>
           <FormField label="Nota fiscal" htmlFor="am-nf">
             <Input
               id="am-nf"

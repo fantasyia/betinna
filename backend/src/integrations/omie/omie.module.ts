@@ -1,5 +1,6 @@
 import { Module } from '@nestjs/common';
 import { NotificacoesModule } from '@modules/notificacoes/notificacoes.module';
+import { OmieAmostrasService } from './omie-amostras.service';
 import { OmieClientService } from './omie-client.service';
 import { OmieClientesService } from './omie-clientes.service';
 import { OmieController } from './omie.controller';
@@ -28,6 +29,7 @@ import { OmieWebhookController } from './omie-webhook.controller';
     OmieClientesService,
     OmieProdutosService,
     OmiePedidosService,
+    OmieAmostrasService,
     OmieSyncJob,
     OmieEstoqueJob,
   ],
@@ -36,6 +38,7 @@ import { OmieWebhookController } from './omie-webhook.controller';
     OmieClientesService,
     OmieProdutosService,
     OmiePedidosService,
+    OmieAmostrasService,
     OmieSyncJob,
     OmieEstoqueJob,
   ],

@@ -4,6 +4,10 @@ import { z } from 'zod';
 export const createAmostraSchema = z.object({
   clienteId: z.string().cuid(),
   produtoNome: z.string().trim().min(2).max(200),
+  /** Produto do catálogo (opcional). Obrigatório só pra enviar a remessa ao OMIE (P7). */
+  produtoId: z.string().cuid().optional(),
+  /** Quantidade enviada. Amostra grátis = quantidade reduzida. Default 1. */
+  quantidade: z.number().positive().max(100000).default(1),
   valor: z.number().min(0),
   notaFiscal: z.string().max(50).optional(),
   enviadoEm: z.coerce.date().optional(),
@@ -15,6 +19,8 @@ export type CreateAmostraDto = z.infer<typeof createAmostraSchema>;
 
 export const updateAmostraSchema = z.object({
   produtoNome: z.string().min(2).max(200).optional(),
+  produtoId: z.string().cuid().nullable().optional(),
+  quantidade: z.number().positive().max(100000).optional(),
   valor: z.number().min(0).optional(),
   notaFiscal: z.string().max(50).optional(),
   followUpEm: z.coerce.date().optional(),

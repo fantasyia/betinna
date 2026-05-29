@@ -1,6 +1,10 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { PrismaService } from '@database/prisma.service';
+import {
+  OmieAmostrasService,
+  type OmieAmostraEnvioResult,
+} from '@integrations/omie/omie-amostras.service';
 import { ForbiddenException, NotFoundException } from '@shared/errors/app-exception';
 import { ErrorCode } from '@shared/errors/error-codes';
 import { RepScopeService } from '@shared/scope/rep-scope.service';
@@ -15,6 +19,7 @@ import type {
 
 const amostraInclude = {
   cliente: { select: { id: true, nome: true, cnpj: true } },
+  produto: { select: { id: true, nome: true, codigoOmie: true, sku: true, unidade: true } },
 } satisfies Prisma.AmostraInclude;
 
 type AmostraWithRel = Prisma.AmostraGetPayload<{ include: typeof amostraInclude }>;
@@ -35,6 +40,7 @@ export class AmostrasService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly repScope: RepScopeService,
+    private readonly omieAmostras: OmieAmostrasService,
   ) {}
 
   private requireEmpresa(user: AuthenticatedUser): string {
@@ -104,6 +110,15 @@ export class AmostrasService {
       throw new ForbiddenException('Cliente não pertence à sua carteira');
     }
 
+    // P7 — se vincular produto do catálogo, valida que pertence à empresa.
+    if (dto.produtoId) {
+      const produto = await this.prisma.produto.findFirst({
+        where: { id: dto.produtoId, empresaId },
+        select: { id: true },
+      });
+      if (!produto) throw new NotFoundException('Produto', dto.produtoId);
+    }
+
     const enviadoEm = dto.enviadoEm ?? new Date();
     const followUpEm = new Date(enviadoEm.getTime() + dto.diasFollowUp * 24 * 60 * 60 * 1000);
 
@@ -112,6 +127,8 @@ export class AmostrasService {
         empresaId,
         clienteId: dto.clienteId,
         produtoNome: dto.produtoNome,
+        produtoId: dto.produtoId,
+        quantidade: dto.quantidade,
         valor: dto.valor,
         notaFiscal: dto.notaFiscal,
         enviadoEm,
@@ -129,6 +146,14 @@ export class AmostrasService {
     dto: UpdateAmostraDto,
   ): Promise<AmostraWithRel> {
     const existing = await this.findById(user, id);
+    // P7 — valida vínculo de produto (quando trocado) contra o tenant.
+    if (dto.produtoId) {
+      const produto = await this.prisma.produto.findFirst({
+        where: { id: dto.produtoId, empresaId: existing.empresaId },
+        select: { id: true },
+      });
+      if (!produto) throw new NotFoundException('Produto', dto.produtoId);
+    }
     await this.prisma.amostra.updateMany({
       where: { id, empresaId: existing.empresaId },
       data: dto,
@@ -152,5 +177,22 @@ export class AmostrasService {
   async remove(user: AuthenticatedUser, id: string): Promise<void> {
     const existing = await this.findById(user, id);
     await this.prisma.amostra.deleteMany({ where: { id, empresaId: existing.empresaId } });
+  }
+
+  /**
+   * P7 — Envia a amostra como remessa de amostra grátis pro OMIE.
+   *
+   * findById valida tenant + carteira do rep. As pré-condições fiscais
+   * (produto vinculado com codigoOmie, cliente ATIVO com codigoOmie, etc.)
+   * ficam no OmieAmostrasService, que também persiste numeroOmie/enviadoOmieEm/cfop.
+   */
+  async enviarParaOmie(
+    user: AuthenticatedUser,
+    id: string,
+  ): Promise<{ amostra: AmostraWithRel; omie: OmieAmostraEnvioResult }> {
+    const amostra = await this.findById(user, id);
+    const omie = await this.omieAmostras.enviarAmostra(id, amostra.empresaId);
+    const atualizada = await this.findById(user, id);
+    return { amostra: atualizada, omie };
   }
 }

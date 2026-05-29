@@ -63,6 +63,20 @@ export const envSchema = z
      * o produto não está em nenhuma tabela auxiliar.
      */
     OMIE_PRECO_FABRICA_RATIO: z.coerce.number().min(0).max(1).default(0.7),
+    /**
+     * P7 — Remessa de amostra grátis. CFOP usado quando cliente e empresa
+     * estão na MESMA UF (5911) ou em UFs diferentes (6911). Defaults são os
+     * CFOPs padrão de "remessa de amostra grátis"; ajustáveis se a contabilidade
+     * do cliente usar outros.
+     */
+    OMIE_CFOP_AMOSTRA_UF: z.string().default('5911'),
+    OMIE_CFOP_AMOSTRA_INTERESTADUAL: z.string().default('6911'),
+    /**
+     * Código do cenário fiscal "sem destaque de tributos" cadastrado na conta
+     * OMIE do cliente, aplicado às remessas de amostra. Opcional (0 = não envia
+     * cenário; OMIE usa a tributação padrão do produto com o CFOP informado).
+     */
+    OMIE_CENARIO_IMPOSTO_AMOSTRA: z.coerce.number().int().min(0).default(0),
 
     // WhatsApp Business Cloud
     WHATSAPP_ACCESS_TOKEN: z.string().optional().default(''),
