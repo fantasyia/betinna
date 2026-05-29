@@ -14,13 +14,11 @@ import type { Prisma } from '@prisma/client';
  * - `idsResolver`: função que retorna IDs dos clientes a incluir
  */
 export type ListaDinamicaKey =
-  | 'vip'
   | 'risco'
   | 'criticos'
   | 'novos'
   | 'horeca'
-  | 'inadimplentes'
-  | 'top10';
+  | 'inadimplentes';
 
 export interface ListaDinamicaDefinicao {
   key: ListaDinamicaKey;
@@ -47,27 +45,18 @@ export class ListasDinamicasService {
    */
   definicoes: ListaDinamicaDefinicao[] = [
     {
-      key: 'vip',
-      nome: '🔥 VIP — alta receita',
-      descricao: 'Score >= 80 e status ativo',
-      cor: 'var(--purple)',
-      where: { score: { gte: 80 }, status: 'ATIVO' },
-    },
-    {
       key: 'risco',
       nome: '⚠️ Em risco',
-      descricao: 'Score entre 30 e 60 ou status em risco',
+      descricao: 'Clientes com status "Em risco"',
       cor: '#d97706',
-      where: {
-        OR: [{ status: 'RISCO' }, { AND: [{ score: { gte: 30 } }, { score: { lt: 60 } }] }],
-      },
+      where: { status: 'RISCO' },
     },
     {
       key: 'criticos',
       nome: '🔴 Críticos',
-      descricao: 'Score < 30 ou status crítico',
+      descricao: 'Clientes com status "Crítico"',
       cor: 'var(--rd)',
-      where: { OR: [{ status: 'CRITICO' }, { score: { lt: 30 } }] },
+      where: { status: 'CRITICO' },
     },
     {
       key: 'novos',
@@ -89,13 +78,6 @@ export class ListasDinamicasService {
       descricao: 'Bloqueados no OMIE',
       cor: 'var(--rd)',
       where: { omieStatus: 'BLOQUEADO' },
-    },
-    {
-      key: 'top10',
-      nome: '⭐ Top 10 ticket',
-      descricao: '10 maiores tickets — calculado quando houver pedidos',
-      cor: 'var(--gn)',
-      where: {}, // substituído por orderBy + take=10 no service
     },
   ];
 }

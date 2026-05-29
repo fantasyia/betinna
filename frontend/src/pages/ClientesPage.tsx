@@ -84,7 +84,6 @@ interface Cliente {
   segmento?: string | null;
   status: ClienteStatus;
   omieStatus: OmieStatus;
-  score: number;
   representante?: { id: string; nome: string } | null;
   tags?: Array<{ id: string; nome: string; cor?: string | null }>;
   criadoEm?: string;
@@ -215,7 +214,6 @@ export default function ClientesPage() {
         { header: 'Segmento', value: (c: Cliente) => c.segmento ?? '' },
         { header: 'Status', value: (c: Cliente) => c.status },
         { header: 'OMIE', value: (c: Cliente) => c.omieStatus },
-        { header: 'Score', value: (c: Cliente) => c.score },
         { header: 'Representante', value: (c: Cliente) => c.representante?.nome ?? '' },
       ];
       const filename = `clientes-${data}.${formato}`;
@@ -413,7 +411,6 @@ export default function ClientesPage() {
                       <Th>Representante</Th>
                       <Th>Status</Th>
                       <Th>OMIE</Th>
-                      <Th align="right">Score</Th>
                       <th className="w-10" />
                     </tr>
                   </thead>
@@ -484,9 +481,6 @@ export default function ClientesPage() {
                             <Badge variant={OMIE_VARIANT[c.omieStatus]} size="sm">
                               {c.omieStatus === 'ATIVO' ? 'Ativo' : 'Bloqueado'}
                             </Badge>
-                          </Td>
-                          <Td align="right">
-                            <ScorePill score={c.score} />
                           </Td>
                           <Td onClick={(e) => e.stopPropagation()}>
                             <IconButton
@@ -642,16 +636,6 @@ function Td({
     >
       {children}
     </td>
-  );
-}
-
-function ScorePill({ score }: { score: number }) {
-  const tone =
-    score >= 70 ? 'success' : score >= 40 ? 'warning' : 'danger';
-  return (
-    <Badge variant={tone} className="tabular min-w-[36px] justify-center">
-      {score}
-    </Badge>
   );
 }
 
@@ -876,7 +860,6 @@ function ClienteDetailDrawer({
                 <Badge variant={OMIE_VARIANT[data.omieStatus]} size="sm">
                   OMIE {data.omieStatus === 'ATIVO' ? 'ativo' : 'bloqueado'}
                 </Badge>
-                <ScorePill score={data.score} />
               </div>
             </div>
           </div>
@@ -1115,7 +1098,6 @@ interface FormState {
   uf: string;
   status: ClienteStatus;
   omieStatus: OmieStatus;
-  score: number;
   prazoPagamento: number;
 }
 
@@ -1136,7 +1118,6 @@ function emptyForm(c?: Cliente | null): FormState {
     uf: cc.uf ?? '',
     status: cc.status ?? 'NOVO',
     omieStatus: cc.omieStatus ?? 'ATIVO',
-    score: cc.score ?? 50,
     prazoPagamento: 30,
   };
 }
@@ -1212,7 +1193,6 @@ function ClienteFormModal({
       nome: form.nome.trim(),
       status: form.status,
       omieStatus: form.omieStatus,
-      score: form.score,
       prazoPagamento: form.prazoPagamento,
     };
     const optional = [
@@ -1401,7 +1381,7 @@ function ClienteFormModal({
           <h4 className="text-[10px] font-semibold uppercase tracking-wider text-muted mb-2">
             Operação
           </h4>
-          <div className="grid gap-3 grid-cols-2 md:grid-cols-4">
+          <div className="grid gap-3 grid-cols-2 md:grid-cols-3">
             <Field label="Status">
               <Select
                 value={form.status}
@@ -1422,15 +1402,6 @@ function ClienteFormModal({
                 <option value="ATIVO">Ativo</option>
                 <option value="BLOQUEADO">Bloqueado</option>
               </Select>
-            </Field>
-            <Field label="Score">
-              <Input
-                type="number"
-                min={0}
-                max={100}
-                value={form.score}
-                onChange={(e) => setField('score', Number(e.target.value))}
-              />
             </Field>
             <Field label="Prazo (dias)">
               <Input

@@ -102,7 +102,6 @@ export class SegmentosService {
           uf: true,
           segmento: true,
           status: true,
-          score: true,
           representante: { select: { id: true, nome: true } },
         },
       }),

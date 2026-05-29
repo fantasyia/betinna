@@ -11,7 +11,7 @@ import { z } from 'zod';
  *    logic: 'AND',
  *    conditions: [
  *      { campo: 'status', op: 'eq', valor: 'ATIVO' },
- *      { campo: 'score', op: 'gte', valor: 70 }
+ *      { campo: 'prazoPagamento', op: 'gte', valor: 30 }
  *    ]
  *  }
  */
@@ -22,7 +22,6 @@ export const FILTRO_CAMPOS = [
   'cidade',
   'uf',
   'regiao',
-  'score',
   'prazoPagamento',
   'limiteCredito',
   'representanteId',

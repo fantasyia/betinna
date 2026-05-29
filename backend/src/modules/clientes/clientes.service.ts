@@ -88,24 +88,16 @@ export class ClientesService {
     if (params.omieStatus) conditions.push({ omieStatus: params.omieStatus });
     if (params.representanteId) conditions.push({ representanteId: params.representanteId });
     if (params.tagId) conditions.push({ tags: { some: { tagId: params.tagId } } });
-    if (params.scoreMin !== undefined) conditions.push({ score: { gte: params.scoreMin } });
-    if (params.scoreMax !== undefined) conditions.push({ score: { lte: params.scoreMax } });
 
-    // Lista dinâmica adiciona uma condição declarativa (exceto top10 que é orderBy+take)
-    let take = params.limit;
-    let skip = (params.page - 1) * params.limit;
-    let orderBy: Prisma.ClienteOrderByWithRelationInput | Prisma.ClienteOrderByWithRelationInput[] =
-      { [params.sortBy]: params.sortOrder };
+    const take = params.limit;
+    const skip = (params.page - 1) * params.limit;
+    const orderBy: Prisma.ClienteOrderByWithRelationInput = {
+      [params.sortBy]: params.sortOrder,
+    };
 
+    // Lista dinâmica adiciona uma condição declarativa ao WHERE.
     if (params.lista) {
-      if (params.lista === 'top10') {
-        // Top 10 por score (proxy de ticket até termos tabela de pedidos com fatura real)
-        orderBy = [{ score: 'desc' }, { criadoEm: 'desc' }];
-        take = Math.min(params.limit, 10);
-        skip = 0;
-      } else {
-        conditions.push(this.listas.whereFor(params.lista));
-      }
+      conditions.push(this.listas.whereFor(params.lista));
     }
 
     if (conditions.length > 0) {

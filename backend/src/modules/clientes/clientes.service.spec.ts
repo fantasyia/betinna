@@ -198,7 +198,8 @@ describe('ClientesService', () => {
   });
 
   describe('listas dinâmicas', () => {
-    it('lista "criticos" inclui where com score < 30 OU status CRITICO', async () => {
+    // CL2 (Lote 7): score removido. "criticos" agora filtra só pelo Status.
+    it('lista "criticos" aplica where com status CRITICO', async () => {
       const user = fakeUser();
       prisma.cliente.count.mockResolvedValue(0);
       prisma.cliente.findMany.mockResolvedValue([]);
@@ -211,26 +212,22 @@ describe('ClientesService', () => {
       });
       const where = prisma.cliente.findMany.mock.calls[0][0].where;
       expect(where.AND).toBeDefined();
-      const criticosCond = where.AND.find(
-        (c: { OR?: unknown[] }) => Array.isArray(c.OR) && c.OR.length === 2,
-      );
-      expect(criticosCond).toBeDefined();
+      expect(where.AND).toContainEqual({ status: 'CRITICO' });
     });
 
-    it('lista "top10" usa orderBy por score desc e take=10', async () => {
+    it('lista "risco" aplica where com status RISCO', async () => {
       const user = fakeUser();
       prisma.cliente.count.mockResolvedValue(0);
       prisma.cliente.findMany.mockResolvedValue([]);
       await service.list(user, {
         page: 1,
-        limit: 50,
+        limit: 20,
         sortBy: 'criadoEm',
         sortOrder: 'desc',
-        lista: 'top10',
+        lista: 'risco',
       });
-      const args = prisma.cliente.findMany.mock.calls[0][0];
-      expect(args.take).toBe(10);
-      expect(args.skip).toBe(0);
+      const where = prisma.cliente.findMany.mock.calls[0][0].where;
+      expect(where.AND).toContainEqual({ status: 'RISCO' });
     });
   });
 

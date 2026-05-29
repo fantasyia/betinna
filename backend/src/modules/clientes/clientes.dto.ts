@@ -5,9 +5,6 @@ import { cnpjSchema, cepSchema, telefoneBrSchema } from '@shared/validators/br-v
 const clienteStatusEnum = z.nativeEnum(ClienteStatus);
 const omieStatusEnum = z.nativeEnum(ClienteOmieStatus);
 
-const SCORE_MIN = 0;
-const SCORE_MAX = 100;
-
 const UF_REGEX = /^[A-Z]{2}$/;
 
 /**
@@ -39,7 +36,6 @@ export const createClienteSchema = z.object({
   codigoOmie: z.string().max(50).optional(),
   status: clienteStatusEnum.default('NOVO'),
   omieStatus: omieStatusEnum.default('ATIVO'),
-  score: z.number().int().min(SCORE_MIN).max(SCORE_MAX).default(50),
   prazoPagamento: z.number().int().min(0).max(180).default(30),
   limiteCredito: z.number().min(0).optional(),
   representanteId: z.string().cuid().optional(),
@@ -55,7 +51,7 @@ export const listClientesSchema = z.object({
   page: z.coerce.number().int().positive().default(1),
   limit: z.coerce.number().int().positive().max(100).default(20),
   sortBy: z
-    .enum(['nome', 'criadoEm', 'atualizadoEm', 'score', 'ultimoPedidoEm'])
+    .enum(['nome', 'criadoEm', 'atualizadoEm', 'ultimoPedidoEm'])
     .default('criadoEm'),
   sortOrder: z.enum(['asc', 'desc']).default('desc'),
   search: z.string().optional(),
@@ -65,12 +61,8 @@ export const listClientesSchema = z.object({
   omieStatus: omieStatusEnum.optional(),
   representanteId: z.string().cuid().optional(),
   tagId: z.string().cuid().optional(),
-  /** ID da lista dinâmica (vip, risco, criticos, novos, horeca, inadimplentes, top10) */
-  lista: z
-    .enum(['vip', 'risco', 'criticos', 'novos', 'horeca', 'inadimplentes', 'top10'])
-    .optional(),
-  scoreMin: z.coerce.number().int().min(SCORE_MIN).max(SCORE_MAX).optional(),
-  scoreMax: z.coerce.number().int().min(SCORE_MIN).max(SCORE_MAX).optional(),
+  /** ID da lista dinâmica (risco, criticos, novos, horeca, inadimplentes) */
+  lista: z.enum(['risco', 'criticos', 'novos', 'horeca', 'inadimplentes']).optional(),
 });
 export type ListClientesDto = z.infer<typeof listClientesSchema>;
 

@@ -40,7 +40,6 @@ type FiltroCampo =
   | 'cidade'
   | 'uf'
   | 'regiao'
-  | 'score'
   | 'prazoPagamento'
   | 'limiteCredito'
   | 'representanteId';
@@ -75,7 +74,6 @@ interface PreviewResult {
     cidade?: string | null;
     uf?: string | null;
     status: string;
-    score: number;
     representante?: { nome: string } | null;
   }>;
   total: number;
@@ -88,7 +86,6 @@ const CAMPO_LABEL: Record<FiltroCampo, string> = {
   cidade: 'Cidade',
   uf: 'UF',
   regiao: 'Região',
-  score: 'Score',
   prazoPagamento: 'Prazo (dias)',
   limiteCredito: 'Limite crédito',
   representanteId: 'Representante (ID)',
@@ -112,7 +109,6 @@ const CAMPO_OPS: Record<FiltroCampo, FiltroOp[]> = {
   cidade: ['eq', 'neq', 'contains'],
   uf: ['eq', 'neq', 'in'],
   regiao: ['eq', 'neq', 'contains'],
-  score: ['eq', 'neq', 'gt', 'gte', 'lt', 'lte'],
   prazoPagamento: ['eq', 'neq', 'gt', 'gte', 'lt', 'lte'],
   limiteCredito: ['eq', 'neq', 'gt', 'gte', 'lt', 'lte'],
   representanteId: ['eq', 'neq'],
@@ -174,7 +170,7 @@ export default function SegmentosPage() {
           <EmptyState
             icon={<PieChart />}
             title="Nenhum segmento criado"
-            description="Crie um segmento pra agrupar clientes por status, score, região, etc."
+            description="Crie um segmento pra agrupar clientes por status, região, segmento, etc."
             action={
               <Button onClick={() => setEditing('new')} leftIcon={<Plus className="h-3.5 w-3.5" />}>
                 Criar primeiro segmento
@@ -322,7 +318,6 @@ function SegmentoViewer({
                     <Th>Local</Th>
                     <Th>Representante</Th>
                     <Th>Status</Th>
-                    <Th align="right">Score</Th>
                   </tr>
                 </thead>
                 <tbody>
@@ -352,9 +347,6 @@ function SegmentoViewer({
                       </Td>
                       <Td>
                         <Badge variant="neutral">{c.status}</Badge>
-                      </Td>
-                      <Td align="right">
-                        <span className="text-sm font-semibold tabular text-text">{c.score}</span>
                       </Td>
                     </tr>
                   ))}
@@ -621,9 +613,6 @@ function SegmentoBuilder({
                         </div>
                       )}
                     </div>
-                    <Badge variant="neutral" size="sm">
-                      {c.score}
-                    </Badge>
                   </div>
                 ))}
                 {preview.clientes.length === 0 && (
@@ -702,7 +691,7 @@ function ConditionRow({
             onChange({ valor: e.target.value.split(',').map((s) => s.trim()).filter(Boolean) });
           } else {
             // Tenta converter pra número se campo é numérico
-            const numCampos = ['score', 'prazoPagamento', 'limiteCredito'];
+            const numCampos = ['prazoPagamento', 'limiteCredito'];
             const v = e.target.value;
             if (numCampos.includes(condition.campo) && v !== '') {
               const n = Number(v);

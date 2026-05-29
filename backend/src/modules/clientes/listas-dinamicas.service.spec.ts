@@ -12,23 +12,15 @@ describe('ListasDinamicasService', () => {
   const service = new ListasDinamicasService();
 
   describe('whereFor', () => {
-    it('vip — score >= 80 e status ATIVO', () => {
-      const where = service.whereFor('vip');
-      expect(where).toEqual({ score: { gte: 80 }, status: 'ATIVO' });
-    });
-
-    it('risco — inclui status RISCO ou score entre 30 e 60', () => {
+    // CL2 (Lote 7): score removido. risco/criticos passam a usar o campo Status.
+    it('risco — status RISCO', () => {
       const where = service.whereFor('risco');
-      expect(where).toMatchObject({ OR: expect.any(Array) });
-      const or = (where as { OR: unknown[] }).OR;
-      expect(or).toContainEqual({ status: 'RISCO' });
+      expect(where).toEqual({ status: 'RISCO' });
     });
 
-    it('criticos — score < 30 ou status CRITICO', () => {
+    it('criticos — status CRITICO', () => {
       const where = service.whereFor('criticos');
-      const or = (where as { OR: unknown[] }).OR;
-      expect(or).toContainEqual({ status: 'CRITICO' });
-      expect(or).toContainEqual({ score: { lt: 30 } });
+      expect(where).toEqual({ status: 'CRITICO' });
     });
 
     it('novos — status NOVO', () => {
@@ -48,9 +40,10 @@ describe('ListasDinamicasService', () => {
       expect(where).toEqual({ omieStatus: 'BLOQUEADO' });
     });
 
-    it('top10 — where vazio (filtro aplicado via orderBy+take no service)', () => {
-      const where = service.whereFor('top10');
-      expect(where).toEqual({});
+    it('nenhuma definição usa o campo score (removido no Lote 7)', () => {
+      for (const def of service.definicoes) {
+        expect(JSON.stringify(def.where)).not.toContain('score');
+      }
     });
 
     it('chave desconhecida → retorna where vazio', () => {
@@ -60,8 +53,8 @@ describe('ListasDinamicasService', () => {
   });
 
   describe('definicoes', () => {
-    it('tem 7 definições', () => {
-      expect(service.definicoes).toHaveLength(7);
+    it('tem 5 definições', () => {
+      expect(service.definicoes).toHaveLength(5);
     });
 
     it('cada definição tem key, nome, descricao, cor e where', () => {
@@ -79,15 +72,15 @@ describe('ListasDinamicasService', () => {
       expect(new Set(keys).size).toBe(keys.length);
     });
 
-    it('contém as chaves esperadas', () => {
+    it('contém as chaves esperadas (sem vip/top10 — removidas no Lote 7)', () => {
       const keys = service.definicoes.map((d) => d.key);
-      expect(keys).toContain('vip');
       expect(keys).toContain('risco');
       expect(keys).toContain('criticos');
       expect(keys).toContain('novos');
       expect(keys).toContain('horeca');
       expect(keys).toContain('inadimplentes');
-      expect(keys).toContain('top10');
+      expect(keys).not.toContain('vip');
+      expect(keys).not.toContain('top10');
     });
   });
 });
