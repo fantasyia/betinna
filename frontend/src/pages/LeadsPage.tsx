@@ -31,7 +31,8 @@ import { useToast } from '@/components/toast';
 import { PageLayout } from '@/components/PageLayout';
 import { CrmTabs } from '@/components/CrmTabs';
 import { StateView } from '@/components/StateView';
-import { maskTelefone, normalizeUF } from '@/lib/masks';
+import { maskTelefone } from '@/lib/masks';
+import { UfSelect, CidadeSelect } from '@/components/LocalidadeSelects';
 import {
   Avatar,
   Badge,
@@ -1017,16 +1018,19 @@ function LeadFormModal({
         </Field>
 
         <div className="grid grid-cols-2 gap-3">
-          <Field label="Cidade">
-            <Input value={form.cidade} onChange={(e) => setF('cidade', e.target.value)} />
-          </Field>
           <Field label="UF" error={fieldErrors.uf}>
-            <Input
-              data-testid="lead-uf-input"
-              maxLength={2}
+            <UfSelect
+              testId="lead-uf-select"
               value={form.uf}
-              onChange={(e) => setF('uf', normalizeUF(e.target.value))}
-              placeholder="SP"
+              onChange={(uf) => setForm((s) => ({ ...s, uf, cidade: '' }))}
+            />
+          </Field>
+          <Field label="Cidade">
+            <CidadeSelect
+              testId="lead-cidade-select"
+              uf={form.uf}
+              value={form.cidade}
+              onChange={(cidade) => setF('cidade', cidade)}
             />
           </Field>
           <Field label="Segmento">

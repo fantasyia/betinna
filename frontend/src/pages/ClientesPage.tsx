@@ -30,7 +30,9 @@ import { CrmTabs } from '@/components/CrmTabs';
 import { StateView } from '@/components/StateView';
 import { AsyncCombobox } from '@/components/AsyncCombobox';
 import { useToast } from '@/components/toast';
-import { isValidCNPJ, maskCEP, maskCNPJ, maskTelefone, normalizeUF, stripMask } from '@/lib/masks';
+import { isValidCNPJ, maskCEP, maskCNPJ, maskTelefone, stripMask } from '@/lib/masks';
+import { fetchCep } from '@/lib/localidades';
+import { UfSelect, CidadeSelect } from '@/components/LocalidadeSelects';
 import { exportToCsv } from '@/lib/csv';
 import { exportToXlsx } from '@/lib/xlsx';
 import { exportToDocx } from '@/lib/docx';
@@ -1494,6 +1496,27 @@ function ClienteFormModal({
     setForm((f) => ({ ...f, [key]: value }));
   }
 
+  // CL4 — ao completar o CEP, busca o endereço no ViaCEP e preenche o resto.
+  const [cepBusy, setCepBusy] = useState(false);
+  async function preencherPorCep() {
+    if (stripMask(form.cep).length !== 8) return;
+    setCepBusy(true);
+    try {
+      const r = await fetchCep(form.cep);
+      if (r) {
+        setForm((f) => ({
+          ...f,
+          endereco: r.logradouro || f.endereco,
+          bairro: r.bairro || f.bairro,
+          cidade: r.cidade || f.cidade,
+          uf: r.uf || f.uf,
+        }));
+      }
+    } finally {
+      setCepBusy(false);
+    }
+  }
+
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     setError(null);
@@ -1664,10 +1687,11 @@ function ClienteFormModal({
             Endereço
           </h4>
           <div className="grid gap-3 grid-cols-1 md:grid-cols-[160px_1fr_120px]">
-            <Field label="CEP" required hint="00000-000">
+            <Field label="CEP" required hint={cepBusy ? 'Buscando endereço…' : 'preenche o resto'}>
               <Input
                 value={form.cep}
                 onChange={(e) => setField('cep', maskCEP(e.target.value))}
+                onBlur={() => void preencherPorCep()}
                 placeholder="00000-000"
                 maxLength={9}
                 inputMode="numeric"
@@ -1709,21 +1733,19 @@ function ClienteFormModal({
                 required
               />
             </Field>
-            <Field label="Cidade" required>
-              <Input
-                value={form.cidade}
-                onChange={(e) => setField('cidade', e.target.value)}
-                maxLength={100}
-                required
+            <Field label="UF" required>
+              <UfSelect
+                testId="cliente-uf-select"
+                value={form.uf}
+                onChange={(uf) => setForm((f) => ({ ...f, uf, cidade: '' }))}
               />
             </Field>
-            <Field label="UF" required>
-              <Input
-                maxLength={2}
-                value={form.uf}
-                onChange={(e) => setField('uf', normalizeUF(e.target.value))}
-                placeholder="SP"
-                required
+            <Field label="Cidade" required hint={form.uf ? undefined : 'Escolha a UF primeiro'}>
+              <CidadeSelect
+                testId="cliente-cidade-select"
+                uf={form.uf}
+                value={form.cidade}
+                onChange={(cidade) => setField('cidade', cidade)}
               />
             </Field>
           </div>

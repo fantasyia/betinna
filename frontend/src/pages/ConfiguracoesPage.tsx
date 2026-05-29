@@ -14,7 +14,8 @@ import { FormField, Input, Select } from '@/components/FormField';
 import { LogoUploader } from '@/components/LogoUploader';
 import { useToast } from '@/components/toast';
 import { currentEmpresaId } from '@/lib/auth-store';
-import { maskCNPJ, normalizeUF } from '@/lib/masks';
+import { maskCNPJ } from '@/lib/masks';
+import { UfSelect, CidadeSelect } from '@/components/LocalidadeSelects';
 import { badge, btn, btnDanger, btnSecondary, card, colors } from '@/components/styles';
 
 // Cores oficiais brandbook usadas no tabs strip
@@ -735,17 +736,19 @@ function EmpresaFormModal({
               onChange={(e) => setForm((s) => ({ ...s, subtitulo: e.target.value }))}
             />
           </FormField>
-          <FormField label="Cidade">
-            <Input
-              value={form.cidade}
-              onChange={(e) => setForm((s) => ({ ...s, cidade: e.target.value }))}
+          <FormField label="UF">
+            <UfSelect
+              testId="empresa-uf-select"
+              value={form.uf}
+              onChange={(uf) => setForm((s) => ({ ...s, uf, cidade: '' }))}
             />
           </FormField>
-          <FormField label="UF">
-            <Input
-              maxLength={2}
-              value={form.uf}
-              onChange={(e) => setForm((s) => ({ ...s, uf: normalizeUF(e.target.value) }))}
+          <FormField label="Cidade">
+            <CidadeSelect
+              testId="empresa-cidade-select"
+              uf={form.uf}
+              value={form.cidade}
+              onChange={(cidade) => setForm((s) => ({ ...s, cidade }))}
             />
           </FormField>
         </div>
