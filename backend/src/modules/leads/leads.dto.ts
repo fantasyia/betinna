@@ -12,10 +12,13 @@ export const createLeadSchema = z.object({
   valorEstimado: z.number().min(0).default(0),
   canalOrigem: z.nativeEnum(CanalOrigem).default('WHATSAPP'),
   etapa: z.nativeEnum(LeadEtapa).default('NOVO'),
-  /** Funil customizado. Se omitido, usa o funil padrão da empresa. */
-  funilId: z.string().cuid().optional(),
-  /** Etapa específica dentro do funil. Se omitida, usa a 1ª etapa ATIVA. */
-  funilEtapaId: z.string().cuid().optional(),
+  /** Funil customizado. Se omitido, usa o funil padrão da empresa.
+   *  NÃO valida `.cuid()`: o funil padrão criado pela migration usa ids no
+   *  formato `funil_<hash>` (não-cuid). O service valida existência + tenant. */
+  funilId: z.string().min(1).optional(),
+  /** Etapa específica dentro do funil. Se omitida, usa a 1ª etapa ATIVA.
+   *  Idem funilId: etapas legadas usam ids `fet_<hash>` (não-cuid). */
+  funilEtapaId: z.string().min(1).optional(),
   score: z.number().int().min(0).max(100).default(50),
   proximaAcao: z.string().max(300).optional(),
   observacoes: z.string().max(2000).optional(),
@@ -40,7 +43,10 @@ export type UpdateLeadDto = z.infer<typeof updateLeadSchema>;
 export const moverEtapaSchema = z
   .object({
     etapa: z.nativeEnum(LeadEtapa).optional(),
-    funilEtapaId: z.string().cuid().optional(),
+    // F1 (Lote 8): não valida `.cuid()` — etapas do funil padrão criado pela
+    // migration têm id `fet_<hash>` (não-cuid). O service valida que a etapa
+    // existe e pertence à empresa. `.cuid()` aqui rejeitava com "Dados inválidos".
+    funilEtapaId: z.string().min(1).optional(),
     motivo: z.string().max(500).optional(),
   })
   .superRefine((data, ctx) => {
