@@ -1,6 +1,8 @@
 import type { ReactNode } from 'react';
 import { Link, useLocation } from 'react-router-dom';
+import { Star } from 'lucide-react';
 import { colors } from '@/components/styles';
+import { useFavoritos, toggleFavorito } from '@/lib/favoritos';
 
 /**
  * SubTabsBar — barra de sub-abas reutilizável.
@@ -38,6 +40,7 @@ export function SubTabsBar({
   ariaLabel?: string;
 }) {
   const location = useLocation();
+  const favoritos = useFavoritos();
 
   // Se só sobra 1 tab depois do filtro por permissão (ou nenhuma),
   // não renderiza nada — não faz sentido mostrar uma barra com 1 item só.
@@ -68,31 +71,60 @@ export function SubTabsBar({
       {tabs.map((tab) => {
         const active = isActive(tab);
         const testId = tab.testId ?? `subtab-${tab.to.replace(/\//g, '-')}`;
+        const fav = favoritos.some((f) => f.to === tab.to);
         return (
-          <Link
+          <div
             key={tab.to}
-            to={tab.to}
-            role="tab"
-            data-testid={testId}
-            aria-selected={active}
             style={{
-              padding: '0.625rem 1rem',
-              textDecoration: 'none',
-              borderBottom: `2px solid ${active ? colors.primary : 'transparent'}`,
-              fontSize: 14,
-              fontWeight: active ? 600 : 500,
-              color: active ? colors.primary : colors.muted,
               display: 'inline-flex',
               alignItems: 'center',
-              gap: 6,
-              marginBottom: -1,
-              whiteSpace: 'nowrap',
               flexShrink: 0,
+              borderBottom: `2px solid ${active ? colors.primary : 'transparent'}`,
+              marginBottom: -1,
             }}
           >
-            {tab.icon}
-            {tab.label}
-          </Link>
+            <Link
+              to={tab.to}
+              role="tab"
+              data-testid={testId}
+              aria-selected={active}
+              style={{
+                padding: '0.625rem 0.5rem 0.625rem 1rem',
+                textDecoration: 'none',
+                fontSize: 14,
+                fontWeight: active ? 600 : 500,
+                color: active ? colors.primary : colors.muted,
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: 6,
+                whiteSpace: 'nowrap',
+              }}
+            >
+              {tab.icon}
+              {tab.label}
+            </Link>
+            <button
+              type="button"
+              data-testid={`fav-${tab.to.replace(/\//g, '-')}`}
+              aria-label={fav ? `Remover ${tab.label} dos favoritos` : `Favoritar ${tab.label}`}
+              aria-pressed={fav}
+              title={fav ? 'Remover dos favoritos' : 'Favoritar'}
+              onClick={() => toggleFavorito(tab.to, tab.label)}
+              style={{
+                display: 'inline-flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                background: 'transparent',
+                border: 'none',
+                cursor: 'pointer',
+                padding: '0.25rem 0.625rem 0.25rem 0.125rem',
+                color: fav ? colors.warning : colors.muted,
+                opacity: fav ? 1 : 0.45,
+              }}
+            >
+              <Star size={13} fill={fav ? colors.warning : 'none'} />
+            </button>
+          </div>
         );
       })}
     </div>

@@ -20,6 +20,7 @@ import { useRole, usePermission } from '@/hooks/usePermission';
 import { useEmpresaLogo } from '@/hooks/useEmpresaLogo';
 import { NotificationBell } from '@/components/NotificationBell';
 import { EmpresaSwitcher } from '@/components/EmpresaSwitcher';
+import { FavoritosBar } from '@/components/FavoritosBar';
 import { Avatar } from '@/components/ui';
 import { useTheme } from '@/hooks/useTheme';
 import { cn } from '@/lib/cn';
@@ -473,6 +474,7 @@ export function PageLayout({
         {isMobile && actions && (
           <div className="flex items-center gap-2 flex-wrap mb-4">{actions}</div>
         )}
+        <FavoritosBar />
         {children}
       </main>
     </div>
