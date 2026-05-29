@@ -18,6 +18,7 @@ import {
 } from 'lucide-react';
 import { useRole, usePermission } from '@/hooks/usePermission';
 import { useEmpresaLogo } from '@/hooks/useEmpresaLogo';
+import { useBadges, type BadgeCounts } from '@/hooks/useBadges';
 import { NotificationBell } from '@/components/NotificationBell';
 import { EmpresaSwitcher } from '@/components/EmpresaSwitcher';
 import { FavoritosBar } from '@/components/FavoritosBar';
@@ -57,6 +58,8 @@ interface NavItem {
   permission?: Parameters<typeof usePermission>[0];
   allowedRoles?: Array<'ADMIN' | 'DIRECTOR' | 'GERENTE' | 'SAC' | 'REP'>;
   badge?: 'new' | 'beta';
+  /** F5 — qual contador de novidade exibe o numerinho neste item. */
+  badgeKey?: keyof BadgeCounts;
   /** Rotas filhas — usadas pra manter o item ativo quando o usuário está em
    * uma sub-aba (ex: /pedidos ativa 'Vendas', /comissoes também). */
   match?: string[];
@@ -88,6 +91,7 @@ const SECTIONS: NavSection[] = [
         label: 'Vendas',
         icon: ShoppingCart,
         match: ['/aprovacoes', '/propostas', '/amostras', '/comissoes', '/metas'],
+        badgeKey: 'vendas',
       },
       {
         to: '/leads',
@@ -100,6 +104,7 @@ const SECTIONS: NavSection[] = [
         label: 'Atendimento',
         icon: MessageSquare,
         match: ['/ocorrencias', '/incidentes', '/whatsapp', '/mullerbot'],
+        badgeKey: 'atendimento',
       },
       {
         to: '/produtos',
@@ -184,7 +189,15 @@ function SidebarLogo({ role }: { role: string | null }) {
 
 // ─── Sidebar nav item ────────────────────────────────────────────────
 
-function SidebarNavItem({ item, active }: { item: NavItem; active: boolean }) {
+function SidebarNavItem({
+  item,
+  active,
+  count = 0,
+}: {
+  item: NavItem;
+  active: boolean;
+  count?: number;
+}) {
   const Icon = item.icon;
   return (
     <Link
@@ -207,6 +220,16 @@ function SidebarNavItem({ item, active }: { item: NavItem; active: boolean }) {
         strokeWidth={active ? 2.5 : 2}
       />
       <span className="flex-1 truncate">{item.label}</span>
+      {/* F5 — badge numérico de novidade (pedidos pra aprovar, msgs no inbox…) */}
+      {count > 0 && (
+        <span
+          data-testid={`nav-badge-${item.to.replace('/', '')}`}
+          className="min-w-[18px] h-[18px] px-1 inline-flex items-center justify-center rounded-full bg-danger text-white text-[10px] font-bold tabular leading-none"
+          aria-label={`${count} novidade${count === 1 ? '' : 's'}`}
+        >
+          {count > 99 ? '99+' : count}
+        </span>
+      )}
       {item.badge && (
         <span
           className={cn(
@@ -235,6 +258,7 @@ function Sidebar({
 }) {
   const role = useRole();
   const location = useLocation();
+  const badges = useBadges();
 
   const perms = {
     'clientes.view': usePermission('clientes.view'),
@@ -314,7 +338,12 @@ function Sidebar({
                 </div>
               )}
               {visibleItems.map((item) => (
-                <SidebarNavItem key={item.to} item={item} active={isActive(item)} />
+                <SidebarNavItem
+                  key={item.to}
+                  item={item}
+                  active={isActive(item)}
+                  count={item.badgeKey ? badges[item.badgeKey] : 0}
+                />
               ))}
             </div>
           );

@@ -35,6 +35,7 @@ import { IncidentsModule } from '@modules/incidents/incidents.module';
 import { InboxModule } from '@modules/inbox/inbox.module';
 import { MullerBotModule } from '@modules/mullerbot/mullerbot.module';
 import { AmostrasModule } from '@modules/amostras/amostras.module';
+import { BadgesModule } from '@modules/badges/badges.module';
 import { AdminModule } from '@modules/admin/admin.module';
 import { AuthModule } from '@modules/auth/auth.module';
 import { AuditModule } from '@modules/audit/audit.module';
@@ -177,6 +178,7 @@ import { SharedUtilsModule } from '@shared/utils/shared-utils.module';
     PropostasModule,
     ComissoesModule,
     AmostrasModule,
+    BadgesModule,
     LeadsModule,
     FunisModule,
     OcorrenciasModule,
