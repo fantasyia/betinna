@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import {
   DndContext,
   DragOverlay,
@@ -24,6 +24,9 @@ import {
   TrendingUp,
   ExternalLink,
   Settings,
+  UserCog,
+  CalendarPlus,
+  Building2,
 } from 'lucide-react';
 import { api, ApiError } from '@/lib/api';
 import { useApiQuery } from '@/hooks/useApiQuery';
@@ -31,6 +34,7 @@ import { useToast } from '@/components/toast';
 import { PageLayout } from '@/components/PageLayout';
 import { CrmTabs } from '@/components/CrmTabs';
 import { StateView } from '@/components/StateView';
+import { AsyncCombobox } from '@/components/AsyncCombobox';
 import { maskTelefone } from '@/lib/masks';
 import { UfSelect, CidadeSelect } from '@/components/LocalidadeSelects';
 import {
@@ -84,6 +88,7 @@ interface Lead {
   proximaAcao?: string | null;
   observacoes?: string | null;
   representante?: { id: string; nome: string } | null;
+  cliente?: { id: string; nome: string } | null;
   funil?: { id: string; nome: string; cor: string } | null;
   funilEtapa?: {
     id: string;
@@ -439,6 +444,7 @@ export default function LeadsPage() {
       {selected && (
         <LeadDetailDrawer
           lead={selected}
+          etapas={optimistic?.funil.etapas ?? []}
           onClose={() => setSelected(null)}
           onChanged={() => {
             setSelected(null);
@@ -661,29 +667,115 @@ function LeadCardInner({
 
 // ─── Detail drawer ─────────────────────────────────────────────
 
+interface RepOpt {
+  id: string;
+  nome: string;
+  email?: string;
+}
+
 function LeadDetailDrawer({
   lead,
+  etapas,
   onClose,
   onChanged,
 }: {
   lead: Lead;
+  etapas: FunilEtapaLite[];
   onClose: () => void;
   onChanged: () => void;
 }) {
   const toast = useToast();
-  const [busy, setBusy] = useState(false);
+  const navigate = useNavigate();
+  const [busy, setBusy] = useState<string | null>(null);
   const [confirmDelete, setConfirmDelete] = useState(false);
+  const [rep, setRep] = useState<RepOpt | null>(lead.representante ?? null);
+  const [proximaAcao, setProximaAcao] = useState(lead.proximaAcao ?? '');
+  const [observacoes, setObservacoes] = useState(lead.observacoes ?? '');
+  const [terminal, setTerminal] = useState<FunilEtapaLite | null>(null);
+  const [motivo, setMotivo] = useState('');
+  const [actionError, setActionError] = useState<string | null>(null);
+
+  const fechado = lead.etapa === 'GANHO' || lead.etapa === 'PERDIDO';
+  const etapaAtualId = lead.funilEtapaId ?? lead.etapa;
+  const repMudou = (rep?.id ?? null) !== (lead.representante?.id ?? null);
+  const notasMudaram =
+    proximaAcao.trim() !== (lead.proximaAcao ?? '') ||
+    observacoes.trim() !== (lead.observacoes ?? '');
+
+  function apiMsg(err: unknown): string {
+    return err instanceof ApiError ? err.message : 'Falha na operação';
+  }
+  function etapaPayload(etapa: FunilEtapaLite, motivoArg?: string) {
+    const isEnum = Object.prototype.hasOwnProperty.call(ETAPA_LABEL, etapa.id);
+    const p: Record<string, unknown> = isEnum ? { etapa: etapa.id } : { funilEtapaId: etapa.id };
+    if (motivoArg) p.motivo = motivoArg;
+    return p;
+  }
+
+  async function mudarEtapa(etapa: FunilEtapaLite, motivoArg?: string) {
+    setBusy('etapa');
+    setActionError(null);
+    try {
+      await api.put(`/leads/${lead.id}/etapa`, etapaPayload(etapa, motivoArg));
+      toast.success(`Movido para ${etapa.nome}`);
+      onChanged();
+    } catch (err) {
+      setActionError(apiMsg(err));
+    } finally {
+      setBusy(null);
+    }
+  }
+  function onClickEtapa(etapa: FunilEtapaLite) {
+    if (etapa.id === etapaAtualId) return;
+    if (etapa.tipo === 'GANHO' || etapa.tipo === 'PERDIDO') {
+      setMotivo('');
+      setTerminal(etapa);
+      return;
+    }
+    void mudarEtapa(etapa);
+  }
+
+  async function salvarRep() {
+    setBusy('rep');
+    setActionError(null);
+    try {
+      await api.put(`/leads/${lead.id}/representante`, { representanteId: rep?.id ?? null });
+      toast.success(rep ? `Atribuído a ${rep.nome}` : 'Representante removido');
+      onChanged();
+    } catch (err) {
+      setActionError(apiMsg(err));
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  async function salvarNotas() {
+    setBusy('notas');
+    setActionError(null);
+    try {
+      await api.patch(`/leads/${lead.id}`, {
+        proximaAcao: proximaAcao.trim() || undefined,
+        observacoes: observacoes.trim() || undefined,
+      });
+      toast.success('Lead atualizado');
+      onChanged();
+    } catch (err) {
+      setActionError(apiMsg(err));
+    } finally {
+      setBusy(null);
+    }
+  }
 
   async function callDelete() {
-    setBusy(true);
+    setBusy('delete');
     try {
       await api.delete(`/leads/${lead.id}`);
       toast.success('Lead excluído');
       onChanged();
     } catch (err) {
-      toast.error('Falha ao excluir', err instanceof ApiError ? err.message : undefined);
+      toast.error('Falha ao excluir', apiMsg(err));
     } finally {
-      setBusy(false);
+      setBusy(null);
     }
   }
 
@@ -703,7 +795,7 @@ function LeadDetailDrawer({
             <Button
               variant="danger"
               onClick={callDelete}
-              loading={busy}
+              loading={busy === 'delete'}
               leftIcon={<Trash2 className="h-3.5 w-3.5" />}
             >
               Confirmar exclusão
@@ -722,6 +814,7 @@ function LeadDetailDrawer({
       }
     >
       <div className="flex flex-col gap-5">
+        {/* Header */}
         <div className="flex items-center gap-3">
           <Avatar name={lead.nome} size="xl" />
           <div className="flex-1 min-w-0">
@@ -738,6 +831,159 @@ function LeadDetailDrawer({
           </div>
         </div>
 
+        {/* F2 — Ações rápidas */}
+        <div className="flex flex-wrap gap-2">
+          {lead.cliente && (
+            <Button
+              variant="secondary"
+              size="sm"
+              data-testid="lead-abrir-cliente"
+              onClick={() => navigate(`/clientes/${lead.cliente!.id}`)}
+              leftIcon={<Building2 className="h-3.5 w-3.5" />}
+            >
+              Abrir cliente
+            </Button>
+          )}
+          <Button
+            variant="secondary"
+            size="sm"
+            data-testid="lead-agendar"
+            onClick={() => navigate('/agenda')}
+            leftIcon={<CalendarPlus className="h-3.5 w-3.5" />}
+          >
+            Agendar visita
+          </Button>
+        </div>
+
+        {/* F2 — Mudar etapa */}
+        <section>
+          <h4 className="text-[10px] font-semibold uppercase tracking-wider text-muted mb-2">
+            Mover etapa
+          </h4>
+          {terminal ? (
+            <div className="flex flex-col gap-2">
+              <p className="text-sm text-text m-0">
+                Motivo pra marcar como <strong>{terminal.nome}</strong>:
+              </p>
+              <Textarea
+                data-testid="lead-etapa-motivo"
+                value={motivo}
+                onChange={(e) => setMotivo(e.target.value)}
+                rows={2}
+                placeholder="Ex: Cliente fechou / escolheu concorrente…"
+              />
+              <div className="flex gap-2">
+                <Button variant="secondary" size="sm" onClick={() => setTerminal(null)}>
+                  Cancelar
+                </Button>
+                <Button
+                  size="sm"
+                  variant={terminal.tipo === 'GANHO' ? 'primary' : 'danger'}
+                  disabled={motivo.trim().length === 0}
+                  loading={busy === 'etapa'}
+                  onClick={() => void mudarEtapa(terminal, motivo.trim())}
+                >
+                  Confirmar {terminal.nome}
+                </Button>
+              </div>
+            </div>
+          ) : (
+            <div className="flex flex-wrap gap-1.5">
+              {etapas.map((e) => {
+                const atual = e.id === etapaAtualId;
+                return (
+                  <button
+                    key={e.id}
+                    type="button"
+                    data-testid={`lead-etapa-${e.id}`}
+                    disabled={atual || busy === 'etapa'}
+                    onClick={() => onClickEtapa(e)}
+                    className={cn(
+                      'px-2.5 py-1 rounded-full text-xs font-medium border transition-colors',
+                      atual
+                        ? 'border-primary bg-primary/10 text-primary cursor-default'
+                        : 'border-border text-text-subtle hover:border-primary hover:text-primary',
+                    )}
+                  >
+                    {e.nome}
+                  </button>
+                );
+              })}
+            </div>
+          )}
+        </section>
+
+        {/* F2 — Representante */}
+        <section>
+          <h4 className="text-[10px] font-semibold uppercase tracking-wider text-muted mb-2">
+            Representante
+          </h4>
+          <AsyncCombobox<RepOpt>
+            testId="lead-rep-picker"
+            endpoint="/users"
+            placeholder="Buscar representante…"
+            getLabel={(r) => r.nome}
+            getSubLabel={(r) => r.email ?? null}
+            getId={(r) => r.id}
+            value={rep}
+            onChange={setRep}
+            extraQuery={{ role: 'REP' }}
+          />
+          {repMudou && (
+            <Button
+              size="sm"
+              className="mt-2"
+              data-testid="lead-rep-salvar"
+              loading={busy === 'rep'}
+              onClick={() => void salvarRep()}
+              leftIcon={<UserCog className="h-3.5 w-3.5" />}
+            >
+              {rep ? 'Atribuir representante' : 'Remover representante'}
+            </Button>
+          )}
+        </section>
+
+        {/* F2 — Próxima ação + observações (registrar contato/nota) */}
+        <section>
+          <h4 className="text-[10px] font-semibold uppercase tracking-wider text-muted mb-2">
+            Próxima ação & observações
+          </h4>
+          {fechado && (
+            <p className="text-[11px] text-warning mb-1.5">
+              Lead fechado — reabra (mova pra uma etapa ativa) pra editar texto.
+            </p>
+          )}
+          <div className="flex flex-col gap-2">
+            <Input
+              data-testid="lead-proxima-acao"
+              value={proximaAcao}
+              onChange={(e) => setProximaAcao(e.target.value)}
+              placeholder="Próxima ação — ex: ligar amanhã 10h"
+              disabled={fechado}
+            />
+            <Textarea
+              data-testid="lead-observacoes"
+              value={observacoes}
+              onChange={(e) => setObservacoes(e.target.value)}
+              rows={3}
+              placeholder="Observações / anotações do contato…"
+              disabled={fechado}
+            />
+            {notasMudaram && !fechado && (
+              <Button
+                size="sm"
+                className="self-start"
+                data-testid="lead-notas-salvar"
+                loading={busy === 'notas'}
+                onClick={() => void salvarNotas()}
+              >
+                Salvar
+              </Button>
+            )}
+          </div>
+        </section>
+
+        {/* Contexto */}
         <section>
           <h4 className="text-[10px] font-semibold uppercase tracking-wider text-muted mb-2">
             Contexto
@@ -749,40 +995,24 @@ function LeadDetailDrawer({
             <InfoCell icon={<Briefcase />} label="Segmento">
               {lead.segmento ?? '—'}
             </InfoCell>
-            <InfoCell icon={<User />} label="Representante">
-              {lead.representante?.nome ?? 'sem rep'}
-            </InfoCell>
             <InfoCell icon={<TrendingUp />} label="Canal de origem">
               {CANAL_LABEL[lead.canalOrigem]}
+            </InfoCell>
+            <InfoCell icon={<User />} label="Contato">
+              {lead.contatoNome ?? '—'}
             </InfoCell>
           </div>
         </section>
 
-        {lead.proximaAcao && (
-          <section>
-            <h4 className="text-[10px] font-semibold uppercase tracking-wider text-muted mb-2">
-              Próxima ação
-            </h4>
-            <div className="rounded-md border border-primary/30 bg-primary/5 px-3 py-2 text-sm text-text">
-              {lead.proximaAcao}
-            </div>
-          </section>
+        {actionError && (
+          <div
+            data-testid="lead-action-error"
+            className="px-3 py-2 rounded-md bg-danger/10 border border-danger/30 text-danger text-sm flex items-start gap-2"
+          >
+            <AlertCircle className="h-4 w-4 mt-0.5 shrink-0" />
+            {actionError}
+          </div>
         )}
-
-        {lead.observacoes && (
-          <section>
-            <h4 className="text-[10px] font-semibold uppercase tracking-wider text-muted mb-2">
-              Observações
-            </h4>
-            <p className="text-sm text-text whitespace-pre-wrap m-0">
-              {lead.observacoes}
-            </p>
-          </section>
-        )}
-
-        <p className="text-xs text-muted-light italic">
-          Use o drag-and-drop no Kanban pra mover entre etapas.
-        </p>
       </div>
     </Drawer>
   );
