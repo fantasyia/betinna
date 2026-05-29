@@ -32,6 +32,32 @@ export class PropostasController {
     return this.propostas.list(user, query);
   }
 
+  // ─── C2 — Exportação (declaradas antes de @Get(':id') por especificidade) ──
+
+  @Get(':id/pdf')
+  @RequirePermissions({ module: 'propostas', action: 'view' })
+  @Audit({ action: 'exportar_pdf', resource: 'proposta', resourceIdFrom: 'params.id' })
+  @ApiOperation({ summary: 'Gera PDF da proposta (retorna { filename, base64 }).' })
+  exportarPdf(@CurrentUser() user: AuthenticatedUser, @Param('id') id: string) {
+    return this.propostas.exportarPdf(user, id);
+  }
+
+  @Get(':id/excel')
+  @RequirePermissions({ module: 'propostas', action: 'view' })
+  @Audit({ action: 'exportar_excel', resource: 'proposta', resourceIdFrom: 'params.id' })
+  @ApiOperation({ summary: 'Gera Excel da proposta (retorna { filename, base64 }).' })
+  exportarExcel(@CurrentUser() user: AuthenticatedUser, @Param('id') id: string) {
+    return this.propostas.exportarExcel(user, id);
+  }
+
+  @Post(':id/enviar-email')
+  @RequirePermissions({ module: 'propostas', action: 'edit' })
+  @Audit({ action: 'enviar_email', resource: 'proposta', resourceIdFrom: 'params.id' })
+  @ApiOperation({ summary: 'Envia a proposta (PDF anexo) por email pro cliente via Resend.' })
+  enviarEmail(@CurrentUser() user: AuthenticatedUser, @Param('id') id: string) {
+    return this.propostas.enviarPorEmail(user, id);
+  }
+
   @Get(':id')
   @RequirePermissions({ module: 'propostas', action: 'view' })
   findOne(@CurrentUser() user: AuthenticatedUser, @Param('id') id: string) {

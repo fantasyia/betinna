@@ -16,10 +16,13 @@ import {
   CheckCircle2,
   X as XIcon,
   Package,
+  FileSpreadsheet,
+  Mail,
 } from 'lucide-react';
 import { api, ApiError } from '@/lib/api';
 import { useApiQuery, type PaginatedResponse } from '@/hooks/useApiQuery';
 import { useEmpresaConfig, descontoAVistaPct } from '@/hooks/useEmpresaConfig';
+import { useToast } from '@/components/toast';
 import { PageLayout } from '@/components/PageLayout';
 import { VendasTabs } from '@/components/VendasTabs';
 import { StateView } from '@/components/StateView';
@@ -527,6 +530,7 @@ function PropostaDetailDrawer({
   onClose: () => void;
   onChanged: () => void;
 }) {
+  const toast = useToast();
   const { data, loading, error, refetch } = useApiQuery<PropostaDetail>(`/propostas/${id}`);
   const [busy, setBusy] = useState(false);
   const [actionError, setActionError] = useState<string | null>(null);
@@ -564,6 +568,57 @@ function PropostaDetailDrawer({
     }
   }
 
+  // ─── C2 — Exportar / enviar ──────────────────────────────────────────
+  const [exportBusy, setExportBusy] = useState<'pdf' | 'excel' | 'email' | null>(null);
+
+  /** Converte base64 → Blob e dispara download no navegador. */
+  function baixarBase64(base64: string, filename: string, mime: string) {
+    const bytes = atob(base64);
+    const arr = new Uint8Array(bytes.length);
+    for (let i = 0; i < bytes.length; i++) arr[i] = bytes.charCodeAt(i);
+    const blob = new Blob([arr], { type: mime });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = filename;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    URL.revokeObjectURL(url);
+  }
+
+  async function exportar(tipo: 'pdf' | 'excel') {
+    setExportBusy(tipo);
+    setActionError(null);
+    try {
+      const res = await api.get<{ filename: string; base64: string }>(`/propostas/${id}/${tipo}`);
+      const mime =
+        tipo === 'pdf'
+          ? 'application/pdf'
+          : 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
+      baixarBase64(res.base64, res.filename, mime);
+    } catch (err) {
+      setActionError(err instanceof ApiError ? err.message : `Falha ao gerar ${tipo}`);
+    } finally {
+      setExportBusy(null);
+    }
+  }
+
+  async function enviarEmail() {
+    setExportBusy('email');
+    setActionError(null);
+    try {
+      const res = await api.post<{ ok: boolean; enviadoPara: string }>(
+        `/propostas/${id}/enviar-email`,
+      );
+      toast.success('Proposta enviada', `E-mail enviado pra ${res.enviadoPara}`);
+    } catch (err) {
+      setActionError(err instanceof ApiError ? err.message : 'Falha ao enviar e-mail');
+    } finally {
+      setExportBusy(null);
+    }
+  }
+
   const allowed = data ? TRANSITIONS[data.status] ?? [] : [];
   const exigeMotivo = transition === 'RECUSADA';
 
@@ -590,6 +645,43 @@ function PropostaDetailDrawer({
       <StateView loading={loading} error={error} onRetry={refetch}>
         {data && (
           <div className="flex flex-col gap-5">
+            {/* C2 — Barra de exportação/envio */}
+            <div className="flex flex-wrap gap-2">
+              <Button
+                variant="secondary"
+                size="sm"
+                data-testid="proposta-export-pdf"
+                loading={exportBusy === 'pdf'}
+                disabled={exportBusy !== null}
+                onClick={() => void exportar('pdf')}
+                leftIcon={<FileText className="h-3.5 w-3.5" />}
+              >
+                PDF
+              </Button>
+              <Button
+                variant="secondary"
+                size="sm"
+                data-testid="proposta-export-excel"
+                loading={exportBusy === 'excel'}
+                disabled={exportBusy !== null}
+                onClick={() => void exportar('excel')}
+                leftIcon={<FileSpreadsheet className="h-3.5 w-3.5" />}
+              >
+                Excel
+              </Button>
+              <Button
+                variant="secondary"
+                size="sm"
+                data-testid="proposta-enviar-email"
+                loading={exportBusy === 'email'}
+                disabled={exportBusy !== null}
+                onClick={() => void enviarEmail()}
+                leftIcon={<Mail className="h-3.5 w-3.5" />}
+              >
+                Enviar por e-mail
+              </Button>
+            </div>
+
             {/* Header card */}
             <Card variant="outline" padding="md" className="bg-bg-alt">
               <div className="flex items-start justify-between gap-3">

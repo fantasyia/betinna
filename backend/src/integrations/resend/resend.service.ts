@@ -52,6 +52,8 @@ export class ResendService {
     assunto: string;
     html?: string;
     texto?: string;
+    /** Anexos opcionais (ex: PDF de proposta). content em base64 puro. */
+    attachments?: Array<{ filename: string; content: string }>;
   }): Promise<{ id: string | null; status: number }> {
     const apiKey = this.env.get('RESEND_API_KEY');
     const fromEmail = this.env.get('RESEND_FROM_EMAIL');
@@ -77,6 +79,9 @@ export class ResendService {
       subject: params.assunto,
       ...(params.html ? { html: params.html } : {}),
       ...(params.texto ? { text: params.texto } : {}),
+      ...(params.attachments && params.attachments.length > 0
+        ? { attachments: params.attachments }
+        : {}),
     };
 
     try {

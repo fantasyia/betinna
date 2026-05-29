@@ -126,6 +126,9 @@ describe('PropostasService', () => {
       pedidoPricing as never,
       repScope as never,
       sequence as never,
+      // C2 — export service + resend (mocks; não exercitados nestes specs)
+      { gerarPdf: vi.fn(), gerarExcel: vi.fn() } as never,
+      { isConfigured: vi.fn(() => false), enviar: vi.fn() } as never,
     );
   });
 

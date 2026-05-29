@@ -3,6 +3,7 @@ import { Prisma } from '@prisma/client';
 import { PrismaService } from '@database/prisma.service';
 import { PricingService } from '@modules/produtos/pricing.service';
 import { PedidoPricingService } from '@modules/pedidos/pedido-pricing.service';
+import { ResendService } from '@integrations/resend/resend.service';
 import {
   BusinessRuleException,
   ForbiddenException,
@@ -13,6 +14,7 @@ import { RepScopeService } from '@shared/scope/rep-scope.service';
 import type { AuthenticatedUser } from '@shared/types/authenticated-user';
 import { type Paginated, buildPaginated } from '@shared/types/pagination';
 import { SequenceService } from '@shared/utils/sequence.service';
+import { PropostaExportService, type PropostaExportData } from './proposta-export.service';
 import type {
   ChangeStatusDto,
   CreatePropostaDto,
@@ -40,6 +42,8 @@ export class PropostasService {
     private readonly pedidoPricing: PedidoPricingService,
     private readonly repScope: RepScopeService,
     private readonly sequence: SequenceService,
+    private readonly exportSvc: PropostaExportService,
+    private readonly resend: ResendService,
   ) {}
 
   private requireEmpresa(user: AuthenticatedUser): string {
@@ -356,5 +360,115 @@ export class PropostasService {
   private async gerarNumero(empresaId: string): Promise<string> {
     const seq = await this.sequence.next(empresaId, 'proposta');
     return `PROP-${seq.toString().padStart(4, '0')}`;
+  }
+
+  // ─── C2 — Exportação (PDF / Excel / email) ──────────────────────────────
+
+  /**
+   * Monta os dados normalizados pra exportação (PDF/Excel/email).
+   * Busca proposta + itens + cliente (com email) + empresa, validando acesso.
+   */
+  private async dadosParaExport(
+    user: AuthenticatedUser,
+    id: string,
+  ): Promise<PropostaExportData> {
+    const proposta = await this.findById(user, id); // valida tenant + scope
+    // Busca email do cliente + dados da empresa (não vêm no propostaInclude)
+    const [clienteFull, empresa] = await Promise.all([
+      this.prisma.cliente.findUnique({
+        where: { id: proposta.clienteId },
+        select: { nome: true, cnpj: true, email: true },
+      }),
+      this.prisma.empresa.findUnique({
+        where: { id: proposta.empresaId },
+        select: { nome: true, cnpj: true },
+      }),
+    ]);
+    return {
+      numero: proposta.numero,
+      criadoEm: proposta.criadoEm,
+      validoAte: proposta.validoAte,
+      status: proposta.status,
+      formaPagamento: proposta.formaPagamento,
+      condicaoPagamento: proposta.condicaoPagamento,
+      subtotal: proposta.subtotal,
+      descontoGeral: proposta.descontoGeral,
+      valor: proposta.valor,
+      observacoes: proposta.observacoes,
+      empresa: { nome: empresa?.nome ?? 'Empresa', cnpj: empresa?.cnpj ?? null },
+      cliente: {
+        nome: clienteFull?.nome ?? proposta.cliente.nome,
+        cnpj: clienteFull?.cnpj ?? proposta.cliente.cnpj,
+        email: clienteFull?.email ?? null,
+      },
+      itens: proposta.itens.map((i) => ({
+        produtoNome: i.produtoNome,
+        quantidade: i.quantidade,
+        precoUnitario: i.precoUnitario,
+        desconto: i.desconto,
+        total: i.total,
+      })),
+    };
+  }
+
+  async exportarPdf(
+    user: AuthenticatedUser,
+    id: string,
+  ): Promise<{ filename: string; base64: string }> {
+    const data = await this.dadosParaExport(user, id);
+    const buffer = await this.exportSvc.gerarPdf(data);
+    return { filename: `proposta-${data.numero}.pdf`, base64: buffer.toString('base64') };
+  }
+
+  async exportarExcel(
+    user: AuthenticatedUser,
+    id: string,
+  ): Promise<{ filename: string; base64: string }> {
+    const data = await this.dadosParaExport(user, id);
+    const buffer = await this.exportSvc.gerarExcel(data);
+    return { filename: `proposta-${data.numero}.xlsx`, base64: buffer.toString('base64') };
+  }
+
+  /**
+   * Envia a proposta (PDF anexado) por email pro cliente via Resend.
+   * Requer email do cliente + Resend configurado.
+   */
+  async enviarPorEmail(
+    user: AuthenticatedUser,
+    id: string,
+  ): Promise<{ ok: true; enviadoPara: string }> {
+    const data = await this.dadosParaExport(user, id);
+    if (!data.cliente.email) {
+      throw new BusinessRuleException(
+        'Cliente não tem e-mail cadastrado. Adicione um e-mail no cadastro do cliente pra enviar a proposta.',
+      );
+    }
+    if (!this.resend.isConfigured()) {
+      throw new BusinessRuleException(
+        'Envio de e-mail não configurado. Configure o Resend (RESEND_API_KEY + RESEND_FROM_EMAIL) pra enviar propostas.',
+      );
+    }
+    const pdf = await this.exportSvc.gerarPdf(data);
+    const html =
+      `<p>Olá, ${data.cliente.nome}!</p>` +
+      `<p>Segue em anexo a proposta comercial <strong>${data.numero}</strong> da ${data.empresa.nome}.</p>` +
+      `<p>Valor total: <strong>${new Intl.NumberFormat('pt-BR', {
+        style: 'currency',
+        currency: 'BRL',
+      }).format(data.valor)}</strong></p>` +
+      (data.validoAte
+        ? `<p>Válida até ${new Intl.DateTimeFormat('pt-BR', { dateStyle: 'short' }).format(data.validoAte)}.</p>`
+        : '') +
+      `<p>Qualquer dúvida, estamos à disposição.</p>`;
+
+    await this.resend.enviar({
+      para: data.cliente.email,
+      assunto: `Proposta ${data.numero} — ${data.empresa.nome}`,
+      html,
+      attachments: [{ filename: `proposta-${data.numero}.pdf`, content: pdf.toString('base64') }],
+    });
+
+    this.logger.log(`Proposta ${data.numero} enviada por email pra ${data.cliente.email}`);
+    return { ok: true, enviadoPara: data.cliente.email };
   }
 }
