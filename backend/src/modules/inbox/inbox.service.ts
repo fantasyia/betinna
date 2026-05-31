@@ -744,6 +744,14 @@ export class InboxService {
   ): Promise<Conversation> {
     const propId = p.proprietarioId ?? null;
 
+    // Campos canal-específicos que guardamos na metadata (JSON, sem coluna própria):
+    //  - avatarUrl: foto de perfil do peer
+    //  - telefone: telefone REAL do contato (útil quando o peerId é um LID/número
+    //    oculto do WhatsApp — aí o número de verdade vem em peerTelefone)
+    const metaPatch: Record<string, unknown> = {};
+    if (p.peerAvatarUrl) metaPatch.avatarUrl = p.peerAvatarUrl;
+    if (p.peerTelefone) metaPatch.telefone = p.peerTelefone;
+
     // Lookup primeiro
     const existente = await this.prisma.conversation.findFirst({
       where: {
@@ -754,10 +762,11 @@ export class InboxService {
       },
     });
     if (existente) {
-      // Mescla avatarUrl na metadata existente quando o adapter informa.
-      const nextMetadata = p.peerAvatarUrl
-        ? { ...((existente.metadata as Record<string, unknown> | null) ?? {}), avatarUrl: p.peerAvatarUrl }
-        : undefined;
+      // Mescla avatarUrl/telefone na metadata existente quando o adapter informa.
+      const nextMetadata =
+        Object.keys(metaPatch).length > 0
+          ? { ...((existente.metadata as Record<string, unknown> | null) ?? {}), ...metaPatch }
+          : undefined;
       return this.prisma.conversation.update({
         where: { id: existente.id },
         data: {
@@ -784,8 +793,8 @@ export class InboxService {
           clienteId,
           status: 'PENDENTE',
           naoLidas: 0,
-          ...(p.peerAvatarUrl
-            ? { metadata: { avatarUrl: p.peerAvatarUrl } as Prisma.InputJsonValue }
+          ...(Object.keys(metaPatch).length > 0
+            ? { metadata: metaPatch as Prisma.InputJsonValue }
             : {}),
         },
       });

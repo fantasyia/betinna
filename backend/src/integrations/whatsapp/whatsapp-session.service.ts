@@ -673,7 +673,7 @@ export class WhatsAppSessionService implements OnModuleInit, OnModuleDestroy {
           canal: 'WHATSAPP',
           peerId,
           peerNome: fromMe ? undefined : (m.pushName ?? undefined),
-          peerTelefone: this.jidParaTelefone(peerId),
+          peerTelefone: this.telefoneRealDoKey(peerId, m.key),
           tipo: 'TEXT',
           conteudo: '[mensagem não suportada]',
           externalId: m.key.id ?? undefined,
@@ -725,7 +725,8 @@ export class WhatsAppSessionService implements OnModuleInit, OnModuleDestroy {
         peerNome: peerNomeDef,
         senderName,
         // Grupos não têm telefone único — pula match por sufixo.
-        peerTelefone: isGroup ? undefined : this.jidParaTelefone(peerId),
+        // Pra contatos com LID (número oculto) usa o telefone real do remoteJidAlt.
+        peerTelefone: isGroup ? undefined : this.telefoneRealDoKey(peerId, m.key),
         peerAvatarUrl,
         tipo,
         conteudo,
@@ -938,6 +939,26 @@ export class WhatsAppSessionService implements OnModuleInit, OnModuleDestroy {
   private jidParaTelefone(jid: string): string | undefined {
     const m = jid.match(/^(\d+)(?::\d+)?@/);
     return m ? m[1] : undefined;
+  }
+
+  /**
+   * Resolve o telefone REAL do contato a partir do key da mensagem.
+   *
+   * No WhatsApp moderno (Baileys 7) o `remoteJid` muitas vezes vem como LID
+   * (`<id>@lid` — número oculto por privacidade). Nesses casos o telefone
+   * verdadeiro vem em `remoteJidAlt` (`<telefone>@s.whatsapp.net`).
+   * Estratégia: preferimos sempre o JID de telefone (`@s.whatsapp.net`); se só
+   * houver LID/grupo (número realmente oculto), retorna undefined (sem telefone).
+   */
+  private telefoneRealDoKey(remoteJid: string, key: proto.IMessageKey): string | undefined {
+    const alt = (key as { remoteJidAlt?: string }).remoteJidAlt;
+    const candidatos = [remoteJid, alt].filter((j): j is string => !!j);
+    const pn = candidatos.find((j) => j.endsWith('@s.whatsapp.net'));
+    if (pn) return this.jidParaTelefone(pn);
+    const comum = candidatos.find(
+      (j) => !j.endsWith('@lid') && !j.endsWith('@g.us') && !j.endsWith('@broadcast'),
+    );
+    return comum ? this.jidParaTelefone(comum) : undefined;
   }
 
   private infoVazia(

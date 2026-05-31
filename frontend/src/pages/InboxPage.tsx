@@ -94,10 +94,12 @@ interface Conversation {
   botPausadoAte?: string | null;
   precisaHumano?: boolean;
   /**
-   * JSON com metadados canal-específicos. Hoje usado pra avatarUrl
-   * (foto de perfil do peer no WhatsApp).
+   * JSON com metadados canal-específicos:
+   *  - avatarUrl: foto de perfil do peer no WhatsApp
+   *  - telefone: telefone REAL do contato (resolvido no backend quando o peerId
+   *    é um LID/número oculto). Quando presente, é a fonte preferida do número.
    */
-  metadata?: { avatarUrl?: string | null } & Record<string, unknown>;
+  metadata?: { avatarUrl?: string | null; telefone?: string | null } & Record<string, unknown>;
 }
 
 interface Mensagem {
@@ -414,7 +416,8 @@ function ConversationItem({
   const name =
     conv.cliente?.nome ??
     conv.peerNome ??
-    (fmtPeer(conv.canal, conv.peerId ?? conv.peer) || CANAL_LABEL[conv.canal]);
+    (fmtPeer(conv.canal, conv.metadata?.telefone || conv.peerId || conv.peer) ||
+      CANAL_LABEL[conv.canal]);
   const unread = (conv.naoLidas ?? 0) > 0;
   const botPausado = conv.botPausadoAte
     ? new Date(conv.botPausadoAte).getTime() > Date.now()
@@ -815,8 +818,12 @@ function ConversationThread({
   const botPausadoConv = c?.botPausadoAte
     ? new Date(c.botPausadoAte).getTime() > Date.now()
     : false;
-  // Telefone formatado do contato — '' quando não é telefone (LID/grupo/ID interno).
-  const numeroContato = c ? fmtPeer(c.canal, c.peerId ?? c.peer) : '';
+  // Telefone formatado do contato. Preferimos o telefone REAL resolvido no backend
+  // (metadata.telefone) — cobre contatos com LID/número oculto. '' quando não há
+  // telefone de verdade (LID sem número exposto, grupo, ID interno).
+  const numeroContato = c
+    ? fmtPeer(c.canal, c.metadata?.telefone || c.peerId || c.peer)
+    : '';
   const messages = msgs.data ?? [];
   const lockedCompose = c && (c.status === 'RESOLVIDA' || c.status === 'ARQUIVADA');
 
