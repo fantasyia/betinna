@@ -43,8 +43,9 @@ function fmtBRL(v: number) {
   return new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(v);
 }
 
-function fmtPct(p: number) {
-  return `${p.toFixed(2)}%`;
+function fmtPct(p: number | null | undefined) {
+  const n = typeof p === 'number' && Number.isFinite(p) ? p : 0;
+  return `${n.toFixed(2)}%`;
 }
 
 export default function ComissoesPage() {
@@ -203,7 +204,7 @@ function ListaAdmin() {
       render: (c) => (
         <div>
           <div>{c.representante?.nome ?? '—'}</div>
-          <span style={{ ...badge(c.tipo === 'GERENTE' ? colors.warning : '#0891b2'), fontSize: 10 }}>
+          <span style={{ ...badge(c.tipo === 'GERENTE' ? colors.warning : colors.info), fontSize: 10 }}>
             {c.tipo}
           </span>
         </div>

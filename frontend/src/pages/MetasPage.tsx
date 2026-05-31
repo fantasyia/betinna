@@ -262,13 +262,16 @@ function MetaCard({
   onEdit: () => void;
   onDelete: () => void;
 }) {
-  const pct = Math.min(meta.progresso, 100);
-  const overshoot = meta.progresso > 100;
-  const completed = meta.progresso >= 100;
+  const progresso = meta.progresso ?? 0;
+  const atingido = meta.atingido ?? 0;
+  const valorAlvo = meta.valorAlvo ?? 0;
+  const pct = Math.min(progresso, 100);
+  const overshoot = progresso > 100;
+  const completed = progresso >= 100;
   const valorAtingidoFmt =
-    meta.tipo === 'FATURAMENTO' ? fmtBRLCompact(meta.atingido) : meta.atingido.toLocaleString('pt-BR');
+    meta.tipo === 'FATURAMENTO' ? fmtBRLCompact(atingido) : atingido.toLocaleString('pt-BR');
   const valorAlvoFmt =
-    meta.tipo === 'FATURAMENTO' ? fmtBRLCompact(meta.valorAlvo) : meta.valorAlvo.toLocaleString('pt-BR');
+    meta.tipo === 'FATURAMENTO' ? fmtBRLCompact(valorAlvo) : valorAlvo.toLocaleString('pt-BR');
 
   const AlvoIcon = meta.alvoTipo === 'EMPRESA' ? Building2 : User;
 
@@ -337,8 +340,8 @@ function MetaCard({
       </div>
       <div className="flex items-center justify-between text-[11px] tabular">
         <span className={completed ? 'text-success font-semibold' : 'text-text-subtle'}>
-          {meta.progresso.toFixed(1)}%
-          {overshoot && <span className="text-success ml-1">(+{(meta.progresso - 100).toFixed(0)}%)</span>}
+          {progresso.toFixed(1)}%
+          {overshoot && <span className="text-success ml-1">(+{(progresso - 100).toFixed(0)}%)</span>}
         </span>
         <span className="text-muted inline-flex items-center gap-1">
           <Calendar className="h-3 w-3" />
@@ -378,7 +381,7 @@ function MetaCard({
       {completed && (
         <div className="flex items-center gap-1.5 text-xs text-success bg-success/10 border border-success/30 rounded-md px-2 py-1.5">
           <CheckCircle2 className="h-3.5 w-3.5 shrink-0" />
-          <span>Meta atingida! {overshoot ? `Bateu ${meta.progresso.toFixed(0)}%` : ''}</span>
+          <span>Meta atingida! {overshoot ? `Bateu ${progresso.toFixed(0)}%` : ''}</span>
         </div>
       )}
 

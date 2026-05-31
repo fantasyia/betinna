@@ -137,10 +137,10 @@ const STATUS_LABEL_PT: Record<string, string> = {
 const STATUS_COLOR_PT: Record<string, string> = {
   RASCUNHO: colors.muted,
   AGUARDANDO_APROVACAO: colors.warning,
-  ENVIADO_OMIE: '#0891b2',
+  ENVIADO_OMIE: colors.info,
   PAGO: colors.success,
-  EM_SEPARACAO: '#7c3aed',
-  ENVIADO: '#0284c7',
+  EM_SEPARACAO: colors.magenta,
+  ENVIADO: colors.info,
   ENTREGUE: colors.success,
   CANCELADO: colors.danger,
 };
@@ -154,17 +154,17 @@ const ETAPA_LABEL: Record<string, string> = {
   PERDIDO: 'Perdido',
 };
 const ETAPA_COLOR: Record<string, string> = {
-  NOVO: '#0891b2',
-  QUALIFICANDO: '#7c3aed',
+  NOVO: colors.info,
+  QUALIFICANDO: colors.blue,
   PROPOSTA: colors.warning,
-  NEGOCIACAO: '#d97706',
+  NEGOCIACAO: colors.warning,
   GANHO: colors.success,
   PERDIDO: colors.danger,
 };
 
 const SEV_COLOR: Record<string, string> = {
   baixa: colors.muted,
-  media: '#0891b2',
+  media: colors.info,
   alta: colors.warning,
   critica: colors.danger,
 };
@@ -306,8 +306,8 @@ function OverviewTab({ qs }: { qs: string }) {
             />
             <KPICard
               label="Taxa conversão leads"
-              value={`${data.funil.taxaConversao}%`}
-              color={data.funil.taxaConversao > 30 ? colors.success : data.funil.taxaConversao > 15 ? colors.warning : colors.danger}
+              value={`${data.funil.taxaConversao ?? 0}%`}
+              color={(data.funil.taxaConversao ?? 0) > 30 ? colors.success : (data.funil.taxaConversao ?? 0) > 15 ? colors.warning : colors.danger}
             />
             <KPICard
               label="SLA estourado"
@@ -316,8 +316,8 @@ function OverviewTab({ qs }: { qs: string }) {
             />
             <KPICard
               label="Amostras convertidas"
-              value={`${data.amostras.taxaConversao}%`}
-              hint={`${data.amostras.convertidas}/${data.amostras.enviadas}`}
+              value={`${data.amostras.taxaConversao ?? 0}%`}
+              hint={`${data.amostras.convertidas ?? 0}/${data.amostras.enviadas ?? 0}`}
             />
           </div>
 
@@ -777,7 +777,7 @@ function SacTab({ qs }: { qs: string }) {
           >
             <KPICard label="Total ocorrências" value={String(total)} />
             <KPICard label="Abertas" value={String(data.abertas ?? 0)} color={colors.warning} />
-            <KPICard label="Em andamento" value={String(data.emAndamento ?? 0)} color="#0891b2" />
+            <KPICard label="Em andamento" value={String(data.emAndamento ?? 0)} color={colors.info} />
             <KPICard
               label="Resolvidas"
               value={String(data.resolvidas ?? 0)}
@@ -906,7 +906,7 @@ function AmostrasTab({ qs }: { qs: string }) {
                     0,
                     enviadas - convertidas - naoConverteram - expiradas,
                   ),
-                  color: '#0891b2',
+                  color: colors.info,
                 },
               ]}
             />
@@ -975,8 +975,8 @@ function CampanhasTab({ qs }: { qs: string }) {
             <p style={{ color: colors.muted, fontSize: 12, margin: 0 }}>
               💡 Módulo de Campanhas (CRUD direto, sem fluxo) está planejado pra próxima fase.
               Por enquanto, campanhas são disparadas via Fluxos de Automação (trigger →{' '}
-              <span style={badge('#0891b2')}>ENVIAR_WHATSAPP</span> /{' '}
-              <span style={badge('#0891b2')}>ENVIAR_EMAIL</span>).
+              <span style={badge(colors.info)}>ENVIAR_WHATSAPP</span> /{' '}
+              <span style={badge(colors.info)}>ENVIAR_EMAIL</span>).
             </p>
           </div>
         </div>
