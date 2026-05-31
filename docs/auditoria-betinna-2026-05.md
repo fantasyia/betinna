@@ -1,7 +1,7 @@
 # Auditoria Completa do betinna.ai
 
 **Data de início:** 2026-05-31
-**Última atualização:** 2026-05-31 (Fase 4)
+**Última atualização:** 2026-05-31 (Fase 5)
 
 > Documento vivo. Cada fase é acrescentada aqui, sem apagar as anteriores.
 > Linguagem simples — o dono não é técnico. **Auditoria = diagnóstico, não conserto.**
@@ -13,7 +13,7 @@
 - [x] **Fase 2 — Segurança e Permissões**
 - [x] **Fase 3 — Consistência Visual e Experiência**
 - [x] **Fase 4 — Integridade das Integrações**
-- [ ] Fase 5 — Módulo WhatsApp/Atendimento (análise de produto)
+- [x] **Fase 5 — Módulo WhatsApp/Atendimento (análise de produto)**
 - [ ] Fase 6 — Performance e Prontidão para Beta
 - [ ] Entrega Final — Relatório Consolidado + Lista Priorizada
 
@@ -313,4 +313,77 @@ A varredura marcou como "🔴 CRÍTICO: trava a operação" o envio de pedido ao
 | TikTok status de reembolso | 🟡 Corrigir mapeamento |
 
 > **Conclusão:** as integrações estão **bem construídas na engenharia** (renovação de token, retry, idempotência, degradação graciosa). Os pontos a tratar são mais de **operação/visibilidade** (avisar quando algo cai) e **preparação pro go-live do OMIE** do que bugs no código. O item #1 (aviso de desconexão) é o que mais agrega valor pro beta.
+
+---
+
+## Fase 5 — Módulo WhatsApp/Atendimento (análise de PRODUTO)
+
+**Como foi feita:** análise de produto/UX (não caça-bug) do atendimento — inbox unificada, bot Muller e multicanal — sob a ótica de "um atendente/dono usando isso o dia todo". 3 frentes.
+
+### Veredito geral
+A **base do atendimento é boa e funciona** (recebe, responde, atribui, manda mídia/áudio, SLA nas ocorrências, handoff do bot). Mas, comparado a uma ferramenta de SAC madura, **faltam recursos de produtividade e clareza** que vão aparecer já no primeiro mês de uso real. E o **bot, hoje, entrega pouco** (por escolha sua — está em "puro conversa", sem catálogo).
+
+---
+
+### A) A Inbox / SAC como ferramenta de trabalho
+
+**✅ O que está bom:** lista com não-lidas, ordenação (precisa-humano sobe), busca por nome/telefone, filtros por canal/status/atribuição, atribuir conversa, enviar texto/imagem/áudio (até gravar voz), marcar resolvido/arquivar, e ocorrências com SLA colorido + timeline.
+
+**❌ Lacunas que vão incomodar no dia a dia:**
+| # | Falta | Gravidade | Por quê |
+|---|---|---|---|
+| 1 | **Respostas rápidas / templates** | 🔴 | O atendente digita "deixa eu verificar", "obrigado por procurar", etc. **dezenas de vezes por dia**. É a #1 reclamação de quem usa SAC sem isso. |
+| 2 | **Aviso ativo de mensagem nova** (som/toast) | 🔴 | Hoje a lista atualiza sozinha a cada 4s, mas **nada chama a atenção**. Mensagem pode ficar parada sem ninguém ver. |
+| 3 | **Dois atendentes na mesma conversa** (sem trava) | 🔴 | Nada impede 2 pessoas responderem o mesmo cliente ao mesmo tempo. Sem indicador "fulano está atendendo". |
+| 4 | **SLA/urgência não aparece na Inbox** | 🟡 | Conversa parada há 6h aparece igual a uma recente. Sem "está te esperando há X". (As Ocorrências têm SLA; a Inbox não.) |
+| 5 | **Tags e notas internas** | 🟡 | Não dá pra marcar "aguardando documento" nem deixar recado interno ("cliente quer desconto, ver com gerência"). |
+| 6 | **KPIs de atendimento** | 🟡 | Sem "tempo médio de 1ª resposta", "% resolvido pelo bot" — métricas básicas de SAC. |
+
+> ⚠️ É **tempo real por polling de 4s**, não WebSocket — aceitável pro começo, mas dá uma leve sensação de atraso.
+
+---
+
+### B) O bot Muller como produto
+
+**Importante:** isso reflete a SUA escolha de manter o bot em **"puro conversa"** (sem catálogo) por enquanto. Então não é "defeito" — é o estágio atual. Mas vale registrar pro go-live:
+
+| # | Ponto | Gravidade | Detalhe |
+|---|---|---|---|
+| 1 | **Valor limitado sem catálogo** | 🔴 | Hoje o bot só "conversa" com base no seu prompt. Se o cliente pergunta preço/produto, ele **não sabe** (e se o prompt mandar "consulte o catálogo", ele não tem o catálogo). O valor real só aparece quando ligar o **RAG** (gancho pronto, é um flag) com o catálogo do OMIE. |
+| 2 | **Sem registro/auditoria das respostas do bot** | 🔴 | Você **não consegue ver facilmente** tudo que o bot respondeu (só está no banco). Se ele falar algo errado, você só descobre quando o cliente reclamar. Risco operacional. |
+| 3 | **Sem horário de atendimento** | 🟡 | O bot responde 24/7. Fora do horário comercial, cria expectativa de que tem alguém. |
+| 4 | **Sem saudação inicial / encerramento / "não entendi"** | 🟡 | Recursos básicos de um bot decente (cumprimentar, fechar com elegância, limite de tentativas) não existem. |
+| 5 | **Sem preview/teste do prompt** | 🟡 | Você edita o prompt "no escuro" — não dá pra simular uma conversa e ver como o bot responderia **antes** de soltar pros clientes. (Tem o "Testar agora", mas ele só testa a conexão, não a conversa.) |
+| 6 | **Sem teto de custo** | 🟡 | Não há limite de gasto diário com a OpenAI — em bug/abuso, o custo pode disparar. |
+| ✅ | **Handoff (bot → humano)** | 🟢 | **Muito bem feito**: quando o humano responde, o bot pausa sozinho; tags 🤖/⏸/🚨 deixam claro o que é do bot. |
+
+---
+
+### C) Coerência multicanal (WhatsApp + marketplaces + redes)
+
+| # | Ponto | Gravidade | Detalhe |
+|---|---|---|---|
+| 1 | **Cada marketplace tem regra diferente — e o atendente não é avisado** | 🔴 | Amazon **não tem chat livre**, TikTok **bloqueia responder texto**, Shopee deixa no chat mas **não em devolução**. O atendente vai tentar responder e **falhar sem entender por quê**. Falta um aviso claro na tela ("este canal não aceita resposta livre"). É o achado de produto mais importante do multicanal. |
+| 2 | **WhatsApp empresa vs pessoal do rep não é claro na Inbox** | 🟡 | A tela de conexão separa bem, mas dentro da conversa **não fica claro** de qual número (empresa ou pessoal) aquela conversa veio. |
+| 3 | **Status de entrega/leitura inconsistente** | 🟡 | WhatsApp/Meta mostram; marketplaces não expõem. O atendente não sabe se a mensagem foi entregue. |
+| ✅ | **Identidade do contato** | 🟢 | Nome, telefone (já corrigimos o número oculto/LID), avatar, vínculo com cliente cadastrado — está bom. |
+| ✅ | **Conexão WhatsApp (QR) + reconexão** | 🟢 | Fluxo claro, reconexão automática (já corrigimos o QR). |
+| ✅ | **Marketplaces como atendimento** | 🟢 | Modelo unificado de incidentes (devolução/disputa) com SLA colorido — bem estruturado. |
+
+---
+
+### Resumo da Fase 5 — prioridades de PRODUTO
+
+| Prioridade | Item | Onde |
+|---|---|---|
+| 🔴 1 | **Respostas rápidas / templates** | Inbox — maior ganho de produtividade |
+| 🔴 2 | **Avisar quais marketplaces não aceitam resposta livre** (Amazon/TikTok/Shopee-devolução) | Inbox/Incidentes |
+| 🔴 3 | **Aviso ativo de mensagem nova** (som/notificação) | Inbox |
+| 🔴 4 | **Auditoria das respostas do bot** + **teto de custo** | Bot Muller (pré-produção) |
+| 🟡 5 | **Trava de 2 atendentes na mesma conversa** | Inbox |
+| 🟡 6 | **Horário de atendimento + saudação** no bot | Bot Muller |
+| 🟡 7 | **SLA visível na Inbox**, tags/notas internas, KPIs | Inbox |
+| 🟢 | Ligar o **catálogo (RAG)** no bot quando quiser — é o que destrava o valor real dele | Bot Muller |
+
+> **Conclusão:** o atendimento **funciona e tem boa fundação**, mas pra ser uma ferramenta de SAC que o time usa o dia todo sem frustração, os itens 🔴 (templates, aviso de mensagem, clareza dos canais, auditoria do bot) valem muito. O bot, especificamente, **ganha vida quando você ligar o catálogo** — antes disso, ele é mais "simpático" do que "útil".
 </content>
