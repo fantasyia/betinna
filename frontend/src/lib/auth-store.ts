@@ -39,6 +39,10 @@ export function isInitializing(): boolean {
 
 export function setSession(next: AuthSession | null): void {
   session = next;
+  // Persiste a empresa ativa em localStorage SEMPRE que houver uma — assim o
+  // header X-Empresa-Id sobrevive a refreshes de sessão (antes ele "piscava"
+  // pra null num refresh e o PUT saía sem empresa → 403 "Empresa não definida").
+  if (next?.user?.empresaIdAtiva) setStoredEmpresaId(next.user.empresaIdAtiva);
   // Mantém o Sentry user em sync. id apenas (sem email/PII) — beforeSend
   // do sentry.ts strip qualquer PII residual de qualquer jeito.
   setSentryUser(next?.user?.id ?? null);
@@ -110,11 +114,19 @@ export function currentEmpresaId() {
  * recriava a sessão sem lembrar a empresa escolhida → header sumia → 403).
  */
 const EMPRESA_KEY = 'betinna.empresaAtiva';
-function getStoredEmpresaId(): string | null {
+export function getStoredEmpresaId(): string | null {
   try {
     return typeof window !== 'undefined' ? window.localStorage.getItem(EMPRESA_KEY) : null;
   } catch {
     return null;
+  }
+}
+function setStoredEmpresaId(id: string | null): void {
+  try {
+    if (typeof window === 'undefined') return;
+    if (id) window.localStorage.setItem(EMPRESA_KEY, id);
+  } catch {
+    /* localStorage indisponível — segue sem persistir */
   }
 }
 

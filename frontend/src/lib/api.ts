@@ -15,7 +15,7 @@
  * Em testes E2E (Playwright), VITE_API_URL aponta pra Railway staging URL.
  */
 import * as Sentry from '@sentry/react';
-import { clearSession, getSession, refreshAccessToken } from './auth-store';
+import { clearSession, getSession, getStoredEmpresaId, refreshAccessToken } from './auth-store';
 
 const BASE_URL =
   (import.meta.env.VITE_API_URL as string | undefined) ?? 'http://localhost:3001';
@@ -143,7 +143,10 @@ async function request<T>(path: string, opts: RequestOpts = {}, retryWithRefresh
     if (sess?.accessToken) {
       headers['Authorization'] = `Bearer ${sess.accessToken}`;
     }
-    const empresaId = opts.empresaId ?? sess?.user?.empresaIdAtiva;
+    // Fonte do X-Empresa-Id: override → sessão → empresa persistida (localStorage).
+    // O fallback pro localStorage evita que a empresa "suma" num refresh de
+    // sessão (era a causa do PUT/salvar dar 403 "Empresa não definida").
+    const empresaId = opts.empresaId ?? sess?.user?.empresaIdAtiva ?? getStoredEmpresaId();
     if (empresaId) {
       headers['X-Empresa-Id'] = empresaId;
     }
