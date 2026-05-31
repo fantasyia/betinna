@@ -24,6 +24,20 @@
 - ❌ **Não atua em conversa pausada** (handoff humano ou pausa manual).
 - ❌ **Não faz disparo em massa, ações automáticas nem usa templates.**
 
+### Mensagens só com mídia (sem texto)
+
+O bot só responde quando há **texto de verdade** do cliente:
+
+| O que o cliente manda | O bot... |
+|---|---|
+| Texto (inclui emoji isolado tipo "👍") | responde normalmente |
+| Imagem ou vídeo **com legenda** | responde usando o texto da legenda (a mídia em si é ignorada por ora) |
+| Imagem/vídeo **sem legenda**, **áudio**, documento, figurinha, localização, contato | **não responde** — marca a conversa como **🚨 Precisa de humano** e sobe pro topo |
+
+> Áudio escala pra humano por enquanto. **Transcrição de áudio** e **leitura do
+> conteúdo de imagem/documento** ficam pra próxima fase. O motivo da não-resposta
+> fica registrado no log (`[bot] SEM-RESPOSTA ... motivo="..."`).
+
 ### Proteções automáticas
 
 - **Anti-spam:** se o mesmo número mandar mais de 10 mensagens em 1 minuto, o bot
@@ -88,12 +102,16 @@ responder 4 horas após o último atendimento humano.
 Cada resposta da IA gera uma linha de log no serviço **api** (Railway → Logs):
 
 ```
-[bot] OK conv=<id> peer=<numero> msg="..." tokens_in=123 tokens_out=45 tempo=812ms
+[bot] OK conv=<id> peer=<numero> modelo=gpt-4o-mini msg="..." prompt_aprox=420tok tokens_in=123 tokens_out=45 tempo=812ms
+[bot] SEM-RESPOSTA conv=<id> peer=<numero> tipo=AUDIO motivo="mídia sem texto (audio)" → marcado precisa humano
 [bot] FALLBACK conv=<id> peer=<numero> msg="..." tempo=15003ms status=falha
 [bot] anti-spam: peer=<numero> excedeu 10/min — pausado + precisa humano
 ```
 
-- `tokens_in` / `tokens_out` = consumo daquela resposta (use pra estimar custo).
+- `prompt_aprox` = estimativa do tamanho do prompt enviado (em tokens). Quando o
+  catálogo for ligado no contexto, esse número sobe — assim dá pra ver quanto do
+  gasto vem do catálogo.
+- `tokens_in` / `tokens_out` = consumo real daquela resposta (use pra estimar custo).
 - O custo real aparece no **painel da OpenAI** (platform.openai.com → Usage).
 - `gpt-4o-mini` é barato; ainda assim, acompanhe o volume nas primeiras semanas.
 
@@ -128,7 +146,15 @@ Cada resposta da IA gera uma linha de log no serviço **api** (Railway → Logs)
    - Mande mensagem pro número da empresa → o bot **não responde** (só humano).
    - Religue ao final do teste.
 
-6. **Fallback (opcional / avançado)**
+6. **Mídia sem texto escala pra humano**
+   - Do celular cliente, mande **só um áudio** (ou uma imagem sem legenda) pro
+     número da empresa.
+   - O bot **não responde**; a conversa aparece com **🚨 Precisa de humano** no
+     topo do Inbox.
+   - Agora mande uma **imagem com legenda** (ex.: *"esse produto vocês têm?"*) →
+     o bot responde considerando o texto da legenda.
+
+7. **Fallback (opcional / avançado)**
    - Com uma `OPENAI_API_KEY` inválida, mande mensagem pro número da empresa.
    - Deve chegar a mensagem padrão *"Recebi sua mensagem…"* e a conversa sobe pro
      topo com **🚨 Precisa de humano**.
@@ -137,12 +163,14 @@ Cada resposta da IA gera uma linha de log no serviço **api** (Railway → Logs)
 
 ## 7. O que ainda falta (próximos passos da Fase 1/2)
 
-- **Conectar o catálogo (RAG):** hoje o bot conversa, mas não consulta os
-  produtos importados do OMIE. O próximo passo é ligar o `ProdutoSearchService`
-  pra ele responder preço/disponibilidade de SKU. *(combinado com o Léo: "deixa
-  puro conversa por enquanto, depois te explico como conectar o catálogo".)*
-- **Download de mídia recebida:** áudio/imagem que o cliente manda ainda chegam
-  como placeholder (`[áudio]`, `[imagem]`) — o bot não "ouve/vê" o conteúdo.
+- **Ligar o catálogo (RAG) no bot do WhatsApp:** hoje o bot do WhatsApp roda em
+  modo **puro conversa** (sem catálogo). O gancho já está pronto no código
+  (`responderComoEmpresa(..., { incluirCatalogo })`) — basta ligar quando
+  decidirmos, e dá pra fazer "sob demanda" (só quando a mensagem citar produto).
+  O log `prompt_aprox` já mostra o tamanho do prompt pra acompanhar o custo extra.
+- **Transcrição de áudio / leitura de mídia:** áudio e imagem sem legenda hoje
+  escalam pra humano. Transcrever áudio e "ler" imagem/documento fica pra próxima
+  fase (o cliente que manda só mídia é atendido por uma pessoa).
 - **Histórico mais longo / memória:** hoje o bot usa as últimas 10 mensagens de
   texto da conversa. Sem resumo de conversas antigas.
 - **Horário de atendimento:** não implementado — o bot responde 24/7 enquanto
