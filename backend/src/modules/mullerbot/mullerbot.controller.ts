@@ -1,8 +1,9 @@
-import { Body, Controller, Delete, HttpCode, HttpStatus, Param, Post } from '@nestjs/common';
+import { Body, Controller, Delete, Get, HttpCode, HttpStatus, Param, Post } from '@nestjs/common';
 import { Throttle, seconds } from '@nestjs/throttler';
 import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
 import { Audit } from '@shared/decorators/audit.decorator';
 import { CurrentUser } from '@shared/decorators/current-user.decorator';
+import { Roles } from '@shared/decorators/roles.decorator';
 import { ZodValidationPipe } from '@shared/pipes/zod-validation.pipe';
 import type { AuthenticatedUser } from '@shared/types/authenticated-user';
 import { type PerguntarDto, perguntarSchema } from './mullerbot.dto';
@@ -29,6 +30,16 @@ export class MullerBotController {
     @Body(new ZodValidationPipe(perguntarSchema)) dto: PerguntarDto,
   ) {
     return this.bot.perguntar(user, dto);
+  }
+
+  @Get('bot/diagnostico')
+  @Roles('ADMIN', 'DIRECTOR')
+  @ApiOperation({
+    summary:
+      'Diagnóstico do bot do WhatsApp: verifica OPENAI_API_KEY do servidor e faz ping na OpenAI.',
+  })
+  diagnosticarBot() {
+    return this.bot.diagnosticarBot();
   }
 
   @Delete('historico/:sessionId')

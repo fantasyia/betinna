@@ -227,6 +227,43 @@ export class MullerBotService {
     return { ...r, promptTokensAprox, modelo, usouCatalogo: usarCatalogo, produtosIncluidos };
   }
 
+  /**
+   * Diagnóstico do bot do WhatsApp da empresa — usado pela tela Persona Bot.
+   * Verifica se a `OPENAI_API_KEY` do servidor existe e faz um ping mínimo na
+   * OpenAI pra confirmar que a chave responde. Nunca lança — retorna o status.
+   */
+  async diagnosticarBot(): Promise<{
+    envKeyPresente: boolean;
+    modelo: string;
+    catalogoLigado: boolean;
+    teste: { ok: boolean; erro?: string };
+  }> {
+    const envKey = this.env.get('OPENAI_API_KEY');
+    const modelo = this.env.get('MULLERBOT_MODEL');
+    const catalogoLigado = this.env.get('MULLERBOT_WHATSAPP_CATALOGO');
+    if (!envKey) {
+      return {
+        envKeyPresente: false,
+        modelo,
+        catalogoLigado,
+        teste: {
+          ok: false,
+          erro:
+            'A OPENAI_API_KEY não está configurada no servidor (Railway). O bot do ' +
+            'WhatsApp usa essa chave do ambiente — a chave cadastrada na tela de ' +
+            'integrações não vale pra ele.',
+        },
+      };
+    }
+    try {
+      await this.chamarOpenAI({ apiKey: envKey }, modelo, 'Responda só: ok', 'ping', 5, []);
+      return { envKeyPresente: true, modelo, catalogoLigado, teste: { ok: true } };
+    } catch (err) {
+      const erro = err instanceof Error ? err.message : String(err);
+      return { envKeyPresente: true, modelo, catalogoLigado, teste: { ok: false, erro } };
+    }
+  }
+
   // ─── Histórico (acesso público pra controller) ────────────────────────
 
   async limparHistorico(user: AuthenticatedUser, sessionId: string): Promise<{ ok: true }> {

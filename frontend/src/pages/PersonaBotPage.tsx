@@ -98,6 +98,38 @@ export default function PersonaBotPage() {
     if (empresaQuery.data) setBotWhatsappAtivo(empresaQuery.data.botWhatsappAtivo ?? true);
   }, [empresaQuery.data]);
 
+  // Diagnóstico do bot (testa a OPENAI_API_KEY do servidor + ping na OpenAI)
+  const [diag, setDiag] = useState<{
+    envKeyPresente: boolean;
+    modelo: string;
+    catalogoLigado: boolean;
+    teste: { ok: boolean; erro?: string };
+  } | null>(null);
+  const [diagLoading, setDiagLoading] = useState(false);
+
+  async function testarBot() {
+    setDiagLoading(true);
+    try {
+      const r = await api.get<typeof diag>('/mullerbot/bot/diagnostico');
+      setDiag(r);
+    } catch (err) {
+      setDiag({
+        envKeyPresente: false,
+        modelo: '?',
+        catalogoLigado: false,
+        teste: { ok: false, erro: err instanceof ApiError ? err.message : 'Falha ao testar' },
+      });
+    } finally {
+      setDiagLoading(false);
+    }
+  }
+
+  // Roda o diagnóstico ao abrir a tela
+  useEffect(() => {
+    void testarBot();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   async function alternarBotWhatsapp(ativo: boolean) {
     const empresaId = empresaQuery.data?.id;
     if (!empresaId) return;
@@ -291,6 +323,46 @@ export default function PersonaBotPage() {
                 }
               />
             </Field>
+            {/* Diagnóstico — confirma que o bot consegue falar com a OpenAI */}
+            <div className="mt-3 rounded-md border border-border bg-bg-alt p-3">
+              <div className="flex items-center justify-between gap-2">
+                <span className="text-xs font-semibold text-text">Conexão com a IA (OpenAI)</span>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => void testarBot()}
+                  loading={diagLoading}
+                >
+                  Testar agora
+                </Button>
+              </div>
+              {diag && !diagLoading && (
+                <div className="mt-2 text-xs leading-relaxed">
+                  {diag.teste.ok ? (
+                    <p className="text-success flex items-center gap-1.5">
+                      <CheckCircle2 className="h-3.5 w-3.5 shrink-0" />
+                      IA conectada e respondendo (modelo {diag.modelo}). Bot pronto pra atender.
+                    </p>
+                  ) : (
+                    <div className="text-danger flex items-start gap-1.5">
+                      <AlertCircle className="h-3.5 w-3.5 shrink-0 mt-0.5" />
+                      <div>
+                        <strong>O bot NÃO consegue responder.</strong>
+                        <p className="text-text-subtle mt-0.5">{diag.teste.erro}</p>
+                        {!diag.envKeyPresente && (
+                          <p className="text-text-subtle mt-1">
+                            👉 Configure a variável <code>OPENAI_API_KEY</code> no Railway (serviços
+                            api e worker) e refaça o deploy.
+                          </p>
+                        )}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+
             <p className="text-[11px] text-muted-light mt-2 leading-relaxed">
               Dica: quando um atendente humano responde uma conversa, o bot pausa sozinho naquela
               conversa por algumas horas (handoff). Você também pode pausar/religar manualmente na
