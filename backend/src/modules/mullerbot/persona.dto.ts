@@ -25,9 +25,9 @@ export const upsertPersonaSchema = z.object({
   ativo: z.boolean().default(true),
   /**
    * Prompt COMPLETO do Muller. Quando preenchido, é usado tal e qual como system
-   * prompt (forma principal de configurar). Até 12k chars (~3k tokens).
+   * prompt (forma principal de configurar). Até 20k chars (~5k tokens).
    */
-  promptCustom: z.string().trim().max(12000).nullable().optional(),
+  promptCustom: z.string().trim().max(20000).nullable().optional(),
   /**
    * Modelo da OpenAI usado pelo bot. Quando null/vazio, usa o padrão do servidor
    * (env MULLERBOT_MODEL). A lista de opções é controlada pelo dropdown no front.

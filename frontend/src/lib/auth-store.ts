@@ -63,6 +63,11 @@ export function setSession(next: AuthSession | null): void {
 export function clearSession(): void {
   cancelRefresh();
   setSession(null);
+  try {
+    if (typeof window !== 'undefined') window.localStorage.removeItem(EMPRESA_KEY);
+  } catch {
+    /* best-effort */
+  }
   // Apaga cookie httpOnly no backend + revoga refresh no Supabase
   void fetch(`${API_BASE}/api/v1/auth/signout`, {
     method: 'POST',
@@ -100,6 +105,20 @@ export function currentEmpresaId() {
 }
 
 /**
+ * Empresa ativa escolhida no seletor — persistida em localStorage pra
+ * SOBREVIVER ao reload da página (o switch recarrega a página, e o bootstrap
+ * recriava a sessão sem lembrar a empresa escolhida → header sumia → 403).
+ */
+const EMPRESA_KEY = 'betinna.empresaAtiva';
+function getStoredEmpresaId(): string | null {
+  try {
+    return typeof window !== 'undefined' ? window.localStorage.getItem(EMPRESA_KEY) : null;
+  } catch {
+    return null;
+  }
+}
+
+/**
  * Troca a empresa ativa (multi-tenant). Atualiza o `empresaIdAtiva` no
  * AuthSession em memória — todas as próximas chamadas de `api.*` vão
  * passar essa empresa no header `X-Empresa-Id`.
@@ -122,6 +141,12 @@ export function switchEmpresaAtiva(empresaId: string): void {
     user: { ...session.user, empresaIdAtiva: empresaId },
   });
   if (typeof window !== 'undefined') {
+    // Persiste a escolha pra sobreviver ao reload (senão o bootstrap reseta).
+    try {
+      window.localStorage.setItem(EMPRESA_KEY, empresaId);
+    } catch {
+      /* localStorage indisponível — segue sem persistir */
+    }
     // Reload pra limpar caches em memória — evita misturar dados de tenants.
     window.location.reload();
   }
@@ -190,6 +215,12 @@ export async function refreshAccessToken(): Promise<AuthSession | null> {
     if (!me) {
       setSession(null);
       return null;
+    }
+    // Reaplica a empresa escolhida no seletor (persistida) — sobrevive ao reload.
+    // Só aplica se for válida pro usuário (ADMIN pode qualquer; demais só as suas).
+    const stored = getStoredEmpresaId();
+    if (stored && (me.role === 'ADMIN' || (me.empresaIds ?? []).includes(stored))) {
+      me.empresaIdAtiva = stored;
     }
     const next: AuthSession = {
       accessToken: data.accessToken,

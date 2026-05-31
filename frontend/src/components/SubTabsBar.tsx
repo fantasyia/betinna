@@ -46,12 +46,23 @@ export function SubTabsBar({
   // não renderiza nada — não faz sentido mostrar uma barra com 1 item só.
   if (tabs.length < 2) return null;
 
-  function isActive(tab: SubTab): boolean {
+  // Comprimento do padrão que casa com o pathname atual (-1 = não casa).
+  // Usamos o MAIS específico (mais longo) pra ativar só UMA aba — senão
+  // `/mullerbot` ficava ativo junto com `/mullerbot/persona` (bug de aba dupla).
+  function matchLen(tab: SubTab): number {
     const path = location.pathname;
-    if (path === tab.to) return true;
-    if (path.startsWith(tab.to + '/')) return true;
-    if (tab.match?.some((m) => path === m || path.startsWith(m + '/'))) return true;
-    return false;
+    const padroes = [tab.to, ...(tab.match ?? [])];
+    let best = -1;
+    for (const p of padroes) {
+      if (path === p || path.startsWith(p + '/')) best = Math.max(best, p.length);
+    }
+    return best;
+  }
+
+  const activeLen = Math.max(-1, ...tabs.map(matchLen));
+
+  function isActive(tab: SubTab): boolean {
+    return activeLen >= 0 && matchLen(tab) === activeLen;
   }
 
   return (
