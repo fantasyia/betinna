@@ -14,9 +14,23 @@ import {
   CardDescription,
   EmptyState,
   Field,
+  Select,
   Switch,
   Textarea,
 } from '@/components/ui';
+
+/**
+ * Modelos da OpenAI oferecidos no seletor. value '' = usa o padrão do servidor
+ * (env MULLERBOT_MODEL). Mantém só modelos de chat estáveis.
+ */
+const MODELOS_OPENAI: Array<{ value: string; label: string }> = [
+  { value: '', label: 'Padrão do servidor (gpt-4o-mini)' },
+  { value: 'gpt-4o-mini', label: 'GPT-4o mini — rápido e barato (recomendado)' },
+  { value: 'gpt-4o', label: 'GPT-4o — mais inteligente (mais caro)' },
+  { value: 'gpt-4.1-mini', label: 'GPT-4.1 mini — equilíbrio' },
+  { value: 'gpt-4.1', label: 'GPT-4.1 — alto desempenho' },
+  { value: 'gpt-4-turbo', label: 'GPT-4 Turbo' },
+];
 
 /**
  * PersonaBotPage — configura o Muller por empresa.
@@ -31,6 +45,7 @@ interface Persona {
   empresaId: string;
   nome: string;
   promptCustom?: string | null;
+  modelo?: string | null;
   ativo: boolean;
   atualizadoEm: string;
 }
@@ -59,8 +74,9 @@ export default function PersonaBotPage() {
 
   const { data, loading, refetch } = useApiQuery<Persona>('/mullerbot/persona');
 
-  // Estado de edição — o prompt completo do Muller
+  // Estado de edição — o prompt completo do Muller + modelo da IA
   const [prompt, setPrompt] = useState('');
+  const [modelo, setModelo] = useState('');
   const [dirty, setDirty] = useState(false);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -68,6 +84,7 @@ export default function PersonaBotPage() {
   useEffect(() => {
     if (!data) return;
     setPrompt(data.promptCustom ?? '');
+    setModelo(data.modelo ?? '');
     setDirty(false);
   }, [data]);
 
@@ -136,6 +153,7 @@ export default function PersonaBotPage() {
         tomVoz: 'PROFISSIONAL',
         ativo: true,
         promptCustom: prompt.trim() || null,
+        modelo: modelo || null,
       });
       toast.success('Prompt do Muller salvo');
       setDirty(false);
@@ -266,6 +284,25 @@ export default function PersonaBotPage() {
                 Coloque aqui a identidade, o tom, as regras e tudo mais.
               </CardDescription>
             </CardHeader>
+            <Field
+              label="Modelo da IA (OpenAI)"
+              hint="Define qual modelo da OpenAI o Muller usa pra responder. Quanto mais inteligente, mais caro por mensagem."
+              className="mb-3"
+            >
+              <Select
+                value={modelo}
+                onChange={(e) => {
+                  setModelo(e.target.value);
+                  setDirty(true);
+                }}
+              >
+                {MODELOS_OPENAI.map((m) => (
+                  <option key={m.value || 'default'} value={m.value}>
+                    {m.label}
+                  </option>
+                ))}
+              </Select>
+            </Field>
             <Textarea
               value={prompt}
               onChange={(e) => {

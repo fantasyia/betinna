@@ -28,5 +28,10 @@ export const upsertPersonaSchema = z.object({
    * prompt (forma principal de configurar). Até 12k chars (~3k tokens).
    */
   promptCustom: z.string().trim().max(12000).nullable().optional(),
+  /**
+   * Modelo da OpenAI usado pelo bot. Quando null/vazio, usa o padrão do servidor
+   * (env MULLERBOT_MODEL). A lista de opções é controlada pelo dropdown no front.
+   */
+  modelo: z.string().trim().max(60).nullable().optional(),
 });
 export type UpsertPersonaDto = z.infer<typeof upsertPersonaSchema>;

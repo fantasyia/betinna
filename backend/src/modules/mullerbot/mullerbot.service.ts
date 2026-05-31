@@ -180,7 +180,8 @@ export class MullerBotService {
         ErrorCode.INTEGRATION_ERROR,
       );
     }
-    const modelo = this.env.get('MULLERBOT_MODEL');
+    // Modelo escolhido pela empresa (tela Persona Bot); senão o padrão do servidor.
+    const modelo = (await this.persona.obterModelo(empresaId)) ?? this.env.get('MULLERBOT_MODEL');
     const maxOutputTokens = this.env.get('MULLERBOT_MAX_OUTPUT_TOKENS');
 
     // Liga o catálogo (RAG) quando pedido. Default = puro conversa.

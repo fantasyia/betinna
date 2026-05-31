@@ -1800,6 +1800,9 @@ model MullerBotPersona {
   /// como system prompt (substitui o prompt-base e os campos estruturados acima).
   /// É a forma principal de configurar o Muller — os demais campos viram legado.
   promptCustom String?  @db.Text
+  /// Modelo da OpenAI usado pelo bot desta empresa (ex: gpt-4o-mini, gpt-4o).
+  /// Quando null, usa o padrão do servidor (env MULLERBOT_MODEL).
+  modelo       String?
   /// Exemplos de pergunta/resposta pro few-shot prompt (array JSON).
   /// Ex: [{pergunta: "Tem óleo de soja?", resposta: "Sim, em três tamanhos..."}]
   exemplosJson Json?

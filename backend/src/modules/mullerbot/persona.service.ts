@@ -38,6 +38,7 @@ export interface PersonaResult {
   saudacao?: string | null;
   ativo: boolean;
   promptCustom?: string | null;
+  modelo?: string | null;
   systemPromptPreview: string;
   atualizadoEm: Date;
 }
@@ -78,6 +79,7 @@ export class MullerBotPersonaService {
       saudacao: dto.saudacao ?? null,
       ativo: dto.ativo,
       promptCustom: dto.promptCustom ?? null,
+      modelo: dto.modelo?.trim() || null,
     };
     const row = await this.prisma.mullerBotPersona.upsert({
       where: { empresaId },
@@ -175,6 +177,7 @@ Se o cliente pedir algo que você não pode resolver, avise com gentileza que um
     saudacao: string | null;
     ativo: boolean;
     promptCustom?: string | null;
+    modelo?: string | null;
     atualizadoEm: Date;
   }): PersonaResult {
     const tomVoz = (row.tomVoz as TomVoz) ?? 'PROFISSIONAL';
@@ -189,9 +192,19 @@ Se o cliente pedir algo que você não pode resolver, avise com gentileza que um
       saudacao: row.saudacao,
       ativo: row.ativo,
       promptCustom: row.promptCustom ?? null,
+      modelo: row.modelo ?? null,
       systemPromptPreview: '',
       atualizadoEm: row.atualizadoEm,
     };
+  }
+
+  /** Modelo da OpenAI escolhido pela empresa (null = usa o padrão do servidor). */
+  async obterModelo(empresaId: string): Promise<string | null> {
+    const row = await this.prisma.mullerBotPersona.findUnique({
+      where: { empresaId },
+      select: { modelo: true },
+    });
+    return row?.modelo?.trim() || null;
   }
 
   private async defaultPersona(empresaId: string): Promise<PersonaResult> {
@@ -205,6 +218,7 @@ Se o cliente pedir algo que você não pode resolver, avise com gentileza que um
       saudacao: null,
       ativo: false,
       promptCustom: null,
+      modelo: null,
       systemPromptPreview: '',
       atualizadoEm: new Date(),
     };
