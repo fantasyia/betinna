@@ -14,8 +14,10 @@ import {
   Search,
   Sun,
   Moon,
+  LogOut,
   type LucideIcon,
 } from 'lucide-react';
+import { clearSession } from '@/lib/auth-store';
 import { useRole, usePermission } from '@/hooks/usePermission';
 import { useEmpresaLogo } from '@/hooks/useEmpresaLogo';
 import { useBadges, type BadgeCounts } from '@/hooks/useBadges';
@@ -367,6 +369,24 @@ function Sidebar({
         </div>
         <ChevronRight className="h-3.5 w-3.5 text-muted opacity-0 group-hover:opacity-100 transition-opacity" />
       </Link>
+
+      {/* Botão de sair (logout) */}
+      <button
+        type="button"
+        data-testid="logout-btn"
+        onClick={() => {
+          clearSession();
+          // Volta pra tela de login (a sessão já foi limpa).
+          window.location.assign('/login');
+        }}
+        className={cn(
+          'flex items-center gap-2.5 px-3 py-2.5 w-full text-left',
+          'text-sm text-muted hover:text-danger hover:bg-surface-hover transition-colors',
+        )}
+      >
+        <LogOut className="h-3.5 w-3.5" />
+        Sair
+      </button>
     </aside>
   );
 }
