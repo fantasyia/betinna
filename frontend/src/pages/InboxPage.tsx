@@ -77,7 +77,10 @@ interface Conversation {
   id: string;
   canal: Canal;
   status: ConversationStatus;
-  peer: string;
+  // O backend (Prisma) serializa como `peerId` — identificador externo do
+  // contato no canal (telefone no WhatsApp). `peer` fica como fallback legado.
+  peerId: string;
+  peer?: string;
   peerNome?: string | null;
   // Backend usa estes nomes (Prisma schema). Antes o frontend tinha
   // `ultimaMensagem`/`ultimaMensagemEm` errado → tela mostrava sempre
@@ -394,7 +397,7 @@ function ConversationItem({
   active: boolean;
   onClick: () => void;
 }) {
-  const name = conv.cliente?.nome ?? conv.peerNome ?? fmtPeer(conv.canal, conv.peer);
+  const name = conv.cliente?.nome ?? conv.peerNome ?? fmtPeer(conv.canal, conv.peerId ?? conv.peer);
   const unread = (conv.naoLidas ?? 0) > 0;
   const botPausado = conv.botPausadoAte
     ? new Date(conv.botPausadoAte).getTime() > Date.now()
@@ -815,14 +818,14 @@ function ConversationThread({
               />
             )}
             <Avatar
-              name={c.cliente?.nome ?? c.peerNome ?? fmtPeer(c.canal, c.peer)}
+              name={c.cliente?.nome ?? c.peerNome ?? fmtPeer(c.canal, c.peerId ?? c.peer)}
               src={c.metadata?.avatarUrl ?? undefined}
               size="md"
             />
             <div className="flex-1 min-w-0">
               <div className="flex items-center gap-1.5">
                 <strong className="text-sm tracking-tight truncate text-text">
-                  {c.cliente?.nome ?? c.peerNome ?? fmtPeer(c.canal, c.peer)}
+                  {c.cliente?.nome ?? c.peerNome ?? fmtPeer(c.canal, c.peerId ?? c.peer)}
                 </strong>
                 <ChannelBadge canal={c.canal} size="sm" />
               </div>
@@ -832,10 +835,10 @@ function ConversationThread({
               <div
                 className="text-[11px] text-muted truncate select-text"
                 data-testid="inbox-thread-peer"
-                title={c.peer ?? undefined}
+                title={c.peerId ?? c.peer ?? undefined}
               >
-                {c.peer && (c.cliente?.nome || c.peerNome)
-                  ? fmtPeer(c.canal, c.peer)
+                {(c.peerId ?? c.peer) && (c.cliente?.nome || c.peerNome)
+                  ? fmtPeer(c.canal, c.peerId ?? c.peer)
                   : CANAL_LABEL[c.canal]}
               </div>
             </div>
