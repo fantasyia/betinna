@@ -121,10 +121,15 @@ export class MullerWhatsappService implements OnModuleInit {
         tokensOut?: number;
         promptTokensAprox?: number;
         modelo?: string;
+        usouCatalogo?: boolean;
+        produtosIncluidos?: number;
       } | null = null;
       try {
         resposta = await this.comTimeout(
-          this.muller.responderComoEmpresa(params.empresaId, params.conteudo, historico),
+          this.muller.responderComoEmpresa(params.empresaId, params.conteudo, historico, {
+            // Puro conversa por padrão; vira RAG quando MULLERBOT_WHATSAPP_CATALOGO=true.
+            incluirCatalogo: this.env.get('MULLERBOT_WHATSAPP_CATALOGO'),
+          }),
           TIMEOUT_MS,
         );
       } catch (err) {
@@ -147,6 +152,7 @@ export class MullerWhatsappService implements OnModuleInit {
       await this.inbox.responderComoBot(convId, resposta.texto.trim());
       this.logger.log(
         `[bot] OK conv=${convId} peer=${params.peerId} modelo=${resposta.modelo ?? '?'} ` +
+          `catalogo=${resposta.usouCatalogo ? `on(${resposta.produtosIncluidos ?? 0}prod)` : 'off'} ` +
           `msg="${params.conteudo.slice(0, 60)}" prompt_aprox=${resposta.promptTokensAprox ?? '?'}tok ` +
           `tokens_in=${resposta.tokensIn ?? '?'} tokens_out=${resposta.tokensOut ?? '?'} tempo=${tempoMs}ms`,
       );

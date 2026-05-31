@@ -90,10 +90,16 @@ Tela **Atendimento → Inbox**, dentro de uma conversa de WhatsApp:
 | `OPENAI_API_KEY` | — | Chave da OpenAI usada pelo bot (já configurada pelo Léo). |
 | `MULLERBOT_MODEL` | `gpt-4o-mini` | Modelo da OpenAI usado nas respostas. |
 | `BOT_HANDOFF_HORAS` | `24` | Quantas horas o bot fica calado numa conversa depois que um humano responde (handoff). |
+| `MULLERBOT_WHATSAPP_CATALOGO` | `false` | Liga o catálogo (RAG) no bot. `false` = **puro conversa** (atual). Trocar pra `true` ATIVA o RAG (busca de produtos + guardrails anti-alucinação) **sem mexer em código** — só redeploy. |
 
 Para mudar o tempo de handoff: ajuste `BOT_HANDOFF_HORAS` no Railway (serviços
 **api** e **worker**) e redeploy. Ex.: `BOT_HANDOFF_HORAS=4` deixa o bot voltar a
 responder 4 horas após o último atendimento humano.
+
+**Ligar o catálogo no futuro:** o código do RAG já está pronto. Para ativar,
+defina `MULLERBOT_WHATSAPP_CATALOGO=true` no Railway (api + worker) e redeploy —
+o bot passa a buscar produtos relevantes do catálogo e responder com os
+guardrails anti-alucinação. O log mostra `catalogo=on(Nprod)` quando ativo.
 
 ---
 
@@ -163,11 +169,11 @@ Cada resposta da IA gera uma linha de log no serviço **api** (Railway → Logs)
 
 ## 7. O que ainda falta (próximos passos da Fase 1/2)
 
-- **Ligar o catálogo (RAG) no bot do WhatsApp:** hoje o bot do WhatsApp roda em
-  modo **puro conversa** (sem catálogo). O gancho já está pronto no código
-  (`responderComoEmpresa(..., { incluirCatalogo })`) — basta ligar quando
-  decidirmos, e dá pra fazer "sob demanda" (só quando a mensagem citar produto).
-  O log `prompt_aprox` já mostra o tamanho do prompt pra acompanhar o custo extra.
+- **Ligar o catálogo (RAG) no bot do WhatsApp:** hoje o bot roda em **puro
+  conversa** (sem catálogo). O caminho do RAG **já está implementado e pronto** —
+  é só definir `MULLERBOT_WHATSAPP_CATALOGO=true` no Railway e redeploy (sem
+  mexer em código). O log `prompt_aprox` + `catalogo=on(Nprod)` mostram o custo
+  extra. Evolução futura: tornar "sob demanda" (só quando a mensagem citar produto).
 - **Transcrição de áudio / leitura de mídia:** áudio e imagem sem legenda hoje
   escalam pra humano. Transcrever áudio e "ler" imagem/documento fica pra próxima
   fase (o cliente que manda só mídia é atendido por uma pessoa).

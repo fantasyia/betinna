@@ -48,6 +48,14 @@ export const envSchema = z
     MULLERBOT_MAX_OUTPUT_TOKENS: z.coerce.number().int().positive().default(1024),
     /** Fase 2 — horas que o bot fica pausado numa conversa após um humano responder (handoff). */
     BOT_HANDOFF_HORAS: z.coerce.number().int().positive().default(24),
+    /**
+     * Fase 2 — liga o catálogo (RAG) no bot do WhatsApp da empresa.
+     * `false` (default) = bot puro conversa (sem catálogo). Trocar pra `true`
+     * no Railway ATIVA o RAG (busca de produtos + guardrails) sem mexer em código.
+     */
+    MULLERBOT_WHATSAPP_CATALOGO: z
+      .union([z.boolean(), z.string().transform((s) => s === 'true')])
+      .default(false),
 
     // OMIE
     OMIE_APP_KEY: z.string().optional().default(''),

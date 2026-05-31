@@ -100,6 +100,7 @@ describe('MullerWhatsappService — regras do bot', () => {
       'emp-1',
       baseParams.conteudo,
       expect.any(Array),
+      expect.anything(),
     );
     expect(inbox.responderComoBot).toHaveBeenCalledWith('conv-1', 'Olá! Como posso ajudar?');
   });
@@ -149,6 +150,7 @@ describe('MullerWhatsappService — regras do bot', () => {
       'emp-1',
       'Esse produto da foto vocês têm?',
       expect.any(Array),
+      expect.anything(),
     );
     expect(inbox.responderComoBot).toHaveBeenCalled();
   });

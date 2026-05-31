@@ -170,6 +170,8 @@ export class MullerBotService {
     tokensOut?: number;
     promptTokensAprox: number;
     modelo: string;
+    usouCatalogo: boolean;
+    produtosIncluidos: number;
   }> {
     const apiKey = this.env.get('OPENAI_API_KEY');
     if (!apiKey) {
@@ -180,15 +182,32 @@ export class MullerBotService {
     }
     const modelo = this.env.get('MULLERBOT_MODEL');
     const maxOutputTokens = this.env.get('MULLERBOT_MAX_OUTPUT_TOKENS');
-    const systemPrompt = await this.persona.compilarSystemPromptConversa(empresaId);
 
-    // Gancho do catálogo (desligado por padrão — ver doc do método).
+    // Liga o catálogo (RAG) quando pedido. Default = puro conversa.
+    const usarCatalogo = opts.incluirCatalogo ?? false;
+
+    let systemPrompt: string;
     let userMessage = mensagemCliente;
-    if (opts.incluirCatalogo) {
-      // TODO(catálogo sob demanda): buscar produtos relevantes (this.produtoSearch)
-      // e montar a mensagem com orçamento de tokens (this.montarUserMessage),
-      // igual ao fluxo de `perguntar()`. Mantido desligado por ora.
-      userMessage = mensagemCliente;
+    let produtosIncluidos = 0;
+
+    if (usarCatalogo) {
+      // ── Modo RAG (pronto, ligado via env MULLERBOT_WHATSAPP_CATALOGO) ──
+      // System prompt COM guardrails de catálogo (proíbe alucinação) + produtos
+      // relevantes montados com orçamento de tokens (mesma lógica do perguntar()).
+      systemPrompt = await this.persona.compilarSystemPrompt(empresaId);
+      const maxInputTokens = this.env.get('MULLERBOT_MAX_INPUT_TOKENS');
+      const produtos = await this.produtoSearch.buscar(empresaId, mensagemCliente);
+      const overhead =
+        this.estimarTokens(systemPrompt) +
+        this.estimarTokens(mensagemCliente) +
+        SAFETY_MARGIN_TOKENS;
+      const orcamentoCatalogo = Math.max(0, maxInputTokens - overhead);
+      const montado = this.montarUserMessage(mensagemCliente, produtos, orcamentoCatalogo);
+      userMessage = montado.userMessage;
+      produtosIncluidos = montado.produtosIncluidos.length;
+    } else {
+      // ── Modo puro conversa (atual): prompt conversacional, sem catálogo ──
+      systemPrompt = await this.persona.compilarSystemPromptConversa(empresaId);
     }
 
     // Estimativa do tamanho do prompt (system + histórico + mensagem) — rastreia custo.
@@ -205,7 +224,7 @@ export class MullerBotService {
       maxOutputTokens,
       historico,
     );
-    return { ...r, promptTokensAprox, modelo };
+    return { ...r, promptTokensAprox, modelo, usouCatalogo: usarCatalogo, produtosIncluidos };
   }
 
   // ─── Histórico (acesso público pra controller) ────────────────────────
