@@ -95,7 +95,11 @@ export class AuthGuard implements CanActivate {
     }
 
     const requestedEmpresa = this.extractEmpresaHeader(request);
-    const empresaIdAtiva = this.resolveEmpresaAtiva(cached.empresaIds, requestedEmpresa);
+    const empresaIdAtiva = this.resolveEmpresaAtiva(
+      cached.empresaIds,
+      requestedEmpresa,
+      cached.role,
+    );
 
     const authUser: AuthenticatedUser = {
       id: cached.id,
@@ -205,8 +209,15 @@ export class AuthGuard implements CanActivate {
     return null;
   }
 
-  private resolveEmpresaAtiva(empresaIds: string[], requested: string | null): string | null {
+  private resolveEmpresaAtiva(
+    empresaIds: string[],
+    requested: string | null,
+    role?: string,
+  ): string | null {
     if (requested) {
+      // ADMIN é master da plataforma (cross-tenant, D48): pode operar qualquer
+      // empresa via o seletor — não precisa estar vinculado a ela.
+      if (role === 'ADMIN') return requested;
       if (!empresaIds.includes(requested)) {
         throw new ForbiddenException(
           'Você não tem acesso a esta empresa',
