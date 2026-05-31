@@ -90,6 +90,35 @@ export default function PersonaBotPage() {
 
   const { data, loading, refetch } = useApiQuery<Persona>('/mullerbot/persona');
 
+  // Fase 2 — liga/desliga global do bot no WhatsApp da empresa
+  const empresaQuery = useApiQuery<{ id: string; botWhatsappAtivo?: boolean }>('/empresas/atual');
+  const [botWhatsappAtivo, setBotWhatsappAtivo] = useState(true);
+  const [savingBot, setSavingBot] = useState(false);
+  useEffect(() => {
+    if (empresaQuery.data) setBotWhatsappAtivo(empresaQuery.data.botWhatsappAtivo ?? true);
+  }, [empresaQuery.data]);
+
+  async function alternarBotWhatsapp(ativo: boolean) {
+    const empresaId = empresaQuery.data?.id;
+    if (!empresaId) return;
+    setSavingBot(true);
+    setBotWhatsappAtivo(ativo); // otimista
+    try {
+      await api.patch(`/empresas/${empresaId}`, { botWhatsappAtivo: ativo });
+      toast.success(
+        ativo
+          ? 'Bot Muller ligado — responde automaticamente no WhatsApp da empresa'
+          : 'Bot Muller desligado — nenhuma resposta automática no WhatsApp',
+      );
+      empresaQuery.refetch();
+    } catch (err) {
+      setBotWhatsappAtivo(!ativo); // reverte
+      toast.error('Falha ao alterar o bot', err instanceof ApiError ? err.message : undefined);
+    } finally {
+      setSavingBot(false);
+    }
+  }
+
   // Local edit state — hidrata quando data chega
   const [nome, setNome] = useState('MullerBot');
   const [tomVoz, setTomVoz] = useState<TomVoz>('PROFISSIONAL');
@@ -238,6 +267,37 @@ export default function PersonaBotPage() {
       <div className="grid grid-cols-1 lg:grid-cols-[1fr_320px] gap-4">
         {/* Coluna principal — edição */}
         <div className="flex flex-col gap-4">
+          {/* Fase 2 — liga/desliga global do bot no WhatsApp da empresa */}
+          <Card padding="md" className={botWhatsappAtivo ? 'border-success/40 bg-success/5' : ''}>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <MessageCircle className="h-4 w-4 text-primary" />
+                Bot no WhatsApp da empresa
+              </CardTitle>
+              <CardDescription>
+                Quando ligado, o Muller responde automaticamente as mensagens que chegam no
+                WhatsApp central da empresa. Não afeta o WhatsApp pessoal dos representantes.
+              </CardDescription>
+            </CardHeader>
+            <Field label="Resposta automática">
+              <Switch
+                checked={botWhatsappAtivo}
+                disabled={savingBot || !empresaQuery.data}
+                onChange={(e) => void alternarBotWhatsapp(e.target.checked)}
+                label={
+                  botWhatsappAtivo
+                    ? 'Ligado — o Muller responde os clientes automaticamente'
+                    : 'Desligado — só atendimento humano no WhatsApp'
+                }
+              />
+            </Field>
+            <p className="text-[11px] text-muted-light mt-2 leading-relaxed">
+              Dica: quando um atendente humano responde uma conversa, o bot pausa sozinho naquela
+              conversa por algumas horas (handoff). Você também pode pausar/religar manualmente na
+              tela do Atendimento.
+            </p>
+          </Card>
+
           {/* Identidade */}
           <Card padding="md">
             <CardHeader>

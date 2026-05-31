@@ -87,6 +87,9 @@ interface Conversation {
   naoLidas?: number;
   cliente?: { id: string; nome: string } | null;
   atribuido?: { id: string; nome: string } | null;
+  // Fase 2 — estado do bot Muller nesta conversa
+  botPausadoAte?: string | null;
+  precisaHumano?: boolean;
   /**
    * JSON com metadados canal-específicos. Hoje usado pra avatarUrl
    * (foto de perfil do peer no WhatsApp).
@@ -103,6 +106,8 @@ interface Mensagem {
   tipo: MessageType;
   criadoEm: string;
   autor?: { id: string; nome: string } | null;
+  /** Fase 2 — true quando a mensagem foi gerada pelo bot Muller (tag 🤖). */
+  enviadaPorBot?: boolean;
   /**
    * Meta JSON da mensagem. Hoje pode conter:
    * - senderName (pushName do membro que mandou — grupos)
@@ -371,6 +376,9 @@ function ConversationItem({
 }) {
   const name = conv.cliente?.nome ?? conv.peerNome ?? conv.peer;
   const unread = (conv.naoLidas ?? 0) > 0;
+  const botPausado = conv.botPausadoAte
+    ? new Date(conv.botPausadoAte).getTime() > Date.now()
+    : false;
 
   return (
     <li>
@@ -386,8 +394,17 @@ function ConversationItem({
             ? 'bg-surface-hover'
             : 'bg-transparent hover:bg-surface-hover/60',
           'relative',
+          // Fase 2 — conversa que precisa de humano (bot caiu no fallback)
+          conv.precisaHumano && 'bg-danger/5',
         )}
       >
+        {/* Fase 2 — faixa vermelha quando precisa de humano */}
+        {conv.precisaHumano && (
+          <span
+            aria-hidden
+            className="absolute left-0 top-0 bottom-0 w-1 bg-danger"
+          />
+        )}
         {/* Indicador lateral âmbar quando ativo */}
         {active && (
           <span
@@ -436,8 +453,22 @@ function ConversationItem({
             {conv.ultimaMsgPreview ?? <em className="text-muted-light">sem mensagens</em>}
           </div>
 
-          {(conv.status !== 'ABERTA' || conv.atribuido || (conv.naoLidas ?? 0) > 1) && (
-            <div className="flex items-center gap-1.5 mt-1.5">
+          {(conv.status !== 'ABERTA' ||
+            conv.atribuido ||
+            (conv.naoLidas ?? 0) > 1 ||
+            conv.precisaHumano ||
+            botPausado) && (
+            <div className="flex items-center gap-1.5 mt-1.5 flex-wrap">
+              {conv.precisaHumano && (
+                <Badge variant="danger" size="sm">
+                  🚨 Precisa de humano
+                </Badge>
+              )}
+              {botPausado && (
+                <Badge variant="neutral" size="sm">
+                  ⏸ Bot pausado
+                </Badge>
+              )}
               {conv.status !== 'ABERTA' && (
                 <Badge variant={STATUS_VARIANT[conv.status]} size="sm">
                   {STATUS_LABEL[conv.status]}
@@ -728,7 +759,22 @@ function ConversationThread({
     }
   }
 
+  // Fase 2 — pausar/religar o bot Muller nesta conversa específica
+  async function alternarBot(acao: 'pausar' | 'religar') {
+    try {
+      await api.post(`/inbox/${id}/bot/${acao}`, {});
+      toast.success(acao === 'pausar' ? 'Bot pausado nesta conversa' : 'Bot religado nesta conversa');
+      conv.refetch();
+      onChanged();
+    } catch (err) {
+      toast.error('Falha ao alterar o bot', err instanceof ApiError ? err.message : undefined);
+    }
+  }
+
   const c = conv.data;
+  const botPausadoConv = c?.botPausadoAte
+    ? new Date(c.botPausadoAte).getTime() > Date.now()
+    : false;
   const messages = msgs.data ?? [];
   const lockedCompose = c && (c.status === 'RESOLVIDA' || c.status === 'ARQUIVADA');
 
@@ -812,6 +858,23 @@ function ConversationThread({
             >
               {c.atribuido ? c.atribuido.nome : 'Atribuir'}
             </Button>
+            {/* Fase 2 — pausar/religar o bot Muller nesta conversa (só WhatsApp da empresa) */}
+            {c.canal === 'WHATSAPP' && (
+              <Button
+                type="button"
+                variant="ghost"
+                size="sm"
+                data-testid="inbox-bot-btn"
+                onClick={() => alternarBot(botPausadoConv ? 'religar' : 'pausar')}
+                title={
+                  botPausadoConv
+                    ? 'Religar o bot Muller nesta conversa'
+                    : 'Pausar o bot Muller nesta conversa (atendimento humano)'
+                }
+              >
+                {botPausadoConv ? '▶ Religar bot' : '⏸ Pausar bot'}
+              </Button>
+            )}
           </>
         ) : (
           <span className="text-muted text-sm">Carregando…</span>
@@ -1535,11 +1598,21 @@ function MessageBubble({ msg, showAuthor }: { msg: Mensagem; showAuthor: boolean
         </div>
         <span
           className={cn(
-            'text-[10px] text-muted px-1 tabular',
-            outbound ? 'text-right' : 'text-left',
+            'text-[10px] text-muted px-1 tabular flex items-center gap-1',
+            outbound ? 'justify-end' : 'justify-start',
           )}
           title={fmtTime(msg.criadoEm)}
         >
+          {/* Fase 2 — marca mensagens respondidas automaticamente pelo bot Muller */}
+          {msg.enviadaPorBot && (
+            <span
+              className="text-[10px] font-semibold text-primary"
+              data-testid={`msg-bot-tag-${msg.id}`}
+              title="Resposta automática do bot Muller"
+            >
+              🤖 Muller ·
+            </span>
+          )}
           {fmtHHMM(msg.criadoEm)}
         </span>
       </div>

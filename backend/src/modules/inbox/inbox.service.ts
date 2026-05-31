@@ -134,7 +134,9 @@ export class InboxService {
         where,
         skip: (params.page - 1) * params.limit,
         take: params.limit,
-        orderBy: [{ ultimaMsgEm: 'desc' }, { criadoEm: 'desc' }],
+        // Fase 2 — conversas que "precisam de humano" (bot caiu no fallback)
+        // sobem pro topo, depois ordena por mais recente.
+        orderBy: [{ precisaHumano: 'desc' }, { ultimaMsgEm: 'desc' }, { criadoEm: 'desc' }],
         include: conversationInclude,
       }),
     ]);
