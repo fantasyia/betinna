@@ -37,6 +37,7 @@ export interface PersonaResult {
   exemplos?: ExemploDto[];
   saudacao?: string | null;
   ativo: boolean;
+  promptCustom?: string | null;
   systemPromptPreview: string;
   atualizadoEm: Date;
 }
@@ -76,6 +77,7 @@ export class MullerBotPersonaService {
           : Prisma.JsonNull,
       saudacao: dto.saudacao ?? null,
       ativo: dto.ativo,
+      promptCustom: dto.promptCustom ?? null,
     };
     const row = await this.prisma.mullerBotPersona.upsert({
       where: { empresaId },
@@ -98,6 +100,12 @@ export class MullerBotPersonaService {
    */
   async compilarSystemPrompt(empresaId: string): Promise<string> {
     const row = await this.prisma.mullerBotPersona.findUnique({ where: { empresaId } });
+
+    // Forma principal: prompt completo escrito pelo usuário → usado tal e qual.
+    const custom = row?.promptCustom?.trim();
+    if (custom) return custom.replace(/\{\{nome\}\}/g, row?.nome || 'Muller');
+
+    // Legado: monta a partir dos campos estruturados (base + tom + instruções + exemplos).
     const nome = row?.ativo ? row.nome : 'MullerBot';
     const tomVoz = (row?.ativo ? row.tomVoz : 'PROFISSIONAL') as TomVoz;
 
@@ -127,6 +135,13 @@ export class MullerBotPersonaService {
    */
   async compilarSystemPromptConversa(empresaId: string): Promise<string> {
     const row = await this.prisma.mullerBotPersona.findUnique({ where: { empresaId } });
+
+    // Forma principal: prompt completo escrito pelo usuário → usado tal e qual,
+    // tanto no modo puro conversa quanto no RAG (o catálogo entra na msg do user).
+    const custom = row?.promptCustom?.trim();
+    if (custom) return custom.replace(/\{\{nome\}\}/g, row?.nome || 'Muller');
+
+    // Legado: envelope conversacional + campos estruturados.
     const nome = row?.ativo ? row.nome : 'Muller';
     const tomVoz = (row?.ativo ? row.tomVoz : 'AMIGAVEL') as TomVoz;
 
@@ -159,6 +174,7 @@ Se o cliente pedir algo que você não pode resolver, avise com gentileza que um
     exemplosJson: unknown;
     saudacao: string | null;
     ativo: boolean;
+    promptCustom?: string | null;
     atualizadoEm: Date;
   }): PersonaResult {
     const tomVoz = (row.tomVoz as TomVoz) ?? 'PROFISSIONAL';
@@ -172,6 +188,7 @@ Se o cliente pedir algo que você não pode resolver, avise com gentileza que um
       exemplos,
       saudacao: row.saudacao,
       ativo: row.ativo,
+      promptCustom: row.promptCustom ?? null,
       systemPromptPreview: '',
       atualizadoEm: row.atualizadoEm,
     };
@@ -187,6 +204,7 @@ Se o cliente pedir algo que você não pode resolver, avise com gentileza que um
       exemplos: [],
       saudacao: null,
       ativo: false,
+      promptCustom: null,
       systemPromptPreview: '',
       atualizadoEm: new Date(),
     };

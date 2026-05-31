@@ -23,5 +23,10 @@ export const upsertPersonaSchema = z.object({
   exemplos: z.array(exemploSchema).max(10).optional(),
   saudacao: z.string().trim().max(280).nullable().optional(),
   ativo: z.boolean().default(true),
+  /**
+   * Prompt COMPLETO do Muller. Quando preenchido, é usado tal e qual como system
+   * prompt (forma principal de configurar). Até 12k chars (~3k tokens).
+   */
+  promptCustom: z.string().trim().max(12000).nullable().optional(),
 });
 export type UpsertPersonaDto = z.infer<typeof upsertPersonaSchema>;

@@ -1796,6 +1796,10 @@ model MullerBotPersona {
   /// Instruções extras anexadas ao system prompt base.
   /// Ex: "Sempre cite o prazo de entrega. Use emojis com moderação."
   instrucoes   String?  @db.Text
+  /// Prompt COMPLETO escrito pelo usuário. Quando preenchido, é usado tal e qual
+  /// como system prompt (substitui o prompt-base e os campos estruturados acima).
+  /// É a forma principal de configurar o Muller — os demais campos viram legado.
+  promptCustom String?  @db.Text
   /// Exemplos de pergunta/resposta pro few-shot prompt (array JSON).
   /// Ex: [{pergunta: "Tem óleo de soja?", resposta: "Sim, em três tamanhos..."}]
   exemplosJson Json?
