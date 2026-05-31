@@ -183,6 +183,26 @@ function fmtHHMM(d: string) {
   }
 }
 
+/**
+ * Formata o "peer" (identificador do contato) pra exibição.
+ * No WhatsApp o peer vem como JID cru (ex: `5511988887777@s.whatsapp.net`);
+ * aqui tiramos o sufixo e formatamos como telefone BR `+55 (11) 98888-7777`.
+ * Outros canais (marketplaces/redes) têm peer estruturado — retorna como está.
+ */
+function fmtPeer(canal: Canal, peer: string | null | undefined): string {
+  if (!peer) return '';
+  if (canal !== 'WHATSAPP') return peer;
+  const digits = peer.replace(/@.*$/, '').replace(/\D/g, '');
+  if (!digits) return peer;
+  // 55 (país) + DDD (2) + número (8 ou 9 dígitos)
+  if (digits.startsWith('55') && digits.length >= 12 && digits.length <= 13) {
+    const ddd = digits.slice(2, 4);
+    const num = digits.slice(4);
+    return `+55 (${ddd}) ${num.slice(0, -4)}-${num.slice(-4)}`;
+  }
+  return `+${digits}`;
+}
+
 // ─── Page principal ─────────────────────────────────────────────────
 
 export default function InboxPage() {
@@ -374,7 +394,7 @@ function ConversationItem({
   active: boolean;
   onClick: () => void;
 }) {
-  const name = conv.cliente?.nome ?? conv.peerNome ?? conv.peer;
+  const name = conv.cliente?.nome ?? conv.peerNome ?? fmtPeer(conv.canal, conv.peer);
   const unread = (conv.naoLidas ?? 0) > 0;
   const botPausado = conv.botPausadoAte
     ? new Date(conv.botPausadoAte).getTime() > Date.now()
@@ -795,19 +815,28 @@ function ConversationThread({
               />
             )}
             <Avatar
-              name={c.cliente?.nome ?? c.peerNome ?? c.peer}
+              name={c.cliente?.nome ?? c.peerNome ?? fmtPeer(c.canal, c.peer)}
               src={c.metadata?.avatarUrl ?? undefined}
               size="md"
             />
             <div className="flex-1 min-w-0">
               <div className="flex items-center gap-1.5">
                 <strong className="text-sm tracking-tight truncate text-text">
-                  {c.cliente?.nome ?? c.peerNome ?? c.peer}
+                  {c.cliente?.nome ?? c.peerNome ?? fmtPeer(c.canal, c.peer)}
                 </strong>
                 <ChannelBadge canal={c.canal} size="sm" />
               </div>
-              <div className="text-[11px] text-muted truncate">
-                {c.peer && (c.cliente?.nome || c.peerNome) ? c.peer : CANAL_LABEL[c.canal]}
+              {/* Sempre mostra o número/identificador do contato — selecionável pra copiar.
+                  No WhatsApp formata como telefone BR; quando o título já é o número
+                  (sem nome cadastrado), o subtítulo mostra só o canal pra não repetir. */}
+              <div
+                className="text-[11px] text-muted truncate select-text"
+                data-testid="inbox-thread-peer"
+                title={c.peer ?? undefined}
+              >
+                {c.peer && (c.cliente?.nome || c.peerNome)
+                  ? fmtPeer(c.canal, c.peer)
+                  : CANAL_LABEL[c.canal]}
               </div>
             </div>
             {c.cliente?.id && (
