@@ -39,6 +39,7 @@ import { BadgesModule } from '@modules/badges/badges.module';
 import { AdminModule } from '@modules/admin/admin.module';
 import { AuthModule } from '@modules/auth/auth.module';
 import { AuditModule } from '@modules/audit/audit.module';
+import { BackupModule } from '@modules/backup/backup.module';
 import { CatalogoModule } from '@modules/catalogo/catalogo.module';
 import { ClientesModule } from '@modules/clientes/clientes.module';
 import { ComissoesModule } from '@modules/comissoes/comissoes.module';
@@ -166,6 +167,7 @@ import { SharedUtilsModule } from '@shared/utils/shared-utils.module';
     // Módulos do domínio
     AdminModule,
     AuditModule,
+    BackupModule,
     PermissionsModule,
     AuthModule,
     UsersModule,

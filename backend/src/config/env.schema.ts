@@ -179,6 +179,18 @@ export const envSchema = z
     /** Sample rate de traces (0–1). 0.1 = 10% das requests instrumentadas. Em prod, manter baixo pra controlar custo. */
     SENTRY_TRACES_SAMPLE_RATE: z.coerce.number().min(0).max(1).default(0.1),
 
+    // Backup automático (cron `backup-diario` 03:00 UTC)
+    /** Liga/desliga o backup diário automático. Default ligado. */
+    BACKUP_ENABLED: z
+      .union([z.boolean(), z.string().transform((s) => s !== 'false')])
+      .default(true),
+    /** Dias de retenção dos backups no storage. Default 30. */
+    BACKUP_RETENTION_DAYS: z.coerce.number().int().positive().default(30),
+    /** E-mail que recebe alerta se o backup falhar. Vazio = usa o primeiro ADMIN ativo. */
+    BACKUP_ALERT_EMAIL: z.string().optional().default(''),
+    /** Banco sandbox pra restore-test fazer restauração REAL. Vazio = só valida integridade (pg_restore --list). */
+    RESTORE_TEST_DATABASE_URL: z.string().optional().default(''),
+
     // LGPD — retenção de dados (cron `retention-cleanup-mensal` purga registros antigos)
     /** Meses de retenção do AuditLog. Default 24m (2 anos) — atende LGPD/CCPA. 0 desabilita purga. */
     LGPD_AUDIT_RETENTION_MONTHS: z.coerce.number().int().min(0).default(24),

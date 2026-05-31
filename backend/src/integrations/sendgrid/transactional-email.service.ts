@@ -167,4 +167,32 @@ export class TransactionalEmailService {
     });
     return this.send(params.para, assunto, html);
   }
+
+  /**
+   * Alerta operacional do sistema (ex: falha de backup). HTML inline simples —
+   * não é e-mail de cliente, é aviso interno pro responsável técnico.
+   */
+  async enviarAlertaSistema(params: {
+    para: string;
+    assunto: string;
+    titulo: string;
+    mensagem: string;
+  }) {
+    const html = `<!doctype html>
+<html lang="pt-BR"><body style="margin:0;background:#f4f4f7;font-family:Arial,Helvetica,sans-serif;color:#201554">
+  <div style="max-width:560px;margin:24px auto;background:#fff;border-radius:10px;overflow:hidden;border:1px solid #eee">
+    <div style="background:#201554;padding:16px 24px">
+      <span style="color:#fff;font-size:18px;font-weight:bold">Betinna.ai · Alerta do sistema</span>
+    </div>
+    <div style="padding:24px">
+      <h2 style="margin:0 0 12px;font-size:18px;color:#bd1fbf">${params.titulo}</h2>
+      <div style="font-size:14px;line-height:1.6">${params.mensagem}</div>
+    </div>
+    <div style="padding:14px 24px;background:#fafafa;border-top:1px solid #eee;font-size:12px;color:#888">
+      Mensagem automática — não responda este e-mail.
+    </div>
+  </div>
+</body></html>`;
+    return this.send(params.para, params.assunto, html);
+  }
 }
