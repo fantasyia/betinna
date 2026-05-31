@@ -43,9 +43,9 @@ interface ClienteOpt {
 const TIPOS: AgendaTipo[] = ['VISITA', 'LIGACAO', 'REUNIAO', 'ENTREGA', 'TAREFA'];
 
 const TIPO_COLOR: Record<AgendaTipo, string> = {
-  VISITA: '#2563eb',
-  LIGACAO: '#0891b2',
-  REUNIAO: '#7c3aed',
+  VISITA: colors.blue,
+  LIGACAO: colors.info,
+  REUNIAO: colors.magenta,
   ENTREGA: colors.warning,
   TAREFA: colors.muted,
 };

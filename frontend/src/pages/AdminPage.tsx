@@ -202,7 +202,7 @@ function DeadLetterSection() {
         <div>
           <div style={{ fontWeight: 600, fontSize: 13 }}>{j.jobName ?? '—'}</div>
           <div style={{ fontSize: 11, color: colors.muted }}>
-            <span style={badge('#0891b2')}>{j.queue}</span> · {j.attemptsMade} tentativas
+            <span style={badge(colors.info)}>{j.queue}</span> · {j.attemptsMade} tentativas
           </div>
         </div>
       ),
@@ -334,7 +334,7 @@ function DbHealthSection() {
     totalBytes > 5 * 1024 * 1024 * 1024
       ? { texto: 'Banco grande — considere cleanup', cor: BRAND.danger }
       : totalBytes > 1 * 1024 * 1024 * 1024
-        ? { texto: 'Atenção ao crescimento', cor: '#d97706' }
+        ? { texto: 'Atenção ao crescimento', cor: colors.warning }
         : null;
 
   return (

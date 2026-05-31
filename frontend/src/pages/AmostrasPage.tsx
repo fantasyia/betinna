@@ -59,7 +59,7 @@ interface ProdutoOpt {
 }
 
 const STATUS_COLOR: Record<AmostraStatus, string> = {
-  ENVIADA: '#0891b2',
+  ENVIADA: colors.info,
   AGUARDANDO_FOLLOWUP: colors.warning,
   CONVERTIDA: colors.success,
   NAO_CONVERTEU: colors.danger,

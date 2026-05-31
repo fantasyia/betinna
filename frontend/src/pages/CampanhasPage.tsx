@@ -111,10 +111,10 @@ interface AnalisarResponse {
 
 const STATUS_COLOR: Record<CampanhaStatus, string> = {
   RASCUNHO: colors.muted,
-  AGENDADA: '#0891b2',
+  AGENDADA: colors.info,
   ENVIANDO: colors.warning,
   ENVIADA: colors.success,
-  PAUSADA: '#7c3aed',
+  PAUSADA: colors.magenta,
   CANCELADA: colors.danger,
 };
 const STATUS_LABEL: Record<CampanhaStatus, string> = {
@@ -132,9 +132,9 @@ const CANAL_LABEL: Record<CampanhaCanal, string> = {
   WHATSAPP_EMAIL: 'WhatsApp + E-mail',
 };
 const CANAL_COLOR: Record<CampanhaCanal, string> = {
-  WHATSAPP: '#22c55e',
-  EMAIL: '#0891b2',
-  WHATSAPP_EMAIL: '#7c3aed',
+  WHATSAPP: colors.channelWhatsapp,
+  EMAIL: colors.info,
+  WHATSAPP_EMAIL: colors.magenta,
 };
 
 function fmtDate(d: string | null | undefined) {
@@ -243,7 +243,7 @@ export default function CampanhasPage() {
       header: 'IA',
       render: (c) =>
         c.usarIaPersonalizacao ? (
-          <span style={{ ...badge('#7c3aed'), fontSize: 9 }}>✨ Personalizada</span>
+          <span style={{ ...badge(colors.magenta), fontSize: 9 }}>✨ Personalizada</span>
         ) : null,
     },
     {
@@ -313,10 +313,10 @@ export default function CampanhasPage() {
         >
           <StatBox label="Total" value={String(resumo.total)} />
           <StatBox label="Rascunhos" value={String(resumo.rascunhos)} />
-          <StatBox label="Agendadas" value={String(resumo.agendadas)} color="#0891b2" />
+          <StatBox label="Agendadas" value={String(resumo.agendadas)} color={colors.info} />
           <StatBox label="Enviando" value={String(resumo.enviando)} color={colors.warning} />
           <StatBox label="Enviadas" value={String(resumo.enviadas)} color={colors.success} />
-          <StatBox label="Alcance 30d" value={String(resumo.alcanceUltimos30d)} color="#7c3aed" />
+          <StatBox label="Alcance 30d" value={String(resumo.alcanceUltimos30d)} color={colors.magenta} />
         </div>
       )}
 
@@ -526,7 +526,7 @@ function CampanhaDetailModal({
                   <span style={badge(STATUS_COLOR[c.status])}>{STATUS_LABEL[c.status]}</span>
                   <span style={badge(CANAL_COLOR[c.canal])}>{CANAL_LABEL[c.canal]}</span>
                   {c.usarIaPersonalizacao && (
-                    <span style={badge('#7c3aed')}>✨ IA personalização</span>
+                    <span style={badge(colors.magenta)}>✨ IA personalização</span>
                   )}
                 </header>
 
@@ -607,9 +607,9 @@ function CampanhaDetailModal({
                           <Stat label="Destinatários" value={String(total)} />
                           <Stat label="Enviados" value={String(enviados)} color={colors.success} />
                           <Stat label="Falhas" value={String(erros)} color={erros > 0 ? colors.danger : colors.muted} />
-                          <Stat label="Lidos" value={String(lidos)} color="#0891b2" />
+                          <Stat label="Lidos" value={String(lidos)} color={colors.info} />
                           <Stat label="Taxa envio" value={fmtPct(taxaEnvio)} color={colors.success} />
-                          <Stat label="Taxa leitura" value={fmtPct(taxaLeitura)} color="#0891b2" />
+                          <Stat label="Taxa leitura" value={fmtPct(taxaLeitura)} color={colors.info} />
                           <Stat label="Taxa erro" value={fmtPct(taxaErro)} color={taxaErro > 5 ? colors.danger : colors.muted} />
                         </div>
                         {total === 0 && (
@@ -940,7 +940,7 @@ function IAPanel({ campanha }: { campanha: CampanhaDetail }) {
               )}
               {analisarResult.recomendacoes && analisarResult.recomendacoes.length > 0 && (
                 <div>
-                  <div style={{ fontSize: 11, color: '#0891b2', textTransform: 'uppercase', marginBottom: 4 }}>Recomendações</div>
+                  <div style={{ fontSize: 11, color: colors.info, textTransform: 'uppercase', marginBottom: 4 }}>Recomendações</div>
                   <ul style={{ margin: 0, padding: '0 0 0 16px', fontSize: 13, lineHeight: 1.6 }}>
                     {analisarResult.recomendacoes.map((r, i) => <li key={i}>{r}</li>)}
                   </ul>
