@@ -58,6 +58,7 @@ export class EmpresasService {
         plano: true,
         descontoPixPct: true,
         descontoBoletoAvistaPct: true,
+        botWhatsappAtivo: true,
       },
     });
     if (!empresa) throw new NotFoundException('Empresa', user.empresaIdAtiva);

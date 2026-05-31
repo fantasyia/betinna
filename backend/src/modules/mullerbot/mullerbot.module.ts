@@ -5,6 +5,7 @@ import { MullerBotCacheService } from './mullerbot-cache.service';
 import { ProdutoSearchService } from './produto-search.service';
 import { MullerBotPersonaController } from './persona.controller';
 import { MullerBotPersonaService } from './persona.service';
+import { MullerWhatsappService } from './muller-whatsapp.service';
 
 @Module({
   controllers: [MullerBotController, MullerBotPersonaController],
@@ -13,6 +14,8 @@ import { MullerBotPersonaService } from './persona.service';
     MullerBotCacheService,
     ProdutoSearchService,
     MullerBotPersonaService,
+    // Fase 2 — motor do bot no WhatsApp (registra o hook no Inbox no boot)
+    MullerWhatsappService,
   ],
   exports: [MullerBotService, ProdutoSearchService, MullerBotPersonaService],
 })

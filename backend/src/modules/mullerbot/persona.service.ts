@@ -118,6 +118,29 @@ export class MullerBotPersonaService {
     return prompt;
   }
 
+  /**
+   * Fase 2 — System prompt pro bot de WhatsApp (PURO CONVERSA, sem catálogo).
+   * Reusa o que o usuário edita na persona (nome, tom, instruções), mas com um
+   * envelope conversacional de atendimento — sem a regra "use só o catálogo".
+   * Quando o catálogo for conectado (próxima fase), trocamos por uma versão
+   * que injeta produtos.
+   */
+  async compilarSystemPromptConversa(empresaId: string): Promise<string> {
+    const row = await this.prisma.mullerBotPersona.findUnique({ where: { empresaId } });
+    const nome = row?.ativo ? row.nome : 'Muller';
+    const tomVoz = (row?.ativo ? row.tomVoz : 'AMIGAVEL') as TomVoz;
+
+    let prompt = `Você é o ${nome}, assistente virtual de atendimento da empresa, conversando com clientes pelo WhatsApp.
+Responda de forma natural, cordial e útil, em português brasileiro, com mensagens curtas (estilo WhatsApp).
+Nunca invente preços, prazos, descontos ou condições — se não tiver certeza, seja honesto e diga que vai confirmar com a equipe.
+Se o cliente pedir algo que você não pode resolver, avise com gentileza que um atendente humano vai dar sequência.`;
+    prompt += `\n\nTom de voz: ${TOM_INSTRUCAO[tomVoz] ?? TOM_INSTRUCAO.AMIGAVEL}`;
+    if (row?.ativo && row.instrucoes) {
+      prompt += `\n\nInstruções da empresa:\n${row.instrucoes}`;
+    }
+    return prompt;
+  }
+
   // ─── Internals ────────────────────────────────────────────────
 
   private requireEmpresa(user: AuthenticatedUser): string {

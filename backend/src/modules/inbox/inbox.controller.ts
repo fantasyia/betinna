@@ -172,6 +172,22 @@ export class InboxController {
     return this.svc.marcarComoLida(user, id);
   }
 
+  // ─── Fase 2 — controle do bot na conversa ────────────────────────────
+
+  @Post(':id/bot/pausar')
+  @Audit({ action: 'bot_pausar', resource: 'conversation', resourceIdFrom: 'params.id' })
+  @ApiOperation({ summary: 'Pausa o bot Muller nesta conversa (handoff manual).' })
+  pausarBot(@CurrentUser() user: AuthenticatedUser, @Param('id') id: string) {
+    return this.svc.pausarBot(user, id);
+  }
+
+  @Post(':id/bot/religar')
+  @Audit({ action: 'bot_religar', resource: 'conversation', resourceIdFrom: 'params.id' })
+  @ApiOperation({ summary: 'Religa o bot Muller nesta conversa (cancela a pausa).' })
+  religarBot(@CurrentUser() user: AuthenticatedUser, @Param('id') id: string) {
+    return this.svc.religarBot(user, id);
+  }
+
   @Post(':id/responder-midia')
   @Audit({ action: 'responder_midia', resource: 'conversation', resourceIdFrom: 'params.id' })
   @ApiOperation({

@@ -46,6 +46,8 @@ export const envSchema = z
     MULLERBOT_MAX_INPUT_TOKENS: z.coerce.number().int().positive().default(4000),
     /** Limite de tokens da resposta. */
     MULLERBOT_MAX_OUTPUT_TOKENS: z.coerce.number().int().positive().default(1024),
+    /** Fase 2 — horas que o bot fica pausado numa conversa após um humano responder (handoff). */
+    BOT_HANDOFF_HORAS: z.coerce.number().int().positive().default(24),
 
     // OMIE
     OMIE_APP_KEY: z.string().optional().default(''),

@@ -9,6 +9,7 @@ import {
   MessageStatus,
 } from '@prisma/client';
 import { PrismaService } from '@database/prisma.service';
+import { EnvService } from '@config/env.service';
 import {
   BusinessRuleException,
   ForbiddenException,
@@ -56,7 +57,22 @@ export class InboxService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly registry: CanalAdapterRegistry,
+    private readonly env: EnvService,
   ) {}
+
+  /**
+   * Fase 2 — hook do bot Muller. O MullerWhatsappService se registra aqui no
+   * boot; assim o Inbox não precisa importar o módulo do bot (evita acoplamento
+   * circular). Chamado best-effort após cada mensagem INBOUND nova.
+   */
+  private botHook?: (
+    params: MensagemEntranteParams,
+    resultado: { conversationId: string; messageId: string; duplicada: boolean },
+  ) => void;
+
+  registrarBotHook(fn: NonNullable<InboxService['botHook']>): void {
+    this.botHook = fn;
+  }
 
   // ─── Visibilidade / multi-tenant ─────────────────────────────────────
 
@@ -352,7 +368,10 @@ export class InboxService {
         where: { id: msg.id },
         data: { status: MessageStatus.SENT, externalId: r.externalId ?? null },
       });
-      // Atualiza preview da conversa + zera naoLidas (responder = leu)
+      // Atualiza preview da conversa + zera naoLidas (responder = leu).
+      // Fase 2 — HANDOFF: humano respondeu → pausa o bot nesta conversa por
+      // BOT_HANDOFF_HORAS e limpa o "precisa humano" (alguém assumiu).
+      const handoffMs = this.env.get('BOT_HANDOFF_HORAS') * 60 * 60 * 1000;
       await this.prisma.conversation.update({
         where: { id: conversationId },
         data: {
@@ -360,6 +379,8 @@ export class InboxService {
           ultimaMsgPreview: this.preview(dto.texto),
           status: conv.status === 'PENDENTE' ? 'ABERTA' : conv.status,
           naoLidas: 0,
+          botPausadoAte: new Date(Date.now() + handoffMs),
+          precisaHumano: false,
         },
       });
       return atualizada;
@@ -372,6 +393,82 @@ export class InboxService {
       });
       throw new BusinessRuleException(`Falha ao enviar pelo canal ${conv.canal}: ${m}`);
     }
+  }
+
+  // ─── Fase 2 — Bot ────────────────────────────────────────────────────
+
+  /**
+   * Envia uma resposta gerada pelo BOT (não-humano). Sem AuthenticatedUser:
+   * autorUsuarioId fica null, enviadaPorBot=true, e NÃO ativa handoff (o bot
+   * respondendo não deve pausar a si mesmo). Best-effort do ponto de vista do
+   * chamador — lança em falha pro motor do bot logar.
+   */
+  async responderComoBot(conversationId: string, texto: string): Promise<void> {
+    const conv = await this.prisma.conversation.findUnique({ where: { id: conversationId } });
+    if (!conv) return;
+    const adapter = this.registry.obter(conv.canal);
+    if (!adapter) throw new BusinessRuleException(`Canal ${conv.canal} sem adapter`);
+
+    const msg = await this.prisma.message.create({
+      data: {
+        conversationId,
+        direction: MessageDirection.OUTBOUND,
+        tipo: 'TEXT',
+        conteudo: texto,
+        status: MessageStatus.PENDING,
+        enviadaPorBot: true,
+      },
+    });
+    try {
+      const r = await adapter.enviarTexto(conv.empresaId, conv.peerId, texto, {
+        proprietarioId: conv.proprietarioId,
+        metadata: conv.metadata as Record<string, unknown> | null,
+      });
+      await this.prisma.message.update({
+        where: { id: msg.id },
+        data: { status: MessageStatus.SENT, externalId: r.externalId ?? null },
+      });
+      await this.prisma.conversation.update({
+        where: { id: conversationId },
+        data: { ultimaMsgEm: new Date(), ultimaMsgPreview: this.preview(texto) },
+      });
+    } catch (err) {
+      const m = err instanceof Error ? err.message : String(err);
+      await this.prisma.message.update({
+        where: { id: msg.id },
+        data: { status: MessageStatus.FAILED, meta: { erro: m } },
+      });
+      throw err instanceof Error ? err : new Error(m);
+    }
+  }
+
+  /** Marca a conversa como "precisa de humano" (usado pelo motor no fallback). */
+  async marcarPrecisaHumano(conversationId: string): Promise<void> {
+    await this.prisma.conversation.update({
+      where: { id: conversationId },
+      data: { precisaHumano: true },
+    });
+  }
+
+  /** Pausa manual do bot nesta conversa (pelo BOT_HANDOFF_HORAS). */
+  async pausarBot(user: AuthenticatedUser, id: string): Promise<ConversationWithRel> {
+    const existing = await this.findById(user, id);
+    const handoffMs = this.env.get('BOT_HANDOFF_HORAS') * 60 * 60 * 1000;
+    await this.prisma.conversation.updateMany({
+      where: { id, empresaId: existing.empresaId },
+      data: { botPausadoAte: new Date(Date.now() + handoffMs) },
+    });
+    return this.prisma.conversation.findUniqueOrThrow({ where: { id }, include: conversationInclude });
+  }
+
+  /** Religa o bot nesta conversa (cancela a pausa e limpa "precisa humano"). */
+  async religarBot(user: AuthenticatedUser, id: string): Promise<ConversationWithRel> {
+    const existing = await this.findById(user, id);
+    await this.prisma.conversation.updateMany({
+      where: { id, empresaId: existing.empresaId },
+      data: { botPausadoAte: null, precisaHumano: false },
+    });
+    return this.prisma.conversation.findUniqueOrThrow({ where: { id }, include: conversationInclude });
   }
 
   /**
@@ -586,7 +683,21 @@ export class InboxService {
     this.logger.log(
       `[${params.canal}] msg entrante ${msg.id} conv=${conv.id} peer=${params.peerId}`,
     );
-    return { conversationId: conv.id, messageId: msg.id, duplicada: false };
+
+    const resultado = { conversationId: conv.id, messageId: msg.id, duplicada: false };
+
+    // Fase 2 — dispara o bot Muller (best-effort, não bloqueia o recebimento).
+    // O hook decide internamente se responde (só WhatsApp da empresa, etc.).
+    if (this.botHook && isInbound) {
+      try {
+        this.botHook(params, resultado);
+      } catch (err) {
+        const m = err instanceof Error ? err.message : String(err);
+        this.logger.warn(`Falha ao disparar bot hook conv=${conv.id}: ${m}`);
+      }
+    }
+
+    return resultado;
   }
 
   /** Resolve Cliente por telefone (normalizado) ou e-mail. Retorna null se não bater. */

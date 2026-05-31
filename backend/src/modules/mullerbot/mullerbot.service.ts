@@ -140,6 +140,41 @@ export class MullerBotService {
     return resposta;
   }
 
+  /**
+   * Fase 2 — resposta automática do bot no WhatsApp da EMPRESA (puro conversa).
+   *
+   * Diferente de `perguntar`:
+   *  - Credencial = chave OpenAI da empresa (env OPENAI_API_KEY), não a do rep.
+   *  - SEM catálogo (RAG) — só o prompt conversacional da persona + histórico.
+   *  - Sem cache (cada conversa é única).
+   *
+   * @param historico mensagens anteriores em ordem cronológica (user/assistant).
+   */
+  async responderComoEmpresa(
+    empresaId: string,
+    mensagemCliente: string,
+    historico: HistoricoMsg[] = [],
+  ): Promise<{ texto: string; tokensIn?: number; tokensOut?: number }> {
+    const apiKey = this.env.get('OPENAI_API_KEY');
+    if (!apiKey) {
+      throw new IntegrationException(
+        'OPENAI_API_KEY não configurada — o bot do WhatsApp não pode responder.',
+        ErrorCode.INTEGRATION_ERROR,
+      );
+    }
+    const modelo = this.env.get('MULLERBOT_MODEL');
+    const maxOutputTokens = this.env.get('MULLERBOT_MAX_OUTPUT_TOKENS');
+    const systemPrompt = await this.persona.compilarSystemPromptConversa(empresaId);
+    return this.chamarOpenAI(
+      { apiKey },
+      modelo,
+      systemPrompt,
+      mensagemCliente,
+      maxOutputTokens,
+      historico,
+    );
+  }
+
   // ─── Histórico (acesso público pra controller) ────────────────────────
 
   async limparHistorico(user: AuthenticatedUser, sessionId: string): Promise<{ ok: true }> {

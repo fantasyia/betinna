@@ -56,7 +56,7 @@ describe('InboxService.processarMensagemEntrante', () => {
   beforeEach(() => {
     prisma = makePrismaMock();
     registry = new CanalAdapterRegistry();
-    svc = new InboxService(prisma as never, registry);
+    svc = new InboxService(prisma as never, registry, { get: () => 24 } as never);
   });
 
   it('cria Conversation + Message novos quando não há nada prévio', async () => {
@@ -203,7 +203,7 @@ describe('InboxService.responder', () => {
   beforeEach(() => {
     prisma = makePrismaMock();
     registry = new CanalAdapterRegistry();
-    svc = new InboxService(prisma as never, registry);
+    svc = new InboxService(prisma as never, registry, { get: () => 24 } as never);
   });
 
   it('falha quando canal não tem adapter registrado', async () => {

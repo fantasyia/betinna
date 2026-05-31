@@ -264,6 +264,10 @@ model Empresa {
   descontoPixPct          Float? @default(0)
   descontoBoletoAvistaPct Float? @default(0)
 
+  /// Fase 2 — liga/desliga global do bot Muller no WhatsApp da empresa.
+  /// Padrão ligado. Quando false, o bot não responde nenhuma conversa.
+  botWhatsappAtivo Boolean @default(true)
+
   criadoEm     DateTime @default(now())
   atualizadoEm DateTime @updatedAt
 
@@ -1352,6 +1356,13 @@ model Conversation {
   metadata         Json?
   /// Quando a conversa está atrelada a um incidente (reclamação/devolução/disputa).
   incidentId       String?
+  /// Fase 2 — Bot Muller no WhatsApp. Até quando o bot fica PAUSADO nesta
+  /// conversa (handoff humano). NULL = bot livre pra responder. Setado quando
+  /// um atendente humano responde a conversa.
+  botPausadoAte    DateTime?
+  /// Fase 2 — marcado quando o bot caiu no fallback (IA falhou/demorou):
+  /// a conversa precisa de humano e sobe pro topo da lista.
+  precisaHumano    Boolean               @default(false)
   /// Marca registros gerados pelo seed-demo.
   isDemo           Boolean               @default(false)
   criadoEm         DateTime              @default(now())
@@ -1395,6 +1406,9 @@ model Message {
   mediaMime      String?
   /// Quando OUTBOUND e gerado por um usuário (não bot/sistema)
   autorUsuarioId String?
+  /// Fase 2 — true quando a mensagem OUTBOUND foi gerada pelo bot Muller
+  /// (não por um humano). Usado pro indicador visual 🤖 no Inbox.
+  enviadaPorBot  Boolean          @default(false)
   /// Metadados específicos do canal (livre)
   meta           Json?
   criadoEm       DateTime         @default(now())
