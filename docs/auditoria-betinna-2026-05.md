@@ -1,7 +1,7 @@
 # Auditoria Completa do betinna.ai
 
 **Data de início:** 2026-05-31
-**Última atualização:** 2026-05-31 (Fase 2)
+**Última atualização:** 2026-05-31 (Fase 3)
 
 > Documento vivo. Cada fase é acrescentada aqui, sem apagar as anteriores.
 > Linguagem simples — o dono não é técnico. **Auditoria = diagnóstico, não conserto.**
@@ -11,7 +11,7 @@
 
 - [x] **Fase 1 — Saúde Técnica**
 - [x] **Fase 2 — Segurança e Permissões**
-- [ ] Fase 3 — Consistência Visual e Experiência
+- [x] **Fase 3 — Consistência Visual e Experiência**
 - [ ] Fase 4 — Integridade das Integrações
 - [ ] Fase 5 — Módulo WhatsApp/Atendimento (análise de produto)
 - [ ] Fase 6 — Performance e Prontidão para Beta
@@ -179,4 +179,93 @@ A análise automática apontou **"IDOR crítico — vazamento de dados entre emp
 | Itens de robustez (defesa em profundidade) | 🟡 4 itens, nenhum urgente |
 
 > **Conclusão:** a segurança do app está **pronta pro beta** do ponto de vista de furos reais. Os 🟡 são reforços recomendados (principalmente o #1, padronizar a re-leitura com filtro de empresa) — fáceis e baratos, valem fazer antes de escalar.
+
+---
+
+## Fase 3 — Consistência Visual e Experiência
+
+**Como foi feita:** 4 frentes em paralelo: brandbook/tokens, textos/ortografia/UX, consistência de componentes/estados, responsividade mobile.
+
+### 🟢 O que está BEM
+- **Tokens sincronizados:** cores, fontes e border-radius estão iguais nos 3 arquivos obrigatórios (`styles.ts`, `index.css`, `tailwind.config.ts`). ✅
+- **Fontes corretas:** Cabin (UI), Fira Sans (display), Fira Mono (mono) em todo lugar. Sem Inter/system-ui. ✅
+- **Componentes UI do design system** (Button, Card, Badge, Dialog, Drawer, Input, Spinner) — todos usam CSS vars, cores semânticas, radius correto. ✅
+- **Estados de loading/erro/vazio** bem tratados via `StateView` em todas as páginas principais. Sem telas em branco. ✅
+- **Modais consistentes:** fecham com X e ESC, nunca com clique no fundo (prevenção de perda acidental de dados). ✅
+- **Ações destrutivas protegidas** por confirmação em todos os lugares verificados (deletar cliente, amostra, meta, funil, catálogo). ✅
+- **Feedback de toast** (sucesso/erro) em operações — padrão seguido em toda a app. ✅
+- **Paginação** presente em todas as listas longas com indicador de total. ✅
+- **Sem links quebrados:** rotas declaradas no App.tsx apontam para páginas que existem; features removidas (Fidelidade/Formulários) não têm mais rota. ✅
+- **Sem erros técnicos crus** ("Cannot read property of undefined", stack trace) aparecendo na tela. ✅
+
+---
+
+### 1. Cores hardcoded fora do design system — 🔴
+
+O maior problema visual da Fase 3. Várias páginas usam cores do Tailwind padrão (não da Betinna) diretamente, o que faz botões/badges/gráficos aparecerem em cores erradas — azul Tailwind (`#0891b2`) e violeta Tailwind (`#7c3aed`) em vez das cores oficiais.
+
+| Página | Detalhe | Gravidade |
+|---|---|---|
+| **CampanhasPage.tsx** (~10 ocorrências) | `#0891b2`, `#7c3aed`, `#22c55e` em `STATUS_COLOR`, `CANAL_COLOR`, `StatBox` | 🔴 Visível na tela |
+| **AdminPage.tsx** (múltiplas) | `#0891b2`, `#7c3aed`, `#d97706` em mapas de status/badges | 🔴 |
+| **AgendaPage.tsx** | `#2563eb`, `#0891b2`, `#7c3aed` nos tipos de evento (Visita/Ligação/Reunião) | 🔴 |
+| **AmostrasPage.tsx** | `#0891b2` no status ENVIADA | 🔴 |
+| **AsyncCombobox.tsx** | sombra `rgba(0,0,0,0.08)` hardcoded | 🟡 |
+
+> **O que usar no lugar:** `colors.info` (que aponta pra `#2bcae5` — o cyan oficial), `colors.magenta`, `colors.secondary`. Para tipos de evento/status, criar um mapa usando tokens do design system.
+
+---
+
+### 2. Border-radius 8px — padrão Betinna é 10px — 🟡
+
+Alguns componentes e páginas ainda usam `borderRadius: 8` em vez do padrão `radius.lg` (10px). Diferença pequena visualmente, mas quebra a consistência.
+
+Locais: `Modal.tsx:69`, `NotificationBell.tsx`, `charts.tsx:76`, `CampanhasPage.tsx` (4 ocorrências), `WhatsAppPage.tsx` (6 ocorrências), `PropostaAceitePage.tsx`.
+
+---
+
+### 3. Inconsistência de linguagem — 🟡
+
+| O que é | Variações encontradas | Deve ser |
+|---|---|---|
+| Representante | `'sem rep'`, `'Remover rep'`, `'Remover atribuição (deixar sem rep)'` em ClientesPage + LeadsPage | `'Sem representante'`, `'Remover representante'` |
+| Campo vazio | `'não informado'` (minúsculo) em ClientesPage:1011 | `'Não informado'` |
+| Erro genérico | `'Erro desconhecido'` em AgendaPage:170, AdminPage:556/585, LoginPage:162 | Mensagem contextual ("Não foi possível mover o compromisso. Tente novamente.") |
+
+---
+
+### 4. Responsividade / Mobile — 🔴🟡
+
+O app é um PWA usado por representantes em campo (mobile). Problemas encontrados:
+
+| Problema | Arquivo | Gravidade |
+|---|---|---|
+| **FluxoEditor** — layout 3 colunas com `w-[240px]` + `w-[300px]` fixas; em tela de 375px: tela negativa, layout quebrado | `FluxoEditor.tsx:645,742` | 🔴 Inutilizável em mobile |
+| **PedidosPage** — inputs de data com `w-[150px]` fixo em filtro horizontal | `PedidosPage.tsx:472,484` | 🔴 |
+| **Botões/inputs abaixo de 44px** (tamanho mínimo WCAG para dedos) — Button sm=28px, md=32px; Input=32px; Checkbox=16px | `Button.tsx`, `Input.tsx`, `Checkbox.tsx` | 🟡 Dificulta uso |
+| **Texto 10-11px** em headers de tabela e legendas | `PedidosPage.tsx`, `styles.ts` | 🟡 Ilegível sem zoom |
+| **Dropdown menus** (`ExportMenu` etc.) sem responsividade — podem sair da tela | `PedidosPage.tsx:861` | 🟡 |
+
+> ✅ **Infraestrutura pronta:** o app já tem hook `useIsMobile()` e breakpoint 768px configurado — falta aplicar nos componentes com problema.
+
+---
+
+### Resumo da Fase 3
+
+| Categoria | Veredito |
+|---|---|
+| Tokens brandbook (sincronização) | ✅ Sincronizados nos 3 arquivos |
+| Fontes | ✅ Corretas em todo lugar |
+| Cores hardcoded fora do sistema | 🔴 ~20 ocorrências em 4 páginas |
+| Border-radius 8px | 🟡 ~12 ocorrências |
+| Linguagem/textos | 🟡 Inconsistência "rep" vs "representante", erros genéricos |
+| Estados UI (loading/erro/vazio) | ✅ Consistente |
+| Modais / confirmações / feedback | ✅ Consistente |
+| Responsividade mobile | 🔴 FluxoEditor + PedidosPage; 🟡 touch targets |
+
+**Prioridade de correção:**
+1. 🔴 Cores hardcoded em CampanhasPage/AdminPage/AgendaPage (impacto visual imediato, conserto simples)
+2. 🔴 FluxoEditor mobile (inutilizável pra rep em campo)
+3. 🟡 Touch targets (botões/inputs), mensagens genéricas "Erro desconhecido", "sem rep"
+4. 🟢 Border-radius 8px, dropdown mobile
 </content>
