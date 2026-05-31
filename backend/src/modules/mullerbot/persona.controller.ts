@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Post, Put, UsePipes } from '@nestjs/common';
+import { Body, Controller, Get, Post, Put } from '@nestjs/common';
 import { ApiOperation, ApiTags } from '@nestjs/swagger';
 import { Audit } from '@shared/decorators/audit.decorator';
 import { CurrentUser } from '@shared/decorators/current-user.decorator';
@@ -34,9 +34,13 @@ export class MullerBotPersonaController {
   @Put()
   @Roles('ADMIN', 'DIRECTOR')
   @Audit({ action: 'update', resource: 'mullerbot-persona' })
-  @UsePipes(new ZodValidationPipe(upsertPersonaSchema))
   @ApiOperation({ summary: 'Atualizar persona (DIRECTOR-only)' })
-  async upsert(@CurrentUser() user: AuthenticatedUser, @Body() dto: UpsertPersonaDto) {
+  async upsert(
+    @CurrentUser() user: AuthenticatedUser,
+    // Pipe SÓ no body — @UsePipes no método inteiro corrompia o @CurrentUser
+    // (validava o user contra o schema da persona e apagava empresaIdAtiva/role).
+    @Body(new ZodValidationPipe(upsertPersonaSchema)) dto: UpsertPersonaDto,
+  ) {
     return this.svc.upsert(user, dto);
   }
 

@@ -13,7 +13,15 @@ import { ValidationException } from '../errors/app-exception';
 export class ZodValidationPipe<T> implements PipeTransform<unknown, T> {
   constructor(private readonly schema: ZodSchema<T>) {}
 
-  transform(value: unknown, _metadata: ArgumentMetadata): T {
+  transform(value: unknown, metadata: ArgumentMetadata): T {
+    // Quando aplicado no método inteiro (@UsePipes), o pipe recebe TODOS os
+    // parâmetros — inclusive os decorados com @CurrentUser (type 'custom').
+    // Validar o usuário contra um schema de body o corromperia (apagaria
+    // empresaIdAtiva/role e quebraria o multi-tenant). Só validamos dados de
+    // entrada de fato (body/query/param).
+    if (metadata.type === 'custom') {
+      return value as T;
+    }
     try {
       return this.schema.parse(value);
     } catch (error) {
