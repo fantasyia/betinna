@@ -42,6 +42,22 @@ export function EmpresaSwitcher() {
     return () => document.removeEventListener('mousedown', onDocClick);
   }, [open]);
 
+  // Auto-seleciona uma empresa quando NÃO há nenhuma ativa de verdade.
+  // Caso clássico: ADMIN não vinculado a empresa nenhuma — o seletor mostrava
+  // empresas[0] como "ativa" (fallback visual), mas o empresaIdAtiva real era
+  // null → o header X-Empresa-Id não ia → 403 em tudo que é por-empresa.
+  // Aqui a gente COMMITA de verdade (persiste + reaplica no reload).
+  const autoSelected = useRef(false);
+  useEffect(() => {
+    if (autoSelected.current) return;
+    if (loading || !empresas || empresas.length === 0) return;
+    const temAtivaReal = !!empresaIdAtiva && empresas.some((e) => e.id === empresaIdAtiva);
+    if (!temAtivaReal) {
+      autoSelected.current = true;
+      switchEmpresaAtiva(empresas[0].id);
+    }
+  }, [loading, empresas, empresaIdAtiva]);
+
   // Sem dados ainda ou nenhuma empresa: esconde
   if (loading || !empresas || empresas.length === 0) return null;
 
