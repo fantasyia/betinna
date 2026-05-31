@@ -180,6 +180,23 @@ interface Conexao {
   atualizadoEm: string;
 }
 
+type StatusValor = 'ATIVA' | 'DEGRADADA' | 'CAIDA' | 'DESCONECTADA';
+interface IntegracaoStatusRow {
+  servico: string;
+  status: StatusValor;
+  ultimoErro?: string | null;
+  ultimoErroEm?: string | null;
+  ultimaVerificacaoEm?: string | null;
+}
+
+/** Semáforo: rótulo + cor por status de saúde. */
+const STATUS_SAUDE: Record<StatusValor, { label: string; color: string }> = {
+  ATIVA: { label: '● ativa', color: colors.success },
+  DEGRADADA: { label: '● instável', color: colors.warning },
+  CAIDA: { label: '⚠ Reconectar', color: colors.danger },
+  DESCONECTADA: { label: '⚠ Reconectar', color: colors.danger },
+};
+
 function fmtDate(d: string | null | undefined) {
   if (!d) return '—';
   try {
@@ -193,6 +210,9 @@ function fmtDate(d: string | null | undefined) {
 
 export default function IntegracoesPage() {
   const { data, loading, error, refetch } = useApiQuery<Conexao[] | { data: Conexao[] }>('/integracoes');
+  const { data: statusData, refetch: refetchStatus } = useApiQuery<
+    IntegracaoStatusRow[] | { data: IntegracaoStatusRow[] }
+  >('/integracoes/status');
   const [connecting, setConnecting] = useState<ServicoEmpresa | null>(null);
   const [disconnecting, setDisconnecting] = useState<ServicoEmpresa | null>(null);
 
@@ -200,6 +220,12 @@ export default function IntegracoesPage() {
   const conexoes: Conexao[] = Array.isArray(data) ? data : data?.data ?? [];
   const byServico = new Map<ServicoEmpresa, Conexao>();
   for (const c of conexoes) byServico.set(c.servico, c);
+
+  const statusRows: IntegracaoStatusRow[] = Array.isArray(statusData)
+    ? statusData
+    : statusData?.data ?? [];
+  const statusByServico = new Map<string, IntegracaoStatusRow>();
+  for (const s of statusRows) statusByServico.set(s.servico, s);
 
   // Escuta postMessage de popup OAuth pra refetch automático
   useEffect(() => {
@@ -230,9 +256,13 @@ export default function IntegracoesPage() {
               key={s}
               servico={s}
               conexao={byServico.get(s)}
+              status={statusByServico.get(s)}
               onConnect={() => setConnecting(s)}
               onDisconnect={() => setDisconnecting(s)}
-              onRefetch={refetch}
+              onRefetch={() => {
+                refetch();
+                refetchStatus();
+              }}
             />
           ))}
         </div>
@@ -268,12 +298,14 @@ export default function IntegracoesPage() {
 function ServicoCard({
   servico,
   conexao,
+  status,
   onConnect,
   onDisconnect,
   onRefetch,
 }: {
   servico: ServicoEmpresa;
   conexao?: Conexao;
+  status?: IntegracaoStatusRow;
   onConnect: () => void;
   onDisconnect: () => void;
   onRefetch: () => void;
@@ -348,12 +380,29 @@ function ServicoCard({
             )}
           </div>
         </div>
-        <span
-          style={badge(conectado ? colors.success : colors.muted)}
-          data-testid={`status-${servico}`}
-        >
-          {conectado ? '● conectado' : '○ não conectado'}
-        </span>
+        <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 3 }}>
+          <span
+            style={badge(conectado ? colors.success : colors.muted)}
+            data-testid={`status-${servico}`}
+          >
+            {conectado ? '● conectado' : '○ não conectado'}
+          </span>
+          {status && (
+            <span
+              style={{ ...badge(STATUS_SAUDE[status.status].color), fontSize: 10 }}
+              data-testid={`saude-${servico}`}
+              title={
+                `Saúde: ${status.status}` +
+                (status.ultimoErro ? `\nÚltimo erro: ${status.ultimoErro}` : '') +
+                (status.ultimaVerificacaoEm
+                  ? `\nVerificado: ${fmtDate(status.ultimaVerificacaoEm)}`
+                  : '')
+              }
+            >
+              {STATUS_SAUDE[status.status].label}
+            </span>
+          )}
+        </div>
       </header>
 
       <p

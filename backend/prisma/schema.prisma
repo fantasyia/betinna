@@ -1536,6 +1536,33 @@ model IntegracaoConexao {
   @@index([servico, externalAccountId])
 }
 
+// Semáforo de saúde de cada integração por empresa (Sprint 2.1).
+// Alimentado pelos hooks de sucesso/erro das integrações. A UI mostra o badge
+// (verde/amarelo/vermelho) e o backend dispara alerta por e-mail quando cai.
+enum IntegracaoStatusValor {
+  ATIVA // funcionando
+  DEGRADADA // algumas falhas recentes, ainda responde
+  CAIDA // falhou várias vezes seguidas
+  DESCONECTADA // token expirou / sessão caiu / credencial inválida
+}
+
+model IntegracaoStatus {
+  id                  String                @id @default(cuid())
+  empresaId           String
+  servico             String // omie, whatsapp, mercadolivre, shopee, amazon, tiktok, instagram, facebook
+  status              IntegracaoStatusValor @default(ATIVA)
+  ultimoErro          String? // mensagem do último erro (pra tooltip/diagnóstico)
+  ultimoErroEm        DateTime?
+  ultimaVerificacaoEm DateTime              @default(now())
+  errosSeguidos       Int                   @default(0) // contador pra detectar "caiu"
+  ultimoAlertaEm      DateTime? // throttle do e-mail (1 por integração por hora)
+  criadoEm            DateTime              @default(now())
+  atualizadoEm        DateTime              @updatedAt
+
+  @@unique([empresaId, servico])
+  @@index([empresaId])
+}
+
 // Integrações com escopo USUÁRIO (não empresa). Cada rep tem sua própria conexão.
 // Usado por: sendgrid (e-mail pessoal do rep), google_calendar (agenda do rep),
 // openai/anthropic (chave pessoal pra MullerBot, se opt-in).

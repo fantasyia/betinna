@@ -12,6 +12,7 @@ import type { AuthenticatedUser } from '@shared/types/authenticated-user';
 import { CryptoUtil } from '@shared/utils/crypto.util';
 import type { ConectarDto, ListConexoesDto } from './integracoes.dto';
 import { servicoRequerDirector, type ServicoEmpresa } from './integracoes.constants';
+import { IntegracaoStatusService } from './integracao-status.service';
 
 /**
  * Conexão decriptada (uso interno por serviços de integração).
@@ -56,6 +57,7 @@ export class IntegracoesService {
   constructor(
     private readonly prisma: PrismaService,
     env: EnvService,
+    private readonly status: IntegracaoStatusService,
   ) {
     this.crypto = new CryptoUtil(env.get('ENCRYPTION_KEY'));
   }
@@ -220,14 +222,37 @@ export class IntegracoesService {
       data: { ultimoSync: new Date(), errosRecentes: 0 },
     });
     this.invalidarCache(empresaId, servico);
+    // Atualiza o semáforo de saúde (best-effort).
+    void this.status.registrarSucesso(empresaId, servico);
   }
 
-  /** Marca uma falha — incrementa errosRecentes pra detectar saúde. */
-  async registrarSyncErro(empresaId: string, servico: ServicoEmpresa): Promise<void> {
+  /**
+   * Marca uma falha — incrementa errosRecentes e atualiza o semáforo de saúde.
+   * @param erro mensagem do erro (pra tooltip/diagnóstico)
+   * @param opts.desconectado true quando é desconexão definitiva (token/sessão caiu)
+   */
+  async registrarSyncErro(
+    empresaId: string,
+    servico: ServicoEmpresa,
+    erro?: string,
+    opts?: { desconectado?: boolean },
+  ): Promise<void> {
     await this.prisma.integracaoConexao.updateMany({
       where: { empresaId, servico },
       data: { errosRecentes: { increment: 1 } },
     });
+    void this.status.registrarErro(empresaId, servico, erro, opts);
+  }
+
+  /** Marca uma integração como desconectada (token/sessão caiu) — alerta imediato. */
+  async marcarDesconectado(empresaId: string, servico: ServicoEmpresa, erro?: string): Promise<void> {
+    await this.status.marcarDesconectado(empresaId, servico, erro);
+  }
+
+  /** Lista o status (semáforo) de todas as integrações da empresa do usuário. */
+  async listarStatus(user: AuthenticatedUser) {
+    const empresaId = this.requireEmpresa(user);
+    return this.status.listar(empresaId);
   }
 
   /**

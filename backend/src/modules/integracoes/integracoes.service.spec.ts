@@ -82,7 +82,14 @@ describe('IntegracoesService', () => {
   beforeEach(() => {
     prisma = makePrismaMock();
     env = makeEnv();
-    service = new IntegracoesService(prisma as never, env as never);
+    // Mock do semáforo de status (Sprint 2.1) — não é foco deste spec.
+    const statusMock = {
+      registrarSucesso: vi.fn().mockResolvedValue(undefined),
+      registrarErro: vi.fn().mockResolvedValue(undefined),
+      marcarDesconectado: vi.fn().mockResolvedValue(undefined),
+      listar: vi.fn().mockResolvedValue([]),
+    };
+    service = new IntegracoesService(prisma as never, env as never, statusMock as never);
   });
 
   // -------------------------------------------------------------------------

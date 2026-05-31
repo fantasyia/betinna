@@ -12,6 +12,7 @@ import QRCode from 'qrcode';
 import { EnvService } from '@config/env.service';
 import { PrismaService } from '@database/prisma.service';
 import { InboxService } from '@modules/inbox/inbox.service';
+import { IntegracaoStatusService } from '@modules/integracoes/integracao-status.service';
 import { BusinessRuleException } from '@shared/errors/app-exception';
 import { WhatsAppAuthState, ownerKey, type WhatsAppOwner } from './whatsapp-auth-state';
 import { WhatsAppMediaService } from './whatsapp-media.service';
@@ -72,6 +73,7 @@ export class WhatsAppSessionService implements OnModuleInit, OnModuleDestroy {
     private readonly env: EnvService,
     private readonly inbox: InboxService,
     private readonly media: WhatsAppMediaService,
+    private readonly statusIntegracao: IntegracaoStatusService,
   ) {}
 
   // ─── Lifecycle ────────────────────────────────────────────────────────
@@ -548,6 +550,10 @@ export class WhatsAppSessionService implements OnModuleInit, OnModuleDestroy {
       ctx.info.numero = ctx.sock.user?.id;
       ctx.reconectTentativas = 0;
       this.logger.log(`[${key}] WhatsApp conectado (${ctx.info.numero ?? '?'})`);
+      // Semáforo de saúde — só o WhatsApp empresa aparece no painel de integrações.
+      if (ctx.owner.type === 'EMPRESA') {
+        void this.statusIntegracao.registrarSucesso(ctx.empresaId, 'whatsapp');
+      }
     }
     if (u.connection === 'close') {
       const code = (u.lastDisconnect?.error as Boom | undefined)?.output?.statusCode;
@@ -556,6 +562,13 @@ export class WhatsAppSessionService implements OnModuleInit, OnModuleDestroy {
         ctx.info.status = 'LOGGED_OUT';
         ctx.info.desde = new Date();
         this.logger.warn(`[${key}] WhatsApp deslogado — exige novo QR`);
+        if (ctx.owner.type === 'EMPRESA') {
+          void this.statusIntegracao.marcarDesconectado(
+            ctx.empresaId,
+            'whatsapp',
+            'WhatsApp deslogado — exige novo pareamento (QR).',
+          );
+        }
         void ctx.auth.limpar().catch(() => undefined);
         this.sessions.delete(key);
         return;
@@ -575,6 +588,13 @@ export class WhatsAppSessionService implements OnModuleInit, OnModuleDestroy {
       ctx.info.status = 'ERROR';
       ctx.info.erro = 'limite de tentativas de reconexão atingido';
       this.logger.error(`[${key}] Reconexão WhatsApp desistiu após 10 tentativas`);
+      if (ctx.owner.type === 'EMPRESA') {
+        void this.statusIntegracao.marcarDesconectado(
+          ctx.empresaId,
+          'whatsapp',
+          'Reconexão automática desistiu após 10 tentativas.',
+        );
+      }
       return;
     }
     const delay = Math.min(30_000, 1000 * 2 ** Math.min(6, ctx.reconectTentativas));

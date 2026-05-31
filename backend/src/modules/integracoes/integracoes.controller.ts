@@ -40,6 +40,13 @@ export class IntegracoesController {
     }));
   }
 
+  @Get('status')
+  @Roles('ADMIN', 'DIRECTOR', 'GERENTE', 'SAC')
+  @ApiOperation({ summary: 'Semáforo de saúde das integrações da empresa' })
+  status(@CurrentUser() user: AuthenticatedUser) {
+    return this.integracoes.listarStatus(user);
+  }
+
   @Get()
   @Roles('ADMIN', 'DIRECTOR', 'GERENTE')
   @ApiOperation({ summary: 'Lista conexões da empresa (sem credenciais)' })
