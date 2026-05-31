@@ -42,6 +42,13 @@ export class MullerBotController {
     return this.bot.diagnosticarBot();
   }
 
+  @Get('bot/modelos')
+  @Roles('ADMIN', 'DIRECTOR')
+  @ApiOperation({ summary: 'Lista os modelos de chat disponíveis na conta OpenAI do servidor.' })
+  listarModelos() {
+    return this.bot.listarModelos();
+  }
+
   @Delete('historico/:sessionId')
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: 'Limpa histórico conversacional da sessão' })

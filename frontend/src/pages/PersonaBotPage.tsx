@@ -20,19 +20,6 @@ import {
 } from '@/components/ui';
 
 /**
- * Modelos da OpenAI oferecidos no seletor. value '' = usa o padrão do servidor
- * (env MULLERBOT_MODEL). Mantém só modelos de chat estáveis.
- */
-const MODELOS_OPENAI: Array<{ value: string; label: string }> = [
-  { value: '', label: 'Padrão do servidor (gpt-4o-mini)' },
-  { value: 'gpt-4o-mini', label: 'GPT-4o mini — rápido e barato (recomendado)' },
-  { value: 'gpt-4o', label: 'GPT-4o — mais inteligente (mais caro)' },
-  { value: 'gpt-4.1-mini', label: 'GPT-4.1 mini — equilíbrio' },
-  { value: 'gpt-4.1', label: 'GPT-4.1 — alto desempenho' },
-  { value: 'gpt-4-turbo', label: 'GPT-4 Turbo' },
-];
-
-/**
  * PersonaBotPage — configura o Muller por empresa.
  *
  * Modelo simples: UM prompt completo escrito pelo usuário (usado tal e qual como
@@ -81,12 +68,22 @@ export default function PersonaBotPage() {
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  // Modelos reais da conta OpenAI (puxados ao vivo); cai pra lista curada se falhar.
+  const [modelosLive, setModelosLive] = useState<string[]>([]);
+
   useEffect(() => {
     if (!data) return;
     setPrompt(data.promptCustom ?? '');
     setModelo(data.modelo ?? '');
     setDirty(false);
   }, [data]);
+
+  useEffect(() => {
+    api
+      .get<{ modelos: string[]; fonte: string }>('/mullerbot/bot/modelos')
+      .then((r) => setModelosLive(r.modelos ?? []))
+      .catch(() => setModelosLive([]));
+  }, []);
 
   // Liga/desliga global do bot no WhatsApp da empresa
   const empresaQuery = useApiQuery<{ id: string; botWhatsappAtivo?: boolean }>('/empresas/atual');
@@ -286,7 +283,11 @@ export default function PersonaBotPage() {
             </CardHeader>
             <Field
               label="Modelo da IA (OpenAI)"
-              hint="Define qual modelo da OpenAI o Muller usa pra responder. Quanto mais inteligente, mais caro por mensagem."
+              hint={
+                modelosLive.length
+                  ? 'Lista puxada ao vivo da sua conta OpenAI — inclui os modelos mais novos. Quanto mais inteligente, mais caro por mensagem.'
+                  : 'Valide a chave da OpenAI (diagnóstico acima) pra listar os modelos da sua conta aqui.'
+              }
               className="mb-3"
             >
               <Select
@@ -296,9 +297,14 @@ export default function PersonaBotPage() {
                   setDirty(true);
                 }}
               >
-                {MODELOS_OPENAI.map((m) => (
-                  <option key={m.value || 'default'} value={m.value}>
-                    {m.label}
+                <option value="">Padrão do servidor (gpt-4o-mini)</option>
+                {/* Mantém o modelo salvo visível mesmo se a lista ainda não carregou */}
+                {modelo && !modelosLive.includes(modelo) && (
+                  <option value={modelo}>{modelo} (atual)</option>
+                )}
+                {modelosLive.map((id) => (
+                  <option key={id} value={id}>
+                    {id}
                   </option>
                 ))}
               </Select>

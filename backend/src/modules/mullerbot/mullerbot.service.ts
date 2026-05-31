@@ -265,6 +265,42 @@ export class MullerBotService {
     }
   }
 
+  /**
+   * Lista os modelos de chat disponíveis na conta OpenAI (chave do servidor).
+   * Usado pra popular o dropdown de modelo na tela Persona Bot — sempre reflete
+   * o que a conta tem acesso (inclusive os mais novos). Nunca lança.
+   */
+  async listarModelos(): Promise<{ modelos: string[]; fonte: 'openai' | 'fallback' }> {
+    const envKey = this.env.get('OPENAI_API_KEY');
+    if (!envKey) return { modelos: [], fonte: 'fallback' };
+    try {
+      const res = await this.http.get<{ data?: Array<{ id: string }> }>(
+        'https://api.openai.com/v1/models',
+        {
+          headers: { Authorization: `Bearer ${envKey}` },
+          integration: 'openai',
+          redactKeys: ['authorization'],
+          timeoutMs: 15_000,
+        },
+      );
+      const ids = (res.data.data ?? []).map((m) => m.id);
+      const chat = ids.filter((id) => this.ehModeloChat(id)).sort((a, b) => b.localeCompare(a));
+      return { modelos: chat, fonte: 'openai' };
+    } catch {
+      return { modelos: [], fonte: 'fallback' };
+    }
+  }
+
+  /** Heurística: mantém só modelos de conversa (texto), tira áudio/imagem/embeddings/etc. */
+  private ehModeloChat(id: string): boolean {
+    const base = /^(gpt-|o[1-9]|chatgpt)/.test(id);
+    const excluir =
+      /(audio|realtime|transcribe|tts|whisper|embedding|image|dall|moderation|search|instruct|davinci|babbage)/.test(
+        id,
+      );
+    return base && !excluir;
+  }
+
   // ─── Histórico (acesso público pra controller) ────────────────────────
 
   async limparHistorico(user: AuthenticatedUser, sessionId: string): Promise<{ ok: true }> {
