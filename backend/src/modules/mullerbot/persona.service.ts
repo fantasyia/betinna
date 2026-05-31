@@ -161,10 +161,15 @@ Se o cliente pedir algo que você não pode resolver, avise com gentileza que um
   // ─── Internals ────────────────────────────────────────────────
 
   private requireEmpresa(user: AuthenticatedUser): string {
-    if (!user.empresaIdAtiva) {
-      throw new ForbiddenException('Empresa não definida', ErrorCode.TENANT_ACCESS_DENIED);
+    // Fallback pra empresa do próprio usuário se a "ativa" não veio resolvida.
+    const id = user.empresaIdAtiva ?? user.empresaIds?.[0];
+    if (!id) {
+      throw new ForbiddenException(
+        `Empresa não definida [dbg ativa=${user.empresaIdAtiva} ids=${JSON.stringify(user.empresaIds)} role=${user.role}]`,
+        ErrorCode.TENANT_ACCESS_DENIED,
+      );
     }
-    return user.empresaIdAtiva;
+    return id;
   }
 
   private toResult(row: {
