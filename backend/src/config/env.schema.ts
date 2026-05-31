@@ -63,6 +63,16 @@ export const envSchema = z
     OMIE_WEBHOOK_SECRET: z.string().optional().default(''),
     /** Quando true, OMIE retorna dados mockados em vez de chamar a API real */
     OMIE_DEMO_MODE: z.union([z.boolean(), z.string().transform((s) => s === 'true')]).default(true),
+    /**
+     * Trava de segurança do go-live do OMIE. DESLIGADA por default (dormente).
+     * Quando você plugar o OMIE REAL, defina `OMIE_REQUIRE_REAL=true` no Railway:
+     * a partir daí, se `OMIE_DEMO_MODE` continuar `true` em produção, o boot
+     * ABORTA com mensagem clara — evita pedidos "fantasma" (que parecem enviados
+     * ao ERP mas não chegam). Enquanto `false`, produção sobe normal mesmo em demo.
+     */
+    OMIE_REQUIRE_REAL: z
+      .union([z.boolean(), z.string().transform((s) => s === 'true')])
+      .default(false),
     OMIE_BASE_URL: z.string().url().default('https://app.omie.com.br/api/v1'),
     OMIE_TIMEOUT_MS: z.coerce.number().int().positive().default(30000),
     /**

@@ -78,23 +78,30 @@ export class EnvService {
       });
     }
 
-    // OMIE em demo mode em produção é aviso (warning), não crítico.
+    // OMIE em demo mode em produção.
     //
-    // Justificativa do downgrade (2026-05-17): no estado de bootstrap, antes
-    // do primeiro tenant configurar OMIE, o sistema sobe em modo mock — isso
-    // é esperado e necessário (Railway precisa subir pra você fazer onboarding
-    // do primeiro cliente). Tornar crítico bloqueia deploy inicial.
+    // Por padrão é só AVISO (warning) — no bootstrap, antes do primeiro tenant
+    // configurar OMIE, o sistema sobe em modo mock, o que é esperado (Railway
+    // precisa subir pra você fazer onboarding). Apenas warning preserva o sinal
+    // sem bloquear o deploy inicial.
     //
-    // Quando você tiver tenant OMIE real: setar OMIE_DEMO_MODE=false no
-    // Railway zera o warning. Apenas warning preserva o sinal sem bloquear.
+    // TRAVA DE GO-LIVE (dormente): quando você plugar o OMIE REAL e setar
+    // `OMIE_REQUIRE_REAL=true` no Railway, demo em produção vira CRÍTICO e
+    // ABORTA o boot — protege contra pedidos "fantasma" (parecem enviados ao
+    // ERP mas não chegam). Enquanto OMIE_REQUIRE_REAL=false, nada muda.
     if (env === 'production' && this.get('OMIE_DEMO_MODE') === true) {
+      const requerReal = this.get('OMIE_REQUIRE_REAL') === true;
       issues.push({
         key: 'OMIE_DEMO_MODE',
-        severity: 'warning',
-        message:
-          'OMIE_DEMO_MODE=true em produção — sistema retorna dados mock em vez de ' +
-          'integrar com OMIE real. Quando o primeiro tenant tiver credenciais OMIE, ' +
-          'defina OMIE_DEMO_MODE=false no Railway.',
+        severity: requerReal ? 'critical' : 'warning',
+        message: requerReal
+          ? 'OMIE_DEMO_MODE=true em produção com OMIE_REQUIRE_REAL=true — você sinalizou ' +
+            'que o OMIE real está plugado, mas o modo demo ainda está LIGADO. Pedidos ' +
+            'pareceriam enviados ao ERP sem chegar lá. Defina OMIE_DEMO_MODE=false no ' +
+            'Railway (ou OMIE_REQUIRE_REAL=false se ainda estiver em demo de propósito).'
+          : 'OMIE_DEMO_MODE=true em produção — sistema retorna dados mock em vez de ' +
+            'integrar com OMIE real. Quando o primeiro tenant tiver credenciais OMIE, ' +
+            'defina OMIE_DEMO_MODE=false no Railway (e OMIE_REQUIRE_REAL=true pra travar).',
       });
     }
 

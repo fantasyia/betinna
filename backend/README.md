@@ -206,6 +206,11 @@ npx tsx scripts/restore-test.ts           # valida integridade do último backup
 pg_restore --clean --if-exists --no-owner --no-acl --dbname "<URL_DESTINO>" betinna-....dump
 ```
 
+### 🔒 Trava de go-live do OMIE
+Proteção contra pedidos "fantasma" (que parecem enviados ao ERP mas, em modo demo, não chegam).
+- **Hoje (demo):** `OMIE_REQUIRE_REAL=false` (default) → produção sobe normal mesmo em `OMIE_DEMO_MODE=true`, só registra um aviso. **A trava está dormente.**
+- **Dia que plugar o OMIE real:** defina `OMIE_REQUIRE_REAL=true` no Railway. A partir daí, se o `OMIE_DEMO_MODE` continuar `true`, **o boot aborta** com mensagem clara — te obrigando a setar `OMIE_DEMO_MODE=false`. Assim é impossível subir "achando que o OMIE está real" enquanto está em mock.
+
 ### 🔭 Observabilidade (Sentry)
 O Sentry já está no código; só **liga** quando o DSN está no ambiente (sem DSN = modo silencioso, não quebra nada).
 
