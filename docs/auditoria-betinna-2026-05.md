@@ -1,7 +1,7 @@
 # Auditoria Completa do betinna.ai
 
 **Data de início:** 2026-05-31
-**Última atualização:** 2026-05-31 (Fase 1)
+**Última atualização:** 2026-05-31 (Fase 2)
 
 > Documento vivo. Cada fase é acrescentada aqui, sem apagar as anteriores.
 > Linguagem simples — o dono não é técnico. **Auditoria = diagnóstico, não conserto.**
@@ -10,7 +10,7 @@
 ## Sumário
 
 - [x] **Fase 1 — Saúde Técnica**
-- [ ] Fase 2 — Segurança e Permissões
+- [x] **Fase 2 — Segurança e Permissões**
 - [ ] Fase 3 — Consistência Visual e Experiência
 - [ ] Fase 4 — Integridade das Integrações
 - [ ] Fase 5 — Módulo WhatsApp/Atendimento (análise de produto)
@@ -133,4 +133,50 @@
 | 🟡 7 | **Dependências** (`npm audit fix`) | Baixo (mas testar exceljs) |
 
 > Nada disso está **quebrando** o app agora (1377 testes passam). São melhorias de robustez, performance e limpeza pra deixar redondo pro beta.
+
+---
+
+## Fase 2 — Segurança e Permissões
+
+**Como foi feita:** 4 frentes em paralelo (autorização/RBAC, isolamento multi-tenant/IDOR, segredos/criptografia/exposição de dados, validação/injeção/webhooks) + checagens diretas (SQL cru, XSS, endpoints abertos). **Importante:** todo achado "grave" foi **verificado lendo o código real** antes de reportar (uma varredura automática apontou um "vazamento entre empresas" que, ao conferir, se mostrou FALSO — detalhe abaixo).
+
+### 🟢 Resultado geral: SEGURANÇA SÓLIDA
+**Nenhuma vulnerabilidade crítica real encontrada.** A base de segurança está bem feita. Só há itens de robustez ("defesa em profundidade") pra reforçar.
+
+### ⚠️ Correção importante de um falso alarme (transparência)
+A análise automática apontou **"IDOR crítico — vazamento de dados entre empresas"** em 7 módulos (leads, ocorrências, amostras, agenda, tags, inbox, produtos). **Eu fui no código conferir um por um e NÃO procede.** Todos esses módulos **validam a empresa ANTES** de qualquer leitura/escrita (via `findById`/`baseWhere` com filtro de empresa): um ID de outra empresa estoura "não encontrado" imediatamente. Ou seja, **um usuário NÃO consegue ver/editar dado de outra empresa** sabendo o ID. O alarme era falso. (Fica como 🟡 "padrão frágil", explicado abaixo.)
+
+### O que está BEM (✅)
+- **Multi-tenant isolado de verdade:** toda operação por ID valida a empresa do usuário antes. REP só vê a própria carteira (RepScopeService). ADMIN cross-tenant é proposital (D48).
+- **Autorização/RBAC coerente:** endpoints sensíveis protegidos por cargo; financeiro/fiscal e integrações exigem ADMIN/DIRECTOR (D45/D46); nenhuma escrita "aberta" indevida.
+- **Endpoints públicos legítimos:** OAuth, webhooks, login/health — e os links públicos (aceite de proposta, catálogo compartilhado, NPS) são **protegidos por token JWT forte + rate-limit**, não por ID adivinhável.
+- **Criptografia forte:** credenciais de integração (OMIE/marketplaces/WhatsApp/Google) cifradas em **AES-256-GCM**, com ponto único de decifragem. Nada salvo em texto puro.
+- **Sem segredos vazando:** nada sensível no frontend (`VITE_*` só tem URLs/chave pública), sem segredo hardcoded, sem `passwordHash` exposto (autenticação é do Supabase).
+- **Logs/erros limpos:** PII (e-mail/CPF/telefone/token) é redatada nos logs e no Sentry; em produção o erro é genérico (não vaza stack/query).
+- **Cookies/sessão (D47):** refresh token em cookie `httpOnly + secure + sameSite` correto; access token só em memória.
+- **Webhooks blindados:** todos validam assinatura HMAC + anti-replay (o do Mercado Livre, que não tem HMAC, usa lista de IPs).
+- **Sem SQL injection:** os 3 usos de SQL cru são internos/fixos; o `TRUNCATE` (limpeza) tem trava que impede rodar em produção.
+- **Upload de arquivos:** valida tamanho + tipo (MIME) + nome seguro (anti path-traversal).
+- **Hardening:** rate-limit no login (anti força-bruta) e no bot; CORS por lista; Helmet ativo; proteção contra SSRF (inclusive DNS rebinding) nos webhooks de fluxo.
+- **Sem XSS:** nenhum `dangerouslySetInnerHTML`/`eval` no frontend.
+
+### Itens de robustez a reforçar (🟡 — não urgente, bom pro beta)
+| # | Item | Por quê | Gravidade |
+|---|---|---|---|
+| 1 | **Re-leitura sem filtro de empresa** após update (`findUniqueOrThrow({ where: { id } })`) em leads/ocorrências/amostras/agenda/tags/inbox/produtos | Hoje é **seguro** (a empresa é validada antes). Mas é frágil: se alguém remover a validação no futuro, vira vazamento. Reforço: usar `findFirstOrThrow({ where: { id, empresaId } })`. | 🟡 defesa em profundidade |
+| 2 | **`@UsePipes` no método** em metas/nps/segmentos | Era a causa do bug de hoje (corrompia o usuário logado → "Empresa não definida"). **Já corrigi na raiz** (o validador agora ignora o usuário). Mover o validador pro `@Body` nesses 3 controllers é só limpeza. | 🟡 já mitigado |
+| 3 | **`/metrics` público** (Prometheus) | Métricas operacionais acessíveis sem login. Sem PII, mas o ideal é **restringir por IP** no Railway/infra. | 🟡 |
+| 4 | **Callbacks OAuth** (Google/Meta/ML/Shopee/TikTok/Amazon) | Usam `state` JWT (proteção CSRF, D14). A varredura não validou cada um empiricamente — padrão documentado, baixa prioridade conferir. | 🟢 |
+
+### Resumo da Fase 2
+
+| Categoria | Veredito |
+|---|---|
+| Isolamento entre empresas (multi-tenant) | ✅ Sólido (o "IDOR crítico" era falso alarme — verificado) |
+| Autorização / cargos (RBAC) | ✅ Coerente com as regras (D45/D46/D48) |
+| Segredos / criptografia / exposição | ✅ Muito bom |
+| Webhooks / injeção / upload / rate-limit / CORS / SSRF | ✅ Blindado |
+| Itens de robustez (defesa em profundidade) | 🟡 4 itens, nenhum urgente |
+
+> **Conclusão:** a segurança do app está **pronta pro beta** do ponto de vista de furos reais. Os 🟡 são reforços recomendados (principalmente o #1, padronizar a re-leitura com filtro de empresa) — fáceis e baratos, valem fazer antes de escalar.
 </content>
