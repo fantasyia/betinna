@@ -187,23 +187,37 @@ function fmtHHMM(d: string) {
 }
 
 /**
- * Formata o "peer" (identificador do contato) pra exibição.
- * No WhatsApp o peer vem como JID cru (ex: `5511988887777@s.whatsapp.net`);
- * aqui tiramos o sufixo e formatamos como telefone BR `+55 (11) 98888-7777`.
+ * Formata o "peer" (identificador do contato) pra exibição como TELEFONE.
+ * No WhatsApp o peer vem como JID cru (ex: `5511988887777@s.whatsapp.net`).
+ *
+ * ⚠️ Atenção aos JIDs que NÃO são telefone:
+ *  - `@lid`  → "número oculto" (privacidade do WhatsApp / Baileys). O número
+ *    visível é um ID interno gigante, NÃO o telefone real → não exibimos.
+ *  - `@g.us` → grupo. Também não tem telefone.
+ * Nesses casos (e em IDs com tamanho implausível) retorna '' — quem chama
+ * cai pro nome do contato / rótulo do canal em vez de mostrar número errado.
+ *
  * Outros canais (marketplaces/redes) têm peer estruturado — retorna como está.
  */
 function fmtPeer(canal: Canal, peer: string | null | undefined): string {
   if (!peer) return '';
   if (canal !== 'WHATSAPP') return peer;
-  const digits = peer.replace(/@.*$/, '').replace(/\D/g, '');
-  if (!digits) return peer;
-  // 55 (país) + DDD (2) + número (8 ou 9 dígitos)
-  if (digits.startsWith('55') && digits.length >= 12 && digits.length <= 13) {
+  const at = peer.indexOf('@');
+  const suffix = at >= 0 ? peer.slice(at + 1).toLowerCase() : '';
+  // LID (número oculto) e grupo não têm telefone real pra mostrar.
+  if (suffix === 'lid' || suffix === 'g.us') return '';
+  const digits = (at >= 0 ? peer.slice(0, at) : peer).replace(/\D/g, '');
+  if (!digits) return '';
+  // Brasil: 55 (país) + DDD (2) + número (8 ou 9 dígitos)
+  if (digits.startsWith('55') && (digits.length === 12 || digits.length === 13)) {
     const ddd = digits.slice(2, 4);
     const num = digits.slice(4);
     return `+55 (${ddd}) ${num.slice(0, -4)}-${num.slice(-4)}`;
   }
-  return `+${digits}`;
+  // Telefone internacional plausível (E.164 tem no máx. 15 dígitos).
+  // Acima disso é quase certo um ID interno (ex: LID sem sufixo) → não exibe.
+  if (digits.length >= 8 && digits.length <= 15) return `+${digits}`;
+  return '';
 }
 
 // ─── Page principal ─────────────────────────────────────────────────
@@ -397,7 +411,10 @@ function ConversationItem({
   active: boolean;
   onClick: () => void;
 }) {
-  const name = conv.cliente?.nome ?? conv.peerNome ?? fmtPeer(conv.canal, conv.peerId ?? conv.peer);
+  const name =
+    conv.cliente?.nome ??
+    conv.peerNome ??
+    (fmtPeer(conv.canal, conv.peerId ?? conv.peer) || CANAL_LABEL[conv.canal]);
   const unread = (conv.naoLidas ?? 0) > 0;
   const botPausado = conv.botPausadoAte
     ? new Date(conv.botPausadoAte).getTime() > Date.now()
@@ -798,6 +815,8 @@ function ConversationThread({
   const botPausadoConv = c?.botPausadoAte
     ? new Date(c.botPausadoAte).getTime() > Date.now()
     : false;
+  // Telefone formatado do contato — '' quando não é telefone (LID/grupo/ID interno).
+  const numeroContato = c ? fmtPeer(c.canal, c.peerId ?? c.peer) : '';
   const messages = msgs.data ?? [];
   const lockedCompose = c && (c.status === 'RESOLVIDA' || c.status === 'ARQUIVADA');
 
@@ -818,27 +837,26 @@ function ConversationThread({
               />
             )}
             <Avatar
-              name={c.cliente?.nome ?? c.peerNome ?? fmtPeer(c.canal, c.peerId ?? c.peer)}
+              name={c.cliente?.nome ?? c.peerNome ?? (numeroContato || CANAL_LABEL[c.canal])}
               src={c.metadata?.avatarUrl ?? undefined}
               size="md"
             />
             <div className="flex-1 min-w-0">
               <div className="flex items-center gap-1.5">
                 <strong className="text-sm tracking-tight truncate text-text">
-                  {c.cliente?.nome ?? c.peerNome ?? fmtPeer(c.canal, c.peerId ?? c.peer)}
+                  {c.cliente?.nome ?? c.peerNome ?? (numeroContato || CANAL_LABEL[c.canal])}
                 </strong>
                 <ChannelBadge canal={c.canal} size="sm" />
               </div>
-              {/* Sempre mostra o número/identificador do contato — selecionável pra copiar.
-                  No WhatsApp formata como telefone BR; quando o título já é o número
-                  (sem nome cadastrado), o subtítulo mostra só o canal pra não repetir. */}
+              {/* Telefone do contato (selecionável pra copiar). Quando não há telefone
+                  real — LID/grupo/ID interno — ou o título já é o número, mostra só o
+                  canal pra não repetir nem exibir número errado. */}
               <div
                 className="text-[11px] text-muted truncate select-text"
                 data-testid="inbox-thread-peer"
-                title={c.peerId ?? c.peer ?? undefined}
               >
-                {(c.peerId ?? c.peer) && (c.cliente?.nome || c.peerNome)
-                  ? fmtPeer(c.canal, c.peerId ?? c.peer)
+                {numeroContato && (c.cliente?.nome || c.peerNome)
+                  ? numeroContato
                   : CANAL_LABEL[c.canal]}
               </div>
             </div>
