@@ -204,7 +204,10 @@ function SessionPanel({ scope, canManage }: { scope: Scope; canManage: boolean }
   }
 
   const status = info?.status ?? 'DISCONNECTED';
-  const showQr = status === 'QR_PENDING' && info?.qrDataUrl;
+  // Fix QR (Fase 2.0): mostra a área de QR sempre que o status for QR_PENDING.
+  // A imagem aparece quando pronta; enquanto isso, um aviso "Preparando…" —
+  // nunca uma caixa vazia silenciosa.
+  const showQr = status === 'QR_PENDING';
   const showConnecting = status === 'CONNECTING';
   const showConnected = status === 'CONNECTED';
 
@@ -257,7 +260,7 @@ function SessionPanel({ scope, canManage }: { scope: Scope; canManage: boolean }
           )}
 
           {/* Estado QR_PENDING */}
-          {showQr && info?.qrDataUrl && (
+          {showQr && (
             <div
               data-testid="qr-container"
               style={{
@@ -277,17 +280,37 @@ function SessionPanel({ scope, canManage }: { scope: Scope; canManage: boolean }
                   WhatsApp → Configurações → Aparelhos conectados → Conectar aparelho
                 </span>
               </p>
-              <img
-                src={info.qrDataUrl}
-                alt="QR Code WhatsApp"
-                data-testid="qr-image"
-                style={{
-                  width: 280,
-                  height: 280,
-                  imageRendering: 'pixelated',
-                  marginTop: '0.75rem',
-                }}
-              />
+              {info?.qrDataUrl ? (
+                <img
+                  src={info.qrDataUrl}
+                  alt="QR Code WhatsApp"
+                  data-testid="qr-image"
+                  style={{
+                    width: 280,
+                    height: 280,
+                    imageRendering: 'pixelated',
+                    marginTop: '0.75rem',
+                  }}
+                />
+              ) : (
+                <div
+                  data-testid="qr-loading"
+                  style={{
+                    width: 280,
+                    height: 280,
+                    marginTop: '0.75rem',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    color: colors.muted,
+                    fontSize: 13,
+                    border: `1px dashed ${colors.border}`,
+                    borderRadius: 8,
+                  }}
+                >
+                  Preparando QR…
+                </div>
+              )}
               <p style={{ fontSize: 11, color: colors.muted, marginTop: '0.75rem', marginBottom: 0 }}>
                 QR regenera automaticamente a cada ~20s
               </p>

@@ -460,7 +460,7 @@ export class WhatsAppSessionService implements OnModuleInit, OnModuleDestroy {
     sock.ev.on('creds.update', saveCreds);
 
     sock.ev.on('connection.update', (u) => {
-      this.handleConnectionUpdate(ctx, u);
+      void this.handleConnectionUpdate(ctx, u);
     });
 
     sock.ev.on('messages.upsert', (u) => {
@@ -512,18 +512,33 @@ export class WhatsAppSessionService implements OnModuleInit, OnModuleDestroy {
     });
   }
 
-  private handleConnectionUpdate(ctx: SessionContext, u: Partial<ConnectionState>): void {
+  private async handleConnectionUpdate(
+    ctx: SessionContext,
+    u: Partial<ConnectionState>,
+  ): Promise<void> {
     const key = ownerKey(ctx.owner);
     if (u.qr) {
-      ctx.info.status = 'QR_PENDING';
+      // Fix QR (Fase 2.0): gera a IMAGEM do QR ANTES de expor o status.
+      // Antes, status virava QR_PENDING na hora mas o qrDataUrl chegava ms
+      // depois (assíncrono); o polling do front (a cada 3s) podia pegar a
+      // janela vazia → mostrava "Aguardando QR" sem imagem. Agora o dataUrl
+      // já está pronto quando o status QR_PENDING aparece. O qrRaw fica como
+      // reserva caso a geração da imagem falhe.
+      let dataUrl: string | undefined;
+      try {
+        dataUrl = await QRCode.toDataURL(u.qr, {
+          errorCorrectionLevel: 'M',
+          margin: 1,
+          width: 320,
+        });
+      } catch {
+        dataUrl = undefined;
+      }
       ctx.info.qrRaw = u.qr;
+      ctx.info.qrDataUrl = dataUrl;
+      ctx.info.status = 'QR_PENDING';
       ctx.info.desde = new Date();
-      QRCode.toDataURL(u.qr, { errorCorrectionLevel: 'M', margin: 1, width: 320 })
-        .then((dataUrl) => {
-          ctx.info.qrDataUrl = dataUrl;
-        })
-        .catch(() => undefined);
-      this.logger.log(`[${key}] QR code disponível`);
+      this.logger.log(`[${key}] QR code disponível${dataUrl ? '' : ' (sem imagem — QR cru)'}`);
     }
     if (u.connection === 'open') {
       ctx.info.status = 'CONNECTED';
