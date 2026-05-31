@@ -1,7 +1,7 @@
 # Auditoria Completa do betinna.ai
 
 **Data de início:** 2026-05-31
-**Última atualização:** 2026-05-31 (Fase 3)
+**Última atualização:** 2026-05-31 (Fase 4)
 
 > Documento vivo. Cada fase é acrescentada aqui, sem apagar as anteriores.
 > Linguagem simples — o dono não é técnico. **Auditoria = diagnóstico, não conserto.**
@@ -12,7 +12,7 @@
 - [x] **Fase 1 — Saúde Técnica**
 - [x] **Fase 2 — Segurança e Permissões**
 - [x] **Fase 3 — Consistência Visual e Experiência**
-- [ ] Fase 4 — Integridade das Integrações
+- [x] **Fase 4 — Integridade das Integrações**
 - [ ] Fase 5 — Módulo WhatsApp/Atendimento (análise de produto)
 - [ ] Fase 6 — Performance e Prontidão para Beta
 - [ ] Entrega Final — Relatório Consolidado + Lista Priorizada
@@ -268,4 +268,49 @@ O app é um PWA usado por representantes em campo (mobile). Problemas encontrado
 2. 🔴 FluxoEditor mobile (inutilizável pra rep em campo)
 3. 🟡 Touch targets (botões/inputs), mensagens genéricas "Erro desconhecido", "sem rep"
 4. 🟢 Border-radius 8px, dropdown mobile
+
+---
+
+## Fase 4 — Integridade das Integrações
+
+**Como foi feita:** 4 frentes em paralelo (OMIE/ERP, marketplaces, WhatsApp+Meta+MullerBot, e-mail+Google+OpenAI+resiliência geral). **Achados graves foram verificados no código real** antes de reportar — alguns que a análise automática marcou como "crítico/trava o app" se mostraram exagerados (detalhe abaixo).
+
+### 🟢 O que está BEM (a base de integração é bem feita)
+- **Renovação de token (OAuth):** todos os marketplaces (ML/Shopee/Amazon/TikTok) renovam o token **antes de expirar** (margem de 60s). ✅
+- **Retry/timeout consistente:** cliente HTTP compartilhado com timeout de 30s + retry com backoff (3 tentativas) em 429/5xx/rede. Usado por todas as integrações. ✅
+- **Idempotência:** mensagens/incidentes não duplicam (chave `externalId` por empresa/canal). ✅
+- **Isolamento de falha:** os crons (10min) tratam erro por empresa — uma empresa com problema não derruba as outras. E uma integração externa fora do ar **não derruba o app** (degrada). ✅
+- **WhatsApp:** reconexão automática com backoff (máx 10 tentativas); auth cifrado restaura no boot; mídia que falha o download vira placeholder sem perder a mensagem. ✅
+- **MullerBot:** trata falha da OpenAI (timeout 15s + fallback + escala pra humano); limite de tokens com truncagem do catálogo (sem custo descontrolado). ✅
+- **Fiscal (amostras):** CFOP 5911/6911 e regra mesma-UF vs interestadual estão **corretos**. ✅
+
+### ⚠️ Reframe de exageros da análise automática (transparência)
+A varredura marcou como "🔴 CRÍTICO: trava a operação" o envio de pedido ao OMIE e o envio de proposta por e-mail. **Conferi e não é bem assim:**
+- **Enviar pedido ao OMIE** que falha → mostra erro e o pedido NÃO fica marcado como enviado. Isso é **comportamento correto** (a ação É "enviar ao OMIE"; falhar alto é o certo), não um travamento.
+- **E-mail** (convite/proposta/aprovação) é **best-effort** (loga e segue, não estoura) — confirmado no `TransactionalEmailService`. O risco real não é "travar", é o e-mail **não sair sem aviso claro** (item 3 abaixo).
+
+### Achados reais a tratar
+
+| # | Item | Gravidade | Detalhe |
+|---|---|---|---|
+| 1 | **Integração que cai não avisa o usuário** | 🔴 | Quando um token de marketplace expira, o WhatsApp é deslogado/banido, ou o token do Meta vence, a integração **para de funcionar em silêncio** — o status fica só no painel de integrações, sem alerta. O operador só descobre quando percebe que parou de receber mensagens (horas depois). É o achado mais recorrente. **Recomendação:** marcar "⚠ Reconectar" em vermelho no painel + (ideal) e-mail ao DIRECTOR. |
+| 2 | **OMIE em modo demo em produção** | 🔴 | `OMIE_DEMO_MODE=true` é o padrão e **só gera warning** (não aborta) em produção. Se esquecer de trocar pra `false` ao plugar o OMIE real, os pedidos **parecem enviados** (recebem número fake e status "ENVIADO_OMIE") mas **não chegam ao ERP**. Risco comercial/fiscal no go-live. **Recomendação:** ao plugar OMIE real, garantir `OMIE_DEMO_MODE=false` (idealmente abortar boot se demo em prod). |
+| 3 | **E-mail: 2 provedores + convite pode não sair** | 🟡 | Existem SendGrid **e** Resend. O envio prefere Resend, cai pro SendGrid. Se **nenhum** estiver configurado (ou mal configurado — ex.: `RESEND_API_KEY` sem `RESEND_FROM_EMAIL`), o e-mail (convite de usuário, proposta) **não sai** e o aviso é fraco (só log). Já sabíamos disso (aguarda `RESEND_API_KEY` no Railway). **Recomendação:** configurar 1 provedor e validar; deixar claro na tela se o convite não foi enviado. |
+| 4 | **Meta (FB/IG): token sem renovação automática** | 🟡→🔴 | A análise indica que o token de página do Facebook/Instagram **expira (~60 dias) e não é renovado automaticamente** — depois disso, FB/IG ficam desconectados sem aviso. Vale **confirmar e implementar refresh** antes de depender de FB/IG a longo prazo. (Marketplaces e WhatsApp já renovam; o Meta é a exceção.) |
+| 5 | **TikTok: reembolso falhado aparece como "Resolvido"** | 🟡 | Confirmado no código: status `REFUND_FAIL` é mapeado para `RESOLVIDO`. Um reembolso que **falhou** some das pendências como se estivesse resolvido. **Recomendação:** mapear pra um status que peça atenção. |
+| 6 | **OMIE: preço por heurística (70%)** | 🟡 | O preço de fábrica é **estimado** (70% do preço de tabela), não lido da tabela real do OMIE (TODO no código). Risco de **margem/lucro calculados errados**. Limitação de MVP documentada — resolver quando plugar o OMIE real com tabelas. |
+| 7 | **OMIE: pedido sem transação/idempotência forte** | 🟡 | Em caso de timeout (OMIE criou o pedido mas a resposta HTTP se perdeu), um reenvio **poderia duplicar** no ERP. Cenário raro, mas vale validar antes de volume real (usar `codigo_pedido_integracao` como chave + checar antes de reenviar). |
+
+### Resumo da Fase 4
+
+| Categoria | Veredito |
+|---|---|
+| Renovação de token / retry / timeout / idempotência | ✅ Sólido na maioria (Meta é a exceção — item 4) |
+| Isolamento de falha (app degrada, não cai) | ✅ Bom (exceto Redis, acoplado ao boot) |
+| Aviso ao usuário quando integração cai | 🔴 Faltando (item 1 — o mais importante) |
+| OMIE — go-live (demo mode + preço + idempotência) | 🔴🟡 Cuidados antes de plugar o ERP real |
+| E-mail (provedor único + feedback de convite) | 🟡 Resolver config |
+| TikTok status de reembolso | 🟡 Corrigir mapeamento |
+
+> **Conclusão:** as integrações estão **bem construídas na engenharia** (renovação de token, retry, idempotência, degradação graciosa). Os pontos a tratar são mais de **operação/visibilidade** (avisar quando algo cai) e **preparação pro go-live do OMIE** do que bugs no código. O item #1 (aviso de desconexão) é o que mais agrega valor pro beta.
 </content>
