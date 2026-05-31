@@ -141,12 +141,21 @@ export class MullerBotService {
   }
 
   /**
-   * Fase 2 — resposta automática do bot no WhatsApp da EMPRESA (puro conversa).
+   * Fase 2 — resposta automática do bot no WhatsApp da EMPRESA.
    *
    * Diferente de `perguntar`:
    *  - Credencial = chave OpenAI da empresa (env OPENAI_API_KEY), não a do rep.
-   *  - SEM catálogo (RAG) — só o prompt conversacional da persona + histórico.
    *  - Sem cache (cada conversa é única).
+   *
+   * Catálogo no contexto: HOJE o bot do WhatsApp roda em modo "puro conversa"
+   * (sem catálogo/RAG) — só o prompt conversacional da persona + histórico.
+   * O parâmetro `opts.incluirCatalogo` deixa o gancho pronto pra, no futuro,
+   * injetar o catálogo (ou torná-lo "sob demanda", só quando a mensagem citar
+   * produto) SEM reescrever este fluxo. Mantido desligado por padrão pra não
+   * inflar tokens/custo enquanto não decidimos ligar.
+   *
+   * Retorna também `promptTokensAprox` (estimativa do tamanho do prompt enviado)
+   * pra rastrear de onde vem o gasto — útil quando o catálogo for ligado.
    *
    * @param historico mensagens anteriores em ordem cronológica (user/assistant).
    */
@@ -154,7 +163,14 @@ export class MullerBotService {
     empresaId: string,
     mensagemCliente: string,
     historico: HistoricoMsg[] = [],
-  ): Promise<{ texto: string; tokensIn?: number; tokensOut?: number }> {
+    opts: { incluirCatalogo?: boolean } = {},
+  ): Promise<{
+    texto: string;
+    tokensIn?: number;
+    tokensOut?: number;
+    promptTokensAprox: number;
+    modelo: string;
+  }> {
     const apiKey = this.env.get('OPENAI_API_KEY');
     if (!apiKey) {
       throw new IntegrationException(
@@ -165,14 +181,31 @@ export class MullerBotService {
     const modelo = this.env.get('MULLERBOT_MODEL');
     const maxOutputTokens = this.env.get('MULLERBOT_MAX_OUTPUT_TOKENS');
     const systemPrompt = await this.persona.compilarSystemPromptConversa(empresaId);
-    return this.chamarOpenAI(
+
+    // Gancho do catálogo (desligado por padrão — ver doc do método).
+    let userMessage = mensagemCliente;
+    if (opts.incluirCatalogo) {
+      // TODO(catálogo sob demanda): buscar produtos relevantes (this.produtoSearch)
+      // e montar a mensagem com orçamento de tokens (this.montarUserMessage),
+      // igual ao fluxo de `perguntar()`. Mantido desligado por ora.
+      userMessage = mensagemCliente;
+    }
+
+    // Estimativa do tamanho do prompt (system + histórico + mensagem) — rastreia custo.
+    const promptTokensAprox =
+      this.estimarTokens(systemPrompt) +
+      historico.reduce((acc, h) => acc + this.estimarTokens(h.content), 0) +
+      this.estimarTokens(userMessage);
+
+    const r = await this.chamarOpenAI(
       { apiKey },
       modelo,
       systemPrompt,
-      mensagemCliente,
+      userMessage,
       maxOutputTokens,
       historico,
     );
+    return { ...r, promptTokensAprox, modelo };
   }
 
   // ─── Histórico (acesso público pra controller) ────────────────────────

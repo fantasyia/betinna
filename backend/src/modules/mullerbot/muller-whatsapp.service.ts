@@ -24,6 +24,19 @@ const SPAM_LIMITE = 10; // msgs
 const SPAM_JANELA_MS = 60_000; // por minuto
 const HISTORICO_MAX = 10;
 
+/**
+ * Placeholders que o adapter do WhatsApp usa quando a mídia NÃO tem legenda.
+ * Mensagem cujo conteúdo é só isso = não tem texto do cliente → escala humano.
+ */
+const PLACEHOLDERS_MIDIA = new Set([
+  '[imagem]',
+  '[vídeo]',
+  '[áudio]',
+  '[documento]',
+  '[sticker]',
+  '[mensagem não suportada]',
+]);
+
 @Injectable()
 export class MullerWhatsappService implements OnModuleInit {
   private readonly logger = new Logger(MullerWhatsappService.name);
@@ -83,12 +96,32 @@ export class MullerWhatsappService implements OnModuleInit {
         return;
       }
 
+      // 4.5 Ajuste 1 — bot só responde quando há TEXTO real do cliente.
+      // Mídia sem legenda (imagem/vídeo/áudio/documento/figurinha), localização,
+      // contato ou mensagem não suportada → NÃO responde, só escala pra humano.
+      // (Transcrição de áudio e leitura de mídia ficam pra próxima fase.)
+      const avaliacao = this.temTextoParaResponder(params.tipo, params.conteudo);
+      if (!avaliacao.ok) {
+        await this.inbox.marcarPrecisaHumano(convId).catch(() => undefined);
+        this.logger.log(
+          `[bot] SEM-RESPOSTA conv=${convId} peer=${params.peerId} tipo=${params.tipo} ` +
+            `motivo="${avaliacao.motivo}" → marcado precisa humano`,
+        );
+        return;
+      }
+
       // 5. Histórico (últimas N msgs de texto, cronológico, excluindo a atual)
       const historico = await this.montarHistorico(convId, resultado.messageId);
 
       // 6. Chama a IA com timeout
       const inicio = Date.now();
-      let resposta: { texto: string; tokensIn?: number; tokensOut?: number } | null = null;
+      let resposta: {
+        texto: string;
+        tokensIn?: number;
+        tokensOut?: number;
+        promptTokensAprox?: number;
+        modelo?: string;
+      } | null = null;
       try {
         resposta = await this.comTimeout(
           this.muller.responderComoEmpresa(params.empresaId, params.conteudo, historico),
@@ -113,13 +146,41 @@ export class MullerWhatsappService implements OnModuleInit {
       // 8. Sucesso — envia a resposta
       await this.inbox.responderComoBot(convId, resposta.texto.trim());
       this.logger.log(
-        `[bot] OK conv=${convId} peer=${params.peerId} msg="${params.conteudo.slice(0, 60)}" ` +
+        `[bot] OK conv=${convId} peer=${params.peerId} modelo=${resposta.modelo ?? '?'} ` +
+          `msg="${params.conteudo.slice(0, 60)}" prompt_aprox=${resposta.promptTokensAprox ?? '?'}tok ` +
           `tokens_in=${resposta.tokensIn ?? '?'} tokens_out=${resposta.tokensOut ?? '?'} tempo=${tempoMs}ms`,
       );
     } catch (err) {
       const m = err instanceof Error ? err.message : String(err);
       this.logger.error(`[bot] erro inesperado conv=${convId}: ${m}`);
     }
+  }
+
+  /**
+   * Ajuste 1 — decide se a mensagem tem TEXTO real pro bot responder.
+   *  - TEXT com conteúdo (inclui emoji isolado tipo "👍") → responde.
+   *  - IMAGE/VIDEO COM legenda → responde usando o texto (mídia ignorada por ora).
+   *  - Mídia sem legenda / áudio / documento / figurinha / localização / contato
+   *    / não-suportada → não responde (escala pra humano).
+   */
+  private temTextoParaResponder(
+    tipo: string | undefined,
+    conteudo: string,
+  ): { ok: boolean; motivo: string } {
+    const t = tipo || 'TEXT';
+    const texto = (conteudo ?? '').trim();
+
+    if (t === 'TEXT') {
+      if (!texto) return { ok: false, motivo: 'texto vazio' };
+      if (PLACEHOLDERS_MIDIA.has(texto)) return { ok: false, motivo: 'tipo não suportado' };
+      return { ok: true, motivo: '' };
+    }
+
+    // Mídia: só responde quando há legenda (IMAGE/VIDEO trazem caption no conteúdo).
+    if ((t === 'IMAGE' || t === 'VIDEO') && texto && !PLACEHOLDERS_MIDIA.has(texto)) {
+      return { ok: true, motivo: '' };
+    }
+    return { ok: false, motivo: `mídia sem texto (${t.toLowerCase()})` };
   }
 
   private async montarHistorico(

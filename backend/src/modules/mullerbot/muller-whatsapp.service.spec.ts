@@ -40,6 +40,7 @@ const baseParams = {
   peerId: '5519999990000',
   proprietarioId: null,
   direction: 'INBOUND',
+  tipo: 'TEXT',
   conteudo: 'Oi, vocês têm óleo de girassol?',
 };
 const resultado = { conversationId: 'conv-1', messageId: 'msg-1', duplicada: false };
@@ -115,5 +116,46 @@ describe('MullerWhatsappService — regras do bot', () => {
   it('ignora mensagem duplicada', async () => {
     await aoReceber(build(prisma, inbox, muller), { ...baseParams }, { ...resultado, duplicada: true });
     expect(inbox.responderComoBot).not.toHaveBeenCalled();
+  });
+
+  it('mídia sem legenda (áudio) → não responde, marca precisa humano', async () => {
+    await aoReceber(build(prisma, inbox, muller), {
+      ...baseParams,
+      tipo: 'AUDIO',
+      conteudo: '[áudio]',
+    });
+    expect(muller.responderComoEmpresa).not.toHaveBeenCalled();
+    expect(inbox.responderComoBot).not.toHaveBeenCalled();
+    expect(inbox.marcarPrecisaHumano).toHaveBeenCalledWith('conv-1');
+  });
+
+  it('imagem sem legenda → não responde, marca precisa humano', async () => {
+    await aoReceber(build(prisma, inbox, muller), {
+      ...baseParams,
+      tipo: 'IMAGE',
+      conteudo: '[imagem]',
+    });
+    expect(muller.responderComoEmpresa).not.toHaveBeenCalled();
+    expect(inbox.marcarPrecisaHumano).toHaveBeenCalledWith('conv-1');
+  });
+
+  it('imagem COM legenda → responde usando o texto', async () => {
+    await aoReceber(build(prisma, inbox, muller), {
+      ...baseParams,
+      tipo: 'IMAGE',
+      conteudo: 'Esse produto da foto vocês têm?',
+    });
+    expect(muller.responderComoEmpresa).toHaveBeenCalledWith(
+      'emp-1',
+      'Esse produto da foto vocês têm?',
+      expect.any(Array),
+    );
+    expect(inbox.responderComoBot).toHaveBeenCalled();
+  });
+
+  it('emoji isolado é texto → responde normalmente', async () => {
+    await aoReceber(build(prisma, inbox, muller), { ...baseParams, tipo: 'TEXT', conteudo: '👍' });
+    expect(muller.responderComoEmpresa).toHaveBeenCalled();
+    expect(inbox.responderComoBot).toHaveBeenCalled();
   });
 });
