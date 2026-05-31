@@ -177,6 +177,49 @@ npm run db:seed          # admin + permissões
 
 ---
 
+## Operações
+
+### 💾 Backup automático do banco
+- Cron **`backup-diario`** roda **todos os dias às 03:00 UTC** (00:00 BRT) no serviço **Worker**.
+- Faz `pg_dump` (formato custom comprimido) → sobe pro **Supabase Storage**, bucket privado **`db-backups`**, por mês: `db-backups/2026-05/betinna-<timestamp>.dump`.
+- **Retenção:** apaga backups com mais de **30 dias** (configurável).
+- **Em falha:** e-mail de alerta + Sentry. Se quebrar, você é avisado — não precisa monitorar.
+- `pg_dump`/`pg_restore` já vêm na imagem Docker (`postgresql-client`).
+
+| Env | Default | Pra quê |
+|---|---|---|
+| `BACKUP_ENABLED` | `true` | Liga/desliga o backup diário. |
+| `BACKUP_RETENTION_DAYS` | `30` | Dias que cada backup fica guardado. |
+| `BACKUP_ALERT_EMAIL` | *(vazio)* | E-mail do alerta de falha. Vazio = 1º ADMIN ativo. |
+| `RESTORE_TEST_DATABASE_URL` | *(vazio)* | Sandbox pro teste de restauração real. Vazio = só valida integridade. |
+
+**Rodar manualmente (emergência):**
+```bash
+npx tsx scripts/backup-to-storage.ts      # gera + sobe um backup agora
+```
+**Testar que o último backup é válido (sem tocar produção):**
+```bash
+npx tsx scripts/restore-test.ts           # valida integridade do último backup
+```
+**Restaurar de verdade (desastre):** baixe o `.dump` do bucket e rode
+```bash
+pg_restore --clean --if-exists --no-owner --no-acl --dbname "<URL_DESTINO>" betinna-....dump
+```
+
+### 🔭 Observabilidade (Sentry)
+O Sentry já está no código; só **liga** quando o DSN está no ambiente (sem DSN = modo silencioso, não quebra nada).
+
+| Onde | Variável | Observação |
+|---|---|---|
+| Backend (Railway → **api** e **worker**) | `SENTRY_DSN` | Lê em runtime. |
+| Frontend (Railway → **frontend**) | `VITE_SENTRY_DSN` | Congelada no build — após setar, **redeploy** do frontend. |
+
+**Validar:**
+- Backend: `GET /api/v1/health/__sentry_test` (ADMIN) força um erro que deve cair no Sentry.
+- Frontend: no console do navegador, `await window.__BETINNA_TEST_SENTRY__()`.
+
+---
+
 ## Próximos módulos
 
 ### Core comercial (Fase 2-5)
