@@ -317,7 +317,6 @@ export class AuthController {
           cidade: 'São Paulo',
           uf: 'SP',
           subtitulo: 'Matriz',
-          plano: 'Enterprise',
           ativo: true,
         },
       });

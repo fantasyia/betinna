@@ -1039,7 +1039,7 @@ function QuickLinksSection() {
       to: '/configuracoes',
       emoji: '🏢',
       title: 'Empresas',
-      description: 'CRUD de empresas, plano, ativar/desativar',
+      description: 'CRUD de empresas, ativar/desativar',
     },
     {
       to: '/integracoes',

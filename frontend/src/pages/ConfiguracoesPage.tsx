@@ -25,9 +25,7 @@ const BRAND = {
   magenta: '#bd1fbf',
 } as const;
 
-type Tab = 'empresas' | 'plano' | 'avancado';
-
-type Plano = 'Free' | 'Pro' | 'Enterprise';
+type Tab = 'empresas' | 'avancado';
 
 interface Empresa {
   id: string;
@@ -37,19 +35,12 @@ interface Empresa {
   cidade?: string | null;
   uf?: string | null;
   subtitulo?: string | null;
-  plano: Plano;
   ativo: boolean;
   criadoEm?: string;
   // B1 (Lote 6) — desconto à vista automático por empresa
   descontoPixPct?: number | null;
   descontoBoletoAvistaPct?: number | null;
 }
-
-const PLANO_COLOR: Record<Plano, string> = {
-  Free: colors.muted,
-  Pro: '#0891b2',
-  Enterprise: '#7c3aed',
-};
 
 function fmtDate(d: string | null | undefined) {
   if (!d) return '—';
@@ -132,11 +123,6 @@ export default function ConfiguracoesPage() {
     },
     { key: 'ramo', header: 'Ramo', render: (e) => e.ramo ?? '—' },
     {
-      key: 'plano',
-      header: 'Plano',
-      render: (e) => <span style={badge(PLANO_COLOR[e.plano])}>{e.plano}</span>,
-    },
-    {
       key: 'ativo',
       header: 'Status',
       render: (e) =>
@@ -215,13 +201,9 @@ export default function ConfiguracoesPage() {
         }}
       >
         <TabButton id="empresas" current={tab} onClick={setTab} label="🏢 Empresas" />
-        <TabButton id="plano" current={tab} onClick={setTab} label="💎 Plano" />
         <TabButton id="avancado" current={tab} onClick={setTab} label="⚙️ Avançado" />
       </div>
 
-      {tab === 'plano' && (
-        <PlanoTab empresas={pageResp?.data ?? []} loading={loading} error={error} />
-      )}
       {tab === 'avancado' && <AvancadoTab />}
       {tab === 'empresas' && (
         <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
@@ -323,119 +305,6 @@ function TabButton({
     >
       {label}
     </button>
-  );
-}
-
-function PlanoTab({
-  empresas,
-  loading,
-  error,
-}: {
-  empresas: Empresa[];
-  loading: boolean;
-  error: string | null;
-}) {
-  const groups = empresas.reduce<Record<Plano, Empresa[]>>(
-    (acc, e) => {
-      acc[e.plano].push(e);
-      return acc;
-    },
-    { Free: [], Pro: [], Enterprise: [] },
-  );
-
-  return (
-    <div style={card} id="tab-panel-plano" role="tabpanel">
-      <h2 style={{ marginTop: 0, fontSize: 16, color: BRAND.navy }}>
-        💎 Distribuição de planos
-      </h2>
-      <p style={{ fontSize: 12, color: colors.muted, marginTop: 0 }}>
-        Resumo dos planos contratados por empresa. Para mudar o plano, use o botão
-        “Editar” na aba Empresas (ADMIN/DIRECTOR only — D46 financial gate).
-      </p>
-
-      <StateView loading={loading} error={error}>
-        <div
-          style={{
-            display: 'grid',
-            gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))',
-            gap: '0.75rem',
-            marginTop: '1rem',
-          }}
-        >
-          {(['Free', 'Pro', 'Enterprise'] as Plano[]).map((p) => (
-            <div
-              key={p}
-              style={{
-                padding: '1rem',
-                background: '#fafbfc',
-                border: `1px solid ${colors.border}`,
-                borderLeft: `3px solid ${PLANO_COLOR[p]}`,
-                borderRadius: 10,
-              }}
-            >
-              <div
-                style={{
-                  fontSize: 11,
-                  color: colors.muted,
-                  textTransform: 'uppercase',
-                  letterSpacing: 0.3,
-                  fontWeight: 600,
-                }}
-              >
-                Plano {p}
-              </div>
-              <div
-                style={{
-                  fontSize: 28,
-                  fontWeight: 800,
-                  fontFamily: 'var(--font-display)',
-                  color: BRAND.navy,
-                  marginTop: 4,
-                }}
-              >
-                {groups[p].length}
-              </div>
-              <div style={{ fontSize: 11, color: colors.muted, marginTop: 4 }}>
-                {groups[p].length === 1 ? 'empresa' : 'empresas'}
-              </div>
-              {groups[p].length > 0 && (
-                <ul
-                  style={{
-                    margin: '0.75rem 0 0',
-                    padding: 0,
-                    listStyle: 'none',
-                    fontSize: 12,
-                    color: colors.text,
-                    maxHeight: 120,
-                    overflowY: 'auto',
-                  }}
-                >
-                  {groups[p].slice(0, 5).map((e) => (
-                    <li
-                      key={e.id}
-                      style={{
-                        padding: '2px 0',
-                        whiteSpace: 'nowrap',
-                        overflow: 'hidden',
-                        textOverflow: 'ellipsis',
-                      }}
-                      title={e.nome}
-                    >
-                      · {e.nome}
-                    </li>
-                  ))}
-                  {groups[p].length > 5 && (
-                    <li style={{ fontSize: 11, color: colors.muted, marginTop: 4 }}>
-                      + {groups[p].length - 5} outras
-                    </li>
-                  )}
-                </ul>
-              )}
-            </div>
-          ))}
-        </div>
-      </StateView>
-    </div>
   );
 }
 
@@ -589,7 +458,6 @@ function EmpresaFormModal({
     cidade: empresa?.cidade ?? '',
     uf: empresa?.uf ?? '',
     subtitulo: empresa?.subtitulo ?? '',
-    plano: empresa?.plano ?? 'Pro',
     descontoPixPct: String(empresa?.descontoPixPct ?? 0),
     descontoBoletoAvistaPct: String(empresa?.descontoBoletoAvistaPct ?? 0),
   });
@@ -603,7 +471,6 @@ function EmpresaFormModal({
     setError(null);
     const payload: Record<string, unknown> = {
       nome: form.nome.trim(),
-      plano: form.plano,
     };
     for (const k of ['cnpj', 'ramo', 'cidade', 'uf', 'subtitulo'] as const) {
       const v = form[k].trim();
@@ -713,16 +580,6 @@ function EmpresaFormModal({
               maxLength={18}
               inputMode="numeric"
             />
-          </FormField>
-          <FormField label="Plano">
-            <Select
-              value={form.plano}
-              onChange={(e) => setForm((s) => ({ ...s, plano: e.target.value as Plano }))}
-            >
-              <option value="Free">Free</option>
-              <option value="Pro">Pro</option>
-              <option value="Enterprise">Enterprise</option>
-            </Select>
           </FormField>
           <FormField label="Ramo">
             <Input

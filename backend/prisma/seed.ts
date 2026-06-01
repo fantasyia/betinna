@@ -37,7 +37,6 @@ async function main(): Promise<void> {
       cidade: 'São Paulo',
       uf: 'SP',
       subtitulo: 'Matriz · Admin',
-      plano: 'Enterprise',
       ativo: true,
     },
   });

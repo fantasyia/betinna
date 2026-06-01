@@ -55,7 +55,6 @@ export class EmpresasService {
       select: {
         id: true,
         nome: true,
-        plano: true,
         descontoPixPct: true,
         descontoBoletoAvistaPct: true,
         botWhatsappAtivo: true,

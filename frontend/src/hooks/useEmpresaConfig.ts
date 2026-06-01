@@ -11,7 +11,6 @@ import { useApiQuery } from './useApiQuery';
 export interface EmpresaConfig {
   id: string;
   nome: string;
-  plano: string;
   descontoPixPct?: number | null;
   descontoBoletoAvistaPct?: number | null;
 }
