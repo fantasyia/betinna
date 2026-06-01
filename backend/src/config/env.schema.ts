@@ -56,6 +56,16 @@ export const envSchema = z
     MULLERBOT_WHATSAPP_CATALOGO: z
       .union([z.boolean(), z.string().transform((s) => s === 'true')])
       .default(false),
+    /**
+     * Sprint 2.2 — palavras que marcam uma resposta do bot pra revisão (🚩) na
+     * auditoria. Como o bot roda sem catálogo, respostas citando preço/estoque/
+     * prazo são suspeitas (pode estar inventando). Lista separada por vírgula.
+     */
+    BOT_AUDIT_KEYWORDS: z
+      .string()
+      .default(
+        'preço,preco,R$,valor é,valor e,estoque,disponível,disponivel,indisponível,indisponivel,entrega em,prazo de,dias úteis,dias uteis,frete,promoção,promocao,desconto',
+      ),
 
     // OMIE
     OMIE_APP_KEY: z.string().optional().default(''),

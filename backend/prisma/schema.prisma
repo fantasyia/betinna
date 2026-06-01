@@ -1836,10 +1836,65 @@ model MullerBotPersona {
   /// Saudação opcional usada em mensagens iniciais (Inbox/templates).
   saudacao     String?
   ativo        Boolean  @default(true)
+
+  /// Sprint 2.2 — Teto de custo (tokens OpenAI) por empresa.
+  limiteTokensDiaIn   Int @default(100000)
+  limiteTokensDiaOut  Int @default(100000)
+  limiteTokensMesIn   Int @default(2000000)
+  limiteTokensMesOut  Int @default(2000000)
+  /// Quando o bot se auto-pausou por estourar o teto (vale até essa data — virada do dia/mês).
+  pausadoPorCustoAte  DateTime?
+  /// Throttle do alerta de 80% do teto (no máx. 1 e-mail por dia).
+  ultimoAlertaCustoEm DateTime?
+
   criadoEm     DateTime @default(now())
   atualizadoEm DateTime @updatedAt
 
   empresa Empresa @relation(fields: [empresaId], references: [id], onDelete: Cascade)
+}
+
+/// Sprint 2.2 — status de cada resposta do bot (pra auditoria).
+enum BotRespostaStatus {
+  OK
+  FALLBACK
+  SEM_RESPOSTA
+}
+
+/// Sprint 2.2 — registro de cada resposta do bot (auditoria + flag de revisão).
+model BotResposta {
+  id             String            @id @default(cuid())
+  empresaId      String
+  conversationId String?
+  messageId      String?
+  pergunta       String            @db.Text
+  resposta       String?           @db.Text
+  tokensIn       Int               @default(0)
+  tokensOut      Int               @default(0)
+  tempoMs        Int?
+  modelo         String?
+  status         BotRespostaStatus @default(OK)
+  /// Marcada automaticamente quando a resposta cita preço/estoque/prazo/etc.
+  marcadaRevisao Boolean           @default(false)
+  motivoRevisao  String?
+  criadoEm       DateTime          @default(now())
+
+  @@index([empresaId, criadoEm])
+  @@index([empresaId, marcadaRevisao])
+  @@index([conversationId])
+}
+
+/// Sprint 2.2 — contador diário de tokens consumidos pelo bot (teto de custo).
+model BotUsoTokens {
+  id           String   @id @default(cuid())
+  empresaId    String
+  dia          String // YYYY-MM-DD no fuso de Brasília
+  tokensIn     Int      @default(0)
+  tokensOut    Int      @default(0)
+  criadoEm     DateTime @default(now())
+  atualizadoEm DateTime @updatedAt
+
+  @@unique([empresaId, dia])
+  @@index([empresaId])
 }
 
 model ProgramaFidelidade {

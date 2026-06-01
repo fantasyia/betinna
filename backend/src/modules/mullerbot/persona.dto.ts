@@ -33,5 +33,10 @@ export const upsertPersonaSchema = z.object({
    * (env MULLERBOT_MODEL). A lista de opções é controlada pelo dropdown no front.
    */
   modelo: z.string().trim().max(60).nullable().optional(),
+  // Sprint 2.2 — teto de custo (tokens). Opcionais: quando omitidos, mantém o atual.
+  limiteTokensDiaIn: z.number().int().min(0).max(100_000_000).optional(),
+  limiteTokensDiaOut: z.number().int().min(0).max(100_000_000).optional(),
+  limiteTokensMesIn: z.number().int().min(0).max(2_000_000_000).optional(),
+  limiteTokensMesOut: z.number().int().min(0).max(2_000_000_000).optional(),
 });
 export type UpsertPersonaDto = z.infer<typeof upsertPersonaSchema>;

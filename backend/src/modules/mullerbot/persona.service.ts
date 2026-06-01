@@ -39,6 +39,10 @@ export interface PersonaResult {
   ativo: boolean;
   promptCustom?: string | null;
   modelo?: string | null;
+  limiteTokensDiaIn: number;
+  limiteTokensDiaOut: number;
+  limiteTokensMesIn: number;
+  limiteTokensMesOut: number;
   systemPromptPreview: string;
   atualizadoEm: Date;
 }
@@ -80,6 +84,11 @@ export class MullerBotPersonaService {
       ativo: dto.ativo,
       promptCustom: dto.promptCustom ?? null,
       modelo: dto.modelo?.trim() || null,
+      // Sprint 2.2 — teto de custo: só altera quando enviado (omitido = mantém).
+      ...(dto.limiteTokensDiaIn !== undefined ? { limiteTokensDiaIn: dto.limiteTokensDiaIn } : {}),
+      ...(dto.limiteTokensDiaOut !== undefined ? { limiteTokensDiaOut: dto.limiteTokensDiaOut } : {}),
+      ...(dto.limiteTokensMesIn !== undefined ? { limiteTokensMesIn: dto.limiteTokensMesIn } : {}),
+      ...(dto.limiteTokensMesOut !== undefined ? { limiteTokensMesOut: dto.limiteTokensMesOut } : {}),
     };
     const row = await this.prisma.mullerBotPersona.upsert({
       where: { empresaId },
@@ -180,6 +189,10 @@ Se o cliente pedir algo que você não pode resolver, avise com gentileza que um
     ativo: boolean;
     promptCustom?: string | null;
     modelo?: string | null;
+    limiteTokensDiaIn?: number;
+    limiteTokensDiaOut?: number;
+    limiteTokensMesIn?: number;
+    limiteTokensMesOut?: number;
     atualizadoEm: Date;
   }): PersonaResult {
     const tomVoz = (row.tomVoz as TomVoz) ?? 'PROFISSIONAL';
@@ -195,6 +208,10 @@ Se o cliente pedir algo que você não pode resolver, avise com gentileza que um
       ativo: row.ativo,
       promptCustom: row.promptCustom ?? null,
       modelo: row.modelo ?? null,
+      limiteTokensDiaIn: row.limiteTokensDiaIn ?? 100000,
+      limiteTokensDiaOut: row.limiteTokensDiaOut ?? 100000,
+      limiteTokensMesIn: row.limiteTokensMesIn ?? 2000000,
+      limiteTokensMesOut: row.limiteTokensMesOut ?? 2000000,
       systemPromptPreview: '',
       atualizadoEm: row.atualizadoEm,
     };
@@ -221,6 +238,10 @@ Se o cliente pedir algo que você não pode resolver, avise com gentileza que um
       ativo: false,
       promptCustom: null,
       modelo: null,
+      limiteTokensDiaIn: 100000,
+      limiteTokensDiaOut: 100000,
+      limiteTokensMesIn: 2000000,
+      limiteTokensMesOut: 2000000,
       systemPromptPreview: '',
       atualizadoEm: new Date(),
     };

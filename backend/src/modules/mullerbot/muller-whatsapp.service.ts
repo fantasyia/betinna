@@ -6,6 +6,8 @@ import { InboxService } from '@modules/inbox/inbox.service';
 import type { MensagemEntranteParams } from '@modules/inbox/inbox.types';
 import { MullerBotService } from './mullerbot.service';
 import type { HistoricoMsg } from './mullerbot-cache.service';
+import { BotAuditoriaService } from './bot-auditoria.service';
+import { BotCustoService } from './bot-custo.service';
 
 /**
  * Fase 2 — Motor do bot Muller no WhatsApp da EMPRESA.
@@ -48,6 +50,8 @@ export class MullerWhatsappService implements OnModuleInit {
     private readonly inbox: InboxService,
     private readonly muller: MullerBotService,
     private readonly env: EnvService,
+    private readonly auditoria: BotAuditoriaService,
+    private readonly custo: BotCustoService,
   ) {}
 
   onModuleInit(): void {
@@ -110,6 +114,23 @@ export class MullerWhatsappService implements OnModuleInit {
         return;
       }
 
+      // 4.6 Teto de custo (Sprint 2.2) — se estourou o limite de tokens, o bot
+      // pausa e escala pra humano.
+      const teto = await this.custo.verificarTeto(params.empresaId);
+      if (teto.bloqueado) {
+        await this.inbox.marcarPrecisaHumano(convId).catch(() => undefined);
+        void this.auditoria.registrar({
+          empresaId: params.empresaId,
+          conversationId: convId,
+          messageId: resultado.messageId,
+          pergunta: params.conteudo,
+          resposta: null,
+          status: 'SEM_RESPOSTA',
+        });
+        this.logger.warn(`[bot] BLOQUEADO-CUSTO conv=${convId}: ${teto.motivo}`);
+        return;
+      }
+
       // 5. Histórico (últimas N msgs de texto, cronológico, excluindo a atual)
       const historico = await this.montarHistorico(convId, resultado.messageId);
 
@@ -142,6 +163,15 @@ export class MullerWhatsappService implements OnModuleInit {
       if (!resposta || !resposta.texto.trim()) {
         await this.inbox.responderComoBot(convId, FALLBACK_MSG).catch(() => undefined);
         await this.inbox.marcarPrecisaHumano(convId).catch(() => undefined);
+        void this.auditoria.registrar({
+          empresaId: params.empresaId,
+          conversationId: convId,
+          messageId: resultado.messageId,
+          pergunta: params.conteudo,
+          resposta: FALLBACK_MSG,
+          tempoMs,
+          status: 'FALLBACK',
+        });
         this.logger.warn(
           `[bot] FALLBACK conv=${convId} peer=${params.peerId} msg="${params.conteudo.slice(0, 60)}" tempo=${tempoMs}ms status=falha`,
         );
@@ -150,6 +180,24 @@ export class MullerWhatsappService implements OnModuleInit {
 
       // 8. Sucesso — envia a resposta
       await this.inbox.responderComoBot(convId, resposta.texto.trim());
+      // Auditoria + contagem de tokens (Sprint 2.2) — best-effort.
+      void this.auditoria.registrar({
+        empresaId: params.empresaId,
+        conversationId: convId,
+        messageId: resultado.messageId,
+        pergunta: params.conteudo,
+        resposta: resposta.texto.trim(),
+        tokensIn: resposta.tokensIn,
+        tokensOut: resposta.tokensOut,
+        tempoMs,
+        modelo: resposta.modelo,
+        status: 'OK',
+      });
+      void this.custo.registrarUso(
+        params.empresaId,
+        resposta.tokensIn ?? 0,
+        resposta.tokensOut ?? 0,
+      );
       this.logger.log(
         `[bot] OK conv=${convId} peer=${params.peerId} modelo=${resposta.modelo ?? '?'} ` +
           `catalogo=${resposta.usouCatalogo ? `on(${resposta.produtosIncluidos ?? 0}prod)` : 'off'} ` +

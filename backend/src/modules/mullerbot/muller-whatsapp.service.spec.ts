@@ -31,7 +31,20 @@ const makeMuller = (resp: unknown = { texto: 'Olá! Como posso ajudar?' }) => ({
 const env = { get: () => 24 };
 
 function build(prisma: ReturnType<typeof makePrisma>, inbox: ReturnType<typeof makeInbox>, muller: ReturnType<typeof makeMuller>) {
-  return new MullerWhatsappService(prisma as never, inbox as never, muller as never, env as never);
+  // Sprint 2.2 — mocks de auditoria + custo (não bloqueia por teto nos testes).
+  const auditoria = { registrar: vi.fn().mockResolvedValue(undefined) };
+  const custo = {
+    verificarTeto: vi.fn().mockResolvedValue({ bloqueado: false }),
+    registrarUso: vi.fn().mockResolvedValue(undefined),
+  };
+  return new MullerWhatsappService(
+    prisma as never,
+    inbox as never,
+    muller as never,
+    env as never,
+    auditoria as never,
+    custo as never,
+  );
 }
 
 const baseParams = {
