@@ -34,7 +34,17 @@ interface Persona {
   promptCustom?: string | null;
   modelo?: string | null;
   ativo: boolean;
+  limiteTokensDiaIn: number;
+  limiteTokensDiaOut: number;
+  limiteTokensMesIn: number;
+  limiteTokensMesOut: number;
   atualizadoEm: string;
+}
+
+interface CustoStatus {
+  dia: { tokensIn: number; tokensOut: number; limiteIn: number; limiteOut: number; pct: number };
+  mes: { tokensIn: number; tokensOut: number; limiteIn: number; limiteOut: number; pct: number };
+  pausadoPorCustoAte: string | null;
 }
 
 interface Diagnostico {
@@ -68,6 +78,12 @@ export default function PersonaBotPage() {
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  // Sprint 2.2 — teto de custo (limite diário/mensal de tokens) + consumo atual.
+  // Um único limite por período, aplicado a entrada e saída no backend.
+  const [limDia, setLimDia] = useState(100000);
+  const [limMes, setLimMes] = useState(2000000);
+  const custoQuery = useApiQuery<CustoStatus>('/mullerbot/custo');
+
   // Modelos reais da conta OpenAI (puxados ao vivo); cai pra lista curada se falhar.
   const [modelosLive, setModelosLive] = useState<string[]>([]);
 
@@ -75,6 +91,8 @@ export default function PersonaBotPage() {
     if (!data) return;
     setPrompt(data.promptCustom ?? '');
     setModelo(data.modelo ?? '');
+    setLimDia(data.limiteTokensDiaIn ?? 100000);
+    setLimMes(data.limiteTokensMesIn ?? 2000000);
     setDirty(false);
   }, [data]);
 
@@ -151,10 +169,16 @@ export default function PersonaBotPage() {
         ativo: true,
         promptCustom: prompt.trim() || null,
         modelo: modelo || null,
+        // Teto de custo — mesmo limite pra entrada e saída.
+        limiteTokensDiaIn: limDia,
+        limiteTokensDiaOut: limDia,
+        limiteTokensMesIn: limMes,
+        limiteTokensMesOut: limMes,
       });
-      toast.success('Prompt do Muller salvo');
+      toast.success('Configuração do Muller salva');
       setDirty(false);
       refetch();
+      custoQuery.refetch();
     } catch (err) {
       setError(err instanceof ApiError ? err.message : 'Falha ao salvar');
     } finally {
@@ -332,8 +356,79 @@ export default function PersonaBotPage() {
           </Card>
         </div>
 
-        {/* Coluna lateral — dicas */}
+        {/* Coluna lateral — teto de custo + dicas */}
         <aside className="flex flex-col gap-3">
+          {/* Teto de custo (Sprint 2.2) */}
+          <Card padding="md">
+            <CardHeader>
+              <CardTitle className="text-sm flex items-center gap-2">
+                <Bot className="h-4 w-4 text-primary" />
+                Teto de custo (tokens)
+              </CardTitle>
+              <CardDescription>
+                Limite de consumo da OpenAI. Aos 80% você é avisado; aos 100% o bot pausa sozinho
+                até a virada do dia/mês.
+              </CardDescription>
+            </CardHeader>
+
+            {custoQuery.data && (
+              <div className="flex flex-col gap-2.5 mb-3">
+                <BarraCusto
+                  label="Hoje"
+                  pct={custoQuery.data.dia.pct}
+                  usado={custoQuery.data.dia.tokensIn + custoQuery.data.dia.tokensOut}
+                  limite={custoQuery.data.dia.limiteIn + custoQuery.data.dia.limiteOut}
+                />
+                <BarraCusto
+                  label="Mês"
+                  pct={custoQuery.data.mes.pct}
+                  usado={custoQuery.data.mes.tokensIn + custoQuery.data.mes.tokensOut}
+                  limite={custoQuery.data.mes.limiteIn + custoQuery.data.mes.limiteOut}
+                />
+                {custoQuery.data.pausadoPorCustoAte &&
+                  new Date(custoQuery.data.pausadoPorCustoAte) > new Date() && (
+                    <p className="text-xs text-danger flex items-start gap-1.5">
+                      <AlertCircle className="h-3.5 w-3.5 shrink-0 mt-0.5" />
+                      Bot pausado por custo até{' '}
+                      {new Date(custoQuery.data.pausadoPorCustoAte).toLocaleString('pt-BR', {
+                        dateStyle: 'short',
+                        timeStyle: 'short',
+                      })}
+                      .
+                    </p>
+                  )}
+              </div>
+            )}
+
+            <Field label="Limite diário (tokens)" className="mb-2">
+              <input
+                type="number"
+                min={0}
+                value={limDia}
+                onChange={(e) => {
+                  setLimDia(Math.max(0, Number(e.target.value)));
+                  setDirty(true);
+                }}
+                className="w-full rounded-md border border-border-strong bg-surface px-3 py-2 text-sm tabular"
+              />
+            </Field>
+            <Field label="Limite mensal (tokens)">
+              <input
+                type="number"
+                min={0}
+                value={limMes}
+                onChange={(e) => {
+                  setLimMes(Math.max(0, Number(e.target.value)));
+                  setDirty(true);
+                }}
+                className="w-full rounded-md border border-border-strong bg-surface px-3 py-2 text-sm tabular"
+              />
+            </Field>
+            <p className="text-[10px] text-muted-light mt-1">
+              Salve (botão no topo) pra aplicar os novos limites.
+            </p>
+          </Card>
+
           <Card padding="md" variant="outline">
             <CardHeader>
               <CardTitle className="text-sm flex items-center gap-2">
@@ -369,5 +464,36 @@ export default function PersonaBotPage() {
         </aside>
       </div>
     </PageLayout>
+  );
+}
+
+/** Barra de progresso de consumo de tokens (verde < 80%, amarela < 100%, vermelha = cheio). */
+function BarraCusto({
+  label,
+  pct,
+  usado,
+  limite,
+}: {
+  label: string;
+  pct: number;
+  usado: number;
+  limite: number;
+}) {
+  const p = Math.min(100, Math.round(pct));
+  const cor = p >= 100 ? 'bg-danger' : p >= 80 ? 'bg-warning' : 'bg-success';
+  return (
+    <div>
+      <div className="flex justify-between text-[11px] text-muted mb-1">
+        <span>
+          {label}: {p}%
+        </span>
+        <span className="tabular">
+          {usado.toLocaleString('pt-BR')}/{limite.toLocaleString('pt-BR')}
+        </span>
+      </div>
+      <div className="h-2 rounded-full bg-bg-alt overflow-hidden">
+        <div className={`h-full ${cor} rounded-full`} style={{ width: `${p}%` }} />
+      </div>
+    </div>
   );
 }

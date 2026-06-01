@@ -5,6 +5,7 @@ import {
   Smartphone,
   Bot,
   Sparkles,
+  ClipboardList,
 } from 'lucide-react';
 import { useRole, usePermission } from '@/hooks/usePermission';
 import { SubTabsBar, type SubTab } from '@/components/SubTabsBar';
@@ -65,6 +66,14 @@ export function AtendimentoTabs() {
       to: '/mullerbot/persona',
       label: 'Persona Bot',
       icon: <Sparkles size={14} />,
+    });
+  }
+  // Auditoria do bot — também pra GERENTE (gestão), não só config.
+  if (canMarketplaces) {
+    tabs.push({
+      to: '/mullerbot/auditoria',
+      label: 'Auditoria',
+      icon: <ClipboardList size={14} />,
     });
   }
 

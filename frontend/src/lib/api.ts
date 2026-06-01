@@ -249,6 +249,32 @@ async function safeJson(res: Response): Promise<Record<string, unknown> | null> 
 
 // ─── API pública ────────────────────────────────────────────────────────
 
+/**
+ * Baixa um arquivo (ex: CSV) de um endpoint autenticado e dispara o download.
+ * Usa o mesmo token/base do `api`. Pra respostas binárias/texto (não-JSON).
+ */
+export async function downloadFile(path: string, filename: string): Promise<void> {
+  const url = path.startsWith('http')
+    ? path
+    : `${BASE_URL}${API_PREFIX}${path.startsWith('/') ? path : `/${path}`}`;
+  const sess = getSession();
+  const res = await fetch(url, {
+    headers: sess?.accessToken ? { Authorization: `Bearer ${sess.accessToken}` } : {},
+  });
+  if (!res.ok) {
+    throw new ApiError(res.status, 'DOWNLOAD_ERROR', `Falha no download (${res.status})`);
+  }
+  const blob = await res.blob();
+  const objUrl = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = objUrl;
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  URL.revokeObjectURL(objUrl);
+}
+
 export const api = {
   get: <T>(path: string, opts?: Omit<RequestOpts, 'method' | 'body'>) =>
     request<T>(path, { ...opts, method: 'GET' }),
