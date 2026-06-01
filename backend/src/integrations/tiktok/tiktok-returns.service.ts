@@ -150,6 +150,9 @@ export class TikTokReturnsService {
       case 'COMPLETED':
         return 'RESOLVIDO';
       case 'REFUND_FAIL':
+        // Reembolso FALHOU — não é resolvido. Precisa da nossa ação (reprocessar/
+        // investigar), então fica aguardando o vendedor (= "marketplace espera nossa ação").
+        return 'AGUARDANDO_VENDEDOR';
       case 'CLOSED':
       case 'REJECTED':
         return 'RESOLVIDO';

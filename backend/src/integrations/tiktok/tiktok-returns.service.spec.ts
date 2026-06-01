@@ -122,6 +122,14 @@ describe('TikTokReturnsService', () => {
       expect(incidentArg.status).toBe('RESOLVIDO');
     });
 
+    it('REFUND_FAIL → AGUARDANDO_VENDEDOR (não é resolvido — exige nossa ação)', async () => {
+      await service.processarReturn('emp-1', fakeReturn({ status: 'REFUND_FAIL' }));
+
+      const incidentArg = incidents.registrarIncidente.mock.calls[0][0];
+      expect(incidentArg.status).toBe('AGUARDANDO_VENDEDOR');
+      expect(incidentArg.status).not.toBe('RESOLVIDO');
+    });
+
     it('BUYER_CANCEL_REQUEST → CANCELADO', async () => {
       await service.processarReturn('emp-1', fakeReturn({ status: 'BUYER_CANCEL_REQUEST' }));
 
