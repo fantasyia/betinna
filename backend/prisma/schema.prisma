@@ -1422,6 +1422,9 @@ model Message {
   @@index([direction])
   @@index([status])
   @@index([criadoEm])
+  // P1 #11: filtrar mensagens por atendente (autorUsuarioId) em volume varria a
+  // tabela inteira. Índice acelera o filtro de Inbox/auditoria por usuário.
+  @@index([autorUsuarioId])
 }
 
 // ─── INCIDENTES MARKETPLACE (reclamação/devolução/mediação/disputa) ──
