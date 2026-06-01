@@ -458,7 +458,7 @@ Retorne JSON: {"mensagemWa": "...", "mensagemEmail": "..."}`;
   ): Promise<{ texto: string; tokensIn?: number; tokensOut?: number }> {
     try {
       const res = await this.http.post<{
-        choices: Array<{ message?: { content?: string } }>;
+        choices: Array<{ message?: { content?: string }; finish_reason?: string }>;
         usage?: { prompt_tokens?: number; completion_tokens?: number };
       }>('https://api.openai.com/v1/chat/completions', {
         body: {
@@ -476,9 +476,23 @@ Retorne JSON: {"mensagemWa": "...", "mensagemEmail": "..."}`;
         retries: 1,
         timeoutMs: 45_000,
       });
-      const texto = (res.data.choices?.[0]?.message?.content ?? '').trim();
+      const choice = res.data.choices?.[0];
+      const texto = (choice?.message?.content ?? '').trim();
+      if (!texto) {
+        // Resposta vazia da IA: NÃO mascarar como '{}' — isso geraria conteúdo/mensagem
+        // em branco. Logamos estruturado e lançamos. Na geração o erro sobe pra UI
+        // (operador é avisado); na personalização do disparo o try/catch cai no template
+        // original, então nunca disparamos mensagem vazia.
+        this.logger.error(
+          `OpenAI retornou conteúdo vazio (modelo=${modelo}, finish_reason=${choice?.finish_reason ?? 'desconhecido'}, tokensOut=${res.data.usage?.completion_tokens ?? 0})`,
+        );
+        throw new IntegrationException(
+          'A IA retornou uma resposta vazia. Tente novamente em alguns instantes.',
+          ErrorCode.INTEGRATION_ERROR,
+        );
+      }
       return {
-        texto: texto || '{}',
+        texto,
         tokensIn: res.data.usage?.prompt_tokens,
         tokensOut: res.data.usage?.completion_tokens,
       };

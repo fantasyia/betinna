@@ -266,6 +266,15 @@ describe('CampanhaIaService', () => {
       ).rejects.toBeInstanceOf(IntegrationException);
     });
 
+    it('lança IntegrationException quando OpenAI retorna conteúdo vazio (não dispara em branco)', async () => {
+      // Resposta vazia não pode virar mensagem/conteúdo em branco — deve falhar e avisar o operador.
+      http.post.mockResolvedValue(fakeOpenAIResponse('   '));
+
+      await expect(
+        service.gerarConteudo(fakeUser(), { objetivo: 'X', tom: 'formal', canal: 'EMAIL' }),
+      ).rejects.toBeInstanceOf(IntegrationException);
+    });
+
     it('inclui perfil da empresa no prompt (nome e ramo)', async () => {
       prisma.empresa.findUnique.mockResolvedValue({ nome: 'Alimentos SA', ramo: 'Bebidas' });
       prisma.produto.findMany.mockResolvedValue([{ nome: 'Suco de Laranja' }]);
@@ -487,6 +496,18 @@ describe('CampanhaIaService', () => {
         credenciais: { apiKey: 'key' },
       });
       http.post.mockRejectedValue(new Error('Network error'));
+
+      const result = await service.personalizarMensagemCliente(baseParams);
+
+      expect(result.mensagemWa).toBe(baseParams.templateWa);
+      expect(result.mensagemEmail).toBe(baseParams.templateEmail);
+    });
+
+    it('retorna template original quando IA responde vazio (fail-safe, nunca dispara em branco)', async () => {
+      userIntegracoes.obterCredenciaisInternas.mockResolvedValue({
+        credenciais: { apiKey: 'key' },
+      });
+      http.post.mockResolvedValue(fakeOpenAIResponse(''));
 
       const result = await service.personalizarMensagemCliente(baseParams);
 
