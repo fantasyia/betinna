@@ -348,7 +348,7 @@ function AvancadoTab() {
       to: '/admin',
       emoji: '🛡️',
       title: 'Painel admin',
-      description: 'Status, audit log, dead-letter, seed demo',
+      description: 'Status, audit log, dead-letter',
       color: BRAND.magenta,
     },
     {
@@ -357,6 +357,13 @@ function AvancadoTab() {
       title: 'Fluxos de automação',
       description: 'Triggers e ações via BullMQ',
       color: BRAND.navy,
+    },
+    {
+      to: '/respostas-rapidas',
+      emoji: '💬',
+      title: 'Respostas rápidas',
+      description: 'Templates pra responder no Inbox com "/"',
+      color: BRAND.cyan,
     },
   ];
 

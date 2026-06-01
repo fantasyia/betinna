@@ -23,6 +23,9 @@ import {
   MapPin,
   Hash,
   ExternalLink,
+  AlertTriangle,
+  Bell,
+  BellOff,
 } from 'lucide-react';
 import { api, ApiError } from '@/lib/api';
 import { useApiQuery, type PaginatedResponse } from '@/hooks/useApiQuery';
@@ -73,9 +76,47 @@ type ConversationStatus = 'ABERTA' | 'PENDENTE' | 'RESOLVIDA' | 'ARQUIVADA';
 type MessageDirection = 'INBOUND' | 'OUTBOUND';
 type MessageType = 'TEXT' | 'IMAGE' | 'AUDIO' | 'VIDEO' | 'DOCUMENT' | 'OTHER';
 
+type ConversationCategoria =
+  | 'GERAL'
+  | 'PRE_VENDA'
+  | 'POS_VENDA'
+  | 'RECLAMACAO'
+  | 'MEDIACAO'
+  | 'DEVOLUCAO'
+  | 'DISPUTA';
+
+/**
+ * Sprint 2.3 — canais que NÃO aceitam resposta de texto livre.
+ * Amazon e TikTok nunca; Shopee só em contexto de devolução/disputa.
+ */
+function canalSemTextoLivre(
+  canal: Canal,
+  categoria?: ConversationCategoria | null,
+): { bloqueado: boolean; motivo?: string } {
+  if (canal === 'MARKETPLACE_AMAZON') {
+    return { bloqueado: true, motivo: 'A Amazon não tem chat livre — a resposta ao comprador sai pelo Seller Central.' };
+  }
+  if (canal === 'MARKETPLACE_TIKTOK') {
+    return { bloqueado: true, motivo: 'O TikTok Shop não expõe chat livre — responda pelo Seller Center.' };
+  }
+  if (canal === 'MARKETPLACE_SHOPEE' && (categoria === 'DEVOLUCAO' || categoria === 'DISPUTA')) {
+    return { bloqueado: true, motivo: 'Em devolução/disputa a Shopee não aceita texto livre — use as ações da devolução.' };
+  }
+  return { bloqueado: false };
+}
+
+interface RespostaRapida {
+  id: string;
+  titulo: string;
+  atalho: string;
+  conteudo: string;
+  global: boolean;
+}
+
 interface Conversation {
   id: string;
   canal: Canal;
+  categoria?: ConversationCategoria | null;
   status: ConversationStatus;
   // O backend (Prisma) serializa como `peerId` — identificador externo do
   // contato no canal (telefone no WhatsApp). `peer` fica como fallback legado.
@@ -224,6 +265,31 @@ function fmtPeer(canal: Canal, peer: string | null | undefined): string {
 
 // ─── Page principal ─────────────────────────────────────────────────
 
+/** Bip curto e discreto via Web Audio (sem precisar de arquivo .mp3). */
+function tocarBeep(): void {
+  try {
+    const Ctx =
+      window.AudioContext ||
+      (window as unknown as { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
+    if (!Ctx) return;
+    const ctx = new Ctx();
+    const osc = ctx.createOscillator();
+    const gain = ctx.createGain();
+    osc.connect(gain);
+    gain.connect(ctx.destination);
+    osc.type = 'sine';
+    osc.frequency.value = 660;
+    gain.gain.setValueAtTime(0.0001, ctx.currentTime);
+    gain.gain.exponentialRampToValueAtTime(0.18, ctx.currentTime + 0.02);
+    gain.gain.exponentialRampToValueAtTime(0.0001, ctx.currentTime + 0.3);
+    osc.start();
+    osc.stop(ctx.currentTime + 0.32);
+    osc.onended = () => void ctx.close();
+  } catch {
+    /* áudio bloqueado pelo navegador — ignora */
+  }
+}
+
 export default function InboxPage() {
   const [canalTab, setCanalTab] = useState<string>('todos');
   const [status, setStatus] = useState<string>('');
@@ -280,6 +346,70 @@ export default function InboxPage() {
   const showList = !isMobile || selectedId === null;
   const showThread = !isMobile || selectedId !== null;
 
+  // ── Sprint 2.3 — aviso ativo de mensagem nova (som + notificação + título) ──
+  const totalNaoLidas = useMemo(
+    () => (pageResp?.data ?? []).reduce((s, c) => s + (c.naoLidas ?? 0), 0),
+    [pageResp],
+  );
+  const [somLigado, setSomLigado] = useState(() => localStorage.getItem('inbox.som') !== 'off');
+  const prevNaoLidasRef = useRef(0);
+
+  // Pede permissão de notificação 1x.
+  useEffect(() => {
+    if ('Notification' in window && Notification.permission === 'default') {
+      void Notification.requestPermission().catch(() => undefined);
+    }
+  }, []);
+
+  // Quando o total de não-lidas SOBE → toca som + (se a aba está em 2º plano) notifica.
+  useEffect(() => {
+    const prev = prevNaoLidasRef.current;
+    if (pageResp && totalNaoLidas > prev) {
+      if (somLigado) tocarBeep();
+      if (
+        document.hidden &&
+        'Notification' in window &&
+        Notification.permission === 'granted'
+      ) {
+        try {
+          const n = new Notification('Nova mensagem · betinna.ai', {
+            body: 'Você tem novas mensagens no Inbox.',
+          });
+          n.onclick = () => {
+            window.focus();
+            n.close();
+          };
+        } catch {
+          /* ignore */
+        }
+      }
+    }
+    prevNaoLidasRef.current = totalNaoLidas;
+  }, [totalNaoLidas, somLigado, pageResp]);
+
+  // Badge no título da aba: (N) quando há não-lidas e a aba não está focada.
+  useEffect(() => {
+    const aplicar = () => {
+      document.title =
+        totalNaoLidas > 0 && document.hidden ? `(${totalNaoLidas}) betinna.ai` : 'betinna.ai';
+    };
+    aplicar();
+    document.addEventListener('visibilitychange', aplicar);
+    return () => {
+      document.removeEventListener('visibilitychange', aplicar);
+      document.title = 'betinna.ai';
+    };
+  }, [totalNaoLidas]);
+
+  function alternarSom() {
+    setSomLigado((s) => {
+      const novo = !s;
+      localStorage.setItem('inbox.som', novo ? 'on' : 'off');
+      if (novo) tocarBeep();
+      return novo;
+    });
+  }
+
   return (
     <PageLayout
       title="Inbox unificada"
@@ -304,12 +434,24 @@ export default function InboxPage() {
           >
             {/* Search + tabs */}
             <div className="p-3 border-b border-border flex flex-col gap-2.5">
-              <Input
-                leftIcon={<Search />}
-                placeholder="Buscar…"
-                value={search}
-                onChange={(e) => setSearch(e.target.value)}
-              />
+              <div className="flex items-center gap-2">
+                <Input
+                  leftIcon={<Search />}
+                  placeholder="Buscar…"
+                  value={search}
+                  onChange={(e) => setSearch(e.target.value)}
+                  className="flex-1"
+                />
+                <button
+                  type="button"
+                  data-testid="inbox-som-toggle"
+                  onClick={alternarSom}
+                  title={somLigado ? 'Som de mensagem nova: ligado' : 'Som de mensagem nova: desligado'}
+                  className="p-2 rounded-md text-muted hover:text-text hover:bg-surface-hover shrink-0"
+                >
+                  {somLigado ? <Bell className="h-4 w-4" /> : <BellOff className="h-4 w-4" />}
+                </button>
+              </div>
               <Tabs
                 items={[
                   { value: 'todos', label: 'Todos' },
@@ -419,6 +561,10 @@ function ConversationItem({
     (fmtPeer(conv.canal, conv.metadata?.telefone || conv.peerId || conv.peer) ||
       CANAL_LABEL[conv.canal]);
   const unread = (conv.naoLidas ?? 0) > 0;
+  // Sprint 2.3 — pulsa quando a última mensagem chegou nos últimos 30s.
+  const recente = conv.ultimaMsgEm
+    ? Date.now() - new Date(conv.ultimaMsgEm).getTime() < 30_000
+    : false;
   const botPausado = conv.botPausadoAte
     ? new Date(conv.botPausadoAte).getTime() > Date.now()
     : false;
@@ -461,12 +607,18 @@ function ConversationItem({
         <div className="flex-1 min-w-0">
           <div className="flex items-center justify-between gap-2 mb-0.5">
             <div className="flex items-center gap-1.5 min-w-0">
-              {unread && (
-                <span
-                  aria-label="Não lida"
-                  className="h-1.5 w-1.5 rounded-full bg-primary shrink-0"
-                />
-              )}
+              {unread &&
+                (recente && unread ? (
+                  <span aria-label="Mensagem nova" className="relative flex h-2 w-2 shrink-0">
+                    <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-danger opacity-75" />
+                    <span className="relative inline-flex rounded-full h-2 w-2 bg-danger" />
+                  </span>
+                ) : (
+                  <span
+                    aria-label="Não lida"
+                    className="h-1.5 w-1.5 rounded-full bg-primary shrink-0"
+                  />
+                ))}
               <strong
                 className={cn(
                   'truncate text-sm tracking-tight',
@@ -571,6 +723,11 @@ function ConversationThread({
   const [criarPedido, setCriarPedido] = useState(false);
   const [clienteDrawerOpen, setClienteDrawerOpen] = useState(false);
 
+  // Sprint 2.3 — respostas rápidas / templates (dropdown ao digitar "/").
+  const templates = useApiQuery<RespostaRapida[]>('/respostas-rapidas');
+  const empresaInfo = useApiQuery<{ nome?: string }>('/empresas/atual');
+  const composeRef = useRef<HTMLTextAreaElement | null>(null);
+
   const endRef = useRef<HTMLDivElement | null>(null);
   // Só rola pra baixo quando a ÚLTIMA mensagem mudou (id diferente do polling
   // anterior). Antes usava `msgs.data` como dep — como o polling cria nova
@@ -614,6 +771,48 @@ function ConversationThread({
     } finally {
       setSending(false);
     }
+  }
+
+  // ── Templates: dropdown abre quando o texto começa com "/" (sem espaço) ──
+  const mostrarTemplates =
+    resposta.startsWith('/') && !resposta.includes(' ') && !resposta.includes('\n');
+  const filtroTemplate = mostrarTemplates ? resposta.slice(1).toLowerCase() : '';
+  const templatesFiltrados = (templates.data ?? [])
+    .filter(
+      (t) =>
+        t.atalho.toLowerCase().includes(filtroTemplate) ||
+        t.titulo.toLowerCase().includes(filtroTemplate),
+    )
+    .slice(0, 8);
+
+  function substituir(texto: string, map: Record<string, string>): string {
+    let out = texto;
+    for (const [k, v] of Object.entries(map)) out = out.split(k).join(v);
+    return out;
+  }
+
+  async function inserirTemplate(t: RespostaRapida) {
+    let texto = substituir(t.conteudo, {
+      '{nome_cliente}': conv.data?.cliente?.nome ?? 'cliente',
+      '{nome_empresa}': empresaInfo.data?.nome ?? '',
+    });
+    // representante — busca o cliente só se o template usar (best-effort).
+    if (texto.includes('{representante}') && conv.data?.cliente?.id) {
+      try {
+        const cli = await api.get<{ representante?: { nome?: string } | null }>(
+          `/clientes/${conv.data.cliente.id}`,
+        );
+        texto = texto.split('{representante}').join(cli.representante?.nome ?? '');
+      } catch {
+        texto = texto.split('{representante}').join('');
+      }
+    } else {
+      texto = texto.split('{representante}').join('');
+    }
+    // {ultimo_pedido} não tem fonte confiável aqui — limpa pra não vazar a chave.
+    texto = texto.split('{ultimo_pedido}').join('');
+    setResposta(texto);
+    setTimeout(() => composeRef.current?.focus(), 0);
   }
 
   // Refs pros 2 inputs file (escondidos — clicados pelos botões de anexar)
@@ -826,6 +1025,8 @@ function ConversationThread({
     : '';
   const messages = msgs.data ?? [];
   const lockedCompose = c && (c.status === 'RESOLVIDA' || c.status === 'ARQUIVADA');
+  // Sprint 2.3 — canal que não aceita resposta de texto livre (Amazon/TikTok/Shopee-devolução).
+  const bloqueioCanal = c ? canalSemTextoLivre(c.canal, c.categoria) : { bloqueado: false };
 
   return (
     <>
@@ -961,7 +1162,23 @@ function ConversationThread({
       </div>
 
       {/* Compose */}
-      {c && !lockedCompose && (
+      {/* Sprint 2.3 — banner quando o canal não aceita texto livre (compose oculto) */}
+      {c && !lockedCompose && bloqueioCanal.bloqueado && (
+        <div
+          data-testid="inbox-canal-bloqueado"
+          className="px-4 py-3 border-t border-warning/40 bg-warning/10"
+        >
+          <div className="flex items-start gap-2 text-sm text-warning">
+            <AlertTriangle className="h-4 w-4 shrink-0 mt-0.5" />
+            <div>
+              <strong>Este canal não aceita resposta livre por aqui.</strong>
+              <p className="text-text-subtle mt-0.5">{bloqueioCanal.motivo}</p>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {c && !lockedCompose && !bloqueioCanal.bloqueado && (
         <div className="px-4 py-3 border-t border-border bg-bg-alt">
           {/* Inputs file escondidos (só clicados pelos botões abaixo).
               Áudio NÃO tem input próprio — usa MediaRecorder (gravação).
@@ -1101,20 +1318,51 @@ function ConversationThread({
                 </button>
               </div>
             )}
-            <Textarea
-              data-testid="inbox-compose"
-              placeholder="Digite sua resposta…"
-              value={resposta}
-              onChange={(e) => setResposta(e.target.value)}
-              onKeyDown={(e) => {
-                if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) {
-                  e.preventDefault();
-                  void enviar();
-                }
-              }}
-              className="min-h-[44px] max-h-32 resize-none"
-              maxLength={4096}
-            />
+            <div className="relative flex-1">
+              {mostrarTemplates && templatesFiltrados.length > 0 && (
+                <div className="absolute bottom-full left-0 right-0 mb-1 max-h-56 overflow-y-auto rounded-md border border-border bg-surface-elevated shadow-lg z-20">
+                  <div className="px-3 py-1.5 text-[10px] uppercase tracking-wide text-muted border-b border-border">
+                    Respostas rápidas
+                  </div>
+                  {templatesFiltrados.map((t) => (
+                    <button
+                      key={t.id}
+                      type="button"
+                      data-testid={`template-${t.id}`}
+                      onClick={() => void inserirTemplate(t)}
+                      className="w-full text-left px-3 py-2 hover:bg-surface-hover border-b border-border last:border-0"
+                    >
+                      <div className="flex items-center gap-2">
+                        <code className="text-xs font-mono text-primary shrink-0">{t.atalho}</code>
+                        <span className="text-sm font-medium truncate">{t.titulo}</span>
+                      </div>
+                      <div className="text-xs text-muted truncate">{t.conteudo}</div>
+                    </button>
+                  ))}
+                </div>
+              )}
+              <Textarea
+                ref={composeRef}
+                data-testid="inbox-compose"
+                placeholder="Digite sua resposta… (ou / pra respostas rápidas)"
+                value={resposta}
+                onChange={(e) => setResposta(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) {
+                    e.preventDefault();
+                    void enviar();
+                  } else if (e.key === '/' && (e.metaKey || e.ctrlKey)) {
+                    // Ctrl/Cmd + / abre o seletor de respostas rápidas.
+                    e.preventDefault();
+                    setResposta('/');
+                  } else if (e.key === 'Escape' && mostrarTemplates) {
+                    setResposta('');
+                  }
+                }}
+                className="min-h-[44px] max-h-32 resize-none w-full"
+                maxLength={4096}
+              />
+            </div>
             <Button
               type="button"
               data-testid="inbox-send-btn"
