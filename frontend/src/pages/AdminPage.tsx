@@ -1,7 +1,6 @@
 import { useState } from 'react';
 import { Link } from 'react-router-dom';
 import { api, ApiError } from '@/lib/api';
-import { currentEmpresaId } from '@/lib/auth-store';
 import { useApiQuery } from '@/hooks/useApiQuery';
 import { PageLayout } from '@/components/PageLayout';
 import { SistemaTabs } from '@/components/SistemaTabs';
@@ -76,7 +75,6 @@ export default function AdminPage() {
 
       <SystemStatus />
       <DbHealthSection />
-      <SeedDemoSection />
       <AuditLogSection />
       <DeadLetterSection />
       <PermissoesGranularesSection />
@@ -286,24 +284,7 @@ function DeadLetterSection() {
   );
 }
 
-// ─── Seed Demo (dataset de demonstração) ─────────────────────────────
-
-interface SeedDemoStatusResponse {
-  empresaId: string;
-  total: number;
-  detail: {
-    clientes: number;
-    produtos: number;
-    pedidos: number;
-    propostas: number;
-    amostras: number;
-    comissoes: number;
-    conversations: number;
-    respostasNps: number;
-  };
-}
-
-// Cores oficiais brandbook — usadas inline pra destaque do CTA seed demo
+// Cores oficiais brandbook — usadas inline em destaques (ex: alertas do DB health)
 const BRAND = {
   navy: '#201554',
   cyan: '#2bcae5',
@@ -512,217 +493,6 @@ function DbHealthSection() {
         )}
       </StateView>
     </section>
-  );
-}
-
-function SeedDemoSection() {
-  const toast = useToast();
-  const empresaId = currentEmpresaId();
-  const [busy, setBusy] = useState<'run' | 'wipe' | null>(null);
-  const [confirmAsync, ConfirmDialog] = useConfirm();
-  const { data, loading, error, refetch } = useApiQuery<SeedDemoStatusResponse>(
-    empresaId ? `/admin/seed-demo/status?empresaId=${empresaId}` : null,
-  );
-
-  const total = data?.total ?? 0;
-  const detail = data?.detail;
-  const populated = total > 0;
-
-  async function run() {
-    if (!empresaId) return;
-    const ok = await confirmAsync({
-      title: 'Popular dados de demonstração?',
-      message: populated
-        ? `Já existem ${total} registros de demo. Vamos LIMPAR e RECRIAR o dataset. Dados reais (isDemo=false) não são afetados.`
-        : 'Vai criar ~750 registros marcados isDemo=true (50 clientes, 200 produtos, 300 pedidos, 50 propostas, 30 conversas, 100 NPS, 20 amostras, 9 comissões). Não afeta dados reais.',
-      confirmLabel: 'Popular',
-      variant: 'primary',
-    });
-    if (!ok) return;
-    setBusy('run');
-    try {
-      const res = await api.post<SeedDemoStatusResponse['detail']>('/admin/seed-demo', {
-        empresaId,
-        multiplier: 1,
-      });
-      toast.success(
-        'Dataset populado',
-        `${res.clientes} clientes · ${res.produtos} produtos · ${res.pedidos} pedidos`,
-      );
-      refetch();
-    } catch (err) {
-      toast.error(
-        'Falha ao popular dataset',
-        err instanceof ApiError ? err.message : 'Erro desconhecido',
-      );
-    } finally {
-      setBusy(null);
-    }
-  }
-
-  async function wipe() {
-    if (!empresaId) return;
-    const ok = await confirmAsync({
-      title: 'Limpar TODOS os dados de demo?',
-      message: `Vai apagar ${total} registros marcados isDemo=true. Dados reais (isDemo=false) NÃO são afetados. Esta ação não pode ser desfeita.`,
-      confirmLabel: 'Limpar dados demo',
-      variant: 'danger',
-    });
-    if (!ok) return;
-    setBusy('wipe');
-    try {
-      const res = await api.delete<SeedDemoStatusResponse['detail']>(
-        `/admin/seed-demo?empresaId=${encodeURIComponent(empresaId)}`,
-      );
-      toast.success(
-        'Dados demo limpos',
-        `Removidos: ${res.clientes} clientes · ${res.produtos} produtos · ${res.pedidos} pedidos`,
-      );
-      refetch();
-    } catch (err) {
-      toast.error(
-        'Falha ao limpar dataset',
-        err instanceof ApiError ? err.message : 'Erro desconhecido',
-      );
-    } finally {
-      setBusy(null);
-    }
-  }
-
-  if (!empresaId) return null;
-
-  return (
-    <section style={{ ...card, marginBottom: '1rem' }}>
-      <header
-        style={{
-          display: 'flex',
-          justifyContent: 'space-between',
-          alignItems: 'center',
-          marginBottom: '0.5rem',
-          gap: '0.75rem',
-          flexWrap: 'wrap',
-        }}
-      >
-        <div>
-          <h2 style={{ margin: 0, fontSize: 16, color: BRAND.navy }}>
-            📦 Dados de demonstração
-          </h2>
-          <p style={{ fontSize: 12, color: colors.muted, margin: '0.25rem 0 0' }}>
-            Popula a empresa com dataset realista pra onboarding, vendas ou QA. Apenas
-            registros marcados <code style={{ background: '#fafbfc', padding: '0 4px' }}>isDemo=true</code> são tocados.
-          </p>
-        </div>
-        <span
-          style={badge(populated ? BRAND.magenta : colors.muted)}
-          data-testid="seed-demo-state"
-        >
-          {populated ? `${total} demo records` : 'sem dataset'}
-        </span>
-      </header>
-
-      <StateView loading={loading} error={error} onRetry={refetch}>
-        {detail && (
-          <div
-            style={{
-              display: 'grid',
-              gridTemplateColumns: 'repeat(auto-fit, minmax(120px, 1fr))',
-              gap: '0.5rem',
-              marginBottom: '1rem',
-            }}
-          >
-            <SeedStat label="Clientes" value={detail.clientes} accent={BRAND.cyan} />
-            <SeedStat label="Produtos" value={detail.produtos} accent={BRAND.cyan} />
-            <SeedStat label="Pedidos" value={detail.pedidos} accent={BRAND.cyan} />
-            <SeedStat label="Propostas" value={detail.propostas} accent={BRAND.cyan} />
-            <SeedStat label="Amostras" value={detail.amostras} accent={BRAND.cyan} />
-            <SeedStat label="Comissões" value={detail.comissoes} accent={BRAND.cyan} />
-            <SeedStat label="Conversas" value={detail.conversations} accent={BRAND.cyan} />
-            <SeedStat label="Respostas NPS" value={detail.respostasNps} accent={BRAND.cyan} />
-          </div>
-        )}
-
-        <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
-          <button
-            type="button"
-            data-testid="seed-demo-run"
-            disabled={busy !== null}
-            onClick={run}
-            style={{
-              padding: '0.5rem 1rem',
-              fontSize: 13,
-              fontWeight: 600,
-              border: 'none',
-              borderRadius: 10,
-              background: busy === 'run' ? BRAND.magentaHover : BRAND.magenta,
-              color: '#ffffff',
-              cursor: busy ? 'not-allowed' : 'pointer',
-              opacity: busy ? 0.7 : 1,
-              transition: 'background 120ms, transform 120ms',
-            }}
-          >
-            {busy === 'run' ? 'Populando…' : populated ? 'Re-popular dataset' : 'Popular dataset demo'}
-          </button>
-          <button
-            type="button"
-            data-testid="seed-demo-wipe"
-            disabled={!populated || busy !== null}
-            onClick={wipe}
-            style={{
-              padding: '0.5rem 1rem',
-              fontSize: 13,
-              fontWeight: 600,
-              border: `1px solid ${BRAND.danger}`,
-              borderRadius: 10,
-              background: 'transparent',
-              color: BRAND.danger,
-              cursor: !populated || busy ? 'not-allowed' : 'pointer',
-              opacity: !populated || busy ? 0.5 : 1,
-              transition: 'background 120ms',
-            }}
-          >
-            {busy === 'wipe' ? 'Limpando…' : 'Limpar dados demo'}
-          </button>
-          <button
-            type="button"
-            onClick={refetch}
-            disabled={busy !== null}
-            style={{ ...btnSecondary, padding: '0.375rem 0.875rem', fontSize: 12 }}
-          >
-            Atualizar
-          </button>
-        </div>
-      </StateView>
-      {ConfirmDialog}
-    </section>
-  );
-}
-
-function SeedStat({ label, value, accent }: { label: string; value: number; accent: string }) {
-  return (
-    <div
-      style={{
-        background: '#fafbfc',
-        border: `1px solid ${colors.border}`,
-        borderLeft: `3px solid ${accent}`,
-        borderRadius: 6,
-        padding: '0.5rem 0.625rem',
-      }}
-    >
-      <div
-        style={{
-          fontSize: 10,
-          color: colors.muted,
-          textTransform: 'uppercase',
-          letterSpacing: 0.3,
-          fontWeight: 600,
-        }}
-      >
-        {label}
-      </div>
-      <div style={{ fontSize: 18, fontWeight: 700, marginTop: 2 }}>
-        {value.toLocaleString('pt-BR')}
-      </div>
-    </div>
   );
 }
 

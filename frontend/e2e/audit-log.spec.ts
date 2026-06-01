@@ -12,7 +12,7 @@ import { TEST_USERS, login } from './fixtures';
 test('Audit log — seção 📋 visível na AdminPage pra admin', async ({ page }) => {
   await login(page, TEST_USERS.ADMIN);
   await page.goto('/admin');
-  // Aguarda a seção carregar (vem após Status e SeedDemo)
+  // Aguarda a seção carregar (vem após Status e DB Health)
   await expect(page.locator('text=Audit log').first()).toBeVisible({ timeout: 10_000 });
 });
 
