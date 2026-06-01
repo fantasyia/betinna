@@ -5,6 +5,7 @@ import { MetaGraphClientService } from './meta-graph-client.service';
 import { MetaMediaService } from './meta-media.service';
 import { MetaOAuthController } from './meta-oauth.controller';
 import { MetaOAuthService } from './meta-oauth.service';
+import { MetaTokenRefreshJob } from './meta-token-refresh.job';
 import { MetaWebhookController } from './meta-webhook.controller';
 
 /**
@@ -23,6 +24,7 @@ import { MetaWebhookController } from './meta-webhook.controller';
     MetaGraphClientService,
     MetaOAuthService,
     MetaMediaService,
+    MetaTokenRefreshJob,
     FacebookService,
     InstagramService,
   ],

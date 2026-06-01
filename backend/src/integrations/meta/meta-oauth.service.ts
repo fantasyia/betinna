@@ -160,6 +160,78 @@ export class MetaOAuthService {
     return resultado;
   }
 
+  /**
+   * Renova proativamente o token long-lived do Meta (FB/IG) — auditoria #15.
+   *
+   * O user token long-lived dura ~60 dias e o page token segue ele. Sem renovar,
+   * o token expira e FB/IG desconectam em silêncio. Aqui re-trocamos o user token
+   * (fb_exchange_token estende por mais ~60d) e re-obtemos o page token a partir
+   * dele. Chamado pelo `MetaTokenRefreshJob` (cron diário) só quando faltam poucos
+   * dias pra expirar.
+   *
+   * @returns o que aconteceu, pra o job logar/alertar:
+   *  - 'renovado'      → token trocado e persistido
+   *  - 'ok'            → ainda longe de expirar (> limiarDias), nada a fazer
+   *  - 'sem-conexao'   → não há conexão ativa desse serviço
+   *  - 'sem-expiracao' → conexão sem userAccessToken/expiração conhecida (legado)
+   */
+  async renovarTokenSeNecessario(
+    empresaId: string,
+    servico: 'facebook' | 'instagram',
+    limiarDias = 14,
+  ): Promise<'renovado' | 'ok' | 'sem-conexao' | 'sem-expiracao'> {
+    const conn = await this.prisma.integracaoConexao.findFirst({
+      where: { empresaId, servico, ativo: true },
+    });
+    if (!conn) return 'sem-conexao';
+
+    let creds: FacebookCredenciais | InstagramCredenciais;
+    try {
+      creds = JSON.parse(this.crypto.decrypt(conn.credenciais as unknown as string));
+    } catch {
+      return 'sem-conexao';
+    }
+
+    if (!creds.userAccessToken || !creds.userTokenExpiresAt) return 'sem-expiracao';
+
+    const diasRestantes = (creds.userTokenExpiresAt - Date.now()) / 86_400_000;
+    if (diasRestantes > limiarDias) return 'ok';
+
+    // Renova o user token long-lived (Meta estende por mais ~60d).
+    const longLived = await this.graph.exchangeLongLived(creds.userAccessToken);
+    const novoUserToken = longLived.access_token;
+    const novoExpiresAt = longLived.expires_in
+      ? Date.now() + longLived.expires_in * 1000
+      : undefined;
+
+    // Re-obtém o page token a partir do user token renovado.
+    const pages = await this.graph.listarPages(novoUserToken);
+    const page = pages.find((p) => p.id === creds.pageId);
+    if (!page) {
+      throw new BusinessRuleException(
+        `Página ${creds.pageId} não acessível com o token renovado (revogada ou sem permissão)`,
+      );
+    }
+
+    const novasCreds: FacebookCredenciais | InstagramCredenciais = {
+      ...creds,
+      pageAccessToken: page.access_token,
+      userAccessToken: novoUserToken,
+      userTokenExpiresAt: novoExpiresAt,
+    };
+    const externalAccountId =
+      servico === 'facebook'
+        ? (novasCreds as FacebookCredenciais).pageId
+        : (novasCreds as InstagramCredenciais).igUserId;
+    await this.persistirConexao(empresaId, servico, novasCreds, externalAccountId);
+
+    this.logger.log(
+      `Meta token renovado empresa=${empresaId} servico=${servico}` +
+        (novoExpiresAt ? ` (+${Math.round((novoExpiresAt - Date.now()) / 86_400_000)}d)` : ''),
+    );
+    return 'renovado';
+  }
+
   /** Lookup reverso: dado canal + externalAccountId, retorna credenciais decifradas + empresaId. */
   async resolverPorAccount(
     servico: 'facebook' | 'instagram',

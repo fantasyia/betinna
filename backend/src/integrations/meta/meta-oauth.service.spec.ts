@@ -1,8 +1,20 @@
 import { describe, expect, it, vi } from 'vitest';
-import { IntegrationException, UnauthorizedException } from '@shared/errors/app-exception';
+import {
+  BusinessRuleException,
+  IntegrationException,
+  UnauthorizedException,
+} from '@shared/errors/app-exception';
+import { CryptoUtil } from '@shared/utils/crypto.util';
 import { MetaOAuthService } from './meta-oauth.service';
 
 const ENC_KEY = 'a'.repeat(64);
+
+// Mesmo CryptoUtil que o service usa internamente (derivado da ENCRYPTION_KEY de teste),
+// pra cifrar credenciais de fixture e decifrar o que foi persistido no upsert.
+const cryptoTest = new CryptoUtil(ENC_KEY);
+const encCreds = (creds: unknown): string => cryptoTest.encrypt(JSON.stringify(creds));
+const decCreds = (enc: string): Record<string, unknown> => JSON.parse(cryptoTest.decrypt(enc));
+const DIA_MS = 86_400_000;
 
 const makeEnv = (overrides: Record<string, string> = {}) => ({
   get: vi.fn((k: string): string => {
@@ -170,5 +182,119 @@ describe('MetaOAuthService.resolverPorAccount', () => {
     );
     const r = await svc.resolverPorAccount('facebook', 'page-xyz');
     expect(r).toBeNull();
+  });
+});
+
+describe('MetaOAuthService.renovarTokenSeNecessario', () => {
+  const fbCreds = (expiresEmDias: number) => ({
+    pageId: 'page-1',
+    pageName: 'Loja X',
+    pageAccessToken: 'page-tok-antigo',
+    userAccessToken: 'user-tok-antigo',
+    userTokenExpiresAt: Date.now() + expiresEmDias * DIA_MS,
+  });
+
+  const fakeConn = (creds: unknown, servico = 'facebook') => ({
+    id: 'conn-1',
+    empresaId: 'emp-1',
+    servico,
+    ativo: true,
+    credenciais: encCreds(creds),
+    externalAccountId: 'page-1',
+  });
+
+  it("retorna 'sem-conexao' quando não há conexão ativa", async () => {
+    const prisma = makePrisma();
+    prisma.integracaoConexao.findFirst.mockResolvedValueOnce(null);
+    const svc = new MetaOAuthService(
+      makeEnv() as never,
+      makeGraph() as never,
+      prisma as never,
+      makeIntegracoes() as never,
+    );
+    expect(await svc.renovarTokenSeNecessario('emp-1', 'facebook')).toBe('sem-conexao');
+  });
+
+  it("retorna 'ok' e NÃO renova quando ainda está longe de expirar", async () => {
+    const prisma = makePrisma();
+    prisma.integracaoConexao.findFirst.mockResolvedValueOnce(fakeConn(fbCreds(40)));
+    const graph = makeGraph();
+    const svc = new MetaOAuthService(
+      makeEnv() as never,
+      graph as never,
+      prisma as never,
+      makeIntegracoes() as never,
+    );
+
+    expect(await svc.renovarTokenSeNecessario('emp-1', 'facebook', 14)).toBe('ok');
+    expect(graph.exchangeLongLived).not.toHaveBeenCalled();
+    expect(prisma.integracaoConexao.upsert).not.toHaveBeenCalled();
+  });
+
+  it("retorna 'renovado' e persiste novos tokens quando perto de expirar", async () => {
+    const prisma = makePrisma();
+    prisma.integracaoConexao.findFirst.mockResolvedValueOnce(fakeConn(fbCreds(5)));
+    const graph = makeGraph();
+    graph.exchangeLongLived.mockResolvedValueOnce({
+      access_token: 'user-tok-novo',
+      expires_in: 5_184_000,
+    });
+    graph.listarPages.mockResolvedValueOnce([
+      { id: 'page-1', name: 'Loja X', access_token: 'page-tok-novo' },
+    ]);
+    const svc = new MetaOAuthService(
+      makeEnv() as never,
+      graph as never,
+      prisma as never,
+      makeIntegracoes() as never,
+    );
+
+    const r = await svc.renovarTokenSeNecessario('emp-1', 'facebook', 14);
+
+    expect(r).toBe('renovado');
+    // Re-trocou o user token antigo pelo novo
+    expect(graph.exchangeLongLived).toHaveBeenCalledWith('user-tok-antigo');
+    // Persistiu credenciais com os tokens novos
+    const enc = (
+      prisma.integracaoConexao.upsert.mock.calls[0][0] as { update: { credenciais: string } }
+    ).update.credenciais;
+    const persistido = decCreds(enc);
+    expect(persistido.userAccessToken).toBe('user-tok-novo');
+    expect(persistido.pageAccessToken).toBe('page-tok-novo');
+    expect(persistido.userTokenExpiresAt).toBeGreaterThan(Date.now());
+  });
+
+  it('lança BusinessRuleException quando a página some após renovar (revogada)', async () => {
+    const prisma = makePrisma();
+    prisma.integracaoConexao.findFirst.mockResolvedValueOnce(fakeConn(fbCreds(2)));
+    const graph = makeGraph();
+    graph.exchangeLongLived.mockResolvedValueOnce({ access_token: 'user-tok-novo' });
+    graph.listarPages.mockResolvedValueOnce([
+      { id: 'outra-page', name: 'Outra', access_token: 'x' },
+    ]);
+    const svc = new MetaOAuthService(
+      makeEnv() as never,
+      graph as never,
+      prisma as never,
+      makeIntegracoes() as never,
+    );
+
+    await expect(svc.renovarTokenSeNecessario('emp-1', 'facebook', 14)).rejects.toBeInstanceOf(
+      BusinessRuleException,
+    );
+  });
+
+  it("retorna 'sem-expiracao' pra conexão legada sem userAccessToken/expiração", async () => {
+    const prisma = makePrisma();
+    prisma.integracaoConexao.findFirst.mockResolvedValueOnce(
+      fakeConn({ pageId: 'page-1', pageName: 'X', pageAccessToken: 'só-page' }),
+    );
+    const svc = new MetaOAuthService(
+      makeEnv() as never,
+      makeGraph() as never,
+      prisma as never,
+      makeIntegracoes() as never,
+    );
+    expect(await svc.renovarTokenSeNecessario('emp-1', 'facebook')).toBe('sem-expiracao');
   });
 });
