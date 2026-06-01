@@ -18,6 +18,12 @@ import { colors } from './styles';
 
 type ToastKind = 'success' | 'error' | 'info' | 'warning';
 
+/** Botão de ação opcional no toast (ex: "Tentar novamente"). */
+interface ToastAction {
+  label: string;
+  onClick: () => void;
+}
+
 interface ToastItem {
   id: string;
   kind: ToastKind;
@@ -25,15 +31,23 @@ interface ToastItem {
   description?: string;
   /** Quando true, fica até o user fechar. Default false. */
   sticky?: boolean;
+  /** Botão de ação opcional (ex: retry). Ao clicar, dispara onClick e fecha o toast. */
+  action?: ToastAction;
+}
+
+/** Opções extras pra error/warning (action + sticky). */
+interface ToastOpts {
+  action?: ToastAction;
+  sticky?: boolean;
 }
 
 interface ToastContextValue {
   push: (t: Omit<ToastItem, 'id'>) => string;
   dismiss: (id: string) => void;
   success: (title: string, description?: string) => string;
-  error: (title: string, description?: string) => string;
+  error: (title: string, description?: string, opts?: ToastOpts) => string;
   info: (title: string, description?: string) => string;
-  warning: (title: string, description?: string) => string;
+  warning: (title: string, description?: string, opts?: ToastOpts) => string;
 }
 
 const ToastContext = createContext<ToastContextValue | null>(null);
@@ -80,11 +94,11 @@ export function ToastProvider({ children }: { children: ReactNode }) {
     push,
     dismiss,
     success: (title, description) => push({ kind: 'success', title, description }),
-    error: (title, description) =>
-      push({ kind: 'error', title, description }),
+    error: (title, description, opts) =>
+      push({ kind: 'error', title, description, action: opts?.action, sticky: opts?.sticky }),
     info: (title, description) => push({ kind: 'info', title, description }),
-    warning: (title, description) =>
-      push({ kind: 'warning', title, description }),
+    warning: (title, description, opts) =>
+      push({ kind: 'warning', title, description, action: opts?.action, sticky: opts?.sticky }),
   };
 
   return (
@@ -183,6 +197,29 @@ function ToastCard({
           <div style={{ fontSize: 12, color: colors.muted, marginTop: 2, lineHeight: 1.4 }}>
             {toast.description}
           </div>
+        )}
+        {toast.action && (
+          <button
+            type="button"
+            data-testid="toast-action"
+            onClick={() => {
+              toast.action?.onClick();
+              onDismiss(toast.id);
+            }}
+            style={{
+              marginTop: 8,
+              background: KIND_COLOR[toast.kind],
+              color: '#fff',
+              border: 'none',
+              borderRadius: 6,
+              padding: '4px 10px',
+              fontSize: 12,
+              fontWeight: 600,
+              cursor: 'pointer',
+            }}
+          >
+            {toast.action.label}
+          </button>
         )}
       </div>
       <button

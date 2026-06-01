@@ -633,6 +633,32 @@ describe('UsersService', () => {
       expect(data.empresas.create).toHaveLength(1);
     });
 
+    it('cria usuário mas retorna emailAviso quando o e-mail de convite falha', async () => {
+      prisma.usuario.findUnique.mockResolvedValue(null);
+      prisma.empresa.findMany.mockResolvedValue([{ id: 'emp-1', ativo: true }]);
+      prisma.usuario.create.mockResolvedValue(fakeDbUser({ id: 'supabase-id-1' }));
+
+      // Service com e-mail que FALHA (ex: Resend não configurado).
+      const serviceEmailFail = new UsersService(
+        prisma as never,
+        env as never,
+        redis as never,
+        {
+          enviarBoasVindas: vi
+            .fn()
+            .mockResolvedValue({ ok: false, motivo: 'Resend não configurado' }),
+        } as never,
+      );
+
+      const result = (await serviceEmailFail.create(fakeUser(), baseDto)) as {
+        emailAviso?: string;
+      };
+
+      // Usuário FOI criado, mas o aviso de e-mail é surfaced (não "sucesso" falso).
+      expect(prisma.usuario.create).toHaveBeenCalled();
+      expect(result.emailAviso).toBe('Resend não configurado');
+    });
+
     it('REP recebe tetoDesconto=5 por default', async () => {
       prisma.usuario.findUnique.mockResolvedValue(null);
       prisma.empresa.findMany.mockResolvedValue([{ id: 'emp-1', ativo: true }]);

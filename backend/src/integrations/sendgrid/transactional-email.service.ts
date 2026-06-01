@@ -48,25 +48,54 @@ export class TransactionalEmailService {
     return `${base}${safe}`;
   }
 
-  private async send(para: string, assunto: string, html: string): Promise<{ ok: boolean }> {
-    // Prefere Resend quando configurado (provider sistêmico atual).
-    // Fallback pro SendGrid quando RESEND_API_KEY não está setada.
-    const provider = this.resend.isConfigured() ? 'resend' : 'sendgrid';
-    try {
-      if (provider === 'resend') {
-        const r = await this.resend.enviar({ para, assunto, html });
-        return { ok: r.status >= 200 && r.status < 300 };
-      } else {
-        const r = await this.sg.enviarSistemico({ para, assunto, html });
-        return { ok: r.status >= 200 && r.status < 300 };
-      }
-    } catch (err) {
-      this.logger.warn(
-        `Falha enviando e-mail (best-effort, provider=${provider}) para=${para} ` +
-          `assunto="${assunto.slice(0, 60)}": ${err instanceof Error ? err.message : String(err)}`,
-      );
-      return { ok: false };
+  private async send(
+    para: string,
+    assunto: string,
+    html: string,
+  ): Promise<{ ok: boolean; motivo?: string }> {
+    // Sprint 3: Resend é o ÚNICO provedor transacional. O fallback pro SendGrid
+    // foi removido (estava confuso e mascarava falhas). SendGrid segue ativo só
+    // pra envios per-user (cada user tem credencial própria via UsuarioIntegracao).
+    const ctx = `para=${para} assunto="${assunto.slice(0, 60)}"`;
+
+    if (!this.resend.isConfigured()) {
+      const motivo =
+        'Resend não configurado (defina RESEND_API_KEY e RESEND_FROM_EMAIL no Railway)';
+      this.logger.error(`E-mail NÃO enviado · ${ctx} · ${motivo}`);
+      return { ok: false, motivo };
     }
+
+    try {
+      const r = await this.resend.enviar({ para, assunto, html });
+      const ok = r.status >= 200 && r.status < 300;
+      if (!ok) {
+        const motivo = `provedor retornou HTTP ${r.status}`;
+        this.logger.error(`E-mail falhou · ${ctx} · ${motivo}`);
+        return { ok: false, motivo };
+      }
+      return { ok: true };
+    } catch (err) {
+      const motivo = err instanceof Error ? err.message : String(err);
+      this.logger.error(`E-mail falhou (Resend) · ${ctx} · ${motivo}`);
+      return { ok: false, motivo };
+    }
+
+    // ─── FALLBACK SENDGRID — REMOVIDO NA SPRINT 3 ──────────────────────────
+    // Mantido comentado por ~1 semana (até ~2026-06-08) pra rollback rápido.
+    // Pra reativar: descomente e troque o corpo acima pela escolha de provider.
+    //   const provider = this.resend.isConfigured() ? 'resend' : 'sendgrid';
+    //   try {
+    //     if (provider === 'resend') {
+    //       const r = await this.resend.enviar({ para, assunto, html });
+    //       return { ok: r.status >= 200 && r.status < 300 };
+    //     } else {
+    //       const r = await this.sg.enviarSistemico({ para, assunto, html });
+    //       return { ok: r.status >= 200 && r.status < 300 };
+    //     }
+    //   } catch (err) {
+    //     this.logger.warn(`Falha enviando e-mail (best-effort, provider=${provider})...`);
+    //     return { ok: false };
+    //   }
   }
 
   // ─── Templates de alto nível ─────────────────────────────────────────

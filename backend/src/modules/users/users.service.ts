@@ -297,15 +297,28 @@ export class UsersService {
     this.logger.log(`Usuário criado: ${created.email} (${created.role})`);
 
     // E-mail de boas-vindas — complementa o magic link do Supabase com
-    // contexto da empresa + CTA pro frontend. Best-effort.
+    // contexto da empresa + CTA pro frontend. Aguardamos o resultado: se o
+    // e-mail falhar, o usuário FOI criado, mas sinalizamos pra UI avisar o
+    // admin (toast) em vez de mostrar "convite enviado" falso.
     const empresaNome = created.empresas?.[0]?.empresa?.nome ?? 'sua empresa';
-    void this.email.enviarBoasVindas({
+    const emailResult = await this.email.enviarBoasVindas({
       para: created.email,
       nome: created.nome,
       empresaNome,
     });
 
-    return this.serialize(created);
+    const serialized = this.serialize(created);
+    if (!emailResult.ok) {
+      this.logger.error(
+        `Usuário ${created.email} criado, mas e-mail de convite FALHOU: ` +
+          `${emailResult.motivo ?? 'motivo desconhecido'}`,
+      );
+      return {
+        ...serialized,
+        emailAviso: emailResult.motivo ?? 'Falha ao enviar e-mail de convite.',
+      };
+    }
+    return serialized;
   }
 
   async update(caller: AuthenticatedUser, id: string, dto: UpdateUserDto) {
@@ -487,17 +500,16 @@ export class UsersService {
       inviteUrl,
     });
     if (!sent.ok) {
-      // FIX 2026-05-24: antes a falha do SendGrid era silenciosa (best-effort).
-      // Pra reenvio de convite, isso é catastrófico — user nunca recebia o
-      // link mas o admin via "sucesso" no toast. Agora a falha é surfaced.
+      // A falha do e-mail era silenciosa (best-effort). Pra reenvio de convite
+      // isso é catastrófico — user nunca recebia o link mas o admin via
+      // "sucesso" no toast. Agora a falha sobe com o motivo real (Resend).
+      const motivo = sent.motivo ?? 'motivo desconhecido';
       this.logger.error(
-        `Reenvio: link Supabase OK mas SendGrid FALHOU pra ${userScope.email}. ` +
-          `Verifique SENDGRID_API_KEY e SENDGRID_FROM_EMAIL no Railway.`,
+        `Reenvio: link Supabase OK mas envio de e-mail FALHOU pra ${userScope.email}: ${motivo}`,
       );
       throw new BusinessRuleException(
-        'Link de convite gerado mas falha ao enviar e-mail. ' +
-          'Verifique a configuração do SendGrid (SENDGRID_API_KEY + ' +
-          'SENDGRID_FROM_EMAIL verificado).',
+        `Link de convite gerado, mas falha ao enviar o e-mail para ${userScope.email}. ` +
+          `Motivo: ${motivo}. Verifique RESEND_API_KEY e RESEND_FROM_EMAIL no Railway e tente novamente.`,
       );
     }
     return { ok: true, sentTo: userScope.email };

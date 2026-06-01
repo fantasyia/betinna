@@ -20,6 +20,8 @@ function makeEnv(overrides: Record<string, unknown>): EnvService {
     SUPABASE_JWT_SECRET: 'algum-segredo-jwt',
     OMIE_DEMO_MODE: true,
     OMIE_REQUIRE_REAL: false,
+    RESEND_API_KEY: 're_test_key',
+    RESEND_FROM_EMAIL: 'no-reply@betinna.ai',
     ...overrides,
   };
   const stub = {
@@ -59,5 +61,33 @@ describe('EnvService — trava OMIE go-live', () => {
     const issues = env.auditProductionReadiness();
     expect(issues.find((i) => i.key === 'OMIE_DEMO_MODE')).toBeUndefined();
     expect(() => env.enforceProductionReadiness()).not.toThrow();
+  });
+});
+
+describe('EnvService — aviso de e-mail (Resend) ausente', () => {
+  it('produção sem RESEND_API_KEY → AVISO destacado (não aborta)', () => {
+    const env = makeEnv({ OMIE_DEMO_MODE: false, RESEND_API_KEY: '' });
+    const issues = env.auditProductionReadiness();
+    const resend = issues.find((i) => i.key === 'RESEND_API_KEY');
+    expect(resend?.severity).toBe('warning');
+    expect(resend?.message).toContain('RESEND_API_KEY');
+    expect(() => env.enforceProductionReadiness()).not.toThrow();
+  });
+
+  it('produção sem RESEND_FROM_EMAIL → AVISO', () => {
+    const env = makeEnv({ OMIE_DEMO_MODE: false, RESEND_FROM_EMAIL: '' });
+    const resend = env.auditProductionReadiness().find((i) => i.key === 'RESEND_API_KEY');
+    expect(resend?.severity).toBe('warning');
+    expect(resend?.message).toContain('RESEND_FROM_EMAIL');
+  });
+
+  it('produção com Resend configurado → sem aviso', () => {
+    const env = makeEnv({ OMIE_DEMO_MODE: false });
+    expect(env.auditProductionReadiness().find((i) => i.key === 'RESEND_API_KEY')).toBeUndefined();
+  });
+
+  it('desenvolvimento sem Resend → sem aviso (só vale em produção)', () => {
+    const env = makeEnv({ NODE_ENV: 'development', RESEND_API_KEY: '', RESEND_FROM_EMAIL: '' });
+    expect(env.auditProductionReadiness().find((i) => i.key === 'RESEND_API_KEY')).toBeUndefined();
   });
 });

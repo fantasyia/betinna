@@ -286,7 +286,15 @@ function UserDetail({ userId, isOwnProfile }: { userId: string; isOwnProfile: bo
       await api.post(`/users/${data.id}/reenviar-convite`);
       toast.success('Convite reenviado', `E-mail enviado pra ${data.email}`);
     } catch (err) {
-      setActionError(err instanceof ApiError ? err.message : 'Falha');
+      const motivo = err instanceof ApiError ? err.message : 'Erro inesperado';
+      // Log estruturado pra diagnóstico.
+      console.error('[convite] falha ao reenviar', { userId: data.id, email: data.email, motivo });
+      setActionError(motivo);
+      toast.error(
+        `Não foi possível enviar o e-mail para ${data.email}`,
+        `${motivo} Verifique e tente novamente.`,
+        { sticky: true, action: { label: 'Tentar novamente', onClick: () => void reenviarConvite() } },
+      );
     } finally {
       setBusy(false);
     }
@@ -977,14 +985,34 @@ function ConvidarUsuarioModal({
       if (novoRole === 'REP' || novoRole === 'GERENTE') {
         payload.comissaoPadrao = comissaoPadrao;
       }
-      await api.post('/users', payload);
-      toast.success(
-        'Convite enviado',
-        `O usuário receberá um e-mail em ${email.trim()} pra criar a senha.`,
-      );
+      const created = await api.post<{ emailAviso?: string }>('/users', payload);
+      if (created?.emailAviso) {
+        // Usuário criado, mas o e-mail não saiu — avisa em vez de "sucesso" falso.
+        console.error('[convite] usuário criado mas e-mail falhou', {
+          email: email.trim(),
+          motivo: created.emailAviso,
+        });
+        toast.warning(
+          `Usuário criado, mas o e-mail não saiu para ${email.trim()}`,
+          `${created.emailAviso} Reenvie o convite pelo perfil do usuário.`,
+          { sticky: true },
+        );
+      } else {
+        toast.success(
+          'Convite enviado',
+          `O usuário receberá um e-mail em ${email.trim()} pra criar a senha.`,
+        );
+      }
       onCreated();
     } catch (e2) {
-      setErr(e2 instanceof ApiError ? e2.message : 'Falha ao convidar usuário');
+      const motivo = e2 instanceof ApiError ? e2.message : 'Falha ao convidar usuário';
+      console.error('[convite] falha ao convidar usuário', { email: email.trim(), motivo });
+      setErr(motivo);
+      toast.error(
+        `Não foi possível convidar ${email.trim()}`,
+        `${motivo} Verifique e tente novamente.`,
+        { action: { label: 'Tentar novamente', onClick: () => void submit(e) } },
+      );
     } finally {
       setBusy(false);
     }
