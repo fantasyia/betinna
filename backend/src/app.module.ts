@@ -40,6 +40,7 @@ import { AdminModule } from '@modules/admin/admin.module';
 import { AuthModule } from '@modules/auth/auth.module';
 import { AuditModule } from '@modules/audit/audit.module';
 import { BackupModule } from '@modules/backup/backup.module';
+import { RespostasRapidasModule } from '@modules/respostas-rapidas/respostas-rapidas.module';
 import { CatalogoModule } from '@modules/catalogo/catalogo.module';
 import { ClientesModule } from '@modules/clientes/clientes.module';
 import { ComissoesModule } from '@modules/comissoes/comissoes.module';
@@ -168,6 +169,7 @@ import { SharedUtilsModule } from '@shared/utils/shared-utils.module';
     AdminModule,
     AuditModule,
     BackupModule,
+    RespostasRapidasModule,
     PermissionsModule,
     AuthModule,
     UsersModule,

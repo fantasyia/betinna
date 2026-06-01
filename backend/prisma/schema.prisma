@@ -1897,6 +1897,24 @@ model BotUsoTokens {
   @@index([empresaId])
 }
 
+/// Sprint 2.3 — Respostas rápidas / templates pra a Inbox.
+model RespostaRapida {
+  id           String   @id @default(cuid())
+  empresaId    String
+  criadoPorId  String
+  titulo       String
+  atalho       String // ex: "/obrigado" (sem unicidade — global e privados podem coexistir)
+  conteudo     String   @db.Text
+  categoria    String?
+  /// true = visível pra empresa toda; false = privado do criador.
+  global       Boolean  @default(false)
+  criadoEm     DateTime @default(now())
+  atualizadoEm DateTime @updatedAt
+
+  @@index([empresaId])
+  @@index([criadoPorId])
+}
+
 model ProgramaFidelidade {
   id                String   @id @default(cuid())
   empresaId         String   @unique // singleton por empresa
