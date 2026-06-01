@@ -1,0 +1,17 @@
+# Normaliza fim-de-linha: armazena sempre LF no repositório.
+# Evita o ruído de CRLF (Windows) no lint/diff e mantém o CI consistente.
+* text=auto eol=lf
+
+# Binários — nunca normalizar.
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.gif binary
+*.ico binary
+*.svg text
+*.pdf binary
+*.woff binary
+*.woff2 binary
+*.ttf binary
+*.mp3 binary
+*.mp4 binary

@@ -13,12 +13,7 @@ import type { Prisma } from '@prisma/client';
  * - `where`: parcial Prisma direto
  * - `idsResolver`: função que retorna IDs dos clientes a incluir
  */
-export type ListaDinamicaKey =
-  | 'risco'
-  | 'criticos'
-  | 'novos'
-  | 'horeca'
-  | 'inadimplentes';
+export type ListaDinamicaKey = 'risco' | 'criticos' | 'novos' | 'horeca' | 'inadimplentes';
 
 export interface ListaDinamicaDefinicao {
   key: ListaDinamicaKey;

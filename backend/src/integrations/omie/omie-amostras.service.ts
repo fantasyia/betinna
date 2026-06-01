@@ -82,9 +82,7 @@ export class OmieAmostrasService {
       throw new BusinessRuleException(`Amostra ${amostraId} não encontrada`);
     }
     if (amostra.numeroOmie) {
-      throw new BusinessRuleException(
-        `Amostra já enviada ao OMIE (remessa ${amostra.numeroOmie})`,
-      );
+      throw new BusinessRuleException(`Amostra já enviada ao OMIE (remessa ${amostra.numeroOmie})`);
     }
     if (!amostra.produto) {
       throw new BusinessRuleException(
@@ -181,7 +179,8 @@ export class OmieAmostrasService {
       ],
       informacoes_adicionais: cenario > 0 ? { codigo_cenario_imposto: cenario } : undefined,
       observacoes: {
-        obs_venda: 'Remessa de amostra grátis — sem valor comercial. Produto identificado como amostra.',
+        obs_venda:
+          'Remessa de amostra grátis — sem valor comercial. Produto identificado como amostra.',
       },
     };
   }

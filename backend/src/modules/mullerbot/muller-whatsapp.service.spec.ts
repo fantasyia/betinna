@@ -30,7 +30,11 @@ const makeMuller = (resp: unknown = { texto: 'Olá! Como posso ajudar?' }) => ({
 
 const env = { get: () => 24 };
 
-function build(prisma: ReturnType<typeof makePrisma>, inbox: ReturnType<typeof makeInbox>, muller: ReturnType<typeof makeMuller>) {
+function build(
+  prisma: ReturnType<typeof makePrisma>,
+  inbox: ReturnType<typeof makeInbox>,
+  muller: ReturnType<typeof makeMuller>,
+) {
   // Sprint 2.2 — mocks de auditoria + custo (não bloqueia por teto nos testes).
   const auditoria = { registrar: vi.fn().mockResolvedValue(undefined) };
   const custo = {
@@ -128,7 +132,11 @@ describe('MullerWhatsappService — regras do bot', () => {
   });
 
   it('ignora mensagem duplicada', async () => {
-    await aoReceber(build(prisma, inbox, muller), { ...baseParams }, { ...resultado, duplicada: true });
+    await aoReceber(
+      build(prisma, inbox, muller),
+      { ...baseParams },
+      { ...resultado, duplicada: true },
+    );
     expect(inbox.responderComoBot).not.toHaveBeenCalled();
   });
 

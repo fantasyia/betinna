@@ -383,10 +383,7 @@ export class PropostasService {
    * Monta os dados normalizados pra exportação (PDF/Excel/email).
    * Busca proposta + itens + cliente (com email) + empresa, validando acesso.
    */
-  private async dadosParaExport(
-    user: AuthenticatedUser,
-    id: string,
-  ): Promise<PropostaExportData> {
+  private async dadosParaExport(user: AuthenticatedUser, id: string): Promise<PropostaExportData> {
     const proposta = await this.findById(user, id); // valida tenant + scope
     // Busca email do cliente + dados da empresa (não vêm no propostaInclude)
     const [clienteFull, empresa] = await Promise.all([

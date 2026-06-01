@@ -245,7 +245,11 @@ export class IntegracoesService {
   }
 
   /** Marca uma integração como desconectada (token/sessão caiu) — alerta imediato. */
-  async marcarDesconectado(empresaId: string, servico: ServicoEmpresa, erro?: string): Promise<void> {
+  async marcarDesconectado(
+    empresaId: string,
+    servico: ServicoEmpresa,
+    erro?: string,
+  ): Promise<void> {
     await this.status.marcarDesconectado(empresaId, servico, erro);
   }
 

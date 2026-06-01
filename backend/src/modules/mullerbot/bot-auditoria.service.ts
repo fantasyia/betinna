@@ -80,11 +80,16 @@ export class BotAuditoriaService {
         },
       });
     } catch (err) {
-      this.logger.warn(`[auditoria] falha registrando resposta: ${err instanceof Error ? err.message : err}`);
+      this.logger.warn(
+        `[auditoria] falha registrando resposta: ${err instanceof Error ? err.message : err}`,
+      );
     }
   }
 
-  private montarWhere(empresaId: string, f: Partial<ListarAuditoriaFiltros>): Prisma.BotRespostaWhereInput {
+  private montarWhere(
+    empresaId: string,
+    f: Partial<ListarAuditoriaFiltros>,
+  ): Prisma.BotRespostaWhereInput {
     const where: Prisma.BotRespostaWhereInput = { empresaId };
     if (f.status) where.status = f.status;
     if (f.marcadaRevisao !== undefined) where.marcadaRevisao = f.marcadaRevisao;

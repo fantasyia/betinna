@@ -91,7 +91,10 @@ export class BotCustoService {
     if (!persona) return { bloqueado: false };
 
     if (persona.pausadoPorCustoAte && persona.pausadoPorCustoAte.getTime() > Date.now()) {
-      return { bloqueado: true, motivo: 'Teto de custo do bot atingido (pausado automaticamente).' };
+      return {
+        bloqueado: true,
+        motivo: 'Teto de custo do bot atingido (pausado automaticamente).',
+      };
     }
 
     const uso = await this.usoAtual(empresaId);
@@ -118,7 +121,9 @@ export class BotCustoService {
       });
       await this.avaliarLimites(empresaId);
     } catch (err) {
-      this.logger.warn(`[custo] falha registrando uso: ${err instanceof Error ? err.message : err}`);
+      this.logger.warn(
+        `[custo] falha registrando uso: ${err instanceof Error ? err.message : err}`,
+      );
     }
   }
 
@@ -156,15 +161,26 @@ export class BotCustoService {
     if (!persona) return;
     const uso = await this.usoAtual(empresaId);
 
-    const pctDia = this.pct(uso.diaIn, persona.limiteTokensDiaIn, uso.diaOut, persona.limiteTokensDiaOut);
-    const pctMes = this.pct(uso.mesIn, persona.limiteTokensMesIn, uso.mesOut, persona.limiteTokensMesOut);
+    const pctDia = this.pct(
+      uso.diaIn,
+      persona.limiteTokensDiaIn,
+      uso.diaOut,
+      persona.limiteTokensDiaOut,
+    );
+    const pctMes = this.pct(
+      uso.mesIn,
+      persona.limiteTokensMesIn,
+      uso.mesOut,
+      persona.limiteTokensMesOut,
+    );
     const estouLimiteMes = pctMes >= 100;
     const pct = Math.max(pctDia, pctMes);
 
     if (pct >= 100) {
       const ate = estouLimiteMes ? this.proximaViradaMes() : this.proximaViradaDia();
       // Só atualiza/alerta se ainda não estava pausado por custo.
-      const jaPausado = persona.pausadoPorCustoAte && persona.pausadoPorCustoAte.getTime() > Date.now();
+      const jaPausado =
+        persona.pausadoPorCustoAte && persona.pausadoPorCustoAte.getTime() > Date.now();
       await this.prisma.mullerBotPersona.update({
         where: { empresaId },
         data: { pausadoPorCustoAte: ate },

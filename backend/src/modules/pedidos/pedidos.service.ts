@@ -516,9 +516,7 @@ export class PedidosService {
   ) {
     const pedido = await this.findById(user, pedidoId); // valida tenant + scope rep
     if (['ENTREGUE', 'CANCELADO'].includes(pedido.status)) {
-      throw new BusinessRuleException(
-        `Pedido em status ${pedido.status} não pode ser cancelado`,
-      );
+      throw new BusinessRuleException(`Pedido em status ${pedido.status} não pode ser cancelado`);
     }
     // Não permite múltiplas solicitações PENDENTES pro mesmo pedido
     const existePendente = await this.prisma.pedidoCancelamentoSolicitacao.findFirst({
@@ -603,7 +601,9 @@ export class PedidosService {
     const empresaId = this.requireEmpresa(user);
     const solicitacao = await this.prisma.pedidoCancelamentoSolicitacao.findFirst({
       where: { id: solicitacaoId, pedido: { empresaId } },
-      include: { pedido: { select: { id: true, status: true, observacoes: true, empresaId: true } } },
+      include: {
+        pedido: { select: { id: true, status: true, observacoes: true, empresaId: true } },
+      },
     });
     if (!solicitacao) {
       throw new NotFoundException('Solicitação de cancelamento');
@@ -640,9 +640,7 @@ export class PedidosService {
         pedido: { select: { id: true, numero: true, status: true } },
       },
     });
-    this.logger.log(
-      `Solicitação #${solicitacaoId} ${dto.decisao} por ${user.nome} (${user.role})`,
-    );
+    this.logger.log(`Solicitação #${solicitacaoId} ${dto.decisao} por ${user.nome} (${user.role})`);
     return updated;
   }
 

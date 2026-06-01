@@ -50,9 +50,7 @@ export type UpdateClienteDto = z.infer<typeof updateClienteSchema>;
 export const listClientesSchema = z.object({
   page: z.coerce.number().int().positive().default(1),
   limit: z.coerce.number().int().positive().max(100).default(20),
-  sortBy: z
-    .enum(['nome', 'criadoEm', 'atualizadoEm', 'ultimoPedidoEm'])
-    .default('criadoEm'),
+  sortBy: z.enum(['nome', 'criadoEm', 'atualizadoEm', 'ultimoPedidoEm']).default('criadoEm'),
   sortOrder: z.enum(['asc', 'desc']).default('desc'),
   search: z.string().optional(),
   segmento: z.string().optional(),

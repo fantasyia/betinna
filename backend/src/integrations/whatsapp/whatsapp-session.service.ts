@@ -264,7 +264,9 @@ export class WhatsAppSessionService implements OnModuleInit, OnModuleDestroy {
       msg.includes('not open');
     if (!isSocketDown) return;
     const key = ownerKey(ctx.owner);
-    this.logger.warn(`[${key}] Socket WhatsApp caiu durante envio (${msg}) — reagendando reconexão`);
+    this.logger.warn(
+      `[${key}] Socket WhatsApp caiu durante envio (${msg}) — reagendando reconexão`,
+    );
     ctx.info.status = 'DISCONNECTED';
     ctx.info.desde = new Date();
     // Reconexão async — não bloqueia o erro que vai voltar pro usuário.
@@ -684,9 +686,7 @@ export class WhatsAppSessionService implements OnModuleInit, OnModuleDestroy {
         // pra usuário ver "tem alguma coisa aqui que o sistema não suporta ainda".
         // Lista keys do m.message pra debug.
         const keys = m.message ? Object.keys(m.message).join(',') : '(null)';
-        this.logger.warn(
-          `[${ownerKey(ctx.owner)}] msg sem conteúdo extraível — tipos: ${keys}`,
-        );
+        this.logger.warn(`[${ownerKey(ctx.owner)}] msg sem conteúdo extraível — tipos: ${keys}`);
         // Salva com placeholder pra UX (sem perder a mensagem)
         await this.inbox.processarMensagemEntrante({
           empresaId: ctx.empresaId,
@@ -772,10 +772,7 @@ export class WhatsAppSessionService implements OnModuleInit, OnModuleDestroy {
    * se falhar (não é grupo, sem permissão, erro de rede). Frontend cai pro jid
    * cru nesses casos.
    */
-  private async obterNomeGrupo(
-    ctx: SessionContext,
-    jid: string,
-  ): Promise<string | undefined> {
+  private async obterNomeGrupo(ctx: SessionContext, jid: string): Promise<string | undefined> {
     const now = Date.now();
     const cached = ctx.groupNameCache.get(jid);
     if (cached && now - cached.cachedAt < GROUP_NAME_TTL_MS) {
@@ -838,9 +835,7 @@ export class WhatsAppSessionService implements OnModuleInit, OnModuleDestroy {
     // Fallback: tenta extrair de editedMessage.message direto.
     if (msg.editedMessage?.message) {
       const inner = this.extrairConteudo(msg.editedMessage.message);
-      return inner.conteudo
-        ? { ...inner, conteudo: `${inner.conteudo} (editada)` }
-        : inner;
+      return inner.conteudo ? { ...inner, conteudo: `${inner.conteudo} (editada)` } : inner;
     }
     if (msg.imageMessage) {
       return {

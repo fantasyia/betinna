@@ -460,7 +460,10 @@ export class InboxService {
       where: { id, empresaId: existing.empresaId },
       data: { botPausadoAte: new Date(Date.now() + handoffMs) },
     });
-    return this.prisma.conversation.findUniqueOrThrow({ where: { id }, include: conversationInclude });
+    return this.prisma.conversation.findUniqueOrThrow({
+      where: { id },
+      include: conversationInclude,
+    });
   }
 
   /** Religa o bot nesta conversa (cancela a pausa e limpa "precisa humano"). */
@@ -470,7 +473,10 @@ export class InboxService {
       where: { id, empresaId: existing.empresaId },
       data: { botPausadoAte: null, precisaHumano: false },
     });
-    return this.prisma.conversation.findUniqueOrThrow({ where: { id }, include: conversationInclude });
+    return this.prisma.conversation.findUniqueOrThrow({
+      where: { id },
+      include: conversationInclude,
+    });
   }
 
   /**
@@ -639,9 +645,7 @@ export class InboxService {
     // a mensagem (ex: dono respondeu pelo celular enquanto Baileys está
     // pareado — Baileys emite messages.upsert com fromMe=true).
     const direction =
-      params.direction === 'OUTBOUND'
-        ? MessageDirection.OUTBOUND
-        : MessageDirection.INBOUND;
+      params.direction === 'OUTBOUND' ? MessageDirection.OUTBOUND : MessageDirection.INBOUND;
     const isInbound = direction === MessageDirection.INBOUND;
 
     // Mescla senderName na meta pra renderizar autor da msg em grupos.
@@ -659,10 +663,7 @@ export class InboxService {
         status: isInbound ? MessageStatus.RECEIVED : MessageStatus.SENT,
         mediaUrl: params.mediaUrl ?? null,
         mediaMime: params.mediaMime ?? null,
-        meta:
-          Object.keys(metaFinal).length > 0
-            ? (metaFinal as Prisma.InputJsonValue)
-            : undefined,
+        meta: Object.keys(metaFinal).length > 0 ? (metaFinal as Prisma.InputJsonValue) : undefined,
         criadoEm: params.data ?? new Date(),
       },
     });

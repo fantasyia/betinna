@@ -64,7 +64,11 @@ export class PropostaExportService {
         const left = doc.page.margins.left;
 
         // ─── Cabeçalho ──────────────────────────────────────────────
-        doc.fillColor(BRAND_NAVY).fontSize(22).font('Helvetica-Bold').text(data.empresa.nome, { continued: false });
+        doc
+          .fillColor(BRAND_NAVY)
+          .fontSize(22)
+          .font('Helvetica-Bold')
+          .text(data.empresa.nome, { continued: false });
         if (data.empresa.cnpj) {
           doc.fontSize(9).font('Helvetica').fillColor('#666').text(`CNPJ: ${data.empresa.cnpj}`);
         }

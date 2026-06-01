@@ -13,10 +13,18 @@ function makePrismaMock() {
     store,
     integracaoStatus: {
       findUnique: vi.fn(async () => store.row),
-      upsert: vi.fn(async ({ update, create }: { update: Record<string, unknown>; create: Record<string, unknown> }) => {
-        store.row = store.row ? { ...store.row, ...update } : { ...create };
-        return store.row;
-      }),
+      upsert: vi.fn(
+        async ({
+          update,
+          create,
+        }: {
+          update: Record<string, unknown>;
+          create: Record<string, unknown>;
+        }) => {
+          store.row = store.row ? { ...store.row, ...update } : { ...create };
+          return store.row;
+        },
+      ),
     },
     empresa: { findUnique: vi.fn(async () => ({ nome: 'Empresa Teste' })) },
     usuario: { findFirst: vi.fn(async () => ({ email: 'diretor@empresa.com' })) },
@@ -65,7 +73,7 @@ describe('IntegracaoStatusService', () => {
   });
 
   it('throttle: 2ª queda dentro de 1h não reenvia e-mail', async () => {
-    const { service, prisma, email } = build();
+    const { service, email } = build();
     await service.marcarDesconectado('emp-1', 'whatsapp', 'deslogou'); // envia
     await service.marcarDesconectado('emp-1', 'whatsapp', 'deslogou de novo'); // throttle
     expect(email.enviarAlertaSistema).toHaveBeenCalledTimes(1);

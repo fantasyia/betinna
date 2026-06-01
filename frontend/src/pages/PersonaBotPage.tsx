@@ -134,7 +134,7 @@ export default function PersonaBotPage() {
 
   useEffect(() => {
     void testarBot();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+     
   }, []);
 
   async function alternarBotWhatsapp(ativo: boolean) {

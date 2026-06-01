@@ -116,14 +116,18 @@ describe('OmieAmostrasService', () => {
 
     it('lança quando produto não tem codigoOmie nem sku', async () => {
       prisma.amostra.findFirst.mockResolvedValue(
-        fakeAmostra({ produto: { id: 'p', nome: 'X', codigoOmie: null, sku: null, precoTabela: 1 } }),
+        fakeAmostra({
+          produto: { id: 'p', nome: 'X', codigoOmie: null, sku: null, precoTabela: 1 },
+        }),
       );
       await expect(service.enviarAmostra('am-1')).rejects.toBeInstanceOf(BusinessRuleException);
     });
 
     it('lança quando cliente não tem codigoOmie', async () => {
       prisma.amostra.findFirst.mockResolvedValue(
-        fakeAmostra({ cliente: { id: 'c', nome: 'X', codigoOmie: null, omieStatus: 'ATIVO', uf: 'SP' } }),
+        fakeAmostra({
+          cliente: { id: 'c', nome: 'X', codigoOmie: null, omieStatus: 'ATIVO', uf: 'SP' },
+        }),
       );
       await expect(service.enviarAmostra('am-1')).rejects.toBeInstanceOf(BusinessRuleException);
     });
@@ -177,7 +181,10 @@ describe('OmieAmostrasService', () => {
 
     it('usa CFOP 6911 quando interestadual (UFs diferentes)', async () => {
       prisma.amostra.findFirst.mockResolvedValue(
-        fakeAmostra({ empresa: { id: 'emp-1', uf: 'SP' }, cliente: { id: 'c', nome: 'X', codigoOmie: '1001', omieStatus: 'ATIVO', uf: 'RJ' } }),
+        fakeAmostra({
+          empresa: { id: 'emp-1', uf: 'SP' },
+          cliente: { id: 'c', nome: 'X', codigoOmie: '1001', omieStatus: 'ATIVO', uf: 'RJ' },
+        }),
       );
       omie.incluirPedido.mockResolvedValue(fakeOmieResponse());
 

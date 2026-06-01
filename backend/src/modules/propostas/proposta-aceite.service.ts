@@ -214,7 +214,7 @@ export class PropostaAceiteService {
     // ACEITA → marca + cria pedido automático em transação
     const pedidoSeq = await this.sequence.next(empresaId, 'pedido');
     const numeroPedido = `PED-${pedidoSeq.toString().padStart(4, '0')}`;
-    const pedido = await this.prisma.$transaction(async (tx) => {
+    await this.prisma.$transaction(async (tx) => {
       const ped = await tx.pedido.create({
         data: {
           empresaId,
@@ -260,7 +260,13 @@ export class PropostaAceiteService {
       return ped;
     });
 
-    await this.notificarRep(proposta.representanteId, empresaId, proposta.numero, true, numeroPedido);
+    await this.notificarRep(
+      proposta.representanteId,
+      empresaId,
+      proposta.numero,
+      true,
+      numeroPedido,
+    );
     this.logger.log(
       `Proposta ${proposta.numero} ACEITA pelo cliente (ip ${ip ?? '?'}) → pedido ${numeroPedido}`,
     );

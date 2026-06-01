@@ -51,7 +51,11 @@ export class RespostasRapidasService {
     });
   }
 
-  async update(user: AuthenticatedUser, id: string, dto: UpsertRespostaDto): Promise<RespostaRapida> {
+  async update(
+    user: AuthenticatedUser,
+    id: string,
+    dto: UpsertRespostaDto,
+  ): Promise<RespostaRapida> {
     const empresaId = this.requireEmpresa(user);
     const row = await this.prisma.respostaRapida.findFirst({ where: { id, empresaId } });
     if (!row) throw new NotFoundException('Resposta rápida', id);
@@ -81,10 +85,16 @@ export class RespostasRapidasService {
   private assertPodeEditar(user: AuthenticatedUser, row: RespostaRapida): void {
     const ehDono = row.criadoPorId === user.id;
     if (row.global && !this.podeGlobal(user)) {
-      throw new ForbiddenException('Só DIRETOR/ADMIN edita templates da empresa', ErrorCode.FORBIDDEN);
+      throw new ForbiddenException(
+        'Só DIRETOR/ADMIN edita templates da empresa',
+        ErrorCode.FORBIDDEN,
+      );
     }
     if (!row.global && !ehDono && !this.podeGlobal(user)) {
-      throw new ForbiddenException('Você só pode editar os seus próprios templates', ErrorCode.FORBIDDEN);
+      throw new ForbiddenException(
+        'Você só pode editar os seus próprios templates',
+        ErrorCode.FORBIDDEN,
+      );
     }
   }
 

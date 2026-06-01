@@ -25,7 +25,9 @@ describe('BotAuditoriaService — flag de revisão', () => {
   });
 
   it('marca resposta que cita prazo/frete', () => {
-    expect(svc.avaliarRevisao('A entrega em 3 dias, frete grátis acima de 5 mil.').marcar).toBe(true);
+    expect(svc.avaliarRevisao('A entrega em 3 dias, frete grátis acima de 5 mil.').marcar).toBe(
+      true,
+    );
   });
 
   it('NÃO marca conversa neutra', () => {

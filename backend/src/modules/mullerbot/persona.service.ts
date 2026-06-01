@@ -86,9 +86,13 @@ export class MullerBotPersonaService {
       modelo: dto.modelo?.trim() || null,
       // Sprint 2.2 — teto de custo: só altera quando enviado (omitido = mantém).
       ...(dto.limiteTokensDiaIn !== undefined ? { limiteTokensDiaIn: dto.limiteTokensDiaIn } : {}),
-      ...(dto.limiteTokensDiaOut !== undefined ? { limiteTokensDiaOut: dto.limiteTokensDiaOut } : {}),
+      ...(dto.limiteTokensDiaOut !== undefined
+        ? { limiteTokensDiaOut: dto.limiteTokensDiaOut }
+        : {}),
       ...(dto.limiteTokensMesIn !== undefined ? { limiteTokensMesIn: dto.limiteTokensMesIn } : {}),
-      ...(dto.limiteTokensMesOut !== undefined ? { limiteTokensMesOut: dto.limiteTokensMesOut } : {}),
+      ...(dto.limiteTokensMesOut !== undefined
+        ? { limiteTokensMesOut: dto.limiteTokensMesOut }
+        : {}),
     };
     const row = await this.prisma.mullerBotPersona.upsert({
       where: { empresaId },

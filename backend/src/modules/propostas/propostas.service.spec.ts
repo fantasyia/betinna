@@ -36,7 +36,9 @@ const makePrismaMock = () => {
     } satisfies MockModel,
     cliente: { findFirst: vi.fn() } satisfies MockModel,
     produto: { findMany: vi.fn() } satisfies MockModel,
-    empresa: { findUnique: vi.fn(async () => ({ descontoPixPct: 0, descontoBoletoAvistaPct: 0 })) } satisfies MockModel,
+    empresa: {
+      findUnique: vi.fn(async () => ({ descontoPixPct: 0, descontoBoletoAvistaPct: 0 })),
+    } satisfies MockModel,
     $transaction: vi.fn(async (cb: (t: Tx) => unknown) => cb(tx)),
     _tx: tx, // expose for assertions
   };

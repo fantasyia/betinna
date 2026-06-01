@@ -51,7 +51,9 @@ export class IntegracaoStatusService {
         create: { empresaId, servico, status: 'ATIVA' },
       });
     } catch (err) {
-      this.logger.warn(`[status] falha registrando sucesso de ${servico}/${empresaId}: ${this.msg(err)}`);
+      this.logger.warn(
+        `[status] falha registrando sucesso de ${servico}/${empresaId}: ${this.msg(err)}`,
+      );
     }
   }
 
@@ -85,7 +87,8 @@ export class IntegracaoStatusService {
       const podeAlertar =
         ruim &&
         (!atual?.ultimoAlertaEm ||
-          agora.getTime() - atual.ultimoAlertaEm.getTime() > IntegracaoStatusService.ALERTA_THROTTLE_MS);
+          agora.getTime() - atual.ultimoAlertaEm.getTime() >
+            IntegracaoStatusService.ALERTA_THROTTLE_MS);
 
       const erroCurto = erro ? erro.slice(0, IntegracaoStatusService.ERRO_MAX) : null;
 
@@ -114,7 +117,9 @@ export class IntegracaoStatusService {
         await this.alertar(empresaId, servico, status, erroCurto);
       }
     } catch (err) {
-      this.logger.warn(`[status] falha registrando erro de ${servico}/${empresaId}: ${this.msg(err)}`);
+      this.logger.warn(
+        `[status] falha registrando erro de ${servico}/${empresaId}: ${this.msg(err)}`,
+      );
     }
   }
 
@@ -141,7 +146,9 @@ export class IntegracaoStatusService {
   ): Promise<void> {
     const para = await this.resolverDestinatario(empresaId);
     if (!para) {
-      this.logger.warn(`[status] ${servico} caiu mas não há destinatário de alerta (empresa ${empresaId}).`);
+      this.logger.warn(
+        `[status] ${servico} caiu mas não há destinatário de alerta (empresa ${empresaId}).`,
+      );
       return;
     }
     const nomeServico = SERVICO_METADATA[servico as ServicoIntegracao]?.nome ?? servico;

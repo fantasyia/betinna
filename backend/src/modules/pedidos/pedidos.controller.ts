@@ -141,8 +141,7 @@ export class PedidosController {
   @RequirePermissions({ module: 'pedidos', action: 'edit' })
   @Audit({ action: 'cancelar', resource: 'pedido', resourceIdFrom: 'params.id' })
   @ApiOperation({
-    summary:
-      'Cancela pedido. Restrito a DIRECTOR/ADMIN (P6 — rep/gerente não pode cancelar).',
+    summary: 'Cancela pedido. Restrito a DIRECTOR/ADMIN (P6 — rep/gerente não pode cancelar).',
   })
   cancelar(
     @CurrentUser() user: AuthenticatedUser,
@@ -172,8 +171,7 @@ export class PedidosController {
     resourceIdFrom: 'params.id',
   })
   @ApiOperation({
-    summary:
-      'REP/GERENTE solicita cancelamento de pedido com motivo. Diretor decide depois.',
+    summary: 'REP/GERENTE solicita cancelamento de pedido com motivo. Diretor decide depois.',
   })
   solicitarCancelamento(
     @CurrentUser() user: AuthenticatedUser,
