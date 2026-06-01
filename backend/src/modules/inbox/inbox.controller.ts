@@ -42,6 +42,7 @@ import {
   responderSchema,
 } from './inbox.dto';
 import { ConversationNotasService } from './conversation-notas.service';
+import { ConversationPresencaService } from './conversation-presenca.service';
 import { InboxService } from './inbox.service';
 import { WhatsAppMediaService } from '@integrations/whatsapp/whatsapp-media.service';
 import { WhatsAppService } from '@integrations/whatsapp/whatsapp.service';
@@ -69,6 +70,7 @@ export class InboxController {
   constructor(
     private readonly svc: InboxService,
     private readonly notas: ConversationNotasService,
+    private readonly presenca: ConversationPresencaService,
     private readonly whatsappMedia: WhatsAppMediaService,
     private readonly whatsapp: WhatsAppService,
     private readonly metaMedia: MetaMediaService,
@@ -229,6 +231,22 @@ export class InboxController {
     @Body(new ZodValidationPipe(definirTagsSchema)) dto: DefinirTagsDto,
   ) {
     return this.notas.definirTags(user, id, dto.tags);
+  }
+
+  // ─── #25 — Presença ao vivo (trava de 2 atendentes) ──────────────────
+
+  @Post(':id/presenca')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Heartbeat de presença; retorna outros atendentes na conversa agora' })
+  registrarPresenca(@CurrentUser() user: AuthenticatedUser, @Param('id') id: string) {
+    return this.presenca.heartbeat(user, id);
+  }
+
+  @Delete(':id/presenca')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Sai da presença da conversa (best-effort ao fechar)' })
+  sairPresenca(@CurrentUser() user: AuthenticatedUser, @Param('id') id: string) {
+    return this.presenca.sair(user, id);
   }
 
   // ─── Fase 2 — controle do bot na conversa ────────────────────────────

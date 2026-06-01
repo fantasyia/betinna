@@ -743,6 +743,10 @@ function ConversationThread({
   const [resposta, setResposta] = useState('');
   const [sending, setSending] = useState(false);
   const [sendError, setSendError] = useState<string | null>(null);
+  // Item #25 fatia 4 — presença ao vivo: quem MAIS está nesta conversa agora
+  // (exceto eu). Alimentado pelo heartbeat abaixo. Usado pro banner de aviso e
+  // pra confirmação antes de enviar (evita dois atendentes respondendo junto).
+  const [outros, setOutros] = useState<Array<{ id: string; nome: string }>>([]);
   const [statusOpen, setStatusOpen] = useState(false);
   const [atribuirOpen, setAtribuirOpen] = useState(false);
   const [criarPedido, setCriarPedido] = useState(false);
@@ -784,9 +788,43 @@ function ConversationThread({
     void api.post(`/inbox/${id}/marcar-lida`).catch(() => {});
   }, [conv.data, id]);
 
+  // Item #25 fatia 4 — heartbeat de presença. Enquanto esta conversa está
+  // aberta, avisa o backend que estou aqui (imediatamente + a cada 20s) e
+  // guarda quem MAIS está agora. No cleanup (troca de conversa/desmontar),
+  // sai best-effort. Falhas são silenciosas — é background, não toast.
+  useEffect(() => {
+    let ativo = true;
+    const ping = () => {
+      api
+        .post<{ outros: Array<{ id: string; nome: string }> }>(`/inbox/${id}/presenca`)
+        .then((r) => {
+          if (ativo) setOutros(r.outros ?? []);
+        })
+        .catch(() => {});
+    };
+    ping();
+    const i = setInterval(ping, 20_000);
+    return () => {
+      ativo = false;
+      clearInterval(i);
+      setOutros([]);
+      // Usa o `id` capturado no escopo deste efeito (não o da próxima conversa).
+      api.delete(`/inbox/${id}/presenca`).catch(() => {});
+    };
+  }, [id]);
+
   async function enviar() {
     const texto = resposta.trim();
     if (!texto) return;
+    // Item #25 fatia 4 — se outro(s) atendente(s) estão nesta conversa agora,
+    // confirma antes de enviar pra evitar resposta em duplicidade.
+    if (outros.length > 0) {
+      const nomes = outros.map((o) => o.nome).join(', ');
+      const verbo = outros.length > 1 ? 'estão' : 'está';
+      if (!window.confirm(`${nomes} também ${verbo} nesta conversa. Enviar mesmo assim?`)) {
+        return;
+      }
+    }
     setSending(true);
     setSendError(null);
     try {
@@ -1297,6 +1335,23 @@ function ConversationThread({
           <div ref={endRef} />
         </StateView>
       </div>
+
+      {/* Item #25 fatia 4 — aviso de presença: outro(s) atendente(s) estão
+          nesta conversa agora. Não bloqueia — só avisa (a confirmação de envio
+          mora em enviar()). Tom warning do design system. */}
+      {outros.length > 0 && (
+        <div
+          data-testid="inbox-presenca-aviso"
+          className="px-4 py-2 border-t border-warning/40 bg-warning/10 flex items-center gap-2 text-sm text-warning"
+        >
+          <UserCheck className="h-4 w-4 shrink-0" />
+          <span>
+            👤{' '}
+            <strong>{outros.map((o) => o.nome).join(', ')}</strong>{' '}
+            {outros.length > 1 ? 'estão' : 'está'} nesta conversa agora
+          </span>
+        </div>
+      )}
 
       {/* Compose */}
       {/* Sprint 2.3 — banner quando o canal não aceita texto livre (compose oculto) */}

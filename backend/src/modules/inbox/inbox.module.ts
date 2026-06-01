@@ -3,6 +3,7 @@ import { MetaModule } from '@integrations/meta/meta.module';
 import { WhatsAppModule } from '@integrations/whatsapp/whatsapp.module';
 import { CanalAdapterRegistry } from './canal-adapter.registry';
 import { ConversationNotasService } from './conversation-notas.service';
+import { ConversationPresencaService } from './conversation-presenca.service';
 import { InboxController } from './inbox.controller';
 import { InboxService } from './inbox.service';
 
@@ -18,7 +19,12 @@ import { InboxService } from './inbox.service';
 @Module({
   imports: [forwardRef(() => WhatsAppModule), forwardRef(() => MetaModule)],
   controllers: [InboxController],
-  providers: [InboxService, CanalAdapterRegistry, ConversationNotasService],
+  providers: [
+    InboxService,
+    CanalAdapterRegistry,
+    ConversationNotasService,
+    ConversationPresencaService,
+  ],
   exports: [InboxService, CanalAdapterRegistry],
 })
 export class InboxModule {}
