@@ -75,11 +75,74 @@ export default function AdminPage() {
 
       <SystemStatus />
       <DbHealthSection />
+      <LimparEmpresaSection />
       <AuditLogSection />
       <DeadLetterSection />
       <PermissoesGranularesSection />
       <QuickLinksSection />
     </PageLayout>
+  );
+}
+
+// ─── Limpar dados desta empresa (começar do zero) ─────────────────────
+
+function LimparEmpresaSection() {
+  const [busy, setBusy] = useState(false);
+  const [resultado, setResultado] = useState<string | null>(null);
+
+  async function run() {
+    const c = window.prompt(
+      'Isso APAGA todos os clientes, produtos, pedidos, propostas, conversas, ' +
+        'leads, etc. desta empresa (mantém seu login, a empresa e as integrações). ' +
+        'É IRREVERSÍVEL.\n\nDigite LIMPAR para confirmar:',
+    );
+    if (c !== 'LIMPAR') {
+      if (c !== null) setResultado('Confirmação incorreta — nada foi apagado.');
+      return;
+    }
+    setBusy(true);
+    setResultado(null);
+    try {
+      const res = await api.post<{ total: number; clientesRestantes: number }>(
+        '/admin/limpar-empresa',
+        { confirmacao: 'LIMPAR' },
+      );
+      setResultado(
+        `✅ Limpeza concluída: ${res.total} registros apagados. Clientes restantes: ${res.clientesRestantes}. Recarregue o app.`,
+      );
+    } catch (e) {
+      setResultado(`❌ Erro: ${e instanceof ApiError ? e.message : 'falha ao limpar'}`);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <section style={{ ...card, marginBottom: '1rem', borderLeft: `4px solid ${colors.danger}` }}>
+      <h2 style={{ marginTop: 0, fontSize: 16 }}>🧹 Limpar dados desta empresa</h2>
+      <p style={{ fontSize: 12, color: colors.muted, marginTop: 0 }}>
+        Apaga todo o dado operacional (clientes, produtos, pedidos, conversas, etc.) da empresa
+        ativa, mantendo login, empresa e integrações. Roda direto no banco de produção.{' '}
+        <strong>Irreversível.</strong>
+      </p>
+      <button
+        type="button"
+        data-testid="limpar-empresa"
+        onClick={run}
+        disabled={busy}
+        style={{
+          ...btn,
+          background: colors.danger,
+          color: '#fff',
+          opacity: busy ? 0.6 : 1,
+        }}
+      >
+        {busy ? 'Limpando…' : 'Limpar dados desta empresa'}
+      </button>
+      {resultado && (
+        <p style={{ fontSize: 13, marginTop: '0.75rem', marginBottom: 0 }}>{resultado}</p>
+      )}
+    </section>
   );
 }
 

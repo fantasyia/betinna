@@ -1,6 +1,8 @@
 import { Module } from '@nestjs/common';
 import { DbHealthController } from './db-health.controller';
 import { DbHealthService } from './db-health.service';
+import { LimparEmpresaController } from './limpar-empresa.controller';
+import { LimparEmpresaService } from './limpar-empresa.service';
 
 /**
  * AdminModule — utilitários administrativos cross-tenant.
@@ -13,8 +15,8 @@ import { DbHealthService } from './db-health.service';
  */
 @Module({
   // PrismaService vem do @Global() PrismaModule registrado no AppModule.
-  controllers: [DbHealthController],
-  providers: [DbHealthService],
+  controllers: [DbHealthController, LimparEmpresaController],
+  providers: [DbHealthService, LimparEmpresaService],
   exports: [DbHealthService],
 })
 export class AdminModule {}
