@@ -8,7 +8,7 @@ import { Modal } from '@/components/Modal';
 import { FormField, Input } from '@/components/FormField';
 import { badge, btn, btnDanger, btnSecondary, card, colors } from '@/components/styles';
 
-type ServicoUsuario = 'google_calendar' | 'openai' | 'anthropic' | 'whatsapp';
+type ServicoUsuario = 'google_calendar' | 'openai' | 'whatsapp';
 
 interface ServicoMeta {
   nome: string;
@@ -51,23 +51,6 @@ const SERVICOS: Record<ServicoUsuario, ServicoMeta> = {
       },
     ],
   },
-  anthropic: {
-    nome: 'Anthropic Claude',
-    tipo: 'ia',
-    color: '#d97757',
-    icon: 'C',
-    description: 'Chave pessoal pra usar Claude (opcional — alternativa ao OpenAI).',
-    connectMode: 'credentials',
-    credentialFields: [
-      {
-        name: 'apiKey',
-        label: 'API Key',
-        type: 'password',
-        placeholder: 'sk-ant-…',
-        hint: 'Gera em console.anthropic.com → API Keys',
-      },
-    ],
-  },
   whatsapp: {
     nome: 'WhatsApp pessoal',
     tipo: 'mensageria',
@@ -80,7 +63,7 @@ const SERVICOS: Record<ServicoUsuario, ServicoMeta> = {
   },
 };
 
-const SERVICO_ORDER: ServicoUsuario[] = ['whatsapp', 'google_calendar', 'openai', 'anthropic'];
+const SERVICO_ORDER: ServicoUsuario[] = ['whatsapp', 'google_calendar', 'openai'];
 
 const TIPO_LABEL: Record<ServicoMeta['tipo'], string> = {
   agenda: 'Agenda',

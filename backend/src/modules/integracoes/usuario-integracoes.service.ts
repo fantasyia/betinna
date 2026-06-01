@@ -24,7 +24,7 @@ export type ConexaoUsuarioPublica = Omit<UsuarioIntegracao, 'credenciais'> & {
 };
 
 /**
- * Gerencia conexões com escopo USUÁRIO (Google Calendar, OpenAI, Anthropic).
+ * Gerencia conexões com escopo USUÁRIO (Google Calendar, OpenAI).
  * Cada rep tem sua própria conexão — agenda e IA são pessoais.
  *
  * Mesmas garantias do `IntegracoesService`:

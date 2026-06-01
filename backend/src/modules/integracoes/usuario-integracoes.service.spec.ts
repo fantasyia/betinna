@@ -141,7 +141,7 @@ describe('UsuarioIntegracoesService', () => {
     it('retorna null quando não existe', async () => {
       prisma.usuarioIntegracao.findUnique.mockResolvedValue(null);
 
-      const result = await service.findByServico(fakeUser(), 'anthropic' as never);
+      const result = await service.findByServico(fakeUser(), 'google_calendar' as never);
 
       expect(result).toBeNull();
     });

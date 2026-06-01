@@ -39,7 +39,6 @@ export const envSchema = z
 
     // IA
     OPENAI_API_KEY: z.string().optional().default(''),
-    ANTHROPIC_API_KEY: z.string().optional().default(''),
     /** Modelo padrão pro MullerBot. */
     MULLERBOT_MODEL: z.string().default('gpt-4o-mini'),
     /** Limite total de tokens de entrada (system + user). Catálogo é truncado pra caber. */

@@ -12,8 +12,8 @@ import { badge, btn, btnDanger, btnSecondary, card, colors } from '@/components/
 // D45 (2026-05-17): integrações que só DIRECTOR pode conectar/desconectar.
 // Mantém em sync com SERVICO_METADATA.requerDirector no backend.
 // Política atual: TODAS as integrações de escopo EMPRESA são DIRECTOR-only.
-// As de escopo USUÁRIO (google_calendar, openai, anthropic, whatsapp pessoal
-// de cada rep) NÃO entram nesta lista — cada user mexe nas suas.
+// As de escopo USUÁRIO (google_calendar, openai, whatsapp pessoal de cada rep)
+// NÃO entram nesta lista — cada user mexe nas suas.
 const SERVICOS_REQUEREM_DIRECTOR: ReadonlySet<string> = new Set([
   'omie',
   'whatsapp',

@@ -22,7 +22,6 @@ export type ServicoEmpresa = (typeof SERVICOS_EMPRESA)[number];
 export const SERVICOS_USUARIO = [
   'google_calendar',
   'openai',
-  'anthropic',
   // WhatsApp pessoal — cada rep conecta o próprio celular/número via Baileys.
   // O WhatsApp empresa (central) continua em SERVICOS_EMPRESA.
   'whatsapp',
@@ -58,9 +57,9 @@ export type ServicoEscopo = 'empresa' | 'usuario' | 'ambos';
  *   - Social (FB/IG): identidade da marca, quem fala em nome da empresa
  *   - WhatsApp empresa: risco de ban Meta, número dedicado da empresa
  *
- * Integrações de escopo USUÁRIO (google_calendar, openai, anthropic e o
- * whatsapp PESSOAL de cada rep) continuam sem flag — cada user mexe nas suas
- * via `UsuarioIntegracoesService` (que não consulta esta flag).
+ * Integrações de escopo USUÁRIO (google_calendar, openai e o whatsapp PESSOAL
+ * de cada rep) continuam sem flag — cada user mexe nas suas via
+ * `UsuarioIntegracoesService` (que não consulta esta flag).
  */
 export const SERVICO_METADATA: Record<
   ServicoIntegracao,
@@ -138,7 +137,6 @@ export const SERVICO_METADATA: Record<
     obrigatorio: false,
   },
   openai: { nome: 'OpenAI', tipo: 'ia', escopo: 'usuario', obrigatorio: false },
-  anthropic: { nome: 'Anthropic Claude', tipo: 'ia', escopo: 'usuario', obrigatorio: false },
 };
 
 /**
