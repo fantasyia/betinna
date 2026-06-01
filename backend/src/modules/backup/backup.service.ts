@@ -1,7 +1,7 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { EnvService } from '@config/env.service';
 import { PrismaService } from '@database/prisma.service';
-import { TransactionalEmailService } from '@integrations/sendgrid/transactional-email.service';
+import { TransactionalEmailService } from '@integrations/email/transactional-email.service';
 import { captureException } from '@shared/observability/sentry';
 import { runBackup, restoreTest, type BackupResult, type RestoreTestResult } from './backup-core';
 

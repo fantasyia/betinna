@@ -24,8 +24,8 @@ export type ConexaoUsuarioPublica = Omit<UsuarioIntegracao, 'credenciais'> & {
 };
 
 /**
- * Gerencia conexões com escopo USUÁRIO (SendGrid, Google Calendar, OpenAI, Anthropic).
- * Cada rep tem sua própria conexão — agenda e e-mail são pessoais.
+ * Gerencia conexões com escopo USUÁRIO (Google Calendar, OpenAI, Anthropic).
+ * Cada rep tem sua própria conexão — agenda e IA são pessoais.
  *
  * Mesmas garantias do `IntegracoesService`:
  *  - Credenciais cifradas AES-256-GCM at-rest

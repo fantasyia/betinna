@@ -7,11 +7,11 @@ import { HttpClientError } from '@shared/http/http-client.types';
 
 /**
  * Wrapper do Resend (https://resend.com) — provider de e-mail
- * transacional alternativo ao SendGrid.
+ * transacional ÚNICO do sistema.
  *
- * Decisão Leo (2026-05-24): trocar SendGrid por Resend pros e-mails
- * sistêmicos (convites, boas-vindas, notificações). Mais simples, API
- * mais limpa e free tier mais generoso pra MVP.
+ * Decisão Leo (2026-05-24): adotar Resend pros e-mails sistêmicos (convites,
+ * boas-vindas, notificações). Mais simples, API mais limpa e free tier mais
+ * generoso pra MVP. SendGrid foi removido por completo.
  *
  * Configuração via env:
  *   RESEND_API_KEY      — `re_...` da conta Resend

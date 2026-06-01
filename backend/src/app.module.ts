@@ -12,12 +12,12 @@ import { EnvService } from '@config/env.service';
 import { PrismaModule } from '@database/prisma.module';
 import { buildBullMqConnection, createIORedisClient } from '@database/redis-options';
 import { AmazonModule } from '@integrations/amazon/amazon.module';
+import { EmailModule } from '@integrations/email/email.module';
 import { GoogleModule } from '@integrations/google/google.module';
 import { MLModule } from '@integrations/mercadolivre/ml.module';
 import { MetaModule } from '@integrations/meta/meta.module';
 import { OmieModule } from '@integrations/omie/omie.module';
 import { ResendModule } from '@integrations/resend/resend.module';
-import { SendGridModule } from '@integrations/sendgrid/sendgrid.module';
 import { ShopeeModule } from '@integrations/shopee/shopee.module';
 import { TikTokModule } from '@integrations/tiktok/tiktok.module';
 import { WhatsAppModule } from '@integrations/whatsapp/whatsapp.module';
@@ -205,7 +205,7 @@ import { SharedUtilsModule } from '@shared/utils/shared-utils.module';
     IntegracoesModule,
     OmieModule,
     ResendModule,
-    SendGridModule,
+    EmailModule,
     GoogleModule,
     WhatsAppModule,
     MetaModule,

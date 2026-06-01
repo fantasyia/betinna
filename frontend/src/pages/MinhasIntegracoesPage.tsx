@@ -8,7 +8,7 @@ import { Modal } from '@/components/Modal';
 import { FormField, Input } from '@/components/FormField';
 import { badge, btn, btnDanger, btnSecondary, card, colors } from '@/components/styles';
 
-type ServicoUsuario = 'google_calendar' | 'sendgrid' | 'openai' | 'anthropic' | 'whatsapp';
+type ServicoUsuario = 'google_calendar' | 'openai' | 'anthropic' | 'whatsapp';
 
 interface ServicoMeta {
   nome: string;
@@ -32,30 +32,6 @@ const SERVICOS: Record<ServicoUsuario, ServicoMeta> = {
       'Espelha compromissos da Agenda no seu calendário Google. Permite ver agenda Betinna no Google.',
     connectMode: 'oauth',
     oauthStart: '/integracoes/google/oauth/start',
-  },
-  sendgrid: {
-    nome: 'SendGrid',
-    tipo: 'email',
-    color: '#1a82e2',
-    icon: '✉',
-    description: 'Envio de e-mails pelos seus templates SendGrid. Cada rep paga o próprio crédito.',
-    connectMode: 'credentials',
-    credentialFields: [
-      {
-        name: 'apiKey',
-        label: 'API Key',
-        type: 'password',
-        placeholder: 'SG.xxxxx…',
-        hint: 'Gera em app.sendgrid.com → Settings → API Keys',
-      },
-      {
-        name: 'fromEmail',
-        label: 'E-mail remetente',
-        type: 'text',
-        placeholder: 'você@suaempresa.com',
-        hint: 'Precisa estar verificado no SendGrid (Sender Authentication)',
-      },
-    ],
   },
   openai: {
     nome: 'OpenAI',
@@ -104,7 +80,7 @@ const SERVICOS: Record<ServicoUsuario, ServicoMeta> = {
   },
 };
 
-const SERVICO_ORDER: ServicoUsuario[] = ['whatsapp', 'google_calendar', 'sendgrid', 'openai', 'anthropic'];
+const SERVICO_ORDER: ServicoUsuario[] = ['whatsapp', 'google_calendar', 'openai', 'anthropic'];
 
 const TIPO_LABEL: Record<ServicoMeta['tipo'], string> = {
   agenda: 'Agenda',

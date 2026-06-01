@@ -1,7 +1,7 @@
 import { Module } from '@nestjs/common';
 import { BullModule } from '@nestjs/bullmq';
 import { WhatsAppModule } from '@integrations/whatsapp/whatsapp.module';
-import { SendGridModule } from '@integrations/sendgrid/sendgrid.module';
+import { EmailModule } from '@integrations/email/email.module';
 import { HttpModule } from '@shared/http/http.module';
 import { FluxoEventBusService } from './fluxo-event-bus.service';
 import { FluxoExecutorProcessor } from './fluxo-executor.processor';
@@ -15,9 +15,9 @@ import { FLUXO_QUEUE } from './fluxo-executor.types';
   imports: [
     // Registra a fila BullMQ pra este módulo
     BullModule.registerQueue({ name: FLUXO_QUEUE }),
-    // Integrações usadas pelo executor
+    // Integrações usadas pelo executor (e-mail transacional pro FluxoTriggersJob)
     WhatsAppModule,
-    SendGridModule,
+    EmailModule,
     HttpModule,
   ],
   controllers: [FluxosController],

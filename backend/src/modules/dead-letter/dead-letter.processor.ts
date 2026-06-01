@@ -2,7 +2,7 @@ import { Processor, WorkerHost } from '@nestjs/bullmq';
 import { Logger } from '@nestjs/common';
 import type { Job } from 'bullmq';
 import { PrismaService } from '@database/prisma.service';
-import { SendGridService } from '@integrations/sendgrid/sendgrid.service';
+import { ResendService } from '@integrations/resend/resend.service';
 import { captureException as sentryCapture } from '@shared/observability/sentry';
 import { DEAD_LETTER_QUEUE, type DeadLetterJobData } from './dead-letter.types';
 
@@ -11,7 +11,7 @@ import { DEAD_LETTER_QUEUE, type DeadLetterJobData } from './dead-letter.types';
  *
  * Para cada job que esgotou retries:
  *  1. Loga em AuditLog (auditoria permanente — sobrevive a Redis restart)
- *  2. Tenta notificar o DIRETOR da empresa (best-effort via SendGrid sistêmico).
+ *  2. Tenta notificar o DIRETOR da empresa (best-effort via Resend sistêmico).
  *     Falha de notificação NÃO causa retry deste job (attempts: 1).
  *
  * Concurrency 1 — não é um caminho hot, e queremos audit log ordenado.
@@ -22,7 +22,7 @@ export class DeadLetterProcessor extends WorkerHost {
 
   constructor(
     private readonly prisma: PrismaService,
-    private readonly sendgrid: SendGridService,
+    private readonly resend: ResendService,
   ) {
     super();
   }
@@ -105,8 +105,10 @@ export class DeadLetterProcessor extends WorkerHost {
       <p>A equipe técnica recebeu o registro detalhado e investigará. Caso urgente, contate o suporte.</p>
       <p style="color:#888;font-size:12px">Mensagem automática — não responda.</p>
     `;
-    await this.sendgrid.enviarSistemico({
-      para: { email: diretor.email, name: diretor.nome },
+    // Resend lança em falha; o caller (`notificarDiretor(d).catch(...)`) já trata
+    // best-effort, logando warn sem derrubar o processor.
+    await this.resend.enviar({
+      para: diretor.email,
       assunto,
       html: corpoHtml,
     });

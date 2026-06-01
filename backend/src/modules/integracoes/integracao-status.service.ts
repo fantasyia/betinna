@@ -2,7 +2,7 @@ import { Injectable, Logger } from '@nestjs/common';
 import type { IntegracaoStatus, IntegracaoStatusValor } from '@prisma/client';
 import { EnvService } from '@config/env.service';
 import { PrismaService } from '@database/prisma.service';
-import { TransactionalEmailService } from '@integrations/sendgrid/transactional-email.service';
+import { TransactionalEmailService } from '@integrations/email/transactional-email.service';
 import { SERVICO_METADATA, type ServicoIntegracao } from './integracoes.constants';
 
 /**

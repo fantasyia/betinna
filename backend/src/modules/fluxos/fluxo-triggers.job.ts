@@ -3,7 +3,7 @@ import { Cron } from '@nestjs/schedule';
 import { EnvService } from '@config/env.service';
 import { PrismaService } from '@database/prisma.service';
 import { CronLockService } from '@shared/utils/cron-lock.service';
-import { TransactionalEmailService } from '@integrations/sendgrid/transactional-email.service';
+import { TransactionalEmailService } from '@integrations/email/transactional-email.service';
 import { FluxoEventBusService } from './fluxo-event-bus.service';
 
 /**

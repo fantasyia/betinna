@@ -1,5 +1,5 @@
 import { Global, Module } from '@nestjs/common';
-import { SendGridModule } from '@integrations/sendgrid/sendgrid.module';
+import { EmailModule } from '@integrations/email/email.module';
 import { IntegracaoStatusService } from './integracao-status.service';
 import { IntegracoesController } from './integracoes.controller';
 import { IntegracoesService } from './integracoes.service';
@@ -8,7 +8,7 @@ import { UsuarioIntegracoesService } from './usuario-integracoes.service';
 
 @Global()
 @Module({
-  imports: [SendGridModule],
+  imports: [EmailModule],
   controllers: [IntegracoesController, UsuarioIntegracoesController],
   providers: [IntegracoesService, UsuarioIntegracoesService, IntegracaoStatusService],
   exports: [IntegracoesService, UsuarioIntegracoesService, IntegracaoStatusService],

@@ -105,10 +105,10 @@ export class EnvService {
       });
     }
 
-    // E-mail transacional (Resend) — provedor ÚNICO desde a Sprint 3 (sem
-    // fallback SendGrid). Se faltar config, convites/propostas/aprovações NÃO
-    // saem. Aviso destacado (não crítico: o app sobe, mas e-mails ficam mudos
-    // até configurar). Não silencioso — vai pro logger.warn no boot.
+    // E-mail transacional (Resend) — provedor ÚNICO. Se faltar config,
+    // convites/propostas/aprovações NÃO saem. Aviso destacado (não crítico: o
+    // app sobe, mas e-mails ficam mudos até configurar). Não silencioso — vai
+    // pro logger.warn no boot.
     if (env === 'production') {
       const faltando = [
         this.get('RESEND_API_KEY') ? null : 'RESEND_API_KEY',
@@ -120,8 +120,8 @@ export class EnvService {
           severity: 'warning',
           message:
             `E-mail transacional indisponível: ${faltando.join(' e ')} ausente(s). ` +
-            'O Resend é o ÚNICO provedor (sem fallback SendGrid) — convites de usuário, ' +
-            'propostas e aprovações NÃO serão enviados até configurar no Railway.',
+            'O Resend é o ÚNICO provedor — convites de usuário, propostas e ' +
+            'aprovações NÃO serão enviados até configurar no Railway.',
         });
       }
     }

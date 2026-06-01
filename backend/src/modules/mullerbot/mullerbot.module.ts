@@ -1,5 +1,5 @@
 import { Module } from '@nestjs/common';
-import { SendGridModule } from '@integrations/sendgrid/sendgrid.module';
+import { EmailModule } from '@integrations/email/email.module';
 import { MullerBotController } from './mullerbot.controller';
 import { MullerBotService } from './mullerbot.service';
 import { MullerBotCacheService } from './mullerbot-cache.service';
@@ -12,7 +12,7 @@ import { BotCustoService } from './bot-custo.service';
 import { BotAuditoriaController } from './bot-auditoria.controller';
 
 @Module({
-  imports: [SendGridModule],
+  imports: [EmailModule],
   controllers: [MullerBotController, MullerBotPersonaController, BotAuditoriaController],
   providers: [
     MullerBotService,

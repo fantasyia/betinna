@@ -2,7 +2,7 @@ import { Logger } from '@nestjs/common';
 import { OnWorkerEvent, Processor, WorkerHost } from '@nestjs/bullmq';
 import { Job } from 'bullmq';
 import { PrismaService } from '@database/prisma.service';
-import { SendGridService } from '@integrations/sendgrid/sendgrid.service';
+import { ResendService } from '@integrations/resend/resend.service';
 import { WhatsAppService } from '@integrations/whatsapp/whatsapp.service';
 import { DeadLetterService } from '@modules/dead-letter/dead-letter.service';
 import { IdempotencyService } from '@shared/utils/idempotency.service';
@@ -34,7 +34,7 @@ export class CampanhaEnvioProcessor extends WorkerHost {
     private readonly prisma: PrismaService,
     private readonly campanhasService: CampanhasService,
     private readonly whatsapp: WhatsAppService,
-    private readonly sendgrid: SendGridService,
+    private readonly resend: ResendService,
     private readonly campanhaIa: CampanhaIaService,
     private readonly idempotency: IdempotencyService,
     private readonly deadLetter: DeadLetterService,
@@ -188,8 +188,11 @@ export class CampanhaEnvioProcessor extends WorkerHost {
           const idemKey = `idempotent:campanha:${campanhaId}:${destinatarioId}:email`;
           if (await this.idempotency.claim(idemKey, 86_400)) {
             try {
-              await this.sendgrid.enviar(dest.campanha.criadoPorId, {
-                para: { email: dest.email, name: dest.cliente.nome },
+              // Campanha por e-mail agora usa o Resend do SISTEMA (e-mail único da
+              // empresa), não mais credencial por usuário. Resend recebe `para` como
+              // string e LANÇA em falha (capturada no catch abaixo).
+              await this.resend.enviar({
+                para: dest.email,
                 assunto,
                 html: mensagemEmailFinal,
               });

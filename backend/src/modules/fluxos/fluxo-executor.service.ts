@@ -6,7 +6,7 @@ import { PrismaService } from '@database/prisma.service';
 import { EnvService } from '@config/env.service';
 import { HttpClientService } from '@shared/http/http-client.service';
 import { WhatsAppService } from '@integrations/whatsapp/whatsapp.service';
-import { SendGridService } from '@integrations/sendgrid/sendgrid.service';
+import { ResendService } from '@integrations/resend/resend.service';
 import { Prisma } from '@prisma/client';
 import { safeRequest, SsrfBlockedError } from '@shared/utils/safe-request';
 import {
@@ -126,7 +126,7 @@ export class FluxoExecutorService {
     private readonly env: EnvService,
     private readonly http: HttpClientService,
     private readonly whatsapp: WhatsAppService,
-    private readonly sendgrid: SendGridService,
+    private readonly resend: ResendService,
     @InjectQueue(FLUXO_QUEUE) private readonly queue: Queue<FluxoStepJobData>,
   ) {}
 
@@ -375,12 +375,14 @@ export class FluxoExecutorService {
     const assunto = interpolate(cfg.assunto, ctx);
     const corpo = interpolate(cfg.corpo, ctx);
 
-    const result = await this.sendgrid.enviarSistemico({
-      para: { email },
+    // Resend sistêmico (e-mail único da empresa). Recebe `para` como string e
+    // lança em falha — propaga pro executor, que registra a falha do passo.
+    const result = await this.resend.enviar({
+      para: email,
       assunto,
       html: corpo,
     });
-    return { para: email, assunto, messageId: result.messageId };
+    return { para: email, assunto, messageId: result.id };
   }
 
   private async acaoCriarTarefa(

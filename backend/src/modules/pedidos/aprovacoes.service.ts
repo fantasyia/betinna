@@ -13,7 +13,7 @@ import { type Paginated, buildPaginated } from '@shared/types/pagination';
 import type { DecidirAprovacaoDto, ListAprovacoesDto } from './aprovacoes.dto';
 import { FluxoEventBusService } from '@modules/fluxos/fluxo-event-bus.service';
 import { NotificacoesService } from '@modules/notificacoes/notificacoes.service';
-import { TransactionalEmailService } from '@integrations/sendgrid/transactional-email.service';
+import { TransactionalEmailService } from '@integrations/email/transactional-email.service';
 
 const aprovacaoInclude = {
   pedido: {

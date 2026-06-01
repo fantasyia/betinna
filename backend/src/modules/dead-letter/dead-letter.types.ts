@@ -5,7 +5,7 @@
  * `worker.on('failed')` e, quando `attemptsMade >= maxAttempts`, enfileira
  * aqui um job descritivo. O processor:
  *   - Loga em AuditLog (auditoria permanente)
- *   - Alerta diretor da empresa via SendGrid (best-effort)
+ *   - Alerta diretor da empresa via Resend (best-effort)
  *
  * Retry a partir do dead-letter é feito via endpoint admin
  * `POST /admin/dead-letter/:id/retry` — empurra de volta na queue original.

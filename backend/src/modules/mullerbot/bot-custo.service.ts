@@ -1,6 +1,6 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { PrismaService } from '@database/prisma.service';
-import { TransactionalEmailService } from '@integrations/sendgrid/transactional-email.service';
+import { TransactionalEmailService } from '@integrations/email/transactional-email.service';
 
 /** Uso de tokens (entrada/saída) do dia e do mês. */
 interface UsoAtual {

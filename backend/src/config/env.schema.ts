@@ -182,14 +182,9 @@ export const envSchema = z
     GOOGLE_CLIENT_SECRET: z.string().optional().default(''),
     GOOGLE_REDIRECT_URI: z.string().optional().default(''),
 
-    // E-mail
-    SENDGRID_API_KEY: z.string().optional().default(''),
-    SENDGRID_FROM_EMAIL: z.string().email().default('noreply@betinna.ai'),
-    SENDGRID_FROM_NAME: z.string().default('Betinna.ai'),
-
-    // Resend (alternativa preferida ao SendGrid pra e-mails sistêmicos)
-    // Quando RESEND_API_KEY está configurado, TransactionalEmailService usa
-    // Resend. Senão, cai pro SendGrid (legado). Cria conta em resend.com.
+    // E-mail transacional — Resend (resend.com) é o provedor ÚNICO do sistema.
+    // Quando RESEND_API_KEY + RESEND_FROM_EMAIL estão presentes, os e-mails
+    // sistêmicos (convites, propostas, aprovações, alertas) são enviados.
     RESEND_API_KEY: z.string().optional().default(''),
     RESEND_FROM_EMAIL: z.string().email().optional(),
     RESEND_FROM_NAME: z.string().optional(),

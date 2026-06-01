@@ -5,9 +5,9 @@ import {
   templateBoasVindas,
   templateComissaoFechada,
   templateOcorrenciaCritica,
-} from './sendgrid-templates';
+} from './email-templates';
 
-describe('SendGrid templates', () => {
+describe('Email templates', () => {
   describe('templateBoasVindas', () => {
     it('inclui nome e empresa no corpo', () => {
       const r = templateBoasVindas({

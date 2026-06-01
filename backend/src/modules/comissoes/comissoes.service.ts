@@ -7,7 +7,7 @@ import {
   NotFoundException,
 } from '@shared/errors/app-exception';
 import { NotificacoesService } from '@modules/notificacoes/notificacoes.service';
-import { TransactionalEmailService } from '@integrations/sendgrid/transactional-email.service';
+import { TransactionalEmailService } from '@integrations/email/transactional-email.service';
 import { addBreadcrumb } from '@shared/observability/sentry';
 import { RepScopeService } from '@shared/scope/rep-scope.service';
 import { empresaFilter, getCallerEmpresaId, isGlobalAdmin } from '@shared/utils/auth-context';

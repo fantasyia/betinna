@@ -1,12 +1,10 @@
 /**
  * Templates de e-mail transacional embutidos no app (HTML inline).
  *
- * Por quê não usar templates dinâmicos do SendGrid (d-...)?
- *  - Templates dinâmicos exigem criação no dashboard SendGrid + deploy
- *    coordenado. Pra MVP é fricção desnecessária.
+ * Por quê HTML inline (e não templates hospedados no provedor)?
+ *  - Templates hospedados exigem criação no dashboard + deploy coordenado.
+ *    Pra MVP é fricção desnecessária.
  *  - HTML inline = versionável no git, testável local, deploy em 1 commit.
- *  - Migração futura pra templates dinâmicos é trivial (basta trocar a chamada
- *    `enviar` por `enviar({ templateId, variaveis })`).
  *
  * Design:
  *  - Layout simples table-based (compatível com Gmail, Outlook, mobile clients)

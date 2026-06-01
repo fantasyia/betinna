@@ -25,7 +25,7 @@ import { UsuarioIntegracoesService } from './usuario-integracoes.service';
 
 /**
  * Conexões de integração com escopo USUÁRIO.
- * Cada rep tem suas próprias credenciais (Google Calendar, SendGrid, etc.).
+ * Cada rep tem suas próprias credenciais (Google Calendar, OpenAI, etc.).
  *
  * Todos endpoints operam no `user.id` da request — sem multi-tenant cross-user.
  */

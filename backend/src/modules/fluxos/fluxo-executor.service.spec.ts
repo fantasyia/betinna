@@ -66,8 +66,8 @@ const makeWhatsappMock = () => ({
   enviarTexto: vi.fn().mockResolvedValue({ externalId: 'wa-msg-1' }),
 });
 
-const makeSendgridMock = () => ({
-  enviarSistemico: vi.fn().mockResolvedValue({ messageId: 'sg-msg-1' }),
+const makeResendMock = () => ({
+  enviar: vi.fn().mockResolvedValue({ id: 're-msg-1', status: 200 }),
 });
 
 const makeQueueMock = () => ({
@@ -118,7 +118,7 @@ const fakeEdge = (sourceNoId: string, targetNoId: string, label?: string) => ({
 describe('FluxoExecutorService', () => {
   let prisma: ReturnType<typeof makePrismaMock>;
   let whatsapp: ReturnType<typeof makeWhatsappMock>;
-  let sendgrid: ReturnType<typeof makeSendgridMock>;
+  let resend: ReturnType<typeof makeResendMock>;
   let queue: ReturnType<typeof makeQueueMock>;
   let service: FluxoExecutorService;
 
@@ -126,14 +126,14 @@ describe('FluxoExecutorService', () => {
     vi.clearAllMocks();
     prisma = makePrismaMock();
     whatsapp = makeWhatsappMock();
-    sendgrid = makeSendgridMock();
+    resend = makeResendMock();
     queue = makeQueueMock();
     service = new FluxoExecutorService(
       prisma as never,
       makeEnvMock() as never,
       {} as never,
       whatsapp as never,
-      sendgrid as never,
+      resend as never,
       queue as never,
     );
   });
@@ -412,9 +412,9 @@ describe('FluxoExecutorService', () => {
 
       await service.executarPasso('exec-1', 'no-email');
 
-      expect(sendgrid.enviarSistemico).toHaveBeenCalledWith(
+      expect(resend.enviar).toHaveBeenCalledWith(
         expect.objectContaining({
-          para: { email: 'dest@test.com' },
+          para: 'dest@test.com',
           assunto: 'Olá Maria',
           html: 'Conteúdo para Maria',
         }),

@@ -3,9 +3,9 @@ import { HttpModule } from '@shared/http/http.module';
 import { ResendService } from './resend.service';
 
 /**
- * ResendModule — provider de e-mail transacional alternativo ao SendGrid.
- * Global pra que TransactionalEmailService (do SendGridModule) injete sem
- * precisar de import circular.
+ * ResendModule — provider de e-mail transacional ÚNICO do sistema.
+ * Global pra que TransactionalEmailService (do EmailModule) e os processors
+ * (campanhas, dead-letter, fluxos) injetem `ResendService` sem import circular.
  */
 @Global()
 @Module({

@@ -5,7 +5,7 @@ import { EnvService } from '@config/env.service';
 import { PrismaService } from '@database/prisma.service';
 import { RedisService } from '@database/redis.service';
 import { AuthGuard } from '@modules/auth/guards/auth.guard';
-import { TransactionalEmailService } from '@integrations/sendgrid/transactional-email.service';
+import { TransactionalEmailService } from '@integrations/email/transactional-email.service';
 import {
   BusinessRuleException,
   ConflictException,
@@ -464,7 +464,7 @@ export class UsersService {
     // a chamada retornava "A user with this email address has already been
     // registered". A solução é usar `generateLink({ type: 'invite' })` que
     // aceita user existente — porém o Supabase NÃO envia email automático
-    // pra esse método, então enviamos manualmente via SendGrid.
+    // pra esse método, então enviamos manualmente via Resend.
     const redirectTo = this.resolveInviteRedirectUrl();
     const { data, error } = await this.supabaseAdmin.auth.admin.generateLink({
       type: 'invite',

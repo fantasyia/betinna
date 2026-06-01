@@ -1,7 +1,6 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { EnvService } from '@config/env.service';
 import { ResendService } from '@integrations/resend/resend.service';
-import { SendGridService } from './sendgrid.service';
 import {
   templateAmostraFollowup,
   templateAprovacaoResolvida,
@@ -9,7 +8,7 @@ import {
   templateComissaoFechada,
   templateOcorrenciaCritica,
   templateReenvioConvite,
-} from './sendgrid-templates';
+} from './email-templates';
 
 /**
  * TransactionalEmailService — fachada de alto nível pros e-mails do sistema.
@@ -17,19 +16,16 @@ import {
  * Encapsula:
  *  - Construção da `frontendUrl` (deep links nos botões)
  *  - Escolha do template correto
- *  - Chamada do provider: prefere Resend (resend.com) quando configurado,
- *    fallback pro SendGrid (legado, ainda usado pra envios per-user)
+ *  - Chamada do provider: Resend (resend.com), provedor sistêmico ÚNICO
  *
  * Decisão Leo 2026-05-24: usar Resend como provider sistêmico (API mais
- * simples, free tier 100/dia generoso). SendGrid permanece pra envios
- * user-scoped (cada user tem própria credencial via UsuarioIntegracao).
+ * simples, free tier 100/dia generoso). SendGrid foi removido por completo.
  */
 @Injectable()
 export class TransactionalEmailService {
   private readonly logger = new Logger(TransactionalEmailService.name);
 
   constructor(
-    private readonly sg: SendGridService,
     private readonly resend: ResendService,
     private readonly env: EnvService,
   ) {}
@@ -53,9 +49,7 @@ export class TransactionalEmailService {
     assunto: string,
     html: string,
   ): Promise<{ ok: boolean; motivo?: string }> {
-    // Sprint 3: Resend é o ÚNICO provedor transacional. O fallback pro SendGrid
-    // foi removido (estava confuso e mascarava falhas). SendGrid segue ativo só
-    // pra envios per-user (cada user tem credencial própria via UsuarioIntegracao).
+    // Resend é o ÚNICO provedor transacional do sistema (SendGrid removido).
     const ctx = `para=${para} assunto="${assunto.slice(0, 60)}"`;
 
     if (!this.resend.isConfigured()) {
@@ -79,23 +73,6 @@ export class TransactionalEmailService {
       this.logger.error(`E-mail falhou (Resend) · ${ctx} · ${motivo}`);
       return { ok: false, motivo };
     }
-
-    // ─── FALLBACK SENDGRID — REMOVIDO NA SPRINT 3 ──────────────────────────
-    // Mantido comentado por ~1 semana (até ~2026-06-08) pra rollback rápido.
-    // Pra reativar: descomente e troque o corpo acima pela escolha de provider.
-    //   const provider = this.resend.isConfigured() ? 'resend' : 'sendgrid';
-    //   try {
-    //     if (provider === 'resend') {
-    //       const r = await this.resend.enviar({ para, assunto, html });
-    //       return { ok: r.status >= 200 && r.status < 300 };
-    //     } else {
-    //       const r = await this.sg.enviarSistemico({ para, assunto, html });
-    //       return { ok: r.status >= 200 && r.status < 300 };
-    //     }
-    //   } catch (err) {
-    //     this.logger.warn(`Falha enviando e-mail (best-effort, provider=${provider})...`);
-    //     return { ok: false };
-    //   }
   }
 
   // ─── Templates de alto nível ─────────────────────────────────────────
