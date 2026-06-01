@@ -350,6 +350,7 @@ model Usuario {
   conversationsAtribuidas   Conversation[]                  @relation("ConversationAtribuido")
   conversationsProprietario Conversation[]                  @relation("ConversationProprietario")
   mensagensEnviadas         Message[]                       @relation("MessageAutor")
+  conversationNotas         ConversationNota[]
   campanhasCriadas          Campanha[]
   notificacoes              Notificacao[]
 
@@ -1349,6 +1350,8 @@ model Conversation {
   atribuidoId      String? // usuário responsável pelo atendimento
   status           ConversationStatus    @default(ABERTA)
   categoria        ConversationCategoria @default(GERAL)
+  /// #25 — tags internas de triagem (só a equipe vê, não o cliente).
+  tagsInternas     String[]              @default([])
   naoLidas         Int                   @default(0)
   ultimaMsgEm      DateTime?
   ultimaMsgPreview String?               @db.VarChar(140)
@@ -1373,7 +1376,8 @@ model Conversation {
   atribuido    Usuario?             @relation("ConversationAtribuido", fields: [atribuidoId], references: [id])
   proprietario Usuario?             @relation("ConversationProprietario", fields: [proprietarioId], references: [id])
   incident     MarketplaceIncident? @relation(fields: [incidentId], references: [id])
-  mensagens    Message[]
+  mensagens     Message[]
+  notasInternas ConversationNota[]
 
   // Unique composto inclui proprietarioId pra permitir múltiplas conversas
   // com o mesmo peer em sessões diferentes (WhatsApp empresa vs do rep João vs
@@ -1390,6 +1394,22 @@ model Conversation {
   @@index([ultimaMsgEm])
   // Seed demo
   @@index([empresaId, isDemo])
+}
+
+/// #25 — notas internas por conversa (anotações da equipe; o cliente não vê).
+/// Espelha o padrão de NotaPrivada (cliente): autor edita/exclui a própria; ADMIN força.
+model ConversationNota {
+  id             String   @id @default(cuid())
+  conversationId String
+  usuarioId      String
+  texto          String   @db.Text
+  criadoEm       DateTime @default(now())
+  atualizadoEm   DateTime @updatedAt
+
+  conversation Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  usuario      Usuario      @relation(fields: [usuarioId], references: [id], onDelete: Cascade)
+
+  @@index([conversationId])
 }
 
 model Message {

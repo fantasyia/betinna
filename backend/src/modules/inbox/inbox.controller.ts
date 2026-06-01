@@ -1,12 +1,14 @@
 import {
   Body,
   Controller,
+  Delete,
   Get,
   HttpCode,
   HttpStatus,
   Param,
   Patch,
   Post,
+  Put,
   Query,
 } from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
@@ -21,8 +23,10 @@ import {
   type BulkAlterarStatusDto,
   type BulkAtribuirDto,
   type BulkIdsDto,
+  type DefinirTagsDto,
   type ListConversationsDto,
   type ListMensagensDto,
+  type NotaDto,
   type ResponderDto,
   type ResponderMidiaDto,
   alterarStatusSchema,
@@ -30,11 +34,14 @@ import {
   bulkAlterarStatusSchema,
   bulkAtribuirSchema,
   bulkIdsSchema,
+  definirTagsSchema,
   listConversationsSchema,
   listMensagensSchema,
+  notaSchema,
   responderMidiaSchema,
   responderSchema,
 } from './inbox.dto';
+import { ConversationNotasService } from './conversation-notas.service';
 import { InboxService } from './inbox.service';
 import { WhatsAppMediaService } from '@integrations/whatsapp/whatsapp-media.service';
 import { WhatsAppService } from '@integrations/whatsapp/whatsapp.service';
@@ -61,6 +68,7 @@ import { BusinessRuleException, NotFoundException } from '@shared/errors/app-exc
 export class InboxController {
   constructor(
     private readonly svc: InboxService,
+    private readonly notas: ConversationNotasService,
     private readonly whatsappMedia: WhatsAppMediaService,
     private readonly whatsapp: WhatsAppService,
     private readonly metaMedia: MetaMediaService,
@@ -170,6 +178,57 @@ export class InboxController {
   @HttpCode(HttpStatus.OK)
   marcarComoLida(@CurrentUser() user: AuthenticatedUser, @Param('id') id: string) {
     return this.svc.marcarComoLida(user, id);
+  }
+
+  // ─── #25 — Notas internas + tags de triagem ──────────────────────────
+
+  @Get(':id/notas')
+  @ApiOperation({ summary: 'Lista as notas internas da conversa (equipe; cliente não vê)' })
+  listarNotas(@CurrentUser() user: AuthenticatedUser, @Param('id') id: string) {
+    return this.notas.listar(user, id);
+  }
+
+  @Post(':id/notas')
+  @Audit({ action: 'criar_nota', resource: 'conversation', resourceIdFrom: 'params.id' })
+  @ApiOperation({ summary: 'Adiciona uma nota interna à conversa' })
+  criarNota(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param('id') id: string,
+    @Body(new ZodValidationPipe(notaSchema)) dto: NotaDto,
+  ) {
+    return this.notas.criar(user, id, dto.texto);
+  }
+
+  @Patch(':id/notas/:notaId')
+  @Audit({ action: 'editar_nota', resource: 'conversation', resourceIdFrom: 'params.id' })
+  editarNota(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param('id') id: string,
+    @Param('notaId') notaId: string,
+    @Body(new ZodValidationPipe(notaSchema)) dto: NotaDto,
+  ) {
+    return this.notas.editar(user, id, notaId, dto.texto);
+  }
+
+  @Delete(':id/notas/:notaId')
+  @Audit({ action: 'remover_nota', resource: 'conversation', resourceIdFrom: 'params.id' })
+  removerNota(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param('id') id: string,
+    @Param('notaId') notaId: string,
+  ) {
+    return this.notas.remover(user, id, notaId);
+  }
+
+  @Put(':id/tags')
+  @Audit({ action: 'definir_tags', resource: 'conversation', resourceIdFrom: 'params.id' })
+  @ApiOperation({ summary: 'Define as tags internas de triagem da conversa' })
+  definirTags(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param('id') id: string,
+    @Body(new ZodValidationPipe(definirTagsSchema)) dto: DefinirTagsDto,
+  ) {
+    return this.notas.definirTags(user, id, dto.tags);
   }
 
   // ─── Fase 2 — controle do bot na conversa ────────────────────────────

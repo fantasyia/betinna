@@ -40,6 +40,18 @@ export const responderSchema = z.object({
 });
 export type ResponderDto = z.infer<typeof responderSchema>;
 
+// ─── #25 — Notas internas + tags de triagem ───────────────────────────
+export const notaSchema = z.object({
+  texto: z.string().trim().min(1).max(2000),
+});
+export type NotaDto = z.infer<typeof notaSchema>;
+
+export const definirTagsSchema = z.object({
+  /** Etiquetas de triagem (só a equipe vê). Normalizadas no service (trim/dedupe). */
+  tags: z.array(z.string().trim().min(1).max(30)).max(12),
+});
+export type DefinirTagsDto = z.infer<typeof definirTagsSchema>;
+
 /**
  * Envia mídia através da conversa.
  *

@@ -26,8 +26,15 @@ import {
   AlertTriangle,
   Bell,
   BellOff,
+  Tag,
+  Plus,
+  StickyNote,
+  Trash2,
+  Pencil,
+  X,
 } from 'lucide-react';
 import { api, ApiError } from '@/lib/api';
+import { getSession } from '@/lib/auth-store';
 import { useApiQuery, type PaginatedResponse } from '@/hooks/useApiQuery';
 import { PageLayout, useIsMobile } from '@/components/PageLayout';
 import { AtendimentoTabs } from '@/components/AtendimentoTabs';
@@ -113,6 +120,21 @@ interface RespostaRapida {
   global: boolean;
 }
 
+/**
+ * Item #25 — nota interna de uma conversa (anotação da equipe; o cliente NÃO
+ * vê). Backend devolve as mais recentes primeiro. Só o autor (ou ADMIN) pode
+ * editar/excluir a própria — fora isso volta 403.
+ */
+interface NotaInterna {
+  id: string;
+  conversationId: string;
+  usuarioId: string;
+  texto: string;
+  criadoEm: string;
+  atualizadoEm: string;
+  usuario?: { id: string; nome: string } | null;
+}
+
 interface Conversation {
   id: string;
   canal: Canal;
@@ -134,6 +156,9 @@ interface Conversation {
   // Fase 2 — estado do bot Muller nesta conversa
   botPausadoAte?: string | null;
   precisaHumano?: boolean;
+  // Item #25 — etiquetas livres de triagem (só a equipe vê). Backend retorna
+  // sempre como array (default []).
+  tagsInternas?: string[];
   /**
    * JSON com metadados canal-específicos:
    *  - avatarUrl: foto de perfil do peer no WhatsApp
@@ -722,6 +747,10 @@ function ConversationThread({
   const [atribuirOpen, setAtribuirOpen] = useState(false);
   const [criarPedido, setCriarPedido] = useState(false);
   const [clienteDrawerOpen, setClienteDrawerOpen] = useState(false);
+  // Item #25 — drawer de notas internas + estado das tags de triagem.
+  const [notasDrawerOpen, setNotasDrawerOpen] = useState(false);
+  const [novaTag, setNovaTag] = useState('');
+  const [salvandoTags, setSalvandoTags] = useState(false);
 
   // Sprint 2.3 — respostas rápidas / templates (dropdown ao digitar "/").
   const templates = useApiQuery<RespostaRapida[]>('/respostas-rapidas');
@@ -1013,6 +1042,49 @@ function ConversationThread({
     }
   }
 
+  // Item #25 — tags de triagem. Recalcula o array completo e manda no PUT
+  // (o backend troca a lista inteira). Atualiza a UI com a resposta.
+  const tagsAtuais = conv.data?.tagsInternas ?? [];
+
+  async function salvarTags(tags: string[]) {
+    setSalvandoTags(true);
+    try {
+      const resp = await api.put<{ tagsInternas: string[] }>(`/inbox/${id}/tags`, { tags });
+      // Reflete a lista canônica devolvida pelo backend (refetch traz o resto).
+      conv.refetch();
+      onChanged();
+      return resp.tagsInternas;
+    } catch (err) {
+      toast.error('Falha ao salvar tags', err instanceof ApiError ? err.message : undefined);
+      return null;
+    } finally {
+      setSalvandoTags(false);
+    }
+  }
+
+  async function adicionarTag() {
+    const t = novaTag.trim();
+    if (!t) return;
+    if (t.length > 30) {
+      toast.error('Tag muito longa', 'Use até 30 caracteres.');
+      return;
+    }
+    if (tagsAtuais.some((x) => x.toLowerCase() === t.toLowerCase())) {
+      setNovaTag('');
+      return;
+    }
+    if (tagsAtuais.length >= 12) {
+      toast.error('Limite de tags', 'Máximo de 12 tags por conversa.');
+      return;
+    }
+    const ok = await salvarTags([...tagsAtuais, t]);
+    if (ok) setNovaTag('');
+  }
+
+  async function removerTag(tag: string) {
+    await salvarTags(tagsAtuais.filter((x) => x !== tag));
+  }
+
   const c = conv.data;
   const botPausadoConv = c?.botPausadoAte
     ? new Date(c.botPausadoAte).getTime() > Date.now()
@@ -1094,6 +1166,18 @@ function ConversationThread({
                 Pedido
               </Button>
             )}
+            {/* Item #25 — notas internas (só a equipe vê) */}
+            <Button
+              type="button"
+              variant="ghost"
+              size="sm"
+              data-testid="inbox-notas-btn"
+              onClick={() => setNotasDrawerOpen(true)}
+              leftIcon={<StickyNote className="h-3.5 w-3.5" />}
+              title="Notas internas da conversa (só a equipe vê)"
+            >
+              Notas
+            </Button>
             <Button
               type="button"
               variant="secondary"
@@ -1138,6 +1222,59 @@ function ConversationThread({
           <span className="text-muted text-sm">Carregando…</span>
         )}
       </header>
+
+      {/* Item #25 — faixa de tags internas de triagem (só a equipe vê).
+          Chips removíveis + input "+ tag" (Enter adiciona). */}
+      {c && (
+        <div
+          data-testid="inbox-tags-bar"
+          className="px-4 py-2 border-b border-border bg-bg-alt flex items-center gap-1.5 flex-wrap"
+        >
+          <Tag className="h-3.5 w-3.5 text-muted shrink-0" aria-hidden />
+          {tagsAtuais.map((tag) => (
+            <span
+              key={tag}
+              data-testid={`inbox-tag-${tag}`}
+              className="inline-flex items-center gap-1 h-[22px] pl-2 pr-1 rounded-full text-[11px] font-semibold bg-primary/15 text-primary border border-primary/25"
+            >
+              {tag}
+              <button
+                type="button"
+                aria-label={`Remover tag ${tag}`}
+                data-testid={`inbox-tag-remove-${tag}`}
+                disabled={salvandoTags}
+                onClick={() => void removerTag(tag)}
+                className="inline-flex items-center justify-center h-4 w-4 rounded-full hover:bg-primary/20 disabled:opacity-40"
+              >
+                <X className="h-3 w-3" />
+              </button>
+            </span>
+          ))}
+          {tagsAtuais.length < 12 && (
+            <input
+              type="text"
+              data-testid="inbox-tag-input"
+              value={novaTag}
+              onChange={(e) => setNovaTag(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') {
+                  e.preventDefault();
+                  void adicionarTag();
+                }
+              }}
+              disabled={salvandoTags}
+              maxLength={30}
+              placeholder="+ tag"
+              className="h-[22px] min-w-[70px] w-24 px-2 rounded-full text-[11px] bg-surface border border-dashed border-border text-text placeholder:text-muted focus:outline-none focus:border-primary disabled:opacity-40"
+            />
+          )}
+          {tagsAtuais.length === 0 && (
+            <span className="text-[11px] text-muted ml-1">
+              Etiquetas de triagem internas
+            </span>
+          )}
+        </div>
+      )}
 
       {/* Messages */}
       <div className="flex-1 overflow-y-auto px-4 py-4 bg-bg flex flex-col gap-2">
@@ -1458,6 +1595,12 @@ function ConversationThread({
           }}
         />
       )}
+      {notasDrawerOpen && (
+        <NotasInternasDrawer
+          conversaId={id}
+          onClose={() => setNotasDrawerOpen(false)}
+        />
+      )}
     </>
   );
 }
@@ -1576,6 +1719,230 @@ function CtxStat({ label, value }: { label: string; value: number }) {
       <div className="text-lg font-semibold text-text tabular">{value}</div>
       <div className="text-[10px] uppercase tracking-wider text-muted">{label}</div>
     </div>
+  );
+}
+
+// ─── Item #25 — Notas internas da conversa ──────────────────────────
+
+/**
+ * Drawer de notas internas (anotações da equipe; o cliente NÃO vê).
+ * Espelha o estilo do `ClienteContextDrawer`. Lista as notas (mais recentes
+ * primeiro), permite adicionar, editar e excluir. Só o autor (ou ADMIN) edita
+ * a própria — o backend devolve 403 nos demais (tratado com toast).
+ */
+function NotasInternasDrawer({
+  conversaId,
+  onClose,
+}: {
+  conversaId: string;
+  onClose: () => void;
+}) {
+  const toast = useToast();
+  const { data, loading, error, refetch } = useApiQuery<NotaInterna[]>(
+    `/inbox/${conversaId}/notas`,
+  );
+  // Usuário atual — pra decidir quem vê os botões editar/excluir (UX).
+  // O backend é a fonte da verdade (403); aqui é só pra não mostrar botão inútil.
+  const sess = getSession();
+  const meuId = sess?.user?.id ?? null;
+  const souAdmin = sess?.user?.role === 'ADMIN';
+
+  const [novaNota, setNovaNota] = useState('');
+  const [salvando, setSalvando] = useState(false);
+  const [editandoId, setEditandoId] = useState<string | null>(null);
+  const [editTexto, setEditTexto] = useState('');
+  const [busyId, setBusyId] = useState<string | null>(null);
+
+  const notas = data ?? [];
+
+  async function adicionar() {
+    const texto = novaNota.trim();
+    if (!texto) return;
+    setSalvando(true);
+    try {
+      await api.post(`/inbox/${conversaId}/notas`, { texto });
+      setNovaNota('');
+      refetch();
+    } catch (err) {
+      toast.error('Falha ao adicionar nota', err instanceof ApiError ? err.message : undefined);
+    } finally {
+      setSalvando(false);
+    }
+  }
+
+  async function salvarEdicao(notaId: string) {
+    const texto = editTexto.trim();
+    if (!texto) return;
+    setBusyId(notaId);
+    try {
+      await api.patch(`/inbox/${conversaId}/notas/${notaId}`, { texto });
+      setEditandoId(null);
+      setEditTexto('');
+      refetch();
+    } catch (err) {
+      if (err instanceof ApiError && err.status === 403) {
+        toast.error('Você só pode editar suas próprias notas');
+      } else {
+        toast.error('Falha ao editar nota', err instanceof ApiError ? err.message : undefined);
+      }
+    } finally {
+      setBusyId(null);
+    }
+  }
+
+  async function excluir(notaId: string) {
+    setBusyId(notaId);
+    try {
+      await api.delete(`/inbox/${conversaId}/notas/${notaId}`);
+      refetch();
+    } catch (err) {
+      if (err instanceof ApiError && err.status === 403) {
+        toast.error('Você só pode excluir suas próprias notas');
+      } else {
+        toast.error('Falha ao excluir nota', err instanceof ApiError ? err.message : undefined);
+      }
+    } finally {
+      setBusyId(null);
+    }
+  }
+
+  return (
+    <Drawer
+      open
+      onClose={onClose}
+      title="Notas internas"
+      description="Só a equipe vê — o cliente não recebe."
+      width="sm"
+    >
+      <div className="flex flex-col gap-4">
+        {/* Compositor de nova nota */}
+        <div className="flex flex-col gap-2">
+          <Textarea
+            data-testid="inbox-nota-input"
+            placeholder="Escreva uma anotação interna…"
+            value={novaNota}
+            onChange={(e) => setNovaNota(e.target.value)}
+            className="min-h-[72px] max-h-40 resize-none w-full"
+            maxLength={2000}
+          />
+          <div className="flex items-center justify-between">
+            <span className="text-[11px] text-muted tabular">{novaNota.length}/2000</span>
+            <Button
+              type="button"
+              size="sm"
+              data-testid="inbox-nota-add-btn"
+              disabled={salvando || novaNota.trim().length === 0}
+              loading={salvando}
+              onClick={() => void adicionar()}
+              leftIcon={!salvando ? <Plus className="h-3.5 w-3.5" /> : undefined}
+            >
+              Adicionar nota
+            </Button>
+          </div>
+        </div>
+
+        {/* Lista de notas */}
+        <StateView
+          loading={loading && !data}
+          error={error}
+          empty={!loading && !error && notas.length === 0}
+          emptyMessage="Nenhuma nota interna ainda."
+          onRetry={refetch}
+        >
+          <ul className="flex flex-col gap-2.5">
+            {notas.map((n) => {
+              const podeEditar = souAdmin || (meuId !== null && n.usuarioId === meuId);
+              const editando = editandoId === n.id;
+              return (
+                <li
+                  key={n.id}
+                  data-testid={`inbox-nota-${n.id}`}
+                  className="rounded-md border border-border bg-surface px-3 py-2.5 flex flex-col gap-1.5"
+                >
+                  <div className="flex items-center justify-between gap-2">
+                    <div className="flex items-center gap-1.5 min-w-0">
+                      <Avatar name={n.usuario?.nome ?? '?'} size="sm" />
+                      <span className="text-xs font-medium text-text truncate">
+                        {n.usuario?.nome ?? 'Usuário'}
+                      </span>
+                    </div>
+                    <span className="text-[10px] text-muted tabular shrink-0" title={fmtTime(n.criadoEm)}>
+                      {fmtTime(n.criadoEm)}
+                    </span>
+                  </div>
+
+                  {editando ? (
+                    <div className="flex flex-col gap-1.5">
+                      <Textarea
+                        data-testid={`inbox-nota-edit-input-${n.id}`}
+                        value={editTexto}
+                        onChange={(e) => setEditTexto(e.target.value)}
+                        className="min-h-[60px] max-h-40 resize-none w-full"
+                        maxLength={2000}
+                      />
+                      <div className="flex items-center gap-2 justify-end">
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="sm"
+                          data-testid={`inbox-nota-edit-cancel-${n.id}`}
+                          onClick={() => {
+                            setEditandoId(null);
+                            setEditTexto('');
+                          }}
+                        >
+                          Cancelar
+                        </Button>
+                        <Button
+                          type="button"
+                          size="sm"
+                          data-testid={`inbox-nota-edit-save-${n.id}`}
+                          disabled={busyId === n.id || editTexto.trim().length === 0}
+                          loading={busyId === n.id}
+                          onClick={() => void salvarEdicao(n.id)}
+                        >
+                          Salvar
+                        </Button>
+                      </div>
+                    </div>
+                  ) : (
+                    <p className="m-0 text-sm text-text whitespace-pre-wrap break-words">{n.texto}</p>
+                  )}
+
+                  {podeEditar && !editando && (
+                    <div className="flex items-center gap-1 justify-end">
+                      <button
+                        type="button"
+                        data-testid={`inbox-nota-editar-${n.id}`}
+                        disabled={busyId === n.id}
+                        onClick={() => {
+                          setEditandoId(n.id);
+                          setEditTexto(n.texto);
+                        }}
+                        className="inline-flex items-center gap-1 text-[11px] px-1.5 py-1 rounded text-muted hover:text-text hover:bg-surface-hover disabled:opacity-40"
+                      >
+                        <Pencil className="h-3 w-3" />
+                        Editar
+                      </button>
+                      <button
+                        type="button"
+                        data-testid={`inbox-nota-excluir-${n.id}`}
+                        disabled={busyId === n.id}
+                        onClick={() => void excluir(n.id)}
+                        className="inline-flex items-center gap-1 text-[11px] px-1.5 py-1 rounded text-danger hover:bg-danger/10 disabled:opacity-40"
+                      >
+                        <Trash2 className="h-3 w-3" />
+                        Excluir
+                      </button>
+                    </div>
+                  )}
+                </li>
+              );
+            })}
+          </ul>
+        </StateView>
+      </div>
+    </Drawer>
   );
 }
 
