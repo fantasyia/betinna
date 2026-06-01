@@ -327,6 +327,9 @@ function FluxoEditorInner({
   const [nodes, setNodes, onNodesChange] = useNodesState<FlowNode>([]);
   const [edges, setEdges, onEdgesChange] = useEdgesState<Edge>([]);
   const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
+  // Mobile: painéis viram drawers sobrepostos (só um aberto por vez). Em desktop
+  // (md+) os painéis são fixos e este estado é ignorado pelo layout.
+  const [mobilePanel, setMobilePanel] = useState<'palette' | 'inspector' | null>(null);
   const [saving, setSaving] = useState(false);
   const [dirty, setDirty] = useState(false);
   const [name, setName] = useState('');
@@ -598,7 +601,12 @@ function FluxoEditorInner({
             className="max-w-md font-semibold"
             placeholder="Nome do fluxo"
           />
-          <Badge variant={data.status === 'ATIVO' ? 'success' : 'neutral'}>{data.status}</Badge>
+          <Badge
+            variant={data.status === 'ATIVO' ? 'success' : 'neutral'}
+            className="hidden sm:inline-flex"
+          >
+            {data.status}
+          </Badge>
           {dirty && (
             <Badge variant="warning" size="sm">
               Alterações não salvas
@@ -606,27 +614,49 @@ function FluxoEditorInner({
           )}
         </div>
         <div className="flex items-center gap-2">
-          {/* v1.5.0 — Undo/Redo */}
-          <IconButton
-            aria-label="Desfazer (Cmd+Z)"
-            title="Desfazer (Cmd/Ctrl+Z)"
-            variant="ghost"
-            icon={<Undo2 className="h-4 w-4" />}
-            onClick={undo}
-            disabled={!canUndo}
-            data-testid="fluxo-undo"
-          />
-          <IconButton
-            aria-label="Refazer (Cmd+Shift+Z)"
-            title="Refazer (Cmd/Ctrl+Shift+Z ou Cmd/Ctrl+Y)"
-            variant="ghost"
-            icon={<Redo2 className="h-4 w-4" />}
-            onClick={redo}
-            disabled={!canRedo}
-            data-testid="fluxo-redo"
-          />
-          <div className="w-px h-6 bg-border mx-1" />
-          <Button variant="ghost" onClick={onClose}>
+          {/* Mobile: toggles dos painéis (viram drawers). Escondidos no desktop. */}
+          <div className="flex items-center gap-1 md:hidden">
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => setMobilePanel((p) => (p === 'palette' ? null : 'palette'))}
+              data-testid="fluxo-mobile-blocos"
+            >
+              Blocos
+            </Button>
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => setMobilePanel((p) => (p === 'inspector' ? null : 'inspector'))}
+              data-testid="fluxo-mobile-editar"
+            >
+              Editar
+            </Button>
+            <div className="w-px h-6 bg-border mx-1" />
+          </div>
+          {/* v1.5.0 — Undo/Redo (desktop; no mobile some pra ganhar espaço) */}
+          <div className="hidden md:flex items-center gap-2">
+            <IconButton
+              aria-label="Desfazer (Cmd+Z)"
+              title="Desfazer (Cmd/Ctrl+Z)"
+              variant="ghost"
+              icon={<Undo2 className="h-4 w-4" />}
+              onClick={undo}
+              disabled={!canUndo}
+              data-testid="fluxo-undo"
+            />
+            <IconButton
+              aria-label="Refazer (Cmd+Shift+Z)"
+              title="Refazer (Cmd/Ctrl+Shift+Z ou Cmd/Ctrl+Y)"
+              variant="ghost"
+              icon={<Redo2 className="h-4 w-4" />}
+              onClick={redo}
+              disabled={!canRedo}
+              data-testid="fluxo-redo"
+            />
+            <div className="w-px h-6 bg-border mx-1" />
+          </div>
+          <Button variant="ghost" className="hidden md:inline-flex" onClick={onClose}>
             Cancelar
           </Button>
           <Button
@@ -640,9 +670,23 @@ function FluxoEditorInner({
         </div>
       </header>
 
-      <div className="flex-1 flex overflow-hidden">
-        {/* Palette */}
-        <aside className="w-[240px] shrink-0 border-r border-border bg-bg-alt overflow-y-auto">
+      <div className="flex-1 flex overflow-hidden relative">
+        {/* Backdrop dos drawers (só mobile, quando um painel está aberto) */}
+        {mobilePanel && (
+          <button
+            type="button"
+            aria-label="Fechar painel"
+            className="absolute inset-0 z-10 bg-black/40 md:hidden"
+            onClick={() => setMobilePanel(null)}
+          />
+        )}
+        {/* Palette — fixa no desktop; drawer pela esquerda no mobile */}
+        <aside
+          className={`w-[78vw] max-w-[240px] md:w-[240px] shrink-0 border-r border-border bg-bg-alt overflow-y-auto
+            absolute inset-y-0 left-0 z-20 shadow-xl transition-transform duration-200
+            md:static md:z-auto md:shadow-none md:translate-x-0
+            ${mobilePanel === 'palette' ? 'translate-x-0' : '-translate-x-full'}`}
+        >
           <div className="p-3 border-b border-border">
             <Field label="Trigger global" hint="Quando o fluxo dispara">
               <Select
@@ -698,8 +742,14 @@ function FluxoEditorInner({
             }}
             onConnect={onConnect}
             onInit={setReactFlowInstance}
-            onNodeClick={(_, n) => setSelectedNodeId(n.id)}
-            onPaneClick={() => setSelectedNodeId(null)}
+            onNodeClick={(_, n) => {
+              setSelectedNodeId(n.id);
+              setMobilePanel('inspector'); // mobile: abre o editor do nó (ignorado no desktop)
+            }}
+            onPaneClick={() => {
+              setSelectedNodeId(null);
+              setMobilePanel(null);
+            }}
             nodeTypes={NODE_TYPES}
             fitView
             fitViewOptions={{ padding: 0.3 }}
@@ -738,8 +788,13 @@ function FluxoEditorInner({
           )}
         </div>
 
-        {/* Inspector */}
-        <aside className="w-[300px] shrink-0 border-l border-border bg-bg-alt overflow-y-auto">
+        {/* Inspector — fixo no desktop; drawer pela direita no mobile */}
+        <aside
+          className={`w-[88vw] max-w-[320px] md:w-[300px] shrink-0 border-l border-border bg-bg-alt overflow-y-auto
+            absolute inset-y-0 right-0 z-20 shadow-xl transition-transform duration-200
+            md:static md:z-auto md:shadow-none md:translate-x-0
+            ${mobilePanel === 'inspector' ? 'translate-x-0' : 'translate-x-full'}`}
+        >
           {selectedNode ? (
             <NodeInspector
               node={selectedNode}
