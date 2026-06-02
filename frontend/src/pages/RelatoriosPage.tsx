@@ -574,6 +574,22 @@ function FunilTab({ qs }: { qs: string }) {
     <StateView loading={loading} error={error} onRetry={refetch}>
       {data && (
         <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+          <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
+            <ExportActions
+              filename={`funil-${new Date().toISOString().slice(0, 10)}`}
+              titulo="Relatório de Funil (por representante)"
+              rows={porRep}
+              columns={[
+                { header: 'Representante', value: (r) => r.repNome },
+                { header: 'Leads', value: (r) => r.leads },
+                {
+                  header: 'Valor estimado (R$)',
+                  value: (r) => r.valorEstimado.toFixed(2).replace('.', ','),
+                },
+              ]}
+              disabled={porRep.length === 0}
+            />
+          </div>
           <div
             style={{
               display: 'grid',
@@ -844,8 +860,22 @@ function AmostrasTab({ qs }: { qs: string }) {
           data.porStatus?.find((s) => s.status === 'NAO_CONVERTEU')?.count ?? 0;
         const taxaConversao = data.taxaConversao ?? 0;
         const valorConvertido = data.valorConvertido ?? 0;
+        const porStatus = data.porStatus ?? [];
         return (
         <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+          <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
+            <ExportActions
+              filename={`amostras-${new Date().toISOString().slice(0, 10)}`}
+              titulo="Relatório de Amostras (por status)"
+              rows={porStatus}
+              columns={[
+                { header: 'Status', value: (s) => s.status },
+                { header: 'Quantidade', value: (s) => s.count },
+                { header: 'Valor (R$)', value: (s) => s.valor.toFixed(2).replace('.', ',') },
+              ]}
+              disabled={porStatus.length === 0}
+            />
+          </div>
           <div
             style={{
               display: 'grid',
@@ -934,6 +964,19 @@ function CampanhasTab({ qs }: { qs: string }) {
         const porCanal = data.porCanal ?? [];
         return (
         <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+          <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
+            <ExportActions
+              filename={`campanhas-${new Date().toISOString().slice(0, 10)}`}
+              titulo="Relatório de Campanhas (por canal)"
+              rows={porCanal}
+              columns={[
+                { header: 'Canal', value: (c) => c.canal },
+                { header: 'Envios', value: (c) => c.count ?? c.envios ?? 0 },
+                { header: 'Leituras', value: (c) => c.leituras ?? 0 },
+              ]}
+              disabled={porCanal.length === 0}
+            />
+          </div>
           <div
             style={{
               display: 'grid',
