@@ -781,7 +781,7 @@ function AmostraFormModal({
             />
           </FormField>
         </div>
-        <FormField label="Dias até follow-up" htmlFor="am-fu" hint="Quantos dias após o envio o sistema deve cobrar retorno do rep.">
+        <FormField label="Dias até follow-up" htmlFor="am-fu" hint="Quantos dias após o envio o sistema deve cobrar retorno do representante.">
           <Input
             id="am-fu"
             type="number"

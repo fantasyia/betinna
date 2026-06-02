@@ -212,7 +212,7 @@ export default function ClienteDetailPage() {
               )}
               {cliente.representante?.nome && (
                 <span style={{ fontSize: 13, color: colors.muted }}>
-                  Rep: <strong>{cliente.representante.nome}</strong>
+                  Representante: <strong>{cliente.representante.nome}</strong>
                 </span>
               )}
               {cliente.tags && cliente.tags.length > 0 && (

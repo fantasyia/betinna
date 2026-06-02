@@ -512,7 +512,7 @@ function QuickAction({
 function FirstStepsCard() {
   const steps: Array<{ to: string; label: string; hint: string; icon: LucideIcon }> = [
     { to: '/integracoes', label: 'Conectar OMIE', hint: 'Sync de clientes + produtos', icon: Plug },
-    { to: '/usuarios', label: 'Convidar usuários', hint: 'Adicionar reps e gerentes', icon: Users },
+    { to: '/usuarios', label: 'Convidar usuários', hint: 'Adicionar representantes e gerentes', icon: Users },
     { to: '/clientes', label: 'Cadastrar clientes', hint: 'Manual ou via OMIE', icon: Briefcase },
     { to: '/produtos', label: 'Catálogo de produtos', hint: 'Manual ou via OMIE', icon: Package },
     { to: '/pedidos', label: 'Criar primeiro pedido', hint: 'Começar a operar', icon: ShoppingCart },

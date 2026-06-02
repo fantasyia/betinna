@@ -130,7 +130,7 @@ export default function MetasPage() {
   return (
     <PageLayout
       title="Metas"
-      description="Defina alvos de faturamento ou pedidos por rep, gerente ou empresa toda."
+      description="Defina alvos de faturamento ou pedidos por representante, gerente ou empresa toda."
       actions={
         <Button onClick={() => setEditing('new')} leftIcon={<Plus className="h-3.5 w-3.5" />}>
           Nova meta
@@ -528,7 +528,7 @@ function MetaFormDialog({
               }}
             >
               <option value="REP">Representante</option>
-              <option value="GERENTE">Gerente (somatório dos reps)</option>
+              <option value="GERENTE">Gerente (somatório dos representantes)</option>
               <option value="EMPRESA">Empresa toda</option>
             </Select>
           </Field>

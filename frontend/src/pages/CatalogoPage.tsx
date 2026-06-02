@@ -266,7 +266,7 @@ export default function CatalogoPage() {
           value={stats.semEstoque.toLocaleString('pt-BR')}
           hint={
             stats.semEstoque > 0
-              ? 'rep pode lançar — OMIE gera OP de reposição'
+              ? 'representante pode lançar — OMIE gera OP de reposição'
               : 'tudo disponível'
           }
         />

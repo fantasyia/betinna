@@ -722,7 +722,7 @@ function ComissoesTab({ qs }: { qs: string }) {
               formatValue={fmtBRLCompact}
             />
             <p style={{ fontSize: 12, color: colors.muted, marginTop: '0.75rem' }}>
-              Tipo: REP = comissão de pedidos próprios; GERENTE = % sobre vendas dos reps da
+              Tipo: REP = comissão de pedidos próprios; GERENTE = % sobre vendas dos representantes da
               gerência.
             </p>
           </div>

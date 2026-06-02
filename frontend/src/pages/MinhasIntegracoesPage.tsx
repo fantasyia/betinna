@@ -57,7 +57,7 @@ const SERVICOS: Record<ServicoUsuario, ServicoMeta> = {
     color: '#25d366',
     icon: '💬',
     description:
-      'Conecta seu celular WhatsApp via QR. Para reps: clientes/prospects que conversarem com você aparecem na Inbox.',
+      'Conecta seu celular WhatsApp via QR. Para representantes: clientes/prospects que conversarem com você aparecem na Inbox.',
     connectMode: 'qr',
     qrRoute: '/whatsapp',
   },

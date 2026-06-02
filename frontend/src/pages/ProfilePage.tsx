@@ -803,7 +803,7 @@ function SetTetoModal({
       }
     >
       <p style={{ marginTop: 0, fontSize: 14, color: colors.muted }}>
-        Desconto máximo que o rep pode aplicar sem aprovação. Acima disso, o pedido entra em
+        Desconto máximo que o representante pode aplicar sem aprovação. Acima disso, o pedido entra em
         fluxo de aprovação via Gerente/Diretor.
       </p>
       <FormField label="Teto desconto (%)" htmlFor="teto-input">
@@ -875,7 +875,7 @@ function SetComissaoModal({
     >
       <p style={{ marginTop: 0, fontSize: 14, color: colors.muted }}>
         {user.role === 'REP'
-          ? '% de comissão sobre o total dos pedidos próprios do rep.'
+          ? '% de comissão sobre o total dos pedidos próprios do representante.'
           : '% de comissão do GERENTE sobre o total de vendas dos REPs sob a gerência dele.'}
       </p>
       <FormField label="Comissão (%)" htmlFor="com-input">

@@ -116,8 +116,8 @@ export default function AprovacoesPage() {
         tab === 'descontos'
           ? status === 'PENDENTE'
             ? 'Decisões aguardando sua aprovação.'
-            : 'Histórico de aprovações de desconto acima do teto do rep.'
-          : 'Solicitações de cancelamento de pedido feitas por rep/gerente.'
+            : 'Histórico de aprovações de desconto acima do teto do representante.'
+          : 'Solicitações de cancelamento de pedido feitas por representante/gerente.'
       }
     >
       <VendasTabs />
@@ -212,7 +212,7 @@ export default function AprovacoesPage() {
               }
               description={
                 status === 'PENDENTE'
-                  ? 'Quando um rep solicitar desconto acima do teto, aparecerá aqui.'
+                  ? 'Quando um representante solicitar desconto acima do teto, aparecerá aqui.'
                   : 'Tente trocar o filtro.'
               }
               className="m-6 border-0"
@@ -358,7 +358,7 @@ function CancelamentosTab() {
             title="Nenhuma solicitação"
             description={
               status === 'PENDENTE'
-                ? 'Quando rep/gerente pedir cancelamento de pedido, aparece aqui.'
+                ? 'Quando representante/gerente pedir cancelamento de pedido, aparece aqui.'
                 : 'Tente trocar o filtro de status.'
             }
             className="m-6 border-0"
@@ -712,7 +712,7 @@ function AprovacaoDetailDialog({
               </div>
               {teto !== undefined && (
                 <div className="text-xs text-muted mt-2 tabular">
-                  Teto do rep: {fmtPct(teto)}
+                  Teto do representante: {fmtPct(teto)}
                   {excede !== null && excede > 0 && (
                     <span className="text-danger ml-2">
                       (+{fmtPct(excede)} acima)
@@ -810,7 +810,7 @@ function AprovacaoDetailDialog({
                   required={acao === 'rejeitar'}
                   hint={
                     acao === 'rejeitar'
-                      ? 'Explique pro rep por que o desconto não foi aprovado.'
+                      ? 'Explique pro representante por que o desconto não foi aprovado.'
                       : 'Notas pro histórico — ex: "OK por se tratar de cliente VIP"'
                   }
                 >

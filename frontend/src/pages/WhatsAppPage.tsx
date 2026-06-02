@@ -89,7 +89,7 @@ export default function WhatsAppPage() {
         )}
         <ScopeTab
           label="Meu WhatsApp pessoal"
-          description="Cada rep tem o próprio"
+          description="Cada representante tem o próprio"
           active={scope === 'pessoal'}
           onClick={() => setScope('pessoal')}
           testId="tab-pessoal"

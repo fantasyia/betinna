@@ -1941,7 +1941,7 @@ function ClienteContextDrawer({
               icon={<MapPin />}
               value={data.cidade ? `${data.cidade}${data.uf ? '/' + data.uf : ''}` : null}
             />
-            <CtxRow icon={<Building2 />} value={data.representante?.nome ?? null} label="Rep" />
+            <CtxRow icon={<Building2 />} value={data.representante?.nome ?? null} label="Representante" />
           </div>
 
           {data._count && (

@@ -88,7 +88,7 @@ const STEPS_DIRECTOR: Step[] = [
   {
     icon: '💰',
     title: 'Comissões',
-    body: 'Cron mensal fecha o mês anterior dia 1 às 04:00 UTC. Em /comissoes você confere por rep e marca como pago após a transferência.',
+    body: 'Cron mensal fecha o mês anterior dia 1 às 04:00 UTC. Em /comissoes você confere por representante e marca como pago após a transferência.',
     route: '/comissoes',
   },
   {
@@ -114,7 +114,7 @@ const STEPS_GERENTE: Step[] = [
   {
     icon: '📈',
     title: 'Acompanhe os REPs',
-    body: 'Em /relatorios → aba Vendas você vê o desempenho dos seus reps. Identifique queda e atue rápido.',
+    body: 'Em /relatorios → aba Vendas você vê o desempenho dos seus representantes. Identifique queda e atue rápido.',
     route: '/relatorios',
   },
   {

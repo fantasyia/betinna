@@ -186,7 +186,7 @@ const TEMPLATES: FluxoTemplate[] = [
     slug: 'cobranca-suave',
     nome: 'Cobrança suave — lembrete amistoso',
     descricao:
-      'Pedido com vencimento próximo dispara lembrete WhatsApp 2 dias antes. Se passa do prazo, escalona para o rep.',
+      'Pedido com vencimento próximo dispara lembrete WhatsApp 2 dias antes. Se passa do prazo, escalona para o representante.',
     categoria: 'Cobrança',
     icon: AlertTriangle,
     triggerTipo: 'CRON_AGENDADO',
@@ -239,7 +239,7 @@ const TEMPLATES: FluxoTemplate[] = [
         id: 'a2',
         tipo: 'ACAO',
         acaoTipo: 'CRIAR_TAREFA',
-        titulo: 'Tarefa pro rep cobrar',
+        titulo: 'Tarefa pro representante cobrar',
         posX: 680,
         posY: 500,
         config: { titulo: 'Cobrar {{cliente_nome}} — pedido {{pedido_numero}}', responsavel: 'rep' },
@@ -258,7 +258,7 @@ const TEMPLATES: FluxoTemplate[] = [
     slug: 'boas-vindas-novo-lead',
     nome: 'Boas-vindas — novo lead captado',
     descricao:
-      'Novo lead recebe WhatsApp de boas-vindas imediato + atribui rep da região automaticamente.',
+      'Novo lead recebe WhatsApp de boas-vindas imediato + atribui representante da região automaticamente.',
     categoria: 'Boas-vindas',
     icon: Sparkles,
     triggerTipo: 'LEAD_CRIADO',
@@ -268,7 +268,7 @@ const TEMPLATES: FluxoTemplate[] = [
         id: 'a1',
         tipo: 'ACAO',
         acaoTipo: 'ATRIBUIR_REP',
-        titulo: 'Atribuir rep por região',
+        titulo: 'Atribuir representante por região',
         posX: 100,
         posY: 220,
         config: { criterio: 'regiao' },
@@ -362,7 +362,7 @@ const TEMPLATES: FluxoTemplate[] = [
         posY: 220,
         config: {
           mensagem:
-            '🎯 Lead {{lead_nome}} ({{valor_estimado}}) entrou em NEGOCIAÇÃO com o rep {{rep_nome}}.',
+            '🎯 Lead {{lead_nome}} ({{valor_estimado}}) entrou em NEGOCIAÇÃO com o representante {{rep_nome}}.',
         },
       },
     ],
@@ -373,7 +373,7 @@ const TEMPLATES: FluxoTemplate[] = [
     slug: 'agenda-visita',
     nome: 'Agenda de visita — lembrete prévio',
     descricao:
-      'Visita agendada dispara lembrete 1h antes pro rep com endereço completo do cliente.',
+      'Visita agendada dispara lembrete 1h antes pro representante com endereço completo do cliente.',
     categoria: 'Engajamento',
     icon: Calendar,
     triggerTipo: 'CRON_AGENDADO',
@@ -398,7 +398,7 @@ const TEMPLATES: FluxoTemplate[] = [
         id: 'a1',
         tipo: 'ACAO',
         acaoTipo: 'ENVIAR_WHATSAPP',
-        titulo: 'Lembrete pro rep',
+        titulo: 'Lembrete pro representante',
         posX: 380,
         posY: 220,
         config: {

@@ -173,7 +173,7 @@ const PALETTE_CATEGORIES: Array<{ title: string; items: PaletteItem[] }> = [
       { id: 'a-task', label: 'Criar tarefa', tipo: 'ACAO', acaoTipo: 'CRIAR_TAREFA' },
       { id: 'a-tag', label: 'Mudar tag', tipo: 'ACAO', acaoTipo: 'MUDAR_TAG' },
       { id: 'a-mov', label: 'Mover lead', tipo: 'ACAO', acaoTipo: 'MOVER_LEAD_ETAPA' },
-      { id: 'a-atr', label: 'Atribuir rep', tipo: 'ACAO', acaoTipo: 'ATRIBUIR_REP' },
+      { id: 'a-atr', label: 'Atribuir representante', tipo: 'ACAO', acaoTipo: 'ATRIBUIR_REP' },
       { id: 'a-hook', label: 'Webhook externo', tipo: 'ACAO', acaoTipo: 'WEBHOOK_EXTERNO' },
     ],
   },

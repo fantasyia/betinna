@@ -629,7 +629,7 @@ function EmpresaFormModal({
           <p style={{ margin: '0 0 0.75rem 0', fontSize: 12, color: colors.muted }}>
             Aplicado automaticamente em pedidos/propostas conforme a forma de pagamento.
             Deixe 0 para desligar. O desconto à vista <strong>não</strong> conta pro teto
-            de aprovação do rep (é política da empresa).
+            de aprovação do representante (é política da empresa).
           </p>
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.75rem' }}>
             <FormField label="Pix (%)" hint="0–50%, aplicado em qualquer Pix">

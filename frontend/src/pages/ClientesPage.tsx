@@ -539,7 +539,7 @@ export default function ClientesPage() {
             onClick={() => setBulkAction('rep')}
             leftIcon={<UserCog className="h-3.5 w-3.5" />}
           >
-            Atribuir rep
+            Atribuir representante
           </Button>
           <Button
             size="sm"
@@ -1050,7 +1050,7 @@ function BulkAssignModal({
 
   async function submit() {
     if (!removeRep && !rep) {
-      setError('Selecione um representante (ou marque "Remover rep atual").');
+      setError('Selecione um representante (ou marque "Remover representante atual").');
       return;
     }
     setBusy(true);
@@ -1072,8 +1072,8 @@ function BulkAssignModal({
     <Dialog
       open
       onClose={onClose}
-      title={`Atribuir rep em ${clienteIds.length} cliente${clienteIds.length === 1 ? '' : 's'}`}
-      description={removeRep ? 'Vai remover o rep atual de todos.' : 'Cada selecionado vai ficar com este rep.'}
+      title={`Atribuir representante em ${clienteIds.length} cliente${clienteIds.length === 1 ? '' : 's'}`}
+      description={removeRep ? 'Vai remover o representante atual de todos.' : 'Cada selecionado vai ficar com este representante.'}
       size="sm"
       footer={
         <>
@@ -1085,7 +1085,7 @@ function BulkAssignModal({
             onClick={submit}
             loading={busy}
           >
-            {removeRep ? 'Remover rep' : 'Atribuir'}
+            {removeRep ? 'Remover representante' : 'Atribuir'}
           </Button>
         </>
       }
@@ -1114,7 +1114,7 @@ function BulkAssignModal({
             setRemoveRep(e.target.checked);
             if (e.target.checked) setRep(null);
           }}
-          label="Remover atribuição (deixar sem rep)"
+          label="Remover atribuição (deixar sem representante)"
         />
       </div>
       {error && (
