@@ -446,10 +446,10 @@ export class ComissoesService {
     });
     const totalRecebido = historico
       .filter((c) => c.ano === ano && c.pago)
-      .reduce((s, c) => s + c.totalComissao, 0);
+      .reduce((s, c) => s + Number(c.totalComissao), 0);
     const totalAReceber = historico
       .filter((c) => c.ano === ano && !c.pago)
-      .reduce((s, c) => s + c.totalComissao, 0);
+      .reduce((s, c) => s + Number(c.totalComissao), 0);
     return {
       representanteId: repId,
       anoAtual: ano,
@@ -485,8 +485,8 @@ export class ComissoesService {
           repNome: c.representante.nome,
           mes,
           ano,
-          totalVendas: c.totalVendas,
-          totalComissao: c.totalComissao,
+          totalVendas: Number(c.totalVendas),
+          totalComissao: Number(c.totalComissao),
         });
       }
     } catch (err) {

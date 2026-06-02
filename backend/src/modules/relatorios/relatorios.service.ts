@@ -24,8 +24,10 @@ function variacao(atual: number, anterior: number): number {
   return Math.round(((atual - anterior) / anterior) * 100);
 }
 
-function arredondar(v: number | null | undefined): number {
-  return Math.round((v ?? 0) * 100) / 100;
+// #17 — aceita number OU Prisma.Decimal (colunas de dinheiro) OU null.
+function arredondar(v: number | { toNumber(): number } | null | undefined): number {
+  const n = v == null ? 0 : typeof v === 'number' ? v : v.toNumber();
+  return Math.round(n * 100) / 100;
 }
 
 // ─── Service ─────────────────────────────────────────────────────────────────
@@ -426,8 +428,10 @@ export class RelatoriosService {
     const repIds = [...new Set(registros.map((r) => r.representanteId))];
     const nomes = await this.nomesReps(repIds);
 
-    const pagos = registros.filter((r) => r.pago).reduce((s, r) => s + r.totalComissao, 0);
-    const aPagar = registros.filter((r) => !r.pago).reduce((s, r) => s + r.totalComissao, 0);
+    const pagos = registros.filter((r) => r.pago).reduce((s, r) => s + Number(r.totalComissao), 0);
+    const aPagar = registros
+      .filter((r) => !r.pago)
+      .reduce((s, r) => s + Number(r.totalComissao), 0);
 
     return {
       periodo: { de, ate },

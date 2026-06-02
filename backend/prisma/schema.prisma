@@ -998,8 +998,9 @@ model Comissao {
   calculadoEm     DateTime     @default(now())
   mes             Int
   ano             Int
-  totalVendas     Float
-  totalComissao   Float
+  // #17 — dinheiro em Decimal (precisão de centavos). % (percentual) segue Float.
+  totalVendas     Decimal @db.Decimal(14, 2)
+  totalComissao   Decimal @db.Decimal(14, 2)
   qtdPedidos      Int
   pago            Boolean      @default(false)
   pagoEm          DateTime?

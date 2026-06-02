@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import type { UserRole } from '@prisma/client';
+import { Prisma, type UserRole } from '@prisma/client';
 import { ForbiddenException } from '@shared/errors/app-exception';
 import type { AuthenticatedUser } from '@shared/types/authenticated-user';
 import { ComissoesService } from './comissoes.service';
@@ -182,6 +182,38 @@ describe('ComissoesService', () => {
       await expect(svc.resumoDoRep(fakeUser({ role: 'SAC' as UserRole }))).rejects.toBeInstanceOf(
         ForbiddenException,
       );
+    });
+
+    it('soma corretamente com Prisma.Decimal (não concatena string) — #17', async () => {
+      const ano = new Date().getFullYear();
+      prisma.comissao.findMany.mockResolvedValue([
+        {
+          ano,
+          pago: true,
+          totalComissao: new Prisma.Decimal('250.50'),
+          totalVendas: new Prisma.Decimal('5000'),
+        },
+        {
+          ano,
+          pago: true,
+          totalComissao: new Prisma.Decimal('100.25'),
+          totalVendas: new Prisma.Decimal('2000'),
+        },
+        {
+          ano,
+          pago: false,
+          totalComissao: new Prisma.Decimal('40.10'),
+          totalVendas: new Prisma.Decimal('800'),
+        },
+      ]);
+
+      const r = (await svc.resumoDoRep(fakeUser({ id: 'rep-1', role: 'REP' as UserRole }))) as {
+        totalRecebidoAnoAtual: number;
+        totalAReceberAnoAtual: number;
+      };
+
+      expect(r.totalRecebidoAnoAtual).toBe(350.75);
+      expect(r.totalAReceberAnoAtual).toBe(40.1);
     });
   });
 
