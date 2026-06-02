@@ -43,6 +43,7 @@ import {
 } from './inbox.dto';
 import { ConversationNotasService } from './conversation-notas.service';
 import { ConversationPresencaService } from './conversation-presenca.service';
+import { InboxMetricasService } from './inbox-metricas.service';
 import { InboxService } from './inbox.service';
 import { WhatsAppMediaService } from '@integrations/whatsapp/whatsapp-media.service';
 import { WhatsAppService } from '@integrations/whatsapp/whatsapp.service';
@@ -71,6 +72,7 @@ export class InboxController {
     private readonly svc: InboxService,
     private readonly notas: ConversationNotasService,
     private readonly presenca: ConversationPresencaService,
+    private readonly metricas: InboxMetricasService,
     private readonly whatsappMedia: WhatsAppMediaService,
     private readonly whatsapp: WhatsAppService,
     private readonly metaMedia: MetaMediaService,
@@ -117,6 +119,17 @@ export class InboxController {
   @ApiOperation({ summary: 'Lista canais com adapter registrado/disponível' })
   canais() {
     return { canais: this.svc.canaisDisponiveis() };
+  }
+
+  // #25 fatia 3 — painel gerencial (REP não tem dashboard de SAC). Declarado
+  // ANTES de `:id` pra rota literal não cair no param.
+  @Get('metricas')
+  @Roles('ADMIN', 'DIRECTOR', 'GERENTE', 'SAC')
+  @ApiOperation({
+    summary: 'KPIs de atendimento (abertas, aguardando/SLA, 1ª resposta, por atendente)',
+  })
+  metricasAtendimento(@CurrentUser() user: AuthenticatedUser) {
+    return this.metricas.metricas(user);
   }
 
   @Get()

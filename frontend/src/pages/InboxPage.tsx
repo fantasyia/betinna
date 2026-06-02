@@ -5,6 +5,12 @@ import {
   ArrowLeft,
   Send,
   ChevronDown,
+  ChevronUp,
+  BarChart3,
+  Clock,
+  Users,
+  MessageSquare,
+  Timer,
   UserCheck,
   CheckCircle2,
   Inbox as InboxIcon,
@@ -35,6 +41,7 @@ import {
 } from 'lucide-react';
 import { api, ApiError } from '@/lib/api';
 import { getSession } from '@/lib/auth-store';
+import { useRole } from '@/hooks/usePermission';
 import { useApiQuery, type PaginatedResponse } from '@/hooks/useApiQuery';
 import { PageLayout, useIsMobile } from '@/components/PageLayout';
 import { AtendimentoTabs } from '@/components/AtendimentoTabs';
@@ -53,6 +60,7 @@ import {
   IconButton,
   Input,
   Select,
+  Stat,
   Tabs,
   Textarea,
 } from '@/components/ui';
@@ -199,6 +207,34 @@ interface UsuarioMinimo {
   role: string;
 }
 
+/**
+ * #25 fatia 3 — métricas gerenciais do SAC (`GET /inbox/metricas`).
+ * Endpoint restrito a ADMIN/DIRECTOR/GERENTE/SAC — REP recebe 403, então
+ * nem buscamos nem renderizamos o painel pra esse papel.
+ */
+interface Metricas {
+  conversas: {
+    abertas: number;
+    pendentes: number;
+    resolvidas: number;
+    arquivadas: number;
+    total: number;
+  };
+  aguardando: {
+    total: number;
+    dentroDoPrazo: number;
+    estourado: number;
+    slaMinutos: number;
+  };
+  tempoMedioPrimeiraRespostaSegundos: number | null;
+  porAtendente: Array<{
+    atendenteId: string | null;
+    atendenteNome: string;
+    abertas: number;
+    aguardando: number;
+  }>;
+}
+
 const CANAL_LABEL: Record<Canal, string> = {
   WHATSAPP: 'WhatsApp',
   INSTAGRAM: 'Instagram',
@@ -282,6 +318,18 @@ function fmtHHMM(d: string) {
 }
 
 /**
+ * #25 fatia 3 — formata segundos de "tempo médio de 1ª resposta" pra exibição
+ * no painel de métricas. `null` → "—" (sem dado); senão escolhe a unidade mais
+ * legível (segundos < 1min, minutos < 1h, horas+minutos acima).
+ */
+function formatTempoResposta(s: number | null): string {
+  if (s === null) return '—';
+  if (s < 60) return `${s}s`;
+  if (s < 3600) return `${Math.round(s / 60)}min`;
+  return `${Math.floor(s / 3600)}h ${Math.round((s % 3600) / 60)}min`;
+}
+
+/**
  * Formata o "peer" (identificador do contato) pra exibição como TELEFONE.
  * No WhatsApp o peer vem como JID cru (ex: `5511988887777@s.whatsapp.net`).
  *
@@ -343,6 +391,11 @@ function tocarBeep(): void {
 }
 
 export default function InboxPage() {
+  // #25 fatia 3 — papel do usuário (reativo). REP não vê o painel gerencial
+  // de métricas (o endpoint /inbox/metricas devolve 403 pra REP de qualquer jeito).
+  const role = useRole();
+  const isRep = role === 'REP';
+
   const [canalTab, setCanalTab] = useState<string>('todos');
   const [status, setStatus] = useState<string>('');
   const [filterMeu, setFilterMeu] = useState<string>('');
@@ -468,6 +521,8 @@ export default function InboxPage() {
       description="WhatsApp · Instagram · Facebook · E-mail · Marketplaces"
     >
       <AtendimentoTabs />
+      {/* #25 fatia 3 — painel gerencial de métricas do SAC (escondido pra REP). */}
+      {!isRep && <MetricasPanel />}
       <div
         className={cn(
           'grid gap-3',
@@ -593,6 +648,136 @@ export default function InboxPage() {
         )}
       </div>
     </PageLayout>
+  );
+}
+
+// ─── #25 fatia 3 — Painel gerencial de métricas do SAC ──────────────
+
+/**
+ * MetricasPanel — KPIs de atendimento (só gerência; nunca REP, que nem chega a
+ * montar este componente). Cabeçalho colapsável; o fetch de `/inbox/metricas`
+ * só dispara quando o painel está aberto (evita chamada inútil quando fechado).
+ * Começa aberto — é informação de relance que a gerência quer ver ao entrar.
+ */
+function MetricasPanel() {
+  const [aberto, setAberto] = useState(true);
+  // Só busca quando aberto (path null = useApiQuery não dispara).
+  const { data, loading, error } = useApiQuery<Metricas>(aberto ? '/inbox/metricas' : null);
+
+  return (
+    <Card padding="none" data-testid="inbox-metricas" className="overflow-hidden">
+      <button
+        type="button"
+        data-testid="inbox-metricas-toggle"
+        aria-expanded={aberto}
+        onClick={() => setAberto((v) => !v)}
+        className="w-full flex items-center gap-2 px-4 py-3 text-left hover:bg-surface-hover transition-colors"
+      >
+        <BarChart3 className="h-4 w-4 text-primary shrink-0" />
+        <strong className="text-sm tracking-tight text-text flex-1">
+          Métricas de atendimento
+        </strong>
+        {aberto ? (
+          <ChevronUp className="h-4 w-4 text-muted shrink-0" />
+        ) : (
+          <ChevronDown className="h-4 w-4 text-muted shrink-0" />
+        )}
+      </button>
+
+      {aberto && (
+        <div className="px-4 pb-4 border-t border-border pt-4">
+          {loading && !data && (
+            <div className="text-sm text-muted py-2">Carregando métricas…</div>
+          )}
+          {error && !data && (
+            <div className="text-sm text-muted py-2">
+              Não foi possível carregar as métricas.
+            </div>
+          )}
+          {data && <MetricasConteudo m={data} />}
+        </div>
+      )}
+    </Card>
+  );
+}
+
+/** Conteúdo do painel quando os dados chegaram — cards + lista por atendente. */
+function MetricasConteudo({ m }: { m: Metricas }) {
+  return (
+    <div className="flex flex-col gap-4">
+      <div className="grid gap-3 grid-cols-2 lg:grid-cols-4">
+        <div data-testid="inbox-metricas-abertas">
+          <Stat
+            label="Abertas"
+            value={m.conversas.abertas}
+            icon={<MessageSquare />}
+            iconTone="info"
+            hint={`${m.conversas.pendentes} pendentes · ${m.conversas.resolvidas} resolvidas`}
+          />
+        </div>
+        <div data-testid="inbox-metricas-aguardando">
+          <Stat
+            label="Aguardando resposta"
+            value={m.aguardando.total}
+            icon={<Clock />}
+            iconTone={m.aguardando.estourado > 0 ? 'danger' : 'success'}
+            hint={
+              <span>
+                no prazo{' '}
+                <strong className="text-success tabular">{m.aguardando.dentroDoPrazo}</strong>
+                {' · '}fora{' '}
+                <strong className="text-danger tabular">{m.aguardando.estourado}</strong>
+              </span>
+            }
+          />
+        </div>
+        <div data-testid="inbox-metricas-tmr">
+          <Stat
+            label="Tempo médio 1ª resposta"
+            value={formatTempoResposta(m.tempoMedioPrimeiraRespostaSegundos)}
+            icon={<Timer />}
+            iconTone="secondary"
+            hint={`SLA ${m.aguardando.slaMinutos}min`}
+          />
+        </div>
+        <div data-testid="inbox-metricas-total">
+          <Stat
+            label="Total de conversas"
+            value={m.conversas.total}
+            icon={<Users />}
+            iconTone="primary"
+            hint={`${m.conversas.arquivadas} arquivadas`}
+          />
+        </div>
+      </div>
+
+      {/* Por atendente — vem ordenado por aguardando desc; limita visual a 8. */}
+      {m.porAtendente.length > 0 && (
+        <div data-testid="inbox-metricas-atendentes">
+          <div className="text-[10px] uppercase tracking-wider text-muted mb-2">
+            Por atendente
+          </div>
+          <ul className="flex flex-col gap-1">
+            {m.porAtendente.slice(0, 8).map((a) => (
+              <li
+                key={a.atendenteId ?? 'sem-atendente'}
+                className="flex items-center justify-between gap-3 text-sm py-1.5 px-2.5 rounded-md bg-bg-alt"
+                style={{ borderRadius: radius.lg }}
+              >
+                <span className="text-text truncate">{a.atendenteNome}</span>
+                <span className="shrink-0 text-xs text-muted tabular">
+                  abertas <strong className="text-text">{a.abertas}</strong>
+                  {' · '}aguardando{' '}
+                  <strong className={a.aguardando > 0 ? 'text-warning' : 'text-text'}>
+                    {a.aguardando}
+                  </strong>
+                </span>
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+    </div>
   );
 }
 

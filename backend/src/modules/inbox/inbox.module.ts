@@ -4,6 +4,7 @@ import { WhatsAppModule } from '@integrations/whatsapp/whatsapp.module';
 import { CanalAdapterRegistry } from './canal-adapter.registry';
 import { ConversationNotasService } from './conversation-notas.service';
 import { ConversationPresencaService } from './conversation-presenca.service';
+import { InboxMetricasService } from './inbox-metricas.service';
 import { InboxController } from './inbox.controller';
 import { InboxService } from './inbox.service';
 
@@ -24,6 +25,7 @@ import { InboxService } from './inbox.service';
     CanalAdapterRegistry,
     ConversationNotasService,
     ConversationPresencaService,
+    InboxMetricasService,
   ],
   exports: [InboxService, CanalAdapterRegistry],
 })
