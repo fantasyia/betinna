@@ -56,10 +56,11 @@ const buttonVariants = cva(
           'hover:bg-primary/15 hover:border-primary/40',
         ],
       },
+      // #23 — alvo de toque ≥44px no mobile; compacto no desktop (md+).
       size: {
-        sm: 'h-7 px-2.5 text-xs',
-        md: 'h-8 px-3 text-sm',
-        lg: 'h-10 px-4 text-md',
+        sm: 'h-11 px-2.5 text-xs md:h-7',
+        md: 'h-11 px-3 text-sm md:h-8',
+        lg: 'h-11 px-4 text-md md:h-10',
       },
       fullWidth: {
         true: 'w-full',

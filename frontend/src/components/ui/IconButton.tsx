@@ -21,10 +21,11 @@ const iconButtonVariants = cva(
         subtle: 'bg-surface-hover text-text border border-border hover:bg-surface-elevated',
         danger: 'bg-transparent text-danger hover:bg-danger/15',
       },
+      // #23 — alvo de toque ≥44px no mobile; compacto no desktop (md+).
       size: {
-        sm: 'h-7 w-7 [&_svg]:h-3.5 [&_svg]:w-3.5',
-        md: 'h-8 w-8 [&_svg]:h-4 [&_svg]:w-4',
-        lg: 'h-10 w-10 [&_svg]:h-[18px] [&_svg]:w-[18px]',
+        sm: 'h-11 w-11 md:h-7 md:w-7 [&_svg]:h-3.5 [&_svg]:w-3.5',
+        md: 'h-11 w-11 md:h-8 md:w-8 [&_svg]:h-4 [&_svg]:w-4',
+        lg: 'h-11 w-11 md:h-10 md:w-10 [&_svg]:h-[18px] [&_svg]:w-[18px]',
       },
     },
     defaultVariants: {
