@@ -41,10 +41,38 @@ env:
   RETENTION_DAYS: 30
 
 jobs:
+  # Sem secrets de S3 não há destino off-site — e o backup ATIVO é o interno
+  # (app NestJS → Supabase Storage, cron diário). Este job off-site (R2/S3) só
+  # roda se o S3 estiver configurado; senão pula limpo (não falha nem spamma).
+  guard:
+    name: Checar config S3
+    runs-on: ubuntu-latest
+    outputs:
+      ok: ${{ steps.cfg.outputs.ok }}
+    steps:
+      - id: cfg
+        env:
+          S3_ENDPOINT: ${{ secrets.S3_ENDPOINT }}
+          S3_BUCKET: ${{ secrets.S3_BUCKET }}
+        run: |
+          if [[ -n "$S3_ENDPOINT" && -n "$S3_BUCKET" ]]; then
+            echo "ok=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "ok=false" >> "$GITHUB_OUTPUT"
+            echo "::notice::S3 não configurado (S3_ENDPOINT/S3_BUCKET ausentes). Backup off-site pulado — o ativo é o interno (app → Supabase Storage)."
+          fi
+
   backup:
     name: pg_dump + upload to S3-compatible
+    needs: guard
+    if: needs.guard.outputs.ok == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 30
+    # github-script (notify) precisa de issues:write; sem isto dá
+    # "Resource not accessible by integration".
+    permissions:
+      contents: read
+      issues: write
 
     steps:
       - name: Checkout
