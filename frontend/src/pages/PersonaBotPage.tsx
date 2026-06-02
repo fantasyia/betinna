@@ -409,6 +409,8 @@ export default function PersonaBotPage() {
                   setLimDia(Math.max(0, Number(e.target.value)));
                   setDirty(true);
                 }}
+                // Evita o navegador incrementar o número ao rolar o mouse sobre o campo.
+                onWheel={(e) => e.currentTarget.blur()}
                 className="w-full rounded-md border border-border-strong bg-surface px-3 py-2 text-sm tabular"
               />
             </Field>
@@ -421,6 +423,8 @@ export default function PersonaBotPage() {
                   setLimMes(Math.max(0, Number(e.target.value)));
                   setDirty(true);
                 }}
+                // Evita o navegador incrementar o número ao rolar o mouse sobre o campo.
+                onWheel={(e) => e.currentTarget.blur()}
                 className="w-full rounded-md border border-border-strong bg-surface px-3 py-2 text-sm tabular"
               />
             </Field>
