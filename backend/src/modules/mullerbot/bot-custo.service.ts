@@ -11,8 +11,9 @@ interface UsoAtual {
 }
 
 export interface StatusCusto {
-  dia: { tokensIn: number; tokensOut: number; limiteIn: number; limiteOut: number; pct: number };
-  mes: { tokensIn: number; tokensOut: number; limiteIn: number; limiteOut: number; pct: number };
+  /** Limite é UM orçamento por período (total de tokens in+out), não dois somados. */
+  dia: { usado: number; limite: number; pct: number };
+  mes: { usado: number; limite: number; pct: number };
   pausadoPorCustoAte: string | null;
 }
 
@@ -98,12 +99,10 @@ export class BotCustoService {
     }
 
     const uso = await this.usoAtual(empresaId);
-    if (
-      uso.diaIn >= persona.limiteTokensDiaIn ||
-      uso.diaOut >= persona.limiteTokensDiaOut ||
-      uso.mesIn >= persona.limiteTokensMesIn ||
-      uso.mesOut >= persona.limiteTokensMesOut
-    ) {
+    // Orçamento único por período: total de tokens (entrada + saída) vs o limite.
+    const usadoDia = uso.diaIn + uso.diaOut;
+    const usadoMes = uso.mesIn + uso.mesOut;
+    if (usadoDia >= persona.limiteTokensDiaIn || usadoMes >= persona.limiteTokensMesIn) {
       return { bloqueado: true, motivo: 'Teto de custo do bot atingido.' };
     }
     return { bloqueado: false };
@@ -131,25 +130,14 @@ export class BotCustoService {
   async statusCusto(empresaId: string): Promise<StatusCusto> {
     const persona = await this.prisma.mullerBotPersona.findUnique({ where: { empresaId } });
     const uso = await this.usoAtual(empresaId);
-    const limiteDiaIn = persona?.limiteTokensDiaIn ?? 100000;
-    const limiteDiaOut = persona?.limiteTokensDiaOut ?? 100000;
-    const limiteMesIn = persona?.limiteTokensMesIn ?? 2000000;
-    const limiteMesOut = persona?.limiteTokensMesOut ?? 2000000;
+    // Um orçamento por período (total in+out). limiteTokens*In guarda esse total.
+    const limiteDia = persona?.limiteTokensDiaIn ?? 100000;
+    const limiteMes = persona?.limiteTokensMesIn ?? 2000000;
+    const usadoDia = uso.diaIn + uso.diaOut;
+    const usadoMes = uso.mesIn + uso.mesOut;
     return {
-      dia: {
-        tokensIn: uso.diaIn,
-        tokensOut: uso.diaOut,
-        limiteIn: limiteDiaIn,
-        limiteOut: limiteDiaOut,
-        pct: this.pct(uso.diaIn, limiteDiaIn, uso.diaOut, limiteDiaOut),
-      },
-      mes: {
-        tokensIn: uso.mesIn,
-        tokensOut: uso.mesOut,
-        limiteIn: limiteMesIn,
-        limiteOut: limiteMesOut,
-        pct: this.pct(uso.mesIn, limiteMesIn, uso.mesOut, limiteMesOut),
-      },
+      dia: { usado: usadoDia, limite: limiteDia, pct: this.pct(usadoDia, limiteDia) },
+      mes: { usado: usadoMes, limite: limiteMes, pct: this.pct(usadoMes, limiteMes) },
       pausadoPorCustoAte: persona?.pausadoPorCustoAte?.toISOString() ?? null,
     };
   }
@@ -161,18 +149,8 @@ export class BotCustoService {
     if (!persona) return;
     const uso = await this.usoAtual(empresaId);
 
-    const pctDia = this.pct(
-      uso.diaIn,
-      persona.limiteTokensDiaIn,
-      uso.diaOut,
-      persona.limiteTokensDiaOut,
-    );
-    const pctMes = this.pct(
-      uso.mesIn,
-      persona.limiteTokensMesIn,
-      uso.mesOut,
-      persona.limiteTokensMesOut,
-    );
+    const pctDia = this.pct(uso.diaIn + uso.diaOut, persona.limiteTokensDiaIn);
+    const pctMes = this.pct(uso.mesIn + uso.mesOut, persona.limiteTokensMesIn);
     const estouLimiteMes = pctMes >= 100;
     const pct = Math.max(pctDia, pctMes);
 
@@ -215,10 +193,8 @@ export class BotCustoService {
     }
   }
 
-  private pct(in1: number, limIn: number, out1: number, limOut: number): number {
-    const a = limIn > 0 ? (in1 / limIn) * 100 : 0;
-    const b = limOut > 0 ? (out1 / limOut) * 100 : 0;
-    return Math.max(a, b);
+  private pct(usado: number, limite: number): number {
+    return limite > 0 ? (usado / limite) * 100 : 0;
   }
 
   private fmt(d: Date): string {

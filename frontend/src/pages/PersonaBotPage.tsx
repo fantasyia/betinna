@@ -42,8 +42,9 @@ interface Persona {
 }
 
 interface CustoStatus {
-  dia: { tokensIn: number; tokensOut: number; limiteIn: number; limiteOut: number; pct: number };
-  mes: { tokensIn: number; tokensOut: number; limiteIn: number; limiteOut: number; pct: number };
+  // Um orçamento por período (total de tokens), não dois somados.
+  dia: { usado: number; limite: number; pct: number };
+  mes: { usado: number; limite: number; pct: number };
   pausadoPorCustoAte: string | null;
 }
 
@@ -169,7 +170,8 @@ export default function PersonaBotPage() {
         ativo: true,
         promptCustom: prompt.trim() || null,
         modelo: modelo || null,
-        // Teto de custo — mesmo limite pra entrada e saída.
+        // Teto de custo — orçamento ÚNICO por período (total de tokens). Guardado
+        // em *In; *Out é mantido igual por compatibilidade, mas a lógica usa só *In.
         limiteTokensDiaIn: limDia,
         limiteTokensDiaOut: limDia,
         limiteTokensMesIn: limMes,
@@ -376,14 +378,14 @@ export default function PersonaBotPage() {
                 <BarraCusto
                   label="Hoje"
                   pct={custoQuery.data.dia.pct}
-                  usado={custoQuery.data.dia.tokensIn + custoQuery.data.dia.tokensOut}
-                  limite={custoQuery.data.dia.limiteIn + custoQuery.data.dia.limiteOut}
+                  usado={custoQuery.data.dia.usado}
+                  limite={custoQuery.data.dia.limite}
                 />
                 <BarraCusto
                   label="Mês"
                   pct={custoQuery.data.mes.pct}
-                  usado={custoQuery.data.mes.tokensIn + custoQuery.data.mes.tokensOut}
-                  limite={custoQuery.data.mes.limiteIn + custoQuery.data.mes.limiteOut}
+                  usado={custoQuery.data.mes.usado}
+                  limite={custoQuery.data.mes.limite}
                 />
                 {custoQuery.data.pausadoPorCustoAte &&
                   new Date(custoQuery.data.pausadoPorCustoAte) > new Date() && (
