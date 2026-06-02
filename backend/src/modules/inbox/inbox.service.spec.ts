@@ -477,3 +477,53 @@ describe('CanalAdapterRegistry', () => {
     expect(await r.disponivel('emp-1', 'WHATSAPP')).toBe(true);
   });
 });
+
+describe('InboxService.list — SLA (aguardandoDesde)', () => {
+  let prisma: ReturnType<typeof makePrismaMock>;
+  let svc: InboxService;
+
+  beforeEach(() => {
+    prisma = makePrismaMock();
+    svc = new InboxService(prisma as never, new CanalAdapterRegistry(), { get: () => 24 } as never);
+  });
+
+  const baseConv = (over: Record<string, unknown> = {}) => ({
+    id: 'c1',
+    empresaId: 'emp-1',
+    status: 'ABERTA',
+    ultimaMsgEm: new Date('2026-06-01T10:00:00Z'),
+    cliente: null,
+    atribuido: null,
+    mensagens: [{ direction: 'INBOUND' }],
+    ...over,
+  });
+
+  it('última msg do cliente em conversa aberta → aguardandoDesde = ultimaMsgEm', async () => {
+    prisma.conversation.count.mockResolvedValueOnce(1);
+    prisma.conversation.findMany.mockResolvedValueOnce([baseConv()]);
+
+    const r = await svc.list(fakeUser(), { page: 1, limit: 30 } as never);
+
+    expect(r.data[0].aguardandoDesde).toEqual(new Date('2026-06-01T10:00:00Z'));
+    // o array auxiliar de mensagens não vaza no retorno
+    expect((r.data[0] as Record<string, unknown>).mensagens).toBeUndefined();
+  });
+
+  it('última msg nossa (OUTBOUND) → aguardandoDesde null', async () => {
+    prisma.conversation.count.mockResolvedValueOnce(1);
+    prisma.conversation.findMany.mockResolvedValueOnce([
+      baseConv({ mensagens: [{ direction: 'OUTBOUND' }] }),
+    ]);
+
+    const r = await svc.list(fakeUser(), { page: 1, limit: 30 } as never);
+    expect(r.data[0].aguardandoDesde).toBeNull();
+  });
+
+  it('conversa resolvida não conta como aguardando (mesmo com última INBOUND)', async () => {
+    prisma.conversation.count.mockResolvedValueOnce(1);
+    prisma.conversation.findMany.mockResolvedValueOnce([baseConv({ status: 'RESOLVIDA' })]);
+
+    const r = await svc.list(fakeUser(), { page: 1, limit: 30 } as never);
+    expect(r.data[0].aguardandoDesde).toBeNull();
+  });
+});

@@ -33,9 +33,26 @@ const conversationInclude = {
   atribuido: { select: { id: true, nome: true, avatar: true } },
 } satisfies Prisma.ConversationInclude;
 
+// #25 fatia 2 — na LISTAGEM também trazemos a direção da última mensagem pra
+// derivar o SLA (aguardando resposta) sem coluna nova no banco.
+const conversationListInclude = {
+  ...conversationInclude,
+  mensagens: { take: 1, orderBy: { criadoEm: 'desc' as const }, select: { direction: true } },
+} satisfies Prisma.ConversationInclude;
+
 type ConversationWithRel = Prisma.ConversationGetPayload<{
   include: typeof conversationInclude;
 }>;
+
+type ConversationListRow = Prisma.ConversationGetPayload<{
+  include: typeof conversationListInclude;
+}>;
+
+/** Conversa da listagem + SLA derivado (sem o array auxiliar de mensagens). */
+type ConversationComSla = Omit<ConversationListRow, 'mensagens'> & {
+  /** Quando a última mensagem é do CLIENTE numa conversa aberta: desde quando espera resposta. Senão null. */
+  aguardandoDesde: Date | null;
+};
 
 /**
  * Inbox unificada — canal-agnóstica.
@@ -104,7 +121,7 @@ export class InboxService {
   async list(
     user: AuthenticatedUser,
     params: ListConversationsDto,
-  ): Promise<Paginated<ConversationWithRel>> {
+  ): Promise<Paginated<ConversationComSla>> {
     const where: Prisma.ConversationWhereInput = { ...this.baseWhere(user) };
     const conds: Prisma.ConversationWhereInput[] = [];
 
@@ -137,10 +154,28 @@ export class InboxService {
         // Fase 2 — conversas que "precisam de humano" (bot caiu no fallback)
         // sobem pro topo, depois ordena por mais recente.
         orderBy: [{ precisaHumano: 'desc' }, { ultimaMsgEm: 'desc' }, { criadoEm: 'desc' }],
-        include: conversationInclude,
+        include: conversationListInclude,
       }),
     ]);
-    return buildPaginated(data, total, params.page, params.limit);
+    return buildPaginated(
+      data.map((c) => this.comSla(c)),
+      total,
+      params.page,
+      params.limit,
+    );
+  }
+
+  /**
+   * #25 fatia 2 — deriva o SLA da conversa: se a ÚLTIMA mensagem é do cliente
+   * (INBOUND) e a conversa está aberta/pendente, retorna desde quando espera
+   * resposta (`ultimaMsgEm`). Caso contrário, null (nada pendente). O front
+   * pinta o selo verde/amarelo/vermelho a partir disso.
+   */
+  private comSla(conv: ConversationListRow): ConversationComSla {
+    const { mensagens, ...rest } = conv;
+    const ultimaInbound = mensagens[0]?.direction === MessageDirection.INBOUND;
+    const aberta = conv.status === 'ABERTA' || conv.status === 'PENDENTE';
+    return { ...rest, aguardandoDesde: ultimaInbound && aberta ? conv.ultimaMsgEm : null };
   }
 
   async findById(user: AuthenticatedUser, id: string): Promise<ConversationWithRel> {

@@ -57,6 +57,7 @@ import {
   Textarea,
 } from '@/components/ui';
 import { cn } from '@/lib/cn';
+import { colors, alpha, radius } from '@/components/styles';
 
 /**
  * InboxPage v2 — design system dark, layout WhatsApp-like.
@@ -156,6 +157,9 @@ interface Conversation {
   // Fase 2 — estado do bot Muller nesta conversa
   botPausadoAte?: string | null;
   precisaHumano?: boolean;
+  // #25 fatia 2 — quando o cliente mandou a última msg SEM resposta (conversa
+  // aberta). `null` = nada pendente (última foi nossa, ou já resolvida).
+  aguardandoDesde?: string | null;
   // Item #25 — etiquetas livres de triagem (só a equipe vê). Backend retorna
   // sempre como array (default []).
   tagsInternas?: string[];
@@ -236,6 +240,29 @@ function fmtRelative(d: string | null | undefined): string {
   if (secs < 172800) return 'ontem';
   if (secs < 604800) return `${Math.floor(secs / 86400)}d`;
   return new Date(d).toLocaleDateString('pt-BR', { day: '2-digit', month: 'short' });
+}
+
+/**
+ * #25 fatia 2 — selo de SLA da lista: há quanto tempo o cliente espera.
+ * Recebe a data ISO de `aguardandoDesde` e devolve texto curto + cor semântica
+ * (verde até 30min, amarelo até 2h, vermelho acima). `null` quando não há nada
+ * pendente (a chamadora não renderiza o selo nesse caso).
+ */
+function slaBadge(
+  aguardandoDesde: string | null | undefined,
+): { texto: string; cor: string } | null {
+  if (!aguardandoDesde) return null;
+  const t = new Date(aguardandoDesde).getTime();
+  if (Number.isNaN(t)) return null;
+  const min = Math.floor((Date.now() - t) / 60000);
+  const texto =
+    min < 60
+      ? `aguardando há ${Math.max(min, 0)}min`
+      : min < 1440
+        ? `aguardando há ${Math.floor(min / 60)}h`
+        : `aguardando há ${Math.floor(min / 1440)}d`;
+  const cor = min <= 30 ? colors.success : min <= 120 ? colors.warning : colors.danger;
+  return { texto, cor };
 }
 
 function fmtTime(d: string) {
@@ -593,6 +620,8 @@ function ConversationItem({
   const botPausado = conv.botPausadoAte
     ? new Date(conv.botPausadoAte).getTime() > Date.now()
     : false;
+  // #25 fatia 2 — selo de SLA (há quanto tempo o cliente espera resposta).
+  const sla = slaBadge(conv.aguardandoDesde);
 
   return (
     <li>
@@ -677,8 +706,22 @@ function ConversationItem({
             conv.atribuido ||
             (conv.naoLidas ?? 0) > 1 ||
             conv.precisaHumano ||
-            botPausado) && (
+            botPausado ||
+            sla) && (
             <div className="flex items-center gap-1.5 mt-1.5 flex-wrap">
+              {sla && (
+                <span
+                  data-testid="inbox-sla-badge"
+                  className="inline-flex items-center text-[10px] font-medium px-1.5 py-0.5 leading-none"
+                  style={{
+                    color: sla.cor,
+                    backgroundColor: alpha(sla.cor, 15),
+                    borderRadius: radius.lg,
+                  }}
+                >
+                  {sla.texto}
+                </span>
+              )}
               {conv.precisaHumano && (
                 <Badge variant="danger" size="sm">
                   🚨 Precisa de humano
