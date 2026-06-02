@@ -407,7 +407,7 @@ model Cliente {
   omieStatus      ClienteOmieStatus @default(ATIVO) // só ativo/bloqueado importa
   score           Int               @default(50)
   prazoPagamento  Int               @default(30) // dias
-  limiteCredito   Float?
+  limiteCredito   Decimal?  @db.Decimal(14, 2)
   ultimoPedidoEm  DateTime?
   representanteId String?
   /// Marca registros gerados pelo seed-demo (script /admin/seed-demo).
@@ -783,7 +783,7 @@ model Lead {
   contatoNome     String?
   contatoEmail    String?
   contatoTelefone String?
-  valorEstimado   Float       @default(0)
+  valorEstimado   Decimal     @default(0) @db.Decimal(14, 2)
   canalOrigem     CanalOrigem @default(WHATSAPP)
 
   /// Etapa do funil padrão (legado). Mantido pra compat com dashboards e relatórios
@@ -1471,8 +1471,8 @@ model MarketplaceIncident {
   pedidoExternoId String?
   clienteId       String?
   /// Valor envolvido (BRL). Quando aplicável (devolução, reembolso).
-  valor           Float?
-  valorReembolso  Float?
+  valor           Decimal?  @db.Decimal(14, 2)
+  valorReembolso  Decimal?  @db.Decimal(14, 2)
   /// SLA do marketplace pra próxima ação do vendedor. ML pune resposta lenta.
   prazoResposta   DateTime?
   /// Resumo curto pra UI.

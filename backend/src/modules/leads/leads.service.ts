@@ -264,7 +264,12 @@ export class LeadsService {
     // Trigger: LEAD_CRIADO
     void this.bus.disparar(empresaId, 'LEAD_CRIADO', {
       leadId: lead.id,
-      lead: { id: lead.id, nome: lead.nome, etapa: lead.etapa, valorEstimado: lead.valorEstimado },
+      lead: {
+        id: lead.id,
+        nome: lead.nome,
+        etapa: lead.etapa,
+        valorEstimado: Number(lead.valorEstimado),
+      },
       clienteId: lead.clienteId,
       representanteId: lead.representanteId,
     });
@@ -499,7 +504,7 @@ export class LeadsService {
       ['NOVO', 'QUALIFICANDO', 'PROPOSTA', 'NEGOCIACAO', 'GANHO', 'PERDIDO'] as LeadEtapa[]
     ).map((etapa) => {
       const g = grouped.find((x) => x.etapa === etapa);
-      const valorTotal = g?._sum.valorEstimado ?? 0;
+      const valorTotal = Number(g?._sum.valorEstimado ?? 0);
       const probabilidade = PROBABILIDADE_POR_ETAPA[etapa];
       return {
         etapa,

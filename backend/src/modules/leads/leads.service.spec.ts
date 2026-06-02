@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import type { UserRole } from '@prisma/client';
+import { Prisma, type UserRole } from '@prisma/client';
 import type { AuthenticatedUser } from '@shared/types/authenticated-user';
 import { BusinessRuleException, NotFoundException } from '@shared/errors/app-exception';
 import { LeadsService } from './leads.service';
@@ -56,6 +56,36 @@ describe('LeadsService', () => {
       makeRepScope() as never,
       { disparar: vi.fn() } as never,
     );
+  });
+
+  describe('resumoPipeline — dinheiro Prisma.Decimal (#17 Fase 5)', () => {
+    it('soma valorEstimado Decimal e devolve number (não Decimal)', async () => {
+      prisma.lead.groupBy.mockResolvedValue([
+        {
+          etapa: 'NEGOCIACAO',
+          _count: { _all: 2 },
+          _sum: { valorEstimado: new Prisma.Decimal('1000.50') },
+        },
+        {
+          etapa: 'GANHO',
+          _count: { _all: 1 },
+          _sum: { valorEstimado: new Prisma.Decimal('500') },
+        },
+      ]);
+      prisma.lead.count.mockResolvedValue(0);
+
+      const r = await svc.resumoPipeline(fakeUser({ role: 'ADMIN' as UserRole }));
+
+      const negociacao = r.porEtapa.find((p) => p.etapa === 'NEGOCIACAO')!;
+      // Se valorTotal fosse Decimal, toBe(1000.5) falharia (Decimal !== number).
+      expect(negociacao.valorTotal).toBe(1000.5);
+      expect(typeof negociacao.valorTotal).toBe('number');
+      expect(typeof negociacao.ponderado).toBe('number');
+      expect(Number.isNaN(negociacao.ponderado)).toBe(false);
+      // pipelineTotal exclui GANHO/PERDIDO → só NEGOCIACAO (1000.5)
+      expect(r.pipelineTotal).toBe(1000.5);
+      expect(typeof r.pipelineTotal).toBe('number');
+    });
   });
 
   describe('rep filtering', () => {
