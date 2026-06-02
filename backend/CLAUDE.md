@@ -291,6 +291,8 @@ $token = $r.access_token
 **Pendências ativas:**
 - OMIE `tabela_de_preco`: ratio configurável mas ainda heurístico — ler `precoFabrica` real de tabela auxiliar quando cliente fornecer credenciais OMIE com tabelas.
 - BOOTSTRAP_TOKEN: endpoint `/auth/bootstrap` se desabilita após 1º usuário (first-run check), mas vale apagar a env var em produção depois de validar.
+- **#17 Float→Decimal no dinheiro — EM ANDAMENTO (pausado na Fase 0).** Fase 0 feita: `ResponseInterceptor` converte `Prisma.Decimal → number` em toda resposta (front segue recebendo `number`). Faltam as **Fases 1+**: migrar ~18 colunas de dinheiro `Float→Decimal` modelo a modelo (cada uma: schema/migration + ajustar serviço/testes onde lê o campo, pois `Decimal ≠ number` no JS + os cálculos devem usar Decimal pra precisão real). Ordem sugerida: Comissão (valor/totalVendas/totalComissao) → Pedido/PedidoItem (subtotal/total/comissao/precoUnitario) → Proposta/PropostaItem → preços (ClientePrecoEspecial/Produto precoTabela/precoFabrica) → MarketplaceIncident (valor/valorReembolso). Manter como Float: % (descontos, comissaoPadrao, markup, percentual), quantidade, posX/posY do FluxoNo.
+- **Resend:** definir `RESEND_API_KEY` + `RESEND_FROM_EMAIL` no Railway (api + worker) — sem isso o e-mail transacional não sai (avisa no boot + toast). Backup off-site (R2/S3) opcional via secrets `S3_*` no GitHub (workflow já pula limpo sem eles).
 
 ## 10. Estilo de comunicação preferido
 
