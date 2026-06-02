@@ -1,5 +1,6 @@
 import { Module } from '@nestjs/common';
 import { EmailModule } from '@integrations/email/email.module';
+import { BackupController } from './backup.controller';
 import { BackupJob } from './backup.job';
 import { BackupService } from './backup.service';
 
@@ -11,6 +12,7 @@ import { BackupService } from './backup.service';
  */
 @Module({
   imports: [EmailModule],
+  controllers: [BackupController],
   providers: [BackupService, BackupJob],
   exports: [BackupService],
 })

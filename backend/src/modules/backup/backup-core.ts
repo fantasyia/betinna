@@ -169,6 +169,54 @@ async function applyRetention(): Promise<{ apagados: number }> {
   return { apagados: aRemover.length };
 }
 
+export interface UltimoBackupInfo {
+  /** caminho no storage (ex: 2026-06/betinna-...dump) */
+  path: string;
+  /** tamanho em bytes (0 se o storage não reportar) */
+  bytes: number;
+  /** data de criação (ISO) */
+  criadoEm: string;
+}
+
+/**
+ * Metadados do backup mais recente — SEM baixar o arquivo (só lista o storage).
+ * Usado pelo painel admin pra mostrar "último backup: <data> (<tamanho>)".
+ */
+export async function infoUltimoBackup(): Promise<UltimoBackupInfo | null> {
+  const supabase = getSupabase();
+  const { data: pastas } = await supabase.storage.from(BUCKET).list('', { limit: 1000 });
+  if (!pastas) return null;
+
+  let melhor: UltimoBackupInfo | null = null;
+  let melhorT = -1;
+  const considerar = (path: string, criadoEm?: string | null, size?: number): void => {
+    const t = criadoEm ? new Date(criadoEm).getTime() : 0;
+    if (t > melhorT) {
+      melhorT = t;
+      melhor = { path, bytes: size ?? 0, criadoEm: criadoEm ?? new Date(0).toISOString() };
+    }
+  };
+
+  for (const pasta of pastas) {
+    if (pasta.id !== null) {
+      considerar(pasta.name, pasta.created_at, (pasta.metadata as { size?: number } | null)?.size);
+      continue;
+    }
+    const { data: arquivos } = await supabase.storage.from(BUCKET).list(pasta.name, {
+      limit: 1000,
+      sortBy: { column: 'created_at', order: 'desc' },
+    });
+    for (const arq of arquivos ?? []) {
+      considerar(
+        `${pasta.name}/${arq.name}`,
+        arq.created_at,
+        (arq.metadata as { size?: number } | null)?.size,
+      );
+    }
+  }
+  return melhor;
+}
+
 /** Caminho de storage do backup mais recente (ou null se não houver). */
 async function ultimoBackupPath(): Promise<string | null> {
   const supabase = getSupabase();

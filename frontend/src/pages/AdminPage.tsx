@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { Link } from 'react-router-dom';
 import { api, ApiError } from '@/lib/api';
 import { useApiQuery } from '@/hooks/useApiQuery';
+import { useRole } from '@/hooks/usePermission';
 import { PageLayout } from '@/components/PageLayout';
 import { SistemaTabs } from '@/components/SistemaTabs';
 import { StateView } from '@/components/StateView';
@@ -75,6 +76,7 @@ export default function AdminPage() {
 
       <SystemStatus />
       <DbHealthSection />
+      <BackupSection />
       <AuditLogSection />
       <DeadLetterSection />
       <PermissoesGranularesSection />
@@ -492,6 +494,159 @@ function DbHealthSection() {
           </>
         )}
       </StateView>
+    </section>
+  );
+}
+
+// ─── Backup do banco ──────────────────────────────────────────────────
+
+interface BackupUltimo {
+  path: string;
+  bytes: number;
+  criadoEm: string;
+}
+
+interface BackupExecutarResp {
+  ok: boolean;
+  result?: { path: string; bytes: number; durationMs: number };
+  erro?: string;
+}
+
+interface BackupVerificarResp {
+  ok: boolean;
+  path: string;
+  modo: 'list' | 'restore';
+  objetos?: number;
+  erro?: string;
+}
+
+/** Formata bytes: <1MB em KB, senão MB com 2 casas. */
+function fmtBytes(bytes: number): string {
+  if (bytes < 1024 * 1024) return `${Math.round(bytes / 1024)} KB`;
+  return `${(bytes / 1048576).toFixed(2)} MB`;
+}
+
+/**
+ * Backup do banco inteiro — ADMIN-only (operação global, não filtra por empresa).
+ * A AdminPage já é restrita a `admin.panel`, mas como o backup cobre o banco
+ * todo, gateamos explicitamente em ADMIN aqui também.
+ */
+function BackupSection() {
+  const role = useRole();
+  const toast = useToast();
+  const { data, loading, error, refetch } = useApiQuery<BackupUltimo | null>('/backup/ultimo');
+  const [running, setRunning] = useState(false);
+  const [verifying, setVerifying] = useState(false);
+
+  // Backup é do banco inteiro → só ADMIN vê este card.
+  if (role !== 'ADMIN') return null;
+
+  async function runBackup() {
+    setRunning(true);
+    try {
+      // pg_dump pode passar dos 10s default conforme o banco cresce.
+      const res = await api.post<BackupExecutarResp>('/backup/executar', undefined, {
+        timeoutMs: 120_000,
+      });
+      if (res.ok && res.result) {
+        toast.success(
+          'Backup concluído',
+          `${fmtBytes(res.result.bytes)} em ${Math.round(res.result.durationMs / 1000)}s`,
+        );
+        refetch();
+      } else {
+        toast.error('Falha no backup', res.erro);
+      }
+    } catch (err) {
+      toast.error('Falha no backup', err instanceof ApiError ? err.message : undefined);
+    } finally {
+      setRunning(false);
+    }
+  }
+
+  async function verifyBackup() {
+    setVerifying(true);
+    try {
+      // pg_restore --list baixa e lê o dump inteiro — pode passar dos 10s default.
+      const res = await api.post<BackupVerificarResp>('/backup/verificar', undefined, {
+        timeoutMs: 120_000,
+      });
+      if (res.ok) {
+        toast.success('Backup íntegro', `${res.objetos ?? 0} objetos no dump`);
+      } else {
+        toast.error('Backup com problema', res.erro);
+      }
+    } catch (err) {
+      toast.error('Backup com problema', err instanceof ApiError ? err.message : undefined);
+    } finally {
+      setVerifying(false);
+    }
+  }
+
+  return (
+    <section style={{ ...card, marginBottom: '1rem' }} data-testid="backup-card">
+      <h2 style={{ marginTop: 0, fontSize: 16 }}>🗄️ Backup do banco</h2>
+      <p style={{ fontSize: 12, color: colors.muted, margin: '0 0 0.75rem 0', lineHeight: 1.5 }}>
+        O backup automático roda todo dia. Use os botões abaixo pra rodar um backup na hora
+        ou checar a integridade do último dump.
+      </p>
+
+      <StateView loading={loading && !data} error={error} onRetry={refetch}>
+        <div
+          style={{
+            padding: '0.75rem 1rem',
+            background: '#fafbfc',
+            border: `1px solid ${colors.border}`,
+            borderRadius: 6,
+            marginBottom: '0.75rem',
+          }}
+        >
+          <div
+            style={{
+              fontSize: 10,
+              color: colors.muted,
+              textTransform: 'uppercase',
+              letterSpacing: 0.3,
+              fontWeight: 600,
+            }}
+          >
+            Último backup
+          </div>
+          <div style={{ fontSize: 14, fontWeight: 600, color: colors.text, marginTop: 2 }}>
+            {data
+              ? `${new Date(data.criadoEm).toLocaleString('pt-BR', {
+                  dateStyle: 'short',
+                  timeStyle: 'short',
+                })} (${fmtBytes(data.bytes)})`
+              : 'Nenhum backup ainda'}
+          </div>
+        </div>
+      </StateView>
+
+      <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
+        <button
+          type="button"
+          data-testid="backup-run"
+          onClick={runBackup}
+          disabled={running}
+          style={{ ...btn, opacity: running ? 0.6 : 1, cursor: running ? 'wait' : 'pointer' }}
+        >
+          {running ? 'Rodando backup…' : 'Rodar backup agora'}
+        </button>
+        <button
+          type="button"
+          data-testid="backup-verify"
+          onClick={verifyBackup}
+          disabled={verifying}
+          style={{
+            ...btnSecondary,
+            opacity: verifying ? 0.6 : 1,
+            cursor: verifying ? 'wait' : 'pointer',
+          }}
+        >
+          {verifying ? 'Verificando…' : 'Verificar integridade'}
+        </button>
+      </div>
     </section>
   );
 }
