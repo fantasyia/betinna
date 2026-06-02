@@ -173,7 +173,7 @@ export class OmieAmostrasService {
           produtoSku: produto.sku,
           quantidade: amostra.quantidade,
           // valor de referência: usa o valor da amostra, ou cai no preço de tabela do produto
-          valorReferencia: amostra.valor > 0 ? amostra.valor : produto.precoTabela,
+          valorReferencia: amostra.valor > 0 ? amostra.valor : Number(produto.precoTabela),
           cfop,
         }),
       ],

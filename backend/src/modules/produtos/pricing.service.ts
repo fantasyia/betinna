@@ -51,8 +51,8 @@ export class PricingService {
     if (!produto) return null;
     return {
       produtoId: produto.id,
-      precoBase: produto.precoTabela,
-      precoFinal: produto.precoTabela,
+      precoBase: Number(produto.precoTabela),
+      precoFinal: Number(produto.precoTabela),
       descontoBase: 0,
       negociado: false,
       vigente: true,
@@ -93,8 +93,8 @@ export class PricingService {
       if (vigente) {
         return {
           produtoId: produto.id,
-          precoBase: produto.precoTabela,
-          precoFinal: this.applyDiscount(especial.precoEspecial, especial.descontoBase),
+          precoBase: Number(produto.precoTabela),
+          precoFinal: this.applyDiscount(Number(especial.precoEspecial), especial.descontoBase),
           descontoBase: especial.descontoBase,
           negociado: true,
           vigente: true,
@@ -103,8 +103,8 @@ export class PricingService {
       // Caiu fora da validade — devolve preço de tabela e marca não-vigente
       return {
         produtoId: produto.id,
-        precoBase: produto.precoTabela,
-        precoFinal: produto.precoTabela,
+        precoBase: Number(produto.precoTabela),
+        precoFinal: Number(produto.precoTabela),
         descontoBase: 0,
         negociado: true,
         vigente: false,
@@ -113,8 +113,8 @@ export class PricingService {
 
     return {
       produtoId: produto.id,
-      precoBase: produto.precoTabela,
-      precoFinal: produto.precoTabela,
+      precoBase: Number(produto.precoTabela),
+      precoFinal: Number(produto.precoTabela),
       descontoBase: 0,
       negociado: false,
       vigente: true,
@@ -166,8 +166,10 @@ export class PricingService {
         const vigente = !e.validoAte || e.validoAte >= now;
         result.set(p.id, {
           produtoId: p.id,
-          precoBase: p.precoTabela,
-          precoFinal: vigente ? this.applyDiscount(e.precoEspecial, e.descontoBase) : p.precoTabela,
+          precoBase: Number(p.precoTabela),
+          precoFinal: vigente
+            ? this.applyDiscount(Number(e.precoEspecial), e.descontoBase)
+            : Number(p.precoTabela),
           descontoBase: vigente ? e.descontoBase : 0,
           negociado: true,
           vigente,
@@ -175,8 +177,8 @@ export class PricingService {
       } else {
         result.set(p.id, {
           produtoId: p.id,
-          precoBase: p.precoTabela,
-          precoFinal: p.precoTabela,
+          precoBase: Number(p.precoTabela),
+          precoFinal: Number(p.precoTabela),
           descontoBase: 0,
           negociado: false,
           vigente: true,

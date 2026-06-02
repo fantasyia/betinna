@@ -1,3 +1,4 @@
+import { Prisma } from '@prisma/client';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { PricingService } from './pricing.service';
 
@@ -166,5 +167,63 @@ describe('PricingService (Sprint 2 — empresaId obrigatório)', () => {
         /empresaId obrigatório/,
       );
     });
+  });
+});
+
+describe('PricingService — dinheiro Prisma.Decimal (#17 Fase 4)', () => {
+  let prisma: ReturnType<typeof makePrismaMock>;
+  let service: PricingService;
+
+  beforeEach(() => {
+    prisma = makePrismaMock();
+    service = new PricingService(prisma as never);
+  });
+
+  it('priceFor converte precoTabela Decimal → number', async () => {
+    prisma.produto.findFirst.mockResolvedValue({
+      id: 'p1',
+      precoTabela: new Prisma.Decimal('100.50'),
+    });
+    const r = await service.priceFor(EMP, 'p1');
+    expect(r?.precoBase).toBe(100.5);
+    expect(r?.precoFinal).toBe(100.5);
+    expect(typeof r?.precoFinal).toBe('number');
+  });
+
+  it('priceForClient aplica desconto sobre precoEspecial Decimal (10% de 40 = 36)', async () => {
+    prisma.produto.findFirst.mockResolvedValue({
+      id: 'p1',
+      precoTabela: new Prisma.Decimal('50'),
+    });
+    prisma.clientePrecoEspecial.findFirst.mockResolvedValue({
+      precoEspecial: new Prisma.Decimal('40'),
+      descontoBase: 10,
+      validoAte: null,
+    });
+    const r = await service.priceForClient(EMP, 'c1', 'p1');
+    expect(r?.precoFinal).toBe(36);
+    expect(typeof r?.precoFinal).toBe('number');
+  });
+
+  it('priceForClientBatch converte Decimal em ramo negociado e em tabela', async () => {
+    prisma.produto.findMany.mockResolvedValue([
+      { id: 'p1', precoTabela: new Prisma.Decimal('100') },
+      { id: 'p2', precoTabela: new Prisma.Decimal('50') },
+    ]);
+    prisma.clientePrecoEspecial.findMany.mockResolvedValue([
+      {
+        produtoId: 'p1',
+        precoEspecial: new Prisma.Decimal('80'),
+        descontoBase: 5,
+        validoAte: null,
+      },
+    ]);
+    const r = await service.priceForClientBatch(EMP, 'c1', ['p1', 'p2']);
+    // p1: 80 com 5% = 76
+    expect(r.get('p1')?.precoFinal).toBe(76);
+    expect(typeof r.get('p1')?.precoFinal).toBe('number');
+    // p2: cai na tabela 50
+    expect(r.get('p2')?.precoBase).toBe(50);
+    expect(typeof r.get('p2')?.precoBase).toBe('number');
   });
 });

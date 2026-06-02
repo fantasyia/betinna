@@ -99,7 +99,15 @@ export class CatalogoService {
       },
       orderBy: { produto: { nome: 'asc' } },
     });
-    return items as CatalogoItem[];
+    // Converte dinheiro Decimal→number na fronteira (interface CatalogoItem usa number).
+    return items.map((it) => ({
+      ...it,
+      produto: {
+        ...it.produto,
+        precoTabela: Number(it.produto.precoTabela),
+        precoFabrica: Number(it.produto.precoFabrica),
+      },
+    }));
   }
 
   async upsertItem(user: AuthenticatedUser, dto: UpsertCatalogoItemDto): Promise<CatalogoItem> {
@@ -130,7 +138,15 @@ export class CatalogoService {
         },
       },
     });
-    return item as CatalogoItem;
+    // Converte dinheiro Decimal→number na fronteira (interface CatalogoItem usa number).
+    return {
+      ...item,
+      produto: {
+        ...item.produto,
+        precoTabela: Number(item.produto.precoTabela),
+        precoFabrica: Number(item.produto.precoFabrica),
+      },
+    };
   }
 
   async bulkUpsert(
@@ -202,7 +218,7 @@ export class CatalogoService {
     const catalog = await this.listMyCatalog(user);
     if (catalog.length === 0) return [];
     return catalog.map((c) => {
-      const baseTrade = c.produto.precoTabela;
+      const baseTrade = Number(c.produto.precoTabela);
       const precoFinal = Math.round(baseTrade * (1 + c.markup / 100) * 100) / 100;
       return {
         ...c,
@@ -234,7 +250,7 @@ export class CatalogoService {
 
     return catalog.map((c) => {
       const resolved = priceMap.get(c.produtoId);
-      const baseTrade = resolved?.precoFinal ?? c.produto.precoTabela;
+      const baseTrade = resolved?.precoFinal ?? Number(c.produto.precoTabela);
       const precoFinal = Math.round(baseTrade * (1 + c.markup / 100) * 100) / 100;
       return {
         ...c,

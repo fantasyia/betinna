@@ -821,7 +821,7 @@ export class PedidosService {
       const preco =
         i.precoUnitarioOverride ??
         resolved?.precoFinal ??
-        produtosMap.get(i.produtoId)!.precoTabela;
+        Number(produtosMap.get(i.produtoId)!.precoTabela);
       return { quantidade: i.quantidade, precoUnitario: preco, desconto: i.desconto };
     });
 

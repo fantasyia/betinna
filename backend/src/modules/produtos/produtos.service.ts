@@ -109,8 +109,8 @@ export class ProdutosService {
   ): Promise<ProdutoWithRel> {
     const existing = await this.findById(user, id);
 
-    const precoTabela = dto.precoTabela ?? existing.precoTabela;
-    const precoFabrica = dto.precoFabrica ?? existing.precoFabrica;
+    const precoTabela = dto.precoTabela ?? Number(existing.precoTabela);
+    const precoFabrica = dto.precoFabrica ?? Number(existing.precoFabrica);
     if (precoFabrica > precoTabela) {
       throw new BusinessRuleException('Preço de fábrica não pode ser maior que preço de tabela');
     }

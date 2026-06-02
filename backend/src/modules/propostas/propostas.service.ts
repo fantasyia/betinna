@@ -349,7 +349,7 @@ export class PropostasService {
     return itens.map((i) => {
       const p = map.get(i.produtoId)!;
       const resolved = priceMap.get(i.produtoId);
-      const preco = i.precoUnitarioOverride ?? resolved?.precoFinal ?? p.precoTabela;
+      const preco = i.precoUnitarioOverride ?? resolved?.precoFinal ?? Number(p.precoTabela);
       const t = this.pedidoPricing.itemTotal({
         quantidade: i.quantidade,
         precoUnitario: preco,

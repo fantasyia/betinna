@@ -511,8 +511,8 @@ model Produto {
   linha               String? // Alimentos, Químicos, Bebidas, Embalagens
   categoria           String?
   unidade             String? // cx 12un, 1kg, etc
-  precoTabela         Float
-  precoFabrica        Float
+  precoTabela         Decimal   @db.Decimal(14, 2)
+  precoFabrica        Decimal   @db.Decimal(14, 2)
   imagem              String? // emoji ou URL
   popularidade        Int       @default(0)
   estoque             Int       @default(0)
@@ -545,7 +545,7 @@ model ClientePrecoEspecial {
   id            String    @id @default(cuid())
   clienteId     String
   produtoId     String
-  precoEspecial Float
+  precoEspecial Decimal   @db.Decimal(14, 2)
   descontoBase  Float     @default(0) // %
   validoAte     DateTime?
 

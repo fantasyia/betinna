@@ -121,7 +121,7 @@ export class ProdutoSearchService {
     const scored: ProdutoRelevante[] = [];
     for (const p of produtos) {
       const { score, matches } = this.scoreProduto(p, tokens);
-      if (score > 0) scored.push({ ...p, score, matches });
+      if (score > 0) scored.push({ ...p, precoTabela: Number(p.precoTabela), score, matches });
     }
     scored.sort((a, b) => b.score - a.score);
     return scored.slice(0, limit);
