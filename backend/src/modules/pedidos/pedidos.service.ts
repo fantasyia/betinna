@@ -308,9 +308,11 @@ export class PedidosService {
       : existing.itens.map((i) => ({
           produtoId: i.produtoId,
           quantidade: i.quantidade,
-          precoUnitario: i.precoUnitario,
+          // #17 — itens do pedido vêm Decimal; converte pra number (entra no
+          // recálculo de totais; o write de volta coage number→Decimal).
+          precoUnitario: Number(i.precoUnitario),
           desconto: i.desconto,
-          total: i.total,
+          total: Number(i.total),
           negociado: i.negociado,
         }));
 
@@ -467,7 +469,9 @@ export class PedidosService {
     if (proximo === 'ENTREGUE') {
       void this.bus.disparar(pedido.empresaId, 'PEDIDO_ENTREGUE', {
         pedidoId: pedido.id,
-        pedido: { id: pedido.id, numero: pedido.numero, total: pedido.total },
+        // #17 — total agora é Decimal; converte pra number no payload do fluxo
+        // (preserva o JSON como número, não string, pra interpolação/consumo).
+        pedido: { id: pedido.id, numero: pedido.numero, total: Number(pedido.total) },
         clienteId: pedido.clienteId,
         cliente: { id: pedido.cliente.id, nome: pedido.cliente.nome },
         representanteId: pedido.representanteId,

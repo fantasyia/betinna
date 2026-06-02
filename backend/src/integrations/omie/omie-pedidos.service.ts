@@ -137,7 +137,7 @@ export class OmiePedidosService {
           produtoCodigoOmie: item.produto.codigoOmie,
           produtoSku: item.produto.sku,
           quantidade: item.quantidade,
-          precoUnitario: item.precoUnitario,
+          precoUnitario: Number(item.precoUnitario), // #17 — Decimal→number pro payload OMIE
           desconto: item.desconto,
         }),
       ),

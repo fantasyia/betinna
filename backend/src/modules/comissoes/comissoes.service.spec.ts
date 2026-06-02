@@ -168,6 +168,48 @@ describe('ComissoesService', () => {
       // 2 findMany (repsConfig + reps) — não há gerente pra buscar
       expect(prisma.usuario.findMany).toHaveBeenCalledTimes(2);
     });
+
+    it('soma _sum do Pedido como Prisma.Decimal sem virar string — #17 Fase 2', async () => {
+      // Pós-migração, Pedido.total/comissao são Decimal — o aggregate _sum vem Decimal.
+      // Prova que totalVendasAgg/totalComissaoAgg somam de verdade (não concatenam).
+      prisma.pedido.groupBy.mockResolvedValue([
+        {
+          representanteId: 'rep-1',
+          _sum: { total: new Prisma.Decimal('10000.50'), comissao: new Prisma.Decimal('500.25') },
+          _count: { _all: 4 },
+        },
+        {
+          representanteId: 'rep-2',
+          _sum: { total: new Prisma.Decimal('20000.50'), comissao: new Prisma.Decimal('1000.75') },
+          _count: { _all: 6 },
+        },
+      ]);
+      prisma.usuario.findMany
+        .mockResolvedValueOnce([
+          { id: 'rep-1', comissaoPadrao: 5 },
+          { id: 'rep-2', comissaoPadrao: 5 },
+        ])
+        .mockResolvedValueOnce([
+          { id: 'rep-1', gerenteId: null },
+          { id: 'rep-2', gerenteId: null },
+        ]);
+
+      const out = await svc.fecharMes(fakeUser(), { mes: 4, ano: 2026, reprocessar: false });
+
+      // 10000.50 + 20000.50 = 30001 (número, não "10000.520000.5")
+      expect(out.totalVendas).toBe(30_001);
+      expect(out.totalComissao).toBe(1_501);
+      expect(typeof out.totalVendas).toBe('number');
+
+      // O write da Comissao recebe number (Prisma coage pra Decimal na gravação).
+      const upsertRep1 = prisma.comissao.upsert.mock.calls.find(
+        (c: unknown[]) =>
+          (c[0] as { create?: { representanteId?: string } }).create?.representanteId === 'rep-1',
+      );
+      expect((upsertRep1?.[0] as { create: { totalVendas: unknown } }).create.totalVendas).toBe(
+        10_000.5,
+      );
+    });
   });
 
   describe('resumoDoRep', () => {

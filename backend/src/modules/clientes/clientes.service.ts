@@ -194,11 +194,12 @@ export class ClientesService {
     ]);
 
     return {
-      totalVendido: agg._sum.total ?? 0,
-      ticketMedio: agg._avg.total ?? 0,
+      // #17 — agregados de dinheiro vêm Decimal; converte pra number na resposta.
+      totalVendido: Number(agg._sum.total ?? 0),
+      ticketMedio: Number(agg._avg.total ?? 0),
       pedidosCount: agg._count._all,
       ultimoPedidoEm: ultimo?.criadoEm ?? null,
-      vendidoNoMes: mesAgg._sum.total ?? 0,
+      vendidoNoMes: Number(mesAgg._sum.total ?? 0),
       pedidosNoMes: mesAgg._count._all,
     };
   }

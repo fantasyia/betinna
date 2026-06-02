@@ -185,8 +185,10 @@ export class ComissoesService {
           (row): row is typeof row & { representanteId: string } => row.representanteId !== null,
         )
         .map((row) => {
-          const totalVendas = row._sum.total ?? 0;
-          const totalComissao = row._sum.comissao ?? 0;
+          // #17 — _sum do Pedido vem Decimal; converte pra number (entra em soma JS
+          // e nos writes da Comissao — number→Decimal é coagido pelo Prisma).
+          const totalVendas = Number(row._sum.total ?? 0);
+          const totalComissao = Number(row._sum.comissao ?? 0);
           totalVendasAgg += totalVendas;
           totalComissaoAgg += totalComissao;
           const pctRep = pctPorRep.get(row.representanteId) ?? null;
@@ -235,7 +237,8 @@ export class ComissoesService {
     const vendasPorRep = new Map<string, number>();
     for (const row of aggregated) {
       if (row.representanteId) {
-        vendasPorRep.set(row.representanteId, row._sum.total ?? 0);
+        // #17 — _sum.total do Pedido vem Decimal; converte pra number.
+        vendasPorRep.set(row.representanteId, Number(row._sum.total ?? 0));
       }
     }
     const vendasPorGerente = new Map<string, number>();
