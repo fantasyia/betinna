@@ -22,6 +22,7 @@ import {
 } from 'lucide-react';
 import { useApiQuery } from '@/hooks/useApiQuery';
 import { useRole, usePermission } from '@/hooks/usePermission';
+import { PrimeirosPassosRep } from '@/components/PrimeirosPassosRep';
 import {
   useDashboardPrefs,
   DASHBOARD_MODULOS,
@@ -143,6 +144,7 @@ export default function DashboardPage() {
         ) : undefined
       }
     >
+      <PrimeirosPassosRep />
       {canSeeRelatorios ? (
         <StateView loading={loading} error={error} onRetry={refetch}>
           {data &&

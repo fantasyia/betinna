@@ -178,13 +178,13 @@ const STEPS_REP: Step[] = [
   {
     icon: '📱',
     title: 'WhatsApp pessoal',
-    body: 'Em /usuario/integracoes/whatsapp pareie seu número. Suas conversas aparecem em /inbox — só você vê (REP não acessa marketplaces da empresa).',
-    route: '/usuario/integracoes',
+    body: 'Em Minhas integrações pareie seu número. Suas conversas aparecem em /inbox — só você vê (REP não acessa marketplaces da empresa).',
+    route: '/minhas-integracoes',
   },
   {
     icon: '🤖',
     title: 'MullerBot',
-    body: 'Em /mullerbot pergunte sobre produtos da empresa (ex: "que produto serve pra bolo?"). Precisa configurar sua chave OpenAI antes em /usuario/integracoes.',
+    body: 'Em /mullerbot pergunte sobre produtos da empresa (ex: "que produto serve pra bolo?"). Precisa configurar sua chave OpenAI antes em Minhas integrações.',
     route: '/mullerbot',
   },
   {
