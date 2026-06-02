@@ -1,5 +1,5 @@
 import { describe, expect, it, vi, beforeEach } from 'vitest';
-import type { UserRole } from '@prisma/client';
+import { Prisma, type UserRole } from '@prisma/client';
 import {
   BusinessRuleException,
   ForbiddenException,
@@ -34,7 +34,7 @@ const makePrismaMock = () => {
     pedido: {
       create: vi.fn(),
     } satisfies MockModel,
-    cliente: { findFirst: vi.fn() } satisfies MockModel,
+    cliente: { findFirst: vi.fn(), findUnique: vi.fn() } satisfies MockModel,
     produto: { findMany: vi.fn() } satisfies MockModel,
     empresa: {
       findUnique: vi.fn(async () => ({ descontoPixPct: 0, descontoBoletoAvistaPct: 0 })),
@@ -114,6 +114,7 @@ describe('PropostasService', () => {
   let pricing: ReturnType<typeof makePricing>;
   let pedidoPricing: ReturnType<typeof makePedidoPricing>;
   let sequence: ReturnType<typeof makeSequence>;
+  let exportSvc: { gerarPdf: ReturnType<typeof vi.fn>; gerarExcel: ReturnType<typeof vi.fn> };
   let service: PropostasService;
 
   beforeEach(() => {
@@ -122,6 +123,8 @@ describe('PropostasService', () => {
     pricing = makePricing();
     pedidoPricing = makePedidoPricing();
     sequence = makeSequence();
+    // C2 — export service (mock); exposto pra inspeção do `data` normalizado.
+    exportSvc = { gerarPdf: vi.fn(async () => Buffer.from('pdf')), gerarExcel: vi.fn() };
     service = new PropostasService(
       prisma as never,
       pricing as never,
@@ -129,7 +132,7 @@ describe('PropostasService', () => {
       repScope as never,
       sequence as never,
       // C2 — export service + resend (mocks; não exercitados nestes specs)
-      { gerarPdf: vi.fn(), gerarExcel: vi.fn() } as never,
+      exportSvc as never,
       { isConfigured: vi.fn(() => false), enviar: vi.fn() } as never,
       // C3 — aceite service (mock; não exercitado nestes specs)
       { gerarLink: vi.fn(), resolverPreview: vi.fn(), registrarDecisao: vi.fn() } as never,
@@ -528,6 +531,62 @@ describe('PropostasService', () => {
           data: expect.objectContaining({ pedidoId: 'ped-123' }),
         }),
       );
+    });
+  });
+
+  // -------------------------------------------------------------------------
+  // #17 Fase 3 — dinheiro Decimal lido/somado como number (não string)
+  // -------------------------------------------------------------------------
+
+  describe('exportarPdf — Prisma.Decimal', () => {
+    it('lê dinheiro Decimal e normaliza pra number somável (não concatena) — #17', async () => {
+      // Pós-migração, Proposta/PropostaItem.dinheiro são Decimal — findFirst devolve Decimal.
+      // dadosParaExport precisa converter pra number (DTO do export é number), provando que
+      // os valores entram em aritmética de verdade e não viram string concatenada.
+      const prop = fakeProposta({
+        status: 'ENVIADA',
+        subtotal: new Prisma.Decimal('10000.50'),
+        valor: new Prisma.Decimal('9500.25'),
+        comissaoEstimada: new Prisma.Decimal('475.01'),
+        itens: [
+          {
+            produtoNome: 'Produto A',
+            quantidade: 2,
+            precoUnitario: new Prisma.Decimal('5000.25'),
+            desconto: 0,
+            total: new Prisma.Decimal('10000.50'),
+          },
+          {
+            produtoNome: 'Produto B',
+            quantidade: 1,
+            precoUnitario: new Prisma.Decimal('2000.50'),
+            desconto: 0,
+            total: new Prisma.Decimal('2000.50'),
+          },
+        ],
+      });
+      prisma.proposta.findFirst.mockResolvedValue(prop);
+      prisma.cliente.findUnique.mockResolvedValue({ nome: 'Cliente X', cnpj: null, email: null });
+      prisma.empresa.findUnique.mockResolvedValue({ nome: 'Empresa Y', cnpj: null });
+
+      await service.exportarPdf(fakeUser(), 'prop-1');
+
+      const data = exportSvc.gerarPdf.mock.calls[0][0] as {
+        subtotal: number;
+        valor: number;
+        itens: Array<{ precoUnitario: number; total: number }>;
+      };
+
+      // Campos do cabeçalho viraram number (não Decimal/string).
+      expect(typeof data.subtotal).toBe('number');
+      expect(data.subtotal).toBe(10_000.5);
+      expect(data.valor).toBe(9_500.25);
+
+      // Soma JS dos totais dos itens: 10000.50 + 2000.50 = 12001 (número, não "10000.52000.5").
+      const somaItens = data.itens.reduce((s, i) => s + i.total, 0);
+      expect(somaItens).toBe(12_001);
+      expect(typeof data.itens[0].precoUnitario).toBe('number');
+      expect(data.itens[0].precoUnitario).toBe(5_000.25);
     });
   });
 });

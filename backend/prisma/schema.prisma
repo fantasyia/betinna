@@ -708,10 +708,11 @@ model Proposta {
   condicaoPagamento String?
   prazoEntrega      DateTime?
 
-  subtotal         Float @default(0)
-  descontoGeral    Float @default(0)
-  valor            Float @default(0)
-  comissaoEstimada Float @default(0)
+  // #17 — dinheiro em Decimal (precisão de centavos). descontoGeral (%) segue Float.
+  subtotal         Decimal @default(0) @db.Decimal(14, 2)
+  descontoGeral    Float   @default(0) // %
+  valor            Decimal @default(0) @db.Decimal(14, 2)
+  comissaoEstimada Decimal @default(0) @db.Decimal(14, 2)
 
   observacoes String? @db.Text
   pdfUrl      String?
@@ -756,9 +757,10 @@ model PropostaItem {
   produtoId     String
   produtoNome   String // snapshot pra não quebrar se produto for desativado
   quantidade    Int
-  precoUnitario Float
-  desconto      Float   @default(0)
-  total         Float
+  // #17 — dinheiro em Decimal (precisão de centavos). desconto (%) segue Float.
+  precoUnitario Decimal @db.Decimal(14, 2)
+  desconto      Float   @default(0) // %
+  total         Decimal @db.Decimal(14, 2)
   negociado     Boolean @default(false)
 
   proposta Proposta @relation(fields: [propostaId], references: [id], onDelete: Cascade)

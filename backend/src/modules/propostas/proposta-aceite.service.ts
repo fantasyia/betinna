@@ -157,17 +157,18 @@ export class PropostaAceiteService {
       validoAte: proposta.validoAte,
       formaPagamento: proposta.formaPagamento,
       condicaoPagamento: proposta.condicaoPagamento,
-      subtotal: proposta.subtotal,
-      descontoGeral: proposta.descontoGeral,
-      valor: proposta.valor,
+      // #17 — dinheiro vem Decimal; converte pra number no preview público (DTO number).
+      subtotal: Number(proposta.subtotal),
+      descontoGeral: proposta.descontoGeral, // %
+      valor: Number(proposta.valor),
       observacoes: proposta.observacoes,
       jaRespondida,
       itens: proposta.itens.map((i) => ({
         produtoNome: i.produtoNome,
         quantidade: i.quantidade,
-        precoUnitario: i.precoUnitario,
-        desconto: i.desconto,
-        total: i.total,
+        precoUnitario: Number(i.precoUnitario), // #17 — Decimal→number
+        desconto: i.desconto, // %
+        total: Number(i.total), // #17 — Decimal→number
       })),
     };
   }
