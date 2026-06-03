@@ -76,6 +76,23 @@ export class BotPromptsController {
     return this.prompts.definirPadrao(user, id);
   }
 
+  @Get(':id/versoes')
+  @ApiOperation({ summary: 'Histórico de versões do prompt (rollback)' })
+  versoes(@CurrentUser() user: AuthenticatedUser, @Param('id') id: string) {
+    return this.prompts.listarVersoes(user, id);
+  }
+
+  @Post(':id/rollback/:versao')
+  @Audit({ action: 'rollback', resource: 'bot_prompt', resourceIdFrom: 'params.id' })
+  @ApiOperation({ summary: 'Restaura uma versão antiga do prompt' })
+  rollback(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param('id') id: string,
+    @Param('versao') versao: string,
+  ) {
+    return this.prompts.rollback(user, id, Number(versao));
+  }
+
   @Delete(':id')
   @HttpCode(HttpStatus.NO_CONTENT)
   @Audit({ action: 'delete', resource: 'bot_prompt', resourceIdFrom: 'params.id' })

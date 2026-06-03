@@ -1,5 +1,5 @@
 import { Injectable, Logger } from '@nestjs/common';
-import { Prisma, type BotPrompt } from '@prisma/client';
+import { Prisma, type BotPrompt, type BotPromptVersao } from '@prisma/client';
 import { PrismaService } from '@database/prisma.service';
 import { BusinessRuleException, NotFoundException } from '@shared/errors/app-exception';
 import { empresaFilter, getCallerEmpresaId } from '@shared/utils/auth-context';
@@ -57,6 +57,11 @@ export class BotPromptsService {
 
   async update(user: AuthenticatedUser, id: string, dto: UpdateBotPromptDto): Promise<BotPrompt> {
     const existing = await this.findById(user, id);
+    // Versiona só quando o CONTEÚDO muda (texto/modelo/temperatura) — spec §7.
+    const conteudoMudou =
+      (dto.texto !== undefined && dto.texto !== existing.texto) ||
+      (dto.modelo !== undefined && dto.modelo !== existing.modelo) ||
+      (dto.temperatura !== undefined && dto.temperatura !== existing.temperatura);
     try {
       return await this.prisma.$transaction(async (tx) => {
         if (dto.isPadrao) {
@@ -65,12 +70,68 @@ export class BotPromptsService {
             data: { isPadrao: false },
           });
         }
-        await tx.botPrompt.update({ where: { id }, data: dto });
+        if (conteudoMudou) {
+          // Snapshot da versão ATUAL antes de sobrescrever (histórico/rollback).
+          await tx.botPromptVersao.create({
+            data: {
+              promptId: id,
+              versao: existing.versao,
+              nome: existing.nome,
+              texto: existing.texto,
+              modelo: existing.modelo,
+              temperatura: existing.temperatura,
+            },
+          });
+        }
+        await tx.botPrompt.update({
+          where: { id },
+          data: { ...dto, ...(conteudoMudou ? { versao: existing.versao + 1 } : {}) },
+        });
         return tx.botPrompt.findUniqueOrThrow({ where: { id } });
       });
     } catch (err) {
       return this.rethrowUnique(err, dto.nome);
     }
+  }
+
+  /** Histórico de versões de um prompt (mais recente primeiro). */
+  async listarVersoes(user: AuthenticatedUser, id: string): Promise<BotPromptVersao[]> {
+    await this.findById(user, id); // valida tenant
+    return this.prisma.botPromptVersao.findMany({
+      where: { promptId: id },
+      orderBy: { versao: 'desc' },
+    });
+  }
+
+  /** Restaura uma versão antiga (snapshota a atual antes de voltar). */
+  async rollback(user: AuthenticatedUser, id: string, versao: number): Promise<BotPrompt> {
+    const existing = await this.findById(user, id);
+    const snap = await this.prisma.botPromptVersao.findUnique({
+      where: { promptId_versao: { promptId: id, versao } },
+    });
+    if (!snap) throw new NotFoundException('Versão do prompt', String(versao));
+    return this.prisma.$transaction(async (tx) => {
+      await tx.botPromptVersao.create({
+        data: {
+          promptId: id,
+          versao: existing.versao,
+          nome: existing.nome,
+          texto: existing.texto,
+          modelo: existing.modelo,
+          temperatura: existing.temperatura,
+        },
+      });
+      await tx.botPrompt.update({
+        where: { id },
+        data: {
+          texto: snap.texto,
+          modelo: snap.modelo,
+          temperatura: snap.temperatura,
+          versao: existing.versao + 1,
+        },
+      });
+      return tx.botPrompt.findUniqueOrThrow({ where: { id } });
+    });
   }
 
   /** Marca este prompt como o padrão da empresa (desmarcando o anterior). */
