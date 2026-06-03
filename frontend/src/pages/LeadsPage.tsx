@@ -28,6 +28,8 @@ import {
   CalendarPlus,
   Building2,
   Upload,
+  X,
+  Tag as TagIcon,
 } from 'lucide-react';
 import { api, ApiError } from '@/lib/api';
 import { useApiQuery } from '@/hooks/useApiQuery';
@@ -101,8 +103,13 @@ interface Lead {
     tipo: FunilEtapaTipo;
     probabilidade: number;
   } | null;
+  tags?: LeadTagRef[];
   criadoEm: string;
   etapaDesde?: string;
+}
+
+interface LeadTagRef {
+  tag: { id: string; nome: string; cor: string; categoria?: string | null };
 }
 
 type FunilEtapaTipo = 'ATIVA' | 'GANHO' | 'PERDIDO';
@@ -191,6 +198,39 @@ function fmtBRLCompact(v: number) {
   if (v >= 1_000_000) return `R$ ${(v / 1_000_000).toFixed(1)}M`;
   if (v >= 1_000) return `R$ ${(v / 1_000).toFixed(1)}k`;
   return fmtBRL(v);
+}
+
+/** Chip de tag colorido (fundo translúcido na cor da tag). */
+function TagChip({
+  nome,
+  cor,
+  onRemove,
+}: {
+  nome: string;
+  cor: string;
+  onRemove?: () => void;
+}) {
+  return (
+    <span
+      className="inline-flex items-center gap-1 text-[10px] font-medium px-1.5 py-0.5 rounded-full leading-none"
+      style={{ background: `${cor}1f`, color: cor, border: `1px solid ${cor}40` }}
+    >
+      <span className="truncate max-w-[120px]">{nome}</span>
+      {onRemove && (
+        <button
+          type="button"
+          aria-label={`Remover tag ${nome}`}
+          onClick={(e) => {
+            e.stopPropagation();
+            onRemove();
+          }}
+          className="hover:opacity-70"
+        >
+          <X className="h-2.5 w-2.5" />
+        </button>
+      )}
+    </span>
+  );
 }
 
 // ─── Page principal ────────────────────────────────────────────────
@@ -478,6 +518,7 @@ export default function LeadsPage() {
             setSelected(null);
             refetch();
           }}
+          onMutated={refetch}
         />
       )}
 
@@ -677,6 +718,17 @@ function LeadCardInner({
         )}
       </div>
 
+      {lead.tags && lead.tags.length > 0 && (
+        <div className="flex flex-wrap gap-1 mb-1.5">
+          {lead.tags.slice(0, 4).map((t) => (
+            <TagChip key={t.tag.id} nome={t.tag.nome} cor={t.tag.cor} />
+          ))}
+          {lead.tags.length > 4 && (
+            <span className="text-[10px] text-muted-light">+{lead.tags.length - 4}</span>
+          )}
+        </div>
+      )}
+
       <div className="flex items-center justify-between">
         <span className="text-sm font-semibold text-text tabular tracking-tight">
           {fmtBRLCompact(lead.valorEstimado)}
@@ -706,11 +758,14 @@ function LeadDetailDrawer({
   etapas,
   onClose,
   onChanged,
+  onMutated,
 }: {
   lead: Lead;
   etapas: FunilEtapaLite[];
   onClose: () => void;
   onChanged: () => void;
+  /** Refaz a busca do board SEM fechar o drawer (ex: editar tags). */
+  onMutated: () => void;
 }) {
   const toast = useToast();
   const navigate = useNavigate();
@@ -971,6 +1026,9 @@ function LeadDetailDrawer({
           )}
         </section>
 
+        {/* Tags (orquestração) */}
+        <LeadTagsSection lead={lead} onMutated={onMutated} />
+
         {/* F2 — Próxima ação + observações (registrar contato/nota) */}
         <section>
           <h4 className="text-[10px] font-semibold uppercase tracking-wider text-muted mb-2">
@@ -1063,6 +1121,95 @@ function InfoCell({
       </div>
       <div className="text-sm text-text truncate">{children}</div>
     </div>
+  );
+}
+
+// ─── Tags do lead (orquestração) ───────────────────────────────
+
+interface TagOpt {
+  id: string;
+  nome: string;
+  cor: string;
+  categoria?: string | null;
+}
+
+function LeadTagsSection({ lead, onMutated }: { lead: Lead; onMutated: () => void }) {
+  const toast = useToast();
+  const { data: todasTags } = useApiQuery<TagOpt[]>('/tags');
+  const [tags, setTags] = useState<LeadTagRef[]>(lead.tags ?? []);
+  const [busy, setBusy] = useState(false);
+
+  const aplicadasIds = new Set(tags.map((t) => t.tag.id));
+  const disponiveis = (todasTags ?? []).filter((t) => !aplicadasIds.has(t.id));
+
+  async function add(tagId: string) {
+    if (!tagId) return;
+    setBusy(true);
+    try {
+      const r = await api.post<Lead>(`/leads/${lead.id}/tags`, { tagId });
+      setTags(r.tags ?? []);
+      onMutated();
+    } catch (err) {
+      toast.error('Falha ao aplicar tag', err instanceof ApiError ? err.message : undefined);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function remove(tagId: string) {
+    setBusy(true);
+    try {
+      const r = await api.delete<Lead>(`/leads/${lead.id}/tags/${tagId}`);
+      setTags(r.tags ?? []);
+      onMutated();
+    } catch (err) {
+      toast.error('Falha ao remover tag', err instanceof ApiError ? err.message : undefined);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <section>
+      <h4 className="text-[10px] font-semibold uppercase tracking-wider text-muted mb-2 flex items-center gap-1.5">
+        <TagIcon className="h-3 w-3" /> Tags
+      </h4>
+      {tags.length > 0 ? (
+        <div className="flex flex-wrap gap-1.5 mb-2">
+          {tags.map((t) => (
+            <TagChip
+              key={t.tag.id}
+              nome={t.tag.nome}
+              cor={t.tag.cor}
+              onRemove={() => void remove(t.tag.id)}
+            />
+          ))}
+        </div>
+      ) : (
+        <p className="text-[11px] text-muted-light mb-2">Nenhuma tag aplicada.</p>
+      )}
+      <Select
+        data-testid="lead-tag-add"
+        value=""
+        disabled={busy || disponiveis.length === 0}
+        onChange={(e) => void add(e.target.value)}
+      >
+        <option value="">
+          {disponiveis.length === 0 ? 'Sem tags disponíveis' : 'Adicionar tag…'}
+        </option>
+        {disponiveis.map((t) => (
+          <option key={t.id} value={t.id}>
+            {t.nome}
+          </option>
+        ))}
+      </Select>
+      <Link
+        to="/tags"
+        className="text-[11px] text-primary hover:underline mt-1.5 inline-block"
+      >
+        Gerenciar tags →
+      </Link>
+    </section>
   );
 }
 

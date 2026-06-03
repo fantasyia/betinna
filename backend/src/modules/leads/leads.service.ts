@@ -27,6 +27,10 @@ const leadInclude = {
   funilEtapa: {
     select: { id: true, nome: true, cor: true, ordem: true, tipo: true, probabilidade: true },
   },
+  tags: {
+    include: { tag: { select: { id: true, nome: true, cor: true, categoria: true } } },
+    orderBy: { criadoEm: 'asc' as const },
+  },
 } satisfies Prisma.LeadInclude;
 
 type LeadWithRel = Prisma.LeadGetPayload<{ include: typeof leadInclude }>;
@@ -470,6 +474,60 @@ export class LeadsService {
       data: { representanteId: dto.representanteId },
     });
     return this.prisma.lead.findUniqueOrThrow({ where: { id }, include: leadInclude });
+  }
+
+  // ─── Tags do lead (orquestração Fase B) ──────────────────────────
+
+  /** Aplica uma tag existente (por id) ao lead. Idempotente. */
+  async adicionarTag(
+    user: AuthenticatedUser,
+    leadId: string,
+    tagId: string,
+    origem: 'usuario' | 'ia' = 'usuario',
+  ): Promise<LeadWithRel> {
+    const empresaId = this.requireEmpresa(user);
+    await this.findById(user, leadId); // valida tenant + escopo do rep
+    const tag = await this.prisma.tag.findFirst({
+      where: { id: tagId, empresaId },
+      select: { id: true },
+    });
+    if (!tag) throw new NotFoundException('Tag', tagId);
+    await this.prisma.leadTag.upsert({
+      where: { leadId_tagId: { leadId, tagId } },
+      create: { leadId, tagId, origem },
+      update: {},
+    });
+    return this.findById(user, leadId);
+  }
+
+  /** Remove uma tag do lead. */
+  async removerTag(user: AuthenticatedUser, leadId: string, tagId: string): Promise<LeadWithRel> {
+    await this.findById(user, leadId);
+    await this.prisma.leadTag.deleteMany({ where: { leadId, tagId } });
+    return this.findById(user, leadId);
+  }
+
+  /**
+   * Aplica tag por NOME (cria a tag se não existir) — usado por fluxos/IA
+   * (nó "Conversar com IA" classifica → grava tag de mesmo nome). Tenant-scoped.
+   * Não passa por escopo de rep (chamado pelo motor, não por usuário).
+   */
+  async aplicarTagPorNome(
+    empresaId: string,
+    leadId: string,
+    nome: string,
+    origem: 'usuario' | 'ia' = 'ia',
+  ): Promise<void> {
+    const tag = await this.prisma.tag.upsert({
+      where: { empresaId_nome: { empresaId, nome } },
+      create: { empresaId, nome },
+      update: {},
+    });
+    await this.prisma.leadTag.upsert({
+      where: { leadId_tagId: { leadId, tagId: tag.id } },
+      create: { leadId, tagId: tag.id, origem },
+      update: {},
+    });
   }
 
   async remove(user: AuthenticatedUser, id: string): Promise<void> {

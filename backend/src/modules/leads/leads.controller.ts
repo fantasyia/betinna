@@ -25,11 +25,13 @@ import {
   TRANSICOES_ETAPA,
 } from './leads.constants';
 import {
+  type AdicionarTagLeadDto,
   type AtribuirRepDto,
   type CreateLeadDto,
   type ListLeadsDto,
   type MoverEtapaDto,
   type UpdateLeadDto,
+  adicionarTagLeadSchema,
   atribuirRepSchema,
   createLeadSchema,
   listLeadsSchema,
@@ -135,6 +137,30 @@ export class LeadsController {
     @Body(new ZodValidationPipe(atribuirRepSchema)) dto: AtribuirRepDto,
   ) {
     return this.leads.atribuirRep(user, id, dto);
+  }
+
+  @Post(':id/tags')
+  @RequirePermissions({ module: 'kanban', action: 'edit' })
+  @Audit({ action: 'adicionar_tag', resource: 'lead', resourceIdFrom: 'params.id' })
+  @ApiOperation({ summary: 'Aplica uma tag (existente) ao lead' })
+  adicionarTag(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param('id') id: string,
+    @Body(new ZodValidationPipe(adicionarTagLeadSchema)) dto: AdicionarTagLeadDto,
+  ) {
+    return this.leads.adicionarTag(user, id, dto.tagId);
+  }
+
+  @Delete(':id/tags/:tagId')
+  @RequirePermissions({ module: 'kanban', action: 'edit' })
+  @Audit({ action: 'remover_tag', resource: 'lead', resourceIdFrom: 'params.id' })
+  @ApiOperation({ summary: 'Remove uma tag do lead' })
+  removerTag(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param('id') id: string,
+    @Param('tagId') tagId: string,
+  ) {
+    return this.leads.removerTag(user, id, tagId);
   }
 
   @Delete(':id')

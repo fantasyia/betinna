@@ -25,6 +25,8 @@ const makePrismaMock = () => ({
     findFirst: vi.fn().mockResolvedValue(null),
     findMany: vi.fn().mockResolvedValue([]),
   },
+  tag: { findFirst: vi.fn(), upsert: vi.fn() },
+  leadTag: { upsert: vi.fn(), deleteMany: vi.fn() },
 });
 
 const makeRepScope = () => ({
@@ -56,6 +58,57 @@ describe('LeadsService', () => {
       makeRepScope() as never,
       { disparar: vi.fn() } as never,
     );
+  });
+
+  describe('tags do lead (Fase B)', () => {
+    const leadRow = { id: 'lead-1', empresaId: 'emp-1', representanteId: 'rep-1', tags: [] };
+    const admin = fakeUser({ role: 'ADMIN' as UserRole, id: 'admin-1' });
+
+    it('adicionarTag aplica tag existente da empresa (origem usuario)', async () => {
+      prisma.lead.findFirst.mockResolvedValue(leadRow);
+      prisma.tag.findFirst.mockResolvedValue({ id: 'tag-1' });
+      prisma.leadTag.upsert.mockResolvedValue({});
+      await svc.adicionarTag(admin, 'lead-1', 'tag-1');
+      expect(prisma.leadTag.upsert).toHaveBeenCalledWith(
+        expect.objectContaining({
+          create: expect.objectContaining({ leadId: 'lead-1', tagId: 'tag-1', origem: 'usuario' }),
+        }),
+      );
+    });
+
+    it('adicionarTag rejeita tag de outra empresa (NotFound)', async () => {
+      prisma.lead.findFirst.mockResolvedValue(leadRow);
+      prisma.tag.findFirst.mockResolvedValue(null);
+      await expect(svc.adicionarTag(admin, 'lead-1', 'tag-x')).rejects.toBeInstanceOf(
+        NotFoundException,
+      );
+      expect(prisma.leadTag.upsert).not.toHaveBeenCalled();
+    });
+
+    it('removerTag deleta a ligação', async () => {
+      prisma.lead.findFirst.mockResolvedValue(leadRow);
+      prisma.leadTag.deleteMany.mockResolvedValue({ count: 1 });
+      await svc.removerTag(admin, 'lead-1', 'tag-1');
+      expect(prisma.leadTag.deleteMany).toHaveBeenCalledWith({
+        where: { leadId: 'lead-1', tagId: 'tag-1' },
+      });
+    });
+
+    it('aplicarTagPorNome faz upsert da tag e da ligação (origem ia)', async () => {
+      prisma.tag.upsert.mockResolvedValue({ id: 'tag-ia' });
+      prisma.leadTag.upsert.mockResolvedValue({});
+      await svc.aplicarTagPorNome('emp-1', 'lead-1', 'Forte Sinergia', 'ia');
+      expect(prisma.tag.upsert).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: { empresaId_nome: { empresaId: 'emp-1', nome: 'Forte Sinergia' } },
+        }),
+      );
+      expect(prisma.leadTag.upsert).toHaveBeenCalledWith(
+        expect.objectContaining({
+          create: expect.objectContaining({ tagId: 'tag-ia', origem: 'ia' }),
+        }),
+      );
+    });
   });
 
   describe('resumoPipeline — dinheiro Prisma.Decimal (#17 Fase 5)', () => {

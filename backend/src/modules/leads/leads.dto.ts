@@ -87,3 +87,8 @@ export const atribuirRepSchema = z.object({
   representanteId: z.string().cuid().nullable(),
 });
 export type AtribuirRepDto = z.infer<typeof atribuirRepSchema>;
+
+export const adicionarTagLeadSchema = z.object({
+  tagId: z.string().min(1),
+});
+export type AdicionarTagLeadDto = z.infer<typeof adicionarTagLeadSchema>;
