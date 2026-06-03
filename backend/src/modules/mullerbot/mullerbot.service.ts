@@ -318,6 +318,12 @@ export class MullerBotService {
    *    fallback pro `OPENAI_API_KEY` do env (chave corporativa).
    */
   private async resolverCredenciais(user: AuthenticatedUser): Promise<LlmCredenciais> {
+    // Modo mock (E2E/dev): não exige chave real — a chamada à OpenAI é
+    // curto-circuitada em chamarOpenAI. Permite testar o bot até como REP.
+    if (this.env.get('MULLERBOT_MOCK')) {
+      return { apiKey: 'mock' };
+    }
+
     // 1. tenta credencial do usuário
     try {
       const conn = await this.userIntegracoes.obterCredenciaisInternas(user.id, 'openai');
@@ -431,6 +437,24 @@ export class MullerBotService {
 
   // ─── OpenAI call ──────────────────────────────────────────────────────
 
+  /** Respostas fake do modo MULLERBOT_MOCK (E2E/dev) — não chamam a OpenAI. */
+  private static readonly MOCK_RESPOSTAS = [
+    'Recebi sua mensagem! Já te respondo com os detalhes. 😊',
+    'Boa pergunta — deixa eu consultar aqui e já te retorno.',
+    'Obrigado pelo contato! Um representante vai dar sequência pra você.',
+    'Anotado! Posso te ajudar com mais alguma coisa?',
+    'Entendi seu pedido. Estou verificando a disponibilidade.',
+    'Certo! Deixa eu checar essas informações pra você.',
+    'Perfeito, recebido. Retorno em instantes com a resposta.',
+    'Show! Já estou providenciando isso pra você.',
+  ];
+
+  /** Escolhe uma resposta fake aleatória (modo mock). */
+  private static mockResposta(): string {
+    const arr = MullerBotService.MOCK_RESPOSTAS;
+    return arr[Math.floor(Math.random() * arr.length)];
+  }
+
   private async chamarOpenAI(
     creds: LlmCredenciais,
     modelo: string,
@@ -439,6 +463,18 @@ export class MullerBotService {
     maxOutputTokens: number,
     historico: HistoricoMsg[] = [],
   ): Promise<{ texto: string; tokensIn?: number; tokensOut?: number }> {
+    // Modo mock (E2E/dev): devolve resposta fake sem chamar a OpenAI. Ligado via
+    // MULLERBOT_MOCK=true. Em produção (flag off) o fluxo segue normal.
+    if (this.env.get('MULLERBOT_MOCK')) {
+      const texto = MullerBotService.mockResposta();
+      const tokensIn =
+        this.estimarTokens(systemPrompt) +
+        this.estimarTokens(userMessage) +
+        historico.reduce((acc, h) => acc + this.estimarTokens(h.content), 0);
+      this.logger.log('MullerBot MOCK ativo — resposta fake (sem chamar OpenAI)');
+      return { texto, tokensIn, tokensOut: this.estimarTokens(texto) };
+    }
+
     // Constrói array de mensagens: system + histórico (alternando user/assistant)
     // + pergunta atual. OpenAI espera ordem cronológica.
     const messages: Array<{ role: 'system' | 'user' | 'assistant'; content: string }> = [

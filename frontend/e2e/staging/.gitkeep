@@ -1,0 +1,2 @@
+# Pasta do E2E de staging/CI (playwright.config.ts aponta aqui). Vazia por ora —
+# a varredura local pré-beta vive em e2e/specs (playwright.local.config.ts).

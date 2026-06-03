@@ -1709,6 +1709,7 @@ function ClienteFormModal({
             </Field>
             <Field label="Número" required>
               <Input
+                data-testid="cliente-numero-input"
                 value={form.numero}
                 onChange={(e) => setField('numero', e.target.value)}
                 maxLength={20}

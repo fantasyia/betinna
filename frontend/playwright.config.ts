@@ -7,7 +7,9 @@ import { defineConfig, devices } from '@playwright/test';
  * Variáveis E2E_* configuradas no Railway service "E2E" ou GitHub Actions.
  */
 export default defineConfig({
-  testDir: './e2e',
+  // E2E de staging/CI vive aqui. A varredura LOCAL pré-beta usa
+  // playwright.local.config.ts (testDir ./e2e/specs) — os dois não se misturam.
+  testDir: './e2e/staging',
   fullyParallel: false, // Tests de rate limit precisam serial
   forbidOnly: !!process.env.CI,
   // 1 retry sempre — testes E2E contra prod sofrem com rate limit acumulado

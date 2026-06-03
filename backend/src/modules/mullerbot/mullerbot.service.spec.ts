@@ -184,6 +184,42 @@ describe('MullerBotService.perguntar — credenciais', () => {
   });
 });
 
+describe('MullerBotService.perguntar — modo mock (MULLERBOT_MOCK)', () => {
+  it('devolve resposta fake sem chamar a OpenAI, mesmo sem credencial', async () => {
+    const http = makeHttp();
+    const svc = new MullerBotService(
+      http as never,
+      makeEnv({ MULLERBOT_MOCK: true }) as never,
+      makeUserIntegracoes() as never,
+      makeProdutoSearch([PRODUTO_BASE]) as never,
+      makeCache() as never,
+      makePersona() as never,
+    );
+    const r = await svc.perguntar(fakeUser(), { pergunta: 'tem óleo?', topK: 5 });
+    expect(typeof r.resposta).toBe('string');
+    expect(r.resposta.length).toBeGreaterThan(0);
+    expect(http.post).not.toHaveBeenCalled();
+  });
+
+  it('mock funciona até pra REP sem chave própria (ignora exigência de credencial)', async () => {
+    const http = makeHttp();
+    const svc = new MullerBotService(
+      http as never,
+      makeEnv({ MULLERBOT_MOCK: true }) as never,
+      makeUserIntegracoes() as never,
+      makeProdutoSearch([PRODUTO_BASE]) as never,
+      makeCache() as never,
+      makePersona() as never,
+    );
+    const r = await svc.perguntar(fakeUser({ role: 'REP' as UserRole }), {
+      pergunta: 'oi',
+      topK: 5,
+    });
+    expect(r.resposta.length).toBeGreaterThan(0);
+    expect(http.post).not.toHaveBeenCalled();
+  });
+});
+
 describe('MullerBotService.perguntar — limite de tokens', () => {
   it('bloqueia pergunta que sozinha estoura o limite de input', async () => {
     const http = makeHttp();

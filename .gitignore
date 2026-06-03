@@ -53,6 +53,11 @@ playwright-report/
 test-results/
 **/playwright-report/
 **/test-results/
+# E2E (varredura pré-beta) — saídas e credenciais de teste NUNCA vão pro git
+e2e/output/
+**/e2e/output/
+.test-credentials.md
+**/.test-credentials.md
 
 # Backups
 backups/

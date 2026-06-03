@@ -45,6 +45,15 @@ export const envSchema = z
     MULLERBOT_MAX_INPUT_TOKENS: z.coerce.number().int().positive().default(4000),
     /** Limite de tokens da resposta. */
     MULLERBOT_MAX_OUTPUT_TOKENS: z.coerce.number().int().positive().default(1024),
+    /**
+     * Testes E2E / dev: quando `true`, o MullerBot devolve uma resposta fake
+     * (de um conjunto de templates) em vez de chamar a OpenAI. Economiza custo e
+     * evita poluir a auditoria do bot durante a varredura automatizada. Default
+     * `false` — em produção o bot chama a OpenAI normalmente.
+     */
+    MULLERBOT_MOCK: z
+      .union([z.boolean(), z.string().transform((s) => s === 'true')])
+      .default(false),
     /** Fase 2 — horas que o bot fica pausado numa conversa após um humano responder (handoff). */
     BOT_HANDOFF_HORAS: z.coerce.number().int().positive().default(24),
     /**
