@@ -337,9 +337,7 @@ export class CampanhasService {
       data: { status: 'ENVIANDO', finalizadoEm: null },
     });
     if (claim.count === 0) {
-      throw new BusinessRuleException(
-        'Campanha mudou de estado (concorrência) — tente de novo.',
-      );
+      throw new BusinessRuleException('Campanha mudou de estado (concorrência) — tente de novo.');
     }
 
     // Reseta os que deram erro → PENDENTE (limpa erro/enviadoEm pra reprocessar).
