@@ -9,6 +9,7 @@ import { FluxoExecutorService } from './fluxo-executor.service';
 import { FluxoTriggersJob } from './fluxo-triggers.job';
 import { FluxosController } from './fluxos.controller';
 import { FluxosService } from './fluxos.service';
+import { OrquestracaoLeadEventsService } from './orquestracao-lead-events.service';
 import { FLUXO_QUEUE } from './fluxo-executor.types';
 
 @Module({
@@ -27,6 +28,7 @@ import { FLUXO_QUEUE } from './fluxo-executor.types';
     FluxoExecutorService,
     FluxoExecutorProcessor,
     FluxoTriggersJob,
+    OrquestracaoLeadEventsService,
   ],
   exports: [FluxoEventBusService],
 })

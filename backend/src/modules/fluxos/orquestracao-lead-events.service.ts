@@ -1,0 +1,82 @@
+import { Injectable, Logger, type OnModuleInit } from '@nestjs/common';
+import { PrismaService } from '@database/prisma.service';
+import { InboxService } from '@modules/inbox/inbox.service';
+import type { MensagemEntranteParams } from '@modules/inbox/inbox.types';
+import { FluxoEventBusService } from './fluxo-event-bus.service';
+
+/**
+ * OrquestracaoLeadEventsService (Fase B) — ponte Inbox → Fluxos.
+ *
+ * Registra um hook na Inbox no boot. Quando chega uma mensagem entrante que
+ * casa com um Lead (por telefone/e-mail), dispara o gatilho LEAD_RESPONDEU.
+ * (B4 estende este ponto pra retomar execuções pausadas no nó "Conversar com IA".)
+ *
+ * Best-effort: erro aqui não derruba o recebimento da mensagem (o hook da Inbox
+ * já isola exceções; ainda assim tratamos defensivamente).
+ */
+@Injectable()
+export class OrquestracaoLeadEventsService implements OnModuleInit {
+  private readonly logger = new Logger(OrquestracaoLeadEventsService.name);
+
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly bus: FluxoEventBusService,
+    private readonly inbox: InboxService,
+  ) {}
+
+  onModuleInit(): void {
+    this.inbox.registrarLeadEventHook((params, resultado) => {
+      void this.aoReceberMensagem(params, resultado);
+    });
+    this.logger.log('Hook de eventos de lead registrado na Inbox (gatilho LEAD_RESPONDEU)');
+  }
+
+  /** Resolve o lead da mensagem entrante e dispara o gatilho LEAD_RESPONDEU. */
+  async aoReceberMensagem(
+    params: MensagemEntranteParams,
+    resultado: { conversationId: string; messageId: string; duplicada: boolean },
+  ): Promise<void> {
+    try {
+      if (resultado.duplicada) return;
+      const lead = await this.resolverLead(params.empresaId, params.peerTelefone, params.peerEmail);
+      if (!lead) return;
+
+      await this.bus.disparar(params.empresaId, 'LEAD_RESPONDEU', {
+        leadId: lead.id,
+        conversationId: resultado.conversationId,
+        telefone: params.peerTelefone ?? null,
+        texto: params.conteudo,
+      });
+    } catch (err) {
+      const m = err instanceof Error ? err.message : String(err);
+      this.logger.warn(`aoReceberMensagem falhou: ${m}`);
+    }
+  }
+
+  /** Match de lead por sufixo de telefone (8 últimos dígitos) ou e-mail. */
+  private async resolverLead(
+    empresaId: string,
+    telefone?: string,
+    email?: string,
+  ): Promise<{ id: string } | null> {
+    if (telefone) {
+      const sufixo = telefone.replace(/\D/g, '').slice(-8);
+      if (sufixo.length === 8) {
+        const lead = await this.prisma.lead.findFirst({
+          where: { empresaId, contatoTelefone: { contains: sufixo } },
+          select: { id: true },
+          orderBy: { atualizadoEm: 'desc' },
+        });
+        if (lead) return lead;
+      }
+    }
+    if (email) {
+      const lead = await this.prisma.lead.findFirst({
+        where: { empresaId, contatoEmail: { equals: email, mode: 'insensitive' } },
+        select: { id: true },
+      });
+      if (lead) return lead;
+    }
+    return null;
+  }
+}

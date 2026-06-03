@@ -497,6 +497,8 @@ export class LeadsService {
       create: { leadId, tagId, origem },
       update: {},
     });
+    // Gatilho de fluxo "Lead recebeu tag" (best-effort).
+    await this.bus.disparar(empresaId, 'LEAD_RECEBEU_TAG', { leadId, tagId });
     return this.findById(user, leadId);
   }
 
@@ -528,6 +530,7 @@ export class LeadsService {
       create: { leadId, tagId: tag.id, origem },
       update: {},
     });
+    await this.bus.disparar(empresaId, 'LEAD_RECEBEU_TAG', { leadId, tagId: tag.id });
   }
 
   async remove(user: AuthenticatedUser, id: string): Promise<void> {

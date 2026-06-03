@@ -91,6 +91,20 @@ export class InboxService {
     this.botHook = fn;
   }
 
+  /**
+   * Orquestração (Fase B) — hook de eventos de lead. Um serviço de orquestração
+   * se registra aqui no boot pra reagir a mensagens entrantes (gatilho
+   * "Lead respondeu", retomar o nó "Conversar com IA"). Best-effort, não-bloqueante.
+   */
+  private leadEventHook?: (
+    params: MensagemEntranteParams,
+    resultado: { conversationId: string; messageId: string; duplicada: boolean },
+  ) => void;
+
+  registrarLeadEventHook(fn: NonNullable<InboxService['leadEventHook']>): void {
+    this.leadEventHook = fn;
+  }
+
   // ─── Visibilidade / multi-tenant ─────────────────────────────────────
 
   private requireEmpresa(user: AuthenticatedUser): string {
@@ -732,6 +746,16 @@ export class InboxService {
       } catch (err) {
         const m = err instanceof Error ? err.message : String(err);
         this.logger.warn(`Falha ao disparar bot hook conv=${conv.id}: ${m}`);
+      }
+    }
+
+    // Orquestração (Fase B) — eventos de lead (gatilho "Lead respondeu", retomada IA).
+    if (this.leadEventHook && isInbound) {
+      try {
+        this.leadEventHook(params, resultado);
+      } catch (err) {
+        const m = err instanceof Error ? err.message : String(err);
+        this.logger.warn(`Falha no leadEventHook conv=${conv.id}: ${m}`);
       }
     }
 
