@@ -1169,6 +1169,31 @@ function NodeInspector({
                 }
               />
             </Field>
+            <Field
+              label="Variáveis que a IA pode gravar"
+              hint="Separe por vírgula (ex: classificacao, canal). Vazio = livre."
+            >
+              <Input
+                value={
+                  Array.isArray(data.config.variaveisGravadas)
+                    ? (data.config.variaveisGravadas as string[]).join(', ')
+                    : ''
+                }
+                onChange={(e) =>
+                  onUpdate((d) => ({
+                    ...d,
+                    config: {
+                      ...d.config,
+                      variaveisGravadas: e.target.value
+                        .split(',')
+                        .map((s) => s.trim())
+                        .filter(Boolean),
+                    },
+                  }))
+                }
+                placeholder="classificacao, canal, potencial_pedidos"
+              />
+            </Field>
           </>
         )}
 
