@@ -803,6 +803,10 @@ export class RelatoriosService {
       },
       amostras: {
         total: amostrasData.total,
+        // enviadas/convertidas usados no hint do card "Amostras convertidas" do
+        // Overview — sem eles o hint mostrava sempre "0/0".
+        enviadas: amostrasData.enviadas,
+        convertidas: amostrasData.convertidas,
         taxaConversao: amostrasData.taxaConversao,
         valorConvertido: amostrasData.valorConvertido,
       },
