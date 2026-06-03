@@ -3,13 +3,14 @@ import { PrismaService } from '@database/prisma.service';
 import { InboxService } from '@modules/inbox/inbox.service';
 import type { MensagemEntranteParams } from '@modules/inbox/inbox.types';
 import { FluxoEventBusService } from './fluxo-event-bus.service';
+import { ConversarIaService } from './conversar-ia.service';
 
 /**
  * OrquestracaoLeadEventsService (Fase B) — ponte Inbox → Fluxos.
  *
  * Registra um hook na Inbox no boot. Quando chega uma mensagem entrante que
- * casa com um Lead (por telefone/e-mail), dispara o gatilho LEAD_RESPONDEU.
- * (B4 estende este ponto pra retomar execuções pausadas no nó "Conversar com IA".)
+ * casa com um Lead (por telefone/e-mail): (1) dispara o gatilho LEAD_RESPONDEU
+ * e (2) retoma execuções pausadas no nó "Conversar com IA" daquele lead.
  *
  * Best-effort: erro aqui não derruba o recebimento da mensagem (o hook da Inbox
  * já isola exceções; ainda assim tratamos defensivamente).
@@ -22,6 +23,7 @@ export class OrquestracaoLeadEventsService implements OnModuleInit {
     private readonly prisma: PrismaService,
     private readonly bus: FluxoEventBusService,
     private readonly inbox: InboxService,
+    private readonly conversarIa: ConversarIaService,
   ) {}
 
   onModuleInit(): void {
@@ -47,6 +49,13 @@ export class OrquestracaoLeadEventsService implements OnModuleInit {
         telefone: params.peerTelefone ?? null,
         texto: params.conteudo,
       });
+
+      // Se há um fluxo pausado no nó "Conversar com IA" esperando este lead,
+      // retoma a conversa (a IA processa a resposta e pode classificar/avançar).
+      const aguardando = await this.conversarIa.aguardandoPorLead(params.empresaId, lead.id);
+      if (aguardando) {
+        await this.conversarIa.retomar(aguardando.id, resultado.conversationId, params.conteudo);
+      }
     } catch (err) {
       const m = err instanceof Error ? err.message : String(err);
       this.logger.warn(`aoReceberMensagem falhou: ${m}`);

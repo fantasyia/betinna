@@ -5,6 +5,7 @@ import { PrismaService } from '@database/prisma.service';
 import { CronLockService } from '@shared/utils/cron-lock.service';
 import { TransactionalEmailService } from '@integrations/email/transactional-email.service';
 import { FluxoEventBusService } from './fluxo-event-bus.service';
+import { ConversarIaService } from './conversar-ia.service';
 
 /**
  * FluxoTriggersJob — cron jobs que disparam fluxos com trigger baseado em tempo.
@@ -27,6 +28,7 @@ export class FluxoTriggersJob {
     private readonly env: EnvService,
     private readonly cronLock: CronLockService,
     private readonly email: TransactionalEmailService,
+    private readonly conversarIa: ConversarIaService,
   ) {}
 
   @Cron('*/30 * * * *', { name: 'fluxo-triggers-temporais', timeZone: 'UTC' })
@@ -44,6 +46,10 @@ export class FluxoTriggersJob {
       await this.avaliarClientesInativos(empresaId);
       await this.avaliarAmostrasFollowUp(empresaId);
     }
+
+    // Orquestração (Fase B) — conversas de IA sem resposta além do timeout
+    // disparam LEAD_SEM_RESPOSTA e são encerradas (consulta global, todas empresas).
+    await this.conversarIa.processarTimeouts();
   }
 
   // ─── Clientes inativos ────────────────────────────────────────────

@@ -63,5 +63,29 @@ export interface WebhookExternoConfig {
   payload?: Record<string, unknown>; // suporta {{ variáveis }}
 }
 
+/** Config da ação CONVERSAR_IA (orquestração Fase B). */
+export interface ConversarIaConfig {
+  /** Prompt da biblioteca (BotPrompt.id). Vazio = prompt padrão da empresa. */
+  promptId?: string;
+  /** Pausa o fluxo até o lead responder no WhatsApp. Default true. */
+  aguardarResposta?: boolean;
+  /** Timeout da espera (horas). Default 24. */
+  timeoutHoras?: number;
+  /** Variáveis que a IA pode gravar (referência; a IA grava o que devolver no JSON). */
+  variaveisGravadas?: string[];
+}
+
+/** Config da ação LIBERAR_LOTE (orquestração Fase B). */
+export interface LiberarLoteConfig {
+  /** Etapa de origem (de onde tira os leads). */
+  etapaOrigemId: string;
+  /** Etapa de destino (pra onde move). */
+  etapaDestinoId: string;
+  /** Quantos leads liberar por execução. */
+  quantidade: number;
+  /** Funil (opcional — restringe a busca). */
+  funilId?: string;
+}
+
 /** Contexto de execução — enriquecido progressivamente. */
 export type ExecucaoContexto = Record<string, unknown>;

@@ -73,6 +73,16 @@ export class MullerWhatsappService implements OnModuleInit {
       if (params.direction === 'OUTBOUND') return; // anti-eco (mensagem do próprio número)
       if (resultado.duplicada) return;
 
+      // 1.5 Orquestração (Fase B) — se um fluxo "Conversar com IA" está conduzindo
+      // esta conversa (lead com execução AGUARDANDO), o bot geral NÃO responde
+      // (evita resposta dupla — quem fala é o motor do fluxo).
+      if (await this.fluxoIaConduzindo(params.empresaId, params.peerId, params.peerTelefone)) {
+        this.logger.debug(
+          `[bot] conversa conduzida por fluxo de IA — bot geral silencia conv=${convId}`,
+        );
+        return;
+      }
+
       // 2. Liga/desliga global da empresa
       const empresa = await this.prisma.empresa.findUnique({
         where: { id: params.empresaId },
@@ -268,5 +278,34 @@ export class MullerWhatsappService implements OnModuleInit {
       p,
       new Promise<T>((_, reject) => setTimeout(() => reject(new Error('timeout')), ms)),
     ]);
+  }
+
+  /**
+   * Orquestração (Fase B) — true quando há um fluxo "Conversar com IA" pausado
+   * (execução AGUARDANDO) esperando este lead responder. Nesse caso o bot geral
+   * cala (quem conduz é o motor do fluxo). Match do lead por sufixo de telefone.
+   */
+  private async fluxoIaConduzindo(
+    empresaId: string,
+    peerId: string,
+    peerTelefone?: string,
+  ): Promise<boolean> {
+    try {
+      const sufixo = (peerTelefone ?? peerId).replace(/\D/g, '').slice(-8);
+      if (sufixo.length < 8) return false;
+      const lead = await this.prisma.lead.findFirst({
+        where: { empresaId, contatoTelefone: { contains: sufixo } },
+        select: { id: true },
+      });
+      if (!lead) return false;
+      const aguardando = await this.prisma.fluxoExecucao.findFirst({
+        where: { empresaId, status: 'AGUARDANDO', contexto: { path: ['leadId'], equals: lead.id } },
+        select: { id: true },
+      });
+      return aguardando != null;
+    } catch {
+      // Fail-open: um erro no guard NÃO pode impedir o bot de responder.
+      return false;
+    }
   }
 }

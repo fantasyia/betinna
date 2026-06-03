@@ -3,6 +3,7 @@ import { BullModule } from '@nestjs/bullmq';
 import { WhatsAppModule } from '@integrations/whatsapp/whatsapp.module';
 import { EmailModule } from '@integrations/email/email.module';
 import { HttpModule } from '@shared/http/http.module';
+import { MullerBotModule } from '@modules/mullerbot/mullerbot.module';
 import { FluxoEventBusService } from './fluxo-event-bus.service';
 import { FluxoExecutorProcessor } from './fluxo-executor.processor';
 import { FluxoExecutorService } from './fluxo-executor.service';
@@ -10,6 +11,7 @@ import { FluxoTriggersJob } from './fluxo-triggers.job';
 import { FluxosController } from './fluxos.controller';
 import { FluxosService } from './fluxos.service';
 import { OrquestracaoLeadEventsService } from './orquestracao-lead-events.service';
+import { ConversarIaService } from './conversar-ia.service';
 import { FLUXO_QUEUE } from './fluxo-executor.types';
 
 @Module({
@@ -20,6 +22,8 @@ import { FLUXO_QUEUE } from './fluxo-executor.types';
     WhatsAppModule,
     EmailModule,
     HttpModule,
+    // Orquestração (Fase B) — nó "Conversar com IA" usa OpenAI + persona do MullerBot.
+    MullerBotModule,
   ],
   controllers: [FluxosController],
   providers: [
@@ -29,6 +33,7 @@ import { FLUXO_QUEUE } from './fluxo-executor.types';
     FluxoExecutorProcessor,
     FluxoTriggersJob,
     OrquestracaoLeadEventsService,
+    ConversarIaService,
   ],
   exports: [FluxoEventBusService],
 })

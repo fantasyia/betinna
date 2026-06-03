@@ -15,6 +15,9 @@ const makePrisma = (over: Record<string, unknown> = {}) => ({
     update: vi.fn(async () => ({})),
   },
   message: { findMany: vi.fn(async () => []) },
+  // Fase B — guard fluxoIaConduzindo (lead em fluxo de IA cala o bot geral).
+  lead: { findFirst: vi.fn(async () => null) },
+  fluxoExecucao: { findFirst: vi.fn(async () => null) },
   ...over,
 });
 

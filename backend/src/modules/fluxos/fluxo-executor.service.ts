@@ -9,6 +9,7 @@ import { WhatsAppService } from '@integrations/whatsapp/whatsapp.service';
 import { ResendService } from '@integrations/resend/resend.service';
 import { Prisma } from '@prisma/client';
 import { safeRequest, SsrfBlockedError } from '@shared/utils/safe-request';
+import { ConversarIaService } from './conversar-ia.service';
 import {
   FLUXO_QUEUE,
   type FluxoStepJobData,
@@ -127,6 +128,7 @@ export class FluxoExecutorService {
     private readonly http: HttpClientService,
     private readonly whatsapp: WhatsAppService,
     private readonly resend: ResendService,
+    private readonly conversarIa: ConversarIaService,
     @InjectQueue(FLUXO_QUEUE) private readonly queue: Queue<FluxoStepJobData>,
   ) {}
 
@@ -181,9 +183,18 @@ export class FluxoExecutorService {
     let output: Record<string, unknown> | null = null;
     let erroMsg: string | null = null;
     let sucesso = true;
+    // Quando o nó "Conversar com IA" envia a 1ª msg e fica esperando o lead,
+    // a execução pausa (status AGUARDANDO) e NÃO avança aqui — retoma em LEAD_RESPONDEU.
+    let aguardando = false;
 
     try {
-      output = await this.executarNo(no, contexto, execucao.empresaId);
+      if (no.tipo === 'ACAO' && no.acaoTipo === 'CONVERSAR_IA') {
+        const r = await this.conversarIa.iniciar(execucaoId, no, contexto, execucao.empresaId);
+        aguardando = r.aguardando;
+        output = { conversarIa: true, aguardando };
+      } else {
+        output = await this.executarNo(no, contexto, execucao.empresaId);
+      }
     } catch (err) {
       sucesso = false;
       erroMsg = err instanceof Error ? err.message : String(err);
@@ -211,6 +222,13 @@ export class FluxoExecutorService {
     if (!sucesso) {
       // Nó falhou — lança para o BullMQ re-tentar
       throw new Error(`Nó "${no.titulo}" falhou: ${erroMsg}`);
+    }
+
+    // Nó "Conversar com IA" esperando resposta do lead: pausa aqui (a retomada
+    // acontece em LEAD_RESPONDEU, via ConversarIaService.retomar).
+    if (aguardando) {
+      this.logger.debug(`Execução ${execucaoId} pausada (Conversar com IA aguardando lead)`);
+      return;
     }
 
     // Determina próximos nós

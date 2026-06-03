@@ -229,6 +229,37 @@ export class MullerBotService {
   }
 
   /**
+   * Orquestração (Fase B) — gera uma resposta com um SYSTEM PROMPT arbitrário
+   * (o prompt escolhido no nó "Conversar com IA"), usando a chave OpenAI do
+   * servidor. Respeita MULLERBOT_MOCK. Retorna texto + tokens + modelo usado.
+   */
+  async gerarRespostaIa(
+    empresaId: string,
+    systemPrompt: string,
+    mensagem: string,
+    historico: HistoricoMsg[] = [],
+  ): Promise<{ texto: string; tokensIn?: number; tokensOut?: number; modelo: string }> {
+    const apiKey = this.env.get('OPENAI_API_KEY');
+    if (!apiKey) {
+      throw new IntegrationException(
+        'OPENAI_API_KEY não configurada — o nó "Conversar com IA" não pode rodar.',
+        ErrorCode.INTEGRATION_ERROR,
+      );
+    }
+    const modelo = (await this.persona.obterModelo(empresaId)) ?? this.env.get('MULLERBOT_MODEL');
+    const maxOutputTokens = this.env.get('MULLERBOT_MAX_OUTPUT_TOKENS');
+    const r = await this.chamarOpenAI(
+      { apiKey },
+      modelo,
+      systemPrompt,
+      mensagem,
+      maxOutputTokens,
+      historico,
+    );
+    return { ...r, modelo };
+  }
+
+  /**
    * Diagnóstico do bot do WhatsApp da empresa — usado pela tela Persona Bot.
    * Verifica se a `OPENAI_API_KEY` do servidor existe e faz um ping mínimo na
    * OpenAI pra confirmar que a chave responde. Nunca lança — retorna o status.

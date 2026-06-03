@@ -74,6 +74,10 @@ const makeQueueMock = () => ({
   add: vi.fn().mockResolvedValue({ id: 'job-1' }),
 });
 
+const makeConversarIaMock = () => ({
+  iniciar: vi.fn().mockResolvedValue({ aguardando: false }),
+});
+
 const makeEnvMock = () => ({
   get: vi.fn().mockReturnValue(''),
 });
@@ -134,6 +138,7 @@ describe('FluxoExecutorService', () => {
       {} as never,
       whatsapp as never,
       resend as never,
+      makeConversarIaMock() as never,
       queue as never,
     );
   });
