@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { Link } from 'react-router-dom';
 import { Bot, Save, AlertCircle, CheckCircle2, MessageCircle } from 'lucide-react';
 import { api, ApiError } from '@/lib/api';
 import { useApiQuery } from '@/hooks/useApiQuery';
@@ -226,6 +227,15 @@ export default function PersonaBotPage() {
       }
     >
       <AtendimentoTabs />
+      <div className="mb-3">
+        <Link
+          to="/mullerbot/prompts"
+          data-testid="link-prompts-bot"
+          className="text-sm text-primary hover:underline"
+        >
+          Biblioteca de prompts (multi-prompt) →
+        </Link>
+      </div>
       <div className="grid grid-cols-1 lg:grid-cols-[1fr_320px] gap-4">
         {/* Coluna principal */}
         <div className="flex flex-col gap-4">

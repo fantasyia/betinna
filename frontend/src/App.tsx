@@ -26,6 +26,7 @@ const ClienteDetailPage = lazy(() => import('@/pages/ClienteDetailPage'));
 const CatalogoPage = lazy(() => import('@/pages/CatalogoPage'));
 const MullerBotPage = lazy(() => import('@/pages/MullerBotPage'));
 const PersonaBotPage = lazy(() => import('@/pages/PersonaBotPage'));
+const PromptsBotPage = lazy(() => import('@/pages/PromptsBotPage'));
 const BotAuditoriaPage = lazy(() => import('@/pages/BotAuditoriaPage'));
 const RespostasRapidasPage = lazy(() => import('@/pages/RespostasRapidasPage'));
 const NpsPublicoPage = lazy(() => import('@/pages/NpsPublicoPage'));
@@ -246,6 +247,18 @@ const router = createBrowserRouter([
         <ProtectedRoute allowedRoles={['ADMIN', 'DIRECTOR']}>
           <PageSuspense>
             <PersonaBotPage />
+          </PageSuspense>
+        </ProtectedRoute>
+      </ErrorBoundary>
+    ),
+  },
+  {
+    path: '/mullerbot/prompts',
+    element: (
+      <ErrorBoundary>
+        <ProtectedRoute allowedRoles={['ADMIN', 'DIRECTOR']}>
+          <PageSuspense>
+            <PromptsBotPage />
           </PageSuspense>
         </ProtectedRoute>
       </ErrorBoundary>
