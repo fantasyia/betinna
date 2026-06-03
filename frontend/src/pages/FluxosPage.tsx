@@ -85,6 +85,8 @@ const TRIGGERS: Record<TriggerTipo, string> = {
   LEAD_SEM_RESPOSTA: 'Lead sem resposta',
   IA_CLASSIFICOU: 'IA classificou',
   LEAD_RECEBEU_TAG: 'Lead recebeu tag',
+  MENSAGEM_CANAL: 'Mensagem chegou (canal)',
+  WEBHOOK_RECEBIDO: 'Webhook recebido',
 };
 
 function fmtDate(d: string | null | undefined) {

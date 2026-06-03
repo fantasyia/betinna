@@ -314,22 +314,74 @@ export class FluxoExecutorService {
       data_hora: `${dd}/${mm}/${yyyy} ${hh}:${min}`,
     };
 
-    // {{custom.*}} — variáveis flexíveis do lead (se houver lead no contexto).
+    // Defaults customizados da empresa (admin — VariavelCustomizada). Base do {{custom.*}}.
+    const defaults: Record<string, unknown> = {};
+    try {
+      const vars = await this.prisma.variavelCustomizada.findMany({
+        where: { empresaId },
+        select: { chave: true, valorPadrao: true },
+      });
+      for (const v of vars) if (v.valorPadrao != null) defaults[v.chave] = v.valorPadrao;
+    } catch {
+      /* ignora — sem defaults */
+    }
+
+    // {{lead.*}} — dados estruturados do lead; leadVars alimenta {{custom.*}}/{{conversa.*}}.
     const leadId = typeof ctx.leadId === 'string' ? ctx.leadId : undefined;
+    let leadVars: Record<string, unknown> = {};
     if (leadId) {
       try {
         const lead = await this.prisma.lead.findFirst({
           where: { id: leadId, empresaId },
-          select: { variaveis: true },
+          select: {
+            nome: true,
+            contatoNome: true,
+            contatoTelefone: true,
+            contatoEmail: true,
+            cidade: true,
+            uf: true,
+            segmento: true,
+            score: true,
+            etapa: true,
+            variaveis: true,
+            funil: { select: { nome: true } },
+            funilEtapa: { select: { nome: true } },
+            tags: { select: { tag: { select: { nome: true } } } },
+          },
         });
-        if (lead?.variaveis && typeof lead.variaveis === 'object') {
-          ctx.custom = lead.variaveis;
+        if (lead) {
+          if (lead.variaveis && typeof lead.variaveis === 'object') {
+            leadVars = lead.variaveis as Record<string, unknown>;
+          }
+          ctx.lead = {
+            nome: lead.nome,
+            contato: lead.contatoNome ?? '',
+            whatsapp: lead.contatoTelefone ?? '',
+            email: lead.contatoEmail ?? '',
+            cidade: lead.cidade ?? '',
+            uf: lead.uf ?? '',
+            segmento: lead.segmento ?? '',
+            score: lead.score,
+            etapa_atual: lead.funilEtapa?.nome ?? lead.etapa,
+            funil: lead.funil?.nome ?? '',
+            tags: lead.tags.map((t) => t.tag.nome).join(', '),
+            empresa: (leadVars.empresa as string | undefined) ?? lead.nome,
+          };
         }
       } catch {
-        /* ignora — {{custom.*}} fica vazio */
+        /* ignora — {{lead.*}} fica vazio */
       }
     }
-    if (ctx.custom == null) ctx.custom = {};
+
+    // {{custom.*}} = defaults da empresa sobrescritos pelas variáveis do lead.
+    ctx.custom = { ...defaults, ...leadVars };
+    // {{conversa.*}} = efêmero: variáveis do turno + texto/classificação do evento.
+    ctx.conversa = {
+      ...leadVars,
+      ...(typeof ctx.texto === 'string' ? { ultima_msg_lead: ctx.texto } : {}),
+      ...(typeof ctx.classificacao === 'string' ? { classificacao: ctx.classificacao } : {}),
+    };
+    if (ctx.lead == null) ctx.lead = {};
 
     return ctx;
   }

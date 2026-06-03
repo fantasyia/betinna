@@ -72,7 +72,9 @@ export type TriggerTipo =
   | 'LEAD_RESPONDEU'
   | 'LEAD_SEM_RESPOSTA'
   | 'IA_CLASSIFICOU'
-  | 'LEAD_RECEBEU_TAG';
+  | 'LEAD_RECEBEU_TAG'
+  | 'MENSAGEM_CANAL'
+  | 'WEBHOOK_RECEBIDO';
 
 export type AcaoTipo =
   | 'ENVIAR_WHATSAPP'
@@ -127,6 +129,8 @@ const TRIGGER_LABEL: Record<TriggerTipo, string> = {
   LEAD_SEM_RESPOSTA: 'Lead sem resposta',
   IA_CLASSIFICOU: 'IA classificou',
   LEAD_RECEBEU_TAG: 'Lead recebeu tag',
+  MENSAGEM_CANAL: 'Mensagem chegou (canal)',
+  WEBHOOK_RECEBIDO: 'Webhook recebido',
 };
 
 const ACAO_LABEL: Record<AcaoTipo, string> = {
@@ -179,6 +183,8 @@ const PALETTE_CATEGORIES: Array<{ title: string; items: PaletteItem[] }> = [
       { id: 't-semresp', label: 'Lead sem resposta', tipo: 'TRIGGER', triggerTipo: 'LEAD_SEM_RESPOSTA' },
       { id: 't-iaclass', label: 'IA classificou', tipo: 'TRIGGER', triggerTipo: 'IA_CLASSIFICOU' },
       { id: 't-tag', label: 'Lead recebeu tag', tipo: 'TRIGGER', triggerTipo: 'LEAD_RECEBEU_TAG' },
+      { id: 't-canal', label: 'Mensagem chegou (canal)', tipo: 'TRIGGER', triggerTipo: 'MENSAGEM_CANAL' },
+      { id: 't-webhook', label: 'Webhook recebido', tipo: 'TRIGGER', triggerTipo: 'WEBHOOK_RECEBIDO' },
     ],
   },
   {
@@ -937,6 +943,18 @@ function NodeInspector({
           </Field>
         )}
 
+        {data.tipo === 'TRIGGER' && data.triggerTipo === 'MENSAGEM_CANAL' && (
+          <p className="text-[11px] text-muted">
+            O fluxo recebe <code className="text-text">{'{{canal}}'}</code>{' '}
+            (whatsapp/instagram/...). Use um nó <strong>Condição</strong> com campo{' '}
+            <code className="text-text">canal</code> pra rotear por canal.
+          </p>
+        )}
+
+        {data.tipo === 'TRIGGER' && data.triggerTipo === 'WEBHOOK_RECEBIDO' && (
+          <WebhookTriggerConfig />
+        )}
+
         {data.tipo === 'ACAO' && (
           <Field label="Tipo de ação">
             <Select
@@ -1218,6 +1236,87 @@ function NodeInspector({
 }
 
 // ─── Helpers ────────────────────────────────────────────────────
+
+function WebhookTriggerConfig() {
+  const toast = useToast();
+  const { data: webhooks, refetch } = useApiQuery<
+    Array<{ id: string; nome: string; token: string }>
+  >('/orquestracao/webhooks');
+  const [nome, setNome] = useState('');
+  const [busy, setBusy] = useState(false);
+  const apiBase = (import.meta.env.VITE_API_URL as string | undefined) ?? '';
+
+  async function criar() {
+    if (!nome.trim()) return;
+    setBusy(true);
+    try {
+      await api.post('/orquestracao/webhooks', { nome: nome.trim() });
+      setNome('');
+      refetch();
+    } catch (err) {
+      toast.error('Falha ao criar webhook', err instanceof ApiError ? err.message : undefined);
+    } finally {
+      setBusy(false);
+    }
+  }
+  async function remover(id: string) {
+    try {
+      await api.delete(`/orquestracao/webhooks/${id}`);
+      refetch();
+    } catch (err) {
+      toast.error('Falha ao remover', err instanceof ApiError ? err.message : undefined);
+    }
+  }
+
+  return (
+    <div className="flex flex-col gap-2">
+      <p className="text-[11px] text-muted">
+        Crie um webhook e cole a URL no sistema externo. Cada POST dispara este fluxo — o
+        corpo do request vira <code className="text-text">{'{{custom.*}}'}</code>.
+      </p>
+      <div className="flex gap-1.5">
+        <Input
+          value={nome}
+          onChange={(e) => setNome(e.target.value)}
+          placeholder="Nome do webhook"
+        />
+        <Button size="sm" loading={busy} disabled={!nome.trim()} onClick={() => void criar()}>
+          Criar
+        </Button>
+      </div>
+      {(webhooks ?? []).map((w) => {
+        const url = `${apiBase}/webhooks/fluxo/${w.token}`;
+        return (
+          <div key={w.id} className="rounded-md border border-border p-2 text-[11px]">
+            <div className="flex items-center justify-between">
+              <span className="font-medium text-text">{w.nome}</span>
+              <button
+                type="button"
+                onClick={() => void remover(w.id)}
+                className="text-danger hover:underline"
+              >
+                remover
+              </button>
+            </div>
+            <div className="flex items-center gap-1 mt-1">
+              <code className="flex-1 truncate text-muted">{url}</code>
+              <button
+                type="button"
+                onClick={() => {
+                  void navigator.clipboard?.writeText(url);
+                  toast.success('URL copiada');
+                }}
+                className="text-primary hover:underline shrink-0"
+              >
+                copiar
+              </button>
+            </div>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
 
 function defaultConfig(item: PaletteItem): Record<string, unknown> {
   if (item.tipo === 'DELAY') return { quantidade: 1, unidade: 'horas' };

@@ -1,9 +1,15 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { OrquestracaoLeadEventsService } from './orquestracao-lead-events.service';
 
-const makePrisma = () => ({ lead: { findFirst: vi.fn() } });
+const makePrisma = () => ({
+  lead: { findFirst: vi.fn(), updateMany: vi.fn().mockResolvedValue({ count: 1 }) },
+});
 const makeBus = () => ({ disparar: vi.fn() });
 const makeInbox = () => ({ registrarLeadEventHook: vi.fn() });
+const makeConversarIa = () => ({
+  aguardandoPorLead: vi.fn().mockResolvedValue(null),
+  retomar: vi.fn(),
+});
 
 const resultado = (over = {}) => ({
   conversationId: 'conv-1',
@@ -22,7 +28,12 @@ describe('OrquestracaoLeadEventsService', () => {
     prisma = makePrisma();
     bus = makeBus();
     inbox = makeInbox();
-    svc = new OrquestracaoLeadEventsService(prisma as never, bus as never, inbox as never);
+    svc = new OrquestracaoLeadEventsService(
+      prisma as never,
+      bus as never,
+      inbox as never,
+      makeConversarIa() as never,
+    );
   });
 
   it('onModuleInit registra o hook na inbox', () => {
@@ -56,12 +67,22 @@ describe('OrquestracaoLeadEventsService', () => {
     expect(bus.disparar).not.toHaveBeenCalled();
   });
 
-  it('não dispara quando nenhum lead casa', async () => {
+  it('dispara MENSAGEM_CANAL mas não LEAD_RESPONDEU quando nenhum lead casa', async () => {
     prisma.lead.findFirst.mockResolvedValue(null);
     await svc.aoReceberMensagem(
-      { empresaId: 'emp-1', peerTelefone: '11999990000', conteudo: 'x' } as never,
+      {
+        empresaId: 'emp-1',
+        peerTelefone: '11999990000',
+        conteudo: 'x',
+        canal: 'WHATSAPP',
+      } as never,
       resultado(),
     );
-    expect(bus.disparar).not.toHaveBeenCalled();
+    expect(bus.disparar).toHaveBeenCalledWith(
+      'emp-1',
+      'MENSAGEM_CANAL',
+      expect.objectContaining({ leadId: null }),
+    );
+    expect(bus.disparar).not.toHaveBeenCalledWith('emp-1', 'LEAD_RESPONDEU', expect.anything());
   });
 });

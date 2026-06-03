@@ -41,7 +41,25 @@ export class OrquestracaoLeadEventsService implements OnModuleInit {
     try {
       if (resultado.duplicada) return;
       const lead = await this.resolverLead(params.empresaId, params.peerTelefone, params.peerEmail);
+
+      // Gatilho MENSAGEM_CANAL (Fase C) — toda mensagem entrante, com ou sem lead
+      // (roteamento por canal: SAC/marketplace/redes). Filtre por {{canal}} no fluxo.
+      await this.bus.disparar(params.empresaId, 'MENSAGEM_CANAL', {
+        canal: params.canal,
+        conversationId: resultado.conversationId,
+        texto: params.conteudo,
+        leadId: lead?.id ?? null,
+      });
+
       if (!lead) return;
+
+      // Fase C — registra a última mensagem recebida do lead (spec §4).
+      await this.prisma.lead
+        .updateMany({
+          where: { id: lead.id, empresaId: params.empresaId },
+          data: { ultimaMensagemEm: new Date() },
+        })
+        .catch(() => undefined);
 
       await this.bus.disparar(params.empresaId, 'LEAD_RESPONDEU', {
         leadId: lead.id,

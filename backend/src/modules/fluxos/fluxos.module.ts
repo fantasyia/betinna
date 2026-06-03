@@ -14,6 +14,8 @@ import { OrquestracaoLeadEventsService } from './orquestracao-lead-events.servic
 import { ConversarIaService } from './conversar-ia.service';
 import { MonitorController } from './monitor.controller';
 import { MonitorService } from './monitor.service';
+import { WebhookEntradaController } from './webhook-entrada.controller';
+import { WebhookEntradaService } from './webhook-entrada.service';
 import { FLUXO_QUEUE } from './fluxo-executor.types';
 
 @Module({
@@ -27,7 +29,7 @@ import { FLUXO_QUEUE } from './fluxo-executor.types';
     // Orquestração (Fase B) — nó "Conversar com IA" usa OpenAI + persona do MullerBot.
     MullerBotModule,
   ],
-  controllers: [FluxosController, MonitorController],
+  controllers: [FluxosController, MonitorController, WebhookEntradaController],
   providers: [
     FluxosService,
     FluxoEventBusService,
@@ -37,6 +39,7 @@ import { FLUXO_QUEUE } from './fluxo-executor.types';
     OrquestracaoLeadEventsService,
     ConversarIaService,
     MonitorService,
+    WebhookEntradaService,
   ],
   exports: [FluxoEventBusService],
 })
