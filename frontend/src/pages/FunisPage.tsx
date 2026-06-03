@@ -66,6 +66,8 @@ interface FunilEtapa {
   tipo: EtapaTipo;
   probabilidade: number;
   slaDias: number | null;
+  slaHoras?: number | null;
+  capacidadeMaxima?: number | null;
 }
 
 interface Funil {
@@ -76,6 +78,7 @@ interface Funil {
   ordem: number;
   ativo: boolean;
   isPadrao: boolean;
+  tagsPermitidas?: string[] | null;
   etapas: FunilEtapa[];
   _count?: { leads: number };
 }
@@ -516,7 +519,12 @@ function SortableEtapaRow({
         </Badge>
         <span className="text-[10px] text-muted tabular">
           prob {etapa.probabilidade}%
-          {etapa.slaDias ? ` · SLA ${etapa.slaDias}d` : ''}
+          {etapa.slaHoras
+            ? ` · SLA ${etapa.slaHoras}h`
+            : etapa.slaDias
+              ? ` · SLA ${etapa.slaDias}d`
+              : ''}
+          {etapa.capacidadeMaxima ? ` · cap ${etapa.capacidadeMaxima}` : ''}
         </span>
       </div>
       <IconButton
@@ -555,6 +563,9 @@ function FunilFormDialog({
   const [cor, setCor] = useState(funil?.cor ?? '#201554');
   const [isPadrao, setIsPadrao] = useState(funil?.isPadrao ?? false);
   const [ativo, setAtivo] = useState(funil?.ativo ?? true);
+  const [tagsPermitidas, setTagsPermitidas] = useState(
+    funil?.tagsPermitidas?.join(', ') ?? '',
+  );
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -575,6 +586,12 @@ function FunilFormDialog({
       ativo,
     };
     if (descricao.trim()) payload.descricao = descricao.trim();
+    // Allow-list de tags: vazio = null (todas permitidas); senão array de nomes.
+    const tags = tagsPermitidas
+      .split(',')
+      .map((t) => t.trim())
+      .filter(Boolean);
+    payload.tagsPermitidas = tags.length > 0 ? tags : null;
     try {
       if (isEdit) {
         const r = await api.patch<{ id: string }>(`/funis/${funil!.id}`, payload);
@@ -635,6 +652,17 @@ function FunilFormDialog({
         <Field label="Cor de destaque">
           <ColorPicker value={cor} onChange={setCor} />
         </Field>
+        <Field
+          label="Tags permitidas"
+          hint="Opcional. Lista separada por vírgula. Vazio = todas as tags da empresa são permitidas neste funil."
+        >
+          <Input
+            data-testid="funil-tags-input"
+            value={tagsPermitidas}
+            onChange={(e) => setTagsPermitidas(e.target.value)}
+            placeholder="Ex: quente, recompra, vip"
+          />
+        </Field>
         <div className="grid grid-cols-2 gap-3">
           <label className="flex items-center gap-2 text-sm cursor-pointer">
             <input
@@ -683,6 +711,10 @@ function EtapaFormDialog({
   const [tipo, setTipo] = useState<EtapaTipo>(etapa?.tipo ?? 'ATIVA');
   const [probabilidade, setProbabilidade] = useState(etapa?.probabilidade ?? 50);
   const [slaDias, setSlaDias] = useState(etapa?.slaDias?.toString() ?? '');
+  const [slaHoras, setSlaHoras] = useState(etapa?.slaHoras?.toString() ?? '');
+  const [capacidadeMaxima, setCapacidadeMaxima] = useState(
+    etapa?.capacidadeMaxima?.toString() ?? '',
+  );
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -711,6 +743,12 @@ function EtapaFormDialog({
     } else {
       payload.slaDias = null;
     }
+    payload.slaHoras =
+      slaHoras.trim() && !Number.isNaN(Number(slaHoras)) ? Number(slaHoras) : null;
+    payload.capacidadeMaxima =
+      capacidadeMaxima.trim() && !Number.isNaN(Number(capacidadeMaxima))
+        ? Number(capacidadeMaxima)
+        : null;
     try {
       if (isEdit) {
         await api.patch(`/funis/${funilId}/etapas/${etapa!.id}`, payload);
@@ -790,6 +828,36 @@ function EtapaFormDialog({
               max={365}
               value={slaDias}
               onChange={(e) => setSlaDias(e.target.value)}
+              placeholder="—"
+            />
+          </Field>
+        </div>
+        <div className="grid grid-cols-2 gap-3">
+          <Field
+            label="SLA (horas)"
+            hint="Opcional. Tem precedência sobre o SLA em dias quando preenchido."
+          >
+            <Input
+              type="number"
+              min={1}
+              max={8760}
+              value={slaHoras}
+              onChange={(e) => setSlaHoras(e.target.value)}
+              data-testid="etapa-sla-horas-input"
+              placeholder="—"
+            />
+          </Field>
+          <Field
+            label="Capacidade máxima"
+            hint="Opcional. Teto de leads simultâneos nesta etapa (anti-sobrecarga)."
+          >
+            <Input
+              type="number"
+              min={1}
+              max={100000}
+              value={capacidadeMaxima}
+              onChange={(e) => setCapacidadeMaxima(e.target.value)}
+              data-testid="etapa-capacidade-input"
               placeholder="—"
             />
           </Field>
