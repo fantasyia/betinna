@@ -97,6 +97,11 @@ scripts/  — deploy helpers (start.js, deploy-migrations.js)
 4. **Sempre criar commit novo** — nunca `--amend` em pre-commit hook failure
 5. **Nunca pular hooks** com `--no-verify`
 6. **Idioma**: PR titles e commits em pt-BR, código em inglês ou pt-BR consistente com o arquivo
+7. **Pre-commit hook** (`.githooks/pre-commit`): roda `eslint --max-warnings 0` (o
+   mesmo gate do CI) nos `.ts/.tsx` staged de back+front. Ativar por clone:
+   `git config core.hooksPath .githooks`. Se o lint falhar, **conserte** (não pule).
+   Antes de qualquer push, vale rodar o lint cheio: `cd frontend && npx eslint . --max-warnings 0`
+   e `cd backend && npx eslint "{src,test}/**/*.ts" --max-warnings 0`.
 
 ---
 
