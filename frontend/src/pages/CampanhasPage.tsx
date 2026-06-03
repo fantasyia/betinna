@@ -311,12 +311,13 @@ export default function CampanhasPage() {
             marginBottom: '1rem',
           }}
         >
-          <StatBox label="Total" value={String(resumo.total)} />
-          <StatBox label="Rascunhos" value={String(resumo.rascunhos)} />
-          <StatBox label="Agendadas" value={String(resumo.agendadas)} color={colors.info} />
-          <StatBox label="Enviando" value={String(resumo.enviando)} color={colors.warning} />
-          <StatBox label="Enviadas" value={String(resumo.enviadas)} color={colors.success} />
-          <StatBox label="Alcance 30d" value={String(resumo.alcanceUltimos30d)} color={colors.magenta} />
+          {/* Normaliza defaults — proteção contra payload incompleto (mesmo padrão das Métricas). */}
+          <StatBox label="Total" value={String(resumo.total ?? 0)} />
+          <StatBox label="Rascunhos" value={String(resumo.rascunhos ?? 0)} />
+          <StatBox label="Agendadas" value={String(resumo.agendadas ?? 0)} color={colors.info} />
+          <StatBox label="Enviando" value={String(resumo.enviando ?? 0)} color={colors.warning} />
+          <StatBox label="Enviadas" value={String(resumo.enviadas ?? 0)} color={colors.success} />
+          <StatBox label="Alcance 30d" value={String(resumo.alcanceUltimos30d ?? 0)} color={colors.magenta} />
         </div>
       )}
 

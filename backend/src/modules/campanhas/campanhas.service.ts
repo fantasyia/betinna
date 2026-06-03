@@ -346,11 +346,12 @@ export class CampanhasService {
   }
 
   async resumo(user: AuthenticatedUser): Promise<{
+    total: number;
     rascunhos: number;
     agendadas: number;
     enviando: number;
     enviadas: number;
-    totalDestinatariosUltimos30d: number;
+    alcanceUltimos30d: number;
   }> {
     const where = await this.baseWhere(user);
     const trintaDiasAtras = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
@@ -373,11 +374,14 @@ export class CampanhasService {
     for (const g of grupos) byStatus[g.status] = g._count._all;
 
     return {
+      // Total de campanhas (soma de todos os status) — o front exibe no card "Total".
+      total: grupos.reduce((soma, g) => soma + g._count._all, 0),
       rascunhos: byStatus['RASCUNHO'] ?? 0,
       agendadas: byStatus['AGENDADA'] ?? 0,
       enviando: byStatus['ENVIANDO'] ?? 0,
       enviadas: byStatus['ENVIADA'] ?? 0,
-      totalDestinatariosUltimos30d: totalDestinatarios,
+      // Renomeado de totalDestinatariosUltimos30d → alcanceUltimos30d (contrato do front).
+      alcanceUltimos30d: totalDestinatarios,
     };
   }
 

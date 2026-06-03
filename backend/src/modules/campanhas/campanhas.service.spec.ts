@@ -549,11 +549,12 @@ describe('CampanhasService', () => {
       const result = await service.resumo(fakeUser());
 
       expect(result).toMatchObject({
+        total: 11, // 3 + 1 + 2 + 5
         rascunhos: 3,
         agendadas: 1,
         enviando: 2,
         enviadas: 5,
-        totalDestinatariosUltimos30d: 120,
+        alcanceUltimos30d: 120,
       });
     });
   });
