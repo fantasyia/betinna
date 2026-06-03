@@ -217,4 +217,15 @@ export class CampanhasController {
   cancelar(@CurrentUser() user: AuthenticatedUser, @Param('id') id: string) {
     return this.campanhas.cancelar(user, id);
   }
+
+  @Post(':id/reenviar-erros')
+  @RequirePermissions({ module: 'campanhas', action: 'edit' })
+  @Audit({ action: 'reenviar-erros', resource: 'campanha', resourceIdFrom: 'params.id' })
+  @ApiOperation({
+    summary: 'Reenfileira o envio apenas para os destinatários que deram ERRO (campanha ENVIADA).',
+  })
+  @HttpCode(HttpStatus.ACCEPTED)
+  reenviarErros(@CurrentUser() user: AuthenticatedUser, @Param('id') id: string) {
+    return this.campanhas.reenviarErros(user, id);
+  }
 }

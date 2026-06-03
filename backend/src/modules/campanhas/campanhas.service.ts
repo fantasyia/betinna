@@ -303,6 +303,71 @@ export class CampanhasService {
     return this.findById(user, id);
   }
 
+  /**
+   * Reenfileira o envio APENAS para os destinatários que deram ERRO.
+   * Só vale pra campanha já ENVIADA. Lock otimista ENVIADA→ENVIANDO garante que
+   * só uma chamada concorrente passa; o processor finaliza de volta pra ENVIADA
+   * quando os PENDENTE acabarem.
+   *
+   * Nota: em WHATSAPP_EMAIL onde o WA foi enviado mas o e-mail falhou, a
+   * idempotência (TTL 24h) evita reenviar o WA — desde que o reenvio aconteça
+   * dentro da janela. Após 24h o WA poderia reenviar.
+   */
+  async reenviarErros(user: AuthenticatedUser, id: string): Promise<CampanhaDetalhe> {
+    const campanha = await this.findById(user, id);
+
+    if (campanha.status !== 'ENVIADA') {
+      throw new BusinessRuleException(
+        'Apenas campanhas já enviadas (ENVIADA) podem ter as falhas reenviadas.',
+      );
+    }
+
+    const comErro = await this.prisma.campanhaDestinatario.findMany({
+      where: { campanhaId: id, status: 'ERRO' },
+      select: { id: true },
+    });
+    if (comErro.length === 0) {
+      throw new BusinessRuleException('Nenhuma falha para reenviar nesta campanha.');
+    }
+
+    // Lock otimista: ENVIADA → ENVIANDO. Só uma chamada concorrente passa.
+    const claim = await this.prisma.campanha.updateMany({
+      where: { id, status: 'ENVIADA' },
+      data: { status: 'ENVIANDO', finalizadoEm: null },
+    });
+    if (claim.count === 0) {
+      throw new BusinessRuleException(
+        'Campanha mudou de estado (concorrência) — tente de novo.',
+      );
+    }
+
+    // Reseta os que deram erro → PENDENTE (limpa erro/enviadoEm pra reprocessar).
+    await this.prisma.campanhaDestinatario.updateMany({
+      where: { campanhaId: id, status: 'ERRO' },
+      data: { status: 'PENDENTE', erro: null, enviadoEm: null },
+    });
+
+    // Re-enfileira só as falhas resetadas (mesmas opções do disparar).
+    await Promise.all(
+      comErro.map((d, i) =>
+        this.queue.add(
+          'enviar',
+          { campanhaId: id, destinatarioId: d.id },
+          {
+            delay: i * 1500,
+            attempts: 3,
+            backoff: { type: 'exponential', delay: 5_000 },
+            removeOnComplete: { count: 500 },
+            removeOnFail: { count: 200 },
+          },
+        ),
+      ),
+    );
+
+    this.logger.log(`Campanha "${campanha.nome}" · reenfileiradas ${comErro.length} falha(s)`);
+    return this.findById(user, id);
+  }
+
   // ─── Métricas ────────────────────────────────────────────────────────────
 
   async metricas(

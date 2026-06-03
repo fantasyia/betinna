@@ -40,6 +40,18 @@ interface Campanha {
   atualizadoEm: string;
 }
 
+interface CampanhaDestinatarioLite {
+  id: string;
+  clienteId: string;
+  email?: string | null;
+  telefone?: string | null;
+  status: 'PENDENTE' | 'ENVIADO' | 'LIDO' | 'ERRO';
+  erro?: string | null;
+  enviadoEm?: string | null;
+  lido: boolean;
+  lidoEm?: string | null;
+}
+
 interface CampanhaDetail extends Campanha {
   mensagemWa?: string | null;
   mensagemEmail?: string | null;
@@ -47,6 +59,7 @@ interface CampanhaDetail extends Campanha {
   segTagIds?: string[];
   segRepIds?: string[];
   segClienteIds?: string[];
+  destinatarios?: CampanhaDestinatarioLite[];
 }
 
 /**
@@ -96,6 +109,7 @@ interface OtimizarResponse {
 interface SugerirSegmentoResponse {
   justificativa?: string;
   segmentosTextuais?: string[];
+  tagIds?: string[];
   tonRecomendado?: string;
   estimativaAlcance?: number;
   melhorHorario?: string;
@@ -156,6 +170,32 @@ function fmtDate(d: string | null | undefined) {
 function fmtPct(v: number | undefined | null) {
   const n = typeof v === 'number' && Number.isFinite(v) ? v : 0;
   return `${n.toFixed(1)}%`;
+}
+
+/**
+ * Gera e baixa um CSV com os resultados (destinatários) da campanha — feito no
+ * client a partir do payload do detalhe (não precisa de endpoint extra).
+ */
+function exportarResultadosCsv(c: CampanhaDetail): void {
+  const linhas = c.destinatarios ?? [];
+  const esc = (v: unknown) => `"${String(v ?? '').replace(/"/g, '""')}"`;
+  const head = ['cliente_id', 'email', 'telefone', 'status', 'enviado_em', 'lido', 'erro'];
+  const body = linhas.map((d) =>
+    [d.clienteId, d.email, d.telefone, d.status, d.enviadoEm, d.lido ? 'sim' : 'não', d.erro]
+      .map(esc)
+      .join(','),
+  );
+  // BOM (﻿) pro Excel abrir UTF-8 certinho.
+  const csv = '﻿' + [head.join(','), ...body].join('\r\n');
+  const blob = new Blob([csv], { type: 'text/csv;charset=utf-8' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `campanha-${c.nome.replace(/[^\w.-]+/g, '_')}-resultados.csv`;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  URL.revokeObjectURL(url);
 }
 
 // ─── Page ─────────────────────────────────────────────────────────────────────
@@ -419,11 +459,16 @@ function CampanhaDetailModal({
   const [acting, setActing] = useState(false);
   const [confirmAsync, ConfirmDialog] = useConfirm();
 
-  async function callAction(action: 'disparar' | 'pausar' | 'cancelar') {
+  async function callAction(action: 'disparar' | 'pausar' | 'cancelar' | 'reenviar-erros') {
     setActing(true);
     try {
       await api.post(`/campanhas/${id}/${action}`);
-      const labelMap = { disparar: 'disparada', pausar: 'pausada', cancelar: 'cancelada' };
+      const labelMap = {
+        disparar: 'disparada',
+        pausar: 'pausada',
+        cancelar: 'cancelada',
+        'reenviar-erros': 'reenfileirada',
+      };
       toast.success(`Campanha ${labelMap[action]}`);
       refetch();
       onChanged();
@@ -485,6 +530,17 @@ function CampanhaDetailModal({
                 style={btnDanger}
               >
                 Cancelar
+              </button>
+            )}
+            {canManage && c?.status === 'ENVIADA' && (metricas?.erros ?? 0) > 0 && (
+              <button
+                type="button"
+                data-testid="campanha-reenviar-erros"
+                disabled={acting}
+                onClick={() => callAction('reenviar-erros')}
+                style={btnSecondary}
+              >
+                ↻ Reenviar falhas ({metricas?.erros})
               </button>
             )}
           </div>
@@ -588,6 +644,18 @@ function CampanhaDetailModal({
 
             {tab === 'metricas' && (
               <div>
+                {c.destinatarios && c.destinatarios.length > 0 && (
+                  <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: '0.5rem' }}>
+                    <button
+                      type="button"
+                      data-testid="campanha-export-csv"
+                      onClick={() => exportarResultadosCsv(c)}
+                      style={{ ...btnSecondary, fontSize: 12 }}
+                    >
+                      ⬇ Exportar CSV
+                    </button>
+                  </div>
+                )}
                 {metricas ? (
                   (() => {
                     // Normaliza defaults — proteção contra payload incompleto.
@@ -665,6 +733,13 @@ function IAPanel({ campanha }: { campanha: CampanhaDetail }) {
 
   const [busy, setBusy] = useState(false);
   const [iaError, setIaError] = useState<string | null>(null);
+
+  // Tags da empresa pra mapear os tagIds sugeridos pela IA → nome legível.
+  const tagsQuery = useApiQuery<TagLite[] | { data: TagLite[] }>('/tags');
+  const tags: TagLite[] = Array.isArray(tagsQuery.data)
+    ? tagsQuery.data
+    : tagsQuery.data?.data ?? [];
+  const tagNome = (id: string) => tags.find((t) => t.id === id)?.nome ?? id;
 
   async function gerarConteudo() {
     setBusy(true); setIaError(null);
@@ -890,6 +965,13 @@ function IAPanel({ campanha }: { campanha: CampanhaDetail }) {
               {sugerirResult.melhorHorario && <p style={{ margin: 0, fontSize: 12 }}>Melhor horário: <strong>{sugerirResult.melhorHorario}</strong></p>}
               {sugerirResult.estimativaAlcance !== undefined && sugerirResult.estimativaAlcance > 0 && (
                 <p style={{ margin: 0, fontSize: 12 }}>Estimativa de alcance: <strong>{sugerirResult.estimativaAlcance}</strong> clientes</p>
+              )}
+              {sugerirResult.tagIds && sugerirResult.tagIds.length > 0 && (
+                <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap' }}>
+                  {sugerirResult.tagIds.map((id) => (
+                    <span key={id} style={badge(colors.primary)}>{tagNome(id)}</span>
+                  ))}
+                </div>
               )}
             </div>
           )}
