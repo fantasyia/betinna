@@ -85,26 +85,30 @@ interface GerarConteudoResponse {
   tokensOut?: number;
 }
 
+// Alinhado com MensagemOtimizada do backend (campanha-ia.service.ts).
 interface OtimizarResponse {
-  mensagemOtimizada: string;
+  melhorada: string;
   variacoes?: string[];
   dicas?: string[];
 }
 
+// Alinhado com SegmentoSugerido do backend (campanha-ia.service.ts).
 interface SugerirSegmentoResponse {
-  segmentoSugerido: string;
-  tagsRecomendadas?: string[];
-  tomIdeal?: string;
-  melhorHorario?: string;
   justificativa?: string;
+  segmentosTextuais?: string[];
+  tonRecomendado?: string;
+  estimativaAlcance?: number;
+  melhorHorario?: string;
 }
 
+// Alinhado com AnaliseResultado do backend (campanha-ia.service.ts).
 interface AnalisarResponse {
-  insights: string[];
-  pontosFortres?: string[];
-  melhorias?: string[];
+  resumoExecutivo?: string;
+  pontosFortes?: string[];
+  pontosAMelhorar?: string[];
   recomendacoes?: string[];
-  score?: number;
+  proximasCampanhas?: string[];
+  scorePerformance?: number;
 }
 
 // ─── Constants ────────────────────────────────────────────────────────────────
@@ -838,7 +842,7 @@ function IAPanel({ campanha }: { campanha: CampanhaDetail }) {
           </button>
           {otimizarResult && (
             <div style={{ marginTop: '0.875rem', display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
-              <IAResultBlock label="Versão otimizada" text={otimizarResult.mensagemOtimizada} />
+              <IAResultBlock label="Versão otimizada" text={otimizarResult.melhorada} />
               {otimizarResult.variacoes?.map((v, i) => (
                 <IAResultBlock key={i} label={`Variação ${i + 1}`} text={v} />
               ))}
@@ -878,16 +882,14 @@ function IAPanel({ campanha }: { campanha: CampanhaDetail }) {
           </button>
           {sugerirResult && (
             <div style={{ marginTop: '0.875rem', display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
-              <IAResultBlock label="Segmento sugerido" text={sugerirResult.segmentoSugerido} />
+              {sugerirResult.segmentosTextuais && sugerirResult.segmentosTextuais.length > 0 && (
+                <IAResultBlock label="Segmentos sugeridos" text={sugerirResult.segmentosTextuais.join('\n')} />
+              )}
               {sugerirResult.justificativa && <IAResultBlock label="Justificativa" text={sugerirResult.justificativa} />}
-              {sugerirResult.tomIdeal && <p style={{ margin: 0, fontSize: 12 }}>Tom ideal: <strong>{sugerirResult.tomIdeal}</strong></p>}
+              {sugerirResult.tonRecomendado && <p style={{ margin: 0, fontSize: 12 }}>Tom ideal: <strong>{sugerirResult.tonRecomendado}</strong></p>}
               {sugerirResult.melhorHorario && <p style={{ margin: 0, fontSize: 12 }}>Melhor horário: <strong>{sugerirResult.melhorHorario}</strong></p>}
-              {sugerirResult.tagsRecomendadas && sugerirResult.tagsRecomendadas.length > 0 && (
-                <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap' }}>
-                  {sugerirResult.tagsRecomendadas.map((t) => (
-                    <span key={t} style={badge(colors.primary)}>{t}</span>
-                  ))}
-                </div>
+              {sugerirResult.estimativaAlcance !== undefined && sugerirResult.estimativaAlcance > 0 && (
+                <p style={{ margin: 0, fontSize: 12 }}>Estimativa de alcance: <strong>{sugerirResult.estimativaAlcance}</strong> clientes</p>
               )}
             </div>
           )}
@@ -910,32 +912,30 @@ function IAPanel({ campanha }: { campanha: CampanhaDetail }) {
           </button>
           {analisarResult && (
             <div style={{ marginTop: '0.875rem', display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
-              {analisarResult.score !== undefined && (
-                <div style={{ fontSize: 22, fontWeight: 700, color: analisarResult.score >= 7 ? colors.success : analisarResult.score >= 5 ? colors.warning : colors.danger }}>
-                  Score: {analisarResult.score}/10
+              {analisarResult.scorePerformance !== undefined && (
+                <div style={{ fontSize: 22, fontWeight: 700, color: analisarResult.scorePerformance >= 7 ? colors.success : analisarResult.scorePerformance >= 5 ? colors.warning : colors.danger }}>
+                  Score: {analisarResult.scorePerformance}/10
                 </div>
               )}
-              {analisarResult.insights.length > 0 && (
+              {analisarResult.resumoExecutivo && (
                 <div>
-                  <div style={{ fontSize: 11, color: colors.muted, textTransform: 'uppercase', marginBottom: 4 }}>Insights</div>
-                  <ul style={{ margin: 0, padding: '0 0 0 16px', fontSize: 13, lineHeight: 1.6 }}>
-                    {analisarResult.insights.map((i, idx) => <li key={idx}>{i}</li>)}
-                  </ul>
+                  <div style={{ fontSize: 11, color: colors.muted, textTransform: 'uppercase', marginBottom: 4 }}>Resumo executivo</div>
+                  <p style={{ margin: 0, fontSize: 13, lineHeight: 1.6 }}>{analisarResult.resumoExecutivo}</p>
                 </div>
               )}
-              {analisarResult.pontosFortres && analisarResult.pontosFortres.length > 0 && (
+              {analisarResult.pontosFortes && analisarResult.pontosFortes.length > 0 && (
                 <div>
                   <div style={{ fontSize: 11, color: colors.success, textTransform: 'uppercase', marginBottom: 4 }}>Pontos fortes</div>
                   <ul style={{ margin: 0, padding: '0 0 0 16px', fontSize: 13, lineHeight: 1.6 }}>
-                    {analisarResult.pontosFortres.map((p, i) => <li key={i}>{p}</li>)}
+                    {analisarResult.pontosFortes.map((p, i) => <li key={i}>{p}</li>)}
                   </ul>
                 </div>
               )}
-              {analisarResult.melhorias && analisarResult.melhorias.length > 0 && (
+              {analisarResult.pontosAMelhorar && analisarResult.pontosAMelhorar.length > 0 && (
                 <div>
                   <div style={{ fontSize: 11, color: colors.warning, textTransform: 'uppercase', marginBottom: 4 }}>A melhorar</div>
                   <ul style={{ margin: 0, padding: '0 0 0 16px', fontSize: 13, lineHeight: 1.6 }}>
-                    {analisarResult.melhorias.map((m, i) => <li key={i}>{m}</li>)}
+                    {analisarResult.pontosAMelhorar.map((m, i) => <li key={i}>{m}</li>)}
                   </ul>
                 </div>
               )}
@@ -944,6 +944,14 @@ function IAPanel({ campanha }: { campanha: CampanhaDetail }) {
                   <div style={{ fontSize: 11, color: colors.info, textTransform: 'uppercase', marginBottom: 4 }}>Recomendações</div>
                   <ul style={{ margin: 0, padding: '0 0 0 16px', fontSize: 13, lineHeight: 1.6 }}>
                     {analisarResult.recomendacoes.map((r, i) => <li key={i}>{r}</li>)}
+                  </ul>
+                </div>
+              )}
+              {analisarResult.proximasCampanhas && analisarResult.proximasCampanhas.length > 0 && (
+                <div>
+                  <div style={{ fontSize: 11, color: colors.magenta, textTransform: 'uppercase', marginBottom: 4 }}>Próximas campanhas</div>
+                  <ul style={{ margin: 0, padding: '0 0 0 16px', fontSize: 13, lineHeight: 1.6 }}>
+                    {analisarResult.proximasCampanhas.map((p, i) => <li key={i}>{p}</li>)}
                   </ul>
                 </div>
               )}
