@@ -288,6 +288,8 @@ model Empresa {
   recompensasFidelidade RecompensaFidelidade[]
   mullerBotPersona      MullerBotPersona?
   botPrompts            BotPrompt[]
+  variaveisCustomizadas VariavelCustomizada[]
+  webhooksEntrada       WebhookEntrada[]
   formularios           Formulario[]
   pesquisasNPS          PesquisaNPS[]
   metas                 Meta[]
@@ -812,20 +814,24 @@ model Lead {
   /// Etapa do funil padrão (legado). Mantido pra compat com dashboards e relatórios
   /// que ainda agregam pelo enum. Quando `funilEtapaId` está setado, ele é a fonte
   /// da verdade — esta coluna é sincronizada a partir do `tipo` da FunilEtapa.
-  etapa           LeadEtapa @default(NOVO)
+  etapa            LeadEtapa @default(NOVO)
   /// Funil customizado ao qual este lead pertence. Se null, usa o funil legado.
-  funilId         String?
+  funilId          String?
   /// Etapa customizada dentro do funil. Quando setado, sobrescreve `etapa` na UI.
-  funilEtapaId    String?
-  score           Int       @default(50)
-  proximaAcao     String?
-  observacoes     String?   @db.Text
+  funilEtapaId     String?
+  score            Int       @default(50)
+  proximaAcao      String?
+  observacoes      String?   @db.Text
   /// Orquestração — variáveis flexíveis gravadas por IA/fluxos (ex:
   /// classificacao_betinna, canal_dominante). Lidas nos fluxos como {{custom.<chave>}}.
-  variaveis       Json      @default("{}")
+  variaveis        Json      @default("{}")
   /// Orquestração (Fase B) — prioridade pro disparo em lote ("coluna LEO").
   /// Menor = libera antes. Null = sem prioridade explícita (vai pro fim).
-  ordemPrioridade Int?
+  ordemPrioridade  Int?
+  /// Fase C (spec §4) — última mensagem recebida do lead (atualizada na inbox).
+  ultimaMensagemEm DateTime?
+  /// Fase C (spec §4) — quando vence o SLA da etapa atual (calculado na entrada).
+  proximoSlaEm     DateTime?
 
   motivoGanho String?
   motivoPerda String?
@@ -866,17 +872,20 @@ enum FunilEtapaTipo {
 }
 
 model Funil {
-  id        String  @id @default(cuid())
-  empresaId String
-  nome      String
-  descricao String? @db.Text
+  id             String  @id @default(cuid())
+  empresaId      String
+  nome           String
+  descricao      String? @db.Text
   /// Cor de destaque do funil (usada na badge do nome)
-  cor       String  @default("#201554")
+  cor            String  @default("#201554")
   /// Ordem de exibição na lista de funis
-  ordem     Int     @default(0)
-  ativo     Boolean @default(true)
+  ordem          Int     @default(0)
+  ativo          Boolean @default(true)
   /// Apenas 1 funil padrão por empresa — usado quando lead é criado sem funil explícito
-  isPadrao  Boolean @default(false)
+  isPadrao       Boolean @default(false)
+  /// Allow-list de tags permitidas neste funil (Fase C — spec §2.1). Array de
+  /// nomes de tag; null = todas as tags da empresa são permitidas.
+  tagsPermitidas Json?
 
   criadoEm     DateTime @default(now())
   atualizadoEm DateTime @updatedAt
@@ -902,6 +911,8 @@ model FunilEtapa {
   probabilidade    Int            @default(50)
   /// SLA em dias antes da etapa entrar em "aging"
   slaDias          Int?
+  /// SLA em horas (Fase C — spec §2.1). Precedência sobre slaDias quando setado.
+  slaHoras         Int?
   /// Orquestração (Fase B) — ação quando o SLA vence:
   /// { tipo: 'notificar' | 'mover' | 'tag', etapaDestinoId?, tagId?, ... }
   acaoSlaExpirado  Json?
@@ -1134,6 +1145,9 @@ enum FluxoTriggerTipo {
   LEAD_SEM_RESPOSTA // lead não respondeu em X horas (cron-driven)
   IA_CLASSIFICOU // a IA classificou o lead (grava variável e dispara reação)
   LEAD_RECEBEU_TAG // uma tag foi aplicada ao lead
+  // Orquestração (Fase C) — roteamento por canal + integração externa:
+  MENSAGEM_CANAL // chegou mensagem num canal (whatsapp/instagram/marketplace/...)
+  WEBHOOK_RECEBIDO // POST recebido num webhook de entrada da empresa
 }
 
 enum FluxoAcaoTipo {
@@ -1937,29 +1951,84 @@ model MullerBotPersona {
 /// Vários prompts reutilizáveis; o marcado `isPadrao` é o "prompt global" (retrocompat
 /// da persona única). O nó "Conversar com IA" (Fase B) referenciará um prompt por id.
 model BotPrompt {
-  id          String  @id @default(cuid())
-  empresaId   String
-  nome        String
-  descricao   String? @db.Text
+  id            String  @id @default(cuid())
+  empresaId     String
+  nome          String
+  descricao     String? @db.Text
   /// System prompt completo — usado tal e qual pelo bot.
-  texto       String  @db.Text
+  texto         String  @db.Text
   /// Override do modelo OpenAI (null = usa o da empresa/persona).
-  modelo      String?
-  temperatura Float?  @default(0.7)
+  modelo        String?
+  temperatura   Float?  @default(0.7)
   /// Prompt padrão da empresa (no máximo 1 — garantido em código).
-  isPadrao    Boolean @default(false)
-  ativo       Boolean @default(true)
+  isPadrao      Boolean @default(false)
+  ativo         Boolean @default(true)
   /// Versionamento pra rollback/A-B (spec §7).
-  versao      Int     @default(1)
+  versao        Int     @default(1)
+  /// Fase C (spec §7) — teto de tokens por prompt (null = sem teto próprio).
+  tetoTokensDia Int?
+  tetoTokensMes Int?
 
+  criadoEm     DateTime @default(now())
+  atualizadoEm DateTime @updatedAt
+
+  empresa Empresa           @relation(fields: [empresaId], references: [id], onDelete: Cascade)
+  versoes BotPromptVersao[]
+
+  @@unique([empresaId, nome])
+  @@index([empresaId])
+  @@index([empresaId, isPadrao])
+}
+
+/// Histórico de versões de um BotPrompt (Fase C — rollback/A-B). Snapshot tirado
+/// a cada update do texto/modelo/temperatura.
+model BotPromptVersao {
+  id          String   @id @default(cuid())
+  promptId    String
+  versao      Int
+  nome        String
+  texto       String   @db.Text
+  modelo      String?
+  temperatura Float?
+  criadoEm    DateTime @default(now())
+
+  prompt BotPrompt @relation(fields: [promptId], references: [id], onDelete: Cascade)
+
+  @@unique([promptId, versao])
+  @@index([promptId])
+}
+
+/// Variáveis customizadas definidas pelo admin (Fase C — spec §2.3). Lidas nos
+/// fluxos como {{custom.<chave>}} quando não vierem do lead.
+model VariavelCustomizada {
+  id           String   @id @default(cuid())
+  empresaId    String
+  chave        String
+  descricao    String?
+  valorPadrao  String?
   criadoEm     DateTime @default(now())
   atualizadoEm DateTime @updatedAt
 
   empresa Empresa @relation(fields: [empresaId], references: [id], onDelete: Cascade)
 
-  @@unique([empresaId, nome])
+  @@unique([empresaId, chave])
   @@index([empresaId])
-  @@index([empresaId, isPadrao])
+}
+
+/// Webhook de ENTRADA por empresa (Fase C — spec §2.6). Um POST no endpoint
+/// público com o token dispara o gatilho WEBHOOK_RECEBIDO.
+model WebhookEntrada {
+  id        String   @id @default(cuid())
+  empresaId String
+  nome      String
+  /// Token secreto na URL pública. Único global.
+  token     String   @unique
+  ativo     Boolean  @default(true)
+  criadoEm  DateTime @default(now())
+
+  empresa Empresa @relation(fields: [empresaId], references: [id], onDelete: Cascade)
+
+  @@index([empresaId])
 }
 
 /// Sprint 2.2 — status de cada resposta do bot (pra auditoria).
