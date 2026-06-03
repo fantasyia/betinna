@@ -25,6 +25,17 @@ const makePrisma = () => ({
     create: vi.fn().mockResolvedValue({ id: 'prod-novo' }),
     update: vi.fn().mockResolvedValue({ id: 'prod-existente' }),
   },
+  lead: {
+    findFirst: vi.fn().mockResolvedValue(null),
+    create: vi.fn().mockResolvedValue({ id: 'lead-novo' }),
+    update: vi.fn().mockResolvedValue({ id: 'lead-existente' }),
+  },
+  funil: {
+    findFirst: vi.fn().mockResolvedValue({ id: 'funil-pad' }),
+  },
+  funilEtapa: {
+    findFirst: vi.fn().mockResolvedValue({ id: 'etapa-1', funilId: 'funil-pad', tipo: 'ATIVA' }),
+  },
 });
 
 describe('ImportService.importarClientes', () => {
@@ -250,5 +261,98 @@ describe('ImportService.importarProdutos', () => {
     });
     const arg = prisma.produto.create.mock.calls[0][0];
     expect(arg.data.unidade).toBe('UN');
+  });
+});
+
+describe('ImportService.importarLeads', () => {
+  let prisma: ReturnType<typeof makePrisma>;
+  let svc: ImportService;
+
+  beforeEach(() => {
+    prisma = makePrisma();
+    svc = new ImportService(prisma as never);
+  });
+
+  it('REP recebe ForbiddenException', async () => {
+    await expect(
+      svc.importarLeads(fakeUser({ role: 'REP' as UserRole }), {
+        csv: 'nome\nLead A',
+        dryRun: false,
+        onDuplicate: 'skip',
+      }),
+    ).rejects.toBeInstanceOf(ForbiddenException);
+  });
+
+  it('importa rows (Excel) caindo no funil/etapa padrão', async () => {
+    const r = await svc.importarLeads(fakeUser(), {
+      rows: [{ nome: 'Rep João', telefone: '11999990000', cidade: 'São Paulo' }],
+      dryRun: false,
+      onDuplicate: 'skip',
+    });
+    expect(r.criados).toBe(1);
+    const arg = prisma.lead.create.mock.calls[0][0];
+    expect(arg.data.nome).toBe('Rep João');
+    expect(arg.data.contatoTelefone).toBe('11999990000');
+    expect(arg.data.funilEtapaId).toBe('etapa-1');
+    expect(arg.data.variaveis).toMatchObject({ origem: 'importacao_excel' });
+  });
+
+  it('CSV com header "whatsapp" vira contatoTelefone', async () => {
+    const r = await svc.importarLeads(fakeUser(), {
+      csv: 'nome,whatsapp\nMaria,11988887777',
+      dryRun: false,
+      onDuplicate: 'skip',
+    });
+    expect(r.criados).toBe(1);
+    expect(prisma.lead.create.mock.calls[0][0].data.contatoTelefone).toBe('11988887777');
+  });
+
+  it('dedup por telefone: onDuplicate=skip pula o existente', async () => {
+    prisma.lead.findFirst.mockResolvedValueOnce({ id: 'lead-velho' });
+    const r = await svc.importarLeads(fakeUser(), {
+      rows: [{ nome: 'Dup', telefone: '11999990000' }],
+      dryRun: false,
+      onDuplicate: 'skip',
+    });
+    expect(r.pulados).toBe(1);
+    expect(prisma.lead.create).not.toHaveBeenCalled();
+  });
+
+  it('rejeita linha sem nome', async () => {
+    const r = await svc.importarLeads(fakeUser(), {
+      rows: [{ telefone: '11999990000' }],
+      dryRun: false,
+      onDuplicate: 'skip',
+    });
+    expect(r.erros).toBe(1);
+    expect(r.criados).toBe(0);
+  });
+
+  it('respeita funilEtapaId explícito', async () => {
+    prisma.funilEtapa.findFirst.mockResolvedValueOnce({
+      id: 'etapa-prospec',
+      funilId: 'funil-reps',
+      tipo: 'ATIVA',
+    });
+    const r = await svc.importarLeads(fakeUser(), {
+      rows: [{ nome: 'Lead X' }],
+      funilEtapaId: 'etapa-prospec',
+      dryRun: false,
+      onDuplicate: 'skip',
+    });
+    expect(r.criados).toBe(1);
+    const arg = prisma.lead.create.mock.calls[0][0];
+    expect(arg.data.funilEtapaId).toBe('etapa-prospec');
+    expect(arg.data.funilId).toBe('funil-reps');
+  });
+
+  it('dryRun não persiste', async () => {
+    const r = await svc.importarLeads(fakeUser(), {
+      rows: [{ nome: 'Lead Y' }],
+      dryRun: true,
+      onDuplicate: 'skip',
+    });
+    expect(r.criados).toBe(1);
+    expect(prisma.lead.create).not.toHaveBeenCalled();
   });
 });

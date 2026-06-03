@@ -8,8 +8,10 @@ import { ZodValidationPipe } from '@shared/pipes/zod-validation.pipe';
 import type { AuthenticatedUser } from '@shared/types/authenticated-user';
 import {
   type ImportClientesDto,
+  type ImportLeadsDto,
   type ImportProdutosDto,
   importClientesSchema,
+  importLeadsSchema,
   importProdutosSchema,
 } from './import.dto';
 import { ImportService } from './import.service';
@@ -50,5 +52,21 @@ export class ImportController {
     @Body(new ZodValidationPipe(importProdutosSchema)) dto: ImportProdutosDto,
   ) {
     return this.svc.importarProdutos(user, dto);
+  }
+
+  @Post('leads')
+  @HttpCode(HttpStatus.OK)
+  @Throttle({ default: { limit: 5, ttl: minutes(1) } })
+  @Roles('ADMIN', 'DIRECTOR', 'GERENTE')
+  @Audit({ action: 'import_leads', resource: 'import' })
+  @ApiOperation({
+    summary:
+      'Importa leads em lote (Excel/CSV). Caem no funil/etapa informado. dryRun valida sem persistir.',
+  })
+  importLeads(
+    @CurrentUser() user: AuthenticatedUser,
+    @Body(new ZodValidationPipe(importLeadsSchema)) dto: ImportLeadsDto,
+  ) {
+    return this.svc.importarLeads(user, dto);
   }
 }

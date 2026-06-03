@@ -1,6 +1,6 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { parse } from 'papaparse';
-import type { Prisma } from '@prisma/client';
+import type { Prisma, LeadEtapa } from '@prisma/client';
 import { PrismaService } from '@database/prisma.service';
 import { ForbiddenException } from '@shared/errors/app-exception';
 import { ErrorCode } from '@shared/errors/error-codes';
@@ -8,6 +8,7 @@ import { getCallerEmpresaId } from '@shared/utils/auth-context';
 import type { AuthenticatedUser } from '@shared/types/authenticated-user';
 import type {
   ImportClientesDto,
+  ImportLeadsDto,
   ImportProdutosDto,
   ImportResultDto,
   ImportResultLinha,
@@ -192,6 +193,122 @@ export class ImportService {
     );
   }
 
+  // ─── Leads (orquestração — import em lote) ────────────────────────────
+
+  async importarLeads(user: AuthenticatedUser, dto: ImportLeadsDto): Promise<ImportResultDto> {
+    const empresaId = this.requireEmpresa(user);
+    if (!['ADMIN', 'DIRECTOR', 'GERENTE'].includes(user.role)) {
+      throw new ForbiddenException(
+        'Apenas ADMIN/DIRECTOR/GERENTE podem importar leads',
+        ErrorCode.INSUFFICIENT_PERMISSIONS,
+      );
+    }
+
+    const rows = (dto.rows ?? this.parseCsv(dto.csv ?? '')).slice(0, MAX_LINHAS);
+    const alvo = await this.resolverFunilEtapa(empresaId, dto.funilId, dto.funilEtapaId);
+
+    return this.processarLote(
+      rows,
+      dto.dryRun,
+      dto.onDuplicate,
+      async (linha) => {
+        const nome = (linha.nome ?? linha.contato ?? linha.razao_social ?? '').trim();
+        if (!nome) return { ok: false, motivo: 'nome obrigatório' };
+
+        const telefone =
+          (linha.telefone ?? linha.whatsapp ?? linha.celular ?? linha.fone ?? '').trim() || null;
+        const email = (linha.email ?? linha['e-mail'] ?? '').trim().toLowerCase() || null;
+        const cidade = (linha.cidade ?? '').trim() || null;
+        const uf = (linha.uf ?? linha.estado ?? '').trim().toUpperCase().slice(0, 2) || null;
+        const segmento = (linha.segmento ?? linha.ramo ?? '').trim() || null;
+        const empresaLead =
+          (linha.empresa ?? linha.razao_social ?? linha['razão social'] ?? '').trim() || null;
+        const valorEstimado =
+          parseDecimal(linha.valor ?? linha.valor_estimado ?? linha['valor estimado']) ?? 0;
+
+        // Dedup por telefone dentro da empresa.
+        let existente: { id: string } | null = null;
+        if (telefone) {
+          existente = await this.prisma.lead.findFirst({
+            where: { empresaId, contatoTelefone: telefone },
+            select: { id: true },
+          });
+        }
+
+        const variaveis: Record<string, string> = { origem: 'importacao_excel' };
+        if (empresaLead) variaveis.empresa = empresaLead;
+
+        const data: Prisma.LeadUncheckedCreateInput = {
+          empresaId,
+          nome,
+          contatoNome: nome,
+          contatoTelefone: telefone,
+          contatoEmail: email,
+          cidade,
+          uf,
+          segmento,
+          valorEstimado,
+          canalOrigem: 'OUTRO',
+          etapa: alvo.etapa,
+          funilId: alvo.funilId,
+          funilEtapaId: alvo.funilEtapaId,
+          variaveis: variaveis as Prisma.InputJsonValue,
+        };
+        return { ok: true, existente, data };
+      },
+      async (data, existenteId, dryRun) => {
+        if (dryRun) return existenteId ?? 'dry-run';
+        if (existenteId) {
+          const r = await this.prisma.lead.update({
+            where: { id: existenteId },
+            data,
+            select: { id: true },
+          });
+          return r.id;
+        }
+        const r = await this.prisma.lead.create({ data, select: { id: true } });
+        return r.id;
+      },
+    );
+  }
+
+  /** Resolve o funil/etapa alvo do import: etapa explícita → funil (ou padrão) → legado. */
+  private async resolverFunilEtapa(
+    empresaId: string,
+    funilId?: string,
+    funilEtapaId?: string,
+  ): Promise<{ funilId: string | null; funilEtapaId: string | null; etapa: LeadEtapa }> {
+    if (funilEtapaId) {
+      const et = await this.prisma.funilEtapa.findFirst({
+        where: { id: funilEtapaId, funil: { empresaId } },
+        select: { id: true, funilId: true, tipo: true },
+      });
+      if (et) return { funilId: et.funilId, funilEtapaId: et.id, etapa: etapaEnum(et.tipo) };
+    }
+    const funilAlvo = funilId
+      ? await this.prisma.funil.findFirst({
+          where: { id: funilId, empresaId },
+          select: { id: true },
+        })
+      : await this.prisma.funil.findFirst({
+          where: { empresaId, isPadrao: true },
+          select: { id: true },
+        });
+    if (funilAlvo) {
+      const primeira = await this.prisma.funilEtapa.findFirst({
+        where: { funilId: funilAlvo.id },
+        orderBy: { ordem: 'asc' },
+        select: { id: true, tipo: true },
+      });
+      return {
+        funilId: funilAlvo.id,
+        funilEtapaId: primeira?.id ?? null,
+        etapa: primeira ? etapaEnum(primeira.tipo) : 'NOVO',
+      };
+    }
+    return { funilId: null, funilEtapaId: null, etapa: 'NOVO' };
+  }
+
   // ─── Core engine ─────────────────────────────────────────────────────
 
   private parseCsv(content: string): Record<string, string>[] {
@@ -298,6 +415,13 @@ export class ImportService {
 }
 
 // ─── Helpers ──────────────────────────────────────────────────────────────
+
+/** Mapeia o tipo da FunilEtapa pro enum legado LeadEtapa (sincronia da coluna `etapa`). */
+function etapaEnum(tipo: string): LeadEtapa {
+  if (tipo === 'GANHO') return 'GANHO';
+  if (tipo === 'PERDIDO') return 'PERDIDO';
+  return 'NOVO';
+}
 
 function limpaCnpj(s: string | undefined): string | null {
   if (!s) return null;
