@@ -46,13 +46,32 @@ interface FunilResp {
 
 interface ComissoesResp {
   periodo: { de: string; ate: string };
-  totalPago: number;
-  totalAPagar: number;
-  porRep: Array<{
-    repId: string;
-    repNome: string;
+  /** Backend usa `pago`/`aPagar`; aliases antigos `totalPago`/`totalAPagar`. */
+  pago?: number;
+  aPagar?: number;
+  totalPago?: number;
+  totalAPagar?: number;
+  totalComissao?: number;
+  totalVendas?: number;
+  porTipo?: Array<{ tipo: string; total: number; count: number }>;
+  /**
+   * Backend devolve a lista em `detalhes` (representanteNome/totalComissao).
+   * Versões antigas usavam `porRep` (repNome/valor). Toleramos ambos.
+   */
+  detalhes?: Array<{
+    representanteId?: string;
+    representanteNome?: string;
     tipo: 'REP' | 'GERENTE';
-    valor: number;
+    totalComissao?: number;
+    valor?: number;
+    pago: boolean;
+  }>;
+  porRep?: Array<{
+    repId?: string;
+    repNome?: string;
+    tipo: 'REP' | 'GERENTE';
+    valor?: number;
+    totalComissao?: number;
     pago: boolean;
   }>;
 }
@@ -684,6 +703,23 @@ function FunilTab({ qs }: { qs: string }) {
 function ComissoesTab({ qs }: { qs: string }) {
   const { data, loading, error, refetch } = useApiQuery<ComissoesResp>(`/relatorios/comissoes${qs}`);
 
+  // Defesa em profundidade (fix B6, igual aos outros tabs): o backend devolve
+  // `pago`/`aPagar`/`detalhes`; versões antigas usavam `totalPago`/`totalAPagar`/
+  // `porRep`. Sem normalizar, `data.porRep.length` jogava o render inteiro pro
+  // ErrorBoundary quando o payload vinha no formato atual (porRep === undefined).
+  const totalPago = data?.pago ?? data?.totalPago ?? 0;
+  const totalAPagar = data?.aPagar ?? data?.totalAPagar ?? 0;
+  const linhasRaw = data?.detalhes ?? data?.porRep ?? [];
+  const linhas = linhasRaw.map((r) => ({
+    nome:
+      ('representanteNome' in r ? r.representanteNome : undefined) ??
+      ('repNome' in r ? r.repNome : undefined) ??
+      '—',
+    tipo: r.tipo,
+    valor: r.totalComissao ?? r.valor ?? 0,
+    pago: r.pago,
+  }));
+
   return (
     <StateView loading={loading} error={error} onRetry={refetch}>
       {data && (
@@ -692,14 +728,14 @@ function ComissoesTab({ qs }: { qs: string }) {
             <ExportActions
               filename={`comissoes-${new Date().toISOString().slice(0, 10)}`}
               titulo="Relatório de Comissões"
-              rows={data.porRep}
+              rows={linhas}
               columns={[
-                { header: 'Representante', value: (r) => r.repNome },
+                { header: 'Representante', value: (r) => r.nome },
                 { header: 'Tipo', value: (r) => r.tipo },
                 { header: 'Valor (R$)', value: (r) => r.valor.toFixed(2).replace('.', ',') },
                 { header: 'Status', value: (r) => (r.pago ? 'Pago' : 'A pagar') },
               ]}
-              disabled={data.porRep.length === 0}
+              disabled={linhas.length === 0}
             />
           </div>
           <div
@@ -711,25 +747,25 @@ function ComissoesTab({ qs }: { qs: string }) {
           >
             <KPICard
               label="Total pago"
-              value={fmtBRL(data.totalPago)}
+              value={fmtBRL(totalPago)}
               color={colors.success}
             />
             <KPICard
               label="Total a pagar"
-              value={fmtBRL(data.totalAPagar)}
-              color={data.totalAPagar > 0 ? colors.warning : colors.muted}
+              value={fmtBRL(totalAPagar)}
+              color={totalAPagar > 0 ? colors.warning : colors.muted}
             />
             <KPICard
               label="Total geral"
-              value={fmtBRL(data.totalPago + data.totalAPagar)}
+              value={fmtBRL(totalPago + totalAPagar)}
             />
           </div>
 
           <div style={card}>
             <h3 style={{ margin: '0 0 0.75rem', fontSize: 15 }}>Comissões por representante</h3>
             <BarChart
-              data={data.porRep.map((r) => ({
-                label: r.repNome,
+              data={linhas.map((r) => ({
+                label: r.nome,
                 sublabel: r.pago ? '✓ pago' : '⏳ a pagar',
                 value: r.valor,
                 color: r.pago ? colors.success : colors.warning,
