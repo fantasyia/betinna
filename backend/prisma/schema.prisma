@@ -408,7 +408,7 @@ model Cliente {
   omieStatus      ClienteOmieStatus @default(ATIVO) // só ativo/bloqueado importa
   score           Int               @default(50)
   prazoPagamento  Int               @default(30) // dias
-  limiteCredito   Decimal?  @db.Decimal(14, 2)
+  limiteCredito   Decimal?          @db.Decimal(14, 2)
   ultimoPedidoEm  DateTime?
   representanteId String?
   /// Marca registros gerados pelo seed-demo (script /admin/seed-demo).
@@ -449,18 +449,26 @@ model Cliente {
 }
 
 model Tag {
-  id        String @id @default(cuid())
+  id        String  @id @default(cuid())
   /// Tenant scope — auditoria 2026-05-15 P0. Antes globalmente única,
   /// agora cada empresa tem seu próprio conjunto de tags.
   empresaId String
   nome      String
-  cor       String @default("#7c3aed")
+  cor       String  @default("#7c3aed")
+  /// Orquestração (Fase B) — metadados de tag:
+  descricao String?
+  /// Tag de escopo de funil (null = global, vale pra qualquer funil).
+  funilId   String?
+  /// Categoria livre: status | segmento | logistica | alerta | sistema
+  categoria String?
 
   empresa  Empresa      @relation(fields: [empresaId], references: [id], onDelete: Cascade)
   clientes ClienteTag[]
+  leads    LeadTag[]
 
   @@unique([empresaId, nome])
   @@index([empresaId])
+  @@index([empresaId, funilId])
 }
 
 model ClienteTag {
@@ -470,6 +478,20 @@ model ClienteTag {
   tag       Tag     @relation(fields: [tagId], references: [id], onDelete: Cascade)
 
   @@id([clienteId, tagId])
+}
+
+/// Ligação lead ↔ tag (orquestração Fase B). `origem` distingue tag aplicada
+/// manualmente vs pela IA (classificação automática).
+model LeadTag {
+  leadId   String
+  tagId    String
+  origem   String? // 'usuario' | 'ia'
+  criadoEm DateTime @default(now())
+  lead     Lead     @relation(fields: [leadId], references: [id], onDelete: Cascade)
+  tag      Tag      @relation(fields: [tagId], references: [id], onDelete: Cascade)
+
+  @@id([leadId, tagId])
+  @@index([tagId])
 }
 
 model NotaPrivada {
@@ -790,17 +812,20 @@ model Lead {
   /// Etapa do funil padrão (legado). Mantido pra compat com dashboards e relatórios
   /// que ainda agregam pelo enum. Quando `funilEtapaId` está setado, ele é a fonte
   /// da verdade — esta coluna é sincronizada a partir do `tipo` da FunilEtapa.
-  etapa        LeadEtapa @default(NOVO)
+  etapa           LeadEtapa @default(NOVO)
   /// Funil customizado ao qual este lead pertence. Se null, usa o funil legado.
-  funilId      String?
+  funilId         String?
   /// Etapa customizada dentro do funil. Quando setado, sobrescreve `etapa` na UI.
-  funilEtapaId String?
-  score        Int       @default(50)
-  proximaAcao  String?
-  observacoes  String?   @db.Text
+  funilEtapaId    String?
+  score           Int       @default(50)
+  proximaAcao     String?
+  observacoes     String?   @db.Text
   /// Orquestração — variáveis flexíveis gravadas por IA/fluxos (ex:
   /// classificacao_betinna, canal_dominante). Lidas nos fluxos como {{custom.<chave>}}.
-  variaveis    Json      @default("{}")
+  variaveis       Json      @default("{}")
+  /// Orquestração (Fase B) — prioridade pro disparo em lote ("coluna LEO").
+  /// Menor = libera antes. Null = sem prioridade explícita (vai pro fim).
+  ordemPrioridade Int?
 
   motivoGanho String?
   motivoPerda String?
@@ -819,6 +844,7 @@ model Lead {
   cliente       Cliente?    @relation(fields: [clienteId], references: [id])
   funil         Funil?      @relation(fields: [funilId], references: [id], onDelete: SetNull)
   funilEtapa    FunilEtapa? @relation(fields: [funilEtapaId], references: [id], onDelete: SetNull)
+  tags          LeadTag[]
 
   @@index([empresaId, etapa])
   @@index([empresaId, funilId, funilEtapaId])
@@ -864,18 +890,23 @@ model Funil {
 }
 
 model FunilEtapa {
-  id            String         @id @default(cuid())
-  funilId       String
-  nome          String
+  id               String         @id @default(cuid())
+  funilId          String
+  nome             String
   /// Cor da etapa (badge no kanban)
-  cor           String         @default("#7c3aed")
+  cor              String         @default("#7c3aed")
   /// Ordem dentro do funil
-  ordem         Int            @default(0)
-  tipo          FunilEtapaTipo @default(ATIVA)
+  ordem            Int            @default(0)
+  tipo             FunilEtapaTipo @default(ATIVA)
   /// 0-100 — peso para cálculo de pipeline ponderado
-  probabilidade Int            @default(50)
+  probabilidade    Int            @default(50)
   /// SLA em dias antes da etapa entrar em "aging"
-  slaDias       Int?
+  slaDias          Int?
+  /// Orquestração (Fase B) — ação quando o SLA vence:
+  /// { tipo: 'notificar' | 'mover' | 'tag', etapaDestinoId?, tagId?, ... }
+  acaoSlaExpirado  Json?
+  /// Teto de leads simultâneos nesta etapa (anti-sobrecarga). Null = sem limite.
+  capacidadeMaxima Int?
 
   criadoEm     DateTime @default(now())
   atualizadoEm DateTime @updatedAt
@@ -1007,8 +1038,8 @@ model Comissao {
   mes             Int
   ano             Int
   // #17 — dinheiro em Decimal (precisão de centavos). % (percentual) segue Float.
-  totalVendas     Decimal @db.Decimal(14, 2)
-  totalComissao   Decimal @db.Decimal(14, 2)
+  totalVendas     Decimal      @db.Decimal(14, 2)
+  totalComissao   Decimal      @db.Decimal(14, 2)
   qtdPedidos      Int
   pago            Boolean      @default(false)
   pagoEm          DateTime?
@@ -1098,6 +1129,11 @@ enum FluxoTriggerTipo {
   CLIENTE_INATIVO_30D // cron-driven — clientes sem pedido há ≥ N dias
   AMOSTRA_FOLLOWUP // cron-driven — amostras no prazo de follow-up
   CRON_AGENDADO // expressão cron customizável pelo admin
+  // Orquestração (Fase B) — gatilhos de conversa/IA:
+  LEAD_RESPONDEU // lead respondeu no WhatsApp (retoma fluxo aguardando)
+  LEAD_SEM_RESPOSTA // lead não respondeu em X horas (cron-driven)
+  IA_CLASSIFICOU // a IA classificou o lead (grava variável e dispara reação)
+  LEAD_RECEBEU_TAG // uma tag foi aplicada ao lead
 }
 
 enum FluxoAcaoTipo {
@@ -1108,11 +1144,15 @@ enum FluxoAcaoTipo {
   MOVER_LEAD_ETAPA // avança lead para a próxima etapa
   ATRIBUIR_REP // atribui representante ao cliente/lead
   WEBHOOK_EXTERNO // POST JSON pra URL externa configurada
+  // Orquestração (Fase B):
+  CONVERSAR_IA // carrega prompt da biblioteca, conversa via WhatsApp e classifica
+  LIBERAR_LOTE // libera N leads de uma etapa (disparo controlado anti-sobrecarga)
 }
 
 enum FluxoExecucaoStatus {
   PENDENTE
   EM_EXECUCAO
+  AGUARDANDO // pausado esperando resposta do lead (nó Conversar com IA)
   CONCLUIDO
   FALHOU
   CANCELADO
@@ -1205,19 +1245,24 @@ model FluxoEdge {
  * Cada passo do fluxo é rastreado em FluxoExecucaoLog.
  */
 model FluxoExecucao {
-  id         String              @id @default(cuid())
-  fluxoId    String
-  empresaId  String
-  status     FluxoExecucaoStatus @default(PENDENTE)
+  id             String              @id @default(cuid())
+  fluxoId        String
+  empresaId      String
+  status         FluxoExecucaoStatus @default(PENDENTE)
   /// Dados do evento que disparou: { clienteId, pedidoId, leadId, ocorrenciaId, ... }
-  contexto   Json
+  contexto       Json
   /// ID do job BullMQ ativo (para monitoramento).
-  jobId      String?
-  iniciouEm  DateTime?
-  terminouEm DateTime?
-  erroMsg    String?             @db.Text
-  tentativas Int                 @default(0)
-  criadoEm   DateTime            @default(now())
+  jobId          String?
+  /// Orquestração (Fase B) — nó em que a execução está pausada aguardando
+  /// resposta do lead (status AGUARDANDO).
+  aguardandoNoId String?
+  /// Quando a espera expira (timeout do nó Conversar com IA).
+  timeoutEm      DateTime?
+  iniciouEm      DateTime?
+  terminouEm     DateTime?
+  erroMsg        String?             @db.Text
+  tentativas     Int                 @default(0)
+  criadoEm       DateTime            @default(now())
 
   fluxo Fluxo              @relation(fields: [fluxoId], references: [id])
   logs  FluxoExecucaoLog[]
@@ -1380,11 +1425,11 @@ model Conversation {
   criadoEm         DateTime              @default(now())
   atualizadoEm     DateTime              @updatedAt
 
-  empresa      Empresa              @relation(fields: [empresaId], references: [id], onDelete: Cascade)
-  cliente      Cliente?             @relation(fields: [clienteId], references: [id])
-  atribuido    Usuario?             @relation("ConversationAtribuido", fields: [atribuidoId], references: [id])
-  proprietario Usuario?             @relation("ConversationProprietario", fields: [proprietarioId], references: [id])
-  incident     MarketplaceIncident? @relation(fields: [incidentId], references: [id])
+  empresa       Empresa              @relation(fields: [empresaId], references: [id], onDelete: Cascade)
+  cliente       Cliente?             @relation(fields: [clienteId], references: [id])
+  atribuido     Usuario?             @relation("ConversationAtribuido", fields: [atribuidoId], references: [id])
+  proprietario  Usuario?             @relation("ConversationProprietario", fields: [proprietarioId], references: [id])
+  incident      MarketplaceIncident? @relation(fields: [incidentId], references: [id])
   mensagens     Message[]
   notasInternas ConversationNota[]
 
@@ -1475,8 +1520,8 @@ model MarketplaceIncident {
   pedidoExternoId String?
   clienteId       String?
   /// Valor envolvido (BRL). Quando aplicável (devolução, reembolso).
-  valor           Decimal?  @db.Decimal(14, 2)
-  valorReembolso  Decimal?  @db.Decimal(14, 2)
+  valor           Decimal?                  @db.Decimal(14, 2)
+  valorReembolso  Decimal?                  @db.Decimal(14, 2)
   /// SLA do marketplace pra próxima ação do vendedor. ML pune resposta lenta.
   prazoResposta   DateTime?
   /// Resumo curto pra UI.
@@ -1847,18 +1892,18 @@ model FormularioResposta {
 /// O system prompt é compilado a partir desses campos pra dar identidade.
 /// Singleton por empresa (1 persona ativa por tenant).
 model MullerBotPersona {
-  id           String   @id @default(cuid())
-  empresaId    String   @unique
-  nome         String   @default("MullerBot")
+  id           String  @id @default(cuid())
+  empresaId    String  @unique
+  nome         String  @default("MullerBot")
   /// Tom de voz: FORMAL, PROFISSIONAL, AMIGAVEL, DESCONTRAIDO, ENTUSIASMADO
-  tomVoz       String   @default("PROFISSIONAL")
+  tomVoz       String  @default("PROFISSIONAL")
   /// Instruções extras anexadas ao system prompt base.
   /// Ex: "Sempre cite o prazo de entrega. Use emojis com moderação."
-  instrucoes   String?  @db.Text
+  instrucoes   String? @db.Text
   /// Prompt COMPLETO escrito pelo usuário. Quando preenchido, é usado tal e qual
   /// como system prompt (substitui o prompt-base e os campos estruturados acima).
   /// É a forma principal de configurar o Muller — os demais campos viram legado.
-  promptCustom String?  @db.Text
+  promptCustom String? @db.Text
   /// Modelo da OpenAI usado pelo bot desta empresa (ex: gpt-4o-mini, gpt-4o).
   /// Quando null, usa o padrão do servidor (env MULLERBOT_MODEL).
   modelo       String?
@@ -1867,13 +1912,13 @@ model MullerBotPersona {
   exemplosJson Json?
   /// Saudação opcional usada em mensagens iniciais (Inbox/templates).
   saudacao     String?
-  ativo        Boolean  @default(true)
+  ativo        Boolean @default(true)
 
   /// Sprint 2.2 — Teto de custo (tokens OpenAI) por empresa.
-  limiteTokensDiaIn   Int @default(100000)
-  limiteTokensDiaOut  Int @default(100000)
-  limiteTokensMesIn   Int @default(2000000)
-  limiteTokensMesOut  Int @default(2000000)
+  limiteTokensDiaIn   Int       @default(100000)
+  limiteTokensDiaOut  Int       @default(100000)
+  limiteTokensMesIn   Int       @default(2000000)
+  limiteTokensMesOut  Int       @default(2000000)
   /// Quando o bot se auto-pausou por estourar o teto (vale até essa data — virada do dia/mês).
   pausadoPorCustoAte  DateTime?
   /// Throttle do alerta de 80% do teto (no máx. 1 e-mail por dia).
