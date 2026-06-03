@@ -53,6 +53,77 @@ export const createFluxoSchema = z.object({
   arestas: z.array(createFluxoEdgeSchema).default([]),
 });
 
+// ─── Import / Export de fluxo (arquivo .json) ────────────────────────
+/**
+ * Nó no arquivo de import: `id` é uma CHAVE estável (ex: "trigger", "msg1")
+ * referenciada pelas arestas. No import o backend gera ids internos novos,
+ * então o mesmo arquivo pode ser importado várias vezes sem colisão.
+ */
+const importFluxoNoSchema = z.object({
+  id: z.string().min(1).max(120),
+  tipo: z.enum(fluxoNoTipoValues),
+  acaoTipo: z.enum(fluxoAcaoTipoValues).nullable().optional(),
+  titulo: z.string().min(1).max(100),
+  config: z.record(z.unknown()).optional().default({}),
+  posX: z.number().optional().default(0),
+  posY: z.number().optional().default(0),
+});
+
+/** Aresta no arquivo de import: referencia nós pela CHAVE (id acima); sem id próprio. */
+const importFluxoEdgeSchema = z.object({
+  sourceNoId: z.string().min(1),
+  targetNoId: z.string().min(1),
+  label: z.string().max(40).nullable().optional(),
+});
+
+export const importFluxoSchema = z
+  .object({
+    // Envelope opcional/tolerante — aceita arquivo "cru" sem ele.
+    betinnaFluxo: z.literal(1).optional(),
+    tipo: z.literal('fluxo').optional(),
+    nome: z.string().min(1).max(150),
+    descricao: z.string().max(500).nullable().optional(),
+    triggerTipo: z.enum(fluxoTriggerTipoValues).nullable().optional(),
+    triggerConfig: z.record(z.unknown()).nullable().optional(),
+    nos: z.array(importFluxoNoSchema).max(200).default([]),
+    arestas: z.array(importFluxoEdgeSchema).max(400).default([]),
+  })
+  .superRefine((d, ctx) => {
+    const ids = new Set(d.nos.map((n) => n.id));
+    if (ids.size !== d.nos.length) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: 'Há nós com id (chave) duplicado',
+        path: ['nos'],
+      });
+    }
+    d.arestas.forEach((e, i) => {
+      if (!ids.has(e.sourceNoId)) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: `Aresta ${i}: sourceNoId "${e.sourceNoId}" não existe em nos`,
+          path: ['arestas', i, 'sourceNoId'],
+        });
+      }
+      if (!ids.has(e.targetNoId)) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: `Aresta ${i}: targetNoId "${e.targetNoId}" não existe em nos`,
+          path: ['arestas', i, 'targetNoId'],
+        });
+      }
+    });
+    d.nos.forEach((n, i) => {
+      if (n.tipo === 'ACAO' && !n.acaoTipo) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: `Nó "${n.id}" é ACAO mas não tem acaoTipo`,
+          path: ['nos', i, 'acaoTipo'],
+        });
+      }
+    });
+  });
+
 // ─── Atualizar fluxo ─────────────────────────────────────────────────
 export const updateFluxoSchema = z.object({
   nome: z.string().min(1).max(150).optional(),
@@ -95,3 +166,4 @@ export type ListExecucoesDto = z.infer<typeof listExecucoesSchema>;
 export type TestarFluxoDto = z.infer<typeof testarFluxoSchema>;
 export type CreateFluxoNoDto = z.infer<typeof createFluxoNoSchema>;
 export type CreateFluxoEdgeDto = z.infer<typeof createFluxoEdgeSchema>;
+export type ImportFluxoDto = z.infer<typeof importFluxoSchema>;

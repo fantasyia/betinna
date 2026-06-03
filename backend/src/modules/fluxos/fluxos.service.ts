@@ -1,3 +1,4 @@
+import { randomUUID } from 'node:crypto';
 import { Injectable, Logger } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { PrismaService } from '@database/prisma.service';
@@ -16,7 +17,28 @@ import type {
   ListFluxosDto,
   ListExecucoesDto,
   TestarFluxoDto,
+  ImportFluxoDto,
 } from './fluxos.dto';
+
+/** Fluxo serializado pro arquivo de export/import (.json). */
+export interface ExportedFluxo {
+  betinnaFluxo: 1;
+  tipo: 'fluxo';
+  nome: string;
+  descricao: string | null;
+  triggerTipo: string | null;
+  triggerConfig: Record<string, unknown> | null;
+  nos: Array<{
+    id: string;
+    tipo: string;
+    acaoTipo: string | null;
+    titulo: string;
+    config: Record<string, unknown>;
+    posX: number;
+    posY: number;
+  }>;
+  arestas: Array<{ sourceNoId: string; targetNoId: string; label: string | null }>;
+}
 
 // Helper: converte Record<string, unknown> em InputJsonObject sem type error
 const toJson = (v: Record<string, unknown>): Prisma.InputJsonObject =>
@@ -315,6 +337,77 @@ export class FluxosService {
     await this.prisma.fluxo.update({ where: { id }, data: { status: 'ARQUIVADO' } });
     this.logger.log(`Fluxo ${id} arquivado por ${user.email}`);
     return this.findOneById(id);
+  }
+
+  // ─── Import / Export (arquivo .json) ─────────────────────────────
+
+  /**
+   * Serializa o fluxo no formato de arquivo (.json) pronto pra reimportar.
+   * Os ids dos nós viram CHAVES estáveis referenciadas pelas arestas.
+   */
+  async exportar(user: AuthenticatedUser, id: string): Promise<ExportedFluxo> {
+    const f = await this.findOne(user, id);
+    return {
+      betinnaFluxo: 1,
+      tipo: 'fluxo',
+      nome: f.nome,
+      descricao: f.descricao,
+      triggerTipo: f.triggerTipo,
+      triggerConfig: (f.triggerConfig ?? null) as Record<string, unknown> | null,
+      nos: f.nos.map((n) => ({
+        id: n.id,
+        tipo: n.tipo,
+        acaoTipo: n.acaoTipo,
+        titulo: n.titulo,
+        config: (n.config ?? {}) as Record<string, unknown>,
+        posX: n.posX,
+        posY: n.posY,
+      })),
+      arestas: f.arestas.map((e) => ({
+        sourceNoId: e.sourceNoId,
+        targetNoId: e.targetNoId,
+        label: e.label,
+      })),
+    };
+  }
+
+  /**
+   * Cria um fluxo (sempre RASCUNHO) a partir de um arquivo importado.
+   * Re-mapeia as CHAVES dos nós → ids internos novos (reimport sem colisão)
+   * e delega pro `create` (mesma transação/validação). Nunca ativa sozinho.
+   */
+  async importar(user: AuthenticatedUser, dto: ImportFluxoDto): Promise<FluxoWithRel> {
+    this.requireAdminOrDirector(user);
+
+    const idMap = new Map<string, string>();
+    for (const n of dto.nos) idMap.set(n.id, randomUUID());
+
+    const nos = dto.nos.map((n) => ({
+      id: idMap.get(n.id) as string,
+      tipo: n.tipo,
+      acaoTipo: n.acaoTipo ?? undefined,
+      titulo: n.titulo,
+      config: n.config,
+      posX: n.posX,
+      posY: n.posY,
+    }));
+    const arestas = dto.arestas.map((e) => ({
+      id: randomUUID(),
+      sourceNoId: idMap.get(e.sourceNoId) as string,
+      targetNoId: idMap.get(e.targetNoId) as string,
+      label: e.label ?? null,
+    }));
+
+    const fluxo = await this.create(user, {
+      nome: dto.nome,
+      descricao: dto.descricao ?? undefined,
+      triggerTipo: dto.triggerTipo ?? undefined,
+      triggerConfig: dto.triggerConfig ?? undefined,
+      nos,
+      arestas,
+    });
+    this.logger.log(`Fluxo importado: ${fluxo.id} (${dto.nome}) por ${user.email}`);
+    return fluxo;
   }
 
   // ─── Execuções ───────────────────────────────────────────────────

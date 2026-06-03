@@ -11,11 +11,13 @@ import {
   listFluxosSchema,
   listExecucoesSchema,
   testarFluxoSchema,
+  importFluxoSchema,
   type CreateFluxoDto,
   type UpdateFluxoDto,
   type ListFluxosDto,
   type ListExecucoesDto,
   type TestarFluxoDto,
+  type ImportFluxoDto,
 } from './fluxos.dto';
 
 @ApiTags('fluxos')
@@ -62,6 +64,25 @@ export class FluxosController {
     @Body(new ZodValidationPipe(updateFluxoSchema)) dto: UpdateFluxoDto,
   ) {
     return this.svc.update(user, id, dto);
+  }
+
+  // ─── Import / Export (arquivo .json) ─────────────────────────────
+
+  @Post('importar')
+  @Roles('ADMIN', 'DIRECTOR')
+  @ApiOperation({ summary: 'Importa um fluxo de um arquivo JSON (cria como RASCUNHO)' })
+  importar(
+    @CurrentUser() user: AuthenticatedUser,
+    @Body(new ZodValidationPipe(importFluxoSchema)) dto: ImportFluxoDto,
+  ) {
+    return this.svc.importar(user, dto);
+  }
+
+  @Get(':id/exportar')
+  @Roles('ADMIN', 'DIRECTOR')
+  @ApiOperation({ summary: 'Exporta o fluxo como JSON (.json) pronto pra reimportar' })
+  exportar(@CurrentUser() user: AuthenticatedUser, @Param('id') id: string) {
+    return this.svc.exportar(user, id);
   }
 
   // ─── Ciclo de vida ───────────────────────────────────────────────

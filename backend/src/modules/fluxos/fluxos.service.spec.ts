@@ -4,6 +4,7 @@ import { BusinessRuleException, ForbiddenException } from '@shared/errors/app-ex
 import type { AuthenticatedUser } from '@shared/types/authenticated-user';
 import { FluxosService } from './fluxos.service';
 import { interpolate } from './fluxo-executor.service';
+import { importFluxoSchema, type ImportFluxoDto } from './fluxos.dto';
 
 // ─── Mocks ───────────────────────────────────────────────────────────
 
@@ -237,6 +238,121 @@ describe('FluxosService', () => {
       expect(m.taxaSucesso).toBe(0);
     });
   });
+
+  describe('importar', () => {
+    const dtoBoasVindas: ImportFluxoDto = {
+      nome: 'Boas-vindas',
+      triggerTipo: 'LEAD_CRIADO',
+      nos: [
+        { id: 'trigger', tipo: 'TRIGGER', titulo: 'Lead criado', config: {}, posX: 0, posY: 0 },
+        {
+          id: 'msg',
+          tipo: 'ACAO',
+          acaoTipo: 'ENVIAR_WHATSAPP',
+          titulo: 'Mensagem',
+          config: { mensagem: 'Olá {{lead.nome}}' },
+          posX: 0,
+          posY: 100,
+        },
+      ],
+      arestas: [{ sourceNoId: 'trigger', targetNoId: 'msg', label: null }],
+    };
+
+    it('lança ForbiddenException para REP', async () => {
+      await expect(
+        svc.importar(fakeUser({ role: 'REP' as UserRole }), dtoBoasVindas),
+      ).rejects.toBeInstanceOf(ForbiddenException);
+    });
+
+    it('cria como RASCUNHO re-mapeando as chaves dos nós e mantendo as ligações', async () => {
+      prisma.fluxo.create.mockResolvedValue({ id: 'novo-fluxo' });
+      prisma.fluxo.findUniqueOrThrow.mockResolvedValue(
+        fakeFluxo({ id: 'novo-fluxo', nome: 'Boas-vindas' }),
+      );
+      prisma.$transaction.mockImplementation(async (fn: (tx: unknown) => Promise<unknown>) =>
+        fn(prisma),
+      );
+
+      const result = await svc.importar(fakeUser(), dtoBoasVindas);
+      expect(result.id).toBe('novo-fluxo');
+      expect(prisma.fluxo.create).toHaveBeenCalledWith(
+        expect.objectContaining({ data: expect.objectContaining({ status: 'RASCUNHO' }) }),
+      );
+
+      const nodesArg = prisma.fluxoNo.createMany.mock.calls[0][0].data as Array<{
+        id: string;
+        titulo: string;
+        acaoTipo: string | null;
+      }>;
+      expect(nodesArg).toHaveLength(2);
+      // As chaves "trigger"/"msg" do arquivo NÃO viram os ids internos.
+      expect(nodesArg.map((n) => n.id)).not.toContain('trigger');
+      expect(nodesArg.map((n) => n.id)).not.toContain('msg');
+      expect(nodesArg.find((n) => n.titulo === 'Mensagem')?.acaoTipo).toBe('ENVIAR_WHATSAPP');
+
+      // A aresta aponta pros ids internos NOVOS (chave remapeada), não pelas chaves do arquivo.
+      const edgesArg = prisma.fluxoEdge.createMany.mock.calls[0][0].data as Array<{
+        sourceNoId: string;
+        targetNoId: string;
+      }>;
+      const triggerNode = nodesArg.find((n) => n.titulo === 'Lead criado');
+      const msgNode = nodesArg.find((n) => n.titulo === 'Mensagem');
+      expect(edgesArg[0].sourceNoId).toBe(triggerNode?.id);
+      expect(edgesArg[0].targetNoId).toBe(msgNode?.id);
+    });
+
+    it('dois imports do mesmo arquivo geram ids de nós diferentes (sem colisão)', async () => {
+      prisma.fluxo.create.mockResolvedValue({ id: 'f' });
+      prisma.fluxo.findUniqueOrThrow.mockResolvedValue(fakeFluxo());
+      prisma.$transaction.mockImplementation(async (fn: (tx: unknown) => Promise<unknown>) =>
+        fn(prisma),
+      );
+
+      await svc.importar(fakeUser(), dtoBoasVindas);
+      await svc.importar(fakeUser(), dtoBoasVindas);
+
+      const ids1 = (prisma.fluxoNo.createMany.mock.calls[0][0].data as Array<{ id: string }>).map(
+        (n) => n.id,
+      );
+      const ids2 = (prisma.fluxoNo.createMany.mock.calls[1][0].data as Array<{ id: string }>).map(
+        (n) => n.id,
+      );
+      expect(ids1[0]).not.toBe(ids2[0]);
+    });
+  });
+
+  describe('exportar', () => {
+    it('serializa no formato de arquivo (chaves nos nós, arestas sem id)', async () => {
+      prisma.fluxo.findFirst.mockResolvedValue(
+        fakeFluxo({
+          nome: 'Fluxo X',
+          descricao: 'desc',
+          triggerTipo: 'LEAD_CRIADO',
+          nos: [
+            {
+              id: 'n1',
+              tipo: 'TRIGGER',
+              acaoTipo: null,
+              titulo: 'Lead criado',
+              config: {},
+              posX: 0,
+              posY: 0,
+            },
+          ],
+          arestas: [{ sourceNoId: 'n1', targetNoId: 'n1', label: 'true' }],
+        }),
+      );
+
+      const exp = await svc.exportar(fakeUser(), 'fluxo-1');
+      expect(exp.betinnaFluxo).toBe(1);
+      expect(exp.tipo).toBe('fluxo');
+      expect(exp.nome).toBe('Fluxo X');
+      expect(exp.nos[0].id).toBe('n1');
+      expect(exp.arestas[0]).toEqual({ sourceNoId: 'n1', targetNoId: 'n1', label: 'true' });
+      // arestas exportadas NÃO carregam id próprio (gerado no reimport).
+      expect(exp.arestas[0]).not.toHaveProperty('id');
+    });
+  });
 });
 
 // ─── Testes interpolate (utilitário) ────────────────────────────────
@@ -267,5 +383,60 @@ describe('interpolate', () => {
 
   it('converte números para string', () => {
     expect(interpolate('Total: R${{valor}}', { valor: 1500 })).toBe('Total: R$1500');
+  });
+});
+
+// ─── Testes importFluxoSchema (validação do arquivo .json) ──────────
+describe('importFluxoSchema', () => {
+  const base = {
+    nome: 'F',
+    nos: [{ id: 'trigger', tipo: 'TRIGGER', titulo: 'T' }],
+    arestas: [],
+  };
+
+  it('aceita arquivo mínimo (sem envelope) e aplica defaults', () => {
+    const r = importFluxoSchema.safeParse(base);
+    expect(r.success).toBe(true);
+    if (r.success) {
+      expect(r.data.nos[0].config).toEqual({});
+      expect(r.data.nos[0].posX).toBe(0);
+    }
+  });
+
+  it('rejeita aresta que referencia nó inexistente', () => {
+    const r = importFluxoSchema.safeParse({
+      ...base,
+      arestas: [{ sourceNoId: 'trigger', targetNoId: 'fantasma' }],
+    });
+    expect(r.success).toBe(false);
+  });
+
+  it('rejeita nó ACAO sem acaoTipo', () => {
+    const r = importFluxoSchema.safeParse({
+      nome: 'F',
+      nos: [
+        { id: 'trigger', tipo: 'TRIGGER', titulo: 'T' },
+        { id: 'a', tipo: 'ACAO', titulo: 'Ação' },
+      ],
+      arestas: [],
+    });
+    expect(r.success).toBe(false);
+  });
+
+  it('rejeita chaves de nó duplicadas', () => {
+    const r = importFluxoSchema.safeParse({
+      nome: 'F',
+      nos: [
+        { id: 'x', tipo: 'TRIGGER', titulo: 'T' },
+        { id: 'x', tipo: 'DELAY', titulo: 'D' },
+      ],
+      arestas: [],
+    });
+    expect(r.success).toBe(false);
+  });
+
+  it('rejeita triggerTipo inválido', () => {
+    const r = importFluxoSchema.safeParse({ ...base, triggerTipo: 'NAO_EXISTE' });
+    expect(r.success).toBe(false);
   });
 });

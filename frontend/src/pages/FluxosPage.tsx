@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import {
   Plus,
@@ -11,6 +11,8 @@ import {
   Sparkles,
   AlertCircle,
   Activity,
+  Upload,
+  Download,
 } from 'lucide-react';
 import { api, ApiError } from '@/lib/api';
 import { useApiQuery, type PaginatedResponse } from '@/hooks/useApiQuery';
@@ -90,6 +92,32 @@ function fmtDate(d: string | null | undefined) {
   }
 }
 
+/** Nome de arquivo seguro a partir do nome do fluxo. */
+function slugify(s: string): string {
+  return (
+    s
+      .toLowerCase()
+      .normalize('NFD')
+      .replace(/[̀-ͯ]/g, '')
+      .replace(/[^a-z0-9]+/g, '-')
+      .replace(/^-+|-+$/g, '')
+      .slice(0, 60) || 'fluxo'
+  );
+}
+
+/** Serializa em JSON e dispara o download no navegador. */
+function baixarJson(filename: string, data: unknown): void {
+  const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
+}
+
 export default function FluxosPage() {
   const role = useRole();
   const toast = useToast();
@@ -139,6 +167,46 @@ export default function FluxosPage() {
     }
   }
 
+  // ─── Import / Export por arquivo (.json) ──────────────────────────
+  const fileRef = useRef<HTMLInputElement>(null);
+  const [importing, setImporting] = useState(false);
+
+  async function onImportFile(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    if (fileRef.current) fileRef.current.value = ''; // permite re-selecionar o mesmo arquivo
+    if (!file) return;
+    setImporting(true);
+    try {
+      const text = await file.text();
+      let parsed: Record<string, unknown>;
+      try {
+        parsed = JSON.parse(text) as Record<string, unknown>;
+      } catch {
+        throw new Error('O arquivo não é um JSON válido');
+      }
+      const r = await api.post<{ id: string; nome: string }>('/fluxos/importar', parsed);
+      toast.success('Fluxo importado', `"${r.nome}" criado como rascunho — revise e ative.`);
+      refetch();
+      setEditingId(r.id);
+    } catch (err) {
+      toast.error(
+        'Falha ao importar fluxo',
+        err instanceof ApiError ? err.message : err instanceof Error ? err.message : undefined,
+      );
+    } finally {
+      setImporting(false);
+    }
+  }
+
+  async function onExport(f: FluxoListItem) {
+    try {
+      const data = await api.get<unknown>(`/fluxos/${f.id}/exportar`);
+      baixarJson(`${slugify(f.nome)}.fluxo.json`, data);
+    } catch (err) {
+      toast.error('Falha ao exportar', err instanceof ApiError ? err.message : undefined);
+    }
+  }
+
   if (editingId) {
     return (
       <FluxoEditor
@@ -156,6 +224,23 @@ export default function FluxosPage() {
       actions={
         canEdit ? (
           <>
+            <input
+              ref={fileRef}
+              type="file"
+              accept="application/json,.json"
+              onChange={(e) => void onImportFile(e)}
+              className="hidden"
+              data-testid="fluxo-import-input"
+            />
+            <Button
+              variant="secondary"
+              data-testid="fluxo-import-btn"
+              loading={importing}
+              leftIcon={<Upload className="h-3.5 w-3.5" />}
+              onClick={() => fileRef.current?.click()}
+            >
+              Importar
+            </Button>
             <Button
               variant="secondary"
               leftIcon={<Sparkles className="h-3.5 w-3.5" />}
@@ -246,6 +331,7 @@ export default function FluxosPage() {
                     canEdit={canEdit}
                     onEdit={() => setEditingId(f.id)}
                     onAction={(a) => callAction(f.id, a)}
+                    onExport={() => onExport(f)}
                   />
                 ))}
               </div>
@@ -301,11 +387,13 @@ function FluxoCard({
   canEdit,
   onEdit,
   onAction,
+  onExport,
 }: {
   fluxo: FluxoListItem;
   canEdit: boolean;
   onEdit: () => void;
   onAction: (a: 'ativar' | 'pausar' | 'arquivar') => void;
+  onExport: () => void;
 }) {
   return (
     <Card
@@ -392,6 +480,18 @@ function FluxoCard({
                 size="sm"
                 icon={<Archive />}
                 onClick={() => onAction('arquivar')}
+              />
+            </Tooltip>
+          )}
+          {canEdit && (
+            <Tooltip content="Exportar (.json)">
+              <IconButton
+                aria-label="Exportar"
+                variant="ghost"
+                size="sm"
+                icon={<Download />}
+                onClick={onExport}
+                data-testid={`fluxo-exportar-${fluxo.id}`}
               />
             </Tooltip>
           )}
