@@ -298,6 +298,26 @@ export class LeadsService {
     return this.prisma.lead.findUniqueOrThrow({ where: { id }, include: leadInclude });
   }
 
+  /** Calcula quando vence o SLA de uma etapa (slaHoras tem precedência). Fase C. */
+  private async calcularProximoSla(funilEtapaId?: string | null): Promise<Date | null> {
+    if (!funilEtapaId) return null;
+    const etapa = await this.prisma.funilEtapa.findUnique({
+      where: { id: funilEtapaId },
+      select: { slaHoras: true, slaDias: true },
+    });
+    if (!etapa) return null;
+    const d = new Date();
+    if (etapa.slaHoras) {
+      d.setHours(d.getHours() + etapa.slaHoras);
+      return d;
+    }
+    if (etapa.slaDias) {
+      d.setDate(d.getDate() + etapa.slaDias);
+      return d;
+    }
+    return null;
+  }
+
   async moverEtapa(user: AuthenticatedUser, id: string, dto: MoverEtapaDto): Promise<LeadWithRel> {
     const lead = await this.findById(user, id);
 
@@ -355,6 +375,8 @@ export class LeadsService {
     const data: Prisma.LeadUpdateInput = {
       etapa: novaEtapaEnum,
       etapaDesde: new Date(),
+      // Fase C (spec §4) — quando vence o SLA da etapa de destino.
+      proximoSlaEm: await this.calcularProximoSla(novoFunilEtapaId),
     };
     if (novoFunilEtapaId !== lead.funilEtapaId) {
       data.funilEtapa = { connect: { id: novoFunilEtapaId! } };

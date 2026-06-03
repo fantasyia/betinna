@@ -4,6 +4,7 @@ import { ForbiddenException } from '@shared/errors/app-exception';
 import { ErrorCode } from '@shared/errors/error-codes';
 import { getCallerEmpresaId } from '@shared/utils/auth-context';
 import type { AuthenticatedUser } from '@shared/types/authenticated-user';
+import { BotCustoService } from '@modules/mullerbot/bot-custo.service';
 
 export interface MonitorEtapa {
   id: string;
@@ -12,6 +13,8 @@ export interface MonitorEtapa {
   tipo: string;
   leads: number;
   slaDias: number | null;
+  /** Tempo médio (dias) que os leads estão parados nesta etapa (Fase C). */
+  tempoMedioDias: number;
 }
 export interface MonitorFunil {
   id: string;
@@ -26,6 +29,10 @@ export interface MonitorResumo {
   slaVencidos: number;
   fluxosAtivos: number;
   execucoes: { total: number; concluidas: number; falhas: number; aguardando: number };
+  /** Execuções de fluxo criadas hoje (Fase C — spec §2.8). */
+  disparosHoje: number;
+  /** Custo OpenAI da empresa (tokens dia/mês) — reaproveita o teto de custo. */
+  custoOpenAi: Awaited<ReturnType<BotCustoService['statusCusto']>>;
 }
 
 /**
@@ -34,7 +41,10 @@ export interface MonitorResumo {
  */
 @Injectable()
 export class MonitorService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly custo: BotCustoService,
+  ) {}
 
   private requireEmpresa(user: AuthenticatedUser): string {
     const id = getCallerEmpresaId(user);
@@ -54,7 +64,7 @@ export class MonitorService {
         cor: true,
         etapas: {
           orderBy: { ordem: 'asc' },
-          select: { id: true, nome: true, cor: true, tipo: true, slaDias: true },
+          select: { id: true, nome: true, cor: true, tipo: true, slaDias: true, slaHoras: true },
         },
       },
     });
@@ -70,6 +80,15 @@ export class MonitorService {
       if (c.funilEtapaId) countMap.set(c.funilEtapaId, c._count._all);
     }
 
+    // Tempo médio (dias) parado por etapa (Fase C — spec §2.8).
+    const idades = await this.prisma.$queryRaw<Array<{ funilEtapaId: string; mediaSeg: number }>>`
+      SELECT "funilEtapaId", AVG(EXTRACT(EPOCH FROM (now() - "etapaDesde"))) AS "mediaSeg"
+      FROM "Lead"
+      WHERE "empresaId" = ${empresaId} AND "funilEtapaId" IS NOT NULL
+      GROUP BY "funilEtapaId"`;
+    const idadeMap = new Map<string, number>();
+    for (const r of idades) idadeMap.set(r.funilEtapaId, Math.round(Number(r.mediaSeg) / 86400));
+
     const funisResumo: MonitorFunil[] = funis.map((f) => {
       const etapas: MonitorEtapa[] = f.etapas.map((e) => ({
         id: e.id,
@@ -78,6 +97,7 @@ export class MonitorService {
         tipo: e.tipo,
         slaDias: e.slaDias,
         leads: countMap.get(e.id) ?? 0,
+        tempoMedioDias: idadeMap.get(e.id) ?? 0,
       }));
       return {
         id: f.id,
@@ -89,11 +109,14 @@ export class MonitorService {
     });
 
     // SLAs vencidos: leads que passaram do prazo na etapa atual (etapas com slaDias).
-    const etapasComSla = funis.flatMap((f) => f.etapas.filter((e) => e.slaDias != null));
+    const etapasComSla = funis.flatMap((f) =>
+      f.etapas.filter((e) => e.slaDias != null || e.slaHoras != null),
+    );
     let slaVencidos = 0;
     for (const e of etapasComSla) {
       const corte = new Date();
-      corte.setDate(corte.getDate() - (e.slaDias as number));
+      if (e.slaHoras) corte.setHours(corte.getHours() - e.slaHoras);
+      else corte.setDate(corte.getDate() - (e.slaDias as number));
       slaVencidos += await this.prisma.lead.count({
         where: { empresaId, funilEtapaId: e.id, etapaDesde: { lt: corte } },
       });
@@ -110,12 +133,21 @@ export class MonitorService {
       }),
     ]);
 
+    const inicioHoje = new Date();
+    inicioHoje.setHours(0, 0, 0, 0);
+    const [disparosHoje, custoOpenAi] = await Promise.all([
+      this.prisma.fluxoExecucao.count({ where: { empresaId, criadoEm: { gte: inicioHoje } } }),
+      this.custo.statusCusto(empresaId),
+    ]);
+
     return {
       funis: funisResumo,
       iaAtivas,
       slaVencidos,
       fluxosAtivos,
       execucoes: { total, concluidas, falhas, aguardando },
+      disparosHoje,
+      custoOpenAi,
     };
   }
 }

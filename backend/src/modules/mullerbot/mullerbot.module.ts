@@ -26,6 +26,6 @@ import { BotAuditoriaController } from './bot-auditoria.controller';
     BotAuditoriaService,
     BotCustoService,
   ],
-  exports: [MullerBotService, ProdutoSearchService, MullerBotPersonaService],
+  exports: [MullerBotService, ProdutoSearchService, MullerBotPersonaService, BotCustoService],
 })
 export class MullerBotModule {}

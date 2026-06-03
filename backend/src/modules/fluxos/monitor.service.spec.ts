@@ -8,6 +8,10 @@ const makePrisma = () => ({
   lead: { groupBy: vi.fn(), count: vi.fn() },
   fluxoExecucao: { count: vi.fn() },
   fluxo: { count: vi.fn() },
+  $queryRaw: vi.fn().mockResolvedValue([]),
+});
+const makeCusto = () => ({
+  statusCusto: vi.fn().mockResolvedValue({ diaIn: 0, diaOut: 0, mesIn: 0, mesOut: 0 }),
 });
 
 const user: AuthenticatedUser = {
@@ -25,7 +29,7 @@ describe('MonitorService', () => {
 
   beforeEach(() => {
     prisma = makePrisma();
-    svc = new MonitorService(prisma as never);
+    svc = new MonitorService(prisma as never, makeCusto() as never);
   });
 
   it('monta o resumo: leads por etapa, total, SLAs vencidos e contadores', async () => {
