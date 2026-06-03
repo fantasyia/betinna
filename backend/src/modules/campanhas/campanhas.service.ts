@@ -34,6 +34,7 @@ const campanhaDetalheInclude = {
     select: {
       id: true,
       clienteId: true,
+      cliente: { select: { nome: true } },
       email: true,
       telefone: true,
       status: true,

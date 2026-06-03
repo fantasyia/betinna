@@ -34,8 +34,9 @@ interface Campanha {
   objetivo?: string | null;
   usarIaPersonalizacao: boolean;
   agendadoPara?: string | null;
-  enviadaEm?: string | null;
-  totalDestinatarios?: number;
+  iniciadoEm?: string | null;
+  finalizadoEm?: string | null;
+  _count?: { destinatarios: number };
   criadoEm: string;
   atualizadoEm: string;
 }
@@ -43,6 +44,7 @@ interface Campanha {
 interface CampanhaDestinatarioLite {
   id: string;
   clienteId: string;
+  cliente?: { nome: string } | null;
   email?: string | null;
   telefone?: string | null;
   status: 'PENDENTE' | 'ENVIADO' | 'LIDO' | 'ERRO';
@@ -172,6 +174,12 @@ function fmtPct(v: number | undefined | null) {
   return `${n.toFixed(1)}%`;
 }
 
+/** Nº de destinatários materializados (0 em rascunho → tratado como "sem dado"). */
+function destCount(c: { _count?: { destinatarios?: number } }): number | undefined {
+  const n = c._count?.destinatarios;
+  return n && n > 0 ? n : undefined;
+}
+
 /**
  * Gera e baixa um CSV com os resultados (destinatários) da campanha — feito no
  * client a partir do payload do detalhe (não precisa de endpoint extra).
@@ -179,9 +187,9 @@ function fmtPct(v: number | undefined | null) {
 function exportarResultadosCsv(c: CampanhaDetail): void {
   const linhas = c.destinatarios ?? [];
   const esc = (v: unknown) => `"${String(v ?? '').replace(/"/g, '""')}"`;
-  const head = ['cliente_id', 'email', 'telefone', 'status', 'enviado_em', 'lido', 'erro'];
+  const head = ['cliente', 'email', 'telefone', 'status', 'enviado_em', 'lido', 'erro'];
   const body = linhas.map((d) =>
-    [d.clienteId, d.email, d.telefone, d.status, d.enviadoEm, d.lido ? 'sim' : 'não', d.erro]
+    [d.cliente?.nome ?? d.clienteId, d.email, d.telefone, d.status, d.enviadoEm, d.lido ? 'sim' : 'não', d.erro]
       .map(esc)
       .join(','),
   );
@@ -271,16 +279,18 @@ export default function CampanhasPage() {
     {
       key: 'alcance',
       header: 'Destinatários',
-      render: (c) =>
-        c.totalDestinatarios !== undefined && c.totalDestinatarios !== null
-          ? String(c.totalDestinatarios)
-          : <em style={{ color: colors.muted }}>—</em>,
+      render: (c) => {
+        const n = destCount(c);
+        return n !== undefined ? String(n) : <em style={{ color: colors.muted }}>—</em>;
+      },
     },
     {
       key: 'agendado',
       header: 'Agendado / Enviado',
-      render: (c) =>
-        c.enviadaEm ? fmtDate(c.enviadaEm) : c.agendadoPara ? fmtDate(c.agendadoPara) : '—',
+      render: (c) => {
+        const enviado = c.finalizadoEm ?? c.iniciadoEm;
+        return enviado ? fmtDate(enviado) : c.agendadoPara ? fmtDate(c.agendadoPara) : '—';
+      },
     },
     {
       key: 'ia',
@@ -454,7 +464,7 @@ function CampanhaDetailModal({
 }) {
   const toast = useToast();
   const { data, loading, error, refetch } = useApiQuery<CampanhaDetail>(`/campanhas/${id}`);
-  const { data: metricas } = useApiQuery<Metricas>(`/campanhas/${id}/metricas`);
+  const { data: metricas, refetch: refetchMetricas } = useApiQuery<Metricas>(`/campanhas/${id}/metricas`);
   const [tab, setTab] = useState<DetailTab>('info');
   const [acting, setActing] = useState(false);
   const [confirmAsync, ConfirmDialog] = useConfirm();
@@ -471,6 +481,7 @@ function CampanhaDetailModal({
       };
       toast.success(`Campanha ${labelMap[action]}`);
       refetch();
+      refetchMetricas();
       onChanged();
     } catch (err) {
       toast.error('Falha', err instanceof ApiError ? err.message : undefined);
@@ -601,8 +612,8 @@ function CampanhaDetailModal({
                 <dl style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.75rem', fontSize: 13, marginBottom: '1rem' }}>
                   <Info label="Criado em">{fmtDate(c.criadoEm)}</Info>
                   <Info label="Agendado para">{fmtDate(c.agendadoPara)}</Info>
-                  <Info label="Enviado em">{fmtDate(c.enviadaEm)}</Info>
-                  <Info label="Destinatários">{c.totalDestinatarios !== undefined ? String(c.totalDestinatarios) : '—'}</Info>
+                  <Info label="Enviado em">{fmtDate(c.finalizadoEm ?? c.iniciadoEm)}</Info>
+                  <Info label="Destinatários">{destCount(c) !== undefined ? String(destCount(c)) : '—'}</Info>
                 </dl>
 
                 {(c.mensagemWa || c.mensagemEmail) && (
