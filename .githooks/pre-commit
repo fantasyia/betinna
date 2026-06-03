@@ -1,0 +1,41 @@
+#!/usr/bin/env bash
+# =====================================================================
+# Pre-commit hook — roda o MESMO lint do CI (eslint --max-warnings 0) nos
+# arquivos STAGED (backend + frontend) ANTES do commit. Impede commitar
+# prettier/whitespace-irregular/lint que o CI rejeitaria depois do push.
+#
+# Ativar (uma vez por clone):  git config core.hooksPath .githooks
+# Pular em emergência real:    NÃO use --no-verify (regra do projeto). Corrija.
+# =====================================================================
+set -uo pipefail
+
+# Resolve o npx: no Windows do projeto o Node não está no PATH.
+NPX="/c/Program Files/nodejs/npx.cmd"
+[ -x "$NPX" ] || NPX="npx"
+
+staged="$(git diff --cached --name-only --diff-filter=ACM)"
+[ -z "$staged" ] && exit 0
+
+fail=0
+
+be="$(echo "$staged" | grep -E '^backend/(src|test)/.*\.ts$' | sed 's#^backend/##' || true)"
+if [ -n "$be" ]; then
+  echo "▸ pre-commit: lint backend (staged)…"
+  # shellcheck disable=SC2086
+  ( cd backend && "$NPX" eslint $be --max-warnings 0 ) || fail=1
+fi
+
+fe="$(echo "$staged" | grep -E '^frontend/.*\.(ts|tsx|js|jsx)$' | sed 's#^frontend/##' || true)"
+if [ -n "$fe" ]; then
+  echo "▸ pre-commit: lint frontend (staged)…"
+  # shellcheck disable=SC2086
+  ( cd frontend && "$NPX" eslint $fe --max-warnings 0 ) || fail=1
+fi
+
+if [ "$fail" -ne 0 ]; then
+  echo ""
+  echo "✖ pre-commit: lint falhou. Rode 'npx eslint <arquivos> --fix' e re-stage."
+  echo "  (NÃO use --no-verify — corrija o problema; é o mesmo gate do CI.)"
+  exit 1
+fi
+exit 0
