@@ -221,6 +221,8 @@ export default function PromptsBotPage() {
         </div>
       </div>
 
+      <VariaveisCustomizadasSection />
+
       {(creating || editing) && (
         <PromptFormModal
           prompt={editing}
@@ -237,6 +239,90 @@ export default function PromptsBotPage() {
       )}
       {ConfirmDialog}
     </PageLayout>
+  );
+}
+
+interface VarCustom {
+  id: string;
+  chave: string;
+  descricao?: string | null;
+  valorPadrao?: string | null;
+}
+
+/** Editor de variáveis customizadas da empresa ({{custom.*}}) — Fase C. */
+function VariaveisCustomizadasSection() {
+  const toast = useToast();
+  const { data, refetch } = useApiQuery<VarCustom[] | { data: VarCustom[] }>('/orquestracao/variaveis');
+  const vars: VarCustom[] = Array.isArray(data) ? data : (data?.data ?? []);
+  const [chave, setChave] = useState('');
+  const [valor, setValor] = useState('');
+  const [busy, setBusy] = useState(false);
+
+  async function salvar() {
+    if (!chave.trim()) return;
+    setBusy(true);
+    try {
+      await api.post('/orquestracao/variaveis', {
+        chave: chave.trim(),
+        valorPadrao: valor.trim() || undefined,
+      });
+      setChave('');
+      setValor('');
+      refetch();
+    } catch (err) {
+      toast.error('Falha ao salvar', err instanceof ApiError ? err.message : undefined);
+    } finally {
+      setBusy(false);
+    }
+  }
+  async function remover(id: string) {
+    try {
+      await api.delete(`/orquestracao/variaveis/${id}`);
+      refetch();
+    } catch (err) {
+      toast.error('Falha ao remover', err instanceof ApiError ? err.message : undefined);
+    }
+  }
+
+  return (
+    <div style={{ ...card, marginTop: '0.75rem' }}>
+      <strong style={{ fontSize: 14 }}>Variáveis customizadas ({'{{custom.*}}'})</strong>
+      <p style={{ fontSize: 12, color: colors.muted, margin: '4px 0 8px' }}>
+        Variáveis da empresa com valor padrão. Use nos prompts/fluxos como{' '}
+        <code>{'{{custom.<chave>}}'}</code> — o lead pode sobrescrever.
+      </p>
+      <div style={{ display: 'flex', gap: 6, marginBottom: 8, flexWrap: 'wrap' }}>
+        <Input
+          placeholder="chave (ex: pedido_minimo_kg)"
+          value={chave}
+          onChange={(e) => setChave(e.target.value)}
+        />
+        <Input placeholder="valor padrão" value={valor} onChange={(e) => setValor(e.target.value)} />
+        <button type="button" style={btn} disabled={busy || !chave.trim()} onClick={() => void salvar()}>
+          Salvar
+        </button>
+      </div>
+      <div style={{ display: 'grid', gap: 4 }}>
+        {vars.map((v) => (
+          <div key={v.id} style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13 }}>
+            <code style={{ background: '#f1f3f5', padding: '1px 6px', borderRadius: 6 }}>
+              {`{{custom.${v.chave}}}`}
+            </code>
+            <span style={{ flex: 1, color: colors.muted }}>{v.valorPadrao ?? '—'}</span>
+            <button
+              type="button"
+              onClick={() => void remover(v.id)}
+              style={{ ...btnDanger, padding: '2px 8px', fontSize: 12 }}
+            >
+              remover
+            </button>
+          </div>
+        ))}
+        {vars.length === 0 && (
+          <span style={{ fontSize: 12, color: colors.muted }}>Nenhuma variável ainda.</span>
+        )}
+      </div>
+    </div>
   );
 }
 

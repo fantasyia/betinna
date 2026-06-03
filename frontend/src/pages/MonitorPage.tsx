@@ -13,6 +13,7 @@ interface MonitorEtapa {
   tipo: string;
   leads: number;
   slaDias: number | null;
+  tempoMedioDias?: number;
 }
 interface MonitorFunil {
   id: string;
@@ -27,6 +28,8 @@ interface MonitorResumo {
   slaVencidos: number;
   fluxosAtivos: number;
   execucoes: { total: number; concluidas: number; falhas: number; aguardando: number };
+  disparosHoje?: number;
+  custoOpenAi?: { diaIn?: number; diaOut?: number; mesIn?: number; mesOut?: number } | null;
 }
 
 /**
@@ -59,6 +62,14 @@ export default function MonitorPage() {
                 label="Execuções (falhas)"
                 value={`${data.execucoes.total} (${data.execucoes.falhas})`}
                 tone={data.execucoes.falhas > 0 ? 'warning' : undefined}
+              />
+              <Stat icon={<Zap />} label="Disparos hoje" value={data.disparosHoje ?? 0} />
+              <Stat
+                icon={<Bot />}
+                label="Tokens OpenAI (hoje)"
+                value={(
+                  (data.custoOpenAi?.diaIn ?? 0) + (data.custoOpenAi?.diaOut ?? 0)
+                ).toLocaleString('pt-BR')}
               />
             </div>
 
@@ -139,6 +150,12 @@ function FunilCard({ funil }: { funil: MonitorFunil }) {
               />
             </div>
             <span className="text-xs text-text tabular w-12 text-right shrink-0">{e.leads}</span>
+            <span
+              className="text-[10px] text-muted tabular w-14 text-right shrink-0"
+              title="Tempo médio parado nesta etapa"
+            >
+              {e.tempoMedioDias ? `~${e.tempoMedioDias}d` : '—'}
+            </span>
           </div>
         ))}
       </div>
