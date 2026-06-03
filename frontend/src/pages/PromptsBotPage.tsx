@@ -21,6 +21,8 @@ interface BotPrompt {
   isPadrao: boolean;
   ativo: boolean;
   versao: number;
+  tetoTokensDia?: number | null;
+  tetoTokensMes?: number | null;
   atualizadoEm?: string;
 }
 
@@ -40,6 +42,7 @@ export default function PromptsBotPage() {
 
   const [editing, setEditing] = useState<BotPrompt | null>(null);
   const [creating, setCreating] = useState(false);
+  const [versoesDe, setVersoesDe] = useState<BotPrompt | null>(null);
   const [confirmAsync, ConfirmDialog] = useConfirm();
 
   async function tornarPadrao(p: BotPrompt) {
@@ -168,6 +171,15 @@ export default function PromptsBotPage() {
                   >
                     Editar
                   </button>
+                  <button
+                    type="button"
+                    data-testid={`prompt-versoes-${p.id}`}
+                    onClick={() => setVersoesDe(p)}
+                    style={{ ...btnSecondary, padding: '0.25rem 0.625rem', fontSize: 12 }}
+                    title="Histórico de versões e restauração"
+                  >
+                    Versões
+                  </button>
                   {!p.isPadrao && (
                     <button
                       type="button"
@@ -237,8 +249,143 @@ export default function PromptsBotPage() {
           }}
         />
       )}
+      {versoesDe && (
+        <VersoesModal
+          prompt={versoesDe}
+          onClose={() => setVersoesDe(null)}
+          onRestored={() => {
+            setVersoesDe(null);
+            refetch();
+          }}
+        />
+      )}
       {ConfirmDialog}
     </PageLayout>
+  );
+}
+
+interface PromptVersao {
+  id: string;
+  versao: number;
+  texto: string;
+  modelo?: string | null;
+  temperatura?: number | null;
+  criadoEm?: string;
+}
+
+/** Histórico de versões de um prompt + restauração (rollback) — Fase C. */
+function VersoesModal({
+  prompt,
+  onClose,
+  onRestored,
+}: {
+  prompt: BotPrompt;
+  onClose: () => void;
+  onRestored: () => void;
+}) {
+  const toast = useToast();
+  const { data, loading, error, refetch } = useApiQuery<
+    PromptVersao[] | { data: PromptVersao[] }
+  >(`/mullerbot/prompts/${prompt.id}/versoes`);
+  const versoes: PromptVersao[] = Array.isArray(data) ? data : (data?.data ?? []);
+  const [restoring, setRestoring] = useState<number | null>(null);
+
+  async function restaurar(v: PromptVersao) {
+    setRestoring(v.versao);
+    try {
+      await api.post(`/mullerbot/prompts/${prompt.id}/rollback/${v.versao}`);
+      toast.success(`Prompt restaurado para a versão ${v.versao}`);
+      onRestored();
+    } catch (err) {
+      toast.error('Falha ao restaurar', err instanceof ApiError ? err.message : undefined);
+      setRestoring(null);
+    }
+  }
+
+  return (
+    <Modal
+      open
+      onClose={onClose}
+      title={`Versões — ${prompt.nome} (atual: v${prompt.versao})`}
+      footer={
+        <button type="button" onClick={onClose} style={btnSecondary}>
+          Fechar
+        </button>
+      }
+    >
+      <StateView
+        loading={loading}
+        error={error}
+        empty={!loading && !error && versoes.length === 0}
+        emptyMessage="Sem versões anteriores. Cada edição do texto/modelo/temperatura gera uma."
+        onRetry={refetch}
+      >
+        <div style={{ display: 'grid', gap: '0.5rem' }}>
+          {versoes.map((v) => (
+            <div
+              key={v.id}
+              data-testid={`prompt-versao-${v.versao}`}
+              style={{
+                border: `1px solid ${colors.border}`,
+                borderRadius: 10,
+                padding: '0.625rem 0.75rem',
+                display: 'flex',
+                flexDirection: 'column',
+                gap: '0.375rem',
+                background: colors.surface,
+              }}
+            >
+              <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                <strong style={{ fontSize: 13, flex: 1 }}>
+                  Versão {v.versao}
+                  <span style={{ fontWeight: 400, color: colors.muted }}>
+                    {' '}
+                    · {v.modelo || 'modelo padrão'}
+                    {v.temperatura != null ? ` · temp ${v.temperatura}` : ''}
+                  </span>
+                </strong>
+                <button
+                  type="button"
+                  data-testid={`prompt-restaurar-${v.versao}`}
+                  onClick={() => void restaurar(v)}
+                  disabled={restoring != null}
+                  style={{
+                    ...btnSecondary,
+                    padding: '0.25rem 0.625rem',
+                    fontSize: 12,
+                    opacity: restoring != null ? 0.6 : 1,
+                  }}
+                >
+                  {restoring === v.versao ? 'Restaurando…' : 'Restaurar'}
+                </button>
+              </div>
+              {v.criadoEm && (
+                <span style={{ fontSize: 11, color: colors.muted }}>
+                  {new Date(v.criadoEm).toLocaleString('pt-BR')}
+                </span>
+              )}
+              <pre
+                style={{
+                  margin: 0,
+                  fontSize: 11,
+                  fontFamily: '"Fira Mono", monospace',
+                  color: colors.text,
+                  background: colors.surfaceHover ?? '#f1f3f5',
+                  padding: '0.5rem',
+                  borderRadius: 8,
+                  maxHeight: 120,
+                  overflow: 'auto',
+                  whiteSpace: 'pre-wrap',
+                  wordBreak: 'break-word',
+                }}
+              >
+                {v.texto}
+              </pre>
+            </div>
+          ))}
+        </div>
+      </StateView>
+    </Modal>
   );
 }
 
@@ -345,6 +492,12 @@ function PromptFormModal({
   );
   const [isPadrao, setIsPadrao] = useState(prompt?.isPadrao ?? false);
   const [ativo, setAtivo] = useState(prompt?.ativo ?? true);
+  const [tetoTokensDia, setTetoTokensDia] = useState(
+    prompt?.tetoTokensDia != null ? String(prompt.tetoTokensDia) : '',
+  );
+  const [tetoTokensMes, setTetoTokensMes] = useState(
+    prompt?.tetoTokensMes != null ? String(prompt.tetoTokensMes) : '',
+  );
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -361,6 +514,8 @@ function PromptFormModal({
         temperatura: temperatura.trim() ? Number(temperatura) : undefined,
         isPadrao,
         ativo,
+        tetoTokensDia: tetoTokensDia.trim() ? Number(tetoTokensDia) : null,
+        tetoTokensMes: tetoTokensMes.trim() ? Number(tetoTokensMes) : null,
       };
       if (isEdit && prompt) {
         await api.patch(`/mullerbot/prompts/${prompt.id}`, payload);
@@ -459,6 +614,40 @@ function PromptFormModal({
               step={0.1}
               value={temperatura}
               onChange={(e) => setTemperatura(e.target.value)}
+            />
+          </FormField>
+        </div>
+        <div style={{ display: 'flex', gap: '0.75rem' }}>
+          <FormField
+            label="Teto de tokens/dia"
+            htmlFor="prompt-teto-dia"
+            hint="0 ou vazio = sem limite"
+          >
+            <Input
+              id="prompt-teto-dia"
+              data-testid="prompt-teto-dia-input"
+              type="number"
+              min={0}
+              step={1000}
+              value={tetoTokensDia}
+              onChange={(e) => setTetoTokensDia(e.target.value)}
+              placeholder="ex: 100000"
+            />
+          </FormField>
+          <FormField
+            label="Teto de tokens/mês"
+            htmlFor="prompt-teto-mes"
+            hint="0 ou vazio = sem limite"
+          >
+            <Input
+              id="prompt-teto-mes"
+              data-testid="prompt-teto-mes-input"
+              type="number"
+              min={0}
+              step={10000}
+              value={tetoTokensMes}
+              onChange={(e) => setTetoTokensMes(e.target.value)}
+              placeholder="ex: 2000000"
             />
           </FormField>
         </div>
