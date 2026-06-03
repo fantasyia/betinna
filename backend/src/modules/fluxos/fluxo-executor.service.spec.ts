@@ -46,6 +46,11 @@ const makePrismaMock = () => ({
   } satisfies MockModel,
   lead: {
     updateMany: vi.fn().mockResolvedValue({ count: 1 }),
+    findMany: vi.fn().mockResolvedValue([]),
+    update: vi.fn().mockResolvedValue({}),
+  } satisfies MockModel,
+  funilEtapa: {
+    findFirst: vi.fn().mockResolvedValue(null),
   } satisfies MockModel,
   usuario: {
     findFirst: vi.fn().mockResolvedValue(null),
@@ -76,6 +81,10 @@ const makeQueueMock = () => ({
 
 const makeConversarIaMock = () => ({
   iniciar: vi.fn().mockResolvedValue({ aguardando: false }),
+});
+
+const makeBusMock = () => ({
+  disparar: vi.fn().mockResolvedValue(undefined),
 });
 
 const makeEnvMock = () => ({
@@ -124,6 +133,7 @@ describe('FluxoExecutorService', () => {
   let whatsapp: ReturnType<typeof makeWhatsappMock>;
   let resend: ReturnType<typeof makeResendMock>;
   let queue: ReturnType<typeof makeQueueMock>;
+  let bus: ReturnType<typeof makeBusMock>;
   let service: FluxoExecutorService;
 
   beforeEach(() => {
@@ -132,6 +142,7 @@ describe('FluxoExecutorService', () => {
     whatsapp = makeWhatsappMock();
     resend = makeResendMock();
     queue = makeQueueMock();
+    bus = makeBusMock();
     service = new FluxoExecutorService(
       prisma as never,
       makeEnvMock() as never,
@@ -139,8 +150,39 @@ describe('FluxoExecutorService', () => {
       whatsapp as never,
       resend as never,
       makeConversarIaMock() as never,
+      bus as never,
       queue as never,
     );
+  });
+
+  describe('LIBERAR_LOTE (Fase B)', () => {
+    it('move o lote por prioridade e dispara LEAD_ETAPA_MUDOU por lead', async () => {
+      prisma.fluxoExecucao.findUnique.mockResolvedValue(fakeExecucao({ status: 'EM_EXECUCAO' }));
+      prisma.fluxoNo.findUnique.mockResolvedValue(
+        fakeNo({
+          tipo: 'ACAO',
+          acaoTipo: 'LIBERAR_LOTE',
+          config: { etapaOrigemId: 'et-prosp', etapaDestinoId: 'et-abord', quantidade: 2 },
+        }),
+      );
+      prisma.funilEtapa.findFirst.mockResolvedValue({ id: 'et-abord', tipo: 'ATIVA' });
+      prisma.lead.findMany.mockResolvedValue([{ id: 'lead-a' }, { id: 'lead-b' }]);
+
+      await service.executarPasso('exec-1', 'no-1');
+
+      expect(prisma.lead.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: expect.objectContaining({ funilEtapaId: 'et-prosp' }),
+          take: 2,
+        }),
+      );
+      expect(prisma.lead.update).toHaveBeenCalledTimes(2);
+      expect(bus.disparar).toHaveBeenCalledWith(
+        'emp-1',
+        'LEAD_ETAPA_MUDOU',
+        expect.objectContaining({ leadId: 'lead-a', paraEtapaId: 'et-abord' }),
+      );
+    });
   });
 
   // -------------------------------------------------------------------------

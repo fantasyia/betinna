@@ -225,6 +225,10 @@ export class ImportService {
           (linha.empresa ?? linha.razao_social ?? linha['razão social'] ?? '').trim() || null;
         const valorEstimado =
           parseDecimal(linha.valor ?? linha.valor_estimado ?? linha['valor estimado']) ?? 0;
+        // Prioridade pro disparo em lote ("coluna LEO"): menor = libera antes.
+        const prioridadeRaw = (linha.prioridade ?? linha.ordem ?? linha.leo ?? '').trim();
+        const ordemPrioridade =
+          prioridadeRaw && Number.isFinite(Number(prioridadeRaw)) ? Number(prioridadeRaw) : null;
 
         // Dedup por telefone dentro da empresa.
         let existente: { id: string } | null = null;
@@ -248,6 +252,7 @@ export class ImportService {
           uf,
           segmento,
           valorEstimado,
+          ordemPrioridade,
           canalOrigem: 'OUTRO',
           etapa: alvo.etapa,
           funilId: alvo.funilId,

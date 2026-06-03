@@ -10,6 +10,7 @@ import { ResendService } from '@integrations/resend/resend.service';
 import { Prisma } from '@prisma/client';
 import { safeRequest, SsrfBlockedError } from '@shared/utils/safe-request';
 import { ConversarIaService } from './conversar-ia.service';
+import { FluxoEventBusService } from './fluxo-event-bus.service';
 import {
   FLUXO_QUEUE,
   type FluxoStepJobData,
@@ -22,6 +23,7 @@ import {
   type MoverLeadEtapaConfig,
   type AtribuirRepConfig,
   type WebhookExternoConfig,
+  type LiberarLoteConfig,
   type ExecucaoContexto,
 } from './fluxo-executor.types';
 
@@ -129,6 +131,7 @@ export class FluxoExecutorService {
     private readonly whatsapp: WhatsAppService,
     private readonly resend: ResendService,
     private readonly conversarIa: ConversarIaService,
+    private readonly bus: FluxoEventBusService,
     @InjectQueue(FLUXO_QUEUE) private readonly queue: Queue<FluxoStepJobData>,
   ) {}
 
@@ -391,6 +394,9 @@ export class FluxoExecutorService {
       case 'WEBHOOK_EXTERNO':
         return this.acaoWebhookExterno(cfg as WebhookExternoConfig, ctx);
 
+      case 'LIBERAR_LOTE':
+        return this.acaoLiberarLote(cfg as LiberarLoteConfig, empresaId);
+
       default:
         throw new Error(`Tipo de ação desconhecido: ${acaoTipo}`);
     }
@@ -631,6 +637,64 @@ export class FluxoExecutorService {
         `empresaId ausente na execução de ${acao} — fluxo malformado ou bug no event bus`,
       );
     }
+  }
+
+  /**
+   * LIBERAR_LOTE (orquestração) — move um lote controlado de leads de uma etapa
+   * pra outra (anti-sobrecarga) e dispara LEAD_ETAPA_MUDOU pra cada um — assim os
+   * fluxos da etapa destino (ex: "Primeira mensagem Betinna") rodam por lead.
+   * Ordena por ordemPrioridade asc ("coluna LEO"; sem prioridade vai por último),
+   * depois pelos mais antigos.
+   */
+  private async acaoLiberarLote(
+    cfg: LiberarLoteConfig,
+    empresaId: string,
+  ): Promise<Record<string, unknown>> {
+    this.assertEmpresaId(empresaId, 'LIBERAR_LOTE');
+    if (!cfg.etapaOrigemId || !cfg.etapaDestinoId) {
+      throw new Error('LIBERAR_LOTE exige etapaOrigemId e etapaDestinoId');
+    }
+    const quantidade = Math.min(Math.max(1, Math.trunc(cfg.quantidade ?? 50)), 500);
+
+    // Etapa destino deve pertencer à empresa; o tipo sincroniza o enum legado.
+    const destino = await this.prisma.funilEtapa.findFirst({
+      where: { id: cfg.etapaDestinoId, funil: { empresaId } },
+      select: { id: true, tipo: true },
+    });
+    if (!destino) {
+      throw new Error(`Etapa destino ${cfg.etapaDestinoId} não encontrada na empresa ${empresaId}`);
+    }
+    const etapaEnum: 'NOVO' | 'GANHO' | 'PERDIDO' =
+      destino.tipo === 'GANHO' ? 'GANHO' : destino.tipo === 'PERDIDO' ? 'PERDIDO' : 'NOVO';
+
+    const leads = await this.prisma.lead.findMany({
+      where: {
+        empresaId,
+        funilEtapaId: cfg.etapaOrigemId,
+        ...(cfg.funilId ? { funilId: cfg.funilId } : {}),
+      },
+      orderBy: [{ ordemPrioridade: 'asc' }, { criadoEm: 'asc' }],
+      take: quantidade,
+      select: { id: true },
+    });
+
+    for (const lead of leads) {
+      await this.prisma.lead.update({
+        where: { id: lead.id },
+        data: { funilEtapaId: cfg.etapaDestinoId, etapa: etapaEnum, etapaDesde: new Date() },
+      });
+      // Dispara os fluxos da etapa destino (1 por lead).
+      await this.bus.disparar(empresaId, 'LEAD_ETAPA_MUDOU', {
+        leadId: lead.id,
+        deEtapaId: cfg.etapaOrigemId,
+        paraEtapaId: cfg.etapaDestinoId,
+      });
+    }
+
+    this.logger.log(
+      `LIBERAR_LOTE: ${leads.length} lead(s) ${cfg.etapaOrigemId} → ${cfg.etapaDestinoId} (empresa ${empresaId})`,
+    );
+    return { movidos: leads.length, etapaDestinoId: cfg.etapaDestinoId };
   }
 
   private async acaoWebhookExterno(
