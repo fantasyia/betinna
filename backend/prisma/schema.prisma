@@ -1355,17 +1355,19 @@ model Campanha {
 }
 
 model CampanhaDestinatario {
-  id         String             @id @default(cuid())
-  campanhaId String
-  clienteId  String
-  email      String?
-  telefone   String?
-  status     DestinatarioStatus @default(PENDENTE)
-  erro       String?            @db.Text
-  enviadoEm  DateTime?
-  lido       Boolean            @default(false)
-  lidoEm     DateTime?
-  criadoEm   DateTime           @default(now())
+  id          String             @id @default(cuid())
+  campanhaId  String
+  clienteId   String
+  email       String?
+  telefone    String?
+  status      DestinatarioStatus @default(PENDENTE)
+  erro        String?            @db.Text
+  enviadoEm   DateTime?
+  lido        Boolean            @default(false)
+  lidoEm      DateTime?
+  // ID da mensagem no WhatsApp (Baileys key.id) — casa o recibo de leitura (status READ) → LIDO.
+  waMessageId String?
+  criadoEm    DateTime           @default(now())
 
   campanha Campanha @relation(fields: [campanhaId], references: [id], onDelete: Cascade)
   cliente  Cliente  @relation(fields: [clienteId], references: [id], onDelete: Cascade)
@@ -1373,6 +1375,7 @@ model CampanhaDestinatario {
   @@index([campanhaId])
   @@index([clienteId])
   @@index([campanhaId, status])
+  @@index([waMessageId])
 }
 
 // ─── MARKETPLACES ─────────────────────────────────────────────────────

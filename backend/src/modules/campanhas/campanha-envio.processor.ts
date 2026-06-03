@@ -151,6 +151,9 @@ export class CampanhaEnvioProcessor extends WorkerHost {
       mensagemEmailFinal = personalizado.mensagemEmail;
     }
 
+    // Guarda o id da mensagem WA (Baileys) pra casar o recibo de leitura → LIDO.
+    let waMessageId: string | undefined;
+
     try {
       const canal = dest.campanha.canal;
 
@@ -161,11 +164,12 @@ export class CampanhaEnvioProcessor extends WorkerHost {
           const idemKey = `idempotent:campanha:${campanhaId}:${destinatarioId}:wa`;
           if (await this.idempotency.claim(idemKey, 86_400)) {
             try {
-              await this.whatsapp.enviarTexto(
+              const r = await this.whatsapp.enviarTexto(
                 dest.campanha.empresaId,
                 dest.telefone,
                 mensagemWaFinal,
               );
+              waMessageId = r.externalId;
               this.logger.debug(`WA enviado → ${dest.telefone} (campanha ${campanhaId})`);
             } catch (sendErr) {
               // Falha no provider — libera claim pra próxima tentativa retry
@@ -211,7 +215,7 @@ export class CampanhaEnvioProcessor extends WorkerHost {
 
       await this.prisma.campanhaDestinatario.update({
         where: { id: destinatarioId },
-        data: { status: 'ENVIADO', enviadoEm: new Date() },
+        data: { status: 'ENVIADO', enviadoEm: new Date(), waMessageId },
       });
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
