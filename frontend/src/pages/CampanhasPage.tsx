@@ -193,7 +193,7 @@ function exportarResultadosCsv(c: CampanhaDetail): void {
       .map(esc)
       .join(','),
   );
-  // BOM (﻿) pro Excel abrir UTF-8 certinho.
+  // BOM (U+FEFF) pro Excel abrir UTF-8 certinho.
   const csv = '﻿' + [head.join(','), ...body].join('\r\n');
   const blob = new Blob([csv], { type: 'text/csv;charset=utf-8' });
   const url = URL.createObjectURL(blob);
