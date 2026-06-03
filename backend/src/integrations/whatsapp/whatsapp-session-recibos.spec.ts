@@ -40,7 +40,9 @@ describe('WhatsAppSessionService.marcarRecibosLeitura', () => {
   });
 
   it('marca LIDO os destinatários cujo waMessageId casa com recibos READ/PLAYED (fromMe)', async () => {
-    await (svc as unknown as { marcarRecibosLeitura: (u: unknown[]) => Promise<void> }).marcarRecibosLeitura([
+    await (
+      svc as unknown as { marcarRecibosLeitura: (u: unknown[]) => Promise<void> }
+    ).marcarRecibosLeitura([
       { key: { fromMe: true, id: 'wa-1' }, update: { status: READ } },
       { key: { fromMe: true, id: 'wa-2' }, update: { status: PLAYED } },
     ]);
@@ -52,7 +54,9 @@ describe('WhatsAppSessionService.marcarRecibosLeitura', () => {
   });
 
   it('ignora recibos não-fromMe, status < READ, ou sem id', async () => {
-    await (svc as unknown as { marcarRecibosLeitura: (u: unknown[]) => Promise<void> }).marcarRecibosLeitura([
+    await (
+      svc as unknown as { marcarRecibosLeitura: (u: unknown[]) => Promise<void> }
+    ).marcarRecibosLeitura([
       { key: { fromMe: false, id: 'in-1' }, update: { status: READ } }, // inbound
       { key: { fromMe: true, id: 'wa-3' }, update: { status: DELIVERY_ACK } }, // só entregue
       { key: { fromMe: true }, update: { status: READ } }, // sem id
