@@ -1320,6 +1320,8 @@ model CampanhaDestinatario {
   enviadoEm  DateTime?
   lido       Boolean            @default(false)
   lidoEm     DateTime?
+  // ID da mensagem no WhatsApp (Baileys key.id) — casa o recibo de leitura (status READ) → LIDO.
+  waMessageId String?
   criadoEm   DateTime           @default(now())
 
   campanha Campanha @relation(fields: [campanhaId], references: [id], onDelete: Cascade)
@@ -1328,6 +1330,7 @@ model CampanhaDestinatario {
   @@index([campanhaId])
   @@index([clienteId])
   @@index([campanhaId, status])
+  @@index([waMessageId])
 }
 
 // ─── MARKETPLACES ─────────────────────────────────────────────────────

@@ -6,7 +6,7 @@ import makeWASocket, {
   makeCacheableSignalKeyStore,
   type ConnectionState,
   type WASocket,
-  type proto,
+  proto,
 } from '@whiskeysockets/baileys';
 import QRCode from 'qrcode';
 import { EnvService } from '@config/env.service';
@@ -514,6 +514,17 @@ export class WhatsAppSessionService implements OnModuleInit, OnModuleDestroy {
         this.logger.warn(`[${ownerKey(ctx.owner)}] Falha sync unreadCount (update): ${m}`);
       });
     });
+
+    // Recibo de leitura: quando o destinatário LÊ uma mensagem que enviamos
+    // (status READ/PLAYED), Baileys emite messages.update com o key.id da nossa
+    // msg. Casamos com CampanhaDestinatario.waMessageId pra marcar LIDO.
+    sock.ev.on('messages.update', (updates) => {
+      if (!Array.isArray(updates) || updates.length === 0) return;
+      void this.marcarRecibosLeitura(updates).catch((err) => {
+        const m = err instanceof Error ? err.message : String(err);
+        this.logger.warn(`[${ownerKey(ctx.owner)}] Falha processando recibos de leitura: ${m}`);
+      });
+    });
   }
 
   private async handleConnectionUpdate(
@@ -645,6 +656,33 @@ export class WhatsAppSessionService implements OnModuleInit, OnModuleDestroy {
         },
         data: { naoLidas: safeUnread },
       });
+    }
+  }
+
+  /**
+   * Casa recibos de leitura (messages.update status READ/PLAYED) de mensagens
+   * que NÓS enviamos (fromMe) com `CampanhaDestinatario.waMessageId` e marca
+   * LIDO. Mensagens fora de campanha não casam nada (updateMany afeta 0 linhas),
+   * então é seguro rodar pra todo update. Matching por waMessageId global
+   * (key.id é único) — não precisa de escopo por empresa.
+   */
+  private async marcarRecibosLeitura(
+    updates: Array<{ key?: proto.IMessageKey | null; update?: { status?: number | null } | null }>,
+  ): Promise<void> {
+    const READ = proto.WebMessageInfo.Status.READ;
+    const lidos: string[] = [];
+    for (const u of updates) {
+      const status = u.update?.status;
+      const leu = typeof status === 'number' && status >= READ;
+      if (u.key?.fromMe === true && leu && u.key.id) lidos.push(u.key.id);
+    }
+    if (lidos.length === 0) return;
+    const res = await this.prisma.campanhaDestinatario.updateMany({
+      where: { waMessageId: { in: lidos }, status: 'ENVIADO' },
+      data: { status: 'LIDO', lido: true, lidoEm: new Date() },
+    });
+    if (res.count > 0) {
+      this.logger.debug(`Recibo de leitura: ${res.count} destinatário(s) de campanha → LIDO`);
     }
   }
 
