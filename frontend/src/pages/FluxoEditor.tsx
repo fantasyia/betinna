@@ -31,6 +31,8 @@ import {
   ArrowRight,
   UserCheck,
   Webhook,
+  Bot,
+  Send,
   Save,
   X as XIcon,
   Trash2,
@@ -66,7 +68,11 @@ export type TriggerTipo =
   | 'OCORRENCIA_ABERTA'
   | 'CLIENTE_INATIVO_30D'
   | 'AMOSTRA_FOLLOWUP'
-  | 'CRON_AGENDADO';
+  | 'CRON_AGENDADO'
+  | 'LEAD_RESPONDEU'
+  | 'LEAD_SEM_RESPOSTA'
+  | 'IA_CLASSIFICOU'
+  | 'LEAD_RECEBEU_TAG';
 
 export type AcaoTipo =
   | 'ENVIAR_WHATSAPP'
@@ -75,7 +81,9 @@ export type AcaoTipo =
   | 'MUDAR_TAG'
   | 'MOVER_LEAD_ETAPA'
   | 'ATRIBUIR_REP'
-  | 'WEBHOOK_EXTERNO';
+  | 'WEBHOOK_EXTERNO'
+  | 'CONVERSAR_IA'
+  | 'LIBERAR_LOTE';
 
 interface FluxoNoApi {
   id?: string;
@@ -115,6 +123,10 @@ const TRIGGER_LABEL: Record<TriggerTipo, string> = {
   CLIENTE_INATIVO_30D: 'Cliente inativo 30d',
   AMOSTRA_FOLLOWUP: 'Amostra follow-up',
   CRON_AGENDADO: 'Cron agendado',
+  LEAD_RESPONDEU: 'Lead respondeu',
+  LEAD_SEM_RESPOSTA: 'Lead sem resposta',
+  IA_CLASSIFICOU: 'IA classificou',
+  LEAD_RECEBEU_TAG: 'Lead recebeu tag',
 };
 
 const ACAO_LABEL: Record<AcaoTipo, string> = {
@@ -125,6 +137,8 @@ const ACAO_LABEL: Record<AcaoTipo, string> = {
   MOVER_LEAD_ETAPA: 'Mover lead de etapa',
   ATRIBUIR_REP: 'Atribuir representante',
   WEBHOOK_EXTERNO: 'Webhook externo',
+  CONVERSAR_IA: 'Conversar com IA',
+  LIBERAR_LOTE: 'Liberar lote',
 };
 
 const ACAO_ICONS: Record<AcaoTipo, typeof MessageSquare> = {
@@ -135,6 +149,8 @@ const ACAO_ICONS: Record<AcaoTipo, typeof MessageSquare> = {
   MOVER_LEAD_ETAPA: ArrowRight,
   ATRIBUIR_REP: UserCheck,
   WEBHOOK_EXTERNO: Webhook,
+  CONVERSAR_IA: Bot,
+  LIBERAR_LOTE: Send,
 };
 
 // ─── Palette items (categorias do print) ────────────────────────
@@ -159,6 +175,10 @@ const PALETTE_CATEGORIES: Array<{ title: string; items: PaletteItem[] }> = [
       { id: 't-inat', label: 'Cliente inativo 30d', tipo: 'TRIGGER', triggerTipo: 'CLIENTE_INATIVO_30D' },
       { id: 't-amos', label: 'Amostra follow-up', tipo: 'TRIGGER', triggerTipo: 'AMOSTRA_FOLLOWUP' },
       { id: 't-cron', label: 'Cron agendado', tipo: 'TRIGGER', triggerTipo: 'CRON_AGENDADO' },
+      { id: 't-resp', label: 'Lead respondeu', tipo: 'TRIGGER', triggerTipo: 'LEAD_RESPONDEU' },
+      { id: 't-semresp', label: 'Lead sem resposta', tipo: 'TRIGGER', triggerTipo: 'LEAD_SEM_RESPOSTA' },
+      { id: 't-iaclass', label: 'IA classificou', tipo: 'TRIGGER', triggerTipo: 'IA_CLASSIFICOU' },
+      { id: 't-tag', label: 'Lead recebeu tag', tipo: 'TRIGGER', triggerTipo: 'LEAD_RECEBEU_TAG' },
     ],
   },
   {
@@ -175,6 +195,8 @@ const PALETTE_CATEGORIES: Array<{ title: string; items: PaletteItem[] }> = [
       { id: 'a-mov', label: 'Mover lead', tipo: 'ACAO', acaoTipo: 'MOVER_LEAD_ETAPA' },
       { id: 'a-atr', label: 'Atribuir representante', tipo: 'ACAO', acaoTipo: 'ATRIBUIR_REP' },
       { id: 'a-hook', label: 'Webhook externo', tipo: 'ACAO', acaoTipo: 'WEBHOOK_EXTERNO' },
+      { id: 'a-ia', label: 'Conversar com IA', tipo: 'ACAO', acaoTipo: 'CONVERSAR_IA' },
+      { id: 'a-lote', label: 'Liberar lote', tipo: 'ACAO', acaoTipo: 'LIBERAR_LOTE' },
     ],
   },
   {
@@ -863,6 +885,17 @@ function NodeInspector({
   onDelete: () => void;
 }) {
   const { data } = node;
+  // Listas pros seletores das ações novas (orquestração Fase B).
+  const { data: tags } = useApiQuery<Array<{ id: string; nome: string }>>('/tags');
+  const { data: prompts } = useApiQuery<Array<{ id: string; nome: string; isPadrao?: boolean }>>(
+    '/mullerbot/prompts',
+  );
+  const { data: funis } = useApiQuery<
+    Array<{ id: string; nome: string; etapas: Array<{ id: string; nome: string }> }>
+  >('/funis');
+  const etapasOpts = (funis ?? []).flatMap((f) =>
+    (f.etapas ?? []).map((e) => ({ id: e.id, label: `${f.nome} · ${e.nome}` })),
+  );
   return (
     <div className="flex flex-col h-full">
       <div className="p-4 border-b border-border">
@@ -1034,6 +1067,144 @@ function NodeInspector({
           </>
         )}
 
+        {data.acaoTipo === 'MUDAR_TAG' && (
+          <>
+            <Field label="Operação">
+              <Select
+                size="sm"
+                value={(data.config.operacao as string) ?? 'adicionar'}
+                onChange={(e) =>
+                  onUpdate((d) => ({ ...d, config: { ...d.config, operacao: e.target.value } }))
+                }
+              >
+                <option value="adicionar">Adicionar tag</option>
+                <option value="remover">Remover tag</option>
+              </Select>
+            </Field>
+            <Field label="Tag" hint="Escolha uma tag existente ou digite um nome novo">
+              <div>
+                <Input
+                  list="fluxo-tags"
+                  value={(data.config.tagNome as string) ?? ''}
+                  onChange={(e) =>
+                    onUpdate((d) => ({ ...d, config: { ...d.config, tagNome: e.target.value } }))
+                  }
+                  placeholder="Ex: Forte Sinergia"
+                />
+                <datalist id="fluxo-tags">
+                  {(tags ?? []).map((t) => (
+                    <option key={t.id} value={t.nome} />
+                  ))}
+                </datalist>
+              </div>
+            </Field>
+          </>
+        )}
+
+        {data.acaoTipo === 'CONVERSAR_IA' && (
+          <>
+            <Field label="Prompt" hint="Da biblioteca de prompts. Vazio = prompt padrão da empresa.">
+              <Select
+                size="sm"
+                value={(data.config.promptId as string) ?? ''}
+                onChange={(e) =>
+                  onUpdate((d) => ({
+                    ...d,
+                    config: { ...d.config, promptId: e.target.value || undefined },
+                  }))
+                }
+              >
+                <option value="">Prompt padrão da empresa</option>
+                {(prompts ?? []).map((p) => (
+                  <option key={p.id} value={p.id}>
+                    {p.nome}
+                    {p.isPadrao ? ' (padrão)' : ''}
+                  </option>
+                ))}
+              </Select>
+            </Field>
+            <Field label="Aguardar resposta do lead?">
+              <Select
+                size="sm"
+                value={((data.config.aguardarResposta as boolean | undefined) ?? true) ? 'sim' : 'nao'}
+                onChange={(e) =>
+                  onUpdate((d) => ({
+                    ...d,
+                    config: { ...d.config, aguardarResposta: e.target.value === 'sim' },
+                  }))
+                }
+              >
+                <option value="sim">Sim — pausa até o lead responder</option>
+                <option value="nao">Não — segue o fluxo</option>
+              </Select>
+            </Field>
+            <Field label="Timeout (horas)">
+              <Input
+                type="number"
+                min={1}
+                value={(data.config.timeoutHoras as number) ?? 24}
+                onChange={(e) =>
+                  onUpdate((d) => ({
+                    ...d,
+                    config: { ...d.config, timeoutHoras: Number(e.target.value) },
+                  }))
+                }
+              />
+            </Field>
+          </>
+        )}
+
+        {data.acaoTipo === 'LIBERAR_LOTE' && (
+          <>
+            <Field label="Etapa de origem">
+              <Select
+                size="sm"
+                value={(data.config.etapaOrigemId as string) ?? ''}
+                onChange={(e) =>
+                  onUpdate((d) => ({ ...d, config: { ...d.config, etapaOrigemId: e.target.value } }))
+                }
+              >
+                <option value="">Selecionar…</option>
+                {etapasOpts.map((e) => (
+                  <option key={e.id} value={e.id}>
+                    {e.label}
+                  </option>
+                ))}
+              </Select>
+            </Field>
+            <Field label="Etapa de destino">
+              <Select
+                size="sm"
+                value={(data.config.etapaDestinoId as string) ?? ''}
+                onChange={(e) =>
+                  onUpdate((d) => ({ ...d, config: { ...d.config, etapaDestinoId: e.target.value } }))
+                }
+              >
+                <option value="">Selecionar…</option>
+                {etapasOpts.map((e) => (
+                  <option key={e.id} value={e.id}>
+                    {e.label}
+                  </option>
+                ))}
+              </Select>
+            </Field>
+            <Field label="Quantidade por execução" hint="Anti-sobrecarga — ex: 50 leads/vez">
+              <Input
+                type="number"
+                min={1}
+                max={500}
+                value={(data.config.quantidade as number) ?? 50}
+                onChange={(e) =>
+                  onUpdate((d) => ({
+                    ...d,
+                    config: { ...d.config, quantidade: Number(e.target.value) },
+                  }))
+                }
+              />
+            </Field>
+          </>
+        )}
+
         {/* Raw config debug — colapsado */}
         <details className="mt-3 text-xs">
           <summary className="text-muted cursor-pointer select-none">Config (avançado)</summary>
@@ -1053,6 +1224,9 @@ function defaultConfig(item: PaletteItem): Record<string, unknown> {
   if (item.acaoTipo === 'ENVIAR_WHATSAPP') return { mensagem: '' };
   if (item.acaoTipo === 'ENVIAR_EMAIL') return { assunto: '', corpo: '' };
   if (item.acaoTipo === 'WEBHOOK_EXTERNO') return { url: '', method: 'POST' };
+  if (item.acaoTipo === 'MUDAR_TAG') return { operacao: 'adicionar', tagNome: '' };
+  if (item.acaoTipo === 'CONVERSAR_IA') return { aguardarResposta: true, timeoutHoras: 24 };
+  if (item.acaoTipo === 'LIBERAR_LOTE') return { quantidade: 50 };
   return {};
 }
 

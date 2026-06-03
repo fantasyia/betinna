@@ -81,6 +81,10 @@ const TRIGGERS: Record<TriggerTipo, string> = {
   CLIENTE_INATIVO_30D: 'Cliente inativo 30 dias',
   AMOSTRA_FOLLOWUP: 'Amostra follow-up',
   CRON_AGENDADO: 'Cron agendado',
+  LEAD_RESPONDEU: 'Lead respondeu',
+  LEAD_SEM_RESPOSTA: 'Lead sem resposta',
+  IA_CLASSIFICOU: 'IA classificou',
+  LEAD_RECEBEU_TAG: 'Lead recebeu tag',
 };
 
 function fmtDate(d: string | null | undefined) {
