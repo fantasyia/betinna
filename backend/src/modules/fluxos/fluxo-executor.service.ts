@@ -173,7 +173,10 @@ export class FluxoExecutorService {
       return;
     }
 
-    const contexto = execucao.contexto as ExecucaoContexto;
+    const contexto = await this.enriquecerContexto(
+      execucao.contexto as ExecucaoContexto,
+      execucao.empresaId,
+    );
     const iniciadoEm = new Date();
     let output: Record<string, unknown> | null = null;
     let erroMsg: string | null = null;
@@ -251,6 +254,63 @@ export class FluxoExecutorService {
         },
       );
     }
+  }
+
+  // ─── Variáveis com escopo (orquestração Fase A) ─────────────────────
+
+  /**
+   * Enriquece o contexto de interpolação com os namespaces {{sistema.*}} e
+   * {{custom.*}} antes de cada nó. `sistema` traz data/empresa; `custom` traz
+   * as variáveis flexíveis do lead (gravadas por IA/fluxos — Lead.variaveis).
+   * Recarregado por nó: reflete variáveis gravadas no meio do fluxo.
+   */
+  private async enriquecerContexto(
+    contexto: ExecucaoContexto,
+    empresaId: string,
+  ): Promise<ExecucaoContexto> {
+    const ctx: Record<string, unknown> = { ...(contexto as Record<string, unknown>) };
+
+    const agora = new Date();
+    const dd = String(agora.getDate()).padStart(2, '0');
+    const mm = String(agora.getMonth() + 1).padStart(2, '0');
+    const yyyy = agora.getFullYear();
+    const hh = String(agora.getHours()).padStart(2, '0');
+    const min = String(agora.getMinutes()).padStart(2, '0');
+    // Lookups são best-effort: o enriquecimento é auxiliar e NUNCA derruba o fluxo.
+    let empresaNome = '';
+    try {
+      const empresa = await this.prisma.empresa.findUnique({
+        where: { id: empresaId },
+        select: { nome: true },
+      });
+      empresaNome = empresa?.nome ?? '';
+    } catch {
+      /* ignora — {{sistema.empresa_nome}} fica vazio */
+    }
+    ctx.sistema = {
+      empresa_nome: empresaNome,
+      data_hoje: `${dd}/${mm}/${yyyy}`,
+      data_hora: `${dd}/${mm}/${yyyy} ${hh}:${min}`,
+    };
+
+    // {{custom.*}} — variáveis flexíveis do lead (se houver lead no contexto).
+    const leadId = typeof ctx.leadId === 'string' ? ctx.leadId : undefined;
+    if (leadId) {
+      try {
+        const lead = await this.prisma.lead.findFirst({
+          where: { id: leadId, empresaId },
+          select: { variaveis: true },
+        });
+        if (lead?.variaveis && typeof lead.variaveis === 'object') {
+          ctx.custom = lead.variaveis;
+        }
+      } catch {
+        /* ignora — {{custom.*}} fica vazio */
+      }
+    }
+    if (ctx.custom == null) ctx.custom = {};
+
+    return ctx;
   }
 
   // ─── Executor de nó ─────────────────────────────────────────────────

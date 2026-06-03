@@ -30,6 +30,7 @@ import { SegmentosModule } from '@modules/segmentos/segmentos.module';
 import { NotificacoesModule } from '@modules/notificacoes/notificacoes.module';
 import { ImportModule } from '@modules/import/import.module';
 import { FluxosModule } from '@modules/fluxos/fluxos.module';
+import { BotPromptsModule } from '@modules/bot-prompts/bot-prompts.module';
 import { AgendaModule } from '@modules/agenda/agenda.module';
 import { IncidentsModule } from '@modules/incidents/incidents.module';
 import { InboxModule } from '@modules/inbox/inbox.module';
@@ -175,6 +176,7 @@ import { SharedUtilsModule } from '@shared/utils/shared-utils.module';
     UsersModule,
     EmpresasModule,
     TagsModule,
+    BotPromptsModule,
     ClientesModule,
     ProdutosModule,
     CatalogoModule,
