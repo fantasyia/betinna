@@ -4,6 +4,7 @@ import { PrismaService } from '@database/prisma.service';
 import { ForbiddenException } from '@shared/errors/app-exception';
 import { ErrorCode } from '@shared/errors/error-codes';
 import type { AuthenticatedUser } from '@shared/types/authenticated-user';
+import { BotPromptsService } from '@modules/bot-prompts/bot-prompts.service';
 import type { UpsertPersonaDto, ExemploDto, TomVoz } from './persona.dto';
 
 const TOM_INSTRUCAO: Record<TomVoz, string> = {
@@ -58,7 +59,10 @@ export interface PersonaResult {
 export class MullerBotPersonaService {
   private readonly logger = new Logger(MullerBotPersonaService.name);
 
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly botPrompts: BotPromptsService,
+  ) {}
 
   async get(user: AuthenticatedUser): Promise<PersonaResult> {
     const empresaId = this.requireEmpresa(user);
@@ -148,7 +152,17 @@ export class MullerBotPersonaService {
    * Quando o catálogo for conectado (próxima fase), trocamos por uma versão
    * que injeta produtos.
    */
-  async compilarSystemPromptConversa(empresaId: string): Promise<string> {
+  async compilarSystemPromptConversa(empresaId: string, promptId?: string): Promise<string> {
+    // Orquestração (Fase A): prompt do fluxo (Fase B) → senão o prompt marcado
+    // como padrão na biblioteca → senão a persona (retrocompat). Sem BotPrompt
+    // criado, o comportamento é idêntico ao de antes.
+    if (promptId) {
+      const doFluxo = await this.botPrompts.obterTextoPorId(empresaId, promptId);
+      if (doFluxo) return doFluxo;
+    }
+    const padrao = await this.botPrompts.obterTextoPadrao(empresaId);
+    if (padrao) return padrao;
+
     const row = await this.prisma.mullerBotPersona.findUnique({ where: { empresaId } });
 
     // Forma principal: prompt completo escrito pelo usuário → usado tal e qual,

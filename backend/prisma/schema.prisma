@@ -287,6 +287,7 @@ model Empresa {
   programaFidelidade    ProgramaFidelidade?
   recompensasFidelidade RecompensaFidelidade[]
   mullerBotPersona      MullerBotPersona?
+  botPrompts            BotPrompt[]
   formularios           Formulario[]
   pesquisasNPS          PesquisaNPS[]
   metas                 Meta[]
@@ -797,6 +798,9 @@ model Lead {
   score        Int       @default(50)
   proximaAcao  String?
   observacoes  String?   @db.Text
+  /// Orquestração — variáveis flexíveis gravadas por IA/fluxos (ex:
+  /// classificacao_betinna, canal_dominante). Lidas nos fluxos como {{custom.<chave>}}.
+  variaveis    Json      @default("{}")
 
   motivoGanho String?
   motivoPerda String?
@@ -1879,6 +1883,35 @@ model MullerBotPersona {
   atualizadoEm DateTime @updatedAt
 
   empresa Empresa @relation(fields: [empresaId], references: [id], onDelete: Cascade)
+}
+
+/// Orquestração Fase A — biblioteca de prompts por empresa (multi-prompt).
+/// Vários prompts reutilizáveis; o marcado `isPadrao` é o "prompt global" (retrocompat
+/// da persona única). O nó "Conversar com IA" (Fase B) referenciará um prompt por id.
+model BotPrompt {
+  id          String  @id @default(cuid())
+  empresaId   String
+  nome        String
+  descricao   String? @db.Text
+  /// System prompt completo — usado tal e qual pelo bot.
+  texto       String  @db.Text
+  /// Override do modelo OpenAI (null = usa o da empresa/persona).
+  modelo      String?
+  temperatura Float?  @default(0.7)
+  /// Prompt padrão da empresa (no máximo 1 — garantido em código).
+  isPadrao    Boolean @default(false)
+  ativo       Boolean @default(true)
+  /// Versionamento pra rollback/A-B (spec §7).
+  versao      Int     @default(1)
+
+  criadoEm     DateTime @default(now())
+  atualizadoEm DateTime @updatedAt
+
+  empresa Empresa @relation(fields: [empresaId], references: [id], onDelete: Cascade)
+
+  @@unique([empresaId, nome])
+  @@index([empresaId])
+  @@index([empresaId, isPadrao])
 }
 
 /// Sprint 2.2 — status de cada resposta do bot (pra auditoria).
