@@ -194,9 +194,16 @@ export class ConversarIaService {
     });
     if (!lead?.contatoTelefone) return;
 
+    // Variáveis que a IA pode gravar (nó "Conversar com IA" — spec §2.5).
+    const gravaveis = (cfg.variaveisGravadas ?? []).filter(
+      (v) => typeof v === 'string' && v.trim().length > 0,
+    );
     const systemPrompt =
       interpolate(await this.persona.compilarSystemPromptConversa(empresaId, cfg.promptId), ctx) +
-      INSTRUCAO_CLASSIFICACAO;
+      INSTRUCAO_CLASSIFICACAO +
+      (gravaveis.length
+        ? `\n- Em "variaveis", grave APENAS estas chaves: ${gravaveis.join(', ')}.`
+        : '');
     const historico = conversationId ? await this.montarHistorico(conversationId) : [];
 
     const r = await this.muller.gerarRespostaIa(empresaId, systemPrompt, textoLead, historico);
@@ -219,9 +226,15 @@ export class ConversarIaService {
       lead.variaveis && typeof lead.variaveis === 'object'
         ? (lead.variaveis as Record<string, unknown>)
         : {};
+    // Filtra pro conjunto permitido (se o nó restringe as variáveis graváveis).
+    let gravadas = turno.variaveis ?? {};
+    if (gravaveis.length) {
+      const permitidas = new Set(gravaveis);
+      gravadas = Object.fromEntries(Object.entries(gravadas).filter(([k]) => permitidas.has(k)));
+    }
     const novas: Record<string, unknown> = {
       ...variaveisAtuais,
-      ...(turno.variaveis ?? {}),
+      ...gravadas,
     };
     if (turno.classificacao) novas.classificacao = turno.classificacao;
     await this.prisma.lead.update({

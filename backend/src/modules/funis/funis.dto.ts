@@ -13,6 +13,8 @@ export const createFunilEtapaSchema = z.object({
   tipo: z.nativeEnum(FunilEtapaTipo).default('ATIVA'),
   probabilidade: z.number().int().min(0).max(100).default(50),
   slaDias: z.number().int().min(1).max(365).nullable().optional(),
+  /** SLA em horas (Fase C). Precedência sobre slaDias quando setado. */
+  slaHoras: z.number().int().min(1).max(8760).nullable().optional(),
   /** Ação quando o SLA da etapa vence (orquestração Fase B). */
   acaoSlaExpirado: z
     .object({
@@ -37,6 +39,8 @@ export const createFunilSchema = z.object({
   ordem: z.number().int().min(0).default(0),
   ativo: z.boolean().default(true),
   isPadrao: z.boolean().default(false),
+  /** Allow-list de tags permitidas no funil (Fase C). null = todas. */
+  tagsPermitidas: z.array(z.string().trim().min(1)).nullable().optional(),
   /**
    * Etapas iniciais (opcional). Quando omitido, o funil é criado SEM etapas
    * e o usuário adiciona via POST /funis/:id/etapas. Quando informado, cria

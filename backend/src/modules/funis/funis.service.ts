@@ -79,6 +79,9 @@ export class FunisService {
           ordem: dto.ordem,
           ativo: dto.ativo,
           isPadrao: dto.isPadrao,
+          tagsPermitidas: dto.tagsPermitidas
+            ? (dto.tagsPermitidas as Prisma.InputJsonValue)
+            : Prisma.JsonNull,
         },
       });
       if (dto.etapas && dto.etapas.length > 0) {
@@ -91,6 +94,7 @@ export class FunisService {
             tipo: e.tipo,
             probabilidade: e.probabilidade,
             slaDias: e.slaDias ?? null,
+            slaHoras: e.slaHoras ?? null,
             capacidadeMaxima: e.capacidadeMaxima ?? null,
           })),
         });
@@ -113,9 +117,21 @@ export class FunisService {
       });
     }
 
+    // tagsPermitidas é Json nullable — null explícito precisa de Prisma.JsonNull.
+    const { tagsPermitidas, ...rest } = dto;
     await this.prisma.funil.update({
       where: { id },
-      data: dto,
+      data: {
+        ...rest,
+        ...(tagsPermitidas !== undefined
+          ? {
+              tagsPermitidas:
+                tagsPermitidas === null
+                  ? Prisma.JsonNull
+                  : (tagsPermitidas as Prisma.InputJsonValue),
+            }
+          : {}),
+      },
     });
     return this.findById(user, id);
   }
@@ -168,6 +184,7 @@ export class FunisService {
         tipo: dto.tipo,
         probabilidade: dto.probabilidade,
         slaDias: dto.slaDias ?? null,
+        slaHoras: dto.slaHoras ?? null,
         capacidadeMaxima: dto.capacidadeMaxima ?? null,
         acaoSlaExpirado: dto.acaoSlaExpirado
           ? (dto.acaoSlaExpirado as Prisma.InputJsonValue)

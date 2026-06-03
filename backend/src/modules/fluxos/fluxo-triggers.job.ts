@@ -63,8 +63,12 @@ export class FluxoTriggersJob {
    */
   private async avaliarSlaEtapas(empresaId: string): Promise<void> {
     const etapas = await this.prisma.funilEtapa.findMany({
-      where: { funil: { empresaId }, tipo: 'ATIVA', slaDias: { not: null } },
-      select: { id: true, slaDias: true, acaoSlaExpirado: true },
+      where: {
+        funil: { empresaId },
+        tipo: 'ATIVA',
+        OR: [{ slaDias: { not: null } }, { slaHoras: { not: null } }],
+      },
+      select: { id: true, slaDias: true, slaHoras: true, acaoSlaExpirado: true },
     });
     for (const etapa of etapas) {
       const acao = etapa.acaoSlaExpirado as {
@@ -72,10 +76,12 @@ export class FluxoTriggersJob {
         etapaDestinoId?: string;
         tagNome?: string;
       } | null;
-      if (!acao?.tipo || !etapa.slaDias) continue;
+      if (!acao?.tipo || (!etapa.slaDias && !etapa.slaHoras)) continue;
 
+      // slaHoras tem precedência sobre slaDias (spec §2.1).
       const corte = new Date();
-      corte.setDate(corte.getDate() - etapa.slaDias);
+      if (etapa.slaHoras) corte.setHours(corte.getHours() - etapa.slaHoras);
+      else corte.setDate(corte.getDate() - (etapa.slaDias as number));
       const leads = await this.prisma.lead.findMany({
         where: { empresaId, funilEtapaId: etapa.id, etapaDesde: { lt: corte } },
         select: { id: true },

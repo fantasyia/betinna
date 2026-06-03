@@ -486,12 +486,25 @@ export class LeadsService {
     origem: 'usuario' | 'ia' = 'usuario',
   ): Promise<LeadWithRel> {
     const empresaId = this.requireEmpresa(user);
-    await this.findById(user, leadId); // valida tenant + escopo do rep
+    const lead = await this.findById(user, leadId); // valida tenant + escopo do rep
     const tag = await this.prisma.tag.findFirst({
       where: { id: tagId, empresaId },
-      select: { id: true },
+      select: { id: true, nome: true },
     });
     if (!tag) throw new NotFoundException('Tag', tagId);
+
+    // Allow-list de tags por funil (Fase C — spec §2.1).
+    if (lead.funilId) {
+      const funil = await this.prisma.funil.findUnique({
+        where: { id: lead.funilId },
+        select: { tagsPermitidas: true },
+      });
+      const permitidas = funil?.tagsPermitidas;
+      if (Array.isArray(permitidas) && permitidas.length > 0 && !permitidas.includes(tag.nome)) {
+        throw new BusinessRuleException(`A tag "${tag.nome}" não é permitida no funil deste lead`);
+      }
+    }
+
     await this.prisma.leadTag.upsert({
       where: { leadId_tagId: { leadId, tagId } },
       create: { leadId, tagId, origem },

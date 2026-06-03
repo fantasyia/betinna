@@ -12,6 +12,9 @@ export const createBotPromptSchema = z.object({
   temperatura: z.number().min(0).max(2).optional(),
   isPadrao: z.boolean().optional(),
   ativo: z.boolean().optional(),
+  /** Teto de tokens por prompt (spec §7). Null/omitido = sem teto próprio. */
+  tetoTokensDia: z.number().int().min(0).nullable().optional(),
+  tetoTokensMes: z.number().int().min(0).nullable().optional(),
 });
 export type CreateBotPromptDto = z.infer<typeof createBotPromptSchema>;
 
