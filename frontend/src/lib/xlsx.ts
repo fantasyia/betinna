@@ -112,6 +112,63 @@ export async function rowsToXlsx<T>(args: {
   );
 }
 
+/**
+ * Lê um .xlsx/.xls (File) → array de objetos `{cabecalho_lowercase: valor}`.
+ *
+ * Espelha o `transformHeader` do papaparse no backend (lowercase + trim) pra
+ * as keys baterem com o mapeamento de colunas do import (linha.nome, linha.telefone…).
+ * Usa a PRIMEIRA planilha; linha 1 = cabeçalho. Linhas 100% vazias são ignoradas.
+ */
+export async function readXlsxRows(file: File): Promise<Record<string, string>[]> {
+  const ExcelJS = await import('exceljs');
+  const wb = new ExcelJS.Workbook();
+  await wb.xlsx.load(await file.arrayBuffer());
+
+  const sheet = wb.worksheets[0];
+  if (!sheet) return [];
+
+  // Cabeçalho (linha 1) → keys normalizadas
+  const headers: string[] = [];
+  sheet.getRow(1).eachCell({ includeEmpty: true }, (cell, col) => {
+    headers[col - 1] = cellToString(cell.value).toLowerCase().trim();
+  });
+  if (headers.every((h) => !h)) return [];
+
+  const rows: Record<string, string>[] = [];
+  sheet.eachRow({ includeEmpty: false }, (row, rowNumber) => {
+    if (rowNumber === 1) return; // pula cabeçalho
+    const obj: Record<string, string> = {};
+    let hasValue = false;
+    row.eachCell({ includeEmpty: true }, (cell, col) => {
+      const key = headers[col - 1];
+      if (!key) return;
+      const v = cellToString(cell.value).trim();
+      if (v) hasValue = true;
+      obj[key] = v;
+    });
+    if (hasValue) rows.push(obj);
+  });
+  return rows;
+}
+
+/** Converte qualquer CellValue do exceljs (rich text, fórmula, data, link…) pra string. */
+function cellToString(value: unknown): string {
+  if (value == null) return '';
+  if (typeof value === 'string') return value;
+  if (typeof value === 'number' || typeof value === 'boolean') return String(value);
+  if (value instanceof Date) return value.toLocaleDateString('pt-BR');
+  if (typeof value === 'object') {
+    const o = value as Record<string, unknown>;
+    if (Array.isArray(o.richText)) {
+      return (o.richText as Array<{ text?: string }>).map((r) => r.text ?? '').join('');
+    }
+    if (o.text != null) return String(o.text);
+    if (o.result != null) return String(o.result);
+    if (o.hyperlink != null) return String(o.hyperlink);
+  }
+  return String(value);
+}
+
 function triggerDownload(blob: Blob, filename: string): void {
   const url = URL.createObjectURL(blob);
   const link = document.createElement('a');

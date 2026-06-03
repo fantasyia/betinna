@@ -49,6 +49,38 @@ export async function readCsvFile(file: File): Promise<string> {
   });
 }
 
+/** Payload do import de leads — aceita `rows` (xlsx parseado no client) OU `csv`. */
+export interface ImportLeadsRequest {
+  csv?: string;
+  rows?: Record<string, string>[];
+  funilId?: string;
+  funilEtapaId?: string;
+  dryRun?: boolean;
+  onDuplicate?: OnDuplicate;
+}
+
+/**
+ * Lê um arquivo de import e devolve o pedaço do payload pro backend:
+ *  - .xlsx/.xls → parseia no client (exceljs) e manda `rows`
+ *  - .csv/.txt  → manda `csv` (texto cru; backend parseia com papaparse)
+ *
+ * O exceljs (~700KB) só é carregado quando o arquivo é de fato xlsx.
+ */
+export async function readImportFile(
+  file: File,
+): Promise<{ rows: Record<string, string>[] } | { csv: string }> {
+  const ext = file.name.toLowerCase().split('.').pop() ?? '';
+  if (ext === 'xlsx' || ext === 'xls') {
+    const { readXlsxRows } = await import('./xlsx');
+    return { rows: await readXlsxRows(file) };
+  }
+  return { csv: await readCsvFile(file) };
+}
+
+export async function importLeads(req: ImportLeadsRequest): Promise<ImportResult> {
+  return api.post<ImportResult>('/import/leads', req);
+}
+
 export async function importClientes(req: ImportRequest): Promise<ImportResult> {
   return api.post<ImportResult>('/import/clientes', req);
 }

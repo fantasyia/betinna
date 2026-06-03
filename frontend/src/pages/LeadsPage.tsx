@@ -27,10 +27,13 @@ import {
   UserCog,
   CalendarPlus,
   Building2,
+  Upload,
 } from 'lucide-react';
 import { api, ApiError } from '@/lib/api';
 import { useApiQuery } from '@/hooks/useApiQuery';
+import { useRole } from '@/hooks/usePermission';
 import { useToast } from '@/components/toast';
+import { ImportLeadsModal } from '@/components/ImportLeadsModal';
 import { PageLayout } from '@/components/PageLayout';
 import { CrmTabs } from '@/components/CrmTabs';
 import { StateView } from '@/components/StateView';
@@ -210,7 +213,10 @@ export default function LeadsPage() {
     : '/leads/kanban';
   const { data, loading, error, refetch } = useApiQuery<KanbanResponse>(kanbanPath);
 
+  const role = useRole();
+  const canImport = role === 'ADMIN' || role === 'DIRECTOR' || role === 'GERENTE';
   const [creating, setCreating] = useState(false);
+  const [importing, setImporting] = useState(false);
   const [selected, setSelected] = useState<Lead | null>(null);
 
   // Optimistic state pra mover durante drag
@@ -380,6 +386,16 @@ export default function LeadsPage() {
             <Settings className="h-3.5 w-3.5" />
             Funis
           </Link>
+          {canImport && (
+            <Button
+              variant="secondary"
+              data-testid="lead-import-btn"
+              onClick={() => setImporting(true)}
+              leftIcon={<Upload className="h-3.5 w-3.5" />}
+            >
+              Importar
+            </Button>
+          )}
           <Button
             data-testid="lead-new-btn"
             onClick={() => setCreating(true)}
@@ -436,6 +452,18 @@ export default function LeadsPage() {
           onClose={() => setCreating(false)}
           onSaved={() => {
             setCreating(false);
+            refetch();
+          }}
+        />
+      )}
+
+      {importing && (
+        <ImportLeadsModal
+          funis={funis ?? []}
+          defaultFunilId={funilSelecionadoId}
+          onClose={() => setImporting(false)}
+          onDone={() => {
+            setImporting(false);
             refetch();
           }}
         />
