@@ -1,4 +1,4 @@
-import { Zap, Sparkles, Megaphone, Plug, Link as LinkIcon } from 'lucide-react';
+import { Zap, Sparkles, Megaphone, Plug, Link as LinkIcon, Activity } from 'lucide-react';
 import { useRole, usePermission } from '@/hooks/usePermission';
 import { SubTabsBar, type SubTab } from '@/components/SubTabsBar';
 
@@ -29,6 +29,11 @@ export function AutomacaoTabs() {
       to: '/fluxos/templates',
       label: 'Templates',
       icon: <Sparkles size={14} />,
+    });
+    tabs.push({
+      to: '/fluxos/monitor',
+      label: 'Monitor',
+      icon: <Activity size={14} />,
     });
   }
   if (canCampanhas) {
