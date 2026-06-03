@@ -23,6 +23,7 @@ const SERVICOS_REQUEREM_DIRECTOR: ReadonlySet<string> = new Set([
   'tiktok',
   'instagram',
   'facebook',
+  'openai',
 ]);
 
 // ─── Catálogo de serviços empresa ─────────────────────────────────────
@@ -35,7 +36,8 @@ type ServicoEmpresa =
   | 'amazon'
   | 'tiktok'
   | 'instagram'
-  | 'facebook';
+  | 'facebook'
+  | 'openai';
 
 interface ServicoMeta {
   nome: string;
@@ -145,11 +147,23 @@ const SERVICOS: Record<ServicoEmpresa, ServicoMeta> = {
     connectMode: 'oauth',
     oauthStart: '/integracoes/meta/oauth/start',
   },
+  openai: {
+    nome: 'OpenAI',
+    tipo: 'ia',
+    obrigatorio: false,
+    color: '#10a37f',
+    icon: '🤖',
+    description:
+      'Chave da empresa pra IA (bot do WhatsApp + nó "Conversar com IA" dos fluxos). Lida pela API e pelo Worker. Sem ela, usa a chave do ambiente (Railway).',
+    connectMode: 'credentials',
+    credentialFields: [{ name: 'apiKey', label: 'Chave da API (sk-...)', type: 'password' }],
+  },
 };
 
 const SERVICO_ORDER: ServicoEmpresa[] = [
   'omie',
   'whatsapp',
+  'openai',
   'mercadolivre',
   'shopee',
   'amazon',

@@ -15,6 +15,9 @@ export const SERVICOS_EMPRESA = [
   'tiktok',
   'instagram',
   'facebook',
+  // OpenAI da EMPRESA (chave única lida por api+worker) — escopo 'ambos':
+  // também existe por-usuário (cada rep a sua) em SERVICOS_USUARIO.
+  'openai',
 ] as const;
 export type ServicoEmpresa = (typeof SERVICOS_EMPRESA)[number];
 
@@ -136,7 +139,9 @@ export const SERVICO_METADATA: Record<
     escopo: 'usuario',
     obrigatorio: false,
   },
-  openai: { nome: 'OpenAI', tipo: 'ia', escopo: 'usuario', obrigatorio: false },
+  // escopo 'ambos': chave da EMPRESA (DIRECTOR, lida por api+worker pelo bot/fluxos
+  // de IA) OU chave pessoal de cada rep (UsuarioIntegracoesService, sem flag).
+  openai: { nome: 'OpenAI', tipo: 'ia', escopo: 'ambos', obrigatorio: false, requerDirector: true },
 };
 
 /**

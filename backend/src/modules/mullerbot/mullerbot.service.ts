@@ -1,6 +1,7 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { EnvService } from '@config/env.service';
 import { UsuarioIntegracoesService } from '@modules/integracoes/usuario-integracoes.service';
+import { IntegracoesService } from '@modules/integracoes/integracoes.service';
 import {
   BusinessRuleException,
   ForbiddenException,
@@ -39,7 +40,24 @@ export class MullerBotService {
     private readonly produtoSearch: ProdutoSearchService,
     private readonly cache: MullerBotCacheService,
     private readonly persona: MullerBotPersonaService,
+    private readonly integracoes: IntegracoesService,
   ) {}
+
+  /**
+   * Resolve a chave OpenAI da EMPRESA (escopo empresa): primeiro a integração
+   * configurada no app (IntegracaoConexao servico='openai', cifrada — lida tanto
+   * pela api quanto pelo worker), senão a `OPENAI_API_KEY` do ambiente (Railway).
+   */
+  private async resolverChaveEmpresa(empresaId: string): Promise<string | undefined> {
+    try {
+      const conn = await this.integracoes.obterCredenciaisInternas(empresaId, 'openai');
+      const k = (conn.credenciais as { apiKey?: string }).apiKey;
+      if (k && k.trim()) return k.trim();
+    } catch {
+      // Empresa não configurou OpenAI no app — cai pro env (Railway).
+    }
+    return this.env.get('OPENAI_API_KEY') || undefined;
+  }
 
   async perguntar(user: AuthenticatedUser, dto: PerguntarDto): Promise<MullerBotResposta> {
     if (!user.empresaIdAtiva) {
@@ -173,10 +191,10 @@ export class MullerBotService {
     usouCatalogo: boolean;
     produtosIncluidos: number;
   }> {
-    const apiKey = this.env.get('OPENAI_API_KEY');
+    const apiKey = await this.resolverChaveEmpresa(empresaId);
     if (!apiKey) {
       throw new IntegrationException(
-        'OPENAI_API_KEY não configurada — o bot do WhatsApp não pode responder.',
+        'OpenAI não configurada — defina a chave da empresa em Integrações (ou OPENAI_API_KEY no ambiente). O bot do WhatsApp não pode responder.',
         ErrorCode.INTEGRATION_ERROR,
       );
     }
@@ -239,10 +257,10 @@ export class MullerBotService {
     mensagem: string,
     historico: HistoricoMsg[] = [],
   ): Promise<{ texto: string; tokensIn?: number; tokensOut?: number; modelo: string }> {
-    const apiKey = this.env.get('OPENAI_API_KEY');
+    const apiKey = await this.resolverChaveEmpresa(empresaId);
     if (!apiKey) {
       throw new IntegrationException(
-        'OPENAI_API_KEY não configurada — o nó "Conversar com IA" não pode rodar.',
+        'OpenAI não configurada — defina a chave da empresa em Integrações (ou OPENAI_API_KEY no ambiente). O nó "Conversar com IA" não pode rodar.',
         ErrorCode.INTEGRATION_ERROR,
       );
     }
