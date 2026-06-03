@@ -29,6 +29,7 @@ const makePrismaMock = () => ({
     count: vi.fn().mockResolvedValue(0),
     findMany: vi.fn().mockResolvedValue([]),
     createMany: vi.fn().mockResolvedValue({ count: 0 }),
+    updateMany: vi.fn().mockResolvedValue({ count: 0 }),
     deleteMany: vi.fn().mockResolvedValue({ count: 0 }),
     groupBy: vi.fn().mockResolvedValue([]),
   } satisfies MockModel,
@@ -442,6 +443,58 @@ describe('CampanhasService', () => {
       expect(prisma.campanhaDestinatario.deleteMany).toHaveBeenCalledWith({
         where: { campanhaId: 'camp-1', status: 'PENDENTE' },
       });
+    });
+  });
+
+  // -------------------------------------------------------------------------
+  // reenviarErros
+  // -------------------------------------------------------------------------
+
+  describe('reenviarErros', () => {
+    it('lança BusinessRuleException se campanha não está ENVIADA', async () => {
+      prisma.campanha.findFirst.mockResolvedValue(fakeCampanha({ status: 'RASCUNHO' }));
+
+      await expect(service.reenviarErros(fakeUser(), 'camp-1')).rejects.toBeInstanceOf(
+        BusinessRuleException,
+      );
+    });
+
+    it('lança BusinessRuleException quando não há falhas', async () => {
+      prisma.campanha.findFirst.mockResolvedValue(fakeCampanha({ status: 'ENVIADA' }));
+      prisma.campanhaDestinatario.findMany.mockResolvedValue([]); // nenhum ERRO
+
+      await expect(service.reenviarErros(fakeUser(), 'camp-1')).rejects.toBeInstanceOf(
+        BusinessRuleException,
+      );
+    });
+
+    it('reseta ERRO→PENDENTE e reenfileira só as falhas com delay escalonado', async () => {
+      prisma.campanha.findFirst
+        .mockResolvedValueOnce(fakeCampanha({ status: 'ENVIADA' }))
+        .mockResolvedValueOnce(fakeCampanha({ status: 'ENVIANDO' }));
+      prisma.campanhaDestinatario.findMany.mockResolvedValue([{ id: 'dest-1' }, { id: 'dest-2' }]);
+      prisma.campanha.updateMany.mockResolvedValue({ count: 1 });
+
+      await service.reenviarErros(fakeUser(), 'camp-1');
+
+      expect(prisma.campanhaDestinatario.updateMany).toHaveBeenCalledWith({
+        where: { campanhaId: 'camp-1', status: 'ERRO' },
+        data: { status: 'PENDENTE', erro: null, enviadoEm: null },
+      });
+      expect(queue.add).toHaveBeenCalledTimes(2);
+      expect(queue.add.mock.calls[0][2].delay).toBe(0);
+      expect(queue.add.mock.calls[1][2].delay).toBe(1500);
+    });
+
+    it('lança BusinessRuleException quando o lock ENVIADA→ENVIANDO falha (count=0)', async () => {
+      prisma.campanha.findFirst.mockResolvedValue(fakeCampanha({ status: 'ENVIADA' }));
+      prisma.campanhaDestinatario.findMany.mockResolvedValue([{ id: 'dest-1' }]);
+      prisma.campanha.updateMany.mockResolvedValue({ count: 0 }); // lock não conseguiu
+
+      await expect(service.reenviarErros(fakeUser(), 'camp-1')).rejects.toBeInstanceOf(
+        BusinessRuleException,
+      );
+      expect(queue.add).not.toHaveBeenCalled();
     });
   });
 

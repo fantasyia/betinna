@@ -34,10 +34,24 @@ interface Campanha {
   objetivo?: string | null;
   usarIaPersonalizacao: boolean;
   agendadoPara?: string | null;
-  enviadaEm?: string | null;
-  totalDestinatarios?: number;
+  iniciadoEm?: string | null;
+  finalizadoEm?: string | null;
+  _count?: { destinatarios: number };
   criadoEm: string;
   atualizadoEm: string;
+}
+
+interface CampanhaDestinatarioLite {
+  id: string;
+  clienteId: string;
+  cliente?: { nome: string } | null;
+  email?: string | null;
+  telefone?: string | null;
+  status: 'PENDENTE' | 'ENVIADO' | 'LIDO' | 'ERRO';
+  erro?: string | null;
+  enviadoEm?: string | null;
+  lido: boolean;
+  lidoEm?: string | null;
 }
 
 interface CampanhaDetail extends Campanha {
@@ -47,6 +61,7 @@ interface CampanhaDetail extends Campanha {
   segTagIds?: string[];
   segRepIds?: string[];
   segClienteIds?: string[];
+  destinatarios?: CampanhaDestinatarioLite[];
 }
 
 /**
@@ -85,26 +100,31 @@ interface GerarConteudoResponse {
   tokensOut?: number;
 }
 
+// Alinhado com MensagemOtimizada do backend (campanha-ia.service.ts).
 interface OtimizarResponse {
-  mensagemOtimizada: string;
+  melhorada: string;
   variacoes?: string[];
   dicas?: string[];
 }
 
+// Alinhado com SegmentoSugerido do backend (campanha-ia.service.ts).
 interface SugerirSegmentoResponse {
-  segmentoSugerido: string;
-  tagsRecomendadas?: string[];
-  tomIdeal?: string;
-  melhorHorario?: string;
   justificativa?: string;
+  segmentosTextuais?: string[];
+  tagIds?: string[];
+  tonRecomendado?: string;
+  estimativaAlcance?: number;
+  melhorHorario?: string;
 }
 
+// Alinhado com AnaliseResultado do backend (campanha-ia.service.ts).
 interface AnalisarResponse {
-  insights: string[];
-  pontosFortres?: string[];
-  melhorias?: string[];
+  resumoExecutivo?: string;
+  pontosFortes?: string[];
+  pontosAMelhorar?: string[];
   recomendacoes?: string[];
-  score?: number;
+  proximasCampanhas?: string[];
+  scorePerformance?: number;
 }
 
 // ─── Constants ────────────────────────────────────────────────────────────────
@@ -152,6 +172,38 @@ function fmtDate(d: string | null | undefined) {
 function fmtPct(v: number | undefined | null) {
   const n = typeof v === 'number' && Number.isFinite(v) ? v : 0;
   return `${n.toFixed(1)}%`;
+}
+
+/** Nº de destinatários materializados (0 em rascunho → tratado como "sem dado"). */
+function destCount(c: { _count?: { destinatarios?: number } }): number | undefined {
+  const n = c._count?.destinatarios;
+  return n && n > 0 ? n : undefined;
+}
+
+/**
+ * Gera e baixa um CSV com os resultados (destinatários) da campanha — feito no
+ * client a partir do payload do detalhe (não precisa de endpoint extra).
+ */
+function exportarResultadosCsv(c: CampanhaDetail): void {
+  const linhas = c.destinatarios ?? [];
+  const esc = (v: unknown) => `"${String(v ?? '').replace(/"/g, '""')}"`;
+  const head = ['cliente', 'email', 'telefone', 'status', 'enviado_em', 'lido', 'erro'];
+  const body = linhas.map((d) =>
+    [d.cliente?.nome ?? d.clienteId, d.email, d.telefone, d.status, d.enviadoEm, d.lido ? 'sim' : 'não', d.erro]
+      .map(esc)
+      .join(','),
+  );
+  // BOM (﻿) pro Excel abrir UTF-8 certinho.
+  const csv = '﻿' + [head.join(','), ...body].join('\r\n');
+  const blob = new Blob([csv], { type: 'text/csv;charset=utf-8' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `campanha-${c.nome.replace(/[^\w.-]+/g, '_')}-resultados.csv`;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  URL.revokeObjectURL(url);
 }
 
 // ─── Page ─────────────────────────────────────────────────────────────────────
@@ -227,16 +279,18 @@ export default function CampanhasPage() {
     {
       key: 'alcance',
       header: 'Destinatários',
-      render: (c) =>
-        c.totalDestinatarios !== undefined && c.totalDestinatarios !== null
-          ? String(c.totalDestinatarios)
-          : <em style={{ color: colors.muted }}>—</em>,
+      render: (c) => {
+        const n = destCount(c);
+        return n !== undefined ? String(n) : <em style={{ color: colors.muted }}>—</em>;
+      },
     },
     {
       key: 'agendado',
       header: 'Agendado / Enviado',
-      render: (c) =>
-        c.enviadaEm ? fmtDate(c.enviadaEm) : c.agendadoPara ? fmtDate(c.agendadoPara) : '—',
+      render: (c) => {
+        const enviado = c.finalizadoEm ?? c.iniciadoEm;
+        return enviado ? fmtDate(enviado) : c.agendadoPara ? fmtDate(c.agendadoPara) : '—';
+      },
     },
     {
       key: 'ia',
@@ -410,18 +464,24 @@ function CampanhaDetailModal({
 }) {
   const toast = useToast();
   const { data, loading, error, refetch } = useApiQuery<CampanhaDetail>(`/campanhas/${id}`);
-  const { data: metricas } = useApiQuery<Metricas>(`/campanhas/${id}/metricas`);
+  const { data: metricas, refetch: refetchMetricas } = useApiQuery<Metricas>(`/campanhas/${id}/metricas`);
   const [tab, setTab] = useState<DetailTab>('info');
   const [acting, setActing] = useState(false);
   const [confirmAsync, ConfirmDialog] = useConfirm();
 
-  async function callAction(action: 'disparar' | 'pausar' | 'cancelar') {
+  async function callAction(action: 'disparar' | 'pausar' | 'cancelar' | 'reenviar-erros') {
     setActing(true);
     try {
       await api.post(`/campanhas/${id}/${action}`);
-      const labelMap = { disparar: 'disparada', pausar: 'pausada', cancelar: 'cancelada' };
+      const labelMap = {
+        disparar: 'disparada',
+        pausar: 'pausada',
+        cancelar: 'cancelada',
+        'reenviar-erros': 'reenfileirada',
+      };
       toast.success(`Campanha ${labelMap[action]}`);
       refetch();
+      refetchMetricas();
       onChanged();
     } catch (err) {
       toast.error('Falha', err instanceof ApiError ? err.message : undefined);
@@ -483,6 +543,17 @@ function CampanhaDetailModal({
                 Cancelar
               </button>
             )}
+            {canManage && c?.status === 'ENVIADA' && (metricas?.erros ?? 0) > 0 && (
+              <button
+                type="button"
+                data-testid="campanha-reenviar-erros"
+                disabled={acting}
+                onClick={() => callAction('reenviar-erros')}
+                style={btnSecondary}
+              >
+                ↻ Reenviar falhas ({metricas?.erros})
+              </button>
+            )}
           </div>
           <button type="button" onClick={onClose} style={btnSecondary}>Fechar</button>
         </div>
@@ -541,8 +612,8 @@ function CampanhaDetailModal({
                 <dl style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.75rem', fontSize: 13, marginBottom: '1rem' }}>
                   <Info label="Criado em">{fmtDate(c.criadoEm)}</Info>
                   <Info label="Agendado para">{fmtDate(c.agendadoPara)}</Info>
-                  <Info label="Enviado em">{fmtDate(c.enviadaEm)}</Info>
-                  <Info label="Destinatários">{c.totalDestinatarios !== undefined ? String(c.totalDestinatarios) : '—'}</Info>
+                  <Info label="Enviado em">{fmtDate(c.finalizadoEm ?? c.iniciadoEm)}</Info>
+                  <Info label="Destinatários">{destCount(c) !== undefined ? String(destCount(c)) : '—'}</Info>
                 </dl>
 
                 {(c.mensagemWa || c.mensagemEmail) && (
@@ -584,6 +655,18 @@ function CampanhaDetailModal({
 
             {tab === 'metricas' && (
               <div>
+                {c.destinatarios && c.destinatarios.length > 0 && (
+                  <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: '0.5rem' }}>
+                    <button
+                      type="button"
+                      data-testid="campanha-export-csv"
+                      onClick={() => exportarResultadosCsv(c)}
+                      style={{ ...btnSecondary, fontSize: 12 }}
+                    >
+                      ⬇ Exportar CSV
+                    </button>
+                  </div>
+                )}
                 {metricas ? (
                   (() => {
                     // Normaliza defaults — proteção contra payload incompleto.
@@ -661,6 +744,13 @@ function IAPanel({ campanha }: { campanha: CampanhaDetail }) {
 
   const [busy, setBusy] = useState(false);
   const [iaError, setIaError] = useState<string | null>(null);
+
+  // Tags da empresa pra mapear os tagIds sugeridos pela IA → nome legível.
+  const tagsQuery = useApiQuery<TagLite[] | { data: TagLite[] }>('/tags');
+  const tags: TagLite[] = Array.isArray(tagsQuery.data)
+    ? tagsQuery.data
+    : tagsQuery.data?.data ?? [];
+  const tagNome = (id: string) => tags.find((t) => t.id === id)?.nome ?? id;
 
   async function gerarConteudo() {
     setBusy(true); setIaError(null);
@@ -838,7 +928,7 @@ function IAPanel({ campanha }: { campanha: CampanhaDetail }) {
           </button>
           {otimizarResult && (
             <div style={{ marginTop: '0.875rem', display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
-              <IAResultBlock label="Versão otimizada" text={otimizarResult.mensagemOtimizada} />
+              <IAResultBlock label="Versão otimizada" text={otimizarResult.melhorada} />
               {otimizarResult.variacoes?.map((v, i) => (
                 <IAResultBlock key={i} label={`Variação ${i + 1}`} text={v} />
               ))}
@@ -878,14 +968,19 @@ function IAPanel({ campanha }: { campanha: CampanhaDetail }) {
           </button>
           {sugerirResult && (
             <div style={{ marginTop: '0.875rem', display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
-              <IAResultBlock label="Segmento sugerido" text={sugerirResult.segmentoSugerido} />
+              {sugerirResult.segmentosTextuais && sugerirResult.segmentosTextuais.length > 0 && (
+                <IAResultBlock label="Segmentos sugeridos" text={sugerirResult.segmentosTextuais.join('\n')} />
+              )}
               {sugerirResult.justificativa && <IAResultBlock label="Justificativa" text={sugerirResult.justificativa} />}
-              {sugerirResult.tomIdeal && <p style={{ margin: 0, fontSize: 12 }}>Tom ideal: <strong>{sugerirResult.tomIdeal}</strong></p>}
+              {sugerirResult.tonRecomendado && <p style={{ margin: 0, fontSize: 12 }}>Tom ideal: <strong>{sugerirResult.tonRecomendado}</strong></p>}
               {sugerirResult.melhorHorario && <p style={{ margin: 0, fontSize: 12 }}>Melhor horário: <strong>{sugerirResult.melhorHorario}</strong></p>}
-              {sugerirResult.tagsRecomendadas && sugerirResult.tagsRecomendadas.length > 0 && (
+              {sugerirResult.estimativaAlcance !== undefined && sugerirResult.estimativaAlcance > 0 && (
+                <p style={{ margin: 0, fontSize: 12 }}>Estimativa de alcance: <strong>{sugerirResult.estimativaAlcance}</strong> clientes</p>
+              )}
+              {sugerirResult.tagIds && sugerirResult.tagIds.length > 0 && (
                 <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap' }}>
-                  {sugerirResult.tagsRecomendadas.map((t) => (
-                    <span key={t} style={badge(colors.primary)}>{t}</span>
+                  {sugerirResult.tagIds.map((id) => (
+                    <span key={id} style={badge(colors.primary)}>{tagNome(id)}</span>
                   ))}
                 </div>
               )}
@@ -910,32 +1005,30 @@ function IAPanel({ campanha }: { campanha: CampanhaDetail }) {
           </button>
           {analisarResult && (
             <div style={{ marginTop: '0.875rem', display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
-              {analisarResult.score !== undefined && (
-                <div style={{ fontSize: 22, fontWeight: 700, color: analisarResult.score >= 7 ? colors.success : analisarResult.score >= 5 ? colors.warning : colors.danger }}>
-                  Score: {analisarResult.score}/10
+              {analisarResult.scorePerformance !== undefined && (
+                <div style={{ fontSize: 22, fontWeight: 700, color: analisarResult.scorePerformance >= 7 ? colors.success : analisarResult.scorePerformance >= 5 ? colors.warning : colors.danger }}>
+                  Score: {analisarResult.scorePerformance}/10
                 </div>
               )}
-              {analisarResult.insights.length > 0 && (
+              {analisarResult.resumoExecutivo && (
                 <div>
-                  <div style={{ fontSize: 11, color: colors.muted, textTransform: 'uppercase', marginBottom: 4 }}>Insights</div>
-                  <ul style={{ margin: 0, padding: '0 0 0 16px', fontSize: 13, lineHeight: 1.6 }}>
-                    {analisarResult.insights.map((i, idx) => <li key={idx}>{i}</li>)}
-                  </ul>
+                  <div style={{ fontSize: 11, color: colors.muted, textTransform: 'uppercase', marginBottom: 4 }}>Resumo executivo</div>
+                  <p style={{ margin: 0, fontSize: 13, lineHeight: 1.6 }}>{analisarResult.resumoExecutivo}</p>
                 </div>
               )}
-              {analisarResult.pontosFortres && analisarResult.pontosFortres.length > 0 && (
+              {analisarResult.pontosFortes && analisarResult.pontosFortes.length > 0 && (
                 <div>
                   <div style={{ fontSize: 11, color: colors.success, textTransform: 'uppercase', marginBottom: 4 }}>Pontos fortes</div>
                   <ul style={{ margin: 0, padding: '0 0 0 16px', fontSize: 13, lineHeight: 1.6 }}>
-                    {analisarResult.pontosFortres.map((p, i) => <li key={i}>{p}</li>)}
+                    {analisarResult.pontosFortes.map((p, i) => <li key={i}>{p}</li>)}
                   </ul>
                 </div>
               )}
-              {analisarResult.melhorias && analisarResult.melhorias.length > 0 && (
+              {analisarResult.pontosAMelhorar && analisarResult.pontosAMelhorar.length > 0 && (
                 <div>
                   <div style={{ fontSize: 11, color: colors.warning, textTransform: 'uppercase', marginBottom: 4 }}>A melhorar</div>
                   <ul style={{ margin: 0, padding: '0 0 0 16px', fontSize: 13, lineHeight: 1.6 }}>
-                    {analisarResult.melhorias.map((m, i) => <li key={i}>{m}</li>)}
+                    {analisarResult.pontosAMelhorar.map((m, i) => <li key={i}>{m}</li>)}
                   </ul>
                 </div>
               )}
@@ -944,6 +1037,14 @@ function IAPanel({ campanha }: { campanha: CampanhaDetail }) {
                   <div style={{ fontSize: 11, color: colors.info, textTransform: 'uppercase', marginBottom: 4 }}>Recomendações</div>
                   <ul style={{ margin: 0, padding: '0 0 0 16px', fontSize: 13, lineHeight: 1.6 }}>
                     {analisarResult.recomendacoes.map((r, i) => <li key={i}>{r}</li>)}
+                  </ul>
+                </div>
+              )}
+              {analisarResult.proximasCampanhas && analisarResult.proximasCampanhas.length > 0 && (
+                <div>
+                  <div style={{ fontSize: 11, color: colors.magenta, textTransform: 'uppercase', marginBottom: 4 }}>Próximas campanhas</div>
+                  <ul style={{ margin: 0, padding: '0 0 0 16px', fontSize: 13, lineHeight: 1.6 }}>
+                    {analisarResult.proximasCampanhas.map((p, i) => <li key={i}>{p}</li>)}
                   </ul>
                 </div>
               )}
