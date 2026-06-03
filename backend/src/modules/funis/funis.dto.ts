@@ -13,6 +13,17 @@ export const createFunilEtapaSchema = z.object({
   tipo: z.nativeEnum(FunilEtapaTipo).default('ATIVA'),
   probabilidade: z.number().int().min(0).max(100).default(50),
   slaDias: z.number().int().min(1).max(365).nullable().optional(),
+  /** Ação quando o SLA da etapa vence (orquestração Fase B). */
+  acaoSlaExpirado: z
+    .object({
+      tipo: z.enum(['notificar', 'mover', 'tag']),
+      etapaDestinoId: z.string().min(1).optional(), // tipo=mover
+      tagNome: z.string().min(1).max(60).optional(), // tipo=tag
+    })
+    .nullable()
+    .optional(),
+  /** Teto de leads simultâneos na etapa (anti-sobrecarga). */
+  capacidadeMaxima: z.number().int().min(1).max(100000).nullable().optional(),
 });
 export type CreateFunilEtapaDto = z.infer<typeof createFunilEtapaSchema>;
 

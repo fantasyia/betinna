@@ -659,13 +659,26 @@ export class FluxoExecutorService {
     // Etapa destino deve pertencer à empresa; o tipo sincroniza o enum legado.
     const destino = await this.prisma.funilEtapa.findFirst({
       where: { id: cfg.etapaDestinoId, funil: { empresaId } },
-      select: { id: true, tipo: true },
+      select: { id: true, tipo: true, capacidadeMaxima: true },
     });
     if (!destino) {
       throw new Error(`Etapa destino ${cfg.etapaDestinoId} não encontrada na empresa ${empresaId}`);
     }
     const etapaEnum: 'NOVO' | 'GANHO' | 'PERDIDO' =
       destino.tipo === 'GANHO' ? 'GANHO' : destino.tipo === 'PERDIDO' ? 'PERDIDO' : 'NOVO';
+
+    // Capacidade máxima da etapa destino (anti-sobrecarga): nunca libera além das vagas.
+    let limite = quantidade;
+    if (destino.capacidadeMaxima != null) {
+      const ocupacao = await this.prisma.lead.count({
+        where: { empresaId, funilEtapaId: cfg.etapaDestinoId },
+      });
+      limite = Math.min(quantidade, Math.max(0, destino.capacidadeMaxima - ocupacao));
+    }
+    if (limite === 0) {
+      this.logger.log(`LIBERAR_LOTE: etapa destino ${cfg.etapaDestinoId} cheia — nada liberado`);
+      return { movidos: 0, etapaDestinoId: cfg.etapaDestinoId, motivo: 'etapa destino cheia' };
+    }
 
     const leads = await this.prisma.lead.findMany({
       where: {
@@ -674,7 +687,7 @@ export class FluxoExecutorService {
         ...(cfg.funilId ? { funilId: cfg.funilId } : {}),
       },
       orderBy: [{ ordemPrioridade: 'asc' }, { criadoEm: 'asc' }],
-      take: quantidade,
+      take: limite,
       select: { id: true },
     });
 

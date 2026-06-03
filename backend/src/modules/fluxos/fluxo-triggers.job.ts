@@ -45,11 +45,90 @@ export class FluxoTriggersJob {
     for (const { id: empresaId } of empresas) {
       await this.avaliarClientesInativos(empresaId);
       await this.avaliarAmostrasFollowUp(empresaId);
+      await this.avaliarSlaEtapas(empresaId);
     }
 
     // Orquestração (Fase B) — conversas de IA sem resposta além do timeout
     // disparam LEAD_SEM_RESPOSTA e são encerradas (consulta global, todas empresas).
     await this.conversarIa.processarTimeouts();
+  }
+
+  // ─── SLA por etapa (orquestração Fase B) ──────────────────────────
+
+  /**
+   * Aplica a ação de SLA vencido (FunilEtapa.acaoSlaExpirado) aos leads que
+   * passaram do prazo (slaDias) na etapa atual. Tipos: mover / tag / notificar.
+   * 'mover' tira o lead da etapa (não re-dispara); 'tag'/'notificar' são
+   * idempotentes (LeadTag por chave).
+   */
+  private async avaliarSlaEtapas(empresaId: string): Promise<void> {
+    const etapas = await this.prisma.funilEtapa.findMany({
+      where: { funil: { empresaId }, tipo: 'ATIVA', slaDias: { not: null } },
+      select: { id: true, slaDias: true, acaoSlaExpirado: true },
+    });
+    for (const etapa of etapas) {
+      const acao = etapa.acaoSlaExpirado as {
+        tipo?: 'notificar' | 'mover' | 'tag';
+        etapaDestinoId?: string;
+        tagNome?: string;
+      } | null;
+      if (!acao?.tipo || !etapa.slaDias) continue;
+
+      const corte = new Date();
+      corte.setDate(corte.getDate() - etapa.slaDias);
+      const leads = await this.prisma.lead.findMany({
+        where: { empresaId, funilEtapaId: etapa.id, etapaDesde: { lt: corte } },
+        select: { id: true },
+        take: 100,
+      });
+      for (const lead of leads) {
+        await this.aplicarAcaoSla(empresaId, lead.id, etapa.id, acao);
+      }
+      if (leads.length > 0) {
+        this.logger.log(
+          `SLA vencido: ${leads.length} lead(s) na etapa ${etapa.id} → ${acao.tipo} (empresa ${empresaId})`,
+        );
+      }
+    }
+  }
+
+  private async aplicarAcaoSla(
+    empresaId: string,
+    leadId: string,
+    etapaOrigemId: string,
+    acao: { tipo?: string; etapaDestinoId?: string; tagNome?: string },
+  ): Promise<void> {
+    if (acao.tipo === 'mover' && acao.etapaDestinoId) {
+      const destino = await this.prisma.funilEtapa.findFirst({
+        where: { id: acao.etapaDestinoId, funil: { empresaId } },
+        select: { id: true, tipo: true },
+      });
+      if (!destino) return;
+      const etapaEnum =
+        destino.tipo === 'GANHO' ? 'GANHO' : destino.tipo === 'PERDIDO' ? 'PERDIDO' : 'NOVO';
+      await this.prisma.lead.update({
+        where: { id: leadId },
+        data: { funilEtapaId: destino.id, etapa: etapaEnum, etapaDesde: new Date() },
+      });
+      await this.bus.disparar(empresaId, 'LEAD_ETAPA_MUDOU', {
+        leadId,
+        deEtapaId: etapaOrigemId,
+        paraEtapaId: destino.id,
+      });
+      return;
+    }
+    // 'tag' (rótulo escolhido) ou 'notificar' (rótulo de alerta) — idempotente.
+    const nome = acao.tipo === 'tag' && acao.tagNome ? acao.tagNome : '⚠ SLA vencido';
+    const tag = await this.prisma.tag.upsert({
+      where: { empresaId_nome: { empresaId, nome } },
+      create: { empresaId, nome, categoria: 'alerta' },
+      update: {},
+    });
+    await this.prisma.leadTag.upsert({
+      where: { leadId_tagId: { leadId, tagId: tag.id } },
+      create: { leadId, tagId: tag.id, origem: 'ia' },
+      update: {},
+    });
   }
 
   // ─── Clientes inativos ────────────────────────────────────────────

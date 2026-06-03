@@ -91,6 +91,7 @@ export class FunisService {
             tipo: e.tipo,
             probabilidade: e.probabilidade,
             slaDias: e.slaDias ?? null,
+            capacidadeMaxima: e.capacidadeMaxima ?? null,
           })),
         });
       }
@@ -167,6 +168,10 @@ export class FunisService {
         tipo: dto.tipo,
         probabilidade: dto.probabilidade,
         slaDias: dto.slaDias ?? null,
+        capacidadeMaxima: dto.capacidadeMaxima ?? null,
+        acaoSlaExpirado: dto.acaoSlaExpirado
+          ? (dto.acaoSlaExpirado as Prisma.InputJsonValue)
+          : Prisma.JsonNull,
       },
     });
     return this.findById(user, funilId);
@@ -183,9 +188,21 @@ export class FunisService {
       where: { id: etapaId, funilId },
     });
     if (!etapa) throw new NotFoundException('Etapa', etapaId);
+    // acaoSlaExpirado é Json nullable — null explícito precisa de Prisma.JsonNull.
+    const { acaoSlaExpirado, ...rest } = dto;
     await this.prisma.funilEtapa.update({
       where: { id: etapaId },
-      data: dto,
+      data: {
+        ...rest,
+        ...(acaoSlaExpirado !== undefined
+          ? {
+              acaoSlaExpirado:
+                acaoSlaExpirado === null
+                  ? Prisma.JsonNull
+                  : (acaoSlaExpirado as Prisma.InputJsonValue),
+            }
+          : {}),
+      },
     });
     return this.findById(user, funilId);
   }
