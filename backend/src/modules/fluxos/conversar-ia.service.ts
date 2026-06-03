@@ -129,6 +129,14 @@ export class ConversarIaService {
       throw new Error(`Lead ${leadId} sem telefone para CONVERSAR_IA`);
     }
 
+    // Teto de tokens do prompt (Fase C — spec §7).
+    if (!(await this.tetoPromptOk(cfg.promptId))) {
+      this.logger.warn(
+        `Prompt ${cfg.promptId} atingiu o teto de tokens — CONVERSAR_IA pulado (exec ${execucaoId})`,
+      );
+      return { aguardando: false };
+    }
+
     const systemPrompt = interpolate(
       await this.persona.compilarSystemPromptConversa(empresaId, cfg.promptId),
       ctx,
@@ -138,6 +146,10 @@ export class ConversarIaService {
       systemPrompt + INSTRUCAO_OPENER,
       '(inicie)',
       [],
+    );
+    await this.registrarUsoPrompt(
+      cfg.promptId,
+      (abertura.tokensIn ?? 0) + (abertura.tokensOut ?? 0),
     );
     await this.enviarWhatsapp(empresaId, lead.contatoTelefone, abertura.texto.trim());
 
@@ -206,7 +218,16 @@ export class ConversarIaService {
         : '');
     const historico = conversationId ? await this.montarHistorico(conversationId) : [];
 
+    if (!(await this.tetoPromptOk(cfg.promptId))) {
+      await this.enviarWhatsapp(
+        empresaId,
+        lead.contatoTelefone,
+        'Só um instante, já te respondo. 🙏',
+      );
+      return; // teto de tokens do prompt atingido — não roda a IA agora
+    }
     const r = await this.muller.gerarRespostaIa(empresaId, systemPrompt, textoLead, historico);
+    await this.registrarUsoPrompt(cfg.promptId, (r.tokensIn ?? 0) + (r.tokensOut ?? 0));
     const turno = parseTurnoIa(r.texto);
 
     await this.enviarWhatsapp(empresaId, lead.contatoTelefone, turno.resposta.trim());
@@ -292,6 +313,67 @@ export class ConversarIaService {
     if (!texto) return;
     const peerId = `${telefone.replace(/\D/g, '')}@s.whatsapp.net`;
     await this.whatsapp.enviarTexto(empresaId, peerId, texto, {});
+  }
+
+  // ─── Teto de tokens por prompt (Fase C — spec §7) ────────────────────
+
+  private dataRefs(): { dia: string; mes: string } {
+    const d = new Date();
+    const dia = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(
+      d.getDate(),
+    ).padStart(2, '0')}`;
+    return { dia, mes: dia.slice(0, 7) };
+  }
+
+  /** True se o prompt ainda pode rodar (não estourou o teto de tokens dia/mês). */
+  private async tetoPromptOk(promptId?: string): Promise<boolean> {
+    if (!promptId) return true;
+    try {
+      const p = await this.prisma.botPrompt.findUnique({
+        where: { id: promptId },
+        select: {
+          tetoTokensDia: true,
+          tetoTokensMes: true,
+          usoTokensDia: true,
+          usoDiaRef: true,
+          usoTokensMes: true,
+          usoMesRef: true,
+        },
+      });
+      if (!p) return true;
+      const { dia, mes } = this.dataRefs();
+      const usoDia = p.usoDiaRef === dia ? p.usoTokensDia : 0;
+      const usoMes = p.usoMesRef === mes ? p.usoTokensMes : 0;
+      if (p.tetoTokensDia != null && usoDia >= p.tetoTokensDia) return false;
+      if (p.tetoTokensMes != null && usoMes >= p.tetoTokensMes) return false;
+      return true;
+    } catch {
+      return true; // fail-open: erro no check não pode travar a conversa
+    }
+  }
+
+  /** Acumula os tokens usados pelo prompt, com reset por dia/mês. */
+  private async registrarUsoPrompt(promptId: string | undefined, tokens: number): Promise<void> {
+    if (!promptId || tokens <= 0) return;
+    try {
+      const p = await this.prisma.botPrompt.findUnique({
+        where: { id: promptId },
+        select: { usoTokensDia: true, usoDiaRef: true, usoTokensMes: true, usoMesRef: true },
+      });
+      if (!p) return;
+      const { dia, mes } = this.dataRefs();
+      await this.prisma.botPrompt.update({
+        where: { id: promptId },
+        data: {
+          usoTokensDia: (p.usoDiaRef === dia ? p.usoTokensDia : 0) + tokens,
+          usoDiaRef: dia,
+          usoTokensMes: (p.usoMesRef === mes ? p.usoTokensMes : 0) + tokens,
+          usoMesRef: mes,
+        },
+      });
+    } catch {
+      /* best-effort */
+    }
   }
 
   private async montarHistorico(conversationId: string): Promise<HistoricoMsg[]> {

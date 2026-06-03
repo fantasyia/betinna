@@ -1968,6 +1968,11 @@ model BotPrompt {
   /// Fase C (spec §7) — teto de tokens por prompt (null = sem teto próprio).
   tetoTokensDia Int?
   tetoTokensMes Int?
+  /// Uso acumulado pra enforcement do teto (reset por dia/mês via refs).
+  usoTokensDia  Int     @default(0)
+  usoDiaRef     String?
+  usoTokensMes  Int     @default(0)
+  usoMesRef     String?
 
   criadoEm     DateTime @default(now())
   atualizadoEm DateTime @updatedAt
