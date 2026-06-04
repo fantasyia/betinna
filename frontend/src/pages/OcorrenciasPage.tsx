@@ -564,7 +564,7 @@ function OcorrenciaDetailModal({
                     <li
                       key={c.id}
                       style={{
-                        background: '#fafbfc',
+                        background: colors.bgAlt,
                         border: `1px solid ${colors.border}`,
                         borderRadius: 6,
                         padding: '0.5rem 0.75rem',

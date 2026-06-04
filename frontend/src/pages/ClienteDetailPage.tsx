@@ -1362,7 +1362,7 @@ function NotasTab({ clienteId }: { clienteId: string }) {
             <li
               key={n.id}
               style={{
-                background: '#fafbfc',
+                background: colors.bgAlt,
                 border: `1px solid ${colors.border}`,
                 borderRadius: 6,
                 padding: '0.75rem',
@@ -1623,7 +1623,7 @@ function DocumentosTab({ clienteId }: { clienteId: string }) {
             <li
               key={d.id}
               style={{
-                background: '#fafbfc',
+                background: colors.bgAlt,
                 border: `1px solid ${colors.border}`,
                 borderRadius: 6,
                 padding: '0.5rem 0.75rem',
@@ -1932,7 +1932,7 @@ function PrecoFormModal({
             style={{
               fontSize: 13,
               padding: '0.5rem 0.75rem',
-              background: '#fafbfc',
+              background: colors.bgAlt,
               border: `1px solid ${colors.border}`,
               borderRadius: 6,
               marginTop: '0.5rem',

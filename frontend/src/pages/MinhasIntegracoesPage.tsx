@@ -416,7 +416,7 @@ function OAuthConnectModal({
       <p style={{ marginTop: 0, fontSize: 14 }}>{meta.description}</p>
       <div
         style={{
-          background: '#fafbfc',
+          background: colors.bgAlt,
           border: `1px solid ${colors.border}`,
           borderRadius: 6,
           padding: '0.75rem',

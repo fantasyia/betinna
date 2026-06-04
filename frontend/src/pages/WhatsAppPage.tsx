@@ -268,7 +268,7 @@ function SessionPanel({ scope, canManage }: { scope: Scope; canManage: boolean }
                 flexDirection: 'column',
                 alignItems: 'center',
                 padding: '1.5rem',
-                background: '#fafbfc',
+                background: colors.bgAlt,
                 borderRadius: 8,
                 border: `1px solid ${colors.border}`,
               }}
@@ -324,7 +324,7 @@ function SessionPanel({ scope, canManage }: { scope: Scope; canManage: boolean }
               style={{
                 padding: '1.5rem',
                 textAlign: 'center',
-                background: '#fafbfc',
+                background: colors.bgAlt,
                 borderRadius: 8,
                 border: `1px solid ${colors.border}`,
               }}
@@ -381,7 +381,7 @@ function SessionPanel({ scope, canManage }: { scope: Scope; canManage: boolean }
               style={{
                 padding: '1.5rem',
                 textAlign: 'center',
-                background: '#fafbfc',
+                background: colors.bgAlt,
                 borderRadius: 8,
                 border: `1px solid ${colors.border}`,
               }}

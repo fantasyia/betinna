@@ -202,7 +202,7 @@ export function NotificationBell() {
             top: 'calc(100% + 4px)',
             width: 340,
             maxHeight: 480,
-            background: '#fff',
+            background: colors.surfaceElevated,
             border: `1px solid ${colors.border}`,
             borderRadius: 8,
             boxShadow: '0 10px 30px rgba(15,23,42,0.15)',

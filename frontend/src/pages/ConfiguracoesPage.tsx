@@ -390,7 +390,7 @@ function AvancadoTab() {
             data-testid={`config-link-${l.to.replace(/\//g, '')}`}
             style={{
               padding: '0.875rem',
-              background: '#fafbfc',
+              background: colors.bgAlt,
               border: `1px solid ${colors.border}`,
               borderLeft: `3px solid ${l.color}`,
               borderRadius: 10,

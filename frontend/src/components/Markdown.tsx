@@ -57,7 +57,7 @@ const ReactMarkdownLazy = lazy(async () => {
               return (
                 <code
                   style={{
-                    background: '#f1f5f9',
+                    background: colors.bgAlt,
                     padding: '0.1rem 0.35rem',
                     borderRadius: 4,
                     fontSize: '0.92em',
@@ -72,7 +72,7 @@ const ReactMarkdownLazy = lazy(async () => {
             return (
               <pre
                 style={{
-                  background: '#f1f5f9',
+                  background: colors.bgAlt,
                   padding: '0.6rem 0.75rem',
                   borderRadius: 6,
                   overflowX: 'auto',
@@ -115,7 +115,7 @@ const ReactMarkdownLazy = lazy(async () => {
           th: ({ children }) => (
             <th
               style={{
-                background: '#f8fafc',
+                background: colors.bgAlt,
                 padding: '0.4rem 0.6rem',
                 border: `1px solid ${colors.border}`,
                 textAlign: 'left',

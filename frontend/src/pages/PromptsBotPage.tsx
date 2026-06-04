@@ -219,7 +219,7 @@ export default function PromptsBotPage() {
                 <code
                   key={ex}
                   style={{
-                    background: colors.surfaceHover ?? '#f1f3f5',
+                    background: colors.surfaceHover ?? colors.bgAlt,
                     padding: '1px 6px',
                     borderRadius: 6,
                     marginRight: 6,
@@ -370,7 +370,7 @@ function VersoesModal({
                   fontSize: 11,
                   fontFamily: '"Fira Mono", monospace',
                   color: colors.text,
-                  background: colors.surfaceHover ?? '#f1f3f5',
+                  background: colors.surfaceHover ?? colors.bgAlt,
                   padding: '0.5rem',
                   borderRadius: 8,
                   maxHeight: 120,
@@ -452,7 +452,7 @@ function VariaveisCustomizadasSection() {
       <div style={{ display: 'grid', gap: 4 }}>
         {vars.map((v) => (
           <div key={v.id} style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13 }}>
-            <code style={{ background: '#f1f3f5', padding: '1px 6px', borderRadius: 6 }}>
+            <code style={{ background: colors.bgAlt, padding: '1px 6px', borderRadius: 6 }}>
               {`{{custom.${v.chave}}}`}
             </code>
             <span style={{ flex: 1, color: colors.muted }}>{v.valorPadrao ?? '—'}</span>

@@ -300,7 +300,7 @@ function TagFormModal({
             alignItems: 'center',
             gap: '0.5rem',
             padding: '0.75rem',
-            background: '#fafbfc',
+            background: colors.bgAlt,
             border: `1px solid ${colors.border}`,
             borderRadius: 6,
             marginTop: '0.5rem',

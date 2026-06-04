@@ -36,19 +36,19 @@ export function StateView({
         <div
           style={{
             height: 16,
-            background: '#eee',
+            background: colors.surfaceHover,
             borderRadius: 4,
             marginBottom: 12,
             width: '40%',
           }}
         />
         <div
-          style={{ height: 16, background: '#eee', borderRadius: 4, marginBottom: 12 }}
+          style={{ height: 16, background: colors.surfaceHover, borderRadius: 4, marginBottom: 12 }}
         />
         <div
           style={{
             height: 16,
-            background: '#eee',
+            background: colors.surfaceHover,
             borderRadius: 4,
             width: '70%',
           }}

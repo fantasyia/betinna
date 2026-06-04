@@ -158,7 +158,7 @@ function ToastCard({
       data-testid={`toast-${toast.kind}`}
       role="alert"
       style={{
-        background: '#fff',
+        background: colors.surfaceElevated,
         border: `1px solid ${colors.border}`,
         borderLeft: `4px solid ${KIND_COLOR[toast.kind]}`,
         borderRadius: 6,

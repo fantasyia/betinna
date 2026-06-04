@@ -152,7 +152,7 @@ function StatBox({
   return (
     <div
       style={{
-        background: '#fafbfc',
+        background: colors.bgAlt,
         border: `1px solid ${colors.border}`,
         borderRadius: 6,
         padding: '0.75rem',

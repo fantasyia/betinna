@@ -406,7 +406,7 @@ function IncidentDetailModal({ id, onClose }: { id: string; onClose: () => void 
                   style={{
                     marginTop: 4,
                     padding: '0.75rem',
-                    background: '#fafbfc',
+                    background: colors.bgAlt,
                     border: `1px solid ${colors.border}`,
                     borderRadius: 6,
                     whiteSpace: 'pre-wrap',

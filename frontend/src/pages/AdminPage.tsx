@@ -142,7 +142,7 @@ function Stat({
   return (
     <div
       style={{
-        background: '#fafbfc',
+        background: colors.bgAlt,
         border: `1px solid ${colors.border}`,
         borderRadius: 6,
         padding: '0.5rem 0.75rem',
@@ -367,7 +367,7 @@ function DbHealthSection() {
                 alignItems: 'center',
                 gap: '1rem',
                 padding: '0.75rem 1rem',
-                background: alerta ? `${alerta.cor}15` : '#fafbfc',
+                background: alerta ? `${alerta.cor}15` : colors.bgAlt,
                 border: `1px solid ${alerta ? alerta.cor : colors.border}`,
                 borderRadius: 6,
                 marginBottom: '0.75rem',
@@ -595,7 +595,7 @@ function BackupSection() {
         <div
           style={{
             padding: '0.75rem 1rem',
-            background: '#fafbfc',
+            background: colors.bgAlt,
             border: `1px solid ${colors.border}`,
             borderRadius: 6,
             marginBottom: '0.75rem',
@@ -1002,7 +1002,7 @@ function QuickLinksSection() {
             to={l.to}
             style={{
               padding: '0.875rem',
-              background: '#fafbfc',
+              background: colors.bgAlt,
               border: `1px solid ${colors.border}`,
               borderRadius: 6,
               textDecoration: 'none',

@@ -603,7 +603,7 @@ function CampanhaDetailModal({
                 </header>
 
                 {c.objetivo && (
-                  <div style={{ marginBottom: '1rem', padding: '0.75rem', background: '#fafbfc', borderRadius: 6, border: `1px solid ${colors.border}` }}>
+                  <div style={{ marginBottom: '1rem', padding: '0.75rem', background: colors.bgAlt, borderRadius: 6, border: `1px solid ${colors.border}` }}>
                     <div style={{ fontSize: 11, color: colors.muted, fontWeight: 600, textTransform: 'uppercase', marginBottom: 4 }}>Objetivo</div>
                     <p style={{ margin: 0, fontSize: 13 }}>{c.objetivo}</p>
                   </div>
@@ -623,7 +623,7 @@ function CampanhaDetailModal({
                         <div style={{ fontSize: 11, color: colors.muted, fontWeight: 600, textTransform: 'uppercase', marginBottom: 4 }}>
                           Mensagem WhatsApp
                         </div>
-                        <pre style={{ margin: 0, padding: '0.75rem', background: '#fafbfc', border: `1px solid ${colors.border}`, borderRadius: 6, fontSize: 13, whiteSpace: 'pre-wrap', fontFamily: 'inherit' }}>
+                        <pre style={{ margin: 0, padding: '0.75rem', background: colors.bgAlt, border: `1px solid ${colors.border}`, borderRadius: 6, fontSize: 13, whiteSpace: 'pre-wrap', fontFamily: 'inherit' }}>
                           {c.mensagemWa}
                         </pre>
                       </div>
@@ -633,7 +633,7 @@ function CampanhaDetailModal({
                         <div style={{ fontSize: 11, color: colors.muted, fontWeight: 600, textTransform: 'uppercase', marginBottom: 4 }}>
                           Assunto e-mail
                         </div>
-                        <p style={{ margin: 0, padding: '0.5rem 0.75rem', background: '#fafbfc', border: `1px solid ${colors.border}`, borderRadius: 6, fontSize: 13 }}>
+                        <p style={{ margin: 0, padding: '0.5rem 0.75rem', background: colors.bgAlt, border: `1px solid ${colors.border}`, borderRadius: 6, fontSize: 13 }}>
                           {c.assunto}
                         </p>
                       </div>
@@ -643,7 +643,7 @@ function CampanhaDetailModal({
                         <div style={{ fontSize: 11, color: colors.muted, fontWeight: 600, textTransform: 'uppercase', marginBottom: 4 }}>
                           Corpo e-mail
                         </div>
-                        <pre style={{ margin: 0, padding: '0.75rem', background: '#fafbfc', border: `1px solid ${colors.border}`, borderRadius: 6, fontSize: 13, whiteSpace: 'pre-wrap', fontFamily: 'inherit', maxHeight: 200, overflowY: 'auto' }}>
+                        <pre style={{ margin: 0, padding: '0.75rem', background: colors.bgAlt, border: `1px solid ${colors.border}`, borderRadius: 6, fontSize: 13, whiteSpace: 'pre-wrap', fontFamily: 'inherit', maxHeight: 200, overflowY: 'auto' }}>
                           {c.mensagemEmail}
                         </pre>
                       </div>
@@ -856,7 +856,7 @@ function IAPanel({ campanha }: { campanha: CampanhaDetail }) {
 
       {/* Gerar conteúdo */}
       {iaMode === 'gerar' && (
-        <div style={{ background: '#fafbfc', border: `1px solid ${colors.border}`, borderRadius: 8, padding: '0.875rem' }}>
+        <div style={{ background: colors.bgAlt, border: `1px solid ${colors.border}`, borderRadius: 8, padding: '0.875rem' }}>
           <FormField label="Objetivo da campanha" htmlFor="ia-obj">
             <Textarea
               id="ia-obj"
@@ -908,7 +908,7 @@ function IAPanel({ campanha }: { campanha: CampanhaDetail }) {
 
       {/* Otimizar */}
       {iaMode === 'otimizar' && (
-        <div style={{ background: '#fafbfc', border: `1px solid ${colors.border}`, borderRadius: 8, padding: '0.875rem' }}>
+        <div style={{ background: colors.bgAlt, border: `1px solid ${colors.border}`, borderRadius: 8, padding: '0.875rem' }}>
           <FormField label="Mensagem a otimizar">
             <Textarea
               value={otimizarTexto}
@@ -947,7 +947,7 @@ function IAPanel({ campanha }: { campanha: CampanhaDetail }) {
 
       {/* Sugerir segmento */}
       {iaMode === 'sugerir' && (
-        <div style={{ background: '#fafbfc', border: `1px solid ${colors.border}`, borderRadius: 8, padding: '0.875rem' }}>
+        <div style={{ background: colors.bgAlt, border: `1px solid ${colors.border}`, borderRadius: 8, padding: '0.875rem' }}>
           <FormField label="Objetivo" htmlFor="ia-sobj">
             <Textarea
               id="ia-sobj"
@@ -991,7 +991,7 @@ function IAPanel({ campanha }: { campanha: CampanhaDetail }) {
 
       {/* Analisar resultado */}
       {iaMode === 'analisar' && (
-        <div style={{ background: '#fafbfc', border: `1px solid ${colors.border}`, borderRadius: 8, padding: '0.875rem' }}>
+        <div style={{ background: colors.bgAlt, border: `1px solid ${colors.border}`, borderRadius: 8, padding: '0.875rem' }}>
           <p style={{ margin: '0 0 0.75rem', fontSize: 13, color: colors.muted }}>
             Analisa os resultados desta campanha e retorna insights acionáveis.
           </p>
@@ -1434,7 +1434,7 @@ function Info({ label, children }: { label: string; children: React.ReactNode })
 
 function Stat({ label, value, color = colors.text }: { label: string; value: string; color?: string }) {
   return (
-    <div style={{ background: '#fafbfc', border: `1px solid ${colors.border}`, borderRadius: 6, padding: '0.625rem' }}>
+    <div style={{ background: colors.bgAlt, border: `1px solid ${colors.border}`, borderRadius: 6, padding: '0.625rem' }}>
       <div style={{ fontSize: 9, color: colors.muted, textTransform: 'uppercase', letterSpacing: 0.4, fontWeight: 700 }}>{label}</div>
       <div style={{ fontSize: 18, fontWeight: 700, color, marginTop: 2 }}>{value}</div>
     </div>
