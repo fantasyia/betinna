@@ -282,8 +282,10 @@ export class MullerBotService {
    * Verifica se a `OPENAI_API_KEY` do servidor existe e faz um ping mínimo na
    * OpenAI pra confirmar que a chave responde. Nunca lança — retorna o status.
    */
-  async diagnosticarBot(): Promise<{
+  async diagnosticarBot(empresaId?: string): Promise<{
     envKeyPresente: boolean;
+    empresaKeyPresente: boolean;
+    fonte: 'empresa' | 'env' | 'nenhuma';
     modelo: string;
     catalogoLigado: boolean;
     teste: { ok: boolean; erro?: string };
@@ -291,26 +293,63 @@ export class MullerBotService {
     const envKey = this.env.get('OPENAI_API_KEY');
     const modelo = this.env.get('MULLERBOT_MODEL');
     const catalogoLigado = this.env.get('MULLERBOT_WHATSAPP_CATALOGO');
-    if (!envKey) {
+
+    // A empresa tem chave PRÓPRIA (tela Integrações, escopo empresa)? Essa tem
+    // precedência sobre o env — é exatamente o que o bot usa em runtime.
+    let empresaKeyPresente = false;
+    if (empresaId) {
+      try {
+        const conn = await this.integracoes.obterCredenciaisInternas(empresaId, 'openai');
+        empresaKeyPresente = !!(conn.credenciais as { apiKey?: string }).apiKey?.trim();
+      } catch {
+        empresaKeyPresente = false; // não configurada/inativa → cai pro env
+      }
+    }
+
+    // Chave EFETIVA que o bot vai usar (mesma lógica do resolverChaveEmpresa).
+    const chave = empresaId ? await this.resolverChaveEmpresa(empresaId) : envKey || undefined;
+    const fonte: 'empresa' | 'env' | 'nenhuma' = empresaKeyPresente
+      ? 'empresa'
+      : envKey
+        ? 'env'
+        : 'nenhuma';
+
+    if (!chave) {
       return {
-        envKeyPresente: false,
+        envKeyPresente: !!envKey,
+        empresaKeyPresente,
+        fonte,
         modelo,
         catalogoLigado,
         teste: {
           ok: false,
           erro:
-            'A OPENAI_API_KEY não está configurada no servidor (Railway). O bot do ' +
-            'WhatsApp usa essa chave do ambiente — a chave cadastrada na tela de ' +
-            'integrações não vale pra ele.',
+            'Nenhuma chave OpenAI ativa pra esta empresa. Configure a chave em ' +
+            'Integrações (escopo empresa, como DIRECTOR) — é a que o bot usa — ou ' +
+            'a OPENAI_API_KEY no servidor (Railway, serviços api e worker).',
         },
       };
     }
     try {
-      await this.chamarOpenAI({ apiKey: envKey }, modelo, 'Responda só: ok', 'ping', 5, []);
-      return { envKeyPresente: true, modelo, catalogoLigado, teste: { ok: true } };
+      await this.chamarOpenAI({ apiKey: chave }, modelo, 'Responda só: ok', 'ping', 5, []);
+      return {
+        envKeyPresente: !!envKey,
+        empresaKeyPresente,
+        fonte,
+        modelo,
+        catalogoLigado,
+        teste: { ok: true },
+      };
     } catch (err) {
       const erro = err instanceof Error ? err.message : String(err);
-      return { envKeyPresente: true, modelo, catalogoLigado, teste: { ok: false, erro } };
+      return {
+        envKeyPresente: !!envKey,
+        empresaKeyPresente,
+        fonte,
+        modelo,
+        catalogoLigado,
+        teste: { ok: false, erro },
+      };
     }
   }
 

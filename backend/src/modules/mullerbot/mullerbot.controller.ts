@@ -36,10 +36,10 @@ export class MullerBotController {
   @Roles('ADMIN', 'DIRECTOR')
   @ApiOperation({
     summary:
-      'Diagnóstico do bot do WhatsApp: verifica OPENAI_API_KEY do servidor e faz ping na OpenAI.',
+      'Diagnóstico do bot do WhatsApp: verifica a chave OpenAI que o bot usa (empresa ou servidor) e faz ping na OpenAI.',
   })
-  diagnosticarBot() {
-    return this.bot.diagnosticarBot();
+  diagnosticarBot(@CurrentUser() user: AuthenticatedUser) {
+    return this.bot.diagnosticarBot(user.empresaIdAtiva ?? undefined);
   }
 
   @Get('bot/modelos')

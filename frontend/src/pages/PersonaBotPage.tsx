@@ -51,6 +51,8 @@ interface CustoStatus {
 
 interface Diagnostico {
   envKeyPresente: boolean;
+  empresaKeyPresente?: boolean;
+  fonte?: 'empresa' | 'env' | 'nenhuma';
   modelo: string;
   catalogoLigado: boolean;
   teste: { ok: boolean; erro?: string };
@@ -283,7 +285,13 @@ export default function PersonaBotPage() {
                   {diag.teste.ok ? (
                     <p className="text-success flex items-center gap-1.5">
                       <CheckCircle2 className="h-3.5 w-3.5 shrink-0" />
-                      IA conectada e respondendo. Bot pronto pra atender.
+                      IA conectada e respondendo
+                      {diag.fonte === 'empresa'
+                        ? ' (chave da empresa)'
+                        : diag.fonte === 'env'
+                          ? ' (chave do servidor)'
+                          : ''}
+                      . Bot pronto pra atender.
                     </p>
                   ) : (
                     <div className="text-danger flex items-start gap-1.5">
@@ -291,12 +299,12 @@ export default function PersonaBotPage() {
                       <div>
                         <strong>O bot NÃO consegue responder.</strong>
                         <p className="text-text-subtle mt-0.5">{diag.teste.erro}</p>
-                        {!diag.envKeyPresente && (
-                          <p className="text-text-subtle mt-1">
-                            👉 Configure a variável <code>OPENAI_API_KEY</code> no Railway (serviços
-                            api e worker) e refaça o deploy.
-                          </p>
-                        )}
+                        <p className="text-text-subtle mt-1">
+                          👉 Cadastre a chave OpenAI em <strong>Integrações</strong> (escopo
+                          empresa, como diretor) — é a que o bot usa. Alternativa: definir{' '}
+                          <code>OPENAI_API_KEY</code> no Railway (serviços api e worker) e
+                          refazer o deploy.
+                        </p>
                       </div>
                     </div>
                   )}
