@@ -45,14 +45,16 @@ const IDADE_MAX_RESPOSTA_MS = 2 * 60_000; // 2 min
 const FALLBACK_PAUSA_MS = 10 * 60_000; // 10 min
 
 /**
- * Quebra a resposta da IA em balões de WhatsApp. A IA separa as mensagens com
- * "|||" (instruído no system prompt). Aqui a gente divide, limpa e respeita o
- * teto — o excedente é juntado no último balão pra NÃO perder texto. Sem "|||"
- * (resposta simples) → 1 balão só.
+ * Quebra a resposta da IA em balões de WhatsApp. Divide em DOIS sinais:
+ *  - "|||" (delimitador que a gente pede no prompt), e
+ *  - LINHA EM BRANCO (parágrafo) — que o modelo já produz naturalmente, então
+ *    a quebra funciona mesmo quando ele ignora o "|||" (modelos pequenos ignoram).
+ * Respeita o teto: o excedente é juntado no último balão pra NÃO perder texto.
+ * Uma frase única (sem "|||" nem parágrafo) → 1 balão só.
  */
 export function dividirEmBaloes(texto: string, max: number): string[] {
   const partes = texto
-    .split(/\s*\|\|\|\s*/)
+    .split(/\s*\|\|\|\s*|\n[ \t]*\n+/)
     .map((p) => p.trim())
     .filter(Boolean);
   if (partes.length === 0) return [];
@@ -321,6 +323,7 @@ export class MullerWhatsappService implements OnModuleInit {
       this.logger.log(
         `[bot] OK conv=${convId} peer=${params.peerId} modelo=${resposta.modelo ?? '?'} ` +
           `catalogo=${resposta.usouCatalogo ? `on(${resposta.produtosIncluidos ?? 0}prod)` : 'off'} ` +
+          `quebra=${cfgBot.quebrarMensagens ? 'on' : 'off'} baloes=${baloesFinais.length} ` +
           `msg="${params.conteudo.slice(0, 60)}" prompt_aprox=${resposta.promptTokensAprox ?? '?'}tok ` +
           `tokens_in=${resposta.tokensIn ?? '?'} tokens_out=${resposta.tokensOut ?? '?'} tempo=${tempoMs}ms`,
       );

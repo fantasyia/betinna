@@ -31,18 +31,20 @@ const SAFETY_MARGIN_TOKENS = 200;
 
 /**
  * Instrução (anexada ao system prompt) que faz a IA quebrar a resposta em
- * vários balões curtos de WhatsApp, separados por "|||". O envio real (split +
- * digitando + pausa por balão) é feito no muller-whatsapp.service.
+ * vários balões curtos de WhatsApp. Pede LINHA EM BRANCO entre as mensagens
+ * (parágrafos) — que os modelos seguem de forma confiável — e o muller-whatsapp
+ * .service divide nesse sinal (e também no "|||", caso o modelo use). O envio
+ * real (split + digitando + pausa por balão) é feito lá.
  */
 function instrucaoQuebra(max: number): string {
   return [
     '## Formato da resposta no WhatsApp',
-    'Você conversa pelo WhatsApp, onde as pessoas mandam mensagens curtas em sequência — não um textão único.',
-    `Quando a resposta tiver mais de uma ideia, quebre em mensagens curtas e separe CADA uma com ||| (três barras verticais). Use no máximo ${max} mensagens.`,
+    'Você conversa pelo WhatsApp, onde as pessoas mandam várias mensagens curtas em sequência — não um textão único.',
+    `Quando a resposta tiver mais de uma ideia, quebre em mensagens curtas e separe CADA uma com uma LINHA EM BRANCO (um parágrafo por mensagem). Use no máximo ${max} mensagens.`,
     'Regras:',
-    '- Resposta simples (saudação, "sim", uma única frase): mande UM balão só, sem |||.',
-    '- Nunca use ||| no meio de uma frase, só ENTRE mensagens completas.',
-    '- Não repita a saudação em cada balão. Não force a quebra: só quebre quando deixar a conversa mais natural.',
+    '- Resposta simples (saudação, "sim", uma única frase): mande UMA mensagem só.',
+    '- Cada mensagem curta e natural, como um balãozinho de WhatsApp.',
+    '- Não repita a saudação em cada mensagem. Não force a quebra: só quebre quando deixar a conversa mais natural.',
   ].join('\n');
 }
 

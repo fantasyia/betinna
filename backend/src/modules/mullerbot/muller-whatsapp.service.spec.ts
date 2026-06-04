@@ -2,7 +2,7 @@ import { describe, expect, it, vi, beforeEach } from 'vitest';
 import { MullerWhatsappService, dividirEmBaloes } from './muller-whatsapp.service';
 
 describe('dividirEmBaloes — quebra da resposta em balões', () => {
-  it('sem delimitador → 1 balão só', () => {
+  it('frase única (sem delimitador nem parágrafo) → 1 balão só', () => {
     expect(dividirEmBaloes('Oi, tudo bem?', 3)).toEqual(['Oi, tudo bem?']);
   });
 
@@ -11,6 +11,17 @@ describe('dividirEmBaloes — quebra da resposta em balões', () => {
       'Temos sim!',
       'O 900ml é R$ 8,90',
     ]);
+  });
+
+  it('quebra na LINHA EM BRANCO (parágrafo) — o que o modelo faz sozinho', () => {
+    // Caso real: o modelo respondeu em 2 parágrafos, sem usar "|||".
+    expect(
+      dividirEmBaloes('Entendi, faz sentido acompanhar.\n\nSe mudar, a gente retoma.', 3),
+    ).toEqual(['Entendi, faz sentido acompanhar.', 'Se mudar, a gente retoma.']);
+  });
+
+  it('quebra-linha simples (1 \\n) NÃO divide — só parágrafo (linha em branco)', () => {
+    expect(dividirEmBaloes('linha 1\nlinha 2', 3)).toEqual(['linha 1\nlinha 2']);
   });
 
   it('respeita o teto juntando o excedente no último balão (não perde texto)', () => {
