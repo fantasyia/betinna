@@ -63,12 +63,6 @@ export interface MensagemEntranteParams {
    */
   direction?: 'INBOUND' | 'OUTBOUND';
   /**
-   * URL temporária da foto de perfil do peer (WhatsApp: profilePictureUrl).
-   * Vai pra `Conversation.metadata.avatarUrl` (sem coluna dedicada — JSON).
-   * Frontend usa pra renderizar avatar real em vez de iniciais.
-   */
-  peerAvatarUrl?: string;
-  /**
    * Pra mensagens em GRUPO: nome do membro que mandou a mensagem (pushName).
    * Frontend renderiza acima da bolha INBOUND ("João: oi pessoal").
    * Em 1:1 fica undefined — quem mandou é o próprio peer já mostrado no header.

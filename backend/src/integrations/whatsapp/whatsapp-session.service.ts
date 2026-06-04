@@ -30,12 +30,6 @@ interface SessionContext {
   reconectTimer: NodeJS.Timeout | null;
   desligadoManualmente: boolean;
   /**
-   * Cache local de fotos de perfil por peerJid. URL temporária do CDN WhatsApp
-   * (~horas). TTL 30min — depois renova. Valor `null` = peer sem foto / privado
-   * (cacheado pra não tentar de novo a cada msg).
-   */
-  avatarCache: Map<string, { url: string | null; cachedAt: number }>;
-  /**
    * Cache do subject (nome) de grupos por jid (`xxx@g.us`).
    * TTL 30min — nomes mudam pouco. Valor null = falha ao buscar (cacheia
    * pra não retentar a cada msg do mesmo grupo).
@@ -43,7 +37,6 @@ interface SessionContext {
   groupNameCache: Map<string, { name: string | null; cachedAt: number }>;
 }
 
-const AVATAR_TTL_MS = 30 * 60 * 1000; // 30min
 const GROUP_NAME_TTL_MS = 30 * 60 * 1000;
 
 /**
@@ -529,7 +522,6 @@ export class WhatsAppSessionService implements OnModuleInit, OnModuleDestroy {
       reconectTentativas: isReconexao ? (this.sessions.get(key)?.reconectTentativas ?? 0) : 0,
       reconectTimer: null,
       desligadoManualmente: false,
-      avatarCache: this.sessions.get(key)?.avatarCache ?? new Map(),
       groupNameCache: this.sessions.get(key)?.groupNameCache ?? new Map(),
     };
     this.sessions.set(key, ctx);
@@ -838,14 +830,6 @@ export class WhatsAppSessionService implements OnModuleInit, OnModuleDestroy {
         if (path) mediaUrl = path;
       }
 
-      // Foto de perfil do peer (best-effort). NÃO pode travar o salvamento da
-      // mensagem — `profilePictureUrl` é chamada de rede e, em cache frio (peer
-      // novo), adicionava SEGUNDOS de latência por mensagem. Usa só o cache
-      // (síncrono); no miss, dispara o fetch em background e o avatar aparece na
-      // próxima mensagem. A mensagem em si entra na inbox imediatamente.
-      const peerAvatarUrl = this.peekAvatar(ctx, peerId);
-      void this.obterAvatar(ctx, peerId).catch(() => undefined);
-
       // Em grupos, peerNome é o NOME DO GRUPO (subject) e senderName é
       // quem mandou (pushName do membro). Em 1:1 peerNome=pushName e
       // senderName fica vazio.
@@ -865,7 +849,6 @@ export class WhatsAppSessionService implements OnModuleInit, OnModuleDestroy {
         // Grupos não têm telefone único — pula match por sufixo.
         // Pra contatos com LID (número oculto) usa o telefone real do remoteJidAlt.
         peerTelefone: isGroup ? undefined : this.telefoneRealDoKey(peerId, m.key),
-        peerAvatarUrl,
         tipo,
         conteudo,
         externalId: m.key.id ?? undefined,
@@ -879,12 +862,6 @@ export class WhatsAppSessionService implements OnModuleInit, OnModuleDestroy {
     }
   }
 
-  /**
-   * Busca foto de perfil do peer no WhatsApp Web (best-effort).
-   * Cacheado por SessionContext (TTL 30min) pra não bombardear `profilePictureUrl`
-   * a cada mensagem. Retorna undefined se peer não tiver foto ou se a busca falhar
-   * (privacidade restrita, peer não existe, erro de rede, etc).
-   */
   /**
    * Busca o subject (nome) de um grupo. Cacheado TTL 30min. Retorna undefined
    * se falhar (não é grupo, sem permissão, erro de rede). Frontend cai pro jid
@@ -904,34 +881,6 @@ export class WhatsAppSessionService implements OnModuleInit, OnModuleDestroy {
     } catch {
       // Sock não conectado, grupo inacessível, etc — cacheia null pra não retentar.
       ctx.groupNameCache.set(jid, { name: null, cachedAt: now });
-      return undefined;
-    }
-  }
-
-  /** Lê o avatar SÓ do cache (síncrono, sem rede) — usado no caminho crítico da
-   * mensagem entrante pra não travar o salvamento. `undefined` se não cacheado. */
-  private peekAvatar(ctx: SessionContext, jid: string): string | undefined {
-    const cached = ctx.avatarCache.get(jid);
-    if (cached && Date.now() - cached.cachedAt < AVATAR_TTL_MS) {
-      return cached.url ?? undefined;
-    }
-    return undefined;
-  }
-
-  private async obterAvatar(ctx: SessionContext, jid: string): Promise<string | undefined> {
-    const now = Date.now();
-    const cached = ctx.avatarCache.get(jid);
-    if (cached && now - cached.cachedAt < AVATAR_TTL_MS) {
-      return cached.url ?? undefined;
-    }
-    try {
-      const url = await ctx.sock.profilePictureUrl(jid, 'image');
-      ctx.avatarCache.set(jid, { url: url ?? null, cachedAt: now });
-      return url ?? undefined;
-    } catch {
-      // Peer sem foto, privacidade restrita, ou erro temporário — cacheia null
-      // pra não retentar a cada mensagem nas próximas 30min.
-      ctx.avatarCache.set(jid, { url: null, cachedAt: now });
       return undefined;
     }
   }

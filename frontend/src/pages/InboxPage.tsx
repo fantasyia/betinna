@@ -173,11 +173,10 @@ interface Conversation {
   tagsInternas?: string[];
   /**
    * JSON com metadados canal-específicos:
-   *  - avatarUrl: foto de perfil do peer no WhatsApp
    *  - telefone: telefone REAL do contato (resolvido no backend quando o peerId
    *    é um LID/número oculto). Quando presente, é a fonte preferida do número.
    */
-  metadata?: { avatarUrl?: string | null; telefone?: string | null } & Record<string, unknown>;
+  metadata?: { telefone?: string | null } & Record<string, unknown>;
 }
 
 interface Mensagem {
@@ -842,7 +841,7 @@ function ConversationItem({
           />
         )}
 
-        <Avatar name={name} src={conv.metadata?.avatarUrl ?? undefined} size="md" />
+        <Avatar name={name} size="md" />
 
         <div className="flex-1 min-w-0">
           <div className="flex items-center justify-between gap-2 mb-0.5">
@@ -1385,7 +1384,6 @@ function ConversationThread({
             )}
             <Avatar
               name={c.cliente?.nome ?? c.peerNome ?? (numeroContato || CANAL_LABEL[c.canal])}
-              src={c.metadata?.avatarUrl ?? undefined}
               size="md"
             />
             <div className="flex-1 min-w-0">
