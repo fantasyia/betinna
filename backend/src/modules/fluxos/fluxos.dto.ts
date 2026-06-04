@@ -3,6 +3,7 @@ import { z } from 'zod';
 // ─── Enums sync com Prisma ────────────────────────────────────────────
 export const fluxoStatusValues = ['RASCUNHO', 'ATIVO', 'PAUSADO', 'ARQUIVADO'] as const;
 export const fluxoNoTipoValues = ['TRIGGER', 'CONDICAO', 'ACAO', 'DELAY'] as const;
+// ⚠️ MANTER SINCRONIZADO com o enum FluxoTriggerTipo do Prisma (schema.prisma).
 export const fluxoTriggerTipoValues = [
   'LEAD_CRIADO',
   'LEAD_ETAPA_MUDOU',
@@ -12,7 +13,16 @@ export const fluxoTriggerTipoValues = [
   'CLIENTE_INATIVO_30D',
   'AMOSTRA_FOLLOWUP',
   'CRON_AGENDADO',
+  // Orquestração (Fase B):
+  'LEAD_RESPONDEU',
+  'LEAD_SEM_RESPOSTA',
+  'IA_CLASSIFICOU',
+  'LEAD_RECEBEU_TAG',
+  // Orquestração (Fase C):
+  'MENSAGEM_CANAL',
+  'WEBHOOK_RECEBIDO',
 ] as const;
+// ⚠️ MANTER SINCRONIZADO com o enum FluxoAcaoTipo do Prisma (schema.prisma).
 export const fluxoAcaoTipoValues = [
   'ENVIAR_WHATSAPP',
   'ENVIAR_EMAIL',
@@ -21,6 +31,9 @@ export const fluxoAcaoTipoValues = [
   'MOVER_LEAD_ETAPA',
   'ATRIBUIR_REP',
   'WEBHOOK_EXTERNO',
+  // Orquestração (Fase B):
+  'CONVERSAR_IA',
+  'LIBERAR_LOTE',
 ] as const;
 
 // ─── Nó (FluxoNo) ────────────────────────────────────────────────────
