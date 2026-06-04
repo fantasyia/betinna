@@ -838,10 +838,13 @@ export class WhatsAppSessionService implements OnModuleInit, OnModuleDestroy {
         if (path) mediaUrl = path;
       }
 
-      // Foto de perfil do peer (best-effort, cacheado por sessão).
-      // Baileys retorna URL temporária do CDN do WhatsApp (~horas). Atualizamos
-      // a cada mensagem entrante — sem schema change, salvo em Conversation.metadata.
-      const peerAvatarUrl = await this.obterAvatar(ctx, peerId);
+      // Foto de perfil do peer (best-effort). NÃO pode travar o salvamento da
+      // mensagem — `profilePictureUrl` é chamada de rede e, em cache frio (peer
+      // novo), adicionava SEGUNDOS de latência por mensagem. Usa só o cache
+      // (síncrono); no miss, dispara o fetch em background e o avatar aparece na
+      // próxima mensagem. A mensagem em si entra na inbox imediatamente.
+      const peerAvatarUrl = this.peekAvatar(ctx, peerId);
+      void this.obterAvatar(ctx, peerId).catch(() => undefined);
 
       // Em grupos, peerNome é o NOME DO GRUPO (subject) e senderName é
       // quem mandou (pushName do membro). Em 1:1 peerNome=pushName e
@@ -903,6 +906,16 @@ export class WhatsAppSessionService implements OnModuleInit, OnModuleDestroy {
       ctx.groupNameCache.set(jid, { name: null, cachedAt: now });
       return undefined;
     }
+  }
+
+  /** Lê o avatar SÓ do cache (síncrono, sem rede) — usado no caminho crítico da
+   * mensagem entrante pra não travar o salvamento. `undefined` se não cacheado. */
+  private peekAvatar(ctx: SessionContext, jid: string): string | undefined {
+    const cached = ctx.avatarCache.get(jid);
+    if (cached && Date.now() - cached.cachedAt < AVATAR_TTL_MS) {
+      return cached.url ?? undefined;
+    }
+    return undefined;
   }
 
   private async obterAvatar(ctx: SessionContext, jid: string): Promise<string | undefined> {
