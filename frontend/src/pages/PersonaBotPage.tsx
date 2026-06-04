@@ -42,6 +42,8 @@ interface Persona {
   historicoMensagens: number;
   delayRespostaSegundos: number;
   mostrarDigitando: boolean;
+  quebrarMensagens: boolean;
+  maxMensagens: number;
   atualizadoEm: string;
 }
 
@@ -95,6 +97,8 @@ export default function PersonaBotPage() {
   const [histMsgs, setHistMsgs] = useState(10); // mensagens de contexto passadas pra IA
   const [delaySeg, setDelaySeg] = useState(0); // espera antes de responder (segundos)
   const [mostrarDigitando, setMostrarDigitando] = useState(false); // mostra "digitando…" no WhatsApp
+  const [quebrarMsgs, setQuebrarMsgs] = useState(false); // quebra a resposta em vários balões
+  const [maxMsgs, setMaxMsgs] = useState(3); // teto de balões quando quebra está ligado
 
   // Modelos reais da conta OpenAI (puxados ao vivo); cai pra lista curada se falhar.
   const [modelosLive, setModelosLive] = useState<string[]>([]);
@@ -108,6 +112,8 @@ export default function PersonaBotPage() {
     setHistMsgs(data.historicoMensagens ?? 10);
     setDelaySeg(data.delayRespostaSegundos ?? 0);
     setMostrarDigitando(data.mostrarDigitando ?? false);
+    setQuebrarMsgs(data.quebrarMensagens ?? false);
+    setMaxMsgs(data.maxMensagens ?? 3);
     setDirty(false);
   }, [data]);
 
@@ -194,6 +200,9 @@ export default function PersonaBotPage() {
         historicoMensagens: histMsgs,
         delayRespostaSegundos: delaySeg,
         mostrarDigitando,
+        // Quebra da resposta em vários balões + teto
+        quebrarMensagens: quebrarMsgs,
+        maxMensagens: maxMsgs,
       });
       toast.success('Configuração do Muller salva');
       setDirty(false);
@@ -331,6 +340,37 @@ export default function PersonaBotPage() {
                   }}
                   label={'Mostrar "digitando…" no WhatsApp antes de responder'}
                 />
+              </div>
+              {/* Quebrar a resposta em vários balões (mais humano) */}
+              <div className="col-span-2 border-t border-border pt-3">
+                <Switch
+                  checked={quebrarMsgs}
+                  onChange={(e) => {
+                    setQuebrarMsgs(e.target.checked);
+                    setDirty(true);
+                  }}
+                  label="Quebrar a resposta em vários balões (mais humano)"
+                />
+                {quebrarMsgs && (
+                  <div className="mt-2 flex items-center gap-2">
+                    <span className="text-[11px] text-muted">Máximo de balões:</span>
+                    <input
+                      type="number"
+                      min={2}
+                      max={6}
+                      value={maxMsgs}
+                      onChange={(e) => {
+                        setMaxMsgs(Math.min(6, Math.max(2, Number(e.target.value))));
+                        setDirty(true);
+                      }}
+                      onWheel={(e) => e.currentTarget.blur()}
+                      className="w-16 rounded-md border border-border-strong bg-surface px-2 py-1 text-sm tabular"
+                    />
+                    <span className="text-[10px] text-muted-light">
+                      A IA decide quantos pelo contexto (2–6). Resposta simples = 1 balão.
+                    </span>
+                  </div>
+                )}
               </div>
             </div>
 

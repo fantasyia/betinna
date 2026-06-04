@@ -47,6 +47,8 @@ export interface PersonaResult {
   historicoMensagens: number;
   delayRespostaSegundos: number;
   mostrarDigitando: boolean;
+  quebrarMensagens: boolean;
+  maxMensagens: number;
   systemPromptPreview: string;
   atualizadoEm: Date;
 }
@@ -108,6 +110,8 @@ export class MullerBotPersonaService {
         ? { delayRespostaSegundos: dto.delayRespostaSegundos }
         : {}),
       ...(dto.mostrarDigitando !== undefined ? { mostrarDigitando: dto.mostrarDigitando } : {}),
+      ...(dto.quebrarMensagens !== undefined ? { quebrarMensagens: dto.quebrarMensagens } : {}),
+      ...(dto.maxMensagens !== undefined ? { maxMensagens: dto.maxMensagens } : {}),
     };
     const row = await this.prisma.mullerBotPersona.upsert({
       where: { empresaId },
@@ -225,6 +229,8 @@ Se o cliente pedir algo que você não pode resolver, avise com gentileza que um
     historicoMensagens?: number;
     delayRespostaSegundos?: number;
     mostrarDigitando?: boolean;
+    quebrarMensagens?: boolean;
+    maxMensagens?: number;
     atualizadoEm: Date;
   }): PersonaResult {
     const tomVoz = (row.tomVoz as TomVoz) ?? 'PROFISSIONAL';
@@ -247,6 +253,8 @@ Se o cliente pedir algo que você não pode resolver, avise com gentileza que um
       historicoMensagens: row.historicoMensagens ?? 10,
       delayRespostaSegundos: row.delayRespostaSegundos ?? 0,
       mostrarDigitando: row.mostrarDigitando ?? false,
+      quebrarMensagens: row.quebrarMensagens ?? false,
+      maxMensagens: row.maxMensagens ?? 3,
       systemPromptPreview: '',
       atualizadoEm: row.atualizadoEm,
     };
@@ -261,20 +269,31 @@ Se o cliente pedir algo que você não pode resolver, avise com gentileza que um
     return row?.modelo?.trim() || null;
   }
 
-  /** Config de comportamento do bot: histórico de contexto, delay e "digitando…". */
+  /** Config de comportamento do bot: histórico, delay, "digitando…" e quebra em balões. */
   async obterConfigBot(empresaId: string): Promise<{
     historicoMensagens: number;
     delayRespostaSegundos: number;
     mostrarDigitando: boolean;
+    quebrarMensagens: boolean;
+    maxMensagens: number;
   }> {
     const row = await this.prisma.mullerBotPersona.findUnique({
       where: { empresaId },
-      select: { historicoMensagens: true, delayRespostaSegundos: true, mostrarDigitando: true },
+      select: {
+        historicoMensagens: true,
+        delayRespostaSegundos: true,
+        mostrarDigitando: true,
+        quebrarMensagens: true,
+        maxMensagens: true,
+      },
     });
     return {
       historicoMensagens: Math.max(1, row?.historicoMensagens ?? 10),
       delayRespostaSegundos: Math.max(0, row?.delayRespostaSegundos ?? 0),
       mostrarDigitando: row?.mostrarDigitando ?? false,
+      quebrarMensagens: row?.quebrarMensagens ?? false,
+      // Teto entre 2 e 6 balões — abaixo de 2 não faz sentido "quebrar".
+      maxMensagens: Math.min(6, Math.max(2, row?.maxMensagens ?? 3)),
     };
   }
 
@@ -297,6 +316,8 @@ Se o cliente pedir algo que você não pode resolver, avise com gentileza que um
       historicoMensagens: 10,
       delayRespostaSegundos: 0,
       mostrarDigitando: false,
+      quebrarMensagens: false,
+      maxMensagens: 3,
       systemPromptPreview: '',
       atualizadoEm: new Date(),
     };

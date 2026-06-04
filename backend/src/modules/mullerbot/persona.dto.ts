@@ -42,5 +42,8 @@ export const upsertPersonaSchema = z.object({
   historicoMensagens: z.number().int().min(1).max(50).optional(),
   delayRespostaSegundos: z.number().int().min(0).max(60).optional(),
   mostrarDigitando: z.boolean().optional(),
+  // Quebra da resposta em vários balões (mais humano) + teto de balões.
+  quebrarMensagens: z.boolean().optional(),
+  maxMensagens: z.number().int().min(2).max(6).optional(),
 });
 export type UpsertPersonaDto = z.infer<typeof upsertPersonaSchema>;

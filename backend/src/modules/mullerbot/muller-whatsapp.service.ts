@@ -45,6 +45,30 @@ const IDADE_MAX_RESPOSTA_MS = 2 * 60_000; // 2 min
 const FALLBACK_PAUSA_MS = 10 * 60_000; // 10 min
 
 /**
+ * Quebra a resposta da IA em balões de WhatsApp. A IA separa as mensagens com
+ * "|||" (instruído no system prompt). Aqui a gente divide, limpa e respeita o
+ * teto — o excedente é juntado no último balão pra NÃO perder texto. Sem "|||"
+ * (resposta simples) → 1 balão só.
+ */
+export function dividirEmBaloes(texto: string, max: number): string[] {
+  const partes = texto
+    .split(/\s*\|\|\|\s*/)
+    .map((p) => p.trim())
+    .filter(Boolean);
+  if (partes.length === 0) return [];
+  if (partes.length <= max) return partes;
+  // Estourou o teto: mantém os (max-1) primeiros e junta o resto no último.
+  const cabeca = partes.slice(0, max - 1);
+  cabeca.push(partes.slice(max - 1).join('\n\n'));
+  return cabeca;
+}
+
+/** Pausa entre balões: curta e proporcional ao tamanho do próximo (≈ digitação). */
+function pausaEntreBaloes(balao: string): number {
+  return Math.min(4000, 600 + balao.length * 25);
+}
+
+/**
  * Placeholders que o adapter do WhatsApp usa quando a mídia NÃO tem legenda.
  * Mensagem cujo conteúdo é só isso = não tem texto do cliente → escala humano.
  */
@@ -204,6 +228,9 @@ export class MullerWhatsappService implements OnModuleInit {
           this.muller.responderComoEmpresa(params.empresaId, params.conteudo, historico, {
             // Puro conversa por padrão; vira RAG quando MULLERBOT_WHATSAPP_CATALOGO=true.
             incluirCatalogo: this.env.get('MULLERBOT_WHATSAPP_CATALOGO'),
+            // Quebra em balões (mais humano): a IA separa com "|||"; split no envio.
+            quebrarMensagens: cfgBot.quebrarMensagens,
+            maxMensagens: cfgBot.maxMensagens,
           }),
           TIMEOUT_MS,
         );
@@ -240,27 +267,46 @@ export class MullerWhatsappService implements OnModuleInit {
         return;
       }
 
-      // 8. Sucesso — "digitando…" (opcional) + delay (deixa menos robótico) + envia
+      // 8. Sucesso — envia. Se "quebrar em balões" estiver ligado, manda vários
+      //    balões curtos (mais humano), com "digitando…" e pausa entre eles.
       const tel = params.peerTelefone ?? params.peerId;
-      if (cfgBot.mostrarDigitando) {
-        await this.whatsapp
-          .enviarPresenca(params.empresaId, tel, 'composing')
-          .catch(() => undefined);
+      const textoLimpo = resposta.texto.trim();
+      const baloes = cfgBot.quebrarMensagens
+        ? dividirEmBaloes(textoLimpo, cfgBot.maxMensagens)
+        : [textoLimpo.replace(/\s*\|\|\|\s*/g, ' ').trim()];
+      // Salvaguarda: se o split zerar (texto só de delimitadores), manda o texto cru.
+      const baloesFinais = baloes.filter(Boolean);
+      if (baloesFinais.length === 0) baloesFinais.push(textoLimpo);
+
+      for (let i = 0; i < baloesFinais.length; i++) {
+        const balao = baloesFinais[i];
+        if (cfgBot.mostrarDigitando) {
+          await this.whatsapp
+            .enviarPresenca(params.empresaId, tel, 'composing')
+            .catch(() => undefined);
+        }
+        // 1º balão respeita o delay configurado (tempo de "pensar"); os próximos
+        // levam uma pausa curta proporcional ao tamanho (digitação) — e isso
+        // também preserva a ORDEM de entrega no WhatsApp (envio rápido demais
+        // pode chegar fora de ordem).
+        const esperaMs = i === 0 ? cfgBot.delayRespostaSegundos * 1000 : pausaEntreBaloes(balao);
+        if (esperaMs > 0) await new Promise((r) => setTimeout(r, esperaMs));
+        await this.inbox.responderComoBot(convId, balao);
+        if (cfgBot.mostrarDigitando) {
+          await this.whatsapp
+            .enviarPresenca(params.empresaId, tel, 'paused')
+            .catch(() => undefined);
+        }
       }
-      if (cfgBot.delayRespostaSegundos > 0) {
-        await new Promise((r) => setTimeout(r, cfgBot.delayRespostaSegundos * 1000));
-      }
-      await this.inbox.responderComoBot(convId, resposta.texto.trim());
-      if (cfgBot.mostrarDigitando) {
-        await this.whatsapp.enviarPresenca(params.empresaId, tel, 'paused').catch(() => undefined);
-      }
+      // Texto efetivamente enviado (pra auditoria/log refletir a realidade).
+      const respostaEnviada = baloesFinais.join('\n');
       // Auditoria + contagem de tokens (Sprint 2.2) — best-effort.
       void this.auditoria.registrar({
         empresaId: params.empresaId,
         conversationId: convId,
         messageId: resultado.messageId,
         pergunta: params.conteudo,
-        resposta: resposta.texto.trim(),
+        resposta: respostaEnviada,
         tokensIn: resposta.tokensIn,
         tokensOut: resposta.tokensOut,
         tempoMs,

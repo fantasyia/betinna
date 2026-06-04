@@ -1952,6 +1952,12 @@ model MullerBotPersona {
   delayRespostaSegundos Int     @default(0)
   /// Mostrar "digitando…" no WhatsApp durante o delay antes de responder.
   mostrarDigitando      Boolean @default(false)
+  /// Quebrar a resposta da IA em vários balões curtos (mais humano). A IA decide
+  /// onde cortar pelo contexto; respeita o teto `maxMensagens`. (default off)
+  quebrarMensagens      Boolean @default(false)
+  /// Teto de balões quando `quebrarMensagens` está ligado. A IA pode usar menos;
+  /// o excedente é juntado no último balão pra não perder texto. (default 3)
+  maxMensagens          Int     @default(3)
 
   criadoEm     DateTime @default(now())
   atualizadoEm DateTime @updatedAt

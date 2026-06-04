@@ -1,5 +1,28 @@
 import { describe, expect, it, vi, beforeEach } from 'vitest';
-import { MullerWhatsappService } from './muller-whatsapp.service';
+import { MullerWhatsappService, dividirEmBaloes } from './muller-whatsapp.service';
+
+describe('dividirEmBaloes — quebra da resposta em balões', () => {
+  it('sem delimitador → 1 balão só', () => {
+    expect(dividirEmBaloes('Oi, tudo bem?', 3)).toEqual(['Oi, tudo bem?']);
+  });
+
+  it('quebra nos "|||" e limpa espaços/vazios', () => {
+    expect(dividirEmBaloes('Temos sim! ||| O 900ml é R$ 8,90 |||  ', 3)).toEqual([
+      'Temos sim!',
+      'O 900ml é R$ 8,90',
+    ]);
+  });
+
+  it('respeita o teto juntando o excedente no último balão (não perde texto)', () => {
+    const r = dividirEmBaloes('a ||| b ||| c ||| d', 3);
+    expect(r).toEqual(['a', 'b', 'c\n\nd']);
+    expect(r).toHaveLength(3);
+  });
+
+  it('texto só de delimitadores → vazio (caller usa salvaguarda)', () => {
+    expect(dividirEmBaloes('|||  |||', 3)).toEqual([]);
+  });
+});
 
 /**
  * Cobre as regras de segurança do bot (as não-negociáveis da Fase 2):
@@ -49,6 +72,8 @@ function build(
       historicoMensagens: 10,
       delayRespostaSegundos: 0,
       mostrarDigitando: false,
+      quebrarMensagens: false,
+      maxMensagens: 3,
     }),
   };
   const whatsapp = { enviarPresenca: vi.fn().mockResolvedValue(undefined) };
