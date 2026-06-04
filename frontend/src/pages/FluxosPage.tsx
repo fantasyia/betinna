@@ -13,9 +13,11 @@ import {
   Activity,
   Upload,
   Download,
+  Trash2,
 } from 'lucide-react';
 import { api, ApiError } from '@/lib/api';
 import { useApiQuery, type PaginatedResponse } from '@/hooks/useApiQuery';
+import { useConfirm } from '@/hooks/useConfirm';
 import { useRole } from '@/hooks/usePermission';
 import { useToast } from '@/components/toast';
 import { PageLayout } from '@/components/PageLayout';
@@ -127,6 +129,7 @@ function baixarJson(filename: string, data: unknown): void {
 export default function FluxosPage() {
   const role = useRole();
   const toast = useToast();
+  const [confirm, ConfirmDialog] = useConfirm();
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
   const canEdit = ['ADMIN', 'DIRECTOR'].includes(role ?? '');
@@ -158,9 +161,20 @@ export default function FluxosPage() {
 
   const { data: pageResp, loading, error, refetch } = useApiQuery<PaginatedResponse<FluxoListItem>>(listPath);
 
-  async function callAction(id: string, action: 'ativar' | 'pausar' | 'arquivar') {
+  async function callAction(id: string, action: 'ativar' | 'pausar' | 'arquivar' | 'excluir') {
     try {
-      if (action === 'arquivar') {
+      if (action === 'excluir') {
+        const ok = await confirm({
+          title: 'Excluir fluxo?',
+          message:
+            'O fluxo, seus nós, conexões e todo o histórico de execuções serão apagados permanentemente. Não dá pra desfazer.',
+          confirmLabel: 'Excluir',
+          variant: 'danger',
+        });
+        if (!ok) return;
+        await api.delete(`/fluxos/${id}/permanente`);
+        toast.success('Fluxo excluído');
+      } else if (action === 'arquivar') {
         await api.delete(`/fluxos/${id}`);
         toast.success('Fluxo arquivado');
       } else {
@@ -382,6 +396,7 @@ export default function FluxosPage() {
           }}
         />
       )}
+      {ConfirmDialog}
     </PageLayout>
   );
 }
@@ -398,7 +413,7 @@ function FluxoCard({
   fluxo: FluxoListItem;
   canEdit: boolean;
   onEdit: () => void;
-  onAction: (a: 'ativar' | 'pausar' | 'arquivar') => void;
+  onAction: (a: 'ativar' | 'pausar' | 'arquivar' | 'excluir') => void;
   onExport: () => void;
 }) {
   return (
@@ -486,6 +501,19 @@ function FluxoCard({
                 size="sm"
                 icon={<Archive />}
                 onClick={() => onAction('arquivar')}
+              />
+            </Tooltip>
+          )}
+          {canEdit && (
+            <Tooltip content="Excluir permanentemente">
+              <IconButton
+                aria-label="Excluir"
+                variant="ghost"
+                size="sm"
+                className="text-danger hover:bg-danger/10"
+                icon={<Trash2 />}
+                onClick={() => onAction('excluir')}
+                data-testid={`fluxo-excluir-${fluxo.id}`}
               />
             </Tooltip>
           )}

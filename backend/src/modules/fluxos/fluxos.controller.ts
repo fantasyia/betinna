@@ -108,6 +108,13 @@ export class FluxosController {
     return this.svc.arquivar(user, id);
   }
 
+  @Delete(':id/permanente')
+  @Roles('ADMIN', 'DIRECTOR')
+  @ApiOperation({ summary: 'Exclui o fluxo PERMANENTEMENTE (apaga nós, arestas e execuções).' })
+  excluir(@CurrentUser() user: AuthenticatedUser, @Param('id') id: string) {
+    return this.svc.excluirPermanente(user, id);
+  }
+
   // ─── Execuções ───────────────────────────────────────────────────
 
   @Get(':id/execucoes')

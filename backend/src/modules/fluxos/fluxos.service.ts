@@ -339,6 +339,21 @@ export class FluxosService {
     return this.findOneById(id);
   }
 
+  /**
+   * Exclui o fluxo PERMANENTEMENTE (não dá pra desfazer). Apaga execuções (que
+   * cascateiam os logs) e o fluxo (que cascateia nós e arestas).
+   */
+  async excluirPermanente(user: AuthenticatedUser, id: string): Promise<{ ok: true }> {
+    this.requireAdminOrDirector(user);
+    await this.findOne(user, id); // valida tenant + existência
+    await this.prisma.$transaction([
+      this.prisma.fluxoExecucao.deleteMany({ where: { fluxoId: id } }),
+      this.prisma.fluxo.delete({ where: { id } }),
+    ]);
+    this.logger.log(`Fluxo ${id} EXCLUÍDO permanentemente por ${user.email}`);
+    return { ok: true };
+  }
+
   // ─── Import / Export (arquivo .json) ─────────────────────────────
 
   /**
