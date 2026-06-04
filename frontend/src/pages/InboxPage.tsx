@@ -260,10 +260,11 @@ const STATUS_VARIANT: Record<ConversationStatus, 'info' | 'warning' | 'success' 
   ARQUIVADA: 'neutral',
 };
 
-// Polling silencioso a cada 4s — equilíbrio entre fluidez (mensagens novas
-// aparecem rápido) e carga do servidor. WebSocket/SSE seria ideal pra
-// real-time mas adiciona complexidade — fica pra depois.
-const POLL_INTERVAL_MS = 4_000;
+// Polling silencioso a cada 2s — mensagens novas aparecem mais rápido (o
+// gargalo de segundos era o fetch de avatar no backend, agora assíncrono).
+// WebSocket/SSE seria o ideal pra real-time instantâneo — fica como próximo
+// passo se 2s ainda parecer lento.
+const POLL_INTERVAL_MS = 2_000;
 
 function fmtRelative(d: string | null | undefined): string {
   if (!d) return '';
