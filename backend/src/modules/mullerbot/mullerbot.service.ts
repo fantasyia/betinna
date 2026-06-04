@@ -291,7 +291,12 @@ export class MullerBotService {
     teste: { ok: boolean; erro?: string };
   }> {
     const envKey = this.env.get('OPENAI_API_KEY');
-    const modelo = this.env.get('MULLERBOT_MODEL');
+    // Pinga o MESMO modelo que o bot usa de verdade (o da persona da empresa),
+    // não o padrão do env — senão o teste passa com gpt-4o-mini enquanto o bot
+    // falha com o modelo escolhido (ex: gpt-5.4-mini). Reflete a realidade.
+    const modelo =
+      (empresaId ? await this.persona.obterModelo(empresaId) : null) ??
+      this.env.get('MULLERBOT_MODEL');
     const catalogoLigado = this.env.get('MULLERBOT_WHATSAPP_CATALOGO');
 
     // A empresa tem chave PRÓPRIA (tela Integrações, escopo empresa)? Essa tem
@@ -573,14 +578,22 @@ export class MullerBotService {
     }
     messages.push({ role: 'user', content: userMessage });
 
-    try {
-      const res = await this.http.post<{
+    // Modelos novos (série `o` e `gpt-5+`) NÃO aceitam `max_tokens` no
+    // chat/completions — exigem `max_completion_tokens`. Os antigos (gpt-4o,
+    // gpt-4, gpt-3.5) usam `max_tokens`. Mandar o parâmetro errado → HTTP 400 e
+    // o bot caía no fallback (ex: gpt-5.4-mini). Escolhe pelo nome do modelo e
+    // auto-corrige refazendo com o outro parâmetro se a OpenAI reclamar.
+    const usaMaxCompletion = /^(o\d|gpt-[5-9])/i.test(modelo);
+    const enviar = (maxCompletion: boolean) =>
+      this.http.post<{
         choices: Array<{ message?: { content?: string } }>;
         usage?: { prompt_tokens?: number; completion_tokens?: number };
       }>('https://api.openai.com/v1/chat/completions', {
         body: {
           model: modelo,
-          max_tokens: maxOutputTokens,
+          ...(maxCompletion
+            ? { max_completion_tokens: maxOutputTokens }
+            : { max_tokens: maxOutputTokens }),
           messages,
         },
         headers: { Authorization: `Bearer ${creds.apiKey}` },
@@ -588,6 +601,21 @@ export class MullerBotService {
         redactKeys: ['authorization', 'api_key'],
         retries: 1,
         timeoutMs: 60_000,
+      });
+
+    try {
+      const res = await enviar(usaMaxCompletion).catch((e: unknown) => {
+        const reclamouDoParam =
+          e instanceof HttpClientError &&
+          e.status === 400 &&
+          /max_completion_tokens|max_tokens/i.test(JSON.stringify(e.body ?? ''));
+        if (reclamouDoParam) {
+          this.logger.warn(
+            `[openai] modelo ${modelo} recusou o parâmetro de tokens — refazendo com ${usaMaxCompletion ? 'max_tokens' : 'max_completion_tokens'}`,
+          );
+          return enviar(!usaMaxCompletion);
+        }
+        throw e;
       });
       const texto = (res.data.choices?.[0]?.message?.content ?? '').trim();
       return {

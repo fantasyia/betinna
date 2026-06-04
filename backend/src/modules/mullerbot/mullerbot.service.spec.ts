@@ -300,6 +300,25 @@ describe('MullerBotService.perguntar — limite de tokens', () => {
     expect(opts.body.max_tokens).toBe(256);
   });
 
+  it('usa max_completion_tokens (não max_tokens) pra modelos novos (gpt-5/série o)', async () => {
+    const http = makeHttp();
+    const svc = new MullerBotService(
+      http as never,
+      makeEnv({ OPENAI_API_KEY: 'sk', MULLERBOT_MAX_OUTPUT_TOKENS: 256 }) as never,
+      makeUserIntegracoes() as never,
+      makeProdutoSearch([PRODUTO_BASE]) as never,
+      makeCache() as never,
+      makePersona() as never,
+    );
+    await svc.perguntar(fakeUser(), { pergunta: 'oi', topK: 5, modelo: 'gpt-5.4-mini' });
+    const [, opts] = http.post.mock.calls[0] as [
+      string,
+      { body: { max_completion_tokens?: number; max_tokens?: number } },
+    ];
+    expect(opts.body.max_completion_tokens).toBe(256);
+    expect(opts.body.max_tokens).toBeUndefined();
+  });
+
   it('respeita override de maxOutputTokens via DTO', async () => {
     const http = makeHttp();
     const svc = new MullerBotService(
