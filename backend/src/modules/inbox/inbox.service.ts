@@ -165,9 +165,10 @@ export class InboxService {
         where,
         skip: (params.page - 1) * params.limit,
         take: params.limit,
-        // Fase 2 — conversas que "precisam de humano" (bot caiu no fallback)
-        // sobem pro topo, depois ordena por mais recente.
-        orderBy: [{ precisaHumano: 'desc' }, { ultimaMsgEm: 'desc' }, { criadoEm: 'desc' }],
+        // Lista SEMPRE da mensagem mais nova pra mais antiga (ultimaMsgEm desc).
+        // "Precisa de humano" deixou de subir pro topo — quem manda é a data,
+        // senão a conversa recente fica perdida no meio.
+        orderBy: [{ ultimaMsgEm: 'desc' }, { criadoEm: 'desc' }],
         include: conversationListInclude,
       }),
     ]);
@@ -805,11 +806,9 @@ export class InboxService {
     const propId = p.proprietarioId ?? null;
 
     // Campos canal-específicos que guardamos na metadata (JSON, sem coluna própria):
-    //  - avatarUrl: foto de perfil do peer
     //  - telefone: telefone REAL do contato (útil quando o peerId é um LID/número
     //    oculto do WhatsApp — aí o número de verdade vem em peerTelefone)
     const metaPatch: Record<string, unknown> = {};
-    if (p.peerAvatarUrl) metaPatch.avatarUrl = p.peerAvatarUrl;
     if (p.peerTelefone) metaPatch.telefone = p.peerTelefone;
 
     // Lookup primeiro

@@ -6,7 +6,9 @@ import type { AuthenticatedUser } from '@shared/types/authenticated-user';
 export interface BadgeCounts {
   /** Vendas: aprovações de desconto + solicitações de cancelamento pendentes. */
   vendas: number;
-  /** Atendimento: conversas aguardando resposta nossa (status PENDENTE). */
+  /** Atendimento: conversas que realmente precisam de um humano (precisaHumano).
+   *  Antes contava todo PENDENTE — inflava (99+) porque conversa não saía de
+   *  PENDENTE quando o bot respondia. */
   atendimento: number;
 }
 
@@ -24,8 +26,13 @@ export class BadgesService {
     const empresaId = user.empresaIdAtiva;
     if (!empresaId) return { vendas: 0, atendimento: 0 };
 
-    // Atendimento: conversas PENDENTE (aguardando resposta). REP vê só as suas.
-    const convWhere: Prisma.ConversationWhereInput = { empresaId, status: 'PENDENTE' };
+    // Atendimento: conversas que precisam de HUMANO (bot caiu no fallback /
+    // escalou). Não conta as que o bot já respondeu. REP vê só as suas.
+    const convWhere: Prisma.ConversationWhereInput = {
+      empresaId,
+      precisaHumano: true,
+      status: { notIn: ['RESOLVIDA', 'ARQUIVADA'] },
+    };
     if (user.role === 'REP') convWhere.proprietarioId = user.id;
 
     // Vendas: aprovações + cancelamentos pendentes. REP não aprova → 0.
