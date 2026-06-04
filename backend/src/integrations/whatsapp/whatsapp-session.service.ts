@@ -945,6 +945,21 @@ export class WhatsAppSessionService implements OnModuleInit, OnModuleDestroy {
       const inner = this.extrairConteudo(msg.editedMessage.message);
       return inner.conteudo ? { ...inner, conteudo: `${inner.conteudo} (editada)` } : inner;
     }
+    // Embrulhos que ESCONDEM a mensagem real — desembrulha recursivamente (igual
+    // ao viewOnce). Sem isso o conteúdo vinha vazio → "[mensagem não suportada]",
+    // inclusive em mensagens de SAÍDA (o embrulho cobre os dois sentidos):
+    //  - ephemeralMessage: chat com mensagens temporárias ligadas
+    //  - deviceSentMessage: mensagem sincronizada de um aparelho vinculado
+    //  - documentWithCaptionMessage: documento enviado com legenda
+    if (msg.ephemeralMessage?.message) {
+      return this.extrairConteudo(msg.ephemeralMessage.message);
+    }
+    if (msg.deviceSentMessage?.message) {
+      return this.extrairConteudo(msg.deviceSentMessage.message);
+    }
+    if (msg.documentWithCaptionMessage?.message) {
+      return this.extrairConteudo(msg.documentWithCaptionMessage.message);
+    }
     if (msg.imageMessage) {
       return {
         conteudo: msg.imageMessage.caption ?? '[imagem]',
@@ -1029,6 +1044,46 @@ export class WhatsAppSessionService implements OnModuleInit, OnModuleDestroy {
           ...(emails.length > 0 ? { emails } : {}),
         },
       };
+    }
+    // ── Tipos da API OFICIAL (WhatsApp Business Platform): botões, listas,
+    //    templates e respostas interativas. O Baileys recebe esses tipos, mas a
+    //    gente não decodificava → caíam em "[mensagem não suportada]". Extrai o
+    //    texto útil de cada um (o que o cliente tocou, ou o corpo do menu). ──
+    // Cliente tocou num botão / botão de template
+    const btnResp =
+      msg.buttonsResponseMessage?.selectedDisplayText ??
+      msg.templateButtonReplyMessage?.selectedDisplayText;
+    if (btnResp) return { conteudo: btnResp, tipo: 'TEXT' };
+    // Cliente escolheu um item de lista
+    if (msg.listResponseMessage?.title) {
+      return { conteudo: msg.listResponseMessage.title, tipo: 'TEXT' };
+    }
+    // Resposta interativa (native flow / CTA)
+    const interResp =
+      msg.interactiveResponseMessage?.body?.text ??
+      msg.interactiveResponseMessage?.nativeFlowResponseMessage?.paramsJson;
+    if (interResp) return { conteudo: interResp, tipo: 'TEXT' };
+    // Menus/templates ENVIADOS (texto do corpo)
+    if (msg.buttonsMessage?.contentText) {
+      return { conteudo: msg.buttonsMessage.contentText, tipo: 'TEXT' };
+    }
+    if (msg.listMessage?.description ?? msg.listMessage?.title) {
+      return {
+        conteudo: msg.listMessage.description || msg.listMessage.title || '',
+        tipo: 'TEXT',
+      };
+    }
+    if (msg.templateMessage?.hydratedTemplate?.hydratedContentText) {
+      return { conteudo: msg.templateMessage.hydratedTemplate.hydratedContentText, tipo: 'TEXT' };
+    }
+    if (msg.interactiveMessage?.body?.text) {
+      return { conteudo: msg.interactiveMessage.body.text, tipo: 'TEXT' };
+    }
+    // Enquete — mostra a pergunta
+    const enquete =
+      msg.pollCreationMessage ?? msg.pollCreationMessageV2 ?? msg.pollCreationMessageV3;
+    if (enquete?.name) {
+      return { conteudo: `[enquete] ${enquete.name}`, tipo: 'TEXT' };
     }
     return { conteudo: '', tipo: 'TEXT' };
   }
