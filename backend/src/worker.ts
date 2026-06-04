@@ -35,6 +35,10 @@ import { Logger as PinoLogger } from 'nestjs-pino';
 import { AppModule } from './app.module';
 
 async function bootstrap(): Promise<void> {
+  // Garante a identidade do processo ANTES de carregar o AppModule. Crítico pro
+  // WhatsAppSessionService: só a API abre o socket Baileys; o worker NÃO (senão
+  // dois sockets do mesmo número brigam e o WhatsApp derruba os dois).
+  process.env.SERVICE_TYPE = 'worker';
   const logger = new NestLogger('Worker');
 
   // createApplicationContext: NÃO inicia HTTP server, mas inicializa todos

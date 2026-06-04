@@ -74,6 +74,17 @@ export class WhatsAppSessionService implements OnModuleInit, OnModuleDestroy {
 
   async onModuleInit(): Promise<void> {
     if (this.env.get('NODE_ENV') === 'test') return;
+    // CRÍTICO: só UM processo pode abrir o socket Baileys por número. A API e o
+    // worker carregam o MESMO AppModule; sem esta trava, os DOIS abriam o socket
+    // do mesmo número com a mesma credencial → o WhatsApp trata como CONFLITO e
+    // fica derrubando os dois (a mensagem caía no meio da conversa, e re-parear
+    // o QR não resolvia porque os dois reconectavam). A API é a dona do socket.
+    if (this.env.get('SERVICE_TYPE') === 'worker') {
+      this.logger.log(
+        'SERVICE_TYPE=worker — NÃO abre socket WhatsApp (dono é a API). Sem conflito de sessão.',
+      );
+      return;
+    }
     await Promise.all([this.bootEmpresa(), this.bootUsuarios()]);
   }
 
