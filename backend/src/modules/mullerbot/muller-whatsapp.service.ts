@@ -25,6 +25,15 @@ const TIMEOUT_MS = 15_000;
 const SPAM_LIMITE = 10; // msgs
 const SPAM_JANELA_MS = 60_000; // por minuto
 const HISTORICO_MAX = 10;
+/**
+ * Idade máxima da mensagem pra o bot AUTO-RESPONDER. Acima disso é backlog /
+ * history sync — quando o Baileys reconecta (ex: redeploy do Railway) ele
+ * reentrega TODAS as mensagens recentes do servidor, inclusive as que chegaram
+ * durante o downtime. A mensagem continua salva na inbox normalmente; o bot só
+ * NÃO responde conversa que já passou (senão dispara uma rajada de respostas
+ * idênticas a mensagens velhas). Mensagens ao vivo chegam em segundos.
+ */
+const IDADE_MAX_RESPOSTA_MS = 2 * 60_000; // 2 min
 
 /**
  * Placeholders que o adapter do WhatsApp usa quando a mídia NÃO tem legenda.
@@ -72,6 +81,19 @@ export class MullerWhatsappService implements OnModuleInit {
       if (params.proprietarioId) return; // WhatsApp pessoal do rep — bot NUNCA atua
       if (params.direction === 'OUTBOUND') return; // anti-eco (mensagem do próprio número)
       if (resultado.duplicada) return;
+
+      // 1.4 Anti-backlog — não auto-responde mensagem VELHA. Após reconnect, o
+      // Baileys reentrega o histórico (append / messaging-history.set) e cada
+      // mensagem do downtime chegaria aqui como nova. A msg já foi salva na
+      // inbox; aqui só evitamos a rajada de respostas a conversas que já passaram.
+      const idadeMs = params.data ? Date.now() - params.data.getTime() : 0;
+      if (idadeMs > IDADE_MAX_RESPOSTA_MS) {
+        this.logger.log(
+          `[bot] NÃO-RESPONDE conv=${convId} peer=${params.peerId} — msg antiga ` +
+            `(${Math.round(idadeMs / 1000)}s, backlog/history sync)`,
+        );
+        return;
+      }
 
       // 1.5 Orquestração (Fase B) — se um fluxo "Conversar com IA" está conduzindo
       // esta conversa (lead com execução AGUARDANDO), o bot geral NÃO responde
@@ -172,7 +194,17 @@ export class MullerWhatsappService implements OnModuleInit {
       // 7. Fallback se a IA falhou/demorou/veio vazia
       if (!resposta || !resposta.texto.trim()) {
         await this.inbox.responderComoBot(convId, FALLBACK_MSG).catch(() => undefined);
-        await this.inbox.marcarPrecisaHumano(convId).catch(() => undefined);
+        // Marca precisa-humano E pausa o bot pela janela de handoff: assim o
+        // fallback NÃO se repete a cada nova mensagem enquanto a IA estiver fora
+        // (ex: chave OpenAI errada) ou até um humano assumir. Mesma janela do
+        // anti-spam — quando o humano responde, a conversa reativa normalmente.
+        const handoffMs = this.env.get('BOT_HANDOFF_HORAS') * 60 * 60 * 1000;
+        await this.prisma.conversation
+          .update({
+            where: { id: convId },
+            data: { precisaHumano: true, botPausadoAte: new Date(Date.now() + handoffMs) },
+          })
+          .catch(() => undefined);
         void this.auditoria.registrar({
           empresaId: params.empresaId,
           conversationId: convId,

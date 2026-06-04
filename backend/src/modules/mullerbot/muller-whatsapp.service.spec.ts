@@ -125,13 +125,34 @@ describe('MullerWhatsappService — regras do bot', () => {
     expect(inbox.responderComoBot).toHaveBeenCalledWith('conv-1', 'Olá! Como posso ajudar?');
   });
 
-  it('fallback: IA falha → manda mensagem padrão e marca precisa-humano', async () => {
+  it('fallback: IA falha → manda mensagem padrão, marca precisa-humano e PAUSA o bot', async () => {
     muller.responderComoEmpresa = vi.fn(async () => {
       throw new Error('openai down');
     });
     await aoReceber(build(prisma, inbox, muller), { ...baseParams });
     expect(inbox.responderComoBot).toHaveBeenCalledTimes(1);
-    expect(inbox.marcarPrecisaHumano).toHaveBeenCalledWith('conv-1');
+    // Em vez de só marcar precisa-humano, pausa o bot (botPausadoAte) pra não
+    // re-spammar o mesmo fallback a cada nova mensagem enquanto a IA está fora.
+    expect(prisma.conversation.update).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { id: 'conv-1' },
+        data: expect.objectContaining({ precisaHumano: true, botPausadoAte: expect.any(Date) }),
+      }),
+    );
+  });
+
+  it('NÃO responde mensagem antiga (backlog/history sync após reconnect)', async () => {
+    // Mensagem com timestamp de 10 min atrás (chegou no downtime e foi reentregue).
+    const dezMinAtras = new Date(Date.now() - 10 * 60_000);
+    await aoReceber(build(prisma, inbox, muller), { ...baseParams, data: dezMinAtras });
+    expect(muller.responderComoEmpresa).not.toHaveBeenCalled();
+    expect(inbox.responderComoBot).not.toHaveBeenCalled();
+  });
+
+  it('responde normalmente mensagem recente (timestamp de agora)', async () => {
+    await aoReceber(build(prisma, inbox, muller), { ...baseParams, data: new Date() });
+    expect(muller.responderComoEmpresa).toHaveBeenCalled();
+    expect(inbox.responderComoBot).toHaveBeenCalled();
   });
 
   it('ignora mensagem duplicada', async () => {
