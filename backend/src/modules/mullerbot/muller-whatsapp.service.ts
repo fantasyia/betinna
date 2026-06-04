@@ -34,6 +34,13 @@ const HISTORICO_MAX = 10;
  * idênticas a mensagens velhas). Mensagens ao vivo chegam em segundos.
  */
 const IDADE_MAX_RESPOSTA_MS = 2 * 60_000; // 2 min
+/**
+ * Pausa curta após um fallback (IA falhou). Evita re-spammar o aviso a cada
+ * mensagem, mas SEM matar a conversa por horas: se a falha foi transitória, o
+ * bot volta a tentar depois disso. A conversa fica marcada `precisaHumano` pra
+ * subir na inbox enquanto isso.
+ */
+const FALLBACK_PAUSA_MS = 10 * 60_000; // 10 min
 
 /**
  * Placeholders que o adapter do WhatsApp usa quando a mídia NÃO tem legenda.
@@ -194,15 +201,13 @@ export class MullerWhatsappService implements OnModuleInit {
       // 7. Fallback se a IA falhou/demorou/veio vazia
       if (!resposta || !resposta.texto.trim()) {
         await this.inbox.responderComoBot(convId, FALLBACK_MSG).catch(() => undefined);
-        // Marca precisa-humano E pausa o bot pela janela de handoff: assim o
-        // fallback NÃO se repete a cada nova mensagem enquanto a IA estiver fora
-        // (ex: chave OpenAI errada) ou até um humano assumir. Mesma janela do
-        // anti-spam — quando o humano responde, a conversa reativa normalmente.
-        const handoffMs = this.env.get('BOT_HANDOFF_HORAS') * 60 * 60 * 1000;
+        // Marca precisa-humano E pausa o bot por uma janela CURTA: assim o
+        // fallback NÃO se repete a cada nova mensagem, mas a conversa não fica
+        // muda por horas se a falha foi transitória — o bot volta a tentar.
         await this.prisma.conversation
           .update({
             where: { id: convId },
-            data: { precisaHumano: true, botPausadoAte: new Date(Date.now() + handoffMs) },
+            data: { precisaHumano: true, botPausadoAte: new Date(Date.now() + FALLBACK_PAUSA_MS) },
           })
           .catch(() => undefined);
         void this.auditoria.registrar({
