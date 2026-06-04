@@ -10,10 +10,15 @@ import {
   addEdge,
   useNodesState,
   useEdgesState,
+  useReactFlow,
   Handle,
   Position,
+  BaseEdge,
+  EdgeLabelRenderer,
+  getSmoothStepPath,
   type Node,
   type Edge,
+  type EdgeProps,
   type Connection,
   type ReactFlowInstance,
   type NodeProps,
@@ -300,6 +305,68 @@ function NodeCard({ data, selected }: NodeProps<FlowNode>) {
 
 const NODE_TYPES = { fluxo: NodeCard };
 
+/**
+ * Aresta com botão "×" pra REMOVER a conexão (antes só dava via Backspace —
+ * ninguém descobria). Mostra o label (Sim/Não dos ramos de condição) + o botão.
+ */
+function EdgeRemovivel({
+  id,
+  sourceX,
+  sourceY,
+  targetX,
+  targetY,
+  sourcePosition,
+  targetPosition,
+  markerEnd,
+  style,
+  label,
+}: EdgeProps) {
+  const { deleteElements } = useReactFlow();
+  const [edgePath, labelX, labelY] = getSmoothStepPath({
+    sourceX,
+    sourceY,
+    targetX,
+    targetY,
+    sourcePosition,
+    targetPosition,
+  });
+  return (
+    <>
+      <BaseEdge id={id} path={edgePath} markerEnd={markerEnd} style={style} />
+      <EdgeLabelRenderer>
+        <div
+          className="nodrag nopan flex items-center gap-1"
+          style={{
+            position: 'absolute',
+            transform: `translate(-50%, -50%) translate(${labelX}px, ${labelY}px)`,
+            pointerEvents: 'all',
+          }}
+        >
+          {label != null && label !== '' && (
+            <span className="rounded bg-surface border border-border px-1.5 py-0.5 text-[10px] font-medium text-text">
+              {label}
+            </span>
+          )}
+          <button
+            type="button"
+            title="Remover conexão"
+            aria-label="Remover conexão"
+            onClick={(e) => {
+              e.stopPropagation();
+              void deleteElements({ edges: [{ id }] });
+            }}
+            className="flex h-5 w-5 items-center justify-center rounded-full border border-danger/40 bg-surface text-danger text-xs leading-none hover:bg-danger hover:text-white transition-colors shadow-sm"
+          >
+            ×
+          </button>
+        </div>
+      </EdgeLabelRenderer>
+    </>
+  );
+}
+
+const EDGE_TYPES = { removivel: EdgeRemovivel };
+
 const TIPO_LABEL: Record<FluxoNoTipo, string> = {
   TRIGGER: 'Gatilho',
   CONDICAO: 'Condição',
@@ -462,7 +529,7 @@ function FluxoEditorInner({
       source: e.sourceNoId,
       target: e.targetNoId,
       label: e.label ?? undefined,
-      type: 'smoothstep',
+      type: 'removivel',
       animated: true,
       style: { stroke: 'var(--border-strong)' },
     }));
@@ -525,7 +592,7 @@ function FluxoEditorInner({
         const next = addEdge(
           {
             ...conn,
-            type: 'smoothstep',
+            type: 'removivel',
             animated: true,
             style: { stroke: 'var(--border-strong)' },
             label: conn.sourceHandle === 'true' ? 'Sim' : conn.sourceHandle === 'false' ? 'Não' : undefined,
@@ -779,11 +846,12 @@ function FluxoEditorInner({
               setMobilePanel(null);
             }}
             nodeTypes={NODE_TYPES}
+            edgeTypes={EDGE_TYPES}
             fitView
             fitViewOptions={{ padding: 0.3 }}
             colorMode="dark"
             defaultEdgeOptions={{
-              type: 'smoothstep',
+              type: 'removivel',
               animated: true,
               style: { stroke: 'var(--border-strong)', strokeWidth: 1.5 },
             }}
