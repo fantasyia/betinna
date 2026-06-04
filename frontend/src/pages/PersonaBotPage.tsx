@@ -39,6 +39,9 @@ interface Persona {
   limiteTokensDiaOut: number;
   limiteTokensMesIn: number;
   limiteTokensMesOut: number;
+  historicoMensagens: number;
+  delayRespostaSegundos: number;
+  mostrarDigitando: boolean;
   atualizadoEm: string;
 }
 
@@ -88,6 +91,11 @@ export default function PersonaBotPage() {
   const [limMes, setLimMes] = useState(2000000);
   const custoQuery = useApiQuery<CustoStatus>('/mullerbot/custo');
 
+  // Comportamento da conversa do bot — quão "humano" ele responde.
+  const [histMsgs, setHistMsgs] = useState(10); // mensagens de contexto passadas pra IA
+  const [delaySeg, setDelaySeg] = useState(0); // espera antes de responder (segundos)
+  const [mostrarDigitando, setMostrarDigitando] = useState(false); // mostra "digitando…" no WhatsApp
+
   // Modelos reais da conta OpenAI (puxados ao vivo); cai pra lista curada se falhar.
   const [modelosLive, setModelosLive] = useState<string[]>([]);
 
@@ -97,6 +105,9 @@ export default function PersonaBotPage() {
     setModelo(data.modelo ?? '');
     setLimDia(data.limiteTokensDiaIn ?? 100000);
     setLimMes(data.limiteTokensMesIn ?? 2000000);
+    setHistMsgs(data.historicoMensagens ?? 10);
+    setDelaySeg(data.delayRespostaSegundos ?? 0);
+    setMostrarDigitando(data.mostrarDigitando ?? false);
     setDirty(false);
   }, [data]);
 
@@ -179,6 +190,10 @@ export default function PersonaBotPage() {
         limiteTokensDiaOut: limDia,
         limiteTokensMesIn: limMes,
         limiteTokensMesOut: limMes,
+        // Comportamento da conversa — contexto, delay humano e "digitando…"
+        historicoMensagens: histMsgs,
+        delayRespostaSegundos: delaySeg,
+        mostrarDigitando,
       });
       toast.success('Configuração do Muller salva');
       setDirty(false);
@@ -265,6 +280,59 @@ export default function PersonaBotPage() {
                 }
               />
             </Field>
+
+            {/* Comportamento da conversa — deixa o bot mais humano.
+                Estes 3 fazem parte da persona; salvam no botão Salvar do topo. */}
+            <div className="mt-3 grid grid-cols-2 gap-3 rounded-md border border-border bg-bg-alt p-3">
+              <Field label="Mensagens de contexto" className="mb-0">
+                <div>
+                  <input
+                    type="number"
+                    min={1}
+                    max={50}
+                    value={histMsgs}
+                    onChange={(e) => {
+                      setHistMsgs(Math.min(50, Math.max(1, Number(e.target.value))));
+                      setDirty(true);
+                    }}
+                    onWheel={(e) => e.currentTarget.blur()}
+                    className="w-full rounded-md border border-border-strong bg-surface px-3 py-2 text-sm tabular"
+                  />
+                  <p className="text-[10px] text-muted-light mt-1">
+                    Quantas mensagens anteriores a IA enxerga (1–50).
+                  </p>
+                </div>
+              </Field>
+              <Field label="Delay da resposta (s)" className="mb-0">
+                <div>
+                  <input
+                    type="number"
+                    min={0}
+                    max={60}
+                    value={delaySeg}
+                    onChange={(e) => {
+                      setDelaySeg(Math.min(60, Math.max(0, Number(e.target.value))));
+                      setDirty(true);
+                    }}
+                    onWheel={(e) => e.currentTarget.blur()}
+                    className="w-full rounded-md border border-border-strong bg-surface px-3 py-2 text-sm tabular"
+                  />
+                  <p className="text-[10px] text-muted-light mt-1">
+                    Espera antes de enviar — fica mais humano (0–60).
+                  </p>
+                </div>
+              </Field>
+              <div className="col-span-2">
+                <Switch
+                  checked={mostrarDigitando}
+                  onChange={(e) => {
+                    setMostrarDigitando(e.target.checked);
+                    setDirty(true);
+                  }}
+                  label={'Mostrar "digitando…" no WhatsApp antes de responder'}
+                />
+              </div>
+            </div>
 
             {/* Diagnóstico — confirma que o bot consegue falar com a OpenAI */}
             <div className="mt-3 rounded-md border border-border bg-bg-alt p-3">

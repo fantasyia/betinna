@@ -1434,6 +1434,10 @@ model Conversation {
   /// conversa (handoff humano). NULL = bot livre pra responder. Setado quando
   /// um atendente humano responde a conversa.
   botPausadoAte    DateTime?
+  /// Override do bot NESTA conversa, independente do liga/desliga global:
+  /// NULL = segue o global (botWhatsappAtivo da empresa); true = bot ligado aqui
+  /// mesmo com o global desligado; false = bot desligado aqui mesmo com global ligado.
+  botLigado        Boolean?
   /// Fase 2 — marcado quando o bot caiu no fallback (IA falhou/demorou):
   /// a conversa precisa de humano e sobe pro topo da lista.
   precisaHumano    Boolean               @default(false)
@@ -1940,6 +1944,14 @@ model MullerBotPersona {
   pausadoPorCustoAte  DateTime?
   /// Throttle do alerta de 80% do teto (no máx. 1 e-mail por dia).
   ultimoAlertaCustoEm DateTime?
+
+  /// Quantas mensagens anteriores o bot manda como CONTEXTO pra IA (memória da
+  /// conversa). Maior = lembra mais, mas gasta mais tokens. (default 10)
+  historicoMensagens    Int     @default(10)
+  /// Segundos pra esperar ANTES de enviar a resposta (deixa menos robótico). 0 = instantâneo.
+  delayRespostaSegundos Int     @default(0)
+  /// Mostrar "digitando…" no WhatsApp durante o delay antes de responder.
+  mostrarDigitando      Boolean @default(false)
 
   criadoEm     DateTime @default(now())
   atualizadoEm DateTime @updatedAt

@@ -47,6 +47,16 @@ export class WhatsAppService implements CanalAdapter, OnModuleInit {
     return this.sessions.enviarTexto(owner, peerId, texto);
   }
 
+  /** Indicador "digitando…" (composing) / parou (paused) no WhatsApp da empresa.
+   * Best-effort — falha aqui nunca atrapalha o envio da mensagem. */
+  async enviarPresenca(
+    empresaId: string,
+    peerId: string,
+    estado: 'composing' | 'paused',
+  ): Promise<void> {
+    await this.sessions.enviarPresenca({ type: 'EMPRESA', id: empresaId }, peerId, estado);
+  }
+
   async estaDisponivel(empresaId: string, proprietarioId?: string | null): Promise<boolean> {
     const owner = proprietarioId
       ? { type: 'USUARIO' as const, id: proprietarioId }

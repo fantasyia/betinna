@@ -44,6 +44,9 @@ export interface PersonaResult {
   limiteTokensDiaOut: number;
   limiteTokensMesIn: number;
   limiteTokensMesOut: number;
+  historicoMensagens: number;
+  delayRespostaSegundos: number;
+  mostrarDigitando: boolean;
   systemPromptPreview: string;
   atualizadoEm: Date;
 }
@@ -97,6 +100,14 @@ export class MullerBotPersonaService {
       ...(dto.limiteTokensMesOut !== undefined
         ? { limiteTokensMesOut: dto.limiteTokensMesOut }
         : {}),
+      // Comportamento do bot: só altera quando enviado (omitido = mantém).
+      ...(dto.historicoMensagens !== undefined
+        ? { historicoMensagens: dto.historicoMensagens }
+        : {}),
+      ...(dto.delayRespostaSegundos !== undefined
+        ? { delayRespostaSegundos: dto.delayRespostaSegundos }
+        : {}),
+      ...(dto.mostrarDigitando !== undefined ? { mostrarDigitando: dto.mostrarDigitando } : {}),
     };
     const row = await this.prisma.mullerBotPersona.upsert({
       where: { empresaId },
@@ -211,6 +222,9 @@ Se o cliente pedir algo que você não pode resolver, avise com gentileza que um
     limiteTokensDiaOut?: number;
     limiteTokensMesIn?: number;
     limiteTokensMesOut?: number;
+    historicoMensagens?: number;
+    delayRespostaSegundos?: number;
+    mostrarDigitando?: boolean;
     atualizadoEm: Date;
   }): PersonaResult {
     const tomVoz = (row.tomVoz as TomVoz) ?? 'PROFISSIONAL';
@@ -230,6 +244,9 @@ Se o cliente pedir algo que você não pode resolver, avise com gentileza que um
       limiteTokensDiaOut: row.limiteTokensDiaOut ?? 100000,
       limiteTokensMesIn: row.limiteTokensMesIn ?? 2000000,
       limiteTokensMesOut: row.limiteTokensMesOut ?? 2000000,
+      historicoMensagens: row.historicoMensagens ?? 10,
+      delayRespostaSegundos: row.delayRespostaSegundos ?? 0,
+      mostrarDigitando: row.mostrarDigitando ?? false,
       systemPromptPreview: '',
       atualizadoEm: row.atualizadoEm,
     };
@@ -242,6 +259,23 @@ Se o cliente pedir algo que você não pode resolver, avise com gentileza que um
       select: { modelo: true },
     });
     return row?.modelo?.trim() || null;
+  }
+
+  /** Config de comportamento do bot: histórico de contexto, delay e "digitando…". */
+  async obterConfigBot(empresaId: string): Promise<{
+    historicoMensagens: number;
+    delayRespostaSegundos: number;
+    mostrarDigitando: boolean;
+  }> {
+    const row = await this.prisma.mullerBotPersona.findUnique({
+      where: { empresaId },
+      select: { historicoMensagens: true, delayRespostaSegundos: true, mostrarDigitando: true },
+    });
+    return {
+      historicoMensagens: Math.max(1, row?.historicoMensagens ?? 10),
+      delayRespostaSegundos: Math.max(0, row?.delayRespostaSegundos ?? 0),
+      mostrarDigitando: row?.mostrarDigitando ?? false,
+    };
   }
 
   private async defaultPersona(empresaId: string): Promise<PersonaResult> {
@@ -260,6 +294,9 @@ Se o cliente pedir algo que você não pode resolver, avise com gentileza que um
       limiteTokensDiaOut: 100000,
       limiteTokensMesIn: 2000000,
       limiteTokensMesOut: 2000000,
+      historicoMensagens: 10,
+      delayRespostaSegundos: 0,
+      mostrarDigitando: false,
       systemPromptPreview: '',
       atualizadoEm: new Date(),
     };

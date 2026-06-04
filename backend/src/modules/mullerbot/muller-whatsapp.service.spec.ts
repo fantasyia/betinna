@@ -44,6 +44,14 @@ function build(
     verificarTeto: vi.fn().mockResolvedValue({ bloqueado: false }),
     registrarUso: vi.fn().mockResolvedValue(undefined),
   };
+  const persona = {
+    obterConfigBot: vi.fn().mockResolvedValue({
+      historicoMensagens: 10,
+      delayRespostaSegundos: 0,
+      mostrarDigitando: false,
+    }),
+  };
+  const whatsapp = { enviarPresenca: vi.fn().mockResolvedValue(undefined) };
   return new MullerWhatsappService(
     prisma as never,
     inbox as never,
@@ -51,6 +59,8 @@ function build(
     env as never,
     auditoria as never,
     custo as never,
+    persona as never,
+    whatsapp as never,
   );
 }
 

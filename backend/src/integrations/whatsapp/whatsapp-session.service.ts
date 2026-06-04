@@ -260,6 +260,26 @@ export class WhatsAppSessionService implements OnModuleInit, OnModuleDestroy {
   }
 
   /**
+   * Envia presença "digitando…" (composing) ou "parou" (paused) pro peer.
+   * Best-effort: se não está conectado ou o socket recusa, ignora — presença é
+   * cosmético e não pode quebrar o fluxo de resposta do bot.
+   */
+  async enviarPresenca(
+    owner: WhatsAppOwner,
+    peerId: string,
+    estado: 'composing' | 'paused',
+  ): Promise<void> {
+    const ctx = this.sessions.get(ownerKey(owner));
+    if (!ctx || ctx.info.status !== 'CONNECTED') return;
+    try {
+      const jid = this.normalizarJid(peerId);
+      await ctx.sock.sendPresenceUpdate(estado, jid);
+    } catch {
+      /* presença é best-effort */
+    }
+  }
+
+  /**
    * Espera a sessão voltar pra CONNECTED por até `timeoutMs` (a reconexão é
    * automática com backoff — costuma voltar em poucos segundos). Desiste cedo
    * se a sessão deslogou (LOGGED_OUT) ou deu erro definitivo (ERROR), porque aí

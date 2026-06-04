@@ -1,5 +1,6 @@
 import { Module } from '@nestjs/common';
 import { EmailModule } from '@integrations/email/email.module';
+import { WhatsAppModule } from '@integrations/whatsapp/whatsapp.module';
 import { BotPromptsModule } from '@modules/bot-prompts/bot-prompts.module';
 import { MullerBotController } from './mullerbot.controller';
 import { MullerBotService } from './mullerbot.service';
@@ -13,7 +14,7 @@ import { BotCustoService } from './bot-custo.service';
 import { BotAuditoriaController } from './bot-auditoria.controller';
 
 @Module({
-  imports: [EmailModule, BotPromptsModule],
+  imports: [EmailModule, WhatsAppModule, BotPromptsModule],
   controllers: [MullerBotController, MullerBotPersonaController, BotAuditoriaController],
   providers: [
     MullerBotService,

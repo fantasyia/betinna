@@ -4,7 +4,9 @@ import { PrismaService } from '@database/prisma.service';
 import { EnvService } from '@config/env.service';
 import { InboxService } from '@modules/inbox/inbox.service';
 import type { MensagemEntranteParams } from '@modules/inbox/inbox.types';
+import { WhatsAppService } from '@integrations/whatsapp/whatsapp.service';
 import { MullerBotService } from './mullerbot.service';
+import { MullerBotPersonaService } from './persona.service';
 import type { HistoricoMsg } from './mullerbot-cache.service';
 import { BotAuditoriaService } from './bot-auditoria.service';
 import { BotCustoService } from './bot-custo.service';
@@ -68,6 +70,8 @@ export class MullerWhatsappService implements OnModuleInit {
     private readonly env: EnvService,
     private readonly auditoria: BotAuditoriaService,
     private readonly custo: BotCustoService,
+    private readonly persona: MullerBotPersonaService,
+    private readonly whatsapp: WhatsAppService,
   ) {}
 
   onModuleInit(): void {
@@ -112,18 +116,24 @@ export class MullerWhatsappService implements OnModuleInit {
         return;
       }
 
-      // 2. Liga/desliga global da empresa
-      const empresa = await this.prisma.empresa.findUnique({
-        where: { id: params.empresaId },
-        select: { botWhatsappAtivo: true },
-      });
-      if (!empresa?.botWhatsappAtivo) return;
+      // 2. Bot ligado nesta conversa? O override por conversa (Conversation.botLigado)
+      //    tem precedência sobre o liga/desliga global da empresa:
+      //    null = segue o global · true = ligado aqui mesmo com global off ·
+      //    false = desligado aqui mesmo com global on.
+      const [empresa, conv] = await Promise.all([
+        this.prisma.empresa.findUnique({
+          where: { id: params.empresaId },
+          select: { botWhatsappAtivo: true },
+        }),
+        this.prisma.conversation.findUnique({
+          where: { id: convId },
+          select: { botPausadoAte: true, botLigado: true },
+        }),
+      ]);
+      const ligado = conv?.botLigado ?? empresa?.botWhatsappAtivo ?? false;
+      if (!ligado) return;
 
       // 3. Conversa pausada por handoff?
-      const conv = await this.prisma.conversation.findUnique({
-        where: { id: convId },
-        select: { botPausadoAte: true },
-      });
       if (conv?.botPausadoAte && conv.botPausadoAte.getTime() > Date.now()) return;
 
       // 4. Anti-spam — mesmo número floodando → pausa + manda pra humano
@@ -170,8 +180,13 @@ export class MullerWhatsappService implements OnModuleInit {
         return;
       }
 
-      // 5. Histórico (últimas N msgs de texto, cronológico, excluindo a atual)
-      const historico = await this.montarHistorico(convId, resultado.messageId);
+      // 5. Config do bot (histórico/delay/digitando) + histórico (últimas N msgs)
+      const cfgBot = await this.persona.obterConfigBot(params.empresaId);
+      const historico = await this.montarHistorico(
+        convId,
+        resultado.messageId,
+        cfgBot.historicoMensagens,
+      );
 
       // 6. Chama a IA com timeout
       const inicio = Date.now();
@@ -225,8 +240,20 @@ export class MullerWhatsappService implements OnModuleInit {
         return;
       }
 
-      // 8. Sucesso — envia a resposta
+      // 8. Sucesso — "digitando…" (opcional) + delay (deixa menos robótico) + envia
+      const tel = params.peerTelefone ?? params.peerId;
+      if (cfgBot.mostrarDigitando) {
+        await this.whatsapp
+          .enviarPresenca(params.empresaId, tel, 'composing')
+          .catch(() => undefined);
+      }
+      if (cfgBot.delayRespostaSegundos > 0) {
+        await new Promise((r) => setTimeout(r, cfgBot.delayRespostaSegundos * 1000));
+      }
       await this.inbox.responderComoBot(convId, resposta.texto.trim());
+      if (cfgBot.mostrarDigitando) {
+        await this.whatsapp.enviarPresenca(params.empresaId, tel, 'paused').catch(() => undefined);
+      }
       // Auditoria + contagem de tokens (Sprint 2.2) — best-effort.
       void this.auditoria.registrar({
         empresaId: params.empresaId,
@@ -287,11 +314,12 @@ export class MullerWhatsappService implements OnModuleInit {
   private async montarHistorico(
     conversationId: string,
     msgAtualId: string,
+    limite = HISTORICO_MAX,
   ): Promise<HistoricoMsg[]> {
     const msgs = await this.prisma.message.findMany({
       where: { conversationId, id: { not: msgAtualId }, tipo: 'TEXT' },
       orderBy: { criadoEm: 'desc' },
-      take: HISTORICO_MAX,
+      take: limite,
       select: { direction: true, conteudo: true, criadoEm: true },
     });
     return msgs.reverse().map((m) => ({

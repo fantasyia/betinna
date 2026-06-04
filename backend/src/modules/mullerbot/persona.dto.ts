@@ -38,5 +38,9 @@ export const upsertPersonaSchema = z.object({
   limiteTokensDiaOut: z.number().int().min(0).max(100_000_000).optional(),
   limiteTokensMesIn: z.number().int().min(0).max(2_000_000_000).optional(),
   limiteTokensMesOut: z.number().int().min(0).max(2_000_000_000).optional(),
+  // Comportamento do bot (pacote 2026-06): contexto, delay e "digitando".
+  historicoMensagens: z.number().int().min(1).max(50).optional(),
+  delayRespostaSegundos: z.number().int().min(0).max(60).optional(),
+  mostrarDigitando: z.boolean().optional(),
 });
 export type UpsertPersonaDto = z.infer<typeof upsertPersonaSchema>;
