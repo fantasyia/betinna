@@ -29,6 +29,7 @@ import {
   type NotaDto,
   type ResponderDto,
   type ResponderMidiaDto,
+  type SetBotConversaDto,
   alterarStatusSchema,
   atribuirSchema,
   bulkAlterarStatusSchema,
@@ -40,6 +41,7 @@ import {
   notaSchema,
   responderMidiaSchema,
   responderSchema,
+  setBotConversaSchema,
 } from './inbox.dto';
 import { ConversationNotasService } from './conversation-notas.service';
 import { ConversationPresencaService } from './conversation-presenca.service';
@@ -276,6 +278,20 @@ export class InboxController {
   @ApiOperation({ summary: 'Religa o bot Muller nesta conversa (cancela a pausa).' })
   religarBot(@CurrentUser() user: AuthenticatedUser, @Param('id') id: string) {
     return this.svc.religarBot(user, id);
+  }
+
+  @Post(':id/bot/ligado')
+  @Audit({ action: 'bot_set_ligado', resource: 'conversation', resourceIdFrom: 'params.id' })
+  @ApiOperation({
+    summary:
+      'Liga/desliga o bot NESTA conversa (override do global): ligado=true/false/null(segue global).',
+  })
+  setBotLigado(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param('id') id: string,
+    @Body(new ZodValidationPipe(setBotConversaSchema)) dto: SetBotConversaDto,
+  ) {
+    return this.svc.setBotLigado(user, id, dto.ligado);
   }
 
   @Post(':id/responder-midia')

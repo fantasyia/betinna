@@ -165,6 +165,9 @@ interface Conversation {
   // Fase 2 — estado do bot Muller nesta conversa
   botPausadoAte?: string | null;
   precisaHumano?: boolean;
+  // Override do bot por conversa: null = segue o global da empresa;
+  // true = ligado aqui mesmo com o global off; false = desligado só aqui.
+  botLigado?: boolean | null;
   // #25 fatia 2 — quando o cliente mandou a última msg SEM resposta (conversa
   // aberta). `null` = nada pendente (última foi nossa, ou já resolvida).
   aguardandoDesde?: string | null;
@@ -1308,6 +1311,27 @@ function ConversationThread({
     }
   }
 
+  // Override persistente do bot NESTA conversa (independe do global da empresa):
+  // true = sempre liga aqui (mesmo com o bot geral desligado) · false = sempre
+  // desliga aqui · null = segue a configuração geral. Resolve o caso do Leo de
+  // ligar o bot só pra alguns contatos com o global off.
+  async function definirBotLigado(ligado: boolean | null) {
+    try {
+      await api.post(`/inbox/${id}/bot/ligado`, { ligado });
+      toast.success(
+        ligado === true
+          ? 'Bot ligado só nesta conversa'
+          : ligado === false
+            ? 'Bot desligado só nesta conversa'
+            : 'Bot voltou a seguir a configuração geral',
+      );
+      conv.refetch();
+      onChanged();
+    } catch (err) {
+      toast.error('Falha ao alterar o bot', err instanceof ApiError ? err.message : undefined);
+    }
+  }
+
   // Item #25 — tags de triagem. Recalcula o array completo e manda no PUT
   // (o backend troca a lista inteira). Atualiza a UI com a resposta.
   const tagsAtuais = conv.data?.tagsInternas ?? [];
@@ -1465,22 +1489,48 @@ function ConversationThread({
             >
               {c.atribuido ? c.atribuido.nome : 'Atribuir'}
             </Button>
-            {/* Fase 2 — pausar/religar o bot Muller nesta conversa (só WhatsApp da empresa) */}
+            {/* Fase 2 — controle do bot Muller nesta conversa (só WhatsApp da empresa) */}
             {c.canal === 'WHATSAPP' && (
-              <Button
-                type="button"
-                variant="ghost"
-                size="sm"
-                data-testid="inbox-bot-btn"
-                onClick={() => alternarBot(botPausadoConv ? 'religar' : 'pausar')}
-                title={
-                  botPausadoConv
-                    ? 'Religar o bot Muller nesta conversa'
-                    : 'Pausar o bot Muller nesta conversa (atendimento humano)'
-                }
-              >
-                {botPausadoConv ? '▶ Religar bot' : '⏸ Pausar bot'}
-              </Button>
+              <>
+                {/* Override persistente: força ligado/desligado aqui, ou segue o global.
+                    Atende o caso de ligar o bot só pra alguns contatos com o global off. */}
+                <label
+                  className="flex items-center gap-1 text-[11px] text-muted whitespace-nowrap"
+                  title="Liga/desliga o bot só nesta conversa. 'Padrão' segue a configuração geral da empresa."
+                >
+                  Bot:
+                  <select
+                    data-testid="inbox-bot-override"
+                    value={c.botLigado === true ? 'on' : c.botLigado === false ? 'off' : 'auto'}
+                    onChange={(e) => {
+                      const v = e.target.value;
+                      void definirBotLigado(v === 'on' ? true : v === 'off' ? false : null);
+                    }}
+                    className="rounded-md border border-border-strong bg-surface px-1.5 py-1 text-[11px] text-text"
+                  >
+                    <option value="auto">Padrão</option>
+                    <option value="on">Ligado</option>
+                    <option value="off">Desligado</option>
+                  </select>
+                </label>
+                {/* Pausa rápida (janela temporária) — só faz sentido quando segue o global */}
+                {c.botLigado == null && (
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    data-testid="inbox-bot-btn"
+                    onClick={() => alternarBot(botPausadoConv ? 'religar' : 'pausar')}
+                    title={
+                      botPausadoConv
+                        ? 'Religar o bot Muller nesta conversa'
+                        : 'Pausar o bot Muller nesta conversa (atendimento humano)'
+                    }
+                  >
+                    {botPausadoConv ? '▶ Religar bot' : '⏸ Pausar bot'}
+                  </Button>
+                )}
+              </>
             )}
           </>
         ) : (

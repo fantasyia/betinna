@@ -530,6 +530,30 @@ export class InboxService {
   }
 
   /**
+   * Override do bot NESTA conversa, independente do liga/desliga global:
+   * `true` = ligado aqui (mesmo com global off — limpa pausa/precisa-humano);
+   * `false` = desligado aqui (mesmo com global on); `null` = segue o global.
+   */
+  async setBotLigado(
+    user: AuthenticatedUser,
+    id: string,
+    ligado: boolean | null,
+  ): Promise<ConversationWithRel> {
+    const existing = await this.findById(user, id);
+    await this.prisma.conversation.updateMany({
+      where: { id, empresaId: existing.empresaId },
+      data:
+        ligado === true
+          ? { botLigado: true, botPausadoAte: null, precisaHumano: false }
+          : { botLigado: ligado },
+    });
+    return this.prisma.conversation.findUniqueOrThrow({
+      where: { id },
+      include: conversationInclude,
+    });
+  }
+
+  /**
    * Envia mídia OUTBOUND. Hoje suporta canal WHATSAPP — outros canais
    * lançam BusinessRule até ganharem implementação.
    *

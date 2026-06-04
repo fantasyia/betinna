@@ -52,6 +52,10 @@ export const definirTagsSchema = z.object({
 });
 export type DefinirTagsDto = z.infer<typeof definirTagsSchema>;
 
+/** Override do bot por conversa: true=ligado, false=desligado, null=segue o global. */
+export const setBotConversaSchema = z.object({ ligado: z.boolean().nullable() });
+export type SetBotConversaDto = z.infer<typeof setBotConversaSchema>;
+
 /**
  * Envia mídia através da conversa.
  *
