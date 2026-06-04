@@ -1,4 +1,5 @@
 import { Injectable, Logger, OnModuleInit, OnModuleDestroy } from '@nestjs/common';
+import { MessageChannel, MessageDirection, MessageStatus } from '@prisma/client';
 import { Boom } from '@hapi/boom';
 import makeWASocket, {
   DisconnectReason,
@@ -272,6 +273,51 @@ export class WhatsAppSessionService implements OnModuleInit, OnModuleDestroy {
       await new Promise((r) => setTimeout(r, 700));
     }
     return this.sessions.get(ownerKey(owner));
+  }
+
+  /**
+   * Persistência/retry: ao reconectar, reenvia as mensagens OUTBOUND que ficaram
+   * `FAILED` por queda da sessão (blip/queda/deploy). Janela de 15 min pra não
+   * ressuscitar mensagem velha. É seguro reenviar: `FAILED` = não saiu. Filtra
+   * só as conversas DESTA sessão (empresa central vs WhatsApp pessoal do rep).
+   * Best-effort — erro aqui nunca atrapalha a reconexão.
+   */
+  private async reenviarPendentes(ctx: SessionContext): Promise<void> {
+    const key = ownerKey(ctx.owner);
+    try {
+      const desde = new Date(Date.now() - 15 * 60_000);
+      const convFilter =
+        ctx.owner.type === 'USUARIO'
+          ? { canal: MessageChannel.WHATSAPP, proprietarioId: ctx.owner.id }
+          : { canal: MessageChannel.WHATSAPP, empresaId: ctx.empresaId, proprietarioId: null };
+      const pendentes = await this.prisma.message.findMany({
+        where: {
+          direction: MessageDirection.OUTBOUND,
+          status: MessageStatus.FAILED,
+          criadoEm: { gte: desde },
+          conversation: convFilter,
+        },
+        select: { id: true, conteudo: true, conversation: { select: { peerId: true } } },
+        orderBy: { criadoEm: 'asc' },
+        take: 50,
+      });
+      if (pendentes.length === 0) return;
+      this.logger.log(`[${key}] reenviando ${pendentes.length} mensagem(ns) FAILED pós-reconexão`);
+      for (const m of pendentes) {
+        try {
+          const r = await this.enviarTexto(ctx.owner, m.conversation.peerId, m.conteudo);
+          await this.prisma.message.update({
+            where: { id: m.id },
+            data: { status: MessageStatus.SENT, externalId: r.externalId ?? null },
+          });
+        } catch {
+          // Segue FAILED — nova tentativa na próxima reconexão (dentro da janela).
+        }
+      }
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      this.logger.warn(`[${key}] reenvio pós-reconexão falhou: ${msg}`);
+    }
   }
 
   /**
@@ -594,6 +640,10 @@ export class WhatsAppSessionService implements OnModuleInit, OnModuleDestroy {
       if (ctx.owner.type === 'EMPRESA') {
         void this.statusIntegracao.registrarSucesso(ctx.empresaId, 'whatsapp');
       }
+      // Persistência/retry: reenvia as OUTBOUND que ficaram FAILED por queda da
+      // sessão (blip/queda/deploy). A mensagem nunca mais se perde — assim que o
+      // WhatsApp volta, ela sai.
+      void this.reenviarPendentes(ctx);
     }
     if (u.connection === 'close') {
       const code = (u.lastDisconnect?.error as Boom | undefined)?.output?.statusCode;
