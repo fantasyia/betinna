@@ -102,7 +102,11 @@ describe('InboxService.processarMensagemEntrante', () => {
   });
 
   it('é idempotente quando recebe mesmo externalId duas vezes', async () => {
-    prisma.message.findFirst.mockResolvedValueOnce({ id: 'msg-1', conversationId: 'conv-1' });
+    prisma.message.findFirst.mockResolvedValueOnce({
+      id: 'msg-1',
+      conversationId: 'conv-1',
+      conteudo: 'oi',
+    });
 
     const r = await svc.processarMensagemEntrante({
       empresaId: 'emp-1',
@@ -115,7 +119,36 @@ describe('InboxService.processarMensagemEntrante', () => {
 
     expect(r.duplicada).toBe(true);
     expect(prisma.message.create).not.toHaveBeenCalled();
+    // Conteúdo igual → não tenta curar
+    expect(prisma.message.update).not.toHaveBeenCalled();
     expect(prisma.conversation.create).not.toHaveBeenCalled();
+  });
+
+  it('cura mensagem placeholder ao reprocessar (history sync traz o conteúdo real)', async () => {
+    prisma.message.findFirst.mockResolvedValueOnce({
+      id: 'msg-ph',
+      conversationId: 'conv-1',
+      conteudo: '[mensagem não suportada]',
+    });
+    prisma.message.update.mockResolvedValueOnce({});
+
+    const r = await svc.processarMensagemEntrante({
+      empresaId: 'emp-1',
+      canal: 'WHATSAPP',
+      peerId: '5511988887777@s.whatsapp.net',
+      tipo: 'TEXT',
+      conteudo: 'Olá, tudo bem?', // parser agora extraiu o texto de verdade
+      externalId: 'wamid-heal',
+    });
+
+    expect(r.duplicada).toBe(true);
+    expect(prisma.message.create).not.toHaveBeenCalled();
+    expect(prisma.message.update).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { id: 'msg-ph' },
+        data: expect.objectContaining({ conteudo: 'Olá, tudo bem?' }),
+      }),
+    );
   });
 
   it('resolve cliente por sufixo do telefone (8 últimos dígitos)', async () => {

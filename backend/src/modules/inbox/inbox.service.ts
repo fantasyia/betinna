@@ -696,9 +696,33 @@ export class InboxService {
             proprietarioId: params.proprietarioId ?? null,
           },
         },
-        select: { id: true, conversationId: true },
+        select: { id: true, conversationId: true, conteudo: true },
       });
       if (existente) {
+        // Heal-on-reprocess: mensagens salvas como placeholder "[mensagem não
+        // suportada...]" ANTES de o parser saber lê-las. No reconnect o WhatsApp
+        // reentrega a mensagem CRUA (history sync) e agora o parser extrai o
+        // conteúdo real (ou ao menos o tipo) — então ATUALIZAMOS em vez de pular.
+        // Só mexe em placeholders: nunca sobrescreve conteúdo real já salvo.
+        const PLACEHOLDER = '[mensagem não suportada';
+        if (
+          existente.conteudo.startsWith(PLACEHOLDER) &&
+          params.conteudo.trim().length > 0 &&
+          params.conteudo !== existente.conteudo
+        ) {
+          await this.prisma.message.update({
+            where: { id: existente.id },
+            data: {
+              conteudo: params.conteudo,
+              tipo: params.tipo,
+              ...(params.mediaMime ? { mediaMime: params.mediaMime } : {}),
+              ...(params.mediaUrl ? { mediaUrl: params.mediaUrl } : {}),
+            },
+          });
+          this.logger.log(
+            `[${params.canal}] msg ${existente.id} curada (placeholder → conteúdo reprocessado)`,
+          );
+        }
         return {
           conversationId: existente.conversationId,
           messageId: existente.id,
