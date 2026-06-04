@@ -39,6 +39,46 @@ interface SessionContext {
 
 const GROUP_NAME_TTL_MS = 30 * 60 * 1000;
 
+/** Chaves que costumam carregar texto legível em QUALQUER tipo de mensagem WhatsApp. */
+const CHAVES_TEXTO_PROFUNDO = [
+  'conversation',
+  'text',
+  'caption',
+  'contentText',
+  'selectedDisplayText',
+  'displayText',
+  'hydratedContentText',
+  'hydratedTitle',
+  'description',
+  'title',
+  'name',
+];
+
+/**
+ * Último recurso do parser: varre o objeto da mensagem (recursivo, raso) atrás
+ * de QUALQUER texto legível. Cobre tipos novos da API oficial que ainda não
+ * mapeamos explicitamente — melhor mostrar o texto do que "[não suportada]".
+ * Pula campos binários e limita profundidade pra não custar caro.
+ */
+export function extrairTextoProfundo(obj: unknown, profundidade = 0): string | undefined {
+  if (!obj || typeof obj !== 'object' || profundidade > 6) return undefined;
+  const rec = obj as Record<string, unknown>;
+  // 1. chaves de texto conhecidas neste nível (prioridade sobre ids/urls)
+  for (const k of CHAVES_TEXTO_PROFUNDO) {
+    const v = rec[k];
+    if (typeof v === 'string' && v.trim().length > 0) return v.trim();
+  }
+  // 2. desce recursivamente (pula buffers/binário)
+  for (const k of Object.keys(rec)) {
+    const v = rec[k];
+    if (v && typeof v === 'object' && !Buffer.isBuffer(v) && !(v instanceof Uint8Array)) {
+      const achado = extrairTextoProfundo(v, profundidade + 1);
+      if (achado) return achado;
+    }
+  }
+  return undefined;
+}
+
 /**
  * Gerencia sessões Baileys com **dois escopos**:
  *  - **EMPRESA**: 1 número central por empresa (operado pela equipe SAC)
@@ -820,11 +860,21 @@ export class WhatsAppSessionService implements OnModuleInit, OnModuleDestroy {
           !!m.message?.senderKeyDistributionMessage ||
           !!m.message?.messageContextInfo;
         if (isSilent) continue;
-        // Tipo desconhecido com conteúdo vazio → deixa passar como placeholder
-        // pra usuário ver "tem alguma coisa aqui que o sistema não suporta ainda".
-        // Lista keys do m.message pra debug.
+        // Tipo desconhecido com conteúdo vazio → placeholder AUTODIAGNOSTICÁVEL:
+        // mostra o tipo bruto (keys do m.message) e/ou o messageStubType (mensagem
+        // de SISTEMA do WhatsApp, ex.: avisos de negócio/criptografia). Assim o
+        // próprio texto na inbox revela o que é, sem precisar abrir o banco.
         const keys = m.message ? Object.keys(m.message).join(',') : '(null)';
-        this.logger.warn(`[${ownerKey(ctx.owner)}] msg sem conteúdo extraível — tipos: ${keys}`);
+        const stubNum = m.messageStubType;
+        const stubNome =
+          stubNum != null
+            ? ((proto.WebMessageInfo.StubType as unknown as Record<number, string>)[stubNum] ??
+              `stub#${stubNum}`)
+            : undefined;
+        const tipoInfo = keys !== '(null)' ? keys : (stubNome ?? '(null)');
+        this.logger.warn(
+          `[${ownerKey(ctx.owner)}] msg sem conteúdo extraível — tipos: ${keys} stub: ${stubNome ?? '-'}`,
+        );
         // Salva com placeholder pra UX (sem perder a mensagem)
         await this.inbox.processarMensagemEntrante({
           empresaId: ctx.empresaId,
@@ -833,12 +883,17 @@ export class WhatsAppSessionService implements OnModuleInit, OnModuleDestroy {
           peerNome: fromMe ? undefined : (m.pushName ?? undefined),
           peerTelefone: this.telefoneRealDoKey(peerId, m.key),
           tipo: 'TEXT',
-          conteudo: '[mensagem não suportada]',
+          conteudo: `[mensagem não suportada: ${tipoInfo}]`,
           externalId: m.key.id ?? undefined,
           data: m.messageTimestamp ? new Date(Number(m.messageTimestamp) * 1000) : undefined,
           proprietarioId: ctx.owner.type === 'USUARIO' ? ctx.owner.id : undefined,
           direction: fromMe ? 'OUTBOUND' : 'INBOUND',
-          meta: { jid: peerId, ownerKey: ownerKey(ctx.owner), tiposBrutos: keys },
+          meta: {
+            jid: peerId,
+            ownerKey: ownerKey(ctx.owner),
+            tiposBrutos: keys,
+            ...(stubNome ? { stub: stubNome } : {}),
+          },
         });
         continue;
       }
@@ -1085,6 +1140,10 @@ export class WhatsAppSessionService implements OnModuleInit, OnModuleDestroy {
     if (enquete?.name) {
       return { conteudo: `[enquete] ${enquete.name}`, tipo: 'TEXT' };
     }
+    // Último recurso: varre o objeto atrás de qualquer texto legível (tipo novo
+    // que não mapeamos). Melhor mostrar o texto do que "[não suportada]".
+    const profundo = extrairTextoProfundo(msg);
+    if (profundo) return { conteudo: profundo, tipo: 'TEXT' };
     return { conteudo: '', tipo: 'TEXT' };
   }
 
