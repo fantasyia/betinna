@@ -233,7 +233,14 @@ export class WhatsAppSessionService implements OnModuleInit, OnModuleDestroy {
     peerId: string,
     texto: string,
   ): Promise<{ externalId?: string }> {
-    const ctx = this.sessions.get(ownerKey(owner));
+    let ctx = this.sessions.get(ownerKey(owner));
+    // Queda MOMENTÂNEA (blip de segundos) não pode perder a mensagem: se a
+    // sessão não está CONNECTED, espera a reconexão automática voltar antes de
+    // desistir. Era a causa de respostas do bot marcadas FAILED "não conectado"
+    // quando o socket caía por 1-2s no exato instante do envio.
+    if (!ctx || ctx.info.status !== 'CONNECTED') {
+      ctx = await this.aguardarConexao(owner, 12_000);
+    }
     if (!ctx || ctx.info.status !== 'CONNECTED') {
       throw new BusinessRuleException(`Sessão WhatsApp ${ownerKey(owner)} não está conectada`);
     }
@@ -245,6 +252,26 @@ export class WhatsAppSessionService implements OnModuleInit, OnModuleDestroy {
       this.tratarFalhaSocket(ctx, err);
       throw err;
     }
+  }
+
+  /**
+   * Espera a sessão voltar pra CONNECTED por até `timeoutMs` (a reconexão é
+   * automática com backoff — costuma voltar em poucos segundos). Desiste cedo
+   * se a sessão deslogou (LOGGED_OUT) ou deu erro definitivo (ERROR), porque aí
+   * esperar não adianta — precisa de QR/ação manual.
+   */
+  private async aguardarConexao(
+    owner: WhatsAppOwner,
+    timeoutMs: number,
+  ): Promise<SessionContext | undefined> {
+    const ate = Date.now() + timeoutMs;
+    while (Date.now() < ate) {
+      const ctx = this.sessions.get(ownerKey(owner));
+      if (ctx?.info.status === 'CONNECTED') return ctx;
+      if (ctx?.info.status === 'LOGGED_OUT' || ctx?.info.status === 'ERROR') return ctx;
+      await new Promise((r) => setTimeout(r, 700));
+    }
+    return this.sessions.get(ownerKey(owner));
   }
 
   /**
