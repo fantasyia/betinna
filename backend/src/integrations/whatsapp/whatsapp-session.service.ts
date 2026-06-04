@@ -38,6 +38,8 @@ interface SessionContext {
 }
 
 const GROUP_NAME_TTL_MS = 30 * 60 * 1000;
+/** Tempo de espera pelo ACK de entrega do WhatsApp antes de reenviar (drop silencioso). */
+const ACK_ENTREGA_MS = 8_000;
 
 /**
  * Gerencia sessões Baileys com **dois escopos**:
@@ -241,11 +243,67 @@ export class WhatsAppSessionService implements OnModuleInit, OnModuleDestroy {
     const jid = this.normalizarJid(peerId);
     try {
       const r = await ctx.sock.sendMessage(jid, { text: texto });
-      return { externalId: r?.key?.id ?? undefined };
+      let msgId = r?.key?.id ?? undefined;
+      // CONFIRMAÇÃO DE ENTREGA: o `sendMessage` do Baileys devolve id MESMO quando
+      // a mensagem NÃO sai (drop silencioso, comum logo após reconexão — bug
+      // conhecido do Baileys). Espera o ACK do servidor WhatsApp; se não vier no
+      // prazo, é provável drop → reenvia UMA vez.
+      if (msgId && !(await this.aguardarAckEntrega(ctx, msgId, ACK_ENTREGA_MS))) {
+        this.logger.warn(
+          `[${ownerKey(owner)}] sem ACK de entrega em ${ACK_ENTREGA_MS}ms — reenviando (possível drop silencioso)`,
+        );
+        const r2 = await ctx.sock.sendMessage(jid, { text: texto });
+        msgId = r2?.key?.id ?? msgId;
+      }
+      return { externalId: msgId };
     } catch (err) {
       this.tratarFalhaSocket(ctx, err);
       throw err;
     }
+  }
+
+  /**
+   * Espera o ACK do servidor WhatsApp pra uma mensagem ENVIADA (status >=
+   * SERVER_ACK), por até `timeoutMs`. O `sendMessage` resolve ANTES da entrega
+   * real, então sem isso um drop silencioso era dado como enviado. Retorna true
+   * se a entrega foi confirmada, false se estourou o tempo (provável drop).
+   */
+  private aguardarAckEntrega(
+    ctx: SessionContext,
+    msgId: string,
+    timeoutMs: number,
+  ): Promise<boolean> {
+    return new Promise<boolean>((resolve) => {
+      let pronto = false;
+      const finalizar = (ok: boolean): void => {
+        if (pronto) return;
+        pronto = true;
+        clearTimeout(timer);
+        try {
+          ctx.sock.ev.off('messages.update', handler);
+        } catch {
+          /* noop */
+        }
+        resolve(ok);
+      };
+      const handler = (
+        updates: { key?: { id?: string | null }; update?: { status?: number | null } }[],
+      ): void => {
+        for (const u of updates) {
+          const st = u.update?.status ?? 0;
+          if (u.key?.id === msgId && st >= proto.WebMessageInfo.Status.SERVER_ACK) {
+            finalizar(true);
+            return;
+          }
+        }
+      };
+      const timer = setTimeout(() => finalizar(false), timeoutMs);
+      try {
+        ctx.sock.ev.on('messages.update', handler);
+      } catch {
+        finalizar(true); // não conseguiu ouvir o evento → não bloqueia o envio
+      }
+    });
   }
 
   /**
@@ -634,8 +692,14 @@ export class WhatsAppSessionService implements OnModuleInit, OnModuleDestroy {
       }
       // Persistência/retry: reenvia as OUTBOUND que ficaram FAILED por queda da
       // sessão (blip/queda/deploy). A mensagem nunca mais se perde — assim que o
-      // WhatsApp volta, ela sai.
-      void this.reenviarPendentes(ctx);
+      // WhatsApp volta, ela sai. Espera alguns segundos pra reenviar num socket
+      // JÁ estabilizado (logo após 'open' ele ainda pode dropar silenciosamente).
+      setTimeout(() => {
+        const cur = this.sessions.get(key);
+        if (cur && cur.sock === ctx.sock && cur.info.status === 'CONNECTED') {
+          void this.reenviarPendentes(cur);
+        }
+      }, 4_000);
     }
     if (u.connection === 'close') {
       const code = (u.lastDisconnect?.error as Boom | undefined)?.output?.statusCode;
