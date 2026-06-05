@@ -130,6 +130,28 @@ export class EvolutionService {
     return this.req('get', `/instance/connectionState/${encodeURIComponent(instance)}`);
   }
 
+  /**
+   * Busca UMA instância no fetchInstances — traz `ownerJid` (= já pareada) e
+   * `connectionStatus`. Usado pra DECIDIR se pode chamar connect: numa instância
+   * já pareada, chamar connect reinicia o socket e DERRUBA a sessão.
+   */
+  private async buscarInstancia(
+    instance: string,
+  ): Promise<{ connectionStatus?: string; ownerJid?: string | null } | null> {
+    const lista = await this.req<
+      Array<{
+        name?: string;
+        instanceName?: string;
+        connectionStatus?: string;
+        ownerJid?: string | null;
+      }>
+    >('get', `/instance/fetchInstances?instanceName=${encodeURIComponent(instance)}`).catch(
+      () => null,
+    );
+    if (!Array.isArray(lista)) return null;
+    return lista.find((i) => (i.name ?? i.instanceName) === instance) ?? null;
+  }
+
   async logout(instance: string): Promise<unknown> {
     return this.req('delete', `/instance/logout/${encodeURIComponent(instance)}`);
   }
@@ -280,31 +302,30 @@ export class EvolutionService {
   }
 
   /**
-   * SÓ LEITURA — pro polling de status (não cria/reseta; o botão Conectar é quem
-   * cria). Mapeia o estado do Evolution pros status que o front entende:
-   * 'open'→CONNECTED, com QR→QR_PENDING (front mostra o QR), 404/sem instância→
-   * DISCONNECTED (front mostra o botão Conectar), senão CONNECTING.
+   * SÓ LEITURA — pro polling de status. **NÃO chama connect numa instância já
+   * pareada** (isso reiniciaria o socket e derrubaria a sessão — era o bug do
+   * "parou de receber depois de 2min"). Usa fetchInstances pra saber se já tem
+   * dono (`ownerJid`):
+   *  - sem instância → DISCONNECTED (front mostra Conectar)
+   *  - connectionStatus 'open' → CONNECTED
+   *  - JÁ pareada mas não 'open' → CONNECTING (só reconectando; NÃO mexe)
+   *  - nunca pareada → connect pra pegar o QR → QR_PENDING
    */
   async estadoComQr(instance: string): Promise<EstadoWhats> {
     if (!this.env.get('EVOLUTION_API_URL') || !this.env.get('EVOLUTION_API_KEY')) {
       return { status: 'DISCONNECTED' };
     }
-    const estado = await this.estado(instance)
-      .then((s) => s?.instance?.state)
-      .catch(() => undefined);
-    if (estado === 'open') return { status: 'CONNECTED' };
+    const inst = await this.buscarInstancia(instance);
+    if (!inst) return { status: 'DISCONNECTED' }; // não existe → botão Conectar
+    if (inst.connectionStatus === 'open') return { status: 'CONNECTED' };
 
-    // QR da instância existente. 404 = instância ainda não foi criada → o front
-    // precisa de DISCONNECTED pra mostrar o botão Conectar (não travar em CONNECTING).
-    let qr: string | undefined;
-    let existe = true;
-    try {
-      qr = this.extrairQr(await this.conectar(instance));
-    } catch (err) {
-      if (err instanceof HttpClientError && err.status === 404) existe = false;
-    }
+    // Já pareada (tem ownerJid) e só reconectando → NÃO chama connect (derrubaria
+    // a sessão). O Baileys do Evolution reconecta sozinho com as credenciais.
+    if (inst.ownerJid) return { status: 'CONNECTING' };
+
+    // Nunca pareada → busca o QR pra parear (aqui connect é seguro).
+    const qr = this.extrairQr(await this.conectar(instance).catch(() => null));
     if (qr) return { status: 'QR_PENDING', qrDataUrl: qr };
-    if (!existe) return { status: 'DISCONNECTED' };
     return { status: 'CONNECTING' };
   }
 
