@@ -402,6 +402,7 @@ export default function InboxPage() {
   const [canalTab, setCanalTab] = useState<string>('todos');
   const [status, setStatus] = useState<string>('');
   const [filterMeu, setFilterMeu] = useState<string>('');
+  const [situacao, setSituacao] = useState<string>(''); // precisa_humano | nao_lidas
   const [search, setSearch] = useState<string>('');
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [pollBump, setPollBump] = useState(0);
@@ -432,9 +433,11 @@ export default function InboxPage() {
     if (status) qs.set('status', status);
     if (filterMeu === 'meu') qs.set('meu', 'true');
     if (filterMeu === 'nao_atribuidas') qs.set('naoAtribuidas', 'true');
+    if (situacao === 'precisa_humano') qs.set('precisaHumano', 'true');
+    if (situacao === 'nao_lidas') qs.set('naoLidas', 'true');
     if (search.trim()) qs.set('search', search.trim());
     return `/inbox?${qs.toString()}`;
-  }, [canal, status, filterMeu, search, pollBump]);
+  }, [canal, status, filterMeu, situacao, search, pollBump]);
 
   const {
     data: pageResp,
@@ -596,6 +599,17 @@ export default function InboxPage() {
                   <option value="">Todas</option>
                   <option value="meu">Minhas</option>
                   <option value="nao_atribuidas">Não atribuídas</option>
+                </Select>
+                <Select
+                  data-testid="inbox-situacao"
+                  size="sm"
+                  value={situacao}
+                  onChange={(e) => setSituacao(e.target.value)}
+                  className="col-span-2"
+                >
+                  <option value="">Qualquer situação</option>
+                  <option value="precisa_humano">🧑 Precisa de humano</option>
+                  <option value="nao_lidas">🔵 Não lidas (cliente esperando)</option>
                 </Select>
               </div>
             </div>

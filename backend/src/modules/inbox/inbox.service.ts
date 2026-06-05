@@ -145,6 +145,8 @@ export class InboxService {
     if (params.meu) conds.push({ atribuidoId: user.id });
     if (params.atribuidoId) conds.push({ atribuidoId: params.atribuidoId });
     if (params.naoAtribuidas) conds.push({ atribuidoId: null });
+    if (params.precisaHumano) conds.push({ precisaHumano: true });
+    if (params.naoLidas) conds.push({ naoLidas: { gt: 0 } });
     if (params.search) {
       conds.push({
         OR: [

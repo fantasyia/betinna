@@ -21,6 +21,10 @@ export const listConversationsSchema = z.object({
   meu: z.coerce.boolean().optional(),
   /** true → apenas não atribuídas. */
   naoAtribuidas: z.coerce.boolean().optional(),
+  /** true → apenas conversas marcadas como "precisa de humano" (bot escalou). */
+  precisaHumano: z.coerce.boolean().optional(),
+  /** true → apenas conversas com mensagens não lidas (cliente esperando). */
+  naoLidas: z.coerce.boolean().optional(),
   clienteId: z.string().cuid().optional(),
   search: z.string().min(1).max(200).optional(),
   page: z.coerce.number().int().positive().default(1),
