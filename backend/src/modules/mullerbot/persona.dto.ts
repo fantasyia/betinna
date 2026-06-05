@@ -45,5 +45,8 @@ export const upsertPersonaSchema = z.object({
   // Quebra da resposta em vários balões (mais humano) + teto de balões.
   quebrarMensagens: z.boolean().optional(),
   maxMensagens: z.number().int().min(2).max(6).optional(),
+  // Multimodal: transcrever áudios (voz→texto) e analisar imagens (visão).
+  transcreverAudio: z.boolean().optional(),
+  analisarImagem: z.boolean().optional(),
 });
 export type UpsertPersonaDto = z.infer<typeof upsertPersonaSchema>;

@@ -67,6 +67,8 @@ export interface PersonaResult {
   mostrarDigitando: boolean;
   quebrarMensagens: boolean;
   maxMensagens: number;
+  transcreverAudio: boolean;
+  analisarImagem: boolean;
   systemPromptPreview: string;
   atualizadoEm: Date;
 }
@@ -130,6 +132,8 @@ export class MullerBotPersonaService {
       ...(dto.mostrarDigitando !== undefined ? { mostrarDigitando: dto.mostrarDigitando } : {}),
       ...(dto.quebrarMensagens !== undefined ? { quebrarMensagens: dto.quebrarMensagens } : {}),
       ...(dto.maxMensagens !== undefined ? { maxMensagens: dto.maxMensagens } : {}),
+      ...(dto.transcreverAudio !== undefined ? { transcreverAudio: dto.transcreverAudio } : {}),
+      ...(dto.analisarImagem !== undefined ? { analisarImagem: dto.analisarImagem } : {}),
     };
     const row = await this.prisma.mullerBotPersona.upsert({
       where: { empresaId },
@@ -254,6 +258,8 @@ Se o cliente pedir algo que você não pode resolver, avise com gentileza que um
     mostrarDigitando?: boolean;
     quebrarMensagens?: boolean;
     maxMensagens?: number;
+    transcreverAudio?: boolean;
+    analisarImagem?: boolean;
     atualizadoEm: Date;
   }): PersonaResult {
     const tomVoz = (row.tomVoz as TomVoz) ?? 'PROFISSIONAL';
@@ -278,6 +284,8 @@ Se o cliente pedir algo que você não pode resolver, avise com gentileza que um
       mostrarDigitando: row.mostrarDigitando ?? false,
       quebrarMensagens: row.quebrarMensagens ?? false,
       maxMensagens: row.maxMensagens ?? 3,
+      transcreverAudio: row.transcreverAudio ?? false,
+      analisarImagem: row.analisarImagem ?? false,
       systemPromptPreview: '',
       atualizadoEm: row.atualizadoEm,
     };
@@ -299,6 +307,8 @@ Se o cliente pedir algo que você não pode resolver, avise com gentileza que um
     mostrarDigitando: boolean;
     quebrarMensagens: boolean;
     maxMensagens: number;
+    transcreverAudio: boolean;
+    analisarImagem: boolean;
   }> {
     const row = await this.prisma.mullerBotPersona.findUnique({
       where: { empresaId },
@@ -308,6 +318,8 @@ Se o cliente pedir algo que você não pode resolver, avise com gentileza que um
         mostrarDigitando: true,
         quebrarMensagens: true,
         maxMensagens: true,
+        transcreverAudio: true,
+        analisarImagem: true,
       },
     });
     return {
@@ -317,6 +329,8 @@ Se o cliente pedir algo que você não pode resolver, avise com gentileza que um
       quebrarMensagens: row?.quebrarMensagens ?? false,
       // Teto entre 2 e 6 balões — abaixo de 2 não faz sentido "quebrar".
       maxMensagens: Math.min(6, Math.max(2, row?.maxMensagens ?? 3)),
+      transcreverAudio: row?.transcreverAudio ?? false,
+      analisarImagem: row?.analisarImagem ?? false,
     };
   }
 
@@ -341,6 +355,8 @@ Se o cliente pedir algo que você não pode resolver, avise com gentileza que um
       mostrarDigitando: false,
       quebrarMensagens: false,
       maxMensagens: 3,
+      transcreverAudio: false,
+      analisarImagem: false,
       systemPromptPreview: '',
       atualizadoEm: new Date(),
     };

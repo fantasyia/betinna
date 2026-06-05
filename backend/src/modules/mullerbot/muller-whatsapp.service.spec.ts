@@ -48,7 +48,7 @@ const makePrisma = (over: Record<string, unknown> = {}) => ({
     findUnique: vi.fn(async () => ({ botPausadoAte: null })),
     update: vi.fn(async () => ({})),
   },
-  message: { findMany: vi.fn(async () => []) },
+  message: { findMany: vi.fn(async () => []), update: vi.fn(async () => ({})) },
   // Fase B — guard fluxoIaConduzindo (lead em fluxo de IA cala o bot geral).
   lead: { findFirst: vi.fn(async () => null) },
   fluxoExecucao: { findFirst: vi.fn(async () => null) },
@@ -63,6 +63,7 @@ const makeInbox = () => ({
 
 const makeMuller = (resp: unknown = { texto: 'Olá! Como posso ajudar?' }) => ({
   responderComoEmpresa: vi.fn(async () => resp),
+  transcreverAudio: vi.fn(async () => 'texto transcrito do áudio'),
 });
 
 const env = { get: () => 24 };
@@ -71,6 +72,8 @@ function build(
   prisma: ReturnType<typeof makePrisma>,
   inbox: ReturnType<typeof makeInbox>,
   muller: ReturnType<typeof makeMuller>,
+  cfgOver: Record<string, unknown> = {},
+  midiaBytes: Buffer | null = null,
 ) {
   // Sprint 2.2 — mocks de auditoria + custo (não bloqueia por teto nos testes).
   const auditoria = { registrar: vi.fn().mockResolvedValue(undefined) };
@@ -85,9 +88,15 @@ function build(
       mostrarDigitando: false,
       quebrarMensagens: false,
       maxMensagens: 3,
+      transcreverAudio: false,
+      analisarImagem: false,
+      ...cfgOver,
     }),
   };
-  const whatsapp = { enviarPresenca: vi.fn().mockResolvedValue(undefined) };
+  const whatsapp = {
+    enviarPresenca: vi.fn().mockResolvedValue(undefined),
+    baixarMidia: vi.fn().mockResolvedValue(midiaBytes),
+  };
   return new MullerWhatsappService(
     prisma as never,
     inbox as never,
@@ -249,6 +258,67 @@ describe('MullerWhatsappService — regras do bot', () => {
   it('emoji isolado é texto → responde normalmente', async () => {
     await aoReceber(build(prisma, inbox, muller), { ...baseParams, tipo: 'TEXT', conteudo: '👍' });
     expect(muller.responderComoEmpresa).toHaveBeenCalled();
+    expect(inbox.responderComoBot).toHaveBeenCalled();
+  });
+
+  // ─── Multimodal (áudio + imagem) ──────────────────────────────────────────
+  it('áudio + transcrição LIGADA → transcreve e responde com o texto da voz', async () => {
+    const svc = build(prisma, inbox, muller, { transcreverAudio: true }, Buffer.from('audio'));
+    await aoReceber(svc, {
+      ...baseParams,
+      tipo: 'AUDIO',
+      conteudo: '[áudio]',
+      mediaUrl: 'emp-1/peer/abc.ogg',
+      mediaMime: 'audio/ogg',
+    });
+    expect(muller.transcreverAudio).toHaveBeenCalled();
+    // A IA recebe a TRANSCRIÇÃO como mensagem, não o placeholder "[áudio]".
+    expect(muller.responderComoEmpresa).toHaveBeenCalledWith(
+      'emp-1',
+      'texto transcrito do áudio',
+      expect.any(Array),
+      expect.anything(),
+    );
+    // Atualiza a mensagem na inbox com a transcrição (🎤).
+    expect(prisma.message.update).toHaveBeenCalled();
+    expect(inbox.responderComoBot).toHaveBeenCalled();
+  });
+
+  it('áudio com transcrição DESLIGADA → não responde (escala pra humano)', async () => {
+    await aoReceber(build(prisma, inbox, muller), {
+      ...baseParams,
+      tipo: 'AUDIO',
+      conteudo: '[áudio]',
+      mediaUrl: 'emp-1/peer/abc.ogg',
+      mediaMime: 'audio/ogg',
+    });
+    expect(muller.transcreverAudio).not.toHaveBeenCalled();
+    expect(muller.responderComoEmpresa).not.toHaveBeenCalled();
+    expect(inbox.marcarPrecisaHumano).toHaveBeenCalled();
+  });
+
+  it('imagem + visão LIGADA → manda a foto (imagemDataUrl) pra IA responder', async () => {
+    const svc = build(
+      prisma,
+      inbox,
+      muller,
+      { analisarImagem: true },
+      Buffer.from([0xff, 0xd8, 0xff]),
+    );
+    await aoReceber(svc, {
+      ...baseParams,
+      tipo: 'IMAGE',
+      conteudo: '[imagem]',
+      mediaUrl: 'emp-1/peer/img.jpg',
+      mediaMime: 'image/jpeg',
+    });
+    const call = muller.responderComoEmpresa.mock.calls[0];
+    expect(call).toBeTruthy();
+    expect(call[3]).toEqual(
+      expect.objectContaining({
+        imagemDataUrl: expect.stringContaining('data:image/jpeg;base64,'),
+      }),
+    );
     expect(inbox.responderComoBot).toHaveBeenCalled();
   });
 });

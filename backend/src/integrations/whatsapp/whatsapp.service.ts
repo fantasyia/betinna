@@ -4,6 +4,7 @@ import { CanalAdapterRegistry } from '@modules/inbox/canal-adapter.registry';
 import type { CanalAdapter, CanalAdapterContexto } from '@modules/inbox/inbox.types';
 import { BusinessRuleException } from '@shared/errors/app-exception';
 import { WhatsAppSessionService } from './whatsapp-session.service';
+import { WhatsAppMediaService } from './whatsapp-media.service';
 
 /**
  * Adapter de WhatsApp para a Inbox unificada.
@@ -22,7 +23,13 @@ export class WhatsAppService implements CanalAdapter, OnModuleInit {
   constructor(
     private readonly sessions: WhatsAppSessionService,
     private readonly registry: CanalAdapterRegistry,
+    private readonly media: WhatsAppMediaService,
   ) {}
+
+  /** Baixa os bytes de uma mídia armazenada (pra IA transcrever/ver). */
+  async baixarMidia(storagePath: string): Promise<Buffer | null> {
+    return this.media.baixar(storagePath);
+  }
 
   onModuleInit(): void {
     this.registry.registrar(this);

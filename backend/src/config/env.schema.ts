@@ -41,6 +41,10 @@ export const envSchema = z
     OPENAI_API_KEY: z.string().optional().default(''),
     /** Modelo padrão pro MullerBot. */
     MULLERBOT_MODEL: z.string().default('gpt-4o-mini'),
+    /** Modelo de transcrição de áudio (voz→texto). whisper-1 é barato e estável. */
+    MULLERBOT_TRANSCRIBE_MODEL: z.string().default('whisper-1'),
+    /** Modelo de VISÃO pra analisar imagens. Precisa enxergar imagem (gpt-4o-mini serve). */
+    MULLERBOT_VISION_MODEL: z.string().default('gpt-4o-mini'),
     /** Limite total de tokens de entrada (system + user). Catálogo é truncado pra caber. */
     MULLERBOT_MAX_INPUT_TOKENS: z.coerce.number().int().positive().default(4000),
     /** Limite de tokens da resposta. */

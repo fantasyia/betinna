@@ -1958,6 +1958,12 @@ model MullerBotPersona {
   /// Teto de balões quando `quebrarMensagens` está ligado. A IA pode usar menos;
   /// o excedente é juntado no último balão pra não perder texto. (default 3)
   maxMensagens          Int     @default(3)
+  /// Transcrever áudios recebidos (voz → texto via OpenAI). O bot passa a
+  /// responder áudios, e a transcrição aparece na inbox. (default off)
+  transcreverAudio      Boolean @default(false)
+  /// Analisar imagens recebidas (visão da IA). O bot passa a responder fotos
+  /// (produto/etiqueta), podendo cruzar com o catálogo. (default off)
+  analisarImagem        Boolean @default(false)
 
   criadoEm     DateTime @default(now())
   atualizadoEm DateTime @updatedAt

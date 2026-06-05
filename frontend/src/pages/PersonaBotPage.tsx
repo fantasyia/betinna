@@ -44,6 +44,8 @@ interface Persona {
   mostrarDigitando: boolean;
   quebrarMensagens: boolean;
   maxMensagens: number;
+  transcreverAudio: boolean;
+  analisarImagem: boolean;
   atualizadoEm: string;
 }
 
@@ -99,6 +101,8 @@ export default function PersonaBotPage() {
   const [mostrarDigitando, setMostrarDigitando] = useState(false); // mostra "digitando…" no WhatsApp
   const [quebrarMsgs, setQuebrarMsgs] = useState(false); // quebra a resposta em vários balões
   const [maxMsgs, setMaxMsgs] = useState(3); // teto de balões quando quebra está ligado
+  const [transcreverAudio, setTranscreverAudio] = useState(false); // bot ouve áudios (transcrição)
+  const [analisarImagem, setAnalisarImagem] = useState(false); // bot vê imagens (visão)
 
   // Modelos reais da conta OpenAI (puxados ao vivo); cai pra lista curada se falhar.
   const [modelosLive, setModelosLive] = useState<string[]>([]);
@@ -114,6 +118,8 @@ export default function PersonaBotPage() {
     setMostrarDigitando(data.mostrarDigitando ?? false);
     setQuebrarMsgs(data.quebrarMensagens ?? false);
     setMaxMsgs(data.maxMensagens ?? 3);
+    setTranscreverAudio(data.transcreverAudio ?? false);
+    setAnalisarImagem(data.analisarImagem ?? false);
     setDirty(false);
   }, [data]);
 
@@ -203,6 +209,9 @@ export default function PersonaBotPage() {
         // Quebra da resposta em vários balões + teto
         quebrarMensagens: quebrarMsgs,
         maxMensagens: maxMsgs,
+        // Multimodal: ouvir áudios (transcrição) e ver imagens (visão)
+        transcreverAudio,
+        analisarImagem,
       });
       toast.success('Configuração do Muller salva');
       setDirty(false);
@@ -371,6 +380,28 @@ export default function PersonaBotPage() {
                     </span>
                   </div>
                 )}
+              </div>
+              {/* Multimodal — o bot passa a entender áudio e imagem */}
+              <div className="col-span-2 border-t border-border pt-3 space-y-2">
+                <Switch
+                  checked={transcreverAudio}
+                  onChange={(e) => {
+                    setTranscreverAudio(e.target.checked);
+                    setDirty(true);
+                  }}
+                  label="🎤 Transcrever áudios (o bot ouve e responde; você lê na inbox)"
+                />
+                <Switch
+                  checked={analisarImagem}
+                  onChange={(e) => {
+                    setAnalisarImagem(e.target.checked);
+                    setDirty(true);
+                  }}
+                  label="📷 Analisar imagens (o bot vê fotos de produto/etiqueta e responde)"
+                />
+                <p className="text-[10px] text-muted-light">
+                  Cada áudio/imagem é uma chamada extra à IA — entra no teto de custo. Desligado = não muda nada.
+                </p>
               </div>
             </div>
 

@@ -175,21 +175,59 @@ export class MullerWhatsappService implements OnModuleInit {
         return;
       }
 
-      // 4.5 Ajuste 1 — bot só responde quando há TEXTO real do cliente.
-      // Mídia sem legenda (imagem/vídeo/áudio/documento/figurinha), localização,
-      // contato ou mensagem não suportada → NÃO responde, só escala pra humano.
-      // (Transcrição de áudio e leitura de mídia ficam pra próxima fase.)
-      const avaliacao = this.temTextoParaResponder(params.tipo, params.conteudo);
-      if (!avaliacao.ok) {
-        await this.inbox.marcarPrecisaHumano(convId).catch(() => undefined);
-        this.logger.log(
-          `[bot] SEM-RESPOSTA conv=${convId} peer=${params.peerId} tipo=${params.tipo} ` +
-            `motivo="${avaliacao.motivo}" → marcado precisa humano`,
-        );
-        return;
+      // 4.5 Config do bot (precisa ANTES — decide se transcreve áudio / vê imagem).
+      const cfgBot = await this.persona.obterConfigBot(params.empresaId);
+
+      // 4.6 Multimodal — o que o bot vai "ler":
+      //  - áudio + toggle ligado → transcreve (voz→texto) e mostra na inbox;
+      //  - imagem + toggle ligado → manda a foto pra VISÃO da IA.
+      // Sem o toggle ligado, mídia continua escalando pra humano (regra antiga).
+      let mensagemIA = params.conteudo;
+      let imagemDataUrl: string | undefined;
+
+      if (params.tipo === 'AUDIO' && cfgBot.transcreverAudio && params.mediaUrl) {
+        const bytes = await this.whatsapp.baixarMidia(params.mediaUrl).catch(() => null);
+        const texto = bytes
+          ? await this.muller
+              .transcreverAudio(params.empresaId, bytes, params.mediaMime ?? 'audio/ogg')
+              .catch((e) => {
+                this.logger.warn(
+                  `[bot] transcrição falhou conv=${convId}: ${e instanceof Error ? e.message : String(e)}`,
+                );
+                return '';
+              })
+          : '';
+        if (texto.trim()) {
+          mensagemIA = texto.trim();
+          // Mostra a transcrição na inbox (operador lê sem dar play).
+          await this.prisma.message
+            .update({ where: { id: resultado.messageId }, data: { conteudo: `🎤 ${mensagemIA}` } })
+            .catch(() => undefined);
+          this.logger.log(`[bot] áudio transcrito conv=${convId}: "${mensagemIA.slice(0, 60)}"`);
+        }
+      } else if (params.tipo === 'IMAGE' && cfgBot.analisarImagem && params.mediaUrl) {
+        const bytes = await this.whatsapp.baixarMidia(params.mediaUrl).catch(() => null);
+        if (bytes) {
+          imagemDataUrl = `data:${params.mediaMime ?? 'image/jpeg'};base64,${bytes.toString('base64')}`;
+          // Legenda real (se houver) vira o texto; placeholder "[imagem]" → vazio.
+          mensagemIA = PLACEHOLDERS_MIDIA.has(params.conteudo) ? '' : params.conteudo;
+        }
       }
 
-      // 4.6 Teto de custo (Sprint 2.2) — se estourou o limite de tokens, o bot
+      // 4.7 Sem imagem pra ver E sem texto real → escala pra humano (regra antiga).
+      if (!imagemDataUrl) {
+        const avaliacao = this.temTextoParaResponder('TEXT', mensagemIA);
+        if (!avaliacao.ok) {
+          await this.inbox.marcarPrecisaHumano(convId).catch(() => undefined);
+          this.logger.log(
+            `[bot] SEM-RESPOSTA conv=${convId} peer=${params.peerId} tipo=${params.tipo} ` +
+              `motivo="${avaliacao.motivo}" → marcado precisa humano`,
+          );
+          return;
+        }
+      }
+
+      // 4.8 Teto de custo (Sprint 2.2) — se estourou o limite de tokens, o bot
       // pausa e escala pra humano.
       const teto = await this.custo.verificarTeto(params.empresaId);
       if (teto.bloqueado) {
@@ -198,7 +236,7 @@ export class MullerWhatsappService implements OnModuleInit {
           empresaId: params.empresaId,
           conversationId: convId,
           messageId: resultado.messageId,
-          pergunta: params.conteudo,
+          pergunta: mensagemIA,
           resposta: null,
           status: 'SEM_RESPOSTA',
         });
@@ -206,8 +244,7 @@ export class MullerWhatsappService implements OnModuleInit {
         return;
       }
 
-      // 5. Config do bot (histórico/delay/digitando) + histórico (últimas N msgs)
-      const cfgBot = await this.persona.obterConfigBot(params.empresaId);
+      // 5. Histórico (últimas N msgs de texto)
       const historico = await this.montarHistorico(
         convId,
         resultado.messageId,
@@ -227,12 +264,14 @@ export class MullerWhatsappService implements OnModuleInit {
       } | null = null;
       try {
         resposta = await this.comTimeout(
-          this.muller.responderComoEmpresa(params.empresaId, params.conteudo, historico, {
+          this.muller.responderComoEmpresa(params.empresaId, mensagemIA, historico, {
             // Puro conversa por padrão; vira RAG quando MULLERBOT_WHATSAPP_CATALOGO=true.
             incluirCatalogo: this.env.get('MULLERBOT_WHATSAPP_CATALOGO'),
             // Quebra em balões (mais humano): a IA separa com "|||"; split no envio.
             quebrarMensagens: cfgBot.quebrarMensagens,
             maxMensagens: cfgBot.maxMensagens,
+            // Visão: quando o cliente manda foto (e o toggle está ligado).
+            imagemDataUrl,
           }),
           TIMEOUT_MS,
         );
@@ -258,7 +297,7 @@ export class MullerWhatsappService implements OnModuleInit {
           empresaId: params.empresaId,
           conversationId: convId,
           messageId: resultado.messageId,
-          pergunta: params.conteudo,
+          pergunta: mensagemIA,
           resposta: FALLBACK_MSG,
           tempoMs,
           status: 'FALLBACK',

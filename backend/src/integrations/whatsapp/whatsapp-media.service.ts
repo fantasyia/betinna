@@ -192,6 +192,24 @@ export class WhatsAppMediaService implements OnModuleInit {
       return null;
     }
   }
+
+  /** Baixa os bytes da mídia armazenada (pra IA transcrever áudio / ver imagem). */
+  async baixar(storagePath: string): Promise<Buffer | null> {
+    try {
+      const { data, error } = await this.storage.storage.from(BUCKET).download(storagePath);
+      if (error || !data) {
+        this.logger.warn(`Falha download ${storagePath}: ${error?.message ?? 'sem dados'}`);
+        return null;
+      }
+      const arrayBuffer = await data.arrayBuffer();
+      return Buffer.from(arrayBuffer);
+    } catch (err) {
+      this.logger.warn(
+        `Erro download ${storagePath}: ${err instanceof Error ? err.message : String(err)}`,
+      );
+      return null;
+    }
+  }
 }
 
 // ─── Helpers ───────────────────────────────────────────────────────────────

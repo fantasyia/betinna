@@ -200,7 +200,13 @@ export class MullerBotService {
     empresaId: string,
     mensagemCliente: string,
     historico: HistoricoMsg[] = [],
-    opts: { incluirCatalogo?: boolean; quebrarMensagens?: boolean; maxMensagens?: number } = {},
+    opts: {
+      incluirCatalogo?: boolean;
+      quebrarMensagens?: boolean;
+      maxMensagens?: number;
+      /** Imagem (data URL base64) pra visão da IA — quando o cliente manda foto. */
+      imagemDataUrl?: string;
+    } = {},
   ): Promise<{
     texto: string;
     tokensIn?: number;
@@ -217,8 +223,11 @@ export class MullerBotService {
         ErrorCode.INTEGRATION_ERROR,
       );
     }
-    // Modelo escolhido pela empresa (tela Persona Bot); senão o padrão do servidor.
-    const modelo = (await this.persona.obterModelo(empresaId)) ?? this.env.get('MULLERBOT_MODEL');
+    // Modelo: pra IMAGEM usa o modelo de VISÃO (o de chat pode não enxergar);
+    // senão, o escolhido pela empresa (tela Persona Bot) ou o padrão do servidor.
+    const modelo = opts.imagemDataUrl
+      ? this.env.get('MULLERBOT_VISION_MODEL')
+      : ((await this.persona.obterModelo(empresaId)) ?? this.env.get('MULLERBOT_MODEL'));
     const maxOutputTokens = this.env.get('MULLERBOT_MAX_OUTPUT_TOKENS');
 
     // Liga o catálogo (RAG) quando pedido. Default = puro conversa.
@@ -267,6 +276,7 @@ export class MullerBotService {
       userMessage,
       maxOutputTokens,
       historico,
+      opts.imagemDataUrl,
     );
     return { ...r, promptTokensAprox, modelo, usouCatalogo: usarCatalogo, produtosIncluidos };
   }
@@ -300,6 +310,57 @@ export class MullerBotService {
       historico,
     );
     return { ...r, modelo };
+  }
+
+  /**
+   * Transcreve um áudio recebido (voz → texto) via OpenAI. Usa a chave da
+   * empresa. Modelo configurável (MULLERBOT_TRANSCRIBE_MODEL, default whisper-1).
+   * Multipart via fetch nativo (o HttpClient é JSON-only). Retorna o texto.
+   */
+  async transcreverAudio(empresaId: string, audio: Buffer, mime: string): Promise<string> {
+    if (this.env.get('MULLERBOT_MOCK')) return '(transcrição de teste)';
+    const apiKey = await this.resolverChaveEmpresa(empresaId);
+    if (!apiKey) {
+      throw new IntegrationException(
+        'OpenAI não configurada — não dá pra transcrever o áudio.',
+        ErrorCode.INTEGRATION_ERROR,
+      );
+    }
+    const modelo = this.env.get('MULLERBOT_TRANSCRIBE_MODEL');
+    // Extensão coerente com o mime (WhatsApp manda voz em ogg/opus).
+    const m = (mime || '').toLowerCase();
+    const ext =
+      m.includes('mpeg') || m.includes('mp3')
+        ? 'mp3'
+        : m.includes('wav')
+          ? 'wav'
+          : m.includes('m4a') || m.includes('mp4')
+            ? 'm4a'
+            : m.includes('webm')
+              ? 'webm'
+              : 'ogg';
+    const form = new FormData();
+    form.append(
+      'file',
+      new Blob([new Uint8Array(audio)], { type: mime || 'audio/ogg' }),
+      `audio.${ext}`,
+    );
+    form.append('model', modelo);
+    form.append('language', 'pt');
+    const res = await fetch('https://api.openai.com/v1/audio/transcriptions', {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${apiKey}` },
+      body: form,
+    });
+    if (!res.ok) {
+      const corpo = await res.text().catch(() => '');
+      throw new IntegrationException(
+        `Transcrição falhou (HTTP ${res.status}): ${corpo.slice(0, 200)}`,
+        ErrorCode.INTEGRATION_ERROR,
+      );
+    }
+    const data = (await res.json()) as { text?: string };
+    return (data.text ?? '').trim();
   }
 
   /**
@@ -580,6 +641,7 @@ export class MullerBotService {
     userMessage: string,
     maxOutputTokens: number,
     historico: HistoricoMsg[] = [],
+    imagemDataUrl?: string,
   ): Promise<{ texto: string; tokensIn?: number; tokensOut?: number }> {
     // Modo mock (E2E/dev): devolve resposta fake sem chamar a OpenAI. Ligado via
     // MULLERBOT_MOCK=true. Em produção (flag off) o fluxo segue normal.
@@ -595,13 +657,27 @@ export class MullerBotService {
 
     // Constrói array de mensagens: system + histórico (alternando user/assistant)
     // + pergunta atual. OpenAI espera ordem cronológica.
-    const messages: Array<{ role: 'system' | 'user' | 'assistant'; content: string }> = [
-      { role: 'system', content: systemPrompt },
-    ];
+    // Pra VISÃO, o content da última msg vira array [texto, imagem] (formato OpenAI).
+    type ContentPart =
+      | { type: 'text'; text: string }
+      | { type: 'image_url'; image_url: { url: string } };
+    const messages: Array<{
+      role: 'system' | 'user' | 'assistant';
+      content: string | ContentPart[];
+    }> = [{ role: 'system', content: systemPrompt }];
     for (const h of historico) {
       messages.push({ role: h.role, content: h.content });
     }
-    messages.push({ role: 'user', content: userMessage });
+    const userContent: string | ContentPart[] = imagemDataUrl
+      ? [
+          {
+            type: 'text',
+            text: userMessage || 'O cliente enviou esta imagem. Responda sobre ela.',
+          },
+          { type: 'image_url', image_url: { url: imagemDataUrl } },
+        ]
+      : userMessage;
+    messages.push({ role: 'user', content: userContent });
 
     // Modelos novos (série `o` e `gpt-5+`) NÃO aceitam `max_tokens` no
     // chat/completions — exigem `max_completion_tokens`. Os antigos (gpt-4o,
