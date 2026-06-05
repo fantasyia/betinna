@@ -249,16 +249,43 @@ export class EvolutionService {
     qr = this.extrairQr(resp);
     if (qr) return { status: 'CONNECTING', qrDataUrl: qr };
 
-    // 4. Conectou mas sem QR → diagnóstico (mostra as chaves da resposta).
+    // 4. Conectou mas SEM QR → instância travada (criada mas pareamento não saiu).
+    //    Reseta (deleta) e recria do ZERO — instância nova devolve QR na criação.
+    this.logger.warn(`[evolution] ${instance} sem QR no connect — resetando p/ forçar QR novo`);
+    await this.deletar(instance).catch(() => undefined);
+    const recriada = await this.criarInstancia(instance, this.webhookUrl()).catch(() => null);
+    qr =
+      this.extrairQr(recriada) ?? this.extrairQr(await this.conectar(instance).catch(() => null));
+    if (qr) return { status: 'CONNECTING', qrDataUrl: qr };
+
+    // 5. Ainda nada → diagnóstico (chaves da resposta) pra a gente ver o formato.
     const chaves =
       resp && typeof resp === 'object'
         ? Object.keys(resp as object).join(',')
         : String(typeof resp);
-    this.logger.warn(`[evolution] connect ${instance} sem QR — resposta tinha: ${chaves}`);
+    this.logger.warn(
+      `[evolution] connect ${instance} sem QR mesmo após reset — resposta: ${chaves}`,
+    );
     return {
       status: 'CONNECTING',
-      erro: `Evolution não devolveu QR (resposta: ${chaves}). Pode já estar pareando — tente de novo em ~5s.`,
+      erro: `Evolution não devolveu QR (resposta: ${chaves}). Tente de novo em ~5s.`,
     };
+  }
+
+  /**
+   * SÓ LEITURA — pro polling de status. Estado + QR atual, SEM criar/resetar
+   * (senão o poll do front ficaria recriando a instância sem parar).
+   */
+  async estadoComQr(instance: string): Promise<{
+    status: 'CONNECTED' | 'CONNECTING' | 'DISCONNECTED';
+    qrDataUrl?: string;
+  }> {
+    const estado = await this.estado(instance)
+      .then((s) => s?.instance?.state)
+      .catch(() => undefined);
+    if (estado === 'open') return { status: 'CONNECTED' };
+    const qr = this.extrairQr(await this.conectar(instance).catch(() => null));
+    return { status: 'CONNECTING', qrDataUrl: qr };
   }
 
   private soDigitos(numero: string): string {

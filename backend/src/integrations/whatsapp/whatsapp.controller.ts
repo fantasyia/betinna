@@ -43,7 +43,7 @@ export class WhatsAppController {
   })
   status(@CurrentUser() user: AuthenticatedUser) {
     const empresaId = this.requireEmpresa(user);
-    if (this.viaEvolution) return this.evolution.conectarOuEstado(this.instancia(empresaId));
+    if (this.viaEvolution) return this.evolution.estadoComQr(this.instancia(empresaId));
     return this.sessions.statusEmpresa(empresaId);
   }
 
