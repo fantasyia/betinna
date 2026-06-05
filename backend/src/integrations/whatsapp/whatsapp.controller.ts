@@ -7,6 +7,8 @@ import { Roles } from '@shared/decorators/roles.decorator';
 import { ForbiddenException } from '@shared/errors/app-exception';
 import { ErrorCode } from '@shared/errors/error-codes';
 import type { AuthenticatedUser } from '@shared/types/authenticated-user';
+import { EnvService } from '@config/env.service';
+import { EvolutionService } from '@integrations/evolution/evolution.service';
 import { WhatsAppSessionService } from './whatsapp-session.service';
 
 /**
@@ -20,7 +22,19 @@ import { WhatsAppSessionService } from './whatsapp-session.service';
 @ApiBearerAuth()
 @Controller('integracoes/whatsapp')
 export class WhatsAppController {
-  constructor(private readonly sessions: WhatsAppSessionService) {}
+  constructor(
+    private readonly sessions: WhatsAppSessionService,
+    private readonly env: EnvService,
+    private readonly evolution: EvolutionService,
+  ) {}
+
+  private get viaEvolution(): boolean {
+    return this.env.get('WHATSAPP_PROVIDER') === 'evolution';
+  }
+
+  private instancia(empresaId: string): string {
+    return EvolutionService.instanceName({ type: 'EMPRESA', id: empresaId });
+  }
 
   @Get('status')
   @Roles('ADMIN', 'DIRECTOR', 'SAC')
@@ -29,6 +43,7 @@ export class WhatsAppController {
   })
   status(@CurrentUser() user: AuthenticatedUser) {
     const empresaId = this.requireEmpresa(user);
+    if (this.viaEvolution) return this.evolution.conectarOuEstado(this.instancia(empresaId));
     return this.sessions.statusEmpresa(empresaId);
   }
 
@@ -44,6 +59,7 @@ export class WhatsAppController {
   })
   async conectar(@CurrentUser() user: AuthenticatedUser) {
     const empresaId = this.requireEmpresa(user);
+    if (this.viaEvolution) return this.evolution.conectarOuEstado(this.instancia(empresaId));
     return this.sessions.iniciarEmpresa(empresaId);
   }
 
@@ -54,7 +70,9 @@ export class WhatsAppController {
   @ApiOperation({ summary: 'Desconecta WhatsApp empresa. **DIRETOR-only (D45)**.' })
   async desconectar(@CurrentUser() user: AuthenticatedUser) {
     const empresaId = this.requireEmpresa(user);
-    await this.sessions.desconectarEmpresa(empresaId);
+    if (this.viaEvolution)
+      await this.evolution.logout(this.instancia(empresaId)).catch(() => undefined);
+    else await this.sessions.desconectarEmpresa(empresaId);
     return { ok: true };
   }
 
@@ -68,7 +86,9 @@ export class WhatsAppController {
   })
   async resetar(@CurrentUser() user: AuthenticatedUser) {
     const empresaId = this.requireEmpresa(user);
-    await this.sessions.resetarEmpresa(empresaId);
+    if (this.viaEvolution)
+      await this.evolution.deletar(this.instancia(empresaId)).catch(() => undefined);
+    else await this.sessions.resetarEmpresa(empresaId);
     return { ok: true };
   }
 

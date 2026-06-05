@@ -45,6 +45,16 @@ export const envSchema = z
     MULLERBOT_TRANSCRIBE_MODEL: z.string().default('whisper-1'),
     /** Modelo de VISÃO pra analisar imagens. Precisa enxergar imagem (gpt-4o-mini serve). */
     MULLERBOT_VISION_MODEL: z.string().default('gpt-4o-mini'),
+
+    // ─── WhatsApp: provider (Baileys embutido OU Evolution API separado) ───
+    /** Qual provider de WhatsApp usar. 'baileys' (atual) | 'evolution' (serviço separado). */
+    WHATSAPP_PROVIDER: z.enum(['baileys', 'evolution']).default('baileys'),
+    /** URL pública do Evolution API (serviço separado no Railway). Vazio = não usa. */
+    EVOLUTION_API_URL: z.string().default(''),
+    /** AUTHENTICATION_API_KEY global do Evolution (header `apikey`). */
+    EVOLUTION_API_KEY: z.string().default(''),
+    /** URL pública DESTE backend (com /api/v1), pro Evolution chamar nosso webhook. */
+    API_PUBLIC_URL: z.string().default(''),
     /** Limite total de tokens de entrada (system + user). Catálogo é truncado pra caber. */
     MULLERBOT_MAX_INPUT_TOKENS: z.coerce.number().int().positive().default(4000),
     /** Limite de tokens da resposta. */

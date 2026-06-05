@@ -21,6 +21,7 @@ import { ResendModule } from '@integrations/resend/resend.module';
 import { ShopeeModule } from '@integrations/shopee/shopee.module';
 import { TikTokModule } from '@integrations/tiktok/tiktok.module';
 import { WhatsAppModule } from '@integrations/whatsapp/whatsapp.module';
+import { EvolutionWebhookModule } from '@integrations/evolution/evolution-webhook.module';
 import { CampanhasModule } from '@modules/campanhas/campanhas.module';
 import { DeadLetterModule } from '@modules/dead-letter/dead-letter.module';
 import { RelatoriosModule } from '@modules/relatorios/relatorios.module';
@@ -210,6 +211,7 @@ import { SharedUtilsModule } from '@shared/utils/shared-utils.module';
     EmailModule,
     GoogleModule,
     WhatsAppModule,
+    EvolutionWebhookModule,
     MetaModule,
     MLModule,
     ShopeeModule,

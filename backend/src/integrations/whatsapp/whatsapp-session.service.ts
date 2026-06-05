@@ -114,6 +114,12 @@ export class WhatsAppSessionService implements OnModuleInit, OnModuleDestroy {
 
   async onModuleInit(): Promise<void> {
     if (this.env.get('NODE_ENV') === 'test') return;
+    // Provider Evolution ativo → o WhatsApp vive no Evolution (serviço separado).
+    // O Baileys embutido fica DORMENTE (não abre socket, não pede QR).
+    if (this.env.get('WHATSAPP_PROVIDER') === 'evolution') {
+      this.logger.log('WHATSAPP_PROVIDER=evolution — Baileys dormente (WhatsApp via Evolution).');
+      return;
+    }
     // CRÍTICO: só UM processo pode abrir o socket Baileys por número. A API e o
     // worker carregam o MESMO AppModule; sem esta trava, os DOIS abriam o socket
     // do mesmo número com a mesma credencial → o WhatsApp trata como CONFLITO e
@@ -971,7 +977,8 @@ export class WhatsAppSessionService implements OnModuleInit, OnModuleDestroy {
     }
   }
 
-  private extrairConteudo(msg: proto.IMessage | null | undefined): {
+  /** Público pra reúso pelo webhook do Evolution (mesmo formato de mensagem Baileys). */
+  extrairConteudo(msg: proto.IMessage | null | undefined): {
     conteudo: string;
     tipo: 'TEXT' | 'IMAGE' | 'AUDIO' | 'VIDEO' | 'DOCUMENT' | 'STICKER' | 'LOCATION' | 'CONTACT';
     mediaMime?: string;
