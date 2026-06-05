@@ -13,6 +13,16 @@ type RespostaQr = {
 };
 
 /**
+ * Status no formato que o front entende (WhatsAppPage). ⚠️ O front SÓ renderiza
+ * o QR quando status === 'QR_PENDING' — 'CONNECTING' mostra só "Conectando…".
+ */
+type EstadoWhats = {
+  status: 'CONNECTED' | 'CONNECTING' | 'QR_PENDING' | 'DISCONNECTED' | 'ERROR';
+  qrDataUrl?: string;
+  erro?: string;
+};
+
+/**
  * Cliente HTTP do **Evolution API v2** — WhatsApp não-oficial rodando como
  * serviço SEPARADO (Railway). O app deixa de hospedar o socket Baileys e vira
  * cliente: ENVIA por HTTP e RECEBE por webhook. Assim, deploy do app não derruba
@@ -205,15 +215,12 @@ export class EvolutionService {
   }
 
   /**
-   * Garante a instância criada (com webhook) e retorna o estado + QR.
-   * Falhas viram erro VISÍVEL (não engole em silêncio) pra a tela mostrar o que
-   * está errado. Diagnóstico no campo `erro` quando conecta mas não vem QR.
+   * Botão **Conectar**: garante a instância criada (com webhook) e devolve o QR.
+   * Falhas viram erro VISÍVEL (não engole em silêncio). **status 'QR_PENDING'
+   * quando há QR** — o front só renderiza o QR nesse status (em 'CONNECTING' ele
+   * esconde o QR e mostra só "Conectando…").
    */
-  async conectarOuEstado(instance: string): Promise<{
-    status: 'CONNECTED' | 'CONNECTING' | 'DISCONNECTED';
-    qrDataUrl?: string;
-    erro?: string;
-  }> {
+  async conectarOuEstado(instance: string): Promise<EstadoWhats> {
     if (!this.env.get('EVOLUTION_API_URL') || !this.env.get('EVOLUTION_API_KEY')) {
       throw new BusinessRuleException(
         'Evolution não configurado no backend: faltam EVOLUTION_API_URL e/ou EVOLUTION_API_KEY no env (api + worker).',
@@ -237,7 +244,7 @@ export class EvolutionService {
         `[evolution] criarInstancia ${instance}: ${this.detalheErro(err)} (segue pro connect)`,
       );
     }
-    if (qr) return { status: 'CONNECTING', qrDataUrl: qr };
+    if (qr) return { status: 'QR_PENDING', qrDataUrl: qr };
 
     // 3. Pega o QR pelo connect (serve pra instância nova OU já existente).
     let resp: unknown;
@@ -247,7 +254,7 @@ export class EvolutionService {
       throw new BusinessRuleException(`Falha ao conectar no Evolution: ${this.detalheErro(err)}.`);
     }
     qr = this.extrairQr(resp);
-    if (qr) return { status: 'CONNECTING', qrDataUrl: qr };
+    if (qr) return { status: 'QR_PENDING', qrDataUrl: qr };
 
     // 4. Conectou mas SEM QR → instância travada (criada mas pareamento não saiu).
     //    Reseta (deleta) e recria do ZERO — instância nova devolve QR na criação.
@@ -256,9 +263,9 @@ export class EvolutionService {
     const recriada = await this.criarInstancia(instance, this.webhookUrl()).catch(() => null);
     qr =
       this.extrairQr(recriada) ?? this.extrairQr(await this.conectar(instance).catch(() => null));
-    if (qr) return { status: 'CONNECTING', qrDataUrl: qr };
+    if (qr) return { status: 'QR_PENDING', qrDataUrl: qr };
 
-    // 5. Ainda nada → diagnóstico (chaves da resposta) pra a gente ver o formato.
+    // 5. Ainda nada → erro VISÍVEL com diagnóstico (chaves da resposta).
     const chaves =
       resp && typeof resp === 'object'
         ? Object.keys(resp as object).join(',')
@@ -267,25 +274,38 @@ export class EvolutionService {
       `[evolution] connect ${instance} sem QR mesmo após reset — resposta: ${chaves}`,
     );
     return {
-      status: 'CONNECTING',
-      erro: `Evolution não devolveu QR (resposta: ${chaves}). Tente de novo em ~5s.`,
+      status: 'ERROR',
+      erro: `Evolution não devolveu QR (resposta: ${chaves}). Tente "Conectar" de novo em ~5s.`,
     };
   }
 
   /**
-   * SÓ LEITURA — pro polling de status. Estado + QR atual, SEM criar/resetar
-   * (senão o poll do front ficaria recriando a instância sem parar).
+   * SÓ LEITURA — pro polling de status (não cria/reseta; o botão Conectar é quem
+   * cria). Mapeia o estado do Evolution pros status que o front entende:
+   * 'open'→CONNECTED, com QR→QR_PENDING (front mostra o QR), 404/sem instância→
+   * DISCONNECTED (front mostra o botão Conectar), senão CONNECTING.
    */
-  async estadoComQr(instance: string): Promise<{
-    status: 'CONNECTED' | 'CONNECTING' | 'DISCONNECTED';
-    qrDataUrl?: string;
-  }> {
+  async estadoComQr(instance: string): Promise<EstadoWhats> {
+    if (!this.env.get('EVOLUTION_API_URL') || !this.env.get('EVOLUTION_API_KEY')) {
+      return { status: 'DISCONNECTED' };
+    }
     const estado = await this.estado(instance)
       .then((s) => s?.instance?.state)
       .catch(() => undefined);
     if (estado === 'open') return { status: 'CONNECTED' };
-    const qr = this.extrairQr(await this.conectar(instance).catch(() => null));
-    return { status: 'CONNECTING', qrDataUrl: qr };
+
+    // QR da instância existente. 404 = instância ainda não foi criada → o front
+    // precisa de DISCONNECTED pra mostrar o botão Conectar (não travar em CONNECTING).
+    let qr: string | undefined;
+    let existe = true;
+    try {
+      qr = this.extrairQr(await this.conectar(instance));
+    } catch (err) {
+      if (err instanceof HttpClientError && err.status === 404) existe = false;
+    }
+    if (qr) return { status: 'QR_PENDING', qrDataUrl: qr };
+    if (!existe) return { status: 'DISCONNECTED' };
+    return { status: 'CONNECTING' };
   }
 
   private soDigitos(numero: string): string {
