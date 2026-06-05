@@ -580,7 +580,7 @@ function PromptFormModal({
             onChange={(e) => setTexto(e.target.value)}
             required
             rows={10}
-            maxLength={20000}
+            maxLength={50000}
             placeholder="Ex: Você é a Bê, entrevistadora comercial da MSM..."
             style={{
               width: '100%',

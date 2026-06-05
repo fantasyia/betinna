@@ -6,7 +6,7 @@ import { z } from 'zod';
 export const createBotPromptSchema = z.object({
   nome: z.string().trim().min(1).max(80),
   descricao: z.string().trim().max(1000).optional(),
-  texto: z.string().trim().min(1).max(20000),
+  texto: z.string().trim().min(1).max(50000),
   /** Override do modelo OpenAI (vazio = usa o da empresa/persona). */
   modelo: z.string().trim().max(60).optional(),
   temperatura: z.number().min(0).max(2).optional(),

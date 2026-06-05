@@ -498,13 +498,13 @@ export default function PersonaBotPage() {
                 setPrompt(e.target.value);
                 setDirty(true);
               }}
-              maxLength={20000}
+              maxLength={50000}
               rows={18}
               placeholder={PLACEHOLDER_PROMPT}
               className="font-mono text-[13px] leading-relaxed"
             />
             <div className="text-[10px] text-muted-light text-right mt-1 tabular">
-              {prompt.length}/20000
+              {prompt.length}/50000
             </div>
             {error && (
               <div className="mt-2 px-3 py-2 rounded-md bg-danger/10 border border-danger/30 text-danger text-sm flex items-start gap-2">
