@@ -377,8 +377,11 @@ export class ConversarIaService {
   }
 
   private async montarHistorico(conversationId: string): Promise<HistoricoMsg[]> {
+    // Inclui TODOS os tipos (não só TEXT): áudio transcrito (tipo=AUDIO) carrega
+    // a resposta do lead no conteudo. Filtrar só TEXT fazia a IA esquecer as
+    // respostas em áudio e re-perguntar tudo na entrevista.
     const msgs = await this.prisma.message.findMany({
-      where: { conversationId, tipo: 'TEXT' },
+      where: { conversationId },
       orderBy: { criadoEm: 'desc' },
       take: HISTORICO_MAX,
       select: { direction: true, conteudo: true, criadoEm: true },

@@ -153,7 +153,7 @@ export class MullerWhatsappService implements OnModuleInit {
         }),
         this.prisma.conversation.findUnique({
           where: { id: convId },
-          select: { botPausadoAte: true, botLigado: true },
+          select: { botPausadoAte: true, botLigado: true, precisaHumano: true },
         }),
       ]);
       const ligado = conv?.botLigado ?? empresa?.botWhatsappAtivo ?? false;
@@ -161,6 +161,15 @@ export class MullerWhatsappService implements OnModuleInit {
 
       // 3. Conversa pausada por handoff?
       if (conv?.botPausadoAte && conv.botPausadoAte.getTime() > Date.now()) return;
+
+      // 3.5 Já escalou pra humano? O bot CALA e espera o operador. Sem isso, depois
+      //     de escalar (ex: vídeo que não dá pra ler) o bot voltava a responder na
+      //     próxima mensagem, atropelando o atendimento humano. A flag é zerada
+      //     quando o operador responde (ou religa o bot), aí o bot volta sozinho.
+      if (conv?.precisaHumano) {
+        this.logger.log(`[bot] conv=${convId} precisa humano — bot aguarda o operador`);
+        return;
+      }
 
       // 4. Anti-spam — mesmo número floodando → pausa + manda pra humano
       if (this.ehSpam(params.empresaId, params.peerId)) {
@@ -404,8 +413,12 @@ export class MullerWhatsappService implements OnModuleInit {
     msgAtualId: string,
     limite = HISTORICO_MAX,
   ): Promise<HistoricoMsg[]> {
+    // Inclui TODOS os tipos (não só TEXT): áudio TRANSCRITO tem tipo=AUDIO e o
+    // texto no conteudo ("🎤 ..."). Filtrar só TEXT fazia o bot ESQUECER as
+    // respostas em áudio do cliente e re-perguntar tudo. Mídia sem texto entra
+    // como placeholder ("[imagem]") — contexto válido de "mandou uma foto aqui".
     const msgs = await this.prisma.message.findMany({
-      where: { conversationId, id: { not: msgAtualId }, tipo: 'TEXT' },
+      where: { conversationId, id: { not: msgAtualId } },
       orderBy: { criadoEm: 'desc' },
       take: limite,
       select: { direction: true, conteudo: true, criadoEm: true },

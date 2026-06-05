@@ -169,6 +169,16 @@ describe('MullerWhatsappService — regras do bot', () => {
     expect(inbox.responderComoBot).not.toHaveBeenCalled();
   });
 
+  it('NÃO responde se a conversa precisa de humano (espera o operador)', async () => {
+    prisma.conversation.findUnique = vi.fn(async () => ({
+      botPausadoAte: null,
+      precisaHumano: true,
+    }));
+    await aoReceber(build(prisma, inbox, muller), { ...baseParams });
+    expect(inbox.responderComoBot).not.toHaveBeenCalled();
+    expect(muller.responderComoEmpresa).not.toHaveBeenCalled();
+  });
+
   it('caminho feliz: envia a resposta da IA pelo bot', async () => {
     await aoReceber(build(prisma, inbox, muller), { ...baseParams });
     expect(muller.responderComoEmpresa).toHaveBeenCalledWith(
