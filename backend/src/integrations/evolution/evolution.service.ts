@@ -2,6 +2,7 @@ import { Injectable, Logger } from '@nestjs/common';
 import { createHash } from 'node:crypto';
 import { EnvService } from '@config/env.service';
 import { HttpClientService } from '@shared/http/http-client.service';
+import { HttpClientError } from '@shared/http/http-client.types';
 import { BusinessRuleException } from '@shared/errors/app-exception';
 
 /** O QR pode vir em vários campos dependendo da resposta do Evolution. */
@@ -103,6 +104,15 @@ export class EvolutionService {
   private extrairQr(resp: unknown): string | undefined {
     const r = (resp ?? {}) as RespostaQr;
     return r.qrcode?.base64 ?? r.base64 ?? r.qrcode?.code ?? r.code;
+  }
+
+  /** Detalha um erro HTTP incluindo o CORPO da resposta (o motivo real do Evolution). */
+  private detalheErro(err: unknown): string {
+    if (err instanceof HttpClientError) {
+      const corpo = err.body ? ` — ${JSON.stringify(err.body).slice(0, 300)}` : '';
+      return `HTTP ${err.status}${corpo}`;
+    }
+    return err instanceof Error ? err.message : String(err);
   }
 
   /** Estado: 'open' (conectado) | 'connecting' | 'close'. */
@@ -216,28 +226,25 @@ export class EvolutionService {
       .catch(() => undefined);
     if (estado === 'open') return { status: 'CONNECTED' };
 
-    // 2. Garante a instância (com webhook). A própria criação pode já trazer o QR.
+    // 2. Garante a instância (com webhook). A criação pode já trazer o QR.
+    //    Falha aqui NÃO é fatal: se a instância já existe (403 "already in use"
+    //    do primeiro clique), seguimos pro connect — que pega o QR da existente.
     let qr: string | undefined;
     try {
       qr = this.extrairQr(await this.criarInstancia(instance, this.webhookUrl()));
     } catch (err) {
-      const m = err instanceof Error ? err.message : String(err);
-      // "already exists" é esperado (instância já criada) — segue. Outro erro = falha real.
-      if (!/already|exist|in use|name/i.test(m)) {
-        throw new BusinessRuleException(
-          `Falha ao criar instância no Evolution: ${m}. Confira EVOLUTION_API_URL/EVOLUTION_API_KEY.`,
-        );
-      }
+      this.logger.warn(
+        `[evolution] criarInstancia ${instance}: ${this.detalheErro(err)} (segue pro connect)`,
+      );
     }
     if (qr) return { status: 'CONNECTING', qrDataUrl: qr };
 
-    // 3. Pega o QR pelo connect.
+    // 3. Pega o QR pelo connect (serve pra instância nova OU já existente).
     let resp: unknown;
     try {
       resp = await this.conectar(instance);
     } catch (err) {
-      const m = err instanceof Error ? err.message : String(err);
-      throw new BusinessRuleException(`Falha ao conectar no Evolution: ${m}.`);
+      throw new BusinessRuleException(`Falha ao conectar no Evolution: ${this.detalheErro(err)}.`);
     }
     qr = this.extrairQr(resp);
     if (qr) return { status: 'CONNECTING', qrDataUrl: qr };
