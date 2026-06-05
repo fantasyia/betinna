@@ -152,6 +152,29 @@ export class EvolutionService {
     return lista.find((i) => (i.name ?? i.instanceName) === instance) ?? null;
   }
 
+  /** Nomes das instâncias emp_/user_ existentes no Evolution (pro poll de fallback). */
+  async listarInstancias(): Promise<string[]> {
+    const lista = await this.req<Array<{ name?: string; instanceName?: string }>>(
+      'get',
+      '/instance/fetchInstances',
+    ).catch(() => null);
+    if (!Array.isArray(lista)) return [];
+    return lista.map((i) => i.name ?? i.instanceName ?? '').filter((n) => /^(emp|user)_/.test(n));
+  }
+
+  /**
+   * Mensagens recentes de uma instância (newest-first), pro poll de fallback que
+   * cobre o que o webhook perde quando o socket do Evolution oscila.
+   */
+  async mensagensRecentes(instance: string, limit = 30): Promise<unknown[]> {
+    const resp = await this.req<{ messages?: { records?: unknown[] } }>(
+      'post',
+      `/chat/findMessages/${encodeURIComponent(instance)}`,
+      { where: {}, page: 1, offset: limit },
+    ).catch(() => null);
+    return resp?.messages?.records ?? [];
+  }
+
   async logout(instance: string): Promise<unknown> {
     return this.req('delete', `/instance/logout/${encodeURIComponent(instance)}`);
   }

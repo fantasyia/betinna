@@ -4,10 +4,18 @@ import { PrismaService } from '@database/prisma.service';
 import { InboxService } from '@modules/inbox/inbox.service';
 import { WhatsAppSessionService } from '@integrations/whatsapp/whatsapp-session.service';
 import { WhatsAppMediaService } from '@integrations/whatsapp/whatsapp-media.service';
+import { EvolutionService } from './evolution.service';
 
 /** Mensagem como o Evolution entrega no webhook messages.upsert (formato Baileys). */
 interface EvoMessage {
-  key?: { remoteJid?: string; fromMe?: boolean; id?: string; participant?: string };
+  key?: {
+    remoteJid?: string;
+    fromMe?: boolean;
+    id?: string;
+    participant?: string;
+    /** WhatsApp LID: telefone real quando remoteJid vem como `<id>@lid`. */
+    remoteJidAlt?: string;
+  };
   pushName?: string;
   message?: proto.IMessage;
   messageType?: string;
@@ -37,7 +45,40 @@ export class EvolutionInboundService {
     private readonly inbox: InboxService,
     private readonly session: WhatsAppSessionService,
     private readonly media: WhatsAppMediaService,
+    private readonly evolution: EvolutionService,
   ) {}
+
+  /**
+   * FALLBACK (cron): puxa as mensagens recentes de cada instância e reprocessa
+   * idempotente. Cobre o que o webhook do Evolution PERDE quando o socket dele
+   * oscila — a mensagem fica salva no banco do Evolution mas o webhook não
+   * dispara. Janela 45s–12min: dá tempo do webhook entregar as novas (evita
+   * corrida + bot em dobro) e a dedup por externalId garante zero duplicata.
+   */
+  async sincronizarRecentes(): Promise<void> {
+    const instancias = await this.evolution.listarInstancias();
+    if (instancias.length === 0) return;
+    const agora = Date.now();
+    const PISO = 45_000; // 45s — webhook já teve a chance dele
+    const TETO = 12 * 60_000; // 12min — não revarre histórico antigo
+    let total = 0;
+    for (const instance of instancias) {
+      const records = (await this.evolution.mensagensRecentes(instance, 30)) as EvoMessage[];
+      const recentes = records.filter((m) => {
+        const ts = m.messageTimestamp ? Number(m.messageTimestamp) * 1000 : 0;
+        const idade = agora - ts;
+        return ts > 0 && idade >= PISO && idade <= TETO;
+      });
+      if (recentes.length === 0) continue;
+      await this.onMensagem(instance, { messages: recentes }).catch((err) => {
+        this.logger.warn(
+          `[evolution] sync ${instance}: ${err instanceof Error ? err.message : String(err)}`,
+        );
+      });
+      total += recentes.length;
+    }
+    if (total > 0) this.logger.debug(`[evolution] poll fallback varreu ${total} msg(s) recentes`);
+  }
 
   qrDe(instance: string): string | undefined {
     const q = this.qrPorInstancia.get(instance);
@@ -95,8 +136,19 @@ export class EvolutionInboundService {
     const proprietarioId = dono.type === 'USUARIO' ? dono.id : undefined;
 
     for (const m of msgs) {
-      const peerId = m.key?.remoteJid ?? '';
-      if (!peerId || peerId.endsWith('@broadcast') || peerId === 'status@broadcast') continue;
+      const rjid = m.key?.remoteJid ?? '';
+      // WhatsApp LID: o remoteJid vem como `<id>@lid` (ID opaco) e o telefone
+      // real fica em remoteJidAlt. Prefere o telefone (@s.whatsapp.net) — é
+      // estável e casa o cliente por sufixo; senão a conversa fica "sem contato".
+      const rjidAlt = m.key?.remoteJidAlt ?? '';
+      const peerId = rjid.endsWith('@lid') && rjidAlt ? rjidAlt : rjid;
+      if (
+        !peerId ||
+        peerId.endsWith('@broadcast') ||
+        peerId === 'status@broadcast' ||
+        peerId.endsWith('@g.us') // grupos: WhatsApp é 1:1 no nosso modelo
+      )
+        continue;
 
       const fromMe = !!m.key?.fromMe;
       const { conteudo, tipo, mediaMime, extras } = this.session.extrairConteudo(m.message);
