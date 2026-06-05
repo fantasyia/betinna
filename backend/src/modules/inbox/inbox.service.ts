@@ -183,6 +183,29 @@ export class InboxService {
   }
 
   /**
+   * DESTRUTIVO — apaga TODAS as conversas de WhatsApp da empresa + suas
+   * mensagens (do banco mesmo). Usado pra começar limpo na migração p/ Evolution.
+   * Apaga mensagens primeiro (FK), depois as conversas.
+   */
+  async limparWhatsapp(user: AuthenticatedUser): Promise<{ conversas: number; mensagens: number }> {
+    const empresaId = this.requireEmpresa(user);
+    const convs = await this.prisma.conversation.findMany({
+      where: { empresaId, canal: 'WHATSAPP' },
+      select: { id: true },
+    });
+    const ids = convs.map((c) => c.id);
+    if (ids.length === 0) return { conversas: 0, mensagens: 0 };
+    const msgs = await this.prisma.message.deleteMany({
+      where: { conversationId: { in: ids } },
+    });
+    const cs = await this.prisma.conversation.deleteMany({ where: { id: { in: ids } } });
+    this.logger.warn(
+      `[inbox] LIMPOU WhatsApp empresa=${empresaId}: ${cs.count} conversas + ${msgs.count} msgs (por ${user.email})`,
+    );
+    return { conversas: cs.count, mensagens: msgs.count };
+  }
+
+  /**
    * #25 fatia 2 — deriva o SLA da conversa: se a ÚLTIMA mensagem é do cliente
    * (INBOUND) e a conversa está aberta/pendente, retorna desde quando espera
    * resposta (`ultimaMsgEm`). Caso contrário, null (nada pendente). O front

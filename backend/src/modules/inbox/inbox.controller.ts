@@ -145,6 +145,18 @@ export class InboxController {
     return this.svc.list(user, query);
   }
 
+  @Delete('whatsapp/limpar')
+  @Roles('ADMIN', 'DIRECTOR')
+  @HttpCode(HttpStatus.OK)
+  @Audit({ action: 'inbox_limpar_whatsapp', resource: 'conversation' })
+  @ApiOperation({
+    summary:
+      'DESTRUTIVO — apaga TODAS as conversas+mensagens de WhatsApp da empresa (do banco). DIRETOR/ADMIN.',
+  })
+  limparWhatsapp(@CurrentUser() user: AuthenticatedUser) {
+    return this.svc.limparWhatsapp(user);
+  }
+
   @Get(':id')
   findById(@CurrentUser() user: AuthenticatedUser, @Param('id') id: string) {
     return this.svc.findById(user, id);

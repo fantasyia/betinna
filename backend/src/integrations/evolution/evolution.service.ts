@@ -2,6 +2,14 @@ import { Injectable, Logger } from '@nestjs/common';
 import { createHash } from 'node:crypto';
 import { EnvService } from '@config/env.service';
 import { HttpClientService } from '@shared/http/http-client.service';
+import { BusinessRuleException } from '@shared/errors/app-exception';
+
+/** O QR pode vir em vários campos dependendo da resposta do Evolution. */
+type RespostaQr = {
+  base64?: string;
+  code?: string;
+  qrcode?: { base64?: string; code?: string };
+};
 
 /**
  * Cliente HTTP do **Evolution API v2** — WhatsApp não-oficial rodando como
@@ -65,7 +73,10 @@ export class EvolutionService {
   // ─── Instâncias ───────────────────────────────────────────────────────────
 
   /** Cria a instância (idempotente do lado nosso — se já existe, o Evolution avisa). */
-  async criarInstancia(instance: string, webhookUrl?: string): Promise<{ hash?: string }> {
+  async criarInstancia(
+    instance: string,
+    webhookUrl?: string,
+  ): Promise<{ hash?: string } & RespostaQr> {
     return this.req('post', '/instance/create', {
       instanceName: instance,
       integration: 'WHATSAPP-BAILEYS',
@@ -84,10 +95,14 @@ export class EvolutionService {
   }
 
   /** QR code (base64) pra parear. Também (re)conecta uma instância existente. */
-  async conectar(
-    instance: string,
-  ): Promise<{ base64?: string; code?: string; pairingCode?: string }> {
+  async conectar(instance: string): Promise<RespostaQr> {
     return this.req('get', `/instance/connect/${encodeURIComponent(instance)}`);
+  }
+
+  /** Extrai o QR (base64) de qualquer formato de resposta do Evolution. */
+  private extrairQr(resp: unknown): string | undefined {
+    const r = (resp ?? {}) as RespostaQr;
+    return r.qrcode?.base64 ?? r.base64 ?? r.qrcode?.code ?? r.code;
   }
 
   /** Estado: 'open' (conectado) | 'connecting' | 'close'. */
@@ -181,17 +196,62 @@ export class EvolutionService {
 
   /**
    * Garante a instância criada (com webhook) e retorna o estado + QR.
-   * Usado pela tela de conectar — idempotente (recriar é best-effort).
+   * Falhas viram erro VISÍVEL (não engole em silêncio) pra a tela mostrar o que
+   * está errado. Diagnóstico no campo `erro` quando conecta mas não vem QR.
    */
-  async conectarOuEstado(
-    instance: string,
-  ): Promise<{ status: 'CONNECTED' | 'CONNECTING' | 'DISCONNECTED'; qrDataUrl?: string }> {
-    const st = await this.estado(instance).catch(() => null);
-    if (st?.instance?.state === 'open') return { status: 'CONNECTED' };
-    // Não conectado → garante instância + webhook, pega o QR.
-    await this.criarInstancia(instance, this.webhookUrl()).catch(() => undefined);
-    const qr = await this.conectar(instance).catch(() => null);
-    return { status: 'CONNECTING', qrDataUrl: qr?.base64 ?? undefined };
+  async conectarOuEstado(instance: string): Promise<{
+    status: 'CONNECTED' | 'CONNECTING' | 'DISCONNECTED';
+    qrDataUrl?: string;
+    erro?: string;
+  }> {
+    if (!this.env.get('EVOLUTION_API_URL') || !this.env.get('EVOLUTION_API_KEY')) {
+      throw new BusinessRuleException(
+        'Evolution não configurado no backend: faltam EVOLUTION_API_URL e/ou EVOLUTION_API_KEY no env (api + worker).',
+      );
+    }
+
+    // 1. Já conectado? (estado pode falhar se a instância ainda não existe)
+    const estado = await this.estado(instance)
+      .then((s) => s?.instance?.state)
+      .catch(() => undefined);
+    if (estado === 'open') return { status: 'CONNECTED' };
+
+    // 2. Garante a instância (com webhook). A própria criação pode já trazer o QR.
+    let qr: string | undefined;
+    try {
+      qr = this.extrairQr(await this.criarInstancia(instance, this.webhookUrl()));
+    } catch (err) {
+      const m = err instanceof Error ? err.message : String(err);
+      // "already exists" é esperado (instância já criada) — segue. Outro erro = falha real.
+      if (!/already|exist|in use|name/i.test(m)) {
+        throw new BusinessRuleException(
+          `Falha ao criar instância no Evolution: ${m}. Confira EVOLUTION_API_URL/EVOLUTION_API_KEY.`,
+        );
+      }
+    }
+    if (qr) return { status: 'CONNECTING', qrDataUrl: qr };
+
+    // 3. Pega o QR pelo connect.
+    let resp: unknown;
+    try {
+      resp = await this.conectar(instance);
+    } catch (err) {
+      const m = err instanceof Error ? err.message : String(err);
+      throw new BusinessRuleException(`Falha ao conectar no Evolution: ${m}.`);
+    }
+    qr = this.extrairQr(resp);
+    if (qr) return { status: 'CONNECTING', qrDataUrl: qr };
+
+    // 4. Conectou mas sem QR → diagnóstico (mostra as chaves da resposta).
+    const chaves =
+      resp && typeof resp === 'object'
+        ? Object.keys(resp as object).join(',')
+        : String(typeof resp);
+    this.logger.warn(`[evolution] connect ${instance} sem QR — resposta tinha: ${chaves}`);
+    return {
+      status: 'CONNECTING',
+      erro: `Evolution não devolveu QR (resposta: ${chaves}). Pode já estar pareando — tente de novo em ~5s.`,
+    };
   }
 
   private soDigitos(numero: string): string {
