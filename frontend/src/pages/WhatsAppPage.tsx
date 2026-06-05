@@ -154,6 +154,9 @@ function SessionPanel({ scope, canManage }: { scope: Scope; canManage: boolean }
   const [busy, setBusy] = useState<'conectar' | 'desconectar' | 'resetar' | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
   const [confirmReset, setConfirmReset] = useState(false);
+  const [confirmLimpar, setConfirmLimpar] = useState(false);
+  const [limpando, setLimpando] = useState(false);
+  const [limparMsg, setLimparMsg] = useState<string | null>(null);
   const cancelledRef = useRef(false);
 
   useEffect(() => {
@@ -200,6 +203,24 @@ function SessionPanel({ scope, canManage }: { scope: Scope; canManage: boolean }
     } finally {
       setBusy(null);
       setConfirmReset(false);
+    }
+  }
+
+  // Limpa TODAS as conversas+mensagens de WhatsApp da empresa (DESTRUTIVO).
+  // Não desconecta o número — só zera o histórico no banco.
+  async function limparWhatsapp() {
+    setLimpando(true);
+    setLimparMsg(null);
+    try {
+      const r = await api.delete<{ conversas: number; mensagens: number }>(
+        '/inbox/whatsapp/limpar',
+      );
+      setLimparMsg(`✓ Apagado: ${r.conversas} conversa(s) e ${r.mensagens} mensagem(ns).`);
+    } catch (err) {
+      setLimparMsg(err instanceof ApiError ? `Falha: ${err.message}` : 'Falha ao limpar.');
+    } finally {
+      setLimpando(false);
+      setConfirmLimpar(false);
     }
   }
 
@@ -480,6 +501,75 @@ function SessionPanel({ scope, canManage }: { scope: Scope; canManage: boolean }
               }}
             >
               {actionError}
+            </div>
+          )}
+
+          {/* Manutenção — limpar mensagens de WhatsApp (DESTRUTIVO, empresa toda) */}
+          {scope === 'empresa' && canManage && (
+            <div
+              style={{
+                marginTop: '1.5rem',
+                paddingTop: '1rem',
+                borderTop: `1px solid ${colors.border}`,
+              }}
+            >
+              <div style={{ fontSize: 13, fontWeight: 600, marginBottom: 4 }}>Manutenção</div>
+              <p
+                style={{
+                  fontSize: 12,
+                  color: colors.muted,
+                  marginTop: 0,
+                  marginBottom: '0.75rem',
+                }}
+              >
+                Apaga <strong>todas</strong> as conversas e mensagens de WhatsApp da empresa (no
+                banco). Útil pra zerar o histórico antes de começar os disparos.{' '}
+                <strong>Não desconecta</strong> o número.
+              </p>
+              {!confirmLimpar ? (
+                <button
+                  type="button"
+                  data-testid="wa-limpar"
+                  disabled={limpando}
+                  onClick={() => {
+                    setLimparMsg(null);
+                    setConfirmLimpar(true);
+                  }}
+                  style={btnDanger}
+                >
+                  Limpar mensagens do WhatsApp
+                </button>
+              ) : (
+                <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
+                  <button
+                    type="button"
+                    onClick={() => setConfirmLimpar(false)}
+                    style={btnSecondary}
+                  >
+                    Cancelar
+                  </button>
+                  <button
+                    type="button"
+                    data-testid="wa-limpar-confirm"
+                    disabled={limpando}
+                    onClick={() => void limparWhatsapp()}
+                    style={btnDanger}
+                  >
+                    {limpando ? 'Apagando…' : 'Confirmar — apagar TUDO de WhatsApp'}
+                  </button>
+                </div>
+              )}
+              {limparMsg && (
+                <div
+                  style={{
+                    marginTop: '0.75rem',
+                    fontSize: 13,
+                    color: limparMsg.startsWith('✓') ? colors.success : colors.danger,
+                  }}
+                >
+                  {limparMsg}
+                </div>
+              )}
             </div>
           )}
         </>
