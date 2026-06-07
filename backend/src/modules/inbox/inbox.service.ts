@@ -206,6 +206,29 @@ export class InboxService {
   }
 
   /**
+   * Zera UMA conversa: apaga as mensagens da thread (o bot monta contexto pelo
+   * histórico → isso reseta a "memória" dele) e zera não-lidas + precisaHumano.
+   * MANTÉM a conversa e o contato — pra testar o bot do zero sem trocar de número.
+   * Escopo por tenant/papel (mesma regra de visibilidade da Inbox).
+   */
+  async limparConversa(user: AuthenticatedUser, id: string): Promise<{ mensagens: number }> {
+    const conv = await this.prisma.conversation.findFirst({
+      where: { id, ...this.baseWhere(user) },
+      select: { id: true },
+    });
+    if (!conv) throw new NotFoundException('Conversation', id);
+    const msgs = await this.prisma.message.deleteMany({ where: { conversationId: id } });
+    await this.prisma.conversation.update({
+      where: { id },
+      data: { naoLidas: 0, precisaHumano: false, ultimaMsgPreview: null },
+    });
+    this.logger.warn(
+      `[inbox] conversa ${id} ZERADA: ${msgs.count} msgs apagadas (por ${user.email})`,
+    );
+    return { mensagens: msgs.count };
+  }
+
+  /**
    * #25 fatia 2 — deriva o SLA da conversa: se a ÚLTIMA mensagem é do cliente
    * (INBOUND) e a conversa está aberta/pendente, retorna desde quando espera
    * resposta (`ultimaMsgEm`). Caso contrário, null (nada pendente). O front

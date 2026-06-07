@@ -1000,6 +1000,10 @@ function ConversationThread({
   const [notasDrawerOpen, setNotasDrawerOpen] = useState(false);
   const [novaTag, setNovaTag] = useState('');
   const [salvandoTags, setSalvandoTags] = useState(false);
+  // "Zerar conversa" (testar bot): confirma em 2 cliques. ADMIN/DIRECTOR.
+  const role = useRole();
+  const podeZerar = role === 'ADMIN' || role === 'DIRECTOR';
+  const [confirmZerar, setConfirmZerar] = useState(false);
 
   // Sprint 2.3 — respostas rápidas / templates (dropdown ao digitar "/").
   const templates = useApiQuery<RespostaRapida[]>('/respostas-rapidas');
@@ -1346,6 +1350,23 @@ function ConversationThread({
     }
   }
 
+  // Zera a conversa: apaga as mensagens da thread (reseta a memória do bot, que
+  // monta contexto pelo histórico) e zera não-lidas/precisaHumano. Mantém o contato.
+  async function zerarConversa() {
+    try {
+      const r = await api.delete<{ mensagens: number }>(`/inbox/${id}/mensagens`);
+      toast.success(
+        'Conversa zerada',
+        `${r.mensagens} mensagem(ns) apagada(s) — memória do bot resetada.`,
+      );
+      msgs.refetch();
+      conv.refetch();
+      onChanged();
+    } catch (err) {
+      toast.error('Falha ao zerar conversa', err instanceof ApiError ? err.message : undefined);
+    }
+  }
+
   // Item #25 — tags de triagem. Recalcula o array completo e manda no PUT
   // (o backend troca a lista inteira). Atualiza a UI com a resposta.
   const tagsAtuais = conv.data?.tagsInternas ?? [];
@@ -1481,6 +1502,29 @@ function ConversationThread({
             >
               Notas
             </Button>
+            {/* Zerar conversa — apaga as mensagens da thread e reseta a memória do
+                bot (útil pra testar o prompt do zero). 2 cliques pra confirmar. */}
+            {podeZerar && (
+              <Button
+                type="button"
+                variant={confirmZerar ? 'danger' : 'ghost'}
+                size="sm"
+                data-testid="inbox-zerar-conversa-btn"
+                onClick={() => {
+                  if (confirmZerar) {
+                    setConfirmZerar(false);
+                    void zerarConversa();
+                  } else {
+                    setConfirmZerar(true);
+                    setTimeout(() => setConfirmZerar(false), 3000);
+                  }
+                }}
+                leftIcon={<Trash2 className="h-3.5 w-3.5" />}
+                title="Zerar conversa: apaga as mensagens e reseta a memória do bot (mantém o contato)"
+              >
+                {confirmZerar ? 'Confirmar?' : 'Zerar'}
+              </Button>
+            )}
             <Button
               type="button"
               variant="secondary"

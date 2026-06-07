@@ -172,6 +172,18 @@ export class InboxController {
     return this.svc.listMensagens(user, id, query);
   }
 
+  @Delete(':id/mensagens')
+  @Roles('ADMIN', 'DIRECTOR')
+  @HttpCode(HttpStatus.OK)
+  @Audit({ action: 'inbox_zerar_conversa', resource: 'conversation', resourceIdFrom: 'params.id' })
+  @ApiOperation({
+    summary:
+      'Zera a conversa: apaga as mensagens da thread (reseta a memória do bot). Mantém o contato. ADMIN/DIRECTOR.',
+  })
+  limparConversa(@CurrentUser() user: AuthenticatedUser, @Param('id') id: string) {
+    return this.svc.limparConversa(user, id);
+  }
+
   @Post(':id/responder')
   @Audit({ action: 'responder', resource: 'conversation', resourceIdFrom: 'params.id' })
   @ApiOperation({ summary: 'Envia mensagem de resposta pelo canal da conversa' })
