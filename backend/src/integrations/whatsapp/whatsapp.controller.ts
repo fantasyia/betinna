@@ -49,9 +49,9 @@ export class WhatsAppController {
 
   @Post('conectar')
   @Roles('ADMIN', 'DIRECTOR')
-  // Throttle estrito: WhatsApp pairing é processo caro (gera QR + escuta socket).
-  // 5 req/hora por user previne abuse / accidental loops.
-  @Throttle({ default: { limit: 5, ttl: seconds(60 * 60) } })
+  // Throttle: pairing é caro (reset forte + cria instância). 12/min por user
+  // previne loop acidental sem travar reconexão/debug legítimos (5/hora era pouco).
+  @Throttle({ default: { limit: 12, ttl: seconds(60) } })
   @Audit({ action: 'whatsapp_empresa_conectar', resource: 'integracao' })
   @ApiOperation({
     summary:
