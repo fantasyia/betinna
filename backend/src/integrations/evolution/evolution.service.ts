@@ -131,25 +131,58 @@ export class EvolutionService {
   }
 
   /**
-   * Busca UMA instância no fetchInstances — traz `ownerJid` (= já pareada) e
-   * `connectionStatus`. Usado pra DECIDIR se pode chamar connect: numa instância
-   * já pareada, chamar connect reinicia o socket e DERRUBA a sessão.
+   * Busca UMA instância no fetchInstances — traz `ownerJid` (= já pareada),
+   * `connectionStatus` e `disconnectionReasonCode`. O reason 401 = deslogada:
+   * o Evolution às vezes deixa o connectionStatus preso em 'open' mesmo deslogado
+   * (instância ZUMBI) — só dá pra detectar pelo reason.
    */
-  private async buscarInstancia(
-    instance: string,
-  ): Promise<{ connectionStatus?: string; ownerJid?: string | null } | null> {
+  private async buscarInstancia(instance: string): Promise<{
+    connectionStatus?: string;
+    ownerJid?: string | null;
+    disconnectionReasonCode?: number | null;
+  } | null> {
     const lista = await this.req<
       Array<{
         name?: string;
         instanceName?: string;
         connectionStatus?: string;
         ownerJid?: string | null;
+        disconnectionReasonCode?: number | null;
       }>
     >('get', `/instance/fetchInstances?instanceName=${encodeURIComponent(instance)}`).catch(
       () => null,
     );
     if (!Array.isArray(lista)) return null;
     return lista.find((i) => (i.name ?? i.instanceName) === instance) ?? null;
+  }
+
+  /** True quando a instância está REALMENTE conectada (open E não deslogada/401). */
+  private saudavel(inst: {
+    connectionStatus?: string;
+    disconnectionReasonCode?: number | null;
+  }): boolean {
+    return inst.connectionStatus === 'open' && inst.disconnectionReasonCode == null;
+  }
+
+  private sleep(ms: number): Promise<void> {
+    return new Promise((r) => setTimeout(r, ms));
+  }
+
+  /**
+   * Reset FORTE — destrói a instância mesmo travada/zumbi. O Evolution recusa
+   * logout/delete numa instância 'open' (500/400), então primeiro dá RESTART
+   * (desgruda o socket preso em 'open' na memória dele), espera re-inicializar,
+   * e aí desloga + deleta. Tudo best-effort: o que importa é sair do 'open'.
+   */
+  async resetarForte(instance: string): Promise<void> {
+    await this.req('post', `/instance/restart/${encodeURIComponent(instance)}`).catch(
+      () => undefined,
+    );
+    await this.sleep(4000); // socket re-inicializa e sai do 'open' travado
+    await this.logout(instance).catch(() => undefined);
+    await this.sleep(1500);
+    await this.deletar(instance).catch(() => undefined);
+    this.logger.warn(`[evolution] ${instance} reset forte (restart+logout+delete) executado`);
   }
 
   /** Nomes das instâncias emp_/user_ existentes no Evolution (pro poll de fallback). */
@@ -260,10 +293,11 @@ export class EvolutionService {
   }
 
   /**
-   * Botão **Conectar**: garante a instância criada (com webhook) e devolve o QR.
-   * Falhas viram erro VISÍVEL (não engole em silêncio). **status 'QR_PENDING'
-   * quando há QR** — o front só renderiza o QR nesse status (em 'CONNECTING' ele
-   * esconde o QR e mostra só "Conectando…").
+   * Botão **Conectar** — AUTO-CURÁVEL. Se já está REALMENTE conectado (open E sem
+   * logout), diz CONNECTED. Se está zumbi/travado/deslogado/qualquer estado
+   * não-são, faz RESET FORTE (restart+logout+delete) e recria do zero — assim
+   * SEMPRE sai um QR novo, sem precisar mexer no Evolution. status 'QR_PENDING'
+   * quando há QR (o front só renderiza o QR nesse status).
    */
   async conectarOuEstado(instance: string): Promise<EstadoWhats> {
     if (!this.env.get('EVOLUTION_API_URL') || !this.env.get('EVOLUTION_API_KEY')) {
@@ -272,15 +306,20 @@ export class EvolutionService {
       );
     }
 
-    // 1. Já conectado? (estado pode falhar se a instância ainda não existe)
-    const estado = await this.estado(instance)
-      .then((s) => s?.instance?.state)
-      .catch(() => undefined);
-    if (estado === 'open') return { status: 'CONNECTED' };
+    // 1. Já REALMENTE conectado? (open E sem logout). Zumbi 'open'+401 NÃO conta.
+    const inst = await this.buscarInstancia(instance);
+    if (inst && this.saudavel(inst)) return { status: 'CONNECTED' };
 
-    // 2. Garante a instância (com webhook). A criação pode já trazer o QR.
-    //    Falha aqui NÃO é fatal: se a instância já existe (403 "already in use"
-    //    do primeiro clique), seguimos pro connect — que pega o QR da existente.
+    // 2. Existe mas NÃO está são (zumbi/close/deslogado) → RESET FORTE antes de
+    //    recriar (senão o Evolution recusa recriar/deletar a instância travada).
+    if (inst) {
+      this.logger.warn(
+        `[evolution] ${instance} não-são (status=${inst.connectionStatus} reason=${inst.disconnectionReasonCode ?? 'null'}) — reset forte`,
+      );
+      await this.resetarForte(instance);
+    }
+
+    // 3. Cria do ZERO (com webhook) — a criação já costuma trazer o QR.
     let qr: string | undefined;
     try {
       qr = this.extrairQr(await this.criarInstancia(instance, this.webhookUrl()));
@@ -291,23 +330,12 @@ export class EvolutionService {
     }
     if (qr) return { status: 'QR_PENDING', qrDataUrl: qr };
 
-    // 3. Pega o QR pelo connect (serve pra instância nova OU já existente).
-    let resp: unknown;
-    try {
-      resp = await this.conectar(instance);
-    } catch (err) {
-      throw new BusinessRuleException(`Falha ao conectar no Evolution: ${this.detalheErro(err)}.`);
-    }
+    // 4. Fallback: QR pelo connect.
+    const resp = await this.conectar(instance).catch((err) => {
+      this.logger.warn(`[evolution] connect ${instance}: ${this.detalheErro(err)}`);
+      return null;
+    });
     qr = this.extrairQr(resp);
-    if (qr) return { status: 'QR_PENDING', qrDataUrl: qr };
-
-    // 4. Conectou mas SEM QR → instância travada (criada mas pareamento não saiu).
-    //    Reseta (deleta) e recria do ZERO — instância nova devolve QR na criação.
-    this.logger.warn(`[evolution] ${instance} sem QR no connect — resetando p/ forçar QR novo`);
-    await this.deletar(instance).catch(() => undefined);
-    const recriada = await this.criarInstancia(instance, this.webhookUrl()).catch(() => null);
-    qr =
-      this.extrairQr(recriada) ?? this.extrairQr(await this.conectar(instance).catch(() => null));
     if (qr) return { status: 'QR_PENDING', qrDataUrl: qr };
 
     // 5. Ainda nada → erro VISÍVEL com diagnóstico (chaves da resposta).
@@ -315,23 +343,22 @@ export class EvolutionService {
       resp && typeof resp === 'object'
         ? Object.keys(resp as object).join(',')
         : String(typeof resp);
-    this.logger.warn(
-      `[evolution] connect ${instance} sem QR mesmo após reset — resposta: ${chaves}`,
-    );
+    this.logger.warn(`[evolution] ${instance} sem QR mesmo após reset forte — resposta: ${chaves}`);
     return {
       status: 'ERROR',
-      erro: `Evolution não devolveu QR (resposta: ${chaves}). Tente "Conectar" de novo em ~5s.`,
+      erro: `Evolution não devolveu QR (${chaves}). Clique "Resetar credenciais" e tente de novo.`,
     };
   }
 
   /**
-   * SÓ LEITURA — pro polling de status. **NÃO chama connect numa instância já
-   * pareada** (isso reiniciaria o socket e derrubaria a sessão — era o bug do
-   * "parou de receber depois de 2min"). Usa fetchInstances pra saber se já tem
-   * dono (`ownerJid`):
-   *  - sem instância → DISCONNECTED (front mostra Conectar)
-   *  - connectionStatus 'open' → CONNECTED
-   *  - JÁ pareada mas não 'open' → CONNECTING (só reconectando; NÃO mexe)
+   * SÓ LEITURA — pro polling de status. Detecta a instância ZUMBI (open mas
+   * deslogada/401) e reporta DISCONNECTED pro botão Conectar aparecer (o Conectar
+   * faz o reset forte). NÃO chama connect numa instância pareada e saudável
+   * (derrubaria a sessão — era o bug do "parou depois de 2min").
+   *  - sem instância → DISCONNECTED
+   *  - REALMENTE conectada (open + sem logout) → CONNECTED
+   *  - pareada e só reconectando (connecting, sem logout) → CONNECTING (não mexe)
+   *  - zumbi / close / deslogada → DISCONNECTED (Conectar reseta+recria)
    *  - nunca pareada → connect pra pegar o QR → QR_PENDING
    */
   async estadoComQr(instance: string): Promise<EstadoWhats> {
@@ -339,17 +366,24 @@ export class EvolutionService {
       return { status: 'DISCONNECTED' };
     }
     const inst = await this.buscarInstancia(instance);
-    if (!inst) return { status: 'DISCONNECTED' }; // não existe → botão Conectar
-    if (inst.connectionStatus === 'open') return { status: 'CONNECTED' };
+    if (!inst) return { status: 'DISCONNECTED' };
+    if (this.saudavel(inst)) return { status: 'CONNECTED' };
 
-    // Já pareada (tem ownerJid) e só reconectando → NÃO chama connect (derrubaria
-    // a sessão). O Baileys do Evolution reconecta sozinho com as credenciais.
-    if (inst.ownerJid) return { status: 'CONNECTING' };
-
-    // Nunca pareada → busca o QR pra parear (aqui connect é seguro).
-    const qr = this.extrairQr(await this.conectar(instance).catch(() => null));
-    if (qr) return { status: 'QR_PENDING', qrDataUrl: qr };
-    return { status: 'CONNECTING' };
+    // Pareada e só reconectando (sem logout) → não mexe (Baileys reconecta sozinho).
+    if (
+      inst.ownerJid &&
+      inst.connectionStatus === 'connecting' &&
+      inst.disconnectionReasonCode == null
+    ) {
+      return { status: 'CONNECTING' };
+    }
+    // Nunca pareada → tenta o QR direto (connect é seguro aqui).
+    if (!inst.ownerJid) {
+      const qr = this.extrairQr(await this.conectar(instance).catch(() => null));
+      if (qr) return { status: 'QR_PENDING', qrDataUrl: qr };
+    }
+    // Zumbi (open+401) / close / deslogada → DISCONNECTED pro botão Conectar.
+    return { status: 'DISCONNECTED' };
   }
 
   private soDigitos(numero: string): string {

@@ -87,7 +87,7 @@ export class WhatsAppController {
   async resetar(@CurrentUser() user: AuthenticatedUser) {
     const empresaId = this.requireEmpresa(user);
     if (this.viaEvolution)
-      await this.evolution.deletar(this.instancia(empresaId)).catch(() => undefined);
+      await this.evolution.resetarForte(this.instancia(empresaId)).catch(() => undefined);
     else await this.sessions.resetarEmpresa(empresaId);
     return { ok: true };
   }
