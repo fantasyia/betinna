@@ -140,7 +140,10 @@ export class InboxService {
     const conds: Prisma.ConversationWhereInput[] = [];
 
     if (params.canal) conds.push({ canal: params.canal });
+    // Status: filtro explícito quando informado; senão, lista só as ATIVAS
+    // (esconde RESOLVIDA/ARQUIVADA) — resolver uma conversa a tira da aba ativa.
     if (params.status) conds.push({ status: params.status });
+    else conds.push({ status: { notIn: ['RESOLVIDA', 'ARQUIVADA'] } });
     if (params.clienteId) conds.push({ clienteId: params.clienteId });
     if (params.meu) conds.push({ atribuidoId: user.id });
     if (params.atribuidoId) conds.push({ atribuidoId: params.atribuidoId });

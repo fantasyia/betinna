@@ -584,7 +584,9 @@ export default function InboxPage() {
                   value={status}
                   onChange={(e) => setStatus(e.target.value)}
                 >
-                  <option value="">Todos status</option>
+                  {/* Vazio = ativas (não mostra Resolvida/Arquivada). Escolha
+                      explícita pra ver as resolvidas/arquivadas. */}
+                  <option value="">Ativas (abertas/pendentes)</option>
                   {(Object.keys(STATUS_LABEL) as ConversationStatus[]).map((s) => (
                     <option key={s} value={s}>
                       {STATUS_LABEL[s]}
@@ -1560,18 +1562,26 @@ function ConversationThread({
                 {confirmZerar ? 'Confirmar?' : 'Zerar'}
               </Button>
             )}
-            <Button
-              type="button"
-              variant="secondary"
-              size="sm"
-              data-testid="inbox-status-btn"
-              onClick={() => setStatusOpen(true)}
-              rightIcon={<ChevronDown className="h-3 w-3" />}
+            {/* Status — dropdown inline: troca direto pra Aberta/Pendente/Resolvida/
+                Arquivada (Resolvida sai da lista ativa → "vai pra outra aba"). */}
+            <label
+              className="flex items-center gap-1 text-[11px] text-muted whitespace-nowrap"
+              title="Mudar o status da conversa"
             >
-              <Badge variant={STATUS_VARIANT[c.status]} size="sm">
-                {STATUS_LABEL[c.status]}
-              </Badge>
-            </Button>
+              Status:
+              <select
+                data-testid="inbox-status-select"
+                value={c.status}
+                onChange={(e) => void mudarStatus(e.target.value as ConversationStatus)}
+                className="rounded-md border border-border-strong bg-surface px-1.5 py-1 text-[11px] text-text"
+              >
+                {(Object.keys(STATUS_LABEL) as ConversationStatus[]).map((s) => (
+                  <option key={s} value={s}>
+                    {STATUS_LABEL[s]}
+                  </option>
+                ))}
+              </select>
+            </label>
             <Button
               type="button"
               variant="ghost"
@@ -1606,21 +1616,33 @@ function ConversationThread({
                     <option value="off">Desligado</option>
                   </select>
                 </label>
-                {/* Pausa rápida (janela temporária) — só faz sentido quando segue o global */}
-                {c.botLigado == null && (
+                {/* RELIGAR — aparece SEMPRE que o bot está travado nesta conversa
+                    (pausado OU escalado pra humano), independente do override.
+                    Antes só no modo "Padrão", então em "Ligado" você tinha que
+                    desativar+ativar. Religar limpa a pausa E o "precisa humano". */}
+                {(botPausadoConv || c.precisaHumano) && (
+                  <Button
+                    type="button"
+                    variant="secondary"
+                    size="sm"
+                    data-testid="inbox-bot-religar"
+                    onClick={() => alternarBot('religar')}
+                    title="Religar o bot Muller agora (limpa a pausa e o 'precisa humano')"
+                  >
+                    ▶ Religar bot
+                  </Button>
+                )}
+                {/* PAUSAR — só no modo Padrão e quando NÃO está pausado/escalado. */}
+                {c.botLigado == null && !botPausadoConv && !c.precisaHumano && (
                   <Button
                     type="button"
                     variant="ghost"
                     size="sm"
                     data-testid="inbox-bot-btn"
-                    onClick={() => alternarBot(botPausadoConv ? 'religar' : 'pausar')}
-                    title={
-                      botPausadoConv
-                        ? 'Religar o bot Muller nesta conversa'
-                        : 'Pausar o bot Muller nesta conversa (atendimento humano)'
-                    }
+                    onClick={() => alternarBot('pausar')}
+                    title="Pausar o bot Muller nesta conversa (atendimento humano)"
                   >
-                    {botPausadoConv ? '▶ Religar bot' : '⏸ Pausar bot'}
+                    ⏸ Pausar bot
                   </Button>
                 )}
               </>
