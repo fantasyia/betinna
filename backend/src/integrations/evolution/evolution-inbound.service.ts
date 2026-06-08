@@ -153,14 +153,26 @@ export class EvolutionInboundService {
       const fromMe = !!m.key?.fromMe;
       const { conteudo, tipo, mediaMime, extras } = this.session.extrairConteudo(m.message);
 
-      // Mídia em base64 (webhook base64:true) → sobe pro Supabase = mesma UX do Baileys.
+      // Mídia → sobe pro Supabase (vira áudio tocável + transcrição/visão da IA).
+      // O base64 vem no webhook em tempo-real; pelo POLL de fallback (ou se o
+      // webhook não mandar) o registro só tem a URL CRIPTOGRAFADA do WhatsApp —
+      // aí busca o base64 via getBase64FromMediaMessage (Evolution descriptografa).
       let mediaUrl: string | undefined;
-      if (m.base64 && tipo !== 'TEXT' && tipo !== 'LOCATION' && tipo !== 'CONTACT') {
-        const buf = Buffer.from(m.base64, 'base64');
-        const path = await this.media
-          .uploadOutbound(empresaId, peerId, buf, mediaMime, m.key?.id ?? undefined)
-          .catch(() => null);
-        mediaUrl = path ?? undefined;
+      const ehMidia = tipo !== 'TEXT' && tipo !== 'LOCATION' && tipo !== 'CONTACT';
+      if (ehMidia) {
+        let base64 = m.base64;
+        if (!base64 && m.key?.id) {
+          base64 = await this.evolution
+            .baixarMidiaBase64(instance, m.key.id)
+            .catch(() => undefined);
+        }
+        if (base64) {
+          const buf = Buffer.from(base64, 'base64');
+          const path = await this.media
+            .uploadOutbound(empresaId, peerId, buf, mediaMime, m.key?.id ?? undefined)
+            .catch(() => null);
+          mediaUrl = path ?? undefined;
+        }
       }
 
       const conteudoFinal = conteudo || (tipo === 'TEXT' ? '[mensagem não suportada]' : conteudo);

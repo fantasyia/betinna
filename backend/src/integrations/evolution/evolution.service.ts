@@ -208,6 +208,22 @@ export class EvolutionService {
     return resp?.messages?.records ?? [];
   }
 
+  /**
+   * Descriptografa a mídia de uma mensagem e devolve o base64. Usado quando a
+   * mensagem chega SEM base64 (pelo poll de fallback, ou webhook sem base64) —
+   * o registro só tem a URL CRIPTOGRAFADA do WhatsApp, que não dá pra baixar
+   * direto. O Evolution descriptografa só com o key.id.
+   */
+  async baixarMidiaBase64(instance: string, messageId: string): Promise<string | undefined> {
+    if (!messageId) return undefined;
+    const resp = await this.req<{ base64?: string }>(
+      'post',
+      `/chat/getBase64FromMediaMessage/${encodeURIComponent(instance)}`,
+      { message: { key: { id: messageId } } },
+    ).catch(() => null);
+    return resp?.base64 ?? undefined;
+  }
+
   async logout(instance: string): Promise<unknown> {
     return this.req('delete', `/instance/logout/${encodeURIComponent(instance)}`);
   }
