@@ -22,6 +22,7 @@ import {
   Square,
   Receipt,
   Paperclip,
+  Smile,
   Download,
   Building2,
   Phone,
@@ -962,6 +963,12 @@ function ConversationItem({
 
 // ─── Thread (chat pane) ────────────────────────────────────────────
 
+// Emojis comuns pro seletor do composer (sem dependência nova).
+const EMOJIS = [
+  '😀','😁','😂','🤣','😊','😍','😘','😎','🤔','😅','😢','😭','😡','🥳','😉','😴',
+  '👍','👎','🙏','👏','🙌','💪','👋','🔥','🎉','❤️','✅','❌','⚠️','💯','🚀','🤝',
+];
+
 function ConversationThread({
   id,
   pollBump,
@@ -1004,6 +1011,7 @@ function ConversationThread({
   const role = useRole();
   const podeZerar = role === 'ADMIN' || role === 'DIRECTOR';
   const [confirmZerar, setConfirmZerar] = useState(false);
+  const [emojiAberto, setEmojiAberto] = useState(false);
 
   // Sprint 2.3 — respostas rápidas / templates (dropdown ao digitar "/").
   const templates = useApiQuery<RespostaRapida[]>('/respostas-rapidas');
@@ -1061,6 +1069,23 @@ function ConversationThread({
       api.delete(`/inbox/${id}/presenca`).catch(() => {});
     };
   }, [id]);
+
+  // Insere um emoji na posição do cursor do composer (sem dependência nova).
+  function inserirEmoji(emoji: string) {
+    const el = composeRef.current;
+    if (!el) {
+      setResposta((r) => r + emoji);
+      return;
+    }
+    const start = el.selectionStart ?? resposta.length;
+    const end = el.selectionEnd ?? resposta.length;
+    setResposta(resposta.slice(0, start) + emoji + resposta.slice(end));
+    requestAnimationFrame(() => {
+      el.focus();
+      const pos = start + emoji.length;
+      el.setSelectionRange(pos, pos);
+    });
+  }
 
   async function enviar() {
     const texto = resposta.trim();
@@ -1845,6 +1870,42 @@ function ConversationThread({
                 </button>
               </div>
             )}
+            {/* Emoji — qualquer canal (emoji é só texto). Picker inline, sem lib. */}
+            <div className="relative pb-1">
+              <button
+                type="button"
+                data-testid="inbox-emoji-btn"
+                onClick={() => setEmojiAberto((v) => !v)}
+                disabled={sending}
+                className="p-2 rounded-md text-muted hover:text-text hover:bg-surface-hover transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+                title="Emoji"
+              >
+                <Smile className="h-4 w-4" />
+              </button>
+              {emojiAberto && (
+                <>
+                  {/* backdrop pra fechar ao clicar fora */}
+                  <button
+                    type="button"
+                    aria-label="Fechar emojis"
+                    className="fixed inset-0 z-20 cursor-default"
+                    onClick={() => setEmojiAberto(false)}
+                  />
+                  <div className="absolute bottom-full left-0 mb-2 w-64 p-2 rounded-md border border-border bg-surface-elevated shadow-lg z-30 grid grid-cols-8 gap-0.5">
+                    {EMOJIS.map((e) => (
+                      <button
+                        key={e}
+                        type="button"
+                        onClick={() => inserirEmoji(e)}
+                        className="text-xl leading-none p-1 rounded hover:bg-surface-hover"
+                      >
+                        {e}
+                      </button>
+                    ))}
+                  </div>
+                </>
+              )}
+            </div>
             <div className="relative flex-1">
               {mostrarTemplates && templatesFiltrados.length > 0 && (
                 <div className="absolute bottom-full left-0 right-0 mb-1 max-h-56 overflow-y-auto rounded-md border border-border bg-surface-elevated shadow-lg z-20">
