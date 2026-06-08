@@ -13,11 +13,19 @@ export interface DelayConfig {
   unidade: 'minutos' | 'horas' | 'dias';
 }
 
-/** Config do nó CONDICAO. */
+/** Config do nó CONDICAO (modo simples true/false OU roteador multi-saída). */
 export interface CondicaoConfig {
-  campo: string; // ex: "lead.etapa", "pedido.total"
-  operador: 'eq' | 'neq' | 'gt' | 'lt' | 'gte' | 'lte' | 'contains';
-  valor: string | number;
+  /** 'simples' = true/false (default) · 'roteador' = N saídas por valor + default. */
+  modo?: 'simples' | 'roteador';
+  // ── modo simples ──
+  campo?: string; // ex: "lead.etapa", "classificacao_final"
+  operador?: 'eq' | 'neq' | 'gt' | 'lt' | 'gte' | 'lte' | 'contains';
+  valor?: string | number;
+  // ── modo roteador ──
+  /** Variável a rotear (ex: "classificacao_final"). Lida do contexto. */
+  variavel?: string;
+  /** Valores possíveis: cada um vira uma saída (label). + saída "default". */
+  saidas?: string[];
 }
 
 /** Config da ação ENVIAR_WHATSAPP. */
@@ -27,7 +35,9 @@ export interface EnviarWhatsappConfig {
 
 /** Config da ação ENVIAR_EMAIL. */
 export interface EnviarEmailConfig {
-  destinatario?: string; // padrão: e-mail do cliente
+  destinatario?: string; // legado (1 destinatário). Padrão: e-mail do cliente.
+  /** Destinatários: e-mail cru, "user:<id>", "papel:<ROLE>" ou {{variável}}. */
+  destinatarios?: string[];
   assunto: string;
   corpo: string; // HTML ou texto
 }
@@ -35,8 +45,11 @@ export interface EnviarEmailConfig {
 /** Config da ação CRIAR_TAREFA. */
 export interface CriarTarefaConfig {
   titulo: string;
+  descricao?: string;
+  /** Usuário responsável (id). Vazio = rep do cliente / fallback ADMIN/DIRECTOR. */
+  responsavelId?: string;
   tipo?: 'VISITA' | 'LIGACAO' | 'REUNIAO' | 'ENTREGA' | 'TAREFA';
-  diasApartirDeHoje?: number;
+  diasApartirDeHoje?: number; // prazo (em X dias a partir de hoje)
 }
 
 /** Config da ação MUDAR_TAG. */
@@ -47,7 +60,16 @@ export interface MudarTagConfig {
 
 /** Config da ação MOVER_LEAD_ETAPA. */
 export interface MoverLeadEtapaConfig {
-  etapa: 'NOVO' | 'QUALIFICANDO' | 'PROPOSTA' | 'NEGOCIACAO' | 'GANHO' | 'PERDIDO';
+  /** Etapa do FUNIL customizado (id da FunilEtapa) — preferencial (dropdown). */
+  funilEtapaId?: string;
+  /** Enum legado (fallback quando não há funilEtapaId). */
+  etapa?: 'NOVO' | 'QUALIFICANDO' | 'PROPOSTA' | 'NEGOCIACAO' | 'GANHO' | 'PERDIDO';
+}
+
+/** Config da ação PAUSAR_IA — desliga (ou religa) o bot na conversa do lead. */
+export interface PausarIaConfig {
+  /** true = religa (botLigado=true); default/false = pausa (botLigado=false). */
+  religar?: boolean;
 }
 
 /** Config da ação ATRIBUIR_REP. */

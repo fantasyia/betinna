@@ -21,6 +21,7 @@ import {
   type CriarTarefaConfig,
   type MudarTagConfig,
   type MoverLeadEtapaConfig,
+  type PausarIaConfig,
   type AtribuirRepConfig,
   type WebhookExternoConfig,
   type LiberarLoteConfig,
@@ -75,9 +76,30 @@ function delayParaMs(valor: number, unidade: DelayConfig['unidade']): number {
   return valor * mult[unidade];
 }
 
-/** Avalia uma condição do nó CONDICAO. Retorna "true" ou "false" (string). */
-function avaliarCondicao(config: CondicaoConfig, ctx: ExecucaoContexto): 'true' | 'false' {
-  const val = resolveField(config.campo, ctx);
+/**
+ * Resolve a variável do roteador tentando o nome cru, depois `custom.<v>` e
+ * `conversa.<v>` (a IA grava em uma dessas, dependendo do escopo).
+ */
+function resolveVariavel(nome: string, ctx: ExecucaoContexto): string {
+  const raw =
+    resolveField(nome, ctx) ??
+    resolveField(`custom.${nome}`, ctx) ??
+    resolveField(`conversa.${nome}`, ctx);
+  return raw != null ? String(raw) : '';
+}
+
+/**
+ * Avalia o nó CONDICAO e devolve o LABEL da aresta a seguir.
+ * - modo 'roteador': casa o valor da `variavel` com uma das `saidas` (label = valor) ou 'default'.
+ * - modo 'simples' (default): 'true' | 'false'.
+ */
+function avaliarCondicao(config: CondicaoConfig, ctx: ExecucaoContexto): string {
+  if (config.modo === 'roteador') {
+    const valor = resolveVariavel(config.variavel ?? '', ctx).trim();
+    const match = (config.saidas ?? []).find((s) => s.trim().toLowerCase() === valor.toLowerCase());
+    return match ?? 'default';
+  }
+  const val = resolveField(config.campo ?? '', ctx);
   const ref = config.valor;
   let resultado: boolean;
   switch (config.operador) {
@@ -449,6 +471,9 @@ export class FluxoExecutorService {
       case 'LIBERAR_LOTE':
         return this.acaoLiberarLote(cfg as LiberarLoteConfig, empresaId);
 
+      case 'PAUSAR_IA':
+        return this.acaoPausarIa(cfg as PausarIaConfig, ctx, empresaId);
+
       default:
         throw new Error(`Tipo de ação desconhecido: ${acaoTipo}`);
     }
@@ -491,34 +516,69 @@ export class FluxoExecutorService {
     empresaId: string,
   ): Promise<Record<string, unknown>> {
     this.assertEmpresaId(empresaId, 'ENVIAR_EMAIL');
-    // Resolve e-mail do destinatário
-    let email = cfg.destinatario;
-    if (!email) {
-      const clienteId = ctx['clienteId'] as string | undefined;
-      if (clienteId) {
-        const cliente = await this.prisma.cliente.findFirst({
-          where: { id: clienteId, empresaId },
-          select: { email: true, nome: true },
-        });
-        if (!cliente) {
-          throw new Error(`Cliente ${clienteId} não encontrado na empresa ${empresaId}`);
-        }
-        email = cliente.email ?? undefined;
-      }
+    const emails = await this.resolverDestinatarios(cfg, ctx, empresaId);
+    if (emails.length === 0) {
+      throw new Error('Nenhum destinatário resolvido para ENVIAR_EMAIL');
     }
-    if (!email) throw new Error('E-mail do destinatário não resolvido para ENVIAR_EMAIL');
-
     const assunto = interpolate(cfg.assunto, ctx);
     const corpo = interpolate(cfg.corpo, ctx);
+    // Resend sistêmico — envia 1 e-mail por destinatário resolvido.
+    const messageIds: string[] = [];
+    for (const para of emails) {
+      const r = await this.resend.enviar({ para, assunto, html: corpo });
+      if (r.id) messageIds.push(r.id);
+    }
+    return { destinatarios: emails, assunto, messageIds };
+  }
 
-    // Resend sistêmico (e-mail único da empresa). Recebe `para` como string e
-    // lança em falha — propaga pro executor, que registra a falha do passo.
-    const result = await this.resend.enviar({
-      para: email,
-      assunto,
-      html: corpo,
-    });
-    return { para: email, assunto, messageId: result.id };
+  /**
+   * Resolve a lista de e-mails dos destinatários. Cada token pode ser: e-mail
+   * cru, `user:<id>` (e-mail do usuário), `papel:<ROLE>` (todos da empresa com o
+   * papel) ou `{{variável}}` (interpolada). Fallback = e-mail do cliente do ctx.
+   */
+  private async resolverDestinatarios(
+    cfg: EnviarEmailConfig,
+    ctx: ExecucaoContexto,
+    empresaId: string,
+  ): Promise<string[]> {
+    const tokens =
+      cfg.destinatarios && cfg.destinatarios.length > 0
+        ? cfg.destinatarios
+        : cfg.destinatario
+          ? [cfg.destinatario]
+          : [];
+    const emails = new Set<string>();
+    for (const raw of tokens) {
+      const tok = interpolate(raw, ctx).trim();
+      if (!tok) continue;
+      if (tok.startsWith('user:')) {
+        const u = await this.prisma.usuario.findFirst({
+          where: { id: tok.slice(5), empresas: { some: { empresaId } } },
+          select: { email: true },
+        });
+        if (u?.email) emails.add(u.email);
+      } else if (tok.startsWith('papel:')) {
+        const role = tok.slice(6) as 'ADMIN' | 'DIRECTOR' | 'GERENTE' | 'SAC' | 'REP';
+        const us = await this.prisma.usuario.findMany({
+          where: { role, status: 'ATIVO', empresas: { some: { empresaId } } },
+          select: { email: true },
+        });
+        for (const u of us) if (u.email) emails.add(u.email);
+      } else {
+        emails.add(tok); // e-mail cru (ou já interpolado de {{var}})
+      }
+    }
+    if (emails.size === 0) {
+      const clienteId = ctx['clienteId'] as string | undefined;
+      if (clienteId) {
+        const c = await this.prisma.cliente.findFirst({
+          where: { id: clienteId, empresaId },
+          select: { email: true },
+        });
+        if (c?.email) emails.add(c.email);
+      }
+    }
+    return [...emails];
   }
 
   private async acaoCriarTarefa(
@@ -527,11 +587,18 @@ export class FluxoExecutorService {
     empresaId: string,
   ): Promise<Record<string, unknown>> {
     this.assertEmpresaId(empresaId, 'CRIAR_TAREFA');
-    // Determina usuário responsável: representante do cliente ou admin
     const clienteId = ctx['clienteId'] as string | undefined;
-    let representanteId: string | undefined;
-    if (clienteId) {
-      // Exige que o cliente PERTENÇA à empresa do fluxo
+    // Responsável: 1) o escolhido no nó (validado na empresa); 2) rep do cliente;
+    // 3) fallback primeiro ADMIN/DIRECTOR.
+    let responsavelId: string | undefined = cfg.responsavelId || undefined;
+    if (responsavelId) {
+      const u = await this.prisma.usuario.findFirst({
+        where: { id: responsavelId, empresas: { some: { empresaId } } },
+        select: { id: true },
+      });
+      if (!u) responsavelId = undefined; // id inválido/foreign → cai no fallback
+    }
+    if (!responsavelId && clienteId) {
       const cliente = await this.prisma.cliente.findFirst({
         where: { id: clienteId, empresaId },
         select: { representanteId: true },
@@ -539,10 +606,9 @@ export class FluxoExecutorService {
       if (!cliente) {
         throw new Error(`Cliente ${clienteId} não encontrado na empresa ${empresaId}`);
       }
-      representanteId = cliente.representanteId ?? undefined;
+      responsavelId = cliente.representanteId ?? undefined;
     }
-    // Fallback: primeiro ADMIN/DIRECTOR da empresa
-    if (!representanteId) {
+    if (!responsavelId) {
       const admin = await this.prisma.usuario.findFirst({
         where: {
           empresas: { some: { empresaId } },
@@ -551,26 +617,27 @@ export class FluxoExecutorService {
         },
         select: { id: true },
       });
-      representanteId = admin?.id;
+      responsavelId = admin?.id;
     }
-    if (!representanteId) throw new Error('Nenhum usuário elegível para CRIAR_TAREFA');
+    if (!responsavelId) throw new Error('Nenhum usuário elegível para CRIAR_TAREFA');
 
     const titulo = interpolate(cfg.titulo, ctx);
-    const diasOffset = cfg.diasApartirDeHoje ?? 0;
+    const observacao = cfg.descricao ? interpolate(cfg.descricao, ctx) : undefined;
     const data = new Date();
-    data.setDate(data.getDate() + diasOffset);
+    data.setDate(data.getDate() + (cfg.diasApartirDeHoje ?? 0));
 
     const tarefa = await this.prisma.agendaItem.create({
       data: {
         empresaId,
-        usuarioId: representanteId,
+        usuarioId: responsavelId,
         clienteId: clienteId ?? null,
         titulo,
         data,
         tipo: cfg.tipo ?? 'TAREFA',
+        ...(observacao ? { observacao } : {}),
       },
     });
-    return { tarefaId: tarefa.id, titulo, data: data.toISOString() };
+    return { tarefaId: tarefa.id, titulo, responsavelId, data: data.toISOString() };
   }
 
   private async acaoMudarTag(
@@ -622,8 +689,34 @@ export class FluxoExecutorService {
     const leadId = ctx['leadId'] as string | undefined;
     if (!leadId) throw new Error('contexto.leadId ausente para MOVER_LEAD_ETAPA');
 
-    // AUDITORIA 2026-05-15: updateMany com empresaId no where evita write
-    // cross-tenant caso o contexto seja malformado.
+    // Preferencial: etapa do FUNIL customizado (id). Valida que é da empresa e
+    // sincroniza o enum legado a partir do tipo terminal (fonte da verdade = funil).
+    if (cfg.funilEtapaId) {
+      const etapa = await this.prisma.funilEtapa.findFirst({
+        where: { id: cfg.funilEtapaId, funil: { empresaId } },
+        select: { id: true, funilId: true, tipo: true },
+      });
+      if (!etapa) {
+        throw new Error(`Etapa ${cfg.funilEtapaId} não encontrada na empresa ${empresaId}`);
+      }
+      const enumEtapa =
+        etapa.tipo === 'GANHO' ? 'GANHO' : etapa.tipo === 'PERDIDO' ? 'PERDIDO' : 'QUALIFICANDO';
+      const { count } = await this.prisma.lead.updateMany({
+        where: { id: leadId, empresaId },
+        data: {
+          funilEtapaId: etapa.id,
+          funilId: etapa.funilId,
+          etapa: enumEtapa,
+          etapaDesde: new Date(),
+        },
+      });
+      if (count === 0) throw new Error(`Lead ${leadId} não encontrado na empresa ${empresaId}`);
+      return { leadId, funilEtapaId: etapa.id };
+    }
+
+    // Fallback: enum legado.
+    if (!cfg.etapa) throw new Error('MOVER_LEAD_ETAPA sem funilEtapaId nem etapa definidos');
+    // AUDITORIA 2026-05-15: updateMany com empresaId no where evita write cross-tenant.
     const { count } = await this.prisma.lead.updateMany({
       where: { id: leadId, empresaId },
       data: { etapa: cfg.etapa, etapaDesde: new Date() },
@@ -632,6 +725,36 @@ export class FluxoExecutorService {
       throw new Error(`Lead ${leadId} não encontrado na empresa ${empresaId}`);
     }
     return { leadId, novaEtapa: cfg.etapa };
+  }
+
+  /**
+   * PAUSAR_IA — desliga (ou religa) o bot na conversa de WhatsApp do lead, setando
+   * `Conversation.botLigado`. Acha a conversa por sufixo de telefone (D18). O bot
+   * para de responder mensagens novas daquele lead até alguém religar manualmente.
+   */
+  private async acaoPausarIa(
+    cfg: PausarIaConfig,
+    ctx: ExecucaoContexto,
+    empresaId: string,
+  ): Promise<Record<string, unknown>> {
+    this.assertEmpresaId(empresaId, 'PAUSAR_IA');
+    const leadId = ctx['leadId'] as string | undefined;
+    if (!leadId) throw new Error('contexto.leadId ausente para PAUSAR_IA');
+    const lead = await this.prisma.lead.findFirst({
+      where: { id: leadId, empresaId },
+      select: { contatoTelefone: true },
+    });
+    if (!lead?.contatoTelefone) {
+      throw new Error(`Lead ${leadId} sem contatoTelefone para PAUSAR_IA`);
+    }
+    const sufixo = lead.contatoTelefone.replace(/\D/g, '').slice(-8);
+    if (sufixo.length < 8) throw new Error('Telefone do lead curto demais para casar a conversa');
+    const religar = cfg.religar === true;
+    const { count } = await this.prisma.conversation.updateMany({
+      where: { empresaId, canal: 'WHATSAPP', peerId: { contains: sufixo } },
+      data: { botLigado: religar },
+    });
+    return { leadId, sufixo, botLigado: religar, conversasAtualizadas: count };
   }
 
   private async acaoAtribuirRep(

@@ -34,6 +34,7 @@ export const fluxoAcaoTipoValues = [
   // Orquestração (Fase B):
   'CONVERSAR_IA',
   'LIBERAR_LOTE',
+  'PAUSAR_IA',
 ] as const;
 
 // ─── Nó (FluxoNo) ────────────────────────────────────────────────────

@@ -1161,6 +1161,7 @@ enum FluxoAcaoTipo {
   // Orquestração (Fase B):
   CONVERSAR_IA // carrega prompt da biblioteca, conversa via WhatsApp e classifica
   LIBERAR_LOTE // libera N leads de uma etapa (disparo controlado anti-sobrecarga)
+  PAUSAR_IA // desliga o bot (Bot=Desligado) na conversa do lead até religar manual
 }
 
 enum FluxoExecucaoStatus {
