@@ -290,6 +290,20 @@ export class EvolutionService {
     }).catch(() => undefined);
   }
 
+  /** Reage a uma mensagem com um emoji (ex: 👍). `emoji` vazio REMOVE a reação. */
+  async enviarReacao(
+    instance: string,
+    remoteJid: string,
+    fromMe: boolean,
+    messageId: string,
+    emoji: string,
+  ): Promise<{ key?: { id?: string } }> {
+    return this.req('post', `/message/sendReaction/${encodeURIComponent(instance)}`, {
+      key: { remoteJid, fromMe, id: messageId },
+      reaction: emoji,
+    });
+  }
+
   /** Nome da instância a partir do dono (espelha o ownerKey do Baileys). */
   static instanceName(owner: { type: 'EMPRESA' | 'USUARIO'; id: string }): string {
     return `${owner.type === 'EMPRESA' ? 'emp' : 'user'}_${owner.id}`;

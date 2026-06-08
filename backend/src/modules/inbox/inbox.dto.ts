@@ -44,6 +44,12 @@ export const responderSchema = z.object({
 });
 export type ResponderDto = z.infer<typeof responderSchema>;
 
+// Reação (emoji) numa mensagem. Vazio = remove a reação.
+export const reagirSchema = z.object({
+  emoji: z.string().max(16),
+});
+export type ReagirDto = z.infer<typeof reagirSchema>;
+
 // ─── #25 — Notas internas + tags de triagem ───────────────────────────
 export const notaSchema = z.object({
   texto: z.string().trim().min(1).max(2000),

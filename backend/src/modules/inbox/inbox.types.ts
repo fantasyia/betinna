@@ -36,6 +36,19 @@ export interface CanalAdapter {
    * `proprietarioId` quando informado checa sessão específica.
    */
   estaDisponivel(empresaId: string, proprietarioId?: string | null): Promise<boolean>;
+
+  /**
+   * Reage a uma mensagem com um emoji (opcional — só canais que suportam, ex:
+   * WhatsApp). `emoji` vazio remove a reação. `fromMe` = a msg reagida é OUTBOUND.
+   */
+  reagir?(
+    empresaId: string,
+    peerId: string,
+    messageId: string,
+    fromMe: boolean,
+    emoji: string,
+    ctx?: CanalAdapterContexto,
+  ): Promise<void>;
 }
 
 /**

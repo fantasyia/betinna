@@ -1070,6 +1070,16 @@ function ConversationThread({
     };
   }, [id]);
 
+  // Reage a uma mensagem (👍 etc.) via WhatsApp; atualiza a bolha depois.
+  async function reagir(messageId: string, emoji: string) {
+    try {
+      await api.post(`/inbox/messages/${messageId}/reagir`, { emoji });
+      msgs.refetch();
+    } catch (err) {
+      toast.error('Falha ao reagir', err instanceof ApiError ? err.message : undefined);
+    }
+  }
+
   // Insere um emoji na posição do cursor do composer (sem dependência nova).
   function inserirEmoji(emoji: string) {
     const el = composeRef.current;
@@ -1690,7 +1700,15 @@ function ConversationThread({
             const prev = i > 0 ? arr[i - 1] : null;
             const showAuthor =
               !prev || prev.direction !== m.direction || prev.autor?.id !== m.autor?.id;
-            return <MessageBubble key={m.id} msg={m} showAuthor={!!showAuthor} />;
+            return (
+              <MessageBubble
+                key={m.id}
+                msg={m}
+                showAuthor={!!showAuthor}
+                podeReagir={c?.canal === 'WHATSAPP'}
+                onReagir={(emoji) => void reagir(m.id, emoji)}
+              />
+            );
           })}
           <div ref={endRef} />
         </StateView>
@@ -2624,8 +2642,19 @@ function MessageMediaDocument({ msgId, fileName }: { msgId: string; fileName?: s
   );
 }
 
-function MessageBubble({ msg, showAuthor }: { msg: Mensagem; showAuthor: boolean }) {
+function MessageBubble({
+  msg,
+  showAuthor,
+  podeReagir,
+  onReagir,
+}: {
+  msg: Mensagem;
+  showAuthor: boolean;
+  podeReagir?: boolean;
+  onReagir?: (emoji: string) => void;
+}) {
   const outbound = msg.direction === 'OUTBOUND';
+  const reacao = typeof msg.meta?.reacao === 'string' ? msg.meta.reacao : null;
   // Em mensagens INBOUND vindas de GRUPO, meta.senderName tem o nome do
   // membro que mandou (ex: "João Silva"). Mostra acima da bolha pra dar
   // contexto de quem é o autor.
@@ -2643,8 +2672,9 @@ function MessageBubble({ msg, showAuthor }: { msg: Mensagem; showAuthor: boolean
   return (
     <div
       data-testid={`msg-${msg.id}`}
-      className={cn('flex', outbound ? 'justify-end' : 'justify-start')}
+      className={cn('flex items-end gap-1 group', outbound ? 'justify-end' : 'justify-start')}
     >
+      {podeReagir && outbound && <ReactButton onReagir={onReagir} />}
       <div className="flex flex-col gap-0.5 max-w-[78%]">
         {showAuthor && msg.autor?.nome && (
           <span
@@ -2719,6 +2749,17 @@ function MessageBubble({ msg, showAuthor }: { msg: Mensagem; showAuthor: boolean
                 msg.tipo === 'DOCUMENT')
             ) && <p className="m-0 whitespace-pre-wrap">{msg.conteudo}</p>}
         </div>
+        {/* Reação enviada na mensagem (estilo WhatsApp, na borda da bolha). */}
+        {reacao && (
+          <span className={cn('-mt-2 px-1 z-10', outbound ? 'self-end' : 'self-start')}>
+            <span
+              className="inline-block rounded-full border border-border bg-surface-elevated px-1.5 py-0.5 text-sm leading-none shadow-sm"
+              data-testid={`msg-reacao-${msg.id}`}
+            >
+              {reacao}
+            </span>
+          </span>
+        )}
         <span
           className={cn(
             'text-[10px] text-muted px-1 tabular flex items-center gap-1',
@@ -2739,6 +2780,52 @@ function MessageBubble({ msg, showAuthor }: { msg: Mensagem; showAuthor: boolean
           {fmtHHMM(msg.criadoEm)}
         </span>
       </div>
+      {podeReagir && !outbound && <ReactButton onReagir={onReagir} />}
+    </div>
+  );
+}
+
+// Botão de reagir (aparece no hover da mensagem) + mini-picker de reações.
+function ReactButton({ onReagir }: { onReagir?: (emoji: string) => void }) {
+  const [aberto, setAberto] = useState(false);
+  const REACOES = ['👍', '❤️', '😂', '😮', '😢', '🙏'];
+  if (!onReagir) return null;
+  return (
+    <div className="relative opacity-0 group-hover:opacity-100 focus-within:opacity-100 transition-opacity shrink-0">
+      <button
+        type="button"
+        data-testid="msg-reagir-btn"
+        onClick={() => setAberto((v) => !v)}
+        className="p-1 rounded-full text-muted hover:text-text hover:bg-surface-hover"
+        title="Reagir"
+      >
+        <Smile className="h-3.5 w-3.5" />
+      </button>
+      {aberto && (
+        <>
+          <button
+            type="button"
+            aria-label="Fechar reações"
+            className="fixed inset-0 z-20 cursor-default"
+            onClick={() => setAberto(false)}
+          />
+          <div className="absolute bottom-full mb-1 left-1/2 -translate-x-1/2 z-30 flex gap-0.5 p-1 rounded-full border border-border bg-surface-elevated shadow-lg">
+            {REACOES.map((e) => (
+              <button
+                key={e}
+                type="button"
+                onClick={() => {
+                  onReagir(e);
+                  setAberto(false);
+                }}
+                className="text-lg leading-none p-1 rounded-full hover:bg-surface-hover"
+              >
+                {e}
+              </button>
+            ))}
+          </div>
+        </>
+      )}
     </div>
   );
 }

@@ -229,6 +229,59 @@ export class InboxService {
   }
 
   /**
+   * Reage a uma mensagem com um emoji (👍 etc.). `emoji` vazio remove a reação.
+   * Só WhatsApp (via Evolution). Guarda a reação na meta da msg pra a UI mostrar.
+   */
+  async reagirMensagem(
+    user: AuthenticatedUser,
+    messageId: string,
+    emoji: string,
+  ): Promise<{ ok: true; emoji: string }> {
+    const msg = await this.prisma.message.findFirst({
+      where: { id: messageId, conversation: { ...this.baseWhere(user) } },
+      select: {
+        id: true,
+        externalId: true,
+        direction: true,
+        meta: true,
+        conversation: {
+          select: { empresaId: true, peerId: true, canal: true, proprietarioId: true },
+        },
+      },
+    });
+    if (!msg) throw new NotFoundException('Message', messageId);
+    if (msg.conversation.canal !== 'WHATSAPP') {
+      throw new BusinessRuleException('Reação disponível só no WhatsApp.');
+    }
+    if (!msg.externalId) {
+      throw new BusinessRuleException(
+        'Mensagem sem identificador do WhatsApp — não dá pra reagir.',
+      );
+    }
+    const adapter = this.registry.obter('WHATSAPP');
+    if (!adapter?.reagir) throw new BusinessRuleException('Canal não suporta reação.');
+    const fromMe = msg.direction === MessageDirection.OUTBOUND;
+    await adapter.reagir(
+      msg.conversation.empresaId,
+      msg.conversation.peerId,
+      msg.externalId,
+      fromMe,
+      emoji,
+      { proprietarioId: msg.conversation.proprietarioId },
+    );
+    // Guarda a reação na meta (emoji vazio = remove).
+    const metaAtual = (msg.meta ?? {}) as Record<string, unknown>;
+    const novaMeta: Record<string, unknown> = { ...metaAtual };
+    if (emoji) novaMeta.reacao = emoji;
+    else delete novaMeta.reacao;
+    await this.prisma.message.update({
+      where: { id: messageId },
+      data: { meta: novaMeta as Prisma.InputJsonValue },
+    });
+    return { ok: true, emoji };
+  }
+
+  /**
    * #25 fatia 2 — deriva o SLA da conversa: se a ÚLTIMA mensagem é do cliente
    * (INBOUND) e a conversa está aberta/pendente, retorna desde quando espera
    * resposta (`ultimaMsgEm`). Caso contrário, null (nada pendente). O front

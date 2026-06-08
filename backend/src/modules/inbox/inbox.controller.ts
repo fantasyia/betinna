@@ -27,6 +27,7 @@ import {
   type ListConversationsDto,
   type ListMensagensDto,
   type NotaDto,
+  type ReagirDto,
   type ResponderDto,
   type ResponderMidiaDto,
   type SetBotConversaDto,
@@ -39,6 +40,7 @@ import {
   listConversationsSchema,
   listMensagensSchema,
   notaSchema,
+  reagirSchema,
   responderMidiaSchema,
   responderSchema,
   setBotConversaSchema,
@@ -115,6 +117,17 @@ export class InboxController {
       throw new BusinessRuleException('Falha gerando URL temporária');
     }
     return { url, mime: info.mime };
+  }
+
+  @Post('messages/:id/reagir')
+  @Audit({ action: 'inbox_reagir', resource: 'message', resourceIdFrom: 'params.id' })
+  @ApiOperation({ summary: 'Reage a uma mensagem com emoji (👍 etc.). Vazio remove. WhatsApp.' })
+  reagir(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param('id') id: string,
+    @Body(new ZodValidationPipe(reagirSchema)) dto: ReagirDto,
+  ) {
+    return this.svc.reagirMensagem(user, id, dto.emoji);
   }
 
   @Get('canais')

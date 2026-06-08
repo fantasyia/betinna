@@ -90,6 +90,29 @@ export class WhatsAppService implements CanalAdapter, OnModuleInit {
     await this.sessions.enviarPresenca(owner, peerId, estado);
   }
 
+  /** Reage a uma mensagem com emoji (👍 etc.). Só Evolution por enquanto. */
+  async reagir(
+    empresaId: string,
+    peerId: string,
+    messageId: string,
+    fromMe: boolean,
+    emoji: string,
+    ctx?: CanalAdapterContexto,
+  ): Promise<void> {
+    const owner = this.ownerDe(empresaId, ctx);
+    if (this.viaEvolution) {
+      await this.evolution.enviarReacao(
+        EvolutionService.instanceName(owner),
+        peerId,
+        fromMe,
+        messageId,
+        emoji,
+      );
+      return;
+    }
+    throw new BusinessRuleException('Reações disponíveis apenas no provider Evolution.');
+  }
+
   async estaDisponivel(empresaId: string, proprietarioId?: string | null): Promise<boolean> {
     const owner = this.ownerDe(empresaId, proprietarioId ? { proprietarioId } : undefined);
     if (this.viaEvolution) {
