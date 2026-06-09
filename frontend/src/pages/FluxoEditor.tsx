@@ -407,6 +407,19 @@ function pickIcon(data: NodePayload) {
 
 // ─── Editor principal ────────────────────────────────────────────
 
+/**
+ * Remove saídas duplicadas EXATAS do config de um nó na hidratação. Saída repetida
+ * gera handle id/React key duplicado no NodeCard (React Flow exige id único por nó)
+ * e faz remover/renomear (por valor) afetar as duas de uma vez. Dedup no load evita
+ * esse estado inconsistente (a validação já impede criar novas duplicatas).
+ */
+function dedupConfigSaidas(config: Record<string, unknown>): Record<string, unknown> {
+  const saidas = config['saidas'];
+  if (!Array.isArray(saidas)) return config;
+  const unicas = Array.from(new Set(saidas as string[]));
+  return unicas.length === saidas.length ? config : { ...config, saidas: unicas };
+}
+
 export function FluxoEditor({
   fluxoId,
   onClose,
@@ -540,7 +553,7 @@ function FluxoEditorInner({
         // a config certa (antes ficava undefined → config do gatilho sumia ao recarregar).
         triggerTipo:
           n.tipo === 'TRIGGER' ? (data.triggerTipo as TriggerTipo | undefined) : undefined,
-        config: (n.config as Record<string, unknown>) ?? {},
+        config: dedupConfigSaidas((n.config as Record<string, unknown>) ?? {}),
       },
     }));
     // Mapa nó→config pra reconstruir o sourceHandle ciente do MODO do nó de origem.
@@ -719,6 +732,90 @@ function FluxoEditorInner({
     setEdges(nextEdges);
     pushHistory({ nodes: nextNodes, edges: nextEdges });
     setSelectedNodeId(null);
+    setDirty(true);
+  }
+
+  /**
+   * Remove uma saída do roteador (nó selecionado) E poda as arestas que apontavam
+   * pra ela — senão a aresta fica órfã (handle some) e o ramo nunca mais executa.
+   */
+  function removeSaidaDoNoSelecionado(valor: string) {
+    if (!selectedNodeId) return;
+    const nextNodes = nodes.map((n) =>
+      n.id === selectedNodeId
+        ? {
+            ...n,
+            data: {
+              ...n.data,
+              config: {
+                ...n.data.config,
+                saidas: ((n.data.config.saidas as string[]) ?? []).filter((s) => s !== valor),
+              },
+            },
+          }
+        : n,
+    );
+    const nextEdges = edges.filter((e) => !(e.source === selectedNodeId && e.label === valor));
+    setNodes(nextNodes);
+    setEdges(nextEdges);
+    pushHistory({ nodes: nextNodes, edges: nextEdges });
+    setDirty(true);
+  }
+
+  /**
+   * Renomeia uma saída in-place: atualiza o config E propaga o novo valor pras
+   * arestas (label + sourceHandle, já que o id do handle = valor da saída).
+   */
+  function renameSaidaDoNoSelecionado(antigo: string, novo: string) {
+    if (!selectedNodeId || antigo === novo) return;
+    const nextNodes = nodes.map((n) =>
+      n.id === selectedNodeId
+        ? {
+            ...n,
+            data: {
+              ...n.data,
+              config: {
+                ...n.data.config,
+                saidas: ((n.data.config.saidas as string[]) ?? []).map((s) =>
+                  s === antigo ? novo : s,
+                ),
+              },
+            },
+          }
+        : n,
+    );
+    const nextEdges = edges.map((e) =>
+      e.source === selectedNodeId && e.label === antigo
+        ? { ...e, label: novo, sourceHandle: novo }
+        : e,
+    );
+    setNodes(nextNodes);
+    setEdges(nextEdges);
+    pushHistory({ nodes: nextNodes, edges: nextEdges });
+    setDirty(true);
+  }
+
+  /**
+   * Troca o modo da Condição (simples ↔ roteador) E poda as arestas que deixam de
+   * ter handle no novo modo — senão ficam órfãs (mesmo sintoma do remover saída):
+   * simples só tem Sim/Não; roteador só as saídas atuais + 'default'.
+   */
+  function trocarModoDoNoSelecionado(novoModo: string) {
+    if (!selectedNodeId) return;
+    const no = nodes.find((n) => n.id === selectedNodeId);
+    const saidas = (no?.data.config.saidas as string[]) ?? [];
+    const validos = novoModo === 'roteador' ? [...saidas, 'default'] : ['Sim', 'Não'];
+    const nextNodes = nodes.map((n) =>
+      n.id === selectedNodeId
+        ? { ...n, data: { ...n.data, config: { ...n.data.config, modo: novoModo } } }
+        : n,
+    );
+    const nextEdges = edges.filter(
+      (e) => e.source !== selectedNodeId || validos.includes(String(e.label)),
+    );
+    setNodes(nextNodes);
+    setEdges(nextEdges);
+    pushHistory({ nodes: nextNodes, edges: nextEdges });
     setDirty(true);
   }
 
@@ -956,6 +1053,9 @@ function FluxoEditorInner({
               node={selectedNode}
               onUpdate={updateSelectedNode}
               onDelete={deleteSelectedNode}
+              onRemoveSaida={removeSaidaDoNoSelecionado}
+              onRenameSaida={renameSaidaDoNoSelecionado}
+              onChangeModo={trocarModoDoNoSelecionado}
             />
           ) : (
             <div className="p-4 text-center flex flex-col items-center gap-2 mt-8">
@@ -1009,15 +1109,73 @@ function PaletteItemView({ item }: { item: PaletteItem }) {
 
 // ─── Inspector (right panel) ────────────────────────────────────
 
+/**
+ * Linha editável de uma saída do roteador. Renomeia in-place (commit no Enter/blur);
+ * se o pai rejeitar (duplicado/reservado), reverte o texto pro valor anterior.
+ */
+function SaidaEditavel({
+  valor,
+  onCommit,
+  onRemove,
+}: {
+  valor: string;
+  onCommit: (novo: string) => boolean;
+  onRemove: () => void;
+}) {
+  const [draft, setDraft] = useState(valor);
+  useEffect(() => {
+    setDraft(valor);
+  }, [valor]);
+  const commit = () => {
+    const v = draft.trim();
+    if (!v || v === valor) {
+      setDraft(valor);
+      return;
+    }
+    if (!onCommit(v)) setDraft(valor);
+  };
+  return (
+    <div className="flex items-center gap-1.5">
+      <Input
+        className="flex-1"
+        value={draft}
+        onChange={(e) => setDraft(e.target.value)}
+        onBlur={commit}
+        onKeyDown={(e) => {
+          if (e.key === 'Enter') {
+            e.preventDefault();
+            commit();
+          } else if (e.key === 'Escape') {
+            setDraft(valor);
+          }
+        }}
+      />
+      <IconButton
+        aria-label="Remover saída"
+        variant="ghost"
+        size="sm"
+        icon={<Trash2 />}
+        onClick={onRemove}
+      />
+    </div>
+  );
+}
+
 /** Editor visual da Condição: modo Simples (true/false) ou Roteador (N saídas). */
 function CondicaoEditor({
   data,
   onUpdate,
   variaveis,
+  onRemoveSaida,
+  onRenameSaida,
+  onChangeModo,
 }: {
   data: NodePayload;
   onUpdate: (updater: (data: NodePayload) => NodePayload) => void;
   variaveis: Array<{ id: string; chave: string }>;
+  onRemoveSaida: (valor: string) => void;
+  onRenameSaida: (antigo: string, novo: string) => void;
+  onChangeModo: (novoModo: string) => void;
 }) {
   const toast = useToast();
   const [novaSaida, setNovaSaida] = useState('');
@@ -1028,24 +1186,40 @@ function CondicaoEditor({
   // Reservados: colidiriam com os handles implícitos (true/false do simples e o
   // 'default' do roteador) e quebrariam o roteamento da aresta.
   const RESERVADOS = ['default', 'true', 'false', 'sim', 'não', 'nao'];
+  // Normaliza igual ao matching do backend (avaliarCondicao: trim + toLowerCase),
+  // colapsando espaços internos. Duas saídas que normalizam igual roteariam ambas
+  // pro PRIMEIRO match no motor → a segunda viraria ramo morto. Por isso bloqueamos.
+  const norm = (s: string) => s.trim().toLowerCase().replace(/\s+/g, ' ');
+  const valido = (v: string, ignorar?: string): boolean => {
+    if (saidas.some((s) => s !== ignorar && norm(s) === norm(v))) {
+      toast.error('Essa saída já existe (ignorando maiúsculas/espaços)');
+      return false;
+    }
+    if (RESERVADOS.includes(norm(v))) {
+      toast.error(`"${v}" é um nome reservado — escolha outro valor pra saída`);
+      return false;
+    }
+    return true;
+  };
   const addSaida = () => {
     const v = novaSaida.trim();
-    if (!v) return;
-    if (saidas.includes(v)) {
-      toast.error('Essa saída já existe');
-      return;
-    }
-    if (RESERVADOS.includes(v.toLowerCase())) {
-      toast.error(`"${v}" é um nome reservado — escolha outro valor pra saída`);
-      return;
-    }
+    if (!v || !valido(v)) return;
     setCfg({ saidas: [...saidas, v] });
     setNovaSaida('');
+  };
+  // Renomeia in-place (config + arestas via callback do pai). Retorna se aplicou —
+  // a linha editável reverte o texto quando rejeitado (duplicado/reservado).
+  const handleRename = (antigo: string, novo: string): boolean => {
+    const v = novo.trim();
+    if (!v || v === antigo) return false;
+    if (!valido(v, antigo)) return false;
+    onRenameSaida(antigo, v);
+    return true;
   };
   return (
     <>
       <Field label="Modo">
-        <Select size="sm" value={modo} onChange={(e) => setCfg({ modo: e.target.value })}>
+        <Select size="sm" value={modo} onChange={(e) => onChangeModo(e.target.value)}>
           <option value="simples">Simples (Sim / Não)</option>
           <option value="roteador">Roteador (uma saída por valor)</option>
         </Select>
@@ -1073,18 +1247,12 @@ function CondicaoEditor({
           <Field label="Saídas (valores)" hint="Cada valor vira uma saída. Há sempre a saída 'default'.">
             <div className="flex flex-col gap-1.5">
               {saidas.map((s, i) => (
-                <div key={`${s}-${i}`} className="flex items-center gap-1.5">
-                  <span className="flex-1 text-xs px-2 py-1 rounded-md border border-border bg-surface truncate">
-                    {s}
-                  </span>
-                  <IconButton
-                    aria-label="Remover saída"
-                    variant="ghost"
-                    size="sm"
-                    icon={<Trash2 />}
-                    onClick={() => setCfg({ saidas: saidas.filter((_, j) => j !== i) })}
-                  />
-                </div>
+                <SaidaEditavel
+                  key={`${s}-${i}`}
+                  valor={s}
+                  onCommit={(novo) => handleRename(s, novo)}
+                  onRemove={() => onRemoveSaida(s)}
+                />
               ))}
               <div className="flex items-center gap-1.5">
                 <Input
@@ -1255,10 +1423,16 @@ function NodeInspector({
   node,
   onUpdate,
   onDelete,
+  onRemoveSaida,
+  onRenameSaida,
+  onChangeModo,
 }: {
   node: FlowNode;
   onUpdate: (updater: (data: NodePayload) => NodePayload) => void;
   onDelete: () => void;
+  onRemoveSaida: (valor: string) => void;
+  onRenameSaida: (antigo: string, novo: string) => void;
+  onChangeModo: (novoModo: string) => void;
 }) {
   const { data } = node;
   // Listas pros seletores das ações novas (orquestração Fase B).
@@ -1454,7 +1628,14 @@ function NodeInspector({
         )}
 
         {data.tipo === 'CONDICAO' && (
-          <CondicaoEditor data={data} onUpdate={onUpdate} variaveis={variaveis} />
+          <CondicaoEditor
+            data={data}
+            onUpdate={onUpdate}
+            variaveis={variaveis}
+            onRemoveSaida={onRemoveSaida}
+            onRenameSaida={onRenameSaida}
+            onChangeModo={onChangeModo}
+          />
         )}
 
         {data.acaoTipo === 'ENVIAR_WHATSAPP' && (
