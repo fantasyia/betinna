@@ -503,6 +503,22 @@ export class InboxService {
       );
     }
 
+    // Quote/citação: resolve o externalId (key.id do WhatsApp) da msg citada.
+    let quoted: { externalId: string; fromMe: boolean } | undefined;
+    if (dto.respondendoA) {
+      const alvo = await this.prisma.message.findFirst({
+        where: { id: dto.respondendoA, conversationId }, // mesma conversa = segurança
+        select: { externalId: true, direction: true },
+      });
+      if (alvo?.externalId) {
+        quoted = {
+          externalId: alvo.externalId,
+          fromMe: alvo.direction === MessageDirection.OUTBOUND,
+        };
+      }
+      // sem externalId (msg só local/pendente) → ignora o quote, envia normal
+    }
+
     // Cria mensagem PENDING primeiro pra ter id local mesmo se o envio falhar
     const msg = await this.prisma.message.create({
       data: {
@@ -512,6 +528,8 @@ export class InboxService {
         conteudo: dto.texto,
         status: MessageStatus.PENDING,
         autorUsuarioId: user.id,
+        // Referência da msg citada (id local) — a UI renderiza o trecho na bolha.
+        ...(dto.respondendoA ? { meta: { respondendoA: dto.respondendoA } } : {}),
       },
     });
 
@@ -519,6 +537,7 @@ export class InboxService {
       const r = await adapter.enviarTexto(conv.empresaId, conv.peerId, dto.texto, {
         proprietarioId: conv.proprietarioId,
         metadata: conv.metadata as Record<string, unknown> | null,
+        quoted: quoted ?? null,
       });
       const atualizada = await this.prisma.message.update({
         where: { id: msg.id },

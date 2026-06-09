@@ -9,6 +9,8 @@ export interface CanalAdapterContexto {
   proprietarioId?: string | null;
   /** `Conversation.metadata` — info canal-específica armazenada na conversa. */
   metadata?: Record<string, unknown> | null;
+  /** Quote/citação: externalId (key.id do WhatsApp) da msg citada + se é nossa. */
+  quoted?: { externalId: string; fromMe: boolean; participant?: string } | null;
 }
 
 /**

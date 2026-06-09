@@ -171,6 +171,13 @@ export class MullerWhatsappService implements OnModuleInit {
         return;
       }
 
+      // 3.6 Rede de segurança — lead em etapa "Perdido" OU com tag "Encerrado":
+      //     o bot NÃO responde (conversa encerrada/sem sinergia, não reabrir sozinho).
+      if (await this.leadEncerrado(params.empresaId, params.peerId, params.peerTelefone)) {
+        this.logger.log(`[bot] conv=${convId} lead Perdido/Encerrado — bot silencia`);
+        return;
+      }
+
       // 4. Anti-spam — mesmo número floodando → pausa + manda pra humano
       if (this.ehSpam(params.empresaId, params.peerId)) {
         const handoffMs = this.env.get('BOT_HANDOFF_HORAS') * 60 * 60 * 1000;
@@ -428,6 +435,42 @@ export class MullerWhatsappService implements OnModuleInit {
       content: m.conteudo,
       at: m.criadoEm.getTime(),
     }));
+  }
+
+  /**
+   * Rede de segurança: o lead daquela conversa está em etapa "Perdido" (enum
+   * legado OU tipo terminal do funil) ou tem a tag "Encerrado" → o bot cala.
+   * Casa o lead por sufixo de telefone (D18). FAIL-OPEN: erro aqui não pode
+   * impedir o bot de responder conversas legítimas.
+   */
+  private async leadEncerrado(
+    empresaId: string,
+    peerId: string,
+    peerTelefone?: string,
+  ): Promise<boolean> {
+    try {
+      const sufixo = (peerTelefone ?? peerId).replace(/\D/g, '').slice(-8);
+      if (sufixo.length < 8) return false;
+      const lead = await this.prisma.lead.findFirst({
+        where: {
+          empresaId,
+          contatoTelefone: { contains: sufixo },
+          OR: [
+            { etapa: 'PERDIDO' },
+            { funilEtapa: { tipo: 'PERDIDO' } },
+            { tags: { some: { tag: { nome: { equals: 'Encerrado', mode: 'insensitive' } } } } },
+          ],
+        },
+        select: { id: true },
+        orderBy: { atualizadoEm: 'desc' },
+      });
+      return lead != null;
+    } catch (err) {
+      this.logger.warn(
+        `[bot] leadEncerrado falhou (fail-open): ${err instanceof Error ? err.message : String(err)}`,
+      );
+      return false;
+    }
   }
 
   private ehSpam(empresaId: string, peerId: string): boolean {

@@ -41,6 +41,8 @@ export type ListMensagensDto = z.infer<typeof listMensagensSchema>;
 
 export const responderSchema = z.object({
   texto: z.string().min(1).max(4096),
+  // Quote/citação: id LOCAL (cuid) da Message sendo respondida. Opcional.
+  respondendoA: z.string().cuid().optional(),
 });
 export type ResponderDto = z.infer<typeof responderSchema>;
 

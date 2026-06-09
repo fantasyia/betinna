@@ -234,17 +234,32 @@ export class EvolutionService {
 
   // ─── Envio ─────────────────────────────────────────────────────────────────
 
-  /** Texto. `delayMs` simula "digitando" antes de enviar (presença nativa). */
+  /**
+   * Texto. `delayMs` simula "digitando". `quoted` = cita uma mensagem (reply):
+   * key.id da msg citada (= externalId no nosso banco) + fromMe.
+   */
   async enviarTexto(
     instance: string,
     numero: string,
     texto: string,
     delayMs = 0,
+    quoted?: { id: string; fromMe?: boolean; participant?: string },
   ): Promise<{ key?: { id?: string } }> {
     return this.req('post', `/message/sendText/${encodeURIComponent(instance)}`, {
       number: this.soDigitos(numero),
       text: texto,
       ...(delayMs > 0 ? { delay: delayMs } : {}),
+      ...(quoted
+        ? {
+            quoted: {
+              key: {
+                id: quoted.id,
+                fromMe: quoted.fromMe ?? false,
+                ...(quoted.participant ? { participant: quoted.participant } : {}),
+              },
+            },
+          }
+        : {}),
     });
   }
 

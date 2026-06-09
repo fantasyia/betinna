@@ -63,6 +63,14 @@ export class WhatsAppService implements CanalAdapter, OnModuleInit {
         EvolutionService.instanceName(owner),
         peerId,
         texto,
+        0,
+        ctx?.quoted
+          ? {
+              id: ctx.quoted.externalId,
+              fromMe: ctx.quoted.fromMe,
+              participant: ctx.quoted.participant,
+            }
+          : undefined,
       );
       return { externalId: r.key?.id };
     }

@@ -49,7 +49,7 @@ export class FluxoEventBusService {
         include: {
           nos: {
             where: { tipo: 'TRIGGER' },
-            select: { id: true },
+            select: { id: true, config: true },
           },
         },
       });
@@ -65,6 +65,18 @@ export class FluxoEventBusService {
         if (!triggerNo) {
           this.logger.warn(`Fluxo ${fluxo.id} (${fluxo.nome}) sem nó TRIGGER — ignorado`);
           continue;
+        }
+
+        // Filtro por config do gatilho (LEAD_ETAPA_MUDOU): só dispara quando o lead
+        // ENTRA na `paraEtapa` (no `funil` certo) e, se `deEtapa` setado, veio dela.
+        if (triggerTipo === 'LEAD_ETAPA_MUDOU') {
+          const cfg = (triggerNo.config ?? {}) as Record<string, unknown>;
+          const funilCfg = cfg['funil'] as string | undefined;
+          const paraEtapa = cfg['paraEtapa'] as string | undefined;
+          const deEtapa = cfg['deEtapa'] as string | undefined;
+          if (funilCfg && contexto['funilId'] !== funilCfg) continue;
+          if (paraEtapa && contexto['paraFunilEtapaId'] !== paraEtapa) continue;
+          if (deEtapa && contexto['deFunilEtapaId'] !== deEtapa) continue;
         }
 
         // Cria registro da execução

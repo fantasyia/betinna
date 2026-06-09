@@ -325,6 +325,8 @@ export class LeadsService {
     // Caminho custom é preferido quando informado.
     let novaEtapaEnum: LeadEtapa;
     let novoFunilEtapaId: string | null = lead.funilEtapaId;
+    let novoFunilId: string | null = lead.funilId;
+    const deFunilEtapaId: string | null = lead.funilEtapaId; // origem (antes do move)
     let etapaTipo: 'ATIVA' | 'GANHO' | 'PERDIDO' = 'ATIVA';
 
     if (dto.funilEtapaId) {
@@ -337,6 +339,7 @@ export class LeadsService {
       }
       // Lead muda de funil se a etapa pertencer a outro funil
       novoFunilEtapaId = novaEtapa.id;
+      novoFunilId = novaEtapa.funil.id;
       etapaTipo = novaEtapa.tipo;
       // Mapeia o tipo da etapa pro enum legado pra manter compat
       novaEtapaEnum =
@@ -408,7 +411,7 @@ export class LeadsService {
       `Lead ${lead.id} movido ${lead.etapa} → ${novaEtapaEnum}${dto.motivo ? ` (${dto.motivo})` : ''}`,
     );
 
-    // Trigger: LEAD_ETAPA_MUDOU
+    // Trigger: LEAD_ETAPA_MUDOU — payload com ids do funil/etapa pra o filtro do gatilho.
     void this.bus.disparar(lead.empresaId, 'LEAD_ETAPA_MUDOU', {
       leadId: lead.id,
       lead: {
@@ -421,6 +424,10 @@ export class LeadsService {
       representanteId: lead.representanteId,
       etapaAnterior: lead.etapa,
       novaEtapa: novaEtapaEnum,
+      // ids reais (FunilEtapa/Funil) — o gatilho filtra por estes.
+      funilId: novoFunilId,
+      paraFunilEtapaId: novoFunilEtapaId,
+      deFunilEtapaId,
     });
 
     return updated;
