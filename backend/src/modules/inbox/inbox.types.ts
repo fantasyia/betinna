@@ -9,8 +9,17 @@ export interface CanalAdapterContexto {
   proprietarioId?: string | null;
   /** `Conversation.metadata` — info canal-específica armazenada na conversa. */
   metadata?: Record<string, unknown> | null;
-  /** Quote/citação: externalId (key.id do WhatsApp) da msg citada + se é nossa. */
-  quoted?: { externalId: string; fromMe: boolean; participant?: string } | null;
+  /**
+   * Quote/citação: externalId (key.id do WhatsApp) da msg citada + se é nossa.
+   * `conteudo` (texto da msg citada) é usado pelo provider Baileys pra montar o
+   * preview da citação — o Evolution só precisa do externalId.
+   */
+  quoted?: {
+    externalId: string;
+    fromMe: boolean;
+    participant?: string;
+    conteudo?: string;
+  } | null;
 }
 
 /**

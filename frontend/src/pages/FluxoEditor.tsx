@@ -543,19 +543,34 @@ function FluxoEditorInner({
         config: (n.config as Record<string, unknown>) ?? {},
       },
     }));
-    const initialEdges: Edge[] = (data.arestas ?? []).map((e, i) => ({
-      id: e.id ?? `edge-${i}`,
-      source: e.sourceNoId,
-      target: e.targetNoId,
-      label: e.label ?? undefined,
-      // O sourceHandle não é persistido (só o label) — reconstrói pelo label pra
-      // a aresta reconectar no handle certo (true/false ou a saída do roteador).
-      sourceHandle:
-        e.label === 'Sim' ? 'true' : e.label === 'Não' ? 'false' : (e.label ?? undefined),
-      type: 'removivel',
-      animated: true,
-      style: { stroke: 'var(--border-strong)' },
-    }));
+    // Mapa nó→config pra reconstruir o sourceHandle ciente do MODO do nó de origem.
+    const noById = new Map((data.nos ?? []).map((n) => [n.id, n]));
+    const initialEdges: Edge[] = (data.arestas ?? []).map((e, i) => {
+      const src = noById.get(e.sourceNoId);
+      const isRoteador =
+        src?.tipo === 'CONDICAO' &&
+        (src.config as Record<string, unknown> | undefined)?.['modo'] === 'roteador';
+      return {
+        id: e.id ?? `edge-${i}`,
+        source: e.sourceNoId,
+        target: e.targetNoId,
+        label: e.label ?? undefined,
+        // O sourceHandle não é persistido (só o label). No ROTEADOR o label JÁ é o
+        // id do handle (valor da saída / 'default') — usa direto. No SIMPLES,
+        // Sim→true / Não→false. (Antes mapeava Sim/Não cego e quebrava roteador
+        // com saída chamada "Sim"/"Não".)
+        sourceHandle: isRoteador
+          ? (e.label ?? undefined)
+          : e.label === 'Sim'
+            ? 'true'
+            : e.label === 'Não'
+              ? 'false'
+              : (e.label ?? undefined),
+        type: 'removivel',
+        animated: true,
+        style: { stroke: 'var(--border-strong)' },
+      };
+    });
     setNodes(initialNodes);
     setEdges(initialEdges);
     setDirty(false);
@@ -662,7 +677,13 @@ function FluxoEditorInner({
         nos,
         arestas,
       };
-      if (triggerTipo) payload.triggerTipo = triggerTipo;
+      // Fonte da verdade do gatilho = o nó TRIGGER (o inspector edita ali). Antes
+      // o save só olhava o estado top-level e ignorava troca feita no inspector,
+      // gravando o triggerTipo antigo e deixando a config de filtro órfã.
+      const triggerNode = nodes.find((n) => n.data.tipo === 'TRIGGER');
+      const ttFinal =
+        (triggerNode?.data.triggerTipo as TriggerTipo | undefined) ?? (triggerTipo || undefined);
+      if (ttFinal) payload.triggerTipo = ttFinal;
       await api.put(`/fluxos/${fluxoId}`, payload);
       toast.success('Fluxo salvo');
       setDirty(false);
@@ -998,14 +1019,27 @@ function CondicaoEditor({
   onUpdate: (updater: (data: NodePayload) => NodePayload) => void;
   variaveis: Array<{ id: string; chave: string }>;
 }) {
+  const toast = useToast();
   const [novaSaida, setNovaSaida] = useState('');
   const modo = (data.config.modo as string) ?? 'simples';
   const saidas = (data.config.saidas as string[]) ?? [];
   const setCfg = (patch: Record<string, unknown>) =>
     onUpdate((d) => ({ ...d, config: { ...d.config, ...patch } }));
+  // Reservados: colidiriam com os handles implícitos (true/false do simples e o
+  // 'default' do roteador) e quebrariam o roteamento da aresta.
+  const RESERVADOS = ['default', 'true', 'false', 'sim', 'não', 'nao'];
   const addSaida = () => {
     const v = novaSaida.trim();
-    if (v && !saidas.includes(v)) setCfg({ saidas: [...saidas, v] });
+    if (!v) return;
+    if (saidas.includes(v)) {
+      toast.error('Essa saída já existe');
+      return;
+    }
+    if (RESERVADOS.includes(v.toLowerCase())) {
+      toast.error(`"${v}" é um nome reservado — escolha outro valor pra saída`);
+      return;
+    }
+    setCfg({ saidas: [...saidas, v] });
     setNovaSaida('');
   };
   return (

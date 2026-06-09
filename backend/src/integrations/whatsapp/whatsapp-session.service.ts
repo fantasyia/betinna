@@ -283,6 +283,7 @@ export class WhatsAppSessionService implements OnModuleInit, OnModuleDestroy {
     owner: WhatsAppOwner,
     peerId: string,
     texto: string,
+    quoted?: { id: string; fromMe: boolean; participant?: string; conteudo?: string },
   ): Promise<{ externalId?: string }> {
     let ctx = this.sessions.get(ownerKey(owner));
     // Queda MOMENTÂNEA (blip de segundos) não pode perder a mensagem: se a
@@ -296,8 +297,23 @@ export class WhatsAppSessionService implements OnModuleInit, OnModuleDestroy {
       throw new BusinessRuleException(`Sessão WhatsApp ${ownerKey(owner)} não está conectada`);
     }
     const jid = this.normalizarJid(peerId);
+    // Citação nativa (reply): Baileys precisa do objeto da msg citada com key +
+    // message. Reconstruímos a partir do externalId + conteúdo conhecido.
+    const opts = quoted?.id
+      ? {
+          quoted: {
+            key: {
+              remoteJid: jid,
+              fromMe: quoted.fromMe,
+              id: quoted.id,
+              ...(quoted.participant ? { participant: quoted.participant } : {}),
+            },
+            message: { conversation: quoted.conteudo ?? '' },
+          },
+        }
+      : undefined;
     try {
-      const r = await ctx.sock.sendMessage(jid, { text: texto });
+      const r = await ctx.sock.sendMessage(jid, { text: texto }, opts);
       return { externalId: r?.key?.id ?? undefined };
     } catch (err) {
       this.tratarFalhaSocket(ctx, err);

@@ -26,6 +26,8 @@ const FALLBACK_MSG = 'Recebi sua mensagem! Vou conferir e já te respondo. 👍'
 const TIMEOUT_MS = 15_000;
 const SPAM_LIMITE = 10; // msgs
 const SPAM_JANELA_MS = 60_000; // por minuto
+// Nome (case-insensitive) da tag que silencia o bot na rede de segurança (3.6).
+const TAG_ENCERRADO = 'Encerrado';
 const HISTORICO_MAX = 10;
 /**
  * Idade máxima da mensagem pra o bot AUTO-RESPONDER. Acima disso é backlog /
@@ -173,8 +175,15 @@ export class MullerWhatsappService implements OnModuleInit {
 
       // 3.6 Rede de segurança — lead em etapa "Perdido" OU com tag "Encerrado":
       //     o bot NÃO responde (conversa encerrada/sem sinergia, não reabrir sozinho).
+      //     Mas marca precisaHumano: um lead perdido que VOLTA a falar é sinal de
+      //     venda — sobe na inbox pra um humano ver, em vez de cair no vazio.
       if (await this.leadEncerrado(params.empresaId, params.peerId, params.peerTelefone)) {
-        this.logger.log(`[bot] conv=${convId} lead Perdido/Encerrado — bot silencia`);
+        await this.prisma.conversation
+          .update({ where: { id: convId }, data: { precisaHumano: true } })
+          .catch(() => undefined);
+        this.logger.log(
+          `[bot] conv=${convId} lead Perdido/Encerrado — bot silencia (humano avisado)`,
+        );
         return;
       }
 
@@ -458,7 +467,7 @@ export class MullerWhatsappService implements OnModuleInit {
           OR: [
             { etapa: 'PERDIDO' },
             { funilEtapa: { tipo: 'PERDIDO' } },
-            { tags: { some: { tag: { nome: { equals: 'Encerrado', mode: 'insensitive' } } } } },
+            { tags: { some: { tag: { nome: { equals: TAG_ENCERRADO, mode: 'insensitive' } } } } },
           ],
         },
         select: { id: true },

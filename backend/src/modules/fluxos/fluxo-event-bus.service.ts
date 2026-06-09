@@ -74,9 +74,18 @@ export class FluxoEventBusService {
           const funilCfg = cfg['funil'] as string | undefined;
           const paraEtapa = cfg['paraEtapa'] as string | undefined;
           const deEtapa = cfg['deEtapa'] as string | undefined;
-          if (funilCfg && contexto['funilId'] !== funilCfg) continue;
-          if (paraEtapa && contexto['paraFunilEtapaId'] !== paraEtapa) continue;
-          if (deEtapa && contexto['deFunilEtapaId'] !== deEtapa) continue;
+          // Aceita os nomes canônicos (leads.service.moverEtapa) E os legados que os
+          // disparadores internos emitem (LIBERAR_LOTE / SLA): para/deEtapaId.
+          const funilCtx = contexto['funilId'] as string | undefined;
+          const paraCtx = (contexto['paraFunilEtapaId'] ?? contexto['paraEtapaId']) as
+            | string
+            | undefined;
+          const deCtx = (contexto['deFunilEtapaId'] ?? contexto['deEtapaId']) as string | undefined;
+          // funilId só filtra quando o disparador informou (nem todos enviam); como
+          // a etapa-destino já é única por funil, o filtro de paraEtapa cobre o resto.
+          if (funilCfg && funilCtx && funilCtx !== funilCfg) continue;
+          if (paraEtapa && paraCtx !== paraEtapa) continue;
+          if (deEtapa && deCtx !== deEtapa) continue;
         }
 
         // Cria registro da execução

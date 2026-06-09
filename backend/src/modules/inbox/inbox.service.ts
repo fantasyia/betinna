@@ -504,16 +504,17 @@ export class InboxService {
     }
 
     // Quote/citação: resolve o externalId (key.id do WhatsApp) da msg citada.
-    let quoted: { externalId: string; fromMe: boolean } | undefined;
+    let quoted: { externalId: string; fromMe: boolean; conteudo?: string } | undefined;
     if (dto.respondendoA) {
       const alvo = await this.prisma.message.findFirst({
         where: { id: dto.respondendoA, conversationId }, // mesma conversa = segurança
-        select: { externalId: true, direction: true },
+        select: { externalId: true, direction: true, conteudo: true },
       });
       if (alvo?.externalId) {
         quoted = {
           externalId: alvo.externalId,
           fromMe: alvo.direction === MessageDirection.OUTBOUND,
+          conteudo: alvo.conteudo ?? undefined,
         };
       }
       // sem externalId (msg só local/pendente) → ignora o quote, envia normal
@@ -564,7 +565,11 @@ export class InboxService {
       this.logger.warn(`Falha enviando msg ${msg.id} em ${conv.canal}: ${m}`);
       await this.prisma.message.update({
         where: { id: msg.id },
-        data: { status: MessageStatus.FAILED, meta: { erro: m } },
+        // Merge: preserva o respondendoA (citação) já gravado no create.
+        data: {
+          status: MessageStatus.FAILED,
+          meta: { ...(dto.respondendoA ? { respondendoA: dto.respondendoA } : {}), erro: m },
+        },
       });
       throw new BusinessRuleException(`Falha ao enviar pelo canal ${conv.canal}: ${m}`);
     }

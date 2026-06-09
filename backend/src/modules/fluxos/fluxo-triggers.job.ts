@@ -107,7 +107,7 @@ export class FluxoTriggersJob {
     if (acao.tipo === 'mover' && acao.etapaDestinoId) {
       const destino = await this.prisma.funilEtapa.findFirst({
         where: { id: acao.etapaDestinoId, funil: { empresaId } },
-        select: { id: true, tipo: true },
+        select: { id: true, funilId: true, tipo: true },
       });
       if (!destino) return;
       const etapaEnum =
@@ -116,10 +116,12 @@ export class FluxoTriggersJob {
         where: { id: leadId },
         data: { funilEtapaId: destino.id, etapa: etapaEnum, etapaDesde: new Date() },
       });
+      // Nomes canônicos + funilId pra o filtro do gatilho "Lead mudou etapa" casar.
       await this.bus.disparar(empresaId, 'LEAD_ETAPA_MUDOU', {
         leadId,
-        deEtapaId: etapaOrigemId,
-        paraEtapaId: destino.id,
+        funilId: destino.funilId,
+        deFunilEtapaId: etapaOrigemId,
+        paraFunilEtapaId: destino.id,
       });
       return;
     }

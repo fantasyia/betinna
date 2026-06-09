@@ -81,7 +81,19 @@ export class WhatsAppService implements CanalAdapter, OnModuleInit {
           : 'WhatsApp da empresa não está conectado.',
       );
     }
-    return this.sessions.enviarTexto(owner, peerId, texto);
+    return this.sessions.enviarTexto(
+      owner,
+      peerId,
+      texto,
+      ctx?.quoted
+        ? {
+            id: ctx.quoted.externalId,
+            fromMe: ctx.quoted.fromMe,
+            participant: ctx.quoted.participant,
+            conteudo: ctx.quoted.conteudo,
+          }
+        : undefined,
+    );
   }
 
   /** Indicador "digitando…" (composing) / parou (paused). Best-effort. */

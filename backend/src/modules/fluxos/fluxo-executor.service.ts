@@ -30,6 +30,9 @@ import {
 
 // ─── Helpers ──────────────────────────────────────────────────────────
 
+/** Papéis válidos pra destinatário "papel:<ROLE>" do ENVIAR_EMAIL (evita enum inválido no Prisma). */
+const PAPEIS_VALIDOS = new Set(['ADMIN', 'DIRECTOR', 'GERENTE', 'SAC', 'REP']);
+
 /**
  * Interpola variáveis no formato {{caminho.ponto}} dentro de strings.
  * Exemplo: "Olá {{cliente.nome}}!" com { cliente: { nome: "João" } } → "Olá João!"
@@ -127,7 +130,9 @@ function avaliarCondicao(config: CondicaoConfig, ctx: ExecucaoContexto): string 
     default:
       resultado = false;
   }
-  return resultado ? 'true' : 'false';
+  // Os labels batem com o que o editor grava nas arestas da condição simples
+  // (handle true→"Sim", false→"Não"). O roteamento filtra por e.label === retorno.
+  return resultado ? 'Sim' : 'Não';
 }
 
 // ─── Serviço ──────────────────────────────────────────────────────────
@@ -558,9 +563,16 @@ export class FluxoExecutorService {
         });
         if (u?.email) emails.add(u.email);
       } else if (tok.startsWith('papel:')) {
-        const role = tok.slice(6) as 'ADMIN' | 'DIRECTOR' | 'GERENTE' | 'SAC' | 'REP';
+        const role = tok.slice(6);
+        // Valida o papel ANTES da query — papel inválido (typo/minúsculo) faria o
+        // Prisma lançar erro de enum e derrubar o envio aos demais destinatários.
+        if (!PAPEIS_VALIDOS.has(role)) continue;
         const us = await this.prisma.usuario.findMany({
-          where: { role, status: 'ATIVO', empresas: { some: { empresaId } } },
+          where: {
+            role: role as 'ADMIN' | 'DIRECTOR' | 'GERENTE' | 'SAC' | 'REP',
+            status: 'ATIVO',
+            empresas: { some: { empresaId } },
+          },
           select: { email: true },
         });
         for (const u of us) if (u.email) emails.add(u.email);
@@ -588,6 +600,20 @@ export class FluxoExecutorService {
   ): Promise<Record<string, unknown>> {
     this.assertEmpresaId(empresaId, 'CRIAR_TAREFA');
     const clienteId = ctx['clienteId'] as string | undefined;
+    // Defesa-em-profundidade: se o contexto traz clienteId, ele PRECISA pertencer
+    // à empresa do fluxo — independente do caminho de responsável. Sem isso, um
+    // contexto malformado anexaria um cliente de outro tenant à tarefa.
+    let clienteRepId: string | null | undefined;
+    if (clienteId) {
+      const cliente = await this.prisma.cliente.findFirst({
+        where: { id: clienteId, empresaId },
+        select: { representanteId: true },
+      });
+      if (!cliente) {
+        throw new Error(`Cliente ${clienteId} não encontrado na empresa ${empresaId}`);
+      }
+      clienteRepId = cliente.representanteId;
+    }
     // Responsável: 1) o escolhido no nó (validado na empresa); 2) rep do cliente;
     // 3) fallback primeiro ADMIN/DIRECTOR.
     let responsavelId: string | undefined = cfg.responsavelId || undefined;
@@ -599,14 +625,7 @@ export class FluxoExecutorService {
       if (!u) responsavelId = undefined; // id inválido/foreign → cai no fallback
     }
     if (!responsavelId && clienteId) {
-      const cliente = await this.prisma.cliente.findFirst({
-        where: { id: clienteId, empresaId },
-        select: { representanteId: true },
-      });
-      if (!cliente) {
-        throw new Error(`Cliente ${clienteId} não encontrado na empresa ${empresaId}`);
-      }
-      responsavelId = cliente.representanteId ?? undefined;
+      responsavelId = clienteRepId ?? undefined;
     }
     if (!responsavelId) {
       const admin = await this.prisma.usuario.findFirst({
@@ -750,9 +769,14 @@ export class FluxoExecutorService {
     const sufixo = lead.contatoTelefone.replace(/\D/g, '').slice(-8);
     if (sufixo.length < 8) throw new Error('Telefone do lead curto demais para casar a conversa');
     const religar = cfg.religar === true;
+    // Religar devolve o controle ao bot de fato: além de botLigado, limpa o
+    // botPausadoAte (handoff/anti-spam) e o precisaHumano — senão o gate do bot
+    // continuaria mudo apesar de "ligado" (mesmo caminho do inbox.setBotLigado).
     const { count } = await this.prisma.conversation.updateMany({
       where: { empresaId, canal: 'WHATSAPP', peerId: { contains: sufixo } },
-      data: { botLigado: religar },
+      data: religar
+        ? { botLigado: true, botPausadoAte: null, precisaHumano: false }
+        : { botLigado: false },
     });
     return { leadId, sufixo, botLigado: religar, conversasAtualizadas: count };
   }
@@ -834,7 +858,7 @@ export class FluxoExecutorService {
     // Etapa destino deve pertencer à empresa; o tipo sincroniza o enum legado.
     const destino = await this.prisma.funilEtapa.findFirst({
       where: { id: cfg.etapaDestinoId, funil: { empresaId } },
-      select: { id: true, tipo: true, capacidadeMaxima: true },
+      select: { id: true, funilId: true, tipo: true, capacidadeMaxima: true },
     });
     if (!destino) {
       throw new Error(`Etapa destino ${cfg.etapaDestinoId} não encontrada na empresa ${empresaId}`);
@@ -871,11 +895,13 @@ export class FluxoExecutorService {
         where: { id: lead.id },
         data: { funilEtapaId: cfg.etapaDestinoId, etapa: etapaEnum, etapaDesde: new Date() },
       });
-      // Dispara os fluxos da etapa destino (1 por lead).
+      // Dispara os fluxos da etapa destino (1 por lead). Nomes canônicos +
+      // funilId pra o filtro do gatilho "Lead mudou etapa" casar (FluxoEventBus).
       await this.bus.disparar(empresaId, 'LEAD_ETAPA_MUDOU', {
         leadId: lead.id,
-        deEtapaId: cfg.etapaOrigemId,
-        paraEtapaId: cfg.etapaDestinoId,
+        funilId: destino.funilId,
+        deFunilEtapaId: cfg.etapaOrigemId,
+        paraFunilEtapaId: cfg.etapaDestinoId,
       });
     }
 

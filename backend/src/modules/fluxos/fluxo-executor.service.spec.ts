@@ -165,7 +165,11 @@ describe('FluxoExecutorService', () => {
           config: { etapaOrigemId: 'et-prosp', etapaDestinoId: 'et-abord', quantidade: 2 },
         }),
       );
-      prisma.funilEtapa.findFirst.mockResolvedValue({ id: 'et-abord', tipo: 'ATIVA' });
+      prisma.funilEtapa.findFirst.mockResolvedValue({
+        id: 'et-abord',
+        funilId: 'funil-1',
+        tipo: 'ATIVA',
+      });
       prisma.lead.findMany.mockResolvedValue([{ id: 'lead-a' }, { id: 'lead-b' }]);
 
       await service.executarPasso('exec-1', 'no-1');
@@ -180,7 +184,11 @@ describe('FluxoExecutorService', () => {
       expect(bus.disparar).toHaveBeenCalledWith(
         'emp-1',
         'LEAD_ETAPA_MUDOU',
-        expect.objectContaining({ leadId: 'lead-a', paraEtapaId: 'et-abord' }),
+        expect.objectContaining({
+          leadId: 'lead-a',
+          funilId: 'funil-1',
+          paraFunilEtapaId: 'et-abord',
+        }),
       );
     });
   });
@@ -340,15 +348,16 @@ describe('FluxoExecutorService', () => {
         fakeExecucao({ status: 'EM_EXECUCAO', contexto: { valor: 200 } }),
       );
       prisma.fluxoNo.findUnique.mockResolvedValue(condicaoNo);
-      // Duas arestas: uma "true" e uma "false"
+      // Duas arestas: a do ramo verdadeiro ("Sim") e a do falso ("Não") — labels
+      // iguais aos que o editor grava (handle true→"Sim", false→"Não").
       prisma.fluxoEdge.findMany.mockResolvedValue([
-        fakeEdge('no-cond', 'no-true', 'true'),
-        fakeEdge('no-cond', 'no-false', 'false'),
+        fakeEdge('no-cond', 'no-true', 'Sim'),
+        fakeEdge('no-cond', 'no-false', 'Não'),
       ]);
 
       await service.executarPasso('exec-1', 'no-cond');
 
-      // Condição 200 > 100 → "true" → deve enfileirar no-true
+      // Condição 200 > 100 → "Sim" → deve enfileirar no-true
       expect(queue.add).toHaveBeenCalledWith(
         'step',
         { execucaoId: 'exec-1', noId: 'no-true' },
