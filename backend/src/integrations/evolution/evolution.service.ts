@@ -365,11 +365,19 @@ export class EvolutionService {
     return createHash('sha256').update(`evolution-webhook:${apiKey}`).digest('hex').slice(0, 32);
   }
 
-  /** URL completa do webhook (API pública + /webhooks/evolution/<token>). */
+  /**
+   * URL completa do webhook de entrada: `<API_PUBLIC_URL>/<API_PREFIX>/webhooks/evolution/<token>`.
+   * O endpoint vive SOB o prefixo global (ex: /api/v1) — incluí-lo aqui evita o erro
+   * clássico de o Evolution postar num 404 (conecta/envia mas não RECEBE nada).
+   * Aceita o API_PUBLIC_URL como origem pura OU já contendo o prefixo (sem duplicar).
+   */
   webhookUrl(): string {
-    const base = (this.env.get('API_PUBLIC_URL') || '').replace(/\/+$/, '');
+    const origem = (this.env.get('API_PUBLIC_URL') || '').replace(/\/+$/, '');
     const token = EvolutionService.webhookToken(this.env.get('EVOLUTION_API_KEY') || '');
-    return base && token ? `${base}/webhooks/evolution/${token}` : '';
+    if (!origem || !token) return '';
+    const prefixo = (this.env.get('API_PREFIX') || '').replace(/^\/+|\/+$/g, '');
+    const base = prefixo && !origem.endsWith(`/${prefixo}`) ? `${origem}/${prefixo}` : origem;
+    return `${base}/webhooks/evolution/${token}`;
   }
 
   /**
