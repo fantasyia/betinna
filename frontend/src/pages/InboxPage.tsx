@@ -22,6 +22,7 @@ import {
   Square,
   Receipt,
   Paperclip,
+  Reply,
   Smile,
   Download,
   Building2,
@@ -1014,6 +1015,8 @@ function ConversationThread({
   const podeZerar = role === 'ADMIN' || role === 'DIRECTOR';
   const [confirmZerar, setConfirmZerar] = useState(false);
   const [emojiAberto, setEmojiAberto] = useState(false);
+  // Quote/citação: a mensagem que estou respondendo (preview acima do composer).
+  const [respondendoA, setRespondendoA] = useState<Mensagem | null>(null);
 
   // Sprint 2.3 — respostas rápidas / templates (dropdown ao digitar "/").
   const templates = useApiQuery<RespostaRapida[]>('/respostas-rapidas');
@@ -1114,8 +1117,12 @@ function ConversationThread({
     setSending(true);
     setSendError(null);
     try {
-      await api.post(`/inbox/${id}/responder`, { texto });
+      await api.post(`/inbox/${id}/responder`, {
+        texto,
+        ...(respondendoA ? { respondendoA: respondendoA.id } : {}),
+      });
       setResposta('');
+      setRespondendoA(null);
       msgs.refetch();
       conv.refetch();
       onChanged();
@@ -1722,6 +1729,9 @@ function ConversationThread({
             const prev = i > 0 ? arr[i - 1] : null;
             const showAuthor =
               !prev || prev.direction !== m.direction || prev.autor?.id !== m.autor?.id;
+            // Quote: resolve a msg citada pelo id local guardado em meta.respondendoA.
+            const refId = typeof m.meta?.respondendoA === 'string' ? m.meta.respondendoA : null;
+            const citada = refId ? (messages.find((x) => x.id === refId) ?? null) : null;
             return (
               <MessageBubble
                 key={m.id}
@@ -1729,6 +1739,8 @@ function ConversationThread({
                 showAuthor={!!showAuthor}
                 podeReagir={c?.canal === 'WHATSAPP'}
                 onReagir={(emoji) => void reagir(m.id, emoji)}
+                onResponder={c?.canal === 'WHATSAPP' ? () => setRespondendoA(m) : undefined}
+                citada={citada}
               />
             );
           })}
@@ -1859,6 +1871,33 @@ function ConversationThread({
               >
                 <Square className="h-3 w-3 fill-current" />
                 Enviar
+              </button>
+            </div>
+          )}
+
+          {/* Preview "respondendo a…" (quote) acima do composer. */}
+          {respondendoA && (
+            <div
+              data-testid="inbox-reply-preview"
+              className="flex items-center gap-2 mb-1.5 pl-2 border-l-2 border-primary bg-surface-elevated rounded px-2 py-1.5"
+            >
+              <Reply className="h-3.5 w-3.5 text-primary shrink-0" />
+              <div className="flex-1 min-w-0">
+                <span className="block text-[10px] font-semibold text-primary">
+                  Respondendo {respondendoA.direction === 'OUTBOUND' ? 'você mesmo' : 'o contato'}
+                </span>
+                <span className="block text-xs text-muted truncate">
+                  {respondendoA.conteudo || `[${respondendoA.tipo.toLowerCase()}]`}
+                </span>
+              </div>
+              <button
+                type="button"
+                data-testid="inbox-reply-cancel"
+                onClick={() => setRespondendoA(null)}
+                className="p-1 rounded text-muted hover:text-text hover:bg-surface-hover shrink-0"
+                title="Cancelar resposta"
+              >
+                <X className="h-3.5 w-3.5" />
               </button>
             </div>
           )}
@@ -2669,11 +2708,15 @@ function MessageBubble({
   showAuthor,
   podeReagir,
   onReagir,
+  onResponder,
+  citada,
 }: {
   msg: Mensagem;
   showAuthor: boolean;
   podeReagir?: boolean;
   onReagir?: (emoji: string) => void;
+  onResponder?: () => void;
+  citada?: Mensagem | null;
 }) {
   const outbound = msg.direction === 'OUTBOUND';
   const reacao = typeof msg.meta?.reacao === 'string' ? msg.meta.reacao : null;
@@ -2696,7 +2739,13 @@ function MessageBubble({
       data-testid={`msg-${msg.id}`}
       className={cn('flex items-end gap-1 group', outbound ? 'justify-end' : 'justify-start')}
     >
-      {podeReagir && outbound && <ReactButton onReagir={onReagir} />}
+      {(podeReagir || onResponder) && outbound && (
+        <MsgActions
+          msgId={msg.id}
+          onReagir={podeReagir ? onReagir : undefined}
+          onResponder={onResponder}
+        />
+      )}
       <div className="flex flex-col gap-0.5 max-w-[78%]">
         {showAuthor && msg.autor?.nome && (
           <span
@@ -2726,6 +2775,22 @@ function MessageBubble({
               : 'bg-surface text-text border-border rounded-2xl rounded-bl-sm',
           )}
         >
+          {/* Quote: trecho da mensagem citada, dentro da bolha (estilo WhatsApp). */}
+          {citada && (
+            <div
+              data-testid={`msg-quote-${msg.id}`}
+              className="mb-1.5 pl-2 border-l-2 border-primary/60 bg-black/10 rounded px-2 py-1"
+            >
+              <span className="block text-[10px] font-semibold text-primary">
+                {citada.direction === 'OUTBOUND'
+                  ? 'Você'
+                  : (citada.meta?.senderName ?? 'Contato')}
+              </span>
+              <span className="block text-xs text-muted truncate max-w-[240px]">
+                {citada.conteudo || `[${citada.tipo.toLowerCase()}]`}
+              </span>
+            </div>
+          )}
           {/* Mídia renderizada inline quando temos mediaUrl pra IMAGE/VIDEO/AUDIO/DOCUMENT.
               Sem mediaUrl, mostra só o ícone + tipo (fallback). */}
           {(() => {
@@ -2802,7 +2867,13 @@ function MessageBubble({
           {fmtHHMM(msg.criadoEm)}
         </span>
       </div>
-      {podeReagir && !outbound && <ReactButton onReagir={onReagir} />}
+      {(podeReagir || onResponder) && !outbound && (
+        <MsgActions
+          msgId={msg.id}
+          onReagir={podeReagir ? onReagir : undefined}
+          onResponder={onResponder}
+        />
+      )}
     </div>
   );
 }
@@ -2848,6 +2919,34 @@ function ReactButton({ onReagir }: { onReagir?: (emoji: string) => void }) {
           </div>
         </>
       )}
+    </div>
+  );
+}
+
+// Ações da mensagem no hover: Responder (citar) + Reagir.
+function MsgActions({
+  msgId,
+  onReagir,
+  onResponder,
+}: {
+  msgId: string;
+  onReagir?: (emoji: string) => void;
+  onResponder?: () => void;
+}) {
+  return (
+    <div className="flex items-center gap-0.5 shrink-0 self-center">
+      {onResponder && (
+        <button
+          type="button"
+          data-testid={`msg-responder-${msgId}`}
+          onClick={onResponder}
+          title="Responder"
+          className="opacity-0 group-hover:opacity-100 focus-within:opacity-100 transition-opacity p-1 rounded-full text-muted hover:text-text hover:bg-surface-hover"
+        >
+          <Reply className="h-3.5 w-3.5" />
+        </button>
+      )}
+      {onReagir && <ReactButton onReagir={onReagir} />}
     </div>
   );
 }
