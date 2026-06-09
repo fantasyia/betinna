@@ -820,7 +820,11 @@ export class InboxService {
           conversation: {
             empresaId: params.empresaId,
             canal: params.canal,
-            peerId: params.peerId,
+            // NÃO escopar por peerId: o externalId (key.id do WhatsApp) já é único
+            // por mensagem. No Evolution o LID faz o remoteJid chegar ora como
+            // telefone, ora como `<id>@lid` (sem remoteJidAlt) → o peerId varia pra
+            // a MESMA mensagem e a dedup falhava → webhook + poll re-disparavam o
+            // bot (loop). Manter só proprietarioId pro escopo dual-owner.
             proprietarioId: params.proprietarioId ?? null,
           },
         },

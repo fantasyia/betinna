@@ -162,6 +162,11 @@ export class EvolutionInboundService {
         continue;
 
       const fromMe = !!m.key?.fromMe;
+      // Diagnóstico do cutover (temporário): confirma variância de LID/fromMe que
+      // poderia re-disparar o bot. Remover quando o Evolution estiver estável.
+      this.logger.log(
+        `[evolution] in ${instance} id=${m.key?.id ?? '-'} fromMe=${fromMe} rjid=${rjid} alt=${rjidAlt || '-'} → peer=${peerId}`,
+      );
       const { conteudo, tipo, mediaMime, extras } = this.session.extrairConteudo(m.message);
 
       // Mídia → sobe pro Supabase (vira áudio tocável + transcrição/visão da IA).
