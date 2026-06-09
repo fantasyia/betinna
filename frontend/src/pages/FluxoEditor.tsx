@@ -274,24 +274,40 @@ function NodeCard({ data, selected }: NodeProps<FlowNode>) {
           </div>
         )}
       </div>
-      {/* Bottom connection (todos exceto DELAY/CONDICAO podem ter 1; CONDICAO tem 2) */}
+      {/* Saídas: CONDICAO simples = true/false; CONDICAO roteador = N saídas +
+          default; demais = 1. O `id` do handle vira o label da aresta. */}
       {tipo === 'CONDICAO' ? (
-        <>
-          <Handle
-            type="source"
-            position={Position.Bottom}
-            id="true"
-            className="!w-2 !h-2 !bg-success !border-bg !border-2"
-            style={{ left: '30%' }}
-          />
-          <Handle
-            type="source"
-            position={Position.Bottom}
-            id="false"
-            className="!w-2 !h-2 !bg-danger !border-bg !border-2"
-            style={{ left: '70%' }}
-          />
-        </>
+        (data.config?.modo as string) === 'roteador' ? (
+          <>
+            {[...(((data.config?.saidas as string[]) ?? [])), 'default'].map((s, i, arr) => (
+              <Handle
+                key={s}
+                type="source"
+                position={Position.Bottom}
+                id={s}
+                className={`!w-2 !h-2 !border-bg !border-2 ${s === 'default' ? '!bg-muted' : '!bg-primary'}`}
+                style={{ left: `${((i + 1) / (arr.length + 1)) * 100}%` }}
+              />
+            ))}
+          </>
+        ) : (
+          <>
+            <Handle
+              type="source"
+              position={Position.Bottom}
+              id="true"
+              className="!w-2 !h-2 !bg-success !border-bg !border-2"
+              style={{ left: '30%' }}
+            />
+            <Handle
+              type="source"
+              position={Position.Bottom}
+              id="false"
+              className="!w-2 !h-2 !bg-danger !border-bg !border-2"
+              style={{ left: '70%' }}
+            />
+          </>
+        )
       ) : (
         <Handle
           type="source"
@@ -520,7 +536,10 @@ function FluxoEditorInner({
         titulo: n.titulo,
         tipo: n.tipo,
         acaoTipo: n.acaoTipo as AcaoTipo | undefined,
-        triggerTipo: undefined,
+        // Espelha o triggerTipo do fluxo no nó TRIGGER pra o inspector mostrar
+        // a config certa (antes ficava undefined → config do gatilho sumia ao recarregar).
+        triggerTipo:
+          n.tipo === 'TRIGGER' ? (data.triggerTipo as TriggerTipo | undefined) : undefined,
         config: (n.config as Record<string, unknown>) ?? {},
       },
     }));
@@ -529,6 +548,10 @@ function FluxoEditorInner({
       source: e.sourceNoId,
       target: e.targetNoId,
       label: e.label ?? undefined,
+      // O sourceHandle não é persistido (só o label) — reconstrói pelo label pra
+      // a aresta reconectar no handle certo (true/false ou a saída do roteador).
+      sourceHandle:
+        e.label === 'Sim' ? 'true' : e.label === 'Não' ? 'false' : (e.label ?? undefined),
       type: 'removivel',
       animated: true,
       style: { stroke: 'var(--border-strong)' },
@@ -595,7 +618,14 @@ function FluxoEditorInner({
             type: 'removivel',
             animated: true,
             style: { stroke: 'var(--border-strong)' },
-            label: conn.sourceHandle === 'true' ? 'Sim' : conn.sourceHandle === 'false' ? 'Não' : undefined,
+            // Condição simples: true→Sim, false→Não. Roteador: o label É o id do
+            // handle (o valor da saída, ou 'default'). Demais nós: sem label.
+            label:
+              conn.sourceHandle === 'true'
+                ? 'Sim'
+                : conn.sourceHandle === 'false'
+                  ? 'Não'
+                  : (conn.sourceHandle ?? undefined),
           },
           eds,
         );
@@ -788,7 +818,16 @@ function FluxoEditorInner({
                 size="sm"
                 value={triggerTipo}
                 onChange={(e) => {
-                  setTriggerTipo(e.target.value as TriggerTipo | '');
+                  const tt = e.target.value as TriggerTipo | '';
+                  setTriggerTipo(tt);
+                  // Sincroniza o nó TRIGGER pra o inspector mostrar a config do gatilho.
+                  setNodes((nds) =>
+                    nds.map((n) =>
+                      n.data.tipo === 'TRIGGER'
+                        ? { ...n, data: { ...n.data, triggerTipo: tt || undefined } }
+                        : n,
+                    ),
+                  );
                   setDirty(true);
                 }}
               >
@@ -949,6 +988,235 @@ function PaletteItemView({ item }: { item: PaletteItem }) {
 
 // ─── Inspector (right panel) ────────────────────────────────────
 
+/** Editor visual da Condição: modo Simples (true/false) ou Roteador (N saídas). */
+function CondicaoEditor({
+  data,
+  onUpdate,
+  variaveis,
+}: {
+  data: NodePayload;
+  onUpdate: (updater: (data: NodePayload) => NodePayload) => void;
+  variaveis: Array<{ id: string; chave: string }>;
+}) {
+  const [novaSaida, setNovaSaida] = useState('');
+  const modo = (data.config.modo as string) ?? 'simples';
+  const saidas = (data.config.saidas as string[]) ?? [];
+  const setCfg = (patch: Record<string, unknown>) =>
+    onUpdate((d) => ({ ...d, config: { ...d.config, ...patch } }));
+  const addSaida = () => {
+    const v = novaSaida.trim();
+    if (v && !saidas.includes(v)) setCfg({ saidas: [...saidas, v] });
+    setNovaSaida('');
+  };
+  return (
+    <>
+      <Field label="Modo">
+        <Select size="sm" value={modo} onChange={(e) => setCfg({ modo: e.target.value })}>
+          <option value="simples">Simples (Sim / Não)</option>
+          <option value="roteador">Roteador (uma saída por valor)</option>
+        </Select>
+      </Field>
+      {modo === 'roteador' ? (
+        <>
+          <Field
+            label="Variável"
+            hint="Roteia pelo valor desta variável (ex: classificacao_final)"
+          >
+            <div>
+              <Input
+                list="fluxo-variaveis"
+                value={(data.config.variavel as string) ?? ''}
+                onChange={(e) => setCfg({ variavel: e.target.value })}
+                placeholder="classificacao_final"
+              />
+              <datalist id="fluxo-variaveis">
+                {variaveis.map((v) => (
+                  <option key={v.id} value={v.chave} />
+                ))}
+              </datalist>
+            </div>
+          </Field>
+          <Field label="Saídas (valores)" hint="Cada valor vira uma saída. Há sempre a saída 'default'.">
+            <div className="flex flex-col gap-1.5">
+              {saidas.map((s, i) => (
+                <div key={`${s}-${i}`} className="flex items-center gap-1.5">
+                  <span className="flex-1 text-xs px-2 py-1 rounded-md border border-border bg-surface truncate">
+                    {s}
+                  </span>
+                  <IconButton
+                    aria-label="Remover saída"
+                    variant="ghost"
+                    size="sm"
+                    icon={<Trash2 />}
+                    onClick={() => setCfg({ saidas: saidas.filter((_, j) => j !== i) })}
+                  />
+                </div>
+              ))}
+              <div className="flex items-center gap-1.5">
+                <Input
+                  value={novaSaida}
+                  onChange={(e) => setNovaSaida(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') {
+                      e.preventDefault();
+                      addSaida();
+                    }
+                  }}
+                  placeholder="Ex: Forte Sinergia (Enter)"
+                />
+                <Button type="button" size="sm" variant="secondary" onClick={addSaida}>
+                  +
+                </Button>
+              </div>
+              <span className="text-[11px] text-muted">
+                No canvas, conecte cada saída (o rótulo do valor) ao próximo nó.
+              </span>
+            </div>
+          </Field>
+        </>
+      ) : (
+        <>
+          <Field label="Variável / campo" hint="Ex: classificacao_final, lead.etapa">
+            <div>
+              <Input
+                list="fluxo-variaveis"
+                value={(data.config.campo as string) ?? ''}
+                onChange={(e) => setCfg({ campo: e.target.value })}
+                placeholder="classificacao_final"
+              />
+              <datalist id="fluxo-variaveis">
+                {variaveis.map((v) => (
+                  <option key={v.id} value={v.chave} />
+                ))}
+              </datalist>
+            </div>
+          </Field>
+          <Field label="Operador">
+            <Select
+              size="sm"
+              value={(data.config.operador as string) ?? 'eq'}
+              onChange={(e) => setCfg({ operador: e.target.value })}
+            >
+              <option value="eq">= igual</option>
+              <option value="neq">≠ diferente</option>
+              <option value="contains">contém</option>
+              <option value="gt">&gt; maior</option>
+              <option value="lt">&lt; menor</option>
+              <option value="gte">≥ maior ou igual</option>
+              <option value="lte">≤ menor ou igual</option>
+            </Select>
+          </Field>
+          <Field label="Valor">
+            <Input
+              value={((data.config.valor as string | number | undefined) ?? '').toString()}
+              onChange={(e) => setCfg({ valor: e.target.value })}
+            />
+          </Field>
+        </>
+      )}
+    </>
+  );
+}
+
+/** Campo de destinatários do e-mail: usuário / papel / e-mail fixo / variável. */
+function DestinatariosField({
+  data,
+  onUpdate,
+  usuarios,
+}: {
+  data: NodePayload;
+  onUpdate: (updater: (data: NodePayload) => NodePayload) => void;
+  usuarios: Array<{ id: string; nome: string; role: string }>;
+}) {
+  const [novoEmail, setNovoEmail] = useState('');
+  const lista = (data.config.destinatarios as string[]) ?? [];
+  const PAPEIS = ['ADMIN', 'DIRECTOR', 'GERENTE', 'SAC', 'REP'];
+  const setLista = (next: string[]) =>
+    onUpdate((d) => ({ ...d, config: { ...d.config, destinatarios: next } }));
+  const add = (tok: string) => {
+    const v = tok.trim();
+    if (v && !lista.includes(v)) setLista([...lista, v]);
+  };
+  const rotulo = (tok: string) => {
+    if (tok.startsWith('user:')) {
+      const u = usuarios.find((x) => x.id === tok.slice(5));
+      return u ? `👤 ${u.nome}` : tok;
+    }
+    if (tok.startsWith('papel:')) return `🏷️ ${tok.slice(6)}`;
+    return tok;
+  };
+  return (
+    <Field label="Destinatários" hint="Usuário, papel, e-mail fixo ou {{variável}}">
+      <div className="flex flex-col gap-1.5">
+        {lista.length > 0 && (
+          <div className="flex flex-wrap gap-1">
+            {lista.map((tok, i) => (
+              <span
+                key={`${tok}-${i}`}
+                className="inline-flex items-center gap-1 text-[11px] px-2 py-0.5 rounded-full border border-border bg-surface"
+              >
+                {rotulo(tok)}
+                <button
+                  type="button"
+                  aria-label="Remover destinatário"
+                  onClick={() => setLista(lista.filter((_, j) => j !== i))}
+                  className="text-muted hover:text-danger"
+                >
+                  ×
+                </button>
+              </span>
+            ))}
+          </div>
+        )}
+        <Select
+          size="sm"
+          value=""
+          onChange={(e) => {
+            if (e.target.value) add(e.target.value);
+          }}
+        >
+          <option value="">+ adicionar usuário / papel…</option>
+          {usuarios.map((u) => (
+            <option key={u.id} value={`user:${u.id}`}>
+              👤 {u.nome}
+            </option>
+          ))}
+          {PAPEIS.map((p) => (
+            <option key={p} value={`papel:${p}`}>
+              🏷️ Papel: {p}
+            </option>
+          ))}
+        </Select>
+        <div className="flex items-center gap-1.5">
+          <Input
+            value={novoEmail}
+            onChange={(e) => setNovoEmail(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter') {
+                e.preventDefault();
+                add(novoEmail);
+                setNovoEmail('');
+              }
+            }}
+            placeholder="e-mail fixo ou {{variavel}} (Enter)"
+          />
+          <Button
+            type="button"
+            size="sm"
+            variant="secondary"
+            onClick={() => {
+              add(novoEmail);
+              setNovoEmail('');
+            }}
+          >
+            +
+          </Button>
+        </div>
+      </div>
+    </Field>
+  );
+}
+
 function NodeInspector({
   node,
   onUpdate,
@@ -970,6 +1238,18 @@ function NodeInspector({
   const etapasOpts = (funis ?? []).flatMap((f) =>
     (f.etapas ?? []).map((e) => ({ id: e.id, label: `${f.nome} · ${e.nome}` })),
   );
+  // Usuários (responsável/destinatário) + variáveis customizadas (roteador/condição).
+  const { data: usersResp } = useApiQuery<{
+    data: Array<{ id: string; nome: string; role: string }>;
+  }>('/users?limit=100&status=ATIVO');
+  const usuarios = usersResp?.data ?? [];
+  const { data: variaveisData } = useApiQuery<
+    Array<{ id: string; chave: string }> | { data: Array<{ id: string; chave: string }> }
+  >('/orquestracao/variaveis');
+  const variaveis = Array.isArray(variaveisData) ? variaveisData : (variaveisData?.data ?? []);
+  /** Etapas de UM funil — pros dropdowns dependentes do funil escolhido. */
+  const etapasDoFunil = (funilId?: string) =>
+    (funis ?? []).find((f) => f.id === funilId)?.etapas ?? [];
   return (
     <div className="flex flex-col h-full">
       <div className="p-4 border-b border-border">
@@ -1023,6 +1303,75 @@ function NodeInspector({
           <WebhookTriggerConfig />
         )}
 
+        {data.tipo === 'TRIGGER' && data.triggerTipo === 'LEAD_ETAPA_MUDOU' && (
+          <>
+            <Field label="Funil" hint="Qual funil observar">
+              <Select
+                size="sm"
+                value={(data.config.funil as string) ?? ''}
+                onChange={(e) =>
+                  onUpdate((d) => ({
+                    ...d,
+                    // trocar o funil limpa as etapas (podem não existir no novo)
+                    config: {
+                      ...d.config,
+                      funil: e.target.value || undefined,
+                      paraEtapa: undefined,
+                      deEtapa: undefined,
+                    },
+                  }))
+                }
+              >
+                <option value="">Selecionar funil…</option>
+                {(funis ?? []).map((f) => (
+                  <option key={f.id} value={f.id}>
+                    {f.nome}
+                  </option>
+                ))}
+              </Select>
+            </Field>
+            <Field label="Para etapa" hint="Dispara quando o lead ENTRA nesta etapa">
+              <Select
+                size="sm"
+                value={(data.config.paraEtapa as string) ?? ''}
+                disabled={!data.config.funil}
+                onChange={(e) =>
+                  onUpdate((d) => ({ ...d, config: { ...d.config, paraEtapa: e.target.value || undefined } }))
+                }
+              >
+                <option value="">
+                  {data.config.funil ? 'Selecionar etapa…' : 'Escolha o funil primeiro'}
+                </option>
+                {etapasDoFunil(data.config.funil as string | undefined).map((e) => (
+                  <option key={e.id} value={e.id}>
+                    {e.nome}
+                  </option>
+                ))}
+              </Select>
+            </Field>
+            <Field
+              label="De etapa (opcional)"
+              hint="Só dispara se veio desta etapa. Vazio = qualquer origem"
+            >
+              <Select
+                size="sm"
+                value={(data.config.deEtapa as string) ?? ''}
+                disabled={!data.config.funil}
+                onChange={(e) =>
+                  onUpdate((d) => ({ ...d, config: { ...d.config, deEtapa: e.target.value || undefined } }))
+                }
+              >
+                <option value="">Qualquer origem</option>
+                {etapasDoFunil(data.config.funil as string | undefined).map((e) => (
+                  <option key={e.id} value={e.id}>
+                    {e.nome}
+                  </option>
+                ))}
+              </Select>
+            </Field>
+          </>
+        )}
+
         {data.tipo === 'ACAO' && (
           <Field label="Tipo de ação">
             <Select
@@ -1071,24 +1420,7 @@ function NodeInspector({
         )}
 
         {data.tipo === 'CONDICAO' && (
-          <Field
-            label="Expressão / regra"
-            hint="Por enquanto via JSON. Editor visual de condições vem depois."
-          >
-            <Textarea
-              rows={6}
-              value={JSON.stringify(data.config, null, 2)}
-              onChange={(e) => {
-                try {
-                  const parsed = JSON.parse(e.target.value);
-                  onUpdate((d) => ({ ...d, config: parsed }));
-                } catch {
-                  // Mantém valor inválido no estado pro user corrigir
-                }
-              }}
-              className="font-mono text-xs"
-            />
-          </Field>
+          <CondicaoEditor data={data} onUpdate={onUpdate} variaveis={variaveis} />
         )}
 
         {data.acaoTipo === 'ENVIAR_WHATSAPP' && (
@@ -1106,6 +1438,7 @@ function NodeInspector({
 
         {data.acaoTipo === 'ENVIAR_EMAIL' && (
           <>
+            <DestinatariosField data={data} onUpdate={onUpdate} usuarios={usuarios} />
             <Field label="Assunto">
               <Input
                 value={(data.config.assunto as string) ?? ''}
@@ -1120,6 +1453,82 @@ function NodeInspector({
                 value={(data.config.corpo as string) ?? ''}
                 onChange={(e) =>
                   onUpdate((d) => ({ ...d, config: { ...d.config, corpo: e.target.value } }))
+                }
+              />
+            </Field>
+          </>
+        )}
+
+        {data.acaoTipo === 'MOVER_LEAD_ETAPA' && (
+          <Field label="Etapa de destino" hint="Etapa do funil pra onde o lead vai">
+            <Select
+              size="sm"
+              value={(data.config.funilEtapaId as string) ?? ''}
+              onChange={(e) =>
+                onUpdate((d) => ({
+                  ...d,
+                  config: { ...d.config, funilEtapaId: e.target.value || undefined },
+                }))
+              }
+            >
+              <option value="">Selecionar etapa…</option>
+              {etapasOpts.map((e) => (
+                <option key={e.id} value={e.id}>
+                  {e.label}
+                </option>
+              ))}
+            </Select>
+          </Field>
+        )}
+
+        {data.acaoTipo === 'CRIAR_TAREFA' && (
+          <>
+            <Field label="Título da tarefa" hint="Aceita {{nome}}, {{cidade}}…">
+              <Input
+                value={(data.config.titulo as string) ?? ''}
+                onChange={(e) =>
+                  onUpdate((d) => ({ ...d, config: { ...d.config, titulo: e.target.value } }))
+                }
+              />
+            </Field>
+            <Field label="Descrição (opcional)">
+              <Textarea
+                rows={3}
+                value={(data.config.descricao as string) ?? ''}
+                onChange={(e) =>
+                  onUpdate((d) => ({ ...d, config: { ...d.config, descricao: e.target.value } }))
+                }
+              />
+            </Field>
+            <Field label="Responsável" hint="Vazio = rep do cliente / admin">
+              <Select
+                size="sm"
+                value={(data.config.responsavelId as string) ?? ''}
+                onChange={(e) =>
+                  onUpdate((d) => ({
+                    ...d,
+                    config: { ...d.config, responsavelId: e.target.value || undefined },
+                  }))
+                }
+              >
+                <option value="">Automático (rep do cliente)</option>
+                {usuarios.map((u) => (
+                  <option key={u.id} value={u.id}>
+                    {u.nome}
+                  </option>
+                ))}
+              </Select>
+            </Field>
+            <Field label="Prazo (dias a partir de hoje)" hint="0 = hoje">
+              <Input
+                type="number"
+                min={0}
+                value={(data.config.diasApartirDeHoje as number) ?? 0}
+                onChange={(e) =>
+                  onUpdate((d) => ({
+                    ...d,
+                    config: { ...d.config, diasApartirDeHoje: Number(e.target.value) },
+                  }))
                 }
               />
             </Field>
@@ -1413,6 +1822,7 @@ function WebhookTriggerConfig() {
 
 function defaultConfig(item: PaletteItem): Record<string, unknown> {
   if (item.tipo === 'DELAY') return { quantidade: 1, unidade: 'horas' };
+  if (item.tipo === 'CONDICAO') return { modo: 'simples', operador: 'eq' };
   if (item.acaoTipo === 'ENVIAR_WHATSAPP') return { mensagem: '' };
   if (item.acaoTipo === 'ENVIAR_EMAIL') return { assunto: '', corpo: '' };
   if (item.acaoTipo === 'WEBHOOK_EXTERNO') return { url: '', method: 'POST' };
