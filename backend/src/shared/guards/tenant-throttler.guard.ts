@@ -1,5 +1,6 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { Injectable, Logger, type ExecutionContext } from '@nestjs/common';
 import { ThrottlerGuard, type ThrottlerRequest } from '@nestjs/throttler';
+import { THROTTLE_PER_USER } from '@shared/decorators/throttle-per-user.decorator';
 
 interface RequestComUser {
   user?: { id?: string; empresaIdAtiva?: string | null };
@@ -29,7 +30,17 @@ export class TenantThrottlerGuard extends ThrottlerGuard {
   // Avoid log spam quando Redis está down — uma mensagem a cada 30s
   private lastStorageErrorLog = 0;
 
-  protected async getTracker(req: RequestComUser): Promise<string> {
+  protected async getTracker(req: RequestComUser, context?: ExecutionContext): Promise<string> {
+    // Rotas marcadas com @ThrottlePerUser usam o user.id como chave — recursos
+    // POR-USUÁRIO (ex: WhatsApp pessoal do rep). Sem isso, o bucket por-tenant faria
+    // um rep esgotar a cota de toda a empresa (o recurso é user_<id>, não o número central).
+    if (context && req.user?.id) {
+      const perUser = this.reflector.getAllAndOverride<boolean>(THROTTLE_PER_USER, [
+        context.getHandler(),
+        context.getClass(),
+      ]);
+      if (perUser) return `user:${req.user.id}`;
+    }
     const empresaId = req.user?.empresaIdAtiva;
     if (empresaId) {
       return `tenant:${empresaId}`;

@@ -130,9 +130,20 @@ export class EvolutionInboundService {
       ? ((data as { messages?: EvoMessage[] }).messages as EvoMessage[])
       : [data as EvoMessage];
     const dono = this.parseInstancia(instance);
-    if (!dono) return;
+    if (!dono) {
+      this.logger.warn(
+        `[evolution] instância "${instance}" fora do padrão emp_/user_ — msg ignorada`,
+      );
+      return;
+    }
     const empresaId = await this.resolverEmpresaId(dono);
-    if (!empresaId) return;
+    if (!empresaId) {
+      // Drop antes silencioso — difícil de diagnosticar "msg do rep não apareceu".
+      this.logger.warn(
+        `[evolution] sem empresa para ${dono.type} ${dono.id} (instância ${instance}) — msg descartada`,
+      );
+      return;
+    }
     const proprietarioId = dono.type === 'USUARIO' ? dono.id : undefined;
 
     for (const m of msgs) {

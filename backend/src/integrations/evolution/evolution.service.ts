@@ -1,5 +1,6 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { createHash } from 'node:crypto';
+import QRCode from 'qrcode';
 import { EnvService } from '@config/env.service';
 import { HttpClientService } from '@shared/http/http-client.service';
 import { HttpClientError } from '@shared/http/http-client.types';
@@ -19,6 +20,8 @@ type RespostaQr = {
 type EstadoWhats = {
   status: 'CONNECTED' | 'CONNECTING' | 'QR_PENDING' | 'DISCONNECTED' | 'ERROR';
   qrDataUrl?: string;
+  /** Número pareado (do ownerJid) — preenchido quando CONNECTED, pro front exibir. */
+  numero?: string;
   erro?: string;
 };
 
@@ -110,10 +113,29 @@ export class EvolutionService {
     return this.req('get', `/instance/connect/${encodeURIComponent(instance)}`);
   }
 
-  /** Extrai o QR (base64) de qualquer formato de resposta do Evolution. */
-  private extrairQr(resp: unknown): string | undefined {
+  /**
+   * Extrai o QR de qualquer formato do Evolution e devolve SEMPRE algo renderável
+   * num `<img src>` (o front usa qrDataUrl direto). Preferência: base64 (já é/vira
+   * data URL); fallback: o texto cru do QR (`code`) → gera a imagem (igual Baileys).
+   */
+  private async extrairQrDataUrl(resp: unknown): Promise<string | undefined> {
     const r = (resp ?? {}) as RespostaQr;
-    return r.qrcode?.base64 ?? r.base64 ?? r.qrcode?.code ?? r.code;
+    const base64 = r.qrcode?.base64 ?? r.base64;
+    if (base64) {
+      // Evolution v2 normalmente já manda data URL; se vier base64 cru, prefixa.
+      return base64.startsWith('data:') ? base64 : `data:image/png;base64,${base64}`;
+    }
+    // Só veio o texto do QR → renderiza a imagem nós mesmos (senão o <img> quebra).
+    const code = r.qrcode?.code ?? r.code;
+    if (code) {
+      try {
+        return await QRCode.toDataURL(code, { errorCorrectionLevel: 'M', margin: 1, width: 320 });
+      } catch (err) {
+        this.logger.warn(`[evolution] falha ao gerar imagem do QR: ${this.detalheErro(err)}`);
+        return undefined;
+      }
+    }
+    return undefined;
   }
 
   /** Detalha um erro HTTP incluindo o CORPO da resposta (o motivo real do Evolution). */
@@ -162,6 +184,19 @@ export class EvolutionService {
     disconnectionReasonCode?: number | null;
   }): boolean {
     return inst.connectionStatus === 'open' && inst.disconnectionReasonCode == null;
+  }
+
+  /** Extrai só os dígitos do número a partir do ownerJid (ex: '5511...@s.whatsapp.net'). */
+  private jidParaNumero(jid?: string | null): string | undefined {
+    if (!jid) return undefined;
+    const num = jid.split('@')[0]?.split(':')[0]?.replace(/\D/g, '');
+    return num || undefined;
+  }
+
+  /** Anexa o número (do ownerJid) a um estado CONNECTED, pro front mostrar quem pareou. */
+  private comNumero(estado: EstadoWhats, inst: { ownerJid?: string | null } | null): EstadoWhats {
+    const numero = this.jidParaNumero(inst?.ownerJid);
+    return numero ? { ...estado, numero } : estado;
   }
 
   private sleep(ms: number): Promise<void> {
@@ -353,7 +388,7 @@ export class EvolutionService {
 
     // 1. Já REALMENTE conectado? (open E sem logout). Zumbi 'open'+401 NÃO conta.
     const inst = await this.buscarInstancia(instance);
-    if (inst && this.saudavel(inst)) return { status: 'CONNECTED' };
+    if (inst && this.saudavel(inst)) return this.comNumero({ status: 'CONNECTED' }, inst);
 
     // 2. Existe mas NÃO está são (zumbi/close/deslogado) → RESET FORTE antes de
     //    recriar (senão o Evolution recusa recriar/deletar a instância travada).
@@ -367,7 +402,7 @@ export class EvolutionService {
     // 3. Cria do ZERO (com webhook) — a criação já costuma trazer o QR.
     let qr: string | undefined;
     try {
-      qr = this.extrairQr(await this.criarInstancia(instance, this.webhookUrl()));
+      qr = await this.extrairQrDataUrl(await this.criarInstancia(instance, this.webhookUrl()));
     } catch (err) {
       this.logger.warn(
         `[evolution] criarInstancia ${instance}: ${this.detalheErro(err)} (segue pro connect)`,
@@ -380,7 +415,7 @@ export class EvolutionService {
       this.logger.warn(`[evolution] connect ${instance}: ${this.detalheErro(err)}`);
       return null;
     });
-    qr = this.extrairQr(resp);
+    qr = await this.extrairQrDataUrl(resp);
     if (qr) return { status: 'QR_PENDING', qrDataUrl: qr };
 
     // 5. Ainda nada → erro VISÍVEL com diagnóstico (chaves da resposta).
@@ -412,7 +447,7 @@ export class EvolutionService {
     }
     const inst = await this.buscarInstancia(instance);
     if (!inst) return { status: 'DISCONNECTED' };
-    if (this.saudavel(inst)) return { status: 'CONNECTED' };
+    if (this.saudavel(inst)) return this.comNumero({ status: 'CONNECTED' }, inst);
 
     // Pareada e só reconectando (sem logout) → não mexe (Baileys reconecta sozinho).
     if (
@@ -424,7 +459,7 @@ export class EvolutionService {
     }
     // Nunca pareada → tenta o QR direto (connect é seguro aqui).
     if (!inst.ownerJid) {
-      const qr = this.extrairQr(await this.conectar(instance).catch(() => null));
+      const qr = await this.extrairQrDataUrl(await this.conectar(instance).catch(() => null));
       if (qr) return { status: 'QR_PENDING', qrDataUrl: qr };
     }
     // Zumbi (open+401) / close / deslogada → DISCONNECTED pro botão Conectar.
