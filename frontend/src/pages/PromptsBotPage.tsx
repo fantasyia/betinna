@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import { api, ApiError } from '@/lib/api';
 import { useApiQuery } from '@/hooks/useApiQuery';
@@ -9,20 +9,6 @@ import { FormField, Input, Select } from '@/components/FormField';
 import { useConfirm } from '@/hooks/useConfirm';
 import { useToast } from '@/components/toast';
 import { btn, btnDanger, btnSecondary, card, colors } from '@/components/styles';
-
-/**
- * Modelos OpenAI oferecidos no dropdown (MullerBot usa Chat Completions). Lista
- * curada pra evitar typo no nome do modelo (que estouraria erro na chamada).
- * Só modelos que aceitam `temperature` (os de raciocínio o-series ficam de fora).
- */
-const MODELOS_OPENAI = [
-  { id: 'gpt-4o-mini', label: 'gpt-4o-mini (recomendado · rápido e barato)' },
-  { id: 'gpt-4o', label: 'gpt-4o (mais capaz)' },
-  { id: 'gpt-4.1-mini', label: 'gpt-4.1-mini' },
-  { id: 'gpt-4.1', label: 'gpt-4.1 (mais capaz)' },
-  { id: 'gpt-4.1-nano', label: 'gpt-4.1-nano (mais barato)' },
-  { id: 'gpt-3.5-turbo', label: 'gpt-3.5-turbo (legado · barato)' },
-] as const;
 
 /** Biblioteca de prompts do bot (orquestração Fase A). */
 interface BotPrompt {
@@ -501,9 +487,8 @@ function PromptFormModal({
   const [descricao, setDescricao] = useState(prompt?.descricao ?? '');
   const [texto, setTexto] = useState(prompt?.texto ?? '');
   const [modelo, setModelo] = useState(prompt?.modelo ?? '');
-  const [temperatura, setTemperatura] = useState(
-    prompt?.temperatura != null ? String(prompt.temperatura) : '0.7',
-  );
+  // Modelos reais da conta OpenAI (puxados ao vivo) — mesmo dropdown da Persona.
+  const [modelosLive, setModelosLive] = useState<string[]>([]);
   const [isPadrao, setIsPadrao] = useState(prompt?.isPadrao ?? false);
   const [ativo, setAtivo] = useState(prompt?.ativo ?? true);
   const [tetoTokensDia, setTetoTokensDia] = useState(
@@ -515,6 +500,13 @@ function PromptFormModal({
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  useEffect(() => {
+    api
+      .get<{ modelos: string[]; fonte: string }>('/mullerbot/bot/modelos')
+      .then((r) => setModelosLive(r.modelos ?? []))
+      .catch(() => setModelosLive([]));
+  }, []);
+
   async function submit(e: React.FormEvent) {
     e.preventDefault();
     setBusy(true);
@@ -525,7 +517,6 @@ function PromptFormModal({
         descricao: descricao.trim() || undefined,
         texto: texto.trim(),
         modelo: modelo.trim() || undefined,
-        temperatura: temperatura.trim() ? Number(temperatura) : undefined,
         isPadrao,
         ativo,
         tetoTokensDia: tetoTokensDia.trim() ? Number(tetoTokensDia) : null,
@@ -609,33 +600,28 @@ function PromptFormModal({
             }}
           />
         </FormField>
-        <div style={{ display: 'flex', gap: '0.75rem' }}>
-          <FormField label="Modelo" htmlFor="prompt-modelo" hint="vazio = padrão da empresa">
-            <Select id="prompt-modelo" value={modelo} onChange={(e) => setModelo(e.target.value)}>
-              <option value="">Padrão da empresa</option>
-              {MODELOS_OPENAI.map((m) => (
-                <option key={m.id} value={m.id}>
-                  {m.label}
-                </option>
-              ))}
-              {/* Preserva um modelo customizado já salvo que não esteja na lista. */}
-              {modelo && !MODELOS_OPENAI.some((m) => m.id === modelo) && (
-                <option value={modelo}>{modelo} (customizado)</option>
-              )}
-            </Select>
-          </FormField>
-          <FormField label="Temperatura" htmlFor="prompt-temp" hint="0 a 2">
-            <Input
-              id="prompt-temp"
-              type="number"
-              min={0}
-              max={2}
-              step={0.1}
-              value={temperatura}
-              onChange={(e) => setTemperatura(e.target.value)}
-            />
-          </FormField>
-        </div>
+        <FormField
+          label="Modelo"
+          htmlFor="prompt-modelo"
+          hint={
+            modelosLive.length
+              ? 'Lista puxada ao vivo da sua conta OpenAI — inclui os modelos mais novos.'
+              : 'vazio = padrão da empresa'
+          }
+        >
+          <Select id="prompt-modelo" value={modelo} onChange={(e) => setModelo(e.target.value)}>
+            <option value="">Padrão da empresa</option>
+            {/* Mantém o modelo salvo visível mesmo se a lista ainda não carregou. */}
+            {modelo && !modelosLive.includes(modelo) && (
+              <option value={modelo}>{modelo} (atual)</option>
+            )}
+            {modelosLive.map((id) => (
+              <option key={id} value={id}>
+                {id}
+              </option>
+            ))}
+          </Select>
+        </FormField>
         <div style={{ display: 'flex', gap: '0.75rem' }}>
           <FormField
             label="Teto de tokens/dia"
