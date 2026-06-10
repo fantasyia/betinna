@@ -492,27 +492,55 @@ export class FluxoExecutorService {
     empresaId: string,
   ): Promise<Record<string, unknown>> {
     this.assertEmpresaId(empresaId, 'ENVIAR_WHATSAPP');
-    // Resolve telefone do cliente — exige que o cliente PERTENÇA à empresa
-    const clienteId = ctx['clienteId'] as string | undefined;
-    if (!clienteId) throw new Error('contexto.clienteId ausente para ENVIAR_WHATSAPP');
-
-    const cliente = await this.prisma.cliente.findFirst({
-      where: { id: clienteId, empresaId },
-      select: { telefone: true, nome: true },
-    });
-    if (!cliente) {
-      throw new Error(`Cliente ${clienteId} não encontrado na empresa ${empresaId}`);
-    }
-    if (!cliente.telefone) throw new Error(`Cliente ${clienteId} sem telefone cadastrado`);
-
     const mensagem = interpolate(cfg.mensagem, ctx);
+    const modo = cfg.destinatarioModo ?? 'lead';
 
-    // Normaliza telefone para JID WhatsApp
-    const telefone = cliente.telefone.replace(/\D/g, '');
+    // Resolve o telefone do destinatário conforme o modo.
+    let telefone: string | undefined;
+    if (modo === 'numero') {
+      telefone = interpolate(cfg.destinatarioNumero ?? '', ctx).replace(/\D/g, '');
+      if (!telefone) throw new Error('ENVIAR_WHATSAPP: destinatário "número específico" vazio');
+    } else if (modo === 'contato') {
+      telefone = (cfg.destinatarioContato ?? '').replace(/\D/g, '');
+      if (!telefone) throw new Error('ENVIAR_WHATSAPP: destinatário "contato" não selecionado');
+    } else {
+      // 'lead' (default): lead do contexto, senão cliente do contexto.
+      telefone = await this.resolverTelefoneLeadOuCliente(ctx, empresaId);
+      if (!telefone) {
+        throw new Error('ENVIAR_WHATSAPP: contexto sem lead/cliente com telefone (modo "lead")');
+      }
+    }
+    if (telefone.replace(/\D/g, '').length < 8) {
+      throw new Error(`ENVIAR_WHATSAPP: telefone do destinatário inválido (${telefone})`);
+    }
+
     const peerId = `${telefone}@s.whatsapp.net`;
-
     const result = await this.whatsapp.enviarTexto(empresaId, peerId, mensagem, {});
-    return { peerId, mensagem, externalId: result.externalId };
+    return { peerId, mensagem, modo, externalId: result.externalId };
+  }
+
+  /** Telefone (só dígitos) do lead OU cliente do contexto, validado na empresa. */
+  private async resolverTelefoneLeadOuCliente(
+    ctx: ExecucaoContexto,
+    empresaId: string,
+  ): Promise<string | undefined> {
+    const leadId = ctx['leadId'] as string | undefined;
+    if (leadId) {
+      const lead = await this.prisma.lead.findFirst({
+        where: { id: leadId, empresaId },
+        select: { contatoTelefone: true },
+      });
+      if (lead?.contatoTelefone) return lead.contatoTelefone.replace(/\D/g, '');
+    }
+    const clienteId = ctx['clienteId'] as string | undefined;
+    if (clienteId) {
+      const cliente = await this.prisma.cliente.findFirst({
+        where: { id: clienteId, empresaId },
+        select: { telefone: true },
+      });
+      if (cliente?.telefone) return cliente.telefone.replace(/\D/g, '');
+    }
+    return undefined;
   }
 
   private async acaoEnviarEmail(

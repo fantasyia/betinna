@@ -31,6 +31,12 @@ export interface CondicaoConfig {
 /** Config da ação ENVIAR_WHATSAPP. */
 export interface EnviarWhatsappConfig {
   mensagem: string; // suporta {{ variáveis }}
+  /** Destinatário: 'lead' (lead/cliente da conversa — default), 'numero' (livre), 'contato' (inbox). */
+  destinatarioModo?: 'lead' | 'numero' | 'contato';
+  /** Modo 'numero': telefone livre com DDI (ex: +55 11 9...). */
+  destinatarioNumero?: string;
+  /** Modo 'contato': telefone do contato escolhido no dropdown da inbox. */
+  destinatarioContato?: string;
 }
 
 /** Config da ação ENVIAR_EMAIL. */

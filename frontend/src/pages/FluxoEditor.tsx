@@ -1491,6 +1491,10 @@ function NodeInspector({
     Array<{ id: string; chave: string }> | { data: Array<{ id: string; chave: string }> }
   >('/orquestracao/variaveis');
   const variaveis = Array.isArray(variaveisData) ? variaveisData : (variaveisData?.data ?? []);
+  // Contatos WhatsApp da inbox — pro destinatário "contato salvo" do Enviar WhatsApp.
+  const { data: contatosWa } = useApiQuery<Array<{ telefone: string; nome: string }>>(
+    '/inbox/contatos-whatsapp',
+  );
   /** Etapas de UM funil — pros dropdowns dependentes do funil escolhido. */
   const etapasDoFunil = (funilId?: string) =>
     (funis ?? []).find((f) => f.id === funilId)?.etapas ?? [];
@@ -1675,16 +1679,78 @@ function NodeInspector({
         )}
 
         {data.acaoTipo === 'ENVIAR_WHATSAPP' && (
-          <Field label="Mensagem" hint="Use {{nome}}, {{empresa}} pra variáveis">
-            <Textarea
-              rows={5}
-              value={(data.config.mensagem as string) ?? ''}
-              onChange={(e) =>
-                onUpdate((d) => ({ ...d, config: { ...d.config, mensagem: e.target.value } }))
-              }
-              placeholder="Olá {{nome}}, tudo bem?"
-            />
-          </Field>
+          <>
+            <Field label="Destinatário">
+              <Select
+                size="sm"
+                value={(data.config.destinatarioModo as string) ?? 'lead'}
+                onChange={(e) =>
+                  onUpdate((d) => ({
+                    ...d,
+                    config: { ...d.config, destinatarioModo: e.target.value },
+                  }))
+                }
+              >
+                <option value="lead">Lead / cliente da conversa</option>
+                <option value="numero">Número específico</option>
+                <option value="contato">Contato salvo (inbox)</option>
+              </Select>
+            </Field>
+            {(data.config.destinatarioModo as string) === 'numero' && (
+              <Field label="Número (com DDI)" hint="Ex: +55 11 99999-9999">
+                <Input
+                  value={(data.config.destinatarioNumero as string) ?? ''}
+                  onChange={(e) =>
+                    onUpdate((d) => ({
+                      ...d,
+                      config: { ...d.config, destinatarioNumero: e.target.value },
+                    }))
+                  }
+                  placeholder="+55 11 99999-9999"
+                />
+              </Field>
+            )}
+            {(data.config.destinatarioModo as string) === 'contato' && (
+              <Field label="Contato" hint="Conversas de WhatsApp da inbox">
+                <Select
+                  size="sm"
+                  value={(data.config.destinatarioContato as string) ?? ''}
+                  onChange={(e) =>
+                    onUpdate((d) => ({
+                      ...d,
+                      config: { ...d.config, destinatarioContato: e.target.value },
+                    }))
+                  }
+                >
+                  <option value="">Selecionar…</option>
+                  {/* Preserva o contato salvo mesmo se a lista ainda não carregou. */}
+                  {(data.config.destinatarioContato as string) &&
+                    !(contatosWa ?? []).some(
+                      (c) => c.telefone === (data.config.destinatarioContato as string),
+                    ) && (
+                      <option value={data.config.destinatarioContato as string}>
+                        {data.config.destinatarioContato as string}
+                      </option>
+                    )}
+                  {(contatosWa ?? []).map((c) => (
+                    <option key={c.telefone} value={c.telefone}>
+                      {c.nome} · {c.telefone}
+                    </option>
+                  ))}
+                </Select>
+              </Field>
+            )}
+            <Field label="Mensagem" hint="Use {{nome}}, {{empresa}} pra variáveis">
+              <Textarea
+                rows={5}
+                value={(data.config.mensagem as string) ?? ''}
+                onChange={(e) =>
+                  onUpdate((d) => ({ ...d, config: { ...d.config, mensagem: e.target.value } }))
+                }
+                placeholder="Olá {{nome}}, tudo bem?"
+              />
+            </Field>
+          </>
         )}
 
         {data.acaoTipo === 'ENVIAR_EMAIL' && (
@@ -2088,7 +2154,7 @@ function WebhookTriggerConfig() {
 function defaultConfig(item: PaletteItem): Record<string, unknown> {
   if (item.tipo === 'DELAY') return { quantidade: 1, unidade: 'horas' };
   if (item.tipo === 'CONDICAO') return { modo: 'simples', operador: 'eq' };
-  if (item.acaoTipo === 'ENVIAR_WHATSAPP') return { mensagem: '' };
+  if (item.acaoTipo === 'ENVIAR_WHATSAPP') return { mensagem: '', destinatarioModo: 'lead' };
   if (item.acaoTipo === 'ENVIAR_EMAIL') return { assunto: '', corpo: '' };
   if (item.acaoTipo === 'WEBHOOK_EXTERNO') return { url: '', method: 'POST' };
   if (item.acaoTipo === 'MUDAR_TAG') return { operacao: 'adicionar', tagNome: '' };

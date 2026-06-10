@@ -147,6 +147,13 @@ export class InboxController {
     return this.metricas.metricas(user);
   }
 
+  // Rota literal ANTES de `:id` pra não cair no param.
+  @Get('contatos-whatsapp')
+  @ApiOperation({ summary: 'Contatos WhatsApp (telefone + nome) pra dropdown de destinatário' })
+  listarContatosWhatsapp(@CurrentUser() user: AuthenticatedUser) {
+    return this.svc.listarContatosWhatsapp(user);
+  }
+
   @Get()
   @ApiOperation({
     summary: 'Lista conversations (filtros: canal, status, atribuído, cliente, search, meu)',

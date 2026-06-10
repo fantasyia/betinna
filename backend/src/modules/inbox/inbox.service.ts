@@ -130,6 +130,43 @@ export class InboxService {
     return { empresaId };
   }
 
+  /**
+   * Contatos WhatsApp (distintos por telefone) pra dropdowns — ex: destinatário
+   * "contato salvo" da ação Enviar WhatsApp nos fluxos. Mais recentes primeiro.
+   */
+  async listarContatosWhatsapp(
+    user: AuthenticatedUser,
+  ): Promise<Array<{ telefone: string; nome: string }>> {
+    const convs = await this.prisma.conversation.findMany({
+      where: { canal: 'WHATSAPP', ...this.baseWhere(user) },
+      orderBy: { ultimaMsgEm: 'desc' },
+      take: 300,
+      select: {
+        peerId: true,
+        peerNome: true,
+        metadata: true,
+        cliente: { select: { nome: true, telefone: true } },
+      },
+    });
+    const vistos = new Set<string>();
+    const out: Array<{ telefone: string; nome: string }> = [];
+    for (const c of convs) {
+      const meta = (c.metadata ?? {}) as Record<string, unknown>;
+      // Telefone REAL: cliente > metadata.telefone > peerId só se for @s.whatsapp.net
+      // (peer @lid é opaco — o número dele NÃO é telefone).
+      const telPeer = c.peerId.endsWith('@s.whatsapp.net') ? c.peerId.split('@')[0] : undefined;
+      const bruto =
+        c.cliente?.telefone ??
+        (typeof meta.telefone === 'string' ? meta.telefone : undefined) ??
+        telPeer;
+      const tel = (bruto ?? '').replace(/\D/g, '');
+      if (tel.length < 8 || vistos.has(tel)) continue;
+      vistos.add(tel);
+      out.push({ telefone: tel, nome: c.cliente?.nome ?? c.peerNome ?? tel });
+    }
+    return out;
+  }
+
   // ─── Listagem / detalhes ─────────────────────────────────────────────
 
   async list(
