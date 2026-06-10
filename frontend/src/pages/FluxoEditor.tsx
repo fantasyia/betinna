@@ -2053,6 +2053,80 @@ function NodeInspector({
                 }
               />
             </Field>
+            <Field label="Critério de ordem" hint="Em que ordem os leads saem da origem">
+              <Select
+                size="sm"
+                value={(data.config.criterioOrdem as string) ?? 'antigos'}
+                onChange={(e) =>
+                  onUpdate((d) => ({ ...d, config: { ...d.config, criterioOrdem: e.target.value } }))
+                }
+              >
+                <option value="antigos">Mais antigos primeiro</option>
+                <option value="novos">Mais novos primeiro</option>
+                <option value="custom">Por campo customizado</option>
+              </Select>
+            </Field>
+            {(data.config.criterioOrdem as string) === 'custom' && (
+              <div className="flex gap-2">
+                <Field label="Campo (variável)" hint="ex: prioridade_leo">
+                  <Input
+                    value={(data.config.campoOrdem as string) ?? ''}
+                    onChange={(e) =>
+                      onUpdate((d) => ({ ...d, config: { ...d.config, campoOrdem: e.target.value } }))
+                    }
+                    placeholder="prioridade_leo"
+                  />
+                </Field>
+                <Field label="Direção">
+                  <Select
+                    size="sm"
+                    value={(data.config.ordemDir as string) ?? 'asc'}
+                    onChange={(e) =>
+                      onUpdate((d) => ({ ...d, config: { ...d.config, ordemDir: e.target.value } }))
+                    }
+                  >
+                    <option value="asc">Crescente (ASC)</option>
+                    <option value="desc">Decrescente (DESC)</option>
+                  </Select>
+                </Field>
+              </div>
+            )}
+            <Field
+              label="Excluir leads com tag"
+              hint="Clique pra marcar — leads com qualquer uma são ignorados (ex: pausado)"
+            >
+              <div className="flex flex-wrap gap-1.5">
+                {(tags ?? []).length === 0 && (
+                  <span className="text-[11px] text-muted">Nenhuma tag cadastrada</span>
+                )}
+                {(tags ?? []).map((t) => {
+                  const sel = ((data.config.filtroExcluiTag as string[]) ?? []).includes(t.nome);
+                  return (
+                    <button
+                      key={t.id}
+                      type="button"
+                      onClick={() =>
+                        onUpdate((d) => {
+                          const atual = (d.config.filtroExcluiTag as string[]) ?? [];
+                          const next = atual.includes(t.nome)
+                            ? atual.filter((n) => n !== t.nome)
+                            : [...atual, t.nome];
+                          return { ...d, config: { ...d.config, filtroExcluiTag: next } };
+                        })
+                      }
+                      className={cn(
+                        'text-[11px] px-2 py-1 rounded-md border transition-colors',
+                        sel
+                          ? 'bg-primary text-white border-primary'
+                          : 'bg-surface text-text border-border hover:border-border-strong',
+                      )}
+                    >
+                      {t.nome}
+                    </button>
+                  );
+                })}
+              </div>
+            </Field>
           </>
         )}
 

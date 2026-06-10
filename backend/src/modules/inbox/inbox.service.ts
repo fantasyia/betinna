@@ -152,15 +152,17 @@ export class InboxService {
     const out: Array<{ telefone: string; nome: string }> = [];
     for (const c of convs) {
       const meta = (c.metadata ?? {}) as Record<string, unknown>;
-      // Telefone REAL: cliente > metadata.telefone > peerId só se for @s.whatsapp.net
-      // (peer @lid é opaco — o número dele NÃO é telefone).
-      const telPeer = c.peerId.endsWith('@s.whatsapp.net') ? c.peerId.split('@')[0] : undefined;
+      // Telefone REAL: cliente > metadata.telefone > parte local do peerId.
+      // O peerId só serve como telefone se NÃO for grupo (@g.us) nem LID (@lid,
+      // opaco). Aceita @s.whatsapp.net, @c.us, ou dígitos crus; tira o ":device".
+      const ehGrupoOuLid = c.peerId.includes('@g.us') || c.peerId.includes('@lid');
+      const telPeer = ehGrupoOuLid ? undefined : (c.peerId.split('@')[0]?.split(':')[0] ?? '');
       const bruto =
         c.cliente?.telefone ??
         (typeof meta.telefone === 'string' ? meta.telefone : undefined) ??
         telPeer;
       const tel = (bruto ?? '').replace(/\D/g, '');
-      if (tel.length < 8 || vistos.has(tel)) continue;
+      if (tel.length < 8 || tel.length > 15 || vistos.has(tel)) continue;
       vistos.add(tel);
       out.push({ telefone: tel, nome: c.cliente?.nome ?? c.peerNome ?? tel });
     }

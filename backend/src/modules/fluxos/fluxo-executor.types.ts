@@ -113,6 +113,18 @@ export interface LiberarLoteConfig {
   quantidade: number;
   /** Funil (opcional — restringe a busca). */
   funilId?: string;
+  /**
+   * Ordem de liberação: 'antigos' (criadoEm asc), 'novos' (criadoEm desc) ou
+   * 'custom' (ordena por uma chave de Lead.variaveis). Ausente = legado
+   * (ordemPrioridade asc, depois criadoEm asc).
+   */
+  criterioOrdem?: 'antigos' | 'novos' | 'custom';
+  /** Modo 'custom': chave em Lead.variaveis pra ordenar (ex: prioridade_leo). */
+  campoOrdem?: string;
+  /** Direção do 'custom' (default asc). */
+  ordemDir?: 'asc' | 'desc';
+  /** Nomes de tags — leads com QUALQUER uma são EXCLUÍDOS do lote (ex: 'pausado'). */
+  filtroExcluiTag?: string[];
 }
 
 /** Contexto de execução — enriquecido progressivamente. */

@@ -907,16 +907,65 @@ export class FluxoExecutorService {
       return { movidos: 0, etapaDestinoId: cfg.etapaDestinoId, motivo: 'etapa destino cheia' };
     }
 
-    const leads = await this.prisma.lead.findMany({
-      where: {
-        empresaId,
-        funilEtapaId: cfg.etapaOrigemId,
-        ...(cfg.funilId ? { funilId: cfg.funilId } : {}),
-      },
-      orderBy: [{ ordemPrioridade: 'asc' }, { criadoEm: 'asc' }],
-      take: limite,
-      select: { id: true },
-    });
+    // Exclui leads que tenham QUALQUER uma das tags marcadas (ex: 'pausado' —
+    // tira manualmente da fila sem deletar).
+    const excluiTags = (cfg.filtroExcluiTag ?? []).filter(
+      (t) => typeof t === 'string' && t.trim().length > 0,
+    );
+    const where: Prisma.LeadWhereInput = {
+      empresaId,
+      funilEtapaId: cfg.etapaOrigemId,
+      ...(cfg.funilId ? { funilId: cfg.funilId } : {}),
+      ...(excluiTags.length
+        ? { NOT: { tags: { some: { tag: { nome: { in: excluiTags } } } } } }
+        : {}),
+    };
+
+    let leads: Array<{ id: string }>;
+    if (cfg.criterioOrdem === 'custom' && cfg.campoOrdem?.trim()) {
+      // Ordena por uma chave de Lead.variaveis (JSON) em memória — Prisma não
+      // ordena por chave de JSON direto. Cap de 2000 candidatos (prospecção cabe).
+      const key = cfg.campoOrdem.trim();
+      const dir = cfg.ordemDir === 'desc' ? -1 : 1;
+      const cand = await this.prisma.lead.findMany({
+        where,
+        take: 2000,
+        select: { id: true, variaveis: true },
+      });
+      const valorDe = (l: { variaveis: unknown }): unknown => {
+        const v = l.variaveis;
+        return v && typeof v === 'object' ? (v as Record<string, unknown>)[key] : undefined;
+      };
+      cand.sort((a, b) => {
+        const va = valorDe(a);
+        const vb = valorDe(b);
+        // null/ausente sempre por último, independente da direção.
+        if (va == null && vb == null) return 0;
+        if (va == null) return 1;
+        if (vb == null) return -1;
+        const na = Number(va);
+        const nb = Number(vb);
+        const cmp =
+          Number.isFinite(na) && Number.isFinite(nb)
+            ? na - nb
+            : String(va).localeCompare(String(vb));
+        return cmp * dir;
+      });
+      leads = cand.slice(0, limite).map((l) => ({ id: l.id }));
+    } else {
+      const orderBy: Prisma.LeadOrderByWithRelationInput[] =
+        cfg.criterioOrdem === 'antigos'
+          ? [{ criadoEm: 'asc' }]
+          : cfg.criterioOrdem === 'novos'
+            ? [{ criadoEm: 'desc' }]
+            : [{ ordemPrioridade: 'asc' }, { criadoEm: 'asc' }]; // legado (default)
+      leads = await this.prisma.lead.findMany({
+        where,
+        orderBy,
+        take: limite,
+        select: { id: true },
+      });
+    }
 
     for (const lead of leads) {
       await this.prisma.lead.update({
