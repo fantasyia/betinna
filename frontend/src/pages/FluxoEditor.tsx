@@ -1791,22 +1791,28 @@ function NodeInspector({
                 <option value="remover">Remover tag</option>
               </Select>
             </Field>
-            <Field label="Tag" hint="Escolha uma tag existente ou digite um nome novo">
-              <div>
-                <Input
-                  list="fluxo-tags"
-                  value={(data.config.tagNome as string) ?? ''}
-                  onChange={(e) =>
-                    onUpdate((d) => ({ ...d, config: { ...d.config, tagNome: e.target.value } }))
-                  }
-                  placeholder="Ex: Forte Sinergia"
-                />
-                <datalist id="fluxo-tags">
-                  {(tags ?? []).map((t) => (
-                    <option key={t.id} value={t.nome} />
-                  ))}
-                </datalist>
-              </div>
+            <Field label="Tag" hint="Escolha uma tag (sempre mostra todas ao clicar)">
+              <Select
+                size="sm"
+                value={(data.config.tagNome as string) ?? ''}
+                onChange={(e) =>
+                  onUpdate((d) => ({ ...d, config: { ...d.config, tagNome: e.target.value } }))
+                }
+              >
+                <option value="">Selecionar…</option>
+                {/* Preserva uma tag salva que não esteja (mais) na lista. */}
+                {(data.config.tagNome as string) &&
+                  !(tags ?? []).some((t) => t.nome === (data.config.tagNome as string)) && (
+                    <option value={data.config.tagNome as string}>
+                      {data.config.tagNome as string}
+                    </option>
+                  )}
+                {(tags ?? []).map((t) => (
+                  <option key={t.id} value={t.nome}>
+                    {t.nome}
+                  </option>
+                ))}
+              </Select>
             </Field>
           </>
         )}
