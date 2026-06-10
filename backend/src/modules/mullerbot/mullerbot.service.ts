@@ -30,6 +30,25 @@ const CHARS_PER_TOKEN = 4;
 const SAFETY_MARGIN_TOKENS = 200;
 
 /**
+ * Lista de reserva pro dropdown de modelo quando a OpenAI não lista (chave sem
+ * permissão de /models, falha de rede, etc). Evita dropdown vazio. A lista real
+ * vem ao vivo da conta quando a chamada funciona.
+ */
+const MODELOS_FALLBACK = [
+  'gpt-5',
+  'gpt-5-mini',
+  'gpt-5-nano',
+  'gpt-4.1',
+  'gpt-4.1-mini',
+  'gpt-4.1-nano',
+  'gpt-4o',
+  'gpt-4o-mini',
+  'o4-mini',
+  'o3-mini',
+  'gpt-3.5-turbo',
+];
+
+/**
  * Instrução (anexada ao system prompt) que faz a IA quebrar a resposta em
  * vários balões curtos de WhatsApp. Pede LINHA EM BRANCO entre as mensagens
  * (parágrafos) — que os modelos seguem de forma confiável — e o muller-whatsapp
@@ -445,29 +464,40 @@ export class MullerBotService {
   }
 
   /**
-   * Lista os modelos de chat disponíveis na conta OpenAI (chave do servidor).
-   * Usado pra popular o dropdown de modelo na tela Persona Bot — sempre reflete
-   * o que a conta tem acesso (inclusive os mais novos). Nunca lança.
+   * Lista os modelos de chat disponíveis na conta OpenAI do USUÁRIO (chave pessoal
+   * dele; cai pra chave do env só se não tiver). Popula o dropdown de modelo nas
+   * telas Persona/Prompts — reflete o que a conta tem acesso (inclusive os mais
+   * novos). NUNCA lança e NUNCA volta vazio: se a chamada falhar, devolve uma
+   * lista curada de reserva (senão o dropdown some, como aconteceu).
    */
-  async listarModelos(): Promise<{ modelos: string[]; fonte: 'openai' | 'fallback' }> {
-    const envKey = this.env.get('OPENAI_API_KEY');
-    if (!envKey) return { modelos: [], fonte: 'fallback' };
+  async listarModelos(
+    user: AuthenticatedUser,
+  ): Promise<{ modelos: string[]; fonte: 'openai' | 'fallback' }> {
+    let apiKey: string | undefined;
     try {
-      const res = await this.http.get<{ data?: Array<{ id: string }> }>(
-        'https://api.openai.com/v1/models',
-        {
-          headers: { Authorization: `Bearer ${envKey}` },
-          integration: 'openai',
-          redactKeys: ['authorization'],
-          timeoutMs: 15_000,
-        },
-      );
-      const ids = (res.data.data ?? []).map((m) => m.id);
-      const chat = ids.filter((id) => this.ehModeloChat(id)).sort((a, b) => b.localeCompare(a));
-      return { modelos: chat, fonte: 'openai' };
+      apiKey = (await this.resolverCredenciais(user)).apiKey;
     } catch {
-      return { modelos: [], fonte: 'fallback' };
+      apiKey = this.env.get('OPENAI_API_KEY') || undefined;
     }
+    if (apiKey && apiKey !== 'mock') {
+      try {
+        const res = await this.http.get<{ data?: Array<{ id: string }> }>(
+          'https://api.openai.com/v1/models',
+          {
+            headers: { Authorization: `Bearer ${apiKey}` },
+            integration: 'openai',
+            redactKeys: ['authorization'],
+            timeoutMs: 15_000,
+          },
+        );
+        const ids = (res.data.data ?? []).map((m) => m.id);
+        const chat = ids.filter((id) => this.ehModeloChat(id)).sort((a, b) => b.localeCompare(a));
+        if (chat.length) return { modelos: chat, fonte: 'openai' };
+      } catch {
+        // cai pro fallback abaixo
+      }
+    }
+    return { modelos: [...MODELOS_FALLBACK], fonte: 'fallback' };
   }
 
   /** Heurística: mantém só modelos de conversa (texto), tira áudio/imagem/embeddings/etc. */
