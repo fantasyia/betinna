@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type DragEvent } from 'react';
-import { Undo2, Redo2 } from 'lucide-react';
+import { Undo2, Redo2, PowerOff } from 'lucide-react';
 import {
   ReactFlow,
   ReactFlowProvider,
@@ -90,7 +90,8 @@ export type AcaoTipo =
   | 'ATRIBUIR_REP'
   | 'WEBHOOK_EXTERNO'
   | 'CONVERSAR_IA'
-  | 'LIBERAR_LOTE';
+  | 'LIBERAR_LOTE'
+  | 'PAUSAR_IA';
 
 interface FluxoNoApi {
   id?: string;
@@ -148,6 +149,7 @@ const ACAO_LABEL: Record<AcaoTipo, string> = {
   WEBHOOK_EXTERNO: 'Webhook externo',
   CONVERSAR_IA: 'Conversar com IA',
   LIBERAR_LOTE: 'Liberar lote',
+  PAUSAR_IA: 'Pausar IA na conversa',
 };
 
 const ACAO_ICONS: Record<AcaoTipo, typeof MessageSquare> = {
@@ -160,6 +162,7 @@ const ACAO_ICONS: Record<AcaoTipo, typeof MessageSquare> = {
   WEBHOOK_EXTERNO: Webhook,
   CONVERSAR_IA: Bot,
   LIBERAR_LOTE: Send,
+  PAUSAR_IA: PowerOff,
 };
 
 // ─── Palette items (categorias do print) ────────────────────────
@@ -208,6 +211,7 @@ const PALETTE_CATEGORIES: Array<{ title: string; items: PaletteItem[] }> = [
       { id: 'a-hook', label: 'Webhook externo', tipo: 'ACAO', acaoTipo: 'WEBHOOK_EXTERNO' },
       { id: 'a-ia', label: 'Conversar com IA', tipo: 'ACAO', acaoTipo: 'CONVERSAR_IA' },
       { id: 'a-lote', label: 'Liberar lote', tipo: 'ACAO', acaoTipo: 'LIBERAR_LOTE' },
+      { id: 'a-pausa-ia', label: 'Pausar IA na conversa', tipo: 'ACAO', acaoTipo: 'PAUSAR_IA' },
     ],
   },
   {
@@ -2090,6 +2094,9 @@ function defaultConfig(item: PaletteItem): Record<string, unknown> {
   if (item.acaoTipo === 'MUDAR_TAG') return { operacao: 'adicionar', tagNome: '' };
   if (item.acaoTipo === 'CONVERSAR_IA') return { aguardarResposta: true, timeoutHoras: 24 };
   if (item.acaoTipo === 'LIBERAR_LOTE') return { quantidade: 50 };
+  // Trava simples — sem config visível. Desliga o bot na conversa (botLigado=false).
+  // O backend (acaoPausarIa) trata religar:true como religar; ausente = pausar.
+  if (item.acaoTipo === 'PAUSAR_IA') return { acao: 'pausar_ia' };
   return {};
 }
 
