@@ -2202,6 +2202,23 @@ function NodeInspector({
                 })}
               </div>
             </Field>
+            <Field
+              label="Só liberar leads com WhatsApp"
+              hint="Pula leads sem número — não joga na etapa de abordagem quem a IA não consegue contatar"
+            >
+              <Select
+                value={(data.config.filtroSoComWhatsapp as boolean | undefined) ? 'sim' : 'nao'}
+                onChange={(e) =>
+                  onUpdate((d) => ({
+                    ...d,
+                    config: { ...d.config, filtroSoComWhatsapp: e.target.value === 'sim' },
+                  }))
+                }
+              >
+                <option value="nao">Não — libera todos da etapa</option>
+                <option value="sim">Sim — só quem tem número de WhatsApp</option>
+              </Select>
+            </Field>
           </>
         )}
 

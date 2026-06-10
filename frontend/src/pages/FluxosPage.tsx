@@ -150,6 +150,7 @@ export default function FluxosPage() {
   const [triggerTipo, setTriggerTipo] = useState('');
   const [editingId, setEditingId] = useState<string | null>(null);
   const [creating, setCreating] = useState(false);
+  const [verExecucoes, setVerExecucoes] = useState<FluxoListItem | null>(null);
 
   const listPath = useMemo(() => {
     const qs = new URLSearchParams({ page: String(page), limit: '20' });
@@ -352,6 +353,7 @@ export default function FluxosPage() {
                     onEdit={() => setEditingId(f.id)}
                     onAction={(a) => callAction(f.id, a)}
                     onExport={() => onExport(f)}
+                    onVerExecucoes={() => setVerExecucoes(f)}
                   />
                 ))}
               </div>
@@ -396,6 +398,9 @@ export default function FluxosPage() {
           }}
         />
       )}
+      {verExecucoes && (
+        <ExecucoesModal fluxo={verExecucoes} onClose={() => setVerExecucoes(null)} />
+      )}
       {ConfirmDialog}
     </PageLayout>
   );
@@ -409,12 +414,14 @@ function FluxoCard({
   onEdit,
   onAction,
   onExport,
+  onVerExecucoes,
 }: {
   fluxo: FluxoListItem;
   canEdit: boolean;
   onEdit: () => void;
   onAction: (a: 'ativar' | 'pausar' | 'arquivar' | 'excluir') => void;
   onExport: () => void;
+  onVerExecucoes: () => void;
 }) {
   return (
     <Card
@@ -545,10 +552,18 @@ function FluxoCard({
       </footer>
 
       {fluxo._count?.execucoes !== undefined && fluxo._count.execucoes > 0 && (
-        <div className="flex items-center gap-1.5 text-[11px] text-muted">
+        <button
+          type="button"
+          onClick={(e) => {
+            e.stopPropagation();
+            onVerExecucoes();
+          }}
+          className="flex items-center gap-1.5 text-[11px] text-muted hover:text-primary underline-offset-2 hover:underline w-fit"
+          data-testid={`fluxo-execucoes-${fluxo.id}`}
+        >
           <Activity className="h-3 w-3" />
-          {fluxo._count.execucoes.toLocaleString('pt-BR')} execuções
-        </div>
+          {fluxo._count.execucoes.toLocaleString('pt-BR')} execuções — ver erros
+        </button>
       )}
     </Card>
   );
@@ -653,6 +668,157 @@ function CreateFluxoModal({
           </div>
         )}
       </form>
+    </Dialog>
+  );
+}
+
+// ─── Execuções modal (logs por passo + erros) ───────────────────
+
+type ExecStatus = 'EM_EXECUCAO' | 'AGUARDANDO' | 'CONCLUIDO' | 'FALHOU' | 'CANCELADO';
+type LogStatus = 'CONCLUIDO' | 'FALHOU';
+
+interface ExecLog {
+  id: string;
+  noTitulo: string;
+  status: LogStatus;
+  erroMsg?: string | null;
+  output?: Record<string, unknown> | null;
+  iniciadoEm: string;
+}
+interface ExecItem {
+  id: string;
+  status: ExecStatus;
+  criadoEm: string;
+  terminouEm?: string | null;
+  contexto?: Record<string, unknown> | null;
+  logs: ExecLog[];
+}
+
+const EXEC_VARIANT: Record<ExecStatus, 'success' | 'warning' | 'danger' | 'neutral'> = {
+  EM_EXECUCAO: 'neutral',
+  AGUARDANDO: 'warning',
+  CONCLUIDO: 'success',
+  FALHOU: 'danger',
+  CANCELADO: 'neutral',
+};
+const EXEC_LABEL: Record<ExecStatus, string> = {
+  EM_EXECUCAO: 'Em execução',
+  AGUARDANDO: 'Aguardando lead',
+  CONCLUIDO: 'Concluída',
+  FALHOU: 'Falhou',
+  CANCELADO: 'Cancelada',
+};
+
+function fmtData(s?: string | null): string {
+  if (!s) return '—';
+  try {
+    return new Date(s).toLocaleString('pt-BR', { dateStyle: 'short', timeStyle: 'short' });
+  } catch {
+    return s;
+  }
+}
+
+function ExecucoesModal({ fluxo, onClose }: { fluxo: FluxoListItem; onClose: () => void }) {
+  const { data, loading, error, refetch } = useApiQuery<PaginatedResponse<ExecItem>>(
+    `/fluxos/${fluxo.id}/execucoes?limit=30`,
+  );
+
+  return (
+    <Dialog
+      open
+      onClose={onClose}
+      title={`Execuções — ${fluxo.nome}`}
+      description="Cada execução é uma passada do fluxo por um lead. Passos em vermelho falharam; o motivo aparece embaixo."
+      size="lg"
+      footer={
+        <>
+          <Button variant="secondary" onClick={() => refetch()}>
+            Atualizar
+          </Button>
+          <Button onClick={onClose}>Fechar</Button>
+        </>
+      }
+    >
+      <StateView loading={loading} error={error} onRetry={refetch}>
+        {!data || data.data.length === 0 ? (
+          <EmptyState
+            icon={<Activity />}
+            title="Nenhuma execução ainda"
+            description="Quando o fluxo disparar pra um lead, a execução aparece aqui."
+            className="border-0"
+          />
+        ) : (
+        <div className="flex flex-col gap-2 max-h-[60vh] overflow-y-auto pr-1">
+          {data.data.map((ex) => {
+            const leadId =
+              ex.contexto && typeof ex.contexto.leadId === 'string'
+                ? (ex.contexto.leadId as string)
+                : null;
+            const falhou = ex.logs.filter((l) => l.status === 'FALHOU');
+            return (
+              <div key={ex.id} className="rounded-lg border border-border bg-surface p-3">
+                <div className="flex items-center justify-between gap-2 mb-2">
+                  <Badge variant={EXEC_VARIANT[ex.status]}>{EXEC_LABEL[ex.status]}</Badge>
+                  <span className="text-[11px] text-muted tabular">{fmtData(ex.criadoEm)}</span>
+                </div>
+                {leadId && (
+                  <p className="text-[11px] text-muted mb-2">
+                    Lead: <code className="text-text">{leadId}</code>
+                  </p>
+                )}
+                {ex.logs.length === 0 ? (
+                  <p className="text-[11px] text-muted">Sem passos registrados.</p>
+                ) : (
+                  <ol className="flex flex-col gap-1">
+                    {ex.logs.map((l) => {
+                      const motivo =
+                        l.output && typeof l.output.motivo === 'string'
+                          ? (l.output.motivo as string)
+                          : null;
+                      const ruim = l.status === 'FALHOU';
+                      return (
+                        <li
+                          key={l.id}
+                          className={cn(
+                            'text-xs rounded-md px-2 py-1.5 border',
+                            ruim
+                              ? 'bg-danger/5 border-danger/30'
+                              : motivo
+                                ? 'bg-warning/5 border-warning/30'
+                                : 'bg-bg-alt border-border',
+                          )}
+                        >
+                          <div className="flex items-center justify-between gap-2">
+                            <span className="font-medium text-text">{l.noTitulo}</span>
+                            <span
+                              className={cn(
+                                'text-[10px] uppercase tracking-wide',
+                                ruim ? 'text-danger' : 'text-muted',
+                              )}
+                            >
+                              {ruim ? 'falhou' : motivo ? 'pulado' : 'ok'}
+                            </span>
+                          </div>
+                          {l.erroMsg && (
+                            <p className="mt-0.5 text-danger break-words">{l.erroMsg}</p>
+                          )}
+                          {!l.erroMsg && motivo && (
+                            <p className="mt-0.5 text-warning break-words">{motivo}</p>
+                          )}
+                        </li>
+                      );
+                    })}
+                  </ol>
+                )}
+                {falhou.length === 0 && ex.status === 'CONCLUIDO' && ex.logs.length > 0 && (
+                  <p className="mt-2 text-[11px] text-success">Concluída sem erros.</p>
+                )}
+              </div>
+            );
+          })}
+        </div>
+        )}
+      </StateView>
     </Dialog>
   );
 }

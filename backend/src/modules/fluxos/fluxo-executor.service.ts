@@ -216,12 +216,22 @@ export class FluxoExecutorService {
     // Quando o nó "Conversar com IA" envia a 1ª msg e fica esperando o lead,
     // a execução pausa (status AGUARDANDO) e NÃO avança aqui — retoma em LEAD_RESPONDEU.
     let aguardando = false;
+    // Nó "Conversar com IA" pulou o lead (ex: sem telefone): encerra limpo, sem
+    // tratar como falha nem enfileirar sucessores.
+    let pulado = false;
+    let puladoMotivo: string | null = null;
 
     try {
       if (no.tipo === 'ACAO' && no.acaoTipo === 'CONVERSAR_IA') {
         const r = await this.conversarIa.iniciar(execucaoId, no, contexto, execucao.empresaId);
         aguardando = r.aguardando;
-        output = { conversarIa: true, aguardando };
+        pulado = r.pulado ?? false;
+        puladoMotivo = r.motivo ?? null;
+        output = {
+          conversarIa: true,
+          aguardando,
+          ...(pulado ? { pulado, motivo: puladoMotivo } : {}),
+        };
       } else {
         output = await this.executarNo(no, contexto, execucao.empresaId);
       }
@@ -258,6 +268,17 @@ export class FluxoExecutorService {
     // acontece em LEAD_RESPONDEU, via ConversarIaService.retomar).
     if (aguardando) {
       this.logger.debug(`Execução ${execucaoId} pausada (Conversar com IA aguardando lead)`);
+      return;
+    }
+
+    // Lead pulado (ex: sem telefone): encerra a execução limpa, SEM enfileirar
+    // sucessores (não há conversa a ter). O motivo já ficou no log do passo.
+    if (pulado) {
+      await this.prisma.fluxoExecucao.update({
+        where: { id: execucaoId },
+        data: { status: 'CONCLUIDO', terminouEm: new Date() },
+      });
+      this.logger.log(`Execução ${execucaoId} encerrada (pulada: ${puladoMotivo ?? 'sem motivo'})`);
       return;
     }
 
@@ -918,6 +939,12 @@ export class FluxoExecutorService {
       ...(cfg.funilId ? { funilId: cfg.funilId } : {}),
       ...(excluiTags.length
         ? { NOT: { tags: { some: { tag: { nome: { in: excluiTags } } } } } }
+        : {}),
+      // Só com WhatsApp: descarta leads sem número (null/vazio) antes de liberar,
+      // pra não jogar na etapa de abordagem quem a IA não consegue contatar.
+      // (O nó "Conversar com IA" ainda pula nº curto/inválido como backstop.)
+      ...(cfg.filtroSoComWhatsapp
+        ? { AND: [{ contatoTelefone: { not: null } }, { contatoTelefone: { not: '' } }] }
         : {}),
     };
 

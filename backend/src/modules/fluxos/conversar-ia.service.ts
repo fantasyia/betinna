@@ -110,13 +110,17 @@ export class ConversarIaService {
     @InjectQueue(FLUXO_QUEUE) private readonly queue: Queue<FluxoStepJobData>,
   ) {}
 
-  /** Primeira passada do nó (vinda do executor). Retorna se o fluxo ficou pausado. */
+  /**
+   * Primeira passada do nó (vinda do executor). Retorna se o fluxo ficou pausado
+   * (`aguardando`) e/ou se o lead foi pulado limpo (`pulado` — ex: sem telefone),
+   * caso em que a execução encerra sem falhar nem enfileirar sucessores.
+   */
   async iniciar(
     execucaoId: string,
     no: FluxoNo,
     ctx: ExecucaoContexto,
     empresaId: string,
-  ): Promise<{ aguardando: boolean }> {
+  ): Promise<{ aguardando: boolean; pulado?: boolean; motivo?: string }> {
     const cfg = (no.config ?? {}) as ConversarIaConfig;
     const leadId = typeof ctx.leadId === 'string' ? ctx.leadId : undefined;
     if (!leadId) throw new Error('contexto.leadId ausente para CONVERSAR_IA');
@@ -125,8 +129,17 @@ export class ConversarIaService {
       where: { id: leadId, empresaId },
       select: { contatoTelefone: true },
     });
-    if (!lead?.contatoTelefone) {
-      throw new Error(`Lead ${leadId} sem telefone para CONVERSAR_IA`);
+    // Sem WhatsApp não há como abordar: pula limpo (não é falha — o lead só não
+    // tem número). A execução encerra com o motivo registrado no log do passo.
+    if (!lead?.contatoTelefone || lead.contatoTelefone.replace(/\D/g, '').length < 8) {
+      this.logger.warn(
+        `CONVERSAR_IA: lead ${leadId} sem telefone válido — pulado (exec ${execucaoId})`,
+      );
+      return {
+        aguardando: false,
+        pulado: true,
+        motivo: 'lead sem telefone de WhatsApp — abordagem pulada',
+      };
     }
 
     // Teto de tokens do prompt (Fase C — spec §7).

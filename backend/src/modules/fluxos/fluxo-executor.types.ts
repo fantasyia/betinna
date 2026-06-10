@@ -125,6 +125,12 @@ export interface LiberarLoteConfig {
   ordemDir?: 'asc' | 'desc';
   /** Nomes de tags — leads com QUALQUER uma são EXCLUÍDOS do lote (ex: 'pausado'). */
   filtroExcluiTag?: string[];
+  /**
+   * Só libera leads que TÊM telefone de WhatsApp (≥8 dígitos). Use quando a
+   * etapa destino dispara abordagem por IA/WhatsApp — evita "queimar" leads sem
+   * número na etapa de abordagem. Default false (libera todos).
+   */
+  filtroSoComWhatsapp?: boolean;
 }
 
 /** Contexto de execução — enriquecido progressivamente. */

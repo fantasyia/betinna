@@ -111,12 +111,18 @@ describe('ConversarIaService', () => {
       expect(prisma.fluxoExecucao.update).not.toHaveBeenCalled();
     });
 
-    it('lança quando lead sem telefone', async () => {
+    it('pula (sem falhar) quando lead sem telefone', async () => {
       prisma.lead.findFirst.mockResolvedValue({ contatoTelefone: null });
       muller.gerarRespostaIa.mockResolvedValue({ texto: 'x', modelo: 'gpt' });
-      await expect(
-        svc.iniciar('exec-1', no() as never, { leadId: 'lead-1' }, 'emp-1'),
-      ).rejects.toThrow();
+
+      const r = await svc.iniciar('exec-1', no() as never, { leadId: 'lead-1' }, 'emp-1');
+
+      // Não lança: retorna pulado + motivo, não envia nada e não pausa a execução.
+      expect(r.aguardando).toBe(false);
+      expect(r.pulado).toBe(true);
+      expect(r.motivo).toMatch(/telefone/i);
+      expect(whatsapp.enviarTexto).not.toHaveBeenCalled();
+      expect(prisma.fluxoExecucao.update).not.toHaveBeenCalled();
     });
   });
 

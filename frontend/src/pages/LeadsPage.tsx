@@ -30,6 +30,7 @@ import {
   Upload,
   X,
   Tag as TagIcon,
+  Phone,
 } from 'lucide-react';
 import { api, ApiError } from '@/lib/api';
 import { useApiQuery } from '@/hooks/useApiQuery';
@@ -81,6 +82,7 @@ interface Lead {
   id: string;
   nome: string;
   contatoNome?: string | null;
+  contatoTelefone?: string | null;
   cidade?: string | null;
   uf?: string | null;
   segmento?: string | null;
@@ -1086,6 +1088,15 @@ function LeadDetailDrawer({
             </InfoCell>
             <InfoCell icon={<User />} label="Contato">
               {lead.contatoNome ?? '—'}
+            </InfoCell>
+            <InfoCell icon={<Phone />} label="WhatsApp">
+              {lead.contatoTelefone ? (
+                lead.contatoTelefone
+              ) : (
+                <span className="text-danger font-medium">
+                  sem número — não recebe abordagem da IA
+                </span>
+              )}
             </InfoCell>
           </div>
         </section>
