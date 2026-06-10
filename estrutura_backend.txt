@@ -1,0 +1,588 @@
+Folder PATH listing
+Volume serial number is 7E58-9710
+C:\USERS\DELL\DEV\BETINNA\BACKEND\SRC
+¦   app.module.ts
+¦   main.ts
+¦   worker.ts
+¦   
++---config
+¦       env.module.ts
+¦       env.schema.ts
+¦       env.service.spec.ts
+¦       env.service.ts
+¦       
++---constants
+¦       providers.ts
+¦       
++---database
+¦       prisma.module.ts
+¦       prisma.service.ts
+¦       redis-options.spec.ts
+¦       redis-options.ts
+¦       redis.service.ts
+¦       
++---integrations
+¦   +---amazon
+¦   ¦       amazon-client.service.spec.ts
+¦   ¦       amazon-client.service.ts
+¦   ¦       amazon-lwa.service.spec.ts
+¦   ¦       amazon-lwa.service.ts
+¦   ¦       amazon-messaging.service.spec.ts
+¦   ¦       amazon-messaging.service.ts
+¦   ¦       amazon-oauth.controller.ts
+¦   ¦       amazon-orders.service.spec.ts
+¦   ¦       amazon-orders.service.ts
+¦   ¦       amazon-sync.job.ts
+¦   ¦       amazon.module.ts
+¦   ¦       amazon.service.spec.ts
+¦   ¦       amazon.service.ts
+¦   ¦       amazon.types.ts
+¦   ¦       
+¦   +---email
+¦   ¦       email-templates.spec.ts
+¦   ¦       email-templates.ts
+¦   ¦       email.module.ts
+¦   ¦       transactional-email.service.spec.ts
+¦   ¦       transactional-email.service.ts
+¦   ¦       
+¦   +---evolution
+¦   ¦       evolution-inbound.service.ts
+¦   ¦       evolution-sync.job.ts
+¦   ¦       evolution-webhook.controller.ts
+¦   ¦       evolution-webhook.module.ts
+¦   ¦       evolution.module.ts
+¦   ¦       evolution.service.ts
+¦   ¦       
+¦   +---google
+¦   ¦       google-calendar.service.spec.ts
+¦   ¦       google-calendar.service.ts
+¦   ¦       google-oauth.controller.ts
+¦   ¦       google-oauth.service.spec.ts
+¦   ¦       google-oauth.service.ts
+¦   ¦       google.module.ts
+¦   ¦       google.types.ts
+¦   ¦       
+¦   +---mercadolivre
+¦   ¦       ml-claims.service.spec.ts
+¦   ¦       ml-claims.service.ts
+¦   ¦       ml-client.service.spec.ts
+¦   ¦       ml-client.service.ts
+¦   ¦       ml-messages.service.spec.ts
+¦   ¦       ml-messages.service.ts
+¦   ¦       ml-oauth.controller.ts
+¦   ¦       ml-oauth.service.spec.ts
+¦   ¦       ml-oauth.service.ts
+¦   ¦       ml-orders.service.spec.ts
+¦   ¦       ml-orders.service.ts
+¦   ¦       ml-questions.service.spec.ts
+¦   ¦       ml-questions.service.ts
+¦   ¦       ml-sync.job.ts
+¦   ¦       ml-webhook.controller.ts
+¦   ¦       ml.module.ts
+¦   ¦       ml.service.spec.ts
+¦   ¦       ml.service.ts
+¦   ¦       ml.types.ts
+¦   ¦       
+¦   +---meta
+¦   ¦       facebook.service.spec.ts
+¦   ¦       facebook.service.ts
+¦   ¦       instagram.service.spec.ts
+¦   ¦       instagram.service.ts
+¦   ¦       meta-graph-client.service.spec.ts
+¦   ¦       meta-graph-client.service.ts
+¦   ¦       meta-media.service.ts
+¦   ¦       meta-oauth.controller.ts
+¦   ¦       meta-oauth.service.spec.ts
+¦   ¦       meta-oauth.service.ts
+¦   ¦       meta-token-refresh.job.ts
+¦   ¦       meta-webhook.controller.spec.ts
+¦   ¦       meta-webhook.controller.ts
+¦   ¦       meta.module.ts
+¦   ¦       meta.types.ts
+¦   ¦       
+¦   +---omie
+¦   ¦       omie-amostras.service.spec.ts
+¦   ¦       omie-amostras.service.ts
+¦   ¦       omie-client.service.spec.ts
+¦   ¦       omie-client.service.ts
+¦   ¦       omie-clientes.service.spec.ts
+¦   ¦       omie-clientes.service.ts
+¦   ¦       omie-estoque.job.ts
+¦   ¦       omie-pedidos.service.spec.ts
+¦   ¦       omie-pedidos.service.ts
+¦   ¦       omie-produtos.service.spec.ts
+¦   ¦       omie-produtos.service.ts
+¦   ¦       omie-sync.job.ts
+¦   ¦       omie-webhook.controller.ts
+¦   ¦       omie.controller.ts
+¦   ¦       omie.demo.ts
+¦   ¦       omie.mapper.spec.ts
+¦   ¦       omie.mapper.ts
+¦   ¦       omie.module.ts
+¦   ¦       omie.types.ts
+¦   ¦       
+¦   +---resend
+¦   ¦       resend.module.ts
+¦   ¦       resend.service.ts
+¦   ¦       
+¦   +---shopee
+¦   ¦       shopee-chat.service.spec.ts
+¦   ¦       shopee-chat.service.ts
+¦   ¦       shopee-client.service.spec.ts
+¦   ¦       shopee-client.service.ts
+¦   ¦       shopee-oauth.controller.ts
+¦   ¦       shopee-oauth.service.spec.ts
+¦   ¦       shopee-oauth.service.ts
+¦   ¦       shopee-orders.service.spec.ts
+¦   ¦       shopee-orders.service.ts
+¦   ¦       shopee-returns.service.spec.ts
+¦   ¦       shopee-returns.service.ts
+¦   ¦       shopee-signer.spec.ts
+¦   ¦       shopee-signer.ts
+¦   ¦       shopee-sync.job.ts
+¦   ¦       shopee-webhook.controller.ts
+¦   ¦       shopee.module.ts
+¦   ¦       shopee.service.spec.ts
+¦   ¦       shopee.service.ts
+¦   ¦       shopee.types.ts
+¦   ¦       
+¦   +---tiktok
+¦   ¦       tiktok-client.service.spec.ts
+¦   ¦       tiktok-client.service.ts
+¦   ¦       tiktok-oauth.controller.ts
+¦   ¦       tiktok-oauth.service.spec.ts
+¦   ¦       tiktok-oauth.service.ts
+¦   ¦       tiktok-orders.service.spec.ts
+¦   ¦       tiktok-orders.service.ts
+¦   ¦       tiktok-returns.service.spec.ts
+¦   ¦       tiktok-returns.service.ts
+¦   ¦       tiktok-signer.spec.ts
+¦   ¦       tiktok-signer.ts
+¦   ¦       tiktok-sync.job.ts
+¦   ¦       tiktok-webhook.controller.ts
+¦   ¦       tiktok.module.ts
+¦   ¦       tiktok.service.spec.ts
+¦   ¦       tiktok.service.ts
+¦   ¦       tiktok.types.ts
+¦   ¦       
+¦   +---whatsapp
+¦           whatsapp-auth-state.spec.ts
+¦           whatsapp-auth-state.ts
+¦           whatsapp-media.service.ts
+¦           whatsapp-message-parse.spec.ts
+¦           whatsapp-session-recibos.spec.ts
+¦           whatsapp-session.service.ts
+¦           whatsapp-usuario.controller.ts
+¦           whatsapp.controller.ts
+¦           whatsapp.module.ts
+¦           whatsapp.service.spec.ts
+¦           whatsapp.service.ts
+¦           whatsapp.types.ts
+¦           
++---modules
+¦   +---admin
+¦   ¦       admin.module.ts
+¦   ¦       db-health.controller.ts
+¦   ¦       db-health.service.ts
+¦   ¦       
+¦   +---agenda
+¦   ¦       agenda.controller.ts
+¦   ¦       agenda.dto.ts
+¦   ¦       agenda.module.ts
+¦   ¦       agenda.service.spec.ts
+¦   ¦       agenda.service.ts
+¦   ¦       
+¦   +---amostras
+¦   ¦       amostras.controller.ts
+¦   ¦       amostras.dto.ts
+¦   ¦       amostras.module.ts
+¦   ¦       amostras.service.spec.ts
+¦   ¦       amostras.service.ts
+¦   ¦       
+¦   +---audit
+¦   ¦       audit.controller.ts
+¦   ¦       audit.interceptor.ts
+¦   ¦       audit.module.ts
+¦   ¦       audit.service.spec.ts
+¦   ¦       audit.service.ts
+¦   ¦       retention-cleanup.job.spec.ts
+¦   ¦       retention-cleanup.job.ts
+¦   ¦       
+¦   +---auth
+¦   ¦   ¦   auth-session.service.ts
+¦   ¦   ¦   auth.controller.ts
+¦   ¦   ¦   auth.module.ts
+¦   ¦   ¦   refresh-token.service.spec.ts
+¦   ¦   ¦   refresh-token.service.ts
+¦   ¦   ¦   supabase-auth.service.spec.ts
+¦   ¦   ¦   supabase-auth.service.ts
+¦   ¦   ¦   
+¦   ¦   +---guards
+¦   ¦           auth.guard.ts
+¦   ¦           permissions.guard.ts
+¦   ¦           roles.guard.ts
+¦   ¦           
+¦   +---backup
+¦   ¦       backup-core.ts
+¦   ¦       backup.controller.ts
+¦   ¦       backup.job.ts
+¦   ¦       backup.module.ts
+¦   ¦       backup.service.ts
+¦   ¦       
+¦   +---badges
+¦   ¦       badges.controller.ts
+¦   ¦       badges.module.ts
+¦   ¦       badges.service.ts
+¦   ¦       
+¦   +---bot-prompts
+¦   ¦       bot-prompts.controller.ts
+¦   ¦       bot-prompts.dto.ts
+¦   ¦       bot-prompts.module.ts
+¦   ¦       bot-prompts.service.spec.ts
+¦   ¦       bot-prompts.service.ts
+¦   ¦       variavel-customizada.controller.ts
+¦   ¦       variavel-customizada.service.ts
+¦   ¦       
+¦   +---campanhas
+¦   ¦       campanha-envio.processor.ts
+¦   ¦       campanha-envio.types.ts
+¦   ¦       campanha-ia.service.spec.ts
+¦   ¦       campanha-ia.service.ts
+¦   ¦       campanha-scheduler.job.ts
+¦   ¦       campanhas.controller.ts
+¦   ¦       campanhas.dto.ts
+¦   ¦       campanhas.module.ts
+¦   ¦       campanhas.service.spec.ts
+¦   ¦       campanhas.service.ts
+¦   ¦       
+¦   +---catalogo
+¦   ¦       catalog-share.service.spec.ts
+¦   ¦       catalog-share.service.ts
+¦   ¦       catalogo.controller.ts
+¦   ¦       catalogo.dto.ts
+¦   ¦       catalogo.module.ts
+¦   ¦       catalogo.service.spec.ts
+¦   ¦       catalogo.service.ts
+¦   ¦       
+¦   +---clientes
+¦   ¦       clientes.controller.ts
+¦   ¦       clientes.dto.ts
+¦   ¦       clientes.module.ts
+¦   ¦       clientes.service.spec.ts
+¦   ¦       clientes.service.ts
+¦   ¦       documentos.controller.ts
+¦   ¦       documentos.service.spec.ts
+¦   ¦       documentos.service.ts
+¦   ¦       listas-dinamicas.service.spec.ts
+¦   ¦       listas-dinamicas.service.ts
+¦   ¦       notas-privadas.controller.ts
+¦   ¦       notas-privadas.dto.ts
+¦   ¦       notas-privadas.service.spec.ts
+¦   ¦       notas-privadas.service.ts
+¦   ¦       
+¦   +---comissoes
+¦   ¦       comissoes-fechamento.job.ts
+¦   ¦       comissoes.controller.ts
+¦   ¦       comissoes.dto.ts
+¦   ¦       comissoes.module.ts
+¦   ¦       comissoes.service.spec.ts
+¦   ¦       comissoes.service.ts
+¦   ¦       
+¦   +---dead-letter
+¦   ¦       dead-letter.controller.ts
+¦   ¦       dead-letter.module.ts
+¦   ¦       dead-letter.processor.ts
+¦   ¦       dead-letter.service.spec.ts
+¦   ¦       dead-letter.service.ts
+¦   ¦       dead-letter.types.ts
+¦   ¦       
+¦   +---empresas
+¦   ¦       empresa-logo.service.ts
+¦   ¦       empresas.controller.ts
+¦   ¦       empresas.dto.ts
+¦   ¦       empresas.module.ts
+¦   ¦       empresas.service.spec.ts
+¦   ¦       empresas.service.ts
+¦   ¦       
+¦   +---fluxos
+¦   ¦       conversar-ia.service.spec.ts
+¦   ¦       conversar-ia.service.ts
+¦   ¦       fluxo-event-bus.service.spec.ts
+¦   ¦       fluxo-event-bus.service.ts
+¦   ¦       fluxo-executor.processor.ts
+¦   ¦       fluxo-executor.service.spec.ts
+¦   ¦       fluxo-executor.service.ts
+¦   ¦       fluxo-executor.types.ts
+¦   ¦       fluxo-triggers.job.ts
+¦   ¦       fluxos.controller.ts
+¦   ¦       fluxos.dto.ts
+¦   ¦       fluxos.module.ts
+¦   ¦       fluxos.service.spec.ts
+¦   ¦       fluxos.service.ts
+¦   ¦       monitor.controller.ts
+¦   ¦       monitor.service.spec.ts
+¦   ¦       monitor.service.ts
+¦   ¦       orquestracao-lead-events.service.spec.ts
+¦   ¦       orquestracao-lead-events.service.ts
+¦   ¦       webhook-entrada.controller.ts
+¦   ¦       webhook-entrada.service.spec.ts
+¦   ¦       webhook-entrada.service.ts
+¦   ¦       
+¦   +---funis
+¦   ¦       funis.controller.ts
+¦   ¦       funis.dto.ts
+¦   ¦       funis.module.ts
+¦   ¦       funis.service.ts
+¦   ¦       
+¦   +---health
+¦   ¦       health.controller.ts
+¦   ¦       health.module.ts
+¦   ¦       version.controller.ts
+¦   ¦       
+¦   +---import
+¦   ¦       import.controller.ts
+¦   ¦       import.dto.ts
+¦   ¦       import.module.ts
+¦   ¦       import.service.spec.ts
+¦   ¦       import.service.ts
+¦   ¦       
+¦   +---inbox
+¦   ¦       canal-adapter.registry.ts
+¦   ¦       conversation-notas.service.spec.ts
+¦   ¦       conversation-notas.service.ts
+¦   ¦       conversation-presenca.service.spec.ts
+¦   ¦       conversation-presenca.service.ts
+¦   ¦       inbox-metricas.service.spec.ts
+¦   ¦       inbox-metricas.service.ts
+¦   ¦       inbox.controller.ts
+¦   ¦       inbox.dto.ts
+¦   ¦       inbox.module.ts
+¦   ¦       inbox.service.spec.ts
+¦   ¦       inbox.service.ts
+¦   ¦       inbox.types.ts
+¦   ¦       
+¦   +---incidents
+¦   ¦       incidents.controller.ts
+¦   ¦       incidents.dto.ts
+¦   ¦       incidents.module.ts
+¦   ¦       incidents.service.spec.ts
+¦   ¦       incidents.service.ts
+¦   ¦       incidents.types.ts
+¦   ¦       
+¦   +---integracoes
+¦   ¦       integracao-status.service.spec.ts
+¦   ¦       integracao-status.service.ts
+¦   ¦       integracoes.constants.ts
+¦   ¦       integracoes.controller.ts
+¦   ¦       integracoes.dto.ts
+¦   ¦       integracoes.module.ts
+¦   ¦       integracoes.service.spec.ts
+¦   ¦       integracoes.service.ts
+¦   ¦       usuario-integracoes.controller.ts
+¦   ¦       usuario-integracoes.service.spec.ts
+¦   ¦       usuario-integracoes.service.ts
+¦   ¦       
+¦   +---leads
+¦   ¦       leads.constants.ts
+¦   ¦       leads.controller.ts
+¦   ¦       leads.dto.ts
+¦   ¦       leads.module.ts
+¦   ¦       leads.service.spec.ts
+¦   ¦       leads.service.ts
+¦   ¦       
+¦   +---metas
+¦   ¦       metas.controller.ts
+¦   ¦       metas.dto.ts
+¦   ¦       metas.module.ts
+¦   ¦       metas.service.ts
+¦   ¦       
+¦   +---mullerbot
+¦   ¦       bot-auditoria.controller.ts
+¦   ¦       bot-auditoria.service.spec.ts
+¦   ¦       bot-auditoria.service.ts
+¦   ¦       bot-custo.service.spec.ts
+¦   ¦       bot-custo.service.ts
+¦   ¦       muller-whatsapp.service.spec.ts
+¦   ¦       muller-whatsapp.service.ts
+¦   ¦       mullerbot-cache.service.spec.ts
+¦   ¦       mullerbot-cache.service.ts
+¦   ¦       mullerbot.controller.ts
+¦   ¦       mullerbot.dto.ts
+¦   ¦       mullerbot.module.ts
+¦   ¦       mullerbot.service.spec.ts
+¦   ¦       mullerbot.service.ts
+¦   ¦       mullerbot.types.ts
+¦   ¦       persona.controller.ts
+¦   ¦       persona.dto.ts
+¦   ¦       persona.service.spec.ts
+¦   ¦       persona.service.ts
+¦   ¦       produto-search.service.spec.ts
+¦   ¦       produto-search.service.ts
+¦   ¦       
+¦   +---notificacoes
+¦   ¦       notificacoes.controller.ts
+¦   ¦       notificacoes.dto.ts
+¦   ¦       notificacoes.module.ts
+¦   ¦       notificacoes.service.spec.ts
+¦   ¦       notificacoes.service.ts
+¦   ¦       
+¦   +---nps
+¦   ¦       nps.controller.ts
+¦   ¦       nps.dto.ts
+¦   ¦       nps.module.ts
+¦   ¦       nps.service.ts
+¦   ¦       
+¦   +---ocorrencias
+¦   ¦       ocorrencias.controller.ts
+¦   ¦       ocorrencias.dto.ts
+¦   ¦       ocorrencias.module.ts
+¦   ¦       ocorrencias.service.spec.ts
+¦   ¦       ocorrencias.service.ts
+¦   ¦       
+¦   +---pedidos
+¦   ¦       aprovacoes.controller.ts
+¦   ¦       aprovacoes.dto.ts
+¦   ¦       aprovacoes.service.spec.ts
+¦   ¦       aprovacoes.service.ts
+¦   ¦       pedido-pricing.service.spec.ts
+¦   ¦       pedido-pricing.service.ts
+¦   ¦       pedidos.controller.ts
+¦   ¦       pedidos.dto.ts
+¦   ¦       pedidos.module.ts
+¦   ¦       pedidos.service.spec.ts
+¦   ¦       pedidos.service.ts
+¦   ¦       
+¦   +---permissions
+¦   ¦       permissions.constants.ts
+¦   ¦       permissions.controller.ts
+¦   ¦       permissions.module.ts
+¦   ¦       permissions.service.spec.ts
+¦   ¦       permissions.service.ts
+¦   ¦       
+¦   +---produtos
+¦   ¦       precos-especiais.controller.ts
+¦   ¦       precos-especiais.dto.ts
+¦   ¦       precos-especiais.service.ts
+¦   ¦       pricing.service.spec.ts
+¦   ¦       pricing.service.ts
+¦   ¦       produtos.controller.ts
+¦   ¦       produtos.dto.ts
+¦   ¦       produtos.module.ts
+¦   ¦       produtos.service.spec.ts
+¦   ¦       produtos.service.ts
+¦   ¦       
+¦   +---propostas
+¦   ¦       proposta-aceite.service.ts
+¦   ¦       proposta-export.service.ts
+¦   ¦       propostas.controller.ts
+¦   ¦       propostas.dto.ts
+¦   ¦       propostas.module.ts
+¦   ¦       propostas.service.spec.ts
+¦   ¦       propostas.service.ts
+¦   ¦       
+¦   +---relatorios
+¦   ¦       relatorios.controller.ts
+¦   ¦       relatorios.dto.ts
+¦   ¦       relatorios.module.ts
+¦   ¦       relatorios.service.spec.ts
+¦   ¦       relatorios.service.ts
+¦   ¦       
+¦   +---respostas-rapidas
+¦   ¦       respostas-rapidas.controller.ts
+¦   ¦       respostas-rapidas.dto.ts
+¦   ¦       respostas-rapidas.module.ts
+¦   ¦       respostas-rapidas.service.ts
+¦   ¦       
+¦   +---segmentos
+¦   ¦       segmentos.controller.ts
+¦   ¦       segmentos.dto.ts
+¦   ¦       segmentos.module.ts
+¦   ¦       segmentos.service.ts
+¦   ¦       
+¦   +---tags
+¦   ¦       tags.controller.ts
+¦   ¦       tags.dto.ts
+¦   ¦       tags.module.ts
+¦   ¦       tags.service.spec.ts
+¦   ¦       tags.service.ts
+¦   ¦       
+¦   +---users
+¦           users.controller.ts
+¦           users.dto.ts
+¦           users.module.ts
+¦           users.service.spec.ts
+¦           users.service.ts
+¦           
++---shared
+    +---decorators
+    ¦       audit.decorator.ts
+    ¦       current-user.decorator.ts
+    ¦       permissions.decorator.ts
+    ¦       public.decorator.ts
+    ¦       roles.decorator.ts
+    ¦       throttle-per-user.decorator.ts
+    ¦       
+    +---errors
+    ¦       app-exception.ts
+    ¦       error-codes.ts
+    ¦       
+    +---filters
+    ¦       all-exceptions.filter.ts
+    ¦       
+    +---guards
+    ¦       tenant-throttler.guard.ts
+    ¦       
+    +---http
+    ¦       http-client.service.spec.ts
+    ¦       http-client.service.ts
+    ¦       http-client.types.ts
+    ¦       http.module.ts
+    ¦       webhook-signature.util.spec.ts
+    ¦       webhook-signature.util.ts
+    ¦       
+    +---interceptors
+    ¦       response.interceptor.spec.ts
+    ¦       response.interceptor.ts
+    ¦       
+    +---observability
+    ¦       metrics.controller.ts
+    ¦       metrics.module.ts
+    ¦       metrics.service.ts
+    ¦       sentry.ts
+    ¦       
+    +---pipes
+    ¦       zod-validation.pipe.ts
+    ¦       
+    +---scope
+    ¦       rep-scope.module.ts
+    ¦       rep-scope.service.spec.ts
+    ¦       rep-scope.service.ts
+    ¦       
+    +---types
+    ¦       authenticated-user.ts
+    ¦       jwt-payload.ts
+    ¦       pagination.ts
+    ¦       
+    +---utils
+    ¦       auth-context.ts
+    ¦       cron-lock.service.spec.ts
+    ¦       cron-lock.service.ts
+    ¦       crypto.util.ts
+    ¦       idempotency.service.spec.ts
+    ¦       idempotency.service.ts
+    ¦       log-context.ts
+    ¦       request-id.middleware.ts
+    ¦       safe-request.spec.ts
+    ¦       safe-request.ts
+    ¦       sanitize-pii.spec.ts
+    ¦       sanitize-pii.ts
+    ¦       sequence.service.spec.ts
+    ¦       sequence.service.ts
+    ¦       shared-utils.module.ts
+    ¦       webhook-anti-replay.service.spec.ts
+    ¦       webhook-anti-replay.service.ts
+    ¦       
+    +---validators
+            br-validators.spec.ts
+            br-validators.ts
+            

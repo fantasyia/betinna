@@ -1,0 +1,146 @@
+Folder PATH listing
+Volume serial number is 7E58-9710
+C:\USERS\DELL\DEV\BETINNA\FRONTEND\SRC
+¦   App.tsx
+¦   estrutura-frontend.txt
+¦   index.css
+¦   main.tsx
+¦   vite-env.d.ts
+¦   
++---components
+¦   ¦   AsyncCombobox.tsx
+¦   ¦   AtendimentoTabs.tsx
+¦   ¦   AutomacaoTabs.tsx
+¦   ¦   CatalogoTabs.tsx
+¦   ¦   charts.tsx
+¦   ¦   CrmTabs.tsx
+¦   ¦   EmpresaSwitcher.tsx
+¦   ¦   ErrorBoundary.tsx
+¦   ¦   FavoritosBar.tsx
+¦   ¦   FilterBar.tsx
+¦   ¦   FormField.tsx
+¦   ¦   ImportLeadsModal.tsx
+¦   ¦   LanguageSelect.tsx
+¦   ¦   LocalidadeSelects.tsx
+¦   ¦   LogoUploader.tsx
+¦   ¦   Markdown.tsx
+¦   ¦   Modal.tsx
+¦   ¦   NotificationBell.tsx
+¦   ¦   NovoPedidoDialog.tsx
+¦   ¦   OnboardingTour.tsx
+¦   ¦   PageLayout.tsx
+¦   ¦   PrimeirosPassosRep.tsx
+¦   ¦   ProtectedRoute.tsx
+¦   ¦   PwaBanner.tsx
+¦   ¦   SistemaTabs.tsx
+¦   ¦   StateView.tsx
+¦   ¦   styles.ts
+¦   ¦   SubTabsBar.tsx
+¦   ¦   Table.tsx
+¦   ¦   toast.tsx
+¦   ¦   VendasTabs.tsx
+¦   ¦   
+¦   +---ui
+¦           Avatar.tsx
+¦           Badge.tsx
+¦           Button.tsx
+¦           Card.tsx
+¦           Checkbox.tsx
+¦           Dialog.tsx
+¦           Drawer.tsx
+¦           EmptyState.tsx
+¦           Field.tsx
+¦           IconButton.tsx
+¦           index.ts
+¦           Input.tsx
+¦           Label.tsx
+¦           Select.tsx
+¦           Skeleton.tsx
+¦           Sparkline.tsx
+¦           Spinner.tsx
+¦           Stat.tsx
+¦           Switch.tsx
+¦           Tabs.tsx
+¦           Textarea.tsx
+¦           Tooltip.tsx
+¦           
++---hooks
+¦       useApiQuery.ts
+¦       useBadges.ts
+¦       useConfirm.tsx
+¦       useDashboardPrefs.ts
+¦       useEmpresaConfig.ts
+¦       useEmpresaLogo.ts
+¦       usePermission.ts
+¦       useTheme.ts
+¦       
++---i18n
+¦       en-US.json
+¦       pt-BR.json
+¦       
++---lib
+¦       api.ts
+¦       auth-store.ts
+¦       cn.ts
+¦       csv.ts
+¦       docx.ts
+¦       favoritos.ts
+¦       i18n.ts
+¦       import.ts
+¦       localidades.ts
+¦       masks.ts
+¦       notificacoes.ts
+¦       pdf.ts
+¦       pwa.ts
+¦       sentry.ts
+¦       xlsx.ts
+¦       
++---pages
+¦       AdminPage.tsx
+¦       AgendaPage.tsx
+¦       AmostrasPage.tsx
+¦       AprovacoesPage.tsx
+¦       BotAuditoriaPage.tsx
+¦       CampanhasPage.tsx
+¦       CatalogoPage.tsx
+¦       ClienteDetailPage.tsx
+¦       ClientesPage.tsx
+¦       ComissoesPage.tsx
+¦       ConfiguracoesPage.tsx
+¦       DashboardPage.tsx
+¦       FluxoEditor.tsx
+¦       FluxosPage.tsx
+¦       FluxoTemplatesPage.tsx
+¦       ForbiddenPage.tsx
+¦       FunisPage.tsx
+¦       InboxPage.tsx
+¦       IntegracoesPage.tsx
+¦       LeadsPage.tsx
+¦       LoginPage.tsx
+¦       MarketplaceIncidentsPage.tsx
+¦       MetasPage.tsx
+¦       MinhasIntegracoesPage.tsx
+¦       MonitorPage.tsx
+¦       MullerBotPage.tsx
+¦       NotificacoesPage.tsx
+¦       NpsPublicoPage.tsx
+¦       OcorrenciasPage.tsx
+¦       PedidoDetailPage.tsx
+¦       PedidosPage.tsx
+¦       PermissoesPage.tsx
+¦       PersonaBotPage.tsx
+¦       ProdutosPage.tsx
+¦       ProfilePage.tsx
+¦       PromptsBotPage.tsx
+¦       PropostaAceitePage.tsx
+¦       PropostasPage.tsx
+¦       RelatoriosPage.tsx
+¦       RespostasRapidasPage.tsx
+¦       SegmentosPage.tsx
+¦       TagsPage.tsx
+¦       WelcomePage.tsx
+¦       WhatsAppPage.tsx
+¦       
++---types
+        auth.ts
+        

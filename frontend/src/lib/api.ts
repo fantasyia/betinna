@@ -21,6 +21,9 @@ const BASE_URL =
   (import.meta.env.VITE_API_URL as string | undefined) ?? 'http://localhost:3001';
 const API_PREFIX = '/api/v1';
 const TIMEOUT_MS = 10_000;
+// Escritas (POST/PUT/PATCH/DELETE) ganham mais folga: saves pesados (ex: fluxo faz
+// full-replace de todos os nós/arestas numa transação) podem passar de 10s sob carga.
+const WRITE_TIMEOUT_MS = 30_000;
 
 /**
  * Adiciona breadcrumb estruturado pro Sentry antes de cada request.
@@ -153,7 +156,8 @@ async function request<T>(path: string, opts: RequestOpts = {}, retryWithRefresh
   }
 
   const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), opts.timeoutMs ?? TIMEOUT_MS);
+  const timeoutMs = opts.timeoutMs ?? TIMEOUT_MS;
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
 
   let response: Response;
   try {
@@ -173,7 +177,7 @@ async function request<T>(path: string, opts: RequestOpts = {}, retryWithRefresh
   } catch (err) {
     clearTimeout(timer);
     if (err instanceof DOMException && err.name === 'AbortError') {
-      const timeoutErr = new ApiError(0, 'TIMEOUT', `Requisição excedeu ${TIMEOUT_MS / 1000}s`);
+      const timeoutErr = new ApiError(0, 'TIMEOUT', `Requisição excedeu ${timeoutMs / 1000}s`);
       reportApiError(timeoutErr, url, method);
       throw timeoutErr;
     }
@@ -279,11 +283,11 @@ export const api = {
   get: <T>(path: string, opts?: Omit<RequestOpts, 'method' | 'body'>) =>
     request<T>(path, { ...opts, method: 'GET' }),
   post: <T>(path: string, body?: unknown, opts?: Omit<RequestOpts, 'method' | 'body'>) =>
-    request<T>(path, { ...opts, method: 'POST', body }),
+    request<T>(path, { timeoutMs: WRITE_TIMEOUT_MS, ...opts, method: 'POST', body }),
   patch: <T>(path: string, body?: unknown, opts?: Omit<RequestOpts, 'method' | 'body'>) =>
-    request<T>(path, { ...opts, method: 'PATCH', body }),
+    request<T>(path, { timeoutMs: WRITE_TIMEOUT_MS, ...opts, method: 'PATCH', body }),
   put: <T>(path: string, body?: unknown, opts?: Omit<RequestOpts, 'method' | 'body'>) =>
-    request<T>(path, { ...opts, method: 'PUT', body }),
+    request<T>(path, { timeoutMs: WRITE_TIMEOUT_MS, ...opts, method: 'PUT', body }),
   delete: <T>(path: string, opts?: Omit<RequestOpts, 'method' | 'body'>) =>
-    request<T>(path, { ...opts, method: 'DELETE' }),
+    request<T>(path, { timeoutMs: WRITE_TIMEOUT_MS, ...opts, method: 'DELETE' }),
 };
