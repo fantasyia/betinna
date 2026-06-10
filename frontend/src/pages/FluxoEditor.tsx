@@ -238,7 +238,7 @@ function NodeCard({ data, selected }: NodeProps<FlowNode>) {
   return (
     <div
       className={cn(
-        'rounded-lg border bg-surface min-w-[180px] shadow-md',
+        'relative rounded-lg border bg-surface min-w-[180px] shadow-md',
         'transition-all duration-100',
         selected ? 'border-primary shadow-lg ring-2 ring-primary/30' : 'border-border-strong',
       )}
@@ -308,6 +308,38 @@ function NodeCard({ data, selected }: NodeProps<FlowNode>) {
             />
           </>
         )
+      ) : data.acaoTipo === 'CONVERSAR_IA' &&
+        (data.config?.aguardarResposta as boolean | undefined) !== false &&
+        Number(data.config?.timeoutHoras ?? 0) > 0 ? (
+        // Conversar com IA aguardando resposta + timeout: 2 saídas distintas.
+        <>
+          <Handle
+            type="source"
+            position={Position.Bottom}
+            id="classificou"
+            className="!w-2 !h-2 !bg-success !border-bg !border-2"
+            style={{ left: '30%' }}
+          />
+          <Handle
+            type="source"
+            position={Position.Bottom}
+            id="timeout"
+            className="!w-2 !h-2 !bg-warning !border-bg !border-2"
+            style={{ left: '70%' }}
+          />
+          <div
+            className="absolute top-full mt-0.5 -translate-x-1/2 text-[9px] leading-none text-success whitespace-nowrap pointer-events-none"
+            style={{ left: '30%' }}
+          >
+            🟢 classificou
+          </div>
+          <div
+            className="absolute top-full mt-0.5 -translate-x-1/2 text-[9px] leading-none text-warning whitespace-nowrap pointer-events-none"
+            style={{ left: '70%' }}
+          >
+            🟠 timeout
+          </div>
+        </>
       ) : (
         <Handle
           type="source"
@@ -1867,6 +1899,14 @@ function NodeInspector({
                 }
               />
             </Field>
+            {(data.config.aguardarResposta as boolean | undefined) !== false &&
+              Number(data.config.timeoutHoras ?? 0) > 0 && (
+                <p className="text-[11px] text-muted">
+                  Com timeout, o nó tem <strong>2 saídas</strong> no canvas: 🟢{' '}
+                  <strong>classificou</strong> (IA concluiu) e 🟠 <strong>timeout</strong> (passou o
+                  prazo sem resposta) — conecte cada uma a um caminho.
+                </p>
+              )}
             <Field
               label="Variáveis que a IA pode gravar"
               hint="Separe por vírgula (ex: classificacao, canal). Vazio = livre."

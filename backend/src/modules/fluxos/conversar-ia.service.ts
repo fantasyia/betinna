@@ -272,22 +272,51 @@ export class ConversarIaService {
       where: { id: execucaoId },
       data: { status: 'EM_EXECUCAO', aguardandoNoId: null, timeoutEm: null },
     });
-    await this.enfileirarSucessores(execucaoId, no.id);
+    // Segue o ramo "classificou" (aresta com label 'classificou'); inclui arestas
+    // SEM label pra compat com nós antigos de uma saída só.
+    await this.enfileirarSucessores(execucaoId, no.id, 'classificou', true);
     this.logger.log(
       `Execução ${execucaoId} retomada — IA classificou "${turno.classificacao ?? '?'}" (lead ${leadId})`,
     );
   }
 
-  /** Cron — execuções paradas além do timeout: dispara LEAD_SEM_RESPOSTA e encerra. */
+  /**
+   * Cron — execuções paradas além do timeout. Se o nó tem uma saída "timeout"
+   * (aresta com label 'timeout'), CONTINUA o fluxo por ela (ex: nó de follow-up).
+   * Senão, mantém o comportamento antigo: dispara LEAD_SEM_RESPOSTA e encerra.
+   */
   async processarTimeouts(): Promise<number> {
     const vencidas = await this.prisma.fluxoExecucao.findMany({
       where: { status: 'AGUARDANDO', timeoutEm: { lt: new Date() } },
-      select: { id: true, empresaId: true, contexto: true },
+      select: { id: true, empresaId: true, contexto: true, aguardandoNoId: true },
       take: 200,
     });
+    let comRamo = 0;
     for (const ex of vencidas) {
       const ctx = ex.contexto as ExecucaoContexto;
       const leadId = typeof ctx.leadId === 'string' ? ctx.leadId : undefined;
+
+      const arestasTimeout = ex.aguardandoNoId
+        ? await this.prisma.fluxoEdge.findMany({
+            where: { sourceNoId: ex.aguardandoNoId, label: 'timeout' },
+          })
+        : [];
+
+      if (arestasTimeout.length > 0) {
+        // Continua o fluxo pelo ramo "timeout" (o branch explícito supera o
+        // gatilho global LEAD_SEM_RESPOSTA — evita tratar o lead em dobro).
+        await this.prisma.fluxoExecucao.update({
+          where: { id: ex.id },
+          data: { status: 'EM_EXECUCAO', aguardandoNoId: null, timeoutEm: null },
+        });
+        for (const e of arestasTimeout) {
+          await this.enfileirarStep(ex.id, e.targetNoId);
+        }
+        comRamo++;
+        continue;
+      }
+
+      // Sem ramo "timeout": dispara LEAD_SEM_RESPOSTA e encerra.
       if (ex.empresaId && leadId) {
         await this.bus.disparar(ex.empresaId, 'LEAD_SEM_RESPOSTA', { leadId });
       }
@@ -302,7 +331,9 @@ export class ConversarIaService {
       });
     }
     if (vencidas.length > 0) {
-      this.logger.log(`${vencidas.length} execução(ões) de IA expiraram → LEAD_SEM_RESPOSTA`);
+      this.logger.log(
+        `${vencidas.length} execução(ões) de IA expiraram (${comRamo} seguiram o ramo "timeout")`,
+      );
     }
     return vencidas.length;
   }
@@ -393,27 +424,42 @@ export class ConversarIaService {
     }));
   }
 
-  /** Enfileira os nós sucessores do nó atual (avança o fluxo após classificar). */
-  private async enfileirarSucessores(execucaoId: string, noId: string): Promise<void> {
+  /**
+   * Enfileira os sucessores do nó pela aresta de `label` (ex: 'classificou' /
+   * 'timeout'). `incluirSemLabel` cobre nós antigos de UMA saída só (aresta sem
+   * label) — compat do ramo "classificou". Sem sucessores → execução concluída.
+   */
+  private async enfileirarSucessores(
+    execucaoId: string,
+    noId: string,
+    label: string,
+    incluirSemLabel: boolean,
+  ): Promise<void> {
     const arestas = await this.prisma.fluxoEdge.findMany({ where: { sourceNoId: noId } });
-    if (arestas.length === 0) {
+    const alvos = arestas.filter((e) => e.label === label || (incluirSemLabel && !e.label));
+    if (alvos.length === 0) {
       await this.prisma.fluxoExecucao.update({
         where: { id: execucaoId },
         data: { status: 'CONCLUIDO', terminouEm: new Date() },
       });
       return;
     }
-    for (const e of arestas) {
-      await this.queue.add(
-        'step',
-        { execucaoId, noId: e.targetNoId },
-        {
-          attempts: 3,
-          backoff: { type: 'exponential', delay: 2000 },
-          removeOnComplete: { count: 500 },
-          removeOnFail: { count: 200 },
-        },
-      );
+    for (const e of alvos) {
+      await this.enfileirarStep(execucaoId, e.targetNoId);
     }
+  }
+
+  /** Enfileira um passo na fila BullMQ (mesmo padrão de opções do executor). */
+  private async enfileirarStep(execucaoId: string, noId: string): Promise<void> {
+    await this.queue.add(
+      'step',
+      { execucaoId, noId },
+      {
+        attempts: 3,
+        backoff: { type: 'exponential', delay: 2000 },
+        removeOnComplete: { count: 500 },
+        removeOnFail: { count: 200 },
+      },
+    );
   }
 }
