@@ -492,6 +492,10 @@ function FluxoEditorInner({
   const [mobilePanel, setMobilePanel] = useState<'palette' | 'inspector' | null>(null);
   const [saving, setSaving] = useState(false);
   const [dirty, setDirty] = useState(false);
+  // Teste manual — dispara o fluxo agora (do nó gatilho), sem esperar cron/evento.
+  const [testarAberto, setTestarAberto] = useState(false);
+  const [testLeadId, setTestLeadId] = useState('');
+  const [testando, setTestando] = useState(false);
   const [name, setName] = useState('');
   const [triggerTipo, setTriggerTipo] = useState<TriggerTipo | ''>('');
   const [reactFlowInstance, setReactFlowInstance] = useState<ReactFlowInstance<FlowNode, Edge> | null>(null);
@@ -745,6 +749,27 @@ function FluxoEditorInner({
     }
   }
 
+  // Dispara um teste manual (POST /fluxos/testar) — salva antes se estiver sujo.
+  async function runTeste() {
+    setTestando(true);
+    try {
+      if (dirty) await handleSave();
+      const r = await api.post<{ execucaoId: string }>('/fluxos/testar', {
+        fluxoId,
+        contexto: testLeadId.trim() ? { leadId: testLeadId.trim() } : {},
+      });
+      toast.success(
+        'Teste disparado 🚀',
+        `Execução ${r.execucaoId.slice(0, 8)}… — acompanhe em Fluxos › Execuções.`,
+      );
+      setTestarAberto(false);
+    } catch (err) {
+      toast.error('Falha ao testar', err instanceof ApiError ? err.message : undefined);
+    } finally {
+      setTestando(false);
+    }
+  }
+
   // Sync selected node updates back to nodes state
   function updateSelectedNode(updater: (data: NodePayload) => NodePayload) {
     if (!selectedNodeId) return;
@@ -935,6 +960,16 @@ function FluxoEditorInner({
             />
             <div className="w-px h-6 bg-border mx-1" />
           </div>
+          <Button
+            variant="secondary"
+            className="hidden md:inline-flex"
+            onClick={() => setTestarAberto(true)}
+            leftIcon={<Play className="h-3.5 w-3.5" />}
+            data-testid="fluxo-testar"
+            title="Dispara o fluxo agora (do nó gatilho), sem esperar o cron/evento"
+          >
+            Testar
+          </Button>
           <Button variant="ghost" className="hidden md:inline-flex" onClick={onClose}>
             Cancelar
           </Button>
@@ -948,6 +983,46 @@ function FluxoEditorInner({
           </Button>
         </div>
       </header>
+
+      {testarAberto && (
+        <div
+          className="fixed inset-0 z-[120] bg-black/50 flex items-center justify-center p-4"
+          onClick={() => setTestarAberto(false)}
+        >
+          <div
+            className="bg-bg-alt border border-border rounded-lg shadow-xl w-full max-w-sm p-4"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <h3 className="text-sm font-bold text-text mb-1">Testar fluxo</h3>
+            <p className="text-[11px] text-muted mb-3">
+              Dispara o fluxo <strong>agora</strong> (a partir do nó gatilho), sem esperar o
+              cron/evento. Salva o fluxo antes, se houver mudanças.
+            </p>
+            <label className="text-xs text-muted">ID do lead (opcional)</label>
+            <Input
+              value={testLeadId}
+              onChange={(e) => setTestLeadId(e.target.value)}
+              placeholder="cole o ID do lead aqui"
+              data-testid="fluxo-test-lead"
+            />
+            <p className="text-[10px] text-muted mt-1">
+              Vazio = fluxo sem lead (ex: webhook). Pegue o ID na tela de Leads.
+            </p>
+            <div className="flex justify-end gap-2 mt-4">
+              <Button variant="ghost" onClick={() => setTestarAberto(false)}>
+                Cancelar
+              </Button>
+              <Button
+                onClick={runTeste}
+                loading={testando}
+                leftIcon={<Play className="h-3.5 w-3.5" />}
+              >
+                Rodar teste
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
 
       <div className="flex-1 flex overflow-hidden relative">
         {/* Backdrop dos drawers (só mobile, quando um painel está aberto) */}
