@@ -42,7 +42,8 @@ export const createFluxoNoSchema = z.object({
   // id fornecido pelo frontend (para poder referenciar em arestas)
   id: z.string().min(1),
   tipo: z.enum(fluxoNoTipoValues),
-  acaoTipo: z.enum(fluxoAcaoTipoValues).optional(),
+  // nullable: nós não-ACAO (TRIGGER/CONDICAO/DELAY) mandam acaoTipo null pelo editor.
+  acaoTipo: z.enum(fluxoAcaoTipoValues).nullable().optional(),
   titulo: z.string().min(1).max(100),
   config: z.record(z.unknown()).default({}),
   posX: z.number().default(0),
