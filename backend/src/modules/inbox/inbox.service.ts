@@ -545,8 +545,17 @@ export class InboxService {
         data: { status: MessageStatus.SENT, externalId: r.externalId ?? null },
       });
       // Atualiza preview da conversa + zera naoLidas (responder = leu).
-      // Fase 2 — HANDOFF: humano respondeu → pausa o bot nesta conversa por
-      // BOT_HANDOFF_HORAS e limpa o "precisa humano" (alguém assumiu).
+      // Fase 2 — HANDOFF: humano respondeu → limpa o "precisa humano" (alguém
+      // assumiu) e PAUSA o bot — MAS só pausa se o bot está de fato ATIVO nesta
+      // conversa. Pausar um bot desligado gerava o selo "Bot pausado"/"Religar bot"
+      // enganoso (o bot é off por padrão; o usuário liga só pra alguns contatos).
+      const empresaBot = await this.prisma.empresa.findUnique({
+        where: { id: conv.empresaId },
+        select: { botWhatsappAtivo: true },
+      });
+      const botAtivoNaConversa =
+        conv.botLigado === true ||
+        (conv.botLigado == null && empresaBot?.botWhatsappAtivo === true);
       const handoffMs = this.env.get('BOT_HANDOFF_HORAS') * 60 * 60 * 1000;
       await this.prisma.conversation.update({
         where: { id: conversationId },
@@ -555,8 +564,8 @@ export class InboxService {
           ultimaMsgPreview: this.preview(dto.texto),
           status: conv.status === 'PENDENTE' ? 'ABERTA' : conv.status,
           naoLidas: 0,
-          botPausadoAte: new Date(Date.now() + handoffMs),
           precisaHumano: false,
+          ...(botAtivoNaConversa ? { botPausadoAte: new Date(Date.now() + handoffMs) } : {}),
         },
       });
       return atualizada;

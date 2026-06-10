@@ -96,15 +96,24 @@ export class WhatsAppService implements CanalAdapter, OnModuleInit {
     );
   }
 
-  /** Indicador "digitando…" (composing) / parou (paused). Best-effort. */
+  /**
+   * Indicador "digitando…" (composing) / parou (paused). Best-effort.
+   * `delayMs` (Evolution) mantém o "digitando" visível pela duração da espera do bot.
+   */
   async enviarPresenca(
     empresaId: string,
     peerId: string,
     estado: 'composing' | 'paused',
+    delayMs?: number,
   ): Promise<void> {
     const owner: Owner = { type: 'EMPRESA', id: empresaId };
     if (this.viaEvolution) {
-      await this.evolution.enviarPresenca(EvolutionService.instanceName(owner), peerId, estado);
+      await this.evolution.enviarPresenca(
+        EvolutionService.instanceName(owner),
+        peerId,
+        estado,
+        delayMs,
+      );
       return;
     }
     await this.sessions.enviarPresenca(owner, peerId, estado);

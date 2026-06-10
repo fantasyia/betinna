@@ -333,10 +333,14 @@ export class EvolutionService {
     instance: string,
     numero: string,
     presence: 'composing' | 'paused',
+    delayMs?: number,
   ): Promise<void> {
+    // `delay` mantém o "digitando…" VISÍVEL pela duração (o Evolution v2 re-emite
+    // a presença nesse intervalo; sem ele o WhatsApp limpa em ~1s e mal aparece).
     await this.req('post', `/chat/sendPresence/${encodeURIComponent(instance)}`, {
       number: this.soDigitos(numero),
       presence,
+      ...(delayMs && delayMs > 0 ? { delay: Math.min(Math.round(delayMs), 20_000) } : {}),
     }).catch(() => undefined);
   }
 

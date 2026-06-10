@@ -346,16 +346,19 @@ export class MullerWhatsappService implements OnModuleInit {
 
       for (let i = 0; i < baloesFinais.length; i++) {
         const balao = baloesFinais[i];
-        if (cfgBot.mostrarDigitando) {
-          await this.whatsapp
-            .enviarPresenca(params.empresaId, tel, 'composing')
-            .catch(() => undefined);
-        }
         // 1º balão respeita o delay configurado (tempo de "pensar"); os próximos
         // levam uma pausa curta proporcional ao tamanho (digitação) — e isso
         // também preserva a ORDEM de entrega no WhatsApp (envio rápido demais
         // pode chegar fora de ordem).
         const esperaMs = i === 0 ? cfgBot.delayRespostaSegundos * 1000 : pausaEntreBaloes(balao);
+        if (cfgBot.mostrarDigitando) {
+          // Passa esperaMs como `delay` pra o "digitando…" durar a espera. NÃO
+          // aguarda (void): no Evolution essa chamada bloqueia pelo delay, então
+          // ela roda em paralelo com o nosso sleep (não soma o tempo).
+          void this.whatsapp
+            .enviarPresenca(params.empresaId, tel, 'composing', esperaMs)
+            .catch(() => undefined);
+        }
         if (esperaMs > 0) await new Promise((r) => setTimeout(r, esperaMs));
         await this.inbox.responderComoBot(convId, balao);
         if (cfgBot.mostrarDigitando) {

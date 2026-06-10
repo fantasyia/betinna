@@ -448,6 +448,12 @@ export default function InboxPage() {
     refetch,
   } = useApiQuery<PaginatedResponse<Conversation>>(listPath);
 
+  // Estado GLOBAL do bot (empresa) — pra os selos "Bot pausado"/"Religar" só
+  // aparecerem quando o bot está de fato ativo na conversa (senão confunde:
+  // pausar/religar um bot desligado por padrão não faz sentido).
+  const { data: empresaAtual } = useApiQuery<{ botWhatsappAtivo?: boolean }>('/empresas/atual');
+  const botGlobalAtivo = empresaAtual?.botWhatsappAtivo ?? false;
+
   const isMobile = useIsMobile();
 
   useEffect(() => {
@@ -635,6 +641,7 @@ export default function InboxPage() {
                         key={c.id}
                         conv={c}
                         active={c.id === selectedId}
+                        botGlobalAtivo={botGlobalAtivo}
                         onClick={() => setSelectedId(c.id)}
                       />
                     ))}
@@ -807,10 +814,12 @@ function MetricasConteudo({ m }: { m: Metricas }) {
 function ConversationItem({
   conv,
   active,
+  botGlobalAtivo,
   onClick,
 }: {
   conv: Conversation;
   active: boolean;
+  botGlobalAtivo: boolean;
   onClick: () => void;
 }) {
   const name =
@@ -823,9 +832,15 @@ function ConversationItem({
   const recente = conv.ultimaMsgEm
     ? Date.now() - new Date(conv.ultimaMsgEm).getTime() < 30_000
     : false;
-  const botPausado = conv.botPausadoAte
-    ? new Date(conv.botPausadoAte).getTime() > Date.now()
-    : false;
+  // "Bot pausado" só faz sentido quando o bot está EFETIVAMENTE ligado nesta
+  // conversa (override on, OU padrão seguindo o global ligado). Se o bot é off
+  // aqui, não mostra o selo (era o "Bot pausado que eu não pausei").
+  const botEfetivoOn =
+    conv.botLigado === true || (conv.botLigado == null && botGlobalAtivo);
+  const botPausado =
+    botEfetivoOn && conv.botPausadoAte
+      ? new Date(conv.botPausadoAte).getTime() > Date.now()
+      : false;
   // #25 fatia 2 — selo de SLA (há quanto tempo o cliente espera resposta).
   const sla = slaBadge(conv.aguardandoDesde);
 
@@ -1020,7 +1035,7 @@ function ConversationThread({
 
   // Sprint 2.3 — respostas rápidas / templates (dropdown ao digitar "/").
   const templates = useApiQuery<RespostaRapida[]>('/respostas-rapidas');
-  const empresaInfo = useApiQuery<{ nome?: string }>('/empresas/atual');
+  const empresaInfo = useApiQuery<{ nome?: string; botWhatsappAtivo?: boolean }>('/empresas/atual');
   const composeRef = useRef<HTMLTextAreaElement | null>(null);
 
   const endRef = useRef<HTMLDivElement | null>(null);
@@ -1455,9 +1470,15 @@ function ConversationThread({
   }
 
   const c = conv.data;
-  const botPausadoConv = c?.botPausadoAte
-    ? new Date(c.botPausadoAte).getTime() > Date.now()
-    : false;
+  // "Bot pausado"/"Religar" só quando o bot está EFETIVAMENTE ligado nesta conversa
+  // (override on, ou padrão seguindo o global ligado) — senão são selos enganosos
+  // pra um bot que é off por padrão.
+  const botEfetivoOnConv =
+    c?.botLigado === true || (c?.botLigado == null && (empresaInfo.data?.botWhatsappAtivo ?? false));
+  const botPausadoConv =
+    botEfetivoOnConv && c?.botPausadoAte
+      ? new Date(c.botPausadoAte).getTime() > Date.now()
+      : false;
   // Telefone formatado do contato. Preferimos o telefone REAL resolvido no backend
   // (metadata.telefone) — cobre contatos com LID/número oculto. '' quando não há
   // telefone de verdade (LID sem número exposto, grupo, ID interno).
@@ -1640,7 +1661,7 @@ function ConversationThread({
                   </Button>
                 )}
                 {/* PAUSAR — só no modo Padrão e quando NÃO está pausado/escalado. */}
-                {c.botLigado == null && !botPausadoConv && !c.precisaHumano && (
+                {c.botLigado == null && botEfetivoOnConv && !botPausadoConv && !c.precisaHumano && (
                   <Button
                     type="button"
                     variant="ghost"
