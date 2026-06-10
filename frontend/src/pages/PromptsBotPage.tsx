@@ -5,10 +5,24 @@ import { useApiQuery } from '@/hooks/useApiQuery';
 import { PageLayout } from '@/components/PageLayout';
 import { StateView } from '@/components/StateView';
 import { Modal } from '@/components/Modal';
-import { FormField, Input } from '@/components/FormField';
+import { FormField, Input, Select } from '@/components/FormField';
 import { useConfirm } from '@/hooks/useConfirm';
 import { useToast } from '@/components/toast';
 import { btn, btnDanger, btnSecondary, card, colors } from '@/components/styles';
+
+/**
+ * Modelos OpenAI oferecidos no dropdown (MullerBot usa Chat Completions). Lista
+ * curada pra evitar typo no nome do modelo (que estouraria erro na chamada).
+ * Só modelos que aceitam `temperature` (os de raciocínio o-series ficam de fora).
+ */
+const MODELOS_OPENAI = [
+  { id: 'gpt-4o-mini', label: 'gpt-4o-mini (recomendado · rápido e barato)' },
+  { id: 'gpt-4o', label: 'gpt-4o (mais capaz)' },
+  { id: 'gpt-4.1-mini', label: 'gpt-4.1-mini' },
+  { id: 'gpt-4.1', label: 'gpt-4.1 (mais capaz)' },
+  { id: 'gpt-4.1-nano', label: 'gpt-4.1-nano (mais barato)' },
+  { id: 'gpt-3.5-turbo', label: 'gpt-3.5-turbo (legado · barato)' },
+] as const;
 
 /** Biblioteca de prompts do bot (orquestração Fase A). */
 interface BotPrompt {
@@ -597,13 +611,18 @@ function PromptFormModal({
         </FormField>
         <div style={{ display: 'flex', gap: '0.75rem' }}>
           <FormField label="Modelo" htmlFor="prompt-modelo" hint="vazio = padrão da empresa">
-            <Input
-              id="prompt-modelo"
-              value={modelo}
-              onChange={(e) => setModelo(e.target.value)}
-              placeholder="ex: gpt-4o-mini"
-              maxLength={60}
-            />
+            <Select id="prompt-modelo" value={modelo} onChange={(e) => setModelo(e.target.value)}>
+              <option value="">Padrão da empresa</option>
+              {MODELOS_OPENAI.map((m) => (
+                <option key={m.id} value={m.id}>
+                  {m.label}
+                </option>
+              ))}
+              {/* Preserva um modelo customizado já salvo que não esteja na lista. */}
+              {modelo && !MODELOS_OPENAI.some((m) => m.id === modelo) && (
+                <option value={modelo}>{modelo} (customizado)</option>
+              )}
+            </Select>
           </FormField>
           <FormField label="Temperatura" htmlFor="prompt-temp" hint="0 a 2">
             <Input
