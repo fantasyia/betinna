@@ -97,13 +97,23 @@ export class AllExceptionsFilter implements ExceptionFilter {
     }
 
     if (exception instanceof Prisma.PrismaClientValidationError) {
+      // Validação do Prisma vem com a causa exata (campo/tipo/arg inválido) na
+      // mensagem — mas é 4xx, então o catch() só logaria o código. Logamos a
+      // mensagem completa AQUI pra ela aparecer nos logs (Railway) e dar pra
+      // debugar. Na UI: detalhe só fora de produção (a msg expõe nomes de schema).
+      const detalhe = exception.message.replace(/\s+/g, ' ').trim();
+      this.logger.error(`${request.method} ${request.url} → PrismaValidationError: ${detalhe}`);
+      const ehProd = process.env.NODE_ENV === 'production';
       return {
         status: HttpStatus.BAD_REQUEST,
         body: {
           success: false,
           error: {
             code: ErrorCode.VALIDATION_ERROR,
-            message: 'Erro de validação do banco de dados',
+            message: ehProd
+              ? 'Não foi possível salvar: dados inválidos para o banco.'
+              : `Erro de validação do banco: ${detalhe.slice(-300)}`,
+            details: ehProd ? undefined : detalhe,
           },
           meta,
         },
@@ -176,18 +186,25 @@ export class AllExceptionsFilter implements ExceptionFilter {
             meta,
           },
         };
-      case 'P2003':
+      case 'P2003': {
+        // Inclui o campo da FK violada quando o Prisma informa (ajuda o debug).
+        const campo =
+          (error.meta?.field_name as string | undefined) ??
+          (error.meta?.target as string | undefined);
         return {
           status: HttpStatus.CONFLICT,
           body: {
             success: false,
             error: {
               code: ErrorCode.CONFLICT,
-              message: 'Violação de chave estrangeira',
+              message: campo
+                ? `Violação de chave estrangeira em "${campo}" — o registro referenciado não existe.`
+                : 'Violação de chave estrangeira — o registro referenciado não existe.',
             },
             meta,
           },
         };
+      }
       default:
         return {
           status: HttpStatus.INTERNAL_SERVER_ERROR,

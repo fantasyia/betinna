@@ -375,14 +375,22 @@ export class LeadsService {
       );
     }
 
-    const data: Prisma.LeadUpdateInput = {
+    // ⚠️ updateMany (escopo de tenant — auditoria 2026-05-15) NÃO aceita writes de
+    // relação (`funilEtapa: { connect }`). Usamos os FKs ESCALARES direto, igual o
+    // LIBERAR_LOTE faz — senão o Prisma rejeita com "validation error".
+    const data: Prisma.LeadUncheckedUpdateManyInput = {
       etapa: novaEtapaEnum,
       etapaDesde: new Date(),
       // Fase C (spec §4) — quando vence o SLA da etapa de destino.
       proximoSlaEm: await this.calcularProximoSla(novoFunilEtapaId),
     };
     if (novoFunilEtapaId !== lead.funilEtapaId) {
-      data.funilEtapa = { connect: { id: novoFunilEtapaId! } };
+      data.funilEtapaId = novoFunilEtapaId;
+    }
+    // Se a etapa-destino é de outro funil, atualiza o funilId escalar também
+    // (senão o lead fica com funilEtapaId de um funil e funilId de outro).
+    if (novoFunilId !== lead.funilId) {
+      data.funilId = novoFunilId;
     }
     if (etapaTipo === 'GANHO') {
       data.motivoGanho = dto.motivo;

@@ -23,6 +23,7 @@ const makePrismaMock = () => ({
   funil: { findFirst: vi.fn().mockResolvedValue(null) },
   funilEtapa: {
     findFirst: vi.fn().mockResolvedValue(null),
+    findUnique: vi.fn().mockResolvedValue(null),
     findMany: vi.fn().mockResolvedValue([]),
   },
   tag: { findFirst: vi.fn(), upsert: vi.fn() },
@@ -249,6 +250,38 @@ describe('LeadsService', () => {
       expect(data.motivoPerda).toBeNull();
       expect(data.motivoGanho).toBeNull();
       expect(data.fechadoEm).toBeNull();
+    });
+
+    it('move por funilEtapaId com FK escalar (não relation connect) — compat updateMany', async () => {
+      // Regressão: updateMany NÃO aceita `funilEtapa: { connect }`. Tem que ser o
+      // FK escalar `funilEtapaId`, senão o Prisma rejeita ("validation error").
+      prisma.lead.findFirst.mockResolvedValue({
+        id: 'l1',
+        empresaId: 'emp-1',
+        representanteId: 'rep-1',
+        etapa: 'NOVO',
+        funilId: 'funil-1',
+        funilEtapaId: 'et-old',
+        nome: 'Lead X',
+      });
+      prisma.funilEtapa.findFirst.mockResolvedValue({
+        id: 'et-new',
+        tipo: 'ATIVA',
+        ordem: 1,
+        funil: { id: 'funil-1', empresaId: 'emp-1' },
+      });
+      prisma.lead.updateMany.mockResolvedValue({ count: 1 });
+      prisma.lead.findUniqueOrThrow.mockResolvedValue({
+        id: 'l1',
+        etapa: 'QUALIFICANDO',
+        funilEtapaId: 'et-new',
+      });
+
+      await svc.moverEtapa(fakeUser(), 'l1', { funilEtapaId: 'et-new' });
+
+      const data = prisma.lead.updateMany.mock.calls[0][0].data;
+      expect(data.funilEtapaId).toBe('et-new');
+      expect(data.funilEtapa).toBeUndefined(); // sem relation connect
     });
 
     it('GANHO é terminal — bloqueia qualquer transição', async () => {
