@@ -211,13 +211,8 @@ export class ConversarIaService {
       cfg.promptId,
       (abertura.tokensIn ?? 0) + (abertura.tokensOut ?? 0),
     );
-    await this.enviarWhatsapp(
-      empresaId,
-      lead.contatoTelefone,
-      personalizarNome(abertura.texto, lead.contatoNome),
-    );
-    // Fluxo abordou este contato → liga o bot SÓ pra ele (mesmo com global off).
-    await this.ativarBotNaConversa(empresaId, lead.contatoTelefone);
+    const aberturaTexto = personalizarNome(abertura.texto, lead.contatoNome);
+    await this.enviarWhatsapp(empresaId, lead.contatoTelefone, aberturaTexto);
 
     const aguardar = cfg.aguardarResposta ?? true;
     if (!aguardar) return { aguardando: false };
@@ -229,6 +224,14 @@ export class ConversarIaService {
         status: 'AGUARDANDO',
         aguardandoNoId: no.id,
         timeoutEm: new Date(Date.now() + horas * 3_600_000),
+        // Memória da conversa da IA (no contexto da execução): guarda a abertura
+        // pra a IA NÃO se reapresentar quando o lead responder. O fluxo manda via
+        // whatsapp.enviarTexto (sem gravar na conversa do inbox), então sem isto
+        // o montarHistorico não tinha as mensagens do bot → IA repetia o opener.
+        contexto: toJsonInput({
+          ...ctx,
+          _iaHistorico: [{ role: 'assistant', content: aberturaTexto, at: Date.now() }],
+        }),
       },
     });
     this.logger.log(`Execução ${execucaoId} pausada (Conversar com IA) — lead ${leadId}`);
@@ -271,9 +274,6 @@ export class ConversarIaService {
       select: { contatoTelefone: true, contatoNome: true, variaveis: true },
     });
     if (!lead?.contatoTelefone) return;
-    // Garante o bot ligado pra ESTA conversa (cobre o contato novo, cuja conversa
-    // só passou a existir quando ele respondeu agora) — sem ligar o bot global.
-    await this.ativarBotNaConversa(empresaId, lead.contatoTelefone);
 
     // Variáveis que a IA pode gravar (nó "Conversar com IA" — spec §2.5).
     const gravaveis = (cfg.variaveisGravadas ?? []).filter(
@@ -285,7 +285,15 @@ export class ConversarIaService {
       (gravaveis.length
         ? `\n- Em "variaveis", grave APENAS estas chaves: ${gravaveis.join(', ')}.`
         : '');
-    const historico = conversationId ? await this.montarHistorico(conversationId) : [];
+    // Histórico da conversa = memória da IA no contexto da execução (inclui o
+    // opener + os turnos), com fallback pro montarHistorico (execuções antigas).
+    // Sem isto a IA não via as próprias mensagens e se reapresentava a cada resposta.
+    const ctxHist = (ctx as Record<string, unknown>)._iaHistorico;
+    const historico: HistoricoMsg[] = Array.isArray(ctxHist)
+      ? (ctxHist as HistoricoMsg[])
+      : conversationId
+        ? await this.montarHistorico(conversationId)
+        : [];
 
     if (!(await this.tetoPromptOk(cfg.promptId))) {
       await this.enviarWhatsapp(
@@ -299,18 +307,25 @@ export class ConversarIaService {
     await this.registrarUsoPrompt(cfg.promptId, (r.tokensIn ?? 0) + (r.tokensOut ?? 0));
     const turno = parseTurnoIa(r.texto);
 
-    await this.enviarWhatsapp(
-      empresaId,
-      lead.contatoTelefone,
-      personalizarNome(turno.resposta, lead.contatoNome),
-    );
+    const respostaTexto = personalizarNome(turno.resposta, lead.contatoNome);
+    await this.enviarWhatsapp(empresaId, lead.contatoTelefone, respostaTexto);
+
+    // Atualiza a memória da conversa (pergunta do lead + resposta da IA).
+    const novoHist: HistoricoMsg[] = [
+      ...historico,
+      { role: 'user' as const, content: textoLead, at: Date.now() },
+      { role: 'assistant' as const, content: respostaTexto, at: Date.now() },
+    ].slice(-HISTORICO_MAX);
 
     if (!turno.classificou) {
-      // Continua conversando — renova o timeout.
+      // Continua conversando — renova o timeout e persiste a memória da conversa.
       const horas = cfg.timeoutHoras ?? 24;
       await this.prisma.fluxoExecucao.update({
         where: { id: execucaoId },
-        data: { timeoutEm: new Date(Date.now() + horas * 3_600_000) },
+        data: {
+          timeoutEm: new Date(Date.now() + horas * 3_600_000),
+          contexto: toJsonInput({ ...ctx, _iaHistorico: novoHist }),
+        },
       });
       return;
     }
@@ -412,26 +427,6 @@ export class ConversarIaService {
   }
 
   // ─── Internals ──────────────────────────────────────────────────────
-
-  /**
-   * Liga o bot SÓ pra conversa deste lead (Conversation.botLigado=true), por
-   * sufixo de telefone (D18). Assim, quando o fluxo aborda alguém, o bot responde
-   * ÀQUELE contato mesmo com o bot GLOBAL desligado — sem ligar pra todo mundo.
-   * Durante o fluxo quem responde é o motor (retomar, e o bot geral silencia);
-   * DEPOIS que o fluxo encerra, o bot geral assume essa conversa (botLigado=true).
-   * Best-effort: a conversa pode ainda não existir (lead nunca respondeu) — aí o
-   * `retomar` liga quando ela aparecer.
-   */
-  private async ativarBotNaConversa(empresaId: string, telefone: string): Promise<void> {
-    const sufixo = telefone.replace(/\D/g, '').slice(-8);
-    if (sufixo.length < 8) return;
-    await this.prisma.conversation
-      .updateMany({
-        where: { empresaId, canal: 'WHATSAPP', peerId: { contains: sufixo } },
-        data: { botLigado: true, botPausadoAte: null, precisaHumano: false },
-      })
-      .catch(() => undefined);
-  }
 
   /**
    * Envia no WhatsApp do lead respeitando a persona do bot: quando "quebrar em

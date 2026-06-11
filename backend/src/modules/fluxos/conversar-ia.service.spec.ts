@@ -12,7 +12,6 @@ const makePrisma = () => ({
   fluxoNo: { findUnique: vi.fn() },
   fluxoEdge: { findMany: vi.fn().mockResolvedValue([]) },
   message: { findMany: vi.fn().mockResolvedValue([]) },
-  conversation: { updateMany: vi.fn().mockResolvedValue({ count: 1 }) },
 });
 const makePersona = () => ({
   compilarSystemPromptConversa: vi.fn().mockResolvedValue('PROMPT BASE'),
@@ -193,26 +192,23 @@ describe('ConversarIaService', () => {
       );
     });
 
-    it('liga o bot SÓ pra conversa do lead ao abordar (sem ligar o global)', async () => {
+    it('guarda a abertura na memória da IA (pra não se reapresentar)', async () => {
       prisma.lead.findFirst.mockResolvedValue({
         contatoTelefone: '11999990000',
         contatoNome: 'Ana',
       });
-      muller.gerarRespostaIa.mockResolvedValue({ texto: 'oi', modelo: 'gpt' });
+      muller.gerarRespostaIa.mockResolvedValue({
+        texto: 'Olá Ana, aqui é a Betinna…',
+        modelo: 'gpt',
+      });
 
-      await svc.iniciar(
-        'exec-1',
-        no({ aguardarResposta: false }) as never,
-        { leadId: 'lead-1' },
-        'emp-1',
-      );
+      await svc.iniciar('exec-1', no({ promptId: 'p1' }) as never, { leadId: 'lead-1' }, 'emp-1');
 
-      expect(prisma.conversation.updateMany).toHaveBeenCalledWith(
-        expect.objectContaining({
-          where: expect.objectContaining({ empresaId: 'emp-1', canal: 'WHATSAPP' }),
-          data: expect.objectContaining({ botLigado: true }),
-        }),
-      );
+      const upd = prisma.fluxoExecucao.update.mock.calls.at(-1)?.[0];
+      expect(upd?.data?.status).toBe('AGUARDANDO');
+      expect(upd?.data?.contexto?._iaHistorico).toEqual([
+        expect.objectContaining({ role: 'assistant', content: 'Olá Ana, aqui é a Betinna…' }),
+      ]);
     });
   });
 
