@@ -12,13 +12,16 @@ import {
   listExecucoesSchema,
   testarFluxoSchema,
   importFluxoSchema,
+  cronPreviewSchema,
   type CreateFluxoDto,
   type UpdateFluxoDto,
   type ListFluxosDto,
   type ListExecucoesDto,
   type TestarFluxoDto,
   type ImportFluxoDto,
+  type CronPreviewDto,
 } from './fluxos.dto';
+import { previewCron, CRON_TZ_PADRAO } from './cron.util';
 
 @ApiTags('fluxos')
 @ApiBearerAuth()
@@ -148,6 +151,13 @@ export class FluxosController {
     @Body(new ZodValidationPipe(testarFluxoSchema)) dto: TestarFluxoDto,
   ) {
     return this.svc.testar(user, dto);
+  }
+
+  @Post('cron/preview')
+  @Roles('ADMIN', 'DIRECTOR')
+  @ApiOperation({ summary: 'Valida uma expressão cron e devolve as próximas execuções' })
+  cronPreview(@Body(new ZodValidationPipe(cronPreviewSchema)) dto: CronPreviewDto) {
+    return previewCron(dto.expressao, dto.timezone ?? CRON_TZ_PADRAO);
   }
 
   @Get(':id/metricas')

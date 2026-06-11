@@ -788,6 +788,14 @@ function FluxoEditorInner({
       const ttFinal =
         (triggerNode?.data.triggerTipo as TriggerTipo | undefined) ?? (triggerTipo || undefined);
       if (ttFinal) payload.triggerTipo = ttFinal;
+      // CRON: a config de horário vive em Fluxo.triggerConfig (o job lê de lá).
+      if (ttFinal === 'CRON_AGENDADO' && triggerNode) {
+        const c = triggerNode.data.config ?? {};
+        payload.triggerConfig = {
+          expressao: (c.expressao as string) ?? '',
+          timezone: (c.timezone as string) ?? 'America/Sao_Paulo',
+        };
+      }
       await api.put(`/fluxos/${fluxoId}`, payload);
       toast.success('Fluxo salvo');
       setDirty(false);
@@ -1766,6 +1774,10 @@ function NodeInspector({
           <WebhookTriggerConfig />
         )}
 
+        {data.tipo === 'TRIGGER' && data.triggerTipo === 'CRON_AGENDADO' && (
+          <CronTriggerConfig config={data.config} onUpdate={onUpdate} />
+        )}
+
         {data.tipo === 'TRIGGER' && data.triggerTipo === 'LEAD_ETAPA_MUDOU' && (
           <>
             <Field label="Funil" hint="Qual funil observar">
@@ -2457,8 +2469,255 @@ function WebhookTriggerConfig() {
   );
 }
 
+// ─── Cron agendado (SPEC 1) ──────────────────────────────────────
+
+const CRON_TIMEZONES: Array<{ v: string; l: string }> = [
+  { v: 'America/Sao_Paulo', l: 'São Paulo (BRT)' },
+  { v: 'America/Manaus', l: 'Manaus (AMT)' },
+  { v: 'America/Cuiaba', l: 'Cuiabá' },
+  { v: 'America/Rio_Branco', l: 'Rio Branco (ACT)' },
+  { v: 'America/Belem', l: 'Belém' },
+  { v: 'UTC', l: 'UTC' },
+];
+const CRON_DIAS: Array<{ v: string; l: string }> = [
+  { v: '1', l: 'Seg' },
+  { v: '2', l: 'Ter' },
+  { v: '3', l: 'Qua' },
+  { v: '4', l: 'Qui' },
+  { v: '5', l: 'Sex' },
+  { v: '6', l: 'Sáb' },
+  { v: '0', l: 'Dom' },
+];
+
+/** Monta a expressão cron a partir dos campos amigáveis do wizard. */
+function montarCron(freq: string, horario: string, dias: string[], diaMes: string): string {
+  const [hh, mm] = (horario || '09:00').split(':');
+  const M = String(Math.max(0, Math.min(59, parseInt(mm || '0', 10) || 0)));
+  const H = String(Math.max(0, Math.min(23, parseInt(hh || '9', 10) || 9)));
+  switch (freq) {
+    case 'dias_uteis':
+      return `${M} ${H} * * 1-5`;
+    case 'fim_de_semana':
+      return `${M} ${H} * * 0,6`;
+    case 'dias_especificos':
+      return `${M} ${H} * * ${(dias.length ? dias : ['1']).join(',')}`;
+    case 'dia_do_mes':
+      return `${M} ${H} ${diaMes || '1'} * *`;
+    case 'todo_dia':
+    default:
+      return `${M} ${H} * * *`;
+  }
+}
+
+interface CronPreviewResp {
+  valido: boolean;
+  erro?: string;
+  proximas: Array<{ iso: string; label: string }>;
+}
+
+function CronTriggerConfig({
+  config,
+  onUpdate,
+}: {
+  config: Record<string, unknown>;
+  onUpdate: (updater: (data: NodePayload) => NodePayload) => void;
+}) {
+  const avancado = config.cronAvancado === true;
+  const freq = (config.cronFreq as string) ?? 'dias_uteis';
+  const horario = (config.cronHorario as string) ?? '09:00';
+  const dias = (config.cronDias as string[]) ?? ['1'];
+  const diaMes = (config.cronDiaMes as string) ?? '1';
+  const timezone = (config.timezone as string) ?? 'America/Sao_Paulo';
+  const expressao = (config.expressao as string) ?? '';
+
+  const [preview, setPreview] = useState<CronPreviewResp | null>(null);
+  const [carregando, setCarregando] = useState(false);
+
+  // Inicializa a expressão no modo wizard se ainda não houver.
+  useEffect(() => {
+    if (!avancado && !expressao.trim()) {
+      onUpdate((d) => ({
+        ...d,
+        config: { ...d.config, expressao: montarCron(freq, horario, dias, diaMes) },
+      }));
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // Preview (debounced) das próximas execuções.
+  useEffect(() => {
+    if (!expressao.trim()) {
+      setPreview(null);
+      return;
+    }
+    let cancel = false;
+    setCarregando(true);
+    const t = setTimeout(() => {
+      api
+        .post<CronPreviewResp>('/fluxos/cron/preview', { expressao, timezone })
+        .then((r) => {
+          if (!cancel) setPreview(r);
+        })
+        .catch(() => {
+          if (!cancel) setPreview({ valido: false, erro: 'Falha ao validar', proximas: [] });
+        })
+        .finally(() => {
+          if (!cancel) setCarregando(false);
+        });
+    }, 400);
+    return () => {
+      cancel = true;
+      clearTimeout(t);
+    };
+  }, [expressao, timezone]);
+
+  // Patch do wizard: atualiza o campo E recalcula a expressão.
+  function patchWizard(patch: Record<string, unknown>) {
+    onUpdate((d) => {
+      const c = { ...d.config, ...patch };
+      const expr = montarCron(
+        (c.cronFreq as string) ?? freq,
+        (c.cronHorario as string) ?? horario,
+        (c.cronDias as string[]) ?? dias,
+        (c.cronDiaMes as string) ?? diaMes,
+      );
+      return { ...d, config: { ...c, expressao: expr } };
+    });
+  }
+
+  return (
+    <div className="flex flex-col gap-3">
+      <div className="flex items-center justify-between">
+        <span className="text-[11px] font-semibold uppercase tracking-wide text-muted">
+          Quando disparar
+        </span>
+        <button
+          type="button"
+          className="text-[11px] text-primary hover:underline"
+          onClick={() => onUpdate((d) => ({ ...d, config: { ...d.config, cronAvancado: !avancado } }))}
+        >
+          {avancado ? '← Modo simples' : 'Avançado (cron) →'}
+        </button>
+      </div>
+
+      {!avancado ? (
+        <>
+          <Field label="Frequência">
+            <Select size="sm" value={freq} onChange={(e) => patchWizard({ cronFreq: e.target.value })}>
+              <option value="todo_dia">Todo dia</option>
+              <option value="dias_uteis">Dias úteis (seg–sex)</option>
+              <option value="fim_de_semana">Fim de semana (sáb/dom)</option>
+              <option value="dias_especificos">Dias específicos da semana</option>
+              <option value="dia_do_mes">Um dia do mês</option>
+            </Select>
+          </Field>
+          {freq === 'dias_especificos' && (
+            <Field label="Dias da semana">
+              <div className="flex flex-wrap gap-1">
+                {CRON_DIAS.map((d) => {
+                  const sel = dias.includes(d.v);
+                  return (
+                    <button
+                      key={d.v}
+                      type="button"
+                      onClick={() =>
+                        patchWizard({
+                          cronDias: sel ? dias.filter((x) => x !== d.v) : [...dias, d.v],
+                        })
+                      }
+                      className={cn(
+                        'text-[11px] px-2 py-1 rounded-md border transition-colors',
+                        sel
+                          ? 'bg-primary text-white border-primary'
+                          : 'bg-surface text-text border-border hover:border-border-strong',
+                      )}
+                    >
+                      {d.l}
+                    </button>
+                  );
+                })}
+              </div>
+            </Field>
+          )}
+          {freq === 'dia_do_mes' && (
+            <Field label="Dia do mês" hint="1 a 31">
+              <Input
+                type="number"
+                min={1}
+                max={31}
+                value={diaMes}
+                onChange={(e) => patchWizard({ cronDiaMes: e.target.value })}
+              />
+            </Field>
+          )}
+          <Field label="Horário">
+            <Input
+              type="time"
+              value={horario}
+              onChange={(e) => patchWizard({ cronHorario: e.target.value })}
+            />
+          </Field>
+        </>
+      ) : (
+        <Field label="Expressão cron" hint="Ex: 0 9 * * 1-5 (9h, dias úteis) · */15 * * * * (a cada 15min)">
+          <Input
+            value={expressao}
+            onChange={(e) =>
+              onUpdate((d) => ({ ...d, config: { ...d.config, expressao: e.target.value } }))
+            }
+            placeholder="min hora dia mês dia-semana"
+          />
+        </Field>
+      )}
+
+      <Field label="Fuso horário">
+        <Select
+          size="sm"
+          value={timezone}
+          onChange={(e) =>
+            onUpdate((d) => ({ ...d, config: { ...d.config, timezone: e.target.value } }))
+          }
+        >
+          {CRON_TIMEZONES.map((t) => (
+            <option key={t.v} value={t.v}>
+              {t.l}
+            </option>
+          ))}
+        </Select>
+      </Field>
+
+      {/* Preview das próximas execuções */}
+      <div className="rounded-md border border-border bg-bg-alt p-2">
+        <div className="text-[10px] font-semibold uppercase tracking-wide text-muted mb-1">
+          Próximas execuções
+        </div>
+        {carregando ? (
+          <p className="text-[11px] text-muted">Calculando…</p>
+        ) : preview?.valido ? (
+          <ul className="flex flex-col gap-0.5">
+            {preview.proximas.map((p) => (
+              <li key={p.iso} className="text-[11px] text-text tabular">
+                🕘 {p.label}
+              </li>
+            ))}
+          </ul>
+        ) : preview ? (
+          <p className="text-[11px] text-danger">⚠ {preview.erro ?? 'Expressão inválida'}</p>
+        ) : (
+          <p className="text-[11px] text-muted">Defina a frequência acima.</p>
+        )}
+      </div>
+      <p className="text-[10px] text-muted">
+        O fluxo precisa estar <strong>Ativo</strong> pra rodar no horário. Latência de até ~30min.
+      </p>
+    </div>
+  );
+}
+
 function defaultConfig(item: PaletteItem): Record<string, unknown> {
   if (item.manual) return { manual: true, descricao: '' };
+  if (item.triggerTipo === 'CRON_AGENDADO')
+    return { cronFreq: 'dias_uteis', cronHorario: '09:00', timezone: 'America/Sao_Paulo' };
   if (item.tipo === 'DELAY') return { quantidade: 1, unidade: 'horas' };
   if (item.tipo === 'CONDICAO') return { modo: 'simples', operador: 'eq' };
   if (item.acaoTipo === 'ENVIAR_WHATSAPP') return { mensagem: '', destinatarioModo: 'lead' };

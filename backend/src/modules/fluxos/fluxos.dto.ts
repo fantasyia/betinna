@@ -173,7 +173,13 @@ export const testarFluxoSchema = z.object({
   contexto: z.record(z.unknown()).default({}),
 });
 
+export const cronPreviewSchema = z.object({
+  expressao: z.string().min(1).max(120),
+  timezone: z.string().max(64).optional(),
+});
+
 // ─── Types ────────────────────────────────────────────────────────────
+export type CronPreviewDto = z.infer<typeof cronPreviewSchema>;
 export type CreateFluxoDto = z.infer<typeof createFluxoSchema>;
 export type UpdateFluxoDto = z.infer<typeof updateFluxoSchema>;
 export type ListFluxosDto = z.infer<typeof listFluxosSchema>;

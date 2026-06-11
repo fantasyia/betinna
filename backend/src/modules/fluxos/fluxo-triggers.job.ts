@@ -1,11 +1,13 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { Cron } from '@nestjs/schedule';
+import { Prisma } from '@prisma/client';
 import { EnvService } from '@config/env.service';
 import { PrismaService } from '@database/prisma.service';
 import { CronLockService } from '@shared/utils/cron-lock.service';
 import { TransactionalEmailService } from '@integrations/email/transactional-email.service';
 import { FluxoEventBusService } from './fluxo-event-bus.service';
 import { ConversarIaService } from './conversar-ia.service';
+import { proximaExecucaoCron, CRON_TZ_PADRAO } from './cron.util';
 
 /**
  * FluxoTriggersJob — cron jobs que disparam fluxos com trigger baseado em tempo.
@@ -46,6 +48,7 @@ export class FluxoTriggersJob {
       await this.avaliarClientesInativos(empresaId);
       await this.avaliarAmostrasFollowUp(empresaId);
       await this.avaliarSlaEtapas(empresaId);
+      await this.avaliarCronAgendado(empresaId);
     }
 
     // Orquestração (Fase B) — conversas de IA sem resposta além do timeout
@@ -136,6 +139,76 @@ export class FluxoTriggersJob {
       where: { leadId_tagId: { leadId, tagId: tag.id } },
       create: { leadId, tagId: tag.id, origem: 'ia' },
       update: {},
+    });
+  }
+
+  // ─── Cron agendado (SPEC 1) ───────────────────────────────────────
+
+  /**
+   * Dispara fluxos com gatilho CRON_AGENDADO quando a expressão cron deles bate
+   * a janela atual. Estado fica em `Fluxo.triggerConfig.proximoEm` (ISO): na 1ª
+   * avaliação só agenda (não dispara); depois, quando `proximoEm <= agora`,
+   * dispara e reagenda a partir de agora (não acumula atrasos). Latência máxima
+   * = intervalo deste cron (30min) — pra "9h em ponto" cai entre 9:00 e 9:30.
+   */
+  private async avaliarCronAgendado(empresaId: string): Promise<void> {
+    const flows = await this.prisma.fluxo.findMany({
+      where: { empresaId, status: 'ATIVO', triggerTipo: 'CRON_AGENDADO' },
+      select: {
+        id: true,
+        nome: true,
+        triggerConfig: true,
+        nos: { where: { tipo: 'TRIGGER' }, select: { id: true }, take: 1 },
+      },
+    });
+    const agora = new Date();
+    for (const f of flows) {
+      const cfg = (f.triggerConfig ?? {}) as {
+        expressao?: string;
+        timezone?: string;
+        proximoEm?: string;
+      };
+      const expr = (cfg.expressao ?? '').trim();
+      if (!expr) continue;
+      const tz = cfg.timezone || CRON_TZ_PADRAO;
+      const proximo = cfg.proximoEm ? new Date(cfg.proximoEm) : null;
+
+      // Primeira avaliação: só agenda o próximo (não dispara retroativo).
+      if (!proximo || Number.isNaN(proximo.getTime())) {
+        const prox = proximaExecucaoCron(expr, tz, agora);
+        if (prox) await this.gravarProximoCron(f.id, cfg, prox);
+        continue;
+      }
+
+      if (proximo.getTime() <= agora.getTime()) {
+        const triggerNo = f.nos[0];
+        if (triggerNo) {
+          const exec = await this.prisma.fluxoExecucao.create({
+            data: { fluxoId: f.id, empresaId, status: 'PENDENTE', contexto: { _cron: true } },
+          });
+          await this.bus.dispararDireto(exec.id, triggerNo.id);
+          this.logger.log(`CRON_AGENDADO: fluxo "${f.nome}" disparado (exec ${exec.id})`);
+        }
+        const prox = proximaExecucaoCron(expr, tz, agora);
+        if (prox) await this.gravarProximoCron(f.id, cfg, prox);
+      }
+    }
+  }
+
+  /** Persiste o próximo horário agendado no triggerConfig (preserva expressao/timezone). */
+  private async gravarProximoCron(
+    fluxoId: string,
+    cfg: { expressao?: string; timezone?: string; proximoEm?: string },
+    prox: Date,
+  ): Promise<void> {
+    await this.prisma.fluxo.update({
+      where: { id: fluxoId },
+      data: {
+        triggerConfig: {
+          ...cfg,
+          proximoEm: prox.toISOString(),
+        } as unknown as Prisma.InputJsonValue,
+      },
     });
   }
 
