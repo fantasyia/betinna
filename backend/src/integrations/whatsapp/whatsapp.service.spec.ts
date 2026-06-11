@@ -53,6 +53,7 @@ describe('WhatsAppService', () => {
         { type: 'EMPRESA', id: 'emp-1' },
         '5511@s.whatsapp.net',
         'Oi',
+        undefined, // quoted (sem reply)
       );
     });
 
@@ -65,6 +66,7 @@ describe('WhatsAppService', () => {
         { type: 'USUARIO', id: 'rep-9' },
         '5511@s.whatsapp.net',
         'Oi',
+        undefined, // quoted (sem reply)
       );
     });
 
@@ -118,6 +120,8 @@ describe('WhatsAppService', () => {
         'emp_emp-1',
         '5519999@s.whatsapp.net',
         'oi',
+        0, // delayMs
+        undefined, // quoted (sem reply)
       );
       expect(sessions.enviarTexto).not.toHaveBeenCalled();
       expect(r.externalId).toBe('evo-1');

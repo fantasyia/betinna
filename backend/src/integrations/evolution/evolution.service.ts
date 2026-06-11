@@ -280,8 +280,8 @@ export class EvolutionService {
     delayMs = 0,
     quoted?: { id: string; fromMe?: boolean; participant?: string },
   ): Promise<{ key?: { id?: string } }> {
-    return this.req('post', `/message/sendText/${encodeURIComponent(instance)}`, {
-      number: this.soDigitos(numero),
+    return this.enviarReq(`/message/sendText/${encodeURIComponent(instance)}`, {
+      number: this.normalizarNumero(numero),
       text: texto,
       ...(delayMs > 0 ? { delay: delayMs } : {}),
       ...(quoted
@@ -310,8 +310,8 @@ export class EvolutionService {
       caption?: string;
     },
   ): Promise<{ key?: { id?: string } }> {
-    return this.req('post', `/message/sendMedia/${encodeURIComponent(instance)}`, {
-      number: this.soDigitos(numero),
+    return this.enviarReq(`/message/sendMedia/${encodeURIComponent(instance)}`, {
+      number: this.normalizarNumero(numero),
       ...m,
     });
   }
@@ -322,8 +322,8 @@ export class EvolutionService {
     numero: string,
     audio: string,
   ): Promise<{ key?: { id?: string } }> {
-    return this.req('post', `/message/sendWhatsAppAudio/${encodeURIComponent(instance)}`, {
-      number: this.soDigitos(numero),
+    return this.enviarReq(`/message/sendWhatsAppAudio/${encodeURIComponent(instance)}`, {
+      number: this.normalizarNumero(numero),
       audio,
     });
   }
@@ -338,7 +338,7 @@ export class EvolutionService {
     // `delay` mantém o "digitando…" VISÍVEL pela duração (o Evolution v2 re-emite
     // a presença nesse intervalo; sem ele o WhatsApp limpa em ~1s e mal aparece).
     await this.req('post', `/chat/sendPresence/${encodeURIComponent(instance)}`, {
-      number: this.soDigitos(numero),
+      number: this.normalizarNumero(numero),
       presence,
       ...(delayMs && delayMs > 0 ? { delay: Math.min(Math.round(delayMs), 20_000) } : {}),
     }).catch(() => undefined);
@@ -480,5 +480,33 @@ export class EvolutionService {
 
   private soDigitos(numero: string): string {
     return numero.replace(/\D/g, '');
+  }
+
+  /**
+   * Normaliza o número pro formato que o Evolution exige (dígitos + DDI). Sistema
+   * é BR: número NACIONAL (10 dígitos = fixo DDD+8, 11 = celular DDD+9) ganha o
+   * DDI 55. 12-13 dígitos já têm código de país (mantém). Sem isso, telefone
+   * digitado na mão (ex: "(11) 99999-9999") ia sem o 55 e o Evolution devolvia
+   * 400 — diferente das respostas do inbox, onde o jid já vem completo do webhook.
+   */
+  private normalizarNumero(numero: string): string {
+    const n = this.soDigitos(numero);
+    if (n.length === 10 || n.length === 11) return `55${n}`;
+    return n;
+  }
+
+  /**
+   * POST de ENVIO com erro enriquecido: inclui o corpo da resposta do Evolution
+   * (o motivo real do 400, ex: "number not exists") na mensagem do throw — assim
+   * o log do fluxo mostra a causa, não só "status 400".
+   */
+  private async enviarReq<T>(path: string, body: Record<string, unknown>): Promise<T> {
+    try {
+      return await this.req<T>('post', path, body);
+    } catch (err) {
+      const detalhe = this.detalheErro(err);
+      this.logger.warn(`Evolution envio falhou (${path}): ${detalhe}`);
+      throw new BusinessRuleException(`Falha ao enviar pelo WhatsApp (Evolution): ${detalhe}`);
+    }
   }
 }
