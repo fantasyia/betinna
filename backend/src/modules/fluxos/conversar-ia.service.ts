@@ -216,6 +216,8 @@ export class ConversarIaService {
       lead.contatoTelefone,
       personalizarNome(abertura.texto, lead.contatoNome),
     );
+    // Fluxo abordou este contato → liga o bot SÓ pra ele (mesmo com global off).
+    await this.ativarBotNaConversa(empresaId, lead.contatoTelefone);
 
     const aguardar = cfg.aguardarResposta ?? true;
     if (!aguardar) return { aguardando: false };
@@ -269,6 +271,9 @@ export class ConversarIaService {
       select: { contatoTelefone: true, contatoNome: true, variaveis: true },
     });
     if (!lead?.contatoTelefone) return;
+    // Garante o bot ligado pra ESTA conversa (cobre o contato novo, cuja conversa
+    // só passou a existir quando ele respondeu agora) — sem ligar o bot global.
+    await this.ativarBotNaConversa(empresaId, lead.contatoTelefone);
 
     // Variáveis que a IA pode gravar (nó "Conversar com IA" — spec §2.5).
     const gravaveis = (cfg.variaveisGravadas ?? []).filter(
@@ -407,6 +412,26 @@ export class ConversarIaService {
   }
 
   // ─── Internals ──────────────────────────────────────────────────────
+
+  /**
+   * Liga o bot SÓ pra conversa deste lead (Conversation.botLigado=true), por
+   * sufixo de telefone (D18). Assim, quando o fluxo aborda alguém, o bot responde
+   * ÀQUELE contato mesmo com o bot GLOBAL desligado — sem ligar pra todo mundo.
+   * Durante o fluxo quem responde é o motor (retomar, e o bot geral silencia);
+   * DEPOIS que o fluxo encerra, o bot geral assume essa conversa (botLigado=true).
+   * Best-effort: a conversa pode ainda não existir (lead nunca respondeu) — aí o
+   * `retomar` liga quando ela aparecer.
+   */
+  private async ativarBotNaConversa(empresaId: string, telefone: string): Promise<void> {
+    const sufixo = telefone.replace(/\D/g, '').slice(-8);
+    if (sufixo.length < 8) return;
+    await this.prisma.conversation
+      .updateMany({
+        where: { empresaId, canal: 'WHATSAPP', peerId: { contains: sufixo } },
+        data: { botLigado: true, botPausadoAte: null, precisaHumano: false },
+      })
+      .catch(() => undefined);
+  }
 
   /**
    * Envia no WhatsApp do lead respeitando a persona do bot: quando "quebrar em

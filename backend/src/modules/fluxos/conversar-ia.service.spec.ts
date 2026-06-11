@@ -12,6 +12,7 @@ const makePrisma = () => ({
   fluxoNo: { findUnique: vi.fn() },
   fluxoEdge: { findMany: vi.fn().mockResolvedValue([]) },
   message: { findMany: vi.fn().mockResolvedValue([]) },
+  conversation: { updateMany: vi.fn().mockResolvedValue({ count: 1 }) },
 });
 const makePersona = () => ({
   compilarSystemPromptConversa: vi.fn().mockResolvedValue('PROMPT BASE'),
@@ -189,6 +190,28 @@ describe('ConversarIaService', () => {
         '11999990000@s.whatsapp.net',
         'tudo bem?',
         {},
+      );
+    });
+
+    it('liga o bot SÓ pra conversa do lead ao abordar (sem ligar o global)', async () => {
+      prisma.lead.findFirst.mockResolvedValue({
+        contatoTelefone: '11999990000',
+        contatoNome: 'Ana',
+      });
+      muller.gerarRespostaIa.mockResolvedValue({ texto: 'oi', modelo: 'gpt' });
+
+      await svc.iniciar(
+        'exec-1',
+        no({ aguardarResposta: false }) as never,
+        { leadId: 'lead-1' },
+        'emp-1',
+      );
+
+      expect(prisma.conversation.updateMany).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: expect.objectContaining({ empresaId: 'emp-1', canal: 'WHATSAPP' }),
+          data: expect.objectContaining({ botLigado: true }),
+        }),
       );
     });
   });
