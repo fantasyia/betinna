@@ -800,6 +800,27 @@ function FluxoEditorInner({
     }
   }
 
+  // "Disparar agora" do Trigger Manual: roda o fluxo NA HORA, sem pedir lead
+  // (salva antes se estiver sujo, pra o backend ter o nó de gatilho).
+  async function dispararManual() {
+    setTestando(true);
+    try {
+      if (dirty) await handleSave();
+      const r = await api.post<{ execucaoId: string }>('/fluxos/testar', {
+        fluxoId,
+        contexto: {},
+      });
+      toast.success(
+        'Fluxo disparado 🚀',
+        `Execução ${r.execucaoId.slice(0, 8)}… — veja o resultado em Fluxos › "ver erros".`,
+      );
+    } catch (err) {
+      toast.error('Falha ao disparar', err instanceof ApiError ? err.message : undefined);
+    } finally {
+      setTestando(false);
+    }
+  }
+
   // Dispara um teste manual (POST /fluxos/testar) — salva antes se estiver sujo.
   async function runTeste() {
     setTestando(true);
@@ -1251,7 +1272,7 @@ function FluxoEditorInner({
               onRemoveSaida={removeSaidaDoNoSelecionado}
               onRenameSaida={renameSaidaDoNoSelecionado}
               onChangeModo={trocarModoDoNoSelecionado}
-              onDisparar={() => setTestarAberto(true)}
+              onDisparar={dispararManual}
             />
           ) : (
             <div className="p-4 text-center flex flex-col items-center gap-2 mt-8">
@@ -1727,8 +1748,8 @@ function NodeInspector({
               Disparar agora
             </Button>
             <p className="text-[11px] text-muted">
-              Dispara o fluxo na hora (do nó gatilho), sem esperar cron/evento. Salve antes se
-              houver mudanças.
+              Roda o fluxo inteiro na hora (salva sozinho antes). Não pede lead — ideal pra fluxos
+              de lote. Acompanhe o resultado em <strong>Fluxos › "ver erros"</strong>.
             </p>
           </>
         )}
