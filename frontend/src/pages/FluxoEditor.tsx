@@ -173,12 +173,23 @@ interface PaletteItem {
   tipo: FluxoNoTipo;
   acaoTipo?: AcaoTipo;
   triggerTipo?: TriggerTipo;
+  /** Gatilho "Manual" (sem trigger automático) — nó TRIGGER sem triggerTipo. */
+  manual?: boolean;
+}
+
+/**
+ * Trigger Manual = nó TRIGGER sem `triggerTipo` (o fluxo dispara só na mão, via
+ * "Disparar agora"). Não usa enum no banco — o fluxo salva com triggerTipo nulo.
+ */
+function isManualTrigger(data: { tipo: FluxoNoTipo; triggerTipo?: TriggerTipo }): boolean {
+  return data.tipo === 'TRIGGER' && !data.triggerTipo;
 }
 
 const PALETTE_CATEGORIES: Array<{ title: string; items: PaletteItem[] }> = [
   {
     title: 'Gatilhos',
     items: [
+      { id: 't-manual', label: 'Trigger Manual', tipo: 'TRIGGER', manual: true },
       { id: 't-lead', label: 'Lead criado', tipo: 'TRIGGER', triggerTipo: 'LEAD_CRIADO' },
       { id: 't-etapa', label: 'Lead mudou etapa', tipo: 'TRIGGER', triggerTipo: 'LEAD_ETAPA_MUDOU' },
       { id: 't-pedido-ok', label: 'Pedido aprovado', tipo: 'TRIGGER', triggerTipo: 'PEDIDO_APROVADO' },
@@ -265,17 +276,28 @@ function NodeCard({ data, selected }: NodeProps<FlowNode>) {
         <span className="text-xs font-bold uppercase tracking-wider" style={{ color: accent }}>
           {TIPO_LABEL[tipo]}
         </span>
+        {isManualTrigger(data) && (
+          <span className="ml-auto rounded-full bg-success/15 text-success border border-success/30 px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wide">
+            Manual
+          </span>
+        )}
       </div>
       <div className="px-3 py-2.5">
         <div className="text-sm font-medium text-text leading-tight">{data.titulo}</div>
-        {(data.acaoTipo || data.triggerTipo) && (
+        {isManualTrigger(data) ? (
           <div className="text-[10px] text-muted mt-1">
-            {data.acaoTipo
-              ? ACAO_LABEL[data.acaoTipo]
-              : data.triggerTipo
-                ? TRIGGER_LABEL[data.triggerTipo]
-                : ''}
+            {(data.config?.descricao as string)?.trim() || 'Disparo só na mão (▶️ Disparar agora)'}
           </div>
+        ) : (
+          (data.acaoTipo || data.triggerTipo) && (
+            <div className="text-[10px] text-muted mt-1">
+              {data.acaoTipo
+                ? ACAO_LABEL[data.acaoTipo]
+                : data.triggerTipo
+                  ? TRIGGER_LABEL[data.triggerTipo]
+                  : ''}
+            </div>
+          )
         )}
       </div>
       {/* Saídas: CONDICAO simples = true/false; CONDICAO roteador = N saídas +
@@ -434,7 +456,7 @@ const TIPO_ACCENT: Record<FluxoNoTipo, string> = {
 };
 
 function pickIcon(data: NodePayload) {
-  if (data.tipo === 'TRIGGER') return Zap;
+  if (data.tipo === 'TRIGGER') return isManualTrigger(data) ? Play : Zap;
   if (data.tipo === 'CONDICAO') return GitBranch;
   if (data.tipo === 'DELAY') return Timer;
   if (data.acaoTipo) return ACAO_ICONS[data.acaoTipo];
@@ -624,9 +646,38 @@ function FluxoEditorInner({
         style: { stroke: 'var(--border-strong)' },
       };
     });
+    // Fluxo manual (sem triggerTipo) que ainda não tem nó de gatilho visual:
+    // insere o "Trigger Manual" no topo E conecta ele aos nós-raiz (sem aresta de
+    // entrada) — senão o disparo começa no gatilho e não chega nas ações.
+    let inseriuManual = false;
+    if (!data.triggerTipo && !initialNodes.some((n) => n.data.tipo === 'TRIGGER')) {
+      const manualId = `manual-${data.id}`;
+      initialNodes.unshift({
+        id: manualId,
+        type: 'fluxo',
+        position: { x: 120, y: 40 },
+        data: { titulo: 'Disparado manualmente', tipo: 'TRIGGER', config: { manual: true, descricao: '' } },
+      });
+      const comEntrada = new Set(initialEdges.map((e) => e.target));
+      for (const n of initialNodes) {
+        if (n.id !== manualId && n.data.tipo !== 'TRIGGER' && !comEntrada.has(n.id)) {
+          initialEdges.push({
+            id: `edge-${manualId}-${n.id}`,
+            source: manualId,
+            target: n.id,
+            type: 'removivel',
+            animated: true,
+            style: { stroke: 'var(--border-strong)' },
+          });
+        }
+      }
+      inseriuManual = true;
+    }
     setNodes(initialNodes);
     setEdges(initialEdges);
-    setDirty(false);
+    // Marca dirty só quando inserimos o gatilho manual (precisa salvar pra
+    // persistir o nó; "Disparar agora" depende dele estar no backend).
+    setDirty(inseriuManual);
     // Reset history quando recarrega fluxo
     historyRef.current = [{ nodes: initialNodes, edges: initialEdges }];
     historyIdxRef.current = 0;
@@ -653,7 +704,7 @@ function FluxoEditorInner({
         type: 'fluxo',
         position,
         data: {
-          titulo: item.label,
+          titulo: item.manual ? 'Disparado manualmente' : item.label,
           tipo: item.tipo,
           acaoTipo: item.acaoTipo,
           triggerTipo: item.triggerTipo,
@@ -1049,14 +1100,47 @@ function FluxoEditorInner({
                 onChange={(e) => {
                   const tt = e.target.value as TriggerTipo | '';
                   setTriggerTipo(tt);
-                  // Sincroniza o nó TRIGGER pra o inspector mostrar a config do gatilho.
-                  setNodes((nds) =>
-                    nds.map((n) =>
-                      n.data.tipo === 'TRIGGER'
-                        ? { ...n, data: { ...n.data, triggerTipo: tt || undefined } }
-                        : n,
-                    ),
-                  );
+                  const temTrigger = nodes.some((n) => n.data.tipo === 'TRIGGER');
+                  // Setou pra Manual e não há nó de gatilho → insere o "Trigger
+                  // Manual" no topo e conecta aos nós-raiz (pra o disparo chegar nas ações).
+                  if (tt === '' && !temTrigger) {
+                    const manualId = `node-${Date.now()}`;
+                    const topo = nodes.length
+                      ? Math.min(...nodes.map((n) => n.position.y)) - 110
+                      : 40;
+                    const manual: FlowNode = {
+                      id: manualId,
+                      type: 'fluxo',
+                      position: { x: 120, y: topo },
+                      data: {
+                        titulo: 'Disparado manualmente',
+                        tipo: 'TRIGGER',
+                        config: { manual: true, descricao: '' },
+                      },
+                    };
+                    const comEntrada = new Set(edges.map((ed) => ed.target));
+                    const novasEdges: Edge[] = nodes
+                      .filter((n) => n.data.tipo !== 'TRIGGER' && !comEntrada.has(n.id))
+                      .map((n) => ({
+                        id: `edge-${manualId}-${n.id}`,
+                        source: manualId,
+                        target: n.id,
+                        type: 'removivel',
+                        animated: true,
+                        style: { stroke: 'var(--border-strong)' },
+                      }));
+                    setNodes([manual, ...nodes]);
+                    setEdges([...edges, ...novasEdges]);
+                  } else {
+                    // Sincroniza o nó TRIGGER pra o inspector mostrar a config certa.
+                    setNodes(
+                      nodes.map((n) =>
+                        n.data.tipo === 'TRIGGER'
+                          ? { ...n, data: { ...n.data, triggerTipo: tt || undefined } }
+                          : n,
+                      ),
+                    );
+                  }
                   setDirty(true);
                 }}
               >
@@ -1167,6 +1251,7 @@ function FluxoEditorInner({
               onRemoveSaida={removeSaidaDoNoSelecionado}
               onRenameSaida={renameSaidaDoNoSelecionado}
               onChangeModo={trocarModoDoNoSelecionado}
+              onDisparar={() => setTestarAberto(true)}
             />
           ) : (
             <div className="p-4 text-center flex flex-col items-center gap-2 mt-8">
@@ -1537,6 +1622,7 @@ function NodeInspector({
   onRemoveSaida,
   onRenameSaida,
   onChangeModo,
+  onDisparar,
 }: {
   node: FlowNode;
   onUpdate: (updater: (data: NodePayload) => NodePayload) => void;
@@ -1544,6 +1630,7 @@ function NodeInspector({
   onRemoveSaida: (valor: string) => void;
   onRenameSaida: (antigo: string, novo: string) => void;
   onChangeModo: (novoModo: string) => void;
+  onDisparar: () => void;
 }) {
   const { data } = node;
   // Listas pros seletores das ações novas (orquestração Fase B).
@@ -1604,7 +1691,7 @@ function NodeInspector({
                 onUpdate((d) => ({ ...d, triggerTipo: (e.target.value || undefined) as TriggerTipo | undefined }))
               }
             >
-              <option value="">Selecionar…</option>
+              <option value="">Manual (disparo na mão)</option>
               {(Object.keys(TRIGGER_LABEL) as TriggerTipo[]).map((t) => (
                 <option key={t} value={t}>
                   {TRIGGER_LABEL[t]}
@@ -1612,6 +1699,38 @@ function NodeInspector({
               ))}
             </Select>
           </Field>
+        )}
+
+        {/* Trigger Manual — descrição (documentação) + botão Disparar agora. */}
+        {data.tipo === 'TRIGGER' && isManualTrigger(data) && (
+          <>
+            <Field
+              label="Descrição"
+              hint="Quando o operador deve disparar esse fluxo (documentação)"
+            >
+              <Textarea
+                rows={2}
+                value={(data.config.descricao as string) ?? ''}
+                onChange={(e) =>
+                  onUpdate((d) => ({ ...d, config: { ...d.config, descricao: e.target.value } }))
+                }
+                placeholder="Ex: rodar quando o lote de prospecção do dia estiver pronto"
+              />
+            </Field>
+            <Button
+              variant="primary"
+              size="sm"
+              leftIcon={<Play className="h-3.5 w-3.5" />}
+              onClick={onDisparar}
+              data-testid="trigger-manual-disparar"
+            >
+              Disparar agora
+            </Button>
+            <p className="text-[11px] text-muted">
+              Dispara o fluxo na hora (do nó gatilho), sem esperar cron/evento. Salve antes se
+              houver mudanças.
+            </p>
+          </>
         )}
 
         {data.tipo === 'TRIGGER' && data.triggerTipo === 'MENSAGEM_CANAL' && (
@@ -2318,6 +2437,7 @@ function WebhookTriggerConfig() {
 }
 
 function defaultConfig(item: PaletteItem): Record<string, unknown> {
+  if (item.manual) return { manual: true, descricao: '' };
   if (item.tipo === 'DELAY') return { quantidade: 1, unidade: 'horas' };
   if (item.tipo === 'CONDICAO') return { modo: 'simples', operador: 'eq' };
   if (item.acaoTipo === 'ENVIAR_WHATSAPP') return { mensagem: '', destinatarioModo: 'lead' };

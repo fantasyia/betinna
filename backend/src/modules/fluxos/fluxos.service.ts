@@ -480,12 +480,6 @@ export class FluxosService {
     this.requireAdminOrDirector(user);
     const fluxo = await this.findOne(user, dto.fluxoId);
 
-    if (!fluxo.triggerTipo) {
-      throw new BusinessRuleException(
-        'Fluxo sem triggerTipo não pode ser testado',
-        ErrorCode.FLUXO_INVALIDO,
-      );
-    }
     if (fluxo.status === 'ARQUIVADO') {
       throw new BusinessRuleException(
         'Fluxo arquivado não pode ser testado',
@@ -493,6 +487,8 @@ export class FluxosService {
       );
     }
 
+    // Basta ter um nó TRIGGER (de onde a execução começa). Fluxos MANUAIS têm nó
+    // de gatilho mas `triggerTipo` nulo — e devem poder ser disparados na mão.
     const triggerNo = fluxo.nos.find((n) => n.tipo === 'TRIGGER');
     if (!triggerNo) {
       throw new BusinessRuleException(
