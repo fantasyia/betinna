@@ -769,6 +769,13 @@ export class FluxoExecutorService {
       }
       const enumEtapa =
         etapa.tipo === 'GANHO' ? 'GANHO' : etapa.tipo === 'PERDIDO' ? 'PERDIDO' : 'QUALIFICANDO';
+      // Captura a etapa de origem ANTES de mover (pro filtro "deEtapa" do gatilho
+      // e pra só disparar quando a etapa realmente muda).
+      const antes = await this.prisma.lead.findFirst({
+        where: { id: leadId, empresaId },
+        select: { funilEtapaId: true },
+      });
+      const origemId = antes?.funilEtapaId ?? undefined;
       const { count } = await this.prisma.lead.updateMany({
         where: { id: leadId, empresaId },
         data: {
@@ -779,6 +786,17 @@ export class FluxoExecutorService {
         },
       });
       if (count === 0) throw new Error(`Lead ${leadId} não encontrado na empresa ${empresaId}`);
+      // Lead mudou de etapa → dispara LEAD_ETAPA_MUDOU pros fluxos da etapa destino
+      // (ex: "Primeira Abordagem"), mesma semântica do LIBERAR_LOTE. Só quando a
+      // etapa realmente muda, pra não disparar em re-move no-op nem criar laço.
+      if (origemId !== etapa.id) {
+        await this.bus.disparar(empresaId, 'LEAD_ETAPA_MUDOU', {
+          leadId,
+          funilId: etapa.funilId,
+          deFunilEtapaId: origemId,
+          paraFunilEtapaId: etapa.id,
+        });
+      }
       return { leadId, funilEtapaId: etapa.id };
     }
 

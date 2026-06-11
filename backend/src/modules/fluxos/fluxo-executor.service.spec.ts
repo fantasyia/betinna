@@ -46,6 +46,7 @@ const makePrismaMock = () => ({
   } satisfies MockModel,
   lead: {
     updateMany: vi.fn().mockResolvedValue({ count: 1 }),
+    findFirst: vi.fn().mockResolvedValue(null),
     findMany: vi.fn().mockResolvedValue([]),
     update: vi.fn().mockResolvedValue({}),
   } satisfies MockModel,
@@ -514,6 +515,63 @@ describe('FluxoExecutorService', () => {
       prisma.fluxoEdge.findMany.mockResolvedValue([]);
 
       await expect(service.executarPasso('exec-1', 'no-1')).rejects.toThrow();
+    });
+
+    it('dispara LEAD_ETAPA_MUDOU ao mover por funilEtapaId (encadeia abordagem)', async () => {
+      const acaoNo = fakeNo({
+        tipo: 'ACAO',
+        acaoTipo: 'MOVER_LEAD_ETAPA',
+        config: { funilEtapaId: 'et-abord' },
+      });
+      prisma.fluxoExecucao.findUnique.mockResolvedValue(
+        fakeExecucao({ status: 'EM_EXECUCAO', contexto: { leadId: 'lead-1' } }),
+      );
+      prisma.fluxoNo.findUnique.mockResolvedValue(acaoNo);
+      prisma.fluxoEdge.findMany.mockResolvedValue([]);
+      prisma.funilEtapa.findFirst.mockResolvedValue({
+        id: 'et-abord',
+        funilId: 'funil-1',
+        tipo: 'ATIVA',
+      });
+      // Etapa de origem diferente da destino → deve disparar o evento.
+      prisma.lead.findFirst.mockResolvedValue({ funilEtapaId: 'et-prosp' });
+
+      await service.executarPasso('exec-1', 'no-1');
+
+      expect(bus.disparar).toHaveBeenCalledWith(
+        'emp-1',
+        'LEAD_ETAPA_MUDOU',
+        expect.objectContaining({
+          leadId: 'lead-1',
+          funilId: 'funil-1',
+          deFunilEtapaId: 'et-prosp',
+          paraFunilEtapaId: 'et-abord',
+        }),
+      );
+    });
+
+    it('NÃO dispara LEAD_ETAPA_MUDOU quando a etapa não muda (re-move no-op)', async () => {
+      const acaoNo = fakeNo({
+        tipo: 'ACAO',
+        acaoTipo: 'MOVER_LEAD_ETAPA',
+        config: { funilEtapaId: 'et-abord' },
+      });
+      prisma.fluxoExecucao.findUnique.mockResolvedValue(
+        fakeExecucao({ status: 'EM_EXECUCAO', contexto: { leadId: 'lead-1' } }),
+      );
+      prisma.fluxoNo.findUnique.mockResolvedValue(acaoNo);
+      prisma.fluxoEdge.findMany.mockResolvedValue([]);
+      prisma.funilEtapa.findFirst.mockResolvedValue({
+        id: 'et-abord',
+        funilId: 'funil-1',
+        tipo: 'ATIVA',
+      });
+      // Origem == destino → não dispara (evita laço e re-disparo).
+      prisma.lead.findFirst.mockResolvedValue({ funilEtapaId: 'et-abord' });
+
+      await service.executarPasso('exec-1', 'no-1');
+
+      expect(bus.disparar).not.toHaveBeenCalled();
     });
   });
 

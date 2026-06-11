@@ -123,7 +123,18 @@ export class ConversarIaService {
   ): Promise<{ aguardando: boolean; pulado?: boolean; motivo?: string }> {
     const cfg = (no.config ?? {}) as ConversarIaConfig;
     const leadId = typeof ctx.leadId === 'string' ? ctx.leadId : undefined;
-    if (!leadId) throw new Error('contexto.leadId ausente para CONVERSAR_IA');
+    // Sem lead no contexto não há a quem abordar. Acontece em teste manual sem lead
+    // ou fluxo mal-configurado (gatilho que não carrega lead). Re-tentar não resolve
+    // → pula limpo com motivo claro, em vez de falhar 3× no BullMQ.
+    if (!leadId) {
+      this.logger.warn(`CONVERSAR_IA: contexto sem leadId — pulado (exec ${execucaoId})`);
+      return {
+        aguardando: false,
+        pulado: true,
+        motivo:
+          'contexto sem lead — o nó "Conversar com IA" precisa de um lead (no teste manual, escolha um lead)',
+      };
+    }
 
     const lead = await this.prisma.lead.findFirst({
       where: { id: leadId, empresaId },
