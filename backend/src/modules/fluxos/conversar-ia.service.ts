@@ -7,6 +7,7 @@ import { PrismaService } from '@database/prisma.service';
 import { WhatsAppService } from '@integrations/whatsapp/whatsapp.service';
 import { MullerBotService } from '@modules/mullerbot/mullerbot.service';
 import { MullerBotPersonaService } from '@modules/mullerbot/persona.service';
+import { dividirEmBaloes } from '@modules/mullerbot/muller-whatsapp.service';
 import type { HistoricoMsg } from '@modules/mullerbot/mullerbot-cache.service';
 import { FluxoEventBusService } from './fluxo-event-bus.service';
 import {
@@ -37,7 +38,36 @@ function interpolate(template: string, ctx: ExecucaoContexto): string {
 /** Instrução pra IA abrir a conversa (primeira mensagem). */
 const INSTRUCAO_OPENER =
   '\n\n[Tarefa agora] Inicie a conversa com o lead: escreva a PRIMEIRA mensagem de abordagem, ' +
-  'curta e natural (estilo WhatsApp). Responda apenas com a mensagem, sem aspas nem rótulos.';
+  'curta e natural (estilo WhatsApp). Pode separar em 2-3 mensagens curtas com "|||". ' +
+  'Responda apenas com a mensagem, sem aspas nem rótulos.';
+
+/** Primeiro nome a partir do nome completo (vazio se não houver). */
+function primeiroNomeDe(nome?: string | null): string {
+  return (nome ?? '').trim().split(/\s+/)[0] ?? '';
+}
+
+/**
+ * Substitui placeholders de nome que prompts costumam usar (`[primeiro_nome]`,
+ * `{{nome}}`, `{nome}`, etc.) pelo primeiro nome real do lead. A IA às vezes
+ * devolve o placeholder cru quando não tem o dado — isto é a rede de segurança
+ * pra esse texto NUNCA chegar assim no cliente.
+ */
+export function personalizarNome(texto: string, nome?: string | null): string {
+  const primeiro = primeiroNomeDe(nome);
+  const re =
+    /\[\s*(?:primeiro[_ ]?nome|first[_ ]?name|nome)\s*\]|\{\{?\s*(?:primeiro[_ ]?nome|first[_ ]?name|nome)\s*\}?\}/gi;
+  let out = texto.replace(re, primeiro);
+  if (!primeiro) {
+    // Sem nome: limpa pontuação/espaço órfãos deixados pelo placeholder vazio
+    // (ex: ", boa tarde!" → "boa tarde!"; "Olá , tudo bem" → "Olá, tudo bem").
+    out = out
+      .replace(/\s+([,.!?;])/g, '$1')
+      .replace(/([,;])\s*\1/g, '$1')
+      .replace(/ {2,}/g, ' ')
+      .replace(/^[\s,;:–-]+/, '');
+  }
+  return out.trim();
+}
 
 /** Instrução pra IA responder em JSON estruturado (permite classificar o lead). */
 const INSTRUCAO_CLASSIFICACAO =
@@ -138,7 +168,7 @@ export class ConversarIaService {
 
     const lead = await this.prisma.lead.findFirst({
       where: { id: leadId, empresaId },
-      select: { contatoTelefone: true },
+      select: { contatoTelefone: true, contatoNome: true },
     });
     // Sem WhatsApp não há como abordar: pula limpo (não é falha — o lead só não
     // tem número). A execução encerra com o motivo registrado no log do passo.
@@ -165,9 +195,15 @@ export class ConversarIaService {
       await this.persona.compilarSystemPromptConversa(empresaId, cfg.promptId),
       ctx,
     );
+    // Passa o primeiro nome do lead pra IA (pra ela saudar pelo nome de verdade,
+    // em vez de devolver "[primeiro_nome]" cru).
+    const primeiro = primeiroNomeDe(lead.contatoNome);
+    const opener =
+      INSTRUCAO_OPENER +
+      (primeiro ? `\n[Dado] O primeiro nome do lead é "${primeiro}". Use-o na saudação.` : '');
     const abertura = await this.muller.gerarRespostaIa(
       empresaId,
-      systemPrompt + INSTRUCAO_OPENER,
+      systemPrompt + opener,
       '(inicie)',
       [],
     );
@@ -175,7 +211,11 @@ export class ConversarIaService {
       cfg.promptId,
       (abertura.tokensIn ?? 0) + (abertura.tokensOut ?? 0),
     );
-    await this.enviarWhatsapp(empresaId, lead.contatoTelefone, abertura.texto.trim());
+    await this.enviarWhatsapp(
+      empresaId,
+      lead.contatoTelefone,
+      personalizarNome(abertura.texto, lead.contatoNome),
+    );
 
     const aguardar = cfg.aguardarResposta ?? true;
     if (!aguardar) return { aguardando: false };
@@ -226,7 +266,7 @@ export class ConversarIaService {
 
     const lead = await this.prisma.lead.findFirst({
       where: { id: leadId, empresaId },
-      select: { contatoTelefone: true, variaveis: true },
+      select: { contatoTelefone: true, contatoNome: true, variaveis: true },
     });
     if (!lead?.contatoTelefone) return;
 
@@ -254,7 +294,11 @@ export class ConversarIaService {
     await this.registrarUsoPrompt(cfg.promptId, (r.tokensIn ?? 0) + (r.tokensOut ?? 0));
     const turno = parseTurnoIa(r.texto);
 
-    await this.enviarWhatsapp(empresaId, lead.contatoTelefone, turno.resposta.trim());
+    await this.enviarWhatsapp(
+      empresaId,
+      lead.contatoTelefone,
+      personalizarNome(turno.resposta, lead.contatoNome),
+    );
 
     if (!turno.classificou) {
       // Continua conversando — renova o timeout.
@@ -364,10 +408,38 @@ export class ConversarIaService {
 
   // ─── Internals ──────────────────────────────────────────────────────
 
+  /**
+   * Envia no WhatsApp do lead respeitando a persona do bot: quando "quebrar em
+   * balões" está ligado, manda várias mensagens curtas (mais humano), com
+   * "digitando…" e pausa entre elas — mesma lógica do bot do inbox. A IA separa
+   * com "|||" (ou parágrafo); o split acontece aqui no envio.
+   */
   private async enviarWhatsapp(empresaId: string, telefone: string, texto: string): Promise<void> {
-    if (!texto) return;
+    const limpo = texto.trim();
+    if (!limpo) return;
     const peerId = `${telefone.replace(/\D/g, '')}@s.whatsapp.net`;
-    await this.whatsapp.enviarTexto(empresaId, peerId, texto, {});
+
+    const cfg = await this.persona.obterConfigBot(empresaId).catch(() => null);
+    const baloes = cfg?.quebrarMensagens
+      ? dividirEmBaloes(limpo, cfg.maxMensagens)
+      : [limpo.replace(/\s*\|\|\|\s*/g, ' ').trim()];
+    const finais = baloes.filter(Boolean);
+    if (finais.length === 0) finais.push(limpo);
+
+    for (let i = 0; i < finais.length; i++) {
+      const balao = finais[i];
+      // 1º balão sai na hora; os próximos levam uma pausa curta proporcional ao
+      // tamanho (≈ digitação) — também preserva a ORDEM de entrega no WhatsApp.
+      const esperaMs = i === 0 ? 0 : Math.min(4000, 600 + balao.length * 25);
+      if (cfg?.mostrarDigitando) {
+        void this.whatsapp.enviarPresenca(empresaId, peerId, 'composing', esperaMs).catch(() => {});
+      }
+      if (esperaMs > 0) await new Promise((r) => setTimeout(r, esperaMs));
+      await this.whatsapp.enviarTexto(empresaId, peerId, balao, {});
+      if (cfg?.mostrarDigitando) {
+        await this.whatsapp.enviarPresenca(empresaId, peerId, 'paused').catch(() => {});
+      }
+    }
   }
 
   // ─── Teto de tokens por prompt (Fase C — spec §7) ────────────────────

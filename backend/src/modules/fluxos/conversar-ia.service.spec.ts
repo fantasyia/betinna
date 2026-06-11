@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { ConversarIaService, parseTurnoIa } from './conversar-ia.service';
+import { ConversarIaService, parseTurnoIa, personalizarNome } from './conversar-ia.service';
 
 const makePrisma = () => ({
   lead: { findFirst: vi.fn(), update: vi.fn().mockResolvedValue({}) },
@@ -15,9 +15,21 @@ const makePrisma = () => ({
 });
 const makePersona = () => ({
   compilarSystemPromptConversa: vi.fn().mockResolvedValue('PROMPT BASE'),
+  obterConfigBot: vi.fn().mockResolvedValue({
+    historicoMensagens: 10,
+    delayRespostaSegundos: 0,
+    mostrarDigitando: false,
+    quebrarMensagens: false,
+    maxMensagens: 3,
+    transcreverAudio: false,
+    analisarImagem: false,
+  }),
 });
 const makeMuller = () => ({ gerarRespostaIa: vi.fn() });
-const makeWhatsapp = () => ({ enviarTexto: vi.fn().mockResolvedValue({ externalId: 'x' }) });
+const makeWhatsapp = () => ({
+  enviarTexto: vi.fn().mockResolvedValue({ externalId: 'x' }),
+  enviarPresenca: vi.fn().mockResolvedValue(undefined),
+});
 const makeBus = () => ({ disparar: vi.fn() });
 const makeQueue = () => ({ add: vi.fn().mockResolvedValue({ id: 'job-1' }) });
 
@@ -39,6 +51,18 @@ describe('parseTurnoIa', () => {
   it('cai pra texto puro quando não é JSON', () => {
     const r = parseTurnoIa('continua a conversa normal');
     expect(r).toEqual({ resposta: 'continua a conversa normal', classificou: false });
+  });
+});
+
+describe('personalizarNome', () => {
+  it('troca [primeiro_nome] pelo primeiro nome do lead', () => {
+    expect(personalizarNome('[primeiro_nome], boa tarde!', 'João Silva')).toBe('João, boa tarde!');
+  });
+  it('cobre {{nome}} e {nome}', () => {
+    expect(personalizarNome('Oi {{nome}} / {nome}', 'Maria Souza')).toBe('Oi Maria / Maria');
+  });
+  it('sem nome: remove o placeholder e limpa vírgula órfã', () => {
+    expect(personalizarNome('[primeiro_nome], boa tarde!', null)).toBe('boa tarde!');
   });
 });
 
@@ -123,6 +147,49 @@ describe('ConversarIaService', () => {
       expect(r.motivo).toMatch(/telefone/i);
       expect(whatsapp.enviarTexto).not.toHaveBeenCalled();
       expect(prisma.fluxoExecucao.update).not.toHaveBeenCalled();
+    });
+
+    it('quebra em balões e troca [primeiro_nome] pelo nome real', async () => {
+      prisma.lead.findFirst.mockResolvedValue({
+        contatoTelefone: '11999990000',
+        contatoNome: 'João Silva',
+      });
+      muller.gerarRespostaIa.mockResolvedValue({
+        texto: '[primeiro_nome], oi|||tudo bem?',
+        modelo: 'gpt',
+      });
+      persona.obterConfigBot.mockResolvedValue({
+        historicoMensagens: 10,
+        delayRespostaSegundos: 0,
+        mostrarDigitando: false,
+        quebrarMensagens: true,
+        maxMensagens: 3,
+        transcreverAudio: false,
+        analisarImagem: false,
+      });
+
+      await svc.iniciar(
+        'exec-1',
+        no({ aguardarResposta: false }) as never,
+        { leadId: 'lead-1' },
+        'emp-1',
+      );
+
+      expect(whatsapp.enviarTexto).toHaveBeenCalledTimes(2);
+      expect(whatsapp.enviarTexto).toHaveBeenNthCalledWith(
+        1,
+        'emp-1',
+        '11999990000@s.whatsapp.net',
+        'João, oi',
+        {},
+      );
+      expect(whatsapp.enviarTexto).toHaveBeenNthCalledWith(
+        2,
+        'emp-1',
+        '11999990000@s.whatsapp.net',
+        'tudo bem?',
+        {},
+      );
     });
   });
 
