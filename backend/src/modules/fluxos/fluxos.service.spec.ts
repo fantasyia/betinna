@@ -30,6 +30,7 @@ const makePrismaMock = () => ({
     findMany: vi.fn(),
     findFirst: vi.fn(),
     update: vi.fn(),
+    updateMany: vi.fn().mockResolvedValue({ count: 0 }),
     count: vi.fn(),
   },
   $transaction: vi.fn(async (fn: (tx: unknown) => Promise<unknown>) => fn(makePrismaMock())),
@@ -174,13 +175,38 @@ describe('FluxosService', () => {
   });
 
   describe('arquivar', () => {
-    it('arquiva fluxo existente', async () => {
+    it('arquiva fluxo e cancela execuções em andamento', async () => {
       prisma.fluxo.findFirst.mockResolvedValue(fakeFluxo());
       prisma.fluxo.update.mockResolvedValue({});
       prisma.fluxo.findUniqueOrThrow.mockResolvedValue(fakeFluxo({ status: 'ARQUIVADO' }));
 
       const result = await svc.arquivar(fakeUser(), 'fluxo-1');
       expect(result.status).toBe('ARQUIVADO');
+      expect(prisma.fluxoExecucao.updateMany).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: expect.objectContaining({
+            fluxoId: 'fluxo-1',
+            status: { in: ['PENDENTE', 'AGUARDANDO', 'EM_EXECUCAO'] },
+          }),
+          data: expect.objectContaining({ status: 'CANCELADO' }),
+        }),
+      );
+    });
+  });
+
+  describe('pausar', () => {
+    it('pausa fluxo ATIVO e congela (cancela) as execuções em andamento', async () => {
+      prisma.fluxo.findFirst.mockResolvedValue(fakeFluxo({ status: 'ATIVO' }));
+      prisma.fluxo.update.mockResolvedValue({});
+      prisma.fluxo.findUniqueOrThrow.mockResolvedValue(fakeFluxo({ status: 'PAUSADO' }));
+
+      await svc.pausar(fakeUser(), 'fluxo-1');
+      expect(prisma.fluxoExecucao.updateMany).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: expect.objectContaining({ fluxoId: 'fluxo-1' }),
+          data: expect.objectContaining({ status: 'CANCELADO' }),
+        }),
+      );
     });
   });
 

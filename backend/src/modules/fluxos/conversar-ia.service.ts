@@ -18,6 +18,8 @@ import {
 } from './fluxo-executor.types';
 
 const HISTORICO_MAX = 12;
+/** Teto de re-disparos do ramo "timeout" por execução (anti-loop de follow-up). */
+const MAX_TIMEOUT_FOLLOWS = 5;
 
 /**
  * Interpola {{caminho.ponto}} numa string (cópia local pra evitar ciclo de
@@ -375,7 +377,10 @@ export class ConversarIaService {
    */
   async processarTimeouts(): Promise<number> {
     const vencidas = await this.prisma.fluxoExecucao.findMany({
-      where: { status: 'AGUARDANDO', timeoutEm: { lt: new Date() } },
+      // SÓ fluxos ATIVOS: pausar/arquivar um fluxo CONGELA as execuções dele
+      // (sem isto, um fluxo pausado seguia disparando o ramo "timeout" a cada
+      // rodada do cron — bug do "fluxo pausado que continua enviando").
+      where: { status: 'AGUARDANDO', timeoutEm: { lt: new Date() }, fluxo: { status: 'ATIVO' } },
       select: { id: true, empresaId: true, contexto: true, aguardandoNoId: true },
       take: 200,
     });
@@ -383,19 +388,28 @@ export class ConversarIaService {
     for (const ex of vencidas) {
       const ctx = ex.contexto as ExecucaoContexto;
       const leadId = typeof ctx.leadId === 'string' ? ctx.leadId : undefined;
+      const seguido = typeof ctx._timeoutSeguido === 'number' ? ctx._timeoutSeguido : 0;
 
-      const arestasTimeout = ex.aguardandoNoId
-        ? await this.prisma.fluxoEdge.findMany({
-            where: { sourceNoId: ex.aguardandoNoId, label: 'timeout' },
-          })
-        : [];
+      const arestasTimeout =
+        ex.aguardandoNoId && seguido < MAX_TIMEOUT_FOLLOWS
+          ? await this.prisma.fluxoEdge.findMany({
+              where: { sourceNoId: ex.aguardandoNoId, label: 'timeout' },
+            })
+          : [];
 
       if (arestasTimeout.length > 0) {
         // Continua o fluxo pelo ramo "timeout" (o branch explícito supera o
         // gatilho global LEAD_SEM_RESPOSTA — evita tratar o lead em dobro).
+        // _timeoutSeguido conta os re-disparos pra cortar loop (timeout que
+        // volta pro mesmo nó com prazo curto = spam a cada rodada do cron).
         await this.prisma.fluxoExecucao.update({
           where: { id: ex.id },
-          data: { status: 'EM_EXECUCAO', aguardandoNoId: null, timeoutEm: null },
+          data: {
+            status: 'EM_EXECUCAO',
+            aguardandoNoId: null,
+            timeoutEm: null,
+            contexto: toJsonInput({ ...ctx, _timeoutSeguido: seguido + 1 }),
+          },
         });
         for (const e of arestasTimeout) {
           await this.enfileirarStep(ex.id, e.targetNoId);

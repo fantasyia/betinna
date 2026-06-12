@@ -310,6 +310,10 @@ export class FluxosService {
     // Valida grafo antes de ativar
     this.validarGrafo(fluxo.nos, fluxo.arestas, fluxo.triggerTipo);
 
+    // Começa LIMPO: cancela execuções velhas que ficaram em voo (ex: fluxo
+    // pausado antes do fix de cancelamento). Sem isto, reativar ressuscitava
+    // execuções antigas e elas voltavam a disparar/spammar.
+    await this.cancelarExecucoesEmAndamento(id);
     await this.prisma.fluxo.update({ where: { id }, data: { status: 'ATIVO' } });
     this.logger.log(`Fluxo ${id} ativado por ${user.email}`);
     return this.findOneById(id);
@@ -327,7 +331,8 @@ export class FluxosService {
     }
 
     await this.prisma.fluxo.update({ where: { id }, data: { status: 'PAUSADO' } });
-    this.logger.log(`Fluxo ${id} pausado por ${user.email}`);
+    const cancel = await this.cancelarExecucoesEmAndamento(id);
+    this.logger.log(`Fluxo ${id} pausado por ${user.email} (${cancel} execução(ões) cancelada(s))`);
     return this.findOneById(id);
   }
 
@@ -335,8 +340,25 @@ export class FluxosService {
     this.requireAdminOrDirector(user);
     await this.findOne(user, id);
     await this.prisma.fluxo.update({ where: { id }, data: { status: 'ARQUIVADO' } });
-    this.logger.log(`Fluxo ${id} arquivado por ${user.email}`);
+    const cancel = await this.cancelarExecucoesEmAndamento(id);
+    this.logger.log(
+      `Fluxo ${id} arquivado por ${user.email} (${cancel} execução(ões) cancelada(s))`,
+    );
     return this.findOneById(id);
+  }
+
+  /**
+   * Congela as execuções em voo de um fluxo (ao pausar/arquivar): cancela as que
+   * estão PENDENTE/AGUARDANDO/EM_EXECUCAO pra o fluxo NÃO seguir disparando
+   * (timeout, follow-up, próximos passos). Sem isto, um fluxo pausado continuava
+   * mandando mensagem a cada rodada do cron.
+   */
+  private async cancelarExecucoesEmAndamento(fluxoId: string): Promise<number> {
+    const { count } = await this.prisma.fluxoExecucao.updateMany({
+      where: { fluxoId, status: { in: ['PENDENTE', 'AGUARDANDO', 'EM_EXECUCAO'] } },
+      data: { status: 'CANCELADO', aguardandoNoId: null, timeoutEm: null, terminouEm: new Date() },
+    });
+    return count;
   }
 
   /**
