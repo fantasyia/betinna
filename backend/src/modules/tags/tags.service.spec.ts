@@ -133,14 +133,14 @@ describe('TagsService', () => {
       expect(args.where.empresaId).toBe('emp-99');
     });
 
-    it('ADMIN não tem filtro empresaId na query (acesso global)', async () => {
+    it('ADMIN é escopado pela empresa ATIVA (não vê tags de todas as empresas)', async () => {
       prisma.tag.findMany.mockResolvedValue([]);
 
-      await service.list(fakeUser({ role: 'ADMIN' }), {});
+      await service.list(fakeUser({ role: 'ADMIN', empresaIdAtiva: 'emp-7' }), {});
 
       const args = prisma.tag.findMany.mock.calls[0][0];
-      // empresaFilter para ADMIN retorna {} — não injeta empresaId
-      expect(args.where.empresaId).toBeUndefined();
+      // empresaFilter agora escopa TODOS os papéis pela empresa ativa (inclusive ADMIN)
+      expect(args.where.empresaId).toBe('emp-7');
     });
 
     it('lança ForbiddenException quando usuário não-ADMIN não tem empresaIdAtiva', async () => {

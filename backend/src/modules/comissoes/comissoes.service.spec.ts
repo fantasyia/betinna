@@ -284,12 +284,15 @@ describe('ComissoesService', () => {
       expect(where.empresaId).toBe('emp-2');
     });
 
-    it('ADMIN vê cross-tenant (sem filtro empresaId)', async () => {
+    it('ADMIN é escopado pela empresa ATIVA (não vê todas misturadas)', async () => {
       prisma.comissao.count.mockResolvedValue(0);
       prisma.comissao.findMany.mockResolvedValue([]);
-      await svc.list(fakeUser({ role: 'ADMIN' as UserRole }), { page: 1, limit: 10 });
+      await svc.list(fakeUser({ role: 'ADMIN' as UserRole, empresaIdAtiva: 'emp-9' }), {
+        page: 1,
+        limit: 10,
+      });
       const where = prisma.comissao.findMany.mock.calls[0][0].where;
-      expect(where.empresaId).toBeUndefined();
+      expect(where.empresaId).toBe('emp-9');
     });
 
     it('GERENTE filtra empresaId E reps sob gerência', async () => {

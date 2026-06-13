@@ -29,15 +29,18 @@ export function isGlobalAdmin(user: AuthenticatedUser): boolean {
 }
 
 /**
- * Retorna o filtro de empresa para queries Prisma.
- * - ADMIN: undefined (sem filtro — vê tudo)
- * - Demais: empresaIdAtiva (restrito)
+ * Retorna o filtro de empresa para queries Prisma — SEMPRE escopado por tenant.
+ *
+ * TODOS os papéis (inclusive ADMIN) ficam restritos à empresa ATIVA. O ADMIN é
+ * cross-tenant, mas opera "uma empresa por vez": troca de tenant pelo seletor
+ * (header `X-Empresa-Id`) — NÃO vê dados de várias empresas misturados numa
+ * lista só. Antes, ADMIN recebia `{}` (sem filtro) e listas de agenda/prompts/
+ * comissões/tags vazavam todas as empresas juntas.
  *
  * Uso:
  *   const where = { ...empresaFilter(user) };
  *   prisma.model.findMany({ where });
  */
-export function empresaFilter(user: AuthenticatedUser): { empresaId?: string } {
-  if (isGlobalAdmin(user)) return {};
+export function empresaFilter(user: AuthenticatedUser): { empresaId: string } {
   return { empresaId: getCallerEmpresaId(user) };
 }
