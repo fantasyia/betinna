@@ -153,6 +153,23 @@ export class NpsService {
       clienteId = cli?.id ?? null;
     }
 
+    const agradecimento =
+      pesquisa.mensagemAgradecimento ?? 'Obrigado pela resposta! Seu feedback é muito importante.';
+
+    // Anti-duplicata / anti-stuffing: 1 resposta por (pesquisa, IP). IDEMPOTENTE —
+    // se esse IP já respondeu, devolve o agradecimento SEM criar uma 2ª resposta
+    // (não infla a métrica de NPS do cliente). Best-effort: sem IP não dá pra
+    // deduplicar. (Soma ao rate-limit por IP no controller.)
+    if (meta.ip) {
+      const jaRespondeu = await this.prisma.respostaNPS.findFirst({
+        where: { pesquisaId: pesquisa.id, ip: meta.ip },
+        select: { id: true },
+      });
+      if (jaRespondeu) {
+        return { ok: true, message: agradecimento };
+      }
+    }
+
     const categoria = categorizarNota(dto.nota);
     await this.prisma.respostaNPS.create({
       data: {
@@ -167,12 +184,7 @@ export class NpsService {
       },
     });
 
-    return {
-      ok: true,
-      message:
-        pesquisa.mensagemAgradecimento ??
-        'Obrigado pela resposta! Seu feedback é muito importante.',
-    };
+    return { ok: true, message: agradecimento };
   }
 
   private requireEmpresa(user: AuthenticatedUser): string {

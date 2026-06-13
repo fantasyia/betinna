@@ -10,6 +10,7 @@ import {
   Put,
   UsePipes,
 } from '@nestjs/common';
+import { Throttle, seconds } from '@nestjs/throttler';
 import { ApiOperation, ApiTags } from '@nestjs/swagger';
 import { Audit } from '@shared/decorators/audit.decorator';
 import { CurrentUser } from '@shared/decorators/current-user.decorator';
@@ -74,7 +75,14 @@ export class NpsController {
   }
 }
 
-/** Endpoint público — sem auth. /n/:slug */
+/**
+ * Endpoint público — sem auth. /n/:slug
+ *
+ * Rotas públicas (qualquer um na internet acessa), então têm rate-limit PRÓPRIO
+ * por IP (o tracker do throttler resolve o IP real via trust proxy=1). Sem isso,
+ * um script poderia floodar a métrica de NPS do cliente. O `submitPublico` ainda
+ * deduplica por (pesquisa, IP) pra ninguém responder 2× — defesa em camadas.
+ */
 @ApiTags('nps-publico')
 @Controller('n')
 export class NpsPublicoController {
@@ -82,12 +90,17 @@ export class NpsPublicoController {
 
   @Public()
   @Get(':slug')
+  // Leitura da pesquisa: 30/min por IP — generoso pra uso real, barra scraping.
+  @Throttle({ default: { limit: 30, ttl: seconds(60) } })
   getPublico(@Param('slug') slug: string) {
     return this.svc.getPublicBySlug(slug);
   }
 
   @Public()
   @Post(':slug/submit')
+  // Envio de resposta: 5/h por IP. Pessoa real responde 1×; isso barra flood
+  // mantendo folga pra retries/correções. Combina com a dedup por IP no service.
+  @Throttle({ default: { limit: 5, ttl: seconds(60 * 60) } })
   @UsePipes(new ZodValidationPipe(submitNpsSchema))
   submit(
     @Param('slug') slug: string,
