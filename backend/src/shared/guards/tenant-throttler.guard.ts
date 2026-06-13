@@ -45,10 +45,12 @@ export class TenantThrottlerGuard extends ThrottlerGuard {
     if (empresaId) {
       return `tenant:${empresaId}`;
     }
-    // Fallback: IP (mesmo do ThrottlerGuard parent)
-    const ip =
-      (req.headers['x-forwarded-for'] as string)?.split(',')[0]?.trim() || req.ip || 'unknown';
-    return ip;
+    // Fallback: IP REAL resolvido pelo Express com `trust proxy=1` (main.ts).
+    // NUNCA usar o `x-forwarded-for` CRU como chave: o cliente forja esse header
+    // e, trocando-o a cada tentativa, ganhava um bucket novo de rate-limit por
+    // request — burlando o limite de login (10/15min) num brute force. `req.ip`
+    // já respeita só o hop de proxy confiável (Railway), então é à prova de forja.
+    return req.ip || 'unknown';
   }
 
   /**
