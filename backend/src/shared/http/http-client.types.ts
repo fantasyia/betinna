@@ -11,7 +11,8 @@ export interface HttpRequestOptions {
   timeoutMs?: number;
   /**
    * Tentativas no caso de falhas transientes (5xx, network, timeout).
-   * Default 3. Use 0 para desabilitar.
+   * Default: 3 em métodos idempotentes (GET/HEAD/OPTIONS/PUT/DELETE) e 0 em
+   * POST/PATCH (evita duplicar efeito colateral). Defina explícito pra sobrepor.
    */
   retries?: number;
   /**

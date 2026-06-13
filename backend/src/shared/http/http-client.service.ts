@@ -6,7 +6,8 @@ import { type HttpRequestOptions, type HttpResponse, HttpClientError } from './h
  * HTTP client compartilhado por todas as integrações externas.
  *
  * Garante uniformidade em:
- *  - retries com backoff exponencial (honra Retry-After)
+ *  - retries com backoff exponencial (honra Retry-After) — só em métodos
+ *    idempotentes por padrão; POST/PATCH não retryam salvo opt-in explícito
  *  - timeout via AbortController
  *  - logging estruturado com redação de PII
  *  - métricas (tentativas, duração)
@@ -41,12 +42,19 @@ export class HttpClientService {
       headers = {},
       body,
       timeoutMs = HttpClientService.DEFAULT_TIMEOUT_MS,
-      retries = HttpClientService.DEFAULT_RETRIES,
       retryBaseMs = HttpClientService.DEFAULT_RETRY_BASE_MS,
       integration = 'http',
       redactKeys = [],
       rawResponse = false,
     } = options;
+
+    // Retry automático SÓ em métodos idempotentes (GET/HEAD/OPTIONS/PUT/DELETE).
+    // POST/PATCH têm efeito colateral (cria pedido, envia mensagem/e-mail): se o
+    // servidor já processou e a resposta se perdeu (5xx/timeout/erro de rede),
+    // um retry DUPLICA a operação. Por isso o default deles é 0 — quem sabe que
+    // é seguro (ex.: troca/refresh de token OAuth) habilita explícito via `retries`.
+    const idempotente = ['GET', 'HEAD', 'OPTIONS', 'PUT', 'DELETE'].includes(method.toUpperCase());
+    const retries = options.retries ?? (idempotente ? HttpClientService.DEFAULT_RETRIES : 0);
 
     const start = Date.now();
     const allRedactKeys = [...HttpClientService.DEFAULT_REDACT_KEYS, ...redactKeys];

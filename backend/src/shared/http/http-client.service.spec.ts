@@ -118,4 +118,48 @@ describe('HttpClientService', () => {
       }
     });
   });
+
+  describe('retry por idempotência do método', () => {
+    it('POST NÃO retenta em 500 por padrão (evita duplicar efeito colateral)', async () => {
+      fetchSpy.mockResolvedValue(mockResponse(500, { erro: 'down' }));
+
+      await expect(
+        svc.post('http://x.test/criar-pedido', { body: { x: 1 }, retryBaseMs: 1 }),
+      ).rejects.toBeInstanceOf(HttpClientError);
+      expect(fetchSpy).toHaveBeenCalledTimes(1); // 1 tentativa, sem retry
+    });
+
+    it('PATCH NÃO retenta em erro de rede por padrão', async () => {
+      fetchSpy.mockRejectedValue(new TypeError('fetch failed'));
+
+      await expect(
+        svc.patch('http://x.test/x', { body: { x: 1 }, retryBaseMs: 1 }),
+      ).rejects.toBeInstanceOf(HttpClientError);
+      expect(fetchSpy).toHaveBeenCalledTimes(1);
+    });
+
+    it('POST COM retries explícito retenta (opt-in p/ chamada idempotente)', async () => {
+      fetchSpy
+        .mockResolvedValueOnce(mockResponse(500, { erro: 'temp' }))
+        .mockResolvedValueOnce(mockResponse(200, { ok: true }));
+
+      const r = await svc.post('http://x.test/refresh', {
+        body: { x: 1 },
+        retries: 2,
+        retryBaseMs: 1,
+      });
+      expect(r.status).toBe(200);
+      expect(r.attempts).toBe(2);
+    });
+
+    it('PUT retenta em 500 por padrão (método idempotente)', async () => {
+      fetchSpy
+        .mockResolvedValueOnce(mockResponse(500, { erro: 'temp' }))
+        .mockResolvedValueOnce(mockResponse(200, { ok: true }));
+
+      const r = await svc.put('http://x.test/recurso/1', { body: { x: 1 }, retryBaseMs: 1 });
+      expect(r.status).toBe(200);
+      expect(r.attempts).toBe(2);
+    });
+  });
 });
