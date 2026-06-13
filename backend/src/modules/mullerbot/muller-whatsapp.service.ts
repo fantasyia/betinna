@@ -1,6 +1,7 @@
 import { Injectable, Logger, type OnModuleInit } from '@nestjs/common';
 import { MessageDirection } from '@prisma/client';
 import { PrismaService } from '@database/prisma.service';
+import { RedisService } from '@database/redis.service';
 import { EnvService } from '@config/env.service';
 import { InboxService } from '@modules/inbox/inbox.service';
 import type { MensagemEntranteParams } from '@modules/inbox/inbox.types';
@@ -88,8 +89,6 @@ const PLACEHOLDERS_MIDIA = new Set([
 @Injectable()
 export class MullerWhatsappService implements OnModuleInit {
   private readonly logger = new Logger(MullerWhatsappService.name);
-  /** Anti-spam em memória: chave `empresaId:peerId` → timestamps recentes. */
-  private readonly spam = new Map<string, number[]>();
 
   constructor(
     private readonly prisma: PrismaService,
@@ -100,6 +99,7 @@ export class MullerWhatsappService implements OnModuleInit {
     private readonly custo: BotCustoService,
     private readonly persona: MullerBotPersonaService,
     private readonly whatsapp: WhatsAppService,
+    private readonly redis: RedisService,
   ) {}
 
   onModuleInit(): void {
@@ -188,7 +188,7 @@ export class MullerWhatsappService implements OnModuleInit {
       }
 
       // 4. Anti-spam — mesmo número floodando → pausa + manda pra humano
-      if (this.ehSpam(params.empresaId, params.peerId)) {
+      if (await this.ehSpam(params.empresaId, params.peerId)) {
         const handoffMs = this.env.get('BOT_HANDOFF_HORAS') * 60 * 60 * 1000;
         await this.prisma.conversation.update({
           where: { id: convId },
@@ -485,13 +485,29 @@ export class MullerWhatsappService implements OnModuleInit {
     }
   }
 
-  private ehSpam(empresaId: string, peerId: string): boolean {
-    const key = `${empresaId}:${peerId}`;
-    const agora = Date.now();
-    const arr = (this.spam.get(key) ?? []).filter((t) => agora - t < SPAM_JANELA_MS);
-    arr.push(agora);
-    this.spam.set(key, arr);
-    return arr.length > SPAM_LIMITE;
+  /**
+   * Anti-spam por (empresa, peer) no REDIS — janela fixa de 60s via INCR+EXPIRE
+   * atômico (Lua). Antes era um Map em memória: zerava a cada deploy (e deploy =
+   * Baileys reentrega histórico = rajada), não compartilhava entre api/worker e
+   * crescia sem limpeza. Fail-open: se o Redis cair, NÃO bloqueia o bot (anti-spam
+   * é proteção secundária, não pode derrubar o atendimento).
+   */
+  private async ehSpam(empresaId: string, peerId: string): Promise<boolean> {
+    const key = `bot:spam:${empresaId}:${peerId}`;
+    const ttl = Math.ceil(SPAM_JANELA_MS / 1000);
+    try {
+      const n = (await this.redis.eval(
+        "local n = redis.call('INCR', KEYS[1]) if n == 1 then redis.call('EXPIRE', KEYS[1], ARGV[1]) end return n",
+        [key],
+        [ttl],
+      )) as number;
+      return Number(n) > SPAM_LIMITE;
+    } catch (err) {
+      this.logger.warn(
+        `[bot] anti-spam Redis indisponível (${err instanceof Error ? err.message : String(err)}) — fail-open`,
+      );
+      return false;
+    }
   }
 
   private comTimeout<T>(p: Promise<T>, ms: number): Promise<T> {

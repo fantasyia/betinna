@@ -97,6 +97,8 @@ function build(
     enviarPresenca: vi.fn().mockResolvedValue(undefined),
     baixarMidia: vi.fn().mockResolvedValue(midiaBytes),
   };
+  // Anti-spam no Redis: eval (INCR+EXPIRE) retorna contador baixo → nunca é spam nos testes.
+  const redis = { eval: vi.fn().mockResolvedValue(1) };
   return new MullerWhatsappService(
     prisma as never,
     inbox as never,
@@ -106,6 +108,7 @@ function build(
     custo as never,
     persona as never,
     whatsapp as never,
+    redis as never,
   );
 }
 
