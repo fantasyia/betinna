@@ -13,6 +13,7 @@ import helmet from 'helmet';
 import { Logger as PinoLogger } from 'nestjs-pino';
 import { AppModule } from './app.module';
 import { EnvService } from '@config/env.service';
+import { bodySizeGuard } from '@shared/middleware/body-size-guard';
 
 async function bootstrap(): Promise<void> {
   const app = await NestFactory.create<NestExpressApplication>(AppModule, {
@@ -21,12 +22,18 @@ async function bootstrap(): Promise<void> {
     rawBody: true,
   });
 
+  // Guard de tamanho de corpo POR ROTA — roda ANTES do body-parser e rejeita
+  // (413) corpos grandes em rotas comuns pelo Content-Length, antes de alocar o
+  // payload inteiro. Só /webhooks, /inbox e /import mantêm o teto de 20MB; o
+  // resto cai pra 1MB. Não toca no rawBody (lê só o header) → HMAC intacto.
+  app.use(bodySizeGuard);
+
   // Body parser limit explícito — default Express 100KB conflitava com:
   //   • Import CSV (`csvBody.csv` schema aceita até 1MB)
   //   • Webhooks com payload grande (Meta/OMIE com vários eventos batched)
   //   • Upload de mídia base64 pelo WhatsApp Inbox (imagem/áudio/doc até ~12MB raw)
-  // Subido pra 20MB em 2026-05-27 pra cobrir o upload de mídia. Rate-limit
-  // + AuthGuard global continuam ativos como proteção contra DoS.
+  // Subido pra 20MB em 2026-05-27 pra cobrir o upload de mídia. O guard acima
+  // limita o teto por rota; aqui o parser preserva o req.rawBody pro HMAC.
   app.useBodyParser('json', { limit: '20mb' });
   app.useBodyParser('urlencoded', { extended: true, limit: '20mb' });
 
