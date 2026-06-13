@@ -1000,15 +1000,20 @@ export class InboxService {
     if (telefone) {
       const tel = this.normalizarTelefone(telefone);
       if (tel) {
-        const c = await this.prisma.cliente.findFirst({
-          where: {
-            empresaId,
-            // Match por sufixo do telefone (ignorando código país/DDD inconsistências comuns)
-            telefone: { contains: tel.slice(-8) },
-          },
-          select: { id: true },
-        });
-        if (c) return c.id;
+        // Match por sufixo de 8 dígitos (D18). Normaliza o telefone ARMAZENADO
+        // (que vem formatado do OMIE, ex.: "(11) 98765-4321") tirando tudo que não
+        // é dígito e comparando os 8 finais por IGUALDADE — robusto a formatação e
+        // usa o índice de expressão `Cliente_empresaId_telefoneSufixo_idx`. (O
+        // antigo `LIKE '%sufixo%'` fazia seq scan e quebrava quando o número
+        // formatado tinha hífen no meio do sufixo.)
+        const sufixo = tel.slice(-8);
+        const rows = await this.prisma.$queryRaw<Array<{ id: string }>>`
+          SELECT "id" FROM "Cliente"
+          WHERE "empresaId" = ${empresaId}
+            AND RIGHT(REGEXP_REPLACE("telefone", '[^0-9]', '', 'g'), 8) = ${sufixo}
+          LIMIT 1
+        `;
+        if (rows[0]) return rows[0].id;
       }
     }
     if (email) {

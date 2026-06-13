@@ -46,6 +46,14 @@ const makePrismaMock = () => ({
   usuario: {
     findFirst: vi.fn(),
   },
+  // `responder` consulta empresa.botWhatsappAtivo (handoff do bot). Sem esse
+  // mock o teste de envio quebrava com "findUnique of undefined".
+  empresa: {
+    findUnique: vi.fn().mockResolvedValue(null),
+  },
+  // Match de cliente por telefone agora usa $queryRaw (índice de expressão).
+  // Default [] = sem match; testes que querem match sobrescrevem com Once.
+  $queryRaw: vi.fn().mockResolvedValue([]),
 });
 
 describe('InboxService.processarMensagemEntrante', () => {
@@ -151,8 +159,8 @@ describe('InboxService.processarMensagemEntrante', () => {
     );
   });
 
-  it('resolve cliente por sufixo do telefone (8 últimos dígitos)', async () => {
-    prisma.cliente.findFirst.mockResolvedValueOnce({ id: 'cli-9' });
+  it('resolve cliente por sufixo do telefone (8 últimos dígitos, via índice)', async () => {
+    prisma.$queryRaw.mockResolvedValueOnce([{ id: 'cli-9' }]);
     prisma.conversation.findFirst.mockResolvedValueOnce(null);
     prisma.conversation.create.mockResolvedValueOnce({ id: 'conv-2' });
     prisma.message.create.mockResolvedValueOnce({ id: 'msg-2' });
@@ -167,13 +175,9 @@ describe('InboxService.processarMensagemEntrante', () => {
       conteudo: 'olá',
     });
 
-    expect(prisma.cliente.findFirst).toHaveBeenCalledWith({
-      where: {
-        empresaId: 'emp-1',
-        telefone: { contains: '88887777' },
-      },
-      select: { id: true },
-    });
+    // $queryRaw recebe (templateStrings, ...valores) — confere empresa + sufixo.
+    expect(prisma.$queryRaw).toHaveBeenCalledOnce();
+    expect(prisma.$queryRaw.mock.calls[0]).toEqual(expect.arrayContaining(['emp-1', '88887777']));
     expect(prisma.conversation.create).toHaveBeenCalledWith(
       expect.objectContaining({
         data: expect.objectContaining({ clienteId: 'cli-9' }),
