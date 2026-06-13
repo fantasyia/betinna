@@ -198,8 +198,10 @@ export class PropostaAceiteService {
     }
 
     if (decisao === 'RECUSADA') {
-      await this.prisma.proposta.update({
-        where: { id: propostaId },
+      // CAS atômico: reivindica o token num único UPDATE. Duplo-clique/retry
+      // simultâneo → só 1 request casa (count===1); os demais veem count===0.
+      const claim = await this.prisma.proposta.updateMany({
+        where: { id: propostaId, aceiteToken: token, status: { notIn: ['ACEITA', 'RECUSADA'] } },
         data: {
           status: 'RECUSADA',
           aceitoEm: new Date(),
@@ -207,15 +209,37 @@ export class PropostaAceiteService {
           aceiteToken: null, // invalida link
         },
       });
+      if (claim.count === 0) {
+        throw new BusinessRuleException('Esta proposta já foi respondida.');
+      }
       await this.notificarRep(proposta.representanteId, empresaId, proposta.numero, false);
       this.logger.log(`Proposta ${proposta.numero} RECUSADA pelo cliente (ip ${ip ?? '?'})`);
       return { status: 'RECUSADA' };
     }
 
-    // ACEITA → marca + cria pedido automático em transação
-    const pedidoSeq = await this.sequence.next(empresaId, 'pedido');
-    const numeroPedido = `PED-${pedidoSeq.toString().padStart(4, '0')}`;
+    // ACEITA → reivindica o token (CAS) e cria o pedido NA MESMA transação.
+    // O CAS (`updateMany` com aceiteToken no where) garante que só UM request
+    // cria pedido mesmo com duplo-clique/retry simultâneo. Antes a checagem
+    // ficava FORA da transação e dois cliques criavam 2 pedidos + queimavam 2
+    // números de sequência. A sequência agora é consumida só pelo vencedor.
+    let numeroPedido = '';
     await this.prisma.$transaction(async (tx) => {
+      const claim = await tx.proposta.updateMany({
+        where: { id: propostaId, aceiteToken: token, status: { notIn: ['ACEITA', 'RECUSADA'] } },
+        data: {
+          status: 'ACEITA',
+          aceitoEm: new Date(),
+          aceitoDoIp: ip ?? null,
+          aceiteToken: null, // invalida link
+          convertidaEm: new Date(),
+        },
+      });
+      if (claim.count === 0) {
+        throw new BusinessRuleException('Esta proposta já foi respondida.');
+      }
+      // Só o vencedor do CAS chega aqui → consome a sequência e cria o pedido.
+      const pedidoSeq = await this.sequence.next(empresaId, 'pedido');
+      numeroPedido = `PED-${pedidoSeq.toString().padStart(4, '0')}`;
       const ped = await tx.pedido.create({
         data: {
           empresaId,
@@ -245,20 +269,9 @@ export class PropostaAceiteService {
             })),
           },
         },
-        select: { id: true, numero: true },
+        select: { id: true },
       });
-      await tx.proposta.update({
-        where: { id: propostaId },
-        data: {
-          status: 'ACEITA',
-          aceitoEm: new Date(),
-          aceitoDoIp: ip ?? null,
-          aceiteToken: null, // invalida link
-          pedidoId: ped.id,
-          convertidaEm: new Date(),
-        },
-      });
-      return ped;
+      await tx.proposta.update({ where: { id: propostaId }, data: { pedidoId: ped.id } });
     });
 
     await this.notificarRep(
