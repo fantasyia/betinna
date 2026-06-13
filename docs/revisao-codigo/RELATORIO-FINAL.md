@@ -24,11 +24,11 @@ status reflete o que está **no código**, não intenção.
 | 🔴 B · Webhook Evolution sem HMAC/anti-replay/timing-safe | 🟡 parcial | `cf18ae7`, `f5112c1` | Token timing-safe + anti-replay + **segredo migrado pra header**. HMAC-do-corpo **não se aplica** (Evolution não assina). Rota legada de URL ainda aceita até **re-parear** (depois remover). |
 | 🔴 B · Rate-limit de login burlável (XFF cru) | ✅ feito | `f31bad6` | `TenantThrottlerGuard.getTracker` usa `req.ip` (trust proxy=1); spec prova XFF forjado ignorado. |
 | 🔴 B · NPS público sem proteção | ✅ feito | `31fd0b1` | `@Throttle` por IP (submit 5/h, GET 30/min) + dedup idempotente por (pesquisa, IP). |
-| 🔴 C · Idempotência pedido OMIE (timeout pós-commit) | ⛔ pendente | — | Não tocado. |
+| 🔴 C · Idempotência pedido OMIE (timeout pós-commit) | 🟡 parcial | `1209396` | Escrita no OMIE (`IncluirPedido`) **não retenta mais** (HTTP `retries:0` + sem fault-retry) — não vira mais "já cadastrado" por retry. **Heal completo pendente**: quando vier o fault de duplicado, consultar o pedido por `codigo_pedido_integracao` e persistir o `numeroOmie` (destrava resposta-perdida). Precisa de `ConsultarPedido` + faultstring real — melhor com OMIE real (não dá pra validar em demo). |
 | 🔴 C · Aceite de proposta cria 2 pedidos (corrida) | ✅ feito | `81da1b3` | CAS atômico no `registrarDecisao` (updateMany com token no where + guard count===1); sequência consumida só pelo vencedor. Spec novo. |
 | 🔴 C · `update()` de pedido fura aprovação de desconto | ✅ feito | `183d28b` | `update()` agora transiciona pra AGUARDANDO_APROVACAO + upsert da AprovacaoDesconto quando excede o teto (replica o `create`); notifica gerência ao entrar. 2 specs. |
 | 🔴 C · Anti-spam do bot em memória de 1 instância | ✅ feito | `f3ea2a7` | `ehSpam` migrado pro Redis (eval Lua INCR+EXPIRE, janela 60s, fail-open). Compartilha entre api/worker e sobrevive a deploy. |
-| 🔴 C · HttpClient re-tenta POST não-idempotente | ⛔ pendente | — | Não tocado. |
+| 🔴 C · HttpClient re-tenta POST não-idempotente | ✅ feito | `b2cdc3b`+`1209396` | Retry automático agora só em métodos idempotentes (GET/HEAD/OPTIONS/PUT/DELETE); POST/PATCH default `retries=0` (quem precisa, opta explícito). Call-sites perigosos tratados: OMIE write não retenta (`1209396`). 4+2 specs novos. |
 | 🔴 D · Bot 6–8 queries + telefone `contains` sem índice | ⛔ pendente | — | Não tocado. |
 | 🔴 D · Sync OMIE 2 queries/registro | ⛔ pendente | — | Não tocado. |
 | 🔴 D · Frontend sem cache de dados | ⛔ pendente | — | Não tocado. |
