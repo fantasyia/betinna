@@ -25,9 +25,9 @@ status reflete o que está **no código**, não intenção.
 | 🔴 B · Rate-limit de login burlável (XFF cru) | ✅ feito | `f31bad6` | `TenantThrottlerGuard.getTracker` usa `req.ip` (trust proxy=1); spec prova XFF forjado ignorado. |
 | 🔴 B · NPS público sem proteção | ✅ feito | `31fd0b1` | `@Throttle` por IP (submit 5/h, GET 30/min) + dedup idempotente por (pesquisa, IP). |
 | 🔴 C · Idempotência pedido OMIE (timeout pós-commit) | ⛔ pendente | — | Não tocado. |
-| 🔴 C · Aceite de proposta cria 2 pedidos (corrida) | ⛔ pendente | — | Não tocado. |
-| 🔴 C · `update()` de pedido fura aprovação de desconto | ⛔ pendente | — | Não tocado. |
-| 🔴 C · Anti-spam do bot em memória de 1 instância | ⛔ pendente | — | Não tocado. |
+| 🔴 C · Aceite de proposta cria 2 pedidos (corrida) | ✅ feito | `81da1b3` | CAS atômico no `registrarDecisao` (updateMany com token no where + guard count===1); sequência consumida só pelo vencedor. Spec novo. |
+| 🔴 C · `update()` de pedido fura aprovação de desconto | ✅ feito | `183d28b` | `update()` agora transiciona pra AGUARDANDO_APROVACAO + upsert da AprovacaoDesconto quando excede o teto (replica o `create`); notifica gerência ao entrar. 2 specs. |
+| 🔴 C · Anti-spam do bot em memória de 1 instância | ✅ feito | `f3ea2a7` | `ehSpam` migrado pro Redis (eval Lua INCR+EXPIRE, janela 60s, fail-open). Compartilha entre api/worker e sobrevive a deploy. |
 | 🔴 C · HttpClient re-tenta POST não-idempotente | ⛔ pendente | — | Não tocado. |
 | 🔴 D · Bot 6–8 queries + telefone `contains` sem índice | ⛔ pendente | — | Não tocado. |
 | 🔴 D · Sync OMIE 2 queries/registro | ⛔ pendente | — | Não tocado. |
