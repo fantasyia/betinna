@@ -6,22 +6,16 @@ import { ResendService } from '@integrations/resend/resend.service';
 import { WhatsAppService } from '@integrations/whatsapp/whatsapp.service';
 import { DeadLetterService } from '@modules/dead-letter/dead-letter.service';
 import { IdempotencyService } from '@shared/utils/idempotency.service';
+import { interpolate } from '@shared/utils/interpolate';
 import { CampanhaIaService } from './campanha-ia.service';
 import { CAMPANHA_ENVIO_QUEUE, type CampanhaEnvioJobData } from './campanha-envio.types';
 import { CampanhasService } from './campanhas.service';
 
-// ─── Interpolação simples de variáveis {{campo.subcampo}} ─────────────────────
-
+// ─── Interpolação de variáveis {{campo.subcampo}} ─────────────────────────────
+// Util único de @shared. `ausenteVazio: true` — campanha vai pro cliente final,
+// então variável faltando vira '' (NUNCA `{{cliente.nome}}` literal no WhatsApp).
 function interpolar(template: string, vars: Record<string, unknown>): string {
-  return template.replace(/\{\{(\w+(?:\.\w+)*)\}\}/g, (_, path: string) => {
-    const keys = path.split('.');
-    let val: unknown = vars;
-    for (const k of keys) {
-      if (val != null && typeof val === 'object') val = (val as Record<string, unknown>)[k];
-      else return '';
-    }
-    return val != null ? String(val) : '';
-  });
+  return interpolate(template, vars, { ausenteVazio: true });
 }
 
 // ─── Processor ───────────────────────────────────────────────────────────────

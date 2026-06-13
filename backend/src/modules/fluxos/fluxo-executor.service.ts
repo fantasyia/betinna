@@ -9,6 +9,7 @@ import { WhatsAppService } from '@integrations/whatsapp/whatsapp.service';
 import { ResendService } from '@integrations/resend/resend.service';
 import { Prisma } from '@prisma/client';
 import { safeRequest, SsrfBlockedError } from '@shared/utils/safe-request';
+import { interpolate } from '@shared/utils/interpolate';
 import { ConversarIaService } from './conversar-ia.service';
 import { FluxoEventBusService } from './fluxo-event-bus.service';
 import {
@@ -37,17 +38,9 @@ const PAPEIS_VALIDOS = new Set(['ADMIN', 'DIRECTOR', 'GERENTE', 'SAC', 'REP']);
  * Interpola variáveis no formato {{caminho.ponto}} dentro de strings.
  * Exemplo: "Olá {{cliente.nome}}!" com { cliente: { nome: "João" } } → "Olá João!"
  */
-export function interpolate(template: string, ctx: ExecucaoContexto): string {
-  return template.replace(/\{\{([\w.]+)\}\}/g, (match, key: string) => {
-    const parts = key.split('.');
-    let val: unknown = ctx;
-    for (const part of parts) {
-      if (val == null || typeof val !== 'object') return match;
-      val = (val as Record<string, unknown>)[part];
-    }
-    return val != null ? String(val) : match;
-  });
-}
+// Util único em @shared (era cópia local). Re-exportado pra manter os
+// importadores (specs) intactos. Default: variável ausente mantém `{{x}}`.
+export { interpolate };
 
 /** Resolve um campo pontilhado do contexto: "cliente.nome" → ctx.cliente.nome */
 function resolveField(campo: string, ctx: ExecucaoContexto): unknown {

@@ -4,6 +4,7 @@ import type { Queue } from 'bullmq';
 import { MessageDirection, Prisma } from '@prisma/client';
 import type { FluxoNo } from '@prisma/client';
 import { PrismaService } from '@database/prisma.service';
+import { interpolate } from '@shared/utils/interpolate';
 import { WhatsAppService } from '@integrations/whatsapp/whatsapp.service';
 import { MullerBotService } from '@modules/mullerbot/mullerbot.service';
 import { MullerBotPersonaService } from '@modules/mullerbot/persona.service';
@@ -20,22 +21,6 @@ import {
 const HISTORICO_MAX = 12;
 /** Teto de re-disparos do ramo "timeout" por execução (anti-loop de follow-up). */
 const MAX_TIMEOUT_FOLLOWS = 5;
-
-/**
- * Interpola {{caminho.ponto}} numa string (cópia local pra evitar ciclo de
- * import com o executor — mesma semântica do `interpolate` de lá).
- */
-function interpolate(template: string, ctx: ExecucaoContexto): string {
-  return template.replace(/\{\{([\w.]+)\}\}/g, (match, key: string) => {
-    const parts = key.split('.');
-    let val: unknown = ctx;
-    for (const part of parts) {
-      if (val == null || typeof val !== 'object') return match;
-      val = (val as Record<string, unknown>)[part];
-    }
-    return val != null ? String(val) : match;
-  });
-}
 
 /** Instrução pra IA abrir a conversa (primeira mensagem). */
 const INSTRUCAO_OPENER =
