@@ -1,18 +1,20 @@
-import { createHash } from 'node:crypto';
 import { Injectable, Logger } from '@nestjs/common';
-import { SignJWT, jwtVerify } from 'jose';
 import { EnvService } from '@config/env.service';
 import { PrismaService } from '@database/prisma.service';
 import { IntegracoesService } from '@modules/integracoes/integracoes.service';
-import { IntegrationException, UnauthorizedException } from '@shared/errors/app-exception';
+import { IntegrationException } from '@shared/errors/app-exception';
 import { ErrorCode } from '@shared/errors/error-codes';
 import { HttpClientService } from '@shared/http/http-client.service';
 import { HttpClientError } from '@shared/http/http-client.types';
 import { CryptoUtil } from '@shared/utils/crypto.util';
+import {
+  deriveOAuthStateSecret,
+  signOAuthState,
+  verifyOAuthState,
+} from '@shared/utils/oauth-state.util';
 import { ShopeeSigner } from './shopee-signer';
 import type { ShopeeCredenciais, ShopeeTokenResponse } from './shopee.types';
 
-const STATE_TTL_MIN = 5;
 const TOKEN_REFRESH_MARGIN_MS = 60_000;
 
 const PATH_AUTH_PARTNER = '/api/v2/shop/auth_partner';
@@ -44,11 +46,7 @@ export class ShopeeOAuthService {
     private readonly prisma: PrismaService,
     private readonly integracoes: IntegracoesService,
   ) {
-    const derived = createHash('sha256')
-      .update(this.env.get('ENCRYPTION_KEY'))
-      .update('shopee-oauth-state')
-      .digest();
-    this.stateSecret = new Uint8Array(derived);
+    this.stateSecret = deriveOAuthStateSecret(this.env.get('ENCRYPTION_KEY'), 'shopee-oauth-state');
     this.crypto = new CryptoUtil(this.env.get('ENCRYPTION_KEY'));
   }
 
@@ -234,28 +232,11 @@ export class ShopeeOAuthService {
     return u.toString();
   }
 
-  private async signState(empresaId: string): Promise<string> {
-    return new SignJWT({ eid: empresaId })
-      .setProtectedHeader({ alg: 'HS256' })
-      .setIssuedAt()
-      .setExpirationTime(`${STATE_TTL_MIN}m`)
-      .setJti(crypto.randomUUID())
-      .sign(this.stateSecret);
+  private signState(empresaId: string): Promise<string> {
+    return signOAuthState(this.stateSecret, { eid: empresaId });
   }
 
-  private async verifyState(state: string): Promise<string> {
-    try {
-      const { payload } = await jwtVerify(state, this.stateSecret);
-      const eid = (payload as { eid?: unknown }).eid;
-      if (typeof eid !== 'string' || eid.length === 0) {
-        throw new UnauthorizedException('state inválido', ErrorCode.AUTH_INVALID_TOKEN);
-      }
-      return eid;
-    } catch {
-      throw new UnauthorizedException(
-        'state inválido ou expirado (CSRF protection)',
-        ErrorCode.AUTH_INVALID_TOKEN,
-      );
-    }
+  private verifyState(state: string): Promise<string> {
+    return verifyOAuthState(this.stateSecret, state, 'eid');
   }
 }

@@ -1,10 +1,13 @@
-import { createHash } from 'node:crypto';
 import { Injectable, Logger } from '@nestjs/common';
-import { SignJWT, jwtVerify } from 'jose';
 import { EnvService } from '@config/env.service';
 import { UsuarioIntegracoesService } from '@modules/integracoes/usuario-integracoes.service';
-import { IntegrationException, UnauthorizedException } from '@shared/errors/app-exception';
+import { IntegrationException } from '@shared/errors/app-exception';
 import { ErrorCode } from '@shared/errors/error-codes';
+import {
+  deriveOAuthStateSecret,
+  signOAuthState,
+  verifyOAuthState,
+} from '@shared/utils/oauth-state.util';
 import { HttpClientService } from '@shared/http/http-client.service';
 import { HttpClientError } from '@shared/http/http-client.types';
 import type {
@@ -17,7 +20,6 @@ const AUTH_URL = 'https://accounts.google.com/o/oauth2/v2/auth';
 const TOKEN_URL = 'https://oauth2.googleapis.com/token';
 const USERINFO_URL = 'https://openidconnect.googleapis.com/v1/userinfo';
 const SCOPE = 'https://www.googleapis.com/auth/calendar.events openid email profile';
-const STATE_TTL_MIN = 5;
 const TOKEN_REFRESH_MARGIN_MS = 60_000; // refresh 60s antes de expirar
 
 /**
@@ -49,11 +51,7 @@ export class GoogleOAuthService {
   ) {
     // Deriva uma chave separada pro state JWT a partir da ENCRYPTION_KEY
     // (mesmo segredo mas hash diferente — isolamento criptográfico).
-    const derived = createHash('sha256')
-      .update(this.env.get('ENCRYPTION_KEY'))
-      .update('google-oauth-state')
-      .digest();
-    this.stateSecret = new Uint8Array(derived);
+    this.stateSecret = deriveOAuthStateSecret(this.env.get('ENCRYPTION_KEY'), 'google-oauth-state');
   }
 
   isConfigured(): boolean {
@@ -204,28 +202,11 @@ export class GoogleOAuthService {
     return res.data;
   }
 
-  private async signState(userId: string): Promise<string> {
-    return await new SignJWT({ uid: userId })
-      .setProtectedHeader({ alg: 'HS256' })
-      .setIssuedAt()
-      .setExpirationTime(`${STATE_TTL_MIN}m`)
-      .setJti(crypto.randomUUID())
-      .sign(this.stateSecret);
+  private signState(userId: string): Promise<string> {
+    return signOAuthState(this.stateSecret, { uid: userId });
   }
 
-  private async verifyState(state: string): Promise<string> {
-    try {
-      const { payload } = await jwtVerify(state, this.stateSecret);
-      const uid = (payload as { uid?: unknown }).uid;
-      if (typeof uid !== 'string' || uid.length === 0) {
-        throw new UnauthorizedException('state inválido', ErrorCode.AUTH_INVALID_TOKEN);
-      }
-      return uid;
-    } catch {
-      throw new UnauthorizedException(
-        'state inválido ou expirado (CSRF protection)',
-        ErrorCode.AUTH_INVALID_TOKEN,
-      );
-    }
+  private verifyState(state: string): Promise<string> {
+    return verifyOAuthState(this.stateSecret, state, 'uid');
   }
 }
