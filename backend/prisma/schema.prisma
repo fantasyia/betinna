@@ -1460,6 +1460,13 @@ model Conversation {
   // com o mesmo peer em sessões diferentes (WhatsApp empresa vs do rep João vs
   // do rep Maria). Postgres trata NULLs como distintos na unique key — mas o
   // upsert no InboxService usa findFirst manual pra garantir 1-by-1.
+  //
+  // ⚠️ A UNICIDADE REAL é garantida por DOIS índices únicos PARCIAIS criados via
+  // SQL na migration `20260517010000_inbox_race_unique` (o Prisma não declara
+  // índice parcial no schema, por isso não aparecem aqui como @@unique):
+  //   - Conversation_canal_peer_empresa_unique_null  WHERE proprietarioId IS NULL
+  //   - Conversation_canal_peer_empresa_unique_owned WHERE proprietarioId IS NOT NULL
+  // Ou seja: o catch(P2002) do upsertConversation FUNCIONA — a trava existe.
   @@index([empresaId, canal, peerId, proprietarioId])
   @@index([empresaId])
   @@index([clienteId])
