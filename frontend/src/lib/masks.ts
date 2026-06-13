@@ -19,6 +19,17 @@ export function stripMask(s: string): string {
 }
 
 /**
+ * Formata um número como moeda BRL — "R$ 1.234,56" (com NBSP, padrão do Intl).
+ *
+ * Instância ÚNICA de `Intl.NumberFormat` (era a função `fmtBRL` copiada
+ * idêntica em ~16 páginas). Saída byte-a-byte igual à das cópias.
+ */
+const _moedaBRL = new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' });
+export function formatMoeda(v: number): string {
+  return _moedaBRL.format(v);
+}
+
+/**
  * CNPJ: 00.000.000/0001-00
  * Aceita parcial — aplica máscara conforme dígitos disponíveis.
  */
