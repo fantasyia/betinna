@@ -1,6 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import { PrismaService } from '@database/prisma.service';
-import { NotFoundException } from '@shared/errors/app-exception';
+import { ForbiddenException, NotFoundException } from '@shared/errors/app-exception';
+import { ErrorCode } from '@shared/errors/error-codes';
 import type { AuthenticatedUser } from '@shared/types/authenticated-user';
 import { buildPaginated, type Paginated } from '@shared/types/pagination';
 import type { CreateEmpresaDto, ListEmpresasDto, UpdateEmpresaDto } from './empresas.dto';
@@ -108,18 +109,38 @@ export class EmpresasService {
     });
   }
 
-  async update(id: string, dto: UpdateEmpresaDto) {
+  async update(user: AuthenticatedUser, id: string, dto: UpdateEmpresaDto) {
+    this.assertCanManageEmpresa(user, id);
     await this.findById(id); // garante existência
     return this.prisma.empresa.update({ where: { id }, data: dto });
   }
 
-  async deactivate(id: string) {
+  async deactivate(user: AuthenticatedUser, id: string) {
+    this.assertCanManageEmpresa(user, id);
     await this.findById(id);
     return this.prisma.empresa.update({ where: { id }, data: { ativo: false } });
   }
 
-  async activate(id: string) {
+  async activate(user: AuthenticatedUser, id: string) {
+    this.assertCanManageEmpresa(user, id);
     await this.findById(id);
     return this.prisma.empresa.update({ where: { id }, data: { ativo: true } });
+  }
+
+  /**
+   * Gate de vínculo (multi-tenant): só ADMIN (master da plataforma, cross-tenant
+   * por D48) ou DIRECTOR da PRÓPRIA empresa pode alterar/ativar/desativar.
+   *
+   * Sem isto, os endpoints `@Patch/@Delete/@Put ativar` checavam só o PAPEL —
+   * um DIRECTOR (papel de cliente) conseguia editar/desativar a empresa de outro
+   * tenant via request direto à API. Mesma checagem de `assertCanManageLogo`.
+   */
+  private assertCanManageEmpresa(user: AuthenticatedUser, empresaId: string): void {
+    if (user.role === 'ADMIN') return;
+    if (user.role === 'DIRECTOR' && user.empresaIds.includes(empresaId)) return;
+    throw new ForbiddenException(
+      'Você só pode alterar a sua própria empresa.',
+      ErrorCode.TENANT_ACCESS_DENIED,
+    );
   }
 }

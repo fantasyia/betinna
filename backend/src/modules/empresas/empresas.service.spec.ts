@@ -1,5 +1,6 @@
 import { describe, expect, it, vi, beforeEach } from 'vitest';
-import { NotFoundException } from '@shared/errors/app-exception';
+import { ForbiddenException, NotFoundException } from '@shared/errors/app-exception';
+import type { AuthenticatedUser } from '@shared/types/authenticated-user';
 import { EmpresasService } from './empresas.service';
 
 // ---------------------------------------------------------------------------
@@ -28,6 +29,12 @@ const fakeEmpresa = (overrides: Record<string, unknown> = {}) => ({
   _count: { usuarios: 2, clientes: 10 },
   ...overrides,
 });
+
+/** Usuário mínimo pros gates (o service só lê role + empresaIds). */
+const fakeUser = (overrides: Partial<AuthenticatedUser> = {}): AuthenticatedUser =>
+  ({ id: 'u-1', role: 'ADMIN', empresaIds: [], ...overrides }) as AuthenticatedUser;
+
+const adminUser = fakeUser({ role: 'ADMIN' });
 
 // ---------------------------------------------------------------------------
 // Tests
@@ -181,7 +188,7 @@ describe('EmpresasService', () => {
       prisma.empresa.findUnique.mockResolvedValue(empresa);
       prisma.empresa.update.mockResolvedValue(updated);
 
-      const result = await service.update('emp-1', { nome: 'Nome Atualizado' });
+      const result = await service.update(adminUser, 'emp-1', { nome: 'Nome Atualizado' });
 
       expect(result.nome).toBe('Nome Atualizado');
       expect(prisma.empresa.update).toHaveBeenCalledWith({
@@ -193,8 +200,61 @@ describe('EmpresasService', () => {
     it('lança NotFoundException se empresa não existe', async () => {
       prisma.empresa.findUnique.mockResolvedValue(null);
 
-      await expect(service.update('nao-existe', { nome: 'X' })).rejects.toBeInstanceOf(
+      await expect(service.update(adminUser, 'nao-existe', { nome: 'X' })).rejects.toBeInstanceOf(
         NotFoundException,
+      );
+      expect(prisma.empresa.update).not.toHaveBeenCalled();
+    });
+  });
+
+  // -------------------------------------------------------------------------
+  // Gate de vínculo multi-tenant (assertCanManageEmpresa)
+  // -------------------------------------------------------------------------
+
+  describe('isolamento multi-tenant em update/activate/deactivate', () => {
+    it('DIRECTOR da empresa A recebe ForbiddenException ao alterar a empresa B', async () => {
+      const dirA = fakeUser({ role: 'DIRECTOR', empresaIds: ['emp-A'] });
+
+      await expect(service.update(dirA, 'emp-B', { nome: 'Hack' })).rejects.toBeInstanceOf(
+        ForbiddenException,
+      );
+      await expect(service.deactivate(dirA, 'emp-B')).rejects.toBeInstanceOf(ForbiddenException);
+      await expect(service.activate(dirA, 'emp-B')).rejects.toBeInstanceOf(ForbiddenException);
+
+      // Nenhuma escrita pode ter chegado ao banco.
+      expect(prisma.empresa.update).not.toHaveBeenCalled();
+      // E nem sequer carregou a empresa do outro tenant (não vaza existência).
+      expect(prisma.empresa.findUnique).not.toHaveBeenCalled();
+    });
+
+    it('DIRECTOR da PRÓPRIA empresa consegue alterar', async () => {
+      const dirA = fakeUser({ role: 'DIRECTOR', empresaIds: ['emp-A'] });
+      const empresa = fakeEmpresa({ id: 'emp-A' });
+      prisma.empresa.findUnique.mockResolvedValue(empresa);
+      prisma.empresa.update.mockResolvedValue({ ...empresa, nome: 'Novo' });
+
+      const result = await service.update(dirA, 'emp-A', { nome: 'Novo' });
+
+      expect(result.nome).toBe('Novo');
+      expect(prisma.empresa.update).toHaveBeenCalled();
+    });
+
+    it('ADMIN (master da plataforma) altera qualquer empresa — cross-tenant', async () => {
+      const admin = fakeUser({ role: 'ADMIN', empresaIds: [] });
+      const empresa = fakeEmpresa({ id: 'emp-B' });
+      prisma.empresa.findUnique.mockResolvedValue(empresa);
+      prisma.empresa.update.mockResolvedValue({ ...empresa, ativo: false });
+
+      const result = await service.deactivate(admin, 'emp-B');
+
+      expect(result.ativo).toBe(false);
+    });
+
+    it('GERENTE não pode alterar empresa (nem a própria)', async () => {
+      const gerente = fakeUser({ role: 'GERENTE', empresaIds: ['emp-A'] });
+
+      await expect(service.update(gerente, 'emp-A', { nome: 'X' })).rejects.toBeInstanceOf(
+        ForbiddenException,
       );
       expect(prisma.empresa.update).not.toHaveBeenCalled();
     });
@@ -210,7 +270,7 @@ describe('EmpresasService', () => {
       prisma.empresa.findUnique.mockResolvedValue(empresa);
       prisma.empresa.update.mockResolvedValue({ ...empresa, ativo: false });
 
-      const result = await service.deactivate('emp-1');
+      const result = await service.deactivate(adminUser, 'emp-1');
 
       expect(result.ativo).toBe(false);
       expect(prisma.empresa.update).toHaveBeenCalledWith({
@@ -222,7 +282,9 @@ describe('EmpresasService', () => {
     it('lança NotFoundException se empresa não existe', async () => {
       prisma.empresa.findUnique.mockResolvedValue(null);
 
-      await expect(service.deactivate('nao-existe')).rejects.toBeInstanceOf(NotFoundException);
+      await expect(service.deactivate(adminUser, 'nao-existe')).rejects.toBeInstanceOf(
+        NotFoundException,
+      );
       expect(prisma.empresa.update).not.toHaveBeenCalled();
     });
   });
@@ -237,7 +299,7 @@ describe('EmpresasService', () => {
       prisma.empresa.findUnique.mockResolvedValue(empresa);
       prisma.empresa.update.mockResolvedValue({ ...empresa, ativo: true });
 
-      const result = await service.activate('emp-1');
+      const result = await service.activate(adminUser, 'emp-1');
 
       expect(result.ativo).toBe(true);
       expect(prisma.empresa.update).toHaveBeenCalledWith({
@@ -249,7 +311,9 @@ describe('EmpresasService', () => {
     it('lança NotFoundException se empresa não existe', async () => {
       prisma.empresa.findUnique.mockResolvedValue(null);
 
-      await expect(service.activate('nao-existe')).rejects.toBeInstanceOf(NotFoundException);
+      await expect(service.activate(adminUser, 'nao-existe')).rejects.toBeInstanceOf(
+        NotFoundException,
+      );
       expect(prisma.empresa.update).not.toHaveBeenCalled();
     });
   });
