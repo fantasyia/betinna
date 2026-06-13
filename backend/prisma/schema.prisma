@@ -599,7 +599,7 @@ model RepCatalogoItem {
 model Pedido {
   id              String  @id @default(cuid())
   numero          String // PED-XXXX — unicidade por empresa (@@unique abaixo)
-  numeroOmie      String? @unique
+  numeroOmie      String? // unicidade POR EMPRESA (@@unique abaixo) — não global
   empresaId       String
   clienteId       String
   representanteId String?
@@ -645,6 +645,7 @@ model Pedido {
   movimentosFidelidade     MovimentoFidelidade[]
 
   @@unique([empresaId, numero])
+  @@unique([empresaId, numeroOmie])
   @@index([empresaId])
   @@index([clienteId])
   @@index([representanteId])
