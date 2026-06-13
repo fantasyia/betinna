@@ -8,6 +8,7 @@ import { Modal } from '@/components/Modal';
 import { Select } from '@/components/FormField';
 import { AtendimentoTabs } from '@/components/AtendimentoTabs';
 import { badge, btnSecondary, card, colors } from '@/components/styles';
+import { formatMoeda as fmtBRL } from '@/lib/masks';
 
 type Canal =
   | 'MARKETPLACE_ML'
@@ -92,9 +93,6 @@ const STATUS_COLOR: Record<Status, string> = {
   CANCELADO: colors.muted,
 };
 
-function fmtBRL(v: number) {
-  return new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(v);
-}
 function fmtDate(d: string | null | undefined) {
   if (!d) return '—';
   try {

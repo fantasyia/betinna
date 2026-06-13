@@ -32,6 +32,7 @@ import {
   Select,
 } from '@/components/ui';
 import { cn } from '@/lib/cn';
+import { formatMoedaCompacta as fmtBRLCompact } from '@/lib/masks';
 
 interface MetaComProgresso {
   id: string;
@@ -56,16 +57,6 @@ interface UsuarioOpt {
   nome: string;
   email?: string;
   role?: string;
-}
-
-function fmtBRL(v: number) {
-  return new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(v);
-}
-
-function fmtBRLCompact(v: number) {
-  if (v >= 1_000_000) return `R$ ${(v / 1_000_000).toFixed(1)}M`;
-  if (v >= 1_000) return `R$ ${(v / 1_000).toFixed(1)}k`;
-  return fmtBRL(v);
 }
 
 function fmtDate(d: string) {

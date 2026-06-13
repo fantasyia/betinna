@@ -51,6 +51,7 @@ import {
   Textarea,
 } from '@/components/ui';
 import { cn } from '@/lib/cn';
+import { formatMoeda as fmtBRL, formatMoedaCompacta as fmtBRLCompact } from '@/lib/masks';
 
 /**
  * PedidosPage v2 — design system dark, timeline visual de status.
@@ -156,16 +157,6 @@ const FLOW_STEPS: PedidoStatus[] = [
   'ENVIADO',
   'ENTREGUE',
 ];
-
-function fmtBRL(v: number) {
-  return new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(v);
-}
-
-function fmtBRLCompact(v: number) {
-  if (v >= 1_000_000) return `R$ ${(v / 1_000_000).toFixed(1)}M`;
-  if (v >= 1_000) return `R$ ${(v / 1_000).toFixed(1)}k`;
-  return fmtBRL(v);
-}
 
 function fmtDate(d: string | null | undefined) {
   if (!d) return '—';

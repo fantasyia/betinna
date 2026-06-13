@@ -24,6 +24,7 @@ import {
   Textarea,
 } from '@/components/ui';
 import { cn } from '@/lib/cn';
+import { formatMoeda as fmtBRL } from '@/lib/masks';
 
 /**
  * MullerBotPage v2 — chat com paleta Betinna (roxo+ciano).
@@ -113,10 +114,6 @@ function rotateSessionId(): string {
     // ignora
   }
   return novo;
-}
-
-function fmtBRL(v: number) {
-  return new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(v);
 }
 
 const SUGGESTED = [

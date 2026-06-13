@@ -10,6 +10,7 @@ import { Modal } from '@/components/Modal';
 import { FormField, Input, Select, Textarea } from '@/components/FormField';
 import { useToast } from '@/components/toast';
 import { badge, btn, btnDanger, btnSecondary, card, colors } from '@/components/styles';
+import { formatMoeda as fmtBRL } from '@/lib/masks';
 
 interface Produto {
   id: string;
@@ -33,10 +34,6 @@ interface Facets {
   linhas: string[];
   categorias: string[];
   marcas: string[];
-}
-
-function fmtBRL(v: number) {
-  return new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(v);
 }
 
 export default function ProdutosPage() {

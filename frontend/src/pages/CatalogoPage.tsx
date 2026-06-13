@@ -40,6 +40,7 @@ import {
   Stat,
 } from '@/components/ui';
 import { cn } from '@/lib/cn';
+import { formatMoeda as fmtBRL, formatMoedaCompacta as fmtBRLCompact } from '@/lib/masks';
 
 /**
  * CatalogoPage v2 — design system dark, cards de produtos.
@@ -93,16 +94,6 @@ interface PreviewItem {
   precoEspecial?: number | null;
   markup: number;
   precoFinal: number;
-}
-
-function fmtBRL(v: number) {
-  return new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(v);
-}
-
-function fmtBRLCompact(v: number) {
-  if (v >= 1_000_000) return `R$ ${(v / 1_000_000).toFixed(1)}M`;
-  if (v >= 1_000) return `R$ ${(v / 1_000).toFixed(1)}k`;
-  return fmtBRL(v);
 }
 
 /**

@@ -25,6 +25,7 @@ import {
   Textarea,
 } from '@/components/ui';
 import { cn } from '@/lib/cn';
+import { formatMoeda as fmtBRL } from '@/lib/masks';
 
 /**
  * NovoPedidoDialog — modal pra criar pedido novo.
@@ -96,10 +97,6 @@ const CONDICOES: { value: CondicaoPgto; label: string }[] = [
   { value: '30_60', label: '30/60' },
   { value: '30_60_90', label: '30/60/90' },
 ];
-
-function fmtBRL(v: number) {
-  return new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(v);
-}
 
 export function NovoPedidoDialog({
   open,

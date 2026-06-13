@@ -28,6 +28,7 @@ import {
   Textarea,
 } from '@/components/ui';
 import { cn } from '@/lib/cn';
+import { formatMoeda as fmtBRL } from '@/lib/masks';
 
 type AprovacaoStatus = 'PENDENTE' | 'APROVADA' | 'REJEITADA';
 
@@ -68,9 +69,6 @@ const STATUS_ICON: Record<AprovacaoStatus, typeof Clock> = {
   REJEITADA: XCircle,
 };
 
-function fmtBRL(v: number) {
-  return new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(v);
-}
 function fmtPct(v: number) {
   return `${v.toFixed(2)}%`;
 }

@@ -10,6 +10,7 @@ import { FilterBar } from '@/components/FilterBar';
 import { Modal } from '@/components/Modal';
 import { FormField, Input, Select } from '@/components/FormField';
 import { alpha, badge, btn, btnSecondary, card, colors } from '@/components/styles';
+import { formatMoeda as fmtBRL } from '@/lib/masks';
 
 type ComissaoTipo = 'REP' | 'GERENTE';
 
@@ -38,10 +39,6 @@ const MES_NOMES = [
   'Jan', 'Fev', 'Mar', 'Abr', 'Mai', 'Jun',
   'Jul', 'Ago', 'Set', 'Out', 'Nov', 'Dez',
 ];
-
-function fmtBRL(v: number) {
-  return new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(v);
-}
 
 function fmtPct(p: number | null | undefined) {
   const n = typeof p === 'number' && Number.isFinite(p) ? p : 0;

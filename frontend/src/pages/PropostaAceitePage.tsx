@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { useParams } from 'react-router-dom';
 import { api, apiErrorMessage } from '@/lib/api';
+import { formatMoeda as fmtBRL } from '@/lib/masks';
 
 /**
  * C3 (Lote 6) — Página pública de aceite de proposta.
@@ -38,9 +39,6 @@ interface AceitePreview {
 const NAVY = '#201554';
 const CYAN = '#2bcae5';
 
-function fmtBRL(v: number): string {
-  return new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(v);
-}
 function fmtDate(d: string | null): string {
   if (!d) return '—';
   try {

@@ -11,6 +11,7 @@ import { Modal } from '@/components/Modal';
 import { FormField, Input, Select, Textarea } from '@/components/FormField';
 import { AsyncCombobox } from '@/components/AsyncCombobox';
 import { badge, btn, btnDanger, btnSecondary, card, colors } from '@/components/styles';
+import { formatMoeda as fmtBRL } from '@/lib/masks';
 
 type AmostraStatus =
   | 'ENVIADA'
@@ -80,9 +81,6 @@ const STATUS_LIST: AmostraStatus[] = [
   'VENCIDA',
 ];
 
-function fmtBRL(v: number) {
-  return new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(v);
-}
 function fmtDate(d: string | null | undefined) {
   if (!d) return '—';
   try {

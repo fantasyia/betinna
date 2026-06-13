@@ -41,7 +41,11 @@ import { PageLayout } from '@/components/PageLayout';
 import { CrmTabs } from '@/components/CrmTabs';
 import { StateView } from '@/components/StateView';
 import { AsyncCombobox } from '@/components/AsyncCombobox';
-import { maskTelefone } from '@/lib/masks';
+import {
+  maskTelefone,
+  formatMoeda as fmtBRL,
+  formatMoedaCompacta as fmtBRLCompact,
+} from '@/lib/masks';
 import { UfSelect, CidadeSelect } from '@/components/LocalidadeSelects';
 import {
   Avatar,
@@ -192,15 +196,6 @@ const CANAL_LABEL: Record<CanalOrigem, string> = {
   INDICACAO: 'Indicação',
   OUTRO: 'Outro',
 };
-
-function fmtBRL(v: number) {
-  return new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(v);
-}
-function fmtBRLCompact(v: number) {
-  if (v >= 1_000_000) return `R$ ${(v / 1_000_000).toFixed(1)}M`;
-  if (v >= 1_000) return `R$ ${(v / 1_000).toFixed(1)}k`;
-  return fmtBRL(v);
-}
 
 /** Chip de tag colorido (fundo translúcido na cor da tag). */
 function TagChip({

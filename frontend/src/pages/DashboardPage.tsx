@@ -43,6 +43,7 @@ import {
   Checkbox,
 } from '@/components/ui';
 import { cn } from '@/lib/cn';
+import { formatMoeda as fmtBRL, formatMoedaCompacta as fmtBRLCompact } from '@/lib/masks';
 
 /**
  * DashboardPage v2 — design system dark, KPIs em grid, top reps + funil, atalhos
@@ -90,15 +91,6 @@ const ETAPA_BADGE: Record<string, 'info' | 'warning' | 'success' | 'danger' | 'n
   GANHO: 'success',
   PERDIDO: 'danger',
 };
-
-function fmtBRL(v: number) {
-  return new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(v);
-}
-function fmtBRLCompact(v: number) {
-  if (v >= 1_000_000) return `R$ ${(v / 1_000_000).toFixed(1)}M`;
-  if (v >= 1_000) return `R$ ${(v / 1_000).toFixed(1)}k`;
-  return fmtBRL(v);
-}
 
 const ROLE_LABEL: Record<string, string> = {
   ADMIN: 'Admin',

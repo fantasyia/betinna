@@ -10,7 +10,7 @@ import { AsyncCombobox } from '@/components/AsyncCombobox';
 import { NovoPedidoDialog } from '@/components/NovoPedidoDialog';
 import { useConfirm } from '@/hooks/useConfirm';
 import { useToast } from '@/components/toast';
-import { maskCNPJ, maskTelefone, normalizeUF } from '@/lib/masks';
+import { maskCNPJ, maskTelefone, normalizeUF, formatMoeda as fmtBRL } from '@/lib/masks';
 import { badge, btn, btnDanger, btnSecondary, card, colors } from '@/components/styles';
 
 // ─── Tipos compartilhados ────────────────────────────────────────────
@@ -132,9 +132,6 @@ const PEDIDO_STATUS_COLOR: Record<PedidoLite['status'], string> = {
   CANCELADO: colors.danger,
 };
 
-function fmtBRL(v: number) {
-  return new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(v);
-}
 function fmtSize(b: number) {
   if (b < 1024) return `${b} B`;
   if (b < 1024 * 1024) return `${(b / 1024).toFixed(1)} KB`;

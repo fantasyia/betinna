@@ -30,6 +30,17 @@ export function formatMoeda(v: number): string {
 }
 
 /**
+ * Versão compacta pra dashboards/cards — "R$ 1.2M" / "R$ 12.3k". Acima de mil
+ * usa sufixo abreviado; abaixo cai no `formatMoeda` completo. Era a função
+ * `fmtBRLCompact` copiada idêntica em 7 páginas.
+ */
+export function formatMoedaCompacta(v: number): string {
+  if (v >= 1_000_000) return `R$ ${(v / 1_000_000).toFixed(1)}M`;
+  if (v >= 1_000) return `R$ ${(v / 1_000).toFixed(1)}k`;
+  return formatMoeda(v);
+}
+
+/**
  * CNPJ: 00.000.000/0001-00
  * Aceita parcial — aplica máscara conforme dígitos disponíveis.
  */

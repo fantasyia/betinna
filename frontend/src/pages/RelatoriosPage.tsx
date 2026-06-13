@@ -9,6 +9,7 @@ import { toCsv, downloadCsv, type CsvColumn } from '@/lib/csv';
 import { rowsToXlsx } from '@/lib/xlsx';
 import { gerarPdf } from '@/lib/pdf';
 import { useToast } from '@/components/toast';
+import { formatMoeda as fmtBRL, formatMoedaCompacta as fmtBRLCompact } from '@/lib/masks';
 
 type Periodo = 'mes' | 'trimestre' | 'semestre' | 'ano';
 type Tab =
@@ -133,15 +134,6 @@ interface DashboardResp {
 }
 
 // ─── Helpers ─────────────────────────────────────────────────────────
-
-function fmtBRL(v: number) {
-  return new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(v);
-}
-function fmtBRLCompact(v: number) {
-  if (v >= 1_000_000) return `R$ ${(v / 1_000_000).toFixed(1)}M`;
-  if (v >= 1_000) return `R$ ${(v / 1_000).toFixed(1)}k`;
-  return fmtBRL(v);
-}
 
 const STATUS_LABEL_PT: Record<string, string> = {
   RASCUNHO: 'Rascunho',

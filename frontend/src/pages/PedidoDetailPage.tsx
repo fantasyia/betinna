@@ -35,6 +35,7 @@ import {
   Textarea,
 } from '@/components/ui';
 import { cn } from '@/lib/cn';
+import { formatMoeda as fmtBRL } from '@/lib/masks';
 
 /**
  * PedidoDetailPage — versão página cheia do pedido (vs Drawer).
@@ -147,10 +148,6 @@ const FLOW_STEPS: PedidoStatus[] = [
   'ENVIADO',
   'ENTREGUE',
 ];
-
-function fmtBRL(v: number) {
-  return new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(v);
-}
 
 function fmtDateTime(d: string | null | undefined) {
   if (!d) return '—';
