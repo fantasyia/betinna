@@ -33,7 +33,7 @@ status reflete o que está **no código**, não intenção.
 | 🔴 D · Sync OMIE 2 queries/registro | ⛔ pendente | — | Não tocado. |
 | 🔴 D · Frontend sem cache de dados | ⛔ pendente | — | Não tocado. |
 | 🔴 D · Listas grandes sem memo/virtualização | ⛔ pendente | — | Não tocado. |
-| 🔴 E · OAuth boilerplate duplicado (6 services) | 🟡 parcial | `e5b245e` | Util `@shared/utils/oauth-state.util` (deriveSecret/sign/verify) criado; **ML migrado e validado**. Shopee/Amazon/TikTok/Meta/Google = conversões idênticas pendentes (mesmo padrão). |
+| 🔴 E · OAuth boilerplate duplicado (6 services) | ✅ feito | `297aab6` | Util `@shared/utils/oauth-state.util` (deriveSecret/sign/verify); os 6 services migrados (ML/Shopee/Amazon/TikTok/Meta=eid, Google=uid), salt/claim preservados exatos. 283 testes verdes. |
 | 🔴 E · `interpolar()` em 3 lugares | ✅ feito | `027a2d4` | Unificado em `@shared/utils/interpolate` (flag `ausenteVazio` preserva os 2 comportamentos); fluxo-executor re-exporta; 5 specs. |
 | 🔴 E · `formatMoeda` reimplementado ~30× | ⛔ pendente | — | Não tocado. |
 | 🔴 E · Dois sistemas de estilo + dois diálogos | ⛔ pendente | — | Não tocado. |
