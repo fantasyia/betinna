@@ -33,7 +33,7 @@
  `🔴 E · `interpolar()` em 3 lugares` PLACEHOLDER| 🔴 D · Sync OMIE 2 queries/registro | ⛔ pendente | — | Não tocado. |
  `🔴 E · `interpolar()` em 3 lugares` PLACEHOLDER| 🔴 D · Frontend sem cache de dados | ⛔ pendente | — | Não tocado. |
  `🔴 E · `interpolar()` em 3 lugares` PLACEHOLDER| 🔴 D · Listas grandes sem memo/virtualização | ⛔ pendente | — | Não tocado. |
- `🔴 E · `interpolar()` em 3 lugares` PLACEHOLDER| 🔴 E · OAuth boilerplate duplicado (6 services) | ⛔ pendente | — | Não tocado. |
+ `🔴 E · `interpolar()` em 3 lugares` PLACEHOLDER| 🔴 E · OAuth boilerplate duplicado (6 services) | 🟡 parcial | `e5b245e` | Util `@shared/utils/oauth-state.util` (deriveSecret/sign/verify) criado; **ML migrado e validado**. Shopee/Amazon/TikTok/Meta/Google = conversões idênticas pendentes (mesmo padrão). |
  `🔴 E · `interpolar()` em 3 lugares` PLACEHOLDER| 🔴 E · `interpolar()` em 3 lugares | ✅ feito | `027a2d4` | Unificado em `@shared/utils/interpolate` (flag `ausenteVazio` preserva os 2 comportamentos); fluxo-executor re-exporta; 5 specs. |
  `🔴 E · `interpolar()` em 3 lugares` PLACEHOLDER| 🔴 E · `formatMoeda` reimplementado ~30× | ⛔ pendente | — | Não tocado. |
  `🔴 E · `interpolar()` em 3 lugares` PLACEHOLDER| 🔴 E · Dois sistemas de estilo + dois diálogos | ⛔ pendente | — | Não tocado. |
