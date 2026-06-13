@@ -22,6 +22,7 @@ function makeEnv(overrides: Record<string, unknown>): EnvService {
     OMIE_REQUIRE_REAL: false,
     RESEND_API_KEY: 're_test_key',
     RESEND_FROM_EMAIL: 'no-reply@betinna.ai',
+    REDIS_URL: 'rediss://default:token@real-redis.upstash.io:6379',
     ...overrides,
   };
   const stub = {
@@ -89,5 +90,32 @@ describe('EnvService — aviso de e-mail (Resend) ausente', () => {
   it('desenvolvimento sem Resend → sem aviso (só vale em produção)', () => {
     const env = makeEnv({ NODE_ENV: 'development', RESEND_API_KEY: '', RESEND_FROM_EMAIL: '' });
     expect(env.auditProductionReadiness().find((i) => i.key === 'RESEND_API_KEY')).toBeUndefined();
+  });
+});
+
+describe('EnvService — REDIS_URL obrigatório em produção', () => {
+  it('produção + REDIS_URL localhost → CRÍTICO (aborta o boot)', () => {
+    const env = makeEnv({ REDIS_URL: 'redis://localhost:6379' });
+    const issue = env.auditProductionReadiness().find((i) => i.key === 'REDIS_URL');
+    expect(issue?.severity).toBe('critical');
+    expect(() => env.enforceProductionReadiness()).toThrow();
+  });
+
+  it('produção + 127.0.0.1 também é CRÍTICO', () => {
+    const env = makeEnv({ REDIS_URL: 'redis://127.0.0.1:6379' });
+    expect(env.auditProductionReadiness().find((i) => i.key === 'REDIS_URL')?.severity).toBe(
+      'critical',
+    );
+  });
+
+  it('produção + Redis real (rediss://upstash) → sem alerta', () => {
+    const env = makeEnv({ REDIS_URL: 'rediss://default:tok@host.upstash.io:6379' });
+    expect(env.auditProductionReadiness().find((i) => i.key === 'REDIS_URL')).toBeUndefined();
+    expect(() => env.enforceProductionReadiness()).not.toThrow();
+  });
+
+  it('desenvolvimento + localhost → sem alerta (localhost é esperado em dev)', () => {
+    const env = makeEnv({ NODE_ENV: 'development', REDIS_URL: 'redis://localhost:6379' });
+    expect(env.auditProductionReadiness().find((i) => i.key === 'REDIS_URL')).toBeUndefined();
   });
 });

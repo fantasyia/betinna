@@ -78,6 +78,29 @@ export class EnvService {
       });
     }
 
+    // REDIS_URL em produção precisa apontar pra um Redis REAL.
+    //
+    // O schema tem default `redis://localhost:6379` (ótimo em dev), mas em
+    // PRODUÇÃO esse default é armadilha: se a env não foi setada no Railway, o
+    // app sobe apontando pro localhost — que não existe lá — e BullMQ (fluxos de
+    // automação, campanhas) + o anti-spam do bot falham em SILÊNCIO (jobs somem,
+    // nenhum erro no boot). Localhost em prod ⇒ crítico (aborta o boot).
+    const redisUrl = this.get('REDIS_URL');
+    if (
+      env === 'production' &&
+      /^rediss?:\/\/(localhost|127\.0\.0\.1|\[::1\])(:|\/|$)/i.test(redisUrl)
+    ) {
+      issues.push({
+        key: 'REDIS_URL',
+        severity: 'critical',
+        message:
+          'REDIS_URL aponta pra localhost em produção (provavelmente não foi setada no ' +
+          'Railway, caindo no default redis://localhost:6379). BullMQ (fluxos/campanhas) e o ' +
+          'anti-spam do bot dependem de um Redis real e falhariam em silêncio. Configure ' +
+          'REDIS_URL no Railway (api e worker).',
+      });
+    }
+
     // OMIE em demo mode em produção.
     //
     // Por padrão é só AVISO (warning) — no bootstrap, antes do primeiro tenant
