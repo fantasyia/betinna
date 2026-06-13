@@ -1,4 +1,4 @@
-import { Body, Controller, Param, Post, UnauthorizedException } from '@nestjs/common';
+import { Body, Controller, Headers, Param, Post, UnauthorizedException } from '@nestjs/common';
 import { timingSafeEqual } from 'node:crypto';
 import { ApiExcludeController } from '@nestjs/swagger';
 import { Public } from '@shared/decorators/public.decorator';
@@ -14,20 +14,17 @@ interface EvolutionWebhookBody {
 }
 
 /**
- * Recebe os eventos do Evolution API (mensagens, conexão, QR). Endpoint @Public,
- * protegido por um token derivado da EVOLUTION_API_KEY na URL.
- *   {API_URL}/webhooks/evolution/{token}
+ * Recebe os eventos do Evolution API (mensagens, conexão, QR). Endpoint @Public.
  *
- * SEGURANÇA — limitação honesta do provider:
- *  - Diferente dos marketplaces (Shopee/Meta/etc), o Evolution NÃO assina o
- *    corpo do webhook (não há HMAC pra validar — nós configuramos o Evolution e
- *    ele não envia assinatura). O token de 128 bits na URL É o segredo compartilhado.
- *  - Comparação do token em TEMPO CONSTANTE (timingSafeEqual) — antes era `!==`.
- *  - ANTI-REPLAY nas mensagens: dedup por (instância + id da mensagem) via Redis,
- *    reusando o WebhookAntiReplayService dos marketplaces. Soma à idempotência
- *    que o InboxService já faz por externalId (defesa em profundidade).
- *  - Próximo passo recomendado (precisa re-parear): mover o segredo da URL pra um
- *    header do webhook (URLs vazam em log de proxy/Referer; headers não).
+ * SEGURANÇA — autenticidade do remetente:
+ *  - Preferido: segredo no HEADER `x-evolution-webhook-token` (rota `POST
+ *    /webhooks/evolution`). URLs vazam em log de proxy/Referer; headers não.
+ *  - Legado: token na URL (`POST /webhooks/evolution/:token`) — mantido só pra
+ *    instâncias ainda NÃO re-pareadas; some quando todas reconectarem.
+ *  - Comparação SEMPRE em tempo constante (timingSafeEqual).
+ *  - O Evolution NÃO assina o corpo (não há HMAC pra validar como nos marketplaces);
+ *    o segredo compartilhado é o que prova a origem.
+ *  - ANTI-REPLAY nas mensagens: dedup por (instância + id) via WebhookAntiReplayService.
  */
 @ApiExcludeController()
 @Controller('webhooks/evolution')
@@ -38,21 +35,40 @@ export class EvolutionWebhookController {
     private readonly antiReplay: WebhookAntiReplayService,
   ) {}
 
+  /** Rota NOVA: segredo no header (URL sem token). */
+  @Public()
+  @Post()
+  async receber(
+    @Headers(EvolutionService.WEBHOOK_HEADER) headerSecret: string | undefined,
+    @Body() body: EvolutionWebhookBody,
+  ): Promise<{ ok: boolean }> {
+    const esperado = EvolutionService.webhookHeaderSecret(this.env.get('EVOLUTION_API_KEY') || '');
+    if (!esperado || !this.segredoIgual(headerSecret, esperado)) {
+      throw new UnauthorizedException('webhook secret inválido');
+    }
+    return this.processar(body);
+  }
+
+  /** Rota LEGADO: token na URL — instâncias ainda não re-pareadas. */
   @Public()
   @Post(':token')
-  async receber(
+  async receberLegacy(
     @Param('token') token: string,
     @Body() body: EvolutionWebhookBody,
   ): Promise<{ ok: boolean }> {
     const esperado = EvolutionService.webhookToken(this.env.get('EVOLUTION_API_KEY') || '');
-    if (!esperado || !this.tokensIguais(token, esperado)) {
+    if (!esperado || !this.segredoIgual(token, esperado)) {
       throw new UnauthorizedException('webhook token inválido');
     }
+    return this.processar(body);
+  }
 
-    // Anti-replay (só faz sentido pra mensagens — eventos de conexão/QR podem
-    // repetir sem efeito colateral). Sem timestamp: o Evolution não manda um
-    // confiável, então usamos só o dedup por id (evita rejeitar msg legítima
-    // levemente atrasada — o poll de fallback não passa por aqui).
+  /** Anti-replay (só mensagens) + repasse pro processamento. Comum às duas rotas. */
+  private async processar(body: EvolutionWebhookBody): Promise<{ ok: boolean }> {
+    // Anti-replay só pra mensagens — eventos de conexão/QR podem repetir sem
+    // efeito colateral. Sem timestamp (o Evolution não manda um confiável): só
+    // dedup por id, evitando rejeitar msg legítima atrasada (o poll de fallback
+    // não passa por aqui).
     const chaveReplay = this.chaveReplay(body);
     if (chaveReplay) {
       const { fresh } = await this.antiReplay.checkAndMarkWebhook(
@@ -62,14 +78,14 @@ export class EvolutionWebhookController {
       );
       if (!fresh) return { ok: true }; // replay → ACK sem reprocessar
     }
-
     // Responde 200 na hora (pro Evolution não re-tentar) e processa em background.
     void this.inbound.processarEvento(body);
     return { ok: true };
   }
 
-  /** Comparação em tempo constante (evita timing attack no token). */
-  private tokensIguais(recebido: string, esperado: string): boolean {
+  /** Comparação em tempo constante (evita timing attack no segredo). */
+  private segredoIgual(recebido: string | undefined, esperado: string): boolean {
+    if (!recebido) return false;
     const a = Buffer.from(recebido);
     const b = Buffer.from(esperado);
     if (a.length !== b.length) return false;

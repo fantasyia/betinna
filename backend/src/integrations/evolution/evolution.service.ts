@@ -91,6 +91,11 @@ export class EvolutionService {
     instance: string,
     webhookUrl?: string,
   ): Promise<{ hash?: string } & RespostaQr> {
+    // Segredo do webhook vai num HEADER (não na URL — URLs vazam em log/Referer).
+    // O Evolution v2 anexa esses headers em CADA POST do webhook.
+    const headerSecret = EvolutionService.webhookHeaderSecret(
+      this.env.get('EVOLUTION_API_KEY') || '',
+    );
     return this.req('post', '/instance/create', {
       instanceName: instance,
       integration: 'WHATSAPP-BAILEYS',
@@ -101,6 +106,9 @@ export class EvolutionService {
               url: webhookUrl,
               byEvents: false,
               base64: true,
+              ...(headerSecret
+                ? { headers: { [EvolutionService.WEBHOOK_HEADER]: headerSecret } }
+                : {}),
               events: ['MESSAGES_UPSERT', 'CONNECTION_UPDATE', 'QRCODE_UPDATED'],
             },
           }
@@ -369,19 +377,32 @@ export class EvolutionService {
     return createHash('sha256').update(`evolution-webhook:${apiKey}`).digest('hex').slice(0, 32);
   }
 
+  /** Header que carrega o segredo do webhook (substitui o token na URL). */
+  static readonly WEBHOOK_HEADER = 'x-evolution-webhook-token';
+
   /**
-   * URL completa do webhook de entrada: `<API_PUBLIC_URL>/<API_PREFIX>/webhooks/evolution/<token>`.
-   * O endpoint vive SOB o prefixo global (ex: /api/v1) — incluí-lo aqui evita o erro
-   * clássico de o Evolution postar num 404 (conecta/envia mas não RECEBE nada).
-   * Aceita o API_PUBLIC_URL como origem pura OU já contendo o prefixo (sem duplicar).
+   * Segredo do webhook enviado no HEADER (não na URL). Derivado da API key com
+   * domínio DISTINTO do token-de-URL legado (256 bits, sem slice). URLs vazam em
+   * log de proxy/histórico/Referer; headers não — por isso o segredo migra pra cá.
+   */
+  static webhookHeaderSecret(apiKey: string): string {
+    if (!apiKey) return '';
+    return createHash('sha256').update(`evolution-webhook-header:${apiKey}`).digest('hex');
+  }
+
+  /**
+   * URL do webhook de entrada: `<API_PUBLIC_URL>/<API_PREFIX>/webhooks/evolution`.
+   * SEM token na URL — o segredo agora vai no header `WEBHOOK_HEADER` (configurado
+   * em `criarInstancia`). O endpoint vive SOB o prefixo global (ex: /api/v1) —
+   * incluí-lo aqui evita o Evolution postar num 404. Aceita o API_PUBLIC_URL como
+   * origem pura OU já contendo o prefixo (sem duplicar).
    */
   webhookUrl(): string {
     const origem = (this.env.get('API_PUBLIC_URL') || '').replace(/\/+$/, '');
-    const token = EvolutionService.webhookToken(this.env.get('EVOLUTION_API_KEY') || '');
-    if (!origem || !token) return '';
+    if (!origem) return '';
     const prefixo = (this.env.get('API_PREFIX') || '').replace(/^\/+|\/+$/g, '');
     const base = prefixo && !origem.endsWith(`/${prefixo}`) ? `${origem}/${prefixo}` : origem;
-    return `${base}/webhooks/evolution/${token}`;
+    return `${base}/webhooks/evolution`;
   }
 
   /**
