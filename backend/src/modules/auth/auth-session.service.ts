@@ -5,6 +5,7 @@ import { EnvService } from '@config/env.service';
 import { PrismaService } from '@database/prisma.service';
 import {
   BusinessRuleException,
+  ForbiddenException,
   IntegrationException,
   UnauthorizedException,
 } from '@shared/errors/app-exception';
@@ -220,6 +221,22 @@ export class AuthSessionService {
       throw new IntegrationException(
         'Resposta do Supabase incompleta',
         ErrorCode.INTEGRATION_ERROR,
+      );
+    }
+
+    // 1.5) SEGURANÇA: o welcome só finaliza convites PENDENTES. Sem esta
+    //      checagem, qualquer access token válido (de uma conta JÁ ATIVA)
+    //      podia trocar a senha da conta → sequestro de conta. Conta ativa
+    //      redefine senha pelo fluxo "Esqueci minha senha", não por aqui.
+    //      (Mesmo gate do reenvio de convite em UsersService.)
+    const usuario = await this.prisma.usuario.findUnique({
+      where: { id: supaUser.id },
+      select: { status: true },
+    });
+    if (!usuario || usuario.status !== 'PENDENTE') {
+      throw new ForbiddenException(
+        'Este convite já foi finalizado ou a conta já está ativa. Para redefinir a senha, use "Esqueci minha senha".',
+        ErrorCode.FORBIDDEN,
       );
     }
 
