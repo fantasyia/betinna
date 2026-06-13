@@ -35,7 +35,7 @@ status reflete o que está **no código**, não intenção.
 | 🔴 D · Listas grandes sem memo/virtualização | ⛔ pendente | — | Não tocado. |
 | 🔴 E · OAuth boilerplate duplicado (6 services) | ✅ feito | `297aab6` | Util `@shared/utils/oauth-state.util` (deriveSecret/sign/verify); os 6 services migrados (ML/Shopee/Amazon/TikTok/Meta=eid, Google=uid), salt/claim preservados exatos. 283 testes verdes. |
 | 🔴 E · `interpolar()` em 3 lugares | ✅ feito | `027a2d4` | Unificado em `@shared/utils/interpolate` (flag `ausenteVazio` preserva os 2 comportamentos); fluxo-executor re-exporta; 5 specs. |
-| 🔴 E · `formatMoeda` reimplementado ~30× | ⛔ pendente | — | Não tocado. |
+| 🔴 E · `formatMoeda` reimplementado ~30× | ✅ feito | `9085b69`+`0696c2a` | `formatMoeda`/`formatMoedaCompacta` únicos em `lib/masks` (instância `Intl` única). Migradas as 24 cópias: 17× `fmtBRL` + 7× `fmtBRLCompact` (byte-a-byte idênticas), incl. a `PropostaAceitePage`. Saída preservada (NBSP/limiares). eslint 0-warn + tsc verdes. |
 | 🔴 E · Dois sistemas de estilo + dois diálogos | ⛔ pendente | — | Não tocado. |
 | 🔴 F · Penhasco de testes (frontend / evolution / módulos novos) | 🟡 parcial | (vários) | Adicionados specs onde foi corrigido: `auth-session`, `empresas`, `auth-context`, `tenant-throttler`, `evolution-webhook`, `nps.service`. Frontend continua **sem teste**; cobertura ampla segue pendente. |
 | 🔴 G · `REDIS_URL` default localhost | ⛔ pendente | — | Não tocado. |
