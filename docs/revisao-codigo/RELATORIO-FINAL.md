@@ -29,7 +29,7 @@ status reflete o que está **no código**, não intenção.
 | 🔴 C · `update()` de pedido fura aprovação de desconto | ✅ feito | `183d28b` | `update()` agora transiciona pra AGUARDANDO_APROVACAO + upsert da AprovacaoDesconto quando excede o teto (replica o `create`); notifica gerência ao entrar. 2 specs. |
 | 🔴 C · Anti-spam do bot em memória de 1 instância | ✅ feito | `f3ea2a7` | `ehSpam` migrado pro Redis (eval Lua INCR+EXPIRE, janela 60s, fail-open). Compartilha entre api/worker e sobrevive a deploy. |
 | 🔴 C · HttpClient re-tenta POST não-idempotente | ✅ feito | `b2cdc3b`+`1209396` | Retry automático agora só em métodos idempotentes (GET/HEAD/OPTIONS/PUT/DELETE); POST/PATCH default `retries=0` (quem precisa, opta explícito). Call-sites perigosos tratados: OMIE write não retenta (`1209396`). 4+2 specs novos. |
-| 🔴 D · Bot 6–8 queries + telefone `contains` sem índice | ⛔ pendente | — | Não tocado. |
+| 🔴 D · Bot 6–8 queries + telefone `contains` sem índice | 🟡 parcial | `0f8ca68` | **Telefone:** match de Cliente (Inbox→cliente) agora usa índice de expressão `RIGHT(REGEXP_REPLACE(telefone,…),8)` + `$queryRaw` por igualdade (era `LIKE '%suf%'` em seq scan, que quebrava com hífen). **Pendente:** os 3 matches de **Lead** (bot/fluxos) seguem em `contains` — a query do `leadEncerrado` tem filtros relacionais (funilEtapa/tags) que tornam a conversão pra índice arriscada; baixo valor (caminho secundário). O gate de "6–8 queries" do bot também não foi reduzido. |
 | 🔴 D · Sync OMIE 2 queries/registro | ⛔ pendente | — | Não tocado. |
 | 🔴 D · Frontend sem cache de dados | ⛔ pendente | — | Não tocado. |
 | 🔴 D · Listas grandes sem memo/virtualização | ⛔ pendente | — | Não tocado. |
@@ -38,8 +38,8 @@ status reflete o que está **no código**, não intenção.
 | 🔴 E · `formatMoeda` reimplementado ~30× | ✅ feito | `9085b69`+`0696c2a` | `formatMoeda`/`formatMoedaCompacta` únicos em `lib/masks` (instância `Intl` única). Migradas as 24 cópias: 17× `fmtBRL` + 7× `fmtBRLCompact` (byte-a-byte idênticas), incl. a `PropostaAceitePage`. Saída preservada (NBSP/limiares). eslint 0-warn + tsc verdes. |
 | 🔴 E · Dois sistemas de estilo + dois diálogos | ⛔ pendente | — | Não tocado. |
 | 🔴 F · Penhasco de testes (frontend / evolution / módulos novos) | 🟡 parcial | (vários) | Adicionados specs onde foi corrigido: `auth-session`, `empresas`, `auth-context`, `tenant-throttler`, `evolution-webhook`, `nps.service`. Frontend continua **sem teste**; cobertura ampla segue pendente. |
-| 🔴 G · `REDIS_URL` default localhost | ⛔ pendente | — | Não tocado. |
-| 🔴 G · body-parser 20mb global | ⛔ pendente | — | Não tocado. |
+| 🔴 G · `REDIS_URL` default localhost | ✅ feito | `862d0f5` | `auditProductionReadiness()` marca localhost/127.0.0.1/[::1] em prod como **crítico** → boot aborta (mesmo padrão do ENCRYPTION_KEY). Em dev, localhost segue normal. 4 specs. |
+| 🔴 G · body-parser 20mb global | ✅ feito | `2853571` | Guard de `Content-Length` por rota roda **antes** do parser: só `/webhooks`, `/inbox`, `/import` mantêm 20MB; resto cai pra 1MB. NÃO toca no `rawBody` (lê só header) → HMAC dos webhooks intacto. 7 specs. |
 | 🔴 G · Margem/custo = chute de 70% | ⛔ pendente | — | Não tocado (aguarda tabela de preço real do OMIE). |
 | 🔴 H · Arquivos gigantes (InboxPage 3.106, FluxoEditor 2.736) | ⛔ pendente | — | Não tocado. |
 
