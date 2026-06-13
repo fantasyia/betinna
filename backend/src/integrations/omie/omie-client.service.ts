@@ -93,6 +93,7 @@ export class OmieClientService {
     resource: string,
     call: string,
     param: TParam,
+    opts: { escrita?: boolean } = {},
   ): Promise<TResp> {
     const creds = await this.resolverCredenciais(empresaId);
     const url = `${this.env.get('OMIE_BASE_URL')}/${resource}`;
@@ -103,10 +104,16 @@ export class OmieClientService {
       param: [param],
     };
 
+    // Escrita (ex.: IncluirPedido) NÃO retenta — nem no HTTP nem no fault. O OMIE
+    // deduplica por `codigo_pedido_integracao`, então um retry depois dele já ter
+    // criado o pedido vira "pedido já cadastrado": um sucesso viraria um erro
+    // confuso. Leitura é idempotente e pode retentar à vontade.
+    const escrita = opts.escrita === true;
+
     // Retry exponencial em aplicação: HttpClient já retentaria 5xx/429,
     // mas OMIE devolve faultstring transient (timeouts, manutenção) com HTTP 200.
-    // Vamos re-tentar APENAS quando isRetryableFault.
-    const MAX_FAULT_RETRIES = 3;
+    // Re-tentamos APENAS quando isRetryableFault — e nunca em escrita.
+    const MAX_FAULT_RETRIES = escrita ? 1 : 3;
     let faultAttempt = 0;
     let ultimoFault: { faultcode: string; faultstring: string } | null = null;
 
@@ -118,7 +125,7 @@ export class OmieClientService {
           timeoutMs: this.env.get('OMIE_TIMEOUT_MS'),
           integration: 'omie',
           redactKeys: ['app_key', 'app_secret'],
-          retries: 2, // HttpClient: retry interno em 5xx/429
+          retries: escrita ? 0 : 2, // escrita não retenta no HTTP (evita duplicar)
         });
 
         const data = res.data as unknown;
@@ -207,6 +214,7 @@ export class OmieClientService {
       'produtos/pedido/',
       'IncluirPedido',
       param,
+      { escrita: true },
     );
   }
 

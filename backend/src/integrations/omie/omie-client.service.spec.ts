@@ -418,4 +418,58 @@ describe('OmieClientService', () => {
       expect(http.post.mock.calls[0][1].body.call).toBe('IncluirPedido');
     });
   });
+
+  // -------------------------------------------------------------------------
+  // Escrita não retenta (evita pedido duplicado / "já cadastrado")
+  // -------------------------------------------------------------------------
+
+  describe('escrita (IncluirPedido) não retenta', () => {
+    const pedidoParam = {
+      cabecalho: {
+        codigo_cliente: 1,
+        codigo_pedido_integracao: 'P-1',
+        data_previsao: '01/01/2026',
+        quantidade_itens: 1,
+      },
+      det: [],
+    };
+
+    beforeEach(() => {
+      integracoes.obterCredenciaisInternas.mockResolvedValue({
+        credenciais: { appKey: 'k', appSecret: 's' },
+      });
+    });
+
+    it('passa retries=0 ao HttpClient (escrita não retenta no transporte)', async () => {
+      const service = new OmieClientService(
+        http as never,
+        makeEnvMock() as never,
+        integracoes as never,
+      );
+      http.post.mockResolvedValue({
+        data: { numero_pedido: 1, codigo_pedido: 1, codigo_status: '0', descricao_status: 'ok' },
+      });
+
+      await service.incluirPedido('emp-1', pedidoParam);
+
+      expect(http.post.mock.calls[0][1].retries).toBe(0);
+    });
+
+    it('NÃO retenta fault transient — falha na 1ª tentativa (vs leitura que retenta)', async () => {
+      const service = new OmieClientService(
+        http as never,
+        makeEnvMock() as never,
+        integracoes as never,
+      );
+      // "Tempo limite" é retryable em LEITURA, mas escrita não pode arriscar duplicar.
+      http.post.mockResolvedValue({
+        data: { faultcode: 'SOAP-ENV:Server', faultstring: 'Tempo limite excedido' },
+      });
+
+      await expect(service.incluirPedido('emp-1', pedidoParam)).rejects.toBeInstanceOf(
+        IntegrationException,
+      );
+      expect(http.post).toHaveBeenCalledTimes(1); // sem fault-retry em escrita
+    });
+  });
 });
