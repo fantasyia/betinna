@@ -141,16 +141,30 @@ export class OmieWebhookController {
     // sequências de código — colisão entre tenants é improvável, mas caso ocorra,
     // o primeiro match será atualizado. Evolução futura: endpoint por empresa
     // `/webhooks/omie/:empresaToken/cliente-status`.
-    const cliente = await this.prisma.cliente.findFirst({
+    // ISOLAMENTO MULTI-TENANT: o payload do OMIE NÃO traz empresaId e o segredo
+    // do webhook é global. Se o mesmo codigoOmie existir em 2 empresas, não dá
+    // pra saber a qual o evento pertence — então RECUSAMOS em vez de adivinhar e
+    // mexer no cliente da empresa errada. (`take: 2` só pra detectar duplicidade.)
+    // O cron de sync reconcilia o estado de quem ficou de fora. Fix durável:
+    // endpoint por empresa com token na URL (`/webhooks/omie/<token>/...`).
+    const clientes = await this.prisma.cliente.findMany({
       where: { codigoOmie },
       select: { id: true, empresaId: true, omieStatus: true, nome: true },
+      take: 2,
     });
-    if (!cliente) {
+    if (clientes.length === 0) {
       this.logger.warn(
         `Webhook OMIE: cliente ${codigoOmie} não encontrado localmente — sync primeiro`,
       );
       return { ok: false };
     }
+    if (clientes.length > 1) {
+      this.logger.warn(
+        `Webhook OMIE: codigoOmie ${codigoOmie} existe em múltiplas empresas — ambíguo, ignorado (evita tocar o tenant errado). Configure webhook por empresa.`,
+      );
+      return { ok: false };
+    }
+    const cliente = clientes[0];
 
     if (cliente.omieStatus === novoOmieStatus) {
       return { ok: true }; // sem mudança, idempotente
@@ -226,18 +240,28 @@ export class OmieWebhookController {
       return { ok: false };
     }
 
-    // Resolve a empresa via produto local (codigoOmie é único por empresa).
-    const produto = await this.prisma.produto.findFirst({
+    // ISOLAMENTO MULTI-TENANT (igual ao cliente-status): o payload não traz
+    // empresaId. Se o codigoOmie existir em 2 empresas, recusa em vez de
+    // sincronizar a empresa errada. `take: 2` só pra detectar duplicidade.
+    const produtos = await this.prisma.produto.findMany({
       where: { codigoOmie },
       select: { id: true, empresaId: true, nome: true, estoque: true },
+      take: 2,
     });
-    if (!produto) {
+    if (produtos.length === 0) {
       this.logger.warn(
-        `Webhook OMIE produto ${codigoOmie} não encontrado localmente — disparando sync incremental geral`,
+        `Webhook OMIE produto ${codigoOmie} não encontrado localmente — deixa o cron 30min capturar`,
       );
       // Sem produto local, não temos empresaId. Skip e deixa o cron 30min capturar.
       return { ok: false };
     }
+    if (produtos.length > 1) {
+      this.logger.warn(
+        `Webhook OMIE produto ${codigoOmie} existe em múltiplas empresas — ambíguo, ignorado (evita sync no tenant errado).`,
+      );
+      return { ok: false };
+    }
+    const produto = produtos[0];
 
     // Dispara sync incremental da empresa — fonte da verdade é OMIE, não o
     // payload do webhook (que pode estar stale). Async pra responder rápido.
