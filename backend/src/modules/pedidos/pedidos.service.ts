@@ -319,6 +319,7 @@ export class PedidosService {
     const descontoGeralFinal = camposGenericos.descontoGeral ?? existing.descontoGeral;
 
     let totalsRecalc: PedidoTotals | null = null;
+    let requerAprovacao = false;
     if (precisaRecalcular) {
       totalsRecalc = this.pedidoPricing.pedidoTotals(
         itensFinais.map((i) => ({
@@ -332,7 +333,7 @@ export class PedidosService {
 
       // Se mudou pra desconto acima do teto sem motivo, bloqueia.
       const tetoRep = await this.tetoDoRepAtual(user);
-      const requerAprovacao = this.pedidoPricing.excedeTetoDesconto(totalsRecalc, tetoRep);
+      requerAprovacao = this.pedidoPricing.excedeTetoDesconto(totalsRecalc, tetoRep);
       if (requerAprovacao && !(camposGenericos.motivoDesconto ?? existing.motivoDesconto)) {
         throw new BusinessRuleException(
           'Desconto acima do teto requer justificativa em motivoDesconto',
@@ -340,6 +341,14 @@ export class PedidosService {
         );
       }
     }
+
+    // FIX controle de desconto: edição que leva o desconto acima do teto DEVE
+    // entrar em aprovação. Antes o update só exigia o motivo mas deixava o status
+    // como estava (RASCUNHO) e NÃO criava a AprovacaoDesconto → o pedido ia direto
+    // pro OMIE sem o gerente ver (bypass). Agora replica a transição do create().
+    const entrandoEmAprovacao = requerAprovacao && existing.status !== 'AGUARDANDO_APROVACAO';
+    const motivoAprovacao =
+      camposGenericos.motivoDesconto ?? existing.motivoDesconto ?? 'sem motivo informado';
 
     await this.prisma.$transaction(async (tx) => {
       // Atualiza campos escalares (e totais quando recalculou)
@@ -352,6 +361,10 @@ export class PedidosService {
             total: totalsRecalc.total,
             comissao: totalsRecalc.comissao,
           }),
+          // Só força AGUARDANDO_APROVACAO quando exceder o teto. Quando NÃO
+          // exceder, não mexe no status (não inventa política de "voltar a
+          // RASCUNHO" — decisão de produto pendente).
+          ...(requerAprovacao ? { status: 'AGUARDANDO_APROVACAO' as const } : {}),
         },
       });
 
@@ -370,7 +383,45 @@ export class PedidosService {
           })),
         });
       }
+
+      // Cria/atualiza a solicitação de aprovação (upsert — pedidoId é @unique).
+      // Só quando há rep responsável (mesma regra do create). Editar reabre como
+      // PENDENTE pra o gerente não decidir sobre um valor já alterado.
+      if (requerAprovacao && totalsRecalc && existing.representanteId) {
+        await tx.aprovacaoDesconto.upsert({
+          where: { pedidoId: id },
+          create: {
+            pedidoId: id,
+            representanteId: existing.representanteId,
+            descontoSolicitado: totalsRecalc.maxDescontoPercentual,
+            motivo: motivoAprovacao,
+            status: 'PENDENTE',
+          },
+          update: {
+            descontoSolicitado: totalsRecalc.maxDescontoPercentual,
+            motivo: motivoAprovacao,
+            status: 'PENDENTE',
+            gerenteId: null,
+            comentarioAprovador: null,
+            resolvidoEm: null,
+          },
+        });
+      }
     });
+
+    // Notifica gerência só ao ENTRAR em aprovação (não a cada edição seguinte).
+    if (entrandoEmAprovacao && existing.representanteId && totalsRecalc) {
+      void this.notificacoes.criarParaRole({
+        empresaId: existing.empresaId,
+        roles: ['GERENTE', 'DIRECTOR'],
+        tipo: 'APROVACAO_PENDENTE',
+        prioridade: 'ALTA',
+        titulo: 'Aprovação de desconto pendente',
+        mensagem: `Pedido ${existing.numero} (${totalsRecalc.maxDescontoPercentual.toFixed(1)}% desconto) aguarda decisão.`,
+        link: `/aprovacoes`,
+        metadata: { pedidoId: id, representanteId: existing.representanteId },
+      });
+    }
 
     return this.findByIdInternal(id);
   }

@@ -25,6 +25,7 @@ const makePrismaMock = () => {
     },
     aprovacaoDesconto: {
       create: vi.fn(),
+      upsert: vi.fn(),
     },
     usuario: {
       findUnique: vi.fn(),
@@ -238,6 +239,78 @@ describe('PedidosService', () => {
     const args = prisma.pedido.create.mock.calls[0][0];
     expect(args.data.status).toBe('RASCUNHO');
     expect(prisma.aprovacaoDesconto.create).not.toHaveBeenCalled();
+  });
+
+  it('update que leva desconto acima do teto → AGUARDANDO_APROVACAO + upsert da aprovação (anti-bypass)', async () => {
+    // Pedido RASCUNHO existente (1 item, sem desconto) — dentro do teto hoje.
+    prisma.pedido.findFirst.mockResolvedValue({
+      id: 'ped-1',
+      numero: 'PED-0001',
+      empresaId: 'emp-1',
+      status: 'RASCUNHO',
+      representanteId: 'rep-1',
+      clienteId: 'cli-1',
+      descontoGeral: 0,
+      motivoDesconto: null,
+      itens: [
+        {
+          produtoId: 'p1',
+          quantidade: 1,
+          precoUnitario: 100,
+          desconto: 0,
+          total: 100,
+          negociado: false,
+        },
+      ],
+    });
+    prisma.usuario.findUnique.mockResolvedValue({ tetoDesconto: 5 }); // teto 5%
+    prisma.pedido.findUnique.mockResolvedValue({ id: 'ped-1', status: 'AGUARDANDO_APROVACAO' });
+
+    // Edita pra 40% de desconto geral (acima do teto) com motivo.
+    await svc.update(fakeUser(), 'ped-1', {
+      descontoGeral: 40,
+      motivoDesconto: 'Cliente fechando volume grande',
+    });
+
+    // Status FOI pra AGUARDANDO_APROVACAO (antes ficava RASCUNHO = bypass).
+    const updArgs = prisma.pedido.update.mock.calls[0][0];
+    expect(updArgs.data.status).toBe('AGUARDANDO_APROVACAO');
+    // E criou/atualizou a solicitação de aprovação.
+    expect(prisma.aprovacaoDesconto.upsert).toHaveBeenCalled();
+    const aprArgs = prisma.aprovacaoDesconto.upsert.mock.calls[0][0];
+    expect(aprArgs.where).toEqual({ pedidoId: 'ped-1' });
+    expect(aprArgs.create.status).toBe('PENDENTE');
+  });
+
+  it('update dentro do teto NÃO força aprovação nem mexe no status', async () => {
+    prisma.pedido.findFirst.mockResolvedValue({
+      id: 'ped-2',
+      numero: 'PED-0002',
+      empresaId: 'emp-1',
+      status: 'RASCUNHO',
+      representanteId: 'rep-1',
+      clienteId: 'cli-1',
+      descontoGeral: 0,
+      motivoDesconto: null,
+      itens: [
+        {
+          produtoId: 'p1',
+          quantidade: 1,
+          precoUnitario: 100,
+          desconto: 0,
+          total: 100,
+          negociado: false,
+        },
+      ],
+    });
+    prisma.usuario.findUnique.mockResolvedValue({ tetoDesconto: 10 });
+    prisma.pedido.findUnique.mockResolvedValue({ id: 'ped-2', status: 'RASCUNHO' });
+
+    await svc.update(fakeUser(), 'ped-2', { descontoGeral: 5 }); // dentro do teto
+
+    const updArgs = prisma.pedido.update.mock.calls[0][0];
+    expect(updArgs.data.status).toBeUndefined(); // não força status
+    expect(prisma.aprovacaoDesconto.upsert).not.toHaveBeenCalled();
   });
 
   it('bloqueia envio ao OMIE se pedido está AGUARDANDO_APROVACAO sem aprovação aprovada', async () => {
