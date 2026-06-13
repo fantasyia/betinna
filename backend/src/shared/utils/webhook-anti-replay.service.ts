@@ -20,7 +20,14 @@ const MAX_TIMESTAMP_SKEW_MS = 5 * 60 * 1000;
  */
 const SIGNATURE_TTL_SECONDS = 10 * 60;
 
-export type WebhookProvider = 'omie' | 'meta' | 'shopee' | 'tiktok' | 'mercadolivre' | 'iugu';
+export type WebhookProvider =
+  | 'omie'
+  | 'meta'
+  | 'shopee'
+  | 'tiktok'
+  | 'mercadolivre'
+  | 'iugu'
+  | 'evolution';
 
 export interface AntiReplayResult {
   /** true = primeira vez vendo essa assinatura, prosseguir com processamento */
