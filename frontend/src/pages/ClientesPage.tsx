@@ -1,4 +1,4 @@
-import { useMemo, useState, type ReactNode } from 'react';
+import { useEffect, useMemo, useState, type ReactNode } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
   Search,
@@ -24,6 +24,7 @@ import {
 import { NovoPedidoDialog, type ClienteOpt } from '@/components/NovoPedidoDialog';
 import { api, ApiError } from '@/lib/api';
 import { useApiQuery, type PaginatedResponse } from '@/hooks/useApiQuery';
+import { useDebouncedValue } from '@/hooks/useDebouncedValue';
 import { usePermission } from '@/hooks/usePermission';
 import { PageLayout, useIsMobile } from '@/components/PageLayout';
 import { CrmTabs } from '@/components/CrmTabs';
@@ -137,20 +138,28 @@ export default function ClientesPage() {
   // Filtros / paginação
   const [page, setPage] = useState(1);
   const [search, setSearch] = useState('');
+  // Busca com debounce: o input responde na hora, mas a requisição só dispara
+  // ~300ms depois de parar de digitar (evita 1 request por tecla).
+  const buscaDebounced = useDebouncedValue(search, 300);
   const [status, setStatus] = useState<string>('');
   const [omie, setOmie] = useState<string>('');
   const [lista, setLista] = useState<string>('');
+
+  // Volta pra página 1 quando a busca (já debounced) muda.
+  useEffect(() => {
+    setPage(1);
+  }, [buscaDebounced]);
 
   const listPath = useMemo(() => {
     const qs = new URLSearchParams();
     qs.set('page', String(page));
     qs.set('limit', '20');
-    if (search.trim()) qs.set('search', search.trim());
+    if (buscaDebounced.trim()) qs.set('search', buscaDebounced.trim());
     if (status) qs.set('status', status);
     if (omie) qs.set('omieStatus', omie);
     if (lista) qs.set('lista', lista);
     return `/clientes?${qs.toString()}`;
-  }, [page, search, status, omie, lista]);
+  }, [page, buscaDebounced, status, omie, lista]);
 
   const {
     data: page$,
@@ -302,10 +311,7 @@ export default function ClientesPage() {
               leftIcon={<Search />}
               placeholder="Buscar por nome, CNPJ, e-mail…"
               value={search}
-              onChange={(e) => {
-                setSearch(e.target.value);
-                setPage(1);
-              }}
+              onChange={(e) => setSearch(e.target.value)}
               className="max-w-md flex-1"
             />
             <Select

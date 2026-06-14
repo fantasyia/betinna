@@ -28,6 +28,7 @@ import {
 import { NovoPedidoDialog } from '@/components/NovoPedidoDialog';
 import { api, ApiError } from '@/lib/api';
 import { useApiQuery, type PaginatedResponse } from '@/hooks/useApiQuery';
+import { useDebouncedValue } from '@/hooks/useDebouncedValue';
 import { useRole } from '@/hooks/usePermission';
 import { PageLayout } from '@/components/PageLayout';
 import { VendasTabs } from '@/components/VendasTabs';
@@ -187,6 +188,8 @@ export default function PedidosPage() {
   const [searchParams, setSearchParams] = useSearchParams();
   const [page, setPage] = useState(1);
   const [search, setSearch] = useState('');
+  // Busca com debounce: o input responde na hora, requisição só ~300ms após parar.
+  const buscaDebounced = useDebouncedValue(search, 300);
   const [status, setStatus] = useState<string>('');
   const [selected, setSelected] = useState<string | null>(null);
   // B2 — seleção múltipla pra ações em massa
@@ -215,9 +218,14 @@ export default function PedidosPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [searchParams]);
 
+  // Volta pra página 1 quando a busca (já debounced) muda.
+  useEffect(() => {
+    setPage(1);
+  }, [buscaDebounced]);
+
   const listPath = useMemo(() => {
     const qs = new URLSearchParams({ page: String(page), limit: '20' });
-    if (search.trim()) qs.set('search', search.trim());
+    if (buscaDebounced.trim()) qs.set('search', buscaDebounced.trim());
     if (status) qs.set('status', status);
     if (clienteIdFilter) qs.set('clienteId', clienteIdFilter);
     if (periodo === 'custom') {
@@ -235,7 +243,7 @@ export default function PedidosPage() {
       qs.set('dataInicio', inicio.toISOString());
     }
     return `/pedidos?${qs.toString()}`;
-  }, [page, search, status, periodo, dataInicioCustom, dataFimCustom, clienteIdFilter]);
+  }, [page, buscaDebounced, status, periodo, dataInicioCustom, dataFimCustom, clienteIdFilter]);
 
   const { data: pageResp, loading, error, refetch } = useApiQuery<PaginatedResponse<Pedido>>(listPath);
 
@@ -408,10 +416,7 @@ export default function PedidosPage() {
             leftIcon={<Search />}
             placeholder="Cliente, número OMIE…"
             value={search}
-            onChange={(e) => {
-              setSearch(e.target.value);
-              setPage(1);
-            }}
+            onChange={(e) => setSearch(e.target.value)}
             className="max-w-md flex-1"
           />
           <Select

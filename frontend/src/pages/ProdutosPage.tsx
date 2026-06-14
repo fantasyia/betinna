@@ -1,6 +1,7 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { api, ApiError } from '@/lib/api';
 import { useApiQuery, type PaginatedResponse } from '@/hooks/useApiQuery';
+import { useDebouncedValue } from '@/hooks/useDebouncedValue';
 import { PageLayout } from '@/components/PageLayout';
 import { CatalogoTabs } from '@/components/CatalogoTabs';
 import { Table, Pagination, type Column } from '@/components/Table';
@@ -39,6 +40,8 @@ interface Facets {
 export default function ProdutosPage() {
   const [page, setPage] = useState(1);
   const [search, setSearch] = useState('');
+  // Busca com debounce: o input responde na hora, requisição só ~300ms após parar.
+  const buscaDebounced = useDebouncedValue(search, 300);
   const [linha, setLinha] = useState('');
   const [categoria, setCategoria] = useState('');
   const [marca, setMarca] = useState('');
@@ -46,16 +49,21 @@ export default function ProdutosPage() {
   const [semEstoque, setSemEstoque] = useState('');
   const [editing, setEditing] = useState<Produto | null>(null);
 
+  // Volta pra página 1 quando a busca (já debounced) muda.
+  useEffect(() => {
+    setPage(1);
+  }, [buscaDebounced]);
+
   const listPath = useMemo(() => {
     const qs = new URLSearchParams({ page: String(page), limit: '20' });
-    if (search.trim()) qs.set('search', search.trim());
+    if (buscaDebounced.trim()) qs.set('search', buscaDebounced.trim());
     if (linha) qs.set('linha', linha);
     if (categoria) qs.set('categoria', categoria);
     if (marca) qs.set('marca', marca);
     if (ativo) qs.set('ativo', ativo);
     if (semEstoque) qs.set('semEstoque', semEstoque);
     return `/produtos?${qs.toString()}`;
-  }, [page, search, linha, categoria, marca, ativo, semEstoque]);
+  }, [page, buscaDebounced, linha, categoria, marca, ativo, semEstoque]);
 
   const toast = useToast();
   const { data: pageResp, loading, error, refetch } = useApiQuery<PaginatedResponse<Produto>>(listPath);
@@ -199,10 +207,7 @@ export default function ProdutosPage() {
         <FilterBar>
           <SearchInput
             value={search}
-            onChange={(v) => {
-              setSearch(v);
-              setPage(1);
-            }}
+            onChange={(v) => setSearch(v)}
             placeholder="Nome, SKU, marca…"
           />
           <Select
