@@ -40,7 +40,7 @@ status reflete o que está **no código**, não intenção.
 | 🔴 F · Penhasco de testes (frontend / evolution / módulos novos) | 🟡 parcial | (vários) | Adicionados specs onde foi corrigido: `auth-session`, `empresas`, `auth-context`, `tenant-throttler`, `evolution-webhook`, `nps.service`. Frontend continua **sem teste**; cobertura ampla segue pendente. |
 | 🔴 G · `REDIS_URL` default localhost | ✅ feito | `862d0f5` | `auditProductionReadiness()` marca localhost/127.0.0.1/[::1] em prod como **crítico** → boot aborta (mesmo padrão do ENCRYPTION_KEY). Em dev, localhost segue normal. 4 specs. |
 | 🔴 G · body-parser 20mb global | ✅ feito | `2853571`+`576e27e`+`84f137c` | Guard de `Content-Length` por rota roda **antes** do parser. **Webhooks públicos = 1MB** (eram a superfície de DoS); 20MB só nos uploads autenticados (`/inbox` mídia, `/import` CSV); resto 1MB. NÃO toca no `rawBody` (lê só header) → HMAC intacto. **Pula `multipart/form-data`** (documentos/logo têm limite próprio do multer). 12 specs. |
-| 🔴 G · Margem/custo = chute de 70% | ⛔ pendente | — | Não tocado (aguarda tabela de preço real do OMIE). |
+| 🔴 G · Margem/custo = chute de 70% | ✅ feito | `0735621`+`a5b9393` | Paramos de inventar o custo. `precoFabrica` virou opcional (migration: DROP NOT NULL); o import do OMIE não calcula mais o ×0,70 (produto novo = null; existente não é tocado — corrige bug do sync que apagava custo digitado). Tela mostra "custo não informado"/"defina o custo" em vez de número falso. Quando o OMIE real trouxer a tabela de custo, ela preenche. tsc/lint/1594 specs verdes. |
 | 🔴 H · Arquivos gigantes (InboxPage 3.106, FluxoEditor 2.736) | ⛔ pendente | — | Não tocado. |
 
 **Resumo:** os **2 🚨 fechados**; do Tema A (isolamento), 3 de 4 fechados (falta `Conversation`,
