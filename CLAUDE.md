@@ -61,7 +61,14 @@ scripts/  — deploy helpers (start.js, deploy-migrations.js)
 - Componentes UI vivem em `frontend/src/components/ui/` (Button, Dialog, Drawer, Card, etc.)
 - Páginas em `frontend/src/pages/` — uma por feature
 - Hooks compartilhados em `frontend/src/hooks/`
-- Tokens visuais em `frontend/src/components/styles.ts` (legacy CSSProperties) e `index.css` (CSS vars novas)
+- **Sistema visual oficial pra telas NOVAS = `ui/` (Tailwind + CSS vars do `index.css`).**
+  O `components/styles.ts` (CSSProperties inline) é **legado** — não criar tela nova com
+  ele; migração das antigas é gradual (icebox). Tokens visuais em `styles.ts` + `index.css`.
+- **Diálogos: `Dialog` de `@/components/ui` é o oficial.** O `components/Modal.tsx` é legado
+  (`@deprecated`) — não usar em código novo; as ~14 páginas que ainda o usam migram aos poucos.
+- **Formatação pt-BR vive em `@/lib/masks`** — `formatMoeda`/`formatMoedaCompacta` (R$),
+  `formatNumero` (1.234,56), `formatPercent(v, casas)` (12,3%). **NÃO** reimplementar
+  `Intl.NumberFormat`/`toLocaleString`/`` `${x.toFixed(n)}%` `` inline (vírgula decimal sempre).
 - Sempre usar `data-testid` em botões/inputs interativos pra facilitar E2E
 - Comentários em português (pt-BR), curtos e diretos
 

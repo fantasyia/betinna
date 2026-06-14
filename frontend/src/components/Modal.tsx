@@ -11,6 +11,14 @@ export interface ModalProps {
 }
 
 /**
+ * @deprecated Use o `Dialog` de `@/components/ui` em telas NOVAS.
+ *
+ * Este Modal legado está **congelado**: usa `fixed` (sem portal) e tokens do
+ * `styles.ts` legado, então não acompanha o sistema visual novo (Tailwind +
+ * CSS vars). Não receberá features novas. As ~14 páginas que ainda o importam
+ * seguem funcionando; a migração delas pra `ui/Dialog` é icebox (não fazer em
+ * lote agora). Para qualquer diálogo NOVO: `import { Dialog } from '@/components/ui'`.
+ *
  * Modal acessível minimalista — overlay click + ESC fecham.
  * Sem portal pra evitar deps; usa fixed positioning.
  */
