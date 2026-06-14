@@ -28,9 +28,9 @@ const makePrisma = () => ({
     findFirst: vi.fn(),
   },
 });
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-const makeIntegracoes = (): { obterCredenciaisInternas: any; registrarSyncOk: any } => ({
+const makeIntegracoes = () => ({
   obterCredenciaisInternas: vi.fn(),
+  salvarCredenciaisInternas: vi.fn(async () => undefined),
   registrarSyncOk: vi.fn(async () => undefined),
 });
 
@@ -73,24 +73,24 @@ describe('AmazonLwaService.processCallback', () => {
       },
     });
     const prisma = makePrisma();
+    const integ = makeIntegracoes();
     const svc = new AmazonLwaService(
       makeEnv() as never,
       http as never,
       prisma as never,
-      makeIntegracoes() as never,
+      integ as never,
     );
     const url = await svc.buildAuthUrl('emp-1');
     const state = new URL(url).searchParams.get('state')!;
     const r = await svc.processCallback('code-x', 'A2L3F4ABCDEF', state);
     expect(r.empresaId).toBe('emp-1');
     expect(r.sellingPartnerId).toBe('A2L3F4ABCDEF');
-    expect(prisma.integracaoConexao.upsert).toHaveBeenCalledWith(
-      expect.objectContaining({
-        create: expect.objectContaining({
-          servico: 'amazon',
-          externalAccountId: 'A2L3F4ABCDEF',
-        }),
-      }),
+    // Persistência centralizada em IntegracoesService.salvarCredenciaisInternas.
+    expect(integ.salvarCredenciaisInternas).toHaveBeenCalledWith(
+      'emp-1',
+      'amazon',
+      expect.objectContaining({ sellingPartnerId: 'A2L3F4ABCDEF' }),
+      'A2L3F4ABCDEF',
     );
   });
 
@@ -193,6 +193,6 @@ describe('AmazonLwaService.getCredenciais refresh', () => {
     const r = await svc.getCredenciais('emp-1');
     expect(r.accessToken).toBe('fresh-at');
     expect(r.refreshToken).toBe('rt-original');
-    expect(prisma.integracaoConexao.upsert).toHaveBeenCalled();
+    expect(integ.salvarCredenciaisInternas).toHaveBeenCalled();
   });
 });

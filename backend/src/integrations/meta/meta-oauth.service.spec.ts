@@ -4,16 +4,9 @@ import {
   IntegrationException,
   UnauthorizedException,
 } from '@shared/errors/app-exception';
-import { CryptoUtil } from '@shared/utils/crypto.util';
 import { MetaOAuthService } from './meta-oauth.service';
 
 const ENC_KEY = 'a'.repeat(64);
-
-// Mesmo CryptoUtil que o service usa internamente (derivado da ENCRYPTION_KEY de teste),
-// pra cifrar credenciais de fixture e decifrar o que foi persistido no upsert.
-const cryptoTest = new CryptoUtil(ENC_KEY);
-const encCreds = (creds: unknown): string => cryptoTest.encrypt(JSON.stringify(creds));
-const decCreds = (enc: string): Record<string, unknown> => JSON.parse(cryptoTest.decrypt(enc));
 const DIA_MS = 86_400_000;
 
 const makeEnv = (overrides: Record<string, string> = {}) => ({
@@ -45,9 +38,16 @@ const makePrisma = () => ({
   },
 });
 
+// Após a centralização (D9), o MetaOAuthService não cifra/decifra nem faz upsert
+// direto: lê via obterCredenciaisInternas e grava via salvarCredenciaisInternas.
 const makeIntegracoes = () => ({
+  obterCredenciaisInternas: vi.fn(),
+  salvarCredenciaisInternas: vi.fn(async () => undefined),
   registrarSyncOk: vi.fn(async () => undefined),
 });
+
+// Args do salvarCredenciaisInternas: (empresaId, servico, credenciais, externalAccountId).
+type SalvarArgs = [string, string, Record<string, unknown>, string];
 
 describe('MetaOAuthService.buildAuthUrl', () => {
   it('inclui scope amplo + state JWT quando configurado', async () => {
@@ -89,14 +89,12 @@ describe('MetaOAuthService.processCallback', () => {
     ]);
     graph.obterIgVinculadoPage.mockResolvedValueOnce({ id: 'ig-1', username: 'lojax' });
 
-    const prisma = makePrisma();
-    prisma.integracaoConexao.upsert.mockResolvedValue({});
-
+    const integ = makeIntegracoes();
     const svc = new MetaOAuthService(
       makeEnv() as never,
       graph as never,
-      prisma as never,
-      makeIntegracoes() as never,
+      makePrisma() as never,
+      integ as never,
     );
     const url = await svc.buildAuthUrl('emp-99');
     const state = new URL(url).searchParams.get('state')!;
@@ -109,21 +107,17 @@ describe('MetaOAuthService.processCallback', () => {
       igUserId: 'ig-1',
       igUsername: 'lojax',
     });
-    expect(prisma.integracaoConexao.upsert).toHaveBeenCalledTimes(2);
-    // Facebook conexão
-    const fbCall = prisma.integracaoConexao.upsert.mock.calls.find(
-      (c: unknown[]) => (c[0] as { create: { servico: string } }).create.servico === 'facebook',
-    )!;
-    expect((fbCall[0] as { create: { externalAccountId: string } }).create.externalAccountId).toBe(
-      'page-1',
-    );
-    // Instagram conexão
-    const igCall = prisma.integracaoConexao.upsert.mock.calls.find(
-      (c: unknown[]) => (c[0] as { create: { servico: string } }).create.servico === 'instagram',
-    )!;
-    expect((igCall[0] as { create: { externalAccountId: string } }).create.externalAccountId).toBe(
-      'ig-1',
-    );
+
+    // Persistência centralizada: 2 chamadas (facebook + instagram).
+    expect(integ.salvarCredenciaisInternas).toHaveBeenCalledTimes(2);
+    const calls = integ.salvarCredenciaisInternas.mock.calls as unknown as SalvarArgs[];
+    const fbCall = calls.find((c) => c[1] === 'facebook')!;
+    expect(fbCall[0]).toBe('emp-99');
+    expect(fbCall[2]).toMatchObject({ pageId: 'page-1', pageName: 'Loja X' });
+    expect(fbCall[3]).toBe('page-1');
+    const igCall = calls.find((c) => c[1] === 'instagram')!;
+    expect(igCall[2]).toMatchObject({ igUserId: 'ig-1', igUsername: 'lojax' });
+    expect(igCall[3]).toBe('ig-1');
   });
 
   it('persiste só Facebook quando page não tem IG vinculado', async () => {
@@ -135,18 +129,20 @@ describe('MetaOAuthService.processCallback', () => {
     ]);
     graph.obterIgVinculadoPage.mockResolvedValueOnce(null);
 
-    const prisma = makePrisma();
+    const integ = makeIntegracoes();
     const svc = new MetaOAuthService(
       makeEnv() as never,
       graph as never,
-      prisma as never,
-      makeIntegracoes() as never,
+      makePrisma() as never,
+      integ as never,
     );
     const url = await svc.buildAuthUrl('emp-1');
     const state = new URL(url).searchParams.get('state')!;
     const r = await svc.processCallback('code', state);
     expect(r.pagesConectadas[0].igUserId).toBeUndefined();
-    expect(prisma.integracaoConexao.upsert).toHaveBeenCalledTimes(1);
+    expect(integ.salvarCredenciaisInternas).toHaveBeenCalledTimes(1);
+    const calls = integ.salvarCredenciaisInternas.mock.calls as unknown as SalvarArgs[];
+    expect(calls[0][1]).toBe('facebook');
   });
 
   it('rejeita state assinado com outra ENCRYPTION_KEY', async () => {
@@ -183,6 +179,34 @@ describe('MetaOAuthService.resolverPorAccount', () => {
     const r = await svc.resolverPorAccount('facebook', 'page-xyz');
     expect(r).toBeNull();
   });
+
+  it('resolve empresaId via Prisma (lookup reverso) e decifra pelo ponto central', async () => {
+    const prisma = makePrisma();
+    prisma.integracaoConexao.findFirst.mockResolvedValueOnce({ empresaId: 'emp-7' });
+    const integ = makeIntegracoes();
+    integ.obterCredenciaisInternas.mockResolvedValueOnce({
+      credenciais: { pageId: 'page-1', pageAccessToken: 'tok', igUserId: 'ig-1' },
+    });
+
+    const svc = new MetaOAuthService(
+      makeEnv() as never,
+      makeGraph() as never,
+      prisma as never,
+      integ as never,
+    );
+    const r = await svc.resolverPorAccount('instagram', 'ig-1');
+    expect(r).toEqual({
+      empresaId: 'emp-7',
+      credenciais: { pageId: 'page-1', pageAccessToken: 'tok', igUserId: 'ig-1' },
+    });
+    // Lookup reverso por externalAccountId pede só o empresaId ao Prisma...
+    expect(prisma.integracaoConexao.findFirst).toHaveBeenCalledWith({
+      where: { servico: 'instagram', externalAccountId: 'ig-1', ativo: true },
+      select: { empresaId: true },
+    });
+    // ...e a decifragem passa pelo ponto único (D9).
+    expect(integ.obterCredenciaisInternas).toHaveBeenCalledWith('emp-7', 'instagram');
+  });
 });
 
 describe('MetaOAuthService.renovarTokenSeNecessario', () => {
@@ -194,46 +218,38 @@ describe('MetaOAuthService.renovarTokenSeNecessario', () => {
     userTokenExpiresAt: Date.now() + expiresEmDias * DIA_MS,
   });
 
-  const fakeConn = (creds: unknown, servico = 'facebook') => ({
-    id: 'conn-1',
-    empresaId: 'emp-1',
-    servico,
-    ativo: true,
-    credenciais: encCreds(creds),
-    externalAccountId: 'page-1',
-  });
-
   it("retorna 'sem-conexao' quando não há conexão ativa", async () => {
-    const prisma = makePrisma();
-    prisma.integracaoConexao.findFirst.mockResolvedValueOnce(null);
+    const integ = makeIntegracoes();
+    // obterCredenciaisInternas lança quando não há conexão ativa/legível.
+    integ.obterCredenciaisInternas.mockRejectedValueOnce(new Error('não configurada'));
     const svc = new MetaOAuthService(
       makeEnv() as never,
       makeGraph() as never,
-      prisma as never,
-      makeIntegracoes() as never,
+      makePrisma() as never,
+      integ as never,
     );
     expect(await svc.renovarTokenSeNecessario('emp-1', 'facebook')).toBe('sem-conexao');
   });
 
   it("retorna 'ok' e NÃO renova quando ainda está longe de expirar", async () => {
-    const prisma = makePrisma();
-    prisma.integracaoConexao.findFirst.mockResolvedValueOnce(fakeConn(fbCreds(40)));
+    const integ = makeIntegracoes();
+    integ.obterCredenciaisInternas.mockResolvedValueOnce({ credenciais: fbCreds(40) });
     const graph = makeGraph();
     const svc = new MetaOAuthService(
       makeEnv() as never,
       graph as never,
-      prisma as never,
-      makeIntegracoes() as never,
+      makePrisma() as never,
+      integ as never,
     );
 
     expect(await svc.renovarTokenSeNecessario('emp-1', 'facebook', 14)).toBe('ok');
     expect(graph.exchangeLongLived).not.toHaveBeenCalled();
-    expect(prisma.integracaoConexao.upsert).not.toHaveBeenCalled();
+    expect(integ.salvarCredenciaisInternas).not.toHaveBeenCalled();
   });
 
   it("retorna 'renovado' e persiste novos tokens quando perto de expirar", async () => {
-    const prisma = makePrisma();
-    prisma.integracaoConexao.findFirst.mockResolvedValueOnce(fakeConn(fbCreds(5)));
+    const integ = makeIntegracoes();
+    integ.obterCredenciaisInternas.mockResolvedValueOnce({ credenciais: fbCreds(5) });
     const graph = makeGraph();
     graph.exchangeLongLived.mockResolvedValueOnce({
       access_token: 'user-tok-novo',
@@ -245,28 +261,29 @@ describe('MetaOAuthService.renovarTokenSeNecessario', () => {
     const svc = new MetaOAuthService(
       makeEnv() as never,
       graph as never,
-      prisma as never,
-      makeIntegracoes() as never,
+      makePrisma() as never,
+      integ as never,
     );
 
     const r = await svc.renovarTokenSeNecessario('emp-1', 'facebook', 14);
 
     expect(r).toBe('renovado');
-    // Re-trocou o user token antigo pelo novo
+    // Re-trocou o user token antigo pelo novo.
     expect(graph.exchangeLongLived).toHaveBeenCalledWith('user-tok-antigo');
-    // Persistiu credenciais com os tokens novos
-    const enc = (
-      prisma.integracaoConexao.upsert.mock.calls[0][0] as { update: { credenciais: string } }
-    ).update.credenciais;
-    const persistido = decCreds(enc);
-    expect(persistido.userAccessToken).toBe('user-tok-novo');
-    expect(persistido.pageAccessToken).toBe('page-tok-novo');
-    expect(persistido.userTokenExpiresAt).toBeGreaterThan(Date.now());
+    // Persistiu (centralizado) com os tokens novos + externalAccountId da page.
+    const calls = integ.salvarCredenciaisInternas.mock.calls as unknown as SalvarArgs[];
+    const [empresaId, servico, creds, externalAccountId] = calls[0];
+    expect(empresaId).toBe('emp-1');
+    expect(servico).toBe('facebook');
+    expect(externalAccountId).toBe('page-1');
+    expect(creds.userAccessToken).toBe('user-tok-novo');
+    expect(creds.pageAccessToken).toBe('page-tok-novo');
+    expect(creds.userTokenExpiresAt as number).toBeGreaterThan(Date.now());
   });
 
   it('lança BusinessRuleException quando a página some após renovar (revogada)', async () => {
-    const prisma = makePrisma();
-    prisma.integracaoConexao.findFirst.mockResolvedValueOnce(fakeConn(fbCreds(2)));
+    const integ = makeIntegracoes();
+    integ.obterCredenciaisInternas.mockResolvedValueOnce({ credenciais: fbCreds(2) });
     const graph = makeGraph();
     graph.exchangeLongLived.mockResolvedValueOnce({ access_token: 'user-tok-novo' });
     graph.listarPages.mockResolvedValueOnce([
@@ -275,8 +292,8 @@ describe('MetaOAuthService.renovarTokenSeNecessario', () => {
     const svc = new MetaOAuthService(
       makeEnv() as never,
       graph as never,
-      prisma as never,
-      makeIntegracoes() as never,
+      makePrisma() as never,
+      integ as never,
     );
 
     await expect(svc.renovarTokenSeNecessario('emp-1', 'facebook', 14)).rejects.toBeInstanceOf(
@@ -285,15 +302,15 @@ describe('MetaOAuthService.renovarTokenSeNecessario', () => {
   });
 
   it("retorna 'sem-expiracao' pra conexão legada sem userAccessToken/expiração", async () => {
-    const prisma = makePrisma();
-    prisma.integracaoConexao.findFirst.mockResolvedValueOnce(
-      fakeConn({ pageId: 'page-1', pageName: 'X', pageAccessToken: 'só-page' }),
-    );
+    const integ = makeIntegracoes();
+    integ.obterCredenciaisInternas.mockResolvedValueOnce({
+      credenciais: { pageId: 'page-1', pageName: 'X', pageAccessToken: 'só-page' },
+    });
     const svc = new MetaOAuthService(
       makeEnv() as never,
       makeGraph() as never,
-      prisma as never,
-      makeIntegracoes() as never,
+      makePrisma() as never,
+      integ as never,
     );
     expect(await svc.renovarTokenSeNecessario('emp-1', 'facebook')).toBe('sem-expiracao');
   });

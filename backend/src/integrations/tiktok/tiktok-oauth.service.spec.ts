@@ -28,6 +28,7 @@ const makePrismaMock = () => ({
 
 const makeIntegracoesMock = () => ({
   obterCredenciaisInternas: vi.fn(),
+  salvarCredenciaisInternas: vi.fn().mockResolvedValue(undefined),
   registrarSyncOk: vi.fn().mockResolvedValue({}),
 });
 

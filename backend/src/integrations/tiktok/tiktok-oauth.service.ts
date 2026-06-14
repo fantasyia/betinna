@@ -6,7 +6,6 @@ import { IntegrationException } from '@shared/errors/app-exception';
 import { ErrorCode } from '@shared/errors/error-codes';
 import { HttpClientService } from '@shared/http/http-client.service';
 import { HttpClientError } from '@shared/http/http-client.types';
-import { CryptoUtil } from '@shared/utils/crypto.util';
 import {
   deriveOAuthStateSecret,
   signOAuthState,
@@ -39,7 +38,6 @@ const TOKEN_REFRESH_MARGIN_MS = 60_000;
 export class TikTokOAuthService {
   private readonly logger = new Logger(TikTokOAuthService.name);
   private readonly stateSecret: Uint8Array;
-  private readonly crypto: CryptoUtil;
 
   constructor(
     private readonly env: EnvService,
@@ -48,7 +46,6 @@ export class TikTokOAuthService {
     private readonly integracoes: IntegracoesService,
   ) {
     this.stateSecret = deriveOAuthStateSecret(this.env.get('ENCRYPTION_KEY'), 'tiktok-oauth-state');
-    this.crypto = new CryptoUtil(this.env.get('ENCRYPTION_KEY'));
   }
 
   isConfigured(): boolean {
@@ -204,24 +201,12 @@ export class TikTokOAuthService {
   }
 
   private async persistir(empresaId: string, creds: TikTokCredenciais): Promise<void> {
-    const enc = this.crypto.encrypt(JSON.stringify(creds));
-    await this.prisma.integracaoConexao.upsert({
-      where: { empresaId_servico: { empresaId, servico: 'tiktok' } },
-      update: {
-        credenciais: enc,
-        ativo: true,
-        errosRecentes: 0,
-        externalAccountId: creds.shopId,
-      },
-      create: {
-        empresaId,
-        servico: 'tiktok',
-        ativo: true,
-        credenciais: enc,
-        externalAccountId: creds.shopId,
-      },
-    });
-    await this.integracoes.registrarSyncOk(empresaId, 'tiktok').catch(() => undefined);
+    await this.integracoes.salvarCredenciaisInternas(
+      empresaId,
+      'tiktok',
+      creds as unknown as Record<string, unknown>,
+      creds.shopId,
+    );
   }
 
   private signState(empresaId: string): Promise<string> {

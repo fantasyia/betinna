@@ -6,7 +6,6 @@ import { IntegrationException } from '@shared/errors/app-exception';
 import { ErrorCode } from '@shared/errors/error-codes';
 import { HttpClientService } from '@shared/http/http-client.service';
 import { HttpClientError } from '@shared/http/http-client.types';
-import { CryptoUtil } from '@shared/utils/crypto.util';
 import {
   deriveOAuthStateSecret,
   signOAuthState,
@@ -38,7 +37,6 @@ const PATH_REFRESH = '/api/v2/auth/access_token/get';
 export class ShopeeOAuthService {
   private readonly logger = new Logger(ShopeeOAuthService.name);
   private readonly stateSecret: Uint8Array;
-  private readonly crypto: CryptoUtil;
 
   constructor(
     private readonly env: EnvService,
@@ -47,7 +45,6 @@ export class ShopeeOAuthService {
     private readonly integracoes: IntegracoesService,
   ) {
     this.stateSecret = deriveOAuthStateSecret(this.env.get('ENCRYPTION_KEY'), 'shopee-oauth-state');
-    this.crypto = new CryptoUtil(this.env.get('ENCRYPTION_KEY'));
   }
 
   isConfigured(): boolean {
@@ -206,24 +203,12 @@ export class ShopeeOAuthService {
   }
 
   private async persistir(empresaId: string, creds: ShopeeCredenciais): Promise<void> {
-    const enc = this.crypto.encrypt(JSON.stringify(creds));
-    await this.prisma.integracaoConexao.upsert({
-      where: { empresaId_servico: { empresaId, servico: 'shopee' } },
-      update: {
-        credenciais: enc,
-        ativo: true,
-        errosRecentes: 0,
-        externalAccountId: creds.shopId,
-      },
-      create: {
-        empresaId,
-        servico: 'shopee',
-        ativo: true,
-        credenciais: enc,
-        externalAccountId: creds.shopId,
-      },
-    });
-    await this.integracoes.registrarSyncOk(empresaId, 'shopee').catch(() => undefined);
+    await this.integracoes.salvarCredenciaisInternas(
+      empresaId,
+      'shopee',
+      creds as unknown as Record<string, unknown>,
+      creds.shopId,
+    );
   }
 
   private appendState(redirectUri: string, state: string): string {

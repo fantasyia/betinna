@@ -4,7 +4,6 @@ import { PrismaService } from '@database/prisma.service';
 import { IntegracoesService } from '@modules/integracoes/integracoes.service';
 import { BusinessRuleException, IntegrationException } from '@shared/errors/app-exception';
 import { ErrorCode } from '@shared/errors/error-codes';
-import { CryptoUtil } from '@shared/utils/crypto.util';
 import {
   deriveOAuthStateSecret,
   signOAuthState,
@@ -53,7 +52,6 @@ interface ConectarPagesResult {
 export class MetaOAuthService {
   private readonly logger = new Logger(MetaOAuthService.name);
   private readonly stateSecret: Uint8Array;
-  private readonly crypto: CryptoUtil;
 
   constructor(
     private readonly env: EnvService,
@@ -62,7 +60,6 @@ export class MetaOAuthService {
     private readonly integracoes: IntegracoesService,
   ) {
     this.stateSecret = deriveOAuthStateSecret(this.env.get('ENCRYPTION_KEY'), 'meta-oauth-state');
-    this.crypto = new CryptoUtil(this.env.get('ENCRYPTION_KEY'));
   }
 
   isConfigured(): boolean {
@@ -174,15 +171,13 @@ export class MetaOAuthService {
     servico: 'facebook' | 'instagram',
     limiarDias = 14,
   ): Promise<'renovado' | 'ok' | 'sem-conexao' | 'sem-expiracao'> {
-    const conn = await this.prisma.integracaoConexao.findFirst({
-      where: { empresaId, servico, ativo: true },
-    });
-    if (!conn) return 'sem-conexao';
-
+    // Decifragem centralizada no IntegracoesService (ponto único — D9).
     let creds: FacebookCredenciais | InstagramCredenciais;
     try {
-      creds = JSON.parse(this.crypto.decrypt(conn.credenciais as unknown as string));
+      const conn = await this.integracoes.obterCredenciaisInternas(empresaId, servico);
+      creds = conn.credenciais as unknown as FacebookCredenciais | InstagramCredenciais;
     } catch {
+      // Sem conexão ativa / credenciais ilegíveis — o cron apenas pula esta empresa.
       return 'sem-conexao';
     }
 
@@ -234,14 +229,25 @@ export class MetaOAuthService {
     empresaId: string;
     credenciais: FacebookCredenciais | InstagramCredenciais;
   } | null> {
+    // Lookup reverso por externalAccountId precisa do Prisma (ainda não sabemos
+    // a empresa); a DECIFRAGEM, porém, passa pelo ponto central (D9).
+    //
+    // São 2 reads (acha empresaId → decifra por empresaId+servico), então há uma
+    // janela mínima onde um reconnect concorrente poderia desativar a linha entre
+    // eles. É FAIL-SAFE de propósito: se isso acontece, obterCredenciaisInternas
+    // lança (linha inativa) e caímos no catch → null. O caller do webhook trata
+    // null como "não resolvido" — nunca devolve credencial de outra empresa.
     const conn = await this.prisma.integracaoConexao.findFirst({
       where: { servico, externalAccountId, ativo: true },
+      select: { empresaId: true },
     });
     if (!conn) return null;
     try {
-      const raw = this.crypto.decrypt(conn.credenciais as unknown as string);
-      const creds = JSON.parse(raw);
-      return { empresaId: conn.empresaId, credenciais: creds };
+      const dec = await this.integracoes.obterCredenciaisInternas(conn.empresaId, servico);
+      return {
+        empresaId: conn.empresaId,
+        credenciais: dec.credenciais as unknown as FacebookCredenciais | InstagramCredenciais,
+      };
     } catch {
       return null;
     }
@@ -255,20 +261,12 @@ export class MetaOAuthService {
     credenciais: FacebookCredenciais | InstagramCredenciais,
     externalAccountId: string,
   ): Promise<void> {
-    const enc = this.crypto.encrypt(JSON.stringify(credenciais));
-    await this.prisma.integracaoConexao.upsert({
-      where: { empresaId_servico: { empresaId, servico } },
-      update: { credenciais: enc, ativo: true, errosRecentes: 0, externalAccountId },
-      create: {
-        empresaId,
-        servico,
-        ativo: true,
-        credenciais: enc,
-        externalAccountId,
-      },
-    });
-    // garante invalidação do cache do IntegracoesService
-    await this.integracoes.registrarSyncOk(empresaId, servico).catch(() => undefined);
+    await this.integracoes.salvarCredenciaisInternas(
+      empresaId,
+      servico,
+      credenciais as unknown as Record<string, unknown>,
+      externalAccountId,
+    );
   }
 
   private signState(empresaId: string): Promise<string> {
