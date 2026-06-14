@@ -91,7 +91,7 @@
 | D5 | **Catálogo do rep** = subset de Produtos com markup% por item | Cada rep monta o próprio catálogo personalizado |
 | D6 | **Salvar como Proposta** na revisão do Novo Pedido | Alternativa antes de enviar pro OMIE |
 | D8 | **Stack: NestJS + Railway + Supabase** | Pivô consciente do Next.js inicial. Justificado pelo briefing senior. |
-| D9 | **Integrações com credenciais por empresa** (`IntegracaoConexao`) cifradas AES-256-GCM | Multi-tenant exige isolamento de tokens entre empresas. `obterCredenciaisInternas` é o ponto único de decifragem. |
+| D9 | **Integrações com credenciais por empresa** (`IntegracaoConexao`) cifradas AES-256-GCM | Multi-tenant exige isolamento de tokens entre empresas. `obterCredenciaisInternas` é o ponto único de **decifragem**; `salvarCredenciaisInternas(empresaId, servico, creds, externalAccountId)` é o par de **escrita** (cifra + upsert + `registrarSyncOk`/invalida cache). Todo OAuth de escopo empresa (ML/Shopee/Amazon/TikTok/Meta) usa esses dois — **não** instanciar `new CryptoUtil` nem fazer `integracaoConexao.upsert` direto no service (mata o drift de cripto). |
 | D10 | **OMIE_DEMO_MODE default true** | Permite dev/CI sem credenciais reais. Trocar pra `false` no Railway quando plugar tenant real. |
 | D11 | **Webhooks externos sempre HMAC-validados** com `req.rawBody` + `timingSafeEqual` | OMIE/Meta/ML/etc todos suportam HMAC. Sem isso qualquer um pode falsificar status changes. |
 | D12 | **Dois modelos distintos pra credenciais**: `IntegracaoConexao` (empresa) e `UsuarioIntegracao` (usuário) | Postgres NULL-em-unique é traiçoeiro. Modelos separados deixam o escopo explícito no schema e mantêm o padrão `upsert` limpo. |
