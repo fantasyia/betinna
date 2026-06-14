@@ -378,6 +378,79 @@ describe('IntegracoesService', () => {
   });
 
   // -------------------------------------------------------------------------
+  // salvarCredenciaisInternas (par de escrita do obterCredenciaisInternas)
+  // -------------------------------------------------------------------------
+
+  describe('salvarCredenciaisInternas', () => {
+    it('cifra as credenciais e faz upsert (ativo, erros zerados, externalAccountId)', async () => {
+      prisma.integracaoConexao.upsert.mockResolvedValue(fakeConexao());
+      prisma.integracaoConexao.updateMany.mockResolvedValue({ count: 1 });
+
+      await service.salvarCredenciaisInternas(
+        'emp-1',
+        'mercadolivre' as never,
+        { accessToken: 'at', refreshToken: 'rt', userId: '999' },
+        '999',
+      );
+
+      const args = prisma.integracaoConexao.upsert.mock.calls[0][0];
+      expect(args.where).toEqual({
+        empresaId_servico: { empresaId: 'emp-1', servico: 'mercadolivre' },
+      });
+      // Credenciais cifradas (prefixo do mock) tanto no create quanto no update.
+      expect(args.create.credenciais).toMatch(/^enc:/);
+      expect(args.update.credenciais).toMatch(/^enc:/);
+      // O texto cifrado embute o JSON das credenciais (nunca persiste em claro).
+      expect(args.create.credenciais).toContain('"userId":"999"');
+      expect(args.create.ativo).toBe(true);
+      expect(args.update.ativo).toBe(true);
+      expect(args.update.errosRecentes).toBe(0);
+      expect(args.create.externalAccountId).toBe('999');
+      expect(args.update.externalAccountId).toBe('999');
+    });
+
+    it('grava externalAccountId igual em create E update (contrato sem assimetria null)', async () => {
+      prisma.integracaoConexao.upsert.mockResolvedValue(fakeConexao());
+      prisma.integracaoConexao.updateMany.mockResolvedValue({ count: 1 });
+
+      await service.salvarCredenciaisInternas(
+        'emp-1',
+        'shopee' as never,
+        { token: 'x' },
+        'shop-77',
+      );
+
+      const args = prisma.integracaoConexao.upsert.mock.calls[0][0];
+      // Contrato endurecido: externalAccountId é obrigatório e gravado idêntico nos
+      // dois lados — nunca undefined (que preservaria no update mas viraria NULL no create).
+      expect(args.create.externalAccountId).toBe('shop-77');
+      expect(args.update.externalAccountId).toBe('shop-77');
+    });
+
+    it('invalida o cache após salvar (write-through — não serve credencial velha)', async () => {
+      // 1) popula o cache com a credencial antiga
+      prisma.integracaoConexao.findUnique.mockResolvedValue(
+        fakeConexao({ credenciais: 'enc:{"token":"velho"}', ativo: true }),
+      );
+      const antes = await service.obterCredenciaisInternas('emp-1', 'omie' as never);
+      expect(antes.credenciais).toEqual({ token: 'velho' });
+
+      // 2) grava credencial nova (passa por registrarSyncOk → invalidarCache)
+      prisma.integracaoConexao.upsert.mockResolvedValue(fakeConexao());
+      prisma.integracaoConexao.updateMany.mockResolvedValue({ count: 1 });
+      await service.salvarCredenciaisInternas('emp-1', 'omie' as never, { token: 'novo' }, 'acc-1');
+
+      // 3) próxima leitura vai ao banco de novo (cache invalidado) e vê a nova
+      prisma.integracaoConexao.findUnique.mockResolvedValue(
+        fakeConexao({ credenciais: 'enc:{"token":"novo"}', ativo: true }),
+      );
+      const depois = await service.obterCredenciaisInternas('emp-1', 'omie' as never);
+      expect(depois.credenciais).toEqual({ token: 'novo' });
+      expect(prisma.integracaoConexao.findUnique).toHaveBeenCalledTimes(2);
+    });
+  });
+
+  // -------------------------------------------------------------------------
   // registrarSyncOk / registrarSyncErro
   // -------------------------------------------------------------------------
 

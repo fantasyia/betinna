@@ -33,6 +33,7 @@ const makePrisma = () => ({
 const makeIntegracoes = () => ({
   obterCredenciaisInternas: vi.fn(),
   registrarSyncOk: vi.fn(async () => undefined),
+  salvarCredenciaisInternas: vi.fn(async () => undefined),
 });
 
 describe('MLOAuthService.buildAuthUrl', () => {
@@ -79,24 +80,24 @@ describe('MLOAuthService.processCallback', () => {
       data: { id: 9876543, nickname: 'LOJAX', site_id: 'MLB' },
     });
     const prisma = makePrisma();
+    const integ = makeIntegracoes();
     const svc = new MLOAuthService(
       makeEnv() as never,
       http as never,
       prisma as never,
-      makeIntegracoes() as never,
+      integ as never,
     );
     const url = await svc.buildAuthUrl('emp-1');
     const state = new URL(url).searchParams.get('state')!;
     const r = await svc.processCallback('code-abc', state);
     expect(r.empresaId).toBe('emp-1');
     expect(r.userId).toBe('9876543');
-    expect(prisma.integracaoConexao.upsert).toHaveBeenCalledWith(
-      expect.objectContaining({
-        create: expect.objectContaining({
-          servico: 'mercadolivre',
-          externalAccountId: '9876543',
-        }),
-      }),
+    // Persistência agora é centralizada em IntegracoesService.salvarCredenciaisInternas.
+    expect(integ.salvarCredenciaisInternas).toHaveBeenCalledWith(
+      'emp-1',
+      'mercadolivre',
+      expect.objectContaining({ userId: '9876543' }),
+      '9876543',
     );
   });
 
@@ -176,7 +177,7 @@ describe('MLOAuthService.getAccessToken refresh', () => {
     expect(r.accessToken).toBe('fresh');
     expect(r.refreshToken).toBe('rt-new');
     expect(http.post).toHaveBeenCalledTimes(1);
-    // Confirma persist com novo refresh token + externalAccountId
-    expect(prisma.integracaoConexao.upsert).toHaveBeenCalled();
+    // Confirma persist com novo refresh token + externalAccountId (centralizado).
+    expect(integ.salvarCredenciaisInternas).toHaveBeenCalled();
   });
 });

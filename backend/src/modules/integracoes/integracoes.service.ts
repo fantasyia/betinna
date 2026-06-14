@@ -215,6 +215,50 @@ export class IntegracoesService {
     return value;
   }
 
+  /**
+   * USO INTERNO POR SERVIÇOS DE INTEGRAÇÃO — escrita (par do `obterCredenciaisInternas`).
+   *
+   * Cifra + grava (upsert) as credenciais da conexão de empresa, marca como ativa,
+   * zera erros, grava o `externalAccountId` (id da conta externa — userId/shopId/
+   * sellingPartnerId/pageId — usado no routing reverso de webhook) e registra o sync
+   * OK (best-effort). Centraliza o código SENSÍVEL de persistência de credencial num
+   * lugar só — antes cada OAuth service (ML/Shopee/Amazon/TikTok/Meta) tinha sua
+   * própria cópia de `new CryptoUtil` + `encrypt` + `upsert`. Endurecer a cripto
+   * (ex.: rotação de chave) agora é UMA edição.
+   *
+   * `externalAccountId` é OBRIGATÓRIO (`string`, não `string | null`): todo OAuth de
+   * escopo empresa tem uma conta externa. Tipar como obrigatório evita a armadilha do
+   * `?? undefined` — que faria um `null` PRESERVAR o valor no UPDATE mas gravar NULL no
+   * CREATE (assimetria silenciosa do Prisma).
+   */
+  async salvarCredenciaisInternas(
+    empresaId: string,
+    servico: ServicoEmpresa,
+    credenciais: Record<string, unknown>,
+    externalAccountId: string,
+  ): Promise<void> {
+    const enc = this.crypto.encrypt(JSON.stringify(credenciais));
+    await this.prisma.integracaoConexao.upsert({
+      where: { empresaId_servico: { empresaId, servico } },
+      update: {
+        credenciais: enc,
+        ativo: true,
+        errosRecentes: 0,
+        externalAccountId,
+      },
+      create: {
+        empresaId,
+        servico,
+        ativo: true,
+        credenciais: enc,
+        externalAccountId,
+      },
+    });
+    // Mesmo comportamento que os services tinham após o upsert: registra sync OK
+    // (atualiza ultimoSync, zera erros, invalida cache, semáforo de saúde), best-effort.
+    await this.registrarSyncOk(empresaId, servico).catch(() => undefined);
+  }
+
   /** Marca um sync bem-sucedido (atualiza `ultimoSync` e zera erros). */
   async registrarSyncOk(empresaId: string, servico: ServicoEmpresa): Promise<void> {
     await this.prisma.integracaoConexao.updateMany({
