@@ -1,13 +1,19 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback } from 'react';
+import { useQuery } from '@tanstack/react-query';
 import { api, ApiError } from '@/lib/api';
+import { currentEmpresaId } from '@/lib/auth-store';
 
 /**
- * Hook minimalista para GET com 3 estados.
- * Sem cache (cada page mantém seu state). Sem React Query — não precisamos
- * de cache cross-page ainda. Quando precisar, dropa Tanstack Query in.
+ * Hook de GET com 3 estados — agora com CACHE cross-page por baixo (TanStack
+ * Query). A interface continua IDÊNTICA ({data, loading, error, refetch}), então
+ * as páginas que usam não mudam nada. Ganho: navegar de volta pra uma tela já
+ * visitada reaproveita o cache (não re-busca tudo do servidor a cada troca).
  *
  * Uso:
  *   const { data, loading, error, refetch } = useApiQuery<Resp>('/clientes?page=1');
+ *
+ * `path === null` desabilita a busca (mesmo comportamento de antes).
+ * `refetch()` força revalidar (continua funcionando em todos os call-sites).
  */
 export interface UseApiQueryResult<T> {
   data: T | null;
@@ -17,43 +23,35 @@ export interface UseApiQueryResult<T> {
 }
 
 export function useApiQuery<T>(path: string | null): UseApiQueryResult<T> {
-  const [data, setData] = useState<T | null>(null);
-  const [loading, setLoading] = useState<boolean>(path !== null);
-  const [error, setError] = useState<string | null>(null);
-  const [bump, setBump] = useState(0);
-  const cancelledRef = useRef(false);
+  // empresaId entra na chave do cache (isolamento multi-tenant). Defesa em
+  // profundidade: trocar de empresa já dá window.location.reload() (auth-store),
+  // o que zera o cache — mesmo assim a chave evita qualquer mistura de tenants.
+  const empresaId = currentEmpresaId();
 
-  const refetch = useCallback(() => setBump((b) => b + 1), []);
+  const query = useQuery<T>({
+    queryKey: [path, empresaId],
+    queryFn: () => api.get<T>(path as string),
+    enabled: path !== null,
+  });
 
-  useEffect(() => {
-    if (path === null) {
-      setData(null);
-      setLoading(false);
-      setError(null);
-      return;
-    }
-    cancelledRef.current = false;
-    setLoading(true);
-    setError(null);
-    api
-      .get<T>(path)
-      .then((r) => {
-        if (!cancelledRef.current) setData(r);
-      })
-      .catch((err) => {
-        if (cancelledRef.current) return;
-        const msg = err instanceof ApiError ? err.message : 'Erro ao carregar';
-        setError(msg);
-      })
-      .finally(() => {
-        if (!cancelledRef.current) setLoading(false);
-      });
-    return () => {
-      cancelledRef.current = true;
-    };
-  }, [path, bump]);
+  // `query.refetch` do TanStack é referencialmente estável → refetch fica estável.
+  // Ignora qualquer argumento (ex.: onRetry/onClick passam o event) — só revalida.
+  const refetchQuery = query.refetch;
+  const refetch = useCallback(() => {
+    void refetchQuery();
+  }, [refetchQuery]);
 
-  return { data, loading, error, refetch };
+  return {
+    data: (query.data ?? null) as T | null,
+    // path nulo = query desabilitada → não está "carregando".
+    loading: path === null ? false : query.isPending,
+    error: query.error
+      ? query.error instanceof ApiError
+        ? query.error.message
+        : 'Erro ao carregar'
+      : null,
+    refetch,
+  };
 }
 
 /**

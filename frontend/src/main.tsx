@@ -1,7 +1,9 @@
 import { StrictMode } from 'react';
 import { createRoot } from 'react-dom/client';
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import App from './App';
 import { ToastProvider } from '@/components/toast';
+import { ApiError } from '@/lib/api';
 import { initSentry } from '@/lib/sentry';
 import { bootstrapAuthFromBackend } from '@/lib/auth-store';
 import { registerPwa } from '@/lib/pwa';
@@ -82,6 +84,25 @@ void registerPwa({
 const root = document.getElementById('root');
 if (!root) throw new Error('#root não encontrado no index.html');
 
+// Cache de dados cross-page (TanStack Query). Singleton — criado UMA vez.
+// Multi-tenant: trocar de empresa dá window.location.reload() (auth-store),
+// o que zera este cache — então dois tenants nunca compartilham dados.
+const queryClient = new QueryClient({
+  defaultOptions: {
+    queries: {
+      staleTime: 60_000, // 1 min "fresco" — navegação rápida reusa sem re-buscar
+      gcTime: 5 * 60_000, // 5 min em memória após não-usado
+      refetchOnWindowFocus: false, // não re-buscar agressivo ao focar a aba
+      retry: (failureCount, error) => {
+        // 401 (auth morta) e 4xx (erro do cliente) não retentam; transientes até 2x.
+        const status = error instanceof ApiError ? error.status : 0;
+        if (status === 401 || (status >= 400 && status < 500)) return false;
+        return failureCount < 2;
+      },
+    },
+  },
+});
+
 // Bootstrap de auth ANTES de renderizar: chama POST /auth/refresh com o
 // cookie httpOnly. Se cookie válido, backend devolve novo access; senão,
 // fica sem sessão. Sem await: o App renderiza imediatamente e mostra
@@ -92,7 +113,9 @@ void bootstrapAuthFromBackend();
 createRoot(root).render(
   <StrictMode>
     <ToastProvider>
-      <App />
+      <QueryClientProvider client={queryClient}>
+        <App />
+      </QueryClientProvider>
     </ToastProvider>
   </StrictMode>,
 );
