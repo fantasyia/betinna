@@ -84,9 +84,26 @@ export class OmiePedidosService {
     try {
       response = await this.omie.incluirPedido(pedido.empresaId, payload);
     } catch (err) {
-      stopTimer();
-      this.metrics.omiePush.inc({ empresa: pedido.empresaId, status: 'error' });
-      throw err;
+      // Heal idempotente (ITEM 1): o envio pode ter falhado porque uma tentativa
+      // ANTERIOR já criou o pedido no OMIE e a resposta se perdeu (timeout) — aí o
+      // OMIE recusa o reenvio com "já cadastrado". Em vez de falhar e deixar o
+      // pedido preso fora de ENVIADO_OMIE, consultamos o OMIE pelo
+      // codigo_pedido_integracao (= pedido.numero). Se ele REALMENTE existe lá,
+      // reconciliamos (marca como enviado com o número de lá). Se NÃO existe, é
+      // erro real (validação, credencial, etc.) → propaga o erro original.
+      const existente = await this.omie
+        .consultarPedidoPorIntegracao(pedido.empresaId, pedido.numero)
+        .catch(() => null);
+      if (!existente) {
+        stopTimer();
+        this.metrics.omiePush.inc({ empresa: pedido.empresaId, status: 'error' });
+        throw err;
+      }
+      response = existente;
+      this.logger.warn(
+        `Pedido ${pedido.numero}: já estava cadastrado no OMIE (resposta perdida em ` +
+          `envio anterior) — reconciliado em vez de falhar.`,
+      );
     }
     stopTimer();
     this.metrics.omiePush.inc({ empresa: pedido.empresaId, status: 'success' });

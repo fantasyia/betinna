@@ -472,4 +472,64 @@ describe('OmieClientService', () => {
       expect(http.post).toHaveBeenCalledTimes(1); // sem fault-retry em escrita
     });
   });
+
+  // -------------------------------------------------------------------------
+  // Heal idempotente: ConsultarPedido por codigo_pedido_integracao
+  // -------------------------------------------------------------------------
+
+  describe('consultarPedidoPorIntegracao (heal)', () => {
+    beforeEach(() => {
+      integracoes.obterCredenciaisInternas.mockResolvedValue({
+        credenciais: { appKey: 'k', appSecret: 's' },
+      });
+    });
+
+    it('devolve o pedido quando o OMIE tem ele (cabecalho com numero_pedido)', async () => {
+      const service = new OmieClientService(
+        http as never,
+        makeEnvMock() as never,
+        integracoes as never,
+      );
+      http.post.mockResolvedValue({
+        data: {
+          pedido_venda_produto: { cabecalho: { codigo_pedido: 555, numero_pedido: '77777' } },
+        },
+      });
+
+      const r = await service.consultarPedidoPorIntegracao('emp-1', 'PED-2026-001');
+
+      expect(r?.numero_pedido).toBe('77777');
+      expect(http.post.mock.calls[0][1].body.call).toBe('ConsultarPedido');
+      expect(http.post.mock.calls[0][1].body.param[0]).toMatchObject({
+        codigo_pedido_integracao: 'PED-2026-001',
+      });
+    });
+
+    it('devolve null quando o OMIE NÃO encontra o pedido (fault)', async () => {
+      const service = new OmieClientService(
+        http as never,
+        makeEnvMock() as never,
+        integracoes as never,
+      );
+      http.post.mockResolvedValue({
+        data: { faultcode: 'SOAP-ENV:Client-104', faultstring: 'Pedido nao encontrado' },
+      });
+
+      const r = await service.consultarPedidoPorIntegracao('emp-1', 'PED-INEXISTENTE');
+      expect(r).toBeNull();
+    });
+
+    it('em demo mode devolve null sem chamar HTTP', async () => {
+      const service = new OmieClientService(
+        http as never,
+        makeEnvMock({ OMIE_DEMO_MODE: true }) as never,
+        integracoes as never,
+      );
+
+      const r = await service.consultarPedidoPorIntegracao('emp-1', 'PED-1');
+
+      expect(r).toBeNull();
+      expect(http.post).not.toHaveBeenCalled();
+    });
+  });
 });

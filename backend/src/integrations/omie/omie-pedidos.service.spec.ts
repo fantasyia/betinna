@@ -27,6 +27,8 @@ const makePrismaMock = () => ({
 
 const makeOmieClientMock = () => ({
   incluirPedido: vi.fn(),
+  // Default: pedido NÃO existe no OMIE (heal só reconcilia se a consulta achar).
+  consultarPedidoPorIntegracao: vi.fn().mockResolvedValue(null),
 });
 
 const makeIntegracoesMock = () => ({
@@ -200,6 +202,38 @@ describe('OmiePedidosService', () => {
       const payload = omie.incluirPedido.mock.calls[0][1];
       expect(payload.det).toHaveLength(3);
       expect(payload.cabecalho.quantidade_itens).toBe(3);
+    });
+
+    it('HEAL: reconcilia quando incluirPedido falha mas o pedido já existe no OMIE', async () => {
+      prisma.pedido.findFirst.mockResolvedValue(fakePedido());
+      // Envio falha (timeout / "já cadastrado")...
+      omie.incluirPedido.mockRejectedValue(new Error('OMIE.IncluirPedido: ja cadastrado'));
+      // ...mas o pedido REALMENTE existe no OMIE (resposta perdida num envio anterior):
+      omie.consultarPedidoPorIntegracao.mockResolvedValue(
+        fakeOmieResponse({ numero_pedido: 77777, codigo_status: 'reconciliado' }),
+      );
+
+      const result = await service.enviarPedido('ped-1');
+
+      // Consultou pelo codigo_pedido_integracao (= pedido.numero)
+      expect(omie.consultarPedidoPorIntegracao).toHaveBeenCalledWith('emp-1', 'PED-2026-001');
+      // Reconciliou: status local vira ENVIADO_OMIE com o número de lá (em vez de falhar)
+      expect(prisma.pedido.update).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: expect.objectContaining({ status: 'ENVIADO_OMIE', numeroOmie: '77777' }),
+        }),
+      );
+      expect(result.numeroOmie).toBe('77777');
+    });
+
+    it('HEAL: propaga o erro original quando o pedido NÃO existe no OMIE', async () => {
+      prisma.pedido.findFirst.mockResolvedValue(fakePedido());
+      const erro = new Error('OMIE.IncluirPedido: cliente nao encontrado');
+      omie.incluirPedido.mockRejectedValue(erro);
+      omie.consultarPedidoPorIntegracao.mockResolvedValue(null); // não existe lá → erro real
+
+      await expect(service.enviarPedido('ped-1')).rejects.toBe(erro);
+      expect(prisma.pedido.update).not.toHaveBeenCalled(); // não marcou como enviado
     });
   });
 });

@@ -153,3 +153,20 @@ export interface OmieIncluirPedidoResponse {
   descricao_status: string;
   numero_pedido?: string;
 }
+
+/**
+ * Resposta do `ConsultarPedido`. Usado no heal idempotente: quando o envio de um
+ * pedido falha, consultamos pelo `codigo_pedido_integracao` pra saber se ele já
+ * existe no OMIE (resposta perdida num envio anterior) e reconciliar o status.
+ * Só precisamos do cabeçalho (número/código do pedido).
+ */
+export interface OmieConsultarPedidoResponse {
+  pedido_venda_produto?: {
+    cabecalho?: {
+      codigo_pedido?: number;
+      codigo_pedido_integracao?: string;
+      numero_pedido?: string;
+      etapa?: string;
+    };
+  };
+}

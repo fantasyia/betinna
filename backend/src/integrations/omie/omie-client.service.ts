@@ -7,6 +7,7 @@ import { HttpClientService } from '@shared/http/http-client.service';
 import { HttpClientError } from '@shared/http/http-client.types';
 import { OmieDemo } from './omie.demo';
 import type {
+  OmieConsultarPedidoResponse,
   OmieFault,
   OmieIncluirPedidoParam,
   OmieIncluirPedidoResponse,
@@ -216,6 +217,40 @@ export class OmieClientService {
       param,
       { escrita: true },
     );
+  }
+
+  /**
+   * Consulta um pedido no OMIE pelo `codigo_pedido_integracao` (= Pedido.numero).
+   * Usado no heal idempotente: se o IncluirPedido falhou mas o pedido JÁ existe
+   * lá (resposta perdida num envio anterior), isto devolve o pedido pra reconciliar.
+   * É LEITURA — retenta normal em fault transient. Devolve `null` se o pedido não
+   * existe / não pôde ser consultado (qualquer fault, ex.: "pedido não encontrado")
+   * pra NÃO reconciliar um pedido que na verdade não chegou ao ERP.
+   */
+  async consultarPedidoPorIntegracao(
+    empresaId: string,
+    codigoPedidoIntegracao: string,
+  ): Promise<OmieIncluirPedidoResponse | null> {
+    if (this.isDemoMode()) return null;
+    try {
+      const resp = await this.chamar<OmieConsultarPedidoResponse>(
+        empresaId,
+        'produtos/pedido/',
+        'ConsultarPedido',
+        { codigo_pedido_integracao: codigoPedidoIntegracao },
+      );
+      const cab = resp.pedido_venda_produto?.cabecalho;
+      if (!cab || (cab.codigo_pedido == null && !cab.numero_pedido)) return null;
+      return {
+        codigo_pedido: cab.codigo_pedido ?? 0,
+        codigo_pedido_integracao: cab.codigo_pedido_integracao ?? codigoPedidoIntegracao,
+        numero_pedido: cab.numero_pedido,
+        codigo_status: 'reconciliado',
+        descricao_status: 'Pedido já existente no OMIE (reconciliado)',
+      };
+    } catch {
+      return null;
+    }
   }
 
   private isFault(data: unknown): data is OmieFault {
