@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { memo, useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
   Search,
@@ -642,7 +642,7 @@ export default function InboxPage() {
                         conv={c}
                         active={c.id === selectedId}
                         botGlobalAtivo={botGlobalAtivo}
-                        onClick={() => setSelectedId(c.id)}
+                        onClick={setSelectedId}
                       />
                     ))}
                   </ul>
@@ -811,7 +811,11 @@ function MetricasConteudo({ m }: { m: Metricas }) {
 
 // ─── Conversation item (linha da lista) ─────────────────────────────
 
-function ConversationItem({
+// React.memo + onClick estável: como o Inbox faz polling a cada 2s e a lista
+// re-renderiza, sem memo os ~40 itens re-renderizavam todos a cada poll. Com o
+// TanStack Query (structural sharing) a referência das conversas que NÃO mudaram
+// fica estável entre polls, então o memo (shallow) pula o re-render delas.
+const ConversationItem = memo(function ConversationItem({
   conv,
   active,
   botGlobalAtivo,
@@ -820,7 +824,7 @@ function ConversationItem({
   conv: Conversation;
   active: boolean;
   botGlobalAtivo: boolean;
-  onClick: () => void;
+  onClick: (id: string) => void;
 }) {
   const name =
     conv.cliente?.nome ??
@@ -849,7 +853,7 @@ function ConversationItem({
       <button
         type="button"
         data-testid={`conv-card-${conv.id}`}
-        onClick={onClick}
+        onClick={() => onClick(conv.id)}
         className={cn(
           'w-full text-left px-3 py-3 flex items-start gap-3',
           'border-b border-border last:border-b-0',
@@ -977,7 +981,7 @@ function ConversationItem({
       </button>
     </li>
   );
-}
+});
 
 // ─── Thread (chat pane) ────────────────────────────────────────────
 
