@@ -23,10 +23,13 @@ const makeRes = () => {
   return res as unknown as Response & { statusCode: number; body: unknown };
 };
 
-const makeReq = (path: string, contentLength?: number): Request =>
+const makeReq = (path: string, contentLength?: number, contentType?: string): Request =>
   ({
     path,
-    headers: contentLength === undefined ? {} : { 'content-length': String(contentLength) },
+    headers: {
+      ...(contentLength === undefined ? {} : { 'content-length': String(contentLength) }),
+      ...(contentType === undefined ? {} : { 'content-type': contentType }),
+    },
   }) as unknown as Request;
 
 describe('limiteCorpoPara', () => {
@@ -79,6 +82,37 @@ describe('bodySizeGuard', () => {
 
   it('sem Content-Length → deixa passar (parser global de 20MB é o backstop)', () => {
     const req = makeReq('/api/v1/clientes'); // sem header
+    const res = makeRes();
+    const next = vi.fn();
+
+    bodySizeGuard(req, res, next);
+
+    expect(next).toHaveBeenCalledOnce();
+  });
+
+  it('deixa passar upload MULTIPART grande fora da allowlist (multer cuida do limite)', () => {
+    // /clientes/:id/documentos não casa com a allowlist, mas é upload (multer
+    // limita a 10MB) — o guard não pode barrar por Content-Length.
+    const req = makeReq(
+      '/api/v1/clientes/abc/documentos',
+      8 * 1024 * 1024,
+      'multipart/form-data; boundary=xyz',
+    );
+    const res = makeRes();
+    const next = vi.fn();
+
+    bodySizeGuard(req, res, next);
+
+    expect(next).toHaveBeenCalledOnce();
+    expect(res.statusCode).toBe(0);
+  });
+
+  it('deixa passar upload de logo multipart (empresas/:id/logo)', () => {
+    const req = makeReq(
+      '/api/v1/empresas/abc/logo',
+      Math.round(1.5 * 1024 * 1024),
+      'multipart/form-data; boundary=abc',
+    );
     const res = makeRes();
     const next = vi.fn();
 

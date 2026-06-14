@@ -34,6 +34,16 @@ export function limiteCorpoPara(path: string): number {
 }
 
 export function bodySizeGuard(req: Request, res: Response, next: NextFunction): void {
+  // Uploads multipart (documentos de cliente até 10MB, logo de empresa até 2MB)
+  // têm limite PRÓPRIO por rota no multer (FileInterceptor). NÃO aplicamos o teto
+  // de corpo aqui — senão um PDF de 3MB num /clientes/:id/documentos levaria 413
+  // antes do multer rodar. Vale pra qualquer rota multipart, atual ou futura.
+  const contentType = req.headers['content-type'] ?? '';
+  if (contentType.includes('multipart/form-data')) {
+    next();
+    return;
+  }
+
   const len = Number(req.headers['content-length'] ?? 0);
   if (Number.isFinite(len) && len > limiteCorpoPara(req.path)) {
     res.status(413).json({
