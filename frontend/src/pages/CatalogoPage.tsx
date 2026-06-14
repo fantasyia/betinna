@@ -59,7 +59,7 @@ interface CatalogoItem {
     nome: string;
     sku?: string;
     marca?: string;
-    precoFabrica: number;
+    precoFabrica: number | null; // custo — null quando não informado
     precoTabela: number;
     imagem?: string | null;
     estoque?: number;
@@ -74,7 +74,7 @@ interface ProdutoOpt {
   id: string;
   nome: string;
   sku?: string | null;
-  precoFabrica?: number;
+  precoFabrica?: number | null;
   precoTabela?: number;
   estoque?: number;
   estoqueAtualizadoEm?: string | null;
@@ -89,7 +89,7 @@ interface ClienteOpt {
 interface PreviewItem {
   produtoId: string;
   produto?: { id: string; nome: string; sku?: string };
-  precoFabrica: number;
+  precoFabrica: number | null;
   precoTabela: number;
   precoEspecial?: number | null;
   markup: number;
@@ -160,9 +160,10 @@ export default function CatalogoPage() {
     const markupMedio = totalItens > 0 ? itens.reduce((s, i) => s + i.markup, 0) / totalItens : 0;
     const semEstoque = itens.filter((i) => (i.produto?.estoque ?? 0) <= 0).length;
     const valorTotal = itens.reduce((s, i) => {
-      const fabrica = i.produto?.precoFabrica ?? 0;
-      const final = i.precoFinal ?? fabrica * (1 + i.markup / 100);
-      return s + final;
+      const fabrica = i.produto?.precoFabrica;
+      // Sem custo informado e sem preço final → não dá pra computar; não soma.
+      const final = i.precoFinal ?? (fabrica != null ? fabrica * (1 + i.markup / 100) : null);
+      return final != null ? s + final : s;
     }, 0);
     // Estoque mais antigo do catálogo (= mais stale) — usado pra alerta global
     const oldestSync = itens.reduce<string | null>((oldest, i) => {
@@ -414,10 +415,10 @@ function ProdutoCard({
   onRemove: () => void;
 }) {
   const [confirmDelete, setConfirmDelete] = useState(false);
-  const fabrica = item.produto?.precoFabrica ?? 0;
+  const fabrica = item.produto?.precoFabrica ?? null;
   const tabela = item.produto?.precoTabela ?? 0;
-  const final = item.precoFinal ?? fabrica * (1 + item.markup / 100);
-  const diff = tabela > 0 ? ((final - tabela) / tabela) * 100 : 0;
+  const final = item.precoFinal ?? (fabrica != null ? fabrica * (1 + item.markup / 100) : null);
+  const diff = final != null && tabela > 0 ? ((final - tabela) / tabela) * 100 : 0;
   const diffPositive = diff > 0;
 
   return (
@@ -464,8 +465,8 @@ function ProdutoCard({
       {/* Prices */}
       <div className="px-3 pb-2 grid grid-cols-2 gap-2 text-sm">
         <div>
-          <div className="text-[9px] uppercase tracking-wider text-muted">Fábrica</div>
-          <div className="text-text-subtle tabular">{fmtBRL(fabrica)}</div>
+          <div className="text-[9px] uppercase tracking-wider text-muted">Fábrica (custo)</div>
+          <div className="text-text-subtle tabular">{fabrica != null ? fmtBRL(fabrica) : '—'}</div>
         </div>
         <div>
           <div className="text-[9px] uppercase tracking-wider text-muted">Tabela</div>
@@ -502,10 +503,17 @@ function ProdutoCard({
         </div>
         <div className="flex-1 text-right min-w-0">
           <div className="text-[10px] uppercase tracking-wider text-muted mb-1">Preço final</div>
-          <div className="text-md font-bold text-text tabular tracking-tight">
-            {fmtBRL(final)}
-          </div>
-          {tabela > 0 && (
+          {final != null ? (
+            <div className="text-md font-bold text-text tabular tracking-tight">{fmtBRL(final)}</div>
+          ) : (
+            <div
+              className="text-[11px] font-medium text-warning leading-tight"
+              title="Sem custo informado — defina o preço de fábrica em Produtos"
+            >
+              defina o custo
+            </div>
+          )}
+          {final != null && tabela > 0 && (
             <div
               className={cn(
                 'text-[10px] tabular flex items-center justify-end gap-0.5',
@@ -658,7 +666,7 @@ function AddProdutoDialog({
             placeholder="Buscar produto…"
             getLabel={(p) => p.nome}
             getSubLabel={(p) =>
-              [p.sku, p.precoFabrica !== undefined ? `fábrica ${fmtBRL(p.precoFabrica)}` : null]
+              [p.sku, p.precoFabrica != null ? `fábrica ${fmtBRL(p.precoFabrica)}` : null]
                 .filter(Boolean)
                 .join(' · ')
             }
@@ -687,7 +695,7 @@ function AddProdutoDialog({
             onChange={(e) => setMarkup(Number(e.target.value))}
           />
         </Field>
-        {produto?.precoFabrica !== undefined && (
+        {produto?.precoFabrica != null ? (
           <Card variant="outline" padding="md" className="bg-primary/5 border-primary/30">
             <div className="flex items-center justify-between">
               <div>
@@ -706,7 +714,14 @@ function AddProdutoDialog({
               )}
             </div>
           </Card>
-        )}
+        ) : produto ? (
+          <Card variant="outline" padding="md" className="bg-warning/5 border-warning/30">
+            <div className="text-[11px] text-warning leading-snug">
+              Este produto está <strong>sem custo informado</strong>. Defina o preço de fábrica em
+              Produtos pra calcular o preço final sobre o custo.
+            </div>
+          </Card>
+        ) : null}
         {error && (
           <div className="px-3 py-2 rounded-md bg-danger/10 border border-danger/30 text-danger text-sm flex items-start gap-2">
             <AlertCircle className="h-4 w-4 mt-0.5 shrink-0" />
@@ -855,7 +870,7 @@ function PreviewClienteDialog({ onClose }: { onClose: () => void }) {
                         )}
                       </td>
                       <td className="px-3 py-2 text-right text-sm text-text-subtle tabular">
-                        {fmtBRLCompact(i.precoFabrica)}
+                        {i.precoFabrica != null ? fmtBRLCompact(i.precoFabrica) : '—'}
                       </td>
                       <td className="px-3 py-2 text-right text-sm text-text-subtle tabular">
                         {i.markup}%

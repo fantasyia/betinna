@@ -23,7 +23,7 @@ interface Produto {
   categoria?: string | null;
   unidade?: string | null;
   precoTabela: number;
-  precoFabrica: number;
+  precoFabrica: number | null; // custo — null quando não informado
   imagem?: string | null;
   estoque: number;
   popularidade: number;
@@ -125,7 +125,7 @@ export default function ProdutosPage() {
         <div>
           <strong>{fmtBRL(p.precoTabela)}</strong>
           <div style={{ fontSize: 11, color: colors.muted }}>
-            fábrica: {fmtBRL(p.precoFabrica)}
+            {p.precoFabrica != null ? `fábrica: ${fmtBRL(p.precoFabrica)}` : 'custo não informado'}
           </div>
         </div>
       ),
@@ -363,7 +363,8 @@ function ProdutoFormModal({
   }
 
   const precoTabela = Number(form.precoTabela);
-  const precoFabrica = Number(form.precoFabrica);
+  // Custo é OPCIONAL: vazio = null ("não informado"). Só validamos quando preenchido.
+  const precoFabrica = form.precoFabrica.trim() === '' ? null : Number(form.precoFabrica);
 
   async function submit(e: React.FormEvent) {
     e.preventDefault();
@@ -375,11 +376,11 @@ function ProdutoFormModal({
       setError('Preço de tabela precisa ser maior que zero.');
       return;
     }
-    if (!(precoFabrica > 0)) {
-      setError('Preço de fábrica precisa ser maior que zero.');
+    if (precoFabrica !== null && !(precoFabrica > 0)) {
+      setError('Se informar o custo (preço de fábrica), ele precisa ser maior que zero.');
       return;
     }
-    if (precoFabrica > precoTabela) {
+    if (precoFabrica !== null && precoFabrica > precoTabela) {
       setError('Preço de fábrica não pode ser maior que preço de tabela.');
       return;
     }
@@ -520,15 +521,15 @@ function ProdutoFormModal({
               required
             />
           </FormField>
-          <FormField label="Preço fábrica" htmlFor="p-pf" required>
+          <FormField label="Preço fábrica (custo — opcional)" htmlFor="p-pf">
             <Input
               id="p-pf"
               type="number"
               min={0.01}
               step="0.01"
+              placeholder="deixe em branco se não souber o custo"
               value={form.precoFabrica}
               onChange={(e) => setF('precoFabrica', e.target.value)}
-              required
             />
           </FormField>
           <FormField label="Estoque" htmlFor="p-est">
