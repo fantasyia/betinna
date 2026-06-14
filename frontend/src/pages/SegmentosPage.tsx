@@ -12,6 +12,7 @@ import {
   PieChart,
 } from 'lucide-react';
 import { api, apiErrorMessage } from '@/lib/api';
+import { formatNumero } from '@/lib/masks';
 import { useApiQuery } from '@/hooks/useApiQuery';
 import { useToast } from '@/components/toast';
 import { PageLayout } from '@/components/PageLayout';
@@ -305,7 +306,7 @@ function SegmentoViewer({
         {data && (
           <>
             <div className="mb-4 flex items-center gap-2">
-              <Badge variant="primary">{data.total.toLocaleString('pt-BR')} clientes</Badge>
+              <Badge variant="primary">{formatNumero(data.total)} clientes</Badge>
               <span className="text-sm text-muted">
                 Mostrando primeiros {Math.min(data.clientes.length, 100)}
               </span>
@@ -590,7 +591,7 @@ function SegmentoBuilder({
             <>
               <div className="text-center py-3 rounded-md bg-surface border border-border mb-3">
                 <div className="text-3xl font-bold text-text tabular tracking-tight">
-                  {preview.total.toLocaleString('pt-BR')}
+                  {formatNumero(preview.total)}
                 </div>
                 <div className="text-[11px] text-muted">clientes batem com essas regras</div>
               </div>

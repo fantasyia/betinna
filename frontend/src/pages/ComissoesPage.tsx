@@ -10,7 +10,7 @@ import { FilterBar } from '@/components/FilterBar';
 import { Modal } from '@/components/Modal';
 import { FormField, Input, Select } from '@/components/FormField';
 import { alpha, badge, btn, btnSecondary, card, colors } from '@/components/styles';
-import { formatMoeda as fmtBRL } from '@/lib/masks';
+import { formatMoeda as fmtBRL, formatPercent } from '@/lib/masks';
 
 type ComissaoTipo = 'REP' | 'GERENTE';
 
@@ -42,7 +42,7 @@ const MES_NOMES = [
 
 function fmtPct(p: number | null | undefined) {
   const n = typeof p === 'number' && Number.isFinite(p) ? p : 0;
-  return `${n.toFixed(2)}%`;
+  return formatPercent(n, 2);
 }
 
 export default function ComissoesPage() {

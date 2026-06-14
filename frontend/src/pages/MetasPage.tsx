@@ -32,7 +32,7 @@ import {
   Select,
 } from '@/components/ui';
 import { cn } from '@/lib/cn';
-import { formatMoedaCompacta as fmtBRLCompact } from '@/lib/masks';
+import { formatMoedaCompacta as fmtBRLCompact, formatNumero, formatPercent } from '@/lib/masks';
 
 interface MetaComProgresso {
   id: string;
@@ -260,9 +260,9 @@ function MetaCard({
   const overshoot = progresso > 100;
   const completed = progresso >= 100;
   const valorAtingidoFmt =
-    meta.tipo === 'FATURAMENTO' ? fmtBRLCompact(atingido) : atingido.toLocaleString('pt-BR');
+    meta.tipo === 'FATURAMENTO' ? fmtBRLCompact(atingido) : formatNumero(atingido);
   const valorAlvoFmt =
-    meta.tipo === 'FATURAMENTO' ? fmtBRLCompact(valorAlvo) : valorAlvo.toLocaleString('pt-BR');
+    meta.tipo === 'FATURAMENTO' ? fmtBRLCompact(valorAlvo) : formatNumero(valorAlvo);
 
   const AlvoIcon = meta.alvoTipo === 'EMPRESA' ? Building2 : User;
 
@@ -331,8 +331,8 @@ function MetaCard({
       </div>
       <div className="flex items-center justify-between text-[11px] tabular">
         <span className={completed ? 'text-success font-semibold' : 'text-text-subtle'}>
-          {progresso.toFixed(1)}%
-          {overshoot && <span className="text-success ml-1">(+{(progresso - 100).toFixed(0)}%)</span>}
+          {formatPercent(progresso, 1)}
+          {overshoot && <span className="text-success ml-1">(+{formatPercent(progresso - 100, 0)})</span>}
         </span>
         <span className="text-muted inline-flex items-center gap-1">
           <Calendar className="h-3 w-3" />
@@ -372,7 +372,7 @@ function MetaCard({
       {completed && (
         <div className="flex items-center gap-1.5 text-xs text-success bg-success/10 border border-success/30 rounded-md px-2 py-1.5">
           <CheckCircle2 className="h-3.5 w-3.5 shrink-0" />
-          <span>Meta atingida! {overshoot ? `Bateu ${progresso.toFixed(0)}%` : ''}</span>
+          <span>Meta atingida! {overshoot ? `Bateu ${formatPercent(progresso, 0)}` : ''}</span>
         </div>
       )}
 

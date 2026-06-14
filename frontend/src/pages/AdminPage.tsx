@@ -10,6 +10,7 @@ import { Table, type Column } from '@/components/Table';
 import { useToast } from '@/components/toast';
 import { useConfirm } from '@/hooks/useConfirm';
 import { badge, btn, btnSecondary, card, colors } from '@/components/styles';
+import { formatNumero, formatPercent } from '@/lib/masks';
 
 /**
  * Painel Admin — apenas ADMIN.
@@ -472,7 +473,7 @@ function DbHealthSection() {
                               marginLeft: '0.4rem',
                             }}
                           >
-                            ({pct.toFixed(1)}%)
+                            ({formatPercent(pct, 1)})
                           </span>
                         </td>
                         <td
@@ -483,7 +484,7 @@ function DbHealthSection() {
                             fontFamily: 'var(--font-mono)',
                           }}
                         >
-                          {t.linhasAprox.toLocaleString('pt-BR')}
+                          {formatNumero(t.linhasAprox)}
                         </td>
                       </tr>
                     );

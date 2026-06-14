@@ -40,7 +40,12 @@ import {
   Stat,
 } from '@/components/ui';
 import { cn } from '@/lib/cn';
-import { formatMoeda as fmtBRL, formatMoedaCompacta as fmtBRLCompact } from '@/lib/masks';
+import {
+  formatMoeda as fmtBRL,
+  formatMoedaCompacta as fmtBRLCompact,
+  formatNumero,
+  formatPercent,
+} from '@/lib/masks';
 
 /**
  * CatalogoPage v2 — design system dark, cards de produtos.
@@ -250,12 +255,12 @@ export default function CatalogoPage() {
         <Stat
           label="Produtos no catálogo"
           icon={<Package className="text-info" />}
-          value={stats.totalItens.toLocaleString('pt-BR')}
+          value={formatNumero(stats.totalItens)}
         />
         <Stat
           label="Sem estoque"
           icon={<PackageX className={stats.semEstoque > 0 ? 'text-danger' : 'text-muted'} />}
-          value={stats.semEstoque.toLocaleString('pt-BR')}
+          value={formatNumero(stats.semEstoque)}
           hint={
             stats.semEstoque > 0
               ? 'representante pode lançar — OMIE gera OP de reposição'
@@ -526,7 +531,7 @@ function ProdutoCard({
                 <TrendingDown className="h-2.5 w-2.5" />
               )}
               {diffPositive ? '+' : ''}
-              {diff.toFixed(1)}% vs tabela
+              {formatPercent(diff, 1)} vs tabela
             </div>
           )}
         </div>

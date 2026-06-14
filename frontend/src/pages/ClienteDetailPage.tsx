@@ -10,7 +10,13 @@ import { AsyncCombobox } from '@/components/AsyncCombobox';
 import { NovoPedidoDialog } from '@/components/NovoPedidoDialog';
 import { useConfirm } from '@/hooks/useConfirm';
 import { useToast } from '@/components/toast';
-import { maskCNPJ, maskTelefone, normalizeUF, formatMoeda as fmtBRL } from '@/lib/masks';
+import {
+  maskCNPJ,
+  maskTelefone,
+  normalizeUF,
+  formatMoeda as fmtBRL,
+  formatNumero,
+} from '@/lib/masks';
 import { badge, btn, btnDanger, btnSecondary, card, colors } from '@/components/styles';
 
 // ─── Tipos compartilhados ────────────────────────────────────────────
@@ -602,7 +608,7 @@ function MetricasCard({ clienteId }: { clienteId: string }) {
       <MetricaItem label="Ticket médio" value={fmtBRL(data.ticketMedio)} />
       <MetricaItem
         label="Pedidos"
-        value={data.pedidosCount.toLocaleString('pt-BR')}
+        value={formatNumero(data.pedidosCount)}
         hint={
           data.pedidosNoMes > 0 ? `${data.pedidosNoMes} no mês` : 'nenhum no mês'
         }

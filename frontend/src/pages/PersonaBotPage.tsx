@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { Bot, Save, AlertCircle, CheckCircle2, MessageCircle } from 'lucide-react';
 import { api, ApiError } from '@/lib/api';
+import { formatNumero } from '@/lib/masks';
 import { useApiQuery } from '@/hooks/useApiQuery';
 import { useToast } from '@/components/toast';
 import { useRole } from '@/hooks/usePermission';
@@ -651,7 +652,7 @@ function BarraCusto({
           {label}: {p}%
         </span>
         <span className="tabular">
-          {usado.toLocaleString('pt-BR')}/{limite.toLocaleString('pt-BR')}
+          {formatNumero(usado)}/{formatNumero(limite)}
         </span>
       </div>
       <div className="h-2 rounded-full bg-bg-alt overflow-hidden">

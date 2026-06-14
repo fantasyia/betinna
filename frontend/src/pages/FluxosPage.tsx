@@ -16,6 +16,7 @@ import {
   Trash2,
 } from 'lucide-react';
 import { api, ApiError } from '@/lib/api';
+import { formatNumero } from '@/lib/masks';
 import { useApiQuery, type PaginatedResponse } from '@/hooks/useApiQuery';
 import { useConfirm } from '@/hooks/useConfirm';
 import { useRole } from '@/hooks/usePermission';
@@ -361,7 +362,7 @@ export default function FluxosPage() {
                 <div className="flex items-center justify-between px-4 py-3 border-t border-border bg-bg-alt">
                   <span className="text-xs text-muted tabular">
                     Página {pageResp.pagination.page} de {pageResp.pagination.totalPages} ·{' '}
-                    {pageResp.pagination.total.toLocaleString('pt-BR')} no total
+                    {formatNumero(pageResp.pagination.total)} no total
                   </span>
                   <div className="flex items-center gap-1">
                     <Button
@@ -562,7 +563,7 @@ function FluxoCard({
           data-testid={`fluxo-execucoes-${fluxo.id}`}
         >
           <Activity className="h-3 w-3" />
-          {fluxo._count.execucoes.toLocaleString('pt-BR')} execuções — ver erros
+          {formatNumero(fluxo._count.execucoes)} execuções — ver erros
         </button>
       )}
     </Card>

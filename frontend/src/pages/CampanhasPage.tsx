@@ -1,5 +1,6 @@
 import { useMemo, useState } from 'react';
 import { api, ApiError } from '@/lib/api';
+import { formatPercent } from '@/lib/masks';
 import { useApiQuery, type PaginatedResponse } from '@/hooks/useApiQuery';
 import { usePermission, useRole } from '@/hooks/usePermission';
 import { PageLayout } from '@/components/PageLayout';
@@ -171,7 +172,7 @@ function fmtDate(d: string | null | undefined) {
  */
 function fmtPct(v: number | undefined | null) {
   const n = typeof v === 'number' && Number.isFinite(v) ? v : 0;
-  return `${n.toFixed(1)}%`;
+  return formatPercent(n, 1);
 }
 
 /** Nº de destinatários materializados (0 em rascunho → tratado como "sem dado"). */

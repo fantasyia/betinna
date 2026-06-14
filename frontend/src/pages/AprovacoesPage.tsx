@@ -28,7 +28,7 @@ import {
   Textarea,
 } from '@/components/ui';
 import { cn } from '@/lib/cn';
-import { formatMoeda as fmtBRL } from '@/lib/masks';
+import { formatMoeda as fmtBRL, formatPercent } from '@/lib/masks';
 
 type AprovacaoStatus = 'PENDENTE' | 'APROVADA' | 'REJEITADA';
 
@@ -70,7 +70,7 @@ const STATUS_ICON: Record<AprovacaoStatus, typeof Clock> = {
 };
 
 function fmtPct(v: number) {
-  return `${v.toFixed(2)}%`;
+  return formatPercent(v, 2);
 }
 function fmtDate(d: string | null | undefined) {
   if (!d) return '—';

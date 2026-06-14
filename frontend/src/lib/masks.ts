@@ -41,6 +41,32 @@ export function formatMoedaCompacta(v: number): string {
 }
 
 /**
+ * Formata um número no padrão pt-BR — "1.234" / "1.234,56" (ponto de milhar,
+ * vírgula decimal). Substitui as cópias de `v.toLocaleString('pt-BR')`
+ * espalhadas em cards/tabelas. Saída idêntica à do `toLocaleString('pt-BR')`
+ * (mesmo default: até 3 casas decimais, separador de milhar ligado).
+ *
+ * NÃO use pra dinheiro (use `formatMoeda`) nem datas (use `toLocaleString` no
+ * `Date` com `dateStyle`/`timeStyle`).
+ */
+const _numeroBR = new Intl.NumberFormat('pt-BR');
+export function formatNumero(v: number): string {
+  return _numeroBR.format(v);
+}
+
+/**
+ * Formata um percentual — "12,3%" no padrão pt-BR. `casas` controla os decimais
+ * (default 1). O valor JÁ vem em pontos percentuais (50 = "50,0%"), não em
+ * fração. Substitui as cópias de `` `${v.toFixed(n)}%` `` espalhadas.
+ *
+ * Usa vírgula decimal (`toFixed` dá ponto) pra ficar coerente com `formatMoeda`/
+ * `formatNumero` — num CRM que mostra margem/comissão, "12,3%" e não "12.3%".
+ */
+export function formatPercent(v: number, casas = 1): string {
+  return `${v.toFixed(casas).replace('.', ',')}%`;
+}
+
+/**
  * CNPJ: 00.000.000/0001-00
  * Aceita parcial — aplica máscara conforme dígitos disponíveis.
  */

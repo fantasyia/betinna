@@ -1,6 +1,7 @@
 import { type ReactNode } from 'react';
 import { TrendingUp, TrendingDown, Minus } from 'lucide-react';
 import { cn } from '@/lib/cn';
+import { formatPercent } from '@/lib/masks';
 import { Card } from './Card';
 import { Sparkline } from './Sparkline';
 
@@ -95,7 +96,7 @@ export function Stat({
           >
             <TrendIcon className="h-3 w-3" />
             {delta > 0 ? '+' : ''}
-            {delta.toFixed(1)}%
+            {formatPercent(delta, 1)}
           </span>
         )}
       </header>

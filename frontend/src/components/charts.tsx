@@ -1,5 +1,6 @@
 import type { CSSProperties } from 'react';
 import { colors } from './styles';
+import { formatNumero, formatPercent } from '@/lib/masks';
 
 /**
  * Charts SVG-based, sem dep externa.
@@ -38,7 +39,7 @@ export function BarChart({
     <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
       {truncated.map((d, i) => {
         const pct = (d.value / max) * 100;
-        const fmt = formatValue ? formatValue(d.value) : d.value.toLocaleString('pt-BR');
+        const fmt = formatValue ? formatValue(d.value) : formatNumero(d.value);
         return (
           <div key={`${d.label}-${i}`} style={{ fontSize: 13 }}>
             <div
@@ -115,7 +116,7 @@ export function Funnel({
     <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
       {stages.map((s, i) => {
         const pct = (s.value / max) * 100;
-        const fmt = formatValue ? formatValue(s.value) : s.value.toLocaleString('pt-BR');
+        const fmt = formatValue ? formatValue(s.value) : formatNumero(s.value);
         return (
           <div
             key={`${s.label}-${i}`}
@@ -279,7 +280,7 @@ export function Donut({
                 }}
               />
               <span style={{ flex: 1 }}>{s.label}</span>
-              <strong>{s.value.toLocaleString('pt-BR')}</strong>
+              <strong>{formatNumero(s.value)}</strong>
               <span style={{ color: colors.muted, fontSize: 11, minWidth: 40, textAlign: 'right' }}>
                 {pct}%
               </span>
@@ -351,7 +352,7 @@ export function KPICard({
             fontWeight: 600,
           }}
         >
-          {variacao > 0 ? '↑' : variacao < 0 ? '↓' : '·'} {Math.abs(variacao).toFixed(1)}% vs anterior
+          {variacao > 0 ? '↑' : variacao < 0 ? '↓' : '·'} {formatPercent(Math.abs(variacao), 1)} vs anterior
         </div>
       )}
       {hint && (

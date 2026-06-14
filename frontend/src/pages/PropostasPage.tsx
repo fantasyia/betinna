@@ -42,7 +42,11 @@ import {
   Textarea,
 } from '@/components/ui';
 import { cn } from '@/lib/cn';
-import { formatMoeda as fmtBRL, formatMoedaCompacta as fmtBRLCompact } from '@/lib/masks';
+import {
+  formatMoeda as fmtBRL,
+  formatMoedaCompacta as fmtBRLCompact,
+  formatNumero,
+} from '@/lib/masks';
 
 /**
  * PropostasPage v2 — design system dark, drawer detail + transitions visuais.
@@ -211,7 +215,7 @@ export default function PropostasPage() {
       title="Propostas"
       description={
         pageResp?.pagination
-          ? `${pageResp.pagination.total.toLocaleString('pt-BR')} propostas no total`
+          ? `${formatNumero(pageResp.pagination.total)} propostas no total`
           : undefined
       }
       actions={
@@ -491,7 +495,7 @@ function PaginationBar({
   return (
     <div className="flex items-center justify-between px-4 py-3 border-t border-border bg-bg-alt">
       <span className="text-xs text-muted tabular">
-        Página {current} de {total} · {totalItems.toLocaleString('pt-BR')} no total
+        Página {current} de {total} · {formatNumero(totalItems)} no total
       </span>
       <div className="flex items-center gap-1">
         <Button variant="ghost" size="sm" disabled={current <= 1} onClick={() => onChange(current - 1)}>

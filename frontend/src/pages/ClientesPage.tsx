@@ -31,7 +31,7 @@ import { CrmTabs } from '@/components/CrmTabs';
 import { StateView } from '@/components/StateView';
 import { AsyncCombobox } from '@/components/AsyncCombobox';
 import { useToast } from '@/components/toast';
-import { isValidCNPJ, maskCEP, maskCNPJ, maskTelefone, stripMask } from '@/lib/masks';
+import { formatNumero, isValidCNPJ, maskCEP, maskCNPJ, maskTelefone, stripMask } from '@/lib/masks';
 import { fetchCep } from '@/lib/localidades';
 import { UfSelect, CidadeSelect } from '@/components/LocalidadeSelects';
 import { exportToCsv } from '@/lib/csv';
@@ -282,7 +282,7 @@ export default function ClientesPage() {
   return (
     <PageLayout
       title="Clientes"
-      description={page$?.pagination ? `${page$.pagination.total.toLocaleString('pt-BR')} clientes no total` : undefined}
+      description={page$?.pagination ? `${formatNumero(page$.pagination.total)} clientes no total` : undefined}
       actions={
         <>
           <ExportMenu
@@ -723,7 +723,7 @@ function PaginationBar({
   return (
     <div className="flex items-center justify-between px-4 py-3 border-t border-border bg-bg-alt">
       <span className="text-xs text-muted tabular">
-        Página {current} de {total} · {totalItems.toLocaleString('pt-BR')} no total
+        Página {current} de {total} · {formatNumero(totalItems)} no total
       </span>
       <div className="flex items-center gap-1">
         <Button

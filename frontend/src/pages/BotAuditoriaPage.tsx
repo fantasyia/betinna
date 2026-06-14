@@ -9,6 +9,7 @@ import { AtendimentoTabs } from '@/components/AtendimentoTabs';
 import { StateView } from '@/components/StateView';
 import { Button, Card, Field, Select } from '@/components/ui';
 import { badge, colors } from '@/components/styles';
+import { formatNumero } from '@/lib/masks';
 
 type StatusBot = 'OK' | 'FALLBACK' | 'SEM_RESPOSTA';
 
@@ -188,7 +189,7 @@ export default function BotAuditoriaPage() {
                       <span style={badge(STATUS_META[r.status].color)}>{STATUS_META[r.status].label}</span>
                     </td>
                     <td className="p-2 whitespace-nowrap text-right tabular text-muted">
-                      {(r.tokensIn + r.tokensOut).toLocaleString('pt-BR')}
+                      {formatNumero(r.tokensIn + r.tokensOut)}
                     </td>
                     <td className="p-2 whitespace-nowrap text-right tabular text-muted">
                       {r.tempoMs != null ? `${(r.tempoMs / 1000).toFixed(1)}s` : '—'}

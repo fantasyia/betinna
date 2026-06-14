@@ -5,6 +5,7 @@ import { AutomacaoTabs } from '@/components/AutomacaoTabs';
 import { StateView } from '@/components/StateView';
 import { Card } from '@/components/ui';
 import { cn } from '@/lib/cn';
+import { formatNumero } from '@/lib/masks';
 
 interface MonitorEtapa {
   id: string;
@@ -67,9 +68,9 @@ export default function MonitorPage() {
               <Stat
                 icon={<Bot />}
                 label="Tokens OpenAI (hoje)"
-                value={(
-                  (data.custoOpenAi?.diaIn ?? 0) + (data.custoOpenAi?.diaOut ?? 0)
-                ).toLocaleString('pt-BR')}
+                value={formatNumero(
+                  (data.custoOpenAi?.diaIn ?? 0) + (data.custoOpenAi?.diaOut ?? 0),
+                )}
               />
             </div>
 

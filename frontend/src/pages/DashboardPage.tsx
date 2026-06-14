@@ -43,7 +43,12 @@ import {
   Checkbox,
 } from '@/components/ui';
 import { cn } from '@/lib/cn';
-import { formatMoeda as fmtBRL, formatMoedaCompacta as fmtBRLCompact } from '@/lib/masks';
+import {
+  formatMoeda as fmtBRL,
+  formatMoedaCompacta as fmtBRLCompact,
+  formatNumero,
+  formatPercent,
+} from '@/lib/masks';
 
 /**
  * DashboardPage v2 — design system dark, KPIs em grid, top reps + funil, atalhos
@@ -190,7 +195,7 @@ export default function DashboardPage() {
                       label="Pedidos"
                       icon={<ShoppingCart />}
                       iconTone="secondary"
-                      value={totalPedidos.toLocaleString('pt-BR')}
+                      value={formatNumero(totalPedidos)}
                       hint="no período"
                     />
                     <Stat
@@ -203,21 +208,21 @@ export default function DashboardPage() {
                       label="Leads ativos"
                       icon={<Target />}
                       iconTone="blue"
-                      value={totalAtivos.toLocaleString('pt-BR')}
+                      value={formatNumero(totalAtivos)}
                       hint="no funil"
                     />
                     <Stat
                       label="Conversão"
                       icon={<TrendingUp />}
                       iconTone="success"
-                      value={`${taxaConversao.toFixed(0)}%`}
+                      value={formatPercent(taxaConversao, 0)}
                       trend={taxaConversao > 25 ? 'up' : taxaConversao > 10 ? 'flat' : 'down'}
                     />
                     <Stat
                       label="SLA estourado"
                       icon={<AlertTriangle />}
                       iconTone={slaEstourado > 0 ? 'danger' : 'success'}
-                      value={slaEstourado.toLocaleString('pt-BR')}
+                      value={formatNumero(slaEstourado)}
                       hint={slaEstourado > 0 ? 'requer atenção' : 'tudo no prazo'}
                       trend={slaEstourado > 0 ? 'down' : 'up'}
                     />
