@@ -49,8 +49,10 @@ const makePrisma = (over: Record<string, unknown> = {}) => ({
     update: vi.fn(async () => ({})),
   },
   message: { findMany: vi.fn(async () => []), update: vi.fn(async () => ({})) },
-  // Fase B — guard fluxoIaConduzindo (lead em fluxo de IA cala o bot geral).
-  lead: { findFirst: vi.fn(async () => null) },
+  // Gate: lead do peer resolvido por buscarLeadDoPeer → $queryRaw (id por telefone,
+  // indexado) + lead.findUnique (etapa/funil/tags). Default [] = nenhum lead.
+  $queryRaw: vi.fn(async () => []),
+  lead: { findUnique: vi.fn(async () => null) },
   fluxoExecucao: { findFirst: vi.fn(async () => null) },
   ...over,
 });
@@ -177,6 +179,36 @@ describe('MullerWhatsappService — regras do bot', () => {
       botPausadoAte: null,
       precisaHumano: true,
     }));
+    await aoReceber(build(prisma, inbox, muller), { ...baseParams });
+    expect(inbox.responderComoBot).not.toHaveBeenCalled();
+    expect(muller.responderComoEmpresa).not.toHaveBeenCalled();
+  });
+
+  it('lead Perdido/Encerrado → bot silencia e marca precisa-humano (busca unificada)', async () => {
+    prisma.$queryRaw = vi.fn(async () => [{ id: 'lead-1' }]); // achou o lead por telefone
+    prisma.lead.findUnique = vi.fn(async () => ({
+      id: 'lead-1',
+      etapa: 'PERDIDO',
+      funilEtapa: null,
+      tags: [],
+    }));
+    await aoReceber(build(prisma, inbox, muller), { ...baseParams });
+    expect(inbox.responderComoBot).not.toHaveBeenCalled();
+    expect(muller.responderComoEmpresa).not.toHaveBeenCalled();
+    expect(prisma.conversation.update).toHaveBeenCalledWith(
+      expect.objectContaining({ data: expect.objectContaining({ precisaHumano: true }) }),
+    );
+  });
+
+  it('fluxo de IA conduzindo o lead → bot geral silencia (sem resposta dupla)', async () => {
+    prisma.$queryRaw = vi.fn(async () => [{ id: 'lead-1' }]);
+    prisma.lead.findUnique = vi.fn(async () => ({
+      id: 'lead-1',
+      etapa: 'NOVO',
+      funilEtapa: null,
+      tags: [],
+    }));
+    prisma.fluxoExecucao.findFirst = vi.fn(async () => ({ id: 'exec-1' })); // execução AGUARDANDO
     await aoReceber(build(prisma, inbox, muller), { ...baseParams });
     expect(inbox.responderComoBot).not.toHaveBeenCalled();
     expect(muller.responderComoEmpresa).not.toHaveBeenCalled();

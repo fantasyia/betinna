@@ -134,10 +134,19 @@ export class MullerWhatsappService implements OnModuleInit {
         return;
       }
 
+      // Resolve o lead do peer UMA vez (telefone indexado) — serve as duas regras do
+      // gate abaixo: "fluxo conduzindo" e "lead encerrado". Antes eram duas buscas de
+      // telefone por contains (seq scan) em pontos diferentes do gate.
+      const leadDoPeer = await this.buscarLeadDoPeer(
+        params.empresaId,
+        params.peerId,
+        params.peerTelefone,
+      );
+
       // 1.5 Orquestração (Fase B) — se um fluxo "Conversar com IA" está conduzindo
       // esta conversa (lead com execução AGUARDANDO), o bot geral NÃO responde
       // (evita resposta dupla — quem fala é o motor do fluxo).
-      if (await this.fluxoIaConduzindo(params.empresaId, params.peerId, params.peerTelefone)) {
+      if (leadDoPeer && (await this.fluxoConduzindoLead(params.empresaId, leadDoPeer.id))) {
         this.logger.debug(
           `[bot] conversa conduzida por fluxo de IA — bot geral silencia conv=${convId}`,
         );
@@ -177,7 +186,7 @@ export class MullerWhatsappService implements OnModuleInit {
       //     o bot NÃO responde (conversa encerrada/sem sinergia, não reabrir sozinho).
       //     Mas marca precisaHumano: um lead perdido que VOLTA a falar é sinal de
       //     venda — sobe na inbox pra um humano ver, em vez de cair no vazio.
-      if (await this.leadEncerrado(params.empresaId, params.peerId, params.peerTelefone)) {
+      if (leadDoPeer?.encerrado) {
         await this.prisma.conversation
           .update({ where: { id: convId }, data: { precisaHumano: true } })
           .catch(() => undefined);
@@ -450,38 +459,54 @@ export class MullerWhatsappService implements OnModuleInit {
   }
 
   /**
-   * Rede de segurança: o lead daquela conversa está em etapa "Perdido" (enum
-   * legado OU tipo terminal do funil) ou tem a tag "Encerrado" → o bot cala.
-   * Casa o lead por sufixo de telefone (D18). FAIL-OPEN: erro aqui não pode
-   * impedir o bot de responder conversas legítimas.
+   * Busca o lead do peer por sufixo de telefone (8 dígitos, D18) usando o índice
+   * de expressão `Lead_empresaId_telefoneSufixo_idx` (igualdade, não mais `contains`
+   * em seq scan) e JÁ avalia se ele está "encerrado": etapa "Perdido" (enum legado
+   * OU tipo terminal do funil) ou tag "Encerrado".
+   *
+   * UMA busca de telefone indexada serve as DUAS regras do gate (fluxo conduzindo +
+   * lead encerrado) — antes eram duas buscas por `contains`. FAIL-OPEN: erro aqui
+   * não pode impedir o bot de responder conversas legítimas.
    */
-  private async leadEncerrado(
+  private async buscarLeadDoPeer(
     empresaId: string,
     peerId: string,
     peerTelefone?: string,
-  ): Promise<boolean> {
+  ): Promise<{ id: string; encerrado: boolean } | null> {
     try {
       const sufixo = (peerTelefone ?? peerId).replace(/\D/g, '').slice(-8);
-      if (sufixo.length < 8) return false;
-      const lead = await this.prisma.lead.findFirst({
-        where: {
-          empresaId,
-          contatoTelefone: { contains: sufixo },
-          OR: [
-            { etapa: 'PERDIDO' },
-            { funilEtapa: { tipo: 'PERDIDO' } },
-            { tags: { some: { tag: { nome: { equals: TAG_ENCERRADO, mode: 'insensitive' } } } } },
-          ],
+      if (sufixo.length < 8) return null;
+      // Igualdade no sufixo normalizado → usa o índice de expressão (não seq scan).
+      const rows = await this.prisma.$queryRaw<Array<{ id: string }>>`
+        SELECT "id" FROM "Lead"
+        WHERE "empresaId" = ${empresaId}
+          AND RIGHT(REGEXP_REPLACE("contatoTelefone", '[^0-9]', '', 'g'), 8) = ${sufixo}
+        ORDER BY "atualizadoEm" DESC
+        LIMIT 1
+      `;
+      const id = rows[0]?.id;
+      if (!id) return null;
+      // Carrega só o necessário pra avaliar "encerrado" (busca por id, indexada).
+      const lead = await this.prisma.lead.findUnique({
+        where: { id },
+        select: {
+          id: true,
+          etapa: true,
+          funilEtapa: { select: { tipo: true } },
+          tags: { select: { tag: { select: { nome: true } } } },
         },
-        select: { id: true },
-        orderBy: { atualizadoEm: 'desc' },
       });
-      return lead != null;
+      if (!lead) return null;
+      const encerrado =
+        lead.etapa === 'PERDIDO' ||
+        lead.funilEtapa?.tipo === 'PERDIDO' ||
+        lead.tags.some((t) => t.tag.nome.toLowerCase() === TAG_ENCERRADO.toLowerCase());
+      return { id: lead.id, encerrado };
     } catch (err) {
       this.logger.warn(
-        `[bot] leadEncerrado falhou (fail-open): ${err instanceof Error ? err.message : String(err)}`,
+        `[bot] buscarLeadDoPeer falhou (fail-open): ${err instanceof Error ? err.message : String(err)}`,
       );
-      return false;
+      return null;
     }
   }
 
@@ -519,24 +544,14 @@ export class MullerWhatsappService implements OnModuleInit {
 
   /**
    * Orquestração (Fase B) — true quando há um fluxo "Conversar com IA" pausado
-   * (execução AGUARDANDO) esperando este lead responder. Nesse caso o bot geral
-   * cala (quem conduz é o motor do fluxo). Match do lead por sufixo de telefone.
+   * (execução AGUARDANDO) esperando ESTE lead responder. Nesse caso o bot geral
+   * cala (quem conduz é o motor do fluxo). O lead já vem resolvido por
+   * `buscarLeadDoPeer` (não refaz a busca de telefone).
    */
-  private async fluxoIaConduzindo(
-    empresaId: string,
-    peerId: string,
-    peerTelefone?: string,
-  ): Promise<boolean> {
+  private async fluxoConduzindoLead(empresaId: string, leadId: string): Promise<boolean> {
     try {
-      const sufixo = (peerTelefone ?? peerId).replace(/\D/g, '').slice(-8);
-      if (sufixo.length < 8) return false;
-      const lead = await this.prisma.lead.findFirst({
-        where: { empresaId, contatoTelefone: { contains: sufixo } },
-        select: { id: true },
-      });
-      if (!lead) return false;
       const aguardando = await this.prisma.fluxoExecucao.findFirst({
-        where: { empresaId, status: 'AGUARDANDO', contexto: { path: ['leadId'], equals: lead.id } },
+        where: { empresaId, status: 'AGUARDANDO', contexto: { path: ['leadId'], equals: leadId } },
         select: { id: true },
       });
       return aguardando != null;
