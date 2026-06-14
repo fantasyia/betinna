@@ -1,7 +1,7 @@
 import type { ReactNode } from 'react';
 import { Link, useLocation } from 'react-router-dom';
 import { Star } from 'lucide-react';
-import { colors } from '@/components/styles';
+import { cn } from '@/lib/cn';
 import { useFavoritos, toggleFavorito } from '@/lib/favoritos';
 
 /**
@@ -69,15 +69,7 @@ export function SubTabsBar({
     <div
       role="tablist"
       aria-label={ariaLabel}
-      style={{
-        display: 'flex',
-        gap: 0,
-        borderBottom: `1px solid ${colors.border}`,
-        marginBottom: '1rem',
-        marginTop: '-0.5rem',
-        overflowX: 'auto',
-        scrollbarWidth: 'thin',
-      }}
+      className="flex border-b border-border mb-4 -mt-2 overflow-x-auto [scrollbar-width:thin]"
     >
       {tabs.map((tab) => {
         const active = isActive(tab);
@@ -86,30 +78,20 @@ export function SubTabsBar({
         return (
           <div
             key={tab.to}
-            style={{
-              display: 'inline-flex',
-              alignItems: 'center',
-              flexShrink: 0,
-              borderBottom: `2px solid ${active ? colors.primary : 'transparent'}`,
-              marginBottom: -1,
-            }}
+            className={cn(
+              'inline-flex items-center shrink-0 border-b-2 -mb-px',
+              active ? 'border-primary' : 'border-transparent',
+            )}
           >
             <Link
               to={tab.to}
               role="tab"
               data-testid={testId}
               aria-selected={active}
-              style={{
-                padding: '0.625rem 0.5rem 0.625rem 1rem',
-                textDecoration: 'none',
-                fontSize: 14,
-                fontWeight: active ? 600 : 500,
-                color: active ? colors.primary : colors.muted,
-                display: 'inline-flex',
-                alignItems: 'center',
-                gap: 6,
-                whiteSpace: 'nowrap',
-              }}
+              className={cn(
+                'inline-flex items-center gap-1.5 py-2.5 pr-2 pl-4 text-sm whitespace-nowrap no-underline',
+                active ? 'font-semibold text-primary' : 'font-medium text-muted',
+              )}
             >
               {tab.icon}
               {tab.label}
@@ -121,19 +103,12 @@ export function SubTabsBar({
               aria-pressed={fav}
               title={fav ? 'Remover dos favoritos' : 'Favoritar'}
               onClick={() => toggleFavorito(tab.to, tab.label)}
-              style={{
-                display: 'inline-flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                background: 'transparent',
-                border: 'none',
-                cursor: 'pointer',
-                padding: '0.25rem 0.625rem 0.25rem 0.125rem',
-                color: fav ? colors.warning : colors.muted,
-                opacity: fav ? 1 : 0.45,
-              }}
+              className={cn(
+                'inline-flex items-center justify-center cursor-pointer border-none bg-transparent py-1 pr-2.5 pl-0.5',
+                fav ? 'text-warning opacity-100' : 'text-muted opacity-45',
+              )}
             >
-              <Star size={13} fill={fav ? colors.warning : 'none'} />
+              <Star size={13} fill={fav ? 'currentColor' : 'none'} />
             </button>
           </div>
         );
