@@ -114,6 +114,18 @@ describe('EnvService — REDIS_URL obrigatório em produção', () => {
     expect(() => env.enforceProductionReadiness()).not.toThrow();
   });
 
+  it('produção + localhost COM auth (user:pass@localhost) → ainda CRÍTICO', () => {
+    const env = makeEnv({ REDIS_URL: 'redis://user:pass@localhost:6379' });
+    expect(env.auditProductionReadiness().find((i) => i.key === 'REDIS_URL')?.severity).toBe(
+      'critical',
+    );
+  });
+
+  it('produção + Redis interno do Railway (redis.railway.internal) → sem alerta', () => {
+    const env = makeEnv({ REDIS_URL: 'redis://default:senha@redis.railway.internal:6379' });
+    expect(env.auditProductionReadiness().find((i) => i.key === 'REDIS_URL')).toBeUndefined();
+  });
+
   it('desenvolvimento + localhost → sem alerta (localhost é esperado em dev)', () => {
     const env = makeEnv({ NODE_ENV: 'development', REDIS_URL: 'redis://localhost:6379' });
     expect(env.auditProductionReadiness().find((i) => i.key === 'REDIS_URL')).toBeUndefined();

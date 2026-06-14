@@ -86,9 +86,12 @@ export class EnvService {
     // automação, campanhas) + o anti-spam do bot falham em SILÊNCIO (jobs somem,
     // nenhum erro no boot). Localhost em prod ⇒ crítico (aborta o boot).
     const redisUrl = this.get('REDIS_URL');
+    // `([^@/]*@)?` aceita userinfo opcional (ex.: user:pass@localhost) sem
+    // criar falso-positivo em hosts reais (default:senha@host.upstash.io não bate
+    // porque o host depois do @ não é localhost).
     if (
       env === 'production' &&
-      /^rediss?:\/\/(localhost|127\.0\.0\.1|\[::1\])(:|\/|$)/i.test(redisUrl)
+      /^rediss?:\/\/([^@/]*@)?(localhost|127\.0\.0\.1|\[::1\])(:|\/|$)/i.test(redisUrl)
     ) {
       issues.push({
         key: 'REDIS_URL',
