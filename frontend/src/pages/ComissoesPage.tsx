@@ -7,7 +7,7 @@ import { VendasTabs } from '@/components/VendasTabs';
 import { Table, Pagination, type Column } from '@/components/Table';
 import { StateView } from '@/components/StateView';
 import { FilterBar } from '@/components/FilterBar';
-import { Modal } from '@/components/Modal';
+import { Dialog } from '@/components/ui';
 import { FormField, Input, Select } from '@/components/FormField';
 import { alpha, badge, btn, btnSecondary, card, colors } from '@/components/styles';
 import { formatMoeda as fmtBRL, formatPercent } from '@/lib/masks';
@@ -363,7 +363,7 @@ function FecharMesModal({ onClose, onDone }: { onClose: () => void; onDone: () =
   }
 
   return (
-    <Modal
+    <Dialog
       open
       onClose={onClose}
       title="Fechar mês de comissões"
@@ -422,7 +422,7 @@ function FecharMesModal({ onClose, onDone }: { onClose: () => void; onDone: () =
           <p style={{ color: colors.danger, fontSize: 13, marginTop: '0.5rem' }}>{error}</p>
         )}
       </form>
-    </Modal>
+    </Dialog>
   );
 }
 
@@ -456,7 +456,7 @@ function PagarModal({
   }
 
   return (
-    <Modal
+    <Dialog
       open
       onClose={onClose}
       title={`Marcar comissão como paga — ${MES_NOMES[comissao.mes - 1]}/${comissao.ano}`}
@@ -497,6 +497,6 @@ function PagarModal({
         </FormField>
         {error && <p style={{ color: colors.danger, fontSize: 13 }}>{error}</p>}
       </form>
-    </Modal>
+    </Dialog>
   );
 }

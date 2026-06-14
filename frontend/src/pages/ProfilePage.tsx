@@ -9,7 +9,7 @@ import { SistemaTabs } from '@/components/SistemaTabs';
 import { Table, Pagination, type Column } from '@/components/Table';
 import { StateView } from '@/components/StateView';
 import { FilterBar, SearchInput } from '@/components/FilterBar';
-import { Modal } from '@/components/Modal';
+import { Dialog } from '@/components/ui';
 import { FormField, Input, Select } from '@/components/FormField';
 import { useToast } from '@/components/toast';
 import { maskTelefone } from '@/lib/masks';
@@ -651,7 +651,7 @@ function EditUserModal({
   }
 
   return (
-    <Modal
+    <Dialog
       open
       onClose={onClose}
       title="Editar usuário"
@@ -748,7 +748,7 @@ function EditUserModal({
         </div>
         {error && <p style={{ color: colors.danger, fontSize: 13 }}>{error}</p>}
       </form>
-    </Modal>
+    </Dialog>
   );
 }
 
@@ -781,7 +781,7 @@ function SetTetoModal({
   }
 
   return (
-    <Modal
+    <Dialog
       open
       onClose={onClose}
       title={`Teto de desconto — ${user.nome}`}
@@ -819,7 +819,7 @@ function SetTetoModal({
         />
       </FormField>
       {error && <p style={{ color: colors.danger, fontSize: 13 }}>{error}</p>}
-    </Modal>
+    </Dialog>
   );
 }
 
@@ -852,7 +852,7 @@ function SetComissaoModal({
   }
 
   return (
-    <Modal
+    <Dialog
       open
       onClose={onClose}
       title={`Comissão — ${user.nome}`}
@@ -891,7 +891,7 @@ function SetComissaoModal({
         />
       </FormField>
       {error && <p style={{ color: colors.danger, fontSize: 13 }}>{error}</p>}
-    </Modal>
+    </Dialog>
   );
 }
 
@@ -1019,7 +1019,7 @@ function ConvidarUsuarioModal({
   }
 
   return (
-    <Modal
+    <Dialog
       open
       onClose={onClose}
       title="Convidar novo usuário"
@@ -1199,6 +1199,6 @@ function ConvidarUsuarioModal({
           </p>
         )}
       </form>
-    </Modal>
+    </Dialog>
   );
 }

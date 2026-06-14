@@ -4,7 +4,7 @@ import { api, ApiError } from '@/lib/api';
 import { useApiQuery } from '@/hooks/useApiQuery';
 import { PageLayout } from '@/components/PageLayout';
 import { StateView } from '@/components/StateView';
-import { Modal } from '@/components/Modal';
+import { Dialog } from '@/components/ui';
 import { FormField, Input, Select } from '@/components/FormField';
 import { useConfirm } from '@/hooks/useConfirm';
 import { useToast } from '@/components/toast';
@@ -303,7 +303,7 @@ function VersoesModal({
   }
 
   return (
-    <Modal
+    <Dialog
       open
       onClose={onClose}
       title={`Versões — ${prompt.nome} (atual: v${prompt.versao})`}
@@ -385,7 +385,7 @@ function VersoesModal({
           ))}
         </div>
       </StateView>
-    </Modal>
+    </Dialog>
   );
 }
 
@@ -536,7 +536,7 @@ function PromptFormModal({
   }
 
   return (
-    <Modal
+    <Dialog
       open
       onClose={onClose}
       title={isEdit ? `Editar prompt — ${prompt?.nome}` : 'Novo prompt'}
@@ -673,6 +673,6 @@ function PromptFormModal({
         </div>
         {error && <p style={{ color: colors.danger, fontSize: 13 }}>{error}</p>}
       </form>
-    </Modal>
+    </Dialog>
   );
 }

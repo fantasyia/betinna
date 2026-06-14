@@ -8,7 +8,7 @@ import { AutomacaoTabs } from '@/components/AutomacaoTabs';
 import { Table, Pagination, type Column } from '@/components/Table';
 import { StateView } from '@/components/StateView';
 import { FilterBar, SearchInput } from '@/components/FilterBar';
-import { Modal } from '@/components/Modal';
+import { Dialog } from '@/components/ui';
 import { FormField, Input, Select, Textarea } from '@/components/FormField';
 import { useToast } from '@/components/toast';
 import { useConfirm } from '@/hooks/useConfirm';
@@ -494,10 +494,10 @@ function CampanhaDetailModal({
   const c = data;
 
   return (
-    <Modal
+    <Dialog
       open
       onClose={onClose}
-      width={740}
+      size="lg"
       title={c?.nome ?? 'Campanha'}
       footer={
         <div style={{ display: 'flex', gap: 8, justifyContent: 'space-between', width: '100%' }}>
@@ -718,7 +718,7 @@ function CampanhaDetailModal({
         )}
       </StateView>
       {ConfirmDialog}
-    </Modal>
+    </Dialog>
   );
 }
 
@@ -1186,10 +1186,10 @@ function CreateCampanhaModal({
   }
 
   return (
-    <Modal
+    <Dialog
       open
       onClose={onClose}
-      width={640}
+      size="lg"
       title="Nova campanha"
       footer={
         <>
@@ -1416,7 +1416,7 @@ function CreateCampanhaModal({
 
         {formError && <p style={{ color: colors.danger, fontSize: 13, marginTop: '0.5rem' }}>{formError}</p>}
       </form>
-    </Modal>
+    </Dialog>
   );
 }
 

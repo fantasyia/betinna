@@ -7,7 +7,7 @@ import { VendasTabs } from '@/components/VendasTabs';
 import { Table, Pagination, type Column } from '@/components/Table';
 import { StateView } from '@/components/StateView';
 import { FilterBar } from '@/components/FilterBar';
-import { Modal } from '@/components/Modal';
+import { Dialog } from '@/components/ui';
 import { FormField, Input, Select, Textarea } from '@/components/FormField';
 import { AsyncCombobox } from '@/components/AsyncCombobox';
 import { badge, btn, btnDanger, btnSecondary, card, colors } from '@/components/styles';
@@ -389,11 +389,10 @@ function AmostraDetailModal({
   ];
 
   return (
-    <Modal
+    <Dialog
       open
       onClose={onClose}
       title={data ? `Amostra — ${data.produtoNome}` : 'Amostra'}
-      width={560}
       footer={
         <>
           <button type="button" onClick={onClose} style={btnSecondary}>
@@ -582,7 +581,7 @@ function AmostraDetailModal({
           </div>
         )}
       </StateView>
-    </Modal>
+    </Dialog>
   );
 }
 
@@ -675,7 +674,7 @@ function AmostraFormModal({
   }
 
   return (
-    <Modal
+    <Dialog
       open
       onClose={onClose}
       title="Nova amostra"
@@ -795,6 +794,6 @@ function AmostraFormModal({
           </p>
         )}
       </form>
-    </Modal>
+    </Dialog>
   );
 }

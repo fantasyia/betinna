@@ -4,7 +4,7 @@ import { PageLayout } from '@/components/PageLayout';
 import { Table, Pagination, type Column } from '@/components/Table';
 import { StateView } from '@/components/StateView';
 import { FilterBar } from '@/components/FilterBar';
-import { Modal } from '@/components/Modal';
+import { Dialog } from '@/components/ui';
 import { Select } from '@/components/FormField';
 import { AtendimentoTabs } from '@/components/AtendimentoTabs';
 import { badge, btnSecondary, card, colors } from '@/components/styles';
@@ -350,10 +350,10 @@ function IncidentDetailModal({ id, onClose }: { id: string; onClose: () => void 
   const { data, loading, error, refetch } = useApiQuery<Incident>(`/marketplace/incidentes/${id}`);
 
   return (
-    <Modal
+    <Dialog
       open
       onClose={onClose}
-      width={640}
+      size="lg"
       title="Incidente"
       footer={
         <button type="button" onClick={onClose} style={btnSecondary}>
@@ -432,7 +432,7 @@ function IncidentDetailModal({ id, onClose }: { id: string; onClose: () => void 
           </div>
         )}
       </StateView>
-    </Modal>
+    </Dialog>
   );
 }
 

@@ -9,7 +9,7 @@ import { SistemaTabs } from '@/components/SistemaTabs';
 import { Table, Pagination, type Column } from '@/components/Table';
 import { StateView } from '@/components/StateView';
 import { FilterBar, SearchInput } from '@/components/FilterBar';
-import { Modal } from '@/components/Modal';
+import { Dialog } from '@/components/ui';
 import { FormField, Input, Select } from '@/components/FormField';
 import { LogoUploader } from '@/components/LogoUploader';
 import { useToast } from '@/components/toast';
@@ -517,11 +517,11 @@ function EmpresaFormModal({
   }
 
   return (
-    <Modal
+    <Dialog
       open
       onClose={onClose}
       title={isEdit ? `Editar ${empresa?.nome}` : 'Nova empresa'}
-      width={620}
+      size="lg"
       footer={
         <>
           <button type="button" onClick={onClose} style={btnSecondary}>
@@ -664,6 +664,6 @@ function EmpresaFormModal({
           </p>
         )}
       </form>
-    </Modal>
+    </Dialog>
   );
 }

@@ -4,7 +4,7 @@ import { useApiQuery } from '@/hooks/useApiQuery';
 import { PageLayout } from '@/components/PageLayout';
 import { AutomacaoTabs } from '@/components/AutomacaoTabs';
 import { StateView } from '@/components/StateView';
-import { Modal } from '@/components/Modal';
+import { Dialog } from '@/components/ui';
 import { FormField, Input } from '@/components/FormField';
 import { badge, btn, btnDanger, btnSecondary, card, colors } from '@/components/styles';
 
@@ -293,7 +293,7 @@ function ConnectModal({
 
   if (meta.connectMode === 'qr' && meta.qrRoute) {
     return (
-      <Modal open onClose={onClose} title={`Conectar ${meta.nome}`}>
+      <Dialog open onClose={onClose} title={`Conectar ${meta.nome}`}>
         <p style={{ marginTop: 0, fontSize: 14 }}>
           O pareamento é feito por QR code numa página dedicada.
         </p>
@@ -303,7 +303,7 @@ function ConnectModal({
         >
           Abrir pareamento →
         </a>
-      </Modal>
+      </Dialog>
     );
   }
 
@@ -392,7 +392,7 @@ function OAuthConnectModal({
   }, [meta.oauthStart, servico]);
 
   return (
-    <Modal
+    <Dialog
       open
       onClose={onClose}
       title={`Conectar ${meta.nome}`}
@@ -434,7 +434,7 @@ function OAuthConnectModal({
           {error}
         </p>
       )}
-    </Modal>
+    </Dialog>
   );
 }
 
@@ -479,7 +479,7 @@ function CredentialsConnectModal({
   }
 
   return (
-    <Modal
+    <Dialog
       open
       onClose={onClose}
       title={`Conectar ${meta.nome}`}
@@ -531,7 +531,7 @@ function CredentialsConnectModal({
           </p>
         )}
       </form>
-    </Modal>
+    </Dialog>
   );
 }
 
@@ -562,7 +562,7 @@ function DisconnectModal({
   }
 
   return (
-    <Modal
+    <Dialog
       open
       onClose={onClose}
       title={`Desconectar ${meta.nome}`}
@@ -594,6 +594,6 @@ function DisconnectModal({
           {error}
         </p>
       )}
-    </Modal>
+    </Dialog>
   );
 }

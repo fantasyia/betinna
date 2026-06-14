@@ -6,7 +6,7 @@ import { PageLayout } from '@/components/PageLayout';
 import { CrmTabs } from '@/components/CrmTabs';
 import { StateView } from '@/components/StateView';
 import { FilterBar, SearchInput } from '@/components/FilterBar';
-import { Modal } from '@/components/Modal';
+import { Dialog } from '@/components/ui';
 import { FormField, Input } from '@/components/FormField';
 import { useConfirm } from '@/hooks/useConfirm';
 import { useToast } from '@/components/toast';
@@ -215,7 +215,7 @@ function TagFormModal({
   }
 
   return (
-    <Modal
+    <Dialog
       open
       onClose={onClose}
       title={isEdit ? `Editar tag — ${tag?.nome}` : 'Nova tag'}
@@ -318,6 +318,6 @@ function TagFormModal({
         </div>
         {error && <p style={{ color: colors.danger, fontSize: 13 }}>{error}</p>}
       </form>
-    </Modal>
+    </Dialog>
   );
 }

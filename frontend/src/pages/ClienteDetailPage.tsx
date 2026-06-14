@@ -4,7 +4,7 @@ import { api, ApiError } from '@/lib/api';
 import { useApiQuery } from '@/hooks/useApiQuery';
 import { PageLayout } from '@/components/PageLayout';
 import { StateView } from '@/components/StateView';
-import { Modal } from '@/components/Modal';
+import { Dialog } from '@/components/ui';
 import { FormField, Input, Select, Textarea } from '@/components/FormField';
 import { AsyncCombobox } from '@/components/AsyncCombobox';
 import { NovoPedidoDialog } from '@/components/NovoPedidoDialog';
@@ -1453,7 +1453,7 @@ function EditNotaModal({
   }
 
   return (
-    <Modal
+    <Dialog
       open
       onClose={onClose}
       title="Editar nota"
@@ -1486,7 +1486,7 @@ function EditNotaModal({
           <p style={{ color: colors.danger, fontSize: 13 }}>{error}</p>
         )}
       </form>
-    </Modal>
+    </Dialog>
   );
 }
 
@@ -1858,11 +1858,10 @@ function PrecoFormModal({
   }
 
   return (
-    <Modal
+    <Dialog
       open
       onClose={onClose}
       title="Novo preço especial"
-      width={560}
       footer={
         <>
           <button type="button" onClick={onClose} style={btnSecondary}>
@@ -1949,6 +1948,6 @@ function PrecoFormModal({
         )}
         {error && <p style={{ color: colors.danger, fontSize: 13 }}>{error}</p>}
       </form>
-    </Modal>
+    </Dialog>
   );
 }

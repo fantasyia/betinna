@@ -13,7 +13,7 @@ import { useApiQuery } from '@/hooks/useApiQuery';
 import { PageLayout } from '@/components/PageLayout';
 import { CrmTabs } from '@/components/CrmTabs';
 import { StateView } from '@/components/StateView';
-import { Modal } from '@/components/Modal';
+import { Dialog } from '@/components/ui';
 import { FormField, Input, Select, Textarea } from '@/components/FormField';
 import { AsyncCombobox } from '@/components/AsyncCombobox';
 import { useToast } from '@/components/toast';
@@ -559,7 +559,7 @@ function AgendaFormModal({
     item != null && (item.recorrencia ? item.recorrencia !== 'NENHUMA' : false);
 
   return (
-    <Modal
+    <Dialog
       open
       onClose={onClose}
       title={isEdit ? 'Editar compromisso' : 'Novo compromisso'}
@@ -760,6 +760,6 @@ function AgendaFormModal({
           </p>
         )}
       </form>
-    </Modal>
+    </Dialog>
   );
 }

@@ -6,7 +6,7 @@ import { PageLayout } from '@/components/PageLayout';
 import { Table, Pagination, type Column } from '@/components/Table';
 import { StateView } from '@/components/StateView';
 import { FilterBar, SearchInput } from '@/components/FilterBar';
-import { Modal } from '@/components/Modal';
+import { Dialog } from '@/components/ui';
 import { FormField, Input, Select, Textarea } from '@/components/FormField';
 import { AsyncCombobox } from '@/components/AsyncCombobox';
 import { AtendimentoTabs } from '@/components/AtendimentoTabs';
@@ -472,10 +472,10 @@ function OcorrenciaDetailModal({
   }
 
   return (
-    <Modal
+    <Dialog
       open
       onClose={onClose}
-      width={680}
+      size="lg"
       title={data ? `Ocorrência #${data.numero}` : 'Ocorrência'}
       footer={
         <>
@@ -618,7 +618,7 @@ function OcorrenciaDetailModal({
         )}
       </StateView>
 
-      <Modal
+      <Dialog
         open={resolvingOpen}
         onClose={() => setResolvingOpen(false)}
         title="Marcar como resolvida"
@@ -650,8 +650,8 @@ function OcorrenciaDetailModal({
             required
           />
         </FormField>
-      </Modal>
-    </Modal>
+      </Dialog>
+    </Dialog>
   );
 }
 
@@ -725,7 +725,7 @@ function OcorrenciaFormModal({
   }
 
   return (
-    <Modal
+    <Dialog
       open
       onClose={onClose}
       title="Nova ocorrência"
@@ -812,6 +812,6 @@ function OcorrenciaFormModal({
           </p>
         )}
       </form>
-    </Modal>
+    </Dialog>
   );
 }
