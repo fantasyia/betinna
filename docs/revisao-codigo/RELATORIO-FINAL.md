@@ -39,7 +39,7 @@ status reflete o que está **no código**, não intenção.
 | 🔴 E · Dois sistemas de estilo + dois diálogos | ⛔ pendente | — | Não tocado. |
 | 🔴 F · Penhasco de testes (frontend / evolution / módulos novos) | 🟡 parcial | (vários) | Adicionados specs onde foi corrigido: `auth-session`, `empresas`, `auth-context`, `tenant-throttler`, `evolution-webhook`, `nps.service`. Frontend continua **sem teste**; cobertura ampla segue pendente. |
 | 🔴 G · `REDIS_URL` default localhost | ✅ feito | `862d0f5` | `auditProductionReadiness()` marca localhost/127.0.0.1/[::1] em prod como **crítico** → boot aborta (mesmo padrão do ENCRYPTION_KEY). Em dev, localhost segue normal. 4 specs. |
-| 🔴 G · body-parser 20mb global | ✅ feito | `2853571`+`576e27e` | Guard de `Content-Length` por rota roda **antes** do parser: só `/webhooks`, `/inbox`, `/import` mantêm 20MB; resto cai pra 1MB. NÃO toca no `rawBody` (lê só header) → HMAC intacto. **Pula `multipart/form-data`** (upload de documentos/logo tem limite próprio do multer) — regressão pega pela revisão adversarial. 9 specs. |
+| 🔴 G · body-parser 20mb global | ✅ feito | `2853571`+`576e27e`+`84f137c` | Guard de `Content-Length` por rota roda **antes** do parser. **Webhooks públicos = 1MB** (eram a superfície de DoS); 20MB só nos uploads autenticados (`/inbox` mídia, `/import` CSV); resto 1MB. NÃO toca no `rawBody` (lê só header) → HMAC intacto. **Pula `multipart/form-data`** (documentos/logo têm limite próprio do multer). 12 specs. |
 | 🔴 G · Margem/custo = chute de 70% | ⛔ pendente | — | Não tocado (aguarda tabela de preço real do OMIE). |
 | 🔴 H · Arquivos gigantes (InboxPage 3.106, FluxoEditor 2.736) | ⛔ pendente | — | Não tocado. |
 
