@@ -1,5 +1,4 @@
 import { Injectable, Logger } from '@nestjs/common';
-import { EnvService } from '@config/env.service';
 import { PrismaService } from '@database/prisma.service';
 import { IntegracoesService } from '@modules/integracoes/integracoes.service';
 import { NotificacoesService } from '@modules/notificacoes/notificacoes.service';
@@ -40,7 +39,6 @@ export class OmieProdutosService {
     private readonly prisma: PrismaService,
     private readonly omie: OmieClientService,
     private readonly integracoes: IntegracoesService,
-    private readonly env: EnvService,
     private readonly notificacoes: NotificacoesService,
   ) {}
 
@@ -74,11 +72,7 @@ export class OmieProdutosService {
           }
         }
 
-        const payload = OmieMapper.produtoToPrismaUpsert(
-          empresaId,
-          o,
-          this.env.get('OMIE_PRECO_FABRICA_RATIO'),
-        );
+        const payload = OmieMapper.produtoToPrismaUpsert(empresaId, o);
         if (!payload) continue;
 
         const existing = await this.prisma.produto.findUnique({

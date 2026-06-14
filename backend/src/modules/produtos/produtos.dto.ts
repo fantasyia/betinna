@@ -10,7 +10,8 @@ export const createProdutoSchema = z.object({
   categoria: z.string().max(60).optional(),
   unidade: z.string().max(40).optional(),
   precoTabela: z.number().positive(),
-  precoFabrica: z.number().positive(),
+  // Custo OPCIONAL: pode ficar em branco (null) quando não há custo real ainda.
+  precoFabrica: z.number().positive().nullish(),
   imagem: z.string().max(500).optional(),
   popularidade: z.number().int().min(0).max(100).default(0),
   estoque: z.number().int().min(0).default(0),

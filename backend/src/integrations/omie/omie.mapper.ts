@@ -54,27 +54,17 @@ export class OmieMapper {
   }
 
   /**
-   * Ratio default pra estimar precoFabrica a partir de precoTabela.
-   * Configurável via env `OMIE_PRECO_FABRICA_RATIO`. Único call-site
-   * (OmieProdutosService) injeta o ratio do env; tests usam o default.
-   *
-   * TODO: integrar OMIE `tabela_de_preco` (ListarTabelasPreco + por produto)
-   * pra ler precoFabrica REAL. Heurística fica como fallback pra produtos
-   * que não estão em nenhuma tabela auxiliar.
-   */
-  static readonly DEFAULT_PRECO_FABRICA_RATIO = 0.7;
-
-  /**
    * Converte um OmieProduto em payload de upsert.
    * Usa codigo (SKU) + codigo_produto (codigoOmie) pra identificar.
    *
-   * @param ratio fração aplicada em precoTabela para estimar precoFabrica.
-   *   Default 0.7 (70%). Aceita 0–1.
+   * NÃO preenche o custo (precoFabrica): o OMIE só manda o preço de venda, não o
+   * custo. Em produto NOVO o custo fica null; em produto EXISTENTE não é tocado
+   * (preserva o que foi digitado à mão). Custo real entra quando a tabela de
+   * preço do OMIE for integrada.
    */
   static produtoToPrismaUpsert(
     empresaId: string,
     o: OmieProduto,
-    ratio: number = OmieMapper.DEFAULT_PRECO_FABRICA_RATIO,
   ): {
     where: Prisma.ProdutoWhereUniqueInput;
     create: Prisma.ProdutoUncheckedCreateInput;
@@ -84,11 +74,6 @@ export class OmieMapper {
     if (!codigoOmie) return null;
 
     const precoTabela = o.valor_unitario ?? 0;
-    // Heurística: precoFabrica = precoTabela * ratio (default 70%).
-    // TODO: substituir por consulta a OMIE `tabela_de_preco` quando o cliente
-    // configurar tabelas auxiliares. Ratio configurável via env por empresa.
-    const safeRatio = ratio >= 0 && ratio <= 1 ? ratio : OmieMapper.DEFAULT_PRECO_FABRICA_RATIO;
-    const precoFabrica = Number((precoTabela * safeRatio).toFixed(2));
 
     const now = new Date();
     return {
@@ -102,7 +87,7 @@ export class OmieMapper {
         marca: o.marca || null,
         unidade: o.unidade || null,
         precoTabela,
-        precoFabrica,
+        precoFabrica: null, // custo não vem do OMIE — null até definir à mão / tabela real
         estoque: o.quantidade_estoque ?? 0,
         estoqueAtualizadoEm: now,
         ativo: o.inativo !== 'S',
@@ -114,7 +99,7 @@ export class OmieMapper {
         marca: o.marca || null,
         unidade: o.unidade || null,
         precoTabela,
-        precoFabrica,
+        // precoFabrica NÃO é tocado no sync — preserva o custo já definido à mão.
         estoque: o.quantidade_estoque ?? 0,
         estoqueAtualizadoEm: now,
         ativo: o.inativo !== 'S',

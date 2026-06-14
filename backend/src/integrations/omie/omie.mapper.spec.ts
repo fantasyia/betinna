@@ -87,10 +87,15 @@ describe('OmieMapper.produtoToPrismaUpsert', () => {
     ).toBeNull();
   });
 
-  it('calcula precoFabrica como 70% de precoTabela (heurística)', () => {
+  it('NÃO inventa custo: precoFabrica fica null no create (OMIE só manda preço de venda)', () => {
     const r = OmieMapper.produtoToPrismaUpsert('emp-1', baseProduto);
     expect(r!.create.precoTabela).toBe(50);
-    expect(r!.create.precoFabrica).toBe(35);
+    expect(r!.create.precoFabrica).toBeNull();
+  });
+
+  it('NÃO sobrescreve custo no update (preserva o que foi definido à mão)', () => {
+    const r = OmieMapper.produtoToPrismaUpsert('emp-1', baseProduto);
+    expect(r!.update).not.toHaveProperty('precoFabrica');
   });
 
   it('marca ativo=false quando inativo=S', () => {

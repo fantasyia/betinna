@@ -537,7 +537,12 @@ model Produto {
   categoria           String?
   unidade             String? // cx 12un, 1kg, etc
   precoTabela         Decimal   @db.Decimal(14, 2)
-  precoFabrica        Decimal   @db.Decimal(14, 2)
+  /// Custo / preço de fábrica. OPCIONAL: fica null quando não há custo REAL
+  /// (ex.: produto importado do OMIE sem tabela de custo). NÃO inventamos mais
+  /// um chute de 70% — null = "não informado", a tela mostra "—" e o catálogo
+  /// pede pra definir o custo antes de calcular markup. Preenchido à mão ou
+  /// pelo OMIE quando a tabela de preço real for integrada.
+  precoFabrica        Decimal?  @db.Decimal(14, 2)
   imagem              String? // emoji ou URL
   popularidade        Int       @default(0)
   estoque             Int       @default(0)

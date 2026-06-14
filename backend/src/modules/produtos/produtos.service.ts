@@ -90,7 +90,8 @@ export class ProdutosService {
   async create(user: AuthenticatedUser, dto: CreateProdutoDto): Promise<ProdutoWithRel> {
     const empresaId = this.requireEmpresa(user);
 
-    if (dto.precoFabrica > dto.precoTabela) {
+    // Custo é opcional — só valida "custo ≤ tabela" quando informado.
+    if (dto.precoFabrica != null && dto.precoFabrica > dto.precoTabela) {
       throw new BusinessRuleException('Preço de fábrica não pode ser maior que preço de tabela');
     }
     if (dto.sku) await this.assertSkuUnico(empresaId, dto.sku);
@@ -110,8 +111,11 @@ export class ProdutosService {
     const existing = await this.findById(user, id);
 
     const precoTabela = dto.precoTabela ?? Number(existing.precoTabela);
-    const precoFabrica = dto.precoFabrica ?? Number(existing.precoFabrica);
-    if (precoFabrica > precoTabela) {
+    // Custo é opcional: usa o do dto se veio, senão o existente; valida só quando
+    // há custo definido (null = sem custo → nada a comparar).
+    const precoFabricaEfetivo =
+      dto.precoFabrica !== undefined ? dto.precoFabrica : existing.precoFabrica;
+    if (precoFabricaEfetivo != null && Number(precoFabricaEfetivo) > precoTabela) {
       throw new BusinessRuleException('Preço de fábrica não pode ser maior que preço de tabela');
     }
     if (dto.sku && dto.sku !== existing.sku) {

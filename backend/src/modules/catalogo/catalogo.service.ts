@@ -30,7 +30,8 @@ export interface CatalogoItem {
     unidade: string | null;
     imagem: string | null;
     precoTabela: number;
-    precoFabrica: number;
+    /** Custo. `null` quando não informado (não inventamos mais o chute de 70%). */
+    precoFabrica: number | null;
     popularidade: number;
     ativo: boolean;
     estoque: number;
@@ -105,7 +106,7 @@ export class CatalogoService {
       produto: {
         ...it.produto,
         precoTabela: Number(it.produto.precoTabela),
-        precoFabrica: Number(it.produto.precoFabrica),
+        precoFabrica: it.produto.precoFabrica == null ? null : Number(it.produto.precoFabrica),
       },
     }));
   }
@@ -144,7 +145,7 @@ export class CatalogoService {
       produto: {
         ...item.produto,
         precoTabela: Number(item.produto.precoTabela),
-        precoFabrica: Number(item.produto.precoFabrica),
+        precoFabrica: item.produto.precoFabrica == null ? null : Number(item.produto.precoFabrica),
       },
     };
   }
