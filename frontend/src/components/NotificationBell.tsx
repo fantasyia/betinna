@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { useSyncExternalStore } from 'react';
 import { getSession, subscribe } from '@/lib/auth-store';
 import { api, ApiError } from '@/lib/api';
-import { colors } from '@/components/styles';
+import { cn } from '@/lib/cn';
 
 /**
  * NotificationBell — ícone de notificações com dropdown.
@@ -40,10 +40,10 @@ function getSnapshot() {
 }
 
 const prioridadeColor: Record<Notificacao['prioridade'], string> = {
-  BAIXA: colors.muted,
-  NORMAL: colors.primary,
-  ALTA: colors.warning,
-  URGENTE: colors.danger,
+  BAIXA: 'var(--muted)',
+  NORMAL: 'var(--primary)',
+  ALTA: 'var(--warning)',
+  URGENTE: 'var(--danger)',
 };
 
 function fmtRelativo(iso: string): string {
@@ -149,43 +149,19 @@ export function NotificationBell() {
   if (!session?.user?.id) return null;
 
   return (
-    <div ref={containerRef} style={{ position: 'relative', display: 'inline-block' }}>
+    <div ref={containerRef} className="relative inline-block">
       <button
         type="button"
         data-testid="notif-bell"
         onClick={toggleOpen}
         aria-label={`Notificações${count > 0 ? ` (${count} não lidas)` : ''}`}
-        style={{
-          background: 'transparent',
-          border: 'none',
-          cursor: 'pointer',
-          padding: 6,
-          fontSize: 18,
-          position: 'relative',
-          lineHeight: 1,
-        }}
+        className="relative cursor-pointer border-none bg-transparent p-1.5 text-lg leading-none"
       >
         🔔
         {count > 0 && (
           <span
             data-testid="notif-count"
-            style={{
-              position: 'absolute',
-              top: -2,
-              right: -2,
-              background: colors.danger,
-              color: '#fff',
-              borderRadius: 10,
-              fontSize: 10,
-              fontWeight: 700,
-              minWidth: 16,
-              height: 16,
-              display: 'inline-flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              padding: '0 4px',
-              boxShadow: '0 0 0 2px #fff',
-            }}
+            className="absolute -right-0.5 -top-0.5 inline-flex h-4 min-w-[16px] items-center justify-center rounded-full bg-danger px-1 text-[10px] font-bold leading-none text-white ring-2 ring-bg-alt"
           >
             {count > 99 ? '99+' : count}
           </span>
@@ -196,54 +172,27 @@ export function NotificationBell() {
         <div
           data-testid="notif-dropdown"
           role="menu"
-          style={{
-            position: 'absolute',
-            right: 0,
-            top: 'calc(100% + 4px)',
-            width: 340,
-            maxHeight: 480,
-            background: colors.surfaceElevated,
-            border: `1px solid ${colors.border}`,
-            borderRadius: 8,
-            boxShadow: '0 10px 30px rgba(15,23,42,0.15)',
-            zIndex: 1000,
-            display: 'flex',
-            flexDirection: 'column',
-          }}
+          className="absolute right-0 top-[calc(100%+4px)] z-[1000] flex max-h-[480px] w-[340px] flex-col rounded-lg border border-border bg-surface-elevated shadow-lg"
         >
-          <header
-            style={{
-              padding: '10px 12px',
-              borderBottom: `1px solid ${colors.border}`,
-              display: 'flex',
-              justifyContent: 'space-between',
-              alignItems: 'center',
-            }}
-          >
-            <strong style={{ fontSize: 14 }}>Notificações</strong>
+          <header className="flex items-center justify-between border-b border-border px-3 py-2.5">
+            <strong className="text-sm">Notificações</strong>
             {count > 0 && (
               <button
                 type="button"
                 onClick={marcarTodas}
                 data-testid="notif-mark-all"
-                style={{
-                  background: 'transparent',
-                  border: 'none',
-                  color: colors.primary,
-                  cursor: 'pointer',
-                  fontSize: 12,
-                }}
+                className="cursor-pointer border-none bg-transparent text-xs text-primary"
               >
                 Marcar todas como lidas
               </button>
             )}
           </header>
 
-          <div style={{ overflowY: 'auto', flex: 1 }}>
+          <div className="flex-1 overflow-y-auto">
             {loadingList ? (
-              <div style={{ padding: 16, fontSize: 13, color: colors.muted }}>Carregando…</div>
+              <div className="p-4 text-[13px] text-muted">Carregando…</div>
             ) : items.length === 0 ? (
-              <div style={{ padding: 24, fontSize: 13, color: colors.muted, textAlign: 'center' }}>
+              <div className="p-6 text-center text-[13px] text-muted">
                 Nenhuma notificação ainda.
               </div>
             ) : (
@@ -253,81 +202,41 @@ export function NotificationBell() {
                   type="button"
                   onClick={() => onItemClick(n)}
                   data-testid={`notif-item-${n.id}`}
-                  style={{
-                    width: '100%',
-                    textAlign: 'left',
-                    padding: '10px 12px',
-                    background: n.lidaEm ? '#fff' : '#f0f9ff',
-                    border: 'none',
-                    borderBottom: `1px solid ${colors.border}`,
-                    cursor: 'pointer',
-                    display: 'flex',
-                    gap: 8,
-                    alignItems: 'flex-start',
-                  }}
+                  className={cn(
+                    'flex w-full cursor-pointer items-start gap-2 border-b border-border px-3 py-2.5 text-left',
+                    n.lidaEm ? 'bg-surface-elevated' : 'bg-primary/5',
+                  )}
                 >
                   <span
-                    style={{
-                      width: 6,
-                      height: 6,
-                      borderRadius: 3,
-                      background: prioridadeColor[n.prioridade],
-                      marginTop: 6,
-                      flexShrink: 0,
-                    }}
+                    className="mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full"
+                    style={{ backgroundColor: prioridadeColor[n.prioridade] }}
                     aria-hidden
                   />
-                  <div style={{ flex: 1, minWidth: 0 }}>
+                  <div className="min-w-0 flex-1">
                     <div
-                      style={{
-                        fontSize: 13,
-                        fontWeight: n.lidaEm ? 400 : 600,
-                        color: colors.text,
-                        marginBottom: 2,
-                      }}
+                      className={cn(
+                        'mb-0.5 text-[13px] text-text',
+                        n.lidaEm ? 'font-normal' : 'font-semibold',
+                      )}
                     >
                       {n.titulo}
                     </div>
-                    <div
-                      style={{
-                        fontSize: 12,
-                        color: colors.muted,
-                        overflow: 'hidden',
-                        textOverflow: 'ellipsis',
-                        whiteSpace: 'nowrap',
-                      }}
-                    >
-                      {n.mensagem}
-                    </div>
-                    <div style={{ fontSize: 10, color: colors.muted, marginTop: 4 }}>
-                      {fmtRelativo(n.criadoEm)}
-                    </div>
+                    <div className="truncate text-xs text-muted">{n.mensagem}</div>
+                    <div className="mt-1 text-[10px] text-muted">{fmtRelativo(n.criadoEm)}</div>
                   </div>
                 </button>
               ))
             )}
           </div>
 
-          <footer
-            style={{
-              padding: '8px 12px',
-              borderTop: `1px solid ${colors.border}`,
-              textAlign: 'center',
-            }}
-          >
+          <footer className="border-t border-border px-3 py-2 text-center">
             <button
               type="button"
               onClick={() => {
                 setOpen(false);
                 navigate('/notificacoes');
               }}
-              style={{
-                background: 'transparent',
-                border: 'none',
-                color: colors.primary,
-                cursor: 'pointer',
-                fontSize: 12,
-              }}
+              className="cursor-pointer border-none bg-transparent text-xs text-primary"
             >
               Ver todas →
             </button>

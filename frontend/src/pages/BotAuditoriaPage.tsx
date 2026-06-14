@@ -7,8 +7,7 @@ import { useToast } from '@/components/toast';
 import { PageLayout } from '@/components/PageLayout';
 import { AtendimentoTabs } from '@/components/AtendimentoTabs';
 import { StateView } from '@/components/StateView';
-import { Button, Card, Field, Select } from '@/components/ui';
-import { badge, colors } from '@/components/styles';
+import { Badge, Button, Card, Field, Select } from '@/components/ui';
 import { formatNumero } from '@/lib/masks';
 
 type StatusBot = 'OK' | 'FALLBACK' | 'SEM_RESPOSTA';
@@ -33,10 +32,10 @@ interface ListaResp {
   pagination: { page: number; limit: number; total: number; totalPages: number };
 }
 
-const STATUS_META: Record<StatusBot, { label: string; color: string }> = {
-  OK: { label: 'Respondido', color: colors.success },
-  FALLBACK: { label: 'Fallback', color: colors.warning },
-  SEM_RESPOSTA: { label: 'Sem resposta', color: colors.muted },
+const STATUS_META: Record<StatusBot, { label: string; variant: 'success' | 'warning' | 'neutral' }> = {
+  OK: { label: 'Respondido', variant: 'success' },
+  FALLBACK: { label: 'Fallback', variant: 'warning' },
+  SEM_RESPOSTA: { label: 'Sem resposta', variant: 'neutral' },
 };
 
 function fmtData(d: string) {
@@ -177,16 +176,20 @@ export default function BotAuditoriaPage() {
                         </div>
                       )}
                       {r.marcadaRevisao && (
-                        <span
-                          style={{ ...badge(colors.danger), fontSize: 10, marginTop: 4 }}
+                        <Badge
+                          variant="danger"
+                          size="sm"
+                          className="mt-1"
                           title={r.motivoRevisao ?? 'Revisar'}
                         >
-                          <Flag className="inline h-3 w-3 mr-0.5" /> revisar
-                        </span>
+                          <Flag className="h-3 w-3" /> revisar
+                        </Badge>
                       )}
                     </td>
                     <td className="p-2 whitespace-nowrap">
-                      <span style={badge(STATUS_META[r.status].color)}>{STATUS_META[r.status].label}</span>
+                      <Badge variant={STATUS_META[r.status].variant} size="sm">
+                        {STATUS_META[r.status].label}
+                      </Badge>
                     </td>
                     <td className="p-2 whitespace-nowrap text-right tabular text-muted">
                       {formatNumero(r.tokensIn + r.tokensOut)}
