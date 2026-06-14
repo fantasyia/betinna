@@ -1,6 +1,6 @@
 import { describe, expect, it, vi, beforeEach } from 'vitest';
 import type { UserRole } from '@prisma/client';
-import { ForbiddenException } from '@shared/errors/app-exception';
+import { ForbiddenException, NotFoundException } from '@shared/errors/app-exception';
 import type { AuthenticatedUser } from '@shared/types/authenticated-user';
 import { RelatoriosService } from './relatorios.service';
 
@@ -26,6 +26,9 @@ const makePrismaMock = () => ({
     count: vi.fn().mockResolvedValue(0),
     groupBy: vi.fn().mockResolvedValue([]),
     findMany: vi.fn().mockResolvedValue([]),
+  } satisfies MockModel,
+  funil: {
+    findFirst: vi.fn().mockResolvedValue(null),
   } satisfies MockModel,
   ocorrencia: {
     count: vi.fn().mockResolvedValue(0),
@@ -235,6 +238,47 @@ describe('RelatoriosService', () => {
       for (const call of prisma.lead.count.mock.calls) {
         expect(call[0].where.empresaId).toBe('emp-3');
       }
+    });
+
+    it('com funilId, usa as etapas do funil customizado (snapshot por funilEtapaId)', async () => {
+      prisma.funil.findFirst.mockResolvedValueOnce({
+        id: 'fun-1',
+        etapas: [
+          { id: 'et-novo', nome: 'Entrada', cor: '#111111', tipo: 'ATIVA' },
+          { id: 'et-prop', nome: 'Proposta', cor: '#222222', tipo: 'ATIVA' },
+          { id: 'et-fechado', nome: 'Fechado', cor: '#00ff00', tipo: 'GANHO' },
+        ],
+      });
+      // 1ª chamada de groupBy = snapshot (agora por funilEtapaId).
+      prisma.lead.groupBy.mockResolvedValueOnce([
+        { funilEtapaId: 'et-novo', _count: { _all: 4 }, _sum: { valorEstimado: 1000 } },
+        { funilEtapaId: 'et-fechado', _count: { _all: 1 }, _sum: { valorEstimado: 500 } },
+      ]);
+
+      const result = await service.funil(fakeUser(), { ...basePeriodo, funilId: 'fun-1' });
+
+      // funilAtual segue a ORDEM das etapas do funil, com nome/cor e count 0 nas vazias.
+      expect(result.funilAtual).toEqual([
+        { etapa: 'et-novo', label: 'Entrada', cor: '#111111', count: 4, valorEstimado: 1000 },
+        { etapa: 'et-prop', label: 'Proposta', cor: '#222222', count: 0, valorEstimado: 0 },
+        { etapa: 'et-fechado', label: 'Fechado', cor: '#00ff00', count: 1, valorEstimado: 500 },
+      ]);
+      // totalAtivos conta só etapas tipo ATIVA → et-novo(4) + et-prop(0) = 4.
+      expect(result.totalAtivos).toBe(4);
+      // O filtro por funilId entra em TODAS as queries de lead.
+      for (const call of prisma.lead.groupBy.mock.calls) {
+        expect(call[0].where.funilId).toBe('fun-1');
+      }
+      for (const call of prisma.lead.count.mock.calls) {
+        expect(call[0].where.funilId).toBe('fun-1');
+      }
+    });
+
+    it('com funilId inexistente/de outra empresa → NotFoundException', async () => {
+      prisma.funil.findFirst.mockResolvedValueOnce(null);
+      await expect(
+        service.funil(fakeUser(), { ...basePeriodo, funilId: 'fun-inexistente' }),
+      ).rejects.toBeInstanceOf(NotFoundException);
     });
   });
 

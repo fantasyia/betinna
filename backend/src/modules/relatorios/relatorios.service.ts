@@ -3,6 +3,7 @@ import { createHash } from 'node:crypto';
 import { Prisma } from '@prisma/client';
 import { PrismaService } from '@database/prisma.service';
 import { RedisService } from '@database/redis.service';
+import { NotFoundException } from '@shared/errors/app-exception';
 import { RepScopeService } from '@shared/scope/rep-scope.service';
 import { getCallerEmpresaId } from '@shared/utils/auth-context';
 import type { AuthenticatedUser } from '@shared/types/authenticated-user';
@@ -259,10 +260,28 @@ export class RelatoriosService {
     const { de, ate } = params;
     const prev = periodoAnterior(de, ate);
 
-    const baseFilter: Prisma.LeadWhereInput = this.mergeRepFilter(
+    let baseFilter: Prisma.LeadWhereInput = this.mergeRepFilter(
       { empresaId } as Prisma.LeadWhereInput,
       rf,
     );
+
+    // Funil customizado opcional (seletor do dashboard): quando informado, filtra
+    // TODO o cálculo por ele e o snapshot (funilAtual) usa as ETAPAS do funil
+    // (nome/cor/ordem) em vez do enum LeadEtapa legado. Sem funilId = original.
+    const funilCustom = params.funilId
+      ? await this.prisma.funil.findFirst({
+          where: { id: params.funilId, empresaId },
+          select: {
+            id: true,
+            etapas: {
+              orderBy: { ordem: 'asc' },
+              select: { id: true, nome: true, cor: true, tipo: true },
+            },
+          },
+        })
+      : null;
+    if (params.funilId && !funilCustom) throw new NotFoundException('Funil', params.funilId);
+    if (funilCustom) baseFilter = { ...baseFilter, funilId: funilCustom.id };
 
     const [
       porEtapa,
@@ -274,13 +293,21 @@ export class RelatoriosService {
       agingGrp,
       porRep,
     ] = await Promise.all([
-      // Snapshot atual do funil (independente de período — mostra estado atual)
-      this.prisma.lead.groupBy({
-        by: ['etapa'],
-        where: baseFilter,
-        _count: { _all: true },
-        _sum: { valorEstimado: true },
-      }),
+      // Snapshot atual do funil (independente de período — mostra estado atual).
+      // Com funil customizado agrupa pelas etapas dele; senão pelo enum legado.
+      funilCustom
+        ? this.prisma.lead.groupBy({
+            by: ['funilEtapaId'],
+            where: baseFilter,
+            _count: { _all: true },
+            _sum: { valorEstimado: true },
+          })
+        : this.prisma.lead.groupBy({
+            by: ['etapa'],
+            where: baseFilter,
+            _count: { _all: true },
+            _sum: { valorEstimado: true },
+          }),
       this.prisma.lead.count({ where: { ...baseFilter, criadoEm: { gte: de, lte: ate } } }),
       this.prisma.lead.count({
         where: { ...baseFilter, criadoEm: { gte: prev.de, lte: prev.ate } },
@@ -329,9 +356,51 @@ export class RelatoriosService {
       ]),
     );
 
-    const totalAtivos = porEtapa
-      .filter((e) => !['GANHO', 'PERDIDO'].includes(e.etapa))
-      .reduce((s, e) => s + e._count._all, 0);
+    // funilAtual + totalAtivos: ramo customizado usa as etapas do funil (com nome/
+    // cor/ordem, contagem 0 quando vazias); ramo legado usa o enum LeadEtapa.
+    let funilAtual: Array<{
+      etapa: string;
+      label?: string;
+      cor?: string;
+      count: number;
+      valorEstimado: number;
+    }>;
+    let totalAtivos: number;
+    if (funilCustom) {
+      const porFunilEtapa = porEtapa as Array<{
+        funilEtapaId: string | null;
+        _count: { _all: number };
+        _sum: { valorEstimado: Prisma.Decimal | null };
+      }>;
+      const byEtapa = new Map(porFunilEtapa.map((g) => [g.funilEtapaId, g]));
+      funilAtual = funilCustom.etapas.map((et) => {
+        const g = byEtapa.get(et.id);
+        return {
+          etapa: et.id,
+          label: et.nome,
+          cor: et.cor,
+          count: g?._count._all ?? 0,
+          valorEstimado: arredondar(g?._sum.valorEstimado ?? null),
+        };
+      });
+      totalAtivos = funilCustom.etapas
+        .filter((et) => et.tipo === 'ATIVA')
+        .reduce((s, et) => s + (byEtapa.get(et.id)?._count._all ?? 0), 0);
+    } else {
+      const porLeadEtapa = porEtapa as Array<{
+        etapa: string;
+        _count: { _all: number };
+        _sum: { valorEstimado: Prisma.Decimal | null };
+      }>;
+      funilAtual = porLeadEtapa.map((e) => ({
+        etapa: e.etapa,
+        count: e._count._all,
+        valorEstimado: arredondar(e._sum.valorEstimado),
+      }));
+      totalAtivos = porLeadEtapa
+        .filter((e) => !['GANHO', 'PERDIDO'].includes(e.etapa))
+        .reduce((s, e) => s + e._count._all, 0);
+    }
     const taxaConversao = criadosAtual > 0 ? Math.round((ganhosAtual / criadosAtual) * 100) : 0;
 
     const repIds = porRep.map((r) => r.representanteId);
@@ -339,11 +408,7 @@ export class RelatoriosService {
 
     return {
       periodo: { de, ate },
-      funilAtual: porEtapa.map((e) => ({
-        etapa: e.etapa,
-        count: e._count._all,
-        valorEstimado: arredondar(e._sum.valorEstimado),
-      })),
+      funilAtual,
       totalAtivos,
       criados: {
         atual: criadosAtual,

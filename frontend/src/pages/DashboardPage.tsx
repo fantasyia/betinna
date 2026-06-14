@@ -78,6 +78,25 @@ interface DashboardResp {
   };
 }
 
+/**
+ * Etapa do funil no dashboard. `label`/`cor` só vêm quando um funil customizado
+ * é selecionado (snapshot por FunilEtapa). No padrão, usa o enum LeadEtapa e o
+ * label/cor saem do mapa local.
+ */
+interface FunilStage {
+  etapa: string;
+  label?: string;
+  cor?: string;
+  count: number;
+  valorEstimado: number;
+}
+
+/** Item do seletor de funil (vem de GET /funis). */
+interface FunilOpt {
+  id: string;
+  nome: string;
+}
+
 const ETAPA_LABEL: Record<string, string> = {
   NOVO: 'Novo',
   QUALIFICANDO: 'Qualificando',
@@ -264,32 +283,8 @@ export default function DashboardPage() {
                     </Card>
                     )}
 
-                    {/* Funil */}
-                    {prefs.funil && (
-                    <Card padding="md">
-                      <CardHeader>
-                        <CardTitle>Funil de leads</CardTitle>
-                        <CardDescription>Distribuição por etapa</CardDescription>
-                      </CardHeader>
-                      {funilAtual.length === 0 || funilAtual.every((e) => e.count === 0) ? (
-                        <EmptyState
-                          size="sm"
-                          icon={<Target />}
-                          title="Sem leads ainda"
-                          description="Cadastre o primeiro lead pra ver o funil."
-                          action={
-                            <Link to="/leads">
-                              <Button variant="secondary" size="sm" rightIcon={<ArrowRight className="h-3 w-3" />}>
-                                Captar lead
-                              </Button>
-                            </Link>
-                          }
-                        />
-                      ) : (
-                        <FunnelView stages={funilAtual} />
-                      )}
-                    </Card>
-                    )}
+                    {/* Funil — com seletor de funil customizado */}
+                    {prefs.funil && <FunilCard stagesPadrao={funilAtual} />}
                   </section>
                   )}
 
@@ -424,34 +419,121 @@ function TopRepsList({
   );
 }
 
-function FunnelView({
-  stages,
-}: {
-  stages: Array<{ etapa: string; count: number; valorEstimado: number }>;
-}) {
+/**
+ * Card "Funil de leads" com SELETOR de funil. "Funil padrão" usa o snapshot que
+ * já vem no dashboard (enum LeadEtapa). Ao escolher um funil customizado, busca
+ * `/relatorios/funil?funilId=…` e mostra as etapas DELE (nome/cor/contagem).
+ */
+function FunilCard({ stagesPadrao }: { stagesPadrao: FunilStage[] }) {
+  // Funis são gerenciados por admin-tier (kanban.view). O tipo Permission do
+  // frontend não tem 'kanban.view', então usamos o role como proxy — e mesmo
+  // que falhe, o backend é o gate real e o card degrada pro funil padrão.
+  const role = useRole();
+  const canSeeFunis = role === 'ADMIN' || role === 'DIRECTOR' || role === 'GERENTE';
+  const [funilId, setFunilId] = useState('');
+
+  // Lista de funis pro seletor — só pra quem pode ver kanban.
+  const { data: funisData } = useApiQuery<FunilOpt[]>(canSeeFunis ? '/funis' : null);
+  const funis = funisData ?? [];
+
+  // Snapshot do funil escolhido (só busca quando NÃO é o padrão).
+  const { data: funilData, loading: funilLoading } = useApiQuery<{ funilAtual: FunilStage[] }>(
+    funilId ? `/relatorios/funil?periodo=mes&funilId=${funilId}` : null,
+  );
+
+  const stages = funilId ? (funilData?.funilAtual ?? []) : stagesPadrao;
+  const isEmpty = stages.length === 0 || stages.every((e) => e.count === 0);
+
+  return (
+    <Card padding="md">
+      <CardHeader>
+        <div className="flex items-start justify-between gap-3">
+          <div className="min-w-0">
+            <CardTitle>Funil de leads</CardTitle>
+            <CardDescription>Distribuição por etapa</CardDescription>
+          </div>
+          {funis.length > 0 && (
+            <select
+              data-testid="dashboard-funil-select"
+              value={funilId}
+              onChange={(e) => setFunilId(e.target.value)}
+              aria-label="Selecionar funil"
+              className={cn(
+                'h-8 max-w-[180px] shrink-0 rounded-md border border-border bg-surface px-2',
+                'text-sm text-text cursor-pointer',
+                'hover:border-border-strong focus:outline-none focus:border-primary',
+              )}
+            >
+              <option value="">Funil padrão</option>
+              {funis.map((f) => (
+                <option key={f.id} value={f.id}>
+                  {f.nome}
+                </option>
+              ))}
+            </select>
+          )}
+        </div>
+      </CardHeader>
+      {funilId && funilLoading ? (
+        <div className="py-8 text-center text-sm text-muted">Carregando funil…</div>
+      ) : isEmpty ? (
+        <EmptyState
+          size="sm"
+          icon={<Target />}
+          title="Sem leads ainda"
+          description="Cadastre o primeiro lead pra ver o funil."
+          action={
+            <Link to="/leads">
+              <Button variant="secondary" size="sm" rightIcon={<ArrowRight className="h-3 w-3" />}>
+                Captar lead
+              </Button>
+            </Link>
+          }
+        />
+      ) : (
+        <FunnelView stages={stages} />
+      )}
+    </Card>
+  );
+}
+
+function FunnelView({ stages }: { stages: FunilStage[] }) {
   const max = Math.max(...stages.map((s) => s.count), 1);
   return (
     <ul className="flex flex-col gap-1.5">
       {stages.map((s) => {
         const pct = (s.count / max) * 100;
+        const label = s.label ?? ETAPA_LABEL[s.etapa] ?? s.etapa;
         const variant = ETAPA_BADGE[s.etapa] ?? 'neutral';
         return (
           <li key={s.etapa} className="flex items-center gap-3 py-1">
-            <Badge variant={variant} className="min-w-[88px] justify-center">
-              {ETAPA_LABEL[s.etapa] ?? s.etapa}
-            </Badge>
+            {s.cor ? (
+              // Funil customizado: chip sólido com a cor da etapa.
+              <span
+                className="min-w-[88px] inline-flex items-center justify-center truncate rounded-md px-2 py-0.5 text-xs font-medium text-white"
+                style={{ backgroundColor: s.cor }}
+                title={label}
+              >
+                {label}
+              </span>
+            ) : (
+              <Badge variant={variant} className="min-w-[88px] justify-center">
+                {label}
+              </Badge>
+            )}
             <div className="flex-1 relative h-7 rounded-md bg-surface-hover overflow-hidden">
               <div
                 className={cn(
                   'absolute inset-y-0 left-0 transition-all duration-300',
-                  variant === 'success' && 'bg-success/30',
-                  variant === 'danger' && 'bg-danger/30',
-                  variant === 'warning' && 'bg-warning/30',
-                  variant === 'info' && 'bg-info/30',
-                  variant === 'primary' && 'bg-primary/30',
-                  variant === 'neutral' && 'bg-muted/30',
+                  s.cor && 'opacity-30',
+                  !s.cor && variant === 'success' && 'bg-success/30',
+                  !s.cor && variant === 'danger' && 'bg-danger/30',
+                  !s.cor && variant === 'warning' && 'bg-warning/30',
+                  !s.cor && variant === 'info' && 'bg-info/30',
+                  !s.cor && variant === 'primary' && 'bg-primary/30',
+                  !s.cor && variant === 'neutral' && 'bg-muted/30',
                 )}
-                style={{ width: `${pct}%` }}
+                style={s.cor ? { width: `${pct}%`, backgroundColor: s.cor } : { width: `${pct}%` }}
               />
               <span className="absolute inset-y-0 left-3 right-3 flex items-center justify-between text-xs">
                 <span className="font-medium text-text">{s.count}</span>

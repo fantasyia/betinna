@@ -7,6 +7,8 @@ export const PERIODOS = ['mes', 'trimestre', 'semestre', 'ano'] as const;
  *
  * Precedência: `periodo` > `de`+`ate` > default (mês atual).
  * `representanteId` filtra por rep específico (só válido para ADMIN/DIRECTOR/GERENTE).
+ * `funilId` (endpoint /funil) seleciona um funil customizado — o snapshot passa a
+ * usar as etapas dele (nome/cor/ordem) em vez do enum LeadEtapa legado.
  */
 export const periodoSchema = z
   .object({
@@ -14,6 +16,7 @@ export const periodoSchema = z
     ate: z.coerce.date().optional(),
     periodo: z.enum(PERIODOS).optional(),
     representanteId: z.string().cuid().optional(),
+    funilId: z.string().cuid().optional(),
   })
   .refine((d) => !d.de || !d.ate || d.de <= d.ate, {
     message: 'Data inicial (de) deve ser <= data final (ate)',
