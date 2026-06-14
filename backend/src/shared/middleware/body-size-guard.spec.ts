@@ -33,10 +33,14 @@ const makeReq = (path: string, contentLength?: number, contentType?: string): Re
   }) as unknown as Request;
 
 describe('limiteCorpoPara', () => {
-  it('rotas grandes (webhooks/inbox/import) → 20MB', () => {
-    expect(limiteCorpoPara('/api/v1/webhooks/omie/cliente-status')).toBe(LIMITE_CORPO_GRANDE_BYTES);
+  it('uploads (inbox/import) → 20MB', () => {
     expect(limiteCorpoPara('/api/v1/inbox/123/responder-midia')).toBe(LIMITE_CORPO_GRANDE_BYTES);
     expect(limiteCorpoPara('/api/v1/import/clientes')).toBe(LIMITE_CORPO_GRANDE_BYTES);
+  });
+
+  it('webhooks públicos → 1MB (superfície de DoS reduzida)', () => {
+    expect(limiteCorpoPara('/api/v1/webhooks/omie/cliente-status')).toBe(LIMITE_CORPO_PADRAO_BYTES);
+    expect(limiteCorpoPara('/api/v1/webhooks/meta')).toBe(LIMITE_CORPO_PADRAO_BYTES);
   });
 
   it('rotas comuns → 1MB', () => {
@@ -59,15 +63,36 @@ describe('bodySizeGuard', () => {
     expect(next).not.toHaveBeenCalled();
   });
 
-  it('deixa passar corpo grande numa rota de webhook (até 20MB)', () => {
-    const req = makeReq('/api/v1/webhooks/omie/cliente-status', 15 * 1024 * 1024); // 15MB < 20MB
+  it('rejeita 413 webhook público com corpo > 1MB (reduz superfície de DoS)', () => {
+    const req = makeReq('/api/v1/webhooks/omie/cliente-status', 5 * 1024 * 1024); // 5MB > 1MB
+    const res = makeRes();
+    const next = vi.fn();
+
+    bodySizeGuard(req, res, next);
+
+    expect(res.statusCode).toBe(413);
+    expect(next).not.toHaveBeenCalled();
+  });
+
+  it('deixa passar webhook pequeno (notificação de evento típica)', () => {
+    const req = makeReq('/api/v1/webhooks/meta', 30 * 1024); // 30KB
     const res = makeRes();
     const next = vi.fn();
 
     bodySizeGuard(req, res, next);
 
     expect(next).toHaveBeenCalledOnce();
-    expect(res.statusCode).toBe(0); // não respondeu
+  });
+
+  it('deixa passar corpo grande (até 20MB) numa rota de upload (inbox mídia)', () => {
+    const req = makeReq('/api/v1/inbox/123/responder-midia', 15 * 1024 * 1024); // 15MB < 20MB
+    const res = makeRes();
+    const next = vi.fn();
+
+    bodySizeGuard(req, res, next);
+
+    expect(next).toHaveBeenCalledOnce();
+    expect(res.statusCode).toBe(0);
   });
 
   it('deixa passar corpo pequeno em rota comum', () => {

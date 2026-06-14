@@ -23,9 +23,10 @@ async function bootstrap(): Promise<void> {
   });
 
   // Guard de tamanho de corpo POR ROTA — roda ANTES do body-parser e rejeita
-  // (413) corpos grandes em rotas comuns pelo Content-Length, antes de alocar o
-  // payload inteiro. Só /webhooks, /inbox e /import mantêm o teto de 20MB; o
-  // resto cai pra 1MB. Não toca no rawBody (lê só o header) → HMAC intacto.
+  // (413) corpos grandes pelo Content-Length, antes de alocar o payload inteiro.
+  // Só os uploads autenticados (/inbox mídia, /import CSV) mantêm 20MB; o resto —
+  // INCLUSIVE os webhooks públicos — cai pra 1MB (reduz a superfície de DoS).
+  // Não toca no rawBody (lê só o header) → HMAC dos webhooks intacto.
   app.use(bodySizeGuard);
 
   // Body parser limit explícito — default Express 100KB conflitava com:

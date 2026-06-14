@@ -22,8 +22,16 @@ import type { Request, Response, NextFunction } from 'express';
 
 const MB = 1024 * 1024;
 
-/** Rotas que legitimamente recebem corpo grande (independe do prefixo /api/v1). */
-const ROTA_CORPO_GRANDE = /\/(webhooks|inbox|import)\//;
+/**
+ * Rotas que legitimamente recebem corpo grande — uploads (independe do prefixo
+ * /api/v1): `/inbox/*` (mídia base64 ~12MB) e `/import/*` (CSV). São autenticadas.
+ *
+ * Webhooks NÃO entram aqui DE PROPÓSITO: são PÚBLICOS (sem auth) e recebem só
+ * notificações de evento pequenas (poucos KB), então ficam no limite padrão (1MB)
+ * pra minimizar a superfície de DoS. Se um webhook batched passar de 1MB (raro), o
+ * cron de fallback de cada marketplace (a cada 10min) reconcilia os eventos.
+ */
+const ROTA_CORPO_GRANDE = /\/(inbox|import)\//;
 
 export const LIMITE_CORPO_GRANDE_BYTES = 20 * MB;
 export const LIMITE_CORPO_PADRAO_BYTES = 1 * MB;
