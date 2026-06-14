@@ -9,9 +9,9 @@ type MockModel = Record<string, ReturnType<typeof vi.fn>>;
 
 const makePrismaMock = () => ({
   produto: {
-    findUnique: vi.fn().mockResolvedValue(null),
-    create: vi.fn().mockResolvedValue({ id: 'prod-1' }),
-    update: vi.fn().mockResolvedValue({}),
+    // Sync agora faz 1 findMany em lote (estado anterior) + 1 upsert por registro.
+    findMany: vi.fn().mockResolvedValue([]),
+    upsert: vi.fn().mockResolvedValue({ id: 'prod-1' }),
   } satisfies MockModel,
   integracaoConexao: {
     findUnique: vi.fn().mockResolvedValue(null),
@@ -100,26 +100,29 @@ describe('OmieProdutosService', () => {
       expect(prisma.integracaoConexao.findUnique).not.toHaveBeenCalled();
     });
 
-    it('atualiza produto quando já existe', async () => {
+    it('atualiza produto quando já existe (upsert; contado como atualizado)', async () => {
       omie.listarProdutos.mockResolvedValue(fakeListarProdutosResponse([fakeProdutoOmie(1)]));
-      prisma.produto.findUnique.mockResolvedValue({ id: 'prod-existente' });
+      // findMany em lote acha o produto existente (codigoOmie casa com o do mapper).
+      prisma.produto.findMany.mockResolvedValue([
+        { id: 'prod-existente', codigoOmie: '1', estoque: 10, nome: 'Produto' },
+      ]);
 
       const result = await service.sync('emp-1', { modo: 'completo' });
 
       expect(result.atualizados).toBe(1);
       expect(result.inseridos).toBe(0);
-      expect(prisma.produto.update).toHaveBeenCalledOnce();
+      expect(prisma.produto.upsert).toHaveBeenCalledOnce();
     });
 
-    it('insere produto quando não existe', async () => {
+    it('insere produto quando não existe (upsert; contado como inserido)', async () => {
       omie.listarProdutos.mockResolvedValue(fakeListarProdutosResponse([fakeProdutoOmie(1)]));
-      prisma.produto.findUnique.mockResolvedValue(null);
+      prisma.produto.findMany.mockResolvedValue([]); // nenhum existente
 
       const result = await service.sync('emp-1', { modo: 'completo' });
 
       expect(result.inseridos).toBe(1);
       expect(result.atualizados).toBe(0);
-      expect(prisma.produto.create).toHaveBeenCalledOnce();
+      expect(prisma.produto.upsert).toHaveBeenCalledOnce();
     });
 
     it('registra sync OK ao finalizar', async () => {

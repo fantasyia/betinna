@@ -5,6 +5,8 @@ import { NotificacoesService } from '@modules/notificacoes/notificacoes.service'
 import { OmieClientService } from './omie-client.service';
 import { OmieMapper } from './omie.mapper';
 
+type ProdutoUpsertPayload = NonNullable<ReturnType<typeof OmieMapper.produtoToPrismaUpsert>>;
+
 export type OmieSyncModo = 'incremental' | 'completo';
 
 export interface OmieProdutosSyncResult {
@@ -62,6 +64,9 @@ export class OmieProdutosService {
       );
       totalPaginas = response.total_de_paginas;
 
+      // 1ª passada: filtro incremental + mapper → junta os payloads válidos da
+      // página com seu codigoOmie (sem tocar no banco ainda).
+      const validos: { codigoOmie: string; payload: ProdutoUpsertPayload }[] = [];
       for (const o of response.produto_servico_cadastro) {
         // Filtro incremental: pula se data_alteracao <= desde
         if (modo === 'incremental' && desde) {
@@ -74,34 +79,46 @@ export class OmieProdutosService {
 
         const payload = OmieMapper.produtoToPrismaUpsert(empresaId, o);
         if (!payload) continue;
+        const where = payload.where as { empresaId_codigoOmie?: { codigoOmie?: string } };
+        const codigoOmie = where.empresaId_codigoOmie?.codigoOmie;
+        if (!codigoOmie) continue;
+        validos.push({ codigoOmie, payload });
+      }
 
-        const existing = await this.prisma.produto.findUnique({
-          where: payload.where,
-          select: { id: true, estoque: true, nome: true },
-        });
+      // Busca em LOTE o estado anterior dos produtos da página — 1 query em vez de
+      // 1 findUnique por registro. Precisamos do estoque ANTIGO pra: (a) detectar a
+      // transição estoque>0 → 0 (notificação) e (b) contar inseridos vs atualizados.
+      const codigos = validos.map((v) => v.codigoOmie);
+      const antesList = codigos.length
+        ? await this.prisma.produto.findMany({
+            where: { empresaId, codigoOmie: { in: codigos } },
+            select: { id: true, codigoOmie: true, estoque: true, nome: true },
+          })
+        : [];
+      const antesPorCodigo = new Map(antesList.map((p) => [p.codigoOmie, p]));
+
+      // 2ª passada: 1 upsert por registro (em vez de find + create/update em série).
+      for (const { codigoOmie, payload } of validos) {
+        const antes = antesPorCodigo.get(codigoOmie);
         const novoEstoque =
           typeof payload.update.estoque === 'number' ? payload.update.estoque : null;
 
-        if (existing) {
-          await this.prisma.produto.update({
-            where: { id: existing.id },
-            data: payload.update,
-          });
-          atualizados++;
+        await this.prisma.produto.upsert(payload);
 
+        if (antes) {
+          atualizados++;
           // Notifica reps quando produto transiciona estoque > 0 → estoque <= 0
           // (best-effort, async — não bloqueia o sync)
-          if (novoEstoque !== null && existing.estoque > 0 && novoEstoque <= 0) {
-            void this.notificarEstoqueZerado(empresaId, existing.id, existing.nome).catch((err) => {
+          if (novoEstoque !== null && antes.estoque > 0 && novoEstoque <= 0) {
+            void this.notificarEstoqueZerado(empresaId, antes.id, antes.nome).catch((err) => {
               this.logger.warn(
-                `Falha notificando ESTOQUE_ZERADO produto=${existing.id}: ${
+                `Falha notificando ESTOQUE_ZERADO produto=${antes.id}: ${
                   err instanceof Error ? err.message : String(err)
                 }`,
               );
             });
           }
         } else {
-          await this.prisma.produto.create({ data: payload.create });
           inseridos++;
         }
         totalProcessados++;
