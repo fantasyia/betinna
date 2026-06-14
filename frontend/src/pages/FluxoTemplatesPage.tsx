@@ -15,7 +15,7 @@ import {
 import { api, apiErrorMessage } from '@/lib/api';
 import { useToast } from '@/components/toast';
 import { PageLayout } from '@/components/PageLayout';
-import { AutomacaoTabs } from '@/components/AutomacaoTabs';
+import { CrmTabs } from '@/components/CrmTabs';
 import { Badge, Button, Card, CardHeader, CardTitle, Dialog } from '@/components/ui';
 import { cn } from '@/lib/cn';
 import type { TriggerTipo, AcaoTipo } from './FluxoEditor';
@@ -488,7 +488,7 @@ export default function FluxoTemplatesPage() {
         </Button>
       }
     >
-      <AutomacaoTabs />
+      <CrmTabs />
       {/* Filtro de categoria */}
       <div className="flex items-center gap-2 mb-4 flex-wrap">
         {categorias.map((c) => (

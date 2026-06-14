@@ -22,7 +22,7 @@ import { useConfirm } from '@/hooks/useConfirm';
 import { useRole } from '@/hooks/usePermission';
 import { useToast } from '@/components/toast';
 import { PageLayout } from '@/components/PageLayout';
-import { AutomacaoTabs } from '@/components/AutomacaoTabs';
+import { CrmTabs } from '@/components/CrmTabs';
 import { StateView } from '@/components/StateView';
 import {
   Badge,
@@ -281,7 +281,7 @@ export default function FluxosPage() {
         ) : undefined
       }
     >
-      <AutomacaoTabs />
+      <CrmTabs />
       <Card padding="none">
         {/* Filtros */}
         <div className="flex flex-wrap items-center gap-2 px-4 py-3 border-b border-border">

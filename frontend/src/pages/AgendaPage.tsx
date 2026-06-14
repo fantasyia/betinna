@@ -11,7 +11,6 @@ import {
 import { api, ApiError } from '@/lib/api';
 import { useApiQuery } from '@/hooks/useApiQuery';
 import { PageLayout } from '@/components/PageLayout';
-import { CrmTabs } from '@/components/CrmTabs';
 import { StateView } from '@/components/StateView';
 import { Dialog } from '@/components/ui';
 import { FormField, Input, Select, Textarea } from '@/components/FormField';
@@ -186,7 +185,6 @@ export default function AgendaPage() {
         </button>
       }
     >
-      <CrmTabs />
       <div style={card}>
         <div
           style={{

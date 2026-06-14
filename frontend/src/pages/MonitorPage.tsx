@@ -1,7 +1,7 @@
 import { Activity, Bot, AlertTriangle, Zap } from 'lucide-react';
 import { useApiQuery } from '@/hooks/useApiQuery';
 import { PageLayout } from '@/components/PageLayout';
-import { AutomacaoTabs } from '@/components/AutomacaoTabs';
+import { CrmTabs } from '@/components/CrmTabs';
 import { StateView } from '@/components/StateView';
 import { Card } from '@/components/ui';
 import { cn } from '@/lib/cn';
@@ -45,7 +45,7 @@ export default function MonitorPage() {
       title="Monitor do funil"
       description="Saúde da orquestração: leads por etapa, IA ativa, SLAs e execuções."
     >
-      <AutomacaoTabs />
+      <CrmTabs />
       <StateView loading={loading} error={error} onRetry={refetch}>
         {data && (
           <div className="flex flex-col gap-4">

@@ -1,17 +1,20 @@
-import { UserCircle, Users, Settings, Shield } from 'lucide-react';
+import { UserCircle, Users, Settings, Shield, Plug, Link as LinkIcon } from 'lucide-react';
 import { useRole, usePermission } from '@/hooks/usePermission';
 import { SubTabsBar, type SubTab } from '@/components/SubTabsBar';
 
 /**
  * SistemaTabs — sub-abas da aba principal "Sistema".
  * Inclui (filtradas por permissão/role): Meu perfil · Usuários ·
- * Configurações · Painel Admin.
+ * Configurações · Integrações empresa · Minhas integrações · Painel Admin.
+ * (Integrações empresa/Minhas integrações vieram da extinta aba "Automação".)
  *
  * Permissões espelham as definidas em App.tsx ProtectedRoute:
- *  - /perfil           → todos os autenticados
- *  - /usuarios         → ADMIN / DIRECTOR / GERENTE
- *  - /configuracoes    → ADMIN
- *  - /admin            → permission 'admin.panel'
+ *  - /perfil             → todos os autenticados
+ *  - /usuarios           → ADMIN / DIRECTOR / GERENTE
+ *  - /configuracoes      → ADMIN
+ *  - /integracoes        → ADMIN / DIRECTOR / GERENTE
+ *  - /minhas-integracoes → todos os autenticados
+ *  - /admin              → permission 'admin.panel'
  *
  * Quando o user não tem permissão pra uma tab, ela desaparece. Se sobra
  * só 1 tab, a barra inteira some (comportamento do SubTabsBar).
@@ -20,8 +23,9 @@ export function SistemaTabs() {
   const role = useRole();
   const canAdminPanel = usePermission('admin.panel');
 
-  const canSeeUsuarios =
+  const isAdminTier =
     role === 'ADMIN' || role === 'DIRECTOR' || role === 'GERENTE';
+  const canSeeUsuarios = isAdminTier;
   const canSeeConfiguracoes = role === 'ADMIN';
 
   const tabs: SubTab[] = [
@@ -44,6 +48,20 @@ export function SistemaTabs() {
           } as SubTab,
         ]
       : []),
+    ...(isAdminTier
+      ? [
+          {
+            to: '/integracoes',
+            label: 'Integrações empresa',
+            icon: <Plug size={14} />,
+          } as SubTab,
+        ]
+      : []),
+    {
+      to: '/minhas-integracoes',
+      label: 'Minhas integrações',
+      icon: <LinkIcon size={14} />,
+    },
     ...(canAdminPanel
       ? [
           {

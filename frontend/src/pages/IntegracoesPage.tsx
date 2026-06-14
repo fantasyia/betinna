@@ -3,7 +3,7 @@ import { api, ApiError } from '@/lib/api';
 import { useApiQuery } from '@/hooks/useApiQuery';
 import { useRole } from '@/hooks/usePermission';
 import { PageLayout } from '@/components/PageLayout';
-import { AutomacaoTabs } from '@/components/AutomacaoTabs';
+import { SistemaTabs } from '@/components/SistemaTabs';
 import { StateView } from '@/components/StateView';
 import { Dialog } from '@/components/ui';
 import { FormField, Input } from '@/components/FormField';
@@ -256,7 +256,7 @@ export default function IntegracoesPage() {
 
   return (
     <PageLayout title="Integrações da empresa">
-      <AutomacaoTabs />
+      <SistemaTabs />
       <StateView loading={loading} error={error} onRetry={refetch}>
         <div
           style={{
