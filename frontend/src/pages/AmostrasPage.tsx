@@ -10,8 +10,8 @@ import { FilterBar } from '@/components/FilterBar';
 import { Dialog } from '@/components/ui';
 import { FormField, Input, Select, Textarea } from '@/components/FormField';
 import { AsyncCombobox } from '@/components/AsyncCombobox';
-import { badge, btn, btnDanger, btnSecondary, card, colors } from '@/components/styles';
 import { formatMoeda as fmtBRL } from '@/lib/masks';
+import { cn } from '@/lib/cn';
 
 type AmostraStatus =
   | 'ENVIADA'
@@ -60,11 +60,11 @@ interface ProdutoOpt {
 }
 
 const STATUS_COLOR: Record<AmostraStatus, string> = {
-  ENVIADA: colors.info,
-  AGUARDANDO_FOLLOWUP: colors.warning,
-  CONVERTIDA: colors.success,
-  NAO_CONVERTEU: colors.danger,
-  VENCIDA: colors.muted,
+  ENVIADA: 'var(--info)',
+  AGUARDANDO_FOLLOWUP: 'var(--warning)',
+  CONVERTIDA: 'var(--success)',
+  NAO_CONVERTEU: 'var(--danger)',
+  VENCIDA: 'var(--muted)',
 };
 const STATUS_LABEL: Record<AmostraStatus, string> = {
   ENVIADA: 'Enviada',
@@ -94,6 +94,17 @@ function daysUntil(d: string | null | undefined): number | null {
   const dt = new Date(d);
   if (Number.isNaN(dt.getTime())) return null;
   return Math.ceil((dt.getTime() - Date.now()) / 86400000);
+}
+
+// badge com cor dinâmica (status) — layout via classes, cores via color-mix inline.
+const BADGE_CLS =
+  'inline-flex items-center rounded-full px-[9px] py-0.5 text-[11px] font-semibold leading-[1.6] tracking-[0.2px]';
+function badgeStyle(color: string): React.CSSProperties {
+  return {
+    background: `color-mix(in srgb, ${color} 12%, transparent)`,
+    color,
+    border: `1px solid color-mix(in srgb, ${color} 19%, transparent)`,
+  };
 }
 
 export default function AmostrasPage() {
@@ -134,9 +145,9 @@ export default function AmostrasPage() {
       header: 'Produto',
       render: (a) => (
         <div>
-          <div style={{ fontWeight: 600 }}>{a.produtoNome}</div>
+          <div className="font-semibold">{a.produtoNome}</div>
           {a.notaFiscal && (
-            <div style={{ fontSize: 11, color: colors.muted }}>NF {a.notaFiscal}</div>
+            <div className="text-[11px] text-muted">NF {a.notaFiscal}</div>
           )}
         </div>
       ),
@@ -144,12 +155,12 @@ export default function AmostrasPage() {
     {
       key: 'cliente',
       header: 'Cliente',
-      render: (a) => a.cliente?.nome ?? <em style={{ color: colors.muted }}>—</em>,
+      render: (a) => a.cliente?.nome ?? <em className="text-muted">—</em>,
     },
     {
       key: 'rep',
       header: 'Representante',
-      render: (a) => a.representanteNome ?? <em style={{ color: colors.muted }}>—</em>,
+      render: (a) => a.representanteNome ?? <em className="text-muted">—</em>,
     },
     {
       key: 'valor',
@@ -175,9 +186,14 @@ export default function AmostrasPage() {
           <div>
             <div>{fmtDate(a.followUpEm)}</div>
             <div
+              className="text-[11px]"
               style={{
-                fontSize: 11,
-                color: dd < 0 ? colors.danger : dd <= 2 ? colors.warning : colors.muted,
+                color:
+                  dd < 0
+                    ? 'var(--danger)'
+                    : dd <= 2
+                      ? 'var(--warning)'
+                      : 'var(--muted)',
               }}
             >
               {dd < 0 ? `${-dd}d atrasado` : dd === 0 ? 'hoje' : `em ${dd}d`}
@@ -189,7 +205,11 @@ export default function AmostrasPage() {
     {
       key: 'status',
       header: 'Status',
-      render: (a) => <span style={badge(STATUS_COLOR[a.status])}>{STATUS_LABEL[a.status]}</span>,
+      render: (a) => (
+        <span className={BADGE_CLS} style={badgeStyle(STATUS_COLOR[a.status])}>
+          {STATUS_LABEL[a.status]}
+        </span>
+      ),
     },
     {
       key: 'actions',
@@ -199,7 +219,7 @@ export default function AmostrasPage() {
           type="button"
           data-testid={`amostra-open-${a.id}`}
           onClick={() => setSelected(a.id)}
-          style={{ ...btnSecondary, padding: '0.25rem 0.625rem', fontSize: 12 }}
+          className="bg-surface text-text border border-border-strong rounded-md font-medium cursor-pointer tracking-[-0.1px] px-2.5 py-1 text-[12px]"
         >
           Abrir
         </button>
@@ -215,7 +235,7 @@ export default function AmostrasPage() {
           type="button"
           data-testid="amostra-new-btn"
           onClick={() => setCreating(true)}
-          style={btn}
+          className="bg-primary text-primary-contrast rounded-md px-4 py-2 text-[13px] font-semibold cursor-pointer tracking-[-0.1px]"
         >
           + Nova amostra
         </button>
@@ -225,20 +245,9 @@ export default function AmostrasPage() {
       {clienteIdFilter && (
         <div
           data-testid="amostras-cliente-filter-banner"
-          style={{
-            marginBottom: 12,
-            padding: '0.5rem 0.75rem',
-            borderRadius: 6,
-            background: colors.infoLight,
-            border: `1px solid ${colors.info}`,
-            color: colors.text,
-            fontSize: 13,
-            display: 'flex',
-            alignItems: 'center',
-            gap: 8,
-          }}
+          className="mb-3 py-2 px-3 rounded-md bg-[#eaf0fb] border border-info text-text text-[13px] flex items-center gap-2"
         >
-          <span style={{ flex: 1 }}>Filtrando amostras de um cliente específico.</span>
+          <span className="flex-1">Filtrando amostras de um cliente específico.</span>
           <button
             type="button"
             onClick={() => {
@@ -246,13 +255,13 @@ export default function AmostrasPage() {
               next.delete('clienteId');
               setSearchParams(next, { replace: true });
             }}
-            style={{ ...btnSecondary, padding: '0.25rem 0.625rem', fontSize: 12 }}
+            className="bg-surface text-text border border-border-strong rounded-md font-medium cursor-pointer tracking-[-0.1px] px-2.5 py-1 text-[12px]"
           >
             Ver todas
           </button>
         </div>
       )}
-      <div style={card}>
+      <div className="bg-surface border border-border rounded-[10px] p-6">
         <FilterBar>
           <Select
             data-testid="filter-status"
@@ -395,7 +404,11 @@ function AmostraDetailModal({
       title={data ? `Amostra — ${data.produtoNome}` : 'Amostra'}
       footer={
         <>
-          <button type="button" onClick={onClose} style={btnSecondary}>
+          <button
+            type="button"
+            onClick={onClose}
+            className="bg-surface text-text border border-border-strong rounded-md px-4 py-2 text-[13px] font-medium cursor-pointer tracking-[-0.1px]"
+          >
             Fechar
           </button>
           {data && !confirmDel && (
@@ -403,7 +416,7 @@ function AmostraDetailModal({
               type="button"
               data-testid="amostra-delete"
               onClick={() => setConfirmDel(true)}
-              style={btnDanger}
+              className="bg-danger text-white rounded-md px-4 py-2 text-[13px] font-semibold cursor-pointer tracking-[-0.1px]"
             >
               Excluir
             </button>
@@ -413,7 +426,7 @@ function AmostraDetailModal({
               <button
                 type="button"
                 onClick={() => setConfirmDel(false)}
-                style={btnSecondary}
+                className="bg-surface text-text border border-border-strong rounded-md px-4 py-2 text-[13px] font-medium cursor-pointer tracking-[-0.1px]"
               >
                 Voltar
               </button>
@@ -422,7 +435,7 @@ function AmostraDetailModal({
                 data-testid="amostra-delete-confirm"
                 disabled={busy}
                 onClick={doDelete}
-                style={btnDanger}
+                className="bg-danger text-white rounded-md px-4 py-2 text-[13px] font-semibold cursor-pointer tracking-[-0.1px]"
               >
                 {busy ? '…' : 'Confirmar exclusão'}
               </button>
@@ -434,22 +447,22 @@ function AmostraDetailModal({
       <StateView loading={loading} error={error} onRetry={refetch}>
         {data && (
           <div>
-            <div
-              style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '1rem' }}
-            >
-              <span style={badge(STATUS_COLOR[data.status])}>{STATUS_LABEL[data.status]}</span>
+            <div className="flex items-center gap-2 mb-4">
+              <span className={BADGE_CLS} style={badgeStyle(STATUS_COLOR[data.status])}>
+                {STATUS_LABEL[data.status]}
+              </span>
               {data.followUpEm &&
                 !['CONVERTIDA', 'NAO_CONVERTEU'].includes(data.status) && (
-                  <span style={{ fontSize: 12, color: colors.muted }}>
+                  <span className="text-[12px] text-muted">
                     Follow-up em {fmtDate(data.followUpEm)}
                   </span>
                 )}
             </div>
-            <dl style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.75rem', fontSize: 14 }}>
+            <dl className="grid grid-cols-2 gap-3 text-sm">
               <Info label="Cliente">{data.cliente?.nome ?? '—'}</Info>
               <Info label="Representante">{data.representanteNome ?? '—'}</Info>
               <Info label="Produto (catálogo)">
-                {data.produto?.nome ?? <em style={{ color: colors.muted }}>não vinculado</em>}
+                {data.produto?.nome ?? <em className="text-muted">não vinculado</em>}
               </Info>
               <Info label="Quantidade">{data.quantidade ?? 1}</Info>
               <Info label="Valor de referência">{fmtBRL(data.valor)}</Info>
@@ -459,24 +472,12 @@ function AmostraDetailModal({
             </dl>
 
             {/* P7 — Remessa de amostra grátis pro OMIE */}
-            <div
-              style={{
-                borderTop: `1px solid ${colors.border}`,
-                marginTop: '1rem',
-                paddingTop: '1rem',
-              }}
-            >
-              <h3 style={{ marginTop: 0, fontSize: 14 }}>Remessa OMIE (amostra grátis)</h3>
+            <div className="border-t border-border mt-4 pt-4">
+              <h3 className="mt-0 text-sm">Remessa OMIE (amostra grátis)</h3>
               {data.numeroOmie ? (
                 <div
                   data-testid="amostra-omie-enviada"
-                  style={{
-                    ...card,
-                    background: colors.successLight,
-                    borderColor: colors.success,
-                    padding: '0.625rem 0.75rem',
-                    fontSize: 13,
-                  }}
+                  className="bg-[#e8f5ec] border border-success rounded-[10px] py-2.5 px-3 text-[13px]"
                 >
                   ✅ Remessa enviada — OMIE <strong>#{data.numeroOmie}</strong>
                   {data.cfop ? ` · CFOP ${data.cfop}` : ''}
@@ -484,14 +485,14 @@ function AmostraDetailModal({
                 </div>
               ) : (
                 <div>
-                  <p style={{ fontSize: 12, color: colors.muted, margin: '0 0 0.5rem' }}>
+                  <p className="text-[12px] text-muted mt-0 mx-0 mb-2">
                     Gera uma remessa de amostra grátis no OMIE (CFOP 5911/6911, sem destaque de
                     tributos). Requer produto do catálogo vinculado e cliente sincronizado com OMIE.
                   </p>
                   {!data.produto && (
                     <p
                       data-testid="amostra-omie-sem-produto"
-                      style={{ fontSize: 12, color: colors.warning, margin: '0 0 0.5rem' }}
+                      className="text-[12px] text-warning mt-0 mx-0 mb-2"
                     >
                       ⚠️ Esta amostra não tem produto do catálogo vinculado — edite e selecione um
                       produto antes de enviar.
@@ -502,11 +503,12 @@ function AmostraDetailModal({
                     data-testid="amostra-enviar-omie"
                     disabled={busy || !data.produto}
                     onClick={doEnviarOmie}
-                    style={{
-                      ...btn,
-                      opacity: busy || !data.produto ? 0.5 : 1,
-                      cursor: busy || !data.produto ? 'not-allowed' : 'pointer',
-                    }}
+                    className={cn(
+                      'bg-primary text-primary-contrast rounded-md px-4 py-2 text-[13px] font-semibold tracking-[-0.1px]',
+                      busy || !data.produto
+                        ? 'opacity-50 cursor-not-allowed'
+                        : 'opacity-100 cursor-pointer',
+                    )}
                   >
                     {busy ? 'Enviando…' : 'Enviar remessa ao OMIE'}
                   </button>
@@ -514,34 +516,24 @@ function AmostraDetailModal({
               )}
             </div>
 
-            <div
-              style={{
-                borderTop: `1px solid ${colors.border}`,
-                marginTop: '1rem',
-                paddingTop: '1rem',
-              }}
-            >
-              <h3 style={{ marginTop: 0, fontSize: 14 }}>Atualizar status</h3>
-              <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap' }}>
+            <div className="border-t border-border mt-4 pt-4">
+              <h3 className="mt-0 text-sm">Atualizar status</h3>
+              <div className="flex gap-1 flex-wrap">
                 {TRANSITIONS.filter((s) => s !== data.status).map((s) => (
                   <button
                     key={s}
                     type="button"
                     data-testid={`amostra-status-${s}`}
                     onClick={() => setTransition(s)}
-                    style={{
-                      ...btnSecondary,
-                      padding: '0.25rem 0.625rem',
-                      fontSize: 12,
-                      borderColor: transition === s ? STATUS_COLOR[s] : undefined,
-                    }}
+                    className="bg-surface text-text border border-border-strong rounded-md font-medium cursor-pointer tracking-[-0.1px] px-2.5 py-1 text-[12px]"
+                    style={{ borderColor: transition === s ? STATUS_COLOR[s] : undefined }}
                   >
                     → {STATUS_LABEL[s]}
                   </button>
                 ))}
               </div>
               {transition && (
-                <div style={{ marginTop: '0.75rem' }}>
+                <div className="mt-3">
                   <FormField label="Observação (opcional)" htmlFor="am-obs">
                     <Textarea
                       id="am-obs"
@@ -556,7 +548,10 @@ function AmostraDetailModal({
                     data-testid="amostra-status-confirm"
                     disabled={busy}
                     onClick={doTransition}
-                    style={{ ...btn, opacity: busy ? 0.7 : 1 }}
+                    className={cn(
+                      'bg-primary text-primary-contrast rounded-md px-4 py-2 text-[13px] font-semibold cursor-pointer tracking-[-0.1px]',
+                      busy ? 'opacity-70' : 'opacity-100',
+                    )}
                   >
                     {busy ? 'Aplicando…' : `Marcar como ${STATUS_LABEL[transition]}`}
                   </button>
@@ -567,13 +562,7 @@ function AmostraDetailModal({
             {actionError && (
               <div
                 data-testid="action-error"
-                style={{
-                  ...card,
-                  borderColor: colors.danger,
-                  color: colors.danger,
-                  padding: '0.5rem 0.75rem',
-                  marginTop: '0.75rem',
-                }}
+                className="bg-surface border border-danger rounded-[10px] text-danger py-2 px-3 mt-3"
               >
                 {actionError}
               </div>
@@ -588,16 +577,7 @@ function AmostraDetailModal({
 function Info({ label, children }: { label: string; children: React.ReactNode }) {
   return (
     <div>
-      <div
-        style={{
-          fontSize: 11,
-          textTransform: 'uppercase',
-          color: colors.muted,
-          marginBottom: 2,
-          letterSpacing: 0.3,
-          fontWeight: 600,
-        }}
-      >
+      <div className="text-[11px] uppercase text-muted mb-0.5 tracking-[0.3px] font-semibold">
         {label}
       </div>
       <div>{children}</div>
@@ -680,7 +660,11 @@ function AmostraFormModal({
       title="Nova amostra"
       footer={
         <>
-          <button type="button" onClick={onClose} style={btnSecondary}>
+          <button
+            type="button"
+            onClick={onClose}
+            className="bg-surface text-text border border-border-strong rounded-md px-4 py-2 text-[13px] font-medium cursor-pointer tracking-[-0.1px]"
+          >
             Cancelar
           </button>
           <button
@@ -688,7 +672,10 @@ function AmostraFormModal({
             form="amostra-form"
             data-testid="amostra-save-btn"
             disabled={busy}
-            style={{ ...btn, opacity: busy ? 0.6 : 1 }}
+            className={cn(
+              'bg-primary text-primary-contrast rounded-md px-4 py-2 text-[13px] font-semibold cursor-pointer tracking-[-0.1px]',
+              busy ? 'opacity-60' : 'opacity-100',
+            )}
           >
             {busy ? 'Salvando…' : 'Criar'}
           </button>
@@ -734,7 +721,7 @@ function AmostraFormModal({
             required
           />
         </FormField>
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.75rem' }}>
+        <div className="grid grid-cols-2 gap-3">
           <FormField label="Quantidade" htmlFor="am-qtd" required hint="Amostra = quantidade reduzida">
             <Input
               id="am-qtd"
@@ -760,7 +747,7 @@ function AmostraFormModal({
             />
           </FormField>
         </div>
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.75rem' }}>
+        <div className="grid grid-cols-2 gap-3">
           <FormField label="Nota fiscal" htmlFor="am-nf">
             <Input
               id="am-nf"
@@ -789,7 +776,7 @@ function AmostraFormModal({
           />
         </FormField>
         {error && (
-          <p data-testid="form-error" style={{ color: colors.danger, fontSize: 13 }}>
+          <p data-testid="form-error" className="text-danger text-[13px]">
             {error}
           </p>
         )}

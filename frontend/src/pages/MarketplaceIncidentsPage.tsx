@@ -7,8 +7,25 @@ import { FilterBar } from '@/components/FilterBar';
 import { Dialog } from '@/components/ui';
 import { Select } from '@/components/FormField';
 import { AtendimentoTabs } from '@/components/AtendimentoTabs';
-import { badge, btnSecondary, card, colors } from '@/components/styles';
 import { formatMoeda as fmtBRL } from '@/lib/masks';
+import { cn } from '@/lib/cn';
+
+// Layout do badge legado (sem cor) — cor entra por inline style color-mix.
+const BADGE_CLS =
+  'inline-flex items-center rounded-full px-[9px] py-0.5 text-[11px] font-semibold leading-[1.6] tracking-[0.2px] border';
+function badgeStyle(color: string): React.CSSProperties {
+  return {
+    background: `color-mix(in srgb, ${color} 12%, transparent)`,
+    color,
+    borderColor: `color-mix(in srgb, ${color} 19%, transparent)`,
+  };
+}
+
+// btnSecondary legado traduzido.
+const BTN_SECONDARY_CLS =
+  'bg-surface text-text border border-border-strong rounded-md px-4 py-2 text-[13px] font-medium cursor-pointer tracking-[-0.1px]';
+// card legado traduzido.
+const CARD_CLS = 'bg-surface border border-border rounded-[10px] p-6';
 
 type Canal =
   | 'MARKETPLACE_ML'
@@ -85,12 +102,12 @@ const STATUS_LABEL: Record<Status, string> = {
 };
 const STATUS_COLOR: Record<Status, string> = {
   ABERTO: '#0891b2',
-  AGUARDANDO_VENDEDOR: colors.danger,
-  AGUARDANDO_COMPRADOR: colors.warning,
+  AGUARDANDO_VENDEDOR: 'var(--danger)',
+  AGUARDANDO_COMPRADOR: 'var(--warning)',
   EM_MEDIACAO: '#7c3aed',
-  RESOLVIDO: colors.success,
-  EXPIRADO: colors.muted,
-  CANCELADO: colors.muted,
+  RESOLVIDO: 'var(--success)',
+  EXPIRADO: 'var(--muted)',
+  CANCELADO: 'var(--muted)',
 };
 
 function fmtDate(d: string | null | undefined) {
@@ -135,7 +152,9 @@ export default function MarketplaceIncidentsPage() {
       key: 'canal',
       header: 'Canal',
       render: (i) => (
-        <span style={badge(CANAL_COLOR[i.canal])}>{CANAL_LABEL[i.canal]}</span>
+        <span className={BADGE_CLS} style={badgeStyle(CANAL_COLOR[i.canal])}>
+          {CANAL_LABEL[i.canal]}
+        </span>
       ),
     },
     {
@@ -148,9 +167,9 @@ export default function MarketplaceIncidentsPage() {
       header: 'Cliente',
       render: (i) => (
         <div>
-          <div>{i.cliente?.nome ?? <em style={{ color: colors.muted }}>—</em>}</div>
+          <div>{i.cliente?.nome ?? <em className="text-muted">—</em>}</div>
           {i.externalId && (
-            <div style={{ fontSize: 11, color: colors.muted }}>ID {i.externalId}</div>
+            <div className="text-[11px] text-muted">ID {i.externalId}</div>
           )}
         </div>
       ),
@@ -170,9 +189,9 @@ export default function MarketplaceIncidentsPage() {
         }
         const h = hoursUntil(i.prazoResposta);
         if (h === null) return fmtDate(i.prazoResposta);
-        const color = h < 0 ? colors.danger : h <= 24 ? colors.warning : colors.muted;
+        const color = h < 0 ? 'var(--danger)' : h <= 24 ? 'var(--warning)' : 'var(--muted)';
         return (
-          <span style={{ color, fontSize: 13, fontWeight: 500 }}>
+          <span className="text-[13px] font-medium" style={{ color }}>
             {h < 0 ? `${-h}h vencido` : `${h}h`}
           </span>
         );
@@ -181,7 +200,11 @@ export default function MarketplaceIncidentsPage() {
     {
       key: 'status',
       header: 'Status',
-      render: (i) => <span style={badge(STATUS_COLOR[i.status])}>{STATUS_LABEL[i.status]}</span>,
+      render: (i) => (
+        <span className={BADGE_CLS} style={badgeStyle(STATUS_COLOR[i.status])}>
+          {STATUS_LABEL[i.status]}
+        </span>
+      ),
     },
     {
       key: 'actions',
@@ -191,7 +214,7 @@ export default function MarketplaceIncidentsPage() {
           type="button"
           data-testid={`inc-open-${i.id}`}
           onClick={() => setSelected(i.id)}
-          style={{ ...btnSecondary, padding: '0.25rem 0.625rem', fontSize: 12 }}
+          className={cn(BTN_SECONDARY_CLS, 'px-[0.625rem] py-1 text-[12px]')}
         >
           Abrir
         </button>
@@ -206,19 +229,12 @@ export default function MarketplaceIncidentsPage() {
     >
       <AtendimentoTabs />
       {resumo && (
-        <div
-          style={{
-            display: 'grid',
-            gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))',
-            gap: '0.75rem',
-            marginBottom: '1rem',
-          }}
-        >
+        <div className="grid grid-cols-[repeat(auto-fit,minmax(160px,1fr))] gap-3 mb-4">
           <StatBox label="Total" value={String(resumo.total)} />
           <StatBox
             label="Aguardando vendedor"
             value={String(resumo.aguardandoVendedor)}
-            color={colors.danger}
+            color="var(--danger)"
           />
           <StatBox
             label="Em mediação"
@@ -228,12 +244,12 @@ export default function MarketplaceIncidentsPage() {
           <StatBox
             label="Prazo urgente"
             value={String(resumo.prazoUrgente)}
-            color={colors.warning}
+            color="var(--warning)"
           />
         </div>
       )}
 
-      <div style={card}>
+      <div className={CARD_CLS}>
         <FilterBar>
           <Select
             data-testid="filter-canal"
@@ -330,18 +346,20 @@ export default function MarketplaceIncidentsPage() {
 function StatBox({
   label,
   value,
-  color = colors.text,
+  color = 'var(--text)',
 }: {
   label: string;
   value: string;
   color?: string;
 }) {
   return (
-    <div style={{ ...card, padding: '0.75rem' }}>
-      <div style={{ fontSize: 11, color: colors.muted, fontWeight: 600, textTransform: 'uppercase', letterSpacing: 0.3 }}>
+    <div className={cn(CARD_CLS, 'p-3')}>
+      <div className="text-[11px] text-muted font-semibold uppercase tracking-[0.3px]">
         {label}
       </div>
-      <div style={{ fontSize: 24, fontWeight: 700, color, marginTop: 4 }}>{value}</div>
+      <div className="text-[24px] font-bold mt-1" style={{ color }}>
+        {value}
+      </div>
     </div>
   );
 }
@@ -356,7 +374,7 @@ function IncidentDetailModal({ id, onClose }: { id: string; onClose: () => void 
       size="lg"
       title="Incidente"
       footer={
-        <button type="button" onClick={onClose} style={btnSecondary}>
+        <button type="button" onClick={onClose} className={BTN_SECONDARY_CLS}>
           Fechar
         </button>
       }
@@ -364,13 +382,19 @@ function IncidentDetailModal({ id, onClose }: { id: string; onClose: () => void 
       <StateView loading={loading} error={error} onRetry={refetch}>
         {data && (
           <div>
-            <header style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap', marginBottom: '1rem' }}>
-              <span style={badge(CANAL_COLOR[data.canal])}>{CANAL_LABEL[data.canal]}</span>
-              <span style={badge(colors.muted)}>{TIPO_LABEL[data.tipo]}</span>
-              <span style={badge(STATUS_COLOR[data.status])}>{STATUS_LABEL[data.status]}</span>
+            <header className="flex gap-2 flex-wrap mb-4">
+              <span className={BADGE_CLS} style={badgeStyle(CANAL_COLOR[data.canal])}>
+                {CANAL_LABEL[data.canal]}
+              </span>
+              <span className={BADGE_CLS} style={badgeStyle('var(--muted)')}>
+                {TIPO_LABEL[data.tipo]}
+              </span>
+              <span className={BADGE_CLS} style={badgeStyle(STATUS_COLOR[data.status])}>
+                {STATUS_LABEL[data.status]}
+              </span>
             </header>
 
-            <dl style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.75rem', fontSize: 14 }}>
+            <dl className="grid grid-cols-2 gap-3 text-[14px]">
               <Info label="Cliente">{data.cliente?.nome ?? '—'}</Info>
               <Info label="External ID">{data.externalId ?? '—'}</Info>
               <Info label="Valor">
@@ -388,43 +412,26 @@ function IncidentDetailModal({ id, onClose }: { id: string; onClose: () => void 
             </dl>
 
             {data.motivo && (
-              <div style={{ marginTop: '1rem' }}>
-                <h3
-                  style={{
-                    margin: 0,
-                    fontSize: 12,
-                    color: colors.muted,
-                    textTransform: 'uppercase',
-                    letterSpacing: 0.3,
-                  }}
-                >
+              <div className="mt-4">
+                <h3 className="m-0 text-[12px] text-muted uppercase tracking-[0.3px]">
                   Motivo
                 </h3>
-                <p
-                  style={{
-                    marginTop: 4,
-                    padding: '0.75rem',
-                    background: colors.bgAlt,
-                    border: `1px solid ${colors.border}`,
-                    borderRadius: 6,
-                    whiteSpace: 'pre-wrap',
-                  }}
-                >
+                <p className="mt-1 p-3 bg-bg-alt border border-border rounded-md whitespace-pre-wrap">
                   {data.motivo}
                 </p>
               </div>
             )}
 
             {data.conversation?.id && (
-              <p style={{ fontSize: 13, marginTop: '1rem' }}>
+              <p className="text-[13px] mt-4">
                 💬 Conversa vinculada:{' '}
-                <a href={`/inbox?conv=${data.conversation.id}`} style={{ color: colors.primary }}>
+                <a href={`/inbox?conv=${data.conversation.id}`} className="text-primary">
                   abrir no Inbox →
                 </a>
               </p>
             )}
 
-            <p style={{ fontSize: 12, color: colors.muted, marginTop: '1rem', lineHeight: 1.5 }}>
+            <p className="text-[12px] text-muted mt-4 leading-[1.5]">
               <strong>Nota:</strong> ações específicas (responder, aceitar oferta, abrir disputa)
               dependem do marketplace. Use a Inbox vinculada quando aplicável, ou o Seller Center
               do marketplace correspondente. Ações via API serão habilitadas em fases futuras.
@@ -439,16 +446,7 @@ function IncidentDetailModal({ id, onClose }: { id: string; onClose: () => void 
 function Info({ label, children }: { label: string; children: React.ReactNode }) {
   return (
     <div>
-      <div
-        style={{
-          fontSize: 11,
-          textTransform: 'uppercase',
-          color: colors.muted,
-          marginBottom: 2,
-          letterSpacing: 0.3,
-          fontWeight: 600,
-        }}
-      >
+      <div className="text-[11px] uppercase text-muted mb-0.5 tracking-[0.3px] font-semibold">
         {label}
       </div>
       <div>{children}</div>

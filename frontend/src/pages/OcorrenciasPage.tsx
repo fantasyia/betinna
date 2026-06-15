@@ -10,7 +10,18 @@ import { Dialog } from '@/components/ui';
 import { FormField, Input, Select, Textarea } from '@/components/FormField';
 import { AsyncCombobox } from '@/components/AsyncCombobox';
 import { AtendimentoTabs } from '@/components/AtendimentoTabs';
-import { alpha, badge, btn, btnSecondary, card, colors } from '@/components/styles';
+
+// Classes de layout do badge legado (sem cor — cor vem por inline style dinâmico).
+const BADGE_CLASS =
+  'inline-flex items-center rounded-full px-[9px] py-0.5 text-[11px] font-semibold leading-[1.6] tracking-[0.2px]';
+// Estilo de cor do badge p/ cor dinâmica (equivale ao badge(color) do styles.ts).
+function badgeColorStyle(color: string): React.CSSProperties {
+  return {
+    background: `color-mix(in srgb, ${color} 12%, transparent)`,
+    color,
+    border: `1px solid color-mix(in srgb, ${color} 19%, transparent)`,
+  };
+}
 
 type OcorrenciaStatus = 'ABERTA' | 'EM_ANDAMENTO' | 'RESOLVIDA' | 'CANCELADA';
 type OcorrenciaTipo = 'ENTREGA' | 'QUALIDADE' | 'PRAZO' | 'PRODUTO' | 'FINANCEIRO' | 'OUTRO';
@@ -55,10 +66,10 @@ interface ClienteOpt {
 }
 
 const STATUS_COLOR: Record<OcorrenciaStatus, string> = {
-  ABERTA: colors.warning,
+  ABERTA: 'var(--warning)',
   EM_ANDAMENTO: '#0891b2',
-  RESOLVIDA: colors.success,
-  CANCELADA: colors.muted,
+  RESOLVIDA: 'var(--success)',
+  CANCELADA: 'var(--muted)',
 };
 const STATUS_LABEL: Record<OcorrenciaStatus, string> = {
   ABERTA: 'Aberta',
@@ -68,10 +79,10 @@ const STATUS_LABEL: Record<OcorrenciaStatus, string> = {
 };
 
 const SEV_COLOR: Record<Severidade, string> = {
-  baixa: colors.muted,
+  baixa: 'var(--muted)',
   media: '#0891b2',
-  alta: colors.warning,
-  critica: colors.danger,
+  alta: 'var(--warning)',
+  critica: 'var(--danger)',
 };
 const SEV_LIST: Severidade[] = ['baixa', 'media', 'alta', 'critica'];
 
@@ -142,8 +153,8 @@ export default function OcorrenciasPage() {
       header: 'Título',
       render: (o) => (
         <div>
-          <div style={{ fontWeight: 600 }}>{o.titulo}</div>
-          <div style={{ fontSize: 11, color: colors.muted }}>
+          <div className="font-semibold">{o.titulo}</div>
+          <div className="text-[11px] text-muted">
             {o.tipo} · {o.cliente?.nome ?? '—'}
           </div>
         </div>
@@ -153,7 +164,7 @@ export default function OcorrenciasPage() {
       key: 'sev',
       header: 'Sev.',
       render: (o) => (
-        <span style={{ ...badge(SEV_COLOR[o.severidade]), textTransform: 'uppercase' }}>
+        <span className={`${BADGE_CLASS} uppercase`} style={badgeColorStyle(SEV_COLOR[o.severidade])}>
           {o.severidade}
         </span>
       ),
@@ -161,7 +172,7 @@ export default function OcorrenciasPage() {
     {
       key: 'resp',
       header: 'Responsável',
-      render: (o) => o.responsavel?.nome ?? <em style={{ color: colors.muted }}>sem resp.</em>,
+      render: (o) => o.responsavel?.nome ?? <em className="text-muted">sem resp.</em>,
     },
     {
       key: 'sla',
@@ -170,9 +181,9 @@ export default function OcorrenciasPage() {
         if (['RESOLVIDA', 'CANCELADA'].includes(o.status)) return '—';
         const h = hoursUntil(o.slaVenceEm);
         if (h === null) return '—';
-        const color = h < 0 ? colors.danger : h <= 4 ? colors.warning : colors.muted;
+        const color = h < 0 ? 'var(--danger)' : h <= 4 ? 'var(--warning)' : 'var(--muted)';
         return (
-          <span style={{ color, fontSize: 13, fontWeight: 500 }}>
+          <span className="text-[13px] font-medium" style={{ color }}>
             {h < 0 ? `${-h}h estourado` : `${h}h restantes`}
           </span>
         );
@@ -181,7 +192,11 @@ export default function OcorrenciasPage() {
     {
       key: 'status',
       header: 'Status',
-      render: (o) => <span style={badge(STATUS_COLOR[o.status])}>{STATUS_LABEL[o.status]}</span>,
+      render: (o) => (
+        <span className={BADGE_CLASS} style={badgeColorStyle(STATUS_COLOR[o.status])}>
+          {STATUS_LABEL[o.status]}
+        </span>
+      ),
     },
     {
       key: 'actions',
@@ -191,7 +206,7 @@ export default function OcorrenciasPage() {
           type="button"
           data-testid={`oc-open-${o.id}`}
           onClick={() => setSelected(o.id)}
-          style={{ ...btnSecondary, padding: '0.25rem 0.625rem', fontSize: 12 }}
+          className="bg-surface text-text border border-border-strong rounded-md px-2.5 py-1 text-xs font-medium cursor-pointer tracking-[-0.1px]"
         >
           Abrir
         </button>
@@ -208,7 +223,7 @@ export default function OcorrenciasPage() {
           type="button"
           data-testid="oc-new-btn"
           onClick={() => setCreating(true)}
-          style={btn}
+          className="bg-primary text-primary-contrast rounded-md px-4 py-2 text-[13px] font-semibold cursor-pointer tracking-[-0.1px]"
         >
           + Nova ocorrência
         </button>
@@ -218,20 +233,9 @@ export default function OcorrenciasPage() {
       {clienteIdFilter && (
         <div
           data-testid="ocorrencias-cliente-filter-banner"
-          style={{
-            marginBottom: 12,
-            padding: '0.5rem 0.75rem',
-            borderRadius: 6,
-            background: colors.infoLight,
-            border: `1px solid ${colors.info}`,
-            color: colors.text,
-            fontSize: 13,
-            display: 'flex',
-            alignItems: 'center',
-            gap: 8,
-          }}
+          className="mb-3 py-2 px-3 rounded-md bg-[#eaf0fb] border border-info text-text text-[13px] flex items-center gap-2"
         >
-          <span style={{ flex: 1 }}>
+          <span className="flex-1">
             Filtrando ocorrências de um cliente específico.
           </span>
           <button
@@ -241,37 +245,30 @@ export default function OcorrenciasPage() {
               next.delete('clienteId');
               setSearchParams(next, { replace: true });
             }}
-            style={{ ...btnSecondary, padding: '0.25rem 0.625rem', fontSize: 12 }}
+            className="bg-surface text-text border border-border-strong rounded-md px-2.5 py-1 text-xs font-medium cursor-pointer tracking-[-0.1px]"
           >
             Ver todas
           </button>
         </div>
       )}
       {resumo && (
-        <div
-          style={{
-            display: 'grid',
-            gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))',
-            gap: '0.75rem',
-            marginBottom: '1rem',
-          }}
-        >
-          <StatBox label="Abertas" value={String(resumo.abertas)} color={colors.warning} />
+        <div className="grid grid-cols-[repeat(auto-fit,minmax(160px,1fr))] gap-3 mb-4">
+          <StatBox label="Abertas" value={String(resumo.abertas)} color="var(--warning)" />
           <StatBox label="Em andamento" value={String(resumo.emAndamento)} color="#0891b2" />
           <StatBox
             label="Resolvidas (mês)"
             value={String(resumo.resolvidasMes)}
-            color={colors.success}
+            color="var(--success)"
           />
           <StatBox
             label="SLA estourado"
             value={String(resumo.slaEstourado)}
-            color={colors.danger}
+            color="var(--danger)"
           />
         </div>
       )}
 
-      <div style={card}>
+      <div className="bg-surface border border-border rounded-[10px] p-6">
         <FilterBar>
           <SearchInput
             value={search}
@@ -380,26 +377,13 @@ export default function OcorrenciasPage() {
 
 function StatBox({ label, value, color }: { label: string; value: string; color: string }) {
   return (
-    <div
-      style={{
-        background: colors.surface,
-        border: `1px solid ${colors.border}`,
-        borderRadius: 6,
-        padding: '0.75rem',
-      }}
-    >
-      <div
-        style={{
-          fontSize: 11,
-          textTransform: 'uppercase',
-          color: colors.muted,
-          fontWeight: 600,
-          letterSpacing: 0.3,
-        }}
-      >
+    <div className="bg-surface border border-border rounded-md p-3">
+      <div className="text-[11px] uppercase text-muted font-semibold tracking-[0.3px]">
         {label}
       </div>
-      <div style={{ fontSize: 24, fontWeight: 700, color, marginTop: 4 }}>{value}</div>
+      <div className="text-2xl font-bold mt-1" style={{ color }}>
+        {value}
+      </div>
     </div>
   );
 }
@@ -485,7 +469,7 @@ function OcorrenciaDetailModal({
               onClose();
               onClosedExternal();
             }}
-            style={btnSecondary}
+            className="bg-surface text-text border border-border-strong rounded-md px-4 py-2 text-[13px] font-medium cursor-pointer tracking-[-0.1px]"
           >
             Fechar
           </button>
@@ -495,7 +479,7 @@ function OcorrenciaDetailModal({
               data-testid="oc-em-andamento"
               disabled={busy}
               onClick={() => changeStatus('EM_ANDAMENTO')}
-              style={btn}
+              className="bg-primary text-primary-contrast rounded-md px-4 py-2 text-[13px] font-semibold cursor-pointer tracking-[-0.1px]"
             >
               Pegar atendimento
             </button>
@@ -506,7 +490,7 @@ function OcorrenciaDetailModal({
               data-testid="oc-resolver"
               disabled={busy}
               onClick={() => setResolvingOpen(true)}
-              style={btn}
+              className="bg-primary text-primary-contrast rounded-md px-4 py-2 text-[13px] font-semibold cursor-pointer tracking-[-0.1px]"
             >
               Resolver
             </button>
@@ -517,20 +501,22 @@ function OcorrenciaDetailModal({
       <StateView loading={loading} error={error} onRetry={refetch}>
         {data && (
           <div>
-            <header style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap', marginBottom: '1rem' }}>
-              <span style={badge(STATUS_COLOR[data.status])}>{STATUS_LABEL[data.status]}</span>
-              <span style={{ ...badge(SEV_COLOR[data.severidade]), textTransform: 'uppercase' }}>
+            <header className="flex gap-2 flex-wrap mb-4">
+              <span className={BADGE_CLASS} style={badgeColorStyle(STATUS_COLOR[data.status])}>
+                {STATUS_LABEL[data.status]}
+              </span>
+              <span className={`${BADGE_CLASS} uppercase`} style={badgeColorStyle(SEV_COLOR[data.severidade])}>
                 {data.severidade}
               </span>
-              <span style={badge(colors.muted)}>{data.tipo}</span>
+              <span className={`${BADGE_CLASS} bg-muted/12 text-muted border border-muted/19`}>{data.tipo}</span>
             </header>
 
-            <h2 style={{ margin: '0 0 0.5rem', fontSize: 18 }}>{data.titulo}</h2>
-            <p style={{ whiteSpace: 'pre-wrap', marginTop: 0, fontSize: 14, color: colors.text }}>
+            <h2 className="m-0 mb-2 text-[18px]">{data.titulo}</h2>
+            <p className="whitespace-pre-wrap mt-0 text-sm text-text">
               {data.descricao}
             </p>
 
-            <dl style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.5rem', fontSize: 13, marginTop: '0.75rem' }}>
+            <dl className="grid grid-cols-2 gap-2 text-[13px] mt-3">
               <Info label="Cliente">{data.cliente?.nome ?? '—'}</Info>
               <Info label="Responsável">{data.responsavel?.nome ?? 'sem responsável'}</Info>
               <Info label="SLA vence em">{fmtDate(data.slaVenceEm)}</Info>
@@ -539,48 +525,35 @@ function OcorrenciaDetailModal({
             </dl>
 
             {data.resolucao && (
-              <div
-                style={{
-                  background: alpha(colors.success, 8),
-                  border: `1px solid ${colors.success}`,
-                  borderRadius: 6,
-                  padding: '0.75rem',
-                  marginTop: '0.75rem',
-                }}
-              >
-                <strong style={{ fontSize: 13, color: colors.success }}>RESOLUÇÃO</strong>
-                <p style={{ marginTop: 4, whiteSpace: 'pre-wrap' }}>{data.resolucao}</p>
+              <div className="bg-success/8 border border-success rounded-md p-3 mt-3">
+                <strong className="text-[13px] text-success">RESOLUÇÃO</strong>
+                <p className="mt-1 whitespace-pre-wrap">{data.resolucao}</p>
               </div>
             )}
 
-            <section style={{ marginTop: '1.25rem', paddingTop: '1rem', borderTop: `1px solid ${colors.border}` }}>
-              <h3 style={{ marginTop: 0, fontSize: 14 }}>Timeline</h3>
+            <section className="mt-5 pt-4 border-t border-border">
+              <h3 className="mt-0 text-sm">Timeline</h3>
               {(!data.comentarios || data.comentarios.length === 0) && (
-                <p style={{ color: colors.muted, fontSize: 13 }}>Sem comentários ainda.</p>
+                <p className="text-muted text-[13px]">Sem comentários ainda.</p>
               )}
               {data.comentarios && data.comentarios.length > 0 && (
-                <ul style={{ listStyle: 'none', padding: 0, margin: 0, display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+                <ul className="list-none p-0 m-0 flex flex-col gap-2">
                   {data.comentarios.map((c) => (
                     <li
                       key={c.id}
-                      style={{
-                        background: colors.bgAlt,
-                        border: `1px solid ${colors.border}`,
-                        borderRadius: 6,
-                        padding: '0.5rem 0.75rem',
-                      }}
+                      className="bg-bg-alt border border-border rounded-md py-2 px-3"
                     >
-                      <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12 }}>
+                      <div className="flex justify-between text-xs">
                         <strong>{c.autor?.nome ?? '—'}</strong>
-                        <span style={{ color: colors.muted }}>{fmtDate(c.criadoEm)}</span>
+                        <span className="text-muted">{fmtDate(c.criadoEm)}</span>
                       </div>
-                      <p style={{ margin: '4px 0 0', whiteSpace: 'pre-wrap', fontSize: 14 }}>{c.texto}</p>
+                      <p className="m-0 mt-1 whitespace-pre-wrap text-sm">{c.texto}</p>
                     </li>
                   ))}
                 </ul>
               )}
               {!['RESOLVIDA', 'CANCELADA'].includes(data.status) && (
-                <div style={{ marginTop: '0.75rem' }}>
+                <div className="mt-3">
                   <Textarea
                     data-testid="oc-comentario-input"
                     value={comment}
@@ -592,7 +565,7 @@ function OcorrenciaDetailModal({
                     data-testid="oc-comentar-btn"
                     onClick={addComment}
                     disabled={busy || comment.trim().length === 0}
-                    style={{ ...btn, marginTop: '0.5rem' }}
+                    className="bg-primary text-primary-contrast rounded-md px-4 py-2 text-[13px] font-semibold cursor-pointer tracking-[-0.1px] mt-2"
                   >
                     {busy ? 'Enviando…' : 'Comentar'}
                   </button>
@@ -603,13 +576,7 @@ function OcorrenciaDetailModal({
             {actionError && (
               <div
                 data-testid="action-error"
-                style={{
-                  ...card,
-                  borderColor: colors.danger,
-                  color: colors.danger,
-                  padding: '0.5rem 0.75rem',
-                  marginTop: '0.75rem',
-                }}
+                className="bg-surface border border-danger rounded-[10px] text-danger py-2 px-3 mt-3"
               >
                 {actionError}
               </div>
@@ -624,7 +591,11 @@ function OcorrenciaDetailModal({
         title="Marcar como resolvida"
         footer={
           <>
-            <button type="button" onClick={() => setResolvingOpen(false)} style={btnSecondary}>
+            <button
+              type="button"
+              onClick={() => setResolvingOpen(false)}
+              className="bg-surface text-text border border-border-strong rounded-md px-4 py-2 text-[13px] font-medium cursor-pointer tracking-[-0.1px]"
+            >
               Voltar
             </button>
             <button
@@ -632,7 +603,8 @@ function OcorrenciaDetailModal({
               data-testid="oc-resolver-confirm"
               onClick={doResolver}
               disabled={busy || resolucao.trim().length < 3}
-              style={{ ...btn, opacity: busy ? 0.7 : 1 }}
+              className="bg-primary text-primary-contrast rounded-md px-4 py-2 text-[13px] font-semibold cursor-pointer tracking-[-0.1px]"
+              style={{ opacity: busy ? 0.7 : 1 }}
             >
               {busy ? 'Resolvendo…' : 'Confirmar'}
             </button>
@@ -658,16 +630,7 @@ function OcorrenciaDetailModal({
 function Info({ label, children }: { label: string; children: React.ReactNode }) {
   return (
     <div>
-      <div
-        style={{
-          fontSize: 11,
-          textTransform: 'uppercase',
-          color: colors.muted,
-          marginBottom: 2,
-          letterSpacing: 0.3,
-          fontWeight: 600,
-        }}
-      >
+      <div className="text-[11px] uppercase text-muted mb-0.5 tracking-[0.3px] font-semibold">
         {label}
       </div>
       <div>{children}</div>
@@ -731,7 +694,11 @@ function OcorrenciaFormModal({
       title="Nova ocorrência"
       footer={
         <>
-          <button type="button" onClick={onClose} style={btnSecondary}>
+          <button
+            type="button"
+            onClick={onClose}
+            className="bg-surface text-text border border-border-strong rounded-md px-4 py-2 text-[13px] font-medium cursor-pointer tracking-[-0.1px]"
+          >
             Cancelar
           </button>
           <button
@@ -739,7 +706,8 @@ function OcorrenciaFormModal({
             form="oc-form"
             data-testid="oc-save-btn"
             disabled={busy}
-            style={{ ...btn, opacity: busy ? 0.6 : 1 }}
+            className="bg-primary text-primary-contrast rounded-md px-4 py-2 text-[13px] font-semibold cursor-pointer tracking-[-0.1px]"
+            style={{ opacity: busy ? 0.6 : 1 }}
           >
             {busy ? 'Criando…' : 'Criar'}
           </button>
@@ -759,7 +727,7 @@ function OcorrenciaFormModal({
             onChange={setCliente}
           />
         </FormField>
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.75rem' }}>
+        <div className="grid grid-cols-2 gap-3">
           <FormField label="Tipo" htmlFor="oc-tipo">
             <Select id="oc-tipo" value={tipo} onChange={(e) => setTipo(e.target.value as OcorrenciaTipo)}>
               {TIPOS.map((t) => (
@@ -807,7 +775,7 @@ function OcorrenciaFormModal({
           />
         </FormField>
         {error && (
-          <p data-testid="form-error" style={{ color: colors.danger, fontSize: 13 }}>
+          <p data-testid="form-error" className="text-danger text-[13px]">
             {error}
           </p>
         )}

@@ -8,7 +8,7 @@ import { Dialog } from '@/components/ui';
 import { FormField, Input, Select } from '@/components/FormField';
 import { useConfirm } from '@/hooks/useConfirm';
 import { useToast } from '@/components/toast';
-import { btn, btnDanger, btnSecondary, card, colors } from '@/components/styles';
+import { cn } from '@/lib/cn';
 
 /** Biblioteca de prompts do bot (orquestração Fase A). */
 interface BotPrompt {
@@ -79,18 +79,23 @@ export default function PromptsBotPage() {
       title="Prompts do bot"
       description="Biblioteca de prompts reutilizáveis. O marcado como padrão é o que o bot usa quando um fluxo não especifica outro."
       actions={
-        <button type="button" data-testid="prompt-new-btn" onClick={() => setCreating(true)} style={btn}>
+        <button
+          type="button"
+          data-testid="prompt-new-btn"
+          onClick={() => setCreating(true)}
+          className="bg-primary text-primary-contrast rounded-md px-4 py-2 text-[13px] font-semibold cursor-pointer tracking-[-0.1px]"
+        >
           + Novo prompt
         </button>
       }
     >
-      <div style={{ marginBottom: '0.75rem' }}>
-        <Link to="/mullerbot/persona" style={{ fontSize: 13, color: colors.primary }}>
+      <div className="mb-3">
+        <Link to="/mullerbot/persona" className="text-[13px] text-primary">
           ← Persona do bot (tom de voz, tetos de custo)
         </Link>
       </div>
 
-      <div style={card}>
+      <div className="bg-surface border border-border rounded-[10px] p-6">
         <StateView
           loading={loading}
           error={error}
@@ -99,75 +104,44 @@ export default function PromptsBotPage() {
           onRetry={refetch}
         >
           <div
-            style={{
-              display: 'grid',
-              gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))',
-              gap: '0.75rem',
-            }}
+            className="grid gap-3"
+            style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))' }}
           >
             {prompts.map((p) => (
               <div
                 key={p.id}
                 data-testid={`prompt-card-${p.id}`}
-                style={{
-                  border: `1px solid ${p.isPadrao ? colors.primary : colors.border}`,
-                  borderRadius: 10,
-                  padding: '0.75rem',
-                  display: 'flex',
-                  flexDirection: 'column',
-                  gap: '0.5rem',
-                  background: colors.surface,
-                  opacity: p.ativo ? 1 : 0.6,
-                }}
+                className={cn(
+                  'border rounded-[10px] p-3 flex flex-col gap-2 bg-surface',
+                  p.isPadrao ? 'border-primary' : 'border-border',
+                  !p.ativo && 'opacity-60',
+                )}
               >
-                <header style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                  <strong
-                    style={{ flex: 1, fontSize: 14, overflow: 'hidden', textOverflow: 'ellipsis' }}
-                  >
+                <header className="flex items-center gap-2">
+                  <strong className="flex-1 text-[14px] overflow-hidden text-ellipsis">
                     {p.nome}
                   </strong>
                   {p.isPadrao && (
-                    <span
-                      style={{
-                        fontSize: 11,
-                        fontWeight: 700,
-                        color: '#fff',
-                        background: colors.primary,
-                        padding: '2px 8px',
-                        borderRadius: 999,
-                      }}
-                    >
+                    <span className="text-[11px] font-bold text-white bg-primary px-2 py-0.5 rounded-full">
                       PADRÃO
                     </span>
                   )}
-                  {!p.ativo && (
-                    <span style={{ fontSize: 11, color: colors.muted }}>inativo</span>
-                  )}
+                  {!p.ativo && <span className="text-[11px] text-muted">inativo</span>}
                 </header>
                 {p.descricao && (
-                  <p
-                    style={{
-                      margin: 0,
-                      fontSize: 12,
-                      color: colors.muted,
-                      display: '-webkit-box',
-                      WebkitLineClamp: 2,
-                      WebkitBoxOrient: 'vertical',
-                      overflow: 'hidden',
-                    }}
-                  >
+                  <p className="m-0 text-[12px] text-muted [display:-webkit-box] [-webkit-line-clamp:2] [-webkit-box-orient:vertical] overflow-hidden">
                     {p.descricao}
                   </p>
                 )}
-                <p style={{ margin: 0, fontSize: 11, color: colors.muted }}>
+                <p className="m-0 text-[11px] text-muted">
                   Modelo: {p.modelo || 'padrão da empresa'} · v{p.versao}
                 </p>
-                <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap' }}>
+                <div className="flex gap-1 flex-wrap">
                   <button
                     type="button"
                     data-testid={`prompt-edit-${p.id}`}
                     onClick={() => setEditing(p)}
-                    style={{ ...btnSecondary, padding: '0.25rem 0.625rem', fontSize: 12 }}
+                    className="bg-surface text-text border border-border-strong rounded-md px-2.5 py-1 text-[12px] font-medium cursor-pointer tracking-[-0.1px]"
                   >
                     Editar
                   </button>
@@ -175,7 +149,7 @@ export default function PromptsBotPage() {
                     type="button"
                     data-testid={`prompt-versoes-${p.id}`}
                     onClick={() => setVersoesDe(p)}
-                    style={{ ...btnSecondary, padding: '0.25rem 0.625rem', fontSize: 12 }}
+                    className="bg-surface text-text border border-border-strong rounded-md px-2.5 py-1 text-[12px] font-medium cursor-pointer tracking-[-0.1px]"
                     title="Histórico de versões e restauração"
                   >
                     Versões
@@ -185,7 +159,7 @@ export default function PromptsBotPage() {
                       type="button"
                       data-testid={`prompt-set-padrao-${p.id}`}
                       onClick={() => tornarPadrao(p)}
-                      style={{ ...btnSecondary, padding: '0.25rem 0.625rem', fontSize: 12 }}
+                      className="bg-surface text-text border border-border-strong rounded-md px-2.5 py-1 text-[12px] font-medium cursor-pointer tracking-[-0.1px]"
                     >
                       Tornar padrão
                     </button>
@@ -194,7 +168,7 @@ export default function PromptsBotPage() {
                     type="button"
                     data-testid={`prompt-del-${p.id}`}
                     onClick={() => excluir(p)}
-                    style={{ ...btnDanger, padding: '0.25rem 0.625rem', fontSize: 12 }}
+                    className="bg-danger text-white rounded-md px-2.5 py-1 text-[12px] font-semibold cursor-pointer tracking-[-0.1px]"
                   >
                     Excluir
                   </button>
@@ -206,25 +180,17 @@ export default function PromptsBotPage() {
       </div>
 
       {/* Referência de variáveis disponíveis */}
-      <div style={{ ...card, marginTop: '0.75rem' }}>
-        <h3 style={{ margin: '0 0 0.5rem', fontSize: 14 }}>Variáveis disponíveis</h3>
-        <p style={{ margin: '0 0 0.75rem', fontSize: 12, color: colors.muted }}>
+      <div className="bg-surface border border-border rounded-[10px] p-6 mt-3">
+        <h3 className="mt-0 mx-0 mb-2 text-[14px]">Variáveis disponíveis</h3>
+        <p className="mt-0 mx-0 mb-3 text-[12px] text-muted">
           Use nos prompts e nas mensagens dos fluxos com a sintaxe <code>{'{{escopo.nome}}'}</code>.
         </p>
-        <div style={{ display: 'grid', gap: '0.5rem' }}>
+        <div className="grid gap-2">
           {VARIAVEIS_REF.map((v) => (
-            <div key={v.escopo} style={{ fontSize: 12 }}>
+            <div key={v.escopo} className="text-[12px]">
               <strong>{v.escopo}:</strong>{' '}
               {v.exemplos.map((ex) => (
-                <code
-                  key={ex}
-                  style={{
-                    background: colors.surfaceHover ?? colors.bgAlt,
-                    padding: '1px 6px',
-                    borderRadius: 6,
-                    marginRight: 6,
-                  }}
-                >
+                <code key={ex} className="bg-surface-hover px-1.5 py-px rounded-md mr-1.5">
                   {ex}
                 </code>
               ))}
@@ -308,7 +274,11 @@ function VersoesModal({
       onClose={onClose}
       title={`Versões — ${prompt.nome} (atual: v${prompt.versao})`}
       footer={
-        <button type="button" onClick={onClose} style={btnSecondary}>
+        <button
+          type="button"
+          onClick={onClose}
+          className="bg-surface text-text border border-border-strong rounded-md px-4 py-2 text-[13px] font-medium cursor-pointer tracking-[-0.1px]"
+        >
           Fechar
         </button>
       }
@@ -320,25 +290,17 @@ function VersoesModal({
         emptyMessage="Sem versões anteriores. Cada edição do texto/modelo/temperatura gera uma."
         onRetry={refetch}
       >
-        <div style={{ display: 'grid', gap: '0.5rem' }}>
+        <div className="grid gap-2">
           {versoes.map((v) => (
             <div
               key={v.id}
               data-testid={`prompt-versao-${v.versao}`}
-              style={{
-                border: `1px solid ${colors.border}`,
-                borderRadius: 10,
-                padding: '0.625rem 0.75rem',
-                display: 'flex',
-                flexDirection: 'column',
-                gap: '0.375rem',
-                background: colors.surface,
-              }}
+              className="border border-border rounded-[10px] px-3 py-2.5 flex flex-col gap-1.5 bg-surface"
             >
-              <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                <strong style={{ fontSize: 13, flex: 1 }}>
+              <div className="flex items-center gap-2">
+                <strong className="text-[13px] flex-1">
                   Versão {v.versao}
-                  <span style={{ fontWeight: 400, color: colors.muted }}>
+                  <span className="font-normal text-muted">
                     {' '}
                     · {v.modelo || 'modelo padrão'}
                     {v.temperatura != null ? ` · temp ${v.temperatura}` : ''}
@@ -349,35 +311,21 @@ function VersoesModal({
                   data-testid={`prompt-restaurar-${v.versao}`}
                   onClick={() => void restaurar(v)}
                   disabled={restoring != null}
-                  style={{
-                    ...btnSecondary,
-                    padding: '0.25rem 0.625rem',
-                    fontSize: 12,
-                    opacity: restoring != null ? 0.6 : 1,
-                  }}
+                  className={cn(
+                    'bg-surface text-text border border-border-strong rounded-md px-2.5 py-1 text-[12px] font-medium cursor-pointer tracking-[-0.1px]',
+                    restoring != null ? 'opacity-60' : 'opacity-100',
+                  )}
                 >
                   {restoring === v.versao ? 'Restaurando…' : 'Restaurar'}
                 </button>
               </div>
               {v.criadoEm && (
-                <span style={{ fontSize: 11, color: colors.muted }}>
+                <span className="text-[11px] text-muted">
                   {new Date(v.criadoEm).toLocaleString('pt-BR')}
                 </span>
               )}
               <pre
-                style={{
-                  margin: 0,
-                  fontSize: 11,
-                  fontFamily: '"Fira Mono", monospace',
-                  color: colors.text,
-                  background: colors.surfaceHover ?? colors.bgAlt,
-                  padding: '0.5rem',
-                  borderRadius: 8,
-                  maxHeight: 120,
-                  overflow: 'auto',
-                  whiteSpace: 'pre-wrap',
-                  wordBreak: 'break-word',
-                }}
+                className='m-0 text-[11px] font-["Fira_Mono",monospace] text-text bg-surface-hover p-2 rounded-[8px] max-h-[120px] overflow-auto whitespace-pre-wrap [word-break:break-word]'
               >
                 {v.texto}
               </pre>
@@ -432,41 +380,46 @@ function VariaveisCustomizadasSection() {
   }
 
   return (
-    <div style={{ ...card, marginTop: '0.75rem' }}>
-      <strong style={{ fontSize: 14 }}>Variáveis customizadas ({'{{custom.*}}'})</strong>
-      <p style={{ fontSize: 12, color: colors.muted, margin: '4px 0 8px' }}>
+    <div className="bg-surface border border-border rounded-[10px] p-6 mt-3">
+      <strong className="text-[14px]">Variáveis customizadas ({'{{custom.*}}'})</strong>
+      <p className="text-[12px] text-muted mt-1 mx-0 mb-2">
         Variáveis da empresa com valor padrão. Use nos prompts/fluxos como{' '}
         <code>{'{{custom.<chave>}}'}</code> — o lead pode sobrescrever.
       </p>
-      <div style={{ display: 'flex', gap: 6, marginBottom: 8, flexWrap: 'wrap' }}>
+      <div className="flex gap-1.5 mb-2 flex-wrap">
         <Input
           placeholder="chave (ex: pedido_minimo_kg)"
           value={chave}
           onChange={(e) => setChave(e.target.value)}
         />
         <Input placeholder="valor padrão" value={valor} onChange={(e) => setValor(e.target.value)} />
-        <button type="button" style={btn} disabled={busy || !chave.trim()} onClick={() => void salvar()}>
+        <button
+          type="button"
+          className="bg-primary text-primary-contrast rounded-md px-4 py-2 text-[13px] font-semibold cursor-pointer tracking-[-0.1px]"
+          disabled={busy || !chave.trim()}
+          onClick={() => void salvar()}
+        >
           Salvar
         </button>
       </div>
-      <div style={{ display: 'grid', gap: 4 }}>
+      <div className="grid gap-1">
         {vars.map((v) => (
-          <div key={v.id} style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13 }}>
-            <code style={{ background: colors.bgAlt, padding: '1px 6px', borderRadius: 6 }}>
+          <div key={v.id} className="flex items-center gap-2 text-[13px]">
+            <code className="bg-bg-alt px-1.5 py-px rounded-md">
               {`{{custom.${v.chave}}}`}
             </code>
-            <span style={{ flex: 1, color: colors.muted }}>{v.valorPadrao ?? '—'}</span>
+            <span className="flex-1 text-muted">{v.valorPadrao ?? '—'}</span>
             <button
               type="button"
               onClick={() => void remover(v.id)}
-              style={{ ...btnDanger, padding: '2px 8px', fontSize: 12 }}
+              className="bg-danger text-white rounded-md px-2 py-0.5 text-[12px] font-semibold cursor-pointer tracking-[-0.1px]"
             >
               remover
             </button>
           </div>
         ))}
         {vars.length === 0 && (
-          <span style={{ fontSize: 12, color: colors.muted }}>Nenhuma variável ainda.</span>
+          <span className="text-[12px] text-muted">Nenhuma variável ainda.</span>
         )}
       </div>
     </div>
@@ -542,7 +495,11 @@ function PromptFormModal({
       title={isEdit ? `Editar prompt — ${prompt?.nome}` : 'Novo prompt'}
       footer={
         <>
-          <button type="button" onClick={onClose} style={btnSecondary}>
+          <button
+            type="button"
+            onClick={onClose}
+            className="bg-surface text-text border border-border-strong rounded-md px-4 py-2 text-[13px] font-medium cursor-pointer tracking-[-0.1px]"
+          >
             Cancelar
           </button>
           <button
@@ -550,7 +507,10 @@ function PromptFormModal({
             form="prompt-form"
             data-testid="prompt-save-btn"
             disabled={busy || nome.trim().length === 0 || texto.trim().length === 0}
-            style={{ ...btn, opacity: busy ? 0.6 : 1 }}
+            className={cn(
+              'bg-primary text-primary-contrast rounded-md px-4 py-2 text-[13px] font-semibold cursor-pointer tracking-[-0.1px]',
+              busy ? 'opacity-60' : 'opacity-100',
+            )}
           >
             {busy ? 'Salvando…' : 'Salvar'}
           </button>
@@ -587,17 +547,7 @@ function PromptFormModal({
             rows={10}
             maxLength={50000}
             placeholder="Ex: Você é a Bê, entrevistadora comercial da MSM..."
-            style={{
-              width: '100%',
-              fontFamily: '"Fira Mono", monospace',
-              fontSize: 13,
-              padding: '0.5rem 0.625rem',
-              border: `1px solid ${colors.border}`,
-              borderRadius: 10,
-              resize: 'vertical',
-              background: colors.surface,
-              color: colors.text,
-            }}
+            className='w-full font-["Fira_Mono",monospace] text-[13px] py-2 px-2.5 border border-border rounded-[10px] resize-y bg-surface text-text'
           />
         </FormField>
         <FormField
@@ -622,7 +572,7 @@ function PromptFormModal({
             ))}
           </Select>
         </FormField>
-        <div style={{ display: 'flex', gap: '0.75rem' }}>
+        <div className="flex gap-3">
           <FormField
             label="Teto de tokens/dia"
             htmlFor="prompt-teto-dia"
@@ -656,8 +606,8 @@ function PromptFormModal({
             />
           </FormField>
         </div>
-        <div style={{ display: 'flex', gap: '1.25rem', marginTop: '0.5rem' }}>
-          <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 13 }}>
+        <div className="flex gap-5 mt-2">
+          <label className="flex items-center gap-1.5 text-[13px]">
             <input
               type="checkbox"
               data-testid="prompt-padrao-check"
@@ -666,12 +616,12 @@ function PromptFormModal({
             />
             Prompt padrão
           </label>
-          <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 13 }}>
+          <label className="flex items-center gap-1.5 text-[13px]">
             <input type="checkbox" checked={ativo} onChange={(e) => setAtivo(e.target.checked)} />
             Ativo
           </label>
         </div>
-        {error && <p style={{ color: colors.danger, fontSize: 13 }}>{error}</p>}
+        {error && <p className="text-danger text-[13px]">{error}</p>}
       </form>
     </Dialog>
   );

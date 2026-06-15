@@ -10,7 +10,7 @@ import { Dialog } from '@/components/ui';
 import { FormField, Input } from '@/components/FormField';
 import { useConfirm } from '@/hooks/useConfirm';
 import { useToast } from '@/components/toast';
-import { btn, btnDanger, btnSecondary, card, colors } from '@/components/styles';
+import { cn } from '@/lib/cn';
 
 interface Tag {
   id: string;
@@ -76,7 +76,7 @@ export default function TagsPage() {
             type="button"
             data-testid="tag-new"
             onClick={() => setCreating(true)}
-            style={btn}
+            className="bg-primary text-primary-contrast rounded-md px-4 py-2 text-[13px] font-semibold cursor-pointer tracking-[-0.1px]"
           >
             + Nova tag
           </button>
@@ -84,7 +84,7 @@ export default function TagsPage() {
       }
     >
       <CrmTabs />
-      <div style={card}>
+      <div className="bg-surface border border-border rounded-[10px] p-6">
         <FilterBar>
           <SearchInput value={search} onChange={setSearch} placeholder="Buscar tag…" />
         </FilterBar>
@@ -97,51 +97,34 @@ export default function TagsPage() {
           onRetry={refetch}
         >
           <div
-            style={{
-              display: 'grid',
-              gridTemplateColumns: 'repeat(auto-fill, minmax(240px, 1fr))',
-              gap: '0.75rem',
-            }}
+            className="grid grid-cols-[repeat(auto-fill,minmax(240px,1fr))] gap-3"
           >
             {tags.map((t) => (
               <div
                 key={t.id}
                 data-testid={`tag-card-${t.id}`}
-                style={{
-                  border: `1px solid ${colors.border}`,
-                  borderLeft: `4px solid ${t.cor}`,
-                  borderRadius: 6,
-                  padding: '0.75rem',
-                  display: 'flex',
-                  flexDirection: 'column',
-                  gap: '0.5rem',
-                  background: colors.surface,
-                }}
+                className="border border-border rounded-md p-3 flex flex-col gap-2 bg-surface"
+                style={{ borderLeft: `4px solid ${t.cor}` }}
               >
-                <header style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                <header className="flex items-center gap-2">
                   <span
-                    style={{
-                      width: 12,
-                      height: 12,
-                      borderRadius: '50%',
-                      background: t.cor,
-                      flexShrink: 0,
-                    }}
+                    className="w-3 h-3 rounded-full shrink-0"
+                    style={{ background: t.cor }}
                   />
-                  <strong style={{ flex: 1, fontSize: 14, overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                  <strong className="flex-1 text-[14px] overflow-hidden text-ellipsis">
                     {t.nome}
                   </strong>
                 </header>
-                <p style={{ margin: 0, fontSize: 12, color: colors.muted }}>
+                <p className="m-0 text-[12px] text-muted">
                   {t.clientesCount ?? 0} {t.clientesCount === 1 ? 'cliente' : 'clientes'}
                 </p>
                 {canEdit && (
-                  <div style={{ display: 'flex', gap: 4 }}>
+                  <div className="flex gap-1">
                     <button
                       type="button"
                       data-testid={`tag-edit-${t.id}`}
                       onClick={() => setEditing(t)}
-                      style={{ ...btnSecondary, padding: '0.25rem 0.625rem', fontSize: 12 }}
+                      className="bg-surface text-text border border-border-strong rounded-md px-[0.625rem] py-1 text-[12px] font-medium cursor-pointer tracking-[-0.1px]"
                     >
                       Editar
                     </button>
@@ -149,7 +132,7 @@ export default function TagsPage() {
                       type="button"
                       data-testid={`tag-del-${t.id}`}
                       onClick={() => delTag(t)}
-                      style={{ ...btnDanger, padding: '0.25rem 0.625rem', fontSize: 12 }}
+                      className="bg-danger text-white rounded-md px-[0.625rem] py-1 text-[12px] font-semibold cursor-pointer tracking-[-0.1px]"
                     >
                       Excluir
                     </button>
@@ -221,7 +204,11 @@ function TagFormModal({
       title={isEdit ? `Editar tag — ${tag?.nome}` : 'Nova tag'}
       footer={
         <>
-          <button type="button" onClick={onClose} style={btnSecondary}>
+          <button
+            type="button"
+            onClick={onClose}
+            className="bg-surface text-text border border-border-strong rounded-md px-4 py-2 text-[13px] font-medium cursor-pointer tracking-[-0.1px]"
+          >
             Cancelar
           </button>
           <button
@@ -229,7 +216,10 @@ function TagFormModal({
             form="tag-form"
             data-testid="tag-save"
             disabled={busy || nome.trim().length === 0}
-            style={{ ...btn, opacity: busy ? 0.6 : 1 }}
+            className={cn(
+              'bg-primary text-primary-contrast rounded-md px-4 py-2 text-[13px] font-semibold cursor-pointer tracking-[-0.1px]',
+              busy ? 'opacity-60' : 'opacity-100',
+            )}
           >
             {busy ? 'Salvando…' : 'Salvar'}
           </button>
@@ -250,21 +240,17 @@ function TagFormModal({
           />
         </FormField>
         <FormField label="Cor" hint="Clique numa cor abaixo ou digite hex">
-          <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginBottom: '0.5rem' }}>
+          <div className="flex gap-[6px] flex-wrap mb-2">
             {PRESET_COLORS.map((c) => (
               <button
                 key={c}
                 type="button"
                 data-testid={`tag-color-${c}`}
                 onClick={() => setCor(c)}
+                className="w-8 h-8 rounded-md cursor-pointer p-0"
                 style={{
-                  width: 32,
-                  height: 32,
                   background: c,
-                  border: `2px solid ${cor === c ? colors.text : 'transparent'}`,
-                  borderRadius: 6,
-                  cursor: 'pointer',
-                  padding: 0,
+                  border: `2px solid ${cor === c ? 'var(--text)' : 'transparent'}`,
                 }}
                 aria-label={`Cor ${c}`}
               />
@@ -294,29 +280,14 @@ function TagFormModal({
             title="Hex color no formato #RRGGBB (ex: #7c3aed)"
           />
         </FormField>
-        <div
-          style={{
-            display: 'flex',
-            alignItems: 'center',
-            gap: '0.5rem',
-            padding: '0.75rem',
-            background: colors.bgAlt,
-            border: `1px solid ${colors.border}`,
-            borderRadius: 6,
-            marginTop: '0.5rem',
-          }}
-        >
+        <div className="flex items-center gap-2 p-3 bg-bg-alt border border-border rounded-md mt-2">
           <span
-            style={{
-              width: 16,
-              height: 16,
-              borderRadius: '50%',
-              background: cor,
-            }}
+            className="w-4 h-4 rounded-full"
+            style={{ background: cor }}
           />
-          <span style={{ fontWeight: 600 }}>{nome || 'Preview'}</span>
+          <span className="font-semibold">{nome || 'Preview'}</span>
         </div>
-        {error && <p style={{ color: colors.danger, fontSize: 13 }}>{error}</p>}
+        {error && <p className="text-danger text-[13px]">{error}</p>}
       </form>
     </Dialog>
   );

@@ -6,7 +6,6 @@ import { SistemaTabs } from '@/components/SistemaTabs';
 import { StateView } from '@/components/StateView';
 import { Dialog } from '@/components/ui';
 import { FormField, Input } from '@/components/FormField';
-import { badge, btn, btnDanger, btnSecondary, card, colors } from '@/components/styles';
 
 type ServicoUsuario = 'google_calendar' | 'openai' | 'whatsapp';
 
@@ -117,18 +116,12 @@ export default function MinhasIntegracoesPage() {
   return (
     <PageLayout title="Minhas integrações">
       <SistemaTabs />
-      <p style={{ color: colors.muted, marginTop: 0, marginBottom: '1rem', fontSize: 14 }}>
+      <p className="text-muted mt-0 mb-4 text-[14px]">
         Conexões pessoais (suas, não da empresa). Cada usuário tem as próprias credenciais
         cifradas com AES-256-GCM.
       </p>
       <StateView loading={loading} error={error} onRetry={refetch}>
-        <div
-          style={{
-            display: 'grid',
-            gridTemplateColumns: 'repeat(auto-fill, minmax(320px, 1fr))',
-            gap: '0.875rem',
-          }}
-        >
+        <div className="grid grid-cols-[repeat(auto-fill,minmax(320px,1fr))] gap-3.5">
           {SERVICO_ORDER.map((s) => (
             <ServicoCard
               key={s}
@@ -181,54 +174,44 @@ function ServicoCard({
 }) {
   const meta = SERVICOS[servico];
   const conectado = conexao?.ativo;
+  const statusColor = conectado ? 'var(--success)' : 'var(--muted)';
 
   return (
     <div
       data-testid={`user-servico-card-${servico}`}
-      style={{
-        ...card,
-        display: 'flex',
-        flexDirection: 'column',
-        gap: '0.5rem',
-        borderLeft: `4px solid ${meta.color}`,
-      }}
+      className="bg-surface border border-border rounded-[10px] p-6 flex flex-col gap-2"
+      style={{ borderLeft: `4px solid ${meta.color}` }}
     >
-      <header style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+      <header className="flex items-center gap-2">
         <span
-          style={{
-            background: meta.color,
-            color: '#fff',
-            borderRadius: 6,
-            width: 36,
-            height: 36,
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            fontWeight: 700,
-            fontSize: 14,
-            flexShrink: 0,
-          }}
+          className="text-white rounded-md w-9 h-9 flex items-center justify-center font-bold text-[14px] flex-shrink-0"
+          style={{ background: meta.color }}
         >
           {meta.icon}
         </span>
-        <div style={{ flex: 1, minWidth: 0 }}>
-          <h3 style={{ margin: 0, fontSize: 15 }}>{meta.nome}</h3>
-          <div style={{ fontSize: 11, color: colors.muted }}>{TIPO_LABEL[meta.tipo]}</div>
+        <div className="flex-1 min-w-0">
+          <h3 className="m-0 text-[15px]">{meta.nome}</h3>
+          <div className="text-[11px] text-muted">{TIPO_LABEL[meta.tipo]}</div>
         </div>
         <span
-          style={badge(conectado ? colors.success : colors.muted)}
+          className="inline-flex items-center rounded-full px-[9px] py-0.5 text-[11px] font-semibold leading-[1.6] tracking-[0.2px]"
+          style={{
+            background: `color-mix(in srgb, ${statusColor} 12%, transparent)`,
+            color: statusColor,
+            border: `1px solid color-mix(in srgb, ${statusColor} 19%, transparent)`,
+          }}
           data-testid={`user-status-${servico}`}
         >
           {conectado ? '● conectado' : '○ não conectado'}
         </span>
       </header>
 
-      <p style={{ margin: 0, fontSize: 12, color: colors.muted, lineHeight: 1.4 }}>
+      <p className="m-0 text-[12px] text-muted leading-[1.4]">
         {meta.description}
       </p>
 
       {conexao && (
-        <dl style={{ margin: 0, fontSize: 11, color: colors.muted }}>
+        <dl className="m-0 text-[11px] text-muted">
           {conexao.externalAccountId && (
             <div>
               <strong>Conta:</strong> {conexao.externalAccountId}
@@ -240,13 +223,13 @@ function ServicoCard({
         </dl>
       )}
 
-      <div style={{ display: 'flex', gap: '0.375rem', marginTop: 'auto', flexWrap: 'wrap' }}>
+      <div className="flex gap-[0.375rem] mt-auto flex-wrap">
         {!conectado && (
           <button
             type="button"
             data-testid={`user-conectar-${servico}`}
             onClick={onConnect}
-            style={btn}
+            className="bg-primary text-primary-contrast rounded-md px-4 py-2 text-[13px] font-semibold cursor-pointer tracking-[-0.1px]"
           >
             Conectar
           </button>
@@ -257,7 +240,7 @@ function ServicoCard({
               type="button"
               data-testid={`user-reconectar-${servico}`}
               onClick={onConnect}
-              style={{ ...btnSecondary, padding: '0.5rem 0.75rem' }}
+              className="bg-surface text-text border border-border-strong rounded-md px-3 py-2 text-[13px] font-medium cursor-pointer tracking-[-0.1px]"
             >
               Reconectar
             </button>
@@ -265,7 +248,7 @@ function ServicoCard({
               type="button"
               data-testid={`user-desconectar-${servico}`}
               onClick={onDisconnect}
-              style={{ ...btnDanger, padding: '0.5rem 0.75rem' }}
+              className="bg-danger text-white rounded-md px-3 py-2 text-[13px] font-semibold cursor-pointer tracking-[-0.1px]"
             >
               Desconectar
             </button>
@@ -294,12 +277,12 @@ function ConnectModal({
   if (meta.connectMode === 'qr' && meta.qrRoute) {
     return (
       <Dialog open onClose={onClose} title={`Conectar ${meta.nome}`}>
-        <p style={{ marginTop: 0, fontSize: 14 }}>
+        <p className="mt-0 text-[14px]">
           O pareamento é feito por QR code numa página dedicada.
         </p>
         <a
           href={meta.qrRoute}
-          style={{ ...btn, display: 'inline-block', textDecoration: 'none', marginTop: '0.5rem' }}
+          className="bg-primary text-primary-contrast rounded-md px-4 py-2 text-[13px] font-semibold cursor-pointer tracking-[-0.1px] inline-block no-underline mt-2"
         >
           Abrir pareamento →
         </a>
@@ -398,7 +381,11 @@ function OAuthConnectModal({
       title={`Conectar ${meta.nome}`}
       footer={
         <>
-          <button type="button" onClick={onClose} style={btnSecondary}>
+          <button
+            type="button"
+            onClick={onClose}
+            className="bg-surface text-text border border-border-strong rounded-md px-4 py-2 text-[13px] font-medium cursor-pointer tracking-[-0.1px]"
+          >
             Cancelar
           </button>
           <button
@@ -406,31 +393,21 @@ function OAuthConnectModal({
             data-testid={`user-oauth-start-${servico}`}
             onClick={startOAuth}
             disabled={busy}
-            style={{ ...btn, opacity: busy ? 0.7 : 1 }}
+            className="bg-primary text-primary-contrast rounded-md px-4 py-2 text-[13px] font-semibold cursor-pointer tracking-[-0.1px]"
+            style={{ opacity: busy ? 0.7 : 1 }}
           >
             {busy ? 'Aguardando popup…' : existing ? 'Reautorizar' : 'Autorizar via OAuth'}
           </button>
         </>
       }
     >
-      <p style={{ marginTop: 0, fontSize: 14 }}>{meta.description}</p>
-      <div
-        style={{
-          background: colors.bgAlt,
-          border: `1px solid ${colors.border}`,
-          borderRadius: 6,
-          padding: '0.75rem',
-          fontSize: 13,
-          color: colors.muted,
-          lineHeight: 1.5,
-          marginTop: '0.75rem',
-        }}
-      >
+      <p className="mt-0 text-[14px]">{meta.description}</p>
+      <div className="bg-bg-alt border border-border rounded-md p-3 text-[13px] text-muted leading-[1.5] mt-3">
         Abrimos uma janela popup do <strong>{meta.nome}</strong> pra você autorizar.
         Quando aprovar, a janela fecha e a integração fica ativa.
       </div>
       {error && (
-        <p data-testid="form-error" style={{ color: colors.danger, fontSize: 13, marginTop: '0.5rem' }}>
+        <p data-testid="form-error" className="text-danger text-[13px] mt-2">
           {error}
         </p>
       )}
@@ -485,7 +462,11 @@ function CredentialsConnectModal({
       title={`Conectar ${meta.nome}`}
       footer={
         <>
-          <button type="button" onClick={onClose} style={btnSecondary}>
+          <button
+            type="button"
+            onClick={onClose}
+            className="bg-surface text-text border border-border-strong rounded-md px-4 py-2 text-[13px] font-medium cursor-pointer tracking-[-0.1px]"
+          >
             Cancelar
           </button>
           <button
@@ -493,7 +474,8 @@ function CredentialsConnectModal({
             form="user-creds-form"
             data-testid={`user-creds-save-${servico}`}
             disabled={busy}
-            style={{ ...btn, opacity: busy ? 0.6 : 1 }}
+            className="bg-primary text-primary-contrast rounded-md px-4 py-2 text-[13px] font-semibold cursor-pointer tracking-[-0.1px]"
+            style={{ opacity: busy ? 0.6 : 1 }}
           >
             {busy ? 'Salvando…' : 'Salvar'}
           </button>
@@ -501,8 +483,8 @@ function CredentialsConnectModal({
       }
     >
       <form id="user-creds-form" onSubmit={submit}>
-        <p style={{ marginTop: 0, fontSize: 14 }}>{meta.description}</p>
-        <p style={{ fontSize: 12, color: colors.muted, marginBottom: '1rem' }}>
+        <p className="mt-0 text-[14px]">{meta.description}</p>
+        <p className="text-[12px] text-muted mb-4">
           Credenciais cifradas <strong>AES-256-GCM</strong>. Só seu usuário acessa.
         </p>
         {fields.map((f) => (
@@ -526,7 +508,7 @@ function CredentialsConnectModal({
           </FormField>
         ))}
         {error && (
-          <p data-testid="form-error" style={{ color: colors.danger, fontSize: 13 }}>
+          <p data-testid="form-error" className="text-danger text-[13px]">
             {error}
           </p>
         )}
@@ -568,7 +550,11 @@ function DisconnectModal({
       title={`Desconectar ${meta.nome}`}
       footer={
         <>
-          <button type="button" onClick={onClose} style={btnSecondary}>
+          <button
+            type="button"
+            onClick={onClose}
+            className="bg-surface text-text border border-border-strong rounded-md px-4 py-2 text-[13px] font-medium cursor-pointer tracking-[-0.1px]"
+          >
             Cancelar
           </button>
           <button
@@ -576,21 +562,21 @@ function DisconnectModal({
             data-testid={`user-desconectar-confirm-${servico}`}
             onClick={doDelete}
             disabled={busy}
-            style={btnDanger}
+            className="bg-danger text-white rounded-md px-4 py-2 text-[13px] font-semibold cursor-pointer tracking-[-0.1px]"
           >
             {busy ? 'Desconectando…' : 'Confirmar'}
           </button>
         </>
       }
     >
-      <p style={{ marginTop: 0, fontSize: 14 }}>
+      <p className="mt-0 text-[14px]">
         Tem certeza que quer desconectar <strong>{meta.nome}</strong>?
       </p>
-      <p style={{ fontSize: 13, color: colors.muted }}>
+      <p className="text-[13px] text-muted">
         Credenciais cifradas serão apagadas. Você pode reconectar a qualquer momento.
       </p>
       {error && (
-        <p data-testid="form-error" style={{ color: colors.danger, fontSize: 13 }}>
+        <p data-testid="form-error" className="text-danger text-[13px]">
           {error}
         </p>
       )}

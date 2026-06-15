@@ -13,8 +13,25 @@ import { Dialog } from '@/components/ui';
 import { FormField, Input, Select } from '@/components/FormField';
 import { useToast } from '@/components/toast';
 import { maskTelefone } from '@/lib/masks';
-import { badge, btn, btnSecondary, card, colors } from '@/components/styles';
+import { cn } from '@/lib/cn';
 import { startOnboarding } from '@/components/OnboardingTour';
+
+// Classes Tailwind dos objetos legados (pixel-idênticas ao styles.ts).
+const cardCls = 'bg-surface border border-border rounded-[10px] p-6';
+const btnCls =
+  'bg-primary text-primary-contrast rounded-md px-4 py-2 text-[13px] font-semibold cursor-pointer tracking-[-0.1px]';
+const btnSecondaryCls =
+  'bg-surface text-text border border-border-strong rounded-md px-4 py-2 text-[13px] font-medium cursor-pointer tracking-[-0.1px]';
+// Layout do badge — cores aplicadas inline (color-mix) por serem dinâmicas.
+const badgeCls =
+  'inline-flex items-center rounded-full px-[9px] py-0.5 text-[11px] font-semibold leading-[1.6] tracking-[0.2px] border';
+function badgeStyle(color: string): React.CSSProperties {
+  return {
+    background: `color-mix(in srgb, ${color} 12%, transparent)`,
+    color,
+    borderColor: `color-mix(in srgb, ${color} 19%, transparent)`,
+  };
+}
 
 type UserRole = 'ADMIN' | 'DIRECTOR' | 'GERENTE' | 'SAC' | 'REP';
 type UserStatus = 'ATIVO' | 'PENDENTE' | 'INATIVO';
@@ -37,15 +54,15 @@ interface User {
 
 const ROLE_COLOR: Record<UserRole, string> = {
   ADMIN: '#7c3aed',
-  DIRECTOR: colors.primary,
+  DIRECTOR: 'var(--primary)',
   GERENTE: '#0891b2',
-  SAC: colors.warning,
-  REP: colors.success,
+  SAC: 'var(--warning)',
+  REP: 'var(--success)',
 };
 const STATUS_COLOR: Record<UserStatus, string> = {
-  ATIVO: colors.success,
-  PENDENTE: colors.warning,
-  INATIVO: colors.muted,
+  ATIVO: 'var(--success)',
+  PENDENTE: 'var(--warning)',
+  INATIVO: 'var(--muted)',
 };
 
 function fmtDate(d: string | null | undefined) {
@@ -121,15 +138,19 @@ function UsersList() {
       header: 'Usuário',
       render: (u) => (
         <div>
-          <div style={{ fontWeight: 600 }}>{u.nome}</div>
-          <div style={{ fontSize: 11, color: colors.muted }}>{u.email}</div>
+          <div className="font-semibold">{u.nome}</div>
+          <div className="text-[11px] text-muted">{u.email}</div>
         </div>
       ),
     },
     {
       key: 'role',
       header: 'Papel',
-      render: (u) => <span style={badge(ROLE_COLOR[u.role])}>{u.role}</span>,
+      render: (u) => (
+        <span className={badgeCls} style={badgeStyle(ROLE_COLOR[u.role])}>
+          {u.role}
+        </span>
+      ),
     },
     { key: 'regiao', header: 'Região', render: (u) => u.regiao ?? '—' },
     {
@@ -149,12 +170,16 @@ function UsersList() {
     {
       key: 'gerente',
       header: 'Gerente',
-      render: (u) => u.gerente?.nome ?? <em style={{ color: colors.muted }}>—</em>,
+      render: (u) => u.gerente?.nome ?? <em className="text-muted">—</em>,
     },
     {
       key: 'status',
       header: 'Status',
-      render: (u) => <span style={badge(STATUS_COLOR[u.status])}>{u.status}</span>,
+      render: (u) => (
+        <span className={badgeCls} style={badgeStyle(STATUS_COLOR[u.status])}>
+          {u.status}
+        </span>
+      ),
     },
     {
       key: 'actions',
@@ -163,7 +188,7 @@ function UsersList() {
         <Link
           to={`/usuarios/${u.id}`}
           data-testid={`user-open-${u.id}`}
-          style={{ ...btnSecondary, padding: '0.25rem 0.625rem', fontSize: 12, textDecoration: 'none' }}
+          className="bg-surface text-text border border-border-strong rounded-md px-2.5 py-1 text-xs font-medium cursor-pointer tracking-[-0.1px] no-underline"
         >
           Abrir
         </Link>
@@ -180,7 +205,7 @@ function UsersList() {
             type="button"
             data-testid="user-invite-btn"
             onClick={() => setCreating(true)}
-            style={btn}
+            className={btnCls}
           >
             + Novo usuário
           </button>
@@ -199,7 +224,7 @@ function UsersList() {
           }}
         />
       )}
-      <div style={card}>
+      <div className={cardCls}>
         <FilterBar>
           <SearchInput
             value={search}
@@ -341,7 +366,7 @@ function UserDetail({ userId, isOwnProfile }: { userId: string; isOwnProfile: bo
       title={data ? data.nome : 'Perfil'}
       actions={
         !isOwnProfile && (role === 'ADMIN' || role === 'DIRECTOR' || role === 'GERENTE') ? (
-          <Link to="/usuarios" style={{ ...btnSecondary, textDecoration: 'none' }}>
+          <Link to="/usuarios" className={cn(btnSecondaryCls, 'no-underline')}>
             ← Voltar pra lista
           </Link>
         ) : undefined
@@ -350,25 +375,21 @@ function UserDetail({ userId, isOwnProfile }: { userId: string; isOwnProfile: bo
       <SistemaTabs />
       <StateView loading={loading} error={error} onRetry={refetch}>
         {data && (
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 280px', gap: '1rem', alignItems: 'start' }}>
-            <div style={card}>
-              <div
-                style={{
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: '0.75rem',
-                  marginBottom: '1rem',
-                  flexWrap: 'wrap',
-                }}
-              >
-                <span style={badge(ROLE_COLOR[data.role])}>{data.role}</span>
-                <span style={badge(STATUS_COLOR[data.status])}>{data.status}</span>
+          <div className="grid grid-cols-[1fr_280px] gap-4 items-start">
+            <div className={cardCls}>
+              <div className="flex items-center gap-3 mb-4 flex-wrap">
+                <span className={badgeCls} style={badgeStyle(ROLE_COLOR[data.role])}>
+                  {data.role}
+                </span>
+                <span className={badgeCls} style={badgeStyle(STATUS_COLOR[data.status])}>
+                  {data.status}
+                </span>
                 {isOwnProfile && (
-                  <span style={{ fontSize: 12, color: colors.muted }}>(este sou eu)</span>
+                  <span className="text-[12px] text-muted">(este sou eu)</span>
                 )}
               </div>
 
-              <dl style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.75rem', fontSize: 14 }}>
+              <dl className="grid grid-cols-2 gap-3 text-[14px]">
                 <Info label="Nome">{data.nome}</Info>
                 <Info label="E-mail">{data.email}</Info>
                 <Info label="Telefone">{data.telefone ?? '—'}</Info>
@@ -387,21 +408,19 @@ function UserDetail({ userId, isOwnProfile }: { userId: string; isOwnProfile: bo
               </dl>
 
               {data.empresas && data.empresas.length > 0 && (
-                <div style={{ marginTop: '0.75rem' }}>
-                  <div
-                    style={{
-                      fontSize: 11,
-                      textTransform: 'uppercase',
-                      color: colors.muted,
-                      fontWeight: 600,
-                      marginBottom: 4,
-                    }}
-                  >
+                <div className="mt-3">
+                  <div className="text-[11px] uppercase text-muted font-semibold mb-1">
                     Empresas vinculadas
                   </div>
-                  <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap' }}>
+                  <div className="flex gap-1 flex-wrap">
                     {data.empresas.map((e) => (
-                      <span key={e.id} style={badge(colors.primary)}>
+                      <span
+                        key={e.id}
+                        className={cn(
+                          badgeCls,
+                          'bg-primary/12 text-primary border-primary/19',
+                        )}
+                      >
                         {e.nome}
                       </span>
                     ))}
@@ -410,21 +429,21 @@ function UserDetail({ userId, isOwnProfile }: { userId: string; isOwnProfile: bo
               )}
 
               {actionError && (
-                <p style={{ color: colors.danger, fontSize: 13, marginTop: '0.5rem' }}>
+                <p className="text-danger text-[13px] mt-2">
                   {actionError}
                 </p>
               )}
             </div>
 
             {/* Sidebar de ações */}
-            <div style={card}>
-              <h3 style={{ marginTop: 0, fontSize: 14 }}>Ações</h3>
+            <div className={cardCls}>
+              <h3 className="mt-0 text-[14px]">Ações</h3>
               {canEdit && (
                 <button
                   type="button"
                   data-testid="user-edit-btn"
                   onClick={() => setEditing(true)}
-                  style={{ ...btn, width: '100%', marginBottom: '0.5rem' }}
+                  className={cn(btnCls, 'w-full mb-2')}
                 >
                   Editar dados
                 </button>
@@ -434,7 +453,7 @@ function UserDetail({ userId, isOwnProfile }: { userId: string; isOwnProfile: bo
                   type="button"
                   data-testid="user-teto-btn"
                   onClick={() => setTetoModalOpen(true)}
-                  style={{ ...btnSecondary, width: '100%', marginBottom: '0.5rem' }}
+                  className={cn(btnSecondaryCls, 'w-full mb-2')}
                 >
                   Definir teto desconto
                 </button>
@@ -444,7 +463,7 @@ function UserDetail({ userId, isOwnProfile }: { userId: string; isOwnProfile: bo
                   type="button"
                   data-testid="user-comissao-btn"
                   onClick={() => setComissaoModalOpen(true)}
-                  style={{ ...btnSecondary, width: '100%', marginBottom: '0.5rem' }}
+                  className={cn(btnSecondaryCls, 'w-full mb-2')}
                 >
                   Definir comissão %
                 </button>
@@ -455,7 +474,7 @@ function UserDetail({ userId, isOwnProfile }: { userId: string; isOwnProfile: bo
                   data-testid="user-resend-btn"
                   onClick={reenviarConvite}
                   disabled={busy}
-                  style={{ ...btnSecondary, width: '100%', marginBottom: '0.5rem' }}
+                  className={cn(btnSecondaryCls, 'w-full mb-2')}
                 >
                   {busy ? 'Enviando…' : 'Reenviar convite'}
                 </button>
@@ -468,13 +487,7 @@ function UserDetail({ userId, isOwnProfile }: { userId: string; isOwnProfile: bo
                   data-testid="user-deactivate-btn"
                   onClick={desativarUsuario}
                   disabled={busy}
-                  style={{
-                    ...btnSecondary,
-                    width: '100%',
-                    color: colors.danger,
-                    borderColor: colors.danger,
-                    marginTop: '0.5rem',
-                  }}
+                  className={cn(btnSecondaryCls, 'w-full text-danger border-danger mt-2')}
                 >
                   {busy ? 'Aguarde…' : 'Desativar usuário'}
                 </button>
@@ -485,47 +498,25 @@ function UserDetail({ userId, isOwnProfile }: { userId: string; isOwnProfile: bo
                   data-testid="user-reactivate-btn"
                   onClick={reativarUsuario}
                   disabled={busy}
-                  style={{
-                    ...btnSecondary,
-                    width: '100%',
-                    color: colors.success,
-                    borderColor: colors.success,
-                    marginTop: '0.5rem',
-                  }}
+                  className={cn(btnSecondaryCls, 'w-full text-success border-success mt-2')}
                 >
                   {busy ? 'Aguarde…' : 'Reativar usuário'}
                 </button>
               )}
 
               {isOwnProfile && (
-                <div
-                  style={{
-                    marginTop: '1rem',
-                    paddingTop: '0.75rem',
-                    borderTop: `1px solid ${colors.border}`,
-                    fontSize: 12,
-                    color: colors.muted,
-                  }}
-                >
+                <div className="mt-4 pt-3 border-t border-border text-[12px] text-muted">
                   Suas integrações pessoais (OpenAI, WhatsApp, Calendar):
                   <br />
-                  <Link to="/minhas-integracoes" style={{ color: colors.primary }}>
+                  <Link to="/minhas-integracoes" className="text-primary">
                     Minhas integrações →
                   </Link>
-                  <div style={{ marginTop: '0.75rem' }}>
+                  <div className="mt-3">
                     <button
                       type="button"
                       data-testid="restart-tour-btn"
                       onClick={startOnboarding}
-                      style={{
-                        background: 'transparent',
-                        border: 'none',
-                        color: colors.primary,
-                        cursor: 'pointer',
-                        padding: 0,
-                        fontSize: 12,
-                        textAlign: 'left',
-                      }}
+                      className="bg-transparent border-none text-primary cursor-pointer p-0 text-[12px] text-left"
                     >
                       🎓 Reiniciar tour de onboarding
                     </button>
@@ -575,16 +566,7 @@ function UserDetail({ userId, isOwnProfile }: { userId: string; isOwnProfile: bo
 function Info({ label, children }: { label: string; children: React.ReactNode }) {
   return (
     <div>
-      <div
-        style={{
-          fontSize: 11,
-          textTransform: 'uppercase',
-          color: colors.muted,
-          marginBottom: 2,
-          letterSpacing: 0.3,
-          fontWeight: 600,
-        }}
-      >
+      <div className="text-[11px] uppercase text-muted mb-0.5 tracking-[0.3px] font-semibold">
         {label}
       </div>
       <div>{children}</div>
@@ -657,7 +639,7 @@ function EditUserModal({
       title="Editar usuário"
       footer={
         <>
-          <button type="button" onClick={onClose} style={btnSecondary}>
+          <button type="button" onClick={onClose} className={btnSecondaryCls}>
             Fechar
           </button>
           {canSave && (
@@ -666,7 +648,7 @@ function EditUserModal({
               form="user-edit-form"
               data-testid="user-save-btn"
               disabled={busy || form.nome.trim().length < 2}
-              style={btn}
+              className={btnCls}
             >
               {busy ? 'Salvando…' : 'Salvar'}
             </button>
@@ -676,17 +658,7 @@ function EditUserModal({
     >
       <form id="user-edit-form" onSubmit={submit}>
         {!canSave && (
-          <div
-            style={{
-              padding: '0.625rem 0.75rem',
-              marginBottom: '0.875rem',
-              background: '#fef3c7',
-              border: '1px solid #facc15',
-              borderRadius: 6,
-              fontSize: 13,
-              color: '#78350f',
-            }}
-          >
+          <div className="px-3 py-2.5 mb-3.5 bg-[#fef3c7] border border-[#facc15] rounded-md text-[13px] text-[#78350f]">
             Apenas ADMIN pode salvar alterações. Você pode visualizar os campos
             abaixo, mas precisa pedir pro admin alterar.
           </div>
@@ -701,7 +673,7 @@ function EditUserModal({
             disabled={!canSave}
           />
         </FormField>
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.75rem' }}>
+        <div className="grid grid-cols-2 gap-3">
           <FormField label="Telefone">
             <Input
               value={form.telefone}
@@ -746,7 +718,7 @@ function EditUserModal({
             </>
           )}
         </div>
-        {error && <p style={{ color: colors.danger, fontSize: 13 }}>{error}</p>}
+        {error && <p className="text-danger text-[13px]">{error}</p>}
       </form>
     </Dialog>
   );
@@ -787,7 +759,7 @@ function SetTetoModal({
       title={`Teto de desconto — ${user.nome}`}
       footer={
         <>
-          <button type="button" onClick={onClose} style={btnSecondary}>
+          <button type="button" onClick={onClose} className={btnSecondaryCls}>
             Cancelar
           </button>
           <button
@@ -795,14 +767,14 @@ function SetTetoModal({
             data-testid="teto-save"
             disabled={busy}
             onClick={submit}
-            style={btn}
+            className={btnCls}
           >
             {busy ? 'Salvando…' : 'Salvar'}
           </button>
         </>
       }
     >
-      <p style={{ marginTop: 0, fontSize: 14, color: colors.muted }}>
+      <p className="mt-0 text-[14px] text-muted">
         Desconto máximo que o representante pode aplicar sem aprovação. Acima disso, o pedido entra em
         fluxo de aprovação via Gerente/Diretor.
       </p>
@@ -818,7 +790,7 @@ function SetTetoModal({
           onChange={(e) => setTeto(Number(e.target.value))}
         />
       </FormField>
-      {error && <p style={{ color: colors.danger, fontSize: 13 }}>{error}</p>}
+      {error && <p className="text-danger text-[13px]">{error}</p>}
     </Dialog>
   );
 }
@@ -858,7 +830,7 @@ function SetComissaoModal({
       title={`Comissão — ${user.nome}`}
       footer={
         <>
-          <button type="button" onClick={onClose} style={btnSecondary}>
+          <button type="button" onClick={onClose} className={btnSecondaryCls}>
             Cancelar
           </button>
           <button
@@ -866,14 +838,14 @@ function SetComissaoModal({
             data-testid="comissao-save"
             disabled={busy}
             onClick={submit}
-            style={btn}
+            className={btnCls}
           >
             {busy ? 'Salvando…' : 'Salvar'}
           </button>
         </>
       }
     >
-      <p style={{ marginTop: 0, fontSize: 14, color: colors.muted }}>
+      <p className="mt-0 text-[14px] text-muted">
         {user.role === 'REP'
           ? '% de comissão sobre o total dos pedidos próprios do representante.'
           : '% de comissão do GERENTE sobre o total de vendas dos REPs sob a gerência dele.'}
@@ -890,7 +862,7 @@ function SetComissaoModal({
           onChange={(e) => setCom(Number(e.target.value))}
         />
       </FormField>
-      {error && <p style={{ color: colors.danger, fontSize: 13 }}>{error}</p>}
+      {error && <p className="text-danger text-[13px]">{error}</p>}
     </Dialog>
   );
 }
@@ -1025,7 +997,7 @@ function ConvidarUsuarioModal({
       title="Convidar novo usuário"
       footer={
         <>
-          <button type="button" onClick={onClose} style={btnSecondary}>
+          <button type="button" onClick={onClose} className={btnSecondaryCls}>
             Cancelar
           </button>
           <button
@@ -1033,7 +1005,7 @@ function ConvidarUsuarioModal({
             form="invite-user-form"
             data-testid="user-invite-save"
             disabled={busy}
-            style={{ ...btn, opacity: busy ? 0.6 : 1 }}
+            className={cn(btnCls, busy ? 'opacity-60' : 'opacity-100')}
           >
             {busy ? 'Enviando…' : 'Enviar convite'}
           </button>
@@ -1103,44 +1075,18 @@ function ConvidarUsuarioModal({
         {/* Empresas: ADMIN escolhe; DIRECTOR vê só sua empresa ativa (fixo) */}
         <FormField label="Empresa(s) vinculada(s)" required>
           {isDirector ? (
-            <div
-              style={{
-                padding: '0.5rem 0.75rem',
-                fontSize: 13,
-                background: colors.surfaceHover,
-                border: `1px solid ${colors.border}`,
-                borderRadius: 6,
-                color: colors.muted,
-              }}
-            >
+            <div className="py-2 px-3 text-[13px] bg-surface-hover border border-border rounded-md text-muted">
               {empresas?.find((e) => e.id === callerEmpresaId)?.nome ?? 'Sua empresa ativa'}
-              <div style={{ fontSize: 11, marginTop: 4 }}>
+              <div className="text-[11px] mt-1">
                 DIRECTOR só pode convidar pra empresa ativa.
               </div>
             </div>
           ) : (
-            <div
-              style={{
-                display: 'flex',
-                flexDirection: 'column',
-                gap: 6,
-                maxHeight: 160,
-                overflowY: 'auto',
-                padding: '0.5rem',
-                border: `1px solid ${colors.border}`,
-                borderRadius: 6,
-              }}
-            >
+            <div className="flex flex-col gap-1.5 max-h-40 overflow-y-auto p-2 border border-border rounded-md">
               {(empresas ?? []).map((emp) => (
                 <label
                   key={emp.id}
-                  style={{
-                    display: 'flex',
-                    alignItems: 'center',
-                    gap: 8,
-                    fontSize: 13,
-                    cursor: 'pointer',
-                  }}
+                  className="flex items-center gap-2 text-[13px] cursor-pointer"
                 >
                   <input
                     type="checkbox"
@@ -1151,7 +1097,7 @@ function ConvidarUsuarioModal({
                 </label>
               ))}
               {empresas && empresas.length === 0 && (
-                <span style={{ fontSize: 12, color: colors.muted }}>
+                <span className="text-[12px] text-muted">
                   Nenhuma empresa disponível.
                 </span>
               )}
@@ -1193,7 +1139,7 @@ function ConvidarUsuarioModal({
         {err && (
           <p
             data-testid="user-invite-error"
-            style={{ color: colors.danger, fontSize: 13, marginTop: 8 }}
+            className="text-danger text-[13px] mt-2"
           >
             {err}
           </p>

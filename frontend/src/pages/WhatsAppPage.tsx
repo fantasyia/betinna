@@ -3,7 +3,7 @@ import { api, ApiError } from '@/lib/api';
 import { useRole } from '@/hooks/usePermission';
 import { PageLayout } from '@/components/PageLayout';
 import { AtendimentoTabs } from '@/components/AtendimentoTabs';
-import { alpha, badge, btn, btnDanger, btnSecondary, card, colors } from '@/components/styles';
+import { cn } from '@/lib/cn';
 
 type Status =
   | 'DISCONNECTED'
@@ -26,12 +26,12 @@ interface SessionInfo {
 }
 
 const STATUS_COLOR: Record<Status, string> = {
-  DISCONNECTED: colors.muted,
+  DISCONNECTED: 'var(--muted)',
   CONNECTING: '#0891b2',
-  QR_PENDING: colors.warning,
-  CONNECTED: colors.success,
-  LOGGED_OUT: colors.muted,
-  ERROR: colors.danger,
+  QR_PENDING: 'var(--warning)',
+  CONNECTED: 'var(--success)',
+  LOGGED_OUT: 'var(--muted)',
+  ERROR: 'var(--danger)',
 };
 const STATUS_LABEL: Record<Status, string> = {
   DISCONNECTED: 'Desconectado',
@@ -70,14 +70,7 @@ export default function WhatsAppPage() {
     <PageLayout title="WhatsApp">
       <AtendimentoTabs />
       {/* Tabs scope */}
-      <div
-        role="tablist"
-        style={{
-          display: 'flex',
-          gap: '0.25rem',
-          marginBottom: '1rem',
-        }}
-      >
+      <div role="tablist" className="flex gap-1 mb-4">
         {canAccessEmpresa && (
           <ScopeTab
             label="Número da empresa"
@@ -125,21 +118,15 @@ function ScopeTab({
       aria-selected={active}
       data-testid={testId}
       onClick={onClick}
-      style={{
-        background: active ? colors.surface : 'transparent',
-        border: `1px solid ${active ? colors.border : 'transparent'}`,
-        borderBottom: 'none',
-        borderRadius: '6px 6px 0 0',
-        padding: '0.5rem 1rem',
-        cursor: 'pointer',
-        fontFamily: 'inherit',
-        color: active ? colors.text : colors.muted,
-        fontWeight: active ? 600 : 500,
-        textAlign: 'left',
-      }}
+      className={cn(
+        'border border-b-0 rounded-t-md py-2 px-4 cursor-pointer font-[inherit] text-left',
+        active
+          ? 'bg-surface border-border text-text font-semibold'
+          : 'bg-transparent border-transparent text-muted font-medium',
+      )}
     >
-      <div style={{ fontSize: 14 }}>{label}</div>
-      <div style={{ fontSize: 11, color: colors.muted }}>{description}</div>
+      <div className="text-[14px]">{label}</div>
+      <div className="text-[11px] text-muted">{description}</div>
     </button>
   );
 }
@@ -233,23 +220,15 @@ function SessionPanel({ scope, canManage }: { scope: Scope; canManage: boolean }
   const showConnected = status === 'CONNECTED';
 
   return (
-    <div style={{ ...card, maxWidth: 720 }}>
+    <div className="bg-surface border border-border rounded-[10px] p-6 max-w-[720px]">
       {loading && !info ? (
-        <p style={{ color: colors.muted }}>Carregando status…</p>
+        <p className="text-muted">Carregando status…</p>
       ) : error && !info ? (
-        <div
-          style={{
-            padding: '0.875rem 1rem',
-            background: '#fef2f2',
-            border: '1px solid #fecaca',
-            borderRadius: 6,
-            color: '#991b1b',
-          }}
-        >
-          <strong style={{ display: 'block', marginBottom: 4 }}>
+        <div className="py-[0.875rem] px-4 bg-[#fef2f2] border border-[#fecaca] rounded-md text-[#991b1b]">
+          <strong className="block mb-1">
             Não foi possível obter status do WhatsApp.
           </strong>
-          <span style={{ fontSize: 13 }}>
+          <span className="text-[13px]">
             {error}
             {error.toLowerCase().includes('not found') || error.includes('404')
               ? ' — WhatsApp ainda não conectado. Clique em "Conectar" para parear.'
@@ -258,24 +237,25 @@ function SessionPanel({ scope, canManage }: { scope: Scope; canManage: boolean }
         </div>
       ) : (
         <>
-          <header
-            style={{
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'space-between',
-              marginBottom: '1rem',
-            }}
-          >
-            <h2 style={{ margin: 0, fontSize: 18 }}>
+          <header className="flex items-center justify-between mb-4">
+            <h2 className="m-0 text-[18px]">
               {scope === 'empresa' ? 'WhatsApp da empresa' : 'Meu WhatsApp pessoal'}
             </h2>
-            <span style={badge(STATUS_COLOR[status])} data-testid={`wa-status-${scope}`}>
+            <span
+              className="inline-flex items-center rounded-full px-[9px] py-0.5 text-[11px] font-semibold leading-[1.6] tracking-[0.2px] border"
+              style={{
+                background: `color-mix(in srgb, ${STATUS_COLOR[status]} 12%, transparent)`,
+                color: STATUS_COLOR[status],
+                borderColor: `color-mix(in srgb, ${STATUS_COLOR[status]} 19%, transparent)`,
+              }}
+              data-testid={`wa-status-${scope}`}
+            >
               {STATUS_LABEL[status]}
             </span>
           </header>
 
           {info?.numero && showConnected && (
-            <p style={{ fontSize: 14, marginBottom: '1rem' }}>
+            <p className="text-[14px] mb-4">
               📱 Número conectado: <strong>{info.numero}</strong>
             </p>
           )}
@@ -284,20 +264,12 @@ function SessionPanel({ scope, canManage }: { scope: Scope; canManage: boolean }
           {showQr && (
             <div
               data-testid="qr-container"
-              style={{
-                display: 'flex',
-                flexDirection: 'column',
-                alignItems: 'center',
-                padding: '1.5rem',
-                background: colors.bgAlt,
-                borderRadius: 8,
-                border: `1px solid ${colors.border}`,
-              }}
+              className="flex flex-col items-center p-6 bg-bg-alt rounded-lg border border-border"
             >
-              <p style={{ marginTop: 0, fontSize: 14, textAlign: 'center' }}>
+              <p className="mt-0 text-[14px] text-center">
                 Escaneie o QR abaixo no app do WhatsApp:
                 <br />
-                <span style={{ color: colors.muted, fontSize: 12 }}>
+                <span className="text-muted text-[12px]">
                   WhatsApp → Configurações → Aparelhos conectados → Conectar aparelho
                 </span>
               </p>
@@ -306,33 +278,17 @@ function SessionPanel({ scope, canManage }: { scope: Scope; canManage: boolean }
                   src={info.qrDataUrl}
                   alt="QR Code WhatsApp"
                   data-testid="qr-image"
-                  style={{
-                    width: 280,
-                    height: 280,
-                    imageRendering: 'pixelated',
-                    marginTop: '0.75rem',
-                  }}
+                  className="w-[280px] h-[280px] [image-rendering:pixelated] mt-3"
                 />
               ) : (
                 <div
                   data-testid="qr-loading"
-                  style={{
-                    width: 280,
-                    height: 280,
-                    marginTop: '0.75rem',
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    color: colors.muted,
-                    fontSize: 13,
-                    border: `1px dashed ${colors.border}`,
-                    borderRadius: 8,
-                  }}
+                  className="w-[280px] h-[280px] mt-3 flex items-center justify-center text-muted text-[13px] border border-dashed border-border rounded-lg"
                 >
                   Preparando QR…
                 </div>
               )}
-              <p style={{ fontSize: 11, color: colors.muted, marginTop: '0.75rem', marginBottom: 0 }}>
+              <p className="text-[11px] text-muted mt-3 mb-0">
                 QR regenera automaticamente a cada ~20s
               </p>
             </div>
@@ -342,15 +298,9 @@ function SessionPanel({ scope, canManage }: { scope: Scope; canManage: boolean }
           {showConnecting && (
             <div
               data-testid="connecting-state"
-              style={{
-                padding: '1.5rem',
-                textAlign: 'center',
-                background: colors.bgAlt,
-                borderRadius: 8,
-                border: `1px solid ${colors.border}`,
-              }}
+              className="p-6 text-center bg-bg-alt rounded-lg border border-border"
             >
-              <p style={{ margin: 0, color: colors.muted }}>Conectando ao WhatsApp…</p>
+              <p className="m-0 text-muted">Conectando ao WhatsApp…</p>
             </div>
           )}
 
@@ -358,20 +308,12 @@ function SessionPanel({ scope, canManage }: { scope: Scope; canManage: boolean }
           {showConnected && (
             <div
               data-testid="connected-state"
-              style={{
-                padding: '1rem',
-                background: alpha(colors.success, 8),
-                border: `1px solid ${colors.success}`,
-                borderRadius: 8,
-                display: 'flex',
-                alignItems: 'center',
-                gap: '0.5rem',
-              }}
+              className="p-4 bg-success/8 border border-success rounded-lg flex items-center gap-2"
             >
-              <span style={{ fontSize: 20 }}>✓</span>
+              <span className="text-[20px]">✓</span>
               <div>
-                <strong style={{ color: colors.success }}>WhatsApp conectado</strong>
-                <div style={{ fontSize: 12, color: colors.muted, marginTop: 2 }}>
+                <strong className="text-success">WhatsApp conectado</strong>
+                <div className="text-[12px] text-muted mt-0.5">
                   Mensagens entram pela Inbox em tempo real.
                 </div>
               </div>
@@ -382,14 +324,7 @@ function SessionPanel({ scope, canManage }: { scope: Scope; canManage: boolean }
           {status === 'ERROR' && info?.erro && (
             <div
               data-testid="error-state"
-              style={{
-                padding: '0.75rem',
-                background: alpha(colors.danger, 8),
-                border: `1px solid ${colors.danger}`,
-                borderRadius: 8,
-                color: colors.danger,
-                fontSize: 13,
-              }}
+              className="p-3 bg-danger/8 border border-danger rounded-lg text-danger text-[13px]"
             >
               <strong>Erro:</strong> {info.erro}
             </div>
@@ -399,21 +334,15 @@ function SessionPanel({ scope, canManage }: { scope: Scope; canManage: boolean }
           {(status === 'DISCONNECTED' || status === 'LOGGED_OUT') && (
             <div
               data-testid="empty-state"
-              style={{
-                padding: '1.5rem',
-                textAlign: 'center',
-                background: colors.bgAlt,
-                borderRadius: 8,
-                border: `1px solid ${colors.border}`,
-              }}
+              className="p-6 text-center bg-bg-alt rounded-lg border border-border"
             >
-              <p style={{ marginTop: 0, color: colors.muted }}>
+              <p className="mt-0 text-muted">
                 {status === 'LOGGED_OUT'
                   ? 'Sessão deslogada. Clique pra parear novamente.'
                   : 'WhatsApp ainda não está conectado.'}
               </p>
               {scope === 'empresa' && (
-                <p style={{ fontSize: 12, color: colors.warning, marginBottom: '0.75rem' }}>
+                <p className="text-[12px] text-warning mb-3">
                   ⚠️ Use um número <strong>dedicado</strong> da empresa (não pessoal). A Meta pode
                   banir números que parecem operar via Baileys.
                 </p>
@@ -423,14 +352,14 @@ function SessionPanel({ scope, canManage }: { scope: Scope; canManage: boolean }
 
           {/* Botões de ação */}
           {canManage && (
-            <div style={{ display: 'flex', gap: '0.5rem', marginTop: '1rem', flexWrap: 'wrap' }}>
+            <div className="flex gap-2 mt-4 flex-wrap">
               {(status === 'DISCONNECTED' || status === 'LOGGED_OUT' || status === 'ERROR') && (
                 <button
                   type="button"
                   data-testid={`wa-conectar-${scope}`}
                   disabled={busy !== null}
                   onClick={() => call('conectar')}
-                  style={btn}
+                  className="bg-primary text-primary-contrast rounded-md px-4 py-2 text-[13px] font-semibold cursor-pointer tracking-[-0.1px]"
                 >
                   {busy === 'conectar' ? 'Iniciando…' : 'Conectar'}
                 </button>
@@ -441,7 +370,7 @@ function SessionPanel({ scope, canManage }: { scope: Scope; canManage: boolean }
                   data-testid={`wa-desconectar-${scope}`}
                   disabled={busy !== null}
                   onClick={() => call('desconectar')}
-                  style={btnSecondary}
+                  className="bg-surface text-text border border-border-strong rounded-md px-4 py-2 text-[13px] font-medium cursor-pointer tracking-[-0.1px]"
                 >
                   {busy === 'desconectar' ? 'Desconectando…' : 'Desconectar'}
                 </button>
@@ -452,7 +381,7 @@ function SessionPanel({ scope, canManage }: { scope: Scope; canManage: boolean }
                   data-testid={`wa-resetar-${scope}`}
                   disabled={busy !== null}
                   onClick={() => setConfirmReset(true)}
-                  style={btnDanger}
+                  className="bg-danger text-white rounded-md px-4 py-2 text-[13px] font-semibold cursor-pointer tracking-[-0.1px]"
                 >
                   Resetar credenciais
                 </button>
@@ -462,7 +391,7 @@ function SessionPanel({ scope, canManage }: { scope: Scope; canManage: boolean }
                   <button
                     type="button"
                     onClick={() => setConfirmReset(false)}
-                    style={btnSecondary}
+                    className="bg-surface text-text border border-border-strong rounded-md px-4 py-2 text-[13px] font-medium cursor-pointer tracking-[-0.1px]"
                   >
                     Cancelar
                   </button>
@@ -471,7 +400,7 @@ function SessionPanel({ scope, canManage }: { scope: Scope; canManage: boolean }
                     data-testid={`wa-resetar-confirm-${scope}`}
                     disabled={busy !== null}
                     onClick={() => call('resetar')}
-                    style={btnDanger}
+                    className="bg-danger text-white rounded-md px-4 py-2 text-[13px] font-semibold cursor-pointer tracking-[-0.1px]"
                   >
                     {busy === 'resetar' ? '…' : 'Confirmar reset (apaga credenciais)'}
                   </button>
@@ -481,7 +410,7 @@ function SessionPanel({ scope, canManage }: { scope: Scope; canManage: boolean }
           )}
 
           {!canManage && (
-            <p style={{ fontSize: 12, color: colors.muted, marginTop: '1rem' }}>
+            <p className="text-[12px] text-muted mt-4">
               Você não tem permissão pra gerenciar o WhatsApp da empresa (apenas ADMIN/DIRECTOR).
               Pode ver o status, mas não conectar/desconectar.
             </p>
@@ -490,15 +419,7 @@ function SessionPanel({ scope, canManage }: { scope: Scope; canManage: boolean }
           {actionError && (
             <div
               data-testid="action-error"
-              style={{
-                marginTop: '0.75rem',
-                padding: '0.5rem 0.75rem',
-                background: alpha(colors.danger, 8),
-                border: `1px solid ${colors.danger}`,
-                borderRadius: 6,
-                color: colors.danger,
-                fontSize: 13,
-              }}
+              className="mt-3 py-2 px-3 bg-danger/8 border border-danger rounded-md text-danger text-[13px]"
             >
               {actionError}
             </div>
@@ -506,22 +427,9 @@ function SessionPanel({ scope, canManage }: { scope: Scope; canManage: boolean }
 
           {/* Manutenção — limpar mensagens de WhatsApp (DESTRUTIVO, empresa toda) */}
           {scope === 'empresa' && canManage && (
-            <div
-              style={{
-                marginTop: '1.5rem',
-                paddingTop: '1rem',
-                borderTop: `1px solid ${colors.border}`,
-              }}
-            >
-              <div style={{ fontSize: 13, fontWeight: 600, marginBottom: 4 }}>Manutenção</div>
-              <p
-                style={{
-                  fontSize: 12,
-                  color: colors.muted,
-                  marginTop: 0,
-                  marginBottom: '0.75rem',
-                }}
-              >
+            <div className="mt-6 pt-4 border-t border-border">
+              <div className="text-[13px] font-semibold mb-1">Manutenção</div>
+              <p className="text-[12px] text-muted mt-0 mb-3">
                 Apaga <strong>todas</strong> as conversas e mensagens de WhatsApp da empresa (no
                 banco). Útil pra zerar o histórico antes de começar os disparos.{' '}
                 <strong>Não desconecta</strong> o número.
@@ -535,16 +443,16 @@ function SessionPanel({ scope, canManage }: { scope: Scope; canManage: boolean }
                     setLimparMsg(null);
                     setConfirmLimpar(true);
                   }}
-                  style={btnDanger}
+                  className="bg-danger text-white rounded-md px-4 py-2 text-[13px] font-semibold cursor-pointer tracking-[-0.1px]"
                 >
                   Limpar mensagens do WhatsApp
                 </button>
               ) : (
-                <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
+                <div className="flex gap-2 flex-wrap">
                   <button
                     type="button"
                     onClick={() => setConfirmLimpar(false)}
-                    style={btnSecondary}
+                    className="bg-surface text-text border border-border-strong rounded-md px-4 py-2 text-[13px] font-medium cursor-pointer tracking-[-0.1px]"
                   >
                     Cancelar
                   </button>
@@ -553,7 +461,7 @@ function SessionPanel({ scope, canManage }: { scope: Scope; canManage: boolean }
                     data-testid="wa-limpar-confirm"
                     disabled={limpando}
                     onClick={() => void limparWhatsapp()}
-                    style={btnDanger}
+                    className="bg-danger text-white rounded-md px-4 py-2 text-[13px] font-semibold cursor-pointer tracking-[-0.1px]"
                   >
                     {limpando ? 'Apagando…' : 'Confirmar — apagar TUDO de WhatsApp'}
                   </button>
@@ -561,11 +469,10 @@ function SessionPanel({ scope, canManage }: { scope: Scope; canManage: boolean }
               )}
               {limparMsg && (
                 <div
-                  style={{
-                    marginTop: '0.75rem',
-                    fontSize: 13,
-                    color: limparMsg.startsWith('✓') ? colors.success : colors.danger,
-                  }}
+                  className={cn(
+                    'mt-3 text-[13px]',
+                    limparMsg.startsWith('✓') ? 'text-success' : 'text-danger',
+                  )}
                 >
                   {limparMsg}
                 </div>

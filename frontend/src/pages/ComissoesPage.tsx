@@ -9,7 +9,7 @@ import { StateView } from '@/components/StateView';
 import { FilterBar } from '@/components/FilterBar';
 import { Dialog } from '@/components/ui';
 import { FormField, Input, Select } from '@/components/FormField';
-import { alpha, badge, btn, btnSecondary, card, colors } from '@/components/styles';
+import { cn } from '@/lib/cn';
 import { formatMoeda as fmtBRL, formatPercent } from '@/lib/masks';
 
 type ComissaoTipo = 'REP' | 'GERENTE';
@@ -57,7 +57,7 @@ export default function ComissoesPage() {
       {canViewOwn && <ResumoPessoal />}
       {canViewAll && <ListaAdmin />}
       {!canViewOwn && !canViewAll && (
-        <div style={card}>Você não tem permissão para visualizar comissões.</div>
+        <div className="bg-surface border border-border rounded-[10px] p-6">Você não tem permissão para visualizar comissões.</div>
       )}
     </PageLayout>
   );
@@ -69,19 +69,12 @@ function ResumoPessoal() {
   const { data, loading, error, refetch } = useApiQuery<Resumo>('/comissoes/meu-resumo');
 
   return (
-    <section style={{ ...card, marginBottom: '1.5rem' }}>
-      <h2 style={{ marginTop: 0, fontSize: 18 }}>Meu resumo</h2>
+    <section className="bg-surface border border-border rounded-[10px] p-6 mb-6">
+      <h2 className="mt-0 text-[18px]">Meu resumo</h2>
       <StateView loading={loading} error={error} onRetry={refetch}>
         {data && (
           <div>
-            <div
-              style={{
-                display: 'grid',
-                gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))',
-                gap: '0.75rem',
-                marginBottom: '1rem',
-              }}
-            >
+            <div className="grid grid-cols-[repeat(auto-fit,minmax(160px,1fr))] gap-3 mb-4">
               <StatBox
                 label="Mês atual"
                 value={fmtBRL(data.mesAtual.valor)}
@@ -90,38 +83,33 @@ function ResumoPessoal() {
               <StatBox
                 label="A receber"
                 value={fmtBRL(data.totalReceber)}
-                color={colors.warning}
+                color="var(--warning)"
               />
               <StatBox
                 label="Recebido"
                 value={fmtBRL(data.totalRecebido)}
-                color={colors.success}
+                color="var(--success)"
               />
             </div>
-            <h3 style={{ fontSize: 14, marginBottom: '0.5rem' }}>Últimos 12 meses</h3>
-            <div style={{ display: 'flex', gap: 4, overflowX: 'auto', paddingBottom: 4 }}>
+            <h3 className="text-[14px] mb-2">Últimos 12 meses</h3>
+            <div className="flex gap-1 overflow-x-auto pb-1">
               {data.ultimos12Meses.map((m) => (
                 <div
                   key={`${m.ano}-${m.mes}`}
                   data-testid="comissao-historico"
-                  style={{
-                    flex: '1 1 70px',
-                    minWidth: 70,
-                    padding: '0.5rem',
-                    background: m.pago ? alpha(colors.success, 8) : 'var(--bg-alt)',
-                    borderRadius: 6,
-                    textAlign: 'center',
-                    border: `1px solid ${colors.border}`,
-                  }}
+                  className={cn(
+                    'flex-[1_1_70px] min-w-[70px] p-2 rounded-md text-center border border-border',
+                    m.pago ? 'bg-success/8' : 'bg-bg-alt',
+                  )}
                 >
-                  <div style={{ fontSize: 11, color: colors.muted }}>
+                  <div className="text-[11px] text-muted">
                     {MES_NOMES[m.mes - 1]}/{String(m.ano).slice(2)}
                   </div>
-                  <div style={{ fontWeight: 600, fontSize: 13, marginTop: 2 }}>
+                  <div className="font-semibold text-[13px] mt-0.5">
                     {fmtBRL(m.valor)}
                   </div>
                   {m.pago && (
-                    <div style={{ ...badge(colors.success), marginTop: 4, fontSize: 9 }}>
+                    <div className="inline-flex items-center rounded-full px-[9px] py-0.5 text-[9px] font-semibold leading-[1.6] tracking-[0.2px] bg-success/12 text-success border border-success/19 mt-1">
                       pago
                     </div>
                   )}
@@ -139,7 +127,7 @@ function StatBox({
   label,
   value,
   hint,
-  color = colors.text,
+  color = 'var(--text)',
 }: {
   label: string;
   value: string;
@@ -147,19 +135,12 @@ function StatBox({
   color?: string;
 }) {
   return (
-    <div
-      style={{
-        background: colors.bgAlt,
-        border: `1px solid ${colors.border}`,
-        borderRadius: 6,
-        padding: '0.75rem',
-      }}
-    >
-      <div style={{ fontSize: 11, textTransform: 'uppercase', color: colors.muted, fontWeight: 600 }}>
+    <div className="bg-bg-alt border border-border rounded-md p-3">
+      <div className="text-[11px] uppercase text-muted font-semibold">
         {label}
       </div>
-      <div style={{ fontSize: 22, fontWeight: 700, color, marginTop: 4 }}>{value}</div>
-      {hint && <div style={{ fontSize: 12, color: colors.muted, marginTop: 2 }}>{hint}</div>}
+      <div className="text-[22px] font-bold mt-1" style={{ color }}>{value}</div>
+      {hint && <div className="text-[12px] text-muted mt-0.5">{hint}</div>}
     </div>
   );
 }
@@ -201,7 +182,14 @@ function ListaAdmin() {
       render: (c) => (
         <div>
           <div>{c.representante?.nome ?? '—'}</div>
-          <span style={{ ...badge(c.tipo === 'GERENTE' ? colors.warning : colors.info), fontSize: 10 }}>
+          <span
+            className={cn(
+              'inline-flex items-center rounded-full px-[9px] py-0.5 text-[10px] font-semibold leading-[1.6] tracking-[0.2px] border',
+              c.tipo === 'GERENTE'
+                ? 'bg-warning/12 text-warning border-warning/19'
+                : 'bg-info/12 text-info border-info/19',
+            )}
+          >
             {c.tipo}
           </span>
         </div>
@@ -227,9 +215,9 @@ function ListaAdmin() {
       header: 'Status',
       render: (c) =>
         c.pago ? (
-          <span style={badge(colors.success)}>Pago</span>
+          <span className="inline-flex items-center rounded-full px-[9px] py-0.5 text-[11px] font-semibold leading-[1.6] tracking-[0.2px] bg-success/12 text-success border border-success/19">Pago</span>
         ) : (
-          <span style={badge(colors.warning)}>Em aberto</span>
+          <span className="inline-flex items-center rounded-full px-[9px] py-0.5 text-[11px] font-semibold leading-[1.6] tracking-[0.2px] bg-warning/12 text-warning border border-warning/19">Em aberto</span>
         ),
     },
     {
@@ -241,7 +229,7 @@ function ListaAdmin() {
             type="button"
             data-testid={`comissao-pagar-${c.id}`}
             onClick={() => setPagar(c)}
-            style={{ ...btnSecondary, padding: '0.25rem 0.625rem', fontSize: 12 }}
+            className="bg-surface text-text border border-border-strong rounded-md px-2.5 py-1 text-[12px] font-medium cursor-pointer tracking-[-0.1px]"
           >
             Marcar pago
           </button>
@@ -250,15 +238,15 @@ function ListaAdmin() {
   ];
 
   return (
-    <section style={card}>
-      <header style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.75rem' }}>
-        <h2 style={{ margin: 0, fontSize: 18 }}>Comissões da equipe</h2>
+    <section className="bg-surface border border-border rounded-[10px] p-6">
+      <header className="flex justify-between items-center mb-3">
+        <h2 className="m-0 text-[18px]">Comissões da equipe</h2>
         {canManage && (
           <button
             type="button"
             data-testid="fechar-mes-btn"
             onClick={() => setFecharOpen(true)}
-            style={btn}
+            className="bg-primary text-primary-contrast rounded-md px-4 py-2 text-[13px] font-semibold cursor-pointer tracking-[-0.1px]"
           >
             Fechar mês
           </button>
@@ -369,7 +357,7 @@ function FecharMesModal({ onClose, onDone }: { onClose: () => void; onDone: () =
       title="Fechar mês de comissões"
       footer={
         <>
-          <button type="button" onClick={onClose} style={btnSecondary}>
+          <button type="button" onClick={onClose} className="bg-surface text-text border border-border-strong rounded-md px-4 py-2 text-[13px] font-medium cursor-pointer tracking-[-0.1px]">
             Cancelar
           </button>
           <button
@@ -377,7 +365,7 @@ function FecharMesModal({ onClose, onDone }: { onClose: () => void; onDone: () =
             form="fechar-mes-form"
             data-testid="fechar-mes-confirm"
             disabled={busy}
-            style={btn}
+            className="bg-primary text-primary-contrast rounded-md px-4 py-2 text-[13px] font-semibold cursor-pointer tracking-[-0.1px]"
           >
             {busy ? 'Fechando…' : 'Fechar mês'}
           </button>
@@ -385,10 +373,10 @@ function FecharMesModal({ onClose, onDone }: { onClose: () => void; onDone: () =
       }
     >
       <form id="fechar-mes-form" onSubmit={submit}>
-        <p style={{ color: colors.muted, fontSize: 13, marginTop: 0 }}>
+        <p className="text-muted text-[13px] mt-0">
           Agrega pedidos comissionáveis do período e cria/atualiza registros REP + GERENTE.
         </p>
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.75rem' }}>
+        <div className="grid grid-cols-2 gap-3">
           <FormField label="Mês" htmlFor="fm-mes" required>
             <Select id="fm-mes" value={mes} onChange={(e) => setMes(Number(e.target.value))}>
               {MES_NOMES.map((n, i) => (
@@ -409,7 +397,7 @@ function FecharMesModal({ onClose, onDone }: { onClose: () => void; onDone: () =
             />
           </FormField>
         </div>
-        <label style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', fontSize: 13, marginTop: '0.5rem' }}>
+        <label className="flex items-center gap-2 text-[13px] mt-2">
           <input
             type="checkbox"
             data-testid="reprocessar-checkbox"
@@ -419,7 +407,7 @@ function FecharMesModal({ onClose, onDone }: { onClose: () => void; onDone: () =
           Reprocessar (sobrescreve fechamentos existentes)
         </label>
         {error && (
-          <p style={{ color: colors.danger, fontSize: 13, marginTop: '0.5rem' }}>{error}</p>
+          <p className="text-danger text-[13px] mt-2">{error}</p>
         )}
       </form>
     </Dialog>
@@ -462,7 +450,7 @@ function PagarModal({
       title={`Marcar comissão como paga — ${MES_NOMES[comissao.mes - 1]}/${comissao.ano}`}
       footer={
         <>
-          <button type="button" onClick={onClose} style={btnSecondary}>
+          <button type="button" onClick={onClose} className="bg-surface text-text border border-border-strong rounded-md px-4 py-2 text-[13px] font-medium cursor-pointer tracking-[-0.1px]">
             Cancelar
           </button>
           <button
@@ -470,7 +458,7 @@ function PagarModal({
             form="pagar-form"
             data-testid="pagar-confirm"
             disabled={busy}
-            style={btn}
+            className="bg-primary text-primary-contrast rounded-md px-4 py-2 text-[13px] font-semibold cursor-pointer tracking-[-0.1px]"
           >
             {busy ? 'Marcando…' : 'Marcar como pago'}
           </button>
@@ -478,7 +466,7 @@ function PagarModal({
       }
     >
       <form id="pagar-form" onSubmit={submit}>
-        <p style={{ marginTop: 0, fontSize: 14 }}>
+        <p className="mt-0 text-[14px]">
           <strong>{comissao.representante?.nome}</strong> — {fmtBRL(comissao.valor)}
         </p>
         <FormField
@@ -495,7 +483,7 @@ function PagarModal({
             placeholder="https://…"
           />
         </FormField>
-        {error && <p style={{ color: colors.danger, fontSize: 13 }}>{error}</p>}
+        {error && <p className="text-danger text-[13px]">{error}</p>}
       </form>
     </Dialog>
   );

@@ -10,7 +10,7 @@ import { FilterBar, SearchInput } from '@/components/FilterBar';
 import { Dialog } from '@/components/ui';
 import { FormField, Input, Select, Textarea } from '@/components/FormField';
 import { useToast } from '@/components/toast';
-import { badge, btn, btnDanger, btnSecondary, card, colors } from '@/components/styles';
+import { cn } from '@/lib/cn';
 import { formatMoeda as fmtBRL } from '@/lib/masks';
 
 interface Produto {
@@ -84,32 +84,19 @@ export default function ProdutosPage() {
       key: 'nome',
       header: 'Produto',
       render: (p) => (
-        <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
+        <div className="flex gap-2 items-center">
           {p.imagem ? (
             <img
               src={p.imagem}
               alt=""
-              style={{
-                width: 36,
-                height: 36,
-                borderRadius: 4,
-                objectFit: 'cover',
-                background: '#f0f0f0',
-              }}
+              className="w-9 h-9 rounded-[4px] object-cover bg-[#f0f0f0]"
             />
           ) : (
-            <div
-              style={{
-                width: 36,
-                height: 36,
-                borderRadius: 4,
-                background: '#f0f0f0',
-              }}
-            />
+            <div className="w-9 h-9 rounded-[4px] bg-[#f0f0f0]" />
           )}
           <div>
-            <div style={{ fontWeight: 600 }}>{p.nome}</div>
-            <div style={{ fontSize: 11, color: colors.muted }}>
+            <div className="font-semibold">{p.nome}</div>
+            <div className="text-[11px] text-muted">
               {[p.sku ?? p.codigoOmie, p.marca].filter(Boolean).join(' · ') || '—'}
             </div>
           </div>
@@ -120,9 +107,9 @@ export default function ProdutosPage() {
       key: 'classif',
       header: 'Classif.',
       render: (p) => (
-        <div style={{ fontSize: 12 }}>
+        <div className="text-xs">
           {p.linha && <div>{p.linha}</div>}
-          {p.categoria && <div style={{ color: colors.muted }}>{p.categoria}</div>}
+          {p.categoria && <div className="text-muted">{p.categoria}</div>}
         </div>
       ),
     },
@@ -132,7 +119,7 @@ export default function ProdutosPage() {
       render: (p) => (
         <div>
           <strong>{fmtBRL(p.precoTabela)}</strong>
-          <div style={{ fontSize: 11, color: colors.muted }}>
+          <div className="text-[11px] text-muted">
             {p.precoFabrica != null ? `fábrica: ${fmtBRL(p.precoFabrica)}` : 'custo não informado'}
           </div>
         </div>
@@ -143,14 +130,14 @@ export default function ProdutosPage() {
       header: 'Estoque',
       render: (p) => (
         <span
+          className="font-semibold"
           style={{
             color:
               p.estoque === 0
-                ? colors.danger
+                ? 'var(--danger)'
                 : p.estoque < 10
-                ? colors.warning
-                : colors.text,
-            fontWeight: 600,
+                ? 'var(--warning)'
+                : 'var(--text)',
           }}
         >
           {p.estoque} {p.unidade ?? 'un'}
@@ -170,12 +157,10 @@ export default function ProdutosPage() {
           type="button"
           data-testid={`prod-toggle-${p.id}`}
           onClick={() => toggleAtivo(p)}
-          style={{
-            ...badge(p.ativo ? colors.success : colors.muted),
-            cursor: 'pointer',
-            border: 'none',
-            fontFamily: 'inherit',
-          }}
+          className={cn(
+            'inline-flex items-center rounded-full px-[9px] py-0.5 text-[11px] font-semibold leading-[1.6] tracking-[0.2px] cursor-pointer border-none font-[inherit]',
+            p.ativo ? 'bg-success/12 text-success' : 'bg-muted/12 text-muted',
+          )}
         >
           {p.ativo ? 'Ativo' : 'Inativo'}
         </button>
@@ -189,7 +174,7 @@ export default function ProdutosPage() {
           type="button"
           data-testid={`prod-edit-${p.id}`}
           onClick={() => setEditing(p)}
-          style={{ ...btnSecondary, padding: '0.25rem 0.625rem', fontSize: 12 }}
+          className="bg-surface text-text border border-border-strong rounded-md py-1 px-2.5 text-xs font-medium cursor-pointer tracking-[-0.1px]"
         >
           Editar
         </button>
@@ -203,7 +188,7 @@ export default function ProdutosPage() {
       description="Os produtos são sincronizados automaticamente do Omie. Para incluir ou alterar a ficha do produto, edite no Omie e aguarde a próxima sincronização."
     >
       <CatalogoTabs />
-      <div style={card}>
+      <div className="bg-surface border border-border rounded-[10px] p-6">
         <FilterBar>
           <SearchInput
             value={search}
@@ -439,7 +424,11 @@ function ProdutoFormModal({
       title={isEdit ? 'Editar produto' : 'Novo produto'}
       footer={
         <>
-          <button type="button" onClick={onClose} style={btnSecondary}>
+          <button
+            type="button"
+            onClick={onClose}
+            className="bg-surface text-text border border-border-strong rounded-md px-4 py-2 text-[13px] font-medium cursor-pointer tracking-[-0.1px]"
+          >
             Cancelar
           </button>
           {isEdit && !confirmDel && (
@@ -447,14 +436,18 @@ function ProdutoFormModal({
               type="button"
               data-testid="prod-delete"
               onClick={() => setConfirmDel(true)}
-              style={btnDanger}
+              className="bg-danger text-white rounded-md px-4 py-2 text-[13px] font-semibold cursor-pointer tracking-[-0.1px]"
             >
               Excluir
             </button>
           )}
           {isEdit && confirmDel && (
             <>
-              <button type="button" onClick={() => setConfirmDel(false)} style={btnSecondary}>
+              <button
+                type="button"
+                onClick={() => setConfirmDel(false)}
+                className="bg-surface text-text border border-border-strong rounded-md px-4 py-2 text-[13px] font-medium cursor-pointer tracking-[-0.1px]"
+              >
                 Voltar
               </button>
               <button
@@ -462,7 +455,7 @@ function ProdutoFormModal({
                 data-testid="prod-delete-confirm"
                 disabled={busy}
                 onClick={doDelete}
-                style={btnDanger}
+                className="bg-danger text-white rounded-md px-4 py-2 text-[13px] font-semibold cursor-pointer tracking-[-0.1px]"
               >
                 {busy ? '…' : 'Confirmar'}
               </button>
@@ -474,7 +467,10 @@ function ProdutoFormModal({
               form="prod-form"
               data-testid="prod-save-btn"
               disabled={busy}
-              style={{ ...btn, opacity: busy ? 0.6 : 1 }}
+              className={cn(
+                'bg-primary text-primary-contrast rounded-md px-4 py-2 text-[13px] font-semibold cursor-pointer tracking-[-0.1px]',
+                busy && 'opacity-60',
+              )}
             >
               {busy ? 'Salvando…' : 'Salvar'}
             </button>
@@ -495,7 +491,7 @@ function ProdutoFormModal({
             autoFocus
           />
         </FormField>
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '0.75rem' }}>
+        <div className="grid grid-cols-3 gap-3">
           <FormField label="SKU" htmlFor="p-sku">
             <Input id="p-sku" value={form.sku} onChange={(e) => setF('sku', e.target.value)} />
           </FormField>
@@ -586,7 +582,7 @@ function ProdutoFormModal({
           />
         </FormField>
         {error && (
-          <p data-testid="form-error" style={{ color: colors.danger, fontSize: 13 }}>
+          <p data-testid="form-error" className="text-danger text-[13px]">
             {error}
           </p>
         )}

@@ -4,12 +4,12 @@ import { PageLayout } from '@/components/PageLayout';
 import { StateView } from '@/components/StateView';
 import { Select } from '@/components/FormField';
 import { BarChart, Funnel, Donut, KPICard, type FunnelStage, type DonutSlice } from '@/components/charts';
-import { badge, btnSecondary, card, colors } from '@/components/styles';
 import { toCsv, downloadCsv, type CsvColumn } from '@/lib/csv';
 import { rowsToXlsx } from '@/lib/xlsx';
 import { gerarPdf } from '@/lib/pdf';
 import { useToast } from '@/components/toast';
 import { formatMoeda as fmtBRL, formatMoedaCompacta as fmtBRLCompact } from '@/lib/masks';
+import { cn } from '@/lib/cn';
 
 type Periodo = 'mes' | 'trimestre' | 'semestre' | 'ano';
 type Tab =
@@ -146,14 +146,14 @@ const STATUS_LABEL_PT: Record<string, string> = {
   CANCELADO: 'Cancelado',
 };
 const STATUS_COLOR_PT: Record<string, string> = {
-  RASCUNHO: colors.muted,
-  AGUARDANDO_APROVACAO: colors.warning,
-  ENVIADO_OMIE: colors.info,
-  PAGO: colors.success,
-  EM_SEPARACAO: colors.magenta,
-  ENVIADO: colors.info,
-  ENTREGUE: colors.success,
-  CANCELADO: colors.danger,
+  RASCUNHO: 'var(--muted)',
+  AGUARDANDO_APROVACAO: 'var(--warning)',
+  ENVIADO_OMIE: 'var(--info)',
+  PAGO: 'var(--success)',
+  EM_SEPARACAO: 'var(--magenta)',
+  ENVIADO: 'var(--info)',
+  ENTREGUE: 'var(--success)',
+  CANCELADO: 'var(--danger)',
 };
 
 const ETAPA_LABEL: Record<string, string> = {
@@ -165,19 +165,19 @@ const ETAPA_LABEL: Record<string, string> = {
   PERDIDO: 'Perdido',
 };
 const ETAPA_COLOR: Record<string, string> = {
-  NOVO: colors.info,
-  QUALIFICANDO: colors.blue,
-  PROPOSTA: colors.warning,
-  NEGOCIACAO: colors.warning,
-  GANHO: colors.success,
-  PERDIDO: colors.danger,
+  NOVO: 'var(--info)',
+  QUALIFICANDO: 'var(--blue)',
+  PROPOSTA: 'var(--warning)',
+  NEGOCIACAO: 'var(--warning)',
+  GANHO: 'var(--success)',
+  PERDIDO: 'var(--danger)',
 };
 
 const SEV_COLOR: Record<string, string> = {
-  baixa: colors.muted,
-  media: colors.info,
-  alta: colors.warning,
-  critica: colors.danger,
+  baixa: 'var(--muted)',
+  media: 'var(--info)',
+  alta: 'var(--warning)',
+  critica: 'var(--danger)',
 };
 
 // ─── Página principal ────────────────────────────────────────────────
@@ -208,13 +208,7 @@ export default function RelatoriosPage() {
       {/* Tabs */}
       <div
         role="tablist"
-        style={{
-          display: 'flex',
-          gap: 0,
-          borderBottom: `1px solid ${colors.border}`,
-          marginBottom: '1rem',
-          overflowX: 'auto',
-        }}
+        className="flex gap-0 border-b border-border mb-4 overflow-x-auto"
       >
         <TabButton current={tab} value="overview" onChange={setTab}>
           Visão geral
@@ -269,19 +263,10 @@ function TabButton({
       aria-selected={active}
       data-testid={`relatorios-tab-${value}`}
       onClick={() => onChange(value)}
-      style={{
-        background: 'transparent',
-        border: 'none',
-        borderBottom: `2px solid ${active ? colors.primary : 'transparent'}`,
-        padding: '0.625rem 1rem',
-        cursor: 'pointer',
-        fontFamily: 'inherit',
-        color: active ? colors.primary : colors.muted,
-        fontWeight: active ? 600 : 500,
-        fontSize: 14,
-        marginBottom: -1,
-        whiteSpace: 'nowrap',
-      }}
+      className={cn(
+        'bg-transparent border-none border-b-2 px-4 py-[0.625rem] cursor-pointer font-[inherit] text-[14px] -mb-px whitespace-nowrap',
+        active ? 'border-b-primary text-primary font-semibold' : 'border-b-transparent text-muted font-medium',
+      )}
     >
       {children}
     </button>
@@ -318,12 +303,12 @@ function OverviewTab({ qs }: { qs: string }) {
             <KPICard
               label="Taxa conversão leads"
               value={`${data.funil.taxaConversao ?? 0}%`}
-              color={(data.funil.taxaConversao ?? 0) > 30 ? colors.success : (data.funil.taxaConversao ?? 0) > 15 ? colors.warning : colors.danger}
+              color={(data.funil.taxaConversao ?? 0) > 30 ? 'var(--success)' : (data.funil.taxaConversao ?? 0) > 15 ? 'var(--warning)' : 'var(--danger)'}
             />
             <KPICard
               label="SLA estourado"
               value={String(data.sac.slaEstourado)}
-              color={data.sac.slaEstourado > 0 ? colors.danger : colors.success}
+              color={data.sac.slaEstourado > 0 ? 'var(--danger)' : 'var(--success)'}
             />
             <KPICard
               label="Amostras convertidas"
@@ -334,8 +319,8 @@ function OverviewTab({ qs }: { qs: string }) {
 
           {/* Resumo Vendas + Funil */}
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
-            <div style={card}>
-              <h3 style={{ margin: '0 0 0.75rem', fontSize: 15 }}>Top representantes (vendas)</h3>
+            <div className="bg-surface border border-border rounded-[10px] p-6">
+              <h3 className="m-0 mb-3 text-[15px]">Top representantes (vendas)</h3>
               <BarChart
                 data={data.vendas.porRep.slice(0, 5).map((r) => ({
                   label: r.repNome,
@@ -345,8 +330,8 @@ function OverviewTab({ qs }: { qs: string }) {
                 formatValue={fmtBRLCompact}
               />
             </div>
-            <div style={card}>
-              <h3 style={{ margin: '0 0 0.75rem', fontSize: 15 }}>Funil de leads</h3>
+            <div className="bg-surface border border-border rounded-[10px] p-6">
+              <h3 className="m-0 mb-3 text-[15px]">Funil de leads</h3>
               <Funnel
                 stages={data.funil.funilAtual.map((e) => ({
                   label: ETAPA_LABEL[e.etapa] ?? e.etapa,
@@ -432,21 +417,21 @@ function ExportActions<T>({
     }
   }
 
-  const btn: React.CSSProperties = {
-    ...btnSecondary,
-    padding: '0.25rem 0.625rem',
-    fontSize: 12,
+  const btnClass =
+    'bg-surface text-text border border-border-strong rounded-md px-[0.625rem] py-1 text-[12px] font-medium cursor-pointer tracking-[-0.1px]';
+  const btnStyle: React.CSSProperties = {
     opacity: disabled || busy !== null ? 0.6 : 1,
   };
 
   return (
-    <div style={{ display: 'flex', gap: '0.375rem', alignItems: 'center' }}>
-      <span style={{ fontSize: 11, color: colors.muted }}>Exportar:</span>
+    <div className="flex gap-[0.375rem] items-center">
+      <span className="text-[11px] text-muted">Exportar:</span>
       <button
         type="button"
         disabled={disabled || busy !== null}
         onClick={doCsv}
-        style={btn}
+        className={btnClass}
+        style={btnStyle}
         data-testid="export-csv"
       >
         {busy === 'csv' ? '…' : 'CSV'}
@@ -455,7 +440,8 @@ function ExportActions<T>({
         type="button"
         disabled={disabled || busy !== null}
         onClick={doXlsx}
-        style={btn}
+        className={btnClass}
+        style={btnStyle}
         data-testid="export-xlsx"
       >
         {busy === 'xlsx' ? '…' : 'Excel'}
@@ -464,7 +450,8 @@ function ExportActions<T>({
         type="button"
         disabled={disabled || busy !== null}
         onClick={doPdf}
-        style={btn}
+        className={btnClass}
+        style={btnStyle}
         data-testid="export-pdf"
       >
         {busy === 'pdf' ? '…' : 'PDF'}
@@ -511,25 +498,25 @@ function VendasTab({ qs }: { qs: string }) {
               label="Receita realizada"
               value={fmtBRL(data.receitaRealizada)}
               hint="Apenas pedidos ENTREGUE"
-              color={colors.success}
+              color="var(--success)"
             />
             <KPICard label="Total de pedidos" value={String(data.totalPedidos)} />
             <KPICard label="Ticket médio" value={fmtBRL(data.ticketMedio)} />
           </div>
 
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
-            <div style={card}>
-              <h3 style={{ margin: '0 0 0.75rem', fontSize: 15 }}>Pedidos por status</h3>
+            <div className="bg-surface border border-border rounded-[10px] p-6">
+              <h3 className="m-0 mb-3 text-[15px]">Pedidos por status</h3>
               <Donut
                 slices={data.porStatus.map((s) => ({
                   label: STATUS_LABEL_PT[s.status] ?? s.status,
                   value: s.count,
-                  color: STATUS_COLOR_PT[s.status] ?? colors.muted,
+                  color: STATUS_COLOR_PT[s.status] ?? 'var(--muted)',
                 }))}
               />
             </div>
-            <div style={card}>
-              <h3 style={{ margin: '0 0 0.75rem', fontSize: 15 }}>Faturamento por status</h3>
+            <div className="bg-surface border border-border rounded-[10px] p-6">
+              <h3 className="m-0 mb-3 text-[15px]">Faturamento por status</h3>
               <BarChart
                 data={data.porStatus
                   .filter((s) => s.total > 0)
@@ -537,15 +524,15 @@ function VendasTab({ qs }: { qs: string }) {
                     label: STATUS_LABEL_PT[s.status] ?? s.status,
                     sublabel: `${s.count} pedido${s.count === 1 ? '' : 's'}`,
                     value: s.total,
-                    color: STATUS_COLOR_PT[s.status] ?? colors.muted,
+                    color: STATUS_COLOR_PT[s.status] ?? 'var(--muted)',
                   }))}
                 formatValue={fmtBRLCompact}
               />
             </div>
           </div>
 
-          <div style={card}>
-            <h3 style={{ margin: '0 0 0.75rem', fontSize: 15 }}>Ranking representantes</h3>
+          <div className="bg-surface border border-border rounded-[10px] p-6">
+            <h3 className="m-0 mb-3 text-[15px]">Ranking representantes</h3>
             <BarChart
               data={data.porRep.map((r) => ({
                 label: r.repNome,
@@ -618,23 +605,23 @@ function FunilTab({ qs }: { qs: string }) {
               label="Ganhos"
               value={String(ganhosAtual)}
               variacao={ganhosVariacao}
-              color={colors.success}
+              color="var(--success)"
             />
             <KPICard
               label="Perdidos"
               value={String(perdidos)}
-              color={perdidos > 0 ? colors.danger : colors.muted}
+              color={perdidos > 0 ? 'var(--danger)' : 'var(--muted)'}
             />
             <KPICard
               label="Taxa conversão"
               value={`${taxaConversao}%`}
-              color={taxaConversao > 30 ? colors.success : taxaConversao > 15 ? colors.warning : colors.danger}
+              color={taxaConversao > 30 ? 'var(--success)' : taxaConversao > 15 ? 'var(--warning)' : 'var(--danger)'}
             />
           </div>
 
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
-            <div style={card}>
-              <h3 style={{ margin: '0 0 0.75rem', fontSize: 15 }}>Funil atual</h3>
+            <div className="bg-surface border border-border rounded-[10px] p-6">
+              <h3 className="m-0 mb-3 text-[15px]">Funil atual</h3>
               <Funnel
                 stages={funilAtual.map((e) => ({
                   label: ETAPA_LABEL[e.etapa] ?? e.etapa,
@@ -643,8 +630,8 @@ function FunilTab({ qs }: { qs: string }) {
                 })) as FunnelStage[]}
               />
             </div>
-            <div style={card}>
-              <h3 style={{ margin: '0 0 0.75rem', fontSize: 15 }}>Valor estimado por etapa</h3>
+            <div className="bg-surface border border-border rounded-[10px] p-6">
+              <h3 className="m-0 mb-3 text-[15px]">Valor estimado por etapa</h3>
               <BarChart
                 data={funilAtual.map((e) => ({
                   label: ETAPA_LABEL[e.etapa] ?? e.etapa,
@@ -657,23 +644,23 @@ function FunilTab({ qs }: { qs: string }) {
           </div>
 
           {Object.keys(aging).length > 0 && (
-            <div style={card}>
-              <h3 style={{ margin: '0 0 0.75rem', fontSize: 15 }}>
+            <div className="bg-surface border border-border rounded-[10px] p-6">
+              <h3 className="m-0 mb-3 text-[15px]">
                 Aging médio por etapa (dias parados)
               </h3>
               <BarChart
                 data={Object.entries(aging).map(([etapa, dias]) => ({
                   label: ETAPA_LABEL[etapa] ?? etapa,
                   value: dias ?? 0,
-                  color: (dias ?? 0) > 14 ? colors.warning : ETAPA_COLOR[etapa],
+                  color: (dias ?? 0) > 14 ? 'var(--warning)' : ETAPA_COLOR[etapa],
                 }))}
                 formatValue={(v) => `${v}d`}
               />
             </div>
           )}
 
-          <div style={card}>
-            <h3 style={{ margin: '0 0 0.75rem', fontSize: 15 }}>Leads por representante</h3>
+          <div className="bg-surface border border-border rounded-[10px] p-6">
+            <h3 className="m-0 mb-3 text-[15px]">Leads por representante</h3>
             <BarChart
               data={porRep.map((r) => ({
                 label: r.repNome ?? '—',
@@ -740,12 +727,12 @@ function ComissoesTab({ qs }: { qs: string }) {
             <KPICard
               label="Total pago"
               value={fmtBRL(totalPago)}
-              color={colors.success}
+              color="var(--success)"
             />
             <KPICard
               label="Total a pagar"
               value={fmtBRL(totalAPagar)}
-              color={totalAPagar > 0 ? colors.warning : colors.muted}
+              color={totalAPagar > 0 ? 'var(--warning)' : 'var(--muted)'}
             />
             <KPICard
               label="Total geral"
@@ -753,19 +740,19 @@ function ComissoesTab({ qs }: { qs: string }) {
             />
           </div>
 
-          <div style={card}>
-            <h3 style={{ margin: '0 0 0.75rem', fontSize: 15 }}>Comissões por representante</h3>
+          <div className="bg-surface border border-border rounded-[10px] p-6">
+            <h3 className="m-0 mb-3 text-[15px]">Comissões por representante</h3>
             <BarChart
               data={linhas.map((r) => ({
                 label: r.nome,
                 sublabel: r.pago ? '✓ pago' : '⏳ a pagar',
                 value: r.valor,
-                color: r.pago ? colors.success : colors.warning,
+                color: r.pago ? 'var(--success)' : 'var(--warning)',
               }))}
               maxBars={20}
               formatValue={fmtBRLCompact}
             />
-            <p style={{ fontSize: 12, color: colors.muted, marginTop: '0.75rem' }}>
+            <p className="text-[12px] text-muted mt-3">
               Tipo: REP = comissão de pedidos próprios; GERENTE = % sobre vendas dos representantes da
               gerência.
             </p>
@@ -820,17 +807,17 @@ function SacTab({ qs }: { qs: string }) {
             }}
           >
             <KPICard label="Total ocorrências" value={String(total)} />
-            <KPICard label="Abertas" value={String(data.abertas ?? 0)} color={colors.warning} />
-            <KPICard label="Em andamento" value={String(data.emAndamento ?? 0)} color={colors.info} />
+            <KPICard label="Abertas" value={String(data.abertas ?? 0)} color="var(--warning)" />
+            <KPICard label="Em andamento" value={String(data.emAndamento ?? 0)} color="var(--info)" />
             <KPICard
               label="Resolvidas"
               value={String(data.resolvidas ?? 0)}
-              color={colors.success}
+              color="var(--success)"
             />
             <KPICard
               label="SLA estourado"
               value={String(data.slaEstourado ?? 0)}
-              color={(data.slaEstourado ?? 0) > 0 ? colors.danger : colors.muted}
+              color={(data.slaEstourado ?? 0) > 0 ? 'var(--danger)' : 'var(--muted)'}
             />
             {tmr !== undefined && (
               <KPICard
@@ -841,20 +828,20 @@ function SacTab({ qs }: { qs: string }) {
           </div>
 
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
-            <div style={card}>
-              <h3 style={{ margin: '0 0 0.75rem', fontSize: 15 }}>Por severidade</h3>
+            <div className="bg-surface border border-border rounded-[10px] p-6">
+              <h3 className="m-0 mb-3 text-[15px]">Por severidade</h3>
               <Donut
                 slices={
                   porSeveridade.map((s) => ({
                     label: s.severidade.toUpperCase(),
                     value: s.count,
-                    color: SEV_COLOR[s.severidade] ?? colors.muted,
+                    color: SEV_COLOR[s.severidade] ?? 'var(--muted)',
                   })) as DonutSlice[]
                 }
               />
             </div>
-            <div style={card}>
-              <h3 style={{ margin: '0 0 0.75rem', fontSize: 15 }}>Por tipo</h3>
+            <div className="bg-surface border border-border rounded-[10px] p-6">
+              <h3 className="m-0 mb-3 text-[15px]">Por tipo</h3>
               <BarChart
                 data={porTipo.map((t) => ({
                   label: t.tipo,
@@ -915,22 +902,22 @@ function AmostrasTab({ qs }: { qs: string }) {
             <KPICard
               label="Convertidas"
               value={String(convertidas)}
-              color={colors.success}
+              color="var(--success)"
             />
             <KPICard
               label="Não converteram"
               value={String(naoConverteram)}
-              color={colors.muted}
+              color="var(--muted)"
             />
             <KPICard
               label="Expiradas"
               value={String(expiradas)}
-              color={expiradas > 0 ? colors.warning : colors.muted}
+              color={expiradas > 0 ? 'var(--warning)' : 'var(--muted)'}
             />
             <KPICard
               label="Taxa conversão"
               value={`${taxaConversao}%`}
-              color={taxaConversao > 30 ? colors.success : taxaConversao > 15 ? colors.warning : colors.danger}
+              color={taxaConversao > 30 ? 'var(--success)' : taxaConversao > 15 ? 'var(--warning)' : 'var(--danger)'}
             />
             <KPICard
               label="Valor convertido"
@@ -939,24 +926,24 @@ function AmostrasTab({ qs }: { qs: string }) {
             />
           </div>
 
-          <div style={card}>
-            <h3 style={{ margin: '0 0 0.75rem', fontSize: 15 }}>Distribuição</h3>
+          <div className="bg-surface border border-border rounded-[10px] p-6">
+            <h3 className="m-0 mb-3 text-[15px]">Distribuição</h3>
             <Donut
               slices={[
                 {
                   label: 'Convertidas',
                   value: convertidas,
-                  color: colors.success,
+                  color: 'var(--success)',
                 },
                 {
                   label: 'Não converteram',
                   value: naoConverteram,
-                  color: colors.muted,
+                  color: 'var(--muted)',
                 },
                 {
                   label: 'Expiradas',
                   value: expiradas,
-                  color: colors.warning,
+                  color: 'var(--warning)',
                 },
                 {
                   label: 'Pendentes',
@@ -964,7 +951,7 @@ function AmostrasTab({ qs }: { qs: string }) {
                     0,
                     enviadas - convertidas - naoConverteram - expiradas,
                   ),
-                  color: colors.info,
+                  color: 'var(--info)',
                 },
               ]}
             />
@@ -1018,13 +1005,13 @@ function CampanhasTab({ qs }: { qs: string }) {
             <KPICard
               label="Taxa de leitura"
               value={`${taxaLeitura}%`}
-              color={taxaLeitura > 50 ? colors.success : taxaLeitura > 25 ? colors.warning : colors.danger}
+              color={taxaLeitura > 50 ? 'var(--success)' : taxaLeitura > 25 ? 'var(--warning)' : 'var(--danger)'}
             />
           </div>
 
           {porCanal.length > 0 ? (
-            <div style={card}>
-              <h3 style={{ margin: '0 0 0.75rem', fontSize: 15 }}>Performance por canal</h3>
+            <div className="bg-surface border border-border rounded-[10px] p-6">
+              <h3 className="m-0 mb-3 text-[15px]">Performance por canal</h3>
               <BarChart
                 data={porCanal.map((c) => ({
                   label: c.canal,
@@ -1034,20 +1021,20 @@ function CampanhasTab({ qs }: { qs: string }) {
               />
             </div>
           ) : (
-            <div style={card}>
-              <p style={{ color: colors.muted, fontSize: 13, margin: 0 }}>
+            <div className="bg-surface border border-border rounded-[10px] p-6">
+              <p className="text-muted text-[13px] m-0">
                 Nenhuma campanha no período. Quando você criar campanhas via Fluxos de Automação,
                 as métricas aparecem aqui.
               </p>
             </div>
           )}
 
-          <div style={card}>
-            <p style={{ color: colors.muted, fontSize: 12, margin: 0 }}>
+          <div className="bg-surface border border-border rounded-[10px] p-6">
+            <p className="text-muted text-[12px] m-0">
               💡 Módulo de Campanhas (CRUD direto, sem fluxo) está planejado pra próxima fase.
               Por enquanto, campanhas são disparadas via Fluxos de Automação (trigger →{' '}
-              <span style={badge(colors.info)}>ENVIAR_WHATSAPP</span> /{' '}
-              <span style={badge(colors.info)}>ENVIAR_EMAIL</span>).
+              <span className="inline-flex items-center rounded-full px-[9px] py-0.5 text-[11px] font-semibold leading-[1.6] tracking-[0.2px] bg-info/12 text-info border border-info/19">ENVIAR_WHATSAPP</span> /{' '}
+              <span className="inline-flex items-center rounded-full px-[9px] py-0.5 text-[11px] font-semibold leading-[1.6] tracking-[0.2px] bg-info/12 text-info border border-info/19">ENVIAR_EMAIL</span>).
             </p>
           </div>
         </div>

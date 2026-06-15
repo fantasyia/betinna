@@ -16,7 +16,7 @@ import { useToast } from '@/components/toast';
 import { currentEmpresaId } from '@/lib/auth-store';
 import { maskCNPJ } from '@/lib/masks';
 import { UfSelect, CidadeSelect } from '@/components/LocalidadeSelects';
-import { badge, btn, btnDanger, btnSecondary, card, colors } from '@/components/styles';
+import { cn } from '@/lib/cn';
 
 // Cores oficiais brandbook usadas no tabs strip
 const BRAND = {
@@ -97,7 +97,7 @@ export default function ConfiguracoesPage() {
   if (!podeListar) {
     return (
       <PageLayout title="Configurações">
-        <div style={card}>
+        <div className="bg-surface border border-border rounded-[10px] p-6">
           <p>Apenas ADMIN ou DIRETOR pode acessar configurações de empresas.</p>
         </div>
       </PageLayout>
@@ -110,9 +110,9 @@ export default function ConfiguracoesPage() {
       header: 'Empresa',
       render: (e) => (
         <div>
-          <div style={{ fontWeight: 600 }}>{e.nome}</div>
-          {e.cnpj && <div style={{ fontSize: 11, color: colors.muted }}>{e.cnpj}</div>}
-          {e.subtitulo && <div style={{ fontSize: 11, color: colors.muted }}>{e.subtitulo}</div>}
+          <div className="font-semibold">{e.nome}</div>
+          {e.cnpj && <div className="text-[11px] text-muted">{e.cnpj}</div>}
+          {e.subtitulo && <div className="text-[11px] text-muted">{e.subtitulo}</div>}
         </div>
       ),
     },
@@ -125,15 +125,17 @@ export default function ConfiguracoesPage() {
     {
       key: 'ativo',
       header: 'Status',
-      render: (e) =>
-        podeEditarEmpresa ? (
+      render: (e) => {
+        const c = e.ativo ? 'var(--success)' : 'var(--muted)';
+        return podeEditarEmpresa ? (
           <button
             type="button"
             data-testid={`emp-toggle-${e.id}`}
             onClick={() => toggleAtivo(e)}
+            className="inline-flex items-center rounded-full px-[9px] py-0.5 text-[11px] font-semibold leading-[1.6] tracking-[0.2px] cursor-pointer"
             style={{
-              ...badge(e.ativo ? colors.success : colors.muted),
-              cursor: 'pointer',
+              background: `color-mix(in srgb, ${c} 12%, transparent)`,
+              color: c,
               border: 'none',
               fontFamily: 'inherit',
             }}
@@ -141,10 +143,18 @@ export default function ConfiguracoesPage() {
             {e.ativo ? 'ativo' : 'inativo'}
           </button>
         ) : (
-          <span style={badge(e.ativo ? colors.success : colors.muted)}>
+          <span
+            className="inline-flex items-center rounded-full px-[9px] py-0.5 text-[11px] font-semibold leading-[1.6] tracking-[0.2px]"
+            style={{
+              background: `color-mix(in srgb, ${c} 12%, transparent)`,
+              color: c,
+              border: `1px solid color-mix(in srgb, ${c} 19%, transparent)`,
+            }}
+          >
             {e.ativo ? 'ativo' : 'inativo'}
           </span>
-        ),
+        );
+      },
     },
     {
       key: 'criado',
@@ -160,12 +170,12 @@ export default function ConfiguracoesPage() {
             type="button"
             data-testid={`emp-edit-${e.id}`}
             onClick={() => setEditing(e)}
-            style={{ ...btnSecondary, padding: '0.25rem 0.625rem', fontSize: 12 }}
+            className="bg-surface text-text border border-border-strong rounded-md px-[0.625rem] py-1 text-xs font-medium cursor-pointer tracking-[-0.1px]"
           >
             Editar
           </button>
         ) : (
-          <span style={{ fontSize: 11, color: colors.muted, fontStyle: 'italic' }}>
+          <span className="text-[11px] text-muted italic">
             só diretor
           </span>
         ),
@@ -181,7 +191,7 @@ export default function ConfiguracoesPage() {
             type="button"
             data-testid="emp-new"
             onClick={() => setCreating(true)}
-            style={btn}
+            className="bg-primary text-primary-contrast rounded-md px-4 py-2 text-[13px] font-semibold cursor-pointer tracking-[-0.1px]"
           >
             + Nova empresa
           </button>
@@ -193,12 +203,7 @@ export default function ConfiguracoesPage() {
       <div
         role="tablist"
         aria-label="Seções de configuração"
-        style={{
-          display: 'flex',
-          gap: '0.25rem',
-          borderBottom: `1px solid ${colors.border}`,
-          marginBottom: '1rem',
-        }}
+        className="flex gap-1 border-b border-border mb-4"
       >
         <TabButton id="empresas" current={tab} onClick={setTab} label="🏢 Empresas" />
         <TabButton id="avancado" current={tab} onClick={setTab} label="⚙️ Avançado" />
@@ -206,9 +211,9 @@ export default function ConfiguracoesPage() {
 
       {tab === 'avancado' && <AvancadoTab />}
       {tab === 'empresas' && (
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+        <div className="flex flex-col gap-4">
           <LogoSection canEdit={podeEditarEmpresa} />
-          <div style={card}>
+          <div className="bg-surface border border-border rounded-[10px] p-6">
         <FilterBar>
           <SearchInput
             value={search}
@@ -290,17 +295,14 @@ function TabButton({
       data-testid={`config-tab-${id}`}
       type="button"
       onClick={() => onClick(id)}
+      className={cn(
+        'px-4 py-2.5 text-[13px] bg-transparent border-none cursor-pointer mb-[-1px]',
+        active ? 'font-bold' : 'font-medium',
+      )}
       style={{
-        padding: '0.625rem 1rem',
-        fontSize: 13,
-        fontWeight: active ? 700 : 500,
-        background: 'transparent',
-        border: 'none',
         borderBottom: `2px solid ${active ? BRAND.magenta : 'transparent'}`,
-        color: active ? BRAND.navy : colors.muted,
-        cursor: 'pointer',
+        color: active ? BRAND.navy : 'var(--muted)',
         transition: 'color 120ms, border-color 120ms',
-        marginBottom: -1, // overlap border-bottom do container
       }}
     >
       {label}
@@ -368,41 +370,36 @@ function AvancadoTab() {
   ];
 
   return (
-    <div style={card} id="tab-panel-avancado" role="tabpanel">
-      <h2 style={{ marginTop: 0, fontSize: 16, color: BRAND.navy }}>
+    <div
+      className="bg-surface border border-border rounded-[10px] p-6"
+      id="tab-panel-avancado"
+      role="tabpanel"
+    >
+      <h2 className="mt-0 text-[16px]" style={{ color: BRAND.navy }}>
         ⚙️ Áreas administrativas relacionadas
       </h2>
-      <p style={{ fontSize: 12, color: colors.muted, marginTop: 0 }}>
+      <p className="text-xs text-muted mt-0">
         Atalhos rápidos pras outras telas de configuração e administração.
       </p>
       <div
-        style={{
-          display: 'grid',
-          gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))',
-          gap: '0.75rem',
-          marginTop: '1rem',
-        }}
+        className="grid gap-3 mt-4 [grid-template-columns:repeat(auto-fill,minmax(280px,1fr))]"
       >
         {links.map((l) => (
           <Link
             key={l.to}
             to={l.to}
             data-testid={`config-link-${l.to.replace(/\//g, '')}`}
+            className="p-3.5 bg-bg-alt border border-border rounded-[10px] no-underline text-text block"
             style={{
-              padding: '0.875rem',
-              background: colors.bgAlt,
-              border: `1px solid ${colors.border}`,
               borderLeft: `3px solid ${l.color}`,
-              borderRadius: 10,
-              textDecoration: 'none',
-              color: colors.text,
-              display: 'block',
               transition: 'border-color 120ms, transform 120ms',
             }}
           >
-            <div style={{ fontSize: 20, marginBottom: 4 }}>{l.emoji}</div>
-            <div style={{ fontWeight: 600, fontSize: 14, color: BRAND.navy }}>{l.title}</div>
-            <div style={{ fontSize: 12, color: colors.muted, marginTop: 2, lineHeight: 1.4 }}>
+            <div className="text-xl mb-1">{l.emoji}</div>
+            <div className="font-semibold text-sm" style={{ color: BRAND.navy }}>
+              {l.title}
+            </div>
+            <div className="text-xs text-muted mt-0.5 leading-[1.4]">
               {l.description}
             </div>
           </Link>
@@ -421,22 +418,25 @@ function LogoSection({ canEdit }: { canEdit: boolean }) {
   if (!empresaId) return null;
 
   return (
-    <div style={{ ...card, padding: '1.25rem' }} data-testid="logo-section">
-      <div style={{ marginBottom: '0.75rem' }}>
-        <div style={{ fontSize: 14, fontWeight: 700, color: BRAND.navy }}>
+    <div
+      className="bg-surface border border-border rounded-[10px] p-5"
+      data-testid="logo-section"
+    >
+      <div className="mb-3">
+        <div className="text-sm font-bold" style={{ color: BRAND.navy }}>
           🖼️ Logo da empresa
         </div>
-        <div style={{ fontSize: 12, color: colors.muted, marginTop: 2 }}>
+        <div className="text-xs text-muted mt-0.5">
           Aparece no header e na sidebar de todos os usuários. Fallback para o logo
           Betinna quando ausente.
         </div>
       </div>
       {!canEdit ? (
-        <div style={{ fontSize: 12, color: colors.muted, fontStyle: 'italic' }}>
+        <div className="text-xs text-muted italic">
           Apenas ADMIN ou DIRECTOR pode trocar o logo.
         </div>
       ) : loading ? (
-        <div style={{ fontSize: 12, color: colors.muted }}>Carregando…</div>
+        <div className="text-xs text-muted">Carregando…</div>
       ) : (
         <LogoUploader
           empresaId={empresaId}
@@ -524,7 +524,11 @@ function EmpresaFormModal({
       size="lg"
       footer={
         <>
-          <button type="button" onClick={onClose} style={btnSecondary}>
+          <button
+            type="button"
+            onClick={onClose}
+            className="bg-surface text-text border border-border-strong rounded-md px-4 py-2 text-[13px] font-medium cursor-pointer tracking-[-0.1px]"
+          >
             Cancelar
           </button>
           {isEdit && empresa?.ativo && !confirmDel && (
@@ -532,14 +536,18 @@ function EmpresaFormModal({
               type="button"
               data-testid="emp-deactivate"
               onClick={() => setConfirmDel(true)}
-              style={btnDanger}
+              className="bg-danger text-white rounded-md px-4 py-2 text-[13px] font-semibold cursor-pointer tracking-[-0.1px]"
             >
               Desativar
             </button>
           )}
           {isEdit && confirmDel && (
             <>
-              <button type="button" onClick={() => setConfirmDel(false)} style={btnSecondary}>
+              <button
+                type="button"
+                onClick={() => setConfirmDel(false)}
+                className="bg-surface text-text border border-border-strong rounded-md px-4 py-2 text-[13px] font-medium cursor-pointer tracking-[-0.1px]"
+              >
                 Voltar
               </button>
               <button
@@ -547,7 +555,7 @@ function EmpresaFormModal({
                 data-testid="emp-deactivate-confirm"
                 onClick={doDeactivate}
                 disabled={busy}
-                style={btnDanger}
+                className="bg-danger text-white rounded-md px-4 py-2 text-[13px] font-semibold cursor-pointer tracking-[-0.1px]"
               >
                 {busy ? '…' : 'Confirmar desativação'}
               </button>
@@ -559,7 +567,8 @@ function EmpresaFormModal({
               form="emp-form"
               data-testid="emp-save"
               disabled={busy || form.nome.trim().length < 2}
-              style={{ ...btn, opacity: busy ? 0.6 : 1 }}
+              className="bg-primary text-primary-contrast rounded-md px-4 py-2 text-[13px] font-semibold cursor-pointer tracking-[-0.1px]"
+              style={{ opacity: busy ? 0.6 : 1 }}
             >
               {busy ? 'Salvando…' : 'Salvar'}
             </button>
@@ -578,7 +587,7 @@ function EmpresaFormModal({
             maxLength={200}
           />
         </FormField>
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.75rem' }}>
+        <div className="grid grid-cols-2 gap-3">
           <FormField label="CNPJ" hint="00.000.000/0001-00">
             <Input
               value={form.cnpj}
@@ -618,20 +627,14 @@ function EmpresaFormModal({
         </div>
 
         {/* B1 — Desconto à vista automático */}
-        <div
-          style={{
-            marginTop: '1rem',
-            paddingTop: '1rem',
-            borderTop: `1px solid ${colors.border}`,
-          }}
-        >
-          <h4 style={{ margin: '0 0 0.25rem 0', fontSize: 14 }}>Desconto à vista automático</h4>
-          <p style={{ margin: '0 0 0.75rem 0', fontSize: 12, color: colors.muted }}>
+        <div className="mt-4 pt-4 border-t border-border">
+          <h4 className="m-0 mb-1 text-sm">Desconto à vista automático</h4>
+          <p className="m-0 mb-3 text-xs text-muted">
             Aplicado automaticamente em pedidos/propostas conforme a forma de pagamento.
             Deixe 0 para desligar. O desconto à vista <strong>não</strong> conta pro teto
             de aprovação do representante (é política da empresa).
           </p>
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.75rem' }}>
+          <div className="grid grid-cols-2 gap-3">
             <FormField label="Pix (%)" hint="0–50%, aplicado em qualquer Pix">
               <Input
                 data-testid="emp-desconto-pix"
@@ -659,7 +662,7 @@ function EmpresaFormModal({
           </div>
         </div>
         {error && (
-          <p data-testid="form-error" style={{ color: colors.danger, fontSize: 13 }}>
+          <p data-testid="form-error" className="text-danger text-[13px]">
             {error}
           </p>
         )}

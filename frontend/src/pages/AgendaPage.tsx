@@ -16,7 +16,6 @@ import { Dialog } from '@/components/ui';
 import { FormField, Input, Select, Textarea } from '@/components/FormField';
 import { AsyncCombobox } from '@/components/AsyncCombobox';
 import { useToast } from '@/components/toast';
-import { alpha, badge, btn, btnDanger, btnSecondary, card, colors } from '@/components/styles';
 
 type AgendaTipo = 'VISITA' | 'LIGACAO' | 'REUNIAO' | 'ENTREGA' | 'TAREFA';
 
@@ -42,11 +41,11 @@ interface ClienteOpt {
 const TIPOS: AgendaTipo[] = ['VISITA', 'LIGACAO', 'REUNIAO', 'ENTREGA', 'TAREFA'];
 
 const TIPO_COLOR: Record<AgendaTipo, string> = {
-  VISITA: colors.blue,
-  LIGACAO: colors.info,
-  REUNIAO: colors.magenta,
-  ENTREGA: colors.warning,
-  TAREFA: colors.muted,
+  VISITA: 'var(--blue)',
+  LIGACAO: 'var(--info)',
+  REUNIAO: 'var(--magenta)',
+  ENTREGA: 'var(--warning)',
+  TAREFA: 'var(--muted)',
 };
 const TIPO_ICON: Record<AgendaTipo, string> = {
   VISITA: '🚗',
@@ -179,29 +178,20 @@ export default function AgendaPage() {
           type="button"
           data-testid="agenda-new-btn"
           onClick={() => setCreating(new Date())}
-          style={btn}
+          className="bg-primary text-primary-contrast rounded-md px-4 py-2 text-[13px] font-semibold cursor-pointer tracking-[-0.1px]"
         >
           + Novo compromisso
         </button>
       }
     >
-      <div style={card}>
-        <div
-          style={{
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'space-between',
-            marginBottom: '1rem',
-            gap: '0.5rem',
-            flexWrap: 'wrap',
-          }}
-        >
-          <div style={{ display: 'flex', gap: 4 }}>
+      <div className="bg-surface border border-border rounded-[10px] p-6">
+        <div className="flex items-center justify-between mb-4 gap-2 flex-wrap">
+          <div className="flex gap-1">
             <button
               type="button"
               data-testid="agenda-prev-week"
               onClick={() => setWeekStart(addDays(weekStart, -7))}
-              style={btnSecondary}
+              className="bg-surface text-text border border-border-strong rounded-md px-4 py-2 text-[13px] font-medium cursor-pointer tracking-[-0.1px]"
             >
               ‹ Semana anterior
             </button>
@@ -209,7 +199,7 @@ export default function AgendaPage() {
               type="button"
               data-testid="agenda-today"
               onClick={() => setWeekStart(startOfWeek(new Date()))}
-              style={btnSecondary}
+              className="bg-surface text-text border border-border-strong rounded-md px-4 py-2 text-[13px] font-medium cursor-pointer tracking-[-0.1px]"
             >
               Hoje
             </button>
@@ -217,12 +207,12 @@ export default function AgendaPage() {
               type="button"
               data-testid="agenda-next-week"
               onClick={() => setWeekStart(addDays(weekStart, 7))}
-              style={btnSecondary}
+              className="bg-surface text-text border border-border-strong rounded-md px-4 py-2 text-[13px] font-medium cursor-pointer tracking-[-0.1px]"
             >
               Próxima semana ›
             </button>
           </div>
-          <div style={{ fontSize: 13, color: colors.muted }}>
+          <div className="text-[13px] text-muted">
             Semana de {weekStart.toLocaleDateString('pt-BR')} a{' '}
             {addDays(weekStart, 6).toLocaleDateString('pt-BR')}
           </div>
@@ -243,14 +233,7 @@ export default function AgendaPage() {
 
         <StateView loading={loading} error={error} onRetry={refetch}>
           <DndContext sensors={sensors} onDragEnd={(e) => void handleDragEnd(e)}>
-            <div
-              style={{
-                display: 'grid',
-                gridTemplateColumns: 'repeat(7, minmax(140px, 1fr))',
-                gap: '0.5rem',
-                overflowX: 'auto',
-              }}
-            >
+            <div className="grid grid-cols-[repeat(7,minmax(140px,1fr))] gap-2 overflow-x-auto">
               {days.map((d) => (
                 <DayColumn
                   key={d.toDateString()}
@@ -319,43 +302,26 @@ function DayColumn({
     <div
       ref={setNodeRef}
       data-testid={`agenda-day-${day.getDate()}`}
+      className="border rounded-md p-2 min-h-[200px]"
       style={{
         background: isOver
-          ? alpha(colors.primary, 9)
+          ? 'color-mix(in srgb, var(--primary) 9%, transparent)'
           : isToday
-            ? alpha(colors.primary, 3)
+            ? 'color-mix(in srgb, var(--primary) 3%, transparent)'
             : 'var(--bg-alt)',
-        border: `1px solid ${isOver ? colors.primary : isToday ? colors.primary : colors.border}`,
-        borderRadius: 6,
-        padding: '0.5rem',
-        minHeight: 200,
+        borderColor: isOver ? 'var(--primary)' : isToday ? 'var(--primary)' : 'var(--border)',
         transition: 'background 120ms, border-color 120ms',
       }}
     >
       <header
-        style={{
-          display: 'flex',
-          justifyContent: 'space-between',
-          alignItems: 'center',
-          marginBottom: '0.5rem',
-          fontSize: 12,
-          fontWeight: 600,
-          color: isToday ? colors.primary : colors.text,
-        }}
+        className="flex justify-between items-center mb-2 text-[12px] font-semibold"
+        style={{ color: isToday ? 'var(--primary)' : 'var(--text)' }}
       >
         <span>{fmtDay(day)}</span>
         <button
           type="button"
           onClick={onNew}
-          style={{
-            background: 'transparent',
-            border: 'none',
-            color: colors.muted,
-            cursor: 'pointer',
-            fontSize: 16,
-            lineHeight: 1,
-            padding: 0,
-          }}
+          className="bg-transparent border-none text-muted cursor-pointer text-base leading-none p-0"
           aria-label="Adicionar compromisso"
           title="Adicionar compromisso"
         >
@@ -363,28 +329,11 @@ function DayColumn({
         </button>
       </header>
       {items.length === 0 && (
-        <p
-          style={{
-            fontSize: 11,
-            color: colors.muted,
-            margin: 0,
-            textAlign: 'center',
-            padding: '0.5rem 0',
-          }}
-        >
+        <p className="text-[11px] text-muted m-0 text-center py-2">
           Livre
         </p>
       )}
-      <ul
-        style={{
-          listStyle: 'none',
-          padding: 0,
-          margin: 0,
-          display: 'flex',
-          flexDirection: 'column',
-          gap: 4,
-        }}
-      >
+      <ul className="list-none p-0 m-0 flex flex-col gap-1">
         {items.map((it) => (
           <li key={it.id}>
             <DraggableItem item={it} onClick={() => onItemClick(it)} />
@@ -411,22 +360,11 @@ function DraggableItem({
     id: item.id,
   });
   const style: React.CSSProperties = {
-    display: 'block',
-    width: '100%',
-    textAlign: 'left',
-    padding: '0.375rem 0.5rem',
-    background: colors.surface,
-    border: `1px solid ${colors.border}`,
     borderLeft: `3px solid ${TIPO_COLOR[item.tipo]}`,
-    borderRadius: 4,
     cursor: isDragging ? 'grabbing' : 'grab',
-    fontFamily: 'inherit',
-    color: colors.text,
-    fontSize: 12,
     transform: transform ? `translate3d(${transform.x}px, ${transform.y}px, 0)` : undefined,
     opacity: isDragging ? 0.5 : 1,
     zIndex: isDragging ? 100 : undefined,
-    position: 'relative',
     transition: isDragging ? 'none' : 'opacity 120ms',
   };
   return (
@@ -435,27 +373,23 @@ function DraggableItem({
       type="button"
       data-testid={`agenda-item-${item.id}`}
       onClick={onClick}
+      className="block w-full text-left py-1.5 px-2 bg-surface border border-border rounded-[4px] font-[inherit] text-text text-[12px] relative"
       style={style}
       {...listeners}
       {...attributes}
     >
-      <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+      <div className="flex items-center gap-1">
         <strong>{fmtTime(item.data)}</strong>
-        <span style={{ color: colors.muted }}>· {item.duracao}min</span>
+        <span className="text-muted">· {item.duracao}min</span>
         {item.googleEventId && (
-          <span
-            title="Espelhado no Google Calendar"
-            style={{ marginLeft: 'auto', fontSize: 10 }}
-          >
+          <span title="Espelhado no Google Calendar" className="ml-auto text-[10px]">
             📅
           </span>
         )}
       </div>
-      <div style={{ fontWeight: 500, marginTop: 2 }}>{item.titulo}</div>
+      <div className="font-medium mt-0.5">{item.titulo}</div>
       {item.cliente?.nome && (
-        <div style={{ fontSize: 11, color: colors.muted, marginTop: 2 }}>
-          {item.cliente.nome}
-        </div>
+        <div className="text-[11px] text-muted mt-0.5">{item.cliente.nome}</div>
       )}
     </button>
   );
@@ -563,7 +497,11 @@ function AgendaFormModal({
       title={isEdit ? 'Editar compromisso' : 'Novo compromisso'}
       footer={
         <>
-          <button type="button" onClick={onClose} style={btnSecondary}>
+          <button
+            type="button"
+            onClick={onClose}
+            className="bg-surface text-text border border-border-strong rounded-md px-4 py-2 text-[13px] font-medium cursor-pointer tracking-[-0.1px]"
+          >
             Cancelar
           </button>
           {isEdit && !confirmDel && (
@@ -571,14 +509,18 @@ function AgendaFormModal({
               type="button"
               data-testid="agenda-delete"
               onClick={() => setConfirmDel(true)}
-              style={btnDanger}
+              className="bg-danger text-white rounded-md px-4 py-2 text-[13px] font-semibold cursor-pointer tracking-[-0.1px]"
             >
               Excluir
             </button>
           )}
           {isEdit && confirmDel && (
             <>
-              <button type="button" onClick={() => setConfirmDel(false)} style={btnSecondary}>
+              <button
+                type="button"
+                onClick={() => setConfirmDel(false)}
+                className="bg-surface text-text border border-border-strong rounded-md px-4 py-2 text-[13px] font-medium cursor-pointer tracking-[-0.1px]"
+              >
                 Voltar
               </button>
               <button
@@ -586,7 +528,7 @@ function AgendaFormModal({
                 data-testid="agenda-delete-confirm"
                 disabled={busy}
                 onClick={doDelete}
-                style={btnDanger}
+                className="bg-danger text-white rounded-md px-4 py-2 text-[13px] font-semibold cursor-pointer tracking-[-0.1px]"
               >
                 {busy ? '…' : 'Confirmar'}
               </button>
@@ -598,7 +540,8 @@ function AgendaFormModal({
               form="agenda-form"
               data-testid="agenda-save-btn"
               disabled={busy}
-              style={{ ...btn, opacity: busy ? 0.6 : 1 }}
+              className="bg-primary text-primary-contrast rounded-md px-4 py-2 text-[13px] font-semibold cursor-pointer tracking-[-0.1px]"
+              style={{ opacity: busy ? 0.6 : 1 }}
             >
               {busy ? 'Salvando…' : 'Salvar'}
             </button>
@@ -619,7 +562,7 @@ function AgendaFormModal({
             autoFocus
           />
         </FormField>
-        <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr 1fr', gap: '0.75rem' }}>
+        <div className="grid grid-cols-[2fr_1fr_1fr] gap-3">
           <FormField label="Quando" htmlFor="ag-data" required>
             <Input
               id="ag-data"
@@ -673,13 +616,7 @@ function AgendaFormModal({
 
         {/* v1.5.0 — Recorrência (apenas criar) */}
         {!isEdit && (
-          <div
-            style={{
-              display: 'grid',
-              gridTemplateColumns: '1fr 1fr',
-              gap: '0.75rem',
-            }}
-          >
+          <div className="grid grid-cols-2 gap-3">
             <FormField label="🔁 Repetir" htmlFor="ag-rec">
               <Select
                 id="ag-rec"
@@ -729,16 +666,7 @@ function AgendaFormModal({
             </Select>
           </FormField>
         )}
-        <label
-          style={{
-            display: 'flex',
-            alignItems: 'center',
-            gap: '0.5rem',
-            fontSize: 13,
-            color: colors.muted,
-            marginTop: '0.5rem',
-          }}
-        >
+        <label className="flex items-center gap-2 text-[13px] text-muted mt-2">
           <input
             type="checkbox"
             data-testid="agenda-google-checkbox"
@@ -748,12 +676,14 @@ function AgendaFormModal({
           Espelhar no Google Calendar (se conectado)
         </label>
         {item?.googleEventId && (
-          <p style={{ fontSize: 12, color: colors.muted, marginTop: 4 }}>
-            <span style={badge(colors.success)}>📅 Já espelhado</span>
+          <p className="text-[12px] text-muted mt-1">
+            <span className="inline-flex items-center rounded-full px-[9px] py-0.5 text-[11px] font-semibold leading-[1.6] tracking-[0.2px] bg-success/12 text-success border border-success/19">
+              📅 Já espelhado
+            </span>
           </p>
         )}
         {error && (
-          <p data-testid="form-error" style={{ color: colors.danger, fontSize: 13 }}>
+          <p data-testid="form-error" className="text-danger text-[13px]">
             {error}
           </p>
         )}
