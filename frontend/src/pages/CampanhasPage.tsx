@@ -12,7 +12,46 @@ import { Dialog } from '@/components/ui';
 import { FormField, Input, Select, Textarea } from '@/components/FormField';
 import { useToast } from '@/components/toast';
 import { useConfirm } from '@/hooks/useConfirm';
-import { badge, btn, btnDanger, btnSecondary, card, colors } from '@/components/styles';
+import { cn } from '@/lib/cn';
+
+// ─── Style tokens (Tailwind — equivalentes exatos do styles.ts legado) ─────────
+
+// Botões: traduções pixel-idênticas dos objetos btn/btnSecondary/btnDanger.
+const BTN =
+  'bg-primary text-primary-contrast rounded-md px-4 py-2 text-[13px] font-semibold cursor-pointer tracking-[-0.1px]';
+const BTN_SECONDARY =
+  'bg-surface text-text border border-border-strong rounded-md px-4 py-2 text-[13px] font-medium cursor-pointer tracking-[-0.1px]';
+const BTN_DANGER =
+  'bg-danger text-white rounded-md px-4 py-2 text-[13px] font-semibold cursor-pointer tracking-[-0.1px]';
+// Card: bg-surface border border-border rounded-[10px] p-6.
+const CARD = 'bg-surface border border-border rounded-[10px] p-6';
+// badge() com cor DINÂMICA (CSS var em runtime) → classes de layout + inline color-mix.
+const BADGE_BASE =
+  'inline-flex items-center rounded-full px-[9px] py-0.5 text-[11px] font-semibold leading-[1.6] tracking-[0.2px] border';
+function badgeStyle(color: string): React.CSSProperties {
+  return {
+    background: `color-mix(in srgb, ${color} 12%, transparent)`,
+    color,
+    borderColor: `color-mix(in srgb, ${color} 19%, transparent)`,
+  };
+}
+
+// CSS vars (mesmos tokens do colors.* legado) — usados em estilos com cor dinâmica.
+const cssVar = {
+  bgAlt: 'var(--bg-alt)',
+  surface: 'var(--surface)',
+  border: 'var(--border)',
+  text: 'var(--text)',
+  muted: 'var(--muted)',
+  primary: 'var(--primary)',
+  primaryLight: 'var(--primary-light)',
+  info: 'var(--info)',
+  success: 'var(--success)',
+  warning: 'var(--warning)',
+  danger: 'var(--danger)',
+  magenta: 'var(--magenta)',
+  channelWhatsapp: '#25d366',
+};
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -131,12 +170,12 @@ interface AnalisarResponse {
 // ─── Constants ────────────────────────────────────────────────────────────────
 
 const STATUS_COLOR: Record<CampanhaStatus, string> = {
-  RASCUNHO: colors.muted,
-  AGENDADA: colors.info,
-  ENVIANDO: colors.warning,
-  ENVIADA: colors.success,
-  PAUSADA: colors.magenta,
-  CANCELADA: colors.danger,
+  RASCUNHO: cssVar.muted,
+  AGENDADA: cssVar.info,
+  ENVIANDO: cssVar.warning,
+  ENVIADA: cssVar.success,
+  PAUSADA: cssVar.magenta,
+  CANCELADA: cssVar.danger,
 };
 const STATUS_LABEL: Record<CampanhaStatus, string> = {
   RASCUNHO: 'Rascunho',
@@ -153,9 +192,9 @@ const CANAL_LABEL: Record<CampanhaCanal, string> = {
   WHATSAPP_EMAIL: 'WhatsApp + E-mail',
 };
 const CANAL_COLOR: Record<CampanhaCanal, string> = {
-  WHATSAPP: colors.channelWhatsapp,
-  EMAIL: colors.info,
-  WHATSAPP_EMAIL: colors.magenta,
+  WHATSAPP: cssVar.channelWhatsapp,
+  EMAIL: cssVar.info,
+  WHATSAPP_EMAIL: cssVar.magenta,
 };
 
 function fmtDate(d: string | null | undefined) {
@@ -254,9 +293,9 @@ export default function CampanhasPage() {
       header: 'Campanha',
       render: (c) => (
         <div>
-          <div style={{ fontWeight: 600 }}>{c.nome}</div>
+          <div className="font-semibold">{c.nome}</div>
           {c.objetivo && (
-            <div style={{ fontSize: 11, color: colors.muted, maxWidth: 280, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+            <div className="text-[11px] text-muted max-w-[280px] overflow-hidden text-ellipsis whitespace-nowrap">
               {c.objetivo}
             </div>
           )}
@@ -267,14 +306,14 @@ export default function CampanhasPage() {
       key: 'canal',
       header: 'Canal',
       render: (c) => (
-        <span style={badge(CANAL_COLOR[c.canal])}>{CANAL_LABEL[c.canal]}</span>
+        <span className={BADGE_BASE} style={badgeStyle(CANAL_COLOR[c.canal])}>{CANAL_LABEL[c.canal]}</span>
       ),
     },
     {
       key: 'status',
       header: 'Status',
       render: (c) => (
-        <span style={badge(STATUS_COLOR[c.status])}>{STATUS_LABEL[c.status]}</span>
+        <span className={BADGE_BASE} style={badgeStyle(STATUS_COLOR[c.status])}>{STATUS_LABEL[c.status]}</span>
       ),
     },
     {
@@ -282,7 +321,7 @@ export default function CampanhasPage() {
       header: 'Destinatários',
       render: (c) => {
         const n = destCount(c);
-        return n !== undefined ? String(n) : <em style={{ color: colors.muted }}>—</em>;
+        return n !== undefined ? String(n) : <em className="text-muted">—</em>;
       },
     },
     {
@@ -298,19 +337,19 @@ export default function CampanhasPage() {
       header: 'IA',
       render: (c) =>
         c.usarIaPersonalizacao ? (
-          <span style={{ ...badge(colors.magenta), fontSize: 9 }}>✨ Personalizada</span>
+          <span className={cn(BADGE_BASE, 'text-[9px]')} style={badgeStyle(cssVar.magenta)}>✨ Personalizada</span>
         ) : null,
     },
     {
       key: 'actions',
       header: '',
       render: (c) => (
-        <div style={{ display: 'flex', gap: 4 }}>
+        <div className="flex gap-1">
           <button
             type="button"
             data-testid={`campanha-open-${c.id}`}
             onClick={() => setSelected(c.id)}
-            style={{ ...btnSecondary, padding: '0.25rem 0.625rem', fontSize: 12 }}
+            className={cn(BTN_SECONDARY, 'px-2.5 py-1 text-[12px]')}
           >
             Abrir
           </button>
@@ -319,7 +358,7 @@ export default function CampanhasPage() {
               type="button"
               data-testid={`campanha-disparar-${c.id}`}
               onClick={() => callAction(c.id, 'disparar')}
-              style={{ ...btn, padding: '0.25rem 0.625rem', fontSize: 12 }}
+              className={cn(BTN, 'px-2.5 py-1 text-[12px]')}
             >
               ▶ Disparar
             </button>
@@ -329,7 +368,7 @@ export default function CampanhasPage() {
               type="button"
               data-testid={`campanha-pausar-${c.id}`}
               onClick={() => callAction(c.id, 'pausar')}
-              style={{ ...btnSecondary, padding: '0.25rem 0.625rem', fontSize: 12 }}
+              className={cn(BTN_SECONDARY, 'px-2.5 py-1 text-[12px]')}
             >
               ⏸ Pausar
             </button>
@@ -348,7 +387,7 @@ export default function CampanhasPage() {
             type="button"
             data-testid="campanha-new"
             onClick={() => setCreating(true)}
-            style={btn}
+            className={BTN}
           >
             + Nova campanha
           </button>
@@ -369,14 +408,14 @@ export default function CampanhasPage() {
           {/* Normaliza defaults — proteção contra payload incompleto (mesmo padrão das Métricas). */}
           <StatBox label="Total" value={String(resumo.total ?? 0)} />
           <StatBox label="Rascunhos" value={String(resumo.rascunhos ?? 0)} />
-          <StatBox label="Agendadas" value={String(resumo.agendadas ?? 0)} color={colors.info} />
-          <StatBox label="Enviando" value={String(resumo.enviando ?? 0)} color={colors.warning} />
-          <StatBox label="Enviadas" value={String(resumo.enviadas ?? 0)} color={colors.success} />
-          <StatBox label="Alcance 30d" value={String(resumo.alcanceUltimos30d ?? 0)} color={colors.magenta} />
+          <StatBox label="Agendadas" value={String(resumo.agendadas ?? 0)} color={cssVar.info} />
+          <StatBox label="Enviando" value={String(resumo.enviando ?? 0)} color={cssVar.warning} />
+          <StatBox label="Enviadas" value={String(resumo.enviadas ?? 0)} color={cssVar.success} />
+          <StatBox label="Alcance 30d" value={String(resumo.alcanceUltimos30d ?? 0)} color={cssVar.magenta} />
         </div>
       )}
 
-      <div style={card}>
+      <div className={CARD}>
         <FilterBar>
           <SearchInput value={search} onChange={(v) => { setSearch(v); setPage(1); }} placeholder="Nome da campanha…" />
           <Select
@@ -437,13 +476,13 @@ export default function CampanhasPage() {
 
 // ─── Stat box ─────────────────────────────────────────────────────────────────
 
-function StatBox({ label, value, color = colors.text }: { label: string; value: string; color?: string }) {
+function StatBox({ label, value, color = cssVar.text }: { label: string; value: string; color?: string }) {
   return (
-    <div style={{ ...card, padding: '0.75rem' }}>
-      <div style={{ fontSize: 10, color: colors.muted, fontWeight: 700, textTransform: 'uppercase', letterSpacing: 0.4 }}>
+    <div className={cn(CARD, 'p-3')}>
+      <div className="text-[10px] text-muted font-bold uppercase tracking-[0.4px]">
         {label}
       </div>
-      <div style={{ fontSize: 22, fontWeight: 700, color, marginTop: 4 }}>{value}</div>
+      <div className="text-[22px] font-bold mt-1" style={{ color }}>{value}</div>
     </div>
   );
 }
@@ -500,15 +539,15 @@ function CampanhaDetailModal({
       size="lg"
       title={c?.nome ?? 'Campanha'}
       footer={
-        <div style={{ display: 'flex', gap: 8, justifyContent: 'space-between', width: '100%' }}>
-          <div style={{ display: 'flex', gap: 6 }}>
+        <div className="flex gap-2 justify-between w-full">
+          <div className="flex gap-1.5">
             {canManage && c?.status === 'RASCUNHO' && (
               <button
                 type="button"
                 data-testid="campanha-disparar"
                 disabled={acting}
                 onClick={() => callAction('disparar')}
-                style={btn}
+                className={BTN}
               >
                 ▶ Disparar agora
               </button>
@@ -519,7 +558,7 @@ function CampanhaDetailModal({
                 data-testid="campanha-pausar"
                 disabled={acting}
                 onClick={() => callAction('pausar')}
-                style={btnSecondary}
+                className={BTN_SECONDARY}
               >
                 ⏸ Pausar
               </button>
@@ -539,7 +578,7 @@ function CampanhaDetailModal({
                   });
                   if (ok) void callAction('cancelar');
                 }}
-                style={btnDanger}
+                className={BTN_DANGER}
               >
                 Cancelar
               </button>
@@ -550,20 +589,20 @@ function CampanhaDetailModal({
                 data-testid="campanha-reenviar-erros"
                 disabled={acting}
                 onClick={() => callAction('reenviar-erros')}
-                style={btnSecondary}
+                className={BTN_SECONDARY}
               >
                 ↻ Reenviar falhas ({metricas?.erros})
               </button>
             )}
           </div>
-          <button type="button" onClick={onClose} style={btnSecondary}>Fechar</button>
+          <button type="button" onClick={onClose} className={BTN_SECONDARY}>Fechar</button>
         </div>
       }
     >
       {/* Tabs */}
       <div
         role="tablist"
-        style={{ display: 'flex', gap: 4, marginBottom: '1rem', borderBottom: `1px solid ${colors.border}`, paddingBottom: '0.5rem' }}
+        className="flex gap-1 mb-4 border-b border-border pb-2"
       >
         {(['info', 'metricas', 'ia'] as DetailTab[]).map((t) => (
           <button
@@ -572,18 +611,10 @@ function CampanhaDetailModal({
             role="tab"
             aria-selected={tab === t}
             onClick={() => setTab(t)}
-            style={{
-              background: 'none',
-              border: 'none',
-              borderBottom: tab === t ? `2px solid ${colors.primary}` : '2px solid transparent',
-              color: tab === t ? colors.primary : colors.muted,
-              fontWeight: tab === t ? 600 : 400,
-              fontSize: 13,
-              padding: '4px 12px',
-              cursor: 'pointer',
-              fontFamily: 'inherit',
-              marginBottom: -9,
-            }}
+            className={cn(
+              'bg-none border-none text-[13px] px-3 py-1 cursor-pointer font-[inherit] mb-[-9px]',
+              tab === t ? 'border-b-2 border-primary text-primary font-semibold' : 'border-b-2 border-transparent text-muted font-normal',
+            )}
           >
             {t === 'info' ? 'Detalhes' : t === 'metricas' ? 'Métricas' : '✨ IA'}
           </button>
@@ -595,22 +626,22 @@ function CampanhaDetailModal({
           <>
             {tab === 'info' && (
               <div>
-                <header style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap', marginBottom: '1rem' }}>
-                  <span style={badge(STATUS_COLOR[c.status])}>{STATUS_LABEL[c.status]}</span>
-                  <span style={badge(CANAL_COLOR[c.canal])}>{CANAL_LABEL[c.canal]}</span>
+                <header className="flex gap-2 flex-wrap mb-4">
+                  <span className={BADGE_BASE} style={badgeStyle(STATUS_COLOR[c.status])}>{STATUS_LABEL[c.status]}</span>
+                  <span className={BADGE_BASE} style={badgeStyle(CANAL_COLOR[c.canal])}>{CANAL_LABEL[c.canal]}</span>
                   {c.usarIaPersonalizacao && (
-                    <span style={badge(colors.magenta)}>✨ IA personalização</span>
+                    <span className={BADGE_BASE} style={badgeStyle(cssVar.magenta)}>✨ IA personalização</span>
                   )}
                 </header>
 
                 {c.objetivo && (
-                  <div style={{ marginBottom: '1rem', padding: '0.75rem', background: colors.bgAlt, borderRadius: 6, border: `1px solid ${colors.border}` }}>
-                    <div style={{ fontSize: 11, color: colors.muted, fontWeight: 600, textTransform: 'uppercase', marginBottom: 4 }}>Objetivo</div>
-                    <p style={{ margin: 0, fontSize: 13 }}>{c.objetivo}</p>
+                  <div className="mb-4 p-3 bg-bg-alt rounded-md border border-border">
+                    <div className="text-[11px] text-muted font-semibold uppercase mb-1">Objetivo</div>
+                    <p className="m-0 text-[13px]">{c.objetivo}</p>
                   </div>
                 )}
 
-                <dl style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.75rem', fontSize: 13, marginBottom: '1rem' }}>
+                <dl className="grid grid-cols-2 gap-3 text-[13px] mb-4">
                   <Info label="Criado em">{fmtDate(c.criadoEm)}</Info>
                   <Info label="Agendado para">{fmtDate(c.agendadoPara)}</Info>
                   <Info label="Enviado em">{fmtDate(c.finalizadoEm ?? c.iniciadoEm)}</Info>
@@ -620,31 +651,31 @@ function CampanhaDetailModal({
                 {(c.mensagemWa || c.mensagemEmail) && (
                   <div>
                     {c.mensagemWa && (
-                      <div style={{ marginBottom: '0.75rem' }}>
-                        <div style={{ fontSize: 11, color: colors.muted, fontWeight: 600, textTransform: 'uppercase', marginBottom: 4 }}>
+                      <div className="mb-3">
+                        <div className="text-[11px] text-muted font-semibold uppercase mb-1">
                           Mensagem WhatsApp
                         </div>
-                        <pre style={{ margin: 0, padding: '0.75rem', background: colors.bgAlt, border: `1px solid ${colors.border}`, borderRadius: 6, fontSize: 13, whiteSpace: 'pre-wrap', fontFamily: 'inherit' }}>
+                        <pre className="m-0 p-3 bg-bg-alt border border-border rounded-md text-[13px] whitespace-pre-wrap font-[inherit]">
                           {c.mensagemWa}
                         </pre>
                       </div>
                     )}
                     {c.assunto && (
-                      <div style={{ marginBottom: '0.5rem' }}>
-                        <div style={{ fontSize: 11, color: colors.muted, fontWeight: 600, textTransform: 'uppercase', marginBottom: 4 }}>
+                      <div className="mb-2">
+                        <div className="text-[11px] text-muted font-semibold uppercase mb-1">
                           Assunto e-mail
                         </div>
-                        <p style={{ margin: 0, padding: '0.5rem 0.75rem', background: colors.bgAlt, border: `1px solid ${colors.border}`, borderRadius: 6, fontSize: 13 }}>
+                        <p className="m-0 px-3 py-2 bg-bg-alt border border-border rounded-md text-[13px]">
                           {c.assunto}
                         </p>
                       </div>
                     )}
                     {c.mensagemEmail && (
                       <div>
-                        <div style={{ fontSize: 11, color: colors.muted, fontWeight: 600, textTransform: 'uppercase', marginBottom: 4 }}>
+                        <div className="text-[11px] text-muted font-semibold uppercase mb-1">
                           Corpo e-mail
                         </div>
-                        <pre style={{ margin: 0, padding: '0.75rem', background: colors.bgAlt, border: `1px solid ${colors.border}`, borderRadius: 6, fontSize: 13, whiteSpace: 'pre-wrap', fontFamily: 'inherit', maxHeight: 200, overflowY: 'auto' }}>
+                        <pre className="m-0 p-3 bg-bg-alt border border-border rounded-md text-[13px] whitespace-pre-wrap font-[inherit] max-h-[200px] overflow-y-auto">
                           {c.mensagemEmail}
                         </pre>
                       </div>
@@ -657,12 +688,12 @@ function CampanhaDetailModal({
             {tab === 'metricas' && (
               <div>
                 {c.destinatarios && c.destinatarios.length > 0 && (
-                  <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: '0.5rem' }}>
+                  <div className="flex justify-end mb-2">
                     <button
                       type="button"
                       data-testid="campanha-export-csv"
                       onClick={() => exportarResultadosCsv(c)}
-                      style={{ ...btnSecondary, fontSize: 12 }}
+                      className={cn(BTN_SECONDARY, 'text-[12px]')}
                     >
                       ⬇ Exportar CSV
                     </button>
@@ -681,24 +712,17 @@ function CampanhaDetailModal({
                     const taxaErro = total > 0 ? (erros / total) * 100 : 0;
                     return (
                       <>
-                        <div
-                          style={{
-                            display: 'grid',
-                            gridTemplateColumns: 'repeat(auto-fit, minmax(130px, 1fr))',
-                            gap: '0.75rem',
-                            marginBottom: '1rem',
-                          }}
-                        >
+                        <div className="grid grid-cols-[repeat(auto-fit,minmax(130px,1fr))] gap-3 mb-4">
                           <Stat label="Destinatários" value={String(total)} />
-                          <Stat label="Enviados" value={String(enviados)} color={colors.success} />
-                          <Stat label="Falhas" value={String(erros)} color={erros > 0 ? colors.danger : colors.muted} />
-                          <Stat label="Lidos" value={String(lidos)} color={colors.info} />
-                          <Stat label="Taxa envio" value={fmtPct(taxaEnvio)} color={colors.success} />
-                          <Stat label="Taxa leitura" value={fmtPct(taxaLeitura)} color={colors.info} />
-                          <Stat label="Taxa erro" value={fmtPct(taxaErro)} color={taxaErro > 5 ? colors.danger : colors.muted} />
+                          <Stat label="Enviados" value={String(enviados)} color={cssVar.success} />
+                          <Stat label="Falhas" value={String(erros)} color={erros > 0 ? cssVar.danger : cssVar.muted} />
+                          <Stat label="Lidos" value={String(lidos)} color={cssVar.info} />
+                          <Stat label="Taxa envio" value={fmtPct(taxaEnvio)} color={cssVar.success} />
+                          <Stat label="Taxa leitura" value={fmtPct(taxaLeitura)} color={cssVar.info} />
+                          <Stat label="Taxa erro" value={fmtPct(taxaErro)} color={taxaErro > 5 ? cssVar.danger : cssVar.muted} />
                         </div>
                         {total === 0 && (
-                          <p style={{ color: colors.muted, fontSize: 13, marginTop: 0 }}>
+                          <p className="text-muted text-[13px] mt-0">
                             Campanha ainda não disparada ou sem destinatários.
                           </p>
                         )}
@@ -706,7 +730,7 @@ function CampanhaDetailModal({
                     );
                   })()
                 ) : (
-                  <p style={{ color: colors.muted }}>Carregando métricas…</p>
+                  <p className="text-muted">Carregando métricas…</p>
                 )}
               </div>
             )}
@@ -824,11 +848,11 @@ function IAPanel({ campanha }: { campanha: CampanhaDetail }) {
 
   return (
     <div>
-      <p style={{ marginTop: 0, fontSize: 13, color: colors.muted }}>
+      <p className="mt-0 text-[13px] text-muted">
         Ferramentas de IA pra criação e análise de campanhas. Usa OpenAI (chave da empresa ou do usuário logado).
       </p>
 
-      <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginBottom: '1rem' }}>
+      <div className="flex gap-1.5 flex-wrap mb-4">
         {IA_TOOLS.map((tool) => (
           <button
             key={tool.key}
@@ -836,14 +860,13 @@ function IAPanel({ campanha }: { campanha: CampanhaDetail }) {
             data-testid={`ia-${tool.key}`}
             disabled={tool.disabled}
             onClick={() => { setIaMode(tool.key); setIaError(null); }}
+            className={cn(BTN_SECONDARY, 'text-[12px]')}
             style={{
-              ...btnSecondary,
-              fontSize: 12,
               opacity: tool.disabled ? 0.4 : 1,
               cursor: tool.disabled ? 'not-allowed' : 'pointer',
-              background: iaMode === tool.key ? colors.primaryLight : undefined,
-              color: iaMode === tool.key ? colors.primary : undefined,
-              borderColor: iaMode === tool.key ? colors.primary : undefined,
+              background: iaMode === tool.key ? cssVar.primaryLight : undefined,
+              color: iaMode === tool.key ? cssVar.primary : undefined,
+              borderColor: iaMode === tool.key ? cssVar.primary : undefined,
             }}
           >
             {tool.label}
@@ -852,12 +875,12 @@ function IAPanel({ campanha }: { campanha: CampanhaDetail }) {
       </div>
 
       {iaError && (
-        <p style={{ color: colors.danger, fontSize: 13, margin: '0 0 0.75rem' }}>{iaError}</p>
+        <p className="text-danger text-[13px] m-0 mb-3">{iaError}</p>
       )}
 
       {/* Gerar conteúdo */}
       {iaMode === 'gerar' && (
-        <div style={{ background: colors.bgAlt, border: `1px solid ${colors.border}`, borderRadius: 8, padding: '0.875rem' }}>
+        <div className="bg-bg-alt border border-border rounded-lg p-3.5">
           <FormField label="Objetivo da campanha" htmlFor="ia-obj">
             <Textarea
               id="ia-obj"
@@ -880,25 +903,26 @@ function IAPanel({ campanha }: { campanha: CampanhaDetail }) {
             type="button"
             disabled={busy || objetivo.trim().length < 10}
             onClick={gerarConteudo}
-            style={{ ...btn, opacity: busy || objetivo.trim().length < 10 ? 0.6 : 1 }}
+            className={BTN}
+            style={{ opacity: busy || objetivo.trim().length < 10 ? 0.6 : 1 }}
           >
             {busy ? 'Gerando…' : 'Gerar conteúdo'}
           </button>
           {gerarResult && (
-            <div style={{ marginTop: '0.875rem', display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+            <div className="mt-3.5 flex flex-col gap-2">
               {gerarResult.mensagemWa && <IAResultBlock label="WhatsApp" text={gerarResult.mensagemWa} />}
               {gerarResult.assunto && <IAResultBlock label="Assunto e-mail" text={gerarResult.assunto} />}
               {gerarResult.mensagemEmail && <IAResultBlock label="Corpo e-mail" text={gerarResult.mensagemEmail} />}
               {gerarResult.variacoes && gerarResult.variacoes.length > 0 && (
                 <div>
-                  <div style={{ fontSize: 11, color: colors.muted, textTransform: 'uppercase', marginBottom: 4 }}>Variações</div>
+                  <div className="text-[11px] text-muted uppercase mb-1">Variações</div>
                   {gerarResult.variacoes.map((v, i) => (
                     <IAResultBlock key={i} label={`Variação ${i + 1}`} text={v.mensagemWa ?? v.mensagemEmail ?? JSON.stringify(v)} />
                   ))}
                 </div>
               )}
               {(gerarResult.tokensIn || gerarResult.tokensOut) && (
-                <p style={{ fontSize: 11, color: colors.muted, margin: 0 }}>
+                <p className="text-[11px] text-muted m-0">
                   Tokens: {gerarResult.tokensIn}↓ {gerarResult.tokensOut}↑
                 </p>
               )}
@@ -909,7 +933,7 @@ function IAPanel({ campanha }: { campanha: CampanhaDetail }) {
 
       {/* Otimizar */}
       {iaMode === 'otimizar' && (
-        <div style={{ background: colors.bgAlt, border: `1px solid ${colors.border}`, borderRadius: 8, padding: '0.875rem' }}>
+        <div className="bg-bg-alt border border-border rounded-lg p-3.5">
           <FormField label="Mensagem a otimizar">
             <Textarea
               value={otimizarTexto}
@@ -923,20 +947,21 @@ function IAPanel({ campanha }: { campanha: CampanhaDetail }) {
             type="button"
             disabled={busy || otimizarTexto.trim().length < 10}
             onClick={otimizarMensagem}
-            style={{ ...btn, opacity: busy || otimizarTexto.trim().length < 10 ? 0.6 : 1 }}
+            className={BTN}
+            style={{ opacity: busy || otimizarTexto.trim().length < 10 ? 0.6 : 1 }}
           >
             {busy ? 'Otimizando…' : 'Otimizar'}
           </button>
           {otimizarResult && (
-            <div style={{ marginTop: '0.875rem', display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+            <div className="mt-3.5 flex flex-col gap-2">
               <IAResultBlock label="Versão otimizada" text={otimizarResult.melhorada} />
               {otimizarResult.variacoes?.map((v, i) => (
                 <IAResultBlock key={i} label={`Variação ${i + 1}`} text={v} />
               ))}
               {otimizarResult.dicas && otimizarResult.dicas.length > 0 && (
                 <div>
-                  <div style={{ fontSize: 11, color: colors.muted, textTransform: 'uppercase', marginBottom: 4 }}>Dicas de copywriting</div>
-                  <ul style={{ margin: 0, padding: '0 0 0 16px', fontSize: 12, color: colors.muted }}>
+                  <div className="text-[11px] text-muted uppercase mb-1">Dicas de copywriting</div>
+                  <ul className="m-0 pl-4 text-[12px] text-muted">
                     {otimizarResult.dicas.map((d, i) => <li key={i}>{d}</li>)}
                   </ul>
                 </div>
@@ -948,7 +973,7 @@ function IAPanel({ campanha }: { campanha: CampanhaDetail }) {
 
       {/* Sugerir segmento */}
       {iaMode === 'sugerir' && (
-        <div style={{ background: colors.bgAlt, border: `1px solid ${colors.border}`, borderRadius: 8, padding: '0.875rem' }}>
+        <div className="bg-bg-alt border border-border rounded-lg p-3.5">
           <FormField label="Objetivo" htmlFor="ia-sobj">
             <Textarea
               id="ia-sobj"
@@ -963,25 +988,26 @@ function IAPanel({ campanha }: { campanha: CampanhaDetail }) {
             type="button"
             disabled={busy || sugerirObj.trim().length < 10}
             onClick={sugerirSegmento}
-            style={{ ...btn, opacity: busy || sugerirObj.trim().length < 10 ? 0.6 : 1 }}
+            className={BTN}
+            style={{ opacity: busy || sugerirObj.trim().length < 10 ? 0.6 : 1 }}
           >
             {busy ? 'Analisando base…' : 'Sugerir segmento'}
           </button>
           {sugerirResult && (
-            <div style={{ marginTop: '0.875rem', display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+            <div className="mt-3.5 flex flex-col gap-2">
               {sugerirResult.segmentosTextuais && sugerirResult.segmentosTextuais.length > 0 && (
                 <IAResultBlock label="Segmentos sugeridos" text={sugerirResult.segmentosTextuais.join('\n')} />
               )}
               {sugerirResult.justificativa && <IAResultBlock label="Justificativa" text={sugerirResult.justificativa} />}
-              {sugerirResult.tonRecomendado && <p style={{ margin: 0, fontSize: 12 }}>Tom ideal: <strong>{sugerirResult.tonRecomendado}</strong></p>}
-              {sugerirResult.melhorHorario && <p style={{ margin: 0, fontSize: 12 }}>Melhor horário: <strong>{sugerirResult.melhorHorario}</strong></p>}
+              {sugerirResult.tonRecomendado && <p className="m-0 text-[12px]">Tom ideal: <strong>{sugerirResult.tonRecomendado}</strong></p>}
+              {sugerirResult.melhorHorario && <p className="m-0 text-[12px]">Melhor horário: <strong>{sugerirResult.melhorHorario}</strong></p>}
               {sugerirResult.estimativaAlcance !== undefined && sugerirResult.estimativaAlcance > 0 && (
-                <p style={{ margin: 0, fontSize: 12 }}>Estimativa de alcance: <strong>{sugerirResult.estimativaAlcance}</strong> clientes</p>
+                <p className="m-0 text-[12px]">Estimativa de alcance: <strong>{sugerirResult.estimativaAlcance}</strong> clientes</p>
               )}
               {sugerirResult.tagIds && sugerirResult.tagIds.length > 0 && (
-                <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap' }}>
+                <div className="flex gap-1 flex-wrap">
                   {sugerirResult.tagIds.map((id) => (
-                    <span key={id} style={badge(colors.primary)}>{tagNome(id)}</span>
+                    <span key={id} className={BADGE_BASE} style={badgeStyle(cssVar.primary)}>{tagNome(id)}</span>
                   ))}
                 </div>
               )}
@@ -992,59 +1018,60 @@ function IAPanel({ campanha }: { campanha: CampanhaDetail }) {
 
       {/* Analisar resultado */}
       {iaMode === 'analisar' && (
-        <div style={{ background: colors.bgAlt, border: `1px solid ${colors.border}`, borderRadius: 8, padding: '0.875rem' }}>
-          <p style={{ margin: '0 0 0.75rem', fontSize: 13, color: colors.muted }}>
+        <div className="bg-bg-alt border border-border rounded-lg p-3.5">
+          <p className="m-0 mb-3 text-[13px] text-muted">
             Analisa os resultados desta campanha e retorna insights acionáveis.
           </p>
           <button
             type="button"
             disabled={busy}
             onClick={analisarResultado}
-            style={{ ...btn, opacity: busy ? 0.6 : 1 }}
+            className={BTN}
+            style={{ opacity: busy ? 0.6 : 1 }}
           >
             {busy ? 'Analisando…' : '📊 Analisar agora'}
           </button>
           {analisarResult && (
-            <div style={{ marginTop: '0.875rem', display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
+            <div className="mt-3.5 flex flex-col gap-3">
               {analisarResult.scorePerformance !== undefined && (
-                <div style={{ fontSize: 22, fontWeight: 700, color: analisarResult.scorePerformance >= 7 ? colors.success : analisarResult.scorePerformance >= 5 ? colors.warning : colors.danger }}>
+                <div className="text-[22px] font-bold" style={{ color: analisarResult.scorePerformance >= 7 ? cssVar.success : analisarResult.scorePerformance >= 5 ? cssVar.warning : cssVar.danger }}>
                   Score: {analisarResult.scorePerformance}/10
                 </div>
               )}
               {analisarResult.resumoExecutivo && (
                 <div>
-                  <div style={{ fontSize: 11, color: colors.muted, textTransform: 'uppercase', marginBottom: 4 }}>Resumo executivo</div>
-                  <p style={{ margin: 0, fontSize: 13, lineHeight: 1.6 }}>{analisarResult.resumoExecutivo}</p>
+                  <div className="text-[11px] text-muted uppercase mb-1">Resumo executivo</div>
+                  <p className="m-0 text-[13px] leading-[1.6]">{analisarResult.resumoExecutivo}</p>
                 </div>
               )}
               {analisarResult.pontosFortes && analisarResult.pontosFortes.length > 0 && (
                 <div>
-                  <div style={{ fontSize: 11, color: colors.success, textTransform: 'uppercase', marginBottom: 4 }}>Pontos fortes</div>
-                  <ul style={{ margin: 0, padding: '0 0 0 16px', fontSize: 13, lineHeight: 1.6 }}>
+                  <div className="text-[11px] text-success uppercase mb-1">Pontos fortes</div>
+                  <ul className="m-0 pl-4 text-[13px] leading-[1.6]">
                     {analisarResult.pontosFortes.map((p, i) => <li key={i}>{p}</li>)}
                   </ul>
                 </div>
               )}
               {analisarResult.pontosAMelhorar && analisarResult.pontosAMelhorar.length > 0 && (
                 <div>
-                  <div style={{ fontSize: 11, color: colors.warning, textTransform: 'uppercase', marginBottom: 4 }}>A melhorar</div>
-                  <ul style={{ margin: 0, padding: '0 0 0 16px', fontSize: 13, lineHeight: 1.6 }}>
+                  <div className="text-[11px] text-warning uppercase mb-1">A melhorar</div>
+                  <ul className="m-0 pl-4 text-[13px] leading-[1.6]">
                     {analisarResult.pontosAMelhorar.map((m, i) => <li key={i}>{m}</li>)}
                   </ul>
                 </div>
               )}
               {analisarResult.recomendacoes && analisarResult.recomendacoes.length > 0 && (
                 <div>
-                  <div style={{ fontSize: 11, color: colors.info, textTransform: 'uppercase', marginBottom: 4 }}>Recomendações</div>
-                  <ul style={{ margin: 0, padding: '0 0 0 16px', fontSize: 13, lineHeight: 1.6 }}>
+                  <div className="text-[11px] text-info uppercase mb-1">Recomendações</div>
+                  <ul className="m-0 pl-4 text-[13px] leading-[1.6]">
                     {analisarResult.recomendacoes.map((r, i) => <li key={i}>{r}</li>)}
                   </ul>
                 </div>
               )}
               {analisarResult.proximasCampanhas && analisarResult.proximasCampanhas.length > 0 && (
                 <div>
-                  <div style={{ fontSize: 11, color: colors.magenta, textTransform: 'uppercase', marginBottom: 4 }}>Próximas campanhas</div>
-                  <ul style={{ margin: 0, padding: '0 0 0 16px', fontSize: 13, lineHeight: 1.6 }}>
+                  <div className="text-[11px] text-magenta uppercase mb-1">Próximas campanhas</div>
+                  <ul className="m-0 pl-4 text-[13px] leading-[1.6]">
                     {analisarResult.proximasCampanhas.map((p, i) => <li key={i}>{p}</li>)}
                   </ul>
                 </div>
@@ -1061,19 +1088,19 @@ function IAResultBlock({ label, text }: { label: string; text: string }) {
   const { success } = useToast();
   return (
     <div>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 }}>
-        <div style={{ fontSize: 11, color: colors.muted, textTransform: 'uppercase', fontWeight: 600 }}>{label}</div>
+      <div className="flex justify-between items-center mb-1">
+        <div className="text-[11px] text-muted uppercase font-semibold">{label}</div>
         <button
           type="button"
           onClick={() => {
             navigator.clipboard.writeText(text).then(() => success('Copiado!')).catch(() => {});
           }}
-          style={{ ...btnSecondary, fontSize: 10, padding: '2px 8px' }}
+          className={cn(BTN_SECONDARY, 'text-[10px] px-2 py-0.5')}
         >
           Copiar
         </button>
       </div>
-      <pre style={{ margin: 0, padding: '0.625rem', background: colors.surface, border: `1px solid ${colors.border}`, borderRadius: 6, fontSize: 12, whiteSpace: 'pre-wrap', fontFamily: 'inherit', lineHeight: 1.5 }}>
+      <pre className="m-0 p-2.5 bg-surface border border-border rounded-md text-[12px] whitespace-pre-wrap font-[inherit] leading-[1.5]">
         {text}
       </pre>
     </div>
@@ -1193,13 +1220,14 @@ function CreateCampanhaModal({
       title="Nova campanha"
       footer={
         <>
-          <button type="button" onClick={onClose} style={btnSecondary}>Cancelar</button>
+          <button type="button" onClick={onClose} className={BTN_SECONDARY}>Cancelar</button>
           <button
             type="submit"
             form="campanha-form"
             data-testid="campanha-save"
             disabled={busy}
-            style={{ ...btn, opacity: busy ? 0.6 : 1 }}
+            className={BTN}
+            style={{ opacity: busy ? 0.6 : 1 }}
           >
             {busy ? 'Criando…' : agendado ? 'Agendar' : 'Criar (rascunho)'}
           </button>
@@ -1276,7 +1304,7 @@ function CreateCampanhaModal({
           </>
         )}
 
-        <label style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', fontSize: 13, marginTop: '0.5rem', cursor: 'pointer' }}>
+        <label className="flex items-center gap-2 text-[13px] mt-2 cursor-pointer">
           <input
             type="checkbox"
             data-testid="campanha-ia"
@@ -1289,19 +1317,12 @@ function CreateCampanhaModal({
         {/* ── Destinatários (segmentação por tags) ───────────────────── */}
         <FormField label="Destinatários" hint="Sem tags selecionadas = toda a base ativa da empresa">
           {tags.length === 0 ? (
-            <span style={{ fontSize: 12, color: colors.muted, fontStyle: 'italic' }}>
+            <span className="text-[12px] text-muted italic">
               Nenhuma tag cadastrada — campanha será enviada pra toda a base
             </span>
           ) : (
             <div
-              style={{
-                display: 'flex',
-                flexWrap: 'wrap',
-                gap: '0.375rem',
-                maxHeight: 110,
-                overflowY: 'auto',
-                padding: '0.25rem 0',
-              }}
+              className="flex flex-wrap gap-1.5 max-h-[110px] overflow-y-auto py-1"
               data-testid="campanha-tags"
             >
               {tags.map((t) => {
@@ -1312,20 +1333,19 @@ function CreateCampanhaModal({
                     type="button"
                     onClick={() => toggleTag(t.id)}
                     data-testid={`tag-pill-${t.id}`}
+                    className={cn(
+                      'text-[12px] px-2.5 py-1 rounded-full border cursor-pointer',
+                      selected ? 'font-semibold' : 'font-normal',
+                    )}
                     style={{
-                      fontSize: 12,
-                      padding: '0.25rem 0.625rem',
-                      borderRadius: 999,
-                      border: `1px solid ${selected ? colors.primary : colors.border}`,
-                      background: selected ? colors.primaryLight ?? '#ecebf3' : 'transparent',
-                      color: selected ? colors.primary : colors.text,
-                      cursor: 'pointer',
-                      fontWeight: selected ? 600 : 400,
+                      borderColor: selected ? cssVar.primary : cssVar.border,
+                      background: selected ? cssVar.primaryLight ?? '#ecebf3' : 'transparent',
+                      color: selected ? cssVar.primary : cssVar.text,
                     }}
                   >
                     {t.nome}
                     {t.clientesCount !== undefined && (
-                      <span style={{ marginLeft: 4, opacity: 0.6 }}>· {t.clientesCount}</span>
+                      <span className="ml-1 opacity-60">· {t.clientesCount}</span>
                     )}
                   </button>
                 );
@@ -1336,8 +1356,8 @@ function CreateCampanhaModal({
 
         {/* ── Agendamento ──────────────────────────────────────────── */}
         <FormField label="Quando enviar">
-          <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center', flexWrap: 'wrap' }}>
-            <label style={{ display: 'flex', gap: '0.375rem', alignItems: 'center', fontSize: 13, cursor: 'pointer' }}>
+          <div className="flex gap-2 items-center flex-wrap">
+            <label className="flex gap-1.5 items-center text-[13px] cursor-pointer">
               <input
                 type="radio"
                 name="agendamento"
@@ -1347,7 +1367,7 @@ function CreateCampanhaModal({
               />
               Agora (rascunho → disparar manual depois)
             </label>
-            <label style={{ display: 'flex', gap: '0.375rem', alignItems: 'center', fontSize: 13, cursor: 'pointer' }}>
+            <label className="flex gap-1.5 items-center text-[13px] cursor-pointer">
               <input
                 type="radio"
                 name="agendamento"
@@ -1374,36 +1394,26 @@ function CreateCampanhaModal({
           <FormField label="Preview" hint="Como o cliente vai receber (com merge tags substituídos)">
             <div
               data-testid="campanha-preview"
-              style={{
-                background: colors.bgAlt,
-                border: `1px solid ${colors.border}`,
-                borderRadius: 8,
-                padding: '0.75rem',
-                fontSize: 13,
-                whiteSpace: 'pre-wrap',
-                color: colors.text,
-                maxHeight: 200,
-                overflowY: 'auto',
-              }}
+              className="bg-bg-alt border border-border rounded-lg p-3 text-[13px] whitespace-pre-wrap text-text max-h-[200px] overflow-y-auto"
             >
               {precisaWa && mensagemWa.trim() && (
                 <>
-                  <div style={{ fontSize: 10, color: colors.muted, marginBottom: 4, fontWeight: 600 }}>
+                  <div className="text-[10px] text-muted mb-1 font-semibold">
                     📱 WhatsApp
                   </div>
                   <div>{preview(mensagemWa)}</div>
                 </>
               )}
               {precisaWa && precisaEmail && mensagemWa.trim() && mensagemEmail.trim() && (
-                <hr style={{ margin: '0.5rem 0', border: 0, borderTop: `1px solid ${colors.border}` }} />
+                <hr className="my-2 border-0 border-t border-border" />
               )}
               {precisaEmail && mensagemEmail.trim() && (
                 <>
-                  <div style={{ fontSize: 10, color: colors.muted, marginBottom: 4, fontWeight: 600 }}>
+                  <div className="text-[10px] text-muted mb-1 font-semibold">
                     ✉️ E-mail
                   </div>
                   {assunto.trim() && (
-                    <div style={{ fontSize: 12, fontWeight: 600, marginBottom: 4 }}>
+                    <div className="text-[12px] font-semibold mb-1">
                       {preview(assunto)}
                     </div>
                   )}
@@ -1414,7 +1424,7 @@ function CreateCampanhaModal({
           </FormField>
         ) : null}
 
-        {formError && <p style={{ color: colors.danger, fontSize: 13, marginTop: '0.5rem' }}>{formError}</p>}
+        {formError && <p className="text-danger text-[13px] mt-2">{formError}</p>}
       </form>
     </Dialog>
   );
@@ -1425,19 +1435,19 @@ function CreateCampanhaModal({
 function Info({ label, children }: { label: string; children: React.ReactNode }) {
   return (
     <div>
-      <div style={{ fontSize: 11, textTransform: 'uppercase', color: colors.muted, marginBottom: 2, letterSpacing: 0.3, fontWeight: 600 }}>
+      <div className="text-[11px] uppercase text-muted mb-0.5 tracking-[0.3px] font-semibold">
         {label}
       </div>
-      <div style={{ fontSize: 13 }}>{children}</div>
+      <div className="text-[13px]">{children}</div>
     </div>
   );
 }
 
-function Stat({ label, value, color = colors.text }: { label: string; value: string; color?: string }) {
+function Stat({ label, value, color = cssVar.text }: { label: string; value: string; color?: string }) {
   return (
-    <div style={{ background: colors.bgAlt, border: `1px solid ${colors.border}`, borderRadius: 6, padding: '0.625rem' }}>
-      <div style={{ fontSize: 9, color: colors.muted, textTransform: 'uppercase', letterSpacing: 0.4, fontWeight: 700 }}>{label}</div>
-      <div style={{ fontSize: 18, fontWeight: 700, color, marginTop: 2 }}>{value}</div>
+    <div className="bg-bg-alt border border-border rounded-md p-2.5">
+      <div className="text-[9px] text-muted uppercase tracking-[0.4px] font-bold">{label}</div>
+      <div className="text-[18px] font-bold mt-0.5" style={{ color }}>{value}</div>
     </div>
   );
 }

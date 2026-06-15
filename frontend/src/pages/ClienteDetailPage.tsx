@@ -17,7 +17,29 @@ import {
   formatMoeda as fmtBRL,
   formatNumero,
 } from '@/lib/masks';
-import { badge, btn, btnDanger, btnSecondary, card, colors } from '@/components/styles';
+import { cn } from '@/lib/cn';
+
+// ─── Estilos legados traduzidos pra Tailwind ─────────────────────────
+
+// Classes Tailwind equivalentes aos objetos do styles.ts (pixel-idênticas).
+const cardCls = 'bg-surface border border-border rounded-[10px] p-6';
+const btnCls =
+  'bg-primary text-primary-contrast rounded-md px-4 py-2 text-[13px] font-semibold cursor-pointer tracking-[-0.1px]';
+const btnSecondaryCls =
+  'bg-surface text-text border border-border-strong rounded-md px-4 py-2 text-[13px] font-medium cursor-pointer tracking-[-0.1px]';
+const btnDangerCls =
+  'bg-danger text-white rounded-md px-4 py-2 text-[13px] font-semibold cursor-pointer tracking-[-0.1px]';
+
+// Badge com cor dinâmica — replica badge() do styles.ts via color-mix.
+function badgeStyle(color: string): React.CSSProperties {
+  return {
+    background: `color-mix(in srgb, ${color} 12%, transparent)`,
+    color,
+    border: `1px solid color-mix(in srgb, ${color} 19%, transparent)`,
+  };
+}
+const badgeCls =
+  'inline-flex items-center rounded-full px-[9px] py-0.5 text-[11px] font-semibold leading-[1.6] tracking-[0.2px]';
 
 // ─── Tipos compartilhados ────────────────────────────────────────────
 
@@ -77,16 +99,16 @@ interface ProdutoOpt {
 }
 
 const STATUS_COLOR: Record<ClienteStatus, string> = {
-  ATIVO: colors.success,
+  ATIVO: 'var(--success)',
   NOVO: '#0891b2',
   PROSPECT: '#7c3aed',
-  RISCO: colors.warning,
-  CRITICO: colors.danger,
-  INATIVO: colors.muted,
+  RISCO: 'var(--warning)',
+  CRITICO: 'var(--danger)',
+  INATIVO: 'var(--muted)',
 };
 const OMIE_COLOR: Record<OmieStatus, string> = {
-  ATIVO: colors.success,
-  BLOQUEADO: colors.danger,
+  ATIVO: 'var(--success)',
+  BLOQUEADO: 'var(--danger)',
 };
 
 type Tab =
@@ -128,14 +150,14 @@ const PEDIDO_STATUS_LABEL: Record<PedidoLite['status'], string> = {
 };
 
 const PEDIDO_STATUS_COLOR: Record<PedidoLite['status'], string> = {
-  RASCUNHO: colors.muted,
-  AGUARDANDO_APROVACAO: colors.warning,
-  ENVIADO_OMIE: colors.info,
-  PAGO: colors.success,
-  EM_SEPARACAO: colors.primary,
-  ENVIADO: colors.info,
-  ENTREGUE: colors.success,
-  CANCELADO: colors.danger,
+  RASCUNHO: 'var(--muted)',
+  AGUARDANDO_APROVACAO: 'var(--warning)',
+  ENVIADO_OMIE: 'var(--info)',
+  PAGO: 'var(--success)',
+  EM_SEPARACAO: 'var(--primary)',
+  ENVIADO: 'var(--info)',
+  ENTREGUE: 'var(--success)',
+  CANCELADO: 'var(--danger)',
 };
 
 function fmtSize(b: number) {
@@ -176,18 +198,18 @@ export default function ClienteDetailPage() {
     <PageLayout
       title={cliente ? cliente.nome : 'Cliente'}
       actions={
-        <div style={{ display: 'flex', gap: '0.5rem' }}>
+        <div className="flex gap-2">
           {cliente && (
             <button
               type="button"
               data-testid="cliente-page-criar-pedido"
               onClick={() => setCriarPedido(true)}
-              style={btn}
+              className={btnCls}
             >
               + Criar pedido
             </button>
           )}
-          <Link to="/clientes" style={{ ...btnSecondary, textDecoration: 'none' }}>
+          <Link to="/clientes" className={cn(btnSecondaryCls, 'no-underline')}>
             ← Voltar pra lista
           </Link>
         </div>
@@ -197,31 +219,29 @@ export default function ClienteDetailPage() {
         {cliente && (
           <>
             <MetricasCard clienteId={cliente.id} />
-            <div
-              style={{
-                display: 'flex',
-                alignItems: 'center',
-                gap: '0.5rem',
-                marginBottom: '1rem',
-                flexWrap: 'wrap',
-              }}
-            >
-              <span style={badge(STATUS_COLOR[cliente.status])}>{cliente.status}</span>
-              <span style={badge(OMIE_COLOR[cliente.omieStatus])}>OMIE {cliente.omieStatus}</span>
+            <div className="flex items-center gap-2 mb-4 flex-wrap">
+              <span className={badgeCls} style={badgeStyle(STATUS_COLOR[cliente.status])}>
+                {cliente.status}
+              </span>
+              <span className={badgeCls} style={badgeStyle(OMIE_COLOR[cliente.omieStatus])}>
+                OMIE {cliente.omieStatus}
+              </span>
               {cliente.cnpj && (
-                <span style={{ fontSize: 13, color: colors.muted }}>
-                  CNPJ {cliente.cnpj}
-                </span>
+                <span className="text-[13px] text-muted">CNPJ {cliente.cnpj}</span>
               )}
               {cliente.representante?.nome && (
-                <span style={{ fontSize: 13, color: colors.muted }}>
+                <span className="text-[13px] text-muted">
                   Representante: <strong>{cliente.representante.nome}</strong>
                 </span>
               )}
               {cliente.tags && cliente.tags.length > 0 && (
-                <span style={{ display: 'flex', gap: 4, flexWrap: 'wrap' }}>
+                <span className="flex gap-1 flex-wrap">
                   {cliente.tags.map((t) => (
-                    <span key={t.id} style={badge(t.cor ?? colors.muted)}>
+                    <span
+                      key={t.id}
+                      className={badgeCls}
+                      style={badgeStyle(t.cor ?? 'var(--muted)')}
+                    >
                       {t.nome}
                     </span>
                   ))}
@@ -229,15 +249,7 @@ export default function ClienteDetailPage() {
               )}
             </div>
 
-            <div
-              role="tablist"
-              style={{
-                display: 'flex',
-                gap: 0,
-                borderBottom: `1px solid ${colors.border}`,
-                marginBottom: '1rem',
-              }}
-            >
+            <div role="tablist" className="flex gap-0 border-b border-border mb-4">
               <TabButton current={tab} value="dados" onChange={setTab}>
                 Dados
               </TabButton>
@@ -316,18 +328,12 @@ function TabButton({
       aria-selected={active}
       data-testid={`tab-${value}`}
       onClick={() => onChange(value)}
-      style={{
-        background: 'transparent',
-        border: 'none',
-        borderBottom: `2px solid ${active ? colors.primary : 'transparent'}`,
-        padding: '0.625rem 1rem',
-        cursor: 'pointer',
-        fontFamily: 'inherit',
-        color: active ? colors.primary : colors.muted,
-        fontWeight: active ? 600 : 500,
-        fontSize: 14,
-        marginBottom: -1,
-      }}
+      className={cn(
+        'bg-transparent border-x-0 border-t-0 border-b-2 border-solid px-4 py-2.5 cursor-pointer font-[inherit] text-[14px] mb-[-1px]',
+        active
+          ? 'border-b-primary text-primary font-semibold'
+          : 'border-b-transparent text-muted font-medium',
+      )}
     >
       {children}
     </button>
@@ -401,7 +407,7 @@ function DadosTab({
   }
 
   return (
-    <div style={card}>
+    <div className={cardCls}>
       <form onSubmit={save}>
         <FormField label="Nome" required>
           <Input
@@ -411,7 +417,7 @@ function DadosTab({
             minLength={2}
           />
         </FormField>
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '0.75rem' }}>
+        <div className="grid grid-cols-3 gap-3">
           <FormField label="CNPJ">
             <Input
               value={form.cnpj}
@@ -505,13 +511,13 @@ function DadosTab({
         </div>
 
         {error && (
-          <p data-testid="form-error" style={{ color: colors.danger, fontSize: 13 }}>
+          <p data-testid="form-error" className="text-danger text-[13px]">
             {error}
           </p>
         )}
 
-        <div style={{ display: 'flex', gap: '0.5rem', marginTop: '1rem' }}>
-          <button type="submit" data-testid="cliente-save" disabled={busy} style={btn}>
+        <div className="flex gap-2 mt-4">
+          <button type="submit" data-testid="cliente-save" disabled={busy} className={btnCls}>
             {busy ? 'Salvando…' : 'Salvar alterações'}
           </button>
           {!confirmDel && (
@@ -519,14 +525,18 @@ function DadosTab({
               type="button"
               data-testid="cliente-del"
               onClick={() => setConfirmDel(true)}
-              style={btnDanger}
+              className={btnDangerCls}
             >
               Excluir cliente
             </button>
           )}
           {confirmDel && (
             <>
-              <button type="button" onClick={() => setConfirmDel(false)} style={btnSecondary}>
+              <button
+                type="button"
+                onClick={() => setConfirmDel(false)}
+                className={btnSecondaryCls}
+              >
                 Cancelar
               </button>
               <button
@@ -534,7 +544,7 @@ function DadosTab({
                 data-testid="cliente-del-confirm"
                 disabled={busy}
                 onClick={doDelete}
-                style={btnDanger}
+                className={btnDangerCls}
               >
                 {busy ? '…' : 'Confirmar exclusão'}
               </button>
@@ -562,31 +572,14 @@ function MetricasCard({ clienteId }: { clienteId: string }) {
 
   if (loading) {
     return (
-      <div
-        style={{
-          ...card,
-          padding: '0.75rem 1rem',
-          marginBottom: '0.75rem',
-          opacity: 0.5,
-          fontSize: 12,
-          color: colors.muted,
-        }}
-      >
+      <div className="bg-surface border border-border rounded-[10px] py-3 px-4 mb-3 opacity-50 text-[12px] text-muted">
         Carregando métricas…
       </div>
     );
   }
   if (!data || data.pedidosCount === 0) {
     return (
-      <div
-        style={{
-          ...card,
-          padding: '0.75rem 1rem',
-          marginBottom: '0.75rem',
-          fontSize: 13,
-          color: colors.muted,
-        }}
-      >
+      <div className="bg-surface border border-border rounded-[10px] py-3 px-4 mb-3 text-[13px] text-muted">
         Cliente sem pedidos ainda.
       </div>
     );
@@ -595,14 +588,7 @@ function MetricasCard({ clienteId }: { clienteId: string }) {
   return (
     <div
       data-testid="cliente-metricas"
-      style={{
-        ...card,
-        padding: '0.75rem 1rem',
-        marginBottom: '0.75rem',
-        display: 'grid',
-        gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))',
-        gap: '0.75rem',
-      }}
+      className="bg-surface border border-border rounded-[10px] py-3 px-4 mb-3 grid gap-3 [grid-template-columns:repeat(auto-fit,minmax(150px,1fr))]"
     >
       <MetricaItem label="Total vendido" value={fmtBRL(data.totalVendido)} highlight />
       <MetricaItem label="Ticket médio" value={fmtBRL(data.ticketMedio)} />
@@ -640,30 +626,16 @@ function MetricaItem({
 }) {
   return (
     <div>
+      <div className="text-[10px] text-muted uppercase tracking-[0.5px] mb-0.5">{label}</div>
       <div
-        style={{
-          fontSize: 10,
-          color: colors.muted,
-          textTransform: 'uppercase',
-          letterSpacing: 0.5,
-          marginBottom: 2,
-        }}
-      >
-        {label}
-      </div>
-      <div
-        style={{
-          fontSize: highlight ? 18 : 15,
-          fontWeight: 600,
-          color: highlight ? colors.primary : colors.text,
-          fontVariantNumeric: 'tabular-nums',
-        }}
+        className={cn(
+          'font-semibold tabular-nums',
+          highlight ? 'text-[18px] text-primary' : 'text-[15px] text-text',
+        )}
       >
         {value}
       </div>
-      {hint && (
-        <div style={{ fontSize: 11, color: colors.muted, marginTop: 1 }}>{hint}</div>
-      )}
+      {hint && <div className="text-[11px] text-muted mt-px">{hint}</div>}
     </div>
   );
 }
@@ -723,21 +695,12 @@ function PedidosTab({ clienteId }: { clienteId: string }) {
   const filtrosAtivos = statusFiltro !== '' || periodo !== 'todos';
 
   return (
-    <div style={card}>
-      <header
-        style={{
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'space-between',
-          marginBottom: '0.75rem',
-          gap: '0.5rem',
-          flexWrap: 'wrap',
-        }}
-      >
-        <h3 style={{ margin: 0, fontSize: 15 }}>
+    <div className={cardCls}>
+      <header className="flex items-center justify-between mb-3 gap-2 flex-wrap">
+        <h3 className="m-0 text-[15px]">
           Pedidos deste cliente
           {pedidos.length > 0 && (
-            <span style={{ fontSize: 12, color: colors.muted, marginLeft: 8, fontWeight: 400 }}>
+            <span className="text-[12px] text-muted ml-2 font-normal">
               ({pedidos.length}
               {data?.pagination?.total && data.pagination.total > pedidos.length
                 ? ` de ${data.pagination.total}`
@@ -749,22 +712,14 @@ function PedidosTab({ clienteId }: { clienteId: string }) {
         <button
           type="button"
           onClick={() => navigate(`/pedidos?clienteId=${clienteId}`)}
-          style={{ ...btnSecondary, padding: '0.25rem 0.625rem', fontSize: 12 }}
+          className={cn(btnSecondaryCls, 'px-2.5 py-1 text-[12px]')}
         >
           Ver na lista geral
         </button>
       </header>
 
       {/* Filtros */}
-      <div
-        style={{
-          display: 'flex',
-          gap: '0.5rem',
-          marginBottom: '0.75rem',
-          alignItems: 'center',
-          flexWrap: 'wrap',
-        }}
-      >
+      <div className="flex gap-2 mb-3 items-center flex-wrap">
         <Select
           data-testid="cliente-pedidos-status"
           value={statusFiltro}
@@ -796,11 +751,7 @@ function PedidosTab({ clienteId }: { clienteId: string }) {
               setStatusFiltro('');
               setPeriodo('todos');
             }}
-            style={{
-              ...btnSecondary,
-              padding: '0.25rem 0.625rem',
-              fontSize: 11,
-            }}
+            className={cn(btnSecondaryCls, 'px-2.5 py-1 text-[11px]')}
           >
             Limpar
           </button>
@@ -814,50 +765,41 @@ function PedidosTab({ clienteId }: { clienteId: string }) {
         emptyMessage="Sem pedidos pra este cliente ainda."
         onRetry={refetch}
       >
-        <table
-          style={{
-            width: '100%',
-            borderCollapse: 'collapse',
-            fontSize: 14,
-            marginTop: '0.25rem',
-          }}
-        >
+        <table className="w-full border-collapse text-[14px] mt-1">
           <thead>
             <tr>
-              <th style={pedidoTh}>Número</th>
-              <th style={pedidoTh}>Status</th>
-              <th style={{ ...pedidoTh, textAlign: 'right' }}>Total</th>
-              <th style={pedidoTh}>Data</th>
-              <th style={pedidoTh}></th>
+              <th className={pedidoThCls}>Número</th>
+              <th className={pedidoThCls}>Status</th>
+              <th className={cn(pedidoThCls, 'text-right')}>Total</th>
+              <th className={pedidoThCls}>Data</th>
+              <th className={pedidoThCls}></th>
             </tr>
           </thead>
           <tbody>
             {pedidos.map((p) => (
               <tr
                 key={p.id}
-                style={{ cursor: 'pointer' }}
+                className="cursor-pointer"
                 onClick={() => navigate(`/pedidos/${p.id}`)}
                 data-testid={`cliente-pedido-row-${p.id}`}
               >
-                <td style={pedidoTd}>
-                  <div style={{ fontWeight: 600 }}>#{p.numero}</div>
+                <td className={pedidoTdCls}>
+                  <div className="font-semibold">#{p.numero}</div>
                   {p.numeroOmie && (
-                    <div style={{ fontSize: 11, color: colors.muted }}>
-                      OMIE {p.numeroOmie}
-                    </div>
+                    <div className="text-[11px] text-muted">OMIE {p.numeroOmie}</div>
                   )}
                 </td>
-                <td style={pedidoTd}>
-                  <span style={badge(PEDIDO_STATUS_COLOR[p.status])}>
+                <td className={pedidoTdCls}>
+                  <span className={badgeCls} style={badgeStyle(PEDIDO_STATUS_COLOR[p.status])}>
                     {PEDIDO_STATUS_LABEL[p.status]}
                   </span>
                 </td>
-                <td style={{ ...pedidoTd, textAlign: 'right', fontWeight: 600 }}>
+                <td className={cn(pedidoTdCls, 'text-right font-semibold')}>
                   {fmtBRL(p.total)}
                 </td>
-                <td style={{ ...pedidoTd, color: colors.muted }}>{fmtDate(p.criadoEm)}</td>
-                <td style={{ ...pedidoTd, textAlign: 'right' }}>
-                  <span style={{ color: colors.primary, fontSize: 12 }}>abrir →</span>
+                <td className={cn(pedidoTdCls, 'text-muted')}>{fmtDate(p.criadoEm)}</td>
+                <td className={cn(pedidoTdCls, 'text-right')}>
+                  <span className="text-primary text-[12px]">abrir →</span>
                 </td>
               </tr>
             ))}
@@ -868,22 +810,10 @@ function PedidosTab({ clienteId }: { clienteId: string }) {
   );
 }
 
-const pedidoTh: React.CSSProperties = {
-  textAlign: 'left',
-  padding: '0.5rem',
-  borderBottom: `1px solid ${colors.border}`,
-  fontSize: 11,
-  textTransform: 'uppercase',
-  color: colors.muted,
-  fontWeight: 600,
-  letterSpacing: 0.3,
-};
+const pedidoThCls =
+  'text-left p-2 border-b border-border text-[11px] uppercase text-muted font-semibold tracking-[0.3px]';
 
-const pedidoTd: React.CSSProperties = {
-  padding: '0.5rem',
-  borderBottom: `1px solid ${colors.border}`,
-  verticalAlign: 'middle',
-};
+const pedidoTdCls = 'p-2 border-b border-border align-middle';
 
 // ─── Tab Propostas ─────────────────────────────────────────────────
 
@@ -917,13 +847,13 @@ const PROPOSTA_STATUS_LABEL: Record<PropostaStatus, string> = {
 };
 
 const PROPOSTA_STATUS_COLOR: Record<PropostaStatus, string> = {
-  RASCUNHO: colors.muted,
-  ENVIADA: colors.info,
-  NEGOCIACAO: colors.warning,
-  AGUARDANDO_ASSINATURA: colors.warning,
-  ACEITA: colors.success,
-  RECUSADA: colors.danger,
-  EXPIRADA: colors.muted,
+  RASCUNHO: 'var(--muted)',
+  ENVIADA: 'var(--info)',
+  NEGOCIACAO: 'var(--warning)',
+  AGUARDANDO_ASSINATURA: 'var(--warning)',
+  ACEITA: 'var(--success)',
+  RECUSADA: 'var(--danger)',
+  EXPIRADA: 'var(--muted)',
 };
 
 function PropostasTab({ clienteId }: { clienteId: string }) {
@@ -934,19 +864,12 @@ function PropostasTab({ clienteId }: { clienteId: string }) {
   const propostas = data?.data ?? [];
 
   return (
-    <div style={card}>
-      <header
-        style={{
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'space-between',
-          marginBottom: '0.75rem',
-        }}
-      >
-        <h3 style={{ margin: 0, fontSize: 15 }}>
+    <div className={cardCls}>
+      <header className="flex items-center justify-between mb-3">
+        <h3 className="m-0 text-[15px]">
           Propostas deste cliente
           {propostas.length > 0 && (
-            <span style={{ fontSize: 12, color: colors.muted, marginLeft: 8, fontWeight: 400 }}>
+            <span className="text-[12px] text-muted ml-2 font-normal">
               ({propostas.length})
             </span>
           )}
@@ -954,7 +877,7 @@ function PropostasTab({ clienteId }: { clienteId: string }) {
         <button
           type="button"
           onClick={() => navigate(`/propostas?clienteId=${clienteId}`)}
-          style={{ ...btnSecondary, padding: '0.25rem 0.625rem', fontSize: 12 }}
+          className={cn(btnSecondaryCls, 'px-2.5 py-1 text-[12px]')}
         >
           Ver na lista geral
         </button>
@@ -967,43 +890,43 @@ function PropostasTab({ clienteId }: { clienteId: string }) {
         emptyMessage="Sem propostas pra este cliente."
         onRetry={refetch}
       >
-        <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 14 }}>
+        <table className="w-full border-collapse text-[14px]">
           <thead>
             <tr>
-              <th style={pedidoTh}>Número</th>
-              <th style={pedidoTh}>Status</th>
-              <th style={{ ...pedidoTh, textAlign: 'right' }}>Valor</th>
-              <th style={{ ...pedidoTh, textAlign: 'right' }}>Prob.</th>
-              <th style={pedidoTh}>Validade</th>
-              <th style={pedidoTh}>Data</th>
+              <th className={pedidoThCls}>Número</th>
+              <th className={pedidoThCls}>Status</th>
+              <th className={cn(pedidoThCls, 'text-right')}>Valor</th>
+              <th className={cn(pedidoThCls, 'text-right')}>Prob.</th>
+              <th className={pedidoThCls}>Validade</th>
+              <th className={pedidoThCls}>Data</th>
             </tr>
           </thead>
           <tbody>
             {propostas.map((p) => (
               <tr
                 key={p.id}
-                style={{ cursor: 'pointer' }}
+                className="cursor-pointer"
                 onClick={() => navigate(`/propostas?highlight=${p.id}`)}
                 data-testid={`cliente-proposta-row-${p.id}`}
               >
-                <td style={pedidoTd}>
+                <td className={pedidoTdCls}>
                   <strong>#{p.numero}</strong>
                 </td>
-                <td style={pedidoTd}>
-                  <span style={badge(PROPOSTA_STATUS_COLOR[p.status])}>
+                <td className={pedidoTdCls}>
+                  <span className={badgeCls} style={badgeStyle(PROPOSTA_STATUS_COLOR[p.status])}>
                     {PROPOSTA_STATUS_LABEL[p.status]}
                   </span>
                 </td>
-                <td style={{ ...pedidoTd, textAlign: 'right', fontWeight: 600 }}>
+                <td className={cn(pedidoTdCls, 'text-right font-semibold')}>
                   {fmtBRL(p.valor)}
                 </td>
-                <td style={{ ...pedidoTd, textAlign: 'right', color: colors.muted }}>
+                <td className={cn(pedidoTdCls, 'text-right text-muted')}>
                   {p.probabilidade}%
                 </td>
-                <td style={{ ...pedidoTd, color: colors.muted }}>
+                <td className={cn(pedidoTdCls, 'text-muted')}>
                   {p.validoAte ? fmtDateShort(p.validoAte) : '—'}
                 </td>
-                <td style={{ ...pedidoTd, color: colors.muted }}>{fmtDate(p.criadoEm)}</td>
+                <td className={cn(pedidoTdCls, 'text-muted')}>{fmtDate(p.criadoEm)}</td>
               </tr>
             ))}
           </tbody>
@@ -1041,11 +964,11 @@ const AMOSTRA_STATUS_LABEL: Record<AmostraStatus, string> = {
 };
 
 const AMOSTRA_STATUS_COLOR: Record<AmostraStatus, string> = {
-  ENVIADA: colors.info,
-  AGUARDANDO_FOLLOWUP: colors.warning,
-  CONVERTIDA: colors.success,
-  NAO_CONVERTEU: colors.danger,
-  VENCIDA: colors.muted,
+  ENVIADA: 'var(--info)',
+  AGUARDANDO_FOLLOWUP: 'var(--warning)',
+  CONVERTIDA: 'var(--success)',
+  NAO_CONVERTEU: 'var(--danger)',
+  VENCIDA: 'var(--muted)',
 };
 
 function AmostrasTab({ clienteId }: { clienteId: string }) {
@@ -1056,19 +979,12 @@ function AmostrasTab({ clienteId }: { clienteId: string }) {
   const amostras = data?.data ?? [];
 
   return (
-    <div style={card}>
-      <header
-        style={{
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'space-between',
-          marginBottom: '0.75rem',
-        }}
-      >
-        <h3 style={{ margin: 0, fontSize: 15 }}>
+    <div className={cardCls}>
+      <header className="flex items-center justify-between mb-3">
+        <h3 className="m-0 text-[15px]">
           Amostras enviadas
           {amostras.length > 0 && (
-            <span style={{ fontSize: 12, color: colors.muted, marginLeft: 8, fontWeight: 400 }}>
+            <span className="text-[12px] text-muted ml-2 font-normal">
               ({amostras.length})
             </span>
           )}
@@ -1076,7 +992,7 @@ function AmostrasTab({ clienteId }: { clienteId: string }) {
         <button
           type="button"
           onClick={() => navigate(`/amostras?clienteId=${clienteId}`)}
-          style={{ ...btnSecondary, padding: '0.25rem 0.625rem', fontSize: 12 }}
+          className={cn(btnSecondaryCls, 'px-2.5 py-1 text-[12px]')}
         >
           Ver na lista geral
         </button>
@@ -1089,42 +1005,42 @@ function AmostrasTab({ clienteId }: { clienteId: string }) {
         emptyMessage="Nenhuma amostra enviada pra este cliente."
         onRetry={refetch}
       >
-        <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 14 }}>
+        <table className="w-full border-collapse text-[14px]">
           <thead>
             <tr>
-              <th style={pedidoTh}>Produto</th>
-              <th style={pedidoTh}>Status</th>
-              <th style={{ ...pedidoTh, textAlign: 'right' }}>Valor</th>
-              <th style={pedidoTh}>Enviado</th>
-              <th style={pedidoTh}>Follow-up</th>
+              <th className={pedidoThCls}>Produto</th>
+              <th className={pedidoThCls}>Status</th>
+              <th className={cn(pedidoThCls, 'text-right')}>Valor</th>
+              <th className={pedidoThCls}>Enviado</th>
+              <th className={pedidoThCls}>Follow-up</th>
             </tr>
           </thead>
           <tbody>
             {amostras.map((a) => (
               <tr
                 key={a.id}
-                style={{ cursor: 'pointer' }}
+                className="cursor-pointer"
                 onClick={() => navigate(`/amostras?highlight=${a.id}`)}
                 data-testid={`cliente-amostra-row-${a.id}`}
               >
-                <td style={pedidoTd}>
+                <td className={pedidoTdCls}>
                   <strong>{a.produtoNome}</strong>
                   {a.notaFiscal && (
-                    <div style={{ fontSize: 11, color: colors.muted }}>NF {a.notaFiscal}</div>
+                    <div className="text-[11px] text-muted">NF {a.notaFiscal}</div>
                   )}
                 </td>
-                <td style={pedidoTd}>
-                  <span style={badge(AMOSTRA_STATUS_COLOR[a.status])}>
+                <td className={pedidoTdCls}>
+                  <span className={badgeCls} style={badgeStyle(AMOSTRA_STATUS_COLOR[a.status])}>
                     {AMOSTRA_STATUS_LABEL[a.status]}
                   </span>
                 </td>
-                <td style={{ ...pedidoTd, textAlign: 'right', fontWeight: 600 }}>
+                <td className={cn(pedidoTdCls, 'text-right font-semibold')}>
                   {fmtBRL(a.valor)}
                 </td>
-                <td style={{ ...pedidoTd, color: colors.muted }}>
+                <td className={cn(pedidoTdCls, 'text-muted')}>
                   {a.enviadoEm ? fmtDateShort(a.enviadoEm) : '—'}
                 </td>
-                <td style={{ ...pedidoTd, color: colors.muted }}>
+                <td className={cn(pedidoTdCls, 'text-muted')}>
                   {a.followUpEm ? fmtDateShort(a.followUpEm) : '—'}
                 </td>
               </tr>
@@ -1159,17 +1075,17 @@ const OCORRENCIA_STATUS_LABEL: Record<OcorrenciaStatus, string> = {
 };
 
 const OCORRENCIA_STATUS_COLOR: Record<OcorrenciaStatus, string> = {
-  ABERTA: colors.warning,
-  EM_ANDAMENTO: colors.info,
-  RESOLVIDA: colors.success,
-  CANCELADA: colors.muted,
+  ABERTA: 'var(--warning)',
+  EM_ANDAMENTO: 'var(--info)',
+  RESOLVIDA: 'var(--success)',
+  CANCELADA: 'var(--muted)',
 };
 
 const SEVERIDADE_COLOR: Record<Severidade, string> = {
-  baixa: colors.muted,
-  media: colors.info,
-  alta: colors.warning,
-  critica: colors.danger,
+  baixa: 'var(--muted)',
+  media: 'var(--info)',
+  alta: 'var(--warning)',
+  critica: 'var(--danger)',
 };
 
 function OcorrenciasTab({ clienteId }: { clienteId: string }) {
@@ -1180,19 +1096,12 @@ function OcorrenciasTab({ clienteId }: { clienteId: string }) {
   const ocorrencias = data?.data ?? [];
 
   return (
-    <div style={card}>
-      <header
-        style={{
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'space-between',
-          marginBottom: '0.75rem',
-        }}
-      >
-        <h3 style={{ margin: 0, fontSize: 15 }}>
+    <div className={cardCls}>
+      <header className="flex items-center justify-between mb-3">
+        <h3 className="m-0 text-[15px]">
           Ocorrências
           {ocorrencias.length > 0 && (
-            <span style={{ fontSize: 12, color: colors.muted, marginLeft: 8, fontWeight: 400 }}>
+            <span className="text-[12px] text-muted ml-2 font-normal">
               ({ocorrencias.length})
             </span>
           )}
@@ -1200,7 +1109,7 @@ function OcorrenciasTab({ clienteId }: { clienteId: string }) {
         <button
           type="button"
           onClick={() => navigate(`/ocorrencias?clienteId=${clienteId}`)}
-          style={{ ...btnSecondary, padding: '0.25rem 0.625rem', fontSize: 12 }}
+          className={cn(btnSecondaryCls, 'px-2.5 py-1 text-[12px]')}
         >
           Ver na lista geral
         </button>
@@ -1213,15 +1122,15 @@ function OcorrenciasTab({ clienteId }: { clienteId: string }) {
         emptyMessage="Nenhuma ocorrência aberta pra este cliente."
         onRetry={refetch}
       >
-        <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 14 }}>
+        <table className="w-full border-collapse text-[14px]">
           <thead>
             <tr>
-              <th style={pedidoTh}>Número</th>
-              <th style={pedidoTh}>Título</th>
-              <th style={pedidoTh}>Severidade</th>
-              <th style={pedidoTh}>Status</th>
-              <th style={pedidoTh}>SLA</th>
-              <th style={pedidoTh}>Data</th>
+              <th className={pedidoThCls}>Número</th>
+              <th className={pedidoThCls}>Título</th>
+              <th className={pedidoThCls}>Severidade</th>
+              <th className={pedidoThCls}>Status</th>
+              <th className={pedidoThCls}>SLA</th>
+              <th className={pedidoThCls}>Data</th>
             </tr>
           </thead>
           <tbody>
@@ -1233,34 +1142,38 @@ function OcorrenciasTab({ clienteId }: { clienteId: string }) {
               return (
                 <tr
                   key={o.id}
-                  style={{ cursor: 'pointer' }}
+                  className="cursor-pointer"
                   onClick={() => navigate(`/ocorrencias?highlight=${o.id}`)}
                   data-testid={`cliente-ocorrencia-row-${o.id}`}
                 >
-                  <td style={pedidoTd}>
+                  <td className={pedidoTdCls}>
                     <strong>#{o.numero}</strong>
                   </td>
-                  <td style={pedidoTd}>{o.titulo}</td>
-                  <td style={pedidoTd}>
-                    <span style={badge(SEVERIDADE_COLOR[o.severidade])}>{o.severidade}</span>
+                  <td className={pedidoTdCls}>{o.titulo}</td>
+                  <td className={pedidoTdCls}>
+                    <span className={badgeCls} style={badgeStyle(SEVERIDADE_COLOR[o.severidade])}>
+                      {o.severidade}
+                    </span>
                   </td>
-                  <td style={pedidoTd}>
-                    <span style={badge(OCORRENCIA_STATUS_COLOR[o.status])}>
+                  <td className={pedidoTdCls}>
+                    <span
+                      className={badgeCls}
+                      style={badgeStyle(OCORRENCIA_STATUS_COLOR[o.status])}
+                    >
                       {OCORRENCIA_STATUS_LABEL[o.status]}
                     </span>
                   </td>
                   <td
-                    style={{
-                      ...pedidoTd,
-                      color: slaVencido ? colors.danger : colors.muted,
-                      fontWeight: slaVencido ? 600 : 400,
-                    }}
+                    className={cn(
+                      pedidoTdCls,
+                      slaVencido ? 'text-danger font-semibold' : 'text-muted font-normal',
+                    )}
                   >
                     {o.slaVenceEm
                       ? `${fmtDateShort(o.slaVenceEm)}${slaVencido ? ' (vencido)' : ''}`
                       : '—'}
                   </td>
-                  <td style={{ ...pedidoTd, color: colors.muted }}>{fmtDate(o.criadoEm)}</td>
+                  <td className={cn(pedidoTdCls, 'text-muted')}>{fmtDate(o.criadoEm)}</td>
                 </tr>
               );
             })}
@@ -1320,8 +1233,8 @@ function NotasTab({ clienteId }: { clienteId: string }) {
   }
 
   return (
-    <div style={card}>
-      <h3 style={{ margin: '0 0 0.5rem', fontSize: 15 }}>Nova nota</h3>
+    <div className={cardCls}>
+      <h3 className="mt-0 mb-2 mx-0 text-[15px]">Nova nota</h3>
       <Textarea
         data-testid="nota-input"
         placeholder="Anotação interna sobre o cliente (visível só pra equipe)"
@@ -1329,30 +1242,21 @@ function NotasTab({ clienteId }: { clienteId: string }) {
         onChange={(e) => setTexto(e.target.value)}
         maxLength={5000}
       />
-      <div
-        style={{
-          display: 'flex',
-          justifyContent: 'space-between',
-          alignItems: 'center',
-          marginTop: '0.5rem',
-        }}
-      >
-        <span style={{ fontSize: 11, color: colors.muted }}>{texto.length}/5000</span>
+      <div className="flex justify-between items-center mt-2">
+        <span className="text-[11px] text-muted">{texto.length}/5000</span>
         <button
           type="button"
           data-testid="nota-add"
           disabled={creating || texto.trim().length === 0}
           onClick={addNota}
-          style={{ ...btn, opacity: creating || texto.trim().length === 0 ? 0.6 : 1 }}
+          className={cn(btnCls, (creating || texto.trim().length === 0) && 'opacity-60')}
         >
           {creating ? 'Adicionando…' : 'Adicionar nota'}
         </button>
       </div>
-      {error2 && (
-        <p style={{ color: colors.danger, fontSize: 13 }}>{error2}</p>
-      )}
+      {error2 && <p className="text-danger text-[13px]">{error2}</p>}
 
-      <h3 style={{ margin: '1.5rem 0 0.5rem', fontSize: 15 }}>Notas anteriores</h3>
+      <h3 className="mt-6 mb-2 mx-0 text-[15px]">Notas anteriores</h3>
       <StateView
         loading={loading}
         error={error}
@@ -1360,36 +1264,23 @@ function NotasTab({ clienteId }: { clienteId: string }) {
         emptyMessage="Sem notas ainda. Adicione a primeira acima."
         onRetry={refetch}
       >
-        <ul style={{ listStyle: 'none', padding: 0, margin: 0, display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+        <ul className="list-none p-0 m-0 flex flex-col gap-2">
           {notas.map((n) => (
             <li
               key={n.id}
-              style={{
-                background: colors.bgAlt,
-                border: `1px solid ${colors.border}`,
-                borderRadius: 6,
-                padding: '0.75rem',
-              }}
+              className="bg-bg-alt border border-border rounded-md p-3"
             >
-              <header
-                style={{
-                  display: 'flex',
-                  justifyContent: 'space-between',
-                  fontSize: 12,
-                  color: colors.muted,
-                  marginBottom: 4,
-                }}
-              >
+              <header className="flex justify-between text-[12px] text-muted mb-1">
                 <strong>{n.autor?.nome ?? '—'}</strong>
                 <span>{fmtDate(n.criadoEm)}</span>
               </header>
-              <p style={{ margin: 0, whiteSpace: 'pre-wrap', fontSize: 14 }}>{n.texto}</p>
-              <div style={{ display: 'flex', gap: 4, marginTop: 6 }}>
+              <p className="m-0 whitespace-pre-wrap text-[14px]">{n.texto}</p>
+              <div className="flex gap-1 mt-1.5">
                 <button
                   type="button"
                   data-testid={`nota-edit-${n.id}`}
                   onClick={() => setEditing(n)}
-                  style={{ ...btnSecondary, padding: '0.125rem 0.5rem', fontSize: 11 }}
+                  className={cn(btnSecondaryCls, 'px-2 py-0.5 text-[11px]')}
                 >
                   Editar
                 </button>
@@ -1397,7 +1288,7 @@ function NotasTab({ clienteId }: { clienteId: string }) {
                   type="button"
                   data-testid={`nota-del-${n.id}`}
                   onClick={() => delNota(n.id)}
-                  style={{ ...btnDanger, padding: '0.125rem 0.5rem', fontSize: 11 }}
+                  className={cn(btnDangerCls, 'px-2 py-0.5 text-[11px]')}
                 >
                   Excluir
                 </button>
@@ -1459,7 +1350,7 @@ function EditNotaModal({
       title="Editar nota"
       footer={
         <>
-          <button type="button" onClick={onClose} style={btnSecondary}>
+          <button type="button" onClick={onClose} className={btnSecondaryCls}>
             Cancelar
           </button>
           <button
@@ -1467,7 +1358,7 @@ function EditNotaModal({
             form="nota-edit-form"
             data-testid="nota-save"
             disabled={busy || texto.trim().length === 0}
-            style={btn}
+            className={btnCls}
           >
             {busy ? 'Salvando…' : 'Salvar'}
           </button>
@@ -1482,9 +1373,7 @@ function EditNotaModal({
           maxLength={5000}
           style={{ minHeight: 120 }}
         />
-        {error && (
-          <p style={{ color: colors.danger, fontSize: 13 }}>{error}</p>
-        )}
+        {error && <p className="text-danger text-[13px]">{error}</p>}
       </form>
     </Dialog>
   );
@@ -1594,9 +1483,9 @@ function DocumentosTab({ clienteId }: { clienteId: string }) {
   }
 
   return (
-    <div style={card}>
-      <h3 style={{ margin: '0 0 0.5rem', fontSize: 15 }}>Enviar documento</h3>
-      <p style={{ margin: '0 0 0.75rem', fontSize: 12, color: colors.muted }}>
+    <div className={cardCls}>
+      <h3 className="mt-0 mb-2 mx-0 text-[15px]">Enviar documento</h3>
+      <p className="mt-0 mb-3 mx-0 text-[12px] text-muted">
         Máx. 10MB. Aceito: PDF, imagens, planilhas, doc, csv.
       </p>
       <input
@@ -1606,14 +1495,14 @@ function DocumentosTab({ clienteId }: { clienteId: string }) {
         disabled={uploading}
         accept=".pdf,.png,.jpg,.jpeg,.gif,.webp,.xls,.xlsx,.doc,.docx,.csv,.txt"
       />
-      {uploading && <span style={{ marginLeft: '0.5rem', color: colors.muted, fontSize: 13 }}>Enviando…</span>}
+      {uploading && <span className="ml-2 text-muted text-[13px]">Enviando…</span>}
       {uploadError && (
-        <p data-testid="upload-error" style={{ color: colors.danger, fontSize: 13 }}>
+        <p data-testid="upload-error" className="text-danger text-[13px]">
           {uploadError}
         </p>
       )}
 
-      <h3 style={{ margin: '1.5rem 0 0.5rem', fontSize: 15 }}>Documentos anexados</h3>
+      <h3 className="mt-6 mb-2 mx-0 text-[15px]">Documentos anexados</h3>
       <StateView
         loading={loading}
         error={error}
@@ -1621,26 +1510,18 @@ function DocumentosTab({ clienteId }: { clienteId: string }) {
         emptyMessage="Sem documentos. Envie o primeiro acima."
         onRetry={refetch}
       >
-        <ul style={{ listStyle: 'none', padding: 0, margin: 0, display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+        <ul className="list-none p-0 m-0 flex flex-col gap-2">
           {docs.map((d) => (
             <li
               key={d.id}
-              style={{
-                background: colors.bgAlt,
-                border: `1px solid ${colors.border}`,
-                borderRadius: 6,
-                padding: '0.5rem 0.75rem',
-                display: 'flex',
-                alignItems: 'center',
-                gap: '0.5rem',
-              }}
+              className="bg-bg-alt border border-border rounded-md py-2 px-3 flex items-center gap-2"
             >
-              <span style={{ fontSize: 20 }}>📄</span>
-              <div style={{ flex: 1, minWidth: 0 }}>
-                <div style={{ fontWeight: 600, fontSize: 14, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+              <span className="text-[20px]">📄</span>
+              <div className="flex-1 min-w-0">
+                <div className="font-semibold text-[14px] overflow-hidden text-ellipsis whitespace-nowrap">
                   {d.nome}
                 </div>
-                <div style={{ fontSize: 11, color: colors.muted }}>
+                <div className="text-[11px] text-muted">
                   {fmtSize(d.tamanho)} · {d.mimetype} · {fmtDate(d.criadoEm)}
                   {d.uploadedBy && ` · por ${d.uploadedBy.nome}`}
                 </div>
@@ -1649,7 +1530,7 @@ function DocumentosTab({ clienteId }: { clienteId: string }) {
                 type="button"
                 data-testid={`doc-download-${d.id}`}
                 onClick={() => downloadDoc(d.id)}
-                style={{ ...btnSecondary, padding: '0.25rem 0.625rem', fontSize: 12 }}
+                className={cn(btnSecondaryCls, 'px-2.5 py-1 text-[12px]')}
               >
                 Baixar
               </button>
@@ -1657,7 +1538,7 @@ function DocumentosTab({ clienteId }: { clienteId: string }) {
                 type="button"
                 data-testid={`doc-del-${d.id}`}
                 onClick={() => delDoc(d.id)}
-                style={{ ...btnDanger, padding: '0.25rem 0.625rem', fontSize: 12 }}
+                className={cn(btnDangerCls, 'px-2.5 py-1 text-[12px]')}
               >
                 Excluir
               </button>
@@ -1699,27 +1580,20 @@ function PrecosTab({ clienteId }: { clienteId: string }) {
   }
 
   return (
-    <div style={card}>
-      <header
-        style={{
-          display: 'flex',
-          justifyContent: 'space-between',
-          alignItems: 'center',
-          marginBottom: '0.75rem',
-        }}
-      >
-        <h3 style={{ margin: 0, fontSize: 15 }}>Preços negociados</h3>
+    <div className={cardCls}>
+      <header className="flex justify-between items-center mb-3">
+        <h3 className="m-0 text-[15px]">Preços negociados</h3>
         <button
           type="button"
           data-testid="preco-add"
           onClick={() => setAdding(true)}
-          style={btn}
+          className={btnCls}
         >
           + Novo preço especial
         </button>
       </header>
 
-      <p style={{ fontSize: 12, color: colors.muted, marginTop: 0 }}>
+      <p className="text-[12px] text-muted mt-0">
         Preço acordado pra este cliente, sobrepõe a tabela. Sync OMIE pode atualizar
         automaticamente.
       </p>
@@ -1731,38 +1605,38 @@ function PrecosTab({ clienteId }: { clienteId: string }) {
         emptyMessage="Sem preços especiais ainda. Adicione o primeiro."
         onRetry={refetch}
       >
-        <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 14, marginTop: '0.5rem' }}>
+        <table className="w-full border-collapse text-[14px] mt-2">
           <thead>
             <tr>
-              <th style={thStyle}>Produto</th>
-              <th style={thStyle}>Preço tabela</th>
-              <th style={thStyle}>Preço especial</th>
-              <th style={thStyle}>Desconto base</th>
-              <th style={thStyle}>Válido até</th>
-              <th style={thStyle}></th>
+              <th className={thStyleCls}>Produto</th>
+              <th className={thStyleCls}>Preço tabela</th>
+              <th className={thStyleCls}>Preço especial</th>
+              <th className={thStyleCls}>Desconto base</th>
+              <th className={thStyleCls}>Válido até</th>
+              <th className={thStyleCls}></th>
             </tr>
           </thead>
           <tbody>
             {precos.map((p) => (
               <tr key={p.produtoId}>
-                <td style={tdStyle}>
-                  <div style={{ fontWeight: 600 }}>{p.produto?.nome ?? '—'}</div>
+                <td className={tdStyleCls}>
+                  <div className="font-semibold">{p.produto?.nome ?? '—'}</div>
                   {p.produto?.sku && (
-                    <div style={{ fontSize: 11, color: colors.muted }}>{p.produto.sku}</div>
+                    <div className="text-[11px] text-muted">{p.produto.sku}</div>
                   )}
                 </td>
-                <td style={tdStyle}>{p.produto?.precoTabela !== undefined ? fmtBRL(p.produto.precoTabela) : '—'}</td>
-                <td style={tdStyle}>
+                <td className={tdStyleCls}>{p.produto?.precoTabela !== undefined ? fmtBRL(p.produto.precoTabela) : '—'}</td>
+                <td className={tdStyleCls}>
                   <strong>{fmtBRL(p.precoEspecial)}</strong>
                 </td>
-                <td style={tdStyle}>{p.descontoBase}%</td>
-                <td style={tdStyle}>{p.validoAte ? fmtDate(p.validoAte) : 'sem expiração'}</td>
-                <td style={tdStyle}>
+                <td className={tdStyleCls}>{p.descontoBase}%</td>
+                <td className={tdStyleCls}>{p.validoAte ? fmtDate(p.validoAte) : 'sem expiração'}</td>
+                <td className={tdStyleCls}>
                   <button
                     type="button"
                     data-testid={`preco-del-${p.produtoId}`}
                     onClick={() => delPreco(p.produtoId)}
-                    style={{ ...btnDanger, padding: '0.125rem 0.5rem', fontSize: 11 }}
+                    className={cn(btnDangerCls, 'px-2 py-0.5 text-[11px]')}
                   >
                     Remover
                   </button>
@@ -1788,22 +1662,10 @@ function PrecosTab({ clienteId }: { clienteId: string }) {
   );
 }
 
-const thStyle: React.CSSProperties = {
-  textAlign: 'left',
-  padding: '0.5rem',
-  borderBottom: `1px solid ${colors.border}`,
-  fontSize: 11,
-  textTransform: 'uppercase',
-  color: colors.muted,
-  fontWeight: 600,
-  letterSpacing: 0.3,
-};
+const thStyleCls =
+  'text-left p-2 border-b border-border text-[11px] uppercase text-muted font-semibold tracking-[0.3px]';
 
-const tdStyle: React.CSSProperties = {
-  padding: '0.5rem',
-  borderBottom: `1px solid ${colors.border}`,
-  verticalAlign: 'middle',
-};
+const tdStyleCls = 'p-2 border-b border-border align-middle';
 
 function PrecoFormModal({
   clienteId,
@@ -1864,7 +1726,7 @@ function PrecoFormModal({
       title="Novo preço especial"
       footer={
         <>
-          <button type="button" onClick={onClose} style={btnSecondary}>
+          <button type="button" onClick={onClose} className={btnSecondaryCls}>
             Cancelar
           </button>
           <button
@@ -1872,7 +1734,7 @@ function PrecoFormModal({
             form="preco-form"
             data-testid="preco-save"
             disabled={busy}
-            style={{ ...btn, opacity: busy ? 0.6 : 1 }}
+            className={cn(btnCls, busy && 'opacity-60')}
           >
             {busy ? 'Salvando…' : 'Salvar preço'}
           </button>
@@ -1896,7 +1758,7 @@ function PrecoFormModal({
             onChange={setProduto}
           />
         </FormField>
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '0.75rem' }}>
+        <div className="grid grid-cols-3 gap-3">
           <FormField label="Preço especial (R$)" htmlFor="pe-val" required>
             <Input
               id="pe-val"
@@ -1930,23 +1792,14 @@ function PrecoFormModal({
           </FormField>
         </div>
         {desconto !== null && (
-          <div
-            style={{
-              fontSize: 13,
-              padding: '0.5rem 0.75rem',
-              background: colors.bgAlt,
-              border: `1px solid ${colors.border}`,
-              borderRadius: 6,
-              marginTop: '0.5rem',
-            }}
-          >
+          <div className="text-[13px] py-2 px-3 bg-bg-alt border border-border rounded-md mt-2">
             Diferença vs. tabela:{' '}
-            <strong style={{ color: Number(desconto) > 0 ? colors.success : colors.danger }}>
+            <strong className={Number(desconto) > 0 ? 'text-success' : 'text-danger'}>
               {Number(desconto) > 0 ? `−${desconto}%` : `+${(-Number(desconto)).toFixed(1)}%`}
             </strong>
           </div>
         )}
-        {error && <p style={{ color: colors.danger, fontSize: 13 }}>{error}</p>}
+        {error && <p className="text-danger text-[13px]">{error}</p>}
       </form>
     </Dialog>
   );
