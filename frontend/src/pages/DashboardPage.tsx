@@ -94,6 +94,8 @@ interface FunilStage {
 interface FunilOpt {
   id: string;
   nome: string;
+  /** Total de leads no funil — usado pra escolher o default (o mais movimentado). */
+  _count?: { leads: number };
 }
 
 const ETAPA_LABEL: Record<string, string> = {
@@ -434,9 +436,13 @@ function FunilCard() {
   const { data: funisData } = useApiQuery<FunilOpt[]>(canSeeFunis ? '/funis' : null);
   const funis = funisData ?? [];
 
-  // Default = primeiro funil da lista (o isPadrao, que /funis ordena primeiro).
-  // O usuário troca pelo seletor; até lá, mostramos o funil padrão da empresa.
-  const effectiveFunilId = funilId || funis[0]?.id || '';
+  // Default = o funil com MAIS leads (o mais movimentado); empata pela ordem de
+  // /funis (isPadrao primeiro). Evita abrir num funil vazio quando outro tem leads.
+  const funilDefault =
+    funis.length > 0
+      ? [...funis].sort((a, b) => (b._count?.leads ?? 0) - (a._count?.leads ?? 0))[0]
+      : undefined;
+  const effectiveFunilId = funilId || funilDefault?.id || '';
 
   const { data: funilData, loading: funilLoading } = useApiQuery<{ funilAtual: FunilStage[] }>(
     effectiveFunilId ? `/relatorios/funil?periodo=mes&funilId=${effectiveFunilId}` : null,
