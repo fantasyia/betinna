@@ -4,7 +4,7 @@ import { PageLayout } from '@/components/PageLayout';
 import { Select } from '@/components/FormField';
 import { useConfirm } from '@/hooks/useConfirm';
 import { api, ApiError } from '@/lib/api';
-import { badge, btn, btnSecondary, card, colors } from '@/components/styles';
+import { cn } from '@/lib/cn';
 
 interface Notificacao {
   id: string;
@@ -39,12 +39,19 @@ const TIPO_LABEL: Record<string, string> = {
   GENERICO: 'Notificação',
 };
 
+// Cor da prioridade (CSS vars — respeitam o dark mode). Usada no dot + na badge.
 const PRIORIDADE_COLOR: Record<Notificacao['prioridade'], string> = {
-  BAIXA: colors.muted,
-  NORMAL: colors.primary,
-  ALTA: colors.warning,
-  URGENTE: colors.danger,
+  BAIXA: 'var(--muted)',
+  NORMAL: 'var(--primary)',
+  ALTA: 'var(--warning)',
+  URGENTE: 'var(--danger)',
 };
+
+// Equivalentes Tailwind pixel-idênticos dos objetos legados btn/btnSecondary/card.
+const BTN = 'bg-primary text-primary-contrast rounded-md px-4 py-2 text-[13px] font-semibold cursor-pointer tracking-[-0.1px]';
+const BTN_SEC =
+  'bg-surface text-text border border-border-strong rounded-md px-4 py-2 text-[13px] font-medium cursor-pointer tracking-[-0.1px]';
+const CARD = 'bg-surface border border-border rounded-[10px] p-6';
 
 function fmt(iso: string): string {
   return new Date(iso).toLocaleString('pt-BR', { dateStyle: 'short', timeStyle: 'short' });
@@ -137,28 +144,14 @@ export default function NotificacoesPage() {
       title={`Notificações${naoLidas > 0 ? ` (${naoLidas} não lidas)` : ''}`}
       actions={
         naoLidas > 0 ? (
-          <button
-            type="button"
-            data-testid="mark-all-page"
-            onClick={marcarTodas}
-            style={btnSecondary}
-          >
+          <button type="button" data-testid="mark-all-page" onClick={marcarTodas} className={BTN_SEC}>
             Marcar todas como lidas
           </button>
         ) : undefined
       }
     >
-      <div
-        style={{
-          ...card,
-          marginBottom: '1rem',
-          display: 'flex',
-          gap: 12,
-          alignItems: 'center',
-          flexWrap: 'wrap',
-        }}
-      >
-        <label style={{ fontSize: 12, color: colors.muted }}>Filtro:</label>
+      <div className={cn(CARD, 'mb-4 flex items-center gap-3 flex-wrap')}>
+        <label className="text-xs text-muted">Filtro:</label>
         <Select
           value={filtroLidas}
           onChange={(e) => setFiltroLidas(e.target.value as 'todas' | 'naoLidas')}
@@ -181,71 +174,53 @@ export default function NotificacoesPage() {
       </div>
 
       {err && (
-        <div
-          style={{
-            ...card,
-            background: '#fef2f2',
-            borderColor: '#fecaca',
-            color: '#991b1b',
-            marginBottom: '1rem',
-          }}
-        >
+        <div className="rounded-[10px] border border-[#fecaca] bg-[#fef2f2] p-6 text-[#991b1b] mb-4">
           {err}
         </div>
       )}
 
       {loading ? (
-        <div style={card}>Carregando…</div>
+        <div className={CARD}>Carregando…</div>
       ) : data.length === 0 ? (
-        <div style={{ ...card, textAlign: 'center', color: colors.muted, padding: '2rem' }}>
+        <div className="bg-surface border border-border rounded-[10px] p-8 text-center text-muted">
           Nenhuma notificação encontrada com esses filtros.
         </div>
       ) : (
-        <div style={{ ...card, padding: 0 }}>
+        <div className="bg-surface border border-border rounded-[10px]">
           {data.map((n) => (
             <div
               key={n.id}
               data-testid={`notif-row-${n.id}`}
-              style={{
-                display: 'flex',
-                gap: 12,
-                padding: '12px 16px',
-                borderBottom: `1px solid ${colors.border}`,
-                background: n.lidaEm ? '#fff' : '#f0f9ff',
-                cursor: n.link ? 'pointer' : 'default',
-              }}
+              className={cn(
+                'flex gap-3 px-4 py-3 border-b border-border',
+                n.lidaEm ? 'bg-[#fff]' : 'bg-[#f0f9ff]',
+                n.link ? 'cursor-pointer' : 'cursor-default',
+              )}
               onClick={() => onClick(n)}
             >
               <span
-                style={{
-                  width: 8,
-                  height: 8,
-                  borderRadius: 4,
-                  background: PRIORIDADE_COLOR[n.prioridade],
-                  marginTop: 6,
-                  flexShrink: 0,
-                }}
+                className="mt-1.5 h-2 w-2 shrink-0 rounded-full"
+                style={{ backgroundColor: PRIORIDADE_COLOR[n.prioridade] }}
                 aria-hidden
               />
-              <div style={{ flex: 1, minWidth: 0 }}>
-                <div
-                  style={{
-                    display: 'flex',
-                    gap: 8,
-                    alignItems: 'center',
-                    marginBottom: 2,
-                    flexWrap: 'wrap',
-                  }}
-                >
-                  <strong style={{ fontSize: 14, fontWeight: n.lidaEm ? 500 : 700 }}>
+              <div className="min-w-0 flex-1">
+                <div className="flex items-center gap-2 mb-0.5 flex-wrap">
+                  <strong className={cn('text-base', n.lidaEm ? 'font-medium' : 'font-bold')}>
                     {n.titulo}
                   </strong>
-                  <span style={badge(PRIORIDADE_COLOR[n.prioridade])}>
+                  <span
+                    className="inline-flex items-center rounded-full px-[9px] py-0.5 text-[11px] font-semibold leading-[1.6] tracking-[0.2px]"
+                    style={{
+                      backgroundColor: `color-mix(in srgb, ${PRIORIDADE_COLOR[n.prioridade]} 12%, transparent)`,
+                      color: PRIORIDADE_COLOR[n.prioridade],
+                      border: `1px solid color-mix(in srgb, ${PRIORIDADE_COLOR[n.prioridade]} 19%, transparent)`,
+                    }}
+                  >
                     {TIPO_LABEL[n.tipo] ?? n.tipo}
                   </span>
                 </div>
-                <div style={{ fontSize: 13, color: colors.muted }}>{n.mensagem}</div>
-                <div style={{ fontSize: 11, color: colors.muted, marginTop: 4 }}>
+                <div className="text-sm text-muted">{n.mensagem}</div>
+                <div className="text-[11px] text-muted mt-1">
                   {fmt(n.criadoEm)}
                   {n.lidaEm && ` · lida ${fmt(n.lidaEm)}`}
                 </div>
@@ -257,14 +232,7 @@ export default function NotificacoesPage() {
                   void deletar(n.id);
                 }}
                 aria-label="Apagar"
-                style={{
-                  background: 'transparent',
-                  border: 'none',
-                  cursor: 'pointer',
-                  color: colors.muted,
-                  fontSize: 16,
-                  alignSelf: 'flex-start',
-                }}
+                className="bg-transparent border-none cursor-pointer text-muted text-lg self-start"
               >
                 ×
               </button>
@@ -274,31 +242,18 @@ export default function NotificacoesPage() {
       )}
 
       {totalPages > 1 && (
-        <div
-          style={{
-            display: 'flex',
-            justifyContent: 'center',
-            gap: 8,
-            alignItems: 'center',
-            marginTop: '1rem',
-          }}
-        >
-          <button
-            type="button"
-            disabled={page <= 1}
-            onClick={() => load(page - 1)}
-            style={btnSecondary}
-          >
+        <div className="flex items-center justify-center gap-2 mt-4">
+          <button type="button" disabled={page <= 1} onClick={() => load(page - 1)} className={BTN_SEC}>
             ‹
           </button>
-          <span style={{ fontSize: 12, color: colors.muted }}>
+          <span className="text-xs text-muted">
             Página {page} de {totalPages}
           </span>
           <button
             type="button"
             disabled={page >= totalPages}
             onClick={() => load(page + 1)}
-            style={btn}
+            className={BTN}
           >
             ›
           </button>
