@@ -1,20 +1,21 @@
-import type { CSSProperties } from 'react';
-
 /**
- * Design tokens — Betinna.ai design system (v4 — CSS vars + dark mode, 2026-05-21).
+ * Design tokens — Betinna.ai design system (v5 — TOKENS-ONLY, 2026-06-15).
  *
- * **G1 fix (2026-05-21):** as cores agora referenciam as CSS variables definidas
- * em `index.css`. Isso faz com que os estilos legacy (objetos CSSProperties
- * abaixo) **respeitem o dark mode automaticamente** — antes eram hex fixos.
+ * Este arquivo é hoje **só tokens JS** (`colors`, `alpha`, `radius`, `spacing`,
+ * `shadows`, `fontSize`, `motion`, `fonts`, `gradientBrand`). Os objetos de estilo
+ * legados (CSSProperties: card/btn/input/td/th/badge/etc.) foram **migrados pra
+ * Tailwind e removidos** — a UI inteira usa classes Tailwind + CSS vars do `index.css`.
+ * Mantenha aqui APENAS valores que o JS precisa em runtime (ex.: cor passada pra
+ * um `<svg>`/chart). Pra estilo de elemento, use classes Tailwind, não daqui.
+ *
+ * **G1 (2026-05-21):** as cores referenciam as CSS variables do `index.css`, então
+ * os tokens respeitam o dark mode automaticamente.
  *
  * Identidade visual:
  *  - LIGHT theme com bg creme #F8F7F2
  *  - Navy #201554 como primária (#bd1fbf magenta vira primária no dark)
  *  - Ciano #2bcae5 como secundária
  *  - Tipografia: Cabin (UI) + Fira Sans (display/headings)
- *
- * Mantém a mesma API de tokens (`colors.bg`, `colors.surface`, etc.) — todas as
- * páginas existentes continuam funcionando, mas agora trocam de paleta com o tema.
  */
 
 export const colors = {
@@ -183,153 +184,3 @@ export const fonts = {
 
 /** Gradiente assinatura: roxo → ciano. */
 export const gradientBrand = `linear-gradient(135deg, ${colors.primary} 0%, ${colors.secondary} 100%)`;
-
-// ═══════════════════════════════════════════════════════════════
-// LEGACY STYLE OBJECTS — mantidos pras 30 páginas existentes.
-// ═══════════════════════════════════════════════════════════════
-
-export const card: CSSProperties = {
-  background: colors.surface,
-  border: `1px solid ${colors.border}`,
-  borderRadius: radius.lg,
-  padding: spacing.xl,
-};
-
-export const cardElevated: CSSProperties = {
-  ...card,
-  background: colors.surfaceElevated,
-  boxShadow: shadows.md,
-};
-
-export const btn: CSSProperties = {
-  background: colors.primary,
-  color: colors.primaryContrast,
-  border: 'none',
-  borderRadius: radius.md,
-  padding: '0.5rem 1rem',
-  fontWeight: 600,
-  fontSize: 13,
-  cursor: 'pointer',
-  fontFamily: fontStackUI,
-  transition: `background ${motion.fast}, transform ${motion.fast}`,
-  letterSpacing: -0.1,
-};
-
-export const btnSecondary: CSSProperties = {
-  ...btn,
-  background: colors.surface,
-  color: colors.text,
-  border: `1px solid ${colors.borderStrong}`,
-  fontWeight: 500,
-};
-
-export const btnDanger: CSSProperties = {
-  ...btn,
-  background: colors.danger,
-  color: '#fff',
-};
-
-export const btnGhost: CSSProperties = {
-  ...btnSecondary,
-  background: 'transparent',
-  border: 'none',
-  padding: '0.25rem 0.5rem',
-};
-
-export const input: CSSProperties = {
-  width: '100%',
-  border: `1px solid ${colors.borderStrong}`,
-  borderRadius: radius.md,
-  padding: '0.5rem 0.75rem',
-  fontSize: 13,
-  fontFamily: fontStackUI,
-  background: colors.surface,
-  color: colors.text,
-  boxSizing: 'border-box',
-  transition: `border-color ${motion.fast}, box-shadow ${motion.fast}`,
-  outline: 'none',
-};
-
-export const select: CSSProperties = {
-  ...input,
-  appearance: 'auto',
-  colorScheme: 'light',
-};
-
-export const label: CSSProperties = {
-  display: 'block',
-  fontSize: 11,
-  fontWeight: 600,
-  textTransform: 'uppercase',
-  color: colors.muted,
-  marginBottom: 6,
-  letterSpacing: 0.6,
-};
-
-export const pageWrap: CSSProperties = {
-  padding: spacing.xxl,
-  fontFamily: fontStackUI,
-  background: colors.bg,
-  minHeight: '100vh',
-  color: colors.text,
-};
-
-export const headerBar: CSSProperties = {
-  display: 'flex',
-  alignItems: 'center',
-  justifyContent: 'space-between',
-  marginBottom: spacing.xl,
-  gap: spacing.lg,
-  flexWrap: 'wrap',
-};
-
-export const tableStyle: CSSProperties = {
-  width: '100%',
-  borderCollapse: 'separate',
-  borderSpacing: 0,
-  fontSize: 13,
-};
-
-export const th: CSSProperties = {
-  textAlign: 'left',
-  padding: '10px 14px',
-  borderBottom: `1px solid ${colors.border}`,
-  fontWeight: 600,
-  color: colors.muted,
-  fontSize: 11,
-  textTransform: 'uppercase',
-  background: colors.bgAlt,
-  letterSpacing: 0.6,
-};
-
-export const td: CSSProperties = {
-  padding: '12px 14px',
-  borderBottom: `1px solid ${colors.border}`,
-  verticalAlign: 'middle',
-  color: colors.text,
-};
-
-/**
- * Badge — chip arredondado com cor base.
- * BG ~12% opacidade da cor + cor sólida no texto. Usa color-mix() pra
- * funcionar tanto com hex quanto com CSS vars (var(--magenta) etc.).
- */
-export const badge = (color = colors.muted): CSSProperties => ({
-  display: 'inline-flex',
-  alignItems: 'center',
-  padding: '2px 9px',
-  borderRadius: radius.full,
-  fontSize: 11,
-  fontWeight: 600,
-  background: alpha(color, 12),
-  color,
-  letterSpacing: 0.2,
-  lineHeight: 1.6,
-  border: `1px solid ${alpha(color, 19)}`,
-});
-
-/** Tabular numbers — pra colunas de dinheiro/quantidade. */
-export const tabular: CSSProperties = {
-  fontFamily: fontStackMono,
-  fontVariantNumeric: 'tabular-nums',
-};

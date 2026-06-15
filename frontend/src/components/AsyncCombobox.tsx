@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { api, ApiError } from '@/lib/api';
-import { colors, input as inputStyle } from './styles';
+import { colors } from './styles';
 
 /**
  * Combobox com busca debounced contra um endpoint paginado do backend.
@@ -111,14 +111,8 @@ export function AsyncCombobox<T>({
     <div ref={containerRef} style={{ position: 'relative' }} data-testid={testId}>
       {value ? (
         <div
-          style={{
-            ...inputStyle,
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'space-between',
-            gap: '0.5rem',
-            cursor: disabled ? 'default' : 'pointer',
-          }}
+          className="w-full border border-border-strong rounded-md px-3 py-2 text-[13px] bg-surface text-text box-border outline-none flex items-center justify-between gap-2"
+          style={{ cursor: disabled ? 'default' : 'pointer' }}
         >
           <span data-testid={testId ? `${testId}-selected` : undefined}>
             <strong>{getLabel(value)}</strong>
@@ -159,7 +153,7 @@ export function AsyncCombobox<T>({
             setQuery(e.target.value);
             setOpen(true);
           }}
-          style={inputStyle}
+          className="w-full border border-border-strong rounded-md px-3 py-2 text-[13px] bg-surface text-text box-border outline-none"
         />
       )}
       {open && !value && (

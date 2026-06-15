@@ -1,5 +1,5 @@
 import type { ReactNode } from 'react';
-import { btnSecondary, colors } from './styles';
+import { colors } from './styles';
 
 /**
  * Encapsula os 3 estados de qualquer fetch:
@@ -66,7 +66,7 @@ export function StateView({
             type="button"
             data-testid="state-retry"
             onClick={onRetry}
-            style={btnSecondary}
+            className="bg-surface text-text border border-border-strong rounded-md px-4 py-2 text-[13px] font-medium cursor-pointer tracking-[-0.1px]"
           >
             Tentar novamente
           </button>

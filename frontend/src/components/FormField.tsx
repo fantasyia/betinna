@@ -1,5 +1,9 @@
 import type { ReactNode } from 'react';
-import { colors, input as inputStyle, label as labelStyle, select as selectStyle } from './styles';
+import { colors } from './styles';
+import { cn } from '@/lib/cn';
+
+const INPUT_CLS =
+  'w-full border border-border-strong rounded-md px-3 py-2 text-[13px] bg-surface text-text box-border outline-none';
 
 export interface FormFieldProps {
   label: string;
@@ -13,7 +17,10 @@ export interface FormFieldProps {
 export function FormField({ label, htmlFor, hint, error, required, children }: FormFieldProps) {
   return (
     <div style={{ marginBottom: '1rem' }}>
-      <label htmlFor={htmlFor} style={labelStyle}>
+      <label
+        htmlFor={htmlFor}
+        className="block text-[11px] font-semibold uppercase text-muted mb-1.5 tracking-[0.6px]"
+      >
         {label}
         {required && <span style={{ color: colors.danger, marginLeft: 4 }}>*</span>}
       </label>
@@ -30,19 +37,26 @@ export function FormField({ label, htmlFor, hint, error, required, children }: F
   );
 }
 
-export function Input(props: React.InputHTMLAttributes<HTMLInputElement>) {
-  return <input {...props} style={{ ...inputStyle, ...(props.style ?? {}) }} />;
+export function Input({ className, ...props }: React.InputHTMLAttributes<HTMLInputElement>) {
+  return <input {...props} className={cn(INPUT_CLS, className)} />;
 }
 
-export function Select(props: React.SelectHTMLAttributes<HTMLSelectElement>) {
-  return <select {...props} style={{ ...selectStyle, ...(props.style ?? {}) }} />;
+export function Select({ className, ...props }: React.SelectHTMLAttributes<HTMLSelectElement>) {
+  return (
+    <select {...props} className={cn(INPUT_CLS, '[appearance:auto] [color-scheme:light]', className)} />
+  );
 }
 
-export function Textarea(props: React.TextareaHTMLAttributes<HTMLTextAreaElement>) {
+export function Textarea({
+  className,
+  style,
+  ...props
+}: React.TextareaHTMLAttributes<HTMLTextAreaElement>) {
   return (
     <textarea
       {...props}
-      style={{ ...inputStyle, minHeight: 80, fontFamily: 'inherit', ...(props.style ?? {}) }}
+      className={cn(INPUT_CLS, className)}
+      style={{ minHeight: 80, fontFamily: 'inherit', ...style }}
     />
   );
 }

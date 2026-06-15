@@ -1,5 +1,4 @@
 import type { ReactNode } from 'react';
-import { input } from './styles';
 
 /**
  * Container horizontal pra filtros (search + selects).
@@ -37,7 +36,7 @@ export function SearchInput({
       placeholder={placeholder}
       value={value}
       onChange={(e) => onChange(e.target.value)}
-      style={input}
+      className="w-full border border-border-strong rounded-md px-3 py-2 text-[13px] bg-surface text-text box-border outline-none"
     />
   );
 }

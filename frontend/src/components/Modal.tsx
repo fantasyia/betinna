@@ -1,5 +1,5 @@
 import { useEffect, type ReactNode } from 'react';
-import { btnGhost, colors } from './styles';
+import { colors } from './styles';
 
 export interface ModalProps {
   open: boolean;
@@ -103,13 +103,7 @@ export function Modal({ open, onClose, title, children, footer, width = 520 }: M
             type="button"
             data-testid="modal-close"
             onClick={onClose}
-            style={{
-              ...btnGhost,
-              fontSize: 22,
-              lineHeight: 1,
-              minWidth: 36,
-              minHeight: 36,
-            }}
+            className="bg-transparent text-text rounded-md px-2 py-1 font-medium cursor-pointer tracking-[-0.1px] text-[22px] leading-none min-w-9 min-h-9"
             aria-label="Fechar"
           >
             ×
