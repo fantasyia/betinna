@@ -127,7 +127,9 @@ interface CampanhasResp {
 
 interface DashboardResp {
   vendas: VendasResp;
-  funil: FunilResp;
+  // O /relatorios/dashboard NÃO devolve mais o snapshot por etapa (funilAtual) —
+  // ele vem do /relatorios/funil (funil escolhido). Omitido aqui pra travar uso indevido.
+  funil: Omit<FunilResp, 'funilAtual'>;
   sac: SacResp;
   amostras: AmostrasResp;
   campanhas: CampanhasResp;
@@ -277,6 +279,9 @@ function TabButton({
 
 function OverviewTab({ qs }: { qs: string }) {
   const { data, loading, error, refetch } = useApiQuery<DashboardResp>(`/relatorios/dashboard${qs}`);
+  // Snapshot por etapa do funil — vem do /relatorios/funil (sem funilId = funil padrão),
+  // já que o /relatorios/dashboard parou de mandar funilAtual. Sem isso o card abaixo crashava.
+  const { data: funilData } = useApiQuery<FunilResp>(`/relatorios/funil${qs}`);
 
   return (
     <StateView loading={loading} error={error} onRetry={refetch}>
@@ -333,7 +338,7 @@ function OverviewTab({ qs }: { qs: string }) {
             <div className="bg-surface border border-border rounded-[10px] p-6">
               <h3 className="m-0 mb-3 text-[15px]">Funil de leads</h3>
               <Funnel
-                stages={data.funil.funilAtual.map((e) => ({
+                stages={(funilData?.funilAtual ?? []).map((e) => ({
                   label: ETAPA_LABEL[e.etapa] ?? e.etapa,
                   value: e.count,
                   color: ETAPA_COLOR[e.etapa],
