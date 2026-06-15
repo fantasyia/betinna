@@ -22,6 +22,7 @@ const WhatsAppPage = lazy(() => import('@/pages/WhatsAppPage'));
 const AdminPage = lazy(() => import('@/pages/AdminPage'));
 const ForbiddenPage = lazy(() => import('@/pages/ForbiddenPage'));
 const ClientesPage = lazy(() => import('@/pages/ClientesPage'));
+const ContatosPage = lazy(() => import('@/pages/ContatosPage'));
 const ClienteDetailPage = lazy(() => import('@/pages/ClienteDetailPage'));
 const CatalogoPage = lazy(() => import('@/pages/CatalogoPage'));
 const MullerBotPage = lazy(() => import('@/pages/MullerBotPage'));
@@ -200,6 +201,18 @@ const router = createBrowserRouter([
         <ProtectedRoute requirePermission="clientes.view">
           <PageSuspense>
             <ClientesPage />
+          </PageSuspense>
+        </ProtectedRoute>
+      </ErrorBoundary>
+    ),
+  },
+  {
+    path: '/contatos',
+    element: (
+      <ErrorBoundary>
+        <ProtectedRoute requirePermission="clientes.view">
+          <PageSuspense>
+            <ContatosPage />
           </PageSuspense>
         </ProtectedRoute>
       </ErrorBoundary>

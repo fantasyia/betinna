@@ -45,6 +45,7 @@ import { BackupModule } from '@modules/backup/backup.module';
 import { RespostasRapidasModule } from '@modules/respostas-rapidas/respostas-rapidas.module';
 import { CatalogoModule } from '@modules/catalogo/catalogo.module';
 import { ClientesModule } from '@modules/clientes/clientes.module';
+import { ContatosModule } from '@modules/contatos/contatos.module';
 import { ComissoesModule } from '@modules/comissoes/comissoes.module';
 import { EmpresasModule } from '@modules/empresas/empresas.module';
 import { HealthModule } from '@modules/health/health.module';
@@ -179,6 +180,7 @@ import { SharedUtilsModule } from '@shared/utils/shared-utils.module';
     TagsModule,
     BotPromptsModule,
     ClientesModule,
+    ContatosModule,
     ProdutosModule,
     CatalogoModule,
     PedidosModule,

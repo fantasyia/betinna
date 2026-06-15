@@ -8,6 +8,7 @@ import {
   Sparkles,
   Activity,
   Megaphone,
+  Users,
 } from 'lucide-react';
 import { useRole, usePermission } from '@/hooks/usePermission';
 import { SubTabsBar, type SubTab } from '@/components/SubTabsBar';
@@ -44,6 +45,7 @@ export function CrmTabs() {
       label: 'Clientes',
       icon: <Briefcase size={14} />,
     });
+    tabs.push({ to: '/contatos', label: 'Contatos', icon: <Users size={14} /> });
   }
   tabs.push({ to: '/leads', label: 'Funil', icon: <Target size={14} /> });
   tabs.push({
