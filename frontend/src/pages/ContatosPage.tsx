@@ -7,24 +7,35 @@ import {
   MessageSquare,
   Target,
   AlertTriangle,
+  Tag as TagIcon,
+  Trash2,
+  ArrowRightLeft,
+  X,
 } from 'lucide-react';
 import { useApiQuery, type PaginatedResponse } from '@/hooks/useApiQuery';
 import { useDebouncedValue } from '@/hooks/useDebouncedValue';
+import { usePermission } from '@/hooks/usePermission';
 import { PageLayout, useIsMobile } from '@/components/PageLayout';
 import { CrmTabs } from '@/components/CrmTabs';
 import { StateView } from '@/components/StateView';
+import { useToast } from '@/components/toast';
+import { api, ApiError } from '@/lib/api';
 import { formatNumero, maskTelefone } from '@/lib/masks';
 import {
   Avatar,
   Badge,
   Button,
   Card,
+  Checkbox,
+  Dialog,
   Drawer,
   EmptyState,
+  Field,
   IconButton,
   Input,
   Select,
 } from '@/components/ui';
+import { cn } from '@/lib/cn';
 
 type ContatoTipo = 'LEAD' | 'CLIENTE' | 'CONVERSA';
 
@@ -75,6 +86,21 @@ export default function ContatosPage() {
   const buscaDebounced = useDebouncedValue(search, 300);
   const [tipo, setTipo] = useState('');
   const [detail, setDetail] = useState<Contato | null>(null);
+  const canEdit = usePermission('clientes.edit');
+  const [selected, setSelected] = useState<Map<string, Contato>>(new Map());
+  const [bulk, setBulk] = useState<'tag' | 'mover' | 'excluir' | null>(null);
+
+  function toggle(c: Contato) {
+    setSelected((prev) => {
+      const next = new Map(prev);
+      if (next.has(c.chave)) next.delete(c.chave);
+      else next.set(c.chave, c);
+      return next;
+    });
+  }
+  function clearSel() {
+    setSelected(new Map());
+  }
 
   useEffect(() => {
     setPage(1);
@@ -88,6 +114,30 @@ export default function ContatosPage() {
   }, [page, buscaDebounced, tipo]);
 
   const { data, loading, error, refetch } = useApiQuery<ContatosResp>(listPath);
+
+  const pageRows = data?.data ?? [];
+  const allPageSel = pageRows.length > 0 && pageRows.every((c) => selected.has(c.chave));
+  function toggleAllPage() {
+    setSelected((prev) => {
+      const next = new Map(prev);
+      if (allPageSel) for (const c of pageRows) next.delete(c.chave);
+      else for (const c of pageRows) next.set(c.chave, c);
+      return next;
+    });
+  }
+
+  const selArr = [...selected.values()];
+  const ids = {
+    leadIds: selArr.flatMap((c) => (c.leadId ? [c.leadId] : [])),
+    clienteIds: selArr.flatMap((c) => (c.clienteId ? [c.clienteId] : [])),
+    conversaIds: selArr.flatMap((c) => (c.conversaId ? [c.conversaId] : [])),
+  };
+  const nLeads = selArr.filter((c) => c.tipos.includes('LEAD')).length;
+  async function afterAcao() {
+    clearSel();
+    setBulk(null);
+    refetch();
+  }
 
   return (
     <PageLayout
@@ -144,6 +194,15 @@ export default function ContatosPage() {
                 <table className="w-full">
                   <thead>
                     <tr className="border-b border-border bg-bg-alt">
+                      {canEdit && (
+                        <th className="w-10 px-4 py-2.5">
+                          <Checkbox
+                            checked={allPageSel}
+                            onChange={toggleAllPage}
+                            aria-label="Selecionar todos da página"
+                          />
+                        </th>
+                      )}
                       <Th>Contato</Th>
                       <Th>Tipo</Th>
                       <Th>Local</Th>
@@ -159,6 +218,14 @@ export default function ContatosPage() {
                         onClick={() => setDetail(c)}
                         data-testid="contato-row"
                       >
+                        {canEdit && (
+                          <td className="px-4 py-2.5" onClick={(e) => e.stopPropagation()}>
+                            <Checkbox
+                              checked={selected.has(c.chave)}
+                              onChange={() => toggle(c)}
+                            />
+                          </td>
+                        )}
                         <Td>
                           <div className="flex items-center gap-2.5 min-w-0">
                             <Avatar name={c.nome} size="sm" />
@@ -239,6 +306,65 @@ export default function ContatosPage() {
           )}
         </StateView>
       </Card>
+
+      {canEdit && selected.size > 0 && (
+        <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-50 flex items-center gap-2 px-3 py-2 bg-surface-elevated border border-border-strong rounded-full shadow-xl">
+          <span className="text-sm text-text pl-2 pr-1">
+            <strong className="text-primary">{selected.size}</strong> selecionado
+            {selected.size === 1 ? '' : 's'}
+          </span>
+          <Button
+            size="sm"
+            variant="secondary"
+            onClick={() => setBulk('tag')}
+            leftIcon={<TagIcon className="h-3.5 w-3.5" />}
+          >
+            Tag
+          </Button>
+          <Button
+            size="sm"
+            variant="secondary"
+            disabled={nLeads === 0}
+            onClick={() => setBulk('mover')}
+            leftIcon={<ArrowRightLeft className="h-3.5 w-3.5" />}
+          >
+            Mover etapa
+          </Button>
+          <Button
+            size="sm"
+            variant="danger"
+            onClick={() => setBulk('excluir')}
+            leftIcon={<Trash2 className="h-3.5 w-3.5" />}
+          >
+            Excluir
+          </Button>
+          <IconButton
+            aria-label="Limpar seleção"
+            variant="ghost"
+            size="sm"
+            icon={<X />}
+            onClick={clearSel}
+          />
+        </div>
+      )}
+
+      {bulk === 'tag' && <BulkTagModal ids={ids} onClose={() => setBulk(null)} onDone={afterAcao} />}
+      {bulk === 'mover' && (
+        <BulkMoveModal
+          leadIds={ids.leadIds}
+          nLeads={nLeads}
+          onClose={() => setBulk(null)}
+          onDone={afterAcao}
+        />
+      )}
+      {bulk === 'excluir' && (
+        <BulkDeleteModal
+          ids={ids}
+          count={selected.size}
+          onClose={() => setBulk(null)}
+          onDone={afterAcao}
+        />
+      )}
 
       {detail && (
         <ContatoDrawer
@@ -358,5 +484,276 @@ function DetailRow({ label, value }: { label: string; value: string | null }) {
       <span className="text-[11px] font-semibold uppercase tracking-wide text-muted">{label}</span>
       <span className="text-sm text-text">{value}</span>
     </div>
+  );
+}
+
+type Ids = { leadIds: string[]; clienteIds: string[]; conversaIds: string[] };
+type AcaoResult = { afetados: number; falhas: Array<{ id: string; erro: string }> };
+
+function BulkTagModal({ ids, onClose, onDone }: { ids: Ids; onClose: () => void; onDone: () => void }) {
+  const toast = useToast();
+  const { data: tags } = useApiQuery<Array<{ id: string; nome: string; cor: string }>>('/tags');
+  const [picked, setPicked] = useState<Set<string>>(new Set());
+  const [modo, setModo] = useState<'adicionar' | 'remover'>('adicionar');
+  const [busy, setBusy] = useState(false);
+  const alvos = ids.leadIds.length + ids.clienteIds.length;
+
+  async function submit() {
+    if (picked.size === 0) return;
+    setBusy(true);
+    try {
+      const r = await api.post<AcaoResult>('/contatos/acao-massa', {
+        acao: 'tag',
+        leadIds: ids.leadIds,
+        clienteIds: ids.clienteIds,
+        conversaIds: [],
+        tagIds: [...picked],
+        modo,
+      });
+      toast.success('Tags aplicadas', `${r.afetados} contato(s)`);
+      onDone();
+    } catch (err) {
+      toast.error('Falha ao aplicar tags', err instanceof ApiError ? err.message : undefined);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <Dialog
+      open
+      onClose={onClose}
+      title="Aplicar / remover tag"
+      size="md"
+      footer={
+        <>
+          <Button variant="secondary" onClick={onClose}>
+            Cancelar
+          </Button>
+          <Button onClick={() => void submit()} loading={busy} disabled={picked.size === 0}>
+            Aplicar
+          </Button>
+        </>
+      }
+    >
+      <div className="flex flex-col gap-4">
+        <Field label="Ação">
+          <Select value={modo} onChange={(e) => setModo(e.target.value as 'adicionar' | 'remover')}>
+            <option value="adicionar">Adicionar tag(s)</option>
+            <option value="remover">Remover tag(s)</option>
+          </Select>
+        </Field>
+        <Field label="Tags">
+          <div className="flex flex-wrap gap-1.5">
+            {(tags ?? []).map((t) => {
+              const on = picked.has(t.id);
+              return (
+                <button
+                  key={t.id}
+                  type="button"
+                  onClick={() =>
+                    setPicked((p) => {
+                      const n = new Set(p);
+                      if (n.has(t.id)) n.delete(t.id);
+                      else n.add(t.id);
+                      return n;
+                    })
+                  }
+                  className={cn(
+                    'px-2.5 py-1 rounded-full text-[12px] border cursor-pointer',
+                    on
+                      ? 'bg-primary/12 border-primary text-primary'
+                      : 'bg-surface border-border text-text-subtle hover:border-border-strong',
+                  )}
+                >
+                  {t.nome}
+                </button>
+              );
+            })}
+            {(tags ?? []).length === 0 && (
+              <span className="text-sm text-muted">Nenhuma tag cadastrada (crie em CRM → Tags).</span>
+            )}
+          </div>
+        </Field>
+        <p className="text-xs text-muted">
+          Aplica nos {alvos} contato(s) que são Lead ou Cliente. Conversas soltas não recebem tag.
+        </p>
+      </div>
+    </Dialog>
+  );
+}
+
+function BulkMoveModal({
+  leadIds,
+  nLeads,
+  onClose,
+  onDone,
+}: {
+  leadIds: string[];
+  nLeads: number;
+  onClose: () => void;
+  onDone: () => void;
+}) {
+  const toast = useToast();
+  const { data: funis } = useApiQuery<
+    Array<{ id: string; nome: string; etapas: Array<{ id: string; nome: string; tipo: string }> }>
+  >('/funis');
+  const [funilId, setFunilId] = useState('');
+  const [etapaId, setEtapaId] = useState('');
+  const [motivo, setMotivo] = useState('');
+  const [busy, setBusy] = useState(false);
+  const funil = (funis ?? []).find((f) => f.id === funilId) ?? null;
+  const etapas = funil?.etapas ?? [];
+  const etapaSel = etapas.find((e) => e.id === etapaId) ?? null;
+  const terminal = etapaSel?.tipo === 'GANHO' || etapaSel?.tipo === 'PERDIDO';
+
+  async function submit() {
+    if (!etapaId) return;
+    if (terminal && !motivo.trim()) {
+      toast.error('Informe o motivo (etapa de Ganho/Perdido)');
+      return;
+    }
+    setBusy(true);
+    try {
+      const r = await api.post<AcaoResult>('/contatos/acao-massa', {
+        acao: 'mover-etapa',
+        leadIds,
+        clienteIds: [],
+        conversaIds: [],
+        funilEtapaId: etapaId,
+        motivo: motivo.trim() || undefined,
+      });
+      toast.success(
+        'Leads movidos',
+        `${r.afetados} de ${leadIds.length}${r.falhas.length ? ` · ${r.falhas.length} falha(s)` : ''}`,
+      );
+      onDone();
+    } catch (err) {
+      toast.error('Falha ao mover', err instanceof ApiError ? err.message : undefined);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <Dialog
+      open
+      onClose={onClose}
+      title={`Mover ${nLeads} lead(s) de etapa`}
+      size="md"
+      footer={
+        <>
+          <Button variant="secondary" onClick={onClose}>
+            Cancelar
+          </Button>
+          <Button onClick={() => void submit()} loading={busy} disabled={!etapaId}>
+            Mover
+          </Button>
+        </>
+      }
+    >
+      <div className="flex flex-col gap-4">
+        <Field label="Funil">
+          <Select
+            value={funilId}
+            onChange={(e) => {
+              setFunilId(e.target.value);
+              setEtapaId('');
+            }}
+          >
+            <option value="">Escolha o funil…</option>
+            {(funis ?? []).map((f) => (
+              <option key={f.id} value={f.id}>
+                {f.nome}
+              </option>
+            ))}
+          </Select>
+        </Field>
+        <Field label="Etapa de destino">
+          <Select value={etapaId} disabled={!funil} onChange={(e) => setEtapaId(e.target.value)}>
+            <option value="">Escolha a etapa…</option>
+            {etapas.map((e) => (
+              <option key={e.id} value={e.id}>
+                {e.nome}
+              </option>
+            ))}
+          </Select>
+        </Field>
+        {terminal && (
+          <Field label="Motivo (obrigatório p/ Ganho ou Perdido)">
+            <Input
+              value={motivo}
+              onChange={(e) => setMotivo(e.target.value)}
+              placeholder="Ex.: fechou negócio / sem interesse"
+            />
+          </Field>
+        )}
+        <p className="text-xs text-muted">
+          Só os {nLeads} contato(s) que são Lead serão movidos. Clientes e conversas na seleção são
+          ignorados.
+        </p>
+      </div>
+    </Dialog>
+  );
+}
+
+function BulkDeleteModal({
+  ids,
+  count,
+  onClose,
+  onDone,
+}: {
+  ids: Ids;
+  count: number;
+  onClose: () => void;
+  onDone: () => void;
+}) {
+  const toast = useToast();
+  const [busy, setBusy] = useState(false);
+
+  async function submit() {
+    setBusy(true);
+    try {
+      const r = await api.post<AcaoResult>('/contatos/acao-massa', {
+        acao: 'excluir',
+        leadIds: ids.leadIds,
+        clienteIds: ids.clienteIds,
+        conversaIds: ids.conversaIds,
+      });
+      toast.success(
+        'Excluídos',
+        `${r.afetados} registro(s)${r.falhas.length ? ` · ${r.falhas.length} não puderam ser excluídos` : ''}`,
+      );
+      onDone();
+    } catch (err) {
+      toast.error('Falha ao excluir', err instanceof ApiError ? err.message : undefined);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <Dialog
+      open
+      onClose={onClose}
+      title={`Excluir ${count} contato(s)?`}
+      size="sm"
+      footer={
+        <>
+          <Button variant="secondary" onClick={onClose}>
+            Cancelar
+          </Button>
+          <Button variant="danger" onClick={() => void submit()} loading={busy}>
+            Excluir
+          </Button>
+        </>
+      }
+    >
+      <p className="text-sm text-text-subtle">
+        Apaga os registros subjacentes (Lead, Cliente e/ou Conversa) de cada contato selecionado.
+        Clientes com pedidos/propostas não podem ser excluídos (serão reportados). Esta ação não pode
+        ser desfeita.
+      </p>
+    </Dialog>
   );
 }

@@ -4,9 +4,16 @@ import { PrismaService } from '@database/prisma.service';
 import { ForbiddenException } from '@shared/errors/app-exception';
 import { ErrorCode } from '@shared/errors/error-codes';
 import { RepScopeService } from '@shared/scope/rep-scope.service';
+import { LeadsService } from '@modules/leads/leads.service';
 import type { AuthenticatedUser } from '@shared/types/authenticated-user';
 import { type Paginated, buildPaginated } from '@shared/types/pagination';
-import type { ListContatosDto } from './contatos.dto';
+import type { AcaoMassaDto, ListContatosDto } from './contatos.dto';
+
+export interface AcaoMassaResult {
+  ok: true;
+  afetados: number;
+  falhas: Array<{ id: string; erro: string }>;
+}
 
 export type ContatoTipo = 'LEAD' | 'CLIENTE' | 'CONVERSA';
 
@@ -41,6 +48,7 @@ export class ContatosService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly repScope: RepScopeService,
+    private readonly leads: LeadsService,
   ) {}
 
   private requireEmpresa(user: AuthenticatedUser): string {
@@ -289,5 +297,118 @@ export class ContatosService {
     const start = (params.page - 1) * params.limit;
     const slice = arr.slice(start, start + params.limit);
     return { ...buildPaginated(slice, total, params.page, params.limit), truncado };
+  }
+
+  /**
+   * Ação em lote. O front manda os ids subjacentes (leadIds/clienteIds/
+   * conversaIds) dos contatos selecionados; aqui resolvemos só os ACESSÍVEIS
+   * (tenant + carteira) e aplicamos a ação em cada entidade.
+   */
+  async acaoMassa(user: AuthenticatedUser, dto: AcaoMassaDto): Promise<AcaoMassaResult> {
+    const empresaId = this.requireEmpresa(user);
+    const scope = await this.repScope.getRepIds(user);
+    const falhas: Array<{ id: string; erro: string }> = [];
+
+    const leadWhere: Prisma.LeadWhereInput = { empresaId, id: { in: dto.leadIds } };
+    const cliWhere: Prisma.ClienteWhereInput = { empresaId, id: { in: dto.clienteIds } };
+    if (scope !== null) {
+      leadWhere.representanteId = { in: scope };
+      cliWhere.representanteId = { in: scope };
+    }
+    const convWhere: Prisma.ConversationWhereInput = { empresaId, id: { in: dto.conversaIds } };
+    if (user.role === 'REP') convWhere.proprietarioId = user.id;
+
+    const [leadIds, clienteIds, conversaIds] = await Promise.all([
+      dto.leadIds.length
+        ? this.prisma.lead
+            .findMany({ where: leadWhere, select: { id: true } })
+            .then((r) => r.map((x) => x.id))
+        : Promise.resolve<string[]>([]),
+      dto.clienteIds.length
+        ? this.prisma.cliente
+            .findMany({ where: cliWhere, select: { id: true } })
+            .then((r) => r.map((x) => x.id))
+        : Promise.resolve<string[]>([]),
+      dto.conversaIds.length
+        ? this.prisma.conversation
+            .findMany({ where: convWhere, select: { id: true } })
+            .then((r) => r.map((x) => x.id))
+        : Promise.resolve<string[]>([]),
+    ]);
+
+    // ── TAG (leads + clientes) ──
+    if (dto.acao === 'tag') {
+      const tags = await this.prisma.tag.findMany({
+        where: { empresaId, id: { in: dto.tagIds ?? [] } },
+        select: { id: true },
+      });
+      const tagIds = tags.map((t) => t.id);
+      if (tagIds.length === 0) return { ok: true, afetados: 0, falhas };
+      if (dto.modo === 'adicionar') {
+        await this.prisma.leadTag.createMany({
+          data: leadIds.flatMap((leadId) =>
+            tagIds.map((tagId) => ({ leadId, tagId, origem: 'usuario' })),
+          ),
+          skipDuplicates: true,
+        });
+        await this.prisma.clienteTag.createMany({
+          data: clienteIds.flatMap((clienteId) => tagIds.map((tagId) => ({ clienteId, tagId }))),
+          skipDuplicates: true,
+        });
+      } else {
+        await this.prisma.leadTag.deleteMany({
+          where: { leadId: { in: leadIds }, tagId: { in: tagIds } },
+        });
+        await this.prisma.clienteTag.deleteMany({
+          where: { clienteId: { in: clienteIds }, tagId: { in: tagIds } },
+        });
+      }
+      return { ok: true, afetados: leadIds.length + clienteIds.length, falhas };
+    }
+
+    // ── MOVER ETAPA (só leads — reusa a validação/SLA do LeadsService) ──
+    if (dto.acao === 'mover-etapa') {
+      let movidos = 0;
+      for (const id of leadIds) {
+        try {
+          await this.leads.moverEtapa(user, id, {
+            funilEtapaId: dto.funilEtapaId,
+            motivo: dto.motivo,
+          });
+          movidos += 1;
+        } catch (err) {
+          falhas.push({ id, erro: err instanceof Error ? err.message : String(err) });
+        }
+      }
+      return { ok: true, afetados: movidos, falhas };
+    }
+
+    // ── EXCLUIR ──
+    let excluidos = 0;
+    if (leadIds.length) {
+      const r = await this.prisma.lead.deleteMany({ where: { id: { in: leadIds }, empresaId } });
+      excluidos += r.count;
+    }
+    if (conversaIds.length) {
+      await this.prisma.message.deleteMany({ where: { conversationId: { in: conversaIds } } });
+      const r = await this.prisma.conversation.deleteMany({
+        where: { id: { in: conversaIds }, empresaId },
+      });
+      excluidos += r.count;
+    }
+    // Clientes 1 a 1: FK de pedidos/propostas (RESTRICT) pode bloquear.
+    for (const id of clienteIds) {
+      try {
+        await this.prisma.cliente.deleteMany({ where: { id, empresaId } });
+        excluidos += 1;
+      } catch (err) {
+        if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === 'P2003') {
+          falhas.push({ id, erro: 'Cliente tem pedidos/propostas — inative em vez de excluir' });
+        } else {
+          falhas.push({ id, erro: err instanceof Error ? err.message : String(err) });
+        }
+      }
+    }
+    return { ok: true, afetados: excluidos, falhas };
   }
 }
