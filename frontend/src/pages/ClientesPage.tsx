@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import {
   Search,
   Plus,
+  Upload,
   Download,
   FileText,
   FileSpreadsheet,
@@ -22,6 +23,7 @@ import {
   RefreshCw,
 } from 'lucide-react';
 import { NovoPedidoDialog, type ClienteOpt } from '@/components/NovoPedidoDialog';
+import { ImportClientesModal } from '@/components/ImportClientesModal';
 import { api, ApiError } from '@/lib/api';
 import { useApiQuery, type PaginatedResponse } from '@/hooks/useApiQuery';
 import { useDebouncedValue } from '@/hooks/useDebouncedValue';
@@ -134,6 +136,7 @@ export default function ClientesPage() {
 
   const [exporting, setExporting] = useState(false);
   const [exportProgress, setExportProgress] = useState<{ page: number; total: number } | null>(null);
+  const [importOpen, setImportOpen] = useState(false);
 
   // Filtros / paginação
   const [page, setPage] = useState(1);
@@ -290,6 +293,16 @@ export default function ClientesPage() {
             progress={exportProgress}
             onExport={handleExport}
           />
+          {canEdit && (
+            <Button
+              variant="secondary"
+              data-testid="cliente-import-btn"
+              onClick={() => setImportOpen(true)}
+              leftIcon={<Upload className="h-3.5 w-3.5" />}
+            >
+              Importar
+            </Button>
+          )}
           {canEdit && (
             <Button
               data-testid="cliente-new-btn"
@@ -618,6 +631,15 @@ export default function ClientesPage() {
 
       {creating && (
         <ClienteFormModal open cliente={null} onClose={() => setCreating(false)} onSaved={onSaved} />
+      )}
+      {importOpen && (
+        <ImportClientesModal
+          onClose={() => setImportOpen(false)}
+          onDone={() => {
+            setImportOpen(false);
+            refetch();
+          }}
+        />
       )}
 
       {editingId && (

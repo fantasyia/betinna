@@ -81,7 +81,15 @@ export async function importLeads(req: ImportLeadsRequest): Promise<ImportResult
   return api.post<ImportResult>('/import/leads', req);
 }
 
-export async function importClientes(req: ImportRequest): Promise<ImportResult> {
+/** Payload do import de clientes — aceita `rows` (xlsx parseado) OU `csv`. */
+export interface ImportClientesRequest {
+  csv?: string;
+  rows?: Record<string, string>[];
+  dryRun?: boolean;
+  onDuplicate?: OnDuplicate;
+}
+
+export async function importClientes(req: ImportClientesRequest): Promise<ImportResult> {
   return api.post<ImportResult>('/import/clientes', req);
 }
 

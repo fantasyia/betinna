@@ -59,7 +59,7 @@ export class ImportService {
       );
     }
 
-    const rows = this.parseCsv(dto.csv);
+    const rows = dto.rows ?? this.parseCsv(dto.csv ?? '');
     return this.processarLote(
       rows,
       dto.dryRun,

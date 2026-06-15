@@ -26,7 +26,21 @@ const csvBody = z.object({
   onDuplicate: z.enum(['skip', 'update', 'error']).optional().default('skip'),
 });
 
-export const importClientesSchema = csvBody;
+/** Clientes — aceita `csv` (texto) OU `rows` (xlsx já parseado no front). */
+export const importClientesSchema = z
+  .object({
+    csv: z
+      .string()
+      .min(10)
+      .max(1024 * 1024)
+      .optional(),
+    rows: z.array(z.record(z.string())).max(5000).optional(),
+    dryRun: z.boolean().optional().default(false),
+    onDuplicate: z.enum(['skip', 'update', 'error']).optional().default('skip'),
+  })
+  .refine((d) => Boolean(d.csv) || (d.rows?.length ?? 0) > 0, {
+    message: 'Envie o conteúdo (csv) ou as linhas (rows)',
+  });
 export type ImportClientesDto = z.infer<typeof importClientesSchema>;
 
 export const importProdutosSchema = csvBody;
