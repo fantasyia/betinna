@@ -407,12 +407,6 @@ export default function InboxPage() {
   const [situacao, setSituacao] = useState<string>(''); // precisa_humano | nao_lidas
   const [search, setSearch] = useState<string>('');
   const [selectedId, setSelectedId] = useState<string | null>(null);
-  const [pollBump, setPollBump] = useState(0);
-
-  useEffect(() => {
-    const i = setInterval(() => setPollBump((b) => b + 1), POLL_INTERVAL_MS);
-    return () => clearInterval(i);
-  }, []);
 
   const canal = useMemo(() => {
     const map: Record<string, Canal | ''> = {
@@ -430,7 +424,7 @@ export default function InboxPage() {
   }, [canalTab]);
 
   const listPath = useMemo(() => {
-    const qs = new URLSearchParams({ limit: '40', _t: String(pollBump) });
+    const qs = new URLSearchParams({ limit: '40' });
     if (canal) qs.set('canal', canal);
     if (status) qs.set('status', status);
     if (filterMeu === 'meu') qs.set('meu', 'true');
@@ -439,7 +433,7 @@ export default function InboxPage() {
     if (situacao === 'nao_lidas') qs.set('naoLidas', 'true');
     if (search.trim()) qs.set('search', search.trim());
     return `/inbox?${qs.toString()}`;
-  }, [canal, status, filterMeu, situacao, search, pollBump]);
+  }, [canal, status, filterMeu, situacao, search]);
 
   const {
     data: pageResp,
@@ -447,6 +441,16 @@ export default function InboxPage() {
     error,
     refetch,
   } = useApiQuery<PaginatedResponse<Conversation>>(listPath);
+
+  // Poll em BACKGROUND: revalida a MESMA query (queryKey estável) via refetch().
+  // O TanStack mantém os dados durante o refetch → sem flicker e sem falso
+  // "nova mensagem". (Antes usava `_t: pollBump` na URL como cache-buster, o que
+  // com o TanStack virava uma query NOVA a cada 2s: limpava os dados → loading
+  // piscando + totalNaoLidas caía a 0 → notificação "nova mensagem" em loop.)
+  useEffect(() => {
+    const i = setInterval(() => refetch(), POLL_INTERVAL_MS);
+    return () => clearInterval(i);
+  }, [refetch]);
 
   // Estado GLOBAL do bot (empresa) — pra os selos "Bot pausado"/"Religar" só
   // aparecerem quando o bot está de fato ativo na conversa (senão confunde:
@@ -472,6 +476,9 @@ export default function InboxPage() {
   );
   const [somLigado, setSomLigado] = useState(() => localStorage.getItem('inbox.som') !== 'off');
   const prevNaoLidasRef = useRef(0);
+  // No PRIMEIRO load sincronizamos o ref SEM notificar — senão abrir o Inbox já com
+  // não-lidas dispararia um beep/notificação "fantasma" (0 → N conta como "subiu").
+  const notifInitRef = useRef(false);
 
   // Pede permissão de notificação 1x.
   useEffect(() => {
@@ -482,8 +489,14 @@ export default function InboxPage() {
 
   // Quando o total de não-lidas SOBE → toca som + (se a aba está em 2º plano) notifica.
   useEffect(() => {
+    if (!pageResp) return; // ignora o estado vazio/loading (não zera o baseline)
     const prev = prevNaoLidasRef.current;
-    if (pageResp && totalNaoLidas > prev) {
+    prevNaoLidasRef.current = totalNaoLidas;
+    if (!notifInitRef.current) {
+      notifInitRef.current = true; // primeiro load: só fixa o baseline, não avisa
+      return;
+    }
+    if (totalNaoLidas > prev) {
       if (somLigado) tocarBeep();
       if (
         document.hidden &&
@@ -503,7 +516,6 @@ export default function InboxPage() {
         }
       }
     }
-    prevNaoLidasRef.current = totalNaoLidas;
   }, [totalNaoLidas, somLigado, pageResp]);
 
   // Badge no título da aba: (N) quando há não-lidas e a aba não está focada.
@@ -659,7 +671,6 @@ export default function InboxPage() {
               <ConversationThread
                 key={selectedId}
                 id={selectedId}
-                pollBump={pollBump}
                 onChanged={refetch}
                 onBack={isMobile ? () => setSelectedId(null) : undefined}
               />
@@ -993,26 +1004,36 @@ const EMOJIS = [
 
 function ConversationThread({
   id,
-  pollBump,
   onChanged,
   onBack,
 }: {
   id: string;
-  pollBump: number;
   onChanged: () => void;
   onBack?: () => void;
 }) {
   const toast = useToast();
   const navigate = useNavigate();
-  const detailPath = useMemo(() => `/inbox/${id}?_t=${pollBump}`, [id, pollBump]);
-  const msgsPath = useMemo(
-    () => `/inbox/${id}/mensagens?limit=80&_t=${pollBump}`,
-    [id, pollBump],
-  );
+  // queryKey ESTÁVEL (sem cache-buster `_t`). O poll é via refetch() em background
+  // logo abaixo — o TanStack mantém os dados durante o refetch, então a thread NÃO
+  // pisca/recarrega do zero a cada 2s (era a causa do "chat piscando").
+  const detailPath = useMemo(() => `/inbox/${id}`, [id]);
+  const msgsPath = useMemo(() => `/inbox/${id}/mensagens?limit=80`, [id]);
 
   const conv = useApiQuery<Conversation>(detailPath);
   // Backend retorna Message[] direto (não { data: [] }) — fix 2026-05-27.
   const msgs = useApiQuery<Mensagem[]>(msgsPath);
+
+  // Poll em background da conversa aberta: revalida detalhe + mensagens sem limpar
+  // os dados (sem flicker). Substitui o antigo cache-buster via prop `pollBump`.
+  const refetchConv = conv.refetch;
+  const refetchMsgs = msgs.refetch;
+  useEffect(() => {
+    const i = setInterval(() => {
+      refetchConv();
+      refetchMsgs();
+    }, POLL_INTERVAL_MS);
+    return () => clearInterval(i);
+  }, [refetchConv, refetchMsgs]);
 
   const [resposta, setResposta] = useState('');
   const [sending, setSending] = useState(false);
