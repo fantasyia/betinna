@@ -63,7 +63,6 @@ interface DashboardResp {
     porRep: Array<{ repId: string; repNome: string; pedidos: number; total: number }>;
   };
   funil: {
-    funilAtual: Array<{ etapa: string; count: number; valorEstimado: number }>;
     totalAtivos: number;
     taxaConversao: number;
   };
@@ -170,7 +169,6 @@ export default function DashboardPage() {
               const sac = data.sac ?? ({} as DashboardResp['sac']);
               const faturamento = vendas.faturamento ?? { atual: 0, anterior: 0, variacao: 0 };
               const porRep = vendas.porRep ?? [];
-              const funilAtual = funil.funilAtual ?? [];
               const totalPedidos = vendas.totalPedidos ?? 0;
               const ticketMedio = vendas.ticketMedio ?? 0;
               const totalAtivos = funil.totalAtivos ?? 0;
@@ -284,7 +282,7 @@ export default function DashboardPage() {
                     )}
 
                     {/* Funil — com seletor de funil customizado */}
-                    {prefs.funil && <FunilCard stagesPadrao={funilAtual} />}
+                    {prefs.funil && <FunilCard />}
                   </section>
                   )}
 
@@ -420,14 +418,14 @@ function TopRepsList({
 }
 
 /**
- * Card "Funil de leads" com SELETOR de funil. "Funil padrão" usa o snapshot que
- * já vem no dashboard (enum LeadEtapa). Ao escolher um funil customizado, busca
- * `/relatorios/funil?funilId=…` e mostra as etapas DELE (nome/cor/contagem).
+ * Card "Funil de leads" com SELETOR de funil. Lista os funis da empresa e mostra
+ * a distribuição por etapa do funil escolhido (de `/relatorios/funil?funilId=…`),
+ * abrindo no funil PADRÃO da empresa — o `isPadrao`, que `/funis` ordena primeiro.
  */
-function FunilCard({ stagesPadrao }: { stagesPadrao: FunilStage[] }) {
+function FunilCard() {
   // Funis são gerenciados por admin-tier (kanban.view). O tipo Permission do
-  // frontend não tem 'kanban.view', então usamos o role como proxy — e mesmo
-  // que falhe, o backend é o gate real e o card degrada pro funil padrão.
+  // frontend não tem 'kanban.view', então usamos o role como proxy — o backend
+  // é o gate real.
   const role = useRole();
   const canSeeFunis = role === 'ADMIN' || role === 'DIRECTOR' || role === 'GERENTE';
   const [funilId, setFunilId] = useState('');
@@ -436,12 +434,15 @@ function FunilCard({ stagesPadrao }: { stagesPadrao: FunilStage[] }) {
   const { data: funisData } = useApiQuery<FunilOpt[]>(canSeeFunis ? '/funis' : null);
   const funis = funisData ?? [];
 
-  // Snapshot do funil escolhido (só busca quando NÃO é o padrão).
+  // Default = primeiro funil da lista (o isPadrao, que /funis ordena primeiro).
+  // O usuário troca pelo seletor; até lá, mostramos o funil padrão da empresa.
+  const effectiveFunilId = funilId || funis[0]?.id || '';
+
   const { data: funilData, loading: funilLoading } = useApiQuery<{ funilAtual: FunilStage[] }>(
-    funilId ? `/relatorios/funil?periodo=mes&funilId=${funilId}` : null,
+    effectiveFunilId ? `/relatorios/funil?periodo=mes&funilId=${effectiveFunilId}` : null,
   );
 
-  const stages = funilId ? (funilData?.funilAtual ?? []) : stagesPadrao;
+  const stages = funilData?.funilAtual ?? [];
   const isEmpty = stages.length === 0 || stages.every((e) => e.count === 0);
 
   return (
@@ -455,7 +456,7 @@ function FunilCard({ stagesPadrao }: { stagesPadrao: FunilStage[] }) {
           {funis.length > 0 && (
             <select
               data-testid="dashboard-funil-select"
-              value={funilId}
+              value={effectiveFunilId}
               onChange={(e) => setFunilId(e.target.value)}
               aria-label="Selecionar funil"
               className={cn(
@@ -464,7 +465,6 @@ function FunilCard({ stagesPadrao }: { stagesPadrao: FunilStage[] }) {
                 'hover:border-border-strong focus:outline-none focus:border-primary',
               )}
             >
-              <option value="">Funil padrão</option>
               {funis.map((f) => (
                 <option key={f.id} value={f.id}>
                   {f.nome}
@@ -474,8 +474,22 @@ function FunilCard({ stagesPadrao }: { stagesPadrao: FunilStage[] }) {
           )}
         </div>
       </CardHeader>
-      {funilId && funilLoading ? (
+      {effectiveFunilId && funilLoading ? (
         <div className="py-8 text-center text-sm text-muted">Carregando funil…</div>
+      ) : !effectiveFunilId ? (
+        <EmptyState
+          size="sm"
+          icon={<Target />}
+          title="Nenhum funil configurado"
+          description="Crie um funil pra acompanhar seus leads por etapa."
+          action={
+            <Link to="/funis">
+              <Button variant="secondary" size="sm" rightIcon={<ArrowRight className="h-3 w-3" />}>
+                Configurar funis
+              </Button>
+            </Link>
+          }
+        />
       ) : isEmpty ? (
         <EmptyState
           size="sm"

@@ -849,8 +849,8 @@ export class RelatoriosService {
         criados: funilData.criados,
         ganhos: funilData.ganhos,
         taxaConversao: funilData.taxaConversao,
-        // Incluir snapshot do funil pra renderizar visual no dashboard
-        funilAtual: funilData.funilAtual,
+        // O snapshot por etapa NÃO vai mais aqui: o card do dashboard busca o funil
+        // escolhido direto em /relatorios/funil?funilId=… (default = funil isPadrao).
       },
       sac: {
         total: sacData.total,
