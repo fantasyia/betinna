@@ -9,7 +9,7 @@ import { StateView } from '@/components/StateView';
 import { Table, type Column } from '@/components/Table';
 import { useToast } from '@/components/toast';
 import { useConfirm } from '@/hooks/useConfirm';
-import { badge, btn, btnSecondary, card, colors } from '@/components/styles';
+import { cn } from '@/lib/cn';
 import { formatNumero, formatPercent } from '@/lib/masks';
 
 /**
@@ -71,7 +71,7 @@ export default function AdminPage() {
   return (
     <PageLayout title="Painel Admin">
       <SistemaTabs />
-      <p style={{ color: colors.muted, marginTop: 0, fontSize: 14 }}>
+      <p className="text-muted mt-0 text-[14px]">
         Ferramentas operacionais e atalhos restritos ao papel ADMIN.
       </p>
 
@@ -93,8 +93,8 @@ function SystemStatus() {
   const health = useApiQuery<HealthInfo>('/health');
 
   return (
-    <section style={{ ...card, marginBottom: '1rem' }}>
-      <h2 style={{ marginTop: 0, fontSize: 16 }}>📡 Status do sistema</h2>
+    <section className="bg-surface border border-border rounded-[10px] p-6 mb-4">
+      <h2 className="mt-0 text-[16px]">📡 Status do sistema</h2>
       <StateView
         loading={version.loading || health.loading}
         error={version.error ?? health.error}
@@ -104,16 +104,15 @@ function SystemStatus() {
         }}
       >
         <div
+          className="grid gap-3"
           style={{
-            display: 'grid',
             gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))',
-            gap: '0.75rem',
           }}
         >
           <Stat
             label="API status"
             value={health.data?.status === 'ok' ? 'Online' : 'Degraded'}
-            color={health.data?.status === 'ok' ? colors.success : colors.danger}
+            color={health.data?.status === 'ok' ? 'var(--success)' : 'var(--danger)'}
           />
           <Stat label="Uptime" value={health.data?.uptime ? fmtUptime(health.data.uptime) : '—'} />
           <Stat label="Versão" value={version.data?.version ?? '—'} />
@@ -122,7 +121,7 @@ function SystemStatus() {
           <Stat label="Railway env" value={version.data?.railwayEnv || '—'} />
         </div>
         {version.data?.buildTimestamp && (
-          <p style={{ fontSize: 11, color: colors.muted, marginTop: '0.5rem' }}>
+          <p className="text-[11px] text-muted mt-2">
             Boot: {fmtDate(version.data.buildTimestamp)}
           </p>
         )}
@@ -134,33 +133,16 @@ function SystemStatus() {
 function Stat({
   label,
   value,
-  color = colors.text,
+  color = 'var(--text)',
 }: {
   label: string;
   value: string;
   color?: string;
 }) {
   return (
-    <div
-      style={{
-        background: colors.bgAlt,
-        border: `1px solid ${colors.border}`,
-        borderRadius: 6,
-        padding: '0.5rem 0.75rem',
-      }}
-    >
-      <div
-        style={{
-          fontSize: 10,
-          color: colors.muted,
-          textTransform: 'uppercase',
-          letterSpacing: 0.3,
-          fontWeight: 600,
-        }}
-      >
-        {label}
-      </div>
-      <div style={{ fontSize: 16, fontWeight: 600, color, marginTop: 2, wordBreak: 'break-word' }}>
+    <div className="bg-bg-alt border border-border rounded-md py-2 px-3">
+      <div className="text-[10px] text-muted uppercase tracking-[0.3px] font-semibold">{label}</div>
+      <div className="text-[16px] font-semibold mt-0.5 break-words" style={{ color }}>
         {value}
       </div>
     </div>
@@ -201,9 +183,12 @@ function DeadLetterSection() {
       header: 'Job',
       render: (j) => (
         <div>
-          <div style={{ fontWeight: 600, fontSize: 13 }}>{j.jobName ?? '—'}</div>
-          <div style={{ fontSize: 11, color: colors.muted }}>
-            <span style={badge(colors.info)}>{j.queue}</span> · {j.attemptsMade} tentativas
+          <div className="font-semibold text-[13px]">{j.jobName ?? '—'}</div>
+          <div className="text-[11px] text-muted">
+            <span className="inline-flex items-center rounded-full px-[9px] py-0.5 text-[11px] font-semibold leading-[1.6] tracking-[0.2px] bg-info/12 text-info border border-info/19">
+              {j.queue}
+            </span>{' '}
+            · {j.attemptsMade} tentativas
           </div>
         </div>
       ),
@@ -213,14 +198,7 @@ function DeadLetterSection() {
       header: 'Motivo da falha',
       render: (j) => (
         <div
-          style={{
-            fontSize: 12,
-            color: colors.danger,
-            maxWidth: 380,
-            overflow: 'hidden',
-            textOverflow: 'ellipsis',
-            whiteSpace: 'nowrap',
-          }}
+          className="text-[12px] text-danger max-w-[380px] overflow-hidden text-ellipsis whitespace-nowrap"
           title={j.failedReason}
         >
           {j.failedReason}
@@ -240,7 +218,7 @@ function DeadLetterSection() {
           type="button"
           data-testid={`dlq-retry-${j.id}`}
           onClick={() => retry(j.id)}
-          style={{ ...btn, padding: '0.25rem 0.625rem', fontSize: 12 }}
+          className="bg-primary text-primary-contrast rounded-md py-1 px-2.5 text-[12px] font-semibold cursor-pointer tracking-[-0.1px]"
         >
           Reenviar
         </button>
@@ -249,26 +227,19 @@ function DeadLetterSection() {
   ];
 
   return (
-    <section style={{ ...card, marginBottom: '1rem' }}>
-      <header
-        style={{
-          display: 'flex',
-          justifyContent: 'space-between',
-          alignItems: 'center',
-          marginBottom: '0.75rem',
-        }}
-      >
-        <h2 style={{ margin: 0, fontSize: 16 }}>💀 Dead-letter queue</h2>
+    <section className="bg-surface border border-border rounded-[10px] p-6 mb-4">
+      <header className="flex justify-between items-center mb-3">
+        <h2 className="m-0 text-[16px]">💀 Dead-letter queue</h2>
         <button
           type="button"
           data-testid="dlq-refresh"
           onClick={refetch}
-          style={{ ...btnSecondary, padding: '0.375rem 0.875rem', fontSize: 12 }}
+          className="bg-surface text-text border border-border-strong rounded-md py-1.5 px-3.5 text-[12px] font-medium cursor-pointer tracking-[-0.1px]"
         >
           Atualizar
         </button>
       </header>
-      <p style={{ fontSize: 12, color: colors.muted, marginTop: 0, marginBottom: '0.75rem' }}>
+      <p className="text-[12px] text-muted mt-0 mb-3">
         Jobs que falharam após exceder o máximo de retries. Investigar a causa raiz antes
         de retentar — caso contrário falha de novo e consome recursos.
       </p>
@@ -318,44 +289,30 @@ function DbHealthSection() {
     totalBytes > 5 * 1024 * 1024 * 1024
       ? { texto: 'Banco grande — considere cleanup', cor: BRAND.danger }
       : totalBytes > 1 * 1024 * 1024 * 1024
-        ? { texto: 'Atenção ao crescimento', cor: colors.warning }
+        ? { texto: 'Atenção ao crescimento', cor: 'var(--warning)' }
         : null;
 
   return (
-    <section style={{ ...card, marginBottom: '1rem' }}>
-      <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', marginBottom: '0.5rem' }}>
-        <h2 style={{ margin: 0, fontSize: 16 }}>💾 Saúde do banco</h2>
+    <section className="bg-surface border border-border rounded-[10px] p-6 mb-4">
+      <div className="flex items-center gap-3 mb-2">
+        <h2 className="m-0 text-[16px]">💾 Saúde do banco</h2>
         {data && (
-          <span
-            style={{
-              fontSize: 11,
-              color: colors.muted,
-              fontFamily: 'var(--font-mono)',
-            }}
-          >
+          <span className="text-[11px] text-muted font-mono">
             atualizado em {new Date(data.medidoEm).toLocaleString('pt-BR')}
           </span>
         )}
-        <div style={{ flex: 1 }} />
+        <div className="flex-1" />
         <button
           type="button"
           onClick={refetch}
           disabled={loading}
           data-testid="db-health-refresh"
-          style={{
-            fontSize: 12,
-            padding: '0.25rem 0.625rem',
-            background: 'transparent',
-            color: colors.muted,
-            border: `1px solid ${colors.border}`,
-            borderRadius: 6,
-            cursor: 'pointer',
-          }}
+          className="text-[12px] py-1 px-2.5 bg-transparent text-muted border border-border rounded-md cursor-pointer"
         >
           {loading ? 'atualizando…' : 'Atualizar'}
         </button>
       </div>
-      <p style={{ fontSize: 12, color: colors.muted, margin: '0 0 0.75rem 0' }}>
+      <p className="text-[12px] text-muted m-0 mb-3">
         Visibilidade de quanto cada tabela ocupa no Postgres. Use pra detectar
         crescimento descontrolado antes do disco encher de novo.
       </p>
@@ -363,84 +320,37 @@ function DbHealthSection() {
         {data && (
           <>
             <div
+              className="flex items-center gap-4 py-3 px-4 rounded-md mb-3 border"
               style={{
-                display: 'flex',
-                alignItems: 'center',
-                gap: '1rem',
-                padding: '0.75rem 1rem',
-                background: alerta ? `${alerta.cor}15` : colors.bgAlt,
-                border: `1px solid ${alerta ? alerta.cor : colors.border}`,
-                borderRadius: 6,
-                marginBottom: '0.75rem',
+                background: alerta ? `${alerta.cor}15` : 'var(--bg-alt)',
+                borderColor: alerta ? alerta.cor : 'var(--border)',
               }}
             >
               <div>
-                <div
-                  style={{
-                    fontSize: 10,
-                    color: colors.muted,
-                    textTransform: 'uppercase',
-                    letterSpacing: 0.3,
-                    fontWeight: 600,
-                  }}
-                >
+                <div className="text-[10px] text-muted uppercase tracking-[0.3px] font-semibold">
                   Tamanho total do banco
                 </div>
                 <div
-                  style={{
-                    fontSize: 22,
-                    fontWeight: 700,
-                    color: alerta?.cor ?? colors.text,
-                    fontFamily: 'var(--font-mono)',
-                  }}
+                  className="text-[22px] font-bold font-mono"
+                  style={{ color: alerta?.cor ?? 'var(--text)' }}
                   data-testid="db-health-total"
                 >
                   {data.totalFmt}
                 </div>
               </div>
               {alerta && (
-                <div
-                  style={{
-                    fontSize: 12,
-                    color: alerta.cor,
-                    fontWeight: 600,
-                  }}
-                >
+                <div className="text-[12px] font-semibold" style={{ color: alerta.cor }}>
                   ⚠️ {alerta.texto}
                 </div>
               )}
             </div>
-            <div style={{ overflowX: 'auto' }}>
-              <table
-                style={{
-                  width: '100%',
-                  borderCollapse: 'collapse',
-                  fontSize: 12,
-                }}
-              >
+            <div className="overflow-x-auto">
+              <table className="w-full border-collapse text-[12px]">
                 <thead>
-                  <tr style={{ borderBottom: `1px solid ${colors.border}`, textAlign: 'left' }}>
-                    <th style={{ padding: '0.4rem 0.5rem', fontWeight: 600, color: colors.muted }}>
-                      Tabela
-                    </th>
-                    <th
-                      style={{
-                        padding: '0.4rem 0.5rem',
-                        fontWeight: 600,
-                        color: colors.muted,
-                        textAlign: 'right',
-                      }}
-                    >
-                      Tamanho
-                    </th>
-                    <th
-                      style={{
-                        padding: '0.4rem 0.5rem',
-                        fontWeight: 600,
-                        color: colors.muted,
-                        textAlign: 'right',
-                      }}
-                    >
+                  <tr className="border-b border-border text-left">
+                    <th className="py-[0.4rem] px-2 font-semibold text-muted">Tabela</th>
+                    <th className="py-[0.4rem] px-2 font-semibold text-muted text-right">Tamanho</th>
+                    <th className="py-[0.4rem] px-2 font-semibold text-muted text-right">
                       Linhas (aprox.)
                     </th>
                   </tr>
@@ -449,41 +359,15 @@ function DbHealthSection() {
                   {data.tabelas.slice(0, 20).map((t) => {
                     const pct = totalBytes > 0 ? (t.bytes / totalBytes) * 100 : 0;
                     return (
-                      <tr key={t.tabela} style={{ borderBottom: `1px solid ${colors.border}` }}>
-                        <td
-                          style={{
-                            padding: '0.4rem 0.5rem',
-                            fontFamily: 'var(--font-mono)',
-                          }}
-                        >
-                          {t.tabela}
-                        </td>
-                        <td
-                          style={{
-                            padding: '0.4rem 0.5rem',
-                            textAlign: 'right',
-                            fontFamily: 'var(--font-mono)',
-                          }}
-                        >
+                      <tr key={t.tabela} className="border-b border-border">
+                        <td className="py-[0.4rem] px-2 font-mono">{t.tabela}</td>
+                        <td className="py-[0.4rem] px-2 text-right font-mono">
                           {t.tamanhoFmt}
-                          <span
-                            style={{
-                              fontSize: 10,
-                              color: colors.muted,
-                              marginLeft: '0.4rem',
-                            }}
-                          >
+                          <span className="text-[10px] text-muted ml-[0.4rem]">
                             ({formatPercent(pct, 1)})
                           </span>
                         </td>
-                        <td
-                          style={{
-                            padding: '0.4rem 0.5rem',
-                            textAlign: 'right',
-                            color: colors.muted,
-                            fontFamily: 'var(--font-mono)',
-                          }}
-                        >
+                        <td className="py-[0.4rem] px-2 text-right text-muted font-mono">
                           {formatNumero(t.linhasAprox)}
                         </td>
                       </tr>
@@ -585,35 +469,19 @@ function BackupSection() {
   }
 
   return (
-    <section style={{ ...card, marginBottom: '1rem' }} data-testid="backup-card">
-      <h2 style={{ marginTop: 0, fontSize: 16 }}>🗄️ Backup do banco</h2>
-      <p style={{ fontSize: 12, color: colors.muted, margin: '0 0 0.75rem 0', lineHeight: 1.5 }}>
+    <section className="bg-surface border border-border rounded-[10px] p-6 mb-4" data-testid="backup-card">
+      <h2 className="mt-0 text-[16px]">🗄️ Backup do banco</h2>
+      <p className="text-[12px] text-muted m-0 mb-3 leading-[1.5]">
         O backup automático roda todo dia. Use os botões abaixo pra rodar um backup na hora
         ou checar a integridade do último dump.
       </p>
 
       <StateView loading={loading && !data} error={error} onRetry={refetch}>
-        <div
-          style={{
-            padding: '0.75rem 1rem',
-            background: colors.bgAlt,
-            border: `1px solid ${colors.border}`,
-            borderRadius: 6,
-            marginBottom: '0.75rem',
-          }}
-        >
-          <div
-            style={{
-              fontSize: 10,
-              color: colors.muted,
-              textTransform: 'uppercase',
-              letterSpacing: 0.3,
-              fontWeight: 600,
-            }}
-          >
+        <div className="py-3 px-4 bg-bg-alt border border-border rounded-md mb-3">
+          <div className="text-[10px] text-muted uppercase tracking-[0.3px] font-semibold">
             Último backup
           </div>
-          <div style={{ fontSize: 14, fontWeight: 600, color: colors.text, marginTop: 2 }}>
+          <div className="text-[14px] font-semibold text-text mt-0.5">
             {data
               ? `${new Date(data.criadoEm).toLocaleString('pt-BR', {
                   dateStyle: 'short',
@@ -624,13 +492,14 @@ function BackupSection() {
         </div>
       </StateView>
 
-      <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
+      <div className="flex gap-2 flex-wrap">
         <button
           type="button"
           data-testid="backup-run"
           onClick={runBackup}
           disabled={running}
-          style={{ ...btn, opacity: running ? 0.6 : 1, cursor: running ? 'wait' : 'pointer' }}
+          className="bg-primary text-primary-contrast rounded-md px-4 py-2 text-[13px] font-semibold tracking-[-0.1px]"
+          style={{ opacity: running ? 0.6 : 1, cursor: running ? 'wait' : 'pointer' }}
         >
           {running ? 'Rodando backup…' : 'Rodar backup agora'}
         </button>
@@ -639,11 +508,8 @@ function BackupSection() {
           data-testid="backup-verify"
           onClick={verifyBackup}
           disabled={verifying}
-          style={{
-            ...btnSecondary,
-            opacity: verifying ? 0.6 : 1,
-            cursor: verifying ? 'wait' : 'pointer',
-          }}
+          className="bg-surface text-text border border-border-strong rounded-md px-4 py-2 text-[13px] font-medium tracking-[-0.1px]"
+          style={{ opacity: verifying ? 0.6 : 1, cursor: verifying ? 'wait' : 'pointer' }}
         >
           {verifying ? 'Verificando…' : 'Verificar integridade'}
         </button>
@@ -695,22 +561,14 @@ function AuditLogSection() {
       key: 'when',
       header: 'Quando',
       render: (e) => (
-        <span style={{ fontSize: 11, color: colors.muted, whiteSpace: 'nowrap' }}>
-          {fmtDate(e.criadoEm)}
-        </span>
+        <span className="text-[11px] text-muted whitespace-nowrap">{fmtDate(e.criadoEm)}</span>
       ),
     },
     {
       key: 'who',
       header: 'Usuário',
       render: (e) => (
-        <span
-          style={{
-            fontSize: 11,
-            fontFamily: 'var(--font-mono)',
-            color: e.usuarioId ? colors.text : colors.muted,
-          }}
-        >
+        <span className={cn('text-[11px] font-mono', e.usuarioId ? 'text-text' : 'text-muted')}>
           {e.usuarioId ?? '(system)'}
         </span>
       ),
@@ -719,13 +577,7 @@ function AuditLogSection() {
       key: 'acao',
       header: 'Ação',
       render: (e) => (
-        <span
-          style={{
-            ...badge(BRAND.cyan),
-            fontFamily: 'var(--font-mono)',
-            fontSize: 10,
-          }}
-        >
+        <span className="inline-flex items-center rounded-full px-[9px] py-0.5 font-semibold leading-[1.6] tracking-[0.2px] bg-[#2bcae5]/12 text-[#2bcae5] border border-[#2bcae5]/19 font-mono text-[10px]">
           {e.acao}
         </span>
       ),
@@ -734,17 +586,10 @@ function AuditLogSection() {
       key: 'recurso',
       header: 'Recurso',
       render: (e) => (
-        <div style={{ fontSize: 12 }}>
-          <strong style={{ color: BRAND.navy }}>{e.recurso}</strong>
+        <div className="text-[12px]">
+          <strong className="text-[#201554]">{e.recurso}</strong>
           {e.recursoId && (
-            <div
-              style={{
-                fontSize: 10,
-                color: colors.muted,
-                fontFamily: 'var(--font-mono)',
-                marginTop: 2,
-              }}
-            >
+            <div className="text-[10px] text-muted font-mono mt-0.5">
               {e.recursoId.length > 24 ? `${e.recursoId.slice(0, 24)}…` : e.recursoId}
             </div>
           )}
@@ -755,28 +600,17 @@ function AuditLogSection() {
       key: 'ip',
       header: 'IP',
       render: (e) => (
-        <span style={{ fontSize: 11, color: colors.muted, fontFamily: 'var(--font-mono)' }}>
-          {e.ip ?? '—'}
-        </span>
+        <span className="text-[11px] text-muted font-mono">{e.ip ?? '—'}</span>
       ),
     },
   ];
 
   return (
-    <section style={{ ...card, marginBottom: '1rem' }}>
-      <header
-        style={{
-          display: 'flex',
-          justifyContent: 'space-between',
-          alignItems: 'flex-start',
-          gap: '0.75rem',
-          flexWrap: 'wrap',
-          marginBottom: '0.75rem',
-        }}
-      >
+    <section className="bg-surface border border-border rounded-[10px] p-6 mb-4">
+      <header className="flex justify-between items-start gap-3 flex-wrap mb-3">
         <div>
-          <h2 style={{ margin: 0, fontSize: 16, color: BRAND.navy }}>📋 Audit log</h2>
-          <p style={{ fontSize: 12, color: colors.muted, margin: '0.25rem 0 0' }}>
+          <h2 className="m-0 text-[16px] text-[#201554]">📋 Audit log</h2>
+          <p className="text-[12px] text-muted mt-1 mr-0 mb-0 ml-0">
             Quem fez o quê, quando. Cobertura: todas as ações com `@Audit` decorator.
             {total > 0 && ` ${total} registros no total.`}
           </p>
@@ -788,21 +622,14 @@ function AuditLogSection() {
             refetch();
             recursosQuery.refetch();
           }}
-          style={{ ...btnSecondary, padding: '0.375rem 0.875rem', fontSize: 12 }}
+          className="bg-surface text-text border border-border-strong rounded-md py-1.5 px-3.5 text-[12px] font-medium cursor-pointer tracking-[-0.1px]"
         >
           Atualizar
         </button>
       </header>
 
       {/* Filtros */}
-      <div
-        style={{
-          display: 'flex',
-          gap: '0.5rem',
-          flexWrap: 'wrap',
-          marginBottom: '0.75rem',
-        }}
-      >
+      <div className="flex gap-2 flex-wrap mb-3">
         <input
           type="text"
           placeholder="Filtrar por ação (ex: update)"
@@ -812,15 +639,7 @@ function AuditLogSection() {
             setPage(1);
             setFilters((f) => ({ ...f, acao: e.target.value }));
           }}
-          style={{
-            padding: '0.375rem 0.625rem',
-            fontSize: 12,
-            border: `1px solid ${colors.border}`,
-            borderRadius: 10,
-            flex: '1 1 160px',
-            minWidth: 140,
-            background: colors.surface,
-          }}
+          className="py-1.5 px-2.5 text-[12px] border border-border rounded-[10px] flex-[1_1_160px] min-w-[140px] bg-surface"
         />
         <select
           value={filters.recurso}
@@ -829,14 +648,7 @@ function AuditLogSection() {
             setPage(1);
             setFilters((f) => ({ ...f, recurso: e.target.value }));
           }}
-          style={{
-            padding: '0.375rem 0.625rem',
-            fontSize: 12,
-            border: `1px solid ${colors.border}`,
-            borderRadius: 10,
-            flex: '0 0 auto',
-            background: colors.surface,
-          }}
+          className="py-1.5 px-2.5 text-[12px] border border-border rounded-[10px] flex-[0_0_auto] bg-surface"
         >
           <option value="">Todos os recursos</option>
           {(recursosQuery.data ?? []).map((r) => (
@@ -854,16 +666,7 @@ function AuditLogSection() {
             setPage(1);
             setFilters((f) => ({ ...f, usuarioId: e.target.value }));
           }}
-          style={{
-            padding: '0.375rem 0.625rem',
-            fontSize: 12,
-            border: `1px solid ${colors.border}`,
-            borderRadius: 10,
-            flex: '1 1 140px',
-            minWidth: 120,
-            background: colors.surface,
-            fontFamily: 'var(--font-mono)',
-          }}
+          className="py-1.5 px-2.5 text-[12px] border border-border rounded-[10px] flex-[1_1_140px] min-w-[120px] bg-surface font-mono"
         />
       </div>
 
@@ -876,27 +679,17 @@ function AuditLogSection() {
       >
         <Table data={entries} columns={columns} rowKey={(e) => e.id} />
         {totalPages > 1 && (
-          <div
-            style={{
-              display: 'flex',
-              justifyContent: 'space-between',
-              alignItems: 'center',
-              marginTop: '0.75rem',
-              fontSize: 12,
-            }}
-          >
-            <span style={{ color: colors.muted }}>
+          <div className="flex justify-between items-center mt-3 text-[12px]">
+            <span className="text-muted">
               Página {page} de {totalPages}
             </span>
-            <div style={{ display: 'flex', gap: '0.375rem' }}>
+            <div className="flex gap-1.5">
               <button
                 type="button"
                 onClick={() => setPage((p) => Math.max(1, p - 1))}
                 disabled={page <= 1}
+                className="bg-surface text-text border border-border-strong rounded-md py-1 px-2.5 text-[12px] font-medium tracking-[-0.1px]"
                 style={{
-                  ...btnSecondary,
-                  padding: '0.25rem 0.625rem',
-                  fontSize: 12,
                   opacity: page <= 1 ? 0.5 : 1,
                   cursor: page <= 1 ? 'not-allowed' : 'pointer',
                 }}
@@ -907,10 +700,8 @@ function AuditLogSection() {
                 type="button"
                 onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
                 disabled={page >= totalPages}
+                className="bg-surface text-text border border-border-strong rounded-md py-1 px-2.5 text-[12px] font-medium tracking-[-0.1px]"
                 style={{
-                  ...btnSecondary,
-                  padding: '0.25rem 0.625rem',
-                  fontSize: 12,
                   opacity: page >= totalPages ? 0.5 : 1,
                   cursor: page >= totalPages ? 'not-allowed' : 'pointer',
                 }}
@@ -929,21 +720,16 @@ function AuditLogSection() {
 
 function PermissoesGranularesSection() {
   return (
-    <section style={{ ...card, marginBottom: '1rem' }}>
-      <h2 style={{ marginTop: 0, fontSize: 16 }}>🔐 Permissões granulares</h2>
-      <p style={{ color: colors.muted, marginTop: 0, fontSize: 13, lineHeight: 1.5 }}>
+    <section className="bg-surface border border-border rounded-[10px] p-6 mb-4">
+      <h2 className="mt-0 text-[16px]">🔐 Permissões granulares</h2>
+      <p className="text-muted mt-0 text-[13px] leading-[1.5]">
         Configure quais módulos cada papel (DIRECTOR, GERENTE, SAC, REP) pode <strong>ver</strong>
         {' '}e <strong>editar</strong>. ADMIN sempre tem acesso total.
       </p>
       <Link
         to="/permissoes"
         data-testid="admin-open-permissoes"
-        style={{
-          ...btn,
-          textDecoration: 'none',
-          display: 'inline-block',
-          marginTop: '0.5rem',
-        }}
+        className="bg-primary text-primary-contrast rounded-md px-4 py-2 text-[13px] font-semibold cursor-pointer tracking-[-0.1px] no-underline inline-block mt-2"
       >
         Abrir matriz de permissões →
       </Link>
@@ -988,34 +774,23 @@ function QuickLinksSection() {
   ];
 
   return (
-    <section style={card}>
-      <h2 style={{ marginTop: 0, fontSize: 16 }}>🧭 Atalhos administrativos</h2>
+    <section className="bg-surface border border-border rounded-[10px] p-6">
+      <h2 className="mt-0 text-[16px]">🧭 Atalhos administrativos</h2>
       <div
+        className="grid gap-3"
         style={{
-          display: 'grid',
           gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))',
-          gap: '0.75rem',
         }}
       >
         {links.map((l) => (
           <Link
             key={l.to}
             to={l.to}
-            style={{
-              padding: '0.875rem',
-              background: colors.bgAlt,
-              border: `1px solid ${colors.border}`,
-              borderRadius: 6,
-              textDecoration: 'none',
-              color: colors.text,
-              display: 'block',
-            }}
+            className="p-3.5 bg-bg-alt border border-border rounded-md no-underline text-text block"
           >
-            <div style={{ fontSize: 20, marginBottom: 4 }}>{l.emoji}</div>
-            <div style={{ fontWeight: 600, fontSize: 14 }}>{l.title}</div>
-            <div style={{ fontSize: 12, color: colors.muted, marginTop: 2, lineHeight: 1.4 }}>
-              {l.description}
-            </div>
+            <div className="text-[20px] mb-1">{l.emoji}</div>
+            <div className="font-semibold text-[14px]">{l.title}</div>
+            <div className="text-[12px] text-muted mt-0.5 leading-[1.4]">{l.description}</div>
           </Link>
         ))}
       </div>

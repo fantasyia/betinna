@@ -67,7 +67,6 @@ import {
   Textarea,
 } from '@/components/ui';
 import { cn } from '@/lib/cn';
-import { colors, alpha, radius } from '@/components/styles';
 
 /**
  * InboxPage v2 — design system dark, layout WhatsApp-like.
@@ -302,7 +301,8 @@ function slaBadge(
       : min < 1440
         ? `aguardando há ${Math.floor(min / 60)}h`
         : `aguardando há ${Math.floor(min / 1440)}d`;
-  const cor = min <= 30 ? colors.success : min <= 120 ? colors.warning : colors.danger;
+  const cor =
+    min <= 30 ? 'var(--success)' : min <= 120 ? 'var(--warning)' : 'var(--danger)';
   return { texto, cor };
 }
 
@@ -800,8 +800,7 @@ function MetricasConteudo({ m }: { m: Metricas }) {
             {m.porAtendente.slice(0, 8).map((a) => (
               <li
                 key={a.atendenteId ?? 'sem-atendente'}
-                className="flex items-center justify-between gap-3 text-sm py-1.5 px-2.5 rounded-md bg-bg-alt"
-                style={{ borderRadius: radius.lg }}
+                className="flex items-center justify-between gap-3 text-sm py-1.5 px-2.5 rounded-[10px] bg-bg-alt"
               >
                 <span className="text-text truncate">{a.atendenteNome}</span>
                 <span className="shrink-0 text-xs text-muted tabular">
@@ -948,11 +947,10 @@ const ConversationItem = memo(function ConversationItem({
               {sla && (
                 <span
                   data-testid="inbox-sla-badge"
-                  className="inline-flex items-center text-[10px] font-medium px-1.5 py-0.5 leading-none"
+                  className="inline-flex items-center text-[10px] font-medium px-1.5 py-0.5 leading-none rounded-[10px]"
                   style={{
                     color: sla.cor,
-                    backgroundColor: alpha(sla.cor, 15),
-                    borderRadius: radius.lg,
+                    backgroundColor: `color-mix(in srgb, ${sla.cor} 15%, transparent)`,
                   }}
                 >
                   {sla.texto}
