@@ -22,14 +22,14 @@ be="$(echo "$staged" | grep -E '^backend/(src|test)/.*\.ts$' | sed 's#^backend/#
 if [ -n "$be" ]; then
   echo "▸ pre-commit: lint backend (staged)…"
   # shellcheck disable=SC2086
-  ( cd backend && "$NPX" eslint $be --max-warnings 0 ) || fail=1
+  ( cd backend && "$NPX" eslint $be --max-warnings 0 --no-warn-ignored ) || fail=1
 fi
 
 fe="$(echo "$staged" | grep -E '^frontend/.*\.(ts|tsx|js|jsx)$' | sed 's#^frontend/##' || true)"
 if [ -n "$fe" ]; then
   echo "▸ pre-commit: lint frontend (staged)…"
   # shellcheck disable=SC2086
-  ( cd frontend && "$NPX" eslint $fe --max-warnings 0 ) || fail=1
+  ( cd frontend && "$NPX" eslint $fe --max-warnings 0 --no-warn-ignored ) || fail=1
 fi
 
 if [ "$fail" -ne 0 ]; then
