@@ -18,7 +18,6 @@ import {
   AlertTriangle,
   Bell,
   BellOff,
-  Tag,
   StickyNote,
   Trash2,
   X,
@@ -68,6 +67,8 @@ import { ClienteContextDrawer } from '@/pages/inbox/components/ClienteContextDra
 import { NotasInternasDrawer } from '@/pages/inbox/components/NotasInternasDrawer';
 import { MessageBubble } from '@/pages/inbox/components/MessageBubble';
 import { AtribuirModal } from '@/pages/inbox/components/AtribuirModal';
+import { BarraTagsTriagem } from '@/pages/inbox/components/BarraTagsTriagem';
+import { AvisoPresenca } from '@/pages/inbox/components/AvisoPresenca';
 import { useAvisoNovaMensagem } from '@/pages/inbox/hooks/useAvisoNovaMensagem';
 import { usePresencaConversa } from '@/pages/inbox/hooks/usePresencaConversa';
 import { useScrollToBottom } from '@/pages/inbox/hooks/useScrollToBottom';
@@ -361,10 +362,9 @@ function ConversationThread({
   const [atribuirOpen, setAtribuirOpen] = useState(false);
   const [criarPedido, setCriarPedido] = useState(false);
   const [clienteDrawerOpen, setClienteDrawerOpen] = useState(false);
-  // Item #25 — drawer de notas internas + estado das tags de triagem.
+  // Item #25 — drawer de notas internas. (As tags de triagem agora vivem no
+  // hook useTagsConversa, chamado pelo <BarraTagsTriagem />.)
   const [notasDrawerOpen, setNotasDrawerOpen] = useState(false);
-  const [novaTag, setNovaTag] = useState('');
-  const [salvandoTags, setSalvandoTags] = useState(false);
   // "Zerar conversa" (testar bot): confirma em 2 cliques. ADMIN/DIRECTOR.
   const role = useRole();
   const podeZerar = role === 'ADMIN' || role === 'DIRECTOR';
@@ -559,49 +559,6 @@ function ConversationThread({
     } catch (err) {
       toast.error('Falha ao zerar conversa', err instanceof ApiError ? err.message : undefined);
     }
-  }
-
-  // Item #25 — tags de triagem. Recalcula o array completo e manda no PUT
-  // (o backend troca a lista inteira). Atualiza a UI com a resposta.
-  const tagsAtuais = conv.data?.tagsInternas ?? [];
-
-  async function salvarTags(tags: string[]) {
-    setSalvandoTags(true);
-    try {
-      const resp = await api.put<{ tagsInternas: string[] }>(`/inbox/${id}/tags`, { tags });
-      // Reflete a lista canônica devolvida pelo backend (refetch traz o resto).
-      conv.refetch();
-      onChanged();
-      return resp.tagsInternas;
-    } catch (err) {
-      toast.error('Falha ao salvar tags', err instanceof ApiError ? err.message : undefined);
-      return null;
-    } finally {
-      setSalvandoTags(false);
-    }
-  }
-
-  async function adicionarTag() {
-    const t = novaTag.trim();
-    if (!t) return;
-    if (t.length > 30) {
-      toast.error('Tag muito longa', 'Use até 30 caracteres.');
-      return;
-    }
-    if (tagsAtuais.some((x) => x.toLowerCase() === t.toLowerCase())) {
-      setNovaTag('');
-      return;
-    }
-    if (tagsAtuais.length >= 12) {
-      toast.error('Limite de tags', 'Máximo de 12 tags por conversa.');
-      return;
-    }
-    const ok = await salvarTags([...tagsAtuais, t]);
-    if (ok) setNovaTag('');
-  }
-
-  async function removerTag(tag: string) {
-    await salvarTags(tagsAtuais.filter((x) => x !== tag));
   }
 
   const c = conv.data;
@@ -816,58 +773,8 @@ function ConversationThread({
         )}
       </header>
 
-      {/* Item #25 — faixa de tags internas de triagem (só a equipe vê).
-          Chips removíveis + input "+ tag" (Enter adiciona). */}
-      {c && (
-        <div
-          data-testid="inbox-tags-bar"
-          className="px-4 py-2 border-b border-border bg-bg-alt flex items-center gap-1.5 flex-wrap"
-        >
-          <Tag className="h-3.5 w-3.5 text-muted shrink-0" aria-hidden />
-          {tagsAtuais.map((tag) => (
-            <span
-              key={tag}
-              data-testid={`inbox-tag-${tag}`}
-              className="inline-flex items-center gap-1 h-[22px] pl-2 pr-1 rounded-full text-[11px] font-semibold bg-primary/15 text-primary border border-primary/25"
-            >
-              {tag}
-              <button
-                type="button"
-                aria-label={`Remover tag ${tag}`}
-                data-testid={`inbox-tag-remove-${tag}`}
-                disabled={salvandoTags}
-                onClick={() => void removerTag(tag)}
-                className="inline-flex items-center justify-center h-4 w-4 rounded-full hover:bg-primary/20 disabled:opacity-40"
-              >
-                <X className="h-3 w-3" />
-              </button>
-            </span>
-          ))}
-          {tagsAtuais.length < 12 && (
-            <input
-              type="text"
-              data-testid="inbox-tag-input"
-              value={novaTag}
-              onChange={(e) => setNovaTag(e.target.value)}
-              onKeyDown={(e) => {
-                if (e.key === 'Enter') {
-                  e.preventDefault();
-                  void adicionarTag();
-                }
-              }}
-              disabled={salvandoTags}
-              maxLength={30}
-              placeholder="+ tag"
-              className="h-[22px] min-w-[70px] w-24 px-2 rounded-full text-[11px] bg-surface border border-dashed border-border text-text placeholder:text-muted focus:outline-none focus:border-primary disabled:opacity-40"
-            />
-          )}
-          {tagsAtuais.length === 0 && (
-            <span className="text-[11px] text-muted ml-1">
-              Etiquetas de triagem internas
-            </span>
-          )}
-        </div>
-      )}
+      {/* Item #25 — faixa de tags internas de triagem (só a equipe vê). */}
+      <BarraTagsTriagem conv={conv.data} id={id} refetchConv={conv.refetch} onChanged={onChanged} />
 
       {/* Messages */}
       <div className="flex-1 overflow-y-auto px-4 py-4 bg-bg flex flex-col gap-2">
@@ -904,22 +811,8 @@ function ConversationThread({
         </StateView>
       </div>
 
-      {/* Item #25 fatia 4 — aviso de presença: outro(s) atendente(s) estão
-          nesta conversa agora. Não bloqueia — só avisa (a confirmação de envio
-          mora em enviar()). Tom warning do design system. */}
-      {outros.length > 0 && (
-        <div
-          data-testid="inbox-presenca-aviso"
-          className="px-4 py-2 border-t border-warning/40 bg-warning/10 flex items-center gap-2 text-sm text-warning"
-        >
-          <UserCheck className="h-4 w-4 shrink-0" />
-          <span>
-            👤{' '}
-            <strong>{outros.map((o) => o.nome).join(', ')}</strong>{' '}
-            {outros.length > 1 ? 'estão' : 'está'} nesta conversa agora
-          </span>
-        </div>
-      )}
+      {/* Item #25 fatia 4 — aviso de presença: outro(s) atendente(s) na conversa. */}
+      <AvisoPresenca outros={outros} />
 
       {/* Compose */}
       {/* Sprint 2.3 — banner quando o canal não aceita texto livre (compose oculto) */}
