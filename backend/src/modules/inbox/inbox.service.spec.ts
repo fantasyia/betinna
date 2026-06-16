@@ -564,3 +564,74 @@ describe('InboxService.list — SLA (aguardandoDesde)', () => {
     expect(r.data[0].aguardandoDesde).toBeNull();
   });
 });
+
+describe('InboxService.listarContatosWhatsapp', () => {
+  let prisma: ReturnType<typeof makePrismaMock>;
+  let svc: InboxService;
+
+  beforeEach(() => {
+    prisma = makePrismaMock();
+    svc = new InboxService(prisma as never, new CanalAdapterRegistry(), { get: () => 24 } as never);
+  });
+
+  it('inclui grupo (@g.us) com tipo GRUPO (id = jid) e contato individual com tipo CONTATO', async () => {
+    prisma.conversation.findMany.mockResolvedValueOnce([
+      {
+        peerId: '5511999998888@s.whatsapp.net',
+        peerNome: 'Cliente A',
+        metadata: null,
+        cliente: { nome: 'Cliente A', telefone: '5511999998888' },
+      },
+      {
+        peerId: '120363000000000000@g.us',
+        peerNome: 'Time Comercial',
+        metadata: null,
+        cliente: null,
+      },
+    ]);
+
+    const out = await svc.listarContatosWhatsapp(fakeUser());
+
+    expect(out.find((c) => c.tipo === 'GRUPO')).toEqual({
+      id: '120363000000000000@g.us',
+      nome: 'Time Comercial',
+      tipo: 'GRUPO',
+    });
+    expect(out.find((c) => c.tipo === 'CONTATO')).toMatchObject({
+      id: '5511999998888',
+      nome: 'Cliente A',
+      tipo: 'CONTATO',
+    });
+  });
+
+  it('grupo sem subject (peerNome null) cai no fallback "Grupo"', async () => {
+    prisma.conversation.findMany.mockResolvedValueOnce([
+      { peerId: '120363000000000001@g.us', peerNome: null, metadata: null, cliente: null },
+    ]);
+
+    const out = await svc.listarContatosWhatsapp(fakeUser());
+
+    expect(out).toEqual([{ id: '120363000000000001@g.us', nome: 'Grupo', tipo: 'GRUPO' }]);
+  });
+
+  it('dedup de grupo pelo jid — não repete o mesmo grupo', async () => {
+    prisma.conversation.findMany.mockResolvedValueOnce([
+      { peerId: '120363000000000002@g.us', peerNome: 'G', metadata: null, cliente: null },
+      { peerId: '120363000000000002@g.us', peerNome: 'G', metadata: null, cliente: null },
+    ]);
+
+    const out = await svc.listarContatosWhatsapp(fakeUser());
+
+    expect(out.filter((c) => c.tipo === 'GRUPO')).toHaveLength(1);
+  });
+
+  it('LID (@lid) sem telefone real é descartado (número oculto não vira contato)', async () => {
+    prisma.conversation.findMany.mockResolvedValueOnce([
+      { peerId: '99999999@lid', peerNome: 'Oculto', metadata: null, cliente: null },
+    ]);
+
+    const out = await svc.listarContatosWhatsapp(fakeUser());
+
+    expect(out).toEqual([]);
+  });
+});
