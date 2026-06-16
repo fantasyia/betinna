@@ -2,27 +2,21 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
   Search,
-  ArrowLeft,
   Send,
-  UserCheck,
   CheckCircle2,
   Inbox as InboxIcon,
   Image as ImageIcon,
   Mic,
   Square,
-  Receipt,
   Paperclip,
   Reply,
   Smile,
-  Building2,
   AlertTriangle,
   Bell,
   BellOff,
-  StickyNote,
-  Trash2,
   X,
 } from 'lucide-react';
-import { api, ApiError } from '@/lib/api';
+import { api } from '@/lib/api';
 import { useRole } from '@/hooks/usePermission';
 import { useApiQuery, type PaginatedResponse } from '@/hooks/useApiQuery';
 import { PageLayout, useIsMobile } from '@/components/PageLayout';
@@ -31,14 +25,11 @@ import { StateView } from '@/components/StateView';
 import { useToast } from '@/components/toast';
 import { NovoPedidoDialog } from '@/components/NovoPedidoDialog';
 import {
-  Avatar,
   Badge,
   Button,
   Card,
-  ChannelBadge,
   Dialog,
   EmptyState,
-  IconButton,
   Input,
   Select,
   Tabs,
@@ -54,13 +45,11 @@ import type {
 } from '@/pages/inbox/lib/types';
 import {
   canalSemTextoLivre,
-  CANAL_LABEL,
   STATUS_LABEL,
   STATUS_VARIANT,
   POLL_INTERVAL_MS,
   EMOJIS,
 } from '@/pages/inbox/lib/canais';
-import { fmtPeer } from '@/pages/inbox/lib/format';
 import { MetricasPanel } from '@/pages/inbox/components/MetricasPanel';
 import { ConversationItem } from '@/pages/inbox/components/ConversationItem';
 import { ClienteContextDrawer } from '@/pages/inbox/components/ClienteContextDrawer';
@@ -69,12 +58,14 @@ import { MessageBubble } from '@/pages/inbox/components/MessageBubble';
 import { AtribuirModal } from '@/pages/inbox/components/AtribuirModal';
 import { BarraTagsTriagem } from '@/pages/inbox/components/BarraTagsTriagem';
 import { AvisoPresenca } from '@/pages/inbox/components/AvisoPresenca';
+import { ThreadHeader } from '@/pages/inbox/components/ThreadHeader';
 import { useAvisoNovaMensagem } from '@/pages/inbox/hooks/useAvisoNovaMensagem';
 import { usePresencaConversa } from '@/pages/inbox/hooks/usePresencaConversa';
 import { useScrollToBottom } from '@/pages/inbox/hooks/useScrollToBottom';
 import { useMarcarLida } from '@/pages/inbox/hooks/useMarcarLida';
 import { useEnvioMensagem } from '@/pages/inbox/hooks/useEnvioMensagem';
 import { useGravacaoVoz } from '@/pages/inbox/hooks/useGravacaoVoz';
+import { useAcoesConversa } from '@/pages/inbox/hooks/useAcoesConversa';
 
 /**
  * InboxPage v2 — design system dark, layout WhatsApp-like.
@@ -365,10 +356,8 @@ function ConversationThread({
   // Item #25 — drawer de notas internas. (As tags de triagem agora vivem no
   // hook useTagsConversa, chamado pelo <BarraTagsTriagem />.)
   const [notasDrawerOpen, setNotasDrawerOpen] = useState(false);
-  // "Zerar conversa" (testar bot): confirma em 2 cliques. ADMIN/DIRECTOR.
+  // Papel do usuário — repassado ao ThreadHeader (gate de "Zerar" por role).
   const role = useRole();
-  const podeZerar = role === 'ADMIN' || role === 'DIRECTOR';
-  const [confirmZerar, setConfirmZerar] = useState(false);
   const [emojiAberto, setEmojiAberto] = useState(false);
   // Quote/citação: a mensagem que estou respondendo (preview acima do composer).
   const [respondendoA, setRespondendoA] = useState<Mensagem | null>(null);
@@ -430,15 +419,9 @@ function ConversationThread({
   // Marca a conversa como lida (best-effort, dedup por conversa) ao carregar.
   useMarcarLida(conv.data, id);
 
-  // Reage a uma mensagem (👍 etc.) via WhatsApp; atualiza a bolha depois.
-  async function reagir(messageId: string, emoji: string) {
-    try {
-      await api.post(`/inbox/messages/${messageId}/reagir`, { emoji });
-      msgs.refetch();
-    } catch (err) {
-      toast.error('Falha ao reagir', err instanceof ApiError ? err.message : undefined);
-    }
-  }
+  // Ações do header da thread (reagir/mudarStatus/alternarBot/definirBotLigado/
+  // zerarConversa) — extraídas pro hook. `reagir` é repassado às bolhas abaixo.
+  const acoes = useAcoesConversa(id, conv.refetch, msgs.refetch, onChanged);
 
   // Insere um emoji na posição do cursor do composer (sem dependência nova).
   function inserirEmoji(emoji: string) {
@@ -499,84 +482,7 @@ function ConversationThread({
     setTimeout(() => composeRef.current?.focus(), 0);
   }
 
-  async function mudarStatus(novo: ConversationStatus) {
-    try {
-      await api.patch(`/inbox/${id}/status`, { status: novo });
-      toast.success('Status atualizado');
-      conv.refetch();
-      onChanged();
-      setStatusOpen(false);
-    } catch (err) {
-      toast.error('Falha ao mudar status', err instanceof ApiError ? err.message : undefined);
-    }
-  }
-
-  // Fase 2 — pausar/religar o bot Muller nesta conversa específica
-  async function alternarBot(acao: 'pausar' | 'religar') {
-    try {
-      await api.post(`/inbox/${id}/bot/${acao}`, {});
-      toast.success(acao === 'pausar' ? 'Bot pausado nesta conversa' : 'Bot religado nesta conversa');
-      conv.refetch();
-      onChanged();
-    } catch (err) {
-      toast.error('Falha ao alterar o bot', err instanceof ApiError ? err.message : undefined);
-    }
-  }
-
-  // Override persistente do bot NESTA conversa (independe do global da empresa):
-  // true = sempre liga aqui (mesmo com o bot geral desligado) · false = sempre
-  // desliga aqui · null = segue a configuração geral. Resolve o caso do Leo de
-  // ligar o bot só pra alguns contatos com o global off.
-  async function definirBotLigado(ligado: boolean | null) {
-    try {
-      await api.post(`/inbox/${id}/bot/ligado`, { ligado });
-      toast.success(
-        ligado === true
-          ? 'Bot ligado só nesta conversa'
-          : ligado === false
-            ? 'Bot desligado só nesta conversa'
-            : 'Bot voltou a seguir a configuração geral',
-      );
-      conv.refetch();
-      onChanged();
-    } catch (err) {
-      toast.error('Falha ao alterar o bot', err instanceof ApiError ? err.message : undefined);
-    }
-  }
-
-  // Zera a conversa: apaga as mensagens da thread (reseta a memória do bot, que
-  // monta contexto pelo histórico) e zera não-lidas/precisaHumano. Mantém o contato.
-  async function zerarConversa() {
-    try {
-      const r = await api.delete<{ mensagens: number }>(`/inbox/${id}/mensagens`);
-      toast.success(
-        'Conversa zerada',
-        `${r.mensagens} mensagem(ns) apagada(s) — memória do bot resetada.`,
-      );
-      msgs.refetch();
-      conv.refetch();
-      onChanged();
-    } catch (err) {
-      toast.error('Falha ao zerar conversa', err instanceof ApiError ? err.message : undefined);
-    }
-  }
-
   const c = conv.data;
-  // "Bot pausado"/"Religar" só quando o bot está EFETIVAMENTE ligado nesta conversa
-  // (override on, ou padrão seguindo o global ligado) — senão são selos enganosos
-  // pra um bot que é off por padrão.
-  const botEfetivoOnConv =
-    c?.botLigado === true || (c?.botLigado == null && (empresaInfo.data?.botWhatsappAtivo ?? false));
-  const botPausadoConv =
-    botEfetivoOnConv && c?.botPausadoAte
-      ? new Date(c.botPausadoAte).getTime() > Date.now()
-      : false;
-  // Telefone formatado do contato. Preferimos o telefone REAL resolvido no backend
-  // (metadata.telefone) — cobre contatos com LID/número oculto. '' quando não há
-  // telefone de verdade (LID sem número exposto, grupo, ID interno).
-  const numeroContato = c
-    ? fmtPeer(c.canal, c.metadata?.telefone || c.peerId || c.peer)
-    : '';
   const messages = msgs.data ?? [];
   const lockedCompose = c && (c.status === 'RESOLVIDA' || c.status === 'ARQUIVADA');
   // Sprint 2.3 — canal que não aceita resposta de texto livre (Amazon/TikTok/Shopee-devolução).
@@ -584,194 +490,20 @@ function ConversationThread({
 
   return (
     <>
-      {/* Thread header */}
-      <header className="px-4 py-3 border-b border-border flex items-center gap-3 bg-bg-alt">
-        {c ? (
-          <>
-            {onBack && (
-              <IconButton
-                aria-label="Voltar para lista"
-                variant="ghost"
-                size="md"
-                icon={<ArrowLeft />}
-                onClick={onBack}
-                data-testid="inbox-back-btn"
-              />
-            )}
-            <Avatar
-              name={c.cliente?.nome ?? c.peerNome ?? (numeroContato || CANAL_LABEL[c.canal])}
-              size="md"
-            />
-            <div className="flex-1 min-w-0">
-              <div className="flex items-center gap-1.5">
-                <strong className="text-sm tracking-tight truncate text-text">
-                  {c.cliente?.nome ?? c.peerNome ?? (numeroContato || CANAL_LABEL[c.canal])}
-                </strong>
-                <ChannelBadge canal={c.canal} size="sm" />
-              </div>
-              {/* Telefone do contato (selecionável pra copiar). Quando não há telefone
-                  real — LID/grupo/ID interno — ou o título já é o número, mostra só o
-                  canal pra não repetir nem exibir número errado. */}
-              <div
-                className="text-[11px] text-muted truncate select-text"
-                data-testid="inbox-thread-peer"
-              >
-                {numeroContato && (c.cliente?.nome || c.peerNome)
-                  ? numeroContato
-                  : CANAL_LABEL[c.canal]}
-              </div>
-            </div>
-            {c.cliente?.id && (
-              <Button
-                type="button"
-                variant="ghost"
-                size="sm"
-                data-testid="inbox-cliente-btn"
-                onClick={() => setClienteDrawerOpen(true)}
-                leftIcon={<Building2 className="h-3.5 w-3.5" />}
-                title="Ver dados do cliente"
-              >
-                Cliente
-              </Button>
-            )}
-            {c.cliente?.id && (
-              <Button
-                type="button"
-                variant="ghost"
-                size="sm"
-                data-testid="inbox-criar-pedido-btn"
-                onClick={() => setCriarPedido(true)}
-                leftIcon={<Receipt className="h-3.5 w-3.5" />}
-                title="Criar pedido pra este cliente"
-              >
-                Pedido
-              </Button>
-            )}
-            {/* Item #25 — notas internas (só a equipe vê) */}
-            <Button
-              type="button"
-              variant="ghost"
-              size="sm"
-              data-testid="inbox-notas-btn"
-              onClick={() => setNotasDrawerOpen(true)}
-              leftIcon={<StickyNote className="h-3.5 w-3.5" />}
-              title="Notas internas da conversa (só a equipe vê)"
-            >
-              Notas
-            </Button>
-            {/* Zerar conversa — apaga as mensagens da thread e reseta a memória do
-                bot (útil pra testar o prompt do zero). 2 cliques pra confirmar. */}
-            {podeZerar && (
-              <Button
-                type="button"
-                variant={confirmZerar ? 'danger' : 'ghost'}
-                size="sm"
-                data-testid="inbox-zerar-conversa-btn"
-                onClick={() => {
-                  if (confirmZerar) {
-                    setConfirmZerar(false);
-                    void zerarConversa();
-                  } else {
-                    setConfirmZerar(true);
-                    setTimeout(() => setConfirmZerar(false), 3000);
-                  }
-                }}
-                leftIcon={<Trash2 className="h-3.5 w-3.5" />}
-                title="Zerar conversa: apaga as mensagens e reseta a memória do bot (mantém o contato)"
-              >
-                {confirmZerar ? 'Confirmar?' : 'Zerar'}
-              </Button>
-            )}
-            {/* Status — dropdown inline: troca direto pra Aberta/Pendente/Resolvida/
-                Arquivada (Resolvida sai da lista ativa → "vai pra outra aba"). */}
-            <label
-              className="flex items-center gap-1 text-[11px] text-muted whitespace-nowrap"
-              title="Mudar o status da conversa"
-            >
-              Status:
-              <select
-                data-testid="inbox-status-select"
-                value={c.status}
-                onChange={(e) => void mudarStatus(e.target.value as ConversationStatus)}
-                className="rounded-md border border-border-strong bg-surface px-1.5 py-1 text-[11px] text-text"
-              >
-                {(Object.keys(STATUS_LABEL) as ConversationStatus[]).map((s) => (
-                  <option key={s} value={s}>
-                    {STATUS_LABEL[s]}
-                  </option>
-                ))}
-              </select>
-            </label>
-            <Button
-              type="button"
-              variant="ghost"
-              size="sm"
-              data-testid="inbox-atribuir-btn"
-              onClick={() => setAtribuirOpen(true)}
-              leftIcon={<UserCheck className="h-3.5 w-3.5" />}
-            >
-              {c.atribuido ? c.atribuido.nome : 'Atribuir'}
-            </Button>
-            {/* Fase 2 — controle do bot Muller nesta conversa (só WhatsApp da empresa) */}
-            {c.canal === 'WHATSAPP' && (
-              <>
-                {/* Override persistente: força ligado/desligado aqui, ou segue o global.
-                    Atende o caso de ligar o bot só pra alguns contatos com o global off. */}
-                <label
-                  className="flex items-center gap-1 text-[11px] text-muted whitespace-nowrap"
-                  title="Liga/desliga o bot só nesta conversa. 'Padrão' segue a configuração geral da empresa."
-                >
-                  Bot:
-                  <select
-                    data-testid="inbox-bot-override"
-                    value={c.botLigado === true ? 'on' : c.botLigado === false ? 'off' : 'auto'}
-                    onChange={(e) => {
-                      const v = e.target.value;
-                      void definirBotLigado(v === 'on' ? true : v === 'off' ? false : null);
-                    }}
-                    className="rounded-md border border-border-strong bg-surface px-1.5 py-1 text-[11px] text-text"
-                  >
-                    <option value="auto">Padrão</option>
-                    <option value="on">Ligado</option>
-                    <option value="off">Desligado</option>
-                  </select>
-                </label>
-                {/* RELIGAR — aparece SEMPRE que o bot está travado nesta conversa
-                    (pausado OU escalado pra humano), independente do override.
-                    Antes só no modo "Padrão", então em "Ligado" você tinha que
-                    desativar+ativar. Religar limpa a pausa E o "precisa humano". */}
-                {(botPausadoConv || c.precisaHumano) && (
-                  <Button
-                    type="button"
-                    variant="secondary"
-                    size="sm"
-                    data-testid="inbox-bot-religar"
-                    onClick={() => alternarBot('religar')}
-                    title="Religar o bot Muller agora (limpa a pausa e o 'precisa humano')"
-                  >
-                    ▶ Religar bot
-                  </Button>
-                )}
-                {/* PAUSAR — só no modo Padrão e quando NÃO está pausado/escalado. */}
-                {c.botLigado == null && botEfetivoOnConv && !botPausadoConv && !c.precisaHumano && (
-                  <Button
-                    type="button"
-                    variant="ghost"
-                    size="sm"
-                    data-testid="inbox-bot-btn"
-                    onClick={() => alternarBot('pausar')}
-                    title="Pausar o bot Muller nesta conversa (atendimento humano)"
-                  >
-                    ⏸ Pausar bot
-                  </Button>
-                )}
-              </>
-            )}
-          </>
-        ) : (
-          <span className="text-muted text-sm">Carregando…</span>
-        )}
-      </header>
+      {/* Thread header — ações da conversa (extraído pro ThreadHeader). Os
+          drawers/modais e seus toggles ficam aqui; o header só dispara os
+          callbacks. `botGlobalAtivo` alimenta a lógica botEfetivoOnConv. */}
+      <ThreadHeader
+        conv={c}
+        botGlobalAtivo={empresaInfo.data?.botWhatsappAtivo ?? false}
+        role={role}
+        onBack={onBack}
+        acoes={acoes}
+        onAbrirCliente={() => setClienteDrawerOpen(true)}
+        onAbrirNotas={() => setNotasDrawerOpen(true)}
+        onAtribuir={() => setAtribuirOpen(true)}
+        onCriarPedido={() => setCriarPedido(true)}
+      />
 
       {/* Item #25 — faixa de tags internas de triagem (só a equipe vê). */}
       <BarraTagsTriagem conv={conv.data} id={id} refetchConv={conv.refetch} onChanged={onChanged} />
@@ -801,7 +533,7 @@ function ConversationThread({
                 msg={m}
                 showAuthor={!!showAuthor}
                 podeReagir={c?.canal === 'WHATSAPP'}
-                onReagir={(emoji) => void reagir(m.id, emoji)}
+                onReagir={(emoji) => void acoes.reagir(m.id, emoji)}
                 onResponder={c?.canal === 'WHATSAPP' ? () => setRespondendoA(m) : undefined}
                 citada={citada}
               />
@@ -1135,7 +867,7 @@ function ConversationThread({
       )}
 
       {statusOpen && c && (
-        <StatusModal current={c.status} onClose={() => setStatusOpen(false)} onPick={mudarStatus} />
+        <StatusModal current={c.status} onClose={() => setStatusOpen(false)} onPick={acoes.mudarStatus} />
       )}
       {atribuirOpen && c && (
         <AtribuirModal
