@@ -17,14 +17,12 @@ import { USERS } from '../fixtures/users';
  *                               "Produtos no catálogo" / "Sem estoque"
  *  - Busca .................... <Input> placeholder "Buscar por nome, SKU, marca…" (sem testid)
  *  - Adicionar produto ........ testid `catalogo-add`
- *  - Markup global ............ testid `catalogo-markup-global` (disabled se vazio)
  *  - Preview por cliente ...... testid `catalogo-preview`  (label só "Preview"; disabled se vazio)
  *  - Compartilhar ............. testid `catalogo-share`     (disabled se vazio)
  *  - Limpar tudo .............. testid `catalogo-clear`     (só aparece com >5 itens)
  *  - Banner de sync ........... testid `catalogo-sync-banner` (só com itens)
- *  - Card de produto .......... SEM testid no card; cada card tem markup-input-{id}
- *                               e stock-{id} → uso `[data-testid^="markup-input-"]`
- *                               como proxy de "card existe".
+ *  - Card de produto .......... SEM testid no card; cada card tem stock-{id} →
+ *                               uso `[data-testid^="stock-"]` como proxy de "card existe".
  *  - Estado vazio ............. <EmptyState> com <h3> "Catálogo vazio" (ou
  *                               "Nenhum produto bate com a busca" quando há busca).
  *  - Preços ................... fmtBRL → Intl pt-BR currency BRL ⇒ contém "R$".
@@ -35,9 +33,9 @@ import { USERS } from '../fixtures/users';
  * markup-inputs como sinal de grid populado.
  */
 
-/** Cards de produto — cada um expõe um markup-input com o produtoId no testid. */
+/** Cards de produto — cada um expõe um stock badge com o produtoId no testid. */
 function cards(page: Page) {
-  return page.locator('[data-testid^="markup-input-"]');
+  return page.locator('[data-testid^="stock-"]');
 }
 
 /**
@@ -92,8 +90,6 @@ test.describe('Catálogo @regression', () => {
       ).toBeVisible({ timeout: 15_000 });
       // E a ação de adicionar deve estar oferecida (CTA do EmptyState + toolbar).
       await expect(page.getByTestId('catalogo-add')).toBeVisible();
-      // Markup global fica desabilitado quando não há itens.
-      await expect(page.getByTestId('catalogo-markup-global')).toBeDisabled();
       await shot(page, 'catalogo-grid-vazio');
     } else {
       // Catálogo populado: há cards e as ações ficam habilitadas.
@@ -101,7 +97,6 @@ test.describe('Catálogo @regression', () => {
       await expect(cards(page).first()).toBeVisible();
       await expect(page.getByTestId('catalogo-share')).toBeEnabled();
       await expect(page.getByTestId('catalogo-preview')).toBeEnabled();
-      await expect(page.getByTestId('catalogo-markup-global')).toBeEnabled();
       // Banner de sync só renderiza com itens.
       await expect(page.getByTestId('catalogo-sync-banner')).toBeVisible();
       await shot(page, 'catalogo-grid-populado');
@@ -126,7 +121,7 @@ test.describe('Catálogo @regression', () => {
     // Catálogo vazio neste seed → não há preço pra checar; pula com anotação.
     test.skip(n === 0, 'Catálogo vazio neste dataset — sem preços de card pra validar.');
 
-    // Cada card mostra Fábrica / Tabela / Preço final via fmtBRL (Intl BRL ⇒ "R$").
+    // Cada card mostra o preço (tabela MSM) via fmtBRL (Intl BRL ⇒ "R$").
     // Confirma que existe pelo menos um "R$" renderizado e nenhum "R$ NaN".
     await expect(page.getByText(/R\$\s?\d/).first()).toBeVisible();
 

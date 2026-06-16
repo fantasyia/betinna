@@ -103,13 +103,16 @@ describe('CatalogoService', () => {
   // -------------------------------------------------------------------------
 
   describe('listMyCatalog', () => {
-    it('retorna itens do catálogo do usuário', async () => {
-      const items = [fakeCatalogoItem()];
-      prisma.repCatalogoItem.findMany.mockResolvedValue(items);
+    it('retorna itens do catálogo (preço da MSM, sem markup)', async () => {
+      prisma.repCatalogoItem.findMany.mockResolvedValue([fakeCatalogoItem()]);
 
       const result = await service.listMyCatalog(fakeUser());
 
-      expect(result).toEqual(items);
+      expect(result).toHaveLength(1);
+      expect(result[0].produtoId).toBe('p-1');
+      expect(result[0].produto.precoTabela).toBe(50);
+      // markup foi removido do catálogo do rep — não vaza no retorno
+      expect(result[0]).not.toHaveProperty('markup');
     });
 
     it('filtra por usuarioId e produto ativo da empresa', async () => {
@@ -135,27 +138,27 @@ describe('CatalogoService', () => {
   // -------------------------------------------------------------------------
 
   describe('upsertItem', () => {
-    it('faz upsert de item com markup', async () => {
+    it('vincula produto ao catálogo (sem markup — preço é o da MSM)', async () => {
       prisma.produto.findFirst.mockResolvedValue({ id: 'p-1' });
-      const item = fakeCatalogoItem({ markup: 15 });
-      prisma.repCatalogoItem.upsert.mockResolvedValue(item);
+      prisma.repCatalogoItem.upsert.mockResolvedValue(fakeCatalogoItem());
 
-      const result = await service.upsertItem(fakeUser(), { produtoId: 'p-1', markup: 15 });
+      const result = await service.upsertItem(fakeUser(), { produtoId: 'p-1' });
 
-      expect(result.markup).toBe(15);
+      expect(result).not.toHaveProperty('markup');
       const args = prisma.repCatalogoItem.upsert.mock.calls[0][0];
       expect(args.where).toEqual({
         usuarioId_produtoId: { usuarioId: 'rep-1', produtoId: 'p-1' },
       });
-      expect(args.create.markup).toBe(15);
-      expect(args.update.markup).toBe(15);
+      // create não passa markup (default 0 no schema); update é idempotente (vazio)
+      expect(args.create).toEqual({ usuarioId: 'rep-1', produtoId: 'p-1' });
+      expect(args.update).toEqual({});
     });
 
     it('lança BusinessRuleException se produto não pertence à empresa ou está inativo', async () => {
       prisma.produto.findFirst.mockResolvedValue(null);
 
       await expect(
-        service.upsertItem(fakeUser(), { produtoId: 'p-inexistente', markup: 10 }),
+        service.upsertItem(fakeUser(), { produtoId: 'p-inexistente' }),
       ).rejects.toBeInstanceOf(BusinessRuleException);
       expect(prisma.repCatalogoItem.upsert).not.toHaveBeenCalled();
     });
@@ -171,10 +174,7 @@ describe('CatalogoService', () => {
       prisma.$transaction.mockResolvedValue([]);
 
       const result = await service.bulkUpsert(fakeUser(), {
-        itens: [
-          { produtoId: 'p-1', markup: 10 },
-          { produtoId: 'p-2', markup: 15 },
-        ],
+        itens: [{ produtoId: 'p-1' }, { produtoId: 'p-2' }],
       });
 
       expect(result).toEqual({ ok: true, processados: 2 });
@@ -186,10 +186,7 @@ describe('CatalogoService', () => {
 
       await expect(
         service.bulkUpsert(fakeUser(), {
-          itens: [
-            { produtoId: 'p-1', markup: 10 },
-            { produtoId: 'p-outro-tenant', markup: 5 },
-          ],
+          itens: [{ produtoId: 'p-1' }, { produtoId: 'p-outro-tenant' }],
         }),
       ).rejects.toBeInstanceOf(BusinessRuleException);
       expect(prisma.$transaction).not.toHaveBeenCalled();
@@ -201,36 +198,13 @@ describe('CatalogoService', () => {
 
       await service.bulkUpsert(fakeUser(), {
         itens: [
-          { produtoId: 'p-1', markup: 10 },
-          { produtoId: 'p-1', markup: 12 }, // duplicado
+          { produtoId: 'p-1' },
+          { produtoId: 'p-1' }, // duplicado
         ],
       });
 
       const countArgs = prisma.produto.count.mock.calls[0][0];
       expect(countArgs.where.id.in).toHaveLength(1); // deduplicado
-    });
-  });
-
-  // -------------------------------------------------------------------------
-  // setMarkupGlobal
-  // -------------------------------------------------------------------------
-
-  describe('setMarkupGlobal', () => {
-    it('atualiza markup de todos os itens do catálogo do user', async () => {
-      prisma.repCatalogoItem.updateMany.mockResolvedValue({ count: 5 });
-
-      const result = await service.setMarkupGlobal(fakeUser(), { markup: 20 });
-
-      expect(result).toEqual({ ok: true, atualizados: 5 });
-      const args = prisma.repCatalogoItem.updateMany.mock.calls[0][0];
-      expect(args.where.usuarioId).toBe('rep-1');
-      expect(args.data.markup).toBe(20);
-    });
-
-    it('lança ForbiddenException sem empresaIdAtiva', async () => {
-      await expect(
-        service.setMarkupGlobal(fakeUser({ empresaIdAtiva: null }), { markup: 10 }),
-      ).rejects.toBeInstanceOf(ForbiddenException);
     });
   });
 
@@ -287,26 +261,26 @@ describe('CatalogoService', () => {
   // -------------------------------------------------------------------------
 
   describe('previewParaCliente', () => {
-    it('retorna preview com preço final = precoTabela * (1 + markup/100)', async () => {
+    it('preço final = tabela da MSM quando não há negociado (sem markup)', async () => {
       const fakeCliente = { id: 'cli-1', nome: 'Cliente X' };
       clientes.findById.mockResolvedValue(fakeCliente);
       prisma.repCatalogoItem.findMany.mockResolvedValue([
-        fakeCatalogoItem({ markup: 10, produto: { precoTabela: 50 } }),
+        fakeCatalogoItem({ produto: { precoTabela: 50 } }),
       ]);
       pricing.priceForClientBatch.mockResolvedValue(new Map()); // sem preço negociado
 
       const result = await service.previewParaCliente(fakeUser(), 'cli-1');
 
       expect(result).toHaveLength(1);
-      // 50 * 1.10 = 55
-      expect(result[0].precoFinal).toBe(55);
+      // tabela MSM = 50, sem markup
+      expect(result[0].precoFinal).toBe(50);
       expect(result[0].precoNegociado).toBe(false);
     });
 
-    it('usa preço negociado do cliente quando disponível', async () => {
+    it('usa preço negociado do cliente quando disponível (sem markup por cima)', async () => {
       clientes.findById.mockResolvedValue({ id: 'cli-1' });
       prisma.repCatalogoItem.findMany.mockResolvedValue([
-        fakeCatalogoItem({ markup: 10, produtoId: 'p-1', produto: { precoTabela: 50 } }),
+        fakeCatalogoItem({ produtoId: 'p-1', produto: { precoTabela: 50 } }),
       ]);
       pricing.priceForClientBatch.mockResolvedValue(
         new Map([['p-1', { precoFinal: 40, negociado: true, vigente: true }]]),
@@ -314,8 +288,8 @@ describe('CatalogoService', () => {
 
       const result = await service.previewParaCliente(fakeUser(), 'cli-1');
 
-      // 40 * 1.10 = 44
-      expect(result[0].precoFinal).toBe(44);
+      // negociado = 40, sem markup
+      expect(result[0].precoFinal).toBe(40);
       expect(result[0].precoNegociado).toBe(true);
     });
 

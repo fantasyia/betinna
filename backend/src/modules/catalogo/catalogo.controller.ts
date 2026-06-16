@@ -20,11 +20,9 @@ import { ZodValidationPipe } from '@shared/pipes/zod-validation.pipe';
 import type { AuthenticatedUser } from '@shared/types/authenticated-user';
 import {
   type BulkUpsertCatalogoDto,
-  type SetMarkupGlobalDto,
   type ShareCatalogDto,
   type UpsertCatalogoItemDto,
   bulkUpsertCatalogoSchema,
-  setMarkupGlobalSchema,
   shareCatalogSchema,
   upsertCatalogoItemSchema,
 } from './catalogo.dto';
@@ -64,17 +62,6 @@ export class CatalogoController {
     return this.catalogo.bulkUpsert(user, dto);
   }
 
-  @Put('markup-global')
-  @RequirePermissions({ module: 'catalogo', action: 'edit' })
-  @Audit({ action: 'set_markup_global', resource: 'catalogo_rep' })
-  @ApiOperation({ summary: 'Aplica markup % a todos os itens do catálogo do rep' })
-  setMarkupGlobal(
-    @CurrentUser() user: AuthenticatedUser,
-    @Body(new ZodValidationPipe(setMarkupGlobalSchema)) dto: SetMarkupGlobalDto,
-  ) {
-    return this.catalogo.setMarkupGlobal(user, dto);
-  }
-
   @Delete('item/:produtoId')
   @RequirePermissions({ module: 'catalogo', action: 'delete' })
   @HttpCode(HttpStatus.NO_CONTENT)
@@ -97,7 +84,7 @@ export class CatalogoController {
   @Get('preview')
   @RequirePermissions({ module: 'catalogo', action: 'view' })
   @ApiOperation({
-    summary: 'Preview do catálogo aplicado a um cliente (preço negociado + markup do rep)',
+    summary: 'Preview do catálogo aplicado a um cliente (preço negociado, senão tabela MSM)',
   })
   preview(@CurrentUser() user: AuthenticatedUser, @Query('clienteId') clienteId: string) {
     return this.catalogo.previewParaCliente(user, clienteId);

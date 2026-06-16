@@ -1,12 +1,9 @@
 import { useMemo, useState } from 'react';
 import {
   Plus,
-  Sparkles,
   Eye,
   Share2,
   Trash2,
-  TrendingUp,
-  TrendingDown,
   Package,
   AlertCircle,
   Download,
@@ -40,19 +37,14 @@ import {
   Stat,
 } from '@/components/ui';
 import { cn } from '@/lib/cn';
-import {
-  formatMoeda as fmtBRL,
-  formatMoedaCompacta as fmtBRLCompact,
-  formatNumero,
-  formatPercent,
-} from '@/lib/masks';
+import { formatMoeda as fmtBRL, formatMoedaCompacta as fmtBRLCompact, formatNumero } from '@/lib/masks';
 
 /**
  * CatalogoPage v2 — design system dark, cards de produtos.
  *
- * - Grid de cards (não tabela) com markup editável inline + preço final destacado
- * - Stats no topo (total, markup médio, sem markup)
- * - Actions: Adicionar produto, Markup global, Preview por cliente, Compartilhar, Limpar
+ * - Grid de cards (não tabela) com o preço definido pela empresa (tabela MSM)
+ * - Stats no topo (total de produtos, sem estoque)
+ * - Actions: Adicionar produto, Preview por cliente, Compartilhar, Limpar
  * - Share Dialog com WhatsApp/PDF/Link público
  */
 
@@ -71,7 +63,6 @@ interface CatalogoItem {
     /** ISO string do timestamp do último sync de estoque (cron 30min ou webhook OMIE). */
     estoqueAtualizadoEm?: string | null;
   };
-  markup: number;
   precoFinal?: number;
 }
 
@@ -97,7 +88,6 @@ interface PreviewItem {
   precoFabrica: number | null;
   precoTabela: number;
   precoEspecial?: number | null;
-  markup: number;
   precoFinal: number;
 }
 
@@ -153,23 +143,14 @@ export default function CatalogoPage() {
   );
 
   const [adding, setAdding] = useState(false);
-  const [markupGlobal, setMarkupGlobal] = useState(false);
   const [previewOpen, setPreviewOpen] = useState(false);
   const [shareOpen, setShareOpen] = useState(false);
   const [clearOpen, setClearOpen] = useState(false);
   const [search, setSearch] = useState('');
-  const [savingMarkup, setSavingMarkup] = useState<string | null>(null);
 
   const stats = useMemo(() => {
     const totalItens = itens.length;
-    const markupMedio = totalItens > 0 ? itens.reduce((s, i) => s + i.markup, 0) / totalItens : 0;
     const semEstoque = itens.filter((i) => (i.produto?.estoque ?? 0) <= 0).length;
-    const valorTotal = itens.reduce((s, i) => {
-      const fabrica = i.produto?.precoFabrica;
-      // Sem custo informado e sem preço final → não dá pra computar; não soma.
-      const final = i.precoFinal ?? (fabrica != null ? fabrica * (1 + i.markup / 100) : null);
-      return final != null ? s + final : s;
-    }, 0);
     // Estoque mais antigo do catálogo (= mais stale) — usado pra alerta global
     const oldestSync = itens.reduce<string | null>((oldest, i) => {
       const t = i.produto?.estoqueAtualizadoEm;
@@ -177,7 +158,7 @@ export default function CatalogoPage() {
       if (!oldest) return t;
       return new Date(t).getTime() < new Date(oldest).getTime() ? t : oldest;
     }, null);
-    return { totalItens, markupMedio, semEstoque, valorTotal, oldestSync };
+    return { totalItens, semEstoque, oldestSync };
   }, [itens]);
 
   const filtered = useMemo(() => {
@@ -190,19 +171,6 @@ export default function CatalogoPage() {
         i.produto?.marca?.toLowerCase().includes(q),
     );
   }, [itens, search]);
-
-  async function updateMarkup(produtoId: string, markup: number) {
-    setSavingMarkup(produtoId);
-    try {
-      await api.put('/catalogo/item', { produtoId, markup });
-      toast.success('Markup atualizado');
-      refetch();
-    } catch (err) {
-      toast.error('Falha ao atualizar markup', err instanceof ApiError ? err.message : undefined);
-    } finally {
-      setSavingMarkup(null);
-    }
-  }
 
   async function removeItem(produtoId: string) {
     try {
@@ -217,7 +185,6 @@ export default function CatalogoPage() {
   return (
     <PageLayout
       title="Meu catálogo"
-      description="Monte seu catálogo personalizado e defina o markup% sobre o preço de fábrica. Cada cliente vê o preço com seu markup (ou negociado, se houver)."
       actions={
         <>
           <Button
@@ -283,16 +250,6 @@ export default function CatalogoPage() {
             onChange={(e) => setSearch(e.target.value)}
             className="max-w-md flex-1"
           />
-          <Button
-            variant="secondary"
-            size="sm"
-            data-testid="catalogo-markup-global"
-            onClick={() => setMarkupGlobal(true)}
-            disabled={itens.length === 0}
-            leftIcon={<Sparkles className="h-3 w-3" />}
-          >
-            Markup global
-          </Button>
           {itens.length > 5 && (
             <Button
               variant="ghost"
@@ -336,8 +293,6 @@ export default function CatalogoPage() {
                 <ProdutoCard
                   key={item.produtoId}
                   item={item}
-                  saving={savingMarkup === item.produtoId}
-                  onMarkupChange={(m) => updateMarkup(item.produtoId, m)}
                   onRemove={() => removeItem(item.produtoId)}
                 />
               ))}
@@ -352,15 +307,6 @@ export default function CatalogoPage() {
           onClose={() => setAdding(false)}
           onSaved={() => {
             setAdding(false);
-            refetch();
-          }}
-        />
-      )}
-      {markupGlobal && (
-        <MarkupGlobalDialog
-          onClose={() => setMarkupGlobal(false)}
-          onSaved={() => {
-            setMarkupGlobal(false);
             refetch();
           }}
         />
@@ -408,23 +354,9 @@ function SyncBanner({ oldestSync }: { oldestSync: string | null }) {
 
 // ─── Produto card ──────────────────────────────────────────────
 
-function ProdutoCard({
-  item,
-  saving,
-  onMarkupChange,
-  onRemove,
-}: {
-  item: CatalogoItem;
-  saving: boolean;
-  onMarkupChange: (m: number) => void;
-  onRemove: () => void;
-}) {
+function ProdutoCard({ item, onRemove }: { item: CatalogoItem; onRemove: () => void }) {
   const [confirmDelete, setConfirmDelete] = useState(false);
-  const fabrica = item.produto?.precoFabrica ?? null;
   const tabela = item.produto?.precoTabela ?? 0;
-  const final = item.precoFinal ?? (fabrica != null ? fabrica * (1 + item.markup / 100) : null);
-  const diff = final != null && tabela > 0 ? ((final - tabela) / tabela) * 100 : 0;
-  const diffPositive = diff > 0;
 
   return (
     <Card
@@ -467,74 +399,10 @@ function ProdutoCard({
         </div>
       </div>
 
-      {/* Prices */}
-      <div className="px-3 pb-2 grid grid-cols-2 gap-2 text-sm">
-        <div>
-          <div className="text-[9px] uppercase tracking-wider text-muted">Fábrica (custo)</div>
-          <div className="text-text-subtle tabular">{fabrica != null ? fmtBRL(fabrica) : '—'}</div>
-        </div>
-        <div>
-          <div className="text-[9px] uppercase tracking-wider text-muted">Tabela</div>
-          <div className="text-text-subtle tabular">{fmtBRL(tabela)}</div>
-        </div>
-      </div>
-
-      {/* Markup input + final price */}
-      <div className="px-3 pb-3 flex items-end gap-2 border-t border-border pt-3 bg-bg-alt">
-        <div className="flex-1 min-w-0">
-          <div className="text-[10px] uppercase tracking-wider text-muted mb-1">Markup %</div>
-          <input
-            type="number"
-            min={0}
-            max={100}
-            step="0.1"
-            key={`${item.produtoId}-${item.markup}`}
-            defaultValue={item.markup}
-            disabled={saving}
-            data-testid={`markup-input-${item.produtoId}`}
-            onBlur={(e) => {
-              const v = Number(e.target.value);
-              if (!Number.isNaN(v) && v !== item.markup) {
-                onMarkupChange(v);
-              }
-            }}
-            className={cn(
-              'w-full h-8 px-2 rounded-md text-sm font-medium tabular',
-              'bg-bg border border-border-strong text-text',
-              'focus:outline-none focus:border-primary focus:shadow-ring',
-              saving && 'border-warning bg-warning/10 cursor-progress',
-            )}
-          />
-        </div>
-        <div className="flex-1 text-right min-w-0">
-          <div className="text-[10px] uppercase tracking-wider text-muted mb-1">Preço final</div>
-          {final != null ? (
-            <div className="text-md font-bold text-text tabular tracking-tight">{fmtBRL(final)}</div>
-          ) : (
-            <div
-              className="text-[11px] font-medium text-warning leading-tight"
-              title="Sem custo informado — defina o preço de fábrica em Produtos"
-            >
-              defina o custo
-            </div>
-          )}
-          {final != null && tabela > 0 && (
-            <div
-              className={cn(
-                'text-[10px] tabular flex items-center justify-end gap-0.5',
-                diffPositive ? 'text-warning' : 'text-success',
-              )}
-            >
-              {diffPositive ? (
-                <TrendingUp className="h-2.5 w-2.5" />
-              ) : (
-                <TrendingDown className="h-2.5 w-2.5" />
-              )}
-              {diffPositive ? '+' : ''}
-              {formatPercent(diff, 1)} vs tabela
-            </div>
-          )}
-        </div>
+      {/* Preço (tabela definida pela MSM) */}
+      <div className="px-3 pb-3 border-t border-border pt-3 bg-bg-alt">
+        <div className="text-[10px] uppercase tracking-wider text-muted mb-1">Preço (tabela MSM)</div>
+        <div className="text-lg font-bold text-text tabular tracking-tight">{fmtBRL(tabela)}</div>
       </div>
 
       {/* Delete confirm */}
@@ -618,7 +486,6 @@ function AddProdutoDialog({
   onSaved: () => void;
 }) {
   const [produto, setProduto] = useState<ProdutoOpt | null>(null);
-  const [markup, setMarkup] = useState(0);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -630,7 +497,7 @@ function AddProdutoDialog({
     setBusy(true);
     setError(null);
     try {
-      await api.put('/catalogo/item', { produtoId: produto.id, markup });
+      await api.put('/catalogo/item', { produtoId: produto.id });
       onSaved();
     } catch (err) {
       setError(err instanceof ApiError ? err.message : 'Falha');
@@ -671,7 +538,7 @@ function AddProdutoDialog({
             placeholder="Buscar produto…"
             getLabel={(p) => p.nome}
             getSubLabel={(p) =>
-              [p.sku, p.precoFabrica != null ? `fábrica ${fmtBRL(p.precoFabrica)}` : null]
+              [p.sku, p.precoTabela != null ? `tabela ${fmtBRL(p.precoTabela)}` : null]
                 .filter(Boolean)
                 .join(' · ')
             }
@@ -683,50 +550,19 @@ function AddProdutoDialog({
         {isDup && (
           <div className="px-3 py-2 rounded-md bg-warning/10 border border-warning/30 text-warning text-sm flex items-start gap-2">
             <AlertCircle className="h-4 w-4 mt-0.5 shrink-0" />
-            Este produto já está no seu catálogo. Use o input de markup na lista.
+            Este produto já está no seu catálogo.
           </div>
         )}
-        <Field
-          label="Markup % sobre o preço de fábrica"
-          hint="0% = vende pelo preço de fábrica. 30% = vende fábrica × 1.30."
-        >
-          <Input
-            data-testid="add-markup-input"
-            type="number"
-            min={0}
-            max={100}
-            step="0.1"
-            value={markup}
-            onChange={(e) => setMarkup(Number(e.target.value))}
-          />
-        </Field>
-        {produto?.precoFabrica != null ? (
+        {produto && produto.precoTabela !== undefined && (
           <Card variant="outline" padding="md" className="bg-primary/5 border-primary/30">
-            <div className="flex items-center justify-between">
-              <div>
-                <div className="text-[10px] uppercase tracking-wider text-muted mb-1">
-                  Preço final pro cliente
-                </div>
-                <div className="text-2xl font-bold text-text tabular tracking-tight">
-                  {fmtBRL(produto.precoFabrica * (1 + markup / 100))}
-                </div>
-              </div>
-              {produto.precoTabela !== undefined && (
-                <div className="text-right text-[11px] text-muted tabular">
-                  <div>Fábrica: {fmtBRL(produto.precoFabrica)}</div>
-                  <div>Tabela: {fmtBRL(produto.precoTabela)}</div>
-                </div>
-              )}
+            <div className="text-[10px] uppercase tracking-wider text-muted mb-1">
+              Preço pro cliente (tabela MSM)
+            </div>
+            <div className="text-2xl font-bold text-text tabular tracking-tight">
+              {fmtBRL(produto.precoTabela)}
             </div>
           </Card>
-        ) : produto ? (
-          <Card variant="outline" padding="md" className="bg-warning/5 border-warning/30">
-            <div className="text-[11px] text-warning leading-snug">
-              Este produto está <strong>sem custo informado</strong>. Defina o preço de fábrica em
-              Produtos pra calcular o preço final sobre o custo.
-            </div>
-          </Card>
-        ) : null}
+        )}
         {error && (
           <div className="px-3 py-2 rounded-md bg-danger/10 border border-danger/30 text-danger text-sm flex items-start gap-2">
             <AlertCircle className="h-4 w-4 mt-0.5 shrink-0" />
@@ -734,77 +570,6 @@ function AddProdutoDialog({
           </div>
         )}
       </form>
-    </Dialog>
-  );
-}
-
-// ─── Markup global dialog ─────────────────────────────────────
-
-function MarkupGlobalDialog({
-  onClose,
-  onSaved,
-}: {
-  onClose: () => void;
-  onSaved: () => void;
-}) {
-  const [markup, setMarkup] = useState(0);
-  const [busy, setBusy] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-
-  async function apply() {
-    setBusy(true);
-    setError(null);
-    try {
-      await api.put('/catalogo/markup-global', { markup });
-      onSaved();
-    } catch (err) {
-      setError(err instanceof ApiError ? err.message : 'Falha');
-    } finally {
-      setBusy(false);
-    }
-  }
-
-  return (
-    <Dialog
-      open
-      onClose={onClose}
-      title="Aplicar markup global"
-      description="Define o mesmo markup% pra TODOS os produtos. Substitui os markups individuais."
-      size="sm"
-      footer={
-        <>
-          <Button variant="secondary" onClick={onClose}>
-            Cancelar
-          </Button>
-          <Button
-            data-testid="markup-global-apply"
-            loading={busy}
-            onClick={apply}
-            leftIcon={<Sparkles className="h-3.5 w-3.5" />}
-          >
-            Aplicar {markup}% em todos
-          </Button>
-        </>
-      }
-    >
-      <Field label="Markup %">
-        <Input
-          data-testid="markup-global-input"
-          type="number"
-          min={0}
-          max={100}
-          step="0.1"
-          value={markup}
-          onChange={(e) => setMarkup(Number(e.target.value))}
-          autoFocus
-        />
-      </Field>
-      {error && (
-        <div className="mt-3 px-3 py-2 rounded-md bg-danger/10 border border-danger/30 text-danger text-sm flex items-start gap-2">
-          <AlertCircle className="h-4 w-4 mt-0.5 shrink-0" />
-          {error}
-        </div>
-      )}
     </Dialog>
   );
 }
@@ -852,9 +617,6 @@ function PreviewClienteDialog({ onClose }: { onClose: () => void }) {
                       Fábrica
                     </th>
                     <th className="text-right text-[10px] font-semibold uppercase tracking-wider text-muted px-3 py-2">
-                      Markup
-                    </th>
-                    <th className="text-right text-[10px] font-semibold uppercase tracking-wider text-muted px-3 py-2">
                       Tabela
                     </th>
                     <th className="text-right text-[10px] font-semibold uppercase tracking-wider text-muted px-3 py-2">
@@ -876,9 +638,6 @@ function PreviewClienteDialog({ onClose }: { onClose: () => void }) {
                       </td>
                       <td className="px-3 py-2 text-right text-sm text-text-subtle tabular">
                         {i.precoFabrica != null ? fmtBRLCompact(i.precoFabrica) : '—'}
-                      </td>
-                      <td className="px-3 py-2 text-right text-sm text-text-subtle tabular">
-                        {i.markup}%
                       </td>
                       <td className="px-3 py-2 text-right text-sm text-text-subtle tabular">
                         {fmtBRLCompact(i.precoTabela)}
@@ -922,7 +681,7 @@ function ShareDialog({ onClose }: { onClose: () => void }) {
     setError(null);
     setResult(null);
     try {
-      // Cliente é opcional — quando ausente, usa preço de tabela × markup do rep.
+      // Cliente é opcional — quando ausente, usa o preço de tabela da MSM.
       const payload: Record<string, unknown> = { canal };
       if (cliente) payload.clienteId = cliente.id;
       if (validoAte) payload.validoAte = validoAte;
@@ -943,7 +702,7 @@ function ShareDialog({ onClose }: { onClose: () => void }) {
       open
       onClose={onClose}
       title="Compartilhar catálogo"
-      description="Envie o catálogo via WhatsApp ou PDF. Vincular cliente é opcional — sem cliente, o preço é o de tabela × seu markup."
+      description="Envie o catálogo via WhatsApp ou PDF. Vincular cliente é opcional — sem cliente, o preço é o de tabela da MSM."
       size="md"
       footer={
         !result ? (

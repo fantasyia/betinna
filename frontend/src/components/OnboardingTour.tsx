@@ -172,7 +172,7 @@ const STEPS_REP: Step[] = [
   {
     icon: '📕',
     title: 'Seu catálogo personalizado',
-    body: 'Em /catalogo você escolhe quais produtos da empresa entram no seu catálogo e aplica markup. Compartilhe o link com clientes via WhatsApp.',
+    body: 'Em /catalogo você escolhe quais produtos da empresa entram no seu catálogo — o preço é o definido pela empresa. Compartilhe o link com clientes via WhatsApp.',
     route: '/catalogo',
   },
   {

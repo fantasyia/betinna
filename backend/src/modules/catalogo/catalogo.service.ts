@@ -10,17 +10,11 @@ import {
 } from '@shared/errors/app-exception';
 import { ErrorCode } from '@shared/errors/error-codes';
 import type { AuthenticatedUser } from '@shared/types/authenticated-user';
-import type {
-  BulkUpsertCatalogoDto,
-  SetMarkupGlobalDto,
-  ShareCatalogDto,
-  UpsertCatalogoItemDto,
-} from './catalogo.dto';
+import type { BulkUpsertCatalogoDto, ShareCatalogDto, UpsertCatalogoItemDto } from './catalogo.dto';
 
 export interface CatalogoItem {
   id: string;
   produtoId: string;
-  markup: number;
   produto: {
     id: string;
     nome: string;
@@ -47,11 +41,11 @@ export interface PreviewItem extends CatalogoItem {
 /**
  * Catálogo personalizado do representante.
  *
- * Cada rep monta o seu próprio subset de produtos da empresa,
- * com markup % aplicado sobre o preço de tabela. Quando envia
- * pra um cliente, o preço final considera:
- *   1. Preço negociado do cliente (se houver, via PricingService)
- *   2. Markup do rep aplicado sobre o preço resultante
+ * Cada rep monta o seu próprio subset de produtos da empresa. O preço é o
+ * definido pela empresa (MSM) — o rep NÃO aplica markup sobre nada. Quando
+ * envia pra um cliente, o preço final é:
+ *   1. Preço negociado do cliente (se houver, via PricingService), senão
+ *   2. Preço de tabela da empresa.
  */
 @Injectable()
 export class CatalogoService {
@@ -102,7 +96,8 @@ export class CatalogoService {
     });
     // Converte dinheiro Decimal→number na fronteira (interface CatalogoItem usa number).
     return items.map((it) => ({
-      ...it,
+      id: it.id,
+      produtoId: it.produtoId,
       produto: {
         ...it.produto,
         precoTabela: Number(it.produto.precoTabela),
@@ -117,8 +112,10 @@ export class CatalogoService {
 
     const item = await this.prisma.repCatalogoItem.upsert({
       where: { usuarioId_produtoId: { usuarioId: user.id, produtoId: dto.produtoId } },
-      update: { markup: dto.markup },
-      create: { usuarioId: user.id, produtoId: dto.produtoId, markup: dto.markup },
+      // Sem markup: adicionar produto é só vinculá-lo ao catálogo (preço = MSM).
+      // Re-adicionar é idempotente (update vazio). markup default 0 no schema.
+      update: {},
+      create: { usuarioId: user.id, produtoId: dto.produtoId },
       include: {
         produto: {
           select: {
@@ -141,7 +138,8 @@ export class CatalogoService {
     });
     // Converte dinheiro Decimal→number na fronteira (interface CatalogoItem usa number).
     return {
-      ...item,
+      id: item.id,
+      produtoId: item.produtoId,
       produto: {
         ...item.produto,
         precoTabela: Number(item.produto.precoTabela),
@@ -168,24 +166,12 @@ export class CatalogoService {
           where: {
             usuarioId_produtoId: { usuarioId: user.id, produtoId: item.produtoId },
           },
-          update: { markup: item.markup },
-          create: { usuarioId: user.id, produtoId: item.produtoId, markup: item.markup },
+          update: {},
+          create: { usuarioId: user.id, produtoId: item.produtoId },
         }),
       ),
     );
     return { ok: true, processados: dto.itens.length };
-  }
-
-  async setMarkupGlobal(
-    user: AuthenticatedUser,
-    dto: SetMarkupGlobalDto,
-  ): Promise<{ ok: true; atualizados: number }> {
-    this.requireEmpresa(user);
-    const { count } = await this.prisma.repCatalogoItem.updateMany({
-      where: { usuarioId: user.id },
-      data: { markup: dto.markup },
-    });
-    return { ok: true, atualizados: count };
   }
 
   async removeItem(user: AuthenticatedUser, produtoId: string): Promise<void> {
@@ -208,8 +194,8 @@ export class CatalogoService {
 
   /**
    * Preview "livre" do catálogo do rep — SEM cliente vinculado.
-   * Usa preço de tabela como base + markup do rep. Não considera
-   * preços negociados (não há cliente alvo).
+   * Preço = tabela da empresa (MSM). Sem markup. Não considera preços
+   * negociados (não há cliente alvo).
    *
    * Usado quando o rep compartilha catálogo "pra qualquer pessoa"
    * (envio livre via link público sem cadastro de cliente).
@@ -218,21 +204,17 @@ export class CatalogoService {
     this.requireEmpresa(user);
     const catalog = await this.listMyCatalog(user);
     if (catalog.length === 0) return [];
-    return catalog.map((c) => {
-      const baseTrade = Number(c.produto.precoTabela);
-      const precoFinal = Math.round(baseTrade * (1 + c.markup / 100) * 100) / 100;
-      return {
-        ...c,
-        precoFinal,
-        precoNegociado: false,
-      };
-    });
+    return catalog.map((c) => ({
+      ...c,
+      precoFinal: Number(c.produto.precoTabela),
+      precoNegociado: false,
+    }));
   }
 
   /**
    * Preview do catálogo do rep aplicado a um cliente específico.
-   * Mostra qual preço o cliente vai ver — usando preço negociado
-   * quando houver e aplicando o markup do rep sobre o resultado.
+   * Mostra qual preço o cliente vai ver: preço negociado do cliente quando
+   * houver, senão a tabela da empresa (MSM). Sem markup do rep.
    */
   async previewParaCliente(user: AuthenticatedUser, clienteId: string): Promise<PreviewItem[]> {
     // Valida acesso ao cliente (também garante mesma empresa que o rep)
@@ -251,8 +233,7 @@ export class CatalogoService {
 
     return catalog.map((c) => {
       const resolved = priceMap.get(c.produtoId);
-      const baseTrade = resolved?.precoFinal ?? Number(c.produto.precoTabela);
-      const precoFinal = Math.round(baseTrade * (1 + c.markup / 100) * 100) / 100;
+      const precoFinal = resolved?.precoFinal ?? Number(c.produto.precoTabela);
       return {
         ...c,
         precoFinal,
