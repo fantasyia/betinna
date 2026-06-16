@@ -1,5 +1,5 @@
-import { useCallback, useEffect, useMemo, useRef, useState, type DragEvent } from 'react';
-import { Undo2, Redo2, PowerOff } from 'lucide-react';
+import { useCallback, useEffect, useRef, useState, type DragEvent } from 'react';
+import { Undo2, Redo2 } from 'lucide-react';
 import {
   ReactFlow,
   ReactFlowProvider,
@@ -10,18 +10,9 @@ import {
   addEdge,
   useNodesState,
   useEdgesState,
-  useReactFlow,
-  Handle,
-  Position,
-  BaseEdge,
-  EdgeLabelRenderer,
-  getSmoothStepPath,
-  type Node,
   type Edge,
-  type EdgeProps,
   type Connection,
   type ReactFlowInstance,
-  type NodeProps,
 } from '@xyflow/react';
 import '@xyflow/react/dist/style.css';
 import {
@@ -29,15 +20,6 @@ import {
   GitBranch,
   Play,
   Timer,
-  MessageSquare,
-  Mail,
-  CheckSquare,
-  Tag,
-  ArrowRight,
-  UserCheck,
-  Webhook,
-  Bot,
-  Send,
   Save,
   X as XIcon,
   Trash2,
@@ -48,6 +30,41 @@ import { useApiQuery } from '@/hooks/useApiQuery';
 import { useToast } from '@/components/toast';
 import { Button, Badge, IconButton, Input, Select, Textarea, Field, FullPageSpinner } from '@/components/ui';
 import { cn } from '@/lib/cn';
+import {
+  type TriggerTipo,
+  type AcaoTipo,
+  type FluxoNoApi,
+  type FluxoEdgeApi,
+  type FluxoDetailApi,
+  type PaletteItem,
+  type NodePayload,
+  type FlowNode,
+} from '@/pages/fluxo/lib/types';
+import {
+  TRIGGER_LABEL,
+  ACAO_LABEL,
+  ACAO_ICONS,
+  TIPO_LABEL,
+  TIPO_ACCENT,
+  isManualTrigger,
+  PALETTE_CATEGORIES,
+} from '@/pages/fluxo/lib/metadata';
+import { montarCron, CRON_DIAS, CRON_TIMEZONES, type CronPreviewResp } from '@/pages/fluxo/lib/cron';
+import {
+  labelDaAresta,
+  reconstruirSourceHandle,
+  dedupConfigSaidas,
+  RESERVADOS,
+  norm,
+  defaultConfig,
+} from '@/pages/fluxo/lib/saidas';
+import { NodeCard } from '@/pages/fluxo/components/NodeCard';
+import { EdgeRemovivel } from '@/pages/fluxo/components/EdgeRemovivel';
+
+// Re-export dos tipos públicos (consumidos por FluxosPage / FluxoTemplatesPage).
+// A fonte de verdade agora é @/pages/fluxo/lib/types — mantido aqui pra não
+// quebrar quem importa de '@/pages/FluxoEditor'.
+export type { FluxoNoTipo, TriggerTipo, AcaoTipo } from '@/pages/fluxo/lib/types';
 
 /**
  * FluxoEditor — editor visual de fluxos de automação com React Flow.
@@ -61,436 +78,12 @@ import { cn } from '@/lib/cn';
  * Backend faz full-replace dos nós e arestas (per schema docs).
  */
 
-// ─── Tipos espelhando o schema do backend ─────────────────────────
-
-export type FluxoNoTipo = 'TRIGGER' | 'CONDICAO' | 'ACAO' | 'DELAY';
-
-export type TriggerTipo =
-  | 'LEAD_CRIADO'
-  | 'LEAD_ETAPA_MUDOU'
-  | 'PEDIDO_APROVADO'
-  | 'PEDIDO_ENTREGUE'
-  | 'OCORRENCIA_ABERTA'
-  | 'CLIENTE_INATIVO_30D'
-  | 'AMOSTRA_FOLLOWUP'
-  | 'CRON_AGENDADO'
-  | 'LEAD_RESPONDEU'
-  | 'LEAD_SEM_RESPOSTA'
-  | 'IA_CLASSIFICOU'
-  | 'LEAD_RECEBEU_TAG'
-  | 'MENSAGEM_CANAL'
-  | 'WEBHOOK_RECEBIDO';
-
-export type AcaoTipo =
-  | 'ENVIAR_WHATSAPP'
-  | 'ENVIAR_EMAIL'
-  | 'CRIAR_TAREFA'
-  | 'MUDAR_TAG'
-  | 'MOVER_LEAD_ETAPA'
-  | 'ATRIBUIR_REP'
-  | 'WEBHOOK_EXTERNO'
-  | 'CONVERSAR_IA'
-  | 'LIBERAR_LOTE'
-  | 'PAUSAR_IA';
-
-interface FluxoNoApi {
-  id?: string;
-  tipo: FluxoNoTipo;
-  acaoTipo?: string | null;
-  titulo: string;
-  config?: Record<string, unknown>;
-  posX?: number;
-  posY?: number;
-}
-
-interface FluxoEdgeApi {
-  id?: string;
-  sourceNoId: string;
-  targetNoId: string;
-  label?: string | null;
-}
-
-interface FluxoDetailApi {
-  id: string;
-  nome: string;
-  descricao?: string | null;
-  status: 'RASCUNHO' | 'ATIVO' | 'PAUSADO' | 'ARQUIVADO';
-  triggerTipo?: TriggerTipo | null;
-  nos?: FluxoNoApi[];
-  arestas?: FluxoEdgeApi[];
-}
-
-// ─── Mapeamento UI ───────────────────────────────────────────────
-
-const TRIGGER_LABEL: Record<TriggerTipo, string> = {
-  LEAD_CRIADO: 'Lead criado',
-  LEAD_ETAPA_MUDOU: 'Lead mudou etapa',
-  PEDIDO_APROVADO: 'Pedido aprovado',
-  PEDIDO_ENTREGUE: 'Pedido entregue',
-  OCORRENCIA_ABERTA: 'Ocorrência aberta',
-  CLIENTE_INATIVO_30D: 'Cliente inativo 30d',
-  AMOSTRA_FOLLOWUP: 'Amostra follow-up',
-  CRON_AGENDADO: 'Cron agendado',
-  LEAD_RESPONDEU: 'Lead respondeu',
-  LEAD_SEM_RESPOSTA: 'Lead sem resposta',
-  IA_CLASSIFICOU: 'IA classificou',
-  LEAD_RECEBEU_TAG: 'Lead recebeu tag',
-  MENSAGEM_CANAL: 'Mensagem chegou (canal)',
-  WEBHOOK_RECEBIDO: 'Webhook recebido',
-};
-
-const ACAO_LABEL: Record<AcaoTipo, string> = {
-  ENVIAR_WHATSAPP: 'Enviar WhatsApp',
-  ENVIAR_EMAIL: 'Enviar e-mail',
-  CRIAR_TAREFA: 'Criar tarefa',
-  MUDAR_TAG: 'Mudar tag',
-  MOVER_LEAD_ETAPA: 'Mover lead de etapa',
-  ATRIBUIR_REP: 'Atribuir representante',
-  WEBHOOK_EXTERNO: 'Webhook externo',
-  CONVERSAR_IA: 'Conversar com IA',
-  LIBERAR_LOTE: 'Liberar lote',
-  PAUSAR_IA: 'Pausar IA na conversa',
-};
-
-const ACAO_ICONS: Record<AcaoTipo, typeof MessageSquare> = {
-  ENVIAR_WHATSAPP: MessageSquare,
-  ENVIAR_EMAIL: Mail,
-  CRIAR_TAREFA: CheckSquare,
-  MUDAR_TAG: Tag,
-  MOVER_LEAD_ETAPA: ArrowRight,
-  ATRIBUIR_REP: UserCheck,
-  WEBHOOK_EXTERNO: Webhook,
-  CONVERSAR_IA: Bot,
-  LIBERAR_LOTE: Send,
-  PAUSAR_IA: PowerOff,
-};
-
-// ─── Palette items (categorias do print) ────────────────────────
-
-interface PaletteItem {
-  id: string;
-  label: string;
-  tipo: FluxoNoTipo;
-  acaoTipo?: AcaoTipo;
-  triggerTipo?: TriggerTipo;
-  /** Gatilho "Manual" (sem trigger automático) — nó TRIGGER sem triggerTipo. */
-  manual?: boolean;
-}
-
-/**
- * Trigger Manual = nó TRIGGER sem `triggerTipo` (o fluxo dispara só na mão, via
- * "Disparar agora"). Não usa enum no banco — o fluxo salva com triggerTipo nulo.
- */
-function isManualTrigger(data: { tipo: FluxoNoTipo; triggerTipo?: TriggerTipo }): boolean {
-  return data.tipo === 'TRIGGER' && !data.triggerTipo;
-}
-
-const PALETTE_CATEGORIES: Array<{ title: string; items: PaletteItem[] }> = [
-  {
-    title: 'Gatilhos',
-    items: [
-      { id: 't-manual', label: 'Trigger Manual', tipo: 'TRIGGER', manual: true },
-      { id: 't-lead', label: 'Lead criado', tipo: 'TRIGGER', triggerTipo: 'LEAD_CRIADO' },
-      { id: 't-etapa', label: 'Lead mudou etapa', tipo: 'TRIGGER', triggerTipo: 'LEAD_ETAPA_MUDOU' },
-      { id: 't-pedido-ok', label: 'Pedido aprovado', tipo: 'TRIGGER', triggerTipo: 'PEDIDO_APROVADO' },
-      { id: 't-pedido-ent', label: 'Pedido entregue', tipo: 'TRIGGER', triggerTipo: 'PEDIDO_ENTREGUE' },
-      { id: 't-ocor', label: 'Ocorrência aberta', tipo: 'TRIGGER', triggerTipo: 'OCORRENCIA_ABERTA' },
-      { id: 't-inat', label: 'Cliente inativo 30d', tipo: 'TRIGGER', triggerTipo: 'CLIENTE_INATIVO_30D' },
-      { id: 't-amos', label: 'Amostra follow-up', tipo: 'TRIGGER', triggerTipo: 'AMOSTRA_FOLLOWUP' },
-      { id: 't-cron', label: 'Cron agendado', tipo: 'TRIGGER', triggerTipo: 'CRON_AGENDADO' },
-      { id: 't-resp', label: 'Lead respondeu', tipo: 'TRIGGER', triggerTipo: 'LEAD_RESPONDEU' },
-      { id: 't-semresp', label: 'Lead sem resposta', tipo: 'TRIGGER', triggerTipo: 'LEAD_SEM_RESPOSTA' },
-      { id: 't-iaclass', label: 'IA classificou', tipo: 'TRIGGER', triggerTipo: 'IA_CLASSIFICOU' },
-      { id: 't-tag', label: 'Lead recebeu tag', tipo: 'TRIGGER', triggerTipo: 'LEAD_RECEBEU_TAG' },
-      { id: 't-canal', label: 'Mensagem chegou (canal)', tipo: 'TRIGGER', triggerTipo: 'MENSAGEM_CANAL' },
-      { id: 't-webhook', label: 'Webhook recebido', tipo: 'TRIGGER', triggerTipo: 'WEBHOOK_RECEBIDO' },
-    ],
-  },
-  {
-    title: 'Condições',
-    items: [{ id: 'c-cond', label: 'Condição', tipo: 'CONDICAO' }],
-  },
-  {
-    title: 'Ações',
-    items: [
-      { id: 'a-wa', label: 'Enviar WhatsApp', tipo: 'ACAO', acaoTipo: 'ENVIAR_WHATSAPP' },
-      { id: 'a-em', label: 'Enviar e-mail', tipo: 'ACAO', acaoTipo: 'ENVIAR_EMAIL' },
-      { id: 'a-task', label: 'Criar tarefa', tipo: 'ACAO', acaoTipo: 'CRIAR_TAREFA' },
-      { id: 'a-tag', label: 'Mudar tag', tipo: 'ACAO', acaoTipo: 'MUDAR_TAG' },
-      { id: 'a-mov', label: 'Mover lead', tipo: 'ACAO', acaoTipo: 'MOVER_LEAD_ETAPA' },
-      { id: 'a-atr', label: 'Atribuir representante', tipo: 'ACAO', acaoTipo: 'ATRIBUIR_REP' },
-      { id: 'a-hook', label: 'Webhook externo', tipo: 'ACAO', acaoTipo: 'WEBHOOK_EXTERNO' },
-      { id: 'a-ia', label: 'Conversar com IA', tipo: 'ACAO', acaoTipo: 'CONVERSAR_IA' },
-      { id: 'a-lote', label: 'Liberar lote', tipo: 'ACAO', acaoTipo: 'LIBERAR_LOTE' },
-      { id: 'a-pausa-ia', label: 'Pausar IA na conversa', tipo: 'ACAO', acaoTipo: 'PAUSAR_IA' },
-    ],
-  },
-  {
-    title: 'Tempo',
-    items: [{ id: 'd-delay', label: 'Aguardar', tipo: 'DELAY' }],
-  },
-];
-
-// ─── Node data interno ────────────────────────────────────────────
-
-interface NodePayload extends Record<string, unknown> {
-  titulo: string;
-  tipo: FluxoNoTipo;
-  acaoTipo?: AcaoTipo;
-  triggerTipo?: TriggerTipo;
-  config: Record<string, unknown>;
-}
-
-type FlowNode = Node<NodePayload>;
-
-// ─── Custom Node component ───────────────────────────────────────
-
-function NodeCard({ data, selected }: NodeProps<FlowNode>) {
-  const tipo = data.tipo;
-  const Icon = pickIcon(data);
-  const accent = TIPO_ACCENT[tipo];
-
-  return (
-    <div
-      className={cn(
-        'relative rounded-lg border bg-surface min-w-[180px] shadow-md',
-        'transition-all duration-100',
-        selected ? 'border-primary shadow-lg ring-2 ring-primary/30' : 'border-border-strong',
-      )}
-    >
-      {/* Top connection (todos exceto TRIGGER) */}
-      {tipo !== 'TRIGGER' && (
-        <Handle
-          type="target"
-          position={Position.Top}
-          className="!w-2 !h-2 !bg-primary !border-bg !border-2"
-        />
-      )}
-      <div className="flex items-center gap-2 px-3 py-2 border-b border-border" style={{ borderTopColor: accent, borderTopWidth: 3, borderTopStyle: 'solid', borderRadius: 'inherit' }}>
-        <span
-          className="flex h-5 w-5 items-center justify-center rounded text-[10px] font-bold"
-          style={{ background: accent + '20', color: accent }}
-        >
-          <Icon className="h-3 w-3" />
-        </span>
-        <span className="text-xs font-bold uppercase tracking-wider" style={{ color: accent }}>
-          {TIPO_LABEL[tipo]}
-        </span>
-        {isManualTrigger(data) && (
-          <span className="ml-auto rounded-full bg-success/15 text-success border border-success/30 px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wide">
-            Manual
-          </span>
-        )}
-      </div>
-      <div className="px-3 py-2.5">
-        <div className="text-sm font-medium text-text leading-tight">{data.titulo}</div>
-        {isManualTrigger(data) ? (
-          <div className="text-[10px] text-muted mt-1">
-            {(data.config?.descricao as string)?.trim() || 'Disparo só na mão (▶️ Disparar agora)'}
-          </div>
-        ) : (
-          (data.acaoTipo || data.triggerTipo) && (
-            <div className="text-[10px] text-muted mt-1">
-              {data.acaoTipo
-                ? ACAO_LABEL[data.acaoTipo]
-                : data.triggerTipo
-                  ? TRIGGER_LABEL[data.triggerTipo]
-                  : ''}
-            </div>
-          )
-        )}
-      </div>
-      {/* Saídas: CONDICAO simples = true/false; CONDICAO roteador = N saídas +
-          default; demais = 1. O `id` do handle vira o label da aresta. */}
-      {tipo === 'CONDICAO' ? (
-        (data.config?.modo as string) === 'roteador' ? (
-          <>
-            {[...(((data.config?.saidas as string[]) ?? [])), 'default'].map((s, i, arr) => (
-              <Handle
-                key={s}
-                type="source"
-                position={Position.Bottom}
-                id={s}
-                className={`!w-2 !h-2 !border-bg !border-2 ${s === 'default' ? '!bg-muted' : '!bg-primary'}`}
-                style={{ left: `${((i + 1) / (arr.length + 1)) * 100}%` }}
-              />
-            ))}
-          </>
-        ) : (
-          <>
-            <Handle
-              type="source"
-              position={Position.Bottom}
-              id="true"
-              className="!w-2 !h-2 !bg-success !border-bg !border-2"
-              style={{ left: '30%' }}
-            />
-            <Handle
-              type="source"
-              position={Position.Bottom}
-              id="false"
-              className="!w-2 !h-2 !bg-danger !border-bg !border-2"
-              style={{ left: '70%' }}
-            />
-          </>
-        )
-      ) : data.acaoTipo === 'CONVERSAR_IA' ? (
-        (() => {
-          // Saídas do nó "Conversar com IA". O `id` do handle vira o label da aresta.
-          // "classificou"/"timeout" só quando aguarda resposta com timeout; "erro"
-          // aparece SEMPRE (falha de IA/WhatsApp pode ocorrer em qualquer modo).
-          const comTimeout =
-            (data.config?.aguardarResposta as boolean | undefined) !== false &&
-            Number(data.config?.timeoutHoras ?? 0) > 0;
-          const saidas: Array<{ id?: string; cor: string; rotulo?: string; txt?: string }> =
-            comTimeout
-              ? [
-                  { id: 'classificou', cor: '!bg-success', rotulo: '🟢 classificou', txt: 'text-success' },
-                  { id: 'timeout', cor: '!bg-warning', rotulo: '🟠 timeout', txt: 'text-warning' },
-                  { id: 'erro', cor: '!bg-danger', rotulo: '🔴 erro', txt: 'text-danger' },
-                ]
-              : [
-                  { cor: '!bg-primary' },
-                  { id: 'erro', cor: '!bg-danger', rotulo: '🔴 erro', txt: 'text-danger' },
-                ];
-          const left = (i: number) => `${((i + 1) / (saidas.length + 1)) * 100}%`;
-          return (
-            <>
-              {saidas.map((s, i) => (
-                <Handle
-                  key={s.id ?? 'main'}
-                  type="source"
-                  position={Position.Bottom}
-                  id={s.id}
-                  className={`!w-2 !h-2 ${s.cor} !border-bg !border-2`}
-                  style={{ left: left(i) }}
-                />
-              ))}
-              {saidas.map((s, i) =>
-                s.rotulo ? (
-                  <div
-                    key={`rot-${s.id ?? 'main'}`}
-                    className={`absolute top-full mt-0.5 -translate-x-1/2 text-[9px] leading-none ${s.txt} whitespace-nowrap pointer-events-none`}
-                    style={{ left: left(i) }}
-                  >
-                    {s.rotulo}
-                  </div>
-                ) : null,
-              )}
-            </>
-          );
-        })()
-      ) : (
-        <Handle
-          type="source"
-          position={Position.Bottom}
-          className="!w-2 !h-2 !bg-primary !border-bg !border-2"
-        />
-      )}
-    </div>
-  );
-}
-
+// Componentes de canvas (NodeCard / EdgeRemovivel) e o contrato de saídas vivem
+// em @/pages/fluxo/* — aqui só o registro pro React Flow.
 const NODE_TYPES = { fluxo: NodeCard };
-
-/**
- * Aresta com botão "×" pra REMOVER a conexão (antes só dava via Backspace —
- * ninguém descobria). Mostra o label (Sim/Não dos ramos de condição) + o botão.
- */
-function EdgeRemovivel({
-  id,
-  sourceX,
-  sourceY,
-  targetX,
-  targetY,
-  sourcePosition,
-  targetPosition,
-  markerEnd,
-  style,
-  label,
-}: EdgeProps) {
-  const { deleteElements } = useReactFlow();
-  const [edgePath, labelX, labelY] = getSmoothStepPath({
-    sourceX,
-    sourceY,
-    targetX,
-    targetY,
-    sourcePosition,
-    targetPosition,
-  });
-  return (
-    <>
-      <BaseEdge id={id} path={edgePath} markerEnd={markerEnd} style={style} />
-      <EdgeLabelRenderer>
-        <div
-          className="nodrag nopan flex items-center gap-1"
-          style={{
-            position: 'absolute',
-            transform: `translate(-50%, -50%) translate(${labelX}px, ${labelY}px)`,
-            pointerEvents: 'all',
-          }}
-        >
-          {label != null && label !== '' && (
-            <span className="rounded bg-surface border border-border px-1.5 py-0.5 text-[10px] font-medium text-text">
-              {label}
-            </span>
-          )}
-          <button
-            type="button"
-            title="Remover conexão"
-            aria-label="Remover conexão"
-            onClick={(e) => {
-              e.stopPropagation();
-              void deleteElements({ edges: [{ id }] });
-            }}
-            className="flex h-5 w-5 items-center justify-center rounded-full border border-danger/40 bg-surface text-danger text-xs leading-none hover:bg-danger hover:text-white transition-colors shadow-sm"
-          >
-            ×
-          </button>
-        </div>
-      </EdgeLabelRenderer>
-    </>
-  );
-}
-
 const EDGE_TYPES = { removivel: EdgeRemovivel };
 
-const TIPO_LABEL: Record<FluxoNoTipo, string> = {
-  TRIGGER: 'Gatilho',
-  CONDICAO: 'Condição',
-  ACAO: 'Ação',
-  DELAY: 'Tempo',
-};
-
-const TIPO_ACCENT: Record<FluxoNoTipo, string> = {
-  TRIGGER: 'var(--success)',
-  CONDICAO: 'var(--warning)',
-  ACAO: 'var(--info)',
-  DELAY: 'var(--muted)',
-};
-
-function pickIcon(data: NodePayload) {
-  if (data.tipo === 'TRIGGER') return isManualTrigger(data) ? Play : Zap;
-  if (data.tipo === 'CONDICAO') return GitBranch;
-  if (data.tipo === 'DELAY') return Timer;
-  if (data.acaoTipo) return ACAO_ICONS[data.acaoTipo];
-  return Play;
-}
-
 // ─── Editor principal ────────────────────────────────────────────
-
-/**
- * Remove saídas duplicadas EXATAS do config de um nó na hidratação. Saída repetida
- * gera handle id/React key duplicado no NodeCard (React Flow exige id único por nó)
- * e faz remover/renomear (por valor) afetar as duas de uma vez. Dedup no load evita
- * esse estado inconsistente (a validação já impede criar novas duplicatas).
- */
-function dedupConfigSaidas(config: Record<string, unknown>): Record<string, unknown> {
-  const saidas = config['saidas'];
-  if (!Array.isArray(saidas)) return config;
-  const unicas = Array.from(new Set(saidas as string[]));
-  return unicas.length === saidas.length ? config : { ...config, saidas: unicas };
-}
 
 export function FluxoEditor({
   fluxoId,
@@ -636,25 +229,22 @@ function FluxoEditorInner({
     const noById = new Map((data.nos ?? []).map((n) => [n.id, n]));
     const initialEdges: Edge[] = (data.arestas ?? []).map((e, i) => {
       const src = noById.get(e.sourceNoId);
-      const isRoteador =
-        src?.tipo === 'CONDICAO' &&
-        (src.config as Record<string, unknown> | undefined)?.['modo'] === 'roteador';
+      // O sourceHandle não é persistido (só o label) — reconstruído pelo contrato
+      // central a partir de (label + modo do nó de origem). Ver lib/saidas.ts.
+      const srcData = src
+        ? ({
+            titulo: src.titulo,
+            tipo: src.tipo,
+            acaoTipo: src.acaoTipo as AcaoTipo | undefined,
+            config: (src.config as Record<string, unknown> | undefined) ?? {},
+          } satisfies NodePayload)
+        : undefined;
       return {
         id: e.id ?? `edge-${i}`,
         source: e.sourceNoId,
         target: e.targetNoId,
         label: e.label ?? undefined,
-        // O sourceHandle não é persistido (só o label). No ROTEADOR o label JÁ é o
-        // id do handle (valor da saída / 'default') — usa direto. No SIMPLES,
-        // Sim→true / Não→false. (Antes mapeava Sim/Não cego e quebrava roteador
-        // com saída chamada "Sim"/"Não".)
-        sourceHandle: isRoteador
-          ? (e.label ?? undefined)
-          : e.label === 'Sim'
-            ? 'true'
-            : e.label === 'Não'
-              ? 'false'
-              : (e.label ?? undefined),
+        sourceHandle: reconstruirSourceHandle(e.label, srcData),
         type: 'removivel',
         animated: true,
         style: { stroke: 'var(--border-strong)' },
@@ -751,14 +341,9 @@ function FluxoEditorInner({
             type: 'removivel',
             animated: true,
             style: { stroke: 'var(--border-strong)' },
-            // Condição simples: true→Sim, false→Não. Roteador: o label É o id do
-            // handle (o valor da saída, ou 'default'). Demais nós: sem label.
-            label:
-              conn.sourceHandle === 'true'
-                ? 'Sim'
-                : conn.sourceHandle === 'false'
-                  ? 'Não'
-                  : (conn.sourceHandle ?? undefined),
+            // O id do handle de saída vira o label da aresta — contrato central em
+            // lib/saidas.ts (true→Sim, false→Não, roteador: o próprio id).
+            label: labelDaAresta(conn.sourceHandle),
           },
           eds,
         );
@@ -1422,13 +1007,7 @@ function CondicaoEditor({
   const saidas = (data.config.saidas as string[]) ?? [];
   const setCfg = (patch: Record<string, unknown>) =>
     onUpdate((d) => ({ ...d, config: { ...d.config, ...patch } }));
-  // Reservados: colidiriam com os handles implícitos (true/false do simples e o
-  // 'default' do roteador) e quebrariam o roteamento da aresta.
-  const RESERVADOS = ['default', 'true', 'false', 'sim', 'não', 'nao'];
-  // Normaliza igual ao matching do backend (avaliarCondicao: trim + toLowerCase),
-  // colapsando espaços internos. Duas saídas que normalizam igual roteariam ambas
-  // pro PRIMEIRO match no motor → a segunda viraria ramo morto. Por isso bloqueamos.
-  const norm = (s: string) => s.trim().toLowerCase().replace(/\s+/g, ' ');
+  // RESERVADOS / norm vêm do contrato central em @/pages/fluxo/lib/saidas.
   const valido = (v: string, ignorar?: string): boolean => {
     if (saidas.some((s) => s !== ignorar && norm(s) === norm(v))) {
       toast.error('Essa saída já existe (ignorando maiúsculas/espaços)');
@@ -2484,50 +2063,7 @@ function WebhookTriggerConfig() {
 }
 
 // ─── Cron agendado (SPEC 1) ──────────────────────────────────────
-
-const CRON_TIMEZONES: Array<{ v: string; l: string }> = [
-  { v: 'America/Sao_Paulo', l: 'São Paulo (BRT)' },
-  { v: 'America/Manaus', l: 'Manaus (AMT)' },
-  { v: 'America/Cuiaba', l: 'Cuiabá' },
-  { v: 'America/Rio_Branco', l: 'Rio Branco (ACT)' },
-  { v: 'America/Belem', l: 'Belém' },
-  { v: 'UTC', l: 'UTC' },
-];
-const CRON_DIAS: Array<{ v: string; l: string }> = [
-  { v: '1', l: 'Seg' },
-  { v: '2', l: 'Ter' },
-  { v: '3', l: 'Qua' },
-  { v: '4', l: 'Qui' },
-  { v: '5', l: 'Sex' },
-  { v: '6', l: 'Sáb' },
-  { v: '0', l: 'Dom' },
-];
-
-/** Monta a expressão cron a partir dos campos amigáveis do wizard. */
-function montarCron(freq: string, horario: string, dias: string[], diaMes: string): string {
-  const [hh, mm] = (horario || '09:00').split(':');
-  const M = String(Math.max(0, Math.min(59, parseInt(mm || '0', 10) || 0)));
-  const H = String(Math.max(0, Math.min(23, parseInt(hh || '9', 10) || 9)));
-  switch (freq) {
-    case 'dias_uteis':
-      return `${M} ${H} * * 1-5`;
-    case 'fim_de_semana':
-      return `${M} ${H} * * 0,6`;
-    case 'dias_especificos':
-      return `${M} ${H} * * ${(dias.length ? dias : ['1']).join(',')}`;
-    case 'dia_do_mes':
-      return `${M} ${H} ${diaMes || '1'} * *`;
-    case 'todo_dia':
-    default:
-      return `${M} ${H} * * *`;
-  }
-}
-
-interface CronPreviewResp {
-  valido: boolean;
-  erro?: string;
-  proximas: Array<{ iso: string; label: string }>;
-}
+// montarCron / CRON_DIAS / CRON_TIMEZONES / CronPreviewResp → @/pages/fluxo/lib/cron
 
 function CronTriggerConfig({
   config,
@@ -2728,23 +2264,3 @@ function CronTriggerConfig({
   );
 }
 
-function defaultConfig(item: PaletteItem): Record<string, unknown> {
-  if (item.manual) return { manual: true, descricao: '' };
-  if (item.triggerTipo === 'CRON_AGENDADO')
-    return { cronFreq: 'dias_uteis', cronHorario: '09:00', timezone: 'America/Sao_Paulo' };
-  if (item.tipo === 'DELAY') return { quantidade: 1, unidade: 'horas' };
-  if (item.tipo === 'CONDICAO') return { modo: 'simples', operador: 'eq' };
-  if (item.acaoTipo === 'ENVIAR_WHATSAPP') return { mensagem: '', destinatarioModo: 'lead' };
-  if (item.acaoTipo === 'ENVIAR_EMAIL') return { assunto: '', corpo: '' };
-  if (item.acaoTipo === 'WEBHOOK_EXTERNO') return { url: '', method: 'POST' };
-  if (item.acaoTipo === 'MUDAR_TAG') return { operacao: 'adicionar', tagNome: '' };
-  if (item.acaoTipo === 'CONVERSAR_IA') return { aguardarResposta: true, timeoutHoras: 24 };
-  if (item.acaoTipo === 'LIBERAR_LOTE') return { quantidade: 50 };
-  // Trava simples — sem config visível. Desliga o bot na conversa (botLigado=false).
-  // O backend (acaoPausarIa) trata religar:true como religar; ausente = pausar.
-  if (item.acaoTipo === 'PAUSAR_IA') return { acao: 'pausar_ia' };
-  return {};
-}
-
-// Re-export pra outros consumirem
-useMemo;
