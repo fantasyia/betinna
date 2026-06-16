@@ -67,6 +67,33 @@ import {
   Textarea,
 } from '@/components/ui';
 import { cn } from '@/lib/cn';
+import type {
+  Canal,
+  ConversationStatus,
+  RespostaRapida,
+  NotaInterna,
+  Conversation,
+  Mensagem,
+  UsuarioMinimo,
+  Metricas,
+} from '@/pages/inbox/lib/types';
+import {
+  canalSemTextoLivre,
+  CANAL_LABEL,
+  STATUS_LABEL,
+  STATUS_VARIANT,
+  POLL_INTERVAL_MS,
+  EMOJIS,
+} from '@/pages/inbox/lib/canais';
+import {
+  fmtRelative,
+  slaBadge,
+  fmtTime,
+  fmtHHMM,
+  formatTempoResposta,
+  fmtPeer,
+} from '@/pages/inbox/lib/format';
+import { tocarBeep } from '@/pages/inbox/lib/beep';
 
 /**
  * InboxPage v2 — design system dark, layout WhatsApp-like.
@@ -78,322 +105,6 @@ import { cn } from '@/lib/cn';
  *  - Chat pane com header sticky e bubble messages
  *  - Mobile: single pane (lista ou thread)
  */
-
-type Canal =
-  | 'WHATSAPP'
-  | 'INSTAGRAM'
-  | 'FACEBOOK'
-  | 'EMAIL'
-  | 'MARKETPLACE_ML'
-  | 'MARKETPLACE_SHOPEE'
-  | 'MARKETPLACE_AMAZON'
-  | 'MARKETPLACE_TIKTOK';
-
-type ConversationStatus = 'ABERTA' | 'PENDENTE' | 'RESOLVIDA' | 'ARQUIVADA';
-type MessageDirection = 'INBOUND' | 'OUTBOUND';
-type MessageType = 'TEXT' | 'IMAGE' | 'AUDIO' | 'VIDEO' | 'DOCUMENT' | 'OTHER';
-
-type ConversationCategoria =
-  | 'GERAL'
-  | 'PRE_VENDA'
-  | 'POS_VENDA'
-  | 'RECLAMACAO'
-  | 'MEDIACAO'
-  | 'DEVOLUCAO'
-  | 'DISPUTA';
-
-/**
- * Sprint 2.3 — canais que NÃO aceitam resposta de texto livre.
- * Amazon e TikTok nunca; Shopee só em contexto de devolução/disputa.
- */
-function canalSemTextoLivre(
-  canal: Canal,
-  categoria?: ConversationCategoria | null,
-): { bloqueado: boolean; motivo?: string } {
-  if (canal === 'MARKETPLACE_AMAZON') {
-    return { bloqueado: true, motivo: 'A Amazon não tem chat livre — a resposta ao comprador sai pelo Seller Central.' };
-  }
-  if (canal === 'MARKETPLACE_TIKTOK') {
-    return { bloqueado: true, motivo: 'O TikTok Shop não expõe chat livre — responda pelo Seller Center.' };
-  }
-  if (canal === 'MARKETPLACE_SHOPEE' && (categoria === 'DEVOLUCAO' || categoria === 'DISPUTA')) {
-    return { bloqueado: true, motivo: 'Em devolução/disputa a Shopee não aceita texto livre — use as ações da devolução.' };
-  }
-  return { bloqueado: false };
-}
-
-interface RespostaRapida {
-  id: string;
-  titulo: string;
-  atalho: string;
-  conteudo: string;
-  global: boolean;
-}
-
-/**
- * Item #25 — nota interna de uma conversa (anotação da equipe; o cliente NÃO
- * vê). Backend devolve as mais recentes primeiro. Só o autor (ou ADMIN) pode
- * editar/excluir a própria — fora isso volta 403.
- */
-interface NotaInterna {
-  id: string;
-  conversationId: string;
-  usuarioId: string;
-  texto: string;
-  criadoEm: string;
-  atualizadoEm: string;
-  usuario?: { id: string; nome: string } | null;
-}
-
-interface Conversation {
-  id: string;
-  canal: Canal;
-  categoria?: ConversationCategoria | null;
-  status: ConversationStatus;
-  // O backend (Prisma) serializa como `peerId` — identificador externo do
-  // contato no canal (telefone no WhatsApp). `peer` fica como fallback legado.
-  peerId: string;
-  peer?: string;
-  peerNome?: string | null;
-  // Backend usa estes nomes (Prisma schema). Antes o frontend tinha
-  // `ultimaMensagem`/`ultimaMensagemEm` errado → tela mostrava sempre
-  // "sem mensagens" porque os campos vinham undefined. Fix 2026-05-27.
-  ultimaMsgPreview?: string | null;
-  ultimaMsgEm?: string | null;
-  naoLidas?: number;
-  cliente?: { id: string; nome: string } | null;
-  atribuido?: { id: string; nome: string } | null;
-  // Fase 2 — estado do bot Muller nesta conversa
-  botPausadoAte?: string | null;
-  precisaHumano?: boolean;
-  // Override do bot por conversa: null = segue o global da empresa;
-  // true = ligado aqui mesmo com o global off; false = desligado só aqui.
-  botLigado?: boolean | null;
-  // #25 fatia 2 — quando o cliente mandou a última msg SEM resposta (conversa
-  // aberta). `null` = nada pendente (última foi nossa, ou já resolvida).
-  aguardandoDesde?: string | null;
-  // Item #25 — etiquetas livres de triagem (só a equipe vê). Backend retorna
-  // sempre como array (default []).
-  tagsInternas?: string[];
-  /**
-   * JSON com metadados canal-específicos:
-   *  - telefone: telefone REAL do contato (resolvido no backend quando o peerId
-   *    é um LID/número oculto). Quando presente, é a fonte preferida do número.
-   */
-  metadata?: { telefone?: string | null } & Record<string, unknown>;
-}
-
-interface Mensagem {
-  id: string;
-  // Backend usa `conteudo` (Prisma schema). Antes o frontend tinha
-  // `texto` errado → bolha aparecia em branco. Fix 2026-05-27.
-  conteudo?: string | null;
-  direction: MessageDirection;
-  tipo: MessageType;
-  criadoEm: string;
-  autor?: { id: string; nome: string } | null;
-  /** Fase 2 — true quando a mensagem foi gerada pelo bot Muller (tag 🤖). */
-  enviadaPorBot?: boolean;
-  /**
-   * Meta JSON da mensagem. Hoje pode conter:
-   * - senderName (pushName do membro que mandou — grupos)
-   * - jid, ownerKey (debug WhatsApp)
-   */
-  meta?: { senderName?: string | null } & Record<string, unknown>;
-  mediaUrl?: string | null;
-  mediaMime?: string | null;
-}
-
-interface UsuarioMinimo {
-  id: string;
-  nome: string;
-  role: string;
-}
-
-/**
- * #25 fatia 3 — métricas gerenciais do SAC (`GET /inbox/metricas`).
- * Endpoint restrito a ADMIN/DIRECTOR/GERENTE/SAC — REP recebe 403, então
- * nem buscamos nem renderizamos o painel pra esse papel.
- */
-interface Metricas {
-  conversas: {
-    abertas: number;
-    pendentes: number;
-    resolvidas: number;
-    arquivadas: number;
-    total: number;
-  };
-  aguardando: {
-    total: number;
-    dentroDoPrazo: number;
-    estourado: number;
-    slaMinutos: number;
-  };
-  tempoMedioPrimeiraRespostaSegundos: number | null;
-  porAtendente: Array<{
-    atendenteId: string | null;
-    atendenteNome: string;
-    abertas: number;
-    aguardando: number;
-  }>;
-}
-
-const CANAL_LABEL: Record<Canal, string> = {
-  WHATSAPP: 'WhatsApp',
-  INSTAGRAM: 'Instagram',
-  FACEBOOK: 'Facebook',
-  EMAIL: 'E-mail',
-  MARKETPLACE_ML: 'Mercado Livre',
-  MARKETPLACE_SHOPEE: 'Shopee',
-  MARKETPLACE_AMAZON: 'Amazon',
-  MARKETPLACE_TIKTOK: 'TikTok Shop',
-};
-
-const STATUS_LABEL: Record<ConversationStatus, string> = {
-  ABERTA: 'Aberta',
-  PENDENTE: 'Pendente',
-  RESOLVIDA: 'Resolvida',
-  ARQUIVADA: 'Arquivada',
-};
-
-const STATUS_VARIANT: Record<ConversationStatus, 'info' | 'warning' | 'success' | 'neutral'> = {
-  ABERTA: 'info',
-  PENDENTE: 'warning',
-  RESOLVIDA: 'success',
-  ARQUIVADA: 'neutral',
-};
-
-// Polling silencioso a cada 2s — mensagens novas aparecem mais rápido (o
-// gargalo de segundos era o fetch de avatar no backend, agora assíncrono).
-// WebSocket/SSE seria o ideal pra real-time instantâneo — fica como próximo
-// passo se 2s ainda parecer lento.
-const POLL_INTERVAL_MS = 2_000;
-
-function fmtRelative(d: string | null | undefined): string {
-  if (!d) return '';
-  const t = new Date(d).getTime();
-  if (Number.isNaN(t)) return '';
-  const secs = Math.floor((Date.now() - t) / 1000);
-  if (secs < 60) return 'agora';
-  if (secs < 3600) return `${Math.floor(secs / 60)}min`;
-  if (secs < 86400) return `${Math.floor(secs / 3600)}h`;
-  if (secs < 172800) return 'ontem';
-  if (secs < 604800) return `${Math.floor(secs / 86400)}d`;
-  return new Date(d).toLocaleDateString('pt-BR', { day: '2-digit', month: 'short' });
-}
-
-/**
- * #25 fatia 2 — selo de SLA da lista: há quanto tempo o cliente espera.
- * Recebe a data ISO de `aguardandoDesde` e devolve texto curto + cor semântica
- * (verde até 30min, amarelo até 2h, vermelho acima). `null` quando não há nada
- * pendente (a chamadora não renderiza o selo nesse caso).
- */
-function slaBadge(
-  aguardandoDesde: string | null | undefined,
-): { texto: string; cor: string } | null {
-  if (!aguardandoDesde) return null;
-  const t = new Date(aguardandoDesde).getTime();
-  if (Number.isNaN(t)) return null;
-  const min = Math.floor((Date.now() - t) / 60000);
-  const texto =
-    min < 60
-      ? `aguardando há ${Math.max(min, 0)}min`
-      : min < 1440
-        ? `aguardando há ${Math.floor(min / 60)}h`
-        : `aguardando há ${Math.floor(min / 1440)}d`;
-  const cor =
-    min <= 30 ? 'var(--success)' : min <= 120 ? 'var(--warning)' : 'var(--danger)';
-  return { texto, cor };
-}
-
-function fmtTime(d: string) {
-  try {
-    return new Date(d).toLocaleString('pt-BR', { dateStyle: 'short', timeStyle: 'short' });
-  } catch {
-    return d;
-  }
-}
-
-function fmtHHMM(d: string) {
-  try {
-    return new Date(d).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
-  } catch {
-    return d;
-  }
-}
-
-/**
- * #25 fatia 3 — formata segundos de "tempo médio de 1ª resposta" pra exibição
- * no painel de métricas. `null` → "—" (sem dado); senão escolhe a unidade mais
- * legível (segundos < 1min, minutos < 1h, horas+minutos acima).
- */
-function formatTempoResposta(s: number | null): string {
-  if (s === null) return '—';
-  if (s < 60) return `${s}s`;
-  if (s < 3600) return `${Math.round(s / 60)}min`;
-  return `${Math.floor(s / 3600)}h ${Math.round((s % 3600) / 60)}min`;
-}
-
-/**
- * Formata o "peer" (identificador do contato) pra exibição como TELEFONE.
- * No WhatsApp o peer vem como JID cru (ex: `5511988887777@s.whatsapp.net`).
- *
- * ⚠️ Atenção aos JIDs que NÃO são telefone:
- *  - `@lid`  → "número oculto" (privacidade do WhatsApp / Baileys). O número
- *    visível é um ID interno gigante, NÃO o telefone real → não exibimos.
- *  - `@g.us` → grupo. Também não tem telefone.
- * Nesses casos (e em IDs com tamanho implausível) retorna '' — quem chama
- * cai pro nome do contato / rótulo do canal em vez de mostrar número errado.
- *
- * Outros canais (marketplaces/redes) têm peer estruturado — retorna como está.
- */
-function fmtPeer(canal: Canal, peer: string | null | undefined): string {
-  if (!peer) return '';
-  if (canal !== 'WHATSAPP') return peer;
-  const at = peer.indexOf('@');
-  const suffix = at >= 0 ? peer.slice(at + 1).toLowerCase() : '';
-  // LID (número oculto) e grupo não têm telefone real pra mostrar.
-  if (suffix === 'lid' || suffix === 'g.us') return '';
-  const digits = (at >= 0 ? peer.slice(0, at) : peer).replace(/\D/g, '');
-  if (!digits) return '';
-  // Brasil: 55 (país) + DDD (2) + número (8 ou 9 dígitos)
-  if (digits.startsWith('55') && (digits.length === 12 || digits.length === 13)) {
-    const ddd = digits.slice(2, 4);
-    const num = digits.slice(4);
-    return `+55 (${ddd}) ${num.slice(0, -4)}-${num.slice(-4)}`;
-  }
-  // Telefone internacional plausível (E.164 tem no máx. 15 dígitos).
-  // Acima disso é quase certo um ID interno (ex: LID sem sufixo) → não exibe.
-  if (digits.length >= 8 && digits.length <= 15) return `+${digits}`;
-  return '';
-}
-
-// ─── Page principal ─────────────────────────────────────────────────
-
-/** Bip curto e discreto via Web Audio (sem precisar de arquivo .mp3). */
-function tocarBeep(): void {
-  try {
-    const Ctx =
-      window.AudioContext ||
-      (window as unknown as { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
-    if (!Ctx) return;
-    const ctx = new Ctx();
-    const osc = ctx.createOscillator();
-    const gain = ctx.createGain();
-    osc.connect(gain);
-    gain.connect(ctx.destination);
-    osc.type = 'sine';
-    osc.frequency.value = 660;
-    gain.gain.setValueAtTime(0.0001, ctx.currentTime);
-    gain.gain.exponentialRampToValueAtTime(0.18, ctx.currentTime + 0.02);
-    gain.gain.exponentialRampToValueAtTime(0.0001, ctx.currentTime + 0.3);
-    osc.start();
-    osc.stop(ctx.currentTime + 0.32);
-    osc.onended = () => void ctx.close();
-  } catch {
-    /* áudio bloqueado pelo navegador — ignora */
-  }
-}
 
 export default function InboxPage() {
   // #25 fatia 3 — papel do usuário (reativo). REP não vê o painel gerencial
@@ -995,11 +706,6 @@ const ConversationItem = memo(function ConversationItem({
 // ─── Thread (chat pane) ────────────────────────────────────────────
 
 // Emojis comuns pro seletor do composer (sem dependência nova).
-const EMOJIS = [
-  '😀','😁','😂','🤣','😊','😍','😘','😎','🤔','😅','😢','😭','😡','🥳','😉','😴',
-  '👍','👎','🙏','👏','🙌','💪','👋','🔥','🎉','❤️','✅','❌','⚠️','💯','🚀','🤝',
-];
-
 function ConversationThread({
   id,
   onChanged,
