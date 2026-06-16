@@ -13,15 +13,7 @@ import { AtendimentoTabs } from '@/components/AtendimentoTabs';
 import { StateView } from '@/components/StateView';
 import { useToast } from '@/components/toast';
 import { NovoPedidoDialog } from '@/components/NovoPedidoDialog';
-import {
-  Badge,
-  Card,
-  Dialog,
-  EmptyState,
-  Input,
-  Select,
-  Tabs,
-} from '@/components/ui';
+import { Card, EmptyState, Input, Select, Tabs } from '@/components/ui';
 import { cn } from '@/lib/cn';
 import type {
   Canal,
@@ -29,11 +21,7 @@ import type {
   Conversation,
   Mensagem,
 } from '@/pages/inbox/lib/types';
-import {
-  STATUS_LABEL,
-  STATUS_VARIANT,
-  POLL_INTERVAL_MS,
-} from '@/pages/inbox/lib/canais';
+import { STATUS_LABEL, POLL_INTERVAL_MS } from '@/pages/inbox/lib/canais';
 import { MetricasPanel } from '@/pages/inbox/components/MetricasPanel';
 import { ConversationItem } from '@/pages/inbox/components/ConversationItem';
 import { ClienteContextDrawer } from '@/pages/inbox/components/ClienteContextDrawer';
@@ -335,7 +323,6 @@ function ConversationThread({
   // (exceto eu). Alimentado pelo heartbeat do hook. Usado pro banner de aviso e
   // pra confirmação antes de enviar (evita dois atendentes respondendo junto).
   const outros = usePresencaConversa(id);
-  const [statusOpen, setStatusOpen] = useState(false);
   const [atribuirOpen, setAtribuirOpen] = useState(false);
   const [criarPedido, setCriarPedido] = useState(false);
   const [clienteDrawerOpen, setClienteDrawerOpen] = useState(false);
@@ -452,9 +439,6 @@ function ConversationThread({
         gravacao={gravacao}
       />
 
-      {statusOpen && c && (
-        <StatusModal current={c.status} onClose={() => setStatusOpen(false)} onPick={acoes.mudarStatus} />
-      )}
       {atribuirOpen && c && (
         <AtribuirModal
           conversaId={id}
@@ -502,38 +486,3 @@ function ConversationThread({
   );
 }
 
-// ─── Modals ──────────────────────────────────────────────────
-
-function StatusModal({
-  current,
-  onClose,
-  onPick,
-}: {
-  current: ConversationStatus;
-  onClose: () => void;
-  onPick: (s: ConversationStatus) => void;
-}) {
-  return (
-    <Dialog open onClose={onClose} title="Mudar status da conversa" size="sm">
-      <div className="flex flex-col gap-2">
-        {(Object.keys(STATUS_LABEL) as ConversationStatus[])
-          .filter((s) => s !== current)
-          .map((s) => (
-            <button
-              key={s}
-              type="button"
-              data-testid={`status-${s}`}
-              onClick={() => onPick(s)}
-              className={cn(
-                'w-full text-left px-3 py-2.5 rounded-md',
-                'bg-surface border border-border hover:bg-surface-hover hover:border-border-strong',
-                'transition-colors flex items-center gap-3',
-              )}
-            >
-              <Badge variant={STATUS_VARIANT[s]}>{STATUS_LABEL[s]}</Badge>
-            </button>
-          ))}
-      </div>
-    </Dialog>
-  );
-}
