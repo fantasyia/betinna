@@ -72,6 +72,8 @@ import { useAvisoNovaMensagem } from '@/pages/inbox/hooks/useAvisoNovaMensagem';
 import { usePresencaConversa } from '@/pages/inbox/hooks/usePresencaConversa';
 import { useScrollToBottom } from '@/pages/inbox/hooks/useScrollToBottom';
 import { useMarcarLida } from '@/pages/inbox/hooks/useMarcarLida';
+import { useEnvioMensagem } from '@/pages/inbox/hooks/useEnvioMensagem';
+import { useGravacaoVoz } from '@/pages/inbox/hooks/useGravacaoVoz';
 
 /**
  * InboxPage v2 — design system dark, layout WhatsApp-like.
@@ -351,8 +353,6 @@ function ConversationThread({
   }, [refetchConv, refetchMsgs]);
 
   const [resposta, setResposta] = useState('');
-  const [sending, setSending] = useState(false);
-  const [sendError, setSendError] = useState<string | null>(null);
   // Item #25 fatia 4 — presença ao vivo: quem MAIS está nesta conversa agora
   // (exceto eu). Alimentado pelo heartbeat do hook. Usado pro banner de aviso e
   // pra confirmação antes de enviar (evita dois atendentes respondendo junto).
@@ -377,6 +377,48 @@ function ConversationThread({
   const templates = useApiQuery<RespostaRapida[]>('/respostas-rapidas');
   const empresaInfo = useApiQuery<{ nome?: string; botWhatsappAtivo?: boolean }>('/empresas/atual');
   const composeRef = useRef<HTMLTextAreaElement | null>(null);
+
+  // Envio (texto + mídia). `resposta`/`respondendoA` ficam aqui (compartilhados
+  // com o composer/JSX); o hook recebe valores+setters via params. `sending` é
+  // único e bloqueia texto+mic+anexo juntos; cada envio revalida a thread.
+  const {
+    sending,
+    sendError,
+    setSendError,
+    enviar,
+    enviarMidia,
+    onFileSelected,
+    onAttachSelected,
+    imageInputRef,
+    attachInputRef,
+  } = useEnvioMensagem({
+    id,
+    resposta,
+    setResposta,
+    respondendoA,
+    setRespondendoA,
+    outros,
+    refetchMsgs,
+    refetchConv,
+    onChanged,
+  });
+
+  // Gravação de voice note (MediaRecorder). Acoplado ao envio: o onstop chama
+  // onGravado → enviarMidia. Erro de mic cai no sendError (comportamento antigo).
+  const {
+    recording,
+    recordSeconds,
+    startRecording,
+    pauseRecording,
+    resumeRecording,
+    stopRecording,
+    cancelRecording,
+  } = useGravacaoVoz({
+    onGravado: (file) => void enviarMidia(file, 'AUDIO'),
+    // Limpa o erro ao iniciar (null) e mostra falha de mic no mesmo sendError do
+    // envio (comportamento idêntico ao antigo startRecording).
+    onErro: setSendError,
+  });
 
   // Só rola pra baixo quando a ÚLTIMA mensagem mudou (id diferente do polling
   // anterior). O hook depende SÓ do id da última msg — nunca do array (o poll
@@ -413,37 +455,6 @@ function ConversationThread({
       const pos = start + emoji.length;
       el.setSelectionRange(pos, pos);
     });
-  }
-
-  async function enviar() {
-    const texto = resposta.trim();
-    if (!texto) return;
-    // Item #25 fatia 4 — se outro(s) atendente(s) estão nesta conversa agora,
-    // confirma antes de enviar pra evitar resposta em duplicidade.
-    if (outros.length > 0) {
-      const nomes = outros.map((o) => o.nome).join(', ');
-      const verbo = outros.length > 1 ? 'estão' : 'está';
-      if (!window.confirm(`${nomes} também ${verbo} nesta conversa. Enviar mesmo assim?`)) {
-        return;
-      }
-    }
-    setSending(true);
-    setSendError(null);
-    try {
-      await api.post(`/inbox/${id}/responder`, {
-        texto,
-        ...(respondendoA ? { respondendoA: respondendoA.id } : {}),
-      });
-      setResposta('');
-      setRespondendoA(null);
-      msgs.refetch();
-      conv.refetch();
-      onChanged();
-    } catch (err) {
-      setSendError(err instanceof ApiError ? err.message : 'Falha ao enviar');
-    } finally {
-      setSending(false);
-    }
   }
 
   // ── Templates: dropdown abre quando o texto começa com "/" (sem espaço) ──
@@ -486,180 +497,6 @@ function ConversationThread({
     texto = texto.split('{ultimo_pedido}').join('');
     setResposta(texto);
     setTimeout(() => composeRef.current?.focus(), 0);
-  }
-
-  // Refs pros 2 inputs file (escondidos — clicados pelos botões de anexar)
-  // Áudio NÃO tem mais upload — só gravação via MediaRecorder.
-  // Paperclip cobre o caso de ter um áudio já gravado em arquivo.
-  const imageInputRef = useRef<HTMLInputElement | null>(null);
-  const attachInputRef = useRef<HTMLInputElement | null>(null);
-
-  // Gravação de voice note (MediaRecorder API).
-  // Estado: 'idle' (sem gravar) | 'recording' (capturando) | 'paused' (pausado).
-  type RecordingState = 'idle' | 'recording' | 'paused';
-  const mediaRecorderRef = useRef<MediaRecorder | null>(null);
-  const audioChunksRef = useRef<BlobPart[]>([]);
-  // Flag de cancelamento — onstop checa pra descartar o áudio.
-  // useRef pra valor SÍNCRONO acessível dentro do callback (state seria stale).
-  const isCancellingRef = useRef(false);
-  const [recording, setRecording] = useState<RecordingState>('idle');
-  const [recordSeconds, setRecordSeconds] = useState(0);
-  const recordTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
-
-  function startTimer() {
-    if (recordTimerRef.current) clearInterval(recordTimerRef.current);
-    recordTimerRef.current = setInterval(() => setRecordSeconds((s) => s + 1), 1000);
-  }
-  function stopTimer() {
-    if (recordTimerRef.current) {
-      clearInterval(recordTimerRef.current);
-      recordTimerRef.current = null;
-    }
-  }
-
-  async function startRecording() {
-    setSendError(null);
-    try {
-      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-      // webm/opus é o que browser oferece. Mas pra WhatsApp aceitar como voice
-      // note, mandamos com mimetype 'audio/ogg; codecs=opus' na hora do envio
-      // (o codec Opus é o mesmo, só o container que muda — WhatsApp tolera).
-      const recorder = new MediaRecorder(stream, {
-        mimeType: MediaRecorder.isTypeSupported('audio/webm;codecs=opus')
-          ? 'audio/webm;codecs=opus'
-          : 'audio/webm',
-      });
-      audioChunksRef.current = [];
-      isCancellingRef.current = false;
-      recorder.ondataavailable = (e) => {
-        if (e.data.size > 0) audioChunksRef.current.push(e.data);
-      };
-      recorder.onstop = async () => {
-        // Sempre solta o mic ao parar (mesmo se cancelado), pra tirar o
-        // indicador vermelho de "gravando" do navegador.
-        stream.getTracks().forEach((t) => t.stop());
-        // Cancelado: descarta sem enviar nada
-        if (isCancellingRef.current) {
-          audioChunksRef.current = [];
-          isCancellingRef.current = false;
-          return;
-        }
-        const blob = new Blob(audioChunksRef.current, { type: recorder.mimeType });
-        if (blob.size === 0) return;
-        // Voice note: força mime 'audio/ogg; codecs=opus' pra WhatsApp aceitar
-        // como voice note (push-to-talk). O conteúdo Opus interno é compatível.
-        const file = new File([blob], `voice-${Date.now()}.ogg`, {
-          type: 'audio/ogg; codecs=opus',
-        });
-        await enviarMidia(file, 'AUDIO');
-      };
-      recorder.start();
-      mediaRecorderRef.current = recorder;
-      setRecording('recording');
-      setRecordSeconds(0);
-      startTimer();
-    } catch (err) {
-      const msg = err instanceof Error ? err.message : String(err);
-      setSendError(`Não consegui acessar o microfone: ${msg}`);
-    }
-  }
-
-  function pauseRecording() {
-    if (!mediaRecorderRef.current || mediaRecorderRef.current.state !== 'recording') return;
-    mediaRecorderRef.current.pause();
-    setRecording('paused');
-    stopTimer();
-  }
-
-  function resumeRecording() {
-    if (!mediaRecorderRef.current || mediaRecorderRef.current.state !== 'paused') return;
-    mediaRecorderRef.current.resume();
-    setRecording('recording');
-    startTimer();
-  }
-
-  function stopRecording() {
-    if (!mediaRecorderRef.current) return;
-    isCancellingRef.current = false;
-    mediaRecorderRef.current.stop();
-    mediaRecorderRef.current = null;
-    setRecording('idle');
-    stopTimer();
-  }
-
-  function cancelRecording() {
-    if (!mediaRecorderRef.current) return;
-    // Marca cancelamento ANTES do stop pra onstop saber que tem que descartar.
-    isCancellingRef.current = true;
-    mediaRecorderRef.current.stop();
-    mediaRecorderRef.current = null;
-    setRecording('idle');
-    stopTimer();
-  }
-
-  /** Converte File → base64 puro (sem prefixo data:...). */
-  function fileToBase64(file: File): Promise<string> {
-    return new Promise((resolve, reject) => {
-      const reader = new FileReader();
-      reader.onload = () => {
-        const result = reader.result as string;
-        // result = "data:<mime>;base64,<base64>" — pega só a parte depois da vírgula
-        resolve(result.split(',')[1] ?? '');
-      };
-      reader.onerror = () => reject(reader.error);
-      reader.readAsDataURL(file);
-    });
-  }
-
-  async function enviarMidia(file: File, tipo: 'IMAGE' | 'AUDIO' | 'DOCUMENT') {
-    // Limite ~12MB raw (base64 fica ~16MB no JSON, dentro do body limit de 20MB)
-    const MAX_MB = 12;
-    if (file.size > MAX_MB * 1024 * 1024) {
-      setSendError(
-        `Arquivo muito grande (${(file.size / 1024 / 1024).toFixed(1)}MB). Limite ${MAX_MB}MB.`,
-      );
-      return;
-    }
-    setSending(true);
-    setSendError(null);
-    try {
-      const dataBase64 = await fileToBase64(file);
-      await api.post(`/inbox/${id}/responder-midia`, {
-        tipo,
-        mimetype: file.type || undefined,
-        fileName: tipo === 'DOCUMENT' ? file.name : undefined,
-        // Pra áudio, marca como PTT (voice note) — fica com player no WhatsApp
-        ptt: tipo === 'AUDIO' || undefined,
-        dataBase64,
-      });
-      msgs.refetch();
-      conv.refetch();
-      onChanged();
-    } catch (err) {
-      setSendError(err instanceof ApiError ? err.message : 'Falha ao enviar mídia');
-    } finally {
-      setSending(false);
-    }
-  }
-
-  function onFileSelected(e: React.ChangeEvent<HTMLInputElement>, tipo: 'IMAGE' | 'AUDIO' | 'DOCUMENT') {
-    const file = e.target.files?.[0];
-    e.target.value = ''; // permite re-selecionar o mesmo arquivo
-    if (!file) return;
-    void enviarMidia(file, tipo);
-  }
-
-  /** Anexar: deduz tipo do mime do arquivo (imagem/áudio/vídeo/documento) */
-  function onAttachSelected(e: React.ChangeEvent<HTMLInputElement>) {
-    const file = e.target.files?.[0];
-    e.target.value = '';
-    if (!file) return;
-    const mime = file.type || '';
-    let tipo: 'IMAGE' | 'AUDIO' | 'DOCUMENT';
-    if (mime.startsWith('image/')) tipo = 'IMAGE';
-    else if (mime.startsWith('audio/')) tipo = 'AUDIO';
-    else tipo = 'DOCUMENT';
-    void enviarMidia(file, tipo);
   }
 
   async function mudarStatus(novo: ConversationStatus) {
