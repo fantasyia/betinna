@@ -11,12 +11,17 @@ import {
   Trash2,
   ArrowRightLeft,
   X,
+  Upload,
+  Target as TargetIcon,
+  Briefcase,
 } from 'lucide-react';
 import { useApiQuery, type PaginatedResponse } from '@/hooks/useApiQuery';
 import { useDebouncedValue } from '@/hooks/useDebouncedValue';
 import { usePermission } from '@/hooks/usePermission';
 import { PageLayout, useIsMobile } from '@/components/PageLayout';
 import { CrmTabs } from '@/components/CrmTabs';
+import { ImportLeadsModal } from '@/components/ImportLeadsModal';
+import { ImportClientesModal } from '@/components/ImportClientesModal';
 import { StateView } from '@/components/StateView';
 import { useToast } from '@/components/toast';
 import { api, ApiError } from '@/lib/api';
@@ -61,6 +66,14 @@ interface Contato {
 
 type ContatosResp = PaginatedResponse<Contato> & { truncado?: boolean };
 
+type FunilLite = {
+  id: string;
+  nome: string;
+  isPadrao: boolean;
+  ativo: boolean;
+  etapas: Array<{ id: string; nome: string; tipo: 'ATIVA' | 'GANHO' | 'PERDIDO' }>;
+};
+
 const TIPO_BADGE: Record<ContatoTipo, { label: string; variant: 'primary' | 'success' | 'info' }> =
   {
     LEAD: { label: 'Lead', variant: 'primary' },
@@ -89,6 +102,7 @@ export default function ContatosPage() {
   const canEdit = usePermission('clientes.edit');
   const [selected, setSelected] = useState<Map<string, Contato>>(new Map());
   const [bulk, setBulk] = useState<'tag' | 'mover' | 'excluir' | null>(null);
+  const [importKind, setImportKind] = useState<'choose' | 'leads' | 'clientes' | null>(null);
 
   function toggle(c: Contato) {
     setSelected((prev) => {
@@ -114,6 +128,8 @@ export default function ContatosPage() {
   }, [page, buscaDebounced, tipo]);
 
   const { data, loading, error, refetch } = useApiQuery<ContatosResp>(listPath);
+  // Funis só carregam quando o import abre (pro modal de leads).
+  const { data: funis } = useApiQuery<FunilLite[]>(importKind ? '/funis' : null);
 
   const pageRows = data?.data ?? [];
   const allPageSel = pageRows.length > 0 && pageRows.every((c) => selected.has(c.chave));
@@ -146,6 +162,17 @@ export default function ContatosPage() {
         data?.pagination
           ? `${formatNumero(data.pagination.total)} contato${data.pagination.total === 1 ? '' : 's'} — Leads, Clientes e conversas, em um só lugar`
           : 'Leads, Clientes e conversas do Inbox, unificados'
+      }
+      actions={
+        canEdit ? (
+          <Button
+            onClick={() => setImportKind('choose')}
+            leftIcon={<Upload className="h-3.5 w-3.5" />}
+            data-testid="contatos-importar-btn"
+          >
+            Importar
+          </Button>
+        ) : undefined
       }
     >
       <CrmTabs />
@@ -306,6 +333,57 @@ export default function ContatosPage() {
           )}
         </StateView>
       </Card>
+
+      {importKind === 'choose' && (
+        <Dialog
+          open
+          onClose={() => setImportKind(null)}
+          title="Importar contatos"
+          size="sm"
+          footer={
+            <Button variant="secondary" onClick={() => setImportKind(null)}>
+              Cancelar
+            </Button>
+          }
+        >
+          <p className="text-sm text-text-subtle mb-4">O que você quer importar de uma planilha?</p>
+          <div className="flex flex-col gap-2">
+            <Button
+              variant="secondary"
+              onClick={() => setImportKind('leads')}
+              leftIcon={<TargetIcon className="h-4 w-4" />}
+            >
+              Importar leads (entram no funil)
+            </Button>
+            <Button
+              variant="secondary"
+              onClick={() => setImportKind('clientes')}
+              leftIcon={<Briefcase className="h-4 w-4" />}
+            >
+              Importar clientes
+            </Button>
+          </div>
+        </Dialog>
+      )}
+      {importKind === 'leads' && (
+        <ImportLeadsModal
+          funis={funis ?? []}
+          onClose={() => setImportKind(null)}
+          onDone={() => {
+            setImportKind(null);
+            refetch();
+          }}
+        />
+      )}
+      {importKind === 'clientes' && (
+        <ImportClientesModal
+          onClose={() => setImportKind(null)}
+          onDone={() => {
+            setImportKind(null);
+            refetch();
+          }}
+        />
+      )}
 
       {canEdit && selected.size > 0 && (
         <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-50 flex items-center gap-2 px-3 py-2 bg-surface-elevated border border-border-strong rounded-full shadow-xl">
