@@ -213,6 +213,11 @@ export class FluxoExecutorService {
     // tratar como falha nem enfileirar sucessores.
     let pulado = false;
     let puladoMotivo: string | null = null;
+    // Nó "Conversar com IA" capturou erro de IA/WhatsApp e roteou pela saída "erro"
+    // (já gravou tipo_erro/mensagem_erro + enfileirou o ramo "erro"). O executor não
+    // deve enfileirar o caminho normal nem tratar como falha.
+    let roteado = false;
+    let tipoErro: string | null = null;
 
     try {
       if (no.tipo === 'ACAO' && no.acaoTipo === 'CONVERSAR_IA') {
@@ -220,10 +225,13 @@ export class FluxoExecutorService {
         aguardando = r.aguardando;
         pulado = r.pulado ?? false;
         puladoMotivo = r.motivo ?? null;
+        roteado = r.roteado ?? false;
+        tipoErro = r.tipoErro ?? null;
         output = {
           conversarIa: true,
           aguardando,
           ...(pulado ? { pulado, motivo: puladoMotivo } : {}),
+          ...(roteado ? { erro: true, tipoErro } : {}),
         };
       } else {
         output = await this.executarNo(no, contexto, execucao.empresaId);
@@ -261,6 +269,14 @@ export class FluxoExecutorService {
     // acontece em LEAD_RESPONDEU, via ConversarIaService.retomar).
     if (aguardando) {
       this.logger.debug(`Execução ${execucaoId} pausada (Conversar com IA aguardando lead)`);
+      return;
+    }
+
+    // Nó "Conversar com IA" roteou pela saída "erro": a execução já foi atualizada
+    // e o ramo "erro" enfileirado pelo ConversarIaService. Não segue o caminho
+    // normal nem encerra aqui.
+    if (roteado) {
+      this.logger.log(`Execução ${execucaoId} seguiu a saída "erro" (${tipoErro ?? '?'})`);
       return;
     }
 

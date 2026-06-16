@@ -210,6 +210,75 @@ describe('ConversarIaService', () => {
         expect.objectContaining({ role: 'assistant', content: 'Olá Ana, aqui é a Betinna…' }),
       ]);
     });
+
+    it('erro de IA → roteia pela saída "erro" (tipo_erro=ia_sem_chave no contexto)', async () => {
+      prisma.lead.findFirst.mockResolvedValue({ contatoTelefone: '11999990000' });
+      prisma.fluxoEdge.findMany.mockResolvedValue([{ targetNoId: 'no-erro', label: 'erro' }]);
+      muller.gerarRespostaIa.mockRejectedValue(
+        new Error('OpenAI não configurada — defina a chave da empresa em Integrações'),
+      );
+
+      const r = await svc.iniciar(
+        'exec-1',
+        no({ promptId: 'p1' }) as never,
+        { leadId: 'lead-1' },
+        'emp-1',
+      );
+
+      expect(r.roteado).toBe(true);
+      expect(r.tipoErro).toBe('ia_sem_chave');
+      // Gravou os campos no contexto + saiu de AGUARDANDO
+      const upd = prisma.fluxoExecucao.update.mock.calls.at(-1)?.[0];
+      expect(upd?.data?.aguardandoNoId).toBeNull();
+      expect(upd?.data?.contexto?.tipo_erro).toBe('ia_sem_chave');
+      expect(upd?.data?.contexto?.mensagem_erro).toContain('OpenAI não configurada');
+      // Roteou pela aresta "erro"
+      expect(queue.add).toHaveBeenCalledWith(
+        'step',
+        { execucaoId: 'exec-1', noId: 'no-erro' },
+        expect.any(Object),
+      );
+    });
+
+    it('erro de WhatsApp → roteia "erro" com tipo_erro=whatsapp_falha', async () => {
+      prisma.lead.findFirst.mockResolvedValue({ contatoTelefone: '11999990000' });
+      prisma.fluxoEdge.findMany.mockResolvedValue([{ targetNoId: 'no-erro', label: 'erro' }]);
+      muller.gerarRespostaIa.mockResolvedValue({ texto: 'Olá!', modelo: 'gpt' });
+      whatsapp.enviarTexto.mockRejectedValue(new Error('WhatsApp da empresa não está conectado.'));
+
+      const r = await svc.iniciar(
+        'exec-1',
+        no({ promptId: 'p1' }) as never,
+        { leadId: 'lead-1' },
+        'emp-1',
+      );
+
+      expect(r.roteado).toBe(true);
+      expect(r.tipoErro).toBe('whatsapp_falha');
+      const upd = prisma.fluxoExecucao.update.mock.calls.at(-1)?.[0];
+      expect(upd?.data?.contexto?.tipo_erro).toBe('whatsapp_falha');
+    });
+
+    it('sem aresta "erro" ligada → encerra CONCLUÍDO (não fica preso) em vez de falhar', async () => {
+      prisma.lead.findFirst.mockResolvedValue({ contatoTelefone: '11999990000' });
+      prisma.fluxoEdge.findMany.mockResolvedValue([]); // nenhuma aresta de saída
+      muller.gerarRespostaIa.mockRejectedValue(new Error('429 rate limit'));
+
+      const r = await svc.iniciar(
+        'exec-1',
+        no({ promptId: 'p1' }) as never,
+        { leadId: 'lead-1' },
+        'emp-1',
+      );
+
+      expect(r.roteado).toBe(true);
+      expect(r.tipoErro).toBe('ia_indisponivel');
+      expect(queue.add).not.toHaveBeenCalled();
+      // enfileirarSucessores sem alvos encerra como CONCLUÍDO
+      expect(prisma.fluxoExecucao.update).toHaveBeenCalledWith(
+        expect.objectContaining({ data: expect.objectContaining({ status: 'CONCLUIDO' }) }),
+      );
+    });
   });
 
   describe('retomar', () => {
@@ -290,6 +359,27 @@ describe('ConversarIaService', () => {
       prisma.fluxoExecucao.findUnique.mockResolvedValue({ ...execAguardando, status: 'CONCLUIDO' });
       await svc.retomar('exec-1', 'conv-1', 'oi');
       expect(muller.gerarRespostaIa).not.toHaveBeenCalled();
+    });
+
+    it('erro de IA no retomar → roteia "erro" e SAI de AGUARDANDO (não fica preso)', async () => {
+      prisma.fluxoExecucao.findUnique.mockResolvedValue(execAguardando);
+      prisma.fluxoNo.findUnique.mockResolvedValue({ id: 'no-ia', config: { promptId: 'p1' } });
+      prisma.lead.findFirst.mockResolvedValue({ contatoTelefone: '11999990000', variaveis: {} });
+      prisma.fluxoEdge.findMany.mockResolvedValue([{ targetNoId: 'no-erro', label: 'erro' }]);
+      muller.gerarRespostaIa.mockRejectedValue(new Error('429 rate limit'));
+
+      await svc.retomar('exec-1', 'conv-1', 'oi');
+
+      const upd = prisma.fluxoExecucao.update.mock.calls.at(-1)?.[0];
+      expect(upd?.data?.status).toBe('EM_EXECUCAO');
+      expect(upd?.data?.aguardandoNoId).toBeNull();
+      expect(upd?.data?.contexto?.tipo_erro).toBe('ia_indisponivel');
+      expect(upd?.data?.contexto?.mensagem_erro).toContain('rate limit');
+      expect(queue.add).toHaveBeenCalledWith(
+        'step',
+        { execucaoId: 'exec-1', noId: 'no-erro' },
+        expect.any(Object),
+      );
     });
   });
 

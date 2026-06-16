@@ -334,38 +334,52 @@ function NodeCard({ data, selected }: NodeProps<FlowNode>) {
             />
           </>
         )
-      ) : data.acaoTipo === 'CONVERSAR_IA' &&
-        (data.config?.aguardarResposta as boolean | undefined) !== false &&
-        Number(data.config?.timeoutHoras ?? 0) > 0 ? (
-        // Conversar com IA aguardando resposta + timeout: 2 saídas distintas.
-        <>
-          <Handle
-            type="source"
-            position={Position.Bottom}
-            id="classificou"
-            className="!w-2 !h-2 !bg-success !border-bg !border-2"
-            style={{ left: '30%' }}
-          />
-          <Handle
-            type="source"
-            position={Position.Bottom}
-            id="timeout"
-            className="!w-2 !h-2 !bg-warning !border-bg !border-2"
-            style={{ left: '70%' }}
-          />
-          <div
-            className="absolute top-full mt-0.5 -translate-x-1/2 text-[9px] leading-none text-success whitespace-nowrap pointer-events-none"
-            style={{ left: '30%' }}
-          >
-            🟢 classificou
-          </div>
-          <div
-            className="absolute top-full mt-0.5 -translate-x-1/2 text-[9px] leading-none text-warning whitespace-nowrap pointer-events-none"
-            style={{ left: '70%' }}
-          >
-            🟠 timeout
-          </div>
-        </>
+      ) : data.acaoTipo === 'CONVERSAR_IA' ? (
+        (() => {
+          // Saídas do nó "Conversar com IA". O `id` do handle vira o label da aresta.
+          // "classificou"/"timeout" só quando aguarda resposta com timeout; "erro"
+          // aparece SEMPRE (falha de IA/WhatsApp pode ocorrer em qualquer modo).
+          const comTimeout =
+            (data.config?.aguardarResposta as boolean | undefined) !== false &&
+            Number(data.config?.timeoutHoras ?? 0) > 0;
+          const saidas: Array<{ id?: string; cor: string; rotulo?: string; txt?: string }> =
+            comTimeout
+              ? [
+                  { id: 'classificou', cor: '!bg-success', rotulo: '🟢 classificou', txt: 'text-success' },
+                  { id: 'timeout', cor: '!bg-warning', rotulo: '🟠 timeout', txt: 'text-warning' },
+                  { id: 'erro', cor: '!bg-danger', rotulo: '🔴 erro', txt: 'text-danger' },
+                ]
+              : [
+                  { cor: '!bg-primary' },
+                  { id: 'erro', cor: '!bg-danger', rotulo: '🔴 erro', txt: 'text-danger' },
+                ];
+          const left = (i: number) => `${((i + 1) / (saidas.length + 1)) * 100}%`;
+          return (
+            <>
+              {saidas.map((s, i) => (
+                <Handle
+                  key={s.id ?? 'main'}
+                  type="source"
+                  position={Position.Bottom}
+                  id={s.id}
+                  className={`!w-2 !h-2 ${s.cor} !border-bg !border-2`}
+                  style={{ left: left(i) }}
+                />
+              ))}
+              {saidas.map((s, i) =>
+                s.rotulo ? (
+                  <div
+                    key={`rot-${s.id ?? 'main'}`}
+                    className={`absolute top-full mt-0.5 -translate-x-1/2 text-[9px] leading-none ${s.txt} whitespace-nowrap pointer-events-none`}
+                    style={{ left: left(i) }}
+                  >
+                    {s.rotulo}
+                  </div>
+                ) : null,
+              )}
+            </>
+          );
+        })()
       ) : (
         <Handle
           type="source"

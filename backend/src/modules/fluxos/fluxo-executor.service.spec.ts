@@ -135,6 +135,7 @@ describe('FluxoExecutorService', () => {
   let resend: ReturnType<typeof makeResendMock>;
   let queue: ReturnType<typeof makeQueueMock>;
   let bus: ReturnType<typeof makeBusMock>;
+  let conversarIa: ReturnType<typeof makeConversarIaMock>;
   let service: FluxoExecutorService;
 
   beforeEach(() => {
@@ -144,13 +145,14 @@ describe('FluxoExecutorService', () => {
     resend = makeResendMock();
     queue = makeQueueMock();
     bus = makeBusMock();
+    conversarIa = makeConversarIaMock();
     service = new FluxoExecutorService(
       prisma as never,
       makeEnvMock() as never,
       {} as never,
       whatsapp as never,
       resend as never,
-      makeConversarIaMock() as never,
+      conversarIa as never,
       bus as never,
       queue as never,
     );
@@ -269,6 +271,29 @@ describe('FluxoExecutorService', () => {
           data: expect.objectContaining({ status: 'EM_EXECUCAO' }),
         }),
       );
+    });
+
+    it('CONVERSAR_IA roteado pela saída "erro" → não segue o caminho normal nem marca FALHOU', async () => {
+      prisma.fluxoExecucao.findUnique.mockResolvedValue(fakeExecucao({ status: 'EM_EXECUCAO' }));
+      prisma.fluxoNo.findUnique.mockResolvedValue(
+        fakeNo({ tipo: 'ACAO', acaoTipo: 'CONVERSAR_IA', titulo: 'Conversar com IA' }),
+      );
+      // Existe aresta normal, mas NÃO deve ser seguida (o service já roteou "erro").
+      prisma.fluxoEdge.findMany.mockResolvedValue([fakeEdge('no-1', 'no-normal')]);
+      conversarIa.iniciar.mockResolvedValue({
+        aguardando: false,
+        roteado: true,
+        tipoErro: 'ia_indisponivel',
+      });
+
+      await service.executarPasso('exec-1', 'no-1');
+
+      // Passo logado como CONCLUIDO (capturou o erro, não é falha do nó).
+      expect(prisma.fluxoExecucaoLog.create).toHaveBeenCalledWith(
+        expect.objectContaining({ data: expect.objectContaining({ status: 'CONCLUIDO' }) }),
+      );
+      // Não enfileirou o caminho normal (o ramo "erro" sai dentro do ConversarIaService).
+      expect(queue.add).not.toHaveBeenCalled();
     });
 
     it('não atualiza status quando já está EM_EXECUCAO', async () => {

@@ -137,7 +137,14 @@ export class ConversarIaService {
     no: FluxoNo,
     ctx: ExecucaoContexto,
     empresaId: string,
-  ): Promise<{ aguardando: boolean; pulado?: boolean; motivo?: string }> {
+  ): Promise<{
+    aguardando: boolean;
+    pulado?: boolean;
+    motivo?: string;
+    /** Capturou erro de IA/WhatsApp e roteou pela saída "erro" (executor não segue o caminho normal). */
+    roteado?: boolean;
+    tipoErro?: string;
+  }> {
     const cfg = (no.config ?? {}) as ConversarIaConfig;
     const leadId = typeof ctx.leadId === 'string' ? ctx.leadId : undefined;
     // Sem lead no contexto não há a quem abordar. Acontece em teste manual sem lead
@@ -188,18 +195,42 @@ export class ConversarIaService {
     const opener =
       INSTRUCAO_OPENER +
       (primeiro ? `\n[Dado] O primeiro nome do lead é "${primeiro}". Use-o na saudação.` : '');
-    const abertura = await this.muller.gerarRespostaIa(
-      empresaId,
-      systemPrompt + opener,
-      '(inicie)',
-      [],
-    );
+    let abertura: { texto: string; tokensIn?: number; tokensOut?: number };
+    try {
+      abertura = await this.muller.gerarRespostaIa(
+        empresaId,
+        systemPrompt + opener,
+        '(inicie)',
+        [],
+      );
+    } catch (err) {
+      // Falha da IA/provedor: roteia pela saída "erro" em vez de derrubar a execução.
+      const { tipo_erro } = await this.rotearParaErro(
+        execucaoId,
+        no.id,
+        ctx,
+        this.tipoErroIa(err),
+        err,
+      );
+      return { aguardando: false, roteado: true, tipoErro: tipo_erro };
+    }
     await this.registrarUsoPrompt(
       cfg.promptId,
       (abertura.tokensIn ?? 0) + (abertura.tokensOut ?? 0),
     );
     const aberturaTexto = personalizarNome(abertura.texto, lead.contatoNome);
-    await this.enviarWhatsapp(empresaId, lead.contatoTelefone, aberturaTexto);
+    try {
+      await this.enviarWhatsapp(empresaId, lead.contatoTelefone, aberturaTexto);
+    } catch (err) {
+      const { tipo_erro } = await this.rotearParaErro(
+        execucaoId,
+        no.id,
+        ctx,
+        'whatsapp_falha',
+        err,
+      );
+      return { aguardando: false, roteado: true, tipoErro: tipo_erro };
+    }
 
     const aguardar = cfg.aguardarResposta ?? true;
     if (!aguardar) return { aguardando: false };
@@ -290,12 +321,25 @@ export class ConversarIaService {
       );
       return; // teto de tokens do prompt atingido — não roda a IA agora
     }
-    const r = await this.muller.gerarRespostaIa(empresaId, systemPrompt, textoLead, historico);
+    let r: { texto: string; tokensIn?: number; tokensOut?: number };
+    try {
+      r = await this.muller.gerarRespostaIa(empresaId, systemPrompt, textoLead, historico);
+    } catch (err) {
+      // Falha da IA: roteia pela saída "erro" e SAI de AGUARDANDO. Antes esse erro
+      // era engolido pelo orquestrador e a execução ficava presa em AGUARDANDO.
+      await this.rotearParaErro(execucaoId, no.id, ctx, this.tipoErroIa(err), err);
+      return;
+    }
     await this.registrarUsoPrompt(cfg.promptId, (r.tokensIn ?? 0) + (r.tokensOut ?? 0));
     const turno = parseTurnoIa(r.texto);
 
     const respostaTexto = personalizarNome(turno.resposta, lead.contatoNome);
-    await this.enviarWhatsapp(empresaId, lead.contatoTelefone, respostaTexto);
+    try {
+      await this.enviarWhatsapp(empresaId, lead.contatoTelefone, respostaTexto);
+    } catch (err) {
+      await this.rotearParaErro(execucaoId, no.id, ctx, 'whatsapp_falha', err);
+      return;
+    }
 
     // Atualiza a memória da conversa (pergunta do lead + resposta da IA).
     const novoHist: HistoricoMsg[] = [
@@ -576,5 +620,47 @@ export class ConversarIaService {
         removeOnFail: { count: 200 },
       },
     );
+  }
+
+  /**
+   * Classifica um erro da IA em `tipo_erro`. A exceção da OpenAI não é granular,
+   * então distinguimos só "sem chave configurada" do resto ("provedor indisponível":
+   * erro de API / rate limit / HTTP). O detalhe fino vai sempre em `mensagem_erro`.
+   */
+  private tipoErroIa(err: unknown): 'ia_sem_chave' | 'ia_indisponivel' {
+    const msg = (err instanceof Error ? err.message : String(err)).toLowerCase();
+    return /chave|n[ãa]o configurad|api key|configure/.test(msg)
+      ? 'ia_sem_chave'
+      : 'ia_indisponivel';
+  }
+
+  /**
+   * Roteia a execução pela saída "erro" do nó "Conversar com IA": grava
+   * `tipo_erro`/`mensagem_erro` no contexto (usáveis a jusante via {{tipo_erro}} e
+   * {{mensagem_erro}}), tira de AGUARDANDO e segue a aresta com label 'erro'. Sem
+   * aresta "erro" ligada, `enfileirarSucessores` encerra como CONCLUÍDO — seguro
+   * pra fluxos antigos e conserta o lead que ficava preso em AGUARDANDO quando o
+   * `retomar` falhava (erro antes engolido pelo orquestrador).
+   */
+  private async rotearParaErro(
+    execucaoId: string,
+    noId: string,
+    ctx: ExecucaoContexto,
+    tipo_erro: string,
+    err: unknown,
+  ): Promise<{ tipo_erro: string; mensagem_erro: string }> {
+    const mensagem_erro = err instanceof Error ? err.message : String(err);
+    this.logger.warn(`CONVERSAR_IA erro (${tipo_erro}) — exec ${execucaoId}: ${mensagem_erro}`);
+    await this.prisma.fluxoExecucao.update({
+      where: { id: execucaoId },
+      data: {
+        status: 'EM_EXECUCAO',
+        aguardandoNoId: null,
+        timeoutEm: null,
+        contexto: toJsonInput({ ...ctx, tipo_erro, mensagem_erro }),
+      },
+    });
+    await this.enfileirarSucessores(execucaoId, noId, 'erro', false);
+    return { tipo_erro, mensagem_erro };
   }
 }
