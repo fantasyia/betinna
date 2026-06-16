@@ -69,6 +69,9 @@ import { NotasInternasDrawer } from '@/pages/inbox/components/NotasInternasDrawe
 import { MessageBubble } from '@/pages/inbox/components/MessageBubble';
 import { AtribuirModal } from '@/pages/inbox/components/AtribuirModal';
 import { useAvisoNovaMensagem } from '@/pages/inbox/hooks/useAvisoNovaMensagem';
+import { usePresencaConversa } from '@/pages/inbox/hooks/usePresencaConversa';
+import { useScrollToBottom } from '@/pages/inbox/hooks/useScrollToBottom';
+import { useMarcarLida } from '@/pages/inbox/hooks/useMarcarLida';
 
 /**
  * InboxPage v2 — design system dark, layout WhatsApp-like.
@@ -351,9 +354,9 @@ function ConversationThread({
   const [sending, setSending] = useState(false);
   const [sendError, setSendError] = useState<string | null>(null);
   // Item #25 fatia 4 — presença ao vivo: quem MAIS está nesta conversa agora
-  // (exceto eu). Alimentado pelo heartbeat abaixo. Usado pro banner de aviso e
+  // (exceto eu). Alimentado pelo heartbeat do hook. Usado pro banner de aviso e
   // pra confirmação antes de enviar (evita dois atendentes respondendo junto).
-  const [outros, setOutros] = useState<Array<{ id: string; nome: string }>>([]);
+  const outros = usePresencaConversa(id);
   const [statusOpen, setStatusOpen] = useState(false);
   const [atribuirOpen, setAtribuirOpen] = useState(false);
   const [criarPedido, setCriarPedido] = useState(false);
@@ -375,57 +378,15 @@ function ConversationThread({
   const empresaInfo = useApiQuery<{ nome?: string; botWhatsappAtivo?: boolean }>('/empresas/atual');
   const composeRef = useRef<HTMLTextAreaElement | null>(null);
 
-  const endRef = useRef<HTMLDivElement | null>(null);
   // Só rola pra baixo quando a ÚLTIMA mensagem mudou (id diferente do polling
-  // anterior). Antes usava `msgs.data` como dep — como o polling cria nova
-  // referência de array a cada 4s, scrollIntoView era chamado toda hora,
-  // arrastando o usuário pra baixo quando ele rolava pra ler msg antiga.
+  // anterior). O hook depende SÓ do id da última msg — nunca do array (o poll
+  // cria nova referência a cada 2s e arrastaria o usuário pra baixo).
   const lastMsgIdForScroll =
     msgs.data && msgs.data.length > 0 ? msgs.data[0].id : null;
-  useEffect(() => {
-    // Scroll imediato + scroll de segurança após 400ms.
-    // Necessário porque <audio>/<video> com preload=metadata ainda estão
-    // carregando dimensões — quando terminam, expandem altura e empurram
-    // layout. Sem o segundo scroll, último item fica cortado.
-    endRef.current?.scrollIntoView({ behavior: 'auto', block: 'end' });
-    const t = setTimeout(() => {
-      endRef.current?.scrollIntoView({ behavior: 'smooth', block: 'end' });
-    }, 400);
-    return () => clearTimeout(t);
-  }, [lastMsgIdForScroll]);
+  const endRef = useScrollToBottom(lastMsgIdForScroll);
 
-  const lastMarkRef = useRef<string | null>(null);
-  useEffect(() => {
-    if (!conv.data) return;
-    if (lastMarkRef.current === id && (conv.data.naoLidas ?? 0) === 0) return;
-    lastMarkRef.current = id;
-    void api.post(`/inbox/${id}/marcar-lida`).catch(() => {});
-  }, [conv.data, id]);
-
-  // Item #25 fatia 4 — heartbeat de presença. Enquanto esta conversa está
-  // aberta, avisa o backend que estou aqui (imediatamente + a cada 20s) e
-  // guarda quem MAIS está agora. No cleanup (troca de conversa/desmontar),
-  // sai best-effort. Falhas são silenciosas — é background, não toast.
-  useEffect(() => {
-    let ativo = true;
-    const ping = () => {
-      api
-        .post<{ outros: Array<{ id: string; nome: string }> }>(`/inbox/${id}/presenca`)
-        .then((r) => {
-          if (ativo) setOutros(r.outros ?? []);
-        })
-        .catch(() => {});
-    };
-    ping();
-    const i = setInterval(ping, 20_000);
-    return () => {
-      ativo = false;
-      clearInterval(i);
-      setOutros([]);
-      // Usa o `id` capturado no escopo deste efeito (não o da próxima conversa).
-      api.delete(`/inbox/${id}/presenca`).catch(() => {});
-    };
-  }, [id]);
+  // Marca a conversa como lida (best-effort, dedup por conversa) ao carregar.
+  useMarcarLida(conv.data, id);
 
   // Reage a uma mensagem (👍 etc.) via WhatsApp; atualiza a bolha depois.
   async function reagir(messageId: string, emoji: string) {
