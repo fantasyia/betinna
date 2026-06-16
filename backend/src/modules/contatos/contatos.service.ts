@@ -5,9 +5,10 @@ import { ForbiddenException } from '@shared/errors/app-exception';
 import { ErrorCode } from '@shared/errors/error-codes';
 import { RepScopeService } from '@shared/scope/rep-scope.service';
 import { LeadsService } from '@modules/leads/leads.service';
+import { createLeadSchema } from '@modules/leads/leads.dto';
 import type { AuthenticatedUser } from '@shared/types/authenticated-user';
 import { type Paginated, buildPaginated } from '@shared/types/pagination';
-import type { AcaoMassaDto, ListContatosDto } from './contatos.dto';
+import type { AcaoMassaDto, CriarLeadsDto, ListContatosDto } from './contatos.dto';
 
 export interface AcaoMassaResult {
   ok: true;
@@ -410,5 +411,68 @@ export class ContatosService {
       }
     }
     return { ok: true, afetados: excluidos, falhas };
+  }
+
+  /**
+   * Adiciona contatos a um funil criando um Lead pra cada um. Pula contatos cujo
+   * telefone já casa um lead existente (dedup D18) — reporta em `jaEramLead`.
+   * Reusa LeadsService.create (resolve funil/etapa padrão, força rep p/ REP,
+   * dispara LEAD_CRIADO). Falha por contato não derruba o lote.
+   */
+  async criarLeads(
+    user: AuthenticatedUser,
+    dto: CriarLeadsDto,
+  ): Promise<AcaoMassaResult & { jaEramLead: number }> {
+    const empresaId = this.requireEmpresa(user);
+    const scope = await this.repScope.getRepIds(user);
+    const falhas: Array<{ id: string; erro: string }> = [];
+
+    // Telefones (sufixo 8 díg.) que JÁ têm lead na empresa/escopo — não duplica.
+    const leadWhere: Prisma.LeadWhereInput = { empresaId, contatoTelefone: { not: null } };
+    if (scope !== null) leadWhere.representanteId = { in: scope };
+    const leadsExistentes = await this.prisma.lead.findMany({
+      where: leadWhere,
+      select: { contatoTelefone: true },
+    });
+    const sufixosComLead = new Set(
+      leadsExistentes.map((l) => this.sufixoTel(l.contatoTelefone)).filter((s): s is string => !!s),
+    );
+
+    let criados = 0;
+    let jaEramLead = 0;
+    for (const [i, c] of dto.contatos.entries()) {
+      const sufixo = this.sufixoTel(c.telefone);
+      if (sufixo && sufixosComLead.has(sufixo)) {
+        jaEramLead += 1;
+        continue;
+      }
+      const nome = (c.nome ?? '').trim();
+      const tel = (c.telefone ?? '').replace(/\D/g, '');
+      const nomeLead = nome.length >= 2 ? nome : tel || 'Contato';
+      const email = c.email && /.+@.+\..+/.test(c.email) ? c.email : undefined;
+      try {
+        // parse() aplica os defaults do createLeadSchema (valorEstimado/etapa/etc).
+        const payload = createLeadSchema.parse({
+          nome: nomeLead,
+          contatoNome: nome || undefined,
+          contatoTelefone: c.telefone || undefined,
+          contatoEmail: email,
+          cidade: c.cidade,
+          uf: c.uf,
+          funilId: dto.funilId,
+          funilEtapaId: dto.funilEtapaId,
+          representanteId: c.representanteId ?? dto.representanteId,
+        });
+        await this.leads.create(user, payload);
+        criados += 1;
+        if (sufixo) sufixosComLead.add(sufixo); // evita duplicar dentro do próprio lote
+      } catch (err) {
+        falhas.push({
+          id: `#${i + 1} ${nomeLead}`,
+          erro: err instanceof Error ? err.message : String(err),
+        });
+      }
+    }
+    return { ok: true, afetados: criados, falhas, jaEramLead };
   }
 }

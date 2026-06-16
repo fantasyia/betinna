@@ -101,7 +101,7 @@ export default function ContatosPage() {
   const [detail, setDetail] = useState<Contato | null>(null);
   const canEdit = usePermission('clientes.edit');
   const [selected, setSelected] = useState<Map<string, Contato>>(new Map());
-  const [bulk, setBulk] = useState<'tag' | 'mover' | 'excluir' | null>(null);
+  const [bulk, setBulk] = useState<'tag' | 'mover' | 'add-funil' | 'excluir' | null>(null);
   const [importKind, setImportKind] = useState<'choose' | 'leads' | 'clientes' | null>(null);
 
   function toggle(c: Contato) {
@@ -149,6 +149,8 @@ export default function ContatosPage() {
     conversaIds: selArr.flatMap((c) => (c.conversaId ? [c.conversaId] : [])),
   };
   const nLeads = selArr.filter((c) => c.tipos.includes('LEAD')).length;
+  // Contatos que ainda NÃO são lead — candidatos a "Adicionar ao funil".
+  const semLead = selArr.filter((c) => !c.leadId);
   async function afterAcao() {
     clearSel();
     setBulk(null);
@@ -410,6 +412,15 @@ export default function ContatosPage() {
           </Button>
           <Button
             size="sm"
+            variant="secondary"
+            disabled={semLead.length === 0}
+            onClick={() => setBulk('add-funil')}
+            leftIcon={<Target className="h-3.5 w-3.5" />}
+          >
+            Adicionar ao funil
+          </Button>
+          <Button
+            size="sm"
             variant="danger"
             onClick={() => setBulk('excluir')}
             leftIcon={<Trash2 className="h-3.5 w-3.5" />}
@@ -434,6 +445,9 @@ export default function ContatosPage() {
           onClose={() => setBulk(null)}
           onDone={afterAcao}
         />
+      )}
+      {bulk === 'add-funil' && (
+        <BulkAddFunilModal contatos={semLead} onClose={() => setBulk(null)} onDone={afterAcao} />
       )}
       {bulk === 'excluir' && (
         <BulkDeleteModal
@@ -769,6 +783,105 @@ function BulkMoveModal({
         <p className="text-xs text-muted">
           Só os {nLeads} contato(s) que são Lead serão movidos. Clientes e conversas na seleção são
           ignorados.
+        </p>
+      </div>
+    </Dialog>
+  );
+}
+
+function BulkAddFunilModal({
+  contatos,
+  onClose,
+  onDone,
+}: {
+  contatos: Contato[];
+  onClose: () => void;
+  onDone: () => void;
+}) {
+  const toast = useToast();
+  const { data: funis } = useApiQuery<FunilLite[]>('/funis');
+  const [funilId, setFunilId] = useState('');
+  const [etapaId, setEtapaId] = useState('');
+  const [busy, setBusy] = useState(false);
+  const funil = (funis ?? []).find((f) => f.id === funilId) ?? null;
+  const etapas = funil?.etapas ?? [];
+
+  async function submit() {
+    setBusy(true);
+    try {
+      const r = await api.post<AcaoResult & { jaEramLead?: number }>('/contatos/criar-leads', {
+        funilId: funilId || undefined,
+        funilEtapaId: etapaId || undefined,
+        contatos: contatos.map((c) => ({
+          nome: c.nome,
+          telefone: c.telefone || undefined,
+          email: c.email || undefined,
+          cidade: c.cidade || undefined,
+          uf: c.uf || undefined,
+          representanteId: c.representante?.id,
+        })),
+      });
+      const ja = r.jaEramLead ? ` · ${r.jaEramLead} já era(m) lead` : '';
+      const falhou = r.falhas.length ? ` · ${r.falhas.length} falha(s)` : '';
+      toast.success(
+        'Contatos adicionados ao funil',
+        `${r.afetados} de ${contatos.length} criado(s)${ja}${falhou}`,
+      );
+      onDone();
+    } catch (err) {
+      toast.error('Falha ao adicionar ao funil', err instanceof ApiError ? err.message : undefined);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <Dialog
+      open
+      onClose={onClose}
+      title={`Adicionar ${contatos.length} contato(s) ao funil`}
+      size="md"
+      footer={
+        <>
+          <Button variant="secondary" onClick={onClose}>
+            Cancelar
+          </Button>
+          <Button onClick={() => void submit()} loading={busy}>
+            Adicionar
+          </Button>
+        </>
+      }
+    >
+      <div className="flex flex-col gap-4">
+        <Field label="Funil">
+          <Select
+            value={funilId}
+            onChange={(e) => {
+              setFunilId(e.target.value);
+              setEtapaId('');
+            }}
+          >
+            <option value="">Funil padrão da empresa</option>
+            {(funis ?? []).map((f) => (
+              <option key={f.id} value={f.id}>
+                {f.nome}
+              </option>
+            ))}
+          </Select>
+        </Field>
+        <Field label="Etapa inicial">
+          <Select value={etapaId} disabled={!funil} onChange={(e) => setEtapaId(e.target.value)}>
+            <option value="">Primeira etapa do funil</option>
+            {etapas.map((e) => (
+              <option key={e.id} value={e.id}>
+                {e.nome}
+              </option>
+            ))}
+          </Select>
+        </Field>
+        <p className="text-xs text-muted">
+          Cria um lead pra cada contato que ainda não é lead. Quem já tem lead com o mesmo telefone é
+          pulado.
         </p>
       </div>
     </Dialog>

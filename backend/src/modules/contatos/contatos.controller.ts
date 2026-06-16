@@ -8,8 +8,10 @@ import type { AuthenticatedUser } from '@shared/types/authenticated-user';
 import { ContatosService } from './contatos.service';
 import {
   type AcaoMassaDto,
+  type CriarLeadsDto,
   type ListContatosDto,
   acaoMassaSchema,
+  criarLeadsSchema,
   listContatosSchema,
 } from './contatos.dto';
 
@@ -46,5 +48,20 @@ export class ContatosController {
     @Body(new ZodValidationPipe(acaoMassaSchema)) dto: AcaoMassaDto,
   ) {
     return this.contatos.acaoMassa(user, dto);
+  }
+
+  @Post('criar-leads')
+  @RequirePermissions({ module: 'clientes', action: 'edit' })
+  @Audit({ action: 'criar_leads', resource: 'contato' })
+  @ApiOperation({
+    summary:
+      'Adiciona contatos selecionados a um funil, criando um Lead pra cada um ' +
+      '(pula quem já tem lead com o mesmo telefone).',
+  })
+  criarLeads(
+    @CurrentUser() user: AuthenticatedUser,
+    @Body(new ZodValidationPipe(criarLeadsSchema)) dto: CriarLeadsDto,
+  ) {
+    return this.contatos.criarLeads(user, dto);
   }
 }

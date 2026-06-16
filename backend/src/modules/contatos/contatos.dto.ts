@@ -47,3 +47,31 @@ export const acaoMassaSchema = z
     message: 'Para mover-etapa, informe funilEtapaId',
   });
 export type AcaoMassaDto = z.infer<typeof acaoMassaSchema>;
+
+/**
+ * Adicionar contatos a um funil — cria um Lead pra cada contato selecionado que
+ * ainda NÃO é lead. Diferente do acao-massa (que opera em ids existentes), aqui
+ * o front manda os DADOS dos contatos (nome/telefone/...) e o backend cria os
+ * leads, pulando quem já tem lead com o mesmo telefone (dedup D18).
+ */
+export const criarLeadsSchema = z.object({
+  /** Funil destino. Omitido → funil padrão da empresa. */
+  funilId: z.string().min(1).optional(),
+  /** Etapa inicial. Omitida → 1ª etapa ATIVA do funil. */
+  funilEtapaId: z.string().min(1).optional(),
+  representanteId: z.string().cuid().optional(),
+  contatos: z
+    .array(
+      z.object({
+        nome: z.string().trim().min(1).max(200),
+        telefone: z.string().trim().max(30).optional(),
+        email: z.string().trim().max(200).optional(),
+        cidade: z.string().trim().max(100).optional(),
+        uf: z.string().trim().length(2).optional(),
+        representanteId: z.string().cuid().optional(),
+      }),
+    )
+    .min(1)
+    .max(500),
+});
+export type CriarLeadsDto = z.infer<typeof criarLeadsSchema>;
