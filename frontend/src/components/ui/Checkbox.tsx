@@ -5,6 +5,11 @@ import { cn } from '@/lib/cn';
 /**
  * Checkbox custom — esconde o native checkbox e renderiza box estilizado.
  * Suporta state indeterminate (visual minus).
+ *
+ * O <input> fica como overlay transparente (`absolute inset-0 opacity-0`)
+ * COBRINDO o box visível — assim clicar no box atinge o input e alterna o
+ * estado. (Antes era `sr-only`: input de 1px fora da área visível, então o
+ * clique no box `aria-hidden` não chegava no input e nada era selecionado.)
  */
 export interface CheckboxProps extends Omit<InputHTMLAttributes<HTMLInputElement>, 'type'> {
   indeterminate?: boolean;
@@ -26,7 +31,7 @@ export const Checkbox = forwardRef<HTMLInputElement, CheckboxProps>(function Che
         type="checkbox"
         checked={checked}
         disabled={disabled}
-        className="peer sr-only"
+        className="peer absolute inset-0 h-full w-full cursor-pointer opacity-0 disabled:cursor-not-allowed"
         {...props}
       />
       <span
