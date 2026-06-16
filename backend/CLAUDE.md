@@ -206,7 +206,7 @@
 
 **WhatsApp Baileys — limitações conhecidas (MVP):**
 - 1 socket por empresa em 1 container — não escala horizontalmente sem gateway (Railway com 1 réplica está ok)
-- Apenas 1:1 (grupos e broadcasts ignorados)
+- **Grupos (@g.us) SÃO suportados** (2026-06-16): tanto o inbound Baileys quanto o do Evolution persistem grupos como Conversation (peerNome = subject do grupo, senderName = autor, sem telefone). Aparecem no Inbox e no dropdown "contato salvo" do Enviar WhatsApp (fluxos). **Broadcasts/status seguem ignorados.** Grupos antigos só entram conforme chega mensagem nova (sem backfill retroativo).
 - Mídia recebida: marca `tipo=IMAGE/AUDIO/etc` e `mediaMime`, mas conteúdo fica como placeholder (`[imagem]`, `[áudio]`) — download de mídia + Supabase Storage entra depois
 - Risco de ban do número pela Meta — usar número dedicado, não pessoal
 

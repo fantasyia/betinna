@@ -38,6 +38,8 @@ type EstadoWhats = {
 @Injectable()
 export class EvolutionService {
   private readonly logger = new Logger(EvolutionService.name);
+  /** Cache do subject de grupos (`instância|jid` → nome) — TTL 30min. */
+  private readonly nomeGrupoCache = new Map<string, { nome?: string; em: number }>();
 
   constructor(
     private readonly http: HttpClientService,
@@ -265,6 +267,30 @@ export class EvolutionService {
       { message: { key: { id: messageId } } },
     ).catch(() => null);
     return resp?.base64 ?? undefined;
+  }
+
+  /**
+   * Nome (subject) de um grupo via Evolution. Cacheado 30min — evita um GET por
+   * mensagem de grupo. Retorna undefined em falha (sem permissão / erro de rede);
+   * o caller cai pro fallback "Grupo".
+   */
+  async nomeGrupo(instance: string, groupJid: string): Promise<string | undefined> {
+    const chave = `${instance}|${groupJid}`;
+    const cached = this.nomeGrupoCache.get(chave);
+    if (cached && Date.now() - cached.em < 30 * 60_000) return cached.nome;
+    let nome: string | undefined;
+    try {
+      const resp = await this.req<{ subject?: string }>(
+        'get',
+        `/group/findGroupInfos/${encodeURIComponent(instance)}?groupJid=${encodeURIComponent(groupJid)}`,
+      );
+      const s = typeof resp?.subject === 'string' ? resp.subject.trim() : '';
+      nome = s || undefined;
+    } catch {
+      nome = undefined;
+    }
+    this.nomeGrupoCache.set(chave, { nome, em: Date.now() });
+    return nome;
   }
 
   async logout(instance: string): Promise<unknown> {

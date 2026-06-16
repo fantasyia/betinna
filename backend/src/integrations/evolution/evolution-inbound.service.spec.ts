@@ -64,6 +64,7 @@ function setup(opts?: {
     listarInstancias: vi.fn().mockResolvedValue([]),
     mensagensRecentes: vi.fn().mockResolvedValue([]),
     baixarMidiaBase64: vi.fn().mockResolvedValue(undefined),
+    nomeGrupo: vi.fn().mockResolvedValue('Time Comercial'),
   };
   const svc = new EvolutionInboundService(
     prisma as never,
@@ -163,14 +164,20 @@ describe('EvolutionInboundService — parsing do webhook (messages.upsert)', () 
     expect(arg.peerTelefone).toBe('5511988887777');
   });
 
-  it('GRUPO (@g.us) é ignorado — modelo é 1:1', async () => {
-    const { svc, inbox } = setup();
+  it('GRUPO (@g.us) é persistido: peerNome = subject, senderName = autor, sem telefone', async () => {
+    const { svc, inbox, evolution } = setup();
     await svc.processarEvento(
       upsert({
         messages: [msgTexto({ key: { remoteJid: '123456789@g.us', fromMe: false, id: 'G1' } })],
       }),
     );
-    expect(inbox.processarMensagemEntrante).not.toHaveBeenCalled();
+    expect(evolution.nomeGrupo).toHaveBeenCalledWith('emp_emp-X', '123456789@g.us');
+    expect(inbox.processarMensagemEntrante).toHaveBeenCalledTimes(1);
+    const arg = inbox.processarMensagemEntrante.mock.calls[0][0];
+    expect(arg.peerId).toBe('123456789@g.us');
+    expect(arg.peerNome).toBe('Time Comercial'); // subject do grupo
+    expect(arg.senderName).toBe('Cliente Zé'); // pushName do autor
+    expect(arg.peerTelefone).toBeUndefined(); // grupo não tem telefone único
   });
 
   it('BROADCAST / status@broadcast são ignorados', async () => {

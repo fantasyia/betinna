@@ -153,13 +153,9 @@ export class EvolutionInboundService {
       // estável e casa o cliente por sufixo; senão a conversa fica "sem contato".
       const rjidAlt = m.key?.remoteJidAlt ?? '';
       const peerId = rjid.endsWith('@lid') && rjidAlt ? rjidAlt : rjid;
-      if (
-        !peerId ||
-        peerId.endsWith('@broadcast') ||
-        peerId === 'status@broadcast' ||
-        peerId.endsWith('@g.us') // grupos: WhatsApp é 1:1 no nosso modelo
-      )
-        continue;
+      if (!peerId || peerId.endsWith('@broadcast') || peerId === 'status@broadcast') continue;
+      // Grupos (@g.us) AGORA passam — peerNome = subject do grupo, senderName = autor.
+      const isGroup = peerId.endsWith('@g.us');
 
       const fromMe = !!m.key?.fromMe;
       // Diagnóstico do cutover (temporário): confirma variância de LID/fromMe que
@@ -194,12 +190,23 @@ export class EvolutionInboundService {
       const conteudoFinal = conteudo || (tipo === 'TEXT' ? '[mensagem não suportada]' : conteudo);
       if (!conteudoFinal) continue;
 
+      // Em grupos: peerNome = nome do grupo (subject via Evolution), senderName =
+      // quem mandou (pushName do membro), sem telefone único. Em 1:1, peerNome =
+      // pushName e sem senderName.
+      const peerNome = isGroup
+        ? await this.evolution.nomeGrupo(instance, peerId)
+        : fromMe
+          ? undefined
+          : (m.pushName ?? undefined);
+      const senderName = isGroup && !fromMe ? (m.pushName ?? undefined) : undefined;
+
       await this.inbox.processarMensagemEntrante({
         empresaId,
         canal: 'WHATSAPP',
         peerId,
-        peerNome: fromMe ? undefined : (m.pushName ?? undefined),
-        peerTelefone: this.telefone(peerId),
+        peerNome,
+        senderName,
+        peerTelefone: isGroup ? undefined : this.telefone(peerId),
         tipo,
         conteudo: conteudoFinal,
         externalId: m.key?.id ?? undefined,
