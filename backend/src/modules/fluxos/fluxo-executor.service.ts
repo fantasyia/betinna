@@ -509,6 +509,17 @@ export class FluxoExecutorService {
     const mensagem = interpolate(cfg.mensagem, ctx);
     const modo = cfg.destinatarioModo ?? 'lead';
 
+    // GRUPO do WhatsApp: o "contato salvo" pode ser um grupo (jid @g.us). O jid é
+    // o destino direto — NÃO normaliza pra telefone (senão viraria um número
+    // solto). O adapter (Baileys/Evolution) aceita o jid de grupo como remoteJid.
+    if (modo === 'contato') {
+      const alvo = (cfg.destinatarioContato ?? '').trim();
+      if (alvo.endsWith('@g.us')) {
+        const r = await this.whatsapp.enviarTexto(empresaId, alvo, mensagem, {});
+        return { peerId: alvo, mensagem, modo, externalId: r.externalId };
+      }
+    }
+
     // Resolve o telefone do destinatário conforme o modo.
     let telefone: string | undefined;
     if (modo === 'numero') {

@@ -1683,9 +1683,9 @@ function NodeInspector({
   >('/orquestracao/variaveis');
   const variaveis = Array.isArray(variaveisData) ? variaveisData : (variaveisData?.data ?? []);
   // Contatos WhatsApp da inbox — pro destinatário "contato salvo" do Enviar WhatsApp.
-  const { data: contatosWa } = useApiQuery<Array<{ telefone: string; nome: string }>>(
-    '/inbox/contatos-whatsapp',
-  );
+  const { data: contatosWa } = useApiQuery<
+    Array<{ id: string; nome: string; tipo: 'CONTATO' | 'GRUPO' }>
+  >('/inbox/contatos-whatsapp');
   /** Etapas de UM funil — pros dropdowns dependentes do funil escolhido. */
   const etapasDoFunil = (funilId?: string) =>
     (funis ?? []).find((f) => f.id === funilId)?.etapas ?? [];
@@ -1938,7 +1938,7 @@ function NodeInspector({
               </Field>
             )}
             {(data.config.destinatarioModo as string) === 'contato' && (
-              <Field label="Contato" hint="Conversas de WhatsApp da inbox">
+              <Field label="Contato" hint="Contatos e grupos de WhatsApp da inbox">
                 <Select
                   size="sm"
                   value={(data.config.destinatarioContato as string) ?? ''}
@@ -1953,15 +1953,15 @@ function NodeInspector({
                   {/* Preserva o contato salvo mesmo se a lista ainda não carregou. */}
                   {(data.config.destinatarioContato as string) &&
                     !(contatosWa ?? []).some(
-                      (c) => c.telefone === (data.config.destinatarioContato as string),
+                      (c) => c.id === (data.config.destinatarioContato as string),
                     ) && (
                       <option value={data.config.destinatarioContato as string}>
                         {data.config.destinatarioContato as string}
                       </option>
                     )}
                   {(contatosWa ?? []).map((c) => (
-                    <option key={c.telefone} value={c.telefone}>
-                      {c.nome} · {c.telefone}
+                    <option key={c.id} value={c.id}>
+                      {c.tipo === 'GRUPO' ? `Grupo · ${c.nome}` : `${c.nome} · ${c.id}`}
                     </option>
                   ))}
                 </Select>

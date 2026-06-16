@@ -136,7 +136,7 @@ export class InboxService {
    */
   async listarContatosWhatsapp(
     user: AuthenticatedUser,
-  ): Promise<Array<{ telefone: string; nome: string }>> {
+  ): Promise<Array<{ id: string; nome: string; tipo: 'CONTATO' | 'GRUPO' }>> {
     const convs = await this.prisma.conversation.findMany({
       where: { canal: 'WHATSAPP', ...this.baseWhere(user) },
       orderBy: { ultimaMsgEm: 'desc' },
@@ -149,14 +149,22 @@ export class InboxService {
       },
     });
     const vistos = new Set<string>();
-    const out: Array<{ telefone: string; nome: string }> = [];
+    const out: Array<{ id: string; nome: string; tipo: 'CONTATO' | 'GRUPO' }> = [];
     for (const c of convs) {
+      // GRUPO (@g.us): o identificador é o próprio jid — o envio manda direto pra
+      // ele (não tem telefone). Nome = subject do grupo (peerNome). Dedup por jid.
+      if (c.peerId.includes('@g.us')) {
+        if (vistos.has(c.peerId)) continue;
+        vistos.add(c.peerId);
+        out.push({ id: c.peerId, nome: c.peerNome ?? 'Grupo', tipo: 'GRUPO' });
+        continue;
+      }
       const meta = (c.metadata ?? {}) as Record<string, unknown>;
       // Telefone REAL: cliente > metadata.telefone > parte local do peerId.
-      // O peerId só serve como telefone se NÃO for grupo (@g.us) nem LID (@lid,
-      // opaco). Aceita @s.whatsapp.net, @c.us, ou dígitos crus; tira o ":device".
-      const ehGrupoOuLid = c.peerId.includes('@g.us') || c.peerId.includes('@lid');
-      const telPeer = ehGrupoOuLid ? undefined : (c.peerId.split('@')[0]?.split(':')[0] ?? '');
+      // LID (@lid) é opaco — não vira telefone. Aceita @s.whatsapp.net, @c.us, ou
+      // dígitos crus; tira o ":device".
+      const ehLid = c.peerId.includes('@lid');
+      const telPeer = ehLid ? undefined : (c.peerId.split('@')[0]?.split(':')[0] ?? '');
       const bruto =
         c.cliente?.telefone ??
         (typeof meta.telefone === 'string' ? meta.telefone : undefined) ??
@@ -164,7 +172,7 @@ export class InboxService {
       const tel = (bruto ?? '').replace(/\D/g, '');
       if (tel.length < 8 || tel.length > 15 || vistos.has(tel)) continue;
       vistos.add(tel);
-      out.push({ telefone: tel, nome: c.cliente?.nome ?? c.peerNome ?? tel });
+      out.push({ id: tel, nome: c.cliente?.nome ?? c.peerNome ?? tel, tipo: 'CONTATO' });
     }
     return out;
   }

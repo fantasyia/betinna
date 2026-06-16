@@ -511,6 +511,9 @@ export class EvolutionService {
    * 400 — diferente das respostas do inbox, onde o jid já vem completo do webhook.
    */
   private normalizarNumero(numero: string): string {
+    // jid já-formado (grupo @g.us, ou @s.whatsapp.net/@lid do inbox): manda como
+    // veio — soDigitos destruiria o "@g.us" e o grupo viraria um número solto.
+    if (numero.includes('@')) return numero;
     const n = this.soDigitos(numero);
     if (n.length === 10 || n.length === 11) return `55${n}`;
     return n;

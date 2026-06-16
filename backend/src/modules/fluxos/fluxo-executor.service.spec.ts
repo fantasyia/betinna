@@ -447,6 +447,34 @@ describe('FluxoExecutorService', () => {
 
       await expect(service.executarPasso('exec-1', 'no-wa')).rejects.toThrow();
     });
+
+    it('envia direto pro jid quando o contato salvo é um GRUPO (@g.us)', async () => {
+      const acaoNo = fakeNo({
+        id: 'no-wa',
+        tipo: 'ACAO',
+        acaoTipo: 'ENVIAR_WHATSAPP',
+        config: {
+          mensagem: 'Bom dia, time!',
+          destinatarioModo: 'contato',
+          destinatarioContato: '120363000000000000@g.us',
+        },
+      });
+      prisma.fluxoExecucao.findUnique.mockResolvedValue(
+        fakeExecucao({ status: 'EM_EXECUCAO', contexto: {} }),
+      );
+      prisma.fluxoNo.findUnique.mockResolvedValue(acaoNo);
+      prisma.fluxoEdge.findMany.mockResolvedValue([]);
+
+      await service.executarPasso('exec-1', 'no-wa');
+
+      // jid de grupo vai DIRETO (não vira @s.whatsapp.net nem perde o @g.us)
+      expect(whatsapp.enviarTexto).toHaveBeenCalledWith(
+        'emp-1',
+        '120363000000000000@g.us',
+        'Bom dia, time!',
+        {},
+      );
+    });
   });
 
   describe('ação ENVIAR_EMAIL', () => {
