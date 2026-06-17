@@ -414,15 +414,26 @@ export class WhatsAppSessionService implements OnModuleInit, OnModuleDestroy {
    * próximo retry funciona já reconectado.
    */
   private tratarFalhaSocket(ctx: SessionContext, err: unknown): void {
-    const msg = (err instanceof Error ? err.message : String(err)).toLowerCase();
-    const isSocketDown =
-      msg.includes('connection closed') ||
-      msg.includes('connection lost') ||
-      msg.includes('timed out') ||
-      msg.includes('socket') ||
-      msg.includes('not open');
+    // Decisão por CÓDIGO/TIPO, não por texto (a mensagem do Baileys quebra fácil).
+    // Erros de conexão do Baileys são Boom e carregam o statusCode da desconexão;
+    // erros de socket do Node trazem `.code`. loggedOut (401) é deslogue proposital
+    // → NÃO reconectar (precisa re-parear); qualquer outra desconexão é transient.
+    let isSocketDown = false;
+    if (err instanceof Boom) {
+      const code = err.output?.statusCode ?? 0;
+      isSocketDown = code >= 400 && code !== DisconnectReason.loggedOut;
+    } else if (err instanceof Error) {
+      const nodeCode = (err as { code?: string }).code;
+      isSocketDown =
+        nodeCode === 'ECONNRESET' ||
+        nodeCode === 'EPIPE' ||
+        nodeCode === 'ETIMEDOUT' ||
+        nodeCode === 'ENOTFOUND' ||
+        nodeCode === 'EAI_AGAIN';
+    }
     if (!isSocketDown) return;
     const key = ownerKey(ctx.owner);
+    const msg = err instanceof Error ? err.message : String(err);
     this.logger.warn(
       `[${key}] Socket WhatsApp caiu durante envio (${msg}) — reagendando reconexão`,
     );

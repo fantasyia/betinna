@@ -132,7 +132,10 @@ export class OmieClientService {
         const data = res.data as unknown;
         if (this.isFault(data)) {
           ultimoFault = { faultcode: data.faultcode, faultstring: data.faultstring };
-          if (this.isRetryableFault(ultimoFault.faultstring) && faultAttempt < MAX_FAULT_RETRIES) {
+          if (
+            this.isRetryableFault(ultimoFault.faultcode, ultimoFault.faultstring) &&
+            faultAttempt < MAX_FAULT_RETRIES
+          ) {
             // Backoff exponencial: 500ms, 1500ms, 4500ms
             const wait = 500 * Math.pow(3, faultAttempt - 1);
             this.logger.warn(
@@ -264,18 +267,18 @@ export class OmieClientService {
   /**
    * Identifica faults da OMIE que valem a pena retentar.
    *
-   * OMIE retorna HTTP 200 com `faultstring` mesmo em erros transients:
-   *  - "Sem comunicação com o servidor"
-   *  - "Tempo limite excedido"
-   *  - "Servidor em manutenção"
-   *  - Rate limit ("Aguarde alguns segundos antes de fazer nova requisição")
+   * DECISÃO POR CÓDIGO primeiro — o texto da `faultstring` quebra fácil (basta a
+   * OMIE reescrever a mensagem). O `faultcode` segue o padrão SOAP
+   * `SOAP-ENV:Server-NNN` (erro do lado servidor OMIE = transient → retenta) vs
+   * `SOAP-ENV:Client-NNN` (erro do chamador: validação/credencial/dado = definitivo).
    *
-   * Faults definitivos (NÃO retentar):
-   *  - "Cliente não encontrado" (data inconsistente)
-   *  - "App Key inválida" (credencial errada)
-   *  - "Campo X obrigatório" (validação)
+   * O texto fica só como FALLBACK pra rate-limit/manutenção que a OMIE às vezes
+   * devolve com faultcode de Client. O faultcode é logado no warn da chamada,
+   * então os códigos reais aparecem nos logs de prod (hoje em DEMO_MODE não os
+   * vemos) e este fallback pode ser enxugado depois.
    */
-  private isRetryableFault(faultstring: string): boolean {
+  private isRetryableFault(faultcode: string, faultstring: string): boolean {
+    if (faultcode.toLowerCase().includes('server')) return true;
     const s = faultstring.toLowerCase();
     return (
       s.includes('sem comunicação') ||
