@@ -358,6 +358,8 @@ model Usuario {
   notificacoes              Notificacao[]
   propostas                 Proposta[]
   movimentosFidelidade      MovimentoFidelidade[]
+  repCatalogoItens          RepCatalogoItem[]
+  respostasRapidas          RespostaRapida[]
 
   @@index([role])
   @@index([status])
@@ -596,6 +598,7 @@ model RepCatalogoItem {
   criadoEm  DateTime @default(now())
 
   produto Produto @relation(fields: [produtoId], references: [id], onDelete: Cascade)
+  usuario Usuario @relation(fields: [usuarioId], references: [id])
 
   @@unique([usuarioId, produtoId])
   @@index([usuarioId])
@@ -773,10 +776,10 @@ model Proposta {
   criadoEm     DateTime @default(now())
   atualizadoEm DateTime @updatedAt
 
-  empresa         Empresa        @relation(fields: [empresaId], references: [id], onDelete: Cascade)
-  cliente         Cliente        @relation(fields: [clienteId], references: [id])
-  representante   Usuario?       @relation(fields: [representanteId], references: [id], onDelete: SetNull)
-  itens           PropostaItem[]
+  empresa       Empresa        @relation(fields: [empresaId], references: [id], onDelete: Cascade)
+  cliente       Cliente        @relation(fields: [clienteId], references: [id])
+  representante Usuario?       @relation(fields: [representanteId], references: [id], onDelete: SetNull)
+  itens         PropostaItem[]
 
   @@unique([empresaId, numero])
   @@index([empresaId])
@@ -856,14 +859,14 @@ model Lead {
   criadoEm     DateTime @default(now())
   atualizadoEm DateTime @updatedAt
 
-  empresa              Empresa              @relation(fields: [empresaId], references: [id], onDelete: Cascade)
-  representante        Usuario?             @relation("LeadRep", fields: [representanteId], references: [id])
-  cliente              Cliente?             @relation(fields: [clienteId], references: [id])
-  pedido               Pedido?              @relation(fields: [pedidoId], references: [id], onDelete: SetNull)
-  funil                Funil?               @relation(fields: [funilId], references: [id], onDelete: SetNull)
-  funilEtapa           FunilEtapa?          @relation(fields: [funilEtapaId], references: [id], onDelete: SetNull)
-  tags                 LeadTag[]
-  formularioRespostas  FormularioResposta[]
+  empresa             Empresa              @relation(fields: [empresaId], references: [id], onDelete: Cascade)
+  representante       Usuario?             @relation("LeadRep", fields: [representanteId], references: [id])
+  cliente             Cliente?             @relation(fields: [clienteId], references: [id])
+  pedido              Pedido?              @relation(fields: [pedidoId], references: [id], onDelete: SetNull)
+  funil               Funil?               @relation(fields: [funilId], references: [id], onDelete: SetNull)
+  funilEtapa          FunilEtapa?          @relation(fields: [funilEtapaId], references: [id], onDelete: SetNull)
+  tags                LeadTag[]
+  formularioRespostas FormularioResposta[]
 
   @@index([empresaId, etapa])
   @@index([empresaId, funilId, funilEtapaId])
@@ -1532,8 +1535,8 @@ model Message {
   criadoEm       DateTime         @default(now())
   atualizadoEm   DateTime         @updatedAt
 
-  conversation Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
-  autor        Usuario?     @relation("MessageAutor", fields: [autorUsuarioId], references: [id])
+  conversation Conversation  @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  autor        Usuario?      @relation("MessageAutor", fields: [autorUsuarioId], references: [id])
   botRespostas BotResposta[]
 
   @@unique([conversationId, externalId])
@@ -2143,6 +2146,8 @@ model RespostaRapida {
   global       Boolean  @default(false)
   criadoEm     DateTime @default(now())
   atualizadoEm DateTime @updatedAt
+
+  criadoPor Usuario @relation(fields: [criadoPorId], references: [id])
 
   @@index([empresaId])
   @@index([criadoPorId])
