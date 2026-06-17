@@ -65,11 +65,17 @@ export function ConversarIaForm({
       {(data.config.aguardarResposta as boolean | undefined) !== false &&
         Number(data.config.timeoutHoras ?? 0) > 0 && (
           <p className="text-[11px] text-muted">
-            Com timeout, o nó tem <strong>2 saídas</strong> no canvas: 🟢{' '}
-            <strong>classificou</strong> (IA concluiu) e 🟠 <strong>timeout</strong> (passou o
-            prazo sem resposta) — conecte cada uma a um caminho.
+            Com timeout, o nó tem <strong>3 saídas</strong> no canvas: 🟢{' '}
+            <strong>classificou</strong> (IA concluiu), 🟠 <strong>timeout</strong> (passou o
+            prazo sem resposta) e 🔴 <strong>erro</strong> (falha de IA/WhatsApp) — conecte cada
+            uma a um caminho.
           </p>
         )}
+      <p className="text-[11px] text-muted">
+        A saída 🔴 <strong>erro</strong> aparece <strong>sempre</strong> — use-a pra tratar falha
+        técnica (tag, tarefa de revisão manual, alerta pra equipe). Sem conexão, o erro só fica
+        no log de execução.
+      </p>
       <Field
         label="Variáveis que a IA pode gravar"
         hint="Separe por vírgula (ex: classificacao, canal). Vazio = livre."
