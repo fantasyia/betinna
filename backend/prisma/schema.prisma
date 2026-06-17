@@ -594,7 +594,6 @@ model RepCatalogoItem {
   id        String   @id @default(cuid())
   usuarioId String // rep
   produtoId String
-  markup    Float    @default(0) // % aplicado pelo rep
   criadoEm  DateTime @default(now())
 
   produto Produto @relation(fields: [produtoId], references: [id], onDelete: Cascade)

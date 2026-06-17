@@ -52,7 +52,6 @@ const fakeCatalogoItem = (overrides: Record<string, unknown> = {}) => ({
   id: 'cat-1',
   usuarioId: 'rep-1',
   produtoId: 'p-1',
-  markup: 10,
   produto: {
     id: 'p-1',
     nome: 'Óleo 5L',
