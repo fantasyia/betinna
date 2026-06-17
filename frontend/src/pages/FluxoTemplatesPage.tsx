@@ -18,7 +18,7 @@ import { PageLayout } from '@/components/PageLayout';
 import { CrmTabs } from '@/components/CrmTabs';
 import { Badge, Button, Card, CardHeader, CardTitle, Dialog } from '@/components/ui';
 import { cn } from '@/lib/cn';
-import type { TriggerTipo, AcaoTipo } from './FluxoEditor';
+import type { TriggerTipo, AcaoTipo } from '@/pages/fluxo/lib/types';
 
 /**
  * FluxoTemplatesPage — galeria de fluxos pré-construídos.

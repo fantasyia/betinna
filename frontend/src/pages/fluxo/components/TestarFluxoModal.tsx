@@ -1,12 +1,12 @@
 import { Play } from 'lucide-react';
-import { Button, Input } from '@/components/ui';
+import { Button, Dialog, Input } from '@/components/ui';
 
 /**
- * TestarFluxoModal — modal inline de teste manual do fluxo.
+ * TestarFluxoModal — teste manual do fluxo, no Dialog oficial (@/components/ui).
  *
- * Overlay fixo (z-[120]) montado no shell — NÃO usa o Dialog de @/components/ui
- * (mantido inline verbatim do FluxoEditorInner). Dispara editor.runTeste via
- * onRodar (que fecha o modal em sucesso).
+ * Dispara editor.runTeste via onRodar (que fecha o modal em sucesso). Fecha no
+ * backdrop (closeOnBackdrop, preservando o overlay anterior) e no Escape
+ * (cortesia do Dialog). O Dialog já trata `open=false` (não renderiza).
  */
 export function TestarFluxoModal({
   aberto,
@@ -23,32 +23,21 @@ export function TestarFluxoModal({
   testando: boolean;
   onRodar: () => void;
 }) {
-  if (!aberto) return null;
   return (
-    <div
-      className="fixed inset-0 z-[120] bg-black/50 flex items-center justify-center p-4"
-      onClick={onClose}
-    >
-      <div
-        className="bg-bg-alt border border-border rounded-lg shadow-xl w-full max-w-sm p-4"
-        onClick={(e) => e.stopPropagation()}
-      >
-        <h3 className="text-sm font-bold text-text mb-1">Testar fluxo</h3>
-        <p className="text-[11px] text-muted mb-3">
+    <Dialog
+      open={aberto}
+      onClose={onClose}
+      size="sm"
+      closeOnBackdrop
+      title="Testar fluxo"
+      description={
+        <>
           Dispara o fluxo <strong>agora</strong> (a partir do nó gatilho), sem esperar o
           cron/evento. Salva o fluxo antes, se houver mudanças.
-        </p>
-        <label className="text-xs text-muted">ID do lead (opcional)</label>
-        <Input
-          value={testLeadId}
-          onChange={(e) => setTestLeadId(e.target.value)}
-          placeholder="cole o ID do lead aqui"
-          data-testid="fluxo-test-lead"
-        />
-        <p className="text-[10px] text-muted mt-1">
-          Vazio = fluxo sem lead (ex: webhook). Pegue o ID na tela de Leads.
-        </p>
-        <div className="flex justify-end gap-2 mt-4">
+        </>
+      }
+      footer={
+        <>
           <Button variant="ghost" onClick={onClose}>
             Cancelar
           </Button>
@@ -59,8 +48,19 @@ export function TestarFluxoModal({
           >
             Rodar teste
           </Button>
-        </div>
-      </div>
-    </div>
+        </>
+      }
+    >
+      <label className="text-xs text-muted">ID do lead (opcional)</label>
+      <Input
+        value={testLeadId}
+        onChange={(e) => setTestLeadId(e.target.value)}
+        placeholder="cole o ID do lead aqui"
+        data-testid="fluxo-test-lead"
+      />
+      <p className="text-[10px] text-muted mt-1">
+        Vazio = fluxo sem lead (ex: webhook). Pegue o ID na tela de Leads.
+      </p>
+    </Dialog>
   );
 }

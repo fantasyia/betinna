@@ -38,7 +38,8 @@ import {
   Tooltip,
 } from '@/components/ui';
 import { cn } from '@/lib/cn';
-import { FluxoEditor, type TriggerTipo as EditorTriggerTipo } from './FluxoEditor';
+import { FluxoEditor } from './FluxoEditor';
+import type { TriggerTipo as EditorTriggerTipo } from '@/pages/fluxo/lib/types';
 
 /**
  * FluxosPage v2 — lista de fluxos + entry point pro editor visual.

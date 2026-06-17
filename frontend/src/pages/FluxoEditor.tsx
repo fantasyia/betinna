@@ -14,11 +14,6 @@ import { FluxoCanvas } from '@/pages/fluxo/components/FluxoCanvas';
 import { NodeInspector } from '@/pages/fluxo/components/inspector/NodeInspector';
 import { useFluxoEditor } from '@/pages/fluxo/hooks/useFluxoEditor';
 
-// Re-export dos tipos públicos (consumidos por FluxosPage / FluxoTemplatesPage).
-// A fonte de verdade agora é @/pages/fluxo/lib/types — mantido aqui pra não
-// quebrar quem importa de '@/pages/FluxoEditor'.
-export type { FluxoNoTipo, TriggerTipo, AcaoTipo } from '@/pages/fluxo/lib/types';
-
 /**
  * FluxoEditor — editor visual de fluxos de automação com React Flow.
  *
