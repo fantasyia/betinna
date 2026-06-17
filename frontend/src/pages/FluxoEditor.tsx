@@ -1,25 +1,7 @@
-import { useCallback, useEffect, useState, type DragEvent } from 'react';
-import { Undo2, Redo2 } from 'lucide-react';
-import {
-  ReactFlow,
-  ReactFlowProvider,
-  Background,
-  BackgroundVariant,
-  Controls,
-  MiniMap,
-  type Edge,
-} from '@xyflow/react';
+import { useCallback, useEffect, useState } from 'react';
+import { ReactFlowProvider } from '@xyflow/react';
 import '@xyflow/react/dist/style.css';
-import {
-  Zap,
-  GitBranch,
-  Play,
-  Timer,
-  Save,
-  X as XIcon,
-  Trash2,
-  AlertCircle,
-} from 'lucide-react';
+import { Play, Trash2, AlertCircle } from 'lucide-react';
 import { api, ApiError } from '@/lib/api';
 import { useApiQuery } from '@/hooks/useApiQuery';
 import { useToast } from '@/components/toast';
@@ -29,23 +11,23 @@ import {
   type TriggerTipo,
   type AcaoTipo,
   type FluxoDetailApi,
-  type PaletteItem,
   type NodePayload,
   type FlowNode,
 } from '@/pages/fluxo/lib/types';
 import {
   TRIGGER_LABEL,
   ACAO_LABEL,
-  ACAO_ICONS,
   TIPO_LABEL,
-  TIPO_ACCENT,
   isManualTrigger,
-  PALETTE_CATEGORIES,
 } from '@/pages/fluxo/lib/metadata';
 import { montarCron, CRON_DIAS, CRON_TIMEZONES, type CronPreviewResp } from '@/pages/fluxo/lib/cron';
 import { RESERVADOS, norm } from '@/pages/fluxo/lib/saidas';
 import { NodeCard } from '@/pages/fluxo/components/NodeCard';
 import { EdgeRemovivel } from '@/pages/fluxo/components/EdgeRemovivel';
+import { FluxoToolbar } from '@/pages/fluxo/components/FluxoToolbar';
+import { TestarFluxoModal } from '@/pages/fluxo/components/TestarFluxoModal';
+import { PaletteSidebar } from '@/pages/fluxo/components/PaletteSidebar';
+import { FluxoCanvas } from '@/pages/fluxo/components/FluxoCanvas';
 import { useFluxoEditor } from '@/pages/fluxo/hooks/useFluxoEditor';
 
 // Re-export dos tipos públicos (consumidos por FluxosPage / FluxoTemplatesPage).
@@ -129,139 +111,25 @@ function FluxoEditorInner({
   return (
     <div className="fixed inset-0 z-[110] bg-bg flex flex-col">
       {/* Top bar */}
-      <header className="flex items-center gap-3 px-4 h-[56px] border-b border-border bg-bg-alt shrink-0">
-        <IconButton aria-label="Fechar editor" variant="ghost" icon={<XIcon />} onClick={onClose} />
-        <div className="flex-1 min-w-0 flex items-center gap-3">
-          <Input
-            value={editor.name}
-            onChange={(e) => {
-              editor.setName(e.target.value);
-              editor.setDirty(true);
-            }}
-            className="max-w-md font-semibold"
-            placeholder="Nome do fluxo"
-          />
-          <Badge
-            variant={data.status === 'ATIVO' ? 'success' : 'neutral'}
-            className="hidden sm:inline-flex"
-          >
-            {data.status}
-          </Badge>
-          {editor.dirty && (
-            <Badge variant="warning" size="sm">
-              Alterações não salvas
-            </Badge>
-          )}
-        </div>
-        <div className="flex items-center gap-2">
-          {/* Mobile: toggles dos painéis (viram drawers). Escondidos no desktop. */}
-          <div className="flex items-center gap-1 md:hidden">
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={() => setMobilePanel((p) => (p === 'palette' ? null : 'palette'))}
-              data-testid="fluxo-mobile-blocos"
-            >
-              Blocos
-            </Button>
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={() => setMobilePanel((p) => (p === 'inspector' ? null : 'inspector'))}
-              data-testid="fluxo-mobile-editar"
-            >
-              Editar
-            </Button>
-            <div className="w-px h-6 bg-border mx-1" />
-          </div>
-          {/* v1.5.0 — Undo/Redo (desktop; no mobile some pra ganhar espaço) */}
-          <div className="hidden md:flex items-center gap-2">
-            <IconButton
-              aria-label="Desfazer (Cmd+Z)"
-              title="Desfazer (Cmd/Ctrl+Z)"
-              variant="ghost"
-              icon={<Undo2 className="h-4 w-4" />}
-              onClick={editor.undo}
-              disabled={!editor.canUndo}
-              data-testid="fluxo-undo"
-            />
-            <IconButton
-              aria-label="Refazer (Cmd+Shift+Z)"
-              title="Refazer (Cmd/Ctrl+Shift+Z ou Cmd/Ctrl+Y)"
-              variant="ghost"
-              icon={<Redo2 className="h-4 w-4" />}
-              onClick={editor.redo}
-              disabled={!editor.canRedo}
-              data-testid="fluxo-redo"
-            />
-            <div className="w-px h-6 bg-border mx-1" />
-          </div>
-          <Button
-            variant="secondary"
-            className="hidden md:inline-flex"
-            onClick={() => setTestarAberto(true)}
-            leftIcon={<Play className="h-3.5 w-3.5" />}
-            data-testid="fluxo-testar"
-            title="Dispara o fluxo agora (do nó gatilho), sem esperar o cron/evento"
-          >
-            Testar
-          </Button>
-          <Button variant="ghost" className="hidden md:inline-flex" onClick={onClose}>
-            Cancelar
-          </Button>
-          <Button
-            onClick={editor.handleSave}
-            loading={editor.saving}
-            disabled={!editor.dirty}
-            leftIcon={<Save className="h-3.5 w-3.5" />}
-          >
-            Salvar
-          </Button>
-        </div>
-      </header>
+      <FluxoToolbar
+        editor={editor}
+        status={data.status}
+        onClose={onClose}
+        onTestar={() => setTestarAberto(true)}
+        onMobilePanel={(p) => setMobilePanel((cur) => (cur === p ? null : p))}
+      />
 
-      {testarAberto && (
-        <div
-          className="fixed inset-0 z-[120] bg-black/50 flex items-center justify-center p-4"
-          onClick={() => setTestarAberto(false)}
-        >
-          <div
-            className="bg-bg-alt border border-border rounded-lg shadow-xl w-full max-w-sm p-4"
-            onClick={(e) => e.stopPropagation()}
-          >
-            <h3 className="text-sm font-bold text-text mb-1">Testar fluxo</h3>
-            <p className="text-[11px] text-muted mb-3">
-              Dispara o fluxo <strong>agora</strong> (a partir do nó gatilho), sem esperar o
-              cron/evento. Salva o fluxo antes, se houver mudanças.
-            </p>
-            <label className="text-xs text-muted">ID do lead (opcional)</label>
-            <Input
-              value={testLeadId}
-              onChange={(e) => setTestLeadId(e.target.value)}
-              placeholder="cole o ID do lead aqui"
-              data-testid="fluxo-test-lead"
-            />
-            <p className="text-[10px] text-muted mt-1">
-              Vazio = fluxo sem lead (ex: webhook). Pegue o ID na tela de Leads.
-            </p>
-            <div className="flex justify-end gap-2 mt-4">
-              <Button variant="ghost" onClick={() => setTestarAberto(false)}>
-                Cancelar
-              </Button>
-              <Button
-                onClick={async () => {
-                  const ok = await editor.runTeste(testLeadId);
-                  if (ok) setTestarAberto(false);
-                }}
-                loading={editor.testando}
-                leftIcon={<Play className="h-3.5 w-3.5" />}
-              >
-                Rodar teste
-              </Button>
-            </div>
-          </div>
-        </div>
-      )}
+      <TestarFluxoModal
+        aberto={testarAberto}
+        onClose={() => setTestarAberto(false)}
+        testLeadId={testLeadId}
+        setTestLeadId={setTestLeadId}
+        testando={editor.testando}
+        onRodar={async () => {
+          const ok = await editor.runTeste(testLeadId);
+          if (ok) setTestarAberto(false);
+        }}
+      />
 
       <div className="flex-1 flex overflow-hidden relative">
         {/* Backdrop dos drawers (só mobile, quando um painel está aberto) */}
@@ -274,104 +142,16 @@ function FluxoEditorInner({
           />
         )}
         {/* Palette — fixa no desktop; drawer pela esquerda no mobile */}
-        <aside
-          className={`w-[78vw] max-w-[240px] md:w-[240px] shrink-0 border-r border-border bg-bg-alt overflow-y-auto
-            absolute inset-y-0 left-0 z-20 shadow-xl transition-transform duration-200
-            md:static md:z-auto md:shadow-none md:translate-x-0
-            ${mobilePanel === 'palette' ? 'translate-x-0' : '-translate-x-full'}`}
-        >
-          <div className="p-3 border-b border-border">
-            <Field label="Trigger global" hint="Quando o fluxo dispara">
-              <Select
-                size="sm"
-                value={editor.triggerTipo}
-                onChange={(e) => editor.onChangeTriggerGlobal(e.target.value as TriggerTipo | '')}
-              >
-                <option value="">Manual (sem trigger)</option>
-                {(Object.keys(TRIGGER_LABEL) as TriggerTipo[]).map((t) => (
-                  <option key={t} value={t}>
-                    {TRIGGER_LABEL[t]}
-                  </option>
-                ))}
-              </Select>
-            </Field>
-          </div>
-          <div className="p-3 flex flex-col gap-4">
-            {PALETTE_CATEGORIES.map((cat) => (
-              <div key={cat.title}>
-                <h4 className="text-[10px] font-semibold uppercase tracking-wider text-muted mb-2 px-1">
-                  {cat.title}
-                </h4>
-                <div className="flex flex-col gap-1">
-                  {cat.items.map((item) => (
-                    <PaletteItemView key={item.id} item={item} />
-                  ))}
-                </div>
-              </div>
-            ))}
-          </div>
-        </aside>
+        <PaletteSidebar editor={editor} mobileAberto={mobilePanel === 'palette'} />
 
         {/* Canvas */}
-        <div
-          ref={editor.wrapperRef}
-          className="flex-1 relative"
-          onDrop={editor.onDrop}
-          onDragOver={editor.onDragOver}
-        >
-          <ReactFlow<FlowNode, Edge>
-            nodes={editor.nodes}
-            edges={editor.edges}
-            onNodesChange={editor.onNodesChange}
-            onEdgesChange={editor.onEdgesChange}
-            onConnect={editor.onConnect}
-            onInit={editor.onInit}
-            onNodeClick={(e, n) => {
-              editor.onNodeClick(e, n);
-              setMobilePanel('inspector'); // mobile: abre o editor do nó (ignorado no desktop)
-            }}
-            onPaneClick={() => {
-              editor.onPaneClick();
-              setMobilePanel(null);
-            }}
-            nodeTypes={NODE_TYPES}
-            edgeTypes={EDGE_TYPES}
-            fitView
-            fitViewOptions={{ padding: 0.3 }}
-            colorMode="dark"
-            defaultEdgeOptions={{
-              type: 'removivel',
-              animated: true,
-              style: { stroke: 'var(--border-strong)', strokeWidth: 1.5 },
-            }}
-          >
-            <Background variant={BackgroundVariant.Dots} gap={20} size={1} color="var(--border)" />
-            <Controls
-              position="bottom-left"
-              showInteractive={false}
-              className="!bg-surface !border !border-border !rounded-md"
-            />
-            <MiniMap
-              position="bottom-right"
-              pannable
-              zoomable
-              maskColor="rgba(0,0,0,0.5)"
-              className="!bg-bg-alt !border !border-border !rounded-md"
-            />
-          </ReactFlow>
-
-          {editor.nodes.length === 0 && (
-            <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
-              <div className="text-center text-muted-light flex flex-col items-center gap-2">
-                <Play className="h-8 w-8" />
-                <p className="text-sm font-medium">Arraste itens da paleta pra começar</p>
-                <p className="text-xs text-muted-light">
-                  Conecte os nós arrastando das bolinhas inferiores às superiores
-                </p>
-              </div>
-            </div>
-          )}
-        </div>
+        <FluxoCanvas
+          editor={editor}
+          nodeTypes={NODE_TYPES}
+          edgeTypes={EDGE_TYPES}
+          onNodeClickExtra={() => setMobilePanel('inspector')}
+          onPaneClickExtra={() => setMobilePanel(null)}
+        />
 
         {/* Inspector — fixo no desktop; drawer pela direita no mobile */}
         <aside
@@ -398,44 +178,6 @@ function FluxoEditorInner({
           )}
         </aside>
       </div>
-    </div>
-  );
-}
-
-// ─── Palette item (draggable) ───────────────────────────────────
-
-function PaletteItemView({ item }: { item: PaletteItem }) {
-  const Icon =
-    item.tipo === 'TRIGGER'
-      ? Zap
-      : item.tipo === 'CONDICAO'
-        ? GitBranch
-        : item.tipo === 'DELAY'
-          ? Timer
-          : item.acaoTipo
-            ? ACAO_ICONS[item.acaoTipo]
-            : Play;
-  const accent = TIPO_ACCENT[item.tipo];
-
-  function handleDragStart(event: DragEvent<HTMLDivElement>) {
-    event.dataTransfer.setData('application/fluxo-node', JSON.stringify(item));
-    event.dataTransfer.effectAllowed = 'move';
-  }
-
-  return (
-    <div
-      draggable
-      onDragStart={handleDragStart}
-      className={cn(
-        'flex items-center gap-2 px-2.5 py-1.5 rounded-md cursor-grab',
-        'border border-border bg-surface',
-        'hover:border-border-strong hover:bg-surface-hover transition-colors',
-        'active:cursor-grabbing active:scale-95',
-      )}
-      style={{ borderLeftWidth: 3, borderLeftColor: accent }}
-    >
-      <Icon className="h-3.5 w-3.5 shrink-0" style={{ color: accent }} />
-      <span className="text-xs font-medium text-text truncate">{item.label}</span>
     </div>
   );
 }

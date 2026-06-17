@@ -492,3 +492,9 @@ export function useFluxoEditor({
     runTeste,
   };
 }
+
+/**
+ * Contrato do objeto retornado pelo hook — consumido pelas regiões de UI
+ * (FluxoToolbar / TestarFluxoModal / PaletteSidebar / FluxoCanvas) como `editor`.
+ */
+export type FluxoEditorApi = ReturnType<typeof useFluxoEditor>;
