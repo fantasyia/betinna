@@ -1,4 +1,4 @@
-import { Injectable, Logger, OnModuleInit } from '@nestjs/common';
+import { Injectable, Logger, OnModuleDestroy, OnModuleInit } from '@nestjs/common';
 import type { UserRole } from '@prisma/client';
 import { PrismaService } from '@database/prisma.service';
 import {
@@ -11,20 +11,42 @@ import {
 /**
  * Serviço de permissões granulares.
  *
- * - Carrega a matriz da tabela `Permissao` em memória ao subir.
- * - Permite consulta O(1) (`userCan(role, module, action)`).
- * - Permite reload manual via `reloadCache()` quando um admin altera permissões.
+ * - Carrega a matriz da tabela `Permissao` em memória ao subir (cache local O(1)).
+ * - Recarrega na hora quando um admin altera permissões (upsert/applyDefaults).
+ * - Sincroniza entre RÉPLICAS via refresh periódico: cada réplica tem seu cache
+ *   local; sem isso, uma réplica que NÃO processou o upsert ficaria desatualizada
+ *   para sempre (o cache não tinha TTL). O refresh relê a fonte da verdade (banco)
+ *   e converge todas as réplicas em ≤REFRESH_MS. A réplica que escreve recarrega
+ *   na hora; as outras pegam no próximo tick.
  */
 @Injectable()
-export class PermissionsService implements OnModuleInit {
+export class PermissionsService implements OnModuleInit, OnModuleDestroy {
   private readonly logger = new Logger(PermissionsService.name);
   /** Cache: `${role}:${module}:${action}` -> boolean */
   private cache: Map<string, boolean> = new Map();
+  /** Re-sync entre réplicas — relê o banco a cada intervalo (convergência). */
+  private static readonly REFRESH_MS = 60_000;
+  private refreshTimer: ReturnType<typeof setInterval> | null = null;
 
   constructor(private readonly prisma: PrismaService) {}
 
   async onModuleInit(): Promise<void> {
     await this.reloadCache();
+    // Em teste não agenda o timer (evita handle aberto segurando o runner).
+    if (process.env.NODE_ENV !== 'test') {
+      this.refreshTimer = setInterval(() => {
+        void this.reloadCache().catch((err) => {
+          const msg = err instanceof Error ? err.message : String(err);
+          this.logger.warn(`Refresh periódico do cache de permissões falhou: ${msg}`);
+        });
+      }, PermissionsService.REFRESH_MS);
+      // unref: o timer não segura o processo vivo sozinho.
+      this.refreshTimer.unref?.();
+    }
+  }
+
+  onModuleDestroy(): void {
+    if (this.refreshTimer) clearInterval(this.refreshTimer);
   }
 
   async reloadCache(): Promise<void> {
