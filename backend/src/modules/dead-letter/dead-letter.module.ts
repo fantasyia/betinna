@@ -1,5 +1,6 @@
 import { Global, Module } from '@nestjs/common';
 import { BullModule } from '@nestjs/bullmq';
+import { EmailModule } from '@integrations/email/email.module';
 import { CAMPANHA_ENVIO_QUEUE } from '@modules/campanhas/campanha-envio.types';
 import { FLUXO_QUEUE } from '@modules/fluxos/fluxo-executor.types';
 import { DeadLetterController } from './dead-letter.controller';
@@ -24,7 +25,7 @@ import { DEAD_LETTER_QUEUE } from './dead-letter.types';
       { name: CAMPANHA_ENVIO_QUEUE },
       { name: FLUXO_QUEUE },
     ),
-    // Resend (notificação ao diretor) vem do ResendModule @Global.
+    EmailModule, // fachada TransactionalEmailService (alerta ao diretor)
   ],
   controllers: [DeadLetterController],
   providers: [DeadLetterService, DeadLetterProcessor],

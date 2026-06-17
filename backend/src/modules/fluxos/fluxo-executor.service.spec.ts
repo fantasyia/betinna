@@ -72,8 +72,8 @@ const makeWhatsappMock = () => ({
   enviarTexto: vi.fn().mockResolvedValue({ externalId: 'wa-msg-1' }),
 });
 
-const makeResendMock = () => ({
-  enviar: vi.fn().mockResolvedValue({ id: 're-msg-1', status: 200 }),
+const makeEmailSvcMock = () => ({
+  enviarHtmlLivre: vi.fn().mockResolvedValue({ ok: true, id: 're-msg-1' }),
 });
 
 const makeQueueMock = () => ({
@@ -132,7 +132,7 @@ const fakeEdge = (sourceNoId: string, targetNoId: string, label?: string) => ({
 describe('FluxoExecutorService', () => {
   let prisma: ReturnType<typeof makePrismaMock>;
   let whatsapp: ReturnType<typeof makeWhatsappMock>;
-  let resend: ReturnType<typeof makeResendMock>;
+  let emailSvc: ReturnType<typeof makeEmailSvcMock>;
   let queue: ReturnType<typeof makeQueueMock>;
   let bus: ReturnType<typeof makeBusMock>;
   let conversarIa: ReturnType<typeof makeConversarIaMock>;
@@ -142,7 +142,7 @@ describe('FluxoExecutorService', () => {
     vi.clearAllMocks();
     prisma = makePrismaMock();
     whatsapp = makeWhatsappMock();
-    resend = makeResendMock();
+    emailSvc = makeEmailSvcMock();
     queue = makeQueueMock();
     bus = makeBusMock();
     conversarIa = makeConversarIaMock();
@@ -151,7 +151,7 @@ describe('FluxoExecutorService', () => {
       makeEnvMock() as never,
       {} as never,
       whatsapp as never,
-      resend as never,
+      emailSvc as never,
       conversarIa as never,
       bus as never,
       queue as never,
@@ -522,7 +522,7 @@ describe('FluxoExecutorService', () => {
 
       await service.executarPasso('exec-1', 'no-email');
 
-      expect(resend.enviar).toHaveBeenCalledWith(
+      expect(emailSvc.enviarHtmlLivre).toHaveBeenCalledWith(
         expect.objectContaining({
           para: 'dest@test.com',
           assunto: 'Olá Maria',

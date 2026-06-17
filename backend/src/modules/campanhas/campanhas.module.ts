@@ -1,5 +1,6 @@
 import { Module } from '@nestjs/common';
 import { BullModule } from '@nestjs/bullmq';
+import { EmailModule } from '@integrations/email/email.module';
 import { WhatsAppModule } from '@integrations/whatsapp/whatsapp.module';
 import { IntegracoesModule } from '@modules/integracoes/integracoes.module';
 import { CampanhaEnvioProcessor } from './campanha-envio.processor';
@@ -13,7 +14,7 @@ import { CampanhasService } from './campanhas.service';
   imports: [
     BullModule.registerQueue({ name: CAMPANHA_ENVIO_QUEUE }),
     WhatsAppModule,
-    // Resend (e-mail sistêmico) vem do ResendModule @Global — não precisa importar.
+    EmailModule, // fachada TransactionalEmailService (e-mail da campanha)
     IntegracoesModule, // expõe UsuarioIntegracoesService para CampanhaIaService
   ],
   controllers: [CampanhasController],

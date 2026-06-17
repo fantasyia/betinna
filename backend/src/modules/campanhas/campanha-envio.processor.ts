@@ -2,7 +2,7 @@ import { Logger } from '@nestjs/common';
 import { OnWorkerEvent, Processor, WorkerHost } from '@nestjs/bullmq';
 import { Job } from 'bullmq';
 import { PrismaService } from '@database/prisma.service';
-import { ResendService } from '@integrations/resend/resend.service';
+import { TransactionalEmailService } from '@integrations/email/transactional-email.service';
 import { WhatsAppService } from '@integrations/whatsapp/whatsapp.service';
 import { DeadLetterService } from '@modules/dead-letter/dead-letter.service';
 import { IdempotencyService } from '@shared/utils/idempotency.service';
@@ -28,7 +28,7 @@ export class CampanhaEnvioProcessor extends WorkerHost {
     private readonly prisma: PrismaService,
     private readonly campanhasService: CampanhasService,
     private readonly whatsapp: WhatsAppService,
-    private readonly resend: ResendService,
+    private readonly emailSvc: TransactionalEmailService,
     private readonly campanhaIa: CampanhaIaService,
     private readonly idempotency: IdempotencyService,
     private readonly deadLetter: DeadLetterService,
@@ -186,14 +186,16 @@ export class CampanhaEnvioProcessor extends WorkerHost {
           const idemKey = `idempotent:campanha:${campanhaId}:${destinatarioId}:email`;
           if (await this.idempotency.claim(idemKey, 86_400)) {
             try {
-              // Campanha por e-mail agora usa o Resend do SISTEMA (e-mail único da
-              // empresa), não mais credencial por usuário. Resend recebe `para` como
-              // string e LANÇA em falha (capturada no catch abaixo).
-              await this.resend.enviar({
+              // Campanha por e-mail passa pela fachada única (TransactionalEmail →
+              // Resend sistêmico, e-mail único da empresa). A fachada NÃO lança: em
+              // falha devolve {ok:false}, então re-lançamos pra cair no catch abaixo
+              // (libera o idem e marca o destinatário como falho).
+              const r = await this.emailSvc.enviarHtmlLivre({
                 para: dest.email,
                 assunto,
                 html: mensagemEmailFinal,
               });
+              if (!r.ok) throw new Error(r.motivo ?? 'falha ao enviar e-mail da campanha');
               this.logger.debug(`Email enviado → ${dest.email} (campanha ${campanhaId})`);
             } catch (sendErr) {
               await this.idempotency.release(idemKey);

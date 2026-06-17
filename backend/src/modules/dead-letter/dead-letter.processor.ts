@@ -2,7 +2,7 @@ import { Processor, WorkerHost } from '@nestjs/bullmq';
 import { Logger } from '@nestjs/common';
 import type { Job } from 'bullmq';
 import { PrismaService } from '@database/prisma.service';
-import { ResendService } from '@integrations/resend/resend.service';
+import { TransactionalEmailService } from '@integrations/email/transactional-email.service';
 import { captureException as sentryCapture } from '@shared/observability/sentry';
 import { DEAD_LETTER_QUEUE, type DeadLetterJobData } from './dead-letter.types';
 
@@ -22,7 +22,7 @@ export class DeadLetterProcessor extends WorkerHost {
 
   constructor(
     private readonly prisma: PrismaService,
-    private readonly resend: ResendService,
+    private readonly emailSvc: TransactionalEmailService,
   ) {
     super();
   }
@@ -105,9 +105,9 @@ export class DeadLetterProcessor extends WorkerHost {
       <p>A equipe técnica recebeu o registro detalhado e investigará. Caso urgente, contate o suporte.</p>
       <p style="color:#888;font-size:12px">Mensagem automática — não responda.</p>
     `;
-    // Resend lança em falha; o caller (`notificarDiretor(d).catch(...)`) já trata
-    // best-effort, logando warn sem derrubar o processor.
-    await this.resend.enviar({
+    // Best-effort: a fachada loga a falha internamente e devolve {ok:false} (não
+    // lança), então o alerta nunca derruba o processor de dead-letter.
+    await this.emailSvc.enviarHtmlLivre({
       para: diretor.email,
       assunto,
       html: corpoHtml,

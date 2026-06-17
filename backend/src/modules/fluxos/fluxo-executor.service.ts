@@ -6,7 +6,7 @@ import { PrismaService } from '@database/prisma.service';
 import { EnvService } from '@config/env.service';
 import { HttpClientService } from '@shared/http/http-client.service';
 import { WhatsAppService } from '@integrations/whatsapp/whatsapp.service';
-import { ResendService } from '@integrations/resend/resend.service';
+import { TransactionalEmailService } from '@integrations/email/transactional-email.service';
 import { Prisma } from '@prisma/client';
 import { safeRequest, SsrfBlockedError } from '@shared/utils/safe-request';
 import { interpolate } from '@shared/utils/interpolate';
@@ -149,7 +149,7 @@ export class FluxoExecutorService {
     private readonly env: EnvService,
     private readonly http: HttpClientService,
     private readonly whatsapp: WhatsAppService,
-    private readonly resend: ResendService,
+    private readonly emailSvc: TransactionalEmailService,
     private readonly conversarIa: ConversarIaService,
     private readonly bus: FluxoEventBusService,
     @InjectQueue(FLUXO_QUEUE) private readonly queue: Queue<FluxoStepJobData>,
@@ -599,7 +599,10 @@ export class FluxoExecutorService {
     // Resend sistêmico — envia 1 e-mail por destinatário resolvido.
     const messageIds: string[] = [];
     for (const para of emails) {
-      const r = await this.resend.enviar({ para, assunto, html: corpo });
+      const r = await this.emailSvc.enviarHtmlLivre({ para, assunto, html: corpo });
+      if (!r.ok) {
+        throw new Error(`Falha ao enviar e-mail para ${para}: ${r.motivo ?? 'erro no provedor'}`);
+      }
       if (r.id) messageIds.push(r.id);
     }
     return { destinatarios: emails, assunto, messageIds };

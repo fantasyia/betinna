@@ -3,7 +3,7 @@ import { Prisma } from '@prisma/client';
 import { PrismaService } from '@database/prisma.service';
 import { PricingService } from '@modules/produtos/pricing.service';
 import { PedidoPricingService } from '@modules/pedidos/pedido-pricing.service';
-import { ResendService } from '@integrations/resend/resend.service';
+import { TransactionalEmailService } from '@integrations/email/transactional-email.service';
 import {
   BusinessRuleException,
   ForbiddenException,
@@ -44,7 +44,7 @@ export class PropostasService {
     private readonly repScope: RepScopeService,
     private readonly sequence: SequenceService,
     private readonly exportSvc: PropostaExportService,
-    private readonly resend: ResendService,
+    private readonly emailSvc: TransactionalEmailService,
     private readonly aceiteSvc: PropostaAceiteService,
   ) {}
 
@@ -456,11 +456,6 @@ export class PropostasService {
         'Cliente não tem e-mail cadastrado. Adicione um e-mail no cadastro do cliente pra enviar a proposta.',
       );
     }
-    if (!this.resend.isConfigured()) {
-      throw new BusinessRuleException(
-        'Envio de e-mail não configurado. Configure o Resend (RESEND_API_KEY + RESEND_FROM_EMAIL) pra enviar propostas.',
-      );
-    }
     const pdf = await this.exportSvc.gerarPdf(data);
     const html =
       `<p>Olá, ${data.cliente.nome}!</p>` +
@@ -474,12 +469,18 @@ export class PropostasService {
         : '') +
       `<p>Qualquer dúvida, estamos à disposição.</p>`;
 
-    await this.resend.enviar({
+    const enviado = await this.emailSvc.enviarComAnexo({
       para: data.cliente.email,
       assunto: `Proposta ${data.numero} — ${data.empresa.nome}`,
       html,
       attachments: [{ filename: `proposta-${data.numero}.pdf`, content: pdf.toString('base64') }],
     });
+    if (!enviado.ok) {
+      throw new BusinessRuleException(
+        `Não foi possível enviar a proposta por e-mail: ${enviado.motivo ?? 'falha no provedor'}. ` +
+          'Verifique a configuração do Resend (RESEND_API_KEY + RESEND_FROM_EMAIL).',
+      );
+    }
 
     this.logger.log(`Proposta ${data.numero} enviada por email pra ${data.cliente.email}`);
     return { ok: true, enviadoPara: data.cliente.email };

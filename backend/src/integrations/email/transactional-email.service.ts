@@ -48,7 +48,8 @@ export class TransactionalEmailService {
     para: string,
     assunto: string,
     html: string,
-  ): Promise<{ ok: boolean; motivo?: string }> {
+    attachments?: Array<{ filename: string; content: string }>,
+  ): Promise<{ ok: boolean; motivo?: string; id?: string | null }> {
     // Resend é o ÚNICO provedor transacional do sistema (SendGrid removido).
     const ctx = `para=${para} assunto="${assunto.slice(0, 60)}"`;
 
@@ -60,19 +61,40 @@ export class TransactionalEmailService {
     }
 
     try {
-      const r = await this.resend.enviar({ para, assunto, html });
+      const r = await this.resend.enviar({ para, assunto, html, attachments });
       const ok = r.status >= 200 && r.status < 300;
       if (!ok) {
         const motivo = `provedor retornou HTTP ${r.status}`;
         this.logger.error(`E-mail falhou · ${ctx} · ${motivo}`);
         return { ok: false, motivo };
       }
-      return { ok: true };
+      return { ok: true, id: r.id };
     } catch (err) {
       const motivo = err instanceof Error ? err.message : String(err);
       this.logger.error(`E-mail falhou (Resend) · ${ctx} · ${motivo}`);
       return { ok: false, motivo };
     }
+  }
+
+  // ─── E-mail ad-hoc (sem template fixo) ───────────────────────────────
+  //
+  // Pra fechar a fachada: campanhas, fluxos de automação, propostas (PDF) e
+  // alertas operacionais que antes chamavam o ResendService cru. Tudo passa por
+  // aqui agora — provedor único, isConfigured + log de falha centralizados.
+
+  /** HTML já montado (corpo livre) — campanhas, fluxos, alertas. */
+  async enviarHtmlLivre(params: { para: string; assunto: string; html: string }) {
+    return this.send(params.para, params.assunto, params.html);
+  }
+
+  /** E-mail com anexo (ex: PDF de proposta em base64). */
+  async enviarComAnexo(params: {
+    para: string;
+    assunto: string;
+    html: string;
+    attachments: Array<{ filename: string; content: string }>;
+  }) {
+    return this.send(params.para, params.assunto, params.html, params.attachments);
   }
 
   // ─── Templates de alto nível ─────────────────────────────────────────
