@@ -131,6 +131,24 @@ export class EnvService {
       });
     }
 
+    // MullerBot em modo MOCK em produção — CRÍTICO (aborta o boot).
+    //
+    // Com MULLERBOT_MOCK=true o bot responde frases FABRICADAS (sem chamar a
+    // OpenAI), transcreve áudio como "(transcrição de teste)" e nem valida a
+    // chave do usuário. Em produção isso faz o assistente de vendas responder
+    // nonsense a clientes reais. Default da flag é false — só dispara se alguém
+    // setou true no Railway. Mesmo padrão da trava crítica do OMIE_REQUIRE_REAL.
+    if (env === 'production' && this.get('MULLERBOT_MOCK') === true) {
+      issues.push({
+        key: 'MULLERBOT_MOCK',
+        severity: 'critical',
+        message:
+          'MULLERBOT_MOCK=true em produção — o assistente de vendas retorna respostas ' +
+          'FABRICADAS (não chama a OpenAI) e ignora a verificação de chave. Clientes reais ' +
+          'receberiam respostas falsas. Defina MULLERBOT_MOCK=false no Railway.',
+      });
+    }
+
     // E-mail transacional (Resend) — provedor ÚNICO. Se faltar config,
     // convites/propostas/aprovações NÃO saem. Aviso destacado (não crítico: o
     // app sobe, mas e-mails ficam mudos até configurar). Não silencioso — vai
