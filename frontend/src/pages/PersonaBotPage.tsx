@@ -5,7 +5,7 @@ import { api, ApiError } from '@/lib/api';
 import { formatNumero } from '@/lib/masks';
 import { useApiQuery } from '@/hooks/useApiQuery';
 import { useToast } from '@/components/toast';
-import { useRole } from '@/hooks/usePermission';
+import { usePermission } from '@/hooks/usePermission';
 import { PageLayout } from '@/components/PageLayout';
 import { AtendimentoTabs } from '@/components/AtendimentoTabs';
 import {
@@ -76,8 +76,7 @@ Regras:
 
 export default function PersonaBotPage() {
   const toast = useToast();
-  const role = useRole();
-  const canEdit = role === 'ADMIN' || role === 'DIRECTOR';
+  const canEdit = usePermission('mullerbot.config');
 
   const { data, loading, refetch } = useApiQuery<Persona>('/mullerbot/persona');
 

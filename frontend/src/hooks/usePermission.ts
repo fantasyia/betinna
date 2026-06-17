@@ -27,8 +27,10 @@ import { getSession, subscribe } from '@/lib/auth-store';
  * Convenção: `modulo.acao` — case sensitive.
  */
 export type Permission =
-  // MullerBot config — só DIRETOR
+  // MullerBot config — só DIRECTOR/ADMIN
   | 'mullerbot.config'
+  // MullerBot auditoria — ADMIN, DIRECTOR, GERENTE
+  | 'mullerbot.auditoria'
   // Clientes
   | 'clientes.view'
   | 'clientes.edit'
@@ -51,7 +53,15 @@ export type Permission =
   | 'campanhas.view'
   | 'campanhas.create'
   | 'campanhas.edit'
-  | 'campanhas.delete';
+  | 'campanhas.delete'
+  // Rotas de módulo (unificação de gate)
+  | 'incidentes.view'       // ADMIN, DIRECTOR, GERENTE, SAC
+  | 'configuracoes.view'    // ADMIN
+  | 'permissoes.view'       // ADMIN
+  | 'usuarios.view'         // ADMIN, DIRECTOR, GERENTE
+  | 'fluxos.view'           // ADMIN, DIRECTOR, GERENTE
+  | 'segmentos.view'        // ADMIN, DIRECTOR, GERENTE
+  | 'integracoes.view';     // ADMIN, DIRECTOR, GERENTE
 
 /**
  * Matriz role × permission.
@@ -63,6 +73,7 @@ export type Permission =
 const PERMISSION_MATRIX: Record<UserRole, ReadonlySet<Permission>> = {
   ADMIN: new Set<Permission>([
     'mullerbot.config',
+    'mullerbot.auditoria',
     'clientes.view',
     'clientes.edit',
     'clientes.bulkAssign',
@@ -78,9 +89,17 @@ const PERMISSION_MATRIX: Record<UserRole, ReadonlySet<Permission>> = {
     'campanhas.create',
     'campanhas.edit',
     'campanhas.delete',
+    'incidentes.view',
+    'configuracoes.view',
+    'permissoes.view',
+    'usuarios.view',
+    'fluxos.view',
+    'segmentos.view',
+    'integracoes.view',
   ]),
   DIRECTOR: new Set<Permission>([
     'mullerbot.config',
+    'mullerbot.auditoria',
     'clientes.view',
     'clientes.edit',
     'clientes.bulkAssign',
@@ -93,8 +112,14 @@ const PERMISSION_MATRIX: Record<UserRole, ReadonlySet<Permission>> = {
     'campanhas.create',
     'campanhas.edit',
     'campanhas.delete',
+    'incidentes.view',
+    'usuarios.view',
+    'fluxos.view',
+    'segmentos.view',
+    'integracoes.view',
   ]),
   GERENTE: new Set<Permission>([
+    'mullerbot.auditoria',
     'clientes.view',
     'clientes.edit',
     'clientes.bulkAssign',
@@ -104,11 +129,17 @@ const PERMISSION_MATRIX: Record<UserRole, ReadonlySet<Permission>> = {
     'campanhas.view',
     'campanhas.create',
     'campanhas.edit',
+    'incidentes.view',
+    'usuarios.view',
+    'fluxos.view',
+    'segmentos.view',
+    'integracoes.view',
   ]),
   SAC: new Set<Permission>([
     'clientes.view',
     'whatsapp.empresa',
     'relatorios.view',
+    'incidentes.view',
   ]),
   REP: new Set<Permission>([
     'clientes.view',

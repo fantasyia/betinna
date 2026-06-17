@@ -258,7 +258,7 @@ const router = createBrowserRouter([
     path: '/mullerbot/persona',
     element: (
       <ErrorBoundary>
-        <ProtectedRoute allowedRoles={['ADMIN', 'DIRECTOR']}>
+        <ProtectedRoute requirePermission="mullerbot.config">
           <PageSuspense>
             <PersonaBotPage />
           </PageSuspense>
@@ -270,7 +270,7 @@ const router = createBrowserRouter([
     path: '/mullerbot/prompts',
     element: (
       <ErrorBoundary>
-        <ProtectedRoute allowedRoles={['ADMIN', 'DIRECTOR']}>
+        <ProtectedRoute requirePermission="mullerbot.config">
           <PageSuspense>
             <PromptsBotPage />
           </PageSuspense>
@@ -282,7 +282,7 @@ const router = createBrowserRouter([
     path: '/mullerbot/auditoria',
     element: (
       <ErrorBoundary>
-        <ProtectedRoute allowedRoles={['ADMIN', 'DIRECTOR', 'GERENTE']}>
+        <ProtectedRoute requirePermission="mullerbot.auditoria">
           <PageSuspense>
             <BotAuditoriaPage />
           </PageSuspense>
@@ -306,7 +306,7 @@ const router = createBrowserRouter([
     path: '/incidentes',
     element: (
       <ErrorBoundary>
-        <ProtectedRoute allowedRoles={['ADMIN', 'DIRECTOR', 'GERENTE', 'SAC']}>
+        <ProtectedRoute requirePermission="incidentes.view">
           <PageSuspense>
             <MarketplaceIncidentsPage />
           </PageSuspense>
@@ -318,7 +318,7 @@ const router = createBrowserRouter([
     path: '/configuracoes',
     element: (
       <ErrorBoundary>
-        <ProtectedRoute allowedRoles={['ADMIN']}>
+        <ProtectedRoute requirePermission="configuracoes.view">
           <PageSuspense>
             <ConfiguracoesPage />
           </PageSuspense>
@@ -342,7 +342,7 @@ const router = createBrowserRouter([
     path: '/usuarios',
     element: (
       <ErrorBoundary>
-        <ProtectedRoute allowedRoles={['ADMIN', 'DIRECTOR', 'GERENTE']}>
+        <ProtectedRoute requirePermission="usuarios.view">
           <PageSuspense>
             <ProfilePage />
           </PageSuspense>
@@ -354,7 +354,7 @@ const router = createBrowserRouter([
     path: '/usuarios/:id',
     element: (
       <ErrorBoundary>
-        <ProtectedRoute allowedRoles={['ADMIN', 'DIRECTOR', 'GERENTE']}>
+        <ProtectedRoute requirePermission="usuarios.view">
           <PageSuspense>
             <ProfilePage />
           </PageSuspense>
@@ -378,7 +378,7 @@ const router = createBrowserRouter([
     path: '/fluxos',
     element: (
       <ErrorBoundary>
-        <ProtectedRoute allowedRoles={['ADMIN', 'DIRECTOR', 'GERENTE']}>
+        <ProtectedRoute requirePermission="fluxos.view">
           <PageSuspense>
             <FluxosPage />
           </PageSuspense>
@@ -390,7 +390,7 @@ const router = createBrowserRouter([
     path: '/fluxos/templates',
     element: (
       <ErrorBoundary>
-        <ProtectedRoute allowedRoles={['ADMIN', 'DIRECTOR', 'GERENTE']}>
+        <ProtectedRoute requirePermission="fluxos.view">
           <PageSuspense>
             <FluxoTemplatesPage />
           </PageSuspense>
@@ -402,7 +402,7 @@ const router = createBrowserRouter([
     path: '/fluxos/monitor',
     element: (
       <ErrorBoundary>
-        <ProtectedRoute allowedRoles={['ADMIN', 'DIRECTOR', 'GERENTE']}>
+        <ProtectedRoute requirePermission="fluxos.view">
           <PageSuspense>
             <MonitorPage />
           </PageSuspense>
@@ -426,7 +426,7 @@ const router = createBrowserRouter([
     path: '/permissoes',
     element: (
       <ErrorBoundary>
-        <ProtectedRoute allowedRoles={['ADMIN']}>
+        <ProtectedRoute requirePermission="permissoes.view">
           <PageSuspense>
             <PermissoesPage />
           </PageSuspense>
@@ -510,7 +510,7 @@ const router = createBrowserRouter([
     path: '/segmentos',
     element: (
       <ErrorBoundary>
-        <ProtectedRoute allowedRoles={['ADMIN', 'DIRECTOR', 'GERENTE']}>
+        <ProtectedRoute requirePermission="segmentos.view">
           <PageSuspense>
             <SegmentosPage />
           </PageSuspense>
@@ -606,7 +606,7 @@ const router = createBrowserRouter([
     path: '/integracoes',
     element: (
       <ErrorBoundary>
-        <ProtectedRoute allowedRoles={['ADMIN', 'DIRECTOR', 'GERENTE']}>
+        <ProtectedRoute requirePermission="integracoes.view">
           <PageSuspense>
             <IntegracoesPage />
           </PageSuspense>

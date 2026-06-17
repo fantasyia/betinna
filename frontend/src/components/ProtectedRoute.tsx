@@ -3,40 +3,36 @@ import { Navigate, useLocation } from 'react-router-dom';
 import { useRole, hasPermission, type Permission } from '@/hooks/usePermission';
 import { isInitializing, subscribeInitializing } from '@/lib/auth-store';
 import { OnboardingTour } from '@/components/OnboardingTour';
-import type { UserRole } from '@/types/auth';
 
 /**
  * ProtectedRoute — Sprint 4 FIX 6.
  *
- * Bloqueia acesso a rotas baseado em role OU permission.
+ * Bloqueia acesso a rotas baseado em permissão da matriz RBAC.
  *
  * - Sem auth → redireciona para /login (preservando `from` pra retornar depois)
  * - Auth mas sem permissão → redireciona para /403
- * - Auth + permissão → renderiza children
+ * - Auth + permissão (ou sem restrição de permissão) → renderiza children
  *
  * Uso:
- *   // Por permissão (preferido — granularidade):
+ *   // Por permissão (único mecanismo suportado):
  *   <ProtectedRoute requirePermission="admin.panel">
  *     <AdminPage />
  *   </ProtectedRoute>
  *
- *   // Por role (compatibilidade — quando módulo inteiro pertence a 1 role):
- *   <ProtectedRoute allowedRoles={['ADMIN', 'DIRECTOR']}>
- *     <FidelidadePage />
+ *   // Sem restrição de permissão (só exige autenticação):
+ *   <ProtectedRoute>
+ *     <DashboardPage />
  *   </ProtectedRoute>
  */
 
 interface ProtectedRouteProps {
   children: ReactNode;
-  /** Lista de roles permitidos. Use junto com requirePermission ou sozinho. */
-  allowedRoles?: UserRole[];
-  /** Permission específica que o user deve ter. */
+  /** Permission específica que o user deve ter (via PERMISSION_MATRIX). */
   requirePermission?: Permission;
 }
 
 export function ProtectedRoute({
   children,
-  allowedRoles,
   requirePermission,
 }: ProtectedRouteProps) {
   const role = useRole();
@@ -67,11 +63,6 @@ export function ProtectedRoute({
   // Não autenticado → login
   if (!role) {
     return <Navigate to="/login" state={{ from: location }} replace />;
-  }
-
-  // Check role
-  if (allowedRoles && !allowedRoles.includes(role)) {
-    return <Navigate to="/403" replace />;
   }
 
   // Check permission
