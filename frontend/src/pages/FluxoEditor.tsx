@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState, type DragEvent } from 'react';
+import { useCallback, useEffect, useState, type DragEvent } from 'react';
 import { Undo2, Redo2 } from 'lucide-react';
 import {
   ReactFlow,
@@ -7,12 +7,7 @@ import {
   BackgroundVariant,
   Controls,
   MiniMap,
-  addEdge,
-  useNodesState,
-  useEdgesState,
   type Edge,
-  type Connection,
-  type ReactFlowInstance,
 } from '@xyflow/react';
 import '@xyflow/react/dist/style.css';
 import {
@@ -33,8 +28,6 @@ import { cn } from '@/lib/cn';
 import {
   type TriggerTipo,
   type AcaoTipo,
-  type FluxoNoApi,
-  type FluxoEdgeApi,
   type FluxoDetailApi,
   type PaletteItem,
   type NodePayload,
@@ -50,16 +43,10 @@ import {
   PALETTE_CATEGORIES,
 } from '@/pages/fluxo/lib/metadata';
 import { montarCron, CRON_DIAS, CRON_TIMEZONES, type CronPreviewResp } from '@/pages/fluxo/lib/cron';
-import {
-  labelDaAresta,
-  reconstruirSourceHandle,
-  dedupConfigSaidas,
-  RESERVADOS,
-  norm,
-  defaultConfig,
-} from '@/pages/fluxo/lib/saidas';
+import { RESERVADOS, norm } from '@/pages/fluxo/lib/saidas';
 import { NodeCard } from '@/pages/fluxo/components/NodeCard';
 import { EdgeRemovivel } from '@/pages/fluxo/components/EdgeRemovivel';
+import { useFluxoEditor } from '@/pages/fluxo/hooks/useFluxoEditor';
 
 // Re-export dos tipos públicos (consumidos por FluxosPage / FluxoTemplatesPage).
 // A fonte de verdade agora é @/pages/fluxo/lib/types — mantido aqui pra não
@@ -110,454 +97,24 @@ function FluxoEditorInner({
   onClose: () => void;
   onSaved?: () => void;
 }) {
-  const toast = useToast();
   const { data, loading, refetch } = useApiQuery<FluxoDetailApi>(`/fluxos/${fluxoId}`);
 
-  const [nodes, setNodes, onNodesChange] = useNodesState<FlowNode>([]);
-  const [edges, setEdges, onEdgesChange] = useEdgesState<Edge>([]);
-  const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
+  // Após salvar, mantém o comportamento original: avisa o pai E recarrega o fluxo.
+  const handleSaved = useCallback(() => {
+    onSaved?.();
+    refetch();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [onSaved]);
+
+  // O cérebro do editor (estado + handlers + history + hidratação + save).
+  const editor = useFluxoEditor({ fluxoId, data, onSaved: handleSaved });
+
   // Mobile: painéis viram drawers sobrepostos (só um aberto por vez). Em desktop
   // (md+) os painéis são fixos e este estado é ignorado pelo layout.
   const [mobilePanel, setMobilePanel] = useState<'palette' | 'inspector' | null>(null);
-  const [saving, setSaving] = useState(false);
-  const [dirty, setDirty] = useState(false);
   // Teste manual — dispara o fluxo agora (do nó gatilho), sem esperar cron/evento.
   const [testarAberto, setTestarAberto] = useState(false);
   const [testLeadId, setTestLeadId] = useState('');
-  const [testando, setTestando] = useState(false);
-  const [name, setName] = useState('');
-  const [triggerTipo, setTriggerTipo] = useState<TriggerTipo | ''>('');
-  const [reactFlowInstance, setReactFlowInstance] = useState<ReactFlowInstance<FlowNode, Edge> | null>(null);
-  const wrapperRef = useRef<HTMLDivElement | null>(null);
-
-  // v1.5.0 — Undo/Redo history stack
-  // Snapshots de { nodes, edges } com max 50 entradas.
-  // O ponteiro `historyIdx` aponta pro estado atual; undo decrementa, redo incrementa.
-  type Snapshot = { nodes: FlowNode[]; edges: Edge[] };
-  const historyRef = useRef<Snapshot[]>([]);
-  const historyIdxRef = useRef<number>(-1);
-  const skipHistoryRef = useRef<boolean>(false);
-  const HISTORY_LIMIT = 50;
-  const [, forceRender] = useState(0);
-
-  function pushHistory(snapshot: Snapshot) {
-    if (skipHistoryRef.current) return;
-    // Trunca o futuro (estados após o ponteiro atual são descartados)
-    const next = historyRef.current.slice(0, historyIdxRef.current + 1);
-    next.push({
-      nodes: snapshot.nodes.map((n) => ({ ...n, data: { ...n.data } })),
-      edges: snapshot.edges.map((e) => ({ ...e })),
-    });
-    // Limite circular: descarta os mais antigos
-    if (next.length > HISTORY_LIMIT) next.shift();
-    historyRef.current = next;
-    historyIdxRef.current = next.length - 1;
-    forceRender((v) => v + 1);
-  }
-
-  function undo() {
-    if (historyIdxRef.current <= 0) return;
-    historyIdxRef.current -= 1;
-    const snap = historyRef.current[historyIdxRef.current];
-    skipHistoryRef.current = true;
-    setNodes(snap.nodes);
-    setEdges(snap.edges);
-    setDirty(true);
-    setTimeout(() => {
-      skipHistoryRef.current = false;
-    }, 0);
-    forceRender((v) => v + 1);
-  }
-
-  function redo() {
-    if (historyIdxRef.current >= historyRef.current.length - 1) return;
-    historyIdxRef.current += 1;
-    const snap = historyRef.current[historyIdxRef.current];
-    skipHistoryRef.current = true;
-    setNodes(snap.nodes);
-    setEdges(snap.edges);
-    setDirty(true);
-    setTimeout(() => {
-      skipHistoryRef.current = false;
-    }, 0);
-    forceRender((v) => v + 1);
-  }
-
-  const canUndo = historyIdxRef.current > 0;
-  const canRedo = historyIdxRef.current < historyRef.current.length - 1;
-
-  // Atalhos: Cmd/Ctrl + Z, Cmd/Ctrl + Shift + Z, Cmd/Ctrl + Y
-  useEffect(() => {
-    function onKey(e: KeyboardEvent) {
-      const cmd = e.metaKey || e.ctrlKey;
-      if (!cmd) return;
-      if (e.key === 'z' || e.key === 'Z') {
-        e.preventDefault();
-        if (e.shiftKey) redo();
-        else undo();
-      } else if (e.key === 'y' || e.key === 'Y') {
-        e.preventDefault();
-        redo();
-      }
-    }
-    window.addEventListener('keydown', onKey);
-    return () => window.removeEventListener('keydown', onKey);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
-
-  // Hydratar nodes/edges quando data chega
-  useEffect(() => {
-    if (!data) return;
-    setName(data.nome);
-    setTriggerTipo(data.triggerTipo ?? '');
-    const initialNodes: FlowNode[] = (data.nos ?? []).map((n, i) => ({
-      id: n.id ?? `node-${i}`,
-      type: 'fluxo',
-      position: { x: n.posX ?? 100 + i * 60, y: n.posY ?? 80 + i * 80 },
-      data: {
-        titulo: n.titulo,
-        tipo: n.tipo,
-        acaoTipo: n.acaoTipo as AcaoTipo | undefined,
-        // Espelha o triggerTipo do fluxo no nó TRIGGER pra o inspector mostrar
-        // a config certa (antes ficava undefined → config do gatilho sumia ao recarregar).
-        triggerTipo:
-          n.tipo === 'TRIGGER' ? (data.triggerTipo as TriggerTipo | undefined) : undefined,
-        config: dedupConfigSaidas((n.config as Record<string, unknown>) ?? {}),
-      },
-    }));
-    // Mapa nó→config pra reconstruir o sourceHandle ciente do MODO do nó de origem.
-    const noById = new Map((data.nos ?? []).map((n) => [n.id, n]));
-    const initialEdges: Edge[] = (data.arestas ?? []).map((e, i) => {
-      const src = noById.get(e.sourceNoId);
-      // O sourceHandle não é persistido (só o label) — reconstruído pelo contrato
-      // central a partir de (label + modo do nó de origem). Ver lib/saidas.ts.
-      const srcData = src
-        ? ({
-            titulo: src.titulo,
-            tipo: src.tipo,
-            acaoTipo: src.acaoTipo as AcaoTipo | undefined,
-            config: (src.config as Record<string, unknown> | undefined) ?? {},
-          } satisfies NodePayload)
-        : undefined;
-      return {
-        id: e.id ?? `edge-${i}`,
-        source: e.sourceNoId,
-        target: e.targetNoId,
-        label: e.label ?? undefined,
-        sourceHandle: reconstruirSourceHandle(e.label, srcData),
-        type: 'removivel',
-        animated: true,
-        style: { stroke: 'var(--border-strong)' },
-      };
-    });
-    // Fluxo manual (sem triggerTipo) que ainda não tem nó de gatilho visual:
-    // insere o "Trigger Manual" no topo E conecta ele aos nós-raiz (sem aresta de
-    // entrada) — senão o disparo começa no gatilho e não chega nas ações.
-    let inseriuManual = false;
-    if (!data.triggerTipo && !initialNodes.some((n) => n.data.tipo === 'TRIGGER')) {
-      const manualId = `manual-${data.id}`;
-      initialNodes.unshift({
-        id: manualId,
-        type: 'fluxo',
-        position: { x: 120, y: 40 },
-        data: { titulo: 'Disparado manualmente', tipo: 'TRIGGER', config: { manual: true, descricao: '' } },
-      });
-      const comEntrada = new Set(initialEdges.map((e) => e.target));
-      for (const n of initialNodes) {
-        if (n.id !== manualId && n.data.tipo !== 'TRIGGER' && !comEntrada.has(n.id)) {
-          initialEdges.push({
-            id: `edge-${manualId}-${n.id}`,
-            source: manualId,
-            target: n.id,
-            type: 'removivel',
-            animated: true,
-            style: { stroke: 'var(--border-strong)' },
-          });
-        }
-      }
-      inseriuManual = true;
-    }
-    setNodes(initialNodes);
-    setEdges(initialEdges);
-    // Marca dirty só quando inserimos o gatilho manual (precisa salvar pra
-    // persistir o nó; "Disparar agora" depende dele estar no backend).
-    setDirty(inseriuManual);
-    // Reset history quando recarrega fluxo
-    historyRef.current = [{ nodes: initialNodes, edges: initialEdges }];
-    historyIdxRef.current = 0;
-    forceRender((v) => v + 1);
-  }, [data, setNodes, setEdges]);
-
-  // Drop handler
-  const onDrop = useCallback(
-    (event: DragEvent<HTMLDivElement>) => {
-      event.preventDefault();
-      if (!reactFlowInstance || !wrapperRef.current) return;
-      const raw = event.dataTransfer.getData('application/fluxo-node');
-      if (!raw) return;
-      const item: PaletteItem = JSON.parse(raw);
-
-      const position = reactFlowInstance.screenToFlowPosition({
-        x: event.clientX,
-        y: event.clientY,
-      });
-
-      const id = `node-${Date.now()}`;
-      const newNode: FlowNode = {
-        id,
-        type: 'fluxo',
-        position,
-        data: {
-          titulo: item.manual ? 'Disparado manualmente' : item.label,
-          tipo: item.tipo,
-          acaoTipo: item.acaoTipo,
-          triggerTipo: item.triggerTipo,
-          config: defaultConfig(item),
-        },
-      };
-      setNodes((nds) => {
-        const next = nds.concat(newNode);
-        pushHistory({ nodes: next, edges });
-        return next;
-      });
-      setDirty(true);
-    },
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    [reactFlowInstance, setNodes, edges],
-  );
-
-  const onDragOver = useCallback((event: DragEvent<HTMLDivElement>) => {
-    event.preventDefault();
-    event.dataTransfer.dropEffect = 'move';
-  }, []);
-
-  // Connection
-  const onConnect = useCallback(
-    (conn: Connection) => {
-      setEdges((eds) => {
-        const next = addEdge(
-          {
-            ...conn,
-            type: 'removivel',
-            animated: true,
-            style: { stroke: 'var(--border-strong)' },
-            // O id do handle de saída vira o label da aresta — contrato central em
-            // lib/saidas.ts (true→Sim, false→Não, roteador: o próprio id).
-            label: labelDaAresta(conn.sourceHandle),
-          },
-          eds,
-        );
-        pushHistory({ nodes, edges: next });
-        return next;
-      });
-      setDirty(true);
-    },
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    [setEdges, nodes],
-  );
-
-  // Save
-  async function handleSave() {
-    setSaving(true);
-    try {
-      const nos: FluxoNoApi[] = nodes.map((n) => ({
-        id: n.id,
-        tipo: n.data.tipo,
-        acaoTipo: n.data.acaoTipo ?? null,
-        titulo: n.data.titulo,
-        config: n.data.config,
-        posX: n.position.x,
-        posY: n.position.y,
-      }));
-      const arestas: FluxoEdgeApi[] = edges.map((e) => ({
-        id: e.id,
-        sourceNoId: e.source,
-        targetNoId: e.target,
-        label: typeof e.label === 'string' ? e.label : null,
-      }));
-      const payload: Record<string, unknown> = {
-        nome: name,
-        nos,
-        arestas,
-      };
-      // Fonte da verdade do gatilho = o nó TRIGGER (o inspector edita ali). Antes
-      // o save só olhava o estado top-level e ignorava troca feita no inspector,
-      // gravando o triggerTipo antigo e deixando a config de filtro órfã.
-      const triggerNode = nodes.find((n) => n.data.tipo === 'TRIGGER');
-      const ttFinal =
-        (triggerNode?.data.triggerTipo as TriggerTipo | undefined) ?? (triggerTipo || undefined);
-      if (ttFinal) payload.triggerTipo = ttFinal;
-      // CRON: a config de horário vive em Fluxo.triggerConfig (o job lê de lá).
-      if (ttFinal === 'CRON_AGENDADO' && triggerNode) {
-        const c = triggerNode.data.config ?? {};
-        payload.triggerConfig = {
-          expressao: (c.expressao as string) ?? '',
-          timezone: (c.timezone as string) ?? 'America/Sao_Paulo',
-        };
-      }
-      await api.put(`/fluxos/${fluxoId}`, payload);
-      toast.success('Fluxo salvo');
-      setDirty(false);
-      onSaved?.();
-      refetch();
-    } catch (err) {
-      toast.error('Falha ao salvar', err instanceof ApiError ? err.message : undefined);
-    } finally {
-      setSaving(false);
-    }
-  }
-
-  // "Disparar agora" do Trigger Manual: roda o fluxo NA HORA, sem pedir lead
-  // (salva antes se estiver sujo, pra o backend ter o nó de gatilho).
-  async function dispararManual() {
-    setTestando(true);
-    try {
-      if (dirty) await handleSave();
-      const r = await api.post<{ execucaoId: string }>('/fluxos/testar', {
-        fluxoId,
-        contexto: {},
-      });
-      toast.success(
-        'Fluxo disparado 🚀',
-        `Execução ${r.execucaoId.slice(0, 8)}… — veja o resultado em Fluxos › "ver erros".`,
-      );
-    } catch (err) {
-      toast.error('Falha ao disparar', err instanceof ApiError ? err.message : undefined);
-    } finally {
-      setTestando(false);
-    }
-  }
-
-  // Dispara um teste manual (POST /fluxos/testar) — salva antes se estiver sujo.
-  async function runTeste() {
-    setTestando(true);
-    try {
-      if (dirty) await handleSave();
-      const r = await api.post<{ execucaoId: string }>('/fluxos/testar', {
-        fluxoId,
-        contexto: testLeadId.trim() ? { leadId: testLeadId.trim() } : {},
-      });
-      toast.success(
-        'Teste disparado 🚀',
-        `Execução ${r.execucaoId.slice(0, 8)}… — acompanhe em Fluxos › Execuções.`,
-      );
-      setTestarAberto(false);
-    } catch (err) {
-      toast.error('Falha ao testar', err instanceof ApiError ? err.message : undefined);
-    } finally {
-      setTestando(false);
-    }
-  }
-
-  // Sync selected node updates back to nodes state
-  function updateSelectedNode(updater: (data: NodePayload) => NodePayload) {
-    if (!selectedNodeId) return;
-    setNodes((nds) => {
-      const next = nds.map((n) =>
-        n.id === selectedNodeId ? { ...n, data: updater(n.data) } : n,
-      );
-      pushHistory({ nodes: next, edges });
-      return next;
-    });
-    setDirty(true);
-  }
-
-  function deleteSelectedNode() {
-    if (!selectedNodeId) return;
-    const nextNodes = nodes.filter((n) => n.id !== selectedNodeId);
-    const nextEdges = edges.filter(
-      (e) => e.source !== selectedNodeId && e.target !== selectedNodeId,
-    );
-    setNodes(nextNodes);
-    setEdges(nextEdges);
-    pushHistory({ nodes: nextNodes, edges: nextEdges });
-    setSelectedNodeId(null);
-    setDirty(true);
-  }
-
-  /**
-   * Remove uma saída do roteador (nó selecionado) E poda as arestas que apontavam
-   * pra ela — senão a aresta fica órfã (handle some) e o ramo nunca mais executa.
-   */
-  function removeSaidaDoNoSelecionado(valor: string) {
-    if (!selectedNodeId) return;
-    const nextNodes = nodes.map((n) =>
-      n.id === selectedNodeId
-        ? {
-            ...n,
-            data: {
-              ...n.data,
-              config: {
-                ...n.data.config,
-                saidas: ((n.data.config.saidas as string[]) ?? []).filter((s) => s !== valor),
-              },
-            },
-          }
-        : n,
-    );
-    const nextEdges = edges.filter((e) => !(e.source === selectedNodeId && e.label === valor));
-    setNodes(nextNodes);
-    setEdges(nextEdges);
-    pushHistory({ nodes: nextNodes, edges: nextEdges });
-    setDirty(true);
-  }
-
-  /**
-   * Renomeia uma saída in-place: atualiza o config E propaga o novo valor pras
-   * arestas (label + sourceHandle, já que o id do handle = valor da saída).
-   */
-  function renameSaidaDoNoSelecionado(antigo: string, novo: string) {
-    if (!selectedNodeId || antigo === novo) return;
-    const nextNodes = nodes.map((n) =>
-      n.id === selectedNodeId
-        ? {
-            ...n,
-            data: {
-              ...n.data,
-              config: {
-                ...n.data.config,
-                saidas: ((n.data.config.saidas as string[]) ?? []).map((s) =>
-                  s === antigo ? novo : s,
-                ),
-              },
-            },
-          }
-        : n,
-    );
-    const nextEdges = edges.map((e) =>
-      e.source === selectedNodeId && e.label === antigo
-        ? { ...e, label: novo, sourceHandle: novo }
-        : e,
-    );
-    setNodes(nextNodes);
-    setEdges(nextEdges);
-    pushHistory({ nodes: nextNodes, edges: nextEdges });
-    setDirty(true);
-  }
-
-  /**
-   * Troca o modo da Condição (simples ↔ roteador) E poda as arestas que deixam de
-   * ter handle no novo modo — senão ficam órfãs (mesmo sintoma do remover saída):
-   * simples só tem Sim/Não; roteador só as saídas atuais + 'default'.
-   */
-  function trocarModoDoNoSelecionado(novoModo: string) {
-    if (!selectedNodeId) return;
-    const no = nodes.find((n) => n.id === selectedNodeId);
-    const saidas = (no?.data.config.saidas as string[]) ?? [];
-    const validos = novoModo === 'roteador' ? [...saidas, 'default'] : ['Sim', 'Não'];
-    const nextNodes = nodes.map((n) =>
-      n.id === selectedNodeId
-        ? { ...n, data: { ...n.data, config: { ...n.data.config, modo: novoModo } } }
-        : n,
-    );
-    const nextEdges = edges.filter(
-      (e) => e.source !== selectedNodeId || validos.includes(String(e.label)),
-    );
-    setNodes(nextNodes);
-    setEdges(nextEdges);
-    pushHistory({ nodes: nextNodes, edges: nextEdges });
-    setDirty(true);
-  }
 
   if (loading || !data) {
     return (
@@ -567,7 +124,7 @@ function FluxoEditorInner({
     );
   }
 
-  const selectedNode = nodes.find((n) => n.id === selectedNodeId) ?? null;
+  const selectedNode = editor.selectedNode;
 
   return (
     <div className="fixed inset-0 z-[110] bg-bg flex flex-col">
@@ -576,10 +133,10 @@ function FluxoEditorInner({
         <IconButton aria-label="Fechar editor" variant="ghost" icon={<XIcon />} onClick={onClose} />
         <div className="flex-1 min-w-0 flex items-center gap-3">
           <Input
-            value={name}
+            value={editor.name}
             onChange={(e) => {
-              setName(e.target.value);
-              setDirty(true);
+              editor.setName(e.target.value);
+              editor.setDirty(true);
             }}
             className="max-w-md font-semibold"
             placeholder="Nome do fluxo"
@@ -590,7 +147,7 @@ function FluxoEditorInner({
           >
             {data.status}
           </Badge>
-          {dirty && (
+          {editor.dirty && (
             <Badge variant="warning" size="sm">
               Alterações não salvas
             </Badge>
@@ -624,8 +181,8 @@ function FluxoEditorInner({
               title="Desfazer (Cmd/Ctrl+Z)"
               variant="ghost"
               icon={<Undo2 className="h-4 w-4" />}
-              onClick={undo}
-              disabled={!canUndo}
+              onClick={editor.undo}
+              disabled={!editor.canUndo}
               data-testid="fluxo-undo"
             />
             <IconButton
@@ -633,8 +190,8 @@ function FluxoEditorInner({
               title="Refazer (Cmd/Ctrl+Shift+Z ou Cmd/Ctrl+Y)"
               variant="ghost"
               icon={<Redo2 className="h-4 w-4" />}
-              onClick={redo}
-              disabled={!canRedo}
+              onClick={editor.redo}
+              disabled={!editor.canRedo}
               data-testid="fluxo-redo"
             />
             <div className="w-px h-6 bg-border mx-1" />
@@ -653,9 +210,9 @@ function FluxoEditorInner({
             Cancelar
           </Button>
           <Button
-            onClick={handleSave}
-            loading={saving}
-            disabled={!dirty}
+            onClick={editor.handleSave}
+            loading={editor.saving}
+            disabled={!editor.dirty}
             leftIcon={<Save className="h-3.5 w-3.5" />}
           >
             Salvar
@@ -692,8 +249,11 @@ function FluxoEditorInner({
                 Cancelar
               </Button>
               <Button
-                onClick={runTeste}
-                loading={testando}
+                onClick={async () => {
+                  const ok = await editor.runTeste(testLeadId);
+                  if (ok) setTestarAberto(false);
+                }}
+                loading={editor.testando}
                 leftIcon={<Play className="h-3.5 w-3.5" />}
               >
                 Rodar teste
@@ -724,53 +284,8 @@ function FluxoEditorInner({
             <Field label="Trigger global" hint="Quando o fluxo dispara">
               <Select
                 size="sm"
-                value={triggerTipo}
-                onChange={(e) => {
-                  const tt = e.target.value as TriggerTipo | '';
-                  setTriggerTipo(tt);
-                  const temTrigger = nodes.some((n) => n.data.tipo === 'TRIGGER');
-                  // Setou pra Manual e não há nó de gatilho → insere o "Trigger
-                  // Manual" no topo e conecta aos nós-raiz (pra o disparo chegar nas ações).
-                  if (tt === '' && !temTrigger) {
-                    const manualId = `node-${Date.now()}`;
-                    const topo = nodes.length
-                      ? Math.min(...nodes.map((n) => n.position.y)) - 110
-                      : 40;
-                    const manual: FlowNode = {
-                      id: manualId,
-                      type: 'fluxo',
-                      position: { x: 120, y: topo },
-                      data: {
-                        titulo: 'Disparado manualmente',
-                        tipo: 'TRIGGER',
-                        config: { manual: true, descricao: '' },
-                      },
-                    };
-                    const comEntrada = new Set(edges.map((ed) => ed.target));
-                    const novasEdges: Edge[] = nodes
-                      .filter((n) => n.data.tipo !== 'TRIGGER' && !comEntrada.has(n.id))
-                      .map((n) => ({
-                        id: `edge-${manualId}-${n.id}`,
-                        source: manualId,
-                        target: n.id,
-                        type: 'removivel',
-                        animated: true,
-                        style: { stroke: 'var(--border-strong)' },
-                      }));
-                    setNodes([manual, ...nodes]);
-                    setEdges([...edges, ...novasEdges]);
-                  } else {
-                    // Sincroniza o nó TRIGGER pra o inspector mostrar a config certa.
-                    setNodes(
-                      nodes.map((n) =>
-                        n.data.tipo === 'TRIGGER'
-                          ? { ...n, data: { ...n.data, triggerTipo: tt || undefined } }
-                          : n,
-                      ),
-                    );
-                  }
-                  setDirty(true);
-                }}
+                value={editor.triggerTipo}
+                onChange={(e) => editor.onChangeTriggerGlobal(e.target.value as TriggerTipo | '')}
               >
                 <option value="">Manual (sem trigger)</option>
                 {(Object.keys(TRIGGER_LABEL) as TriggerTipo[]).map((t) => (
@@ -799,30 +314,24 @@ function FluxoEditorInner({
 
         {/* Canvas */}
         <div
-          ref={wrapperRef}
+          ref={editor.wrapperRef}
           className="flex-1 relative"
-          onDrop={onDrop}
-          onDragOver={onDragOver}
+          onDrop={editor.onDrop}
+          onDragOver={editor.onDragOver}
         >
           <ReactFlow<FlowNode, Edge>
-            nodes={nodes}
-            edges={edges}
-            onNodesChange={(c) => {
-              onNodesChange(c);
-              if (c.some((ch) => ch.type === 'position' && ch.dragging === false)) setDirty(true);
-            }}
-            onEdgesChange={(c) => {
-              onEdgesChange(c);
-              if (c.length > 0) setDirty(true);
-            }}
-            onConnect={onConnect}
-            onInit={setReactFlowInstance}
-            onNodeClick={(_, n) => {
-              setSelectedNodeId(n.id);
+            nodes={editor.nodes}
+            edges={editor.edges}
+            onNodesChange={editor.onNodesChange}
+            onEdgesChange={editor.onEdgesChange}
+            onConnect={editor.onConnect}
+            onInit={editor.onInit}
+            onNodeClick={(e, n) => {
+              editor.onNodeClick(e, n);
               setMobilePanel('inspector'); // mobile: abre o editor do nó (ignorado no desktop)
             }}
             onPaneClick={() => {
-              setSelectedNodeId(null);
+              editor.onPaneClick();
               setMobilePanel(null);
             }}
             nodeTypes={NODE_TYPES}
@@ -851,7 +360,7 @@ function FluxoEditorInner({
             />
           </ReactFlow>
 
-          {nodes.length === 0 && (
+          {editor.nodes.length === 0 && (
             <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
               <div className="text-center text-muted-light flex flex-col items-center gap-2">
                 <Play className="h-8 w-8" />
@@ -874,12 +383,12 @@ function FluxoEditorInner({
           {selectedNode ? (
             <NodeInspector
               node={selectedNode}
-              onUpdate={updateSelectedNode}
-              onDelete={deleteSelectedNode}
-              onRemoveSaida={removeSaidaDoNoSelecionado}
-              onRenameSaida={renameSaidaDoNoSelecionado}
-              onChangeModo={trocarModoDoNoSelecionado}
-              onDisparar={dispararManual}
+              onUpdate={editor.updateSelectedNode}
+              onDelete={editor.deleteSelectedNode}
+              onRemoveSaida={editor.removeSaidaDoNoSelecionado}
+              onRenameSaida={editor.renameSaidaDoNoSelecionado}
+              onChangeModo={editor.trocarModoDoNoSelecionado}
+              onDisparar={editor.dispararManual}
             />
           ) : (
             <div className="p-4 text-center flex flex-col items-center gap-2 mt-8">
