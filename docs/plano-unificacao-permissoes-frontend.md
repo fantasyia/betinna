@@ -4,6 +4,13 @@
 > gate real é sempre o `PermissionsGuard` no backend; o front só esconde botões
 > (UI hint). Ver CLAUDE.md backend **D49** (drift documentado como tolerável).
 
+> **STATUS (2026-06-17):** ✅ **Parte A — gate de ROTA unificado** (commit `cb83ba2`):
+> as 13 rotas com `allowedRoles` viraram `requirePermission` (+8 permissões na matrix
+> espelhando os papéis); a prop `allowedRoles` saiu do `ProtectedRoute`. Provado sem
+> mudança de acesso por `usePermission.test.ts` (45 casos). PersonaBotPage.canEdit
+> (único inline 1:1) migrado. **Falta a Parte B** (checks inline `role===X` nas páginas
+> + os `allowedRoles` do menu lateral em `PageLayout.tsx` — outro espelho descoberto).
+
 ## Estado atual — 3 espelhos + 2 mecanismos de gate
 
 **3 lugares que espelham permissão (divergem):**
