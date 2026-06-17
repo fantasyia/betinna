@@ -356,6 +356,8 @@ model Usuario {
   conversationNotas         ConversationNota[]
   campanhasCriadas          Campanha[]
   notificacoes              Notificacao[]
+  propostas                 Proposta[]
+  movimentosFidelidade      MovimentoFidelidade[]
 
   @@index([role])
   @@index([status])
@@ -648,6 +650,8 @@ model Pedido {
   aprovacaoDesconto        AprovacaoDesconto?
   cancelamentoSolicitacoes PedidoCancelamentoSolicitacao[]
   movimentosFidelidade     MovimentoFidelidade[]
+  ocorrencias              Ocorrencia[]
+  leads                    Lead[]
 
   @@unique([empresaId, numero])
   @@unique([empresaId, numeroOmie])
@@ -769,9 +773,10 @@ model Proposta {
   criadoEm     DateTime @default(now())
   atualizadoEm DateTime @updatedAt
 
-  empresa Empresa        @relation(fields: [empresaId], references: [id], onDelete: Cascade)
-  cliente Cliente        @relation(fields: [clienteId], references: [id])
-  itens   PropostaItem[]
+  empresa         Empresa        @relation(fields: [empresaId], references: [id], onDelete: Cascade)
+  cliente         Cliente        @relation(fields: [clienteId], references: [id])
+  representante   Usuario?       @relation(fields: [representanteId], references: [id], onDelete: SetNull)
+  itens           PropostaItem[]
 
   @@unique([empresaId, numero])
   @@index([empresaId])
@@ -851,12 +856,14 @@ model Lead {
   criadoEm     DateTime @default(now())
   atualizadoEm DateTime @updatedAt
 
-  empresa       Empresa     @relation(fields: [empresaId], references: [id], onDelete: Cascade)
-  representante Usuario?    @relation("LeadRep", fields: [representanteId], references: [id])
-  cliente       Cliente?    @relation(fields: [clienteId], references: [id])
-  funil         Funil?      @relation(fields: [funilId], references: [id], onDelete: SetNull)
-  funilEtapa    FunilEtapa? @relation(fields: [funilEtapaId], references: [id], onDelete: SetNull)
-  tags          LeadTag[]
+  empresa              Empresa              @relation(fields: [empresaId], references: [id], onDelete: Cascade)
+  representante        Usuario?             @relation("LeadRep", fields: [representanteId], references: [id])
+  cliente              Cliente?             @relation(fields: [clienteId], references: [id])
+  pedido               Pedido?              @relation(fields: [pedidoId], references: [id], onDelete: SetNull)
+  funil                Funil?               @relation(fields: [funilId], references: [id], onDelete: SetNull)
+  funilEtapa           FunilEtapa?          @relation(fields: [funilEtapaId], references: [id], onDelete: SetNull)
+  tags                 LeadTag[]
+  formularioRespostas  FormularioResposta[]
 
   @@index([empresaId, etapa])
   @@index([empresaId, funilId, funilEtapaId])
@@ -962,6 +969,7 @@ model Ocorrencia {
 
   empresa     Empresa                @relation(fields: [empresaId], references: [id], onDelete: Cascade)
   cliente     Cliente                @relation(fields: [clienteId], references: [id])
+  pedido      Pedido?                @relation(fields: [pedidoId], references: [id], onDelete: SetNull)
   responsavel Usuario?               @relation("OcorrenciaResp", fields: [responsavelId], references: [id])
   criadoPor   Usuario?               @relation("OcorrenciaCriador", fields: [criadoPorId], references: [id])
   comentarios OcorrenciaComentario[]
@@ -1460,6 +1468,7 @@ model Conversation {
   incident      MarketplaceIncident? @relation(fields: [incidentId], references: [id])
   mensagens     Message[]
   notasInternas ConversationNota[]
+  botRespostas  BotResposta[]
 
   // Unique composto inclui proprietarioId pra permitir múltiplas conversas
   // com o mesmo peer em sessões diferentes (WhatsApp empresa vs do rep João vs
@@ -1525,6 +1534,7 @@ model Message {
 
   conversation Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
   autor        Usuario?     @relation("MessageAutor", fields: [autorUsuarioId], references: [id])
+  botRespostas BotResposta[]
 
   @@unique([conversationId, externalId])
   @@index([conversationId])
@@ -1918,6 +1928,7 @@ model FormularioResposta {
   criadoEm     DateTime @default(now())
 
   formulario Formulario @relation(fields: [formularioId], references: [id], onDelete: Cascade)
+  lead       Lead?      @relation(fields: [leadId], references: [id], onDelete: SetNull)
 
   @@index([formularioId, criadoEm])
   @@index([leadId])
@@ -1951,9 +1962,7 @@ model MullerBotPersona {
 
   /// Sprint 2.2 — Teto de custo (tokens OpenAI) por empresa.
   limiteTokensDiaIn   Int       @default(100000)
-  limiteTokensDiaOut  Int       @default(100000)
   limiteTokensMesIn   Int       @default(2000000)
-  limiteTokensMesOut  Int       @default(2000000)
   /// Quando o bot se auto-pausou por estourar o teto (vale até essa data — virada do dia/mês).
   pausadoPorCustoAte  DateTime?
   /// Throttle do alerta de 80% do teto (no máx. 1 e-mail por dia).
@@ -2099,6 +2108,9 @@ model BotResposta {
   motivoRevisao  String?
   criadoEm       DateTime          @default(now())
 
+  conversation Conversation? @relation(fields: [conversationId], references: [id], onDelete: SetNull)
+  message      Message?      @relation(fields: [messageId], references: [id], onDelete: SetNull)
+
   @@index([empresaId, criadoEm])
   @@index([empresaId, marcadaRevisao])
   @@index([conversationId])
@@ -2206,6 +2218,7 @@ model MovimentoFidelidade {
   cliente    Cliente               @relation(fields: [clienteId], references: [id], onDelete: Cascade)
   pedido     Pedido?               @relation(fields: [pedidoId], references: [id], onDelete: SetNull)
   recompensa RecompensaFidelidade? @relation(fields: [recompensaId], references: [id], onDelete: SetNull)
+  criadoPor  Usuario?              @relation(fields: [criadoPorId], references: [id], onDelete: SetNull)
 
   // Idempotência: 1 movimento por (pedido, tipo). Permite re-execução
   // segura do trigger. Para tipos sem pedidoId (RESGATE/EXPIRACAO/AJUSTE),

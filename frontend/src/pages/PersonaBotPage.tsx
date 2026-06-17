@@ -37,9 +37,7 @@ interface Persona {
   modelo?: string | null;
   ativo: boolean;
   limiteTokensDiaIn: number;
-  limiteTokensDiaOut: number;
   limiteTokensMesIn: number;
-  limiteTokensMesOut: number;
   historicoMensagens: number;
   delayRespostaSegundos: number;
   mostrarDigitando: boolean;
@@ -197,12 +195,9 @@ export default function PersonaBotPage() {
         ativo: true,
         promptCustom: prompt.trim() || null,
         modelo: modelo || null,
-        // Teto de custo — orçamento ÚNICO por período (total de tokens). Guardado
-        // em *In; *Out é mantido igual por compatibilidade, mas a lógica usa só *In.
+        // Teto de custo — orçamento ÚNICO por período (total de tokens).
         limiteTokensDiaIn: limDia,
-        limiteTokensDiaOut: limDia,
         limiteTokensMesIn: limMes,
-        limiteTokensMesOut: limMes,
         // Comportamento da conversa — contexto, delay humano e "digitando…"
         historicoMensagens: histMsgs,
         delayRespostaSegundos: delaySeg,

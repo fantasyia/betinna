@@ -59,9 +59,7 @@ export interface PersonaResult {
   promptCustom?: string | null;
   modelo?: string | null;
   limiteTokensDiaIn: number;
-  limiteTokensDiaOut: number;
   limiteTokensMesIn: number;
-  limiteTokensMesOut: number;
   historicoMensagens: number;
   delayRespostaSegundos: number;
   mostrarDigitando: boolean;
@@ -115,13 +113,7 @@ export class MullerBotPersonaService {
       modelo: dto.modelo?.trim() || null,
       // Sprint 2.2 — teto de custo: só altera quando enviado (omitido = mantém).
       ...(dto.limiteTokensDiaIn !== undefined ? { limiteTokensDiaIn: dto.limiteTokensDiaIn } : {}),
-      ...(dto.limiteTokensDiaOut !== undefined
-        ? { limiteTokensDiaOut: dto.limiteTokensDiaOut }
-        : {}),
       ...(dto.limiteTokensMesIn !== undefined ? { limiteTokensMesIn: dto.limiteTokensMesIn } : {}),
-      ...(dto.limiteTokensMesOut !== undefined
-        ? { limiteTokensMesOut: dto.limiteTokensMesOut }
-        : {}),
       // Comportamento do bot: só altera quando enviado (omitido = mantém).
       ...(dto.historicoMensagens !== undefined
         ? { historicoMensagens: dto.historicoMensagens }
@@ -250,9 +242,7 @@ Se o cliente pedir algo que você não pode resolver, avise com gentileza que um
     promptCustom?: string | null;
     modelo?: string | null;
     limiteTokensDiaIn?: number;
-    limiteTokensDiaOut?: number;
     limiteTokensMesIn?: number;
-    limiteTokensMesOut?: number;
     historicoMensagens?: number;
     delayRespostaSegundos?: number;
     mostrarDigitando?: boolean;
@@ -276,9 +266,7 @@ Se o cliente pedir algo que você não pode resolver, avise com gentileza que um
       promptCustom: row.promptCustom ?? null,
       modelo: row.modelo ?? null,
       limiteTokensDiaIn: row.limiteTokensDiaIn ?? 100000,
-      limiteTokensDiaOut: row.limiteTokensDiaOut ?? 100000,
       limiteTokensMesIn: row.limiteTokensMesIn ?? 2000000,
-      limiteTokensMesOut: row.limiteTokensMesOut ?? 2000000,
       historicoMensagens: row.historicoMensagens ?? 10,
       delayRespostaSegundos: row.delayRespostaSegundos ?? 0,
       mostrarDigitando: row.mostrarDigitando ?? false,
@@ -347,9 +335,7 @@ Se o cliente pedir algo que você não pode resolver, avise com gentileza que um
       promptCustom: null,
       modelo: null,
       limiteTokensDiaIn: 100000,
-      limiteTokensDiaOut: 100000,
       limiteTokensMesIn: 2000000,
-      limiteTokensMesOut: 2000000,
       historicoMensagens: 10,
       delayRespostaSegundos: 0,
       mostrarDigitando: false,
