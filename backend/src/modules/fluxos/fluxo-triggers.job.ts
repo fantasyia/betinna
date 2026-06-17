@@ -1,8 +1,8 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { Cron } from '@nestjs/schedule';
-import { Prisma } from '@prisma/client';
 import { EnvService } from '@config/env.service';
 import { PrismaService } from '@database/prisma.service';
+import { RedisService } from '@database/redis.service';
 import { CronLockService } from '@shared/utils/cron-lock.service';
 import { TransactionalEmailService } from '@integrations/email/transactional-email.service';
 import { FluxoEventBusService } from './fluxo-event-bus.service';
@@ -26,6 +26,7 @@ export class FluxoTriggersJob {
 
   constructor(
     private readonly prisma: PrismaService,
+    private readonly redis: RedisService,
     private readonly bus: FluxoEventBusService,
     private readonly env: EnvService,
     private readonly cronLock: CronLockService,
@@ -146,8 +147,9 @@ export class FluxoTriggersJob {
 
   /**
    * Dispara fluxos com gatilho CRON_AGENDADO quando a expressão cron deles bate
-   * a janela atual. Estado fica em `Fluxo.triggerConfig.proximoEm` (ISO): na 1ª
-   * avaliação só agenda (não dispara); depois, quando `proximoEm <= agora`,
+   * a janela atual. O cursor do próximo disparo fica no REDIS (cron:next:<id>),
+   * NÃO no triggerConfig (config do usuário): na 1ª avaliação só agenda (não
+   * dispara); depois, quando `proximoEm <= agora`,
    * dispara e reagenda a partir de agora (não acumula atrasos). Latência máxima
    * = intervalo deste cron (30min) — pra "9h em ponto" cai entre 9:00 e 9:30.
    */
@@ -166,17 +168,19 @@ export class FluxoTriggersJob {
       const cfg = (f.triggerConfig ?? {}) as {
         expressao?: string;
         timezone?: string;
-        proximoEm?: string;
       };
       const expr = (cfg.expressao ?? '').trim();
       if (!expr) continue;
       const tz = cfg.timezone || CRON_TZ_PADRAO;
-      const proximo = cfg.proximoEm ? new Date(cfg.proximoEm) : null;
+      // Cursor do próximo disparo no Redis (não no triggerConfig) — assim editar a
+      // expressão não mexe no cursor e o cursor não sobrescreve a config do usuário.
+      const proximoStr = await this.redis.get(`cron:next:${f.id}`);
+      const proximo = proximoStr ? new Date(proximoStr) : null;
 
-      // Primeira avaliação: só agenda o próximo (não dispara retroativo).
+      // Primeira avaliação (sem cursor): só agenda o próximo (não dispara retroativo).
       if (!proximo || Number.isNaN(proximo.getTime())) {
         const prox = proximaExecucaoCron(expr, tz, agora);
-        if (prox) await this.gravarProximoCron(f.id, cfg, prox);
+        if (prox) await this.gravarProximoCron(f.id, prox);
         continue;
       }
 
@@ -190,26 +194,19 @@ export class FluxoTriggersJob {
           this.logger.log(`CRON_AGENDADO: fluxo "${f.nome}" disparado (exec ${exec.id})`);
         }
         const prox = proximaExecucaoCron(expr, tz, agora);
-        if (prox) await this.gravarProximoCron(f.id, cfg, prox);
+        if (prox) await this.gravarProximoCron(f.id, prox);
       }
     }
   }
 
-  /** Persiste o próximo horário agendado no triggerConfig (preserva expressao/timezone). */
-  private async gravarProximoCron(
-    fluxoId: string,
-    cfg: { expressao?: string; timezone?: string; proximoEm?: string },
-    prox: Date,
-  ): Promise<void> {
-    await this.prisma.fluxo.update({
-      where: { id: fluxoId },
-      data: {
-        triggerConfig: {
-          ...cfg,
-          proximoEm: prox.toISOString(),
-        } as unknown as Prisma.InputJsonValue,
-      },
-    });
+  /**
+   * Persiste o cursor do próximo disparo no Redis (cron:next:<fluxoId>), sem TTL.
+   * Sobrescrito a cada disparo; chave órfã de fluxo apagado é inofensiva (nunca
+   * mais é lida). Trade-off vs banco: um flush do Redis perde o cursor e o fluxo
+   * reagenda (pula 1 disparo), auto-curando — aceitável p/ agendamento best-effort.
+   */
+  private async gravarProximoCron(fluxoId: string, prox: Date): Promise<void> {
+    await this.redis.set(`cron:next:${fluxoId}`, prox.toISOString());
   }
 
   // ─── Clientes inativos ────────────────────────────────────────────
