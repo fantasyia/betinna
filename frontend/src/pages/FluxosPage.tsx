@@ -19,7 +19,7 @@ import { api, ApiError } from '@/lib/api';
 import { formatNumero } from '@/lib/masks';
 import { useApiQuery, type PaginatedResponse } from '@/hooks/useApiQuery';
 import { useConfirm } from '@/hooks/useConfirm';
-import { useRole } from '@/hooks/usePermission';
+import { usePermission } from '@/hooks/usePermission';
 import { useToast } from '@/components/toast';
 import { PageLayout } from '@/components/PageLayout';
 import { CrmTabs } from '@/components/CrmTabs';
@@ -129,12 +129,11 @@ function baixarJson(filename: string, data: unknown): void {
 }
 
 export default function FluxosPage() {
-  const role = useRole();
+  const canEdit = usePermission('fluxos.edit');
   const toast = useToast();
   const [confirm, ConfirmDialog] = useConfirm();
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
-  const canEdit = ['ADMIN', 'DIRECTOR'].includes(role ?? '');
 
   // Suporte a ?edit=<id> (vindo de Templates após criar fluxo)
   useEffect(() => {

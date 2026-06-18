@@ -1,7 +1,7 @@
 import { useMemo, useState } from 'react';
 import { api, ApiError } from '@/lib/api';
 import { useApiQuery, type PaginatedResponse } from '@/hooks/useApiQuery';
-import { usePermission, useRole } from '@/hooks/usePermission';
+import { usePermission } from '@/hooks/usePermission';
 import { PageLayout } from '@/components/PageLayout';
 import { VendasTabs } from '@/components/VendasTabs';
 import { Table, Pagination, type Column } from '@/components/Table';
@@ -150,8 +150,7 @@ function StatBox({
 function ListaAdmin() {
   // D46+D48: fechar mês / marcar pago / desmarcar = DIRECTOR (mandatário do
   // tenant) OU ADMIN (master da plataforma). GERENTE só visualiza.
-  const role = useRole();
-  const canManage = role === 'DIRECTOR' || role === 'ADMIN';
+  const canManage = usePermission('comissoes.manage');
   const [page, setPage] = useState(1);
   const now = new Date();
   const [mes, setMes] = useState<number | ''>(now.getMonth() + 1);

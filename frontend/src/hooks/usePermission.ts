@@ -57,11 +57,19 @@ export type Permission =
   // Rotas de módulo (unificação de gate)
   | 'incidentes.view'       // ADMIN, DIRECTOR, GERENTE, SAC
   | 'configuracoes.view'    // ADMIN
+  | 'configuracoes.empresa' // ADMIN, DIRECTOR — listar/editar empresas (config multi-tenant)
   | 'permissoes.view'       // ADMIN
   | 'usuarios.view'         // ADMIN, DIRECTOR, GERENTE
   | 'fluxos.view'           // ADMIN, DIRECTOR, GERENTE
+  | 'fluxos.edit'           // ADMIN, DIRECTOR — criar/editar/excluir fluxos
+  | 'funis.view'            // ADMIN, DIRECTOR, GERENTE
   | 'segmentos.view'        // ADMIN, DIRECTOR, GERENTE
-  | 'integracoes.view';     // ADMIN, DIRECTOR, GERENTE
+  | 'integracoes.view'      // ADMIN, DIRECTOR, GERENTE
+  // Ações gated inline (checks em componentes/páginas)
+  | 'aprovacoes.decide'     // ADMIN, DIRECTOR — aprovar/rejeitar descontos e cancelamentos
+  | 'campanhas.manage'      // ADMIN, DIRECTOR, GERENTE — disparar/pausar/cancelar campanhas
+  | 'comissoes.manage'      // ADMIN, DIRECTOR — fechar mês / marcar pago
+  | 'inbox.zerar';          // ADMIN, DIRECTOR — zerar conversa (reset bot)
 
 /**
  * Matriz role × permission.
@@ -91,11 +99,18 @@ const PERMISSION_MATRIX: Record<UserRole, ReadonlySet<Permission>> = {
     'campanhas.delete',
     'incidentes.view',
     'configuracoes.view',
+    'configuracoes.empresa',
     'permissoes.view',
     'usuarios.view',
     'fluxos.view',
+    'fluxos.edit',
+    'funis.view',
     'segmentos.view',
     'integracoes.view',
+    'aprovacoes.decide',
+    'campanhas.manage',
+    'comissoes.manage',
+    'inbox.zerar',
   ]),
   DIRECTOR: new Set<Permission>([
     'mullerbot.config',
@@ -104,6 +119,7 @@ const PERMISSION_MATRIX: Record<UserRole, ReadonlySet<Permission>> = {
     'clientes.edit',
     'clientes.bulkAssign',
     'comissoes.all',
+    'comissoes.manage',
     'whatsapp.empresa',
     'whatsapp.pessoal',
     'relatorios.view',
@@ -112,11 +128,17 @@ const PERMISSION_MATRIX: Record<UserRole, ReadonlySet<Permission>> = {
     'campanhas.create',
     'campanhas.edit',
     'campanhas.delete',
+    'campanhas.manage',
     'incidentes.view',
+    'configuracoes.empresa',
     'usuarios.view',
     'fluxos.view',
+    'fluxos.edit',
+    'funis.view',
     'segmentos.view',
     'integracoes.view',
+    'aprovacoes.decide',
+    'inbox.zerar',
   ]),
   GERENTE: new Set<Permission>([
     'mullerbot.auditoria',
@@ -129,9 +151,11 @@ const PERMISSION_MATRIX: Record<UserRole, ReadonlySet<Permission>> = {
     'campanhas.view',
     'campanhas.create',
     'campanhas.edit',
+    'campanhas.manage',
     'incidentes.view',
     'usuarios.view',
     'fluxos.view',
+    'funis.view',
     'segmentos.view',
     'integracoes.view',
   ]),

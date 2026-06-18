@@ -13,7 +13,7 @@ import {
 } from 'lucide-react';
 import { api, ApiError } from '@/lib/api';
 import { useApiQuery, type PaginatedResponse } from '@/hooks/useApiQuery';
-import { useRole } from '@/hooks/usePermission';
+import { usePermission } from '@/hooks/usePermission';
 import { PageLayout } from '@/components/PageLayout';
 import { VendasTabs } from '@/components/VendasTabs';
 import { StateView } from '@/components/StateView';
@@ -278,8 +278,7 @@ const CANCEL_STATUS_LABEL: Record<CancelamentoStatus, string> = {
 };
 
 function CancelamentosTab() {
-  const role = useRole();
-  const canDecide = role === 'DIRECTOR' || role === 'ADMIN';
+  const canDecide = usePermission('aprovacoes.decide');
   const [status, setStatus] = useState<string>('PENDENTE');
   const [page, setPage] = useState(1);
   const [decidir, setDecidir] = useState<{

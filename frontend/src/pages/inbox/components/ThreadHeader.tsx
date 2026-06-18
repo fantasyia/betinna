@@ -9,6 +9,7 @@ import {
 } from 'lucide-react';
 import { Avatar, Button, ChannelBadge, IconButton } from '@/components/ui';
 import type { UserRole } from '@/types/auth';
+import { hasPermission } from '@/hooks/usePermission';
 import type { Conversation, ConversationStatus } from '../lib/types';
 import { CANAL_LABEL, STATUS_LABEL } from '../lib/canais';
 import { fmtPeer } from '../lib/format';
@@ -52,8 +53,7 @@ export function ThreadHeader({
   onCriarPedido: () => void;
 }) {
   const c = conv;
-  // "Zerar conversa" (testar bot): confirma em 2 cliques. ADMIN/DIRECTOR.
-  const podeZerar = role === 'ADMIN' || role === 'DIRECTOR';
+  const podeZerar = hasPermission(role, 'inbox.zerar');
   const [confirmZerar, setConfirmZerar] = useState(false);
 
   // Telefone formatado do contato. Preferimos o telefone REAL resolvido no backend

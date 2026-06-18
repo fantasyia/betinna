@@ -197,3 +197,151 @@ describe('integracoes.view', () => {
     expect(hasPermission('REP', 'integracoes.view')).toBe(false);
   });
 });
+
+// ---------------------------------------------------------------------------
+// aprovacoes.decide — inline check original: role === 'DIRECTOR' || role === 'ADMIN'
+// ---------------------------------------------------------------------------
+describe('aprovacoes.decide', () => {
+  it('ADMIN tem acesso', () => {
+    expect(hasPermission('ADMIN', 'aprovacoes.decide')).toBe(true);
+  });
+  it('DIRECTOR tem acesso', () => {
+    expect(hasPermission('DIRECTOR', 'aprovacoes.decide')).toBe(true);
+  });
+  it('GERENTE NÃO tem acesso', () => {
+    expect(hasPermission('GERENTE', 'aprovacoes.decide')).toBe(false);
+  });
+  it('SAC NÃO tem acesso', () => {
+    expect(hasPermission('SAC', 'aprovacoes.decide')).toBe(false);
+  });
+  it('REP NÃO tem acesso', () => {
+    expect(hasPermission('REP', 'aprovacoes.decide')).toBe(false);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// campanhas.manage — inline check original: ['ADMIN','DIRECTOR','GERENTE'].includes(role)
+// ---------------------------------------------------------------------------
+describe('campanhas.manage', () => {
+  it('ADMIN tem acesso', () => {
+    expect(hasPermission('ADMIN', 'campanhas.manage')).toBe(true);
+  });
+  it('DIRECTOR tem acesso', () => {
+    expect(hasPermission('DIRECTOR', 'campanhas.manage')).toBe(true);
+  });
+  it('GERENTE tem acesso', () => {
+    expect(hasPermission('GERENTE', 'campanhas.manage')).toBe(true);
+  });
+  it('SAC NÃO tem acesso', () => {
+    expect(hasPermission('SAC', 'campanhas.manage')).toBe(false);
+  });
+  it('REP NÃO tem acesso', () => {
+    expect(hasPermission('REP', 'campanhas.manage')).toBe(false);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// comissoes.manage — inline check original: role === 'DIRECTOR' || role === 'ADMIN'
+// ---------------------------------------------------------------------------
+describe('comissoes.manage', () => {
+  it('ADMIN tem acesso', () => {
+    expect(hasPermission('ADMIN', 'comissoes.manage')).toBe(true);
+  });
+  it('DIRECTOR tem acesso', () => {
+    expect(hasPermission('DIRECTOR', 'comissoes.manage')).toBe(true);
+  });
+  it('GERENTE NÃO tem acesso', () => {
+    expect(hasPermission('GERENTE', 'comissoes.manage')).toBe(false);
+  });
+  it('SAC NÃO tem acesso', () => {
+    expect(hasPermission('SAC', 'comissoes.manage')).toBe(false);
+  });
+  it('REP NÃO tem acesso', () => {
+    expect(hasPermission('REP', 'comissoes.manage')).toBe(false);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// inbox.zerar — inline check original: role === 'ADMIN' || role === 'DIRECTOR'
+// ---------------------------------------------------------------------------
+describe('inbox.zerar', () => {
+  it('ADMIN tem acesso', () => {
+    expect(hasPermission('ADMIN', 'inbox.zerar')).toBe(true);
+  });
+  it('DIRECTOR tem acesso', () => {
+    expect(hasPermission('DIRECTOR', 'inbox.zerar')).toBe(true);
+  });
+  it('GERENTE NÃO tem acesso', () => {
+    expect(hasPermission('GERENTE', 'inbox.zerar')).toBe(false);
+  });
+  it('SAC NÃO tem acesso', () => {
+    expect(hasPermission('SAC', 'inbox.zerar')).toBe(false);
+  });
+  it('REP NÃO tem acesso', () => {
+    expect(hasPermission('REP', 'inbox.zerar')).toBe(false);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// fluxos.edit — inline check original: ['ADMIN','DIRECTOR'].includes(role)
+// ---------------------------------------------------------------------------
+describe('fluxos.edit', () => {
+  it('ADMIN tem acesso', () => {
+    expect(hasPermission('ADMIN', 'fluxos.edit')).toBe(true);
+  });
+  it('DIRECTOR tem acesso', () => {
+    expect(hasPermission('DIRECTOR', 'fluxos.edit')).toBe(true);
+  });
+  it('GERENTE NÃO tem acesso', () => {
+    expect(hasPermission('GERENTE', 'fluxos.edit')).toBe(false);
+  });
+  it('SAC NÃO tem acesso', () => {
+    expect(hasPermission('SAC', 'fluxos.edit')).toBe(false);
+  });
+  it('REP NÃO tem acesso', () => {
+    expect(hasPermission('REP', 'fluxos.edit')).toBe(false);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// configuracoes.empresa — inline check original: role === 'ADMIN' || role === 'DIRECTOR'
+// FIX: rota /configuracoes era ADMIN-only mas a página esperava ADMIN+DIRECTOR
+// ---------------------------------------------------------------------------
+describe('configuracoes.empresa', () => {
+  it('ADMIN tem acesso', () => {
+    expect(hasPermission('ADMIN', 'configuracoes.empresa')).toBe(true);
+  });
+  it('DIRECTOR tem acesso', () => {
+    expect(hasPermission('DIRECTOR', 'configuracoes.empresa')).toBe(true);
+  });
+  it('GERENTE NÃO tem acesso', () => {
+    expect(hasPermission('GERENTE', 'configuracoes.empresa')).toBe(false);
+  });
+  it('SAC NÃO tem acesso', () => {
+    expect(hasPermission('SAC', 'configuracoes.empresa')).toBe(false);
+  });
+  it('REP NÃO tem acesso', () => {
+    expect(hasPermission('REP', 'configuracoes.empresa')).toBe(false);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// funis.view — inline check original: role === 'ADMIN' || role === 'DIRECTOR' || role === 'GERENTE'
+// ---------------------------------------------------------------------------
+describe('funis.view', () => {
+  it('ADMIN tem acesso', () => {
+    expect(hasPermission('ADMIN', 'funis.view')).toBe(true);
+  });
+  it('DIRECTOR tem acesso', () => {
+    expect(hasPermission('DIRECTOR', 'funis.view')).toBe(true);
+  });
+  it('GERENTE tem acesso', () => {
+    expect(hasPermission('GERENTE', 'funis.view')).toBe(true);
+  });
+  it('SAC NÃO tem acesso', () => {
+    expect(hasPermission('SAC', 'funis.view')).toBe(false);
+  });
+  it('REP NÃO tem acesso', () => {
+    expect(hasPermission('REP', 'funis.view')).toBe(false);
+  });
+});

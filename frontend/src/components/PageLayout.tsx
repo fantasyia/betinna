@@ -58,7 +58,6 @@ interface NavItem {
   label: string;
   icon: LucideIcon;
   permission?: Parameters<typeof usePermission>[0];
-  allowedRoles?: Array<'ADMIN' | 'DIRECTOR' | 'GERENTE' | 'SAC' | 'REP'>;
   badge?: 'new' | 'beta';
   /** F5 — qual contador de novidade exibe o numerinho neste item. */
   badgeKey?: keyof BadgeCounts;
@@ -278,7 +277,6 @@ function Sidebar({
 
   function canSee(item: NavItem): boolean {
     if (item.permission && !perms[item.permission as keyof typeof perms]) return false;
-    if (item.allowedRoles && (!role || !item.allowedRoles.includes(role))) return false;
     return true;
   }
 

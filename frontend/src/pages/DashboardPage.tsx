@@ -425,11 +425,7 @@ function TopRepsList({
  * abrindo no funil PADRÃO da empresa — o `isPadrao`, que `/funis` ordena primeiro.
  */
 function FunilCard() {
-  // Funis são gerenciados por admin-tier (kanban.view). O tipo Permission do
-  // frontend não tem 'kanban.view', então usamos o role como proxy — o backend
-  // é o gate real.
-  const role = useRole();
-  const canSeeFunis = role === 'ADMIN' || role === 'DIRECTOR' || role === 'GERENTE';
+  const canSeeFunis = usePermission('funis.view');
   const [funilId, setFunilId] = useState('');
 
   // Lista de funis pro seletor — só pra quem pode ver kanban.

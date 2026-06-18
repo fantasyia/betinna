@@ -318,7 +318,7 @@ const router = createBrowserRouter([
     path: '/configuracoes',
     element: (
       <ErrorBoundary>
-        <ProtectedRoute requirePermission="configuracoes.view">
+        <ProtectedRoute requirePermission="configuracoes.empresa">
           <PageSuspense>
             <ConfiguracoesPage />
           </PageSuspense>

@@ -2,7 +2,7 @@ import { useMemo, useState } from 'react';
 import { api, ApiError } from '@/lib/api';
 import { formatPercent } from '@/lib/masks';
 import { useApiQuery, type PaginatedResponse } from '@/hooks/useApiQuery';
-import { usePermission, useRole } from '@/hooks/usePermission';
+import { usePermission } from '@/hooks/usePermission';
 import { PageLayout } from '@/components/PageLayout';
 import { CrmTabs } from '@/components/CrmTabs';
 import { Table, Pagination, type Column } from '@/components/Table';
@@ -252,8 +252,7 @@ export default function CampanhasPage() {
   const canCreatePerm = usePermission('campanhas.create');
   const canEditPerm = usePermission('campanhas.edit');
   const canCreate = canCreatePerm || canEditPerm;
-  const role = useRole();
-  const canManage = ['ADMIN', 'DIRECTOR', 'GERENTE'].includes(role ?? '');
+  const canManage = usePermission('campanhas.manage');
   const toast = useToast();
 
   const [page, setPage] = useState(1);

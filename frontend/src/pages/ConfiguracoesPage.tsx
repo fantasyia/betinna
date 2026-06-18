@@ -2,7 +2,7 @@ import { useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { api, ApiError } from '@/lib/api';
 import { useApiQuery, type PaginatedResponse } from '@/hooks/useApiQuery';
-import { useRole } from '@/hooks/usePermission';
+import { usePermission } from '@/hooks/usePermission';
 import { useEmpresaLogo } from '@/hooks/useEmpresaLogo';
 import { PageLayout } from '@/components/PageLayout';
 import { SistemaTabs } from '@/components/SistemaTabs';
@@ -52,14 +52,13 @@ function fmtDate(d: string | null | undefined) {
 }
 
 export default function ConfiguracoesPage() {
-  const role = useRole();
   const toast = useToast();
   // D46+D48: listar e editar empresas = ADMIN (master cross-tenant) OU
   // DIRECTOR (mandatário do tenant). Criar nova continua ADMIN-only (setup
   // multi-tenant — DIRECTOR não cria outro tenant, é mandatário do dele).
-  const podeListar = role === 'ADMIN' || role === 'DIRECTOR';
-  const podeCriarEmpresa = role === 'ADMIN';
-  const podeEditarEmpresa = role === 'ADMIN' || role === 'DIRECTOR';
+  const podeListar = usePermission('configuracoes.empresa');
+  const podeCriarEmpresa = usePermission('configuracoes.view');
+  const podeEditarEmpresa = usePermission('configuracoes.empresa');
 
   const [tab, setTab] = useState<Tab>('empresas');
   const [page, setPage] = useState(1);
