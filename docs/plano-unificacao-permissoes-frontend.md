@@ -4,12 +4,18 @@
 > gate real é sempre o `PermissionsGuard` no backend; o front só esconde botões
 > (UI hint). Ver CLAUDE.md backend **D49** (drift documentado como tolerável).
 
-> **STATUS (2026-06-17):** ✅ **Parte A — gate de ROTA unificado** (commit `cb83ba2`):
-> as 13 rotas com `allowedRoles` viraram `requirePermission` (+8 permissões na matrix
-> espelhando os papéis); a prop `allowedRoles` saiu do `ProtectedRoute`. Provado sem
-> mudança de acesso por `usePermission.test.ts` (45 casos). PersonaBotPage.canEdit
-> (único inline 1:1) migrado. **Falta a Parte B** (checks inline `role===X` nas páginas
-> + os `allowedRoles` do menu lateral em `PageLayout.tsx` — outro espelho descoberto).
+> **STATUS (2026-06-17):** ✅ **CONCLUÍDO — Partes A e B** (commits `cb83ba2` + `8bb07b9`).
+>
+> **Parte A** (commit `cb83ba2`): 13 rotas `allowedRoles`→`requirePermission` (+8 permissões
+> na matrix); prop `allowedRoles` removida de `ProtectedRoute`. PersonaBotPage.canEdit migrado.
+> Provado por `usePermission.test.ts` (45 casos sem regressão).
+>
+> **Parte B** (commit `8bb07b9`): +7 permissões (aprovacoes.decide, campanhas.manage,
+> comissoes.manage, inbox.zerar, fluxos.edit, configuracoes.empresa, funis.view). Todos os
+> checks inline `role===X` substituídos por `usePermission`/`hasPermission` em 7 páginas +
+> ThreadHeader. PageLayout: dead code `allowedRoles` removido do NavItem e `canSee`. Fix de
+> bug: rota /configuracoes era ADMIN-only mas a página esperava ADMIN+DIRECTOR → corrigido
+> via `configuracoes.empresa`. Provado por `usePermission.test.ts` (80 casos, 35 novos).
 
 ## Estado atual — 3 espelhos + 2 mecanismos de gate
 
