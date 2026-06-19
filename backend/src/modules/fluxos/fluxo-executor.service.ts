@@ -244,8 +244,16 @@ export class FluxoExecutorService {
       );
     }
 
+    // CONVERSAR_IA que desviou pela saída "erro" (whatsapp_falha / ia_*): loga o
+    // passo como FALHOU (aparece VERMELHO no histórico, com o motivo) — SEM
+    // relançar (o erro já foi tratado/roteado; não queremos retry do BullMQ).
+    // Antes ficava verde "Concluída sem erros", mascarando que nada foi enviado.
+    if (roteado && !erroMsg) {
+      erroMsg = `Não enviado — falha "${tipoErro ?? 'erro'}" (seguiu a saída "erro" do nó)`;
+    }
+
     // Registra log do passo
-    const logStatus = sucesso ? ('CONCLUIDO' as const) : ('FALHOU' as const);
+    const logStatus = sucesso && !roteado ? ('CONCLUIDO' as const) : ('FALHOU' as const);
     await this.prisma.fluxoExecucaoLog.create({
       data: {
         execucaoId,

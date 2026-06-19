@@ -1,5 +1,5 @@
 import { OnWorkerEvent, Processor, WorkerHost } from '@nestjs/bullmq';
-import { Logger } from '@nestjs/common';
+import { Logger, type OnApplicationBootstrap } from '@nestjs/common';
 import type { Job } from 'bullmq';
 import { PrismaService } from '@database/prisma.service';
 import { DeadLetterService } from '@modules/dead-letter/dead-letter.service';
@@ -14,9 +14,15 @@ import { FluxoExecutorService } from './fluxo-executor.service';
  *
  * Concorrência: 5 jobs simultâneos — configurável via `concurrency`.
  * Retry: 3 tentativas com backoff exponencial (configurado no producer).
+ *
+ * ⚠️ Rodam SÓ na API: as ações de fluxo enviam WhatsApp pelo socket Baileys, que
+ * é EXCLUSIVO da API (o worker não abre socket — D38, anti-conflito de sessão).
+ * Se o worker processasse os jobs, todo CONVERSAR_IA/ENVIAR_WHATSAPP falharia com
+ * "whatsapp_falha". Por isso, no processo worker este processador se pausa no
+ * boot e os jobs de fluxo rodam todos na API (onde o socket vive).
  */
 @Processor(FLUXO_QUEUE, { concurrency: 5 })
-export class FluxoExecutorProcessor extends WorkerHost {
+export class FluxoExecutorProcessor extends WorkerHost implements OnApplicationBootstrap {
   private readonly logger = new Logger(FluxoExecutorProcessor.name);
 
   constructor(
@@ -25,6 +31,22 @@ export class FluxoExecutorProcessor extends WorkerHost {
     private readonly deadLetter: DeadLetterService,
   ) {
     super();
+  }
+
+  async onApplicationBootstrap(): Promise<void> {
+    if (process.env.SERVICE_TYPE === 'worker') {
+      try {
+        await this.worker.pause();
+        this.logger.warn(
+          'SERVICE_TYPE=worker — processador de fluxo PAUSADO (socket WhatsApp é API-only). ' +
+            'Jobs de fluxo rodam na API.',
+        );
+      } catch (err) {
+        this.logger.warn(
+          `Falha ao pausar processador de fluxo no worker: ${err instanceof Error ? err.message : String(err)}`,
+        );
+      }
+    }
   }
 
   async process(job: Job<FluxoStepJobData>): Promise<void> {
