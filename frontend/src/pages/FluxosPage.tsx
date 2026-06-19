@@ -719,6 +719,43 @@ function fmtData(s?: string | null): string {
   }
 }
 
+/** Resumo do histórico: contagens por status + leads distintos processados. */
+function ExecResumo({ execs }: { execs: ExecItem[] }) {
+  const total = execs.length;
+  const concluidas = execs.filter((e) => e.status === 'CONCLUIDO').length;
+  const falhas = execs.filter((e) => e.status === 'FALHOU').length;
+  const aguardando = execs.filter((e) => e.status === 'AGUARDANDO').length;
+  const leads = new Set(
+    execs
+      .map((e) => (e.contexto && typeof e.contexto.leadId === 'string' ? e.contexto.leadId : null))
+      .filter((x): x is string => Boolean(x)),
+  ).size;
+
+  const itens: Array<{ label: string; valor: number; cor?: string }> = [
+    { label: 'Execuções', valor: total },
+    { label: 'Concluídas', valor: concluidas, cor: 'text-success' },
+    { label: 'Falhas', valor: falhas, cor: falhas > 0 ? 'text-danger' : undefined },
+    { label: 'Aguardando', valor: aguardando, cor: aguardando > 0 ? 'text-warning' : undefined },
+    { label: 'Leads', valor: leads },
+  ];
+
+  return (
+    <div className="flex flex-wrap gap-2 mb-3" data-testid="exec-resumo">
+      {itens.map((it) => (
+        <div
+          key={it.label}
+          className="flex-1 min-w-[80px] rounded-md border border-border bg-bg-alt px-3 py-2"
+        >
+          <div className="text-[10px] uppercase tracking-wide text-muted">{it.label}</div>
+          <div className={cn('text-lg font-bold tabular', it.cor ?? 'text-text')}>
+            {formatNumero(it.valor)}
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
 function ExecucoesModal({ fluxo, onClose }: { fluxo: FluxoListItem; onClose: () => void }) {
   const { data, loading, error, refetch } = useApiQuery<PaginatedResponse<ExecItem>>(
     `/fluxos/${fluxo.id}/execucoes?limit=30`,
@@ -749,6 +786,8 @@ function ExecucoesModal({ fluxo, onClose }: { fluxo: FluxoListItem; onClose: () 
             className="border-0"
           />
         ) : (
+        <>
+        <ExecResumo execs={data.data} />
         <div className="flex flex-col gap-2 max-h-[60vh] overflow-y-auto pr-1">
           {data.data.map((ex) => {
             const leadId =
@@ -818,6 +857,7 @@ function ExecucoesModal({ fluxo, onClose }: { fluxo: FluxoListItem; onClose: () 
             );
           })}
         </div>
+        </>
         )}
       </StateView>
     </Dialog>

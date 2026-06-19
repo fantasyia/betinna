@@ -14,6 +14,7 @@ import {
   type CronPreviewResp,
   type CronWizardCfg,
 } from '@/pages/fluxo/lib/cron';
+import { CronVisualBuilder } from './CronVisualBuilder';
 
 /**
  * CronTriggerConfig — config do gatilho "Cron agendado".
@@ -52,6 +53,15 @@ export function CronTriggerConfig({
 
   const [preview, setPreview] = useState<CronPreviewResp | null>(null);
   const [carregando, setCarregando] = useState(false);
+  // Sub-modo do Avançado: editar a expressão crua (texto) ou pelo construtor visual.
+  const [usarBuilder, setUsarBuilder] = useState(false);
+
+  function setExpressaoRaw(expr: string) {
+    onUpdate((d) => ({
+      ...d,
+      config: { ...d.config, expressao: expr, expressoes: expr.trim() ? [expr] : [] },
+    }));
+  }
 
   // Inicializa as expressões no modo wizard se ainda não houver.
   useEffect(() => {
@@ -355,23 +365,32 @@ export function CronTriggerConfig({
         </>
       ) : (
         <>
-          <Field label="Expressão cron" hint="Ex: 0 9 * * 1-5 (9h, dias úteis) · */15 * * * * (a cada 15min)">
-            <Input
-              value={expressaoRaw}
-              data-testid="cron-expressao-raw"
-              onChange={(e) =>
-                onUpdate((d) => ({
-                  ...d,
-                  config: {
-                    ...d.config,
-                    expressao: e.target.value,
-                    expressoes: e.target.value.trim() ? [e.target.value] : [],
-                  },
-                }))
-              }
-              placeholder="min hora dia mês dia-semana"
-            />
-          </Field>
+          <div className="flex items-center justify-between">
+            <span className="text-[11px] text-muted">
+              {usarBuilder ? 'Construtor visual' : 'Expressão crua'}
+            </span>
+            <button
+              type="button"
+              data-testid="cron-builder-toggle"
+              className="text-[11px] text-primary hover:underline"
+              onClick={() => setUsarBuilder((v) => !v)}
+            >
+              {usarBuilder ? 'Editar como texto' : '🔧 Usar construtor'}
+            </button>
+          </div>
+
+          {usarBuilder ? (
+            <CronVisualBuilder value={expressaoRaw} onChange={setExpressaoRaw} />
+          ) : (
+            <Field label="Expressão cron" hint="Ex: 0 9 * * 1-5 (9h, dias úteis) · */15 * * * * (a cada 15min)">
+              <Input
+                value={expressaoRaw}
+                data-testid="cron-expressao-raw"
+                onChange={(e) => setExpressaoRaw(e.target.value)}
+                placeholder="min hora dia mês dia-semana"
+              />
+            </Field>
+          )}
           {((config.cronHorarios as string[] | undefined)?.length ?? 0) > 1 && (
             <p className="text-[10px] text-warning -mt-1.5">
               O modo simples tinha {(config.cronHorarios as string[]).length} horários — aqui você
