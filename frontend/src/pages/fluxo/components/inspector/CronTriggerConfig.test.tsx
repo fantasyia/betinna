@@ -156,6 +156,20 @@ describe('CronTriggerConfig', () => {
     expect(onUpdate.last!.config.expressoes).toEqual(['0 9 * * 1-5', '0 14 * * 1-5']);
   });
 
+  it('marcar "pular feriados" grava pularFeriados', () => {
+    const data = makeData({
+      cronFreq: 'todo_dia',
+      cronHorario: '09:00',
+      timezone: 'America/Sao_Paulo',
+      expressoes: ['0 9 * * *'],
+    });
+    const onUpdate = makeOnUpdate(data);
+    render(<CronTriggerConfig config={data.config} onUpdate={onUpdate} />);
+
+    fireEvent.click(screen.getByTestId('cron-pular-feriados'));
+    expect(onUpdate.last!.config.pularFeriados).toBe(true);
+  });
+
   it('mudar Fuso horário grava timezone (config-only)', () => {
     const data = makeData({
       cronFreq: 'todo_dia',

@@ -162,7 +162,7 @@ export class FluxosController {
   @ApiOperation({ summary: 'Valida expressão(ões) cron e devolve as próximas execuções' })
   cronPreview(@Body(new ZodValidationPipe(cronPreviewSchema)) dto: CronPreviewDto) {
     const exprs = dto.expressoes?.length ? dto.expressoes : dto.expressao ? [dto.expressao] : [];
-    return previewCrons(exprs, dto.timezone ?? CRON_TZ_PADRAO);
+    return previewCrons(exprs, dto.timezone ?? CRON_TZ_PADRAO, 5, dto.pularFeriados ?? false);
   }
 
   // ⚠ Declarar ANTES de `:id/metricas` — senão `:id` captura "cron".

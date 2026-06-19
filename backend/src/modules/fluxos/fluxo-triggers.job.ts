@@ -9,6 +9,7 @@ import { FluxoEventBusService } from './fluxo-event-bus.service';
 import { ConversarIaService } from './conversar-ia.service';
 import { CronMetricsService } from './cron-metrics.service';
 import { proximaExecucaoCrons, CRON_TZ_PADRAO } from './cron.util';
+import { ehFeriadoNacional } from './feriados.util';
 
 /**
  * FluxoTriggersJob — cron jobs que disparam fluxos com trigger baseado em tempo.
@@ -184,6 +185,7 @@ export class FluxoTriggersJob {
         expressao?: string;
         expressoes?: string[];
         timezone?: string;
+        pularFeriados?: boolean;
       };
       // `expressoes` (múltiplos horários/regras) tem precedência; fallback p/ o
       // `expressao` legado de fluxos salvos antes do suporte a múltiplas regras.
@@ -205,8 +207,11 @@ export class FluxoTriggersJob {
       }
 
       if (proximo.getTime() <= agora.getTime()) {
+        // Opção "pular feriados": no feriado nacional, NÃO dispara (mas avança o
+        // cursor pra não re-disparar). O cursor advance abaixo cuida disso.
+        const noFeriado = cfg.pularFeriados === true && ehFeriadoNacional(proximo, tz);
         const triggerNo = f.nos[0];
-        if (triggerNo) {
+        if (triggerNo && !noFeriado) {
           const exec = await this.prisma.fluxoExecucao.create({
             data: {
               fluxoId: f.id,
@@ -219,6 +224,8 @@ export class FluxoTriggersJob {
           // Métrica de latência: atraso entre o horário agendado e o disparo real.
           await this.cronMetrics.registrar(agora.getTime() - proximo.getTime());
           this.logger.log(`CRON_AGENDADO: fluxo "${f.nome}" disparado (exec ${exec.id})`);
+        } else if (noFeriado) {
+          this.logger.log(`CRON_AGENDADO: fluxo "${f.nome}" pulado (feriado nacional)`);
         }
         const prox = proximaExecucaoCrons(exprs, tz, agora);
         if (prox) await this.gravarProximoCron(f.id, prox);

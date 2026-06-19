@@ -72,6 +72,19 @@ describe('previewCrons (múltiplas expressões)', () => {
   it('array vazio → inválido', () => {
     expect(previewCrons([]).valido).toBe(false);
   });
+
+  it('pularFeriados descarta datas em feriado nacional', () => {
+    // "09:00 todo 7 de setembro" = Independência (feriado fixo) → com filtro,
+    // TODAS as ocorrências caem em feriado e a preview fica vazia.
+    const semFiltro = previewCrons(['0 9 7 9 *'], 'America/Sao_Paulo', 5, false);
+    const comFiltro = previewCrons(['0 9 7 9 *'], 'America/Sao_Paulo', 5, true);
+    expect(semFiltro.proximas.length).toBe(5);
+    expect(semFiltro.proximas.every((p) => p.iso.slice(5, 10) === '09-07')).toBe(true);
+    expect(comFiltro.valido).toBe(true);
+    expect(comFiltro.proximas.length).toBe(0);
+    // Caso degenerado (toda ocorrência é feriado) varre o cap de iterações —
+    // timeout folgado pra não flakear no limite de 5s padrão do vitest.
+  }, 20_000);
 });
 
 describe('proximaExecucaoCron', () => {

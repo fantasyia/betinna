@@ -43,6 +43,7 @@ export function CronTriggerConfig({
   const janelaFim = (config.cronJanelaFim as string) ?? '18';
   const janelaDias = (config.cronJanelaDias as string) ?? 'dias_uteis';
   const timezone = (config.timezone as string) ?? 'America/Sao_Paulo';
+  const pularFeriados = config.pularFeriados === true;
   const expressaoRaw = (config.expressao as string) ?? '';
 
   // Expressões efetivas (preview/tradução): plural tem precedência; fallback singular.
@@ -85,7 +86,7 @@ export function CronTriggerConfig({
     setCarregando(true);
     const t = setTimeout(() => {
       api
-        .post<CronPreviewResp>('/fluxos/cron/preview', { expressoes, timezone })
+        .post<CronPreviewResp>('/fluxos/cron/preview', { expressoes, timezone, pularFeriados })
         .then((r) => {
           if (!cancel) setPreview(r);
         })
@@ -101,7 +102,7 @@ export function CronTriggerConfig({
       clearTimeout(t);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [exprKey, timezone]);
+  }, [exprKey, timezone, pularFeriados]);
 
   // Patch do wizard: atualiza o campo E recalcula as expressões.
   function patchWizard(patch: Partial<CronWizardCfg>) {
@@ -415,6 +416,19 @@ export function CronTriggerConfig({
           ))}
         </Select>
       </Field>
+
+      {/* Pular feriados nacionais */}
+      <label className="flex items-center gap-2 text-[12px] text-text cursor-pointer select-none">
+        <input
+          type="checkbox"
+          data-testid="cron-pular-feriados"
+          checked={pularFeriados}
+          onChange={(e) =>
+            onUpdate((d) => ({ ...d, config: { ...d.config, pularFeriados: e.target.checked } }))
+          }
+        />
+        Não rodar em feriados nacionais
+      </label>
 
       {/* Tradução humana */}
       {traducao && preview?.valido !== false && (

@@ -180,6 +180,7 @@ export const cronPreviewSchema = z
     expressao: z.string().max(120).optional(),
     expressoes: z.array(z.string().max(120)).max(20).optional(),
     timezone: z.string().max(64).optional(),
+    pularFeriados: z.boolean().optional(),
   })
   .refine(
     (d) => (d.expressoes && d.expressoes.length > 0) || (d.expressao && d.expressao.length > 0),

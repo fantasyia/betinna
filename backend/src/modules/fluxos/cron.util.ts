@@ -1,4 +1,5 @@
 import parser from 'cron-parser';
+import { ehFeriadoNacional } from './feriados.util';
 
 /** Fuso padrão do sistema (BR). */
 export const CRON_TZ_PADRAO = 'America/Sao_Paulo';
@@ -62,9 +63,16 @@ export function previewCron(expressao: string, timezone = CRON_TZ_PADRAO, n = 5)
 /**
  * Valida VÁRIAS expressões e funde as próximas `n` execuções de todas — ordenadas
  * cronologicamente, sem instantes duplicados, cortadas em `n`. Uma expressão
- * inválida invalida o conjunto (a UI mostra o erro antes de salvar).
+ * inválida invalida o conjunto (a UI mostra o erro antes de salvar). Quando
+ * `pularFeriados`, descarta as datas que caem em feriado nacional (a preview
+ * reflete o que o motor de disparo vai fazer).
  */
-export function previewCrons(expressoes: string[], timezone = CRON_TZ_PADRAO, n = 5): CronPreview {
+export function previewCrons(
+  expressoes: string[],
+  timezone = CRON_TZ_PADRAO,
+  n = 5,
+  pularFeriados = false,
+): CronPreview {
   const exprs = (expressoes ?? []).map((e) => (e ?? '').trim()).filter(Boolean);
   if (exprs.length === 0) {
     return { valido: false, erro: 'Informe a expressão cron.', proximas: [] };
@@ -77,9 +85,15 @@ export function previewCrons(expressoes: string[], timezone = CRON_TZ_PADRAO, n 
   for (const e of exprs) {
     try {
       const it = parser.parseExpression(e, { tz: timezone });
-      for (let i = 0; i < n; i++) {
+      let coletadas = 0;
+      let iteracoes = 0;
+      // Cap defensivo: evita loop infinito se filtrar feriados nunca juntar `n`.
+      while (coletadas < n && iteracoes < 2000) {
+        iteracoes++;
         const d = it.next().toDate();
+        if (pularFeriados && ehFeriadoNacional(d, timezone)) continue;
         todas.push({ iso: d.toISOString(), label: rotular(d, timezone), ts: d.getTime() });
+        coletadas++;
       }
     } catch {
       // já validado acima — ramo defensivo.
