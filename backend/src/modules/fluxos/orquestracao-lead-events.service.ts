@@ -89,12 +89,21 @@ export class OrquestracaoLeadEventsService implements OnModuleInit {
     if (telefone) {
       const sufixo = telefone.replace(/\D/g, '').slice(-8);
       if (sufixo.length === 8) {
-        const lead = await this.prisma.lead.findFirst({
-          where: { empresaId, contatoTelefone: { contains: sufixo } },
-          select: { id: true },
-          orderBy: { atualizadoEm: 'desc' },
-        });
-        if (lead) return lead;
+        // Match por sufixo de 8 dígitos normalizando o telefone ARMAZENADO (tira a
+        // formatação) — MESMO método robusto do inbox (resolverClienteId) e do bot
+        // (buscarLeadDoPeer), via índice de expressão `Lead_empresaId_telefoneSufixo_idx`.
+        // O `contains: sufixo` antigo QUEBRAVA quando o lead tinha telefone formatado
+        // ("97053-5832" tem hífen no meio do sufixo de 8 dígitos) → o lead nunca casava,
+        // o `retomar` nunca era chamado e o nó "Conversar com IA" ficava preso em
+        // AGUARDANDO (bot "parava de responder" depois do opener).
+        const rows = await this.prisma.$queryRaw<Array<{ id: string }>>`
+          SELECT "id" FROM "Lead"
+          WHERE "empresaId" = ${empresaId}
+            AND RIGHT(REGEXP_REPLACE(COALESCE("contatoTelefone", ''), '[^0-9]', '', 'g'), 8) = ${sufixo}
+          ORDER BY "atualizadoEm" DESC
+          LIMIT 1
+        `;
+        if (rows[0]) return rows[0];
       }
     }
     if (email) {

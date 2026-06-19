@@ -3,6 +3,8 @@ import { OrquestracaoLeadEventsService } from './orquestracao-lead-events.servic
 
 const makePrisma = () => ({
   lead: { findFirst: vi.fn(), updateMany: vi.fn().mockResolvedValue({ count: 1 }) },
+  // Match de lead por telefone agora é via $queryRaw (sufixo normalizado no SQL).
+  $queryRaw: vi.fn().mockResolvedValue([]),
 });
 const makeBus = () => ({ disparar: vi.fn() });
 const makeInbox = () => ({ registrarLeadEventHook: vi.fn() });
@@ -41,21 +43,41 @@ describe('OrquestracaoLeadEventsService', () => {
     expect(inbox.registrarLeadEventHook).toHaveBeenCalledTimes(1);
   });
 
-  it('dispara LEAD_RESPONDEU quando casa lead por telefone (sufixo)', async () => {
-    prisma.lead.findFirst.mockResolvedValue({ id: 'lead-9' });
+  it('dispara LEAD_RESPONDEU quando casa lead por telefone (sufixo normalizado)', async () => {
+    prisma.$queryRaw.mockResolvedValue([{ id: 'lead-9' }]);
     await svc.aoReceberMensagem(
       { empresaId: 'emp-1', peerTelefone: '+55 11 99999-0000', conteudo: 'oi' } as never,
       resultado(),
     );
-    expect(prisma.lead.findFirst).toHaveBeenCalledWith(
-      expect.objectContaining({
-        where: expect.objectContaining({ contatoTelefone: { contains: '99990000' } }),
-      }),
-    );
+    // O sufixo passado ao SQL é de 8 dígitos PUROS (3º arg do tagged template).
+    expect(prisma.$queryRaw.mock.calls[0]?.[2]).toBe('99990000');
     expect(bus.disparar).toHaveBeenCalledWith(
       'emp-1',
       'LEAD_RESPONDEU',
       expect.objectContaining({ leadId: 'lead-9', conversationId: 'conv-1', texto: 'oi' }),
+    );
+  });
+
+  // REGRESSÃO: o "Conversar com IA" parava de responder depois do opener porque o
+  // resolverLead usava `contatoTelefone: { contains: sufixo }`, que QUEBRA quando o
+  // lead tem telefone formatado (o hífen cai no meio dos 8 dígitos do sufixo). O lead
+  // nunca casava → retomar nunca era chamado → execução presa em AGUARDANDO.
+  it('casa lead com telefone FORMATADO (hífen no meio do sufixo) e dispara LEAD_RESPONDEU', async () => {
+    prisma.$queryRaw.mockResolvedValue([{ id: 'lead-anna' }]);
+    await svc.aoReceberMensagem(
+      {
+        empresaId: 'emp-1',
+        peerTelefone: '+55 (11) 97053-5832',
+        conteudo: 'opa blz? sim vamos lá',
+      } as never,
+      resultado(),
+    );
+    // Sufixo só-dígitos — a normalização do ARMAZENADO acontece no SQL (RIGHT(REGEXP_REPLACE..)).
+    expect(prisma.$queryRaw.mock.calls[0]?.[2]).toBe('70535832');
+    expect(bus.disparar).toHaveBeenCalledWith(
+      'emp-1',
+      'LEAD_RESPONDEU',
+      expect.objectContaining({ leadId: 'lead-anna' }),
     );
   });
 
