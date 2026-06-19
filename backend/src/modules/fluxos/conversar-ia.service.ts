@@ -8,7 +8,7 @@ import { interpolate } from '@shared/utils/interpolate';
 import { WhatsAppService } from '@integrations/whatsapp/whatsapp.service';
 import { MullerBotService } from '@modules/mullerbot/mullerbot.service';
 import { MullerBotPersonaService } from '@modules/mullerbot/persona.service';
-import { dividirEmBaloes } from '@modules/mullerbot/muller-whatsapp.service';
+import { enviarEmBaloes } from '@modules/mullerbot/muller-whatsapp.service';
 import type { HistoricoMsg } from '@modules/mullerbot/mullerbot-cache.service';
 import { FluxoEventBusService } from './fluxo-event-bus.service';
 import {
@@ -522,33 +522,33 @@ export class ConversarIaService {
    * com "|||" (ou parágrafo); o split acontece aqui no envio.
    */
   private async enviarWhatsapp(empresaId: string, telefone: string, texto: string): Promise<void> {
-    const limpo = texto.trim();
-    if (!limpo) return;
+    if (!texto.trim()) return;
     // Preserva o '+' (E.164) pra o provider distinguir internacional de nacional —
     // senão número estrangeiro de 10/11 dígitos ganharia 55 indevidamente.
     const peerId = `${telefone.replace(/[^\d+]/g, '')}@s.whatsapp.net`;
-
     const cfg = await this.persona.obterConfigBot(empresaId).catch(() => null);
-    const baloes = cfg?.quebrarMensagens
-      ? dividirEmBaloes(limpo, cfg.maxMensagens)
-      : [limpo.replace(/\s*\|\|\|\s*/g, ' ').trim()];
-    const finais = baloes.filter(Boolean);
-    if (finais.length === 0) finais.push(limpo);
-
-    for (let i = 0; i < finais.length; i++) {
-      const balao = finais[i];
-      // 1º balão sai na hora; os próximos levam uma pausa curta proporcional ao
-      // tamanho (≈ digitação) — também preserva a ORDEM de entrega no WhatsApp.
-      const esperaMs = i === 0 ? 0 : Math.min(4000, 600 + balao.length * 25);
-      if (cfg?.mostrarDigitando) {
-        void this.whatsapp.enviarPresenca(empresaId, peerId, 'composing', esperaMs).catch(() => {});
-      }
-      if (esperaMs > 0) await new Promise((r) => setTimeout(r, esperaMs));
-      await this.whatsapp.enviarTexto(empresaId, peerId, balao, {});
-      if (cfg?.mostrarDigitando) {
-        await this.whatsapp.enviarPresenca(empresaId, peerId, 'paused').catch(() => {});
-      }
-    }
+    // MESMA persona, MESMO helper do bot geral (enviarEmBaloes): balões, delay e
+    // "digitando…" idênticos — sem distinção entre fluxo e bot geral. Sem config
+    // (erro ao buscar), cai em defaults seguros (sem quebra, sem delay).
+    await enviarEmBaloes(
+      texto,
+      {
+        quebrarMensagens: cfg?.quebrarMensagens ?? false,
+        maxMensagens: cfg?.maxMensagens ?? 3,
+        mostrarDigitando: cfg?.mostrarDigitando ?? false,
+        delayRespostaSegundos: cfg?.delayRespostaSegundos ?? 0,
+      },
+      {
+        enviar: (balao) =>
+          this.whatsapp.enviarTexto(empresaId, peerId, balao, {}).then(() => undefined),
+        digitando: (ms) =>
+          void this.whatsapp
+            .enviarPresenca(empresaId, peerId, 'composing', ms)
+            .catch(() => undefined),
+        pausado: () =>
+          this.whatsapp.enviarPresenca(empresaId, peerId, 'paused').catch(() => undefined),
+      },
+    );
   }
 
   // ─── Teto de tokens por prompt (Fase C — spec §7) ────────────────────

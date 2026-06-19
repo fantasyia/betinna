@@ -110,6 +110,59 @@ function pausaEntreBaloes(balao: string): number {
   return Math.min(4000, 600 + balao.length * 25);
 }
 
+/** Config da persona que rege como o bot ENVIA a resposta (balões, delay, "digitando"). */
+export interface EnvioBotCfg {
+  quebrarMensagens: boolean;
+  maxMensagens: number;
+  mostrarDigitando: boolean;
+  delayRespostaSegundos: number;
+}
+
+/**
+ * Envia uma resposta do bot respeitando a persona — FONTE ÚNICA pro bot geral E pro
+ * nó "Conversar com IA" dos fluxos (antes cada um tinha sua cópia e divergiam: o
+ * fluxo ignorava o `delayRespostaSegundos`, por exemplo). Quebra em balões (se
+ * ligado), espera o delay no 1º balão (tempo de "pensar"), mostra "digitando…" e dá
+ * uma pausa proporcional entre balões (preserva a ordem de entrega no WhatsApp).
+ *
+ * O ENVIO em si é injetado (`handlers.enviar`) porque cada trilha manda diferente:
+ * o bot geral via `inbox.responderComoBot` (grava no inbox), o fluxo via
+ * `whatsapp.enviarTexto` (eco do provider grava). Retorna os balões efetivamente
+ * enviados (pra log/auditoria).
+ */
+export async function enviarEmBaloes(
+  texto: string,
+  cfg: EnvioBotCfg,
+  handlers: {
+    enviar: (balao: string) => Promise<void>;
+    /** Mostra "digitando…" por `ms` (só chamado quando mostrarDigitando=true). */
+    digitando?: (ms: number) => void;
+    /** Marca "parou de digitar" (só chamado quando mostrarDigitando=true). */
+    pausado?: () => Promise<void>;
+  },
+): Promise<string[]> {
+  const limpo = texto.trim();
+  if (!limpo) return [];
+  const baloes = cfg.quebrarMensagens
+    ? dividirEmBaloes(limpo, cfg.maxMensagens)
+    : [limpo.replace(/\s*\|\|\|\s*/g, ' ').trim()];
+  const finais = baloes.filter(Boolean);
+  if (finais.length === 0) finais.push(limpo);
+
+  for (let i = 0; i < finais.length; i++) {
+    const balao = finais[i];
+    // 1º balão respeita o delay configurado (tempo de "pensar"); os próximos levam
+    // uma pausa curta proporcional ao tamanho (≈ digitação) e preservam a ordem.
+    const esperaMs =
+      i === 0 ? Math.max(0, cfg.delayRespostaSegundos) * 1000 : pausaEntreBaloes(balao);
+    if (cfg.mostrarDigitando) handlers.digitando?.(esperaMs);
+    if (esperaMs > 0) await new Promise((r) => setTimeout(r, esperaMs));
+    await handlers.enviar(balao);
+    if (cfg.mostrarDigitando && handlers.pausado) await handlers.pausado();
+  }
+  return finais;
+}
+
 /**
  * Placeholders que o adapter do WhatsApp usa quando a mídia NÃO tem legenda.
  * Mensagem cujo conteúdo é só isso = não tem texto do cliente → escala humano.
@@ -379,40 +432,20 @@ export class MullerWhatsappService implements OnModuleInit {
         return;
       }
 
-      // 8. Sucesso — envia. Se "quebrar em balões" estiver ligado, manda vários
-      //    balões curtos (mais humano), com "digitando…" e pausa entre eles.
+      // 8. Sucesso — envia respeitando a persona (balões + delay + "digitando…")
+      //    pelo helper COMPARTILHADO com o nó "Conversar com IA" (enviarEmBaloes):
+      //    fonte única, sem divergência entre bot geral e fluxo. O "digitando…" usa
+      //    `void` (no Evolution a chamada bloqueia pelo delay; roda em paralelo ao sleep).
       const tel = params.peerTelefone ?? params.peerId;
-      const textoLimpo = resposta.texto.trim();
-      const baloes = cfgBot.quebrarMensagens
-        ? dividirEmBaloes(textoLimpo, cfgBot.maxMensagens)
-        : [textoLimpo.replace(/\s*\|\|\|\s*/g, ' ').trim()];
-      // Salvaguarda: se o split zerar (texto só de delimitadores), manda o texto cru.
-      const baloesFinais = baloes.filter(Boolean);
-      if (baloesFinais.length === 0) baloesFinais.push(textoLimpo);
-
-      for (let i = 0; i < baloesFinais.length; i++) {
-        const balao = baloesFinais[i];
-        // 1º balão respeita o delay configurado (tempo de "pensar"); os próximos
-        // levam uma pausa curta proporcional ao tamanho (digitação) — e isso
-        // também preserva a ORDEM de entrega no WhatsApp (envio rápido demais
-        // pode chegar fora de ordem).
-        const esperaMs = i === 0 ? cfgBot.delayRespostaSegundos * 1000 : pausaEntreBaloes(balao);
-        if (cfgBot.mostrarDigitando) {
-          // Passa esperaMs como `delay` pra o "digitando…" durar a espera. NÃO
-          // aguarda (void): no Evolution essa chamada bloqueia pelo delay, então
-          // ela roda em paralelo com o nosso sleep (não soma o tempo).
+      const baloesFinais = await enviarEmBaloes(resposta.texto, cfgBot, {
+        enviar: (balao) => this.inbox.responderComoBot(convId, balao),
+        digitando: (ms) =>
           void this.whatsapp
-            .enviarPresenca(params.empresaId, tel, 'composing', esperaMs)
-            .catch(() => undefined);
-        }
-        if (esperaMs > 0) await new Promise((r) => setTimeout(r, esperaMs));
-        await this.inbox.responderComoBot(convId, balao);
-        if (cfgBot.mostrarDigitando) {
-          await this.whatsapp
-            .enviarPresenca(params.empresaId, tel, 'paused')
-            .catch(() => undefined);
-        }
-      }
+            .enviarPresenca(params.empresaId, tel, 'composing', ms)
+            .catch(() => undefined),
+        pausado: () =>
+          this.whatsapp.enviarPresenca(params.empresaId, tel, 'paused').catch(() => undefined),
+      });
       // Texto efetivamente enviado (pra auditoria/log refletir a realidade).
       const respostaEnviada = baloesFinais.join('\n');
       // Auditoria + contagem de tokens (Sprint 2.2) — best-effort.
