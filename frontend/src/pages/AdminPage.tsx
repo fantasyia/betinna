@@ -77,6 +77,7 @@ export default function AdminPage() {
 
       <SystemStatus />
       <DbHealthSection />
+      <CronLatencySection />
       <BackupSection />
       <AuditLogSection />
       <DeadLetterSection />
@@ -146,6 +147,84 @@ function Stat({
         {value}
       </div>
     </div>
+  );
+}
+
+// ─── Latência dos crons agendados ─────────────────────────────────────
+
+interface CronMetricas {
+  amostras: number;
+  mediaMs: number;
+  p50Ms: number;
+  p95Ms: number;
+  p99Ms: number;
+  maxMs: number;
+  /** p99 acima da meta de 1 min. */
+  alerta: boolean;
+}
+
+/** Formata duração em ms → "320ms" / "1,2s" / "1m 5s" (pt-BR). */
+function fmtMs(ms: number): string {
+  if (ms < 1000) return `${formatNumero(Math.round(ms))}ms`;
+  const s = ms / 1000;
+  if (s < 60) return `${formatNumero(Math.round(s * 10) / 10)}s`;
+  const min = Math.floor(s / 60);
+  const resto = Math.round(s % 60);
+  return `${min}m ${resto}s`;
+}
+
+/**
+ * Latência de disparo dos fluxos com gatilho "Cron agendado" — atraso entre o
+ * horário agendado e o disparo real. Meta: p99 ≤ 1 min. Amostragem das últimas
+ * 1000 execuções (cron a cada 1min).
+ */
+function CronLatencySection() {
+  const { data, loading, error, refetch } = useApiQuery<CronMetricas>('/fluxos/cron/metricas');
+
+  return (
+    <section className="bg-surface border border-border rounded-[10px] p-6 mb-4">
+      <header className="flex items-center justify-between gap-2 mb-1">
+        <h2 className="m-0 text-[16px]">⏱️ Latência dos crons agendados</h2>
+        {data && data.amostras > 0 && (
+          <span
+            className={cn(
+              'inline-flex items-center rounded-full px-[9px] py-0.5 text-[11px] font-semibold border',
+              data.alerta
+                ? 'bg-danger/12 text-danger border-danger/19'
+                : 'bg-success/12 text-success border-success/19',
+            )}
+          >
+            {data.alerta ? '⚠ p99 acima de 1min' : '✓ dentro da meta (p99 ≤ 1min)'}
+          </span>
+        )}
+      </header>
+      <p className="text-[11px] text-muted mt-0 mb-3">
+        Atraso entre o horário agendado e o disparo real, nas últimas{' '}
+        {data?.amostras ?? 0} execuções.
+      </p>
+      <StateView loading={loading} error={error} onRetry={refetch}>
+        {data && data.amostras === 0 ? (
+          <p className="text-[13px] text-muted m-0">
+            Nenhuma execução de cron registrada ainda.
+          </p>
+        ) : data ? (
+          <div
+            className="grid gap-3"
+            style={{ gridTemplateColumns: 'repeat(auto-fit, minmax(120px, 1fr))' }}
+          >
+            <Stat label="Média" value={fmtMs(data.mediaMs)} />
+            <Stat label="p50 (mediana)" value={fmtMs(data.p50Ms)} />
+            <Stat label="p95" value={fmtMs(data.p95Ms)} />
+            <Stat
+              label="p99"
+              value={fmtMs(data.p99Ms)}
+              color={data.alerta ? 'var(--danger)' : 'var(--success)'}
+            />
+            <Stat label="Máximo" value={fmtMs(data.maxMs)} />
+          </div>
+        ) : null}
+      </StateView>
+    </section>
   );
 }
 

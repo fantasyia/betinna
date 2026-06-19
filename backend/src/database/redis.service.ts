@@ -92,6 +92,22 @@ export class RedisService implements OnModuleInit, OnModuleDestroy {
   }
 
   /**
+   * LPUSH + LTRIM atômico — mantém uma lista capada nos últimos `maxLen` itens
+   * (janela deslizante). Usado para amostras de métrica (ex: atraso do cron).
+   */
+  async lpushCapped(key: string, value: string | number, maxLen: number): Promise<void> {
+    const pipe = this.clientInstance.multi();
+    pipe.lpush(key, String(value));
+    pipe.ltrim(key, 0, maxLen - 1);
+    await pipe.exec();
+  }
+
+  /** LRANGE 0 -1 — retorna a lista inteira como strings. */
+  async lrange(key: string): Promise<string[]> {
+    return this.clientInstance.lrange(key, 0, -1);
+  }
+
+  /**
    * EVAL — executa script Lua atomicamente no Redis.
    *
    * Útil pra compare-and-swap (CAS) e operações multi-key que precisam ser

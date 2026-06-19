@@ -205,7 +205,7 @@ export function CronTriggerConfig({
         )}
       </div>
       <p className="text-[10px] text-muted">
-        O fluxo precisa estar <strong>Ativo</strong> pra rodar no horário. Latência de até ~30min.
+        O fluxo precisa estar <strong>Ativo</strong> pra rodar no horário. Precisão de ~1 minuto.
       </p>
     </div>
   );

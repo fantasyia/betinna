@@ -5,6 +5,7 @@ import { Roles } from '@shared/decorators/roles.decorator';
 import { ZodValidationPipe } from '@shared/pipes/zod-validation.pipe';
 import type { AuthenticatedUser } from '@shared/types/authenticated-user';
 import { FluxosService } from './fluxos.service';
+import { CronMetricsService } from './cron-metrics.service';
 import {
   createFluxoSchema,
   updateFluxoSchema,
@@ -27,7 +28,10 @@ import { previewCron, CRON_TZ_PADRAO } from './cron.util';
 @ApiBearerAuth()
 @Controller('fluxos')
 export class FluxosController {
-  constructor(private readonly svc: FluxosService) {}
+  constructor(
+    private readonly svc: FluxosService,
+    private readonly cronMetrics: CronMetricsService,
+  ) {}
 
   // ─── CRUD ────────────────────────────────────────────────────────
 
@@ -158,6 +162,14 @@ export class FluxosController {
   @ApiOperation({ summary: 'Valida uma expressão cron e devolve as próximas execuções' })
   cronPreview(@Body(new ZodValidationPipe(cronPreviewSchema)) dto: CronPreviewDto) {
     return previewCron(dto.expressao, dto.timezone ?? CRON_TZ_PADRAO);
+  }
+
+  // ⚠ Declarar ANTES de `:id/metricas` — senão `:id` captura "cron".
+  @Get('cron/metricas')
+  @Roles('ADMIN', 'DIRECTOR')
+  @ApiOperation({ summary: 'Latência de disparo dos crons agendados (média + percentis)' })
+  cronMetricas() {
+    return this.cronMetrics.obterMetricas();
   }
 
   @Get(':id/metricas')

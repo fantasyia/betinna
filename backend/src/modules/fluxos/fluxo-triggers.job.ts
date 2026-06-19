@@ -7,18 +7,17 @@ import { CronLockService } from '@shared/utils/cron-lock.service';
 import { TransactionalEmailService } from '@integrations/email/transactional-email.service';
 import { FluxoEventBusService } from './fluxo-event-bus.service';
 import { ConversarIaService } from './conversar-ia.service';
+import { CronMetricsService } from './cron-metrics.service';
 import { proximaExecucaoCron, CRON_TZ_PADRAO } from './cron.util';
 
 /**
  * FluxoTriggersJob — cron jobs que disparam fluxos com trigger baseado em tempo.
  *
- * Tipos cobertos:
- * - CLIENTE_INATIVO_30D: clientes sem pedido há ≥ N dias (padrão: 30).
- * - AMOSTRA_FOLLOWUP: amostras com `followUpEm` <= agora e status=AGUARDANDO_FOLLOWUP.
- * - CRON_AGENDADO: fluxos com expressão cron customizada (avaliado a cada 15min).
- *
- * O cron roda a cada 30 minutos. Para CRON_AGENDADO com expressão própria,
- * a avaliação exata fica por conta do produtor (comparação janela ±15min).
+ * Dois crons separados (latência diferente por necessidade):
+ * - `avaliarTriggers` (a cada 30min): CLIENTE_INATIVO_30D, AMOSTRA_FOLLOWUP,
+ *   SLA de etapas e timeouts de IA — nada disso precisa de precisão de minuto.
+ * - `avaliarCronsAgendados` (a cada 1min): CRON_AGENDADO, que dispara em horário
+ *   exato escolhido pelo usuário — latência alvo ≤ 1min (antes era ~30min).
  */
 @Injectable()
 export class FluxoTriggersJob {
@@ -32,6 +31,7 @@ export class FluxoTriggersJob {
     private readonly cronLock: CronLockService,
     private readonly email: TransactionalEmailService,
     private readonly conversarIa: ConversarIaService,
+    private readonly cronMetrics: CronMetricsService,
   ) {}
 
   @Cron('*/30 * * * *', { name: 'fluxo-triggers-temporais', timeZone: 'UTC' })
@@ -49,12 +49,24 @@ export class FluxoTriggersJob {
       await this.avaliarClientesInativos(empresaId);
       await this.avaliarAmostrasFollowUp(empresaId);
       await this.avaliarSlaEtapas(empresaId);
-      await this.avaliarCronAgendado(empresaId);
     }
 
     // Orquestração (Fase B) — conversas de IA sem resposta além do timeout
     // disparam LEAD_SEM_RESPOSTA e são encerradas (consulta global, todas empresas).
     await this.conversarIa.processarTimeouts();
+  }
+
+  /**
+   * Avalia os fluxos CRON_AGENDADO a cada minuto — latência ≤ 1min (antes ~30min
+   * quando ficava acoplado ao cron pesado de 30min). Query global única (todas as
+   * empresas de uma vez), barata e indexada por (status, triggerTipo).
+   */
+  @Cron('* * * * *', { name: 'fluxo-cron-agendado', timeZone: 'UTC' })
+  async avaliarCronsAgendados(): Promise<void> {
+    if (this.env.get('NODE_ENV') === 'test') return;
+    // TTL 50s — expira antes da próxima rodada de 1min (evita lock órfão travar).
+    if (!(await this.cronLock.acquire('fluxo-cron-agendado', 50))) return;
+    await this.avaliarCronAgendado();
   }
 
   // ─── SLA por etapa (orquestração Fase B) ──────────────────────────
@@ -149,16 +161,19 @@ export class FluxoTriggersJob {
    * Dispara fluxos com gatilho CRON_AGENDADO quando a expressão cron deles bate
    * a janela atual. O cursor do próximo disparo fica no REDIS (cron:next:<id>),
    * NÃO no triggerConfig (config do usuário): na 1ª avaliação só agenda (não
-   * dispara); depois, quando `proximoEm <= agora`,
-   * dispara e reagenda a partir de agora (não acumula atrasos). Latência máxima
-   * = intervalo deste cron (30min) — pra "9h em ponto" cai entre 9:00 e 9:30.
+   * dispara); depois, quando `proximoEm <= agora`, dispara e reagenda a partir de
+   * agora (não acumula atrasos). Roda a cada 1min → latência ≤ 1min.
+   *
+   * A cada disparo registra o atraso (agora − agendado) via CronMetricsService
+   * pra alimentar os percentis do painel Admin.
    */
-  private async avaliarCronAgendado(empresaId: string): Promise<void> {
+  private async avaliarCronAgendado(): Promise<void> {
     const flows = await this.prisma.fluxo.findMany({
-      where: { empresaId, status: 'ATIVO', triggerTipo: 'CRON_AGENDADO' },
+      where: { status: 'ATIVO', triggerTipo: 'CRON_AGENDADO' },
       select: {
         id: true,
         nome: true,
+        empresaId: true,
         triggerConfig: true,
         nos: { where: { tipo: 'TRIGGER' }, select: { id: true }, take: 1 },
       },
@@ -188,9 +203,16 @@ export class FluxoTriggersJob {
         const triggerNo = f.nos[0];
         if (triggerNo) {
           const exec = await this.prisma.fluxoExecucao.create({
-            data: { fluxoId: f.id, empresaId, status: 'PENDENTE', contexto: { _cron: true } },
+            data: {
+              fluxoId: f.id,
+              empresaId: f.empresaId,
+              status: 'PENDENTE',
+              contexto: { _cron: true },
+            },
           });
           await this.bus.dispararDireto(exec.id, triggerNo.id);
+          // Métrica de latência: atraso entre o horário agendado e o disparo real.
+          await this.cronMetrics.registrar(agora.getTime() - proximo.getTime());
           this.logger.log(`CRON_AGENDADO: fluxo "${f.nome}" disparado (exec ${exec.id})`);
         }
         const prox = proximaExecucaoCron(expr, tz, agora);

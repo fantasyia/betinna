@@ -224,7 +224,7 @@
   - `FluxoEventBusService` — ponte evento → BullMQ, falha silenciosa (não derruba op. principal)
   - `FluxoExecutorService` — motor passo-a-passo: interpola `{{variáveis}}`, avalia condições, executa 7 tipos de ação
   - `FluxoExecutorProcessor` — worker BullMQ (concorrência 5, retry exponencial)
-  - `FluxoTriggersJob` — cron `*/30 * * * *` dispara CLIENTE_INATIVO_30D + AMOSTRA_FOLLOWUP
+  - `FluxoTriggersJob` — **dois crons**: `*/30 * * * *` (CLIENTE_INATIVO_30D + AMOSTRA_FOLLOWUP + SLA etapas + timeouts IA) e `* * * * *` (CRON_AGENDADO, latência ≤1min — antes ~30min). Cron-agendado usa query global única + lock `fluxo-cron-agendado` TTL 50s; registra atraso (agendado vs real) no `CronMetricsService` (Redis list capada `cron:metrics:delays`, 1000 amostras → p50/p95/p99 + alerta p99>1min). Endpoint `GET /fluxos/cron/metricas` (ADMIN/DIRECTOR) → painel no Admin.
   - Triggers: LEAD_CRIADO, LEAD_ETAPA_MUDOU, PEDIDO_APROVADO, PEDIDO_ENTREGUE, OCORRENCIA_ABERTA, CLIENTE_INATIVO_30D, AMOSTRA_FOLLOWUP, CRON_AGENDADO
   - Ações: ENVIAR_WHATSAPP, ENVIAR_EMAIL, CRIAR_TAREFA, MUDAR_TAG, MOVER_LEAD_ETAPA, ATRIBUIR_REP, WEBHOOK_EXTERNO
   - DELAY nodes com unidade (minutos/horas/dias) via BullMQ `delay`

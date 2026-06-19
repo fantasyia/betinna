@@ -8,6 +8,7 @@ import { FluxoEventBusService } from './fluxo-event-bus.service';
 import { FluxoExecutorProcessor } from './fluxo-executor.processor';
 import { FluxoExecutorService } from './fluxo-executor.service';
 import { FluxoTriggersJob } from './fluxo-triggers.job';
+import { CronMetricsService } from './cron-metrics.service';
 import { FluxosController } from './fluxos.controller';
 import { FluxosService } from './fluxos.service';
 import { OrquestracaoLeadEventsService } from './orquestracao-lead-events.service';
@@ -36,6 +37,7 @@ import { FLUXO_QUEUE } from './fluxo-executor.types';
     FluxoExecutorService,
     FluxoExecutorProcessor,
     FluxoTriggersJob,
+    CronMetricsService,
     OrquestracaoLeadEventsService,
     ConversarIaService,
     MonitorService,
