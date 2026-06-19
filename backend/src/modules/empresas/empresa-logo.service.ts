@@ -20,7 +20,7 @@ interface UploadLogoInput {
 const BUCKET = 'empresa-logos';
 const MAX_SIZE_BYTES = 2 * 1024 * 1024; // 2MB
 const ALLOWED_MIMES = new Set(['image/png', 'image/jpeg', 'image/webp', 'image/svg+xml']);
-const SIGNED_URL_EXPIRES = 60 * 60 * 24 * 7; // 7 dias — logo é renderizado em todo lugar
+const SIGNED_URL_EXPIRES = 60 * 60 * 24; // 24h (era 7 dias). Logo re-busca por sessão e a img fica no cache do browser — não quebra na sessão.
 
 /**
  * Upload e gestão do logo da empresa (Supabase Storage bucket `empresa-logos`).

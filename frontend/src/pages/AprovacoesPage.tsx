@@ -11,7 +11,7 @@ import {
   Receipt,
   Ban,
 } from 'lucide-react';
-import { api, ApiError } from '@/lib/api';
+import { api, apiErrorMessage } from '@/lib/api';
 import { useApiQuery, type PaginatedResponse } from '@/hooks/useApiQuery';
 import { usePermission } from '@/hooks/usePermission';
 import { PageLayout } from '@/components/PageLayout';
@@ -311,7 +311,7 @@ function CancelamentosTab() {
       setComentario('');
       refetch();
     } catch (err) {
-      setError(err instanceof ApiError ? err.message : 'Falha ao decidir');
+      setError(apiErrorMessage(err));
     } finally {
       setBusy(false);
     }
@@ -629,7 +629,7 @@ function AprovacaoDetailDialog({
       await api.post(`/aprovacoes/${id}/${acao}`, payload);
       onChanged();
     } catch (err) {
-      setActionError(err instanceof ApiError ? err.message : 'Falha na decisão');
+      setActionError(apiErrorMessage(err));
       refetch();
     } finally {
       setBusy(false);

@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { Search, Filter } from 'lucide-react';
-import { api, ApiError } from '@/lib/api';
+import { api, apiErrorMessage } from '@/lib/api';
 import { useApiQuery, type PaginatedResponse } from '@/hooks/useApiQuery';
 import { useToast } from '@/components/toast';
 import { Avatar, Badge, Dialog, Input } from '@/components/ui';
@@ -32,7 +32,7 @@ export function AtribuirModal({
       toast.success(userId ? 'Conversa atribuída' : 'Atribuição removida');
       onDone();
     } catch (err) {
-      toast.error('Falha ao atribuir', err instanceof ApiError ? err.message : undefined);
+      toast.error('Falha ao atribuir', apiErrorMessage(err));
     } finally {
       setBusy(false);
     }

@@ -26,7 +26,7 @@ import {
   Plus,
 } from 'lucide-react';
 import { NovoPedidoDialog } from '@/components/NovoPedidoDialog';
-import { api, ApiError } from '@/lib/api';
+import { api, apiErrorMessage } from '@/lib/api';
 import { useApiQuery, type PaginatedResponse } from '@/hooks/useApiQuery';
 import { useDebouncedValue } from '@/hooks/useDebouncedValue';
 import { useRole } from '@/hooks/usePermission';
@@ -298,7 +298,7 @@ export default function PedidosPage() {
         `${formato.toUpperCase()} baixado`,
       );
     } catch (err) {
-      toast.error('Falha ao exportar', err instanceof ApiError ? err.message : undefined);
+      toast.error('Falha ao exportar', apiErrorMessage(err));
     } finally {
       setExporting(false);
     }
@@ -360,7 +360,7 @@ export default function PedidosPage() {
       clearSelection();
       refetch();
     } catch (err) {
-      toast.error('Falha na ação em massa', err instanceof ApiError ? err.message : undefined);
+      toast.error('Falha na ação em massa', apiErrorMessage(err));
     } finally {
       setBulkBusy(null);
     }
@@ -926,7 +926,7 @@ function PedidoDetailDrawer({
       await fn();
       onChanged();
     } catch (err) {
-      setActionError(err instanceof ApiError ? err.message : 'Falha na operação');
+      setActionError(apiErrorMessage(err));
       refetch();
     } finally {
       setBusy(null);

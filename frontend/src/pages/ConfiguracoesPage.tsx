@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { api, ApiError } from '@/lib/api';
+import { api, apiErrorMessage } from '@/lib/api';
 import { useApiQuery, type PaginatedResponse } from '@/hooks/useApiQuery';
 import { usePermission } from '@/hooks/usePermission';
 import { useEmpresaLogo } from '@/hooks/useEmpresaLogo';
@@ -89,7 +89,7 @@ export default function ConfiguracoesPage() {
       }
       refetch();
     } catch (err) {
-      toast.error('Falha ao mudar status', err instanceof ApiError ? err.message : undefined);
+      toast.error('Falha ao mudar status', apiErrorMessage(err));
     }
   }
 
@@ -495,7 +495,7 @@ function EmpresaFormModal({
       }
       onSaved();
     } catch (err) {
-      setError(err instanceof ApiError ? err.message : 'Falha');
+      setError(apiErrorMessage(err));
     } finally {
       setBusy(false);
     }
@@ -509,7 +509,7 @@ function EmpresaFormModal({
       await api.delete(`/empresas/${empresa.id}`);
       onSaved();
     } catch (err) {
-      setError(err instanceof ApiError ? err.message : 'Falha');
+      setError(apiErrorMessage(err));
     } finally {
       setBusy(false);
     }

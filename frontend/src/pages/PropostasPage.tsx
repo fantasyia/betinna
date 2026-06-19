@@ -15,7 +15,6 @@ import {
   Trash2,
   CheckCircle2,
   X as XIcon,
-  Package,
   FileSpreadsheet,
   Mail,
 } from 'lucide-react';
@@ -1389,6 +1388,3 @@ function ItemRow({
   );
 }
 
-// Mark _Package unused referenced (keep import for future use)
-const _kp = Package;
-void _kp;

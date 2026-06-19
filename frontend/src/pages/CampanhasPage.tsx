@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react';
-import { api, ApiError } from '@/lib/api';
+import { api, apiErrorMessage } from '@/lib/api';
 import { formatPercent } from '@/lib/masks';
 import { useApiQuery, type PaginatedResponse } from '@/hooks/useApiQuery';
 import { usePermission } from '@/hooks/usePermission';
@@ -282,7 +282,7 @@ export default function CampanhasPage() {
       refetch();
       if (selected === id) setSelected(null);
     } catch (err) {
-      toast.error('Falha na operação', err instanceof ApiError ? err.message : undefined);
+      toast.error('Falha na operação', apiErrorMessage(err));
     }
   }
 
@@ -523,7 +523,7 @@ function CampanhaDetailModal({
       refetchMetricas();
       onChanged();
     } catch (err) {
-      toast.error('Falha', err instanceof ApiError ? err.message : undefined);
+      toast.error('Falha', apiErrorMessage(err));
     } finally {
       setActing(false);
     }
@@ -786,7 +786,7 @@ function IAPanel({ campanha }: { campanha: CampanhaDetail }) {
       });
       setGerarResult(r);
     } catch (err) {
-      setIaError(err instanceof ApiError ? err.message : 'Falha');
+      setIaError(apiErrorMessage(err));
     } finally {
       setBusy(false);
     }
@@ -806,7 +806,7 @@ function IAPanel({ campanha }: { campanha: CampanhaDetail }) {
       });
       setOtimizarResult(r);
     } catch (err) {
-      setIaError(err instanceof ApiError ? err.message : 'Falha');
+      setIaError(apiErrorMessage(err));
     } finally {
       setBusy(false);
     }
@@ -820,7 +820,7 @@ function IAPanel({ campanha }: { campanha: CampanhaDetail }) {
       });
       setSugerirResult(r);
     } catch (err) {
-      setIaError(err instanceof ApiError ? err.message : 'Falha');
+      setIaError(apiErrorMessage(err));
     } finally {
       setBusy(false);
     }
@@ -832,7 +832,7 @@ function IAPanel({ campanha }: { campanha: CampanhaDetail }) {
       const r = await api.get<AnalisarResponse>(`/campanhas/${campanha.id}/ia/analisar`);
       setAnalisarResult(r);
     } catch (err) {
-      setIaError(err instanceof ApiError ? err.message : 'Falha');
+      setIaError(apiErrorMessage(err));
     } finally {
       setBusy(false);
     }
@@ -1205,7 +1205,7 @@ function CreateCampanhaModal({
       const r = await api.post<{ id: string }>('/campanhas', payload);
       onSaved(r.id);
     } catch (err) {
-      setFormError(err instanceof ApiError ? err.message : 'Falha ao criar campanha');
+      setFormError(apiErrorMessage(err));
     } finally {
       setBusy(false);
     }

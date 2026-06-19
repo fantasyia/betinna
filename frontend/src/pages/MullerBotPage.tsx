@@ -14,7 +14,6 @@ import { PageLayout } from '@/components/PageLayout';
 import { AtendimentoTabs } from '@/components/AtendimentoTabs';
 import { Markdown } from '@/components/Markdown';
 import {
-  Badge,
   Button,
   Card,
   CardHeader,
@@ -471,5 +470,3 @@ function EmptyChat({ onSuggest }: { onSuggest: (q: string) => void }) {
 }
 
 // Unused Badge import — manter pra futuro uso
-const _u = Badge;
-void _u;

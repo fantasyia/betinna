@@ -17,7 +17,7 @@ import { EnvService } from '@config/env.service';
 
 const BUCKET = 'whatsapp-media';
 const MAX_BYTES = 20 * 1024 * 1024;
-const SIGNED_URL_TTL = 60 * 60 * 24 * 7; // 7 dias
+const SIGNED_URL_TTL = 60 * 60; // 1h (era 7 dias — signed URL curta é mais segura; mídia carrega na hora e fica no cache do browser)
 
 @Injectable()
 export class WhatsAppMediaService implements OnModuleInit {

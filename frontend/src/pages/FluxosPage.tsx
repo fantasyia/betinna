@@ -867,6 +867,3 @@ function ExecucoesModal({ fluxo, onClose }: { fluxo: FluxoListItem; onClose: () 
 // Re-export legacy types pra TypeScript não quebrar imports antigos
 export type { FluxoStatus, TriggerTipo };
 
-// Mark unused helpers tossing them in
-const _unused = cn;
-void _unused;

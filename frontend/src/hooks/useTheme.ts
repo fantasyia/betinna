@@ -2,11 +2,14 @@ import { useEffect, useState } from 'react';
 
 export type Theme = 'light' | 'dark';
 
-const STORAGE_KEY = 'betinna-theme';
+// Chaves de localStorage padronizadas no separador ':' (era 'betinna-theme').
+const STORAGE_KEY = 'betinna:theme';
+const STORAGE_KEY_LEGACY = 'betinna-theme';
 
 function getInitialTheme(): Theme {
   if (typeof window === 'undefined') return 'light';
-  const stored = localStorage.getItem(STORAGE_KEY) as Theme | null;
+  const stored = (localStorage.getItem(STORAGE_KEY) ??
+    localStorage.getItem(STORAGE_KEY_LEGACY)) as Theme | null;
   if (stored === 'light' || stored === 'dark') return stored;
   // Respeita preferência do sistema
   if (window.matchMedia?.('(prefers-color-scheme: dark)').matches) return 'dark';

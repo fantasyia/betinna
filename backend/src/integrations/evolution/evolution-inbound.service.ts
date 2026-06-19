@@ -158,9 +158,9 @@ export class EvolutionInboundService {
       const isGroup = peerId.endsWith('@g.us');
 
       const fromMe = !!m.key?.fromMe;
-      // Diagnóstico do cutover (temporário): confirma variância de LID/fromMe que
-      // poderia re-disparar o bot. Remover quando o Evolution estiver estável.
-      this.logger.log(
+      // Diagnóstico do cutover: variância de LID/fromMe que poderia re-disparar o
+      // bot. Já estável → em `debug` (some do log de produção; reativável se preciso).
+      this.logger.debug(
         `[evolution] in ${instance} id=${m.key?.id ?? '-'} fromMe=${fromMe} rjid=${rjid} alt=${rjidAlt || '-'} → peer=${peerId}`,
       );
       const { conteudo, tipo, mediaMime, extras } = this.session.extrairConteudo(m.message);

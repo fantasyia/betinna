@@ -24,7 +24,7 @@ import { ImportLeadsModal } from '@/components/ImportLeadsModal';
 import { ImportClientesModal } from '@/components/ImportClientesModal';
 import { StateView } from '@/components/StateView';
 import { useToast } from '@/components/toast';
-import { api, ApiError } from '@/lib/api';
+import { api, apiErrorMessage } from '@/lib/api';
 import { formatNumero, formatTelefone } from '@/lib/masks';
 import {
   Avatar,
@@ -605,7 +605,7 @@ function BulkTagModal({ ids, onClose, onDone }: { ids: Ids; onClose: () => void;
       toast.success('Tags aplicadas', `${r.afetados} contato(s)`);
       onDone();
     } catch (err) {
-      toast.error('Falha ao aplicar tags', err instanceof ApiError ? err.message : undefined);
+      toast.error('Falha ao aplicar tags', apiErrorMessage(err));
     } finally {
       setBusy(false);
     }
@@ -721,7 +721,7 @@ function BulkMoveModal({
       );
       onDone();
     } catch (err) {
-      toast.error('Falha ao mover', err instanceof ApiError ? err.message : undefined);
+      toast.error('Falha ao mover', apiErrorMessage(err));
     } finally {
       setBusy(false);
     }
@@ -829,7 +829,7 @@ function BulkAddFunilModal({
       );
       onDone();
     } catch (err) {
-      toast.error('Falha ao adicionar ao funil', err instanceof ApiError ? err.message : undefined);
+      toast.error('Falha ao adicionar ao funil', apiErrorMessage(err));
     } finally {
       setBusy(false);
     }
@@ -917,7 +917,7 @@ function BulkDeleteModal({
       );
       onDone();
     } catch (err) {
-      toast.error('Falha ao excluir', err instanceof ApiError ? err.message : undefined);
+      toast.error('Falha ao excluir', apiErrorMessage(err));
     } finally {
       setBusy(false);
     }

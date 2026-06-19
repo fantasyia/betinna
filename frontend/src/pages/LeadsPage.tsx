@@ -32,7 +32,7 @@ import {
   Tag as TagIcon,
   Phone,
 } from 'lucide-react';
-import { api, ApiError } from '@/lib/api';
+import { api, apiErrorMessage } from '@/lib/api';
 import { useApiQuery } from '@/hooks/useApiQuery';
 import { useRole } from '@/hooks/usePermission';
 import { useToast } from '@/components/toast';
@@ -379,7 +379,7 @@ export default function LeadsPage() {
       toast.success(`Movido para ${etapaNome}`);
       refetch();
     } catch (err) {
-      toast.error('Falha ao mover lead', err instanceof ApiError ? err.message : undefined);
+      toast.error('Falha ao mover lead', apiErrorMessage(err));
       refetch();
     }
   }
@@ -802,7 +802,7 @@ function LeadDetailDrawer({
     observacoes.trim() !== (lead.observacoes ?? '');
 
   function apiMsg(err: unknown): string {
-    return err instanceof ApiError ? err.message : 'Falha na operação';
+    return apiErrorMessage(err);
   }
   function etapaPayload(etapa: FunilEtapaLite, motivoArg?: string) {
     const isEnum = Object.prototype.hasOwnProperty.call(ETAPA_LABEL, etapa.id);
@@ -1175,7 +1175,7 @@ function LeadTagsSection({ lead, onMutated }: { lead: Lead; onMutated: () => voi
       setTags(r.tags ?? []);
       onMutated();
     } catch (err) {
-      toast.error('Falha ao aplicar tag', err instanceof ApiError ? err.message : undefined);
+      toast.error('Falha ao aplicar tag', apiErrorMessage(err));
     } finally {
       setBusy(false);
     }
@@ -1188,7 +1188,7 @@ function LeadTagsSection({ lead, onMutated }: { lead: Lead; onMutated: () => voi
       setTags(r.tags ?? []);
       onMutated();
     } catch (err) {
-      toast.error('Falha ao remover tag', err instanceof ApiError ? err.message : undefined);
+      toast.error('Falha ao remover tag', apiErrorMessage(err));
     } finally {
       setBusy(false);
     }
@@ -1407,7 +1407,7 @@ function LeadFormModal({
       await api.post('/leads', payload);
       onSaved();
     } catch (err) {
-      setError(err instanceof ApiError ? err.message : 'Falha ao criar lead');
+      setError(apiErrorMessage(err));
     } finally {
       setBusy(false);
     }

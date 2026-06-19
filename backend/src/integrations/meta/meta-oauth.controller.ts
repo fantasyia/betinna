@@ -8,6 +8,7 @@ import { ForbiddenException } from '@shared/errors/app-exception';
 import { ErrorCode } from '@shared/errors/error-codes';
 import type { AuthenticatedUser } from '@shared/types/authenticated-user';
 import { MetaOAuthService } from './meta-oauth.service';
+import { frontendOrigin } from '@shared/utils/frontend-origin';
 
 @ApiTags('integracoes/meta')
 @Controller('integracoes/meta')
@@ -74,7 +75,7 @@ export class MetaOAuthController {
 <h2 style="color:${ok ? '#16a34a' : '#dc2626'};">${ok ? '✓ Conectado' : '✗ Erro'}</h2>
 <p>${safe}</p>
 <p style="color:#666;font-size:14px;">Você pode fechar esta janela.</p>
-<script>setTimeout(()=>{ if(window.opener){ window.opener.postMessage({type:'meta-oauth',ok:${ok}},'*'); } window.close(); },1500);</script>
+<script>setTimeout(()=>{ if(window.opener){ window.opener.postMessage({type:'meta-oauth',ok:${ok}},'${frontendOrigin()}'); } window.close(); },1500);</script>
 </body></html>`,
       );
   }

@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { Pencil, Plus, Trash2 } from 'lucide-react';
-import { api, ApiError } from '@/lib/api';
+import { api, ApiError, apiErrorMessage } from '@/lib/api';
 import { getSession } from '@/lib/auth-store';
 import { useApiQuery } from '@/hooks/useApiQuery';
 import { StateView } from '@/components/StateView';
@@ -49,7 +49,7 @@ export function NotasInternasDrawer({
       setNovaNota('');
       refetch();
     } catch (err) {
-      toast.error('Falha ao adicionar nota', err instanceof ApiError ? err.message : undefined);
+      toast.error('Falha ao adicionar nota', apiErrorMessage(err));
     } finally {
       setSalvando(false);
     }
@@ -68,7 +68,7 @@ export function NotasInternasDrawer({
       if (err instanceof ApiError && err.status === 403) {
         toast.error('Você só pode editar suas próprias notas');
       } else {
-        toast.error('Falha ao editar nota', err instanceof ApiError ? err.message : undefined);
+        toast.error('Falha ao editar nota', apiErrorMessage(err));
       }
     } finally {
       setBusyId(null);
@@ -84,7 +84,7 @@ export function NotasInternasDrawer({
       if (err instanceof ApiError && err.status === 403) {
         toast.error('Você só pode excluir suas próprias notas');
       } else {
-        toast.error('Falha ao excluir nota', err instanceof ApiError ? err.message : undefined);
+        toast.error('Falha ao excluir nota', apiErrorMessage(err));
       }
     } finally {
       setBusyId(null);

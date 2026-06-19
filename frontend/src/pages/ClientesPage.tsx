@@ -24,7 +24,7 @@ import {
 } from 'lucide-react';
 import { NovoPedidoDialog, type ClienteOpt } from '@/components/NovoPedidoDialog';
 import { ImportClientesModal } from '@/components/ImportClientesModal';
-import { api, ApiError } from '@/lib/api';
+import { api, apiErrorMessage } from '@/lib/api';
 import { useApiQuery, type PaginatedResponse } from '@/hooks/useApiQuery';
 import { useDebouncedValue } from '@/hooks/useDebouncedValue';
 import { usePermission } from '@/hooks/usePermission';
@@ -274,7 +274,7 @@ export default function ClientesPage() {
         `${formato.toUpperCase()} baixado`,
       );
     } catch (err) {
-      toast.error('Falha ao exportar', err instanceof ApiError ? err.message : undefined);
+      toast.error('Falha ao exportar', apiErrorMessage(err));
     } finally {
       setExporting(false);
       setExportProgress(null);
@@ -1091,7 +1091,7 @@ function BulkAssignModal({
       });
       onDone();
     } catch (err) {
-      setError(err instanceof ApiError ? err.message : 'Falha');
+      setError(apiErrorMessage(err));
     } finally {
       setBusy(false);
     }
@@ -1209,7 +1209,7 @@ function BulkTagsModal({
       );
       onDone();
     } catch (err) {
-      setError(err instanceof ApiError ? err.message : 'Falha ao aplicar tags');
+      setError(apiErrorMessage(err));
     } finally {
       setBusy(false);
     }
@@ -1303,7 +1303,7 @@ function BulkStatusModal({
       );
       onDone();
     } catch (err) {
-      setError(err instanceof ApiError ? err.message : 'Falha ao mudar status');
+      setError(apiErrorMessage(err));
     } finally {
       setBusy(false);
     }
@@ -1384,7 +1384,7 @@ function BulkDeleteModal({
         setResult(res);
       }
     } catch (err) {
-      setError(err instanceof ApiError ? err.message : 'Falha ao excluir');
+      setError(apiErrorMessage(err));
     } finally {
       setBusy(false);
     }
@@ -1622,7 +1622,7 @@ function ClienteFormModal({
       else await api.post('/clientes', payload);
       onSaved();
     } catch (err) {
-      setError(err instanceof ApiError ? err.message : 'Erro ao salvar');
+      setError(apiErrorMessage(err));
     } finally {
       setSaving(false);
     }
@@ -1844,7 +1844,7 @@ function DeleteClienteButton({ id, onDeleted }: { id: string; onDeleted: () => v
       toast.success('Cliente excluído');
       onDeleted();
     } catch (err) {
-      toast.error('Falha ao excluir', err instanceof ApiError ? err.message : undefined);
+      toast.error('Falha ao excluir', apiErrorMessage(err));
     } finally {
       setBusy(false);
     }

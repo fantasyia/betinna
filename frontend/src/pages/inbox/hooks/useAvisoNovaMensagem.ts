@@ -17,7 +17,10 @@ export function useAvisoNovaMensagem(
     () => (pageResp?.data ?? []).reduce((s, c) => s + (c.naoLidas ?? 0), 0),
     [pageResp],
   );
-  const [somLigado, setSomLigado] = useState(() => localStorage.getItem('inbox.som') !== 'off');
+  // Chave padronizada no separador ':' (era 'inbox.som'); fallback migra a pref.
+  const [somLigado, setSomLigado] = useState(
+    () => (localStorage.getItem('inbox:som') ?? localStorage.getItem('inbox.som')) !== 'off',
+  );
   const prevNaoLidasRef = useRef(0);
   // No PRIMEIRO load sincronizamos o ref SEM notificar — senão abrir o Inbox já com
   // não-lidas dispararia um beep/notificação "fantasma" (0 → N conta como "subiu").
@@ -74,7 +77,7 @@ export function useAvisoNovaMensagem(
   const alternarSom = useCallback(() => {
     setSomLigado((s) => {
       const novo = !s;
-      localStorage.setItem('inbox.som', novo ? 'on' : 'off');
+      localStorage.setItem('inbox:som', novo ? 'on' : 'off');
       if (novo) tocarBeep();
       return novo;
     });

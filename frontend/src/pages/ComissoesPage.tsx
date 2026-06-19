@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react';
-import { api, ApiError } from '@/lib/api';
+import { api, apiErrorMessage } from '@/lib/api';
 import { useApiQuery, type PaginatedResponse } from '@/hooks/useApiQuery';
 import { usePermission } from '@/hooks/usePermission';
 import { PageLayout } from '@/components/PageLayout';
@@ -343,7 +343,7 @@ function FecharMesModal({ onClose, onDone }: { onClose: () => void; onDone: () =
       await api.post('/comissoes/fechar-mes', { mes, ano, reprocessar });
       onDone();
     } catch (err) {
-      setError(err instanceof ApiError ? err.message : 'Falha ao fechar mês');
+      setError(apiErrorMessage(err));
     } finally {
       setBusy(false);
     }
@@ -436,7 +436,7 @@ function PagarModal({
       await api.put(`/comissoes/${comissao.id}/pagar`, payload);
       onDone();
     } catch (err) {
-      setError(err instanceof ApiError ? err.message : 'Falha ao marcar como pago');
+      setError(apiErrorMessage(err));
     } finally {
       setBusy(false);
     }

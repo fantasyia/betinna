@@ -6,12 +6,15 @@ import { cn } from '@/lib/cn';
 /**
  * Button — primitive principal do design system.
  *
+ * Cores via tokens do BRANDBOOK (navy `#201554` primária, magenta `#bd1fbf`,
+ * cyan `#2bcae5`) — usa as CSS vars `--primary`/`--danger` etc, não hex cru.
+ *
  * Variantes:
- *  - primary: âmbar sólido — ação primária, máximo 1 por tela
- *  - secondary: contorno — ações de apoio
+ *  - primary: navy sólido (primária do BRANDBOOK) — ação primária, máximo 1 por tela
+ *  - secondary: contorno navy — ações de apoio
  *  - ghost: sem fundo — ações terciárias, inline
  *  - danger: vermelho sólido — destrutivas (deletar, cancelar)
- *  - subtle: bg surface — toolbar buttons, filtros
+ *  - subtle: bg primary-light — toolbar buttons, filtros
  *
  * Sizes: sm (28px), md (32px default), lg (40px)
  *
@@ -35,8 +38,10 @@ const buttonVariants = cva(
       variant: {
         primary: [
           'bg-primary text-white font-semibold',
-          'shadow-[0_1px_2px_0_rgba(49,19,124,0.3),inset_0_1px_0_0_rgba(255,255,255,0.15)]',
-          'hover:bg-primary-hover hover:shadow-[0_2px_8px_0_rgba(49,19,124,0.35),inset_0_1px_0_0_rgba(255,255,255,0.15)]',
+          // Sombra = navy #201554 (rgb 32,21,84) tintado. Antes usava 49,19,124
+          // (#31137C, o roxo ERRADO que o BRANDBOOK proíbe).
+          'shadow-[0_1px_2px_0_rgba(32,21,84,0.3),inset_0_1px_0_0_rgba(255,255,255,0.15)]',
+          'hover:bg-primary-hover hover:shadow-[0_2px_8px_0_rgba(32,21,84,0.35),inset_0_1px_0_0_rgba(255,255,255,0.15)]',
         ],
         secondary: [
           'bg-surface text-primary border border-primary/30 font-semibold',

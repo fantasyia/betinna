@@ -16,7 +16,7 @@ import { api, apiErrorMessage } from '@/lib/api';
 import { useToast } from '@/components/toast';
 import { PageLayout } from '@/components/PageLayout';
 import { CrmTabs } from '@/components/CrmTabs';
-import { Badge, Button, Card, CardHeader, CardTitle, Dialog } from '@/components/ui';
+import { Badge, Button, Card, Dialog } from '@/components/ui';
 import { cn } from '@/lib/cn';
 import type { TriggerTipo, AcaoTipo } from '@/pages/fluxo/lib/types';
 
@@ -625,7 +625,3 @@ function TemplateCard({
 }
 
 // Re-export only what's used (mark cn used)
-const _u = CardHeader;
-void _u;
-const _u2 = CardTitle;
-void _u2;

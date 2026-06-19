@@ -5,6 +5,7 @@ import { CurrentUser } from '@shared/decorators/current-user.decorator';
 import { Public } from '@shared/decorators/public.decorator';
 import type { AuthenticatedUser } from '@shared/types/authenticated-user';
 import { GoogleOAuthService } from './google-oauth.service';
+import { frontendOrigin } from '@shared/utils/frontend-origin';
 
 @ApiTags('integracoes/google')
 @Controller('integracoes/google')
@@ -65,7 +66,7 @@ export class GoogleOAuthController {
 <h2 style="color:${ok ? '#16a34a' : '#dc2626'};">${ok ? '✓ Conectado' : '✗ Erro'}</h2>
 <p>${safeMsg}</p>
 <p style="color:#666;font-size:14px;">Você pode fechar esta janela.</p>
-<script>setTimeout(()=>{ if(window.opener){ window.opener.postMessage({type:'google-oauth',ok:${ok}},'*'); } window.close(); },1500);</script>
+<script>setTimeout(()=>{ if(window.opener){ window.opener.postMessage({type:'google-oauth',ok:${ok}},'${frontendOrigin()}'); } window.close(); },1500);</script>
 </body></html>`,
       );
   }

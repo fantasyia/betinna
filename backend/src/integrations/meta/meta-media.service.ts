@@ -16,7 +16,7 @@ import { EnvService } from '@config/env.service';
 
 const BUCKET = 'meta-media';
 const MAX_BYTES = 20 * 1024 * 1024; // 20 MB
-const SIGNED_URL_TTL = 60 * 60 * 24 * 7; // 7 dias
+const SIGNED_URL_TTL = 60 * 60; // 1h (era 7 dias — signed URL curta é mais segura)
 const DOWNLOAD_TIMEOUT_MS = 30_000;
 
 @Injectable()

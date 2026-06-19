@@ -21,13 +21,9 @@ import { StateView } from '@/components/StateView';
 import { AsyncCombobox } from '@/components/AsyncCombobox';
 import { useToast } from '@/components/toast';
 import {
-  Avatar,
   Badge,
   Button,
   Card,
-  CardHeader,
-  CardTitle,
-  CardDescription,
   Dialog,
   EmptyState,
   Field,
@@ -847,12 +843,3 @@ function ClearDialog({ onClose, onDone }: { onClose: () => void; onDone: () => v
   );
 }
 
-// Mark unused imports as referenced (Avatar/CardHeader/CardTitle/CardDescription are used in other files)
-const _u1 = Avatar;
-const _u2 = CardHeader;
-const _u3 = CardTitle;
-const _u4 = CardDescription;
-void _u1;
-void _u2;
-void _u3;
-void _u4;

@@ -113,10 +113,17 @@ export function currentEmpresaId() {
  * SOBREVIVER ao reload da página (o switch recarrega a página, e o bootstrap
  * recriava a sessão sem lembrar a empresa escolhida → header sumia → 403).
  */
-const EMPRESA_KEY = 'betinna.empresaAtiva';
+// Chave padronizada no separador ':' (era 'betinna.empresaAtiva').
+const EMPRESA_KEY = 'betinna:empresaAtiva';
+const EMPRESA_KEY_LEGACY = 'betinna.empresaAtiva';
 export function getStoredEmpresaId(): string | null {
   try {
-    return typeof window !== 'undefined' ? window.localStorage.getItem(EMPRESA_KEY) : null;
+    if (typeof window === 'undefined') return null;
+    // Fallback na chave antiga (migra a escolha do usuário sem perder).
+    return (
+      window.localStorage.getItem(EMPRESA_KEY) ??
+      window.localStorage.getItem(EMPRESA_KEY_LEGACY)
+    );
   } catch {
     return null;
   }

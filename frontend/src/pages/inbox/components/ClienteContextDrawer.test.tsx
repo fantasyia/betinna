@@ -82,9 +82,10 @@ describe('ClienteContextDrawer', () => {
     expect(el).toBeTruthy();
   });
 
-  it('renderiza o telefone', () => {
+  it('renderiza o telefone (formato internacional E.164)', () => {
     render(<ClienteContextDrawer {...defaultProps} />);
-    const el = screen.getByText('(11) 99999-0000');
+    // formatTelefone('(11) 99999-0000') → "+55 11 99999 0000" (libphonenumber)
+    const el = screen.getByText('+55 11 99999 0000');
     expect(el).toBeTruthy();
   });
 

@@ -4,8 +4,6 @@ import {
   Plus,
   Trash2,
   Edit3,
-  TrendingUp,
-  TrendingDown,
   AlertTriangle,
   CheckCircle2,
   Calendar,
@@ -592,8 +590,3 @@ function lastDayOfMonth() {
   return new Date(now.getFullYear(), now.getMonth() + 1, 0);
 }
 
-// Mark unused imports
-const _u1 = TrendingUp;
-const _u2 = TrendingDown;
-void _u1;
-void _u2;

@@ -1,5 +1,6 @@
 import type { ReactNode } from 'react';
 import { colors } from './styles';
+import { SkeletonText } from './ui';
 
 /**
  * Encapsula os 3 estados de qualquer fetch:
@@ -31,28 +32,11 @@ export function StateView({
   children,
 }: StateViewProps) {
   if (loading) {
+    // Usa o componente <Skeleton> (shimmer) em vez de divs cinzas estáticas —
+    // mesmo placeholder em todas as ~43 telas que passam por aqui.
     return (
       <div data-testid="state-loading" style={{ padding: '2rem 0' }}>
-        <div
-          style={{
-            height: 16,
-            background: colors.surfaceHover,
-            borderRadius: 4,
-            marginBottom: 12,
-            width: '40%',
-          }}
-        />
-        <div
-          style={{ height: 16, background: colors.surfaceHover, borderRadius: 4, marginBottom: 12 }}
-        />
-        <div
-          style={{
-            height: 16,
-            background: colors.surfaceHover,
-            borderRadius: 4,
-            width: '70%',
-          }}
-        />
+        <SkeletonText lines={3} />
       </div>
     );
   }
