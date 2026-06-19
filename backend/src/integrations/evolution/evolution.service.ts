@@ -537,9 +537,13 @@ export class EvolutionService {
    * 400 — diferente das respostas do inbox, onde o jid já vem completo do webhook.
    */
   private normalizarNumero(numero: string): string {
-    // jid já-formado (grupo @g.us, ou @s.whatsapp.net/@lid do inbox): manda como
-    // veio — soDigitos destruiria o "@g.us" e o grupo viraria um número solto.
-    if (numero.includes('@')) return numero;
+    // Grupos (@g.us) e LIDs (@lid) do inbox: manda como veio — soDigitos
+    // destruiria o sufixo e o grupo/lid viraria um número solto.
+    if (numero.includes('@g.us') || numero.includes('@lid')) return numero;
+    // Número cru OU jid de pessoa (<dígitos>@s.whatsapp.net): extrai os dígitos e,
+    // se for nacional (10/11 dígitos, sem DDI), prefixa o 55. Cobre o caso do
+    // FLUXO, que montava "<DDD+numero>@s.whatsapp.net" SEM o 55 → Evolution
+    // devolvia 400 (exists:false). 12-13 dígitos já têm país (mantém).
     const n = this.soDigitos(numero);
     if (n.length === 10 || n.length === 11) return `55${n}`;
     return n;
