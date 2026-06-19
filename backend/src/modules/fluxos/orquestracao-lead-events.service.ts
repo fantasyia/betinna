@@ -72,7 +72,18 @@ export class OrquestracaoLeadEventsService implements OnModuleInit {
       // retoma a conversa (a IA processa a resposta e pode classificar/avançar).
       const aguardando = await this.conversarIa.aguardandoPorLead(params.empresaId, lead.id);
       if (aguardando) {
-        await this.conversarIa.retomar(aguardando.id, resultado.conversationId, params.conteudo);
+        // Multimodal IGUAL ao bot geral: transcreve áudio / prepara imagem pra visão
+        // antes de alimentar a IA (a Persona decide). Sem isso o fluxo via "[áudio]".
+        const { mensagemIA, imagemDataUrl } = await this.conversarIa.prepararEntrada(
+          params,
+          resultado.messageId,
+        );
+        await this.conversarIa.retomar(
+          aguardando.id,
+          resultado.conversationId,
+          mensagemIA,
+          imagemDataUrl,
+        );
       }
     } catch (err) {
       const m = err instanceof Error ? err.message : String(err);

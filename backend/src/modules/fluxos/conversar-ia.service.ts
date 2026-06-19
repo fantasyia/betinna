@@ -8,7 +8,11 @@ import { interpolate } from '@shared/utils/interpolate';
 import { WhatsAppService } from '@integrations/whatsapp/whatsapp.service';
 import { MullerBotService } from '@modules/mullerbot/mullerbot.service';
 import { MullerBotPersonaService } from '@modules/mullerbot/persona.service';
-import { enviarEmBaloes } from '@modules/mullerbot/muller-whatsapp.service';
+import {
+  enviarEmBaloes,
+  prepararEntradaMultimodal,
+} from '@modules/mullerbot/muller-whatsapp.service';
+import type { MensagemEntranteParams } from '@modules/inbox/inbox.types';
 import type { HistoricoMsg } from '@modules/mullerbot/mullerbot-cache.service';
 import { FluxoEventBusService } from './fluxo-event-bus.service';
 import {
@@ -298,11 +302,37 @@ export class ConversarIaService {
     });
   }
 
+  /**
+   * Prepara a entrada multimodal do lead pra IA — MESMA lógica do bot geral
+   * (`prepararEntradaMultimodal`): transcreve áudio / prepara imagem pra visão,
+   * conforme a Persona. Chamado pela orquestração antes do `retomar`. Sem isso o
+   * fluxo recebia "[áudio]"/"[imagem]" cru (distinção que não deve existir).
+   */
+  async prepararEntrada(
+    params: MensagemEntranteParams,
+    messageId: string,
+  ): Promise<{ mensagemIA: string; imagemDataUrl?: string }> {
+    const cfg = await this.persona.obterConfigBot(params.empresaId).catch(() => null);
+    if (!cfg) return { mensagemIA: params.conteudo };
+    return prepararEntradaMultimodal(params, cfg, {
+      baixarMidia: (url) => this.whatsapp.baixarMidia(url),
+      transcreverAudio: (emp, bytes, mime) => this.muller.transcreverAudio(emp, bytes, mime),
+      aoTranscrever: async (texto) => {
+        await this.prisma.message
+          .update({ where: { id: messageId }, data: { conteudo: `🎤 ${texto}` } })
+          .catch(() => undefined);
+        this.logger.log(`CONVERSAR_IA: áudio do lead transcrito (msg ${messageId})`);
+      },
+      aoFalharTranscricao: (m) => this.logger.warn(`CONVERSAR_IA: transcrição falhou: ${m}`),
+    });
+  }
+
   /** Lead respondeu — roda 1 turno da IA e avança o fluxo se classificou. */
   async retomar(
     execucaoId: string,
     conversationId: string | null,
     textoLead: string,
+    imagemDataUrl?: string,
   ): Promise<void> {
     const execucao = await this.prisma.fluxoExecucao.findUnique({ where: { id: execucaoId } });
     if (!execucao || execucao.status !== 'AGUARDANDO' || !execucao.aguardandoNoId) return;
@@ -367,7 +397,13 @@ export class ConversarIaService {
     }
     let r: { texto: string; tokensIn?: number; tokensOut?: number };
     try {
-      r = await this.muller.gerarRespostaIa(empresaId, systemPrompt, textoLead, historico);
+      r = await this.muller.gerarRespostaIa(
+        empresaId,
+        systemPrompt,
+        textoLead,
+        historico,
+        imagemDataUrl,
+      );
     } catch (err) {
       // Falha da IA: roteia pela saída "erro" e SAI de AGUARDANDO. Antes esse erro
       // era engolido pelo orquestrador e a execução ficava presa em AGUARDANDO.

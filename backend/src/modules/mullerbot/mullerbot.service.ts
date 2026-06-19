@@ -310,6 +310,7 @@ export class MullerBotService {
     systemPrompt: string,
     mensagem: string,
     historico: HistoricoMsg[] = [],
+    imagemDataUrl?: string,
   ): Promise<{ texto: string; tokensIn?: number; tokensOut?: number; modelo: string }> {
     const apiKey = await this.resolverChaveEmpresa(empresaId);
     if (!apiKey) {
@@ -327,6 +328,8 @@ export class MullerBotService {
       mensagem,
       maxOutputTokens,
       historico,
+      // Visão: quando o lead manda foto no fluxo (e "analisar imagem" está ligado).
+      imagemDataUrl,
     );
     return { ...r, modelo };
   }

@@ -10,6 +10,7 @@ const makeBus = () => ({ disparar: vi.fn() });
 const makeInbox = () => ({ registrarLeadEventHook: vi.fn() });
 const makeConversarIa = () => ({
   aguardandoPorLead: vi.fn().mockResolvedValue(null),
+  prepararEntrada: vi.fn().mockResolvedValue({ mensagemIA: 'texto', imagemDataUrl: undefined }),
   retomar: vi.fn(),
 });
 

@@ -11,7 +11,7 @@ const makePrisma = () => ({
   },
   fluxoNo: { findUnique: vi.fn() },
   fluxoEdge: { findMany: vi.fn().mockResolvedValue([]) },
-  message: { findMany: vi.fn().mockResolvedValue([]) },
+  message: { findMany: vi.fn().mockResolvedValue([]), update: vi.fn().mockResolvedValue({}) },
 });
 const makePersona = () => ({
   compilarSystemPromptConversa: vi.fn().mockResolvedValue('PROMPT BASE'),
@@ -25,10 +25,14 @@ const makePersona = () => ({
     analisarImagem: false,
   }),
 });
-const makeMuller = () => ({ gerarRespostaIa: vi.fn() });
+const makeMuller = () => ({
+  gerarRespostaIa: vi.fn(),
+  transcreverAudio: vi.fn().mockResolvedValue('texto transcrito'),
+});
 const makeWhatsapp = () => ({
   enviarTexto: vi.fn().mockResolvedValue({ externalId: 'x' }),
   enviarPresenca: vi.fn().mockResolvedValue(undefined),
+  baixarMidia: vi.fn().mockResolvedValue(Buffer.from('midia')),
 });
 const makeBus = () => ({ disparar: vi.fn() });
 const makeQueue = () => ({ add: vi.fn().mockResolvedValue({ id: 'job-1' }) });
@@ -278,6 +282,74 @@ describe('ConversarIaService', () => {
       expect(prisma.fluxoExecucao.update).toHaveBeenCalledWith(
         expect.objectContaining({ data: expect.objectContaining({ status: 'CONCLUIDO' }) }),
       );
+    });
+  });
+
+  describe('prepararEntrada (multimodal — MESMA regra do bot geral)', () => {
+    const cfg = (over = {}) => ({
+      historicoMensagens: 10,
+      delayRespostaSegundos: 0,
+      mostrarDigitando: false,
+      quebrarMensagens: false,
+      maxMensagens: 3,
+      transcreverAudio: false,
+      analisarImagem: false,
+      ...over,
+    });
+
+    it('transcreve áudio quando "transcreverAudio" está ligado (+ grava 🎤 na inbox)', async () => {
+      persona.obterConfigBot.mockResolvedValue(cfg({ transcreverAudio: true }));
+      muller.transcreverAudio.mockResolvedValue('quero sim, me explica melhor');
+
+      const r = await svc.prepararEntrada(
+        {
+          empresaId: 'emp-1',
+          tipo: 'AUDIO',
+          conteudo: '[áudio]',
+          mediaUrl: 'u',
+          mediaMime: 'audio/ogg',
+        } as never,
+        'msg-1',
+      );
+
+      expect(r.mensagemIA).toBe('quero sim, me explica melhor');
+      expect(prisma.message.update).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: { id: 'msg-1' },
+          data: { conteudo: '🎤 quero sim, me explica melhor' },
+        }),
+      );
+    });
+
+    it('prepara imagem (data-url) quando "analisarImagem" está ligado', async () => {
+      persona.obterConfigBot.mockResolvedValue(cfg({ analisarImagem: true }));
+      whatsapp.baixarMidia.mockResolvedValue(Buffer.from('img'));
+
+      const r = await svc.prepararEntrada(
+        {
+          empresaId: 'emp-1',
+          tipo: 'IMAGE',
+          conteudo: '[imagem]',
+          mediaUrl: 'u',
+          mediaMime: 'image/jpeg',
+        } as never,
+        'msg-1',
+      );
+
+      expect(r.imagemDataUrl).toMatch(/^data:image\/jpeg;base64,/);
+      expect(r.mensagemIA).toBe(''); // placeholder "[imagem]" sem legenda → vazio
+    });
+
+    it('toggle desligado → conteúdo cru, não transcreve (mídia escala pra humano)', async () => {
+      persona.obterConfigBot.mockResolvedValue(cfg({ transcreverAudio: false }));
+
+      const r = await svc.prepararEntrada(
+        { empresaId: 'emp-1', tipo: 'AUDIO', conteudo: '[áudio]', mediaUrl: 'u' } as never,
+        'msg-1',
+      );
+
+      expect(r.mensagemIA).toBe('[áudio]');
+      expect(muller.transcreverAudio).not.toHaveBeenCalled();
     });
   });
 

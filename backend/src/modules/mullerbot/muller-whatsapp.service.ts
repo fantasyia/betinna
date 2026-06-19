@@ -176,6 +176,55 @@ const PLACEHOLDERS_MIDIA = new Set([
   '[mensagem não suportada]',
 ]);
 
+/**
+ * Prepara a ENTRADA multimodal pra IA — FONTE ÚNICA pro bot geral E pro nó
+ * "Conversar com IA": áudio (toggle `transcreverAudio`) vira texto via transcrição;
+ * imagem (toggle `analisarImagem`) vira data-URL pra visão. Sem o toggle, devolve o
+ * conteúdo cru (mídia sem texto escala pra humano nas regras de cada trilha). O
+ * download/transcrição são injetados (mesmas services nas duas trilhas).
+ */
+export async function prepararEntradaMultimodal(
+  params: Pick<
+    MensagemEntranteParams,
+    'tipo' | 'mediaUrl' | 'mediaMime' | 'conteudo' | 'empresaId'
+  >,
+  cfg: { transcreverAudio: boolean; analisarImagem: boolean },
+  deps: {
+    baixarMidia: (url: string) => Promise<Buffer | null>;
+    transcreverAudio: (empresaId: string, bytes: Buffer, mime: string) => Promise<string>;
+    /** Grava a transcrição na inbox ("🎤 ...") + loga (opcional). */
+    aoTranscrever?: (texto: string) => Promise<void>;
+    aoFalharTranscricao?: (erro: string) => void;
+  },
+): Promise<{ mensagemIA: string; imagemDataUrl?: string }> {
+  let mensagemIA = params.conteudo;
+  let imagemDataUrl: string | undefined;
+
+  if (params.tipo === 'AUDIO' && cfg.transcreverAudio && params.mediaUrl) {
+    const bytes = await deps.baixarMidia(params.mediaUrl).catch(() => null);
+    const texto = bytes
+      ? await deps
+          .transcreverAudio(params.empresaId, bytes, params.mediaMime ?? 'audio/ogg')
+          .catch((e) => {
+            deps.aoFalharTranscricao?.(e instanceof Error ? e.message : String(e));
+            return '';
+          })
+      : '';
+    if (texto.trim()) {
+      mensagemIA = texto.trim();
+      await deps.aoTranscrever?.(mensagemIA);
+    }
+  } else if (params.tipo === 'IMAGE' && cfg.analisarImagem && params.mediaUrl) {
+    const bytes = await deps.baixarMidia(params.mediaUrl).catch(() => null);
+    if (bytes) {
+      imagemDataUrl = `data:${params.mediaMime ?? 'image/jpeg'};base64,${bytes.toString('base64')}`;
+      // Legenda real (se houver) vira o texto; placeholder "[imagem]" → vazio.
+      mensagemIA = PLACEHOLDERS_MIDIA.has(params.conteudo) ? '' : params.conteudo;
+    }
+  }
+  return { mensagemIA, imagemDataUrl };
+}
+
 @Injectable()
 export class MullerWhatsappService implements OnModuleInit {
   private readonly logger = new Logger(MullerWhatsappService.name);
@@ -302,41 +351,22 @@ export class MullerWhatsappService implements OnModuleInit {
       // 4.5 Config do bot (precisa ANTES — decide se transcreve áudio / vê imagem).
       const cfgBot = await this.persona.obterConfigBot(params.empresaId);
 
-      // 4.6 Multimodal — o que o bot vai "ler":
-      //  - áudio + toggle ligado → transcreve (voz→texto) e mostra na inbox;
-      //  - imagem + toggle ligado → manda a foto pra VISÃO da IA.
-      // Sem o toggle ligado, mídia continua escalando pra humano (regra antiga).
-      let mensagemIA = params.conteudo;
-      let imagemDataUrl: string | undefined;
-
-      if (params.tipo === 'AUDIO' && cfgBot.transcreverAudio && params.mediaUrl) {
-        const bytes = await this.whatsapp.baixarMidia(params.mediaUrl).catch(() => null);
-        const texto = bytes
-          ? await this.muller
-              .transcreverAudio(params.empresaId, bytes, params.mediaMime ?? 'audio/ogg')
-              .catch((e) => {
-                this.logger.warn(
-                  `[bot] transcrição falhou conv=${convId}: ${e instanceof Error ? e.message : String(e)}`,
-                );
-                return '';
-              })
-          : '';
-        if (texto.trim()) {
-          mensagemIA = texto.trim();
+      // 4.6 Multimodal — o que o bot vai "ler" (FONTE ÚNICA com o nó "Conversar com
+      //     IA"): áudio→transcrição, imagem→visão, conforme a config da Persona.
+      //     Sem o toggle, mídia sem texto continua escalando pra humano (4.7).
+      const { mensagemIA, imagemDataUrl } = await prepararEntradaMultimodal(params, cfgBot, {
+        baixarMidia: (url) => this.whatsapp.baixarMidia(url),
+        transcreverAudio: (emp, bytes, mime) => this.muller.transcreverAudio(emp, bytes, mime),
+        aoTranscrever: async (texto) => {
           // Mostra a transcrição na inbox (operador lê sem dar play).
           await this.prisma.message
-            .update({ where: { id: resultado.messageId }, data: { conteudo: `🎤 ${mensagemIA}` } })
+            .update({ where: { id: resultado.messageId }, data: { conteudo: `🎤 ${texto}` } })
             .catch(() => undefined);
-          this.logger.log(`[bot] áudio transcrito conv=${convId}: "${mensagemIA.slice(0, 60)}"`);
-        }
-      } else if (params.tipo === 'IMAGE' && cfgBot.analisarImagem && params.mediaUrl) {
-        const bytes = await this.whatsapp.baixarMidia(params.mediaUrl).catch(() => null);
-        if (bytes) {
-          imagemDataUrl = `data:${params.mediaMime ?? 'image/jpeg'};base64,${bytes.toString('base64')}`;
-          // Legenda real (se houver) vira o texto; placeholder "[imagem]" → vazio.
-          mensagemIA = PLACEHOLDERS_MIDIA.has(params.conteudo) ? '' : params.conteudo;
-        }
-      }
+          this.logger.log(`[bot] áudio transcrito conv=${convId}: "${texto.slice(0, 60)}"`);
+        },
+        aoFalharTranscricao: (m) =>
+          this.logger.warn(`[bot] transcrição falhou conv=${convId}: ${m}`),
+      });
 
       // 4.7 Sem imagem pra ver E sem texto real → escala pra humano (regra antiga).
       if (!imagemDataUrl) {
