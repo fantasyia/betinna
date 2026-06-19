@@ -19,6 +19,8 @@ import {
 } from './fluxo-executor.types';
 
 const HISTORICO_MAX = 12;
+/** Teto de mensagens lidas da CONVERSA real (maior que o de turnos: balões inflam a contagem). */
+const HISTORICO_CTX_MAX = 24;
 /** Teto de re-disparos do ramo "timeout" por execução (anti-loop de follow-up). */
 const MAX_TIMEOUT_FOLLOWS = 5;
 
@@ -103,6 +105,32 @@ export function parseTurnoIa(texto: string): IaTurno {
 
 const toJsonInput = (v: Record<string, unknown>): Prisma.InputJsonObject =>
   v as unknown as Prisma.InputJsonObject;
+
+/**
+ * Mescla o histórico da CONVERSA real (montarHistorico — cobre TODAS as execuções
+ * do lead, fonte da verdade entre elas) com o _iaHistorico desta execução (cobre o
+ * provider que não ecoa o outbound). Ordena por tempo e remove duplicatas
+ * consecutivas (a mesma fala aparece nas duas fontes). DEFESA EM PROFUNDIDADE: mesmo
+ * com execução duplicada (race) ou eco faltando, a IA SEMPRE enxerga o que já foi
+ * dito ao lead → não se reapresenta do zero.
+ */
+export function mesclarHistorico(
+  daConversa: HistoricoMsg[],
+  doContexto: HistoricoMsg[],
+  max: number,
+): HistoricoMsg[] {
+  const todos = [...daConversa, ...doContexto]
+    .filter((m) => m && typeof m.content === 'string' && m.content.trim().length > 0)
+    .sort((x, y) => (x.at ?? 0) - (y.at ?? 0));
+  const out: HistoricoMsg[] = [];
+  for (const m of todos) {
+    const ult = out[out.length - 1];
+    // Dedup: mesma fala (role+conteúdo) repetida em sequência = duplicata das fontes.
+    if (ult && ult.role === m.role && ult.content.trim() === m.content.trim()) continue;
+    out.push(m);
+  }
+  return out.slice(-max);
+}
 
 /**
  * ConversarIaService (Fase B) — motor do nó "Conversar com IA".
@@ -309,11 +337,21 @@ export class ConversarIaService {
     // opener + os turnos), com fallback pro montarHistorico (execuções antigas).
     // Sem isto a IA não via as próprias mensagens e se reapresentava a cada resposta.
     const ctxHist = (ctx as Record<string, unknown>)._iaHistorico;
-    const historico: HistoricoMsg[] = Array.isArray(ctxHist)
-      ? (ctxHist as HistoricoMsg[])
-      : conversationId
-        ? await this.montarHistorico(conversationId)
-        : [];
+    const doContexto: HistoricoMsg[] = Array.isArray(ctxHist) ? (ctxHist as HistoricoMsg[]) : [];
+    // Fonte da verdade = a conversa REAL do inbox (cobre todas as execuções do lead);
+    // o _iaHistorico desta execução entra como reforço (provider que não ecoa). Merge
+    // + dedupe → a IA enxerga o pitch já dado mesmo numa execução "amnésica".
+    const daConversa = conversationId ? await this.montarHistorico(conversationId) : [];
+    let historico = mesclarHistorico(daConversa, doContexto, HISTORICO_CTX_MAX);
+    // A mensagem ATUAL do lead já está salva na conversa (foi ela que disparou o
+    // retomar) — remove do fim pra não duplicar: ela vai como `mensagem` na chamada.
+    if (
+      historico.length > 0 &&
+      historico[historico.length - 1].role === 'user' &&
+      historico[historico.length - 1].content.trim() === textoLead.trim()
+    ) {
+      historico = historico.slice(0, -1);
+    }
 
     if (!(await this.tetoPromptOk(cfg.promptId))) {
       await this.enviarWhatsapp(
@@ -577,7 +615,7 @@ export class ConversarIaService {
     const msgs = await this.prisma.message.findMany({
       where: { conversationId },
       orderBy: { criadoEm: 'desc' },
-      take: HISTORICO_MAX,
+      take: HISTORICO_CTX_MAX,
       select: { direction: true, conteudo: true, criadoEm: true },
     });
     return msgs.reverse().map((m) => ({

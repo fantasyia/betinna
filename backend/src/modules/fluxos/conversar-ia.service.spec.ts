@@ -355,6 +355,48 @@ describe('ConversarIaService', () => {
       expect(upd.data.status).toBeUndefined();
     });
 
+    // DEFESA EM PROFUNDIDADE: mesmo numa execução "amnésica" (sem _iaHistorico — ex:
+    // 2ª execução que escapou do anti-duplicata), a IA monta o histórico pela CONVERSA
+    // real e enxerga o pitch já dado → NÃO se reapresenta.
+    it('monta histórico pela CONVERSA quando _iaHistorico está vazio (não re-apresenta)', async () => {
+      prisma.fluxoExecucao.findUnique.mockResolvedValue(execAguardando); // contexto SEM _iaHistorico
+      prisma.fluxoNo.findUnique.mockResolvedValue({ id: 'no-ia', config: {} });
+      prisma.lead.findFirst.mockResolvedValue({ contatoTelefone: '11999990000', variaveis: {} });
+      // Conversa real (DESC, como o orderBy retorna): pitch já enviado + resposta atual.
+      prisma.message.findMany.mockResolvedValue([
+        {
+          direction: 'INBOUND',
+          conteudo: 'sim combinado',
+          criadoEm: new Date('2026-06-19T20:04:00Z'),
+        },
+        {
+          direction: 'OUTBOUND',
+          conteudo: 'A MSM é uma indústria de alimentos, trabalha com caldos e molhos.',
+          criadoEm: new Date('2026-06-19T20:03:00Z'),
+        },
+      ]);
+      muller.gerarRespostaIa.mockResolvedValue({
+        texto: 'Perfeito! Me conta de qual canal são teus clientes?',
+        modelo: 'gpt',
+      });
+
+      await svc.retomar('exec-1', 'conv-1', 'sim combinado');
+
+      const [, , msgAtual, historico] = muller.gerarRespostaIa.mock.calls[0] as [
+        string,
+        string,
+        string,
+        Array<{ role: string; content: string }>,
+      ];
+      expect(msgAtual).toBe('sim combinado');
+      // A IA recebeu o pitch já dito (não vai re-apresentar a empresa).
+      expect(
+        historico.some((h) => h.role === 'assistant' && h.content.includes('MSM é uma indústria')),
+      ).toBe(true);
+      // A mensagem atual do lead NÃO aparece duplicada no histórico (vai como msgAtual).
+      expect(historico.filter((h) => h.content === 'sim combinado')).toHaveLength(0);
+    });
+
     it('ignora execução que não está mais AGUARDANDO', async () => {
       prisma.fluxoExecucao.findUnique.mockResolvedValue({ ...execAguardando, status: 'CONCLUIDO' });
       await svc.retomar('exec-1', 'conv-1', 'oi');
