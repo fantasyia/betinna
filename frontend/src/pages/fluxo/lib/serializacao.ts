@@ -189,11 +189,22 @@ export function serializarFluxo(
     (triggerNode?.data.triggerTipo as TriggerTipo | undefined) ?? (triggerTipo || undefined);
   if (ttFinal) payload.triggerTipo = ttFinal;
   // CRON: a config de horário vive em Fluxo.triggerConfig (o job lê de lá).
+  // Persiste o ARRAY de expressões (múltiplos horários) + expressao (back-compat,
+  // a 1ª) + pularFeriados. Antes só ia expressao/timezone → múltiplos horários e
+  // "pular feriados" não chegavam no job.
   if (ttFinal === 'CRON_AGENDADO' && triggerNode) {
     const c = triggerNode.data.config ?? {};
+    const expressoes =
+      Array.isArray(c.expressoes) && c.expressoes.length
+        ? (c.expressoes as string[])
+        : c.expressao
+          ? [c.expressao as string]
+          : [];
     payload.triggerConfig = {
-      expressao: (c.expressao as string) ?? '',
+      expressoes,
+      expressao: expressoes[0] ?? '',
       timezone: (c.timezone as string) ?? 'America/Sao_Paulo',
+      pularFeriados: c.pularFeriados === true,
     };
   }
   return payload;

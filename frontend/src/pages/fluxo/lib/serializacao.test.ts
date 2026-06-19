@@ -168,8 +168,10 @@ describe('serializarFluxo / hidratarFluxo — round-trip do grafo', () => {
     const payload = serializarFluxo(nodes, [], 'Cron diário', '');
     expect(payload.triggerTipo).toBe('CRON_AGENDADO');
     expect(payload.triggerConfig).toEqual({
+      expressoes: ['0 9 * * 1-5'],
       expressao: '0 9 * * 1-5',
       timezone: 'America/Sao_Paulo',
+      pularFeriados: false,
     });
 
     // hidratando de volta (triggerTipo agora no topo, como o backend devolveria)
@@ -180,12 +182,43 @@ describe('serializarFluxo / hidratarFluxo — round-trip do grafo', () => {
     expect(trg.data.config.expressao).toBe('0 9 * * 1-5');
   });
 
-  it('triggerConfig CRON com config faltando → defaults (expressao vazia, SP)', () => {
+  it('CRON: persiste múltiplos horários (expressoes) + pularFeriados', () => {
+    const nodes: FlowNode[] = [
+      node({
+        id: 'trg',
+        data: {
+          titulo: 'Cron',
+          tipo: 'TRIGGER',
+          triggerTipo: 'CRON_AGENDADO',
+          config: {
+            expressoes: ['0 9 * * 1-5', '0 14 * * 1-5'],
+            expressao: '0 9 * * 1-5',
+            timezone: 'America/Sao_Paulo',
+            pularFeriados: true,
+          },
+        },
+      }),
+    ];
+    const payload = serializarFluxo(nodes, [], 'Cron 2x', '');
+    expect(payload.triggerConfig).toEqual({
+      expressoes: ['0 9 * * 1-5', '0 14 * * 1-5'],
+      expressao: '0 9 * * 1-5',
+      timezone: 'America/Sao_Paulo',
+      pularFeriados: true,
+    });
+  });
+
+  it('triggerConfig CRON com config faltando → defaults (vazio, SP, sem feriado)', () => {
     const nodes: FlowNode[] = [
       node({ id: 'trg', data: { titulo: 'Cron', tipo: 'TRIGGER', triggerTipo: 'CRON_AGENDADO', config: {} } }),
     ];
     const payload = serializarFluxo(nodes, [], 'Cron', '');
-    expect(payload.triggerConfig).toEqual({ expressao: '', timezone: 'America/Sao_Paulo' });
+    expect(payload.triggerConfig).toEqual({
+      expressoes: [],
+      expressao: '',
+      timezone: 'America/Sao_Paulo',
+      pularFeriados: false,
+    });
   });
 
   it('triggerTipo top-level só é fallback quando não há nó TRIGGER', () => {
