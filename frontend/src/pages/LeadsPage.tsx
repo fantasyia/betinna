@@ -42,10 +42,10 @@ import { CrmTabs } from '@/components/CrmTabs';
 import { StateView } from '@/components/StateView';
 import { AsyncCombobox } from '@/components/AsyncCombobox';
 import {
-  maskTelefone,
   formatMoeda as fmtBRL,
   formatMoedaCompacta as fmtBRLCompact,
 } from '@/lib/masks';
+import { PhoneInput } from '@/components/PhoneInput';
 import { UfSelect, CidadeSelect } from '@/components/LocalidadeSelects';
 import {
   Avatar,
@@ -1466,12 +1466,10 @@ function LeadFormModal({
             />
           </Field>
           <Field label="Telefone">
-            <Input
+            <PhoneInput
+              testId="lead-telefone"
               value={form.contatoTelefone}
-              onChange={(e) => setF('contatoTelefone', maskTelefone(e.target.value))}
-              placeholder="(00) 00000-0000"
-              maxLength={15}
-              inputMode="tel"
+              onChange={(e164) => setF('contatoTelefone', e164)}
             />
           </Field>
           <Field label="E-mail" error={fieldErrors.contatoEmail}>

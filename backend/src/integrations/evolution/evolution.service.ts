@@ -540,11 +540,14 @@ export class EvolutionService {
     // Grupos (@g.us) e LIDs (@lid) do inbox: manda como veio — soDigitos
     // destruiria o sufixo e o grupo/lid viraria um número solto.
     if (numero.includes('@g.us') || numero.includes('@lid')) return numero;
-    // Número cru OU jid de pessoa (<dígitos>@s.whatsapp.net): extrai os dígitos e,
-    // se for nacional (10/11 dígitos, sem DDI), prefixa o 55. Cobre o caso do
-    // FLUXO, que montava "<DDD+numero>@s.whatsapp.net" SEM o 55 → Evolution
-    // devolvia 400 (exists:false). 12-13 dígitos já têm país (mantém).
+    // Já INTERNACIONAL (E.164 com '+') ou já com DDI (>=12 dígitos): manda só os
+    // dígitos, NÃO prefixa 55 — senão corromperia número estrangeiro (ex: US de
+    // 11 dígitos viraria "55+US"). Atendemos clientes de qualquer país.
+    const internacional = numero.includes('+');
     const n = this.soDigitos(numero);
+    if (internacional || n.length >= 12) return n;
+    // Nacional BR SEM DDI (10/11 dígitos): assume 55 (legado pré-E.164, e o
+    // caso do FLUXO que montava "<DDD+numero>@s.whatsapp.net" sem o 55).
     if (n.length === 10 || n.length === 11) return `55${n}`;
     return n;
   }

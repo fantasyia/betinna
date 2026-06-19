@@ -56,4 +56,16 @@ describe('EvolutionService — normalização de número (via enviarTexto)', () 
     await svc.enviarTexto('inst', '99887766@lid', 'oi');
     expect(numeroEnviado(http)).toBe('99887766@lid');
   });
+
+  it('internacional E.164 (com +) → NÃO prefixa 55 (US de 11 dígitos)', async () => {
+    const { svc, http } = makeSvc();
+    await svc.enviarTexto('inst', '+14155552671@s.whatsapp.net', 'oi');
+    expect(numeroEnviado(http)).toBe('14155552671');
+  });
+
+  it('E.164 BR (com +) → só os dígitos, sem duplicar 55', async () => {
+    const { svc, http } = makeSvc();
+    await svc.enviarTexto('inst', '+5511970535832@s.whatsapp.net', 'oi');
+    expect(numeroEnviado(http)).toBe('5511970535832');
+  });
 });

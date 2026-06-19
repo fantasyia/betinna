@@ -1,5 +1,6 @@
 import { CanalOrigem, LeadEtapa } from '@prisma/client';
 import { z } from 'zod';
+import { normalizarTelefoneIntl } from '@shared/validators/br-validators';
 
 export const createLeadSchema = z.object({
   nome: z.string().trim().min(2).max(200),
@@ -8,7 +9,13 @@ export const createLeadSchema = z.object({
   segmento: z.string().max(60).optional(),
   contatoNome: z.string().max(150).optional(),
   contatoEmail: z.string().email().optional(),
-  contatoTelefone: z.string().max(30).optional(),
+  // Telefone do lead (opcional, dado às vezes imperfeito de prospecção): normaliza
+  // pra E.164 quando dá pra validar; senão mantém como veio (não rejeita o lead).
+  contatoTelefone: z
+    .string()
+    .max(30)
+    .optional()
+    .transform((v) => (v ? (normalizarTelefoneIntl(v) ?? v) : v)),
   valorEstimado: z.number().min(0).default(0),
   canalOrigem: z.nativeEnum(CanalOrigem).default('WHATSAPP'),
   etapa: z.nativeEnum(LeadEtapa).default('NOVO'),

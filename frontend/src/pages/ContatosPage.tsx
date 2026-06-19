@@ -25,7 +25,7 @@ import { ImportClientesModal } from '@/components/ImportClientesModal';
 import { StateView } from '@/components/StateView';
 import { useToast } from '@/components/toast';
 import { api, ApiError } from '@/lib/api';
-import { formatNumero, maskTelefone } from '@/lib/masks';
+import { formatNumero, formatTelefone } from '@/lib/masks';
 import {
   Avatar,
   Badge,
@@ -261,7 +261,7 @@ export default function ContatosPage() {
                             <div className="min-w-0">
                               <div className="text-sm font-medium text-text truncate">{c.nome}</div>
                               <div className="text-xs text-muted truncate">
-                                {c.telefone ? maskTelefone(c.telefone) : (c.email ?? '—')}
+                                {c.telefone ? formatTelefone(c.telefone) : (c.email ?? '—')}
                               </div>
                             </div>
                           </div>
@@ -490,7 +490,7 @@ function ContatoDrawer({
       open
       onClose={onClose}
       title={c.nome}
-      description={c.telefone ? maskTelefone(c.telefone) : (c.email ?? undefined)}
+      description={c.telefone ? formatTelefone(c.telefone) : (c.email ?? undefined)}
       width={isMobile ? 'sm' : 'md'}
     >
       <div className="flex flex-col gap-5">
@@ -503,7 +503,7 @@ function ContatoDrawer({
         </div>
 
         <div className="flex flex-col gap-3">
-          <DetailRow label="Telefone" value={c.telefone ? maskTelefone(c.telefone) : null} />
+          <DetailRow label="Telefone" value={c.telefone ? formatTelefone(c.telefone) : null} />
           <DetailRow label="E-mail" value={c.email} />
           <DetailRow
             label="Local"

@@ -218,7 +218,7 @@ vi.mock('@/components/ImportClientesModal', () => ({
 // masks: evitar falha em isomorphic na formatação
 vi.mock('@/lib/masks', () => ({
   formatNumero: (n: number) => String(n),
-  maskTelefone: (t: string) => t,
+  formatTelefone: (t: string) => t,
 }));
 
 // ─── importar componente DEPOIS dos mocks ──────────────────────────────────────

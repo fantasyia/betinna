@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { Building2, ExternalLink, Hash, Mail, MapPin, Phone, Receipt } from 'lucide-react';
 import { useApiQuery } from '@/hooks/useApiQuery';
 import { Avatar, Button, Drawer } from '@/components/ui';
+import { formatTelefone } from '@/lib/masks';
 import { cn } from '@/lib/cn';
 
 interface ClienteCtx {
@@ -50,7 +51,7 @@ export function ClienteContextDrawer({
 
           <div className="flex flex-col gap-2 text-sm">
             <CtxRow icon={<Hash />} value={data.cnpj} mono />
-            <CtxRow icon={<Phone />} value={data.telefone} />
+            <CtxRow icon={<Phone />} value={data.telefone ? formatTelefone(data.telefone) : null} />
             <CtxRow icon={<Mail />} value={data.email} />
             <CtxRow
               icon={<MapPin />}

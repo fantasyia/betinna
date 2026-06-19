@@ -10,13 +10,8 @@ import { AsyncCombobox } from '@/components/AsyncCombobox';
 import { NovoPedidoDialog } from '@/components/NovoPedidoDialog';
 import { useConfirm } from '@/hooks/useConfirm';
 import { useToast } from '@/components/toast';
-import {
-  maskCNPJ,
-  maskTelefone,
-  normalizeUF,
-  formatMoeda as fmtBRL,
-  formatNumero,
-} from '@/lib/masks';
+import { maskCNPJ, normalizeUF, formatMoeda as fmtBRL, formatNumero } from '@/lib/masks';
+import { PhoneInput } from '@/components/PhoneInput';
 import { cn } from '@/lib/cn';
 
 // ─── Estilos legados traduzidos pra Tailwind ─────────────────────────
@@ -441,12 +436,10 @@ function DadosTab({
             />
           </FormField>
           <FormField label="Telefone">
-            <Input
+            <PhoneInput
+              testId="cliente-detail-telefone"
               value={form.telefone}
-              onChange={(e) => setForm((s) => ({ ...s, telefone: maskTelefone(e.target.value) }))}
-              placeholder="(00) 00000-0000"
-              maxLength={15}
-              inputMode="tel"
+              onChange={(e164) => setForm((s) => ({ ...s, telefone: e164 }))}
             />
           </FormField>
           <FormField label="Cidade">

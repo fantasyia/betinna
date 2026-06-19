@@ -348,7 +348,8 @@ describe('ContatosService', () => {
       expect(leads.create).toHaveBeenCalledOnce();
       expect(leads.create).toHaveBeenCalledWith(
         adminUser,
-        expect.objectContaining({ contatoTelefone: '5511987654321' }),
+        // Normalizado pra E.164 pelo createLeadSchema (transform do contatoTelefone).
+        expect.objectContaining({ contatoTelefone: '+5511987654321' }),
       );
     });
 

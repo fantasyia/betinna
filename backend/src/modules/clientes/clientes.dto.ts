@@ -1,6 +1,6 @@
 import { ClienteOmieStatus, ClienteStatus } from '@prisma/client';
 import { z } from 'zod';
-import { cnpjSchema, cepSchema, telefoneBrSchema } from '@shared/validators/br-validators';
+import { cnpjSchema, cepSchema, telefoneIntlSchema } from '@shared/validators/br-validators';
 
 const clienteStatusEnum = z.nativeEnum(ClienteStatus);
 const omieStatusEnum = z.nativeEnum(ClienteOmieStatus);
@@ -21,7 +21,7 @@ export const createClienteSchema = z.object({
   nome: z.string().trim().min(2, 'Nome deve ter ao menos 2 caracteres').max(200),
   cnpj: cnpjSchema,
   email: z.string().trim().toLowerCase().email('E-mail inválido').max(200),
-  telefone: telefoneBrSchema,
+  telefone: telefoneIntlSchema,
   segmento: z.string().trim().min(2, 'Segmento obrigatório').max(60),
   // Endereço completo
   cep: cepSchema,

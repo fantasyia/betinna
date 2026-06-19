@@ -33,7 +33,8 @@ import { CrmTabs } from '@/components/CrmTabs';
 import { StateView } from '@/components/StateView';
 import { AsyncCombobox } from '@/components/AsyncCombobox';
 import { useToast } from '@/components/toast';
-import { formatNumero, isValidCNPJ, maskCEP, maskCNPJ, maskTelefone, stripMask } from '@/lib/masks';
+import { formatNumero, formatTelefone, isValidCNPJ, maskCEP, maskCNPJ, stripMask } from '@/lib/masks';
+import { PhoneInput } from '@/components/PhoneInput';
 import { fetchCep } from '@/lib/localidades';
 import { UfSelect, CidadeSelect } from '@/components/LocalidadeSelects';
 import { exportToCsv } from '@/lib/csv';
@@ -224,7 +225,7 @@ export default function ClientesPage() {
         { header: 'Nome', value: (c: Cliente) => c.nome },
         { header: 'CNPJ', value: (c: Cliente) => c.cnpj ?? '' },
         { header: 'E-mail', value: (c: Cliente) => c.email ?? '' },
-        { header: 'Telefone', value: (c: Cliente) => c.telefone ?? '' },
+        { header: 'Telefone', value: (c: Cliente) => formatTelefone(c.telefone) },
         { header: 'Cidade', value: (c: Cliente) => c.cidade ?? '' },
         { header: 'UF', value: (c: Cliente) => c.uf ?? '' },
         { header: 'Segmento', value: (c: Cliente) => c.segmento ?? '' },
@@ -958,7 +959,7 @@ function ClienteDetailDrawer({
 
           <DetailSection title="Contato">
             <DetailRow icon={<Mail />} label="E-mail" value={data.email} />
-            <DetailRow icon={<Phone />} label="Telefone" value={data.telefone} />
+            <DetailRow icon={<Phone />} label="Telefone" value={formatTelefone(data.telefone)} />
             <DetailRow icon={<Hash />} label="CNPJ" value={data.cnpj} mono />
             <DetailRow icon={<Building2 />} label="Segmento" value={data.segmento} />
           </DetailSection>
@@ -1698,13 +1699,10 @@ function ClienteFormModal({
             />
           </Field>
           <Field label="Telefone" required>
-            <Input
-              leftIcon={<Phone />}
+            <PhoneInput
+              testId="cliente-telefone"
               value={form.telefone}
-              onChange={(e) => setField('telefone', maskTelefone(e.target.value))}
-              placeholder="(00) 00000-0000"
-              maxLength={15}
-              inputMode="tel"
+              onChange={(e164) => setField('telefone', e164)}
               required
             />
           </Field>

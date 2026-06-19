@@ -292,7 +292,8 @@ describe('ImportService.importarLeads', () => {
     expect(r.criados).toBe(1);
     const arg = prisma.lead.create.mock.calls[0][0];
     expect(arg.data.nome).toBe('Rep João');
-    expect(arg.data.contatoTelefone).toBe('11999990000');
+    // Import normaliza pra E.164 (assume BR quando vem sem DDI).
+    expect(arg.data.contatoTelefone).toBe('+5511999990000');
     expect(arg.data.funilEtapaId).toBe('etapa-1');
     expect(arg.data.variaveis).toMatchObject({ origem: 'importacao_excel' });
   });
@@ -304,7 +305,7 @@ describe('ImportService.importarLeads', () => {
       onDuplicate: 'skip',
     });
     expect(r.criados).toBe(1);
-    expect(prisma.lead.create.mock.calls[0][0].data.contatoTelefone).toBe('11988887777');
+    expect(prisma.lead.create.mock.calls[0][0].data.contatoTelefone).toBe('+5511988887777');
   });
 
   it('dedup por telefone: onDuplicate=skip pula o existente', async () => {

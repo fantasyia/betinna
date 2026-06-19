@@ -480,7 +480,9 @@ export class ConversarIaService {
   private async enviarWhatsapp(empresaId: string, telefone: string, texto: string): Promise<void> {
     const limpo = texto.trim();
     if (!limpo) return;
-    const peerId = `${telefone.replace(/\D/g, '')}@s.whatsapp.net`;
+    // Preserva o '+' (E.164) pra o provider distinguir internacional de nacional —
+    // senão número estrangeiro de 10/11 dígitos ganharia 55 indevidamente.
+    const peerId = `${telefone.replace(/[^\d+]/g, '')}@s.whatsapp.net`;
 
     const cfg = await this.persona.obterConfigBot(empresaId).catch(() => null);
     const baloes = cfg?.quebrarMensagens

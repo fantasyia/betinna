@@ -1,4 +1,42 @@
 import { z } from 'zod';
+import { parsePhoneNumberFromString, type CountryCode } from 'libphonenumber-js';
+
+/** País assumido quando o número chega SEM código de país (nacional/CSV legado). */
+export const PAIS_PADRAO: CountryCode = 'BR';
+
+/**
+ * Normaliza um telefone pra E.164 (`+<DDI><número>`). Aceita número já
+ * internacional (com `+`/DDI) ou nacional (assume `paisPadrao`). Retorna `null`
+ * se não for um número válido. Multi-país (atendemos clientes de qualquer lugar).
+ */
+export function normalizarTelefoneIntl(
+  valor: string | null | undefined,
+  paisPadrao: CountryCode = PAIS_PADRAO,
+): string | null {
+  const raw = (valor ?? '').trim();
+  if (!raw) return null;
+  const tel = parsePhoneNumberFromString(raw, paisPadrao);
+  return tel && tel.isValid() ? tel.number : null; // tel.number = E.164 com '+'
+}
+
+/**
+ * Telefone internacional OBRIGATÓRIO — valida e persiste em E.164. O front manda
+ * E.164 (seletor de país + número); CSV/legado sem DDI assume `PAIS_PADRAO`.
+ */
+export const telefoneIntlSchema = z
+  .string()
+  .trim()
+  .transform((s, ctx) => {
+    const e164 = normalizarTelefoneIntl(s);
+    if (!e164) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: 'Telefone inválido (informe DDI + número)',
+      });
+      return z.NEVER;
+    }
+    return e164;
+  });
 
 /**
  * Validadores reutilizáveis pra dados brasileiros.

@@ -5,6 +5,7 @@ import { PrismaService } from '@database/prisma.service';
 import { ForbiddenException } from '@shared/errors/app-exception';
 import { ErrorCode } from '@shared/errors/error-codes';
 import { getCallerEmpresaId } from '@shared/utils/auth-context';
+import { normalizarTelefoneIntl } from '@shared/validators/br-validators';
 import type { AuthenticatedUser } from '@shared/types/authenticated-user';
 import type {
   ImportClientesDto,
@@ -70,7 +71,9 @@ export class ImportService {
 
         const cnpj = limpaCnpj(linha.cnpj ?? linha.documento ?? '');
         const email = (linha.email ?? linha['e-mail'] ?? '').trim().toLowerCase() || null;
-        const telefone = (linha.telefone ?? linha.celular ?? linha.fone ?? '').trim() || null;
+        const telefoneRaw = (linha.telefone ?? linha.celular ?? linha.fone ?? '').trim();
+        // E.164 (assume BR se vier sem DDI); mantém o cru se não der pra validar.
+        const telefone = telefoneRaw ? (normalizarTelefoneIntl(telefoneRaw) ?? telefoneRaw) : null;
         const cidade = (linha.cidade ?? '').trim() || null;
         const uf = (linha.uf ?? linha.estado ?? '').trim().toUpperCase().slice(0, 2) || null;
         const segmento = (linha.segmento ?? linha.ramo ?? '').trim() || null;
@@ -215,8 +218,15 @@ export class ImportService {
         const nome = (linha.nome ?? linha.contato ?? linha.razao_social ?? '').trim();
         if (!nome) return { ok: false, motivo: 'nome obrigatório' };
 
-        const telefone =
-          (linha.telefone ?? linha.whatsapp ?? linha.celular ?? linha.fone ?? '').trim() || null;
+        const telefoneRaw = (
+          linha.telefone ??
+          linha.whatsapp ??
+          linha.celular ??
+          linha.fone ??
+          ''
+        ).trim();
+        // E.164 (assume BR se vier sem DDI); mantém o cru se não der pra validar.
+        const telefone = telefoneRaw ? (normalizarTelefoneIntl(telefoneRaw) ?? telefoneRaw) : null;
         const email = (linha.email ?? linha['e-mail'] ?? '').trim().toLowerCase() || null;
         const cidade = (linha.cidade ?? '').trim() || null;
         const uf = (linha.uf ?? linha.estado ?? '').trim().toUpperCase().slice(0, 2) || null;

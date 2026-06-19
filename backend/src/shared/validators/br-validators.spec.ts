@@ -7,6 +7,8 @@ import {
   isCnpjValido,
   isCpfValido,
   telefoneBrSchema,
+  telefoneIntlSchema,
+  normalizarTelefoneIntl,
 } from './br-validators';
 
 describe('br-validators', () => {
@@ -79,6 +81,28 @@ describe('br-validators', () => {
 
     it('rejeita telefone com mais de 11 dígitos', () => {
       expect(() => telefoneBrSchema.parse('1234567890123')).toThrow();
+    });
+  });
+
+  describe('telefoneIntlSchema / normalizarTelefoneIntl', () => {
+    it('número BR nacional (sem DDI) → E.164 com +55', () => {
+      expect(telefoneIntlSchema.parse('(11) 97053-5832')).toBe('+5511970535832');
+      expect(normalizarTelefoneIntl('11970535832')).toBe('+5511970535832');
+    });
+
+    it('número já internacional (com DDI) → mantém o país', () => {
+      expect(telefoneIntlSchema.parse('+1 415 555 2671')).toBe('+14155552671'); // US
+      expect(normalizarTelefoneIntl('+351 912 345 678')).toBe('+351912345678'); // PT
+    });
+
+    it('E.164 BR não duplica o 55', () => {
+      expect(normalizarTelefoneIntl('+5511970535832')).toBe('+5511970535832');
+    });
+
+    it('inválido → schema lança / helper devolve null', () => {
+      expect(() => telefoneIntlSchema.parse('123')).toThrow();
+      expect(normalizarTelefoneIntl('abc')).toBeNull();
+      expect(normalizarTelefoneIntl('')).toBeNull();
     });
   });
 
