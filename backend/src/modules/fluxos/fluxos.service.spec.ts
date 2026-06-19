@@ -73,12 +73,15 @@ const fakeFluxo = (overrides = {}) => ({
 describe('FluxosService', () => {
   let prisma: ReturnType<typeof makePrismaMock>;
   let bus: ReturnType<typeof makeBusMock>;
+  let redis: { del: ReturnType<typeof vi.fn> };
   let svc: FluxosService;
 
   beforeEach(() => {
     prisma = makePrismaMock();
     bus = makeBusMock();
-    svc = new FluxosService(prisma as never, bus as never);
+    // Mock do Redis — só `del` é usado (limpeza do cursor cron).
+    redis = { del: vi.fn().mockResolvedValue(1) };
+    svc = new FluxosService(prisma as never, bus as never, redis as never);
   });
 
   describe('create', () => {
@@ -164,6 +167,8 @@ describe('FluxosService', () => {
         where: { id: 'fluxo-1' },
         data: { status: 'ATIVO' },
       });
+      // Ativar zera o cursor do cron (corrige cursor antigo travado no futuro).
+      expect(redis.del).toHaveBeenCalledWith('cron:next:fluxo-1');
     });
 
     it('lança FLUXO_JA_ATIVO se já estiver ativo', async () => {

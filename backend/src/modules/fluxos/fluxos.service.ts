@@ -2,6 +2,7 @@ import { randomUUID } from 'node:crypto';
 import { Injectable, Logger } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { PrismaService } from '@database/prisma.service';
+import { RedisService } from '@database/redis.service';
 import {
   BusinessRuleException,
   ForbiddenException,
@@ -64,7 +65,23 @@ export class FluxosService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly bus: FluxoEventBusService,
+    private readonly redis: RedisService,
   ) {}
+
+  /**
+   * Limpa o cursor do próximo disparo do CRON_AGENDADO (Redis `cron:next:<id>`).
+   * Necessário ao ativar ou trocar o agendamento: senão o cursor de um
+   * agendamento ANTERIOR (data futura) sobrevive e o job fica esperando ele —
+   * o fluxo nunca dispara mesmo ATIVO e com a expressão nova. Após limpar, o job
+   * reavalia do zero (agenda o próximo a partir de agora). Best-effort.
+   */
+  private async limparCursorCron(id: string): Promise<void> {
+    await this.redis.del(`cron:next:${id}`).catch((err) => {
+      this.logger.warn(
+        `Falha ao limpar cursor cron do fluxo ${id}: ${err instanceof Error ? err.message : String(err)}`,
+      );
+    });
+  }
 
   // ─── Guard helpers ───────────────────────────────────────────────
 
@@ -289,6 +306,12 @@ export class FluxosService {
       await tx.fluxo.update({ where: { id }, data: updateData });
     });
 
+    // Mudou o agendamento (tipo/config do trigger) → zera o cursor do cron pra
+    // não ficar preso no próximo disparo da config ANTIGA.
+    if (dto.triggerTipo !== undefined || dto.triggerConfig !== undefined) {
+      await this.limparCursorCron(id);
+    }
+
     this.logger.log(`Fluxo ${id} atualizado por ${user.email}`);
     return this.findOne(user, id);
   }
@@ -314,6 +337,9 @@ export class FluxosService {
     // pausado antes do fix de cancelamento). Sem isto, reativar ressuscitava
     // execuções antigas e elas voltavam a disparar/spammar.
     await this.cancelarExecucoesEmAndamento(id);
+    // Zera o cursor do cron — reativar reprograma a partir de agora (corrige o
+    // caso do cursor antigo travado no futuro, que fazia o fluxo nunca disparar).
+    await this.limparCursorCron(id);
     await this.prisma.fluxo.update({ where: { id }, data: { status: 'ATIVO' } });
     this.logger.log(`Fluxo ${id} ativado por ${user.email}`);
     return this.findOneById(id);
