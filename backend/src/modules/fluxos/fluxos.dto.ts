@@ -173,10 +173,18 @@ export const testarFluxoSchema = z.object({
   contexto: z.record(z.unknown()).default({}),
 });
 
-export const cronPreviewSchema = z.object({
-  expressao: z.string().min(1).max(120),
-  timezone: z.string().max(64).optional(),
-});
+export const cronPreviewSchema = z
+  .object({
+    // `expressao` (singular) mantém back-compat; `expressoes` (plural) cobre
+    // múltiplos horários/regras no mesmo gatilho.
+    expressao: z.string().max(120).optional(),
+    expressoes: z.array(z.string().max(120)).max(20).optional(),
+    timezone: z.string().max(64).optional(),
+  })
+  .refine(
+    (d) => (d.expressoes && d.expressoes.length > 0) || (d.expressao && d.expressao.length > 0),
+    { message: 'Informe `expressao` ou `expressoes`.' },
+  );
 
 // ─── Types ────────────────────────────────────────────────────────────
 export type CronPreviewDto = z.infer<typeof cronPreviewSchema>;

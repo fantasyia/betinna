@@ -8,7 +8,7 @@ import { TransactionalEmailService } from '@integrations/email/transactional-ema
 import { FluxoEventBusService } from './fluxo-event-bus.service';
 import { ConversarIaService } from './conversar-ia.service';
 import { CronMetricsService } from './cron-metrics.service';
-import { proximaExecucaoCron, CRON_TZ_PADRAO } from './cron.util';
+import { proximaExecucaoCrons, CRON_TZ_PADRAO } from './cron.util';
 
 /**
  * FluxoTriggersJob — cron jobs que disparam fluxos com trigger baseado em tempo.
@@ -182,10 +182,15 @@ export class FluxoTriggersJob {
     for (const f of flows) {
       const cfg = (f.triggerConfig ?? {}) as {
         expressao?: string;
+        expressoes?: string[];
         timezone?: string;
       };
-      const expr = (cfg.expressao ?? '').trim();
-      if (!expr) continue;
+      // `expressoes` (múltiplos horários/regras) tem precedência; fallback p/ o
+      // `expressao` legado de fluxos salvos antes do suporte a múltiplas regras.
+      const exprs = (cfg.expressoes?.length ? cfg.expressoes : cfg.expressao ? [cfg.expressao] : [])
+        .map((e) => (e ?? '').trim())
+        .filter(Boolean);
+      if (exprs.length === 0) continue;
       const tz = cfg.timezone || CRON_TZ_PADRAO;
       // Cursor do próximo disparo no Redis (não no triggerConfig) — assim editar a
       // expressão não mexe no cursor e o cursor não sobrescreve a config do usuário.
@@ -194,7 +199,7 @@ export class FluxoTriggersJob {
 
       // Primeira avaliação (sem cursor): só agenda o próximo (não dispara retroativo).
       if (!proximo || Number.isNaN(proximo.getTime())) {
-        const prox = proximaExecucaoCron(expr, tz, agora);
+        const prox = proximaExecucaoCrons(exprs, tz, agora);
         if (prox) await this.gravarProximoCron(f.id, prox);
         continue;
       }
@@ -215,7 +220,7 @@ export class FluxoTriggersJob {
           await this.cronMetrics.registrar(agora.getTime() - proximo.getTime());
           this.logger.log(`CRON_AGENDADO: fluxo "${f.nome}" disparado (exec ${exec.id})`);
         }
-        const prox = proximaExecucaoCron(expr, tz, agora);
+        const prox = proximaExecucaoCrons(exprs, tz, agora);
         if (prox) await this.gravarProximoCron(f.id, prox);
       }
     }

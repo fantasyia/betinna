@@ -225,6 +225,7 @@
   - `FluxoExecutorService` — motor passo-a-passo: interpola `{{variáveis}}`, avalia condições, executa 7 tipos de ação
   - `FluxoExecutorProcessor` — worker BullMQ (concorrência 5, retry exponencial)
   - `FluxoTriggersJob` — **dois crons**: `*/30 * * * *` (CLIENTE_INATIVO_30D + AMOSTRA_FOLLOWUP + SLA etapas + timeouts IA) e `* * * * *` (CRON_AGENDADO, latência ≤1min — antes ~30min). Cron-agendado usa query global única + lock `fluxo-cron-agendado` TTL 50s; registra atraso (agendado vs real) no `CronMetricsService` (Redis list capada `cron:metrics:delays`, 1000 amostras → p50/p95/p99 + alerta p99>1min). Endpoint `GET /fluxos/cron/metricas` (ADMIN/DIRECTOR) → painel no Admin.
+  - **CRON_AGENDADO suporta múltiplos horários/regras**: `triggerConfig.expressoes` (array) tem precedência, fallback p/ `expressao` (string legado). `cron.util.ts` valida 5 campos (`validarCronExpr` — cron-parser aceitaria 1 campo como "segundos", daí o bug do "2"); `previewCrons`/`proximaExecucaoCrons` operam no array (funde/ordena preview; cursor = a execução mais cedo entre todas). Front: wizard `montarCrons` (freq por dia c/ N horários, "a cada N min/horas", janela de horário) + tradução `cronstrue` pt_BR.
   - Triggers: LEAD_CRIADO, LEAD_ETAPA_MUDOU, PEDIDO_APROVADO, PEDIDO_ENTREGUE, OCORRENCIA_ABERTA, CLIENTE_INATIVO_30D, AMOSTRA_FOLLOWUP, CRON_AGENDADO
   - Ações: ENVIAR_WHATSAPP, ENVIAR_EMAIL, CRIAR_TAREFA, MUDAR_TAG, MOVER_LEAD_ETAPA, ATRIBUIR_REP, WEBHOOK_EXTERNO
   - DELAY nodes com unidade (minutos/horas/dias) via BullMQ `delay`

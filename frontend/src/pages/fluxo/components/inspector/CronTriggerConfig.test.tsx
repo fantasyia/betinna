@@ -89,7 +89,7 @@ describe('CronTriggerConfig', () => {
     expect(onUpdate.last!.config.expressao).toBe('0 9 * * 1-5');
   });
 
-  it('mudar Horário grava cronHorario E recalcula a expressao', () => {
+  it('mudar Horário grava cronHorarios E recalcula a expressao', () => {
     const data = makeData({
       cronFreq: 'todo_dia',
       cronHorario: '09:00',
@@ -102,9 +102,58 @@ describe('CronTriggerConfig', () => {
     const time = container.querySelector('input[type="time"]') as HTMLInputElement;
     fireEvent.change(time, { target: { value: '14:30' } });
 
-    expect(onUpdate.last!.config.cronHorario).toBe('14:30');
+    expect(onUpdate.last!.config.cronHorarios).toEqual(['14:30']);
     // todo_dia com 14:30 => '30 14 * * *'
     expect(onUpdate.last!.config.expressao).toBe('30 14 * * *');
+    expect(onUpdate.last!.config.expressoes).toEqual(['30 14 * * *']);
+  });
+
+  it('múltiplos horários geram uma expressão por horário', () => {
+    const data = makeData({
+      cronFreq: 'dias_uteis',
+      cronHorarios: ['09:00', '14:00'],
+      timezone: 'America/Sao_Paulo',
+      expressoes: ['0 9 * * 1-5', '0 14 * * 1-5'],
+    });
+    const onUpdate = makeOnUpdate(data);
+    render(<CronTriggerConfig config={data.config} onUpdate={onUpdate} />);
+
+    // "+ adicionar horário" empurra mais um.
+    fireEvent.click(screen.getByTestId('cron-horario-add'));
+    expect(onUpdate.last!.config.expressoes).toEqual([
+      '0 9 * * 1-5',
+      '0 14 * * 1-5',
+      '0 12 * * 1-5',
+    ]);
+  });
+
+  it('frequência "a cada N minutos" monta */N', () => {
+    const data = makeData({
+      cronFreq: 'cada_n_min',
+      cronIntervaloN: 15,
+      timezone: 'America/Sao_Paulo',
+      expressoes: ['*/15 * * * *'],
+    });
+    const onUpdate = makeOnUpdate(data);
+    render(<CronTriggerConfig config={data.config} onUpdate={onUpdate} />);
+
+    fireEvent.change(screen.getByTestId('cron-intervalo-n'), { target: { value: '20' } });
+    expect(onUpdate.last!.config.expressoes).toEqual(['*/20 * * * *']);
+  });
+
+  it('template "Dias úteis 9h e 14h" preenche os 2 horários', () => {
+    const data = makeData({
+      cronFreq: 'todo_dia',
+      cronHorario: '09:00',
+      timezone: 'America/Sao_Paulo',
+      expressoes: ['0 9 * * *'],
+    });
+    const onUpdate = makeOnUpdate(data);
+    render(<CronTriggerConfig config={data.config} onUpdate={onUpdate} />);
+
+    fireEvent.click(screen.getByTestId('cron-template-Dias úteis 9h e 14h'));
+    expect(onUpdate.last!.config.cronAvancado).toBe(false);
+    expect(onUpdate.last!.config.expressoes).toEqual(['0 9 * * 1-5', '0 14 * * 1-5']);
   });
 
   it('mudar Fuso horário grava timezone (config-only)', () => {

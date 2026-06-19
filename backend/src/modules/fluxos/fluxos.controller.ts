@@ -22,7 +22,7 @@ import {
   type ImportFluxoDto,
   type CronPreviewDto,
 } from './fluxos.dto';
-import { previewCron, CRON_TZ_PADRAO } from './cron.util';
+import { previewCrons, CRON_TZ_PADRAO } from './cron.util';
 
 @ApiTags('fluxos')
 @ApiBearerAuth()
@@ -159,9 +159,10 @@ export class FluxosController {
 
   @Post('cron/preview')
   @Roles('ADMIN', 'DIRECTOR')
-  @ApiOperation({ summary: 'Valida uma expressão cron e devolve as próximas execuções' })
+  @ApiOperation({ summary: 'Valida expressão(ões) cron e devolve as próximas execuções' })
   cronPreview(@Body(new ZodValidationPipe(cronPreviewSchema)) dto: CronPreviewDto) {
-    return previewCron(dto.expressao, dto.timezone ?? CRON_TZ_PADRAO);
+    const exprs = dto.expressoes?.length ? dto.expressoes : dto.expressao ? [dto.expressao] : [];
+    return previewCrons(exprs, dto.timezone ?? CRON_TZ_PADRAO);
   }
 
   // ⚠ Declarar ANTES de `:id/metricas` — senão `:id` captura "cron".
