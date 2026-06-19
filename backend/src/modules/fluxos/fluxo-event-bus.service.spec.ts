@@ -16,9 +16,15 @@ const makePrismaMock = () => ({
   fluxo: {
     findMany: vi.fn(),
   } satisfies MockModel,
+  // Default: fluxo SEM nó de IA (count=0) → guard anti-duplicata não interfere nos
+  // testes existentes. Os testes de dedup sobrescrevem pra count=1.
+  fluxoNo: {
+    count: vi.fn().mockResolvedValue(0),
+  } satisfies MockModel,
   fluxoExecucao: {
     create: vi.fn(),
     update: vi.fn(),
+    findFirst: vi.fn(),
   } satisfies MockModel,
 });
 
@@ -170,6 +176,33 @@ describe('FluxoEventBusService', () => {
       const createArgs = prisma.fluxoExecucao.create.mock.calls[0][0];
       expect(createArgs.data.status).toBe('PENDENTE');
       expect(createArgs.data.contexto).toMatchObject(contexto);
+    });
+
+    // REGRESSÃO: re-disparo do "Lead mudou etapa" no meio da conversa criava uma 2ª
+    // execução do MESMO fluxo de IA pro mesmo lead → duas IAs em paralelo, a 2ª sem
+    // histórico → re-apresentava a empresa. O guard ignora o re-disparo se já há
+    // execução ativa pro lead num fluxo que tem nó "Conversar com IA".
+    it('NÃO cria 2ª execução de fluxo de IA pro lead já em conversa (anti-duplicata)', async () => {
+      prisma.fluxo.findMany.mockResolvedValue([fakeFluxo({ triggerTipo: 'LEAD_ETAPA_MUDOU' })]);
+      prisma.fluxoNo.count.mockResolvedValue(1); // fluxo TEM nó "Conversar com IA"
+      prisma.fluxoExecucao.findFirst.mockResolvedValue({ id: 'exec-ativa' }); // já em conversa
+
+      await service.disparar('emp-1', 'LEAD_ETAPA_MUDOU' as FluxoTriggerTipo, { leadId: 'lead-1' });
+
+      expect(prisma.fluxoExecucao.create).not.toHaveBeenCalled();
+      expect(queue.add).not.toHaveBeenCalled();
+    });
+
+    it('cria execução de fluxo de IA quando NÃO há execução ativa pro lead', async () => {
+      prisma.fluxo.findMany.mockResolvedValue([fakeFluxo({ triggerTipo: 'LEAD_ETAPA_MUDOU' })]);
+      prisma.fluxoNo.count.mockResolvedValue(1);
+      prisma.fluxoExecucao.findFirst.mockResolvedValue(null); // nenhuma ativa pro lead
+      prisma.fluxoExecucao.create.mockResolvedValue(fakeExecucao());
+      prisma.fluxoExecucao.update.mockResolvedValue({});
+
+      await service.disparar('emp-1', 'LEAD_ETAPA_MUDOU' as FluxoTriggerTipo, { leadId: 'lead-1' });
+
+      expect(prisma.fluxoExecucao.create).toHaveBeenCalledOnce();
     });
   });
 

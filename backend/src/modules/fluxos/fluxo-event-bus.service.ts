@@ -88,6 +88,39 @@ export class FluxoEventBusService {
           if (deEtapa && deCtx !== deEtapa) continue;
         }
 
+        // Anti-duplicata (IA): um fluxo com nó "Conversar com IA" NÃO pode ter duas
+        // execuções ativas pro MESMO lead — senão duas IAs conversam em paralelo com
+        // ele, cada uma SEM o histórico da outra, e a 2ª re-apresenta a empresa do
+        // zero. Acontecia quando o gatilho "Lead mudou etapa" re-disparava no meio da
+        // conversa (a etapa do lead muda → novo disparo → nova execução). Se já há uma
+        // execução ativa (PENDENTE/EM_EXECUCAO/AGUARDANDO) deste fluxo pro lead, ignora
+        // o re-disparo. Só vale pra fluxos conversacionais (não bloqueia fluxos comuns
+        // que legitimamente rodam várias vezes por lead — ex: e-mail a cada pedido).
+        const leadId = typeof contexto['leadId'] === 'string' ? contexto['leadId'] : undefined;
+        if (leadId) {
+          const nosIa = await this.prisma.fluxoNo.count({
+            where: { fluxoId: fluxo.id, tipo: 'ACAO', acaoTipo: 'CONVERSAR_IA' },
+          });
+          if (nosIa > 0) {
+            const ativa = await this.prisma.fluxoExecucao.findFirst({
+              where: {
+                fluxoId: fluxo.id,
+                empresaId,
+                status: { in: ['PENDENTE', 'EM_EXECUCAO', 'AGUARDANDO'] },
+                contexto: { path: ['leadId'], equals: leadId },
+              },
+              select: { id: true },
+            });
+            if (ativa) {
+              this.logger.log(
+                `Fluxo "${fluxo.nome}": já há execução ativa (${ativa.id}) conduzindo o ` +
+                  `lead ${leadId} — re-disparo ${triggerTipo} ignorado (anti-duplicata IA)`,
+              );
+              continue;
+            }
+          }
+        }
+
         // Cria registro da execução
         const execucao = await this.prisma.fluxoExecucao.create({
           data: {
