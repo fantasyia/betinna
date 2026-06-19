@@ -33,6 +33,28 @@ describe('dividirEmBaloes — quebra da resposta em balões', () => {
   it('texto só de delimitadores → vazio (caller usa salvaguarda)', () => {
     expect(dividirEmBaloes('|||  |||', 3)).toEqual([]);
   });
+
+  // REGRESSÃO: a IA do nó "Conversar com IA" devolveu uma PAREDE de texto num bloco
+  // só (ignorou o "|||") → saía 1 balão gigante apesar da config "até N balões".
+  // Agora o sistema GARANTE a quebra por frase, sem depender da IA.
+  it('bloco longo SEM "|||" (parede de texto) → quebra por frase em até N balões', () => {
+    const parede =
+      'Perfeito. Deixa eu te explicar rapidinho o que a gente faz, pra você ter o quadro. ' +
+      'A MSM é uma indústria de alimentos. A gente trabalha com caldos, temperos e molhos. ' +
+      'Atende desde indústria até food service, distribuidor e atacarejo. ' +
+      'Você representa, traz os pedidos e ganha comissão. Faz sentido pra você?';
+    const r = dividirEmBaloes(parede, 4);
+    expect(r.length).toBeGreaterThan(1);
+    expect(r.length).toBeLessThanOrEqual(4);
+    // Não perde nem duplica texto: juntar os balões reconstrói as frases originais.
+    expect(r.join(' ').replace(/\s+/g, ' ')).toBe(parede.replace(/\s+/g, ' ').trim());
+  });
+
+  it('mensagem curta sem delimitador continua 1 balão (não fragmenta à toa)', () => {
+    expect(dividirEmBaloes('Perfeito, qual cidade você atende?', 4)).toEqual([
+      'Perfeito, qual cidade você atende?',
+    ]);
+  });
 });
 
 /**

@@ -61,7 +61,9 @@ const INSTRUCAO_CLASSIFICACAO =
   '\n\n[Formato de resposta OBRIGATÓRIO] Responda SEMPRE com um JSON válido e NADA além dele:\n' +
   '{"resposta": "<mensagem pro lead>", "classificou": <true|false>, ' +
   '"classificacao": "<rótulo curto, só se classificou>", "variaveis": { <dados capturados> }}\n' +
-  '- "resposta": o que enviar agora pro lead no WhatsApp (curto, natural).\n' +
+  '- "resposta": o que enviar agora pro lead no WhatsApp. Escreva curto e natural, ' +
+  'estilo WhatsApp — quebre em 2 a 4 mensagens curtas separadas por "|||". NUNCA mande ' +
+  'um parágrafo único longo (parede de texto).\n' +
   '- "classificou": true SOMENTE quando já houver informação suficiente pra concluir/classificar; ' +
   'senão false e continue a conversa.\n' +
   '- "classificacao"/"variaveis": só quando "classificou" for true.';

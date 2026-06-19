@@ -55,12 +55,49 @@ const FALLBACK_PAUSA_MS = 10 * 60_000; // 10 min
  * Respeita o teto: o excedente é juntado no último balão pra NÃO perder texto.
  * Uma frase única (sem "|||" nem parágrafo) → 1 balão só.
  */
+/** Acima disso um balão único é "parede de texto" pro WhatsApp → quebra por frase. */
+const LIMITE_BALAO = 200;
+
+/**
+ * Quebra um bloco longo em frases e reagrupa em até `max` balões de tamanho
+ * parecido — fica natural no WhatsApp em vez de um parágrafo gigante. Usado como
+ * REDE DE SEGURANÇA quando o modelo ignora o "|||" e devolve tudo num bloco só.
+ */
+function quebrarPorFrase(texto: string, max: number): string[] {
+  // Frases mantendo a pontuação (. ! ? …); o resto sem pontuação vira a última.
+  const frases = (texto.match(/[^.!?…]+[.!?…]+(?:\s|$)|[^.!?…]+$/g) ?? [texto])
+    .map((f) => f.trim())
+    .filter(Boolean);
+  if (frases.length <= 1) return [texto.trim()]; // nada pra quebrar (1 frase só)
+  const alvo = texto.length / Math.min(max, frases.length); // tamanho-alvo por balão
+  const baloes: string[] = [];
+  let atual = '';
+  for (const f of frases) {
+    const cand = atual ? `${atual} ${f}` : f;
+    // Fecha o balão quando passou do alvo E ainda há orçamento pra mais balões.
+    if (atual && cand.length > alvo && baloes.length < max - 1) {
+      baloes.push(atual);
+      atual = f;
+    } else {
+      atual = cand;
+    }
+  }
+  if (atual) baloes.push(atual);
+  return baloes;
+}
+
 export function dividirEmBaloes(texto: string, max: number): string[] {
-  const partes = texto
+  let partes = texto
     .split(/\s*\|\|\|\s*|\n[ \t]*\n+/)
     .map((p) => p.trim())
     .filter(Boolean);
   if (partes.length === 0) return [];
+  // Rede de segurança: o modelo às vezes IGNORA o "|||" e devolve um bloco único
+  // enorme (caso do nó "Conversar com IA", cuja resposta vem em JSON). Pra respeitar
+  // a config "até N balões" sem depender da IA acertar, quebra esse bloco por frase.
+  if (partes.length === 1 && partes[0].length > LIMITE_BALAO) {
+    partes = quebrarPorFrase(partes[0], max);
+  }
   if (partes.length <= max) return partes;
   // Estourou o teto: mantém os (max-1) primeiros e junta o resto no último.
   const cabeca = partes.slice(0, max - 1);
