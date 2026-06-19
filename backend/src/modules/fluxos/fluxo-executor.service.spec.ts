@@ -50,6 +50,7 @@ const makePrismaMock = () => ({
     findFirst: vi.fn().mockResolvedValue(null),
     findMany: vi.fn().mockResolvedValue([]),
     update: vi.fn().mockResolvedValue({}),
+    count: vi.fn().mockResolvedValue(0),
   } satisfies MockModel,
   funilEtapa: {
     findFirst: vi.fn().mockResolvedValue(null),
@@ -222,6 +223,40 @@ describe('FluxoExecutorService', () => {
       expect(prisma.fluxoExecucao.update).not.toHaveBeenCalledWith(
         expect.objectContaining({ data: expect.objectContaining({ status: 'CONCLUIDO' }) }),
       );
+    });
+
+    it('respeitarCapacidadeDestino: destino já no limite → libera 0 (espera sair)', async () => {
+      prisma.fluxoExecucao.findUnique.mockResolvedValue(
+        fakeExecucao({ status: 'EM_EXECUCAO', contexto: { _cron: true } }),
+      );
+      prisma.fluxoNo.findUnique.mockResolvedValue(
+        fakeNo({
+          tipo: 'ACAO',
+          acaoTipo: 'LIBERAR_LOTE',
+          config: {
+            etapaOrigemId: 'et-prosp',
+            etapaDestinoId: 'et-abord',
+            quantidade: 1,
+            respeitarCapacidadeDestino: true,
+          },
+        }),
+      );
+      prisma.fluxoEdge.findMany.mockResolvedValue([]);
+      prisma.funilEtapa.findFirst.mockResolvedValue({
+        id: 'et-abord',
+        funilId: 'funil-1',
+        tipo: 'ATIVA',
+        capacidadeMaxima: null,
+      });
+      prisma.lead.count.mockResolvedValue(1); // destino já tem 1 lead
+
+      await service.executarPasso('exec-1', 'no-1');
+
+      // conta a ocupação do destino e NÃO move nenhum lead (já no limite)
+      expect(prisma.lead.count).toHaveBeenCalledWith(
+        expect.objectContaining({ where: expect.objectContaining({ funilEtapaId: 'et-abord' }) }),
+      );
+      expect(prisma.lead.update).not.toHaveBeenCalled();
     });
 
     it('disparo MANUAL sem leads (movidos:0) → NÃO descarta (mantém no histórico)', async () => {

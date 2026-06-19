@@ -75,13 +75,13 @@ describe('LiberarLoteForm — leitura (round-trip dos controles)', () => {
   it('reflete a quantidade do config no input numérico', () => {
     const data = makeData({ quantidade: 120 });
     render(<LiberarLoteForm data={data} onUpdate={vi.fn()} etapasOpts={etapasOpts} tags={tags} />);
-    expect((screen.getByLabelText('Quantidade por execução') as HTMLInputElement).value).toBe('120');
+    expect((screen.getByLabelText('Quantidade') as HTMLInputElement).value).toBe('120');
   });
 
   it('usa default 50 quando quantidade não está no config', () => {
     const data = makeData({ quantidade: undefined });
     render(<LiberarLoteForm data={data} onUpdate={vi.fn()} etapasOpts={etapasOpts} tags={tags} />);
-    expect((screen.getByLabelText('Quantidade por execução') as HTMLInputElement).value).toBe('50');
+    expect((screen.getByLabelText('Quantidade') as HTMLInputElement).value).toBe('50');
   });
 });
 
@@ -107,7 +107,7 @@ describe('LiberarLoteForm — escrita (grava chave/valor certos)', () => {
     const data = makeData();
     const { fn, captured } = makeOnUpdate(data);
     render(<LiberarLoteForm data={data} onUpdate={fn} etapasOpts={etapasOpts} tags={tags} />);
-    fireEvent.change(screen.getByLabelText('Quantidade por execução'), { target: { value: '200' } });
+    fireEvent.change(screen.getByLabelText('Quantidade'), { target: { value: '200' } });
     expect(captured.last!.config.quantidade).toBe(200);
     expect(typeof captured.last!.config.quantidade).toBe('number');
   });

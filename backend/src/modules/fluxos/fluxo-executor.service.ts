@@ -977,13 +977,20 @@ export class FluxoExecutorService {
     const etapaEnum: 'NOVO' | 'GANHO' | 'PERDIDO' =
       destino.tipo === 'GANHO' ? 'GANHO' : destino.tipo === 'PERDIDO' ? 'PERDIDO' : 'NOVO';
 
-    // Capacidade máxima da etapa destino (anti-sobrecarga): nunca libera além das vagas.
+    // Capacidade da etapa destino (anti-sobrecarga): nunca libera além das vagas.
+    // Dois caps possíveis (usa o menor): (a) `capacidadeMaxima` da própria etapa;
+    // (b) `respeitarCapacidadeDestino` no nó → `quantidade` vira o MÁXIMO na destino
+    // (ex: quantidade=1 = mantém 1 lead na abordagem por vez; só libera quando o
+    // atual sair). Sem cap → `quantidade` é só o lote por execução.
+    const capEtapa = destino.capacidadeMaxima ?? null;
+    const capNo = cfg.respeitarCapacidadeDestino ? quantidade : null;
+    const cap = capEtapa != null && capNo != null ? Math.min(capEtapa, capNo) : (capEtapa ?? capNo);
     let limite = quantidade;
-    if (destino.capacidadeMaxima != null) {
+    if (cap != null) {
       const ocupacao = await this.prisma.lead.count({
         where: { empresaId, funilEtapaId: cfg.etapaDestinoId },
       });
-      limite = Math.min(quantidade, Math.max(0, destino.capacidadeMaxima - ocupacao));
+      limite = Math.min(quantidade, Math.max(0, cap - ocupacao));
     }
     if (limite === 0) {
       this.logger.log(`LIBERAR_LOTE: etapa destino ${cfg.etapaDestinoId} cheia — nada liberado`);

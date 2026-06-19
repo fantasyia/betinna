@@ -111,6 +111,14 @@ export interface LiberarLoteConfig {
   etapaDestinoId: string;
   /** Quantos leads liberar por execução. */
   quantidade: number;
+  /**
+   * Capacidade: trata `quantidade` como o MÁXIMO de leads na etapa de DESTINO,
+   * não só o lote por execução. Liga essa validação → o nó conta quantos leads
+   * já estão no destino e só libera o que falta pra chegar em `quantidade`; se já
+   * está cheio, libera 0 (espera um lead SAIR do destino). Ex: quantidade=1 →
+   * mantém no máximo 1 lead na abordagem por vez. Default false (lote por execução).
+   */
+  respeitarCapacidadeDestino?: boolean;
   /** Funil (opcional — restringe a busca). */
   funilId?: string;
   /**

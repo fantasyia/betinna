@@ -49,7 +49,10 @@ export function LiberarLoteForm({
           ))}
         </Select>
       </Field>
-      <Field label="Quantidade por execução" hint="Anti-sobrecarga — ex: 50 leads/vez">
+      <Field
+        label="Quantidade"
+        hint="Quantos liberar por execução — ou o MÁXIMO na etapa de destino (veja abaixo)"
+      >
         <Input
           type="number"
           min={1}
@@ -62,6 +65,24 @@ export function LiberarLoteForm({
             }))
           }
         />
+      </Field>
+      <Field
+        label="Validar capacidade da etapa de destino"
+        hint="Trata a quantidade como o MÁXIMO na etapa de destino: só libera quando um lead SAIR de lá. Ex: 1 = mantém 1 lead na abordagem por vez."
+      >
+        <Select
+          data-testid="liberar-respeitar-capacidade"
+          value={(data.config.respeitarCapacidadeDestino as boolean | undefined) ? 'sim' : 'nao'}
+          onChange={(e) =>
+            onUpdate((d) => ({
+              ...d,
+              config: { ...d.config, respeitarCapacidadeDestino: e.target.value === 'sim' },
+            }))
+          }
+        >
+          <option value="nao">Não — quantidade é só o lote por execução</option>
+          <option value="sim">Sim — não exceder a quantidade na etapa de destino</option>
+        </Select>
       </Field>
       <Field label="Critério de ordem" hint="Em que ordem os leads saem da origem">
         <Select

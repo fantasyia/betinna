@@ -32,7 +32,11 @@ import { addBreadcrumb } from '@shared/observability/sentry';
  *  - `sameSite: 'none'` em prod  → cookies cross-site funcionam (front e back
  *                                   em domínios Railway diferentes)
  *  - `sameSite: 'lax'` em dev    → localhost:5173 → localhost:3001 funciona
- *  - `maxAge: 30 dias`           → casa com a vida útil do refresh do Supabase
+ *  - `maxAge: 48h`               → sessão expira após 48h de INATIVIDADE (sem
+ *                                   refresh). Enquanto o app é usado, o cookie é
+ *                                   renovado a cada refresh, então não desloga no
+ *                                   meio do uso — só pede login de novo depois de
+ *                                   48h parado. (Antes era 30 dias.)
  *  - `path: '/api/v1/auth'`      → cookie só é enviado nesse path (minimiza
  *                                   surface CSRF — mesmo com SameSite=None)
  */
@@ -41,7 +45,7 @@ export class AuthSessionService {
   private readonly logger = new Logger(AuthSessionService.name);
   private static readonly COOKIE_NAME = 'betinna_rt';
   private static readonly COOKIE_PATH = '/api/v1/auth';
-  private static readonly COOKIE_MAX_AGE_MS = 30 * 24 * 60 * 60 * 1000; // 30 dias
+  private static readonly COOKIE_MAX_AGE_MS = 48 * 60 * 60 * 1000; // 48h de inatividade
   private readonly supabaseAdmin: SupabaseClient;
 
   constructor(
