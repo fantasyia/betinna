@@ -30,6 +30,7 @@ const makePrismaMock = () => ({
     findUnique: vi.fn().mockResolvedValue(null),
     update: vi.fn().mockResolvedValue({}),
     updateMany: vi.fn().mockResolvedValue({ count: 1 }),
+    delete: vi.fn().mockResolvedValue({}),
   } satisfies MockModel,
   fluxoNo: {
     findUnique: vi.fn().mockResolvedValue(null),
@@ -192,6 +193,61 @@ describe('FluxoExecutorService', () => {
           funilId: 'funil-1',
           paraFunilEtapaId: 'et-abord',
         }),
+      );
+    });
+
+    it('cron sem leads elegíveis (movidos:0) → DESCARTA a execução vazia', async () => {
+      prisma.fluxoExecucao.findUnique.mockResolvedValue(
+        fakeExecucao({ status: 'EM_EXECUCAO', contexto: { _cron: true } }),
+      );
+      prisma.fluxoNo.findUnique.mockResolvedValue(
+        fakeNo({
+          tipo: 'ACAO',
+          acaoTipo: 'LIBERAR_LOTE',
+          config: { etapaOrigemId: 'et-prosp', etapaDestinoId: 'et-abord', quantidade: 1 },
+        }),
+      );
+      prisma.fluxoEdge.findMany.mockResolvedValue([]); // terminal
+      prisma.funilEtapa.findFirst.mockResolvedValue({
+        id: 'et-abord',
+        funilId: 'funil-1',
+        tipo: 'ATIVA',
+      });
+      prisma.lead.findMany.mockResolvedValue([]); // 0 elegíveis → movidos:0
+
+      await service.executarPasso('exec-1', 'no-1');
+
+      expect(prisma.fluxoExecucao.delete).toHaveBeenCalledWith({ where: { id: 'exec-1' } });
+      // não marca CONCLUIDO (foi descartada)
+      expect(prisma.fluxoExecucao.update).not.toHaveBeenCalledWith(
+        expect.objectContaining({ data: expect.objectContaining({ status: 'CONCLUIDO' }) }),
+      );
+    });
+
+    it('disparo MANUAL sem leads (movidos:0) → NÃO descarta (mantém no histórico)', async () => {
+      prisma.fluxoExecucao.findUnique.mockResolvedValue(
+        fakeExecucao({ status: 'EM_EXECUCAO', contexto: {} }), // sem _cron
+      );
+      prisma.fluxoNo.findUnique.mockResolvedValue(
+        fakeNo({
+          tipo: 'ACAO',
+          acaoTipo: 'LIBERAR_LOTE',
+          config: { etapaOrigemId: 'et-prosp', etapaDestinoId: 'et-abord', quantidade: 1 },
+        }),
+      );
+      prisma.fluxoEdge.findMany.mockResolvedValue([]);
+      prisma.funilEtapa.findFirst.mockResolvedValue({
+        id: 'et-abord',
+        funilId: 'funil-1',
+        tipo: 'ATIVA',
+      });
+      prisma.lead.findMany.mockResolvedValue([]);
+
+      await service.executarPasso('exec-1', 'no-1');
+
+      expect(prisma.fluxoExecucao.delete).not.toHaveBeenCalled();
+      expect(prisma.fluxoExecucao.update).toHaveBeenCalledWith(
+        expect.objectContaining({ data: expect.objectContaining({ status: 'CONCLUIDO' }) }),
       );
     });
   });

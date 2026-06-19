@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import {
   DndContext,
@@ -264,6 +264,25 @@ export default function LeadsPage() {
 
   // Drag state
   const [activeLead, setActiveLead] = useState<Lead | null>(null);
+
+  // Atualiza o board em BACKGROUND — fluxos/bot movem leads no backend, então
+  // sem isso só dava pra ver a mudança com F5. Refetch ao focar a aba + a cada
+  // 20s; pula durante um drag (não atropela o optimistic). Poll via refetch()
+  // (queryKey = URL), NUNCA cache-buster — ver memória de polling TanStack.
+  const activeLeadRef = useRef<Lead | null>(null);
+  activeLeadRef.current = activeLead;
+  useEffect(() => {
+    function atualizar() {
+      if (document.visibilityState !== 'visible' || activeLeadRef.current) return;
+      refetch();
+    }
+    document.addEventListener('visibilitychange', atualizar);
+    const id = window.setInterval(atualizar, 20_000);
+    return () => {
+      document.removeEventListener('visibilitychange', atualizar);
+      clearInterval(id);
+    };
+  }, [refetch]);
 
   // Reason dialog quando dropa em etapa terminal (GANHO/PERDIDO)
   const [reasonDialog, setReasonDialog] = useState<{

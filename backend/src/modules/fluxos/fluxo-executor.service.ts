@@ -311,6 +311,19 @@ export class FluxoExecutorService {
       .map((e: FluxoEdge) => e.targetNoId);
 
     if (proximosNoIds.length === 0) {
+      // Execução do CRON que terminou SEM efeito (ex: LIBERAR_LOTE com 0 leads
+      // elegíveis): descarta o registro (cascade nos logs) pra não poluir o
+      // histórico com execuções vazias a cada minuto. Disparos manuais e
+      // execuções que fizeram algo seguem registradas normalmente.
+      const semEfeito = (output as { semEfeito?: boolean } | null)?.semEfeito === true;
+      const doCron = (execucao.contexto as { _cron?: boolean } | null)?._cron === true;
+      if (semEfeito && doCron) {
+        await this.prisma.fluxoExecucao.delete({ where: { id: execucaoId } }).catch(() => {
+          /* já removida / corrida — ignora */
+        });
+        this.logger.debug(`Execução ${execucaoId} descartada (cron sem efeito — nada a fazer)`);
+        return;
+      }
       // Fim do caminho — marca execução como CONCLUIDO
       await this.prisma.fluxoExecucao.update({
         where: { id: execucaoId },
@@ -974,7 +987,12 @@ export class FluxoExecutorService {
     }
     if (limite === 0) {
       this.logger.log(`LIBERAR_LOTE: etapa destino ${cfg.etapaDestinoId} cheia — nada liberado`);
-      return { movidos: 0, etapaDestinoId: cfg.etapaDestinoId, motivo: 'etapa destino cheia' };
+      return {
+        movidos: 0,
+        etapaDestinoId: cfg.etapaDestinoId,
+        motivo: 'etapa destino cheia',
+        semEfeito: true,
+      };
     }
 
     // Exclui leads que tenham QUALQUER uma das tags marcadas (ex: 'pausado' —
@@ -1061,7 +1079,13 @@ export class FluxoExecutorService {
     this.logger.log(
       `LIBERAR_LOTE: ${leads.length} lead(s) ${cfg.etapaOrigemId} → ${cfg.etapaDestinoId} (empresa ${empresaId})`,
     );
-    return { movidos: leads.length, etapaDestinoId: cfg.etapaDestinoId };
+    // movidos:0 (origem vazia / todos filtrados) → marca semEfeito pro executor
+    // descartar a execução vazia (não polui o histórico no cron a cada 1min).
+    return {
+      movidos: leads.length,
+      etapaDestinoId: cfg.etapaDestinoId,
+      ...(leads.length === 0 ? { semEfeito: true } : {}),
+    };
   }
 
   private async acaoWebhookExterno(
