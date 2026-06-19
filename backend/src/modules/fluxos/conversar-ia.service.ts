@@ -18,9 +18,8 @@ import {
   type ExecucaoContexto,
 } from './fluxo-executor.types';
 
-const HISTORICO_MAX = 12;
-/** Teto de mensagens lidas da CONVERSA real (maior que o de turnos: balões inflam a contagem). */
-const HISTORICO_CTX_MAX = 24;
+/** Default de mensagens no histórico quando a empresa não configurou (= persona.service). */
+const HISTORICO_DEFAULT = 10;
 /** Teto de re-disparos do ramo "timeout" por execução (anti-loop de follow-up). */
 const MAX_TIMEOUT_FOLLOWS = 5;
 
@@ -336,13 +335,18 @@ export class ConversarIaService {
     // Histórico da conversa = memória da IA no contexto da execução (inclui o
     // opener + os turnos), com fallback pro montarHistorico (execuções antigas).
     // Sem isto a IA não via as próprias mensagens e se reapresentava a cada resposta.
+    // Quantas mensagens de histórico a IA considera = config do bot (Persona Bot →
+    // "histórico de mensagens", 1..50, default 10). MESMO número que o bot geral usa.
+    const limiteHist =
+      (await this.persona.obterConfigBot(empresaId).catch(() => null))?.historicoMensagens ??
+      HISTORICO_DEFAULT;
     const ctxHist = (ctx as Record<string, unknown>)._iaHistorico;
     const doContexto: HistoricoMsg[] = Array.isArray(ctxHist) ? (ctxHist as HistoricoMsg[]) : [];
     // Fonte da verdade = a conversa REAL do inbox (cobre todas as execuções do lead);
     // o _iaHistorico desta execução entra como reforço (provider que não ecoa). Merge
     // + dedupe → a IA enxerga o pitch já dado mesmo numa execução "amnésica".
-    const daConversa = conversationId ? await this.montarHistorico(conversationId) : [];
-    let historico = mesclarHistorico(daConversa, doContexto, HISTORICO_CTX_MAX);
+    const daConversa = conversationId ? await this.montarHistorico(conversationId, limiteHist) : [];
+    let historico = mesclarHistorico(daConversa, doContexto, limiteHist);
     // A mensagem ATUAL do lead já está salva na conversa (foi ela que disparou o
     // retomar) — remove do fim pra não duplicar: ela vai como `mensagem` na chamada.
     if (
@@ -386,7 +390,7 @@ export class ConversarIaService {
       ...historico,
       { role: 'user' as const, content: textoLead, at: Date.now() },
       { role: 'assistant' as const, content: respostaTexto, at: Date.now() },
-    ].slice(-HISTORICO_MAX);
+    ].slice(-limiteHist);
 
     if (!turno.classificou) {
       // Continua conversando — renova o timeout e persiste a memória da conversa.
@@ -608,14 +612,18 @@ export class ConversarIaService {
     }
   }
 
-  private async montarHistorico(conversationId: string): Promise<HistoricoMsg[]> {
+  private async montarHistorico(
+    conversationId: string,
+    limite = HISTORICO_DEFAULT,
+  ): Promise<HistoricoMsg[]> {
     // Inclui TODOS os tipos (não só TEXT): áudio transcrito (tipo=AUDIO) carrega
     // a resposta do lead no conteudo. Filtrar só TEXT fazia a IA esquecer as
     // respostas em áudio e re-perguntar tudo na entrevista.
+    // `limite` = quantas mensagens a empresa configurou (Persona Bot → histórico).
     const msgs = await this.prisma.message.findMany({
       where: { conversationId },
       orderBy: { criadoEm: 'desc' },
-      take: HISTORICO_CTX_MAX,
+      take: Math.max(1, limite),
       select: { direction: true, conteudo: true, criadoEm: true },
     });
     return msgs.reverse().map((m) => ({

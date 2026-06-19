@@ -397,6 +397,27 @@ describe('ConversarIaService', () => {
       expect(historico.filter((h) => h.content === 'sim combinado')).toHaveLength(0);
     });
 
+    it('lê o histórico no tamanho CONFIGURADO (historicoMensagens) da empresa', async () => {
+      prisma.fluxoExecucao.findUnique.mockResolvedValue(execAguardando);
+      prisma.fluxoNo.findUnique.mockResolvedValue({ id: 'no-ia', config: {} });
+      prisma.lead.findFirst.mockResolvedValue({ contatoTelefone: '11999990000', variaveis: {} });
+      persona.obterConfigBot.mockResolvedValue({
+        historicoMensagens: 5, // empresa configurou 5
+        delayRespostaSegundos: 0,
+        mostrarDigitando: false,
+        quebrarMensagens: false,
+        maxMensagens: 3,
+        transcreverAudio: false,
+        analisarImagem: false,
+      });
+      muller.gerarRespostaIa.mockResolvedValue({ texto: 'ok', modelo: 'gpt' });
+
+      await svc.retomar('exec-1', 'conv-1', 'oi');
+
+      // montarHistorico usa take = historicoMensagens (não um valor fixo hardcoded).
+      expect(prisma.message.findMany).toHaveBeenCalledWith(expect.objectContaining({ take: 5 }));
+    });
+
     it('ignora execução que não está mais AGUARDANDO', async () => {
       prisma.fluxoExecucao.findUnique.mockResolvedValue({ ...execAguardando, status: 'CONCLUIDO' });
       await svc.retomar('exec-1', 'conv-1', 'oi');
