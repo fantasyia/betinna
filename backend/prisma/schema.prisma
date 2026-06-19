@@ -444,7 +444,6 @@ model Cliente {
   respostasNPS           RespostaNPS[]          @relation("ClienteRespostaNPS")
 
   @@unique([empresaId, codigoOmie])
-  @@index([empresaId])
   @@index([representanteId])
   @@index([status])
   @@index([omieStatus])
@@ -473,7 +472,6 @@ model Tag {
   leads    LeadTag[]
 
   @@unique([empresaId, nome])
-  @@index([empresaId])
   @@index([empresaId, funilId])
 }
 
@@ -657,7 +655,6 @@ model Pedido {
 
   @@unique([empresaId, numero])
   @@unique([empresaId, numeroOmie])
-  @@index([empresaId])
   @@index([clienteId])
   @@index([representanteId])
   @@index([status])
@@ -781,7 +778,6 @@ model Proposta {
   itens         PropostaItem[]
 
   @@unique([empresaId, numero])
-  @@index([empresaId])
   @@index([clienteId])
   @@index([representanteId])
   @@index([status])
@@ -1034,7 +1030,6 @@ model Amostra {
   cliente Cliente  @relation(fields: [clienteId], references: [id])
   produto Produto? @relation(fields: [produtoId], references: [id])
 
-  @@index([empresaId])
   @@index([status])
   // Seed demo
   @@index([empresaId, isDemo])
@@ -1079,7 +1074,6 @@ model Comissao {
   representante Usuario @relation(fields: [representanteId], references: [id])
 
   @@unique([empresaId, representanteId, ano, mes])
-  @@index([empresaId])
   @@index([tipo])
   // Relatório mensal: WHERE empresaId AND ano=Y AND mes=M (sem filtro de rep)
   @@index([empresaId, ano, mes])
@@ -1115,7 +1109,6 @@ model AgendaItem {
   usuario Usuario  @relation(fields: [usuarioId], references: [id], onDelete: Cascade)
   cliente Cliente? @relation(fields: [clienteId], references: [id])
 
-  @@index([empresaId])
   @@index([usuarioId])
   @@index([empresaId, data])
   @@index([data])
@@ -1484,7 +1477,6 @@ model Conversation {
   //   - Conversation_canal_peer_empresa_unique_owned WHERE proprietarioId IS NOT NULL
   // Ou seja: o catch(P2002) do upsertConversation FUNCIONA — a trava existe.
   @@index([empresaId, canal, peerId, proprietarioId])
-  @@index([empresaId])
   @@index([clienteId])
   @@index([atribuidoId])
   @@index([proprietarioId])
@@ -1656,7 +1648,6 @@ model IntegracaoConexao {
   atualizadoEm      DateTime  @updatedAt
 
   @@unique([empresaId, servico])
-  @@index([empresaId])
   @@index([servico, externalAccountId])
 }
 
@@ -1684,7 +1675,6 @@ model IntegracaoStatus {
   atualizadoEm        DateTime              @updatedAt
 
   @@unique([empresaId, servico])
-  @@index([empresaId])
 }
 
 // Integrações com escopo USUÁRIO (não empresa). Cada rep tem sua própria conexão.
@@ -1704,7 +1694,6 @@ model UsuarioIntegracao {
   usuario Usuario @relation(fields: [usuarioId], references: [id], onDelete: Cascade)
 
   @@unique([usuarioId, servico])
-  @@index([usuarioId])
 }
 
 // ─── AUDIT LOG ────────────────────────────────────────────────────────
@@ -2030,7 +2019,6 @@ model BotPrompt {
   versoes BotPromptVersao[]
 
   @@unique([empresaId, nome])
-  @@index([empresaId])
   @@index([empresaId, isPadrao])
 }
 
@@ -2066,7 +2054,6 @@ model VariavelCustomizada {
   empresa Empresa @relation(fields: [empresaId], references: [id], onDelete: Cascade)
 
   @@unique([empresaId, chave])
-  @@index([empresaId])
 }
 
 /// Webhook de ENTRADA por empresa (Fase C — spec §2.6). Um POST no endpoint
@@ -2129,7 +2116,6 @@ model BotUsoTokens {
   atualizadoEm DateTime @updatedAt
 
   @@unique([empresaId, dia])
-  @@index([empresaId])
 }
 
 /// Sprint 2.3 — Respostas rápidas / templates pra a Inbox.
