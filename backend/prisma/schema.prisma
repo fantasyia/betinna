@@ -312,6 +312,7 @@ model Empresa {
   notificacoes          Notificacao[]
   materiaisVenda        MaterialVenda[]
   devolucoes            Devolucao[]
+  internalThreads       InternalThread[]
 
   @@index([ativo])
 }
@@ -1062,6 +1063,59 @@ model Devolucao {
   @@unique([empresaId, numero])
   @@index([empresaId, status])
   @@index([pedidoId])
+}
+
+// ─── INBOX INTERNA (rep ↔ empresa/diretor) ───────────────────────────
+
+enum InternalThreadStatus {
+  ABERTA
+  RESPONDIDA
+  RESOLVIDA
+}
+
+/// Conversa interna do REP com a EMPRESA (diretor/suporte). Distinta de
+/// Conversation (cliente-facing). Tipos/SLA em Empresa.config.inboxInterna.
+model InternalThread {
+  id            String               @id @default(cuid())
+  numero        String // INT-XXXX por empresa
+  empresaId     String
+  /// key do tipo configurável (Empresa.config.inboxInterna.tipos).
+  tipo          String
+  assunto       String
+  status        InternalThreadStatus @default(ABERTA)
+  prioridade    String               @default("media")
+  criadoPorId   String?
+  criadoPorNome String?
+  /// Vínculo opcional (snapshot) a uma entidade.
+  pedidoId      String?
+  clienteId     String?
+  slaRespostaEm DateTime?
+  ultimaMsgEm   DateTime             @default(now())
+  criadoEm      DateTime             @default(now())
+  atualizadoEm  DateTime             @updatedAt
+
+  empresa   Empresa           @relation(fields: [empresaId], references: [id], onDelete: Cascade)
+  mensagens InternalMessage[]
+
+  @@unique([empresaId, numero])
+  @@index([empresaId, status])
+  @@index([empresaId, criadoPorId])
+}
+
+model InternalMessage {
+  id          String   @id @default(cuid())
+  threadId    String
+  autorId     String?
+  autorNome   String
+  /// true = lado empresa (diretor/suporte); false = lado rep.
+  ladoEmpresa Boolean  @default(false)
+  texto       String   @db.Text
+  isSistema   Boolean  @default(false)
+  criadoEm    DateTime @default(now())
+
+  thread InternalThread @relation(fields: [threadId], references: [id], onDelete: Cascade)
+
+  @@index([threadId])
 }
 
 // ─── AMOSTRAS ─────────────────────────────────────────────────────────

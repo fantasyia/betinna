@@ -141,6 +141,24 @@ const devolucaoInternaSchema = z
   })
   .optional();
 
+/** Inbox interna: tipos de canal + SLA (7º consumidor). */
+const inboxInternaSchema = z
+  .object({
+    tipos: z
+      .array(
+        z.object({
+          key: z.string().trim().min(1).max(40),
+          nome: z.string().trim().min(1).max(60),
+          slaHorasUteis: z.number().int().nonnegative().max(720),
+          permiteResposta: z.boolean(),
+          prioridade: z.enum(['baixa', 'media', 'alta', 'urgente']),
+          destinatariosPapeis: z.array(z.string()).optional(),
+        }),
+      )
+      .optional(),
+  })
+  .optional();
+
 export const tenantConfigPatchSchema = z
   .object({
     pedidoStatusLabels: z.record(z.string(), pedidoStatusMetaSchema).optional(),
@@ -149,6 +167,7 @@ export const tenantConfigPatchSchema = z
     comissaoBonus: comissaoBonusSchema,
     materiaisVenda: materiaisTiposSchema,
     devolucaoInterna: devolucaoInternaSchema,
+    inboxInterna: inboxInternaSchema,
   })
   .passthrough();
 export type TenantConfigPatchDto = z.infer<typeof tenantConfigPatchSchema>;

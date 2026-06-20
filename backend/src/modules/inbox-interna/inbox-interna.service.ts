@@ -1,0 +1,169 @@
+import { Injectable, Logger } from '@nestjs/common';
+import type { Prisma } from '@prisma/client';
+import { PrismaService } from '@database/prisma.service';
+import {
+  BusinessRuleException,
+  ForbiddenException,
+  NotFoundException,
+} from '@shared/errors/app-exception';
+import { ErrorCode } from '@shared/errors/error-codes';
+import { RepScopeService } from '@shared/scope/rep-scope.service';
+import type { AuthenticatedUser } from '@shared/types/authenticated-user';
+import { type Paginated, buildPaginated } from '@shared/types/pagination';
+import { SequenceService } from '@shared/utils/sequence.service';
+import { addHorasUteis, resolveInboxConfig } from './inbox-interna.util';
+import type { CriarThreadDto, ListThreadsDto, ResponderThreadDto } from './inbox-interna.dto';
+
+const threadInclude = {
+  mensagens: { orderBy: { criadoEm: 'asc' } },
+} satisfies Prisma.InternalThreadInclude;
+
+type ThreadWithMsgs = Prisma.InternalThreadGetPayload<{ include: typeof threadInclude }>;
+
+@Injectable()
+export class InboxInternaService {
+  private readonly logger = new Logger(InboxInternaService.name);
+
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly repScope: RepScopeService,
+    private readonly sequence: SequenceService,
+  ) {}
+
+  private requireEmpresa(user: AuthenticatedUser): string {
+    if (!user.empresaIdAtiva) {
+      throw new ForbiddenException('Empresa não definida', ErrorCode.TENANT_ACCESS_DENIED);
+    }
+    return user.empresaIdAtiva;
+  }
+
+  private async lerConfig(empresaId: string) {
+    const empresa = await this.prisma.empresa.findUnique({
+      where: { id: empresaId },
+      select: { config: true },
+    });
+    return resolveInboxConfig((empresa?.config as { inboxInterna?: unknown } | null)?.inboxInterna);
+  }
+
+  async list(user: AuthenticatedUser, params: ListThreadsDto): Promise<Paginated<ThreadWithMsgs>> {
+    const empresaId = this.requireEmpresa(user);
+    const where: Prisma.InternalThreadWhereInput = { empresaId };
+    if (params.status) where.status = params.status;
+    if (params.tipo) where.tipo = params.tipo;
+    // REP vê só as próprias threads; empresa (ADMIN/DIRECTOR/SAC/GERENTE) vê todas.
+    const scope = await this.repScope.getRepIds(user);
+    if (scope !== null) where.criadoPorId = { in: scope };
+
+    const [total, data] = await Promise.all([
+      this.prisma.internalThread.count({ where }),
+      this.prisma.internalThread.findMany({
+        where,
+        skip: (params.page - 1) * params.limit,
+        take: params.limit,
+        orderBy: { ultimaMsgEm: 'desc' },
+        include: threadInclude,
+      }),
+    ]);
+    return buildPaginated(data, total, params.page, params.limit);
+  }
+
+  async findById(user: AuthenticatedUser, id: string): Promise<ThreadWithMsgs> {
+    const thread = await this.prisma.internalThread.findFirst({
+      where: { id, empresaId: this.requireEmpresa(user) },
+      include: threadInclude,
+    });
+    if (!thread) throw new NotFoundException('Thread', id);
+    const scope = await this.repScope.getRepIds(user);
+    if (scope !== null && (thread.criadoPorId === null || !scope.includes(thread.criadoPorId))) {
+      throw new ForbiddenException('Você não tem acesso a esta conversa');
+    }
+    return thread;
+  }
+
+  async criar(user: AuthenticatedUser, dto: CriarThreadDto): Promise<ThreadWithMsgs> {
+    const empresaId = this.requireEmpresa(user);
+    const cfg = await this.lerConfig(empresaId);
+    const tipo = cfg.tipos.find((t) => t.key === dto.tipo);
+    if (!tipo) throw new BusinessRuleException(`Tipo de conversa "${dto.tipo}" inválido`);
+    if (!tipo.permiteResposta && user.role === 'REP') {
+      throw new BusinessRuleException(`O canal "${tipo.nome}" é somente leitura`);
+    }
+
+    const seq = await this.sequence.next(empresaId, 'internal-thread');
+    const numero = `INT-${seq.toString().padStart(4, '0')}`;
+    const ladoEmpresa = user.role !== 'REP';
+    const slaRespostaEm =
+      tipo.slaHorasUteis > 0 ? addHorasUteis(new Date(), tipo.slaHorasUteis) : null;
+
+    const thread = await this.prisma.internalThread.create({
+      data: {
+        empresaId,
+        numero,
+        tipo: dto.tipo,
+        assunto: dto.assunto,
+        prioridade: tipo.prioridade,
+        status: ladoEmpresa ? 'RESPONDIDA' : 'ABERTA',
+        criadoPorId: user.id,
+        criadoPorNome: user.nome,
+        pedidoId: dto.pedidoId,
+        clienteId: dto.clienteId,
+        slaRespostaEm,
+        mensagens: {
+          create: { autorId: user.id, autorNome: user.nome, ladoEmpresa, texto: dto.mensagem },
+        },
+      },
+      include: threadInclude,
+    });
+    this.logger.log(`Inbox interna ${numero} aberta (${dto.tipo}) por ${user.nome}`);
+    return thread;
+  }
+
+  async responder(
+    user: AuthenticatedUser,
+    threadId: string,
+    dto: ResponderThreadDto,
+  ): Promise<ThreadWithMsgs> {
+    const thread = await this.findById(user, threadId);
+    const cfg = await this.lerConfig(thread.empresaId);
+    const tipo = cfg.tipos.find((t) => t.key === thread.tipo);
+    if (tipo && !tipo.permiteResposta && user.role === 'REP') {
+      throw new BusinessRuleException(`O canal "${tipo.nome}" é somente leitura`);
+    }
+    if (thread.status === 'RESOLVIDA') {
+      throw new BusinessRuleException('Conversa resolvida — abra uma nova para continuar');
+    }
+
+    const ladoEmpresa = user.role !== 'REP';
+    await this.prisma.$transaction([
+      this.prisma.internalMessage.create({
+        data: {
+          threadId,
+          autorId: user.id,
+          autorNome: user.nome,
+          ladoEmpresa,
+          texto: dto.texto,
+        },
+      }),
+      this.prisma.internalThread.update({
+        where: { id: threadId },
+        data: { status: ladoEmpresa ? 'RESPONDIDA' : 'ABERTA', ultimaMsgEm: new Date() },
+      }),
+    ]);
+    return this.prisma.internalThread.findUniqueOrThrow({
+      where: { id: threadId },
+      include: threadInclude,
+    });
+  }
+
+  async resolver(user: AuthenticatedUser, threadId: string): Promise<ThreadWithMsgs> {
+    const thread = await this.findById(user, threadId);
+    await this.prisma.internalThread.update({
+      where: { id: thread.id },
+      data: { status: 'RESOLVIDA' },
+    });
+    return this.prisma.internalThread.findUniqueOrThrow({
+      where: { id: thread.id },
+      include: threadInclude,
+    });
+  }
+}
