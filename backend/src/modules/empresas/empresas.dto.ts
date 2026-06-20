@@ -43,9 +43,31 @@ const pedidoStatusMetaSchema = z.object({
   variant: z.enum(['neutral', 'warning', 'info', 'success', 'primary', 'danger']).optional(),
 });
 
+/**
+ * Pedido mínimo configurável por tenant (2º consumidor da ConfiguracaoTenant).
+ * MSM: por peso, 250 kg mínimo. `tipo='combinada'` avalia os limites setados
+ * com `modo` E (todos) / OU (qualquer um). `sem_minimo` = sem trava (default).
+ */
+const pedidoMinimoSchema = z
+  .object({
+    tipo: z
+      .enum(['sem_minimo', 'por_valor', 'por_peso', 'por_quantidade', 'combinada'])
+      .default('sem_minimo'),
+    /** Valor mínimo em R$ (soma dos itens). */
+    valorMin: z.number().nonnegative().optional(),
+    /** Peso mínimo em kg (Σ quantidade × pesoPorUnidade do produto). */
+    pesoMin: z.number().nonnegative().optional(),
+    /** Quantidade mínima de unidades (Σ quantidade dos itens). */
+    quantidadeMin: z.number().int().nonnegative().optional(),
+    /** Combinador pra tipo='combinada': E (todos os limites) ou OU (qualquer um). */
+    modo: z.enum(['E', 'OU']).optional(),
+  })
+  .optional();
+
 export const tenantConfigPatchSchema = z
   .object({
     pedidoStatusLabels: z.record(z.string(), pedidoStatusMetaSchema).optional(),
+    pedidoMinimo: pedidoMinimoSchema,
   })
   .passthrough();
 export type TenantConfigPatchDto = z.infer<typeof tenantConfigPatchSchema>;

@@ -368,6 +368,51 @@ describe('PedidosService', () => {
     expect(r.numeroOmie).toBeTruthy();
   });
 
+  it('bloqueia envio ao OMIE quando pedido abaixo do mínimo do tenant', async () => {
+    prisma.pedido.findFirst.mockResolvedValue({
+      id: 'ped-1',
+      empresaId: 'emp-1',
+      representanteId: 'rep-1',
+      clienteId: 'cli-1',
+      status: 'RASCUNHO',
+      aprovacaoDesconto: null,
+      itens: [{ produtoId: 'p1', quantidade: 10, total: 100 }],
+    });
+    prisma.cliente.findFirst.mockResolvedValue({ omieStatus: 'ATIVO' });
+    prisma.produto.findMany.mockResolvedValue([{ id: 'p1', pesoPorUnidade: 1 }]); // 10 kg
+    prisma.empresa.findUnique.mockResolvedValue({
+      config: { pedidoMinimo: { tipo: 'por_peso', pesoMin: 250 } },
+    });
+    await expect(svc.enviarParaOmie(fakeUser(), 'ped-1')).rejects.toBeInstanceOf(
+      BusinessRuleException,
+    );
+  });
+
+  it('permite envio ao OMIE quando atinge o mínimo do tenant', async () => {
+    prisma.pedido.findFirst.mockResolvedValue({
+      id: 'ped-1',
+      empresaId: 'emp-1',
+      representanteId: 'rep-1',
+      clienteId: 'cli-1',
+      status: 'RASCUNHO',
+      aprovacaoDesconto: null,
+      itens: [{ produtoId: 'p1', quantidade: 300, total: 3000 }],
+    });
+    prisma.cliente.findFirst.mockResolvedValue({ omieStatus: 'ATIVO' });
+    prisma.produto.findMany.mockResolvedValue([{ id: 'p1', pesoPorUnidade: 1 }]); // 300 kg
+    prisma.empresa.findUnique.mockResolvedValue({
+      config: { pedidoMinimo: { tipo: 'por_peso', pesoMin: 250 } },
+    });
+    prisma.pedido.findUnique.mockResolvedValue({
+      id: 'ped-1',
+      status: 'ENVIADO_OMIE',
+      numeroOmie: 'OMIE-FAKE',
+      enviadoOmieEm: new Date(),
+    });
+    const r = await svc.enviarParaOmie(fakeUser(), 'ped-1');
+    expect(r.status).toBe('ENVIADO_OMIE');
+  });
+
   it('lança NotFound quando pedido não existe ou não pertence à empresa do user', async () => {
     prisma.pedido.findFirst.mockResolvedValue(null);
     await expect(svc.findById(fakeUser(), 'inexistente')).rejects.toBeInstanceOf(NotFoundException);

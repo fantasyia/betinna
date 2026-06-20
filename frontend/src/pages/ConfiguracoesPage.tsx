@@ -222,6 +222,7 @@ export default function ConfiguracoesPage() {
         <>
           <AvancadoTab />
           <LifecycleConfig />
+          <PedidoMinimoConfig />
         </>
       )}
       {tab === 'empresas' && (
@@ -411,6 +412,180 @@ function LifecycleConfig() {
               className="bg-primary text-white rounded-md py-2 px-4 text-sm font-semibold cursor-pointer border-none self-start mt-2 disabled:opacity-60"
             >
               {busy ? 'Salvando…' : 'Salvar lifecycle'}
+            </button>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+/** Pedido mínimo — 2º consumidor do ConfiguracaoTenant (no-code). */
+const PEDIDO_MINIMO_TIPOS: Array<{ value: string; label: string }> = [
+  { value: 'sem_minimo', label: 'Sem mínimo' },
+  { value: 'por_valor', label: 'Por valor (R$)' },
+  { value: 'por_peso', label: 'Por peso (kg)' },
+  { value: 'por_quantidade', label: 'Por quantidade (un)' },
+  { value: 'combinada', label: 'Combinada (valor/peso/qtd)' },
+];
+
+interface PedidoMinimoForm {
+  tipo: string;
+  valorMin: string;
+  pesoMin: string;
+  quantidadeMin: string;
+  modo: 'E' | 'OU';
+}
+
+function PedidoMinimoConfig() {
+  const toast = useToast();
+  const podeEditar = usePermission('configuracoes.empresa');
+  const { data: cfg, loading, refetch } = useApiQuery<Record<string, unknown>>('/empresas/config');
+  const [edit, setEdit] = useState<PedidoMinimoForm | null>(null);
+  const [busy, setBusy] = useState(false);
+
+  const base: PedidoMinimoForm = useMemo(() => {
+    const r = (cfg?.pedidoMinimo ?? {}) as {
+      tipo?: string;
+      valorMin?: number;
+      pesoMin?: number;
+      quantidadeMin?: number;
+      modo?: 'E' | 'OU';
+    };
+    return {
+      tipo: r.tipo ?? 'sem_minimo',
+      valorMin: r.valorMin != null ? String(r.valorMin) : '',
+      pesoMin: r.pesoMin != null ? String(r.pesoMin) : '',
+      quantidadeMin: r.quantidadeMin != null ? String(r.quantidadeMin) : '',
+      modo: r.modo ?? 'E',
+    };
+  }, [cfg]);
+  const form = edit ?? base;
+
+  function set<K extends keyof PedidoMinimoForm>(field: K, v: PedidoMinimoForm[K]) {
+    setEdit({ ...form, [field]: v } as PedidoMinimoForm);
+  }
+
+  const usaValor = form.tipo === 'por_valor' || form.tipo === 'combinada';
+  const usaPeso = form.tipo === 'por_peso' || form.tipo === 'combinada';
+  const usaQtd = form.tipo === 'por_quantidade' || form.tipo === 'combinada';
+
+  async function save() {
+    setBusy(true);
+    try {
+      const num = (s: string) => {
+        const n = Number(s.replace(',', '.'));
+        return s.trim() !== '' && Number.isFinite(n) && n >= 0 ? n : undefined;
+      };
+      const pedidoMinimo: Record<string, unknown> = { tipo: form.tipo };
+      if (usaValor) pedidoMinimo.valorMin = num(form.valorMin);
+      if (usaPeso) pedidoMinimo.pesoMin = num(form.pesoMin);
+      if (usaQtd) pedidoMinimo.quantidadeMin = num(form.quantidadeMin);
+      if (form.tipo === 'combinada') pedidoMinimo.modo = form.modo;
+      await api.patch('/empresas/config', { pedidoMinimo });
+      toast.success('Pedido mínimo salvo');
+      setEdit(null);
+      refetch();
+    } catch (err) {
+      toast.error('Falha ao salvar', apiErrorMessage(err));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <div className="bg-surface border border-border rounded-[10px] p-6 mt-4">
+      <h2 className="mt-0 text-[16px]" style={{ color: BRAND.navy }}>
+        📦 Pedido mínimo
+      </h2>
+      <p className="text-xs text-muted mt-0">
+        Mínimo que um pedido precisa atingir pra ser enviado ao OMIE. Rascunhos podem ficar abaixo.
+        O peso usa o peso por unidade cadastrado em cada produto.
+      </p>
+      {loading ? (
+        <p className="text-sm text-muted mt-4">Carregando…</p>
+      ) : (
+        <div className="flex flex-col gap-3 mt-4 max-w-[480px]">
+          <label className="flex flex-col gap-1 text-xs text-muted">
+            Tipo de mínimo
+            <Select
+              value={form.tipo}
+              disabled={!podeEditar}
+              onChange={(e) => set('tipo', e.target.value)}
+            >
+              {PEDIDO_MINIMO_TIPOS.map((t) => (
+                <option key={t.value} value={t.value}>
+                  {t.label}
+                </option>
+              ))}
+            </Select>
+          </label>
+
+          {usaValor && (
+            <label className="flex flex-col gap-1 text-xs text-muted">
+              Valor mínimo (R$)
+              <Input
+                type="number"
+                min="0"
+                step="0.01"
+                value={form.valorMin}
+                disabled={!podeEditar}
+                onChange={(e) => set('valorMin', e.target.value)}
+                placeholder="ex: 5000"
+              />
+            </label>
+          )}
+          {usaPeso && (
+            <label className="flex flex-col gap-1 text-xs text-muted">
+              Peso mínimo (kg)
+              <Input
+                type="number"
+                min="0"
+                step="0.01"
+                value={form.pesoMin}
+                disabled={!podeEditar}
+                onChange={(e) => set('pesoMin', e.target.value)}
+                placeholder="ex: 250"
+              />
+            </label>
+          )}
+          {usaQtd && (
+            <label className="flex flex-col gap-1 text-xs text-muted">
+              Quantidade mínima (un)
+              <Input
+                type="number"
+                min="0"
+                step="1"
+                value={form.quantidadeMin}
+                disabled={!podeEditar}
+                onChange={(e) => set('quantidadeMin', e.target.value)}
+                placeholder="ex: 100"
+              />
+            </label>
+          )}
+          {form.tipo === 'combinada' && (
+            <label className="flex flex-col gap-1 text-xs text-muted">
+              Combinador
+              <Select
+                value={form.modo}
+                disabled={!podeEditar}
+                onChange={(e) => set('modo', e.target.value as 'E' | 'OU')}
+              >
+                <option value="E">E — precisa atingir todos os limites</option>
+                <option value="OU">OU — basta atingir um dos limites</option>
+              </Select>
+            </label>
+          )}
+
+          {podeEditar && (
+            <button
+              type="button"
+              data-testid="pedido-minimo-salvar"
+              onClick={save}
+              disabled={busy}
+              className="bg-primary text-white rounded-md py-2 px-4 text-sm font-semibold cursor-pointer border-none self-start mt-2 disabled:opacity-60"
+            >
+              {busy ? 'Salvando…' : 'Salvar pedido mínimo'}
             </button>
           )}
         </div>

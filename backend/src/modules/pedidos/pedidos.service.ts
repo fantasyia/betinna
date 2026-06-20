@@ -17,6 +17,11 @@ import type { AuthenticatedUser } from '@shared/types/authenticated-user';
 import { type Paginated, buildPaginated } from '@shared/types/pagination';
 import { SequenceService } from '@shared/utils/sequence.service';
 import { type ItemInput, PedidoPricingService, type PedidoTotals } from './pedido-pricing.service';
+import {
+  avaliarPedidoMinimo,
+  type PedidoMinimoRegra,
+  type PedidoMinimoResultado,
+} from './pedido-minimo.util';
 import type {
   CancelarPedidoDto,
   CreatePedidoDto,
@@ -97,9 +102,12 @@ export class PedidosService {
       desconto: number;
       total: number;
       negociado: boolean;
+      pesoPorUnidade: number | null;
     }>;
     requerAprovacao: boolean;
     tetoRep: number;
+    /** Validação do pedido mínimo do tenant (info p/ UI em tempo real). */
+    pedidoMinimo: PedidoMinimoResultado;
   }> {
     const empresaId = this.requireEmpresa(user);
     const cliente = await this.assertClienteValido(user, dto.clienteId);
@@ -122,7 +130,8 @@ export class PedidosService {
     );
     const tetoRep = await this.tetoDoRepAtual(user);
     const requerAprovacao = this.pedidoPricing.excedeTetoDesconto(totals, tetoRep);
-    return { totals, itens: items, requerAprovacao, tetoRep };
+    const pedidoMinimo = await this.validarPedidoMinimo(empresaId, items);
+    return { totals, itens: items, requerAprovacao, tetoRep, pedidoMinimo };
   }
 
   // ─── Criar pedido ───────────────────────────────────────────────────────
@@ -781,6 +790,31 @@ export class PedidosService {
       );
     }
 
+    // Pedido mínimo configurável (Empresa.config.pedidoMinimo): rascunho pode
+    // ficar abaixo, mas não vai ao OMIE sem atingir o mínimo do tenant.
+    const itensPedido = pedido.itens ?? [];
+    const produtoIds = itensPedido.map((i) => i.produtoId);
+    const pesos = produtoIds.length
+      ? await this.prisma.produto.findMany({
+          where: { id: { in: produtoIds }, empresaId: pedido.empresaId },
+          select: { id: true, pesoPorUnidade: true },
+        })
+      : [];
+    const pesoMap = new Map(
+      (pesos ?? []).map((p) => [p.id, p.pesoPorUnidade != null ? Number(p.pesoPorUnidade) : null]),
+    );
+    const minimo = await this.validarPedidoMinimo(
+      pedido.empresaId,
+      itensPedido.map((i) => ({
+        quantidade: i.quantidade,
+        total: Number(i.total),
+        pesoPorUnidade: pesoMap.get(i.produtoId) ?? null,
+      })),
+    );
+    if (!minimo.ok) {
+      throw new BusinessRuleException(minimo.mensagem ?? 'Pedido abaixo do mínimo configurado');
+    }
+
     // Push real pro OMIE (demo mode retorna número fake mas o fluxo é idêntico).
     // OmiePedidosService já atualiza Pedido (status, numeroOmie, enviadoOmieEm)
     // e registra sync OK na IntegracaoConexao.
@@ -846,6 +880,8 @@ export class PedidosService {
       desconto: number;
       total: number;
       negociado: boolean;
+      /** Peso unitário em kg (null = produto sem peso cadastrado). */
+      pesoPorUnidade: number | null;
     }>
   > {
     const produtoIds = itens.map((i) => i.produtoId);
@@ -853,7 +889,7 @@ export class PedidosService {
     // produtoId de outra empresa no pedido.
     const produtos = await this.prisma.produto.findMany({
       where: { id: { in: produtoIds }, empresaId },
-      select: { id: true, nome: true, ativo: true, precoTabela: true },
+      select: { id: true, nome: true, ativo: true, precoTabela: true, pesoPorUnidade: true },
     });
     const produtosMap = new Map(produtos.map((p) => [p.id, p]));
     if (produtos.length !== new Set(produtoIds).size) {
@@ -880,6 +916,7 @@ export class PedidosService {
       const resolved = priceMap.get(i.produtoId);
       const preco = calc[idx].precoUnitario;
       const t = this.pedidoPricing.itemTotal(calc[idx]);
+      const peso = produtosMap.get(i.produtoId)!.pesoPorUnidade;
       return {
         produtoId: i.produtoId,
         nome: produtosMap.get(i.produtoId)!.nome,
@@ -888,8 +925,31 @@ export class PedidosService {
         desconto: i.desconto,
         total: t.total,
         negociado: !!resolved?.negociado && resolved.vigente,
+        pesoPorUnidade: peso != null ? Number(peso) : null,
       };
     });
+  }
+
+  /**
+   * Avalia o pedido mínimo configurado pelo tenant (Empresa.config.pedidoMinimo).
+   * Usado no preview (info p/ UI) e no envio ao OMIE (gate). Sem config → ok.
+   * Peso = Σ quantidade × pesoPorUnidade (produto sem peso cadastrado conta 0).
+   */
+  private async validarPedidoMinimo(
+    empresaId: string,
+    items: Array<{ quantidade: number; total: number; pesoPorUnidade: number | null }>,
+  ): Promise<PedidoMinimoResultado> {
+    const empresa = await this.prisma.empresa.findUnique({
+      where: { id: empresaId },
+      select: { config: true },
+    });
+    const regra = (empresa?.config as { pedidoMinimo?: PedidoMinimoRegra } | null)?.pedidoMinimo;
+    const totais = {
+      valor: items.reduce((s, i) => s + i.total, 0),
+      peso: items.reduce((s, i) => s + i.quantidade * (i.pesoPorUnidade ?? 0), 0),
+      quantidade: items.reduce((s, i) => s + i.quantidade, 0),
+    };
+    return avaliarPedidoMinimo(regra, totais);
   }
 
   /** Teto de desconto autônomo do rep atual (default 0% pra admin/gerente). */
