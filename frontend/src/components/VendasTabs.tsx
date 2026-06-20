@@ -5,6 +5,7 @@ import {
   Gift,
   Wallet,
   Target as TargetIcon,
+  FolderOpen,
 } from 'lucide-react';
 import { SubTabsBar, type SubTab } from '@/components/SubTabsBar';
 
@@ -23,6 +24,7 @@ export function VendasTabs() {
     { to: '/amostras', label: 'Amostras', icon: <Gift size={14} /> },
     { to: '/comissoes', label: 'Comissões', icon: <Wallet size={14} /> },
     { to: '/metas', label: 'Metas', icon: <TargetIcon size={14} /> },
+    { to: '/materiais', label: 'Materiais', icon: <FolderOpen size={14} /> },
   ];
 
   return <SubTabsBar tabs={tabs} ariaLabel="Sub-abas de Vendas" />;

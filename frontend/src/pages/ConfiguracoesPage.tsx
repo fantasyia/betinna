@@ -225,6 +225,7 @@ export default function ConfiguracoesPage() {
           <PedidoMinimoConfig />
           <AmostrasConfig />
           <ComissaoConfig />
+          <MateriaisTiposConfig />
         </>
       )}
       {tab === 'empresas' && (
@@ -922,6 +923,127 @@ function ComissaoConfig() {
               className="bg-primary text-white rounded-md py-2 px-4 text-sm font-semibold cursor-pointer border-none self-start mt-2 disabled:opacity-60"
             >
               {busy ? 'Salvando…' : 'Salvar comissão'}
+            </button>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+/** Materiais de venda: tipos configuráveis — 5º consumidor (no-code). */
+const DEFAULT_MATERIAIS_TIPOS = [
+  { key: 'ficha_tecnica', label: 'Ficha técnica' },
+  { key: 'foto_hd', label: 'Foto HD' },
+  { key: 'apresentacao', label: 'Apresentação' },
+  { key: 'video', label: 'Vídeo' },
+  { key: 'certificacao', label: 'Certificação' },
+  { key: 'tabela_comercial', label: 'Tabela comercial' },
+  { key: 'tutorial', label: 'Tutorial' },
+];
+
+function MateriaisTiposConfig() {
+  const toast = useToast();
+  const podeEditar = usePermission('configuracoes.empresa');
+  const { data: cfg, loading, refetch } = useApiQuery<Record<string, unknown>>('/empresas/config');
+  const [rows, setRows] = useState<Array<{ key: string; label: string }> | null>(null);
+  const [busy, setBusy] = useState(false);
+
+  const base = useMemo(() => {
+    const t = (cfg?.materiaisVenda as { tipos?: Array<{ key: string; label: string }> } | undefined)
+      ?.tipos;
+    return t && t.length > 0 ? t : DEFAULT_MATERIAIS_TIPOS;
+  }, [cfg]);
+  const tipos = rows ?? base;
+
+  const slug = (s: string) =>
+    s
+      .toLowerCase()
+      .normalize('NFD')
+      .replace(/[̀-ͯ]/g, '')
+      .replace(/[^a-z0-9]+/g, '_')
+      .replace(/^_|_$/g, '')
+      .slice(0, 40);
+
+  function setLabel(i: number, label: string) {
+    setRows(tipos.map((t, idx) => (idx === i ? { key: t.key || slug(label), label } : t)));
+  }
+  const add = () => setRows([...tipos, { key: '', label: '' }]);
+  const rm = (i: number) => setRows(tipos.filter((_, idx) => idx !== i));
+
+  async function save() {
+    setBusy(true);
+    try {
+      const limpos = tipos
+        .map((t) => ({ key: t.key || slug(t.label), label: t.label.trim() }))
+        .filter((t) => t.key && t.label);
+      await api.patch('/empresas/config', { materiaisVenda: { tipos: limpos } });
+      toast.success('Tipos de materiais salvos');
+      setRows(null);
+      refetch();
+    } catch (err) {
+      toast.error('Falha ao salvar', apiErrorMessage(err));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <div className="bg-surface border border-border rounded-[10px] p-6 mt-4">
+      <h2 className="mt-0 text-[16px]" style={{ color: BRAND.navy }}>
+        📁 Tipos de materiais de venda
+      </h2>
+      <p className="text-xs text-muted mt-0">
+        Categorias de material que aparecem na biblioteca (Vendas → Materiais). Em branco usa os
+        padrões.
+      </p>
+      {loading ? (
+        <p className="text-sm text-muted mt-4">Carregando…</p>
+      ) : (
+        <div className="flex flex-col gap-2 mt-4 max-w-[480px]">
+          {tipos.map((t, i) => (
+            <div key={i} className="flex items-center gap-2">
+              <Input
+                value={t.label}
+                disabled={!podeEditar}
+                onChange={(e) => setLabel(i, e.target.value)}
+                placeholder="Nome do tipo"
+              />
+              <code className="text-[11px] text-muted w-[140px] shrink-0 truncate">
+                {t.key || slug(t.label) || '—'}
+              </code>
+              {podeEditar && (
+                <button
+                  type="button"
+                  onClick={() => rm(i)}
+                  className="w-[28px] h-[34px] shrink-0 bg-surface text-danger border border-border-strong rounded-md cursor-pointer"
+                  aria-label="Remover tipo"
+                >
+                  ×
+                </button>
+              )}
+            </div>
+          ))}
+          {podeEditar && (
+            <div className="flex gap-2 mt-1">
+              <button
+                type="button"
+                onClick={add}
+                className="text-[12px] text-primary bg-transparent border-none cursor-pointer px-0"
+              >
+                + Adicionar tipo
+              </button>
+            </div>
+          )}
+          {podeEditar && (
+            <button
+              type="button"
+              data-testid="materiais-tipos-salvar"
+              onClick={save}
+              disabled={busy}
+              className="bg-primary text-white rounded-md py-2 px-4 text-sm font-semibold cursor-pointer border-none self-start mt-2 disabled:opacity-60"
+            >
+              {busy ? 'Salvando…' : 'Salvar tipos'}
             </button>
           )}
         </div>
