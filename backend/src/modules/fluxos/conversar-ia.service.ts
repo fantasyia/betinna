@@ -66,12 +66,18 @@ const INSTRUCAO_CLASSIFICACAO =
   '\n\n[Formato de resposta OBRIGATÓRIO] Responda SEMPRE com um JSON válido e NADA além dele:\n' +
   '{"resposta": "<mensagem pro lead>", "classificou": <true|false>, ' +
   '"classificacao": "<rótulo curto, só se classificou>", "variaveis": { <dados capturados> }}\n' +
-  '- "resposta": o que enviar agora pro lead no WhatsApp. Escreva curto e natural, ' +
-  'estilo WhatsApp — quebre em 2 a 4 mensagens curtas separadas por "|||". NUNCA mande ' +
-  'um parágrafo único longo (parede de texto).\n' +
-  '- "classificou": true SOMENTE quando já houver informação suficiente pra concluir/classificar; ' +
-  'senão false e continue a conversa.\n' +
-  '- "classificacao"/"variaveis": só quando "classificou" for true.';
+  '- "resposta" é a MENSAGEM que vai pro lead no WhatsApp: 2ª pessoa, curta e natural ' +
+  '(quebre em 2 a 4 mensagens com "|||"; nunca um parágrafo único longo). É APENAS a fala ' +
+  'humana pro lead. NUNCA escreva aqui rótulos, status, decisões ou notas internas ' +
+  '(ex: "classificação interna", "classifiquei", "pronto", o nome do rótulo) — isso é a SUA ' +
+  'anotação e vai nos outros campos, NÃO na "resposta".\n' +
+  '- "classificou": true SOMENTE quando já houver informação suficiente pra concluir; senão ' +
+  'false e continue a conversa com naturalidade.\n' +
+  '- Quando "classificou" for true, a "resposta" é um ENCERRAMENTO caloroso e COMPLETO: ' +
+  'reconheça o que o lead disse, agradeça e deixe uma porta aberta amigável — sem ser seco ' +
+  'nem robótico. NÃO termine com pergunta que exija resposta (a conversa está se encerrando).\n' +
+  '- "classificacao"/"variaveis": preencha só quando "classificou" for true (ficam na anotação, ' +
+  'fora da "resposta").';
 
 interface IaTurno {
   resposta: string;
