@@ -109,12 +109,27 @@ const comissaoBonusSchema = z
   })
   .optional();
 
+/** Materiais de venda: tipos configuráveis (5º consumidor). */
+const materiaisTiposSchema = z
+  .object({
+    tipos: z
+      .array(
+        z.object({
+          key: z.string().trim().min(1).max(40),
+          label: z.string().trim().min(1).max(60),
+        }),
+      )
+      .optional(),
+  })
+  .optional();
+
 export const tenantConfigPatchSchema = z
   .object({
     pedidoStatusLabels: z.record(z.string(), pedidoStatusMetaSchema).optional(),
     pedidoMinimo: pedidoMinimoSchema,
     amostraModos: amostraModosSchema,
     comissaoBonus: comissaoBonusSchema,
+    materiaisVenda: materiaisTiposSchema,
   })
   .passthrough();
 export type TenantConfigPatchDto = z.infer<typeof tenantConfigPatchSchema>;

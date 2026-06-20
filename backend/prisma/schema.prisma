@@ -310,6 +310,7 @@ model Empresa {
   conversations         Conversation[]
   marketplaceIncidents  MarketplaceIncident[]
   notificacoes          Notificacao[]
+  materiaisVenda        MaterialVenda[]
 
   @@index([ativo])
 }
@@ -1058,6 +1059,39 @@ model Amostra {
   @@index([status])
   // Seed demo
   @@index([empresaId, isDemo])
+}
+
+// ─── MATERIAIS DE VENDA ───────────────────────────────────────────────
+
+/// Biblioteca de marketing publicada pela empresa (admin) e usada/compartilhada
+/// pelos reps. Distinta de Documento (escopo cliente) e do catálogo do rep.
+/// Arquivos no Supabase Storage (bucket materiais-venda); aqui só o metadado.
+model MaterialVenda {
+  id            String   @id @default(cuid())
+  empresaId     String
+  /// key do tipo configurável (Empresa.config.materiaisTipos).
+  tipo          String
+  titulo        String
+  descricao     String?
+  /// Vínculo opcional (snapshot, sem FK) a um produto + categoria texto livre.
+  produtoId     String?
+  categoria     String?
+  /// Path no Supabase Storage + metadados do arquivo.
+  arquivoPath   String
+  arquivoNome   String
+  mimeType      String?
+  tamanho       Int?
+  versao        Int      @default(1)
+  /// Confidencial = não deve ser compartilhado fora da empresa (flag de UI).
+  confidencial  Boolean  @default(false)
+  criadoPorId   String?
+  criadoPorNome String?
+  criadoEm      DateTime @default(now())
+  atualizadoEm  DateTime @updatedAt
+
+  empresa Empresa @relation(fields: [empresaId], references: [id], onDelete: Cascade)
+
+  @@index([empresaId, tipo])
 }
 
 // ─── COMISSÕES ────────────────────────────────────────────────────────
