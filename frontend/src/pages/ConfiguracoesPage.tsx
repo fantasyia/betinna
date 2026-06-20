@@ -226,6 +226,7 @@ export default function ConfiguracoesPage() {
           <AmostrasConfig />
           <ComissaoConfig />
           <MateriaisTiposConfig />
+          <DevolucaoConfig />
         </>
       )}
       {tab === 'empresas' && (
@@ -1044,6 +1045,193 @@ function MateriaisTiposConfig() {
               className="bg-primary text-white rounded-md py-2 px-4 text-sm font-semibold cursor-pointer border-none self-start mt-2 disabled:opacity-60"
             >
               {busy ? 'Salvando…' : 'Salvar tipos'}
+            </button>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+/** Devolução interna: motivos + SLA + janela — 6º consumidor (no-code). */
+interface DevMotivoForm {
+  key: string;
+  label: string;
+  fotosObrigatorias: boolean;
+}
+const DEFAULT_DEV_MOTIVOS: DevMotivoForm[] = [
+  { key: 'avaria_transporte', label: 'Avaria no transporte', fotosObrigatorias: true },
+  { key: 'validade_proxima', label: 'Validade próxima', fotosObrigatorias: false },
+  { key: 'erro_produto', label: 'Erro de produto', fotosObrigatorias: true },
+  { key: 'qualidade', label: 'Qualidade', fotosObrigatorias: true },
+  { key: 'recusa_cliente', label: 'Recusa do cliente', fotosObrigatorias: false },
+  { key: 'outros', label: 'Outros', fotosObrigatorias: false },
+];
+
+function DevolucaoConfig() {
+  const toast = useToast();
+  const podeEditar = usePermission('configuracoes.empresa');
+  const { data: cfg, loading, refetch } = useApiQuery<Record<string, unknown>>('/empresas/config');
+  const [motivos, setMotivos] = useState<DevMotivoForm[] | null>(null);
+  const [sla, setSla] = useState<string | null>(null);
+  const [janela, setJanela] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+
+  const base = useMemo(() => {
+    const r = (cfg?.devolucaoInterna ?? {}) as {
+      motivos?: DevMotivoForm[];
+      slaAnaliseDiasUteis?: number;
+      janelaPosEntregaDias?: number;
+    };
+    return {
+      motivos:
+        r.motivos && r.motivos.length > 0
+          ? r.motivos.map((m) => ({
+              key: m.key,
+              label: m.label,
+              fotosObrigatorias: !!m.fotosObrigatorias,
+            }))
+          : DEFAULT_DEV_MOTIVOS,
+      sla: String(r.slaAnaliseDiasUteis ?? 5),
+      janela: String(r.janelaPosEntregaDias ?? 60),
+    };
+  }, [cfg]);
+  const motivosForm = motivos ?? base.motivos;
+  const slaForm = sla ?? base.sla;
+  const janelaForm = janela ?? base.janela;
+
+  const slug = (s: string) =>
+    s
+      .toLowerCase()
+      .normalize('NFD')
+      .replace(/[̀-ͯ]/g, '')
+      .replace(/[^a-z0-9]+/g, '_')
+      .replace(/^_|_$/g, '')
+      .slice(0, 40);
+
+  function setMot(i: number, patch: Partial<DevMotivoForm>) {
+    setMotivos(motivosForm.map((m, idx) => (idx === i ? { ...m, ...patch } : m)));
+  }
+  const add = () =>
+    setMotivos([...motivosForm, { key: '', label: '', fotosObrigatorias: false }]);
+  const rm = (i: number) => setMotivos(motivosForm.filter((_, idx) => idx !== i));
+
+  async function save() {
+    setBusy(true);
+    try {
+      const limpos = motivosForm
+        .map((m) => ({
+          key: m.key || slug(m.label),
+          label: m.label.trim(),
+          fotosObrigatorias: m.fotosObrigatorias,
+        }))
+        .filter((m) => m.key && m.label);
+      await api.patch('/empresas/config', {
+        devolucaoInterna: {
+          motivos: limpos,
+          slaAnaliseDiasUteis: Math.max(0, Math.round(Number(slaForm) || 5)),
+          janelaPosEntregaDias: Math.max(0, Math.round(Number(janelaForm) || 60)),
+        },
+      });
+      toast.success('Configuração de devolução salva');
+      setMotivos(null);
+      setSla(null);
+      setJanela(null);
+      refetch();
+    } catch (err) {
+      toast.error('Falha ao salvar', apiErrorMessage(err));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <div className="bg-surface border border-border rounded-[10px] p-6 mt-4">
+      <h2 className="mt-0 text-[16px]" style={{ color: BRAND.navy }}>
+        ↩️ Devolução interna
+      </h2>
+      <p className="text-xs text-muted mt-0">
+        Motivos de devolução, SLA de análise (dias úteis) e janela após a entrega. Em branco usa os
+        padrões.
+      </p>
+      {loading ? (
+        <p className="text-sm text-muted mt-4">Carregando…</p>
+      ) : (
+        <div className="flex flex-col gap-3 mt-4 max-w-[560px]">
+          <div className="flex gap-2">
+            <label className="flex flex-col gap-1 text-xs text-muted flex-1">
+              SLA análise (dias úteis)
+              <Input
+                type="number"
+                min="0"
+                value={slaForm}
+                disabled={!podeEditar}
+                onChange={(e) => setSla(e.target.value)}
+              />
+            </label>
+            <label className="flex flex-col gap-1 text-xs text-muted flex-1">
+              Janela pós-entrega (dias)
+              <Input
+                type="number"
+                min="0"
+                value={janelaForm}
+                disabled={!podeEditar}
+                onChange={(e) => setJanela(e.target.value)}
+              />
+            </label>
+          </div>
+
+          <span className="text-xs text-muted">Motivos</span>
+          {motivosForm.map((m, i) => (
+            <div key={i} className="flex items-center gap-2">
+              <Input
+                value={m.label}
+                disabled={!podeEditar}
+                onChange={(e) =>
+                  setMot(i, { label: e.target.value, key: m.key || slug(e.target.value) })
+                }
+                placeholder="Nome do motivo"
+              />
+              <label className="flex items-center gap-1 text-[11px] text-muted shrink-0">
+                <input
+                  type="checkbox"
+                  checked={m.fotosObrigatorias}
+                  disabled={!podeEditar}
+                  onChange={(e) => setMot(i, { fotosObrigatorias: e.target.checked })}
+                />
+                foto obrig.
+              </label>
+              {podeEditar && (
+                <button
+                  type="button"
+                  onClick={() => rm(i)}
+                  className="w-[28px] h-[34px] shrink-0 bg-surface text-danger border border-border-strong rounded-md cursor-pointer"
+                  aria-label="Remover motivo"
+                >
+                  ×
+                </button>
+              )}
+            </div>
+          ))}
+          {podeEditar && (
+            <button
+              type="button"
+              onClick={add}
+              className="self-start text-[12px] text-primary bg-transparent border-none cursor-pointer px-0"
+            >
+              + Adicionar motivo
+            </button>
+          )}
+
+          {podeEditar && (
+            <button
+              type="button"
+              data-testid="devolucao-config-salvar"
+              onClick={save}
+              disabled={busy}
+              className="bg-primary text-white rounded-md py-2 px-4 text-sm font-semibold cursor-pointer border-none self-start mt-2 disabled:opacity-60"
+            >
+              {busy ? 'Salvando…' : 'Salvar devolução'}
             </button>
           )}
         </div>

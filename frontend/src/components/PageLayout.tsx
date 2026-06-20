@@ -91,7 +91,15 @@ const SECTIONS: NavSection[] = [
         to: '/pedidos',
         label: 'Vendas',
         icon: ShoppingCart,
-        match: ['/aprovacoes', '/propostas', '/amostras', '/comissoes', '/metas', '/materiais'],
+        match: [
+          '/aprovacoes',
+          '/propostas',
+          '/amostras',
+          '/comissoes',
+          '/metas',
+          '/materiais',
+          '/devolucoes',
+        ],
         badgeKey: 'vendas',
       },
       {
