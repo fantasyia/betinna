@@ -223,6 +223,7 @@ export default function ConfiguracoesPage() {
           <AvancadoTab />
           <LifecycleConfig />
           <PedidoMinimoConfig />
+          <AmostrasConfig />
         </>
       )}
       {tab === 'empresas' && (
@@ -586,6 +587,175 @@ function PedidoMinimoConfig() {
               className="bg-primary text-white rounded-md py-2 px-4 text-sm font-semibold cursor-pointer border-none self-start mt-2 disabled:opacity-60"
             >
               {busy ? 'Salvando…' : 'Salvar pedido mínimo'}
+            </button>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+/** Amostras: modos + elegibilidade + fila de aprovação — 3º consumidor (no-code). */
+interface AmostrasConfigForm {
+  subsidiada: boolean;
+  compra_propria: boolean;
+  compra_cliente: boolean;
+  tipo: string;
+  minKgMes: string;
+  mesesJanela: string;
+  exigeAprovacao: boolean;
+}
+
+function AmostrasConfig() {
+  const toast = useToast();
+  const podeEditar = usePermission('configuracoes.empresa');
+  const { data: cfg, loading, refetch } = useApiQuery<Record<string, unknown>>('/empresas/config');
+  const [edit, setEdit] = useState<AmostrasConfigForm | null>(null);
+  const [busy, setBusy] = useState(false);
+
+  const base: AmostrasConfigForm = useMemo(() => {
+    const r = (cfg?.amostraModos ?? {}) as {
+      modosAtivos?: Record<string, boolean>;
+      elegibilidadeSubsidiada?: { tipo?: string; minKgMes?: number; mesesJanela?: number };
+      exigeAprovacaoSubsidiada?: boolean;
+    };
+    const m = r.modosAtivos ?? {};
+    const e = r.elegibilidadeSubsidiada ?? {};
+    return {
+      subsidiada: m.subsidiada ?? true,
+      compra_propria: m.compra_propria ?? false,
+      compra_cliente: m.compra_cliente ?? false,
+      tipo: e.tipo ?? 'sempre',
+      minKgMes: e.minKgMes != null ? String(e.minKgMes) : '',
+      mesesJanela: e.mesesJanela != null ? String(e.mesesJanela) : '3',
+      exigeAprovacao: r.exigeAprovacaoSubsidiada ?? false,
+    };
+  }, [cfg]);
+  const form = edit ?? base;
+
+  function set<K extends keyof AmostrasConfigForm>(k: K, v: AmostrasConfigForm[K]) {
+    setEdit({ ...form, [k]: v } as AmostrasConfigForm);
+  }
+
+  async function save() {
+    setBusy(true);
+    try {
+      const num = (s: string, d: number) => {
+        const n = Number(s.replace(',', '.'));
+        return s.trim() !== '' && Number.isFinite(n) && n >= 0 ? n : d;
+      };
+      await api.patch('/empresas/config', {
+        amostraModos: {
+          modosAtivos: {
+            subsidiada: form.subsidiada,
+            compra_propria: form.compra_propria,
+            compra_cliente: form.compra_cliente,
+          },
+          elegibilidadeSubsidiada: {
+            tipo: form.tipo,
+            minKgMes: num(form.minKgMes, 0),
+            mesesJanela: Math.max(1, Math.round(num(form.mesesJanela, 3))),
+          },
+          exigeAprovacaoSubsidiada: form.exigeAprovacao,
+        },
+      });
+      toast.success('Configuração de amostras salva');
+      setEdit(null);
+      refetch();
+    } catch (err) {
+      toast.error('Falha ao salvar', apiErrorMessage(err));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  const check = (k: 'subsidiada' | 'compra_propria' | 'compra_cliente', label: string) => (
+    <label className="flex items-center gap-2 text-sm">
+      <input
+        type="checkbox"
+        checked={form[k]}
+        disabled={!podeEditar}
+        onChange={(e) => set(k, e.target.checked)}
+      />
+      {label}
+    </label>
+  );
+
+  return (
+    <div className="bg-surface border border-border rounded-[10px] p-6 mt-4">
+      <h2 className="mt-0 text-[16px]" style={{ color: BRAND.navy }}>
+        🧪 Amostras
+      </h2>
+      <p className="text-xs text-muted mt-0">
+        Modos de amostra ativos + regra de elegibilidade da amostra subsidiada (empresa paga). A
+        subsidiada pode cair numa fila de aprovação da diretoria.
+      </p>
+      {loading ? (
+        <p className="text-sm text-muted mt-4">Carregando…</p>
+      ) : (
+        <div className="flex flex-col gap-3 mt-4 max-w-[480px]">
+          <div className="flex flex-col gap-1">
+            <span className="text-xs text-muted">Modos ativos</span>
+            {check('subsidiada', 'Subsidiada (empresa paga)')}
+            {check('compra_propria', 'Compra própria (rep paga)')}
+            {check('compra_cliente', 'Compra do cliente (cliente paga)')}
+          </div>
+
+          <label className="flex flex-col gap-1 text-xs text-muted">
+            Elegibilidade da subsidiada
+            <Select value={form.tipo} disabled={!podeEditar} onChange={(e) => set('tipo', e.target.value)}>
+              <option value="sempre">Sempre elegível</option>
+              <option value="media_kg_mes">Por média de kg/mês do cliente</option>
+              <option value="manual">Sempre exige aprovação manual</option>
+            </Select>
+          </label>
+
+          {form.tipo === 'media_kg_mes' && (
+            <div className="flex gap-2">
+              <label className="flex flex-col gap-1 text-xs text-muted flex-1">
+                Mínimo kg/mês
+                <Input
+                  type="number"
+                  min="0"
+                  value={form.minKgMes}
+                  disabled={!podeEditar}
+                  onChange={(e) => set('minKgMes', e.target.value)}
+                  placeholder="ex: 250"
+                />
+              </label>
+              <label className="flex flex-col gap-1 text-xs text-muted flex-1">
+                Janela (meses)
+                <Input
+                  type="number"
+                  min="1"
+                  value={form.mesesJanela}
+                  disabled={!podeEditar}
+                  onChange={(e) => set('mesesJanela', e.target.value)}
+                  placeholder="3"
+                />
+              </label>
+            </div>
+          )}
+
+          <label className="flex items-center gap-2 text-sm">
+            <input
+              type="checkbox"
+              checked={form.exigeAprovacao}
+              disabled={!podeEditar}
+              onChange={(e) => set('exigeAprovacao', e.target.checked)}
+            />
+            Toda subsidiada passa por aprovação da diretoria
+          </label>
+
+          {podeEditar && (
+            <button
+              type="button"
+              data-testid="amostras-config-salvar"
+              onClick={save}
+              disabled={busy}
+              className="bg-primary text-white rounded-md py-2 px-4 text-sm font-semibold cursor-pointer border-none self-start mt-2 disabled:opacity-60"
+            >
+              {busy ? 'Salvando…' : 'Salvar amostras'}
             </button>
           )}
         </div>

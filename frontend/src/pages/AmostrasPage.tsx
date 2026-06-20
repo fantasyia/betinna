@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { api, ApiError } from '@/lib/api';
 import { useApiQuery, type PaginatedResponse } from '@/hooks/useApiQuery';
+import { useRole } from '@/hooks/usePermission';
 import { PageLayout } from '@/components/PageLayout';
 import { VendasTabs } from '@/components/VendasTabs';
 import { Table, Pagination, type Column } from '@/components/Table';
@@ -14,11 +15,13 @@ import { formatMoeda as fmtBRL } from '@/lib/masks';
 import { cn } from '@/lib/cn';
 
 type AmostraStatus =
+  | 'PENDENTE_APROVACAO'
   | 'ENVIADA'
   | 'AGUARDANDO_FOLLOWUP'
   | 'CONVERTIDA'
   | 'NAO_CONVERTEU'
-  | 'VENCIDA';
+  | 'VENCIDA'
+  | 'REJEITADA';
 
 interface Amostra {
   id: string;
@@ -29,6 +32,11 @@ interface Amostra {
   followUpEm?: string | null;
   status: AmostraStatus;
   representanteNome?: string | null;
+  // Modos + fila de aprovação
+  modo?: string | null;
+  mediaKgMes?: number | null;
+  aprovadorNome?: string | null;
+  motivoDecisao?: string | null;
   cliente?: { id: string; nome: string };
   // P7 — remessa OMIE
   produtoId?: string | null;
@@ -60,25 +68,36 @@ interface ProdutoOpt {
 }
 
 const STATUS_COLOR: Record<AmostraStatus, string> = {
+  PENDENTE_APROVACAO: 'var(--warning)',
   ENVIADA: 'var(--info)',
   AGUARDANDO_FOLLOWUP: 'var(--warning)',
   CONVERTIDA: 'var(--success)',
   NAO_CONVERTEU: 'var(--danger)',
   VENCIDA: 'var(--muted)',
+  REJEITADA: 'var(--danger)',
 };
 const STATUS_LABEL: Record<AmostraStatus, string> = {
+  PENDENTE_APROVACAO: 'Pendente de aprovação',
   ENVIADA: 'Enviada',
   AGUARDANDO_FOLLOWUP: 'Aguardando follow-up',
   CONVERTIDA: 'Convertida',
   NAO_CONVERTEU: 'Não converteu',
   VENCIDA: 'Vencida',
+  REJEITADA: 'Rejeitada',
+};
+const MODO_LABEL: Record<string, string> = {
+  subsidiada: 'Subsidiada',
+  compra_propria: 'Compra própria',
+  compra_cliente: 'Compra do cliente',
 };
 const STATUS_LIST: AmostraStatus[] = [
+  'PENDENTE_APROVACAO',
   'ENVIADA',
   'AGUARDANDO_FOLLOWUP',
   'CONVERTIDA',
   'NAO_CONVERTEU',
   'VENCIDA',
+  'REJEITADA',
 ];
 
 function fmtDate(d: string | null | undefined) {
@@ -342,11 +361,46 @@ function AmostraDetailModal({
   onChanged: () => void;
 }) {
   const { data, loading, error, refetch } = useApiQuery<Amostra>(`/amostras/${id}`);
+  const role = useRole();
+  const podeAprovar = role === 'ADMIN' || role === 'DIRECTOR';
   const [busy, setBusy] = useState(false);
   const [actionError, setActionError] = useState<string | null>(null);
   const [transition, setTransition] = useState<AmostraStatus | null>(null);
   const [obs, setObs] = useState('');
   const [confirmDel, setConfirmDel] = useState(false);
+  const [rejeitando, setRejeitando] = useState(false);
+  const [motivoRejeicao, setMotivoRejeicao] = useState('');
+
+  async function doAprovar() {
+    setBusy(true);
+    setActionError(null);
+    try {
+      await api.post(`/amostras/${id}/aprovar`);
+      onChanged();
+    } catch (err) {
+      setActionError(err instanceof ApiError ? err.message : 'Falha ao aprovar amostra');
+      refetch();
+    } finally {
+      setBusy(false);
+    }
+  }
+  async function doRejeitar() {
+    if (motivoRejeicao.trim().length < 3) {
+      setActionError('Informe o motivo da rejeição (mín. 3 caracteres)');
+      return;
+    }
+    setBusy(true);
+    setActionError(null);
+    try {
+      await api.post(`/amostras/${id}/rejeitar`, { motivo: motivoRejeicao.trim() });
+      onChanged();
+    } catch (err) {
+      setActionError(err instanceof ApiError ? err.message : 'Falha ao rejeitar amostra');
+      refetch();
+    } finally {
+      setBusy(false);
+    }
+  }
 
   async function doTransition() {
     if (!transition) return;
@@ -461,6 +515,13 @@ function AmostraDetailModal({
             <dl className="grid grid-cols-2 gap-3 text-sm">
               <Info label="Cliente">{data.cliente?.nome ?? '—'}</Info>
               <Info label="Representante">{data.representanteNome ?? '—'}</Info>
+              <Info label="Modo">{data.modo ? MODO_LABEL[data.modo] ?? data.modo : '—'}</Info>
+              {data.mediaKgMes != null && (
+                <Info label="Média kg/mês (cliente)">{data.mediaKgMes}</Info>
+              )}
+              {data.status === 'REJEITADA' && data.motivoDecisao && (
+                <Info label="Motivo da rejeição">{data.motivoDecisao}</Info>
+              )}
               <Info label="Produto (catálogo)">
                 {data.produto?.nome ?? <em className="text-muted">não vinculado</em>}
               </Info>
@@ -516,6 +577,69 @@ function AmostraDetailModal({
               )}
             </div>
 
+            {/* Fila de aprovação — amostra subsidiada pendente (DIRECTOR/ADMIN) */}
+            {data.status === 'PENDENTE_APROVACAO' && (
+              <div className="border-t border-border mt-4 pt-4">
+                <h3 className="mt-0 text-sm">Aprovação da diretoria</h3>
+                {!podeAprovar ? (
+                  <p className="text-[12px] text-muted mt-0">
+                    Esta amostra subsidiada aguarda aprovação da diretoria.
+                  </p>
+                ) : !rejeitando ? (
+                  <div className="flex gap-1 flex-wrap">
+                    <button
+                      type="button"
+                      data-testid="amostra-aprovar"
+                      disabled={busy}
+                      onClick={doAprovar}
+                      className="bg-success text-white rounded-md px-4 py-2 text-[13px] font-semibold cursor-pointer tracking-[-0.1px] disabled:opacity-60"
+                    >
+                      {busy ? '…' : 'Aprovar'}
+                    </button>
+                    <button
+                      type="button"
+                      data-testid="amostra-rejeitar"
+                      onClick={() => setRejeitando(true)}
+                      className="bg-surface text-text border border-border-strong rounded-md px-4 py-2 text-[13px] font-medium cursor-pointer tracking-[-0.1px]"
+                    >
+                      Rejeitar
+                    </button>
+                  </div>
+                ) : (
+                  <div className="mt-1">
+                    <FormField label="Motivo da rejeição" htmlFor="am-rej">
+                      <Textarea
+                        id="am-rej"
+                        data-testid="amostra-rejeitar-motivo"
+                        value={motivoRejeicao}
+                        onChange={(e) => setMotivoRejeicao(e.target.value)}
+                        placeholder="Cliente sem histórico de compras suficiente…"
+                      />
+                    </FormField>
+                    <div className="flex gap-1 mt-2">
+                      <button
+                        type="button"
+                        onClick={() => setRejeitando(false)}
+                        className="bg-surface text-text border border-border-strong rounded-md px-4 py-2 text-[13px] font-medium cursor-pointer tracking-[-0.1px]"
+                      >
+                        Voltar
+                      </button>
+                      <button
+                        type="button"
+                        data-testid="amostra-rejeitar-confirm"
+                        disabled={busy}
+                        onClick={doRejeitar}
+                        className="bg-danger text-white rounded-md px-4 py-2 text-[13px] font-semibold cursor-pointer tracking-[-0.1px] disabled:opacity-60"
+                      >
+                        {busy ? '…' : 'Confirmar rejeição'}
+                      </button>
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
+
+            {data.status !== 'PENDENTE_APROVACAO' && data.status !== 'REJEITADA' && (
             <div className="border-t border-border mt-4 pt-4">
               <h3 className="mt-0 text-sm">Atualizar status</h3>
               <div className="flex gap-1 flex-wrap">
@@ -558,6 +682,7 @@ function AmostraDetailModal({
                 </div>
               )}
             </div>
+            )}
 
             {actionError && (
               <div
