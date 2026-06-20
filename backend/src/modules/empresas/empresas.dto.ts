@@ -123,6 +123,24 @@ const materiaisTiposSchema = z
   })
   .optional();
 
+/** Devolução interna: motivos + SLA + janela (6º consumidor). */
+const devolucaoInternaSchema = z
+  .object({
+    motivos: z
+      .array(
+        z.object({
+          key: z.string().trim().min(1).max(40),
+          label: z.string().trim().min(1).max(60),
+          fotosObrigatorias: z.boolean().optional(),
+        }),
+      )
+      .optional(),
+    slaAnaliseDiasUteis: z.number().int().nonnegative().max(60).optional(),
+    janelaPosEntregaDias: z.number().int().nonnegative().max(365).optional(),
+    estornoComissaoProporcional: z.boolean().optional(),
+  })
+  .optional();
+
 export const tenantConfigPatchSchema = z
   .object({
     pedidoStatusLabels: z.record(z.string(), pedidoStatusMetaSchema).optional(),
@@ -130,6 +148,7 @@ export const tenantConfigPatchSchema = z
     amostraModos: amostraModosSchema,
     comissaoBonus: comissaoBonusSchema,
     materiaisVenda: materiaisTiposSchema,
+    devolucaoInterna: devolucaoInternaSchema,
   })
   .passthrough();
 export type TenantConfigPatchDto = z.infer<typeof tenantConfigPatchSchema>;

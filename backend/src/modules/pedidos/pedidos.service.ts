@@ -517,7 +517,11 @@ export class PedidosService {
 
     await this.prisma.pedido.updateMany({
       where: { id, empresaId: pedido.empresaId },
-      data: { status: proximo as never },
+      // Marca entregueEm ao virar ENTREGUE (base da janela de devolução).
+      data: {
+        status: proximo as never,
+        ...(proximo === 'ENTREGUE' ? { entregueEm: new Date() } : {}),
+      },
     });
     const updated = await this.prisma.pedido.findUniqueOrThrow({
       where: { id },

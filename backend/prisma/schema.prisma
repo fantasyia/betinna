@@ -311,6 +311,7 @@ model Empresa {
   marketplaceIncidents  MarketplaceIncident[]
   notificacoes          Notificacao[]
   materiaisVenda        MaterialVenda[]
+  devolucoes            Devolucao[]
 
   @@index([ativo])
 }
@@ -650,6 +651,8 @@ model Pedido {
   atualizadoEm  DateTime  @updatedAt
   enviadoOmieEm DateTime?
   pagoEm        DateTime?
+  /// Setado no avancarStatus quando vira ENTREGUE — base da janela de devolução.
+  entregueEm    DateTime?
 
   /// Quando o pedido foi criado via "duplicar", aponta pro pedido original.
   /// SetNull se o original for excluído — preserva o histórico do duplicado.
@@ -1013,6 +1016,52 @@ model OcorrenciaComentario {
   autor      Usuario?   @relation(fields: [autorId], references: [id])
 
   @@index([ocorrenciaId])
+}
+
+// ─── DEVOLUÇÃO / PÓS-VENDA (interna, do pedido do rep) ────────────────
+
+enum DevolucaoStatus {
+  ABERTA
+  EM_ANALISE
+  APROVADA
+  NF_DEVOLUCAO_EMITIDA
+  COLETA_AGENDADA
+  COLETADA
+  RESOLVIDA
+  RECUSADA
+}
+
+/// Devolução interna do pedido do rep (distinta de MarketplaceIncident).
+/// motivo + lifecycle + SLA configuráveis em Empresa.config.devolucaoInterna.
+model Devolucao {
+  id             String          @id @default(cuid())
+  numero         String // DEV-XXXX por empresa
+  empresaId      String
+  pedidoId       String
+  clienteId      String?
+  /// key do motivo configurável (Empresa.config.devolucaoInterna.motivos).
+  motivo         String
+  status         DevolucaoStatus @default(ABERTA)
+  itensDescricao String?         @db.Text
+  /// Paths de fotos no Storage (upload nativo é incremento futuro).
+  fotos          String[]
+  observacao     String?         @db.Text
+  /// Prazo de análise (criadoEm + SLA dias úteis).
+  slaAnaliseEm   DateTime?
+  aprovadorId    String?
+  aprovadorNome  String?
+  decididoEm     DateTime?
+  motivoRecusa   String?
+  criadoPorId    String?
+  criadoPorNome  String?
+  criadoEm       DateTime        @default(now())
+  atualizadoEm   DateTime        @updatedAt
+
+  empresa Empresa @relation(fields: [empresaId], references: [id], onDelete: Cascade)
+
+  @@unique([empresaId, numero])
+  @@index([empresaId, status])
+  @@index([pedidoId])
 }
 
 // ─── AMOSTRAS ─────────────────────────────────────────────────────────
