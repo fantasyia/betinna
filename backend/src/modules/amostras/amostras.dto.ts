@@ -14,8 +14,15 @@ export const createAmostraSchema = z.object({
   /** Dias a partir do envio em que deve ser feito follow-up. Default 5. */
   diasFollowUp: z.number().int().min(1).max(60).default(5),
   representanteNome: z.string().max(150).optional(),
+  /** Modo da amostra. Default = 1º modo ativo do tenant (normalmente subsidiada). */
+  modo: z.enum(['subsidiada', 'compra_propria', 'compra_cliente']).optional(),
 });
 export type CreateAmostraDto = z.infer<typeof createAmostraSchema>;
+
+export const rejeitarAmostraSchema = z.object({
+  motivo: z.string().trim().min(3).max(500),
+});
+export type RejeitarAmostraDto = z.infer<typeof rejeitarAmostraSchema>;
 
 export const updateAmostraSchema = z.object({
   produtoNome: z.string().min(2).max(200).optional(),

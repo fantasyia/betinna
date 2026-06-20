@@ -1,21 +1,41 @@
 import { Injectable, Logger } from '@nestjs/common';
-import { Prisma } from '@prisma/client';
+import { type AmostraStatus, Prisma } from '@prisma/client';
 import { PrismaService } from '@database/prisma.service';
 import {
   OmieAmostrasService,
   type OmieAmostraEnvioResult,
 } from '@integrations/omie/omie-amostras.service';
-import { ForbiddenException, NotFoundException } from '@shared/errors/app-exception';
+import {
+  BusinessRuleException,
+  ForbiddenException,
+  NotFoundException,
+} from '@shared/errors/app-exception';
 import { ErrorCode } from '@shared/errors/error-codes';
 import { RepScopeService } from '@shared/scope/rep-scope.service';
 import type { AuthenticatedUser } from '@shared/types/authenticated-user';
 import { type Paginated, buildPaginated } from '@shared/types/pagination';
+import {
+  type AmostraModo,
+  avaliarSubsidiada,
+  primeiroModoAtivo,
+  resolveAmostraModos,
+} from './amostra-modos.util';
 import type {
   ChangeAmostraStatusDto,
   CreateAmostraDto,
   ListAmostrasDto,
+  RejeitarAmostraDto,
   UpdateAmostraDto,
 } from './amostras.dto';
+
+/** Status de pedido que contam como "faturados" pra média kg/mês do cliente. */
+const PEDIDO_STATUS_FATURADOS = [
+  'ENVIADO_OMIE',
+  'PAGO',
+  'EM_SEPARACAO',
+  'ENVIADO',
+  'ENTREGUE',
+] as const;
 
 const amostraInclude = {
   cliente: { select: { id: true, nome: true, cnpj: true } },
@@ -119,8 +139,33 @@ export class AmostrasService {
       if (!produto) throw new NotFoundException('Produto', dto.produtoId);
     }
 
+    // Modos + elegibilidade configuráveis por tenant (Empresa.config.amostraModos).
+    const cfg = resolveAmostraModos(await this.lerConfigAmostra(empresaId));
+    const modo: AmostraModo = dto.modo ?? primeiroModoAtivo(cfg) ?? 'subsidiada';
+    if (!cfg.modosAtivos[modo]) {
+      throw new BusinessRuleException(`Modo de amostra "${modo}" não está ativo nesta empresa`);
+    }
+
+    // Subsidiada (empresa paga) pode cair na fila de aprovação da diretoria.
+    let status: AmostraStatus = 'ENVIADA';
+    let mediaKgMes: number | null = null;
+    if (modo === 'subsidiada') {
+      if (cfg.elegibilidadeSubsidiada.tipo === 'media_kg_mes') {
+        mediaKgMes = await this.calcularMediaKgMes(
+          empresaId,
+          dto.clienteId,
+          cfg.elegibilidadeSubsidiada.mesesJanela,
+        );
+      }
+      const { precisaAprovacao } = avaliarSubsidiada(cfg, mediaKgMes);
+      if (precisaAprovacao) status = 'PENDENTE_APROVACAO';
+    }
+
     const enviadoEm = dto.enviadoEm ?? new Date();
-    const followUpEm = new Date(enviadoEm.getTime() + dto.diasFollowUp * 24 * 60 * 60 * 1000);
+    const followUpEm =
+      status === 'ENVIADA'
+        ? new Date(enviadoEm.getTime() + dto.diasFollowUp * 24 * 60 * 60 * 1000)
+        : null;
 
     return this.prisma.amostra.create({
       data: {
@@ -133,7 +178,9 @@ export class AmostrasService {
         notaFiscal: dto.notaFiscal,
         enviadoEm,
         followUpEm,
-        status: 'ENVIADA',
+        status,
+        modo,
+        mediaKgMes,
         representanteNome: dto.representanteNome ?? (user.role === 'REP' ? user.nome : undefined),
       },
       include: amostraInclude,
@@ -167,11 +214,106 @@ export class AmostrasService {
     dto: ChangeAmostraStatusDto,
   ): Promise<AmostraWithRel> {
     const existing = await this.findById(user, id);
+    // Os status da fila de aprovação só são movidos por aprovar/rejeitar — não pelo set genérico.
+    if (dto.status === 'PENDENTE_APROVACAO' || dto.status === 'REJEITADA') {
+      throw new BusinessRuleException(
+        'Use aprovar/rejeitar para mover amostras na fila de aprovação',
+      );
+    }
+    if (existing.status === 'PENDENTE_APROVACAO') {
+      throw new BusinessRuleException(
+        'Amostra pendente de aprovação: use aprovar ou rejeitar primeiro',
+      );
+    }
     await this.prisma.amostra.updateMany({
       where: { id, empresaId: existing.empresaId },
       data: { status: dto.status },
     });
     return this.prisma.amostra.findUniqueOrThrow({ where: { id }, include: amostraInclude });
+  }
+
+  /** Aprova uma amostra subsidiada pendente → ENVIADA (DIRECTOR/ADMIN). */
+  async aprovar(user: AuthenticatedUser, id: string): Promise<AmostraWithRel> {
+    const existing = await this.findById(user, id);
+    if (existing.status !== 'PENDENTE_APROVACAO') {
+      throw new BusinessRuleException('Amostra não está pendente de aprovação');
+    }
+    const enviadoEm = existing.enviadoEm ?? new Date();
+    await this.prisma.amostra.updateMany({
+      where: { id, empresaId: existing.empresaId },
+      data: {
+        status: 'ENVIADA',
+        aprovadorId: user.id,
+        aprovadorNome: user.nome,
+        aprovadoEm: new Date(),
+        // follow-up passa a contar a partir da aprovação (5 dias padrão).
+        followUpEm: new Date(enviadoEm.getTime() + 5 * 24 * 60 * 60 * 1000),
+      },
+    });
+    return this.prisma.amostra.findUniqueOrThrow({ where: { id }, include: amostraInclude });
+  }
+
+  /** Rejeita uma amostra subsidiada pendente → REJEITADA (DIRECTOR/ADMIN). */
+  async rejeitar(
+    user: AuthenticatedUser,
+    id: string,
+    dto: RejeitarAmostraDto,
+  ): Promise<AmostraWithRel> {
+    const existing = await this.findById(user, id);
+    if (existing.status !== 'PENDENTE_APROVACAO') {
+      throw new BusinessRuleException('Amostra não está pendente de aprovação');
+    }
+    await this.prisma.amostra.updateMany({
+      where: { id, empresaId: existing.empresaId },
+      data: {
+        status: 'REJEITADA',
+        aprovadorId: user.id,
+        aprovadorNome: user.nome,
+        aprovadoEm: new Date(),
+        motivoDecisao: dto.motivo,
+      },
+    });
+    return this.prisma.amostra.findUniqueOrThrow({ where: { id }, include: amostraInclude });
+  }
+
+  /** Lê Empresa.config.amostraModos (cru). */
+  private async lerConfigAmostra(empresaId: string): Promise<unknown> {
+    const empresa = await this.prisma.empresa.findUnique({
+      where: { id: empresaId },
+      select: { config: true },
+    });
+    return (empresa?.config as { amostraModos?: unknown } | null)?.amostraModos;
+  }
+
+  /**
+   * Média de kg/mês faturados do cliente na janela (meses). Peso = Σ qtd ×
+   * Produto.pesoPorUnidade dos pedidos faturados; denominador = nº de meses.
+   */
+  private async calcularMediaKgMes(
+    empresaId: string,
+    clienteId: string,
+    meses: number,
+  ): Promise<number> {
+    const desde = new Date(Date.now() - meses * 30 * 24 * 60 * 60 * 1000);
+    const pedidos = await this.prisma.pedido.findMany({
+      where: {
+        empresaId,
+        clienteId,
+        status: { in: [...PEDIDO_STATUS_FATURADOS] },
+        criadoEm: { gte: desde },
+      },
+      select: {
+        itens: { select: { quantidade: true, produto: { select: { pesoPorUnidade: true } } } },
+      },
+    });
+    let kg = 0;
+    for (const p of pedidos) {
+      for (const it of p.itens) {
+        const peso = it.produto?.pesoPorUnidade;
+        kg += it.quantidade * (peso != null ? Number(peso) : 0);
+      }
+    }
+    return meses > 0 ? kg / meses : kg;
   }
 
   async remove(user: AuthenticatedUser, id: string): Promise<void> {

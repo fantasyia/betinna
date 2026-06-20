@@ -1,6 +1,10 @@
 import { describe, expect, it, vi, beforeEach } from 'vitest';
 import type { UserRole } from '@prisma/client';
-import { ForbiddenException, NotFoundException } from '@shared/errors/app-exception';
+import {
+  BusinessRuleException,
+  ForbiddenException,
+  NotFoundException,
+} from '@shared/errors/app-exception';
 import type { AuthenticatedUser } from '@shared/types/authenticated-user';
 import { AmostrasService } from './amostras.service';
 
@@ -27,6 +31,13 @@ const makePrismaMock = () => ({
   } satisfies MockModel,
   produto: {
     findFirst: vi.fn(),
+  } satisfies MockModel,
+  empresa: {
+    // ConfiguracaoTenant: sem config → defaults (subsidiada livre, sem aprovação).
+    findUnique: vi.fn(async () => ({ config: null })),
+  } satisfies MockModel,
+  pedido: {
+    findMany: vi.fn(async () => []),
   } satisfies MockModel,
 });
 
@@ -515,6 +526,107 @@ describe('AmostrasService', () => {
         NotFoundException,
       );
       expect(omieAmostras.enviarAmostra).not.toHaveBeenCalled();
+    });
+  });
+
+  // -------------------------------------------------------------------------
+  // modos + fila de aprovação (3º consumidor da ConfiguracaoTenant)
+  // -------------------------------------------------------------------------
+
+  describe('modos + aprovação', () => {
+    const baseDto = { clienteId: 'cli-1', produtoNome: 'Óleo 5L', valor: 100, diasFollowUp: 7 };
+
+    it('subsidiada com exigeAprovacaoSubsidiada → PENDENTE_APROVACAO (sem followUpEm)', async () => {
+      prisma.cliente.findFirst.mockResolvedValue({ id: 'cli-1', representanteId: null });
+      prisma.empresa.findUnique.mockResolvedValue({
+        config: { amostraModos: { exigeAprovacaoSubsidiada: true } },
+      });
+      prisma.amostra.create.mockResolvedValue(fakeAmostra());
+
+      await service.create(fakeUser(), baseDto);
+
+      const data = prisma.amostra.create.mock.calls[0][0].data;
+      expect(data.status).toBe('PENDENTE_APROVACAO');
+      expect(data.modo).toBe('subsidiada');
+      expect(data.followUpEm).toBeNull();
+    });
+
+    it('media_kg_mes abaixo do mínimo → PENDENTE_APROVACAO (média gravada)', async () => {
+      prisma.cliente.findFirst.mockResolvedValue({ id: 'cli-1', representanteId: null });
+      prisma.empresa.findUnique.mockResolvedValue({
+        config: {
+          amostraModos: {
+            elegibilidadeSubsidiada: { tipo: 'media_kg_mes', minKgMes: 250, mesesJanela: 3 },
+          },
+        },
+      });
+      prisma.pedido.findMany.mockResolvedValue([]); // sem pedidos → média 0 < 250
+      prisma.amostra.create.mockResolvedValue(fakeAmostra());
+
+      await service.create(fakeUser(), baseDto);
+
+      const data = prisma.amostra.create.mock.calls[0][0].data;
+      expect(data.status).toBe('PENDENTE_APROVACAO');
+      expect(data.mediaKgMes).toBe(0);
+    });
+
+    it('modo não ativo no tenant → BusinessRuleException', async () => {
+      prisma.cliente.findFirst.mockResolvedValue({ id: 'cli-1', representanteId: null });
+      // compra_propria desligado por default
+
+      await expect(
+        service.create(fakeUser(), { ...baseDto, modo: 'compra_propria' }),
+      ).rejects.toBeInstanceOf(BusinessRuleException);
+      expect(prisma.amostra.create).not.toHaveBeenCalled();
+    });
+
+    it('aprovar: PENDENTE_APROVACAO → ENVIADA + aprovador', async () => {
+      prisma.amostra.findFirst.mockResolvedValue(
+        fakeAmostra({ status: 'PENDENTE_APROVACAO', enviadoEm: new Date('2026-04-01') }),
+      );
+      prisma.amostra.updateMany.mockResolvedValue({ count: 1 });
+      prisma.amostra.findUniqueOrThrow.mockResolvedValue(fakeAmostra({ status: 'ENVIADA' }));
+
+      await service.aprovar(fakeUser({ id: 'dir-1', nome: 'Diretor' }), 'am-1');
+
+      const data = prisma.amostra.updateMany.mock.calls[0][0].data;
+      expect(data.status).toBe('ENVIADA');
+      expect(data.aprovadorId).toBe('dir-1');
+      expect(data.aprovadorNome).toBe('Diretor');
+      expect(data.followUpEm).toBeInstanceOf(Date);
+    });
+
+    it('aprovar: amostra não pendente → BusinessRuleException', async () => {
+      prisma.amostra.findFirst.mockResolvedValue(fakeAmostra({ status: 'ENVIADA' }));
+      await expect(service.aprovar(fakeUser(), 'am-1')).rejects.toBeInstanceOf(
+        BusinessRuleException,
+      );
+    });
+
+    it('rejeitar: PENDENTE_APROVACAO → REJEITADA + motivo', async () => {
+      prisma.amostra.findFirst.mockResolvedValue(fakeAmostra({ status: 'PENDENTE_APROVACAO' }));
+      prisma.amostra.updateMany.mockResolvedValue({ count: 1 });
+      prisma.amostra.findUniqueOrThrow.mockResolvedValue(fakeAmostra({ status: 'REJEITADA' }));
+
+      await service.rejeitar(fakeUser(), 'am-1', { motivo: 'Cliente sem histórico' });
+
+      const data = prisma.amostra.updateMany.mock.calls[0][0].data;
+      expect(data.status).toBe('REJEITADA');
+      expect(data.motivoDecisao).toBe('Cliente sem histórico');
+    });
+
+    it('changeStatus não pode setar status da fila de aprovação', async () => {
+      prisma.amostra.findFirst.mockResolvedValue(fakeAmostra({ status: 'ENVIADA' }));
+      await expect(
+        service.changeStatus(fakeUser(), 'am-1', { status: 'PENDENTE_APROVACAO' }),
+      ).rejects.toBeInstanceOf(BusinessRuleException);
+    });
+
+    it('changeStatus bloqueia mover amostra que está pendente (usar aprovar/rejeitar)', async () => {
+      prisma.amostra.findFirst.mockResolvedValue(fakeAmostra({ status: 'PENDENTE_APROVACAO' }));
+      await expect(
+        service.changeStatus(fakeUser(), 'am-1', { status: 'CONVERTIDA' }),
+      ).rejects.toBeInstanceOf(BusinessRuleException);
     });
   });
 });

@@ -15,16 +15,19 @@ import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
 import { Audit } from '@shared/decorators/audit.decorator';
 import { CurrentUser } from '@shared/decorators/current-user.decorator';
 import { RequirePermissions } from '@shared/decorators/permissions.decorator';
+import { Roles } from '@shared/decorators/roles.decorator';
 import { ZodValidationPipe } from '@shared/pipes/zod-validation.pipe';
 import type { AuthenticatedUser } from '@shared/types/authenticated-user';
 import {
   type ChangeAmostraStatusDto,
   type CreateAmostraDto,
   type ListAmostrasDto,
+  type RejeitarAmostraDto,
   type UpdateAmostraDto,
   changeAmostraStatusSchema,
   createAmostraSchema,
   listAmostrasSchema,
+  rejeitarAmostraSchema,
   updateAmostraSchema,
 } from './amostras.dto';
 import { AmostrasService } from './amostras.service';
@@ -81,6 +84,26 @@ export class AmostrasController {
     @Body(new ZodValidationPipe(changeAmostraStatusSchema)) dto: ChangeAmostraStatusDto,
   ) {
     return this.amostras.changeStatus(user, id, dto);
+  }
+
+  @Post(':id/aprovar')
+  @Roles('ADMIN', 'DIRECTOR')
+  @Audit({ action: 'aprovar', resource: 'amostra', resourceIdFrom: 'params.id' })
+  @ApiOperation({ summary: 'Aprova amostra subsidiada na fila (PENDENTE_APROVACAO → ENVIADA)' })
+  aprovar(@CurrentUser() user: AuthenticatedUser, @Param('id') id: string) {
+    return this.amostras.aprovar(user, id);
+  }
+
+  @Post(':id/rejeitar')
+  @Roles('ADMIN', 'DIRECTOR')
+  @Audit({ action: 'rejeitar', resource: 'amostra', resourceIdFrom: 'params.id' })
+  @ApiOperation({ summary: 'Rejeita amostra subsidiada na fila (PENDENTE_APROVACAO → REJEITADA)' })
+  rejeitar(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param('id') id: string,
+    @Body(new ZodValidationPipe(rejeitarAmostraSchema)) dto: RejeitarAmostraDto,
+  ) {
+    return this.amostras.rejeitar(user, id, dto);
   }
 
   @Post(':id/enviar-omie')

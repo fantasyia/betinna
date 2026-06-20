@@ -117,11 +117,13 @@ enum AprovacaoStatus {
 }
 
 enum AmostraStatus {
+  PENDENTE_APROVACAO
   ENVIADA
   AGUARDANDO_FOLLOWUP
   CONVERTIDA
   NAO_CONVERTEU
   VENCIDA
+  REJEITADA
 }
 
 enum OcorrenciaTipo {
@@ -1025,6 +1027,16 @@ model Amostra {
   followUpEm        DateTime?
   status            AmostraStatus @default(ENVIADA)
   representanteNome String?
+  /// Modo da amostra: subsidiada (empresa paga) | compra_propria (rep paga) |
+  /// compra_cliente (cliente paga). Null = legado (tratado como subsidiada).
+  modo              String?
+  /// Fila de aprovação (subsidiada): quem decidiu + quando + motivo de rejeição.
+  aprovadorId       String?
+  aprovadorNome     String?
+  aprovadoEm        DateTime?
+  motivoDecisao     String?
+  /// Snapshot da média kg/mês do cliente no momento da solicitação (sinal pro aprovador).
+  mediaKgMes        Float?
   /// Marca registros gerados pelo seed-demo.
   isDemo            Boolean       @default(false)
 

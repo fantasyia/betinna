@@ -64,10 +64,37 @@ const pedidoMinimoSchema = z
   })
   .optional();
 
+/**
+ * Amostra: modos + elegibilidade + fila de aprovação (3º consumidor).
+ * MSM: subsidiada + compra_propria ativos; elegibilidade por média kg/mês.
+ */
+const amostraModosSchema = z
+  .object({
+    modosAtivos: z
+      .object({
+        subsidiada: z.boolean(),
+        compra_propria: z.boolean(),
+        compra_cliente: z.boolean(),
+      })
+      .partial()
+      .optional(),
+    elegibilidadeSubsidiada: z
+      .object({
+        tipo: z.enum(['sempre', 'media_kg_mes', 'manual']),
+        minKgMes: z.number().nonnegative(),
+        mesesJanela: z.number().int().positive().max(24),
+      })
+      .partial()
+      .optional(),
+    exigeAprovacaoSubsidiada: z.boolean().optional(),
+  })
+  .optional();
+
 export const tenantConfigPatchSchema = z
   .object({
     pedidoStatusLabels: z.record(z.string(), pedidoStatusMetaSchema).optional(),
     pedidoMinimo: pedidoMinimoSchema,
+    amostraModos: amostraModosSchema,
   })
   .passthrough();
 export type TenantConfigPatchDto = z.infer<typeof tenantConfigPatchSchema>;
