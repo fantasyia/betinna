@@ -13,6 +13,12 @@ export const createProdutoSchema = z.object({
   // Custo OPCIONAL: pode ficar em branco (null) quando não há custo real ainda.
   precoFabrica: z.number().positive().nullish(),
   imagem: z.string().max(500).optional(),
+  // Camada de marketing (editável no app, fora do ERP).
+  tierComercial: z.string().trim().max(60).nullish(),
+  // Peso (kg) por unidade — converte produtos não-kg pro mínimo por peso.
+  pesoPorUnidade: z.number().positive().nullish(),
+  // Atributos customizados livres (ex: { shelf_life_meses: 12 }).
+  atributos: z.record(z.string(), z.unknown()).nullish(),
   popularidade: z.number().int().min(0).max(100).default(0),
   estoque: z.number().int().min(0).default(0),
   ativo: z.boolean().default(true),

@@ -97,8 +97,19 @@ export class ProdutosService {
     if (dto.sku) await this.assertSkuUnico(empresaId, dto.sku);
     if (dto.codigoOmie) await this.assertCodigoOmieUnico(empresaId, dto.codigoOmie);
 
+    // `atributos` é JSON — trata à parte (Prisma não aceita Record direto no spread tipado).
+    const { atributos, ...rest } = dto;
     return this.prisma.produto.create({
-      data: { ...dto, empresaId },
+      data: {
+        ...rest,
+        empresaId,
+        ...(atributos === undefined
+          ? {}
+          : {
+              atributos:
+                atributos === null ? Prisma.JsonNull : (atributos as Prisma.InputJsonValue),
+            }),
+      },
       include: produtoInclude,
     });
   }
@@ -125,9 +136,18 @@ export class ProdutosService {
       await this.assertCodigoOmieUnico(existing.empresaId, dto.codigoOmie);
     }
 
+    const { atributos, ...rest } = dto;
     await this.prisma.produto.updateMany({
       where: { id, empresaId: existing.empresaId },
-      data: dto,
+      data: {
+        ...rest,
+        ...(atributos === undefined
+          ? {}
+          : {
+              atributos:
+                atributos === null ? Prisma.JsonNull : (atributos as Prisma.InputJsonValue),
+            }),
+      },
     });
     return this.prisma.produto.findUniqueOrThrow({
       where: { id },

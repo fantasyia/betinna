@@ -546,6 +546,14 @@ model Produto {
   /// pelo OMIE quando a tabela de preço real for integrada.
   precoFabrica        Decimal?  @db.Decimal(14, 2)
   imagem              String? // emoji ou URL
+  /// Camada de MARKETING (editável no app, não vem do ERP). Tier comercial livre por
+  /// tenant: entrada / valor_agregado / nobre, etc.
+  tierComercial       String?
+  /// Peso (kg) por unidade de venda — converte produtos não-kg (ex: molho em L) pro
+  /// cálculo do pedido mínimo por peso. Null = não converte.
+  pesoPorUnidade      Decimal?  @db.Decimal(14, 4)
+  /// Atributos customizados livres (JSON) definidos pelo tenant. Ex: { "shelf_life_meses": 12 }.
+  atributos           Json?
   popularidade        Int       @default(0)
   estoque             Int       @default(0)
   /// Timestamp da última vez que estoque foi sincronizado (sync 30min OU webhook OMIE).

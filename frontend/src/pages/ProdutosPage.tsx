@@ -29,6 +29,9 @@ interface Produto {
   estoque: number;
   popularidade: number;
   ativo: boolean;
+  tierComercial?: string | null;
+  pesoPorUnidade?: number | null;
+  atributos?: Record<string, unknown> | null;
 }
 
 interface Facets {
@@ -312,6 +315,19 @@ interface FormState {
   estoque: number;
   popularidade: number;
   ativo: boolean;
+  tierComercial: string;
+  pesoPorUnidade: string;
+  atributos: Array<{ chave: string; valor: string }>;
+}
+
+/** Converte o valor de um atributo pra número/booleano quando faz sentido (senão texto). */
+function parseAttrValor(v: string): unknown {
+  const t = v.trim();
+  if (t === '') return '';
+  if (t === 'true') return true;
+  if (t === 'false') return false;
+  const n = Number(t);
+  return Number.isFinite(n) && t === String(n) ? n : t;
 }
 
 function initial(p?: Produto | null): FormState {
@@ -330,6 +346,11 @@ function initial(p?: Produto | null): FormState {
     estoque: p?.estoque ?? 0,
     popularidade: p?.popularidade ?? 0,
     ativo: p?.ativo ?? true,
+    tierComercial: p?.tierComercial ?? '',
+    pesoPorUnidade: p?.pesoPorUnidade?.toString() ?? '',
+    atributos: p?.atributos
+      ? Object.entries(p.atributos).map(([chave, valor]) => ({ chave, valor: String(valor) }))
+      : [],
   };
 }
 
@@ -350,6 +371,18 @@ function ProdutoFormModal({
 
   function setF<K extends keyof FormState>(k: K, v: FormState[K]) {
     setForm((s) => ({ ...s, [k]: v }));
+  }
+  function setAttr(i: number, field: 'chave' | 'valor', v: string) {
+    setForm((s) => ({
+      ...s,
+      atributos: s.atributos.map((a, idx) => (idx === i ? { ...a, [field]: v } : a)),
+    }));
+  }
+  function addAttr() {
+    setForm((s) => ({ ...s, atributos: [...s.atributos, { chave: '', valor: '' }] }));
+  }
+  function removeAttr(i: number) {
+    setForm((s) => ({ ...s, atributos: s.atributos.filter((_, idx) => idx !== i) }));
   }
 
   const precoTabela = Number(form.precoTabela);
@@ -388,6 +421,15 @@ function ProdutoFormModal({
       const v = form[k].trim();
       if (v) payload[k] = v;
     }
+    // Camada de marketing (Fatia 1 do app do rep).
+    const tier = form.tierComercial.trim();
+    if (tier) payload.tierComercial = tier;
+    const peso = form.pesoPorUnidade.trim();
+    if (peso && Number(peso) > 0) payload.pesoPorUnidade = Number(peso);
+    const attrs = form.atributos.filter((a) => a.chave.trim());
+    payload.atributos = attrs.length
+      ? Object.fromEntries(attrs.map((a) => [a.chave.trim(), parseAttrValor(a.valor)]))
+      : null;
     try {
       if (isEdit && produto) {
         await api.patch(`/produtos/${produto.id}`, payload);
@@ -510,6 +552,35 @@ function ProdutoFormModal({
           <FormField label="Categoria" htmlFor="p-cat">
             <Input id="p-cat" value={form.categoria} onChange={(e) => setF('categoria', e.target.value)} />
           </FormField>
+          <FormField label="Tier comercial" htmlFor="p-tier" hint="entrada / valor_agregado / nobre (livre)">
+            <Input
+              id="p-tier"
+              list="tier-opts"
+              placeholder="entrada, valor_agregado, nobre…"
+              value={form.tierComercial}
+              onChange={(e) => setF('tierComercial', e.target.value)}
+            />
+            <datalist id="tier-opts">
+              <option value="entrada" />
+              <option value="valor_agregado" />
+              <option value="nobre" />
+            </datalist>
+          </FormField>
+          <FormField
+            label="Peso por unidade (kg)"
+            htmlFor="p-peso"
+            hint="só p/ produto não-kg, converte no mínimo por peso"
+          >
+            <Input
+              id="p-peso"
+              type="number"
+              min={0}
+              step="0.001"
+              placeholder="ex: 0.95 (molho em L)"
+              value={form.pesoPorUnidade}
+              onChange={(e) => setF('pesoPorUnidade', e.target.value)}
+            />
+          </FormField>
           <FormField label="Preço tabela" htmlFor="p-pt" required>
             <Input
               id="p-pt"
@@ -580,6 +651,41 @@ function ProdutoFormModal({
             style={{ minHeight: 100 }}
             maxLength={5000}
           />
+        </FormField>
+        <FormField
+          label="Atributos customizados"
+          hint="Dados livres do produto (ex: shelf_life_meses = 12). Chave + valor."
+        >
+          <div className="flex flex-col gap-2">
+            {form.atributos.map((a, i) => (
+              <div key={i} className="flex gap-2">
+                <Input
+                  placeholder="chave (ex: shelf_life_meses)"
+                  value={a.chave}
+                  onChange={(e) => setAttr(i, 'chave', e.target.value)}
+                />
+                <Input
+                  placeholder="valor (ex: 12)"
+                  value={a.valor}
+                  onChange={(e) => setAttr(i, 'valor', e.target.value)}
+                />
+                <button
+                  type="button"
+                  className="text-danger text-[13px] px-2"
+                  onClick={() => removeAttr(i)}
+                >
+                  remover
+                </button>
+              </div>
+            ))}
+            <button
+              type="button"
+              className="text-primary text-[13px] self-start"
+              onClick={addAttr}
+            >
+              + adicionar atributo
+            </button>
+          </div>
         </FormField>
         {error && (
           <p data-testid="form-error" className="text-danger text-[13px]">
