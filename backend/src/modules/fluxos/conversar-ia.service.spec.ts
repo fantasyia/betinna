@@ -8,6 +8,7 @@ const makePrisma = () => ({
     findFirst: vi.fn(),
     findMany: vi.fn().mockResolvedValue([]),
     update: vi.fn().mockResolvedValue({}),
+    create: vi.fn().mockResolvedValue({ id: 'filha-1' }),
   },
   fluxoNo: { findUnique: vi.fn() },
   fluxoEdge: { findMany: vi.fn().mockResolvedValue([]) },
@@ -510,6 +511,61 @@ describe('ConversarIaService', () => {
           data: { contatoEmail: 'joao.rep@empresa.com.br' },
         }),
       );
+    });
+
+    // Encerramento educado (config `encerramentoEspera` no nó): ao classificar, roda o
+    // ramo numa execução-FILHA e MANTÉM o nó de IA respondendo o rep (não encerra seco).
+    it('COM janela de encerramento: classifica, roda o ramo numa execução-FILHA e segue AGUARDANDO', async () => {
+      prisma.fluxoExecucao.findUnique.mockResolvedValue({ ...execAguardando, fluxoId: 'fluxo-1' });
+      prisma.fluxoNo.findUnique.mockResolvedValue({
+        id: 'no-ia',
+        config: { encerramentoEspera: { valor: 30, unidade: 'minutos' } },
+      });
+      prisma.lead.findFirst.mockResolvedValue({ contatoTelefone: '11999990000', variaveis: {} });
+      prisma.fluxoEdge.findMany.mockResolvedValue([{ targetNoId: 'no-tag', label: 'classificou' }]);
+      prisma.fluxoExecucao.create.mockResolvedValue({ id: 'filha-1' });
+      muller.gerarRespostaIa.mockResolvedValue({
+        texto:
+          '{"resposta":"Perfeito, te chamo!","classificou":true,"classificacao":"Forte Sinergia"}',
+        modelo: 'gpt',
+      });
+
+      await svc.retomar('exec-1', 'conv-1', 'sim, combinado');
+
+      // Rodou o ramo "classificou" numa execução-filha (não na própria) + enfileirou.
+      expect(prisma.fluxoExecucao.create).toHaveBeenCalledOnce();
+      expect(queue.add).toHaveBeenCalledWith(
+        'step',
+        { execucaoId: 'filha-1', noId: 'no-tag' },
+        expect.any(Object),
+      );
+      // O nó de IA SEGUE AGUARDANDO (não vira EM_EXECUCAO) e marca _iaClassificou.
+      const upd = prisma.fluxoExecucao.update.mock.calls.at(-1)?.[0];
+      expect(upd?.data?.status).toBeUndefined();
+      expect(upd?.data?.contexto?._iaClassificou).toBe(true);
+    });
+
+    it('encerramento: já classificou → continua respondendo o rep SEM re-disparar tag/aviso', async () => {
+      prisma.fluxoExecucao.findUnique.mockResolvedValue({
+        ...execAguardando,
+        contexto: { leadId: 'lead-1', _iaClassificou: true },
+      });
+      prisma.fluxoNo.findUnique.mockResolvedValue({
+        id: 'no-ia',
+        config: { encerramentoEspera: { valor: 30, unidade: 'minutos' } },
+      });
+      prisma.lead.findFirst.mockResolvedValue({ contatoTelefone: '11999990000', variaveis: {} });
+      muller.gerarRespostaIa.mockResolvedValue({
+        texto:
+          '{"resposta":"Combinado, um abraço!","classificou":true,"classificacao":"Forte Sinergia"}',
+        modelo: 'gpt',
+      });
+
+      await svc.retomar('exec-1', 'conv-1', 'valeu!');
+
+      expect(whatsapp.enviarTexto).toHaveBeenCalled(); // respondeu o rep
+      expect(prisma.fluxoExecucao.create).not.toHaveBeenCalled(); // não re-roda o ramo
+      expect(bus.disparar).not.toHaveBeenCalled(); // não re-dispara IA_CLASSIFICOU
     });
 
     it('ignora execução que não está mais AGUARDANDO', async () => {

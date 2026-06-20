@@ -17,6 +17,7 @@ import type { HistoricoMsg } from '@modules/mullerbot/mullerbot-cache.service';
 import { FluxoEventBusService } from './fluxo-event-bus.service';
 import {
   FLUXO_QUEUE,
+  unidadeTempoMs,
   type FluxoStepJobData,
   type ConversarIaConfig,
   type ExecucaoContexto,
@@ -456,20 +457,28 @@ export class ConversarIaService {
       { role: 'assistant' as const, content: respostaTexto, at: Date.now() },
     ].slice(-limiteHist);
 
-    if (!turno.classificou) {
-      // Continua conversando — renova o timeout e persiste a memória da conversa.
-      const horas = cfg.timeoutHoras ?? 24;
+    // Janela de ENCERRAMENTO EDUCADO configurada no nó (ausente/0 = encerra na hora).
+    const esperaMs = cfg.encerramentoEspera
+      ? unidadeTempoMs(cfg.encerramentoEspera.valor, cfg.encerramentoEspera.unidade)
+      : 0;
+    const jaClassificou = (ctx as Record<string, unknown>)._iaClassificou === true;
+
+    // Continua a conversa quando: (a) a IA ainda NÃO classificou (segue a entrevista),
+    // OU (b) já classificou e está no ENCERRAMENTO EDUCADO (segue respondendo o rep pra
+    // fechar com gentileza, SEM re-disparar tag/aviso). Renova o timeout + memória.
+    if (!turno.classificou || jaClassificou) {
+      const renovaMs = jaClassificou ? esperaMs : (cfg.timeoutHoras ?? 24) * 3_600_000;
       await this.prisma.fluxoExecucao.update({
         where: { id: execucaoId },
         data: {
-          timeoutEm: new Date(Date.now() + horas * 3_600_000),
+          timeoutEm: new Date(Date.now() + renovaMs),
           contexto: toJsonInput({ ...ctx, _iaHistorico: novoHist }),
         },
       });
       return;
     }
 
-    // Classificou — grava variáveis no lead, dispara gatilho e avança o fluxo.
+    // 1ª vez que a IA classifica — grava variáveis no lead e dispara o gatilho.
     const variaveisAtuais =
       lead.variaveis && typeof lead.variaveis === 'object'
         ? (lead.variaveis as Record<string, unknown>)
@@ -495,16 +504,69 @@ export class ConversarIaService {
       classificacao: turno.classificacao ?? null,
     });
 
+    // SEM janela de encerramento (esperaMs<=0): comportamento clássico — avança o ramo
+    // "classificou" na MESMA execução e encerra a conversa do nó de IA.
+    if (esperaMs <= 0) {
+      await this.prisma.fluxoExecucao.update({
+        where: { id: execucaoId },
+        data: { status: 'EM_EXECUCAO', aguardandoNoId: null, timeoutEm: null },
+      });
+      await this.enfileirarSucessores(execucaoId, no.id, 'classificou', true);
+      this.logger.log(
+        `Execução ${execucaoId} — IA classificou "${turno.classificacao ?? '?'}" (lead ${leadId})`,
+      );
+      return;
+    }
+
+    // COM janela de encerramento: roda o ramo "classificou" numa execução-FILHA
+    // (tag/aviso em paralelo) e mantém o nó de IA AGUARDANDO por `esperaMs` pra um
+    // encerramento educado com o rep. Side-effects rodam UMA vez (marca _iaClassificou).
+    await this.dispararRamoClassificou(execucao, no.id, ctx);
     await this.prisma.fluxoExecucao.update({
       where: { id: execucaoId },
-      data: { status: 'EM_EXECUCAO', aguardandoNoId: null, timeoutEm: null },
+      data: {
+        timeoutEm: new Date(Date.now() + esperaMs),
+        contexto: toJsonInput({
+          ...ctx,
+          _iaHistorico: novoHist,
+          _iaClassificou: true,
+          classificacao: turno.classificacao ?? null,
+        }),
+      },
     });
-    // Segue o ramo "classificou" (aresta com label 'classificou'); inclui arestas
-    // SEM label pra compat com nós antigos de uma saída só.
-    await this.enfileirarSucessores(execucaoId, no.id, 'classificou', true);
     this.logger.log(
-      `Execução ${execucaoId} retomada — IA classificou "${turno.classificacao ?? '?'}" (lead ${leadId})`,
+      `Execução ${execucaoId} — IA classificou "${turno.classificacao ?? '?'}" (lead ${leadId}); ` +
+        `ramo disparado, conversa segue ${Math.round(esperaMs / 1000)}s pro encerramento educado`,
     );
+  }
+
+  /**
+   * Roda o ramo "classificou" (tag, avisar diretor, etc.) numa execução-FILHA, pra o
+   * nó de IA NÃO precisar encerrar a conversa ao classificar — ele segue AGUARDANDO
+   * pra um encerramento educado com o rep. A filha copia o contexto e conclui sozinha
+   * quando o ramo termina. Sem aresta "classificou" (nem sem-label), não faz nada.
+   */
+  private async dispararRamoClassificou(
+    execucao: { id: string; fluxoId: string; empresaId: string | null },
+    noId: string,
+    ctx: ExecucaoContexto,
+  ): Promise<void> {
+    if (!execucao.empresaId) return;
+    const arestas = await this.prisma.fluxoEdge.findMany({ where: { sourceNoId: noId } });
+    const alvos = arestas.filter((e) => e.label === 'classificou' || !e.label);
+    if (alvos.length === 0) return;
+    const filha = await this.prisma.fluxoExecucao.create({
+      data: {
+        fluxoId: execucao.fluxoId,
+        empresaId: execucao.empresaId,
+        status: 'EM_EXECUCAO',
+        iniciouEm: new Date(),
+        contexto: toJsonInput({ ...ctx }),
+      },
+    });
+    for (const e of alvos) {
+      await this.enfileirarStep(filha.id, e.targetNoId);
+    }
   }
 
   /**
@@ -526,6 +588,22 @@ export class ConversarIaService {
       const ctx = ex.contexto as ExecucaoContexto;
       const leadId = typeof ctx.leadId === 'string' ? ctx.leadId : undefined;
       const seguido = typeof ctx._timeoutSeguido === 'number' ? ctx._timeoutSeguido : 0;
+
+      // Encerramento educado expirado: o lead JÁ classificou (a IA só estava fechando a
+      // conversa). Conclui em silêncio — NÃO dispara LEAD_SEM_RESPOSTA (ele respondeu) e
+      // NÃO segue ramo "timeout" (o ramo "classificou" já rodou na execução-filha).
+      if (ctx._iaClassificou === true) {
+        await this.prisma.fluxoExecucao.update({
+          where: { id: ex.id },
+          data: {
+            status: 'CONCLUIDO',
+            aguardandoNoId: null,
+            timeoutEm: null,
+            terminouEm: new Date(),
+          },
+        });
+        continue;
+      }
 
       const arestasTimeout =
         ex.aguardandoNoId && seguido < MAX_TIMEOUT_FOLLOWS

@@ -29,6 +29,7 @@ export function DelayForm({
             onUpdate((d) => ({ ...d, config: { ...d.config, unidade: e.target.value } }))
           }
         >
+          <option value="segundos">segundos</option>
           <option value="minutos">minutos</option>
           <option value="horas">horas</option>
           <option value="dias">dias</option>

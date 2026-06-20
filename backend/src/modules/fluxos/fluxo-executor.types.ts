@@ -7,10 +7,24 @@ export interface FluxoStepJobData {
   noId: string;
 }
 
+/** Unidade de tempo (DELAY, espera de encerramento do nó de IA, etc.). */
+export type UnidadeTempo = 'segundos' | 'minutos' | 'horas' | 'dias';
+
+/** Converte {valor, unidade} em milissegundos (fonte única — DELAY e encerramento IA). */
+export function unidadeTempoMs(valor: number, unidade: UnidadeTempo): number {
+  const mult: Record<UnidadeTempo, number> = {
+    segundos: 1_000,
+    minutos: 60_000,
+    horas: 3_600_000,
+    dias: 86_400_000,
+  };
+  return Math.max(0, valor) * (mult[unidade] ?? 60_000);
+}
+
 /** Config do nó DELAY. */
 export interface DelayConfig {
   valor: number;
-  unidade: 'minutos' | 'horas' | 'dias';
+  unidade: UnidadeTempo;
 }
 
 /** Config do nó CONDICAO (modo simples true/false OU roteador multi-saída). */
@@ -101,6 +115,12 @@ export interface ConversarIaConfig {
   timeoutHoras?: number;
   /** Variáveis que a IA pode gravar (referência; a IA grava o que devolver no JSON). */
   variaveisGravadas?: string[];
+  /**
+   * ENCERRAMENTO EDUCADO: depois que a IA classifica, em vez de encerrar a conversa
+   * na hora, mantém o nó de IA respondendo o rep por esse tempo (a tag/aviso disparam
+   * já, em paralelo). Ausente ou valor 0 = encerra na hora (comportamento antigo).
+   */
+  encerramentoEspera?: { valor: number; unidade: UnidadeTempo };
 }
 
 /** Config da ação LIBERAR_LOTE (orquestração Fase B). */

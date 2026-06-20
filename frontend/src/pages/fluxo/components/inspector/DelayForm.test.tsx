@@ -114,9 +114,9 @@ describe('DelayForm', () => {
     expect(resultado.tipo).toBe('DELAY');
   });
 
-  it('renderiza exatamente as três opções de unidade', () => {
+  it('renderiza as opções de unidade (segundos/minutos/horas/dias)', () => {
     setup({});
     const options = screen.getAllByRole('option') as HTMLOptionElement[];
-    expect(options.map((o) => o.value)).toEqual(['minutos', 'horas', 'dias']);
+    expect(options.map((o) => o.value)).toEqual(['segundos', 'minutos', 'horas', 'dias']);
   });
 });

@@ -14,6 +14,7 @@ import { ConversarIaService } from './conversar-ia.service';
 import { FluxoEventBusService } from './fluxo-event-bus.service';
 import {
   FLUXO_QUEUE,
+  unidadeTempoMs,
   type FluxoStepJobData,
   type DelayConfig,
   type CondicaoConfig,
@@ -66,10 +67,9 @@ function interpolateDeep(obj: unknown, ctx: ExecucaoContexto): unknown {
 const toJsonInput = (v: Record<string, unknown>): Prisma.InputJsonObject =>
   v as unknown as Prisma.InputJsonObject;
 
-/** Converte unidade de delay para milissegundos. */
+/** Converte unidade de delay para milissegundos (segundos/minutos/horas/dias). */
 function delayParaMs(valor: number, unidade: DelayConfig['unidade']): number {
-  const mult = { minutos: 60_000, horas: 3_600_000, dias: 86_400_000 };
-  return valor * mult[unidade];
+  return unidadeTempoMs(valor, unidade);
 }
 
 /**

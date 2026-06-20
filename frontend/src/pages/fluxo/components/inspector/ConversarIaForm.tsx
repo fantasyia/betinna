@@ -101,6 +101,57 @@ export function ConversarIaForm({
           placeholder="classificacao, canal, potencial_pedidos"
         />
       </Field>
+      <Field
+        label="Encerramento educado após classificar"
+        hint="Depois que a IA classifica, mantém ela respondendo o rep por esse tempo antes de encerrar (a tag/aviso disparam na hora, em paralelo). 0 = encerra na hora."
+      >
+        <div className="flex gap-2">
+          <Input
+            type="number"
+            min={0}
+            value={(data.config.encerramentoEspera as { valor?: number } | undefined)?.valor ?? 0}
+            onChange={(e) =>
+              onUpdate((d) => ({
+                ...d,
+                config: {
+                  ...d.config,
+                  encerramentoEspera: {
+                    valor: Number(e.target.value),
+                    unidade:
+                      (d.config.encerramentoEspera as { unidade?: string } | undefined)?.unidade ??
+                      'minutos',
+                  },
+                },
+              }))
+            }
+          />
+          <Select
+            size="sm"
+            value={
+              (data.config.encerramentoEspera as { unidade?: string } | undefined)?.unidade ??
+              'minutos'
+            }
+            onChange={(e) =>
+              onUpdate((d) => ({
+                ...d,
+                config: {
+                  ...d.config,
+                  encerramentoEspera: {
+                    valor:
+                      (d.config.encerramentoEspera as { valor?: number } | undefined)?.valor ?? 0,
+                    unidade: e.target.value,
+                  },
+                },
+              }))
+            }
+          >
+            <option value="segundos">segundos</option>
+            <option value="minutos">minutos</option>
+            <option value="horas">horas</option>
+            <option value="dias">dias</option>
+          </Select>
+        </div>
+      </Field>
     </>
   );
 }
