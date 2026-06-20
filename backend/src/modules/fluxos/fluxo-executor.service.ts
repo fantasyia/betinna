@@ -682,6 +682,17 @@ export class FluxoExecutorService {
         });
         if (c?.email) emails.add(c.email);
       }
+      // Fluxo LEAD-driven: sem cliente, cai pro e-mail do lead (contatoEmail).
+      if (emails.size === 0) {
+        const leadId = ctx['leadId'] as string | undefined;
+        if (leadId) {
+          const l = await this.prisma.lead.findFirst({
+            where: { id: leadId, empresaId },
+            select: { contatoEmail: true },
+          });
+          if (l?.contatoEmail) emails.add(l.contatoEmail);
+        }
+      }
     }
     return [...emails];
   }
@@ -719,6 +730,17 @@ export class FluxoExecutorService {
     }
     if (!responsavelId && clienteId) {
       responsavelId = clienteRepId ?? undefined;
+    }
+    // Fluxo LEAD-driven: sem cliente, usa o rep do lead como responsável.
+    if (!responsavelId) {
+      const leadId = ctx['leadId'] as string | undefined;
+      if (leadId) {
+        const lead = await this.prisma.lead.findFirst({
+          where: { id: leadId, empresaId },
+          select: { representanteId: true },
+        });
+        responsavelId = lead?.representanteId ?? undefined;
+      }
     }
     if (!responsavelId) {
       const admin = await this.prisma.usuario.findFirst({
@@ -759,37 +781,65 @@ export class FluxoExecutorService {
   ): Promise<Record<string, unknown>> {
     this.assertEmpresaId(empresaId, 'MUDAR_TAG');
     const clienteId = ctx['clienteId'] as string | undefined;
-    if (!clienteId) throw new Error('contexto.clienteId ausente para MUDAR_TAG');
-
-    // AUDITORIA 2026-05-15: exige cliente PERTENCER à empresa do fluxo
-    const clienteOk = await this.prisma.cliente.findFirst({
-      where: { id: clienteId, empresaId },
-      select: { id: true },
-    });
-    if (!clienteOk) {
-      throw new Error(`Cliente ${clienteId} não encontrado na empresa ${empresaId}`);
+    const leadId = ctx['leadId'] as string | undefined;
+    // Fluxos podem ser CLIENTE-driven (clienteId) OU LEAD-driven (leadId, ex:
+    // prospecção/"Lead mudou etapa"). Antes só tagueava cliente e quebrava no fluxo
+    // de lead. Agora tagueia o que o contexto tiver (cliente via ClienteTag, lead
+    // via LeadTag) — só falha se não houver nenhum dos dois.
+    if (!clienteId && !leadId) {
+      throw new Error('contexto sem clienteId nem leadId para MUDAR_TAG');
     }
 
-    // Sprint 2: Tag agora tem empresaId (@@unique([empresaId, nome])).
-    // Upsert pela chave composta — tags são scoped por tenant.
+    // Sprint 2: Tag tem empresaId (@@unique([empresaId, nome])). Upsert pela chave
+    // composta — tags são scoped por tenant.
     const tag = await this.prisma.tag.upsert({
       where: { empresaId_nome: { empresaId, nome: cfg.tagNome } },
       create: { empresaId, nome: cfg.tagNome },
       update: {},
     });
+    const adicionar = cfg.operacao === 'adicionar';
+    const alvos: string[] = [];
 
-    if (cfg.operacao === 'adicionar') {
-      await this.prisma.clienteTag.upsert({
-        where: { clienteId_tagId: { clienteId, tagId: tag.id } },
-        create: { clienteId, tagId: tag.id },
-        update: {},
+    if (clienteId) {
+      // AUDITORIA 2026-05-15: exige cliente PERTENCER à empresa do fluxo.
+      const clienteOk = await this.prisma.cliente.findFirst({
+        where: { id: clienteId, empresaId },
+        select: { id: true },
       });
-    } else {
-      await this.prisma.clienteTag.deleteMany({
-        where: { clienteId, tagId: tag.id },
-      });
+      if (!clienteOk)
+        throw new Error(`Cliente ${clienteId} não encontrado na empresa ${empresaId}`);
+      if (adicionar) {
+        await this.prisma.clienteTag.upsert({
+          where: { clienteId_tagId: { clienteId, tagId: tag.id } },
+          create: { clienteId, tagId: tag.id },
+          update: {},
+        });
+      } else {
+        await this.prisma.clienteTag.deleteMany({ where: { clienteId, tagId: tag.id } });
+      }
+      alvos.push('cliente');
     }
-    return { tagId: tag.id, tagNome: cfg.tagNome, operacao: cfg.operacao };
+
+    if (leadId) {
+      // Valida que o lead é da empresa do fluxo (mesma defesa cross-tenant).
+      const leadOk = await this.prisma.lead.findFirst({
+        where: { id: leadId, empresaId },
+        select: { id: true },
+      });
+      if (!leadOk) throw new Error(`Lead ${leadId} não encontrado na empresa ${empresaId}`);
+      if (adicionar) {
+        await this.prisma.leadTag.upsert({
+          where: { leadId_tagId: { leadId, tagId: tag.id } },
+          create: { leadId, tagId: tag.id, origem: 'fluxo' },
+          update: {},
+        });
+      } else {
+        await this.prisma.leadTag.deleteMany({ where: { leadId, tagId: tag.id } });
+      }
+      alvos.push('lead');
+    }
+
+    return { tagId: tag.id, tagNome: cfg.tagNome, operacao: cfg.operacao, alvos };
   }
 
   private async acaoMoverLeadEtapa(

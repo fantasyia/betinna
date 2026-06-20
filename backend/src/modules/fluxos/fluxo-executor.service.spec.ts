@@ -68,6 +68,10 @@ const makePrismaMock = () => ({
     upsert: vi.fn().mockResolvedValue({}),
     deleteMany: vi.fn().mockResolvedValue({ count: 1 }),
   } satisfies MockModel,
+  leadTag: {
+    upsert: vi.fn().mockResolvedValue({}),
+    deleteMany: vi.fn().mockResolvedValue({ count: 1 }),
+  } satisfies MockModel,
 });
 
 const makeWhatsappMock = () => ({
@@ -766,6 +770,46 @@ describe('FluxoExecutorService', () => {
       await service.executarPasso('exec-1', 'no-1');
 
       expect(prisma.clienteTag.deleteMany).toHaveBeenCalledOnce();
+    });
+
+    // REGRESSÃO: fluxo LEAD-driven (gatilho "Lead mudou etapa") só tem leadId no
+    // contexto → MUDAR_TAG falhava ("contexto.clienteId ausente"). Agora tagueia o
+    // LEAD via LeadTag.
+    it('adiciona tag ao LEAD quando o contexto só tem leadId (fluxo de prospecção)', async () => {
+      const acaoNo = fakeNo({
+        tipo: 'ACAO',
+        acaoTipo: 'MUDAR_TAG',
+        config: { tagNome: 'Forte Sinergia', operacao: 'adicionar' },
+      });
+      prisma.fluxoExecucao.findUnique.mockResolvedValue(
+        fakeExecucao({ status: 'EM_EXECUCAO', contexto: { leadId: 'lead-1' } }),
+      );
+      prisma.fluxoNo.findUnique.mockResolvedValue(acaoNo);
+      prisma.fluxoEdge.findMany.mockResolvedValue([]);
+      prisma.lead.findFirst.mockResolvedValue({ id: 'lead-1' });
+
+      await service.executarPasso('exec-1', 'no-1');
+
+      expect(prisma.leadTag.upsert).toHaveBeenCalledOnce();
+      expect(prisma.clienteTag.upsert).not.toHaveBeenCalled();
+    });
+
+    it('falha só quando o contexto não tem nem clienteId nem leadId', async () => {
+      const acaoNo = fakeNo({
+        tipo: 'ACAO',
+        acaoTipo: 'MUDAR_TAG',
+        config: { tagNome: 'vip', operacao: 'adicionar' },
+      });
+      prisma.fluxoExecucao.findUnique.mockResolvedValue(
+        fakeExecucao({ status: 'EM_EXECUCAO', contexto: {} }),
+      );
+      prisma.fluxoNo.findUnique.mockResolvedValue(acaoNo);
+      prisma.fluxoEdge.findMany.mockResolvedValue([]);
+
+      // O executor loga FALHOU e RE-LANÇA (pra BullMQ retentar) — sem cliente nem lead.
+      await expect(service.executarPasso('exec-1', 'no-1')).rejects.toThrow(/MUDAR_TAG/);
+      expect(prisma.leadTag.upsert).not.toHaveBeenCalled();
+      expect(prisma.clienteTag.upsert).not.toHaveBeenCalled();
     });
   });
 
