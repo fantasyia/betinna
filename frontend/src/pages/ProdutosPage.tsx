@@ -51,6 +51,7 @@ export default function ProdutosPage() {
   const [ativo, setAtivo] = useState('');
   const [semEstoque, setSemEstoque] = useState('');
   const [editing, setEditing] = useState<Produto | null>(null);
+  const [criando, setCriando] = useState(false);
 
   // Volta pra página 1 quando a busca (já debounced) muda.
   useEffect(() => {
@@ -188,10 +189,20 @@ export default function ProdutosPage() {
   return (
     <PageLayout
       title="Produtos"
-      description="Os produtos são sincronizados automaticamente do Omie. Para incluir ou alterar a ficha do produto, edite no Omie e aguarde a próxima sincronização."
+      description="Cadastre produtos aqui no Betinna, ou sincronize do ERP (Omie) quando integrado. Os campos vindos do ERP ficam read-only; a ficha de marketing (foto, tier, atributos) é editável no app."
     >
       <CatalogoTabs />
       <div className="bg-surface border border-border rounded-[10px] p-6">
+        <div className="flex justify-end mb-3">
+          <button
+            type="button"
+            data-testid="prod-novo"
+            onClick={() => setCriando(true)}
+            className="bg-primary text-white rounded-md py-2 px-4 text-sm font-semibold cursor-pointer border-none"
+          >
+            + Novo produto
+          </button>
+        </div>
         <FilterBar>
           <SearchInput
             value={search}
@@ -284,12 +295,16 @@ export default function ProdutosPage() {
         </StateView>
       </div>
 
-      {editing && (
+      {(editing || criando) && (
         <ProdutoFormModal
           produto={editing}
-          onClose={() => setEditing(null)}
+          onClose={() => {
+            setEditing(null);
+            setCriando(false);
+          }}
           onSaved={() => {
             setEditing(null);
+            setCriando(false);
             refetch();
           }}
         />
