@@ -88,35 +88,39 @@ export class FluxoEventBusService {
           if (deEtapa && deCtx !== deEtapa) continue;
         }
 
-        // Anti-duplicata (IA): um fluxo com nó "Conversar com IA" NÃO pode ter duas
-        // execuções ativas pro MESMO lead — senão duas IAs conversam em paralelo com
-        // ele, cada uma SEM o histórico da outra, e a 2ª re-apresenta a empresa do
-        // zero. Acontecia quando o gatilho "Lead mudou etapa" re-disparava no meio da
-        // conversa (a etapa do lead muda → novo disparo → nova execução). Se já há uma
-        // execução ativa (PENDENTE/EM_EXECUCAO/AGUARDANDO) deste fluxo pro lead, ignora
-        // o re-disparo. Só vale pra fluxos conversacionais (não bloqueia fluxos comuns
-        // que legitimamente rodam várias vezes por lead — ex: e-mail a cada pedido).
+        // Anti-duplicata (IA) por SUBSTITUIÇÃO: um fluxo com nó "Conversar com IA"
+        // não pode ter duas execuções ativas pro MESMO lead (senão duas IAs conversam
+        // em paralelo, cada uma sem o histórico da outra → re-apresenta a empresa).
+        // Mas SUPRIMIR o re-disparo bloqueava a re-entrada legítima (lead volta pra
+        // etapa de abordagem e o opener não disparava). Então, ao re-entrar, ENCERRAMOS
+        // a(s) execução(ões) anterior(es) deste lead nesse fluxo e começamos uma NOVA —
+        // re-entrar sempre dispara a abordagem, e nunca há duas em paralelo. Só vale pra
+        // fluxos conversacionais (não mexe em fluxos comuns que rodam várias vezes/lead).
         const leadId = typeof contexto['leadId'] === 'string' ? contexto['leadId'] : undefined;
         if (leadId) {
           const nosIa = await this.prisma.fluxoNo.count({
             where: { fluxoId: fluxo.id, tipo: 'ACAO', acaoTipo: 'CONVERSAR_IA' },
           });
           if (nosIa > 0) {
-            const ativa = await this.prisma.fluxoExecucao.findFirst({
+            const { count } = await this.prisma.fluxoExecucao.updateMany({
               where: {
                 fluxoId: fluxo.id,
                 empresaId,
                 status: { in: ['PENDENTE', 'EM_EXECUCAO', 'AGUARDANDO'] },
                 contexto: { path: ['leadId'], equals: leadId },
               },
-              select: { id: true },
+              data: {
+                status: 'CANCELADO',
+                aguardandoNoId: null,
+                timeoutEm: null,
+                terminouEm: new Date(),
+              },
             });
-            if (ativa) {
+            if (count > 0) {
               this.logger.log(
-                `Fluxo "${fluxo.nome}": já há execução ativa (${ativa.id}) conduzindo o ` +
-                  `lead ${leadId} — re-disparo ${triggerTipo} ignorado (anti-duplicata IA)`,
+                `Fluxo "${fluxo.nome}": ${count} execução(ões) anterior(es) do lead ${leadId} ` +
+                  `encerrada(s) — re-entrada (${triggerTipo}) substitui (anti-duplicata IA)`,
               );
-              continue;
             }
           }
         }
