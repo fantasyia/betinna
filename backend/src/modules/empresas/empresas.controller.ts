@@ -26,9 +26,11 @@ import { EmpresaLogoService } from './empresa-logo.service';
 import {
   type CreateEmpresaDto,
   type ListEmpresasDto,
+  type TenantConfigPatchDto,
   type UpdateEmpresaDto,
   createEmpresaSchema,
   listEmpresasSchema,
+  tenantConfigPatchSchema,
   updateEmpresaSchema,
 } from './empresas.dto';
 import { EmpresasService } from './empresas.service';
@@ -75,6 +77,27 @@ export class EmpresasController {
   })
   empresaAtual(@CurrentUser() user: AuthenticatedUser) {
     return this.empresas.empresaAtual(user);
+  }
+
+  // ─── ConfiguracaoTenant (no-code Admin Panel) — DEVE vir antes de @Get(':id') ──
+
+  @Get('config')
+  @ApiOperation({
+    summary: 'ConfiguracaoTenant (no-code) da empresa ativa — regras editáveis pelo Admin Panel.',
+  })
+  getConfig(@CurrentUser() user: AuthenticatedUser) {
+    return this.empresas.getConfig(user);
+  }
+
+  @Patch('config')
+  @Roles('ADMIN', 'DIRECTOR')
+  @Audit({ action: 'update_config', resource: 'empresa' })
+  @ApiOperation({ summary: 'Atualiza a config (no-code) da empresa ativa. **DIRETOR/ADMIN**.' })
+  patchConfig(
+    @CurrentUser() user: AuthenticatedUser,
+    @Body(new ZodValidationPipe(tenantConfigPatchSchema)) dto: TenantConfigPatchDto,
+  ) {
+    return this.empresas.patchConfig(user, dto);
   }
 
   @Get(':id')

@@ -30,3 +30,22 @@ export const listEmpresasSchema = z.object({
   ativo: z.coerce.boolean().optional(),
 });
 export type ListEmpresasDto = z.infer<typeof listEmpresasSchema>;
+
+// ─── ConfiguracaoTenant (no-code) ─────────────────────────────────────────
+// Patch parcial da config da empresa (Admin Panel). `passthrough` deixa novos
+// consumidores entrarem sem mudar o schema; valida só as chaves conhecidas.
+
+/** Metadados por status do lifecycle de pedido (1º consumidor). Chave = PedidoStatus. */
+const pedidoStatusMetaSchema = z.object({
+  /** Nome custom exibido pro tenant (ex: "Em produção" no lugar de "Enviado ao OMIE"). */
+  label: z.string().trim().max(40).optional(),
+  /** Cor (variant do Badge) — alinhado ao design system do app. */
+  variant: z.enum(['neutral', 'warning', 'info', 'success', 'primary', 'danger']).optional(),
+});
+
+export const tenantConfigPatchSchema = z
+  .object({
+    pedidoStatusLabels: z.record(z.string(), pedidoStatusMetaSchema).optional(),
+  })
+  .passthrough();
+export type TenantConfigPatchDto = z.infer<typeof tenantConfigPatchSchema>;

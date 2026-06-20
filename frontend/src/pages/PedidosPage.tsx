@@ -28,6 +28,13 @@ import {
 import { NovoPedidoDialog } from '@/components/NovoPedidoDialog';
 import { api, apiErrorMessage } from '@/lib/api';
 import { useApiQuery, type PaginatedResponse } from '@/hooks/useApiQuery';
+import {
+  PEDIDO_STATUSES,
+  resolveStatusLabel,
+  resolveStatusVariant,
+  type PedidoStatus,
+  type PedidoStatusConfig,
+} from '@/lib/pedidoStatus';
 import { useDebouncedValue } from '@/hooks/useDebouncedValue';
 import { useRole } from '@/hooks/usePermission';
 import { PageLayout } from '@/components/PageLayout';
@@ -71,15 +78,8 @@ import {
  * - Cancel via Dialog separado
  */
 
-type PedidoStatus =
-  | 'RASCUNHO'
-  | 'AGUARDANDO_APROVACAO'
-  | 'ENVIADO_OMIE'
-  | 'PAGO'
-  | 'EM_SEPARACAO'
-  | 'ENVIADO'
-  | 'ENTREGUE'
-  | 'CANCELADO';
+// PedidoStatus + os defaults de label/cor vêm de @/lib/pedidoStatus (fonte única,
+// compartilhada com a config do tenant na ConfiguracoesPage).
 
 interface Pedido {
   id: string;
@@ -116,32 +116,8 @@ interface PedidoDetail extends Pedido {
 }
 
 // ─── Mapeamento de status ──────────────────────────────────────
-
-const STATUS_LABEL: Record<PedidoStatus, string> = {
-  RASCUNHO: 'Rascunho',
-  AGUARDANDO_APROVACAO: 'Aguardando aprovação',
-  ENVIADO_OMIE: 'Enviado ao OMIE',
-  PAGO: 'Pago',
-  EM_SEPARACAO: 'Em separação',
-  ENVIADO: 'Enviado',
-  ENTREGUE: 'Entregue',
-  CANCELADO: 'Cancelado',
-};
-
-const STATUS_VARIANT: Record<
-  PedidoStatus,
-  'neutral' | 'warning' | 'info' | 'success' | 'primary' | 'danger'
-> = {
-  RASCUNHO: 'neutral',
-  AGUARDANDO_APROVACAO: 'warning',
-  ENVIADO_OMIE: 'info',
-  PAGO: 'success',
-  EM_SEPARACAO: 'primary',
-  ENVIADO: 'info',
-  ENTREGUE: 'success',
-  CANCELADO: 'danger',
-};
-
+// Label/cor vêm do módulo compartilhado via resolveStatusLabel/Variant (que aplicam o
+// override do tenant em Empresa.config.pedidoStatusLabels). Só o ícone fica local.
 const STATUS_ICON: Record<PedidoStatus, typeof Pencil> = {
   RASCUNHO: Pencil,
   AGUARDANDO_APROVACAO: CircleDashed,
@@ -250,6 +226,9 @@ export default function PedidosPage() {
   }, [page, buscaDebounced, status, periodo, dataInicioCustom, dataFimCustom, clienteIdFilter]);
 
   const { data: pageResp, loading, error, refetch } = useApiQuery<PaginatedResponse<Pedido>>(listPath);
+  // Config do tenant — rótulos/cores custom do lifecycle (ConfiguracaoTenant).
+  const { data: cfgRaw } = useApiQuery<Record<string, unknown>>('/empresas/config');
+  const statusCfg = (cfgRaw?.pedidoStatusLabels ?? {}) as PedidoStatusConfig;
 
   async function handleExport(formato: 'csv' | 'xlsx' | 'docx' | 'pdf') {
     setExporting(true);
@@ -268,7 +247,7 @@ export default function PedidosPage() {
           value: (p: Pedido) =>
             formato === 'xlsx' ? p.total : p.total.toFixed(2).replace('.', ','),
         },
-        { header: 'Status', value: (p: Pedido) => STATUS_LABEL[p.status] },
+        { header: 'Status', value: (p: Pedido) => resolveStatusLabel(p.status, statusCfg) },
         { header: 'Criado em', value: (p: Pedido) => fmtDate(p.criadoEm) },
       ];
       let count = 0;
@@ -432,9 +411,9 @@ export default function PedidosPage() {
             }}
           >
             <option value="">Todos status</option>
-            {(Object.keys(STATUS_LABEL) as PedidoStatus[]).map((s) => (
+            {PEDIDO_STATUSES.map((s) => (
               <option key={s} value={s}>
-                {STATUS_LABEL[s]}
+                {resolveStatusLabel(s, statusCfg)}
               </option>
             ))}
           </Select>
@@ -690,11 +669,11 @@ export default function PedidosPage() {
                           </Td>
                           <Td>
                             <Badge
-                              variant={STATUS_VARIANT[p.status]}
+                              variant={resolveStatusVariant(p.status, statusCfg)}
                               className="inline-flex items-center gap-1"
                             >
                               <StatusIcon className="h-2.5 w-2.5" />
-                              {STATUS_LABEL[p.status]}
+                              {resolveStatusLabel(p.status, statusCfg)}
                             </Badge>
                           </Td>
                           <Td>
@@ -912,6 +891,8 @@ function PedidoDetailDrawer({
   const canCancel = role === 'DIRECTOR' || role === 'ADMIN';
   const canRequestCancel = role === 'REP' || role === 'GERENTE';
   const { data, loading, error, refetch } = useApiQuery<PedidoDetail>(`/pedidos/${id}`);
+  const { data: cfgRaw } = useApiQuery<Record<string, unknown>>('/empresas/config');
+  const statusCfg = (cfgRaw?.pedidoStatusLabels ?? {}) as PedidoStatusConfig;
   const [busy, setBusy] = useState<string | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
   const [cancelOpen, setCancelOpen] = useState(false);
@@ -1031,8 +1012,8 @@ function PedidoDetailDrawer({
                     {fmtBRL(data.total)}
                   </div>
                   <div className="mt-2 flex items-center gap-2 flex-wrap">
-                    <Badge variant={STATUS_VARIANT[data.status]}>
-                      {STATUS_LABEL[data.status]}
+                    <Badge variant={resolveStatusVariant(data.status, statusCfg)}>
+                      {resolveStatusLabel(data.status, statusCfg)}
                     </Badge>
                     {data.formaPagamento && (
                       <Badge variant="outline" size="sm">
@@ -1259,6 +1240,8 @@ function StatusTimeline({ pedido }: { pedido: PedidoDetail }) {
   const currentIdx = FLOW_STEPS.indexOf(pedido.status);
   // AGUARDANDO_APROVACAO fica entre RASCUNHO e ENVIADO_OMIE — branca da linha principal
   const isAwaiting = pedido.status === 'AGUARDANDO_APROVACAO';
+  const { data: cfgRaw } = useApiQuery<Record<string, unknown>>('/empresas/config');
+  const statusCfg = (cfgRaw?.pedidoStatusLabels ?? {}) as PedidoStatusConfig;
 
   return (
     <section>
@@ -1313,7 +1296,7 @@ function StatusTimeline({ pedido }: { pedido: PedidoDetail }) {
                       isFuture && 'text-muted',
                     )}
                   >
-                    {STATUS_LABEL[step]}
+                    {resolveStatusLabel(step, statusCfg)}
                   </span>
                   {isCurrent && (
                     <Badge variant="primary" size="sm">

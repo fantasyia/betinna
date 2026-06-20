@@ -1,10 +1,16 @@
 import { Injectable } from '@nestjs/common';
+import { Prisma } from '@prisma/client';
 import { PrismaService } from '@database/prisma.service';
 import { ForbiddenException, NotFoundException } from '@shared/errors/app-exception';
 import { ErrorCode } from '@shared/errors/error-codes';
 import type { AuthenticatedUser } from '@shared/types/authenticated-user';
 import { buildPaginated, type Paginated } from '@shared/types/pagination';
-import type { CreateEmpresaDto, ListEmpresasDto, UpdateEmpresaDto } from './empresas.dto';
+import type {
+  CreateEmpresaDto,
+  ListEmpresasDto,
+  TenantConfigPatchDto,
+  UpdateEmpresaDto,
+} from './empresas.dto';
 
 @Injectable()
 export class EmpresasService {
@@ -59,10 +65,42 @@ export class EmpresasService {
         descontoPixPct: true,
         descontoBoletoAvistaPct: true,
         botWhatsappAtivo: true,
+        config: true,
       },
     });
     if (!empresa) throw new NotFoundException('Empresa', user.empresaIdAtiva);
     return empresa;
+  }
+
+  // ─── ConfiguracaoTenant (no-code Admin Panel) ─────────────────────────
+
+  /** Config (JSON) da empresa ativa; {} quando ainda não configurada. */
+  async getConfig(user: AuthenticatedUser): Promise<Record<string, unknown>> {
+    if (!user.empresaIdAtiva) throw new NotFoundException('Empresa ativa', 'nenhuma');
+    const emp = await this.prisma.empresa.findUnique({
+      where: { id: user.empresaIdAtiva },
+      select: { config: true },
+    });
+    return (emp?.config as Record<string, unknown> | null) ?? {};
+  }
+
+  /** Merge raso (top-level) do patch na config — o front manda sub-objetos completos. */
+  async patchConfig(
+    user: AuthenticatedUser,
+    patch: TenantConfigPatchDto,
+  ): Promise<Record<string, unknown>> {
+    if (!user.empresaIdAtiva) throw new NotFoundException('Empresa ativa', 'nenhuma');
+    const emp = await this.prisma.empresa.findUnique({
+      where: { id: user.empresaIdAtiva },
+      select: { config: true },
+    });
+    const atual = (emp?.config as Record<string, unknown> | null) ?? {};
+    const proximo = { ...atual, ...patch };
+    await this.prisma.empresa.update({
+      where: { id: user.empresaIdAtiva },
+      data: { config: proximo as Prisma.InputJsonValue },
+    });
+    return proximo;
   }
 
   async list(

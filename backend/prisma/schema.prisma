@@ -268,6 +268,11 @@ model Empresa {
   /// Padrão ligado. Quando false, o bot não responde nenhuma conversa.
   botWhatsappAtivo Boolean @default(true)
 
+  /// ConfiguracaoTenant (no-code) — JSON com as regras configuráveis pela empresa via
+  /// Admin Panel, sem dev. Cada consumidor define sua própria sub-chave. Ex:
+  /// { pedidoStatusLabels: { RASCUNHO: { label, cor } }, pedidoMinimo: {...}, ... }.
+  config Json?
+
   criadoEm     DateTime @default(now())
   atualizadoEm DateTime @updatedAt
 

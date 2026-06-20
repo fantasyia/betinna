@@ -17,6 +17,16 @@ import { currentEmpresaId } from '@/lib/auth-store';
 import { maskCNPJ } from '@/lib/masks';
 import { UfSelect, CidadeSelect } from '@/components/LocalidadeSelects';
 import { cn } from '@/lib/cn';
+import {
+  PEDIDO_STATUSES,
+  STATUS_VARIANTS,
+  VARIANT_LABEL,
+  STATUS_LABEL_DEFAULT,
+  STATUS_VARIANT_DEFAULT,
+  type PedidoStatus,
+  type StatusVariant,
+  type PedidoStatusConfig,
+} from '@/lib/pedidoStatus';
 
 // Cores oficiais brandbook usadas no tabs strip
 const BRAND = {
@@ -208,7 +218,12 @@ export default function ConfiguracoesPage() {
         <TabButton id="avancado" current={tab} onClick={setTab} label="⚙️ Avançado" />
       </div>
 
-      {tab === 'avancado' && <AvancadoTab />}
+      {tab === 'avancado' && (
+        <>
+          <AvancadoTab />
+          <LifecycleConfig />
+        </>
+      )}
       {tab === 'empresas' && (
         <div className="flex flex-col gap-4">
           <LogoSection canEdit={podeEditarEmpresa} />
@@ -306,6 +321,101 @@ function TabButton({
     >
       {label}
     </button>
+  );
+}
+
+/** Lifecycle de pedido — 1º consumidor do ConfiguracaoTenant (no-code). */
+function LifecycleConfig() {
+  const toast = useToast();
+  const podeEditar = usePermission('configuracoes.empresa');
+  const { data: cfg, loading, refetch } = useApiQuery<Record<string, unknown>>('/empresas/config');
+  const [rows, setRows] = useState<Record<
+    PedidoStatus,
+    { label: string; variant: StatusVariant }
+  > | null>(null);
+  const [busy, setBusy] = useState(false);
+
+  // Estado derivado da config (recomputa quando ela chega/muda; edições vivem em `rows`).
+  const base = useMemo(() => {
+    const saved = (cfg?.pedidoStatusLabels ?? {}) as PedidoStatusConfig;
+    const o = {} as Record<PedidoStatus, { label: string; variant: StatusVariant }>;
+    for (const s of PEDIDO_STATUSES) {
+      o[s] = {
+        label: saved[s]?.label ?? STATUS_LABEL_DEFAULT[s],
+        variant: saved[s]?.variant ?? STATUS_VARIANT_DEFAULT[s],
+      };
+    }
+    return o;
+  }, [cfg]);
+  const form = rows ?? base;
+
+  function setRow(s: PedidoStatus, field: 'label' | 'variant', v: string) {
+    setRows({ ...form, [s]: { ...form[s], [field]: v } });
+  }
+
+  async function save() {
+    setBusy(true);
+    try {
+      await api.patch('/empresas/config', { pedidoStatusLabels: form });
+      toast.success('Lifecycle de pedido salvo');
+      setRows(null);
+      refetch();
+    } catch (err) {
+      toast.error('Falha ao salvar', apiErrorMessage(err));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <div className="bg-surface border border-border rounded-[10px] p-6 mt-4">
+      <h2 className="mt-0 text-[16px]" style={{ color: BRAND.navy }}>
+        🧭 Lifecycle de pedido
+      </h2>
+      <p className="text-xs text-muted mt-0">
+        Personalize o nome e a cor de cada status do pedido pra esta empresa. Vale na lista de
+        pedidos. Em branco usa o padrão.
+      </p>
+      {loading ? (
+        <p className="text-sm text-muted mt-4">Carregando…</p>
+      ) : (
+        <div className="flex flex-col gap-2 mt-4 max-w-[640px]">
+          {PEDIDO_STATUSES.map((s) => (
+            <div key={s} className="flex items-center gap-2">
+              <code className="text-[11px] text-muted w-[180px] shrink-0">{s}</code>
+              <Input
+                value={form[s].label}
+                disabled={!podeEditar}
+                onChange={(e) => setRow(s, 'label', e.target.value)}
+                placeholder={STATUS_LABEL_DEFAULT[s]}
+              />
+              <Select
+                value={form[s].variant}
+                disabled={!podeEditar}
+                onChange={(e) => setRow(s, 'variant', e.target.value)}
+              >
+                {STATUS_VARIANTS.map((v) => (
+                  <option key={v} value={v}>
+                    {VARIANT_LABEL[v]}
+                  </option>
+                ))}
+              </Select>
+            </div>
+          ))}
+          {podeEditar && (
+            <button
+              type="button"
+              data-testid="lifecycle-salvar"
+              onClick={save}
+              disabled={busy}
+              className="bg-primary text-white rounded-md py-2 px-4 text-sm font-semibold cursor-pointer border-none self-start mt-2 disabled:opacity-60"
+            >
+              {busy ? 'Salvando…' : 'Salvar lifecycle'}
+            </button>
+          )}
+        </div>
+      )}
+    </div>
   );
 }
 
