@@ -72,6 +72,9 @@ const makePrismaMock = () => ({
     upsert: vi.fn().mockResolvedValue({}),
     deleteMany: vi.fn().mockResolvedValue({ count: 1 }),
   } satisfies MockModel,
+  variavelCustomizada: {
+    findMany: vi.fn().mockResolvedValue([]),
+  } satisfies MockModel,
 });
 
 const makeWhatsappMock = () => ({
@@ -727,6 +730,50 @@ describe('FluxoExecutorService', () => {
       await service.executarPasso('exec-1', 'no-1');
 
       expect(bus.disparar).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('interpolação — variáveis SEM prefixo (atalhos no topo do contexto)', () => {
+    it('resolve {{nome}}/{{cidade}}/{{uf}}/{{whatsapp}} do lead e {{var}} capturada pela IA', async () => {
+      const acaoNo = fakeNo({
+        tipo: 'ACAO',
+        acaoTipo: 'ENVIAR_WHATSAPP',
+        config: {
+          destinatarioModo: 'numero',
+          destinatarioNumero: '11999990000',
+          mensagem:
+            'Lead: {{nome}} ({{cidade}}/{{uf}}) wpp {{whatsapp}} | canal {{canal_dominante}} | obs {{observacao_executiva}}',
+        },
+      });
+      prisma.fluxoExecucao.findUnique.mockResolvedValue(
+        fakeExecucao({ status: 'EM_EXECUCAO', contexto: { leadId: 'lead-1' } }),
+      );
+      prisma.fluxoNo.findUnique.mockResolvedValue(acaoNo);
+      prisma.fluxoEdge.findMany.mockResolvedValue([]);
+      prisma.lead.findFirst.mockResolvedValue({
+        nome: 'Padaria Forte',
+        contatoNome: 'João',
+        contatoTelefone: '+55 19 98888-7777',
+        contatoEmail: null,
+        cidade: 'Campinas',
+        uf: 'SP',
+        segmento: null,
+        score: null,
+        etapa: 'QUALIFICANDO',
+        variaveis: { canal_dominante: 'atacado', observacao_executiva: 'Compra 3x/mês' },
+        funil: null,
+        funilEtapa: null,
+        tags: [],
+      });
+
+      await service.executarPasso('exec-1', 'no-1');
+
+      expect(whatsapp.enviarTexto).toHaveBeenCalledWith(
+        'emp-1',
+        '11999990000@s.whatsapp.net',
+        'Lead: Padaria Forte (Campinas/SP) wpp +55 19 98888-7777 | canal atacado | obs Compra 3x/mês',
+        {},
+      );
     });
   });
 

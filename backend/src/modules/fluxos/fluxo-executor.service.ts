@@ -459,6 +459,24 @@ export class FluxoExecutorService {
       ...(typeof ctx.texto === 'string' ? { ultima_msg_lead: ctx.texto } : {}),
       ...(typeof ctx.classificacao === 'string' ? { classificacao: ctx.classificacao } : {}),
     };
+
+    // ATALHOS no TOPO do contexto: o usuário escreve {{nome}}, {{cidade}}, {{uf}},
+    // {{whatsapp}}, {{canal_dominante}}, {{observacao_executiva}}… SEM prefixo (não
+    // {{lead.nome}}/{{custom.x}}). Expomos os campos do lead + os defaults da empresa +
+    // as variáveis CAPTURADAS pela IA (Lead.variaveis) direto no topo, pra esses nomes
+    // resolverem na interpolação. Precedência: variáveis capturadas > defaults > campos
+    // do lead. NÃO sobrescreve chaves que o evento já trouxe (leadId, clienteId, texto…).
+    const atalhos: Record<string, unknown> = {
+      ...(ctx.lead as Record<string, unknown> | undefined),
+      ...defaults,
+      ...leadVars,
+    };
+    for (const [k, v] of Object.entries(atalhos)) {
+      // `v != null` deixa string vazia passar (campo vazio → renderiza em branco, não
+      // o literal {{x}}); só pula null/undefined.
+      if (ctx[k] === undefined && v != null) ctx[k] = v;
+    }
+
     if (ctx.lead == null) ctx.lead = {};
 
     return ctx;
