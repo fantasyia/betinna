@@ -354,9 +354,25 @@ export class ConversarIaService {
 
     const lead = await this.prisma.lead.findFirst({
       where: { id: leadId, empresaId },
-      select: { contatoTelefone: true, contatoNome: true, variaveis: true },
+      select: { contatoTelefone: true, contatoNome: true, contatoEmail: true, variaveis: true },
     });
     if (!lead?.contatoTelefone) return;
+
+    // Captura de e-mail: quando o lead manda um e-mail (ex: pra receber o convite da
+    // reunião com o diretor), grava em Lead.contatoEmail se ainda não houver — vira
+    // dado estruturado reusável em funis futuros. Regex no texto do lead (não depende
+    // da IA extrair certo). `temEmail` diz à IA se ainda precisa pedir o e-mail.
+    let temEmail = !!lead.contatoEmail?.trim();
+    if (!temEmail) {
+      const m = textoLead.match(/[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}/);
+      if (m) {
+        await this.prisma.lead
+          .update({ where: { id: leadId }, data: { contatoEmail: m[0].toLowerCase() } })
+          .catch(() => undefined);
+        temEmail = true;
+        this.logger.log(`CONVERSAR_IA: e-mail capturado do lead ${leadId}`);
+      }
+    }
 
     // Variáveis que a IA pode gravar (nó "Conversar com IA" — spec §2.5).
     const gravaveis = (cfg.variaveisGravadas ?? []).filter(
@@ -367,7 +383,13 @@ export class ConversarIaService {
       INSTRUCAO_CLASSIFICACAO +
       (gravaveis.length
         ? `\n- Em "variaveis", grave APENAS estas chaves: ${gravaveis.join(', ')}.`
-        : '');
+        : '') +
+      (temEmail
+        ? '\n[Dado] O e-mail do lead JÁ está registrado — NÃO peça e-mail de novo.'
+        : '\n[Dado] Ainda NÃO temos o e-mail do lead. No FECHAMENTO (quando for encerrar/' +
+          'classificar), peça o e-mail dele de forma calorosa — pra enviar o convite da reunião ' +
+          'com o diretor — e mantenha "classificou":false até recebê-lo; só classifique ' +
+          '(classificou:true) DEPOIS de ter o e-mail (ou se o lead recusar dar).');
     // Histórico da conversa = memória da IA no contexto da execução (inclui o
     // opener + os turnos), com fallback pro montarHistorico (execuções antigas).
     // Sem isto a IA não via as próprias mensagens e se reapresentava a cada resposta.

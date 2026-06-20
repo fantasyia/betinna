@@ -490,6 +490,28 @@ describe('ConversarIaService', () => {
       expect(prisma.message.findMany).toHaveBeenCalledWith(expect.objectContaining({ take: 5 }));
     });
 
+    // Fecho com captura de e-mail: o lead manda o e-mail (pra receber o convite da
+    // reunião) → grava em Lead.contatoEmail (dado estruturado reusável em funis).
+    it('captura o e-mail que o lead manda e grava em Lead.contatoEmail', async () => {
+      prisma.fluxoExecucao.findUnique.mockResolvedValue(execAguardando);
+      prisma.fluxoNo.findUnique.mockResolvedValue({ id: 'no-ia', config: {} });
+      prisma.lead.findFirst.mockResolvedValue({
+        contatoTelefone: '11999990000',
+        contatoEmail: null,
+        variaveis: {},
+      });
+      muller.gerarRespostaIa.mockResolvedValue({ texto: 'Perfeito, anotado! 🙌', modelo: 'gpt' });
+
+      await svc.retomar('exec-1', 'conv-1', 'claro, meu email é Joao.Rep@Empresa.com.br');
+
+      expect(prisma.lead.update).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: { id: 'lead-1' },
+          data: { contatoEmail: 'joao.rep@empresa.com.br' },
+        }),
+      );
+    });
+
     it('ignora execução que não está mais AGUARDANDO', async () => {
       prisma.fluxoExecucao.findUnique.mockResolvedValue({ ...execAguardando, status: 'CONCLUIDO' });
       await svc.retomar('exec-1', 'conv-1', 'oi');
