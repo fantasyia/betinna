@@ -9,6 +9,7 @@ import {
   CalendarDays,
   Briefcase,
   Settings,
+  Inbox,
   Menu,
   ChevronRight,
   Search,
@@ -125,6 +126,11 @@ const SECTIONS: NavSection[] = [
         label: 'Catálogo',
         icon: Package,
         match: ['/catalogo'],
+      },
+      {
+        to: '/inbox-interna',
+        label: 'Mensagens',
+        icon: Inbox,
       },
       {
         to: '/relatorios',

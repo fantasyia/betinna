@@ -227,6 +227,7 @@ export default function ConfiguracoesPage() {
           <ComissaoConfig />
           <MateriaisTiposConfig />
           <DevolucaoConfig />
+          <InboxInternaConfig />
         </>
       )}
       {tab === 'empresas' && (
@@ -1232,6 +1233,178 @@ function DevolucaoConfig() {
               className="bg-primary text-white rounded-md py-2 px-4 text-sm font-semibold cursor-pointer border-none self-start mt-2 disabled:opacity-60"
             >
               {busy ? 'Salvando…' : 'Salvar devolução'}
+            </button>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+/** Inbox interna: tipos de canal + SLA — 7º consumidor (no-code). */
+interface InboxTipoForm {
+  key: string;
+  nome: string;
+  slaHorasUteis: string;
+  permiteResposta: boolean;
+  prioridade: string;
+}
+const DEFAULT_INBOX_TIPOS: InboxTipoForm[] = [
+  { key: 'diretor_comercial', nome: 'Direto com Diretor Comercial', slaHorasUteis: '48', permiteResposta: true, prioridade: 'alta' },
+  { key: 'suporte_pedidos', nome: 'Suporte Pedidos', slaHorasUteis: '8', permiteResposta: true, prioridade: 'media' },
+  { key: 'avisos', nome: 'Avisos', slaHorasUteis: '0', permiteResposta: false, prioridade: 'baixa' },
+];
+
+function InboxInternaConfig() {
+  const toast = useToast();
+  const podeEditar = usePermission('configuracoes.empresa');
+  const { data: cfg, loading, refetch } = useApiQuery<Record<string, unknown>>('/empresas/config');
+  const [rows, setRows] = useState<InboxTipoForm[] | null>(null);
+  const [busy, setBusy] = useState(false);
+
+  const base = useMemo<InboxTipoForm[]>(() => {
+    const t = (
+      cfg?.inboxInterna as
+        | {
+            tipos?: Array<{
+              key: string;
+              nome: string;
+              slaHorasUteis?: number;
+              permiteResposta?: boolean;
+              prioridade?: string;
+            }>;
+          }
+        | undefined
+    )?.tipos;
+    if (!t || t.length === 0) return DEFAULT_INBOX_TIPOS;
+    return t.map((x) => ({
+      key: x.key,
+      nome: x.nome,
+      slaHorasUteis: String(x.slaHorasUteis ?? 24),
+      permiteResposta: x.permiteResposta !== false,
+      prioridade: x.prioridade ?? 'media',
+    }));
+  }, [cfg]);
+  const tipos = rows ?? base;
+
+  const slug = (s: string) =>
+    s
+      .toLowerCase()
+      .normalize('NFD')
+      .replace(/[̀-ͯ]/g, '')
+      .replace(/[^a-z0-9]+/g, '_')
+      .replace(/^_|_$/g, '')
+      .slice(0, 40);
+
+  function setRow(i: number, patch: Partial<InboxTipoForm>) {
+    setRows(tipos.map((t, idx) => (idx === i ? { ...t, ...patch } : t)));
+  }
+  const add = () =>
+    setRows([...tipos, { key: '', nome: '', slaHorasUteis: '24', permiteResposta: true, prioridade: 'media' }]);
+  const rm = (i: number) => setRows(tipos.filter((_, idx) => idx !== i));
+
+  async function save() {
+    setBusy(true);
+    try {
+      const limpos = tipos
+        .map((t) => ({
+          key: t.key || slug(t.nome),
+          nome: t.nome.trim(),
+          slaHorasUteis: Math.max(0, Math.round(Number(t.slaHorasUteis) || 0)),
+          permiteResposta: t.permiteResposta,
+          prioridade: t.prioridade,
+        }))
+        .filter((t) => t.key && t.nome);
+      await api.patch('/empresas/config', { inboxInterna: { tipos: limpos } });
+      toast.success('Canais internos salvos');
+      setRows(null);
+      refetch();
+    } catch (err) {
+      toast.error('Falha ao salvar', apiErrorMessage(err));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <div className="bg-surface border border-border rounded-[10px] p-6 mt-4">
+      <h2 className="mt-0 text-[16px]" style={{ color: BRAND.navy }}>
+        💬 Mensagens internas (canais)
+      </h2>
+      <p className="text-xs text-muted mt-0">
+        Canais de conversa do rep com a empresa, com SLA em horas úteis. Desmarque "responde" para
+        canais só-leitura (avisos/broadcast).
+      </p>
+      {loading ? (
+        <p className="text-sm text-muted mt-4">Carregando…</p>
+      ) : (
+        <div className="flex flex-col gap-2 mt-4 max-w-[620px]">
+          {tipos.map((t, i) => (
+            <div key={i} className="flex items-center gap-2">
+              <Input
+                value={t.nome}
+                disabled={!podeEditar}
+                onChange={(e) => setRow(i, { nome: e.target.value, key: t.key || slug(e.target.value) })}
+                placeholder="Nome do canal"
+              />
+              <Input
+                type="number"
+                min="0"
+                value={t.slaHorasUteis}
+                disabled={!podeEditar}
+                onChange={(e) => setRow(i, { slaHorasUteis: e.target.value })}
+                placeholder="SLA h"
+                className="w-[90px]"
+              />
+              <Select
+                value={t.prioridade}
+                disabled={!podeEditar}
+                onChange={(e) => setRow(i, { prioridade: e.target.value })}
+              >
+                <option value="baixa">Baixa</option>
+                <option value="media">Média</option>
+                <option value="alta">Alta</option>
+                <option value="urgente">Urgente</option>
+              </Select>
+              <label className="flex items-center gap-1 text-[11px] text-muted shrink-0">
+                <input
+                  type="checkbox"
+                  checked={t.permiteResposta}
+                  disabled={!podeEditar}
+                  onChange={(e) => setRow(i, { permiteResposta: e.target.checked })}
+                />
+                responde
+              </label>
+              {podeEditar && (
+                <button
+                  type="button"
+                  onClick={() => rm(i)}
+                  className="w-[28px] h-[34px] shrink-0 bg-surface text-danger border border-border-strong rounded-md cursor-pointer"
+                  aria-label="Remover canal"
+                >
+                  ×
+                </button>
+              )}
+            </div>
+          ))}
+          {podeEditar && (
+            <button
+              type="button"
+              onClick={add}
+              className="self-start text-[12px] text-primary bg-transparent border-none cursor-pointer px-0"
+            >
+              + Adicionar canal
+            </button>
+          )}
+          {podeEditar && (
+            <button
+              type="button"
+              data-testid="inbox-config-salvar"
+              onClick={save}
+              disabled={busy}
+              className="bg-primary text-white rounded-md py-2 px-4 text-sm font-semibold cursor-pointer border-none self-start mt-2 disabled:opacity-60"
+            >
+              {busy ? 'Salvando…' : 'Salvar canais'}
             </button>
           )}
         </div>

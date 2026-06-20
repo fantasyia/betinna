@@ -52,6 +52,7 @@ const PropostasPage = lazy(() => import('@/pages/PropostasPage'));
 const AmostrasPage = lazy(() => import('@/pages/AmostrasPage'));
 const MateriaisPage = lazy(() => import('@/pages/MateriaisPage'));
 const DevolucoesPage = lazy(() => import('@/pages/DevolucoesPage'));
+const InboxInternaPage = lazy(() => import('@/pages/InboxInternaPage'));
 const OcorrenciasPage = lazy(() => import('@/pages/OcorrenciasPage'));
 const ProdutosPage = lazy(() => import('@/pages/ProdutosPage'));
 const AgendaPage = lazy(() => import('@/pages/AgendaPage'));
@@ -563,6 +564,18 @@ const router = createBrowserRouter([
         <ProtectedRoute>
           <PageSuspense>
             <DevolucoesPage />
+          </PageSuspense>
+        </ProtectedRoute>
+      </ErrorBoundary>
+    ),
+  },
+  {
+    path: '/inbox-interna',
+    element: (
+      <ErrorBoundary>
+        <ProtectedRoute>
+          <PageSuspense>
+            <InboxInternaPage />
           </PageSuspense>
         </ProtectedRoute>
       </ErrorBoundary>
