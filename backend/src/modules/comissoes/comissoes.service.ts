@@ -13,6 +13,11 @@ import { RepScopeService } from '@shared/scope/rep-scope.service';
 import { empresaFilter, getCallerEmpresaId, isGlobalAdmin } from '@shared/utils/auth-context';
 import type { AuthenticatedUser } from '@shared/types/authenticated-user';
 import { type Paginated, buildPaginated } from '@shared/types/pagination';
+import {
+  type ComissaoBonusConfig,
+  faixaPercentual,
+  resolveComissaoBonus,
+} from './comissao-faixas.util';
 import type { FecharMesDto, ListComissoesDto, MarcarPagoDto } from './comissoes.dto';
 
 const comissaoInclude = {
@@ -177,6 +182,16 @@ export class ComissoesService {
     });
     const pctPorRep = new Map(repsConfig.map((r) => [r.id, r.comissaoPadrao ?? null]));
 
+    // Comissão escalonada por faturamento (Empresa.config.comissaoBonus).
+    // modelo 'fixa' (default) = soma do `comissao` pré-calculado por pedido (atual).
+    const empresaCfg = await this.prisma.empresa.findUnique({
+      where: { id: empresaId },
+      select: { config: true },
+    });
+    const comissaoCfg: ComissaoBonusConfig = resolveComissaoBonus(
+      (empresaCfg?.config as { comissaoBonus?: unknown } | null)?.comissaoBonus,
+    );
+
     const agora = new Date();
 
     await this.prisma.$transaction(
@@ -188,10 +203,16 @@ export class ComissoesService {
           // #17 — _sum do Pedido vem Decimal; converte pra number (entra em soma JS
           // e nos writes da Comissao — number→Decimal é coagido pelo Prisma).
           const totalVendas = Number(row._sum.total ?? 0);
-          const totalComissao = Number(row._sum.comissao ?? 0);
+          // Escalonada: comissão = faturamento × % da faixa; snapshot do % usado.
+          // Fixa (default): soma do `comissao` pré-calculado em cada pedido.
+          const escalonada = comissaoCfg.modelo === 'escalonada_por_faturamento';
+          const pctFaixa = escalonada ? faixaPercentual(comissaoCfg.faixas, totalVendas) : null;
+          const totalComissao = escalonada
+            ? Math.round(totalVendas * ((pctFaixa ?? 0) / 100) * 100) / 100
+            : Number(row._sum.comissao ?? 0);
           totalVendasAgg += totalVendas;
           totalComissaoAgg += totalComissao;
-          const pctRep = pctPorRep.get(row.representanteId) ?? null;
+          const pctRep = escalonada ? pctFaixa : (pctPorRep.get(row.representanteId) ?? null);
           return this.prisma.comissao.upsert({
             where: {
               empresaId_representanteId_ano_mes: {

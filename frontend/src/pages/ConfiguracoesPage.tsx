@@ -224,6 +224,7 @@ export default function ConfiguracoesPage() {
           <LifecycleConfig />
           <PedidoMinimoConfig />
           <AmostrasConfig />
+          <ComissaoConfig />
         </>
       )}
       {tab === 'empresas' && (
@@ -756,6 +757,171 @@ function AmostrasConfig() {
               className="bg-primary text-white rounded-md py-2 px-4 text-sm font-semibold cursor-pointer border-none self-start mt-2 disabled:opacity-60"
             >
               {busy ? 'Salvando…' : 'Salvar amostras'}
+            </button>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+/** Comissão escalonada por faturamento — 4º consumidor (no-code). */
+interface FaixaForm {
+  de: string;
+  ate: string;
+  percentual: string;
+}
+
+function ComissaoConfig() {
+  const toast = useToast();
+  const podeEditar = usePermission('configuracoes.empresa');
+  const { data: cfg, loading, refetch } = useApiQuery<Record<string, unknown>>('/empresas/config');
+  const [modelo, setModelo] = useState<string | null>(null);
+  const [faixas, setFaixas] = useState<FaixaForm[] | null>(null);
+  const [busy, setBusy] = useState(false);
+
+  const base = useMemo(() => {
+    const r = (cfg?.comissaoBonus ?? {}) as {
+      modelo?: string;
+      faixas?: Array<{ de?: number; ate?: number | null; percentual?: number }>;
+    };
+    return {
+      modelo: r.modelo ?? 'fixa',
+      faixas: (r.faixas ?? []).map((f) => ({
+        de: f.de != null ? String(f.de) : '',
+        ate: f.ate != null ? String(f.ate) : '',
+        percentual: f.percentual != null ? String(f.percentual) : '',
+      })),
+    };
+  }, [cfg]);
+  const modeloForm = modelo ?? base.modelo;
+  const faixasForm = faixas ?? base.faixas;
+
+  function setFaixa(i: number, k: keyof FaixaForm, v: string) {
+    setFaixas(faixasForm.map((f, idx) => (idx === i ? { ...f, [k]: v } : f)));
+  }
+  const addFaixa = () => setFaixas([...faixasForm, { de: '', ate: '', percentual: '' }]);
+  const rmFaixa = (i: number) => setFaixas(faixasForm.filter((_, idx) => idx !== i));
+
+  async function save() {
+    setBusy(true);
+    try {
+      const num = (s: string) => {
+        const n = Number(s.replace(',', '.'));
+        return s.trim() !== '' && Number.isFinite(n) ? n : null;
+      };
+      const payload: Record<string, unknown> = { modelo: modeloForm };
+      if (modeloForm === 'escalonada_por_faturamento') {
+        payload.faixas = faixasForm
+          .map((f) => ({ de: num(f.de) ?? 0, ate: num(f.ate), percentual: num(f.percentual) ?? 0 }))
+          .filter((f) => f.percentual >= 0);
+      } else {
+        payload.faixas = [];
+      }
+      await api.patch('/empresas/config', { comissaoBonus: payload });
+      toast.success('Comissão salva');
+      setModelo(null);
+      setFaixas(null);
+      refetch();
+    } catch (err) {
+      toast.error('Falha ao salvar', apiErrorMessage(err));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <div className="bg-surface border border-border rounded-[10px] p-6 mt-4">
+      <h2 className="mt-0 text-[16px]" style={{ color: BRAND.navy }}>
+        💰 Comissão
+      </h2>
+      <p className="text-xs text-muted mt-0">
+        Modelo de comissão do rep. <strong>Fixa</strong> = soma da comissão calculada por pedido (atual).{' '}
+        <strong>Escalonada</strong> = faturamento mensal do rep × % da faixa. Aplica no fechamento do mês.
+      </p>
+      {loading ? (
+        <p className="text-sm text-muted mt-4">Carregando…</p>
+      ) : (
+        <div className="flex flex-col gap-3 mt-4 max-w-[560px]">
+          <label className="flex flex-col gap-1 text-xs text-muted">
+            Modelo
+            <Select
+              value={modeloForm}
+              disabled={!podeEditar}
+              onChange={(e) => setModelo(e.target.value)}
+            >
+              <option value="fixa">Fixa (por pedido)</option>
+              <option value="escalonada_por_faturamento">Escalonada por faturamento</option>
+            </Select>
+          </label>
+
+          {modeloForm === 'escalonada_por_faturamento' && (
+            <div className="flex flex-col gap-2">
+              <div className="flex gap-2 text-[11px] text-muted">
+                <span className="flex-1">De (R$)</span>
+                <span className="flex-1">Até (R$, vazio = aberto)</span>
+                <span className="w-[90px]">% comissão</span>
+                <span className="w-[28px]" />
+              </div>
+              {faixasForm.map((f, i) => (
+                <div key={i} className="flex gap-2 items-center">
+                  <Input
+                    type="number"
+                    min="0"
+                    value={f.de}
+                    disabled={!podeEditar}
+                    onChange={(e) => setFaixa(i, 'de', e.target.value)}
+                  />
+                  <Input
+                    type="number"
+                    min="0"
+                    value={f.ate}
+                    disabled={!podeEditar}
+                    onChange={(e) => setFaixa(i, 'ate', e.target.value)}
+                    placeholder="∞"
+                  />
+                  <Input
+                    type="number"
+                    min="0"
+                    max="100"
+                    step="0.1"
+                    value={f.percentual}
+                    disabled={!podeEditar}
+                    onChange={(e) => setFaixa(i, 'percentual', e.target.value)}
+                  />
+                  {podeEditar && (
+                    <button
+                      type="button"
+                      onClick={() => rmFaixa(i)}
+                      className="w-[28px] h-[34px] shrink-0 bg-surface text-danger border border-border-strong rounded-md cursor-pointer"
+                      aria-label="Remover faixa"
+                    >
+                      ×
+                    </button>
+                  )}
+                </div>
+              ))}
+              {podeEditar && (
+                <button
+                  type="button"
+                  onClick={addFaixa}
+                  className="self-start text-[12px] text-primary bg-transparent border-none cursor-pointer px-0"
+                >
+                  + Adicionar faixa
+                </button>
+              )}
+            </div>
+          )}
+
+          {podeEditar && (
+            <button
+              type="button"
+              data-testid="comissao-config-salvar"
+              onClick={save}
+              disabled={busy}
+              className="bg-primary text-white rounded-md py-2 px-4 text-sm font-semibold cursor-pointer border-none self-start mt-2 disabled:opacity-60"
+            >
+              {busy ? 'Salvando…' : 'Salvar comissão'}
             </button>
           )}
         </div>

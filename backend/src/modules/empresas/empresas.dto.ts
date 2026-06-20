@@ -90,11 +90,31 @@ const amostraModosSchema = z
   })
   .optional();
 
+/**
+ * Comissão escalonada por faturamento (4º consumidor). modelo 'fixa' = atual
+ * (soma do comissao por pedido); 'escalonada_por_faturamento' = faturamento × % da faixa.
+ */
+const comissaoBonusSchema = z
+  .object({
+    modelo: z.enum(['fixa', 'escalonada_por_faturamento']),
+    faixas: z
+      .array(
+        z.object({
+          de: z.number().nonnegative(),
+          ate: z.number().nonnegative().nullable(),
+          percentual: z.number().min(0).max(100),
+        }),
+      )
+      .optional(),
+  })
+  .optional();
+
 export const tenantConfigPatchSchema = z
   .object({
     pedidoStatusLabels: z.record(z.string(), pedidoStatusMetaSchema).optional(),
     pedidoMinimo: pedidoMinimoSchema,
     amostraModos: amostraModosSchema,
+    comissaoBonus: comissaoBonusSchema,
   })
   .passthrough();
 export type TenantConfigPatchDto = z.infer<typeof tenantConfigPatchSchema>;

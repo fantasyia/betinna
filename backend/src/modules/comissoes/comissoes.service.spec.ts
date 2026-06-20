@@ -16,6 +16,7 @@ const makePrismaMock = () => ({
   },
   pedido: { groupBy: vi.fn() },
   usuario: { findMany: vi.fn() },
+  empresa: { findUnique: vi.fn(async () => ({ config: null })) },
   $transaction: vi.fn(async (ops: unknown[]) => {
     // Cada item é uma Promise dos `prisma.comissao.upsert(...)` retornadas
     return Promise.all(ops as Promise<unknown>[]);
@@ -109,6 +110,38 @@ describe('ComissoesService', () => {
         qtdPedidos: 4,
         percentual: 5, // AUDITORIA P0-2: snapshot do comissaoPadrao
       });
+    });
+
+    it('escalonada por faturamento: comissão = vendas × % da faixa (não a soma por pedido)', async () => {
+      prisma.pedido.groupBy.mockResolvedValue([
+        {
+          representanteId: 'rep-1',
+          _sum: { total: 30_000, comissao: 999 }, // comissao por pedido é ignorado na escalonada
+          _count: { _all: 6 },
+        },
+      ]);
+      prisma.usuario.findMany
+        .mockResolvedValueOnce([{ id: 'rep-1', comissaoPadrao: 5 }])
+        .mockResolvedValueOnce([{ id: 'rep-1', gerenteId: null }]);
+      prisma.empresa.findUnique.mockResolvedValue({
+        config: {
+          comissaoBonus: {
+            modelo: 'escalonada_por_faturamento',
+            faixas: [
+              { de: 0, ate: 10000, percentual: 3 },
+              { de: 10000.01, ate: 50000, percentual: 5 },
+              { de: 50000.01, ate: null, percentual: 7 },
+            ],
+          },
+        },
+      });
+
+      const out = await svc.fecharMes(fakeUser(), { mes: 4, ano: 2026, reprocessar: false });
+
+      // 30.000 cai na faixa 5% → 1.500 (não 999 da soma por pedido)
+      expect(out.totalComissao).toBe(1_500);
+      const upsertCall = prisma.comissao.upsert.mock.calls[0][0];
+      expect(upsertCall.create).toMatchObject({ totalComissao: 1_500, percentual: 5 });
     });
 
     it('calcula comissão do GERENTE somando vendas dos reps × comissaoPadrao', async () => {
