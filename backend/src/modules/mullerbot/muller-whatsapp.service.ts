@@ -469,9 +469,9 @@ export class MullerWhatsappService implements OnModuleInit {
       //    fonte única, sem divergência entre bot geral e fluxo. O "digitando…" usa
       //    `void` (no Evolution a chamada bloqueia pelo delay; roda em paralelo ao sleep).
       const tel = params.peerTelefone ?? params.peerId;
-      // Pacing global: mesmo respondendo fora de fluxo, espaça das demais respostas
+      // Pacing global (faixa REATIVA — cliente escreveu): espaça das demais respostas
       // da empresa (nunca todas ao mesmo tempo se muitos clientes escrevem juntos).
-      await this.pacing.aguardarSlot(params.empresaId);
+      await this.pacing.aguardarSlot(params.empresaId, true);
       const baloesFinais = await enviarEmBaloes(resposta.texto, cfgBot, {
         enviar: (balao) => this.inbox.responderComoBot(convId, balao),
         digitando: (ms) =>

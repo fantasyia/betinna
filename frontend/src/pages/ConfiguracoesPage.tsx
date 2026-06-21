@@ -1417,6 +1417,7 @@ function InboxInternaConfig() {
 /** Pacing de envio de WhatsApp (anti-rajada / humano) — 8º consumidor (no-code). */
 interface EnvioWaForm {
   maxPorMinuto: string;
+  maxPorMinutoReativo: string;
   jitterMinSeg: string;
   jitterMaxSeg: string;
 }
@@ -1431,13 +1432,15 @@ function EnvioWhatsappConfig() {
   const base: EnvioWaForm = useMemo(() => {
     const r = (cfg?.envioWhatsapp ?? {}) as {
       maxPorMinuto?: number;
+      maxPorMinutoReativo?: number;
       jitterMinSeg?: number;
       jitterMaxSeg?: number;
     };
     return {
-      maxPorMinuto: String(r.maxPorMinuto ?? 15),
+      maxPorMinuto: String(r.maxPorMinuto ?? 12),
+      maxPorMinutoReativo: String(r.maxPorMinutoReativo ?? 30),
       jitterMinSeg: String(r.jitterMinSeg ?? 1),
-      jitterMaxSeg: String(r.jitterMaxSeg ?? 5),
+      jitterMaxSeg: String(r.jitterMaxSeg ?? 4),
     };
   }, [cfg]);
   const form = edit ?? base;
@@ -1450,11 +1453,12 @@ function EnvioWhatsappConfig() {
         const v = Math.round(Number(s));
         return Number.isFinite(v) && v >= 0 ? v : d;
       };
-      const maxPorMinuto = Math.max(1, n(form.maxPorMinuto, 15));
+      const maxPorMinuto = Math.max(1, n(form.maxPorMinuto, 12));
+      const maxPorMinutoReativo = Math.max(1, n(form.maxPorMinutoReativo, 30));
       const jitterMinSeg = n(form.jitterMinSeg, 1);
-      const jitterMaxSeg = Math.max(jitterMinSeg, n(form.jitterMaxSeg, 5));
+      const jitterMaxSeg = Math.max(jitterMinSeg, n(form.jitterMaxSeg, 4));
       await api.patch('/empresas/config', {
-        envioWhatsapp: { maxPorMinuto, jitterMinSeg, jitterMaxSeg },
+        envioWhatsapp: { maxPorMinuto, maxPorMinutoReativo, jitterMinSeg, jitterMaxSeg },
       });
       toast.success('Ritmo de envio salvo');
       setEdit(null);
@@ -1466,8 +1470,8 @@ function EnvioWhatsappConfig() {
     }
   }
 
-  const porMin = Math.max(1, Math.round(Number(form.maxPorMinuto) || 15));
-  const intervalo = Math.ceil(60 / porMin);
+  const intervalo = (s: string, d: number) =>
+    Math.ceil(60 / Math.max(1, Math.round(Number(s) || d)));
 
   return (
     <div className="bg-surface border border-border rounded-[10px] p-6 mt-4">
@@ -1482,17 +1486,30 @@ function EnvioWhatsappConfig() {
         <p className="text-sm text-muted mt-4">Carregando…</p>
       ) : (
         <div className="flex flex-col gap-3 mt-4 max-w-[480px]">
-          <label className="flex flex-col gap-1 text-xs text-muted">
-            Máximo por minuto (aprox.)
-            <Input
-              type="number"
-              min="1"
-              max="600"
-              value={form.maxPorMinuto}
-              disabled={!podeEditar}
-              onChange={(e) => set('maxPorMinuto', e.target.value)}
-            />
-          </label>
+          <div className="flex gap-2">
+            <label className="flex flex-col gap-1 text-xs text-muted flex-1">
+              Proativo — máx/min (abordagem, campanha)
+              <Input
+                type="number"
+                min="1"
+                max="600"
+                value={form.maxPorMinuto}
+                disabled={!podeEditar}
+                onChange={(e) => set('maxPorMinuto', e.target.value)}
+              />
+            </label>
+            <label className="flex flex-col gap-1 text-xs text-muted flex-1">
+              Reativo — máx/min (resposta a quem escreveu)
+              <Input
+                type="number"
+                min="1"
+                max="600"
+                value={form.maxPorMinutoReativo}
+                disabled={!podeEditar}
+                onChange={(e) => set('maxPorMinutoReativo', e.target.value)}
+              />
+            </label>
+          </div>
           <div className="flex gap-2">
             <label className="flex flex-col gap-1 text-xs text-muted flex-1">
               Variação mínima (s)
@@ -1516,8 +1533,9 @@ function EnvioWhatsappConfig() {
             </label>
           </div>
           <p className="text-[11px] text-muted m-0">
-            ≈ 1 mensagem a cada {intervalo}s + {form.jitterMinSeg}–{form.jitterMaxSeg}s de variação
-            aleatória entre cada envio.
+            Proativo ≈ 1 a cada {intervalo(form.maxPorMinuto, 12)}s · Reativo ≈ 1 a cada{' '}
+            {intervalo(form.maxPorMinutoReativo, 30)}s — ambos + {form.jitterMinSeg}–
+            {form.jitterMaxSeg}s de variação aleatória.
           </p>
 
           {podeEditar && (

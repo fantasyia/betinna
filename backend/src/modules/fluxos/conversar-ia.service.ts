@@ -423,6 +423,7 @@ export class ConversarIaService {
         empresaId,
         lead.contatoTelefone,
         'Só um instante, já te respondo. 🙏',
+        true, // reativo
       );
       return; // teto de tokens do prompt atingido — não roda a IA agora
     }
@@ -446,7 +447,7 @@ export class ConversarIaService {
 
     const respostaTexto = personalizarNome(turno.resposta, lead.contatoNome);
     try {
-      await this.enviarWhatsapp(empresaId, lead.contatoTelefone, respostaTexto);
+      await this.enviarWhatsapp(empresaId, lead.contatoTelefone, respostaTexto, true);
     } catch (err) {
       await this.rotearParaErro(execucaoId, no.id, ctx, 'whatsapp_falha', err);
       return;
@@ -665,10 +666,16 @@ export class ConversarIaService {
    * "digitando…" e pausa entre elas — mesma lógica do bot do inbox. A IA separa
    * com "|||" (ou parágrafo); o split acontece aqui no envio.
    */
-  private async enviarWhatsapp(empresaId: string, telefone: string, texto: string): Promise<void> {
+  private async enviarWhatsapp(
+    empresaId: string,
+    telefone: string,
+    texto: string,
+    reativo = false,
+  ): Promise<void> {
     if (!texto.trim()) return;
     // Pacing global: espaça este envio dos demais da empresa (nunca tudo de uma vez).
-    await this.pacing.aguardarSlot(empresaId);
+    // `reativo` = resposta a quem escreveu (faixa rápida); opener = proativo (lento).
+    await this.pacing.aguardarSlot(empresaId, reativo);
     // Preserva o '+' (E.164) pra o provider distinguir internacional de nacional —
     // senão número estrangeiro de 10/11 dígitos ganharia 55 indevidamente.
     const peerId = `${telefone.replace(/[^\d+]/g, '')}@s.whatsapp.net`;

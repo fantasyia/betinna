@@ -1,21 +1,32 @@
 import { describe, expect, it } from 'vitest';
 import {
   ENVIO_WHATSAPP_DEFAULT,
+  type EnvioWhatsappConfig,
   incrementoMs,
   intervaloBaseMs,
   jitterMs,
   resolveEnvioWhatsapp,
 } from './whatsapp-pacing.util';
 
+const cfg = (over: Partial<EnvioWhatsappConfig> = {}): EnvioWhatsappConfig => ({
+  maxPorMinuto: 12,
+  maxPorMinutoReativo: 30,
+  jitterMinSeg: 1,
+  jitterMaxSeg: 4,
+  ...over,
+});
+
 describe('resolveEnvioWhatsapp', () => {
   it('sem config → defaults', () => {
     expect(resolveEnvioWhatsapp(undefined)).toEqual(ENVIO_WHATSAPP_DEFAULT);
   });
 
-  it('saneia maxPorMinuto inválido/zero', () => {
-    expect(resolveEnvioWhatsapp({ maxPorMinuto: 0 }).maxPorMinuto).toBe(15);
-    expect(resolveEnvioWhatsapp({ maxPorMinuto: -3 }).maxPorMinuto).toBe(15);
+  it('saneia maxPorMinuto/reativo inválido ou fora do range', () => {
+    expect(resolveEnvioWhatsapp({ maxPorMinuto: 0 }).maxPorMinuto).toBe(12);
+    expect(resolveEnvioWhatsapp({ maxPorMinuto: -3 }).maxPorMinuto).toBe(12);
     expect(resolveEnvioWhatsapp({ maxPorMinuto: 9999 }).maxPorMinuto).toBe(600); // cap
+    expect(resolveEnvioWhatsapp({ maxPorMinutoReativo: 0 }).maxPorMinutoReativo).toBe(30);
+    expect(resolveEnvioWhatsapp({ maxPorMinutoReativo: 50 }).maxPorMinutoReativo).toBe(50);
   });
 
   it('garante jitterMax >= jitterMin', () => {
@@ -26,24 +37,20 @@ describe('resolveEnvioWhatsapp', () => {
 });
 
 describe('intervaloBaseMs', () => {
-  it('15/min → 4000ms', () => {
-    expect(intervaloBaseMs({ maxPorMinuto: 15, jitterMinSeg: 0, jitterMaxSeg: 0 })).toBe(4000);
-  });
-  it('60/min → 1000ms', () => {
-    expect(intervaloBaseMs({ maxPorMinuto: 60, jitterMinSeg: 0, jitterMaxSeg: 0 })).toBe(1000);
+  it('12/min → 5000ms; 30/min → 2000ms; 60/min → 1000ms', () => {
+    expect(intervaloBaseMs(12)).toBe(5000);
+    expect(intervaloBaseMs(30)).toBe(2000);
+    expect(intervaloBaseMs(60)).toBe(1000);
   });
 });
 
 describe('jitterMs', () => {
-  const cfg = { maxPorMinuto: 15, jitterMinSeg: 1, jitterMaxSeg: 5 };
-  it('rnd=0 → mínimo; rnd→1 → máximo', () => {
-    expect(jitterMs(cfg, 0)).toBe(1000);
-    expect(jitterMs(cfg, 0.9999)).toBeGreaterThan(4900);
-    expect(jitterMs(cfg, 0.9999)).toBeLessThanOrEqual(5000);
-  });
-  it('sempre dentro de [min,max]', () => {
+  it('rnd=0 → mínimo; rnd→1 → máximo; sempre dentro de [min,max]', () => {
+    const c = cfg({ jitterMinSeg: 1, jitterMaxSeg: 5 });
+    expect(jitterMs(c, 0)).toBe(1000);
+    expect(jitterMs(c, 0.9999)).toBeLessThanOrEqual(5000);
     for (const rnd of [0, 0.25, 0.5, 0.75, 0.99]) {
-      const j = jitterMs(cfg, rnd);
+      const j = jitterMs(c, rnd);
       expect(j).toBeGreaterThanOrEqual(1000);
       expect(j).toBeLessThanOrEqual(5000);
     }
@@ -51,8 +58,9 @@ describe('jitterMs', () => {
 });
 
 describe('incrementoMs', () => {
-  it('base + jitter', () => {
-    const cfg = { maxPorMinuto: 15, jitterMinSeg: 1, jitterMaxSeg: 1 };
-    expect(incrementoMs(cfg, 0.5)).toBe(4000 + 1000);
+  it('proativo usa maxPorMinuto; reativo usa maxPorMinutoReativo', () => {
+    const c = cfg({ maxPorMinuto: 12, maxPorMinutoReativo: 30, jitterMinSeg: 1, jitterMaxSeg: 1 });
+    expect(incrementoMs(c, 0.5, false)).toBe(5000 + 1000); // proativo: base 5s
+    expect(incrementoMs(c, 0.5, true)).toBe(2000 + 1000); // reativo: base 2s
   });
 });

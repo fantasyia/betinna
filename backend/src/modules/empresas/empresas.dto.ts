@@ -163,6 +163,7 @@ const inboxInternaSchema = z
 const envioWhatsappSchema = z
   .object({
     maxPorMinuto: z.number().int().positive().max(600),
+    maxPorMinutoReativo: z.number().int().positive().max(600),
     jitterMinSeg: z.number().nonnegative().max(120),
     jitterMaxSeg: z.number().nonnegative().max(120),
   })

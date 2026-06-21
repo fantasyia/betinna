@@ -56,21 +56,24 @@ return slot`;
 
   /**
    * Bloqueia até o próximo slot de envio da empresa. Chamar UMA vez por operação
-   * de envio (por destinatário/resposta) — não por balão. Degrada gracioso: se o
-   * Redis estiver fora, não trava o envio (apenas perde o espaçamento).
+   * de envio (por destinatário/resposta) — não por balão. `reativo=true` usa a
+   * faixa rápida (resposta a quem escreveu); proativo (abordagem/campanha) usa a
+   * faixa conservadora. As faixas têm cursores separados (não competem entre si).
+   * Degrada gracioso: se o Redis estiver fora, não trava o envio (perde espaçamento).
    */
-  async aguardarSlot(empresaId: string): Promise<void> {
+  async aguardarSlot(empresaId: string, reativo = false): Promise<void> {
     if (!empresaId) return;
     const cfg = await this.lerConfig(empresaId);
-    const incremento = incrementoMs(cfg, Math.random());
+    const incremento = incrementoMs(cfg, Math.random(), reativo);
     const now = Date.now();
     const ttl = Math.max(60_000, incremento * 4);
+    const key = reativo ? `wa:pace:r:${empresaId}` : `wa:pace:${empresaId}`;
 
     let slot = now;
     try {
       const r = await this.redis.eval(
         WhatsappPacingService.RESERVA_LUA,
-        [`wa:pace:${empresaId}`],
+        [key],
         [now, incremento, ttl],
       );
       slot = typeof r === 'number' ? r : Number(r) || now;
