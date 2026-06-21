@@ -6,6 +6,7 @@ import { PrismaService } from '@database/prisma.service';
 import { EnvService } from '@config/env.service';
 import { HttpClientService } from '@shared/http/http-client.service';
 import { WhatsAppService } from '@integrations/whatsapp/whatsapp.service';
+import { WhatsappPacingService } from '@shared/whatsapp-pacing/whatsapp-pacing.service';
 import { TransactionalEmailService } from '@integrations/email/transactional-email.service';
 import { Prisma } from '@prisma/client';
 import { safeRequest, SsrfBlockedError } from '@shared/utils/safe-request';
@@ -152,6 +153,7 @@ export class FluxoExecutorService {
     private readonly emailSvc: TransactionalEmailService,
     private readonly conversarIa: ConversarIaService,
     private readonly bus: FluxoEventBusService,
+    private readonly pacing: WhatsappPacingService,
     @InjectQueue(FLUXO_QUEUE) private readonly queue: Queue<FluxoStepJobData>,
   ) {}
 
@@ -561,6 +563,8 @@ export class FluxoExecutorService {
     empresaId: string,
   ): Promise<Record<string, unknown>> {
     this.assertEmpresaId(empresaId, 'ENVIAR_WHATSAPP');
+    // Pacing global: espaça este envio dos demais da empresa (anti-rajada).
+    await this.pacing.aguardarSlot(empresaId);
     const mensagem = interpolate(cfg.mensagem, ctx);
     const modo = cfg.destinatarioModo ?? 'lead';
 

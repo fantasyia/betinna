@@ -163,6 +163,7 @@ describe('FluxoExecutorService', () => {
       emailSvc as never,
       conversarIa as never,
       bus as never,
+      { aguardarSlot: vi.fn() } as never,
       queue as never,
     );
   });

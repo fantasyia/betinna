@@ -159,6 +159,16 @@ const inboxInternaSchema = z
   })
   .optional();
 
+/** Pacing global de envio de WhatsApp (anti-rajada / humano) — 8º consumidor. */
+const envioWhatsappSchema = z
+  .object({
+    maxPorMinuto: z.number().int().positive().max(600),
+    jitterMinSeg: z.number().nonnegative().max(120),
+    jitterMaxSeg: z.number().nonnegative().max(120),
+  })
+  .partial()
+  .optional();
+
 export const tenantConfigPatchSchema = z
   .object({
     pedidoStatusLabels: z.record(z.string(), pedidoStatusMetaSchema).optional(),
@@ -168,6 +178,7 @@ export const tenantConfigPatchSchema = z
     materiaisVenda: materiaisTiposSchema,
     devolucaoInterna: devolucaoInternaSchema,
     inboxInterna: inboxInternaSchema,
+    envioWhatsapp: envioWhatsappSchema,
   })
   .passthrough();
 export type TenantConfigPatchDto = z.infer<typeof tenantConfigPatchSchema>;

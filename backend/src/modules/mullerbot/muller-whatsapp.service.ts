@@ -6,6 +6,7 @@ import { EnvService } from '@config/env.service';
 import { InboxService } from '@modules/inbox/inbox.service';
 import type { MensagemEntranteParams } from '@modules/inbox/inbox.types';
 import { WhatsAppService } from '@integrations/whatsapp/whatsapp.service';
+import { WhatsappPacingService } from '@shared/whatsapp-pacing/whatsapp-pacing.service';
 import { MullerBotService } from './mullerbot.service';
 import { MullerBotPersonaService } from './persona.service';
 import type { HistoricoMsg } from './mullerbot-cache.service';
@@ -239,6 +240,7 @@ export class MullerWhatsappService implements OnModuleInit {
     private readonly persona: MullerBotPersonaService,
     private readonly whatsapp: WhatsAppService,
     private readonly redis: RedisService,
+    private readonly pacing: WhatsappPacingService,
   ) {}
 
   onModuleInit(): void {
@@ -467,6 +469,9 @@ export class MullerWhatsappService implements OnModuleInit {
       //    fonte única, sem divergência entre bot geral e fluxo. O "digitando…" usa
       //    `void` (no Evolution a chamada bloqueia pelo delay; roda em paralelo ao sleep).
       const tel = params.peerTelefone ?? params.peerId;
+      // Pacing global: mesmo respondendo fora de fluxo, espaça das demais respostas
+      // da empresa (nunca todas ao mesmo tempo se muitos clientes escrevem juntos).
+      await this.pacing.aguardarSlot(params.empresaId);
       const baloesFinais = await enviarEmBaloes(resposta.texto, cfgBot, {
         enviar: (balao) => this.inbox.responderComoBot(convId, balao),
         digitando: (ms) =>

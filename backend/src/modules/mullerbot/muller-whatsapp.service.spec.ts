@@ -133,6 +133,7 @@ function build(
     persona as never,
     whatsapp as never,
     redis as never,
+    { aguardarSlot: vi.fn() } as never,
   );
 }
 

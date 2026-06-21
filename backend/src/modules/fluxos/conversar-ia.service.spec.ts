@@ -93,6 +93,7 @@ describe('ConversarIaService', () => {
       muller as never,
       whatsapp as never,
       bus as never,
+      { aguardarSlot: vi.fn() } as never,
       queue as never,
     );
   });

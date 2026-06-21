@@ -50,6 +50,7 @@ import { ComissoesModule } from '@modules/comissoes/comissoes.module';
 import { MateriaisModule } from '@modules/materiais/materiais.module';
 import { DevolucoesModule } from '@modules/devolucoes/devolucoes.module';
 import { InboxInternaModule } from '@modules/inbox-interna/inbox-interna.module';
+import { WhatsappPacingModule } from '@shared/whatsapp-pacing/whatsapp-pacing.module';
 import { EmpresasModule } from '@modules/empresas/empresas.module';
 import { HealthModule } from '@modules/health/health.module';
 import { IntegracoesModule } from '@modules/integracoes/integracoes.module';
@@ -189,6 +190,7 @@ import { SharedUtilsModule } from '@shared/utils/shared-utils.module';
     PedidosModule,
     PropostasModule,
     ComissoesModule,
+    WhatsappPacingModule,
     MateriaisModule,
     DevolucoesModule,
     InboxInternaModule,

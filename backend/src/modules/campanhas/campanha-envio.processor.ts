@@ -7,6 +7,7 @@ import { WhatsAppService } from '@integrations/whatsapp/whatsapp.service';
 import { DeadLetterService } from '@modules/dead-letter/dead-letter.service';
 import { IdempotencyService } from '@shared/utils/idempotency.service';
 import { interpolate } from '@shared/utils/interpolate';
+import { WhatsappPacingService } from '@shared/whatsapp-pacing/whatsapp-pacing.service';
 import { CampanhaIaService } from './campanha-ia.service';
 import { CAMPANHA_ENVIO_QUEUE, type CampanhaEnvioJobData } from './campanha-envio.types';
 import { CampanhasService } from './campanhas.service';
@@ -32,6 +33,7 @@ export class CampanhaEnvioProcessor extends WorkerHost {
     private readonly campanhaIa: CampanhaIaService,
     private readonly idempotency: IdempotencyService,
     private readonly deadLetter: DeadLetterService,
+    private readonly pacing: WhatsappPacingService,
   ) {
     super();
   }
@@ -158,6 +160,8 @@ export class CampanhaEnvioProcessor extends WorkerHost {
           const idemKey = `idempotent:campanha:${campanhaId}:${destinatarioId}:wa`;
           if (await this.idempotency.claim(idemKey, 86_400)) {
             try {
+              // Pacing global por empresa (mesmo ponto único de fluxos/bot).
+              await this.pacing.aguardarSlot(dest.campanha.empresaId);
               const r = await this.whatsapp.enviarTexto(
                 dest.campanha.empresaId,
                 dest.telefone,

@@ -228,6 +228,7 @@ export default function ConfiguracoesPage() {
           <MateriaisTiposConfig />
           <DevolucaoConfig />
           <InboxInternaConfig />
+          <EnvioWhatsappConfig />
         </>
       )}
       {tab === 'empresas' && (
@@ -1405,6 +1406,129 @@ function InboxInternaConfig() {
               className="bg-primary text-white rounded-md py-2 px-4 text-sm font-semibold cursor-pointer border-none self-start mt-2 disabled:opacity-60"
             >
               {busy ? 'Salvando…' : 'Salvar canais'}
+            </button>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+/** Pacing de envio de WhatsApp (anti-rajada / humano) — 8º consumidor (no-code). */
+interface EnvioWaForm {
+  maxPorMinuto: string;
+  jitterMinSeg: string;
+  jitterMaxSeg: string;
+}
+
+function EnvioWhatsappConfig() {
+  const toast = useToast();
+  const podeEditar = usePermission('configuracoes.empresa');
+  const { data: cfg, loading, refetch } = useApiQuery<Record<string, unknown>>('/empresas/config');
+  const [edit, setEdit] = useState<EnvioWaForm | null>(null);
+  const [busy, setBusy] = useState(false);
+
+  const base: EnvioWaForm = useMemo(() => {
+    const r = (cfg?.envioWhatsapp ?? {}) as {
+      maxPorMinuto?: number;
+      jitterMinSeg?: number;
+      jitterMaxSeg?: number;
+    };
+    return {
+      maxPorMinuto: String(r.maxPorMinuto ?? 15),
+      jitterMinSeg: String(r.jitterMinSeg ?? 1),
+      jitterMaxSeg: String(r.jitterMaxSeg ?? 5),
+    };
+  }, [cfg]);
+  const form = edit ?? base;
+  const set = (k: keyof EnvioWaForm, v: string) => setEdit({ ...form, [k]: v });
+
+  async function save() {
+    setBusy(true);
+    try {
+      const n = (s: string, d: number) => {
+        const v = Math.round(Number(s));
+        return Number.isFinite(v) && v >= 0 ? v : d;
+      };
+      const maxPorMinuto = Math.max(1, n(form.maxPorMinuto, 15));
+      const jitterMinSeg = n(form.jitterMinSeg, 1);
+      const jitterMaxSeg = Math.max(jitterMinSeg, n(form.jitterMaxSeg, 5));
+      await api.patch('/empresas/config', {
+        envioWhatsapp: { maxPorMinuto, jitterMinSeg, jitterMaxSeg },
+      });
+      toast.success('Ritmo de envio salvo');
+      setEdit(null);
+      refetch();
+    } catch (err) {
+      toast.error('Falha ao salvar', apiErrorMessage(err));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  const porMin = Math.max(1, Math.round(Number(form.maxPorMinuto) || 15));
+  const intervalo = Math.ceil(60 / porMin);
+
+  return (
+    <div className="bg-surface border border-border rounded-[10px] p-6 mt-4">
+      <h2 className="mt-0 text-[16px]" style={{ color: BRAND.navy }}>
+        🐢 Ritmo de envio (WhatsApp)
+      </h2>
+      <p className="text-xs text-muted mt-0">
+        Espaça TODA mensagem do WhatsApp (fluxos, campanhas e respostas do bot) pra nunca disparar
+        tudo de uma vez — parece humano e protege o número. Vale por empresa.
+      </p>
+      {loading ? (
+        <p className="text-sm text-muted mt-4">Carregando…</p>
+      ) : (
+        <div className="flex flex-col gap-3 mt-4 max-w-[480px]">
+          <label className="flex flex-col gap-1 text-xs text-muted">
+            Máximo por minuto (aprox.)
+            <Input
+              type="number"
+              min="1"
+              max="600"
+              value={form.maxPorMinuto}
+              disabled={!podeEditar}
+              onChange={(e) => set('maxPorMinuto', e.target.value)}
+            />
+          </label>
+          <div className="flex gap-2">
+            <label className="flex flex-col gap-1 text-xs text-muted flex-1">
+              Variação mínima (s)
+              <Input
+                type="number"
+                min="0"
+                value={form.jitterMinSeg}
+                disabled={!podeEditar}
+                onChange={(e) => set('jitterMinSeg', e.target.value)}
+              />
+            </label>
+            <label className="flex flex-col gap-1 text-xs text-muted flex-1">
+              Variação máxima (s)
+              <Input
+                type="number"
+                min="0"
+                value={form.jitterMaxSeg}
+                disabled={!podeEditar}
+                onChange={(e) => set('jitterMaxSeg', e.target.value)}
+              />
+            </label>
+          </div>
+          <p className="text-[11px] text-muted m-0">
+            ≈ 1 mensagem a cada {intervalo}s + {form.jitterMinSeg}–{form.jitterMaxSeg}s de variação
+            aleatória entre cada envio.
+          </p>
+
+          {podeEditar && (
+            <button
+              type="button"
+              data-testid="envio-wa-salvar"
+              onClick={save}
+              disabled={busy}
+              className="bg-primary text-white rounded-md py-2 px-4 text-sm font-semibold cursor-pointer border-none self-start mt-2 disabled:opacity-60"
+            >
+              {busy ? 'Salvando…' : 'Salvar ritmo'}
             </button>
           )}
         </div>

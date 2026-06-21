@@ -14,6 +14,7 @@ import {
 } from '@modules/mullerbot/muller-whatsapp.service';
 import type { MensagemEntranteParams } from '@modules/inbox/inbox.types';
 import type { HistoricoMsg } from '@modules/mullerbot/mullerbot-cache.service';
+import { WhatsappPacingService } from '@shared/whatsapp-pacing/whatsapp-pacing.service';
 import { FluxoEventBusService } from './fluxo-event-bus.service';
 import {
   FLUXO_QUEUE,
@@ -164,6 +165,7 @@ export class ConversarIaService {
     private readonly muller: MullerBotService,
     private readonly whatsapp: WhatsAppService,
     private readonly bus: FluxoEventBusService,
+    private readonly pacing: WhatsappPacingService,
     @InjectQueue(FLUXO_QUEUE) private readonly queue: Queue<FluxoStepJobData>,
   ) {}
 
@@ -665,6 +667,8 @@ export class ConversarIaService {
    */
   private async enviarWhatsapp(empresaId: string, telefone: string, texto: string): Promise<void> {
     if (!texto.trim()) return;
+    // Pacing global: espaça este envio dos demais da empresa (nunca tudo de uma vez).
+    await this.pacing.aguardarSlot(empresaId);
     // Preserva o '+' (E.164) pra o provider distinguir internacional de nacional —
     // senão número estrangeiro de 10/11 dígitos ganharia 55 indevidamente.
     const peerId = `${telefone.replace(/[^\d+]/g, '')}@s.whatsapp.net`;
