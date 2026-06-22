@@ -194,61 +194,62 @@ export class ComissoesService {
 
     const agora = new Date();
 
-    await this.prisma.$transaction(
-      aggregated
-        .filter(
-          (row): row is typeof row & { representanteId: string } => row.representanteId !== null,
-        )
-        .map((row) => {
-          // #17 — _sum do Pedido vem Decimal; converte pra number (entra em soma JS
-          // e nos writes da Comissao — number→Decimal é coagido pelo Prisma).
-          const totalVendas = Number(row._sum.total ?? 0);
-          // Escalonada: comissão = faturamento × % da faixa; snapshot do % usado.
-          // Fixa (default): soma do `comissao` pré-calculado em cada pedido.
-          const escalonada = comissaoCfg.modelo === 'escalonada_por_faturamento';
-          const pctFaixa = escalonada ? faixaPercentual(comissaoCfg.faixas, totalVendas) : null;
-          const totalComissao = escalonada
-            ? Math.round(totalVendas * ((pctFaixa ?? 0) / 100) * 100) / 100
-            : Number(row._sum.comissao ?? 0);
-          totalVendasAgg += totalVendas;
-          totalComissaoAgg += totalComissao;
-          const pctRep = escalonada ? pctFaixa : (pctPorRep.get(row.representanteId) ?? null);
-          return this.prisma.comissao.upsert({
-            where: {
-              empresaId_representanteId_ano_mes: {
-                empresaId,
-                representanteId: row.representanteId,
-                ano: dto.ano,
-                mes: dto.mes,
-              },
-            },
-            update: dto.reprocessar
-              ? {
-                  totalVendas,
-                  totalComissao,
-                  qtdPedidos: row._count._all,
-                  tipo: 'REP',
-                  // Snapshot preserva o `percentual` original — auditoria P0-2.
-                  // Não reescrevemos se já existe valor (mantém histórico fidedigno).
-                }
-              : {},
-            create: {
+    // Monta os upserts de REP e de GERENTE e executa TUDO numa única transação no fim —
+    // antes eram 2 $transaction separadas, então uma falha na 2ª deixava as comissões de
+    // REP gravadas sem as de GERENTE (estado parcial da folha).
+    const repOps = aggregated
+      .filter(
+        (row): row is typeof row & { representanteId: string } => row.representanteId !== null,
+      )
+      .map((row) => {
+        // #17 — _sum do Pedido vem Decimal; converte pra number (entra em soma JS
+        // e nos writes da Comissao — number→Decimal é coagido pelo Prisma).
+        const totalVendas = Number(row._sum.total ?? 0);
+        // Escalonada: comissão = faturamento × % da faixa; snapshot do % usado.
+        // Fixa (default): soma do `comissao` pré-calculado em cada pedido.
+        const escalonada = comissaoCfg.modelo === 'escalonada_por_faturamento';
+        const pctFaixa = escalonada ? faixaPercentual(comissaoCfg.faixas, totalVendas) : null;
+        const totalComissao = escalonada
+          ? Math.round(totalVendas * ((pctFaixa ?? 0) / 100) * 100) / 100
+          : Number(row._sum.comissao ?? 0);
+        totalVendasAgg += totalVendas;
+        totalComissaoAgg += totalComissao;
+        const pctRep = escalonada ? pctFaixa : (pctPorRep.get(row.representanteId) ?? null);
+        return this.prisma.comissao.upsert({
+          where: {
+            empresaId_representanteId_ano_mes: {
               empresaId,
               representanteId: row.representanteId,
-              tipo: 'REP',
-              // AUDITORIA P0-2: snapshot de percentual ANTES era null. Agora preservamos.
-              percentual: pctRep,
-              calculadoEm: agora,
               ano: dto.ano,
               mes: dto.mes,
-              totalVendas,
-              totalComissao,
-              qtdPedidos: row._count._all,
-              pago: false,
             },
-          });
-        }),
-    );
+          },
+          update: dto.reprocessar
+            ? {
+                totalVendas,
+                totalComissao,
+                qtdPedidos: row._count._all,
+                tipo: 'REP',
+                // Snapshot preserva o `percentual` original — auditoria P0-2.
+                // Não reescrevemos se já existe valor (mantém histórico fidedigno).
+              }
+            : {},
+          create: {
+            empresaId,
+            representanteId: row.representanteId,
+            tipo: 'REP',
+            // AUDITORIA P0-2: snapshot de percentual ANTES era null. Agora preservamos.
+            percentual: pctRep,
+            calculadoEm: agora,
+            ano: dto.ano,
+            mes: dto.mes,
+            totalVendas,
+            totalComissao,
+            qtdPedidos: row._count._all,
+            pago: false,
+          },
+        });
+      });
 
     // Comissão dos GERENTES: total de vendas dos REPs sob sua gerência × % do gerente.
     const reps = await this.prisma.usuario.findMany({
@@ -270,6 +271,7 @@ export class ComissoesService {
     }
 
     let gerentesProcessados = 0;
+    let gerenteOps: typeof repOps = [];
     if (vendasPorGerente.size > 0) {
       const gerentes = await this.prisma.usuario.findMany({
         where: { id: { in: Array.from(vendasPorGerente.keys()) }, role: 'GERENTE' },
@@ -292,48 +294,46 @@ export class ComissoesService {
         existentesGerente.map((e) => [e.representanteId, e.percentual]),
       );
 
-      await this.prisma.$transaction(
-        gerentes.map((g) => {
-          const totalVendas = vendasPorGerente.get(g.id) ?? 0;
-          // Snapshot: se já existe percentual salvo, usa ele; senão pega o atual
-          const pctSalvo = pctSalvoPorGerente.get(g.id);
-          const pct = pctSalvo ?? g.comissaoPadrao ?? 0;
-          const totalComissao = Math.round(totalVendas * (pct / 100) * 100) / 100;
-          gerentesProcessados += 1;
-          return this.prisma.comissao.upsert({
-            where: {
-              empresaId_representanteId_ano_mes: {
-                empresaId,
-                representanteId: g.id,
-                ano: dto.ano,
-                mes: dto.mes,
-              },
-            },
-            update: dto.reprocessar
-              ? {
-                  totalVendas,
-                  totalComissao,
-                  qtdPedidos: 0,
-                  tipo: 'GERENTE',
-                  // Mantém `percentual` original (snapshot fidedigno do fechamento)
-                }
-              : {},
-            create: {
+      gerenteOps = gerentes.map((g) => {
+        const totalVendas = vendasPorGerente.get(g.id) ?? 0;
+        // Snapshot: se já existe percentual salvo, usa ele; senão pega o atual
+        const pctSalvo = pctSalvoPorGerente.get(g.id);
+        const pct = pctSalvo ?? g.comissaoPadrao ?? 0;
+        const totalComissao = Math.round(totalVendas * (pct / 100) * 100) / 100;
+        gerentesProcessados += 1;
+        return this.prisma.comissao.upsert({
+          where: {
+            empresaId_representanteId_ano_mes: {
               empresaId,
               representanteId: g.id,
-              tipo: 'GERENTE',
-              percentual: pct,
-              calculadoEm: agora,
               ano: dto.ano,
               mes: dto.mes,
-              totalVendas,
-              totalComissao,
-              qtdPedidos: 0,
-              pago: false,
             },
-          });
-        }),
-      );
+          },
+          update: dto.reprocessar
+            ? {
+                totalVendas,
+                totalComissao,
+                qtdPedidos: 0,
+                tipo: 'GERENTE',
+                // Mantém `percentual` original (snapshot fidedigno do fechamento)
+              }
+            : {},
+          create: {
+            empresaId,
+            representanteId: g.id,
+            tipo: 'GERENTE',
+            percentual: pct,
+            calculadoEm: agora,
+            ano: dto.ano,
+            mes: dto.mes,
+            totalVendas,
+            totalComissao,
+            qtdPedidos: 0,
+            pago: false,
+          },
+        });
+      });
       // Soma usando o pct snapshotado
       totalComissaoAgg += gerentes.reduce((sum, g) => {
         const v = vendasPorGerente.get(g.id) ?? 0;
@@ -342,6 +342,9 @@ export class ComissoesService {
         return sum + Math.round(v * (pct / 100) * 100) / 100;
       }, 0);
     }
+
+    // Atômico: comissões de REP + GERENTE gravadas juntas (tudo-ou-nada).
+    await this.prisma.$transaction([...repOps, ...gerenteOps]);
 
     addBreadcrumb('comissoes', 'fechamento-completo', {
       empresaId,
