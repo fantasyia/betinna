@@ -424,10 +424,16 @@ export class LeadsService {
       data.fechadoEm = null;
     }
 
-    await this.prisma.lead.updateMany({
-      where: { id, empresaId: lead.empresaId },
+    // CAS: inclui a etapa (e o funilEtapaId) de origem no where. Duas transições
+    // concorrentes a partir da mesma origem (ex.: GANHO vs PERDIDO) não se sobrepõem —
+    // só a 1ª casa count===1; a 2ª aborta sem last-write-wins nem trigger fantasma.
+    const cas = await this.prisma.lead.updateMany({
+      where: { id, empresaId: lead.empresaId, etapa: lead.etapa, funilEtapaId: lead.funilEtapaId },
       data,
     });
+    if (cas.count === 0) {
+      throw new BusinessRuleException('Lead mudou de etapa — recarregue e tente novamente');
+    }
     const updated = await this.prisma.lead.findUniqueOrThrow({
       where: { id },
       include: leadInclude,
@@ -436,7 +442,8 @@ export class LeadsService {
       `Lead ${lead.id} movido ${lead.etapa} → ${novaEtapaEnum}${dto.motivo ? ` (${dto.motivo})` : ''}`,
     );
 
-    // Trigger: LEAD_ETAPA_MUDOU — payload com ids do funil/etapa pra o filtro do gatilho.
+    // Trigger: LEAD_ETAPA_MUDOU — só a transição vencedora (count===1) dispara, com o
+    // payload refletindo a transição realmente aplicada.
     void this.bus.disparar(lead.empresaId, 'LEAD_ETAPA_MUDOU', {
       leadId: lead.id,
       lead: {

@@ -155,8 +155,10 @@ export class DevolucoesService {
     }
 
     const decisao = dto.status === 'APROVADA' || dto.status === 'RECUSADA';
-    await this.prisma.devolucao.updateMany({
-      where: { id, empresaId: existing.empresaId },
+    // CAS: inclui o status de origem no where. Duas decisões concorrentes a partir de
+    // EM_ANALISE (APROVADA vs RECUSADA) não se sobrepõem — só a 1ª casa; a 2ª acha count 0.
+    const cas = await this.prisma.devolucao.updateMany({
+      where: { id, empresaId: existing.empresaId, status: existing.status },
       data: {
         status: dto.status,
         ...(decisao
@@ -165,6 +167,11 @@ export class DevolucoesService {
         ...(dto.status === 'RECUSADA' ? { motivoRecusa: dto.motivoRecusa?.trim() } : {}),
       },
     });
+    if (cas.count === 0) {
+      throw new BusinessRuleException(
+        `Devolução mudou de status — recarregue (esperado ${existing.status})`,
+      );
+    }
     this.logger.log(`Devolução ${existing.numero}: ${existing.status} → ${dto.status}`);
     return this.prisma.devolucao.findUniqueOrThrow({ where: { id } });
   }

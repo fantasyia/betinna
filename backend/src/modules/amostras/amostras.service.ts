@@ -225,10 +225,14 @@ export class AmostrasService {
         'Amostra pendente de aprovação: use aprovar ou rejeitar primeiro',
       );
     }
-    await this.prisma.amostra.updateMany({
-      where: { id, empresaId: existing.empresaId },
+    // CAS: status de origem no where evita dupla-transição concorrente (last-write-wins).
+    const cas = await this.prisma.amostra.updateMany({
+      where: { id, empresaId: existing.empresaId, status: existing.status },
       data: { status: dto.status },
     });
+    if (cas.count === 0) {
+      throw new BusinessRuleException('Amostra mudou de status — recarregue e tente novamente');
+    }
     return this.prisma.amostra.findUniqueOrThrow({ where: { id }, include: amostraInclude });
   }
 
@@ -239,8 +243,9 @@ export class AmostrasService {
       throw new BusinessRuleException('Amostra não está pendente de aprovação');
     }
     const enviadoEm = existing.enviadoEm ?? new Date();
-    await this.prisma.amostra.updateMany({
-      where: { id, empresaId: existing.empresaId },
+    // CAS: só aprova se ainda PENDENTE_APROVACAO (corrida aprovar×rejeitar / duplo-clique).
+    const cas = await this.prisma.amostra.updateMany({
+      where: { id, empresaId: existing.empresaId, status: 'PENDENTE_APROVACAO' },
       data: {
         status: 'ENVIADA',
         aprovadorId: user.id,
@@ -250,6 +255,9 @@ export class AmostrasService {
         followUpEm: new Date(enviadoEm.getTime() + 5 * 24 * 60 * 60 * 1000),
       },
     });
+    if (cas.count === 0) {
+      throw new BusinessRuleException('Amostra já foi decidida — recarregue');
+    }
     return this.prisma.amostra.findUniqueOrThrow({ where: { id }, include: amostraInclude });
   }
 
@@ -263,8 +271,9 @@ export class AmostrasService {
     if (existing.status !== 'PENDENTE_APROVACAO') {
       throw new BusinessRuleException('Amostra não está pendente de aprovação');
     }
-    await this.prisma.amostra.updateMany({
-      where: { id, empresaId: existing.empresaId },
+    // CAS: só rejeita se ainda PENDENTE_APROVACAO (corrida aprovar×rejeitar / duplo-clique).
+    const cas = await this.prisma.amostra.updateMany({
+      where: { id, empresaId: existing.empresaId, status: 'PENDENTE_APROVACAO' },
       data: {
         status: 'REJEITADA',
         aprovadorId: user.id,
@@ -273,6 +282,9 @@ export class AmostrasService {
         motivoDecisao: dto.motivo,
       },
     });
+    if (cas.count === 0) {
+      throw new BusinessRuleException('Amostra já foi decidida — recarregue');
+    }
     return this.prisma.amostra.findUniqueOrThrow({ where: { id }, include: amostraInclude });
   }
 
