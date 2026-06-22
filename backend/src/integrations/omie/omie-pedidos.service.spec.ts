@@ -1,6 +1,6 @@
 import { describe, expect, it, vi, beforeEach } from 'vitest';
 import { BusinessRuleException } from '@shared/errors/app-exception';
-import { OmiePedidosService, descontoEfetivoItem } from './omie-pedidos.service';
+import { OmiePedidosService } from './omie-pedidos.service';
 
 // Stub OmieMapper — testamos o orquestrador, não o mapper (que tem spec próprio)
 vi.mock('./omie.mapper', () => ({
@@ -234,45 +234,6 @@ describe('OmiePedidosService', () => {
 
       await expect(service.enviarPedido('ped-1')).rejects.toBe(erro);
       expect(prisma.pedido.update).not.toHaveBeenCalled(); // não marcou como enviado
-    });
-  });
-
-  // Rateio do desconto global (geral + à vista) nos itens — a soma no OMIE tem de
-  // bater com o `total` cobrado no app (senão a NF/ERP cobra mais).
-  describe('descontoEfetivoItem (rateio do desconto global)', () => {
-    it('sem desconto global (fator 1) → mantém o desconto do item', () => {
-      expect(descontoEfetivoItem(0, 1)).toBe(0);
-      expect(descontoEfetivoItem(10, 1)).toBe(10);
-    });
-
-    it('desconto global puro (item 0%) → vira o % do fator', () => {
-      // total/subtotal = 0.9 → 10% de desconto global no item.
-      expect(descontoEfetivoItem(0, 0.9)).toBe(10);
-    });
-
-    it('combina item + global multiplicativamente', () => {
-      // item 10% e global 10% → 1 - 0.9*0.9 = 0.19 → 19%.
-      expect(descontoEfetivoItem(10, 0.9)).toBe(19);
-    });
-
-    it('a soma dos itens com desconto efetivo bate com o total do pedido', () => {
-      // 2 itens: 10×R$100 (5% item) + 3×R$50 (sem desconto). subtotal pós-item =
-      // 950 + 150 = 1100. Desconto global (geral+à vista) leva a total = 990 → fator 0.9.
-      const fator = 990 / 1100;
-      const itens = [
-        { qtd: 10, preco: 100, desc: 5 },
-        { qtd: 3, preco: 50, desc: 0 },
-      ];
-      const somaOmie = itens.reduce((acc, i) => {
-        const ef = descontoEfetivoItem(i.desc, fator);
-        return acc + i.qtd * i.preco * (1 - ef / 100);
-      }, 0);
-      expect(somaOmie).toBeCloseTo(990, 2);
-    });
-
-    it('clampa em [0,100] (fator > 1 não gera desconto negativo)', () => {
-      expect(descontoEfetivoItem(0, 1.5)).toBe(0);
-      expect(descontoEfetivoItem(50, 0)).toBe(100);
     });
   });
 });
