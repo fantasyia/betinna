@@ -114,6 +114,26 @@ export class WebhookAntiReplayService {
     return { fresh, signatureHash };
   }
 
+  /**
+   * Libera a marca de uma signature (apaga a chave do Redis).
+   *
+   * Usado quando o processamento do webhook FALHOU de forma transitória e o caller
+   * vai devolver 5xx pro provedor reenviar: sem liberar, o reenvio cairia no dedup
+   * (`fresh:false`) e a mensagem seria perdida pra sempre. A idempotência por
+   * `externalId` protege contra reprocessar o que já deu certo no retry.
+   */
+  async releaseWebhook(provider: WebhookProvider, signature: string): Promise<void> {
+    const key = `webhook:replay:${provider}:${this.hashSignature(signature)}`;
+    try {
+      await this.redis.del(key);
+    } catch (err) {
+      // Redis fora → a chave expira sozinha pelo TTL; não é fatal.
+      this.logger.warn(
+        `Redis offline em releaseWebhook ${provider}: ${err instanceof Error ? err.message : err}`,
+      );
+    }
+  }
+
   /** SHA-256 da signature — evita armazenar a assinatura crua no Redis. */
   private hashSignature(signature: string): string {
     return createHash('sha256').update(signature, 'utf8').digest('hex');

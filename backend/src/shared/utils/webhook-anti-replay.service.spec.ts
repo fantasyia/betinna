@@ -3,13 +3,18 @@ import { UnauthorizedException } from '@shared/errors/app-exception';
 import { WebhookAntiReplayService } from './webhook-anti-replay.service';
 
 describe('WebhookAntiReplayService', () => {
-  let redis: { setNxEx: ReturnType<typeof vi.fn>; get: ReturnType<typeof vi.fn> };
+  let redis: {
+    setNxEx: ReturnType<typeof vi.fn>;
+    get: ReturnType<typeof vi.fn>;
+    del: ReturnType<typeof vi.fn>;
+  };
   let svc: WebhookAntiReplayService;
 
   beforeEach(() => {
     redis = {
       setNxEx: vi.fn().mockResolvedValue(true),
       get: vi.fn(),
+      del: vi.fn().mockResolvedValue(1),
     };
     svc = new WebhookAntiReplayService(redis as never);
   });
@@ -108,6 +113,22 @@ describe('WebhookAntiReplayService', () => {
       const r = await svc.checkAndMarkWebhook('meta', 'sig-abc', undefined);
       // Em degraded mode, prossegue (não bloqueia operação por infra)
       expect(r.fresh).toBe(true);
+    });
+  });
+
+  describe('releaseWebhook (libera marca p/ reenvio em falha transitória)', () => {
+    it('apaga a key do Redis (mesma key do checkAndMark)', async () => {
+      const r = await svc.checkAndMarkWebhook('meta', 'sig-rel', undefined);
+      await svc.releaseWebhook('meta', 'sig-rel');
+      expect(redis.del).toHaveBeenCalledOnce();
+      const delKey = redis.del.mock.calls[0][0];
+      expect(delKey).toContain('meta');
+      expect(delKey).toContain(r.signatureHash);
+    });
+
+    it('Redis offline em del não propaga erro (TTL expira sozinho)', async () => {
+      redis.del.mockRejectedValueOnce(new Error('Redis connection lost'));
+      await expect(svc.releaseWebhook('meta', 'sig-rel')).resolves.toBeUndefined();
     });
   });
 });

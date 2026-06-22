@@ -19,7 +19,11 @@ import type { Request } from 'express';
 import { EnvService } from '@config/env.service';
 import { InboxService } from '@modules/inbox/inbox.service';
 import { Public } from '@shared/decorators/public.decorator';
-import { ForbiddenException, UnauthorizedException } from '@shared/errors/app-exception';
+import {
+  ForbiddenException,
+  IntegrationException,
+  UnauthorizedException,
+} from '@shared/errors/app-exception';
 import { WebhookSignatureUtil } from '@shared/http/webhook-signature.util';
 import { addBreadcrumb } from '@shared/observability/sentry';
 import { WebhookAntiReplayService } from '@shared/utils/webhook-anti-replay.service';
@@ -146,13 +150,23 @@ export class MetaWebhookController {
       return { ok: false };
     }
 
+    let falhaProcessamento = false;
     for (const entry of envelope.entry) {
       try {
         await this.processarEntry(canal, entry);
       } catch (err) {
+        falhaProcessamento = true;
         const m = err instanceof Error ? err.message : String(err);
         this.logger.warn(`Falha processando entry ${entry.id}: ${m}`);
       }
+    }
+    if (falhaProcessamento) {
+      // Ao contrário dos marketplaces (que têm cron de fallback de 10min re-puxando),
+      // o Meta entrega SÓ por webhook — engolir o erro em 200 = mensagem perdida.
+      // Liberamos o anti-replay e devolvemos 5xx pro Meta reenviar (bounded: até 8x/24h);
+      // a idempotência por externalId protege as entries que já processaram no retry.
+      if (signature) await this.antiReplay.releaseWebhook('meta', signature);
+      throw new IntegrationException('Falha transitória processando webhook Meta — reenviar');
     }
     return { ok: true };
   }
