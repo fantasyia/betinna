@@ -11,6 +11,7 @@ import {
   Req,
   type RawBodyRequest,
 } from '@nestjs/common';
+import { timingSafeEqual } from 'node:crypto';
 import { Throttle, seconds } from '@nestjs/throttler';
 import type { MessageChannel } from '@prisma/client';
 import { ApiOperation, ApiTags } from '@nestjs/swagger';
@@ -73,7 +74,14 @@ export class MetaWebhookController {
       this.logger.warn('META_GRAPH_VERIFY_TOKEN não configurado — handshake rejeitado');
       throw new ForbiddenException('verify token não configurado');
     }
-    if (mode !== 'subscribe' || token !== expected) {
+    // Comparação constant-time (consistente com evolution-webhook/auth-bootstrap do repo).
+    const tokenOk = (() => {
+      if (typeof token !== 'string') return false;
+      const a = Buffer.from(token);
+      const b = Buffer.from(expected);
+      return a.length === b.length && timingSafeEqual(a, b);
+    })();
+    if (mode !== 'subscribe' || !tokenOk) {
       this.logger.warn(`Meta verify falhou: mode=${mode}`);
       throw new ForbiddenException('verify token inválido');
     }

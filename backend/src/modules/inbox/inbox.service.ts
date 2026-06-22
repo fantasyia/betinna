@@ -427,8 +427,9 @@ export class InboxService {
       );
     }
     if (dto.atribuidoId) {
+      // Tenant: o destinatário precisa pertencer à empresa da conversa (anti cross-tenant).
       const exists = await this.prisma.usuario.findFirst({
-        where: { id: dto.atribuidoId },
+        where: { id: dto.atribuidoId, empresas: { some: { empresaId: existing.empresaId } } },
         select: { id: true },
       });
       if (!exists) throw new NotFoundException('Usuario', dto.atribuidoId);
@@ -480,8 +481,9 @@ export class InboxService {
       );
     }
     if (atribuidoId) {
+      // Tenant: destinatário precisa pertencer à empresa do caller (anti cross-tenant).
       const exists = await this.prisma.usuario.findFirst({
-        where: { id: atribuidoId },
+        where: { id: atribuidoId, empresas: { some: { empresaId: this.requireEmpresa(user) } } },
         select: { id: true },
       });
       if (!exists) throw new NotFoundException('Usuario', atribuidoId);

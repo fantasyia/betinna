@@ -162,9 +162,14 @@ export class BotAuditoriaService {
   }
 
   private csvCell(v: string): string {
+    // Anti formula/CSV-injection (CWE-1236): célula iniciada por = + - @ TAB CR pode
+    // virar fórmula no Excel/Sheets. A `pergunta` é mensagem do cliente (não confiável),
+    // então neutraliza prefixando aspa simples ANTES do quoting RFC.
+    let s = v;
+    if (/^[=+\-@\t\r]/.test(s)) s = `'${s}`;
     // Escapa aspas e envolve em aspas se houver vírgula/quebra/aspas.
-    const needs = /[",\r\n]/.test(v);
-    const esc = v.replace(/"/g, '""');
+    const needs = /[",\r\n]/.test(s);
+    const esc = s.replace(/"/g, '""');
     return needs ? `"${esc}"` : esc;
   }
 }
