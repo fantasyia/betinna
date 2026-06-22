@@ -36,7 +36,9 @@ export default function NpsPublicoPage() {
     if (!slug) return;
     setLoading(true);
     api
-      .get<PesquisaPublica>(`/n/${slug}`)
+      // Página pública: não anexar Authorization/X-Empresa-Id do usuário logado a um
+      // endpoint público (vazaria credenciais da sessão pra uma rota sem auth).
+      .get<PesquisaPublica>(`/n/${slug}`, { skipAuth: true })
       .then(setPesquisa)
       .catch((err) =>
         setError(err instanceof ApiError ? err.message : 'Pesquisa não encontrada'),
@@ -52,11 +54,15 @@ export default function NpsPublicoPage() {
     setError(null);
     setSubmitting(true);
     try {
-      const res = await api.post<{ ok: true; message: string }>(`/n/${slug}/submit`, {
-        nota,
-        comentario: comentario.trim() || null,
-        contato: contato.trim() || null,
-      });
+      const res = await api.post<{ ok: true; message: string }>(
+        `/n/${slug}/submit`,
+        {
+          nota,
+          comentario: comentario.trim() || null,
+          contato: contato.trim() || null,
+        },
+        { skipAuth: true },
+      );
       setSuccess({ message: res.message });
     } catch (err) {
       setError(err instanceof ApiError ? err.message : 'Falha ao enviar');

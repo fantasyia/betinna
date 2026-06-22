@@ -21,7 +21,7 @@ const DSN = (import.meta.env.VITE_SENTRY_DSN as string | undefined) ?? '';
 const ENV = (import.meta.env.MODE as string | undefined) ?? 'development';
 const ENABLED = DSN.length > 0;
 
-/** Lista de patterns que NÃO devem ir pro log (PII / ruído conhecido). */
+/** Patterns `chave=valor` que NÃO devem ir pro log (PII / ruído conhecido). */
 const REDACT_PATTERNS = [
   /password=[^&\s]+/gi,
   /token=[^&\s]+/gi,
@@ -29,10 +29,22 @@ const REDACT_PATTERNS = [
   /apikey=[^&\s]+/gi,
 ];
 
+/**
+ * Patterns POSICIONAIS (o valor sensível está no path, não em `chave=valor`) — o trecho
+ * inteiro é trocado. Ex.: o token one-time de aceite de proposta vive no path da URL e
+ * vazaria em breadcrumbs/URL do Sentry se não for redigido aqui.
+ */
+const REDACT_PATH_PATTERNS: Array<[RegExp, string]> = [
+  [/\/propostas?\/aceite\/[^/?#\s]+/gi, '/proposta/aceite/[REDACTED]'],
+];
+
 function redact(s: string): string {
   let out = s;
   for (const p of REDACT_PATTERNS) {
     out = out.replace(p, (m) => m.split('=')[0] + '=[REDACTED]');
+  }
+  for (const [p, repl] of REDACT_PATH_PATTERNS) {
+    out = out.replace(p, repl);
   }
   return out;
 }
