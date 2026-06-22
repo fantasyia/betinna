@@ -50,9 +50,10 @@ export class DevolucoesService {
     const where: Prisma.DevolucaoWhereInput = { empresaId };
     if (params.status) where.status = params.status;
     if (params.pedidoId) where.pedidoId = params.pedidoId;
-    // REP vê só as que abriu; ADMIN/DIRECTOR/GERENTE veem todas da empresa.
+    // REP/GERENTE veem as que abriram (criadoPorId = user.id) + as dos subordinados;
+    // ADMIN/DIRECTOR/SAC veem todas. Sem o user.id, o GERENTE não via as próprias.
     const scope = await this.repScope.getRepIds(user);
-    if (scope !== null) where.criadoPorId = { in: scope };
+    if (scope !== null) where.criadoPorId = { in: [user.id, ...scope] };
 
     const [total, data] = await Promise.all([
       this.prisma.devolucao.count({ where }),
@@ -72,7 +73,8 @@ export class DevolucoesService {
     });
     if (!dev) throw new NotFoundException('Devolução', id);
     const scope = await this.repScope.getRepIds(user);
-    if (scope !== null && (dev.criadoPorId === null || !scope.includes(dev.criadoPorId))) {
+    const visiveis = scope === null ? null : [user.id, ...scope];
+    if (visiveis && (dev.criadoPorId === null || !visiveis.includes(dev.criadoPorId))) {
       throw new ForbiddenException('Você não tem acesso a esta devolução');
     }
     return dev;

@@ -681,32 +681,36 @@ export class PedidosService {
         `Solicitação já está em status ${solicitacao.status} — não pode ser decidida novamente`,
       );
     }
-    if (dto.decisao === 'APROVADA') {
-      // Cancela o pedido de fato (concatena motivo + comentário do decisor nas observações)
-      const motivoFinal =
-        solicitacao.motivo +
-        (dto.comentario ? `\n[Aprovado por ${user.nome}] ${dto.comentario}` : '');
-      await this.prisma.pedido.updateMany({
-        where: { id: solicitacao.pedidoId, empresaId },
+    // Atômico: cancelar o pedido + gravar a decisão num único $transaction — senão o 2º
+    // write podia falhar e deixar o pedido CANCELADO com a solicitação ainda PENDENTE
+    // (re-decisão possível + perda da autoria/timestamp da aprovação).
+    const updated = await this.prisma.$transaction(async (tx) => {
+      if (dto.decisao === 'APROVADA') {
+        const motivoFinal =
+          solicitacao.motivo +
+          (dto.comentario ? `\n[Aprovado por ${user.nome}] ${dto.comentario}` : '');
+        await tx.pedido.updateMany({
+          where: { id: solicitacao.pedidoId, empresaId },
+          data: {
+            status: 'CANCELADO',
+            observacoes: `${solicitacao.pedido.observacoes ? solicitacao.pedido.observacoes + '\n' : ''}[Cancelado via solicitação #${solicitacao.id}] ${motivoFinal}`,
+          },
+        });
+      }
+      return tx.pedidoCancelamentoSolicitacao.update({
+        where: { id: solicitacaoId },
         data: {
-          status: 'CANCELADO',
-          observacoes: `${solicitacao.pedido.observacoes ? solicitacao.pedido.observacoes + '\n' : ''}[Cancelado via solicitação #${solicitacao.id}] ${motivoFinal}`,
+          status: dto.decisao,
+          decididoPorId: user.id,
+          decididoEm: new Date(),
+          decisaoComentario: dto.comentario,
+        },
+        include: {
+          solicitante: { select: { id: true, nome: true } },
+          decididoPor: { select: { id: true, nome: true } },
+          pedido: { select: { id: true, numero: true, status: true } },
         },
       });
-    }
-    const updated = await this.prisma.pedidoCancelamentoSolicitacao.update({
-      where: { id: solicitacaoId },
-      data: {
-        status: dto.decisao,
-        decididoPorId: user.id,
-        decididoEm: new Date(),
-        decisaoComentario: dto.comentario,
-      },
-      include: {
-        solicitante: { select: { id: true, nome: true } },
-        decididoPor: { select: { id: true, nome: true } },
-        pedido: { select: { id: true, numero: true, status: true } },
-      },
     });
     this.logger.log(`Solicitação #${solicitacaoId} ${dto.decisao} por ${user.nome} (${user.role})`);
     return updated;

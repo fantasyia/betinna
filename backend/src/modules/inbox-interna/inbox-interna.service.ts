@@ -50,9 +50,11 @@ export class InboxInternaService {
     const where: Prisma.InternalThreadWhereInput = { empresaId };
     if (params.status) where.status = params.status;
     if (params.tipo) where.tipo = params.tipo;
-    // REP vê só as próprias threads; empresa (ADMIN/DIRECTOR/SAC/GERENTE) vê todas.
+    // REP/GERENTE veem as PRÓPRIAS threads (criadoPorId = user.id) + as dos subordinados;
+    // ADMIN/DIRECTOR/SAC veem todas (scope null). Sem o user.id, o GERENTE não via as que
+    // ele mesmo abriu (scope só traz ids de REPs subordinados).
     const scope = await this.repScope.getRepIds(user);
-    if (scope !== null) where.criadoPorId = { in: scope };
+    if (scope !== null) where.criadoPorId = { in: [user.id, ...scope] };
 
     const [total, data] = await Promise.all([
       this.prisma.internalThread.count({ where }),
@@ -74,7 +76,8 @@ export class InboxInternaService {
     });
     if (!thread) throw new NotFoundException('Thread', id);
     const scope = await this.repScope.getRepIds(user);
-    if (scope !== null && (thread.criadoPorId === null || !scope.includes(thread.criadoPorId))) {
+    const visiveis = scope === null ? null : [user.id, ...scope];
+    if (visiveis && (thread.criadoPorId === null || !visiveis.includes(thread.criadoPorId))) {
       throw new ForbiddenException('Você não tem acesso a esta conversa');
     }
     return thread;

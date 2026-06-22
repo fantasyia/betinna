@@ -119,10 +119,11 @@ export class MetaWebhookController {
       }
       addBreadcrumb('webhook', 'meta-signature-ok');
 
-      // Sprint 3 FIX 1: anti-replay. Meta envia `entry[].time` (timestamp do evento).
-      const envelopeForTs = body as MetaWebhookEnvelope;
-      const ts = envelopeForTs?.entry?.[0]?.time;
-      const replay = await this.antiReplay.checkAndMarkWebhook('meta', signature, ts);
+      // Anti-replay por dedup de assinatura (SETNX). NÃO passamos `entry[].time`: é o
+      // tempo do EVENTO (não da requisição), então o skew de 5min do anti-replay
+      // rejeitaria com 401 um evento legítimo entregue/reentregue >5min depois — e o Meta
+      // reenviaria o MESMO entry.time, perdendo a mensagem pra sempre.
+      const replay = await this.antiReplay.checkAndMarkWebhook('meta', signature, undefined);
       if (!replay.fresh) {
         return { ok: true };
       }
