@@ -5,6 +5,7 @@ import { EnvService } from '@config/env.service';
 import { HttpClientService } from '@shared/http/http-client.service';
 import { HttpClientError } from '@shared/http/http-client.types';
 import { BusinessRuleException } from '@shared/errors/app-exception';
+import { RedisService } from '@database/redis.service';
 
 /** O QR pode vir em vários campos dependendo da resposta do Evolution. */
 type RespostaQr = {
@@ -44,6 +45,7 @@ export class EvolutionService {
   constructor(
     private readonly http: HttpClientService,
     private readonly env: EnvService,
+    private readonly redis: RedisService,
   ) {}
 
   /** True quando o provider está em 'evolution' E a URL/chave estão configuradas. */
@@ -313,23 +315,28 @@ export class EvolutionService {
     texto: string,
     delayMs = 0,
     quoted?: { id: string; fromMe?: boolean; participant?: string },
+    idempotencyKey?: string,
   ): Promise<{ key?: { id?: string } }> {
-    return this.enviarReq(`/message/sendText/${encodeURIComponent(instance)}`, {
-      number: this.normalizarNumero(numero),
-      text: texto,
-      ...(delayMs > 0 ? { delay: delayMs } : {}),
-      ...(quoted
-        ? {
-            quoted: {
-              key: {
-                id: quoted.id,
-                fromMe: quoted.fromMe ?? false,
-                ...(quoted.participant ? { participant: quoted.participant } : {}),
+    return this.enviarReq(
+      `/message/sendText/${encodeURIComponent(instance)}`,
+      {
+        number: this.normalizarNumero(numero),
+        text: texto,
+        ...(delayMs > 0 ? { delay: delayMs } : {}),
+        ...(quoted
+          ? {
+              quoted: {
+                key: {
+                  id: quoted.id,
+                  fromMe: quoted.fromMe ?? false,
+                  ...(quoted.participant ? { participant: quoted.participant } : {}),
+                },
               },
-            },
-          }
-        : {}),
-    });
+            }
+          : {}),
+      },
+      idempotencyKey,
+    );
   }
 
   /** Mídia (imagem/vídeo/documento). `media` = base64 puro (sem prefixo) ou URL. */
@@ -557,7 +564,51 @@ export class EvolutionService {
    * (o motivo real do 400, ex: "number not exists") na mensagem do throw — assim
    * o log do fluxo mostra a causa, não só "status 400".
    */
-  private async enviarReq<T>(path: string, body: Record<string, unknown>): Promise<T> {
+  private async enviarReq<T>(
+    path: string,
+    body: Record<string, unknown>,
+    idempotencyKey?: string,
+  ): Promise<T> {
+    // Sem chave: comportamento antigo (sem dedup).
+    if (!idempotencyKey) {
+      return this.postEnvio<T>(path, body);
+    }
+    // Gate de idempotência: a Evolution NÃO aceita id de cliente no payload, então a dedup
+    // é NOSSA. SETNX antes do POST claima a chave; um reenvio (retry/crash) com a MESMA
+    // chave vira no-op → o destinatário NUNCA recebe 2×. Cobre sendText/sendMedia/sendAudio
+    // (ponto único). Preferimos SUPRIMIR (perder no caso raríssimo) a DUPLICAR (dinheiro).
+    const k = `idem:wa:${idempotencyKey}`;
+    let claimed: boolean;
+    try {
+      claimed = await this.redis.setNxEx(k, 'PENDING', 86_400);
+    } catch (err) {
+      // Redis fora → degrada pro envio direto (não bloqueia operação por infra).
+      this.logger.warn(
+        `Gate de idempotência indisponível (Redis): ${err instanceof Error ? err.message : err}`,
+      );
+      return this.postEnvio<T>(path, body);
+    }
+    if (!claimed) {
+      const cached = await this.redis.get(k).catch(() => null);
+      if (cached && cached !== 'PENDING') return JSON.parse(cached) as T; // já enviado: no-op
+      // 'PENDING' de outra tentativa em voo → não re-POST (no-op seguro).
+      this.logger.log(`Envio WhatsApp suprimido por idempotência (${idempotencyKey})`);
+      return { key: { id: undefined } } as T;
+    }
+    try {
+      const r = await this.postEnvio<T>(path, body);
+      // Memoriza o resultado real (externalId) p/ futuros no-ops devolverem o mesmo id.
+      await this.redis.setEx(k, JSON.stringify(r), 86_400).catch(() => undefined);
+      return r;
+    } catch (err) {
+      // POST falhou DE VERDADE → libera a chave pra um retry legítimo re-enviar.
+      await this.redis.del(k).catch(() => undefined);
+      throw err;
+    }
+  }
+
+  /** POST de envio cru com erro enriquecido (sem gate). */
+  private async postEnvio<T>(path: string, body: Record<string, unknown>): Promise<T> {
     try {
       return await this.req<T>('post', path, body);
     } catch (err) {

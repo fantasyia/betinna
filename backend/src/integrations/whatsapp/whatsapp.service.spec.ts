@@ -122,6 +122,7 @@ describe('WhatsAppService', () => {
         'oi',
         0, // delayMs
         undefined, // quoted (sem reply)
+        undefined, // idempotencyKey (sem ctx)
       );
       expect(sessions.enviarTexto).not.toHaveBeenCalled();
       expect(r.externalId).toBe('evo-1');

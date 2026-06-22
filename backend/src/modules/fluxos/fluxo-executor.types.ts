@@ -103,6 +103,8 @@ export interface WebhookExternoConfig {
   method?: 'POST' | 'PUT' | 'PATCH';
   headers?: Record<string, string>;
   payload?: Record<string, unknown>; // suporta {{ variáveis }}
+  /** Nome do header de idempotência (default X-Idempotency-Key; Stripe-style usa Idempotency-Key). */
+  idempotencyHeader?: string;
 }
 
 /** Config da ação CONVERSAR_IA (orquestração Fase B). */

@@ -258,7 +258,9 @@ export class FluxoExecutorService {
           ...(roteado ? { erro: true, tipoErro } : {}),
         };
       } else {
-        output = await this.executarNo(no, contexto, execucao.empresaId);
+        // idemBase = chave de idempotência determinística do passo (jobId estável no retry):
+        // desce até cada efeito externo (WhatsApp/email/webhook) pra dedup no provider.
+        output = await this.executarNo(no, contexto, execucao.empresaId, `fx:${jobId}`);
       }
     } catch (err) {
       sucesso = false;
@@ -533,6 +535,7 @@ export class FluxoExecutorService {
     no: FluxoNo,
     ctx: ExecucaoContexto,
     empresaId: string,
+    idemBase: string,
   ): Promise<Record<string, unknown>> {
     switch (no.tipo) {
       case 'TRIGGER':
@@ -549,7 +552,7 @@ export class FluxoExecutorService {
       }
 
       case 'ACAO':
-        return this.executarAcao(no, ctx, empresaId);
+        return this.executarAcao(no, ctx, empresaId, idemBase);
 
       default:
         return {};
@@ -560,6 +563,7 @@ export class FluxoExecutorService {
     no: FluxoNo,
     ctx: ExecucaoContexto,
     empresaId: string,
+    idemBase: string,
   ): Promise<Record<string, unknown>> {
     const acaoTipo = no.acaoTipo;
     if (!acaoTipo) throw new Error(`Nó ACAO sem acaoTipo definido`);
@@ -567,10 +571,10 @@ export class FluxoExecutorService {
     const cfg = no.config as unknown;
     switch (acaoTipo) {
       case 'ENVIAR_WHATSAPP':
-        return this.acaoEnviarWhatsapp(cfg as EnviarWhatsappConfig, ctx, empresaId);
+        return this.acaoEnviarWhatsapp(cfg as EnviarWhatsappConfig, ctx, empresaId, idemBase);
 
       case 'ENVIAR_EMAIL':
-        return this.acaoEnviarEmail(cfg as EnviarEmailConfig, ctx, empresaId);
+        return this.acaoEnviarEmail(cfg as EnviarEmailConfig, ctx, empresaId, idemBase);
 
       case 'CRIAR_TAREFA':
         return this.acaoCriarTarefa(cfg as CriarTarefaConfig, ctx, empresaId);
@@ -585,7 +589,7 @@ export class FluxoExecutorService {
         return this.acaoAtribuirRep(cfg as AtribuirRepConfig, ctx, empresaId);
 
       case 'WEBHOOK_EXTERNO':
-        return this.acaoWebhookExterno(cfg as WebhookExternoConfig, ctx);
+        return this.acaoWebhookExterno(cfg as WebhookExternoConfig, ctx, idemBase);
 
       case 'LIBERAR_LOTE':
         return this.acaoLiberarLote(cfg as LiberarLoteConfig, empresaId);
@@ -604,6 +608,7 @@ export class FluxoExecutorService {
     cfg: EnviarWhatsappConfig,
     ctx: ExecucaoContexto,
     empresaId: string,
+    idemBase: string,
   ): Promise<Record<string, unknown>> {
     this.assertEmpresaId(empresaId, 'ENVIAR_WHATSAPP');
     // Pacing global: espaça este envio dos demais da empresa (anti-rajada).
@@ -617,7 +622,9 @@ export class FluxoExecutorService {
     if (modo === 'contato') {
       const alvo = (cfg.destinatarioContato ?? '').trim();
       if (alvo.endsWith('@g.us')) {
-        const r = await this.whatsapp.enviarTexto(empresaId, alvo, mensagem, {});
+        const r = await this.whatsapp.enviarTexto(empresaId, alvo, mensagem, {
+          idempotencyKey: idemBase,
+        });
         return { peerId: alvo, mensagem, modo, externalId: r.externalId };
       }
     }
@@ -642,7 +649,9 @@ export class FluxoExecutorService {
     }
 
     const peerId = `${telefone}@s.whatsapp.net`;
-    const result = await this.whatsapp.enviarTexto(empresaId, peerId, mensagem, {});
+    const result = await this.whatsapp.enviarTexto(empresaId, peerId, mensagem, {
+      idempotencyKey: idemBase,
+    });
     return { peerId, mensagem, modo, externalId: result.externalId };
   }
 
@@ -674,6 +683,7 @@ export class FluxoExecutorService {
     cfg: EnviarEmailConfig,
     ctx: ExecucaoContexto,
     empresaId: string,
+    idemBase: string,
   ): Promise<Record<string, unknown>> {
     this.assertEmpresaId(empresaId, 'ENVIAR_EMAIL');
     const emails = await this.resolverDestinatarios(cfg, ctx, empresaId);
@@ -682,10 +692,16 @@ export class FluxoExecutorService {
     }
     const assunto = interpolate(cfg.assunto, ctx);
     const corpo = interpolate(cfg.corpo, ctx);
-    // Resend sistêmico — envia 1 e-mail por destinatário resolvido.
+    // Resend sistêmico — envia 1 e-mail por destinatário resolvido. Chave de idempotência
+    // por destinatário (Resend deduplica nativamente por 24h) → retry não duplica e-mail.
     const messageIds: string[] = [];
     for (const para of emails) {
-      const r = await this.emailSvc.enviarHtmlLivre({ para, assunto, html: corpo });
+      const r = await this.emailSvc.enviarHtmlLivre({
+        para,
+        assunto,
+        html: corpo,
+        idempotencyKey: `${idemBase}:${para}`,
+      });
       if (!r.ok) {
         throw new Error(`Falha ao enviar e-mail para ${para}: ${r.motivo ?? 'erro no provedor'}`);
       }
@@ -1224,6 +1240,7 @@ export class FluxoExecutorService {
   private async acaoWebhookExterno(
     cfg: WebhookExternoConfig,
     ctx: ExecucaoContexto,
+    idemBase: string,
   ): Promise<Record<string, unknown>> {
     // AUDITORIA 2026-05-15 P1: SSRF protection.
     // URL é interpolada com variáveis do contexto (cliente/lead/etc) que podem
@@ -1238,8 +1255,12 @@ export class FluxoExecutorService {
       ? (interpolateDeep(cfg.payload, ctx) as Record<string, unknown>)
       : {};
     const method = cfg.method ?? 'POST';
+    // Oferece chave de idempotência ao receptor (Stripe-style). A dedup efetiva depende
+    // de o receptor honrar o header — fora do nosso controle, mas a chave vai disponível.
+    // `cfg.headers` do usuário tem precedência (pode sobrescrever o nome do header).
     const headers: Record<string, string> = {
       'Content-Type': 'application/json',
+      [cfg.idempotencyHeader ?? 'X-Idempotency-Key']: idemBase,
       ...(cfg.headers ?? {}),
     };
 

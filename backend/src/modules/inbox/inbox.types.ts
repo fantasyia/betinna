@@ -7,6 +7,12 @@ import type { MessageChannel, MessageType } from '@prisma/client';
 export interface CanalAdapterContexto {
   /** `Conversation.proprietarioId` — quando preenchido, indica a sessão dona da conversa. */
   proprietarioId?: string | null;
+  /**
+   * Chave de idempotência determinística (ex: `fx:<jobId>`): quando presente, o provider
+   * deduplica o envio (gate Redis na Evolution / messageId no Baileys) — um reenvio com a
+   * MESMA chave vira no-op, garantindo que o destinatário não receba a mensagem 2×.
+   */
+  idempotencyKey?: string;
   /** `Conversation.metadata` — info canal-específica armazenada na conversa. */
   metadata?: Record<string, unknown> | null;
   /**

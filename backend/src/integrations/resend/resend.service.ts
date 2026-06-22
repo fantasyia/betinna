@@ -54,6 +54,12 @@ export class ResendService {
     texto?: string;
     /** Anexos opcionais (ex: PDF de proposta). content em base64 puro. */
     attachments?: Array<{ filename: string; content: string }>;
+    /**
+     * Chave de idempotência (Resend deduplica nativamente por 24h). OBRIGATÓRIA pra
+     * exactly-once: o próprio wrapper já reenvia 2× (retries:2) em 5xx/rede, então sem
+     * a chave esses reenvios poderiam duplicar mesmo sem crash.
+     */
+    idempotencyKey?: string;
   }): Promise<{ id: string | null; status: number }> {
     const apiKey = this.env.get('RESEND_API_KEY');
     const fromEmail = this.env.get('RESEND_FROM_EMAIL');
@@ -87,7 +93,10 @@ export class ResendService {
     try {
       const res = await this.http.post<{ id?: string }>(ResendService.BASE_URL, {
         body,
-        headers: { Authorization: `Bearer ${apiKey}` },
+        headers: {
+          Authorization: `Bearer ${apiKey}`,
+          ...(params.idempotencyKey ? { 'Idempotency-Key': params.idempotencyKey } : {}),
+        },
         integration: 'resend',
         redactKeys: ['authorization'],
         retries: 2,

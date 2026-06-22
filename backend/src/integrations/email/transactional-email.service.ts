@@ -49,6 +49,7 @@ export class TransactionalEmailService {
     assunto: string,
     html: string,
     attachments?: Array<{ filename: string; content: string }>,
+    idempotencyKey?: string,
   ): Promise<{ ok: boolean; motivo?: string; id?: string | null }> {
     // Resend é o ÚNICO provedor transacional do sistema (SendGrid removido).
     const ctx = `para=${para} assunto="${assunto.slice(0, 60)}"`;
@@ -61,7 +62,7 @@ export class TransactionalEmailService {
     }
 
     try {
-      const r = await this.resend.enviar({ para, assunto, html, attachments });
+      const r = await this.resend.enviar({ para, assunto, html, attachments, idempotencyKey });
       const ok = r.status >= 200 && r.status < 300;
       if (!ok) {
         const motivo = `provedor retornou HTTP ${r.status}`;
@@ -83,8 +84,13 @@ export class TransactionalEmailService {
   // aqui agora — provedor único, isConfigured + log de falha centralizados.
 
   /** HTML já montado (corpo livre) — campanhas, fluxos, alertas. */
-  async enviarHtmlLivre(params: { para: string; assunto: string; html: string }) {
-    return this.send(params.para, params.assunto, params.html);
+  async enviarHtmlLivre(params: {
+    para: string;
+    assunto: string;
+    html: string;
+    idempotencyKey?: string;
+  }) {
+    return this.send(params.para, params.assunto, params.html, undefined, params.idempotencyKey);
   }
 
   /** E-mail com anexo (ex: PDF de proposta em base64). */

@@ -569,7 +569,7 @@ describe('FluxoExecutorService', () => {
         'emp-1',
         '11987654321@s.whatsapp.net',
         'Olá Carlos!',
-        {},
+        { idempotencyKey: 'fx:job-test' },
       );
     });
 
@@ -610,7 +610,7 @@ describe('FluxoExecutorService', () => {
         'emp-1',
         '120363000000000000@g.us',
         'Bom dia, time!',
-        {},
+        { idempotencyKey: 'fx:job-test' },
       );
     });
   });
@@ -780,7 +780,7 @@ describe('FluxoExecutorService', () => {
         'emp-1',
         '11999990000@s.whatsapp.net',
         'Lead: Padaria Forte (Campinas/SP) wpp +55 19 98888-7777 | canal atacado | obs Compra 3x/mês',
-        {},
+        { idempotencyKey: 'fx:job-test' },
       );
     });
   });

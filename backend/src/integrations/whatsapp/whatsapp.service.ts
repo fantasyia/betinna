@@ -71,6 +71,7 @@ export class WhatsAppService implements CanalAdapter, OnModuleInit {
               participant: ctx.quoted.participant,
             }
           : undefined,
+        ctx?.idempotencyKey,
       );
       return { externalId: r.key?.id };
     }
