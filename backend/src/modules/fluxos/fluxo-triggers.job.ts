@@ -58,6 +58,35 @@ export class FluxoTriggersJob {
   }
 
   /**
+   * Reconciliação dos claims de idempotência do executor (FluxoStepClaim).
+   *
+   * - EXECUTANDO órfão > 15min: o worker morreu entre o efeito e a marca CONCLUIDO e o
+   *   BullMQ já deu o job como falho-final (dead-letter) → esse claim nunca mais será
+   *   re-tentado. 15min > (attempts:3 × backoff exponencial de poucos segundos), então
+   *   nenhum retry vivo ainda o usa — pode remover com segurança.
+   * - CONCLUIDO > 7 dias: housekeeping pra a tabela não crescer indefinidamente
+   *   (1 linha por passo executado); não é crítico.
+   */
+  @Cron('*/15 * * * *', { name: 'fluxo-step-claim-reconcile', timeZone: 'UTC' })
+  async reconciliarClaims(): Promise<void> {
+    if (this.env.get('NODE_ENV') === 'test') return;
+    if (!(await this.cronLock.acquire('fluxo-step-claim-reconcile', 14 * 60))) return;
+
+    const agora = Date.now();
+    const orfaos = await this.prisma.fluxoStepClaim.deleteMany({
+      where: { estado: 'EXECUTANDO', criadoEm: { lt: new Date(agora - 15 * 60 * 1000) } },
+    });
+    const antigos = await this.prisma.fluxoStepClaim.deleteMany({
+      where: { estado: 'CONCLUIDO', criadoEm: { lt: new Date(agora - 7 * 24 * 60 * 60 * 1000) } },
+    });
+    if (orfaos.count > 0 || antigos.count > 0) {
+      this.logger.log(
+        `Reconciliação de claims: ${orfaos.count} órfão(s) EXECUTANDO + ${antigos.count} CONCLUIDO antigo(s) removidos`,
+      );
+    }
+  }
+
+  /**
    * Avalia os fluxos CRON_AGENDADO a cada minuto — latência ≤ 1min (antes ~30min
    * quando ficava acoplado ao cron pesado de 30min). Query global única (todas as
    * empresas de uma vez), barata e indexada por (status, triggerTipo).
