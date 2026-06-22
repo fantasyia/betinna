@@ -126,8 +126,10 @@ export class InboxInternaService {
     const thread = await this.findById(user, threadId);
     const cfg = await this.lerConfig(thread.empresaId);
     const tipo = cfg.tipos.find((t) => t.key === thread.tipo);
-    if (tipo && !tipo.permiteResposta && user.role === 'REP') {
-      throw new BusinessRuleException(`O canal "${tipo.nome}" é somente leitura`);
+    // Fail-closed: se o tipo sumiu da config (canal removido/renomeado), REP NÃO responde
+    // — senão a trava de só-leitura era pulada quando o lookup vinha vazio.
+    if (user.role === 'REP' && (!tipo || !tipo.permiteResposta)) {
+      throw new BusinessRuleException(`O canal "${tipo?.nome ?? thread.tipo}" é somente leitura`);
     }
     if (thread.status === 'RESOLVIDA') {
       throw new BusinessRuleException('Conversa resolvida — abra uma nova para continuar');

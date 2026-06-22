@@ -90,17 +90,21 @@ export class EmpresasService {
     patch: TenantConfigPatchDto,
   ): Promise<Record<string, unknown>> {
     if (!user.empresaIdAtiva) throw new NotFoundException('Empresa ativa', 'nenhuma');
-    const emp = await this.prisma.empresa.findUnique({
-      where: { id: user.empresaIdAtiva },
-      select: { config: true },
+    const empresaId = user.empresaIdAtiva;
+    // Atômico: read-modify-write do JSON sob lock pessimista da linha (FOR UPDATE) —
+    // sem isto, 2 PATCH concorrentes (2 seções do Avançado salvas juntas) leem o mesmo
+    // `atual` e o último a gravar apaga a sub-chave do outro (lost update).
+    return this.prisma.$transaction(async (tx) => {
+      const rows = await tx.$queryRaw<Array<{ config: unknown }>>`
+        SELECT "config" FROM "Empresa" WHERE "id" = ${empresaId} FOR UPDATE`;
+      const atual = (rows[0]?.config as Record<string, unknown> | null) ?? {};
+      const proximo = { ...atual, ...patch };
+      await tx.empresa.update({
+        where: { id: empresaId },
+        data: { config: proximo as Prisma.InputJsonValue },
+      });
+      return proximo;
     });
-    const atual = (emp?.config as Record<string, unknown> | null) ?? {};
-    const proximo = { ...atual, ...patch };
-    await this.prisma.empresa.update({
-      where: { id: user.empresaIdAtiva },
-      data: { config: proximo as Prisma.InputJsonValue },
-    });
-    return proximo;
   }
 
   async list(

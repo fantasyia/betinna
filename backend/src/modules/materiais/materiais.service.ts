@@ -24,6 +24,25 @@ interface UploadInput {
 const BUCKET = 'materiais-venda';
 const MAX_SIZE_BYTES = 50 * 1024 * 1024; // 50MB (vídeos/apresentações)
 const SIGNED_URL_EXPIRES = 60 * 60; // 1h — o link expirável de compartilhamento
+/** Tipos aceitos no material de venda (anti upload arbitrário; content-type vem do cliente). */
+const ALLOWED_MIMES = new Set([
+  'application/pdf',
+  'image/jpeg',
+  'image/png',
+  'image/webp',
+  'image/gif',
+  'video/mp4',
+  'video/quicktime',
+  'video/webm',
+  'application/vnd.openxmlformats-officedocument.presentationml.presentation',
+  'application/vnd.ms-powerpoint',
+  'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+  'application/vnd.ms-excel',
+  'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+  'application/msword',
+  'text/csv',
+  'text/plain',
+]);
 
 /**
  * Biblioteca de materiais de venda da empresa (marketing). Admin/diretor publica,
@@ -113,6 +132,10 @@ export class MateriaisService implements OnModuleInit {
         `Arquivo muito grande (máx. ${MAX_SIZE_BYTES / 1024 / 1024}MB)`,
       );
     }
+    if (!ALLOWED_MIMES.has(file.mimetype)) {
+      throw new BusinessRuleException(`Tipo de arquivo não permitido: ${file.mimetype}`);
+    }
+    if (dto.produtoId) await this.assertProdutoDaEmpresa(empresaId, dto.produtoId);
 
     const ts = Date.now();
     const safeName = file.filename.replace(/[^\w.\-]/g, '_').slice(0, 100);
@@ -149,11 +172,21 @@ export class MateriaisService implements OnModuleInit {
     dto: UpdateMaterialDto,
   ): Promise<MaterialVenda> {
     const existing = await this.findById(user, id);
+    if (dto.produtoId) await this.assertProdutoDaEmpresa(existing.empresaId, dto.produtoId);
     await this.prisma.materialVenda.updateMany({
       where: { id, empresaId: existing.empresaId },
       data: dto,
     });
     return this.prisma.materialVenda.findUniqueOrThrow({ where: { id } });
+  }
+
+  /** Valida que o produto vinculado pertence ao tenant (anti referência cruzada). */
+  private async assertProdutoDaEmpresa(empresaId: string, produtoId: string): Promise<void> {
+    const p = await this.prisma.produto.findFirst({
+      where: { id: produtoId, empresaId },
+      select: { id: true },
+    });
+    if (!p) throw new NotFoundException('Produto', produtoId);
   }
 
   async remove(user: AuthenticatedUser, id: string): Promise<void> {
