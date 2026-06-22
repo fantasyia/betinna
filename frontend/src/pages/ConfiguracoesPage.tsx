@@ -322,7 +322,7 @@ function TabButton({
       )}
       style={{
         borderBottom: `2px solid ${active ? BRAND.magenta : 'transparent'}`,
-        color: active ? BRAND.navy : 'var(--muted)',
+        color: active ? 'var(--text)' : 'var(--muted)',
         transition: 'color 120ms, border-color 120ms',
       }}
     >
@@ -376,7 +376,7 @@ function LifecycleConfig() {
 
   return (
     <div className="bg-surface border border-border rounded-[10px] p-6 mt-4">
-      <h2 className="mt-0 text-[16px]" style={{ color: BRAND.navy }}>
+      <h2 className="mt-0 text-[16px]" style={{ color: 'var(--text)' }}>
         🧭 Lifecycle de pedido
       </h2>
       <p className="text-xs text-muted mt-0">
@@ -501,7 +501,7 @@ function PedidoMinimoConfig() {
 
   return (
     <div className="bg-surface border border-border rounded-[10px] p-6 mt-4">
-      <h2 className="mt-0 text-[16px]" style={{ color: BRAND.navy }}>
+      <h2 className="mt-0 text-[16px]" style={{ color: 'var(--text)' }}>
         📦 Pedido mínimo
       </h2>
       <p className="text-xs text-muted mt-0">
@@ -688,7 +688,7 @@ function AmostrasConfig() {
 
   return (
     <div className="bg-surface border border-border rounded-[10px] p-6 mt-4">
-      <h2 className="mt-0 text-[16px]" style={{ color: BRAND.navy }}>
+      <h2 className="mt-0 text-[16px]" style={{ color: 'var(--text)' }}>
         🧪 Amostras
       </h2>
       <p className="text-xs text-muted mt-0">
@@ -836,7 +836,7 @@ function ComissaoConfig() {
 
   return (
     <div className="bg-surface border border-border rounded-[10px] p-6 mt-4">
-      <h2 className="mt-0 text-[16px]" style={{ color: BRAND.navy }}>
+      <h2 className="mt-0 text-[16px]" style={{ color: 'var(--text)' }}>
         💰 Comissão
       </h2>
       <p className="text-xs text-muted mt-0">
@@ -993,7 +993,7 @@ function MateriaisTiposConfig() {
 
   return (
     <div className="bg-surface border border-border rounded-[10px] p-6 mt-4">
-      <h2 className="mt-0 text-[16px]" style={{ color: BRAND.navy }}>
+      <h2 className="mt-0 text-[16px]" style={{ color: 'var(--text)' }}>
         📁 Tipos de materiais de venda
       </h2>
       <p className="text-xs text-muted mt-0">
@@ -1149,7 +1149,7 @@ function DevolucaoConfig() {
 
   return (
     <div className="bg-surface border border-border rounded-[10px] p-6 mt-4">
-      <h2 className="mt-0 text-[16px]" style={{ color: BRAND.navy }}>
+      <h2 className="mt-0 text-[16px]" style={{ color: 'var(--text)' }}>
         ↩️ Devolução interna
       </h2>
       <p className="text-xs text-muted mt-0">
@@ -1329,7 +1329,7 @@ function InboxInternaConfig() {
 
   return (
     <div className="bg-surface border border-border rounded-[10px] p-6 mt-4">
-      <h2 className="mt-0 text-[16px]" style={{ color: BRAND.navy }}>
+      <h2 className="mt-0 text-[16px]" style={{ color: 'var(--text)' }}>
         💬 Mensagens internas (canais)
       </h2>
       <p className="text-xs text-muted mt-0">
@@ -1475,7 +1475,7 @@ function EnvioWhatsappConfig() {
 
   return (
     <div className="bg-surface border border-border rounded-[10px] p-6 mt-4">
-      <h2 className="mt-0 text-[16px]" style={{ color: BRAND.navy }}>
+      <h2 className="mt-0 text-[16px]" style={{ color: 'var(--text)' }}>
         🐢 Ritmo de envio (WhatsApp)
       </h2>
       <p className="text-xs text-muted mt-0">
@@ -1620,7 +1620,7 @@ function AvancadoTab() {
       id="tab-panel-avancado"
       role="tabpanel"
     >
-      <h2 className="mt-0 text-[16px]" style={{ color: BRAND.navy }}>
+      <h2 className="mt-0 text-[16px]" style={{ color: 'var(--text)' }}>
         ⚙️ Áreas administrativas relacionadas
       </h2>
       <p className="text-xs text-muted mt-0">
@@ -1641,7 +1641,7 @@ function AvancadoTab() {
             }}
           >
             <div className="text-xl mb-1">{l.emoji}</div>
-            <div className="font-semibold text-sm" style={{ color: BRAND.navy }}>
+            <div className="font-semibold text-sm" style={{ color: 'var(--text)' }}>
               {l.title}
             </div>
             <div className="text-xs text-muted mt-0.5 leading-[1.4]">
@@ -1668,7 +1668,7 @@ function LogoSection({ canEdit }: { canEdit: boolean }) {
       data-testid="logo-section"
     >
       <div className="mb-3">
-        <div className="text-sm font-bold" style={{ color: BRAND.navy }}>
+        <div className="text-sm font-bold" style={{ color: 'var(--text)' }}>
           🖼️ Logo da empresa
         </div>
         <div className="text-xs text-muted mt-0.5">
