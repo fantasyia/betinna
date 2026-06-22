@@ -199,7 +199,8 @@ describe('FluxoExecutorService', () => {
           take: 2,
         }),
       );
-      expect(prisma.lead.update).toHaveBeenCalledTimes(2);
+      // CAS: move via updateMany guardado por funilEtapaId de origem (count===1 por lead).
+      expect(prisma.lead.updateMany).toHaveBeenCalledTimes(2);
       expect(bus.disparar).toHaveBeenCalledWith(
         'emp-1',
         'LEAD_ETAPA_MUDOU',

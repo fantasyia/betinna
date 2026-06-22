@@ -629,7 +629,9 @@ export class ConversarIaService {
         empresaId: execucao.empresaId,
         status: 'EM_EXECUCAO',
         iniciouEm: new Date(),
-        contexto: toJsonInput({ ...ctx }),
+        // _ramoFilha: o supersede anti-duplicata da IA NÃO deve cancelar esta execução
+        // (ela já está rodando as ações terminais do ramo "classificou").
+        contexto: toJsonInput({ ...ctx, _ramoFilha: true }),
       },
     });
     for (const e of alvos) {
@@ -643,11 +645,18 @@ export class ConversarIaService {
    * Senão, mantém o comportamento antigo: dispara LEAD_SEM_RESPOSTA e encerra.
    */
   async processarTimeouts(): Promise<number> {
+    const agora = new Date();
     const vencidas = await this.prisma.fluxoExecucao.findMany({
       // SÓ fluxos ATIVOS: pausar/arquivar um fluxo CONGELA as execuções dele
       // (sem isto, um fluxo pausado seguia disparando o ramo "timeout" a cada
       // rodada do cron — bug do "fluxo pausado que continua enviando").
-      where: { status: 'AGUARDANDO', timeoutEm: { lt: new Date() }, fluxo: { status: 'ATIVO' } },
+      // processandoTurno:false → não pega execução cujo turno o retomar está processando.
+      where: {
+        status: 'AGUARDANDO',
+        processandoTurno: false,
+        timeoutEm: { lt: agora },
+        fluxo: { status: 'ATIVO' },
+      },
       select: { id: true, empresaId: true, contexto: true, aguardandoNoId: true },
       take: 200,
     });
@@ -661,8 +670,13 @@ export class ConversarIaService {
       // conversa). Conclui em silêncio — NÃO dispara LEAD_SEM_RESPOSTA (ele respondeu) e
       // NÃO segue ramo "timeout" (o ramo "classificou" já rodou na execução-filha).
       if (ctx._iaClassificou === true) {
-        await this.prisma.fluxoExecucao.update({
-          where: { id: ex.id },
+        await this.prisma.fluxoExecucao.updateMany({
+          where: {
+            id: ex.id,
+            status: 'AGUARDANDO',
+            processandoTurno: false,
+            timeoutEm: { lt: agora },
+          },
           data: {
             status: 'CONCLUIDO',
             aguardandoNoId: null,
@@ -685,8 +699,15 @@ export class ConversarIaService {
         // gatilho global LEAD_SEM_RESPOSTA — evita tratar o lead em dobro).
         // _timeoutSeguido conta os re-disparos pra cortar loop (timeout que
         // volta pro mesmo nó com prazo curto = spam a cada rodada do cron).
-        await this.prisma.fluxoExecucao.update({
-          where: { id: ex.id },
+        // CAS: claim antes de enfileirar — se o retomar pegou o turno ou renovou o
+        // timeoutEm, count===0 e o cron NÃO segue o ramo "timeout".
+        const claim = await this.prisma.fluxoExecucao.updateMany({
+          where: {
+            id: ex.id,
+            status: 'AGUARDANDO',
+            processandoTurno: false,
+            timeoutEm: { lt: agora },
+          },
           data: {
             status: 'EM_EXECUCAO',
             aguardandoNoId: null,
@@ -694,6 +715,7 @@ export class ConversarIaService {
             contexto: toJsonInput({ ...ctx, _timeoutSeguido: seguido + 1 }),
           },
         });
+        if (claim.count === 0) continue;
         for (const e of arestasTimeout) {
           await this.enfileirarStep(ex.id, e.targetNoId);
         }
@@ -701,12 +723,15 @@ export class ConversarIaService {
         continue;
       }
 
-      // Sem ramo "timeout": dispara LEAD_SEM_RESPOSTA e encerra.
-      if (ex.empresaId && leadId) {
-        await this.bus.disparar(ex.empresaId, 'LEAD_SEM_RESPOSTA', { leadId });
-      }
-      await this.prisma.fluxoExecucao.update({
-        where: { id: ex.id },
+      // Sem ramo "timeout": CAS antes de tratar como sem-resposta — se o lead respondeu
+      // (retomar em curso/renovou o timeout), count===0 e NÃO disparamos LEAD_SEM_RESPOSTA.
+      const claim = await this.prisma.fluxoExecucao.updateMany({
+        where: {
+          id: ex.id,
+          status: 'AGUARDANDO',
+          processandoTurno: false,
+          timeoutEm: { lt: agora },
+        },
         data: {
           status: 'CONCLUIDO',
           aguardandoNoId: null,
@@ -714,6 +739,10 @@ export class ConversarIaService {
           terminouEm: new Date(),
         },
       });
+      if (claim.count === 0) continue;
+      if (ex.empresaId && leadId) {
+        await this.bus.disparar(ex.empresaId, 'LEAD_SEM_RESPOSTA', { leadId });
+      }
     }
     if (vencidas.length > 0) {
       this.logger.log(

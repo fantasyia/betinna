@@ -42,6 +42,14 @@ export class FluxoEventBusService {
     triggerTipo: FluxoTriggerTipo,
     contexto: Record<string, unknown>,
   ): Promise<void> {
+    // #14 corta-loop: re-disparos internos (LEAD_ETAPA_MUDOU em cadeia entre fluxos sem
+    // nó IA) não podem entrar em ping-pong infinito. A entrada externa começa em _hops=0;
+    // só os re-disparos internos (executor) acumulam → corta acima de 10.
+    const hops = typeof contexto['_hops'] === 'number' ? (contexto['_hops'] as number) : 0;
+    if (hops > 10) {
+      this.logger.warn(`Cadeia ${triggerTipo} cortada em _hops=${hops} (empresa ${empresaId})`);
+      return;
+    }
     try {
       // Busca fluxos ATIVOS para este triggerTipo
       const fluxos = await this.prisma.fluxo.findMany({
@@ -61,104 +69,119 @@ export class FluxoEventBusService {
       );
 
       for (const fluxo of fluxos) {
-        const triggerNo = fluxo.nos[0];
-        if (!triggerNo) {
-          this.logger.warn(`Fluxo ${fluxo.id} (${fluxo.nome}) sem nó TRIGGER — ignorado`);
-          continue;
-        }
+        // #6: isola a falha por-fluxo — um fluxo problemático não aborta os demais.
+        try {
+          const triggerNo = fluxo.nos[0];
+          if (!triggerNo) {
+            this.logger.warn(`Fluxo ${fluxo.id} (${fluxo.nome}) sem nó TRIGGER — ignorado`);
+            continue;
+          }
 
-        // Filtro por config do gatilho (LEAD_ETAPA_MUDOU): só dispara quando o lead
-        // ENTRA na `paraEtapa` (no `funil` certo) e, se `deEtapa` setado, veio dela.
-        if (triggerTipo === 'LEAD_ETAPA_MUDOU') {
-          const cfg = (triggerNo.config ?? {}) as Record<string, unknown>;
-          const funilCfg = cfg['funil'] as string | undefined;
-          const paraEtapa = cfg['paraEtapa'] as string | undefined;
-          const deEtapa = cfg['deEtapa'] as string | undefined;
-          // Aceita os nomes canônicos (leads.service.moverEtapa) E os legados que os
-          // disparadores internos emitem (LIBERAR_LOTE / SLA): para/deEtapaId.
-          const funilCtx = contexto['funilId'] as string | undefined;
-          const paraCtx = (contexto['paraFunilEtapaId'] ?? contexto['paraEtapaId']) as
-            | string
-            | undefined;
-          const deCtx = (contexto['deFunilEtapaId'] ?? contexto['deEtapaId']) as string | undefined;
-          // funilId só filtra quando o disparador informou (nem todos enviam); como
-          // a etapa-destino já é única por funil, o filtro de paraEtapa cobre o resto.
-          if (funilCfg && funilCtx && funilCtx !== funilCfg) continue;
-          if (paraEtapa && paraCtx !== paraEtapa) continue;
-          if (deEtapa && deCtx !== deEtapa) continue;
-        }
+          // Filtro por config do gatilho (LEAD_ETAPA_MUDOU): só dispara quando o lead
+          // ENTRA na `paraEtapa` (no `funil` certo) e, se `deEtapa` setado, veio dela.
+          if (triggerTipo === 'LEAD_ETAPA_MUDOU') {
+            const cfg = (triggerNo.config ?? {}) as Record<string, unknown>;
+            const funilCfg = cfg['funil'] as string | undefined;
+            const paraEtapa = cfg['paraEtapa'] as string | undefined;
+            const deEtapa = cfg['deEtapa'] as string | undefined;
+            // Aceita os nomes canônicos (leads.service.moverEtapa) E os legados que os
+            // disparadores internos emitem (LIBERAR_LOTE / SLA): para/deEtapaId.
+            const funilCtx = contexto['funilId'] as string | undefined;
+            const paraCtx = (contexto['paraFunilEtapaId'] ?? contexto['paraEtapaId']) as
+              | string
+              | undefined;
+            const deCtx = (contexto['deFunilEtapaId'] ?? contexto['deEtapaId']) as
+              | string
+              | undefined;
+            // funilId só filtra quando o disparador informou (nem todos enviam); como
+            // a etapa-destino já é única por funil, o filtro de paraEtapa cobre o resto.
+            if (funilCfg && funilCtx && funilCtx !== funilCfg) continue;
+            if (paraEtapa && paraCtx !== paraEtapa) continue;
+            if (deEtapa && deCtx !== deEtapa) continue;
+          }
 
-        // Anti-duplicata (IA) por SUBSTITUIÇÃO: um fluxo com nó "Conversar com IA"
-        // não pode ter duas execuções ativas pro MESMO lead (senão duas IAs conversam
-        // em paralelo, cada uma sem o histórico da outra → re-apresenta a empresa).
-        // Mas SUPRIMIR o re-disparo bloqueava a re-entrada legítima (lead volta pra
-        // etapa de abordagem e o opener não disparava). Então, ao re-entrar, ENCERRAMOS
-        // a(s) execução(ões) anterior(es) deste lead nesse fluxo e começamos uma NOVA —
-        // re-entrar sempre dispara a abordagem, e nunca há duas em paralelo. Só vale pra
-        // fluxos conversacionais (não mexe em fluxos comuns que rodam várias vezes/lead).
-        const leadId = typeof contexto['leadId'] === 'string' ? contexto['leadId'] : undefined;
-        if (leadId) {
-          const nosIa = await this.prisma.fluxoNo.count({
-            where: { fluxoId: fluxo.id, tipo: 'ACAO', acaoTipo: 'CONVERSAR_IA' },
-          });
-          if (nosIa > 0) {
-            const { count } = await this.prisma.fluxoExecucao.updateMany({
-              where: {
-                fluxoId: fluxo.id,
-                empresaId,
-                status: { in: ['PENDENTE', 'EM_EXECUCAO', 'AGUARDANDO'] },
-                contexto: { path: ['leadId'], equals: leadId },
-              },
-              data: {
-                status: 'CANCELADO',
-                aguardandoNoId: null,
-                timeoutEm: null,
-                terminouEm: new Date(),
-              },
+          // Anti-duplicata (IA) por SUBSTITUIÇÃO: um fluxo com nó "Conversar com IA"
+          // não pode ter duas execuções ativas pro MESMO lead (senão duas IAs conversam
+          // em paralelo, cada uma sem o histórico da outra → re-apresenta a empresa).
+          // Mas SUPRIMIR o re-disparo bloqueava a re-entrada legítima (lead volta pra
+          // etapa de abordagem e o opener não disparava). Então, ao re-entrar, ENCERRAMOS
+          // a(s) execução(ões) anterior(es) deste lead nesse fluxo e começamos uma NOVA —
+          // re-entrar sempre dispara a abordagem, e nunca há duas em paralelo. Só vale pra
+          // fluxos conversacionais (não mexe em fluxos comuns que rodam várias vezes/lead).
+          const leadId = typeof contexto['leadId'] === 'string' ? contexto['leadId'] : undefined;
+          if (leadId) {
+            const nosIa = await this.prisma.fluxoNo.count({
+              where: { fluxoId: fluxo.id, tipo: 'ACAO', acaoTipo: 'CONVERSAR_IA' },
             });
-            if (count > 0) {
-              this.logger.log(
-                `Fluxo "${fluxo.nome}": ${count} execução(ões) anterior(es) do lead ${leadId} ` +
-                  `encerrada(s) — re-entrada (${triggerTipo}) substitui (anti-duplicata IA)`,
-              );
+            if (nosIa > 0) {
+              const { count } = await this.prisma.fluxoExecucao.updateMany({
+                where: {
+                  fluxoId: fluxo.id,
+                  empresaId,
+                  status: { in: ['PENDENTE', 'EM_EXECUCAO', 'AGUARDANDO'] },
+                  contexto: { path: ['leadId'], equals: leadId },
+                  // #12: NÃO cancela a execução-FILHA do ramo "classificou" (que já está
+                  // executando ações terminais) — só as execuções-RAIZ conversacionais.
+                  NOT: { contexto: { path: ['_ramoFilha'], equals: true } },
+                },
+                data: {
+                  status: 'CANCELADO',
+                  aguardandoNoId: null,
+                  timeoutEm: null,
+                  terminouEm: new Date(),
+                },
+              });
+              if (count > 0) {
+                this.logger.log(
+                  `Fluxo "${fluxo.nome}": ${count} execução(ões) anterior(es) do lead ${leadId} ` +
+                    `encerrada(s) — re-entrada (${triggerTipo}) substitui (anti-duplicata IA)`,
+                );
+              }
             }
           }
+
+          // Cria registro da execução
+          const execucao = await this.prisma.fluxoExecucao.create({
+            data: {
+              fluxoId: fluxo.id,
+              empresaId,
+              status: 'PENDENTE',
+              contexto: toJsonInput(contexto),
+            },
+          });
+
+          // Enfileira job para o nó trigger
+          const job = await this.queue.add(
+            'step',
+            { execucaoId: execucao.id, noId: triggerNo.id },
+            {
+              attempts: 3,
+              backoff: { type: 'exponential', delay: 2000 },
+              removeOnComplete: { count: 500 },
+              removeOnFail: { count: 200 },
+            },
+          );
+
+          // Salva jobId pra monitoramento
+          await this.prisma.fluxoExecucao.update({
+            where: { id: execucao.id },
+            data: { jobId: job.id },
+          });
+
+          this.logger.log(
+            `Fluxo "${fluxo.nome}" (${fluxo.id}): execução ${execucao.id} enfileirada (job ${job.id})`,
+          );
+        } catch (e) {
+          // Não suprime os demais fluxos do mesmo evento (antes um erro aqui abortava todos).
+          const m = e instanceof Error ? e.message : String(e);
+          this.logger.error(
+            `Fluxo ${fluxo.id} (${fluxo.nome}) falhou no disparo de ${triggerTipo}: ${m}`,
+          );
+          continue;
         }
-
-        // Cria registro da execução
-        const execucao = await this.prisma.fluxoExecucao.create({
-          data: {
-            fluxoId: fluxo.id,
-            empresaId,
-            status: 'PENDENTE',
-            contexto: toJsonInput(contexto),
-          },
-        });
-
-        // Enfileira job para o nó trigger
-        const job = await this.queue.add(
-          'step',
-          { execucaoId: execucao.id, noId: triggerNo.id },
-          {
-            attempts: 3,
-            backoff: { type: 'exponential', delay: 2000 },
-            removeOnComplete: { count: 500 },
-            removeOnFail: { count: 200 },
-          },
-        );
-
-        // Salva jobId pra monitoramento
-        await this.prisma.fluxoExecucao.update({
-          where: { id: execucao.id },
-          data: { jobId: job.id },
-        });
-
-        this.logger.log(
-          `Fluxo "${fluxo.nome}" (${fluxo.id}): execução ${execucao.id} enfileirada (job ${job.id})`,
-        );
       }
     } catch (err) {
-      // Falha no bus não derruba a operação principal
+      // Rede de segurança (ex.: falha do findMany inicial) — não derruba a operação principal.
       const msg = err instanceof Error ? err.message : String(err);
       this.logger.error(`FluxoEventBus.disparar(${triggerTipo}) falhou: ${msg}`, err);
     }
@@ -170,7 +193,7 @@ export class FluxoEventBusService {
   async dispararDireto(
     execucaoId: string,
     noId: string,
-    opts: { tentativas?: number } = {},
+    opts: { tentativas?: number; jobId?: string } = {},
   ): Promise<void> {
     await this.queue.add(
       'step',
@@ -180,6 +203,8 @@ export class FluxoEventBusService {
         backoff: { type: 'exponential', delay: 2000 },
         removeOnComplete: { count: 100 },
         removeOnFail: { count: 50 },
+        // jobId determinístico (cron por slot) → BullMQ dedup de enfileiramento duplicado.
+        ...(opts.jobId ? { jobId: opts.jobId } : {}),
       },
     );
   }

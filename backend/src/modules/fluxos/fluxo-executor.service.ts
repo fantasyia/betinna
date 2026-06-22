@@ -949,11 +949,14 @@ export class FluxoExecutorService {
       // (ex: "Primeira Abordagem"), mesma semântica do LIBERAR_LOTE. Só quando a
       // etapa realmente muda, pra não disparar em re-move no-op nem criar laço.
       if (origemId !== etapa.id) {
+        // Propaga _hops: este re-disparo é um elo de cadeia (corta-loop do FluxoEventBus).
+        const hops = typeof ctx['_hops'] === 'number' ? (ctx['_hops'] as number) : 0;
         await this.bus.disparar(empresaId, 'LEAD_ETAPA_MUDOU', {
           leadId,
           funilId: etapa.funilId,
           deFunilEtapaId: origemId,
           paraFunilEtapaId: etapa.id,
+          _hops: hops + 1,
         });
       }
       return { leadId, funilEtapaId: etapa.id };
@@ -1183,30 +1186,38 @@ export class FluxoExecutorService {
       });
     }
 
+    let movidos = 0;
     for (const lead of leads) {
-      await this.prisma.lead.update({
-        where: { id: lead.id },
+      // CAS: só move se o lead AINDA está na etapa de origem. Duas execuções LIBERAR_LOTE
+      // concorrentes (cron lento + sobreposição) não movem o mesmo lead 2× nem disparam
+      // o opener em dobro — a 2ª acha count===0 e pula.
+      const r = await this.prisma.lead.updateMany({
+        where: { id: lead.id, empresaId, funilEtapaId: cfg.etapaOrigemId },
         data: { funilEtapaId: cfg.etapaDestinoId, etapa: etapaEnum, etapaDesde: new Date() },
       });
+      if (r.count === 0) continue; // outro lote já moveu este lead
+      movidos++;
       // Dispara os fluxos da etapa destino (1 por lead). Nomes canônicos +
       // funilId pra o filtro do gatilho "Lead mudou etapa" casar (FluxoEventBus).
+      // _hops=1: início de cadeia interna (corta-loop do FluxoEventBus).
       await this.bus.disparar(empresaId, 'LEAD_ETAPA_MUDOU', {
         leadId: lead.id,
         funilId: destino.funilId,
         deFunilEtapaId: cfg.etapaOrigemId,
         paraFunilEtapaId: cfg.etapaDestinoId,
+        _hops: 1,
       });
     }
 
     this.logger.log(
-      `LIBERAR_LOTE: ${leads.length} lead(s) ${cfg.etapaOrigemId} → ${cfg.etapaDestinoId} (empresa ${empresaId})`,
+      `LIBERAR_LOTE: ${movidos} lead(s) ${cfg.etapaOrigemId} → ${cfg.etapaDestinoId} (empresa ${empresaId})`,
     );
-    // movidos:0 (origem vazia / todos filtrados) → marca semEfeito pro executor
+    // movidos:0 (origem vazia / todos filtrados / já movidos) → marca semEfeito pro executor
     // descartar a execução vazia (não polui o histórico no cron a cada 1min).
     return {
-      movidos: leads.length,
+      movidos,
       etapaDestinoId: cfg.etapaDestinoId,
-      ...(leads.length === 0 ? { semEfeito: true } : {}),
+      ...(movidos === 0 ? { semEfeito: true } : {}),
     };
   }
 

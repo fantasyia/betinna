@@ -79,9 +79,21 @@ export class FluxoTriggersJob {
     const antigos = await this.prisma.fluxoStepClaim.deleteMany({
       where: { estado: 'CONCLUIDO', criadoEm: { lt: new Date(agora - 7 * 24 * 60 * 60 * 1000) } },
     });
-    if (orfaos.count > 0 || antigos.count > 0) {
+    // Destrava o lock de turno órfão: se o worker morreu no meio do retomar (sem rodar o
+    // finally), processandoTurno fica preso em true e o bot nunca mais responde o lead.
+    // Turno de IA é curto (segundos), então 15min sem progresso = órfão seguro de resetar.
+    const lockOrfaos = await this.prisma.fluxoExecucao.updateMany({
+      where: {
+        status: 'AGUARDANDO',
+        processandoTurno: true,
+        iniciouEm: { lt: new Date(agora - 15 * 60 * 1000) },
+      },
+      data: { processandoTurno: false },
+    });
+    if (orfaos.count > 0 || antigos.count > 0 || lockOrfaos.count > 0) {
       this.logger.log(
-        `Reconciliação de claims: ${orfaos.count} órfão(s) EXECUTANDO + ${antigos.count} CONCLUIDO antigo(s) removidos`,
+        `Reconciliação: ${orfaos.count} claim(s) órfão(s) + ${antigos.count} antigo(s) removidos, ` +
+          `${lockOrfaos.count} lock(s) de turno destravado(s)`,
       );
     }
   }
@@ -236,9 +248,15 @@ export class FluxoTriggersJob {
       }
 
       if (proximo.getTime() <= agora.getTime()) {
-        // Opção "pular feriados": no feriado nacional, NÃO dispara (mas avança o
-        // cursor pra não re-disparar). O cursor advance abaixo cuida disso.
-        const noFeriado = cfg.pularFeriados === true && ehFeriadoNacional(proximo, tz);
+        const slot = proximo; // snapshot do horário agendado antes de avançar o cursor
+        // CLAIM do slot: avança o cursor ANTES de disparar. Uma rodada sobreposta (lock
+        // de 50s expirado numa rodada lenta) lê `proximo > agora` e pula → sem disparo
+        // duplicado. O avanço deixou de acontecer só DEPOIS do disparo (janela do bug).
+        const prox = proximaExecucaoCrons(exprs, tz, agora);
+        if (prox) await this.gravarProximoCron(f.id, prox);
+
+        // Opção "pular feriados": no feriado nacional, NÃO dispara (cursor já avançou).
+        const noFeriado = cfg.pularFeriados === true && ehFeriadoNacional(slot, tz);
         const triggerNo = f.nos[0];
         if (triggerNo && !noFeriado) {
           const exec = await this.prisma.fluxoExecucao.create({
@@ -249,15 +267,17 @@ export class FluxoTriggersJob {
               contexto: { _cron: true },
             },
           });
-          await this.bus.dispararDireto(exec.id, triggerNo.id);
+          // jobId determinístico por slot → reforço: BullMQ deduplica enfileiramento
+          // duplicado se duas rodadas correrem o mesmo slot antes do claim do cursor.
+          await this.bus.dispararDireto(exec.id, triggerNo.id, {
+            jobId: `cron:${f.id}:${slot.toISOString()}`,
+          });
           // Métrica de latência: atraso entre o horário agendado e o disparo real.
-          await this.cronMetrics.registrar(agora.getTime() - proximo.getTime());
+          await this.cronMetrics.registrar(agora.getTime() - slot.getTime());
           this.logger.log(`CRON_AGENDADO: fluxo "${f.nome}" disparado (exec ${exec.id})`);
         } else if (noFeriado) {
           this.logger.log(`CRON_AGENDADO: fluxo "${f.nome}" pulado (feriado nacional)`);
         }
-        const prox = proximaExecucaoCrons(exprs, tz, agora);
-        if (prox) await this.gravarProximoCron(f.id, prox);
       }
     }
   }
