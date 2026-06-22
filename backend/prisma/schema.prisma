@@ -1488,6 +1488,24 @@ model FluxoExecucaoLog {
   @@index([execucaoId])
 }
 
+/// Claim de idempotência por job.id do BullMQ — garante at-most-once por passo.
+/// EXECUTANDO = passo em curso (retry de falha real reentra e re-executa);
+/// CONCLUIDO = efeito consumado (retry pós-efeito pula o efeito). Keyed por jobId
+/// (estável no retry do MESMO job, fresco por enqueue → não quebra loop cíclico nem
+/// re-entrada do CONVERSAR_IA). Sem FK p/ FluxoExecucao: claim de execução já deletada
+/// (cron-sem-efeito) não deve quebrar; limpeza por TTL via cron de reconciliação.
+model FluxoStepClaim {
+  jobId       String    @id
+  execucaoId  String
+  noId        String
+  estado      String    @default("EXECUTANDO") // EXECUTANDO | CONCLUIDO
+  criadoEm    DateTime  @default(now())
+  concluidoEm DateTime?
+
+  @@index([execucaoId])
+  @@index([estado, criadoEm])
+}
+
 // ─── CAMPANHAS ────────────────────────────────────────────────────────
 
 enum CampanhaStatus {
