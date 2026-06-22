@@ -23,6 +23,20 @@ type PedidoComItens = Pedido & {
 };
 
 /**
+ * % de desconto EFETIVO de um item pro OMIE = desconto do item + rateio do desconto
+ * GLOBAL do pedido (desconto geral + à vista). O app cobra `total`, mas os itens vão
+ * ao OMIE a preço cheio (só com o desconto de item) — sem isto a NF/ERP fica MAIOR que
+ * o cobrado. `fatorGlobal = total/subtotal` captura geral+à-vista (o à vista não é
+ * persistido como %). Mantém o valor_unitario real e faz a soma dos itens bater com o
+ * total. Clamp [0,100]; arredonda a 4 casas pra estabilidade.
+ */
+export function descontoEfetivoItem(itemDescPct: number, fatorGlobal: number): number {
+  const restanteItem = 1 - (itemDescPct ?? 0) / 100;
+  const efetivo = (1 - restanteItem * fatorGlobal) * 100;
+  return Math.min(100, Math.max(0, Math.round(efetivo * 10000) / 10000));
+}
+
+/**
  * Push de pedidos pro OMIE.
  *
  * Pre-condições já validadas pelo PedidosService (status, cliente ATIVO, etc).
@@ -142,6 +156,12 @@ export class OmiePedidosService {
       ? OmieMapper.dateToOmie(pedido.prazoEntrega)
       : OmieMapper.dateToOmie(new Date(Date.now() + 3 * 24 * 60 * 60 * 1000));
 
+    // Rateia o desconto global do pedido (geral + à vista) nos itens — senão o total
+    // no OMIE/NF fica MAIOR que o cobrado no app. fatorGlobal = total/subtotal.
+    const subtotal = Number(pedido.subtotal) || 0;
+    const total = Number(pedido.total) || 0;
+    const fatorGlobal = subtotal > 0 ? total / subtotal : 1;
+
     return {
       cabecalho: {
         codigo_cliente: Number(pedido.cliente.codigoOmie),
@@ -155,7 +175,7 @@ export class OmiePedidosService {
           produtoSku: item.produto.sku,
           quantidade: item.quantidade,
           precoUnitario: Number(item.precoUnitario), // #17 — Decimal→number pro payload OMIE
-          desconto: item.desconto,
+          desconto: descontoEfetivoItem(item.desconto, fatorGlobal),
         }),
       ),
       observacoes: pedido.observacoes ? { obs_venda: pedido.observacoes } : undefined,
