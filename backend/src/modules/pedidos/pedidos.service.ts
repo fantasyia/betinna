@@ -515,21 +515,29 @@ export class PedidosService {
       );
     }
 
-    await this.prisma.pedido.updateMany({
-      where: { id, empresaId: pedido.empresaId },
+    // CAS: inclui o status atual no where — duas requisições concorrentes sobre o mesmo
+    // pedido não avançam ambas (reescrevendo entregueEm e disparando PEDIDO_ENTREGUE 2×).
+    const cas = await this.prisma.pedido.updateMany({
+      where: { id, empresaId: pedido.empresaId, status: pedido.status as never },
       // Marca entregueEm ao virar ENTREGUE (base da janela de devolução).
       data: {
         status: proximo as never,
         ...(proximo === 'ENTREGUE' ? { entregueEm: new Date() } : {}),
       },
     });
+    if (cas.count === 0) {
+      throw new BusinessRuleException(
+        'Pedido mudou de status — recarregue e tente novamente',
+        ErrorCode.BUSINESS_RULE_VIOLATION,
+      );
+    }
     const updated = await this.prisma.pedido.findUniqueOrThrow({
       where: { id },
       include: pedidoInclude,
     });
     this.logger.log(`Pedido ${pedido.numero}: ${pedido.status} → ${proximo}`);
 
-    // Trigger: PEDIDO_ENTREGUE
+    // Trigger: PEDIDO_ENTREGUE — só a transição vencedora (count===1) dispara.
     if (proximo === 'ENTREGUE') {
       void this.bus.disparar(pedido.empresaId, 'PEDIDO_ENTREGUE', {
         pedidoId: pedido.id,
@@ -555,8 +563,13 @@ export class PedidosService {
     if (['ENTREGUE', 'CANCELADO'].includes(existing.status)) {
       throw new BusinessRuleException(`Pedido em status ${existing.status} não pode ser cancelado`);
     }
-    await this.prisma.pedido.updateMany({
-      where: { id, empresaId: existing.empresaId },
+    // CAS: só cancela se ainda não estiver ENTREGUE/CANCELADO (corrida com avançar/cancelar).
+    const cas = await this.prisma.pedido.updateMany({
+      where: {
+        id,
+        empresaId: existing.empresaId,
+        status: { notIn: ['ENTREGUE', 'CANCELADO'] as never },
+      },
       data: {
         status: 'CANCELADO',
         observacoes: dto.motivo
@@ -564,6 +577,12 @@ export class PedidosService {
           : existing.observacoes,
       },
     });
+    if (cas.count === 0) {
+      throw new BusinessRuleException(
+        'Pedido mudou de status — recarregue e tente novamente',
+        ErrorCode.BUSINESS_RULE_VIOLATION,
+      );
+    }
 
     // Fidelidade removida do projeto Betinna (gerenciada agora no ERP do
     // cliente). Não há mais estorno de pontos em cancelamento — limpo 2026-05-21.
@@ -685,6 +704,24 @@ export class PedidosService {
     // write podia falhar e deixar o pedido CANCELADO com a solicitação ainda PENDENTE
     // (re-decisão possível + perda da autoria/timestamp da aprovação).
     const updated = await this.prisma.$transaction(async (tx) => {
+      // CAS: claim da decisão (PENDENTE → dto.decisao). Duas decisões concorrentes
+      // (duplo-clique, GERENTE+DIRECTOR) → só a 1ª casa count===1; a 2ª aborta a tx
+      // inteira (inclusive o cancelamento do pedido), sem sobrescrever autoria/timestamp.
+      const cas = await tx.pedidoCancelamentoSolicitacao.updateMany({
+        where: { id: solicitacaoId, status: 'PENDENTE' },
+        data: {
+          status: dto.decisao,
+          decididoPorId: user.id,
+          decididoEm: new Date(),
+          decisaoComentario: dto.comentario,
+        },
+      });
+      if (cas.count === 0) {
+        throw new BusinessRuleException(
+          'Solicitação já foi decidida — recarregue',
+          ErrorCode.BUSINESS_RULE_VIOLATION,
+        );
+      }
       if (dto.decisao === 'APROVADA') {
         const motivoFinal =
           solicitacao.motivo +
@@ -697,14 +734,8 @@ export class PedidosService {
           },
         });
       }
-      return tx.pedidoCancelamentoSolicitacao.update({
+      return tx.pedidoCancelamentoSolicitacao.findUniqueOrThrow({
         where: { id: solicitacaoId },
-        data: {
-          status: dto.decisao,
-          decididoPorId: user.id,
-          decididoEm: new Date(),
-          decisaoComentario: dto.comentario,
-        },
         include: {
           solicitante: { select: { id: true, nome: true } },
           decididoPor: { select: { id: true, nome: true } },
