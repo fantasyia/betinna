@@ -3,10 +3,32 @@ import { Cron } from '@nestjs/schedule';
 import { EnvService } from '@config/env.service';
 import { IntegracaoStatusService } from '@modules/integracoes/integracao-status.service';
 import { IntegracoesService } from '@modules/integracoes/integracoes.service';
+import { BusinessRuleException, IntegrationException } from '@shared/errors/app-exception';
 import { CronLockService } from '@shared/utils/cron-lock.service';
 import { MetaOAuthService } from './meta-oauth.service';
 
 const SERVICOS = ['facebook', 'instagram'] as const;
+
+/**
+ * Classifica a falha de renovação do token Meta.
+ *
+ * `definitiva` (desconectar + alertar): token revogado/expirado/sem permissão — Meta
+ * responde 4xx (OAuthException) ou a página não é mais acessível (BusinessRuleException).
+ * `transitoria` (manter conexão, retentar no próximo run): 5xx do Meta, timeout ou rede
+ * (HttpClientError vira IntegrationException com upstreamStatus 5xx/0). Erro desconhecido
+ * é tratado como transitório — conservador, pra NÃO derrubar a conexão por engano.
+ */
+export function classificarFalhaToken(err: unknown): 'definitiva' | 'transitoria' {
+  if (err instanceof BusinessRuleException) return 'definitiva';
+  if (err instanceof IntegrationException) {
+    const s = err.upstreamStatus;
+    // 4xx = token inválido/revogado/sem permissão (definitivo), EXCETO 408/429 que são
+    // transitórios (timeout/rate-limit). 5xx e 0 (rede) também são transitórios.
+    const ehAuth4xx = typeof s === 'number' && s >= 400 && s < 500 && s !== 408 && s !== 429;
+    return ehAuth4xx ? 'definitiva' : 'transitoria';
+  }
+  return 'transitoria';
+}
 
 /**
  * Renovação proativa do token long-lived do Meta (Facebook/Instagram) — auditoria #15.
@@ -52,7 +74,17 @@ export class MetaTokenRefreshJob {
           }
         } catch (err) {
           const msg = err instanceof Error ? err.message : String(err);
-          this.logger.error(`Falha ao renovar token ${servico} empresa=${empresaId}: ${msg}`);
+          if (classificarFalhaToken(err) === 'transitoria') {
+            // 5xx/timeout/rede — NÃO desconecta (senão um flap derrubava FB/IG por engano);
+            // o próximo run diário tenta de novo enquanto ainda houver margem de dias.
+            this.logger.warn(
+              `Falha transitória ao renovar token ${servico} empresa=${empresaId} (mantém conexão): ${msg}`,
+            );
+            continue;
+          }
+          this.logger.error(
+            `Falha definitiva ao renovar token ${servico} empresa=${empresaId}: ${msg}`,
+          );
           await this.status.marcarDesconectado(
             empresaId,
             servico,

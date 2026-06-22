@@ -158,6 +158,7 @@ export class MetaGraphClientService {
         throw new IntegrationException(
           `Meta Graph HTTP ${err.status}: ${detail}`,
           ErrorCode.INTEGRATION_ERROR,
+          err.status, // propaga p/ classificar transitório (5xx/0) vs definitivo (4xx)
         );
       }
       throw err;

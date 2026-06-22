@@ -76,7 +76,11 @@ export class BusinessRuleException extends AppException {
 }
 
 export class IntegrationException extends AppException {
-  constructor(message: string, code = ErrorCode.INTEGRATION_ERROR) {
+  /** Status HTTP do provedor upstream (quando a falha veio de uma chamada externa). */
+  public readonly upstreamStatus?: number;
+
+  constructor(message: string, code = ErrorCode.INTEGRATION_ERROR, upstreamStatus?: number) {
     super(code, message, HttpStatus.BAD_GATEWAY);
+    this.upstreamStatus = upstreamStatus;
   }
 }
