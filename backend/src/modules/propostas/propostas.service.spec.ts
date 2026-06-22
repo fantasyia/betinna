@@ -13,12 +13,13 @@ import { PropostasService } from './propostas.service';
 // ---------------------------------------------------------------------------
 
 type MockModel = Record<string, ReturnType<typeof vi.fn>>;
-type Tx = { pedido: MockModel; proposta: MockModel };
+type Tx = { pedido: MockModel; proposta: MockModel; aprovacaoDesconto: MockModel };
 
 const makePrismaMock = () => {
   const tx: Tx = {
     pedido: { create: vi.fn() },
     proposta: { updateMany: vi.fn() },
+    aprovacaoDesconto: { create: vi.fn() },
   };
   return {
     proposta: {
@@ -39,6 +40,7 @@ const makePrismaMock = () => {
     empresa: {
       findUnique: vi.fn(async () => ({ descontoPixPct: 0, descontoBoletoAvistaPct: 0 })),
     } satisfies MockModel,
+    usuario: { findUnique: vi.fn() } satisfies MockModel,
     $transaction: vi.fn(async (cb: (t: Tx) => unknown) => cb(tx)),
     _tx: tx, // expose for assertions
   };
@@ -57,8 +59,15 @@ const makePricing = () => ({
 });
 
 const makePedidoPricing = () => ({
-  pedidoTotals: vi.fn(() => ({ subtotal: 100, total: 100, comissao: 5 })),
+  pedidoTotals: vi.fn(() => ({
+    subtotal: 100,
+    total: 100,
+    comissao: 5,
+    maxDescontoPercentual: 0,
+  })),
   descontoAVistaPct: vi.fn(() => 0),
+  // Teto de desconto: default não exige aprovação (proposta dentro do teto).
+  excedeTetoDesconto: vi.fn(() => false),
   itemTotal: vi.fn((i: { quantidade: number; precoUnitario: number; desconto: number }) => ({
     total: i.quantidade * i.precoUnitario * (1 - i.desconto / 100),
   })),
@@ -479,6 +488,41 @@ describe('PropostasService', () => {
       const result = await service.converterEmPedido(fakeUser(), 'prop-1');
 
       expect(result).toEqual({ pedidoId: 'ped-new', numero: 'PED-0007' });
+    });
+
+    it('desconto acima do teto do rep → pedido AGUARDANDO_APROVACAO + AprovacaoDesconto (não burla aprovação)', async () => {
+      const prop = fakeProposta({
+        status: 'ACEITA',
+        pedidoId: null,
+        representanteId: 'rep-1',
+        itens: [{ produtoId: 'p-1', quantidade: 1, precoUnitario: 100, desconto: 40, total: 60 }],
+      });
+      prisma.proposta.findFirst.mockResolvedValue(prop);
+      prisma.usuario.findUnique.mockResolvedValue({ role: 'REP', tetoDesconto: 5 }); // teto baixo
+      pedidoPricing.excedeTetoDesconto.mockReturnValue(true);
+      pedidoPricing.pedidoTotals.mockReturnValue({
+        subtotal: 100,
+        total: 60,
+        comissao: 3,
+        maxDescontoPercentual: 40,
+      });
+      sequence.next.mockResolvedValue(9);
+      const txMock = prisma._tx;
+      txMock.pedido.create.mockResolvedValue({ id: 'ped-9', numero: 'PED-0009' });
+      txMock.proposta.updateMany.mockResolvedValue({ count: 1 });
+
+      await service.converterEmPedido(fakeUser(), 'prop-1');
+
+      expect(txMock.pedido.create.mock.calls[0][0].data.status).toBe('AGUARDANDO_APROVACAO');
+      expect(txMock.aprovacaoDesconto.create).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: expect.objectContaining({
+            pedidoId: 'ped-9',
+            representanteId: 'rep-1',
+            status: 'PENDENTE',
+          }),
+        }),
+      );
     });
 
     it('número do pedido usa padding de 4 dígitos', async () => {

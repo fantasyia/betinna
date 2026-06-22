@@ -189,9 +189,41 @@ export class PropostasService {
     if (existing.status === 'ACEITA' || existing.status === 'RECUSADA') {
       throw new BusinessRuleException(`Proposta em status ${existing.status} não pode ser editada`);
     }
+    const data: Prisma.PropostaUpdateManyMutationInput = { ...dto };
+    // Recalcula totais quando desconto/forma/condição mudam — senão subtotal/valor/
+    // comissaoEstimada ficam stale (valor mostrado != valor real). Itens não mudam no
+    // update (DTO os omite), então usa os existentes.
+    if (
+      dto.descontoGeral !== undefined ||
+      dto.formaPagamento !== undefined ||
+      dto.condicaoPagamento !== undefined
+    ) {
+      const empresaCfg = await this.prisma.empresa.findUnique({
+        where: { id: existing.empresaId },
+        select: { descontoPixPct: true, descontoBoletoAvistaPct: true },
+      });
+      const descAVistaPct = this.pedidoPricing.descontoAVistaPct(
+        dto.formaPagamento ?? existing.formaPagamento,
+        dto.condicaoPagamento ?? existing.condicaoPagamento,
+        empresaCfg,
+      );
+      const totals = this.pedidoPricing.pedidoTotals(
+        existing.itens.map((i) => ({
+          quantidade: i.quantidade,
+          precoUnitario: Number(i.precoUnitario),
+          desconto: i.desconto,
+        })),
+        dto.descontoGeral ?? existing.descontoGeral,
+        COMISSAO_PADRAO_PCT,
+        descAVistaPct,
+      );
+      data.subtotal = totals.subtotal;
+      data.valor = totals.total;
+      data.comissaoEstimada = totals.comissao;
+    }
     await this.prisma.proposta.updateMany({
       where: { id, empresaId: existing.empresaId },
-      data: dto,
+      data,
     });
     return this.prisma.proposta.findUniqueOrThrow({ where: { id }, include: propostaInclude });
   }
@@ -234,6 +266,41 @@ export class PropostasService {
       throw new BusinessRuleException(`Proposta já foi convertida no pedido ${proposta.pedidoId}`);
     }
 
+    // Teto de desconto / aprovação (D3/D46): a proposta podia ter desconto acima do teto
+    // do rep e virar pedido RASCUNHO direto, BURLANDO a aprovação que o PedidosService.create
+    // exige. Recalcula os totais p/ o % de desconto efetivo e checa o teto do REP DONO da
+    // proposta (admin/sem-rep = 100, nunca dispara). Se exceder → AGUARDANDO_APROVACAO +
+    // AprovacaoDesconto PENDENTE (aparece na tela de Aprovações).
+    let tetoRep = 100;
+    if (proposta.representanteId) {
+      const repU = await this.prisma.usuario.findUnique({
+        where: { id: proposta.representanteId },
+        select: { role: true, tetoDesconto: true },
+      });
+      tetoRep = repU?.role === 'REP' ? (repU.tetoDesconto ?? 0) : 100;
+    }
+    const empresaCfg = await this.prisma.empresa.findUnique({
+      where: { id: empresaId },
+      select: { descontoPixPct: true, descontoBoletoAvistaPct: true },
+    });
+    const descAVistaPct = this.pedidoPricing.descontoAVistaPct(
+      proposta.formaPagamento,
+      proposta.condicaoPagamento,
+      empresaCfg,
+    );
+    const totals = this.pedidoPricing.pedidoTotals(
+      proposta.itens.map((it) => ({
+        quantidade: it.quantidade,
+        precoUnitario: Number(it.precoUnitario),
+        desconto: it.desconto,
+      })),
+      proposta.descontoGeral,
+      COMISSAO_PADRAO_PCT,
+      descAVistaPct,
+    );
+    const requerAprovacao = this.pedidoPricing.excedeTetoDesconto(totals, tetoRep);
+    const statusPedido = requerAprovacao ? 'AGUARDANDO_APROVACAO' : 'RASCUNHO';
+
     // AUDITORIA P0-4: número via SequenceService atomic (anti-race)
     const pedidoSeq = await this.sequence.next(empresaId, 'pedido');
     const numero = `PED-${pedidoSeq.toString().padStart(4, '0')}`;
@@ -246,7 +313,7 @@ export class PropostasService {
           clienteId: proposta.clienteId,
           representanteId: proposta.representanteId,
           origem: 'REP_APP',
-          status: 'RASCUNHO',
+          status: statusPedido,
           formaPagamento: proposta.formaPagamento,
           condicaoPagamento: proposta.condicaoPagamento,
           prazoEntrega: proposta.prazoEntrega,
@@ -268,6 +335,18 @@ export class PropostasService {
         },
         select: { id: true, numero: true },
       });
+      // Desconto acima do teto → solicitação de aprovação PENDENTE (igual PedidosService.create).
+      if (requerAprovacao && proposta.representanteId) {
+        await tx.aprovacaoDesconto.create({
+          data: {
+            pedidoId: pedido.id,
+            representanteId: proposta.representanteId,
+            descontoSolicitado: totals.maxDescontoPercentual,
+            motivo: `Convertida da proposta ${proposta.numero}`,
+            status: 'PENDENTE',
+          },
+        });
+      }
       await tx.proposta.updateMany({
         where: { id: proposta.id, empresaId: proposta.empresaId },
         data: { pedidoId: pedido.id, convertidaEm: new Date() },
