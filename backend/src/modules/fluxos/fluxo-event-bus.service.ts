@@ -114,23 +114,22 @@ export class FluxoEventBusService {
               where: { fluxoId: fluxo.id, tipo: 'ACAO', acaoTipo: 'CONVERSAR_IA' },
             });
             if (nosIa > 0) {
-              const { count } = await this.prisma.fluxoExecucao.updateMany({
-                where: {
-                  fluxoId: fluxo.id,
-                  empresaId,
-                  status: { in: ['PENDENTE', 'EM_EXECUCAO', 'AGUARDANDO'] },
-                  contexto: { path: ['leadId'], equals: leadId },
-                  // #12: NÃO cancela a execução-FILHA do ramo "classificou" (que já está
-                  // executando ações terminais) — só as execuções-RAIZ conversacionais.
-                  NOT: { contexto: { path: ['_ramoFilha'], equals: true } },
-                },
-                data: {
-                  status: 'CANCELADO',
-                  aguardandoNoId: null,
-                  timeoutEm: null,
-                  terminouEm: new Date(),
-                },
-              });
+              // Cancela as execuções-RAIZ de IA ativas do lead (re-entrada SUBSTITUI),
+              // EXCETO a execução-FILHA do ramo "classificou" (_ramoFilha=true, que está
+              // rodando ações terminais).
+              // RAW de propósito: o filtro JSON do Prisma (`NOT path equals`) trata a chave
+              // AUSENTE como NULL e EXCLUÍA as raízes (que não têm _ramoFilha) → reabria o
+              // bug de 2 IAs em paralelo. `IS DISTINCT FROM` trata ausente/NULL como "!= true":
+              // mantém a raiz e exclui a filha — e cobre execuções já em voo no deploy (sem
+              // depender de backfill da chave).
+              const count = await this.prisma.$executeRaw`
+                UPDATE "FluxoExecucao"
+                SET status = 'CANCELADO', "aguardandoNoId" = NULL, "timeoutEm" = NULL, "terminouEm" = now()
+                WHERE "fluxoId" = ${fluxo.id}
+                  AND "empresaId" = ${empresaId}
+                  AND status IN ('PENDENTE', 'EM_EXECUCAO', 'AGUARDANDO')
+                  AND (contexto #>> '{leadId}') = ${leadId}
+                  AND (contexto #> '{_ramoFilha}') IS DISTINCT FROM 'true'::jsonb`;
               if (count > 0) {
                 this.logger.log(
                   `Fluxo "${fluxo.nome}": ${count} execução(ões) anterior(es) do lead ${leadId} ` +

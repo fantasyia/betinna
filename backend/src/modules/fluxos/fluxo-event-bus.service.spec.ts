@@ -27,6 +27,8 @@ const makePrismaMock = () => ({
     findFirst: vi.fn(),
     updateMany: vi.fn().mockResolvedValue({ count: 0 }),
   } satisfies MockModel,
+  // Supersede anti-duplicata IA usa $executeRaw (IS DISTINCT FROM trata _ramoFilha ausente).
+  $executeRaw: vi.fn().mockResolvedValue(0),
 });
 
 const fakeFluxo = (overrides: Record<string, unknown> = {}) => ({
@@ -185,24 +187,26 @@ describe('FluxoEventBusService', () => {
     it('re-entrada encerra execução anterior do lead E cria nova (substitui)', async () => {
       prisma.fluxo.findMany.mockResolvedValue([fakeFluxo({ triggerTipo: 'LEAD_ETAPA_MUDOU' })]);
       prisma.fluxoNo.count.mockResolvedValue(1); // fluxo TEM nó "Conversar com IA"
-      prisma.fluxoExecucao.updateMany.mockResolvedValue({ count: 1 }); // 1 anterior ativa
+      prisma.$executeRaw.mockResolvedValue(1); // 1 raiz anterior ativa cancelada
       prisma.fluxoExecucao.create.mockResolvedValue(fakeExecucao());
       prisma.fluxoExecucao.update.mockResolvedValue({});
 
       await service.disparar('emp-1', 'LEAD_ETAPA_MUDOU' as FluxoTriggerTipo, { leadId: 'lead-1' });
 
-      // Encerrou a anterior (CANCELADO) E criou a nova (opener volta a disparar).
-      const updArgs = prisma.fluxoExecucao.updateMany.mock.calls[0][0];
-      expect(updArgs.data.status).toBe('CANCELADO');
-      expect(updArgs.where.contexto).toEqual({ path: ['leadId'], equals: 'lead-1' });
+      // Encerrou a anterior (CANCELADO via $executeRaw com IS DISTINCT FROM) E criou a nova.
+      expect(prisma.$executeRaw).toHaveBeenCalledOnce();
+      // O leadId e o empresaId vão como parâmetros do template raw.
+      const rawCall = prisma.$executeRaw.mock.calls[0];
+      expect(rawCall).toContain('lead-1');
+      expect(rawCall).toContain('emp-1');
       expect(prisma.fluxoExecucao.create).toHaveBeenCalledOnce();
       expect(queue.add).toHaveBeenCalledOnce();
     });
 
-    it('sem execução anterior ativa: só cria a nova (updateMany count 0)', async () => {
+    it('sem execução anterior ativa: só cria a nova ($executeRaw count 0)', async () => {
       prisma.fluxo.findMany.mockResolvedValue([fakeFluxo({ triggerTipo: 'LEAD_ETAPA_MUDOU' })]);
       prisma.fluxoNo.count.mockResolvedValue(1);
-      prisma.fluxoExecucao.updateMany.mockResolvedValue({ count: 0 }); // nenhuma ativa
+      prisma.$executeRaw.mockResolvedValue(0); // nenhuma raiz ativa
       prisma.fluxoExecucao.create.mockResolvedValue(fakeExecucao());
       prisma.fluxoExecucao.update.mockResolvedValue({});
 
