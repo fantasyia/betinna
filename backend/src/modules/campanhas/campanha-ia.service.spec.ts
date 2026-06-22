@@ -3,6 +3,7 @@ import type { UserRole } from '@prisma/client';
 import { ForbiddenException, IntegrationException } from '@shared/errors/app-exception';
 import type { AuthenticatedUser } from '@shared/types/authenticated-user';
 import { HttpClientError } from '@shared/http/http-client.types';
+import type { GerarConteudoDto } from './campanhas.dto';
 import { CampanhaIaService } from './campanha-ia.service';
 
 // ---------------------------------------------------------------------------
@@ -62,6 +63,18 @@ const fakeUser = (overrides: Partial<AuthenticatedUser> = {}): AuthenticatedUser
   ...overrides,
 });
 
+// Monta um GerarConteudoDto completo (os defaults de segmentação/numVariacoes
+// que o schema Zod injeta precisam estar presentes no tipo inferido).
+const gerarDto = (
+  overrides: Pick<GerarConteudoDto, 'objetivo' | 'tom' | 'canal'> & Partial<GerarConteudoDto>,
+): GerarConteudoDto => ({
+  segTagIds: [],
+  segRepIds: [],
+  segClienteIds: [],
+  numVariacoes: 2,
+  ...overrides,
+});
+
 const fakeOpenAIResponse = (content: string) => ({
   data: {
     choices: [{ message: { content } }],
@@ -100,7 +113,7 @@ describe('CampanhaIaService', () => {
 
     it('gerarConteudo', async () => {
       await expect(
-        service.gerarConteudo(noEmp, { objetivo: 'X', tom: 'formal', canal: 'EMAIL' }),
+        service.gerarConteudo(noEmp, gerarDto({ objetivo: 'X', tom: 'formal', canal: 'EMAIL' })),
       ).rejects.toBeInstanceOf(ForbiddenException);
     });
 
@@ -138,11 +151,10 @@ describe('CampanhaIaService', () => {
         ),
       );
 
-      await service.gerarConteudo(fakeUser(), {
-        objetivo: 'vender',
-        tom: 'formal',
-        canal: 'WHATSAPP',
-      });
+      await service.gerarConteudo(
+        fakeUser(),
+        gerarDto({ objetivo: 'vender', tom: 'formal', canal: 'WHATSAPP' }),
+      );
 
       // Deve ter chamado OpenAI com o token do usuário
       const headers = http.post.mock.calls[0][1].headers;
@@ -163,11 +175,10 @@ describe('CampanhaIaService', () => {
         ),
       );
 
-      await service.gerarConteudo(fakeUser(), {
-        objetivo: 'vender',
-        tom: 'formal',
-        canal: 'WHATSAPP',
-      });
+      await service.gerarConteudo(
+        fakeUser(),
+        gerarDto({ objetivo: 'vender', tom: 'formal', canal: 'WHATSAPP' }),
+      );
 
       const headers = http.post.mock.calls[0][1].headers;
       expect(headers.Authorization).toBe('Bearer env-openai-key');
@@ -182,7 +193,10 @@ describe('CampanhaIaService', () => {
       );
 
       await expect(
-        serviceNoKey.gerarConteudo(fakeUser(), { objetivo: 'X', tom: 'formal', canal: 'EMAIL' }),
+        serviceNoKey.gerarConteudo(
+          fakeUser(),
+          gerarDto({ objetivo: 'X', tom: 'formal', canal: 'EMAIL' }),
+        ),
       ).rejects.toBeInstanceOf(IntegrationException);
     });
   });
@@ -207,11 +221,10 @@ describe('CampanhaIaService', () => {
     });
 
     it('retorna estrutura ConteudoGerado com modelo, tokensIn e tokensOut', async () => {
-      const result = await service.gerarConteudo(fakeUser(), {
-        objetivo: 'aumentar vendas',
-        tom: 'amigavel',
-        canal: 'AMBOS',
-      });
+      const result = await service.gerarConteudo(
+        fakeUser(),
+        gerarDto({ objetivo: 'aumentar vendas', tom: 'amigavel', canal: 'WHATSAPP_EMAIL' }),
+      );
 
       expect(result).toMatchObject({
         mensagemWa: expect.any(String),
@@ -226,19 +239,20 @@ describe('CampanhaIaService', () => {
     });
 
     it('usa modelo padrão gpt-4o-mini quando não especificado', async () => {
-      await service.gerarConteudo(fakeUser(), { objetivo: 'X', tom: 'formal', canal: 'EMAIL' });
+      await service.gerarConteudo(
+        fakeUser(),
+        gerarDto({ objetivo: 'X', tom: 'formal', canal: 'EMAIL' }),
+      );
 
       const body = http.post.mock.calls[0][1].body;
       expect(body.model).toBe('gpt-4o-mini');
     });
 
     it('usa modelo do DTO quando especificado', async () => {
-      await service.gerarConteudo(fakeUser(), {
-        objetivo: 'X',
-        tom: 'formal',
-        canal: 'EMAIL',
-        modelo: 'gpt-4o',
-      });
+      await service.gerarConteudo(
+        fakeUser(),
+        gerarDto({ objetivo: 'X', tom: 'formal', canal: 'EMAIL', modelo: 'gpt-4o' }),
+      );
 
       const body = http.post.mock.calls[0][1].body;
       expect(body.model).toBe('gpt-4o');
@@ -247,22 +261,30 @@ describe('CampanhaIaService', () => {
     it('retorna fallback quando IA retorna JSON inválido', async () => {
       http.post.mockResolvedValue(fakeOpenAIResponse('INVALID JSON {{'));
 
-      const result = await service.gerarConteudo(fakeUser(), {
-        objetivo: 'X',
-        tom: 'formal',
-        canal: 'EMAIL',
-      });
+      const result = await service.gerarConteudo(
+        fakeUser(),
+        gerarDto({ objetivo: 'X', tom: 'formal', canal: 'EMAIL' }),
+      );
 
       expect(result.mensagemWa).toBeNull();
       expect(result.dicas).toEqual([]);
     });
 
     it('lança IntegrationException quando OpenAI retorna erro HTTP', async () => {
-      const err = new HttpClientError('Unauthorized', 401, { error: 'invalid_api_key' });
+      const err = new HttpClientError(
+        401,
+        { error: 'invalid_api_key' },
+        'https://api.openai.com/v1/chat/completions',
+        'POST',
+        1,
+      );
       http.post.mockRejectedValue(err);
 
       await expect(
-        service.gerarConteudo(fakeUser(), { objetivo: 'X', tom: 'formal', canal: 'EMAIL' }),
+        service.gerarConteudo(
+          fakeUser(),
+          gerarDto({ objetivo: 'X', tom: 'formal', canal: 'EMAIL' }),
+        ),
       ).rejects.toBeInstanceOf(IntegrationException);
     });
 
@@ -271,7 +293,10 @@ describe('CampanhaIaService', () => {
       http.post.mockResolvedValue(fakeOpenAIResponse('   '));
 
       await expect(
-        service.gerarConteudo(fakeUser(), { objetivo: 'X', tom: 'formal', canal: 'EMAIL' }),
+        service.gerarConteudo(
+          fakeUser(),
+          gerarDto({ objetivo: 'X', tom: 'formal', canal: 'EMAIL' }),
+        ),
       ).rejects.toBeInstanceOf(IntegrationException);
     });
 
@@ -279,7 +304,10 @@ describe('CampanhaIaService', () => {
       prisma.empresa.findUnique.mockResolvedValue({ nome: 'Alimentos SA', ramo: 'Bebidas' });
       prisma.produto.findMany.mockResolvedValue([{ nome: 'Suco de Laranja' }]);
 
-      await service.gerarConteudo(fakeUser(), { objetivo: 'X', tom: 'formal', canal: 'EMAIL' });
+      await service.gerarConteudo(
+        fakeUser(),
+        gerarDto({ objetivo: 'X', tom: 'formal', canal: 'EMAIL' }),
+      );
 
       const body = http.post.mock.calls[0][1].body;
       const userMsg = body.messages[1].content;

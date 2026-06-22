@@ -16,7 +16,7 @@ const makePrismaMock = () => ({
   },
   pedido: { groupBy: vi.fn() },
   usuario: { findMany: vi.fn() },
-  empresa: { findUnique: vi.fn(async () => ({ config: null })) },
+  empresa: { findUnique: vi.fn(async (): Promise<{ config: unknown }> => ({ config: null })) },
   $transaction: vi.fn(async (ops: unknown[]) => {
     // Cada item é uma Promise dos `prisma.comissao.upsert(...)` retornadas
     return Promise.all(ops as Promise<unknown>[]);
@@ -337,6 +337,13 @@ describe('ComissoesService', () => {
         {
           criarParaUsuario: vi.fn().mockResolvedValue(null),
           criarParaRole: vi.fn().mockResolvedValue(0),
+        } as never,
+        {
+          enviarComissaoFechada: vi.fn().mockResolvedValue({ ok: true }),
+          enviarBoasVindas: vi.fn().mockResolvedValue({ ok: true }),
+          enviarAprovacaoResolvida: vi.fn().mockResolvedValue({ ok: true }),
+          enviarOcorrenciaCritica: vi.fn().mockResolvedValue({ ok: true }),
+          enviarAmostraFollowup: vi.fn().mockResolvedValue({ ok: true }),
         } as never,
       );
       prisma.comissao.count.mockResolvedValue(0);

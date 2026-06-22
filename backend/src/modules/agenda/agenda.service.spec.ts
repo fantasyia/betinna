@@ -109,6 +109,9 @@ describe('AgendaService', () => {
       data: new Date('2026-06-01T10:00:00Z'),
       duracao: 60,
       tipo: 'VISITA' as const,
+      espelharGoogle: false,
+      recorrencia: 'NENHUMA' as const,
+      recorrenciaOcorrencias: 12,
     };
 
     it('cria item com empresaId e usuarioId do JWT', async () => {

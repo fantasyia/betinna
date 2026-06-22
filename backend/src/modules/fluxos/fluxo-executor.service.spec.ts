@@ -418,10 +418,10 @@ describe('FluxoExecutorService', () => {
 
       // Só deve ter chamado update uma vez (para CONCLUIDO no final), não para EM_EXECUCAO
       const updateCalls = prisma.fluxoExecucao.update.mock.calls;
-      const emExecucaoCall = updateCalls.find(
-        (c: [Record<string, unknown>]) =>
-          (c[0].data as Record<string, unknown>)?.status === 'EM_EXECUCAO',
-      );
+      const emExecucaoCall = updateCalls.find((c: unknown[]) => {
+        const arg = c[0] as { data?: Record<string, unknown> } | undefined;
+        return arg?.data?.status === 'EM_EXECUCAO';
+      });
       expect(emExecucaoCall).toBeUndefined();
     });
 

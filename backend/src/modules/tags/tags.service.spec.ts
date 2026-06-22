@@ -42,6 +42,9 @@ const fakeTag = (overrides: Partial<Tag> = {}): Tag => ({
   empresaId: 'emp-1',
   nome: 'VIP',
   cor: '#7c3aed',
+  categoria: null,
+  descricao: null,
+  funilId: null,
   ...overrides,
 });
 

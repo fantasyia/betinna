@@ -1,5 +1,6 @@
 import { describe, expect, it, vi, beforeEach } from 'vitest';
 import { MLOrdersService } from './ml-orders.service';
+import type { MLOrder } from './ml.types';
 
 const makeMLClientMock = () => ({ get: vi.fn() });
 
@@ -11,15 +12,16 @@ const makePrismaMock = () => ({
   },
 });
 
-const fakeOrder = (overrides: Record<string, unknown> = {}) => ({
-  id: 'order-1',
+const fakeOrder = (overrides: Partial<MLOrder> = {}): MLOrder => ({
+  id: 1,
   status: 'paid',
   total_amount: 250,
+  currency_id: 'BRL',
   date_created: '2026-05-10T10:00:00Z',
   buyer: { id: 1, nickname: 'JOAOSILVA', first_name: 'João', last_name: 'Silva' },
   order_items: [
-    { quantity: 2, item: { title: 'Produto X' } },
-    { quantity: 1, item: { title: 'Produto Y' } },
+    { quantity: 2, item: { id: 'MLB1', title: 'Produto X' }, unit_price: 125, currency_id: 'BRL' },
+    { quantity: 1, item: { id: 'MLB2', title: 'Produto Y' }, unit_price: 0, currency_id: 'BRL' },
   ],
   ...overrides,
 });
@@ -79,7 +81,7 @@ describe('MLOrdersService', () => {
       expect(data).toMatchObject({
         empresaId: 'emp-1',
         plataforma: 'ML',
-        numeroExterno: 'order-1',
+        numeroExterno: '1',
         status: 'paid',
         quantidade: 3, // 2 + 1
         valor: 250,

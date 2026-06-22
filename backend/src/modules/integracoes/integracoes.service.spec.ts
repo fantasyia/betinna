@@ -103,8 +103,10 @@ describe('IntegracoesService', () => {
       const result = await service.list(fakeUser(), {});
 
       expect(result).toHaveLength(1);
-      // Credenciais mascaradas (null) na saída pública
-      expect(result[0].credenciais).toBeNull();
+      // Credenciais mascaradas na saída pública: o tipo ConexaoPublica omite o
+      // campo e o runtime ainda o devolve como null. Lemos via Record pra
+      // confirmar o mascaramento sem reexpor o campo no contrato público.
+      expect((result[0] as Record<string, unknown>).credenciais).toBeNull();
       // Mas campos detectados
       expect(result[0].credenciaisConfiguradas).toBe(true);
       expect(result[0].camposCredenciais).toContain('appKey');

@@ -32,7 +32,13 @@ const makePrismaMock = () => {
     },
     empresa: {
       // B1 — resolveDescontoAVista lê config da empresa. Default desligado (0).
-      findUnique: vi.fn(async () => ({ descontoPixPct: 0, descontoBoletoAvistaPct: 0 })),
+      // empresa.findUnique é chamado com dois `select` distintos (config | descontos),
+      // então o default cobre as duas formas pra não estreitar o tipo do mock.
+      findUnique: vi.fn(
+        async (): Promise<
+          { descontoPixPct: number; descontoBoletoAvistaPct: number } | { config: unknown }
+        > => ({ descontoPixPct: 0, descontoBoletoAvistaPct: 0 }),
+      ),
     },
   };
   return {

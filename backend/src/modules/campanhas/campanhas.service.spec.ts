@@ -142,6 +142,7 @@ describe('CampanhasService', () => {
           segTagIds: [],
           segRepIds: [],
           segClienteIds: [],
+          usarIaPersonalizacao: false,
         }),
       ).rejects.toBeInstanceOf(ForbiddenException);
     });
@@ -228,6 +229,7 @@ describe('CampanhasService', () => {
         segTagIds: [],
         segRepIds: [],
         segClienteIds: [],
+        usarIaPersonalizacao: false,
       });
 
       const createArgs = prisma.campanha.create.mock.calls[0][0];
@@ -241,6 +243,7 @@ describe('CampanhasService', () => {
         segTagIds: [],
         segRepIds: [],
         segClienteIds: [],
+        usarIaPersonalizacao: false,
         agendadoPara: new Date('2026-06-01'),
       });
 
@@ -255,6 +258,7 @@ describe('CampanhasService', () => {
         segTagIds: [],
         segRepIds: [],
         segClienteIds: [],
+        usarIaPersonalizacao: false,
       });
 
       const createArgs = prisma.campanha.create.mock.calls[0][0];

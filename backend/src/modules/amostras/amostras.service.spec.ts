@@ -34,7 +34,11 @@ const makePrismaMock = () => ({
   } satisfies MockModel,
   empresa: {
     // ConfiguracaoTenant: sem config → defaults (subsidiada livre, sem aprovação).
-    findUnique: vi.fn(async () => ({ config: null })),
+    findUnique: vi.fn(
+      async (): Promise<{ config: Record<string, unknown> | null }> => ({
+        config: null,
+      }),
+    ),
   } satisfies MockModel,
   pedido: {
     findMany: vi.fn(async () => []),
@@ -104,7 +108,12 @@ describe('AmostrasService', () => {
   // -------------------------------------------------------------------------
 
   describe('list', () => {
-    const baseParams = { page: 1, limit: 20, sortBy: 'criadoEm', sortOrder: 'desc' as const };
+    const baseParams = {
+      page: 1,
+      limit: 20,
+      sortBy: 'enviadoEm' as const,
+      sortOrder: 'desc' as const,
+    };
 
     it('lança ForbiddenException quando empresaIdAtiva está ausente', async () => {
       const user = fakeUser({ empresaIdAtiva: null });
@@ -241,6 +250,7 @@ describe('AmostrasService', () => {
     const baseDto = {
       clienteId: 'cli-1',
       produtoNome: 'Óleo 5L',
+      quantidade: 1,
       valor: 100,
       diasFollowUp: 7,
     };
@@ -534,7 +544,13 @@ describe('AmostrasService', () => {
   // -------------------------------------------------------------------------
 
   describe('modos + aprovação', () => {
-    const baseDto = { clienteId: 'cli-1', produtoNome: 'Óleo 5L', valor: 100, diasFollowUp: 7 };
+    const baseDto = {
+      clienteId: 'cli-1',
+      produtoNome: 'Óleo 5L',
+      quantidade: 1,
+      valor: 100,
+      diasFollowUp: 7,
+    };
 
     it('subsidiada com exigeAprovacaoSubsidiada → PENDENTE_APROVACAO (sem followUpEm)', async () => {
       prisma.cliente.findFirst.mockResolvedValue({ id: 'cli-1', representanteId: null });

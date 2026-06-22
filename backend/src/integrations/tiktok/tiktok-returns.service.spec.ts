@@ -25,6 +25,7 @@ const fakeReturn = (overrides: Record<string, unknown> = {}) => ({
   return_reason: 'WRONG_ITEM',
   return_reason_text: 'Veio errado',
   refund_amount: { amount: '50.00', currency: 'BRL' },
+  create_time: 1715759000,
   update_time: 1715759400,
   seller_proposal_deadline: 1716364200,
   ...overrides,

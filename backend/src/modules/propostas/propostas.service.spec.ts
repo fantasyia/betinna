@@ -38,7 +38,14 @@ const makePrismaMock = () => {
     cliente: { findFirst: vi.fn(), findUnique: vi.fn() } satisfies MockModel,
     produto: { findMany: vi.fn() } satisfies MockModel,
     empresa: {
-      findUnique: vi.fn(async () => ({ descontoPixPct: 0, descontoBoletoAvistaPct: 0 })),
+      // Inclui as duas formas selecionadas pelo service: a config de desconto
+      // (create/update/converter) e os dados fiscais (exportarPdf: nome/cnpj).
+      findUnique: vi.fn(async () => ({
+        descontoPixPct: 0,
+        descontoBoletoAvistaPct: 0,
+        nome: 'Empresa Y',
+        cnpj: null as string | null,
+      })),
     } satisfies MockModel,
     usuario: { findUnique: vi.fn() } satisfies MockModel,
     $transaction: vi.fn(async (cb: (t: Tx) => unknown) => cb(tx)),
@@ -611,7 +618,12 @@ describe('PropostasService', () => {
       });
       prisma.proposta.findFirst.mockResolvedValue(prop);
       prisma.cliente.findUnique.mockResolvedValue({ nome: 'Cliente X', cnpj: null, email: null });
-      prisma.empresa.findUnique.mockResolvedValue({ nome: 'Empresa Y', cnpj: null });
+      prisma.empresa.findUnique.mockResolvedValue({
+        descontoPixPct: 0,
+        descontoBoletoAvistaPct: 0,
+        nome: 'Empresa Y',
+        cnpj: null,
+      });
 
       await service.exportarPdf(fakeUser(), 'prop-1');
 

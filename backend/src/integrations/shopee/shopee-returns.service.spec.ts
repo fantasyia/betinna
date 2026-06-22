@@ -21,6 +21,7 @@ const fakeReturn = (overrides: Record<string, unknown> = {}) => ({
   reason: 'NOT_RECEIVED',
   text_reason: 'Não recebi',
   refund_amount: 99.9,
+  create_time: 1715759000,
   update_time: 1715759400,
   due_date: 1716364200,
   user: { username: 'comprador1' },

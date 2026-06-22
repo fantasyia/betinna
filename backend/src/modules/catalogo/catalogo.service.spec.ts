@@ -325,11 +325,11 @@ describe('CatalogoService', () => {
 
       const result = await service.shareWithClient(fakeUser(), {
         clienteId: 'cli-1',
-        canal: 'WHATSAPP',
+        canal: 'whatsapp',
       });
 
       expect(result.ok).toBe(true);
-      expect(result.canal).toBe('WHATSAPP');
+      expect(result.canal).toBe('whatsapp');
       expect(result.clienteId).toBe('cli-1');
       expect(result.itens).toBe(1);
       // Agora previewUrl é `/catalogo/share/<token>` (JWT) em vez de
@@ -343,7 +343,7 @@ describe('CatalogoService', () => {
       prisma.repCatalogoItem.findMany.mockResolvedValue([]); // catálogo vazio
 
       await expect(
-        service.shareWithClient(fakeUser(), { clienteId: 'cli-1', canal: 'WHATSAPP' }),
+        service.shareWithClient(fakeUser(), { clienteId: 'cli-1', canal: 'whatsapp' }),
       ).rejects.toBeInstanceOf(BusinessRuleException);
     });
 

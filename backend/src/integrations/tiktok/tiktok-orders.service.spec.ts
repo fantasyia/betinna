@@ -22,10 +22,13 @@ const makeInboxMock = () => ({
 const fakeOrder = (overrides: Record<string, unknown> = {}) => ({
   id: 'tt-1',
   status: 'AWAITING_SHIPMENT',
-  payment: { total_amount: '99.90' },
+  payment: { currency: 'BRL', total_amount: '99.90' },
   create_time: 1715759400,
   update_time: 1715759500,
-  line_items: [{ product_name: 'Produto A' }, { product_name: 'Produto B' }],
+  line_items: [
+    { id: 'li-1', product_name: 'Produto A' },
+    { id: 'li-2', product_name: 'Produto B' },
+  ],
   recipient_address: { name: 'João' },
   buyer_uid: 'buyer-x',
   buyer_email: 'comprador@tt.com',

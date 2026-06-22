@@ -351,7 +351,7 @@ describe('InboxService.atribuir', () => {
 
   beforeEach(() => {
     prisma = makePrismaMock();
-    svc = new InboxService(prisma as never, new CanalAdapterRegistry());
+    svc = new InboxService(prisma as never, new CanalAdapterRegistry(), { get: () => 24 } as never);
   });
 
   it('REP é bloqueado de reatribuir (função gerencial)', async () => {
@@ -406,7 +406,7 @@ describe('InboxService bulk operations', () => {
 
   beforeEach(() => {
     prisma = makePrismaMock();
-    svc = new InboxService(prisma as never, new CanalAdapterRegistry());
+    svc = new InboxService(prisma as never, new CanalAdapterRegistry(), { get: () => 24 } as never);
   });
 
   it('bulkAtribuir — REP bloqueado', async () => {

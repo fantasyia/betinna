@@ -65,17 +65,29 @@ describe('dividirEmBaloes — quebra da resposta em balões', () => {
  *  - caminho feliz envia a resposta; falha da IA cai no fallback
  */
 const makePrisma = (over: Record<string, unknown> = {}) => ({
-  empresa: { findUnique: vi.fn(async () => ({ botWhatsappAtivo: true })) },
+  empresa: {
+    findUnique: vi.fn<() => Promise<{ botWhatsappAtivo: boolean }>>(async () => ({
+      botWhatsappAtivo: true,
+    })),
+  },
   conversation: {
-    findUnique: vi.fn(async () => ({ botPausadoAte: null })),
+    // Retorno tipado como Record genérico: os testes sobrescrevem com shapes
+    // diferentes (botPausadoAte Date/null, precisaHumano, etc.).
+    findUnique: vi.fn<() => Promise<Record<string, unknown> | null>>(async () => ({
+      botPausadoAte: null,
+    })),
     update: vi.fn(async () => ({})),
   },
   message: { findMany: vi.fn(async () => []), update: vi.fn(async () => ({})) },
   // Gate: lead do peer resolvido por buscarLeadDoPeer → $queryRaw (id por telefone,
   // indexado) + lead.findUnique (etapa/funil/tags). Default [] = nenhum lead.
-  $queryRaw: vi.fn(async () => []),
-  lead: { findUnique: vi.fn(async () => null) },
-  fluxoExecucao: { findFirst: vi.fn(async () => null) },
+  $queryRaw: vi.fn<() => Promise<Array<{ id: string }>>>(async () => []),
+  lead: {
+    findUnique: vi.fn<() => Promise<Record<string, unknown> | null>>(async () => null),
+  },
+  fluxoExecucao: {
+    findFirst: vi.fn<() => Promise<{ id: string } | null>>(async () => null),
+  },
   ...over,
 });
 
@@ -86,7 +98,16 @@ const makeInbox = () => ({
 });
 
 const makeMuller = (resp: unknown = { texto: 'Olá! Como posso ajudar?' }) => ({
-  responderComoEmpresa: vi.fn(async () => resp),
+  // Assinatura explícita (empresaId, mensagem, historico, opcoes) pra `.mock.calls`
+  // ser uma 4-tupla — os testes inspecionam `call[3]` (as opções multimodais).
+  responderComoEmpresa: vi.fn<
+    (
+      empresaId: string,
+      mensagem: string,
+      historico: unknown[],
+      opcoes: Record<string, unknown>,
+    ) => Promise<unknown>
+  >(async () => resp),
   transcreverAudio: vi.fn(async () => 'texto transcrito do áudio'),
 });
 

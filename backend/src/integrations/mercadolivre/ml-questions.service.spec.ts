@@ -1,5 +1,6 @@
 import { describe, expect, it, vi, beforeEach } from 'vitest';
 import { MLQuestionsService } from './ml-questions.service';
+import type { MLQuestion } from './ml.types';
 
 const makeMLClientMock = () => ({
   get: vi.fn(),
@@ -10,7 +11,7 @@ const makeInboxMock = () => ({
   processarMensagemEntrante: vi.fn().mockResolvedValue({ conversationId: 'conv-1' }),
 });
 
-const fakeQuestion = (overrides: Record<string, unknown> = {}) => ({
+const fakeQuestion = (overrides: Partial<MLQuestion> = {}): MLQuestion => ({
   id: 1234,
   text: 'Qual o prazo?',
   status: 'UNANSWERED',

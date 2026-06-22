@@ -17,9 +17,22 @@ const fakeOrder = (overrides: Record<string, unknown> = {}) => ({
   buyer_username: 'comprador123',
   total_amount: 199.9,
   create_time: 1715759400,
+  update_time: 1715762400,
   item_list: [
-    { item_name: 'Caneca', model_quantity_purchased: 2 },
-    { item_name: 'Chaveiro', model_quantity_purchased: 1 },
+    {
+      item_id: 101,
+      item_name: 'Caneca',
+      model_quantity_purchased: 2,
+      model_original_price: 59.9,
+      model_discounted_price: 49.9,
+    },
+    {
+      item_id: 102,
+      item_name: 'Chaveiro',
+      model_quantity_purchased: 1,
+      model_original_price: 19.9,
+      model_discounted_price: 14.9,
+    },
   ],
   ...overrides,
 });

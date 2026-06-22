@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import type { ConfigService } from '@nestjs/config';
 import { EnvService } from './env.service';
+import type { Env } from './env.schema';
 
 /**
  * Testa a trava de go-live do OMIE em `auditProductionReadiness` /
@@ -27,7 +28,7 @@ function makeEnv(overrides: Record<string, unknown>): EnvService {
   };
   const stub = {
     get: (key: string) => values[key],
-  } as unknown as ConfigService;
+  } as unknown as ConfigService<Env, true>;
   return new EnvService(stub);
 }
 

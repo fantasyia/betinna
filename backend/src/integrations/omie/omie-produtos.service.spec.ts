@@ -26,6 +26,10 @@ const makeIntegracoesMock = () => ({
   registrarSyncOk: vi.fn().mockResolvedValue({}),
 });
 
+const makeNotificacoesMock = () => ({
+  criarParaUsuario: vi.fn().mockResolvedValue({}),
+});
+
 vi.mock('./omie.mapper', () => ({
   OmieMapper: {
     produtoToPrismaUpsert: vi.fn((_empresaId: string, o: { codigo?: number }) => {
@@ -66,13 +70,20 @@ describe('OmieProdutosService', () => {
   let prisma: ReturnType<typeof makePrismaMock>;
   let omie: ReturnType<typeof makeOmieClientMock>;
   let integracoes: ReturnType<typeof makeIntegracoesMock>;
+  let notificacoes: ReturnType<typeof makeNotificacoesMock>;
   let service: OmieProdutosService;
 
   beforeEach(() => {
     prisma = makePrismaMock();
     omie = makeOmieClientMock();
     integracoes = makeIntegracoesMock();
-    service = new OmieProdutosService(prisma as never, omie as never, integracoes as never);
+    notificacoes = makeNotificacoesMock();
+    service = new OmieProdutosService(
+      prisma as never,
+      omie as never,
+      integracoes as never,
+      notificacoes as never,
+    );
   });
 
   // -------------------------------------------------------------------------

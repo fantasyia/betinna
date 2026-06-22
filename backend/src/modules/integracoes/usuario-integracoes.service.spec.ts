@@ -91,7 +91,7 @@ describe('UsuarioIntegracoesService', () => {
       const result = await service.list(fakeUser(), {});
 
       expect(result).toHaveLength(1);
-      expect(result[0].credenciais).toBeNull();
+      expect((result[0] as Record<string, unknown>).credenciais).toBeNull();
       expect(result[0].credenciaisConfiguradas).toBe(true);
       expect(result[0].camposCredenciais).toContain('apiKey');
     });

@@ -113,9 +113,7 @@ describe('NotasPrivadasService', () => {
 
       await service.create(fakeUser(), 'cli-1', { texto: 'Texto' });
 
-      expect(clientes.findById).toHaveBeenCalledBefore
-        ? expect(clientes.findById).toHaveBeenCalled()
-        : expect(clientes.findById).toHaveBeenCalled();
+      expect(clientes.findById).toHaveBeenCalled();
     });
 
     it('propaga NotFoundException se cliente não existe', async () => {

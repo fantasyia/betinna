@@ -2,6 +2,7 @@ import { describe, expect, it, vi, beforeEach } from 'vitest';
 import type { Cliente, ClienteOmieStatus, ClienteStatus, UserRole } from '@prisma/client';
 import { ClientesService } from './clientes.service';
 import { ListasDinamicasService } from './listas-dinamicas.service';
+import type { CreateClienteDto } from './clientes.dto';
 import type { AuthenticatedUser } from '@shared/types/authenticated-user';
 import {
   ForbiddenException,
@@ -70,6 +71,11 @@ const fakeCliente = (overrides: Partial<Cliente> = {}): Cliente => ({
   email: null,
   telefone: null,
   segmento: 'Restaurante',
+  cep: '01310-100',
+  endereco: 'Av Paulista',
+  numero: '1000',
+  complemento: null,
+  bairro: 'Bela Vista',
   cidade: 'São Paulo',
   uf: 'SP',
   regiao: 'Grande SP',
@@ -79,11 +85,33 @@ const fakeCliente = (overrides: Partial<Cliente> = {}): Cliente => ({
   prazoPagamento: 30,
   limiteCredito: null,
   ultimoPedidoEm: null,
+  reativacaoDisparadaEm: null,
   representanteId: null,
+  isDemo: false,
   criadoEm: new Date('2026-01-01'),
   atualizadoEm: new Date('2026-01-01'),
   ...overrides,
 });
+
+// DTO de criação com todos os campos obrigatórios (endereço, contato, fiscal). Cada teste
+// sobrescreve só o que exercita (nome/cnpj/representanteId/tagIds).
+const baseCriarCliente: CreateClienteDto = {
+  nome: 'Cliente Teste',
+  cnpj: '11.222.333/0001-44',
+  email: 'cliente@teste.com',
+  telefone: '+5511999990000',
+  segmento: 'Restaurante',
+  cep: '01310-100',
+  endereco: 'Av Paulista',
+  numero: '1000',
+  bairro: 'Bela Vista',
+  cidade: 'São Paulo',
+  uf: 'SP',
+  status: 'NOVO',
+  omieStatus: 'ATIVO',
+  prazoPagamento: 30,
+  tagIds: [],
+};
 
 describe('ClientesService', () => {
   let prisma: ReturnType<typeof makePrismaMock>;
@@ -128,14 +156,7 @@ describe('ClientesService', () => {
       const user = fakeUser({ role: 'REP', id: 'rep-77' });
       prisma.usuario.findFirst.mockResolvedValue({ id: 'rep-77' });
       prisma.cliente.create.mockResolvedValue(fakeCliente({ representanteId: 'rep-77' }));
-      await service.create(user, {
-        nome: 'Padaria X',
-        status: 'NOVO',
-        omieStatus: 'ATIVO',
-        score: 50,
-        prazoPagamento: 30,
-        tagIds: [],
-      });
+      await service.create(user, { ...baseCriarCliente, nome: 'Padaria X' });
       const data = prisma.cliente.create.mock.calls[0][0].data;
       expect(data.representanteId).toBe('rep-77');
     });
@@ -155,13 +176,9 @@ describe('ClientesService', () => {
       prisma.cliente.findFirst.mockResolvedValue({ id: 'outro-cliente' });
       await expect(
         service.create(user, {
+          ...baseCriarCliente,
           nome: 'Duplicado',
           cnpj: '00.000.000/0001-00',
-          status: 'NOVO',
-          omieStatus: 'ATIVO',
-          score: 50,
-          prazoPagamento: 30,
-          tagIds: [],
         }),
       ).rejects.toBeInstanceOf(BusinessRuleException);
     });
@@ -171,13 +188,9 @@ describe('ClientesService', () => {
       prisma.usuario.findFirst.mockResolvedValue(null); // não encontrou rep válido
       await expect(
         service.create(user, {
+          ...baseCriarCliente,
           nome: 'X',
           representanteId: 'rep-fake',
-          status: 'NOVO',
-          omieStatus: 'ATIVO',
-          score: 50,
-          prazoPagamento: 30,
-          tagIds: [],
         }),
       ).rejects.toBeInstanceOf(BusinessRuleException);
     });
@@ -187,11 +200,8 @@ describe('ClientesService', () => {
       prisma.tag.count.mockResolvedValue(1); // pediu 2 tags, achou 1
       await expect(
         service.create(user, {
+          ...baseCriarCliente,
           nome: 'X',
-          status: 'NOVO',
-          omieStatus: 'ATIVO',
-          score: 50,
-          prazoPagamento: 30,
           tagIds: ['tag-1', 'tag-2'],
         }),
       ).rejects.toBeInstanceOf(BusinessRuleException);
