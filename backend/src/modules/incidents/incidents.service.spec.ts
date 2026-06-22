@@ -454,6 +454,7 @@ describe('IncidentsService', () => {
       prisma.marketplaceIncident.update.mockResolvedValue(inc);
 
       const result = await service.atualizarStatus(
+        'emp-1',
         'MARKETPLACE_ML',
         'ml-claim-42',
         MarketplaceIncidentStatus.RESOLVIDO,
@@ -461,7 +462,8 @@ describe('IncidentsService', () => {
 
       expect(result).toEqual(inc);
       const args = prisma.marketplaceIncident.update.mock.calls[0][0];
-      expect(args.where.canal_externalId).toEqual({
+      expect(args.where.empresaId_canal_externalId).toEqual({
+        empresaId: 'emp-1',
         canal: 'MARKETPLACE_ML',
         externalId: 'ml-claim-42',
       });
@@ -472,7 +474,12 @@ describe('IncidentsService', () => {
     it('define resolvidoEm quando status CANCELADO', async () => {
       prisma.marketplaceIncident.update.mockResolvedValue(fakeIncident());
 
-      await service.atualizarStatus('MARKETPLACE_ML', 'ml-42', MarketplaceIncidentStatus.CANCELADO);
+      await service.atualizarStatus(
+        'emp-1',
+        'MARKETPLACE_ML',
+        'ml-42',
+        MarketplaceIncidentStatus.CANCELADO,
+      );
 
       const data = prisma.marketplaceIncident.update.mock.calls[0][0].data;
       expect(data.resolvidoEm).toBeInstanceOf(Date);
@@ -481,7 +488,12 @@ describe('IncidentsService', () => {
     it('define resolvidoEm quando status EXPIRADO', async () => {
       prisma.marketplaceIncident.update.mockResolvedValue(fakeIncident());
 
-      await service.atualizarStatus('MARKETPLACE_ML', 'ml-42', MarketplaceIncidentStatus.EXPIRADO);
+      await service.atualizarStatus(
+        'emp-1',
+        'MARKETPLACE_ML',
+        'ml-42',
+        MarketplaceIncidentStatus.EXPIRADO,
+      );
 
       const data = prisma.marketplaceIncident.update.mock.calls[0][0].data;
       expect(data.resolvidoEm).toBeInstanceOf(Date);
@@ -491,6 +503,7 @@ describe('IncidentsService', () => {
       prisma.marketplaceIncident.update.mockResolvedValue(fakeIncident());
 
       await service.atualizarStatus(
+        'emp-1',
         'MARKETPLACE_ML',
         'ml-42',
         MarketplaceIncidentStatus.EM_MEDIACAO,
@@ -504,6 +517,7 @@ describe('IncidentsService', () => {
       prisma.marketplaceIncident.update.mockRejectedValue(new Error('Not found'));
 
       const result = await service.atualizarStatus(
+        'emp-1',
         'MARKETPLACE_ML',
         'inexistente',
         MarketplaceIncidentStatus.RESOLVIDO,

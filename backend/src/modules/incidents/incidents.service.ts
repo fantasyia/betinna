@@ -167,7 +167,13 @@ export class IncidentsService {
     params: IncidenteEntranteParams,
   ): Promise<{ incidentId: string; duplicada: boolean }> {
     const existente = await this.prisma.marketplaceIncident.findUnique({
-      where: { canal_externalId: { canal: params.canal, externalId: params.externalId } },
+      where: {
+        empresaId_canal_externalId: {
+          empresaId: params.empresaId,
+          canal: params.canal,
+          externalId: params.externalId,
+        },
+      },
       select: { id: true, status: true, atualizadoEm: true },
     });
 
@@ -227,13 +233,16 @@ export class IncidentsService {
 
   /** Atualiza status e resolvidoEm sem tocar em outros campos. */
   async atualizarStatus(
+    empresaId: string,
     canal: string,
     externalId: string,
     status: MarketplaceIncidentStatus,
   ): Promise<MarketplaceIncident | null> {
     return this.prisma.marketplaceIncident
       .update({
-        where: { canal_externalId: { canal: canal as never, externalId } },
+        where: {
+          empresaId_canal_externalId: { empresaId, canal: canal as never, externalId },
+        },
         data: {
           status,
           resolvidoEm:

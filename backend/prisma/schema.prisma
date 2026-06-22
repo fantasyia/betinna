@@ -1744,7 +1744,7 @@ model MarketplaceIncident {
   /// Quando o incidente tem chat anexado (ex: ML claim messages).
   conversations Conversation[]
 
-  @@unique([canal, externalId])
+  @@unique([empresaId, canal, externalId])
   @@index([empresaId])
   @@index([canal, status])
   @@index([clienteId])
