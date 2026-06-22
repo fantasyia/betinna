@@ -7,6 +7,7 @@ import { PrismaService } from '@database/prisma.service';
 import { interpolate } from '@shared/utils/interpolate';
 import { WhatsAppService } from '@integrations/whatsapp/whatsapp.service';
 import { MullerBotService } from '@modules/mullerbot/mullerbot.service';
+import { BotCustoService } from '@modules/mullerbot/bot-custo.service';
 import { MullerBotPersonaService } from '@modules/mullerbot/persona.service';
 import {
   enviarEmBaloes,
@@ -163,6 +164,7 @@ export class ConversarIaService {
     private readonly prisma: PrismaService,
     private readonly persona: MullerBotPersonaService,
     private readonly muller: MullerBotService,
+    private readonly custo: BotCustoService,
     private readonly whatsapp: WhatsAppService,
     private readonly bus: FluxoEventBusService,
     private readonly pacing: WhatsappPacingService,
@@ -237,6 +239,20 @@ export class ConversarIaService {
     const opener =
       INSTRUCAO_OPENER +
       (primeiro ? `\n[Dado] O primeiro nome do lead é "${primeiro}". Use-o na saudação.` : '');
+    // Teto de custo do bot (por-empresa): se a empresa estourou o orçamento de tokens
+    // do dia/mês, o nó NÃO abre conversa por IA — roteia pela saída "erro" (mesmo gate
+    // do bot reativo; antes o fluxo ignorava o teto e gerava custo mesmo pausado).
+    const custoOpener = await this.custo.verificarTeto(empresaId);
+    if (custoOpener.bloqueado) {
+      const { tipo_erro } = await this.rotearParaErro(
+        execucaoId,
+        no.id,
+        ctx,
+        'ia_custo_excedido',
+        new Error(custoOpener.motivo ?? 'Teto de custo do bot atingido'),
+      );
+      return { aguardando: false, roteado: true, tipoErro: tipo_erro };
+    }
     let abertura: { texto: string; tokensIn?: number; tokensOut?: number };
     try {
       abertura = await this.muller.gerarRespostaIa(
@@ -260,6 +276,9 @@ export class ConversarIaService {
       cfg.promptId,
       (abertura.tokensIn ?? 0) + (abertura.tokensOut ?? 0),
     );
+    // Contabiliza os tokens no orçamento de custo do bot (best-effort) — senão o nó de
+    // fluxo gastava sem nunca contar pro teto.
+    await this.custo.registrarUso(empresaId, abertura.tokensIn ?? 0, abertura.tokensOut ?? 0);
     const aberturaTexto = personalizarNome(abertura.texto, lead.contatoNome);
     try {
       await this.enviarWhatsapp(empresaId, lead.contatoTelefone, aberturaTexto);
@@ -449,6 +468,20 @@ export class ConversarIaService {
       historico = historico.slice(0, -1);
     }
 
+    // Teto de custo do bot (por-empresa, pausa até a virada do período): roteia pela
+    // saída "erro" em vez de responder. Checado ANTES do teto-de-prompt (que só pede
+    // "um instante" e fica esperando — inadequado pra uma pausa longa por orçamento).
+    const custoTurno = await this.custo.verificarTeto(empresaId);
+    if (custoTurno.bloqueado) {
+      await this.rotearParaErro(
+        execucaoId,
+        no.id,
+        ctx,
+        'ia_custo_excedido',
+        new Error(custoTurno.motivo ?? 'Teto de custo do bot atingido'),
+      );
+      return;
+    }
     if (!(await this.tetoPromptOk(cfg.promptId))) {
       await this.enviarWhatsapp(
         empresaId,
@@ -474,6 +507,7 @@ export class ConversarIaService {
       return;
     }
     await this.registrarUsoPrompt(cfg.promptId, (r.tokensIn ?? 0) + (r.tokensOut ?? 0));
+    await this.custo.registrarUso(empresaId, r.tokensIn ?? 0, r.tokensOut ?? 0);
     const turno = parseTurnoIa(r.texto);
 
     const respostaTexto = personalizarNome(turno.resposta, lead.contatoNome);

@@ -32,6 +32,10 @@ const makeMuller = () => ({
   gerarRespostaIa: vi.fn(),
   transcreverAudio: vi.fn().mockResolvedValue('texto transcrito'),
 });
+const makeCusto = () => ({
+  verificarTeto: vi.fn().mockResolvedValue({ bloqueado: false }),
+  registrarUso: vi.fn().mockResolvedValue(undefined),
+});
 const makeWhatsapp = () => ({
   enviarTexto: vi.fn().mockResolvedValue({ externalId: 'x' }),
   enviarPresenca: vi.fn().mockResolvedValue(undefined),
@@ -77,6 +81,7 @@ describe('ConversarIaService', () => {
   let prisma: ReturnType<typeof makePrisma>;
   let persona: ReturnType<typeof makePersona>;
   let muller: ReturnType<typeof makeMuller>;
+  let custo: ReturnType<typeof makeCusto>;
   let whatsapp: ReturnType<typeof makeWhatsapp>;
   let bus: ReturnType<typeof makeBus>;
   let queue: ReturnType<typeof makeQueue>;
@@ -86,6 +91,7 @@ describe('ConversarIaService', () => {
     prisma = makePrisma();
     persona = makePersona();
     muller = makeMuller();
+    custo = makeCusto();
     whatsapp = makeWhatsapp();
     bus = makeBus();
     queue = makeQueue();
@@ -93,6 +99,7 @@ describe('ConversarIaService', () => {
       prisma as never,
       persona as never,
       muller as never,
+      custo as never,
       whatsapp as never,
       bus as never,
       { aguardarSlot: vi.fn() } as never,
@@ -127,6 +134,37 @@ describe('ConversarIaService', () => {
           data: expect.objectContaining({ status: 'AGUARDANDO', aguardandoNoId: 'no-ia' }),
         }),
       );
+    });
+
+    it('teto de custo do bot atingido → roteia "erro" e NÃO chama a IA', async () => {
+      prisma.lead.findFirst.mockResolvedValue({ contatoTelefone: '11999990000' });
+      custo.verificarTeto.mockResolvedValue({ bloqueado: true, motivo: 'Teto atingido' });
+
+      const r = await svc.iniciar(
+        'exec-1',
+        no({ promptId: 'p1' }) as never,
+        { leadId: 'lead-1' },
+        'emp-1',
+      );
+
+      expect(r.roteado).toBe(true);
+      expect(r.tipoErro).toBe('ia_custo_excedido');
+      expect(muller.gerarRespostaIa).not.toHaveBeenCalled();
+      expect(whatsapp.enviarTexto).not.toHaveBeenCalled();
+    });
+
+    it('registra o uso de tokens no orçamento de custo do bot', async () => {
+      prisma.lead.findFirst.mockResolvedValue({ contatoTelefone: '11999990000' });
+      muller.gerarRespostaIa.mockResolvedValue({
+        texto: 'Olá!',
+        modelo: 'gpt',
+        tokensIn: 120,
+        tokensOut: 40,
+      });
+
+      await svc.iniciar('exec-1', no({ promptId: 'p1' }) as never, { leadId: 'lead-1' }, 'emp-1');
+
+      expect(custo.registrarUso).toHaveBeenCalledWith('emp-1', 120, 40);
     });
 
     it('não pausa quando aguardarResposta=false', async () => {
