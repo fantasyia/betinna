@@ -32,7 +32,8 @@ export class FluxoExecutorProcessor extends WorkerHost {
     this.logger.debug(
       `Job ${job.id}: exec=${execucaoId} no=${noId} (tentativa ${job.attemptsMade + 1})`,
     );
-    await this.executor.executarPasso(execucaoId, noId);
+    // job.id é a chave do claim de idempotência (estável no retry, fresco por enqueue).
+    await this.executor.executarPasso(execucaoId, noId, job.id!);
   }
 
   /**

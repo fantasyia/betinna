@@ -75,6 +75,12 @@ const makePrismaMock = () => ({
   variavelCustomizada: {
     findMany: vi.fn().mockResolvedValue([]),
   } satisfies MockModel,
+  fluxoStepClaim: {
+    create: vi.fn().mockResolvedValue({}),
+    findUnique: vi.fn().mockResolvedValue(null),
+    update: vi.fn().mockResolvedValue({}),
+  } satisfies MockModel,
+  $transaction: vi.fn(async (ops: unknown[]) => Promise.all(ops as Promise<unknown>[])),
 });
 
 const makeWhatsappMock = () => ({
@@ -185,7 +191,7 @@ describe('FluxoExecutorService', () => {
       });
       prisma.lead.findMany.mockResolvedValue([{ id: 'lead-a' }, { id: 'lead-b' }]);
 
-      await service.executarPasso('exec-1', 'no-1');
+      await service.executarPasso('exec-1', 'no-1', 'job-test');
 
       expect(prisma.lead.findMany).toHaveBeenCalledWith(
         expect.objectContaining({
@@ -224,7 +230,7 @@ describe('FluxoExecutorService', () => {
       });
       prisma.lead.findMany.mockResolvedValue([]); // 0 elegíveis → movidos:0
 
-      await service.executarPasso('exec-1', 'no-1');
+      await service.executarPasso('exec-1', 'no-1', 'job-test');
 
       expect(prisma.fluxoExecucao.delete).toHaveBeenCalledWith({ where: { id: 'exec-1' } });
       // não marca CONCLUIDO (foi descartada)
@@ -258,7 +264,7 @@ describe('FluxoExecutorService', () => {
       });
       prisma.lead.count.mockResolvedValue(1); // destino já tem 1 lead
 
-      await service.executarPasso('exec-1', 'no-1');
+      await service.executarPasso('exec-1', 'no-1', 'job-test');
 
       // conta a ocupação do destino e NÃO move nenhum lead (já no limite)
       expect(prisma.lead.count).toHaveBeenCalledWith(
@@ -286,7 +292,7 @@ describe('FluxoExecutorService', () => {
       });
       prisma.lead.findMany.mockResolvedValue([]);
 
-      await service.executarPasso('exec-1', 'no-1');
+      await service.executarPasso('exec-1', 'no-1', 'job-test');
 
       expect(prisma.fluxoExecucao.delete).not.toHaveBeenCalled();
       expect(prisma.fluxoExecucao.update).toHaveBeenCalledWith(
@@ -335,7 +341,7 @@ describe('FluxoExecutorService', () => {
     it('retorna sem fazer nada quando execução não é encontrada', async () => {
       prisma.fluxoExecucao.findUnique.mockResolvedValue(null);
 
-      await service.executarPasso('exec-99', 'no-1');
+      await service.executarPasso('exec-99', 'no-1', 'job-test');
 
       expect(prisma.fluxoExecucaoLog.create).not.toHaveBeenCalled();
     });
@@ -343,7 +349,7 @@ describe('FluxoExecutorService', () => {
     it('marca como FALHOU quando execução não tem empresaId', async () => {
       prisma.fluxoExecucao.findUnique.mockResolvedValue(fakeExecucao({ empresaId: null }));
 
-      await service.executarPasso('exec-1', 'no-1');
+      await service.executarPasso('exec-1', 'no-1', 'job-test');
 
       expect(prisma.fluxoExecucao.update).toHaveBeenCalledWith(
         expect.objectContaining({ data: expect.objectContaining({ status: 'FALHOU' }) }),
@@ -353,7 +359,7 @@ describe('FluxoExecutorService', () => {
     it('retorna sem fazer nada quando execução está CANCELADA', async () => {
       prisma.fluxoExecucao.findUnique.mockResolvedValue(fakeExecucao({ status: 'CANCELADO' }));
 
-      await service.executarPasso('exec-1', 'no-1');
+      await service.executarPasso('exec-1', 'no-1', 'job-test');
 
       expect(prisma.fluxoExecucaoLog.create).not.toHaveBeenCalled();
     });
@@ -363,7 +369,7 @@ describe('FluxoExecutorService', () => {
       prisma.fluxoNo.findUnique.mockResolvedValue(fakeNo());
       prisma.fluxoEdge.findMany.mockResolvedValue([]); // sem próximos → CONCLUIDO
 
-      await service.executarPasso('exec-1', 'no-1');
+      await service.executarPasso('exec-1', 'no-1', 'job-test');
 
       expect(prisma.fluxoExecucao.update).toHaveBeenCalledWith(
         expect.objectContaining({
@@ -386,7 +392,7 @@ describe('FluxoExecutorService', () => {
       });
 
       // Não relança (o erro já foi tratado/roteado — nada de retry do BullMQ).
-      await expect(service.executarPasso('exec-1', 'no-1')).resolves.toBeUndefined();
+      await expect(service.executarPasso('exec-1', 'no-1', 'job-test')).resolves.toBeUndefined();
 
       // Passo agora loga FALHOU com o motivo (antes ficava verde "Concluída sem erros",
       // mascarando que nada foi enviado).
@@ -407,7 +413,7 @@ describe('FluxoExecutorService', () => {
       prisma.fluxoNo.findUnique.mockResolvedValue(fakeNo());
       prisma.fluxoEdge.findMany.mockResolvedValue([]);
 
-      await service.executarPasso('exec-1', 'no-1');
+      await service.executarPasso('exec-1', 'no-1', 'job-test');
 
       // Só deve ter chamado update uma vez (para CONCLUIDO no final), não para EM_EXECUCAO
       const updateCalls = prisma.fluxoExecucao.update.mock.calls;
@@ -422,7 +428,7 @@ describe('FluxoExecutorService', () => {
       prisma.fluxoExecucao.findUnique.mockResolvedValue(fakeExecucao());
       prisma.fluxoNo.findUnique.mockResolvedValue(null);
 
-      await service.executarPasso('exec-1', 'no-inexistente');
+      await service.executarPasso('exec-1', 'no-inexistente', 'job-test');
 
       expect(prisma.fluxoExecucao.update).toHaveBeenCalledWith(
         expect.objectContaining({ data: expect.objectContaining({ status: 'FALHOU' }) }),
@@ -434,7 +440,7 @@ describe('FluxoExecutorService', () => {
       prisma.fluxoNo.findUnique.mockResolvedValue(fakeNo());
       prisma.fluxoEdge.findMany.mockResolvedValue([]); // sem arestas
 
-      await service.executarPasso('exec-1', 'no-1');
+      await service.executarPasso('exec-1', 'no-1', 'job-test');
 
       const lastUpdate = prisma.fluxoExecucao.update.mock.calls.at(-1)?.[0];
       expect(lastUpdate?.data?.status).toBe('CONCLUIDO');
@@ -445,7 +451,7 @@ describe('FluxoExecutorService', () => {
       prisma.fluxoNo.findUnique.mockResolvedValue(fakeNo({ id: 'no-1' }));
       prisma.fluxoEdge.findMany.mockResolvedValue([fakeEdge('no-1', 'no-2')]);
 
-      await service.executarPasso('exec-1', 'no-1');
+      await service.executarPasso('exec-1', 'no-1', 'job-test');
 
       expect(queue.add).toHaveBeenCalledWith(
         'step',
@@ -464,7 +470,7 @@ describe('FluxoExecutorService', () => {
       prisma.fluxoNo.findUnique.mockResolvedValue(delayNo);
       prisma.fluxoEdge.findMany.mockResolvedValue([fakeEdge('no-delay', 'no-next')]);
 
-      await service.executarPasso('exec-1', 'no-delay');
+      await service.executarPasso('exec-1', 'no-delay', 'job-test');
 
       const jobOpts = queue.add.mock.calls[0][2];
       expect(jobOpts.delay).toBe(2 * 3_600_000); // 2 horas em ms
@@ -487,7 +493,7 @@ describe('FluxoExecutorService', () => {
         fakeEdge('no-cond', 'no-false', 'Não'),
       ]);
 
-      await service.executarPasso('exec-1', 'no-cond');
+      await service.executarPasso('exec-1', 'no-cond', 'job-test');
 
       // Condição 200 > 100 → "Sim" → deve enfileirar no-true
       expect(queue.add).toHaveBeenCalledWith(
@@ -507,7 +513,7 @@ describe('FluxoExecutorService', () => {
       prisma.fluxoNo.findUnique.mockResolvedValue(fakeNo());
       prisma.fluxoEdge.findMany.mockResolvedValue([]);
 
-      await service.executarPasso('exec-1', 'no-1');
+      await service.executarPasso('exec-1', 'no-1', 'job-test');
 
       expect(prisma.fluxoExecucaoLog.create).toHaveBeenCalledOnce();
     });
@@ -525,7 +531,7 @@ describe('FluxoExecutorService', () => {
       prisma.fluxoEdge.findMany.mockResolvedValue([]);
       // clienteId ausente → ação lança
 
-      await expect(service.executarPasso('exec-1', 'no-1')).rejects.toThrow();
+      await expect(service.executarPasso('exec-1', 'no-1', 'job-test')).rejects.toThrow();
     });
   });
 
@@ -556,7 +562,7 @@ describe('FluxoExecutorService', () => {
     it('envia mensagem interpolada pelo WhatsApp', async () => {
       setupWhatsappPasso({ clienteId: 'cli-1', cliente: { nome: 'Carlos' } });
 
-      await service.executarPasso('exec-1', 'no-wa');
+      await service.executarPasso('exec-1', 'no-wa', 'job-test');
 
       expect(whatsapp.enviarTexto).toHaveBeenCalledWith(
         'emp-1',
@@ -569,14 +575,14 @@ describe('FluxoExecutorService', () => {
     it('lança quando clienteId está ausente no contexto', async () => {
       setupWhatsappPasso({}); // sem clienteId
 
-      await expect(service.executarPasso('exec-1', 'no-wa')).rejects.toThrow();
+      await expect(service.executarPasso('exec-1', 'no-wa', 'job-test')).rejects.toThrow();
     });
 
     it('lança quando cliente não tem telefone', async () => {
       setupWhatsappPasso({ clienteId: 'cli-1' });
       prisma.cliente.findFirst.mockResolvedValue({ telefone: null, nome: 'Ana' });
 
-      await expect(service.executarPasso('exec-1', 'no-wa')).rejects.toThrow();
+      await expect(service.executarPasso('exec-1', 'no-wa', 'job-test')).rejects.toThrow();
     });
 
     it('envia direto pro jid quando o contato salvo é um GRUPO (@g.us)', async () => {
@@ -596,7 +602,7 @@ describe('FluxoExecutorService', () => {
       prisma.fluxoNo.findUnique.mockResolvedValue(acaoNo);
       prisma.fluxoEdge.findMany.mockResolvedValue([]);
 
-      await service.executarPasso('exec-1', 'no-wa');
+      await service.executarPasso('exec-1', 'no-wa', 'job-test');
 
       // jid de grupo vai DIRETO (não vira @s.whatsapp.net nem perde o @g.us)
       expect(whatsapp.enviarTexto).toHaveBeenCalledWith(
@@ -626,7 +632,7 @@ describe('FluxoExecutorService', () => {
       prisma.fluxoNo.findUnique.mockResolvedValue(acaoNo);
       prisma.fluxoEdge.findMany.mockResolvedValue([]);
 
-      await service.executarPasso('exec-1', 'no-email');
+      await service.executarPasso('exec-1', 'no-email', 'job-test');
 
       expect(emailSvc.enviarHtmlLivre).toHaveBeenCalledWith(
         expect.objectContaining({
@@ -651,7 +657,7 @@ describe('FluxoExecutorService', () => {
       prisma.fluxoNo.findUnique.mockResolvedValue(acaoNo);
       prisma.fluxoEdge.findMany.mockResolvedValue([]);
 
-      await service.executarPasso('exec-1', 'no-1');
+      await service.executarPasso('exec-1', 'no-1', 'job-test');
 
       expect(prisma.lead.updateMany).toHaveBeenCalledWith(
         expect.objectContaining({
@@ -673,7 +679,7 @@ describe('FluxoExecutorService', () => {
       prisma.fluxoNo.findUnique.mockResolvedValue(acaoNo);
       prisma.fluxoEdge.findMany.mockResolvedValue([]);
 
-      await expect(service.executarPasso('exec-1', 'no-1')).rejects.toThrow();
+      await expect(service.executarPasso('exec-1', 'no-1', 'job-test')).rejects.toThrow();
     });
 
     it('dispara LEAD_ETAPA_MUDOU ao mover por funilEtapaId (encadeia abordagem)', async () => {
@@ -695,7 +701,7 @@ describe('FluxoExecutorService', () => {
       // Etapa de origem diferente da destino → deve disparar o evento.
       prisma.lead.findFirst.mockResolvedValue({ funilEtapaId: 'et-prosp' });
 
-      await service.executarPasso('exec-1', 'no-1');
+      await service.executarPasso('exec-1', 'no-1', 'job-test');
 
       expect(bus.disparar).toHaveBeenCalledWith(
         'emp-1',
@@ -728,7 +734,7 @@ describe('FluxoExecutorService', () => {
       // Origem == destino → não dispara (evita laço e re-disparo).
       prisma.lead.findFirst.mockResolvedValue({ funilEtapaId: 'et-abord' });
 
-      await service.executarPasso('exec-1', 'no-1');
+      await service.executarPasso('exec-1', 'no-1', 'job-test');
 
       expect(bus.disparar).not.toHaveBeenCalled();
     });
@@ -767,7 +773,7 @@ describe('FluxoExecutorService', () => {
         tags: [],
       });
 
-      await service.executarPasso('exec-1', 'no-1');
+      await service.executarPasso('exec-1', 'no-1', 'job-test');
 
       expect(whatsapp.enviarTexto).toHaveBeenCalledWith(
         'emp-1',
@@ -792,7 +798,7 @@ describe('FluxoExecutorService', () => {
       prisma.fluxoEdge.findMany.mockResolvedValue([]);
       prisma.cliente.findFirst.mockResolvedValue({ id: 'cli-1' });
 
-      await service.executarPasso('exec-1', 'no-1');
+      await service.executarPasso('exec-1', 'no-1', 'job-test');
 
       expect(prisma.tag.upsert).toHaveBeenCalledWith(
         expect.objectContaining({
@@ -815,7 +821,7 @@ describe('FluxoExecutorService', () => {
       prisma.fluxoEdge.findMany.mockResolvedValue([]);
       prisma.cliente.findFirst.mockResolvedValue({ id: 'cli-1' });
 
-      await service.executarPasso('exec-1', 'no-1');
+      await service.executarPasso('exec-1', 'no-1', 'job-test');
 
       expect(prisma.clienteTag.deleteMany).toHaveBeenCalledOnce();
     });
@@ -836,7 +842,7 @@ describe('FluxoExecutorService', () => {
       prisma.fluxoEdge.findMany.mockResolvedValue([]);
       prisma.lead.findFirst.mockResolvedValue({ id: 'lead-1' });
 
-      await service.executarPasso('exec-1', 'no-1');
+      await service.executarPasso('exec-1', 'no-1', 'job-test');
 
       expect(prisma.leadTag.upsert).toHaveBeenCalledOnce();
       expect(prisma.clienteTag.upsert).not.toHaveBeenCalled();
@@ -855,7 +861,9 @@ describe('FluxoExecutorService', () => {
       prisma.fluxoEdge.findMany.mockResolvedValue([]);
 
       // O executor loga FALHOU e RE-LANÇA (pra BullMQ retentar) — sem cliente nem lead.
-      await expect(service.executarPasso('exec-1', 'no-1')).rejects.toThrow(/MUDAR_TAG/);
+      await expect(service.executarPasso('exec-1', 'no-1', 'job-test')).rejects.toThrow(
+        /MUDAR_TAG/,
+      );
       expect(prisma.leadTag.upsert).not.toHaveBeenCalled();
       expect(prisma.clienteTag.upsert).not.toHaveBeenCalled();
     });
@@ -881,7 +889,7 @@ describe('FluxoExecutorService', () => {
       prisma.fluxoNo.findUnique.mockResolvedValue(acaoNo);
       prisma.fluxoEdge.findMany.mockResolvedValue([]);
 
-      await service.executarPasso('exec-1', 'no-1');
+      await service.executarPasso('exec-1', 'no-1', 'job-test');
 
       expect(mockSafeRequest).toHaveBeenCalledWith(
         'https://hooks.example.com/fluxo-1',
@@ -903,7 +911,9 @@ describe('FluxoExecutorService', () => {
       prisma.fluxoEdge.findMany.mockResolvedValue([]);
       mockSafeRequest.mockRejectedValueOnce(new Error('SSRF blocked'));
 
-      await expect(service.executarPasso('exec-1', 'no-1')).rejects.toThrow('SSRF blocked');
+      await expect(service.executarPasso('exec-1', 'no-1', 'job-test')).rejects.toThrow(
+        'SSRF blocked',
+      );
     });
   });
 
@@ -921,7 +931,7 @@ describe('FluxoExecutorService', () => {
       prisma.fluxoEdge.findMany.mockResolvedValue([]);
       prisma.usuario.findFirst.mockResolvedValue({ id: 'rep-x' }); // rep pertence à empresa
 
-      await service.executarPasso('exec-1', 'no-1');
+      await service.executarPasso('exec-1', 'no-1', 'job-test');
 
       expect(prisma.cliente.updateMany).toHaveBeenCalledWith(
         expect.objectContaining({
@@ -944,7 +954,7 @@ describe('FluxoExecutorService', () => {
       prisma.fluxoEdge.findMany.mockResolvedValue([]);
       prisma.usuario.findFirst.mockResolvedValue(null); // rep não encontrado na empresa
 
-      await expect(service.executarPasso('exec-1', 'no-1')).rejects.toThrow();
+      await expect(service.executarPasso('exec-1', 'no-1', 'job-test')).rejects.toThrow();
     });
   });
 });

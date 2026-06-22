@@ -160,7 +160,7 @@ export class FluxoExecutorService {
   /**
    * Executa um passo da execução (chamado pelo BullMQ Processor).
    */
-  async executarPasso(execucaoId: string, noId: string): Promise<void> {
+  async executarPasso(execucaoId: string, noId: string, jobId: string): Promise<void> {
     // Carrega execução
     const execucao = await this.prisma.fluxoExecucao.findUnique({
       where: { id: execucaoId },
@@ -179,6 +179,28 @@ export class FluxoExecutorService {
     if (execucao.status === 'CANCELADO') {
       this.logger.debug(`Execução ${execucaoId} cancelada — passo ignorado`);
       return;
+    }
+
+    // IDEMPOTÊNCIA (cluster #1 auditoria): claim por job.id ANTES de qualquer efeito.
+    // EXECUTANDO = passo em curso (retry de falha real reentra e re-executa);
+    // CONCLUIDO = efeito consumado → pula tudo (retry pós-efeito NÃO duplica msg).
+    // jobId é estável no retry do MESMO job e fresco a cada enqueue, então loops
+    // cíclicos e re-entrada do CONVERSAR_IA por turno não são suprimidos.
+    try {
+      await this.prisma.fluxoStepClaim.create({ data: { jobId, execucaoId, noId } });
+    } catch (e) {
+      if (e instanceof Prisma.PrismaClientKnownRequestError && e.code === 'P2002') {
+        const claim = await this.prisma.fluxoStepClaim.findUnique({ where: { jobId } });
+        if (claim?.estado === 'CONCLUIDO') {
+          this.logger.warn(`Passo job ${jobId} já concluído — skip idempotente`);
+          return; // efeito já consumado neste job.id; nada a re-disparar
+        }
+        // estado EXECUTANDO: crash/falha real do attempt anterior do MESMO job →
+        // segue e re-executa o efeito (retry de falha real preservado).
+        this.logger.warn(`Passo job ${jobId} retomando após falha (claim EXECUTANDO)`);
+      } else {
+        throw e; // Postgres fora etc.: falha antes do efeito → retry limpo, sem efeito
+      }
     }
 
     // Atualiza status pra EM_EXECUCAO na primeira vez
@@ -256,19 +278,33 @@ export class FluxoExecutorService {
 
     // Registra log do passo
     const logStatus = sucesso && !roteado ? ('CONCLUIDO' as const) : ('FALHOU' as const);
-    await this.prisma.fluxoExecucaoLog.create({
-      data: {
-        execucaoId,
-        noId,
-        noTitulo: no.titulo,
-        status: logStatus,
-        input: toJsonInput(contexto),
-        output: output ? toJsonInput(output) : Prisma.JsonNull,
-        erroMsg: erroMsg ?? undefined,
-        iniciadoEm,
-        terminadoEm: new Date(),
-      },
-    });
+    const logData = {
+      execucaoId,
+      noId,
+      noTitulo: no.titulo,
+      status: logStatus,
+      input: toJsonInput(contexto),
+      output: output ? toJsonInput(output) : Prisma.JsonNull,
+      erroMsg: erroMsg ?? undefined,
+      iniciadoEm,
+      terminadoEm: new Date(),
+    };
+    if (logStatus === 'CONCLUIDO') {
+      // Marca o claim CONCLUIDO JUNTO com o log: qualquer throw DEPOIS daqui (update da
+      // execução / queue.add dos sucessores) faz o BullMQ re-rodar o job, que acha o claim
+      // CONCLUIDO no topo e pula o efeito — sem duplicar WhatsApp/email/opener.
+      await this.prisma.$transaction([
+        this.prisma.fluxoExecucaoLog.create({ data: logData }),
+        this.prisma.fluxoStepClaim.update({
+          where: { jobId },
+          data: { estado: 'CONCLUIDO', concluidoEm: new Date() },
+        }),
+      ]);
+    } else {
+      // FALHOU: claim fica EXECUTANDO → o throw abaixo dispara retry, que reentra no
+      // claim EXECUTANDO e re-executa o efeito (falha real é re-tentada).
+      await this.prisma.fluxoExecucaoLog.create({ data: logData });
+    }
 
     if (!sucesso) {
       // Nó falhou — lança para o BullMQ re-tentar
@@ -278,6 +314,8 @@ export class FluxoExecutorService {
     // Nó "Conversar com IA" esperando resposta do lead: pausa aqui (a retomada
     // acontece em LEAD_RESPONDEU, via ConversarIaService.retomar).
     if (aguardando) {
+      // Opener já enviado e claim já marcado CONCLUIDO (transação acima, sucesso && !roteado):
+      // um retry do job 'step' NÃO re-gera a IA nem re-envia o opener.
       this.logger.debug(`Execução ${execucaoId} pausada (Conversar com IA aguardando lead)`);
       return;
     }
@@ -286,6 +324,11 @@ export class FluxoExecutorService {
     // e o ramo "erro" enfileirado pelo ConversarIaService. Não segue o caminho
     // normal nem encerra aqui.
     if (roteado) {
+      // CONVERSAR_IA já enviou/roteou e NÃO relança (sem retry). Marca o claim CONCLUIDO
+      // pra não deixar órfão EXECUTANDO (best-effort: o job já terminou, não relança).
+      await this.prisma.fluxoStepClaim
+        .update({ where: { jobId }, data: { estado: 'CONCLUIDO', concluidoEm: new Date() } })
+        .catch(() => undefined);
       this.logger.log(`Execução ${execucaoId} seguiu a saída "erro" (${tipoErro ?? '?'})`);
       return;
     }
