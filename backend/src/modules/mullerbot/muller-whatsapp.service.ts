@@ -255,12 +255,27 @@ export class MullerWhatsappService implements OnModuleInit {
     resultado: { conversationId: string; messageId: string; duplicada: boolean },
   ): Promise<void> {
     const convId = resultado.conversationId;
+    let lockConv: string | null = null;
     try {
       // 1. Filtros duros
       if (params.canal !== 'WHATSAPP') return;
       if (params.proprietarioId) return; // WhatsApp pessoal do rep — bot NUNCA atua
       if (params.direction === 'OUTBOUND') return; // anti-eco (mensagem do próprio número)
       if (resultado.duplicada) return;
+      // Grupos (@g.us): o bot geral NUNCA atua em grupo de WhatsApp (auditoria 2026-06).
+      if (params.peerId?.endsWith('@g.us')) return;
+
+      // Lock por conversa: 2 mensagens distintas do mesmo peer em rajada disparam
+      // 2 aoReceber concorrentes (hook fire-and-forget). Sem isso ambos passam os gates
+      // (status só muda no fim) e o bot responde em dobro. SETNX serializa; quem não
+      // pega o lock descarta. Degrada gracioso se o Redis cair (segue sem lock).
+      const lockKey = `bot:resp:${convId}`;
+      const lockOk = await this.redis.setNxEx(lockKey, '1', 30).catch(() => true);
+      if (!lockOk) {
+        this.logger.log(`[bot] conv=${convId} já em processamento — descarta msg concorrente`);
+        return;
+      }
+      lockConv = lockKey;
 
       // 1.4 Anti-backlog — não auto-responde mensagem VELHA. Após reconnect, o
       // Baileys reentrega o histórico (append / messaging-history.set) e cada
@@ -511,6 +526,8 @@ export class MullerWhatsappService implements OnModuleInit {
     } catch (err) {
       const m = err instanceof Error ? err.message : String(err);
       this.logger.error(`[bot] erro inesperado conv=${convId}: ${m}`);
+    } finally {
+      if (lockConv) await this.redis.del(lockConv).catch(() => undefined);
     }
   }
 

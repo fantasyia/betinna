@@ -268,10 +268,22 @@ export class FluxoTriggersJob {
         empresaId,
         status: { not: 'INATIVO' },
         OR: [{ ultimoPedidoEm: { lt: corte } }, { ultimoPedidoEm: null }],
+        // Anti-spam: não re-dispara quem já foi disparado dentro da janela de
+        // inatividade. Sem isto o gatilho re-disparava os MESMOS clientes a cada 30min.
+        AND: [
+          {
+            OR: [{ reativacaoDisparadaEm: null }, { reativacaoDisparadaEm: { lt: corte } }],
+          },
+        ],
       },
       select: { id: true, nome: true, representanteId: true },
+      // Ordem determinística + nunca-disparado primeiro: sem orderBy, o take:50 repetia
+      // o mesmo prefixo e quem estava além de 50 nunca disparava.
+      orderBy: [{ reativacaoDisparadaEm: { sort: 'asc', nulls: 'first' } }, { id: 'asc' }],
       take: 50, // lote máximo por rodada pra não sobrecarregar
     });
+
+    if (clientesInativos.length === 0) return;
 
     for (const cliente of clientesInativos) {
       await this.bus.disparar(empresaId, 'CLIENTE_INATIVO_30D', {
@@ -282,11 +294,15 @@ export class FluxoTriggersJob {
       });
     }
 
-    if (clientesInativos.length > 0) {
-      this.logger.log(
-        `CLIENTE_INATIVO_30D: ${clientesInativos.length} cliente(s) em empresa ${empresaId}`,
-      );
-    }
+    // Marca os disparados pra não re-disparar na próxima rodada (cooldown = janela).
+    await this.prisma.cliente.updateMany({
+      where: { id: { in: clientesInativos.map((c) => c.id) }, empresaId },
+      data: { reativacaoDisparadaEm: new Date() },
+    });
+
+    this.logger.log(
+      `CLIENTE_INATIVO_30D: ${clientesInativos.length} cliente(s) em empresa ${empresaId}`,
+    );
   }
 
   // ─── Amostras follow-up ───────────────────────────────────────────

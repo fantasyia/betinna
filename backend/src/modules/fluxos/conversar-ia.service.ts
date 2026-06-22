@@ -2,7 +2,7 @@ import { Injectable, Logger } from '@nestjs/common';
 import { InjectQueue } from '@nestjs/bullmq';
 import type { Queue } from 'bullmq';
 import { MessageDirection, Prisma } from '@prisma/client';
-import type { FluxoNo } from '@prisma/client';
+import type { FluxoExecucao, FluxoNo } from '@prisma/client';
 import { PrismaService } from '@database/prisma.service';
 import { interpolate } from '@shared/utils/interpolate';
 import { WhatsAppService } from '@integrations/whatsapp/whatsapp.service';
@@ -348,6 +348,37 @@ export class ConversarIaService {
     if (!execucao.empresaId) return;
     const empresaId = execucao.empresaId;
 
+    // Claim atômico do turno (CAS): 2 mensagens do lead em rajada disparam 2 retomar
+    // concorrentes; ambos passariam o guard de status acima (a execução só sai de
+    // AGUARDANDO no fim — e no caminho "continua conversa" nem sai). Sem isto a IA roda
+    // 2x, o WhatsApp sai 2x e a classificação dispara em dobro. `processandoTurno` é o
+    // lock otimista por execução, liberado no finally — ortogonal ao status.
+    const claim = await this.prisma.fluxoExecucao.updateMany({
+      where: { id: execucaoId, status: 'AGUARDANDO', processandoTurno: false },
+      data: { processandoTurno: true },
+    });
+    if (claim.count === 0) return; // outro turno já está processando esta execução
+    try {
+      await this.processarTurno(execucao, empresaId, conversationId, textoLead, imagemDataUrl);
+    } finally {
+      // Libera o claim sem tocar no status (que pode ter virado EM_EXECUCAO no caminho
+      // que classifica e avança). Best-effort.
+      await this.prisma.fluxoExecucao
+        .updateMany({ where: { id: execucaoId }, data: { processandoTurno: false } })
+        .catch(() => undefined);
+    }
+  }
+
+  /** Corpo de um turno do nó Conversar com IA (já com o claim atômico adquirido). */
+  private async processarTurno(
+    execucao: FluxoExecucao,
+    empresaId: string,
+    conversationId: string | null,
+    textoLead: string,
+    imagemDataUrl?: string,
+  ): Promise<void> {
+    const execucaoId = execucao.id;
+    if (!execucao.aguardandoNoId) return;
     const no = await this.prisma.fluxoNo.findUnique({ where: { id: execucao.aguardandoNoId } });
     if (!no) return;
     const cfg = (no.config ?? {}) as ConversarIaConfig;

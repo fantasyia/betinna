@@ -8,6 +8,8 @@ const makePrisma = () => ({
     findFirst: vi.fn(),
     findMany: vi.fn().mockResolvedValue([]),
     update: vi.fn().mockResolvedValue({}),
+    // Claim atômico do turno (CAS) — default: claim sempre vence.
+    updateMany: vi.fn().mockResolvedValue({ count: 1 }),
     create: vi.fn().mockResolvedValue({ id: 'filha-1' }),
   },
   fluxoNo: { findUnique: vi.fn() },
@@ -363,6 +365,18 @@ describe('ConversarIaService', () => {
       empresaId: 'emp-1',
       contexto: { leadId: 'lead-1' },
     };
+
+    it('claim perdido (count=0) → NÃO roda a IA nem envia (anti-turno-duplo)', async () => {
+      prisma.fluxoExecucao.findUnique.mockResolvedValue(execAguardando);
+      // Outro turno concorrente já pegou o lock → este claim falha.
+      prisma.fluxoExecucao.updateMany.mockResolvedValueOnce({ count: 0 });
+
+      await svc.retomar('exec-1', 'conv-1', 'oi');
+
+      expect(muller.gerarRespostaIa).not.toHaveBeenCalled();
+      expect(whatsapp.enviarTexto).not.toHaveBeenCalled();
+      expect(prisma.fluxoNo.findUnique).not.toHaveBeenCalled();
+    });
 
     it('IA classificou → grava variáveis, dispara IA_CLASSIFICOU e avança', async () => {
       prisma.fluxoExecucao.findUnique.mockResolvedValue(execAguardando);

@@ -426,6 +426,9 @@ model Cliente {
   prazoPagamento  Int               @default(30) // dias
   limiteCredito   Decimal?          @db.Decimal(14, 2)
   ultimoPedidoEm  DateTime?
+  /// Última vez que o gatilho CLIENTE_INATIVO_30D disparou pra este cliente —
+  /// evita re-disparo (spam) dentro da janela de inatividade.
+  reativacaoDisparadaEm DateTime?
   representanteId String?
   /// Marca registros gerados pelo seed-demo (script /admin/seed-demo).
   /// Permite limpeza seletiva sem mexer em dados reais do tenant.
@@ -1442,6 +1445,9 @@ model FluxoExecucao {
   /// Orquestração (Fase B) — nó em que a execução está pausada aguardando
   /// resposta do lead (status AGUARDANDO).
   aguardandoNoId String?
+  /// Lock otimista do turno do nó Conversar com IA (CAS): impede que 2 mensagens
+  /// do lead em rajada rodem a IA / enviem / classifiquem em dobro. Liberado no finally.
+  processandoTurno Boolean           @default(false)
   /// Quando a espera expira (timeout do nó Conversar com IA).
   timeoutEm      DateTime?
   iniciouEm      DateTime?

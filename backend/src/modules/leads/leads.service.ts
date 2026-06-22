@@ -291,6 +291,23 @@ export class LeadsService {
     if (dto.representanteId) {
       await this.assertRepValido(existing.empresaId, dto.representanteId);
     }
+    // Cross-tenant: funilId/funilEtapaId chegam como string livre no DTO — valida que
+    // pertencem à empresa do lead ANTES de gravar (senão dá pra mover o lead pra um
+    // funil/etapa de OUTRA empresa). Espelha o guard de moverEtapa().
+    if (dto.funilEtapaId) {
+      const et = await this.prisma.funilEtapa.findFirst({
+        where: { id: dto.funilEtapaId, funil: { empresaId: existing.empresaId } },
+        select: { id: true },
+      });
+      if (!et) throw new BusinessRuleException('Etapa de destino inválida');
+    }
+    if (dto.funilId) {
+      const f = await this.prisma.funil.findFirst({
+        where: { id: dto.funilId, empresaId: existing.empresaId },
+        select: { id: true },
+      });
+      if (!f) throw new BusinessRuleException('Funil inválido');
+    }
     await this.prisma.lead.updateMany({
       where: { id, empresaId: existing.empresaId },
       data: dto,
