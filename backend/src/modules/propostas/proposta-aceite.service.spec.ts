@@ -43,7 +43,10 @@ const PROPOSTA = {
 
 const makeEnv = () => ({ get: vi.fn(() => 'k'.repeat(64)) });
 const makeSequence = () => ({ next: vi.fn().mockResolvedValue(7) });
-const makeNotificacoes = () => ({ criarParaRole: vi.fn().mockResolvedValue(0) });
+const makeNotificacoes = () => ({
+  criarParaRole: vi.fn().mockResolvedValue(0),
+  criarParaUsuario: vi.fn().mockResolvedValue(null),
+});
 
 function makeService(txProverbCount: number, recusaCount = 1) {
   const tx = {
@@ -60,14 +63,15 @@ function makeService(txProverbCount: number, recusaCount = 1) {
     },
     $transaction: vi.fn(async (cb: (t: typeof tx) => unknown) => cb(tx)),
   };
+  const notificacoes = makeNotificacoes();
   const svc = new PropostaAceiteService(
     prisma as never,
     makeEnv() as never,
     makeSequence() as never,
-    makeNotificacoes() as never,
+    notificacoes as never,
   );
   mockJwtVerify.mockResolvedValue({ payload: { pid: 'prop-1', eid: 'emp-1' } });
-  return { svc, prisma, tx };
+  return { svc, prisma, tx, notificacoes };
 }
 
 describe('PropostaAceiteService.registrarDecisao — CAS anti duplo-pedido', () => {
@@ -79,6 +83,15 @@ describe('PropostaAceiteService.registrarDecisao — CAS anti duplo-pedido', () 
     expect(r.status).toBe('ACEITA');
     expect(r.pedidoNumero).toBe('PED-0007');
     expect(tx.pedido.create).toHaveBeenCalledTimes(1);
+  });
+
+  it('ACEITA notifica o REP dono da proposta (não só GERENTE/DIRECTOR)', async () => {
+    const { svc, notificacoes } = makeService(1);
+    await svc.registrarDecisao(TOKEN, 'ACEITA', '203.0.113.9');
+    expect(notificacoes.criarParaUsuario).toHaveBeenCalledWith(
+      expect.objectContaining({ usuarioId: 'rep-1', empresaId: 'emp-1' }),
+    );
+    expect(notificacoes.criarParaRole).toHaveBeenCalled();
   });
 
   it('ACEITA perdedora da corrida (CAS count=0) NÃO cria pedido', async () => {

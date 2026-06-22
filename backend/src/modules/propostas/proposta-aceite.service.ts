@@ -295,6 +295,22 @@ export class PropostaAceiteService {
     numeroPedido?: string,
   ): Promise<void> {
     try {
+      // O REP dono da proposta é quem acompanha o cliente — antes só GERENTE/DIRECTOR
+      // recebiam o aviso (o representanteId só ia no metadata, sem notificar ninguém).
+      if (representanteId) {
+        await this.notificacoes.criarParaUsuario({
+          empresaId,
+          usuarioId: representanteId,
+          tipo: 'GENERICO',
+          prioridade: aceita ? 'ALTA' : 'NORMAL',
+          titulo: aceita ? 'Sua proposta foi aceita!' : 'Sua proposta foi recusada',
+          mensagem: aceita
+            ? `Sua proposta ${numeroProposta} foi aceita. Pedido ${numeroPedido} criado automaticamente.`
+            : `Sua proposta ${numeroProposta} foi recusada pelo cliente.`,
+          link: numeroPedido ? `/pedidos` : `/propostas`,
+          metadata: { numeroProposta, numeroPedido },
+        });
+      }
       await this.notificacoes.criarParaRole({
         empresaId,
         roles: ['GERENTE', 'DIRECTOR'],
