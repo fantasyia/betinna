@@ -941,20 +941,44 @@ export class InboxService {
       ...(params.meta ?? {}),
       ...(params.senderName ? { senderName: params.senderName } : {}),
     };
-    const msg = await this.prisma.message.create({
-      data: {
-        conversationId: conv.id,
-        direction,
-        tipo: params.tipo,
-        conteudo: params.conteudo,
-        externalId: params.externalId ?? null,
-        status: isInbound ? MessageStatus.RECEIVED : MessageStatus.SENT,
-        mediaUrl: params.mediaUrl ?? null,
-        mediaMime: params.mediaMime ?? null,
-        meta: Object.keys(metaFinal).length > 0 ? (metaFinal as Prisma.InputJsonValue) : undefined,
-        criadoEm: params.data ?? new Date(),
-      },
-    });
+    let msg: { id: string; criadoEm: Date };
+    try {
+      msg = await this.prisma.message.create({
+        data: {
+          conversationId: conv.id,
+          direction,
+          tipo: params.tipo,
+          conteudo: params.conteudo,
+          externalId: params.externalId ?? null,
+          status: isInbound ? MessageStatus.RECEIVED : MessageStatus.SENT,
+          mediaUrl: params.mediaUrl ?? null,
+          mediaMime: params.mediaMime ?? null,
+          meta:
+            Object.keys(metaFinal).length > 0 ? (metaFinal as Prisma.InputJsonValue) : undefined,
+          criadoEm: params.data ?? new Date(),
+        },
+        select: { id: true, criadoEm: true },
+      });
+    } catch (err) {
+      // Corrida webhook+poll do mesmo provider: outra entrega gravou a MESMA mensagem
+      // (P2002 no @@unique([conversationId, externalId])). A entrega vencedora cuida dos
+      // efeitos (não-lidas, bot, lead-event); aqui devolvemos a existente como duplicada
+      // sem re-incrementar nem re-disparar os hooks — em vez de propagar o erro e pular tudo.
+      if (
+        err instanceof Prisma.PrismaClientKnownRequestError &&
+        err.code === 'P2002' &&
+        params.externalId
+      ) {
+        const existente = await this.prisma.message.findFirst({
+          where: { conversationId: conv.id, externalId: params.externalId },
+          select: { id: true },
+        });
+        if (existente) {
+          return { conversationId: conv.id, messageId: existente.id, duplicada: true };
+        }
+      }
+      throw err;
+    }
 
     // INBOUND: incrementa não-lidas e marca conversa como PENDENTE.
     // OUTBOUND: zera naoLidas — o dono mandou mensagem (pelo celular ou outro

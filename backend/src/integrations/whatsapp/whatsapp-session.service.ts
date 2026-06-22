@@ -1,5 +1,5 @@
 import { Injectable, Logger, OnModuleInit, OnModuleDestroy } from '@nestjs/common';
-import { MessageChannel, MessageDirection, MessageStatus } from '@prisma/client';
+import { MessageChannel, MessageDirection, MessageStatus, MessageType } from '@prisma/client';
 import { Boom } from '@hapi/boom';
 import makeWASocket, {
   DisconnectReason,
@@ -380,6 +380,9 @@ export class WhatsAppSessionService implements OnModuleInit, OnModuleDestroy {
         where: {
           direction: MessageDirection.OUTBOUND,
           status: MessageStatus.FAILED,
+          // SÓ texto: reenviar mídia via enviarTexto mandaria o placeholder ("[imagem]")
+          // como texto e marcaria SENT enganosamente. Mídia FAILED continua FAILED.
+          tipo: MessageType.TEXT,
           criadoEm: { gte: desde },
           conversation: convFilter,
         },
@@ -1203,8 +1206,14 @@ export class WhatsAppSessionService implements OnModuleInit, OnModuleDestroy {
 
   private normalizarJid(peerId: string): string {
     if (peerId.includes('@')) return peerId;
+    // Nacional BR sem DDI (10/11 dígitos) → prefixa 55, senão o JID fica inválido
+    // (exists:false → 1ª msg não sai), igual ao EvolutionService.normalizarNumero.
+    // Internacional (+) ou já com DDI (>=12 dígitos) mantém — não corrompe estrangeiro.
+    const internacional = peerId.includes('+');
     const digits = peerId.replace(/\D/g, '');
-    return `${digits}@s.whatsapp.net`;
+    const comDdi =
+      !internacional && (digits.length === 10 || digits.length === 11) ? `55${digits}` : digits;
+    return `${comDdi}@s.whatsapp.net`;
   }
 
   private jidParaTelefone(jid: string): string | undefined {
