@@ -281,7 +281,13 @@ export class ConversarIaService {
     await this.custo.registrarUso(empresaId, abertura.tokensIn ?? 0, abertura.tokensOut ?? 0);
     const aberturaTexto = personalizarNome(abertura.texto, lead.contatoNome);
     try {
-      await this.enviarWhatsapp(empresaId, lead.contatoTelefone, aberturaTexto);
+      await this.enviarWhatsapp(
+        empresaId,
+        lead.contatoTelefone,
+        aberturaTexto,
+        false,
+        `fx:${execucaoId}:${no.id}:opener`,
+      );
     } catch (err) {
       const { tipo_erro } = await this.rotearParaErro(
         execucaoId,
@@ -512,7 +518,13 @@ export class ConversarIaService {
 
     const respostaTexto = personalizarNome(turno.resposta, lead.contatoNome);
     try {
-      await this.enviarWhatsapp(empresaId, lead.contatoTelefone, respostaTexto, true);
+      await this.enviarWhatsapp(
+        empresaId,
+        lead.contatoTelefone,
+        respostaTexto,
+        true,
+        `fx:${execucaoId}:${no.id}:t${(ctx._iaTurno as number) ?? 0}`,
+      );
     } catch (err) {
       await this.rotearParaErro(execucaoId, no.id, ctx, 'whatsapp_falha', err);
       return;
@@ -540,7 +552,13 @@ export class ConversarIaService {
         where: { id: execucaoId },
         data: {
           timeoutEm: new Date(Date.now() + renovaMs),
-          contexto: toJsonInput({ ...ctx, _iaHistorico: novoHist }),
+          // _iaTurno++ persiste pro PRÓXIMO turno ganhar uma chave de idempotência nova
+          // (o turno atual usou :t<n>; o reprocesso do mesmo turno reusa :t<n> e deduplica).
+          contexto: toJsonInput({
+            ...ctx,
+            _iaHistorico: novoHist,
+            _iaTurno: ((ctx._iaTurno as number) ?? 0) + 1,
+          }),
         },
       });
       return;
@@ -765,6 +783,7 @@ export class ConversarIaService {
     telefone: string,
     texto: string,
     reativo = false,
+    idemKey?: string,
   ): Promise<void> {
     if (!texto.trim()) return;
     // Pacing global: espaça este envio dos demais da empresa (nunca tudo de uma vez).
@@ -786,8 +805,15 @@ export class ConversarIaService {
         delayRespostaSegundos: cfg?.delayRespostaSegundos ?? 0,
       },
       {
-        enviar: (balao) =>
-          this.whatsapp.enviarTexto(empresaId, peerId, balao, {}).then(() => undefined),
+        // Chave de idempotência por balão (`:b<i>`): retry/reprocesso reenvia a MESMA
+        // chave → o gate da Evolution deduplica e o lead não recebe o balão 2×.
+        enviar: (() => {
+          let i = 0;
+          return (balao: string) => {
+            const ctx = idemKey ? { idempotencyKey: `${idemKey}:b${i++}` } : {};
+            return this.whatsapp.enviarTexto(empresaId, peerId, balao, ctx).then(() => undefined);
+          };
+        })(),
         digitando: (ms) =>
           void this.whatsapp
             .enviarPresenca(empresaId, peerId, 'composing', ms)
