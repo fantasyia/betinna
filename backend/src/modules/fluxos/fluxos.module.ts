@@ -4,6 +4,7 @@ import { WhatsAppModule } from '@integrations/whatsapp/whatsapp.module';
 import { EmailModule } from '@integrations/email/email.module';
 import { HttpModule } from '@shared/http/http.module';
 import { MullerBotModule } from '@modules/mullerbot/mullerbot.module';
+import { RagModule } from '@modules/rag/rag.module';
 import { FluxoEventBusService } from './fluxo-event-bus.service';
 import { FluxoExecutorProcessor } from './fluxo-executor.processor';
 import { FluxoExecutorService } from './fluxo-executor.service';
@@ -29,6 +30,8 @@ import { FLUXO_QUEUE } from './fluxo-executor.types';
     HttpModule,
     // Orquestração (Fase B) — nó "Conversar com IA" usa OpenAI + persona do MullerBot.
     MullerBotModule,
+    // RAG — busca de conhecimento (catálogo via ProdutoSearch do MullerBot).
+    RagModule,
   ],
   controllers: [FluxosController, MonitorController, WebhookEntradaController],
   providers: [

@@ -99,6 +99,8 @@ describe('ConversarIaService', () => {
       prisma as never,
       persona as never,
       muller as never,
+      { buscar: vi.fn(async () => []) } as never, // produtoSearch (RAG)
+      { buscar: vi.fn(async () => []) } as never, // conhecimentoSearch (RAG)
       custo as never,
       whatsapp as never,
       bus as never,

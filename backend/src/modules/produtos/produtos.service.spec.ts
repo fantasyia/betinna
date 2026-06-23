@@ -77,7 +77,12 @@ describe('ProdutosService', () => {
 
   beforeEach(() => {
     prisma = makePrismaMock();
-    service = new ProdutosService(prisma as never);
+    service = new ProdutosService(
+      prisma as never,
+      {
+        enfileirarProduto: vi.fn(async () => undefined),
+      } as never,
+    );
   });
 
   // -------------------------------------------------------------------------

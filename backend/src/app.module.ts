@@ -54,6 +54,8 @@ import { WhatsappPacingModule } from '@shared/whatsapp-pacing/whatsapp-pacing.mo
 import { EmpresasModule } from '@modules/empresas/empresas.module';
 import { HealthModule } from '@modules/health/health.module';
 import { IntegracoesModule } from '@modules/integracoes/integracoes.module';
+import { EmbeddingsModule } from '@integrations/embeddings/embeddings.module';
+import { RagModule } from '@modules/rag/rag.module';
 import { LeadsModule } from '@modules/leads/leads.module';
 import { FunisModule } from '@modules/funis/funis.module';
 import { OcorrenciasModule } from '@modules/ocorrencias/ocorrencias.module';
@@ -212,6 +214,8 @@ import { SharedUtilsModule } from '@shared/utils/shared-utils.module';
     InboxModule,
     IncidentsModule,
     MullerBotModule,
+    EmbeddingsModule,
+    RagModule,
     HealthModule,
 
     // Integrações externas

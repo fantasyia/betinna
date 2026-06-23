@@ -1,6 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { PrismaService } from '@database/prisma.service';
+import { IndexacaoService } from '@modules/rag/indexacao.service';
 import {
   BusinessRuleException,
   ForbiddenException,
@@ -25,7 +26,10 @@ type ProdutoWithRel = Prisma.ProdutoGetPayload<{ include: typeof produtoInclude 
 
 @Injectable()
 export class ProdutosService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly indexacao: IndexacaoService,
+  ) {}
 
   /** Empresa do contexto — todos os endpoints filtram por aqui. */
   private requireEmpresa(user: AuthenticatedUser): string {
@@ -99,7 +103,7 @@ export class ProdutosService {
 
     // `atributos` é JSON — trata à parte (Prisma não aceita Record direto no spread tipado).
     const { atributos, ...rest } = dto;
-    return this.prisma.produto.create({
+    const criado = await this.prisma.produto.create({
       data: {
         ...rest,
         empresaId,
@@ -112,6 +116,9 @@ export class ProdutosService {
       },
       include: produtoInclude,
     });
+    // RAG — indexa o embedding em background (best-effort, não bloqueia a resposta).
+    await this.indexacao.enfileirarProduto(criado.id, empresaId);
+    return criado;
   }
 
   async update(
@@ -149,6 +156,8 @@ export class ProdutosService {
             }),
       },
     });
+    // RAG — reindexa (o hash do texto evita reembeddar se só mudou preço/estoque).
+    await this.indexacao.enfileirarProduto(id, existing.empresaId);
     return this.prisma.produto.findUniqueOrThrow({
       where: { id },
       include: produtoInclude,

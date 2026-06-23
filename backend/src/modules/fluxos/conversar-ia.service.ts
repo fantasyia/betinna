@@ -9,6 +9,8 @@ import { WhatsAppService } from '@integrations/whatsapp/whatsapp.service';
 import { MullerBotService } from '@modules/mullerbot/mullerbot.service';
 import { BotCustoService } from '@modules/mullerbot/bot-custo.service';
 import { MullerBotPersonaService } from '@modules/mullerbot/persona.service';
+import { ProdutoSearchService } from '@modules/mullerbot/produto-search.service';
+import { KnowledgeSearchService } from '@modules/rag/knowledge-search.service';
 import {
   enviarEmBaloes,
   prepararEntradaMultimodal,
@@ -164,12 +166,60 @@ export class ConversarIaService {
     private readonly prisma: PrismaService,
     private readonly persona: MullerBotPersonaService,
     private readonly muller: MullerBotService,
+    private readonly produtoSearch: ProdutoSearchService,
+    private readonly conhecimentoSearch: KnowledgeSearchService,
     private readonly custo: BotCustoService,
     private readonly whatsapp: WhatsAppService,
     private readonly bus: FluxoEventBusService,
     private readonly pacing: WhatsappPacingService,
     @InjectQueue(FLUXO_QUEUE) private readonly queue: Queue<FluxoStepJobData>,
   ) {}
+
+  /**
+   * RAG — monta o bloco de contexto (catálogo + conhecimento) pra anexar ao system
+   * prompt, com guardrails anti-alucinação. Retorna '' quando o nó não pediu RAG ou
+   * nada relevante foi encontrado. A recuperação é por busca semântica (fallback
+   * keyword) sobre a mensagem do lead.
+   */
+  private async montarBlocoRag(
+    empresaId: string,
+    textoLead: string,
+    cfg: ConversarIaConfig,
+  ): Promise<string> {
+    const consulta = textoLead.trim();
+    if (consulta.length === 0) return '';
+    if (!cfg.consultarCatalogo && !cfg.consultarConhecimento) return '';
+
+    const partes: string[] = [];
+
+    if (cfg.consultarCatalogo) {
+      const produtos = await this.produtoSearch.buscar(empresaId, consulta, 5).catch(() => []);
+      if (produtos.length > 0) {
+        const linhas = produtos.map((p) => {
+          const preco = `R$ ${p.precoTabela.toFixed(2)}`;
+          const detalhe = [p.marca, p.linha, p.unidade].filter(Boolean).join(', ');
+          return `- ${p.nome}${detalhe ? ` (${detalhe})` : ''} — ${preco}${p.sku ? ` [SKU ${p.sku}]` : ''}`;
+        });
+        partes.push(`PRODUTOS DO CATÁLOGO (use só estes; preços oficiais):\n${linhas.join('\n')}`);
+      }
+    }
+
+    if (cfg.consultarConhecimento) {
+      const chunks = await this.conhecimentoSearch.buscar(empresaId, consulta, 4).catch(() => []);
+      if (chunks.length > 0) {
+        const linhas = chunks.map((c) => `- ${c.titulo}: ${c.conteudo}`);
+        partes.push(`INFORMAÇÕES DA EMPRESA:\n${linhas.join('\n')}`);
+      }
+    }
+
+    if (partes.length === 0) return '';
+    return (
+      '\n\n--- CONTEXTO (RAG) ---\n' +
+      'Responda usando SOMENTE as informações abaixo. Se a resposta não estiver aqui, ' +
+      'diga que vai verificar — NUNCA invente preço, SKU, prazo ou condição.\n\n' +
+      partes.join('\n\n')
+    );
+  }
 
   /**
    * Primeira passada do nó (vinda do executor). Retorna se o fluxo ficou pausado
@@ -497,11 +547,15 @@ export class ConversarIaService {
       );
       return; // teto de tokens do prompt atingido — não roda a IA agora
     }
+    // RAG — anexa catálogo/conhecimento relevantes ao prompt (com guardrails), se o
+    // nó pediu. Recupera com base na mensagem do lead (busca semântica + fallback).
+    const blocoRag = await this.montarBlocoRag(empresaId, textoLead, cfg);
+
     let r: { texto: string; tokensIn?: number; tokensOut?: number };
     try {
       r = await this.muller.gerarRespostaIa(
         empresaId,
-        systemPrompt,
+        systemPrompt + blocoRag,
         textoLead,
         historico,
         imagemDataUrl,

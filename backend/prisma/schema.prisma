@@ -313,6 +313,7 @@ model Empresa {
   materiaisVenda        MaterialVenda[]
   devolucoes            Devolucao[]
   internalThreads       InternalThread[]
+  knowledgeChunks       KnowledgeChunk[]
 
   @@index([ativo])
 }
@@ -575,6 +576,14 @@ model Produto {
   ativo               Boolean   @default(true)
   /// Marca registros gerados pelo seed-demo.
   isDemo              Boolean   @default(false)
+  /// RAG — embedding semântico (pgvector, OpenAI text-embedding-3-small, 1536 dims).
+  /// Unsupported: Prisma não tipa vector; busca por similaridade roda via $queryRaw.
+  /// embeddingAtualizadoEm < atualizadoEm (ou null) = precisa reindexar (reconciliador).
+  embedding             Unsupported("vector(1536)")?
+  embeddingAtualizadoEm DateTime?
+  /// SHA-256 do texto indexado. Reembedda só quando muda (sync de estoque/preço
+  /// mexe em atualizadoEm mas não no texto → evita reembeddar à toa).
+  embeddingTextoHash    String?
   criadoEm            DateTime  @default(now())
   atualizadoEm        DateTime  @updatedAt
 
@@ -592,6 +601,42 @@ model Produto {
   @@index([empresaId, ativo])
   // Seed demo: filtra/limpa registros do demo rapidamente
   @@index([empresaId, isDemo])
+}
+
+/// RAG — base de conhecimento geral da empresa (além do catálogo de produtos).
+/// Alimenta o bot com FAQ, condições comerciais, devolução, prazos, etc.
+/// fonte=MANUAL: cadastrado à mão (refId null). fonte=CONFIG: derivado da
+/// ConfiguracaoTenant (refId = chave da config, re-upsert idempotente).
+/// fonte=MATERIAL: texto extraído de material de venda (futuro).
+enum KnowledgeFonte {
+  MANUAL
+  CONFIG
+  MATERIAL
+}
+
+model KnowledgeChunk {
+  id                    String         @id @default(cuid())
+  empresaId             String
+  fonte                 KnowledgeFonte @default(MANUAL)
+  categoria             String?
+  titulo                String
+  conteudo              String         @db.Text
+  /// id da origem quando fonte != MANUAL (chave de config, materialId) — re-upsert idempotente.
+  refId                 String?
+  ativo                 Boolean        @default(true)
+  /// RAG — mesmo esquema do Produto.embedding (pgvector, 1536 dims, via $queryRaw).
+  embedding             Unsupported("vector(1536)")?
+  embeddingAtualizadoEm DateTime?
+  embeddingTextoHash    String?
+  criadoEm              DateTime       @default(now())
+  atualizadoEm          DateTime       @updatedAt
+
+  empresa Empresa @relation(fields: [empresaId], references: [id], onDelete: Cascade)
+
+  // CONFIG/MATERIAL re-upsert por (empresa, fonte, refId). MANUAL tem refId null
+  // (NULLs distintos no Postgres → vários manuais coexistem sem colidir).
+  @@unique([empresaId, fonte, refId])
+  @@index([empresaId, ativo])
 }
 
 model ClientePrecoEspecial {

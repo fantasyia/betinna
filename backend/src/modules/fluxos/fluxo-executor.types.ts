@@ -117,6 +117,10 @@ export interface ConversarIaConfig {
   timeoutHoras?: number;
   /** Variáveis que a IA pode gravar (referência; a IA grava o que devolver no JSON). */
   variaveisGravadas?: string[];
+  /** RAG — consulta o catálogo de produtos (busca semântica) e injeta no prompt. Default false. */
+  consultarCatalogo?: boolean;
+  /** RAG — consulta a base de conhecimento da empresa (FAQ/condições) e injeta. Default false. */
+  consultarConhecimento?: boolean;
   /**
    * ENCERRAMENTO EDUCADO: depois que a IA classifica, em vez de encerrar a conversa
    * na hora, mantém o nó de IA respondendo o rep por esse tempo (a tag/aviso disparam

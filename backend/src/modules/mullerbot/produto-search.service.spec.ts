@@ -5,6 +5,9 @@ const makePrisma = (produtos: unknown[]) => ({
   produto: { findMany: vi.fn(async () => produtos) },
 });
 
+// Sem chave de embedding → buscar() cai no fallback keyword (o que estes testes cobrem).
+const fakeEmbed = { gerar: vi.fn(async () => null) };
+
 const PROD_OLEO = {
   id: 'p1',
   nome: 'Óleo de Girassol 5L',
@@ -45,7 +48,7 @@ const PROD_FARINHA = {
 describe('ProdutoSearchService.tokenize', () => {
   let svc: ProdutoSearchService;
   beforeEach(() => {
-    svc = new ProdutoSearchService(makePrisma([]) as never);
+    svc = new ProdutoSearchService(makePrisma([]) as never, fakeEmbed as never);
   });
 
   it('remove acentos, lowercase, filtra stopwords e tokens curtos', () => {
@@ -66,6 +69,7 @@ describe('ProdutoSearchService.buscar', () => {
   it('ranqueia óleo acima de azeite quando pergunta menciona "girassol"', async () => {
     const svc = new ProdutoSearchService(
       makePrisma([PROD_AZEITE, PROD_OLEO, PROD_FARINHA]) as never,
+      fakeEmbed as never,
     );
     const r = await svc.buscar('emp-1', 'preciso de óleo de girassol');
     expect(r[0].id).toBe('p1'); // óleo
@@ -74,7 +78,10 @@ describe('ProdutoSearchService.buscar', () => {
   });
 
   it('retorna vazio quando nenhum token relevante bate', async () => {
-    const svc = new ProdutoSearchService(makePrisma([PROD_AZEITE, PROD_OLEO]) as never);
+    const svc = new ProdutoSearchService(
+      makePrisma([PROD_AZEITE, PROD_OLEO]) as never,
+      fakeEmbed as never,
+    );
     const r = await svc.buscar('emp-1', 'oi tudo bem?'); // só stopwords
     expect(r).toHaveLength(0);
   });
@@ -82,13 +89,14 @@ describe('ProdutoSearchService.buscar', () => {
   it('respeita o limit (top-K)', async () => {
     const svc = new ProdutoSearchService(
       makePrisma([PROD_OLEO, PROD_AZEITE, PROD_FARINHA]) as never,
+      fakeEmbed as never,
     );
     const r = await svc.buscar('emp-1', 'alimentos para padaria', 2);
     expect(r.length).toBeLessThanOrEqual(2);
   });
 
   it('marca match em campo nome com peso maior', async () => {
-    const svc = new ProdutoSearchService(makePrisma([PROD_OLEO]) as never);
+    const svc = new ProdutoSearchService(makePrisma([PROD_OLEO]) as never, fakeEmbed as never);
     const r = await svc.buscar('emp-1', 'girassol');
     // 'girassol' aparece em nome (peso 3) e descricao (peso 1) → score >= 4
     expect(r[0].score).toBeGreaterThanOrEqual(4);
@@ -96,7 +104,7 @@ describe('ProdutoSearchService.buscar', () => {
 
   it('filtra produtos inativos via where do Prisma (não traz ativo:false)', async () => {
     const prisma = makePrisma([]);
-    const svc = new ProdutoSearchService(prisma as never);
+    const svc = new ProdutoSearchService(prisma as never, fakeEmbed as never);
     await svc.buscar('emp-1', 'qualquer');
     expect(prisma.produto.findMany).toHaveBeenCalledWith(
       expect.objectContaining({

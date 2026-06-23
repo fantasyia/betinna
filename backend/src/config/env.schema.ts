@@ -45,6 +45,12 @@ export const envSchema = z
     MULLERBOT_TRANSCRIBE_MODEL: z.string().default('whisper-1'),
     /** Modelo de VISÃO pra analisar imagens. Precisa enxergar imagem (gpt-4o-mini serve). */
     MULLERBOT_VISION_MODEL: z.string().default('gpt-4o-mini'),
+    /** RAG — modelo de embedding (1536 dims). text-embedding-3-small é barato e estável. */
+    EMBEDDING_MODEL: z.string().default('text-embedding-3-small'),
+    /** RAG — liga a indexação semântica (reconciliador + enqueue). false = só keyword. */
+    RAG_INDEXACAO_ATIVA: z
+      .union([z.boolean(), z.string().transform((s) => s === 'true')])
+      .default(true),
 
     // ─── WhatsApp: provider (Baileys embutido OU Evolution API separado) ───
     /** Qual provider de WhatsApp usar. 'baileys' (atual) | 'evolution' (serviço separado). */
