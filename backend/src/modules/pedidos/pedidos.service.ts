@@ -726,8 +726,14 @@ export class PedidosService {
         const motivoFinal =
           solicitacao.motivo +
           (dto.comentario ? `\n[Aprovado por ${user.nome}] ${dto.comentario}` : '');
+        // Guard de status (igual cancelar()): não cancela pedido já ENTREGUE/CANCELADO —
+        // a solicitação pode ter ficado PENDENTE enquanto o pedido avançou.
         await tx.pedido.updateMany({
-          where: { id: solicitacao.pedidoId, empresaId },
+          where: {
+            id: solicitacao.pedidoId,
+            empresaId,
+            status: { notIn: ['ENTREGUE', 'CANCELADO'] as never },
+          },
           data: {
             status: 'CANCELADO',
             observacoes: `${solicitacao.pedido.observacoes ? solicitacao.pedido.observacoes + '\n' : ''}[Cancelado via solicitação #${solicitacao.id}] ${motivoFinal}`,

@@ -225,6 +225,19 @@ export class AmostrasService {
         'Amostra pendente de aprovação: use aprovar ou rejeitar primeiro',
       );
     }
+    // Whitelist de transições do lifecycle: estados terminais (CONVERTIDA/NAO_CONVERTEU/
+    // VENCIDA) NÃO voltam — sem isto, dava pra "des-converter" uma amostra CONVERTIDA.
+    const AMOSTRA_TRANSICOES: Record<string, string[]> = {
+      ENVIADA: ['AGUARDANDO_FOLLOWUP', 'CONVERTIDA', 'NAO_CONVERTEU', 'VENCIDA'],
+      AGUARDANDO_FOLLOWUP: ['ENVIADA', 'CONVERTIDA', 'NAO_CONVERTEU', 'VENCIDA'],
+      CONVERTIDA: [],
+      NAO_CONVERTEU: [],
+      VENCIDA: [],
+    };
+    const permitidos = AMOSTRA_TRANSICOES[existing.status] ?? [];
+    if (!permitidos.includes(dto.status)) {
+      throw new BusinessRuleException(`Transição inválida: ${existing.status} → ${dto.status}`);
+    }
     // CAS: status de origem no where evita dupla-transição concorrente (last-write-wins).
     const cas = await this.prisma.amostra.updateMany({
       where: { id, empresaId: existing.empresaId, status: existing.status },

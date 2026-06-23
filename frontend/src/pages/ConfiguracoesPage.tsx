@@ -1582,7 +1582,7 @@ function AvancadoTab() {
       emoji: '👥',
       title: 'Usuários',
       description: 'Convites, papéis, teto de desconto, comissão',
-      color: BRAND.navy,
+      color: 'var(--blue)', // accent adaptativo (BRAND.navy fixo somia no card escuro do dark)
     },
     {
       to: '/notificacoes',
@@ -1603,7 +1603,7 @@ function AvancadoTab() {
       emoji: '⚡',
       title: 'Fluxos de automação',
       description: 'Triggers e ações via BullMQ',
-      color: BRAND.navy,
+      color: 'var(--blue)', // accent adaptativo (BRAND.navy fixo somia no card escuro do dark)
     },
     {
       to: '/respostas-rapidas',

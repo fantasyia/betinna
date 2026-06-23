@@ -208,6 +208,10 @@ export function initSentry(): void {
             }
           }
         }
+        // Redige a URL da request e a transaction — o token de aceite vive no path e
+        // vazaria por aqui mesmo com os REDACT_PATH_PATTERNS (que só cobrem message/url-livre).
+        if (event.request?.url) event.request.url = redact(event.request.url);
+        if (event.transaction) event.transaction = redact(event.transaction);
         return event;
       },
     });

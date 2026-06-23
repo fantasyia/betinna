@@ -332,9 +332,9 @@ function ThreadDialog({
               {data.mensagens.map((m) => (
                 <div
                   key={m.id}
-                  className={`max-w-[80%] rounded-[10px] p-2.5 text-sm ${
+                  className={`max-w-[80%] rounded-[10px] p-2.5 text-sm text-text ${
                     m.ladoEmpresa
-                      ? 'self-start bg-[#eaf0fb] border border-info'
+                      ? 'self-start bg-[var(--blue-light)] border border-info'
                       : 'self-end bg-surface border border-border-strong'
                   }`}
                 >

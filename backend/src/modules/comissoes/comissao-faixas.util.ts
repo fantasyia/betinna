@@ -43,12 +43,25 @@ export function resolveComissaoBonus(raw: unknown): ComissaoBonusConfig {
 
 /**
  * % da faixa cujo intervalo [de, ate] contém o faturamento (ate=null = aberto).
- * Faixas ordenadas por `de`; primeira que casa vence. Sem match → 0.
+ * Faixas ordenadas por `de`; primeira que casa vence.
+ *
+ * GAP de config (faixas não-contíguas, ex.: [0–1000] e [2000+] com faturamento 1500) NÃO
+ * zera a comissão silenciosamente: cai na faixa de MAIOR `de` que ainda é <= faturamento.
+ * Só retorna 0 quando o faturamento está ABAIXO da menor faixa (nenhum tier aplicável).
  */
 export function faixaPercentual(faixas: ComissaoFaixa[], faturamento: number): number {
   const ordenadas = [...faixas].sort((a, b) => a.de - b.de);
   for (const f of ordenadas) {
     if (faturamento >= f.de && (f.ate == null || faturamento <= f.ate)) return f.percentual;
   }
-  return 0;
+  // Sem match exato: usa a maior faixa cujo `de` <= faturamento (fecha o gap).
+  let melhor = 0;
+  let achou = false;
+  for (const f of ordenadas) {
+    if (f.de <= faturamento) {
+      melhor = f.percentual;
+      achou = true;
+    }
+  }
+  return achou ? melhor : 0;
 }
