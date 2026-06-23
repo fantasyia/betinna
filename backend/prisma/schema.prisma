@@ -1448,6 +1448,10 @@ model FluxoExecucao {
   /// Lock otimista do turno do nó Conversar com IA (CAS): impede que 2 mensagens
   /// do lead em rajada rodem a IA / enviem / classifiquem em dobro. Liberado no finally.
   processandoTurno Boolean           @default(false)
+  /// Quando o turno ATUAL começou a ser processado (carimbado ao adquirir o lock).
+  /// O reaper de lock órfão usa ISTO (não iniciouEm, que é o início da execução e numa
+  /// conversa de 24h fica sempre >15min no passado — resetaria lock saudável → double-run).
+  turnoIniciadoEm  DateTime?
   /// Quando a espera expira (timeout do nó Conversar com IA).
   timeoutEm      DateTime?
   iniciouEm      DateTime?

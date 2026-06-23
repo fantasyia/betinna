@@ -1,4 +1,5 @@
 import { Injectable, Logger, type OnModuleInit } from '@nestjs/common';
+import { randomUUID } from 'node:crypto';
 import { MessageDirection } from '@prisma/client';
 import { PrismaService } from '@database/prisma.service';
 import { RedisService } from '@database/redis.service';
@@ -256,6 +257,7 @@ export class MullerWhatsappService implements OnModuleInit {
   ): Promise<void> {
     const convId = resultado.conversationId;
     let lockConv: string | null = null;
+    let lockTokenAtual = '';
     try {
       // 1. Filtros duros
       if (params.canal !== 'WHATSAPP') return;
@@ -270,12 +272,17 @@ export class MullerWhatsappService implements OnModuleInit {
       // (status só muda no fim) e o bot responde em dobro. SETNX serializa; quem não
       // pega o lock descarta. Degrada gracioso se o Redis cair (segue sem lock).
       const lockKey = `bot:resp:${convId}`;
-      const lockOk = await this.redis.setNxEx(lockKey, '1', 30).catch(() => true);
+      // TTL 120s cobre pacing reativo + geração da IA + balões (30s era curto demais — o
+      // lock expirava no meio e uma 2ª msg respondia em dobro). Valor ÚNICO por handler p/
+      // o release com fencing (Lua compare-and-delete) não apagar o lock de OUTRO handler.
+      const lockToken = randomUUID();
+      const lockOk = await this.redis.setNxEx(lockKey, lockToken, 120).catch(() => true);
       if (!lockOk) {
         this.logger.log(`[bot] conv=${convId} já em processamento — descarta msg concorrente`);
         return;
       }
       lockConv = lockKey;
+      lockTokenAtual = lockToken;
 
       // 1.4 Anti-backlog — não auto-responde mensagem VELHA. Após reconnect, o
       // Baileys reentrega o histórico (append / messaging-history.set) e cada
@@ -527,7 +534,17 @@ export class MullerWhatsappService implements OnModuleInit {
       const m = err instanceof Error ? err.message : String(err);
       this.logger.error(`[bot] erro inesperado conv=${convId}: ${m}`);
     } finally {
-      if (lockConv) await this.redis.del(lockConv).catch(() => undefined);
+      // Fencing: só apaga SE ainda formos o dono (token bate). Se o nosso lock já expirou
+      // e outro handler pegou um novo, o del cego apagaria o lock dele → resposta dupla.
+      if (lockConv) {
+        await this.redis
+          .eval(
+            "if redis.call('get',KEYS[1])==ARGV[1] then return redis.call('del',KEYS[1]) else return 0 end",
+            [lockConv],
+            [lockTokenAtual],
+          )
+          .catch(() => undefined);
+      }
     }
   }
 

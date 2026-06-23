@@ -380,7 +380,7 @@ export class ConversarIaService {
     // lock otimista por execução, liberado no finally — ortogonal ao status.
     const claim = await this.prisma.fluxoExecucao.updateMany({
       where: { id: execucaoId, status: 'AGUARDANDO', processandoTurno: false },
-      data: { processandoTurno: true },
+      data: { processandoTurno: true, turnoIniciadoEm: new Date() },
     });
     if (claim.count === 0) return; // outro turno já está processando esta execução
     try {

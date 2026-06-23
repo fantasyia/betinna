@@ -86,7 +86,10 @@ export class FluxoTriggersJob {
       where: {
         status: 'AGUARDANDO',
         processandoTurno: true,
-        iniciouEm: { lt: new Date(agora - 15 * 60 * 1000) },
+        // turnoIniciadoEm (início do TURNO), não iniciouEm (início da execução): senão uma
+        // conversa saudável de 24h teria iniciouEm sempre >15min atrás e o reaper resetaria
+        // o lock no meio de um turno legítimo → turno em dobro (custo + classificou 2×).
+        turnoIniciadoEm: { lt: new Date(agora - 15 * 60 * 1000) },
       },
       data: { processandoTurno: false },
     });
