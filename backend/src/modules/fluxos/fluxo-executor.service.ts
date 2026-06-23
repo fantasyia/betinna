@@ -182,10 +182,15 @@ export class FluxoExecutorService {
     }
 
     // IDEMPOTÊNCIA (cluster #1 auditoria): claim por job.id ANTES de qualquer efeito.
-    // EXECUTANDO = passo em curso (retry de falha real reentra e re-executa);
-    // CONCLUIDO = efeito consumado → pula tudo (retry pós-efeito NÃO duplica msg).
-    // jobId é estável no retry do MESMO job e fresco a cada enqueue, então loops
-    // cíclicos e re-entrada do CONVERSAR_IA por turno não são suprimidos.
+    // CONCLUIDO = efeito consumado → pula tudo (retry pós-efeito não re-executa).
+    // EXECUTANDO = attempt anterior do MESMO job não chegou a CONCLUIDO — pode ter sido
+    //   falha ANTES do efeito (re-executar é o certo) OU crash DEPOIS do efeito mas antes
+    //   do commit do CONCLUIDO. Esses dois casos são indistinguíveis aqui (Dois Generais),
+    //   então re-executamos — e a duplicação visível ao usuário é evitada pela CHAVE DE
+    //   IDEMPOTÊNCIA que cada efeito externo carrega (idemBase=fx:<jobId>): o reenvio leva a
+    //   mesma chave e o provider deduplica (Resend nativo / gate Redis na Evolution) → o
+    //   destinatário NÃO recebe 2×. jobId é estável no retry e fresco a cada enqueue, então
+    //   loops cíclicos e re-entrada do CONVERSAR_IA por turno não são suprimidos.
     try {
       await this.prisma.fluxoStepClaim.create({ data: { jobId, execucaoId, noId } });
     } catch (e) {
@@ -195,8 +200,7 @@ export class FluxoExecutorService {
           this.logger.warn(`Passo job ${jobId} já concluído — skip idempotente`);
           return; // efeito já consumado neste job.id; nada a re-disparar
         }
-        // estado EXECUTANDO: crash/falha real do attempt anterior do MESMO job →
-        // segue e re-executa o efeito (retry de falha real preservado).
+        // EXECUTANDO: re-executa; o efeito é idempotente pela chave (dedup no provider).
         this.logger.warn(`Passo job ${jobId} retomando após falha (claim EXECUTANDO)`);
       } else {
         throw e; // Postgres fora etc.: falha antes do efeito → retry limpo, sem efeito
