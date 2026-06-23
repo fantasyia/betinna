@@ -94,6 +94,7 @@ export class WhatsAppService implements CanalAdapter, OnModuleInit {
             conteudo: ctx.quoted.conteudo,
           }
         : undefined,
+      ctx?.idempotencyKey,
     );
   }
 

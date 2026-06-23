@@ -1,4 +1,5 @@
 import { Injectable, Logger, OnModuleInit, OnModuleDestroy } from '@nestjs/common';
+import { createHash } from 'node:crypto';
 import { MessageChannel, MessageDirection, MessageStatus, MessageType } from '@prisma/client';
 import { Boom } from '@hapi/boom';
 import makeWASocket, {
@@ -18,6 +19,15 @@ import { BusinessRuleException } from '@shared/errors/app-exception';
 import { WhatsAppAuthState, ownerKey, type WhatsAppOwner } from './whatsapp-auth-state';
 import { WhatsAppMediaService } from './whatsapp-media.service';
 import type { WhatsAppSessionInfo, WhatsAppSessionStatus } from './whatsapp.types';
+
+/**
+ * Deriva um WhatsApp message id determinístico (hex maiúsculo, formato de WAID) a partir
+ * da chave de idempotência. O MESMO `idempotencyKey` sempre gera o MESMO id → um reenvio é
+ * tratado como retransmissão e o destinatário deduplica.
+ */
+function idemMessageId(idempotencyKey: string): string {
+  return createHash('sha256').update(idempotencyKey).digest('hex').slice(0, 32).toUpperCase();
+}
 
 interface SessionContext {
   owner: WhatsAppOwner;
@@ -284,6 +294,7 @@ export class WhatsAppSessionService implements OnModuleInit, OnModuleDestroy {
     peerId: string,
     texto: string,
     quoted?: { id: string; fromMe: boolean; participant?: string; conteudo?: string },
+    idempotencyKey?: string,
   ): Promise<{ externalId?: string }> {
     let ctx = this.sessions.get(ownerKey(owner));
     // Queda MOMENTÂNEA (blip de segundos) não pode perder a mensagem: se a
@@ -299,19 +310,26 @@ export class WhatsAppSessionService implements OnModuleInit, OnModuleDestroy {
     const jid = this.normalizarJid(peerId);
     // Citação nativa (reply): Baileys precisa do objeto da msg citada com key +
     // message. Reconstruímos a partir do externalId + conteúdo conhecido.
-    const opts = quoted?.id
-      ? {
-          quoted: {
-            key: {
-              remoteJid: jid,
-              fromMe: quoted.fromMe,
-              id: quoted.id,
-              ...(quoted.participant ? { participant: quoted.participant } : {}),
+    const opts = {
+      ...(quoted?.id
+        ? {
+            quoted: {
+              key: {
+                remoteJid: jid,
+                fromMe: quoted.fromMe,
+                id: quoted.id,
+                ...(quoted.participant ? { participant: quoted.participant } : {}),
+              },
+              message: { conversation: quoted.conteudo ?? '' },
             },
-            message: { conversation: quoted.conteudo ?? '' },
-          },
-        }
-      : undefined;
+          }
+        : {}),
+      // messageId determinístico (derivado da chave de idempotência): WhatsApp trata
+      // reenvio com o MESMO id como retransmissão e o destinatário deduplica. Best-effort
+      // (dedup da mesma sessão; cross-deploy não é garantido) — o Evolution é o provider
+      // ativo e protege via gate Redis; aqui é hardening pro caso de Baileys virar ativo.
+      ...(idempotencyKey ? { messageId: idemMessageId(idempotencyKey) } : {}),
+    };
     try {
       const r = await ctx.sock.sendMessage(jid, { text: texto }, opts);
       return { externalId: r?.key?.id ?? undefined };
@@ -394,7 +412,16 @@ export class WhatsAppSessionService implements OnModuleInit, OnModuleDestroy {
       this.logger.log(`[${key}] reenviando ${pendentes.length} mensagem(ns) FAILED pós-reconexão`);
       for (const m of pendentes) {
         try {
-          const r = await this.enviarTexto(ctx.owner, m.conversation.peerId, m.conteudo);
+          // messageId determinístico por Message.id: se o envio sair mas o update p/ SENT
+          // falhar, a próxima reconexão re-pega como FAILED e reenvia com o MESMO id →
+          // o destinatário deduplica (não recebe 2×). FAILED = não saiu, então reenviar é ok.
+          const r = await this.enviarTexto(
+            ctx.owner,
+            m.conversation.peerId,
+            m.conteudo,
+            undefined,
+            `resend:${m.id}`,
+          );
           await this.prisma.message.update({
             where: { id: m.id },
             data: { status: MessageStatus.SENT, externalId: r.externalId ?? null },

@@ -54,6 +54,7 @@ describe('WhatsAppService', () => {
         '5511@s.whatsapp.net',
         'Oi',
         undefined, // quoted (sem reply)
+        undefined, // idempotencyKey (sem ctx)
       );
     });
 
@@ -67,6 +68,7 @@ describe('WhatsAppService', () => {
         '5511@s.whatsapp.net',
         'Oi',
         undefined, // quoted (sem reply)
+        undefined, // idempotencyKey (sem ctx)
       );
     });
 
