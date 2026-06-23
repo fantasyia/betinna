@@ -5,6 +5,7 @@ import { ForbiddenException, NotFoundException } from '@shared/errors/app-except
 import { ErrorCode } from '@shared/errors/error-codes';
 import type { AuthenticatedUser } from '@shared/types/authenticated-user';
 import { buildPaginated, type Paginated } from '@shared/types/pagination';
+import { KnowledgeConfigService } from '@modules/rag/knowledge-config.service';
 import type {
   CreateEmpresaDto,
   ListEmpresasDto,
@@ -14,7 +15,10 @@ import type {
 
 @Injectable()
 export class EmpresasService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly knowledgeConfig: KnowledgeConfigService,
+  ) {}
 
   /**
    * Lista as empresas que o usuário autenticado pode ACESSAR.
@@ -94,17 +98,21 @@ export class EmpresasService {
     // Atômico: read-modify-write do JSON sob lock pessimista da linha (FOR UPDATE) —
     // sem isto, 2 PATCH concorrentes (2 seções do Avançado salvas juntas) leem o mesmo
     // `atual` e o último a gravar apaga a sub-chave do outro (lost update).
-    return this.prisma.$transaction(async (tx) => {
+    const proximo = await this.prisma.$transaction(async (tx) => {
       const rows = await tx.$queryRaw<Array<{ config: unknown }>>`
         SELECT "config" FROM "Empresa" WHERE "id" = ${empresaId} FOR UPDATE`;
       const atual = (rows[0]?.config as Record<string, unknown> | null) ?? {};
-      const proximo = { ...atual, ...patch };
+      const merged = { ...atual, ...patch };
       await tx.empresa.update({
         where: { id: empresaId },
-        data: { config: proximo as Prisma.InputJsonValue },
+        data: { config: merged as Prisma.InputJsonValue },
       });
-      return proximo;
+      return merged;
     });
+    // RAG — regenera os chunks de conhecimento derivados da config (best-effort,
+    // não derruba o salvar se a indexação falhar).
+    await this.knowledgeConfig.sincronizar(empresaId).catch(() => undefined);
+    return proximo;
   }
 
   async list(

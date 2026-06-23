@@ -28,6 +28,7 @@ const CatalogoPage = lazy(() => import('@/pages/CatalogoPage'));
 const MullerBotPage = lazy(() => import('@/pages/MullerBotPage'));
 const PersonaBotPage = lazy(() => import('@/pages/PersonaBotPage'));
 const PromptsBotPage = lazy(() => import('@/pages/PromptsBotPage'));
+const KnowledgePage = lazy(() => import('@/pages/KnowledgePage'));
 const BotAuditoriaPage = lazy(() => import('@/pages/BotAuditoriaPage'));
 const RespostasRapidasPage = lazy(() => import('@/pages/RespostasRapidasPage'));
 const NpsPublicoPage = lazy(() => import('@/pages/NpsPublicoPage'));
@@ -276,6 +277,18 @@ const router = createBrowserRouter([
         <ProtectedRoute requirePermission="mullerbot.config">
           <PageSuspense>
             <PromptsBotPage />
+          </PageSuspense>
+        </ProtectedRoute>
+      </ErrorBoundary>
+    ),
+  },
+  {
+    path: '/mullerbot/conhecimento',
+    element: (
+      <ErrorBoundary>
+        <ProtectedRoute>
+          <PageSuspense>
+            <KnowledgePage />
           </PageSuspense>
         </ProtectedRoute>
       </ErrorBoundary>

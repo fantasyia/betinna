@@ -46,7 +46,12 @@ describe('EmpresasService', () => {
 
   beforeEach(() => {
     prisma = makePrismaMock();
-    service = new EmpresasService(prisma as never);
+    service = new EmpresasService(
+      prisma as never,
+      {
+        sincronizar: vi.fn(async () => undefined),
+      } as never,
+    );
   });
 
   // -------------------------------------------------------------------------

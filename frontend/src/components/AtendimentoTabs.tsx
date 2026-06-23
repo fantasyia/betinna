@@ -6,6 +6,7 @@ import {
   Bot,
   Sparkles,
   ClipboardList,
+  BookText,
 } from 'lucide-react';
 import { useRole, usePermission } from '@/hooks/usePermission';
 import { SubTabsBar, type SubTab } from '@/components/SubTabsBar';
@@ -66,6 +67,11 @@ export function AtendimentoTabs() {
       to: '/mullerbot/persona',
       label: 'Persona Bot',
       icon: <Sparkles size={14} />,
+    });
+    tabs.push({
+      to: '/mullerbot/conhecimento',
+      label: 'Conhecimento',
+      icon: <BookText size={14} />,
     });
   }
   // Auditoria do bot — também pra GERENTE (gestão), não só config.
