@@ -666,7 +666,7 @@ function AuditLogSection() {
       header: 'Recurso',
       render: (e) => (
         <div className="text-[12px]">
-          <strong className="text-[#201554]">{e.recurso}</strong>
+          <strong className="text-text">{e.recurso}</strong>
           {e.recursoId && (
             <div className="text-[10px] text-muted font-mono mt-0.5">
               {e.recursoId.length > 24 ? `${e.recursoId.slice(0, 24)}…` : e.recursoId}
@@ -688,7 +688,7 @@ function AuditLogSection() {
     <section className="bg-surface border border-border rounded-[10px] p-6 mb-4">
       <header className="flex justify-between items-start gap-3 flex-wrap mb-3">
         <div>
-          <h2 className="m-0 text-[16px] text-[#201554]">📋 Audit log</h2>
+          <h2 className="m-0 text-[16px] text-text">📋 Audit log</h2>
           <p className="text-[12px] text-muted mt-1 mr-0 mb-0 ml-0">
             Quem fez o quê, quando. Cobertura: todas as ações com `@Audit` decorator.
             {total > 0 && ` ${total} registros no total.`}
