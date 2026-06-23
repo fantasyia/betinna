@@ -79,7 +79,7 @@ const makePedidoPricing = () => ({
   // Gate único da conversão proposta→pedido (default: dentro do teto → RASCUNHO).
   avaliarAprovacaoProposta: vi.fn(() => ({
     requerAprovacao: false,
-    statusPedido: 'RASCUNHO' as const,
+    statusPedido: 'RASCUNHO' as 'RASCUNHO' | 'AGUARDANDO_APROVACAO',
     maxDescontoPercentual: 0,
   })),
   itemTotal: vi.fn((i: { quantidade: number; precoUnitario: number; desconto: number }) => ({
