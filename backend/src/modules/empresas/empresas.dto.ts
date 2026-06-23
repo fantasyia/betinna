@@ -181,5 +181,7 @@ export const tenantConfigPatchSchema = z
     inboxInterna: inboxInternaSchema,
     envioWhatsapp: envioWhatsappSchema,
   })
-  .passthrough();
+  // .strip() (default zod): DESCARTA chaves desconhecidas em vez de deixá-las entrar no
+  // Empresa.config (o front só manda as seções conhecidas; .passthrough deixava lixo crescer).
+  .strip();
 export type TenantConfigPatchDto = z.infer<typeof tenantConfigPatchSchema>;

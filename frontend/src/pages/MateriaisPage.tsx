@@ -249,7 +249,11 @@ function UploadDialog({
       fd.append('confidencial', String(confidencial));
 
       // api client é JSON-only → fetch direto pro multipart (padrão de upload do app).
-      const sess = await import('@/lib/auth-store').then((m) => m.getSession());
+      const authStore = await import('@/lib/auth-store');
+      const sess = authStore.getSession();
+      // Mesma resolução do api client: empresa da sessão OU fallback do localStorage —
+      // senão um ADMIN sem empresaIdAtiva em memória mandaria upload sem X-Empresa-Id.
+      const empresaId = sess?.user.empresaIdAtiva ?? authStore.getStoredEmpresaId();
       const baseUrl =
         (import.meta.env.VITE_API_URL as string | undefined) ?? 'http://localhost:3001';
       const res = await fetch(`${baseUrl}/api/v1/materiais`, {
@@ -257,7 +261,7 @@ function UploadDialog({
         body: fd,
         headers: {
           ...(sess?.accessToken ? { Authorization: `Bearer ${sess.accessToken}` } : {}),
-          ...(sess?.user.empresaIdAtiva ? { 'X-Empresa-Id': sess.user.empresaIdAtiva } : {}),
+          ...(empresaId ? { 'X-Empresa-Id': empresaId } : {}),
         },
         credentials: 'include',
       });

@@ -93,10 +93,20 @@ export class FluxoTriggersJob {
       },
       data: { processandoTurno: false },
     });
-    if (orfaos.count > 0 || antigos.count > 0 || lockOrfaos.count > 0) {
+    // Órfãs PENDENTE do cron: o CRON_AGENDADO cria a execução ANTES do dedup por jobId;
+    // numa rodada sobreposta o job é deduplicado e a execução fica PENDENTE pra sempre.
+    // PENDENTE de cron com >15min (job nunca rodou) é lixo seguro de remover.
+    const cronOrfas = await this.prisma.fluxoExecucao.deleteMany({
+      where: {
+        status: 'PENDENTE',
+        criadoEm: { lt: new Date(agora - 15 * 60 * 1000) },
+        contexto: { path: ['_cron'], equals: true },
+      },
+    });
+    if (orfaos.count > 0 || antigos.count > 0 || lockOrfaos.count > 0 || cronOrfas.count > 0) {
       this.logger.log(
         `Reconciliação: ${orfaos.count} claim(s) órfão(s) + ${antigos.count} antigo(s) removidos, ` +
-          `${lockOrfaos.count} lock(s) de turno destravado(s)`,
+          `${lockOrfaos.count} lock(s) destravado(s), ${cronOrfas.count} execução(ões) cron órfã(s)`,
       );
     }
   }

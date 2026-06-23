@@ -91,6 +91,22 @@ export class InboxInternaService {
     if (!tipo.permiteResposta && user.role === 'REP') {
       throw new BusinessRuleException(`O canal "${tipo.nome}" é somente leitura`);
     }
+    // Valida que pedido/cliente vinculados são do tenant (anti referência cruzada — o DTO
+    // vem do cliente e não devia poder anexar a thread a um pedido/cliente de outra empresa).
+    if (dto.pedidoId) {
+      const p = await this.prisma.pedido.findFirst({
+        where: { id: dto.pedidoId, empresaId },
+        select: { id: true },
+      });
+      if (!p) throw new NotFoundException('Pedido', dto.pedidoId);
+    }
+    if (dto.clienteId) {
+      const c = await this.prisma.cliente.findFirst({
+        where: { id: dto.clienteId, empresaId },
+        select: { id: true },
+      });
+      if (!c) throw new NotFoundException('Cliente', dto.clienteId);
+    }
 
     const seq = await this.sequence.next(empresaId, 'internal-thread');
     const numero = `INT-${seq.toString().padStart(4, '0')}`;

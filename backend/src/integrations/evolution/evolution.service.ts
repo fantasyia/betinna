@@ -575,12 +575,15 @@ export class EvolutionService {
     }
     // Gate de idempotência: a Evolution NÃO aceita id de cliente no payload, então a dedup
     // é NOSSA. SETNX antes do POST claima a chave; um reenvio (retry/crash) com a MESMA
-    // chave vira no-op → o destinatário NUNCA recebe 2×. Cobre sendText/sendMedia/sendAudio
-    // (ponto único). Preferimos SUPRIMIR (perder no caso raríssimo) a DUPLICAR (dinheiro).
+    // chave vira no-op → o destinatário NUNCA recebe 2×. Hoje só o sendText passa a chave
+    // (enviarMidia/enviarAudio não dedupam). Preferimos SUPRIMIR a DUPLICAR (dinheiro).
+    // O marcador PENDING tem TTL CURTO (120s, ~duração do POST): se o worker crashar entre o
+    // SETNX e o POST, a chave expira em 120s e um retry legítimo RE-ENVIA — em vez de ficar
+    // suprimido por 24h. Após o POST OK, o resultado é gravado com TTL longo (24h) p/ dedup.
     const k = `idem:wa:${idempotencyKey}`;
     let claimed: boolean;
     try {
-      claimed = await this.redis.setNxEx(k, 'PENDING', 86_400);
+      claimed = await this.redis.setNxEx(k, 'PENDING', 120);
     } catch (err) {
       // Redis fora → degrada pro envio direto (não bloqueia operação por infra).
       this.logger.warn(

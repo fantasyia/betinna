@@ -147,23 +147,32 @@ export class MateriaisService implements OnModuleInit {
     });
     if (error) throw new IntegrationException(`Falha ao subir arquivo: ${error.message}`);
 
-    return this.prisma.materialVenda.create({
-      data: {
-        empresaId,
-        tipo: dto.tipo,
-        titulo: dto.titulo,
-        descricao: dto.descricao,
-        produtoId: dto.produtoId,
-        categoria: dto.categoria,
-        confidencial: dto.confidencial ?? false,
-        arquivoPath: storagePath,
-        arquivoNome: safeName,
-        mimeType: file.mimetype,
-        tamanho: file.size,
-        criadoPorId: user.id,
-        criadoPorNome: user.nome,
-      },
-    });
+    try {
+      return await this.prisma.materialVenda.create({
+        data: {
+          empresaId,
+          tipo: dto.tipo,
+          titulo: dto.titulo,
+          descricao: dto.descricao,
+          produtoId: dto.produtoId,
+          categoria: dto.categoria,
+          confidencial: dto.confidencial ?? false,
+          arquivoPath: storagePath,
+          arquivoNome: safeName,
+          mimeType: file.mimetype,
+          tamanho: file.size,
+          criadoPorId: user.id,
+          criadoPorNome: user.nome,
+        },
+      });
+    } catch (err) {
+      // DB falhou DEPOIS do upload → remove o arquivo órfão do Storage (best-effort).
+      await this.storage.storage
+        .from(BUCKET)
+        .remove([storagePath])
+        .catch(() => undefined);
+      throw err;
+    }
   }
 
   async update(
