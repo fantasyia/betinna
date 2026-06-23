@@ -18,7 +18,8 @@ type Tx = { pedido: MockModel; proposta: MockModel; aprovacaoDesconto: MockModel
 const makePrismaMock = () => {
   const tx: Tx = {
     pedido: { create: vi.fn() },
-    proposta: { updateMany: vi.fn() },
+    // updateMany = claim CAS da conversão (default count:1 = vence); update = set pedidoId.
+    proposta: { updateMany: vi.fn().mockResolvedValue({ count: 1 }), update: vi.fn() },
     aprovacaoDesconto: { create: vi.fn() },
   };
   return {
@@ -75,6 +76,12 @@ const makePedidoPricing = () => ({
   descontoAVistaPct: vi.fn(() => 0),
   // Teto de desconto: default não exige aprovação (proposta dentro do teto).
   excedeTetoDesconto: vi.fn(() => false),
+  // Gate único da conversão proposta→pedido (default: dentro do teto → RASCUNHO).
+  avaliarAprovacaoProposta: vi.fn(() => ({
+    requerAprovacao: false,
+    statusPedido: 'RASCUNHO' as const,
+    maxDescontoPercentual: 0,
+  })),
   itemTotal: vi.fn((i: { quantidade: number; precoUnitario: number; desconto: number }) => ({
     total: i.quantidade * i.precoUnitario * (1 - i.desconto / 100),
   })),
@@ -506,11 +513,9 @@ describe('PropostasService', () => {
       });
       prisma.proposta.findFirst.mockResolvedValue(prop);
       prisma.usuario.findUnique.mockResolvedValue({ role: 'REP', tetoDesconto: 5 }); // teto baixo
-      pedidoPricing.excedeTetoDesconto.mockReturnValue(true);
-      pedidoPricing.pedidoTotals.mockReturnValue({
-        subtotal: 100,
-        total: 60,
-        comissao: 3,
+      pedidoPricing.avaliarAprovacaoProposta.mockReturnValue({
+        requerAprovacao: true,
+        statusPedido: 'AGUARDANDO_APROVACAO',
         maxDescontoPercentual: 40,
       });
       sequence.next.mockResolvedValue(9);
@@ -577,7 +582,8 @@ describe('PropostasService', () => {
 
       await service.converterEmPedido(fakeUser(), 'prop-1');
 
-      expect(txMock.proposta.updateMany).toHaveBeenCalledWith(
+      // updateMany = claim CAS (seta convertidaEm); o pedidoId é vinculado no update final.
+      expect(txMock.proposta.update).toHaveBeenCalledWith(
         expect.objectContaining({
           data: expect.objectContaining({ pedidoId: 'ped-123' }),
         }),

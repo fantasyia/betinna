@@ -55,23 +55,37 @@ function makeService(txProverbCount: number, recusaCount = 1) {
       update: vi.fn().mockResolvedValue({}),
     },
     pedido: { create: vi.fn().mockResolvedValue({ id: 'ped-1' }) },
+    aprovacaoDesconto: { create: vi.fn().mockResolvedValue({}) },
   };
   const prisma = {
     proposta: {
       findUnique: vi.fn().mockResolvedValue(PROPOSTA),
       updateMany: vi.fn().mockResolvedValue({ count: recusaCount }),
     },
+    usuario: { findUnique: vi.fn().mockResolvedValue({ role: 'REP', tetoDesconto: 100 }) },
+    empresa: {
+      findUnique: vi.fn().mockResolvedValue({ descontoPixPct: 0, descontoBoletoAvistaPct: 0 }),
+    },
     $transaction: vi.fn(async (cb: (t: typeof tx) => unknown) => cb(tx)),
   };
   const notificacoes = makeNotificacoes();
+  // Gate de aprovação: default dentro do teto → RASCUNHO (sem aprovação).
+  const pedidoPricing = {
+    avaliarAprovacaoProposta: vi.fn().mockReturnValue({
+      requerAprovacao: false,
+      statusPedido: 'RASCUNHO',
+      maxDescontoPercentual: 0,
+    }),
+  };
   const svc = new PropostaAceiteService(
     prisma as never,
     makeEnv() as never,
     makeSequence() as never,
     notificacoes as never,
+    pedidoPricing as never,
   );
   mockJwtVerify.mockResolvedValue({ payload: { pid: 'prop-1', eid: 'emp-1' } });
-  return { svc, prisma, tx, notificacoes };
+  return { svc, prisma, tx, notificacoes, pedidoPricing };
 }
 
 describe('PropostaAceiteService.registrarDecisao — CAS anti duplo-pedido', () => {
@@ -83,6 +97,29 @@ describe('PropostaAceiteService.registrarDecisao — CAS anti duplo-pedido', () 
     expect(r.status).toBe('ACEITA');
     expect(r.pedidoNumero).toBe('PED-0007');
     expect(tx.pedido.create).toHaveBeenCalledTimes(1);
+  });
+
+  it('ACEITA dentro do teto → pedido RASCUNHO, sem AprovacaoDesconto', async () => {
+    const { svc, tx } = makeService(1);
+    await svc.registrarDecisao(TOKEN, 'ACEITA', '203.0.113.9');
+    expect(tx.pedido.create.mock.calls[0][0].data.status).toBe('RASCUNHO');
+    expect(tx.aprovacaoDesconto.create).not.toHaveBeenCalled();
+  });
+
+  it('ACEITA com desconto acima do teto → pedido AGUARDANDO_APROVACAO + AprovacaoDesconto (não burla)', async () => {
+    const { svc, tx, pedidoPricing } = makeService(1);
+    pedidoPricing.avaliarAprovacaoProposta.mockReturnValue({
+      requerAprovacao: true,
+      statusPedido: 'AGUARDANDO_APROVACAO',
+      maxDescontoPercentual: 40,
+    });
+    await svc.registrarDecisao(TOKEN, 'ACEITA', '203.0.113.9');
+    expect(tx.pedido.create.mock.calls[0][0].data.status).toBe('AGUARDANDO_APROVACAO');
+    expect(tx.aprovacaoDesconto.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({ representanteId: 'rep-1', status: 'PENDENTE' }),
+      }),
+    );
   });
 
   it('ACEITA notifica o REP dono da proposta (não só GERENTE/DIRECTOR)', async () => {

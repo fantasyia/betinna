@@ -140,6 +140,45 @@ export class PedidoPricingService {
     return totals.maxDescontoPercentual > tetoPct;
   }
 
+  /**
+   * Gate de aprovação de desconto da conversão proposta→pedido (D3/D46) num ÚNICO ponto:
+   * descAVista + totais + teto do REP → veredito. Os DOIS caminhos (converterEmPedido
+   * autenticado + aceite externo do cliente) chamam ISTO — sem duplicar o cálculo, que já
+   * causou bypass quando um caminho recebeu o gate e o outro não. `tetoRep` deve vir 100
+   * p/ admin/sem-rep (nunca exige aprovação).
+   */
+  avaliarAprovacaoProposta(input: {
+    itens: ItemInput[];
+    descontoGeralPct: number;
+    formaPagamento: string | null | undefined;
+    condicaoPagamento: string | null | undefined;
+    empresaCfg: DescontoAVistaConfig | null | undefined;
+    comissaoPct: number;
+    tetoRep: number;
+  }): {
+    requerAprovacao: boolean;
+    statusPedido: 'RASCUNHO' | 'AGUARDANDO_APROVACAO';
+    maxDescontoPercentual: number;
+  } {
+    const descAVistaPct = this.descontoAVistaPct(
+      input.formaPagamento,
+      input.condicaoPagamento,
+      input.empresaCfg,
+    );
+    const totals = this.pedidoTotals(
+      input.itens,
+      input.descontoGeralPct,
+      input.comissaoPct,
+      descAVistaPct,
+    );
+    const requerAprovacao = this.excedeTetoDesconto(totals, input.tetoRep);
+    return {
+      requerAprovacao,
+      statusPedido: requerAprovacao ? 'AGUARDANDO_APROVACAO' : 'RASCUNHO',
+      maxDescontoPercentual: totals.maxDescontoPercentual,
+    };
+  }
+
   /** Round to 2 decimal places. */
   private round(n: number): number {
     if (!Number.isFinite(n)) return 0;

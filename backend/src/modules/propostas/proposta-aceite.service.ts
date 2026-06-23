@@ -4,8 +4,12 @@ import { SignJWT, jwtVerify } from 'jose';
 import { EnvService } from '@config/env.service';
 import { PrismaService } from '@database/prisma.service';
 import { NotificacoesService } from '@modules/notificacoes/notificacoes.service';
+import { PedidoPricingService } from '@modules/pedidos/pedido-pricing.service';
 import { BusinessRuleException, NotFoundException } from '@shared/errors/app-exception';
 import { SequenceService } from '@shared/utils/sequence.service';
+
+/** Comissão padrão (espelha propostas/pedidos.service) — usada só no cálculo do teto. */
+const COMISSAO_PADRAO_PCT = 5;
 
 /**
  * C3 (Lote 6) — Aceite externo de proposta pelo cliente.
@@ -67,6 +71,7 @@ export class PropostaAceiteService {
     private readonly env: EnvService,
     private readonly sequence: SequenceService,
     private readonly notificacoes: NotificacoesService,
+    private readonly pedidoPricing: PedidoPricingService,
   ) {
     const derivedKey = createHash('sha256')
       .update(this.env.get('ENCRYPTION_KEY'))
@@ -222,6 +227,36 @@ export class PropostaAceiteService {
     // cria pedido mesmo com duplo-clique/retry simultâneo. Antes a checagem
     // ficava FORA da transação e dois cliques criavam 2 pedidos + queimavam 2
     // números de sequência. A sequência agora é consumida só pelo vencedor.
+    // Teto de desconto / aprovação (D3/D46) — MESMO gate do converterEmPedido. Sem isto, o
+    // aceite externo criava pedido RASCUNHO direto e BURLAVA a aprovação (o REP definia um
+    // desconto acima do teto e bastava o cliente clicar Aceitar pra ir ao OMIE sem aprovar).
+    let tetoRep = 100;
+    if (proposta.representanteId) {
+      const repU = await this.prisma.usuario.findUnique({
+        where: { id: proposta.representanteId },
+        select: { role: true, tetoDesconto: true },
+      });
+      tetoRep = repU?.role === 'REP' ? (repU.tetoDesconto ?? 0) : 100;
+    }
+    const empresaCfg = await this.prisma.empresa.findUnique({
+      where: { id: empresaId },
+      select: { descontoPixPct: true, descontoBoletoAvistaPct: true },
+    });
+    const { statusPedido, requerAprovacao, maxDescontoPercentual } =
+      this.pedidoPricing.avaliarAprovacaoProposta({
+        itens: proposta.itens.map((it) => ({
+          quantidade: it.quantidade,
+          precoUnitario: Number(it.precoUnitario),
+          desconto: it.desconto,
+        })),
+        descontoGeralPct: proposta.descontoGeral,
+        formaPagamento: proposta.formaPagamento,
+        condicaoPagamento: proposta.condicaoPagamento,
+        empresaCfg,
+        comissaoPct: COMISSAO_PADRAO_PCT,
+        tetoRep,
+      });
+
     let numeroPedido = '';
     await this.prisma.$transaction(async (tx) => {
       const claim = await tx.proposta.updateMany({
@@ -247,7 +282,7 @@ export class PropostaAceiteService {
           clienteId: proposta.clienteId,
           representanteId: proposta.representanteId,
           origem: 'REP_APP',
-          status: 'RASCUNHO',
+          status: statusPedido,
           formaPagamento: proposta.formaPagamento,
           condicaoPagamento: proposta.condicaoPagamento,
           prazoEntrega: proposta.prazoEntrega,
@@ -271,6 +306,19 @@ export class PropostaAceiteService {
         },
         select: { id: true },
       });
+      // Desconto acima do teto → AGUARDANDO_APROVACAO + AprovacaoDesconto PENDENTE (igual
+      // converterEmPedido). O sink do OMIE bloqueia AGUARDANDO_APROVACAO → não vaza sem aprovar.
+      if (requerAprovacao && proposta.representanteId) {
+        await tx.aprovacaoDesconto.create({
+          data: {
+            pedidoId: ped.id,
+            representanteId: proposta.representanteId,
+            descontoSolicitado: maxDescontoPercentual,
+            motivo: `Aceite externo da proposta ${proposta.numero}`,
+            status: 'PENDENTE',
+          },
+        });
+      }
       await tx.proposta.update({ where: { id: propostaId }, data: { pedidoId: ped.id } });
     });
 

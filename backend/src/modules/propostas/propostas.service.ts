@@ -266,11 +266,9 @@ export class PropostasService {
       throw new BusinessRuleException(`Proposta já foi convertida no pedido ${proposta.pedidoId}`);
     }
 
-    // Teto de desconto / aprovação (D3/D46): a proposta podia ter desconto acima do teto
-    // do rep e virar pedido RASCUNHO direto, BURLANDO a aprovação que o PedidosService.create
-    // exige. Recalcula os totais p/ o % de desconto efetivo e checa o teto do REP DONO da
-    // proposta (admin/sem-rep = 100, nunca dispara). Se exceder → AGUARDANDO_APROVACAO +
-    // AprovacaoDesconto PENDENTE (aparece na tela de Aprovações).
+    // Teto de desconto / aprovação (D3/D46) via gate ÚNICO no PedidoPricingService —
+    // MESMO ponto que o aceite externo usa, pra não voltar a divergir e reabrir o bypass.
+    // Lê o teto do REP DONO (admin/sem-rep = 100, nunca dispara).
     let tetoRep = 100;
     if (proposta.representanteId) {
       const repU = await this.prisma.usuario.findUnique({
@@ -283,29 +281,43 @@ export class PropostasService {
       where: { id: empresaId },
       select: { descontoPixPct: true, descontoBoletoAvistaPct: true },
     });
-    const descAVistaPct = this.pedidoPricing.descontoAVistaPct(
-      proposta.formaPagamento,
-      proposta.condicaoPagamento,
-      empresaCfg,
-    );
-    const totals = this.pedidoPricing.pedidoTotals(
-      proposta.itens.map((it) => ({
-        quantidade: it.quantidade,
-        precoUnitario: Number(it.precoUnitario),
-        desconto: it.desconto,
-      })),
-      proposta.descontoGeral,
-      COMISSAO_PADRAO_PCT,
-      descAVistaPct,
-    );
-    const requerAprovacao = this.pedidoPricing.excedeTetoDesconto(totals, tetoRep);
-    const statusPedido = requerAprovacao ? 'AGUARDANDO_APROVACAO' : 'RASCUNHO';
-
-    // AUDITORIA P0-4: número via SequenceService atomic (anti-race)
-    const pedidoSeq = await this.sequence.next(empresaId, 'pedido');
-    const numero = `PED-${pedidoSeq.toString().padStart(4, '0')}`;
+    const { statusPedido, requerAprovacao, maxDescontoPercentual } =
+      this.pedidoPricing.avaliarAprovacaoProposta({
+        itens: proposta.itens.map((it) => ({
+          quantidade: it.quantidade,
+          precoUnitario: Number(it.precoUnitario),
+          desconto: it.desconto,
+        })),
+        descontoGeralPct: proposta.descontoGeral,
+        formaPagamento: proposta.formaPagamento,
+        condicaoPagamento: proposta.condicaoPagamento,
+        empresaCfg,
+        comissaoPct: COMISSAO_PADRAO_PCT,
+        tetoRep,
+      });
 
     const result = await this.prisma.$transaction(async (tx) => {
+      // CAS: claim da conversão (convertidaEm null→now sob lock da linha). Duplo-clique/
+      // retry → só o vencedor segue; os demais veem count===0 e abortam SEM pedido órfão
+      // nem número de sequência queimado (a sequência é consumida DENTRO do tx, após o claim).
+      const claimed = await tx.proposta.updateMany({
+        where: {
+          id: proposta.id,
+          empresaId,
+          status: 'ACEITA',
+          pedidoId: null,
+          convertidaEm: null,
+        },
+        data: { convertidaEm: new Date() },
+      });
+      if (claimed.count === 0) {
+        throw new BusinessRuleException(
+          'Proposta já está sendo convertida ou já foi convertida — recarregue',
+        );
+      }
+      // AUDITORIA P0-4: número via SequenceService atomic (anti-race) — só o vencedor consome.
+      const pedidoSeq = await this.sequence.next(empresaId, 'pedido');
+      const numero = `PED-${pedidoSeq.toString().padStart(4, '0')}`;
       const pedido = await tx.pedido.create({
         data: {
           empresaId,
@@ -341,15 +353,15 @@ export class PropostasService {
           data: {
             pedidoId: pedido.id,
             representanteId: proposta.representanteId,
-            descontoSolicitado: totals.maxDescontoPercentual,
+            descontoSolicitado: maxDescontoPercentual,
             motivo: `Convertida da proposta ${proposta.numero}`,
             status: 'PENDENTE',
           },
         });
       }
-      await tx.proposta.updateMany({
-        where: { id: proposta.id, empresaId: proposta.empresaId },
-        data: { pedidoId: pedido.id, convertidaEm: new Date() },
+      await tx.proposta.update({
+        where: { id: proposta.id },
+        data: { pedidoId: pedido.id },
       });
       return pedido;
     });
