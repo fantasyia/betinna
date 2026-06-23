@@ -174,7 +174,8 @@ async function main() {
 
   if (shouldFallback) {
     log('⚠️ Migrate deploy não aplicou tudo. Fallback: db push --accept-data-loss');
-    log('(Isso força sincronizar o schema com o DB. Seguro pois só adicionamos colunas/tabelas.)');
+    log('(Reconcilia o schema completo com o DB — pode dropar/recriar índices, ex: o índice');
+    log(' unique do MarketplaceIncident. NÃO é garantidamente aditivo; --accept-data-loss.)');
     const pushRes = runPrisma(
       ['db', 'push', '--accept-data-loss', '--skip-generate'],
       { captureStderr: true },
@@ -188,10 +189,11 @@ async function main() {
         log('⚠️ db push também falhou por DB inacessível. App sobe degradado.');
         process.exit(0);
       }
-      log('❌ db push falhou por erro NÃO-transiente. Sistema em estado degradado.');
-      // Mesmo assim, hoje, é melhor o app subir e expor /health do que loop infinito.
-      // Operador investiga via logs + readiness probe.
-      process.exit(0);
+      log('❌ db push falhou por erro NÃO-transiente — schema DIVERGENTE. Abortando o deploy.');
+      // FAIL LOUD: subir com schema divergente é pior que falhar o deploy (queries quebram
+      // em runtime, silenciosamente). exit(1) → start.js detecta e o deploy do Railway falha,
+      // mantendo a versão anterior no ar até o operador corrigir.
+      process.exit(1);
     }
     log('✅ db push sincronizou schema com DB.');
   } else {
