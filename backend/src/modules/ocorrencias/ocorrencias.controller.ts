@@ -15,6 +15,7 @@ import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
 import { Audit } from '@shared/decorators/audit.decorator';
 import { CurrentUser } from '@shared/decorators/current-user.decorator';
 import { RequirePermissions } from '@shared/decorators/permissions.decorator';
+import { Roles } from '@shared/decorators/roles.decorator';
 import { ZodValidationPipe } from '@shared/pipes/zod-validation.pipe';
 import type { AuthenticatedUser } from '@shared/types/authenticated-user';
 import {
@@ -118,6 +119,8 @@ export class OcorrenciasController {
   }
 
   @Delete(':id')
+  // Blindagem: gate granular colapsa edit→delete (SAC/REP teriam delete). @Roles tranca em gestão.
+  @Roles('ADMIN', 'DIRECTOR', 'GERENTE')
   @RequirePermissions({ module: 'ocorrencias', action: 'delete' })
   @HttpCode(HttpStatus.NO_CONTENT)
   @Audit({ action: 'delete', resource: 'ocorrencia', resourceIdFrom: 'params.id' })

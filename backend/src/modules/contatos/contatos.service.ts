@@ -4,6 +4,7 @@ import { PrismaService } from '@database/prisma.service';
 import { ForbiddenException } from '@shared/errors/app-exception';
 import { ErrorCode } from '@shared/errors/error-codes';
 import { RepScopeService } from '@shared/scope/rep-scope.service';
+import { PermissionsService } from '@modules/permissions/permissions.service';
 import { LeadsService } from '@modules/leads/leads.service';
 import { createLeadSchema } from '@modules/leads/leads.dto';
 import type { AuthenticatedUser } from '@shared/types/authenticated-user';
@@ -50,6 +51,7 @@ export class ContatosService {
     private readonly prisma: PrismaService,
     private readonly repScope: RepScopeService,
     private readonly leads: LeadsService,
+    private readonly permissions: PermissionsService,
   ) {}
 
   private requireEmpresa(user: AuthenticatedUser): string {
@@ -394,6 +396,26 @@ export class ContatosService {
     }
 
     // ── EXCLUIR ──
+    // Gate de DELETE por entidade: a ação-massa entra só com `clientes.edit`, mas excluir é
+    // destrutivo e irreversível (apaga lead/cliente/conversa/mensagem). Sem isso, um papel sem
+    // permissão de delete burlava DELETE /clientes (clientes.delete) e DELETE /leads (kanban.delete)
+    // por aqui. ADMIN bypassa (igual ao PermissionsGuard). 'inbox' não tem delete na matriz →
+    // exclusão de conversa fica ADMIN-only por ora.
+    if (user.role !== 'ADMIN') {
+      const gates: Array<{ aplica: boolean; module: string; action: 'delete' }> = [
+        { aplica: leadIds.length > 0, module: 'kanban', action: 'delete' },
+        { aplica: clienteIds.length > 0, module: 'clientes', action: 'delete' },
+        { aplica: conversaIds.length > 0, module: 'inbox', action: 'delete' },
+      ];
+      for (const g of gates) {
+        if (g.aplica && !(await this.permissions.userCan(user.role, g.module, g.action))) {
+          throw new ForbiddenException(
+            `Sem permissão para excluir: requer ${g.module}.${g.action}`,
+            ErrorCode.INSUFFICIENT_PERMISSIONS,
+          );
+        }
+      }
+    }
     let excluidos = 0;
     if (leadIds.length) {
       const r = await this.prisma.lead.deleteMany({ where: { id: { in: leadIds }, empresaId } });

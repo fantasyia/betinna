@@ -52,6 +52,11 @@ const makeLeadsMock = () => ({
   moverEtapa: vi.fn(),
 });
 
+/** PermissionsService mock — userCan default true (gate de delete liberado, salvo override). */
+const makePermissionsMock = () => ({
+  userCan: vi.fn(async () => true),
+});
+
 const fakeUser = (overrides: Partial<AuthenticatedUser> = {}): AuthenticatedUser => ({
   id: 'rep-1',
   email: 'rep@betinna.ai',
@@ -84,13 +89,20 @@ describe('ContatosService', () => {
   let prisma: ReturnType<typeof makePrismaMock>;
   let repScope: ReturnType<typeof makeRepScopeMock>;
   let leads: ReturnType<typeof makeLeadsMock>;
+  let permissions: ReturnType<typeof makePermissionsMock>;
   let svc: ContatosService;
 
   beforeEach(() => {
     prisma = makePrismaMock();
     repScope = makeRepScopeMock();
     leads = makeLeadsMock();
-    svc = new ContatosService(prisma as never, repScope as never, leads as never);
+    permissions = makePermissionsMock();
+    svc = new ContatosService(
+      prisma as never,
+      repScope as never,
+      leads as never,
+      permissions as never,
+    );
   });
 
   // =========================================================================
@@ -146,6 +158,28 @@ describe('ContatosService', () => {
 
       expect(result.afetados).toBe(0);
       expect(result.falhas[0]).toEqual({ id: 'cx', erro: 'disco cheio' });
+    });
+
+    it('NÃO-admin sem permissão de delete é barrado e nada é excluído (anti-escalonamento)', async () => {
+      // Regressão do furo crítico: acao-massa entra só com clientes.edit; excluir exige
+      // clientes.delete/kanban.delete por entidade. Papel sem delete não pode apagar.
+      const gerente = fakeUser({ id: 'ger-1', role: 'GERENTE' as UserRole });
+      prisma.lead.findMany.mockResolvedValue([]);
+      prisma.cliente.findMany.mockResolvedValue([{ id: 'c1' }]);
+      prisma.conversation.findMany.mockResolvedValue([]);
+      permissions.userCan.mockResolvedValue(false); // sem permissão de delete
+
+      await expect(
+        svc.acaoMassa(gerente, {
+          acao: 'excluir',
+          leadIds: [],
+          clienteIds: ['c1'],
+          conversaIds: [],
+        }),
+      ).rejects.toThrow(/permiss/i);
+
+      expect(permissions.userCan).toHaveBeenCalledWith('GERENTE', 'clientes', 'delete');
+      expect(prisma.cliente.deleteMany).not.toHaveBeenCalled();
     });
   });
 

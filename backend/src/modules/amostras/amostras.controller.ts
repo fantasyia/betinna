@@ -118,6 +118,8 @@ export class AmostrasController {
   }
 
   @Delete(':id')
+  // Blindagem: gate granular colapsa edit→delete (REP teria delete). @Roles tranca em gestão.
+  @Roles('ADMIN', 'DIRECTOR', 'GERENTE')
   @RequirePermissions({ module: 'amostras', action: 'delete' })
   @HttpCode(HttpStatus.NO_CONTENT)
   @Audit({ action: 'delete', resource: 'amostra', resourceIdFrom: 'params.id' })

@@ -113,22 +113,36 @@ export class AprovacoesService {
     }
 
     const result = await this.prisma.$transaction(async (tx) => {
-      const updated = await tx.aprovacaoDesconto.update({
-        where: { id },
+      // CAS na aprovação: só transiciona se ainda PENDENTE — duplo-clique / dois gerentes
+      // entram os dois pela checagem acima (fora da tx); aqui só um vence.
+      const aprUpd = await tx.aprovacaoDesconto.updateMany({
+        where: { id, status: 'PENDENTE' },
         data: {
           status: 'APROVADA',
           gerenteId: user.id,
           comentarioAprovador: dto.comentario,
           resolvidoEm: new Date(),
         },
-        include: aprovacaoInclude,
       });
-      // Pedido volta pra RASCUNHO pra que o rep envie ao OMIE
-      await tx.pedido.update({
-        where: { id: apr.pedidoId },
+      if (aprUpd.count === 0) {
+        throw new BusinessRuleException(
+          'Aprovação já foi resolvida — recarregue a tela',
+          ErrorCode.BUSINESS_RULE_VIOLATION,
+        );
+      }
+      // CAS no pedido: só sai de AGUARDANDO_APROVACAO → RASCUNHO. Sem isso, aprovar um pedido
+      // que foi CANCELADO enquanto a aprovação ficava pendente o ressuscitava.
+      const pedUpd = await tx.pedido.updateMany({
+        where: { id: apr.pedidoId, status: 'AGUARDANDO_APROVACAO' },
         data: { status: 'RASCUNHO', aprovadorId: user.id },
       });
-      return updated;
+      if (pedUpd.count === 0) {
+        throw new BusinessRuleException(
+          'Pedido não está mais aguardando aprovação — recarregue a tela',
+          ErrorCode.BUSINESS_RULE_VIOLATION,
+        );
+      }
+      return tx.aprovacaoDesconto.findUniqueOrThrow({ where: { id }, include: aprovacaoInclude });
     });
 
     this.logger.log(`Aprovação ${apr.id} APROVADA por ${user.email} (pedido ${apr.pedidoId})`);
@@ -187,21 +201,34 @@ export class AprovacoesService {
     }
 
     const result = await this.prisma.$transaction(async (tx) => {
-      const updated = await tx.aprovacaoDesconto.update({
-        where: { id },
+      // CAS na aprovação: só REJEITA se ainda PENDENTE (anti dupla-decisão).
+      const aprUpd = await tx.aprovacaoDesconto.updateMany({
+        where: { id, status: 'PENDENTE' },
         data: {
           status: 'REJEITADA',
           gerenteId: user.id,
           comentarioAprovador: dto.comentario,
           resolvidoEm: new Date(),
         },
-        include: aprovacaoInclude,
       });
-      await tx.pedido.update({
-        where: { id: apr.pedidoId },
+      if (aprUpd.count === 0) {
+        throw new BusinessRuleException(
+          'Aprovação já foi resolvida — recarregue a tela',
+          ErrorCode.BUSINESS_RULE_VIOLATION,
+        );
+      }
+      // CAS no pedido: só cancela se estava AGUARDANDO_APROVACAO (não mexe em pedido já resolvido).
+      const pedUpd = await tx.pedido.updateMany({
+        where: { id: apr.pedidoId, status: 'AGUARDANDO_APROVACAO' },
         data: { status: 'CANCELADO' },
       });
-      return updated;
+      if (pedUpd.count === 0) {
+        throw new BusinessRuleException(
+          'Pedido não está mais aguardando aprovação — recarregue a tela',
+          ErrorCode.BUSINESS_RULE_VIOLATION,
+        );
+      }
+      return tx.aprovacaoDesconto.findUniqueOrThrow({ where: { id }, include: aprovacaoInclude });
     });
 
     this.logger.log(

@@ -203,6 +203,9 @@ export class ClientesController {
   }
 
   @Delete(':id')
+  // Blindagem: o gate granular colapsa edit→delete (REP/SAC ganhariam delete). @Roles tranca
+  // a exclusão destrutiva em papéis de gestão, independente do bug da matriz granular.
+  @Roles('ADMIN', 'DIRECTOR', 'GERENTE')
   @RequirePermissions({ module: 'clientes', action: 'delete' })
   @HttpCode(HttpStatus.NO_CONTENT)
   @Audit({ action: 'delete', resource: 'cliente', resourceIdFrom: 'params.id' })

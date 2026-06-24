@@ -15,6 +15,7 @@ import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
 import { Audit } from '@shared/decorators/audit.decorator';
 import { CurrentUser } from '@shared/decorators/current-user.decorator';
 import { RequirePermissions } from '@shared/decorators/permissions.decorator';
+import { Roles } from '@shared/decorators/roles.decorator';
 import { ZodValidationPipe } from '@shared/pipes/zod-validation.pipe';
 import type { AuthenticatedUser } from '@shared/types/authenticated-user';
 import {
@@ -164,6 +165,8 @@ export class LeadsController {
   }
 
   @Delete(':id')
+  // Blindagem: gate granular colapsa edit→delete (REP teria delete de lead). @Roles tranca em gestão.
+  @Roles('ADMIN', 'DIRECTOR', 'GERENTE')
   @RequirePermissions({ module: 'kanban', action: 'delete' })
   @HttpCode(HttpStatus.NO_CONTENT)
   @Audit({ action: 'delete', resource: 'lead', resourceIdFrom: 'params.id' })

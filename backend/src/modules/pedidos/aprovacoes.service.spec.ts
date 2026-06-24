@@ -17,10 +17,11 @@ type MockModel = Record<string, ReturnType<typeof vi.fn>>;
 // Shared tx mock used by $transaction callback
 const makeTxMock = () => ({
   aprovacaoDesconto: {
-    update: vi.fn(),
+    updateMany: vi.fn(),
+    findUniqueOrThrow: vi.fn(),
   } satisfies MockModel,
   pedido: {
-    update: vi.fn(),
+    updateMany: vi.fn(),
   } satisfies MockModel,
 });
 
@@ -280,8 +281,9 @@ describe('AprovacoesService', () => {
       const updatedApr = fakeAprovacao({ status: 'APROVADA' });
       prisma.aprovacaoDesconto.findFirst.mockResolvedValue(apr);
       const txMock = prisma._tx;
-      txMock.aprovacaoDesconto.update.mockResolvedValue(updatedApr);
-      txMock.pedido.update.mockResolvedValue({});
+      txMock.aprovacaoDesconto.updateMany.mockResolvedValue({ count: 1 });
+      txMock.pedido.updateMany.mockResolvedValue({ count: 1 });
+      txMock.aprovacaoDesconto.findUniqueOrThrow.mockResolvedValue(updatedApr);
 
       const result = await service.aprovar(
         fakeUser({ role: 'ADMIN', id: 'admin-1' }),
@@ -290,14 +292,16 @@ describe('AprovacoesService', () => {
       );
 
       expect(result.status).toBe('APROVADA');
-      expect(txMock.aprovacaoDesconto.update).toHaveBeenCalledWith(
+      // CAS: updateMany guarda por status PENDENTE (aprovação) e AGUARDANDO_APROVACAO (pedido).
+      expect(txMock.aprovacaoDesconto.updateMany).toHaveBeenCalledWith(
         expect.objectContaining({
+          where: { id: 'apr-1', status: 'PENDENTE' },
           data: expect.objectContaining({ status: 'APROVADA', resolvidoEm: expect.any(Date) }),
         }),
       );
-      expect(txMock.pedido.update).toHaveBeenCalledWith(
+      expect(txMock.pedido.updateMany).toHaveBeenCalledWith(
         expect.objectContaining({
-          where: { id: 'ped-1' },
+          where: { id: 'ped-1', status: 'AGUARDANDO_APROVACAO' },
           data: { status: 'RASCUNHO', aprovadorId: 'admin-1' },
         }),
       );
@@ -307,8 +311,9 @@ describe('AprovacoesService', () => {
       const apr = fakeAprovacao({ representanteId: 'rep-a', status: 'PENDENTE' });
       const updatedApr = fakeAprovacao({ status: 'APROVADA' });
       prisma.aprovacaoDesconto.findFirst.mockResolvedValue(apr);
-      prisma._tx.aprovacaoDesconto.update.mockResolvedValue(updatedApr);
-      prisma._tx.pedido.update.mockResolvedValue({});
+      prisma._tx.aprovacaoDesconto.updateMany.mockResolvedValue({ count: 1 });
+      prisma._tx.pedido.updateMany.mockResolvedValue({ count: 1 });
+      prisma._tx.aprovacaoDesconto.findUniqueOrThrow.mockResolvedValue(updatedApr);
 
       await service.aprovar(fakeUser({ role: 'ADMIN', id: 'admin-1' }), 'apr-1', dto);
 
@@ -355,6 +360,20 @@ describe('AprovacoesService', () => {
         service.aprovar(fakeUser({ role: 'ADMIN', id: 'admin-1' }), 'apr-1', dto),
       ).rejects.toBeInstanceOf(BusinessRuleException);
     });
+
+    it('CAS: race perdida (updateMany count 0) aborta sem disparar PEDIDO_APROVADO', async () => {
+      // findFirst vê PENDENTE, mas outro gerente já resolveu entre a leitura e a tx →
+      // updateMany não casa (count 0) → aborta, sem re-aprovar o pedido nem disparar o evento.
+      const apr = fakeAprovacao({ representanteId: 'rep-a', status: 'PENDENTE' });
+      prisma.aprovacaoDesconto.findFirst.mockResolvedValue(apr);
+      prisma._tx.aprovacaoDesconto.updateMany.mockResolvedValue({ count: 0 });
+
+      await expect(
+        service.aprovar(fakeUser({ role: 'ADMIN', id: 'admin-1' }), 'apr-1', dto),
+      ).rejects.toBeInstanceOf(BusinessRuleException);
+      expect(prisma._tx.pedido.updateMany).not.toHaveBeenCalled();
+      expect(bus.disparar).not.toHaveBeenCalled();
+    });
   });
 
   // -------------------------------------------------------------------------
@@ -368,8 +387,9 @@ describe('AprovacoesService', () => {
       const apr = fakeAprovacao({ representanteId: 'rep-a', status: 'PENDENTE' });
       const updatedApr = fakeAprovacao({ status: 'REJEITADA' });
       prisma.aprovacaoDesconto.findFirst.mockResolvedValue(apr);
-      prisma._tx.aprovacaoDesconto.update.mockResolvedValue(updatedApr);
-      prisma._tx.pedido.update.mockResolvedValue({});
+      prisma._tx.aprovacaoDesconto.updateMany.mockResolvedValue({ count: 1 });
+      prisma._tx.pedido.updateMany.mockResolvedValue({ count: 1 });
+      prisma._tx.aprovacaoDesconto.findUniqueOrThrow.mockResolvedValue(updatedApr);
 
       const result = await service.rejeitar(
         fakeUser({ role: 'ADMIN', id: 'admin-1' }),
@@ -378,9 +398,9 @@ describe('AprovacoesService', () => {
       );
 
       expect(result.status).toBe('REJEITADA');
-      expect(prisma._tx.pedido.update).toHaveBeenCalledWith(
+      expect(prisma._tx.pedido.updateMany).toHaveBeenCalledWith(
         expect.objectContaining({
-          where: { id: 'ped-1' },
+          where: { id: 'ped-1', status: 'AGUARDANDO_APROVACAO' },
           data: { status: 'CANCELADO' },
         }),
       );
@@ -417,8 +437,11 @@ describe('AprovacoesService', () => {
     it('não dispara evento ao rejeitar', async () => {
       const apr = fakeAprovacao({ representanteId: 'rep-a', status: 'PENDENTE' });
       prisma.aprovacaoDesconto.findFirst.mockResolvedValue(apr);
-      prisma._tx.aprovacaoDesconto.update.mockResolvedValue(fakeAprovacao({ status: 'REJEITADA' }));
-      prisma._tx.pedido.update.mockResolvedValue({});
+      prisma._tx.aprovacaoDesconto.updateMany.mockResolvedValue({ count: 1 });
+      prisma._tx.pedido.updateMany.mockResolvedValue({ count: 1 });
+      prisma._tx.aprovacaoDesconto.findUniqueOrThrow.mockResolvedValue(
+        fakeAprovacao({ status: 'REJEITADA' }),
+      );
 
       await service.rejeitar(fakeUser({ role: 'ADMIN' }), 'apr-1', dto);
 
