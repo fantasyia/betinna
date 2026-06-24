@@ -717,7 +717,7 @@ function PedidosTab({ clienteId }: { clienteId: string }) {
           data-testid="cliente-pedidos-status"
           value={statusFiltro}
           onChange={(e) => setStatusFiltro(e.target.value)}
-          style={{ width: 180 }}
+          className="w-full sm:w-[180px]"
         >
           <option value="">Todos status</option>
           {(Object.keys(PEDIDO_STATUS_LABEL) as PedidoLite['status'][]).map((s) => (
@@ -730,7 +730,7 @@ function PedidosTab({ clienteId }: { clienteId: string }) {
           data-testid="cliente-pedidos-periodo"
           value={periodo}
           onChange={(e) => setPeriodo(e.target.value as typeof periodo)}
-          style={{ width: 160 }}
+          className="w-full sm:w-[160px]"
         >
           <option value="todos">Todos os tempos</option>
           <option value="30d">Últimos 30 dias</option>
@@ -758,6 +758,7 @@ function PedidosTab({ clienteId }: { clienteId: string }) {
         emptyMessage="Sem pedidos pra este cliente ainda."
         onRetry={refetch}
       >
+        <div className="overflow-x-auto -mx-6 px-6">
         <table className="w-full border-collapse text-[14px] mt-1">
           <thead>
             <tr>
@@ -798,6 +799,7 @@ function PedidosTab({ clienteId }: { clienteId: string }) {
             ))}
           </tbody>
         </table>
+        </div>
       </StateView>
     </div>
   );
@@ -883,6 +885,7 @@ function PropostasTab({ clienteId }: { clienteId: string }) {
         emptyMessage="Sem propostas pra este cliente."
         onRetry={refetch}
       >
+        <div className="overflow-x-auto -mx-6 px-6">
         <table className="w-full border-collapse text-[14px]">
           <thead>
             <tr>
@@ -924,6 +927,7 @@ function PropostasTab({ clienteId }: { clienteId: string }) {
             ))}
           </tbody>
         </table>
+        </div>
       </StateView>
     </div>
   );
@@ -1115,6 +1119,7 @@ function OcorrenciasTab({ clienteId }: { clienteId: string }) {
         emptyMessage="Nenhuma ocorrência aberta pra este cliente."
         onRetry={refetch}
       >
+        <div className="overflow-x-auto -mx-6 px-6">
         <table className="w-full border-collapse text-[14px]">
           <thead>
             <tr>
@@ -1172,6 +1177,7 @@ function OcorrenciasTab({ clienteId }: { clienteId: string }) {
             })}
           </tbody>
         </table>
+        </div>
       </StateView>
     </div>
   );
@@ -1598,6 +1604,7 @@ function PrecosTab({ clienteId }: { clienteId: string }) {
         emptyMessage="Sem preços especiais ainda. Adicione o primeiro."
         onRetry={refetch}
       >
+        <div className="overflow-x-auto -mx-6 px-6">
         <table className="w-full border-collapse text-[14px] mt-2">
           <thead>
             <tr>
@@ -1638,6 +1645,7 @@ function PrecosTab({ clienteId }: { clienteId: string }) {
             ))}
           </tbody>
         </table>
+        </div>
       </StateView>
 
       {adding && (

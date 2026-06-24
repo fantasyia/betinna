@@ -323,8 +323,8 @@ function OverviewTab({ qs }: { qs: string }) {
           </div>
 
           {/* Resumo Vendas + Funil */}
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
-            <div className="bg-surface border border-border rounded-[10px] p-6">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div className="bg-surface border border-border rounded-[10px] p-4 md:p-6">
               <h3 className="m-0 mb-3 text-[15px]">Top representantes (vendas)</h3>
               <BarChart
                 data={data.vendas.porRep.slice(0, 5).map((r) => ({
@@ -335,7 +335,7 @@ function OverviewTab({ qs }: { qs: string }) {
                 formatValue={fmtBRLCompact}
               />
             </div>
-            <div className="bg-surface border border-border rounded-[10px] p-6">
+            <div className="bg-surface border border-border rounded-[10px] p-4 md:p-6">
               <h3 className="m-0 mb-3 text-[15px]">Funil de leads</h3>
               <Funnel
                 stages={(funilData?.funilAtual ?? []).map((e) => ({
@@ -509,8 +509,8 @@ function VendasTab({ qs }: { qs: string }) {
             <KPICard label="Ticket médio" value={fmtBRL(data.ticketMedio)} />
           </div>
 
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
-            <div className="bg-surface border border-border rounded-[10px] p-6">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div className="bg-surface border border-border rounded-[10px] p-4 md:p-6">
               <h3 className="m-0 mb-3 text-[15px]">Pedidos por status</h3>
               <Donut
                 slices={data.porStatus.map((s) => ({
@@ -520,7 +520,7 @@ function VendasTab({ qs }: { qs: string }) {
                 }))}
               />
             </div>
-            <div className="bg-surface border border-border rounded-[10px] p-6">
+            <div className="bg-surface border border-border rounded-[10px] p-4 md:p-6">
               <h3 className="m-0 mb-3 text-[15px]">Faturamento por status</h3>
               <BarChart
                 data={data.porStatus
@@ -624,8 +624,8 @@ function FunilTab({ qs }: { qs: string }) {
             />
           </div>
 
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
-            <div className="bg-surface border border-border rounded-[10px] p-6">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div className="bg-surface border border-border rounded-[10px] p-4 md:p-6">
               <h3 className="m-0 mb-3 text-[15px]">Funil atual</h3>
               <Funnel
                 stages={funilAtual.map((e) => ({
@@ -635,7 +635,7 @@ function FunilTab({ qs }: { qs: string }) {
                 })) as FunnelStage[]}
               />
             </div>
-            <div className="bg-surface border border-border rounded-[10px] p-6">
+            <div className="bg-surface border border-border rounded-[10px] p-4 md:p-6">
               <h3 className="m-0 mb-3 text-[15px]">Valor estimado por etapa</h3>
               <BarChart
                 data={funilAtual.map((e) => ({
@@ -832,8 +832,8 @@ function SacTab({ qs }: { qs: string }) {
             )}
           </div>
 
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
-            <div className="bg-surface border border-border rounded-[10px] p-6">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div className="bg-surface border border-border rounded-[10px] p-4 md:p-6">
               <h3 className="m-0 mb-3 text-[15px]">Por severidade</h3>
               <Donut
                 slices={
@@ -845,7 +845,7 @@ function SacTab({ qs }: { qs: string }) {
                 }
               />
             </div>
-            <div className="bg-surface border border-border rounded-[10px] p-6">
+            <div className="bg-surface border border-border rounded-[10px] p-4 md:p-6">
               <h3 className="m-0 mb-3 text-[15px]">Por tipo</h3>
               <BarChart
                 data={porTipo.map((t) => ({

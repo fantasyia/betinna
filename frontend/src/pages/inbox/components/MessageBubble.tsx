@@ -198,7 +198,7 @@ function ReactButton({ onReagir }: { onReagir?: (emoji: string) => void }) {
   const REACOES = ['👍', '❤️', '😂', '😮', '😢', '🙏'];
   if (!onReagir) return null;
   return (
-    <div className="relative opacity-0 group-hover:opacity-100 focus-within:opacity-100 transition-opacity shrink-0">
+    <div className="relative opacity-100 md:opacity-0 md:group-hover:opacity-100 focus-within:opacity-100 transition-opacity shrink-0">
       <button
         type="button"
         data-testid="msg-reagir-btn"
@@ -255,7 +255,7 @@ function MsgActions({
           data-testid={`msg-responder-${msgId}`}
           onClick={onResponder}
           title="Responder"
-          className="opacity-0 group-hover:opacity-100 focus-within:opacity-100 transition-opacity p-1 rounded-full text-muted hover:text-text hover:bg-surface-hover"
+          className="opacity-100 md:opacity-0 md:group-hover:opacity-100 focus-within:opacity-100 transition-opacity p-1 rounded-full text-muted hover:text-text hover:bg-surface-hover"
         >
           <Reply className="h-3.5 w-3.5" />
         </button>

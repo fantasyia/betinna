@@ -155,7 +155,7 @@ export function NotificationBell() {
         data-testid="notif-bell"
         onClick={toggleOpen}
         aria-label={`Notificações${count > 0 ? ` (${count} não lidas)` : ''}`}
-        className="relative cursor-pointer border-none bg-transparent p-1.5 text-lg leading-none"
+        className="relative inline-flex h-10 w-10 md:h-auto md:w-auto items-center justify-center cursor-pointer border-none bg-transparent p-1.5 text-lg leading-none"
       >
         🔔
         {count > 0 && (
@@ -172,7 +172,7 @@ export function NotificationBell() {
         <div
           data-testid="notif-dropdown"
           role="menu"
-          className="absolute right-0 top-[calc(100%+4px)] z-[1000] flex max-h-[480px] w-[340px] flex-col rounded-lg border border-border bg-surface-elevated shadow-lg"
+          className="absolute right-0 top-[calc(100%+4px)] z-[1000] flex max-h-[480px] w-[340px] max-w-[calc(100vw-1.5rem)] flex-col rounded-lg border border-border bg-surface-elevated shadow-lg"
         >
           <header className="flex items-center justify-between border-b border-border px-3 py-2.5">
             <strong className="text-sm">Notificações</strong>

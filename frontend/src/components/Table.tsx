@@ -2,7 +2,7 @@ import type { ReactNode } from 'react';
 import { cn } from '@/lib/cn';
 
 const BTN_GHOST =
-  'bg-transparent text-text rounded-md px-2 py-1 text-[13px] font-medium cursor-pointer tracking-[-0.1px]';
+  'inline-flex items-center justify-center bg-transparent text-text rounded-md px-3 py-2.5 md:px-2 md:py-1 min-h-[44px] md:min-h-0 text-[13px] font-medium cursor-pointer tracking-[-0.1px]';
 
 export interface Column<T> {
   key: string;

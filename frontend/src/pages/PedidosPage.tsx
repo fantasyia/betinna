@@ -448,7 +448,7 @@ export default function PedidosPage() {
                   setPage(1);
                 }}
                 aria-label="Data início"
-                className="w-[150px]"
+                className="w-full sm:w-[150px]"
               />
               <span className="text-xs text-muted">até</span>
               <Input
@@ -460,7 +460,7 @@ export default function PedidosPage() {
                   setPage(1);
                 }}
                 aria-label="Data fim"
-                className="w-[150px]"
+                className="w-full sm:w-[150px]"
               />
             </>
           )}

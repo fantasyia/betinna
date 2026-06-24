@@ -104,7 +104,7 @@ export function SubTabsBar({
               title={fav ? 'Remover dos favoritos' : 'Favoritar'}
               onClick={() => toggleFavorito(tab.to, tab.label)}
               className={cn(
-                'inline-flex items-center justify-center cursor-pointer border-none bg-transparent py-1 pr-2.5 pl-0.5',
+                'inline-flex items-center justify-center cursor-pointer border-none bg-transparent min-h-[44px] min-w-[44px] md:min-h-0 md:min-w-0 py-1 pr-2.5 pl-0.5',
                 fav ? 'text-warning opacity-100' : 'text-muted opacity-45',
               )}
             >

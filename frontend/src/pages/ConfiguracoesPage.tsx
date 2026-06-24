@@ -388,8 +388,8 @@ function LifecycleConfig() {
       ) : (
         <div className="flex flex-col gap-2 mt-4 max-w-[640px]">
           {PEDIDO_STATUSES.map((s) => (
-            <div key={s} className="flex items-center gap-2">
-              <code className="text-[11px] text-muted w-[180px] shrink-0">{s}</code>
+            <div key={s} className="flex flex-col gap-2 sm:flex-row sm:items-center">
+              <code className="hidden sm:block text-[11px] text-muted w-[180px] shrink-0">{s}</code>
               <Input
                 value={form[s].label}
                 disabled={!podeEditar}
@@ -861,14 +861,14 @@ function ComissaoConfig() {
 
           {modeloForm === 'escalonada_por_faturamento' && (
             <div className="flex flex-col gap-2">
-              <div className="flex gap-2 text-[11px] text-muted">
+              <div className="hidden sm:flex gap-2 text-[11px] text-muted">
                 <span className="flex-1">De (R$)</span>
                 <span className="flex-1">Até (R$, vazio = aberto)</span>
                 <span className="w-[90px]">% comissão</span>
                 <span className="w-[28px]" />
               </div>
               {faixasForm.map((f, i) => (
-                <div key={i} className="flex gap-2 items-center">
+                <div key={i} className="flex flex-wrap sm:flex-nowrap gap-2 items-center">
                   <Input
                     type="number"
                     min="0"
@@ -897,7 +897,7 @@ function ComissaoConfig() {
                     <button
                       type="button"
                       onClick={() => rmFaixa(i)}
-                      className="w-[28px] h-[34px] shrink-0 bg-surface text-danger border border-border-strong rounded-md cursor-pointer"
+                      className="w-9 h-9 md:w-[28px] md:h-[34px] shrink-0 bg-surface text-danger border border-border-strong rounded-md cursor-pointer"
                       aria-label="Remover faixa"
                     >
                       ×
@@ -1005,21 +1005,21 @@ function MateriaisTiposConfig() {
       ) : (
         <div className="flex flex-col gap-2 mt-4 max-w-[480px]">
           {tipos.map((t, i) => (
-            <div key={i} className="flex items-center gap-2">
+            <div key={i} className="flex flex-col gap-2 sm:flex-row sm:items-center">
               <Input
                 value={t.label}
                 disabled={!podeEditar}
                 onChange={(e) => setLabel(i, e.target.value)}
                 placeholder="Nome do tipo"
               />
-              <code className="text-[11px] text-muted w-[140px] shrink-0 truncate">
+              <code className="hidden sm:block text-[11px] text-muted w-[140px] shrink-0 truncate">
                 {t.key || slug(t.label) || '—'}
               </code>
               {podeEditar && (
                 <button
                   type="button"
                   onClick={() => rm(i)}
-                  className="w-[28px] h-[34px] shrink-0 bg-surface text-danger border border-border-strong rounded-md cursor-pointer"
+                  className="w-9 h-9 md:w-[28px] md:h-[34px] shrink-0 bg-surface text-danger border border-border-strong rounded-md cursor-pointer"
                   aria-label="Remover tipo"
                 >
                   ×
@@ -1185,7 +1185,7 @@ function DevolucaoConfig() {
 
           <span className="text-xs text-muted">Motivos</span>
           {motivosForm.map((m, i) => (
-            <div key={i} className="flex items-center gap-2">
+            <div key={i} className="flex flex-col gap-2 sm:flex-row sm:items-center">
               <Input
                 value={m.label}
                 disabled={!podeEditar}
@@ -1207,7 +1207,7 @@ function DevolucaoConfig() {
                 <button
                   type="button"
                   onClick={() => rm(i)}
-                  className="w-[28px] h-[34px] shrink-0 bg-surface text-danger border border-border-strong rounded-md cursor-pointer"
+                  className="w-9 h-9 md:w-[28px] md:h-[34px] shrink-0 bg-surface text-danger border border-border-strong rounded-md cursor-pointer"
                   aria-label="Remover motivo"
                 >
                   ×
@@ -1341,7 +1341,7 @@ function InboxInternaConfig() {
       ) : (
         <div className="flex flex-col gap-2 mt-4 max-w-[620px]">
           {tipos.map((t, i) => (
-            <div key={i} className="flex items-center gap-2">
+            <div key={i} className="flex flex-col gap-2 sm:flex-row sm:items-center">
               <Input
                 value={t.nome}
                 disabled={!podeEditar}
@@ -1355,7 +1355,7 @@ function InboxInternaConfig() {
                 disabled={!podeEditar}
                 onChange={(e) => setRow(i, { slaHorasUteis: e.target.value })}
                 placeholder="SLA h"
-                className="w-[90px]"
+                className="w-full sm:w-[90px]"
               />
               <Select
                 value={t.prioridade}
@@ -1380,7 +1380,7 @@ function InboxInternaConfig() {
                 <button
                   type="button"
                   onClick={() => rm(i)}
-                  className="w-[28px] h-[34px] shrink-0 bg-surface text-danger border border-border-strong rounded-md cursor-pointer"
+                  className="w-9 h-9 md:w-[28px] md:h-[34px] shrink-0 bg-surface text-danger border border-border-strong rounded-md cursor-pointer"
                   aria-label="Remover canal"
                 >
                   ×
@@ -1486,7 +1486,7 @@ function EnvioWhatsappConfig() {
         <p className="text-sm text-muted mt-4">Carregando…</p>
       ) : (
         <div className="flex flex-col gap-3 mt-4 max-w-[480px]">
-          <div className="flex gap-2">
+          <div className="flex flex-col gap-2 sm:flex-row">
             <label className="flex flex-col gap-1 text-xs text-muted flex-1">
               Proativo — máx/min (abordagem, campanha)
               <Input
@@ -1510,7 +1510,7 @@ function EnvioWhatsappConfig() {
               />
             </label>
           </div>
-          <div className="flex gap-2">
+          <div className="flex flex-col gap-2 sm:flex-row">
             <label className="flex flex-col gap-1 text-xs text-muted flex-1">
               Variação mínima (s)
               <Input
@@ -1832,7 +1832,7 @@ function EmpresaFormModal({
             maxLength={200}
           />
         </FormField>
-        <div className="grid grid-cols-2 gap-3">
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
           <FormField label="CNPJ" hint="00.000.000/0001-00">
             <Input
               value={form.cnpj}
@@ -1879,7 +1879,7 @@ function EmpresaFormModal({
             Deixe 0 para desligar. O desconto à vista <strong>não</strong> conta pro teto
             de aprovação do representante (é política da empresa).
           </p>
-          <div className="grid grid-cols-2 gap-3">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <FormField label="Pix (%)" hint="0–50%, aplicado em qualquer Pix">
               <Input
                 data-testid="emp-desconto-pix"

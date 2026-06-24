@@ -234,10 +234,7 @@ export default function MullerBotPage() {
       }
     >
       <AtendimentoTabs />
-      <div
-        className="grid gap-4"
-        style={{ gridTemplateColumns: 'minmax(0, 1fr) 280px' }}
-      >
+      <div className="grid gap-4 grid-cols-1 lg:grid-cols-[minmax(0,1fr)_280px]">
         {/* Chat */}
         <Card
           padding="none"

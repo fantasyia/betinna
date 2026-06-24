@@ -74,7 +74,12 @@ export function Tabs({
 
   // Variant: underline
   return (
-    <div className={cn('flex items-center gap-1 border-b border-border', className)}>
+    <div
+      className={cn(
+        'flex items-center gap-1 border-b border-border overflow-x-auto flex-nowrap',
+        className,
+      )}
+    >
       {items.map((tab) => {
         const active = tab.value === value;
         return (
@@ -84,7 +89,7 @@ export function Tabs({
             disabled={tab.disabled}
             onClick={() => onChange(tab.value)}
             className={cn(
-              'relative inline-flex items-center gap-1.5 h-9 px-3',
+              'relative inline-flex shrink-0 items-center gap-1.5 h-9 px-3',
               'text-sm font-medium border-b-2 -mb-px',
               'transition-colors duration-100',
               'focus-visible:outline-none focus-visible:shadow-ring',

@@ -602,7 +602,7 @@ function PreviewClienteDialog({ onClose }: { onClose: () => void }) {
             </div>
           )}
           {!loading && !error && itens.length > 0 && (
-            <div className="rounded-md border border-border overflow-hidden">
+            <div className="rounded-md border border-border overflow-x-auto">
               <table className="w-full">
                 <thead>
                   <tr className="border-b border-border bg-bg-alt">

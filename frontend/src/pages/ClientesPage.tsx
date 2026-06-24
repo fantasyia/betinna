@@ -543,7 +543,8 @@ export default function ClientesPage() {
           data-testid="bulk-bar"
           className={cn(
             'fixed bottom-6 left-1/2 -translate-x-1/2 z-50',
-            'flex items-center gap-3 px-3 py-2',
+            'flex flex-wrap items-center gap-3 px-3 py-2',
+            'max-w-[calc(100vw-1rem)]',
             'bg-surface-elevated border border-border-strong rounded-full shadow-xl',
             'animate-slide-up',
           )}
@@ -1782,7 +1783,7 @@ function ClienteFormModal({
           <h4 className="text-[10px] font-semibold uppercase tracking-wider text-muted mb-2">
             Operação
           </h4>
-          <div className="grid gap-3 grid-cols-2 md:grid-cols-3">
+          <div className="grid gap-3 grid-cols-1 sm:grid-cols-2 md:grid-cols-3">
             <Field label="Status">
               <Select
                 value={form.status}

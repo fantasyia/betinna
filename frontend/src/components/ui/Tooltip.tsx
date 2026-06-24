@@ -32,11 +32,21 @@ export function Tooltip({
     setOpen(false);
   }
 
+  // No touch (sem hover), um toque alterna o tooltip — senão info só-tooltip
+  // nunca aparece no celular. Preserva o onClick original do filho.
+  const childProps = children.props as { onClick?: (e: unknown) => void };
+  function handleClick(e: unknown) {
+    childProps.onClick?.(e);
+    if (timer) clearTimeout(timer);
+    setOpen((v) => !v);
+  }
+
   const wrapped = cloneElement(children, {
     onMouseEnter: handleEnter,
     onMouseLeave: handleLeave,
     onFocus: handleEnter,
     onBlur: handleLeave,
+    onClick: handleClick,
   } as Partial<typeof children.props>);
 
   const sideClass: Record<string, string> = {

@@ -810,7 +810,7 @@ function EtapaFormDialog({
         <Field label="Cor">
           <ColorPicker value={cor} onChange={setCor} />
         </Field>
-        <div className="grid grid-cols-2 gap-3">
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
           <Field label="Probabilidade (%)" hint="Peso pro pipeline ponderado">
             <Input
               type="number"

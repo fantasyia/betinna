@@ -388,7 +388,7 @@ export default function ContatosPage() {
       )}
 
       {canEdit && selected.size > 0 && (
-        <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-50 flex items-center gap-2 px-3 py-2 bg-surface-elevated border border-border-strong rounded-full shadow-xl">
+        <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-50 flex flex-wrap items-center gap-2 px-3 py-2 max-w-[calc(100vw-1rem)] bg-surface-elevated border border-border-strong rounded-full shadow-xl">
           <span className="text-sm text-text pl-2 pr-1">
             <strong className="text-primary">{selected.size}</strong> selecionado
             {selected.size === 1 ? '' : 's'}

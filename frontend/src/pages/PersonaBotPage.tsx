@@ -296,7 +296,7 @@ export default function PersonaBotPage() {
 
             {/* Comportamento da conversa — deixa o bot mais humano.
                 Estes 3 fazem parte da persona; salvam no botão Salvar do topo. */}
-            <div className="mt-3 grid grid-cols-2 gap-3 rounded-md border border-border bg-bg-alt p-3">
+            <div className="mt-3 grid grid-cols-1 sm:grid-cols-2 gap-3 rounded-md border border-border bg-bg-alt p-3">
               <Field label="Mensagens de contexto" className="mb-0">
                 <div>
                   <input

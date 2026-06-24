@@ -727,7 +727,7 @@ function AuditLogSection() {
             setPage(1);
             setFilters((f) => ({ ...f, recurso: e.target.value }));
           }}
-          className="py-1.5 px-2.5 text-[12px] border border-border rounded-[10px] flex-[0_0_auto] bg-surface"
+          className="py-1.5 px-2.5 text-[12px] border border-border rounded-[10px] flex-[1_1_160px] min-w-[140px] bg-surface"
         >
           <option value="">Todos os recursos</option>
           {(recursosQuery.data ?? []).map((r) => (

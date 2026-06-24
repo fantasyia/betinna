@@ -375,7 +375,7 @@ function UserDetail({ userId, isOwnProfile }: { userId: string; isOwnProfile: bo
       <SistemaTabs />
       <StateView loading={loading} error={error} onRetry={refetch}>
         {data && (
-          <div className="grid grid-cols-[1fr_280px] gap-4 items-start">
+          <div className="grid grid-cols-1 lg:grid-cols-[1fr_280px] gap-4 items-start">
             <div className={cardCls}>
               <div className="flex items-center gap-3 mb-4 flex-wrap">
                 <span className={badgeCls} style={badgeStyle(ROLE_COLOR[data.role])}>
@@ -389,7 +389,7 @@ function UserDetail({ userId, isOwnProfile }: { userId: string; isOwnProfile: bo
                 )}
               </div>
 
-              <dl className="grid grid-cols-2 gap-3 text-[14px]">
+              <dl className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-[14px]">
                 <Info label="Nome">{data.nome}</Info>
                 <Info label="E-mail">{data.email}</Info>
                 <Info label="Telefone">{data.telefone ?? '—'}</Info>
@@ -673,7 +673,7 @@ function EditUserModal({
             disabled={!canSave}
           />
         </FormField>
-        <div className="grid grid-cols-2 gap-3">
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
           <FormField label="Telefone">
             <Input
               value={form.telefone}

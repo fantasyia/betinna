@@ -512,7 +512,7 @@ function AmostraDetailModal({
                   </span>
                 )}
             </div>
-            <dl className="grid grid-cols-2 gap-3 text-sm">
+            <dl className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-sm">
               <Info label="Cliente">{data.cliente?.nome ?? '—'}</Info>
               <Info label="Representante">{data.representanteNome ?? '—'}</Info>
               <Info label="Modo">{data.modo ? MODO_LABEL[data.modo] ?? data.modo : '—'}</Info>
@@ -846,7 +846,7 @@ function AmostraFormModal({
             required
           />
         </FormField>
-        <div className="grid grid-cols-2 gap-3">
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
           <FormField label="Quantidade" htmlFor="am-qtd" required hint="Amostra = quantidade reduzida">
             <Input
               id="am-qtd"

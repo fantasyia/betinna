@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { BarChart3, ChevronDown, ChevronUp, Clock, MessageSquare, Timer, Users } from 'lucide-react';
 import { useApiQuery } from '@/hooks/useApiQuery';
 import { Card, Stat } from '@/components/ui';
+import { useIsMobile } from '@/components/PageLayout';
 import type { Metricas } from '../lib/types';
 import { formatTempoResposta } from '../lib/format';
 
@@ -9,10 +10,13 @@ import { formatTempoResposta } from '../lib/format';
  * MetricasPanel — KPIs de atendimento (só gerência; nunca REP, que nem chega a
  * montar este componente). Cabeçalho colapsável; o fetch de `/inbox/metricas`
  * só dispara quando o painel está aberto (evita chamada inútil quando fechado).
- * Começa aberto — é informação de relance que a gerência quer ver ao entrar.
+ * Começa aberto no desktop — é informação de relance que a gerência quer ver ao
+ * entrar. No mobile começa colapsado pra não empurrar a lista de conversas pra
+ * fora da dobra.
  */
 export function MetricasPanel() {
-  const [aberto, setAberto] = useState(true);
+  const isMobile = useIsMobile();
+  const [aberto, setAberto] = useState(!isMobile);
   // Só busca quando aberto (path null = useApiQuery não dispara).
   const { data, loading, error } = useApiQuery<Metricas>(aberto ? '/inbox/metricas' : null);
 

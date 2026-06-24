@@ -695,7 +695,7 @@ function LeadCardInner({
           }}
           className={cn(
             'absolute top-0 right-0 p-1 rounded-md text-muted-light',
-            'opacity-0 group-hover:opacity-100 transition-opacity',
+            'opacity-100 md:opacity-0 md:group-hover:opacity-100 transition-opacity',
             'hover:text-primary hover:bg-surface-hover',
             'focus:opacity-100 focus:outline-none focus:ring-1 focus:ring-primary/40',
           )}
@@ -1447,7 +1447,7 @@ function LeadFormModal({
           />
         </Field>
 
-        <div className="grid grid-cols-2 gap-3">
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
           <Field label="UF" error={fieldErrors.uf}>
             <UfSelect
               testId="lead-uf-select"

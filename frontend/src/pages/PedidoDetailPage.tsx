@@ -408,7 +408,7 @@ export default function PedidoDetailPage() {
                   <h4 className="text-[10px] font-semibold uppercase tracking-wider text-muted mb-2">
                     Itens ({data.itens.length})
                   </h4>
-                  <Card padding="none" className="overflow-hidden">
+                  <Card padding="none" className="overflow-x-auto">
                     <table className="w-full">
                       <thead>
                         <tr className="border-b border-border bg-bg-alt">

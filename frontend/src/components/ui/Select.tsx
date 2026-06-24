@@ -25,10 +25,11 @@ const selectVariants = cva(
         default: 'border-border-strong focus:border-primary focus:shadow-ring',
         error: 'border-danger focus:border-danger focus:shadow-[0_0_0_3px_rgba(244,63,94,0.18)]',
       },
+      // Mobile = 44px (alvo de toque); md: volta ao compacto. Espelha o Button/Input.
       size: {
-        sm: 'h-7 px-2 text-xs',
-        md: 'h-8 px-2.5 text-sm',
-        lg: 'h-10 px-3 text-md',
+        sm: 'h-11 px-2 text-xs md:h-7',
+        md: 'h-11 px-2.5 text-sm md:h-8',
+        lg: 'h-11 px-3 text-md md:h-10',
       },
     },
     defaultVariants: {

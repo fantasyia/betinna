@@ -69,7 +69,7 @@ export function Dialog({
         if (closeOnBackdrop && e.target === e.currentTarget) onClose();
       }}
       className={cn(
-        'fixed inset-0 z-[100] flex items-center justify-center p-4',
+        'fixed inset-0 z-[100] flex items-end md:items-center justify-center p-0 md:p-4',
         'animate-fade-in',
       )}
       style={{ backdropFilter: 'blur(6px) saturate(140%)', background: 'rgba(0,0,0,0.6)' }}
@@ -79,8 +79,9 @@ export function Dialog({
         aria-modal="true"
         aria-labelledby={title ? 'dialog-title' : undefined}
         className={cn(
-          'w-full bg-surface-elevated border border-border-strong rounded-lg shadow-xl',
-          'flex flex-col max-h-[85vh]',
+          'w-full bg-surface-elevated border border-border-strong shadow-xl',
+          'rounded-t-2xl md:rounded-lg',
+          'flex flex-col max-h-[90vh] md:max-h-[85vh]',
           'animate-slide-up',
           sizeClass[size],
           className,
@@ -107,7 +108,7 @@ export function Dialog({
         )}
         <div className="flex-1 overflow-y-auto px-5 py-4">{children}</div>
         {footer && (
-          <footer className="flex items-center justify-end gap-2 px-5 py-3 border-t border-border bg-bg-alt rounded-b-lg">
+          <footer className="flex flex-wrap items-center justify-end gap-2 px-5 py-3 border-t border-border bg-bg-alt rounded-b-lg [&>button]:flex-1 sm:[&>button]:flex-none">
             {footer}
           </footer>
         )}

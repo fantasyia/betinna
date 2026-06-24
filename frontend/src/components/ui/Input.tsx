@@ -26,10 +26,11 @@ const inputVariants = cva(
         default: 'border-border-strong focus:border-primary focus:shadow-ring',
         error: 'border-danger focus:border-danger focus:shadow-[0_0_0_3px_rgba(244,63,94,0.18)]',
       },
+      // Mobile = 44px (alvo de toque); md: volta ao compacto do desktop. Espelha o Button.
       size: {
-        sm: 'h-7 text-xs',
-        md: 'h-8 text-sm',
-        lg: 'h-10 text-md',
+        sm: 'h-11 text-xs md:h-7',
+        md: 'h-11 text-sm md:h-8',
+        lg: 'h-11 text-md md:h-10',
       },
     },
     defaultVariants: {

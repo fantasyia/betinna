@@ -504,7 +504,7 @@ function SegmentoBuilder({
         </div>
       </header>
 
-      <div className="flex-1 flex overflow-hidden">
+      <div className="flex-1 flex flex-col lg:flex-row overflow-hidden">
         {/* Builder de regras */}
         <main className="flex-1 overflow-y-auto p-6">
           <div className="max-w-3xl mx-auto flex flex-col gap-4">
@@ -581,7 +581,7 @@ function SegmentoBuilder({
         </main>
 
         {/* Preview ao vivo */}
-        <aside className="w-[360px] shrink-0 border-l border-border bg-bg-alt overflow-y-auto p-4">
+        <aside className="w-full lg:w-[360px] shrink-0 border-t lg:border-t-0 lg:border-l border-border bg-bg-alt overflow-y-auto p-4">
           <h4 className="text-[10px] font-semibold uppercase tracking-wider text-muted mb-3">
             Preview ao vivo
           </h4>
@@ -648,7 +648,7 @@ function ConditionRow({
   const availableOps = CAMPO_OPS[condition.campo];
 
   return (
-    <div className="flex items-center gap-2">
+    <div className="flex flex-wrap items-center gap-2">
       {showLogic && (
         <Badge variant="primary" size="sm" className="shrink-0">
           {logic}
@@ -663,7 +663,7 @@ function ConditionRow({
         size="sm"
         value={condition.campo}
         onChange={(e) => onChange({ campo: e.target.value as FiltroCampo })}
-        className="min-w-[140px]"
+        className="w-full sm:w-auto min-w-[140px]"
       >
         {(Object.keys(CAMPO_LABEL) as FiltroCampo[]).map((c) => (
           <option key={c} value={c}>
@@ -675,7 +675,7 @@ function ConditionRow({
         size="sm"
         value={condition.op}
         onChange={(e) => onChange({ op: e.target.value as FiltroOp })}
-        className="min-w-[120px]"
+        className="w-full sm:w-auto min-w-[120px]"
       >
         {availableOps.map((op) => (
           <option key={op} value={op}>

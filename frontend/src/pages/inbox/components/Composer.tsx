@@ -395,7 +395,7 @@ export function Composer({
               size="md"
               leftIcon={!sending ? <Send className="h-3.5 w-3.5" /> : undefined}
             >
-              Enviar
+              <span className="hidden sm:inline">Enviar</span>
             </Button>
           </div>
           <div className="flex items-center justify-between mt-1.5">

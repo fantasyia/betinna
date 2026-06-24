@@ -375,7 +375,7 @@ function FecharMesModal({ onClose, onDone }: { onClose: () => void; onDone: () =
         <p className="text-muted text-[13px] mt-0">
           Agrega pedidos comissionáveis do período e cria/atualiza registros REP + GERENTE.
         </p>
-        <div className="grid grid-cols-2 gap-3">
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
           <FormField label="Mês" htmlFor="fm-mes" required>
             <Select id="fm-mes" value={mes} onChange={(e) => setMes(Number(e.target.value))}>
               {MES_NOMES.map((n, i) => (
