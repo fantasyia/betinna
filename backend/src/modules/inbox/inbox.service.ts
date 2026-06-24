@@ -936,6 +936,32 @@ export class InboxService {
       params.direction === 'OUTBOUND' ? MessageDirection.OUTBOUND : MessageDirection.INBOUND;
     const isInbound = direction === MessageDirection.INBOUND;
 
+    // Anti-duplicata do ECHO outbound: o bot/operador cria a Message OUTBOUND e só grava o
+    // externalId APÓS o POST ao provider. Se o eco (fromMe) chega nessa janela, a dedup por
+    // externalId acima não acha a linha em-voo (externalId ainda null) → criaria um 2º balão.
+    // Aqui adotamos o externalId do eco na linha já existente em vez de duplicar.
+    if (!isInbound && params.externalId) {
+      const emVoo = await this.prisma.message.findFirst({
+        where: {
+          conversationId: conv.id,
+          direction: MessageDirection.OUTBOUND,
+          externalId: null,
+          conteudo: params.conteudo,
+          criadoEm: { gte: new Date(Date.now() - 2 * 60 * 1000) },
+        },
+        orderBy: { criadoEm: 'desc' },
+        select: { id: true, conversationId: true },
+      });
+      if (emVoo) {
+        // Se a escrita do envio gravar o externalId primeiro (unique), o update aqui falha →
+        // ignora (a linha em-voo já ficou consistente). Em ambos os casos, sem balão duplicado.
+        await this.prisma.message
+          .update({ where: { id: emVoo.id }, data: { externalId: params.externalId } })
+          .catch(() => undefined);
+        return { conversationId: emVoo.conversationId, messageId: emVoo.id, duplicada: true };
+      }
+    }
+
     // Mescla senderName na meta pra renderizar autor da msg em grupos.
     const metaFinal: Record<string, unknown> = {
       ...(params.meta ?? {}),

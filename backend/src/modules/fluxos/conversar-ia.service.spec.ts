@@ -128,7 +128,7 @@ describe('ConversarIaService', () => {
         'emp-1',
         '11999990000@s.whatsapp.net',
         'Olá! Tudo bem?',
-        { idempotencyKey: 'fx:exec-1:no-ia:opener:b0' },
+        { idempotencyKey: expect.stringMatching(/^fx:exec\-1:no\-ia:opener:b0:[0-9a-f]{12}$/) },
       );
       expect(prisma.fluxoExecucao.update).toHaveBeenCalledWith(
         expect.objectContaining({
@@ -229,14 +229,14 @@ describe('ConversarIaService', () => {
         'emp-1',
         '11999990000@s.whatsapp.net',
         'João, oi',
-        { idempotencyKey: 'fx:exec-1:no-ia:opener:b0' },
+        { idempotencyKey: expect.stringMatching(/^fx:exec\-1:no\-ia:opener:b0:[0-9a-f]{12}$/) },
       );
       expect(whatsapp.enviarTexto).toHaveBeenNthCalledWith(
         2,
         'emp-1',
         '11999990000@s.whatsapp.net',
         'tudo bem?',
-        { idempotencyKey: 'fx:exec-1:no-ia:opener:b1' },
+        { idempotencyKey: expect.stringMatching(/^fx:exec\-1:no\-ia:opener:b1:[0-9a-f]{12}$/) },
       );
     });
 
@@ -435,7 +435,7 @@ describe('ConversarIaService', () => {
         'emp-1',
         '11999990000@s.whatsapp.net',
         'Show! Vou te conectar com a diretoria.',
-        { idempotencyKey: 'fx:exec-1:no-ia:t0:b0' },
+        { idempotencyKey: expect.stringMatching(/^fx:exec\-1:no\-ia:t0:b0:[0-9a-f]{12}$/) },
       );
       const upd = prisma.lead.update.mock.calls[0][0];
       expect(upd.data.variaveis).toMatchObject({
@@ -473,7 +473,7 @@ describe('ConversarIaService', () => {
         'emp-1',
         '11999990000@s.whatsapp.net',
         'Legal! E há quanto tempo atua?',
-        { idempotencyKey: 'fx:exec-1:no-ia:t0:b0' },
+        { idempotencyKey: expect.stringMatching(/^fx:exec\-1:no\-ia:t0:b0:[0-9a-f]{12}$/) },
       );
       expect(bus.disparar).not.toHaveBeenCalled();
       expect(queue.add).not.toHaveBeenCalled();

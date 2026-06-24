@@ -1,3 +1,4 @@
+import { createHash } from 'node:crypto';
 import { Injectable, Logger } from '@nestjs/common';
 import { InjectQueue } from '@nestjs/bullmq';
 import type { Queue } from 'bullmq';
@@ -859,12 +860,15 @@ export class ConversarIaService {
         delayRespostaSegundos: cfg?.delayRespostaSegundos ?? 0,
       },
       {
-        // Chave de idempotência por balão (`:b<i>`): retry/reprocesso reenvia a MESMA
-        // chave → o gate da Evolution deduplica e o lead não recebe o balão 2×.
+        // Chave de idempotência por balão = posição + hash do CONTEÚDO. Retry com a mesma
+        // resposta → mesma chave → o gate da Evolution deduplica (lead não recebe 2×). Mas se
+        // o conteúdo do balão mudar entre tentativas (resposta re-gerada), a chave muda e o
+        // balão certo sai — antes a chave só-posicional poderia suprimir um balão diferente.
         enviar: (() => {
           let i = 0;
           return (balao: string) => {
-            const ctx = idemKey ? { idempotencyKey: `${idemKey}:b${i++}` } : {};
+            const hash = createHash('sha1').update(balao).digest('hex').slice(0, 12);
+            const ctx = idemKey ? { idempotencyKey: `${idemKey}:b${i++}:${hash}` } : {};
             return this.whatsapp.enviarTexto(empresaId, peerId, balao, ctx).then(() => undefined);
           };
         })(),
