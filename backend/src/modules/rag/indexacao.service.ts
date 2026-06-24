@@ -3,7 +3,7 @@ import { InjectQueue } from '@nestjs/bullmq';
 import { Injectable, Logger } from '@nestjs/common';
 import { Queue } from 'bullmq';
 import { PrismaService } from '@database/prisma.service';
-import { EmbeddingService } from '@integrations/embeddings/embedding.service';
+import { EmbeddingService, EMBEDDING_DIMS } from '@integrations/embeddings/embedding.service';
 import { INDEXACAO_QUEUE, type IndexacaoJobData } from './rag.types';
 
 /** Opções padrão do job: retry exponencial, limpeza automática. */
@@ -63,6 +63,20 @@ export class IndexacaoService {
     return this.indexarChunk(data.id, data.empresaId);
   }
 
+  /**
+   * Guarda anti-loop: se o embedding não tem a dimensão da coluna vector(1536) — ex.: alguém
+   * trocou EMBEDDING_MODEL por um de outra dimensão — o cast ::vector falha SEMPRE e o
+   * reconciliador re-gera (e re-paga) o embedding a cada 5min. Melhor pular e alertar.
+   */
+  private dimOk(vec: number[], ref: string): boolean {
+    if (vec.length === EMBEDDING_DIMS) return true;
+    this.logger.error(
+      `Embedding ${ref} com ${vec.length} dims (esperado ${EMBEDDING_DIMS}) — EMBEDDING_MODEL não ` +
+        `casa com a coluna vector(${EMBEDDING_DIMS}). Pulando pra não loopar re-pagando embedding.`,
+    );
+    return false;
+  }
+
   private async indexarProduto(id: string, empresaId: string): Promise<void> {
     const p = await this.prisma.produto.findFirst({
       where: { id, empresaId },
@@ -94,6 +108,7 @@ export class IndexacaoService {
     const vec = await this.embedding.gerar(empresaId, texto);
     // Sem chave/mock/falha → não carimba (reconciliador tenta de novo quando houver chave).
     if (!vec) return;
+    if (!this.dimOk(vec, `Produto ${id}`)) return;
     await this.prisma.$executeRaw`
       UPDATE "Produto"
       SET "embedding" = ${toVectorLiteral(vec)}::vector,
@@ -125,6 +140,7 @@ export class IndexacaoService {
     }
     const vec = await this.embedding.gerar(empresaId, texto);
     if (!vec) return;
+    if (!this.dimOk(vec, `KnowledgeChunk ${id}`)) return;
     await this.prisma.$executeRaw`
       UPDATE "KnowledgeChunk"
       SET "embedding" = ${toVectorLiteral(vec)}::vector,
