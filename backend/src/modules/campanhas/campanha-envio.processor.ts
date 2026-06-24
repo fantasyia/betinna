@@ -158,7 +158,9 @@ export class CampanhaEnvioProcessor extends WorkerHost {
       if (canal === 'WHATSAPP' || canal === 'WHATSAPP_EMAIL') {
         if (dest.telefone && mensagemWaFinal) {
           const idemKey = `idempotent:campanha:${campanhaId}:${destinatarioId}:wa`;
-          if (await this.idempotency.claim(idemKey, 86_400)) {
+          // claimStrict: se o Redis cair, PROPAGA o erro (→ catch → ERRO + retry/dead-letter)
+          // em vez de virar "skip" e marcar ENVIADO sem ter enviado (perda silenciosa).
+          if (await this.idempotency.claimStrict(idemKey, 86_400)) {
             try {
               // Pacing global por empresa (mesmo ponto único de fluxos/bot).
               await this.pacing.aguardarSlot(dest.campanha.empresaId);
@@ -188,7 +190,9 @@ export class CampanhaEnvioProcessor extends WorkerHost {
             ? interpolar(dest.campanha.assunto, vars)
             : dest.campanha.nome;
           const idemKey = `idempotent:campanha:${campanhaId}:${destinatarioId}:email`;
-          if (await this.idempotency.claim(idemKey, 86_400)) {
+          // claimStrict: se o Redis cair, PROPAGA o erro (→ catch → ERRO + retry/dead-letter)
+          // em vez de virar "skip" e marcar ENVIADO sem ter enviado (perda silenciosa).
+          if (await this.idempotency.claimStrict(idemKey, 86_400)) {
             try {
               // Campanha por e-mail passa pela fachada única (TransactionalEmail →
               // Resend sistêmico, e-mail único da empresa). A fachada NÃO lança: em

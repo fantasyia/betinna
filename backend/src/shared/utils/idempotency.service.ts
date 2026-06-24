@@ -39,6 +39,17 @@ export class IdempotencyService {
     }
   }
 
+  /**
+   * Como claim(), mas PROPAGA o erro de Redis em vez de devolver false. Use quando
+   * "Redis indisponível" NÃO pode ser confundido com "já processado": senão o caller
+   * pula o envio e marca como enviado sem ter enviado (perda silenciosa). O erro deve
+   * FALHAR o job (retry/dead-letter), não virar skip-sucesso.
+   * Retorna true = reservado (siga); false = chave já existe (skip seguro).
+   */
+  async claimStrict(key: string, ttlSeconds = 86_400): Promise<boolean> {
+    return this.redis.setNxEx(key, '1', ttlSeconds);
+  }
+
   /** Verifica se a chave já está reservada (sem fazer claim). */
   async exists(key: string): Promise<boolean> {
     const v = await this.redis.get(key).catch(() => null);

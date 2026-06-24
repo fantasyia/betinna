@@ -153,15 +153,16 @@ async function main() {
     'SaldoFidelidade',       // 20260517000000_fidelidade
     'MovimentoFidelidade',   // 20260517000000_fidelidade
     'ProgramaFidelidade',    // 20260517000000_fidelidade
+    'FluxoStepClaim',        // idempotência do executor de fluxos
+    'KnowledgeChunk',        // RAG (base de conhecimento + embeddings)
   ];
 
   log('Verificando tabelas críticas pós-migrate…');
-  const checkSql = criticalTables
-    .map(
-      (t) =>
-        `SELECT '${t}' AS name, EXISTS (SELECT FROM information_schema.tables WHERE table_schema = current_schema() AND table_name = '${t}') AS exists`,
-    )
-    .join(' UNION ALL ');
+  // Probe: um SELECT por tabela crítica. `prisma db execute` NÃO retorna linhas (não dá pra
+  // ler EXISTS do stdout — era por isso que o check antigo era código morto). Mas ele retorna
+  // status != 0 se QUALQUER statement falhar — e um SELECT numa tabela inexistente falha.
+  // Assim detectamos o estado "migrate deploy retornou 0 mas as tabelas não existem".
+  const checkSql = criticalTables.map((t) => `SELECT 1 FROM "${t}" LIMIT 1;`).join('\n');
 
   const checkRes = spawnSync('npx', ['prisma', 'db', 'execute', '--stdin'], {
     input: checkSql,
@@ -169,8 +170,17 @@ async function main() {
     shell: process.platform === 'win32',
   });
 
-  // Se o check falhou ou se migrate deploy falhou, faz fallback db push.
-  const shouldFallback = res.status !== 0;
+  // Tabela crítica ausente = schema incompleto → precisa de fallback. Ignora falha transiente
+  // de rede no próprio check (aí não força db push à toa; o app sobe degradado e reconcilia depois).
+  const checkTransiente =
+    isTransientNetworkError(checkRes.stderr || '') || isTransientNetworkError(checkRes.stdout || '');
+  const schemaIncompleto = checkRes.status !== 0 && !checkTransiente;
+  if (schemaIncompleto) {
+    log('⚠️ Tabela crítica AUSENTE — migrate deploy retornou 0 mas o schema está incompleto.');
+  }
+
+  // Fallback db push se migrate deploy falhou OU se o schema ficou incompleto.
+  const shouldFallback = res.status !== 0 || schemaIncompleto;
 
   if (shouldFallback) {
     log('⚠️ Migrate deploy não aplicou tudo. Fallback: db push --accept-data-loss');
