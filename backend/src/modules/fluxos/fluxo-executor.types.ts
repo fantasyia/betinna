@@ -21,10 +21,12 @@ export function unidadeTempoMs(valor: number, unidade: UnidadeTempo): number {
   return Math.max(0, valor) * (mult[unidade] ?? 60_000);
 }
 
-/** Config do nó DELAY. */
+/** Config do nó DELAY. O front grava `quantidade`; `valor` é compat legada (lida, não escrita). */
 export interface DelayConfig {
-  valor: number;
-  unidade: UnidadeTempo;
+  quantidade?: number;
+  /** @deprecated chave antiga — o front sempre grava `quantidade`. Mantida só por compat de leitura. */
+  valor?: number;
+  unidade?: UnidadeTempo;
 }
 
 /** Config do nó CONDICAO (modo simples true/false OU roteador multi-saída). */

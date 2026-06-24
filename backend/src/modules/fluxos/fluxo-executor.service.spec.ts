@@ -465,7 +465,8 @@ describe('FluxoExecutorService', () => {
       const delayNo = fakeNo({
         id: 'no-delay',
         tipo: 'DELAY',
-        config: { valor: 2, unidade: 'horas' },
+        // chave REAL gravada pelo front é `quantidade` (não `valor`).
+        config: { quantidade: 2, unidade: 'horas' },
       });
       prisma.fluxoExecucao.findUnique.mockResolvedValue(fakeExecucao({ status: 'EM_EXECUCAO' }));
       prisma.fluxoNo.findUnique.mockResolvedValue(delayNo);
@@ -475,6 +476,22 @@ describe('FluxoExecutorService', () => {
 
       const jobOpts = queue.add.mock.calls[0][2];
       expect(jobOpts.delay).toBe(2 * 3_600_000); // 2 horas em ms
+    });
+
+    it('DELAY respeita a quantidade configurada (3 dias = 3 dias, não 1)', async () => {
+      // Regressão: o back lia `cfg.valor` (que o front nunca grava) → todo DELAY virava 1 unidade.
+      const delayNo = fakeNo({
+        id: 'no-delay',
+        tipo: 'DELAY',
+        config: { quantidade: 3, unidade: 'dias' },
+      });
+      prisma.fluxoExecucao.findUnique.mockResolvedValue(fakeExecucao({ status: 'EM_EXECUCAO' }));
+      prisma.fluxoNo.findUnique.mockResolvedValue(delayNo);
+      prisma.fluxoEdge.findMany.mockResolvedValue([fakeEdge('no-delay', 'no-next')]);
+
+      await service.executarPasso('exec-1', 'no-delay', 'job-test');
+
+      expect(queue.add.mock.calls[0][2].delay).toBe(3 * 86_400_000); // 3 dias, não 1
     });
 
     it('CONDICAO node segue aresta com label correto', async () => {

@@ -186,8 +186,19 @@ export class PropostasService {
     dto: UpdatePropostaDto,
   ): Promise<PropostaWithRel> {
     const existing = await this.findById(user, id);
-    if (existing.status === 'ACEITA' || existing.status === 'RECUSADA') {
-      throw new BusinessRuleException(`Proposta em status ${existing.status} não pode ser editada`);
+    // Congela a partir do envio pro aceite: ACEITA/RECUSADA (terminal) E AGUARDANDO_ASSINATURA
+    // (link de aceite já enviado, aceiteToken válido). Sem isso, o rep editava itens/desconto/
+    // forma sob o link e o cliente aceitava um valor diferente do que viu.
+    if (
+      existing.status === 'ACEITA' ||
+      existing.status === 'RECUSADA' ||
+      existing.status === 'AGUARDANDO_ASSINATURA'
+    ) {
+      throw new BusinessRuleException(
+        existing.status === 'AGUARDANDO_ASSINATURA'
+          ? 'Proposta já enviada para assinatura — cancele o envio antes de editar'
+          : `Proposta em status ${existing.status} não pode ser editada`,
+      );
     }
     const data: Prisma.PropostaUpdateManyMutationInput = { ...dto };
     // Recalcula totais quando desconto/forma/condição mudam — senão subtotal/valor/

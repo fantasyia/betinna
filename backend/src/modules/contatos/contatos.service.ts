@@ -111,6 +111,15 @@ export class ContatosService {
       conversaWhere.proprietarioId = user.id;
     }
     if (repId) {
+      // O filtro ?representanteId NÃO pode furar o escopo de carteira: se há escopo (REP/GERENTE)
+      // e o rep pedido está fora dele, nega — senão sobrescrevia o {in: scope} e vazava carteira
+      // alheia (leads/clientes de qualquer rep da empresa).
+      if (scope !== null && !scope.includes(repId)) {
+        throw new ForbiddenException(
+          'Você não tem acesso à carteira deste representante',
+          ErrorCode.TENANT_ACCESS_DENIED,
+        );
+      }
       leadWhere.representanteId = repId;
       clienteWhere.representanteId = repId;
       conversaWhere.atribuidoId = repId;

@@ -18,6 +18,7 @@ import {
   unidadeTempoMs,
   type FluxoStepJobData,
   type DelayConfig,
+  type UnidadeTempo,
   type CondicaoConfig,
   type EnviarWhatsappConfig,
   type EnviarEmailConfig,
@@ -69,7 +70,7 @@ const toJsonInput = (v: Record<string, unknown>): Prisma.InputJsonObject =>
   v as unknown as Prisma.InputJsonObject;
 
 /** Converte unidade de delay para milissegundos (segundos/minutos/horas/dias). */
-function delayParaMs(valor: number, unidade: DelayConfig['unidade']): number {
+function delayParaMs(valor: number, unidade: UnidadeTempo): number {
   return unidadeTempoMs(valor, unidade);
 }
 
@@ -390,7 +391,10 @@ export class FluxoExecutorService {
       // DELAY: agenda próximo passo com delay
       if (no.tipo === 'DELAY') {
         const cfg = no.config as unknown as DelayConfig;
-        delayMs = delayParaMs(cfg.valor ?? 1, cfg.unidade ?? 'horas');
+        // O front grava `quantidade`; `valor` é compat legada. Default de unidade = 'minutos'
+        // (igual ao DelayForm) — antes lia só `valor` (sempre undefined → 1), então todo DELAY
+        // virava "1 hora" independente do que foi configurado.
+        delayMs = delayParaMs(cfg.quantidade ?? cfg.valor ?? 1, cfg.unidade ?? 'minutos');
       }
       await this.queue.add(
         'step',

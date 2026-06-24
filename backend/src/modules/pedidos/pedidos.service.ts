@@ -309,8 +309,12 @@ export class PedidosService {
     // Decide se precisa recalcular totais:
     //  - sempre que itens mudarem
     //  - sempre que descontoGeral mudar
+    //  - sempre que forma/condição mudarem (afetam o desconto à vista automático — B1)
     const precisaRecalcular =
-      novosItens !== undefined || camposGenericos.descontoGeral !== undefined;
+      novosItens !== undefined ||
+      camposGenericos.descontoGeral !== undefined ||
+      camposGenericos.formaPagamento !== undefined ||
+      camposGenericos.condicaoPagamento !== undefined;
 
     const itensFinais = novosItens
       ? await this.resolveItens(existing.empresaId, existing.clienteId, novosItens)
@@ -330,6 +334,13 @@ export class PedidosService {
     let totalsRecalc: PedidoTotals | null = null;
     let requerAprovacao = false;
     if (precisaRecalcular) {
+      // B1 — resolve o desconto à vista pela forma/condição FINAL (igual a create/preview),
+      // senão a edição descartava o desconto PIX/boleto-à-vista e cobrava mais caro.
+      const descAVistaPct = await this.resolveDescontoAVista(
+        existing.empresaId,
+        camposGenericos.formaPagamento ?? existing.formaPagamento,
+        camposGenericos.condicaoPagamento ?? existing.condicaoPagamento,
+      );
       totalsRecalc = this.pedidoPricing.pedidoTotals(
         itensFinais.map((i) => ({
           quantidade: i.quantidade,
@@ -338,6 +349,7 @@ export class PedidosService {
         })),
         descontoGeralFinal,
         COMISSAO_PADRAO_PCT,
+        descAVistaPct,
       );
 
       // Se mudou pra desconto acima do teto sem motivo, bloqueia.
