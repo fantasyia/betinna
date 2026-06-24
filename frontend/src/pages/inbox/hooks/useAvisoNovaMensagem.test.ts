@@ -34,7 +34,8 @@ describe('useAvisoNovaMensagem', () => {
     const { result } = renderHook((p) => useAvisoNovaMensagem(p), { initialProps: resp([0]) });
     act(() => result.current.alternarSom());
     expect(result.current.somLigado).toBe(false);
-    expect(localStorage.getItem('inbox.som')).toBe('off');
+    // O hook persiste na chave canônica ':' (o '.' ficou só como leitura legada).
+    expect(localStorage.getItem('inbox:som')).toBe('off');
   });
 
   it('1º load JÁ com não-lidas NÃO toca beep (baseline anti-fantasma)', () => {

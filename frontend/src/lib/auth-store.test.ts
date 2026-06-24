@@ -48,7 +48,9 @@ async function loadStore() {
   return import('./auth-store');
 }
 
-const EMPRESA_KEY = 'betinna.empresaAtiva';
+// Chave canônica atual do auth-store (antes era 'betinna.empresaAtiva' com ponto;
+// virou ':' e o ponto ficou só como leitura legada). O teste seguia no ponto → lia null.
+const EMPRESA_KEY = 'betinna:empresaAtiva';
 
 beforeEach(() => {
   setSentryUserMock.mockClear();
