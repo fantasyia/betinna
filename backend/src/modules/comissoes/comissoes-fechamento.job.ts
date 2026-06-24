@@ -31,7 +31,12 @@ export class ComissoesFechamentoJob {
     if (this.env.get('NODE_ENV') === 'test') return;
     // AUDITORIA P0-5 BullMQ: cron mensal só pode rodar em 1 réplica.
     // TTL 1h é suficiente — fechamento de 50 empresas leva &lt; 10min.
-    if (!(await this.cronLock.acquire('comissoes-fechamento-mensal', 3600))) {
+    // fail-CLOSED: fechamento mexe em dinheiro (folha) — sem lock confiável, NÃO roda.
+    if (
+      !(await this.cronLock.acquire('comissoes-fechamento-mensal', 3600, {
+        failClosedOnError: true,
+      }))
+    ) {
       return;
     }
 

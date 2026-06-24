@@ -58,6 +58,31 @@ export class BackupService {
     return restoreTest();
   }
 
+  /**
+   * Verifica a integridade do último backup e ALERTA (e-mail + log) se falhar. Pra rodar num
+   * cron pós-backup: ter backup que não restaura é tão ruim quanto não ter backup. Nunca lança.
+   */
+  async verificarEAlertar(): Promise<RestoreTestResult> {
+    let r: RestoreTestResult;
+    try {
+      r = await this.verificarUltimoBackup();
+    } catch (err) {
+      const erro = err instanceof Error ? err.message : String(err);
+      this.logger.error(`Verificação do backup lançou: ${erro}`);
+      await this.alertarFalha(`Verificação de integridade do backup lançou exceção: ${erro}`);
+      return { ok: false, path: '', modo: 'list', erro };
+    }
+    if (!r.ok) {
+      this.logger.error(`Verificação do último backup FALHOU: ${r.erro ?? 'sem detalhe'}`);
+      await this.alertarFalha(
+        `Verificação de integridade do último backup falhou (${r.path || 'sem arquivo'}): ${r.erro ?? 'sem detalhe'}`,
+      );
+    } else {
+      this.logger.log(`Verificação do último backup OK (${r.modo}, ${r.objetos ?? '?'} objetos).`);
+    }
+    return r;
+  }
+
   /** Metadados do backup mais recente (data/tamanho), sem baixar o arquivo. */
   async infoUltimo(): Promise<UltimoBackupInfo | null> {
     return infoUltimoBackup();

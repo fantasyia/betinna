@@ -34,7 +34,11 @@ export class CronLockService {
    * @param name  Nome único do cron (ex: 'comissoes-fechamento')
    * @param ttlSeconds  TTL do lock em segundos (use intervalo cron - margem)
    */
-  async acquire(name: string, ttlSeconds: number): Promise<boolean> {
+  async acquire(
+    name: string,
+    ttlSeconds: number,
+    opts?: { failClosedOnError?: boolean },
+  ): Promise<boolean> {
     const key = `cron:lock:${name}`;
     try {
       const acquired = await this.redis.setNxEx(key, this.instanceId, ttlSeconds);
@@ -45,17 +49,33 @@ export class CronLockService {
       }
       return acquired;
     } catch (err) {
-      // Se Redis está fora, melhor deixar rodar (singleton degraded) do que parar
       const msg = err instanceof Error ? err.message : String(err);
-      this.logger.warn(`CronLock falha em ${name}: ${msg} — executando sem lock`);
+      // Jobs com efeito monetário/destrutivo (comissão, purga LGPD) preferem NÃO rodar a
+      // arriscar duplicar sem lock → fail-CLOSED. Jobs leves/idempotentes seguem degradados.
+      if (opts?.failClosedOnError) {
+        this.logger.error(
+          `CronLock falha em ${name}: ${msg} — fail-CLOSED (job crítico não roda).`,
+        );
+        return false;
+      }
+      this.logger.warn(`CronLock falha em ${name}: ${msg} — executando sem lock (degradado).`);
       return true;
     }
   }
 
-  /** Libera o lock manualmente (opcional — TTL já cuida). */
+  /**
+   * Libera o lock — só se ESTA réplica é a dona (fencing via Lua compare-and-delete). Sem isso,
+   * uma réplica lenta podia apagar o lock que outra já readquiriu, abrindo execução em dobro.
+   */
   async release(name: string): Promise<void> {
-    await this.redis.del(`cron:lock:${name}`).catch(() => {
-      /* ignora — TTL eventualmente limpa */
-    });
+    await this.redis
+      .eval(
+        "if redis.call('get', KEYS[1]) == ARGV[1] then return redis.call('del', KEYS[1]) else return 0 end",
+        [`cron:lock:${name}`],
+        [this.instanceId],
+      )
+      .catch(() => {
+        /* ignora — TTL eventualmente limpa */
+      });
   }
 }

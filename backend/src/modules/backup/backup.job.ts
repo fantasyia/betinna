@@ -46,4 +46,20 @@ export class BackupJob {
       this.logger.error(`Backup diário terminou com falha: ${r.erro}`);
     }
   }
+
+  /**
+   * Verifica a INTEGRIDADE do backup mais recente — 30min após o backup das 03:00. Sem isto,
+   * a restaurabilidade nunca era comprovada (backup que não restaura = não ter backup).
+   */
+  @Cron('30 3 * * *', { name: 'backup-verificacao', timeZone: 'UTC' })
+  async verificarBackupDiario(): Promise<void> {
+    if (this.env.get('NODE_ENV') === 'test') return;
+    if (this.env.get('BACKUP_ENABLED') === false) return;
+    // 1 réplica só; TTL 10min cobre a verificação.
+    if (!(await this.cronLock.acquire('backup-verificacao', 600))) {
+      return;
+    }
+    this.logger.log('Verificação de integridade do backup iniciada…');
+    await this.backup.verificarEAlertar();
+  }
 }

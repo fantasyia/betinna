@@ -42,7 +42,10 @@ export class RetentionCleanupJob {
   async purgeOldRecords(): Promise<void> {
     if (this.env.get('NODE_ENV') === 'test') return;
     // Cron em 1 réplica só. TTL 30min cobre tabelas grandes.
-    if (!(await this.cronLock.acquire('retention-cleanup-mensal', 1800))) {
+    // fail-CLOSED: purga é destrutiva (apaga dados antigos) — sem lock confiável, NÃO roda.
+    if (
+      !(await this.cronLock.acquire('retention-cleanup-mensal', 1800, { failClosedOnError: true }))
+    ) {
       return;
     }
 
