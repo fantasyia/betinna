@@ -585,7 +585,7 @@ export class FluxoExecutorService {
         return this.acaoEnviarEmail(cfg as EnviarEmailConfig, ctx, empresaId, idemBase);
 
       case 'CRIAR_TAREFA':
-        return this.acaoCriarTarefa(cfg as CriarTarefaConfig, ctx, empresaId);
+        return this.acaoCriarTarefa(cfg as CriarTarefaConfig, ctx, empresaId, idemBase);
 
       case 'MUDAR_TAG':
         return this.acaoMudarTag(cfg as MudarTagConfig, ctx, empresaId);
@@ -790,6 +790,7 @@ export class FluxoExecutorService {
     cfg: CriarTarefaConfig,
     ctx: ExecucaoContexto,
     empresaId: string,
+    idemBase: string,
   ): Promise<Record<string, unknown>> {
     this.assertEmpresaId(empresaId, 'CRIAR_TAREFA');
     const clienteId = ctx['clienteId'] as string | undefined;
@@ -849,18 +850,39 @@ export class FluxoExecutorService {
     const data = new Date();
     data.setDate(data.getDate() + (cfg.diasApartirDeHoje ?? 0));
 
-    const tarefa = await this.prisma.agendaItem.create({
-      data: {
-        empresaId,
-        usuarioId: responsavelId,
-        clienteId: clienteId ?? null,
-        titulo,
-        data,
-        tipo: cfg.tipo ?? 'TAREFA',
-        ...(observacao ? { observacao } : {}),
-      },
-    });
-    return { tarefaId: tarefa.id, titulo, responsavelId, data: data.toISOString() };
+    // Idempotente por passo: retry pós-efeito (claim ainda EXECUTANDO) recriaria a tarefa.
+    // origemJobId @unique = a chave determinística do passo (idemBase) → 2ª tentativa cai em
+    // P2002 e adota a tarefa já criada, sem duplicar.
+    try {
+      const tarefa = await this.prisma.agendaItem.create({
+        data: {
+          empresaId,
+          usuarioId: responsavelId,
+          clienteId: clienteId ?? null,
+          titulo,
+          data,
+          tipo: cfg.tipo ?? 'TAREFA',
+          origemJobId: idemBase,
+          ...(observacao ? { observacao } : {}),
+        },
+      });
+      return { tarefaId: tarefa.id, titulo, responsavelId, data: data.toISOString() };
+    } catch (err) {
+      if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === 'P2002') {
+        const existente = await this.prisma.agendaItem.findFirst({
+          where: { origemJobId: idemBase },
+          select: { id: true },
+        });
+        return {
+          tarefaId: existente?.id,
+          titulo,
+          responsavelId,
+          data: data.toISOString(),
+          idempotente: true,
+        };
+      }
+      throw err;
+    }
   }
 
   private async acaoMudarTag(

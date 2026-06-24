@@ -217,9 +217,10 @@ export class ComissoesService {
         const pctRep = escalonada ? pctFaixa : (pctPorRep.get(row.representanteId) ?? null);
         return this.prisma.comissao.upsert({
           where: {
-            empresaId_representanteId_ano_mes: {
+            empresaId_representanteId_tipo_ano_mes: {
               empresaId,
               representanteId: row.representanteId,
+              tipo: 'REP',
               ano: dto.ano,
               mes: dto.mes,
             },
@@ -303,9 +304,10 @@ export class ComissoesService {
         gerentesProcessados += 1;
         return this.prisma.comissao.upsert({
           where: {
-            empresaId_representanteId_ano_mes: {
+            empresaId_representanteId_tipo_ano_mes: {
               empresaId,
               representanteId: g.id,
+              tipo: 'GERENTE',
               ano: dto.ano,
               mes: dto.mes,
             },

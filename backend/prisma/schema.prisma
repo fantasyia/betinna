@@ -1283,7 +1283,9 @@ model Comissao {
   empresa       Empresa @relation(fields: [empresaId], references: [id], onDelete: Cascade)
   representante Usuario @relation(fields: [representanteId], references: [id])
 
-  @@unique([empresaId, representanteId, ano, mes])
+  // `tipo` na unique: o mesmo usuário pode ser REP e GERENTE no mesmo mês (dois registros
+  // distintos). Sem tipo, o upsert de GERENTE sobrescrevia a comissão REP do próprio usuário.
+  @@unique([empresaId, representanteId, tipo, ano, mes])
   @@index([tipo])
   // Relatório mensal: WHERE empresaId AND ano=Y AND mes=M (sem filtro de rep)
   @@index([empresaId, ano, mes])
@@ -1307,6 +1309,9 @@ model AgendaItem {
   tipo          AgendaTipo @default(VISITA)
   observacao    String?    @db.Text
   googleEventId String?
+  /// Idempotência da ação CRIAR_TAREFA de fluxos: chave determinística do passo (fx:<jobId>).
+  /// Retry pós-efeito tenta recriar a mesma tarefa → P2002 no @unique → skip (sem duplicar).
+  origemJobId   String?    @unique
   criadoEm      DateTime   @default(now())
 
   // Recorrência (v1.5.0) — geração leve de instâncias filhas
