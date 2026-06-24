@@ -1,5 +1,6 @@
 import type { ReactNode } from 'react';
 import { cn } from '@/lib/cn';
+import { useIsMobile } from '@/components/PageLayout';
 
 const BTN_GHOST =
   'inline-flex items-center justify-center bg-transparent text-text rounded-md px-3 py-2.5 md:px-2 md:py-1 min-h-[44px] md:min-h-0 text-[13px] font-medium cursor-pointer tracking-[-0.1px]';
@@ -19,6 +20,40 @@ export interface TableProps<T> {
 }
 
 export function Table<T>({ data, columns, rowKey, onRowClick }: TableProps<T>) {
+  const isMobile = useIsMobile();
+
+  // Mobile: cada linha vira um card empilhado (label: valor) — tabela densa no
+  // celular obriga o rep a rolar coluna a coluna e perder o contexto da linha.
+  // Render exclusivo (não duplica conteúdo no DOM): em teste isMobile=false → tabela.
+  if (isMobile) {
+    return (
+      <div className="flex flex-col gap-2">
+        {data.map((row) => (
+          <div
+            key={rowKey(row)}
+            data-testid="data-row-card"
+            onClick={onRowClick ? () => onRowClick(row) : undefined}
+            className={cn(
+              'rounded-md border border-border bg-surface p-3 flex flex-col gap-1.5',
+              onRowClick && 'cursor-pointer active:bg-surface-hover',
+            )}
+          >
+            {columns.map((c) => (
+              <div key={c.key} className="flex items-start justify-between gap-3">
+                <span className="shrink-0 pt-0.5 text-[10px] font-semibold uppercase tracking-[0.6px] text-muted">
+                  {c.header}
+                </span>
+                <span className="min-w-0 break-words text-right text-[13px] text-text">
+                  {c.render(row)}
+                </span>
+              </div>
+            ))}
+          </div>
+        ))}
+      </div>
+    );
+  }
+
   return (
     <div style={{ overflowX: 'auto' }}>
       <table
