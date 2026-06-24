@@ -233,7 +233,9 @@ export default function AgendaPage() {
 
         <StateView loading={loading} error={error} onRetry={refetch}>
           <DndContext sensors={sensors} onDragEnd={(e) => void handleDragEnd(e)}>
-            <div className="grid grid-cols-[repeat(7,minmax(140px,1fr))] gap-2 overflow-x-auto">
+            {/* Mobile: dias empilhados (1 coluna, lista vertical) — a grade de 7×140px
+                não cabe em 360px. Desktop (md:): grade semanal com scroll horizontal. */}
+            <div className="grid grid-cols-1 gap-2 md:grid-cols-[repeat(7,minmax(140px,1fr))] md:overflow-x-auto">
               {days.map((d) => (
                 <DayColumn
                   key={d.toDateString()}

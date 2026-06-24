@@ -2,6 +2,7 @@ import { useState } from 'react';
 import {
   ArrowLeft,
   Building2,
+  MoreVertical,
   Receipt,
   StickyNote,
   Trash2,
@@ -10,6 +11,7 @@ import {
 import { Avatar, Button, ChannelBadge, IconButton } from '@/components/ui';
 import type { UserRole } from '@/types/auth';
 import { hasPermission } from '@/hooks/usePermission';
+import { useIsMobile } from '@/components/PageLayout';
 import type { Conversation, ConversationStatus } from '../lib/types';
 import { CANAL_LABEL, STATUS_LABEL } from '../lib/canais';
 import { fmtPeer } from '../lib/format';
@@ -55,6 +57,9 @@ export function ThreadHeader({
   const c = conv;
   const podeZerar = hasPermission(role, 'inbox.zerar');
   const [confirmZerar, setConfirmZerar] = useState(false);
+  // Mobile: as ~9 ações não cabem na linha (recortavam). Vão pra um menu kebab.
+  const isMobile = useIsMobile();
+  const [menuOpen, setMenuOpen] = useState(false);
 
   // Telefone formatado do contato. Preferimos o telefone REAL resolvido no backend
   // (metadata.telefone) — cobre contatos com LID/número oculto. '' quando não há
@@ -100,6 +105,9 @@ export function ThreadHeader({
                 : CANAL_LABEL[c.canal]}
             </div>
           </div>
+          {(() => {
+            const acoesNode = (
+              <>
           {c.cliente?.id && (
             <Button
               type="button"
@@ -195,6 +203,35 @@ export function ThreadHeader({
           {c.canal === 'WHATSAPP' && (
             <ControlesBot conv={c} botGlobalAtivo={botGlobalAtivo} acoes={acoes} />
           )}
+              </>
+            );
+            // Desktop: ações inline. Mobile: kebab abre um menu vertical com as ações.
+            return isMobile ? (
+              <div className="relative shrink-0">
+                <IconButton
+                  aria-label="Mais ações"
+                  variant="ghost"
+                  size="md"
+                  icon={<MoreVertical />}
+                  onClick={() => setMenuOpen((v) => !v)}
+                  data-testid="inbox-acoes-menu-btn"
+                />
+                {menuOpen && (
+                  <div
+                    className="absolute right-0 top-full z-30 mt-1 flex flex-col items-stretch gap-1 rounded-md border border-border bg-surface p-2 shadow-lg min-w-[220px]"
+                    onClick={(e) => {
+                      // Fecha ao tocar numa ação (botão); selects de Status/Bot mantêm aberto.
+                      if ((e.target as HTMLElement).closest('button')) setMenuOpen(false);
+                    }}
+                  >
+                    {acoesNode}
+                  </div>
+                )}
+              </div>
+            ) : (
+              <div className="flex items-center gap-2">{acoesNode}</div>
+            );
+          })()}
         </>
       ) : (
         <span className="text-muted text-sm">Carregando…</span>

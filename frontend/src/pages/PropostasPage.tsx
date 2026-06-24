@@ -1174,7 +1174,7 @@ function PropostaFormDialog({
             {/* Header row — labels visíveis pra cada coluna do item */}
             {itens.length > 0 && (
               <div
-                className="grid grid-cols-[1fr_70px_70px_90px_32px] gap-2 px-2.5 text-[10px] font-semibold uppercase tracking-wider text-muted"
+                className="hidden sm:grid grid-cols-[1fr_70px_70px_90px_32px] gap-2 px-2.5 text-[10px] font-semibold uppercase tracking-wider text-muted"
                 aria-hidden="true"
               >
                 <span>Produto</span>
@@ -1308,9 +1308,12 @@ function ItemRow({
   testId: string;
 }) {
   return (
+    // Mobile: empilha (produto em linha cheia; qtd/desc/preço/remover na 2ª linha).
+    // Desktop (sm): grade de 5 colunas — o wrapper interno vira `sm:contents` e
+    // dissolve, deixando qtd/desc/preço/remover virarem as colunas 2-5 da grade.
     <div
       data-testid={testId}
-      className="grid grid-cols-[1fr_70px_70px_90px_32px] gap-2 items-start p-2.5 rounded-md border border-border bg-bg-alt"
+      className="flex flex-col gap-2 p-2.5 rounded-md border border-border bg-bg-alt sm:grid sm:grid-cols-[1fr_70px_70px_90px_32px] sm:items-start"
     >
       <AsyncCombobox<ProdutoOpt>
         testId={`${testId}-produto`}
@@ -1326,6 +1329,7 @@ function ItemRow({
         value={item.produto}
         onChange={(p) => onChange({ produto: p })}
       />
+      <div className="grid grid-cols-[1fr_1fr_1fr_auto] items-start gap-2 sm:contents">
       <div className="flex items-center gap-1.5">
         <Input
           type="number"
@@ -1384,6 +1388,7 @@ function ItemRow({
       ) : (
         <span />
       )}
+      </div>
     </div>
   );
 }

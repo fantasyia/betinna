@@ -98,6 +98,17 @@ function FluxoEditorInner({
         onMobilePanel={(p) => setMobilePanel((cur) => (cur === p ? null : p))}
       />
 
+      {/* Aviso mobile: o editor de fluxo é arrastar-e-soltar (HTML5 DnD + handles
+          pequenos), que não funciona no toque. Quem edita fluxo é gestor no desktop —
+          no celular o fluxo dá pra visualizar, não pra montar. */}
+      <div className="md:hidden flex items-center gap-2 px-4 py-2 border-b border-border bg-bg-alt text-xs text-muted">
+        <AlertCircle className="h-4 w-4 shrink-0" />
+        <span>
+          Edição de fluxos funciona melhor no computador — montar/conectar blocos usa
+          arrastar-e-soltar, difícil no celular.
+        </span>
+      </div>
+
       <TestarFluxoModal
         aberto={testarAberto}
         onClose={() => setTestarAberto(false)}
