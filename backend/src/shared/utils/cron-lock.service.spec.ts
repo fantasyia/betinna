@@ -7,7 +7,8 @@ import { CronLockService } from './cron-lock.service';
 
 const makeRedisMock = () => ({
   setNxEx: vi.fn(),
-  del: vi.fn().mockResolvedValue(1),
+  // release() agora é compare-and-delete via eval (Lua), não del direto.
+  eval: vi.fn().mockResolvedValue(1),
 });
 
 // ---------------------------------------------------------------------------
@@ -70,14 +71,19 @@ describe('CronLockService', () => {
   // -------------------------------------------------------------------------
 
   describe('release', () => {
-    it('remove chave do Redis no formato cron:lock:{name}', async () => {
+    it('faz compare-and-delete (eval) na chave cron:lock:{name}', async () => {
       await service.release('meu-cron');
 
-      expect(redis.del).toHaveBeenCalledWith('cron:lock:meu-cron');
+      // Lua compare-and-delete: script com del, KEYS=[chave], ARGV=[instanceId].
+      expect(redis.eval).toHaveBeenCalledWith(
+        expect.stringContaining('del'),
+        ['cron:lock:meu-cron'],
+        expect.any(Array),
+      );
     });
 
-    it('não lança quando del falha (TTL cuida da limpeza)', async () => {
-      redis.del.mockRejectedValue(new Error('Redis error'));
+    it('não lança quando o eval falha (TTL cuida da limpeza)', async () => {
+      redis.eval.mockRejectedValue(new Error('Redis error'));
 
       await expect(service.release('meu-cron')).resolves.toBeUndefined();
     });
@@ -103,7 +109,15 @@ describe('CronLockService', () => {
           store.set(key, { value, expiresAt: now + ttl * 1000 });
           return true;
         }),
-        del: vi.fn(async (key: string) => (store.delete(key) ? 1 : 0)),
+        // eval = compare-and-delete (fencing): só apaga se o value bate com ARGV[0] (instanceId).
+        eval: vi.fn(async (_script: string, keys: string[], args: string[]) => {
+          const e = store.get(keys[0]);
+          if (e && e.value === args[0]) {
+            store.delete(keys[0]);
+            return 1;
+          }
+          return 0;
+        }),
       };
     }
 
