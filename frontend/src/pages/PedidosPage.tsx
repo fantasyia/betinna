@@ -61,7 +61,6 @@ import {
 import { cn } from '@/lib/cn';
 import {
   formatMoeda as fmtBRL,
-  formatMoedaCompacta as fmtBRLCompact,
   formatNumero,
 } from '@/lib/masks';
 
@@ -1109,7 +1108,7 @@ function PedidoDetailDrawer({
                             {it.quantidade}
                           </td>
                           <td className="px-3 py-2 text-right text-sm text-text-subtle tabular">
-                            {fmtBRLCompact(it.precoUnitario)}
+                            {fmtBRL(it.precoUnitario)}
                           </td>
                           <td className="px-3 py-2 text-right text-sm font-semibold text-text tabular">
                             {fmtBRL(it.total)}

@@ -254,6 +254,15 @@ export class ClientesService {
       }
       if (dto.representanteId) {
         await this.assertRepValido(existing.empresaId, dto.representanteId);
+        // GERENTE só reatribui pra um REP da própria gerência (mesmo check do assignRep) —
+        // senão o PATCH furava o escopo que o assignRep aplica.
+        const scope = await this.repScope.getRepIds(user);
+        if (scope !== null && !scope.includes(dto.representanteId)) {
+          throw new ForbiddenException(
+            'Você não pode atribuir o cliente a um representante fora da sua gerência',
+            ErrorCode.TENANT_ACCESS_DENIED,
+          );
+        }
       }
     }
     if (dto.cnpj && dto.cnpj !== existing.cnpj) {

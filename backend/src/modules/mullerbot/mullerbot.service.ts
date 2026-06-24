@@ -28,6 +28,8 @@ const CHARS_PER_TOKEN = 4;
  * Garante margem mesmo quando a estimativa erra por baixo.
  */
 const SAFETY_MARGIN_TOKENS = 200;
+/** Custo fixo aproximado de uma imagem no orçamento (gpt-4o vision, tile padrão ~765 tk). */
+const IMAGE_TOKENS_APROX = 765;
 
 /**
  * Lista de reserva pro dropdown de modelo quando a OpenAI não lista (chave sem
@@ -112,9 +114,17 @@ export class MullerBotService {
     // 1. Busca produtos relevantes (top-K)
     const produtos = await this.produtoSearch.buscar(user.empresaIdAtiva, dto.pergunta, dto.topK);
 
-    // 2. Verifica orçamento: pergunta sozinha não pode estourar
+    // Histórico carregado ANTES do orçamento — senão a estimativa ignora os turns anteriores
+    // e a truncagem do catálogo fica otimista demais (risco de estourar o context window).
+    const historico = dto.sessionId ? await this.cache.getHistorico(user.id, dto.sessionId) : [];
+    const tokensHistorico = historico.reduce((acc, h) => acc + this.estimarTokens(h.content), 0);
+
+    // 2. Verifica orçamento: pergunta + histórico não podem estourar
     const overheadTokens =
-      this.estimarTokens(systemPrompt) + this.estimarTokens(dto.pergunta) + SAFETY_MARGIN_TOKENS;
+      this.estimarTokens(systemPrompt) +
+      this.estimarTokens(dto.pergunta) +
+      tokensHistorico +
+      SAFETY_MARGIN_TOKENS;
     if (overheadTokens >= maxInputTokens) {
       throw new BusinessRuleException(
         `Pergunta muito longa: estima ${overheadTokens} tokens, limite é ${maxInputTokens}. Reduza o texto.`,
@@ -151,10 +161,7 @@ export class MullerBotService {
       }
     }
 
-    // 5. Carrega histórico se sessionId fornecido
-    const historico = dto.sessionId ? await this.cache.getHistorico(user.id, dto.sessionId) : [];
-
-    // 6. Chama OpenAI (com histórico injetado, se houver)
+    // 5. Chama OpenAI (com histórico injetado, se houver — já carregado acima p/ o orçamento)
     const resultado = await this.chamarOpenAI(
       creds,
       modelo,
@@ -266,6 +273,9 @@ export class MullerBotService {
       const overhead =
         this.estimarTokens(systemPrompt) +
         this.estimarTokens(mensagemCliente) +
+        // Imagem consome tokens de visão que o estimador de texto ignora — conta o custo fixo
+        // pra a truncagem do catálogo não estourar o context window quando vem foto.
+        (opts.imagemDataUrl ? IMAGE_TOKENS_APROX : 0) +
         SAFETY_MARGIN_TOKENS;
       const orcamentoCatalogo = Math.max(0, maxInputTokens - overhead);
       const montado = this.montarUserMessage(mensagemCliente, produtos, orcamentoCatalogo);
