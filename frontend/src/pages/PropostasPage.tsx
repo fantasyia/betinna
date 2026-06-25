@@ -1334,7 +1334,8 @@ function ItemRow({
           type="number"
           min={1}
           value={item.quantidade}
-          onChange={(e) => onChange({ quantidade: Math.max(1, Number(e.target.value)) })}
+          // `|| 1` evita NaN (texto não-numérico → Math.max(1, NaN) seria NaN).
+          onChange={(e) => onChange({ quantidade: Math.max(1, Number(e.target.value) || 1) })}
           data-testid={`${testId}-qt`}
           aria-label="Quantidade"
           className="flex-1 min-w-0"
@@ -1354,7 +1355,9 @@ function ItemRow({
         max={80}
         step="0.1"
         value={item.desconto}
-        onChange={(e) => onChange({ desconto: Number(e.target.value) })}
+        // Clamp no ESTADO [0,80] (max=80 do DOM não impede digitar fora) — senão desconto>100
+        // deixava o subtotal-preview negativo, divergindo do que o backend recalcula/salva.
+        onChange={(e) => onChange({ desconto: Math.min(80, Math.max(0, Number(e.target.value) || 0)) })}
         data-testid={`${testId}-desc`}
         aria-label="Desconto %"
         placeholder="%"

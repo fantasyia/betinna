@@ -261,10 +261,21 @@ export async function downloadFile(path: string, filename: string): Promise<void
   const url = path.startsWith('http')
     ? path
     : `${BASE_URL}${API_PREFIX}${path.startsWith('/') ? path : `/${path}`}`;
-  const sess = getSession();
-  const res = await fetch(url, {
-    headers: sess?.accessToken ? { Authorization: `Bearer ${sess.accessToken}` } : {},
-  });
+  // Mesmo contrato do request: Authorization + X-Empresa-Id (sessão → localStorage) + refresh
+  // 1× em 401. Sem isso, download autenticado podia dar 403 'Empresa não definida' ou 401 sem retry.
+  const fetchOnce = async (): Promise<Response> => {
+    const sess = getSession();
+    const empresaId = sess?.user?.empresaIdAtiva ?? getStoredEmpresaId();
+    const headers: Record<string, string> = {};
+    if (sess?.accessToken) headers.Authorization = `Bearer ${sess.accessToken}`;
+    if (empresaId) headers['X-Empresa-Id'] = empresaId;
+    return fetch(url, { headers });
+  };
+  let res = await fetchOnce();
+  if (res.status === 401) {
+    const refreshed = await refreshAccessToken();
+    if (refreshed) res = await fetchOnce();
+  }
   if (!res.ok) {
     throw new ApiError(res.status, 'DOWNLOAD_ERROR', `Falha no download (${res.status})`);
   }

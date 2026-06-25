@@ -37,8 +37,12 @@ export function formatMoeda(v: number): string {
  * `fmtBRLCompact` copiada idêntica em 7 páginas.
  */
 export function formatMoedaCompacta(v: number): string {
-  if (v >= 1_000_000) return `R$ ${(v / 1_000_000).toFixed(1)}M`;
-  if (v >= 1_000) return `R$ ${(v / 1_000).toFixed(1)}k`;
+  // Compacta pelo módulo e reanexa o sinal — senão negativos (estornos/saldos) caíam no
+  // formato completo enquanto positivos viravam 'R$ 1.2M', inconsistente em dashboards.
+  const a = Math.abs(v);
+  const sinal = v < 0 ? '-' : '';
+  if (a >= 1_000_000) return `${sinal}R$ ${(a / 1_000_000).toFixed(1)}M`;
+  if (a >= 1_000) return `${sinal}R$ ${(a / 1_000).toFixed(1)}k`;
   return formatMoeda(v);
 }
 

@@ -1206,7 +1206,7 @@ function BulkTagsModal({
       });
       toast.success(
         modo === 'adicionar' ? 'Tags aplicadas' : 'Tags removidas',
-        `${res.afetados} cliente${res.afetados === 1 ? '' : 's'} atualizado${res.afetados === 1 ? '' : 's'}`,
+        `${(res.afetados ?? 0)} cliente${(res.afetados ?? 0) === 1 ? '' : 's'} atualizado${(res.afetados ?? 0) === 1 ? '' : 's'}`,
       );
       onDone();
     } catch (err) {
@@ -1300,7 +1300,7 @@ function BulkStatusModal({
       });
       toast.success(
         'Status atualizado',
-        `${res.afetados} cliente${res.afetados === 1 ? '' : 's'} agora ${STATUS_LABEL[status]}`,
+        `${(res.afetados ?? 0)} cliente${(res.afetados ?? 0) === 1 ? '' : 's'} agora ${STATUS_LABEL[status]}`,
       );
       onDone();
     } catch (err) {
@@ -1377,7 +1377,7 @@ function BulkDeleteModal({
         excluidos: number;
         falhas: Array<{ id: string; erro: string }>;
       }>('/clientes/excluir-massa', { clienteIds });
-      if (res.falhas.length === 0) {
+      if ((res.falhas?.length ?? 0) === 0) {
         toast.success(`${res.excluidos} cliente${res.excluidos === 1 ? '' : 's'} excluído${res.excluidos === 1 ? '' : 's'}`);
         onDone();
       } else {
@@ -1422,11 +1422,11 @@ function BulkDeleteModal({
           <p className="text-success font-medium">
             {result.excluidos} excluído{result.excluidos === 1 ? '' : 's'} com sucesso.
           </p>
-          {result.falhas.length > 0 && (
+          {(result.falhas?.length ?? 0) > 0 && (
             <div>
               <p className="text-warning font-medium mb-1">
-                {result.falhas.length} não pôde{result.falhas.length === 1 ? '' : 'ram'} ser
-                excluído{result.falhas.length === 1 ? '' : 's'}:
+                {(result.falhas?.length ?? 0)} não pôde{(result.falhas?.length ?? 0) === 1 ? '' : 'ram'} ser
+                excluído{(result.falhas?.length ?? 0) === 1 ? '' : 's'}:
               </p>
               <ul className="list-disc pl-5 text-muted text-xs max-h-40 overflow-y-auto">
                 {result.falhas.map((f) => (

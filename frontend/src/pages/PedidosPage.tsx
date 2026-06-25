@@ -326,14 +326,15 @@ export default function PedidosPage() {
         path,
         body,
       );
+      // Normaliza o envelope — se o endpoint responder fora do shape esperado, não estoura
+      // TypeError (que sugeriria 'falhou' mesmo tendo executado, levando a reexecução/dobra).
+      const falhas = res.falhas ?? [];
+      const okCount = res.ok ?? 0;
       const acao = tipo === 'omie' ? 'enviados ao OMIE' : 'cancelados';
-      if (res.falhas.length === 0) {
-        toast.success(`${res.ok} pedido(s) ${acao}`);
+      if (falhas.length === 0) {
+        toast.success(`${okCount} pedido(s) ${acao}`);
       } else {
-        toast.error(
-          `${res.ok} ok, ${res.falhas.length} falhou`,
-          res.falhas[0]?.erro ?? 'Ver detalhes',
-        );
+        toast.error(`${okCount} ok, ${falhas.length} falhou`, falhas[0]?.erro ?? 'Ver detalhes');
       }
       clearSelection();
       refetch();
@@ -899,15 +900,19 @@ function PedidoDetailDrawer({
   const [requestCancelOpen, setRequestCancelOpen] = useState(false);
   const [requestCancelMotivo, setRequestCancelMotivo] = useState('');
 
-  async function callAction(label: string, fn: () => Promise<unknown>) {
+  // Retorna true em sucesso / false em erro — quem chama decide pelo RETORNO, não pelo estado
+  // `actionError` (que num .then é a closure do clique, sempre null naquele ponto).
+  async function callAction(label: string, fn: () => Promise<unknown>): Promise<boolean> {
     setBusy(label);
     setActionError(null);
     try {
       await fn();
       onChanged();
+      return true;
     } catch (err) {
       setActionError(apiErrorMessage(err));
       refetch();
+      return false;
     } finally {
       setBusy(null);
     }
@@ -1202,9 +1207,9 @@ function PedidoDetailDrawer({
                 setRequestCancelOpen(false);
                 const motivo = requestCancelMotivo;
                 setRequestCancelMotivo('');
-                void doRequestCancel().then(() => {
-                  // Restaura motivo se houve erro pra o usuário poder ajustar
-                  if (actionError) setRequestCancelMotivo(motivo);
+                void doRequestCancel().then((ok) => {
+                  // Restaura o motivo se FALHOU (decidido pelo retorno, não pelo closure stale).
+                  if (!ok) setRequestCancelMotivo(motivo);
                 });
               }}
               leftIcon={<XCircle className="h-3.5 w-3.5" />}

@@ -602,7 +602,7 @@ function BulkTagModal({ ids, onClose, onDone }: { ids: Ids; onClose: () => void;
         tagIds: [...picked],
         modo,
       });
-      toast.success('Tags aplicadas', `${r.afetados} contato(s)`);
+      toast.success('Tags aplicadas', `${(r.afetados ?? 0)} contato(s)`);
       onDone();
     } catch (err) {
       toast.error('Falha ao aplicar tags', apiErrorMessage(err));
@@ -717,7 +717,7 @@ function BulkMoveModal({
       });
       toast.success(
         'Leads movidos',
-        `${r.afetados} de ${leadIds.length}${r.falhas.length ? ` · ${r.falhas.length} falha(s)` : ''}`,
+        `${(r.afetados ?? 0)} de ${leadIds.length}${(r.falhas?.length ?? 0) ? ` · ${(r.falhas?.length ?? 0)} falha(s)` : ''}`,
       );
       onDone();
     } catch (err) {
@@ -821,11 +821,11 @@ function BulkAddFunilModal({
           representanteId: c.representante?.id,
         })),
       });
-      const ja = r.jaEramLead ? ` · ${r.jaEramLead} já era(m) lead` : '';
-      const falhou = r.falhas.length ? ` · ${r.falhas.length} falha(s)` : '';
+      const ja = (r.jaEramLead ?? 0) ? ` · ${(r.jaEramLead ?? 0)} já era(m) lead` : '';
+      const falhou = (r.falhas?.length ?? 0) ? ` · ${(r.falhas?.length ?? 0)} falha(s)` : '';
       toast.success(
         'Contatos adicionados ao funil',
-        `${r.afetados} de ${contatos.length} criado(s)${ja}${falhou}`,
+        `${(r.afetados ?? 0)} de ${contatos.length} criado(s)${ja}${falhou}`,
       );
       onDone();
     } catch (err) {
@@ -913,7 +913,7 @@ function BulkDeleteModal({
       });
       toast.success(
         'Excluídos',
-        `${r.afetados} registro(s)${r.falhas.length ? ` · ${r.falhas.length} não puderam ser excluídos` : ''}`,
+        `${(r.afetados ?? 0)} registro(s)${(r.falhas?.length ?? 0) ? ` · ${(r.falhas?.length ?? 0)} não puderam ser excluídos` : ''}`,
       );
       onDone();
     } catch (err) {
