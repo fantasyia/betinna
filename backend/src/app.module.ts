@@ -72,11 +72,7 @@ import { ResponseInterceptor } from '@shared/interceptors/response.interceptor';
 import { RepScopeModule } from '@shared/scope/rep-scope.module';
 import { RequestIdMiddleware } from '@shared/utils/request-id.middleware';
 import { SharedUtilsModule } from '@shared/utils/shared-utils.module';
-
-// Crons rodam só no WORKER em produção (api e worker carregam o MESMO AppModule; sem isso a
-// api também dispara todos os @Cron — desperdício, e duplicação se o CronLock falhar). Em
-// dev/test mantém no processo único pra não silenciar os crons localmente. (#9 da re-auditoria)
-const RODAR_CRONS = process.env.SERVICE_TYPE === 'worker' || process.env.NODE_ENV !== 'production';
+import { RODAR_BACKGROUND } from '@shared/utils/service-type';
 
 @Module({
   imports: [
@@ -157,8 +153,8 @@ const RODAR_CRONS = process.env.SERVICE_TYPE === 'worker' || process.env.NODE_EN
       }),
     }),
 
-    // Cron jobs (sync OMIE, fechamento comissões, triggers de fluxo) — só onde RODAR_CRONS.
-    ...(RODAR_CRONS ? [ScheduleModule.forRoot()] : []),
+    // Cron jobs (sync OMIE, fechamento comissões, triggers de fluxo) — só no worker em produção.
+    ...(RODAR_BACKGROUND ? [ScheduleModule.forRoot()] : []),
 
     // BullMQ — fila global (Redis). Cada módulo registra suas próprias filas.
     BullModule.forRootAsync({

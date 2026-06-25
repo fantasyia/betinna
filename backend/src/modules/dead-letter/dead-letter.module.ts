@@ -7,6 +7,7 @@ import { DeadLetterController } from './dead-letter.controller';
 import { DeadLetterProcessor } from './dead-letter.processor';
 import { DeadLetterService } from './dead-letter.service';
 import { DEAD_LETTER_QUEUE } from './dead-letter.types';
+import { RODAR_BACKGROUND } from '@shared/utils/service-type';
 
 /**
  * Módulo do Dead Letter Queue (Sprint 3 FIX 3).
@@ -28,7 +29,8 @@ import { DEAD_LETTER_QUEUE } from './dead-letter.types';
     EmailModule, // fachada TransactionalEmailService (alerta ao diretor)
   ],
   controllers: [DeadLetterController],
-  providers: [DeadLetterService, DeadLetterProcessor],
+  // O Processor (consumidor) só no worker; o Service (produtor/alertas) fica disponível na api.
+  providers: [DeadLetterService, ...(RODAR_BACKGROUND ? [DeadLetterProcessor] : [])],
   exports: [DeadLetterService],
 })
 export class DeadLetterModule {}

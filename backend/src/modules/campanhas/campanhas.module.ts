@@ -9,6 +9,7 @@ import { CampanhaIaService } from './campanha-ia.service';
 import { CampanhaSchedulerJob } from './campanha-scheduler.job';
 import { CampanhasController } from './campanhas.controller';
 import { CampanhasService } from './campanhas.service';
+import { RODAR_BACKGROUND } from '@shared/utils/service-type';
 
 @Module({
   imports: [
@@ -18,7 +19,14 @@ import { CampanhasService } from './campanhas.service';
     IntegracoesModule, // expõe UsuarioIntegracoesService para CampanhaIaService
   ],
   controllers: [CampanhasController],
-  providers: [CampanhasService, CampanhaIaService, CampanhaEnvioProcessor, CampanhaSchedulerJob],
+  // O Processor (consumidor BullMQ) só roda no worker em produção; o resto (service/scheduler)
+  // segue registrado (o @Cron do scheduler já é gateado pela ausência do ScheduleModule na api).
+  providers: [
+    CampanhasService,
+    CampanhaIaService,
+    CampanhaSchedulerJob,
+    ...(RODAR_BACKGROUND ? [CampanhaEnvioProcessor] : []),
+  ],
   exports: [CampanhasService, CampanhaIaService],
 })
 export class CampanhasModule {}

@@ -3,6 +3,7 @@ import { BullModule } from '@nestjs/bullmq';
 import { WhatsAppModule } from '@integrations/whatsapp/whatsapp.module';
 import { EmailModule } from '@integrations/email/email.module';
 import { HttpModule } from '@shared/http/http.module';
+import { RODAR_BACKGROUND } from '@shared/utils/service-type';
 import { MullerBotModule } from '@modules/mullerbot/mullerbot.module';
 import { RagModule } from '@modules/rag/rag.module';
 import { FluxoEventBusService } from './fluxo-event-bus.service';
@@ -38,7 +39,9 @@ import { FLUXO_QUEUE } from './fluxo-executor.types';
     FluxosService,
     FluxoEventBusService,
     FluxoExecutorService,
-    FluxoExecutorProcessor,
+    // Processor (consumidor BullMQ) só no worker em produção; FluxoTriggersJob fica registrado
+    // (seu @Cron já é gateado pela ausência do ScheduleModule na api).
+    ...(RODAR_BACKGROUND ? [FluxoExecutorProcessor] : []),
     FluxoTriggersJob,
     CronMetricsService,
     OrquestracaoLeadEventsService,

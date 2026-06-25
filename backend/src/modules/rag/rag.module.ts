@@ -8,6 +8,7 @@ import { KnowledgeSearchService } from './knowledge-search.service';
 import { KnowledgeService } from './knowledge.service';
 import { RagReconciliadorJob } from './rag-reconciliador.job';
 import { INDEXACAO_QUEUE } from './rag.types';
+import { RODAR_BACKGROUND } from '@shared/utils/service-type';
 
 /**
  * RAG — indexação semântica (embeddings) + reconciliador. EmbeddingService vem
@@ -19,7 +20,9 @@ import { INDEXACAO_QUEUE } from './rag.types';
   controllers: [KnowledgeController],
   providers: [
     IndexacaoService,
-    IndexacaoProcessor,
+    // Processor (consumidor) só no worker; RagReconciliadorJob fica (seu @Cron já é gateado pela
+    // ausência do ScheduleModule na api).
+    ...(RODAR_BACKGROUND ? [IndexacaoProcessor] : []),
     RagReconciliadorJob,
     KnowledgeSearchService,
     KnowledgeService,
