@@ -395,6 +395,10 @@ model Permissao {
   modulo     String // dashboard, kanban, clientes, pedidos, etc
   podeVer    Boolean  @default(true)
   podeEditar Boolean  @default(false)
+  /// Ações GRANULARES (view/create/edit/delete/approve/export). Quando preenchido, é a fonte
+  /// da verdade; vazio → cai no expand coarse de podeVer/podeEditar (compat legada). Evita que
+  /// podeEditar conceda delete/approve a papéis que a matriz nega (REP/SAC).
+  acoes      String[] @default([])
 
   @@unique([role, modulo])
 }

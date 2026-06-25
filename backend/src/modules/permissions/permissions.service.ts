@@ -53,11 +53,18 @@ export class PermissionsService implements OnModuleInit, OnModuleDestroy {
     const rows = await this.prisma.permissao.findMany();
     this.cache.clear();
     for (const row of rows) {
+      // Granular (`acoes` preenchido) é a fonte da verdade — não expande edit→delete/approve.
+      if (row.acoes && row.acoes.length > 0) {
+        for (const a of row.acoes) {
+          this.cache.set(this.key(row.role, row.modulo as ModuleName, a as ActionName), true);
+        }
+        continue;
+      }
+      // Legado (sem `acoes`): expand coarse de podeVer/podeEditar (compat).
       if (row.podeVer) {
         this.cache.set(this.key(row.role, row.modulo as ModuleName, 'view'), true);
       }
       if (row.podeEditar) {
-        // 'edit' implica 'create' e 'delete' a menos que existam linhas específicas
         for (const a of ['create', 'edit', 'delete', 'approve', 'export'] as ActionName[]) {
           this.cache.set(this.key(row.role, row.modulo as ModuleName, a), true);
         }
@@ -81,6 +88,12 @@ export class PermissionsService implements OnModuleInit, OnModuleDestroy {
     for (const m of MODULES) result[m] = [];
     for (const r of rows) {
       const mod = r.modulo as ModuleName;
+      if (r.acoes && r.acoes.length > 0) {
+        for (const a of r.acoes as ActionName[]) {
+          if (!result[mod].includes(a)) result[mod].push(a);
+        }
+        continue;
+      }
       if (r.podeVer) result[mod].push('view');
       if (r.podeEditar) {
         for (const a of ['create', 'edit', 'delete', 'approve', 'export'] as ActionName[]) {
@@ -101,10 +114,12 @@ export class PermissionsService implements OnModuleInit, OnModuleDestroy {
     podeVer: boolean,
     podeEditar: boolean,
   ): Promise<void> {
+    // O toggle do admin é COARSE (ver/editar) — limpa `acoes` pra valer o expand coarse (escolha
+    // explícita do admin pela UI). A granularidade vive nos defaults (applyDefaults).
     await this.prisma.permissao.upsert({
       where: { role_modulo: { role, modulo } },
-      update: { podeVer, podeEditar },
-      create: { role, modulo, podeVer, podeEditar },
+      update: { podeVer, podeEditar, acoes: [] },
+      create: { role, modulo, podeVer, podeEditar, acoes: [] },
     });
     await this.reloadCache();
   }
@@ -120,10 +135,12 @@ export class PermissionsService implements OnModuleInit, OnModuleDestroy {
         const actions = moduleMap[m] ?? [];
         const podeVer = actions.includes('view');
         const podeEditar = actions.some((a) => a !== 'view');
+        // Grava a granularidade REAL da matriz em `acoes` — assim REP/SAC não herdam
+        // delete/approve via expand de podeEditar. podeVer/podeEditar seguem por compat.
         await this.prisma.permissao.upsert({
           where: { role_modulo: { role, modulo: m } },
-          update: { podeVer, podeEditar },
-          create: { role, modulo: m, podeVer, podeEditar },
+          update: { podeVer, podeEditar, acoes: actions },
+          create: { role, modulo: m, podeVer, podeEditar, acoes: actions },
         });
       }
     }

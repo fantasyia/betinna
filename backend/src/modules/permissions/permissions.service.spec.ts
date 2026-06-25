@@ -83,6 +83,24 @@ describe('PermissionsService', () => {
       expect(service.userCan('REP', 'clientes', 'view')).toBe(true);
       expect(service.userCan('REP', 'clientes', 'edit')).toBe(false);
     });
+
+    it('acoes granular é a fonte da verdade: edit SEM delete não concede delete (raiz #6)', async () => {
+      prisma.permissao.findMany.mockResolvedValue([
+        fakePerm({
+          role: 'REP',
+          modulo: 'kanban',
+          podeVer: true,
+          podeEditar: true,
+          acoes: ['view', 'create', 'edit'],
+        }),
+      ]);
+      await service.reloadCache();
+
+      expect(service.userCan('REP', 'kanban', 'edit')).toBe(true);
+      // Antes, podeEditar=true expandia pra delete/approve — o granular barra isso.
+      expect(service.userCan('REP', 'kanban', 'delete')).toBe(false);
+      expect(service.userCan('REP', 'kanban', 'approve')).toBe(false);
+    });
   });
 
   // -------------------------------------------------------------------------
@@ -131,8 +149,9 @@ describe('PermissionsService', () => {
       expect(prisma.permissao.upsert).toHaveBeenCalledWith(
         expect.objectContaining({
           where: { role_modulo: { role: 'REP', modulo: 'catalogo' } },
-          update: { podeVer: true, podeEditar: true },
-          create: { role: 'REP', modulo: 'catalogo', podeVer: true, podeEditar: true },
+          // toggle coarse limpa `acoes` (granularidade vive nos defaults).
+          update: { podeVer: true, podeEditar: true, acoes: [] },
+          create: { role: 'REP', modulo: 'catalogo', podeVer: true, podeEditar: true, acoes: [] },
         }),
       );
       // Cache deve refletir o novo valor
