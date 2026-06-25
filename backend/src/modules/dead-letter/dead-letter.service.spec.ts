@@ -135,7 +135,7 @@ describe('DeadLetterService', () => {
       });
     });
 
-    it('usa limit=50 por padrão e passa para getJobs', async () => {
+    it('usa limit=50 por padrão e busca janela maior (200) p/ ordenar por recência', async () => {
       queue.getJobs.mockResolvedValue([]);
 
       await service.list();
@@ -143,7 +143,7 @@ describe('DeadLetterService', () => {
       expect(queue.getJobs).toHaveBeenCalledWith(
         expect.any(Array),
         0,
-        49, // limit-1
+        199, // buffer-1 (max(limit, 200) - 1) — ordena por addedAt desc e fatia depois
         false,
       );
     });
