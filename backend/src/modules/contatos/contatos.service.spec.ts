@@ -8,6 +8,11 @@ import { ContatosService } from './contatos.service';
 // ---------------------------------------------------------------------------
 
 const makePrismaMock = () => ({
+  // criarLeads consulta os sufixos do lote via $queryRaw (D18); default [] = nenhum já-lead.
+  $queryRaw: vi.fn().mockResolvedValue([]),
+  $transaction: vi.fn((ops: unknown) =>
+    Array.isArray(ops) ? Promise.all(ops) : Promise.resolve([]),
+  ),
   lead: {
     findMany: vi.fn(),
     deleteMany: vi.fn(),
@@ -359,10 +364,8 @@ describe('ContatosService', () => {
 
   describe('criarLeads — dedup D18', () => {
     it('pula contato cujo sufixo de telefone já tem lead existente e conta em jaEramLead', async () => {
-      // Lead existente com telefone terminando em 12345678
-      prisma.lead.findMany.mockResolvedValue([
-        { contatoTelefone: '55119912345678' }, // sufixo: 12345678
-      ]);
+      // $queryRaw devolve os sufixos do lote que JÁ têm lead (D18) → 12345678 já existe.
+      prisma.$queryRaw.mockResolvedValue([{ sufixo: '12345678' }]);
 
       leads.create.mockResolvedValue({ id: 'novo-lead' });
 

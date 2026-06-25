@@ -422,10 +422,12 @@ export class ContatosService {
       excluidos += r.count;
     }
     if (conversaIds.length) {
-      await this.prisma.message.deleteMany({ where: { conversationId: { in: conversaIds } } });
-      const r = await this.prisma.conversation.deleteMany({
-        where: { id: { in: conversaIds }, empresaId },
-      });
+      // Transação: apaga mensagens e conversas juntas (all-or-nothing). Sem isso, falha na 2ª
+      // deixava conversas sem mensagens (zumbis).
+      const [, r] = await this.prisma.$transaction([
+        this.prisma.message.deleteMany({ where: { conversationId: { in: conversaIds } } }),
+        this.prisma.conversation.deleteMany({ where: { id: { in: conversaIds }, empresaId } }),
+      ]);
       excluidos += r.count;
     }
     // Clientes 1 a 1: FK de pedidos/propostas (RESTRICT) pode bloquear.
@@ -458,16 +460,28 @@ export class ContatosService {
     const scope = await this.repScope.getRepIds(user);
     const falhas: Array<{ id: string; erro: string }> = [];
 
-    // Telefones (sufixo 8 díg.) que JÁ têm lead na empresa/escopo — não duplica.
-    const leadWhere: Prisma.LeadWhereInput = { empresaId, contatoTelefone: { not: null } };
-    if (scope !== null) leadWhere.representanteId = { in: scope };
-    const leadsExistentes = await this.prisma.lead.findMany({
-      where: leadWhere,
-      select: { contatoTelefone: true },
-    });
-    const sufixosComLead = new Set(
-      leadsExistentes.map((l) => this.sufixoTel(l.contatoTelefone)).filter((s): s is string => !!s),
+    // Telefones (sufixo 8 díg.) que JÁ têm lead — consultamos só os sufixos DO LOTE via match
+    // por sufixo (D18), não a base inteira em memória. O(lote) em vez de O(base) — importação
+    // grande não vira leitura pesada + pico de memória.
+    const sufixosLote = Array.from(
+      new Set(dto.contatos.map((c) => this.sufixoTel(c.telefone)).filter((s): s is string => !!s)),
     );
+    const sufixosComLead = new Set<string>();
+    if (sufixosLote.length > 0) {
+      const scopeSql =
+        scope !== null
+          ? Prisma.sql`AND "representanteId" IN (${Prisma.join(scope.length ? scope : ['__none__'])})`
+          : Prisma.empty;
+      const rows = await this.prisma.$queryRaw<Array<{ sufixo: string }>>(Prisma.sql`
+        SELECT DISTINCT RIGHT(REGEXP_REPLACE("contatoTelefone", '[^0-9]', '', 'g'), 8) AS sufixo
+        FROM "Lead"
+        WHERE "empresaId" = ${empresaId}
+          AND "contatoTelefone" IS NOT NULL
+          ${scopeSql}
+          AND RIGHT(REGEXP_REPLACE("contatoTelefone", '[^0-9]', '', 'g'), 8) IN (${Prisma.join(sufixosLote)})
+      `);
+      for (const r of rows) if (r.sufixo) sufixosComLead.add(r.sufixo);
+    }
 
     let criados = 0;
     let jaEramLead = 0;

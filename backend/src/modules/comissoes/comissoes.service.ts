@@ -170,6 +170,20 @@ export class ComissoesService {
 
     let totalVendasAgg = 0;
     let totalComissaoAgg = 0;
+    // Quais (rep,tipo) já têm comissão neste mês. Com reprocessar=false o upsert desses vira
+    // no-op (update={}) — então NÃO acumulamos seus totais nem notificamos por eles. Senão um
+    // re-run do cron mensal anunciava números completos (e-mail/notificação) sem mexer na folha.
+    const jaExistentes = dto.reprocessar
+      ? new Set<string>()
+      : new Set(
+          (
+            await this.prisma.comissao.findMany({
+              where: { empresaId, ano: dto.ano, mes: dto.mes },
+              select: { representanteId: true, tipo: true },
+            })
+          ).map((c) => `${c.representanteId}:${c.tipo}`),
+        );
+    let registrosNovos = 0;
 
     // Para gravar `percentual` no snapshot do REP precisamos saber a comissão
     // padrão de cada rep no momento atual (carrega 1x em batch).
@@ -212,8 +226,12 @@ export class ComissoesService {
         const totalComissao = escalonada
           ? Math.round(totalVendas * ((pctFaixa ?? 0) / 100) * 100) / 100
           : Number(row._sum.comissao ?? 0);
-        totalVendasAgg += totalVendas;
-        totalComissaoAgg += totalComissao;
+        // Só acumula/conta como novo quando o registro será de fato gravado (não no-op).
+        if (!jaExistentes.has(`${row.representanteId}:REP`)) {
+          totalVendasAgg += totalVendas;
+          totalComissaoAgg += totalComissao;
+          registrosNovos += 1;
+        }
         const pctRep = escalonada ? pctFaixa : (pctPorRep.get(row.representanteId) ?? null);
         return this.prisma.comissao.upsert({
           where: {
@@ -336,8 +354,10 @@ export class ComissoesService {
           },
         });
       });
-      // Soma usando o pct snapshotado
+      // Soma usando o pct snapshotado — só dos gerentes que serão de fato gravados (não no-op).
       totalComissaoAgg += gerentes.reduce((sum, g) => {
+        if (jaExistentes.has(`${g.id}:GERENTE`)) return sum;
+        registrosNovos += 1;
         const v = vendasPorGerente.get(g.id) ?? 0;
         const pctSalvo = pctSalvoPorGerente.get(g.id);
         const pct = pctSalvo ?? g.comissaoPadrao ?? 0;
@@ -362,20 +382,23 @@ export class ComissoesService {
       `Fechamento ${dto.mes}/${dto.ano} (empresa ${empresaId}): ${aggregated.length} reps + ${gerentesProcessados} gerentes · R$${totalVendasAgg.toFixed(2)} vendas · R$${totalComissaoAgg.toFixed(2)} comissão`,
     );
 
-    // Notifica REPs e GERENTEs envolvidos no fechamento
-    void this.notificacoes.criarParaRole({
-      empresaId,
-      roles: ['REP', 'GERENTE'],
-      tipo: 'COMISSAO_FECHADA',
-      prioridade: 'NORMAL',
-      titulo: `Comissão ${dto.mes}/${dto.ano} fechada`,
-      mensagem: `Mês fechou com R$${totalVendasAgg.toFixed(2)} em vendas. Confira sua linha em /comissoes.`,
-      link: '/comissoes',
-      metadata: { ano: dto.ano, mes: dto.mes },
-    });
+    // Notifica/e-mail SÓ quando houve gravação real (registro novo) ou reprocessamento — senão
+    // um re-run do cron mensal num mês já fechado dispararia COMISSAO_FECHADA indevidamente.
+    if (registrosNovos > 0 || dto.reprocessar) {
+      void this.notificacoes.criarParaRole({
+        empresaId,
+        roles: ['REP', 'GERENTE'],
+        tipo: 'COMISSAO_FECHADA',
+        prioridade: 'NORMAL',
+        titulo: `Comissão ${dto.mes}/${dto.ano} fechada`,
+        mensagem: `Mês fechou com R$${totalVendasAgg.toFixed(2)} em vendas. Confira sua linha em /comissoes.`,
+        link: '/comissoes',
+        metadata: { ano: dto.ano, mes: dto.mes },
+      });
 
-    // E-mail transacional personalizado por rep (busca os valores individuais)
-    void this.notificarEmailFechamento(empresaId, dto.mes, dto.ano);
+      // E-mail transacional personalizado por rep (busca os valores individuais)
+      void this.notificarEmailFechamento(empresaId, dto.mes, dto.ano);
+    }
 
     return {
       ok: true,
