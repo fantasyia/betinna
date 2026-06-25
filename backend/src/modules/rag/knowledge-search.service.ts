@@ -73,14 +73,26 @@ export class KnowledgeSearchService {
   ): Promise<ConhecimentoRelevante[]> {
     const termo = consulta.trim();
     if (termo.length === 0) return [];
+    // Tokeniza a consulta (OR por palavra ≥3 chars, acento preservado): `contains` da frase
+    // INTEIRA quase nunca casa, deixando o conhecimento inacessível durante o backfill.
+    const tokens = Array.from(
+      new Set(
+        termo
+          .toLowerCase()
+          .split(/\s+/)
+          .map((t) => t.replace(/[^\p{L}\p{N}]/gu, ''))
+          .filter((t) => t.length >= 3),
+      ),
+    ).slice(0, 10);
+    const palavras = tokens.length > 0 ? tokens : [termo];
     const chunks = await this.prisma.knowledgeChunk.findMany({
       where: {
         empresaId,
         ativo: true,
-        OR: [
-          { titulo: { contains: termo, mode: 'insensitive' } },
-          { conteudo: { contains: termo, mode: 'insensitive' } },
-        ],
+        OR: palavras.flatMap((t) => [
+          { titulo: { contains: t, mode: 'insensitive' as const } },
+          { conteudo: { contains: t, mode: 'insensitive' as const } },
+        ]),
       },
       select: { id: true, titulo: true, conteudo: true, categoria: true },
       take: limit,

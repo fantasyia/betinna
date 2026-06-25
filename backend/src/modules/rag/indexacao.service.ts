@@ -95,6 +95,15 @@ export class IndexacaoService {
     const texto = [p.nome, p.marca, p.linha, p.categoria, p.unidade, p.descricao]
       .filter(Boolean)
       .join(' — ');
+    if (!texto.trim()) {
+      // Sem texto indexável: carimba pra SAIR do conjunto do reconciliador. Senão o item de
+      // embeddingAtualizadoEm NULL é re-selecionado a cada 5min pra sempre, ocupando vaga do CAP.
+      await this.prisma.produto.update({
+        where: { id },
+        data: { embeddingAtualizadoEm: new Date() },
+      });
+      return;
+    }
     const hash = hashTexto(texto);
     // Texto idêntico ao já embeddado → só carimba (barato), não chama OpenAI. Evita
     // reembeddar a cada sync de estoque/preço (que mexe em atualizadoEm, não no texto).
@@ -130,6 +139,13 @@ export class IndexacaoService {
     });
     if (!c) return;
     const texto = [c.categoria, c.titulo, c.conteudo].filter(Boolean).join(' — ');
+    if (!texto.trim()) {
+      await this.prisma.knowledgeChunk.update({
+        where: { id },
+        data: { embeddingAtualizadoEm: new Date() },
+      });
+      return;
+    }
     const hash = hashTexto(texto);
     if (c.embeddingAtualizadoEm && c.embeddingTextoHash === hash) {
       await this.prisma.knowledgeChunk.update({
