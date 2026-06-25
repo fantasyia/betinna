@@ -1,5 +1,5 @@
 import { Injectable, Logger, type OnModuleInit } from '@nestjs/common';
-import { randomUUID } from 'node:crypto';
+import { createHash, randomUUID } from 'node:crypto';
 import { MessageDirection } from '@prisma/client';
 import { PrismaService } from '@database/prisma.service';
 import { RedisService } from '@database/redis.service';
@@ -494,8 +494,18 @@ export class MullerWhatsappService implements OnModuleInit {
       // Pacing global (faixa REATIVA — cliente escreveu): espaça das demais respostas
       // da empresa (nunca todas ao mesmo tempo se muitos clientes escrevem juntos).
       await this.pacing.aguardarSlot(params.empresaId, true);
+      let balaoIdx = 0;
       const baloesFinais = await enviarEmBaloes(resposta.texto, cfgBot, {
-        enviar: (balao) => this.inbox.responderComoBot(convId, balao),
+        // idemKey estável por (mensagem inbound + posição + hash do conteúdo): reprocesso do
+        // mesmo inbound após o TTL do lock não reenvia balões já enviados.
+        enviar: (balao) => {
+          const hash = createHash('sha1').update(balao).digest('hex').slice(0, 12);
+          return this.inbox.responderComoBot(
+            convId,
+            balao,
+            `bot:${resultado.messageId}:b${balaoIdx++}:${hash}`,
+          );
+        },
         digitando: (ms) =>
           void this.whatsapp
             .enviarPresenca(params.empresaId, tel, 'composing', ms)

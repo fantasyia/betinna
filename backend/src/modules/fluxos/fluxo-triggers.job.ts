@@ -266,7 +266,17 @@ export class FluxoTriggersJob {
         // de 50s expirado numa rodada lenta) lê `proximo > agora` e pula → sem disparo
         // duplicado. O avanço deixou de acontecer só DEPOIS do disparo (janela do bug).
         const prox = proximaExecucaoCrons(exprs, tz, agora);
-        if (prox) await this.gravarProximoCron(f.id, prox);
+        if (prox) {
+          await this.gravarProximoCron(f.id, prox);
+        } else {
+          // Expressão sem próxima execução em runtime (drift do parser / dado corrompido):
+          // sem avançar, o cursor fica <= agora e re-dispara TODO minuto (1 execução/min).
+          // Avança 1min e loga, em vez de entrar em loop.
+          await this.gravarProximoCron(f.id, new Date(agora.getTime() + 60_000));
+          this.logger.warn(
+            `Cron do fluxo ${f.id}: expressão sem próxima execução — cursor avançado 1min.`,
+          );
+        }
 
         // Opção "pular feriados": no feriado nacional, NÃO dispara (cursor já avançou).
         const noFeriado = cfg.pularFeriados === true && ehFeriadoNacional(slot, tz);
@@ -396,6 +406,15 @@ export class FluxoTriggersJob {
     });
 
     for (const amostra of amostras) {
+      // CAS: reivindica o follow-up ANTES de disparar/notificar. Se o processo cair entre o
+      // disparo e o update de status, a amostra continuava AGUARDANDO_FOLLOWUP e re-disparava
+      // (evento + e-mail ao rep em dobro). Agora só segue quem reivindicou.
+      const claim = await this.prisma.amostra.updateMany({
+        where: { id: amostra.id, status: 'AGUARDANDO_FOLLOWUP' },
+        data: { status: 'NAO_CONVERTEU' }, // status neutro de follow-up processado
+      });
+      if (claim.count === 0) continue;
+
       await this.bus.disparar(empresaId, 'AMOSTRA_FOLLOWUP', {
         clienteId: amostra.clienteId,
         amostraId: amostra.id,
@@ -421,12 +440,6 @@ export class FluxoTriggersJob {
           diasDesdeEnvio,
         });
       }
-
-      // Muda status pra evitar re-disparo
-      await this.prisma.amostra.update({
-        where: { id: amostra.id },
-        data: { status: 'NAO_CONVERTEU' }, // status neutro de follow-up processado
-      });
     }
 
     if (amostras.length > 0) {

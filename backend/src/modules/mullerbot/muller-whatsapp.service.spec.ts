@@ -271,7 +271,11 @@ describe('MullerWhatsappService — regras do bot', () => {
       expect.any(Array),
       expect.anything(),
     );
-    expect(inbox.responderComoBot).toHaveBeenCalledWith('conv-1', 'Olá! Como posso ajudar?');
+    expect(inbox.responderComoBot).toHaveBeenCalledWith(
+      'conv-1',
+      'Olá! Como posso ajudar?',
+      expect.stringMatching(/^bot:.+:b0:[0-9a-f]{12}$/),
+    );
   });
 
   it('fallback: IA falha → manda mensagem padrão, marca precisa-humano e PAUSA o bot', async () => {

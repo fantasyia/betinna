@@ -641,7 +641,11 @@ export class InboxService {
    * respondendo não deve pausar a si mesmo). Best-effort do ponto de vista do
    * chamador — lança em falha pro motor do bot logar.
    */
-  async responderComoBot(conversationId: string, texto: string): Promise<void> {
+  async responderComoBot(
+    conversationId: string,
+    texto: string,
+    idempotencyKey?: string,
+  ): Promise<void> {
     const conv = await this.prisma.conversation.findUnique({ where: { id: conversationId } });
     if (!conv) return;
     const adapter = this.registry.obter(conv.canal);
@@ -658,9 +662,12 @@ export class InboxService {
       },
     });
     try {
+      // idempotencyKey por balão (quando fornecida): o gate do provider deduplica se o mesmo
+      // inbound for reprocessado após o TTL do lock — alinha com o nó "Conversar com IA".
       const r = await adapter.enviarTexto(conv.empresaId, conv.peerId, texto, {
         proprietarioId: conv.proprietarioId,
         metadata: conv.metadata as Record<string, unknown> | null,
+        ...(idempotencyKey ? { idempotencyKey } : {}),
       });
       await this.prisma.message.update({
         where: { id: msg.id },

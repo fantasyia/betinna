@@ -137,11 +137,17 @@ export function mesclarHistorico(
   const todos = [...daConversa, ...doContexto]
     .filter((m) => m && typeof m.content === 'string' && m.content.trim().length > 0)
     .sort((x, y) => (x.at ?? 0) - (y.at ?? 0));
+  // Eco das duas fontes tem timestamps quase idênticos; 'oi'/'oi' de verdade do lead vem com
+  // segundos de diferença. Só colapsa quando role+conteúdo batem E os timestamps estão próximos
+  // — senão uma repetição genuína seria descartada e a IA perderia o sinal de duas mensagens.
+  // (Sem timestamp em ambos → at=0 → proximo=true → mantém o comportamento antigo de dedup.)
+  const ECO_MS = 5_000;
   const out: HistoricoMsg[] = [];
   for (const m of todos) {
     const ult = out[out.length - 1];
-    // Dedup: mesma fala (role+conteúdo) repetida em sequência = duplicata das fontes.
-    if (ult && ult.role === m.role && ult.content.trim() === m.content.trim()) continue;
+    const mesmaFala = ult && ult.role === m.role && ult.content.trim() === m.content.trim();
+    const proximo = ult ? Math.abs((m.at ?? 0) - (ult.at ?? 0)) <= ECO_MS : false;
+    if (mesmaFala && proximo) continue;
     out.push(m);
   }
   return out.slice(-max);
