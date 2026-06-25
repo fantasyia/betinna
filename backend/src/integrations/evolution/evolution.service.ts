@@ -36,6 +36,16 @@ type EstadoWhats = {
  * Auth: header `apikey` com a AUTHENTICATION_API_KEY global do Evolution.
  * Uma "instância" por dono (`emp_<id>` / `user_<id>`), espelhando o dual-owner.
  */
+/** Timeout de toda request HTTP ao Evolution (get/post/delete). */
+const HTTP_TIMEOUT_MS = 30_000;
+/**
+ * TTL do marcador PENDING do gate de idempotência: precisa COBRIR o POST em voo (timeout +
+ * margem de pacing/fila) pra um retry concorrente não re-POSTar com o envio ainda em andamento;
+ * curto o bastante pra que um crash entre SETNX e POST libere o reenvio em vez de suprimir 24h.
+ * Derivado do timeout (≈4×) em vez de constante mágica.
+ */
+const PENDING_TTL_S = Math.ceil((HTTP_TIMEOUT_MS / 1000) * 4);
+
 @Injectable()
 export class EvolutionService {
   private readonly logger = new Logger(EvolutionService.name);
@@ -76,7 +86,7 @@ export class EvolutionService {
       integration: 'evolution',
       redactKeys: ['apikey'],
       retries: 1,
-      timeoutMs: 30_000,
+      timeoutMs: HTTP_TIMEOUT_MS,
       ...(body ? { body } : {}),
     };
     const res =
@@ -577,13 +587,13 @@ export class EvolutionService {
     // é NOSSA. SETNX antes do POST claima a chave; um reenvio (retry/crash) com a MESMA
     // chave vira no-op → o destinatário NUNCA recebe 2×. Hoje só o sendText passa a chave
     // (enviarMidia/enviarAudio não dedupam). Preferimos SUPRIMIR a DUPLICAR (dinheiro).
-    // O marcador PENDING tem TTL CURTO (120s, ~duração do POST): se o worker crashar entre o
-    // SETNX e o POST, a chave expira em 120s e um retry legítimo RE-ENVIA — em vez de ficar
-    // suprimido por 24h. Após o POST OK, o resultado é gravado com TTL longo (24h) p/ dedup.
+    // O marcador PENDING tem TTL CURTO (PENDING_TTL_S, derivado do timeout do POST): se o worker
+    // crashar entre o SETNX e o POST, a chave expira e um retry legítimo RE-ENVIA — em vez de
+    // ficar suprimido por 24h. Após o POST OK, o resultado é gravado com TTL longo (24h) p/ dedup.
     const k = `idem:wa:${idempotencyKey}`;
     let claimed: boolean;
     try {
-      claimed = await this.redis.setNxEx(k, 'PENDING', 120);
+      claimed = await this.redis.setNxEx(k, 'PENDING', PENDING_TTL_S);
     } catch (err) {
       // Redis fora → degrada pro envio direto (não bloqueia operação por infra).
       this.logger.warn(

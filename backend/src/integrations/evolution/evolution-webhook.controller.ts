@@ -103,8 +103,10 @@ export class EvolutionWebhookController {
       messages?: Array<{ key?: { id?: string } }>;
       key?: { id?: string };
     };
-    const msg = Array.isArray(data?.messages) ? data.messages[0] : data;
-    const id = msg?.key?.id;
-    return id ? `${body.instance ?? '?'}:${id}` : null;
+    // Chave a partir de TODOS os ids do lote (não só o [0]) — senão o anti-replay só cobria a
+    // 1ª msg e o lote inteiro era reprocessado a cada reentrega do webhook.
+    const msgs = Array.isArray(data?.messages) ? data.messages : data ? [data] : [];
+    const ids = msgs.map((m) => m?.key?.id).filter((x): x is string => !!x);
+    return ids.length > 0 ? `${body.instance ?? '?'}:${ids.join(',')}` : null;
   }
 }

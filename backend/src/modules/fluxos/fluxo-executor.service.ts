@@ -263,9 +263,16 @@ export class FluxoExecutorService {
           ...(roteado ? { erro: true, tipoErro } : {}),
         };
       } else {
-        // idemBase = chave de idempotência determinística do passo (jobId estável no retry):
-        // desce até cada efeito externo (WhatsApp/email/webhook) pra dedup no provider.
-        output = await this.executarNo(no, contexto, execucao.empresaId, `fx:${jobId}`);
+        // idemBase = chave determinística ESTÁVEL ao passo lógico (execucaoId:noId, não jobId):
+        // desce até cada efeito externo (WhatsApp/email/webhook/tarefa) pra dedup no provider.
+        // Estável ao passo pra que um retry de dead-letter (jobId NOVO, mesmo passo) caia na
+        // mesma chave → a dedup do provider evita reenvio dentro da janela (Resend 24h / gate).
+        output = await this.executarNo(
+          no,
+          contexto,
+          execucao.empresaId,
+          `fx:${execucaoId}:${noId}`,
+        );
       }
     } catch (err) {
       sucesso = false;

@@ -73,17 +73,23 @@ export class DeadLetterService {
    * Retorna até `limit` (default 50) ordenados por mais recentes.
    */
   async list(limit = 50): Promise<Array<{ id: string; data: DeadLetterJobData; addedAt: number }>> {
+    // getJobs devolve AGRUPADO por estado (não por timestamp). Busca uma janela maior e ordena
+    // por recência — senão falhas recentes ficavam escondidas atrás de jobs antigos 'completed'.
+    const buffer = Math.max(limit, 200);
     const jobs = await this.deadLetter.getJobs(
       ['active', 'waiting', 'completed', 'failed', 'delayed'],
       0,
-      limit - 1,
+      buffer - 1,
       false,
     );
-    return jobs.map((j) => ({
-      id: String(j.id),
-      data: j.data,
-      addedAt: j.timestamp ?? 0,
-    }));
+    return jobs
+      .map((j) => ({
+        id: String(j.id),
+        data: j.data,
+        addedAt: j.timestamp ?? 0,
+      }))
+      .sort((a, b) => b.addedAt - a.addedAt)
+      .slice(0, limit);
   }
 
   /**
