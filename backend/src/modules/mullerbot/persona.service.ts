@@ -1,5 +1,5 @@
 import { Injectable, Logger } from '@nestjs/common';
-import { Prisma } from '@prisma/client';
+import { Prisma, type MullerBotPersona } from '@prisma/client';
 import { PrismaService } from '@database/prisma.service';
 import { ForbiddenException } from '@shared/errors/app-exception';
 import { ErrorCode } from '@shared/errors/error-codes';
@@ -82,14 +82,40 @@ export interface PersonaResult {
 export class MullerBotPersonaService {
   private readonly logger = new Logger(MullerBotPersonaService.name);
 
+  // PERF: a MESMA linha MullerBotPersona é lida 3+x por mensagem inbound do bot (obterConfigBot,
+  // obterModelo, compilarSystemPromptConversa) — o caminho mais quente do produto. Cache em
+  // memória com TTL curto: a persona muda ~1x/semana, então 30s de staleness é desprezível.
+  // Invalidado no upsert/reset. (Multi-processo: o TTL limita a janela entre api e worker.)
+  private readonly personaCache = new Map<
+    string,
+    { row: MullerBotPersona | null; expiresAt: number }
+  >();
+  private static readonly PERSONA_TTL_MS = 30_000;
+
   constructor(
     private readonly prisma: PrismaService,
     private readonly botPrompts: BotPromptsService,
   ) {}
 
+  /** Busca a linha MullerBotPersona com cache de 30s (alimenta os reads do caminho quente). */
+  private async getPersonaRow(empresaId: string): Promise<MullerBotPersona | null> {
+    const hit = this.personaCache.get(empresaId);
+    if (hit && hit.expiresAt > Date.now()) return hit.row;
+    const row = await this.prisma.mullerBotPersona.findUnique({ where: { empresaId } });
+    this.personaCache.set(empresaId, {
+      row,
+      expiresAt: Date.now() + MullerBotPersonaService.PERSONA_TTL_MS,
+    });
+    return row;
+  }
+
+  private invalidatePersona(empresaId: string): void {
+    this.personaCache.delete(empresaId);
+  }
+
   async get(user: AuthenticatedUser): Promise<PersonaResult> {
     const empresaId = this.requireEmpresa(user);
-    const row = await this.prisma.mullerBotPersona.findUnique({ where: { empresaId } });
+    const row = await this.getPersonaRow(empresaId);
     if (!row) {
       return this.defaultPersona(empresaId);
     }
@@ -132,6 +158,7 @@ export class MullerBotPersonaService {
       create: { empresaId, ...data },
       update: data,
     });
+    this.invalidatePersona(empresaId);
     this.logger.log(`Persona atualizada para empresa ${empresaId}`);
     return this.toResult(row);
   }
@@ -139,6 +166,7 @@ export class MullerBotPersonaService {
   async reset(user: AuthenticatedUser): Promise<PersonaResult> {
     const empresaId = this.requireEmpresa(user);
     await this.prisma.mullerBotPersona.deleteMany({ where: { empresaId } });
+    this.invalidatePersona(empresaId);
     return this.defaultPersona(empresaId);
   }
 
@@ -152,7 +180,7 @@ export class MullerBotPersonaService {
    * Usado pelo MullerBotService.
    */
   async compilarSystemPrompt(empresaId: string): Promise<string> {
-    const row = await this.prisma.mullerBotPersona.findUnique({ where: { empresaId } });
+    const row = await this.getPersonaRow(empresaId);
 
     // Forma principal: prompt completo escrito pelo usuário → usado tal e qual.
     const custom = row?.promptCustom?.trim();
@@ -197,7 +225,7 @@ export class MullerBotPersonaService {
     const padrao = await this.botPrompts.obterTextoPadrao(empresaId);
     if (padrao) return this.comGuardrail(padrao);
 
-    const row = await this.prisma.mullerBotPersona.findUnique({ where: { empresaId } });
+    const row = await this.getPersonaRow(empresaId);
 
     // Forma principal: prompt completo escrito pelo usuário → usado tal e qual,
     // tanto no modo puro conversa quanto no RAG (o catálogo entra na msg do user).
@@ -281,10 +309,7 @@ Se o cliente pedir algo que você não pode resolver, avise com gentileza que um
 
   /** Modelo da OpenAI escolhido pela empresa (null = usa o padrão do servidor). */
   async obterModelo(empresaId: string): Promise<string | null> {
-    const row = await this.prisma.mullerBotPersona.findUnique({
-      where: { empresaId },
-      select: { modelo: true },
-    });
+    const row = await this.getPersonaRow(empresaId);
     return row?.modelo?.trim() || null;
   }
 
@@ -298,18 +323,7 @@ Se o cliente pedir algo que você não pode resolver, avise com gentileza que um
     transcreverAudio: boolean;
     analisarImagem: boolean;
   }> {
-    const row = await this.prisma.mullerBotPersona.findUnique({
-      where: { empresaId },
-      select: {
-        historicoMensagens: true,
-        delayRespostaSegundos: true,
-        mostrarDigitando: true,
-        quebrarMensagens: true,
-        maxMensagens: true,
-        transcreverAudio: true,
-        analisarImagem: true,
-      },
-    });
+    const row = await this.getPersonaRow(empresaId);
     return {
       historicoMensagens: Math.max(1, row?.historicoMensagens ?? 10),
       delayRespostaSegundos: Math.max(0, row?.delayRespostaSegundos ?? 0),
