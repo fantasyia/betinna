@@ -50,12 +50,19 @@ export function ConversationThread({
   // os dados (sem flicker). Substitui o antigo cache-buster via prop `pollBump`.
   const refetchConv = conv.refetch;
   const refetchMsgs = msgs.refetch;
+  // PERF: pausa em 2º plano (mensagens?limit=80 é o payload mais pesado do SAC) + revalida ao voltar.
   useEffect(() => {
-    const i = setInterval(() => {
+    function atualizar() {
+      if (document.visibilityState !== 'visible') return;
       refetchConv();
       refetchMsgs();
-    }, POLL_INTERVAL_MS);
-    return () => clearInterval(i);
+    }
+    document.addEventListener('visibilitychange', atualizar);
+    const i = setInterval(atualizar, POLL_INTERVAL_MS);
+    return () => {
+      document.removeEventListener('visibilitychange', atualizar);
+      clearInterval(i);
+    };
   }, [refetchConv, refetchMsgs]);
 
   const [resposta, setResposta] = useState('');

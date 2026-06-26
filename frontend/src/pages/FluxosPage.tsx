@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { lazy, Suspense, useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import {
   Plus,
@@ -31,6 +31,7 @@ import {
   Dialog,
   EmptyState,
   Field,
+  FullPageSpinner,
   IconButton,
   Input,
   Select,
@@ -38,7 +39,9 @@ import {
   Tooltip,
 } from '@/components/ui';
 import { cn } from '@/lib/cn';
-import { FluxoEditor } from './FluxoEditor';
+// PERF: lazy — o editor arrasta @xyflow/react (~200KB + CSS). Import estático baixava o chunk
+// ao abrir /fluxos só pra VER a lista; agora só baixa ao clicar Editar.
+const FluxoEditor = lazy(() => import('./FluxoEditor').then((m) => ({ default: m.FluxoEditor })));
 import type { TriggerTipo as EditorTriggerTipo } from '@/pages/fluxo/lib/types';
 
 /**
@@ -231,11 +234,9 @@ export default function FluxosPage() {
 
   if (editingId) {
     return (
-      <FluxoEditor
-        fluxoId={editingId}
-        onClose={() => setEditingId(null)}
-        onSaved={refetch}
-      />
+      <Suspense fallback={<FullPageSpinner />}>
+        <FluxoEditor fluxoId={editingId} onClose={() => setEditingId(null)} onSaved={refetch} />
+      </Suspense>
     );
   }
 

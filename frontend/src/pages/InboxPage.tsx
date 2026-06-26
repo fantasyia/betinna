@@ -76,9 +76,19 @@ export default function InboxPage() {
   // "nova mensagem". (Antes usava `_t: pollBump` na URL como cache-buster, o que
   // com o TanStack virava uma query NOVA a cada 2s: limpava os dados → loading
   // piscando + totalNaoLidas caía a 0 → notificação "nova mensagem" em loop.)
+  // PERF: pausa o poll quando a aba está em 2º plano (aba esquecida não martela a rota mais cara
+  // do SAC) e revalida na hora ao voltar pro foco. Mesmo padrão da LeadsPage.
   useEffect(() => {
-    const i = setInterval(() => refetch(), POLL_INTERVAL_MS);
-    return () => clearInterval(i);
+    function atualizar() {
+      if (document.visibilityState !== 'visible') return;
+      refetch();
+    }
+    document.addEventListener('visibilitychange', atualizar);
+    const i = setInterval(atualizar, POLL_INTERVAL_MS);
+    return () => {
+      document.removeEventListener('visibilitychange', atualizar);
+      clearInterval(i);
+    };
   }, [refetch]);
 
   // Estado GLOBAL do bot (empresa) — pra os selos "Bot pausado"/"Religar" só
