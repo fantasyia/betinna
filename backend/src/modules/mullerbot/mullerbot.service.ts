@@ -13,6 +13,7 @@ import { HttpClientError } from '@shared/http/http-client.types';
 import type { AuthenticatedUser } from '@shared/types/authenticated-user';
 import type { PerguntarDto } from './mullerbot.dto';
 import type { LlmCredenciais, MullerBotResposta } from './mullerbot.types';
+import { BotCustoService } from './bot-custo.service';
 import { MullerBotCacheService, type HistoricoMsg } from './mullerbot-cache.service';
 import { MullerBotPersonaService } from './persona.service';
 import { ProdutoSearchService, type ProdutoRelevante } from './produto-search.service';
@@ -81,6 +82,7 @@ export class MullerBotService {
     private readonly cache: MullerBotCacheService,
     private readonly persona: MullerBotPersonaService,
     private readonly integracoes: IntegracoesService,
+    private readonly custo: BotCustoService,
   ) {}
 
   /**
@@ -161,6 +163,17 @@ export class MullerBotService {
       }
     }
 
+    // 4.5 Teto de custo do tenant ANTES de gastar OpenAI — senão um insider (ou credencial
+    // vazada) queima crédito via /mullerbot/perguntar até a fatura. Cache hit acima é grátis e
+    // não passa por aqui.
+    const teto = await this.custo.verificarTeto(user.empresaIdAtiva);
+    if (teto.bloqueado) {
+      throw new BusinessRuleException(
+        teto.motivo ?? 'Teto de custo de IA do mês atingido para esta empresa',
+        ErrorCode.BUSINESS_RULE_VIOLATION,
+      );
+    }
+
     // 5. Chama OpenAI (com histórico injetado, se houver — já carregado acima p/ o orçamento)
     const resultado = await this.chamarOpenAI(
       creds,
@@ -169,6 +182,11 @@ export class MullerBotService {
       userMessage,
       maxOutputTokens,
       historico,
+    );
+    void this.custo.registrarUso(
+      user.empresaIdAtiva,
+      resultado.tokensIn ?? 0,
+      resultado.tokensOut ?? 0,
     );
 
     this.logger.log(
