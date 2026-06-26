@@ -1775,7 +1775,11 @@ model Message {
   botRespostas BotResposta[]
 
   @@unique([conversationId, externalId])
-  @@index([conversationId])
+  // Composto p/ a query QUENTE montarHistorico/listMensagens: WHERE conversationId ORDER BY
+  // criadoEm DESC LIMIT N (roda em TODA msg inbound do bot + cada abertura de thread). Serve o
+  // order-by pelo índice (sem sort em memória) e cobre buscas por conversationId sozinho (prefixo),
+  // tornando o @@index([conversationId]) avulso redundante.
+  @@index([conversationId, criadoEm])
   @@index([direction])
   @@index([status])
   @@index([criadoEm])
