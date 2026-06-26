@@ -171,6 +171,34 @@ describe('PedidosService', () => {
     ).rejects.toBeInstanceOf(BusinessRuleException);
   });
 
+  it('precoUnitarioOverride abaixo do preço base conta como desconto e NÃO burla o teto', async () => {
+    // SEGURANÇA: override = 10 sobre tabela 100 é 90% de desconto disfarçado. Com desconto:0 e
+    // sem motivoDesconto, antes passava direto (maxItemDescPct só via i.desconto). Agora o override
+    // vira desconto efetivo → excede o teto → exige aprovação/motivo → bloqueia.
+    prisma.cliente.findFirst.mockResolvedValue({
+      id: 'cli-1',
+      empresaId: 'emp-1',
+      nome: 'X',
+      omieStatus: 'ATIVO',
+      representanteId: 'rep-1',
+    });
+    prisma.produto.findMany.mockResolvedValue([
+      { id: 'p1', nome: 'Prod', ativo: true, precoTabela: 100 },
+    ]);
+    prisma.usuario.findUnique.mockResolvedValue({ tetoDesconto: 5 });
+
+    await expect(
+      svc.create(fakeUser(), {
+        clienteId: 'cli-1',
+        itens: [{ produtoId: 'p1', quantidade: 1, desconto: 0, precoUnitarioOverride: 10 }],
+        formaPagamento: 'BOLETO',
+        condicaoPagamento: '30dias',
+        descontoGeral: 0,
+        // motivoDesconto ausente — deve bloquear pois o override implica 90% de desconto
+      }),
+    ).rejects.toBeInstanceOf(BusinessRuleException);
+  });
+
   it('cria pedido em AGUARDANDO_APROVACAO + cria solicitação automática', async () => {
     prisma.cliente.findFirst.mockResolvedValue({
       id: 'cli-1',

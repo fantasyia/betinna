@@ -962,11 +962,24 @@ export class PedidosService {
 
     const calc: ItemInput[] = itens.map((i) => {
       const resolved = priceMap.get(i.produtoId);
-      const preco =
-        i.precoUnitarioOverride ??
-        resolved?.precoFinal ??
-        Number(produtosMap.get(i.produtoId)!.precoTabela);
-      return { quantidade: i.quantidade, precoUnitario: preco, desconto: i.desconto };
+      const precoBase = resolved?.precoFinal ?? Number(produtosMap.get(i.produtoId)!.precoTabela);
+      const override = i.precoUnitarioOverride;
+      const explicito = Math.min(80, Math.max(0, i.desconto ?? 0));
+      // SEGURANÇA: override ABAIXO do preço base é desconto disfarçado. Sem contabilizá-lo, o REP
+      // burlava o teto de desconto / fluxo de aprovação (maxItemDescPct só lê i.desconto). Converte
+      // no desconto EFETIVO sobre o preço base (implícito do override + explícito) e mantém
+      // precoUnitario = base — o total fica idêntico ao desejado, mas o teto agora enxerga o desconto real.
+      if (override != null && precoBase > 0 && override < precoBase) {
+        const precoFinalDesejado = override * (1 - explicito / 100);
+        const efetivo = Math.min(80, Math.max(0, (1 - precoFinalDesejado / precoBase) * 100));
+        return { quantidade: i.quantidade, precoUnitario: precoBase, desconto: efetivo };
+      }
+      // Override ausente, ou >= base (sem desconto implícito): usa override ?? base com o desconto explícito.
+      return {
+        quantidade: i.quantidade,
+        precoUnitario: override ?? precoBase,
+        desconto: explicito,
+      };
     });
 
     return itens.map((i, idx) => {
@@ -979,7 +992,9 @@ export class PedidosService {
         nome: produtosMap.get(i.produtoId)!.nome,
         quantidade: i.quantidade,
         precoUnitario: preco,
-        desconto: i.desconto,
+        // desconto EFETIVO (já inclui o desconto implícito do override) — consistente com o que
+        // o teto avaliou; antes guardava só o explícito e divergia do cálculo de aprovação.
+        desconto: calc[idx].desconto,
         total: t.total,
         negociado: !!resolved?.negociado && resolved.vigente,
         pesoPorUnidade: peso != null ? Number(peso) : null,
