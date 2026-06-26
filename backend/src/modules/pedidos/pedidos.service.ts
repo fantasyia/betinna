@@ -52,6 +52,19 @@ const pedidoInclude = {
 
 type PedidoWithRel = Prisma.PedidoGetPayload<{ include: typeof pedidoInclude }>;
 
+// PERF: a LISTA não precisa de itens[]+produto+aprovacaoDesconto (só o detalhe usa) — arrastar
+// isso serializava centenas de PedidoItem + joins por página, inflando o payload da rota quente do
+// rep no celular. Include enxuto: cabeçalho + contagem de itens. Detalhe segue com pedidoInclude.
+const pedidoListInclude = {
+  cliente: { select: { id: true, nome: true, cnpj: true, cidade: true, omieStatus: true } },
+  representante: { select: { id: true, nome: true, email: true, tetoDesconto: true } },
+  aprovador: { select: { id: true, nome: true } },
+  pedidoOrigem: { select: { id: true, numero: true } },
+  _count: { select: { itens: true } },
+} satisfies Prisma.PedidoInclude;
+
+type PedidoListItem = Prisma.PedidoGetPayload<{ include: typeof pedidoListInclude }>;
+
 const COMISSAO_PADRAO_PCT = 5;
 
 @Injectable()
@@ -247,7 +260,7 @@ export class PedidosService {
   }
 
   // ─── Listar / detalhar ──────────────────────────────────────────────────
-  async list(user: AuthenticatedUser, params: ListPedidosDto): Promise<Paginated<PedidoWithRel>> {
+  async list(user: AuthenticatedUser, params: ListPedidosDto): Promise<Paginated<PedidoListItem>> {
     const where: Prisma.PedidoWhereInput = { ...(await this.baseWhere(user)) };
     const conds: Prisma.PedidoWhereInput[] = [];
 
@@ -275,7 +288,7 @@ export class PedidosService {
         skip: (params.page - 1) * params.limit,
         take: params.limit,
         orderBy: { [params.sortBy]: params.sortOrder },
-        include: pedidoInclude,
+        include: pedidoListInclude,
       }),
     ]);
     return buildPaginated(data, total, params.page, params.limit);

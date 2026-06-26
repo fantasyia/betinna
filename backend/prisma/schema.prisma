@@ -1727,7 +1727,12 @@ model Conversation {
   @@index([status])
   @@index([categoria])
   @@index([incidentId])
-  @@index([ultimaMsgEm])
+  // Composto p/ a query MAIS QUENTE do app (lista do Inbox, poll de 2s): WHERE empresaId
+  // [+ status] ORDER BY ultimaMsgEm DESC. Serve o filtro de tenant + o ORDER BY pelo índice
+  // (scan reverso p/ DESC). Status costuma ser notIn (negação não casa no meio do índice), por
+  // isso (empresaId, ultimaMsgEm) é o robusto. Substitui o @@index([ultimaMsgEm]) solto (toda
+  // query é tenant-scoped → o avulso era redundante).
+  @@index([empresaId, ultimaMsgEm])
   // Seed demo
   @@index([empresaId, isDemo])
 }
