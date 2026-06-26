@@ -21,9 +21,19 @@ export interface CsvColumn<T> {
  *  - Se contém vírgula, quebra de linha ou aspas → envolve em aspas
  *  - Aspas internas viram aspas duplas
  */
+/**
+ * Neutraliza CSV/formula injection: célula que começa com = + - @ TAB ou CR é interpretada como
+ * FÓRMULA no Excel/Sheets. Como PII de canal público (NPS, WhatsApp) entra crua nos exports, um
+ * atacante planta `=HYPERLINK(...)`/`=cmd|...` que dispara na planilha do operador. Prefixa com aspa
+ * simples (desarma a fórmula sem perder o conteúdo). Reusado por csv e xlsx.
+ */
+export function neutralizarFormula(v: string): string {
+  return /^[=+\-@\t\r]/.test(v) ? `'${v}` : v;
+}
+
 function csvEscape(v: string | number | null | undefined): string {
   if (v === null || v === undefined) return '';
-  const s = String(v);
+  const s = neutralizarFormula(String(v));
   if (s.includes(',') || s.includes('\n') || s.includes('"') || s.includes(';')) {
     return `"${s.replace(/"/g, '""')}"`;
   }

@@ -102,6 +102,19 @@ import { RODAR_BACKGROUND } from '@shared/utils/service-type';
               '*.token',
               '*.access_token',
               '*.refresh_token',
+              // Credenciais de integração chegam aninhadas em req.body.credenciais.<key> (POST
+              // /integracoes/conectar) — fora do wildcard de 1 nível acima. Redige o objeto inteiro
+              // + os segredos comuns aninhados em qualquer profundidade.
+              'req.body.credenciais',
+              '*.credenciais',
+              '*.client_secret',
+              '*.clientSecret',
+              '*.partner_key',
+              '*.partnerKey',
+              '*.app_secret',
+              '*.appSecret',
+              '*.secret',
+              '*.privateKey',
             ],
             censor: '[REDACTED]',
           },

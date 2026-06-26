@@ -9,7 +9,7 @@
  * Mantemos `CsvColumn<T>` (`lib/csv.ts`) como definição compartilhada de colunas.
  */
 
-import { fetchAllPages, type CsvColumn } from './csv';
+import { fetchAllPages, neutralizarFormula, type CsvColumn } from './csv';
 
 export type XlsxColumn<T> = CsvColumn<T>;
 
@@ -86,7 +86,8 @@ export async function rowsToXlsx<T>(args: {
     const obj: Record<string, string | number | null> = {};
     for (const col of args.columns) {
       const v = col.value(row);
-      obj[col.header] = v === undefined ? null : v;
+      // Anti-formula-injection: mesma neutralização do CSV (PII de canal público vira fórmula).
+      obj[col.header] = v === undefined ? null : typeof v === 'string' ? neutralizarFormula(v) : v;
     }
     sheet.addRow(obj);
   }
