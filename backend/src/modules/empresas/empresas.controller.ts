@@ -19,7 +19,8 @@ import { ApiBearerAuth, ApiBody, ApiConsumes, ApiOperation, ApiTags } from '@nes
 import { Audit } from '@shared/decorators/audit.decorator';
 import { CurrentUser } from '@shared/decorators/current-user.decorator';
 import { Roles } from '@shared/decorators/roles.decorator';
-import { BusinessRuleException } from '@shared/errors/app-exception';
+import { BusinessRuleException, ForbiddenException } from '@shared/errors/app-exception';
+import { ErrorCode } from '@shared/errors/error-codes';
 import { ZodValidationPipe } from '@shared/pipes/zod-validation.pipe';
 import type { AuthenticatedUser } from '@shared/types/authenticated-user';
 import { EmpresaLogoService } from './empresa-logo.service';
@@ -150,7 +151,12 @@ export class EmpresasController {
 
   @Get(':id/logo')
   @ApiOperation({ summary: 'Retorna signed URL do logo (cache 7 dias)' })
-  getLogo(@Param('id') id: string) {
+  getLogo(@CurrentUser() user: AuthenticatedUser, @Param('id') id: string) {
+    // IDOR guard: só logo de empresa vinculada ao usuário. Sem isso, qualquer usuário logado
+    // obtinha a signed URL do logo (e a existência) de qualquer tenant. ADMIN é cross-tenant (D48).
+    if (user.role !== 'ADMIN' && !user.empresaIds.includes(id)) {
+      throw new ForbiddenException('Empresa não vinculada', ErrorCode.TENANT_ACCESS_DENIED);
+    }
     return this.logoService.getSignedUrl(id);
   }
 

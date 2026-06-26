@@ -1,6 +1,7 @@
 import { Injectable, Logger, OnModuleInit } from '@nestjs/common';
 import { type SupabaseClient, createClient } from '@supabase/supabase-js';
 import { EnvService } from '@config/env.service';
+import { safeRequest } from '@shared/utils/safe-request';
 
 /**
  * MetaMediaService — baixa attachments de Messenger/Instagram via CDN URL
@@ -70,15 +71,11 @@ export class MetaMediaService implements OnModuleInit {
     const { cdnUrl, empresaId, canal, peerId, msgId } = params;
 
     try {
-      const controller = new AbortController();
-      const timer = setTimeout(() => controller.abort(), DOWNLOAD_TIMEOUT_MS);
-
-      let response: Response;
-      try {
-        response = await fetch(cdnUrl, { signal: controller.signal });
-      } finally {
-        clearTimeout(timer);
-      }
+      // SSRF guard: cdnUrl vem do payload do webhook /webhooks/meta (atacante-controlável, e em
+      // ambiente sem META_GRAPH_APP_SECRET o webhook é aceito sem HMAC). safeRequest valida
+      // scheme/host/IP (bloqueia localhost/169.254.169.254/RFC1918/DNS-rebinding) + redirect:'manual'
+      // + timeout. SsrfBlockedError cai no catch abaixo → retorna null (não baixa nem armazena).
+      const response = await safeRequest(cdnUrl, {}, { timeoutMs: DOWNLOAD_TIMEOUT_MS });
 
       if (!response.ok) {
         this.logger.warn(

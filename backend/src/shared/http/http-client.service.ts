@@ -1,6 +1,11 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { logContext } from '@shared/utils/log-context';
-import { type HttpRequestOptions, type HttpResponse, HttpClientError } from './http-client.types';
+import {
+  type HttpRequestOptions,
+  type HttpResponse,
+  HttpClientError,
+  redactUrl,
+} from './http-client.types';
 
 /**
  * HTTP client compartilhado por todas as integrações externas.
@@ -101,7 +106,7 @@ export class HttpClientService {
           if (attempt < maxAttempts) {
             const wait = this.computeBackoff(attempt, retryBaseMs, responseHeaders['retry-after']);
             this.logger.warn(
-              `[${integration}] ${method} ${url} → ${status} (tent ${attempt}/${maxAttempts}). Retry em ${wait}ms`,
+              `[${integration}] ${method} ${redactUrl(url)} → ${status} (tent ${attempt}/${maxAttempts}). Retry em ${wait}ms`,
             );
             await this.sleep(wait);
             lastError = { status, body: data };
@@ -171,7 +176,7 @@ export class HttpClientService {
         if (attempt < maxAttempts && (isAbort || isNetwork)) {
           const wait = this.computeBackoff(attempt, retryBaseMs);
           this.logger.warn(
-            `[${integration}] ${method} ${url} erro de rede (tent ${attempt}/${maxAttempts}): ${(err as Error).message}. Retry em ${wait}ms`,
+            `[${integration}] ${method} ${redactUrl(url)} erro de rede (tent ${attempt}/${maxAttempts}): ${(err as Error).message}. Retry em ${wait}ms`,
           );
           await this.sleep(wait);
           lastError = {
@@ -315,7 +320,7 @@ export class HttpClientService {
   ): void {
     const safeBody = body !== undefined ? this.redact(body, redactKeys) : undefined;
     const level = outcome === 'ok' ? 'log' : outcome === 'client_error' ? 'warn' : 'error';
-    const summary = `[${integration}] ${method} ${url} → ${status} (${attempts}t, ${durationMs}ms)`;
+    const summary = `[${integration}] ${method} ${redactUrl(url)} → ${status} (${attempts}t, ${durationMs}ms)`;
     if (level === 'log') this.logger.log(summary);
     else if (level === 'warn') this.logger.warn(summary);
     else this.logger.error(summary);
