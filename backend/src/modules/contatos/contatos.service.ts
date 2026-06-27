@@ -47,6 +47,16 @@ const CAP = 5000;
 
 @Injectable()
 export class ContatosService {
+  // PERF: o list() funde até CAP×3 (~15k) linhas Lead+Cliente+Conversa e pagina EM MEMÓRIA — TODA
+  // navegação de página re-fazia o fetch+merge (custo O(base), não O(page)). Cache curto do conjunto
+  // já mesclado+ordenado por (empresa+filtros+escopo): navegar entre páginas reusa o trabalho. TTL
+  // baixo (alguns segundos) → staleness desprezível pra uma lista de CRM. (Reescrita em SQL = follow-up.)
+  private readonly listaCache = new Map<
+    string,
+    { dados: ContatoAgregado[]; truncado: boolean; expiresAt: number }
+  >();
+  private static readonly LISTA_TTL_MS = 15_000;
+
   constructor(
     private readonly prisma: PrismaService,
     private readonly repScope: RepScopeService,
@@ -97,6 +107,34 @@ export class ContatosService {
     const wantLead = !params.tipo || params.tipo === 'LEAD';
     const wantCliente = !params.tipo || params.tipo === 'CLIENTE';
     const wantConversa = !params.tipo || params.tipo === 'CONVERSA';
+
+    // Validação de escopo do repId ANTES do cache — segurança não pode ser cacheada/bypassada.
+    if (repId && scope !== null && !scope.includes(repId)) {
+      throw new ForbiddenException(
+        'Você não tem acesso à carteira deste representante',
+        ErrorCode.TENANT_ACCESS_DENIED,
+      );
+    }
+    // Cache do conjunto mesclado+ordenado: navegar entre páginas reusa o fetch+merge.
+    const cacheKey = JSON.stringify({
+      empresaId,
+      scope,
+      role: user.role,
+      uid: user.id,
+      term: term ?? null,
+      repId: repId ?? null,
+      tipo: params.tipo ?? null,
+      sortBy: params.sortBy,
+    });
+    const hit = this.listaCache.get(cacheKey);
+    if (hit && hit.expiresAt > Date.now()) {
+      const start = (params.page - 1) * params.limit;
+      const slice = hit.dados.slice(start, start + params.limit);
+      return {
+        ...buildPaginated(slice, hit.dados.length, params.page, params.limit),
+        truncado: hit.truncado,
+      };
+    }
 
     // ── WHERE por fonte (tenant + carteira + busca + filtro de rep) ──
     const leadWhere: Prisma.LeadWhereInput = { empresaId };
@@ -303,6 +341,13 @@ export class ContatosService {
     arr.sort((a, b) => {
       if (params.sortBy === 'nome') return a.nome.localeCompare(b.nome, 'pt-BR');
       return (b.ultimaInteracaoEm ?? '').localeCompare(a.ultimaInteracaoEm ?? '');
+    });
+
+    // Cacheia o conjunto mesclado+ordenado (pré-paginação) — as próximas páginas vêm daqui.
+    this.listaCache.set(cacheKey, {
+      dados: arr,
+      truncado,
+      expiresAt: Date.now() + ContatosService.LISTA_TTL_MS,
     });
 
     const total = arr.length;
