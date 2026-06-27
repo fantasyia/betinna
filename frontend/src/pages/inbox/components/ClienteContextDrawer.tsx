@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { Building2, ExternalLink, Hash, Mail, MapPin, Phone, Receipt } from 'lucide-react';
 import { useApiQuery } from '@/hooks/useApiQuery';
 import { Avatar, Button, Drawer } from '@/components/ui';
-import { formatTelefone } from '@/lib/masks';
+import { formatTelefone } from '@/lib/phone';
 import { cn } from '@/lib/cn';
 
 interface ClienteCtx {

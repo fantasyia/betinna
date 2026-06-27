@@ -25,7 +25,8 @@ import { ImportClientesModal } from '@/components/ImportClientesModal';
 import { StateView } from '@/components/StateView';
 import { useToast } from '@/components/toast';
 import { api, apiErrorMessage } from '@/lib/api';
-import { formatNumero, formatTelefone } from '@/lib/masks';
+import { formatNumero } from '@/lib/masks';
+import { formatTelefone } from '@/lib/phone';
 import {
   Avatar,
   Badge,

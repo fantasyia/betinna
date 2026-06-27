@@ -1,4 +1,3 @@
-import { parsePhoneNumberFromString } from 'libphonenumber-js';
 
 /**
  * Máscaras de input — pure functions.
@@ -97,17 +96,8 @@ export function maskCPF(v: string): string {
   return `${d.slice(0, 3)}.${d.slice(3, 6)}.${d.slice(6, 9)}-${d.slice(9)}`;
 }
 
-/**
- * Formata um telefone pra EXIBIÇÃO internacional (ex: "+55 11 97053-5832").
- * Aceita E.164 (`+55...`) ou número legado nacional (assume BR). Inválido →
- * devolve como veio. Usado onde o dado já está salvo (listas, detalhes).
- */
-export function formatTelefone(v: string | null | undefined): string {
-  const s = (v ?? '').trim();
-  if (!s) return '';
-  const tel = parsePhoneNumberFromString(s, 'BR');
-  return tel ? tel.formatInternational() : s;
-}
+// `formatTelefone` foi movido pra `@/lib/phone` (isola o libphonenumber-js do caminho crítico —
+// masks é importado em todo lugar). Importe de '@/lib/phone'.
 
 /**
  * Telefone BR: (00) 0000-0000 ou (00) 00000-0000 (celular). Máscara de INPUT

@@ -218,6 +218,9 @@ vi.mock('@/components/ImportClientesModal', () => ({
 // masks: evitar falha em isomorphic na formatação
 vi.mock('@/lib/masks', () => ({
   formatNumero: (n: number) => String(n),
+}));
+// formatTelefone migrou pra @/lib/phone (isola o libphonenumber do bundle do masks).
+vi.mock('@/lib/phone', () => ({
   formatTelefone: (t: string) => t,
 }));
 
