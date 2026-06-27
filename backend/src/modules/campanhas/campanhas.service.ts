@@ -27,9 +27,17 @@ const campanhaInclude = {
   _count: { select: { destinatarios: true } },
 } satisfies Prisma.CampanhaInclude;
 
+// PERF: cap nos destinatarios. findById é retornado por disparar/pausar/cancelar/update (15
+// call-sites) — sem take, cada AÇÃO puxava/serializava a campanha INTEIRA (milhares de linhas +
+// join em cliente). O front descarta o retorno das ações (faz refetch) e o detalhe mostra a lista
+// via GET separado; cap em 1000 bounda o pior caso (o _count dá o total real). Paginação dedicada
+// de destinatarios = follow-up.
+const DESTINATARIOS_DETALHE_CAP = 1000;
+
 const campanhaDetalheInclude = {
   ...campanhaInclude,
   destinatarios: {
+    take: DESTINATARIOS_DETALHE_CAP,
     orderBy: { criadoEm: Prisma.SortOrder.asc },
     select: {
       id: true,

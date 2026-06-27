@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { memo, useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import {
   DndContext,
@@ -627,7 +627,10 @@ function KanbanColumn({
  * disparam drag, então um click rápido em outra parte do card também
  * abre o detail.
  */
-function DraggableLeadCard({
+// PERF: memoizado — com TanStack fazendo structural sharing e onClick (setSelected) estável, o
+// poll de 20s não re-renderiza nem re-registra os draggables dos cards que não mudaram (antes
+// travava ao arrastar no celular em funil grande).
+const DraggableLeadCard = memo(function DraggableLeadCard({
   lead,
   onClick,
 }: {
@@ -664,7 +667,7 @@ function DraggableLeadCard({
       <LeadCardInner lead={lead} onOpenDetail={() => onClick(lead)} />
     </div>
   );
-}
+});
 
 function LeadCardInner({
   lead,

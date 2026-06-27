@@ -35,6 +35,12 @@ const leadInclude = {
 
 type LeadWithRel = Prisma.LeadGetPayload<{ include: typeof leadInclude }>;
 
+// PERF: o kanban carregava TODOS os leads do funil (findMany sem take) com leadInclude pesado —
+// em funil com milhares de leads ativos, query gigante + payload grande + trava no drag (front).
+// Teto global ordenado por etapaDesde desc (os mais recentes primeiro = "trabalho atual") + flag
+// `truncado` pra UI avisar (não-silencioso). Cap por etapa/paginação por coluna = follow-up.
+const KANBAN_CAP = 500;
+
 @Injectable()
 export class LeadsService {
   private readonly logger = new Logger(LeadsService.name);
@@ -133,6 +139,8 @@ export class LeadsService {
     };
     /** Mapa etapaId → leads. Quando enum legado, a key é o nome do enum. */
     grupos: Record<string, LeadWithRel[]>;
+    /** true quando atingiu KANBAN_CAP — a UI deve avisar que há mais leads não exibidos. */
+    truncado: boolean;
   }> {
     const empresaId = this.requireEmpresa(user);
     const where = await this.baseWhere(user);
@@ -164,7 +172,14 @@ export class LeadsService {
         where: { ...where, funilId: funil.id },
         orderBy: { etapaDesde: 'desc' },
         include: leadInclude,
+        take: KANBAN_CAP,
       });
+      const truncado = items.length >= KANBAN_CAP;
+      if (truncado) {
+        this.logger.warn(
+          `Kanban truncado em ${KANBAN_CAP} leads (funil ${funil.id}) — UI deve avisar.`,
+        );
+      }
       const grupos: Record<string, LeadWithRel[]> = Object.fromEntries(
         funil.etapas.map((e) => [e.id, [] as LeadWithRel[]]),
       );
@@ -187,6 +202,7 @@ export class LeadsService {
           })),
         },
         grupos,
+        truncado,
       };
     }
 
@@ -195,7 +211,12 @@ export class LeadsService {
       where,
       orderBy: { etapaDesde: 'desc' },
       include: leadInclude,
+      take: KANBAN_CAP,
     });
+    const truncado = items.length >= KANBAN_CAP;
+    if (truncado) {
+      this.logger.warn(`Kanban (legado) truncado em ${KANBAN_CAP} leads — UI deve avisar.`);
+    }
     const ENUM_ETAPAS: LeadEtapa[] = [
       'NOVO',
       'QUALIFICANDO',
@@ -223,6 +244,7 @@ export class LeadsService {
         })),
       },
       grupos,
+      truncado,
     };
   }
 
