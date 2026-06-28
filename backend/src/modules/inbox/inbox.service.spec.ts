@@ -64,7 +64,14 @@ describe('InboxService.processarMensagemEntrante', () => {
   beforeEach(() => {
     prisma = makePrismaMock();
     registry = new CanalAdapterRegistry();
-    svc = new InboxService(prisma as never, registry, { get: () => 24 } as never);
+    svc = new InboxService(
+      prisma as never,
+      registry,
+      { get: () => 24 } as never,
+      {
+        publicar: () => Promise.resolve(),
+      } as never,
+    );
   });
 
   it('cria Conversation + Message novos quando não há nada prévio', async () => {
@@ -240,7 +247,14 @@ describe('InboxService.responder', () => {
   beforeEach(() => {
     prisma = makePrismaMock();
     registry = new CanalAdapterRegistry();
-    svc = new InboxService(prisma as never, registry, { get: () => 24 } as never);
+    svc = new InboxService(
+      prisma as never,
+      registry,
+      { get: () => 24 } as never,
+      {
+        publicar: () => Promise.resolve(),
+      } as never,
+    );
   });
 
   it('falha quando canal não tem adapter registrado', async () => {
@@ -351,7 +365,14 @@ describe('InboxService.atribuir', () => {
 
   beforeEach(() => {
     prisma = makePrismaMock();
-    svc = new InboxService(prisma as never, new CanalAdapterRegistry(), { get: () => 24 } as never);
+    svc = new InboxService(
+      prisma as never,
+      new CanalAdapterRegistry(),
+      { get: () => 24 } as never,
+      {
+        publicar: () => Promise.resolve(),
+      } as never,
+    );
   });
 
   it('REP é bloqueado de reatribuir (função gerencial)', async () => {
@@ -406,7 +427,14 @@ describe('InboxService bulk operations', () => {
 
   beforeEach(() => {
     prisma = makePrismaMock();
-    svc = new InboxService(prisma as never, new CanalAdapterRegistry(), { get: () => 24 } as never);
+    svc = new InboxService(
+      prisma as never,
+      new CanalAdapterRegistry(),
+      { get: () => 24 } as never,
+      {
+        publicar: () => Promise.resolve(),
+      } as never,
+    );
   });
 
   it('bulkAtribuir — REP bloqueado', async () => {
@@ -521,7 +549,14 @@ describe('InboxService.list — SLA (aguardandoDesde)', () => {
 
   beforeEach(() => {
     prisma = makePrismaMock();
-    svc = new InboxService(prisma as never, new CanalAdapterRegistry(), { get: () => 24 } as never);
+    svc = new InboxService(
+      prisma as never,
+      new CanalAdapterRegistry(),
+      { get: () => 24 } as never,
+      {
+        publicar: () => Promise.resolve(),
+      } as never,
+    );
   });
 
   const baseConv = (over: Record<string, unknown> = {}) => ({
@@ -571,7 +606,14 @@ describe('InboxService.listarContatosWhatsapp', () => {
 
   beforeEach(() => {
     prisma = makePrismaMock();
-    svc = new InboxService(prisma as never, new CanalAdapterRegistry(), { get: () => 24 } as never);
+    svc = new InboxService(
+      prisma as never,
+      new CanalAdapterRegistry(),
+      { get: () => 24 } as never,
+      {
+        publicar: () => Promise.resolve(),
+      } as never,
+    );
   });
 
   it('inclui grupo (@g.us) com tipo GRUPO (id = jid) e contato individual com tipo CONTATO', async () => {

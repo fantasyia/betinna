@@ -5,12 +5,16 @@ import {
   Get,
   HttpCode,
   HttpStatus,
+  type MessageEvent,
   Param,
   Patch,
   Post,
   Put,
   Query,
+  Sse,
 } from '@nestjs/common';
+import { type Observable, interval, merge } from 'rxjs';
+import { filter, map } from 'rxjs/operators';
 import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
 import { Audit } from '@shared/decorators/audit.decorator';
 import { CurrentUser } from '@shared/decorators/current-user.decorator';
@@ -47,6 +51,7 @@ import {
 } from './inbox.dto';
 import { ConversationNotasService } from './conversation-notas.service';
 import { ConversationPresencaService } from './conversation-presenca.service';
+import { type InboxEvento, InboxEventsService } from './inbox-events.service';
 import { InboxMetricasService } from './inbox-metricas.service';
 import { InboxService } from './inbox.service';
 import { WhatsAppMediaService } from '@integrations/whatsapp/whatsapp-media.service';
@@ -80,7 +85,34 @@ export class InboxController {
     private readonly whatsappMedia: WhatsAppMediaService,
     private readonly whatsapp: WhatsAppService,
     private readonly metaMedia: MetaMediaService,
+    private readonly eventos: InboxEventsService,
   ) {}
+
+  /**
+   * Stream SSE de mudanças no Inbox (push-to-invalidate). O front abre via fetch (com Bearer; o
+   * EventSource não manda header) e, a cada evento, refetcha a query JÁ escopada — substitui o
+   * poll de 2s. Declarado ANTES de `@Get(':id')` pra a rota `stream` não cair no param `:id`.
+   *
+   * Escopo: filtra por empresa ativa + (REP → só o próprio WhatsApp), espelhando a lista do Inbox.
+   * O evento NÃO carrega conteúdo (só ids) — o refetch escopado é a barreira real contra vazamento.
+   */
+  @Sse('stream')
+  @ApiOperation({ summary: 'Stream SSE de eventos do Inbox (push-to-invalidate)' })
+  stream(@CurrentUser() user: AuthenticatedUser): Observable<MessageEvent> {
+    const empresaId = user.empresaIdAtiva;
+    const eventos = this.eventos.stream$.pipe(
+      filter(
+        (e: InboxEvento) =>
+          e.empresaId === empresaId && (user.role !== 'REP' || e.proprietarioId === user.id),
+      ),
+      map((e: InboxEvento): MessageEvent => ({ data: e, type: 'inbox' })),
+    );
+    // Heartbeat (comentário SSE) a cada 25s — mantém a conexão viva através de proxies/LB.
+    const heartbeat = interval(25_000).pipe(
+      map((): MessageEvent => ({ data: { tipo: 'ping' }, type: 'ping' })),
+    );
+    return merge(eventos, heartbeat);
+  }
 
   @Get('messages/:id/media')
   @ApiOperation({

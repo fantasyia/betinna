@@ -19,6 +19,7 @@ import { ErrorCode } from '@shared/errors/error-codes';
 import type { AuthenticatedUser } from '@shared/types/authenticated-user';
 import { type Paginated, buildPaginated } from '@shared/types/pagination';
 import { CanalAdapterRegistry } from './canal-adapter.registry';
+import { type InboxEvento, InboxEventsService } from './inbox-events.service';
 import type {
   AlterarStatusDto,
   AtribuirDto,
@@ -75,7 +76,32 @@ export class InboxService {
     private readonly prisma: PrismaService,
     private readonly registry: CanalAdapterRegistry,
     private readonly env: EnvService,
+    private readonly eventos: InboxEventsService,
   ) {}
+
+  /**
+   * Publica um evento SSE de mudança no Inbox (push-to-invalidate). Best-effort, fire-and-forget —
+   * nunca pode atrasar/derrubar o fluxo de mensagem. O front refetcha a query (já escopada) ao receber.
+   */
+  private emitirEvento(
+    conv: {
+      id: string;
+      empresaId: string;
+      proprietarioId: string | null;
+      atribuidoId: string | null;
+      canal: string;
+    },
+    tipo: InboxEvento['tipo'],
+  ): void {
+    void this.eventos.publicar({
+      empresaId: conv.empresaId,
+      conversationId: conv.id,
+      tipo,
+      proprietarioId: conv.proprietarioId,
+      atribuidoId: conv.atribuidoId,
+      canal: conv.canal,
+    });
+  }
 
   /**
    * Fase 2 — hook do bot Muller. O MullerWhatsappService se registra aqui no
@@ -582,6 +608,7 @@ export class InboxService {
         ...(dto.respondendoA ? { meta: { respondendoA: dto.respondendoA } } : {}),
       },
     });
+    this.emitirEvento(conv, 'mensagem');
 
     try {
       const r = await adapter.enviarTexto(conv.empresaId, conv.peerId, dto.texto, {
@@ -661,6 +688,7 @@ export class InboxService {
         enviadaPorBot: true,
       },
     });
+    this.emitirEvento(conv, 'mensagem');
     try {
       // idempotencyKey por balão (quando fornecida): o gate do provider deduplica se o mesmo
       // inbound for reprocessado após o TTL do lock — alinha com o nó "Conversar com IA".
@@ -836,6 +864,7 @@ export class InboxService {
         mediaMime: params.mimetype ?? null,
       },
     });
+    this.emitirEvento(conv, 'mensagem');
 
     try {
       const r = await whatsapp.enviarMidia(
@@ -1031,6 +1060,9 @@ export class InboxService {
     this.logger.log(
       `[${params.canal}] msg entrante ${msg.id} conv=${conv.id} peer=${params.peerId}`,
     );
+
+    // Push SSE: mensagem nova → o front refetcha a lista + a thread (sem esperar o poll de 2s).
+    this.emitirEvento(conv, 'mensagem');
 
     const resultado = { conversationId: conv.id, messageId: msg.id, duplicada: false };
 
