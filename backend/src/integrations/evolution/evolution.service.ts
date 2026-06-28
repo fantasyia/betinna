@@ -253,6 +253,38 @@ export class EvolutionService {
   }
 
   /**
+   * Lista DETALHADA (nome + status + ownerJid + reason) das instâncias `emp_`/`user_` numa ÚNICA
+   * chamada ao fetchInstances — base do cron de sync (atualiza a tabela EvolutionInstancia sem N+1).
+   */
+  async listarInstanciasDetalhadas(): Promise<
+    Array<{
+      name: string;
+      connectionStatus?: string;
+      ownerJid?: string | null;
+      disconnectionReasonCode?: number | null;
+    }>
+  > {
+    const lista = await this.req<
+      Array<{
+        name?: string;
+        instanceName?: string;
+        connectionStatus?: string;
+        ownerJid?: string | null;
+        disconnectionReasonCode?: number | null;
+      }>
+    >('get', '/instance/fetchInstances').catch(() => null);
+    if (!Array.isArray(lista)) return [];
+    return lista
+      .map((i) => ({
+        name: i.name ?? i.instanceName ?? '',
+        connectionStatus: i.connectionStatus,
+        ownerJid: i.ownerJid,
+        disconnectionReasonCode: i.disconnectionReasonCode,
+      }))
+      .filter((i) => /^(emp|user)_/.test(i.name));
+  }
+
+  /**
    * Mensagens recentes de uma instância (newest-first), pro poll de fallback que
    * cobre o que o webhook perde quando o socket do Evolution oscila.
    */
