@@ -66,14 +66,16 @@ function setup(opts?: {
     baixarMidiaBase64: vi.fn().mockResolvedValue(undefined),
     nomeGrupo: vi.fn().mockResolvedValue('Time Comercial'),
   };
+  const instancias = { sincronizarConexao: vi.fn(), remover: vi.fn() };
   const svc = new EvolutionInboundService(
     prisma as never,
     inbox as never,
     session as never,
     media as never,
     evolution as never,
+    instancias as never,
   );
-  return { svc, prisma, inbox, session, media, evolution };
+  return { svc, prisma, inbox, session, media, evolution, instancias };
 }
 
 /** Payload no formato do webhook messages.upsert do Evolution. */
@@ -389,5 +391,21 @@ describe('EvolutionInboundService — sincronizarRecentes (poll de fallback)', (
     await svc.sincronizarRecentes();
     expect(inbox.processarMensagemEntrante).toHaveBeenCalledTimes(1);
     expect(inbox.processarMensagemEntrante.mock.calls[0][0].externalId).toBe('OK');
+  });
+});
+
+describe('EvolutionInboundService — connection.update persiste o estado da instância', () => {
+  it('chama sincronizarConexao com instância + estado + wuid', async () => {
+    const { svc, instancias } = setup();
+    await svc.processarEvento({
+      event: 'connection.update',
+      instance: 'emp_emp-1',
+      data: { state: 'open', wuid: '5511999998888@s.whatsapp.net' },
+    });
+    expect(instancias.sincronizarConexao).toHaveBeenCalledWith(
+      'emp_emp-1',
+      'open',
+      '5511999998888@s.whatsapp.net',
+    );
   });
 });

@@ -4,6 +4,7 @@ import { PrismaService } from '@database/prisma.service';
 import { InboxService } from '@modules/inbox/inbox.service';
 import { WhatsAppSessionService } from '@integrations/whatsapp/whatsapp-session.service';
 import { WhatsAppMediaService } from '@integrations/whatsapp/whatsapp-media.service';
+import { EvolutionInstanciaService } from './evolution-instancia.service';
 import { EvolutionService } from './evolution.service';
 
 /** Mensagem como o Evolution entrega no webhook messages.upsert (formato Baileys). */
@@ -46,6 +47,7 @@ export class EvolutionInboundService {
     private readonly session: WhatsAppSessionService,
     private readonly media: WhatsAppMediaService,
     private readonly evolution: EvolutionService,
+    private readonly instancias: EvolutionInstanciaService,
   ) {}
 
   /**
@@ -103,9 +105,12 @@ export class EvolutionInboundService {
       if (evento === 'messages.upsert') {
         await this.onMensagem(instance, body.data as EvoMessage | { messages?: EvoMessage[] });
       } else if (evento === 'connection.update') {
-        const estado = (body.data as { state?: string })?.state ?? '?';
+        const d = body.data as { state?: string; wuid?: string };
+        const estado = d?.state ?? '?';
         this.estadoPorInstancia.set(instance, estado);
         this.logger.log(`[evolution] ${instance} conexão: ${estado}`);
+        // Persiste o estado na tabela durável (verdade local espelhada do Evolution).
+        void this.instancias.sincronizarConexao(instance, estado, d?.wuid);
       } else if (evento === 'qrcode.updated') {
         const d = body.data as { qrcode?: { base64?: string }; base64?: string };
         const base64 = d?.qrcode?.base64 ?? d?.base64;

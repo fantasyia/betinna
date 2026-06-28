@@ -314,6 +314,7 @@ model Empresa {
   devolucoes            Devolucao[]
   internalThreads       InternalThread[]
   knowledgeChunks       KnowledgeChunk[]
+  evolutionInstancias   EvolutionInstancia[]
 
   @@index([ativo])
 }
@@ -371,6 +372,7 @@ model Usuario {
   movimentosFidelidade      MovimentoFidelidade[]
   repCatalogoItens          RepCatalogoItem[]
   respostasRapidas          RespostaRapida[]
+  evolutionInstancias       EvolutionInstancia[]
 
   @@index([role])
   @@index([status])
@@ -406,40 +408,40 @@ model Permissao {
 // ─── CLIENTES (CRM) ───────────────────────────────────────────────────
 
 model Cliente {
-  id              String            @id @default(cuid())
-  empresaId       String
-  codigoOmie      String?
-  nome            String
+  id                    String            @id @default(cuid())
+  empresaId             String
+  codigoOmie            String?
+  nome                  String
   // Dados fiscais e contato (obrigatórios via DTO; nullable no schema pra
   // suportar legado e import OMIE sem todos os campos preenchidos)
-  cnpj            String?
-  email           String?
-  telefone        String?
-  segmento        String?
+  cnpj                  String?
+  email                 String?
+  telefone              String?
+  segmento              String?
   // Endereço completo
-  cep             String?
-  endereco        String?
-  numero          String?
-  complemento     String?
-  bairro          String?
-  cidade          String?
-  uf              String?
-  regiao          String?
-  status          ClienteStatus     @default(NOVO)
-  omieStatus      ClienteOmieStatus @default(ATIVO) // só ativo/bloqueado importa
-  score           Int               @default(50)
-  prazoPagamento  Int               @default(30) // dias
-  limiteCredito   Decimal?          @db.Decimal(14, 2)
-  ultimoPedidoEm  DateTime?
+  cep                   String?
+  endereco              String?
+  numero                String?
+  complemento           String?
+  bairro                String?
+  cidade                String?
+  uf                    String?
+  regiao                String?
+  status                ClienteStatus     @default(NOVO)
+  omieStatus            ClienteOmieStatus @default(ATIVO) // só ativo/bloqueado importa
+  score                 Int               @default(50)
+  prazoPagamento        Int               @default(30) // dias
+  limiteCredito         Decimal?          @db.Decimal(14, 2)
+  ultimoPedidoEm        DateTime?
   /// Última vez que o gatilho CLIENTE_INATIVO_30D disparou pra este cliente —
   /// evita re-disparo (spam) dentro da janela de inatividade.
   reativacaoDisparadaEm DateTime?
-  representanteId String?
+  representanteId       String?
   /// Marca registros gerados pelo seed-demo (script /admin/seed-demo).
   /// Permite limpeza seletiva sem mexer em dados reais do tenant.
-  isDemo          Boolean           @default(false)
-  criadoEm        DateTime          @default(now())
-  atualizadoEm    DateTime          @updatedAt
+  isDemo                Boolean           @default(false)
+  criadoEm              DateTime          @default(now())
+  atualizadoEm          DateTime          @updatedAt
 
   empresa       Empresa  @relation(fields: [empresaId], references: [id], onDelete: Cascade)
   representante Usuario? @relation(fields: [representanteId], references: [id])
@@ -546,40 +548,40 @@ model Documento {
 // ─── PRODUTOS / CATÁLOGO ──────────────────────────────────────────────
 
 model Produto {
-  id                  String    @id @default(cuid())
-  empresaId           String
-  codigoOmie          String?
-  sku                 String?
-  nome                String
-  descricao           String?   @db.Text
-  marca               String?
-  linha               String? // Alimentos, Químicos, Bebidas, Embalagens
-  categoria           String?
-  unidade             String? // cx 12un, 1kg, etc
-  precoTabela         Decimal   @db.Decimal(14, 2)
+  id                    String                       @id @default(cuid())
+  empresaId             String
+  codigoOmie            String?
+  sku                   String?
+  nome                  String
+  descricao             String?                      @db.Text
+  marca                 String?
+  linha                 String? // Alimentos, Químicos, Bebidas, Embalagens
+  categoria             String?
+  unidade               String? // cx 12un, 1kg, etc
+  precoTabela           Decimal                      @db.Decimal(14, 2)
   /// Custo / preço de fábrica. OPCIONAL: fica null quando não há custo REAL
   /// (ex.: produto importado do OMIE sem tabela de custo). NÃO inventamos mais
   /// um chute de 70% — null = "não informado", a tela mostra "—" e o catálogo
   /// pede pra definir o custo antes de calcular markup. Preenchido à mão ou
   /// pelo OMIE quando a tabela de preço real for integrada.
-  precoFabrica        Decimal?  @db.Decimal(14, 2)
-  imagem              String? // emoji ou URL
+  precoFabrica          Decimal?                     @db.Decimal(14, 2)
+  imagem                String? // emoji ou URL
   /// Camada de MARKETING (editável no app, não vem do ERP). Tier comercial livre por
   /// tenant: entrada / valor_agregado / nobre, etc.
-  tierComercial       String?
+  tierComercial         String?
   /// Peso (kg) por unidade de venda — converte produtos não-kg (ex: molho em L) pro
   /// cálculo do pedido mínimo por peso. Null = não converte.
-  pesoPorUnidade      Decimal?  @db.Decimal(14, 4)
+  pesoPorUnidade        Decimal?                     @db.Decimal(14, 4)
   /// Atributos customizados livres (JSON) definidos pelo tenant. Ex: { "shelf_life_meses": 12 }.
-  atributos           Json?
-  popularidade        Int       @default(0)
-  estoque             Int       @default(0)
+  atributos             Json?
+  popularidade          Int                          @default(0)
+  estoque               Int                          @default(0)
   /// Timestamp da última vez que estoque foi sincronizado (sync 30min OU webhook OMIE).
   /// Usado pelo frontend pra mostrar "atualizado há X min" e detectar dados stale.
-  estoqueAtualizadoEm DateTime?
-  ativo               Boolean   @default(true)
+  estoqueAtualizadoEm   DateTime?
+  ativo                 Boolean                      @default(true)
   /// Marca registros gerados pelo seed-demo.
-  isDemo              Boolean   @default(false)
+  isDemo                Boolean                      @default(false)
   /// RAG — embedding semântico (pgvector, OpenAI text-embedding-3-small, 1536 dims).
   /// Unsupported: Prisma não tipa vector; busca por similaridade roda via $queryRaw.
   /// embeddingAtualizadoEm < atualizadoEm (ou null) = precisa reindexar (reconciliador).
@@ -588,8 +590,8 @@ model Produto {
   /// SHA-256 do texto indexado. Reembedda só quando muda (sync de estoque/preço
   /// mexe em atualizadoEm mas não no texto → evita reembeddar à toa).
   embeddingTextoHash    String?
-  criadoEm            DateTime  @default(now())
-  atualizadoEm        DateTime  @updatedAt
+  criadoEm              DateTime                     @default(now())
+  atualizadoEm          DateTime                     @updatedAt
 
   empresa Empresa @relation(fields: [empresaId], references: [id], onDelete: Cascade)
 
@@ -619,21 +621,21 @@ enum KnowledgeFonte {
 }
 
 model KnowledgeChunk {
-  id                    String         @id @default(cuid())
+  id                    String                       @id @default(cuid())
   empresaId             String
-  fonte                 KnowledgeFonte @default(MANUAL)
+  fonte                 KnowledgeFonte               @default(MANUAL)
   categoria             String?
   titulo                String
-  conteudo              String         @db.Text
+  conteudo              String                       @db.Text
   /// id da origem quando fonte != MANUAL (chave de config, materialId) — re-upsert idempotente.
   refId                 String?
-  ativo                 Boolean        @default(true)
+  ativo                 Boolean                      @default(true)
   /// RAG — mesmo esquema do Produto.embedding (pgvector, 1536 dims, via $queryRaw).
   embedding             Unsupported("vector(1536)")?
   embeddingAtualizadoEm DateTime?
   embeddingTextoHash    String?
-  criadoEm              DateTime       @default(now())
-  atualizadoEm          DateTime       @updatedAt
+  criadoEm              DateTime                     @default(now())
+  atualizadoEm          DateTime                     @updatedAt
 
   empresa Empresa @relation(fields: [empresaId], references: [id], onDelete: Cascade)
 
@@ -1488,31 +1490,31 @@ model FluxoEdge {
  * Cada passo do fluxo é rastreado em FluxoExecucaoLog.
  */
 model FluxoExecucao {
-  id             String              @id @default(cuid())
-  fluxoId        String
-  empresaId      String
-  status         FluxoExecucaoStatus @default(PENDENTE)
+  id               String              @id @default(cuid())
+  fluxoId          String
+  empresaId        String
+  status           FluxoExecucaoStatus @default(PENDENTE)
   /// Dados do evento que disparou: { clienteId, pedidoId, leadId, ocorrenciaId, ... }
-  contexto       Json
+  contexto         Json
   /// ID do job BullMQ ativo (para monitoramento).
-  jobId          String?
+  jobId            String?
   /// Orquestração (Fase B) — nó em que a execução está pausada aguardando
   /// resposta do lead (status AGUARDANDO).
-  aguardandoNoId String?
+  aguardandoNoId   String?
   /// Lock otimista do turno do nó Conversar com IA (CAS): impede que 2 mensagens
   /// do lead em rajada rodem a IA / enviem / classifiquem em dobro. Liberado no finally.
-  processandoTurno Boolean           @default(false)
+  processandoTurno Boolean             @default(false)
   /// Quando o turno ATUAL começou a ser processado (carimbado ao adquirir o lock).
   /// O reaper de lock órfão usa ISTO (não iniciouEm, que é o início da execução e numa
   /// conversa de 24h fica sempre >15min no passado — resetaria lock saudável → double-run).
   turnoIniciadoEm  DateTime?
   /// Quando a espera expira (timeout do nó Conversar com IA).
-  timeoutEm      DateTime?
-  iniciouEm      DateTime?
-  terminouEm     DateTime?
-  erroMsg        String?             @db.Text
-  tentativas     Int                 @default(0)
-  criadoEm       DateTime            @default(now())
+  timeoutEm        DateTime?
+  iniciouEm        DateTime?
+  terminouEm       DateTime?
+  erroMsg          String?             @db.Text
+  tentativas       Int                 @default(0)
+  criadoEm         DateTime            @default(now())
 
   fluxo Fluxo              @relation(fields: [fluxoId], references: [id])
   logs  FluxoExecucaoLog[]
@@ -1933,6 +1935,32 @@ model IntegracaoStatus {
 // Integrações com escopo USUÁRIO (não empresa). Cada rep tem sua própria conexão.
 // Usado por: sendgrid (e-mail pessoal do rep), google_calendar (agenda do rep),
 // openai/anthropic (chave pessoal pra MullerBot, se opt-in).
+/// Estado de cada instância WhatsApp no Evolution (1 por número: empresa central ou rep pessoal).
+/// Espelha a verdade do Evolution — alimentado em tempo-real pelo webhook CONNECTION_UPDATE. Sem isso
+/// o estado da instância era volátil (só em memória + no Evolution). Base p/ dashboard/sync/cleanup.
+model EvolutionInstancia {
+  id               String    @id @default(cuid())
+  /// `emp_<empresaId>` (sessão da empresa) ou `user_<usuarioId>` (WhatsApp pessoal do rep).
+  instanceName     String    @unique
+  empresaId        String
+  /// null = sessão da empresa (número central SAC); preenchido = sessão pessoal do rep.
+  usuarioId        String?
+  /// Número pareado (ex.: `5511999998888@s.whatsapp.net`), quando conectado.
+  ownerJid         String?
+  /// Estado do Evolution: `open` | `connecting` | `close`.
+  connectionStatus String    @default("close")
+  /// Último CONNECTION_UPDATE recebido (pra detectar zumbi/staleness no sync).
+  ultimoEventoEm   DateTime?
+  criadoEm         DateTime  @default(now())
+  atualizadoEm     DateTime  @updatedAt
+
+  empresa Empresa  @relation(fields: [empresaId], references: [id], onDelete: Cascade)
+  usuario Usuario? @relation(fields: [usuarioId], references: [id], onDelete: Cascade)
+
+  @@index([empresaId])
+  @@index([connectionStatus])
+}
+
 model UsuarioIntegracao {
   id            String    @id @default(cuid())
   usuarioId     String
