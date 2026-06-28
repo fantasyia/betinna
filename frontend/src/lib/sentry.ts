@@ -15,7 +15,13 @@
  *  - REDACT_PATTERNS striping password/token/bearer/apikey em mensagens
  *  - beforeSend re-aplica redaction em messages, stack, breadcrumbs
  */
-import * as Sentry from '@sentry/react';
+// PERF: @sentry/react (~469KB, MAIOR que o React) carrega LAZY — só quando há DSN (ENABLED) e só
+// dentro do initSentry. Sem DSN era 469KB de peso morto no caminho crítico (sentry.ts é importado
+// ESTÁTICO por ErrorBoundary + auth-store). `Sentry` fica null até o import dinâmico resolver.
+type SentryModule = typeof import('@sentry/react');
+let Sentry: SentryModule | null = null;
+/** user setado antes do SDK carregar (login no bootstrap) — aplicado quando o SDK chega. */
+let pendingUserId: string | null = null;
 
 const DSN = (import.meta.env.VITE_SENTRY_DSN as string | undefined) ?? '';
 const ENV = (import.meta.env.MODE as string | undefined) ?? 'development';
@@ -88,7 +94,9 @@ export function captureError(err: unknown, extra?: Record<string, unknown>): voi
    
   console.error(JSON.stringify(payload));
 
-  if (ENABLED) {
+  // Se ENABLED mas o SDK ainda não carregou (1ºs ms), o erro vai pro log ND-JSON acima; o Sentry
+  // só recebe após o import lazy resolver. Trade-off aceitável pra tirar 469KB do caminho crítico.
+  if (ENABLED && Sentry) {
     Sentry.captureException(err instanceof Error ? err : new Error(message), {
       extra: extra ? redactObject(extra) : undefined,
     });
@@ -98,151 +106,124 @@ export function captureError(err: unknown, extra?: Record<string, unknown>): voi
 export function initSentry(): void {
   if (typeof window === 'undefined') return;
 
-  // Diagnóstico: expõe o estado da inicialização no `window` pra que Léo
-  // consiga validar no console do navegador sem precisar abrir Network tab.
-  //
-  // Uso no console:
-  //   window.__BETINNA_SENTRY__   →  { enabled, env, dsnPresent, dsnHost }
-  //
-  // Por que precisamos: `@sentry/react` v8+ NÃO expõe `window.Sentry` (é puro
-  // ES module). O teste `typeof window.Sentry === 'undefined'` que funcionava
-  // nos SDKs antigos via <script> tag não vale mais. Esse `__BETINNA_SENTRY__`
-  // dá o sinal explícito.
-  const dsnHost = DSN ? (() => {
-    try {
-      return new URL(DSN).host;
-    } catch {
-      return 'invalid-url';
-    }
-  })() : null;
-  (window as unknown as { __BETINNA_SENTRY__?: unknown }).__BETINNA_SENTRY__ = {
+  // Diagnóstico no `window` pro Léo validar no console (sem Network tab):
+  //   window.__BETINNA_SENTRY__ → { enabled, env, dsnPresent, dsnHost, sdkVersion }
+  // `sdkVersion` fica null até o SDK carregar lazy (só acontece quando ENABLED).
+  const dsnHost = DSN
+    ? (() => {
+        try {
+          return new URL(DSN).host;
+        } catch {
+          return 'invalid-url';
+        }
+      })()
+    : null;
+  const diag = {
     enabled: ENABLED,
     env: ENV,
     dsnPresent: ENABLED,
     dsnHost,
-    sdkVersion: Sentry.SDK_VERSION,
+    sdkVersion: null as string | null,
   };
+  (window as unknown as { __BETINNA_SENTRY__?: unknown }).__BETINNA_SENTRY__ = diag;
 
-  // Função de teste: chama Sentry.captureException DIRETO, bypassando
-  // window.onerror (que não dispara confiavelmente em `throw` do devtools
-  // console em Chrome). Use isso pra verificar a entrega end-to-end.
-  //
-  // Uso:
-  //   await window.__BETINNA_TEST_SENTRY__()
-  //   → retorna o eventId que foi enviado e força flush (espera 2s)
-  //   → cheque o Network tab por POST pra ingest.us.sentry.io
-  //   → cheque o dashboard Sentry pelo eventId
-  (window as unknown as { __BETINNA_TEST_SENTRY__?: () => Promise<string | null> }).__BETINNA_TEST_SENTRY__ =
-    async () => {
-      if (!ENABLED) {
-         
-        console.warn(
-          '[Sentry test] desabilitado — VITE_SENTRY_DSN ausente do bundle',
-        );
-        return null;
-      }
-      const eventId = Sentry.captureException(
-        new Error(`Teste Sentry · ${new Date().toISOString()}`),
-        { tags: { source: '__BETINNA_TEST_SENTRY__' } },
-      );
-       
-      console.info(`[Sentry test] eventId=${eventId} — forçando flush (2s)...`);
-      try {
-        const flushed = await Sentry.flush(2000);
-         
-        console.info(
-          `[Sentry test] flush ${flushed ? '✅ ok' : '⚠️ timeout/falha'} — confira Network tab + dashboard`,
-        );
-      } catch (err) {
-         
-        console.error('[Sentry test] flush falhou:', err);
-      }
-      return eventId;
-    };
+  // Fallback handlers: capturam mesmo sem DSN (caem pro log ND-JSON via captureError).
+  window.addEventListener('error', (e) => {
+    captureError(e.error ?? e.message, { source: 'window.error' });
+  });
+  window.addEventListener('unhandledrejection', (e) => {
+    captureError(e.reason, { source: 'unhandledrejection' });
+  });
 
-  // Expõe o SDK pra debug avançado (Léo pode chamar Sentry.captureMessage,
-  // Sentry.setContext, etc. direto do console)
-  (window as unknown as { __BETINNA_SENTRY_SDK__?: unknown }).__BETINNA_SENTRY_SDK__ =
-    Sentry;
+  if (!ENABLED) {
+    // DSN ausente → NÃO baixa o bundle do Sentry (469KB). Causa comum: VITE_SENTRY_DSN não estava
+    // no build do Railway (Vite congela env em build-time; setar depois exige redeploy).
 
-  if (ENABLED) {
-    Sentry.init({
-      dsn: DSN,
-      environment: ENV,
-      // Em prod amostramos 10% das transactions pra controlar custo.
-      // Em dev/staging tudo pra debug.
-      tracesSampleRate: ENV === 'production' ? 0.1 : 1.0,
-      // Session replay tem custo extra — manter desligado por enquanto.
-      replaysSessionSampleRate: 0,
-      replaysOnErrorSampleRate: 0,
-      // Sentry não envia PII automaticamente.
-      sendDefaultPii: false,
-      beforeSend(event) {
-        // Strip user PII (defesa em profundidade)
-        if (event.user) {
-          delete event.user.email;
-          delete event.user.ip_address;
-          delete event.user.username;
-        }
-        // Redact message
-        if (event.message) event.message = redact(event.message);
-        // Redact stack trace frames
-        if (event.exception?.values) {
-          for (const v of event.exception.values) {
-            if (v.value) v.value = redact(v.value);
-          }
-        }
-        // Strip Authorization header de requests capturados
-        if (event.request?.headers) {
-          const h = event.request.headers as Record<string, string>;
-          if (h.authorization) h.authorization = '[REDACTED]';
-          if (h.Authorization) h.Authorization = '[REDACTED]';
-          if (h.cookie) h.cookie = '[REDACTED]';
-        }
-        // Redact breadcrumbs data (podem conter tokens em fetch URLs)
-        if (event.breadcrumbs) {
-          for (const b of event.breadcrumbs) {
-            if (b.message) b.message = redact(b.message);
-            if (b.data && typeof b.data === 'object') {
-              b.data = redactObject(b.data as Record<string, unknown>);
-            }
-          }
-        }
-        // Redige a URL da request e a transaction — o token de aceite vive no path e
-        // vazaria por aqui mesmo com os REDACT_PATH_PATTERNS (que só cobrem message/url-livre).
-        if (event.request?.url) event.request.url = redact(event.request.url);
-        if (event.transaction) event.transaction = redact(event.transaction);
-        return event;
-      },
-    });
-
-     
-    console.info(
-      `[Sentry] ✅ inicializado · env=${ENV} · sdk=${Sentry.SDK_VERSION} · host=${dsnHost}`,
-    );
-  } else {
-    // DSN ausente — log explícito pra evitar silêncio em produção.
-    // Causa MAIS COMUM: `VITE_SENTRY_DSN` não estava setada no Railway
-    // quando o serviço frontend foi BUILDADO. Vite congela env vars no
-    // bundle em build-time, não em runtime — setar a var depois do build
-    // não tem efeito até o próximo redeploy.
-     
     console.warn(
       '[Sentry] ⚠️ desabilitado · VITE_SENTRY_DSN não está no bundle. ' +
         'Se a env var existe no Railway, é provável que tenha sido setada APÓS o ' +
         'último build do serviço frontend. Faça um redeploy pra rebuildar com a ' +
         'nova env. Vite injeta env vars em build-time, não runtime.',
     );
+    return;
   }
 
-  // Fallback handlers: capturam mesmo se DSN não configurado (cai pro log)
-  window.addEventListener('error', (e) => {
-    captureError(e.error ?? e.message, { source: 'window.error' });
-  });
+  // ENABLED → carrega o @sentry/react LAZY (fora do caminho crítico) e só então inicializa.
+  void import('@sentry/react')
+    .then((S) => {
+      Sentry = S;
+      S.init({
+        dsn: DSN,
+        environment: ENV,
+        // Em prod amostramos 10% das transactions pra controlar custo; dev/staging tudo.
+        tracesSampleRate: ENV === 'production' ? 0.1 : 1.0,
+        replaysSessionSampleRate: 0,
+        replaysOnErrorSampleRate: 0,
+        sendDefaultPii: false,
+        beforeSend(event) {
+          // Strip user PII (defesa em profundidade)
+          if (event.user) {
+            delete event.user.email;
+            delete event.user.ip_address;
+            delete event.user.username;
+          }
+          if (event.message) event.message = redact(event.message);
+          if (event.exception?.values) {
+            for (const v of event.exception.values) {
+              if (v.value) v.value = redact(v.value);
+            }
+          }
+          if (event.request?.headers) {
+            const h = event.request.headers as Record<string, string>;
+            if (h.authorization) h.authorization = '[REDACTED]';
+            if (h.Authorization) h.Authorization = '[REDACTED]';
+            if (h.cookie) h.cookie = '[REDACTED]';
+          }
+          if (event.breadcrumbs) {
+            for (const b of event.breadcrumbs) {
+              if (b.message) b.message = redact(b.message);
+              if (b.data && typeof b.data === 'object') {
+                b.data = redactObject(b.data as Record<string, unknown>);
+              }
+            }
+          }
+          // Token de aceite vive no path da URL/transaction → redige (REDACT_PATH_PATTERNS só cobre msg).
+          if (event.request?.url) event.request.url = redact(event.request.url);
+          if (event.transaction) event.transaction = redact(event.transaction);
+          return event;
+        },
+      });
+      diag.sdkVersion = S.SDK_VERSION;
+      (window as unknown as { __BETINNA_SENTRY_SDK__?: unknown }).__BETINNA_SENTRY_SDK__ = S;
+      // Teste end-to-end: chama captureException direto (bypassa window.onerror).
+      //   await window.__BETINNA_TEST_SENTRY__()
+      (
+        window as unknown as { __BETINNA_TEST_SENTRY__?: () => Promise<string | null> }
+      ).__BETINNA_TEST_SENTRY__ = async () => {
+        const eventId = S.captureException(new Error(`Teste Sentry · ${new Date().toISOString()}`), {
+          tags: { source: '__BETINNA_TEST_SENTRY__' },
+        });
 
-  window.addEventListener('unhandledrejection', (e) => {
-    captureError(e.reason, { source: 'unhandledrejection' });
-  });
+        console.info(`[Sentry test] eventId=${eventId} — forçando flush (2s)...`);
+        try {
+          const flushed = await S.flush(2000);
+
+          console.info(
+            `[Sentry test] flush ${flushed ? '✅ ok' : '⚠️ timeout/falha'} — confira Network tab + dashboard`,
+          );
+        } catch (err) {
+          console.error('[Sentry test] flush falhou:', err);
+        }
+        return eventId;
+      };
+      // Aplica o user que tenha sido setado antes do SDK carregar (login no bootstrap).
+      if (pendingUserId) S.setUser({ id: pendingUserId });
+
+      console.info(`[Sentry] ✅ inicializado (lazy) · env=${ENV} · sdk=${S.SDK_VERSION} · host=${dsnHost}`);
+    })
+    .catch((err) => {
+      console.error('[Sentry] falha ao carregar o SDK (lazy):', err);
+    });
 }
 
 /**
@@ -251,16 +232,7 @@ export function initSentry(): void {
  * correlacionar erros sem expor PII.
  */
 export function setSentryUser(userId: string | null): void {
-  if (!ENABLED) return;
-  if (userId) {
-    Sentry.setUser({ id: userId });
-  } else {
-    Sentry.setUser(null);
-  }
+  pendingUserId = userId; // lembra mesmo se o SDK ainda não carregou (aplicado no initSentry)
+  if (!ENABLED || !Sentry) return;
+  Sentry.setUser(userId ? { id: userId } : null);
 }
-
-/**
- * ErrorBoundary do @sentry/react — captura erros de render.
- * Importar do consumer: `import { SentryErrorBoundary } from '@/lib/sentry'`.
- */
-export const SentryErrorBoundary = Sentry.ErrorBoundary;
