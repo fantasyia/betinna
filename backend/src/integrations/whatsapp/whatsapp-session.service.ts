@@ -120,6 +120,26 @@ export class WhatsAppSessionService implements OnModuleInit, OnModuleDestroy {
     private readonly statusIntegracao: IntegracaoStatusService,
   ) {}
 
+  /** Concorrência máxima ao restaurar sessões no boot — evita boot-storm (memória/FDs) a muitas sessões. */
+  private static readonly BOOT_CONCORRENCIA = 10;
+
+  /** Roda `fn` sobre `items` com no máximo `limite` execuções simultâneas (worker-pool, sem dep). */
+  private async comConcorrencia<T>(
+    items: T[],
+    limite: number,
+    fn: (item: T) => Promise<void>,
+  ): Promise<void> {
+    let i = 0;
+    const worker = async (): Promise<void> => {
+      while (i < items.length) {
+        const item = items[i];
+        i += 1;
+        await fn(item);
+      }
+    };
+    await Promise.all(Array.from({ length: Math.min(limite, items.length) }, () => worker()));
+  }
+
   // ─── Lifecycle ────────────────────────────────────────────────────────
 
   async onModuleInit(): Promise<void> {
@@ -141,7 +161,16 @@ export class WhatsAppSessionService implements OnModuleInit, OnModuleDestroy {
       );
       return;
     }
-    await Promise.all([this.bootEmpresa(), this.bootUsuarios()]);
+    // Fire-and-forget: NÃO bloquear o onModuleInit — a API precisa subir e responder /health na
+    // hora (senão o healthcheck do Railway estoura a muitas sessões). O boot restaura em background,
+    // SEQUENCIAL (empresa → usuários) e com concorrência limitada (evita boot-storm de memória/FDs).
+    void (async () => {
+      await this.bootEmpresa();
+      await this.bootUsuarios();
+    })().catch((err) => {
+      const m = err instanceof Error ? err.message : String(err);
+      this.logger.error(`Boot de sessões WhatsApp falhou: ${m}`);
+    });
   }
 
   private async bootEmpresa(): Promise<void> {
@@ -151,14 +180,14 @@ export class WhatsAppSessionService implements OnModuleInit, OnModuleDestroy {
     });
     if (ativas.length > 0) {
       this.logger.log(
-        `Boot: restaurando ${ativas.length} sessão(ões) WhatsApp empresa em background`,
+        `Boot: restaurando ${ativas.length} sessão(ões) WhatsApp empresa (concorrência ${WhatsAppSessionService.BOOT_CONCORRENCIA})`,
       );
-      for (const a of ativas) {
-        void this.iniciarEmpresa(a.empresaId).catch((err) => {
+      await this.comConcorrencia(ativas, WhatsAppSessionService.BOOT_CONCORRENCIA, async (a) => {
+        await this.iniciarEmpresa(a.empresaId).catch((err) => {
           const m = err instanceof Error ? err.message : String(err);
           this.logger.warn(`Restauração empresa=${a.empresaId} falhou: ${m}`);
         });
-      }
+      });
     }
   }
 
@@ -172,21 +201,21 @@ export class WhatsAppSessionService implements OnModuleInit, OnModuleDestroy {
     });
     if (ativas.length > 0) {
       this.logger.log(
-        `Boot: restaurando ${ativas.length} sessão(ões) WhatsApp usuário em background`,
+        `Boot: restaurando ${ativas.length} sessão(ões) WhatsApp usuário (concorrência ${WhatsAppSessionService.BOOT_CONCORRENCIA})`,
       );
-      for (const a of ativas) {
+      await this.comConcorrencia(ativas, WhatsAppSessionService.BOOT_CONCORRENCIA, async (a) => {
         const empresaId = a.usuario.empresas[0]?.empresaId;
         if (!empresaId) {
           this.logger.warn(
             `Usuário ${a.usuarioId} com integração WhatsApp mas sem empresa vinculada`,
           );
-          continue;
+          return;
         }
-        void this.iniciarUsuario(a.usuarioId, empresaId).catch((err) => {
+        await this.iniciarUsuario(a.usuarioId, empresaId).catch((err) => {
           const m = err instanceof Error ? err.message : String(err);
           this.logger.warn(`Restauração usuário=${a.usuarioId} falhou: ${m}`);
         });
-      }
+      });
     }
   }
 
