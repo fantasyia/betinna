@@ -23,11 +23,18 @@ export function useBadges(): BadgeCounts {
         // silencioso — badge é informativo, não bloqueia nada
       }
     }
+    // Guard de visibilidade: não pollar em aba de 2º plano. Revalida ao voltar o foco.
+    function tick() {
+      if (document.visibilityState !== 'visible') return;
+      void load();
+    }
     void load();
-    const t = setInterval(() => void load(), 60_000);
+    const t = setInterval(tick, 60_000);
+    document.addEventListener('visibilitychange', tick);
     return () => {
       active = false;
       clearInterval(t);
+      document.removeEventListener('visibilitychange', tick);
     };
   }, []);
 

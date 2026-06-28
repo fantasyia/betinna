@@ -95,9 +95,19 @@ export function NotificationBell() {
       setCount(0);
       return;
     }
+    // Guard de visibilidade: não pollar contagem em aba de 2º plano (a muitos usuários, COUNT
+    // inútil somando carga). Revalida ao voltar o foco.
+    function tick() {
+      if (document.visibilityState !== 'visible') return;
+      void fetchCount();
+    }
     void fetchCount();
-    const id = window.setInterval(fetchCount, POLL_INTERVAL_MS);
-    return () => window.clearInterval(id);
+    const id = window.setInterval(tick, POLL_INTERVAL_MS);
+    document.addEventListener('visibilitychange', tick);
+    return () => {
+      window.clearInterval(id);
+      document.removeEventListener('visibilitychange', tick);
+    };
   }, [session?.user?.id, fetchCount]);
 
   // Fecha ao clicar fora
