@@ -42,21 +42,17 @@ export interface ContatoAgregado {
   criadoEm: string;
 }
 
-/** Teto por fonte — evita carregar base inteira num tenant gigante (MVP). */
-const CAP = 5000;
+/** Linha do dedup-no-banco (paginarChaves): a chave + os ids das entidades daquele contato. */
+interface ChaveRow {
+  chave: string;
+  lead_ids: string[];
+  cliente_ids: string[];
+  conversa_ids: string[];
+  total: number;
+}
 
 @Injectable()
 export class ContatosService {
-  // PERF: o list() funde até CAP×3 (~15k) linhas Lead+Cliente+Conversa e pagina EM MEMÓRIA — TODA
-  // navegação de página re-fazia o fetch+merge (custo O(base), não O(page)). Cache curto do conjunto
-  // já mesclado+ordenado por (empresa+filtros+escopo): navegar entre páginas reusa o trabalho. TTL
-  // baixo (alguns segundos) → staleness desprezível pra uma lista de CRM. (Reescrita em SQL = follow-up.)
-  private readonly listaCache = new Map<
-    string,
-    { dados: ContatoAgregado[]; truncado: boolean; expiresAt: number }
-  >();
-  private static readonly LISTA_TTL_MS = 15_000;
-
   constructor(
     private readonly prisma: PrismaService,
     private readonly repScope: RepScopeService,
@@ -101,95 +97,55 @@ export class ContatosService {
   ): Promise<Paginated<ContatoAgregado> & { truncado: boolean }> {
     const empresaId = this.requireEmpresa(user);
     const scope = await this.repScope.getRepIds(user);
-    const term = params.search?.trim();
+    const term = params.search?.trim() || undefined;
     const repId = params.representanteId;
 
-    const wantLead = !params.tipo || params.tipo === 'LEAD';
-    const wantCliente = !params.tipo || params.tipo === 'CLIENTE';
-    const wantConversa = !params.tipo || params.tipo === 'CONVERSA';
-
-    // Validação de escopo do repId ANTES do cache — segurança não pode ser cacheada/bypassada.
+    // Validação de escopo do repId — o filtro ?representanteId NÃO pode furar a carteira.
     if (repId && scope !== null && !scope.includes(repId)) {
       throw new ForbiddenException(
         'Você não tem acesso à carteira deste representante',
         ErrorCode.TENANT_ACCESS_DENIED,
       );
     }
-    // Cache do conjunto mesclado+ordenado: navegar entre páginas reusa o fetch+merge.
-    const cacheKey = JSON.stringify({
-      empresaId,
-      scope,
-      role: user.role,
-      uid: user.id,
-      term: term ?? null,
-      repId: repId ?? null,
-      tipo: params.tipo ?? null,
-      sortBy: params.sortBy,
-    });
-    const hit = this.listaCache.get(cacheKey);
-    if (hit && hit.expiresAt > Date.now()) {
-      const start = (params.page - 1) * params.limit;
-      const slice = hit.dados.slice(start, start + params.limit);
-      return {
-        ...buildPaginated(slice, hit.dados.length, params.page, params.limit),
-        truncado: hit.truncado,
-      };
+
+    // PERF (reescrita SQL): o dedup por sufixo de telefone (D18) + agrupamento + ordenação +
+    // PAGINAÇÃO acontecem NO BANCO (paginarChaves) — antes fundia até ~15k linhas e paginava em
+    // memória a CADA request (O(base)). Agora a query devolve só os ids da PÁGINA (O(page)) + o
+    // total. O merge rico (prioridade de nome/campos) segue em memória, mas só sobre os ~limit
+    // contatos da página. Validado diferencialmente contra prod (mesmo dedup/ordem/ids/total).
+    const offset = (params.page - 1) * params.limit;
+    const { rows, total } = await this.paginarChaves(
+      {
+        empresaId,
+        scope,
+        role: user.role,
+        uid: user.id,
+        term,
+        repId,
+        want: {
+          lead: !params.tipo || params.tipo === 'LEAD',
+          cliente: !params.tipo || params.tipo === 'CLIENTE',
+          conversa: !params.tipo || params.tipo === 'CONVERSA',
+        },
+      },
+      params.sortBy === 'nome' ? 'nome' : 'recente',
+      params.limit,
+      offset,
+    );
+    if (rows.length === 0) {
+      return { ...buildPaginated([], total, params.page, params.limit), truncado: false };
     }
 
-    // ── WHERE por fonte (tenant + carteira + busca + filtro de rep) ──
-    const leadWhere: Prisma.LeadWhereInput = { empresaId };
-    const clienteWhere: Prisma.ClienteWhereInput = { empresaId };
-    const conversaWhere: Prisma.ConversationWhereInput = { empresaId };
-
-    if (scope !== null) {
-      leadWhere.representanteId = { in: scope };
-      clienteWhere.representanteId = { in: scope };
-    }
-    // REP só vê o próprio WhatsApp nas conversas (igual ao Inbox).
-    if (user.role === 'REP') {
-      conversaWhere.canal = 'WHATSAPP';
-      conversaWhere.proprietarioId = user.id;
-    }
-    if (repId) {
-      // O filtro ?representanteId NÃO pode furar o escopo de carteira: se há escopo (REP/GERENTE)
-      // e o rep pedido está fora dele, nega — senão sobrescrevia o {in: scope} e vazava carteira
-      // alheia (leads/clientes de qualquer rep da empresa).
-      if (scope !== null && !scope.includes(repId)) {
-        throw new ForbiddenException(
-          'Você não tem acesso à carteira deste representante',
-          ErrorCode.TENANT_ACCESS_DENIED,
-        );
-      }
-      leadWhere.representanteId = repId;
-      clienteWhere.representanteId = repId;
-      conversaWhere.atribuidoId = repId;
-    }
-    if (term) {
-      leadWhere.OR = [
-        { nome: { contains: term, mode: 'insensitive' } },
-        { contatoNome: { contains: term, mode: 'insensitive' } },
-        { contatoTelefone: { contains: term } },
-        { contatoEmail: { contains: term, mode: 'insensitive' } },
-      ];
-      clienteWhere.OR = [
-        { nome: { contains: term, mode: 'insensitive' } },
-        { telefone: { contains: term } },
-        { email: { contains: term, mode: 'insensitive' } },
-        { cnpj: { contains: term } },
-      ];
-      conversaWhere.OR = [
-        { peerNome: { contains: term, mode: 'insensitive' } },
-        { peerId: { contains: term } },
-        { cliente: { nome: { contains: term, mode: 'insensitive' } } },
-      ];
-    }
-
+    // Busca SÓ as entidades da página (por id) — mesma ordenação de antes pra o merge first-wins
+    // (||=/??=) escolher o mesmo registro dentro de cada grupo.
+    const pageLeadIds = [...new Set(rows.flatMap((r) => r.lead_ids))];
+    const pageClienteIds = [...new Set(rows.flatMap((r) => r.cliente_ids))];
+    const pageConversaIds = [...new Set(rows.flatMap((r) => r.conversa_ids))];
     const repSel = { select: { id: true, nome: true } } as const;
     const [leads, clientes, conversas] = await Promise.all([
-      wantLead
+      pageLeadIds.length
         ? this.prisma.lead.findMany({
-            where: leadWhere,
-            take: CAP + 1,
+            where: { empresaId, id: { in: pageLeadIds } },
             orderBy: { criadoEm: 'desc' },
             select: {
               id: true,
@@ -206,10 +162,9 @@ export class ContatosService {
             },
           })
         : [],
-      wantCliente
+      pageClienteIds.length
         ? this.prisma.cliente.findMany({
-            where: clienteWhere,
-            take: CAP + 1,
+            where: { empresaId, id: { in: pageClienteIds } },
             orderBy: { criadoEm: 'desc' },
             select: {
               id: true,
@@ -225,10 +180,9 @@ export class ContatosService {
             },
           })
         : [],
-      wantConversa
+      pageConversaIds.length
         ? this.prisma.conversation.findMany({
-            where: conversaWhere,
-            take: CAP + 1,
+            where: { empresaId, id: { in: pageConversaIds } },
             orderBy: [{ ultimaMsgEm: 'desc' }, { criadoEm: 'desc' }],
             select: {
               id: true,
@@ -246,9 +200,7 @@ export class ContatosService {
         : [],
     ]);
 
-    const truncado = leads.length > CAP || clientes.length > CAP || conversas.length > CAP;
-
-    // ── Merge por chave (telefone-sufixo > email > origem:id) ──
+    // ── Merge por chave (telefone-sufixo > email > origem:id) — só sobre a página ──
     const map = new Map<string, ContatoAgregado>();
     const pegar = (chave: string): ContatoAgregado => {
       const ex = map.get(chave);
@@ -329,31 +281,144 @@ export class ContatosService {
     }
 
     // Nomes vazios → fallback final.
-    let arr = [...map.values()].map((c) => ({
-      ...c,
-      nome: c.nome || c.telefone || c.email || 'Sem nome',
-      criadoEm: c.ultimaInteracaoEm ?? c.criadoEm,
-    }));
+    const byChave = new Map<string, ContatoAgregado>();
+    for (const c of map.values()) {
+      byChave.set(c.chave, {
+        ...c,
+        nome: c.nome || c.telefone || c.email || 'Sem nome',
+        criadoEm: c.ultimaInteracaoEm ?? c.criadoEm,
+      });
+    }
+    // A ORDEM e o filtro de tipo já vieram do SQL (rows). Só reidrato na ordem da página.
+    const data = rows
+      .map((r) => byChave.get(r.chave))
+      .filter((c): c is ContatoAgregado => c !== undefined);
 
-    // Filtro de tipo (quando pedido, garante que o contato É daquele tipo).
-    if (params.tipo) arr = arr.filter((c) => c.tipos.includes(params.tipo!));
+    // truncado=false: a paginação no banco expõe TODOS os contatos por páginas (nada é escondido).
+    return { ...buildPaginated(data, total, params.page, params.limit), truncado: false };
+  }
 
-    arr.sort((a, b) => {
-      if (params.sortBy === 'nome') return a.nome.localeCompare(b.nome, 'pt-BR');
-      return (b.ultimaInteracaoEm ?? '').localeCompare(a.ultimaInteracaoEm ?? '');
-    });
+  /**
+   * Dedup + agrupamento + ordenação + paginação NO BANCO. Devolve só os ids das entidades de
+   * CADA contato da página (lead/cliente/conversa) + o total de contatos distintos.
+   *
+   * A chave de dedup espelha `sufixoTel`/`telDaConversa` do JS (D18): sufixo de 8 dígitos do
+   * telefone > email (lower+trim) > `origem:id`. O nome/telefone/email "escolhidos" replicam a
+   * prioridade do merge em memória (cliente > lead > conversa pro nome; ordem-de-processamento
+   * lead > cliente > conversa pro telefone/email), com tie-break pelo registro MAIS RECENTE
+   * (quando DESC) — igual ao first-wins (`||=`/`??=`) que processa em criadoEm desc.
+   *
+   * ⚠️ Micro-divergência conhecida e cosmética: quando 2+ CLIENTES compartilham o mesmo sufixo de
+   * telefone com nomes diferentes, o merge em memória deixa o cliente mais ANTIGO vencer o nome
+   * (`=` last-write), enquanto aqui vence o mais recente. Não afeta dedup/ids (ops em lote), só o
+   * nome exibido nesse caso raro.
+   */
+  private async paginarChaves(
+    opts: {
+      empresaId: string;
+      scope: string[] | null;
+      role: string;
+      uid: string;
+      term?: string;
+      repId?: string;
+      want: { lead: boolean; cliente: boolean; conversa: boolean };
+    },
+    sortBy: 'nome' | 'recente',
+    limit: number,
+    offset: number,
+  ): Promise<{ rows: ChaveRow[]; total: number }> {
+    const { empresaId, scope, role, uid, term, repId, want } = opts;
+    const like = term ? `%${term}%` : undefined;
 
-    // Cacheia o conjunto mesclado+ordenado (pré-paginação) — as próximas páginas vêm daqui.
-    this.listaCache.set(cacheKey, {
-      dados: arr,
-      truncado,
-      expiresAt: Date.now() + ContatosService.LISTA_TTL_MS,
-    });
+    // sufixo(expr) = últimos 8 dígitos, só se houver >=8 dígitos (senão NULL → cai p/ email/id).
+    const reg = (e: Prisma.Sql) => Prisma.sql`regexp_replace(coalesce(${e},''),'[^0-9]','','g')`;
+    const sufixo = (e: Prisma.Sql) =>
+      Prisma.sql`CASE WHEN length(${reg(e)}) >= 8 THEN right(${reg(e)}, 8) END`;
 
-    const total = arr.length;
-    const start = (params.page - 1) * params.limit;
-    const slice = arr.slice(start, start + params.limit);
-    return { ...buildPaginated(slice, total, params.page, params.limit), truncado };
+    // telDaConversa: cliente.telefone > metadata.telefone (string) > peerId (não-grupo/lid, >=8 díg).
+    const telConversa = Prisma.sql`COALESCE(
+      cli.telefone,
+      CASE WHEN jsonb_typeof(cv.metadata->'telefone')='string' AND (cv.metadata->>'telefone') <> ''
+           THEN cv.metadata->>'telefone' END,
+      CASE WHEN cv."peerId" LIKE '%@g.us%' OR cv."peerId" LIKE '%@lid%' THEN NULL
+           WHEN split_part(split_part(cv."peerId",'@',1),':',1) ~ '[0-9]{8,}'
+           THEN split_part(split_part(cv."peerId",'@',1),':',1)
+           ELSE NULL END)`;
+
+    // Filtro de carteira (lead/cliente): repId tem precedência sobre o escopo (já validado dentro).
+    const scopeLeadCli = repId
+      ? Prisma.sql`AND "representanteId" = ${repId}`
+      : scope !== null
+        ? Prisma.sql`AND "representanteId" IN (${Prisma.join(scope.length ? scope : ['__none__'])})`
+        : Prisma.empty;
+
+    const blocos: Prisma.Sql[] = [];
+    if (want.lead) {
+      blocos.push(Prisma.sql`
+        SELECT 'LEAD' tipo, id lead_id, NULL::text cliente_id, NULL::text conversa_id,
+          COALESCE(${sufixo(Prisma.sql`"contatoTelefone"`)}, NULLIF(lower(btrim("contatoEmail")),''), 'lead:'||id) chave,
+          COALESCE(NULLIF("contatoNome",''), nome) nome_cand, "contatoTelefone" tel_cand, "contatoEmail" email_cand,
+          1 ord_nome, 1 ord_tipo, "criadoEm" quando
+        FROM "Lead"
+        WHERE "empresaId" = ${empresaId} ${scopeLeadCli}
+          ${like ? Prisma.sql`AND (nome ILIKE ${like} OR "contatoNome" ILIKE ${like} OR "contatoTelefone" LIKE ${like} OR "contatoEmail" ILIKE ${like})` : Prisma.empty}`);
+    }
+    if (want.cliente) {
+      blocos.push(Prisma.sql`
+        SELECT 'CLIENTE' tipo, NULL::text lead_id, id cliente_id, NULL::text conversa_id,
+          COALESCE(${sufixo(Prisma.sql`telefone`)}, NULLIF(lower(btrim(email)),''), 'cliente:'||id) chave,
+          nome nome_cand, telefone tel_cand, email email_cand,
+          0 ord_nome, 2 ord_tipo, "criadoEm" quando
+        FROM "Cliente"
+        WHERE "empresaId" = ${empresaId} ${scopeLeadCli}
+          ${like ? Prisma.sql`AND (nome ILIKE ${like} OR telefone LIKE ${like} OR email ILIKE ${like} OR cnpj LIKE ${like})` : Prisma.empty}`);
+    }
+    if (want.conversa) {
+      // REP só vê o próprio WhatsApp; repId filtra por atribuído (igual ao where Prisma anterior).
+      const repConv =
+        role === 'REP'
+          ? Prisma.sql`AND cv.canal = 'WHATSAPP' AND cv."proprietarioId" = ${uid}`
+          : Prisma.empty;
+      const repIdConv = repId ? Prisma.sql`AND cv."atribuidoId" = ${repId}` : Prisma.empty;
+      blocos.push(Prisma.sql`
+        SELECT 'CONVERSA' tipo, NULL::text lead_id, NULL::text cliente_id, cv.id conversa_id,
+          COALESCE(${sufixo(telConversa)}, 'conversa:'||cv.id) chave,
+          COALESCE(NULLIF(cli.nome,''), NULLIF(cv."peerNome",''), ${telConversa}) nome_cand, ${telConversa} tel_cand, NULL::text email_cand,
+          2 ord_nome, 3 ord_tipo, COALESCE(cv."ultimaMsgEm", cv."criadoEm") quando
+        FROM "Conversation" cv LEFT JOIN "Cliente" cli ON cli.id = cv."clienteId"
+        WHERE cv."empresaId" = ${empresaId} ${repConv} ${repIdConv}
+          ${like ? Prisma.sql`AND (cv."peerNome" ILIKE ${like} OR cv."peerId" LIKE ${like} OR cli.nome ILIKE ${like})` : Prisma.empty}`);
+    }
+    if (blocos.length === 0) return { rows: [], total: 0 };
+
+    const cte = Prisma.sql`
+      WITH src AS (${Prisma.join(blocos, ' UNION ALL ')}),
+      grp AS (
+        SELECT chave,
+          array_remove(array_agg(lead_id), NULL) lead_ids,
+          array_remove(array_agg(cliente_id), NULL) cliente_ids,
+          array_remove(array_agg(conversa_id), NULL) conversa_ids,
+          max(quando) ultima,
+          (array_remove(array_agg(nome_cand ORDER BY ord_nome, quando DESC), NULL))[1] nome_pick,
+          (array_remove(array_agg(tel_cand  ORDER BY ord_tipo, quando DESC), NULL))[1] tel_pick,
+          (array_remove(array_agg(email_cand ORDER BY ord_tipo, quando DESC), NULL))[1] email_pick
+        FROM src GROUP BY chave
+      )`;
+    const ordem =
+      sortBy === 'nome'
+        ? Prisma.sql`ORDER BY COALESCE(nome_pick, tel_pick, email_pick, 'Sem nome') COLLATE "pt-BR-x-icu" ASC`
+        : Prisma.sql`ORDER BY ultima DESC NULLS LAST`;
+
+    const rows = await this.prisma.$queryRaw<ChaveRow[]>(Prisma.sql`
+      ${cte}
+      SELECT chave, lead_ids, cliente_ids, conversa_ids, (count(*) OVER())::int total
+      FROM grp ${ordem} LIMIT ${limit} OFFSET ${offset}`);
+    if (rows.length > 0) return { rows, total: rows[0].total };
+
+    // Página vazia (offset além do fim) → não há linha pra carregar o total; conta à parte.
+    const cnt = await this.prisma.$queryRaw<Array<{ total: number }>>(Prisma.sql`
+      ${cte} SELECT count(*)::int total FROM grp`);
+    return { rows: [], total: cnt[0]?.total ?? 0 };
   }
 
   /**

@@ -455,4 +455,90 @@ describe('ContatosService', () => {
       expect(calledPayload).toMatchObject({ representanteId: repCuid });
     });
   });
+
+  describe('list — dedup no banco (paginarChaves) + merge da página', () => {
+    it('hidrata só os ids da página, funde por chave e preserva a ordem do SQL', async () => {
+      // paginarChaves devolve 2 contatos: chave 70535832 = lead+conversa fundidos; 88888888 = conversa.
+      prisma.$queryRaw.mockResolvedValueOnce([
+        { chave: '70535832', lead_ids: ['l1'], cliente_ids: [], conversa_ids: ['cv1'], total: 2 },
+        { chave: '88888888', lead_ids: [], cliente_ids: [], conversa_ids: ['cv2'], total: 2 },
+      ]);
+      const d = new Date('2026-06-01T10:00:00Z');
+      prisma.lead.findMany.mockResolvedValue([
+        {
+          id: 'l1',
+          nome: 'Lead Um',
+          contatoNome: 'Contato Um',
+          contatoTelefone: '11970535832', // sufixo 70535832 → casa a chave
+          contatoEmail: null,
+          cidade: null,
+          uf: null,
+          etapa: 'NOVO',
+          clienteId: null,
+          criadoEm: d,
+          representante: null,
+        },
+      ]);
+      prisma.cliente.findMany.mockResolvedValue([]);
+      prisma.conversation.findMany.mockResolvedValue([
+        {
+          id: 'cv1',
+          peerNome: 'Peer Um',
+          peerId: '5511970535832@s.whatsapp.net', // sufixo 70535832 → funde com o lead
+          metadata: null,
+          canal: 'WHATSAPP',
+          clienteId: null,
+          ultimaMsgEm: d,
+          criadoEm: d,
+          cliente: null,
+          atribuido: null,
+        },
+        {
+          id: 'cv2',
+          peerNome: 'Peer Dois',
+          peerId: '5511888888888@s.whatsapp.net', // sufixo 88888888
+          metadata: null,
+          canal: 'WHATSAPP',
+          clienteId: null,
+          ultimaMsgEm: d,
+          criadoEm: d,
+          cliente: null,
+          atribuido: null,
+        },
+      ]);
+
+      const res = await svc.list(adminUser, { page: 1, limit: 20, sortBy: 'recente' });
+
+      // busca SÓ os ids da página (não a base inteira)
+      expect(prisma.lead.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({ where: { empresaId: 'emp-1', id: { in: ['l1'] } } }),
+      );
+      expect(res.data).toHaveLength(2);
+      // ordem do SQL preservada
+      expect(res.data.map((c) => c.chave)).toEqual(['70535832', '88888888']);
+      // grupo 1: lead+conversa fundidos; nome = contato do lead (prioridade lead sobre conversa)
+      expect([...res.data[0].tipos].sort()).toEqual(['CONVERSA', 'LEAD']);
+      expect(res.data[0]).toMatchObject({ leadId: 'l1', conversaId: 'cv1', nome: 'Contato Um' });
+      // grupo 2: conversa sozinha
+      expect(res.data[1]).toMatchObject({
+        tipos: ['CONVERSA'],
+        conversaId: 'cv2',
+        nome: 'Peer Dois',
+      });
+      // total veio do SQL; truncado=false (paginação no banco não esconde nada)
+      expect(res.pagination.total).toBe(2);
+      expect(res.truncado).toBe(false);
+    });
+
+    it('página vazia (offset além do fim) → conta o total à parte', async () => {
+      prisma.$queryRaw
+        .mockResolvedValueOnce([]) // page query vazia
+        .mockResolvedValueOnce([{ total: 42 }]); // count fallback
+      const res = await svc.list(adminUser, { page: 100, limit: 20, sortBy: 'recente' });
+      expect(res.data).toHaveLength(0);
+      expect(res.pagination.total).toBe(42);
+      // não buscou entidades (nenhum id na página)
+      expect(prisma.lead.findMany).not.toHaveBeenCalled();
+    });
+  });
 });
