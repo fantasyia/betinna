@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Inbox as InboxIcon } from 'lucide-react';
 import { useRole } from '@/hooks/usePermission';
 import { useApiQuery, type PaginatedResponse } from '@/hooks/useApiQuery';
@@ -12,6 +12,7 @@ import { MetricasPanel } from '@/pages/inbox/components/MetricasPanel';
 import { ListaConversas } from '@/pages/inbox/components/ListaConversas';
 import { ConversationThread } from '@/pages/inbox/components/ConversationThread';
 import { useAvisoNovaMensagem } from '@/pages/inbox/hooks/useAvisoNovaMensagem';
+import { useInboxStream } from '@/pages/inbox/hooks/useInboxStream';
 
 /**
  * InboxPage v2 — design system dark, layout WhatsApp-like.
@@ -71,25 +72,34 @@ export default function InboxPage() {
     refetch,
   } = useApiQuery<PaginatedResponse<Conversation>>(listPath);
 
+  // SSE push-to-invalidate: a cada mudança no Inbox (mensagem nova etc.), refetcha a lista na hora —
+  // sem esperar o poll. `conectado` desacelera o poll abaixo pra um simples safety-net.
+  const { conectado: sseConectado } = useInboxStream(
+    useCallback(() => {
+      if (document.visibilityState === 'visible') refetch();
+    }, [refetch]),
+  );
+
   // Poll em BACKGROUND: revalida a MESMA query (queryKey estável) via refetch().
   // O TanStack mantém os dados durante o refetch → sem flicker e sem falso
   // "nova mensagem". (Antes usava `_t: pollBump` na URL como cache-buster, o que
   // com o TanStack virava uma query NOVA a cada 2s: limpava os dados → loading
   // piscando + totalNaoLidas caía a 0 → notificação "nova mensagem" em loop.)
-  // PERF: pausa o poll quando a aba está em 2º plano (aba esquecida não martela a rota mais cara
-  // do SAC) e revalida na hora ao voltar pro foco. Mesmo padrão da LeadsPage.
+  // PERF: pausa em 2º plano (revalida ao focar). Quando o SSE está conectado, o intervalo vira um
+  // safety-net longo (o push cobre o tempo-real) — derruba a carga da rota mais cara do SAC.
   useEffect(() => {
+    const intervaloMs = sseConectado ? 30_000 : POLL_INTERVAL_MS;
     function atualizar() {
       if (document.visibilityState !== 'visible') return;
       refetch();
     }
     document.addEventListener('visibilitychange', atualizar);
-    const i = setInterval(atualizar, POLL_INTERVAL_MS);
+    const i = setInterval(atualizar, intervaloMs);
     return () => {
       document.removeEventListener('visibilitychange', atualizar);
       clearInterval(i);
     };
-  }, [refetch]);
+  }, [refetch, sseConectado]);
 
   // Estado GLOBAL do bot (empresa) — pra os selos "Bot pausado"/"Religar" só
   // aparecerem quando o bot está de fato ativo na conversa (senão confunde:

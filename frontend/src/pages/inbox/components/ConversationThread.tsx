@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useRole } from '@/hooks/usePermission';
 import { useApiQuery } from '@/hooks/useApiQuery';
@@ -17,6 +17,7 @@ import { Composer } from '@/pages/inbox/components/Composer';
 import { useTemplatesResposta } from '@/pages/inbox/hooks/useTemplatesResposta';
 import { usePresencaConversa } from '@/pages/inbox/hooks/usePresencaConversa';
 import { useScrollToBottom } from '@/pages/inbox/hooks/useScrollToBottom';
+import { useInboxStream } from '@/pages/inbox/hooks/useInboxStream';
 import { useMarcarLida } from '@/pages/inbox/hooks/useMarcarLida';
 import { useEnvioMensagem } from '@/pages/inbox/hooks/useEnvioMensagem';
 import { useGravacaoVoz } from '@/pages/inbox/hooks/useGravacaoVoz';
@@ -50,20 +51,34 @@ export function ConversationThread({
   // os dados (sem flicker). Substitui o antigo cache-buster via prop `pollBump`.
   const refetchConv = conv.refetch;
   const refetchMsgs = msgs.refetch;
+  // SSE push: só refetcha quando o evento é DESTA conversa (mesma conexão compartilhada com a lista).
+  const { conectado: sseConectado } = useInboxStream(
+    useCallback(
+      (e) => {
+        if (e.conversationId === id && document.visibilityState === 'visible') {
+          refetchConv();
+          refetchMsgs();
+        }
+      },
+      [id, refetchConv, refetchMsgs],
+    ),
+  );
   // PERF: pausa em 2º plano (mensagens?limit=80 é o payload mais pesado do SAC) + revalida ao voltar.
+  // Com SSE conectado, o intervalo vira safety-net longo (o push cobre o tempo-real).
   useEffect(() => {
+    const intervaloMs = sseConectado ? 30_000 : POLL_INTERVAL_MS;
     function atualizar() {
       if (document.visibilityState !== 'visible') return;
       refetchConv();
       refetchMsgs();
     }
     document.addEventListener('visibilitychange', atualizar);
-    const i = setInterval(atualizar, POLL_INTERVAL_MS);
+    const i = setInterval(atualizar, intervaloMs);
     return () => {
       document.removeEventListener('visibilitychange', atualizar);
       clearInterval(i);
     };
-  }, [refetchConv, refetchMsgs]);
+  }, [refetchConv, refetchMsgs, sseConectado]);
 
   const [resposta, setResposta] = useState('');
   // Item #25 fatia 4 — presença ao vivo: quem MAIS está nesta conversa agora
