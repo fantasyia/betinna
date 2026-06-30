@@ -36,7 +36,7 @@ export const TRIGGER_LABEL: Record<TriggerTipo, string> = {
   LEAD_SEM_RESPOSTA: 'Lead sem resposta',
   IA_CLASSIFICOU: 'IA classificou',
   LEAD_RECEBEU_TAG: 'Lead recebeu tag',
-  MENSAGEM_CANAL: 'Mensagem chegou (canal)',
+  MENSAGEM_CANAL: 'Mensagem recebida (canal / palavra-chave)',
   WEBHOOK_RECEBIDO: 'Webhook recebido',
 };
 

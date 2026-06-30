@@ -13,6 +13,8 @@ const makeConversarIa = () => ({
   prepararEntrada: vi.fn().mockResolvedValue({ mensagemIA: 'texto', imagemDataUrl: undefined }),
   retomar: vi.fn(),
 });
+// setNxEx=true → "primeira vez" (dispara). false → duplicata do split (suprime).
+const makeRedis = () => ({ setNxEx: vi.fn().mockResolvedValue(true) });
 
 const resultado = (over = {}) => ({
   conversationId: 'conv-1',
@@ -25,17 +27,20 @@ describe('OrquestracaoLeadEventsService', () => {
   let prisma: ReturnType<typeof makePrisma>;
   let bus: ReturnType<typeof makeBus>;
   let inbox: ReturnType<typeof makeInbox>;
+  let redis: ReturnType<typeof makeRedis>;
   let svc: OrquestracaoLeadEventsService;
 
   beforeEach(() => {
     prisma = makePrisma();
     bus = makeBus();
     inbox = makeInbox();
+    redis = makeRedis();
     svc = new OrquestracaoLeadEventsService(
       prisma as never,
       bus as never,
       inbox as never,
       makeConversarIa() as never,
+      redis as never,
     );
   });
 
@@ -107,5 +112,33 @@ describe('OrquestracaoLeadEventsService', () => {
       expect.objectContaining({ leadId: null }),
     );
     expect(bus.disparar).not.toHaveBeenCalledWith('emp-1', 'LEAD_RESPONDEU', expect.anything());
+  });
+
+  it('dedup: split webhook/poll (setNxEx=false) NÃO redispara MENSAGEM_CANAL', async () => {
+    redis.setNxEx.mockResolvedValue(false); // 2ª chegada do mesmo texto na janela
+    await svc.aoReceberMensagem(
+      {
+        empresaId: 'emp-1',
+        peerTelefone: '11999990000',
+        conteudo: 'cancelar',
+        canal: 'WHATSAPP',
+      } as never,
+      resultado(),
+    );
+    expect(bus.disparar).not.toHaveBeenCalledWith('emp-1', 'MENSAGEM_CANAL', expect.anything());
+  });
+
+  it('dedup fail-open: Redis fora do ar ainda dispara MENSAGEM_CANAL', async () => {
+    redis.setNxEx.mockRejectedValue(new Error('redis down'));
+    await svc.aoReceberMensagem(
+      {
+        empresaId: 'emp-1',
+        peerTelefone: '11999990000',
+        conteudo: 'cancelar',
+        canal: 'WHATSAPP',
+      } as never,
+      resultado(),
+    );
+    expect(bus.disparar).toHaveBeenCalledWith('emp-1', 'MENSAGEM_CANAL', expect.anything());
   });
 });

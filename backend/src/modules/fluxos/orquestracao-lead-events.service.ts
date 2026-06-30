@@ -1,5 +1,7 @@
+import { createHash } from 'node:crypto';
 import { Injectable, Logger, type OnModuleInit } from '@nestjs/common';
 import { PrismaService } from '@database/prisma.service';
+import { RedisService } from '@database/redis.service';
 import { InboxService } from '@modules/inbox/inbox.service';
 import type { MensagemEntranteParams } from '@modules/inbox/inbox.types';
 import { FluxoEventBusService } from './fluxo-event-bus.service';
@@ -24,6 +26,7 @@ export class OrquestracaoLeadEventsService implements OnModuleInit {
     private readonly bus: FluxoEventBusService,
     private readonly inbox: InboxService,
     private readonly conversarIa: ConversarIaService,
+    private readonly redis: RedisService,
   ) {}
 
   onModuleInit(): void {
@@ -43,13 +46,31 @@ export class OrquestracaoLeadEventsService implements OnModuleInit {
       const lead = await this.resolverLead(params.empresaId, params.peerTelefone, params.peerEmail);
 
       // Gatilho MENSAGEM_CANAL (Fase C) — toda mensagem entrante, com ou sem lead
-      // (roteamento por canal: SAC/marketplace/redes). Filtre por {{canal}} no fluxo.
-      await this.bus.disparar(params.empresaId, 'MENSAGEM_CANAL', {
-        canal: params.canal,
-        conversationId: resultado.conversationId,
-        texto: params.conteudo,
-        leadId: lead?.id ?? null,
-      });
+      // (roteamento por canal: SAC/marketplace/redes). Filtre por {{canal}}/palavra-chave no fluxo.
+      //
+      // Dedup do split webhook+poll do Evolution: quando o mesmo recado físico chega 2x
+      // com externalId diferente (inbox não casa como duplicada), um fluxo de palavra-chave
+      // SEM nó IA dispararia 2x e mandaria 2 WhatsApps. Chave = conversa + hash do texto numa
+      // janela curta. Fail-open se o Redis cair (não bloqueia o gatilho).
+      const textoHash = createHash('sha1')
+        .update(params.conteudo ?? '')
+        .digest('hex')
+        .slice(0, 16);
+      const dedupKey = `fx:msgcanal:${params.empresaId}:${resultado.conversationId}:${textoHash}`;
+      let primeira = true;
+      try {
+        primeira = await this.redis.setNxEx(dedupKey, '1', 60);
+      } catch {
+        primeira = true;
+      }
+      if (primeira) {
+        await this.bus.disparar(params.empresaId, 'MENSAGEM_CANAL', {
+          canal: params.canal,
+          conversationId: resultado.conversationId,
+          texto: params.conteudo,
+          leadId: lead?.id ?? null,
+        });
+      }
 
       if (!lead) return;
 
