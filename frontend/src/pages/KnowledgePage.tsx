@@ -1,5 +1,16 @@
-import { useState } from 'react';
-import { BookPlus, Pencil, Trash2, Settings2, BookText } from 'lucide-react';
+import { useRef, useState } from 'react';
+import {
+  BookPlus,
+  Pencil,
+  Trash2,
+  Settings2,
+  BookText,
+  FileUp,
+  FileText,
+  Send,
+  AlertTriangle,
+  Paperclip,
+} from 'lucide-react';
 import { api, ApiError } from '@/lib/api';
 import { useApiQuery } from '@/hooks/useApiQuery';
 import { useToast } from '@/components/toast';
@@ -17,12 +28,41 @@ interface KnowledgeChunk {
   ativo: boolean;
 }
 
+interface KnowledgeDocumento {
+  id: string;
+  titulo: string;
+  fileName: string;
+  mimetype: string;
+  tamanhoBytes: number;
+  podeEnviar: boolean;
+  totalChunks: number;
+  erroExtracao: string | null;
+  criadoEm: string;
+}
+
 interface Paginado {
   data: KnowledgeChunk[];
   pagination: { total: number };
 }
 
 const VAZIO = { id: '', titulo: '', conteudo: '', categoria: '', ativo: true };
+
+const MAX_BYTES = 15 * 1024 * 1024; // 15MB raw (≈20MB em base64, dentro do body limit)
+
+function fileToBase64(file: File): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const r = new FileReader();
+    r.onload = () => resolve((r.result as string).split(',')[1] ?? '');
+    r.onerror = () => reject(new Error('Falha ao ler o arquivo'));
+    r.readAsDataURL(file);
+  });
+}
+
+function formatBytes(b: number): string {
+  if (b < 1024) return `${b} B`;
+  if (b < 1024 * 1024) return `${(b / 1024).toFixed(0)} KB`;
+  return `${(b / 1024 / 1024).toFixed(1)} MB`;
+}
 
 export default function KnowledgePage() {
   const toast = useToast();
@@ -32,10 +72,75 @@ export default function KnowledgePage() {
   const { data, loading, error, refetch } = useApiQuery<Paginado>(
     '/conhecimento?incluirConfig=true&limit=100',
   );
+  const docsQuery = useApiQuery<KnowledgeDocumento[]>('/conhecimento/documentos');
   const [form, setForm] = useState<typeof VAZIO | null>(null);
   const [saving, setSaving] = useState(false);
 
+  // Upload de documento.
+  const fileRef = useRef<HTMLInputElement>(null);
+  const [docForm, setDocForm] = useState<{ titulo: string; podeEnviar: boolean; file: File } | null>(
+    null,
+  );
+  const [enviandoDoc, setEnviandoDoc] = useState(false);
+
   const lista = data?.data ?? [];
+  const documentos = docsQuery.data ?? [];
+
+  function escolherArquivo(file: File) {
+    if (file.size > MAX_BYTES) {
+      toast.error('Arquivo muito grande', 'O limite é 15MB.');
+      return;
+    }
+    // Título inicial = nome do arquivo sem extensão.
+    const base = file.name.replace(/\.[^.]+$/, '');
+    setDocForm({ titulo: base.slice(0, 160), podeEnviar: false, file });
+  }
+
+  async function salvarDoc() {
+    if (!docForm) return;
+    if (!docForm.titulo.trim()) {
+      toast.error('Dê um título ao documento');
+      return;
+    }
+    setEnviandoDoc(true);
+    try {
+      const dataBase64 = await fileToBase64(docForm.file);
+      await api.post('/conhecimento/documento', {
+        titulo: docForm.titulo.trim(),
+        fileName: docForm.file.name,
+        mimetype: docForm.file.type || 'application/octet-stream',
+        podeEnviar: docForm.podeEnviar,
+        dataBase64,
+      });
+      toast.success('Documento anexado', 'O texto foi extraído e indexado pra busca.');
+      setDocForm(null);
+      docsQuery.refetch();
+    } catch (err) {
+      toast.error('Falha ao anexar', err instanceof ApiError ? err.message : undefined);
+    } finally {
+      setEnviandoDoc(false);
+    }
+  }
+
+  async function alternarEnvio(d: KnowledgeDocumento) {
+    try {
+      await api.patch(`/conhecimento/documento/${d.id}`, { podeEnviar: !d.podeEnviar });
+      docsQuery.refetch();
+    } catch (err) {
+      toast.error('Falha ao atualizar', err instanceof ApiError ? err.message : undefined);
+    }
+  }
+
+  async function excluirDoc(d: KnowledgeDocumento) {
+    if (!window.confirm(`Apagar o documento "${d.titulo}" e seus trechos indexados?`)) return;
+    try {
+      await api.delete(`/conhecimento/documento/${d.id}`);
+      toast.success('Documento apagado');
+      docsQuery.refetch();
+    } catch (err) {
+      toast.error('Falha ao apagar', err instanceof ApiError ? err.message : undefined);
+    }
+  }
 
   async function salvar() {
     if (!form) return;
@@ -80,12 +185,91 @@ export default function KnowledgePage() {
       description="O que o bot pode consultar pra responder (FAQ, condições, políticas). Itens automáticos vêm da configuração da empresa."
       actions={
         podeEditar ? (
-          <Button onClick={() => setForm({ ...VAZIO })} leftIcon={<BookPlus className="h-3.5 w-3.5" />}>
-            Novo conhecimento
-          </Button>
+          <div className="flex gap-2">
+            <Button
+              variant="secondary"
+              onClick={() => fileRef.current?.click()}
+              leftIcon={<FileUp className="h-3.5 w-3.5" />}
+            >
+              Anexar documento
+            </Button>
+            <Button
+              onClick={() => setForm({ ...VAZIO })}
+              leftIcon={<BookPlus className="h-3.5 w-3.5" />}
+            >
+              Novo conhecimento
+            </Button>
+          </div>
         ) : undefined
       }
     >
+      <input
+        ref={fileRef}
+        type="file"
+        hidden
+        accept=".pdf,.doc,.docx,.txt,.md,.csv,.xlsx,.pptx,.odt"
+        onChange={(e) => {
+          const f = e.target.files?.[0];
+          if (f) escolherArquivo(f);
+          e.target.value = '';
+        }}
+      />
+      {documentos.length > 0 && (
+        <section className="mb-5">
+          <h3 className="mb-2 flex items-center gap-1.5 text-sm font-semibold text-text">
+            <FileText className="h-4 w-4" /> Documentos
+            <span className="font-normal text-muted">({documentos.length})</span>
+          </h3>
+          <div className="grid grid-cols-1 gap-2 md:grid-cols-2">
+            {documentos.map((d) => (
+              <Card key={d.id} padding="md" className="flex flex-col gap-1.5">
+                <div className="flex items-center justify-between gap-2">
+                  <strong className="truncate text-sm text-text">{d.titulo}</strong>
+                  {d.podeEnviar && (
+                    <Badge variant="info" size="sm">
+                      <Send className="mr-0.5 inline h-3 w-3" />
+                      enviável
+                    </Badge>
+                  )}
+                </div>
+                <span className="flex items-center gap-1 text-[11px] text-muted">
+                  <Paperclip className="h-3 w-3" />
+                  {d.fileName} · {formatBytes(d.tamanhoBytes)}
+                </span>
+                {d.erroExtracao ? (
+                  <p className="flex items-start gap-1 text-[11px] text-warning">
+                    <AlertTriangle className="mt-0.5 h-3 w-3 shrink-0" />
+                    {d.erroExtracao}
+                  </p>
+                ) : (
+                  <p className="text-[11px] text-text-subtle">
+                    {d.totalChunks} trecho{d.totalChunks === 1 ? '' : 's'} indexado
+                    {d.totalChunks === 1 ? '' : 's'} pra busca
+                  </p>
+                )}
+                {podeEditar && (
+                  <div className="mt-auto flex items-center justify-between gap-2 pt-1">
+                    <Switch
+                      checked={d.podeEnviar}
+                      onChange={() => void alternarEnvio(d)}
+                      label="Bot pode enviar"
+                    />
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => void excluirDoc(d)}
+                      leftIcon={<Trash2 className="h-3 w-3" />}
+                    >
+                      Apagar
+                    </Button>
+                  </div>
+                )}
+              </Card>
+            ))}
+          </div>
+        </section>
+      )}
+
       <StateView
         loading={loading}
         error={error}
@@ -207,6 +391,50 @@ export default function KnowledgePage() {
               </Button>
               <Button onClick={() => void salvar()} loading={saving}>
                 Salvar
+              </Button>
+            </div>
+          </div>
+        )}
+      </Dialog>
+
+      <Dialog open={docForm !== null} onClose={() => setDocForm(null)} title="Anexar documento">
+        {docForm && (
+          <div className="flex flex-col gap-3">
+            <div className="flex items-center gap-2 rounded-md border border-primary/20 bg-primary/5 px-3 py-2 text-sm">
+              <Paperclip className="h-4 w-4 shrink-0 text-primary" />
+              <span className="truncate">
+                {docForm.file.name} · {formatBytes(docForm.file.size)}
+              </span>
+            </div>
+            <Field label="Título" hint="Como esse documento aparece pra você e pro bot.">
+              <Input
+                value={docForm.titulo}
+                onChange={(e) => setDocForm({ ...docForm, titulo: e.target.value })}
+                placeholder="Ex: Catálogo 2026"
+                maxLength={160}
+              />
+            </Field>
+            <Field
+              label="O bot pode enviar este arquivo?"
+              hint="Ligado: quando o lead pedir (ex.: a tabela de preços em PDF), o bot manda o arquivo inteiro. Desligado: o bot só usa o conteúdo como fonte de resposta em texto."
+            >
+              <Switch
+                checked={docForm.podeEnviar}
+                onChange={(e) => setDocForm({ ...docForm, podeEnviar: e.target.checked })}
+                label={docForm.podeEnviar ? 'Pode enviar o arquivo' : 'Só fonte de informação'}
+              />
+            </Field>
+            <p className="text-[11px] text-muted">
+              O texto do documento é extraído e indexado pra busca. PDFs escaneados (imagem) podem não
+              ter texto extraível — nesse caso o arquivo ainda pode ser enviado, mas não vira fonte de
+              resposta.
+            </p>
+            <div className="flex justify-end gap-2 pt-1">
+              <Button variant="secondary" onClick={() => setDocForm(null)}>
+                Cancelar
+              </Button>
+              <Button onClick={() => void salvarDoc()} loading={enviandoDoc}>
+                Anexar
               </Button>
             </div>
           </div>
