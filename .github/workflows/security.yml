@@ -79,6 +79,12 @@ jobs:
 
       - name: Prisma validate
         working-directory: ./backend
+        # `prisma validate` exige que as env vars do datasource EXISTAM (não conecta). Sem o
+        # .env (gitignored) no CI, falhava por "Environment variable not found: DATABASE_URL".
+        # Valores dummy só pra resolver as refs — a validação é do SCHEMA, não do banco.
+        env:
+          DATABASE_URL: 'postgresql://user:pass@localhost:5432/db?schema=public'
+          DIRECT_URL: 'postgresql://user:pass@localhost:5432/db?schema=public'
         run: npx prisma validate
 
   # ─── gitleaks — secret scanning ──────────────────────────────────────
