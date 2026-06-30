@@ -1,8 +1,19 @@
 import { render, screen, fireEvent, cleanup } from '@testing-library/react';
 import { afterEach, describe, it, expect, vi } from 'vitest';
 import { WhatsAppActionForm } from './WhatsAppActionForm';
+import { ToastProvider } from '@/components/toast';
 import type { NodePayload } from '@/pages/fluxo/lib/types';
 import type { InspectorContatoWa } from '@/pages/fluxo/hooks/useInspectorData';
+
+// O form agora inclui o WhatsAppMidiaAnexo, que usa useToast → render precisa do ToastProvider.
+const renderForm = (
+  props: Parameters<typeof WhatsAppActionForm>[0],
+): ReturnType<typeof render> =>
+  render(
+    <ToastProvider>
+      <WhatsAppActionForm {...props} />
+    </ToastProvider>,
+  );
 
 /**
  * Trava o CONTRATO config-key do WhatsAppActionForm.
@@ -50,7 +61,7 @@ describe('WhatsAppActionForm', () => {
   it('LEITURA: reflete config inicial (modo + mensagem) nos controles', () => {
     const data = makeData({ destinatarioModo: 'lead', mensagem: 'Olá teste' });
     const onUpdate = vi.fn();
-    render(<WhatsAppActionForm data={data} onUpdate={onUpdate} contatosWa={CONTATOS} />);
+    renderForm({ data, onUpdate, contatosWa: CONTATOS });
 
     const modo = screen.getByRole('combobox') as HTMLSelectElement;
     expect(modo.value).toBe('lead');
@@ -62,7 +73,7 @@ describe('WhatsAppActionForm', () => {
   it('LEITURA: sem destinatarioModo no config cai no default "lead"', () => {
     const data = makeData({});
     const onUpdate = vi.fn();
-    render(<WhatsAppActionForm data={data} onUpdate={onUpdate} contatosWa={null} />);
+    renderForm({ data, onUpdate, contatosWa: null });
 
     const modo = screen.getByRole('combobox') as HTMLSelectElement;
     expect(modo.value).toBe('lead');
@@ -71,7 +82,7 @@ describe('WhatsAppActionForm', () => {
   it('ESCRITA: trocar destinatário grava config.destinatarioModo', () => {
     const data = makeData({ destinatarioModo: 'lead' });
     const { onUpdate, getLast } = makeOnUpdate(data);
-    render(<WhatsAppActionForm data={data} onUpdate={onUpdate} contatosWa={CONTATOS} />);
+    renderForm({ data, onUpdate, contatosWa: CONTATOS });
 
     const modo = screen.getByRole('combobox') as HTMLSelectElement;
     fireEvent.change(modo, { target: { value: 'numero' } });
@@ -83,16 +94,14 @@ describe('WhatsAppActionForm', () => {
   it('ESCRITA: campo Número só aparece no modo "numero" e grava config.destinatarioNumero', () => {
     // No modo "lead" o input de número NÃO existe.
     const leadData = makeData({ destinatarioModo: 'lead' });
-    const { unmount } = render(
-      <WhatsAppActionForm data={leadData} onUpdate={vi.fn()} contatosWa={CONTATOS} />,
-    );
+    const { unmount } = renderForm({ data: leadData, onUpdate: vi.fn(), contatosWa: CONTATOS });
     expect(screen.queryByPlaceholderText('+55 11 99999-9999')).toBeNull();
     unmount();
 
     // No modo "numero" o input aparece, reflete o valor e grava a chave certa.
     const data = makeData({ destinatarioModo: 'numero', destinatarioNumero: '+55 11 1' });
     const { onUpdate, getLast } = makeOnUpdate(data);
-    render(<WhatsAppActionForm data={data} onUpdate={onUpdate} contatosWa={CONTATOS} />);
+    renderForm({ data, onUpdate, contatosWa: CONTATOS });
 
     const input = screen.getByPlaceholderText('+55 11 99999-9999') as HTMLInputElement;
     expect(input.value).toBe('+55 11 1');
@@ -104,7 +113,7 @@ describe('WhatsAppActionForm', () => {
   it('ESCRITA: campo Contato só aparece no modo "contato" e grava config.destinatarioContato', () => {
     const data = makeData({ destinatarioModo: 'contato', destinatarioContato: '5511999999999' });
     const { onUpdate, getLast } = makeOnUpdate(data);
-    render(<WhatsAppActionForm data={data} onUpdate={onUpdate} contatosWa={CONTATOS} />);
+    renderForm({ data, onUpdate, contatosWa: CONTATOS });
 
     // Dois selects no modo "contato": [0] = modo, [1] = contato.
     const combos = screen.getAllByRole('combobox') as HTMLSelectElement[];
@@ -122,7 +131,7 @@ describe('WhatsAppActionForm', () => {
   it('ESCRITA: editar a mensagem grava config.mensagem (sem vazar pra outra chave)', () => {
     const data = makeData({ destinatarioModo: 'lead', mensagem: '' });
     const { onUpdate, getLast } = makeOnUpdate(data);
-    render(<WhatsAppActionForm data={data} onUpdate={onUpdate} contatosWa={CONTATOS} />);
+    renderForm({ data, onUpdate, contatosWa: CONTATOS });
 
     const msg = screen.getByPlaceholderText('Olá {{nome}}, tudo bem?') as HTMLTextAreaElement;
     fireEvent.change(msg, { target: { value: 'Mensagem nova {{empresa}}' } });
@@ -139,7 +148,7 @@ describe('WhatsAppActionForm', () => {
       mensagem: 'oi',
     });
     const { onUpdate, getLast } = makeOnUpdate(data);
-    render(<WhatsAppActionForm data={data} onUpdate={onUpdate} contatosWa={CONTATOS} />);
+    renderForm({ data, onUpdate, contatosWa: CONTATOS });
 
     const input = screen.getByPlaceholderText('+55 11 99999-9999') as HTMLInputElement;
     fireEvent.change(input, { target: { value: '+55 11 2' } });
