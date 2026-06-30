@@ -36,7 +36,8 @@
     "prepare": "prisma generate"
   },
   "overrides": {
-    "multer": "^2.2.0"
+    "multer": "^2.2.0",
+    "uuid": "^11.1.1"
   },
   "dependencies": {
     "@nest-lab/throttler-storage-redis": "^1.2.0",
