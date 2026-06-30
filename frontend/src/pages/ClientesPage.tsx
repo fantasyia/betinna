@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState, type ReactNode } from 'react';
+import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
   Search,
@@ -1486,6 +1486,23 @@ interface FormState {
   prazoPagamento: number;
 }
 
+/** Resposta de GET /clientes/cnpj/:cnpj/lookup (dados públicos da Receita). */
+interface CnpjLookup {
+  cnpj: string;
+  razaoSocial: string;
+  nomeFantasia: string | null;
+  situacao: string | null;
+  endereco: string | null;
+  numero: string | null;
+  complemento: string | null;
+  bairro: string | null;
+  cidade: string | null;
+  uf: string | null;
+  cep: string | null;
+  email: string | null;
+  telefone: string | null;
+}
+
 function emptyForm(c?: Cliente | null): FormState {
   const cc = c ?? ({} as Cliente);
   return {
@@ -1525,6 +1542,37 @@ function ClienteFormModal({
 
   function setField<K extends keyof FormState>(key: K, value: FormState[K]) {
     setForm((f) => ({ ...f, [key]: value }));
+  }
+
+  // Auto-preenche razão social + endereço pela Receita (BrasilAPI) ao sair do
+  // campo CNPJ. NÃO mexe em e-mail/telefone (dados da Receita ficam desatualizados).
+  const [cnpjBusy, setCnpjBusy] = useState(false);
+  const ultimoCnpjBuscado = useRef<string>('');
+  async function preencherPorCnpj() {
+    const digitos = stripMask(form.cnpj);
+    if (!isValidCNPJ(form.cnpj) || digitos === ultimoCnpjBuscado.current) return;
+    ultimoCnpjBuscado.current = digitos;
+    setCnpjBusy(true);
+    setError(null);
+    try {
+      const r = await api.get<CnpjLookup>(`/clientes/cnpj/${digitos}/lookup`);
+      setForm((f) => ({
+        ...f,
+        nome: f.nome.trim() ? f.nome : r.razaoSocial,
+        endereco: r.endereco ?? f.endereco,
+        numero: r.numero ?? f.numero,
+        complemento: r.complemento ?? f.complemento,
+        bairro: r.bairro ?? f.bairro,
+        cidade: r.cidade ?? f.cidade,
+        uf: r.uf ?? f.uf,
+        cep: r.cep ? maskCEP(r.cep) : f.cep,
+      }));
+    } catch (err) {
+      ultimoCnpjBuscado.current = ''; // permite retentar após falha (ex: rate-limit)
+      setError(apiErrorMessage(err));
+    } finally {
+      setCnpjBusy(false);
+    }
   }
 
   // CL4 — ao completar o CEP, busca o endereço no ViaCEP e preenche o resto.
@@ -1669,11 +1717,16 @@ function ClienteFormModal({
         </Field>
 
         <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-          <Field label="CNPJ" required hint="00.000.000/0001-00">
+          <Field
+            label="CNPJ"
+            required
+            hint={cnpjBusy ? 'Buscando na Receita…' : 'preenche razão social + endereço'}
+          >
             <Input
               data-testid="cliente-cnpj-input"
               value={form.cnpj}
               onChange={(e) => setField('cnpj', maskCNPJ(e.target.value))}
+              onBlur={() => void preencherPorCnpj()}
               placeholder="00.000.000/0001-00"
               maxLength={18}
               inputMode="numeric"
