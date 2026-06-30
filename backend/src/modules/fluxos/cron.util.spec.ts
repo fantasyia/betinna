@@ -82,9 +82,10 @@ describe('previewCrons (múltiplas expressões)', () => {
     expect(semFiltro.proximas.every((p) => p.iso.slice(5, 10) === '09-07')).toBe(true);
     expect(comFiltro.valido).toBe(true);
     expect(comFiltro.proximas.length).toBe(0);
-    // Caso degenerado (toda ocorrência é feriado) varre o cap de iterações —
-    // timeout folgado pra não flakear no limite de 5s padrão do vitest.
-  }, 20_000);
+    // Caso degenerado (toda ocorrência é feriado) varre o cap de 2000 iterações (≈2000 anos de
+    // cálculo de feriado) — ~19s local, mais lento no runner do CI. Timeout bem folgado pra não
+    // flakear por lentidão (era 20s → estourava no CI quando o billing do Actions destravou).
+  }, 90_000);
 });
 
 describe('proximaExecucaoCron', () => {
