@@ -46,13 +46,25 @@ export interface CondicaoConfig {
 
 /** Config da ação ENVIAR_WHATSAPP. */
 export interface EnviarWhatsappConfig {
-  mensagem: string; // suporta {{ variáveis }}
+  mensagem: string; // suporta {{ variáveis }}. Com `midia`, vira a LEGENDA.
   /** Destinatário: 'lead' (lead/cliente da conversa — default), 'numero' (livre), 'contato' (inbox). */
   destinatarioModo?: 'lead' | 'numero' | 'contato';
   /** Modo 'numero': telefone livre com DDI (ex: +55 11 9...). */
   destinatarioNumero?: string;
   /** Modo 'contato': telefone do contato escolhido no dropdown da inbox. */
   destinatarioContato?: string;
+  /**
+   * Anexo OPCIONAL (subido pro Storage no editor → guarda só o storagePath, não base64). Quando
+   * presente, envia mídia em vez de texto e a `mensagem` (interpolada) vira a legenda.
+   */
+  midia?: {
+    tipo: 'IMAGE' | 'VIDEO' | 'AUDIO' | 'DOCUMENT';
+    storagePath: string;
+    mimetype?: string;
+    fileName?: string;
+    /** AUDIO gravado na hora = true (PTT/bolha de voz); áudio anexado = false (áudio normal). */
+    ptt?: boolean;
+  };
 }
 
 /** Config da ação ENVIAR_EMAIL. */

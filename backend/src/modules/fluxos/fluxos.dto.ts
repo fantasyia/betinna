@@ -187,7 +187,19 @@ export const cronPreviewSchema = z
     { message: 'Informe `expressao` ou `expressoes`.' },
   );
 
+// ─── Upload de mídia da ação ENVIAR_WHATSAPP (sobe pro Storage; o nó guarda só o storagePath) ──
+export const uploadFluxoMidiaSchema = z.object({
+  tipo: z.enum(['IMAGE', 'VIDEO', 'AUDIO', 'DOCUMENT']),
+  mimetype: z.string().max(120).optional(),
+  fileName: z.string().max(255).optional(),
+  /** AUDIO gravado na hora = true (PTT); anexado = false. */
+  ptt: z.boolean().optional(),
+  /** Base64 PURO do arquivo (sem prefixo data:...). ~15MB raw. */
+  dataBase64: z.string().min(1).max(20_000_000),
+});
+
 // ─── Types ────────────────────────────────────────────────────────────
+export type UploadFluxoMidiaDto = z.infer<typeof uploadFluxoMidiaSchema>;
 export type CronPreviewDto = z.infer<typeof cronPreviewSchema>;
 export type CreateFluxoDto = z.infer<typeof createFluxoSchema>;
 export type UpdateFluxoDto = z.infer<typeof updateFluxoSchema>;

@@ -85,6 +85,7 @@ const makePrismaMock = () => ({
 
 const makeWhatsappMock = () => ({
   enviarTexto: vi.fn().mockResolvedValue({ externalId: 'wa-msg-1' }),
+  enviarMidia: vi.fn().mockResolvedValue({ externalId: 'wa-midia-1' }),
 });
 
 const makeEmailSvcMock = () => ({
@@ -588,6 +589,47 @@ describe('FluxoExecutorService', () => {
         'Olá Carlos!',
         { idempotencyKey: 'fx:exec-1:no-wa' },
       );
+    });
+
+    it('com anexo (midia): envia mídia com a mensagem como legenda interpolada (não texto)', async () => {
+      const acaoNo = fakeNo({
+        id: 'no-wa',
+        tipo: 'ACAO',
+        acaoTipo: 'ENVIAR_WHATSAPP',
+        config: {
+          mensagem: 'Segue a tabela, {{cliente.nome}}',
+          midia: {
+            tipo: 'DOCUMENT',
+            storagePath: 'emp-1/fluxo/doc.pdf',
+            mimetype: 'application/pdf',
+            fileName: 'tabela.pdf',
+          },
+        },
+      });
+      prisma.fluxoExecucao.findUnique.mockResolvedValue(
+        fakeExecucao({
+          status: 'EM_EXECUCAO',
+          contexto: { clienteId: 'cli-1', cliente: { nome: 'Carlos' } },
+        }),
+      );
+      prisma.fluxoNo.findUnique.mockResolvedValue(acaoNo);
+      prisma.fluxoEdge.findMany.mockResolvedValue([]);
+      prisma.cliente.findFirst.mockResolvedValue({ telefone: '11987654321', nome: 'Carlos' });
+
+      await service.executarPasso('exec-1', 'no-wa', 'job-test');
+
+      expect(whatsapp.enviarMidia).toHaveBeenCalledWith(
+        'emp-1',
+        '11987654321@s.whatsapp.net',
+        expect.objectContaining({
+          tipo: 'DOCUMENT',
+          storagePath: 'emp-1/fluxo/doc.pdf',
+          fileName: 'tabela.pdf',
+          caption: 'Segue a tabela, Carlos',
+        }),
+        { idempotencyKey: 'fx:exec-1:no-wa' },
+      );
+      expect(whatsapp.enviarTexto).not.toHaveBeenCalled();
     });
 
     it('lança quando clienteId está ausente no contexto', async () => {

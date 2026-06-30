@@ -631,17 +631,37 @@ export class FluxoExecutorService {
     const mensagem = interpolate(cfg.mensagem, ctx);
     const modo = cfg.destinatarioModo ?? 'lead';
 
+    // Envio: se há anexo (midia), manda mídia com a `mensagem` como legenda; senão, texto.
+    // Único ponto de envio (reusado pelo caminho de grupo e pelo de telefone).
+    const enviar = async (peerId: string): Promise<Record<string, unknown>> => {
+      if (cfg.midia?.storagePath) {
+        const r = await this.whatsapp.enviarMidia(
+          empresaId,
+          peerId,
+          {
+            tipo: cfg.midia.tipo,
+            storagePath: cfg.midia.storagePath,
+            mimetype: cfg.midia.mimetype,
+            fileName: cfg.midia.fileName,
+            ptt: cfg.midia.ptt,
+            caption: mensagem || undefined,
+          },
+          { idempotencyKey: idemBase },
+        );
+        return { peerId, modo, midia: cfg.midia.tipo, caption: mensagem, externalId: r.externalId };
+      }
+      const r = await this.whatsapp.enviarTexto(empresaId, peerId, mensagem, {
+        idempotencyKey: idemBase,
+      });
+      return { peerId, modo, mensagem, externalId: r.externalId };
+    };
+
     // GRUPO do WhatsApp: o "contato salvo" pode ser um grupo (jid @g.us). O jid é
     // o destino direto — NÃO normaliza pra telefone (senão viraria um número
     // solto). O adapter (Baileys/Evolution) aceita o jid de grupo como remoteJid.
     if (modo === 'contato') {
       const alvo = (cfg.destinatarioContato ?? '').trim();
-      if (alvo.endsWith('@g.us')) {
-        const r = await this.whatsapp.enviarTexto(empresaId, alvo, mensagem, {
-          idempotencyKey: idemBase,
-        });
-        return { peerId: alvo, mensagem, modo, externalId: r.externalId };
-      }
+      if (alvo.endsWith('@g.us')) return enviar(alvo);
     }
 
     // Resolve o telefone do destinatário conforme o modo.
@@ -663,11 +683,7 @@ export class FluxoExecutorService {
       throw new Error(`ENVIAR_WHATSAPP: telefone do destinatário inválido (${telefone})`);
     }
 
-    const peerId = `${telefone}@s.whatsapp.net`;
-    const result = await this.whatsapp.enviarTexto(empresaId, peerId, mensagem, {
-      idempotencyKey: idemBase,
-    });
-    return { peerId, mensagem, modo, externalId: result.externalId };
+    return enviar(`${telefone}@s.whatsapp.net`);
   }
 
   /** Telefone (só dígitos) do lead OU cliente do contexto, validado na empresa. */

@@ -74,6 +74,7 @@ describe('FluxosService', () => {
   let prisma: ReturnType<typeof makePrismaMock>;
   let bus: ReturnType<typeof makeBusMock>;
   let redis: { del: ReturnType<typeof vi.fn> };
+  let whatsappMedia: { uploadOutbound: ReturnType<typeof vi.fn> };
   let svc: FluxosService;
 
   beforeEach(() => {
@@ -81,7 +82,8 @@ describe('FluxosService', () => {
     bus = makeBusMock();
     // Mock do Redis — só `del` é usado (limpeza do cursor cron).
     redis = { del: vi.fn().mockResolvedValue(1) };
-    svc = new FluxosService(prisma as never, bus as never, redis as never);
+    whatsappMedia = { uploadOutbound: vi.fn().mockResolvedValue('emp-1/fluvo/out_x.ogg') };
+    svc = new FluxosService(prisma as never, bus as never, redis as never, whatsappMedia as never);
   });
 
   describe('create', () => {
@@ -382,6 +384,43 @@ describe('FluxosService', () => {
       expect(exp.arestas[0]).toEqual({ sourceNoId: 'n1', targetNoId: 'n1', label: 'true' });
       // arestas exportadas NÃO carregam id próprio (gerado no reimport).
       expect(exp.arestas[0]).not.toHaveProperty('id');
+    });
+  });
+
+  describe('uploadMidia', () => {
+    const b64 = Buffer.from('conteudo').toString('base64');
+
+    it('sobe pro Storage (peer fixo "fluxo") e devolve storagePath + metadados', async () => {
+      const res = await svc.uploadMidia(fakeUser(), {
+        tipo: 'AUDIO',
+        mimetype: 'audio/ogg; codecs=opus',
+        ptt: true,
+        dataBase64: b64,
+      });
+      expect(whatsappMedia.uploadOutbound).toHaveBeenCalledWith(
+        'emp-1',
+        'fluxo',
+        expect.any(Buffer),
+        'audio/ogg; codecs=opus',
+      );
+      expect(res).toMatchObject({
+        storagePath: 'emp-1/fluvo/out_x.ogg',
+        tipo: 'AUDIO',
+        ptt: true,
+      });
+    });
+
+    it('DOCUMENT sem fileName → BusinessRuleException', async () => {
+      await expect(
+        svc.uploadMidia(fakeUser(), { tipo: 'DOCUMENT', dataBase64: b64 }),
+      ).rejects.toThrow(/fileName/);
+    });
+
+    it('upload falha (Storage null) → BusinessRuleException', async () => {
+      whatsappMedia.uploadOutbound.mockResolvedValueOnce(null);
+      await expect(svc.uploadMidia(fakeUser(), { tipo: 'IMAGE', dataBase64: b64 })).rejects.toThrow(
+        /Falha ao subir/,
+      );
     });
   });
 });

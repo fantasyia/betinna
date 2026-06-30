@@ -11,6 +11,7 @@ import {
 import { ErrorCode } from '@shared/errors/error-codes';
 import type { AuthenticatedUser } from '@shared/types/authenticated-user';
 import { type Paginated, buildPaginated } from '@shared/types/pagination';
+import { WhatsAppMediaService } from '@integrations/whatsapp/whatsapp-media.service';
 import { FluxoEventBusService } from './fluxo-event-bus.service';
 import type {
   CreateFluxoDto,
@@ -19,6 +20,7 @@ import type {
   ListExecucoesDto,
   TestarFluxoDto,
   ImportFluxoDto,
+  UploadFluxoMidiaDto,
 } from './fluxos.dto';
 
 /** Fluxo serializado pro arquivo de export/import (.json). */
@@ -66,7 +68,50 @@ export class FluxosService {
     private readonly prisma: PrismaService,
     private readonly bus: FluxoEventBusService,
     private readonly redis: RedisService,
+    private readonly whatsappMedia: WhatsAppMediaService,
   ) {}
+
+  /**
+   * Sobe um anexo da ação ENVIAR_WHATSAPP pro Supabase Storage e devolve o `storagePath` — o nó do
+   * fluxo guarda só essa referência (não o base64). O envio no runtime usa o storagePath direto.
+   * Reusa o mesmo upload da Inbox (`uploadOutbound`); o "peer" é fixo `fluxo` (não há destinatário
+   * ainda no momento da configuração).
+   */
+  async uploadMidia(
+    user: AuthenticatedUser,
+    dto: UploadFluxoMidiaDto,
+  ): Promise<{
+    storagePath: string;
+    tipo: string;
+    mimetype?: string;
+    fileName?: string;
+    ptt?: boolean;
+  }> {
+    const empresaId = user.empresaIdAtiva;
+    if (!empresaId) {
+      throw new ForbiddenException('Empresa não definida', ErrorCode.TENANT_ACCESS_DENIED);
+    }
+    if (dto.tipo === 'DOCUMENT' && !dto.fileName) {
+      throw new BusinessRuleException('fileName é obrigatório para DOCUMENT');
+    }
+    const buffer = Buffer.from(dto.dataBase64, 'base64');
+    const storagePath = await this.whatsappMedia.uploadOutbound(
+      empresaId,
+      'fluxo',
+      buffer,
+      dto.mimetype,
+    );
+    if (!storagePath) {
+      throw new BusinessRuleException('Falha ao subir o anexo (tamanho ou Storage indisponível)');
+    }
+    return {
+      storagePath,
+      tipo: dto.tipo,
+      mimetype: dto.mimetype,
+      fileName: dto.fileName,
+      ptt: dto.ptt,
+    };
+  }
 
   /**
    * Limpa o cursor do próximo disparo do CRON_AGENDADO (Redis `cron:next:<id>`).

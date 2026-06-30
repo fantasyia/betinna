@@ -14,6 +14,7 @@ import {
   testarFluxoSchema,
   importFluxoSchema,
   cronPreviewSchema,
+  uploadFluxoMidiaSchema,
   type CreateFluxoDto,
   type UpdateFluxoDto,
   type ListFluxosDto,
@@ -21,6 +22,7 @@ import {
   type TestarFluxoDto,
   type ImportFluxoDto,
   type CronPreviewDto,
+  type UploadFluxoMidiaDto,
 } from './fluxos.dto';
 import { previewCrons, CRON_TZ_PADRAO } from './cron.util';
 
@@ -83,6 +85,18 @@ export class FluxosController {
     @Body(new ZodValidationPipe(importFluxoSchema)) dto: ImportFluxoDto,
   ) {
     return this.svc.importar(user, dto);
+  }
+
+  @Post('midia')
+  @Roles('ADMIN', 'DIRECTOR')
+  @ApiOperation({
+    summary: 'Sobe um anexo do nó Enviar WhatsApp pro Storage (retorna storagePath)',
+  })
+  uploadMidia(
+    @CurrentUser() user: AuthenticatedUser,
+    @Body(new ZodValidationPipe(uploadFluxoMidiaSchema)) dto: UploadFluxoMidiaDto,
+  ) {
+    return this.svc.uploadMidia(user, dto);
   }
 
   @Get(':id/exportar')
