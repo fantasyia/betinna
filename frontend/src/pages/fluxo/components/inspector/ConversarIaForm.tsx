@@ -34,6 +34,42 @@ export function ConversarIaForm({
           ))}
         </Select>
       </Field>
+      <Field
+        label="Consultar catálogo de produtos?"
+        hint="Injeta os produtos relevantes (nome, preço, SKU) no contexto da IA."
+      >
+        <Select
+          size="sm"
+          value={(data.config.consultarCatalogo as boolean | undefined) ? 'sim' : 'nao'}
+          onChange={(e) =>
+            onUpdate((d) => ({
+              ...d,
+              config: { ...d.config, consultarCatalogo: e.target.value === 'sim' },
+            }))
+          }
+        >
+          <option value="nao">Não</option>
+          <option value="sim">Sim</option>
+        </Select>
+      </Field>
+      <Field
+        label="Consultar base de conhecimento?"
+        hint="Injeta FAQ/condições/documentos da empresa. A IA responde SOMENTE com o que encontrar — não inventa. Pra a IA falar APENAS da base, ligue isto e deixe o catálogo desligado."
+      >
+        <Select
+          size="sm"
+          value={(data.config.consultarConhecimento as boolean | undefined) ? 'sim' : 'nao'}
+          onChange={(e) =>
+            onUpdate((d) => ({
+              ...d,
+              config: { ...d.config, consultarConhecimento: e.target.value === 'sim' },
+            }))
+          }
+        >
+          <option value="nao">Não</option>
+          <option value="sim">Sim</option>
+        </Select>
+      </Field>
       <Field label="Aguardar resposta do lead?">
         <Select
           size="sm"

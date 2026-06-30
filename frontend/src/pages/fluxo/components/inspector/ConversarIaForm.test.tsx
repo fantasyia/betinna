@@ -105,7 +105,7 @@ describe('ConversarIaForm — contrato de config-keys', () => {
     render(<Harness initial={initial} box={box} />);
 
     // ROUND-TRIP DE LEITURA: aguardarResposta true → select mostra 'sim'.
-    const aguardarSelect = screen.getAllByRole('combobox')[1] as HTMLSelectElement;
+    const aguardarSelect = screen.getAllByRole('combobox')[3] as HTMLSelectElement;
     expect(aguardarSelect.value).toBe('sim');
 
     // ESCRITA: 'nao' vira boolean false (transformação string→bool).
@@ -118,7 +118,7 @@ describe('ConversarIaForm — contrato de config-keys', () => {
     const box = { current: initial };
     render(<Harness initial={initial} box={box} />);
 
-    const aguardarSelect = screen.getAllByRole('combobox')[1] as HTMLSelectElement;
+    const aguardarSelect = screen.getAllByRole('combobox')[3] as HTMLSelectElement;
     expect(aguardarSelect.value).toBe('nao');
 
     fireEvent.change(aguardarSelect, { target: { value: 'sim' } });
@@ -172,7 +172,7 @@ describe('ConversarIaForm — contrato de config-keys', () => {
     const box = { current: initial };
     render(<Harness initial={initial} box={box} />);
 
-    const aguardarSelect = screen.getAllByRole('combobox')[1] as HTMLSelectElement;
+    const aguardarSelect = screen.getAllByRole('combobox')[3] as HTMLSelectElement;
     fireEvent.change(aguardarSelect, { target: { value: 'nao' } });
     // mexeu só em aguardarResposta; promptId/timeoutHoras intactos.
     expect(box.current.config.promptId).toBe('p1');
