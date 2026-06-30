@@ -314,6 +314,7 @@ model Empresa {
   devolucoes            Devolucao[]
   internalThreads       InternalThread[]
   knowledgeChunks       KnowledgeChunk[]
+  knowledgeDocumentos   KnowledgeDocumento[]
   evolutionInstancias   EvolutionInstancia[]
 
   @@index([ativo])
@@ -629,6 +630,9 @@ model KnowledgeChunk {
   conteudo              String                       @db.Text
   /// id da origem quando fonte != MANUAL (chave de config, materialId) — re-upsert idempotente.
   refId                 String?
+  /// quando fonte=MATERIAL vindo de upload de documento: agrupa os N trechos extraídos
+  /// do mesmo arquivo (delete em cascata ao remover o doc). refId fica null nesse caso.
+  documentoId           String?
   ativo                 Boolean                      @default(true)
   /// RAG — mesmo esquema do Produto.embedding (pgvector, 1536 dims, via $queryRaw).
   embedding             Unsupported("vector(1536)")?
@@ -637,12 +641,42 @@ model KnowledgeChunk {
   criadoEm              DateTime                     @default(now())
   atualizadoEm          DateTime                     @updatedAt
 
-  empresa Empresa @relation(fields: [empresaId], references: [id], onDelete: Cascade)
+  empresa    Empresa             @relation(fields: [empresaId], references: [id], onDelete: Cascade)
+  documento  KnowledgeDocumento? @relation(fields: [documentoId], references: [id], onDelete: Cascade)
 
   // CONFIG/MATERIAL re-upsert por (empresa, fonte, refId). MANUAL tem refId null
   // (NULLs distintos no Postgres → vários manuais coexistem sem colidir).
   @@unique([empresaId, fonte, refId])
   @@index([empresaId, ativo])
+  @@index([documentoId])
+}
+
+/// Documento (PDF/DOCX/TXT) anexado à base de conhecimento. O arquivo original fica no
+/// Storage; o texto extraído vira N KnowledgeChunk (fonte=MATERIAL, documentoId=este.id)
+/// pra busca semântica. `podeEnviar` libera o bot a MANDAR o arquivo inteiro pro lead
+/// (catálogo, tabela de preços) — quando false, o doc só serve de fonte de informação.
+model KnowledgeDocumento {
+  id           String   @id @default(cuid())
+  empresaId    String
+  titulo       String
+  /// caminho no Supabase Storage (bucket de mídia outbound) do arquivo original.
+  storagePath  String
+  mimetype     String
+  fileName     String
+  tamanhoBytes Int      @default(0)
+  /// true = o bot pode enviar o arquivo inteiro ao lead (ex: catálogo em PDF).
+  podeEnviar   Boolean  @default(false)
+  /// nº de trechos extraídos/indexados (0 enquanto a extração/indexação não rodou).
+  totalChunks  Int      @default(0)
+  /// erro de extração (PDF escaneado/sem texto, formato não suportado), se houve.
+  erroExtracao String?
+  criadoEm     DateTime @default(now())
+  atualizadoEm DateTime @updatedAt
+
+  empresa Empresa          @relation(fields: [empresaId], references: [id], onDelete: Cascade)
+  chunks  KnowledgeChunk[]
+
+  @@index([empresaId, criadoEm])
 }
 
 model ClientePrecoEspecial {

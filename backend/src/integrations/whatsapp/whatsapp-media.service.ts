@@ -210,6 +210,18 @@ export class WhatsAppMediaService implements OnModuleInit {
       return null;
     }
   }
+
+  /** Remove a mídia do Storage. Best-effort: loga e segue se falhar (não lança). */
+  async remover(storagePath: string): Promise<void> {
+    try {
+      const { error } = await this.storage.storage.from(BUCKET).remove([storagePath]);
+      if (error) this.logger.warn(`Falha ao remover ${storagePath}: ${error.message}`);
+    } catch (err) {
+      this.logger.warn(
+        `Erro ao remover ${storagePath}: ${err instanceof Error ? err.message : String(err)}`,
+      );
+    }
+  }
 }
 
 // ─── Helpers ───────────────────────────────────────────────────────────────
