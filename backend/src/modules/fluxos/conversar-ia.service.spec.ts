@@ -1,5 +1,10 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { ConversarIaService, parseTurnoIa, personalizarNome } from './conversar-ia.service';
+import {
+  ConversarIaService,
+  extrairMarcadoresDoc,
+  parseTurnoIa,
+  personalizarNome,
+} from './conversar-ia.service';
 
 const makePrisma = () => ({
   lead: { findFirst: vi.fn(), update: vi.fn().mockResolvedValue({}) },
@@ -74,6 +79,31 @@ describe('personalizarNome', () => {
   });
   it('sem nome: remove o placeholder e limpa vírgula órfã', () => {
     expect(personalizarNome('[primeiro_nome], boa tarde!', null)).toBe('boa tarde!');
+  });
+});
+
+describe('extrairMarcadoresDoc', () => {
+  it('sem marcação: devolve o texto intacto e ids vazios', () => {
+    const r = extrairMarcadoresDoc('Olá, tudo bem?');
+    expect(r.limpo).toBe('Olá, tudo bem?');
+    expect(r.ids).toEqual([]);
+  });
+
+  it('extrai o id e remove a marcação do texto', () => {
+    const r = extrairMarcadoresDoc('Claro! Vou te enviar.\n[[ENVIAR_DOC:ckabc123]]');
+    expect(r.ids).toEqual(['ckabc123']);
+    expect(r.limpo).toBe('Claro! Vou te enviar.');
+  });
+
+  it('tolera espaços e case na marcação', () => {
+    const r = extrairMarcadoresDoc('segue [[ enviar_doc : cku-9 ]] pronto');
+    expect(r.ids).toEqual(['cku-9']);
+    expect(r.limpo).toBe('segue  pronto');
+  });
+
+  it('dedup de ids repetidos + múltiplos arquivos', () => {
+    const r = extrairMarcadoresDoc('[[ENVIAR_DOC:a]] x [[ENVIAR_DOC:b]] y [[ENVIAR_DOC:a]]');
+    expect(r.ids).toEqual(['a', 'b']);
   });
 });
 

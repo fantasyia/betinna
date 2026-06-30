@@ -44,6 +44,35 @@ function primeiroNomeDe(nome?: string | null): string {
   return (nome ?? '').trim().split(/\s+/)[0] ?? '';
 }
 
+/** Mapeia o mimetype do arquivo pro tipo de mídia do WhatsApp (default DOCUMENT). */
+function tipoMidiaDeMime(mime: string): 'IMAGE' | 'VIDEO' | 'AUDIO' | 'DOCUMENT' {
+  const m = (mime || '').toLowerCase();
+  if (m.startsWith('image/')) return 'IMAGE';
+  if (m.startsWith('video/')) return 'VIDEO';
+  if (m.startsWith('audio/')) return 'AUDIO';
+  return 'DOCUMENT';
+}
+
+/** Marcação de envio de arquivo que a IA insere na resposta: `[[ENVIAR_DOC:<id>]]`. */
+const RE_ENVIAR_DOC = /\[\[\s*ENVIAR_DOC\s*:\s*([\w-]+)\s*\]\]/gi;
+
+/**
+ * Tool-use por marcador: extrai os ids de `[[ENVIAR_DOC:id]]` da resposta da IA e
+ * devolve o texto sem as marcações (ids deduplicados, na ordem em que apareceram).
+ */
+export function extrairMarcadoresDoc(texto: string): { limpo: string; ids: string[] } {
+  const ids: string[] = [];
+  const limpo = texto
+    .replace(RE_ENVIAR_DOC, (_m, id: string) => {
+      ids.push(id);
+      return '';
+    })
+    .replace(/[ \t]+\n/g, '\n')
+    .replace(/\n{3,}/g, '\n\n')
+    .trim();
+  return { limpo, ids: Array.from(new Set(ids)) };
+}
+
 /**
  * Substitui placeholders de nome que prompts costumam usar (`[primeiro_nome]`,
  * `{{nome}}`, `{nome}`, etc.) pelo primeiro nome real do lead. A IA às vezes
@@ -219,13 +248,97 @@ export class ConversarIaService {
       }
     }
 
-    if (partes.length === 0) return '';
+    // Arquivos que o bot pode ENVIAR (docs com podeEnviar=true): a IA decide enviar
+    // marcando [[ENVIAR_DOC:id]] no fim da resposta (tool-use por marcador).
+    const blocoDocs = cfg.consultarConhecimento
+      ? await this.montarBlocoDocsEnviaveis(empresaId)
+      : '';
+
+    if (partes.length === 0 && !blocoDocs) return '';
+    let bloco = '';
+    if (partes.length > 0) {
+      bloco +=
+        '\n\n--- CONTEXTO (RAG) ---\n' +
+        'Responda usando SOMENTE as informações abaixo. Se a resposta não estiver aqui, ' +
+        'diga que vai verificar — NUNCA invente preço, SKU, prazo ou condição.\n\n' +
+        partes.join('\n\n');
+    }
+    return bloco + blocoDocs;
+  }
+
+  /**
+   * Lista os documentos que o bot pode ENVIAR (KnowledgeDocumento.podeEnviar) e ensina
+   * a IA a disparar o envio marcando `[[ENVIAR_DOC:id]]`. O envio real acontece em
+   * `enviarDocumentos`, que re-valida id × empresa × podeEnviar (a IA nunca envia algo
+   * fora desta lista, mesmo que alucine um id).
+   */
+  private async montarBlocoDocsEnviaveis(empresaId: string): Promise<string> {
+    const docs = await this.prisma.knowledgeDocumento
+      .findMany({
+        where: { empresaId, podeEnviar: true },
+        select: { id: true, titulo: true },
+        orderBy: { criadoEm: 'desc' },
+        take: 10,
+      })
+      .catch(() => [] as Array<{ id: string; titulo: string }>);
+    if (docs.length === 0) return '';
+    const linhas = docs.map((d) => `- "${d.titulo}" (id: ${d.id})`);
     return (
-      '\n\n--- CONTEXTO (RAG) ---\n' +
-      'Responda usando SOMENTE as informações abaixo. Se a resposta não estiver aqui, ' +
-      'diga que vai verificar — NUNCA invente preço, SKU, prazo ou condição.\n\n' +
-      partes.join('\n\n')
+      '\n\n--- ARQUIVOS QUE VOCÊ PODE ENVIAR ---\n' +
+      'Estes arquivos estão disponíveis pra mandar ao lead:\n' +
+      linhas.join('\n') +
+      '\nSe (e somente se) o lead pedir um destes arquivos, escreva uma frase curta avisando ' +
+      'que vai enviar e inclua no FINAL da sua resposta a marcação [[ENVIAR_DOC:id]] com o id ' +
+      'EXATO da lista (uma marcação por arquivo). NUNCA invente um id nem ofereça arquivo fora ' +
+      'desta lista.'
     );
+  }
+
+  /**
+   * Envia os documentos pedidos pela IA. Re-valida cada id contra (empresa × podeEnviar)
+   * — a IA nunca manda nada fora da lista, mesmo alucinando um id. Best-effort: falha de
+   * um arquivo não derruba o turno.
+   */
+  private async enviarDocumentos(
+    empresaId: string,
+    telefone: string,
+    ids: string[],
+    idemBase: string,
+  ): Promise<void> {
+    if (ids.length === 0) return;
+    const peerId = `${telefone.replace(/[^\d+]/g, '')}@s.whatsapp.net`;
+    for (const id of ids) {
+      const doc = await this.prisma.knowledgeDocumento.findFirst({
+        where: { id, empresaId, podeEnviar: true },
+        select: { id: true, storagePath: true, mimetype: true, fileName: true },
+      });
+      if (!doc) {
+        this.logger.warn(
+          `CONVERSAR_IA: IA pediu enviar doc "${id}" inexistente/não-enviável (emp ${empresaId}) — ignorado`,
+        );
+        continue;
+      }
+      try {
+        await this.pacing.aguardarSlot(empresaId, true);
+        await this.whatsapp.enviarMidia(
+          empresaId,
+          peerId,
+          {
+            tipo: tipoMidiaDeMime(doc.mimetype),
+            storagePath: doc.storagePath,
+            mimetype: doc.mimetype,
+            fileName: doc.fileName,
+          },
+          { idempotencyKey: `${idemBase}:doc:${doc.id}` },
+        );
+      } catch (err) {
+        this.logger.warn(
+          `CONVERSAR_IA: falha ao enviar doc ${doc.id}: ${
+            err instanceof Error ? err.message : String(err)
+          }`,
+        );
+      }
+    }
   }
 
   /**
@@ -577,19 +690,21 @@ export class ConversarIaService {
     await this.custo.registrarUso(empresaId, r.tokensIn ?? 0, r.tokensOut ?? 0);
     const turno = parseTurnoIa(r.texto);
 
-    const respostaTexto = personalizarNome(turno.resposta, lead.contatoNome);
+    const respostaPersonalizada = personalizarNome(turno.resposta, lead.contatoNome);
+    // Tool-use por marcador: a IA pode pedir o envio de arquivos com [[ENVIAR_DOC:id]].
+    // Separa o texto (sem as marcações) dos ids; o envio real acontece após o texto.
+    const { limpo, ids: docIds } = extrairMarcadoresDoc(respostaPersonalizada);
+    const respostaTexto =
+      limpo || (docIds.length > 0 ? 'Segue o arquivo solicitado. 📎' : respostaPersonalizada);
+    const idemTurno = `fx:${execucaoId}:${no.id}:t${(ctx._iaTurno as number) ?? 0}`;
     try {
-      await this.enviarWhatsapp(
-        empresaId,
-        lead.contatoTelefone,
-        respostaTexto,
-        true,
-        `fx:${execucaoId}:${no.id}:t${(ctx._iaTurno as number) ?? 0}`,
-      );
+      await this.enviarWhatsapp(empresaId, lead.contatoTelefone, respostaTexto, true, idemTurno);
     } catch (err) {
       await this.rotearParaErro(execucaoId, no.id, ctx, 'whatsapp_falha', err);
       return;
     }
+    // Depois do texto, manda os arquivos pedidos (best-effort, re-valida podeEnviar).
+    await this.enviarDocumentos(empresaId, lead.contatoTelefone, docIds, idemTurno);
 
     // Atualiza a memória da conversa (pergunta do lead + resposta da IA).
     const novoHist: HistoricoMsg[] = [
