@@ -2,8 +2,11 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { Logger } from '@nestjs/common';
 import { EvolutionInstanciasSyncJob } from './evolution-instancias-sync.job';
 
-function setup(opts: { provider?: string; lock?: boolean } = {}) {
-  const evolution = { listarInstanciasDetalhadas: vi.fn().mockResolvedValue([]) };
+function setup(opts: { provider?: string; lock?: boolean; zumbiCount?: number } = {}) {
+  const evolution = {
+    listarInstanciasDetalhadas: vi.fn().mockResolvedValue([]),
+    resetarForte: vi.fn().mockResolvedValue(undefined),
+  };
   const instancias = { sincronizarConexao: vi.fn().mockResolvedValue(undefined) };
   const env = {
     get: vi.fn((k: string) =>
@@ -11,13 +14,22 @@ function setup(opts: { provider?: string; lock?: boolean } = {}) {
     ),
   };
   const cronLock = { acquire: vi.fn().mockResolvedValue(opts.lock ?? true) };
+  // incr devolve `zumbiCount` (default 1 = 1ª detecção, não reseta); del/expire stub.
+  const redis = {
+    incr: vi.fn().mockResolvedValue(opts.zumbiCount ?? 1),
+    del: vi.fn().mockResolvedValue(1),
+    client: { expire: vi.fn().mockResolvedValue(1) },
+  };
+  const status = { marcarDesconectado: vi.fn().mockResolvedValue(undefined) };
   const job = new EvolutionInstanciasSyncJob(
     evolution as never,
     instancias as never,
     env as never,
     cronLock as never,
+    redis as never,
+    status as never,
   );
-  return { job, evolution, instancias, cronLock };
+  return { job, evolution, instancias, cronLock, redis, status };
 }
 
 describe('EvolutionInstanciasSyncJob', () => {
@@ -69,13 +81,35 @@ describe('EvolutionInstanciasSyncJob', () => {
     expect(instancias.sincronizarConexao).toHaveBeenCalledWith('emp_emp-2', 'close', undefined);
   });
 
-  it('loga zumbi (open + disconnectionReasonCode)', async () => {
-    const { job, evolution } = setup();
+  it('1ª detecção de zumbi NÃO reseta (guard de 2 ciclos)', async () => {
+    const { job, evolution } = setup({ zumbiCount: 1 });
     evolution.listarInstanciasDetalhadas.mockResolvedValue([
       { name: 'emp_z', connectionStatus: 'open', disconnectionReasonCode: 401 },
     ]);
     await job.sincronizar();
     expect(warn).toHaveBeenCalledWith(expect.stringContaining('ZUMBI'));
+    expect(evolution.resetarForte).not.toHaveBeenCalled();
+  });
+
+  it('zumbi CONFIRMADO (2ª detecção) → resetarForte + marca close + alerta o diretor', async () => {
+    const { job, evolution, instancias, status } = setup({ zumbiCount: 2 });
+    evolution.listarInstanciasDetalhadas.mockResolvedValue([
+      { name: 'emp_z', connectionStatus: 'open', disconnectionReasonCode: 401 },
+    ]);
+    await job.sincronizar();
+    expect(evolution.resetarForte).toHaveBeenCalledWith('emp_z');
+    expect(instancias.sincronizarConexao).toHaveBeenCalledWith('emp_z', 'close');
+    // empresaId = parte após `emp_` (emp_z → z).
+    expect(status.marcarDesconectado).toHaveBeenCalledWith('z', 'whatsapp', expect.any(String));
+  });
+
+  it('instância saudável zera o contador de zumbi (Redis del)', async () => {
+    const { job, evolution, redis } = setup();
+    evolution.listarInstanciasDetalhadas.mockResolvedValue([
+      { name: 'emp_ok', connectionStatus: 'open', disconnectionReasonCode: null },
+    ]);
+    await job.sincronizar();
+    expect(redis.del).toHaveBeenCalledWith('evo:zumbi:emp_ok');
   });
 
   it('erro no Evolution NÃO lança (best-effort)', async () => {

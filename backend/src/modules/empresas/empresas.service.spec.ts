@@ -51,6 +51,7 @@ describe('EmpresasService', () => {
       {
         sincronizar: vi.fn(async () => undefined),
       } as never,
+      { desativar: vi.fn() } as never,
     );
   });
 

@@ -9,13 +9,21 @@ const makePrisma = () => ({
   usuario: { findUnique: vi.fn() },
 });
 
+const makeEvolution = () => ({
+  ativo: vi.fn().mockReturnValue(true),
+  logout: vi.fn().mockResolvedValue(undefined),
+  deletar: vi.fn().mockResolvedValue(undefined),
+});
+
 describe('EvolutionInstanciaService', () => {
   let prisma: ReturnType<typeof makePrisma>;
+  let evolution: ReturnType<typeof makeEvolution>;
   let svc: EvolutionInstanciaService;
 
   beforeEach(() => {
     prisma = makePrisma();
-    svc = new EvolutionInstanciaService(prisma as never);
+    evolution = makeEvolution();
+    svc = new EvolutionInstanciaService(prisma as never, evolution as never);
   });
 
   it('emp_<id>: empresaId = id, usuarioId = null', async () => {
@@ -71,6 +79,24 @@ describe('EvolutionInstanciaService', () => {
     await svc.remover('emp_emp-1');
     expect(prisma.evolutionInstancia.deleteMany).toHaveBeenCalledWith({
       where: { instanceName: 'emp_emp-1' },
+    });
+  });
+
+  it('desativar (EMPRESA): logout + deletar no Evolution + remove o registro local', async () => {
+    await svc.desativar({ type: 'EMPRESA', id: 'emp-1' });
+    expect(evolution.logout).toHaveBeenCalledWith('emp_emp-1');
+    expect(evolution.deletar).toHaveBeenCalledWith('emp_emp-1');
+    expect(prisma.evolutionInstancia.deleteMany).toHaveBeenCalledWith({
+      where: { instanceName: 'emp_emp-1' },
+    });
+  });
+
+  it('desativar com provider != evolution: NÃO chama o Evolution, mas remove o registro local', async () => {
+    evolution.ativo.mockReturnValue(false);
+    await svc.desativar({ type: 'USUARIO', id: 'rep-1' });
+    expect(evolution.logout).not.toHaveBeenCalled();
+    expect(prisma.evolutionInstancia.deleteMany).toHaveBeenCalledWith({
+      where: { instanceName: 'user_rep-1' },
     });
   });
 });

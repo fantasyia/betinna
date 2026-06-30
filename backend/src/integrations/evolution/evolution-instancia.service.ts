@@ -1,5 +1,6 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { PrismaService } from '@database/prisma.service';
+import { EvolutionService } from './evolution.service';
 
 /**
  * Persistência do estado das instâncias Evolution (tabela `EvolutionInstancia`). É a "verdade local"
@@ -11,7 +12,29 @@ import { PrismaService } from '@database/prisma.service';
 export class EvolutionInstanciaService {
   private readonly logger = new Logger(EvolutionInstanciaService.name);
 
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly evolution: EvolutionService,
+  ) {}
+
+  /**
+   * Cleanup on-deactivation: ao desativar uma empresa/rep, desconecta + deleta a instância no
+   * Evolution e remove o registro local. Best-effort (nunca lança — não pode derrubar a desativação).
+   * No-op se o provider não for Evolution.
+   */
+  async desativar(owner: { type: 'EMPRESA' | 'USUARIO'; id: string }): Promise<void> {
+    const instanceName = EvolutionService.instanceName(owner);
+    try {
+      if (this.evolution.ativo()) {
+        await this.evolution.logout(instanceName).catch(() => undefined);
+        await this.evolution.deletar(instanceName).catch(() => undefined);
+      }
+      await this.remover(instanceName);
+    } catch (err) {
+      const m = err instanceof Error ? err.message : String(err);
+      this.logger.warn(`Falha ao desativar instância ${instanceName}: ${m}`);
+    }
+  }
 
   /**
    * Upsert do estado de conexão a partir de um evento do Evolution (tipicamente CONNECTION_UPDATE).

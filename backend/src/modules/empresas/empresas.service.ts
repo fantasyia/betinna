@@ -6,6 +6,7 @@ import { ErrorCode } from '@shared/errors/error-codes';
 import type { AuthenticatedUser } from '@shared/types/authenticated-user';
 import { buildPaginated, type Paginated } from '@shared/types/pagination';
 import { KnowledgeConfigService } from '@modules/rag/knowledge-config.service';
+import { EvolutionInstanciaService } from '@integrations/evolution/evolution-instancia.service';
 import type {
   CreateEmpresaDto,
   ListEmpresasDto,
@@ -18,6 +19,7 @@ export class EmpresasService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly knowledgeConfig: KnowledgeConfigService,
+    private readonly evolutionInstancias: EvolutionInstanciaService,
   ) {}
 
   /**
@@ -168,7 +170,11 @@ export class EmpresasService {
   async deactivate(user: AuthenticatedUser, id: string) {
     this.assertCanManageEmpresa(user, id);
     await this.findById(id);
-    return this.prisma.empresa.update({ where: { id }, data: { ativo: false } });
+    const atualizada = await this.prisma.empresa.update({ where: { id }, data: { ativo: false } });
+    // Cleanup on-deactivation: desconecta + deleta a instância WhatsApp central no Evolution
+    // (best-effort, fire-and-forget).
+    void this.evolutionInstancias.desativar({ type: 'EMPRESA', id });
+    return atualizada;
   }
 
   async activate(user: AuthenticatedUser, id: string) {

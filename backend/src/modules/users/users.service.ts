@@ -6,6 +6,7 @@ import { PrismaService } from '@database/prisma.service';
 import { RedisService } from '@database/redis.service';
 import { AuthGuard } from '@modules/auth/guards/auth.guard';
 import { TransactionalEmailService } from '@integrations/email/transactional-email.service';
+import { EvolutionInstanciaService } from '@integrations/evolution/evolution-instancia.service';
 import {
   BusinessRuleException,
   ConflictException,
@@ -45,6 +46,7 @@ export class UsersService {
     private readonly env: EnvService,
     private readonly redis: RedisService,
     private readonly email: TransactionalEmailService,
+    private readonly evolutionInstancias: EvolutionInstanciaService,
   ) {
     this.supabaseAdmin = createClient(
       this.env.get('SUPABASE_URL'),
@@ -383,6 +385,11 @@ export class UsersService {
     const updated = await this.prisma.usuario.update({ where: { id }, data: { status } });
     // Status muda → AuthGuard cache deve refletir imediatamente
     await this.invalidateAuthCache(id);
+    // Cleanup on-deactivation: desconecta + deleta a instância WhatsApp pessoal do rep no Evolution
+    // (best-effort, fire-and-forget — não bloqueia/derruba a desativação).
+    if (status === 'INATIVO') {
+      void this.evolutionInstancias.desativar({ type: 'USUARIO', id });
+    }
     return updated;
   }
 
