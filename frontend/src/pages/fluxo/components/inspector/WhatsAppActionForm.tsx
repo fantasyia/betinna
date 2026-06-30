@@ -1,6 +1,7 @@
 import { Input, Select, Textarea, Field } from '@/components/ui';
 import type { NodePayload } from '@/pages/fluxo/lib/types';
 import type { InspectorContatoWa } from '@/pages/fluxo/hooks/useInspectorData';
+import { WhatsAppMidiaAnexo } from './WhatsAppMidiaAnexo';
 
 /** ENVIAR_WHATSAPP — destinatário (lead/número/contato salvo) + mensagem. */
 export function WhatsAppActionForm({
@@ -74,9 +75,12 @@ export function WhatsAppActionForm({
           </Select>
         </Field>
       )}
-      <Field label="Mensagem" hint="Use {{nome}}, {{empresa}} pra variáveis">
+      <Field
+        label={data.config.midia ? 'Legenda' : 'Mensagem'}
+        hint="Use {{nome}}, {{empresa}} pra variáveis"
+      >
         <Textarea
-          rows={5}
+          rows={data.config.midia ? 3 : 5}
           value={(data.config.mensagem as string) ?? ''}
           onChange={(e) =>
             onUpdate((d) => ({ ...d, config: { ...d.config, mensagem: e.target.value } }))
@@ -84,6 +88,7 @@ export function WhatsAppActionForm({
           placeholder="Olá {{nome}}, tudo bem?"
         />
       </Field>
+      <WhatsAppMidiaAnexo data={data} onUpdate={onUpdate} />
     </>
   );
 }
