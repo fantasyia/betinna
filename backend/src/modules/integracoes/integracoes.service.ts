@@ -259,11 +259,23 @@ export class IntegracoesService {
     await this.registrarSyncOk(empresaId, servico).catch(() => undefined);
   }
 
-  /** Marca um sync bem-sucedido (atualiza `ultimoSync` e zera erros). */
-  async registrarSyncOk(empresaId: string, servico: ServicoEmpresa): Promise<void> {
+  /**
+   * Marca um sync bem-sucedido (atualiza `ultimoSync` e zera erros).
+   *
+   * `ultimoSync` (high-water-mark): passe o INÍCIO do sync — não o fim. Carimbar o fim
+   * (`new Date()` pós-processamento) faz registros alterados no ERP DURANTE o sync caírem
+   * entre o cutoff e o carimbo, e o próximo run incremental os pula (perda). Com o início
+   * há um pequeno overlap re-processado (idempotente via upsert), mas nada se perde.
+   * Default `new Date()` p/ chamadas que só sinalizam saúde (não são sync incremental).
+   */
+  async registrarSyncOk(
+    empresaId: string,
+    servico: ServicoEmpresa,
+    ultimoSync: Date = new Date(),
+  ): Promise<void> {
     await this.prisma.integracaoConexao.updateMany({
       where: { empresaId, servico },
-      data: { ultimoSync: new Date(), errosRecentes: 0 },
+      data: { ultimoSync, errosRecentes: 0 },
     });
     this.invalidarCache(empresaId, servico);
     // Atualiza o semáforo de saúde (best-effort).

@@ -130,7 +130,29 @@ describe('OmieClientesService', () => {
 
       await service.sync('emp-1', { modo: 'completo' });
 
-      expect(integracoes.registrarSyncOk).toHaveBeenCalledWith('emp-1', 'omie');
+      // High-water-mark = INÍCIO do sync (3º arg Date), não o fim.
+      expect(integracoes.registrarSyncOk).toHaveBeenCalledWith('emp-1', 'omie', expect.any(Date));
+    });
+
+    it('carimba o INÍCIO do sync mesmo que o tempo avance durante o fetch', async () => {
+      vi.useFakeTimers();
+      try {
+        const t0 = new Date('2026-06-01T10:00:00.000Z');
+        vi.setSystemTime(t0);
+        // Simula processamento longo: o "relógio" avança 5min durante o fetch.
+        omie.listarClientes.mockImplementation(() => {
+          vi.setSystemTime(new Date('2026-06-01T10:05:00.000Z'));
+          return Promise.resolve(fakeListarClientesResponse([]));
+        });
+
+        await service.sync('emp-1', { modo: 'completo' });
+
+        const stamp = integracoes.registrarSyncOk.mock.calls[0][2] as Date;
+        // Deve ser o início (10:00), NÃO o fim (10:05) — senão perderia alterações do intervalo.
+        expect(stamp.toISOString()).toBe(t0.toISOString());
+      } finally {
+        vi.useRealTimers();
+      }
     });
 
     it('itera múltiplas páginas', async () => {

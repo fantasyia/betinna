@@ -141,7 +141,8 @@ describe('OmieProdutosService', () => {
 
       await service.sync('emp-1', { modo: 'completo' });
 
-      expect(integracoes.registrarSyncOk).toHaveBeenCalledWith('emp-1', 'omie');
+      // High-water-mark = INÍCIO do sync (3º arg Date), não o fim.
+      expect(integracoes.registrarSyncOk).toHaveBeenCalledWith('emp-1', 'omie', expect.any(Date));
     });
 
     it('itera múltiplas páginas', async () => {
