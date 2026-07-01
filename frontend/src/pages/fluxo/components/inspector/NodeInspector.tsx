@@ -134,7 +134,7 @@ export function NodeInspector({
         )}
 
         {data.tipo === 'TRIGGER' && data.triggerTipo === 'WEBHOOK_RECEBIDO' && (
-          <WebhookTriggerConfig />
+          <WebhookTriggerConfig data={data} onUpdate={onUpdate} />
         )}
 
         {data.tipo === 'TRIGGER' && data.triggerTipo === 'CRON_AGENDADO' && (

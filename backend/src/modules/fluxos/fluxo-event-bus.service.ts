@@ -5,6 +5,7 @@ import type { FluxoTriggerTipo, Prisma } from '@prisma/client';
 import { PrismaService } from '@database/prisma.service';
 import { FLUXO_QUEUE, type FluxoStepJobData } from './fluxo-executor.types';
 import { matchPalavraChave, type PalavraChaveConfig } from './match-palavra-chave.util';
+import { matchFiltroPayload, type FiltroPayload } from './match-payload-filtro.util';
 
 const toJsonInput = (v: Record<string, unknown>): Prisma.InputJsonObject =>
   v as unknown as Prisma.InputJsonObject;
@@ -119,6 +120,17 @@ export class FluxoEventBusService {
               const texto = typeof contexto['texto'] === 'string' ? contexto['texto'] : '';
               if (!matchPalavraChave(texto, cfg)) continue;
             }
+          }
+
+          // Filtro do gatilho WEBHOOK_RECEBIDO: vincula a UM webhook (webhookId vazio =
+          // qualquer webhook da empresa) + filtro opcional por campo do payload.
+          if (triggerTipo === 'WEBHOOK_RECEBIDO') {
+            const cfg = (triggerNo.config ?? {}) as {
+              webhookId?: string;
+              filtroPayload?: FiltroPayload;
+            };
+            if (cfg.webhookId && contexto['webhookId'] !== cfg.webhookId) continue;
+            if (!matchFiltroPayload(contexto['payload'], cfg.filtroPayload)) continue;
           }
 
           // Anti-duplicata (IA) por SUBSTITUIÇÃO: um fluxo com nó "Conversar com IA"
