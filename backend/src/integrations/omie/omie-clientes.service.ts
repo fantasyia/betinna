@@ -42,6 +42,9 @@ export class OmieClientesService {
 
   async sync(empresaId: string, options: OmieSyncOptions = {}): Promise<OmieClientesSyncResult> {
     const start = Date.now();
+    // High-water-mark: carimba o INÍCIO do sync (antes do fetch) — não o fim — pra não
+    // perder registros alterados no OMIE durante o processamento.
+    const syncStartedAt = new Date();
     const modo: OmieSyncModo = options.modo ?? 'incremental';
     const desde = modo === 'incremental' ? await this.obterUltimoSync(empresaId) : undefined;
 
@@ -100,7 +103,7 @@ export class OmieClientesService {
       pagina++;
     } while (pagina <= totalPaginas);
 
-    await this.integracoes.registrarSyncOk(empresaId, 'omie');
+    await this.integracoes.registrarSyncOk(empresaId, 'omie', syncStartedAt);
 
     const result: OmieClientesSyncResult = {
       empresaId,

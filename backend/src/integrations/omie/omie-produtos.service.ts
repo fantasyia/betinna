@@ -46,6 +46,8 @@ export class OmieProdutosService {
 
   async sync(empresaId: string, options: OmieSyncOptions = {}): Promise<OmieProdutosSyncResult> {
     const start = Date.now();
+    // High-water-mark: carimba o INÍCIO do sync (antes do fetch), não o fim.
+    const syncStartedAt = new Date();
     const modo: OmieSyncModo = options.modo ?? 'incremental';
     const desde = modo === 'incremental' ? await this.obterUltimoSync(empresaId) : undefined;
 
@@ -127,7 +129,7 @@ export class OmieProdutosService {
       pagina++;
     } while (pagina <= totalPaginas);
 
-    await this.integracoes.registrarSyncOk(empresaId, 'omie');
+    await this.integracoes.registrarSyncOk(empresaId, 'omie', syncStartedAt);
 
     const result: OmieProdutosSyncResult = {
       empresaId,
