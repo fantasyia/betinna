@@ -729,6 +729,10 @@ model Pedido {
   descontoGeral Float   @default(0) // %
   total         Decimal @default(0) @db.Decimal(14, 2)
   comissao      Decimal @default(0) @db.Decimal(14, 2)
+  /// Acumuladores de devolução APROVADA (estorno líquido no mês do pedido): o
+  /// fecharMes desconta estes do total/comissão. Nunca mexe em folha já paga.
+  comissaoEstornada Decimal @default(0) @db.Decimal(14, 2)
+  valorDevolvido    Decimal @default(0) @db.Decimal(14, 2)
 
   observacoes    String? @db.Text
   motivoDesconto String? // pra aprovação
@@ -1131,6 +1135,9 @@ model Devolucao {
   /// key do motivo configurável (Empresa.config.devolucaoInterna.motivos).
   motivo         String
   status         DevolucaoStatus @default(ABERTA)
+  /// Valor devolvido (base do estorno proporcional de comissão). null = devolução
+  /// total (usa o total do pedido). Aplicado uma vez na transição pra APROVADA.
+  valorDevolvido Decimal?        @db.Decimal(14, 2)
   itensDescricao String?         @db.Text
   /// Paths de fotos no Storage (upload nativo é incremento futuro).
   fotos          String[]

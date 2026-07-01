@@ -112,6 +112,29 @@ describe('ComissoesService', () => {
       });
     });
 
+    it('desconta estorno de devolução aprovada (líquido no mês do pedido)', async () => {
+      prisma.pedido.groupBy.mockResolvedValue([
+        {
+          representanteId: 'rep-1',
+          _sum: { total: 10_000, comissao: 500, comissaoEstornada: 100, valorDevolvido: 2_000 },
+          _count: { _all: 4 },
+        },
+      ]);
+      prisma.usuario.findMany
+        .mockResolvedValueOnce([{ id: 'rep-1', comissaoPadrao: 5 }])
+        .mockResolvedValueOnce([{ id: 'rep-1', gerenteId: null }]);
+
+      const out = await svc.fecharMes(fakeUser(), { mes: 4, ano: 2026, reprocessar: false });
+
+      // Vendas 10000 − 2000 devolvido = 8000; comissão 500 − 100 estornada = 400.
+      expect(out.totalVendas).toBe(8_000);
+      expect(out.totalComissao).toBe(400);
+      expect(prisma.comissao.upsert.mock.calls[0][0].create).toMatchObject({
+        totalVendas: 8_000,
+        totalComissao: 400,
+      });
+    });
+
     it('escalonada por faturamento: comissão = vendas × % da faixa (não a soma por pedido)', async () => {
       prisma.pedido.groupBy.mockResolvedValue([
         {

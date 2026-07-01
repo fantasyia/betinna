@@ -149,7 +149,8 @@ export class ComissoesService {
     const aggregated = await this.prisma.pedido.groupBy({
       by: ['representanteId'],
       where: baseWhere,
-      _sum: { total: true, comissao: true },
+      // Estorno de devolução APROVADA (líquido): subtrai comissaoEstornada/valorDevolvido.
+      _sum: { total: true, comissao: true, comissaoEstornada: true, valorDevolvido: true },
       _count: { _all: true },
     });
 
@@ -216,16 +217,19 @@ export class ComissoesService {
         (row): row is typeof row & { representanteId: string } => row.representanteId !== null,
       )
       .map((row) => {
-        // #17 — _sum do Pedido vem Decimal; converte pra number (entra em soma JS
-        // e nos writes da Comissao — number→Decimal é coagido pelo Prisma).
-        const totalVendas = Number(row._sum.total ?? 0);
-        // Escalonada: comissão = faturamento × % da faixa; snapshot do % usado.
-        // Fixa (default): soma do `comissao` pré-calculado em cada pedido.
+        // #17 — _sum do Pedido vem Decimal; converte pra number. LÍQUIDO de devolução
+        // aprovada: vendas − valorDevolvido, comissão − comissaoEstornada (nunca < 0).
+        const totalVendas = Math.max(
+          0,
+          Number(row._sum.total ?? 0) - Number(row._sum.valorDevolvido ?? 0),
+        );
+        // Escalonada: comissão = faturamento LÍQUIDO × % da faixa; snapshot do % usado.
+        // Fixa (default): soma do `comissao` menos o estornado.
         const escalonada = comissaoCfg.modelo === 'escalonada_por_faturamento';
         const pctFaixa = escalonada ? faixaPercentual(comissaoCfg.faixas, totalVendas) : null;
         const totalComissao = escalonada
           ? Math.round(totalVendas * ((pctFaixa ?? 0) / 100) * 100) / 100
-          : Number(row._sum.comissao ?? 0);
+          : Math.max(0, Number(row._sum.comissao ?? 0) - Number(row._sum.comissaoEstornada ?? 0));
         // Só acumula/conta como novo quando o registro será de fato gravado (não no-op).
         if (!jaExistentes.has(`${row.representanteId}:REP`)) {
           totalVendasAgg += totalVendas;
@@ -278,8 +282,11 @@ export class ComissoesService {
     const vendasPorRep = new Map<string, number>();
     for (const row of aggregated) {
       if (row.representanteId) {
-        // #17 — _sum.total do Pedido vem Decimal; converte pra number.
-        vendasPorRep.set(row.representanteId, Number(row._sum.total ?? 0));
+        // #17 — Decimal→number, LÍQUIDO de devolução (mesma base do rep).
+        vendasPorRep.set(
+          row.representanteId,
+          Math.max(0, Number(row._sum.total ?? 0) - Number(row._sum.valorDevolvido ?? 0)),
+        );
       }
     }
     const vendasPorGerente = new Map<string, number>();

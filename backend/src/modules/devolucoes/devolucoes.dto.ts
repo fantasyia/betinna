@@ -4,6 +4,8 @@ import { z } from 'zod';
 export const createDevolucaoSchema = z.object({
   pedidoId: z.string().cuid(),
   motivo: z.string().trim().min(1).max(40),
+  /// Valor devolvido (base do estorno proporcional de comissão). Omitido = devolução total.
+  valorDevolvido: z.number().positive().optional(),
   itensDescricao: z.string().trim().max(2000).optional(),
   observacao: z.string().trim().max(2000).optional(),
   fotos: z.array(z.string().url()).max(10).optional(),
