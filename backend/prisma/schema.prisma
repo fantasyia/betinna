@@ -2377,13 +2377,34 @@ model WebhookEntrada {
   id        String   @id @default(cuid())
   empresaId String
   nome      String
-  /// Token secreto na URL pública. Único global.
+  /// Token na URL pública — apenas ROTEADOR da empresa, NÃO é a credencial.
   token     String   @unique
+  /// Segredo HMAC POR-TENANT (hex). A autenticação real é HMAC-SHA256(rawBody)
+  /// no header. Gerado no criar()/rotacionar; mostrado UMA vez (nunca no listar).
+  /// Nullable só p/ legado — receiver rejeita webhook sem secret.
+  secret    String?
   ativo     Boolean  @default(true)
   criadoEm  DateTime @default(now())
 
-  empresa Empresa @relation(fields: [empresaId], references: [id], onDelete: Cascade)
+  empresa      Empresa              @relation(fields: [empresaId], references: [id], onDelete: Cascade)
+  recebimentos WebhookRecebimento[]
 
+  @@index([empresaId])
+}
+
+/// Idempotência FORTE (server-side) do receiver de webhook de fluxo: cada POST
+/// com Idempotency-Key grava aqui; a unique barra reprocessamento mesmo com Redis
+/// frio (o anti-replay por HMAC é a 1ª linha; isto é a rede no banco).
+model WebhookRecebimento {
+  id             String   @id @default(cuid())
+  empresaId      String
+  webhookId      String
+  idempotencyKey String
+  recebidoEm     DateTime @default(now())
+
+  webhook WebhookEntrada @relation(fields: [webhookId], references: [id], onDelete: Cascade)
+
+  @@unique([webhookId, idempotencyKey])
   @@index([empresaId])
 }
 
