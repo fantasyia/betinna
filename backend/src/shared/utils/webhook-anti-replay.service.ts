@@ -27,7 +27,8 @@ export type WebhookProvider =
   | 'tiktok'
   | 'mercadolivre'
   | 'iugu'
-  | 'evolution';
+  | 'evolution'
+  | 'fluxo';
 
 export interface AntiReplayResult {
   /** true = primeira vez vendo essa assinatura, prosseguir com processamento */
