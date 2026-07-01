@@ -3,6 +3,7 @@ import {
   Controller,
   Delete,
   Get,
+  Header,
   HttpCode,
   HttpStatus,
   type MessageEvent,
@@ -97,6 +98,10 @@ export class InboxController {
    * O evento NÃO carrega conteúdo (só ids) — o refetch escopado é a barreira real contra vazamento.
    */
   @Sse('stream')
+  // Anti-buffering: proxies (Railway/nginx) bufferizam SSE e quebram o realtime
+  // (vira "delay-to-invalidate"). X-Accel-Buffering:no + no-transform desligam isso.
+  @Header('X-Accel-Buffering', 'no')
+  @Header('Cache-Control', 'no-cache, no-transform')
   @ApiOperation({ summary: 'Stream SSE de eventos do Inbox (push-to-invalidate)' })
   stream(@CurrentUser() user: AuthenticatedUser): Observable<MessageEvent> {
     const empresaId = user.empresaIdAtiva;
