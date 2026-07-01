@@ -4,6 +4,7 @@ import type { Queue } from 'bullmq';
 import type { FluxoTriggerTipo, Prisma } from '@prisma/client';
 import { PrismaService } from '@database/prisma.service';
 import { FLUXO_QUEUE, type FluxoStepJobData } from './fluxo-executor.types';
+import { matchPalavraChave, type PalavraChaveConfig } from './match-palavra-chave.util';
 
 const toJsonInput = (v: Record<string, unknown>): Prisma.InputJsonObject =>
   v as unknown as Prisma.InputJsonObject;
@@ -98,6 +99,26 @@ export class FluxoEventBusService {
             if (funilCfg && funilCtx && funilCtx !== funilCfg) continue;
             if (paraEtapa && paraCtx !== paraEtapa) continue;
             if (deEtapa && deCtx !== deEtapa) continue;
+          }
+
+          // Filtro do gatilho MENSAGEM_CANAL: canal + palavra-chave + apenasComLead.
+          // Compatível com o uso legado (só roteamento por canal): SEM palavrasChave
+          // o fluxo dispara como antes; o match textual só restringe quando configurado.
+          // Ordem barata→cara: canal/lead/match em memória (resolverLead já rodou no upstream).
+          if (triggerTipo === 'MENSAGEM_CANAL') {
+            const cfg = (triggerNo.config ?? {}) as PalavraChaveConfig & {
+              canais?: string[];
+              apenasComLead?: boolean;
+            };
+            const canais = Array.isArray(cfg.canais) ? cfg.canais.filter(Boolean) : [];
+            const canalCtx = contexto['canal'] as string | undefined;
+            if (canais.length > 0 && (!canalCtx || !canais.includes(canalCtx))) continue;
+            if (cfg.apenasComLead && !contexto['leadId']) continue;
+            const temPalavras = (cfg.palavrasChave ?? []).some((p) => p.trim());
+            if (temPalavras) {
+              const texto = typeof contexto['texto'] === 'string' ? contexto['texto'] : '';
+              if (!matchPalavraChave(texto, cfg)) continue;
+            }
           }
 
           // Anti-duplicata (IA) por SUBSTITUIÇÃO: um fluxo com nó "Conversar com IA"

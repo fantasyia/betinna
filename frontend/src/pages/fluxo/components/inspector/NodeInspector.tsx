@@ -12,6 +12,7 @@ import { CondicaoEditor } from './CondicaoEditor';
 import { WebhookTriggerConfig } from './WebhookTriggerConfig';
 import { CronTriggerConfig } from './CronTriggerConfig';
 import { LeadEtapaTriggerForm } from './LeadEtapaTriggerForm';
+import { MensagemCanalTriggerForm } from './MensagemCanalTriggerForm';
 import { DelayForm } from './DelayForm';
 import { WhatsAppActionForm } from './WhatsAppActionForm';
 import { EmailActionForm } from './EmailActionForm';
@@ -129,11 +130,7 @@ export function NodeInspector({
         )}
 
         {data.tipo === 'TRIGGER' && data.triggerTipo === 'MENSAGEM_CANAL' && (
-          <p className="text-[11px] text-muted">
-            O fluxo recebe <code className="text-text">{'{{canal}}'}</code>{' '}
-            (whatsapp/instagram/...). Use um nó <strong>Condição</strong> com campo{' '}
-            <code className="text-text">canal</code> pra rotear por canal.
-          </p>
+          <MensagemCanalTriggerForm data={data} onUpdate={onUpdate} />
         )}
 
         {data.tipo === 'TRIGGER' && data.triggerTipo === 'WEBHOOK_RECEBIDO' && (
