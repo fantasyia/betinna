@@ -84,9 +84,14 @@ export class DevolucoesService {
     const empresaId = this.requireEmpresa(user);
     const pedido = await this.prisma.pedido.findFirst({
       where: { id: dto.pedidoId, empresaId },
-      select: { id: true, clienteId: true, representanteId: true, entregueEm: true },
+      select: { id: true, clienteId: true, representanteId: true, entregueEm: true, total: true },
     });
     if (!pedido) throw new NotFoundException('Pedido', dto.pedidoId);
+
+    // Valor devolvido não pode passar do total do pedido (base do estorno).
+    if (dto.valorDevolvido != null && dto.valorDevolvido > Number(pedido.total)) {
+      throw new BusinessRuleException('Valor devolvido não pode exceder o total do pedido');
+    }
 
     const scope = await this.repScope.getRepIds(user);
     if (
@@ -129,6 +134,7 @@ export class DevolucoesService {
         clienteId: pedido.clienteId,
         motivo: dto.motivo,
         status: 'ABERTA',
+        valorDevolvido: dto.valorDevolvido ?? null,
         itensDescricao: dto.itensDescricao,
         observacao: dto.observacao,
         fotos: dto.fotos ?? [],
@@ -155,24 +161,80 @@ export class DevolucoesService {
     }
 
     const decisao = dto.status === 'APROVADA' || dto.status === 'RECUSADA';
-    // CAS: inclui o status de origem no where. Duas decisões concorrentes a partir de
-    // EM_ANALISE (APROVADA vs RECUSADA) não se sobrepõem — só a 1ª casa; a 2ª acha count 0.
-    const cas = await this.prisma.devolucao.updateMany({
-      where: { id, empresaId: existing.empresaId, status: existing.status },
-      data: {
-        status: dto.status,
-        ...(decisao
-          ? { aprovadorId: user.id, aprovadorNome: user.nome, decididoEm: new Date() }
-          : {}),
-        ...(dto.status === 'RECUSADA' ? { motivoRecusa: dto.motivoRecusa?.trim() } : {}),
-      },
+    // Estorno de comissão só quando APROVADA E a config do tenant liga (default true).
+    const estornar =
+      dto.status === 'APROVADA' &&
+      (await this.lerConfig(existing.empresaId)).estornoComissaoProporcional;
+
+    // CAS + estorno na MESMA transação: se a decisão perde a corrida (count 0), nada é
+    // estornado (rollback). Só a 1ª decisão a partir de EM_ANALISE casa; a 2ª acha count 0.
+    await this.prisma.$transaction(async (tx) => {
+      const cas = await tx.devolucao.updateMany({
+        where: { id, empresaId: existing.empresaId, status: existing.status },
+        data: {
+          status: dto.status,
+          ...(decisao
+            ? { aprovadorId: user.id, aprovadorNome: user.nome, decididoEm: new Date() }
+            : {}),
+          ...(dto.status === 'RECUSADA' ? { motivoRecusa: dto.motivoRecusa?.trim() } : {}),
+        },
+      });
+      if (cas.count === 0) {
+        throw new BusinessRuleException(
+          `Devolução mudou de status — recarregue (esperado ${existing.status})`,
+        );
+      }
+      if (estornar) await this.aplicarEstornoComissao(tx, existing);
     });
-    if (cas.count === 0) {
-      throw new BusinessRuleException(
-        `Devolução mudou de status — recarregue (esperado ${existing.status})`,
-      );
-    }
     this.logger.log(`Devolução ${existing.numero}: ${existing.status} → ${dto.status}`);
     return this.prisma.devolucao.findUniqueOrThrow({ where: { id } });
+  }
+
+  /**
+   * Estorno proporcional de comissão na devolução APROVADA: acumula em
+   * `Pedido.comissaoEstornada`/`valorDevolvido` — o `fecharMes` desconta destes
+   * (líquido no MÊS do pedido; nunca mexe em folha já paga). Aplicado 1x: a CAS
+   * da transição pra APROVADA garante que só a 1ª decisão executa.
+   */
+  private async aplicarEstornoComissao(
+    tx: Prisma.TransactionClient,
+    dev: Devolucao,
+  ): Promise<void> {
+    const pedido = await tx.pedido.findUnique({
+      where: { id: dev.pedidoId },
+      select: { total: true, comissao: true, comissaoEstornada: true, valorDevolvido: true },
+    });
+    if (!pedido) return;
+    const total = Number(pedido.total);
+    const comissao = Number(pedido.comissao);
+    if (total <= 0 || comissao <= 0) return; // nada a estornar
+
+    // Valor devolvido: informado na devolução ou devolução total; limitado ao que
+    // ainda resta do pedido (devoluções parciais múltiplas não estornam além do total).
+    const restante = Math.max(0, total - Number(pedido.valorDevolvido));
+    const valorDev = Math.min(
+      dev.valorDevolvido != null ? Number(dev.valorDevolvido) : total,
+      restante,
+    );
+    if (valorDev <= 0) return;
+
+    const estornoBruto = Math.round(comissao * (valorDev / total) * 100) / 100;
+    // Clamp: nunca estornar mais que a comissão total do pedido (acumulado).
+    const estorno = Math.min(
+      estornoBruto,
+      Math.max(0, comissao - Number(pedido.comissaoEstornada)),
+    );
+
+    await tx.pedido.update({
+      where: { id: dev.pedidoId },
+      data: {
+        comissaoEstornada: { increment: estorno },
+        valorDevolvido: { increment: valorDev },
+      },
+    });
+    this.logger.log(
+      `Estorno comissão dev ${dev.numero}: pedido ${dev.pedidoId} -R$${estorno.toFixed(2)} ` +
+        `(devolvido R$${valorDev.toFixed(2)}/${total.toFixed(2)})`,
+    );
   }
 }
