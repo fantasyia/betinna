@@ -13,6 +13,7 @@ const makePrismaMock = () => ({
 
 const makeOmieClientMock = () => ({
   incluirPedido: vi.fn(),
+  consultarPedidoPorIntegracao: vi.fn().mockResolvedValue(null),
 });
 
 const makeIntegracoesMock = () => ({
@@ -167,6 +168,27 @@ describe('OmieAmostrasService', () => {
         }),
       );
       expect(result).toMatchObject({ amostraId: 'am-1', numeroOmie: '700123', cfop: '5911' });
+    });
+
+    it('heal idempotente: envio falha mas já existe no OMIE → reconcilia (não duplica)', async () => {
+      prisma.amostra.findFirst.mockResolvedValue(fakeAmostra());
+      omie.incluirPedido.mockRejectedValue(new Error('já cadastrado'));
+      omie.consultarPedidoPorIntegracao.mockResolvedValue(fakeOmieResponse());
+
+      const result = await service.enviarAmostra('am-1', 'emp-1');
+
+      expect(omie.consultarPedidoPorIntegracao).toHaveBeenCalledWith('emp-1', 'AMO-am-1');
+      expect(result.numeroOmie).toBe('700123');
+      expect(prisma.amostra.update).toHaveBeenCalled(); // reconciliou (persistiu o número real)
+    });
+
+    it('erro real: envio falha e NÃO existe no OMIE → propaga (não marca enviado)', async () => {
+      prisma.amostra.findFirst.mockResolvedValue(fakeAmostra());
+      omie.incluirPedido.mockRejectedValue(new Error('credencial inválida'));
+      omie.consultarPedidoPorIntegracao.mockResolvedValue(null);
+
+      await expect(service.enviarAmostra('am-1', 'emp-1')).rejects.toThrow('credencial inválida');
+      expect(prisma.amostra.update).not.toHaveBeenCalled();
     });
 
     it('usa CFOP 5911 quando empresa e cliente na mesma UF', async () => {

@@ -125,9 +125,24 @@ export class OmieAmostrasService {
     try {
       response = await this.omie.incluirPedido(amostra.empresaId, payload);
     } catch (err) {
-      stopTimer();
-      this.metrics.omiePush.inc({ empresa: amostra.empresaId, status: 'error' });
-      throw err;
+      // Heal idempotente (ITEM 3): um envio ANTERIOR pode ter criado a remessa no OMIE
+      // e a resposta se perdido (timeout) → o reenvio é recusado como "já cadastrado" e a
+      // amostra ficaria presa sem numeroOmie (o retry DUPLICARIA a remessa). Consultamos o
+      // OMIE pelo codigo_pedido_integracao (AMO-<id>): se existe lá, reconciliamos com o
+      // número real em vez de falhar/duplicar; se NÃO existe, é erro real → propaga.
+      const existente = await this.omie
+        .consultarPedidoPorIntegracao(amostra.empresaId, `AMO-${amostra.id}`)
+        .catch(() => null);
+      if (!existente) {
+        stopTimer();
+        this.metrics.omiePush.inc({ empresa: amostra.empresaId, status: 'error' });
+        throw err;
+      }
+      response = existente;
+      this.logger.warn(
+        `Amostra ${amostraId}: já estava cadastrada no OMIE (resposta perdida em envio ` +
+          `anterior) — reconciliada em vez de duplicar.`,
+      );
     }
     stopTimer();
     this.metrics.omiePush.inc({ empresa: amostra.empresaId, status: 'success' });
