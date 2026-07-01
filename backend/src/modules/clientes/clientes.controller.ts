@@ -18,6 +18,7 @@ import { RequirePermissions } from '@shared/decorators/permissions.decorator';
 import { Roles } from '@shared/decorators/roles.decorator';
 import { ZodValidationPipe } from '@shared/pipes/zod-validation.pipe';
 import type { AuthenticatedUser } from '@shared/types/authenticated-user';
+import { BrasilApiService } from '@integrations/brasilapi/brasilapi.service';
 import { ClientesService } from './clientes.service';
 import {
   type AssignRepDto,
@@ -50,6 +51,7 @@ export class ClientesController {
   constructor(
     private readonly clientes: ClientesService,
     private readonly listas: ListasDinamicasService,
+    private readonly brasilApi: BrasilApiService,
   ) {}
 
   @Get('listas')
@@ -84,6 +86,15 @@ export class ClientesController {
   })
   metricas(@CurrentUser() user: AuthenticatedUser, @Param('id') id: string) {
     return this.clientes.metricas(user, id);
+  }
+
+  @Get('cnpj/:cnpj/lookup')
+  @RequirePermissions({ module: 'clientes', action: 'view' })
+  @ApiOperation({
+    summary: 'Consulta dados públicos de um CNPJ na Receita (BrasilAPI) p/ auto-preencher cadastro',
+  })
+  lookupCnpj(@Param('cnpj') cnpj: string) {
+    return this.brasilApi.consultarCnpj(cnpj);
   }
 
   @Post()
