@@ -259,7 +259,7 @@ export function Donut({
       </svg>
       <ul style={{ listStyle: 'none', padding: 0, margin: 0, fontSize: 13 }}>
         {slices.map((s) => {
-          const pct = ((s.value / total) * 100).toFixed(1);
+          const pct = formatPercent(total > 0 ? (s.value / total) * 100 : 0, 1);
           return (
             <li
               key={s.label}
@@ -282,7 +282,7 @@ export function Donut({
               <span style={{ flex: 1 }}>{s.label}</span>
               <strong>{formatNumero(s.value)}</strong>
               <span style={{ color: colors.muted, fontSize: 11, minWidth: 40, textAlign: 'right' }}>
-                {pct}%
+                {pct}
               </span>
             </li>
           );

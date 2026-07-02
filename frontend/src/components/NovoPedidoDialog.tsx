@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { Link } from 'react-router-dom';
 import {
   Plus,
   Trash2,
@@ -143,10 +144,29 @@ export function NovoPedidoDialog({
   const [observacoes, setObservacoes] = useState(inicial?.observacoes ?? '');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // BL-2 — detecta catálogo vazio (tenant novo sem produtos sincronizados) pra
+  // orientar o onboarding em vez de só mostrar "Nenhum resultado" no seletor.
+  const [catalogoVazio, setCatalogoVazio] = useState(false);
 
   useEffect(() => {
     if (clientePreSelecionado) setCliente(clientePreSelecionado);
   }, [clientePreSelecionado]);
+
+  useEffect(() => {
+    if (!open) return;
+    let cancel = false;
+    void api
+      .get<{ data: unknown[] }>('/produtos?limit=1')
+      .then((r) => {
+        if (!cancel) setCatalogoVazio(Array.isArray(r.data) && r.data.length === 0);
+      })
+      .catch(() => {
+        /* silencioso: a checagem é só um aviso, não pode atrapalhar o pedido */
+      });
+    return () => {
+      cancel = true;
+    };
+  }, [open]);
 
   function setItem(idx: number, patch: Partial<FormItem>) {
     setItens((arr) => arr.map((it, i) => (i === idx ? { ...it, ...patch } : it)));
@@ -289,6 +309,21 @@ export function NovoPedidoDialog({
       }
     >
       <form id="pedido-form" onSubmit={submit} className="flex flex-col gap-4">
+        {catalogoVazio && (
+          <div
+            data-testid="pedido-catalogo-vazio"
+            className="px-3 py-2 rounded-md bg-warning/10 border border-warning/30 text-warning text-sm flex items-start gap-2"
+          >
+            <AlertTriangle className="h-4 w-4 mt-0.5 shrink-0" />
+            <span>
+              Nenhum produto no catálogo ainda. Cadastre ou sincronize seus produtos em{' '}
+              <Link to="/produtos" onClick={onClose} className="underline font-semibold">
+                Produtos
+              </Link>{' '}
+              antes de montar o pedido.
+            </span>
+          </div>
+        )}
         {!clientePreSelecionado && (
           <Field label="Cliente" required>
             <AsyncCombobox<ClienteOpt>

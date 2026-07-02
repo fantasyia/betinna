@@ -246,6 +246,22 @@ describe('FluxosService', () => {
         code: 'FLUXO_INVALIDO',
       });
     });
+
+    it('lança quando nó DELAY não tem quantidade > 0', async () => {
+      prisma.fluxo.findFirst.mockResolvedValue(
+        fakeFluxo({
+          triggerTipo: 'LEAD_CRIADO',
+          nos: [
+            { id: 'n1', tipo: 'TRIGGER', acaoTipo: null },
+            { id: 'n2', tipo: 'DELAY', acaoTipo: null, config: { unidade: 'minutos' } }, // sem quantidade
+          ],
+          arestas: [{ sourceNoId: 'n1', targetNoId: 'n2' }],
+        }),
+      );
+      await expect(svc.ativar(fakeUser(), 'fluxo-1')).rejects.toMatchObject({
+        code: 'FLUXO_INVALIDO',
+      });
+    });
   });
 
   describe('metricas', () => {

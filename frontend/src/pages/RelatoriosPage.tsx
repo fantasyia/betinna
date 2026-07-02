@@ -4,6 +4,7 @@ import { PageLayout } from '@/components/PageLayout';
 import { StateView } from '@/components/StateView';
 import { Select } from '@/components/FormField';
 import { BarChart, Funnel, Donut, KPICard, type FunnelStage, type DonutSlice } from '@/components/charts';
+import { EmptyState } from '@/components/ui';
 import { toCsv, downloadCsv, type CsvColumn } from '@/lib/csv';
 import { rowsToXlsx } from '@/lib/xlsx';
 import { gerarPdf } from '@/lib/pdf';
@@ -563,6 +564,9 @@ function FunilTab({ qs }: { qs: string }) {
   // antes uma resposta sem `porRep` ou `agingMedioPorEtapa` derrubava
   // o render inteiro pro ErrorBoundary (fix B6).
   const funilAtual = data?.funilAtual ?? [];
+  // Funil sem nenhum lead (tenant novo / sem funil seedado): mostra estado-vazio
+  // em vez de gráficos zerados que parecem quebrados.
+  const funilVazio = funilAtual.length === 0 || funilAtual.every((e) => (e.count ?? 0) === 0);
   const aging = data?.agingMedioPorEtapa ?? {};
   const porRep = data?.porRep ?? [];
   const totalAtivos = data?.totalAtivos ?? 0;
@@ -624,29 +628,40 @@ function FunilTab({ qs }: { qs: string }) {
             />
           </div>
 
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          {funilVazio ? (
             <div className="bg-surface border border-border rounded-[10px] p-4 md:p-6">
               <h3 className="m-0 mb-3 text-[15px]">Funil atual</h3>
-              <Funnel
-                stages={funilAtual.map((e) => ({
-                  label: ETAPA_LABEL[e.etapa] ?? e.etapa,
-                  value: e.count ?? 0,
-                  color: ETAPA_COLOR[e.etapa],
-                })) as FunnelStage[]}
+              <EmptyState
+                size="sm"
+                title="Sem leads no funil ainda"
+                description="Cadastre leads ou importe sua base pra ver o funil e o valor estimado por etapa aqui."
               />
             </div>
-            <div className="bg-surface border border-border rounded-[10px] p-4 md:p-6">
-              <h3 className="m-0 mb-3 text-[15px]">Valor estimado por etapa</h3>
-              <BarChart
-                data={funilAtual.map((e) => ({
-                  label: ETAPA_LABEL[e.etapa] ?? e.etapa,
-                  value: e.valorEstimado ?? 0,
-                  color: ETAPA_COLOR[e.etapa],
-                }))}
-                formatValue={fmtBRLCompact}
-              />
+          ) : (
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div className="bg-surface border border-border rounded-[10px] p-4 md:p-6">
+                <h3 className="m-0 mb-3 text-[15px]">Funil atual</h3>
+                <Funnel
+                  stages={funilAtual.map((e) => ({
+                    label: ETAPA_LABEL[e.etapa] ?? e.etapa,
+                    value: e.count ?? 0,
+                    color: ETAPA_COLOR[e.etapa],
+                  })) as FunnelStage[]}
+                />
+              </div>
+              <div className="bg-surface border border-border rounded-[10px] p-4 md:p-6">
+                <h3 className="m-0 mb-3 text-[15px]">Valor estimado por etapa</h3>
+                <BarChart
+                  data={funilAtual.map((e) => ({
+                    label: ETAPA_LABEL[e.etapa] ?? e.etapa,
+                    value: e.valorEstimado ?? 0,
+                    color: ETAPA_COLOR[e.etapa],
+                  }))}
+                  formatValue={fmtBRLCompact}
+                />
+              </div>
             </div>
-          </div>
+          )}
 
           {Object.keys(aging).length > 0 && (
             <div className="bg-surface border border-border rounded-[10px] p-6">
