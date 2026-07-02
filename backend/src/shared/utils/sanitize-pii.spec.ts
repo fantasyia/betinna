@@ -19,6 +19,15 @@ describe('sanitize PII', () => {
     expect(result.refresh_token).toBe('[REDACTED]');
   });
 
+  it('redige o nome do contato do lead (PII de terceiro que não casa regex)', () => {
+    const result = sanitize({
+      contatoNome: 'Maria Aparecida de Souza',
+      nome: 'Empresa XYZ Ltda', // nome de empresa NÃO é redigido (não é PII de pessoa)
+    }) as Record<string, string>;
+    expect(result.contatoNome).toBe('[REDACTED]');
+    expect(result.nome).toBe('Empresa XYZ Ltda');
+  });
+
   it('mascara email em VALORES (não-chaves)', () => {
     const result = sanitize({ texto: 'enviar para joao@example.com' });
     // Texto não bate regex de email exato (tem prefixo) — não mascara

@@ -584,7 +584,7 @@ export class PropostasService {
       );
     }
 
-    this.logger.log(`Proposta ${data.numero} enviada por email pra ${data.cliente.email}`);
+    this.logger.log(`Proposta ${data.numero} enviada por email ao cliente`);
     return { ok: true, enviadoPara: data.cliente.email };
   }
 }

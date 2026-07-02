@@ -46,6 +46,11 @@ const SENSITIVE_KEYS = new Set([
   'client_secret',
   'encryptionKey',
   'sessionId',
+  // PII de terceiros (contato do Lead prospectado) — o nome não casa nenhum regex de valor
+  // e vazava em erro/log. contatoEmail/Telefone já são mascarados por valor, mas cobrimos a chave.
+  'contatoNome',
+  'contatoEmail',
+  'contatoTelefone',
 ]);
 
 const REDACTED = '[REDACTED]';

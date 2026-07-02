@@ -296,7 +296,7 @@ export class UsersService {
         empresas: { include: { empresa: { select: { id: true, nome: true } } } },
       },
     });
-    this.logger.log(`Usuário criado: ${created.email} (${created.role})`);
+    this.logger.log(`Usuário criado: ${created.id} (${created.role})`);
 
     // E-mail de boas-vindas — complementa o magic link do Supabase com
     // contexto da empresa + CTA pro frontend. Aguardamos o resultado: se o

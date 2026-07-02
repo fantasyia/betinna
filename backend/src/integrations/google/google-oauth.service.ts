@@ -116,7 +116,7 @@ export class GoogleOAuthService {
       'google_calendar',
       credenciais as unknown as Record<string, unknown>,
     );
-    this.logger.log(`Google Calendar conectado — usuário=${userId} email=${userInfo.email}`);
+    this.logger.log(`Google Calendar conectado — usuário=${userId}`);
     return { userId, email: userInfo.email };
   }
 

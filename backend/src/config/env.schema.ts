@@ -241,6 +241,9 @@ export const envSchema = z
     LGPD_MESSAGES_RETENTION_MONTHS: z.coerce.number().int().min(0).default(24),
     /** Meses de retenção das Notificacao já lidas. Default 6m. 0 desabilita purga. */
     LGPD_NOTIFICACOES_RETENTION_MONTHS: z.coerce.number().int().min(0).default(6),
+    /** Meses de retenção de Leads FECHADOS (ganho/perdido). PII de terceiros (contato) — LGPD
+     * Art. 16. Conta a partir de `fechadoEm`; pipeline aberto nunca é purgado. Default 24m. 0 desabilita. */
+    LGPD_LEADS_RETENTION_MONTHS: z.coerce.number().int().min(0).default(24),
 
     // Auth / Cache
     /** TTL do cache de AuthGuard em Redis. Mantenha curto pra refletir mudanças de role rapidamente. */

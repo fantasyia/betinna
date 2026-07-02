@@ -239,7 +239,7 @@ export class FluxosService {
       }
     });
 
-    this.logger.log(`Fluxo criado: ${fluxoId} (${dto.nome}) por ${user.email}`);
+    this.logger.log(`Fluxo criado: ${fluxoId} (${dto.nome}) por ${user.id}`);
     return this.findOneById(fluxoId);
   }
 
@@ -357,7 +357,7 @@ export class FluxosService {
       await this.limparCursorCron(id);
     }
 
-    this.logger.log(`Fluxo ${id} atualizado por ${user.email}`);
+    this.logger.log(`Fluxo ${id} atualizado por ${user.id}`);
     return this.findOne(user, id);
   }
 
@@ -386,7 +386,7 @@ export class FluxosService {
     // caso do cursor antigo travado no futuro, que fazia o fluxo nunca disparar).
     await this.limparCursorCron(id);
     await this.prisma.fluxo.update({ where: { id }, data: { status: 'ATIVO' } });
-    this.logger.log(`Fluxo ${id} ativado por ${user.email}`);
+    this.logger.log(`Fluxo ${id} ativado por ${user.id}`);
     return this.findOneById(id);
   }
 
@@ -403,7 +403,7 @@ export class FluxosService {
 
     await this.prisma.fluxo.update({ where: { id }, data: { status: 'PAUSADO' } });
     const cancel = await this.cancelarExecucoesEmAndamento(id);
-    this.logger.log(`Fluxo ${id} pausado por ${user.email} (${cancel} execução(ões) cancelada(s))`);
+    this.logger.log(`Fluxo ${id} pausado por ${user.id} (${cancel} execução(ões) cancelada(s))`);
     return this.findOneById(id);
   }
 
@@ -412,9 +412,7 @@ export class FluxosService {
     await this.findOne(user, id);
     await this.prisma.fluxo.update({ where: { id }, data: { status: 'ARQUIVADO' } });
     const cancel = await this.cancelarExecucoesEmAndamento(id);
-    this.logger.log(
-      `Fluxo ${id} arquivado por ${user.email} (${cancel} execução(ões) cancelada(s))`,
-    );
+    this.logger.log(`Fluxo ${id} arquivado por ${user.id} (${cancel} execução(ões) cancelada(s))`);
     return this.findOneById(id);
   }
 
@@ -443,7 +441,7 @@ export class FluxosService {
       this.prisma.fluxoExecucao.deleteMany({ where: { fluxoId: id } }),
       this.prisma.fluxo.delete({ where: { id } }),
     ]);
-    this.logger.log(`Fluxo ${id} EXCLUÍDO permanentemente por ${user.email}`);
+    this.logger.log(`Fluxo ${id} EXCLUÍDO permanentemente por ${user.id}`);
     return { ok: true };
   }
 
@@ -514,7 +512,7 @@ export class FluxosService {
       nos,
       arestas,
     });
-    this.logger.log(`Fluxo importado: ${fluxo.id} (${dto.nome}) por ${user.email}`);
+    this.logger.log(`Fluxo importado: ${fluxo.id} (${dto.nome}) por ${user.id}`);
     return fluxo;
   }
 
@@ -564,7 +562,7 @@ export class FluxosService {
       where: { id: execucaoId },
       data: { status: 'CANCELADO', terminouEm: new Date() },
     });
-    this.logger.log(`Execução ${execucaoId} cancelada por ${user.email}`);
+    this.logger.log(`Execução ${execucaoId} cancelada por ${user.id}`);
   }
 
   // ─── Teste manual ────────────────────────────────────────────────
@@ -604,7 +602,7 @@ export class FluxosService {
     await this.bus.dispararDireto(execucao.id, triggerNo.id, { tentativas: 1 });
 
     this.logger.log(
-      `Fluxo ${fluxo.id} (${fluxo.nome}) testado manualmente por ${user.email}: exec ${execucao.id}`,
+      `Fluxo ${fluxo.id} (${fluxo.nome}) testado manualmente por ${user.id}: exec ${execucao.id}`,
     );
     return { execucaoId: execucao.id };
   }

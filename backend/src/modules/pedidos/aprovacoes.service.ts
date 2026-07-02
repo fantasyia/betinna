@@ -145,7 +145,7 @@ export class AprovacoesService {
       return tx.aprovacaoDesconto.findUniqueOrThrow({ where: { id }, include: aprovacaoInclude });
     });
 
-    this.logger.log(`Aprovação ${apr.id} APROVADA por ${user.email} (pedido ${apr.pedidoId})`);
+    this.logger.log(`Aprovação ${apr.id} APROVADA por ${user.id} (pedido ${apr.pedidoId})`);
 
     // Notifica o REP que sua aprovação foi resolvida (APROVADA)
     if (apr.representanteId) {
