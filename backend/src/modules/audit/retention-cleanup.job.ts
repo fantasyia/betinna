@@ -14,6 +14,7 @@ import { CronLockService } from '@shared/utils/cron-lock.service';
  *   • LGPD_AUDIT_RETENTION_MONTHS         → AuditLog       (default 24m)
  *   • LGPD_MESSAGES_RETENTION_MONTHS      → Message        (default 24m)
  *   • LGPD_NOTIFICACOES_RETENTION_MONTHS  → Notificacao    (default 6m, só lidas)
+ *   • LGPD_LEADS_RETENTION_MONTHS         → Lead fechado   (default 24m, PII de terceiro)
  *
  * Atende:
  *   • LGPD Art. 16 — eliminação após cumprimento da finalidade
@@ -52,6 +53,7 @@ export class RetentionCleanupJob {
     const auditMonths = Number(this.env.get('LGPD_AUDIT_RETENTION_MONTHS'));
     const messagesMonths = Number(this.env.get('LGPD_MESSAGES_RETENTION_MONTHS'));
     const notificacoesMonths = Number(this.env.get('LGPD_NOTIFICACOES_RETENTION_MONTHS'));
+    const leadsMonths = Number(this.env.get('LGPD_LEADS_RETENTION_MONTHS'));
 
     let totalPurged = 0;
 
@@ -98,6 +100,21 @@ export class RetentionCleanupJob {
       }
     }
 
+    if (leadsMonths > 0) {
+      const cutoff = this.monthsAgo(leadsMonths);
+      try {
+        // Só leads JÁ FECHADOS (ganho/perdido) há mais de N meses — pipeline aberto
+        // (fechadoEm null) nunca é purgado. LeadTag cascateia junto.
+        const r = await this.prisma.lead.deleteMany({
+          where: { fechadoEm: { not: null, lt: cutoff } },
+        });
+        totalPurged += r.count;
+        this.logger.log(`Lead purga: ${r.count} leads fechados < ${cutoff.toISOString()}`);
+      } catch (err) {
+        this.logger.warn(`Lead purga falhou: ${this.errMsg(err)}`);
+      }
+    }
+
     if (totalPurged > 0) {
       // Auto-registra no AuditLog (transparência LGPD)
       try {
@@ -113,6 +130,7 @@ export class RetentionCleanupJob {
               auditMonths,
               messagesMonths,
               notificacoesMonths,
+              leadsMonths,
             },
             ip: null,
           },

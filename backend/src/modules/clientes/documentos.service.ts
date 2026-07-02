@@ -105,6 +105,11 @@ export class DocumentosService implements OnModuleInit {
     if (!ALLOWED_MIMES.has(file.mimetype)) {
       throw new BusinessRuleException(`Tipo de arquivo não permitido: ${file.mimetype}`);
     }
+    // Valida o CONTEÚDO (magic-number), não só o Content-Type que o cliente declara —
+    // senão um .exe renomeado como application/pdf passaria (vetor de download malicioso).
+    if (!this.conteudoConfereMime(file.buffer, file.mimetype)) {
+      throw new BusinessRuleException('Conteúdo do arquivo não corresponde ao tipo declarado');
+    }
 
     const cliente = await this.clientes.findById(user, clienteId);
 
@@ -166,6 +171,43 @@ export class DocumentosService implements OnModuleInit {
       // Mesmo se falhar no storage, removemos o metadado pra não ficar inconsistente
     }
     await this.prisma.documento.delete({ where: { id: docId } });
+  }
+
+  /**
+   * Confere o magic-number (bytes iniciais) contra o MIME declarado. Bloqueia
+   * arquivo binário disfarçado (ex: .exe como application/pdf). Texto (csv/plain)
+   * não tem assinatura confiável e é não-executável → aceito. Tipo não mapeado →
+   * aceito (a allowlist de MIME é o gate primário; isto é defesa pros binários).
+   */
+  private conteudoConfereMime(buf: Buffer, mimetype: string): boolean {
+    const inicia = (sig: number[], offset = 0): boolean =>
+      buf.length >= offset + sig.length && sig.every((b, i) => buf[offset + i] === b);
+    switch (mimetype) {
+      case 'application/pdf':
+        return inicia([0x25, 0x50, 0x44, 0x46]); // %PDF
+      case 'image/jpeg':
+        return inicia([0xff, 0xd8, 0xff]);
+      case 'image/png':
+        return inicia([0x89, 0x50, 0x4e, 0x47]);
+      case 'image/webp':
+        return inicia([0x52, 0x49, 0x46, 0x46]) && inicia([0x57, 0x45, 0x42, 0x50], 8); // RIFF….WEBP
+      case 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet':
+      case 'application/vnd.openxmlformats-officedocument.wordprocessingml.document':
+        // OOXML = container ZIP (PK\x03\x04, ou variantes vazio/spanned)
+        return (
+          inicia([0x50, 0x4b, 0x03, 0x04]) ||
+          inicia([0x50, 0x4b, 0x05, 0x06]) ||
+          inicia([0x50, 0x4b, 0x07, 0x08])
+        );
+      case 'application/vnd.ms-excel':
+      case 'application/msword':
+        return inicia([0xd0, 0xcf, 0x11, 0xe0, 0xa1, 0xb1, 0x1a, 0xe1]); // OLE compound
+      case 'text/csv':
+      case 'text/plain':
+        return true; // sem assinatura confiável; não-executável
+      default:
+        return true; // allowlist já barrou o resto; não bloqueia tipo novo
+    }
   }
 
   private extensionFor(filename: string, mime: string): string {

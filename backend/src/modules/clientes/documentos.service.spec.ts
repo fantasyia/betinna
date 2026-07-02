@@ -86,6 +86,25 @@ const fakeDoc = (overrides: Record<string, unknown> = {}) => ({
   ...overrides,
 });
 
+// Magic-numbers por MIME — o service valida o CONTEÚDO, então o buffer fake precisa
+// bater com o tipo declarado (senão o upload é recusado).
+const MAGIC: Record<string, number[]> = {
+  'application/pdf': [0x25, 0x50, 0x44, 0x46],
+  'image/png': [0x89, 0x50, 0x4e, 0x47],
+  'image/jpeg': [0xff, 0xd8, 0xff],
+  'image/webp': [0x52, 0x49, 0x46, 0x46, 0, 0, 0, 0, 0x57, 0x45, 0x42, 0x50],
+  'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet': [0x50, 0x4b, 0x03, 0x04],
+  'application/vnd.openxmlformats-officedocument.wordprocessingml.document': [
+    0x50, 0x4b, 0x03, 0x04,
+  ],
+  'application/vnd.ms-excel': [0xd0, 0xcf, 0x11, 0xe0, 0xa1, 0xb1, 0x1a, 0xe1],
+  'application/msword': [0xd0, 0xcf, 0x11, 0xe0, 0xa1, 0xb1, 0x1a, 0xe1],
+};
+const bufFor = (mimetype: string): Buffer =>
+  MAGIC[mimetype]
+    ? Buffer.concat([Buffer.from(MAGIC[mimetype]), Buffer.from(' x')])
+    : Buffer.from('texto');
+
 const fakeFile = (
   overrides: Partial<{
     filename: string;
@@ -93,13 +112,16 @@ const fakeFile = (
     size: number;
     buffer: Buffer;
   }> = {},
-) => ({
-  filename: 'contrato.pdf',
-  mimetype: 'application/pdf',
-  size: 102400,
-  buffer: Buffer.from('PDF content'),
-  ...overrides,
-});
+) => {
+  const mimetype = overrides.mimetype ?? 'application/pdf';
+  return {
+    filename: 'contrato.pdf',
+    mimetype,
+    size: 102400,
+    buffer: bufFor(mimetype),
+    ...overrides,
+  };
+};
 
 // ---------------------------------------------------------------------------
 // Suite
@@ -208,6 +230,15 @@ describe('DocumentosService', () => {
       await expect(
         service.upload(fakeUser(), 'cli-1', fakeFile({ mimetype: 'application/x-exe' })),
       ).rejects.toBeInstanceOf(BusinessRuleException);
+    });
+
+    it('rejeita conteúdo que não bate o MIME declarado (ex: .exe como pdf)', async () => {
+      // MZ = executável Windows, declarado como application/pdf
+      const exe = Buffer.from([0x4d, 0x5a, 0x90, 0x00]);
+      await expect(
+        service.upload(fakeUser(), 'cli-1', fakeFile({ mimetype: 'application/pdf', buffer: exe })),
+      ).rejects.toBeInstanceOf(BusinessRuleException);
+      expect(mockUpload).not.toHaveBeenCalled();
     });
 
     it('lança IntegrationException quando Supabase retorna erro', async () => {
