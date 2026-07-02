@@ -8,6 +8,7 @@ import { HttpClientService } from '@shared/http/http-client.service';
 import { WhatsAppService } from '@integrations/whatsapp/whatsapp.service';
 import { WhatsappPacingService } from '@shared/whatsapp-pacing/whatsapp-pacing.service';
 import { TransactionalEmailService } from '@integrations/email/transactional-email.service';
+import { IntegracaoStatusService } from '@modules/integracoes/integracao-status.service';
 import { Prisma } from '@prisma/client';
 import { safeRequest, SsrfBlockedError } from '@shared/utils/safe-request';
 import { interpolate } from '@shared/utils/interpolate';
@@ -155,6 +156,7 @@ export class FluxoExecutorService {
     private readonly conversarIa: ConversarIaService,
     private readonly bus: FluxoEventBusService,
     private readonly pacing: WhatsappPacingService,
+    private readonly integracaoStatus: IntegracaoStatusService,
     @InjectQueue(FLUXO_QUEUE) private readonly queue: Queue<FluxoStepJobData>,
   ) {}
 
@@ -637,26 +639,40 @@ export class FluxoExecutorService {
     // Envio: se há anexo (midia), manda mídia com a `mensagem` como legenda; senão, texto.
     // Único ponto de envio (reusado pelo caminho de grupo e pelo de telefone).
     const enviar = async (peerId: string): Promise<Record<string, unknown>> => {
-      if (cfg.midia?.storagePath) {
-        const r = await this.whatsapp.enviarMidia(
-          empresaId,
-          peerId,
-          {
-            tipo: cfg.midia.tipo,
-            storagePath: cfg.midia.storagePath,
-            mimetype: cfg.midia.mimetype,
-            fileName: cfg.midia.fileName,
-            ptt: cfg.midia.ptt,
-            caption: mensagem || undefined,
-          },
-          { idempotencyKey: idemBase },
-        );
-        return { peerId, modo, midia: cfg.midia.tipo, caption: mensagem, externalId: r.externalId };
+      try {
+        if (cfg.midia?.storagePath) {
+          const r = await this.whatsapp.enviarMidia(
+            empresaId,
+            peerId,
+            {
+              tipo: cfg.midia.tipo,
+              storagePath: cfg.midia.storagePath,
+              mimetype: cfg.midia.mimetype,
+              fileName: cfg.midia.fileName,
+              ptt: cfg.midia.ptt,
+              caption: mensagem || undefined,
+            },
+            { idempotencyKey: idemBase },
+          );
+          return {
+            peerId,
+            modo,
+            midia: cfg.midia.tipo,
+            caption: mensagem,
+            externalId: r.externalId,
+          };
+        }
+        const r = await this.whatsapp.enviarTexto(empresaId, peerId, mensagem, {
+          idempotencyKey: idemBase,
+        });
+        return { peerId, modo, mensagem, externalId: r.externalId };
+      } catch (err) {
+        // BL-1: se o envio falhou porque o WhatsApp da empresa está desconectado,
+        // avisa o DIRETOR proativamente (senão o fluxo falha em silêncio e o dono
+        // acha que "bugou"). Não muda o retry/dead-letter — só ADICIONA o alerta.
+        await this.alertarSeWhatsappCaiu(empresaId, err);
+        throw err;
       }
-      const r = await this.whatsapp.enviarTexto(empresaId, peerId, mensagem, {
-        idempotencyKey: idemBase,
-      });
-      return { peerId, modo, mensagem, externalId: r.externalId };
     };
 
     // GRUPO do WhatsApp: o "contato salvo" pode ser um grupo (jid @g.us). O jid é
@@ -687,6 +703,31 @@ export class FluxoExecutorService {
     }
 
     return enviar(`${telefone}@s.whatsapp.net`);
+  }
+
+  /**
+   * BL-1 — alerta proativo de WhatsApp desconectado.
+   *
+   * Chamado quando um envio de WhatsApp do fluxo falha. Consulta o estado LOCAL
+   * da instância Evolution (alimentado em tempo-real por webhook CONNECTION_UPDATE
+   * + cron de 10min — SEM chamada extra à API). Só escala quando a instância
+   * existe e NÃO está `open` (desconexão real / não pareado), evitando falso
+   * alarme em falha transitória (número inválido, timeout pontual). O e-mail ao
+   * diretor é throttled (1/h) e best-effort — nunca atrapalha o envio/retry.
+   */
+  private async alertarSeWhatsappCaiu(empresaId: string, err: unknown): Promise<void> {
+    try {
+      const inst = await this.prisma.evolutionInstancia.findUnique({
+        where: { instanceName: `emp_${empresaId}` },
+        select: { connectionStatus: true },
+      });
+      if (inst && inst.connectionStatus !== 'open') {
+        const msg = err instanceof Error ? err.message : String(err);
+        await this.integracaoStatus.marcarDesconectado(empresaId, 'whatsapp', msg);
+      }
+    } catch {
+      /* best-effort: o alerta nunca pode quebrar o envio nem o retry do fluxo */
+    }
   }
 
   /** Telefone (só dígitos) do lead OU cliente do contexto, validado na empresa. */
