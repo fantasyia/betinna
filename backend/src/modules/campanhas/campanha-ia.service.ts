@@ -2,6 +2,7 @@ import { Injectable, Logger } from '@nestjs/common';
 import { EnvService } from '@config/env.service';
 import { PrismaService } from '@database/prisma.service';
 import { UsuarioIntegracoesService } from '@modules/integracoes/usuario-integracoes.service';
+import { BotCustoService } from '@modules/mullerbot/bot-custo.service';
 import {
   ForbiddenException,
   IntegrationException,
@@ -79,6 +80,7 @@ export class CampanhaIaService {
     private readonly http: HttpClientService,
     private readonly env: EnvService,
     private readonly userIntegracoes: UsuarioIntegracoesService,
+    private readonly custo: BotCustoService,
   ) {}
 
   // ─── 1. Geração de conteúdo ──────────────────────────────────────────────
@@ -339,6 +341,7 @@ Retorne JSON exato:
    * Fail-safe: retorna o template original se IA falhar.
    */
   async personalizarMensagemCliente(params: {
+    empresaId: string;
     criadoPorId: string;
     templateWa: string | null;
     templateEmail: string | null;
@@ -346,6 +349,15 @@ Retorne JSON exato:
     objetivo: string | null;
     empresaNome: string;
   }): Promise<{ mensagemWa: string | null; mensagemEmail: string | null }> {
+    // Teto de custo de LLM (mesmo do bot): campanha IA faz 1 chamada por destinatário —
+    // se o teto estourou, NÃO gasta mais: cai no template sem personalizar.
+    const teto = await this.custo.verificarTeto(params.empresaId);
+    if (teto.bloqueado) {
+      this.logger.warn(
+        `Campanha IA: teto de custo atingido (empresa ${params.empresaId}) — usando template sem IA`,
+      );
+      return { mensagemWa: params.templateWa, mensagemEmail: params.templateEmail };
+    }
     try {
       const creds = await this.resolverCredenciais(params.criadoPorId);
       const modelo = creds.model ?? CampanhaIaService.DEFAULT_MODEL;
@@ -367,6 +379,10 @@ ${params.templateEmail ? `TEMPLATE EMAIL (trecho):\n${params.templateEmail.slice
 Retorne JSON: {"mensagemWa": "...", "mensagemEmail": "..."}`;
 
       const resultado = await this.chamarOpenAI(creds, systemPrompt, userMessage, modelo, 400);
+      // Contabiliza os tokens no mesmo orçamento do bot (best-effort) — alimenta o teto.
+      void this.custo
+        .registrarUso(params.empresaId, resultado.tokensIn ?? 0, resultado.tokensOut ?? 0)
+        .catch(() => undefined);
       const parsed = this.parseJson<{ mensagemWa: string | null; mensagemEmail: string | null }>(
         resultado.texto,
         { mensagemWa: params.templateWa, mensagemEmail: params.templateEmail },

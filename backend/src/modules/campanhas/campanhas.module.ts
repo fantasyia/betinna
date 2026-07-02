@@ -3,6 +3,7 @@ import { BullModule } from '@nestjs/bullmq';
 import { EmailModule } from '@integrations/email/email.module';
 import { WhatsAppModule } from '@integrations/whatsapp/whatsapp.module';
 import { IntegracoesModule } from '@modules/integracoes/integracoes.module';
+import { MullerBotModule } from '@modules/mullerbot/mullerbot.module';
 import { CampanhaEnvioProcessor } from './campanha-envio.processor';
 import { CAMPANHA_ENVIO_QUEUE } from './campanha-envio.types';
 import { CampanhaIaService } from './campanha-ia.service';
@@ -17,6 +18,7 @@ import { RODAR_BACKGROUND } from '@shared/utils/service-type';
     WhatsAppModule,
     EmailModule, // fachada TransactionalEmailService (e-mail da campanha)
     IntegracoesModule, // expõe UsuarioIntegracoesService para CampanhaIaService
+    MullerBotModule, // expõe BotCustoService (teto de custo de LLM da campanha IA)
   ],
   controllers: [CampanhasController],
   // O Processor (consumidor BullMQ) só roda no worker em produção; o resto (service/scheduler)

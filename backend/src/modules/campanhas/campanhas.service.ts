@@ -33,6 +33,8 @@ const campanhaInclude = {
 // via GET separado; cap em 1000 bounda o pior caso (o _count dá o total real). Paginação dedicada
 // de destinatarios = follow-up.
 const DESTINATARIOS_DETALHE_CAP = 1000;
+/** Teto de audiência pra campanha com IA: cada destinatário = 1 chamada LLM (custo real). */
+const MAX_DESTINATARIOS_IA = 5000;
 
 const campanhaDetalheInclude = {
   ...campanhaInclude,
@@ -245,6 +247,21 @@ export class CampanhasService {
       throw new BusinessRuleException(
         'Nenhum destinatário encontrado para o segmento configurado',
         ErrorCode.CAMPANHA_SEM_DESTINATARIOS,
+      );
+    }
+
+    // Teto de audiência quando há personalização por IA: cada destinatário custa 1 chamada
+    // LLM. Sem cap, uma campanha gigante estoura custo/tempo. (Campanha sem IA = interpolação
+    // simples, sem esse custo → não limitada aqui.)
+    if (campanha.usarIaPersonalizacao && destinatarios.length > MAX_DESTINATARIOS_IA) {
+      await this.prisma.campanha.update({
+        where: { id },
+        data: { status: 'RASCUNHO', iniciadoEm: null },
+      });
+      throw new BusinessRuleException(
+        `Campanha com personalização por IA é limitada a ${MAX_DESTINATARIOS_IA} destinatários ` +
+          `(encontrados ${destinatarios.length}). Refine o segmento ou desligue a IA.`,
+        ErrorCode.CAMPANHA_NAO_PODE_DISPARAR,
       );
     }
 

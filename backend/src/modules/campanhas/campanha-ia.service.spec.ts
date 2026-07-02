@@ -101,6 +101,10 @@ describe('CampanhaIaService', () => {
       http as never,
       makeEnvMock() as never,
       userIntegracoes as never,
+      {
+        verificarTeto: vi.fn().mockResolvedValue({ bloqueado: false }),
+        registrarUso: vi.fn().mockResolvedValue(undefined),
+      } as never,
     );
   });
 
@@ -190,6 +194,10 @@ describe('CampanhaIaService', () => {
         http as never,
         makeEnvMock({ OPENAI_API_KEY: '' }) as never,
         userIntegracoes as never,
+        {
+          verificarTeto: vi.fn().mockResolvedValue({ bloqueado: false }),
+          registrarUso: vi.fn().mockResolvedValue(undefined),
+        } as never,
       );
 
       await expect(
@@ -476,6 +484,7 @@ describe('CampanhaIaService', () => {
 
   describe('personalizarMensagemCliente', () => {
     const baseParams = {
+      empresaId: 'emp-1',
       criadoPorId: 'user-1',
       templateWa: 'Olá! Confira nossa oferta.',
       templateEmail: '<p>Email template</p>',
@@ -502,6 +511,23 @@ describe('CampanhaIaService', () => {
       expect(result.mensagemWa).toContain('João');
     });
 
+    it('teto de custo bloqueado → NÃO chama a IA, retorna o template', async () => {
+      const serviceBloq = new CampanhaIaService(
+        prisma as never,
+        http as never,
+        makeEnvMock() as never,
+        userIntegracoes as never,
+        {
+          verificarTeto: vi.fn().mockResolvedValue({ bloqueado: true, motivo: 'teto' }),
+          registrarUso: vi.fn().mockResolvedValue(undefined),
+        } as never,
+      );
+      const result = await serviceBloq.personalizarMensagemCliente(baseParams);
+      expect(result.mensagemWa).toBe(baseParams.templateWa);
+      expect(result.mensagemEmail).toBe(baseParams.templateEmail);
+      expect(http.post).not.toHaveBeenCalled();
+    });
+
     it('retorna template original quando IA falha (fail-safe)', async () => {
       userIntegracoes.obterCredenciaisInternas.mockRejectedValue(new Error('sem integração'));
       // sem env key também
@@ -510,6 +536,10 @@ describe('CampanhaIaService', () => {
         http as never,
         makeEnvMock({ OPENAI_API_KEY: '' }) as never,
         userIntegracoes as never,
+        {
+          verificarTeto: vi.fn().mockResolvedValue({ bloqueado: false }),
+          registrarUso: vi.fn().mockResolvedValue(undefined),
+        } as never,
       );
 
       const result = await serviceNoKey.personalizarMensagemCliente(baseParams);
