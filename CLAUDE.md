@@ -112,6 +112,26 @@ scripts/  — deploy helpers (start.js, deploy-migrations.js)
 
 ---
 
+## 🎚️ Modelo, esforço e workflow — regra de custo
+
+Objetivo: não gastar token à toa nem trabalhar sub/superdimensionado.
+
+- **No começo de cada tarefa não-trivial**, recomende em UMA linha o mais barato
+  que resolve: `modelo + esforço + workflow (sim/não)`.
+  Ex.: _"Sugestão: Sonnet, esforço médio, sem workflow."_
+- **Default = o mais barato que dá conta.** Só recomende subir (Opus / esforço
+  alto / workflow multi-agente) quando a correção for genuinamente complexa —
+  multi-arquivo, arriscada, alta incerteza, ou varredura ampla — e diga POR QUÊ
+  em meia linha.
+- **O Claude NÃO troca de modelo/esforço sozinho** nem dispara workflow por conta
+  própria: isso é controlado pelo runtime do Claude Code (`/model`, `/fast`,
+  toggle de esforço, `ultracode`) e o workflow exige OK explícito do usuário.
+  Por isso a regra é **avisar cedo** — o usuário troca com 1 clique e nunca paga
+  a mais no automático.
+- Tarefa trivial (1–2 edits óbvios) → não mencione, só faça.
+
+---
+
 ## 📚 Docs relacionados
 
 - [`BRANDBOOK.md`](./BRANDBOOK.md) — identidade visual completa
