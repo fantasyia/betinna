@@ -138,7 +138,12 @@ interface KanbanResponse {
   };
   /** Mapa etapaId → leads (etapaId = FunilEtapa.id ou enum name no fallback) */
   grupos: Record<string, Lead[]>;
+  /** true quando o backend cortou em KANBAN_CAP (500) — a UI avisa que há mais. */
+  truncado?: boolean;
 }
+
+/** Cap do kanban no backend (KANBAN_CAP). Usado só pra mensagem de truncamento. */
+const KANBAN_CAP = 500;
 
 interface FunilListItem {
   id: string;
@@ -464,6 +469,18 @@ export default function LeadsPage() {
     >
       <CrmTabs />
       <StateView loading={loading && !optimistic} error={error} onRetry={refetch}>
+        {optimistic?.truncado && (
+          <div
+            data-testid="kanban-truncado-aviso"
+            className="mb-3 px-3 py-2 rounded-md bg-warning/10 border border-warning/30 text-warning text-sm flex items-start gap-2"
+          >
+            <AlertCircle className="h-4 w-4 mt-0.5 shrink-0" />
+            <span>
+              Mostrando os primeiros {KANBAN_CAP} leads deste funil. Há mais leads não
+              exibidos — use os filtros ou a busca em Contatos pra encontrá-los.
+            </span>
+          </div>
+        )}
         {optimistic && (
           <DndContext
             sensors={sensors}

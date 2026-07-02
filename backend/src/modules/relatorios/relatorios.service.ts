@@ -710,7 +710,9 @@ export class RelatoriosService {
       totalDestinatarios,
       taxaEnvio:
         totalDestinatarios > 0 ? Math.round((totalEnviados / totalDestinatarios) * 100) : 0,
-      taxaLeitura: totalEnviados > 0 ? Math.round((totalLidos / totalEnviados) * 100) : 0,
+      // Cap em 100%: dado inconsistente (lidos > enviados) não deve mostrar >100%.
+      taxaLeitura:
+        totalEnviados > 0 ? Math.min(100, Math.round((totalLidos / totalEnviados) * 100)) : 0,
       porCanal: porCanal.map((c) => ({ canal: c.canal, count: c._count._all })),
       porStatus: porStatus.map((s) => ({ status: s.status, count: s._count._all })),
       campanhas: campanhasList.map((c) => {
@@ -728,7 +730,7 @@ export class RelatoriosService {
           enviados,
           lidos,
           taxaEnvio: total > 0 ? Math.round((enviados / total) * 100) : 0,
-          taxaLeitura: enviados > 0 ? Math.round((lidos / enviados) * 100) : 0,
+          taxaLeitura: enviados > 0 ? Math.min(100, Math.round((lidos / enviados) * 100)) : 0,
         };
       }),
     };

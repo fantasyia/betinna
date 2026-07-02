@@ -402,6 +402,9 @@ export class FluxoExecutorService {
         // (igual ao DelayForm) — antes lia só `valor` (sempre undefined → 1), então todo DELAY
         // virava "1 hora" independente do que foi configurado.
         delayMs = delayParaMs(cfg.quantidade ?? cfg.valor ?? 1, cfg.unidade ?? 'minutos');
+        // Rede de segurança: config corrompida (NaN/negativo) não deve virar delay inválido
+        // na fila — cai em 0 (dispara já) em vez de travar o passo.
+        if (!Number.isFinite(delayMs) || delayMs < 0) delayMs = 0;
       }
       await this.queue.add(
         'step',

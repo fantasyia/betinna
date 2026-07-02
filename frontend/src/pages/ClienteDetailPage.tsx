@@ -10,7 +10,7 @@ import { AsyncCombobox } from '@/components/AsyncCombobox';
 import { NovoPedidoDialog } from '@/components/NovoPedidoDialog';
 import { useConfirm } from '@/hooks/useConfirm';
 import { useToast } from '@/components/toast';
-import { maskCNPJ, normalizeUF, formatMoeda as fmtBRL, formatNumero } from '@/lib/masks';
+import { maskCNPJ, normalizeUF, formatMoeda as fmtBRL, formatNumero, formatPercent } from '@/lib/masks';
 import { PhoneInput } from '@/components/PhoneInput';
 import { cn } from '@/lib/cn';
 
@@ -157,8 +157,8 @@ const PEDIDO_STATUS_COLOR: Record<PedidoLite['status'], string> = {
 
 function fmtSize(b: number) {
   if (b < 1024) return `${b} B`;
-  if (b < 1024 * 1024) return `${(b / 1024).toFixed(1)} KB`;
-  return `${(b / (1024 * 1024)).toFixed(1)} MB`;
+  if (b < 1024 * 1024) return `${formatNumero(b / 1024)} KB`;
+  return `${formatNumero(b / (1024 * 1024))} MB`;
 }
 function fmtDate(d: string | null | undefined) {
   if (!d) return '—';
@@ -1688,7 +1688,7 @@ function PrecoFormModal({
     if (!produto?.precoTabela || !precoEspecial) return null;
     const pe = Number(precoEspecial);
     if (!pe) return null;
-    return ((1 - pe / produto.precoTabela) * 100).toFixed(1);
+    return (1 - pe / produto.precoTabela) * 100;
   }, [produto, precoEspecial]);
 
   async function submit(e: React.FormEvent) {
@@ -1795,8 +1795,8 @@ function PrecoFormModal({
         {desconto !== null && (
           <div className="text-[13px] py-2 px-3 bg-bg-alt border border-border rounded-md mt-2">
             Diferença vs. tabela:{' '}
-            <strong className={Number(desconto) > 0 ? 'text-success' : 'text-danger'}>
-              {Number(desconto) > 0 ? `−${desconto}%` : `+${(-Number(desconto)).toFixed(1)}%`}
+            <strong className={desconto > 0 ? 'text-success' : 'text-danger'}>
+              {desconto > 0 ? `−${formatPercent(desconto, 1)}` : `+${formatPercent(-desconto, 1)}`}
             </strong>
           </div>
         )}

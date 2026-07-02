@@ -487,7 +487,7 @@ interface BackupVerificarResp {
 /** Formata bytes: <1MB em KB, senão MB com 2 casas. */
 function fmtBytes(bytes: number): string {
   if (bytes < 1024 * 1024) return `${Math.round(bytes / 1024)} KB`;
-  return `${(bytes / 1048576).toFixed(2)} MB`;
+  return `${formatNumero(bytes / 1048576)} MB`;
 }
 
 /**

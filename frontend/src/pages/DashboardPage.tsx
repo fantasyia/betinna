@@ -221,7 +221,8 @@ export default function DashboardPage() {
                       label="Ticket médio"
                       icon={<Receipt />}
                       iconTone="magenta"
-                      value={fmtBRL(ticketMedio)}
+                      value={totalPedidos > 0 ? fmtBRL(ticketMedio) : '—'}
+                      hint={totalPedidos > 0 ? undefined : 'sem pedidos no período'}
                     />
                     <Stat
                       label="Leads ativos"

@@ -155,7 +155,7 @@ export class FluxosService {
    * - Nenhuma aresta pode referenciar nó inexistente.
    */
   private validarGrafo(
-    nos: { id: string; tipo: string; acaoTipo?: string | null }[],
+    nos: { id: string; tipo: string; acaoTipo?: string | null; config?: unknown }[],
     arestas: { sourceNoId: string; targetNoId: string }[],
     triggerTipo?: string | null,
   ): void {
@@ -187,6 +187,19 @@ export class FluxosService {
           `Nó ACAO sem acaoTipo definido (id=${n.id})`,
           ErrorCode.FLUXO_INVALIDO,
         );
+      }
+      // DELAY precisa de quantidade > 0. Sem isso o runtime cai em delay 0/indefinido
+      // (o fluxo "pula" a espera em silêncio) — barra no ativar com erro claro.
+      if (n.tipo === 'DELAY') {
+        const cfg = (n.config ?? {}) as { quantidade?: unknown; valor?: unknown };
+        const raw = cfg.quantidade ?? cfg.valor;
+        const q = typeof raw === 'number' ? raw : Number(raw);
+        if (!Number.isFinite(q) || q <= 0) {
+          throw new BusinessRuleException(
+            `Nó de espera (DELAY) precisa de uma quantidade maior que zero (id=${n.id})`,
+            ErrorCode.FLUXO_INVALIDO,
+          );
+        }
       }
     }
   }
