@@ -131,6 +131,7 @@ export class CampanhaEnvioProcessor extends WorkerHost {
 
     if (dest.campanha.usarIaPersonalizacao) {
       const personalizado = await this.campanhaIa.personalizarMensagemCliente({
+        empresaId: dest.campanha.empresaId,
         criadoPorId: dest.campanha.criadoPorId,
         templateWa: mensagemWaFinal,
         templateEmail: mensagemEmailFinal,
