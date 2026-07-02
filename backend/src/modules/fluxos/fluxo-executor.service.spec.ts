@@ -75,6 +75,9 @@ const makePrismaMock = () => ({
   variavelCustomizada: {
     findMany: vi.fn().mockResolvedValue([]),
   } satisfies MockModel,
+  evolutionInstancia: {
+    findUnique: vi.fn().mockResolvedValue(null),
+  } satisfies MockModel,
   fluxoStepClaim: {
     create: vi.fn().mockResolvedValue({}),
     findUnique: vi.fn().mockResolvedValue(null),
@@ -152,6 +155,7 @@ describe('FluxoExecutorService', () => {
   let queue: ReturnType<typeof makeQueueMock>;
   let bus: ReturnType<typeof makeBusMock>;
   let conversarIa: ReturnType<typeof makeConversarIaMock>;
+  let integracaoStatus: { marcarDesconectado: ReturnType<typeof vi.fn> };
   let service: FluxoExecutorService;
 
   beforeEach(() => {
@@ -162,6 +166,7 @@ describe('FluxoExecutorService', () => {
     queue = makeQueueMock();
     bus = makeBusMock();
     conversarIa = makeConversarIaMock();
+    integracaoStatus = { marcarDesconectado: vi.fn().mockResolvedValue(undefined) };
     service = new FluxoExecutorService(
       prisma as never,
       makeEnvMock() as never,
@@ -171,6 +176,7 @@ describe('FluxoExecutorService', () => {
       conversarIa as never,
       bus as never,
       { aguardarSlot: vi.fn() } as never,
+      integracaoStatus as never,
       queue as never,
     );
   });
@@ -630,6 +636,30 @@ describe('FluxoExecutorService', () => {
         { idempotencyKey: 'fx:exec-1:no-wa' },
       );
       expect(whatsapp.enviarTexto).not.toHaveBeenCalled();
+    });
+
+    it('BL-1: envio falha + instância Evolution desconectada → alerta o diretor', async () => {
+      setupWhatsappPasso({ clienteId: 'cli-1', cliente: { nome: 'Carlos' } });
+      whatsapp.enviarTexto.mockRejectedValueOnce(new Error('Falha ao enviar (Evolution)'));
+      prisma.evolutionInstancia.findUnique.mockResolvedValue({ connectionStatus: 'close' });
+
+      await expect(service.executarPasso('exec-1', 'no-wa', 'job-test')).rejects.toThrow();
+
+      expect(integracaoStatus.marcarDesconectado).toHaveBeenCalledWith(
+        'emp-1',
+        'whatsapp',
+        expect.stringContaining('Evolution'),
+      );
+    });
+
+    it('BL-1: envio falha mas instância está conectada (open) → NÃO alerta (falha transitória)', async () => {
+      setupWhatsappPasso({ clienteId: 'cli-1', cliente: { nome: 'Carlos' } });
+      whatsapp.enviarTexto.mockRejectedValueOnce(new Error('timeout pontual'));
+      prisma.evolutionInstancia.findUnique.mockResolvedValue({ connectionStatus: 'open' });
+
+      await expect(service.executarPasso('exec-1', 'no-wa', 'job-test')).rejects.toThrow();
+
+      expect(integracaoStatus.marcarDesconectado).not.toHaveBeenCalled();
     });
 
     it('lança quando clienteId está ausente no contexto', async () => {

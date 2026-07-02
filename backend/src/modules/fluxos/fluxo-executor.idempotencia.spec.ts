@@ -76,6 +76,7 @@ function makeService() {
     conversarIa as never,
     { disparar: vi.fn() } as never,
     { aguardarSlot: vi.fn() } as never,
+    { marcarDesconectado: vi.fn() } as never,
     queue as never,
   );
   return { service, prisma, claim, whatsapp, conversarIa, queue };
