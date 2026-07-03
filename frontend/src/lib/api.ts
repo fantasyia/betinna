@@ -75,6 +75,11 @@ function reportApiError(error: ApiError, url: string, method: string): void {
   }
 }
 
+/** URL pública completa de um endpoint (pra snippets/exemplos exibidos na UI). */
+export function publicApiUrl(path: string): string {
+  return `${BASE_URL}${API_PREFIX}${path.startsWith('/') ? path : `/${path}`}`;
+}
+
 export class ApiError extends Error {
   constructor(
     public readonly status: number,

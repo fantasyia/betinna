@@ -303,6 +303,67 @@ export class LeadsService {
     return lead;
   }
 
+  /**
+   * Criação SISTÊMICA de lead (captura pública do site — sem usuário logado).
+   * Mesmo caminho do create(): resolve funil/etapa inicial e dispara LEAD_CRIADO
+   * (fluxos com esse gatilho reagem normalmente ao lead vindo do site).
+   */
+  async createPublico(
+    empresaId: string,
+    dto: {
+      nome: string;
+      contatoNome?: string;
+      contatoTelefone?: string;
+      contatoEmail?: string;
+      cidade?: string;
+      uf?: string;
+      segmento?: string;
+      observacoes?: string;
+      funilId?: string;
+      funilEtapaId?: string;
+    },
+  ): Promise<{ id: string }> {
+    const { funilId, funilEtapaId } = await this.resolverFunilInicial(
+      empresaId,
+      dto.funilId,
+      dto.funilEtapaId,
+      undefined,
+    );
+
+    const lead = await this.prisma.lead.create({
+      data: {
+        empresaId,
+        nome: dto.nome,
+        contatoNome: dto.contatoNome ?? null,
+        contatoTelefone: dto.contatoTelefone ?? null,
+        contatoEmail: dto.contatoEmail ?? null,
+        cidade: dto.cidade ?? null,
+        uf: dto.uf ?? null,
+        segmento: dto.segmento ?? null,
+        observacoes: dto.observacoes ?? null,
+        canalOrigem: 'SITE',
+        funilId,
+        funilEtapaId,
+        etapaDesde: new Date(),
+      },
+      select: { id: true, nome: true, etapa: true, valorEstimado: true },
+    });
+
+    void this.bus.disparar(empresaId, 'LEAD_CRIADO', {
+      leadId: lead.id,
+      lead: {
+        id: lead.id,
+        nome: lead.nome,
+        etapa: lead.etapa,
+        valorEstimado: Number(lead.valorEstimado),
+      },
+      clienteId: null,
+      representanteId: null,
+    });
+
+    return { id: lead.id };
+  }
+
   async update(user: AuthenticatedUser, id: string, dto: UpdateLeadDto): Promise<LeadWithRel> {
     const existing = await this.findById(user, id);
     if (existing.etapa === 'GANHO' || existing.etapa === 'PERDIDO') {
