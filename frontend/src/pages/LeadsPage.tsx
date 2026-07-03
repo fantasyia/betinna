@@ -1032,6 +1032,9 @@ function LeadDetailDrawer({
           )}
         </section>
 
+        {/* Mover para OUTRO funil (backend já aceita funilId+funilEtapaId no PATCH) */}
+        {!fechado && <MoverFunilSection lead={lead} onChanged={onChanged} busyOther={busy !== null} />}
+
         {/* F2 — Representante */}
         <section>
           <h4 className="text-[10px] font-semibold uppercase tracking-wider text-muted mb-2">
@@ -1166,6 +1169,105 @@ function InfoCell({
       </div>
       <div className="text-sm text-text truncate">{children}</div>
     </div>
+  );
+}
+
+// ─── Mover lead para outro funil ───────────────────────────────
+
+function MoverFunilSection({
+  lead,
+  onChanged,
+  busyOther,
+}: {
+  lead: Lead;
+  onChanged: () => void;
+  busyOther: boolean;
+}) {
+  const toast = useToast();
+  const { data: funis } = useApiQuery<FunilListItem[]>('/funis');
+  const [funilDestinoId, setFunilDestinoId] = useState('');
+  const [etapaDestinoId, setEtapaDestinoId] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  // Só outros funis ativos — mover pro mesmo funil é o "Mover etapa" acima.
+  const destinos = (funis ?? []).filter((f) => f.ativo && f.id !== (lead.funilId ?? ''));
+  const funilDestino = destinos.find((f) => f.id === funilDestinoId) ?? null;
+  // Entrada padrão: etapas não-terminais primeiro (mover de funil ≠ ganhar/perder).
+  const etapasDestino = (funilDestino?.etapas ?? []).filter(
+    (e) => e.tipo !== 'GANHO' && e.tipo !== 'PERDIDO',
+  );
+
+  if (destinos.length === 0) return null;
+
+  async function mover() {
+    if (!funilDestino || !etapaDestinoId) return;
+    setBusy(true);
+    setError(null);
+    try {
+      await api.patch(`/leads/${lead.id}`, {
+        funilId: funilDestino.id,
+        funilEtapaId: etapaDestinoId,
+      });
+      const etapaNome = etapasDestino.find((e) => e.id === etapaDestinoId)?.nome ?? '';
+      toast.success(`Movido pra ${funilDestino.nome}${etapaNome ? ` · ${etapaNome}` : ''}`);
+      onChanged();
+    } catch (err) {
+      setError(apiErrorMessage(err));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <section>
+      <h4 className="text-[10px] font-semibold uppercase tracking-wider text-muted mb-2">
+        Mover pra outro funil
+      </h4>
+      <div className="flex flex-wrap items-center gap-2">
+        <Select
+          data-testid="lead-mover-funil"
+          value={funilDestinoId}
+          onChange={(e) => {
+            setFunilDestinoId(e.target.value);
+            setEtapaDestinoId('');
+          }}
+          className="min-w-[160px]"
+        >
+          <option value="">Escolher funil…</option>
+          {destinos.map((f) => (
+            <option key={f.id} value={f.id}>
+              {f.nome}
+            </option>
+          ))}
+        </Select>
+        {funilDestino && (
+          <Select
+            data-testid="lead-mover-etapa"
+            value={etapaDestinoId}
+            onChange={(e) => setEtapaDestinoId(e.target.value)}
+            className="min-w-[150px]"
+          >
+            <option value="">Etapa de entrada…</option>
+            {etapasDestino.map((e) => (
+              <option key={e.id} value={e.id}>
+                {e.nome}
+              </option>
+            ))}
+          </Select>
+        )}
+        <Button
+          size="sm"
+          data-testid="lead-mover-confirmar"
+          disabled={!funilDestino || !etapaDestinoId || busyOther}
+          loading={busy}
+          onClick={() => void mover()}
+        >
+          Mover
+        </Button>
+      </div>
+      {error && <p className="text-danger text-xs mt-2 m-0">{error}</p>}
+    </section>
   );
 }
 
