@@ -24,8 +24,8 @@ import { fmtPeer } from '../lib/format';
  * (ControlesBot).
  *
  * O header só DISPARA callbacks — drawers/modais e seus toggles ficam no
- * ConversationThread. Gates preservados: "Zerar" por `podeZerar` (role
- * ADMIN/DIRECTOR), e a lógica `botEfetivoOnConv`/`botPausadoConv` derivada de
+ * ConversationThread. Gates preservados: "Zerar" por `podeZerar` (inbox.zerar =
+ * ADMIN/DIRECTOR/GERENTE/SAC), e a lógica `botEfetivoOnConv`/`botPausadoConv` derivada de
  * `conv` + `botGlobalAtivo`.
  */
 export function ThreadHeader({

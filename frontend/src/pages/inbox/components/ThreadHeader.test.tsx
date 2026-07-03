@@ -163,9 +163,9 @@ describe('ThreadHeader — renderização com conversa', () => {
     expect(screen.getByTestId('inbox-back-btn')).toBeTruthy();
   });
 
-  it('NÃO exibe botão Zerar pra role SAC', () => {
+  it('EXIBE botão Zerar pra role SAC (equipe de atendimento gerencia o inbox)', () => {
     montarHeader(fakeConv(), { role: 'SAC' });
-    expect(screen.queryByTestId('inbox-zerar-conversa-btn')).toBeNull();
+    expect(screen.getByTestId('inbox-zerar-conversa-btn')).toBeTruthy();
   });
 
   it('NÃO exibe botão Zerar pra role REP', () => {

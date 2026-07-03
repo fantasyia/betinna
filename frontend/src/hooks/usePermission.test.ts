@@ -262,7 +262,8 @@ describe('comissoes.manage', () => {
 });
 
 // ---------------------------------------------------------------------------
-// inbox.zerar — inline check original: role === 'ADMIN' || role === 'DIRECTOR'
+// inbox.zerar — gestão por-atendimento: ADMIN, DIRECTOR, GERENTE, SAC.
+// (REP não; o nuke em massa `whatsapp/limpar` segue ADMIN/DIRECTOR no backend.)
 // ---------------------------------------------------------------------------
 describe('inbox.zerar', () => {
   it('ADMIN tem acesso', () => {
@@ -271,11 +272,11 @@ describe('inbox.zerar', () => {
   it('DIRECTOR tem acesso', () => {
     expect(hasPermission('DIRECTOR', 'inbox.zerar')).toBe(true);
   });
-  it('GERENTE NÃO tem acesso', () => {
-    expect(hasPermission('GERENTE', 'inbox.zerar')).toBe(false);
+  it('GERENTE tem acesso (gerência dos atendimentos)', () => {
+    expect(hasPermission('GERENTE', 'inbox.zerar')).toBe(true);
   });
-  it('SAC NÃO tem acesso', () => {
-    expect(hasPermission('SAC', 'inbox.zerar')).toBe(false);
+  it('SAC tem acesso (equipe de atendimento)', () => {
+    expect(hasPermission('SAC', 'inbox.zerar')).toBe(true);
   });
   it('REP NÃO tem acesso', () => {
     expect(hasPermission('REP', 'inbox.zerar')).toBe(false);
