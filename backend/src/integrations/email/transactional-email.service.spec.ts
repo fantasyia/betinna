@@ -16,13 +16,24 @@ const makeEnvMock = () => ({
   get: vi.fn((k: string) => (k === 'FRONTEND_URL' ? 'https://app.betinna.ai' : '')),
 });
 
+// Prisma mock: sem config de remetente por-tenant por default (cai no env).
+const makePrismaMock = () => ({
+  empresa: { findUnique: vi.fn().mockResolvedValue({ config: null }) },
+});
+
 describe('TransactionalEmailService — provedor único (Resend)', () => {
   let resend: ReturnType<typeof makeResendMock>;
+  let prisma: ReturnType<typeof makePrismaMock>;
   let service: TransactionalEmailService;
 
   beforeEach(() => {
     resend = makeResendMock();
-    service = new TransactionalEmailService(resend as never, makeEnvMock() as never);
+    prisma = makePrismaMock();
+    service = new TransactionalEmailService(
+      resend as never,
+      makeEnvMock() as never,
+      prisma as never,
+    );
   });
 
   const params = { para: 'rep@cliente.com', nome: 'Rep', empresaNome: 'Betinna' };
@@ -59,5 +70,30 @@ describe('TransactionalEmailService — provedor único (Resend)', () => {
 
     expect(r.ok).toBe(false);
     expect(r.motivo).toContain('500');
+  });
+
+  it('remetente por-tenant: usa fromNome/replyTo da Empresa.config quando há empresaId', async () => {
+    prisma.empresa.findUnique.mockResolvedValue({
+      config: { emailTransacional: { fromNome: 'Somatec', replyTo: 'contato@somatec.com.br' } },
+    });
+
+    await service.enviarHtmlLivre({
+      para: 'cliente@x.com',
+      assunto: 'Campanha',
+      html: '<p>oi</p>',
+      empresaId: 'emp-1',
+    });
+
+    expect(resend.enviar).toHaveBeenCalledWith(
+      expect.objectContaining({ fromNome: 'Somatec', replyTo: 'contato@somatec.com.br' }),
+    );
+  });
+
+  it('sem empresaId → remetente vazio (cai no default do env)', async () => {
+    await service.enviarHtmlLivre({ para: 'a@x.com', assunto: 'x', html: '<p>x</p>' });
+    expect(resend.enviar).toHaveBeenCalledWith(
+      expect.objectContaining({ fromNome: undefined, replyTo: undefined }),
+    );
+    expect(prisma.empresa.findUnique).not.toHaveBeenCalled();
   });
 });

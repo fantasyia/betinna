@@ -776,6 +776,7 @@ export class FluxoExecutorService {
         assunto,
         html: corpo,
         idempotencyKey: `${idemBase}:${para}`,
+        empresaId, // remetente por-tenant (Empresa.config.emailTransacional)
       });
       if (!r.ok) {
         throw new Error(`Falha ao enviar e-mail para ${para}: ${r.motivo ?? 'erro no provedor'}`);

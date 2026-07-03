@@ -52,6 +52,10 @@ export class ResendService {
     assunto: string;
     html?: string;
     texto?: string;
+    /** Nome de exibição do remetente (override por-tenant). Default env/'Betinna.ai'. */
+    fromNome?: string;
+    /** Reply-To por-tenant (respostas caem no e-mail da empresa). */
+    replyTo?: string;
     /** Anexos opcionais (ex: PDF de proposta). content em base64 puro. */
     attachments?: Array<{ filename: string; content: string }>;
     /**
@@ -76,13 +80,15 @@ export class ResendService {
       );
     }
 
-    const fromName = this.env.get('RESEND_FROM_NAME') ?? 'Betinna.ai';
-    const from = fromName ? `${fromName} <${fromEmail}>` : fromEmail;
+    // Remetente: override por-tenant (fromNome) > env RESEND_FROM_NAME > 'Betinna.ai'.
+    const fromName = params.fromNome?.trim() || this.env.get('RESEND_FROM_NAME') || 'Betinna.ai';
+    const from = `${fromName} <${fromEmail}>`;
 
     const body = {
       from,
       to: [params.para],
       subject: params.assunto,
+      ...(params.replyTo ? { reply_to: params.replyTo } : {}),
       ...(params.html ? { html: params.html } : {}),
       ...(params.texto ? { text: params.texto } : {}),
       ...(params.attachments && params.attachments.length > 0

@@ -203,6 +203,7 @@ export class CampanhaEnvioProcessor extends WorkerHost {
                 para: dest.email,
                 assunto,
                 html: mensagemEmailFinal,
+                empresaId: dest.campanha.empresaId, // remetente por-tenant
               });
               if (!r.ok) throw new Error(r.motivo ?? 'falha ao enviar e-mail da campanha');
               this.logger.debug(`Email enviado → ${dest.email} (campanha ${campanhaId})`);

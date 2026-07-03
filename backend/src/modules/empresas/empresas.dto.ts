@@ -170,6 +170,15 @@ const envioWhatsappSchema = z
   .partial()
   .optional();
 
+// Remetente por-tenant do e-mail transacional (Resend). Vazio = default do env.
+const emailTransacionalSchema = z
+  .object({
+    fromNome: z.string().trim().min(1).max(80),
+    replyTo: z.string().trim().email().max(160),
+  })
+  .partial()
+  .optional();
+
 export const tenantConfigPatchSchema = z
   .object({
     pedidoStatusLabels: z.record(z.string(), pedidoStatusMetaSchema).optional(),
@@ -180,6 +189,7 @@ export const tenantConfigPatchSchema = z
     devolucaoInterna: devolucaoInternaSchema,
     inboxInterna: inboxInternaSchema,
     envioWhatsapp: envioWhatsappSchema,
+    emailTransacional: emailTransacionalSchema,
   })
   // .strip() (default zod): DESCARTA chaves desconhecidas em vez de deixá-las entrar no
   // Empresa.config (o front só manda as seções conhecidas; .passthrough deixava lixo crescer).
