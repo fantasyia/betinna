@@ -10,9 +10,18 @@ import {
 import { ErrorCode } from '@shared/errors/error-codes';
 import type { AuthenticatedUser } from '@shared/types/authenticated-user';
 import { CryptoUtil } from '@shared/utils/crypto.util';
+import { ResendService } from '@integrations/resend/resend.service';
 import type { ConectarDto, ListConexoesDto } from './integracoes.dto';
 import { servicoRequerDirector, type ServicoEmpresa } from './integracoes.constants';
 import { IntegracaoStatusService } from './integracao-status.service';
+
+/** Mascara o local-part de um e-mail pra exibição (contato@x → co***@x). */
+function mascararEmail(email: string): string {
+  const [local, dominio] = email.split('@');
+  if (!dominio) return email;
+  const visivel = local.slice(0, 2);
+  return `${visivel}${'*'.repeat(Math.max(1, local.length - 2))}@${dominio}`;
+}
 
 /**
  * Conexão decriptada (uso interno por serviços de integração).
@@ -56,10 +65,94 @@ export class IntegracoesService {
 
   constructor(
     private readonly prisma: PrismaService,
-    env: EnvService,
+    private readonly env: EnvService,
     private readonly status: IntegracaoStatusService,
+    private readonly resend: ResendService,
   ) {
     this.crypto = new CryptoUtil(env.get('ENCRYPTION_KEY'));
+  }
+
+  /**
+   * Status do e-mail transacional (Resend) pra gestão pela UI. O Resend é
+   * SISTÊMICO (configurado por env, não por tenant), mas o semáforo de saúde
+   * (IntegracaoStatus) é por empresa — atualizado nos envios e no teste.
+   */
+  async emailStatus(user: AuthenticatedUser): Promise<{
+    servico: 'email';
+    configurado: boolean;
+    fromEmail: string | null;
+    fromName: string;
+    status: string;
+    ultimoErro: string | null;
+    ultimoErroEm: Date | null;
+  }> {
+    const empresaId = this.requireEmpresa(user);
+    const configurado = this.resend.isConfigured();
+    const fromEmail = this.env.get('RESEND_FROM_EMAIL') || null;
+    const fromName = this.env.get('RESEND_FROM_NAME') || 'Betinna.ai';
+    const st = await this.prisma.integracaoStatus.findUnique({
+      where: { empresaId_servico: { empresaId, servico: 'email' } },
+    });
+    return {
+      servico: 'email',
+      configurado,
+      fromEmail: fromEmail ? mascararEmail(fromEmail) : null,
+      fromName,
+      // Sem registro ainda: deriva do env (configurado = ATIVA, senão DESCONECTADA).
+      status: st?.status ?? (configurado ? 'ATIVA' : 'DESCONECTADA'),
+      ultimoErro: st?.ultimoErro ?? null,
+      ultimoErroEm: st?.ultimoErroEm ?? null,
+    };
+  }
+
+  /**
+   * Envia um e-mail de TESTE pro próprio usuário logado (não aceita destinatário
+   * arbitrário) e registra o resultado no semáforo. Serve pra validar a config
+   * do Resend pela UI sem depender de um envio real de negócio.
+   */
+  async enviarEmailTeste(
+    user: AuthenticatedUser,
+    agoraMs: number,
+  ): Promise<{ ok: boolean; para: string }> {
+    const empresaId = this.requireEmpresa(user);
+    if (!this.resend.isConfigured()) {
+      throw new BusinessRuleException(
+        'Resend não configurado. Defina RESEND_API_KEY e RESEND_FROM_EMAIL no ambiente.',
+        ErrorCode.BUSINESS_RULE_VIOLATION,
+      );
+    }
+    const para = user.email;
+    if (!para) {
+      throw new BusinessRuleException(
+        'Seu usuário não tem e-mail cadastrado pra receber o teste.',
+        ErrorCode.BUSINESS_RULE_VIOLATION,
+      );
+    }
+    try {
+      await this.resend.enviar({
+        para,
+        assunto: 'Teste de e-mail — Betinna.ai',
+        html:
+          '<div style="font-family:sans-serif;font-size:14px;color:#201554">' +
+          '<h2 style="color:#201554">✅ E-mail transacional funcionando</h2>' +
+          '<p>Se você recebeu esta mensagem, a integração de e-mail (Resend) da sua ' +
+          'empresa está configurada e enviando normalmente.</p>' +
+          '<p style="color:#6b7280;font-size:12px">Disparado pelo painel de Integrações do Betinna.ai.</p>' +
+          '</div>',
+        // Chave por-clique (timestamp injetado): retries do wrapper deduplicam,
+        // mas cada teste manual novo realmente dispara.
+        idempotencyKey: `email-teste:${empresaId}:${user.id}:${agoraMs}`,
+      });
+      void this.status.registrarSucesso(empresaId, 'email');
+      return { ok: true, para };
+    } catch (err) {
+      void this.status.registrarErro(
+        empresaId,
+        'email',
+        err instanceof Error ? err.message : String(err),
+      );
+      throw err;
+    }
   }
 
   private requireEmpresa(user: AuthenticatedUser): string {

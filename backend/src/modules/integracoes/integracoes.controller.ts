@@ -57,6 +57,25 @@ export class IntegracoesController {
     return this.integracoes.list(user, query);
   }
 
+  // E-mail transacional (Resend) — sistêmico. Rotas ANTES de `@Get(':servico')`
+  // pra não caírem no param catch-all.
+  @Get('email/status')
+  @Roles('ADMIN', 'DIRECTOR', 'GERENTE')
+  @ApiOperation({
+    summary: 'Status do e-mail transacional (Resend): configurado, remetente, saúde',
+  })
+  emailStatus(@CurrentUser() user: AuthenticatedUser) {
+    return this.integracoes.emailStatus(user);
+  }
+
+  @Post('email/teste')
+  @Roles('ADMIN', 'DIRECTOR')
+  @Audit({ action: 'email_teste', resource: 'integracao' })
+  @ApiOperation({ summary: 'Envia um e-mail de teste pro próprio usuário e registra o resultado' })
+  enviarEmailTeste(@CurrentUser() user: AuthenticatedUser) {
+    return this.integracoes.enviarEmailTeste(user, Date.now());
+  }
+
   @Get(':servico')
   @Roles('ADMIN', 'DIRECTOR', 'GERENTE')
   findByServico(@CurrentUser() user: AuthenticatedUser, @Param('servico') servico: ServicoEmpresa) {

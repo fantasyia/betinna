@@ -5,6 +5,7 @@ import { useRole } from '@/hooks/usePermission';
 import { PageLayout } from '@/components/PageLayout';
 import { SistemaTabs } from '@/components/SistemaTabs';
 import { LeadCaptureCard } from '@/components/LeadCaptureCard';
+import { EmailTransacionalCard } from '@/components/EmailTransacionalCard';
 import { StateView } from '@/components/StateView';
 import { Dialog } from '@/components/ui';
 import { FormField, Input } from '@/components/FormField';
@@ -274,6 +275,11 @@ export default function IntegracoesPage() {
               }}
             />
           ))}
+        </div>
+
+        {/* E-mail transacional (Resend) — status + teste de envio */}
+        <div className="mt-4">
+          <EmailTransacionalCard />
         </div>
 
         {/* Captura de leads do site (chave de API pública por tenant) */}
