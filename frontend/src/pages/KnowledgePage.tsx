@@ -47,7 +47,9 @@ interface Paginado {
 
 const VAZIO = { id: '', titulo: '', conteudo: '', categoria: '', ativo: true };
 
-const MAX_BYTES = 15 * 1024 * 1024; // 15MB raw (≈20MB em base64, dentro do body limit)
+// 14MB raw → ~18,7MB em base64 + overhead do JSON, com folga sob o limite de
+// 20MB do backend. 15MB dava EXATAMENTE 20MB em base64 → estourava o parser.
+const MAX_BYTES = 14 * 1024 * 1024;
 
 function fileToBase64(file: File): Promise<string> {
   return new Promise((resolve, reject) => {
@@ -88,7 +90,7 @@ export default function KnowledgePage() {
 
   function escolherArquivo(file: File) {
     if (file.size > MAX_BYTES) {
-      toast.error('Arquivo muito grande', 'O limite é 15MB.');
+      toast.error('Arquivo muito grande', 'O limite é 14MB.');
       return;
     }
     // Título inicial = nome do arquivo sem extensão.
@@ -105,13 +107,19 @@ export default function KnowledgePage() {
     setEnviandoDoc(true);
     try {
       const dataBase64 = await fileToBase64(docForm.file);
-      await api.post('/conhecimento/documento', {
-        titulo: docForm.titulo.trim(),
-        fileName: docForm.file.name,
-        mimetype: docForm.file.type || 'application/octet-stream',
-        podeEnviar: docForm.podeEnviar,
-        dataBase64,
-      });
+      // Upload grande: o timeout default de 10s do api.ts mata o envio de um PDF
+      // de vários MB em conexão comum — este POST usa 120s.
+      await api.post(
+        '/conhecimento/documento',
+        {
+          titulo: docForm.titulo.trim(),
+          fileName: docForm.file.name,
+          mimetype: docForm.file.type || 'application/octet-stream',
+          podeEnviar: docForm.podeEnviar,
+          dataBase64,
+        },
+        { timeoutMs: 120_000 },
+      );
       toast.success('Documento anexado', 'O texto foi extraído e indexado pra busca.');
       setDocForm(null);
       docsQuery.refetch();

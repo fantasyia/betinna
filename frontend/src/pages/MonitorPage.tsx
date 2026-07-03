@@ -1,9 +1,10 @@
-import { Activity, Bot, AlertTriangle, Zap } from 'lucide-react';
+import { useEffect } from 'react';
+import { Activity, Bot, AlertTriangle, Zap, Send, Mail, MessageCircle, Inbox } from 'lucide-react';
 import { useApiQuery } from '@/hooks/useApiQuery';
 import { PageLayout } from '@/components/PageLayout';
 import { CrmTabs } from '@/components/CrmTabs';
 import { StateView } from '@/components/StateView';
-import { Card } from '@/components/ui';
+import { Card, Badge } from '@/components/ui';
 import { cn } from '@/lib/cn';
 import { formatNumero } from '@/lib/masks';
 
@@ -33,22 +34,69 @@ interface MonitorResumo {
   custoOpenAi?: { diaIn?: number; diaOut?: number; mesIn?: number; mesOut?: number } | null;
 }
 
+interface FilaCampanha {
+  id: string;
+  nome: string;
+  canal: string;
+  status: string;
+  pendentes: number;
+  enviados: number;
+  erros: number;
+}
+interface FilaEnvios {
+  campanhas: FilaCampanha[];
+  totais: { whatsappPendentes: number; emailPendentes: number };
+  sistema: {
+    fluxo: { aguardando: number; agendados: number; executando: number; falhas: number };
+    campanhaEnvio: { aguardando: number; agendados: number; executando: number; falhas: number };
+    deadLetter: number;
+  } | null;
+}
+
+const CANAL_LABEL: Record<string, string> = {
+  WHATSAPP: 'WhatsApp',
+  EMAIL: 'E-mail',
+  WHATSAPP_EMAIL: 'WhatsApp + E-mail',
+};
+const STATUS_LABEL: Record<string, string> = {
+  AGENDADA: 'Agendada',
+  ENVIANDO: 'Enviando',
+  PAUSADA: 'Pausada',
+};
+
 /**
  * MonitorPage (orquestração Fase B) — saúde do funil: leads por etapa, conversas
  * de IA ativas, SLAs vencidos e execuções de fluxo.
  */
 export default function MonitorPage() {
   const { data, loading, error, refetch } = useApiQuery<MonitorResumo>('/orquestracao/monitor');
+  const filasQuery = useApiQuery<FilaEnvios>('/orquestracao/filas');
+
+  // Fila muda a cada envio — atualiza em background a cada 15s (via refetch,
+  // NUNCA cache-buster na URL). Pula quando a aba não está visível.
+  const refetchFilas = filasQuery.refetch;
+  useEffect(() => {
+    const tick = () => {
+      if (document.visibilityState === 'visible') refetchFilas();
+    };
+    const id = window.setInterval(tick, 15_000);
+    document.addEventListener('visibilitychange', tick);
+    return () => {
+      clearInterval(id);
+      document.removeEventListener('visibilitychange', tick);
+    };
+  }, [refetchFilas]);
 
   return (
     <PageLayout
       title="Monitor do funil"
-      description="Saúde da orquestração: leads por etapa, IA ativa, SLAs e execuções."
+      description="Saúde da orquestração: fila de envios, leads por etapa, IA ativa, SLAs e execuções."
     >
       <CrmTabs />
       <StateView loading={loading} error={error} onRetry={refetch}>
         {data && (
           <div className="flex flex-col gap-4">
+            {filasQuery.data && <FilaEnviosCard fila={filasQuery.data} />}
             <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
               <Stat icon={<Bot />} label="Conversas IA ativas" value={data.iaAtivas} />
               <Stat
@@ -85,6 +133,120 @@ export default function MonitorPage() {
         )}
       </StateView>
     </PageLayout>
+  );
+}
+
+/**
+ * Fila de envios — quanto ainda falta disparar: totais por canal, campanhas com
+ * pendência e (ADMIN) filas técnicas BullMQ. Atualiza a cada 15s.
+ */
+function FilaEnviosCard({ fila }: { fila: FilaEnvios }) {
+  const { totais, campanhas, sistema } = fila;
+  const vazia = totais.whatsappPendentes === 0 && totais.emailPendentes === 0;
+  return (
+    <Card padding="md" data-testid="fila-envios-card">
+      <div className="flex items-center justify-between mb-3">
+        <h3 className="text-md font-semibold text-text flex items-center gap-2">
+          <Send className="h-4 w-4 text-primary" />
+          Fila de envios
+        </h3>
+        <span className="text-[10px] text-muted">atualiza a cada 15s</span>
+      </div>
+
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-3">
+        <div className="flex items-center gap-2.5 px-3 py-2 rounded-md bg-bg-alt border border-border">
+          <MessageCircle className="h-4 w-4 text-success shrink-0" />
+          <div>
+            <div className="text-lg font-semibold text-text tabular leading-none" data-testid="fila-whatsapp-pendentes">
+              {formatNumero(totais.whatsappPendentes)}
+            </div>
+            <div className="text-[10px] text-muted mt-0.5">WhatsApp na fila</div>
+          </div>
+        </div>
+        <div className="flex items-center gap-2.5 px-3 py-2 rounded-md bg-bg-alt border border-border">
+          <Mail className="h-4 w-4 text-info shrink-0" />
+          <div>
+            <div className="text-lg font-semibold text-text tabular leading-none" data-testid="fila-email-pendentes">
+              {formatNumero(totais.emailPendentes)}
+            </div>
+            <div className="text-[10px] text-muted mt-0.5">E-mails na fila</div>
+          </div>
+        </div>
+        {sistema && (
+          <>
+            <div className="flex items-center gap-2.5 px-3 py-2 rounded-md bg-bg-alt border border-border">
+              <Zap className="h-4 w-4 text-primary shrink-0" />
+              <div>
+                <div className="text-lg font-semibold text-text tabular leading-none">
+                  {formatNumero(
+                    sistema.fluxo.aguardando + sistema.fluxo.agendados + sistema.fluxo.executando,
+                  )}
+                </div>
+                <div className="text-[10px] text-muted mt-0.5">Passos de fluxo na fila</div>
+              </div>
+            </div>
+            <div className="flex items-center gap-2.5 px-3 py-2 rounded-md bg-bg-alt border border-border">
+              <Inbox
+                className={cn(
+                  'h-4 w-4 shrink-0',
+                  sistema.deadLetter > 0 ? 'text-danger' : 'text-muted',
+                )}
+              />
+              <div>
+                <div
+                  className={cn(
+                    'text-lg font-semibold tabular leading-none',
+                    sistema.deadLetter > 0 ? 'text-danger' : 'text-text',
+                  )}
+                >
+                  {formatNumero(sistema.deadLetter)}
+                </div>
+                <div className="text-[10px] text-muted mt-0.5">Dead-letter (falhas)</div>
+              </div>
+            </div>
+          </>
+        )}
+      </div>
+
+      {vazia && campanhas.length === 0 ? (
+        <div className="text-xs text-muted text-center py-2">
+          Nenhum envio pendente. Campanhas agendadas ou em andamento aparecem aqui.
+        </div>
+      ) : (
+        campanhas.length > 0 && (
+          <div className="flex flex-col gap-1.5">
+            {campanhas.map((c) => (
+              <div
+                key={c.id}
+                className="flex items-center gap-2 px-2.5 py-1.5 rounded-md bg-surface border border-border text-xs"
+                data-testid={`fila-campanha-${c.id}`}
+              >
+                <span className="font-medium text-text truncate flex-1" title={c.nome}>
+                  {c.nome}
+                </span>
+                <Badge size="sm" variant="neutral">
+                  {CANAL_LABEL[c.canal] ?? c.canal}
+                </Badge>
+                <Badge size="sm" variant={c.status === 'ENVIANDO' ? 'primary' : 'neutral'}>
+                  {STATUS_LABEL[c.status] ?? c.status}
+                </Badge>
+                <span className="text-warning tabular shrink-0" title="Pendentes de envio">
+                  {formatNumero(c.pendentes)} pendentes
+                </span>
+                <span className="text-muted tabular shrink-0" title="Já enviados">
+                  {formatNumero(c.enviados)} enviados
+                </span>
+                {c.erros > 0 && (
+                  <span className="text-danger tabular shrink-0" title="Falhas de envio">
+                    {formatNumero(c.erros)} erros
+                  </span>
+                )}
+              </div>
+            ))}
+          </div>
+        )
+      )}
+    </Card>
   );
 }
 

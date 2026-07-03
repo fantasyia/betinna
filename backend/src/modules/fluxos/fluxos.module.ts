@@ -20,11 +20,19 @@ import { MonitorService } from './monitor.service';
 import { WebhookEntradaController } from './webhook-entrada.controller';
 import { WebhookEntradaService } from './webhook-entrada.service';
 import { FLUXO_QUEUE } from './fluxo-executor.types';
+import { CAMPANHA_ENVIO_QUEUE } from '@modules/campanhas/campanha-envio.types';
+import { DEAD_LETTER_QUEUE } from '@modules/dead-letter/dead-letter.types';
 
 @Module({
   imports: [
-    // Registra a fila BullMQ pra este módulo
-    BullModule.registerQueue({ name: FLUXO_QUEUE }),
+    // Registra a fila BullMQ pra este módulo. As filas de campanha e dead-letter
+    // entram SÓ pra leitura de contadores no painel de fila (MonitorService.filas)
+    // — os producers/consumers delas vivem nos módulos donos.
+    BullModule.registerQueue(
+      { name: FLUXO_QUEUE },
+      { name: CAMPANHA_ENVIO_QUEUE },
+      { name: DEAD_LETTER_QUEUE },
+    ),
     // Integrações usadas pelo executor (e-mail transacional pro FluxoTriggersJob)
     WhatsAppModule,
     EmailModule,

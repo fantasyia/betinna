@@ -19,4 +19,14 @@ export class MonitorController {
   resumo(@CurrentUser() user: AuthenticatedUser) {
     return this.monitor.resumo(user);
   }
+
+  @Get('filas')
+  @Roles('ADMIN', 'DIRECTOR', 'GERENTE')
+  @ApiOperation({
+    summary:
+      'Fila de envios: pendências de campanhas (e-mail/WhatsApp) da empresa + filas técnicas (ADMIN)',
+  })
+  filas(@CurrentUser() user: AuthenticatedUser) {
+    return this.monitor.filas(user);
+  }
 }

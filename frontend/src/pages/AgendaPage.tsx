@@ -85,28 +85,107 @@ function toLocalIso(d: Date) {
 function sameDay(a: Date, b: Date) {
   return a.toDateString() === b.toDateString();
 }
+function startOfDay(d: Date): Date {
+  const x = new Date(d);
+  x.setHours(0, 0, 0, 0);
+  return x;
+}
+function startOfMonth(d: Date): Date {
+  return new Date(d.getFullYear(), d.getMonth(), 1);
+}
+function addMonths(d: Date, n: number): Date {
+  return new Date(d.getFullYear(), d.getMonth() + n, 1);
+}
+/** Chave LOCAL yyyy-mm-dd — NÃO usar toISOString (UTC desloca o dia). */
+function keyDia(d: Date): string {
+  const pad = (n: number) => String(n).padStart(2, '0');
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+}
+/** Células do grid mensal: do domingo anterior ao dia 1, linhas conforme o mês. */
+function gridDoMes(ref: Date): Date[] {
+  const inicioMes = startOfMonth(ref);
+  const gridInicio = startOfWeek(inicioMes);
+  const diasNoMes = new Date(ref.getFullYear(), ref.getMonth() + 1, 0).getDate();
+  const semanas = Math.ceil((inicioMes.getDay() + diasNoMes) / 7);
+  return Array.from({ length: semanas * 7 }, (_, i) => addDays(gridInicio, i));
+}
+function capitalizar(s: string): string {
+  return s.charAt(0).toUpperCase() + s.slice(1);
+}
+function fmtMesAno(d: Date): string {
+  return capitalizar(d.toLocaleDateString('pt-BR', { month: 'long', year: 'numeric' }));
+}
+function fmtDiaCompleto(d: Date): string {
+  return capitalizar(
+    d.toLocaleDateString('pt-BR', { weekday: 'long', day: '2-digit', month: 'long', year: 'numeric' }),
+  );
+}
+
+// ─── Visões (dia | semana | mês) ─────────────────────────────────────
+
+type AgendaVisao = 'dia' | 'semana' | 'mes';
+
+const VISAO_STORAGE_KEY = 'agenda:visao';
+const VISOES: { valor: AgendaVisao; label: string }[] = [
+  { valor: 'dia', label: 'Dia' },
+  { valor: 'semana', label: 'Semana' },
+  { valor: 'mes', label: 'Mês' },
+];
+
+function lerVisaoSalva(): AgendaVisao {
+  try {
+    const v = localStorage.getItem(VISAO_STORAGE_KEY);
+    if (v === 'dia' || v === 'semana' || v === 'mes') return v;
+  } catch {
+    // localStorage indisponível — usa default
+  }
+  return 'semana';
+}
 
 export default function AgendaPage() {
   const toast = useToast();
-  const [weekStart, setWeekStart] = useState(() => startOfWeek(new Date()));
+  // Visão ativa (dia | semana | mês) — persiste em localStorage
+  const [visao, setVisaoState] = useState<AgendaVisao>(lerVisaoSalva);
+  // Data de referência compartilhada entre as visões (dia exibido / semana / mês)
+  const [dataRef, setDataRef] = useState(() => new Date());
   const [filtroTipo, setFiltroTipo] = useState('');
   const [creating, setCreating] = useState<Date | null>(null);
   const [editing, setEditing] = useState<AgendaItem | null>(null);
 
+  function mudarVisao(v: AgendaVisao) {
+    setVisaoState(v);
+    try {
+      localStorage.setItem(VISAO_STORAGE_KEY, v);
+    } catch {
+      // best-effort
+    }
+  }
+
   // Sensor: começa drag só após 8px de movimento (evita conflito com click pra editar)
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 8 } }));
 
-  const weekEnd = addDays(weekStart, 7);
+  const weekStart = startOfWeek(dataRef);
   const days = Array.from({ length: 7 }, (_, i) => addDays(weekStart, i));
 
+  // Range da busca por visão — mesmo endpoint /agenda, só muda inicio/fim
   const listPath = useMemo(() => {
-    const qs = new URLSearchParams({
-      inicio: weekStart.toISOString(),
-      fim: weekEnd.toISOString(),
-    });
+    let inicio: Date;
+    let fim: Date;
+    if (visao === 'dia') {
+      inicio = startOfDay(dataRef);
+      fim = addDays(inicio, 1);
+    } else if (visao === 'mes') {
+      const cels = gridDoMes(dataRef);
+      inicio = cels[0];
+      fim = addDays(cels[cels.length - 1], 1);
+    } else {
+      inicio = startOfWeek(dataRef);
+      fim = addDays(inicio, 7);
+    }
+    const qs = new URLSearchParams({ inicio: inicio.toISOString(), fim: fim.toISOString() });
     if (filtroTipo) qs.set('tipo', filtroTipo);
     return `/agenda?${qs.toString()}`;
-  }, [weekStart, weekEnd, filtroTipo]);
+  }, [visao, dataRef, filtroTipo]);
 
   const { data: items, loading, error, refetch } = useApiQuery<AgendaItem[]>(listPath);
 
@@ -114,7 +193,7 @@ export default function AgendaPage() {
     const map = new Map<string, AgendaItem[]>();
     if (items) {
       for (const it of items) {
-        const key = new Date(it.data).toDateString();
+        const key = keyDia(new Date(it.data));
         const arr = map.get(key) ?? [];
         arr.push(it);
         map.set(key, arr);
@@ -128,6 +207,19 @@ export default function AgendaPage() {
   }, [items]);
 
   const today = new Date();
+
+  // Navegação ‹ › por visão
+  function navegar(delta: number) {
+    if (visao === 'dia') setDataRef(addDays(startOfDay(dataRef), delta));
+    else if (visao === 'mes') setDataRef(addMonths(dataRef, delta));
+    else setDataRef(addDays(weekStart, delta * 7));
+  }
+
+  // Clicar num dia do mês abre a visão diária daquele dia
+  function abrirDia(d: Date) {
+    setDataRef(new Date(d));
+    mudarVisao('dia');
+  }
 
   /**
    * Drag de um AgendaItem entre colunas (dias da semana).
@@ -186,35 +278,64 @@ export default function AgendaPage() {
     >
       <div className="bg-surface border border-border rounded-[10px] p-6">
         <div className="flex items-center justify-between mb-4 gap-2 flex-wrap">
+          {/* Switcher de visão: Dia | Semana | Mês */}
+          <div
+            role="group"
+            aria-label="Visão da agenda"
+            className="inline-flex rounded-md border border-border-strong overflow-hidden"
+          >
+            {VISOES.map((v) => (
+              <button
+                key={v.valor}
+                type="button"
+                data-testid={`agenda-visao-${v.valor}`}
+                aria-pressed={visao === v.valor}
+                onClick={() => mudarVisao(v.valor)}
+                className={`px-4 py-2 text-[13px] font-medium cursor-pointer tracking-[-0.1px] ${
+                  visao === v.valor
+                    ? 'bg-primary text-primary-contrast font-semibold'
+                    : 'bg-surface text-text'
+                }`}
+              >
+                {v.label}
+              </button>
+            ))}
+          </div>
           <div className="flex gap-1">
             <button
               type="button"
-              data-testid="agenda-prev-week"
-              onClick={() => setWeekStart(addDays(weekStart, -7))}
+              data-testid={visao === 'semana' ? 'agenda-prev-week' : `agenda-${visao}-prev`}
+              onClick={() => navegar(-1)}
               className="bg-surface text-text border border-border-strong rounded-md px-4 py-2 text-[13px] font-medium cursor-pointer tracking-[-0.1px]"
             >
-              ‹ Semana anterior
+              {visao === 'dia' ? '‹ Dia anterior' : visao === 'mes' ? '‹ Mês anterior' : '‹ Semana anterior'}
             </button>
             <button
               type="button"
               data-testid="agenda-today"
-              onClick={() => setWeekStart(startOfWeek(new Date()))}
+              onClick={() => setDataRef(new Date())}
               className="bg-surface text-text border border-border-strong rounded-md px-4 py-2 text-[13px] font-medium cursor-pointer tracking-[-0.1px]"
             >
               Hoje
             </button>
             <button
               type="button"
-              data-testid="agenda-next-week"
-              onClick={() => setWeekStart(addDays(weekStart, 7))}
+              data-testid={visao === 'semana' ? 'agenda-next-week' : `agenda-${visao}-next`}
+              onClick={() => navegar(1)}
               className="bg-surface text-text border border-border-strong rounded-md px-4 py-2 text-[13px] font-medium cursor-pointer tracking-[-0.1px]"
             >
-              Próxima semana ›
+              {visao === 'dia' ? 'Próximo dia ›' : visao === 'mes' ? 'Próximo mês ›' : 'Próxima semana ›'}
             </button>
           </div>
-          <div className="text-[13px] text-muted">
-            Semana de {weekStart.toLocaleDateString('pt-BR')} a{' '}
-            {addDays(weekStart, 6).toLocaleDateString('pt-BR')}
+          <div className="text-[13px] text-muted" data-testid="agenda-range-label">
+            {visao === 'dia' && fmtDiaCompleto(dataRef)}
+            {visao === 'semana' && (
+              <>
+                Semana de {weekStart.toLocaleDateString('pt-BR')} a{' '}
+                {addDays(weekStart, 6).toLocaleDateString('pt-BR')}
+              </>
+            )}
+            {visao === 'mes' && fmtMesAno(dataRef)}
           </div>
           <Select
             data-testid="agenda-filter-tipo"
@@ -232,26 +353,49 @@ export default function AgendaPage() {
         </div>
 
         <StateView loading={loading} error={error} onRetry={refetch}>
-          <DndContext sensors={sensors} onDragEnd={(e) => void handleDragEnd(e)}>
-            {/* Mobile: dias empilhados (1 coluna, lista vertical) — a grade de 7×140px
-                não cabe em 360px. Desktop (md:): grade semanal com scroll horizontal. */}
-            <div className="grid grid-cols-1 gap-2 md:grid-cols-[repeat(7,minmax(140px,1fr))] md:overflow-x-auto">
-              {days.map((d) => (
-                <DayColumn
-                  key={d.toDateString()}
-                  day={d}
-                  isToday={sameDay(d, today)}
-                  items={itemsByDay.get(d.toDateString()) ?? []}
-                  onNew={() => {
-                    const at = new Date(d);
-                    at.setHours(9, 0, 0, 0);
-                    setCreating(at);
-                  }}
-                  onItemClick={setEditing}
-                />
-              ))}
-            </div>
-          </DndContext>
+          {visao === 'semana' && (
+            <DndContext sensors={sensors} onDragEnd={(e) => void handleDragEnd(e)}>
+              {/* Mobile: dias empilhados (1 coluna, lista vertical) — a grade de 7×140px
+                  não cabe em 360px. Desktop (md:): grade semanal com scroll horizontal. */}
+              <div className="grid grid-cols-1 gap-2 md:grid-cols-[repeat(7,minmax(140px,1fr))] md:overflow-x-auto">
+                {days.map((d) => (
+                  <DayColumn
+                    key={keyDia(d)}
+                    day={d}
+                    isToday={sameDay(d, today)}
+                    items={itemsByDay.get(keyDia(d)) ?? []}
+                    onNew={() => {
+                      const at = new Date(d);
+                      at.setHours(9, 0, 0, 0);
+                      setCreating(at);
+                    }}
+                    onItemClick={setEditing}
+                  />
+                ))}
+              </div>
+            </DndContext>
+          )}
+          {visao === 'dia' && (
+            <VisaoDiaria
+              day={dataRef}
+              isToday={sameDay(dataRef, today)}
+              items={itemsByDay.get(keyDia(dataRef)) ?? []}
+              onNew={() => {
+                const at = new Date(dataRef);
+                at.setHours(9, 0, 0, 0);
+                setCreating(at);
+              }}
+              onItemClick={setEditing}
+            />
+          )}
+          {visao === 'mes' && (
+            <VisaoMensal
+              refDate={dataRef}
+              today={today}
+              itemsByDay={itemsByDay}
+              onDayClick={abrirDia}
+            />
+          )}
         </StateView>
       </div>
 
@@ -394,6 +538,198 @@ function DraggableItem({
         <div className="text-[11px] text-muted mt-0.5">{item.cliente.nome}</div>
       )}
     </button>
+  );
+}
+
+// ─── Visão diária ─────────────────────────────────────────────────────
+
+/**
+ * VisaoDiaria — lista/timeline vertical dos itens de UM dia, ordenados por
+ * hora. Rica o bastante pra operar o dia: horário + duração, tipo (ícone +
+ * cor), título, cliente vinculado e observação. Click no item = editar.
+ */
+function VisaoDiaria({
+  day,
+  isToday,
+  items,
+  onNew,
+  onItemClick,
+}: {
+  day: Date;
+  isToday: boolean;
+  items: AgendaItem[];
+  onNew: () => void;
+  onItemClick: (it: AgendaItem) => void;
+}) {
+  return (
+    <div
+      data-testid="agenda-visao-dia-lista"
+      className="border rounded-md p-3 max-w-[720px]"
+      style={{
+        background: isToday
+          ? 'color-mix(in srgb, var(--primary) 3%, transparent)'
+          : 'var(--bg-alt)',
+        borderColor: isToday ? 'var(--primary)' : 'var(--border)',
+      }}
+    >
+      <header
+        className="flex justify-between items-center mb-3 text-[13px] font-semibold"
+        style={{ color: isToday ? 'var(--primary)' : 'var(--text)' }}
+      >
+        <span>{fmtDiaCompleto(day)}</span>
+        <button
+          type="button"
+          data-testid="agenda-dia-add"
+          onClick={onNew}
+          className="bg-transparent border-none text-muted cursor-pointer text-lg leading-none p-0"
+          aria-label="Adicionar compromisso"
+          title="Adicionar compromisso"
+        >
+          +
+        </button>
+      </header>
+      {items.length === 0 && (
+        <div className="text-center py-8">
+          <p className="text-[13px] text-muted m-0 mb-3">Nenhum compromisso neste dia.</p>
+          <button
+            type="button"
+            onClick={onNew}
+            className="bg-surface text-text border border-border-strong rounded-md px-4 py-2 text-[13px] font-medium cursor-pointer tracking-[-0.1px]"
+          >
+            + Agendar às 09:00
+          </button>
+        </div>
+      )}
+      <ul className="list-none p-0 m-0 flex flex-col gap-2">
+        {items.map((it) => (
+          <li key={it.id}>
+            <button
+              type="button"
+              data-testid={`agenda-item-${it.id}`}
+              onClick={() => onItemClick(it)}
+              className="w-full text-left flex gap-3 items-start bg-surface border border-border rounded-md py-2.5 px-3 font-[inherit] text-text cursor-pointer"
+              style={{ borderLeft: `3px solid ${TIPO_COLOR[it.tipo]}` }}
+            >
+              {/* Coluna de horário */}
+              <div className="w-[52px] shrink-0">
+                <div className="text-[13px] font-semibold">{fmtTime(it.data)}</div>
+                <div className="text-[11px] text-muted">{it.duracao}min</div>
+              </div>
+              {/* Ícone do tipo */}
+              <span className="text-base leading-none pt-0.5" title={it.tipo} aria-label={it.tipo}>
+                {TIPO_ICON[it.tipo]}
+              </span>
+              <div className="min-w-0 flex-1">
+                <div className="text-[13px] font-medium flex items-center gap-1">
+                  <span className="truncate">{it.titulo}</span>
+                  {it.googleEventId && (
+                    <span title="Espelhado no Google Calendar" className="text-[10px] shrink-0">
+                      📅
+                    </span>
+                  )}
+                </div>
+                {it.cliente?.nome && (
+                  <div className="text-[12px] text-muted mt-0.5">{it.cliente.nome}</div>
+                )}
+                {it.observacao && (
+                  <div className="text-[12px] text-muted mt-0.5 line-clamp-2">{it.observacao}</div>
+                )}
+              </div>
+              <span className="text-[11px] text-muted shrink-0 pt-0.5">{it.tipo}</span>
+            </button>
+          </li>
+        ))}
+      </ul>
+    </div>
+  );
+}
+
+// ─── Visão mensal ─────────────────────────────────────────────────────
+
+/**
+ * VisaoMensal — grid calendário do mês (7 colunas dom–sáb, linhas conforme
+ * o mês). Cada célula: número do dia + até 3 ícones dos tipos + "+N".
+ * Dias fora do mês esmaecidos; hoje com destaque primary. Click = visão diária.
+ */
+function VisaoMensal({
+  refDate,
+  today,
+  itemsByDay,
+  onDayClick,
+}: {
+  refDate: Date;
+  today: Date;
+  itemsByDay: Map<string, AgendaItem[]>;
+  onDayClick: (d: Date) => void;
+}) {
+  const cels = useMemo(() => gridDoMes(refDate), [refDate]);
+  const mes = refDate.getMonth();
+  // Cabeçalho dom–sáb derivado da primeira linha do grid (sempre começa no domingo)
+  const cabecalho = cels
+    .slice(0, 7)
+    .map((d) => d.toLocaleDateString('pt-BR', { weekday: 'short' }));
+
+  return (
+    <div data-testid="agenda-visao-mes-grid">
+      <div className="grid grid-cols-7 gap-1 mb-1">
+        {cabecalho.map((nome) => (
+          <div key={nome} className="text-[11px] font-semibold text-muted text-center py-1">
+            {nome}
+          </div>
+        ))}
+      </div>
+      <div className="grid grid-cols-7 gap-1">
+        {cels.map((d) => {
+          const foraDoMes = d.getMonth() !== mes;
+          const isToday = sameDay(d, today);
+          const doDia = itemsByDay.get(keyDia(d)) ?? [];
+          return (
+            <button
+              key={keyDia(d)}
+              type="button"
+              data-testid={`agenda-mes-dia-${keyDia(d)}`}
+              onClick={() => onDayClick(d)}
+              title={
+                doDia.length > 0
+                  ? `${doDia.length} ${doDia.length === 1 ? 'compromisso' : 'compromissos'}`
+                  : undefined
+              }
+              className="min-h-[72px] border rounded-md p-1.5 text-left flex flex-col gap-1 cursor-pointer font-[inherit]"
+              style={{
+                background: isToday
+                  ? 'color-mix(in srgb, var(--primary) 9%, transparent)'
+                  : foraDoMes
+                    ? 'transparent'
+                    : 'var(--bg-alt)',
+                borderColor: isToday ? 'var(--primary)' : 'var(--border)',
+                opacity: foraDoMes ? 0.45 : 1,
+              }}
+            >
+              <span
+                className="text-[12px] font-semibold"
+                style={{ color: isToday ? 'var(--primary)' : 'var(--text)' }}
+              >
+                {d.getDate()}
+              </span>
+              {doDia.length > 0 && (
+                <span className="flex items-center gap-0.5 flex-wrap text-[12px] leading-none">
+                  {doDia.slice(0, 3).map((it) => (
+                    <span key={it.id} title={`${fmtTime(it.data)} · ${it.titulo}`} aria-label={it.tipo}>
+                      {TIPO_ICON[it.tipo]}
+                    </span>
+                  ))}
+                  {doDia.length > 3 && (
+                    <span className="text-[10px] text-muted font-semibold">
+                      +{doDia.length - 3}
+                    </span>
+                  )}
+                </span>
+              )}
+            </button>
+          );
+        })}
+      </div>
+    </div>
   );
 }
 
