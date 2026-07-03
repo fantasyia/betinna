@@ -374,6 +374,7 @@ model Usuario {
   repCatalogoItens          RepCatalogoItem[]
   respostasRapidas          RespostaRapida[]
   evolutionInstancias       EvolutionInstancia[]
+  permissoesOverride        UsuarioPermissao[]
 
   @@index([role])
   @@index([status])
@@ -404,6 +405,25 @@ model Permissao {
   acoes      String[] @default([])
 
   @@unique([role, modulo])
+}
+
+/// Override de permissão POR USUÁRIO (coarse ver/editar). Quando existe uma linha
+/// (usuarioId, modulo), ela SUBSTITUI a permissão do papel para aquele módulo;
+/// sem linha → vale a matriz do papel (Permissao). Usuário é criado sem overrides
+/// (herda o padrão do papel); ADMIN/DIRECTOR ajustam individualmente depois.
+model UsuarioPermissao {
+  id           String   @id @default(cuid())
+  usuarioId    String
+  modulo       String
+  podeVer      Boolean  @default(true)
+  podeEditar   Boolean  @default(false)
+  criadoEm     DateTime @default(now())
+  atualizadoEm DateTime @updatedAt
+
+  usuario Usuario @relation(fields: [usuarioId], references: [id], onDelete: Cascade)
+
+  @@unique([usuarioId, modulo])
+  @@index([usuarioId])
 }
 
 // ─── CLIENTES (CRM) ───────────────────────────────────────────────────

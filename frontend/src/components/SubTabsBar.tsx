@@ -1,8 +1,10 @@
-import type { ReactNode } from 'react';
+import { useSyncExternalStore, type ReactNode } from 'react';
 import { Link, useLocation } from 'react-router-dom';
 import { Star } from 'lucide-react';
 import { cn } from '@/lib/cn';
 import { useFavoritos, toggleFavorito } from '@/lib/favoritos';
+import { moduloDaRota, useRole } from '@/hooks/usePermission';
+import { getPermissoes, subscribePermissoes } from '@/lib/permissions-store';
 
 /**
  * SubTabsBar — barra de sub-abas reutilizável.
@@ -33,7 +35,7 @@ export interface SubTab {
 }
 
 export function SubTabsBar({
-  tabs,
+  tabs: tabsProp,
   ariaLabel = 'Sub-abas',
 }: {
   tabs: SubTab[];
@@ -41,6 +43,18 @@ export function SubTabsBar({
 }) {
   const location = useLocation();
   const favoritos = useFavoritos();
+  const role = useRole();
+  // Matriz VIVA do painel granular: sub-aba de módulo sem "Ver" some pra todo
+  // wrapper de uma vez (a rota da tab resolve o módulo via moduloDaRota).
+  const matriz = useSyncExternalStore(subscribePermissoes, getPermissoes, getPermissoes);
+  const tabs =
+    role === 'ADMIN' || !matriz
+      ? tabsProp
+      : tabsProp.filter((t) => {
+          const modulo = moduloDaRota(t.to);
+          if (!modulo) return true;
+          return matriz.get(modulo)?.ver ?? false;
+        });
 
   // Se só sobra 1 tab depois do filtro por permissão (ou nenhuma),
   // não renderiza nada — não faz sentido mostrar uma barra com 1 item só.

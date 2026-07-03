@@ -33,7 +33,13 @@ export class PermissionsGuard implements CanActivate {
     if (request.user.role === 'ADMIN') return true;
 
     for (const req of required) {
-      const allowed = await this.permissions.userCan(request.user.role, req.module, req.action);
+      // Efetiva = override individual (UsuarioPermissao) quando existe, senão papel.
+      const allowed = this.permissions.userCanFor(
+        request.user.id,
+        request.user.role,
+        req.module,
+        req.action,
+      );
       if (!allowed) {
         throw new ForbiddenException(
           `Permissão necessária: ${req.module}.${req.action}`,

@@ -8,22 +8,39 @@ import {
   type ModuleName,
 } from './permissions.constants';
 
+/** Linha coarse (ver/editar) usada pela UI de permissões. */
+export interface PermissaoRow {
+  modulo: ModuleName;
+  podeVer: boolean;
+  podeEditar: boolean;
+}
+
+/** Linha efetiva de um usuário: papel + override individual (se houver). */
+export interface PermissaoEfetivaRow extends PermissaoRow {
+  /** true quando existe override individual pra este módulo (não é o padrão do papel). */
+  override: boolean;
+}
+
 /**
  * Serviço de permissões granulares.
  *
- * - Carrega a matriz da tabela `Permissao` em memória ao subir (cache local O(1)).
+ * Duas camadas:
+ *  1. Papel (tabela `Permissao`) — matriz Role×Módulo×Ação, editada no painel.
+ *  2. Usuário (tabela `UsuarioPermissao`) — override individual coarse (ver/editar).
+ *     Linha presente pra (usuario, modulo) SUBSTITUI o papel naquele módulo.
+ *
+ * - Carrega ambas em memória ao subir (cache local O(1)).
  * - Recarrega na hora quando um admin altera permissões (upsert/applyDefaults).
  * - Sincroniza entre RÉPLICAS via refresh periódico: cada réplica tem seu cache
- *   local; sem isso, uma réplica que NÃO processou o upsert ficaria desatualizada
- *   para sempre (o cache não tinha TTL). O refresh relê a fonte da verdade (banco)
- *   e converge todas as réplicas em ≤REFRESH_MS. A réplica que escreve recarrega
- *   na hora; as outras pegam no próximo tick.
+ *   local; o refresh relê a fonte da verdade (banco) e converge em ≤REFRESH_MS.
  */
 @Injectable()
 export class PermissionsService implements OnModuleInit, OnModuleDestroy {
   private readonly logger = new Logger(PermissionsService.name);
-  /** Cache: `${role}:${module}:${action}` -> boolean */
+  /** Cache papel: `${role}:${module}:${action}` -> boolean */
   private cache: Map<string, boolean> = new Map();
+  /** Cache override por usuário: `${usuarioId}:${modulo}` -> { podeVer, podeEditar } */
+  private userCache: Map<string, { podeVer: boolean; podeEditar: boolean }> = new Map();
   /** Re-sync entre réplicas — relê o banco a cada intervalo (convergência). */
   private static readonly REFRESH_MS = 60_000;
   private refreshTimer: ReturnType<typeof setInterval> | null = null;
@@ -50,7 +67,10 @@ export class PermissionsService implements OnModuleInit, OnModuleDestroy {
   }
 
   async reloadCache(): Promise<void> {
-    const rows = await this.prisma.permissao.findMany();
+    const [rows, userRows] = await Promise.all([
+      this.prisma.permissao.findMany(),
+      this.prisma.usuarioPermissao.findMany(),
+    ]);
     this.cache.clear();
     for (const row of rows) {
       // Granular (`acoes` preenchido) é a fonte da verdade — não expande edit→delete/approve.
@@ -70,11 +90,35 @@ export class PermissionsService implements OnModuleInit, OnModuleDestroy {
         }
       }
     }
-    this.logger.log(`Cache de permissões carregado: ${this.cache.size} entradas`);
+    this.userCache.clear();
+    for (const row of userRows) {
+      this.userCache.set(`${row.usuarioId}:${row.modulo}`, {
+        podeVer: row.podeVer,
+        podeEditar: row.podeEditar,
+      });
+    }
+    this.logger.log(
+      `Cache de permissões carregado: ${this.cache.size} entradas (papéis) + ${this.userCache.size} overrides de usuário`,
+    );
   }
 
+  /** Permissão por PAPEL apenas (sem override individual). */
   userCan(role: UserRole, module: string, action: ActionName): boolean | Promise<boolean> {
     if (role === 'ADMIN') return true;
+    return this.cache.get(this.key(role, module as ModuleName, action)) ?? false;
+  }
+
+  /**
+   * Permissão EFETIVA de um usuário: override individual quando existir,
+   * senão a matriz do papel. É o que o PermissionsGuard usa.
+   */
+  userCanFor(usuarioId: string, role: UserRole, module: string, action: ActionName): boolean {
+    if (role === 'ADMIN') return true;
+    const override = this.userCache.get(`${usuarioId}:${module}`);
+    if (override) {
+      if (action === 'view') return override.podeVer;
+      return override.podeEditar;
+    }
     return this.cache.get(this.key(role, module as ModuleName, action)) ?? false;
   }
 
@@ -105,6 +149,43 @@ export class PermissionsService implements OnModuleInit, OnModuleDestroy {
   }
 
   /**
+   * Linhas coarse (ver/editar) de um papel — shape que a página de permissões
+   * consome direto ({ modulo, podeVer, podeEditar }[]).
+   */
+  async listForRoleRows(role: UserRole): Promise<PermissaoRow[]> {
+    const matrix = await this.listForRole(role);
+    return MODULES.map((m) => {
+      const actions = matrix[m] ?? [];
+      return {
+        modulo: m,
+        podeVer: actions.includes('view'),
+        podeEditar: actions.some((a) => a !== 'view'),
+      };
+    });
+  }
+
+  /**
+   * Permissões EFETIVAS de um usuário (papel + overrides), com flag de override
+   * por módulo. Usado pelo painel "por usuário" e pelo GET /permissions/me.
+   * ADMIN → tudo true (bypass).
+   */
+  async listEffectiveForUser(usuarioId: string, role: UserRole): Promise<PermissaoEfetivaRow[]> {
+    if (role === 'ADMIN') {
+      return MODULES.map((m) => ({ modulo: m, podeVer: true, podeEditar: true, override: false }));
+    }
+    const [base, overrides] = await Promise.all([
+      this.listForRoleRows(role),
+      this.prisma.usuarioPermissao.findMany({ where: { usuarioId } }),
+    ]);
+    const ovMap = new Map(overrides.map((o) => [o.modulo, o]));
+    return base.map((row) => {
+      const ov = ovMap.get(row.modulo);
+      if (!ov) return { ...row, override: false };
+      return { modulo: row.modulo, podeVer: ov.podeVer, podeEditar: ov.podeEditar, override: true };
+    });
+  }
+
+  /**
    * Atualiza/insere a permissão de um papel para um módulo.
    * Apenas Admin deve poder chamar (controle no controller).
    */
@@ -121,6 +202,27 @@ export class PermissionsService implements OnModuleInit, OnModuleDestroy {
       update: { podeVer, podeEditar, acoes: [] },
       create: { role, modulo, podeVer, podeEditar, acoes: [] },
     });
+    await this.reloadCache();
+  }
+
+  /** Cria/atualiza um override individual (usuario × módulo). */
+  async upsertUserOverride(
+    usuarioId: string,
+    modulo: string,
+    podeVer: boolean,
+    podeEditar: boolean,
+  ): Promise<void> {
+    await this.prisma.usuarioPermissao.upsert({
+      where: { usuarioId_modulo: { usuarioId, modulo } },
+      update: { podeVer, podeEditar },
+      create: { usuarioId, modulo, podeVer, podeEditar },
+    });
+    await this.reloadCache();
+  }
+
+  /** Remove o override individual — o módulo volta ao padrão do papel. */
+  async removeUserOverride(usuarioId: string, modulo: string): Promise<void> {
+    await this.prisma.usuarioPermissao.deleteMany({ where: { usuarioId, modulo } });
     await this.reloadCache();
   }
 

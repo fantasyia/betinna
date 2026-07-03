@@ -1,4 +1,4 @@
-import { useEffect, useState, type ReactNode } from 'react';
+import { useEffect, useState, useSyncExternalStore, type ReactNode } from 'react';
 import { Link, useLocation } from 'react-router-dom';
 import {
   LayoutDashboard,
@@ -19,7 +19,8 @@ import {
   type LucideIcon,
 } from 'lucide-react';
 import { clearSession } from '@/lib/auth-store';
-import { useRole, usePermission } from '@/hooks/usePermission';
+import { useRole, usePermission, type ModuloName } from '@/hooks/usePermission';
+import { getPermissoes, subscribePermissoes } from '@/lib/permissions-store';
 import { useEmpresaLogo } from '@/hooks/useEmpresaLogo';
 import { useBadges, type BadgeCounts } from '@/hooks/useBadges';
 import { NotificationBell } from '@/components/NotificationBell';
@@ -59,6 +60,8 @@ interface NavItem {
   label: string;
   icon: LucideIcon;
   permission?: Parameters<typeof usePermission>[0];
+  /** Módulo do painel granular que controla a visibilidade desta aba (matriz viva). */
+  modulo?: ModuloName;
   badge?: 'new' | 'beta';
   /** F5 — qual contador de novidade exibe o numerinho neste item. */
   badgeKey?: keyof BadgeCounts;
@@ -87,11 +90,13 @@ const SECTIONS: NavSection[] = [
         to: '/dashboard',
         label: 'Dashboard',
         icon: LayoutDashboard,
+        modulo: 'dashboard',
       },
       {
         to: '/pedidos',
         label: 'Vendas',
         icon: ShoppingCart,
+        modulo: 'pedidos',
         match: [
           '/aprovacoes',
           '/propostas',
@@ -107,17 +112,20 @@ const SECTIONS: NavSection[] = [
         to: '/leads',
         label: 'CRM',
         icon: Briefcase,
+        modulo: 'kanban',
         match: ['/clientes', '/funis', '/tags', '/segmentos', '/fluxos', '/campanhas'],
       },
       {
         to: '/agenda',
         label: 'Agenda',
         icon: CalendarDays,
+        modulo: 'agenda',
       },
       {
         to: '/inbox',
         label: 'Atendimento',
         icon: MessageSquare,
+        modulo: 'inbox',
         match: ['/ocorrencias', '/incidentes', '/whatsapp', '/mullerbot'],
         badgeKey: 'atendimento',
       },
@@ -125,6 +133,7 @@ const SECTIONS: NavSection[] = [
         to: '/produtos',
         label: 'Catálogo',
         icon: Package,
+        modulo: 'catalogo',
         match: ['/catalogo'],
       },
       {
@@ -137,6 +146,7 @@ const SECTIONS: NavSection[] = [
         label: 'Relatórios',
         icon: BarChart3,
         permission: 'relatorios.view',
+        modulo: 'relatorios',
       },
       {
         to: '/perfil',
@@ -289,8 +299,14 @@ function Sidebar({
     'campanhas.view': usePermission('campanhas.view'),
   } as const;
 
+  // Matriz VIVA do painel granular — aba some na hora quando o admin tira o "Ver".
+  const matriz = useSyncExternalStore(subscribePermissoes, getPermissoes, getPermissoes);
+
   function canSee(item: NavItem): boolean {
     if (item.permission && !perms[item.permission as keyof typeof perms]) return false;
+    if (item.modulo && role !== 'ADMIN' && matriz) {
+      return matriz.get(item.modulo)?.ver ?? false;
+    }
     return true;
   }
 
