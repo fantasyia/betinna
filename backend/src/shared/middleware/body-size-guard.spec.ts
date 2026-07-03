@@ -33,10 +33,11 @@ const makeReq = (path: string, contentLength?: number, contentType?: string): Re
   }) as unknown as Request;
 
 describe('limiteCorpoPara', () => {
-  it('uploads (inbox/import/conhecimento-documento) → 20MB', () => {
+  it('uploads (inbox/import/conhecimento-documento/fluxos-midia) → 20MB', () => {
     expect(limiteCorpoPara('/api/v1/inbox/123/responder-midia')).toBe(LIMITE_CORPO_GRANDE_BYTES);
     expect(limiteCorpoPara('/api/v1/import/clientes')).toBe(LIMITE_CORPO_GRANDE_BYTES);
     expect(limiteCorpoPara('/api/v1/conhecimento/documento')).toBe(LIMITE_CORPO_GRANDE_BYTES);
+    expect(limiteCorpoPara('/api/v1/fluxos/midia')).toBe(LIMITE_CORPO_GRANDE_BYTES);
   });
 
   it('outras rotas de /conhecimento (chunks/config) seguem no limite padrão', () => {

@@ -139,6 +139,17 @@ export default function KnowledgePage() {
     }
   }
 
+  // Liga/desliga se o bot considera este trecho (ativo) — direto no card, sem
+  // abrir o editor. Espelha o "Bot pode enviar" dos documentos.
+  async function alternarAtivo(c: KnowledgeChunk) {
+    try {
+      await api.patch(`/conhecimento/${c.id}`, { ativo: !c.ativo });
+      refetch();
+    } catch (err) {
+      toast.error('Falha ao atualizar', err instanceof ApiError ? err.message : undefined);
+    }
+  }
+
   async function excluirDoc(d: KnowledgeDocumento) {
     if (!window.confirm(`Apagar o documento "${d.titulo}" e seus trechos indexados?`)) return;
     try {
@@ -310,10 +321,18 @@ export default function KnowledgePage() {
                   {c.conteudo}
                 </p>
                 <div className="flex items-center justify-between mt-auto pt-1">
-                  <span className="text-[11px] text-muted">
-                    {c.categoria || '—'}
-                    {!c.ativo && ' · inativo'}
-                  </span>
+                  {podeEditar && !auto ? (
+                    <Switch
+                      checked={c.ativo}
+                      onChange={() => void alternarAtivo(c)}
+                      label={c.ativo ? 'Bot usa' : 'Bot ignora'}
+                    />
+                  ) : (
+                    <span className="text-[11px] text-muted">
+                      {c.categoria || '—'}
+                      {!c.ativo && ' · inativo'}
+                    </span>
+                  )}
                   {podeEditar && !auto && (
                     <div className="flex gap-1">
                       <Button
