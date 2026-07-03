@@ -32,7 +32,11 @@ export class KnowledgeService {
     params: ListKnowledgeDto,
   ): Promise<Paginated<KnowledgeChunk>> {
     const empresaId = this.requireEmpresa(user);
-    const where: Prisma.KnowledgeChunkWhereInput = { empresaId };
+    // Chunks derivados de um documento (documentoId != null) NÃO entram na lista
+    // plana — eles já são representados pelo card do Documento (que mostra a
+    // contagem "N trechos indexados") e poluiriam a UI com dezenas de cards.
+    // Seguem indexados e buscáveis pela IA normalmente (RAG lê o banco direto).
+    const where: Prisma.KnowledgeChunkWhereInput = { empresaId, documentoId: null };
     if (!params.incluirConfig) where.fonte = 'MANUAL';
     if (params.search) {
       where.OR = [

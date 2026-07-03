@@ -85,6 +85,25 @@ function toLocalIso(d: Date) {
 function sameDay(a: Date, b: Date) {
   return a.toDateString() === b.toDateString();
 }
+/**
+ * Horário sugerido pra um novo evento num dado dia: se for HOJE, a próxima hora
+ * cheia depois de agora (ex.: 13h42 → 14h00); senão, 09:00 (início do expediente).
+ * Depois das 23h de hoje, cai pro 09:00 pra não virar o dia.
+ */
+function sugestaoHorario(day: Date): Date {
+  const at = new Date(day);
+  const now = new Date();
+  if (sameDay(day, now) && now.getHours() < 23) {
+    at.setHours(now.getHours() + 1, 0, 0, 0);
+  } else {
+    at.setHours(9, 0, 0, 0);
+  }
+  return at;
+}
+/** Rótulo "HH:00" do horário sugerido (pro botão de novo evento). */
+function labelHorario(day: Date): string {
+  return `${String(sugestaoHorario(day).getHours()).padStart(2, '0')}:00`;
+}
 function startOfDay(d: Date): Date {
   const x = new Date(d);
   x.setHours(0, 0, 0, 0);
@@ -364,11 +383,7 @@ export default function AgendaPage() {
                     day={d}
                     isToday={sameDay(d, today)}
                     items={itemsByDay.get(keyDia(d)) ?? []}
-                    onNew={() => {
-                      const at = new Date(d);
-                      at.setHours(9, 0, 0, 0);
-                      setCreating(at);
-                    }}
+                    onNew={() => setCreating(sugestaoHorario(d))}
                     onItemClick={setEditing}
                   />
                 ))}
@@ -380,11 +395,7 @@ export default function AgendaPage() {
               day={dataRef}
               isToday={sameDay(dataRef, today)}
               items={itemsByDay.get(keyDia(dataRef)) ?? []}
-              onNew={() => {
-                const at = new Date(dataRef);
-                at.setHours(9, 0, 0, 0);
-                setCreating(at);
-              }}
+              onNew={() => setCreating(sugestaoHorario(dataRef))}
               onItemClick={setEditing}
             />
           )}
@@ -596,7 +607,7 @@ function VisaoDiaria({
             onClick={onNew}
             className="bg-surface text-text border border-border-strong rounded-md px-4 py-2 text-[13px] font-medium cursor-pointer tracking-[-0.1px]"
           >
-            + Agendar às 09:00
+            + Agendar às {labelHorario(day)}
           </button>
         </div>
       )}
