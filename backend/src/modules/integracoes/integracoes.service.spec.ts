@@ -35,6 +35,9 @@ const makePrismaMock = () => ({
     update: vi.fn(),
     updateMany: vi.fn(),
   } satisfies MockModel,
+  integracaoStatus: {
+    findUnique: vi.fn().mockResolvedValue(null),
+  } satisfies MockModel,
 });
 
 const makeEnv = () => ({
@@ -78,18 +81,34 @@ describe('IntegracoesService', () => {
   let prisma: ReturnType<typeof makePrismaMock>;
   let env: ReturnType<typeof makeEnv>;
   let service: IntegracoesService;
+  let statusMock: {
+    registrarSucesso: ReturnType<typeof vi.fn>;
+    registrarErro: ReturnType<typeof vi.fn>;
+    marcarDesconectado: ReturnType<typeof vi.fn>;
+    listar: ReturnType<typeof vi.fn>;
+  };
+  let resendMock: { isConfigured: ReturnType<typeof vi.fn>; enviar: ReturnType<typeof vi.fn> };
 
   beforeEach(() => {
     prisma = makePrismaMock();
     env = makeEnv();
     // Mock do semáforo de status (Sprint 2.1) — não é foco deste spec.
-    const statusMock = {
+    statusMock = {
       registrarSucesso: vi.fn().mockResolvedValue(undefined),
       registrarErro: vi.fn().mockResolvedValue(undefined),
       marcarDesconectado: vi.fn().mockResolvedValue(undefined),
       listar: vi.fn().mockResolvedValue([]),
     };
-    service = new IntegracoesService(prisma as never, env as never, statusMock as never);
+    resendMock = {
+      isConfigured: vi.fn().mockReturnValue(true),
+      enviar: vi.fn().mockResolvedValue({ id: 're_1', status: 200 }),
+    };
+    service = new IntegracoesService(
+      prisma as never,
+      env as never,
+      statusMock as never,
+      resendMock as never,
+    );
   });
 
   // -------------------------------------------------------------------------
@@ -500,6 +519,63 @@ describe('IntegracoesService', () => {
       const args = prisma.integracaoConexao.findMany.mock.calls[0][0];
       expect(args.where.servico).toBe('omie');
       expect(args.where.ativo).toBe(true);
+    });
+  });
+
+  // -------------------------------------------------------------------------
+  // e-mail transacional (Resend) — gestão pela UI
+  // -------------------------------------------------------------------------
+  describe('emailStatus', () => {
+    it('configurado: mascara o remetente e reporta ATIVA', async () => {
+      resendMock.isConfigured.mockReturnValue(true);
+      env.get.mockImplementation((k: string) =>
+        k === 'RESEND_FROM_EMAIL'
+          ? 'contato@somatec.com.br'
+          : k === 'ENCRYPTION_KEY'
+            ? 'a'.repeat(64)
+            : '',
+      );
+
+      const r = await service.emailStatus(fakeUser());
+
+      expect(r.configurado).toBe(true);
+      expect(r.fromEmail).toBe('co*****@somatec.com.br'); // 'contato' (7) → co + 5 estrelas
+      expect(r.status).toBe('ATIVA');
+    });
+
+    it('não configurado → DESCONECTADA e fromEmail null', async () => {
+      resendMock.isConfigured.mockReturnValue(false);
+      const r = await service.emailStatus(fakeUser());
+      expect(r.configurado).toBe(false);
+      expect(r.fromEmail).toBeNull();
+      expect(r.status).toBe('DESCONECTADA');
+    });
+  });
+
+  describe('enviarEmailTeste', () => {
+    it('envia pro próprio usuário e registra sucesso', async () => {
+      resendMock.isConfigured.mockReturnValue(true);
+      const r = await service.enviarEmailTeste(fakeUser(), 123);
+      expect(r).toEqual({ ok: true, para: 'admin@betinna.ai' });
+      expect(resendMock.enviar).toHaveBeenCalledWith(
+        expect.objectContaining({ para: 'admin@betinna.ai' }),
+      );
+      expect(statusMock.registrarSucesso).toHaveBeenCalledWith('emp-1', 'email');
+    });
+
+    it('lança quando Resend não está configurado', async () => {
+      resendMock.isConfigured.mockReturnValue(false);
+      await expect(service.enviarEmailTeste(fakeUser(), 123)).rejects.toBeInstanceOf(
+        BusinessRuleException,
+      );
+      expect(resendMock.enviar).not.toHaveBeenCalled();
+    });
+
+    it('falha no envio registra erro e propaga', async () => {
+      resendMock.isConfigured.mockReturnValue(true);
+      resendMock.enviar.mockRejectedValue(new Error('resend 401'));
+      await expect(service.enviarEmailTeste(fakeUser(), 123)).rejects.toThrow('resend 401');
+      expect(statusMock.registrarErro).toHaveBeenCalledWith('emp-1', 'email', 'resend 401');
     });
   });
 });
