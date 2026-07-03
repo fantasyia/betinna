@@ -20,6 +20,7 @@ import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
 import { Audit } from '@shared/decorators/audit.decorator';
 import { CurrentUser } from '@shared/decorators/current-user.decorator';
 import { Roles } from '@shared/decorators/roles.decorator';
+import { RequirePermissions } from '@shared/decorators/permissions.decorator';
 import { ZodValidationPipe } from '@shared/pipes/zod-validation.pipe';
 import type { AuthenticatedUser } from '@shared/types/authenticated-user';
 import {
@@ -76,6 +77,12 @@ import { BusinessRuleException, NotFoundException } from '@shared/errors/app-exc
 @ApiTags('inbox')
 @ApiBearerAuth()
 @Roles('ADMIN', 'DIRECTOR', 'GERENTE', 'SAC', 'REP')
+// P0 — gate server-side de permissão: tirar "Ver" do Inbox de um usuário no
+// painel passa a bloquear TODAS as rotas do Inbox na API (antes só sumia do
+// menu, mas a API respondia a quem chamasse direto). getAllAndOverride faz o
+// `view` da classe valer em toda rota que não sobrescreve a permissão.
+// (Dados já eram isolados por baseWhere/proprietarioId; isto impõe o toggle.)
+@RequirePermissions({ module: 'inbox', action: 'view' })
 @Controller('inbox')
 export class InboxController {
   constructor(

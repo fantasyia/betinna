@@ -182,6 +182,39 @@ describe('LeadsService', () => {
       const data = prisma.lead.create.mock.calls[0][0].data;
       expect(data.representanteId).toBe('rep-1');
     });
+
+    it('P0: create com funilId de outra empresa é rejeitado', async () => {
+      prisma.usuario.findFirst.mockResolvedValue({ id: 'rep-1' });
+      prisma.funil.findFirst.mockResolvedValue(null); // funil não pertence à empresa
+      await expect(
+        svc.create(fakeUser(), {
+          nome: 'Padaria X',
+          valorEstimado: 0,
+          canalOrigem: 'WHATSAPP',
+          etapa: 'NOVO',
+          score: 0,
+          funilId: 'funil-de-outro-tenant',
+        }),
+      ).rejects.toBeInstanceOf(BusinessRuleException);
+      expect(prisma.lead.create).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('update — coerência funil/etapa (P0)', () => {
+    it('rejeita etapa que não pertence ao funil informado', async () => {
+      prisma.lead.findFirst.mockResolvedValue({
+        id: 'l1',
+        empresaId: 'emp-1',
+        representanteId: 'rep-1',
+        etapa: 'NOVO',
+      });
+      // Etapa existe na empresa, mas é do funil-B (≠ funil-A informado no DTO).
+      prisma.funilEtapa.findFirst.mockResolvedValue({ id: 'etapaX', funilId: 'funil-B' });
+      await expect(
+        svc.update(fakeUser(), 'l1', { funilId: 'funil-A', funilEtapaId: 'etapaX' }),
+      ).rejects.toBeInstanceOf(BusinessRuleException);
+      expect(prisma.lead.updateMany).not.toHaveBeenCalled();
+    });
   });
 
   describe('máquina de estados', () => {

@@ -380,9 +380,17 @@ export class LeadsService {
     if (dto.funilEtapaId) {
       const et = await this.prisma.funilEtapa.findFirst({
         where: { id: dto.funilEtapaId, funil: { empresaId: existing.empresaId } },
-        select: { id: true },
+        select: { id: true, funilId: true },
       });
       if (!et) throw new BusinessRuleException('Etapa de destino inválida');
+      // COERÊNCIA (P0): se o funil também veio no DTO, a etapa TEM que ser dele —
+      // senão o lead fica com funilId de um funil e etapa de outro → some do kanban.
+      if (dto.funilId && et.funilId !== dto.funilId) {
+        throw new BusinessRuleException('A etapa informada não pertence ao funil informado');
+      }
+      // Etapa sem funil explícito: o funilId do lead acompanha a etapa (evita
+      // deixar um funilId antigo incoerente com a nova etapa).
+      if (!dto.funilId) dto.funilId = et.funilId;
     }
     if (dto.funilId) {
       const f = await this.prisma.funil.findFirst({
@@ -577,8 +585,19 @@ export class LeadsService {
       return { funilId: etapa.funilId, funilEtapaId: etapa.id };
     }
 
-    let funilId: string | null = funilIdInput ?? null;
-    if (!funilId) {
+    let funilId: string | null = null;
+    if (funilIdInput) {
+      // SEGURANÇA (P0): valida que o funil informado é DESTA empresa. Sem isso, o
+      // create (inclusive a captura pública /public/leads, que aceita funilId no
+      // payload) criava lead apontando pro funil de OUTRO tenant → lead sumia do
+      // kanban. Espelha a validação do caminho de funilEtapaId acima.
+      const f = await this.prisma.funil.findFirst({
+        where: { id: funilIdInput, empresaId },
+        select: { id: true },
+      });
+      if (!f) throw new BusinessRuleException('Funil inválido ou de outra empresa');
+      funilId = f.id;
+    } else {
       const padrao = await this.prisma.funil.findFirst({
         where: { empresaId, isPadrao: true, ativo: true },
         select: { id: true },
