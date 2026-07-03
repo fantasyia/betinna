@@ -33,9 +33,15 @@ const makeReq = (path: string, contentLength?: number, contentType?: string): Re
   }) as unknown as Request;
 
 describe('limiteCorpoPara', () => {
-  it('uploads (inbox/import) → 20MB', () => {
+  it('uploads (inbox/import/conhecimento-documento) → 20MB', () => {
     expect(limiteCorpoPara('/api/v1/inbox/123/responder-midia')).toBe(LIMITE_CORPO_GRANDE_BYTES);
     expect(limiteCorpoPara('/api/v1/import/clientes')).toBe(LIMITE_CORPO_GRANDE_BYTES);
+    expect(limiteCorpoPara('/api/v1/conhecimento/documento')).toBe(LIMITE_CORPO_GRANDE_BYTES);
+  });
+
+  it('outras rotas de /conhecimento (chunks/config) seguem no limite padrão', () => {
+    expect(limiteCorpoPara('/api/v1/conhecimento')).toBe(LIMITE_CORPO_PADRAO_BYTES);
+    expect(limiteCorpoPara('/api/v1/conhecimento/abc123')).toBe(LIMITE_CORPO_PADRAO_BYTES);
   });
 
   it('webhooks públicos → 1MB (superfície de DoS reduzida)', () => {

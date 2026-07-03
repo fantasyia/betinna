@@ -1,10 +1,15 @@
 import { Injectable } from '@nestjs/common';
+import { InjectQueue } from '@nestjs/bullmq';
+import type { Queue } from 'bullmq';
 import { PrismaService } from '@database/prisma.service';
 import { ForbiddenException } from '@shared/errors/app-exception';
 import { ErrorCode } from '@shared/errors/error-codes';
 import { getCallerEmpresaId } from '@shared/utils/auth-context';
 import type { AuthenticatedUser } from '@shared/types/authenticated-user';
 import { BotCustoService } from '@modules/mullerbot/bot-custo.service';
+import { CAMPANHA_ENVIO_QUEUE } from '@modules/campanhas/campanha-envio.types';
+import { DEAD_LETTER_QUEUE } from '@modules/dead-letter/dead-letter.types';
+import { FLUXO_QUEUE } from './fluxo-executor.types';
 
 export interface MonitorEtapa {
   id: string;
@@ -35,6 +40,31 @@ export interface MonitorResumo {
   custoOpenAi: Awaited<ReturnType<BotCustoService['statusCusto']>>;
 }
 
+export interface FilaCampanha {
+  id: string;
+  nome: string;
+  canal: string;
+  status: string;
+  pendentes: number;
+  enviados: number;
+  erros: number;
+}
+export interface FilaEnvios {
+  /** Campanhas com destinatários ainda PENDENTES (empresa ativa). */
+  campanhas: FilaCampanha[];
+  /** Totais de pendências por canal (empresa ativa). */
+  totais: { whatsappPendentes: number; emailPendentes: number };
+  /**
+   * Contadores das filas técnicas BullMQ — GLOBAIS da plataforma (não por
+   * empresa), por isso só preenchidos pra ADMIN. null pros demais papéis.
+   */
+  sistema: {
+    fluxo: { aguardando: number; agendados: number; executando: number; falhas: number };
+    campanhaEnvio: { aguardando: number; agendados: number; executando: number; falhas: number };
+    deadLetter: number;
+  } | null;
+}
+
 /**
  * MonitorService (orquestração Fase B) — painel de saúde do funil:
  * leads por etapa/funil, conversas de IA ativas, SLAs vencidos e execuções.
@@ -44,6 +74,9 @@ export class MonitorService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly custo: BotCustoService,
+    @InjectQueue(FLUXO_QUEUE) private readonly fluxoQueue: Queue,
+    @InjectQueue(CAMPANHA_ENVIO_QUEUE) private readonly campanhaQueue: Queue,
+    @InjectQueue(DEAD_LETTER_QUEUE) private readonly deadLetterQueue: Queue,
   ) {}
 
   private requireEmpresa(user: AuthenticatedUser): string {
@@ -149,5 +182,90 @@ export class MonitorService {
       disparosHoje,
       custoOpenAi,
     };
+  }
+
+  /**
+   * Fila de envios — quanto ainda falta disparar (campanhas e-mail/WhatsApp da
+   * empresa) + contadores das filas técnicas BullMQ (ADMIN only, são globais).
+   */
+  async filas(user: AuthenticatedUser): Promise<FilaEnvios> {
+    const empresaId = this.requireEmpresa(user);
+
+    // Campanhas "vivas" (podem ainda ter pendência) + contagem por status.
+    const campanhas = await this.prisma.campanha.findMany({
+      where: { empresaId, status: { in: ['AGENDADA', 'ENVIANDO', 'PAUSADA'] } },
+      orderBy: { criadoEm: 'desc' },
+      select: { id: true, nome: true, canal: true, status: true },
+      take: 50,
+    });
+
+    let porCampanha = new Map<string, Record<string, number>>();
+    if (campanhas.length > 0) {
+      const grp = await this.prisma.campanhaDestinatario.groupBy({
+        by: ['campanhaId', 'status'],
+        where: { campanhaId: { in: campanhas.map((c) => c.id) } },
+        _count: { _all: true },
+      });
+      porCampanha = grp.reduce((m, g) => {
+        const linha = m.get(g.campanhaId) ?? {};
+        linha[g.status] = g._count._all;
+        m.set(g.campanhaId, linha);
+        return m;
+      }, porCampanha);
+    }
+
+    const lista: FilaCampanha[] = campanhas.map((c) => {
+      const s = porCampanha.get(c.id) ?? {};
+      return {
+        id: c.id,
+        nome: c.nome,
+        canal: c.canal,
+        status: c.status,
+        pendentes: s['PENDENTE'] ?? 0,
+        enviados: (s['ENVIADO'] ?? 0) + (s['LIDO'] ?? 0),
+        erros: s['ERRO'] ?? 0,
+      };
+    });
+
+    // Totais por canal: WHATSAPP_EMAIL conta nos dois (dispara nos dois canais).
+    const totais = lista.reduce(
+      (t, c) => {
+        if (c.canal === 'WHATSAPP' || c.canal === 'WHATSAPP_EMAIL') {
+          t.whatsappPendentes += c.pendentes;
+        }
+        if (c.canal === 'EMAIL' || c.canal === 'WHATSAPP_EMAIL') {
+          t.emailPendentes += c.pendentes;
+        }
+        return t;
+      },
+      { whatsappPendentes: 0, emailPendentes: 0 },
+    );
+
+    // Filas técnicas: contadores globais da plataforma → só ADMIN vê.
+    let sistema: FilaEnvios['sistema'] = null;
+    if (user.role === 'ADMIN') {
+      const [fx, ce, dl] = await Promise.all([
+        this.fluxoQueue.getJobCounts('waiting', 'delayed', 'active', 'failed'),
+        this.campanhaQueue.getJobCounts('waiting', 'delayed', 'active', 'failed'),
+        this.deadLetterQueue.getJobCounts('waiting'),
+      ]);
+      sistema = {
+        fluxo: {
+          aguardando: fx.waiting ?? 0,
+          agendados: fx.delayed ?? 0,
+          executando: fx.active ?? 0,
+          falhas: fx.failed ?? 0,
+        },
+        campanhaEnvio: {
+          aguardando: ce.waiting ?? 0,
+          agendados: ce.delayed ?? 0,
+          executando: ce.active ?? 0,
+          falhas: ce.failed ?? 0,
+        },
+        deadLetter: dl.waiting ?? 0,
+      };
+    }
+
+    return { campanhas: lista.filter((c) => c.pendentes > 0 || c.erros > 0), totais, sistema };
   }
 }
