@@ -4,6 +4,7 @@ import { useApiQuery } from '@/hooks/useApiQuery';
 import { useRole } from '@/hooks/usePermission';
 import { PageLayout } from '@/components/PageLayout';
 import { SistemaTabs } from '@/components/SistemaTabs';
+import { LeadCaptureCard } from '@/components/LeadCaptureCard';
 import { StateView } from '@/components/StateView';
 import { Dialog } from '@/components/ui';
 import { FormField, Input } from '@/components/FormField';
@@ -273,6 +274,11 @@ export default function IntegracoesPage() {
               }}
             />
           ))}
+        </div>
+
+        {/* Captura de leads do site (chave de API pública por tenant) */}
+        <div className="mt-4">
+          <LeadCaptureCard />
         </div>
       </StateView>
 

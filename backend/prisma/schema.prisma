@@ -297,6 +297,7 @@ model Empresa {
   botPrompts            BotPrompt[]
   variaveisCustomizadas VariavelCustomizada[]
   webhooksEntrada       WebhookEntrada[]
+  leadCaptureChave      LeadCaptureChave?
   formularios           Formulario[]
   pesquisasNPS          PesquisaNPS[]
   metas                 Meta[]
@@ -2400,6 +2401,23 @@ model VariavelCustomizada {
 
 /// Webhook de ENTRADA por empresa (Fase C — spec §2.6). Um POST no endpoint
 /// público com o token dispara o gatilho WEBHOOK_RECEBIDO.
+/// Chave de API pública pra CAPTURA DE LEADS (formulários do site do tenant).
+/// 1 chave por empresa; rotacionar = regenerar (hash novo). A chave em claro
+/// (`blc_<hex>`) é mostrada UMA vez — só o SHA-256 fica no banco.
+model LeadCaptureChave {
+  id          String    @id @default(cuid())
+  empresaId   String    @unique
+  /// SHA-256 hex da chave apresentada no header x-api-key.
+  chaveHash   String    @unique
+  /// Prefixo público (ex: "blc_a1b2c3d4…") pra exibição no painel.
+  prefixo     String
+  ativo       Boolean   @default(true)
+  criadoEm    DateTime  @default(now())
+  ultimoUsoEm DateTime?
+
+  empresa Empresa @relation(fields: [empresaId], references: [id], onDelete: Cascade)
+}
+
 model WebhookEntrada {
   id        String   @id @default(cuid())
   empresaId String
