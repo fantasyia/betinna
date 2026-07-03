@@ -1,5 +1,6 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { EnvService } from '@config/env.service';
+import { PrismaService } from '@database/prisma.service';
 import { ResendService } from '@integrations/resend/resend.service';
 import {
   templateAmostraFollowup,
@@ -28,7 +29,34 @@ export class TransactionalEmailService {
   constructor(
     private readonly resend: ResendService,
     private readonly env: EnvService,
+    private readonly prisma: PrismaService,
   ) {}
+
+  /**
+   * Remetente por-tenant (Empresa.config.emailTransacional): { fromNome, replyTo }.
+   * Best-effort — sem empresaId ou sem config, cai no default do env ('Betinna.ai').
+   * Falha de leitura NUNCA bloqueia o envio.
+   */
+  private async resolverRemetente(
+    empresaId?: string,
+  ): Promise<{ fromNome?: string; replyTo?: string }> {
+    if (!empresaId) return {};
+    try {
+      const empresa = await this.prisma.empresa.findUnique({
+        where: { id: empresaId },
+        select: { config: true },
+      });
+      const cfg = (empresa?.config as { emailTransacional?: unknown } | null)?.emailTransacional as
+        | { fromNome?: string; replyTo?: string }
+        | undefined;
+      return {
+        fromNome: cfg?.fromNome?.trim() || undefined,
+        replyTo: cfg?.replyTo?.trim() || undefined,
+      };
+    } catch {
+      return {};
+    }
+  }
 
   /** Resolve URL pública do frontend pra deep-links. */
   private frontendUrl(): string {
@@ -50,6 +78,7 @@ export class TransactionalEmailService {
     html: string,
     attachments?: Array<{ filename: string; content: string }>,
     idempotencyKey?: string,
+    empresaId?: string,
   ): Promise<{ ok: boolean; motivo?: string; id?: string | null }> {
     // Resend é o ÚNICO provedor transacional do sistema (SendGrid removido).
     const ctx = `para=${para} assunto="${assunto.slice(0, 60)}"`;
@@ -61,8 +90,19 @@ export class TransactionalEmailService {
       return { ok: false, motivo };
     }
 
+    // Remetente por-tenant (fromNome/replyTo) quando há empresaId; senão env default.
+    const remetente = await this.resolverRemetente(empresaId);
+
     try {
-      const r = await this.resend.enviar({ para, assunto, html, attachments, idempotencyKey });
+      const r = await this.resend.enviar({
+        para,
+        assunto,
+        html,
+        attachments,
+        idempotencyKey,
+        fromNome: remetente.fromNome,
+        replyTo: remetente.replyTo,
+      });
       const ok = r.status >= 200 && r.status < 300;
       if (!ok) {
         const motivo = `provedor retornou HTTP ${r.status}`;
@@ -89,8 +129,17 @@ export class TransactionalEmailService {
     assunto: string;
     html: string;
     idempotencyKey?: string;
+    /** Quando informado, usa o remetente por-tenant (Empresa.config.emailTransacional). */
+    empresaId?: string;
   }) {
-    return this.send(params.para, params.assunto, params.html, undefined, params.idempotencyKey);
+    return this.send(
+      params.para,
+      params.assunto,
+      params.html,
+      undefined,
+      params.idempotencyKey,
+      params.empresaId,
+    );
   }
 
   /** E-mail com anexo (ex: PDF de proposta em base64). */

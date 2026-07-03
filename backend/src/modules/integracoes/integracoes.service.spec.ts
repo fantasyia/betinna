@@ -38,6 +38,9 @@ const makePrismaMock = () => ({
   integracaoStatus: {
     findUnique: vi.fn().mockResolvedValue(null),
   } satisfies MockModel,
+  empresa: {
+    findUnique: vi.fn().mockResolvedValue({ config: null }),
+  } satisfies MockModel,
 });
 
 const makeEnv = () => ({

@@ -85,23 +85,35 @@ export class IntegracoesService {
     status: string;
     ultimoErro: string | null;
     ultimoErroEm: Date | null;
+    /** Override por-tenant salvo em Empresa.config (o que a UI edita). */
+    override: { fromNome: string | null; replyTo: string | null };
   }> {
     const empresaId = this.requireEmpresa(user);
     const configurado = this.resend.isConfigured();
     const fromEmail = this.env.get('RESEND_FROM_EMAIL') || null;
-    const fromName = this.env.get('RESEND_FROM_NAME') || 'Betinna.ai';
-    const st = await this.prisma.integracaoStatus.findUnique({
-      where: { empresaId_servico: { empresaId, servico: 'email' } },
-    });
+    const fromNameEnv = this.env.get('RESEND_FROM_NAME') || 'Betinna.ai';
+    const [st, empresa] = await Promise.all([
+      this.prisma.integracaoStatus.findUnique({
+        where: { empresaId_servico: { empresaId, servico: 'email' } },
+      }),
+      this.prisma.empresa.findUnique({ where: { id: empresaId }, select: { config: true } }),
+    ]);
+    const override = (empresa?.config as { emailTransacional?: unknown } | null)
+      ?.emailTransacional as { fromNome?: string; replyTo?: string } | undefined;
     return {
       servico: 'email',
       configurado,
       fromEmail: fromEmail ? mascararEmail(fromEmail) : null,
-      fromName,
+      // Nome exibido = override do tenant, se houver; senão o do env.
+      fromName: override?.fromNome?.trim() || fromNameEnv,
       // Sem registro ainda: deriva do env (configurado = ATIVA, senão DESCONECTADA).
       status: st?.status ?? (configurado ? 'ATIVA' : 'DESCONECTADA'),
       ultimoErro: st?.ultimoErro ?? null,
       ultimoErroEm: st?.ultimoErroEm ?? null,
+      override: {
+        fromNome: override?.fromNome?.trim() || null,
+        replyTo: override?.replyTo?.trim() || null,
+      },
     };
   }
 
