@@ -19,6 +19,11 @@
 import { useSyncExternalStore } from 'react';
 import type { UserRole } from '@/types/auth';
 import { getSession, subscribe } from '@/lib/auth-store';
+import {
+  getPermissoes,
+  subscribePermissoes,
+  type ModuloPerm,
+} from '@/lib/permissions-store';
 
 /**
  * Catálogo central de permissões.
@@ -209,4 +214,100 @@ export function hasPermission(role: UserRole | null, permission: Permission): bo
 export function useRole(): UserRole | null {
   const session = useSyncExternalStore(subscribeAuth, getSnapshot, getSnapshot);
   return session?.user?.role ?? null;
+}
+
+// ─── Permissões DINÂMICAS por módulo (matriz viva do banco) ─────────────────
+//
+// Complementam a PERMISSION_MATRIX fixa acima: a fixa cobre ações finas de UI
+// (ex.: campanhas.manage); a dinâmica cobre VISIBILIDADE de módulo e obedece o
+// painel "Permissões granulares" + overrides por usuário, em tempo quase-real.
+
+/** Módulos do backend (permissions.constants.ts) — manter alinhado. */
+export type ModuloName =
+  | 'dashboard'
+  | 'kanban'
+  | 'clientes'
+  | 'pedidos'
+  | 'propostas'
+  | 'fluxos'
+  | 'campanhas'
+  | 'inbox'
+  | 'marketplace'
+  | 'ocorrencias'
+  | 'reps'
+  | 'catalogo'
+  | 'comissoes'
+  | 'amostras'
+  | 'metas'
+  | 'relatorios'
+  | 'config'
+  | 'aprovacoes'
+  | 'agenda'
+  | 'integracoes'
+  | 'audit_log';
+
+/**
+ * Mapa prefixo-de-rota → módulo. Usado pelo ProtectedRoute (deriva o módulo do
+ * pathname — sub-rotas herdam pelo prefixo) e pelo sidebar/sub-abas.
+ * Rotas de sistema (perfil, usuários, admin, notificações…) ficam FORA de
+ * propósito — são gated por role/permission fixa, não pelo painel granular.
+ */
+export const ROUTE_MODULO: ReadonlyArray<readonly [prefix: string, modulo: ModuloName]> = [
+  ['/dashboard', 'dashboard'],
+  ['/leads', 'kanban'],
+  ['/funis', 'kanban'],
+  ['/segmentos', 'kanban'],
+  ['/tags', 'kanban'],
+  ['/clientes', 'clientes'],
+  ['/contatos', 'clientes'],
+  ['/pedidos', 'pedidos'],
+  ['/devolucoes', 'pedidos'],
+  ['/propostas', 'propostas'],
+  ['/fluxos', 'fluxos'],
+  ['/campanhas', 'campanhas'],
+  ['/inbox', 'inbox'],
+  ['/respostas-rapidas', 'inbox'],
+  ['/ocorrencias', 'ocorrencias'],
+  ['/incidentes', 'ocorrencias'],
+  ['/produtos', 'catalogo'],
+  ['/catalogo', 'catalogo'],
+  ['/materiais', 'catalogo'],
+  ['/comissoes', 'comissoes'],
+  ['/amostras', 'amostras'],
+  ['/metas', 'metas'],
+  ['/relatorios', 'relatorios'],
+  ['/agenda', 'agenda'],
+  ['/aprovacoes', 'aprovacoes'],
+  ['/integracoes', 'integracoes'],
+  // '/whatsapp' fica FORA: tem gate fino próprio (whatsapp.empresa) que inclui
+  // SAC — mapear pra 'integracoes' (DIRECTOR-only por padrão) regrediria o SAC.
+] as const;
+
+/** Resolve o módulo de um pathname (ou null se rota sem módulo mapeado). */
+export function moduloDaRota(pathname: string): ModuloName | null {
+  // '/inbox-interna' não pode casar com o prefixo '/inbox' — exige fim ou '/'.
+  for (const [prefix, modulo] of ROUTE_MODULO) {
+    if (pathname === prefix || pathname.startsWith(prefix + '/')) return modulo;
+  }
+  return null;
+}
+
+function getPermSnapshot() {
+  return getPermissoes();
+}
+
+/**
+ * Permissão dinâmica do módulo pro usuário logado.
+ * Enquanto a matriz não carregou → fail-open (ver/editar true): o backend
+ * continua sendo o gate real e a UI não pisca durante o load.
+ * ADMIN sempre true (o backend já devolve tudo true, mas o curto-circuito
+ * protege contra matriz vazia).
+ */
+export function useModulo(modulo: ModuloName | null): ModuloPerm {
+  const matriz = useSyncExternalStore(subscribePermissoes, getPermSnapshot, getPermSnapshot);
+  const session = useSyncExternalStore(subscribeAuth, getSnapshot, getSnapshot);
+  if (!modulo) return { ver: true, editar: true };
+  if (session?.user?.role === 'ADMIN') return { ver: true, editar: true };
+  if (!matriz) return { ver: true, editar: true };
+  return matriz.get(modulo) ?? { ver: false, editar: false };
 }

@@ -13,6 +13,11 @@ const makePrismaMock = () => ({
     findMany: vi.fn(),
     upsert: vi.fn(),
   } satisfies MockModel,
+  usuarioPermissao: {
+    findMany: vi.fn().mockResolvedValue([]),
+    upsert: vi.fn(),
+    deleteMany: vi.fn(),
+  } satisfies MockModel,
 });
 
 const fakePerm = (overrides: Record<string, unknown> = {}) => ({
@@ -100,6 +105,148 @@ describe('PermissionsService', () => {
       // Antes, podeEditar=true expandia pra delete/approve — o granular barra isso.
       expect(service.userCan('REP', 'kanban', 'delete')).toBe(false);
       expect(service.userCan('REP', 'kanban', 'approve')).toBe(false);
+    });
+  });
+
+  // -------------------------------------------------------------------------
+  // userCanFor (override por usuário)
+  // -------------------------------------------------------------------------
+
+  describe('userCanFor', () => {
+    it('sem override → cai na matriz do papel', async () => {
+      prisma.permissao.findMany.mockResolvedValue([fakePerm({ podeVer: true })]);
+      await service.reloadCache();
+
+      expect(service.userCanFor('rep-1', 'REP', 'clientes', 'view')).toBe(true);
+      expect(service.userCanFor('rep-1', 'REP', 'clientes', 'edit')).toBe(false);
+    });
+
+    it('override NEGA módulo que o papel permite', async () => {
+      prisma.permissao.findMany.mockResolvedValue([fakePerm({ podeVer: true, podeEditar: true })]);
+      prisma.usuarioPermissao.findMany.mockResolvedValue([
+        { usuarioId: 'rep-1', modulo: 'clientes', podeVer: false, podeEditar: false },
+      ]);
+      await service.reloadCache();
+
+      expect(service.userCanFor('rep-1', 'REP', 'clientes', 'view')).toBe(false);
+      expect(service.userCanFor('rep-1', 'REP', 'clientes', 'edit')).toBe(false);
+      // Outro rep do MESMO papel continua com a permissão do papel
+      expect(service.userCanFor('rep-2', 'REP', 'clientes', 'view')).toBe(true);
+    });
+
+    it('override CONCEDE módulo que o papel nega', async () => {
+      prisma.permissao.findMany.mockResolvedValue([]); // papel sem nada
+      prisma.usuarioPermissao.findMany.mockResolvedValue([
+        { usuarioId: 'rep-1', modulo: 'relatorios', podeVer: true, podeEditar: false },
+      ]);
+      await service.reloadCache();
+
+      expect(service.userCanFor('rep-1', 'REP', 'relatorios', 'view')).toBe(true);
+      expect(service.userCanFor('rep-1', 'REP', 'relatorios', 'edit')).toBe(false);
+      expect(service.userCanFor('rep-2', 'REP', 'relatorios', 'view')).toBe(false);
+    });
+
+    it('ADMIN ignora overrides (bypass)', async () => {
+      prisma.usuarioPermissao.findMany.mockResolvedValue([
+        { usuarioId: 'adm-1', modulo: 'clientes', podeVer: false, podeEditar: false },
+      ]);
+      await service.reloadCache();
+
+      expect(service.userCanFor('adm-1', 'ADMIN', 'clientes', 'delete')).toBe(true);
+    });
+  });
+
+  // -------------------------------------------------------------------------
+  // listEffectiveForUser
+  // -------------------------------------------------------------------------
+
+  describe('listEffectiveForUser', () => {
+    it('mescla papel + override com flag override=true', async () => {
+      prisma.permissao.findMany.mockResolvedValue([
+        { role: 'REP', modulo: 'clientes', podeVer: true, podeEditar: true },
+        { role: 'REP', modulo: 'pedidos', podeVer: true, podeEditar: false },
+      ]);
+      prisma.usuarioPermissao.findMany.mockResolvedValue([
+        { usuarioId: 'rep-1', modulo: 'clientes', podeVer: false, podeEditar: false },
+      ]);
+
+      const rows = await service.listEffectiveForUser('rep-1', 'REP');
+      const clientes = rows.find((r) => r.modulo === 'clientes');
+      const pedidos = rows.find((r) => r.modulo === 'pedidos');
+
+      expect(clientes).toMatchObject({ podeVer: false, podeEditar: false, override: true });
+      expect(pedidos).toMatchObject({ podeVer: true, podeEditar: false, override: false });
+    });
+
+    it('ADMIN → tudo true sem override', async () => {
+      const rows = await service.listEffectiveForUser('adm-1', 'ADMIN');
+      expect(rows.every((r) => r.podeVer && r.podeEditar && !r.override)).toBe(true);
+    });
+  });
+
+  // -------------------------------------------------------------------------
+  // upsertUserOverride / removeUserOverride
+  // -------------------------------------------------------------------------
+
+  describe('overrides — escrita', () => {
+    it('upsertUserOverride grava e recarrega cache', async () => {
+      prisma.usuarioPermissao.upsert.mockResolvedValue({});
+      prisma.usuarioPermissao.findMany.mockResolvedValue([
+        { usuarioId: 'rep-1', modulo: 'catalogo', podeVer: true, podeEditar: true },
+      ]);
+
+      await service.upsertUserOverride('rep-1', 'catalogo', true, true);
+
+      expect(prisma.usuarioPermissao.upsert).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: { usuarioId_modulo: { usuarioId: 'rep-1', modulo: 'catalogo' } },
+        }),
+      );
+      expect(service.userCanFor('rep-1', 'REP', 'catalogo', 'edit')).toBe(true);
+    });
+
+    it('removeUserOverride apaga e volta ao padrão do papel', async () => {
+      prisma.usuarioPermissao.deleteMany.mockResolvedValue({ count: 1 });
+      prisma.permissao.findMany.mockResolvedValue([
+        fakePerm({ modulo: 'catalogo', podeVer: true }),
+      ]);
+      prisma.usuarioPermissao.findMany.mockResolvedValue([]);
+
+      await service.removeUserOverride('rep-1', 'catalogo');
+
+      expect(prisma.usuarioPermissao.deleteMany).toHaveBeenCalledWith({
+        where: { usuarioId: 'rep-1', modulo: 'catalogo' },
+      });
+      expect(service.userCanFor('rep-1', 'REP', 'catalogo', 'view')).toBe(true);
+    });
+  });
+
+  // -------------------------------------------------------------------------
+  // listForRoleRows
+  // -------------------------------------------------------------------------
+
+  describe('listForRoleRows', () => {
+    it('deriva podeVer/podeEditar das ações e cobre todos os módulos', async () => {
+      prisma.permissao.findMany.mockResolvedValue([
+        { role: 'REP', modulo: 'clientes', podeVer: true, podeEditar: false },
+        { role: 'REP', modulo: 'pedidos', podeVer: true, podeEditar: true },
+      ]);
+
+      const rows = await service.listForRoleRows('REP');
+
+      expect(rows.find((r) => r.modulo === 'clientes')).toMatchObject({
+        podeVer: true,
+        podeEditar: false,
+      });
+      expect(rows.find((r) => r.modulo === 'pedidos')).toMatchObject({
+        podeVer: true,
+        podeEditar: true,
+      });
+      // módulo não configurado aparece com tudo false
+      expect(rows.find((r) => r.modulo === 'relatorios')).toMatchObject({
+        podeVer: false,
+        podeEditar: false,
+      });
     });
   });
 

@@ -57,9 +57,9 @@ const makeLeadsMock = () => ({
   moverEtapa: vi.fn(),
 });
 
-/** PermissionsService mock — userCan default true (gate de delete liberado, salvo override). */
+/** PermissionsService mock — userCanFor default true (gate de delete liberado, salvo override). */
 const makePermissionsMock = () => ({
-  userCan: vi.fn(async () => true),
+  userCanFor: vi.fn(() => true),
 });
 
 const fakeUser = (overrides: Partial<AuthenticatedUser> = {}): AuthenticatedUser => ({
@@ -172,7 +172,7 @@ describe('ContatosService', () => {
       prisma.lead.findMany.mockResolvedValue([]);
       prisma.cliente.findMany.mockResolvedValue([{ id: 'c1' }]);
       prisma.conversation.findMany.mockResolvedValue([]);
-      permissions.userCan.mockResolvedValue(false); // sem permissão de delete
+      permissions.userCanFor.mockReturnValue(false); // sem permissão de delete
 
       await expect(
         svc.acaoMassa(gerente, {
@@ -183,7 +183,7 @@ describe('ContatosService', () => {
         }),
       ).rejects.toThrow(/permiss/i);
 
-      expect(permissions.userCan).toHaveBeenCalledWith('GERENTE', 'clientes', 'delete');
+      expect(permissions.userCanFor).toHaveBeenCalledWith('ger-1', 'GERENTE', 'clientes', 'delete');
       expect(prisma.cliente.deleteMany).not.toHaveBeenCalled();
     });
   });

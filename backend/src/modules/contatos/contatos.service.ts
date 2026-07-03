@@ -518,7 +518,8 @@ export class ContatosService {
         { aplica: conversaIds.length > 0, module: 'inbox', action: 'delete' },
       ];
       for (const g of gates) {
-        if (g.aplica && !(await this.permissions.userCan(user.role, g.module, g.action))) {
+        // userCanFor: respeita override individual (UsuarioPermissao) além do papel.
+        if (g.aplica && !this.permissions.userCanFor(user.id, user.role, g.module, g.action)) {
           throw new ForbiddenException(
             `Sem permissão para excluir: requer ${g.module}.${g.action}`,
             ErrorCode.INSUFFICIENT_PERMISSIONS,

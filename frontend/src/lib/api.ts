@@ -209,6 +209,10 @@ async function request<T>(path: string, opts: RequestOpts = {}, retryWithRefresh
 
   // 403 → frontend redireciona para /403
   if (response.status === 403) {
+    // Permissão pode ter sido revogada AGORA pelo admin — pede ao permissions-store
+    // pra revalidar a matriz viva (menu/rotas se ajustam sem F5). Evento evita
+    // import circular (permissions-store importa api).
+    window.dispatchEvent(new Event('betinna:perm-refresh'));
     const body = await safeJson(response);
     const errObj = (body?.error ?? {}) as Record<string, unknown>;
     throw new ApiError(
