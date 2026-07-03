@@ -237,12 +237,15 @@ export class InboxController {
   }
 
   @Delete(':id/mensagens')
-  @Roles('ADMIN', 'DIRECTOR')
+  // Gestão POR-atendimento (reset da thread) — a equipe de atendimento (SAC) e a
+  // gerência gerenciam os atendimentos do Inbox, então também zeram uma conversa.
+  // (O nuke em massa `whatsapp/limpar` segue ADMIN/DIRECTOR — não é por-atendimento.)
+  @Roles('ADMIN', 'DIRECTOR', 'GERENTE', 'SAC')
   @HttpCode(HttpStatus.OK)
   @Audit({ action: 'inbox_zerar_conversa', resource: 'conversation', resourceIdFrom: 'params.id' })
   @ApiOperation({
     summary:
-      'Zera a conversa: apaga as mensagens da thread (reseta a memória do bot). Mantém o contato. ADMIN/DIRECTOR.',
+      'Zera a conversa: apaga as mensagens da thread (reseta a memória do bot). Mantém o contato. ADMIN/DIRECTOR/GERENTE/SAC.',
   })
   limparConversa(@CurrentUser() user: AuthenticatedUser, @Param('id') id: string) {
     return this.svc.limparConversa(user, id);

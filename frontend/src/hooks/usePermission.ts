@@ -74,7 +74,7 @@ export type Permission =
   | 'aprovacoes.decide'     // ADMIN, DIRECTOR — aprovar/rejeitar descontos e cancelamentos
   | 'campanhas.manage'      // ADMIN, DIRECTOR, GERENTE — disparar/pausar/cancelar campanhas
   | 'comissoes.manage'      // ADMIN, DIRECTOR — fechar mês / marcar pago
-  | 'inbox.zerar';          // ADMIN, DIRECTOR — zerar conversa (reset bot)
+  | 'inbox.zerar';          // ADMIN, DIRECTOR, GERENTE, SAC — zerar conversa (reset bot)
 
 /**
  * Matriz role × permission.
@@ -163,12 +163,15 @@ const PERMISSION_MATRIX: Record<UserRole, ReadonlySet<Permission>> = {
     'funis.view',
     'segmentos.view',
     'integracoes.view',
+    'inbox.zerar',
   ]),
   SAC: new Set<Permission>([
     'clientes.view',
     'whatsapp.empresa',
     'relatorios.view',
     'incidentes.view',
+    // SAC gerencia os atendimentos do Inbox → pode zerar uma conversa (reset da thread).
+    'inbox.zerar',
   ]),
   REP: new Set<Permission>([
     'clientes.view',
