@@ -76,6 +76,15 @@ export class OmieMapper {
     const precoTabela = o.valor_unitario ?? 0;
 
     const now = new Date();
+    // OMIE nem sempre devolve `quantidade_estoque` em ListarProdutos. Campo AUSENTE
+    // (≠ zero real) NÃO deve sobrescrever o estoque local nem virar 0 — senão um
+    // produto com saldo é lido como "zerado" e dispara ESTOQUE_ZERADO falso. No
+    // UPDATE só tocamos o estoque quando o campo veio de fato. (Migração pro
+    // endpoint dedicado ListarPosEstoque fica pro plugue do OMIE real.)
+    const temEstoque = typeof o.quantidade_estoque === 'number';
+    const estoqueUpdate = temEstoque
+      ? { estoque: o.quantidade_estoque as number, estoqueAtualizadoEm: now }
+      : {};
     return {
       where: { empresaId_codigoOmie: { empresaId, codigoOmie } },
       create: {
@@ -100,8 +109,8 @@ export class OmieMapper {
         unidade: o.unidade || null,
         precoTabela,
         // precoFabrica NÃO é tocado no sync — preserva o custo já definido à mão.
-        estoque: o.quantidade_estoque ?? 0,
-        estoqueAtualizadoEm: now,
+        // estoque só quando o OMIE mandou o campo (senão preserva o valor local).
+        ...estoqueUpdate,
         ativo: o.inativo !== 'S',
       },
     };

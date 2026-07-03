@@ -103,12 +103,27 @@ describe('OmieMapper.produtoToPrismaUpsert', () => {
     expect(r!.create.ativo).toBe(false);
   });
 
-  it('estoque ausente vira 0', () => {
+  it('estoque presente: update grava estoque + estoqueAtualizadoEm', () => {
+    const r = OmieMapper.produtoToPrismaUpsert('emp-1', { ...baseProduto, quantidade_estoque: 42 });
+    expect(r!.update.estoque).toBe(42);
+    expect(r!.update).toHaveProperty('estoqueAtualizadoEm');
+  });
+
+  it('estoque AUSENTE: update NÃO toca estoque (preserva local, evita ESTOQUE_ZERADO falso)', () => {
     const r = OmieMapper.produtoToPrismaUpsert('emp-1', {
       ...baseProduto,
       quantidade_estoque: undefined,
     });
+    // update não inclui estoque → Prisma preserva o valor já gravado
+    expect(r!.update).not.toHaveProperty('estoque');
+    expect(r!.update).not.toHaveProperty('estoqueAtualizadoEm');
+    // create (produto novo, sem valor anterior) mantém 0 como default seguro
     expect(r!.create.estoque).toBe(0);
+  });
+
+  it('estoque ZERO real (campo presente = 0): update grava 0', () => {
+    const r = OmieMapper.produtoToPrismaUpsert('emp-1', { ...baseProduto, quantidade_estoque: 0 });
+    expect(r!.update.estoque).toBe(0);
   });
 
   it('upsert key combina empresaId + codigoOmie (multi-tenant)', () => {
