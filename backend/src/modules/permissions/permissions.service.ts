@@ -114,12 +114,19 @@ export class PermissionsService implements OnModuleInit, OnModuleDestroy {
    */
   userCanFor(usuarioId: string, role: UserRole, module: string, action: ActionName): boolean {
     if (role === 'ADMIN') return true;
+    const doPapel = this.cache.get(this.key(role, module as ModuleName, action)) ?? false;
     const override = this.userCache.get(`${usuarioId}:${module}`);
     if (override) {
+      // O override do usuário só controla DIRETAMENTE ver e editar (é o que a UI
+      // expõe). Ações críticas (create/delete/approve/export) NÃO são concedidas
+      // por um override de "editar" — isso seria escalonamento silencioso. O
+      // override só pode REMOVÊ-las (podeEditar=false); pra CONCEDER, o papel
+      // precisa já ter a ação (AND com a matriz do papel).
       if (action === 'view') return override.podeVer;
-      return override.podeEditar;
+      if (action === 'edit') return override.podeEditar;
+      return override.podeEditar && doPapel;
     }
-    return this.cache.get(this.key(role, module as ModuleName, action)) ?? false;
+    return doPapel;
   }
 
   /**

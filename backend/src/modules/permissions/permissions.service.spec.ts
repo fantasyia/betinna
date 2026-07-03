@@ -154,6 +154,41 @@ describe('PermissionsService', () => {
 
       expect(service.userCanFor('adm-1', 'ADMIN', 'clientes', 'delete')).toBe(true);
     });
+
+    it('P0: override "editar" concede edit/view mas NÃO escala pra delete/approve além do papel', async () => {
+      // Papel REP tem só view+edit em kanban (sem delete/approve).
+      prisma.permissao.findMany.mockResolvedValue([
+        fakePerm({ role: 'REP', modulo: 'kanban', acoes: ['view', 'edit'] }),
+      ]);
+      // Usuário recebe override de edição no kanban.
+      prisma.usuarioPermissao.findMany.mockResolvedValue([
+        { usuarioId: 'rep-1', modulo: 'kanban', podeVer: true, podeEditar: true },
+      ]);
+      await service.reloadCache();
+
+      // view/edit: o override controla direto
+      expect(service.userCanFor('rep-1', 'REP', 'kanban', 'view')).toBe(true);
+      expect(service.userCanFor('rep-1', 'REP', 'kanban', 'edit')).toBe(true);
+      // delete/approve: papel não tem → override de "editar" NÃO concede (sem escalonamento)
+      expect(service.userCanFor('rep-1', 'REP', 'kanban', 'delete')).toBe(false);
+      expect(service.userCanFor('rep-1', 'REP', 'kanban', 'approve')).toBe(false);
+    });
+
+    it('P0: override que REMOVE edição tira também as ações críticas', async () => {
+      // Papel REP tem delete no kanban, mas o override zera a edição do usuário.
+      prisma.permissao.findMany.mockResolvedValue([
+        fakePerm({ role: 'REP', modulo: 'kanban', acoes: ['view', 'edit', 'delete'] }),
+      ]);
+      prisma.usuarioPermissao.findMany.mockResolvedValue([
+        { usuarioId: 'rep-1', modulo: 'kanban', podeVer: true, podeEditar: false },
+      ]);
+      await service.reloadCache();
+
+      expect(service.userCanFor('rep-1', 'REP', 'kanban', 'view')).toBe(true);
+      expect(service.userCanFor('rep-1', 'REP', 'kanban', 'edit')).toBe(false);
+      // podeEditar=false → ação crítica também bloqueada (AND com o papel)
+      expect(service.userCanFor('rep-1', 'REP', 'kanban', 'delete')).toBe(false);
+    });
   });
 
   // -------------------------------------------------------------------------
