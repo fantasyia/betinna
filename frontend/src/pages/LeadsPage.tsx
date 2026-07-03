@@ -1032,7 +1032,7 @@ function LeadDetailDrawer({
           )}
         </section>
 
-        {/* Mover para OUTRO funil (backend já aceita funilId+funilEtapaId no PATCH) */}
+        {/* Mover para OUTRO funil (via PUT /etapa — dispara SLA + gatilho do funil destino) */}
         {!fechado && <MoverFunilSection lead={lead} onChanged={onChanged} busyOther={busy !== null} />}
 
         {/* F2 — Representante */}
@@ -1205,10 +1205,11 @@ function MoverFunilSection({
     setBusy(true);
     setError(null);
     try {
-      await api.patch(`/leads/${lead.id}`, {
-        funilId: funilDestino.id,
-        funilEtapaId: etapaDestinoId,
-      });
+      // Usa o PUT /etapa (moverEtapa) — NÃO o PATCH genérico: só ele grava
+      // etapaDesde, recalcula o SLA da etapa de destino e dispara o gatilho
+      // LEAD_ETAPA_MUDOU (o fluxo de entrada do funil de destino roda). O backend
+      // deriva o funilId da própria etapa, então basta o funilEtapaId.
+      await api.put(`/leads/${lead.id}/etapa`, { funilEtapaId: etapaDestinoId });
       const etapaNome = etapasDestino.find((e) => e.id === etapaDestinoId)?.nome ?? '';
       toast.success(`Movido pra ${funilDestino.nome}${etapaNome ? ` · ${etapaNome}` : ''}`);
       onChanged();
