@@ -32,6 +32,31 @@ interface AgendaItem {
   // v1.5.0 — recorrência
   recorrencia?: 'NENHUMA' | 'DIARIA' | 'SEMANAL' | 'QUINZENAL' | 'MENSAL' | 'ANUAL';
   parentId?: string | null;
+  /** Origem do item: 'google' = veio do Google Calendar (read-only, não editável). */
+  origem?: 'betinna' | 'google';
+  htmlLink?: string | null;
+  allDay?: boolean;
+}
+
+interface GoogleEventosResp {
+  conectado: boolean;
+  eventos: Array<{
+    id: string;
+    titulo: string;
+    inicio: string;
+    fim: string;
+    allDay: boolean;
+    htmlLink: string | null;
+  }>;
+}
+
+/** Ícone do item: eventos do Google usam o ícone do Google; os do Betinna, o do tipo. */
+function iconeDe(it: AgendaItem): string {
+  return it.origem === 'google' ? '📆' : TIPO_ICON[it.tipo];
+}
+/** Cor da borda: eventos do Google em ciano (marca); os do Betinna, a cor do tipo. */
+function corDe(it: AgendaItem): string {
+  return it.origem === 'google' ? 'var(--secondary)' : TIPO_COLOR[it.tipo];
 }
 
 interface ClienteOpt {
@@ -306,6 +331,15 @@ export default function AgendaPage() {
   const [creating, setCreating] = useState<Date | null>(null);
   const [editing, setEditing] = useState<AgendaItem | null>(null);
 
+  // Clique num item: Betinna abre o editor; Google (read-only) abre no Google.
+  function abrirItem(it: AgendaItem) {
+    if (it.origem === 'google') {
+      if (it.htmlLink) window.open(it.htmlLink, '_blank', 'noopener');
+      return;
+    }
+    setEditing(it);
+  }
+
   function mudarVisao(v: AgendaVisao) {
     setVisaoState(v);
     try {
@@ -322,7 +356,8 @@ export default function AgendaPage() {
   const days = Array.from({ length: 7 }, (_, i) => addDays(weekStart, i));
 
   // Range da busca por visão — mesmo endpoint /agenda, só muda inicio/fim
-  const listPath = useMemo(() => {
+  // Faixa de datas da visão atual (compartilhada pela lista Betinna e pelo overlay Google).
+  const range = useMemo(() => {
     let inicio: Date;
     let fim: Date;
     if (visao === 'dia') {
@@ -336,29 +371,70 @@ export default function AgendaPage() {
       inicio = startOfWeek(dataRef);
       fim = addDays(inicio, 7);
     }
-    const qs = new URLSearchParams({ inicio: inicio.toISOString(), fim: fim.toISOString() });
+    return { inicio, fim };
+  }, [visao, dataRef]);
+
+  const listPath = useMemo(() => {
+    const qs = new URLSearchParams({
+      inicio: range.inicio.toISOString(),
+      fim: range.fim.toISOString(),
+    });
     if (filtroTipo) qs.set('tipo', filtroTipo);
     return `/agenda?${qs.toString()}`;
-  }, [visao, dataRef, filtroTipo]);
+  }, [range, filtroTipo]);
+
+  // Overlay read-only dos eventos do PRÓPRIO Google Calendar (o que ele já tem lá).
+  const googlePath = useMemo(
+    () =>
+      `/agenda/google-eventos?inicio=${encodeURIComponent(range.inicio.toISOString())}&fim=${encodeURIComponent(range.fim.toISOString())}`,
+    [range],
+  );
 
   const { data: items, loading, error, refetch } = useApiQuery<AgendaItem[]>(listPath);
+  const { data: googleResp } = useApiQuery<GoogleEventosResp>(googlePath);
 
   const itemsByDay = useMemo(() => {
     const map = new Map<string, AgendaItem[]>();
+    const push = (it: AgendaItem) => {
+      const key = keyDia(new Date(it.data));
+      const arr = map.get(key) ?? [];
+      arr.push(it);
+      map.set(key, arr);
+    };
+    // Itens do Betinna + guarda quais já estão espelhados no Google (pra dedup).
+    const espelhados = new Set<string>();
     if (items) {
       for (const it of items) {
-        const key = keyDia(new Date(it.data));
-        const arr = map.get(key) ?? [];
-        arr.push(it);
-        map.set(key, arr);
-      }
-      // Ordena cada dia por hora
-      for (const arr of map.values()) {
-        arr.sort((a, b) => new Date(a.data).getTime() - new Date(b.data).getTime());
+        if (it.googleEventId) espelhados.add(it.googleEventId);
+        push({ ...it, origem: 'betinna' });
       }
     }
+    // Eventos do Google (só quando conectado e sem filtro de tipo ativo — eles não
+    // têm tipo). Pula os que já são item do Betinna espelhado (evita duplicar).
+    if (googleResp?.conectado && !filtroTipo) {
+      for (const ev of googleResp.eventos) {
+        if (espelhados.has(ev.id)) continue;
+        const dur = Math.max(
+          0,
+          Math.round((new Date(ev.fim).getTime() - new Date(ev.inicio).getTime()) / 60000),
+        );
+        push({
+          id: `g:${ev.id}`,
+          titulo: ev.titulo,
+          data: ev.inicio,
+          duracao: dur,
+          tipo: 'REUNIAO', // fallback só p/ tipos; ícone/cor vêm de origem='google'
+          origem: 'google',
+          htmlLink: ev.htmlLink,
+          allDay: ev.allDay,
+        });
+      }
+    }
+    for (const arr of map.values()) {
+      arr.sort((a, b) => new Date(a.data).getTime() - new Date(b.data).getTime());
+    }
     return map;
-  }, [items]);
+  }, [items, googleResp, filtroTipo]);
 
   const today = new Date();
 
@@ -522,7 +598,7 @@ export default function AgendaPage() {
                     isToday={sameDay(d, today)}
                     items={itemsByDay.get(keyDia(d)) ?? []}
                     onNew={() => setCreating(sugestaoHorario(d))}
-                    onItemClick={setEditing}
+                    onItemClick={abrirItem}
                   />
                 ))}
               </div>
@@ -534,7 +610,7 @@ export default function AgendaPage() {
               isToday={sameDay(dataRef, today)}
               items={itemsByDay.get(keyDia(dataRef)) ?? []}
               onNew={() => setCreating(sugestaoHorario(dataRef))}
-              onItemClick={setEditing}
+              onItemClick={abrirItem}
             />
           )}
           {visao === 'mes' && (
@@ -651,12 +727,15 @@ function DraggableItem({
   item: AgendaItem;
   onClick: () => void;
 }) {
+  const isGoogle = item.origem === 'google';
+  // Evento do Google é read-only → não arrasta (disabled) e o clique abre no Google.
   const { attributes, listeners, setNodeRef, transform, isDragging } = useDraggable({
     id: item.id,
+    disabled: isGoogle,
   });
   const style: React.CSSProperties = {
-    borderLeft: `3px solid ${TIPO_COLOR[item.tipo]}`,
-    cursor: isDragging ? 'grabbing' : 'grab',
+    borderLeft: `3px solid ${corDe(item)}`,
+    cursor: isGoogle ? 'pointer' : isDragging ? 'grabbing' : 'grab',
     transform: transform ? `translate3d(${transform.x}px, ${transform.y}px, 0)` : undefined,
     opacity: isDragging ? 0.5 : 1,
     zIndex: isDragging ? 100 : undefined,
@@ -674,12 +753,25 @@ function DraggableItem({
       {...attributes}
     >
       <div className="flex items-center gap-1">
-        <strong>{fmtTime(item.data)}</strong>
-        <span className="text-muted">· {item.duracao}min</span>
-        {item.googleEventId && (
-          <span title="Espelhado no Google Calendar" className="ml-auto text-[10px]">
-            📅
+        <strong>{isGoogle && item.allDay ? 'Dia todo' : fmtTime(item.data)}</strong>
+        {!(isGoogle && item.allDay) && <span className="text-muted">· {item.duracao}min</span>}
+        {isGoogle ? (
+          <span
+            title="Evento do seu Google Calendar (somente leitura)"
+            className="ml-auto text-[9px] font-bold uppercase tracking-wide px-1 py-0.5 rounded"
+            style={{
+              background: 'color-mix(in srgb, var(--secondary) 18%, transparent)',
+              color: 'var(--secondary-hover)',
+            }}
+          >
+            Google
           </span>
+        ) : (
+          item.googleEventId && (
+            <span title="Espelhado no Google Calendar" className="ml-auto text-[10px]">
+              📅
+            </span>
+          )
         )}
       </div>
       <div className="font-medium mt-0.5">{item.titulo}</div>
@@ -756,22 +848,31 @@ function VisaoDiaria({
               type="button"
               data-testid={`agenda-item-${it.id}`}
               onClick={() => onItemClick(it)}
+              title={it.origem === 'google' ? 'Evento do seu Google Calendar (abre no Google)' : undefined}
               className="w-full text-left flex gap-3 items-start bg-surface border border-border rounded-md py-2.5 px-3 font-[inherit] text-text cursor-pointer"
-              style={{ borderLeft: `3px solid ${TIPO_COLOR[it.tipo]}` }}
+              style={{ borderLeft: `3px solid ${corDe(it)}` }}
             >
               {/* Coluna de horário */}
               <div className="w-[52px] shrink-0">
-                <div className="text-[13px] font-semibold">{fmtTime(it.data)}</div>
-                <div className="text-[11px] text-muted">{it.duracao}min</div>
+                <div className="text-[13px] font-semibold">
+                  {it.origem === 'google' && it.allDay ? 'Dia' : fmtTime(it.data)}
+                </div>
+                <div className="text-[11px] text-muted">
+                  {it.origem === 'google' && it.allDay ? 'todo' : `${it.duracao}min`}
+                </div>
               </div>
-              {/* Ícone do tipo */}
-              <span className="text-base leading-none pt-0.5" title={it.tipo} aria-label={it.tipo}>
-                {TIPO_ICON[it.tipo]}
+              {/* Ícone */}
+              <span
+                className="text-base leading-none pt-0.5"
+                title={it.origem === 'google' ? 'Google' : it.tipo}
+                aria-label={it.origem === 'google' ? 'Google' : it.tipo}
+              >
+                {iconeDe(it)}
               </span>
               <div className="min-w-0 flex-1">
                 <div className="text-[13px] font-medium flex items-center gap-1">
                   <span className="truncate">{it.titulo}</span>
-                  {it.googleEventId && (
+                  {it.origem !== 'google' && it.googleEventId && (
                     <span title="Espelhado no Google Calendar" className="text-[10px] shrink-0">
                       📅
                     </span>
@@ -784,7 +885,12 @@ function VisaoDiaria({
                   <div className="text-[12px] text-muted mt-0.5 line-clamp-2">{it.observacao}</div>
                 )}
               </div>
-              <span className="text-[11px] text-muted shrink-0 pt-0.5">{it.tipo}</span>
+              <span
+                className="text-[11px] shrink-0 pt-0.5"
+                style={{ color: it.origem === 'google' ? 'var(--secondary-hover)' : 'var(--muted)' }}
+              >
+                {it.origem === 'google' ? 'Google' : it.tipo}
+              </span>
             </button>
           </li>
         ))}
@@ -906,10 +1012,10 @@ function VisaoMensal({
                   {doDia.slice(0, 3).map((it) => (
                     <span
                       key={it.id}
-                      title={`${fmtTime(it.data)} · ${it.titulo}`}
-                      aria-label={it.tipo}
+                      title={`${it.origem === 'google' && it.allDay ? 'Dia todo' : fmtTime(it.data)} · ${it.titulo}${it.origem === 'google' ? ' (Google)' : ''}`}
+                      aria-label={it.origem === 'google' ? 'Google' : it.tipo}
                     >
-                      {TIPO_ICON[it.tipo]}
+                      {iconeDe(it)}
                     </span>
                   ))}
                   {doDia.length > 3 && (

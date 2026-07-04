@@ -38,6 +38,7 @@ const makeGoogleCalendarMock = () => ({
   criarEvento: vi.fn().mockResolvedValue({ id: 'gcal-event-1' }),
   atualizarEvento: vi.fn().mockResolvedValue(undefined),
   deletarEvento: vi.fn().mockResolvedValue(undefined),
+  listarEventos: vi.fn().mockResolvedValue([]),
 });
 
 const makeRepScopeMock = () => ({
@@ -465,6 +466,48 @@ describe('AgendaService', () => {
 
       const r = await service.sincronizarGoogle(fakeUser({ id: 'u1' }));
       expect(r).toEqual({ sincronizados: 1, total: 2 });
+    });
+  });
+
+  describe('listarGoogleEventos (overlay read-only)', () => {
+    it('não conectado → conectado:false e lista vazia', async () => {
+      userIntegracoes.findByServico.mockResolvedValue(null);
+      const r = await service.listarGoogleEventos(fakeUser(), new Date(), new Date());
+      expect(r).toEqual({ conectado: false, eventos: [] });
+      expect(googleCalendar.listarEventos).not.toHaveBeenCalled();
+    });
+
+    it('mapeia eventos (com hora e dia-todo) e ignora cancelados', async () => {
+      userIntegracoes.findByServico.mockResolvedValue({ id: 'conn-1', ativo: true });
+      googleCalendar.listarEventos.mockResolvedValue([
+        {
+          id: 'g1',
+          status: 'confirmed',
+          summary: 'Reunião',
+          start: { dateTime: '2026-08-10T14:00:00-03:00' },
+          end: { dateTime: '2026-08-10T15:00:00-03:00' },
+          htmlLink: 'https://cal/g1',
+        },
+        {
+          id: 'g2',
+          status: 'confirmed',
+          summary: 'Feriado',
+          start: { date: '2026-08-15' },
+          end: { date: '2026-08-16' },
+        },
+        { id: 'g3', status: 'cancelled', summary: 'Cancelado', start: {}, end: {} },
+      ]);
+
+      const r = await service.listarGoogleEventos(
+        fakeUser(),
+        new Date('2026-08-01'),
+        new Date('2026-08-31'),
+      );
+
+      expect(r.conectado).toBe(true);
+      expect(r.eventos).toHaveLength(2); // cancelado fora
+      expect(r.eventos[0]).toMatchObject({ id: 'g1', titulo: 'Reunião', allDay: false });
+      expect(r.eventos[1]).toMatchObject({ id: 'g2', allDay: true });
     });
   });
 });

@@ -350,6 +350,55 @@ export class AgendaService {
     return { sincronizados, total: pendentes.length };
   }
 
+  /**
+   * Overlay READ-ONLY: lista os eventos do Google Calendar do usuário numa
+   * faixa de datas, pra mostrar dentro da Agenda do Betinna (o que ele já tem
+   * no Google aparece aqui, sempre ao vivo). Não persiste nada — só lê.
+   * Best-effort: falha no Google devolve lista vazia, não derruba a tela.
+   */
+  async listarGoogleEventos(
+    user: AuthenticatedUser,
+    inicio: Date,
+    fim: Date,
+  ): Promise<{
+    conectado: boolean;
+    eventos: Array<{
+      id: string;
+      titulo: string;
+      inicio: string;
+      fim: string;
+      allDay: boolean;
+      htmlLink: string | null;
+    }>;
+  }> {
+    const conn = await this.userIntegracoes
+      .findByServico(user, 'google_calendar')
+      .catch(() => null);
+    if (!conn || !conn.ativo) return { conectado: false, eventos: [] };
+
+    const raw = await this.googleCalendar.listarEventos(user.id, inicio, fim, 250).catch((err) => {
+      const msg = err instanceof Error ? err.message : String(err);
+      this.logger.warn(`listarGoogleEventos falhou (usuário ${user.id}): ${msg}`);
+      return [];
+    });
+
+    const eventos = raw
+      .filter((e) => e.status !== 'cancelled' && e.id)
+      .map((e) => {
+        // dateTime = evento com hora; date = dia inteiro (all-day).
+        const allDay = !e.start.dateTime;
+        return {
+          id: e.id as string,
+          titulo: e.summary?.trim() || '(sem título)',
+          inicio: e.start.dateTime ?? `${e.start.date}T00:00:00`,
+          fim: e.end.dateTime ?? `${e.end.date ?? e.start.date}T00:00:00`,
+          allDay,
+          htmlLink: e.htmlLink ?? null,
+        };
+      });
+    return { conectado: true, eventos };
+  }
+
   // ─── Helpers ──────────────────────────────────────────────────────────
 
   private async tentarEspelharGoogle(
