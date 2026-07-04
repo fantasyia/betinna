@@ -59,6 +59,8 @@ export class AgendaService {
         duracao: dto.duracao,
         tipo: dto.tipo,
         observacao: dto.observacao ?? null,
+        local: dto.local ?? null,
+        alertas: dto.alertas ?? [],
         recorrencia: dto.recorrencia,
       },
       include: agendaInclude,
@@ -114,6 +116,8 @@ export class AgendaService {
         duracao: parent.duracao,
         tipo: parent.tipo,
         observacao: parent.observacao,
+        local: parent.local,
+        alertas: parent.alertas,
         recorrencia: parent.recorrencia,
         parentId: parent.id,
       });
@@ -212,6 +216,8 @@ export class AgendaService {
         duracao: dto.duracao ?? existing.duracao,
         tipo: dto.tipo ?? existing.tipo,
         observacao: dto.observacao === undefined ? existing.observacao : dto.observacao,
+        local: dto.local === undefined ? existing.local : dto.local,
+        alertas: dto.alertas === undefined ? existing.alertas : dto.alertas,
         clienteId: dto.clienteId === undefined ? existing.clienteId : dto.clienteId,
       },
     });
@@ -227,6 +233,8 @@ export class AgendaService {
           inicio: updated.data,
           fim: this.calcFim(updated.data, updated.duracao),
           descricao: updated.observacao ?? undefined,
+          local: updated.local ?? '',
+          alertas: updated.alertas,
           participantes: dto.participantes,
         });
       } catch (err) {
@@ -331,6 +339,8 @@ export class AgendaService {
           inicio: item.data,
           fim: this.calcFim(item.data, item.duracao),
           descricao: item.observacao ?? undefined,
+          local: item.local ?? undefined,
+          alertas: item.alertas,
         });
         if (ev.id) {
           await this.prisma.agendaItem.updateMany({
@@ -445,6 +455,8 @@ export class AgendaService {
         inicio: item.data,
         fim: this.calcFim(item.data, item.duracao),
         descricao: item.observacao ?? undefined,
+        local: item.local ?? undefined,
+        alertas: item.alertas,
         participantes,
       });
       return ev.id ?? null;

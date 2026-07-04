@@ -27,6 +27,10 @@ interface AgendaItem {
   duracao: number;
   tipo: AgendaTipo;
   observacao?: string | null;
+  /** Local/endereço do compromisso (espelha em location no Google). */
+  local?: string | null;
+  /** Alertas/lembretes em minutos antes do início (ex.: [10, 60, 1440]). */
+  alertas?: number[] | null;
   cliente?: { id: string; nome: string } | null;
   googleEventId?: string | null;
   // v1.5.0 — recorrência
@@ -37,6 +41,15 @@ interface AgendaItem {
   htmlLink?: string | null;
   allDay?: boolean;
 }
+
+/** Presets de alerta (minutos antes) — espelham como notificações no Google. */
+const ALERTA_PRESETS: Array<{ min: number; label: string }> = [
+  { min: 0, label: 'Na hora' },
+  { min: 10, label: '10 min antes' },
+  { min: 30, label: '30 min antes' },
+  { min: 60, label: '1 hora antes' },
+  { min: 1440, label: '1 dia antes' },
+];
 
 interface GoogleEventosResp {
   conectado: boolean;
@@ -1095,6 +1108,8 @@ function AgendaFormModal({
   const [duracao, setDuracao] = useState(item?.duracao ?? 60);
   const [tipo, setTipo] = useState<AgendaTipo>(item?.tipo ?? 'VISITA');
   const [observacao, setObservacao] = useState(item?.observacao ?? '');
+  const [local, setLocal] = useState(item?.local ?? '');
+  const [alertas, setAlertas] = useState<number[]>(item?.alertas ?? []);
   const [cliente, setCliente] = useState<ClienteOpt | null>(
     item?.cliente ? { id: item.cliente.id, nome: item.cliente.nome } : null,
   );
@@ -1132,6 +1147,9 @@ function AgendaFormModal({
       espelharGoogle,
     };
     if (observacao.trim()) payload.observacao = observacao.trim();
+    // Local e alertas sempre enviados (assim editar consegue LIMPAR o valor).
+    payload.local = local.trim();
+    payload.alertas = alertas;
     if (cliente) payload.clienteId = cliente.id;
     // v1.5.0 — recorrência só faz sentido em create
     if (!isEdit && recorrencia !== 'NENHUMA') {
@@ -1285,6 +1303,46 @@ function AgendaFormModal({
             onChange={setCliente}
           />
         </FormField>
+        <FormField label="Local / endereço" htmlFor="ag-local">
+          <Input
+            id="ag-local"
+            data-testid="agenda-local"
+            value={local}
+            onChange={(e) => setLocal(e.target.value)}
+            maxLength={300}
+            placeholder="Ex.: Av. Paulista 1000, sala 5 — ou link da reunião"
+          />
+        </FormField>
+
+        <FormField label="🔔 Alertas" htmlFor="ag-alertas">
+          <div id="ag-alertas" data-testid="agenda-alertas" className="flex flex-wrap gap-1.5">
+            {ALERTA_PRESETS.map((p) => {
+              const on = alertas.includes(p.min);
+              return (
+                <button
+                  key={p.min}
+                  type="button"
+                  aria-pressed={on}
+                  onClick={() =>
+                    setAlertas((prev) =>
+                      prev.includes(p.min)
+                        ? prev.filter((m) => m !== p.min)
+                        : [...prev, p.min].sort((a, b) => a - b),
+                    )
+                  }
+                  className={`px-3 py-1.5 rounded-full text-[12px] font-medium border cursor-pointer transition-colors ${
+                    on
+                      ? 'bg-primary text-primary-contrast border-primary'
+                      : 'bg-surface text-text border-border-strong hover:border-primary'
+                  }`}
+                >
+                  {p.label}
+                </button>
+              );
+            })}
+          </div>
+        </FormField>
+
         <FormField label="Observação" htmlFor="ag-obs">
           <Textarea
             id="ag-obs"

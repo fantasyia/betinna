@@ -1376,6 +1376,11 @@ model AgendaItem {
   duracao       Int        @default(60) // minutos
   tipo          AgendaTipo @default(VISITA)
   observacao    String?    @db.Text
+  /// Local/endereço do compromisso (espelha em `location` no Google Calendar).
+  local         String?    @db.Text
+  /// Alertas/lembretes em MINUTOS antes do início (ex.: [10, 60, 1440]).
+  /// Espelham em `reminders.overrides` (popup) no Google. Vazio = sem lembrete.
+  alertas       Int[]      @default([])
   googleEventId String?
   /// Idempotência da ação CRIAR_TAREFA de fluxos: chave determinística do passo (fx:<jobId>).
   /// Retry pós-efeito tenta recriar a mesma tarefa → P2002 no @unique → skip (sem duplicar).
