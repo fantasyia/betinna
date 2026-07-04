@@ -504,8 +504,10 @@ export class MullerBotService {
   async listarModelos(user: AuthenticatedUser): Promise<{
     modelos: string[];
     fonte: 'openai' | 'fallback';
-    /** Quando fonte='fallback', explica o PORQUÊ (pra UI orientar o usuário). */
-    motivo?: 'sem_chave' | 'mock' | 'erro_openai' | 'sem_modelos_chat';
+    /** Quando fonte='fallback', explica o PORQUÊ (pra UI orientar o usuário).
+     *  sem_permissao_modelos = chave VÁLIDA (bot funciona) mas sem escopo de
+     *  listar modelos (project key restrita → 401 só no GET /models). */
+    motivo?: 'sem_chave' | 'mock' | 'erro_openai' | 'sem_modelos_chat' | 'sem_permissao_modelos';
   }> {
     let apiKey: string | undefined;
     try {
@@ -541,7 +543,13 @@ export class MullerBotService {
       // Não some com o erro: loga pra dar pra diagnosticar por que caiu no fallback.
       const msg = err instanceof Error ? err.message : String(err);
       this.logger.warn(`listarModelos: falha ao listar da OpenAI (fallback): ${msg}`);
-      return { modelos: [...MODELOS_FALLBACK], fonte: 'fallback', motivo: 'erro_openai' };
+      // 401 no GET /models = chave restrita: funciona pro bot (chat) mas sem
+      // escopo "Models: Read". Distingue de chave inválida/erro genérico.
+      const motivo =
+        err instanceof HttpClientError && err.status === 401
+          ? 'sem_permissao_modelos'
+          : 'erro_openai';
+      return { modelos: [...MODELOS_FALLBACK], fonte: 'fallback', motivo };
     }
   }
 
