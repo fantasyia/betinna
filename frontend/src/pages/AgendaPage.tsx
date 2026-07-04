@@ -259,6 +259,18 @@ function GoogleConexaoBotao({ onSincronizado }: { onSincronizado?: () => void })
           <RefreshCw className={`h-4 w-4 ${busy ? 'animate-spin' : ''}`} />
           {busy ? 'Sincronizando…' : 'Sincronizar'}
         </button>
+        <button
+          type="button"
+          data-testid="agenda-google-reconectar"
+          onClick={() => void conectar()}
+          disabled={busy}
+          title="Reautorizar o Google (troca a conta ou renova o acesso se o token expirou e o Sincronizar parou de trazer eventos)"
+          className="inline-flex items-center gap-1.5 rounded-md px-2 py-2 text-[12px] font-medium text-muted hover:text-text cursor-pointer tracking-[-0.1px]"
+          style={{ opacity: busy ? 0.6 : 1 }}
+        >
+          <CalendarPlus className="h-3.5 w-3.5" />
+          Reconectar
+        </button>
       </div>
     );
   }

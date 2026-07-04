@@ -390,7 +390,13 @@ export class AgendaService {
     fimJanela.setDate(fimJanela.getDate() + 180);
     const googleEvents = await this.googleCalendar
       .listarEventos(user.id, inicioHoje, fimJanela, 250)
-      .catch(() => [] as Awaited<ReturnType<typeof this.googleCalendar.listarEventos>>);
+      .catch((err) => {
+        // NÃO engolir calado: falha aqui (token expirado/revogado, conta errada)
+        // é a causa de "0 importado" com o calendário cheio. Logar pra diagnóstico.
+        const msg = err instanceof Error ? err.message : String(err);
+        this.logger.warn(`Import Google: listarEventos falhou (usuário ${user.id}): ${msg}`);
+        return [] as Awaited<ReturnType<typeof this.googleCalendar.listarEventos>>;
+      });
     const empresaIdImport = getCallerEmpresaId(user);
     let importados = 0;
     for (const ev of googleEvents) {
