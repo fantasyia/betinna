@@ -501,9 +501,7 @@ export class MullerBotService {
    * novos). NUNCA lança e NUNCA volta vazio: se a chamada falhar, devolve uma
    * lista curada de reserva (senão o dropdown some, como aconteceu).
    */
-  async listarModelos(
-    user: AuthenticatedUser,
-  ): Promise<{
+  async listarModelos(user: AuthenticatedUser): Promise<{
     modelos: string[];
     fonte: 'openai' | 'fallback';
     /** Quando fonte='fallback', explica o PORQUÊ (pra UI orientar o usuário). */
