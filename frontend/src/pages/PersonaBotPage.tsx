@@ -81,8 +81,10 @@ function motivoModeloTexto(motivo: string): string {
       return 'nenhuma chave OpenAI configurada (conecte a sua em Minhas Integrações, ou o admin define a corporativa)';
     case 'mock':
       return 'o bot está em modo de teste (MULLERBOT_MOCK), sem chamada real à OpenAI';
+    case 'sem_permissao_modelos':
+      return 'sua chave FUNCIONA pro bot, mas é uma chave restrita SEM permissão de listar modelos. A lista abaixo é curada e funciona normalmente. Pra ver os modelos exatos da sua conta: na OpenAI, dê à chave a permissão "Models → Read" (ou gere uma chave sem restrição)';
     case 'erro_openai':
-      return 'a OpenAI recusou a chamada — chave inválida ou sem permissão pra listar modelos (valide no diagnóstico acima)';
+      return 'a OpenAI recusou a chamada — chave inválida ou expirada (valide no diagnóstico acima)';
     case 'sem_modelos_chat':
       return 'a conta não retornou nenhum modelo de chat';
     default:
