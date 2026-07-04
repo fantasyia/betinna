@@ -523,7 +523,7 @@ describe('AgendaService', () => {
       expect(r).toEqual({ sincronizados: 0, importados: 1, removidos: 0, total: 0 });
     });
 
-    it('import: NÃO reimporta evento já espelhado + ignora all-day', async () => {
+    it('import: NÃO reimporta espelhado + importa dia-inteiro como bloco de dia', async () => {
       userIntegracoes.findByServico.mockResolvedValue({ id: 'conn-1', ativo: true });
       prisma.agendaItem.findMany
         .mockResolvedValueOnce([])
@@ -538,7 +538,7 @@ describe('AgendaService', () => {
           start: { dateTime: '2026-07-10T14:00:00-03:00' },
           end: { dateTime: '2026-07-10T15:00:00-03:00' },
         },
-        // all-day (só date) → fica no overlay, não importa
+        // dia inteiro (só date) → importa como bloco de dia (duracao 1440)
         {
           id: 'gcal-allday',
           status: 'confirmed',
@@ -546,11 +546,21 @@ describe('AgendaService', () => {
           start: { date: '2026-07-12' },
         },
       ]);
+      prisma.agendaItem.create.mockResolvedValue({ id: 'ag-imp' });
 
       const r = await service.sincronizarGoogle(fakeUser({ id: 'u1' }));
 
-      expect(prisma.agendaItem.create).not.toHaveBeenCalled();
-      expect(r.importados).toBe(0);
+      expect(prisma.agendaItem.create).toHaveBeenCalledTimes(1);
+      expect(prisma.agendaItem.create).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: expect.objectContaining({
+            titulo: 'Aniversário',
+            duracao: 1440,
+            googleEventId: 'gcal-allday',
+          }),
+        }),
+      );
+      expect(r.importados).toBe(1);
     });
   });
 
