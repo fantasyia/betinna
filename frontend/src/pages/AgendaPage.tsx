@@ -8,7 +8,7 @@ import {
   useDroppable,
   type DragEndEvent,
 } from '@dnd-kit/core';
-import { CalendarCheck, CalendarPlus } from 'lucide-react';
+import { CalendarCheck, CalendarPlus, RefreshCw } from 'lucide-react';
 import { api, ApiError } from '@/lib/api';
 import { useApiQuery } from '@/hooks/useApiQuery';
 import { PageLayout } from '@/components/PageLayout';
@@ -168,16 +168,54 @@ function GoogleConexaoBotao() {
     }
   }
 
+  async function sincronizar() {
+    setBusy(true);
+    try {
+      const r = await api.post<{ sincronizados: number; total: number }>(
+        '/agenda/sincronizar-google',
+      );
+      if (r.total === 0) {
+        toast.success('Tudo sincronizado', 'Nenhum compromisso futuro pendente de envio.');
+      } else {
+        toast.success(
+          `${r.sincronizados} de ${r.total} enviados pro Google`,
+          r.sincronizados < r.total ? 'Alguns falharam — tente de novo em instantes.' : undefined,
+        );
+      }
+    } catch (err) {
+      toast.error(
+        'Falha ao sincronizar',
+        err instanceof ApiError ? err.message : err instanceof Error ? err.message : undefined,
+      );
+    } finally {
+      setBusy(false);
+    }
+  }
+
   if (conectado) {
     return (
-      <span
-        data-testid="agenda-google-conectado"
-        title="Seu Google Calendar está conectado — compromissos com 'espelhar' vão pra lá."
-        className="inline-flex items-center gap-1.5 rounded-md border border-success/30 bg-success/10 px-3 py-2 text-[13px] font-medium text-success"
-      >
-        <CalendarCheck className="h-4 w-4" />
-        Google conectado
-      </span>
+      <div className="inline-flex items-center gap-2">
+        <span
+          data-testid="agenda-google-conectado"
+          title="Seu Google Calendar está conectado — compromissos com 'espelhar' vão pra lá."
+          className="inline-flex items-center gap-1.5 rounded-md border border-success/30 bg-success/10 px-3 py-2 text-[13px] font-medium text-success"
+        >
+          <CalendarCheck className="h-4 w-4" />
+          Google conectado
+        </span>
+        <button
+          type="button"
+          data-testid="agenda-google-sincronizar"
+          onClick={() => void sincronizar()}
+          disabled={busy}
+          title="Enviar pro Google os compromissos futuros que ainda não estão lá (ex.: criados antes de conectar)"
+          className="inline-flex items-center gap-1.5 rounded-md border border-border-strong bg-surface px-3 py-2 text-[13px] font-medium text-text cursor-pointer tracking-[-0.1px]"
+          style={{ opacity: busy ? 0.6 : 1 }}
+        >
+          <RefreshCw className={`h-4 w-4 ${busy ? 'animate-spin' : ''}`} />
+          {busy ? 'Sincronizando…' : 'Sincronizar'}
+        </button>
+      </div>
     );
   }
 

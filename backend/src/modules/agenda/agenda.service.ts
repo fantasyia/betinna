@@ -233,6 +233,18 @@ export class AgendaService {
         const msg = err instanceof Error ? err.message : String(err);
         this.logger.warn(`Falha ao atualizar evento Google ${existing.googleEventId}: ${msg}`);
       }
+    } else {
+      // Item ainda NÃO espelhado (ex.: criado antes de conectar o Google). Ao
+      // editar, cria o evento no Google agora (se o usuário estiver conectado) —
+      // senão editar um compromisso antigo nunca o levava pra agenda do Google.
+      const gid = await this.tentarEspelharGoogle(user.id, updated, dto.participantes);
+      if (gid) {
+        await this.prisma.agendaItem.updateMany({
+          where: { id, empresaId: existing.empresaId },
+          data: { googleEventId: gid },
+        });
+        updated.googleEventId = gid;
+      }
     }
     return updated;
   }
@@ -283,6 +295,59 @@ export class AgendaService {
 
     const result = await this.prisma.agendaItem.deleteMany({ where });
     return { ok: true, deleted: result.count };
+  }
+
+  /**
+   * Backfill: empurra pro Google Calendar todos os compromissos FUTUROS do
+   * usuário que ainda não foram espelhados (googleEventId nulo) — ex.: os que
+   * ele criou ANTES de conectar o Google. É idempotente (só pega os sem id) e
+   * best-effort por item (falha em um não derruba os demais).
+   */
+  async sincronizarGoogle(
+    user: AuthenticatedUser,
+  ): Promise<{ sincronizados: number; total: number }> {
+    const conn = await this.userIntegracoes
+      .findByServico(user, 'google_calendar')
+      .catch(() => null);
+    if (!conn || !conn.ativo) {
+      throw new BusinessRuleException(
+        'Conecte seu Google Calendar antes de sincronizar.',
+        ErrorCode.BUSINESS_RULE_VIOLATION,
+      );
+    }
+    const inicioHoje = new Date();
+    inicioHoje.setHours(0, 0, 0, 0);
+    const pendentes = await this.prisma.agendaItem.findMany({
+      where: { usuarioId: user.id, googleEventId: null, data: { gte: inicioHoje } },
+      orderBy: { data: 'asc' },
+      take: 200,
+    });
+
+    let sincronizados = 0;
+    for (const item of pendentes) {
+      try {
+        const ev = await this.googleCalendar.criarEvento(user.id, {
+          titulo: item.titulo,
+          inicio: item.data,
+          fim: this.calcFim(item.data, item.duracao),
+          descricao: item.observacao ?? undefined,
+        });
+        if (ev.id) {
+          await this.prisma.agendaItem.updateMany({
+            where: { id: item.id, empresaId: item.empresaId },
+            data: { googleEventId: ev.id },
+          });
+          sincronizados++;
+        }
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err);
+        this.logger.warn(`Sync Google: falha no item ${item.id}: ${msg}`);
+      }
+    }
+    this.logger.log(
+      `Sync Google: ${sincronizados}/${pendentes.length} itens espelhados (usuário ${user.id})`,
+    );
+    return { sincronizados, total: pendentes.length };
   }
 
   // ─── Helpers ──────────────────────────────────────────────────────────
