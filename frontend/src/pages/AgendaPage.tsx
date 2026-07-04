@@ -395,12 +395,13 @@ export default function AgendaPage() {
 
   const itemsByDay = useMemo(() => {
     const map = new Map<string, AgendaItem[]>();
-    const push = (it: AgendaItem) => {
-      const key = keyDia(new Date(it.data));
+    const pushDia = (d: Date, it: AgendaItem) => {
+      const key = keyDia(d);
       const arr = map.get(key) ?? [];
       arr.push(it);
       map.set(key, arr);
     };
+    const push = (it: AgendaItem) => pushDia(new Date(it.data), it);
     // Itens do Betinna + guarda quais já estão espelhados no Google (pra dedup).
     const espelhados = new Set<string>();
     if (items) {
@@ -418,7 +419,7 @@ export default function AgendaPage() {
           0,
           Math.round((new Date(ev.fim).getTime() - new Date(ev.inicio).getTime()) / 60000),
         );
-        push({
+        const item: AgendaItem = {
           id: `g:${ev.id}`,
           titulo: ev.titulo,
           data: ev.inicio,
@@ -427,7 +428,23 @@ export default function AgendaPage() {
           origem: 'google',
           htmlLink: ev.htmlLink,
           allDay: ev.allDay,
-        });
+        };
+        // Evento de VÁRIOS dias (ex.: viagem) aparece em TODOS os dias da faixa,
+        // não só no primeiro. All-day do Google tem fim EXCLUSIVO (fim = dia
+        // seguinte ao último); com hora, cobre até o dia em que termina.
+        const ini = startOfDay(new Date(ev.inicio));
+        const fimEv = new Date(ev.fim);
+        const ultimo = ev.allDay
+          ? addDays(startOfDay(fimEv), -1)
+          : startOfDay(fimEv);
+        if (isNaN(ini.getTime()) || isNaN(ultimo.getTime()) || ultimo <= ini) {
+          push(item);
+        } else {
+          // cap de 90 dias por segurança contra dados malformados
+          for (let d = ini, n = 0; d <= ultimo && n < 90; d = addDays(d, 1), n++) {
+            pushDia(d, item);
+          }
+        }
       }
     }
     for (const arr of map.values()) {
