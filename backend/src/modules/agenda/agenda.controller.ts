@@ -20,9 +20,11 @@ import {
   type CreateAgendaItemDto,
   type ListAgendaDto,
   type UpdateAgendaItemDto,
+  type GoogleEventosQuery,
   createAgendaItemSchema,
   listAgendaSchema,
   updateAgendaItemSchema,
+  googleEventosSchema,
 } from './agenda.dto';
 import { AgendaService } from './agenda.service';
 
@@ -50,6 +52,18 @@ export class AgendaController {
   @Get(':id')
   findById(@CurrentUser() user: AuthenticatedUser, @Param('id') id: string) {
     return this.svc.findById(user, id);
+  }
+
+  @Get('google-eventos')
+  @RequirePermissions({ module: 'agenda', action: 'view' })
+  @ApiOperation({
+    summary: 'Overlay read-only: eventos do Google Calendar do usuário numa faixa de datas',
+  })
+  listarGoogleEventos(
+    @CurrentUser() user: AuthenticatedUser,
+    @Query(new ZodValidationPipe(googleEventosSchema)) query: GoogleEventosQuery,
+  ) {
+    return this.svc.listarGoogleEventos(user, query.inicio, query.fim);
   }
 
   @Post('sincronizar-google')

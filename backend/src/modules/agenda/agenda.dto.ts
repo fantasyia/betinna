@@ -55,3 +55,10 @@ export const listAgendaSchema = z.object({
   usuarioId: z.string().cuid().optional(),
 });
 export type ListAgendaDto = z.infer<typeof listAgendaSchema>;
+
+/** Faixa pra ler os eventos do Google Calendar do usuário (overlay read-only). */
+export const googleEventosSchema = z.object({
+  inicio: dateLike,
+  fim: dateLike,
+});
+export type GoogleEventosQuery = z.infer<typeof googleEventosSchema>;
