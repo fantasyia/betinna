@@ -495,11 +495,12 @@ export class MullerBotService {
   }
 
   /**
-   * Lista os modelos de chat disponíveis na conta OpenAI do USUÁRIO (chave pessoal
-   * dele; cai pra chave do env só se não tiver). Popula o dropdown de modelo nas
-   * telas Persona/Prompts — reflete o que a conta tem acesso (inclusive os mais
-   * novos). NUNCA lança e NUNCA volta vazio: se a chamada falhar, devolve uma
-   * lista curada de reserva (senão o dropdown some, como aconteceu).
+   * Lista os modelos de chat disponíveis na chave OpenAI da EMPRESA — a MESMA que
+   * o bot usa em runtime (IntegracaoConexao escopo empresa, senão OPENAI_API_KEY do
+   * env). Popula o dropdown de modelo nas telas Persona/Prompts (config de empresa).
+   * NÃO usa a chave PESSOAL do usuário: essa é só pro chatbot pessoal do rep e não
+   * tem nada a ver com o modelo que a empresa escolhe. NUNCA lança e NUNCA volta
+   * vazio: se a chamada falhar, devolve uma lista curada de reserva.
    */
   async listarModelos(user: AuthenticatedUser): Promise<{
     modelos: string[];
@@ -509,12 +510,9 @@ export class MullerBotService {
      *  listar modelos (project key restrita → 401 só no GET /models). */
     motivo?: 'sem_chave' | 'mock' | 'erro_openai' | 'sem_modelos_chat' | 'sem_permissao_modelos';
   }> {
-    let apiKey: string | undefined;
-    try {
-      apiKey = (await this.resolverCredenciais(user)).apiKey;
-    } catch {
-      apiKey = this.env.get('OPENAI_API_KEY') || undefined;
-    }
+    // Chave da EMPRESA (a que o bot usa) — NÃO a pessoal do usuário.
+    const empresaId = user.empresaIdAtiva;
+    const apiKey = empresaId ? await this.resolverChaveEmpresa(empresaId) : undefined;
     if (!apiKey) {
       return { modelos: [...MODELOS_FALLBACK], fonte: 'fallback', motivo: 'sem_chave' };
     }
