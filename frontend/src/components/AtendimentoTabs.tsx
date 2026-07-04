@@ -61,7 +61,7 @@ export function AtendimentoTabs() {
       icon: <Smartphone size={14} />,
     });
   }
-  tabs.push({ to: '/mullerbot', label: 'MullerBot', icon: <Bot size={14} /> });
+  tabs.push({ to: '/mullerbot', label: 'Assistente IA', icon: <Bot size={14} /> });
   if (canPersona) {
     tabs.push({
       to: '/mullerbot/persona',

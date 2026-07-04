@@ -102,6 +102,7 @@ const makePersona = () => ({
     async (_empresaId: string) =>
       'Você é a Bê, assistente comercial. Use APENAS o catálogo fornecido.',
   ),
+  obterModelo: vi.fn(async (_empresaId: string) => null),
 });
 
 const PRODUTO_BASE = {
@@ -157,11 +158,12 @@ describe('MullerBotService.perguntar — credenciais', () => {
     );
   });
 
-  it('usa credencial OpenAI do usuário quando configurada', async () => {
+  it('usa a chave da EMPRESA (IntegracaoConexao), não a pessoal do usuário', async () => {
     const http = makeHttp();
-    const ui = makeUserIntegracoes(async () => ({
-      credenciais: { apiKey: 'sk-user-key', model: 'gpt-4o-mini' },
-    }));
+    // chave da empresa configurada
+    const integ = makeIntegracoes(async () => ({ credenciais: { apiKey: 'sk-empresa' } }));
+    // usuário até tem chave pessoal — mas ela NÃO deve ser usada pelo bot da empresa
+    const ui = makeUserIntegracoes(async () => ({ credenciais: { apiKey: 'sk-user-key' } }));
     const svc = new MullerBotService(
       http as never,
       makeEnv() as never,
@@ -169,37 +171,39 @@ describe('MullerBotService.perguntar — credenciais', () => {
       makeProdutoSearch() as never,
       makeCache() as never,
       makePersona() as never,
-      makeIntegracoes() as never,
+      integ as never,
       makeCusto() as never,
       makeConhecimento() as never,
     );
-    const r = await svc.perguntar(fakeUser(), { pergunta: 'tem óleo?', topK: 5 });
-    expect(r.modelo).toBe('gpt-4o-mini');
+    await svc.perguntar(fakeUser(), { pergunta: 'tem óleo?', topK: 5 });
     const [, opts] = http.post.mock.calls[0] as [string, { headers: Record<string, string> }];
-    expect(opts.headers.Authorization).toBe('Bearer sk-user-key');
+    expect(opts.headers.Authorization).toBe('Bearer sk-empresa');
   });
 
-  it('REP é OBRIGADO a ter chave própria — não cai pro env mesmo se houver', async () => {
+  it('REP também usa a chave da EMPRESA (não precisa de chave própria pro bot interno)', async () => {
     const http = makeHttp();
+    const integ = makeIntegracoes(async () => ({ credenciais: { apiKey: 'sk-empresa' } }));
     const svc = new MullerBotService(
       http as never,
-      makeEnv({ OPENAI_API_KEY: 'sk-env-disponivel' }) as never,
+      makeEnv() as never,
       makeUserIntegracoes() as never,
       makeProdutoSearch() as never,
       makeCache() as never,
       makePersona() as never,
-      makeIntegracoes() as never,
+      integ as never,
       makeCusto() as never,
       makeConhecimento() as never,
     );
-    // REP explícito: mesmo com OPENAI_API_KEY no env, deve falhar
-    await expect(
-      svc.perguntar(fakeUser({ role: 'REP' as UserRole }), { pergunta: 'tem óleo?', topK: 5 }),
-    ).rejects.toBeInstanceOf(IntegrationException);
-    expect(http.post).not.toHaveBeenCalled();
+    const r = await svc.perguntar(fakeUser({ role: 'REP' as UserRole }), {
+      pergunta: 'tem óleo?',
+      topK: 5,
+    });
+    expect(r.resposta).toBe('resposta openai');
+    const [, opts] = http.post.mock.calls[0] as [string, { headers: Record<string, string> }];
+    expect(opts.headers.Authorization).toBe('Bearer sk-empresa');
   });
 
-  it('SAC/Diretor cai pro env quando não tem credencial própria', async () => {
+  it('cai pro env (OPENAI_API_KEY) quando a empresa não tem chave própria', async () => {
     const http = makeHttp();
     const svc = new MullerBotService(
       http as never,
@@ -208,7 +212,7 @@ describe('MullerBotService.perguntar — credenciais', () => {
       makeProdutoSearch() as never,
       makeCache() as never,
       makePersona() as never,
-      makeIntegracoes() as never,
+      makeIntegracoes() as never, // empresa sem chave (throw) → cai pro env
       makeCusto() as never,
       makeConhecimento() as never,
     );
