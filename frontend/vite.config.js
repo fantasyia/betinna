@@ -27,7 +27,11 @@ export default defineConfig({
     plugins: [
         react(),
         VitePWA({
-            registerType: 'prompt',
+            // autoUpdate: o SW novo assume sozinho (skipWaiting+clientsClaim) e a página
+            // recarrega no controllerchange (main.tsx). Sem isso, com 'prompt' + skipWaiting
+            // false, o SW novo ficava ETERNAMENTE esperando um banner → deploy não chegava
+            // ao usuário ("não vejo nada de novo") mesmo com o bundle novo publicado.
+            registerType: 'autoUpdate',
             includeAssets: ['favicon.ico'],
             manifest: {
                 name: 'Betinna.ai — Plataforma comercial B2B',
@@ -73,9 +77,10 @@ export default defineConfig({
                 ],
                 // Limite generoso porque incluímos chunks pesados (xlsx, docx, jspdf)
                 maximumFileSizeToCacheInBytes: 5 * 1024 * 1024,
-                // Skip waiting + clientsClaim pra atualização rápida
-                skipWaiting: false,
-                clientsClaim: false,
+                // Skip waiting + clientsClaim: o SW novo ativa na hora e assume as abas
+                // abertas → com o reload do controllerchange, o deploy chega sem banner.
+                skipWaiting: true,
+                clientsClaim: true,
             },
             devOptions: {
                 // Em dev, PWA fica desligado pra não interferir com HMR
