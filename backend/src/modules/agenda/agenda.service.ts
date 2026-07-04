@@ -448,7 +448,7 @@ export class AgendaService {
 
     this.logger.log(
       `Sync Google: ${sincronizados} enviados, ${importados} importados, ${removidos} removidos ` +
-        `— usuário ${user.id}`,
+        `(Google devolveu ${googleEvents.length} eventos na janela) — usuário ${user.id}`,
     );
     return { sincronizados, importados, removidos, total: pendentes.length };
   }
