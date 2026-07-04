@@ -137,7 +137,7 @@ function labelHorario(day: Date): string {
  * (um clique). Se o app Google não estiver configurado no ambiente, desabilita
  * com dica em vez de erro cru.
  */
-function GoogleConexaoBotao() {
+function GoogleConexaoBotao({ onSincronizado }: { onSincronizado?: () => void }) {
   const toast = useToast();
   const { data: conexoes, refetch } = useApiQuery<
     Array<{ servico: string; ativo: boolean }>
@@ -196,17 +196,28 @@ function GoogleConexaoBotao() {
   async function sincronizar() {
     setBusy(true);
     try {
-      const r = await api.post<{ sincronizados: number; total: number }>(
+      const r = await api.post<{ sincronizados: number; removidos: number; total: number }>(
         '/agenda/sincronizar-google',
       );
+      // Sufixo mão-dupla: compromissos apagados no Google somem daqui também.
+      const removidosTxt =
+        r.removidos > 0
+          ? ` · ${r.removidos} ${r.removidos === 1 ? 'removido' : 'removidos'} (apagados no Google)`
+          : '';
       if (r.total === 0) {
-        toast.success('Tudo sincronizado', 'Nenhum compromisso futuro pendente de envio.');
+        toast.success(
+          r.removidos > 0 ? 'Sincronizado nos dois sentidos' : 'Tudo sincronizado',
+          r.removidos > 0
+            ? `${r.removidos} ${r.removidos === 1 ? 'compromisso apagado' : 'compromissos apagados'} no Google ${r.removidos === 1 ? 'foi removido' : 'foram removidos'} da agenda.`
+            : 'Nenhum compromisso futuro pendente de envio.',
+        );
       } else {
         toast.success(
-          `${r.sincronizados} de ${r.total} enviados pro Google`,
+          `${r.sincronizados} de ${r.total} enviados pro Google${removidosTxt}`,
           r.sincronizados < r.total ? 'Alguns falharam — tente de novo em instantes.' : undefined,
         );
       }
+      onSincronizado?.();
     } catch (err) {
       toast.error(
         'Falha ao sincronizar',
@@ -391,7 +402,7 @@ export default function AgendaPage() {
   );
 
   const { data: items, loading, error, refetch } = useApiQuery<AgendaItem[]>(listPath);
-  const { data: googleResp } = useApiQuery<GoogleEventosResp>(googlePath);
+  const { data: googleResp, refetch: refetchGoogle } = useApiQuery<GoogleEventosResp>(googlePath);
 
   const itemsByDay = useMemo(() => {
     const map = new Map<string, AgendaItem[]>();
@@ -514,7 +525,13 @@ export default function AgendaPage() {
       title="Agenda"
       actions={
         <div className="flex items-center gap-2">
-          <GoogleConexaoBotao />
+          <GoogleConexaoBotao
+            onSincronizado={() => {
+              // mão-dupla: recarrega itens da Betinna + overlay do Google (removidos somem)
+              refetch();
+              refetchGoogle();
+            }}
+          />
           <button
             type="button"
             data-testid="agenda-new-btn"

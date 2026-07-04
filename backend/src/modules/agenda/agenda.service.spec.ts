@@ -39,6 +39,8 @@ const makeGoogleCalendarMock = () => ({
   atualizarEvento: vi.fn().mockResolvedValue(undefined),
   deletarEvento: vi.fn().mockResolvedValue(undefined),
   listarEventos: vi.fn().mockResolvedValue([]),
+  // default: evento ainda existe no Google (reconciliação não remove nada)
+  obterEvento: vi.fn().mockResolvedValue({ id: 'gcal-event-1', status: 'confirmed' }),
 });
 
 const makeRepScopeMock = () => ({
@@ -433,7 +435,7 @@ describe('AgendaService', () => {
 
       const r = await service.sincronizarGoogle(fakeUser({ id: 'u1' }));
 
-      expect(r).toEqual({ sincronizados: 2, total: 2 });
+      expect(r).toEqual({ sincronizados: 2, removidos: 0, total: 2 });
       expect(googleCalendar.criarEvento).toHaveBeenCalledTimes(2);
       expect(prisma.agendaItem.updateMany).toHaveBeenCalledWith(
         expect.objectContaining({ data: { googleEventId: 'gcal-a1' } }),
@@ -465,7 +467,25 @@ describe('AgendaService', () => {
         .mockResolvedValueOnce({ id: 'gcal-a2' });
 
       const r = await service.sincronizarGoogle(fakeUser({ id: 'u1' }));
-      expect(r).toEqual({ sincronizados: 1, total: 2 });
+      expect(r).toEqual({ sincronizados: 1, removidos: 0, total: 2 });
+    });
+
+    it('mão-dupla: item espelhado apagado no Google é REMOVIDO da Betinna', async () => {
+      userIntegracoes.findByServico.mockResolvedValue({ id: 'conn-1', ativo: true });
+      // 1ª findMany (pendentes p/ empurrar) = vazia; 2ª (espelhados) = 1 item com googleEventId
+      prisma.agendaItem.findMany
+        .mockResolvedValueOnce([])
+        .mockResolvedValueOnce([{ id: 'ag-x', empresaId: 'emp-1', googleEventId: 'gcal-del' }]);
+      // Google não acha mais o evento (apagado/cancelado) → null
+      googleCalendar.obterEvento.mockResolvedValue(null);
+
+      const r = await service.sincronizarGoogle(fakeUser({ id: 'u1' }));
+
+      expect(googleCalendar.obterEvento).toHaveBeenCalledWith('u1', 'gcal-del');
+      expect(prisma.agendaItem.deleteMany).toHaveBeenCalledWith({
+        where: { id: 'ag-x', empresaId: 'emp-1' },
+      });
+      expect(r).toEqual({ sincronizados: 0, removidos: 1, total: 0 });
     });
   });
 

@@ -90,6 +90,34 @@ export class GoogleCalendarService {
     }
   }
 
+  /**
+   * Busca UM evento por id. Retorna `null` quando ele não existe mais no Google
+   * — apagado (404/410) OU cancelado (status 'cancelled'). Usado na reconciliação
+   * mão-dupla: excluir no Google reflete na Agenda da Betinna. Não usa `callRaw`
+   * de propósito (ele embrulha o erro e perde o status HTTP).
+   */
+  async obterEvento(usuarioId: string, eventId: string): Promise<GoogleEvent | null> {
+    const token = await this.oauth.getAccessToken(usuarioId);
+    try {
+      const res = await this.http.request<GoogleEvent>(
+        'GET',
+        `${CALENDAR_BASE}/events/${encodeURIComponent(eventId)}`,
+        {
+          headers: { Authorization: `Bearer ${token}` },
+          integration: 'google',
+          redactKeys: ['authorization'],
+          retries: 1,
+        },
+      );
+      return res.data?.status === 'cancelled' ? null : res.data;
+    } catch (err) {
+      if (err instanceof HttpClientError && (err.status === 404 || err.status === 410)) {
+        return null;
+      }
+      throw this.wrapError(err);
+    }
+  }
+
   async listarEventos(
     usuarioId: string,
     inicio: Date,
