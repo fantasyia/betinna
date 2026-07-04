@@ -49,7 +49,11 @@ export interface GoogleEvent {
   attendees?: Array<{ email: string; displayName?: string }>;
   htmlLink?: string;
   hangoutLink?: string;
-  reminders?: { useDefault: boolean };
+  reminders?: {
+    useDefault: boolean;
+    /** Lembretes específicos (quando useDefault=false): método + minutos antes. */
+    overrides?: Array<{ method: 'popup' | 'email'; minutes: number }>;
+  };
 }
 
 export interface GoogleEventsListResponse {
@@ -66,6 +70,8 @@ export interface GoogleEventCreateParams {
   local?: string;
   /** Lista de participantes (e-mail). Convites enviados pelo Google. */
   participantes?: Array<{ email: string; nome?: string }>;
+  /** Alertas/lembretes em MINUTOS antes do início → reminders.overrides (popup). */
+  alertas?: number[];
   /** Default 'America/Sao_Paulo'. */
   timezone?: string;
 }

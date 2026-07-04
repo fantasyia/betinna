@@ -26,6 +26,13 @@ export const createAgendaItemSchema = z.object({
     .default(60), // minutos
   tipo: agendaTipoEnum.default('VISITA'),
   observacao: z.string().max(2000).optional(),
+  /** Local/endereço do compromisso → `location` no Google Calendar. */
+  local: z.string().max(300).optional(),
+  /**
+   * Alertas/lembretes em MINUTOS antes do início (ex.: [10, 60, 1440]).
+   * → `reminders.overrides` (popup) no Google. Máx 5, 0..40320min (4 semanas, teto do Google).
+   */
+  alertas: z.array(z.coerce.number().int().min(0).max(40320)).max(5).optional(),
   clienteId: z.string().cuid().optional(),
   /** Quando true e o user tem Google Calendar conectado, espelha no Google. */
   espelharGoogle: z.coerce.boolean().default(true),

@@ -44,7 +44,7 @@ export class GoogleCalendarService {
       start: { dateTime: params.inicio.toISOString(), timeZone: tz },
       end: { dateTime: params.fim.toISOString(), timeZone: tz },
       attendees: params.participantes?.map((p) => ({ email: p.email, displayName: p.nome })),
-      reminders: { useDefault: true },
+      reminders: this.montarReminders(params.alertas),
     };
     return this.call<GoogleEvent>('POST', `${CALENDAR_BASE}/events`, token, body);
   }
@@ -65,6 +65,7 @@ export class GoogleCalendarService {
     if (params.participantes) {
       body.attendees = params.participantes.map((p) => ({ email: p.email, displayName: p.nome }));
     }
+    if (params.alertas !== undefined) body.reminders = this.montarReminders(params.alertas);
     return this.call<GoogleEvent>(
       'PATCH',
       `${CALENDAR_BASE}/events/${encodeURIComponent(eventId)}`,
@@ -141,6 +142,18 @@ export class GoogleCalendarService {
   }
 
   // ─── Internos ──────────────────────────────────────────────────────────
+
+  /**
+   * Alertas (minutos antes) → `reminders` do Google. Vazio = usa os defaults do
+   * calendário do usuário; com alertas = overrides popup (Google aceita até 5).
+   */
+  private montarReminders(alertas?: number[]): GoogleEvent['reminders'] {
+    if (!alertas || alertas.length === 0) return { useDefault: true };
+    return {
+      useDefault: false,
+      overrides: alertas.slice(0, 5).map((minutes) => ({ method: 'popup' as const, minutes })),
+    };
+  }
 
   private async call<T>(
     method: 'GET' | 'POST' | 'PATCH' | 'DELETE',
