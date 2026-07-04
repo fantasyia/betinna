@@ -3,6 +3,10 @@ import { EnvService } from '@config/env.service';
 import { UsuarioIntegracoesService } from '@modules/integracoes/usuario-integracoes.service';
 import { IntegracoesService } from '@modules/integracoes/integracoes.service';
 import {
+  KnowledgeSearchService,
+  type ConhecimentoRelevante,
+} from '@modules/rag/knowledge-search.service';
+import {
   BusinessRuleException,
   ForbiddenException,
   IntegrationException,
@@ -83,6 +87,7 @@ export class MullerBotService {
     private readonly persona: MullerBotPersonaService,
     private readonly integracoes: IntegracoesService,
     private readonly custo: BotCustoService,
+    private readonly conhecimentoSearch: KnowledgeSearchService,
   ) {}
 
   /**
@@ -113,18 +118,27 @@ export class MullerBotService {
     // 0. Compila system prompt usando persona ativa da empresa
     const systemPrompt = await this.persona.compilarSystemPrompt(user.empresaIdAtiva);
 
-    // 1. Busca produtos relevantes (top-K)
-    const produtos = await this.produtoSearch.buscar(user.empresaIdAtiva, dto.pergunta, dto.topK);
+    // 1. Busca produtos relevantes (top-K) + base de CONHECIMENTO (FAQ, regras,
+    // condições, prazos, devolução…). O bot interno responde dos DOIS: catálogo
+    // pra "tem tal produto?" e conhecimento pra "qual a política de X?".
+    const [produtos, chunks] = await Promise.all([
+      this.produtoSearch.buscar(user.empresaIdAtiva, dto.pergunta, dto.topK),
+      this.conhecimentoSearch
+        .buscar(user.empresaIdAtiva, dto.pergunta, 4)
+        .catch(() => [] as ConhecimentoRelevante[]),
+    ]);
+    const blocoConhecimento = this.formatarConhecimento(chunks);
 
     // Histórico carregado ANTES do orçamento — senão a estimativa ignora os turns anteriores
     // e a truncagem do catálogo fica otimista demais (risco de estourar o context window).
     const historico = dto.sessionId ? await this.cache.getHistorico(user.id, dto.sessionId) : [];
     const tokensHistorico = historico.reduce((acc, h) => acc + this.estimarTokens(h.content), 0);
 
-    // 2. Verifica orçamento: pergunta + histórico não podem estourar
+    // 2. Verifica orçamento: pergunta + histórico + conhecimento não podem estourar
     const overheadTokens =
       this.estimarTokens(systemPrompt) +
       this.estimarTokens(dto.pergunta) +
+      this.estimarTokens(blocoConhecimento) +
       tokensHistorico +
       SAFETY_MARGIN_TOKENS;
     if (overheadTokens >= maxInputTokens) {
@@ -139,6 +153,7 @@ export class MullerBotService {
       dto.pergunta,
       produtos,
       orcamentoCatalogo,
+      blocoConhecimento,
     );
 
     // 4. Cache: tenta hit ANTES de gastar OpenAI.
@@ -619,18 +634,30 @@ export class MullerBotService {
    *  2. Se não couber, tenta versão sem descrição (mais compacta)
    *  3. Se ainda assim não couber, pula
    */
+  /** Formata os chunks da base de conhecimento (FAQ/regras) num bloco de contexto. */
+  private formatarConhecimento(chunks: ConhecimentoRelevante[]): string {
+    if (!chunks.length) return '';
+    const linhas = chunks.map((c) => `- ${c.titulo}: ${c.conteudo}`);
+    return `# Informações da empresa (regras, condições, FAQ)\n${linhas.join('\n')}`;
+  }
+
   private montarUserMessage(
     pergunta: string,
     produtos: ProdutoRelevante[],
     orcamentoTokens: number,
+    conhecimento = '',
   ): {
     userMessage: string;
     produtosIncluidos: ProdutoRelevante[];
     tokensEstimados: number;
     truncados: number;
   } {
+    // Sem produtos MAS com conhecimento (ex.: "qual a política de devolução?"):
+    // responde da base de conhecimento em vez de dizer "não encontrei".
     if (produtos.length === 0) {
-      const msg = `O catálogo da empresa não retornou nenhum produto relevante para a pergunta abaixo. Responda dizendo que não encontrou.\n\nPergunta: ${pergunta}`;
+      const msg = conhecimento
+        ? `${conhecimento}\n\n# Pergunta\n${pergunta}`
+        : `O catálogo da empresa não retornou nenhum produto relevante para a pergunta abaixo. Responda dizendo que não encontrou.\n\nPergunta: ${pergunta}`;
       return {
         userMessage: msg,
         produtosIncluidos: [],
@@ -667,7 +694,8 @@ export class MullerBotService {
     }
 
     const catalogo = partes.join('\n\n');
-    const userMessage = `# Catálogo relevante para a pergunta\n${catalogo}\n\n# Pergunta\n${pergunta}`;
+    const prefixoConhecimento = conhecimento ? `${conhecimento}\n\n` : '';
+    const userMessage = `${prefixoConhecimento}# Catálogo relevante para a pergunta\n${catalogo}\n\n# Pergunta\n${pergunta}`;
     return {
       userMessage,
       produtosIncluidos: incluidos,
