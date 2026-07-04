@@ -396,13 +396,21 @@ export class AgendaService {
     for (const ev of googleEvents) {
       if (importados >= 100) break; // guarda contra recorrência gigante
       if (!ev.id || ev.status === 'cancelled' || idsExistentes.has(ev.id)) continue;
-      const inicioStr = ev.start?.dateTime;
-      if (!inicioStr) continue; // all-day fica só no overlay read-only
-      const inicio = new Date(inicioStr);
-      const fim = ev.end?.dateTime ? new Date(ev.end.dateTime) : null;
-      const duracao = fim
-        ? Math.max(15, Math.round((fim.getTime() - inicio.getTime()) / 60000))
-        : 60;
+      let inicio: Date;
+      let duracao: number;
+      if (ev.start?.dateTime) {
+        // Evento COM HORA.
+        inicio = new Date(ev.start.dateTime);
+        const fim = ev.end?.dateTime ? new Date(ev.end.dateTime) : null;
+        duracao = fim ? Math.max(15, Math.round((fim.getTime() - inicio.getTime()) / 60000)) : 60;
+      } else if (ev.start?.date) {
+        // Dia inteiro: meia-noite LOCAL (não `new Date('YYYY-MM-DD')`, que é UTC e
+        // jogaria pro dia anterior no fuso do Brasil). Duração = dia cheio.
+        inicio = new Date(`${ev.start.date}T00:00:00`);
+        duracao = 1440;
+      } else {
+        continue; // sem início utilizável
+      }
       const alertas = (ev.reminders?.overrides ?? [])
         .map((o) => o.minutes)
         .filter((m) => Number.isFinite(m) && m >= 0)
