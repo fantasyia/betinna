@@ -404,9 +404,11 @@ export class AgendaService {
         const fim = ev.end?.dateTime ? new Date(ev.end.dateTime) : null;
         duracao = fim ? Math.max(15, Math.round((fim.getTime() - inicio.getTime()) / 60000)) : 60;
       } else if (ev.start?.date) {
-        // Dia inteiro: meia-noite LOCAL (não `new Date('YYYY-MM-DD')`, que é UTC e
-        // jogaria pro dia anterior no fuso do Brasil). Duração = dia cheio.
-        inicio = new Date(`${ev.start.date}T00:00:00`);
+        // Dia inteiro: ancora ao MEIO-DIA (12:00) do dia, não à meia-noite.
+        // O servidor roda em UTC — `${date}T00:00:00` viraria 00:00Z e no fuso do
+        // Brasil (UTC-3) cairia no DIA ANTERIOR (21:00 da véspera), sumindo do dia
+        // certo. Meio-dia dá folga de ±12h contra qualquer fuso do usuário.
+        inicio = new Date(`${ev.start.date}T12:00:00`);
         duracao = 1440;
       } else {
         continue; // sem início utilizável
