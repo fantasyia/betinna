@@ -963,17 +963,21 @@ function VisaoMensal({
               className="group min-h-[84px] rounded-xl border p-2 text-left flex flex-col gap-1 cursor-pointer font-[inherit] transition-all hover:shadow-md hover:-translate-y-px"
               style={{
                 background: isToday
-                  ? 'color-mix(in srgb, var(--primary) 12%, var(--surface))'
+                  ? 'color-mix(in srgb, var(--primary) 16%, var(--surface))'
                   : foraDoMes
                     ? 'transparent'
-                    : fds
-                      ? 'color-mix(in srgb, var(--secondary) 7%, var(--surface))'
-                      : 'var(--surface)',
+                    : temEvento
+                      ? 'color-mix(in srgb, var(--secondary) 13%, var(--surface))'
+                      : fds
+                        ? 'color-mix(in srgb, var(--secondary) 15%, var(--surface))'
+                        : 'var(--surface)',
                 borderColor: isToday
                   ? 'var(--primary)'
                   : temEvento
-                    ? 'color-mix(in srgb, var(--secondary) 35%, var(--border))'
-                    : 'var(--border)',
+                    ? 'color-mix(in srgb, var(--secondary) 60%, var(--border))'
+                    : fds
+                      ? 'color-mix(in srgb, var(--secondary) 30%, var(--border))'
+                      : 'var(--border)',
                 opacity: foraDoMes ? 0.4 : 1,
               }}
             >
