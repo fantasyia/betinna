@@ -397,4 +397,46 @@ describe('AgendaService', () => {
       });
     });
   });
+
+  describe('sincronizarGoogle (backfill dos existentes)', () => {
+    it('lança se o Google não está conectado', async () => {
+      userIntegracoes.findByServico.mockResolvedValue(null);
+      await expect(service.sincronizarGoogle(fakeUser({ id: 'u1' }))).rejects.toBeInstanceOf(
+        BusinessRuleException,
+      );
+    });
+
+    it('espelha os itens futuros sem googleEventId e salva o id', async () => {
+      userIntegracoes.findByServico.mockResolvedValue({ id: 'conn-1', ativo: true });
+      prisma.agendaItem.findMany.mockResolvedValue([
+        { id: 'a1', empresaId: 'emp-1', titulo: 'Visita', data: new Date(), duracao: 30, observacao: null },
+        { id: 'a2', empresaId: 'emp-1', titulo: 'Ligação', data: new Date(), duracao: 15, observacao: null },
+      ]);
+      googleCalendar.criarEvento
+        .mockResolvedValueOnce({ id: 'gcal-a1' })
+        .mockResolvedValueOnce({ id: 'gcal-a2' });
+
+      const r = await service.sincronizarGoogle(fakeUser({ id: 'u1' }));
+
+      expect(r).toEqual({ sincronizados: 2, total: 2 });
+      expect(googleCalendar.criarEvento).toHaveBeenCalledTimes(2);
+      expect(prisma.agendaItem.updateMany).toHaveBeenCalledWith(
+        expect.objectContaining({ data: { googleEventId: 'gcal-a1' } }),
+      );
+    });
+
+    it('falha num item não derruba os demais (best-effort)', async () => {
+      userIntegracoes.findByServico.mockResolvedValue({ id: 'conn-1', ativo: true });
+      prisma.agendaItem.findMany.mockResolvedValue([
+        { id: 'a1', empresaId: 'emp-1', titulo: 'X', data: new Date(), duracao: 30, observacao: null },
+        { id: 'a2', empresaId: 'emp-1', titulo: 'Y', data: new Date(), duracao: 30, observacao: null },
+      ]);
+      googleCalendar.criarEvento
+        .mockRejectedValueOnce(new Error('Google API error'))
+        .mockResolvedValueOnce({ id: 'gcal-a2' });
+
+      const r = await service.sincronizarGoogle(fakeUser({ id: 'u1' }));
+      expect(r).toEqual({ sincronizados: 1, total: 2 });
+    });
+  });
 });

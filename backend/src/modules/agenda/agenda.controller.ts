@@ -52,6 +52,16 @@ export class AgendaController {
     return this.svc.findById(user, id);
   }
 
+  @Post('sincronizar-google')
+  @RequirePermissions({ module: 'agenda', action: 'view' }, { module: 'agenda', action: 'edit' })
+  @Audit({ action: 'sincronizar_google', resource: 'agenda' })
+  @ApiOperation({
+    summary: 'Espelha no Google os compromissos futuros ainda não sincronizados (backfill)',
+  })
+  sincronizarGoogle(@CurrentUser() user: AuthenticatedUser) {
+    return this.svc.sincronizarGoogle(user);
+  }
+
   @Post()
   @RequirePermissions({ module: 'agenda', action: 'view' }, { module: 'agenda', action: 'create' })
   @Audit({ action: 'create', resource: 'agenda', resourceIdFrom: 'response.id' })
