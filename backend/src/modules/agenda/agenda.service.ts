@@ -366,6 +366,9 @@ export class AgendaService {
     let removidos = 0;
     for (const item of espelhados) {
       if (!item.googleEventId) continue;
+      // Tarefas (gtask:) NÃO são eventos — obterEvento daria 404 e apagaria por
+      // engano. Reconciliação de tarefas é feita separado (abaixo, no import).
+      if (item.googleEventId.startsWith('gtask:')) continue;
       try {
         const ev = await this.googleCalendar.obterEvento(user.id, item.googleEventId);
         if (ev === null) {
@@ -446,9 +449,51 @@ export class AgendaService {
       }
     }
 
+    // IMPORT de TAREFAS (Google Tasks — API separada). Tarefa criada no Google
+    // NÃO aparece no Events API; vem daqui. Vira AgendaItem tipo TAREFA, id
+    // prefixado 'gtask:' (pra reconciliação não tratar como evento). Só as com
+    // data (due). Precisa do escopo tasks.readonly (reconectar) — se faltar, 403.
+    const tarefas = await this.googleCalendar
+      .listarTarefas(user.id, inicioHoje, fimJanela)
+      .catch((err) => {
+        const msg = err instanceof Error ? err.message : String(err);
+        this.logger.warn(
+          `Import Google: listarTarefas falhou (usuário ${user.id}): ${msg} ` +
+            `— provável falta do escopo tasks.readonly (reconectar) ou Tasks API desabilitada`,
+        );
+        return [] as Awaited<ReturnType<typeof this.googleCalendar.listarTarefas>>;
+      });
+    for (const t of tarefas) {
+      if (importados >= 100 || !t.id || !t.due) continue;
+      const gid = `gtask:${t.id}`;
+      if (idsExistentes.has(gid)) continue;
+      // `due` é uma DATA (Google ignora a hora): ancora ao meio-dia local.
+      const inicio = new Date(`${t.due.slice(0, 10)}T12:00:00`);
+      if (isNaN(inicio.getTime())) continue;
+      try {
+        await this.prisma.agendaItem.create({
+          data: {
+            empresaId: empresaIdImport,
+            usuarioId: user.id,
+            titulo: t.title?.trim() || '(tarefa sem título)',
+            data: inicio,
+            duracao: 30,
+            tipo: 'TAREFA',
+            observacao: t.notes ?? null,
+            googleEventId: gid,
+          },
+        });
+        idsExistentes.add(gid);
+        importados++;
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err);
+        this.logger.warn(`Import Google: falha ao importar tarefa ${t.id}: ${msg}`);
+      }
+    }
+
     this.logger.log(
       `Sync Google: ${sincronizados} enviados, ${importados} importados, ${removidos} removidos ` +
-        `(Google devolveu ${googleEvents.length} eventos na janela) — usuário ${user.id}`,
+        `(Google devolveu ${googleEvents.length} eventos + ${tarefas.length} tarefas) — usuário ${user.id}`,
     );
     return { sincronizados, importados, removidos, total: pendentes.length };
   }

@@ -8,9 +8,13 @@ import type {
   GoogleEvent,
   GoogleEventCreateParams,
   GoogleEventsListResponse,
+  GoogleTask,
+  GoogleTaskListsResponse,
+  GoogleTasksListResponse,
 } from './google.types';
 
 const CALENDAR_BASE = 'https://www.googleapis.com/calendar/v3/calendars/primary';
+const TASKS_BASE = 'https://tasks.googleapis.com/tasks/v1';
 const DEFAULT_TZ = 'America/Sao_Paulo';
 
 /**
@@ -141,7 +145,50 @@ export class GoogleCalendarService {
     return res.items ?? [];
   }
 
+  /**
+   * Lista as TAREFAS do usuário (Google Tasks — API separada de tasks.googleapis.com)
+   * com vencimento na faixa [inicio, fim]. Tarefas NÃO aparecem no Calendar Events
+   * API — por isso esta chamada dedicada. Só as NÃO concluídas e COM data (due).
+   * Precisa do escopo `tasks.readonly` (403 se o usuário não reconectou concedendo).
+   */
+  async listarTarefas(usuarioId: string, inicio: Date, fim: Date): Promise<GoogleTask[]> {
+    const token = await this.oauth.getAccessToken(usuarioId);
+    const lists = await this.tasksGet<GoogleTaskListsResponse>('/users/@me/lists', token);
+    const out: GoogleTask[] = [];
+    for (const l of lists.items ?? []) {
+      const params = new URLSearchParams({
+        dueMin: inicio.toISOString(),
+        dueMax: fim.toISOString(),
+        showCompleted: 'false',
+        showHidden: 'false',
+        maxResults: '100',
+      });
+      const res = await this.tasksGet<GoogleTasksListResponse>(
+        `/lists/${encodeURIComponent(l.id)}/tasks?${params}`,
+        token,
+      );
+      for (const t of res.items ?? []) {
+        if (t.id && t.due && t.status !== 'completed') out.push(t);
+      }
+    }
+    return out;
+  }
+
   // ─── Internos ──────────────────────────────────────────────────────────
+
+  private async tasksGet<T>(path: string, token: string): Promise<T> {
+    try {
+      const res = await this.http.request<T>('GET', `${TASKS_BASE}${path}`, {
+        headers: { Authorization: `Bearer ${token}` },
+        integration: 'google',
+        redactKeys: ['authorization'],
+        retries: 1,
+      });
+      return res.data;
+    } catch (err) {
+      throw this.wrapError(err);
+    }
+  }
 
   /**
    * Alertas (minutos antes) → `reminders` do Google. Vazio = usa os defaults do

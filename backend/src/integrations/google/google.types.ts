@@ -62,6 +62,26 @@ export interface GoogleEventsListResponse {
   nextSyncToken?: string;
 }
 
+// ─── Google Tasks (API separada: tasks.googleapis.com) ───────────────────
+export interface GoogleTask {
+  id?: string;
+  title?: string;
+  notes?: string;
+  status?: 'needsAction' | 'completed';
+  /** RFC3339, mas SÓ a data é significativa (Google ignora a hora das tarefas). */
+  due?: string;
+  updated?: string;
+}
+
+export interface GoogleTasksListResponse {
+  items?: GoogleTask[];
+  nextPageToken?: string;
+}
+
+export interface GoogleTaskListsResponse {
+  items?: Array<{ id: string; title?: string }>;
+}
+
 export interface GoogleEventCreateParams {
   titulo: string;
   inicio: Date;
