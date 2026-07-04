@@ -21,6 +21,10 @@ export interface ConexaoUsuarioDescriptada {
 export type ConexaoUsuarioPublica = Omit<UsuarioIntegracao, 'credenciais'> & {
   credenciaisConfiguradas: boolean;
   camposCredenciais: string[];
+  /** E-mail da conta externa conectada (ex.: conta Google do google_calendar).
+   *  Identificação, não segredo — permite o usuário VER qual conta está ligada
+   *  (diagnóstico de multi-login: conectou a conta errada sem perceber). */
+  contaEmail: string | null;
 };
 
 /**
@@ -178,11 +182,17 @@ export class UsuarioIntegracoesService {
   private toPublic(c: UsuarioIntegracao): ConexaoUsuarioPublica {
     let camposCredenciais: string[] = [];
     let configurado = false;
+    let contaEmail: string | null = null;
     try {
       const raw = this.crypto.decrypt(c.credenciais as unknown as string);
       const obj = JSON.parse(raw) as Record<string, unknown>;
       camposCredenciais = Object.keys(obj);
       configurado = camposCredenciais.length > 0;
+      // Identificação da conta externa (não é segredo): mostra QUAL conta está
+      // conectada — sem isso, multi-login do Google esconde conexão na conta errada.
+      if (typeof obj.email === 'string' && obj.email.includes('@')) {
+        contaEmail = obj.email;
+      }
     } catch {
       configurado = false;
     }
@@ -198,6 +208,7 @@ export class UsuarioIntegracoesService {
       atualizadoEm: c.atualizadoEm,
       credenciaisConfiguradas: configurado,
       camposCredenciais,
+      contaEmail,
     } as ConexaoUsuarioPublica;
   }
 }

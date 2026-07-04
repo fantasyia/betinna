@@ -153,13 +153,15 @@ function labelHorario(day: Date): string {
 function GoogleConexaoBotao({ onSincronizado }: { onSincronizado?: () => void }) {
   const toast = useToast();
   const { data: conexoes, refetch } = useApiQuery<
-    Array<{ servico: string; ativo: boolean }>
+    Array<{ servico: string; ativo: boolean; contaEmail?: string | null }>
   >('/usuario/integracoes');
   const { data: cfg } = useApiQuery<{ configurado: boolean }>(
     '/integracoes/google/oauth/status',
   );
   const [busy, setBusy] = useState(false);
-  const conectado = (conexoes ?? []).some((c) => c.servico === 'google_calendar' && c.ativo);
+  const conexaoGoogle = (conexoes ?? []).find((c) => c.servico === 'google_calendar' && c.ativo);
+  const conectado = Boolean(conexaoGoogle);
+  const contaEmail = conexaoGoogle?.contaEmail ?? null;
 
   // Popup OAuth avisa o opener via postMessage (type terminando em '-oauth').
   useEffect(() => {
@@ -241,11 +243,15 @@ function GoogleConexaoBotao({ onSincronizado }: { onSincronizado?: () => void })
       <div className="inline-flex items-center gap-2">
         <span
           data-testid="agenda-google-conectado"
-          title="Seu Google Calendar está conectado — compromissos com 'espelhar' vão pra lá."
-          className="inline-flex items-center gap-1.5 rounded-md border border-success/30 bg-success/10 px-3 py-2 text-[13px] font-medium text-success"
+          title={
+            contaEmail
+              ? `Conectado como ${contaEmail}. Se esta NÃO for a conta onde estão seus compromissos, clique em Reconectar e escolha a conta certa.`
+              : "Seu Google Calendar está conectado — compromissos com 'espelhar' vão pra lá."
+          }
+          className="inline-flex items-center gap-1.5 rounded-md border border-success/30 bg-success/10 px-3 py-2 text-[13px] font-medium text-success max-w-[260px]"
         >
-          <CalendarCheck className="h-4 w-4" />
-          Google conectado
+          <CalendarCheck className="h-4 w-4 shrink-0" />
+          <span className="truncate">{contaEmail ? `Google: ${contaEmail}` : 'Google conectado'}</span>
         </span>
         <button
           type="button"
