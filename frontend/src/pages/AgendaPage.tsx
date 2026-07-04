@@ -820,18 +820,29 @@ function VisaoMensal({
 
   return (
     <div data-testid="agenda-visao-mes-grid">
-      <div className="grid grid-cols-7 gap-1 mb-1">
-        {cabecalho.map((nome) => (
-          <div key={nome} className="text-[11px] font-semibold text-muted text-center py-1">
-            {nome}
-          </div>
-        ))}
+      {/* Cabeçalho dos dias da semana — fim de semana em ciano (marca) */}
+      <div className="grid grid-cols-7 gap-1.5 mb-2">
+        {cabecalho.map((nome, i) => {
+          const fds = i === 0 || i === 6;
+          return (
+            <div
+              key={nome}
+              className="text-center text-[11px] font-bold uppercase tracking-[0.08em] py-1"
+              style={{ color: fds ? 'var(--secondary-hover)' : 'var(--muted)' }}
+            >
+              {nome.replace('.', '')}
+            </div>
+          );
+        })}
       </div>
-      <div className="grid grid-cols-7 gap-1">
+      {/* Grade dos dias */}
+      <div className="grid grid-cols-7 gap-1.5">
         {cels.map((d) => {
           const foraDoMes = d.getMonth() !== mes;
           const isToday = sameDay(d, today);
+          const fds = d.getDay() === 0 || d.getDay() === 6;
           const doDia = itemsByDay.get(keyDia(d)) ?? [];
+          const temEvento = doDia.length > 0;
           return (
             <button
               key={keyDia(d)}
@@ -839,36 +850,70 @@ function VisaoMensal({
               data-testid={`agenda-mes-dia-${keyDia(d)}`}
               onClick={() => onDayClick(d)}
               title={
-                doDia.length > 0
+                temEvento
                   ? `${doDia.length} ${doDia.length === 1 ? 'compromisso' : 'compromissos'}`
                   : undefined
               }
-              className="min-h-[72px] border rounded-md p-1.5 text-left flex flex-col gap-1 cursor-pointer font-[inherit]"
+              className="group min-h-[84px] rounded-xl border p-2 text-left flex flex-col gap-1 cursor-pointer font-[inherit] transition-all hover:shadow-md hover:-translate-y-px"
               style={{
                 background: isToday
-                  ? 'color-mix(in srgb, var(--primary) 9%, transparent)'
+                  ? 'color-mix(in srgb, var(--primary) 12%, var(--surface))'
                   : foraDoMes
                     ? 'transparent'
-                    : 'var(--bg-alt)',
-                borderColor: isToday ? 'var(--primary)' : 'var(--border)',
-                opacity: foraDoMes ? 0.45 : 1,
+                    : fds
+                      ? 'color-mix(in srgb, var(--secondary) 7%, var(--surface))'
+                      : 'var(--surface)',
+                borderColor: isToday
+                  ? 'var(--primary)'
+                  : temEvento
+                    ? 'color-mix(in srgb, var(--secondary) 35%, var(--border))'
+                    : 'var(--border)',
+                opacity: foraDoMes ? 0.4 : 1,
               }}
             >
-              <span
-                className="text-[12px] font-semibold"
-                style={{ color: isToday ? 'var(--primary)' : 'var(--text)' }}
-              >
-                {d.getDate()}
-              </span>
-              {doDia.length > 0 && (
-                <span className="flex items-center gap-0.5 flex-wrap text-[12px] leading-none">
+              <div className="flex items-center justify-between">
+                {isToday ? (
+                  <span
+                    className="inline-flex h-6 w-6 items-center justify-center rounded-full text-[12px] font-bold shadow-sm"
+                    style={{ background: 'var(--primary)', color: 'var(--primary-contrast)' }}
+                  >
+                    {d.getDate()}
+                  </span>
+                ) : (
+                  <span
+                    className="text-[13px] font-semibold px-0.5"
+                    style={{
+                      color: fds && !foraDoMes ? 'var(--secondary-hover)' : 'var(--text)',
+                    }}
+                  >
+                    {d.getDate()}
+                  </span>
+                )}
+                {temEvento && (
+                  <span
+                    className="inline-flex h-[18px] min-w-[18px] items-center justify-center rounded-full px-1 text-[10px] font-bold"
+                    style={{
+                      background: 'color-mix(in srgb, var(--secondary) 22%, transparent)',
+                      color: 'var(--secondary-hover)',
+                    }}
+                  >
+                    {doDia.length}
+                  </span>
+                )}
+              </div>
+              {temEvento && (
+                <span className="flex items-center gap-0.5 flex-wrap text-[13px] leading-none mt-0.5">
                   {doDia.slice(0, 3).map((it) => (
-                    <span key={it.id} title={`${fmtTime(it.data)} · ${it.titulo}`} aria-label={it.tipo}>
+                    <span
+                      key={it.id}
+                      title={`${fmtTime(it.data)} · ${it.titulo}`}
+                      aria-label={it.tipo}
+                    >
                       {TIPO_ICON[it.tipo]}
                     </span>
                   ))}
                   {doDia.length > 3 && (
-                    <span className="text-[10px] text-muted font-semibold">
+                    <span className="text-[10px] font-semibold" style={{ color: 'var(--muted)' }}>
                       +{doDia.length - 3}
                     </span>
                   )}
