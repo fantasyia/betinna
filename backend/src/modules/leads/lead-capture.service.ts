@@ -92,29 +92,7 @@ export class LeadCaptureService {
     chaveApresentada: string | undefined,
     dto: LeadCapturePublicoDto,
   ): Promise<{ ok: true; leadId: string; duplicado: boolean }> {
-    const chave = (chaveApresentada ?? '').trim();
-    if (!chave.startsWith('blc_') || chave.length < 20) {
-      throw new UnauthorizedException('Chave de API inválida');
-    }
-
-    // Rate-limit por chave ANTES do lookup (mesmo padrão do WebhookEntrada).
-    if (!(await this.dentroDoLimite(chave))) {
-      throw new AppException(
-        ErrorCode.RATE_LIMIT_EXCEEDED,
-        'Muitas requisições',
-        HttpStatus.TOO_MANY_REQUESTS,
-      );
-    }
-
-    const row = await this.prisma.leadCaptureChave.findUnique({
-      where: { chaveHash: this.hash(chave) },
-      select: { empresaId: true, ativo: true },
-    });
-    if (!row || !row.ativo) {
-      // 401 uniforme — não revela se a chave existe/foi desativada.
-      throw new UnauthorizedException('Chave de API inválida');
-    }
-    const empresaId = row.empresaId;
+    const empresaId = await this.autenticarChave(chaveApresentada);
 
     // marca uso (best-effort, não bloqueia o caminho feliz)
     void this.prisma.leadCaptureChave
@@ -134,15 +112,79 @@ export class LeadCaptureService {
       cidade: dto.cidade,
       uf: dto.uf,
       segmento: dto.segmento,
-      observacoes: this.montarObservacoes(dto),
+      // Só a mensagem livre vai pra observações; o resto vira campo estruturado.
+      observacoes: dto.mensagem?.trim() || undefined,
       funilId: dto.funilId,
       funilEtapaId: dto.funilEtapaId,
+      variaveis: this.montarVariaveis(dto),
     });
     this.logger.log(`Lead capturado do site: ${lead.id} (empresa ${empresaId})`);
     return { ok: true, leadId: lead.id, duplicado: false };
   }
 
+  /**
+   * Lista os funis (com etapas) do tenant da chave — pro dev do site descobrir
+   * funilId/funilEtapaId programaticamente. Mesma auth (x-api-key) da captura.
+   */
+  async listarFunis(
+    chaveApresentada: string | undefined,
+  ): Promise<Array<{ id: string; nome: string; etapas: Array<{ id: string; nome: string }> }>> {
+    const empresaId = await this.autenticarChave(chaveApresentada);
+    return this.prisma.funil.findMany({
+      where: { empresaId, ativo: true },
+      orderBy: { ordem: 'asc' },
+      select: {
+        id: true,
+        nome: true,
+        etapas: { orderBy: { ordem: 'asc' }, select: { id: true, nome: true } },
+      },
+    });
+  }
+
   // ─── internos ────────────────────────────────────────────────────────
+
+  /**
+   * Valida a chave x-api-key (formato + rate-limit + lookup) → empresaId.
+   * 401 uniforme pra chave inexistente/inativa (sem oráculo de existência).
+   */
+  private async autenticarChave(chaveApresentada: string | undefined): Promise<string> {
+    const chave = (chaveApresentada ?? '').trim();
+    if (!chave.startsWith('blc_') || chave.length < 20) {
+      throw new UnauthorizedException('Chave de API inválida');
+    }
+    if (!(await this.dentroDoLimite(chave))) {
+      throw new AppException(
+        ErrorCode.RATE_LIMIT_EXCEEDED,
+        'Muitas requisições',
+        HttpStatus.TOO_MANY_REQUESTS,
+      );
+    }
+    const row = await this.prisma.leadCaptureChave.findUnique({
+      where: { chaveHash: this.hash(chave) },
+      select: { empresaId: true, ativo: true },
+    });
+    if (!row || !row.ativo) {
+      throw new UnauthorizedException('Chave de API inválida');
+    }
+    return row.empresaId;
+  }
+
+  /**
+   * Monta o JSON `Lead.variaveis` com os campos estruturados da captura (só os
+   * enviados). Ficam legíveis nos fluxos como {{custom.<chave>}} e na tela do lead.
+   */
+  private montarVariaveis(dto: LeadCapturePublicoDto): Record<string, unknown> {
+    const v: Record<string, unknown> = {};
+    if (dto.origem?.trim()) v.origem = dto.origem.trim();
+    if (dto.empresa?.trim()) v.empresa = dto.empresa.trim();
+    if (dto.cargo?.trim()) v.cargo = dto.cargo.trim();
+    if (dto.regiao?.trim()) v.regiao = dto.regiao.trim();
+    if (dto.experiencia?.trim()) v.experiencia = dto.experiencia.trim();
+    if (dto.paginaOrigem?.trim()) v.paginaOrigem = dto.paginaOrigem.trim();
+    if (dto.consentimentoLgpd) v.consentimentoLgpd = dto.consentimentoLgpd;
+    if (dto.metadados) v.metadados = dto.metadados;
+    return v;
+  }
 
   /**
    * Lead ABERTO da empresa com o mesmo telefone (sufixo-8, D18 — NUNCA
@@ -180,14 +222,6 @@ export class LeadCaptureService {
       if (porEmail) return porEmail.id;
     }
     return null;
-  }
-
-  /** Observações do lead: mensagem do form + origem (página) quando enviadas. */
-  private montarObservacoes(dto: LeadCapturePublicoDto): string | undefined {
-    const partes: string[] = [];
-    if (dto.mensagem?.trim()) partes.push(dto.mensagem.trim());
-    if (dto.origem?.trim()) partes.push(`[origem: ${dto.origem.trim()}]`);
-    return partes.length > 0 ? partes.join('\n') : undefined;
   }
 
   /** Rate-limit por chave (janela 1min). Fail-open se Redis cair. */

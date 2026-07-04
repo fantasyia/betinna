@@ -13,6 +13,9 @@ const makePrismaMock = () => ({
   lead: {
     findFirst: vi.fn().mockResolvedValue(null),
   },
+  funil: {
+    findMany: vi.fn().mockResolvedValue([]),
+  },
   $queryRaw: vi.fn().mockResolvedValue([]),
 });
 
@@ -106,8 +109,53 @@ describe('LeadCaptureService', () => {
           nome: 'Padaria do João',
           contatoTelefone: '(11) 99999-1234',
           funilId: 'funil-1',
-          observacoes: 'Quero saber do Master Block\n[origem: landing-x]',
+          // Observações = só a mensagem livre; origem vira campo estruturado.
+          observacoes: 'Quero saber do Master Block',
+          variaveis: expect.objectContaining({ origem: 'landing-x' }),
         }),
+      );
+    });
+
+    it('campos estruturados vão pra variaveis; observações só a mensagem', async () => {
+      prisma.leadCaptureChave.findUnique.mockResolvedValue({ empresaId: 'emp-1', ativo: true });
+
+      await svc.capturar(CHAVE, {
+        ...dto,
+        mensagem: 'Tenho paradas por queima de placas',
+        origem: 'site-institucional',
+        empresa: 'Metalúrgica Exemplo LTDA',
+        cargo: 'Gerente de Manutenção',
+        regiao: 'Interior de SP',
+        experiencia: '8 anos',
+        paginaOrigem: '/contato',
+        consentimentoLgpd: { aceito: true, versaoTexto: 'v1' },
+        metadados: { referer: 'https://somatecblocking.com.br/contato' },
+      });
+
+      const [, arg] = leads.createPublico.mock.calls[0];
+      expect(arg.observacoes).toBe('Tenho paradas por queima de placas');
+      expect(arg.variaveis).toMatchObject({
+        origem: 'site-institucional',
+        empresa: 'Metalúrgica Exemplo LTDA',
+        cargo: 'Gerente de Manutenção',
+        regiao: 'Interior de SP',
+        experiencia: '8 anos',
+        paginaOrigem: '/contato',
+        consentimentoLgpd: { aceito: true, versaoTexto: 'v1' },
+        metadados: { referer: 'https://somatecblocking.com.br/contato' },
+      });
+    });
+
+    it('listarFunis: valida a chave e devolve funis com etapas', async () => {
+      prisma.leadCaptureChave.findUnique.mockResolvedValue({ empresaId: 'emp-1', ativo: true });
+      prisma.funil.findMany.mockResolvedValue([
+        { id: 'f1', nome: 'Clientes', etapas: [{ id: 'e1', nome: 'Novo' }] },
+      ]);
+
+      const r = await svc.listarFunis(CHAVE);
+      expect(r).toEqual([{ id: 'f1', nome: 'Clientes', etapas: [{ id: 'e1', nome: 'Novo' }] }]);
+      expect(prisma.funil.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({ where: { empresaId: 'emp-1', ativo: true } }),
       );
     });
 

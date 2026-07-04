@@ -25,6 +25,15 @@ export class LeadCaptureController {
     return this.svc.capturar(apiKey, dto);
   }
 
+  @Public()
+  @Get('public/funis')
+  @ApiOperation({
+    summary: 'Lista os funis (com etapas) do tenant — descobre funilId/funilEtapaId (x-api-key)',
+  })
+  listarFunis(@Headers('x-api-key') apiKey: string | undefined) {
+    return this.svc.listarFunis(apiKey);
+  }
+
   // ─── Gestão da chave (DIRECTOR/ADMIN) ─────────────────────────────────
   @ApiBearerAuth()
   @Get('leads-capture/chave')

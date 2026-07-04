@@ -79,7 +79,20 @@ export function LeadCaptureCard() {
     email: form.email,
     mensagem: form.mensagem,  // opcional → observações do lead
     origem: 'site-institucional', // opcional (identifica a página)
-    // funilId / funilEtapaId opcionais — sem eles cai no funil padrão
+    // funilId / funilEtapaId opcionais — sem eles cai no funil padrão.
+    // Descubra os ids em GET /public/funis (mesma x-api-key) ou em Funis (botão "ID").
+
+    // Campos estruturados opcionais (cada um vira campo próprio no CRM):
+    empresa: form.empresa,
+    cargo: form.cargo,
+    segmento: form.segmento,
+    cidade: form.cidade,
+    uf: form.uf,             // 2 letras
+    regiao: form.regiao,           // leads de representante
+    experiencia: form.experiencia, // leads de representante
+    paginaOrigem: '/contato',      // página do site
+    consentimentoLgpd: { aceito: true, timestamp: new Date().toISOString(), versaoTexto: 'v1', hashTexto: '' },
+    metadados: { userAgent: navigator.userAgent, referer: document.referrer },
   }),
 });`;
 

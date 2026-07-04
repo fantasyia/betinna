@@ -9,6 +9,7 @@ import {
   CheckCircle2,
   Target,
   Funnel,
+  Copy,
 } from 'lucide-react';
 import {
   DndContext,
@@ -355,6 +356,21 @@ function FunilEditor({
           )}
         </div>
         <div className="flex items-center gap-1.5 shrink-0">
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={() => {
+              void navigator.clipboard
+                ?.writeText(funil.id)
+                .then(() => toast.success('ID copiado', funil.id))
+                .catch(() => toast.error('Não consegui copiar', funil.id));
+            }}
+            leftIcon={<Copy className="h-3 w-3" />}
+            data-testid={`funil-copiar-id-${funil.id}`}
+            title={`Copiar o ID deste funil (${funil.id}) — use no funilId da captura do site`}
+          >
+            ID
+          </Button>
           <Button
             variant="secondary"
             size="sm"

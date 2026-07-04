@@ -16,6 +16,8 @@ import {
   Plus,
   MapPin,
   Briefcase,
+  Sparkles,
+  ShieldCheck,
   User,
   ArrowRight,
   Target,
@@ -98,6 +100,8 @@ interface Lead {
   score: number;
   proximaAcao?: string | null;
   observacoes?: string | null;
+  /** Campos flexíveis (IA/fluxos + captura do site: empresa, cargo, regiao, LGPD…). */
+  variaveis?: Record<string, unknown> | null;
   representante?: { id: string; nome: string } | null;
   cliente?: { id: string; nome: string } | null;
   funil?: { id: string; nome: string; cor: string } | null;
@@ -1138,6 +1142,8 @@ function LeadDetailDrawer({
           </div>
         </section>
 
+        <DadosCapturaSection variaveis={lead.variaveis} />
+
         {actionError && (
           <div
             data-testid="lead-action-error"
@@ -1169,6 +1175,60 @@ function InfoCell({
       </div>
       <div className="text-sm text-text truncate">{children}</div>
     </div>
+  );
+}
+
+/**
+ * Dados estruturados que vieram da captura do site (Lead.variaveis): empresa,
+ * cargo, região, experiência, página de origem, origem e consentimento LGPD.
+ * Só renderiza quando há ao menos um campo de captura.
+ */
+function DadosCapturaSection({ variaveis }: { variaveis?: Record<string, unknown> | null }) {
+  const v = variaveis ?? {};
+  const str = (k: string): string | null => (typeof v[k] === 'string' ? (v[k] as string) : null);
+  const lgpd = (v.consentimentoLgpd ?? null) as {
+    aceito?: boolean;
+    timestamp?: string;
+    versaoTexto?: string;
+  } | null;
+  const meta = (v.metadados ?? null) as { referer?: string; userAgent?: string } | null;
+
+  const campos: Array<{ label: string; valor: string | null }> = [
+    { label: 'Empresa', valor: str('empresa') },
+    { label: 'Cargo', valor: str('cargo') },
+    { label: 'Região', valor: str('regiao') },
+    { label: 'Experiência', valor: str('experiencia') },
+    { label: 'Página de origem', valor: str('paginaOrigem') },
+    { label: 'Origem', valor: str('origem') },
+  ].filter((c) => c.valor);
+
+  if (campos.length === 0 && !lgpd && !meta) return null;
+
+  return (
+    <section data-testid="lead-dados-captura">
+      <h4 className="text-[10px] font-semibold uppercase tracking-wider text-muted mb-2">
+        Dados da captura (site)
+      </h4>
+      <div className="grid grid-cols-2 gap-2.5 text-sm">
+        {campos.map((c) => (
+          <InfoCell key={c.label} icon={<Sparkles />} label={c.label}>
+            {c.valor}
+          </InfoCell>
+        ))}
+        {lgpd && (
+          <InfoCell icon={<ShieldCheck />} label="Consentimento LGPD">
+            {lgpd.aceito ? 'Aceito' : 'Não aceito'}
+            {lgpd.versaoTexto ? ` · ${lgpd.versaoTexto}` : ''}
+            {lgpd.timestamp ? ` · ${lgpd.timestamp}` : ''}
+          </InfoCell>
+        )}
+        {meta?.referer && (
+          <InfoCell icon={<TrendingUp />} label="Referer">
+            {meta.referer}
+          </InfoCell>
+        )}
+      </div>
+    </section>
   );
 }
 
