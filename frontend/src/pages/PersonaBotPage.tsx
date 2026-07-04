@@ -78,7 +78,7 @@ Regras:
 function motivoModeloTexto(motivo: string): string {
   switch (motivo) {
     case 'sem_chave':
-      return 'nenhuma chave OpenAI configurada (conecte a sua em Minhas Integrações, ou o admin define a corporativa)';
+      return 'a empresa não tem chave OpenAI configurada — o DIRETOR precisa configurá-la em Integrações (escopo empresa). É a chave que o bot usa; a chave pessoal do rep não conta aqui';
     case 'mock':
       return 'o bot está em modo de teste (MULLERBOT_MOCK), sem chamada real à OpenAI';
     case 'sem_permissao_modelos':

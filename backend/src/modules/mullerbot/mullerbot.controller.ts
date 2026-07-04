@@ -44,7 +44,10 @@ export class MullerBotController {
 
   @Get('bot/modelos')
   @Roles('ADMIN', 'DIRECTOR')
-  @ApiOperation({ summary: 'Lista os modelos de chat disponíveis na conta OpenAI do usuário.' })
+  @ApiOperation({
+    summary:
+      'Lista os modelos de chat da chave OpenAI da EMPRESA (a que o bot usa), não a pessoal.',
+  })
   listarModelos(@CurrentUser() user: AuthenticatedUser) {
     return this.bot.listarModelos(user);
   }
