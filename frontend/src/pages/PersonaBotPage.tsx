@@ -16,6 +16,7 @@ import {
   CardDescription,
   EmptyState,
   Field,
+  Input,
   Select,
   Switch,
   Textarea,
@@ -99,6 +100,7 @@ export default function PersonaBotPage() {
   const { data, loading, refetch } = useApiQuery<Persona>('/mullerbot/persona');
 
   // Estado de edição — o prompt completo do Muller + modelo da IA
+  const [nomeBot, setNomeBot] = useState('');
   const [prompt, setPrompt] = useState('');
   const [modelo, setModelo] = useState('');
   const [dirty, setDirty] = useState(false);
@@ -127,6 +129,7 @@ export default function PersonaBotPage() {
 
   useEffect(() => {
     if (!data) return;
+    setNomeBot(data.nome ?? '');
     setPrompt(data.promptCustom ?? '');
     setModelo(data.modelo ?? '');
     setLimDia(data.limiteTokensDiaIn ?? 100000);
@@ -216,8 +219,9 @@ export default function PersonaBotPage() {
     setError(null);
     try {
       await api.put<Persona>('/mullerbot/persona', {
-        // nome só é usado se o prompt tiver {{nome}}; mantém um default.
-        nome: data?.nome?.trim() || 'Muller',
+        // Nome do bot escolhido pela empresa (ex.: "SomaBOT"). Aparece no chat e
+        // onde o prompt usar {{nome}}.
+        nome: nomeBot.trim() || 'MullerBot',
         tomVoz: 'PROFISSIONAL',
         ativo: true,
         promptCustom: prompt.trim() || null,
@@ -487,6 +491,22 @@ export default function PersonaBotPage() {
                 Coloque aqui a identidade, o tom, as regras e tudo mais.
               </CardDescription>
             </CardHeader>
+            <Field
+              label="Nome do bot"
+              hint='Como o seu assistente se chama (ex.: "SomaBOT"). Aparece no chat e onde o prompt usar {{nome}}.'
+              className="mb-3"
+            >
+              <Input
+                value={nomeBot}
+                onChange={(e) => {
+                  setNomeBot(e.target.value);
+                  setDirty(true);
+                }}
+                maxLength={60}
+                placeholder="Ex.: SomaBOT"
+                data-testid="persona-nome-bot"
+              />
+            </Field>
             <Field
               label="Modelo da IA (OpenAI)"
               hint={

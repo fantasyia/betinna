@@ -2,6 +2,7 @@ import { Module } from '@nestjs/common';
 import { EmailModule } from '@integrations/email/email.module';
 import { WhatsAppModule } from '@integrations/whatsapp/whatsapp.module';
 import { BotPromptsModule } from '@modules/bot-prompts/bot-prompts.module';
+import { RagModule } from '@modules/rag/rag.module';
 import { MullerBotController } from './mullerbot.controller';
 import { MullerBotService } from './mullerbot.service';
 import { MullerBotCacheService } from './mullerbot-cache.service';
@@ -14,7 +15,7 @@ import { BotCustoService } from './bot-custo.service';
 import { BotAuditoriaController } from './bot-auditoria.controller';
 
 @Module({
-  imports: [EmailModule, WhatsAppModule, BotPromptsModule],
+  imports: [EmailModule, WhatsAppModule, BotPromptsModule, RagModule],
   controllers: [MullerBotController, MullerBotPersonaController, BotAuditoriaController],
   providers: [
     MullerBotService,
