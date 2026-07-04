@@ -151,24 +151,32 @@ export class LeadCaptureService {
    * (perdendo os acentos), MAS o corpo CRU (rawBody, preservado pro HMAC) ainda
    * tem os bytes originais — então re-decodificamos deles.
    *
-   * Estratégia: só age quando há caractere de substituição (�) no dto — aí
-   * tenta UTF-8 estrito no rawBody; se também tiver �, o corpo é latin1 →
-   * decodifica latin1 e re-valida. Se algo falhar, mantém o dto (não piora).
+   * Estratégia CORRETA: só re-decodifica quando o corpo CRU NÃO é UTF-8 VÁLIDO
+   * (aí é latin1 de verdade). O `TextDecoder(fatal)` só lança quando há byte que
+   * não forma sequência UTF-8 válida.
+   *
+   * ⚠️ NÃO usar "tem � no dto" como sinal (era o bug): um corpo UTF-8 válido pode
+   * conter � LEGITIMAMENTE (quando o dado já veio corrompido da origem). Re-lê-lo
+   * como latin1 nesse caso CORROMPE os acentos bons — "Formulário" (C3A1) virava
+   * "FormulÃ¡rio", "·" virava "Â·". Confiar no UTF-8 válido preserva os literais.
    */
   private corrigirEncoding(dto: LeadCapturePublicoDto, rawBody?: Buffer): LeadCapturePublicoDto {
     if (!rawBody?.length) return dto;
-    if (!JSON.stringify(dto).includes('�')) return dto; // sem mojibake → nada a fazer
 
-    const comoUtf8 = rawBody.toString('utf8');
-    const texto = comoUtf8.includes('�') ? rawBody.toString('latin1') : comoUtf8;
     try {
-      const corrigido = leadCapturePublicoSchema.parse(JSON.parse(texto));
-      this.logger.warn(
-        'Captura de lead: corpo não-UTF-8 (provável latin1) — acentos re-decodificados a partir do rawBody.',
-      );
-      return corrigido;
+      new TextDecoder('utf-8', { fatal: true }).decode(rawBody);
+      return dto; // corpo é UTF-8 válido → confia no parse do body-parser
     } catch {
-      return dto;
+      // não é UTF-8 válido → provável latin1/windows-1252 → re-decodifica dos bytes
+      try {
+        const corrigido = leadCapturePublicoSchema.parse(JSON.parse(rawBody.toString('latin1')));
+        this.logger.warn(
+          'Captura de lead: corpo não-UTF-8 (provável latin1) — acentos re-decodificados a partir do rawBody.',
+        );
+        return corrigido;
+      } catch {
+        return dto;
+      }
     }
   }
 

@@ -172,6 +172,25 @@ describe('LeadCaptureService', () => {
       expect(arg.observacoes).toBe('Tenho paradas por queima de placas no formulário');
     });
 
+    it('encoding: corpo UTF-8 VÁLIDO com � legítimo NÃO é re-decodificado (não corrompe literais)', async () => {
+      prisma.leadCaptureChave.findUnique.mockResolvedValue({ empresaId: 'emp-1', ativo: true });
+
+      // Cenário do bug real: o usuário já perdeu um acento na origem (� de verdade),
+      // mas os literais do site ("Formulário", "·") são UTF-8 limpos. O corpo CRU é
+      // UTF-8 VÁLIDO → NÃO pode ser re-lido como latin1 (senão vira "FormulÃ¡rio").
+      const bodyObj = {
+        ...dto,
+        mensagem: 'Quero diagn�stico\n\n— Interesse: b2b · Formulário: b2b',
+      };
+      const rawBody = Buffer.from(JSON.stringify(bodyObj), 'utf8');
+
+      await svc.capturar(CHAVE, bodyObj, rawBody);
+
+      const [, arg] = leads.createPublico.mock.calls[0];
+      // literais preservados; o � do user permanece (irrecuperável) mas não espalha corrupção
+      expect(arg.observacoes).toBe('Quero diagn�stico\n\n— Interesse: b2b · Formulário: b2b');
+    });
+
     it('listarFunis: valida a chave e devolve funis com etapas', async () => {
       prisma.leadCaptureChave.findUnique.mockResolvedValue({ empresaId: 'emp-1', ativo: true });
       prisma.funil.findMany.mockResolvedValue([
