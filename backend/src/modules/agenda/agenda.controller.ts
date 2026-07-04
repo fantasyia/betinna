@@ -49,11 +49,8 @@ export class AgendaController {
     return this.svc.list(user, query);
   }
 
-  @Get(':id')
-  findById(@CurrentUser() user: AuthenticatedUser, @Param('id') id: string) {
-    return this.svc.findById(user, id);
-  }
-
+  // ⚠️ Rotas literais ANTES do @Get(':id') — senão o :id captura "google-eventos"
+  // e devolve 404 (foi exatamente o bug: overlay do Google vinha sempre vazio).
   @Get('google-eventos')
   @RequirePermissions({ module: 'agenda', action: 'view' })
   @ApiOperation({
@@ -64,6 +61,11 @@ export class AgendaController {
     @Query(new ZodValidationPipe(googleEventosSchema)) query: GoogleEventosQuery,
   ) {
     return this.svc.listarGoogleEventos(user, query.inicio, query.fim);
+  }
+
+  @Get(':id')
+  findById(@CurrentUser() user: AuthenticatedUser, @Param('id') id: string) {
+    return this.svc.findById(user, id);
   }
 
   @Post('sincronizar-google')
