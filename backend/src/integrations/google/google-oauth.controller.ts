@@ -12,6 +12,15 @@ import { frontendOrigin } from '@shared/utils/frontend-origin';
 export class GoogleOAuthController {
   constructor(private readonly oauth: GoogleOAuthService) {}
 
+  @Get('oauth/status')
+  @ApiBearerAuth()
+  @ApiOperation({
+    summary: 'Se o app Google (client id/secret) está configurado no ambiente — pra UI orientar',
+  })
+  status(): { configurado: boolean } {
+    return { configurado: this.oauth.isConfigured() };
+  }
+
   @Get('oauth/start')
   @ApiBearerAuth()
   @ApiOperation({

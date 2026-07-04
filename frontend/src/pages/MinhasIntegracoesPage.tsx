@@ -17,6 +17,8 @@ interface ServicoMeta {
   description: string;
   connectMode: 'oauth' | 'credentials' | 'qr';
   oauthStart?: string;
+  /** OAuth: endpoint que diz se o app (client id/secret) está configurado no ambiente. */
+  oauthStatus?: string;
   credentialFields?: Array<{ name: string; label: string; type?: 'text' | 'password'; placeholder?: string; hint?: string }>;
   qrRoute?: string;
 }
@@ -31,6 +33,7 @@ const SERVICOS: Record<ServicoUsuario, ServicoMeta> = {
       'Espelha compromissos da Agenda no seu calendário Google. Permite ver agenda Betinna no Google.',
     connectMode: 'oauth',
     oauthStart: '/integracoes/google/oauth/start',
+    oauthStatus: '/integracoes/google/oauth/status',
   },
   openai: {
     nome: 'OpenAI',
@@ -327,6 +330,24 @@ function OAuthConnectModal({
 }) {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // null = ainda checando; true/false = app OAuth configurado no ambiente.
+  const [appConfigurado, setAppConfigurado] = useState<boolean | null>(
+    meta.oauthStatus ? null : true,
+  );
+
+  // Checa se o app OAuth (client id/secret) está configurado — evita o clique dar
+  // erro técnico cru quando o admin ainda não plugou as credenciais.
+  useEffect(() => {
+    if (!meta.oauthStatus) return;
+    let cancel = false;
+    void api
+      .get<{ configurado: boolean }>(meta.oauthStatus)
+      .then((r) => !cancel && setAppConfigurado(r.configurado))
+      .catch(() => !cancel && setAppConfigurado(true)); // erro na checagem: não bloqueia
+    return () => {
+      cancel = true;
+    };
+  }, [meta.oauthStatus]);
 
   useEffect(() => {
     function handler(e: MessageEvent) {
@@ -392,9 +413,9 @@ function OAuthConnectModal({
             type="button"
             data-testid={`user-oauth-start-${servico}`}
             onClick={startOAuth}
-            disabled={busy}
+            disabled={busy || appConfigurado === false}
             className="bg-primary text-primary-contrast rounded-md px-4 py-2 text-[13px] font-semibold cursor-pointer tracking-[-0.1px]"
-            style={{ opacity: busy ? 0.7 : 1 }}
+            style={{ opacity: busy || appConfigurado === false ? 0.6 : 1 }}
           >
             {busy ? 'Aguardando popup…' : existing ? 'Reautorizar' : 'Autorizar via OAuth'}
           </button>
@@ -402,10 +423,21 @@ function OAuthConnectModal({
       }
     >
       <p className="mt-0 text-[14px]">{meta.description}</p>
-      <div className="bg-bg-alt border border-border rounded-md p-3 text-[13px] text-muted leading-[1.5] mt-3">
-        Abrimos uma janela popup do <strong>{meta.nome}</strong> pra você autorizar.
-        Quando aprovar, a janela fecha e a integração fica ativa.
-      </div>
+      {appConfigurado === false ? (
+        <div
+          data-testid="oauth-nao-configurado"
+          className="bg-warning/10 border border-warning/30 text-warning rounded-md p-3 text-[13px] leading-[1.5] mt-3"
+        >
+          A conexão com o <strong>{meta.nome}</strong> ainda não foi habilitada no ambiente
+          (falta o app OAuth do Google). Peça pro responsável configurar as credenciais no
+          Railway — depois disso é só clicar aqui e autorizar.
+        </div>
+      ) : (
+        <div className="bg-bg-alt border border-border rounded-md p-3 text-[13px] text-muted leading-[1.5] mt-3">
+          Abrimos uma janela popup do <strong>{meta.nome}</strong> pra você autorizar. Quando
+          aprovar, a janela fecha e a integração fica ativa.
+        </div>
+      )}
       {error && (
         <p data-testid="form-error" className="text-danger text-[13px] mt-2">
           {error}
