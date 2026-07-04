@@ -305,7 +305,7 @@ export class AgendaService {
    */
   async sincronizarGoogle(
     user: AuthenticatedUser,
-  ): Promise<{ sincronizados: number; total: number }> {
+  ): Promise<{ sincronizados: number; removidos: number; total: number }> {
     const conn = await this.userIntegracoes
       .findByServico(user, 'google_calendar')
       .catch(() => null);
@@ -344,10 +344,37 @@ export class AgendaService {
         this.logger.warn(`Sync Google: falha no item ${item.id}: ${msg}`);
       }
     }
+
+    // Reconciliação MÃO-DUPLA (Google → Betinna): compromissos FUTUROS já
+    // espelhados (googleEventId) que foram APAGADOS/CANCELADOS no Google somem
+    // da Betinna também. Best-effort por item (falha em um não derruba os demais).
+    const espelhados = await this.prisma.agendaItem.findMany({
+      where: { usuarioId: user.id, googleEventId: { not: null }, data: { gte: inicioHoje } },
+      select: { id: true, empresaId: true, googleEventId: true },
+      take: 500,
+    });
+    let removidos = 0;
+    for (const item of espelhados) {
+      if (!item.googleEventId) continue;
+      try {
+        const ev = await this.googleCalendar.obterEvento(user.id, item.googleEventId);
+        if (ev === null) {
+          await this.prisma.agendaItem.deleteMany({
+            where: { id: item.id, empresaId: item.empresaId },
+          });
+          removidos++;
+        }
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err);
+        this.logger.warn(`Reconciliação Google: falha no item ${item.id}: ${msg}`);
+      }
+    }
+
     this.logger.log(
-      `Sync Google: ${sincronizados}/${pendentes.length} itens espelhados (usuário ${user.id})`,
+      `Sync Google: ${sincronizados}/${pendentes.length} espelhados, ${removidos} removidos ` +
+        `(apagados no Google) — usuário ${user.id}`,
     );
-    return { sincronizados, total: pendentes.length };
+    return { sincronizados, removidos, total: pendentes.length };
   }
 
   /**
