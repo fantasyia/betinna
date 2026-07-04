@@ -246,7 +246,16 @@ export class HttpClientService {
       ...Object.fromEntries(Object.entries(headers).map(([k, v]) => [k.toLowerCase(), v])),
     };
     if (body !== undefined && body !== null && !out['content-type']) {
-      out['content-type'] = typeof body === 'string' ? 'text/plain' : 'application/json';
+      // URLSearchParams = corpo de formulário (OAuth /token do Google/marketplaces
+      // exige application/x-www-form-urlencoded). Sem isto, o header ia como
+      // application/json e o Google respondia 400 "Invalid JSON payload".
+      if (body instanceof URLSearchParams) {
+        out['content-type'] = 'application/x-www-form-urlencoded';
+      } else if (typeof body === 'string') {
+        out['content-type'] = 'text/plain';
+      } else {
+        out['content-type'] = 'application/json';
+      }
     }
     // Propaga requestId pra downstream (cross-service correlation). Útil em
     // integrações que ecoam o header de volta nos logs.

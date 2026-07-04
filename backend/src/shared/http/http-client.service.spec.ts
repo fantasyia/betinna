@@ -41,6 +41,17 @@ describe('HttpClientService', () => {
       const headers = init.headers as Record<string, string>;
       expect(headers['content-type']).toMatch(/application\/json/);
     });
+
+    it('POST com URLSearchParams vai como form-urlencoded (OAuth /token)', async () => {
+      fetchSpy.mockResolvedValueOnce(mockResponse(200, { access_token: 't' }));
+      const form = new URLSearchParams({ grant_type: 'authorization_code', code: 'abc' });
+      await svc.post('http://x.test/token', { body: form });
+      const [, init] = fetchSpy.mock.calls[0] as [string, RequestInit];
+      const headers = init.headers as Record<string, string>;
+      // Antes o header ia como application/json → Google respondia 400.
+      expect(headers['content-type']).toBe('application/x-www-form-urlencoded');
+      expect(init.body).toBe(form);
+    });
   });
 
   describe('retry em 5xx/429', () => {
