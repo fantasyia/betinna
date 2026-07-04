@@ -511,28 +511,43 @@ export default function AgendaPage() {
     >
       <div className="bg-surface border border-border rounded-[10px] p-6">
         <div className="flex items-center justify-between mb-4 gap-2 flex-wrap">
-          {/* Switcher de visão: Dia | Semana | Mês */}
-          <div
-            role="group"
-            aria-label="Visão da agenda"
-            className="inline-flex rounded-md border border-border-strong overflow-hidden"
-          >
-            {VISOES.map((v) => (
-              <button
-                key={v.valor}
-                type="button"
-                data-testid={`agenda-visao-${v.valor}`}
-                aria-pressed={visao === v.valor}
-                onClick={() => mudarVisao(v.valor)}
-                className={`px-4 py-2 text-[13px] font-medium cursor-pointer tracking-[-0.1px] ${
-                  visao === v.valor
-                    ? 'bg-primary text-primary-contrast font-semibold'
-                    : 'bg-surface text-text'
-                }`}
-              >
-                {v.label}
-              </button>
-            ))}
+          {/* Switcher de visão (Dia | Semana | Mês) + período atual sempre ao lado */}
+          <div className="flex items-center gap-3">
+            <div
+              role="group"
+              aria-label="Visão da agenda"
+              className="inline-flex rounded-md border border-border-strong overflow-hidden"
+            >
+              {VISOES.map((v) => (
+                <button
+                  key={v.valor}
+                  type="button"
+                  data-testid={`agenda-visao-${v.valor}`}
+                  aria-pressed={visao === v.valor}
+                  onClick={() => mudarVisao(v.valor)}
+                  className={`px-4 py-2 text-[13px] font-medium cursor-pointer tracking-[-0.1px] ${
+                    visao === v.valor
+                      ? 'bg-primary text-primary-contrast font-semibold'
+                      : 'bg-surface text-text'
+                  }`}
+                >
+                  {v.label}
+                </button>
+              ))}
+            </div>
+            <div
+              className="text-[14px] font-semibold text-text whitespace-nowrap"
+              data-testid="agenda-range-label"
+            >
+              {visao === 'dia' && fmtDiaCompleto(dataRef)}
+              {visao === 'semana' && (
+                <>
+                  Semana de {weekStart.toLocaleDateString('pt-BR')} a{' '}
+                  {addDays(weekStart, 6).toLocaleDateString('pt-BR')}
+                </>
+              )}
+              {visao === 'mes' && fmtMesAno(dataRef)}
+            </div>
           </div>
           <div className="flex gap-1">
             <button
@@ -559,16 +574,6 @@ export default function AgendaPage() {
             >
               {visao === 'dia' ? 'Próximo dia ›' : visao === 'mes' ? 'Próximo mês ›' : 'Próxima semana ›'}
             </button>
-          </div>
-          <div className="text-[13px] text-muted" data-testid="agenda-range-label">
-            {visao === 'dia' && fmtDiaCompleto(dataRef)}
-            {visao === 'semana' && (
-              <>
-                Semana de {weekStart.toLocaleDateString('pt-BR')} a{' '}
-                {addDays(weekStart, 6).toLocaleDateString('pt-BR')}
-              </>
-            )}
-            {visao === 'mes' && fmtMesAno(dataRef)}
           </div>
           <Select
             data-testid="agenda-filter-tipo"
