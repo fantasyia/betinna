@@ -10,6 +10,7 @@ import { FilterBar, SearchInput } from '@/components/FilterBar';
 import { Dialog } from '@/components/ui';
 import { FormField, Input, Select, Textarea } from '@/components/FormField';
 import { useToast } from '@/components/toast';
+import { useRole } from '@/hooks/usePermission';
 import { cn } from '@/lib/cn';
 import { formatMoeda as fmtBRL } from '@/lib/masks';
 
@@ -70,8 +71,36 @@ export default function ProdutosPage() {
   }, [page, buscaDebounced, linha, categoria, marca, ativo, semEstoque]);
 
   const toast = useToast();
+  const role = useRole();
+  const podeSincronizarErp = role === 'ADMIN' || role === 'DIRECTOR'; // D45: OMIE é DIRETOR-only
+  const [sincronizandoErp, setSincronizandoErp] = useState(false);
   const { data: pageResp, loading, error, refetch } = useApiQuery<PaginatedResponse<Produto>>(listPath);
   const { data: facets } = useApiQuery<Facets>('/produtos/facets');
+
+  async function sincronizarErp() {
+    if (sincronizandoErp) return;
+    setSincronizandoErp(true);
+    toast.info('Sincronizando produtos do ERP (Omie)… pode levar alguns segundos.');
+    try {
+      const r = await api.post<{ produtos?: { inseridos?: number; atualizados?: number } }>(
+        '/integracoes/omie/sync/forcar',
+        {},
+      );
+      const p = r.produtos ?? {};
+      toast.success(
+        `Produtos sincronizados do ERP — ${p.inseridos ?? 0} novos, ${p.atualizados ?? 0} atualizados.`,
+      );
+      refetch();
+    } catch (err) {
+      toast.error(
+        err instanceof ApiError
+          ? err.message
+          : 'Falha ao sincronizar do ERP. Verifique a integração Omie em Integrações.',
+      );
+    } finally {
+      setSincronizandoErp(false);
+    }
+  }
 
   async function toggleAtivo(p: Produto) {
     try {
@@ -193,7 +222,19 @@ export default function ProdutosPage() {
     >
       <CatalogoTabs />
       <div className="bg-surface border border-border rounded-[10px] p-6">
-        <div className="flex justify-end mb-3">
+        <div className="flex justify-end gap-2 mb-3">
+          {podeSincronizarErp && (
+            <button
+              type="button"
+              data-testid="prod-sync-erp"
+              onClick={sincronizarErp}
+              disabled={sincronizandoErp}
+              title="Baixa o catálogo completo do ERP (Omie). Campos do ERP ficam read-only."
+              className="bg-surface text-text border border-border-strong rounded-md py-2 px-4 text-sm font-semibold cursor-pointer disabled:opacity-60"
+            >
+              {sincronizandoErp ? 'Sincronizando…' : '↻ Sincronizar do ERP'}
+            </button>
+          )}
           <button
             type="button"
             data-testid="prod-novo"
