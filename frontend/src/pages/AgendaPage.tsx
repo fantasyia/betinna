@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import {
   DndContext,
   PointerSensor,
@@ -8,6 +8,7 @@ import {
   useDroppable,
   type DragEndEvent,
 } from '@dnd-kit/core';
+import { CalendarCheck, CalendarPlus } from 'lucide-react';
 import { api, ApiError } from '@/lib/api';
 import { useApiQuery } from '@/hooks/useApiQuery';
 import { PageLayout } from '@/components/PageLayout';
@@ -103,6 +104,102 @@ function sugestaoHorario(day: Date): Date {
 /** Rótulo "HH:00" do horário sugerido (pro botão de novo evento). */
 function labelHorario(day: Date): string {
   return `${String(sugestaoHorario(day).getHours()).padStart(2, '0')}:00`;
+}
+
+/**
+ * Chip/botão de conexão do Google Calendar no header da Agenda. Conectado →
+ * mostra o estado; não conectado → abre o MESMO popup OAuth de Minhas Integrações
+ * (um clique). Se o app Google não estiver configurado no ambiente, desabilita
+ * com dica em vez de erro cru.
+ */
+function GoogleConexaoBotao() {
+  const toast = useToast();
+  const { data: conexoes, refetch } = useApiQuery<
+    Array<{ servico: string; ativo: boolean }>
+  >('/usuario/integracoes');
+  const { data: cfg } = useApiQuery<{ configurado: boolean }>(
+    '/integracoes/google/oauth/status',
+  );
+  const [busy, setBusy] = useState(false);
+  const conectado = (conexoes ?? []).some((c) => c.servico === 'google_calendar' && c.ativo);
+
+  // Popup OAuth avisa o opener via postMessage (type terminando em '-oauth').
+  useEffect(() => {
+    function handler(e: MessageEvent) {
+      if (!e.data || typeof e.data !== 'object') return;
+      const t = (e.data as { type?: string }).type;
+      if (t && t.endsWith('-oauth')) {
+        setBusy(false);
+        refetch();
+      }
+    }
+    window.addEventListener('message', handler);
+    return () => window.removeEventListener('message', handler);
+  }, [refetch]);
+
+  async function conectar() {
+    setBusy(true);
+    try {
+      const r = await api.get<{ url: string }>('/integracoes/google/oauth/start');
+      if (!r.url) throw new Error('Backend não retornou URL OAuth');
+      const w = 600;
+      const h = 700;
+      const left = window.screenX + (window.outerWidth - w) / 2;
+      const top = window.screenY + (window.outerHeight - h) / 2;
+      const popup = window.open(
+        r.url,
+        'google_calendar-oauth',
+        `width=${w},height=${h},left=${left},top=${top}`,
+      );
+      if (!popup) throw new Error('Popup bloqueado — habilite no navegador');
+      const t = setInterval(() => {
+        if (popup.closed) {
+          clearInterval(t);
+          setBusy(false);
+          refetch();
+        }
+      }, 1000);
+    } catch (err) {
+      setBusy(false);
+      toast.error(
+        'Falha ao conectar o Google',
+        err instanceof ApiError ? err.message : err instanceof Error ? err.message : undefined,
+      );
+    }
+  }
+
+  if (conectado) {
+    return (
+      <span
+        data-testid="agenda-google-conectado"
+        title="Seu Google Calendar está conectado — compromissos com 'espelhar' vão pra lá."
+        className="inline-flex items-center gap-1.5 rounded-md border border-success/30 bg-success/10 px-3 py-2 text-[13px] font-medium text-success"
+      >
+        <CalendarCheck className="h-4 w-4" />
+        Google conectado
+      </span>
+    );
+  }
+
+  const naoConfigurado = cfg?.configurado === false;
+  return (
+    <button
+      type="button"
+      data-testid="agenda-google-conectar"
+      onClick={() => void conectar()}
+      disabled={busy || naoConfigurado}
+      title={
+        naoConfigurado
+          ? 'Google Calendar ainda não foi configurado no ambiente (admin)'
+          : 'Conectar seu Google Calendar num clique'
+      }
+      className="inline-flex items-center gap-1.5 rounded-md border border-border-strong bg-surface px-3 py-2 text-[13px] font-medium text-text cursor-pointer tracking-[-0.1px]"
+      style={{ opacity: busy || naoConfigurado ? 0.6 : 1 }}
+    >
+      <CalendarPlus className="h-4 w-4" style={{ color: '#4285f4' }} />
+      {busy ? 'Conectando…' : naoConfigurado ? 'Google indisponível' : 'Conectar Google'}
+    </button>
+  );
 }
 function startOfDay(d: Date): Date {
   const x = new Date(d);
@@ -285,14 +382,17 @@ export default function AgendaPage() {
     <PageLayout
       title="Agenda"
       actions={
-        <button
-          type="button"
-          data-testid="agenda-new-btn"
-          onClick={() => setCreating(new Date())}
-          className="bg-primary text-primary-contrast rounded-md px-4 py-2 text-[13px] font-semibold cursor-pointer tracking-[-0.1px]"
-        >
-          + Novo compromisso
-        </button>
+        <div className="flex items-center gap-2">
+          <GoogleConexaoBotao />
+          <button
+            type="button"
+            data-testid="agenda-new-btn"
+            onClick={() => setCreating(new Date())}
+            className="bg-primary text-primary-contrast rounded-md px-4 py-2 text-[13px] font-semibold cursor-pointer tracking-[-0.1px]"
+          >
+            + Novo compromisso
+          </button>
+        </div>
       }
     >
       <div className="bg-surface border border-border rounded-[10px] p-6">
