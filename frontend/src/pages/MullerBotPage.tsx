@@ -208,8 +208,8 @@ export default function MullerBotPage() {
 
   return (
     <PageLayout
-      title="MullerBot"
-      description="Assistente comercial com RAG sobre o catálogo da empresa. Pergunte sobre produtos, preços, recomendações."
+      title="Assistente IA"
+      description="Assistente interno da empresa. Pergunte sobre produtos, preços, regras, condições e FAQ — ele busca no catálogo e na base de conhecimento. O nome dele (ex.: SomaBOT) você define em Persona Bot."
       actions={
         history.length > 0 ? (
           <div className="flex items-center gap-2">
@@ -394,7 +394,7 @@ export default function MullerBotPage() {
               Como funciona
             </h4>
             <ul className="text-xs text-text-subtle space-y-1.5 leading-relaxed list-disc pl-4 m-0">
-              <li>RAG sobre catálogo OMIE da empresa</li>
+              <li>Busca no catálogo (OMIE) + base de conhecimento (FAQ/regras)</li>
               <li>Top-K via keyword scoring (sem alucinação)</li>
               <li>Tom e estilo configuráveis em Persona Bot</li>
               <li>REPs precisam de chave OpenAI própria</li>

@@ -106,12 +106,35 @@ export class MullerBotService {
     return this.env.get('OPENAI_API_KEY') || undefined;
   }
 
+  /**
+   * Credenciais LLM pro bot INTERNO da empresa (chat do rep + WhatsApp): usa a
+   * chave da EMPRESA (resolverChaveEmpresa). A chave PESSOAL do usuário NÃO entra
+   * aqui — ela é só pro bot pessoal do rep. Mock em MULLERBOT_MOCK.
+   */
+  private async resolverCredenciaisEmpresa(empresaId: string): Promise<LlmCredenciais> {
+    if (this.env.get('MULLERBOT_MOCK')) return { apiKey: 'mock' };
+    const apiKey = await this.resolverChaveEmpresa(empresaId);
+    if (!apiKey) {
+      throw new IntegrationException(
+        'A empresa não tem chave OpenAI configurada. O DIRETOR precisa cadastrá-la em ' +
+          'Integrações (escopo empresa) — é a chave que o assistente usa.',
+        ErrorCode.INTEGRATION_ERROR,
+      );
+    }
+    return { apiKey };
+  }
+
   async perguntar(user: AuthenticatedUser, dto: PerguntarDto): Promise<MullerBotResposta> {
     if (!user.empresaIdAtiva) {
       throw new ForbiddenException('Empresa não definida', ErrorCode.TENANT_ACCESS_DENIED);
     }
-    const creds = await this.resolverCredenciais(user);
-    const modelo = dto.modelo ?? creds.model ?? this.env.get('MULLERBOT_MODEL');
+    // O bot INTERNO da empresa (rep tira dúvidas de produto/regras/FAQ) usa a chave
+    // da EMPRESA — a chave pessoal do rep é só pro bot pessoal dele, nada da empresa.
+    const creds = await this.resolverCredenciaisEmpresa(user.empresaIdAtiva);
+    const modelo =
+      dto.modelo ??
+      (await this.persona.obterModelo(user.empresaIdAtiva)) ??
+      this.env.get('MULLERBOT_MODEL');
     const maxInputTokens = this.env.get('MULLERBOT_MAX_INPUT_TOKENS');
     const maxOutputTokens = dto.maxOutputTokens ?? this.env.get('MULLERBOT_MAX_OUTPUT_TOKENS');
 
