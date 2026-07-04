@@ -313,7 +313,7 @@ export class AgendaService {
    */
   async sincronizarGoogle(
     user: AuthenticatedUser,
-  ): Promise<{ sincronizados: number; removidos: number; total: number }> {
+  ): Promise<{ sincronizados: number; importados: number; removidos: number; total: number }> {
     const conn = await this.userIntegracoes
       .findByServico(user, 'google_calendar')
       .catch(() => null);
@@ -380,11 +380,61 @@ export class AgendaService {
       }
     }
 
+    // IMPORT Google → Betinna: eventos que nasceram NO Google (e ainda não
+    // existem aqui) viram compromissos da Betinna — com googleEventId, pra
+    // reconciliar/editar depois. Só eventos COM HORA (all-day fica no overlay
+    // read-only). Janela hoje..+180d, bounded por maxResults + cap de segurança.
+    const idsExistentes = new Set<string>();
+    for (const e of espelhados) if (e.googleEventId) idsExistentes.add(e.googleEventId);
+    const fimJanela = new Date(inicioHoje);
+    fimJanela.setDate(fimJanela.getDate() + 180);
+    const googleEvents = await this.googleCalendar
+      .listarEventos(user.id, inicioHoje, fimJanela, 250)
+      .catch(() => [] as Awaited<ReturnType<typeof this.googleCalendar.listarEventos>>);
+    const empresaIdImport = getCallerEmpresaId(user);
+    let importados = 0;
+    for (const ev of googleEvents) {
+      if (importados >= 100) break; // guarda contra recorrência gigante
+      if (!ev.id || ev.status === 'cancelled' || idsExistentes.has(ev.id)) continue;
+      const inicioStr = ev.start?.dateTime;
+      if (!inicioStr) continue; // all-day fica só no overlay read-only
+      const inicio = new Date(inicioStr);
+      const fim = ev.end?.dateTime ? new Date(ev.end.dateTime) : null;
+      const duracao = fim
+        ? Math.max(15, Math.round((fim.getTime() - inicio.getTime()) / 60000))
+        : 60;
+      const alertas = (ev.reminders?.overrides ?? [])
+        .map((o) => o.minutes)
+        .filter((m) => Number.isFinite(m) && m >= 0)
+        .slice(0, 5);
+      try {
+        await this.prisma.agendaItem.create({
+          data: {
+            empresaId: empresaIdImport,
+            usuarioId: user.id,
+            titulo: ev.summary?.trim() || '(sem título)',
+            data: inicio,
+            duracao,
+            tipo: 'REUNIAO',
+            observacao: ev.description ?? null,
+            local: ev.location ?? null,
+            alertas,
+            googleEventId: ev.id,
+          },
+        });
+        idsExistentes.add(ev.id);
+        importados++;
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err);
+        this.logger.warn(`Import Google: falha ao importar ${ev.id}: ${msg}`);
+      }
+    }
+
     this.logger.log(
-      `Sync Google: ${sincronizados}/${pendentes.length} espelhados, ${removidos} removidos ` +
-        `(apagados no Google) — usuário ${user.id}`,
+      `Sync Google: ${sincronizados} enviados, ${importados} importados, ${removidos} removidos ` +
+        `— usuário ${user.id}`,
     );
-    return { sincronizados, removidos, total: pendentes.length };
+    return { sincronizados, importados, removidos, total: pendentes.length };
   }
 
   /**
