@@ -19,7 +19,10 @@ import type {
 const AUTH_URL = 'https://accounts.google.com/o/oauth2/v2/auth';
 const TOKEN_URL = 'https://oauth2.googleapis.com/token';
 const USERINFO_URL = 'https://openidconnect.googleapis.com/v1/userinfo';
-const SCOPE = 'https://www.googleapis.com/auth/calendar.events openid email profile';
+// calendar.events = eventos; tasks.readonly = TAREFAS (Google Tasks é API separada).
+// Sem tasks.readonly, tarefas criadas no Google nunca chegam na Betinna.
+const SCOPE =
+  'https://www.googleapis.com/auth/calendar.events https://www.googleapis.com/auth/tasks.readonly openid email profile';
 const TOKEN_REFRESH_MARGIN_MS = 60_000; // refresh 60s antes de expirar
 
 /**

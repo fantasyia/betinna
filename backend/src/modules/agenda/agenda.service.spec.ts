@@ -39,6 +39,7 @@ const makeGoogleCalendarMock = () => ({
   atualizarEvento: vi.fn().mockResolvedValue(undefined),
   deletarEvento: vi.fn().mockResolvedValue(undefined),
   listarEventos: vi.fn().mockResolvedValue([]),
+  listarTarefas: vi.fn().mockResolvedValue([]),
   // default: evento ainda existe no Google (reconciliação não remove nada)
   obterEvento: vi.fn().mockResolvedValue({ id: 'gcal-event-1', status: 'confirmed' }),
 });
@@ -561,6 +562,51 @@ describe('AgendaService', () => {
         }),
       );
       expect(r.importados).toBe(1);
+    });
+
+    it('import: TAREFA do Google (com due) vira AgendaItem tipo TAREFA (gtask:)', async () => {
+      userIntegracoes.findByServico.mockResolvedValue({ id: 'conn-1', ativo: true });
+      prisma.agendaItem.findMany.mockResolvedValueOnce([]).mockResolvedValueOnce([]);
+      googleCalendar.listarEventos.mockResolvedValue([]);
+      googleCalendar.listarTarefas.mockResolvedValue([
+        {
+          id: 'tk-1',
+          title: 'Ligar pro cliente',
+          notes: 'urgente',
+          status: 'needsAction',
+          due: '2026-07-04T00:00:00.000Z',
+        },
+        { id: 'tk-2', title: 'sem data', status: 'needsAction' }, // sem due → ignorada
+      ]);
+      prisma.agendaItem.create.mockResolvedValue({ id: 'ag-tk' });
+
+      const r = await service.sincronizarGoogle(fakeUser({ id: 'u1' }));
+
+      expect(prisma.agendaItem.create).toHaveBeenCalledTimes(1);
+      expect(prisma.agendaItem.create).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: expect.objectContaining({
+            titulo: 'Ligar pro cliente',
+            tipo: 'TAREFA',
+            observacao: 'urgente',
+            googleEventId: 'gtask:tk-1',
+          }),
+        }),
+      );
+      expect(r.importados).toBe(1);
+    });
+
+    it('reconciliação NÃO event-reconcilia itens de tarefa (gtask:)', async () => {
+      userIntegracoes.findByServico.mockResolvedValue({ id: 'conn-1', ativo: true });
+      prisma.agendaItem.findMany
+        .mockResolvedValueOnce([])
+        .mockResolvedValueOnce([{ id: 'ag-t', empresaId: 'emp-1', googleEventId: 'gtask:tk-9' }]);
+
+      await service.sincronizarGoogle(fakeUser({ id: 'u1' }));
+
+      // gtask: nunca vai pro obterEvento (senão 404 apagaria a tarefa)
+      expect(googleCalendar.obterEvento).not.toHaveBeenCalled();
+      expect(prisma.agendaItem.deleteMany).not.toHaveBeenCalled();
     });
   });
 
