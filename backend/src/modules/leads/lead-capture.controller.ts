@@ -1,4 +1,15 @@
-import { Body, Controller, Get, Headers, HttpCode, HttpStatus, Post } from '@nestjs/common';
+import {
+  Body,
+  Controller,
+  Get,
+  Headers,
+  HttpCode,
+  HttpStatus,
+  Post,
+  Req,
+  type RawBodyRequest,
+} from '@nestjs/common';
+import type { Request } from 'express';
 import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
 import { CurrentUser } from '@shared/decorators/current-user.decorator';
 import { Public } from '@shared/decorators/public.decorator';
@@ -19,10 +30,13 @@ export class LeadCaptureController {
   @HttpCode(HttpStatus.CREATED)
   @ApiOperation({ summary: 'Cria um lead a partir de formulário externo (chave x-api-key)' })
   capturar(
+    @Req() req: RawBodyRequest<Request>,
     @Headers('x-api-key') apiKey: string | undefined,
     @Body(new ZodValidationPipe(leadCapturePublicoSchema)) dto: LeadCapturePublicoDto,
   ) {
-    return this.svc.capturar(apiKey, dto);
+    // Passa o corpo CRU: se o site enviou em latin1 (acentos vêm como �), o
+    // service re-decodifica a partir dos bytes originais e recupera os acentos.
+    return this.svc.capturar(apiKey, dto, req.rawBody);
   }
 
   @Public()

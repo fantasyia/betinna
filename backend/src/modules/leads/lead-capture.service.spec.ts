@@ -146,6 +146,32 @@ describe('LeadCaptureService', () => {
       });
     });
 
+    it('encoding: corpo em latin1 (acentos como �) é recuperado a partir do rawBody', async () => {
+      prisma.leadCaptureChave.findUnique.mockResolvedValue({ empresaId: 'emp-1', ativo: true });
+
+      // dto como o body-parser entregaria (latin1 decodificado como UTF-8 → �)
+      const dtoMojibake = {
+        ...dto,
+        nome: 'Integra��o Site',
+        mensagem: 'Tenho paradas por queima de placas no formul�rio',
+      };
+      // rawBody = os BYTES originais que o site mandou (latin1)
+      const rawBody = Buffer.from(
+        JSON.stringify({
+          ...dto,
+          nome: 'Integração Site',
+          mensagem: 'Tenho paradas por queima de placas no formulário',
+        }),
+        'latin1',
+      );
+
+      await svc.capturar(CHAVE, dtoMojibake, rawBody);
+
+      const [, arg] = leads.createPublico.mock.calls[0];
+      expect(arg.nome).toBe('Integração Site');
+      expect(arg.observacoes).toBe('Tenho paradas por queima de placas no formulário');
+    });
+
     it('listarFunis: valida a chave e devolve funis com etapas', async () => {
       prisma.leadCaptureChave.findUnique.mockResolvedValue({ empresaId: 'emp-1', ativo: true });
       prisma.funil.findMany.mockResolvedValue([

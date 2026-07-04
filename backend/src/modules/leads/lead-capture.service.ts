@@ -6,7 +6,7 @@ import { AppException, UnauthorizedException } from '@shared/errors/app-exceptio
 import { ErrorCode } from '@shared/errors/error-codes';
 import type { AuthenticatedUser } from '@shared/types/authenticated-user';
 import { LeadsService } from './leads.service';
-import type { LeadCapturePublicoDto } from './lead-capture.dto';
+import { leadCapturePublicoSchema, type LeadCapturePublicoDto } from './lead-capture.dto';
 
 /** Teto de POSTs por chave por minuto (formulário de site não passa disso). */
 const RL_MAX_POR_MIN = 60;
@@ -91,8 +91,10 @@ export class LeadCaptureService {
   async capturar(
     chaveApresentada: string | undefined,
     dto: LeadCapturePublicoDto,
+    rawBody?: Buffer,
   ): Promise<{ ok: true; leadId: string; duplicado: boolean }> {
     const empresaId = await this.autenticarChave(chaveApresentada);
+    dto = this.corrigirEncoding(dto, rawBody);
 
     // marca uso (best-effort, não bloqueia o caminho feliz)
     void this.prisma.leadCaptureChave
@@ -142,6 +144,33 @@ export class LeadCaptureService {
   }
 
   // ─── internos ────────────────────────────────────────────────────────
+
+  /**
+   * Conserta acentuação quando o site envia o corpo em latin1/windows-1252 (não
+   * UTF-8): aí "Integração" chega como "Integra��o". O body-parser já decodificou
+   * (perdendo os acentos), MAS o corpo CRU (rawBody, preservado pro HMAC) ainda
+   * tem os bytes originais — então re-decodificamos deles.
+   *
+   * Estratégia: só age quando há caractere de substituição (�) no dto — aí
+   * tenta UTF-8 estrito no rawBody; se também tiver �, o corpo é latin1 →
+   * decodifica latin1 e re-valida. Se algo falhar, mantém o dto (não piora).
+   */
+  private corrigirEncoding(dto: LeadCapturePublicoDto, rawBody?: Buffer): LeadCapturePublicoDto {
+    if (!rawBody?.length) return dto;
+    if (!JSON.stringify(dto).includes('�')) return dto; // sem mojibake → nada a fazer
+
+    const comoUtf8 = rawBody.toString('utf8');
+    const texto = comoUtf8.includes('�') ? rawBody.toString('latin1') : comoUtf8;
+    try {
+      const corrigido = leadCapturePublicoSchema.parse(JSON.parse(texto));
+      this.logger.warn(
+        'Captura de lead: corpo não-UTF-8 (provável latin1) — acentos re-decodificados a partir do rawBody.',
+      );
+      return corrigido;
+    } catch {
+      return dto;
+    }
+  }
 
   /**
    * Valida a chave x-api-key (formato + rate-limit + lookup) → empresaId.
