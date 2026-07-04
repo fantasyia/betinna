@@ -442,6 +442,7 @@ function PromptFormModal({
   const [modelo, setModelo] = useState(prompt?.modelo ?? '');
   // Modelos reais da conta OpenAI (puxados ao vivo) — mesmo dropdown da Persona.
   const [modelosLive, setModelosLive] = useState<string[]>([]);
+  const [modelosFonte, setModelosFonte] = useState<string>('');
   const [isPadrao, setIsPadrao] = useState(prompt?.isPadrao ?? false);
   const [ativo, setAtivo] = useState(prompt?.ativo ?? true);
   const [tetoTokensDia, setTetoTokensDia] = useState(
@@ -456,8 +457,14 @@ function PromptFormModal({
   useEffect(() => {
     api
       .get<{ modelos: string[]; fonte: string }>('/mullerbot/bot/modelos')
-      .then((r) => setModelosLive(r.modelos ?? []))
-      .catch(() => setModelosLive([]));
+      .then((r) => {
+        setModelosLive(r.modelos ?? []);
+        setModelosFonte(r.fonte ?? '');
+      })
+      .catch(() => {
+        setModelosLive([]);
+        setModelosFonte('');
+      });
   }, []);
 
   async function submit(e: React.FormEvent) {
@@ -554,9 +561,9 @@ function PromptFormModal({
           label="Modelo"
           htmlFor="prompt-modelo"
           hint={
-            modelosLive.length
-              ? 'Lista puxada ao vivo da sua conta OpenAI — inclui os modelos mais novos.'
-              : 'vazio = padrão da empresa'
+            modelosFonte === 'openai'
+              ? 'Lista AO VIVO da sua conta OpenAI — inclui os modelos mais novos.'
+              : 'Lista de RESERVA (não listei da sua conta). Confira a chave OpenAI na Persona → diagnóstico. Vazio = padrão da empresa.'
           }
         >
           <Select id="prompt-modelo" value={modelo} onChange={(e) => setModelo(e.target.value)}>

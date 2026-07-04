@@ -501,34 +501,48 @@ export class MullerBotService {
    * novos). NUNCA lança e NUNCA volta vazio: se a chamada falhar, devolve uma
    * lista curada de reserva (senão o dropdown some, como aconteceu).
    */
-  async listarModelos(
-    user: AuthenticatedUser,
-  ): Promise<{ modelos: string[]; fonte: 'openai' | 'fallback' }> {
+  async listarModelos(user: AuthenticatedUser): Promise<{
+    modelos: string[];
+    fonte: 'openai' | 'fallback';
+    /** Quando fonte='fallback', explica o PORQUÊ (pra UI orientar o usuário). */
+    motivo?: 'sem_chave' | 'mock' | 'erro_openai' | 'sem_modelos_chat';
+  }> {
     let apiKey: string | undefined;
     try {
       apiKey = (await this.resolverCredenciais(user)).apiKey;
     } catch {
       apiKey = this.env.get('OPENAI_API_KEY') || undefined;
     }
-    if (apiKey && apiKey !== 'mock') {
-      try {
-        const res = await this.http.get<{ data?: Array<{ id: string }> }>(
-          'https://api.openai.com/v1/models',
-          {
-            headers: { Authorization: `Bearer ${apiKey}` },
-            integration: 'openai',
-            redactKeys: ['authorization'],
-            timeoutMs: 15_000,
-          },
-        );
-        const ids = (res.data.data ?? []).map((m) => m.id);
-        const chat = ids.filter((id) => this.ehModeloChat(id)).sort((a, b) => b.localeCompare(a));
-        if (chat.length) return { modelos: chat, fonte: 'openai' };
-      } catch {
-        // cai pro fallback abaixo
-      }
+    if (!apiKey) {
+      return { modelos: [...MODELOS_FALLBACK], fonte: 'fallback', motivo: 'sem_chave' };
     }
-    return { modelos: [...MODELOS_FALLBACK], fonte: 'fallback' };
+    if (apiKey === 'mock') {
+      // MULLERBOT_MOCK ativo → não há chamada real; lista de reserva.
+      return { modelos: [...MODELOS_FALLBACK], fonte: 'fallback', motivo: 'mock' };
+    }
+    try {
+      const res = await this.http.get<{ data?: Array<{ id: string }> }>(
+        'https://api.openai.com/v1/models',
+        {
+          headers: { Authorization: `Bearer ${apiKey}` },
+          integration: 'openai',
+          redactKeys: ['authorization'],
+          timeoutMs: 15_000,
+        },
+      );
+      const ids = (res.data.data ?? []).map((m) => m.id);
+      const chat = ids.filter((id) => this.ehModeloChat(id)).sort((a, b) => b.localeCompare(a));
+      if (chat.length) return { modelos: chat, fonte: 'openai' };
+      this.logger.warn(
+        `listarModelos: OpenAI respondeu mas sem modelos de chat (${ids.length} ids no total).`,
+      );
+      return { modelos: [...MODELOS_FALLBACK], fonte: 'fallback', motivo: 'sem_modelos_chat' };
+    } catch (err) {
+      // Não some com o erro: loga pra dar pra diagnosticar por que caiu no fallback.
+      const msg = err instanceof Error ? err.message : String(err);
+      this.logger.warn(`listarModelos: falha ao listar da OpenAI (fallback): ${msg}`);
+      return { modelos: [...MODELOS_FALLBACK], fonte: 'fallback', motivo: 'erro_openai' };
+    }
   }
 
   /** Heurística: mantém só modelos de conversa (texto), tira áudio/imagem/embeddings/etc. */

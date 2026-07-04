@@ -74,6 +74,22 @@ Regras:
 - Seja simpático, mas direto ao ponto.
 - Se o cliente pedir algo que você não resolve, avise que um atendente humano vai dar sequência.`;
 
+/** Texto amigável do motivo pelo qual a lista de modelos caiu na reserva. */
+function motivoModeloTexto(motivo: string): string {
+  switch (motivo) {
+    case 'sem_chave':
+      return 'nenhuma chave OpenAI configurada (conecte a sua em Minhas Integrações, ou o admin define a corporativa)';
+    case 'mock':
+      return 'o bot está em modo de teste (MULLERBOT_MOCK), sem chamada real à OpenAI';
+    case 'erro_openai':
+      return 'a OpenAI recusou a chamada — chave inválida ou sem permissão pra listar modelos (valide no diagnóstico acima)';
+    case 'sem_modelos_chat':
+      return 'a conta não retornou nenhum modelo de chat';
+    default:
+      return 'verifique a chave da OpenAI no diagnóstico acima';
+  }
+}
+
 export default function PersonaBotPage() {
   const toast = useToast();
   const canEdit = usePermission('mullerbot.config');
@@ -104,6 +120,8 @@ export default function PersonaBotPage() {
 
   // Modelos reais da conta OpenAI (puxados ao vivo); cai pra lista curada se falhar.
   const [modelosLive, setModelosLive] = useState<string[]>([]);
+  const [modelosFonte, setModelosFonte] = useState<string>('');
+  const [modelosMotivo, setModelosMotivo] = useState<string>('');
 
   useEffect(() => {
     if (!data) return;
@@ -123,9 +141,17 @@ export default function PersonaBotPage() {
 
   useEffect(() => {
     api
-      .get<{ modelos: string[]; fonte: string }>('/mullerbot/bot/modelos')
-      .then((r) => setModelosLive(r.modelos ?? []))
-      .catch(() => setModelosLive([]));
+      .get<{ modelos: string[]; fonte: string; motivo?: string }>('/mullerbot/bot/modelos')
+      .then((r) => {
+        setModelosLive(r.modelos ?? []);
+        setModelosFonte(r.fonte ?? '');
+        setModelosMotivo(r.motivo ?? '');
+      })
+      .catch(() => {
+        setModelosLive([]);
+        setModelosFonte('');
+        setModelosMotivo('');
+      });
   }, []);
 
   // Liga/desliga global do bot no WhatsApp da empresa
@@ -462,9 +488,9 @@ export default function PersonaBotPage() {
             <Field
               label="Modelo da IA (OpenAI)"
               hint={
-                modelosLive.length
-                  ? 'Lista puxada ao vivo da sua conta OpenAI — inclui os modelos mais novos. Quanto mais inteligente, mais caro por mensagem.'
-                  : 'Valide a chave da OpenAI (diagnóstico acima) pra listar os modelos da sua conta aqui.'
+                modelosFonte === 'openai'
+                  ? 'Lista puxada AO VIVO da sua conta OpenAI — inclui os modelos mais novos. Quanto mais inteligente, mais caro por mensagem.'
+                  : `Mostrando uma lista de RESERVA (não consegui listar da sua conta): ${motivoModeloTexto(modelosMotivo)}. Assim que resolver, a lista completa da sua conta aparece aqui.`
               }
               className="mb-3"
             >
