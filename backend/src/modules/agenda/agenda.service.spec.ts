@@ -409,8 +409,22 @@ describe('AgendaService', () => {
     it('espelha os itens futuros sem googleEventId e salva o id', async () => {
       userIntegracoes.findByServico.mockResolvedValue({ id: 'conn-1', ativo: true });
       prisma.agendaItem.findMany.mockResolvedValue([
-        { id: 'a1', empresaId: 'emp-1', titulo: 'Visita', data: new Date(), duracao: 30, observacao: null },
-        { id: 'a2', empresaId: 'emp-1', titulo: 'Ligação', data: new Date(), duracao: 15, observacao: null },
+        {
+          id: 'a1',
+          empresaId: 'emp-1',
+          titulo: 'Visita',
+          data: new Date(),
+          duracao: 30,
+          observacao: null,
+        },
+        {
+          id: 'a2',
+          empresaId: 'emp-1',
+          titulo: 'Ligação',
+          data: new Date(),
+          duracao: 15,
+          observacao: null,
+        },
       ]);
       googleCalendar.criarEvento
         .mockResolvedValueOnce({ id: 'gcal-a1' })
@@ -428,8 +442,22 @@ describe('AgendaService', () => {
     it('falha num item não derruba os demais (best-effort)', async () => {
       userIntegracoes.findByServico.mockResolvedValue({ id: 'conn-1', ativo: true });
       prisma.agendaItem.findMany.mockResolvedValue([
-        { id: 'a1', empresaId: 'emp-1', titulo: 'X', data: new Date(), duracao: 30, observacao: null },
-        { id: 'a2', empresaId: 'emp-1', titulo: 'Y', data: new Date(), duracao: 30, observacao: null },
+        {
+          id: 'a1',
+          empresaId: 'emp-1',
+          titulo: 'X',
+          data: new Date(),
+          duracao: 30,
+          observacao: null,
+        },
+        {
+          id: 'a2',
+          empresaId: 'emp-1',
+          titulo: 'Y',
+          data: new Date(),
+          duracao: 30,
+          observacao: null,
+        },
       ]);
       googleCalendar.criarEvento
         .mockRejectedValueOnce(new Error('Google API error'))
