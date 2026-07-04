@@ -209,26 +209,21 @@ function GoogleConexaoBotao({ onSincronizado }: { onSincronizado?: () => void })
   async function sincronizar() {
     setBusy(true);
     try {
-      const r = await api.post<{ sincronizados: number; removidos: number; total: number }>(
-        '/agenda/sincronizar-google',
-      );
-      // Sufixo mão-dupla: compromissos apagados no Google somem daqui também.
-      const removidosTxt =
-        r.removidos > 0
-          ? ` · ${r.removidos} ${r.removidos === 1 ? 'removido' : 'removidos'} (apagados no Google)`
-          : '';
-      if (r.total === 0) {
-        toast.success(
-          r.removidos > 0 ? 'Sincronizado nos dois sentidos' : 'Tudo sincronizado',
-          r.removidos > 0
-            ? `${r.removidos} ${r.removidos === 1 ? 'compromisso apagado' : 'compromissos apagados'} no Google ${r.removidos === 1 ? 'foi removido' : 'foram removidos'} da agenda.`
-            : 'Nenhum compromisso futuro pendente de envio.',
-        );
+      const r = await api.post<{
+        sincronizados: number;
+        importados: number;
+        removidos: number;
+        total: number;
+      }>('/agenda/sincronizar-google');
+      // Mão-dupla: monta um resumo dos 3 sentidos (enviados / importados / removidos).
+      const partes: string[] = [];
+      if (r.sincronizados > 0) partes.push(`${r.sincronizados} enviado(s) pro Google`);
+      if (r.importados > 0) partes.push(`${r.importados} importado(s) do Google`);
+      if (r.removidos > 0) partes.push(`${r.removidos} removido(s) (apagados no Google)`);
+      if (partes.length === 0) {
+        toast.success('Tudo sincronizado', 'Sua agenda e o Google já estão iguais.');
       } else {
-        toast.success(
-          `${r.sincronizados} de ${r.total} enviados pro Google${removidosTxt}`,
-          r.sincronizados < r.total ? 'Alguns falharam — tente de novo em instantes.' : undefined,
-        );
+        toast.success('Agenda sincronizada', partes.join(' · '));
       }
       onSincronizado?.();
     } catch (err) {

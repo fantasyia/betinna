@@ -435,7 +435,7 @@ describe('AgendaService', () => {
 
       const r = await service.sincronizarGoogle(fakeUser({ id: 'u1' }));
 
-      expect(r).toEqual({ sincronizados: 2, removidos: 0, total: 2 });
+      expect(r).toEqual({ sincronizados: 2, importados: 0, removidos: 0, total: 2 });
       expect(googleCalendar.criarEvento).toHaveBeenCalledTimes(2);
       expect(prisma.agendaItem.updateMany).toHaveBeenCalledWith(
         expect.objectContaining({ data: { googleEventId: 'gcal-a1' } }),
@@ -467,7 +467,7 @@ describe('AgendaService', () => {
         .mockResolvedValueOnce({ id: 'gcal-a2' });
 
       const r = await service.sincronizarGoogle(fakeUser({ id: 'u1' }));
-      expect(r).toEqual({ sincronizados: 1, removidos: 0, total: 2 });
+      expect(r).toEqual({ sincronizados: 1, importados: 0, removidos: 0, total: 2 });
     });
 
     it('mão-dupla: item espelhado apagado no Google é REMOVIDO da Betinna', async () => {
@@ -485,7 +485,72 @@ describe('AgendaService', () => {
       expect(prisma.agendaItem.deleteMany).toHaveBeenCalledWith({
         where: { id: 'ag-x', empresaId: 'emp-1' },
       });
-      expect(r).toEqual({ sincronizados: 0, removidos: 1, total: 0 });
+      expect(r).toEqual({ sincronizados: 0, importados: 0, removidos: 1, total: 0 });
+    });
+
+    it('import: evento novo no Google (com hora) vira compromisso da Betinna', async () => {
+      userIntegracoes.findByServico.mockResolvedValue({ id: 'conn-1', ativo: true });
+      prisma.agendaItem.findMany
+        .mockResolvedValueOnce([]) // pendentes (nada a empurrar)
+        .mockResolvedValueOnce([]); // espelhados (nada a reconciliar)
+      googleCalendar.listarEventos.mockResolvedValue([
+        {
+          id: 'gcal-novo',
+          status: 'confirmed',
+          summary: 'Reunião no Google',
+          location: 'Sala 3',
+          description: 'pauta',
+          start: { dateTime: '2026-07-10T14:00:00-03:00' },
+          end: { dateTime: '2026-07-10T15:00:00-03:00' },
+          reminders: { useDefault: false, overrides: [{ method: 'popup', minutes: 30 }] },
+        },
+      ]);
+      prisma.agendaItem.create.mockResolvedValue({ id: 'ag-imp' });
+
+      const r = await service.sincronizarGoogle(fakeUser({ id: 'u1' }));
+
+      expect(prisma.agendaItem.create).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: expect.objectContaining({
+            titulo: 'Reunião no Google',
+            local: 'Sala 3',
+            duracao: 60,
+            alertas: [30],
+            googleEventId: 'gcal-novo',
+          }),
+        }),
+      );
+      expect(r).toEqual({ sincronizados: 0, importados: 1, removidos: 0, total: 0 });
+    });
+
+    it('import: NÃO reimporta evento já espelhado + ignora all-day', async () => {
+      userIntegracoes.findByServico.mockResolvedValue({ id: 'conn-1', ativo: true });
+      prisma.agendaItem.findMany
+        .mockResolvedValueOnce([])
+        .mockResolvedValueOnce([{ id: 'ag-x', empresaId: 'emp-1', googleEventId: 'gcal-existe' }]);
+      googleCalendar.obterEvento.mockResolvedValue({ id: 'gcal-existe', status: 'confirmed' });
+      googleCalendar.listarEventos.mockResolvedValue([
+        // já espelhado → não reimporta
+        {
+          id: 'gcal-existe',
+          status: 'confirmed',
+          summary: 'já tenho',
+          start: { dateTime: '2026-07-10T14:00:00-03:00' },
+          end: { dateTime: '2026-07-10T15:00:00-03:00' },
+        },
+        // all-day (só date) → fica no overlay, não importa
+        {
+          id: 'gcal-allday',
+          status: 'confirmed',
+          summary: 'Aniversário',
+          start: { date: '2026-07-12' },
+        },
+      ]);
+
+      const r = await service.sincronizarGoogle(fakeUser({ id: 'u1' }));
+
+      expect(prisma.agendaItem.create).not.toHaveBeenCalled();
+      expect(r.importados).toBe(0);
     });
   });
 
