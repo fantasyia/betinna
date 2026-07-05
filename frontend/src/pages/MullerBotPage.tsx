@@ -126,6 +126,14 @@ export default function MullerBotPage() {
   const [pergunta, setPergunta] = useState('');
   const [topK, setTopK] = useState(5);
   const [modelo, setModelo] = useState<string>('');
+  // Nome do bot definido pela empresa (ex.: "SomaBOT") — cabeçalho da página.
+  const [nomeBot, setNomeBot] = useState<string>('');
+  useEffect(() => {
+    api
+      .get<{ nome?: string }>('/mullerbot/persona')
+      .then((r) => setNomeBot(r.nome?.trim() ?? ''))
+      .catch(() => setNomeBot(''));
+  }, []);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [history, setHistory] = useState<QAItem[]>(() => loadHistory());
@@ -208,8 +216,8 @@ export default function MullerBotPage() {
 
   return (
     <PageLayout
-      title="Assistente IA"
-      description="Assistente interno da empresa. Pergunte sobre produtos, preços, regras, condições e FAQ — ele busca no catálogo e na base de conhecimento. O nome dele (ex.: SomaBOT) você define em Persona Bot."
+      title={nomeBot || 'Assistente IA'}
+      description="Assistente interno da empresa. Pergunte sobre produtos, preços, regras, condições e FAQ — ele busca no catálogo e na base de conhecimento. O nome dele você define em Persona Bot."
       actions={
         history.length > 0 ? (
           <div className="flex items-center gap-2">
@@ -396,8 +404,8 @@ export default function MullerBotPage() {
             <ul className="text-xs text-text-subtle space-y-1.5 leading-relaxed list-disc pl-4 m-0">
               <li>Busca no catálogo (OMIE) + base de conhecimento (FAQ/regras)</li>
               <li>Top-K via keyword scoring (sem alucinação)</li>
-              <li>Tom e estilo configuráveis em Persona Bot</li>
-              <li>REPs precisam de chave OpenAI própria</li>
+              <li>Tom, nome e estilo configuráveis em Persona Bot</li>
+              <li>Usa a chave OpenAI da EMPRESA (o rep não precisa de chave própria)</li>
               <li>Contexto multi-turn persistido server-side (Redis)</li>
               <li>"Nova conversa" reseta contexto pro bot</li>
             </ul>
