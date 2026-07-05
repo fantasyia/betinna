@@ -8,6 +8,7 @@ import { useToast } from '@/components/toast';
 import { usePermission } from '@/hooks/usePermission';
 import { PageLayout } from '@/components/PageLayout';
 import { AtendimentoTabs } from '@/components/AtendimentoTabs';
+import { AssistenteTabs } from '@/components/AssistenteTabs';
 import {
   Button,
   Card,
@@ -289,6 +290,7 @@ export default function PersonaBotPage() {
       }
     >
       <AtendimentoTabs />
+      <AssistenteTabs />
       <div className="mb-3">
         <Link
           to="/mullerbot/prompts"

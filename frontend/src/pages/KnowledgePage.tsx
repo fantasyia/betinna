@@ -16,6 +16,8 @@ import { useApiQuery } from '@/hooks/useApiQuery';
 import { useToast } from '@/components/toast';
 import { useRole } from '@/hooks/usePermission';
 import { PageLayout } from '@/components/PageLayout';
+import { AtendimentoTabs } from '@/components/AtendimentoTabs';
+import { AssistenteTabs } from '@/components/AssistenteTabs';
 import { StateView } from '@/components/StateView';
 import { Badge, Button, Card, Dialog, Field, Input, Switch, Textarea } from '@/components/ui';
 
@@ -222,6 +224,8 @@ export default function KnowledgePage() {
         ) : undefined
       }
     >
+      <AtendimentoTabs />
+      <AssistenteTabs />
       <input
         ref={fileRef}
         type="file"

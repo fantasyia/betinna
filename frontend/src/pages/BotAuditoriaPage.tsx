@@ -6,6 +6,7 @@ import { useApiQuery } from '@/hooks/useApiQuery';
 import { useToast } from '@/components/toast';
 import { PageLayout } from '@/components/PageLayout';
 import { AtendimentoTabs } from '@/components/AtendimentoTabs';
+import { AssistenteTabs } from '@/components/AssistenteTabs';
 import { StateView } from '@/components/StateView';
 import { Badge, Button, Card, Field, Select } from '@/components/ui';
 import { formatNumero } from '@/lib/masks';
@@ -101,6 +102,7 @@ export default function BotAuditoriaPage() {
       }
     >
       <AtendimentoTabs />
+      <AssistenteTabs />
 
       {/* Filtros */}
       <Card padding="md" className="mb-3">
