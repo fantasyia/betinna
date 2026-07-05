@@ -12,6 +12,7 @@ import {
 import { api, ApiError } from '@/lib/api';
 import { PageLayout } from '@/components/PageLayout';
 import { AtendimentoTabs } from '@/components/AtendimentoTabs';
+import { AssistenteTabs } from '@/components/AssistenteTabs';
 import { Markdown } from '@/components/Markdown';
 import {
   Button,
@@ -242,6 +243,7 @@ export default function MullerBotPage() {
       }
     >
       <AtendimentoTabs />
+      <AssistenteTabs />
       <div className="grid gap-4 grid-cols-1 lg:grid-cols-[minmax(0,1fr)_280px]">
         {/* Chat */}
         <Card

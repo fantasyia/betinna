@@ -1,13 +1,4 @@
-import {
-  MessageSquare,
-  AlertTriangle,
-  ShieldAlert,
-  Smartphone,
-  Bot,
-  Sparkles,
-  ClipboardList,
-  BookText,
-} from 'lucide-react';
+import { MessageSquare, AlertTriangle, ShieldAlert, Smartphone, Bot } from 'lucide-react';
 import { useRole, usePermission } from '@/hooks/usePermission';
 import { SubTabsBar, type SubTab } from '@/components/SubTabsBar';
 
@@ -37,7 +28,6 @@ export function AtendimentoTabs() {
     role === 'DIRECTOR' ||
     role === 'GERENTE' ||
     role === 'SAC';
-  const canPersona = role === 'ADMIN' || role === 'DIRECTOR';
 
   const tabs: SubTab[] = [];
 
@@ -61,27 +51,15 @@ export function AtendimentoTabs() {
       icon: <Smartphone size={14} />,
     });
   }
-  tabs.push({ to: '/mullerbot', label: 'Assistente IA', icon: <Bot size={14} /> });
-  if (canPersona) {
-    tabs.push({
-      to: '/mullerbot/persona',
-      label: 'Persona Bot',
-      icon: <Sparkles size={14} />,
-    });
-    tabs.push({
-      to: '/mullerbot/conhecimento',
-      label: 'Conhecimento',
-      icon: <BookText size={14} />,
-    });
-  }
-  // Auditoria do bot — também pra GERENTE (gestão), não só config.
-  if (canMarketplaces) {
-    tabs.push({
-      to: '/mullerbot/auditoria',
-      label: 'Auditoria',
-      icon: <ClipboardList size={14} />,
-    });
-  }
+  // Assistente IA = UMA aba só. As antigas Persona/Conhecimento/Auditoria viraram
+  // sub-abas DENTRO da seção (AssistenteTabs). `match` mantém esta aba ativa em
+  // todas as rotas /mullerbot/*.
+  tabs.push({
+    to: '/mullerbot',
+    label: 'Assistente IA',
+    icon: <Bot size={14} />,
+    match: ['/mullerbot/persona', '/mullerbot/conhecimento', '/mullerbot/auditoria'],
+  });
 
   return <SubTabsBar tabs={tabs} ariaLabel="Sub-abas de Atendimento" />;
 }
