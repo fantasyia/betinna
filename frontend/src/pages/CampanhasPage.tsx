@@ -64,6 +64,17 @@ type CampanhaStatus =
   | 'CANCELADA';
 
 type CampanhaCanal = 'WHATSAPP' | 'EMAIL' | 'WHATSAPP_EMAIL';
+
+/** Template de campanha salvo na biblioteca (reutilizável). */
+interface CampanhaTemplateLite {
+  id: string;
+  nome: string;
+  canal: CampanhaCanal;
+  assunto?: string | null;
+  mensagemWa?: string | null;
+  mensagemEmail?: string | null;
+  objetivo?: string | null;
+}
 type TomIA = 'formal' | 'amigavel' | 'urgente' | 'consultivo';
 
 interface Campanha {
@@ -1183,6 +1194,62 @@ function CreateCampanhaModal({
     reader.readAsText(file);
   }
 
+  // ─── Biblioteca de templates salvos (persistentes por empresa) ──────────
+  const toast = useToast();
+  const templatesQuery = useApiQuery<CampanhaTemplateLite[]>('/campanhas/templates');
+  const templates: CampanhaTemplateLite[] = templatesQuery.data ?? [];
+  const [templateSel, setTemplateSel] = useState('');
+  const [savingTemplate, setSavingTemplate] = useState(false);
+
+  function aplicarTemplate(id: string) {
+    setTemplateSel(id);
+    const t = templates.find((x) => x.id === id);
+    if (!t) return;
+    setNome(t.nome);
+    setCanal(t.canal);
+    setObjetivo(t.objetivo ?? '');
+    setAssunto(t.assunto ?? '');
+    setMensagemEmail(t.mensagemEmail ?? '');
+    setMensagemWa(t.mensagemWa ?? '');
+    setFormError(null);
+  }
+
+  async function salvarComoTemplate() {
+    if (nome.trim().length === 0) {
+      setFormError('Dê um nome antes de salvar como template.');
+      return;
+    }
+    setSavingTemplate(true);
+    try {
+      await api.post('/campanhas/templates', {
+        nome: nome.trim(),
+        canal,
+        objetivo: objetivo.trim() || undefined,
+        assunto: assunto.trim() || undefined,
+        mensagemEmail: mensagemEmail.trim() || undefined,
+        mensagemWa: mensagemWa.trim() || undefined,
+      });
+      await templatesQuery.refetch();
+      toast.success('Template salvo', 'Disponível pra reusar em novas campanhas.');
+    } catch (err) {
+      toast.error(apiErrorMessage(err));
+    } finally {
+      setSavingTemplate(false);
+    }
+  }
+
+  async function excluirTemplateSel() {
+    if (!templateSel) return;
+    try {
+      await api.delete(`/campanhas/templates/${templateSel}`);
+      setTemplateSel('');
+      await templatesQuery.refetch();
+      toast.info('Template removido');
+    } catch (err) {
+      toast.error(apiErrorMessage(err));
+    }
+  }
+
   async function submit(e: React.FormEvent) {
     e.preventDefault();
 
@@ -1261,27 +1328,64 @@ function CreateCampanhaModal({
       }
     >
       <form id="campanha-form" onSubmit={submit}>
-        <div className="flex justify-end mb-3">
-          <input
-            ref={jsonRef}
-            type="file"
-            accept="application/json,.json"
-            className="hidden"
-            data-testid="campanha-import-json"
-            onChange={(e) => {
-              const f = e.target.files?.[0];
-              if (f) importarTemplateJson(f);
-              e.target.value = '';
-            }}
-          />
-          <button
-            type="button"
-            onClick={() => jsonRef.current?.click()}
-            title='Importa um template de e-mail/mensagem de um arquivo JSON: { "nome", "canal", "assunto", "mensagemEmail", "mensagemWa", "objetivo" }'
-            className="bg-surface text-text border border-border-strong rounded-md py-1.5 px-3 text-[13px] font-medium cursor-pointer"
-          >
-            ↥ Importar template (JSON)
-          </button>
+        <div className="flex items-center justify-between gap-2 mb-3 flex-wrap">
+          {/* Biblioteca de templates salvos: carregar um pré-preenche o form */}
+          <div className="flex items-center gap-2">
+            <Select
+              data-testid="campanha-template-sel"
+              value={templateSel}
+              onChange={(e) => aplicarTemplate(e.target.value)}
+              aria-label="Usar template salvo"
+            >
+              <option value="">Usar template salvo…</option>
+              {templates.map((t) => (
+                <option key={t.id} value={t.id}>
+                  {t.nome} ({CANAL_LABEL[t.canal]})
+                </option>
+              ))}
+            </Select>
+            {templateSel && (
+              <button
+                type="button"
+                onClick={excluirTemplateSel}
+                title="Excluir este template da biblioteca"
+                className="text-danger text-[13px] font-medium cursor-pointer bg-transparent border-none"
+              >
+                Excluir
+              </button>
+            )}
+          </div>
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={salvarComoTemplate}
+              disabled={savingTemplate}
+              title="Salva os campos atuais como um template reutilizável"
+              className="bg-surface text-text border border-border-strong rounded-md py-1.5 px-3 text-[13px] font-medium cursor-pointer disabled:opacity-60"
+            >
+              {savingTemplate ? 'Salvando…' : '💾 Salvar como template'}
+            </button>
+            <input
+              ref={jsonRef}
+              type="file"
+              accept="application/json,.json"
+              className="hidden"
+              data-testid="campanha-import-json"
+              onChange={(e) => {
+                const f = e.target.files?.[0];
+                if (f) importarTemplateJson(f);
+                e.target.value = '';
+              }}
+            />
+            <button
+              type="button"
+              onClick={() => jsonRef.current?.click()}
+              title='Importa um template de um arquivo JSON: { "nome", "canal", "assunto", "mensagemEmail", "mensagemWa", "objetivo" }'
+              className="bg-surface text-text border border-border-strong rounded-md py-1.5 px-3 text-[13px] font-medium cursor-pointer"
+            >
+              ↥ Importar (JSON)
+            </button>
+          </div>
         </div>
         <FormField label="Nome" htmlFor="c-nome" required>
           <Input
