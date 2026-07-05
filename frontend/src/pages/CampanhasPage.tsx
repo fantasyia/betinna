@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useMemo, useRef, useState } from 'react';
 import { api, apiErrorMessage } from '@/lib/api';
 import { formatPercent } from '@/lib/masks';
 import { useApiQuery, type PaginatedResponse } from '@/hooks/useApiQuery';
@@ -1156,6 +1156,33 @@ function CreateCampanhaModal({
     setSegTagIds((s) => (s.includes(id) ? s.filter((x) => x !== id) : [...s, id]));
   }
 
+  // Importar template por JSON: pré-preenche o form a partir de um arquivo .json
+  // { nome, canal, assunto, mensagemEmail, mensagemWa, objetivo } — campos ausentes
+  // são ignorados (import parcial ok). Não envia nada; só preenche pra revisão.
+  const jsonRef = useRef<HTMLInputElement>(null);
+  function importarTemplateJson(file: File) {
+    const reader = new FileReader();
+    reader.onload = () => {
+      try {
+        const t = JSON.parse(String(reader.result)) as Record<string, unknown>;
+        if (typeof t.nome === 'string') setNome(t.nome);
+        if (t.canal === 'WHATSAPP' || t.canal === 'EMAIL' || t.canal === 'WHATSAPP_EMAIL') {
+          setCanal(t.canal);
+        }
+        if (typeof t.objetivo === 'string') setObjetivo(t.objetivo);
+        if (typeof t.assunto === 'string') setAssunto(t.assunto);
+        if (typeof t.mensagemEmail === 'string') setMensagemEmail(t.mensagemEmail);
+        if (typeof t.mensagemWa === 'string') setMensagemWa(t.mensagemWa);
+        setFormError(null);
+      } catch {
+        setFormError(
+          'JSON inválido. Esperado: { "nome", "canal", "assunto", "mensagemEmail", "mensagemWa", "objetivo" }.',
+        );
+      }
+    };
+    reader.readAsText(file);
+  }
+
   async function submit(e: React.FormEvent) {
     e.preventDefault();
 
@@ -1234,6 +1261,28 @@ function CreateCampanhaModal({
       }
     >
       <form id="campanha-form" onSubmit={submit}>
+        <div className="flex justify-end mb-3">
+          <input
+            ref={jsonRef}
+            type="file"
+            accept="application/json,.json"
+            className="hidden"
+            data-testid="campanha-import-json"
+            onChange={(e) => {
+              const f = e.target.files?.[0];
+              if (f) importarTemplateJson(f);
+              e.target.value = '';
+            }}
+          />
+          <button
+            type="button"
+            onClick={() => jsonRef.current?.click()}
+            title='Importa um template de e-mail/mensagem de um arquivo JSON: { "nome", "canal", "assunto", "mensagemEmail", "mensagemWa", "objetivo" }'
+            className="bg-surface text-text border border-border-strong rounded-md py-1.5 px-3 text-[13px] font-medium cursor-pointer"
+          >
+            ↥ Importar template (JSON)
+          </button>
+        </div>
         <FormField label="Nome" htmlFor="c-nome" required>
           <Input
             id="c-nome"
