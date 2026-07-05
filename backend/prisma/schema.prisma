@@ -288,6 +288,7 @@ model Empresa {
   ocorrencias           Ocorrencia[]
   amostras              Amostra[]
   campanhas             Campanha[]
+  campanhaTemplates     CampanhaTemplate[]
   fluxos                Fluxo[]
   comissoes             Comissao[]
   sequencias            EmpresaSequence[]
@@ -369,6 +370,7 @@ model Usuario {
   mensagensEnviadas         Message[]                       @relation("MessageAutor")
   conversationNotas         ConversationNota[]
   campanhasCriadas          Campanha[]
+  campanhaTemplatesCriados  CampanhaTemplate[]
   notificacoes              Notificacao[]
   propostas                 Proposta[]
   movimentosFidelidade      MovimentoFidelidade[]
@@ -1689,6 +1691,28 @@ model Campanha {
   @@index([empresaId])
   @@index([status])
   @@index([agendadoPara])
+}
+
+/// Biblioteca de templates de campanha reutilizáveis por empresa (e-mail/WhatsApp).
+/// Salvos pra reuso: cria-se uma campanha a partir de um template (pré-preenche).
+model CampanhaTemplate {
+  id            String        @id @default(cuid())
+  empresaId     String
+  criadoPorId   String?
+  nome          String
+  descricao     String?
+  canal         CampanhaCanal @default(EMAIL)
+  assunto       String? // subject do e-mail
+  mensagemWa    String?       @db.Text
+  mensagemEmail String?       @db.Text
+  objetivo      String?       @db.Text
+  criadoEm      DateTime      @default(now())
+  atualizadoEm  DateTime      @updatedAt
+
+  empresa   Empresa  @relation(fields: [empresaId], references: [id], onDelete: Cascade)
+  criadoPor Usuario? @relation(fields: [criadoPorId], references: [id], onDelete: SetNull)
+
+  @@index([empresaId])
 }
 
 model CampanhaDestinatario {

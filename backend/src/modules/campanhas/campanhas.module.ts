@@ -10,6 +10,8 @@ import { CampanhaIaService } from './campanha-ia.service';
 import { CampanhaSchedulerJob } from './campanha-scheduler.job';
 import { CampanhasController } from './campanhas.controller';
 import { CampanhasService } from './campanhas.service';
+import { CampanhaTemplateController } from './campanha-template.controller';
+import { CampanhaTemplateService } from './campanha-template.service';
 import { RODAR_BACKGROUND } from '@shared/utils/service-type';
 
 @Module({
@@ -20,11 +22,12 @@ import { RODAR_BACKGROUND } from '@shared/utils/service-type';
     IntegracoesModule, // expõe UsuarioIntegracoesService para CampanhaIaService
     MullerBotModule, // expõe BotCustoService (teto de custo de LLM da campanha IA)
   ],
-  controllers: [CampanhasController],
+  controllers: [CampanhasController, CampanhaTemplateController],
   // O Processor (consumidor BullMQ) só roda no worker em produção; o resto (service/scheduler)
   // segue registrado (o @Cron do scheduler já é gateado pela ausência do ScheduleModule na api).
   providers: [
     CampanhasService,
+    CampanhaTemplateService,
     CampanhaIaService,
     CampanhaSchedulerJob,
     ...(RODAR_BACKGROUND ? [CampanhaEnvioProcessor] : []),
