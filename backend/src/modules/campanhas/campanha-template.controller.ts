@@ -14,13 +14,15 @@ import {
 import { CampanhaTemplateService } from './campanha-template.service';
 
 /**
- * Biblioteca de templates de campanha (escopo empresa). Rota dedicada
- * `campanhas/templates` — separada do controller de campanhas pra não colidir
- * com o `@Get(':id')` de lá. Mesma matriz de permissão do módulo campanhas.
+ * Biblioteca de templates de campanha (escopo empresa). Path TOP-LEVEL
+ * `campanha-templates` (NÃO `campanhas/templates`) de propósito: aninhar sob
+ * /campanhas fazia o `@Get(':id')` do CampanhasController capturar "templates"
+ * e devolver 404 — e reordenar controllers não resolveu nesta versão do Nest.
+ * Mesma matriz de permissão do módulo campanhas.
  */
 @ApiTags('campanhas')
 @ApiBearerAuth()
-@Controller('campanhas/templates')
+@Controller('campanha-templates')
 export class CampanhaTemplateController {
   constructor(private readonly svc: CampanhaTemplateService) {}
 

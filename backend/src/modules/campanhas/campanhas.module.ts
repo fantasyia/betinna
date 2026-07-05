@@ -22,10 +22,9 @@ import { RODAR_BACKGROUND } from '@shared/utils/service-type';
     IntegracoesModule, // expõe UsuarioIntegracoesService para CampanhaIaService
     MullerBotModule, // expõe BotCustoService (teto de custo de LLM da campanha IA)
   ],
-  // ⚠️ CampanhaTemplateController ANTES do CampanhasController: a rota estática
-  // GET /campanhas/templates precisa registrar antes do @Get(':id') de campanhas,
-  // senão ':id' captura "templates" e devolve 404.
-  controllers: [CampanhaTemplateController, CampanhasController],
+  // CampanhaTemplateController usa path top-level 'campanha-templates' (fora de
+  // /campanhas/:id), então não há colisão de rota — a ordem aqui é indiferente.
+  controllers: [CampanhasController, CampanhaTemplateController],
   // O Processor (consumidor BullMQ) só roda no worker em produção; o resto (service/scheduler)
   // segue registrado (o @Cron do scheduler já é gateado pela ausência do ScheduleModule na api).
   providers: [

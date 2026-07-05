@@ -1196,7 +1196,7 @@ function CreateCampanhaModal({
 
   // ─── Biblioteca de templates salvos (persistentes por empresa) ──────────
   const toast = useToast();
-  const templatesQuery = useApiQuery<CampanhaTemplateLite[]>('/campanhas/templates');
+  const templatesQuery = useApiQuery<CampanhaTemplateLite[]>('/campanha-templates');
   const templates: CampanhaTemplateLite[] = templatesQuery.data ?? [];
   const [templateSel, setTemplateSel] = useState('');
   const [savingTemplate, setSavingTemplate] = useState(false);
@@ -1221,7 +1221,7 @@ function CreateCampanhaModal({
     }
     setSavingTemplate(true);
     try {
-      await api.post('/campanhas/templates', {
+      await api.post('/campanha-templates', {
         nome: nome.trim(),
         canal,
         objetivo: objetivo.trim() || undefined,
@@ -1241,7 +1241,7 @@ function CreateCampanhaModal({
   async function excluirTemplateSel() {
     if (!templateSel) return;
     try {
-      await api.delete(`/campanhas/templates/${templateSel}`);
+      await api.delete(`/campanha-templates/${templateSel}`);
       setTemplateSel('');
       await templatesQuery.refetch();
       toast.info('Template removido');
