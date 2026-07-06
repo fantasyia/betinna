@@ -358,6 +358,7 @@ describe('MetasService', () => {
     });
 
     it('atualiza meta existente (id presente) via update no id correto', async () => {
+      prisma.meta.findFirst.mockResolvedValue({ id: 'meta-9' }); // guard IDOR: meta é da empresa
       prisma.meta.update.mockResolvedValue({ id: 'meta-9' });
       await svc.upsert(fakeUser(), 'meta-9', baseDto);
 
@@ -413,6 +414,46 @@ describe('MetasService', () => {
       prisma.meta.findFirst.mockResolvedValue(null);
       await expect(svc.delete(fakeUser(), 'outra-emp')).rejects.toBeInstanceOf(NotFoundException);
       expect(prisma.meta.delete).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('upsert — IDOR guard na edição por id', () => {
+    const dto = {
+      titulo: 'Meta X',
+      tipo: 'FATURAMENTO',
+      valorAlvo: 1000,
+      alvoTipo: 'EMPRESA',
+      periodicidade: 'MES',
+      inicio: '2026-07-01T00:00:00.000Z',
+      fim: '2026-07-31T00:00:00.000Z',
+      ativo: true,
+    } as never;
+
+    it('editar meta de OUTRA empresa → NotFound e NÃO chama update', async () => {
+      prisma.meta.findFirst.mockResolvedValue(null); // não pertence à empresa do caller
+      await expect(
+        svc.upsert(fakeUser({ empresaIdAtiva: 'emp-1' }), 'meta-de-outro-tenant', dto),
+      ).rejects.toBeInstanceOf(NotFoundException);
+      expect(prisma.meta.update).not.toHaveBeenCalled();
+    });
+
+    it('editar meta da PRÓPRIA empresa → confere dono (findFirst por empresaId) e atualiza', async () => {
+      prisma.meta.findFirst.mockResolvedValue({ id: 'meta-1' });
+      prisma.meta.update.mockResolvedValue({ id: 'meta-1' });
+      await svc.upsert(fakeUser({ empresaIdAtiva: 'emp-1' }), 'meta-1', dto);
+      expect(prisma.meta.findFirst).toHaveBeenCalledWith(
+        expect.objectContaining({ where: { id: 'meta-1', empresaId: 'emp-1' } }),
+      );
+      expect(prisma.meta.update).toHaveBeenCalledWith(
+        expect.objectContaining({ where: { id: 'meta-1' } }),
+      );
+    });
+
+    it('criar (sem id) NÃO passa pelo guard de edição', async () => {
+      prisma.meta.create.mockResolvedValue({ id: 'nova' });
+      await svc.upsert(fakeUser(), null, dto);
+      expect(prisma.meta.findFirst).not.toHaveBeenCalled();
+      expect(prisma.meta.create).toHaveBeenCalled();
     });
   });
 });

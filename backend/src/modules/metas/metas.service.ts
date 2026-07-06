@@ -112,6 +112,13 @@ export class MetasService {
     };
 
     if (id) {
+      // IDOR guard: só edita meta da PRÓPRIA empresa. Sem isso, editar por id puro
+      // deixava sobrescrever E reatribuir (data.empresaId) a meta de OUTRO tenant.
+      const existente = await this.prisma.meta.findFirst({
+        where: { id, empresaId },
+        select: { id: true },
+      });
+      if (!existente) throw new NotFoundException('Meta não encontrada');
       return this.prisma.meta.update({ where: { id }, data });
     }
     return this.prisma.meta.create({ data });
