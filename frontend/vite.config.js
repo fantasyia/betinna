@@ -101,6 +101,13 @@ export default defineConfig({
         port: Number(process.env.PORT) || 4173,
         host: '0.0.0.0',
     },
+    // Hardening: no build de produção, remove console.log/info/debug + debugger
+    // (não vaza estado interno pro console de quem abre o DevTools). Mantém
+    // console.warn/error (úteis e não sensíveis). `pure` deixa o minifier tree-shakar.
+    esbuild: {
+        drop: ['debugger'],
+        pure: ['console.log', 'console.info', 'console.debug'],
+    },
     build: {
         sourcemap: false,
         rollupOptions: {
