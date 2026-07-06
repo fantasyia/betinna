@@ -1029,6 +1029,9 @@ model Funil {
   ativo          Boolean @default(true)
   /// Apenas 1 funil padrão por empresa — usado quando lead é criado sem funil explícito
   isPadrao       Boolean @default(false)
+  /// Funil OBRIGATÓRIO/protegido: só ADMIN/DIRETOR edita/exclui; REP não mexe nem
+  /// exclui. Ligado pelo ADMIN/DIRETOR na config do próprio funil.
+  protegido      Boolean @default(false)
   /// Allow-list de tags permitidas neste funil (Fase C — spec §2.1). Array de
   /// nomes de tag; null = todas as tags da empresa são permitidas.
   tagsPermitidas Json?
