@@ -14,6 +14,8 @@ import {
   Upload,
   Download,
   Trash2,
+  LayoutGrid,
+  List,
 } from 'lucide-react';
 import { api, ApiError } from '@/lib/api';
 import { formatNumero } from '@/lib/masks';
@@ -154,6 +156,22 @@ export default function FluxosPage() {
   const [triggerTipo, setTriggerTipo] = useState('');
   const [editingId, setEditingId] = useState<string | null>(null);
   const [creating, setCreating] = useState(false);
+  // Visão: cards (grid) ou lista (linhas compactas) — persistida por usuário.
+  const [visao, setVisao] = useState<'card' | 'lista'>(() => {
+    try {
+      return localStorage.getItem('fluxos_visao') === 'lista' ? 'lista' : 'card';
+    } catch {
+      return 'card';
+    }
+  });
+  function mudarVisao(v: 'card' | 'lista') {
+    setVisao(v);
+    try {
+      localStorage.setItem('fluxos_visao', v);
+    } catch {
+      // best-effort
+    }
+  }
   const [verExecucoes, setVerExecucoes] = useState<FluxoListItem | null>(null);
 
   const listPath = useMemo(() => {
@@ -326,6 +344,29 @@ export default function FluxosPage() {
               </option>
             ))}
           </Select>
+          {/* Toggle de visão: cards ou lista */}
+          <div className="ml-auto inline-flex rounded-md border border-border-strong overflow-hidden">
+            <Tooltip content="Ver em cards">
+              <IconButton
+                aria-label="Visão em cards"
+                variant={visao === 'card' ? 'secondary' : 'ghost'}
+                size="sm"
+                icon={<LayoutGrid />}
+                onClick={() => mudarVisao('card')}
+                data-testid="fluxos-visao-card"
+              />
+            </Tooltip>
+            <Tooltip content="Ver em lista">
+              <IconButton
+                aria-label="Visão em lista"
+                variant={visao === 'lista' ? 'secondary' : 'ghost'}
+                size="sm"
+                icon={<List />}
+                onClick={() => mudarVisao('lista')}
+                data-testid="fluxos-visao-lista"
+              />
+            </Tooltip>
+          </div>
         </div>
 
         <StateView loading={loading} error={error} onRetry={refetch}>
@@ -346,19 +387,35 @@ export default function FluxosPage() {
           )}
           {pageResp && pageResp.data.length > 0 && (
             <>
-              <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3 p-4">
-                {pageResp.data.map((f) => (
-                  <FluxoCard
-                    key={f.id}
-                    fluxo={f}
-                    canEdit={canEdit}
-                    onEdit={() => setEditingId(f.id)}
-                    onAction={(a) => callAction(f.id, a)}
-                    onExport={() => onExport(f)}
-                    onVerExecucoes={() => setVerExecucoes(f)}
-                  />
-                ))}
-              </div>
+              {visao === 'lista' ? (
+                <div>
+                  {pageResp.data.map((f) => (
+                    <FluxoRow
+                      key={f.id}
+                      fluxo={f}
+                      canEdit={canEdit}
+                      onEdit={() => setEditingId(f.id)}
+                      onAction={(a) => callAction(f.id, a)}
+                      onExport={() => onExport(f)}
+                      onVerExecucoes={() => setVerExecucoes(f)}
+                    />
+                  ))}
+                </div>
+              ) : (
+                <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3 p-4">
+                  {pageResp.data.map((f) => (
+                    <FluxoCard
+                      key={f.id}
+                      fluxo={f}
+                      canEdit={canEdit}
+                      onEdit={() => setEditingId(f.id)}
+                      onAction={(a) => callAction(f.id, a)}
+                      onExport={() => onExport(f)}
+                      onVerExecucoes={() => setVerExecucoes(f)}
+                    />
+                  ))}
+                </div>
+              )}
               {pageResp.pagination.totalPages > 1 && (
                 <div className="flex items-center justify-between px-4 py-3 border-t border-border bg-bg-alt">
                   <span className="text-xs text-muted tabular">
@@ -462,95 +519,13 @@ function FluxoCard({
 
       <footer className="flex items-center justify-between pt-2 border-t border-border">
         <span className="text-[11px] text-muted">Atualizado {fmtDate(fluxo.atualizadoEm)}</span>
-        <div
-          className="flex items-center gap-1"
-          onClick={(e) => e.stopPropagation()}
-        >
-          {canEdit && fluxo.status === 'RASCUNHO' && (
-            <Tooltip content="Ativar fluxo">
-              <IconButton
-                aria-label="Ativar"
-                variant="ghost"
-                size="sm"
-                icon={<Play className="text-success" />}
-                data-testid={`fluxo-ativar-${fluxo.id}`}
-                onClick={() => onAction('ativar')}
-              />
-            </Tooltip>
-          )}
-          {canEdit && fluxo.status === 'ATIVO' && (
-            <Tooltip content="Pausar fluxo">
-              <IconButton
-                aria-label="Pausar"
-                variant="ghost"
-                size="sm"
-                icon={<Pause className="text-warning" />}
-                data-testid={`fluxo-pausar-${fluxo.id}`}
-                onClick={() => onAction('pausar')}
-              />
-            </Tooltip>
-          )}
-          {canEdit && fluxo.status === 'PAUSADO' && (
-            <Tooltip content="Retomar fluxo">
-              <IconButton
-                aria-label="Retomar"
-                variant="ghost"
-                size="sm"
-                icon={<Play className="text-success" />}
-                data-testid={`fluxo-retomar-${fluxo.id}`}
-                onClick={() => onAction('ativar')}
-              />
-            </Tooltip>
-          )}
-          {canEdit && fluxo.status !== 'ARQUIVADO' && (
-            <Tooltip content="Arquivar">
-              <IconButton
-                aria-label="Arquivar"
-                variant="ghost"
-                size="sm"
-                icon={<Archive />}
-                onClick={() => onAction('arquivar')}
-              />
-            </Tooltip>
-          )}
-          {canEdit && (
-            <Tooltip content="Excluir permanentemente">
-              <IconButton
-                aria-label="Excluir"
-                variant="ghost"
-                size="sm"
-                className="text-danger hover:bg-danger/10"
-                icon={<Trash2 />}
-                onClick={() => onAction('excluir')}
-                data-testid={`fluxo-excluir-${fluxo.id}`}
-              />
-            </Tooltip>
-          )}
-          {canEdit && (
-            <Tooltip content="Exportar (.json)">
-              <IconButton
-                aria-label="Exportar"
-                variant="ghost"
-                size="sm"
-                icon={<Download />}
-                onClick={onExport}
-                data-testid={`fluxo-exportar-${fluxo.id}`}
-              />
-            </Tooltip>
-          )}
-          {canEdit && (
-            <Tooltip content="Editar no canvas">
-              <IconButton
-                aria-label="Editar"
-                variant="ghost"
-                size="sm"
-                icon={<Edit3 />}
-                onClick={onEdit}
-                data-testid={`fluxo-open-${fluxo.id}`}
-              />
-            </Tooltip>
-          )}
-        </div>
+        <FluxoAcoes
+          fluxo={fluxo}
+          canEdit={canEdit}
+          onAction={onAction}
+          onExport={onExport}
+          onEdit={onEdit}
+        />
       </footer>
 
       {fluxo._count?.execucoes !== undefined && fluxo._count.execucoes > 0 && (
@@ -568,6 +543,127 @@ function FluxoCard({
         </button>
       )}
     </Card>
+  );
+}
+
+// ─── Ações do fluxo (reusadas no card e na linha da lista) ───────
+
+function FluxoAcoes({
+  fluxo,
+  canEdit,
+  onAction,
+  onExport,
+  onEdit,
+}: {
+  fluxo: FluxoListItem;
+  canEdit: boolean;
+  onAction: (a: 'ativar' | 'pausar' | 'arquivar' | 'excluir') => void;
+  onExport: () => void;
+  onEdit: () => void;
+}) {
+  return (
+    <div className="flex items-center gap-1" onClick={(e) => e.stopPropagation()}>
+      {canEdit && fluxo.status === 'RASCUNHO' && (
+        <Tooltip content="Ativar fluxo">
+          <IconButton aria-label="Ativar" variant="ghost" size="sm" icon={<Play className="text-success" />} data-testid={`fluxo-ativar-${fluxo.id}`} onClick={() => onAction('ativar')} />
+        </Tooltip>
+      )}
+      {canEdit && fluxo.status === 'ATIVO' && (
+        <Tooltip content="Pausar fluxo">
+          <IconButton aria-label="Pausar" variant="ghost" size="sm" icon={<Pause className="text-warning" />} data-testid={`fluxo-pausar-${fluxo.id}`} onClick={() => onAction('pausar')} />
+        </Tooltip>
+      )}
+      {canEdit && fluxo.status === 'PAUSADO' && (
+        <Tooltip content="Retomar fluxo">
+          <IconButton aria-label="Retomar" variant="ghost" size="sm" icon={<Play className="text-success" />} data-testid={`fluxo-retomar-${fluxo.id}`} onClick={() => onAction('ativar')} />
+        </Tooltip>
+      )}
+      {canEdit && fluxo.status !== 'ARQUIVADO' && (
+        <Tooltip content="Arquivar">
+          <IconButton aria-label="Arquivar" variant="ghost" size="sm" icon={<Archive />} onClick={() => onAction('arquivar')} />
+        </Tooltip>
+      )}
+      {canEdit && (
+        <Tooltip content="Excluir permanentemente">
+          <IconButton aria-label="Excluir" variant="ghost" size="sm" className="text-danger hover:bg-danger/10" icon={<Trash2 />} onClick={() => onAction('excluir')} data-testid={`fluxo-excluir-${fluxo.id}`} />
+        </Tooltip>
+      )}
+      {canEdit && (
+        <Tooltip content="Exportar (.json)">
+          <IconButton aria-label="Exportar" variant="ghost" size="sm" icon={<Download />} onClick={onExport} data-testid={`fluxo-exportar-${fluxo.id}`} />
+        </Tooltip>
+      )}
+      {canEdit && (
+        <Tooltip content="Editar no canvas">
+          <IconButton aria-label="Editar" variant="ghost" size="sm" icon={<Edit3 />} onClick={onEdit} data-testid={`fluxo-open-${fluxo.id}`} />
+        </Tooltip>
+      )}
+    </div>
+  );
+}
+
+// ─── Linha da lista (visão compacta, alternativa aos cards) ──────
+
+function FluxoRow({
+  fluxo,
+  canEdit,
+  onEdit,
+  onAction,
+  onExport,
+  onVerExecucoes,
+}: {
+  fluxo: FluxoListItem;
+  canEdit: boolean;
+  onEdit: () => void;
+  onAction: (a: 'ativar' | 'pausar' | 'arquivar' | 'excluir') => void;
+  onExport: () => void;
+  onVerExecucoes: () => void;
+}) {
+  return (
+    <div
+      className="flex items-center gap-3 px-4 py-2.5 hover:bg-bg-alt cursor-pointer border-b border-border last:border-b-0"
+      onClick={onEdit}
+    >
+      <div className="min-w-0 flex-1">
+        <div className="flex items-center gap-2">
+          <span className="text-sm font-semibold text-text truncate">{fluxo.nome}</span>
+          <Badge variant={STATUS_VARIANT[fluxo.status]} size="sm">
+            {STATUS_LABEL[fluxo.status]}
+          </Badge>
+        </div>
+        {fluxo.descricao && <p className="text-xs text-muted truncate mt-0.5">{fluxo.descricao}</p>}
+      </div>
+      <div className="hidden md:flex items-center shrink-0 w-40">
+        {fluxo.triggerTipo ? (
+          <Badge variant="info" size="sm" className="inline-flex items-center gap-1">
+            <Zap className="h-2.5 w-2.5" />
+            {TRIGGERS[fluxo.triggerTipo]}
+          </Badge>
+        ) : (
+          <Badge variant="outline" size="sm">Manual</Badge>
+        )}
+      </div>
+      <span className="hidden lg:block text-[11px] text-muted shrink-0 w-36 text-right">
+        {fluxo._count?.execucoes !== undefined && fluxo._count.execucoes > 0 ? (
+          <button
+            type="button"
+            onClick={(e) => {
+              e.stopPropagation();
+              onVerExecucoes();
+            }}
+            className="hover:text-primary hover:underline"
+            data-testid={`fluxo-execucoes-${fluxo.id}`}
+          >
+            {formatNumero(fluxo._count.execucoes)} exec.
+          </button>
+        ) : (
+          <>Atualizado {fmtDate(fluxo.atualizadoEm)}</>
+        )}
+      </span>
+      <div className="shrink-0">
+        <FluxoAcoes fluxo={fluxo} canEdit={canEdit} onAction={onAction} onExport={onExport} onEdit={onEdit} />
+      </div>
+    </div>
   );
 }
 
