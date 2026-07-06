@@ -28,6 +28,7 @@ import {
 import { CSS } from '@dnd-kit/utilities';
 import { api, ApiError } from '@/lib/api';
 import { useApiQuery } from '@/hooks/useApiQuery';
+import { useRole } from '@/hooks/usePermission';
 import { useToast } from '@/components/toast';
 import { PageLayout } from '@/components/PageLayout';
 import { CrmTabs } from '@/components/CrmTabs';
@@ -79,6 +80,7 @@ interface Funil {
   ordem: number;
   ativo: boolean;
   isPadrao: boolean;
+  protegido?: boolean;
   tagsPermitidas?: string[] | null;
   etapas: FunilEtapa[];
   _count?: { leads: number };
@@ -287,6 +289,10 @@ function FunilEditor({
   onDelete: () => void;
 }) {
   const toast = useToast();
+  const role = useRole();
+  // Funil protegido/obrigatório: rep não edita nem exclui (só ADMIN/DIRETOR).
+  const bloqueadoPorProtecao =
+    !!funil.protegido && role !== 'ADMIN' && role !== 'DIRECTOR';
   const [editingInfo, setEditingInfo] = useState(false);
   const [creatingEtapa, setCreatingEtapa] = useState(false);
   const [editingEtapa, setEditingEtapa] = useState<FunilEtapa | null>(null);
@@ -349,6 +355,7 @@ function FunilEditor({
             />
             <h3 className="text-md font-semibold text-text truncate">{funil.nome}</h3>
             {funil.isPadrao && <Badge variant="primary">padrão</Badge>}
+            {funil.protegido && <Badge variant="warning">obrigatório</Badge>}
             {!funil.ativo && <Badge variant="neutral">inativo</Badge>}
           </div>
           {funil.descricao && (
@@ -371,24 +378,32 @@ function FunilEditor({
           >
             ID
           </Button>
-          <Button
-            variant="secondary"
-            size="sm"
-            onClick={() => setEditingInfo(true)}
-            leftIcon={<Pencil className="h-3 w-3" />}
-            data-testid="funil-edit-btn"
-          >
-            Editar
-          </Button>
-          <Button
-            variant="danger"
-            size="sm"
-            onClick={onDelete}
-            leftIcon={<Trash2 className="h-3 w-3" />}
-            data-testid="funil-delete-btn"
-          >
-            Excluir
-          </Button>
+          {bloqueadoPorProtecao ? (
+            <span className="text-xs text-muted italic self-center">
+              Funil obrigatório — só ADMIN/Diretor edita
+            </span>
+          ) : (
+            <>
+              <Button
+                variant="secondary"
+                size="sm"
+                onClick={() => setEditingInfo(true)}
+                leftIcon={<Pencil className="h-3 w-3" />}
+                data-testid="funil-edit-btn"
+              >
+                Editar
+              </Button>
+              <Button
+                variant="danger"
+                size="sm"
+                onClick={onDelete}
+                leftIcon={<Trash2 className="h-3 w-3" />}
+                data-testid="funil-delete-btn"
+              >
+                Excluir
+              </Button>
+            </>
+          )}
         </div>
       </div>
 
@@ -578,7 +593,10 @@ function FunilFormDialog({
   const [descricao, setDescricao] = useState(funil?.descricao ?? '');
   const [cor, setCor] = useState(funil?.cor ?? '#201554');
   const [isPadrao, setIsPadrao] = useState(funil?.isPadrao ?? false);
+  const [protegido, setProtegido] = useState(funil?.protegido ?? false);
   const [ativo, setAtivo] = useState(funil?.ativo ?? true);
+  const formRole = useRole();
+  const podeProteger = formRole === 'ADMIN' || formRole === 'DIRECTOR';
   const [tagsPermitidas, setTagsPermitidas] = useState(
     funil?.tagsPermitidas?.join(', ') ?? '',
   );
@@ -601,6 +619,8 @@ function FunilFormDialog({
       isPadrao,
       ativo,
     };
+    // Só ADMIN/DIRETOR manda 'protegido' (backend ignora dos demais de qualquer jeito).
+    if (podeProteger) payload.protegido = protegido;
     if (descricao.trim()) payload.descricao = descricao.trim();
     // Allow-list de tags: vazio = null (todas permitidas); senão array de nomes.
     const tags = tagsPermitidas
@@ -698,6 +718,23 @@ function FunilFormDialog({
             <span>Ativo</span>
           </label>
         </div>
+        {podeProteger && (
+          <label className="flex items-start gap-2 text-sm cursor-pointer mt-1">
+            <input
+              type="checkbox"
+              checked={protegido}
+              onChange={(e) => setProtegido(e.target.checked)}
+              data-testid="funil-protegido-cb"
+              className="mt-0.5"
+            />
+            <span>
+              <strong>Funil obrigatório (protegido)</strong>
+              <span className="block text-xs text-muted">
+                Representantes não podem editar nem excluir este funil. Só ADMIN/Diretor.
+              </span>
+            </span>
+          </label>
+        )}
         {error && (
           <div className="px-3 py-2 rounded-md bg-danger/10 border border-danger/30 text-danger text-sm flex items-start gap-2">
             <AlertCircle className="h-4 w-4 mt-0.5 shrink-0" />

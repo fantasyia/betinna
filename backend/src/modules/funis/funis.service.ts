@@ -39,6 +39,24 @@ export class FunisService {
     return user.empresaIdAtiva;
   }
 
+  /** ADMIN/DIRETOR podem tudo; os demais (REP etc.) não mexem em funil protegido. */
+  private ehAdminOuDiretor(user: AuthenticatedUser): boolean {
+    return user.role === 'ADMIN' || user.role === 'DIRECTOR';
+  }
+
+  /**
+   * Bloqueia editar/excluir um funil PROTEGIDO (obrigatório) por quem não é
+   * ADMIN/DIRETOR. Rep não exclui nem edita os funis padrão da empresa.
+   */
+  private assertPodeEditar(user: AuthenticatedUser, funil: { protegido: boolean }): void {
+    if (funil.protegido && !this.ehAdminOuDiretor(user)) {
+      throw new ForbiddenException(
+        'Este funil é obrigatório/protegido — só ADMIN ou Diretor pode editá-lo ou excluí-lo.',
+        ErrorCode.TENANT_ACCESS_DENIED,
+      );
+    }
+  }
+
   async list(user: AuthenticatedUser): Promise<FunilWithRel[]> {
     const empresaId = this.requireEmpresa(user);
     return this.prisma.funil.findMany({
@@ -79,6 +97,8 @@ export class FunisService {
           ordem: dto.ordem,
           ativo: dto.ativo,
           isPadrao: dto.isPadrao,
+          // Só ADMIN/DIRETOR pode marcar um funil como protegido/obrigatório.
+          protegido: this.ehAdminOuDiretor(user) ? (dto.protegido ?? false) : false,
           tagsPermitidas: dto.tagsPermitidas
             ? (dto.tagsPermitidas as Prisma.InputJsonValue)
             : Prisma.JsonNull,
@@ -108,6 +128,13 @@ export class FunisService {
 
   async update(user: AuthenticatedUser, id: string, dto: UpdateFunilDto): Promise<FunilWithRel> {
     const existing = await this.findById(user, id);
+    // Funil protegido: só ADMIN/DIRETOR edita.
+    this.assertPodeEditar(user, existing);
+    // A flag `protegido` só muda por ADMIN/DIRETOR — REP nem consegue chegar aqui
+    // num protegido, mas garante que não ligue/desligue num não-protegido.
+    if (dto.protegido !== undefined && !this.ehAdminOuDiretor(user)) {
+      delete dto.protegido;
+    }
 
     if (dto.isPadrao && !existing.isPadrao) {
       // Desmarca outros antes
@@ -138,6 +165,8 @@ export class FunisService {
 
   async remove(user: AuthenticatedUser, id: string): Promise<void> {
     const existing = await this.findById(user, id);
+    // Funil protegido/obrigatório: rep não exclui.
+    this.assertPodeEditar(user, existing);
 
     if (existing._count.leads > 0) {
       throw new BusinessRuleException(
@@ -164,7 +193,7 @@ export class FunisService {
     funilId: string,
     dto: CreateFunilEtapaDto,
   ): Promise<FunilWithRel> {
-    await this.findById(user, funilId); // valida acesso
+    this.assertPodeEditar(user, await this.findById(user, funilId)); // valida acesso + proteção
     // Auto-ordem: se ordem = 0 e já há etapas, coloca no final
     let ordemFinal = dto.ordem;
     if (ordemFinal === 0) {
@@ -200,7 +229,7 @@ export class FunisService {
     etapaId: string,
     dto: UpdateFunilEtapaDto,
   ): Promise<FunilWithRel> {
-    await this.findById(user, funilId); // valida acesso
+    this.assertPodeEditar(user, await this.findById(user, funilId)); // valida acesso + proteção
     const etapa = await this.prisma.funilEtapa.findFirst({
       where: { id: etapaId, funilId },
     });
@@ -230,6 +259,7 @@ export class FunisService {
     etapaId: string,
   ): Promise<FunilWithRel> {
     const funil = await this.findById(user, funilId);
+    this.assertPodeEditar(user, funil);
     const etapa = funil.etapas.find((e) => e.id === etapaId);
     if (!etapa) throw new NotFoundException('Etapa', etapaId);
 
@@ -251,6 +281,7 @@ export class FunisService {
     dto: ReordenarEtapasDto,
   ): Promise<FunilWithRel> {
     const funil = await this.findById(user, funilId);
+    this.assertPodeEditar(user, funil);
     const etapaIds = new Set(funil.etapas.map((e) => e.id));
     for (const id of dto.etapaIds) {
       if (!etapaIds.has(id)) {

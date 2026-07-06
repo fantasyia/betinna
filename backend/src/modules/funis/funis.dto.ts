@@ -39,6 +39,8 @@ export const createFunilSchema = z.object({
   ordem: z.number().int().min(0).default(0),
   ativo: z.boolean().default(true),
   isPadrao: z.boolean().default(false),
+  /** Funil obrigatório/protegido — só ADMIN/DIRETOR liga; REP não edita/exclui. */
+  protegido: z.boolean().optional(),
   /** Allow-list de tags permitidas no funil (Fase C). null = todas. */
   tagsPermitidas: z.array(z.string().trim().min(1)).nullable().optional(),
   /**
