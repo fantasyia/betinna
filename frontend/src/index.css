@@ -152,6 +152,11 @@ html,
 body {
   margin: 0;
   padding: 0;
+  /* Tooltip/popover absoluto perto da borda direita NÃO pode criar scrollbar
+     horizontal — a barra aparecendo/sumindo encolhe o viewport e o layout
+     "dança" sob o mouse (loop hover→scroll→shift→unhover). Scroll horizontal
+     legítimo vive em containers próprios (tabelas), nunca no body. */
+  overflow-x: clip;
   font-family: var(--font-ui);
   font-size: 15px;
   line-height: 1.55;

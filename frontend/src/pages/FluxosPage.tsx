@@ -554,47 +554,51 @@ function FluxoAcoes({
   onAction,
   onExport,
   onEdit,
+  tooltipSide = 'top',
 }: {
   fluxo: FluxoListItem;
   canEdit: boolean;
   onAction: (a: 'ativar' | 'pausar' | 'arquivar' | 'excluir') => void;
   onExport: () => void;
   onEdit: () => void;
+  /** Na LISTA os ícones ficam colados na borda direita — tooltip pra cima
+   *  estoura o viewport e o scrollbar faz o layout "dançar"; usar 'left'. */
+  tooltipSide?: 'top' | 'left';
 }) {
   return (
     <div className="flex items-center gap-1" onClick={(e) => e.stopPropagation()}>
       {canEdit && fluxo.status === 'RASCUNHO' && (
-        <Tooltip content="Ativar fluxo">
+        <Tooltip content="Ativar fluxo" side={tooltipSide}>
           <IconButton aria-label="Ativar" variant="ghost" size="sm" icon={<Play className="text-success" />} data-testid={`fluxo-ativar-${fluxo.id}`} onClick={() => onAction('ativar')} />
         </Tooltip>
       )}
       {canEdit && fluxo.status === 'ATIVO' && (
-        <Tooltip content="Pausar fluxo">
+        <Tooltip content="Pausar fluxo" side={tooltipSide}>
           <IconButton aria-label="Pausar" variant="ghost" size="sm" icon={<Pause className="text-warning" />} data-testid={`fluxo-pausar-${fluxo.id}`} onClick={() => onAction('pausar')} />
         </Tooltip>
       )}
       {canEdit && fluxo.status === 'PAUSADO' && (
-        <Tooltip content="Retomar fluxo">
+        <Tooltip content="Retomar fluxo" side={tooltipSide}>
           <IconButton aria-label="Retomar" variant="ghost" size="sm" icon={<Play className="text-success" />} data-testid={`fluxo-retomar-${fluxo.id}`} onClick={() => onAction('ativar')} />
         </Tooltip>
       )}
       {canEdit && fluxo.status !== 'ARQUIVADO' && (
-        <Tooltip content="Arquivar">
+        <Tooltip content="Arquivar" side={tooltipSide}>
           <IconButton aria-label="Arquivar" variant="ghost" size="sm" icon={<Archive />} onClick={() => onAction('arquivar')} />
         </Tooltip>
       )}
       {canEdit && (
-        <Tooltip content="Excluir permanentemente">
+        <Tooltip content="Excluir permanentemente" side={tooltipSide}>
           <IconButton aria-label="Excluir" variant="ghost" size="sm" className="text-danger hover:bg-danger/10" icon={<Trash2 />} onClick={() => onAction('excluir')} data-testid={`fluxo-excluir-${fluxo.id}`} />
         </Tooltip>
       )}
       {canEdit && (
-        <Tooltip content="Exportar (.json)">
+        <Tooltip content="Exportar (.json)" side={tooltipSide}>
           <IconButton aria-label="Exportar" variant="ghost" size="sm" icon={<Download />} onClick={onExport} data-testid={`fluxo-exportar-${fluxo.id}`} />
         </Tooltip>
       )}
       {canEdit && (
-        <Tooltip content="Editar no canvas">
+        <Tooltip content="Editar no canvas" side={tooltipSide}>
           <IconButton aria-label="Editar" variant="ghost" size="sm" icon={<Edit3 />} onClick={onEdit} data-testid={`fluxo-open-${fluxo.id}`} />
         </Tooltip>
       )}
@@ -661,7 +665,7 @@ function FluxoRow({
         )}
       </span>
       <div className="shrink-0">
-        <FluxoAcoes fluxo={fluxo} canEdit={canEdit} onAction={onAction} onExport={onExport} onEdit={onEdit} />
+        <FluxoAcoes fluxo={fluxo} canEdit={canEdit} onAction={onAction} onExport={onExport} onEdit={onEdit} tooltipSide="left" />
       </div>
     </div>
   );
