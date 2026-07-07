@@ -359,6 +359,174 @@ describe('ContatosService', () => {
   });
 
   // =========================================================================
+  // 3b. acaoMassa — exclusão de CONVERSAS (transação msg+conversa) e LEADS em lote
+  // =========================================================================
+
+  describe('acaoMassa — excluir conversas (transação) e leads em lote', () => {
+    it('exclui conversas apagando mensagens E conversas na MESMA transação (all-or-nothing)', async () => {
+      // Regressão do "zumbi": se apagasse conversa sem mensagem, sobrava msg órfã.
+      prisma.lead.findMany.mockResolvedValue([]);
+      prisma.cliente.findMany.mockResolvedValue([]);
+      prisma.conversation.findMany.mockResolvedValue([{ id: 'cv1' }, { id: 'cv2' }]);
+      // $transaction resolve as duas deleteMany; a 2ª (conversation) devolve o count.
+      prisma.message.deleteMany.mockResolvedValue({ count: 9 });
+      prisma.conversation.deleteMany.mockResolvedValue({ count: 2 });
+
+      const result = await svc.acaoMassa(adminUser, {
+        acao: 'excluir',
+        leadIds: [],
+        clienteIds: [],
+        conversaIds: ['cv1', 'cv2'],
+      });
+
+      expect(result.ok).toBe(true);
+      expect(result.afetados).toBe(2); // count das conversas, não das mensagens
+
+      // As duas deleteMany entraram juntas em UM $transaction (array).
+      expect(prisma.$transaction).toHaveBeenCalledOnce();
+      const ops = prisma.$transaction.mock.calls[0][0];
+      expect(Array.isArray(ops)).toBe(true);
+      expect(ops).toHaveLength(2);
+
+      // Mensagens apagadas pelas conversas certas; conversas apagadas com tenant-scope.
+      expect(prisma.message.deleteMany).toHaveBeenCalledWith({
+        where: { conversationId: { in: ['cv1', 'cv2'] } },
+      });
+      expect(prisma.conversation.deleteMany).toHaveBeenCalledWith({
+        where: { id: { in: ['cv1', 'cv2'] }, empresaId: 'emp-1' },
+      });
+    });
+
+    it('exclui leads em lote via deleteMany com tenant-scope e soma o count', async () => {
+      prisma.lead.findMany.mockResolvedValue([{ id: 'l1' }, { id: 'l2' }, { id: 'l3' }]);
+      prisma.cliente.findMany.mockResolvedValue([]);
+      prisma.conversation.findMany.mockResolvedValue([]);
+      prisma.lead.deleteMany.mockResolvedValue({ count: 3 });
+
+      const result = await svc.acaoMassa(adminUser, {
+        acao: 'excluir',
+        leadIds: ['l1', 'l2', 'l3'],
+        clienteIds: [],
+        conversaIds: [],
+      });
+
+      expect(result.afetados).toBe(3);
+      expect(prisma.lead.deleteMany).toHaveBeenCalledWith({
+        where: { id: { in: ['l1', 'l2', 'l3'] }, empresaId: 'emp-1' },
+      });
+    });
+
+    it('exclusão MISTA (leads + conversas + clientes) soma os três counts', async () => {
+      prisma.lead.findMany.mockResolvedValue([{ id: 'l1' }]);
+      prisma.cliente.findMany.mockResolvedValue([{ id: 'c1' }]);
+      prisma.conversation.findMany.mockResolvedValue([{ id: 'cv1' }]);
+      prisma.lead.deleteMany.mockResolvedValue({ count: 1 });
+      prisma.message.deleteMany.mockResolvedValue({ count: 4 });
+      prisma.conversation.deleteMany.mockResolvedValue({ count: 1 });
+      prisma.cliente.deleteMany.mockResolvedValue({ count: 1 });
+
+      const result = await svc.acaoMassa(adminUser, {
+        acao: 'excluir',
+        leadIds: ['l1'],
+        clienteIds: ['c1'],
+        conversaIds: ['cv1'],
+      });
+
+      expect(result.afetados).toBe(3); // 1 lead + 1 conversa + 1 cliente
+      expect(result.falhas).toHaveLength(0);
+    });
+  });
+
+  // =========================================================================
+  // 3c. acaoMassa — scoping de CONVERSA do REP e gates de delete por entidade
+  // =========================================================================
+
+  describe('acaoMassa — conversa: scoping REP e gate inbox.delete', () => {
+    it('REP: findMany de conversa filtra por proprietarioId = user.id (só vê o próprio WhatsApp)', async () => {
+      const rep = fakeUser(); // id rep-1, role REP
+      prisma.lead.findMany.mockResolvedValue([]);
+      prisma.cliente.findMany.mockResolvedValue([]);
+      prisma.conversation.findMany.mockResolvedValue([{ id: 'cv-rep' }]);
+      prisma.message.deleteMany.mockResolvedValue({ count: 0 });
+      prisma.conversation.deleteMany.mockResolvedValue({ count: 1 });
+
+      await svc.acaoMassa(rep, {
+        acao: 'excluir',
+        leadIds: [],
+        clienteIds: [],
+        conversaIds: ['cv-rep', 'cv-de-outro'],
+      });
+
+      const convFindMany = prisma.conversation.findMany.mock.calls[0][0] as {
+        where: { proprietarioId?: unknown };
+      };
+      expect(convFindMany.where).toMatchObject({ proprietarioId: 'rep-1' });
+    });
+
+    it('NÃO-admin sem inbox.delete é barrado ao excluir conversa e nada é apagado', async () => {
+      const sac = fakeUser({ id: 'sac-1', role: 'SAC' as UserRole });
+      prisma.lead.findMany.mockResolvedValue([]);
+      prisma.cliente.findMany.mockResolvedValue([]);
+      prisma.conversation.findMany.mockResolvedValue([{ id: 'cv1' }]);
+      permissions.userCanFor.mockReturnValue(false); // sem inbox.delete
+
+      await expect(
+        svc.acaoMassa(sac, {
+          acao: 'excluir',
+          leadIds: [],
+          clienteIds: [],
+          conversaIds: ['cv1'],
+        }),
+      ).rejects.toThrow(/permiss/i);
+
+      expect(permissions.userCanFor).toHaveBeenCalledWith('sac-1', 'SAC', 'inbox', 'delete');
+      expect(prisma.$transaction).not.toHaveBeenCalled();
+      expect(prisma.conversation.deleteMany).not.toHaveBeenCalled();
+    });
+
+    it('NÃO-admin sem kanban.delete é barrado ao excluir lead', async () => {
+      const ger = fakeUser({ id: 'ger-1', role: 'GERENTE' as UserRole });
+      prisma.lead.findMany.mockResolvedValue([{ id: 'l1' }]);
+      prisma.cliente.findMany.mockResolvedValue([]);
+      prisma.conversation.findMany.mockResolvedValue([]);
+      permissions.userCanFor.mockReturnValue(false);
+
+      await expect(
+        svc.acaoMassa(ger, { acao: 'excluir', leadIds: ['l1'], clienteIds: [], conversaIds: [] }),
+      ).rejects.toThrow(/permiss/i);
+
+      expect(permissions.userCanFor).toHaveBeenCalledWith('ger-1', 'GERENTE', 'kanban', 'delete');
+      expect(prisma.lead.deleteMany).not.toHaveBeenCalled();
+    });
+  });
+
+  // =========================================================================
+  // 3d. acaoMassa — tag sem tags válidas é no-op (não cria vínculo)
+  // =========================================================================
+
+  describe('acaoMassa — tag guard de tags inexistentes', () => {
+    it('tagIds que não pertencem à empresa → afetados 0, nenhum vínculo criado', async () => {
+      prisma.lead.findMany.mockResolvedValue([{ id: 'l1' }]);
+      prisma.cliente.findMany.mockResolvedValue([{ id: 'c1' }]);
+      prisma.conversation.findMany.mockResolvedValue([]);
+      prisma.tag.findMany.mockResolvedValue([]); // nenhuma tag da empresa casa
+
+      const result = await svc.acaoMassa(adminUser, {
+        acao: 'tag',
+        leadIds: ['l1'],
+        clienteIds: ['c1'],
+        conversaIds: [],
+        tagIds: ['tag-de-outra-empresa'],
+        modo: 'adicionar',
+      });
+
+      expect(result.afetados).toBe(0);
+      expect(prisma.leadTag.createMany).not.toHaveBeenCalled();
+      expect(prisma.clienteTag.createMany).not.toHaveBeenCalled();
+    });
+  });
+
+  // =========================================================================
   // 4. criarLeads — dedup D18 (sufixo 8 dígitos)
   // =========================================================================
 
