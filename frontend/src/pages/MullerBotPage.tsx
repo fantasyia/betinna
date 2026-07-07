@@ -405,11 +405,10 @@ export default function MullerBotPage() {
             </h4>
             <ul className="text-xs text-text-subtle space-y-1.5 leading-relaxed list-disc pl-4 m-0">
               <li>Busca no catálogo (OMIE) + base de conhecimento (FAQ/regras)</li>
-              <li>Top-K via keyword scoring (sem alucinação)</li>
               <li>Tom, nome e estilo configuráveis em Persona Bot</li>
               <li>Usa a chave OpenAI da EMPRESA (o rep não precisa de chave própria)</li>
-              <li>Contexto multi-turn persistido server-side (Redis)</li>
-              <li>"Nova conversa" reseta contexto pro bot</li>
+              <li>Lembra da conversa enquanto você conversa</li>
+              <li>"Nova conversa" reseta o contexto do bot</li>
             </ul>
           </Card>
 
