@@ -6,7 +6,10 @@ import { z } from 'zod';
 export const createBotPromptSchema = z.object({
   nome: z.string().trim().min(1).max(80),
   descricao: z.string().trim().max(1000).optional(),
-  texto: z.string().trim().min(1).max(50000),
+  // Cap 100k (era 50k): playbooks de prospecção ricos passam de 50k. DB é `text`
+  // (ilimitado). ⚠️ Prompt gigante = ~1 token/4 chars por MENSAGEM — ok pra bot de
+  // volume baixo (prospecção outbound), caro pra bot de alto volume (suporte).
+  texto: z.string().trim().min(1).max(100000),
   /** Override do modelo OpenAI (vazio = usa o da empresa/persona). */
   modelo: z.string().trim().max(60).optional(),
   temperatura: z.number().min(0).max(2).optional(),

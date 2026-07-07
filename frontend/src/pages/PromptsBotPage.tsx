@@ -552,7 +552,7 @@ function PromptFormModal({
             onChange={(e) => setTexto(e.target.value)}
             required
             rows={10}
-            maxLength={50000}
+            maxLength={100000}
             placeholder="Ex: Você é a Bê, entrevistadora comercial da MSM..."
             className='w-full font-["Fira_Mono",monospace] text-[13px] py-2 px-2.5 border border-border rounded-[10px] resize-y bg-surface text-text'
           />
