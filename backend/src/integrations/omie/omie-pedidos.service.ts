@@ -121,7 +121,11 @@ export class OmiePedidosService {
       data: {
         status: 'ENVIADO_OMIE',
         numeroOmie,
-        enviadoOmieEm: new Date(),
+        // CAÇADA-BUG #4 (defesa em profundidade): preserva o carimbo do PRIMEIRO envio — é ele que
+        // determina o mês de comissão no fecharMes. Sobrescrever num reenvio jogaria a comissão pra
+        // outro mês (folha duplicada). O gate de enviarParaOmie já bloqueia reenvio; isto protege
+        // callers diretos e o heal idempotente.
+        enviadoOmieEm: pedido.enviadoOmieEm ?? new Date(),
       },
     });
 

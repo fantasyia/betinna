@@ -60,6 +60,7 @@ const fakeUser = (overrides: Partial<AuthenticatedUser> = {}): AuthenticatedUser
 describe('PedidosService', () => {
   let prisma: ReturnType<typeof makePrismaMock>;
   let pricingService: { priceForClientBatch: ReturnType<typeof vi.fn> };
+  let omiePedidos: { enviarPedido: ReturnType<typeof vi.fn> };
   let svc: PedidosService;
 
   beforeEach(() => {
@@ -67,7 +68,7 @@ describe('PedidosService', () => {
     pricingService = {
       priceForClientBatch: vi.fn(async () => new Map()),
     };
-    const omiePedidosMock = {
+    omiePedidos = {
       enviarPedido: vi.fn(async (id: string) => ({
         pedidoId: id,
         numeroOmie: 'OMIE-FAKE',
@@ -75,6 +76,7 @@ describe('PedidosService', () => {
         descricaoStatusOmie: 'INCLUIDO',
       })),
     };
+    const omiePedidosMock = omiePedidos;
     const repScopeMock = {
       getRepIds: vi.fn(async (u: { role: string; id: string }) => {
         if (u.role === 'REP') return [u.id];
@@ -359,6 +361,26 @@ describe('PedidosService', () => {
     await expect(svc.enviarParaOmie(fakeUser(), 'ped-1')).rejects.toBeInstanceOf(
       BusinessRuleException,
     );
+  });
+
+  it('CAÇADA-BUG #4: bloqueia reenvio ao OMIE de pedido em status pós-envio (evita comissão 2x)', async () => {
+    // EM_SEPARACAO/ENVIADO/ENTREGUE já passaram pelo OMIE — o guard antigo só barrava
+    // ENVIADO_OMIE/PAGO, deixando estes regredirem o status + resetarem enviadoOmieEm.
+    for (const status of ['EM_SEPARACAO', 'ENVIADO', 'ENTREGUE', 'ENVIADO_OMIE', 'PAGO']) {
+      prisma.pedido.findFirst.mockResolvedValue({
+        id: 'ped-1',
+        empresaId: 'emp-1',
+        representanteId: 'rep-1',
+        clienteId: 'cli-1',
+        status,
+        aprovacaoDesconto: null,
+      });
+      await expect(svc.enviarParaOmie(fakeUser(), 'ped-1')).rejects.toBeInstanceOf(
+        BusinessRuleException,
+      );
+    }
+    // Não chegou a chamar o push do OMIE em nenhum caso.
+    expect(omiePedidos.enviarPedido).not.toHaveBeenCalled();
   });
 
   it('bloqueia envio ao OMIE se cliente foi bloqueado depois da criação', async () => {
