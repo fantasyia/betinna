@@ -318,19 +318,27 @@ export class FluxoTriggersJob {
   // ─── Clientes inativos ────────────────────────────────────────────
 
   private async avaliarClientesInativos(empresaId: string): Promise<void> {
-    // Verifica se há fluxos ATIVOS com este trigger nesta empresa
-    const fluxosAtivos = await this.prisma.fluxo.count({
-      where: { empresaId, status: 'ATIVO', triggerTipo: 'CLIENTE_INATIVO_30D' },
-    });
-    if (fluxosAtivos === 0) return;
-
-    // Lê a config do primeiro fluxo pra saber `diasInativo` (default 30)
-    const fluxo = await this.prisma.fluxo.findFirst({
+    // CAÇADA-BUG #37: `bus.disparar` aciona TODOS os fluxos ativos deste trigger, mas antes o
+    // `diasInativo` vinha só do PRIMEIRO (findFirst) — se ele fosse 90, os clientes de um fluxo de 30
+    // dias NUNCA eram selecionados. Usa o MENOR diasInativo entre todos → nenhum cliente-alvo é
+    // perdido. ⚠️ Limitação: o cooldown é 1 campo só (`Cliente.reativacaoDisparadaEm`), então um fluxo
+    // de janela MAIOR dispara junto no limiar menor — logamos aviso quando as janelas divergem.
+    const fluxos = await this.prisma.fluxo.findMany({
       where: { empresaId, status: 'ATIVO', triggerTipo: 'CLIENTE_INATIVO_30D' },
       select: { triggerConfig: true },
     });
-    const cfg = fluxo?.triggerConfig as Record<string, unknown> | null;
-    const diasInativo = Number(cfg?.['diasInativo'] ?? 30);
+    if (fluxos.length === 0) return;
+    const diasPorFluxo = fluxos.map((f) =>
+      Number((f.triggerConfig as Record<string, unknown> | null)?.['diasInativo'] ?? 30),
+    );
+    const diasInativo = Math.min(...diasPorFluxo);
+    if (new Set(diasPorFluxo).size > 1) {
+      this.logger.warn(
+        `Empresa ${empresaId}: ${fluxos.length} fluxos CLIENTE_INATIVO_30D com diasInativo diferentes ` +
+          `(${[...new Set(diasPorFluxo)].sort((a, b) => a - b).join(', ')}) — usando o menor (${diasInativo}); ` +
+          `todos disparam nesse limiar (cooldown é por-cliente, não por-fluxo).`,
+      );
+    }
 
     const corte = new Date();
     corte.setDate(corte.getDate() - diasInativo);
