@@ -7,6 +7,7 @@ import { NotificacoesService } from '@modules/notificacoes/notificacoes.service'
 import { PedidoPricingService } from '@modules/pedidos/pedido-pricing.service';
 import { BusinessRuleException, NotFoundException } from '@shared/errors/app-exception';
 import { SequenceService } from '@shared/utils/sequence.service';
+import { vigenteAteFimDoDiaBrt } from '@shared/utils/data-brt.util';
 
 /** Comissão padrão (espelha propostas/pedidos.service) — usada só no cálculo do teto. */
 const COMISSAO_PADRAO_PCT = 5;
@@ -205,7 +206,9 @@ export class PropostaAceiteService {
     // CAÇADA-BUG #23/#24: o aceite externo cria pedido igual ao converterEmPedido — precisa das MESMAS
     // validações. Só barra no ACEITE (recusar uma proposta vencida/com produto inativo é sempre ok).
     if (decisao === 'ACEITA') {
-      if (proposta.validoAte && proposta.validoAte.getTime() < Date.now()) {
+      // #R2 — validade vale até o FIM do dia BRT (date-only 00:00 UTC vencia às 21h da véspera →
+      // cliente não conseguia aceitar no dia impresso na proposta). Mesmo critério de converterEmPedido.
+      if (proposta.validoAte && !vigenteAteFimDoDiaBrt(proposta.validoAte, new Date())) {
         throw new BusinessRuleException(
           'Esta proposta está vencida (fora do prazo de validade). Peça uma nova ao seu contato.',
         );

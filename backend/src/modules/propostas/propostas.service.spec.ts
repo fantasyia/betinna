@@ -322,6 +322,27 @@ describe('PropostasService', () => {
       expect(data.representanteId).toBe('rep-77');
     });
 
+    it('#R1: passa a comissaoPadrao do rep ao pedidoTotals, não 5% fixo', async () => {
+      prisma.cliente.findFirst.mockResolvedValue({
+        id: 'cli-1',
+        empresaId: 'emp-1',
+        representanteId: 'rep-77',
+        omieStatus: 'ATIVO',
+      });
+      prisma.produto.findMany.mockResolvedValue([
+        { id: 'p-1', nome: 'Produto A', ativo: true, precoTabela: 50 },
+      ]);
+      // resolveComissaoPct lê comissaoPadrao do rep dono.
+      prisma.usuario.findUnique.mockResolvedValue({ comissaoPadrao: 8 });
+      prisma.proposta.create.mockResolvedValue(fakeProposta({ representanteId: 'rep-77' }));
+
+      await service.create(fakeUser({ role: 'REP', id: 'rep-77' }), baseDto);
+
+      // pedidoTotals(itens, descontoGeralPct, comissaoPct, descAVistaPct) — 3º arg = pct do rep.
+      const comissaoPctArg = pedidoPricing.pedidoTotals.mock.calls[0][2];
+      expect(comissaoPctArg).toBe(8);
+    });
+
     it('lança NotFoundException quando cliente não pertence à empresa', async () => {
       prisma.cliente.findFirst.mockResolvedValue(null);
 
@@ -588,7 +609,7 @@ describe('PropostasService', () => {
         fakeProposta({
           status: 'ACEITA',
           pedidoId: null,
-          validoAte: new Date(Date.now() - 86_400_000), // ontem
+          validoAte: new Date(Date.now() - 3 * 86_400_000), // 3 dias atrás (fora da tolerância fim-do-dia BRT ~27h)
         }),
       );
 
