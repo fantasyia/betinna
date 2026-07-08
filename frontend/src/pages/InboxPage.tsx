@@ -123,7 +123,9 @@ export default function InboxPage() {
   const showThread = !isMobile || selectedId !== null;
 
   // Aviso de mensagem nova (som + notificação + título da aba) — ver inbox/hooks.
-  const { somLigado, alternarSom } = useAvisoNovaMensagem(pageResp);
+  // #47: passa o listPath como contextKey — ao trocar de canal/filtro/busca o baseline re-fixa (não
+  // beepa "fantasma" ao ir de uma aba com N não-lidas pra outra com M).
+  const { somLigado, alternarSom } = useAvisoNovaMensagem(pageResp, listPath);
 
   return (
     <PageLayout

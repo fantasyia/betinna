@@ -12,6 +12,9 @@ import { tocarBeep } from '../lib/beep';
  */
 export function useAvisoNovaMensagem(
   pageResp: PaginatedResponse<Conversation> | null | undefined,
+  // #47: assinatura do FILTRO atual (canal/status/busca…). Ao mudar, o baseline é re-fixado sem
+  // avisar — senão trocar de aba "WA (2)" pra "Todos (7)" contava 2→7 como "subiu" e beepava fantasma.
+  contextKey: string,
 ) {
   const totalNaoLidas = useMemo(
     () => (pageResp?.data ?? []).reduce((s, c) => s + (c.naoLidas ?? 0), 0),
@@ -25,6 +28,8 @@ export function useAvisoNovaMensagem(
   // No PRIMEIRO load sincronizamos o ref SEM notificar — senão abrir o Inbox já com
   // não-lidas dispararia um beep/notificação "fantasma" (0 → N conta como "subiu").
   const notifInitRef = useRef(false);
+  // #47: contexto de filtro corrente — quando muda, re-baseline (não compara não-lidas entre filtros).
+  const contextRef = useRef(contextKey);
 
   // Pede permissão de notificação 1x.
   useEffect(() => {
@@ -36,6 +41,13 @@ export function useAvisoNovaMensagem(
   // Quando o total de não-lidas SOBE → toca som + (se a aba está em 2º plano) notifica.
   useEffect(() => {
     if (!pageResp) return; // ignora o estado vazio/loading (não zera o baseline)
+    // #47: mudou o filtro (troca de aba/canal/busca) → re-fixa o baseline SEM avisar. Comparar
+    // não-lidas entre CONTEXTOS diferentes ("WA 2" → "Todos 7") gerava beep/notificação fantasma.
+    if (contextRef.current !== contextKey) {
+      contextRef.current = contextKey;
+      prevNaoLidasRef.current = totalNaoLidas;
+      return;
+    }
     const prev = prevNaoLidasRef.current;
     prevNaoLidasRef.current = totalNaoLidas;
     if (!notifInitRef.current) {
@@ -58,7 +70,7 @@ export function useAvisoNovaMensagem(
         }
       }
     }
-  }, [totalNaoLidas, somLigado, pageResp]);
+  }, [totalNaoLidas, somLigado, pageResp, contextKey]);
 
   // Badge no título da aba: (N) quando há não-lidas e a aba não está focada.
   useEffect(() => {

@@ -20,18 +20,18 @@ beforeEach(() => {
 
 describe('useAvisoNovaMensagem', () => {
   it('somLigado default = true quando não há "off" no localStorage', () => {
-    const { result } = renderHook((p) => useAvisoNovaMensagem(p), { initialProps: resp([0]) });
+    const { result } = renderHook((p) => useAvisoNovaMensagem(p, 'ctx-1'), { initialProps: resp([0]) });
     expect(result.current.somLigado).toBe(true);
   });
 
   it('somLigado = false quando localStorage marca "off"', () => {
     localStorage.setItem('inbox.som', 'off');
-    const { result } = renderHook((p) => useAvisoNovaMensagem(p), { initialProps: resp([0]) });
+    const { result } = renderHook((p) => useAvisoNovaMensagem(p, 'ctx-1'), { initialProps: resp([0]) });
     expect(result.current.somLigado).toBe(false);
   });
 
   it('alternarSom desliga e persiste em localStorage', () => {
-    const { result } = renderHook((p) => useAvisoNovaMensagem(p), { initialProps: resp([0]) });
+    const { result } = renderHook((p) => useAvisoNovaMensagem(p, 'ctx-1'), { initialProps: resp([0]) });
     act(() => result.current.alternarSom());
     expect(result.current.somLigado).toBe(false);
     // O hook persiste na chave canônica ':' (o '.' ficou só como leitura legada).
@@ -39,18 +39,18 @@ describe('useAvisoNovaMensagem', () => {
   });
 
   it('1º load JÁ com não-lidas NÃO toca beep (baseline anti-fantasma)', () => {
-    renderHook((p) => useAvisoNovaMensagem(p), { initialProps: resp([3]) });
+    renderHook((p) => useAvisoNovaMensagem(p, 'ctx-1'), { initialProps: resp([3]) });
     expect(beep).not.toHaveBeenCalled();
   });
 
   it('quando o total de não-lidas SOBE, toca o beep', () => {
-    const { rerender } = renderHook((p) => useAvisoNovaMensagem(p), { initialProps: resp([1]) });
+    const { rerender } = renderHook((p) => useAvisoNovaMensagem(p, 'ctx-1'), { initialProps: resp([1]) });
     rerender(resp([4])); // 1 → 4 = subiu
     expect(beep).toHaveBeenCalledTimes(1);
   });
 
   it('quando NÃO sobe (igual ou desce), não toca beep', () => {
-    const { rerender } = renderHook((p) => useAvisoNovaMensagem(p), { initialProps: resp([5]) });
+    const { rerender } = renderHook((p) => useAvisoNovaMensagem(p, 'ctx-1'), { initialProps: resp([5]) });
     rerender(resp([2])); // desceu
     rerender(resp([2])); // igual
     expect(beep).not.toHaveBeenCalled();
@@ -58,8 +58,21 @@ describe('useAvisoNovaMensagem', () => {
 
   it('com som desligado, não toca beep mesmo subindo', () => {
     localStorage.setItem('inbox.som', 'off');
-    const { rerender } = renderHook((p) => useAvisoNovaMensagem(p), { initialProps: resp([0]) });
+    const { rerender } = renderHook((p) => useAvisoNovaMensagem(p, 'ctx-1'), { initialProps: resp([0]) });
     rerender(resp([3]));
     expect(beep).not.toHaveBeenCalled();
+  });
+
+  it('CAÇADA-BUG #47: trocar de filtro (contextKey) re-fixa o baseline — não beepa fantasma', () => {
+    const { rerender } = renderHook(
+      ({ p, key }: { p: never; key: string }) => useAvisoNovaMensagem(p, key),
+      { initialProps: { p: resp([2]), key: 'canal:wa' } },
+    );
+    // Troca de aba: canal muda E total sobe 2→7, mas é OUTRO contexto → NÃO beepa.
+    rerender({ p: resp([7]), key: 'canal:todos' });
+    expect(beep).not.toHaveBeenCalled();
+    // No MESMO contexto, uma nova mensagem sobe 7→8 → beepa de verdade.
+    rerender({ p: resp([8]), key: 'canal:todos' });
+    expect(beep).toHaveBeenCalledTimes(1);
   });
 });
