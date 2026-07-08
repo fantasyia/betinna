@@ -44,11 +44,6 @@ function safeTokenEquals(provided: string, expected: string): boolean {
   return timingSafeEqual(providedBuf, expectedBuf);
 }
 
-const refreshTrackSchema = z.object({
-  refreshToken: z.string().min(20),
-});
-type RefreshTrackDto = z.infer<typeof refreshTrackSchema>;
-
 // D47: login com cookie httpOnly (refresh nunca toca JS)
 const loginSchema = z.object({
   email: z.string().email(),
@@ -180,30 +175,6 @@ export class AuthController {
   @ApiOperation({ summary: 'Logout: invalida cache local + tracking de refresh' })
   async logout(@CurrentUser() user: AuthenticatedUser): Promise<void> {
     await this.refreshTokens.signOut(user);
-  }
-
-  /**
-   * Endpoint de defesa em profundidade — frontend chama APÓS um refresh
-   * bem-sucedido para registrar o novo `refreshToken` como o ATUAL.
-   *
-   * Se um token antigo for apresentado depois, detectamos reuse e
-   * invalidamos todas as sessões do usuário.
-   *
-   * Supabase Auth já implementa rotation internamente; este endpoint é
-   * camada EXTRA para detectar reuse no nosso lado.
-   */
-  @Post('refresh-track')
-  @HttpCode(HttpStatus.NO_CONTENT)
-  @ApiOperation({
-    summary: 'Registra novo refresh token como atual (chamado após refreshSession do Supabase)',
-  })
-  async trackRefresh(
-    @CurrentUser() user: AuthenticatedUser,
-    @Body(new ZodValidationPipe(refreshTrackSchema)) dto: RefreshTrackDto,
-  ): Promise<void> {
-    // Hardening 2026-05-16 (ALTA-2): operação atômica CAS via Lua substitui
-    // pair (assertCurrent + markCurrent) que tinha race condition entre tabs.
-    await this.refreshTokens.registerCurrent(user.id, dto.refreshToken);
   }
 
   /**
