@@ -318,11 +318,12 @@ export class FluxoTriggersJob {
   // ─── Clientes inativos ────────────────────────────────────────────
 
   private async avaliarClientesInativos(empresaId: string): Promise<void> {
-    // CAÇADA-BUG #37: `bus.disparar` aciona TODOS os fluxos ativos deste trigger, mas antes o
-    // `diasInativo` vinha só do PRIMEIRO (findFirst) — se ele fosse 90, os clientes de um fluxo de 30
-    // dias NUNCA eram selecionados. Usa o MENOR diasInativo entre todos → nenhum cliente-alvo é
-    // perdido. ⚠️ Limitação: o cooldown é 1 campo só (`Cliente.reativacaoDisparadaEm`), então um fluxo
-    // de janela MAIOR dispara junto no limiar menor — logamos aviso quando as janelas divergem.
+    // CAÇADA-BUG #37 (revisão): `bus.disparar` aciona TODOS os fluxos ativos deste trigger. Antes o
+    // `diasInativo` vinha do MENOR entre os fluxos e ia igual pra todos → um cliente de 35 dias recebia
+    // TAMBÉM a régua do fluxo de 90 dias (audiência errada). Agora: o job seleciona no MENOR limiar
+    // (garante que nenhum cliente-alvo é perdido) e passa a inatividade REAL de cada cliente no
+    // contexto (`diasSemPedido`); o `FluxoEventBus` FILTRA por fluxo, disparando só quem cruzou o
+    // `diasInativo` DAQUELE fluxo. Cooldown segue por-cliente (anti-spam da rodada).
     const fluxos = await this.prisma.fluxo.findMany({
       where: { empresaId, status: 'ATIVO', triggerTipo: 'CLIENTE_INATIVO_30D' },
       select: { triggerConfig: true },
@@ -332,14 +333,8 @@ export class FluxoTriggersJob {
       Number((f.triggerConfig as Record<string, unknown> | null)?.['diasInativo'] ?? 30),
     );
     const diasInativo = Math.min(...diasPorFluxo);
-    if (new Set(diasPorFluxo).size > 1) {
-      this.logger.warn(
-        `Empresa ${empresaId}: ${fluxos.length} fluxos CLIENTE_INATIVO_30D com diasInativo diferentes ` +
-          `(${[...new Set(diasPorFluxo)].sort((a, b) => a - b).join(', ')}) — usando o menor (${diasInativo}); ` +
-          `todos disparam nesse limiar (cooldown é por-cliente, não por-fluxo).`,
-      );
-    }
 
+    const agora = Date.now();
     const corte = new Date();
     corte.setDate(corte.getDate() - diasInativo);
 
@@ -356,7 +351,7 @@ export class FluxoTriggersJob {
           },
         ],
       },
-      select: { id: true, nome: true, representanteId: true },
+      select: { id: true, nome: true, representanteId: true, ultimoPedidoEm: true },
       // Ordem determinística + nunca-disparado primeiro: sem orderBy, o take:50 repetia
       // o mesmo prefixo e quem estava além de 50 nunca disparava.
       orderBy: [{ reativacaoDisparadaEm: { sort: 'asc', nulls: 'first' } }, { id: 'asc' }],
@@ -365,12 +360,17 @@ export class FluxoTriggersJob {
 
     if (clientesInativos.length === 0) return;
 
+    const MS_DIA = 86_400_000;
     for (const cliente of clientesInativos) {
+      // Inatividade REAL do cliente: sem pedido nunca → muito alto (passa em qualquer limiar de fluxo).
+      const diasSemPedido = cliente.ultimoPedidoEm
+        ? Math.floor((agora - cliente.ultimoPedidoEm.getTime()) / MS_DIA)
+        : Number.MAX_SAFE_INTEGER;
       await this.bus.disparar(empresaId, 'CLIENTE_INATIVO_30D', {
         clienteId: cliente.id,
         cliente: { id: cliente.id, nome: cliente.nome },
         representanteId: cliente.representanteId,
-        diasSemPedido: diasInativo,
+        diasSemPedido,
       });
     }
 

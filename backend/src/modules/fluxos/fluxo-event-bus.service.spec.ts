@@ -214,6 +214,41 @@ describe('FluxoEventBusService', () => {
 
       expect(prisma.fluxoExecucao.create).toHaveBeenCalledOnce();
     });
+
+    it('#37: CLIENTE_INATIVO_30D pula o fluxo quando o cliente NÃO cruzou o diasInativo dele', async () => {
+      // Fluxo de 90 dias; cliente com 35 dias de inatividade → NÃO dispara (audiência errada antes).
+      prisma.fluxo.findMany.mockResolvedValue([
+        fakeFluxo({
+          triggerTipo: 'CLIENTE_INATIVO_30D',
+          nos: [{ id: 'trg', config: { diasInativo: 90 } }],
+        }),
+      ]);
+
+      await service.disparar('emp-1', 'CLIENTE_INATIVO_30D' as FluxoTriggerTipo, {
+        clienteId: 'cli-1',
+        diasSemPedido: 35,
+      });
+
+      expect(prisma.fluxoExecucao.create).not.toHaveBeenCalled();
+    });
+
+    it('#37: CLIENTE_INATIVO_30D dispara quando o cliente cruzou o diasInativo do fluxo', async () => {
+      prisma.fluxo.findMany.mockResolvedValue([
+        fakeFluxo({
+          triggerTipo: 'CLIENTE_INATIVO_30D',
+          nos: [{ id: 'trg', config: { diasInativo: 90 } }],
+        }),
+      ]);
+      prisma.fluxoExecucao.create.mockResolvedValue(fakeExecucao());
+      prisma.fluxoExecucao.update.mockResolvedValue({});
+
+      await service.disparar('emp-1', 'CLIENTE_INATIVO_30D' as FluxoTriggerTipo, {
+        clienteId: 'cli-1',
+        diasSemPedido: 120,
+      });
+
+      expect(prisma.fluxoExecucao.create).toHaveBeenCalledOnce();
+    });
   });
 
   // -------------------------------------------------------------------------
