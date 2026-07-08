@@ -14,6 +14,7 @@ import { RepScopeService } from '@shared/scope/rep-scope.service';
 import type { AuthenticatedUser } from '@shared/types/authenticated-user';
 import { type Paginated, buildPaginated } from '@shared/types/pagination';
 import { SequenceService } from '@shared/utils/sequence.service';
+import { vigenteAteFimDoDiaBrt } from '@shared/utils/data-brt.util';
 import { PropostaAceiteService } from './proposta-aceite.service';
 import { PropostaExportService, type PropostaExportData } from './proposta-export.service';
 import type {
@@ -130,6 +131,10 @@ export class PropostasService {
       dto.condicaoPagamento,
       empresaCfg,
     );
+    const representanteId = user.role === 'REP' ? user.id : null;
+    // #R1 — comissaoEstimada nasce pela % real do rep (folha usa comissaoPadrao); converterEmPedido e
+    // aceite externo apenas COPIAM comissaoEstimada, então corrigir aqui conserta os dois caminhos.
+    const comissaoPct = await this.resolveComissaoPct(representanteId);
     const totals = this.pedidoPricing.pedidoTotals(
       items.map((i) => ({
         quantidade: i.quantidade,
@@ -137,11 +142,10 @@ export class PropostasService {
         desconto: i.desconto,
       })),
       dto.descontoGeral,
-      COMISSAO_PADRAO_PCT,
+      comissaoPct,
       descAVistaPct,
     );
 
-    const representanteId = user.role === 'REP' ? user.id : null;
     const numero = await this.gerarNumero(empresaId);
 
     const created = await this.prisma.proposta.create({
@@ -218,6 +222,8 @@ export class PropostasService {
         dto.condicaoPagamento ?? existing.condicaoPagamento,
         empresaCfg,
       );
+      // #R1 — recalcula comissaoEstimada pela % real do rep dono da proposta (não 5% fixo).
+      const comissaoPct = await this.resolveComissaoPct(existing.representanteId);
       const totals = this.pedidoPricing.pedidoTotals(
         existing.itens.map((i) => ({
           quantidade: i.quantidade,
@@ -225,7 +231,7 @@ export class PropostasService {
           desconto: i.desconto,
         })),
         dto.descontoGeral ?? existing.descontoGeral,
-        COMISSAO_PADRAO_PCT,
+        comissaoPct,
         descAVistaPct,
       );
       data.subtotal = totals.subtotal;
@@ -484,13 +490,30 @@ export class PropostasService {
     });
   }
 
-  /** #23: recusa converter proposta vencida (fora do `validoAte`). Null = sem prazo → sempre ok. */
+  /**
+   * #23: recusa converter proposta vencida (fora do `validoAte`). Null = sem prazo → sempre ok.
+   * #R2: `validoAte` é date-only (00:00 UTC); vale até o FIM do dia BRT (senão vencia às 21h da
+   * véspera e o cliente não conseguia aceitar no dia impresso). Mesmo critério do preço especial (#25).
+   */
   private assertPropostaNoPrazo(validoAte: Date | null): void {
-    if (validoAte && validoAte.getTime() < Date.now()) {
+    if (validoAte && !vigenteAteFimDoDiaBrt(validoAte, new Date())) {
       throw new BusinessRuleException(
         'Proposta vencida (fora do prazo de validade) — refaça a proposta',
       );
     }
+  }
+
+  /**
+   * #R1 — % de comissão do rep dono da proposta (folha paga por `comissaoPadrao`, #5). Sem rep
+   * (admin/gerente) → fallback padrão. Espelha `PedidosService.resolveComissaoPct` (#55).
+   */
+  private async resolveComissaoPct(representanteId: string | null): Promise<number> {
+    if (!representanteId) return COMISSAO_PADRAO_PCT;
+    const rep = await this.prisma.usuario.findUnique({
+      where: { id: representanteId },
+      select: { comissaoPadrao: true },
+    });
+    return rep?.comissaoPadrao ?? COMISSAO_PADRAO_PCT;
   }
 
   /** #24: revalida na conversão que os produtos da proposta seguem ATIVOS. */

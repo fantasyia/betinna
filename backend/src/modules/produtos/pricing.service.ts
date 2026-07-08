@@ -1,5 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import { PrismaService } from '@database/prisma.service';
+import { vigenteAteFimDoDiaBrt } from '@shared/utils/data-brt.util';
 
 /**
  * Resultado da resolução de preço para um cliente+produto.
@@ -202,9 +203,6 @@ export class PricingService {
    * vigente até o FIM daquele dia no fuso do tenant (BRT, UTC-3): dia 23:59:59.999 BRT.
    */
   private precoEspecialVigente(validoAte: Date | null, now: Date): boolean {
-    if (!validoAte) return true;
-    // validoAte(00:00 UTC do dia) + 26h59m59s999 = dia+1 02:59:59.999 UTC = dia 23:59:59.999 BRT.
-    const FIM_DIA_BRT_MS = 26 * 3600_000 + 59 * 60_000 + 59_000 + 999;
-    return now.getTime() <= validoAte.getTime() + FIM_DIA_BRT_MS;
+    return vigenteAteFimDoDiaBrt(validoAte, now);
   }
 }
