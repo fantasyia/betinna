@@ -533,11 +533,27 @@ export class CampanhasService {
       select: { id: true, email: true, telefone: true },
     });
 
-    return clientes.map((c) => ({
-      clienteId: c.id,
-      email: needsEmail ? c.email : null,
-      telefone: needsWa && c.telefone ? toWhatsAppJid(c.telefone) : null,
-    }));
+    // CAÇADA-BUG #38: dedup por CONTATO. Dois clientes com o mesmo telefone/e-mail (matriz/filial, ou
+    // duplicata de import — o cadastro não tem unique de fone) geravam 2 destinatários → a MESMA
+    // pessoa recebia a campanha 2x. Chave = JID do WhatsApp (canal WA) ou e-mail (canal e-mail); fica
+    // o PRIMEIRO clienteId. (Opt-out/descadastro é feature à parte.)
+    const vistos = new Set<string>();
+    const destinatarios: Array<{
+      clienteId: string;
+      email: string | null;
+      telefone: string | null;
+    }> = [];
+    for (const c of clientes) {
+      const telefone = needsWa && c.telefone ? toWhatsAppJid(c.telefone) : null;
+      const email = needsEmail ? c.email : null;
+      const chave = telefone ?? email; // o contato que o canal realmente usa
+      if (chave) {
+        if (vistos.has(chave)) continue;
+        vistos.add(chave);
+      }
+      destinatarios.push({ clienteId: c.id, email, telefone });
+    }
+    return destinatarios;
   }
 
   /**

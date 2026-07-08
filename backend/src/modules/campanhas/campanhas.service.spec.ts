@@ -717,6 +717,32 @@ describe('CampanhasService', () => {
       expect(result[0].telefone).toBe('5511999990000@s.whatsapp.net');
     });
 
+    it('CAÇADA-BUG #38: dedup por telefone — clientes distintos com mesmo fone recebem 1x (WA)', async () => {
+      prisma.cliente.findMany.mockResolvedValue([
+        { id: 'cli-matriz', email: null, telefone: '11999990000' },
+        { id: 'cli-filial', email: null, telefone: '11999990000' }, // mesmo telefone
+        { id: 'cli-outro', email: null, telefone: '11988887777' },
+      ]);
+
+      const result = await service.resolverDestinatarios({ ...baseCampanha, canal: 'WHATSAPP' });
+
+      // 2 destinatários (não 3): o telefone repetido fica com o PRIMEIRO clienteId.
+      expect(result).toHaveLength(2);
+      expect(result.map((d) => d.clienteId)).toEqual(['cli-matriz', 'cli-outro']);
+    });
+
+    it('#38: dedup por e-mail no canal EMAIL', async () => {
+      prisma.cliente.findMany.mockResolvedValue([
+        { id: 'cli-1', email: 'dup@x.com', telefone: null },
+        { id: 'cli-2', email: 'dup@x.com', telefone: null }, // mesmo e-mail
+      ]);
+
+      const result = await service.resolverDestinatarios({ ...baseCampanha, canal: 'EMAIL' });
+
+      expect(result).toHaveLength(1);
+      expect(result[0].clienteId).toBe('cli-1');
+    });
+
     it('filtra por segClienteIds quando informado', async () => {
       prisma.cliente.findMany.mockResolvedValue([]);
 
