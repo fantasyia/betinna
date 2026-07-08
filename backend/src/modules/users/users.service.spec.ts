@@ -818,6 +818,30 @@ describe('UsersService', () => {
       expect(txArgs.data.gerente).toEqual({ disconnect: true });
     });
 
+    it('CAÇADA-BUG #52: mudar GERENTE→outro papel anula o gerenteId dos REPs subordinados', async () => {
+      const gerente = fakeDbUser({ role: 'GERENTE', id: 'gerente-1' });
+      prisma.usuario.findUnique.mockResolvedValue(gerente);
+      prisma.usuario.update.mockResolvedValue({ ...gerente, role: 'SAC' });
+
+      await service.update(fakeUser(), 'gerente-1', { role: 'SAC' });
+
+      // Realoca os subordinados (gerenteId → null), igual ao setStatus(INATIVO).
+      expect(prisma.usuario.updateMany).toHaveBeenCalledWith({
+        where: { gerenteId: 'gerente-1' },
+        data: { gerenteId: null },
+      });
+    });
+
+    it('#52: editar um GERENTE sem trocar de papel NÃO mexe nos subordinados', async () => {
+      const gerente = fakeDbUser({ role: 'GERENTE', id: 'gerente-1' });
+      prisma.usuario.findUnique.mockResolvedValue(gerente);
+      prisma.usuario.update.mockResolvedValue(gerente);
+
+      await service.update(fakeUser(), 'gerente-1', { nome: 'Novo' }); // sem dto.role
+
+      expect(prisma.usuario.updateMany).not.toHaveBeenCalled();
+    });
+
     it('invalida cache de auth após update', async () => {
       prisma.usuario.findUnique.mockResolvedValue(fakeDbUser());
       prisma.usuario.update.mockResolvedValue(fakeDbUser());
