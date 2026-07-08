@@ -17,6 +17,7 @@ const makePrismaMock = () => ({
     create: vi.fn(),
     update: vi.fn(),
   } satisfies MockModel,
+  $transaction: vi.fn(),
 });
 
 const fakeEmpresa = (overrides: Record<string, unknown> = {}) => ({
@@ -321,6 +322,44 @@ describe('EmpresasService', () => {
         NotFoundException,
       );
       expect(prisma.empresa.update).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('patchConfig — merge de 1 nível (#53)', () => {
+    it('CAÇADA-BUG #53: funde sub-objeto parcial sem apagar as chaves-irmãs', async () => {
+      const atual = {
+        envioWhatsapp: { maxPorMinuto: 20, jitterMinSeg: 2, jitterMaxSeg: 5 },
+        outraSecao: { x: 1 },
+      };
+      const tx = {
+        $queryRaw: vi.fn().mockResolvedValue([{ config: atual }]),
+        empresa: { update: vi.fn().mockResolvedValue({}) },
+      };
+      prisma.$transaction.mockImplementation(async (cb: (t: unknown) => unknown) => cb(tx));
+
+      // Patch PARCIAL de envioWhatsapp (só maxPorMinuto).
+      const result = (await service.patchConfig(fakeUser({ empresaIdAtiva: 'emp-1' }), {
+        envioWhatsapp: { maxPorMinuto: 10 },
+      } as never)) as Record<string, Record<string, unknown>>;
+
+      // maxPorMinuto atualizado, jitter* PRESERVADOS (antes eram apagados), outraSecao intacta.
+      expect(result.envioWhatsapp).toEqual({ maxPorMinuto: 10, jitterMinSeg: 2, jitterMaxSeg: 5 });
+      expect(result.outraSecao).toEqual({ x: 1 });
+    });
+
+    it('#53: array no patch SUBSTITUI (não funde)', async () => {
+      const atual = { comissaoBonus: { faixas: [{ de: 0, pct: 3 }] } };
+      const tx = {
+        $queryRaw: vi.fn().mockResolvedValue([{ config: atual }]),
+        empresa: { update: vi.fn().mockResolvedValue({}) },
+      };
+      prisma.$transaction.mockImplementation(async (cb: (t: unknown) => unknown) => cb(tx));
+
+      const result = (await service.patchConfig(fakeUser({ empresaIdAtiva: 'emp-1' }), {
+        comissaoBonus: { faixas: [{ de: 0, pct: 5 }] },
+      } as never)) as Record<string, { faixas: unknown[] }>;
+
+      expect(result.comissaoBonus.faixas).toEqual([{ de: 0, pct: 5 }]); // substituiu, não concatenou
     });
   });
 });
