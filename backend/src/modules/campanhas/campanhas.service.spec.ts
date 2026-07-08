@@ -448,6 +448,34 @@ describe('CampanhasService', () => {
         where: { campanhaId: 'camp-1', status: 'PENDENTE' },
       });
     });
+
+    it('CAÇADA-BUG #7: NÃO recria destinatários já processados (campanha reagendada não reenvia)', async () => {
+      // Segmento = cli-1, cli-2, cli-3. cli-1 já foi ENVIADO num disparo anterior (sobrou após
+      // deletar os PENDENTE). O reenvio só pode atingir cli-2 e cli-3.
+      prisma.campanha.findFirst
+        .mockResolvedValueOnce(fakeCampanha({ status: 'AGENDADA' }))
+        .mockResolvedValueOnce(fakeCampanha({ status: 'ENVIANDO' }));
+      prisma.campanha.updateMany.mockResolvedValue({ count: 1 });
+      prisma.cliente.findMany.mockResolvedValue([
+        fakeCliente('cli-1'),
+        fakeCliente('cli-2'),
+        fakeCliente('cli-3'),
+      ]);
+      // 1ª findMany = jaProcessados (cli-1 já recebeu); 2ª = criados (só os novos).
+      prisma.campanhaDestinatario.findMany
+        .mockResolvedValueOnce([{ clienteId: 'cli-1' }])
+        .mockResolvedValueOnce([{ id: 'dest-2' }, { id: 'dest-3' }]);
+
+      await service.disparar(fakeUser(), 'camp-1');
+
+      // createMany recebe só cli-2 e cli-3 (cli-1 excluído — não recebe de novo).
+      const createArgs = prisma.campanhaDestinatario.createMany.mock.calls[0][0];
+      const clientesCriados = createArgs.data.map((d: { clienteId: string }) => d.clienteId);
+      expect(clientesCriados).toEqual(['cli-2', 'cli-3']);
+      expect(clientesCriados).not.toContain('cli-1');
+      // Só 2 jobs enfileirados (não 3).
+      expect(queue.add).toHaveBeenCalledTimes(2);
+    });
   });
 
   // -------------------------------------------------------------------------
