@@ -37,7 +37,8 @@ const makePrismaMock = () => {
       create: vi.fn(),
     } satisfies MockModel,
     cliente: { findFirst: vi.fn(), findUnique: vi.fn() } satisfies MockModel,
-    produto: { findMany: vi.fn() } satisfies MockModel,
+    // default [] = nenhum produto INATIVO (assertProdutosDaPropostaAtivos na conversão, #24).
+    produto: { findMany: vi.fn().mockResolvedValue([]) } satisfies MockModel,
     empresa: {
       // Inclui as duas formas selecionadas pelo service: a config de desconto
       // (create/update/converter) e os dados fiscais (exportarPdf: nome/cnpj).
@@ -579,6 +580,34 @@ describe('PropostasService', () => {
       await expect(service.converterEmPedido(fakeUser(), 'prop-1')).rejects.toBeInstanceOf(
         BusinessRuleException,
       );
+      expect(prisma.$transaction).not.toHaveBeenCalled();
+    });
+
+    it('CAÇADA-BUG #23: proposta VENCIDA (validoAte no passado) não converte', async () => {
+      prisma.proposta.findFirst.mockResolvedValue(
+        fakeProposta({
+          status: 'ACEITA',
+          pedidoId: null,
+          validoAte: new Date(Date.now() - 86_400_000), // ontem
+        }),
+      );
+
+      await expect(service.converterEmPedido(fakeUser(), 'prop-1')).rejects.toThrow(/vencida/i);
+      expect(prisma.$transaction).not.toHaveBeenCalled();
+    });
+
+    it('CAÇADA-BUG #24: proposta com produto INATIVO não converte', async () => {
+      prisma.proposta.findFirst.mockResolvedValue(
+        fakeProposta({
+          status: 'ACEITA',
+          pedidoId: null,
+          itens: [{ produtoId: 'p-1', quantidade: 1, precoUnitario: 100, desconto: 0, total: 100 }],
+        }),
+      );
+      // findMany(ativo:false) devolve o produto → está inativo agora.
+      prisma.produto.findMany.mockResolvedValue([{ nome: 'Produto Fora de Linha' }]);
+
+      await expect(service.converterEmPedido(fakeUser(), 'prop-1')).rejects.toThrow(/inativo/i);
       expect(prisma.$transaction).not.toHaveBeenCalled();
     });
 

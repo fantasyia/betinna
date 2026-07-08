@@ -276,6 +276,11 @@ export class PropostasService {
     if (proposta.pedidoId) {
       throw new BusinessRuleException(`Proposta já foi convertida no pedido ${proposta.pedidoId}`);
     }
+    // CAÇADA-BUG #23: proposta vencida não converte (preços congelados podem estar velhos — ex.:
+    // preço especial que expirou). CAÇADA-BUG #24: revalida que os produtos seguem ativos (podem ter
+    // sido desativados DEPOIS da criação da proposta).
+    this.assertPropostaNoPrazo(proposta.validoAte);
+    await this.assertProdutosDaPropostaAtivos(empresaId, proposta.itens);
 
     // Teto de desconto / aprovação (D3/D46) via gate ÚNICO no PedidoPricingService —
     // MESMO ponto que o aceite externo usa, pra não voltar a divergir e reabrir o bypass.
@@ -446,6 +451,11 @@ export class PropostasService {
     if (produtos.length !== new Set(produtoIds).size) {
       throw new BusinessRuleException('Um ou mais produtos não encontrados nesta empresa');
     }
+    // CAÇADA-BUG #24: não deixa montar proposta com produto INATIVO (fora de linha). Antes o `ativo`
+    // era selecionado mas nunca checado — o produto inativo fluía até o pedido/OMIE.
+    for (const p of produtos) {
+      if (!p.ativo) throw new BusinessRuleException(`Produto "${p.nome}" está inativo`);
+    }
     const priceMap = await this.pricing.priceForClientBatch(empresaId, clienteId, produtoIds);
 
     return itens.map((i) => {
@@ -472,6 +482,33 @@ export class PropostasService {
         negociado: !!resolved?.negociado && resolved.vigente,
       };
     });
+  }
+
+  /** #23: recusa converter proposta vencida (fora do `validoAte`). Null = sem prazo → sempre ok. */
+  private assertPropostaNoPrazo(validoAte: Date | null): void {
+    if (validoAte && validoAte.getTime() < Date.now()) {
+      throw new BusinessRuleException(
+        'Proposta vencida (fora do prazo de validade) — refaça a proposta',
+      );
+    }
+  }
+
+  /** #24: revalida na conversão que os produtos da proposta seguem ATIVOS. */
+  private async assertProdutosDaPropostaAtivos(
+    empresaId: string,
+    itens: Array<{ produtoId: string }>,
+  ): Promise<void> {
+    const ids = [...new Set(itens.map((i) => i.produtoId))];
+    if (ids.length === 0) return;
+    const inativos = await this.prisma.produto.findMany({
+      where: { id: { in: ids }, empresaId, ativo: false },
+      select: { nome: true },
+    });
+    if (inativos.length > 0) {
+      throw new BusinessRuleException(
+        `Produto(s) inativo(s) na proposta: ${inativos.map((p) => p.nome).join(', ')} — não é possível converter`,
+      );
+    }
   }
 
   /**

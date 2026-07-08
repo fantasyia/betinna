@@ -202,6 +202,28 @@ export class PropostaAceiteService {
       throw new BusinessRuleException('Esta proposta já foi respondida.');
     }
 
+    // CAÇADA-BUG #23/#24: o aceite externo cria pedido igual ao converterEmPedido — precisa das MESMAS
+    // validações. Só barra no ACEITE (recusar uma proposta vencida/com produto inativo é sempre ok).
+    if (decisao === 'ACEITA') {
+      if (proposta.validoAte && proposta.validoAte.getTime() < Date.now()) {
+        throw new BusinessRuleException(
+          'Esta proposta está vencida (fora do prazo de validade). Peça uma nova ao seu contato.',
+        );
+      }
+      const produtoIds = [...new Set(proposta.itens.map((i) => i.produtoId))];
+      if (produtoIds.length > 0) {
+        const inativos = await this.prisma.produto.findMany({
+          where: { id: { in: produtoIds }, empresaId, ativo: false },
+          select: { id: true },
+        });
+        if (inativos.length > 0) {
+          throw new BusinessRuleException(
+            'Um ou mais itens desta proposta não estão mais disponíveis. Peça uma nova ao seu contato.',
+          );
+        }
+      }
+    }
+
     if (decisao === 'RECUSADA') {
       // CAS atômico: reivindica o token num único UPDATE. Duplo-clique/retry
       // simultâneo → só 1 request casa (count===1); os demais veem count===0.
