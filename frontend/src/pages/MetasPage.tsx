@@ -12,6 +12,7 @@ import {
   AlertCircle,
 } from 'lucide-react';
 import { api, apiErrorMessage } from '@/lib/api';
+import { inicioDoDiaLocalISO, fimDoDiaLocalISO } from '@/lib/dates';
 import { useApiQuery } from '@/hooks/useApiQuery';
 import { useToast } from '@/components/toast';
 import { PageLayout } from '@/components/PageLayout';
@@ -443,8 +444,9 @@ function MetaFormDialog({
         alvoTipo,
         alvoId: alvoTipo === 'EMPRESA' ? null : alvo?.id ?? null,
         periodicidade,
-        inicio: new Date(inicio).toISOString(),
-        fim: new Date(fim + 'T23:59:59').toISOString(),
+        // #14: início/fim da meta no fuso LOCAL (antes o início virava 21h da véspera em UTC).
+        inicio: inicioDoDiaLocalISO(inicio),
+        fim: fimDoDiaLocalISO(fim),
         ativo,
       };
       if (isNew) await api.post('/metas', payload);
