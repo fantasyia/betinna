@@ -12,6 +12,9 @@ vi.mock('./omie.mapper', () => ({
         codigo_produto: item.produtoCodigoOmie ? Number(item.produtoCodigoOmie) : 0,
         quantidade: item.quantidade,
         valor_unitario: Number(item.precoUnitario),
+        // Espelha o mapper real: o desconto (já diluído pelo buildPayload) vira
+        // percentual_desconto. Necessário pra validar a diluição do desconto de cabeçalho.
+        percentual_desconto: item.desconto > 0 ? item.desconto : undefined,
       },
       inf_adic: { dados_adicionais_item: '' },
     })),
@@ -50,12 +53,15 @@ const fakePedido = (overrides: Record<string, unknown> = {}) => ({
     nome: 'Cliente Teste',
     omieStatus: 'ATIVO',
   },
+  // total do pedido = Σ item.total quando não há desconto de cabeçalho (1 item, 10×25.5).
+  total: 255,
   itens: [
     {
       id: 'item-1',
       quantidade: 10,
       precoUnitario: 25.5,
       desconto: 0,
+      total: 255,
       produto: {
         id: 'prod-1',
         codigoOmie: '789',
@@ -202,6 +208,70 @@ describe('OmiePedidosService', () => {
       const payload = omie.incluirPedido.mock.calls[0][1];
       expect(payload.det).toHaveLength(3);
       expect(payload.cabecalho.quantidade_itens).toBe(3);
+    });
+
+    it('CAÇADA-BUG #1: dilui desconto de cabeçalho (geral + à vista) no percentual_desconto do item', async () => {
+      // 1 item R$1000 (10×100, sem desconto de item), mas total do pedido R$855 → 14,5% de
+      // desconto de cabeçalho (ex.: 10% geral + 5% à vista). Antes: OMIE recebia 0% e faturava
+      // R$1000 (cliente cobrado a mais). Agora: percentual_desconto ≈ 14,5 → OMIE fatura R$855.
+      const pedidoComCabecalho = fakePedido({
+        total: 855,
+        itens: [
+          {
+            quantidade: 10,
+            precoUnitario: 100,
+            desconto: 0,
+            total: 1000,
+            produto: { codigoOmie: '1', sku: 'A' },
+          },
+        ],
+      });
+      prisma.pedido.findFirst.mockResolvedValue(pedidoComCabecalho);
+      omie.incluirPedido.mockResolvedValue(fakeOmieResponse());
+
+      await service.enviarPedido('ped-1');
+
+      const payload = omie.incluirPedido.mock.calls[0][1];
+      expect(payload.det[0].produto.percentual_desconto).toBeCloseTo(14.5, 4);
+      // Reconciliação: OMIE fatura 1000 × (1 − 14,5%) = 855 = total fechado pelo rep.
+      const faturado = 100 * 10 * (1 - payload.det[0].produto.percentual_desconto / 100);
+      expect(faturado).toBeCloseTo(855, 2);
+    });
+
+    it('CAÇADA-BUG #1: compõe desconto de item + cabeçalho (Σ linhas OMIE = total do pedido)', async () => {
+      // Item A: 1×100 com 20% de desconto (linha R$80); Item B: 1×100 sem desconto (linha R$100).
+      // totalItens=180, descontoGeral 10% → total 162. Cada item ganha a parte proporcional.
+      const pedido = fakePedido({
+        total: 162,
+        itens: [
+          {
+            quantidade: 1,
+            precoUnitario: 100,
+            desconto: 20,
+            total: 80,
+            produto: { codigoOmie: '1', sku: 'A' },
+          },
+          {
+            quantidade: 1,
+            precoUnitario: 100,
+            desconto: 0,
+            total: 100,
+            produto: { codigoOmie: '2', sku: 'B' },
+          },
+        ],
+      });
+      prisma.pedido.findFirst.mockResolvedValue(pedido);
+      omie.incluirPedido.mockResolvedValue(fakeOmieResponse());
+
+      await service.enviarPedido('ped-1');
+
+      const det = omie.incluirPedido.mock.calls[0][1].det;
+      expect(det[0].produto.percentual_desconto).toBeCloseTo(28, 4); // 20% item + parte do 10% geral
+      expect(det[1].produto.percentual_desconto).toBeCloseTo(10, 4);
+      const faturado =
+        100 * (1 - det[0].produto.percentual_desconto / 100) +
+        100 * (1 - det[1].produto.percentual_desconto / 100);
+      expect(faturado).toBeCloseTo(162, 2);
     });
 
     it('HEAL: reconcilia quando incluirPedido falha mas o pedido já existe no OMIE', async () => {

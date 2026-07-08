@@ -142,6 +142,15 @@ export class OmiePedidosService {
       ? OmieMapper.dateToOmie(pedido.prazoEntrega)
       : OmieMapper.dateToOmie(new Date(Date.now() + 3 * 24 * 60 * 60 * 1000));
 
+    // CAÇADA-BUG #1: o payload OMIE só carrega desconto POR ITEM (percentual_desconto).
+    // O `descontoGeral` (%) e o desconto à vista (PIX/boleto-à-vista) vivem no cabeçalho do
+    // Pedido e NÃO tinham campo aqui → o OMIE faturava o cliente a MAIS que o total fechado
+    // pelo rep. Fix: diluir o desconto de cabeçalho no percentual_desconto de cada item, usando
+    // o `pedido.total` (autoritativo — é o valor que o rep fechou) como âncora. A razão
+    // total/Σitem.total captura descontoGeral + à vista + arredondamento de uma vez, sem
+    // depender de recalcular forma/condição de pagamento.
+    const descontosDiluidos = this.diluirDescontosCabecalho(pedido);
+
     return {
       cabecalho: {
         codigo_cliente: Number(pedido.cliente.codigoOmie),
@@ -149,16 +158,61 @@ export class OmiePedidosService {
         data_previsao: dataPrevisao,
         quantidade_itens: pedido.itens.length,
       },
-      det: pedido.itens.map((item) =>
+      det: pedido.itens.map((item, i) =>
         OmieMapper.pedidoItemToOmie({
           produtoCodigoOmie: item.produto.codigoOmie,
           produtoSku: item.produto.sku,
           quantidade: item.quantidade,
           precoUnitario: Number(item.precoUnitario), // #17 — Decimal→number pro payload OMIE
-          desconto: item.desconto,
+          desconto: descontosDiluidos[i],
         }),
       ),
       observacoes: pedido.observacoes ? { obs_venda: pedido.observacoes } : undefined,
     };
+  }
+
+  /**
+   * Diluição do desconto de cabeçalho (geral + à vista) no percentual_desconto de cada item.
+   *
+   * Para cada item: descEfetivo = 1 − (1 − descItem/100) × razão, onde
+   * `razão = pedido.total / Σ(item.total)` (fração que sobra após os descontos de cabeçalho).
+   * Isso garante Σ(linha OMIE) ≈ pedido.total — o cliente é faturado no valor fechado.
+   * Fallbacks seguros: sem itens/total → devolve o desconto de item cru (sem diluir).
+   */
+  private diluirDescontosCabecalho(pedido: PedidoComItens): number[] {
+    const totalItens = pedido.itens.reduce((s, it) => s + Number(it.total), 0);
+    const totalPedido = Number(pedido.total);
+    // razão ∈ [0,1]: nunca >1 (total não passa de totalItens); =1 quando não há dado pra diluir.
+    const razao =
+      totalItens > 0 && Number.isFinite(totalPedido)
+        ? Math.min(1, Math.max(0, totalPedido / totalItens))
+        : 1;
+
+    const descontos = pedido.itens.map((it) => {
+      const descItem = Math.min(100, Math.max(0, Number(it.desconto) || 0));
+      const efetivo = 100 * (1 - (1 - descItem / 100) * razao);
+      // 4 casas: precisão suficiente pro OMIE, minimiza drift de arredondamento.
+      return Math.round(Math.min(100, Math.max(0, efetivo)) * 10000) / 10000;
+    });
+
+    // Reconciliação: reconstrói o total como o OMIE fará (linha a linha, 2 casas) e alerta se
+    // divergir mais que 1 centavo por item — visibilidade sem bloquear o envio (bloquear
+    // derrubaria pedido legítimo por resíduo de arredondamento inevitável).
+    if (razao < 1) {
+      const reconstruido = pedido.itens.reduce((s, it, i) => {
+        const bruto = Number(it.precoUnitario) * it.quantidade;
+        return s + Math.round(bruto * (1 - descontos[i] / 100) * 100) / 100;
+      }, 0);
+      const residuo = Math.abs(reconstruido - totalPedido);
+      if (residuo > 0.01 * pedido.itens.length + 0.01) {
+        this.logger.warn(
+          `Pedido ${pedido.numero}: resíduo de arredondamento na diluição de desconto OMIE ` +
+            `(reconstruído R$${reconstruido.toFixed(2)} vs total R$${totalPedido.toFixed(2)}, ` +
+            `dif R$${residuo.toFixed(2)}).`,
+        );
+      }
+    }
+
+    return descontos;
   }
 }
