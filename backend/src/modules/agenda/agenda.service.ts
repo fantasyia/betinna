@@ -273,16 +273,8 @@ export class AgendaService {
         ErrorCode.TENANT_ACCESS_DENIED,
       );
     }
-    if (existing.googleEventId) {
-      try {
-        await this.googleCalendar.deletarEvento(user.id, existing.googleEventId);
-      } catch (err) {
-        const msg = err instanceof Error ? err.message : String(err);
-        this.logger.warn(`Falha ao deletar evento Google ${existing.googleEventId}: ${msg}`);
-      }
-    }
-
-    // v1.5.0 — Suporte a delete em série
+    // v1.5.0 — Suporte a delete em série. Monta o filtro do que será apagado ANTES de mexer no
+    // Google (precisamos saber todas as linhas atingidas pra apagar os eventos correspondentes).
     const parentId = existing.parentId ?? existing.id;
     let where: Prisma.AgendaItemWhereInput = { id, empresaId: existing.empresaId };
 
@@ -299,6 +291,25 @@ export class AgendaService {
         data: { gte: existing.data },
         OR: [{ id: parentId }, { parentId }],
       };
+    }
+
+    // CAÇADA-BUG #12: apagar a SÉRIE removia várias linhas locais, mas só 1 evento no Google (o do
+    // item clicado) — as filhas (cada uma com seu googleEventId) ficavam ÓRFÃS no Google e a série
+    // RESSUSCITAVA no próximo sync (re-import). Coletamos os googleEventId de TODAS as linhas atingidas
+    // e apagamos cada uma no Google (best-effort). `gtask:` são tarefas (não eventos de calendário) →
+    // não passam pelo deletarEvento (daria 404).
+    const afetados = await this.prisma.agendaItem.findMany({
+      where,
+      select: { googleEventId: true },
+    });
+    for (const a of afetados) {
+      if (!a.googleEventId || a.googleEventId.startsWith('gtask:')) continue;
+      try {
+        await this.googleCalendar.deletarEvento(user.id, a.googleEventId);
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err);
+        this.logger.warn(`Falha ao deletar evento Google ${a.googleEventId}: ${msg}`);
+      }
     }
 
     const result = await this.prisma.agendaItem.deleteMany({ where });

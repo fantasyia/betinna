@@ -17,7 +17,7 @@ type MockModel = Record<string, ReturnType<typeof vi.fn>>;
 const makePrismaMock = () => ({
   agendaItem: {
     findFirst: vi.fn(),
-    findMany: vi.fn(),
+    findMany: vi.fn().mockResolvedValue([]),
     findUnique: vi.fn(),
     findUniqueOrThrow: vi.fn(),
     create: vi.fn(),
@@ -382,6 +382,7 @@ describe('AgendaService', () => {
     it('tenta deletar evento no Google se googleEventId existir (best-effort)', async () => {
       const existing = fakeAgendaItem({ usuarioId: 'user-1', googleEventId: 'gcal-ev-1' });
       prisma.agendaItem.findFirst.mockResolvedValue(existing);
+      prisma.agendaItem.findMany.mockResolvedValue([{ googleEventId: 'gcal-ev-1' }]);
       prisma.agendaItem.deleteMany.mockResolvedValue({ count: 1 });
 
       await service.delete(fakeUser({ id: 'user-1' }), 'ag-1');
@@ -392,6 +393,7 @@ describe('AgendaService', () => {
     it('falha no Google Calendar não derruba o delete local (best-effort)', async () => {
       const existing = fakeAgendaItem({ usuarioId: 'user-1', googleEventId: 'gcal-ev-1' });
       prisma.agendaItem.findFirst.mockResolvedValue(existing);
+      prisma.agendaItem.findMany.mockResolvedValue([{ googleEventId: 'gcal-ev-1' }]);
       prisma.agendaItem.deleteMany.mockResolvedValue({ count: 1 });
       googleCalendar.deletarEvento.mockRejectedValue(new Error('Google offline'));
 
@@ -399,6 +401,47 @@ describe('AgendaService', () => {
         ok: true,
         deleted: 1,
       });
+    });
+
+    it('CAÇADA-BUG #12: delete de SÉRIE apaga TODOS os eventos Google das filhas (não só o clicado)', async () => {
+      const existing = fakeAgendaItem({
+        usuarioId: 'user-1',
+        empresaId: 'emp-1',
+        googleEventId: 'gcal-1',
+      });
+      prisma.agendaItem.findFirst.mockResolvedValue(existing);
+      // A série tem 3 linhas, cada uma com seu evento no Google.
+      prisma.agendaItem.findMany.mockResolvedValue([
+        { googleEventId: 'gcal-1' },
+        { googleEventId: 'gcal-2' },
+        { googleEventId: 'gcal-3' },
+      ]);
+      prisma.agendaItem.deleteMany.mockResolvedValue({ count: 3 });
+
+      const r = await service.delete(fakeUser({ id: 'user-1' }), 'ag-1', 'series');
+
+      expect(googleCalendar.deletarEvento).toHaveBeenCalledTimes(3);
+      expect(googleCalendar.deletarEvento).toHaveBeenCalledWith('user-1', 'gcal-1');
+      expect(googleCalendar.deletarEvento).toHaveBeenCalledWith('user-1', 'gcal-2');
+      expect(googleCalendar.deletarEvento).toHaveBeenCalledWith('user-1', 'gcal-3');
+      expect(r.deleted).toBe(3);
+    });
+
+    it('#12: não chama deletarEvento em itens de tarefa (gtask:) nem em linhas sem googleEventId', async () => {
+      const existing = fakeAgendaItem({ usuarioId: 'user-1', empresaId: 'emp-1' });
+      prisma.agendaItem.findFirst.mockResolvedValue(existing);
+      prisma.agendaItem.findMany.mockResolvedValue([
+        { googleEventId: null },
+        { googleEventId: 'gtask:tk-1' },
+        { googleEventId: 'gcal-ok' },
+      ]);
+      prisma.agendaItem.deleteMany.mockResolvedValue({ count: 3 });
+
+      await service.delete(fakeUser({ id: 'user-1' }), 'ag-1', 'series');
+
+      // só o evento de calendário real é apagado no Google
+      expect(googleCalendar.deletarEvento).toHaveBeenCalledTimes(1);
+      expect(googleCalendar.deletarEvento).toHaveBeenCalledWith('user-1', 'gcal-ok');
     });
   });
 
