@@ -267,22 +267,30 @@ export default function LeadsPage() {
 
   // Optimistic state pra mover durante drag
   const [optimistic, setOptimistic] = useState<KanbanResponse | null>(null);
-  useEffect(() => {
-    setOptimistic(data ?? null);
-  }, [data]);
+  // #49: # de moves sendo persistidos. Enquanto > 0 (ou durante um drag), NÃO sincroniza o optimistic
+  // com `data` — senão um poll EM VOO (iniciado antes do drop) que resolve no meio do move traz o
+  // estado ANTIGO e o card volta pra coluna anterior por ~1s e depois pula de novo.
+  const movendoRef = useRef(0);
 
   // Drag state
   const [activeLead, setActiveLead] = useState<Lead | null>(null);
+  const activeLeadRef = useRef<Lead | null>(null);
+  activeLeadRef.current = activeLead;
+
+  useEffect(() => {
+    if (movendoRef.current > 0 || activeLeadRef.current) return; // #49: não atropela o move otimista
+    setOptimistic(data ?? null);
+  }, [data]);
 
   // Atualiza o board em BACKGROUND — fluxos/bot movem leads no backend, então
   // sem isso só dava pra ver a mudança com F5. Refetch ao focar a aba + a cada
   // 20s; pula durante um drag (não atropela o optimistic). Poll via refetch()
   // (queryKey = URL), NUNCA cache-buster — ver memória de polling TanStack.
-  const activeLeadRef = useRef<Lead | null>(null);
-  activeLeadRef.current = activeLead;
   useEffect(() => {
     function atualizar() {
-      if (document.visibilityState !== 'visible' || activeLeadRef.current) return;
+      if (document.visibilityState !== 'visible' || activeLeadRef.current || movendoRef.current > 0) {
+        return;
+      }
       refetch();
     }
     document.addEventListener('visibilitychange', atualizar);
@@ -376,6 +384,7 @@ export default function LeadsPage() {
   }
 
   async function persistMove(leadId: string, etapaId: string, etapaNome: string, motivo?: string) {
+    movendoRef.current++; // #49: segura a sync do optimistic enquanto o PUT está em voo
     try {
       // Se etapaId é um cuid (funil customizado), envia funilEtapaId.
       // Senão, é o nome do enum legado.
@@ -386,9 +395,12 @@ export default function LeadsPage() {
       if (motivo) payload.motivo = motivo;
       await api.put(`/leads/${leadId}/etapa`, payload);
       toast.success(`Movido para ${etapaNome}`);
-      refetch();
     } catch (err) {
       toast.error('Falha ao mover lead', apiErrorMessage(err));
+    } finally {
+      // Libera a sync ANTES do refetch: o GET novo (pós-move) traz o estado correto e o optimistic
+      // sincroniza sem pulo. Um poll velho que resolvia no meio do move foi ignorado (contador > 0).
+      movendoRef.current = Math.max(0, movendoRef.current - 1);
       refetch();
     }
   }
