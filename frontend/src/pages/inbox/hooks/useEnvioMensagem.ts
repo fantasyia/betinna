@@ -41,6 +41,10 @@ export function useEnvioMensagem({
 }: UseEnvioMensagemParams) {
   const [sending, setSending] = useState(false);
   const [sendError, setSendError] = useState<string | null>(null);
+  // CAÇADA-BUG #8: guard síncrono anti-duplo-envio. O `sending` (state) tem janela de corrida —
+  // dois Ctrl+Enter antes do re-render leem o mesmo closure (sending=false) e o cliente recebe a
+  // MESMA mensagem 2x no WhatsApp (o botão fica disabled, mas o atalho de teclado o burla).
+  const sendingRef = useRef(false);
 
   // Refs pros 2 inputs file (escondidos — clicados pelos botões de anexar).
   // Áudio NÃO tem upload por aqui — só gravação via MediaRecorder.
@@ -49,6 +53,7 @@ export function useEnvioMensagem({
   const attachInputRef = useRef<HTMLInputElement | null>(null);
 
   async function enviar() {
+    if (sendingRef.current) return; // já há um envio em voo (anti-duplo Ctrl+Enter)
     const texto = resposta.trim();
     if (!texto) return;
     // Item #25 fatia 4 — se outro(s) atendente(s) estão nesta conversa agora,
@@ -60,6 +65,7 @@ export function useEnvioMensagem({
         return;
       }
     }
+    sendingRef.current = true;
     setSending(true);
     setSendError(null);
     try {
@@ -75,6 +81,7 @@ export function useEnvioMensagem({
     } catch (err) {
       setSendError(err instanceof ApiError ? err.message : 'Falha ao enviar');
     } finally {
+      sendingRef.current = false;
       setSending(false);
     }
   }

@@ -142,6 +142,8 @@ export default function MullerBotPage() {
   // a reload. "Nova conversa" rotaciona via rotateSessionId.
   const [sessionId, setSessionId] = useState<string>(() => loadOrCreateSessionId());
   const endRef = useRef<HTMLDivElement | null>(null);
+  // CAÇADA-BUG #8: guard síncrono anti-duplo-envio (Ctrl+Enter rápido = 2 chamadas OpenAI/custo).
+  const busyRef = useRef(false);
 
   useEffect(() => {
     saveHistory(history);
@@ -152,12 +154,14 @@ export default function MullerBotPage() {
 
   async function enviar(e?: React.FormEvent, customQ?: string) {
     e?.preventDefault();
+    if (busyRef.current) return; // já há uma pergunta em voo (anti-duplo Ctrl+Enter)
     const q = (customQ ?? pergunta).trim();
     if (!q) return;
     if (q.length > 2000) {
       setError('Pergunta muito longa (máx 2000 chars).');
       return;
     }
+    busyRef.current = true;
     setBusy(true);
     setError(null);
     try {
@@ -188,6 +192,7 @@ export default function MullerBotPage() {
     } catch (err) {
       setError(err instanceof ApiError ? err.message : 'Falha');
     } finally {
+      busyRef.current = false;
       setBusy(false);
     }
   }
