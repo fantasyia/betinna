@@ -6,7 +6,7 @@ import {
   NotFoundException,
 } from '@shared/errors/app-exception';
 import type { AuthenticatedUser } from '@shared/types/authenticated-user';
-import { CatalogoService } from './catalogo.service';
+import { CatalogoService, type PreviewItem } from './catalogo.service';
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -26,6 +26,9 @@ const makePrismaMock = () => ({
   produto: {
     findFirst: vi.fn(),
     count: vi.fn(),
+  } satisfies MockModel,
+  usuario: {
+    findUnique: vi.fn(),
   } satisfies MockModel,
   $transaction: vi.fn(async (ops: unknown[]) => ops), // returns array for batch upsert
 });
@@ -369,6 +372,75 @@ describe('CatalogoService', () => {
       await expect(
         service.shareWithClient(fakeUser(), { canal: 'whatsapp' } as never),
       ).rejects.toBeInstanceOf(BusinessRuleException);
+    });
+  });
+
+  // -------------------------------------------------------------------------
+  // resolverShareToken — endpoint @Public() (visto pelo cliente final) — #6
+  // -------------------------------------------------------------------------
+
+  describe('resolverShareToken — não-vazamento público (#6)', () => {
+    /** PreviewItem cru COM os campos sensíveis (como previewParaCliente devolve). */
+    const previewSensivel = (): PreviewItem => ({
+      id: 'cat-1',
+      produtoId: 'p-1',
+      produto: {
+        id: 'p-1',
+        nome: 'Óleo 5L',
+        sku: 'OLE-5L',
+        marca: 'Soya',
+        linha: 'Alimentos',
+        unidade: 'UN',
+        imagem: null,
+        precoTabela: 50,
+        precoFabrica: 40, // CUSTO — não pode vazar
+        popularidade: 5,
+        ativo: true,
+        estoque: 300, // não pode vazar
+        estoqueAtualizadoEm: new Date('2026-07-01'),
+      },
+      precoFinal: 48,
+      precoNegociado: true,
+    });
+
+    it('NÃO expõe precoFabrica, estoque, popularidade nem flags internas ao cliente', async () => {
+      prisma.usuario.findUnique.mockResolvedValue({
+        id: 'rep-1',
+        nome: 'Rep Teste',
+        status: 'ATIVO',
+        role: 'REP',
+      });
+      // validar (default) devolve clienteId → caminho previewParaCliente; espionamos.
+      vi.spyOn(service, 'previewParaCliente').mockResolvedValue([previewSensivel()]);
+
+      const out = await service.resolverShareToken('token-valido');
+
+      expect(out.produtos).toHaveLength(1);
+      const prod = out.produtos[0].produto as Record<string, unknown>;
+      expect(prod).not.toHaveProperty('precoFabrica');
+      expect(prod).not.toHaveProperty('estoque');
+      expect(prod).not.toHaveProperty('estoqueAtualizadoEm');
+      expect(prod).not.toHaveProperty('popularidade');
+      expect(prod).not.toHaveProperty('ativo');
+      // Campos públicos preservados:
+      expect(prod).toMatchObject({ id: 'p-1', nome: 'Óleo 5L', sku: 'OLE-5L', precoTabela: 50 });
+      expect(out.produtos[0].precoFinal).toBe(48);
+      expect(out.produtos[0].precoNegociado).toBe(true);
+      // id interno do RepCatalogoItem não é exposto — só produtoId.
+      expect(out.produtos[0]).not.toHaveProperty('id');
+      expect(out.produtos[0].produtoId).toBe('p-1');
+    });
+
+    it('rejeita link de rep inativo', async () => {
+      prisma.usuario.findUnique.mockResolvedValue({
+        id: 'rep-1',
+        nome: 'X',
+        status: 'INATIVO',
+        role: 'REP',
+      });
+      await expect(service.resolverShareToken('token')).rejects.toBeInstanceOf(
+        BusinessRuleException,
+      );
     });
   });
 });

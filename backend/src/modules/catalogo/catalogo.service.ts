@@ -39,6 +39,27 @@ export interface PreviewItem extends CatalogoItem {
 }
 
 /**
+ * Projeção PÚBLICA de um item de catálogo (endpoint @Public de share/:token, visto pelo cliente
+ * final). Só campos não-sensíveis — SEM precoFabrica (custo), estoque, popularidade ou flags. #6.
+ */
+export interface PublicShareProduto {
+  id: string;
+  nome: string;
+  sku: string | null;
+  marca: string | null;
+  linha: string | null;
+  unidade: string | null;
+  imagem: string | null;
+  precoTabela: number;
+}
+export interface PublicShareItem {
+  produtoId: string;
+  produto: PublicShareProduto;
+  precoFinal: number;
+  precoNegociado: boolean;
+}
+
+/**
  * Catálogo personalizado do representante.
  *
  * Cada rep monta o seu próprio subset de produtos da empresa. O preço é o
@@ -305,7 +326,7 @@ export class CatalogoService {
    */
   async resolverShareToken(
     token: string,
-  ): Promise<{ rep: { id: string; nome: string }; produtos: unknown[] }> {
+  ): Promise<{ rep: { id: string; nome: string }; produtos: PublicShareItem[] }> {
     const payload = await this.share.validar(token);
     // Reconstruir AuthenticatedUser mínimo pra reuso de previewParaCliente
     const rep = await this.prisma.usuario.findUnique({
@@ -329,7 +350,29 @@ export class CatalogoService {
       : await this.previewSemCliente(fakeAuth);
     return {
       rep: { id: rep.id, nome: rep.nome },
-      produtos,
+      // CAÇADA-BUG #6: este endpoint é @Public() — o CLIENTE final vê o JSON. Projetar só campos
+      // públicos: NUNCA vazar precoFabrica (custo = margem da empresa), estoque, popularidade nem
+      // flags internas. Só nome/preço/identificação do produto + preço final da negociação.
+      produtos: produtos.map((p) => this.toPublicShareItem(p)),
+    };
+  }
+
+  /** Projeção pública do preview (endpoint @Public de share): remove custo/estoque/flags internas. */
+  private toPublicShareItem(p: PreviewItem): PublicShareItem {
+    return {
+      produtoId: p.produtoId,
+      produto: {
+        id: p.produto.id,
+        nome: p.produto.nome,
+        sku: p.produto.sku,
+        marca: p.produto.marca,
+        linha: p.produto.linha,
+        unidade: p.produto.unidade,
+        imagem: p.produto.imagem,
+        precoTabela: Number(p.produto.precoTabela),
+      },
+      precoFinal: p.precoFinal,
+      precoNegociado: p.precoNegociado,
     };
   }
 
