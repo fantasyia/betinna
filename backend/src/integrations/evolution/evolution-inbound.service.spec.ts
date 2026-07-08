@@ -166,6 +166,23 @@ describe('EvolutionInboundService — parsing do webhook (messages.upsert)', () 
     expect(arg.peerTelefone).toBe('5511988887777');
   });
 
+  it('CAÇADA-BUG #28: LID SEM remoteJidAlt → peerTelefone undefined (não usa o id opaco do @lid)', async () => {
+    const { svc, inbox } = setup();
+    await svc.processarEvento(
+      upsert({
+        messages: [
+          msgTexto({
+            key: { remoteJid: '12345678901234@lid', fromMe: false, id: 'LID2' },
+          }),
+        ],
+      }),
+    );
+    const arg = inbox.processarMensagemEntrante.mock.calls[0][0];
+    // O peer segue sendo o @lid, mas o telefone NÃO pode ser os dígitos opacos (envenenaria o
+    // match por sufixo). Fica undefined.
+    expect(arg.peerTelefone).toBeUndefined();
+  });
+
   it('GRUPO (@g.us) é persistido: peerNome = subject, senderName = autor, sem telefone', async () => {
     const { svc, inbox, evolution } = setup();
     await svc.processarEvento(

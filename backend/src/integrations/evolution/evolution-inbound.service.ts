@@ -246,6 +246,10 @@ export class EvolutionInboundService {
   }
 
   private telefone(jid: string): string | undefined {
+    // CAÇADA-BUG #28: @lid (linked id) e @g.us (grupo) NÃO são telefones — os dígitos antes do @ são
+    // um id OPACO. Retorná-los envenenava `metadata.telefone` e o match por sufixo-8 (podia casar o
+    // cliente/lead ERRADO). Espelha o guard do contatos.service (telDaConversa).
+    if (jid.includes('@lid') || jid.includes('@g.us')) return undefined;
     const m = jid.match(/^(\d+)(?::\d+)?@/);
     return m ? m[1] : undefined;
   }
