@@ -325,16 +325,36 @@ export class MullerBotService {
       // relevantes montados com orçamento de tokens (mesma lógica do perguntar()).
       systemPrompt = await this.persona.compilarSystemPrompt(empresaId);
       const maxInputTokens = this.env.get('MULLERBOT_MAX_INPUT_TOKENS');
-      const produtos = await this.produtoSearch.buscar(empresaId, mensagemCliente);
+      // CAÇADA-BUG #30: busca produtos E base de CONHECIMENTO (FAQ/regras), igual ao perguntar().
+      // Sem passar o conhecimento pro montarUserMessage, uma saudação ("oi") com 0 produtos caía no
+      // ramo "responda que não encontrou" → o bot respondia a um "oi" com "não encontrei produto".
+      const [produtos, chunks] = await Promise.all([
+        this.produtoSearch.buscar(empresaId, mensagemCliente),
+        this.conhecimentoSearch
+          .buscar(empresaId, mensagemCliente, 4)
+          .catch(() => [] as ConhecimentoRelevante[]),
+      ]);
+      const blocoConhecimento = this.formatarConhecimento(chunks);
+      // CAÇADA-BUG #29: o histórico entrava no prompt (chamarOpenAI) mas NÃO no orçamento de tokens —
+      // a truncagem do catálogo ficava otimista e podia estourar o context window (400 da OpenAI →
+      // fallback "Recebi sua mensagem!"). Conta o histórico + o conhecimento no overhead.
+      const tokensHistorico = historico.reduce((acc, h) => acc + this.estimarTokens(h.content), 0);
       const overhead =
         this.estimarTokens(systemPrompt) +
         this.estimarTokens(mensagemCliente) +
+        this.estimarTokens(blocoConhecimento) +
+        tokensHistorico +
         // Imagem consome tokens de visão que o estimador de texto ignora — conta o custo fixo
         // pra a truncagem do catálogo não estourar o context window quando vem foto.
         (opts.imagemDataUrl ? IMAGE_TOKENS_APROX : 0) +
         SAFETY_MARGIN_TOKENS;
       const orcamentoCatalogo = Math.max(0, maxInputTokens - overhead);
-      const montado = this.montarUserMessage(mensagemCliente, produtos, orcamentoCatalogo);
+      const montado = this.montarUserMessage(
+        mensagemCliente,
+        produtos,
+        orcamentoCatalogo,
+        blocoConhecimento,
+      );
       userMessage = montado.userMessage;
       produtosIncluidos = montado.produtosIncluidos.length;
     } else {
