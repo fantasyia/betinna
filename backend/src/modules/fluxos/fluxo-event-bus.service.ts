@@ -133,6 +133,17 @@ export class FluxoEventBusService {
             if (!matchFiltroPayload(contexto['payload'], cfg.filtroPayload)) continue;
           }
 
+          // Filtro do gatilho CLIENTE_INATIVO_30D: cada fluxo tem seu próprio `diasInativo`. O job
+          // seleciona no MENOR limiar e passa a inatividade REAL do cliente em `diasSemPedido`; aqui
+          // só disparamos os fluxos cujo limiar o cliente de fato cruzou. CAÇADA-BUG #37 (revisão):
+          // sem isto, um cliente de 35 dias recebia TAMBÉM a régua de um fluxo de 90 dias.
+          if (triggerTipo === 'CLIENTE_INATIVO_30D') {
+            const cfg = (triggerNo.config ?? {}) as { diasInativo?: number };
+            const req = Number(cfg.diasInativo ?? 30);
+            const real = Number(contexto['diasSemPedido'] ?? 0);
+            if (real < req) continue;
+          }
+
           // Anti-duplicata (IA) por SUBSTITUIÇÃO: um fluxo com nó "Conversar com IA"
           // não pode ter duas execuções ativas pro MESMO lead (senão duas IAs conversam
           // em paralelo, cada uma sem o histórico da outra → re-apresenta a empresa).
