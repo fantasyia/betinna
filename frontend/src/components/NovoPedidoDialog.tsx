@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
 import {
   Plus,
@@ -73,6 +73,20 @@ function newFormItem(): FormItem {
   };
 }
 
+/** Itens iniciais do form a partir de `inicial` (duplicar) — ou 1 item em branco. */
+function itensIniciais(inicial?: NovoPedidoInicial | null): FormItem[] {
+  return inicial?.itens && inicial.itens.length > 0
+    ? inicial.itens.map((it) => ({
+        uiKey: Math.random().toString(36).slice(2),
+        produto: it.produto,
+        quantidade: it.quantidade,
+        desconto: it.desconto ?? 0,
+        precoUnitarioOverride:
+          it.precoUnitarioOverride !== undefined ? String(it.precoUnitarioOverride) : '',
+      }))
+    : [newFormItem()];
+}
+
 /**
  * Estado inicial pra reusar valores de outro pedido (duplicar / clonar).
  * Todos os campos são opcionais; se omitido, usa default.
@@ -122,18 +136,7 @@ export function NovoPedidoDialog({
 }) {
   const toast = useToast();
   const [cliente, setCliente] = useState<ClienteOpt | null>(clientePreSelecionado ?? null);
-  const [itens, setItens] = useState<FormItem[]>(() =>
-    inicial?.itens && inicial.itens.length > 0
-      ? inicial.itens.map((it) => ({
-          uiKey: Math.random().toString(36).slice(2),
-          produto: it.produto,
-          quantidade: it.quantidade,
-          desconto: it.desconto ?? 0,
-          precoUnitarioOverride:
-            it.precoUnitarioOverride !== undefined ? String(it.precoUnitarioOverride) : '',
-        }))
-      : [newFormItem()],
-  );
+  const [itens, setItens] = useState<FormItem[]>(() => itensIniciais(inicial));
   const [formaPagamento, setFormaPagamento] = useState<PagamentoForma>(
     inicial?.formaPagamento ?? 'BOLETO',
   );
@@ -151,6 +154,28 @@ export function NovoPedidoDialog({
   useEffect(() => {
     if (clientePreSelecionado) setCliente(clientePreSelecionado);
   }, [clientePreSelecionado]);
+
+  // CAÇADA-BUG #15: o dialog fica MONTADO o tempo todo em vários callers (open={bool}), e o estado é
+  // inicializado só uma vez (useState). Sem resetar ao (re)abrir, ele reaparecia com os ITENS/cliente
+  // do pedido ANTERIOR → um clique em "Criar" gerava pedido errado. Ao abrir (false→true) reidrata do
+  // props. O ref garante que só reseta UMA vez por abertura (não apaga o que o usuário digita).
+  const abertoRef = useRef(false);
+  useEffect(() => {
+    if (!open) {
+      abertoRef.current = false;
+      return;
+    }
+    if (abertoRef.current) return;
+    abertoRef.current = true;
+    setCliente(clientePreSelecionado ?? null);
+    setItens(itensIniciais(inicial));
+    setFormaPagamento(inicial?.formaPagamento ?? 'BOLETO');
+    setCondicaoPagamento(inicial?.condicaoPagamento ?? '30dias');
+    setDescontoGeral(inicial?.descontoGeral ?? 0);
+    setObservacoes(inicial?.observacoes ?? '');
+    setError(null);
+    setBusy(false);
+  }, [open, clientePreSelecionado, inicial]);
 
   useEffect(() => {
     if (!open) return;
