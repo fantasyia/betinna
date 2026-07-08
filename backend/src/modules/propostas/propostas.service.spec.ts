@@ -85,6 +85,28 @@ const makePedidoPricing = () => ({
   itemTotal: vi.fn((i: { quantidade: number; precoUnitario: number; desconto: number }) => ({
     total: i.quantidade * i.precoUnitario * (1 - i.desconto / 100),
   })),
+  // Espelha o helper real: override abaixo do preço base vira desconto EFETIVO (CAÇADA-BUG #2).
+  resolverItemComOverride: vi.fn(
+    (input: {
+      quantidade: number;
+      precoBase: number;
+      override?: number | null;
+      descontoExplicito?: number | null;
+    }) => {
+      const explicito = Math.min(80, Math.max(0, input.descontoExplicito ?? 0));
+      const { override, precoBase } = input;
+      if (override != null && precoBase > 0 && override < precoBase) {
+        const precoFinalDesejado = override * (1 - explicito / 100);
+        const efetivo = Math.min(80, Math.max(0, (1 - precoFinalDesejado / precoBase) * 100));
+        return { quantidade: input.quantidade, precoUnitario: precoBase, desconto: efetivo };
+      }
+      return {
+        quantidade: input.quantidade,
+        precoUnitario: override ?? precoBase,
+        desconto: explicito,
+      };
+    },
+  ),
 });
 
 const makeSequence = () => ({

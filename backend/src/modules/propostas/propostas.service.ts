@@ -451,18 +451,23 @@ export class PropostasService {
     return itens.map((i) => {
       const p = map.get(i.produtoId)!;
       const resolved = priceMap.get(i.produtoId);
-      const preco = i.precoUnitarioOverride ?? resolved?.precoFinal ?? Number(p.precoTabela);
-      const t = this.pedidoPricing.itemTotal({
+      const precoBase = resolved?.precoFinal ?? Number(p.precoTabela);
+      // CAÇADA-BUG #2: converte override→desconto EFETIVO (ponto único do PedidoPricingService).
+      // Antes guardava precoUnitario=override + desconto=0 → o gate de aprovação (que lê it.desconto)
+      // via proposta→pedido enxergava 0% e o REP burlava o teto de desconto.
+      const calc = this.pedidoPricing.resolverItemComOverride({
         quantidade: i.quantidade,
-        precoUnitario: preco,
-        desconto: i.desconto,
+        precoBase,
+        override: i.precoUnitarioOverride,
+        descontoExplicito: i.desconto,
       });
+      const t = this.pedidoPricing.itemTotal(calc);
       return {
         produtoId: i.produtoId,
         nome: p.nome,
         quantidade: i.quantidade,
-        precoUnitario: preco,
-        desconto: i.desconto,
+        precoUnitario: calc.precoUnitario,
+        desconto: calc.desconto,
         total: t.total,
         negociado: !!resolved?.negociado && resolved.vigente,
       };

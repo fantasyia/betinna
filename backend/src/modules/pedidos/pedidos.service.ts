@@ -973,27 +973,18 @@ export class PedidosService {
 
     const priceMap = await this.pricing.priceForClientBatch(empresaId, clienteId, produtoIds);
 
-    const calc: ItemInput[] = itens.map((i) => {
-      const resolved = priceMap.get(i.produtoId);
-      const precoBase = resolved?.precoFinal ?? Number(produtosMap.get(i.produtoId)!.precoTabela);
-      const override = i.precoUnitarioOverride;
-      const explicito = Math.min(80, Math.max(0, i.desconto ?? 0));
-      // SEGURANÇA: override ABAIXO do preço base é desconto disfarçado. Sem contabilizá-lo, o REP
-      // burlava o teto de desconto / fluxo de aprovação (maxItemDescPct só lê i.desconto). Converte
-      // no desconto EFETIVO sobre o preço base (implícito do override + explícito) e mantém
-      // precoUnitario = base — o total fica idêntico ao desejado, mas o teto agora enxerga o desconto real.
-      if (override != null && precoBase > 0 && override < precoBase) {
-        const precoFinalDesejado = override * (1 - explicito / 100);
-        const efetivo = Math.min(80, Math.max(0, (1 - precoFinalDesejado / precoBase) * 100));
-        return { quantidade: i.quantidade, precoUnitario: precoBase, desconto: efetivo };
-      }
-      // Override ausente, ou >= base (sem desconto implícito): usa override ?? base com o desconto explícito.
-      return {
+    // Conversão override→desconto efetivo (teto de aprovação): ponto único no PedidoPricingService,
+    // compartilhado com propostas (evita o drift que abriu a CAÇADA-BUG #2).
+    const calc: ItemInput[] = itens.map((i) =>
+      this.pedidoPricing.resolverItemComOverride({
         quantidade: i.quantidade,
-        precoUnitario: override ?? precoBase,
-        desconto: explicito,
-      };
-    });
+        precoBase:
+          priceMap.get(i.produtoId)?.precoFinal ??
+          Number(produtosMap.get(i.produtoId)!.precoTabela),
+        override: i.precoUnitarioOverride,
+        descontoExplicito: i.desconto,
+      }),
+    );
 
     return itens.map((i, idx) => {
       const resolved = priceMap.get(i.produtoId);
