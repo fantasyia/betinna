@@ -27,6 +27,7 @@ import {
 } from 'lucide-react';
 import { NovoPedidoDialog } from '@/components/NovoPedidoDialog';
 import { api, apiErrorMessage } from '@/lib/api';
+import { inicioDoDiaLocalISO, fimDoDiaLocalISO } from '@/lib/dates';
 import { useApiQuery, type PaginatedResponse } from '@/hooks/useApiQuery';
 import {
   PEDIDO_STATUSES,
@@ -208,13 +209,9 @@ export default function PedidosPage() {
     if (status) qs.set('status', status);
     if (clienteIdFilter) qs.set('clienteId', clienteIdFilter);
     if (periodo === 'custom') {
-      if (dataInicioCustom) qs.set('dataInicio', new Date(dataInicioCustom).toISOString());
-      if (dataFimCustom) {
-        // dataFim deve incluir o dia inteiro (até 23:59:59.999)
-        const fim = new Date(dataFimCustom);
-        fim.setHours(23, 59, 59, 999);
-        qs.set('dataFim', fim.toISOString());
-      }
+      // #14: parse LOCAL (não UTC) pra não esconder os registros do dia certo.
+      if (dataInicioCustom) qs.set('dataInicio', inicioDoDiaLocalISO(dataInicioCustom));
+      if (dataFimCustom) qs.set('dataFim', fimDoDiaLocalISO(dataFimCustom));
     } else if (periodo !== 'todos') {
       const dias = periodo === '30d' ? 30 : periodo === '90d' ? 90 : 365;
       const inicio = new Date();

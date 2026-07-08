@@ -2,6 +2,7 @@ import { useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { Download, ExternalLink, Flag } from 'lucide-react';
 import { ApiError, downloadFile } from '@/lib/api';
+import { inicioDoDiaLocalISO, fimDoDiaLocalISO } from '@/lib/dates';
 import { useApiQuery } from '@/hooks/useApiQuery';
 import { useToast } from '@/components/toast';
 import { PageLayout } from '@/components/PageLayout';
@@ -57,8 +58,9 @@ export default function BotAuditoriaPage() {
     const p = new URLSearchParams();
     if (status) p.set('status', status);
     if (soRevisar) p.set('marcadaRevisao', 'true');
-    if (de) p.set('de', new Date(de).toISOString());
-    if (ate) p.set('ate', new Date(`${ate}T23:59:59`).toISOString());
+    // #14: parse LOCAL (não UTC) pro filtro não esconder registros do dia certo.
+    if (de) p.set('de', inicioDoDiaLocalISO(de));
+    if (ate) p.set('ate', fimDoDiaLocalISO(ate));
     return p.toString();
   }, [status, soRevisar, de, ate]);
 
