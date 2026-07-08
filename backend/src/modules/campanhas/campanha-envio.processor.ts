@@ -72,6 +72,9 @@ export class CampanhaEnvioProcessor extends WorkerHost {
       originalJob: job,
       error: err,
     });
+    // #34: na ÚLTIMA falha (retries esgotados), o destinatário fica ERRO permanente — dá a chance de
+    // finalizar a campanha (senão, se esse era o último pendente, ela ficava presa em ENVIANDO).
+    await this.campanhasService.tentarFinalizarCampanha(job.data.campanhaId).catch(() => undefined);
   }
 
   async process(job: Job<CampanhaEnvioJobData>): Promise<void> {
@@ -230,8 +233,16 @@ export class CampanhaEnvioProcessor extends WorkerHost {
         where: { id: destinatarioId },
         data: { status: 'ERRO', erro: msg.slice(0, 500) },
       });
+      // CAÇADA-BUG #34: RELANÇA pra o BullMQ contar como falha → dispara o retry (attempts:3 + backoff)
+      // e, esgotados os retries, o @OnWorkerEvent('failed') manda pro dead-letter. Antes o catch
+      // engolia o erro → o job completava "com sucesso" → o retry/dead-letter configurados NUNCA
+      // atuavam (um hiccup transitório do Evolution/Resend virava ERRO permanente). A idempotência
+      // (idemKey já liberada) garante que o retry não duplica o envio.
+      throw err;
     }
 
+    // Só no SUCESSO — no erro, a finalização acontece no onFailed (última falha) ou quando os
+    // demais destinatários terminam. Evita finalizar enquanto ainda há retries pendentes.
     await this.campanhasService.tentarFinalizarCampanha(campanhaId);
   }
 }
