@@ -38,6 +38,10 @@ import {
 /** Papéis válidos pra destinatário "papel:<ROLE>" do ENVIAR_EMAIL (evita enum inválido no Prisma). */
 const PAPEIS_VALIDOS = new Set(['ADMIN', 'DIRECTOR', 'GERENTE', 'SAC', 'REP']);
 
+// Saídas EVENT-DRIVEN do CONVERSAR_IA (classify no retomar, timeout no cron, erro via `roteado`) —
+// nunca seguidas na conclusão normal do passo. #17.
+const SAIDAS_RESERVADAS_IA = new Set(['classificou', 'timeout', 'erro']);
+
 /**
  * Interpola variáveis no formato {{caminho.ponto}} dentro de strings.
  * Exemplo: "Olá {{cliente.nome}}!" com { cliente: { nome: "João" } } → "Olá João!"
@@ -368,7 +372,17 @@ export class FluxoExecutorService {
 
     const proximosNoIds = arestas
       .filter((e: FluxoEdge) => e.sourceNoId === noId)
-      .filter((e: FluxoEdge) => labelParaNavegar === null || e.label === labelParaNavegar)
+      .filter((e: FluxoEdge) => {
+        // CAÇADA-BUG #17: as saídas 'classificou'/'timeout'/'erro' do CONVERSAR_IA são EVENT-DRIVEN
+        // (classify no retomar, timeout no cron, erro via `roteado`) — NÃO fazem parte da conclusão
+        // normal do passo. Quando o nó conclui sem aguardar/rotear/pular (ex.: aguardarResposta=false),
+        // caía aqui com label=null e seguia TODAS as arestas, disparando os 3 ramos de uma vez. Na
+        // conclusão normal, o CONVERSAR_IA só pode seguir a saída MAIN (sem label reservado).
+        if (no.acaoTipo === 'CONVERSAR_IA') {
+          return !e.label || !SAIDAS_RESERVADAS_IA.has(e.label);
+        }
+        return labelParaNavegar === null || e.label === labelParaNavegar;
+      })
       .map((e: FluxoEdge) => e.targetNoId);
 
     if (proximosNoIds.length === 0) {

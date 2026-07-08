@@ -416,6 +416,51 @@ describe('FluxoExecutorService', () => {
       expect(queue.add).not.toHaveBeenCalled();
     });
 
+    it('CAÇADA-BUG #17: CONVERSAR_IA que conclui normal NÃO segue as saídas reservadas (classificou/timeout/erro)', async () => {
+      prisma.fluxoExecucao.findUnique.mockResolvedValue(fakeExecucao({ status: 'EM_EXECUCAO' }));
+      prisma.fluxoNo.findUnique.mockResolvedValue(
+        fakeNo({ id: 'no-1', tipo: 'ACAO', acaoTipo: 'CONVERSAR_IA', titulo: 'Conversar com IA' }),
+      );
+      // Config com timeout → só saídas rotuladas (classificou/timeout/erro), sem main.
+      prisma.fluxoEdge.findMany.mockResolvedValue([
+        fakeEdge('no-1', 'no-classificou', 'classificou'),
+        fakeEdge('no-1', 'no-timeout', 'timeout'),
+        fakeEdge('no-1', 'no-erro', 'erro'),
+      ]);
+      // Conclusão normal (ex.: teto de prompt sem pulado no passado): aguardando=false, sem rotear.
+      conversarIa.iniciar.mockResolvedValue({ aguardando: false });
+
+      await service.executarPasso('exec-1', 'no-1', 'job-test');
+
+      // NENHUM dos 3 ramos reservados é disparado → execução conclui sem enfileirar.
+      expect(queue.add).not.toHaveBeenCalled();
+      const lastUpdate = prisma.fluxoExecucao.update.mock.calls.at(-1)?.[0];
+      expect(lastUpdate?.data?.status).toBe('CONCLUIDO');
+    });
+
+    it('#17: CONVERSAR_IA (aguardarResposta=false) segue SÓ a saída main, nunca a "erro"', async () => {
+      prisma.fluxoExecucao.findUnique.mockResolvedValue(fakeExecucao({ status: 'EM_EXECUCAO' }));
+      prisma.fluxoNo.findUnique.mockResolvedValue(
+        fakeNo({ id: 'no-1', tipo: 'ACAO', acaoTipo: 'CONVERSAR_IA', titulo: 'Conversar com IA' }),
+      );
+      // Config sem timeout → [main (sem label), 'erro'].
+      prisma.fluxoEdge.findMany.mockResolvedValue([
+        fakeEdge('no-1', 'no-main'), // sem label = main
+        fakeEdge('no-1', 'no-erro', 'erro'),
+      ]);
+      conversarIa.iniciar.mockResolvedValue({ aguardando: false });
+
+      await service.executarPasso('exec-1', 'no-1', 'job-test');
+
+      // Só a saída main foi enfileirada (a 'erro' NÃO).
+      expect(queue.add).toHaveBeenCalledTimes(1);
+      expect(queue.add).toHaveBeenCalledWith(
+        'step',
+        { execucaoId: 'exec-1', noId: 'no-main' },
+        expect.any(Object),
+      );
+    });
+
     it('não atualiza status quando já está EM_EXECUCAO', async () => {
       prisma.fluxoExecucao.findUnique.mockResolvedValue(fakeExecucao({ status: 'EM_EXECUCAO' }));
       prisma.fluxoNo.findUnique.mockResolvedValue(fakeNo());
