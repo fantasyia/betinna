@@ -156,20 +156,29 @@ export class GoogleCalendarService {
     const lists = await this.tasksGet<GoogleTaskListsResponse>('/users/@me/lists', token);
     const out: GoogleTask[] = [];
     for (const l of lists.items ?? []) {
-      const params = new URLSearchParams({
-        dueMin: inicio.toISOString(),
-        dueMax: fim.toISOString(),
-        showCompleted: 'false',
-        showHidden: 'false',
-        maxResults: '100',
-      });
-      const res = await this.tasksGet<GoogleTasksListResponse>(
-        `/lists/${encodeURIComponent(l.id)}/tasks?${params}`,
-        token,
-      );
-      for (const t of res.items ?? []) {
-        if (t.id && t.due && t.status !== 'completed') out.push(t);
-      }
+      // #R3 — PAGINA via nextPageToken. Sem isso, uma lista com >100 tarefas na janela devolvia só
+      // as 100 primeiras; a reconciliação #11 na agenda tratava as excedentes como "sumidas do
+      // Google" e as APAGAVA localmente. Cap de 20 páginas (2000 tarefas) como trava anti-loop.
+      let pageToken: string | undefined;
+      let paginas = 0;
+      do {
+        const params = new URLSearchParams({
+          dueMin: inicio.toISOString(),
+          dueMax: fim.toISOString(),
+          showCompleted: 'false',
+          showHidden: 'false',
+          maxResults: '100',
+        });
+        if (pageToken) params.set('pageToken', pageToken);
+        const res = await this.tasksGet<GoogleTasksListResponse>(
+          `/lists/${encodeURIComponent(l.id)}/tasks?${params}`,
+          token,
+        );
+        for (const t of res.items ?? []) {
+          if (t.id && t.due && t.status !== 'completed') out.push(t);
+        }
+        pageToken = res.nextPageToken;
+      } while (pageToken && ++paginas < 20);
     }
     return out;
   }

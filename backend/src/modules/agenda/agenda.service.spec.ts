@@ -532,6 +532,25 @@ describe('AgendaService', () => {
       expect(r).toEqual({ sincronizados: 0, importados: 0, removidos: 1, total: 0 });
     });
 
+    it('#R3: listarTarefas FALHA → NÃO apaga tarefas gtask locais (sem perda de dados)', async () => {
+      userIntegracoes.findByServico.mockResolvedValue({ id: 'conn-1', ativo: true });
+      const dataNaJanela = new Date(Date.now() + 5 * 86_400_000); // 5 dias à frente (dentro dos 180d)
+      prisma.agendaItem.findMany
+        .mockResolvedValueOnce([]) // pendentes (nada a empurrar)
+        .mockResolvedValueOnce([
+          // tarefa gtask: local que existe hoje na Betinna
+          { id: 'ag-t', empresaId: 'emp-1', googleEventId: 'gtask:abc', data: dataNaJanela },
+        ]);
+      // A Tasks API cai (5xx transiente / escopo perdido).
+      googleCalendar.listarTarefas.mockRejectedValue(new Error('503 Service Unavailable'));
+
+      const r = await service.sincronizarGoogle(fakeUser({ id: 'u1' }));
+
+      // Guard #R3: reconciliação de tarefas pulada → nada apagado.
+      expect(prisma.agendaItem.deleteMany).not.toHaveBeenCalled();
+      expect(r.removidos).toBe(0);
+    });
+
     it('import: evento novo no Google (com hora) vira compromisso da Betinna', async () => {
       userIntegracoes.findByServico.mockResolvedValue({ id: 'conn-1', ativo: true });
       prisma.agendaItem.findMany
