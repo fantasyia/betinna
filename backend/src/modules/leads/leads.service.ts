@@ -403,6 +403,20 @@ export class LeadsService {
         select: { id: true },
       });
       if (!f) throw new BusinessRuleException('Funil inválido');
+      // CAÇADA-BUG #35: mover SÓ o funil (sem etapa) mantinha o `funilEtapaId` do funil ANTIGO → no
+      // kanban do funil novo `grupos[lead.funilEtapaId]` não existe e o lead SOME de todos os kanbans.
+      // Sem etapa explícita, cai na 1ª etapa ATIVA do funil novo (mesmo default do create).
+      if (!dto.funilEtapaId) {
+        const primeira = await this.prisma.funilEtapa.findFirst({
+          where: { funilId: dto.funilId, tipo: 'ATIVA' },
+          orderBy: { ordem: 'asc' },
+          select: { id: true },
+        });
+        if (!primeira) {
+          throw new BusinessRuleException('O funil de destino não tem etapa ativa');
+        }
+        dto.funilEtapaId = primeira.id;
+      }
     }
     await this.prisma.lead.updateMany({
       where: { id, empresaId: existing.empresaId },
