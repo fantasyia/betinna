@@ -203,6 +203,12 @@ export default function PedidosPage() {
     setPage(1);
   }, [buscaDebounced]);
 
+  // #16: limpa a seleção em massa quando QUALQUER filtro muda — senão uma ação em lote (cancelar)
+  // atingiria pedidos que não estão mais visíveis na tela.
+  useEffect(() => {
+    setSelectedIds(new Set());
+  }, [buscaDebounced, status, periodo, dataInicioCustom, dataFimCustom, clienteIdFilter]);
+
   const listPath = useMemo(() => {
     const qs = new URLSearchParams({ page: String(page), limit: '20' });
     if (buscaDebounced.trim()) qs.set('search', buscaDebounced.trim());
