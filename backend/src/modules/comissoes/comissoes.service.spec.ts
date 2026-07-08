@@ -338,6 +338,28 @@ describe('ComissoesService', () => {
       expect(r.totalRecebidoAnoAtual).toBe(350.75);
       expect(r.totalAReceberAnoAtual).toBe(40.1);
     });
+
+    it('CAÇADA-BUG #26: totais anuais somam TODOS os lançamentos do ano (não só os 12 recentes)', async () => {
+      const ano = new Date().getFullYear();
+      const rec = (v: number, pago: boolean) => ({
+        ano,
+        pago,
+        totalComissao: new Prisma.Decimal(v),
+      });
+      // 1ª findMany = histórico exibido (take 12); 2ª = registrosDoAno (ano inteiro: REP+GERENTE = 15).
+      prisma.comissao.findMany
+        .mockResolvedValueOnce(Array.from({ length: 12 }, () => rec(10, true)))
+        .mockResolvedValueOnce([...Array.from({ length: 14 }, () => rec(10, true)), rec(5, false)]);
+
+      const r = (await svc.resumoDoRep(fakeUser({ id: 'rep-1', role: 'REP' as UserRole }))) as {
+        totalRecebidoAnoAtual: number;
+        totalAReceberAnoAtual: number;
+      };
+
+      // 14×10 = 140 recebido (não 120 dos 12 do histórico), 5 a receber.
+      expect(r.totalRecebidoAnoAtual).toBe(140);
+      expect(r.totalAReceberAnoAtual).toBe(5);
+    });
   });
 
   describe('list — rep scope', () => {
