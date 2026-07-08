@@ -372,6 +372,58 @@ describe('refreshAccessToken', () => {
     expect(store.getSession()).toBe(result);
   });
 
+  it('CAÇADA-BUG #20: single-flight — 3 chamadas concorrentes fazem UM só POST /auth/refresh', async () => {
+    const me = makeUser();
+    const fetchMock = vi.fn((url: string) => {
+      if (url.includes('/auth/refresh')) {
+        return Promise.resolve(
+          jsonResponse({ data: { accessToken: 'AT', expiresAt: 999, userId: 'u' } }),
+        );
+      }
+      return Promise.resolve(jsonResponse({ data: me }));
+    });
+    vi.stubGlobal('fetch', fetchMock);
+    const store = await loadStore();
+
+    // N requests tomam 401 ao mesmo tempo → 3 refresh em paralelo.
+    const [a, b, c] = await Promise.all([
+      store.refreshAccessToken(),
+      store.refreshAccessToken(),
+      store.refreshAccessToken(),
+    ]);
+
+    // Todas compartilham a MESMA promise/sessão…
+    expect(a).toBe(b);
+    expect(b).toBe(c);
+    // …e houve UM único POST /auth/refresh (não 3 usos concorrentes do cookie rotativo).
+    const refreshCalls = fetchMock.mock.calls.filter((cc) =>
+      String(cc[0]).includes('/auth/refresh'),
+    );
+    expect(refreshCalls).toHaveLength(1);
+  });
+
+  it('#20: após o refresh terminar, a próxima chamada dispara um refresh NOVO', async () => {
+    const me = makeUser();
+    const fetchMock = vi.fn((url: string) => {
+      if (url.includes('/auth/refresh')) {
+        return Promise.resolve(
+          jsonResponse({ data: { accessToken: 'AT', expiresAt: 999, userId: 'u' } }),
+        );
+      }
+      return Promise.resolve(jsonResponse({ data: me }));
+    });
+    vi.stubGlobal('fetch', fetchMock);
+    const store = await loadStore();
+
+    await store.refreshAccessToken();
+    await store.refreshAccessToken(); // sequencial: ref já foi limpa no settle
+
+    const refreshCalls = fetchMock.mock.calls.filter((cc) =>
+      String(cc[0]).includes('/auth/refresh'),
+    );
+    expect(refreshCalls).toHaveLength(2);
+  });
+
   it('manda Bearer token no /me e credentials include no /refresh', async () => {
     const me = makeUser();
     const fetchMock = vi.fn((url: string) => {
