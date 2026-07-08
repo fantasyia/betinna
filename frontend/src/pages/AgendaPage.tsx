@@ -1126,7 +1126,11 @@ function AgendaFormModal({
   const [cliente, setCliente] = useState<ClienteOpt | null>(
     item?.cliente ? { id: item.cliente.id, nome: item.cliente.nome } : null,
   );
-  const [espelharGoogle, setEspelharGoogle] = useState(true);
+  // CAÇADA-BUG #51: no modo EDIÇÃO o default vem de se o item JÁ está espelhado (tem googleEventId) —
+  // antes era sempre `true`, então editar (ex.: só o horário) de um compromisso criado com o
+  // espelhamento DESMARCADO reenviava espelharGoogle:true e o evento aparecia no Google contra a
+  // vontade do usuário. Em CRIAÇÃO segue default true.
+  const [espelharGoogle, setEspelharGoogle] = useState(item ? Boolean(item.googleEventId) : true);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [confirmDel, setConfirmDel] = useState(false);
