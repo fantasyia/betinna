@@ -307,6 +307,7 @@ function FunilEditor({
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 6 } }));
 
   async function handleDragEnd(event: DragEndEvent) {
+    if (bloqueadoPorProtecao) return; // #48: funil protegido não reordena etapas
     const { active, over } = event;
     if (!over || active.id === over.id) return;
     const oldIdx = orderedEtapas.findIndex((e) => e.id === active.id);
@@ -326,6 +327,7 @@ function FunilEditor({
   }
 
   async function removerEtapa(etapa: FunilEtapa) {
+    if (bloqueadoPorProtecao) return; // #48: funil protegido não exclui etapa
     const ok = await confirmAsync({
       title: `Excluir etapa "${etapa.nome}"?`,
       message: 'Não pode ser desfeito. Se houver leads na etapa, mova-os antes.',
@@ -413,15 +415,17 @@ function FunilEditor({
           <h4 className="text-[10px] font-semibold uppercase tracking-wider text-muted">
             Etapas ({orderedEtapas.length})
           </h4>
-          <Button
-            variant="ghost"
-            size="sm"
-            onClick={() => setCreatingEtapa(true)}
-            leftIcon={<Plus className="h-3 w-3" />}
-            data-testid="etapa-new-btn"
-          >
-            Adicionar etapa
-          </Button>
+          {!bloqueadoPorProtecao && (
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => setCreatingEtapa(true)}
+              leftIcon={<Plus className="h-3 w-3" />}
+              data-testid="etapa-new-btn"
+            >
+              Adicionar etapa
+            </Button>
+          )}
         </div>
 
         {orderedEtapas.length === 0 ? (
@@ -430,9 +434,11 @@ function FunilEditor({
             title="Funil sem etapas"
             description="Adicione pelo menos uma etapa pra começar a usar este funil."
             action={
-              <Button onClick={() => setCreatingEtapa(true)} leftIcon={<Plus className="h-3.5 w-3.5" />}>
-                Criar etapa
-              </Button>
+              bloqueadoPorProtecao ? undefined : (
+                <Button onClick={() => setCreatingEtapa(true)} leftIcon={<Plus className="h-3.5 w-3.5" />}>
+                  Criar etapa
+                </Button>
+              )
             }
             className="border-0"
           />
@@ -453,6 +459,7 @@ function FunilEditor({
                     etapa={etapa}
                     onEdit={() => setEditingEtapa(etapa)}
                     onRemove={() => removerEtapa(etapa)}
+                    bloqueado={bloqueadoPorProtecao}
                   />
                 ))}
               </ul>
@@ -505,13 +512,17 @@ function SortableEtapaRow({
   etapa,
   onEdit,
   onRemove,
+  bloqueado,
 }: {
   etapa: FunilEtapa;
   onEdit: () => void;
   onRemove: () => void;
+  // #48: funil protegido → REP não arrasta/edita/exclui etapa (só lê).
+  bloqueado: boolean;
 }) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
     id: etapa.id,
+    disabled: bloqueado,
   });
   const style = {
     transform: CSS.Transform.toString(transform),
@@ -529,15 +540,17 @@ function SortableEtapaRow({
       )}
       data-testid={`etapa-row-${etapa.id}`}
     >
-      <button
-        type="button"
-        aria-label="Arrastar"
-        {...attributes}
-        {...listeners}
-        className="shrink-0 p-1 text-muted-light cursor-grab hover:text-text touch-none"
-      >
-        <GripVertical className="h-3.5 w-3.5" />
-      </button>
+      {!bloqueado && (
+        <button
+          type="button"
+          aria-label="Arrastar"
+          {...attributes}
+          {...listeners}
+          className="shrink-0 p-1 text-muted-light cursor-grab hover:text-text touch-none"
+        >
+          <GripVertical className="h-3.5 w-3.5" />
+        </button>
+      )}
       <span
         className="h-3 w-3 rounded shrink-0"
         style={{ background: etapa.cor }}
@@ -558,22 +571,26 @@ function SortableEtapaRow({
           {etapa.capacidadeMaxima ? ` · cap ${etapa.capacidadeMaxima}` : ''}
         </span>
       </div>
-      <IconButton
-        aria-label="Editar etapa"
-        variant="ghost"
-        size="sm"
-        icon={<Pencil className="h-3 w-3" />}
-        onClick={onEdit}
-        data-testid={`etapa-edit-${etapa.id}`}
-      />
-      <IconButton
-        aria-label="Excluir etapa"
-        variant="danger"
-        size="sm"
-        icon={<Trash2 className="h-3 w-3" />}
-        onClick={onRemove}
-        data-testid={`etapa-del-${etapa.id}`}
-      />
+      {!bloqueado && (
+        <>
+          <IconButton
+            aria-label="Editar etapa"
+            variant="ghost"
+            size="sm"
+            icon={<Pencil className="h-3 w-3" />}
+            onClick={onEdit}
+            data-testid={`etapa-edit-${etapa.id}`}
+          />
+          <IconButton
+            aria-label="Excluir etapa"
+            variant="danger"
+            size="sm"
+            icon={<Trash2 className="h-3 w-3" />}
+            onClick={onRemove}
+            data-testid={`etapa-del-${etapa.id}`}
+          />
+        </>
+      )}
     </li>
   );
 }
