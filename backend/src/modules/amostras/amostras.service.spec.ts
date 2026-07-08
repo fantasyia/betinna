@@ -596,20 +596,24 @@ describe('AmostrasService', () => {
       expect(prisma.amostra.create).not.toHaveBeenCalled();
     });
 
-    it('aprovar: PENDENTE_APROVACAO → ENVIADA + aprovador', async () => {
+    it('CAÇADA-BUG #27: aprovar → ENVIADA + follow-up conta da APROVAÇÃO (não do enviadoEm no passado)', async () => {
+      // enviadoEm BEM no passado — o follow-up NÃO pode herdar isso (nasceria vencido na hora).
       prisma.amostra.findFirst.mockResolvedValue(
-        fakeAmostra({ status: 'PENDENTE_APROVACAO', enviadoEm: new Date('2026-04-01') }),
+        fakeAmostra({ status: 'PENDENTE_APROVACAO', enviadoEm: new Date('2020-01-01') }),
       );
       prisma.amostra.updateMany.mockResolvedValue({ count: 1 });
       prisma.amostra.findUniqueOrThrow.mockResolvedValue(fakeAmostra({ status: 'ENVIADA' }));
 
+      const antes = Date.now();
       await service.aprovar(fakeUser({ id: 'dir-1', nome: 'Diretor' }), 'am-1');
 
       const data = prisma.amostra.updateMany.mock.calls[0][0].data;
       expect(data.status).toBe('ENVIADA');
       expect(data.aprovadorId).toBe('dir-1');
       expect(data.aprovadorNome).toBe('Diretor');
-      expect(data.followUpEm).toBeInstanceOf(Date);
+      // followUpEm ≈ agora + 5 dias (FUTURO), não 2020 + 5 dias (passado).
+      expect(data.followUpEm.getTime()).toBeGreaterThan(antes + 4 * 86_400_000);
+      expect(data.followUpEm.getTime()).toBeLessThan(Date.now() + 6 * 86_400_000);
     });
 
     it('aprovar: amostra não pendente → BusinessRuleException', async () => {

@@ -255,7 +255,7 @@ export class AmostrasService {
     if (existing.status !== 'PENDENTE_APROVACAO') {
       throw new BusinessRuleException('Amostra não está pendente de aprovação');
     }
-    const enviadoEm = existing.enviadoEm ?? new Date();
+    const agora = new Date();
     // CAS: só aprova se ainda PENDENTE_APROVACAO (corrida aprovar×rejeitar / duplo-clique).
     const cas = await this.prisma.amostra.updateMany({
       where: { id, empresaId: existing.empresaId, status: 'PENDENTE_APROVACAO' },
@@ -263,9 +263,12 @@ export class AmostrasService {
         status: 'ENVIADA',
         aprovadorId: user.id,
         aprovadorNome: user.nome,
-        aprovadoEm: new Date(),
-        // follow-up passa a contar a partir da aprovação (5 dias padrão).
-        followUpEm: new Date(enviadoEm.getTime() + 5 * 24 * 60 * 60 * 1000),
+        aprovadoEm: agora,
+        // CAÇADA-BUG #27: follow-up conta a partir da APROVAÇÃO (agora), 5 dias padrão. Antes usava
+        // `enviadoEm` (data de envio, muitas vezes no PASSADO — amostra solicitada dia 1, aprovada dia
+        // 10 → followUpEm dia 6, já vencido) → a amostra nascia \"vencida\" no filtro e nos triggers
+        // AMOSTRA_FOLLOWUP no instante da aprovação.
+        followUpEm: new Date(agora.getTime() + 5 * 24 * 60 * 60 * 1000),
       },
     });
     if (cas.count === 0) {
