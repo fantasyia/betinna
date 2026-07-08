@@ -69,8 +69,16 @@ export class AuditInterceptor implements NestInterceptor {
       const body = req.body as Record<string, unknown> | undefined;
       raw = body?.[key];
     } else if (bucket === 'response') {
+      // #R8 — o AuditInterceptor é OUTER em relação ao ResponseInterceptor (registrado antes), então
+      // `response` aqui JÁ é o envelope `{ success, data, meta }`. O recurso real (id do recém-criado)
+      // está em `data`. Sem desembrulhar, `resp.id` era sempre undefined → recursoId NULL em ~10
+      // endpoints de create com `resourceIdFrom: 'response.id'` (agenda, amostra, campanha, etc.).
       const resp = response as Record<string, unknown> | undefined;
-      raw = resp?.[key];
+      const payload =
+        resp && typeof resp === 'object' && 'success' in resp && 'data' in resp
+          ? (resp.data as Record<string, unknown> | undefined)
+          : resp;
+      raw = payload?.[key];
     }
     return typeof raw === 'string' ? raw : null;
   }
