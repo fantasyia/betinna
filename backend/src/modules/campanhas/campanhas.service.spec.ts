@@ -476,6 +476,83 @@ describe('CampanhasService', () => {
       // Só 2 jobs enfileirados (não 3).
       expect(queue.add).toHaveBeenCalledTimes(2);
     });
+
+    it('#R5: canal duplo, MESMO telefone e e-mails distintos → e-mail dos dois sai, WA só 1x', async () => {
+      prisma.campanha.findFirst
+        .mockResolvedValueOnce(fakeCampanha({ status: 'AGENDADA', canal: 'WHATSAPP_EMAIL' }))
+        .mockResolvedValueOnce(fakeCampanha({ status: 'ENVIANDO', canal: 'WHATSAPP_EMAIL' }));
+      prisma.campanha.updateMany.mockResolvedValue({ count: 1 });
+      prisma.cliente.findMany.mockResolvedValue([
+        { id: 'cli-1', telefone: '11999990000', email: 'a@x.com' },
+        { id: 'cli-2', telefone: '11999990000', email: 'b@x.com' }, // mesmo fone, e-mail diferente
+      ]);
+      prisma.campanhaDestinatario.findMany
+        .mockResolvedValueOnce([]) // jaProcessados
+        .mockResolvedValueOnce([{ id: 'd1' }, { id: 'd2' }]); // criados
+
+      await service.disparar(fakeUser(), 'camp-1');
+
+      const data = prisma.campanhaDestinatario.createMany.mock.calls[0][0].data as Array<{
+        clienteId: string;
+        telefone: string | null;
+        email: string | null;
+      }>;
+      // cli-1 leva WA + e-mail; cli-2 tem o WA ANULADO (fone duplicado) mas mantém o e-mail exclusivo.
+      expect(data).toEqual([
+        {
+          campanhaId: 'camp-1',
+          clienteId: 'cli-1',
+          telefone: '5511999990000@s.whatsapp.net',
+          email: 'a@x.com',
+        },
+        { campanhaId: 'camp-1', clienteId: 'cli-2', telefone: null, email: 'b@x.com' },
+      ]);
+    });
+
+    it('#R5: canal duplo, MESMO e-mail e telefones distintos → WA dos dois sai, e-mail só 1x', async () => {
+      prisma.campanha.findFirst
+        .mockResolvedValueOnce(fakeCampanha({ status: 'AGENDADA', canal: 'WHATSAPP_EMAIL' }))
+        .mockResolvedValueOnce(fakeCampanha({ status: 'ENVIANDO', canal: 'WHATSAPP_EMAIL' }));
+      prisma.campanha.updateMany.mockResolvedValue({ count: 1 });
+      prisma.cliente.findMany.mockResolvedValue([
+        { id: 'cli-1', telefone: '11999990001', email: 'mesmo@x.com' },
+        { id: 'cli-2', telefone: '11999990002', email: 'mesmo@x.com' }, // mesmo e-mail, fone diferente
+      ]);
+      prisma.campanhaDestinatario.findMany
+        .mockResolvedValueOnce([])
+        .mockResolvedValueOnce([{ id: 'd1' }, { id: 'd2' }]);
+
+      await service.disparar(fakeUser(), 'camp-1');
+
+      const data = prisma.campanhaDestinatario.createMany.mock.calls[0][0].data as Array<{
+        clienteId: string;
+        telefone: string | null;
+        email: string | null;
+      }>;
+      // cli-2 mantém o WA (fone exclusivo) mas tem o e-mail ANULADO (duplicado).
+      expect(data[1]).toEqual({
+        campanhaId: 'camp-1',
+        clienteId: 'cli-2',
+        telefone: '5511999990002@s.whatsapp.net',
+        email: null,
+      });
+    });
+
+    it('#R5: telefone em branco (canal WA) NÃO vira destinatário fantasma', async () => {
+      prisma.campanha.findFirst.mockResolvedValue(
+        fakeCampanha({ status: 'AGENDADA', canal: 'WHATSAPP' }),
+      );
+      prisma.campanha.updateMany.mockResolvedValue({ count: 1 });
+      prisma.cliente.findMany.mockResolvedValue([
+        { id: 'cli-1', telefone: '   ', email: null }, // fone só espaços → sem contato útil
+      ]);
+
+      // 0 destinatários → reverte e lança SEM_DESTINATARIOS (não cria linha marcada ENVIADO à toa).
+      await expect(service.disparar(fakeUser(), 'camp-1')).rejects.toBeInstanceOf(
+        BusinessRuleException,
+      );
+      expect(prisma.campanhaDestinatario.createMany).not.toHaveBeenCalled();
+    });
   });
 
   // -------------------------------------------------------------------------

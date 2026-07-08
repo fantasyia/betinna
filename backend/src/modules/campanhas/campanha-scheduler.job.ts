@@ -63,13 +63,20 @@ export class CampanhaSchedulerJob {
         // humano do erro ("Nenhum destinatário encontrado…") — o code fica em `err.code`. O branch era
         // MORTO → a campanha agendada com 0 destinatários voltava pra RASCUNHO (revert do disparar) e o
         // agendamento evaporava sem sinal. Agora detecta pelo code e marca CANCELADA (pretendido).
-        if (err instanceof AppException && err.code === ErrorCode.CAMPANHA_SEM_DESTINATARIOS) {
+        // #R6: o mesmo evaporamento acontecia no ramo IRMÃO — o cap de IA (MAX_DESTINATARIOS_IA) lança
+        // CAMPANHA_NAO_PODE_DISPARAR, que não caía aqui → agendada com IA + segmento grande sumia sem
+        // sinal (volta a RASCUNHO). Ambos os codes são "não dá pra disparar como está" → CANCELADA.
+        const naoDisparavel =
+          err instanceof AppException &&
+          (err.code === ErrorCode.CAMPANHA_SEM_DESTINATARIOS ||
+            err.code === ErrorCode.CAMPANHA_NAO_PODE_DISPARAR);
+        if (naoDisparavel) {
           await this.prisma.campanha.update({
             where: { id: c.id },
             data: { status: 'CANCELADA' },
           });
           this.logger.warn(
-            `Campanha "${c.nome}" (${c.id}) CANCELADA pelo scheduler — segmento sem destinatários.`,
+            `Campanha "${c.nome}" (${c.id}) CANCELADA pelo scheduler — ${err.message}`,
           );
         }
       }
