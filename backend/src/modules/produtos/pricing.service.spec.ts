@@ -100,6 +100,32 @@ describe('PricingService (Sprint 2 — empresaId obrigatório)', () => {
       expect(r?.descontoBase).toBe(0);
     });
 
+    it('CAÇADA-BUG #25: preço válido "até hoje" segue vigente às 09h BRT (não expira 21h da véspera)', async () => {
+      prisma.produto.findFirst.mockResolvedValue({ id: 'p1', precoTabela: 100 });
+      prisma.clientePrecoEspecial.findFirst.mockResolvedValue({
+        precoEspecial: 80,
+        descontoBase: 0,
+        validoAte: new Date('2026-07-07T00:00:00Z'), // date-only: meia-noite UTC do dia 07
+      });
+      // now = 07/07 12:00 UTC = 09:00 BRT do dia 07. Antes: expirado (00:00 UTC ≥ 12:00 UTC = false).
+      const r = await service.priceForClient(EMP, 'c1', 'p1', new Date('2026-07-07T12:00:00Z'));
+      expect(r?.vigente).toBe(true);
+      expect(r?.precoFinal).toBe(80);
+    });
+
+    it('#25: expira no FIM do dia BRT (00:30 BRT do dia seguinte já é expirado)', async () => {
+      prisma.produto.findFirst.mockResolvedValue({ id: 'p1', precoTabela: 100 });
+      prisma.clientePrecoEspecial.findFirst.mockResolvedValue({
+        precoEspecial: 80,
+        descontoBase: 0,
+        validoAte: new Date('2026-07-07T00:00:00Z'),
+      });
+      // 08/07 03:30 UTC = 00:30 BRT do dia 08 → passou do fim (23:59:59.999 BRT) do dia 07.
+      const r = await service.priceForClient(EMP, 'c1', 'p1', new Date('2026-07-08T03:30:00Z'));
+      expect(r?.vigente).toBe(false);
+      expect(r?.precoFinal).toBe(100);
+    });
+
     it('mantém vigência se validoAte for futura', async () => {
       prisma.produto.findFirst.mockResolvedValue({ id: 'p1', precoTabela: 50 });
       prisma.clientePrecoEspecial.findFirst.mockResolvedValue({

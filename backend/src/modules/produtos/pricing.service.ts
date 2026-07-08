@@ -89,7 +89,7 @@ export class PricingService {
     });
 
     if (especial) {
-      const vigente = !especial.validoAte || especial.validoAte >= now;
+      const vigente = this.precoEspecialVigente(especial.validoAte, now);
       if (vigente) {
         return {
           produtoId: produto.id,
@@ -163,7 +163,7 @@ export class PricingService {
     for (const p of produtos) {
       const e = especialMap.get(p.id);
       if (e) {
-        const vigente = !e.validoAte || e.validoAte >= now;
+        const vigente = this.precoEspecialVigente(e.validoAte, now);
         result.set(p.id, {
           produtoId: p.id,
           precoBase: Number(p.precoTabela),
@@ -193,5 +193,18 @@ export class PricingService {
     if (discountPct <= 0) return price;
     const result = price * (1 - discountPct / 100);
     return Math.round(result * 100) / 100;
+  }
+
+  /**
+   * Vigência de um preço especial. `validoAte` é uma DATA (dia inteiro de validade), gravada à
+   * meia-noite UTC do dia (date-only). CAÇADA-BUG #25: comparar `validoAte >= now` cru fazia o preço
+   * expirar às 21h BRT da VÉSPERA (00:00 UTC do dia = 21:00 BRT do dia anterior). Aqui consideramos
+   * vigente até o FIM daquele dia no fuso do tenant (BRT, UTC-3): dia 23:59:59.999 BRT.
+   */
+  private precoEspecialVigente(validoAte: Date | null, now: Date): boolean {
+    if (!validoAte) return true;
+    // validoAte(00:00 UTC do dia) + 26h59m59s999 = dia+1 02:59:59.999 UTC = dia 23:59:59.999 BRT.
+    const FIM_DIA_BRT_MS = 26 * 3600_000 + 59 * 60_000 + 59_000 + 999;
+    return now.getTime() <= validoAte.getTime() + FIM_DIA_BRT_MS;
   }
 }
