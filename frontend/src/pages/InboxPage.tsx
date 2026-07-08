@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Inbox as InboxIcon } from 'lucide-react';
 import { useRole } from '@/hooks/usePermission';
+import { useDebouncedValue } from '@/hooks/useDebouncedValue';
 import { useApiQuery, type PaginatedResponse } from '@/hooks/useApiQuery';
 import { PageLayout, useIsMobile } from '@/components/PageLayout';
 import { AtendimentoTabs } from '@/components/AtendimentoTabs';
@@ -36,6 +37,9 @@ export default function InboxPage() {
   const [filterMeu, setFilterMeu] = useState<string>('');
   const [situacao, setSituacao] = useState<string>(''); // precisa_humano | nao_lidas
   const [search, setSearch] = useState<string>('');
+  // #46: debounce da busca — sem ele, cada tecla mudava o listPath (queryKey nova + pageResp null)
+  // → a lista inteira sumia e piscava spinner a cada caractere na rota mais pesada do SAC.
+  const searchDebounced = useDebouncedValue(search, 300);
   const [selectedId, setSelectedId] = useState<string | null>(null);
 
   const canal = useMemo(() => {
@@ -61,9 +65,9 @@ export default function InboxPage() {
     if (filterMeu === 'nao_atribuidas') qs.set('naoAtribuidas', 'true');
     if (situacao === 'precisa_humano') qs.set('precisaHumano', 'true');
     if (situacao === 'nao_lidas') qs.set('naoLidas', 'true');
-    if (search.trim()) qs.set('search', search.trim());
+    if (searchDebounced.trim()) qs.set('search', searchDebounced.trim());
     return `/inbox?${qs.toString()}`;
-  }, [canal, status, filterMeu, situacao, search]);
+  }, [canal, status, filterMeu, situacao, searchDebounced]);
 
   const {
     data: pageResp,

@@ -20,6 +20,7 @@ import {
 import { api, ApiError } from '@/lib/api';
 import { formatNumero } from '@/lib/masks';
 import { useApiQuery, type PaginatedResponse } from '@/hooks/useApiQuery';
+import { useDebouncedValue } from '@/hooks/useDebouncedValue';
 import { useConfirm } from '@/hooks/useConfirm';
 import { usePermission } from '@/hooks/usePermission';
 import { useToast } from '@/components/toast';
@@ -152,6 +153,7 @@ export default function FluxosPage() {
 
   const [page, setPage] = useState(1);
   const [search, setSearch] = useState('');
+  const searchDebounced = useDebouncedValue(search, 300); // #46: sem debounce a lista piscava por tecla
   const [status, setStatus] = useState('');
   const [triggerTipo, setTriggerTipo] = useState('');
   const [editingId, setEditingId] = useState<string | null>(null);
@@ -176,11 +178,11 @@ export default function FluxosPage() {
 
   const listPath = useMemo(() => {
     const qs = new URLSearchParams({ page: String(page), limit: '20' });
-    if (search.trim()) qs.set('search', search.trim());
+    if (searchDebounced.trim()) qs.set('search', searchDebounced.trim());
     if (status) qs.set('status', status);
     if (triggerTipo) qs.set('triggerTipo', triggerTipo);
     return `/fluxos?${qs.toString()}`;
-  }, [page, search, status, triggerTipo]);
+  }, [page, searchDebounced, status, triggerTipo]);
 
   const { data: pageResp, loading, error, refetch } = useApiQuery<PaginatedResponse<FluxoListItem>>(listPath);
 
