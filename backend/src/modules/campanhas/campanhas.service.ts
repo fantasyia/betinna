@@ -530,27 +530,46 @@ export class CampanhasService {
 
     const clientes = await this.prisma.cliente.findMany({
       where,
+      // #R5 — ORDEM ESTÁVEL: o dedup abaixo elege sempre o MESMO clienteId entre re-disparos. Sem isto
+      // (ordem de plano do Postgres), um re-disparo (campanha pausada+reagendada) podia eleger OUTRO
+      // clienteId pro mesmo contato → ele não constava nos jaProcessados → a MESMA pessoa recebia 2x.
+      orderBy: { id: 'asc' },
       select: { id: true, email: true, telefone: true },
     });
 
-    // CAÇADA-BUG #38: dedup por CONTATO. Dois clientes com o mesmo telefone/e-mail (matriz/filial, ou
-    // duplicata de import — o cadastro não tem unique de fone) geravam 2 destinatários → a MESMA
-    // pessoa recebia a campanha 2x. Chave = JID do WhatsApp (canal WA) ou e-mail (canal e-mail); fica
-    // o PRIMEIRO clienteId. (Opt-out/descadastro é feature à parte.)
-    const vistos = new Set<string>();
+    // CAÇADA-BUG #38 + #R5: dedup por CONTATO e POR CANAL. Dois clientes com o mesmo telefone/e-mail
+    // (matriz/filial, ou duplicata de import — sem unique de fone) geravam envio 2x pra mesma pessoa.
+    // telefone e e-mail deduplicam SEPARADAMENTE: no canal duplo, deduplicar por um contato só fazia
+    // (a) 2 clientes de mesmo e-mail e fones distintos mandarem e-mail 2x, e (b) 2 de mesmo fone e
+    // e-mails distintos derrubarem o 2º inteiro — o e-mail exclusivo dele nunca saía. Vence o 1º
+    // (ordem estável). Contato duplicado no canal → anula SÓ aquele contato (não o destinatário todo).
+    const telsVistos = new Set<string>();
+    const emailsVistos = new Set<string>();
     const destinatarios: Array<{
       clienteId: string;
       email: string | null;
       telefone: string | null;
     }> = [];
     for (const c of clientes) {
-      const telefone = needsWa && c.telefone ? toWhatsAppJid(c.telefone) : null;
-      const email = needsEmail ? c.email : null;
-      const chave = telefone ?? email; // o contato que o canal realmente usa
-      if (chave) {
-        if (vistos.has(chave)) continue;
-        vistos.add(chave);
+      // Trim + `|| null`: telefone/e-mail em branco ('') passa o filtro `not: null` do banco; sem isto
+      // virava JID/e-mail inválido e um destinatário sem contato era marcado ENVIADO sem enviar nada.
+      const foneRaw = needsWa ? c.telefone?.trim() || null : null;
+      const emailRaw = needsEmail ? c.email?.trim() || null : null;
+      let telefone = foneRaw ? toWhatsAppJid(foneRaw) : null;
+      let email = emailRaw;
+      if (telefone) {
+        if (telsVistos.has(telefone))
+          telefone = null; // outro destinatário já cobre esse WhatsApp
+        else telsVistos.add(telefone);
       }
+      if (email) {
+        const chaveEmail = email.toLowerCase();
+        if (emailsVistos.has(chaveEmail))
+          email = null; // outro destinatário já cobre esse e-mail
+        else emailsVistos.add(chaveEmail);
+      }
+      // Sem contato útil pra NENHUM canal → não cria destinatário (nada de ENVIADO fantasma).
+      if (!telefone && !email) continue;
       destinatarios.push({ clienteId: c.id, email, telefone });
     }
     return destinatarios;
