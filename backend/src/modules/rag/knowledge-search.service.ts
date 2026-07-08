@@ -24,6 +24,72 @@ const BONUS_TEXTO = 0.05;
 // produto) — poluía a resposta e gastava tokens. ~0.3 é um floor conservador (irrelevante ~0.0-0.2).
 const SCORE_MINIMO_SEMANTICO = 0.3;
 
+// Stopwords pt-BR (≥3 chars — as <3 já caem no filtro de tamanho). Removidas da tokenização do
+// keyword fallback pra não casar quase todo chunk por palavra vazia. Lista enxuta das mais comuns.
+const STOPWORDS_PT = new Set([
+  'que',
+  'para',
+  'com',
+  'uma',
+  'por',
+  'dos',
+  'das',
+  'nao',
+  'não',
+  'mas',
+  'como',
+  'mais',
+  'foi',
+  'ele',
+  'ela',
+  'seu',
+  'sua',
+  'ser',
+  'tem',
+  'são',
+  'sao',
+  'ter',
+  'esse',
+  'essa',
+  'este',
+  'esta',
+  'isso',
+  'sobre',
+  'entre',
+  'quando',
+  'onde',
+  'qual',
+  'quais',
+  'pelo',
+  'pela',
+  'nos',
+  'nas',
+  'aos',
+  'meu',
+  'minha',
+  'você',
+  'voce',
+  'vocês',
+  'voces',
+  'estou',
+  'está',
+  'esta',
+  'aqui',
+  'ali',
+  'sim',
+  'pra',
+  'pro',
+  'até',
+  'ate',
+  'já',
+  'jah',
+  'porque',
+  'porém',
+  'porem',
+  'também',
+  'tambem',
+]);
+
 /**
  * Busca semântica sobre a base de conhecimento (KnowledgeChunk) com fallback por
  * keyword (ILIKE) — mesma lógica do ProdutoSearchService. Alimenta o bot com FAQ /
@@ -100,16 +166,20 @@ export class KnowledgeSearchService {
     if (termo.length === 0) return [];
     // Tokeniza a consulta (OR por palavra ≥3 chars, acento preservado): `contains` da frase
     // INTEIRA quase nunca casa, deixando o conhecimento inacessível durante o backfill.
+    // Stoplist pt-BR: sem ela, palavras vazias ("que", "para", "com"…) casam quase todo chunk e
+    // deslocam os relevantes (o keyword fallback não tem score) → lixo no prompt do bot.
     const tokens = Array.from(
       new Set(
         termo
           .toLowerCase()
           .split(/\s+/)
           .map((t) => t.replace(/[^\p{L}\p{N}]/gu, ''))
-          .filter((t) => t.length >= 3),
+          .filter((t) => t.length >= 3 && !STOPWORDS_PT.has(t)),
       ),
     ).slice(0, 10);
-    const palavras = tokens.length > 0 ? tokens : [termo];
+    // Só cai no termo cru se a consulta era SÓ stopwords (raro) — evita OR com a frase inteira.
+    const palavras = tokens.length > 0 ? tokens : [];
+    if (palavras.length === 0) return [];
     // Pega mais que o limite e re-ordena texto-antes-de-doc em memória (o `contains`
     // não dá score; sem embedding, a prioridade do texto digitado é por fonte).
     const chunks = await this.prisma.knowledgeChunk.findMany({

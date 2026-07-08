@@ -786,15 +786,42 @@ export class MullerBotService {
     return arr[Math.floor(Math.random() * arr.length)];
   }
 
+  /**
+   * Mantém as mensagens MAIS RECENTES do histórico dentro de um orçamento de tokens (drop das
+   * antigas). Guarda o context window da OpenAI em conversas longas.
+   */
+  private capHistorico(historico: HistoricoMsg[], orcamentoTokens: number): HistoricoMsg[] {
+    if (orcamentoTokens <= 0) return [];
+    const out: HistoricoMsg[] = [];
+    let acc = 0;
+    for (let i = historico.length - 1; i >= 0; i--) {
+      const custo = this.estimarTokens(historico[i].content);
+      if (acc + custo > orcamentoTokens) break;
+      acc += custo;
+      out.unshift(historico[i]);
+    }
+    return out;
+  }
+
   private async chamarOpenAI(
     creds: LlmCredenciais,
     modelo: string,
     systemPrompt: string,
     userMessage: string,
     maxOutputTokens: number,
-    historico: HistoricoMsg[] = [],
+    historicoRaw: HistoricoMsg[] = [],
     imagemDataUrl?: string,
   ): Promise<{ texto: string; tokensIn?: number; tokensOut?: number }> {
+    // Cap do histórico ao orçamento de tokens RESTANTE (mantém as mensagens mais recentes). Sem isto,
+    // conversa longa levava systemPrompt+userMessage+histórico além do context window (400 da OpenAI →
+    // fallback "Recebi sua mensagem!") mesmo com o catálogo já zerado (#29 só contava, não truncava).
+    const maxInputTokens = this.env.get('MULLERBOT_MAX_INPUT_TOKENS');
+    const overheadFixo =
+      this.estimarTokens(systemPrompt) +
+      this.estimarTokens(userMessage) +
+      (imagemDataUrl ? IMAGE_TOKENS_APROX : 0) +
+      SAFETY_MARGIN_TOKENS;
+    const historico = this.capHistorico(historicoRaw, Math.max(0, maxInputTokens - overheadFixo));
     // Modo mock (E2E/dev): devolve resposta fake sem chamar a OpenAI. Ligado via
     // MULLERBOT_MOCK=true. Em produção (flag off) o fluxo segue normal.
     if (this.env.get('MULLERBOT_MOCK')) {

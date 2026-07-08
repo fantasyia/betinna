@@ -61,4 +61,32 @@ describe('KnowledgeSearchService — piso de similaridade semântica (#33)', () 
     const r = await svc.buscar('emp-1', 'x');
     expect(r.map((c) => c.id)).toEqual(['z']);
   });
+
+  it('stoplist: keyword ignora stopwords pt-BR (só casa palavras de conteúdo)', async () => {
+    prisma.$queryRaw.mockResolvedValueOnce([]); // semântico vazio → keyword fallback
+    prisma.knowledgeChunk.findMany.mockResolvedValue([]);
+
+    await svc.buscar('emp-1', 'qual o prazo para entrega da devolução?');
+
+    const where = prisma.knowledgeChunk.findMany.mock.calls[0][0].where;
+    const termos = [
+      ...new Set(
+        (where.OR as Array<{ titulo?: { contains: string }; conteudo?: { contains: string } }>)
+          .map((o) => o.titulo?.contains ?? o.conteudo?.contains)
+          .filter(Boolean),
+      ),
+    ];
+    expect(termos).toEqual(expect.arrayContaining(['prazo', 'entrega', 'devolução']));
+    expect(termos).not.toContain('qual');
+    expect(termos).not.toContain('para');
+  });
+
+  it('stoplist: consulta SÓ de stopwords → retorna [] sem consultar o banco', async () => {
+    prisma.$queryRaw.mockResolvedValueOnce([]); // semântico vazio → cai no keyword
+
+    const r = await svc.buscar('emp-1', 'que para com dos');
+
+    expect(r).toEqual([]);
+    expect(prisma.knowledgeChunk.findMany).not.toHaveBeenCalled();
+  });
 });
