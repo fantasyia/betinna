@@ -230,8 +230,13 @@ export class ContatosService {
     const maisRecente = (a: string | null, b: string): string => (!a || b > a ? b : a);
 
     for (const l of leads) {
+      // CAÇADA-BUG #40: espelha o NULLIF(lower(btrim(email)),'') do SQL. `''?.toLowerCase().trim()` é
+      // '' (não nullish) → o `??` não caía pro `lead:id`, gerando uma chave '' que o SQL nunca produz
+      // → o contato sumia da página (byChave.get não achava). `|| undefined` normaliza email vazio.
       const chave =
-        this.sufixoTel(l.contatoTelefone) ?? l.contatoEmail?.toLowerCase().trim() ?? `lead:${l.id}`;
+        this.sufixoTel(l.contatoTelefone) ??
+        (l.contatoEmail?.trim().toLowerCase() || undefined) ??
+        `lead:${l.id}`;
       const c = pegar(chave);
       if (!c.tipos.includes('LEAD')) c.tipos.push('LEAD');
       c.leadId = l.id;
@@ -247,8 +252,11 @@ export class ContatosService {
     }
 
     for (const cl of clientes) {
+      // #40: mesmo NULLIF do SQL — email vazio vira undefined (senão chave '' que o SQL não gera).
       const chave =
-        this.sufixoTel(cl.telefone) ?? cl.email?.toLowerCase().trim() ?? `cliente:${cl.id}`;
+        this.sufixoTel(cl.telefone) ??
+        (cl.email?.trim().toLowerCase() || undefined) ??
+        `cliente:${cl.id}`;
       const c = pegar(chave);
       if (!c.tipos.includes('CLIENTE')) c.tipos.push('CLIENTE');
       c.clienteId = cl.id;
