@@ -596,17 +596,73 @@ describe('AgendaService', () => {
       expect(r.importados).toBe(1);
     });
 
-    it('reconciliação NÃO event-reconcilia itens de tarefa (gtask:)', async () => {
+    it('reconciliação NÃO event-reconcilia itens de tarefa (gtask:) e mantém tarefa ainda presente', async () => {
       userIntegracoes.findByServico.mockResolvedValue({ id: 'conn-1', ativo: true });
+      const amanha = new Date(Date.now() + 86_400_000);
       prisma.agendaItem.findMany
         .mockResolvedValueOnce([])
-        .mockResolvedValueOnce([{ id: 'ag-t', empresaId: 'emp-1', googleEventId: 'gtask:tk-9' }]);
+        .mockResolvedValueOnce([
+          { id: 'ag-t', empresaId: 'emp-1', googleEventId: 'gtask:tk-9', data: amanha },
+        ]);
+      // A tarefa tk-9 AINDA existe no Google → não pode ser removida.
+      googleCalendar.listarTarefas.mockResolvedValue([
+        { id: 'tk-9', title: 'viva', status: 'needsAction', due: '2026-08-01T00:00:00.000Z' },
+      ]);
 
-      await service.sincronizarGoogle(fakeUser({ id: 'u1' }));
+      const r = await service.sincronizarGoogle(fakeUser({ id: 'u1' }));
 
       // gtask: nunca vai pro obterEvento (senão 404 apagaria a tarefa)
       expect(googleCalendar.obterEvento).not.toHaveBeenCalled();
+      // ainda presente na listagem → NÃO remove; e já espelhada → NÃO reimporta
       expect(prisma.agendaItem.deleteMany).not.toHaveBeenCalled();
+      expect(r.removidos).toBe(0);
+    });
+
+    it('CAÇADA-BUG #11: tarefa concluída/apagada no Google (não vem na listagem) é REMOVIDA', async () => {
+      userIntegracoes.findByServico.mockResolvedValue({ id: 'conn-1', ativo: true });
+      const amanha = new Date(Date.now() + 86_400_000);
+      prisma.agendaItem.findMany
+        .mockResolvedValueOnce([]) // pendentes
+        .mockResolvedValueOnce([
+          { id: 'ag-tk', empresaId: 'emp-1', googleEventId: 'gtask:tk-sumida', data: amanha },
+        ]);
+      googleCalendar.listarEventos.mockResolvedValue([]);
+      googleCalendar.listarTarefas.mockResolvedValue([]); // Google não tem mais a tarefa
+
+      const r = await service.sincronizarGoogle(fakeUser({ id: 'u1' }));
+
+      expect(googleCalendar.obterEvento).not.toHaveBeenCalled(); // gtask não passa por evento
+      expect(prisma.agendaItem.deleteMany).toHaveBeenCalledWith({
+        where: { id: 'ag-tk', empresaId: 'emp-1' },
+      });
+      expect(r.removidos).toBe(1);
+    });
+
+    it('CAÇADA-BUG #13: evento all-day MULTI-DIA usa end.date → duração = N dias × 1440', async () => {
+      userIntegracoes.findByServico.mockResolvedValue({ id: 'conn-1', ativo: true });
+      prisma.agendaItem.findMany.mockResolvedValueOnce([]).mockResolvedValueOnce([]);
+      googleCalendar.listarEventos.mockResolvedValue([
+        {
+          id: 'gcal-viagem',
+          status: 'confirmed',
+          summary: 'Viagem 3 dias',
+          start: { date: '2026-07-12' },
+          end: { date: '2026-07-15' }, // exclusivo → 12,13,14 = 3 dias
+        },
+      ]);
+      prisma.agendaItem.create.mockResolvedValue({ id: 'ag-v' });
+
+      await service.sincronizarGoogle(fakeUser({ id: 'u1' }));
+
+      expect(prisma.agendaItem.create).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: expect.objectContaining({
+            titulo: 'Viagem 3 dias',
+            duracao: 4320, // 3 × 1440
+            googleEventId: 'gcal-viagem',
+          }),
+        }),
+      );
     });
   });
 
