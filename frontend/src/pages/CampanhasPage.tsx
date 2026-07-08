@@ -2,6 +2,7 @@ import { useMemo, useRef, useState } from 'react';
 import { api, apiErrorMessage } from '@/lib/api';
 import { formatPercent } from '@/lib/masks';
 import { useApiQuery, type PaginatedResponse } from '@/hooks/useApiQuery';
+import { useDebouncedValue } from '@/hooks/useDebouncedValue';
 import { usePermission } from '@/hooks/usePermission';
 import { PageLayout } from '@/components/PageLayout';
 import { CrmTabs } from '@/components/CrmTabs';
@@ -268,6 +269,7 @@ export default function CampanhasPage() {
 
   const [page, setPage] = useState(1);
   const [search, setSearch] = useState('');
+  const searchDebounced = useDebouncedValue(search, 300); // #46: sem debounce a lista piscava por tecla
   const [statusFilter, setStatusFilter] = useState('');
   const [canalFilter, setCanalFilter] = useState('');
   const [selected, setSelected] = useState<string | null>(null);
@@ -279,11 +281,11 @@ export default function CampanhasPage() {
 
   const listPath = useMemo(() => {
     const qs = new URLSearchParams({ page: String(page), limit: '20' });
-    if (search.trim()) qs.set('search', search.trim());
+    if (searchDebounced.trim()) qs.set('search', searchDebounced.trim());
     if (statusFilter) qs.set('status', statusFilter);
     if (canalFilter) qs.set('canal', canalFilter);
     return `/campanhas?${qs.toString()}`;
-  }, [page, search, statusFilter, canalFilter]);
+  }, [page, searchDebounced, statusFilter, canalFilter]);
 
   const { data: pageResp, loading, error, refetch } =
     useApiQuery<PaginatedResponse<Campanha>>(listPath);
