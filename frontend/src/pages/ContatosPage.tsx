@@ -119,6 +119,9 @@ export default function ContatosPage() {
 
   useEffect(() => {
     setPage(1);
+    // #16: limpa a seleção ao trocar filtro — senão uma ação em lote (excluir/mover/tag) atingiria
+    // contatos que não estão mais visíveis na tela.
+    setSelected(new Map());
   }, [buscaDebounced, tipo]);
 
   const listPath = useMemo(() => {

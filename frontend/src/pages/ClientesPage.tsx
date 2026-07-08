@@ -188,6 +188,11 @@ export default function ClientesPage() {
   // Bulk selection
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [bulkAction, setBulkAction] = useState<'rep' | 'tags' | 'status' | 'delete' | null>(null);
+  // #16: limpa a seleção quando QUALQUER filtro muda — senão uma ação em lote (excluir/mover rep)
+  // atingiria clientes que não estão mais visíveis na tela.
+  useEffect(() => {
+    setSelectedIds(new Set());
+  }, [buscaDebounced, status, omie, lista]);
   const currentPageIds = page$?.data.map((c) => c.id) ?? [];
   const allCurrentSelected =
     currentPageIds.length > 0 && currentPageIds.every((id) => selectedIds.has(id));
