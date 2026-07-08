@@ -1,4 +1,9 @@
 import { Injectable } from '@nestjs/common';
+import { BusinessRuleException } from '@shared/errors/app-exception';
+import { ErrorCode } from '@shared/errors/error-codes';
+
+/** Teto de desconto por ITEM (%). Acima disto o override é rejeitado (não reprecificado em silêncio). */
+const MAX_DESCONTO_ITEM_PCT = 80;
 
 export interface ItemInput {
   quantidade: number;
@@ -61,11 +66,21 @@ export class PedidoPricingService {
     override?: number | null;
     descontoExplicito?: number | null;
   }): ItemInput {
-    const explicito = Math.min(80, Math.max(0, input.descontoExplicito ?? 0));
+    const explicito = Math.min(MAX_DESCONTO_ITEM_PCT, Math.max(0, input.descontoExplicito ?? 0));
     const { override, precoBase } = input;
     if (override != null && precoBase > 0 && override < precoBase) {
       const precoFinalDesejado = override * (1 - explicito / 100);
-      const efetivo = Math.min(80, Math.max(0, (1 - precoFinalDesejado / precoBase) * 100));
+      const efetivo = Math.max(0, (1 - precoFinalDesejado / precoBase) * 100);
+      // DECISÃO Leo (2026-07-08): override que implica desconto EFETIVO acima do teto por item é
+      // REJEITADO — antes era reprecificado em silêncio pro teto (o item saía mais caro que o valor
+      // que o rep digitou, sem aviso, e o cliente da proposta via um preço diferente do negociado).
+      if (efetivo > MAX_DESCONTO_ITEM_PCT) {
+        throw new BusinessRuleException(
+          `Desconto do item (${efetivo.toFixed(1)}%) acima do teto de ${MAX_DESCONTO_ITEM_PCT}%. ` +
+            `Ajuste o preço/valor do item.`,
+          ErrorCode.DESCONTO_ACIMA_TETO,
+        );
+      }
       return { quantidade: input.quantidade, precoUnitario: precoBase, desconto: efetivo };
     }
     // Override ausente, ou >= base (sem desconto implícito): usa override ?? base + desconto explícito.
