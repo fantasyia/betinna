@@ -396,7 +396,14 @@ export class ConversarIaService {
       this.logger.warn(
         `Prompt ${cfg.promptId} atingiu o teto de tokens — CONVERSAR_IA pulado (exec ${execucaoId})`,
       );
-      return { aguardando: false };
+      // CAÇADA-BUG #17: retornava `{ aguardando: false }` cru (sem pulado/roteado) → o executor caía
+      // no seguimento genérico e disparava TODAS as saídas (classificou+timeout+erro) de uma vez.
+      // Marca `pulado` (o que o comentário sempre disse) → encerra a execução limpa, sem ramos.
+      return {
+        aguardando: false,
+        pulado: true,
+        motivo: 'prompt atingiu o teto de tokens — abordagem pulada',
+      };
     }
 
     const systemPrompt = interpolate(
