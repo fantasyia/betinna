@@ -128,13 +128,21 @@ import { RODAR_BACKGROUND } from '@shared/utils/service-type';
       }),
     }),
 
-    // Rate limit global com 3 buckets nomeados (Sprint 2 P1):
+    // Rate limit global com 4 buckets nomeados (Sprint 2 P1):
+    //  - default: 300 req/min — alvo dos overrides @Throttle({ default: {...} }) por rota
     //  - short: 10 req/s — burst protection
     //  - medium: 100 req/min — general API
     //  - long: 300 req/min — sustained per-user throughput
     //
-    // Endpoints específicos (auth, webhooks, whatsapp) podem aplicar
-    // @Throttle({ <bucket>: { limit, ttl } }) para sobrescrever.
+    // CAÇADA-BUG #19: os 18 decorators `@Throttle({ default: {...} })` (login 10/15min, bootstrap
+    // 3/15min, import 5/min, propostas, mullerbot, nps, whatsapp, catálogo-share) eram NO-OP — não
+    // existia bucket 'default', então o guard nunca lia o override e o login ficava só nos limites
+    // globais (~6000 tentativas/h por IP em vez de 40). Adicionar o bucket 'default' faz TODOS os
+    // overrides passarem a valer. Como o guard exige `.every()` (todos os buckets), um override
+    // STRICTER (login 10/15min) vira o gargalo e passa a proteger de fato. ⚠️ Overrides que queriam
+    // AUMENTAR o cap (webhooks 200/min) seguem limitados pelo medium=100/min — sem regressão (já era
+    // assim quando o override era no-op); pra webhooks passarem de 100/min, usar @SkipThrottle nos
+    // buckets medium/long (follow-up).
     //
     // Storage: Redis (compartilhado entre réplicas). Em ambiente sem Redis
     // (test) cai pra in-memory automaticamente — `skipIf` faz bail.
@@ -142,6 +150,8 @@ import { RODAR_BACKGROUND } from '@shared/utils/service-type';
       inject: [EnvService],
       useFactory: (env: EnvService) => ({
         throttlers: [
+          // base permissiva (só vale onde não há override); rotas normais já são capadas por medium.
+          { name: 'default', ttl: seconds(60), limit: 300 },
           { name: 'short', ttl: seconds(1), limit: 10 },
           { name: 'medium', ttl: seconds(60), limit: 100 },
           { name: 'long', ttl: seconds(60), limit: 300 },
