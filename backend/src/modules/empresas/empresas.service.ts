@@ -90,7 +90,12 @@ export class EmpresasService {
     return (emp?.config as Record<string, unknown> | null) ?? {};
   }
 
-  /** Merge raso (top-level) do patch na config — o front manda sub-objetos completos. */
+  /**
+   * Merge de 1 NÍVEL do patch na config. CAÇADA-BUG #53: vários sub-schemas do config são `.partial()`,
+   * então um PATCH parcial (ex.: `envioWhatsapp: { maxPorMinuto: 10 }`) com merge raso substituía o
+   * sub-objeto INTEIRO e apagava as chaves-irmãs já salvas (jitterMinSeg, etc). Agora, quando a chave é
+   * objeto simples nos DOIS lados, funde 1 nível (preserva as irmãs); arrays/escalares substituem.
+   */
   async patchConfig(
     user: AuthenticatedUser,
     patch: TenantConfigPatchDto,
@@ -104,7 +109,14 @@ export class EmpresasService {
       const rows = await tx.$queryRaw<Array<{ config: unknown }>>`
         SELECT "config" FROM "Empresa" WHERE "id" = ${empresaId} FOR UPDATE`;
       const atual = (rows[0]?.config as Record<string, unknown> | null) ?? {};
-      const merged = { ...atual, ...patch };
+      const ehObjetoSimples = (x: unknown): x is Record<string, unknown> =>
+        typeof x === 'object' && x !== null && !Array.isArray(x);
+      const merged: Record<string, unknown> = { ...atual };
+      for (const [k, v] of Object.entries(patch as Record<string, unknown>)) {
+        const cur = atual[k];
+        // Objeto nos dois lados → funde 1 nível (não apaga as chaves-irmãs); senão substitui.
+        merged[k] = ehObjetoSimples(cur) && ehObjetoSimples(v) ? { ...cur, ...v } : v;
+      }
       await tx.empresa.update({
         where: { id: empresaId },
         data: { config: merged as Prisma.InputJsonValue },
