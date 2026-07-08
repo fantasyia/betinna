@@ -68,12 +68,18 @@ if (typeof navigator !== 'undefined' && 'serviceWorker' in navigator) {
 void registerPwa({
   onNeedRefresh: (accept) => {
     if (typeof window === 'undefined') return;
-    // Emite evento que o componente PwaBanner escuta
-    window.dispatchEvent(
-      new CustomEvent('pwa:needRefresh', { detail: { accept } }),
-    );
-    // Fallback caso o banner não monte em 3s
+    // CAÇADA-BUG #42: o fallback window.confirm rodava SEMPRE, 3s após o banner — o usuário via os
+    // DOIS (banner bonito + confirm nativo por cima) a cada deploy. Agora o PwaBanner acusa recebimento
+    // (pwa:bannerAck) e cancela o fallback; o confirm só aparece se o banner NÃO montou em 3s.
+    let bannerRespondeu = false;
+    const onAck = () => {
+      bannerRespondeu = true;
+    };
+    window.addEventListener('pwa:bannerAck', onAck, { once: true });
+    window.dispatchEvent(new CustomEvent('pwa:needRefresh', { detail: { accept } }));
     setTimeout(() => {
+      window.removeEventListener('pwa:bannerAck', onAck);
+      if (bannerRespondeu) return; // banner assumiu → sem confirm nativo
       if (window.confirm('Nova versão do app disponível. Recarregar agora?')) {
         void accept();
       }
