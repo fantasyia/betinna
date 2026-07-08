@@ -94,13 +94,21 @@ describe('PedidoPricingService', () => {
 
   describe('resolverItemComOverride (CAÇADA-BUG #2)', () => {
     it('override ABAIXO do preço base vira desconto EFETIVO (teto enxerga)', () => {
-      // base 100, override 10 → 90% de desconto disfarçado. precoUnitario volta pra base.
-      const r = svc.resolverItemComOverride({ quantidade: 1, precoBase: 100, override: 10 });
+      // base 100, override 25 → 75% de desconto disfarçado. precoUnitario volta pra base.
+      const r = svc.resolverItemComOverride({ quantidade: 1, precoBase: 100, override: 25 });
       expect(r.precoUnitario).toBe(100);
-      expect(r.desconto).toBeCloseTo(80, 4); // clamp em 80% (teto de item)
-      // sem clamp: 100→25 seria 75%
-      const r2 = svc.resolverItemComOverride({ quantidade: 1, precoBase: 100, override: 25 });
-      expect(r2.desconto).toBeCloseTo(75, 4);
+      expect(r.desconto).toBeCloseTo(75, 4);
+    });
+
+    it('DECISÃO: override que implica desconto > 80% é REJEITADO (não reprecifica em silêncio)', () => {
+      // base 100, override 10 → 90% efetivo. Antes: clamp silencioso pra 80% (item saía a R$20).
+      // Agora: lança BusinessRuleException — o rep vê que o desconto é alto demais.
+      expect(() =>
+        svc.resolverItemComOverride({ quantidade: 1, precoBase: 100, override: 10 }),
+      ).toThrow(/teto/i);
+      // Exatamente no teto (base 100, override 20 → 80%) ainda passa.
+      const noTeto = svc.resolverItemComOverride({ quantidade: 1, precoBase: 100, override: 20 });
+      expect(noTeto.desconto).toBeCloseTo(80, 4);
     });
 
     it('compõe override implícito + desconto explícito', () => {
