@@ -503,20 +503,34 @@ export class ComissoesService {
     // Mesmo ADMIN vê seu próprio resumo via empresa ativa (não cross-tenant)
     const repId = user.id;
     const ano = new Date().getUTCFullYear();
-    const historico = await this.prisma.comissao.findMany({
-      where: {
-        representanteId: repId,
-        ...this.tenantFilter(user),
-      },
-      orderBy: [{ ano: 'desc' }, { mes: 'desc' }],
-      take: 12,
-      include: comissaoInclude,
-    });
-    const totalRecebido = historico
-      .filter((c) => c.ano === ano && c.pago)
+    const [historico, registrosDoAno] = await Promise.all([
+      // Histórico EXIBIDO: os 12 lançamentos mais recentes.
+      this.prisma.comissao.findMany({
+        where: {
+          representanteId: repId,
+          ...this.tenantFilter(user),
+        },
+        orderBy: [{ ano: 'desc' }, { mes: 'desc' }],
+        take: 12,
+        include: comissaoInclude,
+      }),
+      // CAÇADA-BUG #26: os TOTAIS anuais precisam de TODOS os lançamentos do ano. Um usuário com
+      // linhas REP + GERENTE no mesmo mês (2/mês) tem até 24/ano — o `take: 12` cobria só ~6 meses e
+      // o "recebido no ano" saía subreportado ~pela metade. Query separada escopada ao ano, sem take.
+      this.prisma.comissao.findMany({
+        where: {
+          representanteId: repId,
+          ano,
+          ...this.tenantFilter(user),
+        },
+        select: { totalComissao: true, pago: true },
+      }),
+    ]);
+    const totalRecebido = registrosDoAno
+      .filter((c) => c.pago)
       .reduce((s, c) => s + Number(c.totalComissao), 0);
-    const totalAReceber = historico
-      .filter((c) => c.ano === ano && !c.pago)
+    const totalAReceber = registrosDoAno
+      .filter((c) => !c.pago)
       .reduce((s, c) => s + Number(c.totalComissao), 0);
     return {
       representanteId: repId,
