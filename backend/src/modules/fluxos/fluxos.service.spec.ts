@@ -217,6 +217,48 @@ describe('FluxosService', () => {
     });
   });
 
+  describe('update', () => {
+    it('CAÇADA-BUG #9: editar grafo de fluxo ATIVO rebaixa p/ RASCUNHO E cancela execuções em voo', async () => {
+      prisma.fluxo.findFirst.mockResolvedValue(fakeFluxo({ status: 'ATIVO' }));
+      prisma.fluxo.update.mockResolvedValue({});
+      prisma.fluxo.findUniqueOrThrow.mockResolvedValue(fakeFluxo({ status: 'RASCUNHO' }));
+
+      await svc.update(fakeUser(), 'fluxo-1', { nos: [], arestas: [] });
+
+      // Igual pausar/arquivar: as execuções PENDENTE/AGUARDANDO/EM_EXECUCAO são canceladas —
+      // senão o bot seguia conversando num fluxo que o usuário "desativou" editando.
+      expect(prisma.fluxoExecucao.updateMany).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: expect.objectContaining({
+            fluxoId: 'fluxo-1',
+            status: { in: ['PENDENTE', 'AGUARDANDO', 'EM_EXECUCAO'] },
+          }),
+          data: expect.objectContaining({ status: 'CANCELADO' }),
+        }),
+      );
+    });
+
+    it('editar fluxo em RASCUNHO NÃO cancela execuções (não estava rodando)', async () => {
+      prisma.fluxo.findFirst.mockResolvedValue(fakeFluxo({ status: 'RASCUNHO' }));
+      prisma.fluxo.update.mockResolvedValue({});
+      prisma.fluxo.findUniqueOrThrow.mockResolvedValue(fakeFluxo({ status: 'RASCUNHO' }));
+
+      await svc.update(fakeUser(), 'fluxo-1', { nos: [], arestas: [] });
+
+      expect(prisma.fluxoExecucao.updateMany).not.toHaveBeenCalled();
+    });
+
+    it('editar só o nome de fluxo ATIVO (sem tocar no grafo) NÃO rebaixa nem cancela', async () => {
+      prisma.fluxo.findFirst.mockResolvedValue(fakeFluxo({ status: 'ATIVO' }));
+      prisma.fluxo.update.mockResolvedValue({});
+      prisma.fluxo.findUniqueOrThrow.mockResolvedValue(fakeFluxo({ status: 'ATIVO' }));
+
+      await svc.update(fakeUser(), 'fluxo-1', { nome: 'Novo nome' });
+
+      expect(prisma.fluxoExecucao.updateMany).not.toHaveBeenCalled();
+    });
+  });
+
   describe('validarGrafo', () => {
     it('lança quando nó ACAO não tem acaoTipo', async () => {
       prisma.fluxo.findFirst.mockResolvedValue(
