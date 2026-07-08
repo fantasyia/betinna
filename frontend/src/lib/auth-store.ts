@@ -210,8 +210,24 @@ async function fetchMe(accessToken: string): Promise<AuthenticatedUser | null> {
 /**
  * Faz refresh via backend (`POST /auth/refresh` que lê cookie httpOnly).
  * Retorna a nova sessão ou null se cookie inválido/ausente.
+ *
+ * CAÇADA-BUG #20: single-flight. No load da página, N requests podem tomar 401 ao MESMO tempo e
+ * chamar isto em paralelo → N `POST /auth/refresh` com o mesmo cookie. O Supabase ROTACIONA o refresh
+ * a cada uso, então o 2º+ pode vir revogado → o backend limpa o cookie → clearSession → logout
+ * espúrio no meio do uso. Memoiza a promise em voo: chamadas concorrentes aguardam a MESMA; a ref é
+ * limpa no settle (próximo ciclo faz um refresh novo).
  */
-export async function refreshAccessToken(): Promise<AuthSession | null> {
+let refreshEmVoo: Promise<AuthSession | null> | null = null;
+
+export function refreshAccessToken(): Promise<AuthSession | null> {
+  if (refreshEmVoo) return refreshEmVoo;
+  refreshEmVoo = doRefreshAccessToken().finally(() => {
+    refreshEmVoo = null;
+  });
+  return refreshEmVoo;
+}
+
+async function doRefreshAccessToken(): Promise<AuthSession | null> {
   try {
     const res = await fetchWithTimeout(`${API_BASE}/api/v1/auth/refresh`, {
       method: 'POST',
