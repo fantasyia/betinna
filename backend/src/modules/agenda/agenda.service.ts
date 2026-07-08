@@ -360,7 +360,7 @@ export class AgendaService {
     // da Betinna também. Best-effort por item (falha em um não derruba os demais).
     const espelhados = await this.prisma.agendaItem.findMany({
       where: { usuarioId: user.id, googleEventId: { not: null }, data: { gte: inicioHoje } },
-      select: { id: true, empresaId: true, googleEventId: true },
+      select: { id: true, empresaId: true, googleEventId: true, data: true },
       take: 500,
     });
     let removidos = 0;
@@ -418,7 +418,15 @@ export class AgendaService {
         // Brasil (UTC-3) cairia no DIA ANTERIOR (21:00 da véspera), sumindo do dia
         // certo. Meio-dia dá folga de ±12h contra qualquer fuso do usuário.
         inicio = new Date(`${ev.start.date}T12:00:00`);
-        duracao = 1440;
+        // CAÇADA-BUG #13: evento all-day MULTI-DIA. Google usa `end.date` EXCLUSIVO (o dia seguinte
+        // ao último). Antes fixávamos 1440 (1 dia) → depois do sync o evento sumia dos dias 2..N.
+        // duração = (end − start) em dias × 1440.
+        const fimAllDay = ev.end?.date ? new Date(`${ev.end.date}T12:00:00`) : null;
+        const dias =
+          fimAllDay && !isNaN(fimAllDay.getTime())
+            ? Math.max(1, Math.round((fimAllDay.getTime() - inicio.getTime()) / 86_400_000))
+            : 1;
+        duracao = dias * 1440;
       } else {
         continue; // sem início utilizável
       }
@@ -488,6 +496,25 @@ export class AgendaService {
       } catch (err) {
         const msg = err instanceof Error ? err.message : String(err);
         this.logger.warn(`Import Google: falha ao importar tarefa ${t.id}: ${msg}`);
+      }
+    }
+
+    // CAÇADA-BUG #11: reconciliação Google → Betinna das TAREFAS (a de eventos pula gtask: pra não
+    // dar 404). `listarTarefas` devolve só as NÃO concluídas com due na janela; uma tarefa concluída
+    // ou apagada no Google não vem → some daqui também. Apaga os AgendaItem gtask: FUTUROS dentro da
+    // janela cujo id não veio na listagem atual (fora da janela não dá pra afirmar que sumiu).
+    const gidsAtuaisTarefas = new Set(
+      tarefas.filter((t) => t.id && t.due).map((t) => `gtask:${t.id}`),
+    );
+    const tarefasLocais = espelhados.filter(
+      (e) => e.googleEventId?.startsWith('gtask:') && e.data >= inicioHoje && e.data <= fimJanela,
+    );
+    for (const item of tarefasLocais) {
+      if (item.googleEventId && !gidsAtuaisTarefas.has(item.googleEventId)) {
+        await this.prisma.agendaItem.deleteMany({
+          where: { id: item.id, empresaId: item.empresaId },
+        });
+        removidos++;
       }
     }
 
