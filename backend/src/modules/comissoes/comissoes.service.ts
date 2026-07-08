@@ -32,6 +32,10 @@ type ComissaoWithRel = Prisma.ComissaoGetPayload<{ include: typeof comissaoInclu
  */
 const STATUS_COMISSIONAVEL = ['ENVIADO_OMIE', 'PAGO', 'EM_SEPARACAO', 'ENVIADO', 'ENTREGUE'];
 
+// % de comissão do REP quando o usuário não tem `comissaoPadrao` configurada (mesmo default do
+// pedido — pedido-pricing.service usa 5). CAÇADA-BUG #5.
+const COMISSAO_PADRAO_FALLBACK_PCT = 5;
+
 @Injectable()
 export class ComissoesService {
   private readonly logger = new Logger(ComissoesService.name);
@@ -223,20 +227,25 @@ export class ComissoesService {
           0,
           Number(row._sum.total ?? 0) - Number(row._sum.valorDevolvido ?? 0),
         );
-        // Escalonada: comissão = faturamento LÍQUIDO × % da faixa; snapshot do % usado.
-        // Fixa (default): soma do `comissao` menos o estornado.
+        // CAÇADA-BUG #5: comissão REP = faturamento LÍQUIDO × % efetivo.
+        //  - Escalonada: % da faixa por faturamento.
+        //  - Fixa (default): comissaoPadrao do rep (D46), fallback 5%.
+        // Antes a fixa somava `pedido.comissao` (gravado com 5% HARDCODED no create), ignorando a
+        // comissaoPadrao configurada → rep de 8% recebia 5% e o snapshot `percentual` (que já usava
+        // comissaoPadrao) contradizia o valor pago. Como `totalVendas` já é líquido de devolução,
+        // multiplicar pelo pct cobre o estorno na % correta (não precisa subtrair comissaoEstornada,
+        // que também estava a 5%).
         const escalonada = comissaoCfg.modelo === 'escalonada_por_faturamento';
-        const pctFaixa = escalonada ? faixaPercentual(comissaoCfg.faixas, totalVendas) : null;
-        const totalComissao = escalonada
-          ? Math.round(totalVendas * ((pctFaixa ?? 0) / 100) * 100) / 100
-          : Math.max(0, Number(row._sum.comissao ?? 0) - Number(row._sum.comissaoEstornada ?? 0));
+        const pctRep = escalonada
+          ? faixaPercentual(comissaoCfg.faixas, totalVendas)
+          : (pctPorRep.get(row.representanteId) ?? COMISSAO_PADRAO_FALLBACK_PCT);
+        const totalComissao = Math.round(totalVendas * ((pctRep ?? 0) / 100) * 100) / 100;
         // Só acumula/conta como novo quando o registro será de fato gravado (não no-op).
         if (!jaExistentes.has(`${row.representanteId}:REP`)) {
           totalVendasAgg += totalVendas;
           totalComissaoAgg += totalComissao;
           registrosNovos += 1;
         }
-        const pctRep = escalonada ? pctFaixa : (pctPorRep.get(row.representanteId) ?? null);
         return this.prisma.comissao.upsert({
           where: {
             empresaId_representanteId_tipo_ano_mes: {

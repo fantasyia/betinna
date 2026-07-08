@@ -112,6 +112,29 @@ describe('ComissoesService', () => {
       });
     });
 
+    it('CAÇADA-BUG #5: usa a comissaoPadrao do rep (8%), não o 5% hardcoded do pedido.comissao', async () => {
+      // _sum.comissao vem 500 (5% hardcoded no create), mas o rep é configurado em 8% (D46).
+      // A folha DEVE pagar 8% de 10.000 = 800, e o snapshot % = 8 (consistente).
+      prisma.pedido.groupBy.mockResolvedValue([
+        {
+          representanteId: 'rep-1',
+          _sum: { total: 10_000, comissao: 500 },
+          _count: { _all: 4 },
+        },
+      ]);
+      prisma.usuario.findMany
+        .mockResolvedValueOnce([{ id: 'rep-1', comissaoPadrao: 8 }])
+        .mockResolvedValueOnce([{ id: 'rep-1', gerenteId: null }]);
+
+      const out = await svc.fecharMes(fakeUser(), { mes: 4, ano: 2026, reprocessar: false });
+
+      expect(out.totalComissao).toBe(800); // 8% de 10.000, não 500
+      expect(prisma.comissao.upsert.mock.calls[0][0].create).toMatchObject({
+        totalComissao: 800,
+        percentual: 8,
+      });
+    });
+
     it('desconta estorno de devolução aprovada (líquido no mês do pedido)', async () => {
       prisma.pedido.groupBy.mockResolvedValue([
         {
@@ -254,7 +277,9 @@ describe('ComissoesService', () => {
 
       // 10000.50 + 20000.50 = 30001 (número, não "10000.520000.5")
       expect(out.totalVendas).toBe(30_001);
-      expect(out.totalComissao).toBe(1_501);
+      // #5: folha = vendas líquidas × comissaoPadrao (5%), não mais Σ pedido.comissao.
+      // 500.03 (10000.50×5% arred.) + 1000.03 (20000.50×5% arred.) = 1500.06 — soma numérica.
+      expect(out.totalComissao).toBe(1_500.06);
       expect(typeof out.totalVendas).toBe('number');
 
       // O write da Comissao recebe number (Prisma coage pra Decimal na gravação).
