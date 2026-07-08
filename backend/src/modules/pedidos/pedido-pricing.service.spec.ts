@@ -46,15 +46,23 @@ describe('PedidoPricingService', () => {
       expect(t.descontoGeral).toBe(29.5);
       expect(t.total).toBe(560.5);
       expect(t.comissao).toBe(28.03);
-      expect(t.maxDescontoPercentual).toBe(10);
+      // #21: desconto EFETIVO composto do pior item (10%) com o geral (5%): 1−(0.9)(0.95) = 14,5%.
+      expect(t.maxDescontoPercentual).toBe(14.5);
     });
 
-    it('maxDescontoPercentual considera o maior entre desconto geral e item', () => {
+    it('CAÇADA-BUG #21: maxDescontoPercentual COMPÕE item + geral (não é o maior dos dois)', () => {
       const t = svc.pedidoTotals(
         [{ quantidade: 1, precoUnitario: 10, desconto: 3 }],
-        25, // geral maior
+        25, // geral
       );
-      expect(t.maxDescontoPercentual).toBe(25);
+      // 1 − (1−0.03)(1−0.25) = 1 − 0.7275 = 27,25% (antes retornava 25 = só o maior).
+      expect(t.maxDescontoPercentual).toBe(27.25);
+    });
+
+    it('#21: item 10% + geral 10% = 19% efetivo (rep de teto 10% agora precisa de aprovação)', () => {
+      const t = svc.pedidoTotals([{ quantidade: 1, precoUnitario: 100, desconto: 10 }], 10);
+      expect(t.maxDescontoPercentual).toBe(19); // 1−(0.9)(0.9)
+      expect(svc.excedeTetoDesconto(t, 10)).toBe(true); // 19 > 10 → aprovação
     });
 
     it('capa desconto geral em 50%', () => {

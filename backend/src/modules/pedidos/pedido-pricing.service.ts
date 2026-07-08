@@ -153,9 +153,14 @@ export class PedidoPricingService {
       (m, i) => Math.max(m, Math.min(80, Math.max(0, i.desconto))),
       0,
     );
-    // Teto de aprovação considera SÓ desconto manual (geral + itens).
-    // Desconto à vista é política da empresa — não força aprovação.
-    const maxDescontoPercentual = Math.max(maxItemDescPct, descGeral);
+    // CAÇADA-BUG #21 (regra aprovada pelo Leo 2026-07-08): o teto de aprovação avalia o desconto
+    // EFETIVO composto do pior item — desconto de item e desconto GERAL COMPÕEM (não são o maior dos
+    // dois). Antes usava max(item, geral), então um rep com teto 10% dava 10% no item + 10% geral =
+    // 19% efetivo SEM aprovação. Fórmula: 1 − (1 − item)(1 − geral). Desconto à vista continua FORA
+    // (é política da empresa, não desconto que o rep deu).
+    const maxDescontoPercentual = this.round(
+      (1 - (1 - maxItemDescPct / 100) * (1 - descGeral / 100)) * 100,
+    );
 
     return {
       subtotal,
