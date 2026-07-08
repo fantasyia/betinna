@@ -440,19 +440,28 @@ export class MullerWhatsappService implements OnModuleInit {
         usouCatalogo?: boolean;
         produtosIncluidos?: number;
       } | null = null;
+      const iaPromise = this.muller.responderComoEmpresa(params.empresaId, mensagemIA, historico, {
+        // Puro conversa por padrão; vira RAG quando MULLERBOT_WHATSAPP_CATALOGO=true.
+        incluirCatalogo: this.env.get('MULLERBOT_WHATSAPP_CATALOGO'),
+        // Quebra em balões (mais humano): a IA separa com "|||"; split no envio.
+        quebrarMensagens: cfgBot.quebrarMensagens,
+        maxMensagens: cfgBot.maxMensagens,
+        // Visão: quando o cliente manda foto (e o toggle está ligado).
+        imagemDataUrl,
+      });
+      // CAÇADA-BUG #32: registra o uso de tokens na promise ORIGINAL da IA (uma vez, via .then).
+      // Mesmo que o timeout vença o race abaixo (fallback), a chamada da OpenAI pode concluir DEPOIS e
+      // faturar tokens — sem isto o teto de custo subcontava justamente sob latência alta (quando mais
+      // gasta). Por isso o registro saiu do caminho de sucesso pra cá (senão contaria 2x).
+      void iaPromise
+        .then((r) => {
+          if ((r.tokensIn ?? 0) > 0 || (r.tokensOut ?? 0) > 0) {
+            void this.custo.registrarUso(params.empresaId, r.tokensIn ?? 0, r.tokensOut ?? 0);
+          }
+        })
+        .catch(() => undefined);
       try {
-        resposta = await this.comTimeout(
-          this.muller.responderComoEmpresa(params.empresaId, mensagemIA, historico, {
-            // Puro conversa por padrão; vira RAG quando MULLERBOT_WHATSAPP_CATALOGO=true.
-            incluirCatalogo: this.env.get('MULLERBOT_WHATSAPP_CATALOGO'),
-            // Quebra em balões (mais humano): a IA separa com "|||"; split no envio.
-            quebrarMensagens: cfgBot.quebrarMensagens,
-            maxMensagens: cfgBot.maxMensagens,
-            // Visão: quando o cliente manda foto (e o toggle está ligado).
-            imagemDataUrl,
-          }),
-          TIMEOUT_MS,
-        );
+        resposta = await this.comTimeout(iaPromise, TIMEOUT_MS);
       } catch (err) {
         const m = err instanceof Error ? err.message : String(err);
         this.logger.warn(`[bot] IA falhou conv=${convId} peer=${params.peerId}: ${m}`);
@@ -528,11 +537,8 @@ export class MullerWhatsappService implements OnModuleInit {
         modelo: resposta.modelo,
         status: 'OK',
       });
-      void this.custo.registrarUso(
-        params.empresaId,
-        resposta.tokensIn ?? 0,
-        resposta.tokensOut ?? 0,
-      );
+      // #32: `custo.registrarUso` saiu daqui pro `.then` da iaPromise (registra mesmo quando o timeout
+      // vence o race — senão tokens faturados pós-timeout não entravam no teto).
       this.logger.log(
         `[bot] OK conv=${convId} peer=${params.peerId} modelo=${resposta.modelo ?? '?'} ` +
           `catalogo=${resposta.usouCatalogo ? `on(${resposta.produtosIncluidos ?? 0}prod)` : 'off'} ` +
