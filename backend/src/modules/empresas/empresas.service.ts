@@ -95,6 +95,11 @@ export class EmpresasService {
    * então um PATCH parcial (ex.: `envioWhatsapp: { maxPorMinuto: 10 }`) com merge raso substituía o
    * sub-objeto INTEIRO e apagava as chaves-irmãs já salvas (jitterMinSeg, etc). Agora, quando a chave é
    * objeto simples nos DOIS lados, funde 1 nível (preserva as irmãs); arrays/escalares substituem.
+   *
+   * REVISÃO #R4: com o merge, `undefined` some do JSON e uma chave omitida é PRESERVADA — então o front
+   * não conseguia LIMPAR um campo pro default (salvar virava no-op). Convenção: `null` EXPLÍCITO = remover.
+   * `{ emailTransacional: { fromNome: null } }` apaga só o fromNome (preserva replyTo); `{ x: null }` no
+   * topo remove a seção inteira. As folhas "limpáveis" no DTO são `.nullable()` pra o null passar no zod.
    */
   async patchConfig(
     user: AuthenticatedUser,
@@ -113,9 +118,23 @@ export class EmpresasService {
         typeof x === 'object' && x !== null && !Array.isArray(x);
       const merged: Record<string, unknown> = { ...atual };
       for (const [k, v] of Object.entries(patch as Record<string, unknown>)) {
+        // #R4 — null no topo = remover a seção inteira (volta ao default).
+        if (v === null) {
+          delete merged[k];
+          continue;
+        }
         const cur = atual[k];
-        // Objeto nos dois lados → funde 1 nível (não apaga as chaves-irmãs); senão substitui.
-        merged[k] = ehObjetoSimples(cur) && ehObjetoSimples(v) ? { ...cur, ...v } : v;
+        if (ehObjetoSimples(cur) && ehObjetoSimples(v)) {
+          // Funde 1 nível preservando as irmãs (#53); null numa sub-chave a REMOVE (#R4).
+          const sub: Record<string, unknown> = { ...cur };
+          for (const [sk, sv] of Object.entries(v)) {
+            if (sv === null) delete sub[sk];
+            else sub[sk] = sv;
+          }
+          merged[k] = sub;
+        } else {
+          merged[k] = v;
+        }
       }
       await tx.empresa.update({
         where: { id: empresaId },
