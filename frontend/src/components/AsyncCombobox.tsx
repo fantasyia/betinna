@@ -57,6 +57,9 @@ export function AsyncCombobox<T>({
   const [error, setError] = useState<string | null>(null);
   const debounceRef = useRef<number | null>(null);
   const containerRef = useRef<HTMLDivElement | null>(null);
+  // #50: nº de sequência da busca. Sem isto, uma resposta ANTIGA que chega fora de ordem (ex.: "mol"
+  // resolve depois de "molho premium") sobrescrevia os resultados da busca atual.
+  const seqRef = useRef(0);
 
   // Fechar dropdown ao clicar fora
   useEffect(() => {
@@ -83,6 +86,7 @@ export function AsyncCombobox<T>({
   }, [query, open]);
 
   async function runSearch(q: string) {
+    const seq = ++seqRef.current; // #50: marca esta busca como a mais recente
     setLoading(true);
     setError(null);
     const qs = new URLSearchParams({ limit: '10' });
@@ -92,12 +96,14 @@ export function AsyncCombobox<T>({
     }
     try {
       const r = await api.get<{ data: T[] }>(`${endpoint}?${qs.toString()}`);
+      if (seq !== seqRef.current) return; // chegou uma busca mais nova — descarta esta resposta
       setResults(Array.isArray(r.data) ? r.data : []);
     } catch (err) {
+      if (seq !== seqRef.current) return;
       setError(err instanceof ApiError ? err.message : 'Erro ao buscar');
       setResults([]);
     } finally {
-      setLoading(false);
+      if (seq === seqRef.current) setLoading(false);
     }
   }
 
