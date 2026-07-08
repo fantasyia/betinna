@@ -42,6 +42,40 @@ export interface DescontoAVistaConfig {
  */
 @Injectable()
 export class PedidoPricingService {
+  /**
+   * Normaliza um item com possível `precoUnitarioOverride` no `ItemInput` canônico
+   * (precoUnitario = preço BASE + desconto EFETIVO).
+   *
+   * ⚠️ SEGURANÇA (teto de desconto): um override ABAIXO do preço base é desconto DISFARÇADO.
+   * Sem convertê-lo em desconto explícito, o teto de aprovação (que só lê `desconto`) enxerga 0%
+   * e o REP burla o fluxo de aprovação. Aqui o gap base→override vira desconto efetivo sobre o
+   * preço base (implícito do override + explícito informado), mantendo precoUnitario = base — o
+   * total fica idêntico ao desejado, mas o teto passa a enxergar o desconto real.
+   *
+   * PONTO ÚNICO usado por pedidos E propostas — antes cada um tinha sua cópia e a de propostas
+   * ficou sem a conversão (CAÇADA-BUG #2: override em proposta burlava o teto via proposta→pedido).
+   */
+  resolverItemComOverride(input: {
+    quantidade: number;
+    precoBase: number;
+    override?: number | null;
+    descontoExplicito?: number | null;
+  }): ItemInput {
+    const explicito = Math.min(80, Math.max(0, input.descontoExplicito ?? 0));
+    const { override, precoBase } = input;
+    if (override != null && precoBase > 0 && override < precoBase) {
+      const precoFinalDesejado = override * (1 - explicito / 100);
+      const efetivo = Math.min(80, Math.max(0, (1 - precoFinalDesejado / precoBase) * 100));
+      return { quantidade: input.quantidade, precoUnitario: precoBase, desconto: efetivo };
+    }
+    // Override ausente, ou >= base (sem desconto implícito): usa override ?? base + desconto explícito.
+    return {
+      quantidade: input.quantidade,
+      precoUnitario: override ?? precoBase,
+      desconto: explicito,
+    };
+  }
+
   /** Calcula o total de um item respeitando qtd, preço unitário e desconto %. */
   itemTotal(item: ItemInput): ItemTotal {
     const qty = Math.max(0, Math.floor(item.quantidade));

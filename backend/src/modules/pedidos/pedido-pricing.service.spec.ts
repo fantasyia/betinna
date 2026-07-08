@@ -83,4 +83,46 @@ describe('PedidoPricingService', () => {
       expect(svc.excedeTetoDesconto(totals, 5)).toBe(false);
     });
   });
+
+  describe('resolverItemComOverride (CAÇADA-BUG #2)', () => {
+    it('override ABAIXO do preço base vira desconto EFETIVO (teto enxerga)', () => {
+      // base 100, override 10 → 90% de desconto disfarçado. precoUnitario volta pra base.
+      const r = svc.resolverItemComOverride({ quantidade: 1, precoBase: 100, override: 10 });
+      expect(r.precoUnitario).toBe(100);
+      expect(r.desconto).toBeCloseTo(80, 4); // clamp em 80% (teto de item)
+      // sem clamp: 100→25 seria 75%
+      const r2 = svc.resolverItemComOverride({ quantidade: 1, precoBase: 100, override: 25 });
+      expect(r2.desconto).toBeCloseTo(75, 4);
+    });
+
+    it('compõe override implícito + desconto explícito', () => {
+      // base 100, override 80 (20% implícito) + 10% explícito → efetivo 28%.
+      const r = svc.resolverItemComOverride({
+        quantidade: 1,
+        precoBase: 100,
+        override: 80,
+        descontoExplicito: 10,
+      });
+      expect(r.precoUnitario).toBe(100);
+      expect(r.desconto).toBeCloseTo(28, 4);
+    });
+
+    it('override AUSENTE ou >= base não vira desconto implícito', () => {
+      expect(
+        svc.resolverItemComOverride({ quantidade: 2, precoBase: 100, descontoExplicito: 5 }),
+      ).toEqual({
+        quantidade: 2,
+        precoUnitario: 100,
+        desconto: 5,
+      });
+      // override ACIMA da base (rep cobrando mais): mantém o override como preço, sem desconto.
+      expect(svc.resolverItemComOverride({ quantidade: 1, precoBase: 100, override: 120 })).toEqual(
+        {
+          quantidade: 1,
+          precoUnitario: 120,
+          desconto: 0,
+        },
+      );
+    });
+  });
 });
