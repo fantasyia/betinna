@@ -19,6 +19,10 @@ export interface ConhecimentoRelevante {
  * MUITO mais relevante ainda vence — o bônus só desempata casos próximos.
  */
 const BONUS_TEXTO = 0.05;
+// Similaridade de cosseno mínima pra um chunk ser considerado RELEVANTE. #33: sem piso, os top-K
+// entravam no prompt por mais irrelevantes que fossem (ex.: política de devolução numa pergunta de
+// produto) — poluía a resposta e gastava tokens. ~0.3 é um floor conservador (irrelevante ~0.0-0.2).
+const SCORE_MINIMO_SEMANTICO = 0.3;
 
 /**
  * Busca semântica sobre a base de conhecimento (KnowledgeChunk) com fallback por
@@ -74,7 +78,12 @@ export class KnowledgeSearchService {
             + (CASE WHEN "fonte" = 'MATERIAL' THEN 0 ELSE ${BONUS_TEXTO} END) DESC
         LIMIT ${limit}`;
       if (rows.length === 0) return null;
-      return rows.map((r) => ({ ...r, score: Number(r.score) }));
+      // #33: descarta chunks abaixo do piso de similaridade. Se nenhum passa, retorna null (cai no
+      // keyword, mesmo comportamento de "sem resultado semântico") em vez de injetar lixo no prompt.
+      const relevantes = rows
+        .map((r) => ({ ...r, score: Number(r.score) }))
+        .filter((r) => r.score >= SCORE_MINIMO_SEMANTICO);
+      return relevantes.length > 0 ? relevantes : null;
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
       this.logger.warn(`Busca semântica de conhecimento falhou, caindo no keyword: ${msg}`);
