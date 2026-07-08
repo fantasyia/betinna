@@ -209,23 +209,30 @@ export default function PedidosPage() {
     setSelectedIds(new Set());
   }, [buscaDebounced, status, periodo, dataInicioCustom, dataFimCustom, clienteIdFilter]);
 
-  const listPath = useMemo(() => {
-    const qs = new URLSearchParams({ page: String(page), limit: '20' });
-    if (buscaDebounced.trim()) qs.set('search', buscaDebounced.trim());
-    if (status) qs.set('status', status);
-    if (clienteIdFilter) qs.set('clienteId', clienteIdFilter);
+  // #43: TODOS os filtros num objeto só — usado pela LISTA e pelo EXPORT (senão o export ignorava
+  // período/cliente e gerava um relatório com a empresa inteira). Sem page/limit.
+  const filtrosQuery = useMemo(() => {
+    const q: Record<string, string> = {};
+    if (buscaDebounced.trim()) q.search = buscaDebounced.trim();
+    if (status) q.status = status;
+    if (clienteIdFilter) q.clienteId = clienteIdFilter;
     if (periodo === 'custom') {
       // #14: parse LOCAL (não UTC) pra não esconder os registros do dia certo.
-      if (dataInicioCustom) qs.set('dataInicio', inicioDoDiaLocalISO(dataInicioCustom));
-      if (dataFimCustom) qs.set('dataFim', fimDoDiaLocalISO(dataFimCustom));
+      if (dataInicioCustom) q.dataInicio = inicioDoDiaLocalISO(dataInicioCustom);
+      if (dataFimCustom) q.dataFim = fimDoDiaLocalISO(dataFimCustom);
     } else if (periodo !== 'todos') {
       const dias = periodo === '30d' ? 30 : periodo === '90d' ? 90 : 365;
       const inicio = new Date();
       inicio.setDate(inicio.getDate() - dias);
-      qs.set('dataInicio', inicio.toISOString());
+      q.dataInicio = inicio.toISOString();
     }
+    return q;
+  }, [buscaDebounced, status, clienteIdFilter, periodo, dataInicioCustom, dataFimCustom]);
+
+  const listPath = useMemo(() => {
+    const qs = new URLSearchParams({ page: String(page), limit: '20', ...filtrosQuery });
     return `/pedidos?${qs.toString()}`;
-  }, [page, buscaDebounced, status, periodo, dataInicioCustom, dataFimCustom, clienteIdFilter]);
+  }, [page, filtrosQuery]);
 
   const { data: pageResp, loading, error, refetch } = useApiQuery<PaginatedResponse<Pedido>>(listPath);
   // Config do tenant — rótulos/cores custom do lifecycle (ConfiguracaoTenant).
@@ -235,9 +242,9 @@ export default function PedidosPage() {
   async function handleExport(formato: 'csv' | 'xlsx' | 'docx' | 'pdf') {
     setExporting(true);
     try {
-      const query: Record<string, string> = {};
-      if (search.trim()) query.search = search.trim();
-      if (status) query.status = status;
+      // #43: exporta com os MESMOS filtros da lista (período/cliente/status/busca) — antes só mandava
+      // search+status → o arquivo trazia TODOS os pedidos da empresa (relatório errado).
+      const query: Record<string, string> = { ...filtrosQuery };
       const filename = `pedidos-${new Date().toISOString().slice(0, 10)}.${formato}`;
       const columns = [
         { header: 'Número', value: (p: Pedido) => String(p.numero) },
