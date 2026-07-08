@@ -40,6 +40,7 @@ const makePrismaMock = () => ({
   } satisfies MockModel,
   fluxoExecucaoLog: {
     create: vi.fn().mockResolvedValue({}),
+    count: vi.fn().mockResolvedValue(0), // #18: contador de passos (0 = longe do teto anti-loop)
   } satisfies MockModel,
   cliente: {
     findFirst: vi.fn().mockResolvedValue(null),
@@ -459,6 +460,31 @@ describe('FluxoExecutorService', () => {
         { execucaoId: 'exec-1', noId: 'no-main' },
         expect.any(Object),
       );
+    });
+
+    it('CAÇADA-BUG #18: aborta (FALHOU) quando atinge o teto de passos — anti-loop', async () => {
+      prisma.fluxoExecucao.findUnique.mockResolvedValue(fakeExecucao({ status: 'EM_EXECUCAO' }));
+      prisma.fluxoExecucaoLog.count.mockResolvedValue(500); // já rodou 500 passos (teto)
+
+      await service.executarPasso('exec-1', 'no-1', 'job-test');
+
+      // Marca FALHOU e NÃO segue: sem claim, sem carregar nó, sem enfileirar/enviar.
+      expect(prisma.fluxoExecucao.update).toHaveBeenCalledWith(
+        expect.objectContaining({ data: expect.objectContaining({ status: 'FALHOU' }) }),
+      );
+      expect(prisma.fluxoStepClaim.create).not.toHaveBeenCalled();
+      expect(queue.add).not.toHaveBeenCalled();
+    });
+
+    it('#18: passo normal (abaixo do teto) segue rodando', async () => {
+      prisma.fluxoExecucao.findUnique.mockResolvedValue(fakeExecucao({ status: 'EM_EXECUCAO' }));
+      prisma.fluxoExecucaoLog.count.mockResolvedValue(12); // longe do teto
+      prisma.fluxoNo.findUnique.mockResolvedValue(fakeNo({ id: 'no-1' }));
+      prisma.fluxoEdge.findMany.mockResolvedValue([fakeEdge('no-1', 'no-2')]);
+
+      await service.executarPasso('exec-1', 'no-1', 'job-test');
+
+      expect(queue.add).toHaveBeenCalled(); // seguiu normalmente
     });
 
     it('não atualiza status quando já está EM_EXECUCAO', async () => {

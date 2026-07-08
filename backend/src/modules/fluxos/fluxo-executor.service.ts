@@ -42,6 +42,10 @@ const PAPEIS_VALIDOS = new Set(['ADMIN', 'DIRECTOR', 'GERENTE', 'SAC', 'REP']);
 // nunca seguidas na conclusão normal do passo. #17.
 const SAIDAS_RESERVADAS_IA = new Set(['classificou', 'timeout', 'erro']);
 
+// Teto de passos por execução (anti-loop, #18). Um fluxo legítimo — mesmo longo, com vários DELAY e
+// bifurcações — não chega perto disto; um ciclo de ações (A→B→A sem DELAY) estouraria em segundos.
+const MAX_PASSOS_POR_EXECUCAO = 500;
+
 /**
  * Interpola variáveis no formato {{caminho.ponto}} dentro de strings.
  * Exemplo: "Olá {{cliente.nome}}!" com { cliente: { nome: "João" } } → "Olá João!"
@@ -185,6 +189,22 @@ export class FluxoExecutorService {
     }
     if (execucao.status === 'CANCELADO') {
       this.logger.debug(`Execução ${execucaoId} cancelada — passo ignorado`);
+      return;
+    }
+
+    // CAÇADA-BUG #18: guarda anti-loop. Um ciclo de ações no grafo (A→B→A sem DELAY) passa na
+    // validação e rodaria pra SEMPRE, mandando mensagem real a cada volta (só o pacing segura). Como
+    // cada passo grava 1 FluxoExecucaoLog, o total de logs = passos executados. Acima do teto, aborta
+    // ANTES do claim/efeito (não envia mais nada) e marca FALHOU. Fluxo legítimo nunca chega perto.
+    const passosExecutados = await this.prisma.fluxoExecucaoLog.count({ where: { execucaoId } });
+    if (passosExecutados >= MAX_PASSOS_POR_EXECUCAO) {
+      this.logger.error(
+        `Execução ${execucaoId} atingiu ${passosExecutados} passos (teto ${MAX_PASSOS_POR_EXECUCAO}) — possível loop cíclico, abortando`,
+      );
+      await this.marcarFalhou(
+        execucaoId,
+        `Possível loop: ${passosExecutados} passos executados (teto ${MAX_PASSOS_POR_EXECUCAO})`,
+      );
       return;
     }
 
@@ -1129,8 +1149,21 @@ export class FluxoExecutorService {
     // Religar devolve o controle ao bot de fato: além de botLigado, limpa o
     // botPausadoAte (handoff/anti-spam) e o precisaHumano — senão o gate do bot
     // continuaria mudo apesar de "ligado" (mesmo caminho do inbox.setBotLigado).
+    // CAÇADA-BUG #39: casa a conversa pelo SUFIXO EXATO do telefone (D18), NÃO por `contains` — que
+    // casava o sufixo de 8 dígitos no MEIO de outro número (ex.: lead …8765-4321 pausava também o peer
+    // 55 87 6543-2199 de Pernambuco, DDD 87) → pausava/religava o bot na conversa ERRADA. Padrão
+    // canônico do repo (fix 707c3bc): RIGHT(REGEXP_REPLACE(...),8) = sufixo via $queryRaw, restrito a
+    // @s.whatsapp.net (peer pessoal — nunca grupo/@lid).
+    const conversas = await this.prisma.$queryRaw<Array<{ id: string }>>`
+      SELECT "id" FROM "Conversation"
+      WHERE "empresaId" = ${empresaId} AND "canal" = 'WHATSAPP'
+        AND "peerId" LIKE '%@s.whatsapp.net'
+        AND RIGHT(REGEXP_REPLACE(split_part("peerId", '@', 1), '[^0-9]', '', 'g'), 8) = ${sufixo}`;
+    if (conversas.length === 0) {
+      return { leadId, sufixo, botLigado: religar, conversasAtualizadas: 0 };
+    }
     const { count } = await this.prisma.conversation.updateMany({
-      where: { empresaId, canal: 'WHATSAPP', peerId: { contains: sufixo } },
+      where: { id: { in: conversas.map((c) => c.id) }, empresaId },
       data: religar
         ? { botLigado: true, botPausadoAte: null, precisaHumano: false }
         : { botLigado: false },
