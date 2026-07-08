@@ -144,6 +144,29 @@ describe('ComissoesService', () => {
       });
     });
 
+    it('#R7: reprocessar preserva o % congelado do snapshot (não a comissaoPadrao ATUAL)', async () => {
+      // Rep fechou junho a 5% (snapshot percentual=5). Depois virou 8%. Reprocessar NÃO deve pagar 8%
+      // com registro dizendo 5% — preserva o congelado (5%), consistente com o snapshot (igual GERENTE).
+      prisma.pedido.groupBy.mockResolvedValue([
+        {
+          representanteId: 'rep-1',
+          _sum: { total: 10_000, comissao: 500 },
+          _count: { _all: 4 },
+        },
+      ]);
+      prisma.usuario.findMany
+        .mockResolvedValueOnce([{ id: 'rep-1', comissaoPadrao: 8 }]) // comissaoPadrao ATUAL = 8
+        .mockResolvedValueOnce([{ id: 'rep-1', gerenteId: null }]);
+      // existentesRep: snapshot congelado do fechamento original = 5%.
+      prisma.comissao.findMany.mockResolvedValueOnce([{ representanteId: 'rep-1', percentual: 5 }]);
+
+      const out = await svc.fecharMes(fakeUser(), { mes: 4, ano: 2026, reprocessar: true });
+
+      // Paga 5% de 10.000 = 500 (congelado), não 800 (8% atual).
+      expect(out.totalComissao).toBe(500);
+      expect(prisma.comissao.upsert.mock.calls[0][0].update).toMatchObject({ totalComissao: 500 });
+    });
+
     it('desconta estorno de devolução aprovada (líquido no mês do pedido)', async () => {
       prisma.pedido.groupBy.mockResolvedValue([
         {
