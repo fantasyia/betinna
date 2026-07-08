@@ -351,6 +351,14 @@ export class UsersService {
           data: empresaIds.map((empresaId) => ({ usuarioId: id, empresaId })),
         });
       }
+      // CAÇADA-BUG #52: se o usuário DEIXA de ser GERENTE (troca de papel), os REPs que apontavam pra
+      // ele ficam com `gerenteId` pendurado (apontando pra um não-GERENTE) → RepScopeService não os
+      // associa a gerente nenhum e o catch-all do DIRECTOR só vale pra gerenteId null → carteira mal
+      // atribuída. Anula o gerenteId dos subordinados (mesmo cleanup do setStatus/D42). Antes só o
+      // setStatus(INATIVO) fazia isso; o update() de role não.
+      if (dto.role && dto.role !== 'GERENTE' && user.role === 'GERENTE') {
+        await tx.usuario.updateMany({ where: { gerenteId: id }, data: { gerenteId: null } });
+      }
       const updated = await tx.usuario.update({
         where: { id },
         data: dataPatch,
