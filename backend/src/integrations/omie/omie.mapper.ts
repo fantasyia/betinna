@@ -185,14 +185,17 @@ export class OmieMapper {
   }
 
   /**
-   * "dd/MM/yyyy" + "HH:mm:ss" (opcional) → Date.
+   * "dd/MM/yyyy" + "HH:mm:ss" (opcional) → Date (instante UTC real).
    * Aceita também a string completa "dd/MM/yyyy HH:mm:ss" no primeiro parâmetro.
    * Retorna null se formato inválido.
    *
-   * OMIE não declara timezone — assumimos horário do servidor OMIE (BRT/UTC-3).
-   * Pra MVP isso é OK porque comparamos com `ultimoSync` que é nosso `new Date()`
-   * em UTC e a margem de 3h só faria sync re-importar produtos já recentes — não
-   * causa loss, no máximo trabalho duplicado em janela curta.
+   * OMIE devolve horário de parede em BRT (UTC-3, fixo — Brasil sem DST desde 2019) e não declara
+   * timezone. CAÇADA-BUG #10: antes montávamos o Date com `Date.UTC(...)` direto dos números, o que
+   * tratava o BRT como se fosse UTC → o instante saía 3h ANTES do real. Como o sync incremental
+   * compara `alterado <= ultimoSync` (ultimoSync = nosso `new Date()`, UTC real), um registro
+   * alterado no OMIE até 3h APÓS o sync era pulado PARA SEMPRE (ex.: alterado 02:00 BRT = 05:00 UTC,
+   * mas parseado como 02:00 UTC ≤ 04:00 UTC do sync → nunca reimportado). Somamos +3h pra obter o
+   * instante UTC correto (Date.UTC normaliza o overflow de hora/dia).
    */
   static omieDateTimeToDate(
     dateStr: string | undefined | null,
@@ -203,12 +206,13 @@ export class OmieMapper {
     const combinado = timeStr ? `${dateStr} ${timeStr}` : dateStr;
     const m = combinado.match(/^(\d{2})\/(\d{2})\/(\d{4})(?:\s+(\d{2}):(\d{2})(?::(\d{2}))?)?$/);
     if (!m) return null;
+    const BRT_OFFSET_HORAS = 3; // BRT = UTC-3 → soma 3h pra chegar no instante UTC
     return new Date(
       Date.UTC(
         Number(m[3]),
         Number(m[2]) - 1,
         Number(m[1]),
-        m[4] ? Number(m[4]) : 0,
+        (m[4] ? Number(m[4]) : 0) + BRT_OFFSET_HORAS,
         m[5] ? Number(m[5]) : 0,
         m[6] ? Number(m[6]) : 0,
       ),
