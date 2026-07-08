@@ -830,11 +830,15 @@ export class PedidosService {
   async enviarParaOmie(user: AuthenticatedUser, id: string): Promise<PedidoWithRel> {
     const pedido = await this.findById(user, id);
 
-    if (pedido.status === 'ENVIADO_OMIE' || pedido.status === 'PAGO') {
-      throw new BusinessRuleException(`Pedido já está em status ${pedido.status}`);
-    }
     if (pedido.status === 'CANCELADO') {
       throw new BusinessRuleException('Pedido cancelado não pode ser enviado ao OMIE');
+    }
+    // CAÇADA-BUG #4: só RASCUNHO ou AGUARDANDO_APROVACAO (aprovado) podem ir ao OMIE. Todos os
+    // status pós-envio (ENVIADO_OMIE/PAGO/EM_SEPARACAO/ENVIADO/ENTREGUE) já passaram pelo OMIE —
+    // reenviar regredia o status e resetava `enviadoOmieEm`, fazendo o fecharMes contar a comissão
+    // DE NOVO em outro mês (folha paga em dobro). Whitelist fecha todos os estados pós-envio de uma vez.
+    if (pedido.status !== 'RASCUNHO' && pedido.status !== 'AGUARDANDO_APROVACAO') {
+      throw new BusinessRuleException(`Pedido já foi enviado ao OMIE (status ${pedido.status})`);
     }
     if (pedido.status === 'AGUARDANDO_APROVACAO') {
       const apr = pedido.aprovacaoDesconto;
