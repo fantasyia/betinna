@@ -272,6 +272,10 @@ export default function CampanhasPage() {
   const [canalFilter, setCanalFilter] = useState('');
   const [selected, setSelected] = useState<string | null>(null);
   const [creating, setCreating] = useState(false);
+  // CAÇADA-BUG #3: disparar campanha é envio em massa irreversível — exige confirmação e trava
+  // anti-duplo-clique (actingId = campanha em ação; enquanto setado, o botão dela fica disabled).
+  const [confirmAsync, ConfirmDialog] = useConfirm();
+  const [actingId, setActingId] = useState<string | null>(null);
 
   const listPath = useMemo(() => {
     const qs = new URLSearchParams({ page: String(page), limit: '20' });
@@ -286,6 +290,18 @@ export default function CampanhasPage() {
   const { data: resumo } = useApiQuery<Resumo>('/campanhas/resumo');
 
   async function callAction(id: string, action: 'disparar' | 'pausar' | 'cancelar') {
+    if (actingId) return; // guard anti-duplo-clique / ação concorrente
+    if (action === 'disparar') {
+      const ok = await confirmAsync({
+        title: 'Disparar esta campanha agora?',
+        message:
+          'A campanha será enviada para TODA a audiência imediatamente. Os envios já feitos não podem ser desfeitos.',
+        confirmLabel: 'Disparar agora',
+        variant: 'danger',
+      });
+      if (!ok) return;
+    }
+    setActingId(id);
     try {
       await api.post(`/campanhas/${id}/${action}`);
       const labelMap = { disparar: 'disparada', pausar: 'pausada', cancelar: 'cancelada' };
@@ -294,6 +310,8 @@ export default function CampanhasPage() {
       if (selected === id) setSelected(null);
     } catch (err) {
       toast.error('Falha na operação', apiErrorMessage(err));
+    } finally {
+      setActingId(null);
     }
   }
 
@@ -367,6 +385,7 @@ export default function CampanhasPage() {
             <button
               type="button"
               data-testid={`campanha-disparar-${c.id}`}
+              disabled={actingId === c.id}
               onClick={() => callAction(c.id, 'disparar')}
               className={cn(BTN, 'px-2.5 py-1 text-[12px]')}
             >
@@ -377,6 +396,7 @@ export default function CampanhasPage() {
             <button
               type="button"
               data-testid={`campanha-pausar-${c.id}`}
+              disabled={actingId === c.id}
               onClick={() => callAction(c.id, 'pausar')}
               className={cn(BTN_SECONDARY, 'px-2.5 py-1 text-[12px]')}
             >
@@ -480,6 +500,7 @@ export default function CampanhasPage() {
           onSaved={(id) => { setCreating(false); refetch(); setSelected(id); }}
         />
       )}
+      {ConfirmDialog}
     </PageLayout>
   );
 }
@@ -556,7 +577,17 @@ function CampanhaDetailModal({
                 type="button"
                 data-testid="campanha-disparar"
                 disabled={acting}
-                onClick={() => callAction('disparar')}
+                onClick={async () => {
+                  // CAÇADA-BUG #3: envio em massa irreversível → confirma antes.
+                  const ok = await confirmAsync({
+                    title: 'Disparar esta campanha agora?',
+                    message:
+                      'A campanha será enviada para TODA a audiência imediatamente. Os envios já feitos não podem ser desfeitos.',
+                    confirmLabel: 'Disparar agora',
+                    variant: 'danger',
+                  });
+                  if (ok) void callAction('disparar');
+                }}
                 className={BTN}
               >
                 ▶ Disparar agora
