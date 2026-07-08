@@ -1,6 +1,8 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { Cron } from '@nestjs/schedule';
 import { PrismaService } from '@database/prisma.service';
+import { AppException } from '@shared/errors/app-exception';
+import { ErrorCode } from '@shared/errors/error-codes';
 import type { AuthenticatedUser } from '@shared/types/authenticated-user';
 import { CronLockService } from '@shared/utils/cron-lock.service';
 import { CampanhasService } from './campanhas.service';
@@ -57,12 +59,18 @@ export class CampanhaSchedulerJob {
       } catch (err) {
         const msg = err instanceof Error ? err.message : String(err);
         this.logger.error(`Erro ao disparar campanha ${c.id}: ${msg}`);
-        // Marca como CANCELADA com falha apenas se erro for crítico de negócio
-        if (msg.includes('CAMPANHA_SEM_DESTINATARIOS')) {
+        // CAÇADA-BUG #41: checava `msg.includes('CAMPANHA_SEM_DESTINATARIOS')`, mas `msg` é o TEXTO
+        // humano do erro ("Nenhum destinatário encontrado…") — o code fica em `err.code`. O branch era
+        // MORTO → a campanha agendada com 0 destinatários voltava pra RASCUNHO (revert do disparar) e o
+        // agendamento evaporava sem sinal. Agora detecta pelo code e marca CANCELADA (pretendido).
+        if (err instanceof AppException && err.code === ErrorCode.CAMPANHA_SEM_DESTINATARIOS) {
           await this.prisma.campanha.update({
             where: { id: c.id },
             data: { status: 'CANCELADA' },
           });
+          this.logger.warn(
+            `Campanha "${c.nome}" (${c.id}) CANCELADA pelo scheduler — segmento sem destinatários.`,
+          );
         }
       }
     }
