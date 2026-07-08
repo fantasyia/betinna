@@ -472,13 +472,19 @@ export class AgendaService {
     // NÃO aparece no Events API; vem daqui. Vira AgendaItem tipo TAREFA, id
     // prefixado 'gtask:' (pra reconciliação não tratar como evento). Só as com
     // data (due). Precisa do escopo tasks.readonly (reconectar) — se faltar, 403.
+    // #R3 — flag de sucesso da listagem. Se a Tasks API falha (5xx transiente, escopo perdido), NÃO
+    // podemos reconciliar: um `[]` do catch faria a reconciliação abaixo APAGAR todas as tarefas
+    // gtask: locais da janela (perda de dados). Falhou → importa nada E pula a reconciliação.
+    let tarefasListadasOk = true;
     const tarefas = await this.googleCalendar
       .listarTarefas(user.id, inicioHoje, fimJanela)
       .catch((err) => {
+        tarefasListadasOk = false;
         const msg = err instanceof Error ? err.message : String(err);
         this.logger.warn(
           `Import Google: listarTarefas falhou (usuário ${user.id}): ${msg} ` +
-            `— provável falta do escopo tasks.readonly (reconectar) ou Tasks API desabilitada`,
+            `— provável falta do escopo tasks.readonly (reconectar) ou Tasks API desabilitada. ` +
+            `Reconciliação de tarefas PULADA (não apaga nada).`,
         );
         return [] as Awaited<ReturnType<typeof this.googleCalendar.listarTarefas>>;
       });
@@ -514,18 +520,20 @@ export class AgendaService {
     // dar 404). `listarTarefas` devolve só as NÃO concluídas com due na janela; uma tarefa concluída
     // ou apagada no Google não vem → some daqui também. Apaga os AgendaItem gtask: FUTUROS dentro da
     // janela cujo id não veio na listagem atual (fora da janela não dá pra afirmar que sumiu).
-    const gidsAtuaisTarefas = new Set(
-      tarefas.filter((t) => t.id && t.due).map((t) => `gtask:${t.id}`),
-    );
-    const tarefasLocais = espelhados.filter(
-      (e) => e.googleEventId?.startsWith('gtask:') && e.data >= inicioHoje && e.data <= fimJanela,
-    );
-    for (const item of tarefasLocais) {
-      if (item.googleEventId && !gidsAtuaisTarefas.has(item.googleEventId)) {
-        await this.prisma.agendaItem.deleteMany({
-          where: { id: item.id, empresaId: item.empresaId },
-        });
-        removidos++;
+    if (tarefasListadasOk) {
+      const gidsAtuaisTarefas = new Set(
+        tarefas.filter((t) => t.id && t.due).map((t) => `gtask:${t.id}`),
+      );
+      const tarefasLocais = espelhados.filter(
+        (e) => e.googleEventId?.startsWith('gtask:') && e.data >= inicioHoje && e.data <= fimJanela,
+      );
+      for (const item of tarefasLocais) {
+        if (item.googleEventId && !gidsAtuaisTarefas.has(item.googleEventId)) {
+          await this.prisma.agendaItem.deleteMany({
+            where: { id: item.id, empresaId: item.empresaId },
+          });
+          removidos++;
+        }
       }
     }
 
