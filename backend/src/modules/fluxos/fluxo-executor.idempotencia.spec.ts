@@ -59,7 +59,10 @@ function makeService() {
     },
     fluxoNo: { findUnique: vi.fn().mockResolvedValue(waNo()) },
     fluxoEdge: { findMany: vi.fn().mockResolvedValue([]) },
-    fluxoExecucaoLog: { create: vi.fn().mockResolvedValue({}) },
+    fluxoExecucaoLog: {
+      create: vi.fn().mockResolvedValue({}),
+      count: vi.fn().mockResolvedValue(0),
+    },
     fluxoStepClaim: claim,
     cliente: { findFirst: vi.fn().mockResolvedValue({ telefone: '11987654321', nome: 'Carlos' }) },
     $transaction: vi.fn(async (ops: unknown[]) => Promise.all(ops as Promise<unknown>[])),
