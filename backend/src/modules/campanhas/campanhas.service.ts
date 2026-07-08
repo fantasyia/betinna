@@ -270,9 +270,23 @@ export class CampanhasService {
       where: { campanhaId: id, status: 'PENDENTE' },
     });
 
-    // Cria todos os destinatários em bulk
+    // CAÇADA-BUG #7: após deletar os PENDENTE, o que sobra são destinatários JÁ PROCESSADOS
+    // (ENVIADO/LIDO/ERRO) de um disparo anterior (ex.: campanha pausada no meio e reagendada).
+    // Recriar o segmento INTEIRO geraria uma linha nova (= nova chave de idempotência) pra quem já
+    // recebeu → mensagem duplicada em massa. Excluímos esses clientes da recriação. Reenvio de ERRO
+    // é feito pelo fluxo dedicado `reenviar-erros`, não pelo disparar.
+    const jaProcessados = await this.prisma.campanhaDestinatario.findMany({
+      where: { campanhaId: id },
+      select: { clienteId: true },
+    });
+    const clientesJaProcessados = new Set(
+      jaProcessados.map((d) => d.clienteId).filter((c): c is string => !!c),
+    );
+    const novosDestinatarios = destinatarios.filter((d) => !clientesJaProcessados.has(d.clienteId));
+
+    // Cria todos os destinatários em bulk (só os que ainda não foram atingidos nesta campanha)
     await this.prisma.campanhaDestinatario.createMany({
-      data: destinatarios.map((d) => ({
+      data: novosDestinatarios.map((d) => ({
         campanhaId: id,
         clienteId: d.clienteId,
         email: d.email,
