@@ -397,6 +397,11 @@ export default function LeadsPage() {
       toast.success(`Movido para ${etapaNome}`);
     } catch (err) {
       toast.error('Falha ao mover lead', apiErrorMessage(err));
+      // REVERTE o move otimista: o backend não mudou, então o refetch abaixo volta um estado
+      // deep-equal ao cache → o structural sharing do TanStack preserva a MESMA referência de `data`
+      // → o effect [data] NÃO re-dispara e o card ficava travado na coluna errada até um F5. Aqui
+      // ressincronizamos o optimistic com a verdade do servidor (pré-move) na mão.
+      setOptimistic(data ?? null);
     } finally {
       // Libera a sync ANTES do refetch: o GET novo (pós-move) traz o estado correto e o optimistic
       // sincroniza sem pulo. Um poll velho que resolvia no meio do move foi ignorado (contador > 0).
