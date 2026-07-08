@@ -186,7 +186,13 @@ export default function FluxosPage() {
 
   const { data: pageResp, loading, error, refetch } = useApiQuery<PaginatedResponse<FluxoListItem>>(listPath);
 
+  // Guard anti-duplo-clique por fluxo (ref síncrono): sem ele, 2 cliques rápidos em "Arquivar"
+  // mandavam 2× DELETE /fluxos/:id → o 2º dava 404 (já arquivado) e um toast de erro espúrio.
+  const emAcaoRef = useRef<Set<string>>(new Set());
+
   async function callAction(id: string, action: 'ativar' | 'pausar' | 'arquivar' | 'excluir') {
+    if (emAcaoRef.current.has(id)) return;
+    emAcaoRef.current.add(id);
     try {
       if (action === 'excluir') {
         const ok = await confirm({
@@ -209,6 +215,8 @@ export default function FluxosPage() {
       refetch();
     } catch (err) {
       toast.error('Falha na operação', err instanceof ApiError ? err.message : undefined);
+    } finally {
+      emAcaoRef.current.delete(id);
     }
   }
 

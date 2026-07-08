@@ -438,13 +438,31 @@ export default function AgendaPage() {
       arr.push(it);
       map.set(key, arr);
     };
-    const push = (it: AgendaItem) => pushDia(new Date(it.data), it);
+    // Espalha um item por TODOS os dias que ele cobre (viagem/evento multi-dia), não só o inicial.
+    // All-day tem fim EXCLUSIVO (fim = dia seguinte ao último); com hora, cobre até o dia em que
+    // termina. Evento de 1 dia (`ultimo <= ini`) cai no push simples.
+    const pushRange = (item: AgendaItem, iniStr: string, fimStr: string, allDay?: boolean) => {
+      const ini = startOfDay(new Date(iniStr));
+      const fimD = new Date(fimStr);
+      const ultimo = allDay ? addDays(startOfDay(fimD), -1) : startOfDay(fimD);
+      if (isNaN(ini.getTime()) || isNaN(ultimo.getTime()) || ultimo <= ini) {
+        pushDia(new Date(iniStr), item);
+      } else {
+        // cap de 90 dias por segurança contra dados malformados
+        for (let d = ini, n = 0; d <= ultimo && n < 90; d = addDays(d, 1), n++) pushDia(d, item);
+      }
+    };
     // Itens do Betinna + guarda quais já estão espelhados no Google (pra dedup).
     const espelhados = new Set<string>();
     if (items) {
       for (const it of items) {
         if (it.googleEventId) espelhados.add(it.googleEventId);
-        push({ ...it, origem: 'betinna' });
+        const item = { ...it, origem: 'betinna' as const };
+        // #front-agenda: item multi-dia (ex.: viagem espelhada do Google) entrava SÓ no dia inicial —
+        // e como o espelhado deduplica o evento Google correspondente, a viagem sumia dos demais dias.
+        // Espalha pelo range (fim = data + duração).
+        const fimStr = new Date(new Date(it.data).getTime() + it.duracao * 60000).toISOString();
+        pushRange(item, it.data, fimStr, it.allDay);
       }
     }
     // Eventos do Google (só quando conectado e sem filtro de tipo ativo — eles não
@@ -466,22 +484,8 @@ export default function AgendaPage() {
           htmlLink: ev.htmlLink,
           allDay: ev.allDay,
         };
-        // Evento de VÁRIOS dias (ex.: viagem) aparece em TODOS os dias da faixa,
-        // não só no primeiro. All-day do Google tem fim EXCLUSIVO (fim = dia
-        // seguinte ao último); com hora, cobre até o dia em que termina.
-        const ini = startOfDay(new Date(ev.inicio));
-        const fimEv = new Date(ev.fim);
-        const ultimo = ev.allDay
-          ? addDays(startOfDay(fimEv), -1)
-          : startOfDay(fimEv);
-        if (isNaN(ini.getTime()) || isNaN(ultimo.getTime()) || ultimo <= ini) {
-          push(item);
-        } else {
-          // cap de 90 dias por segurança contra dados malformados
-          for (let d = ini, n = 0; d <= ultimo && n < 90; d = addDays(d, 1), n++) {
-            pushDia(d, item);
-          }
-        }
+        // Evento de VÁRIOS dias (ex.: viagem) aparece em TODOS os dias da faixa (mesmo pushRange).
+        pushRange(item, ev.inicio, ev.fim, ev.allDay);
       }
     }
     for (const arr of map.values()) {
