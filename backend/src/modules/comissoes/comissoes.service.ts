@@ -206,6 +206,24 @@ export class ComissoesService {
     });
     const pctPorRep = new Map(repsConfig.map((r) => [r.id, r.comissaoPadrao ?? null]));
 
+    // #R7 — snapshot congelado do REP (igual ao GERENTE): num reprocessamento, o `percentual` já
+    // gravado no fechamento original é a fonte da verdade. Sem isto, o REP recalculava o
+    // `totalComissao` com a comissaoPadrao ATUAL mas MANTINHA o `percentual` antigo → registro
+    // contraditório (folha pagava 8% com snapshot dizendo 5%) e comportamento divergente do GERENTE.
+    const existentesRep = dto.reprocessar
+      ? await this.prisma.comissao.findMany({
+          where: {
+            empresaId,
+            tipo: 'REP',
+            ano: dto.ano,
+            mes: dto.mes,
+            representanteId: { in: repIds },
+          },
+          select: { representanteId: true, percentual: true },
+        })
+      : [];
+    const pctSalvoPorRep = new Map(existentesRep.map((e) => [e.representanteId, e.percentual]));
+
     // Comissão escalonada por faturamento (Empresa.config.comissaoBonus).
     // modelo 'fixa' (default) = soma do `comissao` pré-calculado por pedido (atual).
     const empresaCfg = await this.prisma.empresa.findUnique({
@@ -241,9 +259,12 @@ export class ComissoesService {
         // multiplicar pelo pct cobre o estorno na % correta (não precisa subtrair comissaoEstornada,
         // que também estava a 5%).
         const escalonada = comissaoCfg.modelo === 'escalonada_por_faturamento';
-        const pctRep = escalonada
+        const pctAtual = escalonada
           ? faixaPercentual(comissaoCfg.faixas, totalVendas)
           : (pctPorRep.get(row.representanteId) ?? COMISSAO_PADRAO_FALLBACK_PCT);
+        // #R7 — reprocess preserva o snapshot congelado (igual GERENTE); 1º fechamento usa o atual.
+        const pctSalvo = pctSalvoPorRep.get(row.representanteId);
+        const pctRep = pctSalvo ?? pctAtual;
         const totalComissao = Math.round(totalVendas * ((pctRep ?? 0) / 100) * 100) / 100;
         // Só acumula/conta como novo quando o registro será de fato gravado (não no-op).
         if (!jaExistentes.has(`${row.representanteId}:REP`)) {
