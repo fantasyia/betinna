@@ -449,3 +449,55 @@ describe('MullerBotService.perguntar — montagem do prompt', () => {
     expect(userMsg).toContain('Soya');
   });
 });
+
+describe('MullerBotService.capHistorico — cap do histórico por orçamento de tokens', () => {
+  const build = () =>
+    new MullerBotService(
+      makeHttp() as never,
+      makeEnv() as never,
+      makeUserIntegracoes() as never,
+      makeProdutoSearch() as never,
+      makeCache() as never,
+      makePersona() as never,
+      makeIntegracoes() as never,
+      makeCusto() as never,
+      makeConhecimento() as never,
+    );
+  // Acesso ao método privado puro (só usa estimarTokens = length/4).
+  const cap = (
+    svc: MullerBotService,
+    hist: Array<{ role: 'user' | 'assistant'; content: string }>,
+    orcamento: number,
+  ) =>
+    (
+      svc as unknown as {
+        capHistorico: (h: typeof hist, o: number) => typeof hist;
+      }
+    ).capHistorico(hist, orcamento);
+
+  it('mantém as mensagens MAIS RECENTES quando estoura o orçamento', () => {
+    const svc = build();
+    // Cada content de 40 chars ≈ 10 tokens. Orçamento 25 → cabem só as 2 últimas (20 tok).
+    const hist = [
+      { role: 'user' as const, content: 'a'.repeat(40) },
+      { role: 'assistant' as const, content: 'b'.repeat(40) },
+      { role: 'user' as const, content: 'c'.repeat(40) },
+    ];
+    const out = cap(svc, hist, 25);
+    expect(out.map((h) => h.content[0])).toEqual(['b', 'c']); // a mais antiga ('a') cai fora
+  });
+
+  it('orçamento <= 0 → histórico vazio', () => {
+    const svc = build();
+    expect(cap(svc, [{ role: 'user', content: 'oi' }], 0)).toEqual([]);
+  });
+
+  it('orçamento generoso → mantém tudo em ordem cronológica', () => {
+    const svc = build();
+    const hist = [
+      { role: 'user' as const, content: 'oi' },
+      { role: 'assistant' as const, content: 'olá' },
+    ];
+    expect(cap(svc, hist, 10_000)).toEqual(hist);
+  });
+});
