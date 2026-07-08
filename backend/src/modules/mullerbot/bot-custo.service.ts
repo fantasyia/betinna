@@ -26,6 +26,12 @@ export interface StatusCusto {
  *
  * Brasil não tem horário de verão desde 2019 → fuso fixo UTC-3.
  */
+
+// Tetos default de tokens quando a empresa não salvou a tela Persona (mesmos do statusCusto e do
+// @default do schema). #31: sem estes, verificarTeto não capava nada sem persona.
+const LIMITE_TOKENS_DIA_DEFAULT = 100_000;
+const LIMITE_TOKENS_MES_DEFAULT = 2_000_000;
+
 @Injectable()
 export class BotCustoService {
   private readonly logger = new Logger(BotCustoService.name);
@@ -89,9 +95,13 @@ export class BotCustoService {
    */
   async verificarTeto(empresaId: string): Promise<{ bloqueado: boolean; motivo?: string }> {
     const persona = await this.prisma.mullerBotPersona.findUnique({ where: { empresaId } });
-    if (!persona) return { bloqueado: false };
+    // CAÇADA-BUG #31: antes retornava `bloqueado: false` cedo quando NÃO havia persona salva — mas o
+    // statusCusto já exibe os limites default (100k/2M). Empresa com o bot ligado que nunca abriu a
+    // tela Persona gastava tokens SEM teto nenhum. Aplica os mesmos defaults quando não há persona.
+    const limiteDia = persona?.limiteTokensDiaIn ?? LIMITE_TOKENS_DIA_DEFAULT;
+    const limiteMes = persona?.limiteTokensMesIn ?? LIMITE_TOKENS_MES_DEFAULT;
 
-    if (persona.pausadoPorCustoAte && persona.pausadoPorCustoAte.getTime() > Date.now()) {
+    if (persona?.pausadoPorCustoAte && persona.pausadoPorCustoAte.getTime() > Date.now()) {
       return {
         bloqueado: true,
         motivo: 'Teto de custo do bot atingido (pausado automaticamente).',
@@ -102,7 +112,7 @@ export class BotCustoService {
     // Orçamento único por período: total de tokens (entrada + saída) vs o limite.
     const usadoDia = uso.diaIn + uso.diaOut;
     const usadoMes = uso.mesIn + uso.mesOut;
-    if (usadoDia >= persona.limiteTokensDiaIn || usadoMes >= persona.limiteTokensMesIn) {
+    if (usadoDia >= limiteDia || usadoMes >= limiteMes) {
       return { bloqueado: true, motivo: 'Teto de custo do bot atingido.' };
     }
     return { bloqueado: false };
@@ -131,8 +141,8 @@ export class BotCustoService {
     const persona = await this.prisma.mullerBotPersona.findUnique({ where: { empresaId } });
     const uso = await this.usoAtual(empresaId);
     // Um orçamento por período (total in+out). limiteTokens*In guarda esse total.
-    const limiteDia = persona?.limiteTokensDiaIn ?? 100000;
-    const limiteMes = persona?.limiteTokensMesIn ?? 2000000;
+    const limiteDia = persona?.limiteTokensDiaIn ?? LIMITE_TOKENS_DIA_DEFAULT;
+    const limiteMes = persona?.limiteTokensMesIn ?? LIMITE_TOKENS_MES_DEFAULT;
     const usadoDia = uso.diaIn + uso.diaOut;
     const usadoMes = uso.mesIn + uso.mesOut;
     return {
