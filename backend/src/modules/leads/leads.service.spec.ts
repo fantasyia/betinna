@@ -295,6 +295,29 @@ describe('LeadsService', () => {
       expect(data.etapaDesde).toBeInstanceOf(Date);
     });
 
+    it('CAÇADA-BUG #36: mover pra a MESMA etapa (funilEtapaId) é no-op — não atualiza nem zera SLA', async () => {
+      prisma.lead.findFirst.mockResolvedValue({
+        id: 'l1',
+        empresaId: 'emp-1',
+        representanteId: 'rep-1',
+        etapa: 'QUALIFICANDO',
+        funilEtapaId: 'et-1',
+        funilId: 'funil-1',
+      });
+      prisma.funilEtapa.findFirst.mockResolvedValue({
+        id: 'et-1',
+        tipo: 'ATIVA',
+        ordem: 1,
+        funil: { id: 'funil-1', empresaId: 'emp-1' },
+      });
+      prisma.lead.findUniqueOrThrow.mockResolvedValue({ id: 'l1', etapa: 'QUALIFICANDO' });
+
+      await svc.moverEtapa(fakeUser(), 'l1', { funilEtapaId: 'et-1' }); // MESMA etapa
+
+      // Nenhum update (não zera etapaDesde) e nenhum disparo de LEAD_ETAPA_MUDOU.
+      expect(prisma.lead.updateMany).not.toHaveBeenCalled();
+    });
+
     it('PROPOSTA → GANHO requer motivo (validado no DTO, mas confirma também aqui)', async () => {
       prisma.lead.findFirst.mockResolvedValue({
         id: 'l1',
