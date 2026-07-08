@@ -53,12 +53,12 @@ const pedidoMinimoSchema = z
     tipo: z
       .enum(['sem_minimo', 'por_valor', 'por_peso', 'por_quantidade', 'combinada'])
       .default('sem_minimo'),
-    /** Valor mínimo em R$ (soma dos itens). */
-    valorMin: z.number().nonnegative().optional(),
-    /** Peso mínimo em kg (Σ quantidade × pesoPorUnidade do produto). */
-    pesoMin: z.number().nonnegative().optional(),
-    /** Quantidade mínima de unidades (Σ quantidade dos itens). */
-    quantidadeMin: z.number().int().nonnegative().optional(),
+    /** Valor mínimo em R$ (soma dos itens). `null` = limpar (#R4). */
+    valorMin: z.number().nonnegative().nullable().optional(),
+    /** Peso mínimo em kg (Σ quantidade × pesoPorUnidade do produto). `null` = limpar (#R4). */
+    pesoMin: z.number().nonnegative().nullable().optional(),
+    /** Quantidade mínima de unidades (Σ quantidade dos itens). `null` = limpar (#R4). */
+    quantidadeMin: z.number().int().nonnegative().nullable().optional(),
     /** Combinador pra tipo='combinada': E (todos os limites) ou OU (qualquer um). */
     modo: z.enum(['E', 'OU']).optional(),
   })
@@ -160,36 +160,39 @@ const inboxInternaSchema = z
   .optional();
 
 /** Pacing global de envio de WhatsApp (anti-rajada / humano) — 8º consumidor. */
+// `null` numa folha = limpar/resetar pro default do env (#R4).
 const envioWhatsappSchema = z
   .object({
-    maxPorMinuto: z.number().int().positive().max(600),
-    maxPorMinutoReativo: z.number().int().positive().max(600),
-    jitterMinSeg: z.number().nonnegative().max(120),
-    jitterMaxSeg: z.number().nonnegative().max(120),
+    maxPorMinuto: z.number().int().positive().max(600).nullable(),
+    maxPorMinutoReativo: z.number().int().positive().max(600).nullable(),
+    jitterMinSeg: z.number().nonnegative().max(120).nullable(),
+    jitterMaxSeg: z.number().nonnegative().max(120).nullable(),
   })
   .partial()
   .optional();
 
-// Remetente por-tenant do e-mail transacional (Resend). Vazio = default do env.
+// Remetente por-tenant do e-mail transacional (Resend). Vazio/null = default do env (#R4).
 const emailTransacionalSchema = z
   .object({
-    fromNome: z.string().trim().min(1).max(80),
-    replyTo: z.string().trim().email().max(160),
+    fromNome: z.string().trim().min(1).max(80).nullable(),
+    replyTo: z.string().trim().email().max(160).nullable(),
   })
   .partial()
   .optional();
 
 export const tenantConfigPatchSchema = z
   .object({
-    pedidoStatusLabels: z.record(z.string(), pedidoStatusMetaSchema).optional(),
-    pedidoMinimo: pedidoMinimoSchema,
-    amostraModos: amostraModosSchema,
-    comissaoBonus: comissaoBonusSchema,
-    materiaisVenda: materiaisTiposSchema,
-    devolucaoInterna: devolucaoInternaSchema,
-    inboxInterna: inboxInternaSchema,
-    envioWhatsapp: envioWhatsappSchema,
-    emailTransacional: emailTransacionalSchema,
+    // #R4 — cada seção aceita `null` = remover a seção inteira (reset pro default). O merge no service
+    // trata: null no topo apaga a chave; null numa sub-chave apaga só ela.
+    pedidoStatusLabels: z.record(z.string(), pedidoStatusMetaSchema).nullable().optional(),
+    pedidoMinimo: pedidoMinimoSchema.nullable(),
+    amostraModos: amostraModosSchema.nullable(),
+    comissaoBonus: comissaoBonusSchema.nullable(),
+    materiaisVenda: materiaisTiposSchema.nullable(),
+    devolucaoInterna: devolucaoInternaSchema.nullable(),
+    inboxInterna: inboxInternaSchema.nullable(),
+    envioWhatsapp: envioWhatsappSchema.nullable(),
+    emailTransacional: emailTransacionalSchema.nullable(),
   })
   // .strip() (default zod): DESCARTA chaves desconhecidas em vez de deixá-las entrar no
   // Empresa.config (o front só manda as seções conhecidas; .passthrough deixava lixo crescer).

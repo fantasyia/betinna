@@ -361,5 +361,41 @@ describe('EmpresasService', () => {
 
       expect(result.comissaoBonus.faixas).toEqual([{ de: 0, pct: 5 }]); // substituiu, não concatenou
     });
+
+    it('#R4: null numa sub-chave LIMPA só ela (preserva as irmãs)', async () => {
+      const atual = {
+        emailTransacional: { fromNome: 'Somatec', replyTo: 'x@y.com' },
+      };
+      const tx = {
+        $queryRaw: vi.fn().mockResolvedValue([{ config: atual }]),
+        empresa: { update: vi.fn().mockResolvedValue({}) },
+      };
+      prisma.$transaction.mockImplementation(async (cb: (t: unknown) => unknown) => cb(tx));
+
+      // Cliente quer resetar o fromNome pro default do env → manda null.
+      const result = (await service.patchConfig(fakeUser({ empresaIdAtiva: 'emp-1' }), {
+        emailTransacional: { fromNome: null },
+      } as never)) as Record<string, Record<string, unknown>>;
+
+      // fromNome removido; replyTo preservado (antes o null era ignorado → no-op).
+      expect(result.emailTransacional).toEqual({ replyTo: 'x@y.com' });
+      expect('fromNome' in result.emailTransacional).toBe(false);
+    });
+
+    it('#R4: null no topo remove a seção inteira', async () => {
+      const atual = { pedidoMinimo: { tipo: 'por_valor', valorMin: 500 }, outra: { x: 1 } };
+      const tx = {
+        $queryRaw: vi.fn().mockResolvedValue([{ config: atual }]),
+        empresa: { update: vi.fn().mockResolvedValue({}) },
+      };
+      prisma.$transaction.mockImplementation(async (cb: (t: unknown) => unknown) => cb(tx));
+
+      const result = (await service.patchConfig(fakeUser({ empresaIdAtiva: 'emp-1' }), {
+        pedidoMinimo: null,
+      } as never)) as Record<string, unknown>;
+
+      expect('pedidoMinimo' in result).toBe(false);
+      expect(result.outra).toEqual({ x: 1 });
+    });
   });
 });
