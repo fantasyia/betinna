@@ -49,9 +49,17 @@ export class CampanhaEnvioProcessor extends WorkerHost {
   async onFailed(job: Job<CampanhaEnvioJobData>, err: Error): Promise<void> {
     const attempts = job.opts?.attempts ?? 1;
     if (job.attemptsMade < attempts) {
-      // Ainda há retries pendentes — não vai pro dead-letter
+      // Ainda há retries pendentes — não vai pro dead-letter (destinatário fica PENDENTE).
       return;
     }
+    // #erro-retry: falha FINAL (retries esgotados) → agora sim marca o destinatário ERRO (antes era
+    // no catch do process, a cada tentativa, o que finalizava a campanha cedo demais). Best-effort.
+    await this.prisma.campanhaDestinatario
+      .update({
+        where: { id: job.data.destinatarioId },
+        data: { status: 'ERRO', erro: (err.message ?? String(err)).slice(0, 500) },
+      })
+      .catch(() => undefined);
     // Enriquece com empresaId via campanha (não está no payload)
     let empresaId: string | undefined;
     try {
@@ -229,15 +237,13 @@ export class CampanhaEnvioProcessor extends WorkerHost {
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
       this.logger.error(`Falha ao enviar para destinatário ${destinatarioId}: ${msg}`);
-      await this.prisma.campanhaDestinatario.update({
-        where: { id: destinatarioId },
-        data: { status: 'ERRO', erro: msg.slice(0, 500) },
-      });
-      // CAÇADA-BUG #34: RELANÇA pra o BullMQ contar como falha → dispara o retry (attempts:3 + backoff)
-      // e, esgotados os retries, o @OnWorkerEvent('failed') manda pro dead-letter. Antes o catch
-      // engolia o erro → o job completava "com sucesso" → o retry/dead-letter configurados NUNCA
-      // atuavam (um hiccup transitório do Evolution/Resend virava ERRO permanente). A idempotência
-      // (idemKey já liberada) garante que o retry não duplica o envio.
+      // #erro-retry: NÃO marca ERRO aqui. Numa falha intermediária (ainda há retries), marcar ERRO
+      // tirava o destinatário do PENDENTE → se outro destinatário concluía nesse meio, o
+      // tentarFinalizarCampanha via PENDENTE=0 e finalizava a campanha ENVIADA COM retries em voo
+      // (finalizadoEm errado + reenviarErros podia enfileirar job duplicado). O status ERRO agora é
+      // gravado SÓ na falha final, no @OnWorkerEvent('failed'). Durante os retries o destinatário fica
+      // PENDENTE (segura a finalização). CAÇADA-BUG #34: RELANÇA pra o BullMQ contar como falha →
+      // retry (attempts:3 + backoff) e, esgotados, dead-letter. Idem já liberado → retry não duplica.
       throw err;
     }
 
