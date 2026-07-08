@@ -43,6 +43,9 @@ export function PwaBanner() {
       const detail = (e as CustomEvent<{ accept: () => Promise<void> }>).detail;
       if (detail?.accept) {
         setNeedRefresh(() => detail.accept);
+        // CAÇADA-BUG #42: acusa recebimento — o main.tsx cancela o fallback window.confirm (senão o
+        // usuário via o banner bonito E um confirm nativo 3s depois, a cada deploy).
+        window.dispatchEvent(new CustomEvent('pwa:bannerAck'));
       }
     }
     window.addEventListener('pwa:needRefresh', onNeedRefresh);
