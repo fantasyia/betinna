@@ -104,7 +104,16 @@ export class EmpresasController {
   @Get(':id')
   @Roles('ADMIN', 'GERENTE')
   @ApiOperation({ summary: 'Detalhes de uma empresa' })
-  findOne(@Param('id', new ParseUUIDPipe({ optional: true })) id: string) {
+  findOne(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param('id', new ParseUUIDPipe({ optional: true })) id: string,
+  ) {
+    // CAÇADA-BUG #54: sem este check, um GERENTE lia nome/cnpj/_count de QUALQUER empresa por id (o
+    // findById não filtrava tenant). GERENTE só vê a(s) própria(s); ADMIN (master da plataforma) é
+    // cross-tenant por design. UUID não é enumerável, mas o vazamento cross-tenant era real.
+    if (user.role !== 'ADMIN' && !(user.empresaIds ?? []).includes(id)) {
+      throw new ForbiddenException('Sem acesso a esta empresa', ErrorCode.TENANT_ACCESS_DENIED);
+    }
     return this.empresas.findById(id);
   }
 
