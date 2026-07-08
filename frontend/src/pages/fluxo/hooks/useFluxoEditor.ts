@@ -247,8 +247,10 @@ export function useFluxoEditor({
     setReactFlowInstance(instance);
   }, []);
 
-  // Save
-  async function handleSave() {
+  // Save. CAÇADA-BUG #44: retorna boolean pra o caller (Testar/Disparar) ABORTAR se o save falhar —
+  // antes engolia o erro (só toast) e o teste seguia contra a versão ANTIGA do fluxo (o usuário via
+  // "Falha ao salvar" E "disparado 🚀" juntos, achando que testou a nova).
+  async function handleSave(): Promise<boolean> {
     setSaving(true);
     try {
       const payload = serializarFluxo(nodes, edges, name, triggerTipo);
@@ -256,8 +258,10 @@ export function useFluxoEditor({
       toast.success('Fluxo salvo');
       setDirty(false);
       onSaved?.();
+      return true;
     } catch (err) {
       toast.error('Falha ao salvar', err instanceof ApiError ? err.message : undefined);
+      return false;
     } finally {
       setSaving(false);
     }
@@ -268,7 +272,7 @@ export function useFluxoEditor({
   async function dispararManual() {
     setTestando(true);
     try {
-      if (dirty) await handleSave();
+      if (dirty && !(await handleSave())) return; // #44: save falhou → não dispara a versão antiga
       const r = await api.post<{ execucaoId: string }>('/fluxos/testar', {
         fluxoId,
         contexto: {},
@@ -289,7 +293,7 @@ export function useFluxoEditor({
   async function runTeste(testLeadId: string): Promise<boolean> {
     setTestando(true);
     try {
-      if (dirty) await handleSave();
+      if (dirty && !(await handleSave())) return false; // #44: save falhou → não testa a versão antiga
       const r = await api.post<{ execucaoId: string }>('/fluxos/testar', {
         fluxoId,
         contexto: testLeadId.trim() ? { leadId: testLeadId.trim() } : {},
