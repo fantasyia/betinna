@@ -76,5 +76,21 @@ describe('BotCustoService — orçamento ÚNICO por período (não soma in+out)'
 
       expect((await svc.verificarTeto('emp-1')).bloqueado).toBe(false);
     });
+
+    it('CAÇADA-BUG #31: SEM persona, aplica o teto default (100k dia) — antes não capava nada', async () => {
+      prisma.mullerBotPersona.findUnique.mockResolvedValue(null); // nunca salvou a tela Persona
+      prisma.botUsoTokens.findUnique.mockResolvedValue({ tokensIn: 70000, tokensOut: 40000 }); // 110k
+      prisma.botUsoTokens.aggregate.mockResolvedValue({ _sum: { tokensIn: 110000, tokensOut: 0 } });
+
+      expect((await svc.verificarTeto('emp-1')).bloqueado).toBe(true);
+    });
+
+    it('#31: sem persona e abaixo do default → não bloqueia', async () => {
+      prisma.mullerBotPersona.findUnique.mockResolvedValue(null);
+      prisma.botUsoTokens.findUnique.mockResolvedValue({ tokensIn: 20000, tokensOut: 10000 }); // 30k
+      prisma.botUsoTokens.aggregate.mockResolvedValue({ _sum: { tokensIn: 30000, tokensOut: 0 } });
+
+      expect((await svc.verificarTeto('emp-1')).bloqueado).toBe(false);
+    });
   });
 });
