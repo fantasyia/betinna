@@ -196,24 +196,32 @@ describe('OmieMapper.dateToOmie / omieToDate', () => {
     expect(OmieMapper.omieToDate('')).toBeNull();
   });
 
-  it('omieDateTimeToDate aceita só data (sem hora)', () => {
+  // #10: OMIE dá BRT (UTC-3) → o parser soma +3h pra virar o instante UTC real.
+  it('omieDateTimeToDate aceita só data (sem hora) — 00:00 BRT = 03:00 UTC', () => {
     const d = OmieMapper.omieDateTimeToDate('15/03/2026');
     expect(d).not.toBeNull();
-    expect(d!.getUTCHours()).toBe(0);
+    expect(d!.getUTCHours()).toBe(3);
   });
 
-  it('omieDateTimeToDate aceita data + hora separadas', () => {
+  it('omieDateTimeToDate aceita data + hora separadas (14:30 BRT = 17:30 UTC)', () => {
     const d = OmieMapper.omieDateTimeToDate('15/03/2026', '14:30:00');
     expect(d).not.toBeNull();
-    expect(d!.getUTCHours()).toBe(14);
+    expect(d!.getUTCHours()).toBe(17);
     expect(d!.getUTCMinutes()).toBe(30);
   });
 
-  it('omieDateTimeToDate aceita formato combinado "dd/MM/yyyy HH:mm:ss"', () => {
+  it('omieDateTimeToDate aceita formato combinado "dd/MM/yyyy HH:mm:ss" (14:30 BRT = 17:30 UTC)', () => {
     const d = OmieMapper.omieDateTimeToDate('15/03/2026 14:30:45');
     expect(d).not.toBeNull();
-    expect(d!.getUTCHours()).toBe(14);
+    expect(d!.getUTCHours()).toBe(17);
     expect(d!.getUTCSeconds()).toBe(45);
+  });
+
+  it('#10: hora BRT tardia rola o dia em UTC (22:00 BRT dia 15 = 01:00 UTC dia 16)', () => {
+    const d = OmieMapper.omieDateTimeToDate('15/03/2026 22:00:00');
+    expect(d).not.toBeNull();
+    expect(d!.getUTCDate()).toBe(16);
+    expect(d!.getUTCHours()).toBe(1);
   });
 
   it('omieDateTimeToDate retorna null pra formato inválido', () => {
