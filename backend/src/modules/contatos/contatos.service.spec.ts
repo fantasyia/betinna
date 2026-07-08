@@ -708,5 +708,35 @@ describe('ContatosService', () => {
       // não buscou entidades (nenhum id na página)
       expect(prisma.lead.findMany).not.toHaveBeenCalled();
     });
+
+    it('CAÇADA-BUG #40: lead com e-mail VAZIO (sem telefone) não some da página', async () => {
+      // SQL gera a chave `lead:l1` (NULLIF do e-mail vazio). O JS precisa gerar a MESMA chave — antes
+      // gerava '' (chave que o SQL nunca produz) → byChave.get falhava e o contato sumia.
+      prisma.$queryRaw.mockResolvedValueOnce([
+        { chave: 'lead:l1', lead_ids: ['l1'], cliente_ids: [], conversa_ids: [], total: 1 },
+      ]);
+      prisma.lead.findMany.mockResolvedValue([
+        {
+          id: 'l1',
+          nome: 'Sem Contato',
+          contatoNome: null,
+          contatoTelefone: null, // sem telefone
+          contatoEmail: '', // e-mail VAZIO (escrito fora da API)
+          cidade: null,
+          uf: null,
+          etapa: 'NOVO',
+          clienteId: null,
+          criadoEm: new Date('2026-07-01T10:00:00Z'),
+          representante: null,
+        },
+      ]);
+      prisma.cliente.findMany.mockResolvedValue([]);
+      prisma.conversation.findMany.mockResolvedValue([]);
+
+      const res = await svc.list(adminUser, { page: 1, limit: 20, sortBy: 'recente' });
+
+      expect(res.data).toHaveLength(1); // não sumiu
+      expect(res.data[0].chave).toBe('lead:l1');
+    });
   });
 });
