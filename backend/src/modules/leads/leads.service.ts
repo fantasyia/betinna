@@ -494,6 +494,17 @@ export class LeadsService {
       throw new BusinessRuleException('Informe `etapa` ou `funilEtapaId`');
     }
 
+    // CAÇADA-BUG #36: mover pra a MESMA etapa é NO-OP. Sem este guard, o update zerava `etapaDesde`
+    // (relógio de SLA/aging) e disparava LEAD_ETAPA_MUDOU com de===para → re-disparava o fluxo de
+    // abordagem, e o supersede anti-dup da IA cancelava a conversa em andamento e reabria o opener.
+    // O executor de fluxos já tinha esse guard; o service não. Retorna o lead como está.
+    const mesmaEtapa = dto.funilEtapaId
+      ? novoFunilEtapaId === lead.funilEtapaId
+      : novaEtapaEnum === lead.etapa;
+    if (mesmaEtapa) {
+      return this.prisma.lead.findUniqueOrThrow({ where: { id }, include: leadInclude });
+    }
+
     // Motivo obrigatório pra GANHO/PERDIDO (validação espelhada do DTO mas
     // re-checada aqui pra cobrir o caminho funilEtapaId).
     if ((etapaTipo === 'GANHO' || etapaTipo === 'PERDIDO') && !dto.motivo) {
