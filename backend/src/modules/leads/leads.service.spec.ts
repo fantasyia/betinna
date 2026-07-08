@@ -215,6 +215,47 @@ describe('LeadsService', () => {
       ).rejects.toBeInstanceOf(BusinessRuleException);
       expect(prisma.lead.updateMany).not.toHaveBeenCalled();
     });
+
+    it('CAÇADA-BUG #35: mover só o funil (sem etapa) cai na 1ª etapa ATIVA do funil novo', async () => {
+      prisma.lead.findFirst.mockResolvedValue({
+        id: 'l1',
+        empresaId: 'emp-1',
+        representanteId: 'rep-1',
+        etapa: 'NOVO',
+      });
+      prisma.funil.findFirst.mockResolvedValue({ id: 'funil-B' }); // funil novo válido
+      prisma.funilEtapa.findFirst.mockResolvedValue({ id: 'et-ativa-B' }); // 1ª ATIVA do funil-B
+      prisma.lead.updateMany.mockResolvedValue({ count: 1 });
+      prisma.lead.findUniqueOrThrow.mockResolvedValue({ id: 'l1', etapa: 'NOVO' });
+
+      await svc.update(fakeUser(), 'l1', { funilId: 'funil-B' }); // SEM funilEtapaId
+
+      // Resolveu a 1ª etapa ATIVA e gravou no update (senão o lead sumiria do kanban).
+      expect(prisma.funilEtapa.findFirst).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: { funilId: 'funil-B', tipo: 'ATIVA' },
+          orderBy: { ordem: 'asc' },
+        }),
+      );
+      const data = prisma.lead.updateMany.mock.calls[0][0].data;
+      expect(data.funilEtapaId).toBe('et-ativa-B');
+    });
+
+    it('#35: funil novo sem etapa ativa → erro (não deixa lead órfão)', async () => {
+      prisma.lead.findFirst.mockResolvedValue({
+        id: 'l1',
+        empresaId: 'emp-1',
+        representanteId: 'rep-1',
+        etapa: 'NOVO',
+      });
+      prisma.funil.findFirst.mockResolvedValue({ id: 'funil-vazio' });
+      prisma.funilEtapa.findFirst.mockResolvedValue(null); // sem etapa ativa
+
+      await expect(svc.update(fakeUser(), 'l1', { funilId: 'funil-vazio' })).rejects.toBeInstanceOf(
+        BusinessRuleException,
+      );
+      expect(prisma.lead.updateMany).not.toHaveBeenCalled();
+    });
   });
 
   describe('máquina de estados', () => {
