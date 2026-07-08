@@ -315,6 +315,7 @@ export class FluxosService {
       );
     }
 
+    let rebaixouParaRascunho = false;
     await this.prisma.$transaction(async (tx) => {
       // Se nos/arestas foram fornecidos, faz full replace
       if (dto.nos !== undefined || dto.arestas !== undefined) {
@@ -361,10 +362,23 @@ export class FluxosService {
       // Se estava ATIVO e editou o grafo, volta pra RASCUNHO
       if (existing.status === 'ATIVO' && (dto.nos !== undefined || dto.arestas !== undefined)) {
         updateData.status = 'RASCUNHO';
+        rebaixouParaRascunho = true;
       }
 
       await tx.fluxo.update({ where: { id }, data: updateData });
     });
+
+    // CAÇADA-BUG #9: rebaixar ATIVO→RASCUNHO (edição do grafo) precisa CANCELAR as execuções em voo,
+    // igual pausar/arquivar. Sem isto, execuções PENDENTE/AGUARDANDO/EM_EXECUCAO continuavam rodando
+    // contra o grafo substituído (e o CONVERSAR_IA seguia conversando indefinidamente — o
+    // processarTimeouts filtra fluxo ATIVO, então uma execução AGUARDANDO nunca expirava). O usuário
+    // acha que "desativou" editando, mas o bot continuava.
+    if (rebaixouParaRascunho) {
+      const cancel = await this.cancelarExecucoesEmAndamento(id);
+      this.logger.log(
+        `Fluxo ${id} rebaixado p/ RASCUNHO na edição (${cancel} execução(ões) em voo cancelada(s))`,
+      );
+    }
 
     // Mudou o agendamento (tipo/config do trigger) → zera o cursor do cron pra
     // não ficar preso no próximo disparo da config ANTIGA.
