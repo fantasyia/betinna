@@ -277,6 +277,40 @@ describe('PedidosService', () => {
     expect(prisma.aprovacaoDesconto.create).not.toHaveBeenCalled();
   });
 
+  it('#55 — grava comissao pela comissaoPadrao do rep (não 5% fixo)', async () => {
+    prisma.cliente.findFirst.mockResolvedValue({
+      id: 'cli-1',
+      empresaId: 'emp-1',
+      nome: 'X',
+      omieStatus: 'ATIVO',
+      representanteId: 'rep-1',
+    });
+    prisma.produto.findMany.mockResolvedValue([
+      { id: 'p1', nome: 'Prod', ativo: true, precoTabela: 100 },
+    ]);
+    // Rep com teto 10% E comissaoPadrao 8% (findUnique serve os dois selects).
+    prisma.usuario.findUnique.mockResolvedValue({ tetoDesconto: 10, comissaoPadrao: 8 });
+    prisma.pedido.count.mockResolvedValue(0);
+    prisma.pedido.create.mockResolvedValue({ id: 'ped-9', numero: 'PED-0001', status: 'RASCUNHO' });
+    prisma.pedido.findUnique.mockResolvedValue({
+      id: 'ped-9',
+      numero: 'PED-0001',
+      status: 'RASCUNHO',
+    });
+
+    await svc.create(fakeUser(), {
+      clienteId: 'cli-1',
+      itens: [{ produtoId: 'p1', quantidade: 5, desconto: 0 }], // total 500
+      formaPagamento: 'BOLETO',
+      condicaoPagamento: '30dias',
+      descontoGeral: 0,
+    });
+
+    const args = prisma.pedido.create.mock.calls[0][0];
+    // 500 × 8% = 40 (com 5% fixo daria 25).
+    expect(args.data.comissao).toBe(40);
+  });
+
   it('update que leva desconto acima do teto → AGUARDANDO_APROVACAO + upsert da aprovação (anti-bypass)', async () => {
     // Pedido RASCUNHO existente (1 item, sem desconto) — dentro do teto hoje.
     prisma.pedido.findFirst.mockResolvedValue({

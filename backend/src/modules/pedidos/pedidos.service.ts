@@ -131,6 +131,9 @@ export class PedidosService {
       dto.formaPagamento,
       dto.condicaoPagamento,
     );
+    // #55 — comissão pela % real do rep (folha usa comissaoPadrao); no preview só há rep quando o
+    // próprio rep está montando o pedido.
+    const comissaoPct = await this.resolveComissaoPct(user.role === 'REP' ? user.id : null);
     const totals = this.pedidoPricing.pedidoTotals(
       items.map((i) => ({
         quantidade: i.quantidade,
@@ -138,7 +141,7 @@ export class PedidosService {
         desconto: i.desconto,
       })),
       dto.descontoGeral,
-      COMISSAO_PADRAO_PCT,
+      comissaoPct,
       descAVistaPct,
     );
     const tetoRep = await this.tetoDoRepAtual(user);
@@ -158,6 +161,10 @@ export class PedidosService {
       dto.formaPagamento,
       dto.condicaoPagamento,
     );
+    // representanteId: se rep está criando, é ele; senão pode ser null (admin/gerente)
+    const representanteId = user.role === 'REP' ? user.id : null;
+    // #55 — comissão gravada pela % real do rep responsável (folha usa comissaoPadrao), não 5% fixo.
+    const comissaoPct = await this.resolveComissaoPct(representanteId);
     const totals = this.pedidoPricing.pedidoTotals(
       items.map((i) => ({
         quantidade: i.quantidade,
@@ -165,7 +172,7 @@ export class PedidosService {
         desconto: i.desconto,
       })),
       dto.descontoGeral,
-      COMISSAO_PADRAO_PCT,
+      comissaoPct,
       descAVistaPct,
     );
 
@@ -178,9 +185,6 @@ export class PedidosService {
         ErrorCode.DESCONTO_ACIMA_TETO,
       );
     }
-
-    // representanteId: se rep está criando, é ele; senão pode ser null (admin/gerente)
-    const representanteId = user.role === 'REP' ? user.id : null;
 
     const numero = await this.gerarNumeroPedido(empresaId);
     const status = requerAprovacao ? 'AGUARDANDO_APROVACAO' : 'RASCUNHO';
@@ -354,6 +358,8 @@ export class PedidosService {
         camposGenericos.formaPagamento ?? existing.formaPagamento,
         camposGenericos.condicaoPagamento ?? existing.condicaoPagamento,
       );
+      // #55 — recálculo usa a % real do rep responsável do pedido (folha usa comissaoPadrao).
+      const comissaoPct = await this.resolveComissaoPct(existing.representanteId);
       totalsRecalc = this.pedidoPricing.pedidoTotals(
         itensFinais.map((i) => ({
           quantidade: i.quantidade,
@@ -361,7 +367,7 @@ export class PedidosService {
           desconto: i.desconto,
         })),
         descontoGeralFinal,
-        COMISSAO_PADRAO_PCT,
+        comissaoPct,
         descAVistaPct,
       );
 
@@ -1040,6 +1046,21 @@ export class PedidosService {
       select: { tetoDesconto: true },
     });
     return usuario?.tetoDesconto ?? 0;
+  }
+
+  /**
+   * CAÇADA-BUG #55: o `pedido.comissao` gravado usava 5% FIXO, mas a FOLHA (comissoes.service, #5)
+   * paga pela `comissaoPadrao` do rep responsável (fallback 5%). Resultado: o valor de comissão
+   * exibido no pedido divergia do que o rep de fato recebe (rep de 8% via 5% no pedido). Resolve a
+   * % real do rep; sem rep responsável (admin/gerente criando) → fallback padrão.
+   */
+  private async resolveComissaoPct(representanteId: string | null): Promise<number> {
+    if (!representanteId) return COMISSAO_PADRAO_PCT;
+    const rep = await this.prisma.usuario.findUnique({
+      where: { id: representanteId },
+      select: { comissaoPadrao: true },
+    });
+    return rep?.comissaoPadrao ?? COMISSAO_PADRAO_PCT;
   }
 
   /**
