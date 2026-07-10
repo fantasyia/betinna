@@ -318,6 +318,8 @@ model Empresa {
   knowledgeChunks       KnowledgeChunk[]
   knowledgeDocumentos   KnowledgeDocumento[]
   evolutionInstancias   EvolutionInstancia[]
+  kanbanBoards          KanbanBoard[]
+  kanbanApiTokens       KanbanApiToken[]
 
   @@index([ativo])
 }
@@ -378,6 +380,13 @@ model Usuario {
   respostasRapidas          RespostaRapida[]
   evolutionInstancias       EvolutionInstancia[]
   permissoesOverride        UsuarioPermissao[]
+  kanbanBoardsCriados       KanbanBoard[]
+  kanbanBoardMembros        KanbanBoardMembro[]
+  kanbanCardMembros         KanbanCardMembro[]
+  kanbanItensDelegados      KanbanChecklistItem[]
+  kanbanComentarios         KanbanComentario[]
+  kanbanAtividades          KanbanAtividade[]
+  kanbanApiTokens           KanbanApiToken[]
 
   @@index([role])
   @@index([status])
@@ -2695,4 +2704,240 @@ model Notificacao {
 
   @@index([usuarioId, lidaEm, criadoEm])
   @@index([empresaId, criadoEm])
+}
+
+// ─── KANBAN (estilo Trello) ───────────────────────────────────────────
+// Módulo de quadros visuais + MCP server (docs/kanban-betinna-EM-BATCHES.md).
+// Regras: REP máx 1 board; multi-tenant SEMPRE por empresaId; visibilidade
+// = criador + membros (DIRECTOR/ADMIN veem todos da empresa).
+
+model KanbanBoard {
+  id          String  @id @default(cuid())
+  nome        String
+  descricao   String?
+  corFundo    String  @default("#0079BF")
+  arquivado   Boolean @default(false)
+  empresaId   String
+  criadoPorId String
+
+  empresa   Empresa @relation(fields: [empresaId], references: [id], onDelete: Cascade)
+  criadoPor Usuario @relation(fields: [criadoPorId], references: [id], onDelete: Cascade)
+
+  listas     KanbanLista[]
+  etiquetas  KanbanEtiqueta[]
+  membros    KanbanBoardMembro[]
+  atividades KanbanAtividade[]
+  campos     KanbanCampoPersonalizado[]
+
+  criadoEm     DateTime @default(now())
+  atualizadoEm DateTime @updatedAt
+
+  @@index([empresaId])
+  @@index([criadoPorId])
+}
+
+model KanbanBoardMembro {
+  id        String @id @default(cuid())
+  boardId   String
+  usuarioId String
+  papel     String @default("membro") // "dono" | "membro"
+
+  board   KanbanBoard @relation(fields: [boardId], references: [id], onDelete: Cascade)
+  usuario Usuario     @relation(fields: [usuarioId], references: [id], onDelete: Cascade)
+
+  @@unique([boardId, usuarioId])
+  @@index([usuarioId])
+}
+
+model KanbanLista {
+  id        String  @id @default(cuid())
+  boardId   String
+  nome      String
+  posicao   Float
+  arquivada Boolean @default(false)
+
+  board KanbanBoard  @relation(fields: [boardId], references: [id], onDelete: Cascade)
+  cards KanbanCard[]
+
+  @@index([boardId])
+}
+
+model KanbanCard {
+  id          String    @id @default(cuid())
+  listaId     String
+  titulo      String
+  descricao   String?   @db.Text
+  posicao     Float
+  dataInicio  DateTime?
+  dataEntrega DateTime?
+  concluido   Boolean   @default(false)
+  corCapa     String?
+  arquivado   Boolean   @default(false)
+
+  lista       KanbanLista          @relation(fields: [listaId], references: [id], onDelete: Cascade)
+  etiquetas   KanbanCardEtiqueta[]
+  membros     KanbanCardMembro[]
+  checklists  KanbanChecklist[]
+  comentarios KanbanComentario[]
+  anexos      KanbanAnexo[]
+  campoValores KanbanCampoValor[]
+
+  criadoEm     DateTime @default(now())
+  atualizadoEm DateTime @updatedAt
+
+  @@index([listaId])
+  @@index([dataEntrega])
+}
+
+model KanbanEtiqueta {
+  id      String  @id @default(cuid())
+  boardId String
+  nome    String?
+  cor     String
+
+  board KanbanBoard          @relation(fields: [boardId], references: [id], onDelete: Cascade)
+  cards KanbanCardEtiqueta[]
+
+  @@index([boardId])
+}
+
+model KanbanCardEtiqueta {
+  cardId     String
+  etiquetaId String
+
+  card     KanbanCard     @relation(fields: [cardId], references: [id], onDelete: Cascade)
+  etiqueta KanbanEtiqueta @relation(fields: [etiquetaId], references: [id], onDelete: Cascade)
+
+  @@id([cardId, etiquetaId])
+  @@index([etiquetaId])
+}
+
+model KanbanCardMembro {
+  cardId    String
+  usuarioId String
+
+  card    KanbanCard @relation(fields: [cardId], references: [id], onDelete: Cascade)
+  usuario Usuario    @relation(fields: [usuarioId], references: [id], onDelete: Cascade)
+
+  @@id([cardId, usuarioId])
+  @@index([usuarioId])
+}
+
+model KanbanChecklist {
+  id      String @id @default(cuid())
+  cardId  String
+  titulo  String
+  posicao Float
+
+  card  KanbanCard            @relation(fields: [cardId], references: [id], onDelete: Cascade)
+  itens KanbanChecklistItem[]
+
+  @@index([cardId])
+}
+
+model KanbanChecklistItem {
+  id            String    @id @default(cuid())
+  checklistId   String
+  texto         String
+  concluido     Boolean   @default(false)
+  posicao       Float
+  dataEntrega   DateTime? // ★ Advanced Checklist: prazo por item
+  responsavelId String? // ★ Advanced Checklist: delegado por item (membro do board)
+
+  checklist   KanbanChecklist @relation(fields: [checklistId], references: [id], onDelete: Cascade)
+  responsavel Usuario?        @relation(fields: [responsavelId], references: [id], onDelete: SetNull)
+
+  @@index([checklistId])
+  @@index([responsavelId, dataEntrega]) // "Meus itens" ordenado por prazo
+}
+
+// ★ Premium: Campos Personalizados (Custom Fields) por board
+model KanbanCampoPersonalizado {
+  id      String @id @default(cuid())
+  boardId String
+  nome    String
+  tipo    String // "texto" | "numero" | "data" | "checkbox" | "lista_opcoes"
+  opcoes  Json? // para tipo lista_opcoes: ["Alta", "Média", "Baixa"]
+
+  board   KanbanBoard        @relation(fields: [boardId], references: [id], onDelete: Cascade)
+  valores KanbanCampoValor[]
+
+  @@index([boardId])
+}
+
+model KanbanCampoValor {
+  id      String @id @default(cuid())
+  campoId String
+  cardId  String
+  valor   Json
+
+  campo KanbanCampoPersonalizado @relation(fields: [campoId], references: [id], onDelete: Cascade)
+  card  KanbanCard               @relation(fields: [cardId], references: [id], onDelete: Cascade)
+
+  @@unique([campoId, cardId])
+  @@index([cardId])
+}
+
+model KanbanComentario {
+  id      String @id @default(cuid())
+  cardId  String
+  autorId String
+  texto   String @db.Text
+
+  card  KanbanCard @relation(fields: [cardId], references: [id], onDelete: Cascade)
+  autor Usuario    @relation(fields: [autorId], references: [id], onDelete: Cascade)
+
+  criadoEm DateTime @default(now())
+
+  @@index([cardId])
+}
+
+model KanbanAnexo {
+  id     String @id @default(cuid())
+  cardId String
+  nome   String
+  url    String
+  tipo   String // "arquivo" | "link"
+
+  card KanbanCard @relation(fields: [cardId], references: [id], onDelete: Cascade)
+
+  criadoEm DateTime @default(now())
+
+  @@index([cardId])
+}
+
+model KanbanAtividade {
+  id        String  @id @default(cuid())
+  boardId   String
+  cardId    String?
+  usuarioId String
+  tipo      String // "card_criado", "card_movido", "comentario", "checklist_item_concluido", "item_delegado", etc.
+  dados     Json // detalhes: de qual lista para qual, texto, etc.
+
+  board   KanbanBoard @relation(fields: [boardId], references: [id], onDelete: Cascade)
+  usuario Usuario     @relation(fields: [usuarioId], references: [id], onDelete: Cascade)
+
+  criadoEm DateTime @default(now())
+
+  @@index([boardId, criadoEm])
+  @@index([cardId])
+}
+
+// Token de API pro MCP server (Claude Code). Guarda SÓ o hash sha256 — o
+// valor puro aparece UMA vez na criação e nunca mais.
+model KanbanApiToken {
+  id        String    @id @default(cuid())
+  usuarioId String
+  empresaId String
+  nome      String // ex: "Claude Code - Macbook Léo"
+  tokenHash String    @unique
+  ultimoUso DateTime?
+  revogado  Boolean   @default(false)
+
+  usuario Usuario @relation(fields: [usuarioId], references: [id], onDelete: Cascade)
+  empresa Empresa @relation(fields: [empresaId], references: [id], onDelete: Cascade)
+
+  criadoEm DateTime @default(now())
+
+  @@index([usuarioId])
 }

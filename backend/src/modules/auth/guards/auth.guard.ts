@@ -4,6 +4,7 @@ import type { Request } from 'express';
 import { EnvService } from '@config/env.service';
 import { PrismaService } from '@database/prisma.service';
 import { RedisService } from '@database/redis.service';
+import { KANBAN_TOKEN_PREFIX, hashKanbanToken } from '@modules/kanban/kanban-token.util';
 import { IS_PUBLIC_KEY } from '@shared/decorators/public.decorator';
 import { ForbiddenException, UnauthorizedException } from '@shared/errors/app-exception';
 import { ErrorCode } from '@shared/errors/error-codes';
@@ -72,6 +73,12 @@ export class AuthGuard implements CanActivate {
       throw new UnauthorizedException();
     }
 
+    // Token de API do Kanban (prefixo bkt_, pro MCP server) — caminho próprio,
+    // escopado às rotas /kanban. Ver @modules/kanban/kanban-token.util.
+    if (token.startsWith(KANBAN_TOKEN_PREFIX)) {
+      return this.autenticarKanbanToken(request, token);
+    }
+
     // 1) JWT signature/expiry verify (sem DB)
     const payload = await this.supabase.verifyToken(token);
     const userId = payload.sub;
@@ -113,6 +120,75 @@ export class AuthGuard implements CanActivate {
 
     // 3) ultimoAcesso throttle — escreve no DB no máximo a cada 5min/user
     this.touchUltimoAcesso(userId);
+
+    return true;
+  }
+
+  // ─── Token de API do Kanban (MCP) ───────────────────────────────────────
+
+  /**
+   * Autentica via KanbanApiToken (Batch 6 do Kanban):
+   *  - SÓ vale em rotas /kanban (e nunca em /kanban/api-tokens — token não
+   *    gera/gerencia token).
+   *  - Valida o sha256 contra o banco; revogado/inexistente → 401.
+   *  - Carrega o dono do token (mesmo cache Redis do fluxo JWT) e injeta
+   *    req.user com empresaIdAtiva = empresa do token.
+   *  - Atualiza ultimoUso com throttle de 60s (telemetria, best-effort).
+   */
+  private async autenticarKanbanToken(request: Request, token: string): Promise<boolean> {
+    const path = request.path ?? '';
+    const ehRotaKanban = /\/kanban(\/|$)/.test(path);
+    const ehRotaTokens = path.includes('/kanban/api-tokens');
+    if (!ehRotaKanban || ehRotaTokens) {
+      throw new ForbiddenException(
+        'Token de API do Kanban só pode acessar rotas /kanban (exceto gestão de tokens)',
+      );
+    }
+
+    const row = await this.prisma.kanbanApiToken.findUnique({
+      where: { tokenHash: hashKanbanToken(token) },
+    });
+    if (!row || row.revogado) {
+      throw new UnauthorizedException('Token de API inválido ou revogado');
+    }
+
+    const cached = await this.loadUser(row.usuarioId);
+    if (!cached) {
+      throw new UnauthorizedException('Dono do token não existe mais');
+    }
+    if (cached.status !== 'ATIVO') {
+      throw new ForbiddenException('Dono do token está desativado', ErrorCode.AUTH_USER_DISABLED);
+    }
+    // Token é escopado à empresa em que foi criado; o vínculo precisa seguir válido
+    if (cached.role !== 'ADMIN' && !cached.empresaIds.includes(row.empresaId)) {
+      throw new ForbiddenException(
+        'Token de empresa à qual o usuário não pertence mais',
+        ErrorCode.TENANT_ACCESS_DENIED,
+      );
+    }
+
+    request.user = {
+      id: cached.id,
+      email: cached.email,
+      nome: cached.nome,
+      role: cached.role,
+      empresaIds: cached.empresaIds,
+      empresaIdAtiva: row.empresaId,
+    };
+
+    // ultimoUso throttled (mesma técnica do ultimoAcesso)
+    const throttleKey = `kanban:token:touched:${row.id}`;
+    this.redis
+      .setNxEx(throttleKey, '1', 60)
+      .then((acquired) => {
+        if (!acquired) return;
+        return this.prisma.kanbanApiToken
+          .update({ where: { id: row.id }, data: { ultimoUso: new Date() } })
+          .then(() => undefined);
+      })
+      .catch(() => {
+        /* best-effort */
+      });
 
     return true;
   }

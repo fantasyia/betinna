@@ -58,6 +58,7 @@ import { EmbeddingsModule } from '@integrations/embeddings/embeddings.module';
 import { RagModule } from '@modules/rag/rag.module';
 import { LeadsModule } from '@modules/leads/leads.module';
 import { FunisModule } from '@modules/funis/funis.module';
+import { KanbanModule } from '@modules/kanban/kanban.module';
 import { OcorrenciasModule } from '@modules/ocorrencias/ocorrencias.module';
 import { PedidosModule } from '@modules/pedidos/pedidos.module';
 import { PermissionsModule } from '@modules/permissions/permissions.module';
@@ -224,6 +225,7 @@ import { RODAR_BACKGROUND } from '@shared/utils/service-type';
     BadgesModule,
     LeadsModule,
     FunisModule,
+    KanbanModule,
     OcorrenciasModule,
     AgendaModule,
     FluxosModule,

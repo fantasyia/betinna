@@ -7,6 +7,7 @@ import type { UserRole } from '@prisma/client';
 export const MODULES = [
   'dashboard',
   'kanban',
+  'quadros', // Kanban estilo Trello (boards/listas/cards) — 'kanban' é o pipeline de leads
   'clientes',
   'pedidos',
   'propostas',
@@ -66,6 +67,7 @@ export const DEFAULT_PERMISSIONS: PermissionMatrix = {
    */
   SAC: {
     dashboard: ['view'],
+    quadros: ['view', 'create', 'edit'],
     inbox: ['view', 'edit'],
     marketplace: ['view', 'edit'],
     ocorrencias: ['view', 'create', 'edit'],
@@ -85,6 +87,7 @@ export const DEFAULT_PERMISSIONS: PermissionMatrix = {
   REP: {
     dashboard: ['view'],
     kanban: ['view', 'create', 'edit'],
+    quadros: ['view', 'create', 'edit'], // máx 1 board (regra no service)
     clientes: ['view', 'edit'],
     pedidos: ['view', 'create', 'edit'],
     propostas: ['view', 'create', 'edit'],
