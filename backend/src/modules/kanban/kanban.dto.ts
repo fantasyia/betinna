@@ -173,6 +173,16 @@ export const buscaQuerySchema = z.object({
 });
 export type BuscaQueryDto = z.infer<typeof buscaQuerySchema>;
 
+// ─── ★ Views Premium ──────────────────────────────────────────────────
+
+export const calendarioQuerySchema = z.object({
+  mes: z
+    .string()
+    .regex(/^\d{4}-(0[1-9]|1[0-2])$/, 'Formato: YYYY-MM')
+    .default(() => new Date().toISOString().slice(0, 7)),
+});
+export type CalendarioQueryDto = z.infer<typeof calendarioQuerySchema>;
+
 // ─── Tokens de API (MCP) ──────────────────────────────────────────────
 
 export const createApiTokenSchema = z.object({

@@ -13,11 +13,13 @@ import { KanbanChecklistsService } from './kanban-checklists.service';
 import { KanbanComentariosController } from './kanban-comentarios.controller';
 import { KanbanComentariosService } from './kanban-comentarios.service';
 import { KanbanEtiquetasController } from './kanban-etiquetas.controller';
+import { KanbanFundoService } from './kanban-fundo.service';
 import { KanbanEtiquetasService } from './kanban-etiquetas.service';
 import { KanbanListasController } from './kanban-listas.controller';
 import { KanbanListasService } from './kanban-listas.service';
 import { KanbanTokensController } from './kanban-tokens.controller';
 import { KanbanTokensService } from './kanban-tokens.service';
+import { KanbanViewsService } from './kanban-views.service';
 
 /**
  * Kanban estilo Trello (docs/kanban-betinna-EM-BATCHES.md).
@@ -46,6 +48,8 @@ import { KanbanTokensService } from './kanban-tokens.service';
     KanbanComentariosService,
     KanbanAnexosService,
     KanbanTokensService,
+    KanbanViewsService,
+    KanbanFundoService,
   ],
   exports: [KanbanAcessoService, KanbanAtividadeService],
 })

@@ -229,6 +229,7 @@ export function useRole(): UserRole | null {
 export type ModuloName =
   | 'dashboard'
   | 'kanban'
+  | 'quadros' // Kanban estilo Trello (boards) — 'kanban' é o pipeline de leads
   | 'clientes'
   | 'pedidos'
   | 'propostas'
@@ -257,6 +258,7 @@ export type ModuloName =
  */
 export const ROUTE_MODULO: ReadonlyArray<readonly [prefix: string, modulo: ModuloName]> = [
   ['/dashboard', 'dashboard'],
+  ['/kanban', 'quadros'],
   ['/leads', 'kanban'],
   ['/funis', 'kanban'],
   ['/segmentos', 'kanban'],

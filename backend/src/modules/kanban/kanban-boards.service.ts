@@ -11,6 +11,7 @@ import { getCallerEmpresaId } from '@shared/utils/auth-context';
 import type { AuthenticatedUser } from '@shared/types/authenticated-user';
 import { KanbanAcessoService } from './kanban-acesso.service';
 import { KanbanAtividadeService } from './kanban-atividade.service';
+import { KanbanFundoService } from './kanban-fundo.service';
 import { USUARIO_RESUMO } from './kanban.constants';
 import type {
   AddBoardMembroDto,
@@ -26,16 +27,17 @@ export class KanbanBoardsService {
     private readonly prisma: PrismaService,
     private readonly acesso: KanbanAcessoService,
     private readonly atividade: KanbanAtividadeService,
+    private readonly fundo: KanbanFundoService,
   ) {}
 
   /**
    * Meus boards. DIRECTOR/ADMIN: todos da empresa ativa.
    * Demais papéis: onde sou criador OU membro.
    */
-  async list(user: AuthenticatedUser): Promise<KanbanBoard[]> {
+  async list(user: AuthenticatedUser) {
     const empresaId = getCallerEmpresaId(user);
     const veTodos = user.role === 'ADMIN' || user.role === 'DIRECTOR';
-    return this.prisma.kanbanBoard.findMany({
+    const boards = await this.prisma.kanbanBoard.findMany({
       where: {
         empresaId,
         arquivado: false,
@@ -52,6 +54,14 @@ export class KanbanBoardsService {
       },
       orderBy: { atualizadoEm: 'desc' },
     });
+    // Signed URLs das imagens de fundo em 1 chamada (24h)
+    const urls = await this.fundo.signedUrlsEmLote(
+      boards.map((b) => b.imagemFundo).filter((p): p is string => !!p),
+    );
+    return boards.map((b) => ({
+      ...b,
+      imagemFundoUrl: b.imagemFundo ? (urls.get(b.imagemFundo) ?? null) : null,
+    }));
   }
 
   /**
@@ -97,7 +107,7 @@ export class KanbanBoardsService {
   /** Board completo: listas ativas (com cards resumidos), etiquetas, membros. */
   async findById(user: AuthenticatedUser, id: string) {
     await this.acesso.verificarAcessoBoard(user, id);
-    return this.prisma.kanbanBoard.findUniqueOrThrow({
+    const board = await this.prisma.kanbanBoard.findUniqueOrThrow({
       where: { id },
       include: {
         criadoPor: USUARIO_RESUMO,
@@ -123,6 +133,10 @@ export class KanbanBoardsService {
         },
       },
     });
+    return {
+      ...board,
+      imagemFundoUrl: await this.fundo.signedUrl(board.imagemFundo),
+    };
   }
 
   async update(user: AuthenticatedUser, id: string, dto: UpdateBoardDto): Promise<KanbanBoard> {

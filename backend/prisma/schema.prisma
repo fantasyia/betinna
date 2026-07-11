@@ -2716,6 +2716,9 @@ model KanbanBoard {
   nome        String
   descricao   String?
   corFundo    String  @default("#0079BF")
+  /// Path no Supabase Storage (bucket kanban-fundos). Quando presente, a UI
+  /// usa a imagem como fundo (a cor vira fallback/overlay).
+  imagemFundo String?
   arquivado   Boolean @default(false)
   empresaId   String
   criadoPorId String

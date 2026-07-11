@@ -18,6 +18,10 @@ const LoginPage = lazy(() => import('@/pages/LoginPage'));
 const WelcomePage = lazy(() => import('@/pages/WelcomePage'));
 const PropostaAceitePage = lazy(() => import('@/pages/PropostaAceitePage'));
 const DashboardPage = lazy(() => import('@/pages/DashboardPage'));
+const KanbanBoardsPage = lazy(() => import('@/pages/kanban/KanbanBoardsPage'));
+const KanbanBoardPage = lazy(() => import('@/pages/kanban/KanbanBoardPage'));
+const KanbanTokensPage = lazy(() => import('@/pages/kanban/KanbanTokensPage'));
+const MeusItensPage = lazy(() => import('@/pages/kanban/MeusItensPage'));
 const WhatsAppPage = lazy(() => import('@/pages/WhatsAppPage'));
 const AdminPage = lazy(() => import('@/pages/AdminPage'));
 const ForbiddenPage = lazy(() => import('@/pages/ForbiddenPage'));
@@ -493,6 +497,54 @@ const router = createBrowserRouter([
         <ProtectedRoute>
           <PageSuspense>
             <LeadsPage />
+          </PageSuspense>
+        </ProtectedRoute>
+      </ErrorBoundary>
+    ),
+  },
+  {
+    path: '/kanban',
+    element: (
+      <ErrorBoundary>
+        <ProtectedRoute>
+          <PageSuspense>
+            <KanbanBoardsPage />
+          </PageSuspense>
+        </ProtectedRoute>
+      </ErrorBoundary>
+    ),
+  },
+  {
+    path: '/kanban/tokens',
+    element: (
+      <ErrorBoundary>
+        <ProtectedRoute>
+          <PageSuspense>
+            <KanbanTokensPage />
+          </PageSuspense>
+        </ProtectedRoute>
+      </ErrorBoundary>
+    ),
+  },
+  {
+    path: '/kanban/meus-itens',
+    element: (
+      <ErrorBoundary>
+        <ProtectedRoute>
+          <PageSuspense>
+            <MeusItensPage />
+          </PageSuspense>
+        </ProtectedRoute>
+      </ErrorBoundary>
+    ),
+  },
+  {
+    path: '/kanban/:boardId',
+    element: (
+      <ErrorBoundary>
+        <ProtectedRoute>
+          <PageSuspense>
+            <KanbanBoardPage />
           </PageSuspense>
         </ProtectedRoute>
       </ErrorBoundary>

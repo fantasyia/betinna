@@ -1,6 +1,7 @@
 import { useEffect, useState, useSyncExternalStore, type ReactNode } from 'react';
 import { Link, useLocation } from 'react-router-dom';
 import {
+  KanbanSquare,
   LayoutDashboard,
   BarChart3,
   ShoppingCart,
@@ -114,6 +115,12 @@ const SECTIONS: NavSection[] = [
         icon: Briefcase,
         modulo: 'kanban',
         match: ['/clientes', '/funis', '/tags', '/segmentos', '/fluxos', '/campanhas'],
+      },
+      {
+        to: '/kanban',
+        label: 'Quadros',
+        icon: KanbanSquare,
+        modulo: 'quadros',
       },
       {
         to: '/agenda',

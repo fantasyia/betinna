@@ -9,8 +9,12 @@ import {
   Patch,
   Post,
   Query,
+  UploadedFile,
+  UseInterceptors,
 } from '@nestjs/common';
-import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
+import { FileInterceptor } from '@nestjs/platform-express';
+import { ApiBearerAuth, ApiConsumes, ApiOperation, ApiTags } from '@nestjs/swagger';
+import { BusinessRuleException } from '@shared/errors/app-exception';
 import { Audit } from '@shared/decorators/audit.decorator';
 import { CurrentUser } from '@shared/decorators/current-user.decorator';
 import { RequirePermissions } from '@shared/decorators/permissions.decorator';
@@ -20,18 +24,29 @@ import {
   type AddBoardMembroDto,
   type AtividadesQueryDto,
   type BuscaQueryDto,
+  type CalendarioQueryDto,
   type CreateBoardDto,
   type CreateListaDto,
   type UpdateBoardDto,
   addBoardMembroSchema,
   atividadesQuerySchema,
   buscaQuerySchema,
+  calendarioQuerySchema,
   createBoardSchema,
   createListaSchema,
   updateBoardSchema,
 } from './kanban.dto';
 import { KanbanBoardsService } from './kanban-boards.service';
+import { KanbanFundoService } from './kanban-fundo.service';
 import { KanbanListasService } from './kanban-listas.service';
+import { KanbanViewsService } from './kanban-views.service';
+
+interface UploadedFileBuffer {
+  originalname: string;
+  mimetype: string;
+  size: number;
+  buffer: Buffer;
+}
 
 @ApiTags('kanban')
 @ApiBearerAuth()
@@ -40,6 +55,8 @@ export class KanbanBoardsController {
   constructor(
     private readonly boards: KanbanBoardsService,
     private readonly listas: KanbanListasService,
+    private readonly views: KanbanViewsService,
+    private readonly fundo: KanbanFundoService,
   ) {}
 
   @Get()
@@ -85,6 +102,40 @@ export class KanbanBoardsController {
   @Audit({ action: 'archive', resource: 'kanban_board', resourceIdFrom: 'params.id' })
   async archive(@CurrentUser() user: AuthenticatedUser, @Param('id') id: string): Promise<void> {
     await this.boards.archive(user, id);
+  }
+
+  // ─── Imagem de fundo ────────────────────────────────────────────────
+
+  @Post(':id/fundo')
+  @RequirePermissions({ module: 'quadros', action: 'edit' })
+  @UseInterceptors(FileInterceptor('file'))
+  @ApiConsumes('multipart/form-data')
+  @ApiOperation({ summary: 'Sobe/troca a imagem de fundo do quadro (JPG/PNG/WebP, 5MB)' })
+  @Audit({ action: 'set_background', resource: 'kanban_board', resourceIdFrom: 'params.id' })
+  uploadFundo(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param('id') id: string,
+    @UploadedFile() file: UploadedFileBuffer | undefined,
+  ) {
+    if (!file) throw new BusinessRuleException('Envie a imagem no campo multipart "file"');
+    return this.fundo.upload(user, id, {
+      filename: file.originalname,
+      mimetype: file.mimetype,
+      size: file.size,
+      buffer: file.buffer,
+    });
+  }
+
+  @Delete(':id/fundo')
+  @RequirePermissions({ module: 'quadros', action: 'edit' })
+  @HttpCode(HttpStatus.NO_CONTENT)
+  @ApiOperation({ summary: 'Remove a imagem de fundo (volta pra cor)' })
+  @Audit({ action: 'remove_background', resource: 'kanban_board', resourceIdFrom: 'params.id' })
+  async removeFundo(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param('id') id: string,
+  ): Promise<void> {
+    await this.fundo.remove(user, id);
   }
 
   // ─── Membros ────────────────────────────────────────────────────────
@@ -135,6 +186,33 @@ export class KanbanBoardsController {
     @Query(new ZodValidationPipe(buscaQuerySchema)) query: BuscaQueryDto,
   ) {
     return this.boards.busca(user, id, query);
+  }
+
+  // ─── ★ Views Premium ────────────────────────────────────────────────
+
+  @Get(':id/calendario')
+  @RequirePermissions({ module: 'quadros', action: 'view' })
+  @ApiOperation({ summary: '★ Cards + itens de checklist com prazo no mês (?mes=YYYY-MM)' })
+  calendario(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param('id') id: string,
+    @Query(new ZodValidationPipe(calendarioQuerySchema)) query: CalendarioQueryDto,
+  ) {
+    return this.views.calendario(user, id, query);
+  }
+
+  @Get(':id/tabela')
+  @RequirePermissions({ module: 'quadros', action: 'view' })
+  @ApiOperation({ summary: '★ Todos os cards com colunas pra tabela ordenável' })
+  tabela(@CurrentUser() user: AuthenticatedUser, @Param('id') id: string) {
+    return this.views.tabela(user, id);
+  }
+
+  @Get(':id/dashboard')
+  @RequirePermissions({ module: 'quadros', action: 'view' })
+  @ApiOperation({ summary: '★ Agregados: por lista, membro, etiqueta, vencimento' })
+  dashboard(@CurrentUser() user: AuthenticatedUser, @Param('id') id: string) {
+    return this.views.dashboard(user, id);
   }
 
   // ─── Listas (criação aninhada no board) ─────────────────────────────
