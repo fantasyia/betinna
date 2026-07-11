@@ -82,14 +82,13 @@ export class KanbanFundoService implements OnModuleInit {
       throw new BusinessRuleException('Conteúdo do arquivo não corresponde ao tipo declarado');
     }
 
-    // Remove a anterior (best-effort)
-    if (board.imagemFundo) {
-      const { error } = await this.storage.storage.from(BUCKET).remove([board.imagemFundo]);
-      if (error) this.logger.warn(`Falha ao remover fundo anterior: ${error.message}`);
-    }
+    // Guarda o path anterior; só remove DEPOIS de subir a nova e atualizar o DB
+    // (se o upload falhasse antes, o board ficava sem imagem = referência pendurada).
+    const pathAnterior = board.imagemFundo;
 
     const ext =
       file.mimetype === 'image/png' ? 'png' : file.mimetype === 'image/webp' ? 'webp' : 'jpg';
+    // Path novo tem Date.now() → nunca colide com o anterior.
     const storagePath = `${board.empresaId}/${board.id}/${Date.now()}_fundo.${ext}`;
     const { error } = await this.storage.storage.from(BUCKET).upload(storagePath, file.buffer, {
       contentType: file.mimetype,
@@ -101,6 +100,12 @@ export class KanbanFundoService implements OnModuleInit {
       where: { id: board.id },
       data: { imagemFundo: storagePath },
     });
+
+    // Remove a anterior só agora (best-effort — falha aqui não desfaz a troca)
+    if (pathAnterior && pathAnterior !== storagePath) {
+      const { error: errRemove } = await this.storage.storage.from(BUCKET).remove([pathAnterior]);
+      if (errRemove) this.logger.warn(`Falha ao remover fundo anterior: ${errRemove.message}`);
+    }
     await this.atividade.registrar({
       boardId: board.id,
       usuarioId: user.id,

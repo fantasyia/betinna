@@ -72,27 +72,31 @@ export class KanbanBoardsService {
   async create(user: AuthenticatedUser, dto: CreateBoardDto): Promise<KanbanBoard> {
     const empresaId = getCallerEmpresaId(user);
 
-    if (user.role === 'REP') {
-      const existentes = await this.prisma.kanbanBoard.count({
-        where: { empresaId, criadoPorId: user.id, arquivado: false },
-      });
-      if (existentes >= 1) {
-        throw new ForbiddenException(
-          'Representante pode ter apenas 1 quadro. Arquive o quadro atual para criar outro.',
-        );
+    // Limite REP=1 board: count + create numa transação pra fechar a janela de
+    // corrida (2 POST paralelos liam count=0 e ambos criavam).
+    const board = await this.prisma.$transaction(async (tx) => {
+      if (user.role === 'REP') {
+        const existentes = await tx.kanbanBoard.count({
+          where: { empresaId, criadoPorId: user.id, arquivado: false },
+        });
+        if (existentes >= 1) {
+          throw new ForbiddenException(
+            'Representante pode ter apenas 1 quadro. Arquive o quadro atual para criar outro.',
+          );
+        }
       }
-    }
 
-    const board = await this.prisma.kanbanBoard.create({
-      data: {
-        nome: dto.nome,
-        descricao: dto.descricao,
-        corFundo: dto.corFundo,
-        empresaId,
-        criadoPorId: user.id,
-        membros: { create: { usuarioId: user.id, papel: 'dono' } },
-      },
-      include: { membros: { include: { usuario: USUARIO_RESUMO } } },
+      return tx.kanbanBoard.create({
+        data: {
+          nome: dto.nome,
+          descricao: dto.descricao,
+          corFundo: dto.corFundo,
+          empresaId,
+          criadoPorId: user.id,
+          membros: { create: { usuarioId: user.id, papel: 'dono' } },
+        },
+        include: { membros: { include: { usuario: USUARIO_RESUMO } } },
+      });
     });
 
     await this.atividade.registrar({

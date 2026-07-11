@@ -38,10 +38,12 @@ export class KanbanTokensService {
     return { ...registro, token }; // única vez que o valor sai
   }
 
-  /** Lista os tokens do usuário (sem o valor). */
+  /** Lista os tokens do usuário na empresa ativa (sem o valor). */
   async list(user: AuthenticatedUser) {
+    // Filtra por empresa ativa: usuário multi-empresa não vê na empresa A
+    // os tokens que criou na B.
     return this.prisma.kanbanApiToken.findMany({
-      where: { usuarioId: user.id },
+      where: { usuarioId: user.id, empresaId: getCallerEmpresaId(user) },
       orderBy: { criadoEm: 'desc' },
       select: TOKEN_PUBLICO,
     });

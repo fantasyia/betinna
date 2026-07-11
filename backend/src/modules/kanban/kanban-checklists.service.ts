@@ -214,7 +214,16 @@ export class KanbanChecklistsService {
         checklist: {
           card: {
             arquivado: false,
-            lista: { arquivada: false, board: { empresaId, arquivado: false } },
+            lista: {
+              arquivada: false,
+              board: {
+                empresaId,
+                arquivado: false,
+                // Ex-membro do board não vê mais itens delegados a ele:
+                // exige ser criador OU membro atual do board.
+                OR: [{ criadoPorId: user.id }, { membros: { some: { usuarioId: user.id } } }],
+              },
+            },
           },
         },
       },

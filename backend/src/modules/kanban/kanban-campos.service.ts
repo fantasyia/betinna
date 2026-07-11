@@ -126,6 +126,10 @@ export class KanbanCamposService {
         }
         return valor;
       case 'numero': {
+        // Number() aceita "" → 0, "   " → 0, true → 1 (todos isFinite): rejeita antes.
+        if (typeof valor === 'boolean' || (typeof valor === 'string' && valor.trim() === '')) {
+          throw new BusinessRuleException(`Campo "${campo.nome}" espera número`);
+        }
         const n = typeof valor === 'number' ? valor : Number(valor);
         if (!Number.isFinite(n)) {
           throw new BusinessRuleException(`Campo "${campo.nome}" espera número`);

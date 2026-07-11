@@ -108,7 +108,13 @@ export const updateChecklistItemSchema = z.object({
 export type UpdateChecklistItemDto = z.infer<typeof updateChecklistItemSchema>;
 
 export const meusItensQuerySchema = z.object({
-  incluirConcluidos: z.coerce.boolean().default(false),
+  // z.coerce.boolean em query string trata "false"/"0" como truthy → sempre true.
+  // Padrão do repo (notificacoes.dto): union boolean|string + transform → boolean
+  // (undefined/ausente → false). Mantém input=output compatível com ZodValidationPipe.
+  incluirConcluidos: z
+    .union([z.boolean(), z.enum(['true', 'false'])])
+    .optional()
+    .transform((v) => v === true || v === 'true'),
 });
 export type MeusItensQueryDto = z.infer<typeof meusItensQuerySchema>;
 

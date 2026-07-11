@@ -229,6 +229,12 @@ server.registerTool(
         quando: cm.criadoEm,
         texto: cm.texto,
       })),
+      atividades: c.atividades.map((a) => ({
+        quem: a.usuario.nome,
+        tipo: a.tipo,
+        dados: a.dados,
+        quando: a.criadoEm,
+      })),
     });
   }),
 );
@@ -366,7 +372,11 @@ server.registerTool(
       listaId: z.string().describe('ID da lista (use kanban_ver_board)'),
       titulo: z.string().min(1).max(200),
       descricao: z.string().max(10000).optional(),
-      dataEntrega: z.string().datetime().optional().describe('Prazo ISO, ex: 2026-07-20T12:00:00Z'),
+      dataEntrega: z
+        .string()
+        .datetime({ offset: true })
+        .optional()
+        .describe('Prazo ISO, ex: 2026-07-20T12:00:00Z ou 2026-07-20T12:00:00-03:00'),
       etiquetas: z.array(z.string()).optional().describe('IDs de etiquetas (kanban_ver_board)'),
     },
     annotations: { readOnlyHint: false, destructiveHint: false },
@@ -390,10 +400,23 @@ server.registerTool(
         descricao,
         dataEntrega,
       });
+      // O card JÁ foi criado. Se aplicar uma etiqueta falhar (id inválido),
+      // NÃO retornamos isError — senão o Claude recria o card e duplica.
+      // Reportamos sucesso com um aviso sobre as etiquetas que falharam.
+      const avisoEtiquetas: string[] = [];
       for (const etiquetaId of etiquetas ?? []) {
-        await api.post(`/kanban/cards/${card.id}/etiquetas/${etiquetaId}`);
+        try {
+          await api.post(`/kanban/cards/${card.id}/etiquetas/${etiquetaId}`);
+        } catch (err) {
+          const msg = err instanceof Error ? err.message : String(err);
+          avisoEtiquetas.push(`Etiqueta "${etiquetaId}" não aplicada: ${msg}`);
+        }
       }
-      return ok({ id: card.id, titulo: card.titulo });
+      return ok({
+        id: card.id,
+        titulo: card.titulo,
+        ...(avisoEtiquetas.length > 0 ? { avisoEtiquetas } : {}),
+      });
     },
   ),
 );
@@ -406,7 +429,7 @@ server.registerTool(
       cardId: z.string(),
       titulo: z.string().min(1).max(200).optional(),
       descricao: z.string().max(10000).nullable().optional(),
-      dataEntrega: z.string().datetime().nullable().optional(),
+      dataEntrega: z.string().datetime({ offset: true }).nullable().optional(),
       concluido: z.boolean().optional(),
     },
     annotations: { readOnlyHint: false, destructiveHint: false },
@@ -437,9 +460,20 @@ server.registerTool(
   seguro(async ({ cardId, listaDestino }: { cardId: string; listaDestino: string }) => {
     const { boardId } = await boardIdDoCard(cardId);
     const board = await api.get<BoardCompleto>(`/kanban/boards/${boardId}`);
-    const destino =
-      board.listas.find((l) => l.id === listaDestino) ??
-      board.listas.find((l) => l.nome.toLowerCase() === listaDestino.toLowerCase());
+    // Prioriza match exato por id; senão casa por nome (case-insensitive).
+    let destino = board.listas.find((l) => l.id === listaDestino);
+    if (!destino) {
+      const porNome = board.listas.filter(
+        (l) => l.nome.toLowerCase() === listaDestino.toLowerCase(),
+      );
+      if (porNome.length > 1) {
+        return erro(
+          `Há ${porNome.length} listas chamadas "${listaDestino}" no quadro. ` +
+            `Use o ID pra escolher: ${porNome.map((l) => l.id).join(', ')}`,
+        );
+      }
+      destino = porNome[0];
+    }
     if (!destino) {
       return erro(
         `Lista "${listaDestino}" não existe no quadro. Listas disponíveis: ${board.listas
@@ -470,7 +504,7 @@ server.registerTool(
 
 const itemChecklistSchema = z.object({
   texto: z.string().min(1).max(500),
-  dataEntrega: z.string().datetime().optional(),
+  dataEntrega: z.string().datetime({ offset: true }).optional(),
   responsavelEmail: z.string().email().optional().describe('E-mail de um membro do quadro'),
 });
 
@@ -496,12 +530,22 @@ server.registerTool(
       titulo: string;
       itens?: Array<z.infer<typeof itemChecklistSchema>>;
     }) => {
+      // Resolve os e-mails ÚNICOS uma vez só (evita N chamadas GET /kanban/boards
+      // quando vários itens delegam pra mesma pessoa).
+      const emailParaId = new Map<string, string>();
+      for (const item of itens ?? []) {
+        if (item.responsavelEmail && !emailParaId.has(item.responsavelEmail)) {
+          emailParaId.set(item.responsavelEmail, await resolverEmail(item.responsavelEmail));
+        }
+      }
       const itensResolvidos = [];
       for (const item of itens ?? []) {
         itensResolvidos.push({
           texto: item.texto,
           dataEntrega: item.dataEntrega,
-          responsavelId: item.responsavelEmail ? await resolverEmail(item.responsavelEmail) : undefined,
+          responsavelId: item.responsavelEmail
+            ? emailParaId.get(item.responsavelEmail)
+            : undefined,
         });
       }
       const ck = await api.post<{ id: string; itens: Array<{ id: string; texto: string }> }>(
@@ -536,7 +580,7 @@ server.registerTool(
     inputSchema: {
       itemId: z.string(),
       texto: z.string().min(1).max(500).optional(),
-      dataEntrega: z.string().datetime().nullable().optional(),
+      dataEntrega: z.string().datetime({ offset: true }).nullable().optional(),
       responsavelEmail: z
         .string()
         .email()
@@ -583,7 +627,11 @@ server.registerTool(
       nomeCampo: z.string().describe('Nome do campo como aparece no quadro'),
       valor: z
         .union([z.string(), z.number(), z.boolean(), z.null()])
-        .describe('Valor conforme o tipo do campo (data em ISO, lista_opcoes = uma das opções)'),
+        .describe(
+          'Valor conforme o tipo do campo. Para campo de DATA, mande data COM hora em ISO ' +
+            '(ex: 2026-07-15T12:00:00Z); se mandar só a data (2026-07-15) ela é ancorada ao ' +
+            'meio-dia UTC pra evitar erro de fuso. lista_opcoes = uma das opções.',
+        ),
     },
     annotations: { readOnlyHint: false, destructiveHint: false },
   },
@@ -607,8 +655,18 @@ server.registerTool(
           }`,
         );
       }
-      await api.put(`/kanban/cards/${cardId}/campos/${campo.id}`, { valor });
-      return ok({ cardId, campo: campo.nome, valor });
+      // Se o campo é data e veio só a data (YYYY-MM-DD), ancora ao meio-dia UTC:
+      // salvar meia-noite UTC dá off-by-one no fuso do Brasil (dia anterior).
+      let valorFinal = valor;
+      if (
+        campo.tipo === 'data' &&
+        typeof valor === 'string' &&
+        /^\d{4}-\d{2}-\d{2}$/.test(valor)
+      ) {
+        valorFinal = `${valor}T12:00:00Z`;
+      }
+      await api.put(`/kanban/cards/${cardId}/campos/${campo.id}`, { valor: valorFinal });
+      return ok({ cardId, campo: campo.nome, valor: valorFinal });
     },
   ),
 );

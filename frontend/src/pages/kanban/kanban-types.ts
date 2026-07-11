@@ -267,9 +267,13 @@ export function statusPrazo(
   if (!dataEntrega) return null;
   if (concluido) return 'concluido';
   const prazo = new Date(dataEntrega).getTime();
-  const agora = Date.now();
-  if (prazo < agora) return 'vencido';
-  if (prazo - agora < 48 * 60 * 60 * 1000) return 'proximo'; // < 48h
+  const agora = new Date();
+  // Só vencido se a entrega for ANTES do início do dia local de HOJE.
+  // (a data vem como meio-dia UTC, então comparar por timestamp exato marcava
+  //  como "vencido" um card que entrega HOJE já às 9h da manhã BRT).
+  const inicioHoje = new Date(agora.getFullYear(), agora.getMonth(), agora.getDate()).getTime();
+  if (prazo < inicioHoje) return 'vencido';
+  if (prazo - agora.getTime() < 48 * 60 * 60 * 1000) return 'proximo'; // < 48h
   return 'normal';
 }
 

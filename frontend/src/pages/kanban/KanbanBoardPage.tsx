@@ -163,6 +163,14 @@ export default function KanbanBoardPage() {
     return null;
   }, [ativo, listas]);
 
+  // A signed URL do fundo troca o token a cada poll (re-baixa a imagem à toa).
+  // Fixamos a URL enquanto o path estável (imagemFundo) não muda.
+  const fundoUrl = useMemo(
+    () => board?.imagemFundoUrl ?? null,
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [board?.imagemFundo],
+  );
+
   function parseId(raw: string): { tipo: 'card' | 'lista'; id: string } | null {
     if (raw.startsWith('card:')) return { tipo: 'card', id: raw.slice(5) };
     if (raw.startsWith('lista:')) return { tipo: 'lista', id: raw.slice(6) };
@@ -220,82 +228,90 @@ export default function KanbanBoardPage() {
       moverListaFim(a.id, o);
       return;
     }
+    // Soltou o card fora de qualquer droppable: desfaz o preview do onDragOver
+    // (senão a transferência entre listas seria comitada sem PATCH).
+    if (!o) {
+      if (snapshotRef.current) setListas(snapshotRef.current);
+      return;
+    }
     moverCardFim(a.id, o);
   }
 
   /** Card: calcula posição final pelo estado local e persiste. */
   function moverCardFim(cardId: string, over: { tipo: string; id: string } | null) {
-    setListas((prev) => {
-      const lista = acharLista(cardId, prev);
-      if (!lista) return prev;
+    const lista = acharLista(cardId, listas);
+    if (!lista) return;
 
-      let cards = lista.cards;
-      let idx = cards.findIndex((c) => c.id === cardId);
+    let cards = lista.cards;
+    let idx = cards.findIndex((c) => c.id === cardId);
 
-      // Reordenação dentro da mesma lista (onDragOver não mexe nesse caso)
-      if (over && over.tipo === 'card' && over.id !== cardId) {
-        const idxOver = cards.findIndex((c) => c.id === over.id);
-        if (idxOver >= 0 && idx >= 0 && idxOver !== idx) {
-          cards = [...cards];
-          const [movido] = cards.splice(idx, 1);
-          cards.splice(idxOver, 0, movido);
-          idx = idxOver;
-        }
+    // Reordenação dentro da mesma lista (onDragOver não mexe nesse caso)
+    if (over && over.tipo === 'card' && over.id !== cardId) {
+      const idxOver = cards.findIndex((c) => c.id === over.id);
+      if (idxOver >= 0 && idx >= 0 && idxOver !== idx) {
+        cards = [...cards];
+        const [movido] = cards.splice(idx, 1);
+        cards.splice(idxOver, 0, movido);
+        idx = idxOver;
       }
+    }
 
-      const antes = idx > 0 ? cards[idx - 1].posicao : null;
-      const depois = idx < cards.length - 1 ? cards[idx + 1].posicao : null;
-      const novaPosicao = posicaoEntre(antes, depois);
+    const antes = idx > 0 ? cards[idx - 1].posicao : null;
+    const depois = idx < cards.length - 1 ? cards[idx + 1].posicao : null;
+    const novaPosicao = posicaoEntre(antes, depois);
 
-      const atualizadas = prev.map((l) =>
-        l.id === lista.id
-          ? {
-              ...l,
-              cards: cards.map((c) => (c.id === cardId ? { ...c, posicao: novaPosicao } : c)),
-            }
-          : l,
-      );
+    const atualizadas = listas.map((l) =>
+      l.id === lista.id
+        ? {
+            ...l,
+            cards: cards.map((c) => (c.id === cardId ? { ...c, posicao: novaPosicao } : c)),
+          }
+        : l,
+    );
+    setListas(atualizadas);
 
-      void api
-        .patch(`/kanban/cards/${cardId}/mover`, { listaId: lista.id, posicao: novaPosicao })
-        .then(() => refetch()) // absorve rebalanceamento do servidor
-        .catch((err) => {
-          if (snapshotRef.current) setListas(snapshotRef.current);
-          toast.error(`Não foi possível mover o card: ${apiErrorMessage(err)}`);
-        });
-
-      return atualizadas;
-    });
+    // Side-effect FORA do updater (função pura não pode disparar PATCH — duplica em StrictMode).
+    void api
+      .patch(`/kanban/cards/${cardId}/mover`, { listaId: lista.id, posicao: novaPosicao })
+      .then(() => refetch()) // absorve rebalanceamento do servidor
+      .catch((err) => {
+        if (snapshotRef.current) setListas(snapshotRef.current);
+        refetch(); // reconcilia com o servidor (o snapshot pode estar defasado)
+        toast.error(`Não foi possível mover o card: ${apiErrorMessage(err)}`);
+      });
   }
 
   /** Lista: reordena horizontalmente e persiste. */
   function moverListaFim(listaId: string, over: { tipo: string; id: string } | null) {
-    if (!over || over.tipo !== 'lista' || over.id === listaId) return;
-    setListas((prev) => {
-      const idxDe = prev.findIndex((l) => l.id === listaId);
-      const idxPara = prev.findIndex((l) => l.id === over.id);
-      if (idxDe < 0 || idxPara < 0) return prev;
+    if (!over || over.id === listaId) return;
+    // Soltar a lista sobre um card: destino = a lista dona desse card.
+    const destinoId = over.tipo === 'lista' ? over.id : acharLista(over.id, listas)?.id;
+    if (!destinoId || destinoId === listaId) return;
 
-      const novas = [...prev];
-      const [movida] = novas.splice(idxDe, 1);
-      novas.splice(idxPara, 0, movida);
+    const idxDe = listas.findIndex((l) => l.id === listaId);
+    const idxPara = listas.findIndex((l) => l.id === destinoId);
+    if (idxDe < 0 || idxPara < 0) return;
 
-      const idx = novas.findIndex((l) => l.id === listaId);
-      const antes = idx > 0 ? novas[idx - 1].posicao : null;
-      const depois = idx < novas.length - 1 ? novas[idx + 1].posicao : null;
-      const novaPosicao = posicaoEntre(antes, depois);
-      novas[idx] = { ...novas[idx], posicao: novaPosicao };
+    const novas = [...listas];
+    const [movida] = novas.splice(idxDe, 1);
+    novas.splice(idxPara, 0, movida);
 
-      void api
-        .patch(`/kanban/listas/${listaId}/mover`, { posicao: novaPosicao })
-        .then(() => refetch())
-        .catch((err) => {
-          if (snapshotRef.current) setListas(snapshotRef.current);
-          toast.error(`Não foi possível mover a lista: ${apiErrorMessage(err)}`);
-        });
+    const idx = novas.findIndex((l) => l.id === listaId);
+    const antes = idx > 0 ? novas[idx - 1].posicao : null;
+    const depois = idx < novas.length - 1 ? novas[idx + 1].posicao : null;
+    const novaPosicao = posicaoEntre(antes, depois);
+    novas[idx] = { ...novas[idx], posicao: novaPosicao };
+    setListas(novas);
 
-      return novas;
-    });
+    // Side-effect FORA do updater (função pura não pode disparar PATCH — duplica em StrictMode).
+    void api
+      .patch(`/kanban/listas/${listaId}/mover`, { posicao: novaPosicao })
+      .then(() => refetch())
+      .catch((err) => {
+        if (snapshotRef.current) setListas(snapshotRef.current);
+        refetch(); // reconcilia com o servidor (o snapshot pode estar defasado)
+        toast.error(`Não foi possível mover a lista: ${apiErrorMessage(err)}`);
+      });
   }
 
   async function criarLista(nome: string) {
@@ -464,17 +480,21 @@ export default function KanbanBoardPage() {
           onDragStart={onDragStart}
           onDragOver={onDragOver}
           onDragEnd={onDragEnd}
+          onDragCancel={() => {
+            setAtivo(null);
+            if (snapshotRef.current) setListas(snapshotRef.current);
+          }}
         >
           <div
             className={cn(
               'flex gap-3 items-start overflow-x-auto pb-4 min-h-[60vh]',
-              board?.imagemFundoUrl && 'rounded-[10px] p-3 bg-cover bg-center',
+              (fundoUrl || board?.corFundo) && 'rounded-[10px] p-3',
+              fundoUrl && 'bg-cover bg-center',
             )}
-            style={
-              board?.imagemFundoUrl
-                ? { backgroundImage: `url(${board.imagemFundoUrl})` }
-                : undefined
-            }
+            style={{
+              backgroundColor: board?.corFundo,
+              ...(fundoUrl ? { backgroundImage: `url(${fundoUrl})` } : {}),
+            }}
           >
             <SortableContext
               items={listasVisiveis.map((l) => `lista:${l.id}`)}
@@ -585,6 +605,12 @@ function CardSortable({ card, onAbrir }: { card: KCardResumo; onAbrir: () => voi
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
     id: `card:${card.id}`,
   });
+  // dnd-kit não suprime o click sintético que segue o pointerup de um drag.
+  // Marcamos que houve arrasto e engolimos o clique seguinte (senão abre o modal).
+  const arrastouRef = useRef(false);
+  useEffect(() => {
+    if (isDragging) arrastouRef.current = true;
+  }, [isDragging]);
   return (
     <div
       ref={setNodeRef}
@@ -592,7 +618,13 @@ function CardSortable({ card, onAbrir }: { card: KCardResumo; onAbrir: () => voi
       {...attributes}
       {...listeners}
       className={cn(isDragging && 'opacity-40')}
-      onClick={onAbrir}
+      onClick={() => {
+        if (arrastouRef.current) {
+          arrastouRef.current = false;
+          return;
+        }
+        onAbrir();
+      }}
     >
       <CardVisual card={card} />
     </div>

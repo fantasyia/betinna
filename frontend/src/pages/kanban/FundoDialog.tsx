@@ -37,6 +37,15 @@ export function FundoDialog({
   }
 
   async function subirImagem(file: File) {
+    // valida no cliente antes do POST (o hint promete 5MB / JPG-PNG-WebP)
+    if (!['image/jpeg', 'image/png', 'image/webp'].includes(file.type)) {
+      toast.error('Formato inválido. Use JPG, PNG ou WebP.');
+      return;
+    }
+    if (file.size > 5 * 1024 * 1024) {
+      toast.error('Imagem muito grande. Máximo 5MB.');
+      return;
+    }
     setEnviando(true);
     try {
       const fd = new FormData();

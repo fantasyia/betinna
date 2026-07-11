@@ -57,10 +57,15 @@ export default function KanbanTokensPage() {
 
   async function copiar() {
     if (!novoToken) return;
-    await navigator.clipboard.writeText(novoToken);
-    setCopiado(true);
-    toast.success('Token copiado');
-    setTimeout(() => setCopiado(false), 2000);
+    try {
+      await navigator.clipboard.writeText(novoToken);
+      setCopiado(true);
+      toast.success('Token copiado');
+      setTimeout(() => setCopiado(false), 2000);
+    } catch {
+      // contexto não-seguro ou permissão negada — não deixa rejeitar sem tratar
+      toast.error('Não foi possível copiar. Selecione o token e copie manualmente.');
+    }
   }
 
   async function revogar(token: ApiToken) {

@@ -136,7 +136,7 @@ export class AuthGuard implements CanActivate {
    *  - Atualiza ultimoUso com throttle de 60s (telemetria, best-effort).
    */
   private async autenticarKanbanToken(request: Request, token: string): Promise<boolean> {
-    const path = request.path ?? '';
+    const path = (request.path ?? '').toLowerCase();
     const ehRotaKanban = /\/kanban(\/|$)/.test(path);
     const ehRotaTokens = path.includes('/kanban/api-tokens');
     if (!ehRotaKanban || ehRotaTokens) {

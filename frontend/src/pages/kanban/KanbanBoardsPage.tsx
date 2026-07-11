@@ -121,15 +121,17 @@ export default function KanbanBoardsPage() {
                 'relative h-28 rounded-[10px] p-3 text-left text-white overflow-hidden',
                 'transition-transform hover:scale-[1.02] focus-visible:outline focus-visible:outline-2',
               )}
-              style={
-                board.imagemFundoUrl
+              style={{
+                // cor sempre presente como fallback (signed URL expira em 24h)
+                backgroundColor: board.corFundo,
+                ...(board.imagemFundoUrl
                   ? {
                       backgroundImage: `url(${board.imagemFundoUrl})`,
                       backgroundSize: 'cover',
                       backgroundPosition: 'center',
                     }
-                  : { background: board.corFundo }
-              }
+                  : {}),
+              }}
             >
               {/* véu pra garantir contraste do texto em cores claras */}
               <div className="absolute inset-0 bg-black/25" aria-hidden />

@@ -29,6 +29,7 @@ import {
   Textarea,
 } from '@/components/ui';
 import { cn } from '@/lib/cn';
+import { StateView } from '@/components/StateView';
 import {
   BOARD_CORES,
   descreverAtividade,
@@ -63,7 +64,14 @@ export function CardModal({
   const role = useRole();
   const meuId = getSession()?.user.id;
 
-  const { data: card, refetch } = useApiQuery<KCardCompleto>(`/kanban/cards/${cardId}`);
+  const { data: card, error, refetch } = useApiQuery<KCardCompleto>(`/kanban/cards/${cardId}`);
+
+  // Revalida ao montar: o modal serve cache (staleTime global de até 60s), então
+  // sem isto um comentário criado por fora (ex.: MCP) não apareceria se o card
+  // tivesse sido aberto há <60s. Mesmo padrão das outras views.
+  useEffect(() => {
+    refetch();
+  }, [refetch]);
 
   /** Executa mutação + refresh do modal e do board, com toast de erro. */
   async function mut(fn: () => Promise<unknown>) {
@@ -79,17 +87,38 @@ export function CardModal({
   // ─── Título / descrição editáveis ───────────────────────────────────
   const [titulo, setTitulo] = useState('');
   const [descricao, setDescricao] = useState('');
+  // Depende só do id do card — assim os rascunhos de título/descrição só são
+  // resetados ao TROCAR de card, não a cada refetch do mesmo card (que gera um
+  // novo objeto `card` e apagaria o que o usuário digitou sem salvar).
   useEffect(() => {
     if (card) {
       setTitulo(card.titulo);
       setDescricao(card.descricao ?? '');
     }
-  }, [card]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [card?.id]);
 
   const [secao, setSecao] = useState<string | null>(null);
 
   const membrosDoCard = useMemo(() => new Set(card?.membros.map((m) => m.usuario.id)), [card]);
   const etiquetasDoCard = useMemo(() => new Set(card?.etiquetas.map((e) => e.etiqueta.id)), [card]);
+
+  // Erro (ex.: deep-link de card deletado → 404): mostra a mensagem em vez de
+  // ficar preso em "Carregando…" pra sempre.
+  if (error) {
+    return (
+      <Dialog open onClose={onClose} size="xl" title="Não foi possível abrir o card">
+        <StateView error={error} onRetry={refetch}>
+          <div />
+        </StateView>
+        <div className="mt-3 flex justify-end">
+          <Button size="sm" variant="ghost" onClick={onClose}>
+            Fechar
+          </Button>
+        </div>
+      </Dialog>
+    );
+  }
 
   if (!card) {
     return (
@@ -804,7 +833,9 @@ function CampoInline({
         <Input
           type="date"
           value={typeof valorAtual === 'string' ? valorAtual.slice(0, 10) : ''}
-          onChange={(e) => salvar(e.target.value === '' ? null : e.target.value)}
+          // Salva ao meio-dia UTC (dateInputParaIso) — mandar o "YYYY-MM-DD" cru
+          // faria o backend gravar meia-noite UTC → off-by-one (dia anterior).
+          onChange={(e) => salvar(dateInputParaIso(e.target.value))}
         />
       </label>
     );

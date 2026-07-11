@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { ArrowDown, ArrowUp, ChevronLeft, ChevronRight, Search } from 'lucide-react';
 import {
   DndContext,
@@ -39,10 +39,21 @@ interface CalItem {
 
 const DIAS_SEMANA = ['dom', 'seg', 'ter', 'qua', 'qui', 'sex', 'sáb'];
 
-/** Dia local (YYYY-MM-DD) de um ISO — agrupa os itens por célula. */
-function diaLocal(iso: string): string {
+/**
+ * Dia UTC (YYYY-MM-DD) de um ISO — agrupa os itens por célula.
+ * Usa UTC (não local) pra casar com o filtro de mês do backend, que seleciona
+ * por fronteiras UTC. Assim um card em 2026-08-01T00:00:00Z fica na célula
+ * 01/08 (e não escorrega pra 31/07 local, sumindo na virada de mês); cards
+ * gravados pelo app usam meio-dia UTC, então continuam no dia certo.
+ */
+function diaUTC(iso: string): string {
   const d = new Date(iso);
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+  return `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, '0')}-${String(d.getUTCDate()).padStart(2, '0')}`;
+}
+
+/** Chave UTC (YYYY-MM-DD) de um Date de célula do grid. */
+function chaveDia(d: Date): string {
+  return `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, '0')}-${String(d.getUTCDate()).padStart(2, '0')}`;
 }
 
 export function CalendarioView({
@@ -74,21 +85,22 @@ export function CalendarioView({
 
   const [ano, mesNum] = mes.split('-').map(Number);
   const semanas = useMemo(() => {
-    const primeiro = new Date(ano, mesNum - 1, 1);
+    // grid montado em UTC pra casar com o filtro de mês do backend (fronteiras UTC)
+    const primeiro = new Date(Date.UTC(ano, mesNum - 1, 1));
     const dias: Date[] = [];
     // começa no domingo da semana do dia 1
     const inicio = new Date(primeiro);
-    inicio.setDate(1 - primeiro.getDay());
+    inicio.setUTCDate(1 - primeiro.getUTCDay());
     for (let i = 0; i < 42; i++) {
       const d = new Date(inicio);
-      d.setDate(inicio.getDate() + i);
+      d.setUTCDate(inicio.getUTCDate() + i);
       dias.push(d);
     }
     // corta a última linha se for toda de outro mês
     const linhas: Date[][] = [];
     for (let i = 0; i < 6; i++) {
       const linha = dias.slice(i * 7, i * 7 + 7);
-      if (i >= 4 && linha.every((d) => d.getMonth() !== mesNum - 1)) break;
+      if (i >= 4 && linha.every((d) => d.getUTCMonth() !== mesNum - 1)) break;
       linhas.push(linha);
     }
     return linhas;
@@ -97,13 +109,13 @@ export function CalendarioView({
   const porDia = useMemo(() => {
     const mapa = new Map<string, { cards: CalCard[]; itens: CalItem[] }>();
     for (const c of data?.cards ?? []) {
-      const k = diaLocal(c.dataEntrega);
+      const k = diaUTC(c.dataEntrega);
       const v = mapa.get(k) ?? { cards: [], itens: [] };
       v.cards.push(c);
       mapa.set(k, v);
     }
     for (const i of data?.itensChecklist ?? []) {
-      const k = diaLocal(i.dataEntrega);
+      const k = diaUTC(i.dataEntrega);
       const v = mapa.get(k) ?? { cards: [], itens: [] };
       v.itens.push(i);
       mapa.set(k, v);
@@ -122,7 +134,7 @@ export function CalendarioView({
     const diaDestino = ev.over ? String(ev.over.id).replace('caldia:', '') : null;
     if (!diaDestino || !cardId) return;
     const card = data?.cards.find((c) => c.id === cardId);
-    if (!card || diaLocal(card.dataEntrega) === diaDestino) return;
+    if (!card || diaUTC(card.dataEntrega) === diaDestino) return;
     void api
       .patch(`/kanban/cards/${cardId}`, { dataEntrega: `${diaDestino}T12:00:00.000Z` })
       .then(() => {
@@ -172,11 +184,11 @@ export function CalendarioView({
             </div>
           ))}
           {semanas.flat().map((dia) => {
-            const chave = `${dia.getFullYear()}-${String(dia.getMonth() + 1).padStart(2, '0')}-${String(dia.getDate()).padStart(2, '0')}`;
-            const doMes = dia.getMonth() === mesNum - 1;
+            const chave = chaveDia(dia);
+            const doMes = dia.getUTCMonth() === mesNum - 1;
             const conteudo = porDia.get(chave);
             return (
-              <DiaCelula key={chave} chave={chave} numero={dia.getDate()} apagado={!doMes}>
+              <DiaCelula key={chave} chave={chave} numero={dia.getUTCDate()} apagado={!doMes}>
                 {conteudo?.cards.map((c) => (
                   <CardCalendario key={c.id} card={c} onAbrir={() => onAbrirCard(c.id)} />
                 ))}
@@ -239,6 +251,19 @@ function CardCalendario({ card, onAbrir }: { card: CalCard; onAbrir: () => void 
   const { attributes, listeners, setNodeRef, transform, isDragging } = useDraggable({
     id: `calcard:${card.id}`,
   });
+  // dnd-kit dispara um click logo após o pointerup do drag; suprime esse click
+  // pra não abrir o modal ao arrastar o card entre dias.
+  const arrastouRef = useRef(false);
+  useEffect(() => {
+    if (isDragging) arrastouRef.current = true;
+  }, [isDragging]);
+  function handleClick() {
+    if (arrastouRef.current) {
+      arrastouRef.current = false;
+      return;
+    }
+    onAbrir();
+  }
   const cor = card.corCapa ?? card.etiquetas[0]?.etiqueta.cor ?? '#5C88DA';
   return (
     <button
@@ -246,7 +271,7 @@ function CardCalendario({ card, onAbrir }: { card: CalCard; onAbrir: () => void 
       {...attributes}
       {...listeners}
       type="button"
-      onClick={onAbrir}
+      onClick={handleClick}
       data-testid={`cal-card-${card.id}`}
       style={{
         borderLeft: `3px solid ${cor}`,
@@ -316,13 +341,14 @@ export function TabelaView({
           r.etiquetas.some((e) => (e.etiqueta.nome ?? '').toLowerCase().includes(q)),
       );
     }
-    const valorDe = (r: TabelaCard): string | number => {
+    // null = valor ausente → sempre no fim (independe da direção do sort)
+    const valorDe = (r: TabelaCard): string | number | null => {
       if (sortCol === 'titulo') return r.titulo.toLowerCase();
       if (sortCol === 'lista') return r.lista.posicao;
-      if (sortCol === 'prazo') return r.dataEntrega ? new Date(r.dataEntrega).getTime() : Infinity;
+      if (sortCol === 'prazo') return r.dataEntrega ? new Date(r.dataEntrega).getTime() : null;
       if (sortCol.startsWith('campo:')) {
         const v = r.campoValores.find((c) => c.campoId === sortCol.slice(6))?.valor;
-        if (v === null || v === undefined) return '';
+        if (v === null || v === undefined) return null;
         return typeof v === 'number' ? v : String(v).toLowerCase();
       }
       return 0;
@@ -330,6 +356,11 @@ export function TabelaView({
     return [...rows].sort((a, b) => {
       const va = valorDe(a);
       const vb = valorDe(b);
+      // ausentes vão pro fim em qualquer direção (não coage '' pra 0)
+      if (va === null || vb === null) {
+        if (va === null && vb === null) return 0;
+        return va === null ? 1 : -1;
+      }
       const cmp = va < vb ? -1 : va > vb ? 1 : 0;
       return sortDir === 'asc' ? cmp : -cmp;
     });
@@ -508,13 +539,13 @@ export function DashboardView({ board }: { board: KBoardCompleto }) {
       <GraficoBarras
         titulo="Cards por membro"
         dados={[
-          ...data.porMembro.map((m) => ({ nome: m.nome, total: m.total, cor: '#2bcae5' })),
+          ...data.porMembro.map((m) => ({ id: m.id, nome: m.nome, total: m.total, cor: '#2bcae5' })),
           ...(data.semMembro > 0 ? [{ nome: 'Sem membro', total: data.semMembro, cor: '#838C91' }] : []),
         ]}
       />
       <GraficoBarras
         titulo="Cards por etiqueta"
-        dados={data.porEtiqueta.map((e) => ({ nome: e.nome || e.cor, total: e.total, cor: e.cor }))}
+        dados={data.porEtiqueta.map((e) => ({ id: e.id, nome: e.nome || e.cor, total: e.total, cor: e.cor }))}
         vazio="Nenhuma etiqueta aplicada"
       />
       <GraficoBarras titulo="Cards por vencimento" dados={venc.filter((v) => v.total > 0)} />
@@ -528,7 +559,7 @@ function GraficoBarras({
   vazio = 'Sem dados',
 }: {
   titulo: string;
-  dados: Array<{ nome: string; total: number; cor: string }>;
+  dados: Array<{ id?: string; nome: string; total: number; cor: string }>;
   vazio?: string;
 }) {
   const max = Math.max(...dados.map((d) => d.total), 1);
@@ -540,7 +571,7 @@ function GraficoBarras({
       ) : (
         <ul className="flex flex-col gap-2">
           {dados.map((d) => (
-            <li key={d.nome} className="flex items-center gap-2 text-xs">
+            <li key={d.id ?? d.nome} className="flex items-center gap-2 text-xs">
               <span className="w-28 truncate text-muted shrink-0" title={d.nome}>
                 {d.nome}
               </span>
