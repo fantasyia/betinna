@@ -5,9 +5,11 @@ import {
   ArrowLeft,
   CheckSquare,
   Clock,
+  GripVertical,
   ImageIcon,
   MessageSquare,
   Paperclip,
+  Pencil,
   Plus,
   Search,
   X,
@@ -36,7 +38,7 @@ import { useApiQuery } from '@/hooks/useApiQuery';
 import { useToast } from '@/components/toast';
 import { PageLayout } from '@/components/PageLayout';
 import { StateView } from '@/components/StateView';
-import { Avatar, Button, IconButton, Input, Select } from '@/components/ui';
+import { Avatar, Button, Dialog, Field, IconButton, Input, Select, Textarea } from '@/components/ui';
 import { useDebouncedValue } from '@/hooks/useDebouncedValue';
 import { cn } from '@/lib/cn';
 import { AtividadeDrawer } from './AtividadeDrawer';
@@ -78,6 +80,37 @@ export default function KanbanBoardPage() {
   const [cardAberto, setCardAberto] = useState<string | null>(null);
   const [atividadeAberta, setAtividadeAberta] = useState(false);
   const [fundoAberto, setFundoAberto] = useState(false);
+  const [renomearAberto, setRenomearAberto] = useState(false);
+  const [nomeEdit, setNomeEdit] = useState('');
+  const [descricaoEdit, setDescricaoEdit] = useState('');
+  const [salvandoNome, setSalvandoNome] = useState(false);
+
+  function abrirRenomear() {
+    setNomeEdit(board?.nome ?? '');
+    setDescricaoEdit(board?.descricao ?? '');
+    setRenomearAberto(true);
+  }
+
+  async function salvarRenomearBoard() {
+    const nome = nomeEdit.trim();
+    if (!nome) {
+      toast.error('Dê um nome ao quadro');
+      return;
+    }
+    setSalvandoNome(true);
+    try {
+      await api.patch(`/kanban/boards/${boardId}`, {
+        nome,
+        descricao: descricaoEdit.trim() || null,
+      });
+      setRenomearAberto(false);
+      refetch();
+    } catch (err) {
+      toast.error(apiErrorMessage(err));
+    } finally {
+      setSalvandoNome(false);
+    }
+  }
 
   // ★ Alternador de visualização (persistido na URL) + deep-link ?card=
   const [searchParams, setSearchParams] = useSearchParams();
@@ -323,6 +356,20 @@ export default function KanbanBoardPage() {
     }
   }
 
+  async function renomearLista(listaId: string, nome: string) {
+    const limpo = nome.trim();
+    if (!limpo) return;
+    // otimista: atualiza o nome na hora
+    setListas((prev) => prev.map((l) => (l.id === listaId ? { ...l, nome: limpo } : l)));
+    try {
+      await api.patch(`/kanban/listas/${listaId}`, { nome: limpo });
+      refetch();
+    } catch (err) {
+      refetch();
+      toast.error(apiErrorMessage(err));
+    }
+  }
+
   async function criarCard(listaId: string, titulo: string) {
     try {
       await api.post(`/kanban/listas/${listaId}/cards`, { titulo });
@@ -344,6 +391,14 @@ export default function KanbanBoardPage() {
             onClick={() => navigate('/kanban')}
           >
             Quadros
+          </Button>
+          <Button
+            variant="ghost"
+            leftIcon={<Pencil className="h-4 w-4" />}
+            onClick={abrirRenomear}
+            data-testid="kanban-renomear-quadro"
+          >
+            Renomear
           </Button>
           <Button
             variant="ghost"
@@ -506,6 +561,7 @@ export default function KanbanBoardPage() {
                   lista={lista}
                   onCriarCard={(titulo) => void criarCard(lista.id, titulo)}
                   onAbrirCard={setCardAberto}
+                  onRenomear={(nome) => void renomearLista(lista.id, nome)}
                 />
               ))}
             </SortableContext>
@@ -543,6 +599,48 @@ export default function KanbanBoardPage() {
             onMudou={refetch}
           />
         )}
+
+        <Dialog
+          open={renomearAberto}
+          onClose={() => setRenomearAberto(false)}
+          title="Renomear quadro"
+          footer={
+            <>
+              <Button variant="ghost" onClick={() => setRenomearAberto(false)}>
+                Cancelar
+              </Button>
+              <Button
+                onClick={() => void salvarRenomearBoard()}
+                loading={salvandoNome}
+                data-testid="kanban-renomear-salvar"
+              >
+                Salvar
+              </Button>
+            </>
+          }
+        >
+          <div className="flex flex-col gap-3">
+            <Field label="Nome" required>
+              <Input
+                value={nomeEdit}
+                onChange={(e) => setNomeEdit(e.target.value)}
+                autoFocus
+                data-testid="kanban-renomear-nome"
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') void salvarRenomearBoard();
+                }}
+              />
+            </Field>
+            <Field label="Descrição">
+              <Textarea
+                value={descricaoEdit}
+                onChange={(e) => setDescricaoEdit(e.target.value)}
+                rows={2}
+                placeholder="Opcional"
+              />
+            </Field>
+          </div>
+        </Dialog>
       </StateView>
     </PageLayout>
   );
@@ -554,14 +652,25 @@ function ListaColuna({
   lista,
   onCriarCard,
   onAbrirCard,
+  onRenomear,
 }: {
   lista: KLista;
   onCriarCard: (titulo: string) => void;
   onAbrirCard: (cardId: string) => void;
+  onRenomear: (nome: string) => void;
 }) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
     id: `lista:${lista.id}`,
   });
+  const [editando, setEditando] = useState(false);
+  const [nome, setNome] = useState(lista.nome);
+
+  function salvar() {
+    const limpo = nome.trim();
+    if (limpo && limpo !== lista.nome) onRenomear(limpo);
+    else setNome(lista.nome);
+    setEditando(false);
+  }
 
   return (
     <div
@@ -573,14 +682,49 @@ function ListaColuna({
       )}
       data-testid={`kanban-lista-${lista.id}`}
     >
-      {/* header = alça de arrasto da lista */}
-      <div
-        className="px-3 py-2 flex items-center justify-between cursor-grab active:cursor-grabbing select-none"
-        {...attributes}
-        {...listeners}
-      >
-        <span className="text-sm font-semibold text-text truncate">{lista.nome}</span>
-        <span className="text-[11px] text-muted">{lista.cards.length}</span>
+      {/* header: alça de arrasto (grip) + nome editável (clique) + contador */}
+      <div className="px-2 py-2 flex items-center justify-between gap-1">
+        {editando ? (
+          <Input
+            value={nome}
+            onChange={(e) => setNome(e.target.value)}
+            autoFocus
+            className="h-7 text-sm font-semibold"
+            data-testid={`kanban-lista-nome-input-${lista.id}`}
+            onBlur={salvar}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter') salvar();
+              if (e.key === 'Escape') {
+                setNome(lista.nome);
+                setEditando(false);
+              }
+            }}
+          />
+        ) : (
+          <>
+            <span
+              className="cursor-grab active:cursor-grabbing text-muted shrink-0"
+              {...attributes}
+              {...listeners}
+              aria-label="Arrastar lista"
+            >
+              <GripVertical className="h-4 w-4" />
+            </span>
+            <button
+              type="button"
+              onClick={() => {
+                setNome(lista.nome);
+                setEditando(true);
+              }}
+              className="flex-1 min-w-0 text-left text-sm font-semibold text-text truncate hover:text-primary transition-colors"
+              data-testid={`kanban-lista-nome-${lista.id}`}
+              title="Clique para renomear"
+            >
+              {lista.nome}
+            </button>
+            <span className="text-[11px] text-muted shrink-0">{lista.cards.length}</span>
+          </>
+        )}
       </div>
 
       <div className="flex-1 overflow-y-auto px-2 flex flex-col gap-2 pb-1">
