@@ -235,6 +235,25 @@
   - `BullModule.forRootAsync` registrado no AppModule com `REDIS_URL` do env
   - Testes: 17 specs (FluxosService + interpolate helper)
 
+### Kanban estilo Trello + MCP ✅ (concluído 2026-07, 12 batches)
+- [x] **Módulo `quadros`** (`@modules/kanban`, spec `docs/kanban-betinna-EM-BATCHES.md`): boards/
+  listas/cards com posição fracionária + rebalanceamento; `verificarAcessoBoard` = ponto ÚNICO de
+  autorização (multi-tenant; REP máx 1 quadro); etiquetas; membros; checklists AVANÇADOS (prazo +
+  responsável POR ITEM); campos personalizados; comentários (delete só autor/admin); anexos
+  (bucket `kanban-anexos`, magic-number); atividade; busca; views ★ calendário/tabela/dashboard;
+  `GET /kanban/meus-itens`; imagem de fundo (bucket `kanban-fundos`, signed URL 24h em lote).
+- [x] **Tokens de API `bkt_`** (`KanbanApiToken`): sha256 no banco (valor mostrado 1x), branch no
+  `AuthGuard` com escopo DURO a rotas `/kanban` (nunca à gestão de tokens), revogado = 401.
+- [x] **MCP server** (`/mcp-server`, stdio): 16 tools `kanban_*` (readOnlyHint nas leituras, erros
+  acionáveis, mover por NOME de lista, delegação por e-mail). Registro:
+  `claude mcp add betinna-kanban --env BETINNA_API_URL=... --env BETINNA_API_TOKEN=bkt_... --
+  node mcp-server/dist/index.js`. Fluxo: card por batch; Claude move "Em execução"→"Concluído"
+  e comenta o resumo via `kanban_mover_card`/`kanban_comentar_card`.
+- [x] Frontend: `/kanban` (grade), `/kanban/:boardId` (dnd-kit + polling 15s c/ guard de
+  visibilidade e pausa no drag + alternador de views + filtros), modal do card,
+  `/kanban/meus-itens`, `/kanban/tokens`. Módulo de permissão = `quadros` (`kanban` é o
+  pipeline de leads).
+
 ### Fase 8 — Polimento
 - [ ] Relatórios + KPIs
 - [ ] Deploy Railway + Supabase em produção
