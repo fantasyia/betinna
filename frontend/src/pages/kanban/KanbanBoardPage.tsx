@@ -450,6 +450,7 @@ export default function KanbanBoardPage() {
     <PageLayout
       title={board?.nome ?? 'Quadro'}
       description={board?.descricao ?? undefined}
+      actionsBelow
       actions={
         <div className="flex gap-2">
           <Button

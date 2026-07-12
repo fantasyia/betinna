@@ -502,11 +502,19 @@ export function PageLayout({
   title,
   description,
   actions,
+  actionsBelow = false,
   children,
 }: {
   title: string;
   description?: ReactNode;
   actions?: ReactNode;
+  /**
+   * Força as ações numa linha PRÓPRIA abaixo do título/descrição (alinhadas à
+   * esquerda), em vez do topo-direita. Padroniza o cabeçalho independente do
+   * tamanho da descrição (senão descrições longas empurram os botões pra baixo
+   * e curtas os deixam no topo — inconsistente entre telas). Usado nos Quadros.
+   */
+  actionsBelow?: boolean;
   children: ReactNode;
 }) {
   const isMobile = useIsMobile();
@@ -543,7 +551,14 @@ export function PageLayout({
         tabIndex={-1}
       >
         {!isMobile && (
-          <header className="flex items-start justify-between gap-4 mb-7 flex-wrap">
+          <header
+            className={cn(
+              'mb-7',
+              actionsBelow
+                ? 'flex flex-col gap-3'
+                : 'flex items-start justify-between gap-4 flex-wrap',
+            )}
+          >
             <div className="flex flex-col gap-1 min-w-0">
               <h1
                 data-testid="page-title"
@@ -555,7 +570,7 @@ export function PageLayout({
                 <p className="text-sm text-text-subtle">{description}</p>
               )}
             </div>
-            <div className="flex items-center gap-2 flex-wrap shrink-0">
+            <div className={cn('flex items-center gap-2 flex-wrap', !actionsBelow && 'shrink-0')}>
               {actions}
               <NotificationBell />
             </div>
