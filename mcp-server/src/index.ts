@@ -671,6 +671,194 @@ server.registerTool(
   ),
 );
 
+// ─── Etiquetas, listas e itens (board de conteúdo intuitivo) ─────────────
+
+const HEX_COLOR = /^#[0-9a-fA-F]{6}$/;
+
+server.registerTool(
+  'kanban_criar_etiqueta',
+  {
+    description:
+      'Cria uma etiqueta no quadro (cor #RRGGBB + nome opcional). Use kanban_etiquetar_card pra aplicá-la.',
+    inputSchema: {
+      boardId: z.string(),
+      cor: z.string().regex(HEX_COLOR, 'Cor no formato #RRGGBB'),
+      nome: z.string().max(40).optional(),
+    },
+    annotations: { readOnlyHint: false, destructiveHint: false },
+  },
+  seguro(async ({ boardId, cor, nome }: { boardId: string; cor: string; nome?: string }) => {
+    const e = await api.post<Etiqueta>(`/kanban/boards/${boardId}/etiquetas`, {
+      cor,
+      nome: nome ?? null,
+    });
+    return ok({ id: e.id, nome: e.nome, cor: e.cor });
+  }),
+);
+
+server.registerTool(
+  'kanban_etiquetar_card',
+  {
+    description:
+      'Aplica (ou remove, com remover=true) uma etiqueta num card existente. Aceita NOME, cor #RRGGBB ou id da etiqueta do quadro.',
+    inputSchema: {
+      cardId: z.string(),
+      etiqueta: z.string().describe('Nome exato, cor #RRGGBB ou id da etiqueta (kanban_ver_board)'),
+      remover: z.boolean().default(false),
+    },
+    annotations: { readOnlyHint: false, destructiveHint: false },
+  },
+  seguro(
+    async ({ cardId, etiqueta, remover }: { cardId: string; etiqueta: string; remover: boolean }) => {
+      const { boardId } = await boardIdDoCard(cardId);
+      const board = await api.get<BoardCompleto>(`/kanban/boards/${boardId}`);
+      // Prioriza id exato; senão nome (case-insensitive); senão cor.
+      let alvo = board.etiquetas.find((e) => e.id === etiqueta);
+      if (!alvo) {
+        const porNome = board.etiquetas.filter(
+          (e) => (e.nome ?? '').toLowerCase() === etiqueta.toLowerCase(),
+        );
+        if (porNome.length > 1) {
+          return erro(
+            `Há ${porNome.length} etiquetas chamadas "${etiqueta}". Use o id: ${porNome
+              .map((e) => `${e.id} (${e.cor})`)
+              .join(', ')}`,
+          );
+        }
+        alvo = porNome[0] ?? board.etiquetas.find((e) => e.cor.toLowerCase() === etiqueta.toLowerCase());
+      }
+      if (!alvo) {
+        const disponiveis = board.etiquetas.map((e) => e.nome ?? e.cor).join(', ') || '(nenhuma)';
+        return erro(
+          `Etiqueta "${etiqueta}" não existe no quadro. Disponíveis: ${disponiveis}. ` +
+            'Crie com kanban_criar_etiqueta.',
+        );
+      }
+      if (remover) {
+        await api.delete(`/kanban/cards/${cardId}/etiquetas/${alvo.id}`);
+      } else {
+        await api.post(`/kanban/cards/${cardId}/etiquetas/${alvo.id}`);
+      }
+      return ok({ cardId, etiqueta: alvo.nome ?? alvo.cor, aplicada: !remover });
+    },
+  ),
+);
+
+server.registerTool(
+  'kanban_atualizar_lista',
+  {
+    description:
+      'Renomeia e/ou arquiva/restaura uma lista (coluna) do quadro. Arquivar esconde a lista (não apaga).',
+    inputSchema: {
+      listaId: z.string().describe('ID da lista (use kanban_ver_board)'),
+      nome: z.string().min(1).max(100).optional(),
+      arquivada: z.boolean().optional(),
+    },
+    annotations: { readOnlyHint: false, destructiveHint: false },
+  },
+  seguro(
+    async ({ listaId, nome, arquivada }: { listaId: string; nome?: string; arquivada?: boolean }) => {
+      if (nome === undefined && arquivada === undefined) {
+        return erro('Informe pelo menos um campo (nome, arquivada)');
+      }
+      const l = await api.patch<{ id: string; nome: string; arquivada: boolean }>(
+        `/kanban/listas/${listaId}`,
+        { ...(nome !== undefined ? { nome } : {}), ...(arquivada !== undefined ? { arquivada } : {}) },
+      );
+      return ok({ id: l.id, nome: l.nome, arquivada: l.arquivada });
+    },
+  ),
+);
+
+server.registerTool(
+  'kanban_mover_lista',
+  {
+    description:
+      'Reordena uma lista (coluna) dentro do quadro: informe a posição final desejada (1 = primeira).',
+    inputSchema: {
+      boardId: z.string(),
+      lista: z.string().describe('Nome exato OU id da lista'),
+      posicao: z.number().int().min(1).describe('Posição final na ordem das colunas (1-based)'),
+    },
+    annotations: { readOnlyHint: false, destructiveHint: false },
+  },
+  seguro(
+    async ({ boardId, lista, posicao }: { boardId: string; lista: string; posicao: number }) => {
+      const board = await api.get<BoardCompleto>(`/kanban/boards/${boardId}`);
+      let alvo = board.listas.find((l) => l.id === lista);
+      if (!alvo) {
+        const porNome = board.listas.filter((l) => l.nome.toLowerCase() === lista.toLowerCase());
+        if (porNome.length > 1) {
+          return erro(
+            `Há ${porNome.length} listas chamadas "${lista}". Use o id: ${porNome.map((l) => l.id).join(', ')}`,
+          );
+        }
+        alvo = porNome[0];
+      }
+      if (!alvo) {
+        return erro(
+          `Lista "${lista}" não existe no quadro. Disponíveis: ${board.listas.map((l) => l.nome).join(', ')}`,
+        );
+      }
+      // Posição fracionária entre os vizinhos do slot destino (excluindo a própria lista).
+      const outras = board.listas.filter((l) => l.id !== alvo.id).sort((a, b) => a.posicao - b.posicao);
+      const idx = Math.min(posicao - 1, outras.length);
+      const antes = outras[idx - 1]?.posicao;
+      const depois = outras[idx]?.posicao;
+      let novaPosicao: number;
+      if (antes === undefined && depois === undefined) novaPosicao = 1024;
+      else if (antes === undefined) novaPosicao = (depois as number) / 2;
+      else if (depois === undefined) novaPosicao = antes + 1024;
+      else novaPosicao = (antes + depois) / 2;
+      await api.patch(`/kanban/listas/${alvo.id}/mover`, { posicao: novaPosicao });
+      return ok({ listaId: alvo.id, nome: alvo.nome, posicaoFinal: posicao });
+    },
+  ),
+);
+
+server.registerTool(
+  'kanban_adicionar_itens',
+  {
+    description:
+      'Adiciona itens a um checklist JÁ existente do card — cada item pode ter prazo e responsável (por e-mail). ★',
+    inputSchema: {
+      checklistId: z.string().describe('ID do checklist (use kanban_ver_card)'),
+      itens: z.array(itemChecklistSchema).min(1).max(100),
+    },
+    annotations: { readOnlyHint: false, destructiveHint: false },
+  },
+  seguro(
+    async ({
+      checklistId,
+      itens,
+    }: {
+      checklistId: string;
+      itens: Array<z.infer<typeof itemChecklistSchema>>;
+    }) => {
+      // Mesmo padrão do kanban_criar_checklist: resolve e-mails únicos uma vez.
+      const emailParaId = new Map<string, string>();
+      for (const item of itens) {
+        if (item.responsavelEmail && !emailParaId.has(item.responsavelEmail)) {
+          emailParaId.set(item.responsavelEmail, await resolverEmail(item.responsavelEmail));
+        }
+      }
+      const criados: Array<{ id: string; texto: string }> = [];
+      for (const item of itens) {
+        const i = await api.post<{ id: string; texto: string }>(
+          `/kanban/checklists/${checklistId}/itens`,
+          {
+            texto: item.texto,
+            dataEntrega: item.dataEntrega,
+            responsavelId: item.responsavelEmail ? emailParaId.get(item.responsavelEmail) : undefined,
+          },
+        );
+        criados.push({ id: i.id, texto: i.texto });
+      }
+      return ok({ checklistId, itens: criados });
+    },
+  ),
+);
+
 // ═══════════════════════════════════════════════════════════════════════
 // FLUXOS DE AUTOMAÇÃO (prefixo fluxos_) — docs/mcp-fluxos-PLANO.md
 // Mesmo pacote/token; exige escopo "fluxos" no PAT. Escrita SEMPRE não-
@@ -1035,5 +1223,5 @@ server.registerTool(
 const transport = new StdioServerTransport();
 await server.connect(transport);
 console.error(
-  '[betinna-kanban-mcp] conectado — 16 tools kanban_* + 9 tools fluxos_* + 3 tools funis_/contatos_ disponíveis',
+  '[betinna-kanban-mcp] conectado — 21 tools kanban_* + 9 tools fluxos_* + 3 tools funis_/contatos_ disponíveis',
 );

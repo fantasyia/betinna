@@ -7,7 +7,7 @@ listas, comentar, marcar itens de checklist, delegar com prazo — tudo pela API
 Betinna, autenticado com um token que **só acessa rotas do Kanban** e pode ser
 revogado a qualquer momento no app.
 
-## 16 tools
+## 21 tools
 
 | Tool | O que faz |
 |---|---|
@@ -27,8 +27,14 @@ revogado a qualquer momento no app.
 | `kanban_marcar_item` | Conclui/reabre item de checklist |
 | `kanban_atualizar_item` | Texto/prazo/responsável do item ★ |
 | `kanban_definir_campo` | Campo personalizado por NOME ★ |
+| `kanban_criar_etiqueta` | Cria etiqueta no quadro (cor + nome) |
+| `kanban_etiquetar_card` | Aplica/remove etiqueta num card (por NOME, cor ou id) |
+| `kanban_atualizar_lista` | Renomeia e/ou arquiva/restaura uma lista |
+| `kanban_mover_lista` | Reordena coluna (posição 1-based) |
+| `kanban_adicionar_itens` | Adiciona itens a checklist já existente ★ |
 
-Sem tools de delete — arquivar/excluir só pelo app (decisão da spec).
+Sem tools de delete — excluir só pelo app (decisão da spec); arquivar lista é
+reversível (restaura com `arquivada: false`).
 
 ## 9 tools de Fluxos (prefixo `fluxos_`)
 
