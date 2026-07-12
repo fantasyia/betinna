@@ -79,7 +79,7 @@ export function Dialog({
         aria-modal="true"
         aria-labelledby={title ? 'dialog-title' : undefined}
         className={cn(
-          'w-full bg-surface-elevated border border-border-strong shadow-xl',
+          'relative w-full bg-surface-elevated border border-border-strong shadow-xl',
           'rounded-t-2xl md:rounded-lg',
           'flex flex-col max-h-[90vh] md:max-h-[85vh]',
           'animate-slide-up',
@@ -105,6 +105,18 @@ export function Dialog({
               onClick={onClose}
             />
           </header>
+        )}
+        {/* Sem header (dialog sem título): X flutuante no canto pra sempre ter como fechar */}
+        {!title && !description && (
+          <div className="absolute right-2 top-2 z-10">
+            <IconButton
+              aria-label="Fechar"
+              variant="ghost"
+              size="sm"
+              icon={<X />}
+              onClick={onClose}
+            />
+          </div>
         )}
         <div className="flex-1 overflow-y-auto px-5 py-4">{children}</div>
         {footer && (

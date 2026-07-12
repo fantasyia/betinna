@@ -135,7 +135,7 @@ export function CardModal({
       )}
 
       {/* Título editável + lista atual */}
-      <div className="mb-1">
+      <div className="mb-1 pr-10">
         <Input
           value={titulo}
           onChange={(e) => setTitulo(e.target.value)}
@@ -144,8 +144,10 @@ export function CardModal({
             if (v && v !== card.titulo) void mut(() => api.patch(`/kanban/cards/${card.id}`, { titulo: v }));
           }}
           className="font-semibold text-base"
+          title="Clique para editar o título"
           data-testid="card-modal-titulo"
         />
+        <div className="text-[10px] text-muted mt-0.5 px-1">Clique no título para renomear</div>
         <div className="text-xs text-muted mt-1 px-1">
           na lista <span className="font-medium text-text">{card.lista.nome}</span>
           {card.concluido && <span className="ml-2 text-emerald-500">✓ concluído</span>}
