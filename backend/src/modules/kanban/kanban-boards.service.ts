@@ -52,7 +52,9 @@ export class KanbanBoardsService {
         membros: { include: { usuario: USUARIO_RESUMO } },
         _count: { select: { listas: { where: { arquivada: false } } } },
       },
-      orderBy: { atualizadoEm: 'desc' },
+      // Ordem ESTÁVEL por criação — não reordena a grade a cada save
+      // (antes era atualizadoEm desc, que jogava o quadro editado pro topo).
+      orderBy: { criadoEm: 'asc' },
     });
     // Signed URLs das imagens de fundo em 1 chamada (24h)
     const urls = await this.fundo.signedUrlsEmLote(
