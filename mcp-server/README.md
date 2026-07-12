@@ -7,7 +7,7 @@ listas, comentar, marcar itens de checklist, delegar com prazo — tudo pela API
 Betinna, autenticado com um token que **só acessa rotas do Kanban** e pode ser
 revogado a qualquer momento no app.
 
-## 25 tools
+## 26 tools
 
 | Tool | O que faz |
 |---|---|
@@ -36,6 +36,7 @@ revogado a qualquer momento no app.
 | `kanban_excluir_item` | Exclui um item de checklist (destrutivo) |
 | `kanban_mover_item` | Reordena item dentro do checklist (posição 1-based) |
 | `kanban_anexar` | Anexa ARQUIVO local (upload) ou LINK ao card |
+| `kanban_excluir_anexo` | Remove um anexo do card (destrutivo) |
 
 `kanban_anexar` aceita `caminhoArquivo` (upload multipart — HTML/CSS/JS/JSON/SVG,
 imagens, PDF, CSV/TXT, .docx/.xlsx, .zip, máx 10MB) **ou** `url` + `nome` (link).

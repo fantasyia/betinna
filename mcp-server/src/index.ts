@@ -80,6 +80,7 @@ interface CardCompleto {
     }>;
   }>;
   comentarios: Array<{ id: string; texto: string; criadoEm: string; autor: Usuario }>;
+  anexos: Array<{ id: string; nome: string; tipo: string; url: string; criadoEm: string }>;
   atividades: Array<{ tipo: string; dados: Record<string, unknown>; criadoEm: string; usuario: Usuario }>;
 }
 
@@ -231,6 +232,12 @@ server.registerTool(
         autor: cm.autor.nome,
         quando: cm.criadoEm,
         texto: cm.texto,
+      })),
+      anexos: (c.anexos ?? []).map((a) => ({
+        id: a.id,
+        nome: a.nome,
+        tipo: a.tipo,
+        ...(a.tipo === 'link' ? { url: a.url } : {}),
       })),
       atividades: c.atividades.map((a) => ({
         quem: a.usuario.nome,
@@ -889,6 +896,21 @@ server.registerTool(
 );
 
 server.registerTool(
+  'kanban_excluir_anexo',
+  {
+    description:
+      'Remove um anexo (arquivo ou link) do card. Irreversível — o arquivo sai do storage. ' +
+      'Pegue o anexoId em kanban_ver_card (campo anexos).',
+    inputSchema: { anexoId: z.string().describe('ID do anexo (use kanban_ver_card → anexos)') },
+    annotations: { readOnlyHint: false, destructiveHint: true },
+  },
+  seguro(async ({ anexoId }: { anexoId: string }) => {
+    await api.delete(`/kanban/anexos/${anexoId}`);
+    return ok({ anexoId, excluido: true });
+  }),
+);
+
+server.registerTool(
   'kanban_mover_item',
   {
     description:
@@ -1377,5 +1399,5 @@ server.registerTool(
 const transport = new StdioServerTransport();
 await server.connect(transport);
 console.error(
-  '[betinna-kanban-mcp] conectado — 25 tools kanban_* + 9 tools fluxos_* + 3 tools funis_/contatos_ disponíveis',
+  '[betinna-kanban-mcp] conectado — 26 tools kanban_* + 9 tools fluxos_* + 3 tools funis_/contatos_ disponíveis',
 );
