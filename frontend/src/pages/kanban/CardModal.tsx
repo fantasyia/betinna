@@ -1,20 +1,24 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import {
   Archive,
   ArchiveRestore,
   Calendar,
   CheckSquare,
+  FileText,
+  Link2,
   MessageSquare,
   Palette,
+  Paperclip,
   Send,
   SlidersHorizontal,
   Tag,
   Trash2,
+  Upload,
   UserPlus,
   Users,
 } from 'lucide-react';
 import { api, apiErrorMessage } from '@/lib/api';
-import { getSession } from '@/lib/auth-store';
+import { getSession, getStoredEmpresaId } from '@/lib/auth-store';
 import { useApiQuery } from '@/hooks/useApiQuery';
 import { useRole } from '@/hooks/usePermission';
 import { useToast } from '@/components/toast';
@@ -215,6 +219,9 @@ export function CardModal({
               </div>
             </section>
           )}
+
+          {/* Anexos (arquivo ou link) */}
+          <AnexosSection card={card} onMut={mut} />
 
           {/* Comentários */}
           <ComentariosSection
@@ -865,6 +872,184 @@ function CampoInline({
 }
 
 // ─── Comentários ────────────────────────────────────────────────────────
+
+// Extensões aceitas pelo backend (ALLOWED_MIMES dos anexos).
+const ANEXO_ACCEPT =
+  '.html,.htm,.css,.js,.json,.svg,.pdf,.png,.jpg,.jpeg,.webp,.gif,.csv,.txt,.md,.zip,.xlsx,.docx';
+const ANEXO_MAX_BYTES = 10 * 1024 * 1024;
+
+/**
+ * Anexos do card: ARQUIVO (upload multipart, mesmo padrão do FundoDialog — o
+ * api client é JSON-only) ou LINK (JSON). Lista com abrir (signed URL) e excluir.
+ */
+function AnexosSection({
+  card,
+  onMut,
+}: {
+  card: KCardCompleto;
+  onMut: (fn: () => Promise<unknown>) => Promise<void>;
+}) {
+  const toast = useToast();
+  const fileRef = useRef<HTMLInputElement>(null);
+  const [enviando, setEnviando] = useState(false);
+  const [addLink, setAddLink] = useState(false);
+  const [linkNome, setLinkNome] = useState('');
+  const [linkUrl, setLinkUrl] = useState('');
+
+  async function subirArquivo(file: File) {
+    if (file.size === 0) {
+      toast.error('Arquivo vazio.');
+      return;
+    }
+    if (file.size > ANEXO_MAX_BYTES) {
+      toast.error('Arquivo muito grande. Máximo 10MB.');
+      return;
+    }
+    setEnviando(true);
+    await onMut(async () => {
+      const fd = new FormData();
+      fd.append('file', file);
+      const sess = getSession();
+      const empresaId = sess?.user.empresaIdAtiva ?? getStoredEmpresaId();
+      const baseUrl =
+        (import.meta.env.VITE_API_URL as string | undefined) ?? 'http://localhost:3001';
+      const res = await fetch(`${baseUrl}/api/v1/kanban/cards/${card.id}/anexos`, {
+        method: 'POST',
+        body: fd,
+        headers: {
+          ...(sess?.accessToken ? { Authorization: `Bearer ${sess.accessToken}` } : {}),
+          ...(empresaId ? { 'X-Empresa-Id': empresaId } : {}),
+        },
+      });
+      const json = (await res.json()) as { success: boolean; error?: { message?: string } };
+      if (!res.ok || !json.success) {
+        throw new Error(json.error?.message ?? `Falha no upload (${res.status})`);
+      }
+    });
+    setEnviando(false);
+    if (fileRef.current) fileRef.current.value = '';
+  }
+
+  function adicionarLink() {
+    const nome = linkNome.trim();
+    const url = linkUrl.trim();
+    if (!nome || !url) {
+      toast.error('Informe o nome e a URL do link.');
+      return;
+    }
+    void onMut(() => api.post(`/kanban/cards/${card.id}/anexos`, { nome, url }));
+    setLinkNome('');
+    setLinkUrl('');
+    setAddLink(false);
+  }
+
+  async function abrir(anexoId: string) {
+    try {
+      const r = await api.get<{ url: string }>(`/kanban/anexos/${anexoId}/link`);
+      window.open(r.url, '_blank', 'noopener,noreferrer');
+    } catch (err) {
+      toast.error(apiErrorMessage(err));
+    }
+  }
+
+  return (
+    <section>
+      <h4 className="text-xs font-semibold uppercase tracking-wider text-muted mb-1.5 inline-flex items-center gap-1">
+        <Paperclip className="h-3.5 w-3.5" /> Anexos
+      </h4>
+      <div className="flex flex-wrap gap-2 mb-2">
+        <input
+          ref={fileRef}
+          type="file"
+          accept={ANEXO_ACCEPT}
+          className="hidden"
+          data-testid="card-modal-anexo-file"
+          onChange={(e) => {
+            const f = e.target.files?.[0];
+            if (f) void subirArquivo(f);
+          }}
+        />
+        <Button
+          size="sm"
+          variant="secondary"
+          leftIcon={<Upload className="h-3.5 w-3.5" />}
+          loading={enviando}
+          onClick={() => fileRef.current?.click()}
+          data-testid="card-modal-anexar-arquivo"
+        >
+          Anexar arquivo
+        </Button>
+        <Button
+          size="sm"
+          variant="ghost"
+          leftIcon={<Link2 className="h-3.5 w-3.5" />}
+          onClick={() => setAddLink((v) => !v)}
+        >
+          Anexar link
+        </Button>
+      </div>
+
+      {addLink && (
+        <div className="flex flex-wrap items-center gap-2 mb-2">
+          <Input
+            value={linkNome}
+            onChange={(e) => setLinkNome(e.target.value)}
+            placeholder="Nome (ex: Backbone HTML)"
+            className="flex-1 min-w-[140px]"
+          />
+          <Input
+            value={linkUrl}
+            onChange={(e) => setLinkUrl(e.target.value)}
+            placeholder="https://…"
+            className="flex-1 min-w-[160px]"
+            onKeyDown={(e) => {
+              if (e.key === 'Enter') adicionarLink();
+            }}
+          />
+          <Button size="sm" onClick={adicionarLink}>
+            Adicionar
+          </Button>
+        </div>
+      )}
+
+      <ul className="flex flex-col gap-1">
+        {card.anexos.length === 0 && (
+          <li className="text-xs text-muted">Nenhum anexo ainda.</li>
+        )}
+        {card.anexos.map((a) => (
+          <li
+            key={a.id}
+            className="flex items-center gap-2 rounded-[8px] border border-border px-2.5 py-1.5"
+          >
+            {a.tipo === 'link' ? (
+              <Link2 className="h-3.5 w-3.5 text-muted shrink-0" />
+            ) : (
+              <FileText className="h-3.5 w-3.5 text-muted shrink-0" />
+            )}
+            <button
+              type="button"
+              onClick={() => void abrir(a.id)}
+              className="flex-1 min-w-0 truncate text-left text-sm text-primary hover:underline"
+              title={`Abrir ${a.nome}`}
+            >
+              {a.nome}
+            </button>
+            <span className="text-[11px] text-muted shrink-0">
+              {new Date(a.criadoEm).toLocaleDateString('pt-BR')}
+            </span>
+            <IconButton
+              aria-label="Excluir anexo"
+              size="sm"
+              variant="ghost"
+              icon={<Trash2 className="h-3.5 w-3.5" />}
+              onClick={() => void onMut(() => api.delete(`/kanban/anexos/${a.id}`))}
+            />
+          </li>
+        ))}
+      </ul>
+    </section>
+  );
+}
 
 function ComentariosSection({
   card,
