@@ -950,10 +950,90 @@ server.registerTool(
   }),
 );
 
+// ─── Funis (SOMENTE LEITURA — escopo "funis") ───────────────────────────
+// Base pro email-marketing: o orquestrador precisa enxergar os funis e etapas
+// pra decidir a quem/quando escrever. NUNCA escreve (o token nem consegue: o
+// guard barra métodos != GET em /funis).
+
+server.registerTool(
+  'funis_listar',
+  {
+    description:
+      'Lista os funis (pipelines) da empresa, com suas etapas. Somente leitura. ' +
+      'O funil padrão vem primeiro.',
+    inputSchema: {},
+    annotations: { readOnlyHint: true, destructiveHint: false },
+  },
+  seguro(async () => {
+    const resp = await api.get<{ data: unknown[] } | unknown[]>('/funis');
+    const lista = Array.isArray(resp) ? resp : (resp.data ?? []);
+    return ok(lista);
+  }),
+);
+
+server.registerTool(
+  'funis_ver',
+  {
+    description: 'Detalhe de um funil: dados + etapas ordenadas. Somente leitura.',
+    inputSchema: { funilId: z.string().describe('ID do funil (use funis_listar)') },
+    annotations: { readOnlyHint: true, destructiveHint: false },
+  },
+  seguro(async ({ funilId }: { funilId: string }) => {
+    const f = await api.get<Record<string, unknown>>(`/funis/${funilId}`);
+    return ok(f);
+  }),
+);
+
+// ─── Contatos (SOMENTE LEITURA — escopo "contatos" · DADOS PESSOAIS) ─────
+// Visão unificada Lead + Cliente + Conversa, deduplicada por telefone (D18).
+// Paginada. Sem endpoint de detalhe único: filtre com `search`. NUNCA escreve
+// (o token nem consegue: guard barra métodos != GET em /contatos).
+
+server.registerTool(
+  'contatos_listar',
+  {
+    description:
+      'Lista contatos da empresa (Lead + Cliente + Conversa unificados e deduplicados por ' +
+      'telefone), paginado. Contém DADOS PESSOAIS — use só o necessário. Somente leitura.',
+    inputSchema: {
+      page: z.number().int().min(1).default(1).describe('Página (1-based)'),
+      limit: z.number().int().min(1).max(100).default(30).describe('Itens por página (máx 100)'),
+      search: z.string().optional().describe('Busca por nome, telefone ou e-mail'),
+      tipo: z
+        .enum(['LEAD', 'CLIENTE', 'CONVERSA'])
+        .optional()
+        .describe('Filtra contatos que SÃO desse tipo (um contato pode ter vários)'),
+      representanteId: z.string().optional().describe('Filtra pela carteira de um representante'),
+      sortBy: z.enum(['recente', 'nome']).default('recente'),
+    },
+    annotations: { readOnlyHint: true, destructiveHint: false },
+  },
+  seguro(
+    async (args: {
+      page: number;
+      limit: number;
+      search?: string;
+      tipo?: string;
+      representanteId?: string;
+      sortBy: string;
+    }) => {
+      const qs = new URLSearchParams();
+      qs.set('page', String(args.page));
+      qs.set('limit', String(args.limit));
+      qs.set('sortBy', args.sortBy);
+      if (args.search) qs.set('search', args.search);
+      if (args.tipo) qs.set('tipo', args.tipo);
+      if (args.representanteId) qs.set('representanteId', args.representanteId);
+      const resp = await api.get<unknown>(`/contatos?${qs.toString()}`);
+      return ok(resp);
+    },
+  ),
+);
+
 // ─── Boot ───────────────────────────────────────────────────────────────
 
 const transport = new StdioServerTransport();
 await server.connect(transport);
 console.error(
-  '[betinna-kanban-mcp] conectado — 16 tools kanban_* + 9 tools fluxos_* disponíveis',
+  '[betinna-kanban-mcp] conectado — 16 tools kanban_* + 9 tools fluxos_* + 3 tools funis_/contatos_ disponíveis',
 );

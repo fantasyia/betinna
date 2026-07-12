@@ -49,6 +49,21 @@ Exigem token com escopo **`fluxos`** (marque "Fluxos de automação" ao gerar em
 **Não expõe** `ativar`/`pausar`/`arquivar`/`excluir` — ativação = decisão humana no app.
 Import sempre cria **RASCUNHO**; disparo real de WhatsApp/e-mail só depois do Léo ativar.
 
+## 3 tools de Funis + Contatos (leitura — base do e-mail marketing)
+
+Só **leitura**. Cada uma exige o escopo próprio (marque em Quadros → Tokens de API):
+"Funis (somente leitura)" e "Contatos (somente leitura)". O guard barra qualquer
+método != GET nessas rotas — o token **nunca** escreve em funis nem contatos.
+
+| Tool | Escopo | O que faz |
+|---|---|---|
+| `funis_listar` | `funis` | Lista os funis (pipelines) + etapas |
+| `funis_ver` | `funis` | Detalhe de um funil (dados + etapas ordenadas) |
+| `contatos_listar` | `contatos` | Lista contatos (Lead+Cliente+Conversa dedup por telefone), paginado + filtros |
+
+**Contatos = dados pessoais (PII).** Sem endpoint de detalhe único: filtre com `search`.
+Escrita (criar leads, ação em massa) continua só no app.
+
 ## Build
 
 ```bash
