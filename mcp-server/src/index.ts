@@ -671,8 +671,289 @@ server.registerTool(
   ),
 );
 
+// ═══════════════════════════════════════════════════════════════════════
+// FLUXOS DE AUTOMAÇÃO (prefixo fluxos_) — docs/mcp-fluxos-PLANO.md
+// Mesmo pacote/token; exige escopo "fluxos" no PAT. Escrita SEMPRE não-
+// destrutiva: import cria RASCUNHO; ativar/pausar/excluir NÃO expostos.
+// ═══════════════════════════════════════════════════════════════════════
+
+const FLUXO_NO_TIPO = z.enum(['TRIGGER', 'CONDICAO', 'ACAO', 'DELAY']);
+const FLUXO_ACAO_TIPO = z.enum([
+  'ENVIAR_WHATSAPP',
+  'ENVIAR_EMAIL',
+  'CRIAR_TAREFA',
+  'MUDAR_TAG',
+  'MOVER_LEAD_ETAPA',
+  'ATRIBUIR_REP',
+  'WEBHOOK_EXTERNO',
+  'CONVERSAR_IA',
+  'LIBERAR_LOTE',
+  'PAUSAR_IA',
+]);
+const FLUXO_TRIGGER_TIPO = z.enum([
+  'LEAD_CRIADO',
+  'LEAD_ETAPA_MUDOU',
+  'PEDIDO_APROVADO',
+  'PEDIDO_ENTREGUE',
+  'OCORRENCIA_ABERTA',
+  'CLIENTE_INATIVO_30D',
+  'AMOSTRA_FOLLOWUP',
+  'CRON_AGENDADO',
+  'LEAD_RESPONDEU',
+  'LEAD_SEM_RESPOSTA',
+  'IA_CLASSIFICOU',
+  'LEAD_RECEBEU_TAG',
+  'MENSAGEM_CANAL',
+  'WEBHOOK_RECEBIDO',
+]);
+
+/** Nó no arquivo de import: `id` é a CHAVE estável referenciada pelas arestas. */
+const fluxoNoInput = z.object({
+  id: z.string().min(1).max(120).describe('Chave estável (ex: "trigger", "ia1") usada nas arestas'),
+  tipo: FLUXO_NO_TIPO,
+  acaoTipo: FLUXO_ACAO_TIPO.nullable().optional().describe('Obrigatório quando tipo=ACAO'),
+  titulo: z.string().min(1).max(100),
+  config: z.record(z.unknown()).optional().describe('Config do nó (varia por tipo/ação)'),
+  posX: z.number().optional(),
+  posY: z.number().optional(),
+});
+const fluxoArestaInput = z.object({
+  sourceNoId: z.string().min(1).describe('id (chave) do nó de origem'),
+  targetNoId: z.string().min(1).describe('id (chave) do nó de destino'),
+  label: z.string().max(40).nullable().optional().describe('Ex: "true"/"false" após CONDICAO'),
+});
+
+interface FluxoResumo {
+  id: string;
+  nome: string;
+  status: string;
+  triggerTipo: string | null;
+  descricao?: string | null;
+}
+
+// ─── Leitura ─────────────────────────────────────────────────────────────
+
+server.registerTool(
+  'fluxos_listar',
+  {
+    description:
+      'Lista os fluxos de automação da empresa (id, nome, status, trigger). Filtros opcionais.',
+    inputSchema: {
+      status: z
+        .enum(['RASCUNHO', 'ATIVO', 'PAUSADO', 'ARQUIVADO'])
+        .optional()
+        .describe('Filtra por status'),
+      search: z.string().optional().describe('Busca por nome'),
+    },
+    annotations: { readOnlyHint: true, destructiveHint: false },
+  },
+  seguro(async ({ status, search }: { status?: string; search?: string }) => {
+    const qs = new URLSearchParams();
+    if (status) qs.set('status', status);
+    if (search) qs.set('search', search);
+    const q = qs.toString();
+    const resp = await api.get<{ data: FluxoResumo[] } | FluxoResumo[]>(
+      `/fluxos${q ? `?${q}` : ''}`,
+    );
+    // O endpoint pagina: { data: [...], pagination } — normaliza os dois formatos.
+    const lista = Array.isArray(resp) ? resp : (resp.data ?? []);
+    return ok(
+      lista.map((f) => ({
+        id: f.id,
+        nome: f.nome,
+        status: f.status,
+        trigger: f.triggerTipo,
+      })),
+    );
+  }),
+);
+
+server.registerTool(
+  'fluxos_ver',
+  {
+    description: 'Detalhe de um fluxo: nós e arestas do grafo.',
+    inputSchema: { fluxoId: z.string().describe('ID do fluxo (use fluxos_listar)') },
+    annotations: { readOnlyHint: true, destructiveHint: false },
+  },
+  seguro(async ({ fluxoId }: { fluxoId: string }) => {
+    const f = await api.get<Record<string, unknown>>(`/fluxos/${fluxoId}`);
+    return ok(f);
+  }),
+);
+
+server.registerTool(
+  'fluxos_exportar',
+  {
+    description: 'Exporta o fluxo como JSON (envelope pronto pra reimportar com fluxos_importar).',
+    inputSchema: { fluxoId: z.string() },
+    annotations: { readOnlyHint: true, destructiveHint: false },
+  },
+  seguro(async ({ fluxoId }: { fluxoId: string }) => {
+    const json = await api.get<unknown>(`/fluxos/${fluxoId}/exportar`);
+    return ok(json);
+  }),
+);
+
+server.registerTool(
+  'fluxos_execucoes',
+  {
+    description: 'Histórico de execuções de um fluxo (mais recentes primeiro).',
+    inputSchema: {
+      fluxoId: z.string(),
+      limit: z.number().int().min(1).max(100).default(20),
+    },
+    annotations: { readOnlyHint: true, destructiveHint: false },
+  },
+  seguro(async ({ fluxoId, limit }: { fluxoId: string; limit: number }) => {
+    const resp = await api.get<unknown>(`/fluxos/${fluxoId}/execucoes?limit=${limit}`);
+    return ok(resp);
+  }),
+);
+
+server.registerTool(
+  'fluxos_metricas',
+  {
+    description: 'Métricas de execução do fluxo (total, taxa de sucesso, etc.).',
+    inputSchema: { fluxoId: z.string() },
+    annotations: { readOnlyHint: true, destructiveHint: false },
+  },
+  seguro(async ({ fluxoId }: { fluxoId: string }) => {
+    const m = await api.get<unknown>(`/fluxos/${fluxoId}/metricas`);
+    return ok(m);
+  }),
+);
+
+server.registerTool(
+  'fluxos_cron_preview',
+  {
+    description:
+      'Valida expressão(ões) cron (5 campos) e devolve as próximas execuções. Não altera nada.',
+    inputSchema: {
+      expressoes: z
+        .array(z.string().max(120))
+        .min(1)
+        .describe('Uma ou mais expressões cron de 5 campos, ex: ["0 9 * * 1-5"]'),
+      timezone: z.string().max(64).optional().describe('Ex: America/Sao_Paulo'),
+      pularFeriados: z.boolean().optional(),
+    },
+    annotations: { readOnlyHint: true, destructiveHint: false },
+  },
+  seguro(
+    async ({
+      expressoes,
+      timezone,
+      pularFeriados,
+    }: {
+      expressoes: string[];
+      timezone?: string;
+      pularFeriados?: boolean;
+    }) => {
+      const r = await api.post<unknown>('/fluxos/cron/preview', {
+        expressoes,
+        timezone,
+        pularFeriados,
+      });
+      return ok(r);
+    },
+  ),
+);
+
+// ─── Escrita (não-destrutiva: RASCUNHO / teste) ──────────────────────────
+
+server.registerTool(
+  'fluxos_importar',
+  {
+    description:
+      'Sobe um fluxo a partir do grafo (nós + arestas) → cria como RASCUNHO (nunca ativa). ' +
+      'A ativação é decisão do Léo no app. Nós ACAO exigem acaoTipo; arestas referenciam nós pela chave (id).',
+    inputSchema: {
+      nome: z.string().min(1).max(150),
+      descricao: z.string().max(500).optional(),
+      triggerTipo: FLUXO_TRIGGER_TIPO.optional(),
+      triggerConfig: z.record(z.unknown()).optional().describe('Ex: { "tag": "medicao-solicitada" }'),
+      nos: z.array(fluxoNoInput).max(200).describe('Nós do grafo (TRIGGER, ACAO, CONDICAO, DELAY)'),
+      arestas: z.array(fluxoArestaInput).max(400).describe('Ligações entre nós (por chave/id)'),
+    },
+    annotations: { readOnlyHint: false, destructiveHint: false },
+  },
+  seguro(
+    async (args: {
+      nome: string;
+      descricao?: string;
+      triggerTipo?: string;
+      triggerConfig?: Record<string, unknown>;
+      nos: unknown[];
+      arestas: unknown[];
+    }) => {
+      const f = await api.post<FluxoResumo>('/fluxos/importar', {
+        betinnaFluxo: 1,
+        tipo: 'fluxo',
+        ...args,
+      });
+      return ok({
+        id: f.id,
+        nome: f.nome,
+        status: f.status,
+        dica: 'Criado como RASCUNHO. Revise e ative no app (ativação nunca via MCP).',
+      });
+    },
+  ),
+);
+
+server.registerTool(
+  'fluxos_atualizar',
+  {
+    description:
+      'Atualiza um fluxo em rascunho: nome/descrição/trigger e/ou FULL-REPLACE de nós e arestas ' +
+      '(quando fornecidos, substituem TODOS os existentes). Não ativa.',
+    inputSchema: {
+      fluxoId: z.string(),
+      nome: z.string().min(1).max(150).optional(),
+      descricao: z.string().max(500).optional(),
+      triggerTipo: FLUXO_TRIGGER_TIPO.optional(),
+      triggerConfig: z.record(z.unknown()).optional(),
+      nos: z.array(fluxoNoInput).optional().describe('Se enviado, substitui TODOS os nós'),
+      arestas: z.array(fluxoArestaInput).optional().describe('Se enviado, substitui TODAS as arestas'),
+    },
+    annotations: { readOnlyHint: false, destructiveHint: false },
+  },
+  seguro(async ({ fluxoId, ...campos }: { fluxoId: string; [k: string]: unknown }) => {
+    const definidos = Object.fromEntries(
+      Object.entries(campos).filter(([, v]) => v !== undefined),
+    );
+    if (Object.keys(definidos).length === 0) {
+      return erro('Informe pelo menos um campo (nome, descricao, triggerTipo, nos, arestas)');
+    }
+    const f = await api.put<FluxoResumo>(`/fluxos/${fluxoId}`, definidos);
+    return ok({ id: f.id, nome: f.nome, status: f.status, atualizado: Object.keys(definidos) });
+  }),
+);
+
+server.registerTool(
+  'fluxos_testar',
+  {
+    description:
+      'Dispara uma execução de TESTE manual do fluxo (não é ativação — não liga o gatilho real). ' +
+      'Use fluxos_execucoes pra ler o resultado.',
+    inputSchema: {
+      fluxoId: z.string(),
+      contexto: z
+        .record(z.unknown())
+        .optional()
+        .describe('Contexto inicial da execução (ex: { leadId, tag })'),
+    },
+    annotations: { readOnlyHint: false, destructiveHint: false },
+  },
+  seguro(async ({ fluxoId, contexto }: { fluxoId: string; contexto?: Record<string, unknown> }) => {
+    const r = await api.post<unknown>('/fluxos/testar', { fluxoId, contexto: contexto ?? {} });
+    return ok(r);
+  }),
+);
+
 // ─── Boot ───────────────────────────────────────────────────────────────
 
 const transport = new StdioServerTransport();
 await server.connect(transport);
-console.error('[betinna-kanban-mcp] conectado — 16 tools kanban_* disponíveis');
+console.error(
+  '[betinna-kanban-mcp] conectado — 16 tools kanban_* + 9 tools fluxos_* disponíveis',
+);

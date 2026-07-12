@@ -30,6 +30,25 @@ revogado a qualquer momento no app.
 
 Sem tools de delete — arquivar/excluir só pelo app (decisão da spec).
 
+## 9 tools de Fluxos (prefixo `fluxos_`)
+
+Exigem token com escopo **`fluxos`** (marque "Fluxos de automação" ao gerar em Quadros → Tokens de API).
+
+| Tool | O que faz |
+|---|---|
+| `fluxos_listar` | Lista fluxos (id, nome, status, trigger) |
+| `fluxos_ver` | Detalhe: nós + arestas |
+| `fluxos_exportar` | JSON pronto pra reimportar |
+| `fluxos_importar` | **Sobe um fluxo (nós+arestas) → cria RASCUNHO** |
+| `fluxos_atualizar` | Full-replace de nós/arestas de um rascunho |
+| `fluxos_testar` | Dispara execução de teste (não ativa) |
+| `fluxos_execucoes` | Histórico de execuções |
+| `fluxos_metricas` | Total, taxa de sucesso, etc. |
+| `fluxos_cron_preview` | Valida cron e mostra próximas execuções |
+
+**Não expõe** `ativar`/`pausar`/`arquivar`/`excluir` — ativação = decisão humana no app.
+Import sempre cria **RASCUNHO**; disparo real de WhatsApp/e-mail só depois do Léo ativar.
+
 ## Build
 
 ```bash
