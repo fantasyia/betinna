@@ -32,16 +32,8 @@ export class ApiError extends Error {
   }
 }
 
-async function request<T>(method: string, path: string, body?: unknown): Promise<T> {
-  const res = await fetch(`${BASE}${path}`, {
-    method,
-    headers: {
-      Authorization: `Bearer ${API_TOKEN}`,
-      ...(body !== undefined ? { 'Content-Type': 'application/json' } : {}),
-    },
-    body: body !== undefined ? JSON.stringify(body) : undefined,
-  });
-
+/** Interpreta a resposta (envelope + erros acionáveis). Compartilhado por JSON e multipart. */
+async function interpretar<T>(res: Response): Promise<T> {
   if (res.status === 204) return undefined as T;
 
   let json: Envelope<T>;
@@ -61,10 +53,33 @@ async function request<T>(method: string, path: string, body?: unknown): Promise
   return json.data as T;
 }
 
+async function request<T>(method: string, path: string, body?: unknown): Promise<T> {
+  const res = await fetch(`${BASE}${path}`, {
+    method,
+    headers: {
+      Authorization: `Bearer ${API_TOKEN}`,
+      ...(body !== undefined ? { 'Content-Type': 'application/json' } : {}),
+    },
+    body: body !== undefined ? JSON.stringify(body) : undefined,
+  });
+  return interpretar<T>(res);
+}
+
+/** POST multipart/form-data — NÃO seta Content-Type (o fetch põe o boundary). */
+async function postForm<T>(path: string, form: FormData): Promise<T> {
+  const res = await fetch(`${BASE}${path}`, {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${API_TOKEN}` },
+    body: form,
+  });
+  return interpretar<T>(res);
+}
+
 export const api = {
   get: <T>(path: string) => request<T>('GET', path),
   post: <T>(path: string, body?: unknown) => request<T>('POST', path, body),
   patch: <T>(path: string, body?: unknown) => request<T>('PATCH', path, body),
   put: <T>(path: string, body?: unknown) => request<T>('PUT', path, body),
   delete: <T>(path: string) => request<T>('DELETE', path),
+  postForm: <T>(path: string, form: FormData) => postForm<T>(path, form),
 };

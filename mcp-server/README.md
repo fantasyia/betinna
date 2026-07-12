@@ -7,7 +7,7 @@ listas, comentar, marcar itens de checklist, delegar com prazo — tudo pela API
 Betinna, autenticado com um token que **só acessa rotas do Kanban** e pode ser
 revogado a qualquer momento no app.
 
-## 21 tools
+## 25 tools
 
 | Tool | O que faz |
 |---|---|
@@ -32,9 +32,16 @@ revogado a qualquer momento no app.
 | `kanban_atualizar_lista` | Renomeia e/ou arquiva/restaura uma lista |
 | `kanban_mover_lista` | Reordena coluna (posição 1-based) |
 | `kanban_adicionar_itens` | Adiciona itens a checklist já existente ★ |
+| `kanban_excluir_checklist` | Exclui um checklist inteiro (destrutivo) |
+| `kanban_excluir_item` | Exclui um item de checklist (destrutivo) |
+| `kanban_mover_item` | Reordena item dentro do checklist (posição 1-based) |
+| `kanban_anexar` | Anexa ARQUIVO local (upload) ou LINK ao card |
 
-Sem tools de delete — excluir só pelo app (decisão da spec); arquivar lista é
-reversível (restaura com `arquivada: false`).
+`kanban_anexar` aceita `caminhoArquivo` (upload multipart — HTML/CSS/JS/JSON/SVG,
+imagens, PDF, CSV/TXT, .docx/.xlsx, .zip, máx 10MB) **ou** `url` + `nome` (link).
+
+Excluir card/lista continua só pelo app; excluir checklist/item agora dá pelo MCP
+(marcados como destrutivos). Arquivar lista é reversível (`arquivada: false`).
 
 ## 9 tools de Fluxos (prefixo `fluxos_`)
 

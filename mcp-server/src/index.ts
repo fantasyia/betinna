@@ -11,6 +11,8 @@
  */
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
+import { readFile } from 'node:fs/promises';
+import { basename, extname } from 'node:path';
 import { z } from 'zod';
 import { api, ApiError } from './api.js';
 
@@ -72,6 +74,7 @@ interface CardCompleto {
       id: string;
       texto: string;
       concluido: boolean;
+      posicao: number;
       dataEntrega: string | null;
       responsavel: Usuario | null;
     }>;
@@ -859,6 +862,157 @@ server.registerTool(
   ),
 );
 
+server.registerTool(
+  'kanban_excluir_checklist',
+  {
+    description: 'Exclui um checklist inteiro do card (com todos os seus itens). Irreversível.',
+    inputSchema: { checklistId: z.string().describe('ID do checklist (use kanban_ver_card)') },
+    annotations: { readOnlyHint: false, destructiveHint: true },
+  },
+  seguro(async ({ checklistId }: { checklistId: string }) => {
+    await api.delete(`/kanban/checklists/${checklistId}`);
+    return ok({ checklistId, excluido: true });
+  }),
+);
+
+server.registerTool(
+  'kanban_excluir_item',
+  {
+    description: 'Exclui um item de checklist. Irreversível.',
+    inputSchema: { itemId: z.string().describe('ID do item (use kanban_ver_card)') },
+    annotations: { readOnlyHint: false, destructiveHint: true },
+  },
+  seguro(async ({ itemId }: { itemId: string }) => {
+    await api.delete(`/kanban/checklist-itens/${itemId}`);
+    return ok({ itemId, excluido: true });
+  }),
+);
+
+server.registerTool(
+  'kanban_mover_item',
+  {
+    description:
+      'Reordena um item DENTRO do seu checklist: informe a posição final (1 = primeiro). ' +
+      'Precisa do cardId pra localizar os vizinhos.',
+    inputSchema: {
+      cardId: z.string().describe('ID do card que contém o item'),
+      itemId: z.string(),
+      posicao: z.number().int().min(1).describe('Posição final no checklist (1-based)'),
+    },
+    annotations: { readOnlyHint: false, destructiveHint: false },
+  },
+  seguro(async ({ cardId, itemId, posicao }: { cardId: string; itemId: string; posicao: number }) => {
+    const card = await api.get<CardCompleto>(`/kanban/cards/${cardId}`);
+    const checklist = card.checklists.find((ck) => ck.itens.some((i) => i.id === itemId));
+    if (!checklist) {
+      return erro(`Item "${itemId}" não está em nenhum checklist do card ${cardId}.`);
+    }
+    // Vizinhos ordenados por posição, excluindo o próprio item.
+    const outros = checklist.itens
+      .filter((i) => i.id !== itemId)
+      .sort((a, b) => a.posicao - b.posicao);
+    const idx = Math.min(posicao - 1, outros.length);
+    const antes = outros[idx - 1]?.posicao;
+    const depois = outros[idx]?.posicao;
+    let novaPosicao: number;
+    if (antes === undefined && depois === undefined) novaPosicao = 1024;
+    else if (antes === undefined) novaPosicao = (depois as number) / 2;
+    else if (depois === undefined) novaPosicao = antes + 1024;
+    else novaPosicao = (antes + depois) / 2;
+    await api.patch(`/kanban/checklist-itens/${itemId}`, { posicao: novaPosicao });
+    return ok({ itemId, checklist: checklist.titulo, posicaoFinal: posicao });
+  }),
+);
+
+// Extensão → mimetype dos anexos aceitos pelo backend (ALLOWED_MIMES).
+const EXT_MIME: Record<string, string> = {
+  '.html': 'text/html',
+  '.htm': 'text/html',
+  '.css': 'text/css',
+  '.js': 'text/javascript',
+  '.mjs': 'text/javascript',
+  '.json': 'application/json',
+  '.svg': 'image/svg+xml',
+  '.pdf': 'application/pdf',
+  '.png': 'image/png',
+  '.jpg': 'image/jpeg',
+  '.jpeg': 'image/jpeg',
+  '.webp': 'image/webp',
+  '.gif': 'image/gif',
+  '.csv': 'text/csv',
+  '.txt': 'text/plain',
+  '.md': 'text/plain',
+  '.zip': 'application/zip',
+  '.xlsx': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+  '.docx': 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+};
+
+server.registerTool(
+  'kanban_anexar',
+  {
+    description:
+      'Anexa ao card um ARQUIVO local (caminhoArquivo → upload) OU um LINK (url + nome). ' +
+      'Arquivos: HTML/CSS/JS/JSON/SVG, imagens, PDF, CSV/TXT, .docx/.xlsx, .zip (máx 10MB).',
+    inputSchema: {
+      cardId: z.string(),
+      caminhoArquivo: z.string().optional().describe('Caminho ABSOLUTO de um arquivo local'),
+      url: z.string().url().optional().describe('URL do link (alternativa ao arquivo)'),
+      nome: z.string().max(200).optional().describe('Rótulo do link (obrigatório se url)'),
+    },
+    annotations: { readOnlyHint: false, destructiveHint: false },
+  },
+  seguro(
+    async ({
+      cardId,
+      caminhoArquivo,
+      url,
+      nome,
+    }: {
+      cardId: string;
+      caminhoArquivo?: string;
+      url?: string;
+      nome?: string;
+    }) => {
+      if (caminhoArquivo && url) {
+        return erro('Escolha um só: caminhoArquivo (arquivo) OU url (link).');
+      }
+      // ── LINK ──
+      if (url) {
+        if (!nome) return erro('Pra anexar um link, informe também "nome".');
+        const a = await api.post<{ id: string; nome: string; tipo: string }>(
+          `/kanban/cards/${cardId}/anexos`,
+          { url, nome },
+        );
+        return ok({ id: a.id, nome: a.nome, tipo: a.tipo });
+      }
+      // ── ARQUIVO ──
+      if (!caminhoArquivo) return erro('Informe caminhoArquivo (arquivo) ou url + nome (link).');
+      const ext = extname(caminhoArquivo).toLowerCase();
+      const mime = EXT_MIME[ext];
+      if (!mime) {
+        return erro(
+          `Extensão "${ext || '(sem)'}" não suportada. Aceitos: ${Object.keys(EXT_MIME).join(', ')}.`,
+        );
+      }
+      let buf: Buffer;
+      try {
+        buf = await readFile(caminhoArquivo);
+      } catch {
+        return erro(`Não consegui ler o arquivo em "${caminhoArquivo}". Use caminho ABSOLUTO.`);
+      }
+      if (buf.length === 0) return erro('Arquivo vazio.');
+      if (buf.length > 10 * 1024 * 1024) return erro('Arquivo muito grande (máx 10MB).');
+      const form = new FormData();
+      form.append('file', new Blob([Uint8Array.from(buf)], { type: mime }), basename(caminhoArquivo));
+      const a = await api.postForm<{ id: string; nome: string; tipo: string }>(
+        `/kanban/cards/${cardId}/anexos`,
+        form,
+      );
+      return ok({ id: a.id, nome: a.nome, tipo: a.tipo });
+    },
+  ),
+);
+
 // ═══════════════════════════════════════════════════════════════════════
 // FLUXOS DE AUTOMAÇÃO (prefixo fluxos_) — docs/mcp-fluxos-PLANO.md
 // Mesmo pacote/token; exige escopo "fluxos" no PAT. Escrita SEMPRE não-
@@ -1223,5 +1377,5 @@ server.registerTool(
 const transport = new StdioServerTransport();
 await server.connect(transport);
 console.error(
-  '[betinna-kanban-mcp] conectado — 21 tools kanban_* + 9 tools fluxos_* + 3 tools funis_/contatos_ disponíveis',
+  '[betinna-kanban-mcp] conectado — 25 tools kanban_* + 9 tools fluxos_* + 3 tools funis_/contatos_ disponíveis',
 );

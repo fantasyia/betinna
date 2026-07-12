@@ -28,12 +28,20 @@ const ALLOWED_MIMES = new Set([
   'image/png',
   'image/webp',
   'image/gif',
+  'image/svg+xml',
   'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
   'application/vnd.ms-excel',
   'application/msword',
   'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
   'text/csv',
   'text/plain',
+  // Assets web (ex.: HTML do backbone de conteúdo + CSS/JS/JSON e bundle .zip)
+  'text/html',
+  'text/css',
+  'text/javascript',
+  'application/javascript',
+  'application/json',
+  'application/zip',
 ]);
 const SIGNED_URL_EXPIRES = 60 * 60; // 1h
 
@@ -215,6 +223,13 @@ export class KanbanAnexosService implements OnModuleInit {
       case 'application/vnd.ms-excel':
       case 'application/msword':
         return inicia([0xd0, 0xcf, 0x11, 0xe0, 0xa1, 0xb1, 0x1a, 0xe1]);
+      case 'application/zip':
+        return (
+          inicia([0x50, 0x4b, 0x03, 0x04]) ||
+          inicia([0x50, 0x4b, 0x05, 0x06]) ||
+          inicia([0x50, 0x4b, 0x07, 0x08])
+        );
+      // Formatos texto (csv/plain/html/css/js/json/svg): sem assinatura binária confiável.
       case 'text/csv':
       case 'text/plain':
         return true;
