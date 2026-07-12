@@ -78,6 +78,14 @@ export class KanbanCardsController {
     return this.cards.mover(user, id, dto);
   }
 
+  @Post('cards/:id/duplicar')
+  @RequirePermissions({ module: 'quadros', action: 'edit' })
+  @ApiOperation({ summary: 'Duplica o card na mesma lista (etiquetas, membros, checklists)' })
+  @Audit({ action: 'duplicate', resource: 'kanban_card', resourceIdFrom: 'response.id' })
+  duplicar(@CurrentUser() user: AuthenticatedUser, @Param('id') id: string) {
+    return this.cards.duplicar(user, id);
+  }
+
   // ─── Etiquetas no card ──────────────────────────────────────────────
 
   @Post('cards/:id/etiquetas/:etiquetaId')

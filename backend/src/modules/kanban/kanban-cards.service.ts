@@ -58,6 +58,71 @@ export class KanbanCardsService {
     return card;
   }
 
+  /**
+   * Duplica um card na MESMA lista (logo após o original): copia título (+ " (cópia)"),
+   * descrição, capa, datas, etiquetas, membros e checklists com seus itens.
+   * Não copia comentários/anexos/atividade (histórico é do card original).
+   */
+  async duplicar(user: AuthenticatedUser, cardId: string): Promise<KanbanCard> {
+    const { board } = await this.acesso.verificarAcessoPorCard(user, cardId);
+    const original = await this.prisma.kanbanCard.findUniqueOrThrow({
+      where: { id: cardId },
+      include: {
+        lista: { select: { nome: true } },
+        etiquetas: { select: { etiquetaId: true } },
+        membros: { select: { usuarioId: true } },
+        checklists: {
+          orderBy: { posicao: 'asc' },
+          include: { itens: { orderBy: { posicao: 'asc' } } },
+        },
+      },
+    });
+
+    const ultimo = await this.prisma.kanbanCard.findFirst({
+      where: { listaId: original.listaId },
+      orderBy: { posicao: 'desc' },
+      select: { posicao: true },
+    });
+
+    const novo = await this.prisma.kanbanCard.create({
+      data: {
+        listaId: original.listaId,
+        titulo: `${original.titulo} (cópia)`,
+        descricao: original.descricao,
+        corCapa: original.corCapa,
+        dataInicio: original.dataInicio,
+        dataEntrega: original.dataEntrega,
+        posicao: posicaoNoFim(ultimo?.posicao),
+        etiquetas: { create: original.etiquetas.map((e) => ({ etiquetaId: e.etiquetaId })) },
+        membros: { create: original.membros.map((m) => ({ usuarioId: m.usuarioId })) },
+        checklists: {
+          create: original.checklists.map((cl) => ({
+            titulo: cl.titulo,
+            posicao: cl.posicao,
+            itens: {
+              create: cl.itens.map((it) => ({
+                texto: it.texto,
+                posicao: it.posicao,
+                concluido: it.concluido,
+                dataEntrega: it.dataEntrega,
+                responsavelId: it.responsavelId,
+              })),
+            },
+          })),
+        },
+      },
+    });
+
+    await this.atividade.registrar({
+      boardId: board.id,
+      usuarioId: user.id,
+      tipo: 'card_criado',
+      cardId: novo.id,
+      dados: { titulo: novo.titulo, listaNome: original.lista.nome },
+    });
+    return novo;
+  }
+
   /** Card completo: checklists, comentários, anexos, etiquetas, membros e atividade. */
   async findById(user: AuthenticatedUser, cardId: string) {
     await this.acesso.verificarAcessoPorCard(user, cardId);

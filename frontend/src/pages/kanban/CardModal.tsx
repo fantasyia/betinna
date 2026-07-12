@@ -54,11 +54,14 @@ export function CardModal({
   board,
   onClose,
   onMudou,
+  secaoInicial,
 }: {
   cardId: string;
   board: KBoardCompleto;
   onClose: () => void;
   onMudou: () => void;
+  /** Abre o modal já com uma seção expandida (menu de contexto do card). */
+  secaoInicial?: string | null;
 }) {
   const toast = useToast();
   const role = useRole();
@@ -98,7 +101,7 @@ export function CardModal({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [card?.id]);
 
-  const [secao, setSecao] = useState<string | null>(null);
+  const [secao, setSecao] = useState<string | null>(secaoInicial ?? null);
 
   const membrosDoCard = useMemo(() => new Set(card?.membros.map((m) => m.usuario.id)), [card]);
   const etiquetasDoCard = useMemo(() => new Set(card?.etiquetas.map((e) => e.etiqueta.id)), [card]);

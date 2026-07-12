@@ -1,17 +1,24 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { type MouseEvent as ReactMouseEvent, useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import {
   Activity,
+  Archive,
   ArrowLeft,
+  ArrowRight,
   CheckSquare,
   Clock,
+  Copy,
+  CreditCard,
   GripVertical,
   ImageIcon,
+  Link2,
   MessageSquare,
   Paperclip,
   Pencil,
   Plus,
   Search,
+  Tag,
+  User,
   X,
 } from 'lucide-react';
 import {
@@ -42,6 +49,7 @@ import { Avatar, Button, Dialog, Field, IconButton, Input, Select, Textarea } fr
 import { useDebouncedValue } from '@/hooks/useDebouncedValue';
 import { cn } from '@/lib/cn';
 import { AtividadeDrawer } from './AtividadeDrawer';
+import { CardContextMenu, type CardMenuAcao } from './CardContextMenu';
 import { CardModal } from './CardModal';
 import { FundoDialog } from './FundoDialog';
 import { CalendarioView, DashboardView, TabelaView } from './KanbanViews';
@@ -78,6 +86,12 @@ export default function KanbanBoardPage() {
   const [ativo, setAtivo] = useState<{ tipo: 'card' | 'lista'; id: string } | null>(null);
   // Card aberto no modal (clique sem arrastar)
   const [cardAberto, setCardAberto] = useState<string | null>(null);
+  // Seção pra abrir expandida no modal (via menu de contexto: etiquetas, capa...)
+  const [secaoInicial, setSecaoInicial] = useState<string | null>(null);
+  // Menu de contexto (botão direito) sobre um card
+  const [menuCard, setMenuCard] = useState<{ card: KCardResumo; x: number; y: number } | null>(
+    null,
+  );
   const [atividadeAberta, setAtividadeAberta] = useState(false);
   const [fundoAberto, setFundoAberto] = useState(false);
   const [renomearAberto, setRenomearAberto] = useState(false);
@@ -112,12 +126,65 @@ export default function KanbanBoardPage() {
     }
   }
 
+  // Abre o card no modal. `secao` (opcional) expande direto uma seção — usado
+  // pelo menu de contexto (Editar etiquetas/datas/capa/membros/mover).
+  function abrirCard(id: string, secao: string | null = null) {
+    setSecaoInicial(secao);
+    setCardAberto(id);
+  }
+
+  // ─── Ações do menu de contexto do card ──────────────────────────────
+  async function duplicarCard(card: KCardResumo) {
+    try {
+      await api.post(`/kanban/cards/${card.id}/duplicar`);
+      toast.success('Card duplicado');
+      refetch();
+    } catch (err) {
+      toast.error(apiErrorMessage(err));
+    }
+  }
+
+  async function arquivarCard(card: KCardResumo) {
+    try {
+      await api.patch(`/kanban/cards/${card.id}`, { arquivado: true });
+      toast.success('Card arquivado');
+      refetch();
+    } catch (err) {
+      toast.error(apiErrorMessage(err));
+    }
+  }
+
+  async function copiarLinkCard(card: KCardResumo) {
+    const url = `${window.location.origin}/kanban/${boardId}?card=${card.id}`;
+    try {
+      await navigator.clipboard.writeText(url);
+      toast.success('Link copiado');
+    } catch {
+      toast.error('Não foi possível copiar. Link: ' + url);
+    }
+  }
+
+  function itensMenuCard(card: KCardResumo): CardMenuAcao[] {
+    return [
+      { id: 'abrir', label: 'Abrir cartão', icon: <CreditCard />, onClick: () => abrirCard(card.id) },
+      { id: 'etiquetas', label: 'Editar etiquetas', icon: <Tag />, onClick: () => abrirCard(card.id, 'etiquetas') },
+      { id: 'membros', label: 'Alterar membros', icon: <User />, onClick: () => abrirCard(card.id, 'membros') },
+      { id: 'capa', label: 'Alterar capa', icon: <ImageIcon />, onClick: () => abrirCard(card.id, 'capa') },
+      { id: 'datas', label: 'Editar datas', icon: <Clock />, onClick: () => abrirCard(card.id, 'datas') },
+      { id: 'mover', label: 'Mover', icon: <ArrowRight />, separador: true, onClick: () => abrirCard(card.id, 'mover') },
+      { id: 'duplicar', label: 'Copiar cartão', icon: <Copy />, onClick: () => void duplicarCard(card) },
+      { id: 'link', label: 'Copiar link', icon: <Link2 />, onClick: () => void copiarLinkCard(card) },
+      { id: 'arquivar', label: 'Arquivar', icon: <Archive />, separador: true, danger: true, onClick: () => void arquivarCard(card) },
+    ];
+  }
+
   // ★ Alternador de visualização (persistido na URL) + deep-link ?card=
   const [searchParams, setSearchParams] = useSearchParams();
   const view = searchParams.get('view') ?? 'quadro';
   useEffect(() => {
     const cardParam = searchParams.get('card');
     if (cardParam) {
+      setSecaoInicial(null);
       setCardAberto(cardParam);
       const next = new URLSearchParams(searchParams);
       next.delete('card');
@@ -458,9 +525,9 @@ export default function KanbanBoardPage() {
         </div>
 
         {view === 'calendario' && board && (
-          <CalendarioView board={board} onAbrirCard={setCardAberto} onMudou={refetch} />
+          <CalendarioView board={board} onAbrirCard={abrirCard} onMudou={refetch} />
         )}
-        {view === 'tabela' && board && <TabelaView board={board} onAbrirCard={setCardAberto} />}
+        {view === 'tabela' && board && <TabelaView board={board} onAbrirCard={abrirCard} />}
         {view === 'dashboard' && board && <DashboardView board={board} />}
 
         {view === 'quadro' && (
@@ -560,7 +627,11 @@ export default function KanbanBoardPage() {
                   key={lista.id}
                   lista={lista}
                   onCriarCard={(titulo) => void criarCard(lista.id, titulo)}
-                  onAbrirCard={setCardAberto}
+                  onAbrirCard={(id) => abrirCard(id)}
+                  onContextCard={(e, card) => {
+                    e.preventDefault();
+                    setMenuCard({ card, x: e.clientX, y: e.clientY });
+                  }}
                   onRenomear={(nome) => void renomearLista(lista.id, nome)}
                 />
               ))}
@@ -576,10 +647,24 @@ export default function KanbanBoardPage() {
 
         {cardAberto && board && (
           <CardModal
+            key={`${cardAberto}:${secaoInicial ?? ''}`}
             cardId={cardAberto}
             board={board}
-            onClose={() => setCardAberto(null)}
+            secaoInicial={secaoInicial}
+            onClose={() => {
+              setCardAberto(null);
+              setSecaoInicial(null);
+            }}
             onMudou={refetch}
+          />
+        )}
+
+        {menuCard && (
+          <CardContextMenu
+            x={menuCard.x}
+            y={menuCard.y}
+            itens={itensMenuCard(menuCard.card)}
+            onFechar={() => setMenuCard(null)}
           />
         )}
 
@@ -652,11 +737,13 @@ function ListaColuna({
   lista,
   onCriarCard,
   onAbrirCard,
+  onContextCard,
   onRenomear,
 }: {
   lista: KLista;
   onCriarCard: (titulo: string) => void;
   onAbrirCard: (cardId: string) => void;
+  onContextCard: (e: ReactMouseEvent, card: KCardResumo) => void;
   onRenomear: (nome: string) => void;
 }) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
@@ -733,7 +820,12 @@ function ListaColuna({
           strategy={verticalListSortingStrategy}
         >
           {lista.cards.map((card) => (
-            <CardSortable key={card.id} card={card} onAbrir={() => onAbrirCard(card.id)} />
+            <CardSortable
+              key={card.id}
+              card={card}
+              onAbrir={() => onAbrirCard(card.id)}
+              onContext={(e) => onContextCard(e, card)}
+            />
           ))}
         </SortableContext>
       </div>
@@ -745,7 +837,15 @@ function ListaColuna({
 
 // ─── Card ───────────────────────────────────────────────────────────────
 
-function CardSortable({ card, onAbrir }: { card: KCardResumo; onAbrir: () => void }) {
+function CardSortable({
+  card,
+  onAbrir,
+  onContext,
+}: {
+  card: KCardResumo;
+  onAbrir: () => void;
+  onContext: (e: ReactMouseEvent) => void;
+}) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
     id: `card:${card.id}`,
   });
@@ -769,6 +869,7 @@ function CardSortable({ card, onAbrir }: { card: KCardResumo; onAbrir: () => voi
         }
         onAbrir();
       }}
+      onContextMenu={onContext}
     >
       <CardVisual card={card} />
     </div>
