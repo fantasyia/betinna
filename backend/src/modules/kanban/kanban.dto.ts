@@ -191,7 +191,13 @@ export type CalendarioQueryDto = z.infer<typeof calendarioQuerySchema>;
 
 // ─── Tokens de API (MCP) ──────────────────────────────────────────────
 
+/** Escopos válidos de um PAT de plataforma (módulos que o token acessa). */
+export const API_TOKEN_ESCOPOS = ['kanban', 'fluxos'] as const;
+
 export const createApiTokenSchema = z.object({
   nome: z.string().trim().min(1, 'Nome é obrigatório').max(100), // ex: "Claude Code - PC Léo"
+  // Escopo opcional; default aplicado no service (['kanban']). Optional evita
+  // input≠output no ZodValidationPipe (mesmo cuidado do incluirConcluidos).
+  escopo: z.array(z.enum(API_TOKEN_ESCOPOS)).min(1).optional(),
 });
 export type CreateApiTokenDto = z.infer<typeof createApiTokenSchema>;

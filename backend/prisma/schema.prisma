@@ -2934,6 +2934,10 @@ model KanbanApiToken {
   empresaId String
   nome      String // ex: "Claude Code - Macbook Léo"
   tokenHash String    @unique
+  /// PAT de plataforma: módulos que este token pode acessar (ex: ["kanban","fluxos"]).
+  /// Default ["kanban"] — tokens antigos continuam válidos só no Kanban. O guard
+  /// exige o escopo do módulo da rota (/kanban→"kanban", /fluxos→"fluxos").
+  escopo    String[]  @default(["kanban"])
   ultimoUso DateTime?
   revogado  Boolean   @default(false)
 

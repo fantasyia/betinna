@@ -76,7 +76,7 @@ export class AuthGuard implements CanActivate {
     // Token de API do Kanban (prefixo bkt_, pro MCP server) — caminho próprio,
     // escopado às rotas /kanban. Ver @modules/kanban/kanban-token.util.
     if (token.startsWith(KANBAN_TOKEN_PREFIX)) {
-      return this.autenticarKanbanToken(request, token);
+      return this.autenticarApiToken(request, token);
     }
 
     // 1) JWT signature/expiry verify (sem DB)
@@ -124,25 +124,34 @@ export class AuthGuard implements CanActivate {
     return true;
   }
 
-  // ─── Token de API do Kanban (MCP) ───────────────────────────────────────
+  // ─── PAT de plataforma (MCP: kanban + fluxos) ───────────────────────────
 
   /**
-   * Autentica via KanbanApiToken (Batch 6 do Kanban):
-   *  - SÓ vale em rotas /kanban (e nunca em /kanban/api-tokens — token não
-   *    gera/gerencia token).
-   *  - Valida o sha256 contra o banco; revogado/inexistente → 401.
-   *  - Carrega o dono do token (mesmo cache Redis do fluxo JWT) e injeta
-   *    req.user com empresaIdAtiva = empresa do token.
-   *  - Atualiza ultimoUso com throttle de 60s (telemetria, best-effort).
+   * Autentica via KanbanApiToken (PAT de plataforma, prefixo bkt_):
+   *  - Deriva o MÓDULO da rota: /kanban → "kanban", /fluxos → "fluxos".
+   *    Qualquer outra rota → 403 (o PAT não acessa o resto da API).
+   *  - NUNCA em /kanban/api-tokens (token não gera/gerencia token).
+   *  - Exige que o `escopo` do token inclua o módulo da rota (default antigo
+   *    ["kanban"] segue válido só no Kanban).
+   *  - Valida o sha256; revogado/inexistente → 401.
+   *  - Carrega o dono (com role/empresa) e injeta req.user — assim @Roles e o
+   *    filtro multi-tenant dos controllers continuam valendo sem mudança.
+   *  - Atualiza ultimoUso com throttle de 60s (best-effort).
    */
-  private async autenticarKanbanToken(request: Request, token: string): Promise<boolean> {
+  private async autenticarApiToken(request: Request, token: string): Promise<boolean> {
     const path = (request.path ?? '').toLowerCase();
-    const ehRotaKanban = /\/kanban(\/|$)/.test(path);
-    const ehRotaTokens = path.includes('/kanban/api-tokens');
-    if (!ehRotaKanban || ehRotaTokens) {
-      throw new ForbiddenException(
-        'Token de API do Kanban só pode acessar rotas /kanban (exceto gestão de tokens)',
-      );
+
+    // Gestão de tokens NUNCA via PAT (token não cunha outro token).
+    if (path.includes('/kanban/api-tokens')) {
+      throw new ForbiddenException('Token de API não pode gerenciar tokens de API');
+    }
+
+    // Módulo exigido pela rota → escopo correspondente.
+    let moduloRequerido: 'kanban' | 'fluxos' | null = null;
+    if (/\/kanban(\/|$)/.test(path)) moduloRequerido = 'kanban';
+    else if (/\/fluxos(\/|$)/.test(path)) moduloRequerido = 'fluxos';
+    if (!moduloRequerido) {
+      throw new ForbiddenException('Token de API só acessa rotas /kanban e /fluxos');
     }
 
     const row = await this.prisma.kanbanApiToken.findUnique({
@@ -150,6 +159,13 @@ export class AuthGuard implements CanActivate {
     });
     if (!row || row.revogado) {
       throw new UnauthorizedException('Token de API inválido ou revogado');
+    }
+
+    // Escopo: o token precisa ter o módulo da rota liberado.
+    if (!row.escopo.includes(moduloRequerido)) {
+      throw new ForbiddenException(
+        `Token sem escopo "${moduloRequerido}". Gere um token com esse escopo no app (Quadros → Tokens de API).`,
+      );
     }
 
     const cached = await this.loadUser(row.usuarioId);

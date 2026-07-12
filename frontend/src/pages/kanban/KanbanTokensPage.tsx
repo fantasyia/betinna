@@ -6,12 +6,13 @@ import { useApiQuery } from '@/hooks/useApiQuery';
 import { useToast } from '@/components/toast';
 import { PageLayout } from '@/components/PageLayout';
 import { StateView } from '@/components/StateView';
-import { Badge, Button, Card, Dialog, Field, IconButton, Input } from '@/components/ui';
+import { Badge, Button, Card, Checkbox, Dialog, Field, IconButton, Input } from '@/components/ui';
 import { useConfirm } from '@/hooks/useConfirm';
 
 interface ApiToken {
   id: string;
   nome: string;
+  escopo: string[];
   ultimoUso: string | null;
   revogado: boolean;
   criadoEm: string;
@@ -30,6 +31,7 @@ export default function KanbanTokensPage() {
 
   const [dialogAberto, setDialogAberto] = useState(false);
   const [nome, setNome] = useState('');
+  const [incluirFluxos, setIncluirFluxos] = useState(false);
   const [salvando, setSalvando] = useState(false);
   /** Token recém-criado — única chance de copiar. */
   const [novoToken, setNovoToken] = useState<string | null>(null);
@@ -42,11 +44,15 @@ export default function KanbanTokensPage() {
     }
     setSalvando(true);
     try {
+      // Kanban sempre incluso; Fluxos opcional (PAT de plataforma).
+      const escopo = incluirFluxos ? ['kanban', 'fluxos'] : ['kanban'];
       const criado = await api.post<ApiToken & { token: string }>('/kanban/api-tokens', {
         nome: nome.trim(),
+        escopo,
       });
       setNovoToken(criado.token);
       setNome('');
+      setIncluirFluxos(false);
       refetch();
     } catch (err) {
       toast.error(apiErrorMessage(err));
@@ -126,7 +132,16 @@ export default function KanbanTokensPage() {
               <li key={t.id} className="flex items-center gap-3 px-4 py-3">
                 <KeyRound className="h-4 w-4 text-muted shrink-0" />
                 <div className="flex-1 min-w-0">
-                  <div className="text-sm font-medium text-text truncate">{t.nome}</div>
+                  <div className="text-sm font-medium text-text truncate flex items-center gap-1.5">
+                    {t.nome}
+                    <span className="flex gap-1">
+                      {(t.escopo ?? ['kanban']).map((e) => (
+                        <Badge key={e} variant="neutral" size="sm">
+                          {e === 'fluxos' ? 'Fluxos' : 'Quadros'}
+                        </Badge>
+                      ))}
+                    </span>
+                  </div>
                   <div className="text-[11px] text-muted">
                     criado em {new Date(t.criadoEm).toLocaleDateString('pt-BR')}
                     {' · '}
@@ -199,18 +214,31 @@ export default function KanbanTokensPage() {
             </p>
           </div>
         ) : (
-          <Field label="Nome do token" required hint="Identifica onde ele é usado">
-            <Input
-              value={nome}
-              onChange={(e) => setNome(e.target.value)}
-              placeholder='Ex: "Claude Code - PC do Léo"'
-              autoFocus
-              data-testid="token-nome"
-              onKeyDown={(e) => {
-                if (e.key === 'Enter') void criar();
-              }}
-            />
-          </Field>
+          <div className="flex flex-col gap-3">
+            <Field label="Nome do token" required hint="Identifica onde ele é usado">
+              <Input
+                value={nome}
+                onChange={(e) => setNome(e.target.value)}
+                placeholder='Ex: "Claude Code - PC do Léo"'
+                autoFocus
+                data-testid="token-nome"
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') void criar();
+                }}
+              />
+            </Field>
+            <Field label="Acesso do token" hint="Quadros vem sempre; marque Fluxos pra também subir automações">
+              <div className="flex flex-col gap-1.5">
+                <Checkbox label="Quadros (Kanban)" checked disabled />
+                <Checkbox
+                  label="Fluxos de automação"
+                  checked={incluirFluxos}
+                  onChange={(e) => setIncluirFluxos(e.target.checked)}
+                  data-testid="token-escopo-fluxos"
+                />
+              </div>
+            </Field>
+          </div>
         )}
       </Dialog>
       {confirmDialog}

@@ -10,6 +10,7 @@ import type { CreateApiTokenDto } from './kanban.dto';
 const TOKEN_PUBLICO = {
   id: true,
   nome: true,
+  escopo: true,
   ultimoUso: true,
   revogado: true,
   criadoEm: true,
@@ -32,6 +33,8 @@ export class KanbanTokensService {
         empresaId,
         nome: dto.nome,
         tokenHash: hashKanbanToken(token),
+        // Default ['kanban'] mantém tokens antigos e o comportamento atual.
+        escopo: dto.escopo ?? ['kanban'],
       },
       select: TOKEN_PUBLICO,
     });
