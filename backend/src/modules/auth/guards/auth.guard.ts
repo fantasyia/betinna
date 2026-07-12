@@ -147,11 +147,23 @@ export class AuthGuard implements CanActivate {
     }
 
     // Módulo exigido pela rota → escopo correspondente.
-    let moduloRequerido: 'kanban' | 'fluxos' | null = null;
+    let moduloRequerido: 'kanban' | 'fluxos' | 'funis' | 'contatos' | null = null;
     if (/\/kanban(\/|$)/.test(path)) moduloRequerido = 'kanban';
     else if (/\/fluxos(\/|$)/.test(path)) moduloRequerido = 'fluxos';
+    else if (/\/funis(\/|$)/.test(path)) moduloRequerido = 'funis';
+    else if (/\/contatos(\/|$)/.test(path)) moduloRequerido = 'contatos';
     if (!moduloRequerido) {
-      throw new ForbiddenException('Token de API só acessa rotas /kanban e /fluxos');
+      throw new ForbiddenException(
+        'Token de API só acessa rotas /kanban, /fluxos, /funis e /contatos',
+      );
+    }
+
+    // Funis e contatos via PAT são SOMENTE LEITURA (contatos = PII; nunca escrita por token).
+    if (
+      (moduloRequerido === 'funis' || moduloRequerido === 'contatos') &&
+      (request.method ?? 'GET').toUpperCase() !== 'GET'
+    ) {
+      throw new ForbiddenException(`Token de API só faz leitura (GET) em /${moduloRequerido}`);
     }
 
     const row = await this.prisma.kanbanApiToken.findUnique({

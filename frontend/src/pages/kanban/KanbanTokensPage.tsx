@@ -32,6 +32,8 @@ export default function KanbanTokensPage() {
   const [dialogAberto, setDialogAberto] = useState(false);
   const [nome, setNome] = useState('');
   const [incluirFluxos, setIncluirFluxos] = useState(false);
+  const [incluirFunis, setIncluirFunis] = useState(false);
+  const [incluirContatos, setIncluirContatos] = useState(false);
   const [salvando, setSalvando] = useState(false);
   /** Token recém-criado — única chance de copiar. */
   const [novoToken, setNovoToken] = useState<string | null>(null);
@@ -44,8 +46,11 @@ export default function KanbanTokensPage() {
     }
     setSalvando(true);
     try {
-      // Kanban sempre incluso; Fluxos opcional (PAT de plataforma).
-      const escopo = incluirFluxos ? ['kanban', 'fluxos'] : ['kanban'];
+      // Kanban sempre incluso; demais módulos opcionais (PAT de plataforma).
+      const escopo = ['kanban'];
+      if (incluirFluxos) escopo.push('fluxos');
+      if (incluirFunis) escopo.push('funis');
+      if (incluirContatos) escopo.push('contatos');
       const criado = await api.post<ApiToken & { token: string }>('/kanban/api-tokens', {
         nome: nome.trim(),
         escopo,
@@ -53,6 +58,8 @@ export default function KanbanTokensPage() {
       setNovoToken(criado.token);
       setNome('');
       setIncluirFluxos(false);
+      setIncluirFunis(false);
+      setIncluirContatos(false);
       refetch();
     } catch (err) {
       toast.error(apiErrorMessage(err));
@@ -137,7 +144,13 @@ export default function KanbanTokensPage() {
                     <span className="flex gap-1">
                       {(t.escopo ?? ['kanban']).map((e) => (
                         <Badge key={e} variant="neutral" size="sm">
-                          {e === 'fluxos' ? 'Fluxos' : 'Quadros'}
+                          {e === 'fluxos'
+                            ? 'Fluxos'
+                            : e === 'funis'
+                              ? 'Funis'
+                              : e === 'contatos'
+                                ? 'Contatos'
+                                : 'Quadros'}
                         </Badge>
                       ))}
                     </span>
@@ -227,7 +240,7 @@ export default function KanbanTokensPage() {
                 }}
               />
             </Field>
-            <Field label="Acesso do token" hint="Quadros vem sempre; marque Fluxos pra também subir automações">
+            <Field label="Acesso do token" hint="Quadros vem sempre; marque os módulos extras que o token pode ler/operar">
               <div className="flex flex-col gap-1.5">
                 <Checkbox label="Quadros (Kanban)" checked disabled />
                 <Checkbox
@@ -235,6 +248,18 @@ export default function KanbanTokensPage() {
                   checked={incluirFluxos}
                   onChange={(e) => setIncluirFluxos(e.target.checked)}
                   data-testid="token-escopo-fluxos"
+                />
+                <Checkbox
+                  label="Funis (somente leitura)"
+                  checked={incluirFunis}
+                  onChange={(e) => setIncluirFunis(e.target.checked)}
+                  data-testid="token-escopo-funis"
+                />
+                <Checkbox
+                  label="Contatos (somente leitura · dados pessoais)"
+                  checked={incluirContatos}
+                  onChange={(e) => setIncluirContatos(e.target.checked)}
+                  data-testid="token-escopo-contatos"
                 />
               </div>
             </Field>
