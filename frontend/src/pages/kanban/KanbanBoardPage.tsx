@@ -84,6 +84,19 @@ export default function KanbanBoardPage() {
   // Snapshot pra rollback quando a API recusar o movimento
   const snapshotRef = useRef<KLista[] | null>(null);
   const [ativo, setAtivo] = useState<{ tipo: 'card' | 'lista'; id: string } | null>(null);
+  // Etiquetas ampliadas (com nome) x reduzidas (só cor) — estilo Trello: clicar
+  // numa etiqueta alterna TODAS do quadro. Persistido por quadro no localStorage.
+  const [etiquetasAmpliadas, setEtiquetasAmpliadas] = useState(false);
+  useEffect(() => {
+    if (boardId) setEtiquetasAmpliadas(localStorage.getItem(`kanban:tags-exp:${boardId}`) === '1');
+  }, [boardId]);
+  function alternarEtiquetas() {
+    setEtiquetasAmpliadas((v) => {
+      const nv = !v;
+      if (boardId) localStorage.setItem(`kanban:tags-exp:${boardId}`, nv ? '1' : '0');
+      return nv;
+    });
+  }
   // Card aberto no modal (clique sem arrastar)
   const [cardAberto, setCardAberto] = useState<string | null>(null);
   // Seção pra abrir expandida no modal (via menu de contexto: etiquetas, capa...)
@@ -634,13 +647,15 @@ export default function KanbanBoardPage() {
                     setMenuCard({ card, x: e.clientX, y: e.clientY });
                   }}
                   onRenomear={(nome) => void renomearLista(lista.id, nome)}
+                  etiquetasAmpliadas={etiquetasAmpliadas}
+                  onAlternarEtiquetas={alternarEtiquetas}
                 />
               ))}
             </SortableContext>
             <AdicionarLista onCriar={(nome) => void criarLista(nome)} />
           </div>
           <DragOverlay>
-            {cardAtivo ? <CardVisual card={cardAtivo} arrastando /> : null}
+            {cardAtivo ? <CardVisual card={cardAtivo} arrastando etiquetasAmpliadas={etiquetasAmpliadas} /> : null}
           </DragOverlay>
         </DndContext>
           </>
@@ -740,12 +755,16 @@ function ListaColuna({
   onAbrirCard,
   onContextCard,
   onRenomear,
+  etiquetasAmpliadas,
+  onAlternarEtiquetas,
 }: {
   lista: KLista;
   onCriarCard: (titulo: string) => void;
   onAbrirCard: (cardId: string) => void;
   onContextCard: (e: ReactMouseEvent, card: KCardResumo) => void;
   onRenomear: (nome: string) => void;
+  etiquetasAmpliadas: boolean;
+  onAlternarEtiquetas: () => void;
 }) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
     id: `lista:${lista.id}`,
@@ -826,6 +845,8 @@ function ListaColuna({
               card={card}
               onAbrir={() => onAbrirCard(card.id)}
               onContext={(e) => onContextCard(e, card)}
+              etiquetasAmpliadas={etiquetasAmpliadas}
+              onAlternarEtiquetas={onAlternarEtiquetas}
             />
           ))}
         </SortableContext>
@@ -842,10 +863,14 @@ function CardSortable({
   card,
   onAbrir,
   onContext,
+  etiquetasAmpliadas,
+  onAlternarEtiquetas,
 }: {
   card: KCardResumo;
   onAbrir: () => void;
   onContext: (e: ReactMouseEvent) => void;
+  etiquetasAmpliadas: boolean;
+  onAlternarEtiquetas: () => void;
 }) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
     id: `card:${card.id}`,
@@ -872,12 +897,26 @@ function CardSortable({
       }}
       onContextMenu={onContext}
     >
-      <CardVisual card={card} />
+      <CardVisual
+        card={card}
+        etiquetasAmpliadas={etiquetasAmpliadas}
+        onAlternarEtiquetas={onAlternarEtiquetas}
+      />
     </div>
   );
 }
 
-function CardVisual({ card, arrastando }: { card: KCardResumo; arrastando?: boolean }) {
+function CardVisual({
+  card,
+  arrastando,
+  etiquetasAmpliadas = false,
+  onAlternarEtiquetas,
+}: {
+  card: KCardResumo;
+  arrastando?: boolean;
+  etiquetasAmpliadas?: boolean;
+  onAlternarEtiquetas?: () => void;
+}) {
   const prazo = statusPrazo(card.dataEntrega, card.concluido);
   const checklist = progressoChecklist(card);
 
@@ -896,12 +935,30 @@ function CardVisual({ card, arrastando }: { card: KCardResumo; arrastando?: bool
       {card.etiquetas.length > 0 && (
         <div className="flex flex-wrap gap-1 mb-1.5">
           {card.etiquetas.map(({ etiqueta }) => (
-            <span
+            <button
               key={etiqueta.id}
-              title={etiqueta.nome ?? undefined}
-              className="h-2 w-8 rounded-full inline-block"
+              type="button"
+              title={etiqueta.nome ?? 'Etiqueta'}
+              aria-label={`Etiqueta ${etiqueta.nome ?? ''}`.trim()}
+              onClick={(e) => {
+                // não abre o card nem inicia drag — só alterna reduzida/ampliada
+                e.stopPropagation();
+                onAlternarEtiquetas?.();
+              }}
+              onPointerDown={(e) => e.stopPropagation()}
+              className={cn(
+                'rounded-full inline-flex items-center text-white font-medium leading-none',
+                'transition-all',
+                etiquetasAmpliadas
+                  ? 'h-5 min-w-8 px-2 text-[10px] max-w-full'
+                  : 'h-2 w-8',
+              )}
               style={{ background: etiqueta.cor }}
-            />
+            >
+              {etiquetasAmpliadas && etiqueta.nome && (
+                <span className="truncate">{etiqueta.nome}</span>
+              )}
+            </button>
           ))}
         </div>
       )}
