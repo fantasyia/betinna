@@ -142,14 +142,23 @@ export class KanbanCardsService {
 
   /** Card completo: checklists, comentários, anexos, etiquetas, membros e atividade. */
   async findById(user: AuthenticatedUser, cardId: string) {
-    await this.acesso.verificarAcessoPorCard(user, cardId);
+    const { canonicoId } = await this.acesso.verificarAcessoPorCard(user, cardId);
+    // Grupo de espelho: relações compartilhadas (checklists/comentários/anexos/
+    // membros) moram no card canônico; etiquetas/campos/coluna são do card próprio.
+    const grupo = await this.acesso.cardsDoGrupo(cardId);
 
-    const [card, atividades] = await Promise.all([
+    const [card, compartilhado, atividades] = await Promise.all([
       this.prisma.kanbanCard.findUniqueOrThrow({
         where: { id: cardId },
         include: {
           lista: { select: { id: true, nome: true, boardId: true } },
           etiquetas: { include: { etiqueta: true } },
+          campoValores: { include: { campo: true } },
+        },
+      }),
+      this.prisma.kanbanCard.findUniqueOrThrow({
+        where: { id: canonicoId },
+        select: {
           membros: { include: { usuario: USUARIO_RESUMO } },
           checklists: {
             orderBy: { posicao: 'asc' },
@@ -159,17 +168,16 @@ export class KanbanCardsService {
           },
           comentarios: { orderBy: { criadoEm: 'desc' }, include: { autor: USUARIO_RESUMO } },
           anexos: { orderBy: { criadoEm: 'desc' } },
-          campoValores: { include: { campo: true } },
         },
       }),
       this.prisma.kanbanAtividade.findMany({
-        where: { cardId },
+        where: { cardId: { in: grupo } },
         orderBy: { criadoEm: 'desc' },
         take: CARD_ATIVIDADES_LIMIT,
         include: { usuario: USUARIO_RESUMO },
       }),
     ]);
-    return { ...card, atividades };
+    return { ...card, ...compartilhado, atividades };
   }
 
   /** Título, descrição, datas, concluído, capa, arquivar/restaurar. */
@@ -266,12 +274,13 @@ export class KanbanCardsService {
 
   /** Atribui membro ao card (precisa ser membro do board, igual Trello). */
   async addMembro(user: AuthenticatedUser, cardId: string, usuarioId: string) {
-    const { board, card } = await this.acesso.verificarAcessoPorCard(user, cardId);
+    const { board, canonicoId } = await this.acesso.verificarAcessoPorCard(user, cardId);
     await this.acesso.exigirMembroDoBoard(board.id, usuarioId, 'Membro do card');
 
     try {
+      // Membro mora no card CANÔNICO (compartilhado pelo par de espelho).
       const membro = await this.prisma.kanbanCardMembro.create({
-        data: { cardId: card.id, usuarioId },
+        data: { cardId: canonicoId, usuarioId },
         include: { usuario: USUARIO_RESUMO },
       });
       await this.atividade.registrar({
@@ -291,9 +300,9 @@ export class KanbanCardsService {
   }
 
   async removeMembro(user: AuthenticatedUser, cardId: string, usuarioId: string): Promise<void> {
-    const { board, card } = await this.acesso.verificarAcessoPorCard(user, cardId);
+    const { board, canonicoId } = await this.acesso.verificarAcessoPorCard(user, cardId);
     const removidos = await this.prisma.kanbanCardMembro.deleteMany({
-      where: { cardId: card.id, usuarioId },
+      where: { cardId: canonicoId, usuarioId },
     });
     if (removidos.count === 0) throw new NotFoundException('Membro do card', usuarioId);
     await this.atividade.registrar({

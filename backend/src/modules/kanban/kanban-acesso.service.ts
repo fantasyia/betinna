@@ -85,21 +85,102 @@ export class KanbanAcessoService {
   }
 
   /**
+   * Card canônico de um grupo de espelho: as relações compartilhadas
+   * (comentário, anexo, checklist, membro) vivem no card de ORIGEM (Diretor).
+   * Espelho → sua origem; origem (ou card comum) → ele mesmo.
+   */
+  async cardCanonicoId(cardId: string): Promise<string> {
+    const card = await this.prisma.kanbanCard.findUnique({
+      where: { id: cardId },
+      select: { origemCardId: true },
+    });
+    return card?.origemCardId ?? cardId;
+  }
+
+  /**
+   * Ids de todos os cards do grupo de espelho (canônico + espelhos). Um card
+   * comum (sem par) devolve só ele mesmo. Usado pra espelhar etiquetas/campos
+   * (por-quadro) e pra liberar acesso de grupo.
+   */
+  async cardsDoGrupo(cardId: string): Promise<string[]> {
+    const canonicoId = await this.cardCanonicoId(cardId);
+    const espelhos = await this.prisma.kanbanCard.findMany({
+      where: { origemCardId: canonicoId },
+      select: { id: true },
+    });
+    return [canonicoId, ...espelhos.map((e) => e.id)];
+  }
+
+  /**
    * Resolve o board a partir de um CARD (card → lista → board) e valida
    * acesso. Card arquivado continua acessível (modal de restaurar).
+   *
+   * CIENTE DE GRUPO: se o card faz parte de um par de espelho (Diretor↔rep),
+   * o acesso é liberado se o usuário enxerga QUALQUER quadro do par — porque as
+   * relações compartilhadas moram no card canônico (que pode estar num quadro
+   * ao qual o usuário não pertence diretamente). O grupo é sempre do mesmo
+   * tenant (origem+espelhos mesma empresa), então isso não vaza entre empresas.
+   * Tenta o quadro do PRÓPRIO card primeiro (preserva o comportamento escalar).
    */
   async verificarAcessoPorCard(
     user: AuthenticatedUser,
     cardId: string,
     opts: AcessoBoardOpts = {},
-  ): Promise<{ board: KanbanBoard; card: { id: string; listaId: string; listaNome: string } }> {
+  ): Promise<{
+    board: KanbanBoard;
+    card: { id: string; listaId: string; listaNome: string };
+    canonicoId: string;
+  }> {
     const card = await this.prisma.kanbanCard.findUnique({
       where: { id: cardId },
-      select: { id: true, listaId: true, lista: { select: { boardId: true, nome: true } } },
+      select: {
+        id: true,
+        listaId: true,
+        origemCardId: true,
+        lista: { select: { boardId: true, nome: true } },
+      },
     });
     if (!card) throw new NotFoundException('Card', cardId);
-    const board = await this.verificarAcessoBoard(user, card.lista.boardId, opts);
-    return { board, card: { id: card.id, listaId: card.listaId, listaNome: card.lista.nome } };
+    const canonicoId = card.origemCardId ?? card.id;
+    const board = await this.acessoBoardDoGrupo(user, card.lista.boardId, canonicoId, opts);
+    return {
+      board,
+      card: { id: card.id, listaId: card.listaId, listaNome: card.lista.nome },
+      canonicoId,
+    };
+  }
+
+  /**
+   * Valida acesso ao card tentando o quadro próprio primeiro; se falhar e o card
+   * for de um grupo de espelho, tenta os demais quadros do grupo. Lança o erro do
+   * quadro próprio se nenhum liberar.
+   */
+  private async acessoBoardDoGrupo(
+    user: AuthenticatedUser,
+    boardProprioId: string,
+    canonicoId: string,
+    opts: AcessoBoardOpts,
+  ): Promise<KanbanBoard> {
+    try {
+      return await this.verificarAcessoBoard(user, boardProprioId, opts);
+    } catch (err) {
+      // Só tenta o grupo pra cards espelhados; card comum propaga o erro.
+      const grupo = await this.prisma.kanbanCard.findMany({
+        where: { OR: [{ id: canonicoId }, { origemCardId: canonicoId }] },
+        select: { lista: { select: { boardId: true } } },
+      });
+      const outrosBoards = [
+        ...new Set(grupo.map((c) => c.lista.boardId).filter((b) => b !== boardProprioId)),
+      ];
+      for (const boardId of outrosBoards) {
+        try {
+          return await this.verificarAcessoBoard(user, boardId, opts);
+        } catch {
+          /* tenta o próximo */
+        }
+      }
+      throw err;
+    }
   }
 
   /** Etiqueta → board. */
@@ -116,7 +197,7 @@ export class KanbanAcessoService {
     return this.verificarAcessoBoard(user, etiqueta.boardId, opts);
   }
 
-  /** Checklist → card → lista → board. */
+  /** Checklist → card → lista → board (ciente de grupo de espelho). */
   async verificarAcessoPorChecklist(
     user: AuthenticatedUser,
     checklistId: string,
@@ -124,14 +205,23 @@ export class KanbanAcessoService {
   ): Promise<{ board: KanbanBoard; cardId: string }> {
     const checklist = await this.prisma.kanbanChecklist.findUnique({
       where: { id: checklistId },
-      select: { cardId: true, card: { select: { lista: { select: { boardId: true } } } } },
+      select: {
+        cardId: true,
+        card: { select: { origemCardId: true, lista: { select: { boardId: true } } } },
+      },
     });
     if (!checklist) throw new NotFoundException('Checklist', checklistId);
-    const board = await this.verificarAcessoBoard(user, checklist.card.lista.boardId, opts);
+    const canonicoId = checklist.card.origemCardId ?? checklist.cardId;
+    const board = await this.acessoBoardDoGrupo(
+      user,
+      checklist.card.lista.boardId,
+      canonicoId,
+      opts,
+    );
     return { board, cardId: checklist.cardId };
   }
 
-  /** Item de checklist → checklist → card → board. */
+  /** Item de checklist → checklist → card → board (ciente de grupo de espelho). */
   async verificarAcessoPorChecklistItem(
     user: AuthenticatedUser,
     itemId: string,
@@ -142,12 +232,21 @@ export class KanbanAcessoService {
       select: {
         checklistId: true,
         checklist: {
-          select: { cardId: true, card: { select: { lista: { select: { boardId: true } } } } },
+          select: {
+            cardId: true,
+            card: { select: { origemCardId: true, lista: { select: { boardId: true } } } },
+          },
         },
       },
     });
     if (!item) throw new NotFoundException('Item de checklist', itemId);
-    const board = await this.verificarAcessoBoard(user, item.checklist.card.lista.boardId, opts);
+    const canonicoId = item.checklist.card.origemCardId ?? item.checklist.cardId;
+    const board = await this.acessoBoardDoGrupo(
+      user,
+      item.checklist.card.lista.boardId,
+      canonicoId,
+      opts,
+    );
     return { board, cardId: item.checklist.cardId, checklistId: item.checklistId };
   }
 

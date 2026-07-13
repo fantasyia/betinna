@@ -94,7 +94,7 @@ export class KanbanAnexosService implements OnModuleInit {
 
   /** Anexo tipo ARQUIVO (multipart upload). */
   async uploadArquivo(user: AuthenticatedUser, cardId: string, file: UploadInput) {
-    const { board, card } = await this.acesso.verificarAcessoPorCard(user, cardId);
+    const { board, canonicoId } = await this.acesso.verificarAcessoPorCard(user, cardId);
 
     if (!file.buffer || file.size === 0) throw new BusinessRuleException('Arquivo vazio');
     if (file.size > MAX_SIZE_BYTES) {
@@ -111,7 +111,8 @@ export class KanbanAnexosService implements OnModuleInit {
 
     const ts = Date.now();
     const safeName = file.filename.replace(/[^\w.\-]/g, '_').slice(0, 80);
-    const storagePath = `${board.empresaId}/${card.id}/${ts}_${safeName}`;
+    // Anexo mora no card CANÔNICO (compartilhado pelo par de espelho).
+    const storagePath = `${board.empresaId}/${canonicoId}/${ts}_${safeName}`;
 
     const { error } = await this.storage.storage.from(BUCKET).upload(storagePath, file.buffer, {
       contentType: file.mimetype,
@@ -120,19 +121,19 @@ export class KanbanAnexosService implements OnModuleInit {
     if (error) throw new IntegrationException(`Falha ao subir arquivo: ${error.message}`);
 
     const anexo = await this.prisma.kanbanAnexo.create({
-      data: { cardId: card.id, nome: safeName, url: storagePath, tipo: 'arquivo' },
+      data: { cardId: canonicoId, nome: safeName, url: storagePath, tipo: 'arquivo' },
     });
-    await this.registrarAtividade(board.id, card.id, user.id, anexo);
+    await this.registrarAtividade(board.id, canonicoId, user.id, anexo);
     return anexo;
   }
 
   /** Anexo tipo LINK (JSON). */
   async createLink(user: AuthenticatedUser, cardId: string, dto: CreateAnexoLinkDto) {
-    const { board, card } = await this.acesso.verificarAcessoPorCard(user, cardId);
+    const { board, canonicoId } = await this.acesso.verificarAcessoPorCard(user, cardId);
     const anexo = await this.prisma.kanbanAnexo.create({
-      data: { cardId: card.id, nome: dto.nome, url: dto.url, tipo: 'link' },
+      data: { cardId: canonicoId, nome: dto.nome, url: dto.url, tipo: 'link' },
     });
-    await this.registrarAtividade(board.id, card.id, user.id, anexo);
+    await this.registrarAtividade(board.id, canonicoId, user.id, anexo);
     return anexo;
   }
 

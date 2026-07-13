@@ -16,9 +16,10 @@ export class KanbanComentariosService {
   ) {}
 
   async create(user: AuthenticatedUser, cardId: string, dto: CreateComentarioDto) {
-    const { board, card } = await this.acesso.verificarAcessoPorCard(user, cardId);
+    const { board, canonicoId } = await this.acesso.verificarAcessoPorCard(user, cardId);
+    // Comentário mora no card CANÔNICO (compartilhado pelo par de espelho).
     const comentario = await this.prisma.kanbanComentario.create({
-      data: { cardId: card.id, autorId: user.id, texto: dto.texto },
+      data: { cardId: canonicoId, autorId: user.id, texto: dto.texto },
       include: { autor: USUARIO_RESUMO },
     });
     await this.atividade.registrar({

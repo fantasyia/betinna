@@ -28,7 +28,7 @@ export class KanbanChecklistsService {
    * kanban_criar_checklist manda itens[] com prazo/responsável ★).
    */
   async create(user: AuthenticatedUser, cardId: string, dto: CreateChecklistDto) {
-    const { board, card } = await this.acesso.verificarAcessoPorCard(user, cardId);
+    const { board, canonicoId } = await this.acesso.verificarAcessoPorCard(user, cardId);
 
     // Todo responsável indicado precisa ser membro do board (regra ★)
     for (const item of dto.itens ?? []) {
@@ -37,14 +37,15 @@ export class KanbanChecklistsService {
       }
     }
 
+    // Checklist mora no card CANÔNICO (compartilhado pelo par de espelho).
     const ultimo = await this.prisma.kanbanChecklist.findFirst({
-      where: { cardId: card.id },
+      where: { cardId: canonicoId },
       orderBy: { posicao: 'desc' },
       select: { posicao: true },
     });
     const checklist = await this.prisma.kanbanChecklist.create({
       data: {
-        cardId: card.id,
+        cardId: canonicoId,
         titulo: dto.titulo,
         posicao: posicaoNoFim(ultimo?.posicao),
         itens: dto.itens?.length
@@ -67,12 +68,12 @@ export class KanbanChecklistsService {
       boardId: board.id,
       usuarioId: user.id,
       tipo: 'checklist_criado',
-      cardId: card.id,
+      cardId: canonicoId,
       dados: { titulo: checklist.titulo, itens: checklist.itens.length },
     });
     for (const item of checklist.itens) {
       if (item.responsavelId) {
-        await this.registrarDelegacao(board.id, card.id, user.id, item);
+        await this.registrarDelegacao(board.id, canonicoId, user.id, item);
       }
     }
     return checklist;

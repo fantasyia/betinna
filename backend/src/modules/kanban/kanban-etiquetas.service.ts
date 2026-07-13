@@ -83,6 +83,9 @@ export class KanbanEtiquetasService {
         cardId,
         dados: { etiquetaNome: etiqueta.nome, etiquetaCor: etiqueta.cor },
       });
+      // Espelha a etiqueta (por nome+cor) no card do par de espelho — etiqueta é
+      // do quadro, então cria/reaproveita uma equivalente no quadro do outro card.
+      await this.espelharEtiqueta(cardId, etiqueta.nome, etiqueta.cor, 'aplicar');
       return vinculo;
     } catch (err) {
       if (err && typeof err === 'object' && 'code' in err && err.code === 'P2002') {
@@ -94,6 +97,10 @@ export class KanbanEtiquetasService {
 
   async removerDoCard(user: AuthenticatedUser, cardId: string, etiquetaId: string): Promise<void> {
     const { board, card } = await this.acesso.verificarAcessoPorCard(user, cardId);
+    const etiqueta = await this.prisma.kanbanEtiqueta.findUnique({
+      where: { id: etiquetaId },
+      select: { nome: true, cor: true },
+    });
     const removidos = await this.prisma.kanbanCardEtiqueta.deleteMany({
       where: { cardId: card.id, etiquetaId },
     });
@@ -105,5 +112,51 @@ export class KanbanEtiquetasService {
       cardId,
       dados: { etiquetaId },
     });
+    if (etiqueta) await this.espelharEtiqueta(cardId, etiqueta.nome, etiqueta.cor, 'remover');
+  }
+
+  /**
+   * Espelha a aplicação/remoção de uma etiqueta nos DEMAIS cards do par de
+   * espelho. Como etiqueta pertence ao quadro, casa por (nome, cor): reaproveita
+   * uma etiqueta equivalente no quadro do outro card, criando se não existir.
+   * Best-effort — falha aqui não derruba a operação principal.
+   */
+  private async espelharEtiqueta(
+    cardIdAtual: string,
+    nome: string | null,
+    cor: string,
+    operacao: 'aplicar' | 'remover',
+  ): Promise<void> {
+    try {
+      const grupo = await this.acesso.cardsDoGrupo(cardIdAtual);
+      const outros = await this.prisma.kanbanCard.findMany({
+        where: { id: { in: grupo.filter((id) => id !== cardIdAtual) } },
+        select: { id: true, lista: { select: { boardId: true } } },
+      });
+      for (const outro of outros) {
+        const boardId = outro.lista.boardId;
+        let equivalente = await this.prisma.kanbanEtiqueta.findFirst({
+          where: { boardId, nome, cor },
+          select: { id: true },
+        });
+        if (operacao === 'aplicar') {
+          if (!equivalente) {
+            equivalente = await this.prisma.kanbanEtiqueta.create({
+              data: { boardId, nome, cor },
+              select: { id: true },
+            });
+          }
+          await this.prisma.kanbanCardEtiqueta
+            .create({ data: { cardId: outro.id, etiquetaId: equivalente.id } })
+            .catch(() => undefined); // P2002 = já tem, ok
+        } else if (equivalente) {
+          await this.prisma.kanbanCardEtiqueta.deleteMany({
+            where: { cardId: outro.id, etiquetaId: equivalente.id },
+          });
+        }
+      }
+    } catch {
+      /* best-effort: não derruba a operação principal */
+    }
   }
 }
