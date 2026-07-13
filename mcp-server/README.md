@@ -63,20 +63,27 @@ Exigem token com escopo **`fluxos`** (marque "Fluxos de automação" ao gerar em
 **Não expõe** `ativar`/`pausar`/`arquivar`/`excluir` — ativação = decisão humana no app.
 Import sempre cria **RASCUNHO**; disparo real de WhatsApp/e-mail só depois do Léo ativar.
 
-## 3 tools de Funis + Contatos (leitura — base do e-mail marketing)
+## Funis + Contatos + CRM (base do e-mail marketing)
 
-Só **leitura**. Cada uma exige o escopo próprio (marque em Quadros → Tokens de API):
-"Funis (somente leitura)" e "Contatos (somente leitura)". O guard barra qualquer
-método != GET nessas rotas — o token **nunca** escreve em funis nem contatos.
+Cada tool exige o escopo próprio (marque em Quadros → Tokens de API). **Funis** e
+**Contatos** são SÓ LEITURA (o guard barra != GET). **CRM** é escrita (surface
+estreita: só tags e mover etapa).
 
 | Tool | Escopo | O que faz |
 |---|---|---|
 | `funis_listar` | `funis` | Lista os funis (pipelines) + etapas |
 | `funis_ver` | `funis` | Detalhe de um funil (dados + etapas ordenadas) |
+| `leads_por_etapa` | `funis` | Leads dentro de uma etapa, paginado (mais parados 1º) |
 | `contatos_listar` | `contatos` | Lista contatos (Lead+Cliente+Conversa dedup por telefone), paginado + filtros |
+| `contatos_ver` | `contatos` | Detalhe de UM contato (por leadId/clienteId/telefone/email): tipos, tags, funis[{etapa, dataEntrada}] |
+| `contatos_tags` | `crm` | Add/remove tags (por nome) de um contato — **dispara LEAD_RECEBEU_TAG** |
+| `contatos_atualizar_etapa` | `crm` | Move um lead de etapa — **dispara LEAD_ETAPA_MUDOU**; retorna de→para |
 
-**Contatos = dados pessoais (PII).** Sem endpoint de detalhe único: filtre com `search`.
-Escrita (criar leads, ação em massa) continua só no app.
+`fluxos_execucoes` (escopo `fluxos`) agora traz `contatoId` + `contatoNome` por execução
+(auditoria "esse lead passou por esse fluxo?").
+
+**Contatos = dados pessoais (PII).** Escopo `crm` (escrita) fica sob rotas `/crm` — surface
+estreita; criar lead/campanha e ações em massa seguem só no app.
 
 ## Build
 
