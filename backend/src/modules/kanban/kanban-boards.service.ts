@@ -139,6 +139,42 @@ export class KanbanBoardsService {
         },
       },
     });
+    // Cards-espelho: os badges (comentários/anexos/checklist/membros) precisam
+    // vir do card CANÔNICO, onde essas relações moram de verdade. Sem isso o
+    // contador do card do rep fica errado (lê do próprio card, que está vazio).
+    const canonicoIds = [
+      ...new Set(
+        board.listas
+          .flatMap((l) => l.cards)
+          .map((c) => c.origemCardId)
+          .filter((id): id is string => !!id),
+      ),
+    ];
+    if (canonicoIds.length > 0) {
+      const canonicos = await this.prisma.kanbanCard.findMany({
+        where: { id: { in: canonicoIds } },
+        select: {
+          id: true,
+          membros: { include: { usuario: USUARIO_RESUMO } },
+          checklists: { select: { itens: { select: { concluido: true } } } },
+          _count: { select: { comentarios: true, anexos: true } },
+        },
+      });
+      const canonMap = new Map(canonicos.map((c) => [c.id, c]));
+      for (const lista of board.listas) {
+        lista.cards = lista.cards.map((c) => {
+          const canon = c.origemCardId ? canonMap.get(c.origemCardId) : undefined;
+          if (!canon) return c;
+          return {
+            ...c,
+            membros: canon.membros,
+            checklists: canon.checklists,
+            _count: canon._count,
+          };
+        });
+      }
+    }
+
     return {
       ...board,
       imagemFundoUrl: await this.fundo.signedUrl(board.imagemFundo),
