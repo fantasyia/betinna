@@ -184,8 +184,17 @@ import { RODAR_BACKGROUND } from '@shared/utils/service-type';
     BullModule.forRootAsync({
       inject: [EnvService],
       useFactory: (env: EnvService) => ({
-        // buildBullMqConnection detecta TLS pelo scheme da URL (rediss:// vs redis://)
-        connection: buildBullMqConnection(env.get('REDIS_URL')),
+        // buildBullMqConnection detecta TLS pelo scheme da URL (rediss:// vs redis://).
+        // maxRetriesPerRequest: null + enableReadyCheck: false = REQUISITO do BullMQ pras
+        // conexões bloqueantes (BRPOPLPUSH do Worker). Sem null, após um reconnect do Redis
+        // (ex: worker reiniciado) os comandos bloqueantes estouram "max retries" e o
+        // consumidor/produtor PARA de funcionar em silêncio — a API (leituras não-bloqueantes)
+        // segue OK, mas o worker deixa de enfileirar/consumir jobs de fluxo. Alinha com o
+        // ThrottlerStorage e o RedisService, que já setam null.
+        connection: buildBullMqConnection(env.get('REDIS_URL'), {
+          maxRetriesPerRequest: null,
+          enableReadyCheck: false,
+        }),
         defaultJobOptions: {
           removeOnComplete: { count: 1000 },
           removeOnFail: { count: 500 },
