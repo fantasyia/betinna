@@ -94,6 +94,7 @@ export class KanbanCamposService {
         cardId,
         dados: { campoNome: campo.nome },
       });
+      await this.espelharCampoValor(cardId, campo, null);
       return { campoId, cardId: card.id, valor: null };
     }
 
@@ -111,7 +112,60 @@ export class KanbanCamposService {
       cardId,
       dados: { campoNome: campo.nome, valor },
     });
+    await this.espelharCampoValor(cardId, campo, valor);
     return registro;
+  }
+
+  /**
+   * Espelha o valor de um campo personalizado nos DEMAIS cards do par de espelho.
+   * Campo pertence ao quadro, então casa por (nome, tipo): reaproveita/cria um
+   * campo equivalente no quadro do outro card e replica (ou limpa) o valor.
+   * Best-effort — não derruba a operação principal.
+   */
+  private async espelharCampoValor(
+    cardIdAtual: string,
+    campo: KanbanCampoPersonalizado,
+    valor: string | number | boolean | null,
+  ): Promise<void> {
+    try {
+      const grupo = await this.acesso.cardsDoGrupo(cardIdAtual);
+      const outros = await this.prisma.kanbanCard.findMany({
+        where: { id: { in: grupo.filter((id) => id !== cardIdAtual) } },
+        select: { id: true, lista: { select: { boardId: true } } },
+      });
+      for (const outro of outros) {
+        const boardId = outro.lista.boardId;
+        let equivalente = await this.prisma.kanbanCampoPersonalizado.findFirst({
+          where: { boardId, nome: campo.nome, tipo: campo.tipo },
+          select: { id: true },
+        });
+        if (!equivalente) {
+          if (valor === null) continue; // nada a limpar se o campo nem existe lá
+          equivalente = await this.prisma.kanbanCampoPersonalizado.create({
+            data: {
+              boardId,
+              nome: campo.nome,
+              tipo: campo.tipo,
+              opcoes: campo.tipo === 'lista_opcoes' ? (campo.opcoes ?? undefined) : undefined,
+            },
+            select: { id: true },
+          });
+        }
+        if (valor === null) {
+          await this.prisma.kanbanCampoValor.deleteMany({
+            where: { campoId: equivalente.id, cardId: outro.id },
+          });
+        } else {
+          await this.prisma.kanbanCampoValor.upsert({
+            where: { campoId_cardId: { campoId: equivalente.id, cardId: outro.id } },
+            create: { campoId: equivalente.id, cardId: outro.id, valor },
+            update: { valor },
+          });
+        }
+      }
+    } catch {
+      /* best-effort */
+    }
   }
 
   /** Valida o valor conforme o tipo do campo (erro em pt-BR acionável). */
