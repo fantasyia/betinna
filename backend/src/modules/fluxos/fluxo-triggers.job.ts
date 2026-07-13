@@ -292,8 +292,11 @@ export class FluxoTriggersJob {
           });
           // jobId determinístico por slot → reforço: BullMQ deduplica enfileiramento
           // duplicado se duas rodadas correrem o mesmo slot antes do claim do cursor.
+          // SEM ":" — o BullMQ (v5) REJEITA custom job id com ":" ("Custom Id cannot
+          // contain :"), o que fazia o queue.add lançar e a execução ficar PENDENTE pra
+          // sempre. Usa epoch (getTime) do slot no lugar do ISO (que tinha ":").
           await this.bus.dispararDireto(exec.id, triggerNo.id, {
-            jobId: `cron:${f.id}:${slot.toISOString()}`,
+            jobId: `cron_${f.id}_${slot.getTime()}`,
           });
           // Métrica de latência: atraso entre o horário agendado e o disparo real.
           await this.cronMetrics.registrar(agora.getTime() - slot.getTime());

@@ -50,7 +50,8 @@ export class IndexacaoService {
   private async enfileirar(data: IndexacaoJobData): Promise<void> {
     try {
       // jobId determinístico → re-enfileirar o mesmo item não duplica job pendente.
-      await this.queue.add('indexar', data, { ...JOB_OPTS, jobId: `${data.tipo}:${data.id}` });
+      // SEM ":" — BullMQ v5 rejeita custom job id com ":" ("Custom Id cannot contain :").
+      await this.queue.add('indexar', data, { ...JOB_OPTS, jobId: `${data.tipo}_${data.id}` });
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
       this.logger.warn(`Falha ao enfileirar indexação ${data.tipo}:${data.id}: ${msg}`);
