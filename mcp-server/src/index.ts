@@ -1317,6 +1317,52 @@ server.registerTool(
   }),
 );
 
+server.registerTool(
+  'fluxos_arquivar',
+  {
+    description:
+      'Arquiva um fluxo (status → ARQUIVADO). REVERSÍVEL e seguro mesmo com histórico — não apaga ' +
+      'nada, só tira o fluxo de circulação (não dispara mais). Use pra aposentar fluxos superados.',
+    inputSchema: { fluxoId: z.string().describe('ID do fluxo (use fluxos_listar)') },
+    annotations: { readOnlyHint: false, destructiveHint: false },
+  },
+  seguro(async ({ fluxoId }: { fluxoId: string }) => {
+    await api.delete(`/fluxos/${fluxoId}`);
+    return ok({ fluxoId, status: 'ARQUIVADO', reversivel: true });
+  }),
+);
+
+server.registerTool(
+  'fluxos_deletar',
+  {
+    description:
+      'Exclui PERMANENTEMENTE um fluxo (apaga nós/arestas). Segurança: SÓ deleta RASCUNHO SEM ' +
+      'execuções (histórico) — se tiver execuções ou não for rascunho, recusa e sugere fluxos_arquivar. ' +
+      'Bom pra limpar rascunhos de teste/duplicados criados via MCP.',
+    inputSchema: { fluxoId: z.string().describe('ID do fluxo RASCUNHO a apagar') },
+    annotations: { readOnlyHint: false, destructiveHint: true },
+  },
+  seguro(async ({ fluxoId }: { fluxoId: string }) => {
+    // Trava de segurança: só hard-delete de RASCUNHO limpo (sem execuções).
+    const f = await api.get<{ status?: string; _count?: { execucoes?: number } }>(
+      `/fluxos/${fluxoId}`,
+    );
+    if (f.status !== 'RASCUNHO') {
+      return erro(
+        `Fluxo está ${f.status ?? '?'} — só dá pra DELETAR rascunho. Use fluxos_arquivar (reversível).`,
+      );
+    }
+    const execs = f._count?.execucoes ?? 0;
+    if (execs > 0) {
+      return erro(
+        `Fluxo tem ${execs} execução(ões) no histórico — não apago (perderia o histórico). Use fluxos_arquivar.`,
+      );
+    }
+    await api.delete(`/fluxos/${fluxoId}/permanente`);
+    return ok({ fluxoId, excluido: true });
+  }),
+);
+
 // ─── Funis (SOMENTE LEITURA — escopo "funis") ───────────────────────────
 // Base pro email-marketing: o orquestrador precisa enxergar os funis e etapas
 // pra decidir a quem/quando escrever. NUNCA escreve (o token nem consegue: o
@@ -1527,5 +1573,5 @@ server.registerTool(
 const transport = new StdioServerTransport();
 await server.connect(transport);
 console.error(
-  '[betinna-kanban-mcp] conectado — 26 tools kanban_* + 9 tools fluxos_* + 6 tools funis_/contatos_/crm disponíveis',
+  '[betinna-kanban-mcp] conectado — 26 tools kanban_* + 11 tools fluxos_* + 6 tools funis_/contatos_/crm disponíveis',
 );
