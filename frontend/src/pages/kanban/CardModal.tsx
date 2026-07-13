@@ -677,7 +677,19 @@ function ChecklistItemRow({
   onMut: (fn: () => Promise<unknown>) => Promise<void>;
 }) {
   const [editor, setEditor] = useState<'prazo' | 'responsavel' | null>(null);
+  const [editandoTexto, setEditandoTexto] = useState(false);
+  const [txt, setTxt] = useState(item.texto);
   const prazo = statusPrazo(item.dataEntrega, item.concluido);
+
+  const salvarTexto = () => {
+    const novo = txt.trim();
+    setEditandoTexto(false);
+    if (!novo || novo === item.texto) {
+      setTxt(item.texto);
+      return;
+    }
+    void onMut(() => api.patch(`/kanban/checklist-itens/${item.id}`, { texto: novo }));
+  };
 
   return (
     <li className="group rounded-[8px] hover:bg-surface-elevated px-1.5 py-1">
@@ -690,11 +702,39 @@ function ChecklistItemRow({
             )
           }
         />
-        <span
-          className={cn('flex-1 text-sm', item.concluido && 'line-through text-muted')}
-        >
-          {item.texto}
-        </span>
+        {editandoTexto ? (
+          <Input
+            autoFocus
+            className="flex-1 h-7 text-sm"
+            value={txt}
+            onChange={(e) => setTxt(e.target.value)}
+            onBlur={salvarTexto}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter') {
+                e.preventDefault();
+                salvarTexto();
+              } else if (e.key === 'Escape') {
+                setTxt(item.texto);
+                setEditandoTexto(false);
+              }
+            }}
+            data-testid={`checklist-item-texto-${item.id}`}
+          />
+        ) : (
+          <span
+            className={cn(
+              'flex-1 text-sm cursor-text',
+              item.concluido && 'line-through text-muted',
+            )}
+            title="Clique para editar o texto"
+            onClick={() => {
+              setTxt(item.texto);
+              setEditandoTexto(true);
+            }}
+          >
+            {item.texto}
+          </span>
+        )}
 
         {item.dataEntrega && (
           <span
