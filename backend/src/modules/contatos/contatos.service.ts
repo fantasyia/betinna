@@ -42,6 +42,30 @@ export interface ContatoAgregado {
   criadoEm: string;
 }
 
+export interface ContatoDetalheFunil {
+  funilId: string;
+  funilNome: string;
+  etapaId: string | null;
+  etapaNome: string | null;
+  dataEntrada: string | null;
+}
+
+/** Detalhe de UM contato agregado (Demanda MCP `contatos_ver`). */
+export interface ContatoDetalhe {
+  chave: string;
+  nome: string;
+  telefone: string | null;
+  email: string | null;
+  tipos: ContatoTipo[];
+  tags: string[];
+  funis: ContatoDetalheFunil[];
+  representante: { id: string; nome: string } | null;
+  leadIds: string[];
+  clienteIds: string[];
+  conversaIds: string[];
+  criadoEm: string;
+}
+
 /** Linha do dedup-no-banco (paginarChaves): a chave + os ids das entidades daquele contato. */
 interface ChaveRow {
   chave: string;
@@ -427,6 +451,202 @@ export class ContatosService {
     const cnt = await this.prisma.$queryRaw<Array<{ total: number }>>(Prisma.sql`
       ${cte} SELECT count(*)::int total FROM grp`);
     return { rows: [], total: cnt[0]?.total ?? 0 };
+  }
+
+  /**
+   * Detalhe de UM contato (unificado) por identificador — leadId, clienteId,
+   * telefone OU email. Resolve o sufixo de telefone (D18) e reúne TODAS as
+   * entidades do contato (leads/clientes/conversas), agregando tipos, tags
+   * (Lead+Cliente), funis (etapa atual + dataEntrada) e representante.
+   * READ-only; respeita tenant + carteira (RepScope). Base do MCP `contatos_ver`.
+   */
+  async detalhe(
+    user: AuthenticatedUser,
+    q: { leadId?: string; clienteId?: string; telefone?: string; email?: string },
+  ): Promise<ContatoDetalhe | null> {
+    const empresaId = this.requireEmpresa(user);
+    const scope = await this.repScope.getRepIds(user);
+    const scopeWhere: Prisma.LeadWhereInput =
+      scope !== null ? { representanteId: { in: scope.length ? scope : ['__none__'] } } : {};
+    const scopeSql =
+      scope !== null
+        ? Prisma.sql`AND "representanteId" IN (${Prisma.join(scope.length ? scope : ['__none__'])})`
+        : Prisma.empty;
+
+    // 1) Descobre sufixo de telefone + email a partir do identificador informado.
+    let sufixo = q.telefone ? this.sufixoTel(q.telefone) : null;
+    let email = q.email?.trim().toLowerCase() || null;
+    if (!sufixo && q.leadId) {
+      const l = await this.prisma.lead.findFirst({
+        where: { id: q.leadId, empresaId, ...scopeWhere },
+        select: { contatoTelefone: true, contatoEmail: true },
+      });
+      if (l) {
+        sufixo = this.sufixoTel(l.contatoTelefone);
+        email ??= l.contatoEmail?.trim().toLowerCase() || null;
+      }
+    }
+    if (!sufixo && q.clienteId) {
+      const c = await this.prisma.cliente.findFirst({
+        where: { id: q.clienteId, empresaId, ...(scopeWhere as Prisma.ClienteWhereInput) },
+        select: { telefone: true, email: true },
+      });
+      if (c) {
+        sufixo = this.sufixoTel(c.telefone);
+        email ??= c.email?.trim().toLowerCase() || null;
+      }
+    }
+
+    // 2) Reúne os ids das entidades do contato (sufixo de telefone, email e id direto).
+    const leadIds = new Set<string>();
+    const clienteIds = new Set<string>();
+    const conversaIds = new Set<string>();
+    if (q.leadId) leadIds.add(q.leadId);
+    if (q.clienteId) clienteIds.add(q.clienteId);
+
+    if (sufixo) {
+      const [lr, cr, cv] = await Promise.all([
+        this.prisma.$queryRaw<Array<{ id: string }>>(Prisma.sql`
+          SELECT id FROM "Lead" WHERE "empresaId" = ${empresaId} ${scopeSql}
+            AND "contatoTelefone" IS NOT NULL
+            AND RIGHT(REGEXP_REPLACE("contatoTelefone", '[^0-9]', '', 'g'), 8) = ${sufixo}`),
+        this.prisma.$queryRaw<Array<{ id: string }>>(Prisma.sql`
+          SELECT id FROM "Cliente" WHERE "empresaId" = ${empresaId} ${scopeSql}
+            AND telefone IS NOT NULL
+            AND RIGHT(REGEXP_REPLACE(telefone, '[^0-9]', '', 'g'), 8) = ${sufixo}`),
+        this.prisma.$queryRaw<Array<{ id: string }>>(Prisma.sql`
+          SELECT cv.id FROM "Conversation" cv LEFT JOIN "Cliente" cli ON cli.id = cv."clienteId"
+          WHERE cv."empresaId" = ${empresaId}
+            ${user.role === 'REP' ? Prisma.sql`AND cv."proprietarioId" = ${user.id}` : Prisma.empty}
+            AND RIGHT(REGEXP_REPLACE(COALESCE(cli.telefone,
+              CASE WHEN cv."peerId" LIKE '%@g.us%' OR cv."peerId" LIKE '%@lid%' THEN NULL
+                   ELSE split_part(split_part(cv."peerId", '@', 1), ':', 1) END), '[^0-9]', '', 'g'), 8) = ${sufixo}`),
+      ]);
+      lr.forEach((x) => leadIds.add(x.id));
+      cr.forEach((x) => clienteIds.add(x.id));
+      cv.forEach((x) => conversaIds.add(x.id));
+    }
+    if (email) {
+      const [lr, cr] = await Promise.all([
+        this.prisma.lead.findMany({
+          where: { empresaId, ...scopeWhere, contatoEmail: { equals: email, mode: 'insensitive' } },
+          select: { id: true },
+        }),
+        this.prisma.cliente.findMany({
+          where: {
+            empresaId,
+            ...(scopeWhere as Prisma.ClienteWhereInput),
+            email: { equals: email, mode: 'insensitive' },
+          },
+          select: { id: true },
+        }),
+      ]);
+      lr.forEach((x) => leadIds.add(x.id));
+      cr.forEach((x) => clienteIds.add(x.id));
+    }
+
+    if (leadIds.size === 0 && clienteIds.size === 0 && conversaIds.size === 0) return null;
+
+    // 3) Carrega as entidades com tags + funil/etapa.
+    const [leads, clientes, conversas] = await Promise.all([
+      leadIds.size
+        ? this.prisma.lead.findMany({
+            where: { empresaId, id: { in: [...leadIds] } },
+            orderBy: { criadoEm: 'desc' },
+            select: {
+              id: true,
+              nome: true,
+              contatoNome: true,
+              contatoTelefone: true,
+              contatoEmail: true,
+              criadoEm: true,
+              etapaDesde: true,
+              representante: { select: { id: true, nome: true } },
+              funil: { select: { id: true, nome: true } },
+              funilEtapa: { select: { id: true, nome: true } },
+              tags: { select: { tag: { select: { nome: true } } } },
+            },
+          })
+        : [],
+      clienteIds.size
+        ? this.prisma.cliente.findMany({
+            where: { empresaId, id: { in: [...clienteIds] } },
+            orderBy: { criadoEm: 'desc' },
+            select: {
+              id: true,
+              nome: true,
+              telefone: true,
+              email: true,
+              criadoEm: true,
+              representante: { select: { id: true, nome: true } },
+              tags: { select: { tag: { select: { nome: true } } } },
+            },
+          })
+        : [],
+      conversaIds.size
+        ? this.prisma.conversation.findMany({
+            where: { empresaId, id: { in: [...conversaIds] } },
+            select: { id: true, peerNome: true, criadoEm: true },
+          })
+        : [],
+    ]);
+
+    // 4) Agrega.
+    const tipos: ContatoTipo[] = [];
+    if (leads.length) tipos.push('LEAD');
+    if (clientes.length) tipos.push('CLIENTE');
+    if (conversas.length) tipos.push('CONVERSA');
+
+    const tags = new Set<string>();
+    leads.forEach((l) => l.tags.forEach((t) => tags.add(t.tag.nome)));
+    clientes.forEach((c) => c.tags.forEach((t) => tags.add(t.tag.nome)));
+
+    const funis: ContatoDetalheFunil[] = leads
+      .filter((l) => l.funil)
+      .map((l) => ({
+        funilId: l.funil!.id,
+        funilNome: l.funil!.nome,
+        etapaId: l.funilEtapa?.id ?? null,
+        etapaNome: l.funilEtapa?.nome ?? null,
+        dataEntrada: l.etapaDesde.toISOString(),
+      }));
+
+    const cliente = clientes[0];
+    const lead = leads[0];
+    const conversa = conversas[0];
+    const telefone = cliente?.telefone ?? lead?.contatoTelefone ?? null;
+    const emailFinal = cliente?.email ?? lead?.contatoEmail ?? null;
+    const nome =
+      cliente?.nome ||
+      lead?.contatoNome ||
+      lead?.nome ||
+      conversa?.peerNome ||
+      telefone ||
+      emailFinal ||
+      'Sem nome';
+    const criadoEmVals = [
+      ...leads.map((l) => l.criadoEm),
+      ...clientes.map((c) => c.criadoEm),
+      ...conversas.map((c) => c.criadoEm),
+    ];
+    const criadoEm = criadoEmVals.length
+      ? new Date(Math.min(...criadoEmVals.map((d) => d.getTime()))).toISOString()
+      : new Date().toISOString();
+
+    return {
+      chave: sufixo ?? email ?? (lead ? `lead:${lead.id}` : cliente ? `cliente:${cliente.id}` : ''),
+      nome,
+      telefone,
+      email: emailFinal,
+      tipos,
+      tags: [...tags],
+      funis,
+      representante: cliente?.representante ?? lead?.representante ?? null,
+      leadIds: [...leadIds],
+      clienteIds: [...clienteIds],
+      conversaIds: [...conversaIds],
+      criadoEm,
+    };
   }
 
   /**

@@ -1394,10 +1394,39 @@ server.registerTool(
   ),
 );
 
+server.registerTool(
+  'contatos_ver',
+  {
+    description:
+      'Detalhe de UM contato (Lead+Cliente+Conversa unificados) por leadId, clienteId, telefone OU ' +
+      'email. Retorna nome, telefone, email, tipos[], tags[], funis[{funilId, funilNome, etapaId, ' +
+      'etapaNome, dataEntrada}] e representante. DADOS PESSOAIS — só o necessário. Somente leitura.',
+    inputSchema: {
+      leadId: z.string().optional(),
+      clienteId: z.string().optional(),
+      telefone: z.string().optional().describe('Telefone (casa pelos 8 últimos dígitos)'),
+      email: z.string().optional(),
+    },
+    annotations: { readOnlyHint: true, destructiveHint: false },
+  },
+  seguro(
+    async (args: { leadId?: string; clienteId?: string; telefone?: string; email?: string }) => {
+      if (!args.leadId && !args.clienteId && !args.telefone && !args.email) {
+        return erro('Informe leadId, clienteId, telefone ou email.');
+      }
+      const qs = new URLSearchParams();
+      for (const [k, v] of Object.entries(args)) if (v) qs.set(k, String(v));
+      const resp = await api.get<unknown>(`/contatos/detalhe?${qs.toString()}`);
+      if (resp === null) return ok({ encontrado: false });
+      return ok(resp);
+    },
+  ),
+);
+
 // ─── Boot ───────────────────────────────────────────────────────────────
 
 const transport = new StdioServerTransport();
 await server.connect(transport);
 console.error(
-  '[betinna-kanban-mcp] conectado — 26 tools kanban_* + 9 tools fluxos_* + 3 tools funis_/contatos_ disponíveis',
+  '[betinna-kanban-mcp] conectado — 26 tools kanban_* + 9 tools fluxos_* + 4 tools funis_/contatos_ disponíveis',
 );

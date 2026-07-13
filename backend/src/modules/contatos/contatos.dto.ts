@@ -24,6 +24,22 @@ export type ListContatosDto = z.infer<typeof listContatosSchema>;
  * backend aplica a ação em cada entidade (rep-scoped). Ações: tag, excluir,
  * mover-etapa (essa só vale pros que são Lead).
  */
+/**
+ * Detalhe de UM contato (visão unificada) por identificador. Aceita leadId,
+ * clienteId, telefone ou email — pelo menos um. Base do MCP `contatos_ver`.
+ */
+export const detalheContatoSchema = z
+  .object({
+    leadId: z.string().min(1).optional(),
+    clienteId: z.string().min(1).optional(),
+    telefone: z.string().trim().max(30).optional(),
+    email: z.string().trim().max(200).optional(),
+  })
+  .refine((d) => Boolean(d.leadId || d.clienteId || d.telefone || d.email), {
+    message: 'Informe leadId, clienteId, telefone ou email',
+  });
+export type DetalheContatoDto = z.infer<typeof detalheContatoSchema>;
+
 export const acaoMassaSchema = z
   .object({
     acao: z.enum(['tag', 'excluir', 'mover-etapa']),

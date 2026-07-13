@@ -9,9 +9,11 @@ import { ContatosService } from './contatos.service';
 import {
   type AcaoMassaDto,
   type CriarLeadsDto,
+  type DetalheContatoDto,
   type ListContatosDto,
   acaoMassaSchema,
   criarLeadsSchema,
+  detalheContatoSchema,
   listContatosSchema,
 } from './contatos.dto';
 
@@ -33,6 +35,20 @@ export class ContatosController {
     @Query(new ZodValidationPipe(listContatosSchema)) query: ListContatosDto,
   ) {
     return this.contatos.list(user, query);
+  }
+
+  @Get('detalhe')
+  @RequirePermissions({ module: 'clientes', action: 'view' })
+  @ApiOperation({
+    summary:
+      'Detalhe de UM contato (Lead+Cliente+Conversa unificados) por leadId, clienteId, ' +
+      'telefone ou email — com tipos, tags, etapa atual no funil e representante. Dados pessoais.',
+  })
+  detalhe(
+    @CurrentUser() user: AuthenticatedUser,
+    @Query(new ZodValidationPipe(detalheContatoSchema)) query: DetalheContatoDto,
+  ) {
+    return this.contatos.detalhe(user, query);
   }
 
   @Post('acao-massa')
