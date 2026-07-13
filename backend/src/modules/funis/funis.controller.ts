@@ -1,4 +1,4 @@
-import { Body, Controller, Delete, Get, Param, Patch, Post, Put } from '@nestjs/common';
+import { Body, Controller, Delete, Get, Param, Patch, Post, Put, Query } from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
 import { Audit } from '@shared/decorators/audit.decorator';
 import { CurrentUser } from '@shared/decorators/current-user.decorator';
@@ -8,11 +8,13 @@ import type { AuthenticatedUser } from '@shared/types/authenticated-user';
 import {
   type CreateFunilDto,
   type CreateFunilEtapaDto,
+  type LeadsPorEtapaQueryDto,
   type ReordenarEtapasDto,
   type UpdateFunilDto,
   type UpdateFunilEtapaDto,
   createFunilEtapaSchema,
   createFunilSchema,
+  leadsPorEtapaQuerySchema,
   reordenarEtapasSchema,
   updateFunilEtapaSchema,
   updateFunilSchema,
@@ -36,6 +38,18 @@ export class FunisController {
   @RequirePermissions({ module: 'kanban', action: 'view' })
   findOne(@CurrentUser() user: AuthenticatedUser, @Param('id') id: string) {
     return this.funis.findById(user, id);
+  }
+
+  @Get(':id/etapas/:etapaId/leads')
+  @RequirePermissions({ module: 'kanban', action: 'view' })
+  @ApiOperation({ summary: 'Leads dentro de uma etapa do funil (paginado, mais parados primeiro)' })
+  leadsPorEtapa(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param('id') id: string,
+    @Param('etapaId') etapaId: string,
+    @Query(new ZodValidationPipe(leadsPorEtapaQuerySchema)) query: LeadsPorEtapaQueryDto,
+  ) {
+    return this.funis.leadsPorEtapa(user, id, etapaId, query);
   }
 
   @Post()

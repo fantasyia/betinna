@@ -7,14 +7,28 @@ import {
   NotFoundException,
 } from '@shared/errors/app-exception';
 import { ErrorCode } from '@shared/errors/error-codes';
+import { RepScopeService } from '@shared/scope/rep-scope.service';
+import { type Paginated, buildPaginated } from '@shared/types/pagination';
 import type { AuthenticatedUser } from '@shared/types/authenticated-user';
 import type {
   CreateFunilDto,
   CreateFunilEtapaDto,
+  LeadsPorEtapaQueryDto,
   ReordenarEtapasDto,
   UpdateFunilDto,
   UpdateFunilEtapaDto,
 } from './funis.dto';
+
+/** Lead resumido dentro de uma etapa (Demanda MCP `leads_por_etapa`). */
+export interface LeadEtapaResumo {
+  leadId: string;
+  nome: string;
+  email: string | null;
+  telefone: string | null;
+  tags: string[];
+  dataEntrada: string;
+  representante: { id: string; nome: string } | null;
+}
 
 const funilInclude = {
   etapas: { orderBy: { ordem: 'asc' as const } },
@@ -27,7 +41,66 @@ type FunilWithRel = Prisma.FunilGetPayload<{ include: typeof funilInclude }>;
 export class FunisService {
   private readonly logger = new Logger(FunisService.name);
 
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly repScope: RepScopeService,
+  ) {}
+
+  /**
+   * Leads dentro de UMA etapa de um funil, paginado. Ordena por `etapaDesde` asc
+   * (mais parados primeiro — útil pra "quem está travado há X dias"). READ-only,
+   * respeita tenant + carteira (RepScope). Base do MCP `leads_por_etapa`.
+   */
+  async leadsPorEtapa(
+    user: AuthenticatedUser,
+    funilId: string,
+    etapaId: string,
+    q: LeadsPorEtapaQueryDto,
+  ): Promise<Paginated<LeadEtapaResumo>> {
+    const empresaId = this.requireEmpresa(user);
+    const etapa = await this.prisma.funilEtapa.findFirst({
+      where: { id: etapaId, funilId, funil: { empresaId } },
+      select: { id: true },
+    });
+    if (!etapa) throw new NotFoundException('Etapa', etapaId);
+
+    const scope = await this.repScope.getRepIds(user);
+    const where: Prisma.LeadWhereInput = {
+      empresaId,
+      funilId,
+      funilEtapaId: etapaId,
+      ...(scope !== null ? { representanteId: { in: scope.length ? scope : ['__none__'] } } : {}),
+    };
+    const [total, leads] = await Promise.all([
+      this.prisma.lead.count({ where }),
+      this.prisma.lead.findMany({
+        where,
+        orderBy: { etapaDesde: 'asc' },
+        skip: (q.page - 1) * q.limit,
+        take: q.limit,
+        select: {
+          id: true,
+          nome: true,
+          contatoNome: true,
+          contatoEmail: true,
+          contatoTelefone: true,
+          etapaDesde: true,
+          representante: { select: { id: true, nome: true } },
+          tags: { select: { tag: { select: { nome: true } } } },
+        },
+      }),
+    ]);
+    const data: LeadEtapaResumo[] = leads.map((l) => ({
+      leadId: l.id,
+      nome: l.contatoNome || l.nome,
+      email: l.contatoEmail,
+      telefone: l.contatoTelefone,
+      tags: l.tags.map((t) => t.tag.nome),
+      dataEntrada: l.etapaDesde.toISOString(),
+      representante: l.representante,
+    }));
+    return buildPaginated(data, total, q.page, q.limit);
+  }
 
   private requireEmpresa(user: AuthenticatedUser): string {
     if (!user.empresaIdAtiva) {

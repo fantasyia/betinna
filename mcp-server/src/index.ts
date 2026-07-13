@@ -1348,6 +1348,40 @@ server.registerTool(
   }),
 );
 
+server.registerTool(
+  'leads_por_etapa',
+  {
+    description:
+      'Lista os leads/contatos DENTRO de uma etapa de um funil, paginado (mais parados primeiro). ' +
+      'Retorna leadId, nome, email, telefone, tags[], dataEntrada e representante. Somente leitura. ' +
+      'Bom pra "quem está travado em X há N dias".',
+    inputSchema: {
+      funilId: z.string().describe('ID do funil (use funis_listar)'),
+      etapaId: z.string().describe('ID da etapa (use funis_ver → etapas)'),
+      page: z.number().int().min(1).default(1),
+      limit: z.number().int().min(1).max(100).default(30),
+    },
+    annotations: { readOnlyHint: true, destructiveHint: false },
+  },
+  seguro(
+    async ({
+      funilId,
+      etapaId,
+      page,
+      limit,
+    }: {
+      funilId: string;
+      etapaId: string;
+      page: number;
+      limit: number;
+    }) => {
+      const qs = new URLSearchParams({ page: String(page), limit: String(limit) });
+      const resp = await api.get<unknown>(`/funis/${funilId}/etapas/${etapaId}/leads?${qs}`);
+      return ok(resp);
+    },
+  ),
+);
+
 // ─── Contatos (SOMENTE LEITURA — escopo "contatos" · DADOS PESSOAIS) ─────
 // Visão unificada Lead + Cliente + Conversa, deduplicada por telefone (D18).
 // Paginada. Sem endpoint de detalhe único: filtre com `search`. NUNCA escreve
@@ -1428,5 +1462,5 @@ server.registerTool(
 const transport = new StdioServerTransport();
 await server.connect(transport);
 console.error(
-  '[betinna-kanban-mcp] conectado — 26 tools kanban_* + 9 tools fluxos_* + 4 tools funis_/contatos_ disponíveis',
+  '[betinna-kanban-mcp] conectado — 26 tools kanban_* + 9 tools fluxos_* + 5 tools funis_/contatos_ disponíveis',
 );

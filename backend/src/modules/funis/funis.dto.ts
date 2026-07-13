@@ -63,3 +63,10 @@ export const reordenarEtapasSchema = z.object({
   etapaIds: z.array(z.string().min(1)).min(1),
 });
 export type ReordenarEtapasDto = z.infer<typeof reordenarEtapasSchema>;
+
+/** Query de `leads_por_etapa` (leads dentro de uma etapa do funil, paginado). */
+export const leadsPorEtapaQuerySchema = z.object({
+  page: z.coerce.number().int().positive().default(1),
+  limit: z.coerce.number().int().positive().max(100).default(30),
+});
+export type LeadsPorEtapaQueryDto = z.infer<typeof leadsPorEtapaQuerySchema>;
