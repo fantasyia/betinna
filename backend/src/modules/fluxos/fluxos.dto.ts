@@ -140,6 +140,16 @@ export const importFluxoSchema = z
   });
 
 // ─── Atualizar fluxo ─────────────────────────────────────────────────
+/**
+ * Aresta no UPDATE: o `id` é OPCIONAL (o banco gera via @default(cuid) quando
+ * ausente). Sem isto, um full-replace vindo do MCP (que manda arestas SEM id,
+ * igual ao import) era rejeitado com "Dados inválidos" sempre que havia ≥1
+ * aresta — só dava pra atualizar fluxos sem topologia. Espelha o import.
+ */
+export const updateFluxoEdgeSchema = createFluxoEdgeSchema.extend({
+  id: z.string().min(1).optional(),
+});
+
 export const updateFluxoSchema = z.object({
   nome: z.string().min(1).max(150).optional(),
   descricao: z.string().max(500).optional(),
@@ -147,7 +157,7 @@ export const updateFluxoSchema = z.object({
   triggerConfig: z.record(z.unknown()).optional(),
   /// Quando fornecidos, substituem TODOS os nós e arestas existentes (full replace).
   nos: z.array(createFluxoNoSchema).optional(),
-  arestas: z.array(createFluxoEdgeSchema).optional(),
+  arestas: z.array(updateFluxoEdgeSchema).optional(),
 });
 
 // ─── Listar fluxos ───────────────────────────────────────────────────
