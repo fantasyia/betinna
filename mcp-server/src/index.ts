@@ -1457,10 +1457,50 @@ server.registerTool(
   ),
 );
 
+// ─── CRM (ESCRITA — escopo "crm") ───────────────────────────────────────
+// Ações de CRM sobre um contato. Exige token com escopo "crm" (marque em
+// Quadros → Tokens de API). Adicionar tag dispara o gatilho LEAD_RECEBEU_TAG.
+
+server.registerTool(
+  'contatos_tags',
+  {
+    description:
+      'Adiciona e/ou remove tags (por NOME) de um contato (Lead + Cliente), identificado por ' +
+      'leadId, clienteId OU telefone. Adicionar tag DISPARA fluxos (LEAD_RECEBEU_TAG). Cria a tag ' +
+      'se não existir. Retorna a lista de tags atualizada. Exige escopo "crm".',
+    inputSchema: {
+      leadId: z.string().optional(),
+      clienteId: z.string().optional(),
+      telefone: z.string().optional().describe('Casa pelos 8 últimos dígitos'),
+      adicionar: z.array(z.string()).default([]).describe('Nomes de tags a adicionar'),
+      remover: z.array(z.string()).default([]).describe('Nomes de tags a remover'),
+    },
+    annotations: { readOnlyHint: false, destructiveHint: false },
+  },
+  seguro(
+    async (args: {
+      leadId?: string;
+      clienteId?: string;
+      telefone?: string;
+      adicionar: string[];
+      remover: string[];
+    }) => {
+      if (!args.leadId && !args.clienteId && !args.telefone) {
+        return erro('Informe leadId, clienteId ou telefone.');
+      }
+      if (args.adicionar.length === 0 && args.remover.length === 0) {
+        return erro('Informe ao menos uma tag em "adicionar" ou "remover".');
+      }
+      const r = await api.post<unknown>('/crm/contato/tags', args);
+      return ok(r);
+    },
+  ),
+);
+
 // ─── Boot ───────────────────────────────────────────────────────────────
 
 const transport = new StdioServerTransport();
 await server.connect(transport);
 console.error(
-  '[betinna-kanban-mcp] conectado — 26 tools kanban_* + 9 tools fluxos_* + 5 tools funis_/contatos_ disponíveis',
+  '[betinna-kanban-mcp] conectado — 26 tools kanban_* + 9 tools fluxos_* + 6 tools funis_/contatos_/crm disponíveis',
 );

@@ -147,14 +147,16 @@ export class AuthGuard implements CanActivate {
     }
 
     // Módulo exigido pela rota → escopo correspondente.
-    let moduloRequerido: 'kanban' | 'fluxos' | 'funis' | 'contatos' | null = null;
+    let moduloRequerido: 'kanban' | 'fluxos' | 'funis' | 'contatos' | 'crm' | null = null;
     if (/\/kanban(\/|$)/.test(path)) moduloRequerido = 'kanban';
     else if (/\/fluxos(\/|$)/.test(path)) moduloRequerido = 'fluxos';
     else if (/\/funis(\/|$)/.test(path)) moduloRequerido = 'funis';
     else if (/\/contatos(\/|$)/.test(path)) moduloRequerido = 'contatos';
+    // /crm = ações de CRM por MCP (ESCRITA: tags, mover etapa). Surface estreita e explícita.
+    else if (/\/crm(\/|$)/.test(path)) moduloRequerido = 'crm';
     if (!moduloRequerido) {
       throw new ForbiddenException(
-        'Token de API só acessa rotas /kanban, /fluxos, /funis e /contatos',
+        'Token de API só acessa rotas /kanban, /fluxos, /funis, /contatos e /crm',
       );
     }
 

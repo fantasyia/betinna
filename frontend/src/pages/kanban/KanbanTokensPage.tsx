@@ -34,6 +34,7 @@ export default function KanbanTokensPage() {
   const [incluirFluxos, setIncluirFluxos] = useState(false);
   const [incluirFunis, setIncluirFunis] = useState(false);
   const [incluirContatos, setIncluirContatos] = useState(false);
+  const [incluirCrm, setIncluirCrm] = useState(false);
   const [salvando, setSalvando] = useState(false);
   /** Token recém-criado — única chance de copiar. */
   const [novoToken, setNovoToken] = useState<string | null>(null);
@@ -51,6 +52,7 @@ export default function KanbanTokensPage() {
       if (incluirFluxos) escopo.push('fluxos');
       if (incluirFunis) escopo.push('funis');
       if (incluirContatos) escopo.push('contatos');
+      if (incluirCrm) escopo.push('crm');
       const criado = await api.post<ApiToken & { token: string }>('/kanban/api-tokens', {
         nome: nome.trim(),
         escopo,
@@ -60,6 +62,7 @@ export default function KanbanTokensPage() {
       setIncluirFluxos(false);
       setIncluirFunis(false);
       setIncluirContatos(false);
+      setIncluirCrm(false);
       refetch();
     } catch (err) {
       toast.error(apiErrorMessage(err));
@@ -150,7 +153,9 @@ export default function KanbanTokensPage() {
                               ? 'Funis'
                               : e === 'contatos'
                                 ? 'Contatos'
-                                : 'Quadros'}
+                                : e === 'crm'
+                                  ? 'CRM (escrita)'
+                                  : 'Quadros'}
                         </Badge>
                       ))}
                     </span>
@@ -260,6 +265,12 @@ export default function KanbanTokensPage() {
                   checked={incluirContatos}
                   onChange={(e) => setIncluirContatos(e.target.checked)}
                   data-testid="token-escopo-contatos"
+                />
+                <Checkbox
+                  label="CRM — escrita (tags e mover etapa de lead)"
+                  checked={incluirCrm}
+                  onChange={(e) => setIncluirCrm(e.target.checked)}
+                  data-testid="token-escopo-crm"
                 />
               </div>
             </Field>

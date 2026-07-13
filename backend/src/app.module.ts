@@ -46,6 +46,7 @@ import { RespostasRapidasModule } from '@modules/respostas-rapidas/respostas-rap
 import { CatalogoModule } from '@modules/catalogo/catalogo.module';
 import { ClientesModule } from '@modules/clientes/clientes.module';
 import { ContatosModule } from '@modules/contatos/contatos.module';
+import { CrmModule } from '@modules/crm/crm.module';
 import { ComissoesModule } from '@modules/comissoes/comissoes.module';
 import { MateriaisModule } from '@modules/materiais/materiais.module';
 import { DevolucoesModule } from '@modules/devolucoes/devolucoes.module';
@@ -221,6 +222,7 @@ import { RODAR_BACKGROUND } from '@shared/utils/service-type';
     BotPromptsModule,
     ClientesModule,
     ContatosModule,
+    CrmModule,
     ProdutosModule,
     CatalogoModule,
     PedidosModule,
