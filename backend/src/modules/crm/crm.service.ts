@@ -3,10 +3,11 @@ import { Prisma } from '@prisma/client';
 import { PrismaService } from '@database/prisma.service';
 import { BusinessRuleException, ForbiddenException } from '@shared/errors/app-exception';
 import { ErrorCode } from '@shared/errors/error-codes';
+import { NotFoundException } from '@shared/errors/app-exception';
 import { RepScopeService } from '@shared/scope/rep-scope.service';
 import { LeadsService } from '@modules/leads/leads.service';
 import type { AuthenticatedUser } from '@shared/types/authenticated-user';
-import type { ContatoTagsDto } from './crm.dto';
+import type { ContatoEtapaDto, ContatoTagsDto } from './crm.dto';
 
 /**
  * Ações de CRM (ESCRITA) sobre um contato, disparadas pelo Claude Code via MCP
@@ -160,6 +161,45 @@ export class CrmService {
       leadIds,
       clienteIds,
       tags: await this.tagsAtuais(leadIds, clienteIds),
+    };
+  }
+
+  /**
+   * Move UM lead pra outra etapa do funil. Reusa `LeadsService.moverEtapa`
+   * (valida acesso/allow-list, sincroniza o enum e dispara LEAD_ETAPA_MUDOU).
+   * Retorna a etapa anterior e a nova. Tenant + carteira via LeadsService.
+   */
+  async moverEtapa(user: AuthenticatedUser, dto: ContatoEtapaDto) {
+    const empresaId = this.requireEmpresa(user);
+    // Etapa destino tem que existir na empresa (e casar o funilId, se informado).
+    const etapa = await this.prisma.funilEtapa.findFirst({
+      where: {
+        id: dto.etapaId,
+        funil: { empresaId, ...(dto.funilId ? { id: dto.funilId } : {}) },
+      },
+      select: { id: true, nome: true, funilId: true },
+    });
+    if (!etapa) throw new NotFoundException('Etapa', dto.etapaId);
+
+    // Etapa anterior (pra reportar de→para) — o moverEtapa valida a carteira do lead.
+    const antes = await this.prisma.lead.findFirst({
+      where: { id: dto.leadId, empresaId },
+      select: { funilEtapa: { select: { id: true, nome: true } } },
+    });
+
+    await this.leads.moverEtapa(user, dto.leadId, {
+      funilEtapaId: dto.etapaId,
+      motivo: dto.motivo,
+    });
+
+    return {
+      ok: true,
+      leadId: dto.leadId,
+      funilId: etapa.funilId,
+      de: antes?.funilEtapa
+        ? { etapaId: antes.funilEtapa.id, etapaNome: antes.funilEtapa.nome }
+        : null,
+      para: { etapaId: etapa.id, etapaNome: etapa.nome },
     };
   }
 }

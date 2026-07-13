@@ -1497,6 +1497,28 @@ server.registerTool(
   ),
 );
 
+server.registerTool(
+  'contatos_atualizar_etapa',
+  {
+    description:
+      'Move um LEAD de etapa dentro de um funil (ação de CRM). Dispara os fluxos da etapa destino ' +
+      '(LEAD_ETAPA_MUDOU). Retorna a etapa anterior e a nova. Exige escopo "crm".',
+    inputSchema: {
+      leadId: z.string().describe('ID do lead (use contatos_ver / leads_por_etapa)'),
+      etapaId: z.string().describe('ID da etapa DESTINO (use funis_ver → etapas)'),
+      funilId: z.string().optional().describe('Opcional — valida que a etapa é desse funil'),
+      motivo: z.string().max(300).optional(),
+    },
+    annotations: { readOnlyHint: false, destructiveHint: false },
+  },
+  seguro(
+    async (args: { leadId: string; etapaId: string; funilId?: string; motivo?: string }) => {
+      const r = await api.post<unknown>('/crm/contato/etapa', args);
+      return ok(r);
+    },
+  ),
+);
+
 // ─── Boot ───────────────────────────────────────────────────────────────
 
 const transport = new StdioServerTransport();
