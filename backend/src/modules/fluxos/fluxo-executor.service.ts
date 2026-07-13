@@ -9,6 +9,7 @@ import { WhatsAppService } from '@integrations/whatsapp/whatsapp.service';
 import { WhatsappPacingService } from '@shared/whatsapp-pacing/whatsapp-pacing.service';
 import { TransactionalEmailService } from '@integrations/email/transactional-email.service';
 import { IntegracaoStatusService } from '@modules/integracoes/integracao-status.service';
+import { KanbanTarefaService } from '@modules/kanban/kanban-tarefa.service';
 import { Prisma } from '@prisma/client';
 import { safeRequest, SsrfBlockedError } from '@shared/utils/safe-request';
 import { interpolate } from '@shared/utils/interpolate';
@@ -166,6 +167,7 @@ export class FluxoExecutorService {
     private readonly pacing: WhatsappPacingService,
     private readonly integracaoStatus: IntegracaoStatusService,
     @InjectQueue(FLUXO_QUEUE) private readonly queue: Queue<FluxoStepJobData>,
+    private readonly kanbanTarefa: KanbanTarefaService,
   ) {}
 
   /**
@@ -968,12 +970,30 @@ export class FluxoExecutorService {
           ...(observacao ? { observacao } : {}),
         },
       });
-      return { tarefaId: tarefa.id, titulo, responsavelId, data: data.toISOString() };
+      const cards = await this.criarCardsDeTarefa({
+        empresaId,
+        responsavelId,
+        titulo,
+        descricao: observacao,
+        dataEntrega: data,
+        origemJobId: idemBase,
+      });
+      return { tarefaId: tarefa.id, titulo, responsavelId, data: data.toISOString(), ...cards };
     } catch (err) {
       if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === 'P2002') {
         const existente = await this.prisma.agendaItem.findFirst({
           where: { origemJobId: idemBase },
           select: { id: true },
+        });
+        // Retry pós-efeito: garante os cards mesmo que o AgendaItem já existisse
+        // (a 1ª tentativa pode ter criado o AgendaItem e morrido antes dos cards).
+        const cards = await this.criarCardsDeTarefa({
+          empresaId,
+          responsavelId,
+          titulo,
+          descricao: observacao,
+          dataEntrega: data,
+          origemJobId: idemBase,
         });
         return {
           tarefaId: existente?.id,
@@ -981,9 +1001,38 @@ export class FluxoExecutorService {
           responsavelId,
           data: data.toISOString(),
           idempotente: true,
+          ...cards,
         };
       }
       throw err;
+    }
+  }
+
+  /**
+   * Ponte CRIAR_TAREFA → card(s) Kanban (quadro do rep + espelho no Diretor).
+   * Dual-write com o AgendaItem, best-effort: NUNCA propaga exceção (a criação
+   * da tarefa/agenda não pode falhar por causa da camada de visibilidade).
+   */
+  private async criarCardsDeTarefa(params: {
+    empresaId: string;
+    responsavelId: string;
+    titulo: string;
+    descricao?: string;
+    dataEntrega: Date;
+    origemJobId: string;
+  }): Promise<Record<string, unknown>> {
+    try {
+      const r = await this.kanbanTarefa.criarCardsDeTarefa(params);
+      return {
+        repCardId: r.repCardId,
+        diretorCardId: r.diretorCardId,
+        ...(r.idempotente ? { cardIdempotente: true } : {}),
+      };
+    } catch (err) {
+      this.logger.warn(
+        `CRIAR_TAREFA: falha ao criar card Kanban (segue sem derrubar): ${String(err)}`,
+      );
+      return { cardErro: true };
     }
   }
 

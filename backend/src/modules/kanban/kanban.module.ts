@@ -20,6 +20,7 @@ import { KanbanListasService } from './kanban-listas.service';
 import { KanbanTokensController } from './kanban-tokens.controller';
 import { KanbanTokensService } from './kanban-tokens.service';
 import { KanbanViewsService } from './kanban-views.service';
+import { KanbanTarefaService } from './kanban-tarefa.service';
 
 /**
  * Kanban estilo Trello (docs/kanban-betinna-EM-BATCHES.md).
@@ -50,7 +51,8 @@ import { KanbanViewsService } from './kanban-views.service';
     KanbanTokensService,
     KanbanViewsService,
     KanbanFundoService,
+    KanbanTarefaService,
   ],
-  exports: [KanbanAcessoService, KanbanAtividadeService],
+  exports: [KanbanAcessoService, KanbanAtividadeService, KanbanTarefaService],
 })
 export class KanbanModule {}

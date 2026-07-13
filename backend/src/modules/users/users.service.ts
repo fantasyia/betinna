@@ -7,6 +7,7 @@ import { RedisService } from '@database/redis.service';
 import { AuthGuard } from '@modules/auth/guards/auth.guard';
 import { TransactionalEmailService } from '@integrations/email/transactional-email.service';
 import { EvolutionInstanciaService } from '@integrations/evolution/evolution-instancia.service';
+import { KanbanTarefaService } from '@modules/kanban/kanban-tarefa.service';
 import {
   BusinessRuleException,
   ConflictException,
@@ -47,6 +48,7 @@ export class UsersService {
     private readonly redis: RedisService,
     private readonly email: TransactionalEmailService,
     private readonly evolutionInstancias: EvolutionInstanciaService,
+    private readonly kanbanTarefa: KanbanTarefaService,
   ) {
     this.supabaseAdmin = createClient(
       this.env.get('SUPABASE_URL'),
@@ -297,6 +299,20 @@ export class UsersService {
       },
     });
     this.logger.log(`Usuário criado: ${created.id} (${created.role})`);
+
+    // REP já nasce com o quadro de tarefas dele (colunas padrão). Best-effort:
+    // falha aqui não desfaz a criação do usuário — só loga.
+    if (created.role === 'REP') {
+      for (const vinc of created.empresas ?? []) {
+        try {
+          await this.kanbanTarefa.garantirQuadroRep(vinc.empresa.id, created.id, created.nome);
+        } catch (err) {
+          this.logger.warn(
+            `Falha ao provisionar quadro do rep ${created.id} na empresa ${vinc.empresa.id}: ${String(err)}`,
+          );
+        }
+      }
+    }
 
     // E-mail de boas-vindas — complementa o magic link do Supabase com
     // contexto da empresa + CTA pro frontend. Aguardamos o resultado: se o

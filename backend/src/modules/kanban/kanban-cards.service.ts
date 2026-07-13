@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, Logger } from '@nestjs/common';
 import type { KanbanCard } from '@prisma/client';
 import { PrismaService } from '@database/prisma.service';
 import {
@@ -9,17 +9,34 @@ import {
 import type { AuthenticatedUser } from '@shared/types/authenticated-user';
 import { KanbanAcessoService } from './kanban-acesso.service';
 import { KanbanAtividadeService } from './kanban-atividade.service';
+import { KanbanTarefaService } from './kanban-tarefa.service';
 import { CARD_ATIVIDADES_LIMIT, USUARIO_RESUMO } from './kanban.constants';
 import { posicaoNoFim, precisaRebalancear, rebalancear } from './kanban-posicao.util';
 import type { CreateCardDto, MoverCardDto, UpdateCardDto } from './kanban.dto';
 
 @Injectable()
 export class KanbanCardsService {
+  private readonly logger = new Logger(KanbanCardsService.name);
+
   constructor(
     private readonly prisma: PrismaService,
     private readonly acesso: KanbanAcessoService,
     private readonly atividade: KanbanAtividadeService,
+    private readonly tarefa: KanbanTarefaService,
   ) {}
+
+  /**
+   * Reflete no card espelhado do Diretor (se houver) a mudança de coluna/
+   * concluído/arquivado do card original. Best-effort: falha na sincronia NÃO
+   * pode derrubar a operação do usuário no card.
+   */
+  private async sincronizarEspelho(cardId: string): Promise<void> {
+    try {
+      await this.tarefa.sincronizarEspelhos(cardId);
+    } catch (err) {
+      this.logger.warn(`Falha ao sincronizar espelho do card ${cardId}: ${String(err)}`);
+    }
+  }
 
   /** Cria card no fim da lista. */
   async create(user: AuthenticatedUser, listaId: string, dto: CreateCardDto): Promise<KanbanCard> {
@@ -190,6 +207,10 @@ export class KanbanCardsService {
         dados: { titulo: card.titulo, campos: outrosCampos },
       });
     }
+    // Espelho reflete concluído/arquivado do card original (rep→Diretor).
+    if (dto.concluido !== undefined || dto.arquivado !== undefined) {
+      await this.sincronizarEspelho(cardId);
+    }
     return card;
   }
 
@@ -238,6 +259,7 @@ export class KanbanCardsService {
       cardId,
       dados: { titulo: movido.titulo, deListaNome: card.listaNome, paraListaNome: destino.nome },
     });
+    await this.sincronizarEspelho(cardId);
     return movido;
   }
 

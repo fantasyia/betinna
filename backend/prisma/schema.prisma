@@ -2722,6 +2722,11 @@ model KanbanBoard {
   arquivado   Boolean @default(false)
   empresaId   String
   criadoPorId String
+  /// Quadros "de sistema" provisionados automaticamente (não criados à mão pelo
+  /// usuário): "rep_tarefas" (quadro pessoal de tarefas de cada REP) e
+  /// "diretor_tarefas" (quadro central que espelha as tarefas dos reps). Permite
+  /// resolver esses quadros por tenant de forma determinística. null = quadro comum.
+  tipoSistema String?
 
   empresa   Empresa @relation(fields: [empresaId], references: [id], onDelete: Cascade)
   criadoPor Usuario @relation(fields: [criadoPorId], references: [id], onDelete: Cascade)
@@ -2737,6 +2742,7 @@ model KanbanBoard {
 
   @@index([empresaId])
   @@index([criadoPorId])
+  @@index([empresaId, tipoSistema])
 }
 
 model KanbanBoardMembro {
@@ -2776,8 +2782,17 @@ model KanbanCard {
   concluido   Boolean   @default(false)
   corCapa     String?
   arquivado   Boolean   @default(false)
+  /// Espelho de tarefa (CRIAR_TAREFA dos fluxos): quando preenchido, este card é a
+  /// CÓPIA no quadro do Diretor de um card original no quadro do rep. Mover de
+  /// coluna/concluir o card original sincroniza o espelho (uma direção: rep→Diretor).
+  origemCardId String?
+  /// Idempotência do CRIAR_TAREFA: chave determinística do passo do fluxo (fx:<jobId>).
+  /// Retry pós-efeito não recria o card (findFirst por esta chave antes de criar).
+  origemJobId  String?
 
   lista       KanbanLista          @relation(fields: [listaId], references: [id], onDelete: Cascade)
+  origem      KanbanCard?          @relation("CardEspelho", fields: [origemCardId], references: [id], onDelete: Cascade)
+  espelhos    KanbanCard[]         @relation("CardEspelho")
   etiquetas   KanbanCardEtiqueta[]
   membros     KanbanCardMembro[]
   checklists  KanbanChecklist[]
@@ -2790,6 +2805,8 @@ model KanbanCard {
 
   @@index([listaId])
   @@index([dataEntrega])
+  @@index([origemCardId])
+  @@index([origemJobId])
 }
 
 model KanbanEtiqueta {
