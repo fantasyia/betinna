@@ -53,6 +53,7 @@ interface Contato {
   cidade: string | null;
   uf: string | null;
   tipos: ContatoTipo[];
+  tags: { id: string; nome: string; cor: string }[];
   representante: { id: string; nome: string } | null;
   leadId: string | null;
   leadEtapa: string | null;
@@ -99,6 +100,7 @@ export default function ContatosPage() {
   const [search, setSearch] = useState('');
   const buscaDebounced = useDebouncedValue(search, 300);
   const [tipo, setTipo] = useState('');
+  const [tagFiltro, setTagFiltro] = useState<string[]>([]);
   const [detail, setDetail] = useState<Contato | null>(null);
   const canEdit = usePermission('clientes.edit');
   const [selected, setSelected] = useState<Map<string, Contato>>(new Map());
@@ -122,16 +124,25 @@ export default function ContatosPage() {
     // #16: limpa a seleção ao trocar filtro — senão uma ação em lote (excluir/mover/tag) atingiria
     // contatos que não estão mais visíveis na tela.
     setSelected(new Map());
-  }, [buscaDebounced, tipo]);
+  }, [buscaDebounced, tipo, tagFiltro]);
 
+  const tagFiltroKey = tagFiltro.join(',');
   const listPath = useMemo(() => {
     const qs = new URLSearchParams({ page: String(page), limit: '30' });
     if (buscaDebounced.trim()) qs.set('search', buscaDebounced.trim());
     if (tipo) qs.set('tipo', tipo);
+    if (tagFiltroKey) qs.set('tagIds', tagFiltroKey);
     return `/contatos?${qs.toString()}`;
-  }, [page, buscaDebounced, tipo]);
+  }, [page, buscaDebounced, tipo, tagFiltroKey]);
 
   const { data, loading, error, refetch } = useApiQuery<ContatosResp>(listPath);
+  // Tags disponíveis pro filtro (chips clicáveis).
+  const { data: tagsDisponiveis } = useApiQuery<Array<{ id: string; nome: string; cor: string }>>(
+    '/tags',
+  );
+  function toggleTagFiltro(id: string) {
+    setTagFiltro((prev) => (prev.includes(id) ? prev.filter((t) => t !== id) : [...prev, id]));
+  }
   // Funis só carregam quando o import abre (pro modal de leads).
   const { data: funis } = useApiQuery<FunilLite[]>(importKind ? '/funis' : null);
 
@@ -204,6 +215,42 @@ export default function ContatosPage() {
             <option value="CONVERSA">Conversas</option>
           </Select>
         </div>
+
+        {/* Filtro por tags — chips clicáveis (múltiplas = E, contato tem TODAS). */}
+        {(tagsDisponiveis?.length ?? 0) > 0 && (
+          <div className="flex flex-wrap items-center gap-1.5 px-4 py-2.5 border-b border-border">
+            <span className="text-xs text-muted mr-1">Tags:</span>
+            {tagsDisponiveis!.map((t) => {
+              const ativo = tagFiltro.includes(t.id);
+              return (
+                <button
+                  key={t.id}
+                  type="button"
+                  onClick={() => toggleTagFiltro(t.id)}
+                  className={cn(
+                    'text-[11px] px-2 py-0.5 rounded-full font-medium border transition-colors',
+                    ativo
+                      ? 'border-transparent text-white'
+                      : 'border-border text-muted hover:text-text',
+                  )}
+                  style={ativo ? { backgroundColor: t.cor } : undefined}
+                  data-testid={`contatos-tag-filtro-${t.id}`}
+                >
+                  {t.nome}
+                </button>
+              );
+            })}
+            {tagFiltro.length > 0 && (
+              <button
+                type="button"
+                onClick={() => setTagFiltro([])}
+                className="text-[11px] text-muted underline ml-1 hover:text-text"
+              >
+                limpar
+              </button>
+            )}
+          </div>
+        )}
 
         {data?.truncado && (
           <div className="flex items-center gap-2 px-4 py-2 bg-warning/12 border-b border-warning/19 text-[13px] text-warning">
@@ -282,6 +329,9 @@ export default function ContatosPage() {
                                 {ETAPA_LABEL[c.leadEtapa] ?? c.leadEtapa}
                               </span>
                             )}
+                            {(c.tags ?? []).map((tag) => (
+                              <TagChip key={tag.id} nome={tag.nome} cor={tag.cor} />
+                            ))}
                           </div>
                         </Td>
                         <Td>
@@ -504,6 +554,9 @@ function ContatoDrawer({
               {TIPO_BADGE[t].label}
             </Badge>
           ))}
+          {(c.tags ?? []).map((tag) => (
+            <TagChip key={tag.id} nome={tag.nome} cor={tag.cor} />
+          ))}
         </div>
 
         <div className="flex flex-col gap-3">
@@ -570,6 +623,19 @@ function Td({ children, onClick }: { children: ReactNode; onClick?: (e: React.Mo
     <td onClick={onClick} className="px-4 py-2.5 align-middle">
       {children}
     </td>
+  );
+}
+
+/** Chip de tag do contato (cor da tag com fundo suave). */
+function TagChip({ nome, cor }: { nome: string; cor: string }) {
+  return (
+    <span
+      className="text-[10px] px-1.5 py-0.5 rounded-[5px] font-medium whitespace-nowrap"
+      style={{ backgroundColor: `${cor}22`, color: cor }}
+      title={nome}
+    >
+      {nome}
+    </span>
   );
 }
 

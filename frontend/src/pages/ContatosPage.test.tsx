@@ -377,8 +377,9 @@ describe('BulkTag — payload de api.post', () => {
 
   it('submete com modo:adicionar e tagIds correta', async () => {
     const { api } = await import('@/lib/api');
-    // Clica na tag VIP
-    fireEvent.click(screen.getByText('VIP'));
+    // Clica na tag VIP DENTRO do dialog (o nome também aparece nos chips de filtro).
+    const dialog = screen.getByRole('dialog');
+    fireEvent.click(within(dialog).getByText('VIP'));
     // Clica em Aplicar
     fireEvent.click(screen.getByText('Aplicar'));
     await Promise.resolve();

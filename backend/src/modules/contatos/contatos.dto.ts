@@ -14,6 +14,19 @@ export const listContatosSchema = z.object({
   /** Filtra pra contatos que SÃO desse tipo (um contato pode ter vários). */
   tipo: z.enum(['LEAD', 'CLIENTE', 'CONVERSA']).optional(),
   representanteId: z.string().cuid().optional(),
+  /** Filtra por tags (CSV `a,b` ou repetido `?tagIds=a&tagIds=b`). Semântica E:
+   *  o contato precisa ter TODAS as tags selecionadas. Conversas não têm tag. */
+  tagIds: z
+    .union([z.string(), z.array(z.string())])
+    .optional()
+    .transform((v) =>
+      v == null
+        ? undefined
+        : (Array.isArray(v) ? v : v.split(','))
+            .map((s) => s.trim())
+            .filter(Boolean)
+            .slice(0, 50),
+    ),
   sortBy: z.enum(['recente', 'nome']).default('recente'),
 });
 export type ListContatosDto = z.infer<typeof listContatosSchema>;

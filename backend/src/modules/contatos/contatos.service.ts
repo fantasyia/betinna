@@ -29,6 +29,8 @@ export interface ContatoAgregado {
   uf: string | null;
   /** Um contato pode ser mais de um (ex.: ['LEAD','CLIENTE']). */
   tipos: ContatoTipo[];
+  /** Tags do contato (união das tags do lead + cliente agregados). */
+  tags: { id: string; nome: string; cor: string }[];
   representante: { id: string; nome: string } | null;
   // Referências pras telas de detalhe certas:
   leadId: string | null;
@@ -146,6 +148,7 @@ export class ContatosService {
         uid: user.id,
         term,
         repId,
+        tagIds: params.tagIds,
         want: {
           lead: !params.tipo || params.tipo === 'LEAD',
           cliente: !params.tipo || params.tipo === 'CLIENTE',
@@ -224,6 +227,41 @@ export class ContatosService {
         : [],
     ]);
 
+    // Tags da página (lead + cliente) → mapa por entidade pra acumular no merge.
+    const tagSel = { tag: { select: { id: true, nome: true, cor: true } } } as const;
+    const [leadTags, clienteTags] = await Promise.all([
+      pageLeadIds.length
+        ? this.prisma.leadTag.findMany({
+            where: { leadId: { in: pageLeadIds } },
+            select: { leadId: true, ...tagSel },
+          })
+        : [],
+      pageClienteIds.length
+        ? this.prisma.clienteTag.findMany({
+            where: { clienteId: { in: pageClienteIds } },
+            select: { clienteId: true, ...tagSel },
+          })
+        : [],
+    ]);
+    const tagsPorLead = new Map<string, { id: string; nome: string; cor: string }[]>();
+    for (const lt of leadTags) {
+      const arr = tagsPorLead.get(lt.leadId) ?? [];
+      arr.push(lt.tag);
+      tagsPorLead.set(lt.leadId, arr);
+    }
+    const tagsPorCliente = new Map<string, { id: string; nome: string; cor: string }[]>();
+    for (const ct of clienteTags) {
+      const arr = tagsPorCliente.get(ct.clienteId) ?? [];
+      arr.push(ct.tag);
+      tagsPorCliente.set(ct.clienteId, arr);
+    }
+    const acumularTags = (
+      c: ContatoAgregado,
+      novas: { id: string; nome: string; cor: string }[],
+    ): void => {
+      for (const t of novas) if (!c.tags.some((x) => x.id === t.id)) c.tags.push(t);
+    };
+
     // ── Merge por chave (telefone-sufixo > email > origem:id) — só sobre a página ──
     const map = new Map<string, ContatoAgregado>();
     const pegar = (chave: string): ContatoAgregado => {
@@ -237,6 +275,7 @@ export class ContatosService {
         cidade: null,
         uf: null,
         tipos: [],
+        tags: [],
         representante: null,
         leadId: null,
         leadEtapa: null,
@@ -263,6 +302,7 @@ export class ContatosService {
         `lead:${l.id}`;
       const c = pegar(chave);
       if (!c.tipos.includes('LEAD')) c.tipos.push('LEAD');
+      acumularTags(c, tagsPorLead.get(l.id) ?? []);
       c.leadId = l.id;
       c.leadEtapa = l.etapa;
       c.nome ||= l.contatoNome || l.nome;
@@ -283,6 +323,7 @@ export class ContatosService {
         `cliente:${cl.id}`;
       const c = pegar(chave);
       if (!c.tipos.includes('CLIENTE')) c.tipos.push('CLIENTE');
+      acumularTags(c, tagsPorCliente.get(cl.id) ?? []);
       c.clienteId = cl.id;
       c.clienteStatus = cl.status;
       c.clienteOmieStatus = cl.omieStatus;
@@ -353,14 +394,25 @@ export class ContatosService {
       uid: string;
       term?: string;
       repId?: string;
+      tagIds?: string[];
       want: { lead: boolean; cliente: boolean; conversa: boolean };
     },
     sortBy: 'nome' | 'recente',
     limit: number,
     offset: number,
   ): Promise<{ rows: ChaveRow[]; total: number }> {
-    const { empresaId, scope, role, uid, term, repId, want } = opts;
+    const { empresaId, scope, role, uid, term, repId, want, tagIds } = opts;
     const like = term ? `%${term}%` : undefined;
+
+    // Filtro por tags (semântica E: precisa ter TODAS). Conversa não tem tag →
+    // filtrar por tag exclui conversas. HAVING COUNT(DISTINCT) = N garante o "todas".
+    const temTags = (tagIds?.length ?? 0) > 0;
+    const leadTagFilter = temTags
+      ? Prisma.sql`AND id IN (SELECT "leadId" FROM "LeadTag" WHERE "tagId" IN (${Prisma.join(tagIds!)}) GROUP BY "leadId" HAVING COUNT(DISTINCT "tagId") = ${tagIds!.length})`
+      : Prisma.empty;
+    const clienteTagFilter = temTags
+      ? Prisma.sql`AND id IN (SELECT "clienteId" FROM "ClienteTag" WHERE "tagId" IN (${Prisma.join(tagIds!)}) GROUP BY "clienteId" HAVING COUNT(DISTINCT "tagId") = ${tagIds!.length})`
+      : Prisma.empty;
 
     // sufixo(expr) = últimos 8 dígitos, só se houver >=8 dígitos (senão NULL → cai p/ email/id).
     const reg = (e: Prisma.Sql) => Prisma.sql`regexp_replace(coalesce(${e},''),'[^0-9]','','g')`;
@@ -392,7 +444,7 @@ export class ContatosService {
           COALESCE(NULLIF("contatoNome",''), nome) nome_cand, "contatoTelefone" tel_cand, "contatoEmail" email_cand,
           1 ord_nome, 1 ord_tipo, "criadoEm" quando
         FROM "Lead"
-        WHERE "empresaId" = ${empresaId} ${scopeLeadCli}
+        WHERE "empresaId" = ${empresaId} ${scopeLeadCli} ${leadTagFilter}
           ${like ? Prisma.sql`AND (nome ILIKE ${like} OR "contatoNome" ILIKE ${like} OR "contatoTelefone" LIKE ${like} OR "contatoEmail" ILIKE ${like})` : Prisma.empty}`);
     }
     if (want.cliente) {
@@ -402,10 +454,10 @@ export class ContatosService {
           nome nome_cand, telefone tel_cand, email email_cand,
           0 ord_nome, 2 ord_tipo, "criadoEm" quando
         FROM "Cliente"
-        WHERE "empresaId" = ${empresaId} ${scopeLeadCli}
+        WHERE "empresaId" = ${empresaId} ${scopeLeadCli} ${clienteTagFilter}
           ${like ? Prisma.sql`AND (nome ILIKE ${like} OR telefone LIKE ${like} OR email ILIKE ${like} OR cnpj LIKE ${like})` : Prisma.empty}`);
     }
-    if (want.conversa) {
+    if (want.conversa && !temTags) {
       // REP só vê o próprio WhatsApp; repId filtra por atribuído (igual ao where Prisma anterior).
       const repConv =
         role === 'REP'
