@@ -61,8 +61,14 @@ export const envSchema = z
     EVOLUTION_API_KEY: z.string().default(''),
     /** URL pública DESTE backend (com /api/v1), pro Evolution chamar nosso webhook. */
     API_PUBLIC_URL: z.string().default(''),
-    /** Limite total de tokens de entrada (system + user). Catálogo é truncado pra caber. */
-    MULLERBOT_MAX_INPUT_TOKENS: z.coerce.number().int().positive().default(4000),
+    /**
+     * Limite total de tokens de entrada (system + histórico + user). Catálogo e
+     * HISTÓRICO são truncados pra caber (capHistorico). Default subido 4000→32000
+     * (2026-07): com 4000, o "histórico de mensagens" (Persona Bot, até 50) era
+     * cortado bem abaixo do configurado — o prompt+RAG comiam o orçamento e sobravam
+     * ~10-20 msgs. Modelos atuais (gpt-4o-mini = 128k contexto) comportam folgado.
+     */
+    MULLERBOT_MAX_INPUT_TOKENS: z.coerce.number().int().positive().default(32000),
     /** Limite de tokens da resposta. */
     MULLERBOT_MAX_OUTPUT_TOKENS: z.coerce.number().int().positive().default(1024),
     /**
