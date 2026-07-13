@@ -551,7 +551,9 @@ export class FluxosService {
     user: AuthenticatedUser,
     fluxoId: string,
     params: ListExecucoesDto,
-  ): Promise<Paginated<ExecucaoWithLogs>> {
+  ): Promise<
+    Paginated<ExecucaoWithLogs & { contatoId: string | null; contatoNome: string | null }>
+  > {
     const fluxo = await this.findOne(user, fluxoId);
 
     const where: Prisma.FluxoExecucaoWhereInput = { fluxoId: fluxo.id };
@@ -569,7 +571,37 @@ export class FluxosService {
       this.prisma.fluxoExecucao.count({ where }),
     ]);
 
-    return buildPaginated(data, total, params.page, params.limit);
+    // Demanda MCP 5: identifica qual CONTATO disparou cada execução (auditoria de funil —
+    // "esse lead passou por esse fluxo?"). contatoId = leadId (ou clienteId) do contexto;
+    // resolve o nome em lote pelos leads da empresa.
+    const leadIds = [
+      ...new Set(
+        data
+          .map((e) => (e.contexto as Record<string, unknown> | null)?.leadId)
+          .filter((x): x is string => typeof x === 'string'),
+      ),
+    ];
+    const nomes = leadIds.length
+      ? await this.prisma.lead.findMany({
+          where: { id: { in: leadIds }, empresaId: fluxo.empresaId },
+          select: { id: true, nome: true, contatoNome: true },
+        })
+      : [];
+    const nomePorLead = new Map(nomes.map((l) => [l.id, l.contatoNome || l.nome]));
+    const enriquecido = data.map((e) => {
+      const ctx = (e.contexto ?? {}) as Record<string, unknown>;
+      const contatoId =
+        typeof ctx.leadId === 'string'
+          ? ctx.leadId
+          : typeof ctx.clienteId === 'string'
+            ? ctx.clienteId
+            : null;
+      const contatoNome =
+        typeof ctx.leadId === 'string' ? (nomePorLead.get(ctx.leadId) ?? null) : null;
+      return { ...e, contatoId, contatoNome };
+    });
+
+    return buildPaginated(enriquecido, total, params.page, params.limit);
   }
 
   async cancelarExecucao(user: AuthenticatedUser, execucaoId: string): Promise<void> {

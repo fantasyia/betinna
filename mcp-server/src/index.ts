@@ -1161,7 +1161,10 @@ server.registerTool(
 server.registerTool(
   'fluxos_execucoes',
   {
-    description: 'Histórico de execuções de um fluxo (mais recentes primeiro).',
+    description:
+      'Histórico de execuções de um fluxo (mais recentes primeiro). Cada execução inclui ' +
+      'contatoId (leadId/clienteId que a disparou) + contatoNome — pra auditar "esse lead ' +
+      'passou por esse fluxo?".',
     inputSchema: {
       fluxoId: z.string(),
       limit: z.number().int().min(1).max(100).default(20),
