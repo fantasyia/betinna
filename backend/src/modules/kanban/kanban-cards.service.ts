@@ -26,13 +26,13 @@ export class KanbanCardsService {
   ) {}
 
   /**
-   * Reflete no card espelhado do Diretor (se houver) a mudança de coluna/
-   * concluído/arquivado do card original. Best-effort: falha na sincronia NÃO
-   * pode derrubar a operação do usuário no card.
+   * Propaga a alteração pra contraparte espelhada (Diretor↔rep — mesmo card),
+   * nos dois sentidos. Best-effort: falha na sincronia NÃO pode derrubar a
+   * operação do usuário no card.
    */
   private async sincronizarEspelho(cardId: string): Promise<void> {
     try {
-      await this.tarefa.sincronizarEspelhos(cardId);
+      await this.tarefa.sincronizarContraparte(cardId);
     } catch (err) {
       this.logger.warn(`Falha ao sincronizar espelho do card ${cardId}: ${String(err)}`);
     }
@@ -207,10 +207,9 @@ export class KanbanCardsService {
         dados: { titulo: card.titulo, campos: outrosCampos },
       });
     }
-    // Espelho reflete concluído/arquivado do card original (rep→Diretor).
-    if (dto.concluido !== undefined || dto.arquivado !== undefined) {
-      await this.sincronizarEspelho(cardId);
-    }
+    // Espelho reflete qualquer ajuste do card na contraparte (título, descrição,
+    // datas, capa, concluído, arquivado). É o mesmo card nos dois quadros.
+    await this.sincronizarEspelho(cardId);
     return card;
   }
 

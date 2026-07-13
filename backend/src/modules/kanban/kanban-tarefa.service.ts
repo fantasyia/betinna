@@ -4,14 +4,15 @@ import { posicaoNoFim } from './kanban-posicao.util';
 
 /**
  * Provisão automática dos quadros de tarefas (rep + Diretor) e a ponte
- * CRIAR_TAREFA (fluxos) → card Kanban com espelho rep→Diretor.
+ * CRIAR_TAREFA (fluxos) → card no Diretor com espelho bidirecional pro rep.
  *
  * Regras (decididas com o Léo, 2026-07-13):
  * - REP já nasce com o quadro dele ("Minhas Tarefas", colunas padrão).
  * - CRIAR_TAREFA continua criando o AgendaItem (dual-write); o card é a camada
  *   de VISIBILIDADE, best-effort — falha aqui NÃO derruba o fluxo.
- * - Espelho real rep→Diretor: mover coluna/concluir no card do rep reflete no
- *   card espelhado do Diretor (uma direção só).
+ * - Quadro do Diretor é a ORIGEM: a tarefa nasce lá e ESPELHA pro quadro do rep.
+ * - Espelho é BIDIRECIONAL (é o mesmo card): ajuste feito pelo Diretor ou pelo
+ *   rep (mover coluna, concluir, editar título/descrição) reflete no outro.
  *
  * Depende só de PrismaService (sem acoplar com os services de board/card),
  * então pode ser importado por Users e Fluxos sem ciclo de DI.
@@ -142,10 +143,11 @@ export class KanbanTarefaService {
   // ─── CRIAR_TAREFA → card(s) ─────────────────────────────────────────────
 
   /**
-   * Cria o(s) card(s) da tarefa. Se o responsável é REP: card no quadro dele
-   * (📋 A fazer) + espelho no quadro do Diretor. Se não é REP (ADMIN/DIRECTOR):
-   * só o card do Diretor. Idempotente por `origemJobId`. Best-effort — o caller
-   * deve engolir exceções (não pode derrubar o fluxo).
+   * Cria o(s) card(s) da tarefa. O **quadro do Diretor é a ORIGEM** (o Diretor
+   * acompanha se o lead que caiu pro rep está sendo tratado): cria primeiro no
+   * Diretor e, se o responsável é REP, ESPELHA no quadro do rep (mesmo card).
+   * Se não há rep (ADMIN/DIRECTOR), fica só no Diretor. Idempotente por
+   * `origemJobId`. Best-effort — o caller deve engolir exceções (não derruba o fluxo).
    */
   async criarCardsDeTarefa(params: {
     empresaId: string;
@@ -160,7 +162,7 @@ export class KanbanTarefaService {
     // Idempotência: se já criamos card pra este passo, não recria.
     const jaExiste = await this.prisma.kanbanCard.findFirst({
       where: { origemJobId, lista: { board: { empresaId } } },
-      select: { id: true, origemCardId: true },
+      select: { id: true },
     });
     if (jaExiste) return { idempotente: true };
 
@@ -169,34 +171,31 @@ export class KanbanTarefaService {
       select: { role: true },
     });
 
-    let repCardId: string | undefined;
-    let origemCardId: string | undefined;
-
-    // REP → card no quadro do rep (é a origem do espelho).
-    if (responsavel?.role === 'REP') {
-      const rep = await this.garantirQuadroRep(empresaId, responsavelId);
-      const listaId = rep.listas.get(KanbanTarefaService.COL_INICIAL);
-      if (listaId) {
-        const card = await this.criarCard(listaId, { titulo, descricao, dataEntrega, origemJobId });
-        repCardId = card.id;
-        origemCardId = card.id;
-      }
-    }
-
-    // Diretor → sempre recebe um card (espelho quando veio de rep; próprio quando não).
+    // 1) ORIGEM = quadro do Diretor (sempre).
     const diretor = await this.garantirQuadroDiretor(empresaId);
     let diretorCardId: string | undefined;
     if (diretor) {
       const listaId = diretor.listas.get(KanbanTarefaService.COL_INICIAL);
+      if (listaId) {
+        const card = await this.criarCard(listaId, { titulo, descricao, dataEntrega, origemJobId });
+        diretorCardId = card.id;
+      }
+    }
+
+    // 2) ESPELHO no quadro do rep (aponta pra origem do Diretor).
+    let repCardId: string | undefined;
+    if (responsavel?.role === 'REP') {
+      const rep = await this.garantirQuadroRep(empresaId, responsavelId);
+      const listaId = rep.listas.get(KanbanTarefaService.COL_INICIAL);
       if (listaId) {
         const card = await this.criarCard(listaId, {
           titulo,
           descricao,
           dataEntrega,
           origemJobId,
-          origemCardId,
+          origemCardId: diretorCardId,
         });
-        diretorCardId = card.id;
+        repCardId = card.id;
       }
     }
 
@@ -232,39 +231,70 @@ export class KanbanTarefaService {
     });
   }
 
-  // ─── Sincronização do espelho (rep → Diretor) ───────────────────────────
+  // ─── Sincronização bidirecional (Diretor ↔ rep — é o MESMO card) ─────────
 
   /**
-   * Reflete no(s) card(s) espelhado(s) a coluna (por NOME) + concluído/arquivado
-   * do card original. Best-effort. Chamado após mover/atualizar o card do rep.
+   * Propaga a alteração de um card pra sua CONTRAPARTE espelhada — nos DOIS
+   * sentidos, porque conceitualmente é o mesmo card:
+   * - Diretor (origem) alterado → reflete no card do rep (espelho);
+   * - rep (espelho) alterado → reflete no card do Diretor (origem).
+   * Copia coluna (casada por NOME), concluído/arquivado e os campos de conteúdo
+   * (título, descrição, datas, capa). Best-effort — chamado após mover/atualizar
+   * qualquer card. Sem loop: a contraparte é atualizada via Prisma direto (não
+   * passa pelo service que dispara este sync).
    */
-  async sincronizarEspelhos(cardId: string): Promise<void> {
-    const espelhos = await this.prisma.kanbanCard.findMany({
-      where: { origemCardId: cardId },
-      select: { id: true, lista: { select: { boardId: true } } },
-    });
-    if (espelhos.length === 0) return;
-
-    const origem = await this.prisma.kanbanCard.findUnique({
+  async sincronizarContraparte(cardId: string): Promise<void> {
+    const card = await this.prisma.kanbanCard.findUnique({
       where: { id: cardId },
       select: {
+        titulo: true,
+        descricao: true,
         concluido: true,
         arquivado: true,
+        dataInicio: true,
+        dataEntrega: true,
+        corCapa: true,
+        origemCardId: true,
         lista: { select: { nome: true } },
       },
     });
-    if (!origem) return;
+    if (!card) return;
 
-    for (const espelho of espelhos) {
-      // Casa a coluna do espelho pela mesma NOME da coluna de origem.
+    // Contrapartes: os espelhos deste card (origem→espelhos) E a origem, se este
+    // card for um espelho (espelho→origem).
+    const contrapartes = await this.prisma.kanbanCard.findMany({
+      where: {
+        OR: [{ origemCardId: cardId }, ...(card.origemCardId ? [{ id: card.origemCardId }] : [])],
+      },
+      select: { id: true, lista: { select: { boardId: true } } },
+    });
+    if (contrapartes.length === 0) return;
+
+    for (const alvo of contrapartes) {
+      const data: {
+        titulo: string;
+        descricao: string | null;
+        concluido: boolean;
+        arquivado: boolean;
+        dataInicio: Date | null;
+        dataEntrega: Date | null;
+        corCapa: string | null;
+        listaId?: string;
+        posicao?: number;
+      } = {
+        titulo: card.titulo,
+        descricao: card.descricao,
+        concluido: card.concluido,
+        arquivado: card.arquivado,
+        dataInicio: card.dataInicio,
+        dataEntrega: card.dataEntrega,
+        corCapa: card.corCapa,
+      };
+      // Casa a coluna da contraparte pela mesma NOME da coluna do card alterado.
       const listaDestino = await this.prisma.kanbanLista.findFirst({
-        where: { boardId: espelho.lista.boardId, nome: origem.lista.nome, arquivada: false },
+        where: { boardId: alvo.lista.boardId, nome: card.lista.nome, arquivada: false },
         select: { id: true },
       });
-      const data: { concluido: boolean; arquivado: boolean; listaId?: string; posicao?: number } = {
-        concluido: origem.concluido,
-        arquivado: origem.arquivado,
-      };
       if (listaDestino) {
         const ultimo = await this.prisma.kanbanCard.findFirst({
           where: { listaId: listaDestino.id },
@@ -274,7 +304,7 @@ export class KanbanTarefaService {
         data.listaId = listaDestino.id;
         data.posicao = posicaoNoFim(ultimo?.posicao);
       }
-      await this.prisma.kanbanCard.update({ where: { id: espelho.id }, data });
+      await this.prisma.kanbanCard.update({ where: { id: alvo.id }, data });
     }
   }
 }
