@@ -35,6 +35,7 @@ export default function KanbanTokensPage() {
   const [incluirFunis, setIncluirFunis] = useState(false);
   const [incluirContatos, setIncluirContatos] = useState(false);
   const [incluirCrm, setIncluirCrm] = useState(false);
+  const [incluirPrompts, setIncluirPrompts] = useState(false);
   const [salvando, setSalvando] = useState(false);
   /** Token recém-criado — única chance de copiar. */
   const [novoToken, setNovoToken] = useState<string | null>(null);
@@ -53,6 +54,7 @@ export default function KanbanTokensPage() {
       if (incluirFunis) escopo.push('funis');
       if (incluirContatos) escopo.push('contatos');
       if (incluirCrm) escopo.push('crm');
+      if (incluirPrompts) escopo.push('prompts');
       const criado = await api.post<ApiToken & { token: string }>('/kanban/api-tokens', {
         nome: nome.trim(),
         escopo,
@@ -63,6 +65,7 @@ export default function KanbanTokensPage() {
       setIncluirFunis(false);
       setIncluirContatos(false);
       setIncluirCrm(false);
+      setIncluirPrompts(false);
       refetch();
     } catch (err) {
       toast.error(apiErrorMessage(err));
@@ -155,7 +158,9 @@ export default function KanbanTokensPage() {
                                 ? 'Contatos'
                                 : e === 'crm'
                                   ? 'CRM (escrita)'
-                                  : 'Quadros'}
+                                  : e === 'prompts'
+                                    ? 'Prompts (IA)'
+                                    : 'Quadros'}
                         </Badge>
                       ))}
                     </span>
@@ -271,6 +276,12 @@ export default function KanbanTokensPage() {
                   checked={incluirCrm}
                   onChange={(e) => setIncluirCrm(e.target.checked)}
                   data-testid="token-escopo-crm"
+                />
+                <Checkbox
+                  label="Prompts da IA — escrita (criar/editar prompts do bot)"
+                  checked={incluirPrompts}
+                  onChange={(e) => setIncluirPrompts(e.target.checked)}
+                  data-testid="token-escopo-prompts"
                 />
               </div>
             </Field>

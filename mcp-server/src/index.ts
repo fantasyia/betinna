@@ -1568,10 +1568,123 @@ server.registerTool(
   ),
 );
 
+// ─── Prompts da IA (escopo "prompts" — biblioteca de prompts do bot) ─────
+// Ver/criar/editar os prompts referenciados por promptId nos nós "Conversar
+// com IA" dos fluxos. Exige token com escopo "prompts". Editar o TEXTO versiona
+// automaticamente (rollback disponível no app).
+
+type PromptResumo = {
+  id: string;
+  nome: string;
+  descricao?: string | null;
+  isPadrao?: boolean;
+  ativo?: boolean;
+  versao?: number;
+};
+type PromptCompleto = PromptResumo & {
+  texto: string;
+  modelo?: string | null;
+  temperatura?: number | null;
+};
+
+server.registerTool(
+  'prompts_listar',
+  {
+    description:
+      'Lista os prompts da IA da empresa (id, nome, descrição, versão, se é padrão/ativo). Os prompts ' +
+      'são referenciados por promptId nos nós "Conversar com IA" dos fluxos. Exige escopo "prompts".',
+    inputSchema: { search: z.string().optional().describe('Filtro por nome/descrição') },
+    annotations: { readOnlyHint: true, destructiveHint: false },
+  },
+  seguro(async ({ search }: { search?: string }) => {
+    const qs = search ? `?search=${encodeURIComponent(search)}` : '';
+    const ps = await api.get<PromptResumo[]>(`/mullerbot/prompts${qs}`);
+    return ok(
+      ps.map((p) => ({
+        id: p.id,
+        nome: p.nome,
+        descricao: p.descricao ?? null,
+        versao: p.versao,
+        isPadrao: p.isPadrao,
+        ativo: p.ativo,
+      })),
+    );
+  }),
+);
+
+server.registerTool(
+  'prompts_ver',
+  {
+    description:
+      'Retorna o conteúdo COMPLETO de um prompt da IA (inclui o TEXTO). Use o promptId (de prompts_listar ' +
+      'ou do config do nó "Conversar com IA" em fluxos_ver). Exige escopo "prompts".',
+    inputSchema: { promptId: z.string().describe('ID do prompt') },
+    annotations: { readOnlyHint: true, destructiveHint: false },
+  },
+  seguro(async ({ promptId }: { promptId: string }) => {
+    const p = await api.get<PromptCompleto>(`/mullerbot/prompts/${promptId}`);
+    return ok(p);
+  }),
+);
+
+server.registerTool(
+  'prompts_criar',
+  {
+    description:
+      'Cria um prompt novo da IA e retorna o promptId (pra plugar no nó "Conversar com IA"). Exige escopo "prompts".',
+    inputSchema: {
+      nome: z.string().describe('Nome do prompt (único na empresa)'),
+      texto: z.string().describe('Conteúdo / system prompt (até 100k chars)'),
+      descricao: z.string().optional(),
+    },
+    annotations: { readOnlyHint: false, destructiveHint: false },
+  },
+  seguro(async (args: { nome: string; texto: string; descricao?: string }) => {
+    const p = await api.post<PromptCompleto>('/mullerbot/prompts', args);
+    return ok({ id: p.id, nome: p.nome, versao: p.versao });
+  }),
+);
+
+server.registerTool(
+  'prompts_atualizar',
+  {
+    description:
+      'Edita um prompt existente (o "up" do prompt na plataforma). Mudar o TEXTO versiona automaticamente ' +
+      '(rollback fica disponível no app). Passe só os campos a alterar. Exige escopo "prompts".',
+    inputSchema: {
+      promptId: z.string().describe('ID do prompt a editar'),
+      nome: z.string().optional(),
+      texto: z.string().optional().describe('Novo conteúdo / system prompt'),
+      descricao: z.string().optional(),
+    },
+    annotations: { readOnlyHint: false, destructiveHint: false },
+  },
+  seguro(
+    async ({
+      promptId,
+      ...rest
+    }: {
+      promptId: string;
+      nome?: string;
+      texto?: string;
+      descricao?: string;
+    }) => {
+      const definidos = Object.fromEntries(
+        Object.entries(rest).filter(([, v]) => v !== undefined),
+      );
+      if (Object.keys(definidos).length === 0) {
+        return erro('Informe ao menos um campo (nome, texto ou descricao).');
+      }
+      const p = await api.patch<PromptCompleto>(`/mullerbot/prompts/${promptId}`, definidos);
+      return ok({ id: p.id, nome: p.nome, versao: p.versao });
+    },
+  ),
+);
+
 // ─── Boot ───────────────────────────────────────────────────────────────
 
 const transport = new StdioServerTransport();
 await server.connect(transport);
 console.error(
-  '[betinna-kanban-mcp] conectado — 26 tools kanban_* + 11 tools fluxos_* + 6 tools funis_/contatos_/crm disponíveis',
+  '[betinna-kanban-mcp] conectado — 26 tools kanban_* + 11 tools fluxos_* + 6 tools funis_/contatos_/crm + 4 tools prompts_* disponíveis',
 );

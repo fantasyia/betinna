@@ -147,16 +147,20 @@ export class AuthGuard implements CanActivate {
     }
 
     // Módulo exigido pela rota → escopo correspondente.
-    let moduloRequerido: 'kanban' | 'fluxos' | 'funis' | 'contatos' | 'crm' | null = null;
+    let moduloRequerido: 'kanban' | 'fluxos' | 'funis' | 'contatos' | 'crm' | 'prompts' | null =
+      null;
     if (/\/kanban(\/|$)/.test(path)) moduloRequerido = 'kanban';
     else if (/\/fluxos(\/|$)/.test(path)) moduloRequerido = 'fluxos';
     else if (/\/funis(\/|$)/.test(path)) moduloRequerido = 'funis';
     else if (/\/contatos(\/|$)/.test(path)) moduloRequerido = 'contatos';
     // /crm = ações de CRM por MCP (ESCRITA: tags, mover etapa). Surface estreita e explícita.
     else if (/\/crm(\/|$)/.test(path)) moduloRequerido = 'crm';
+    // /mullerbot/prompts = biblioteca de prompts da IA (ESCRITA: criar/editar prompt).
+    // Só esta subárvore do mullerbot é acessível por PAT (não /perguntar, /persona, etc.).
+    else if (/\/mullerbot\/prompts(\/|$)/.test(path)) moduloRequerido = 'prompts';
     if (!moduloRequerido) {
       throw new ForbiddenException(
-        'Token de API só acessa rotas /kanban, /fluxos, /funis, /contatos e /crm',
+        'Token de API só acessa rotas /kanban, /fluxos, /funis, /contatos, /crm e /mullerbot/prompts',
       );
     }
 
