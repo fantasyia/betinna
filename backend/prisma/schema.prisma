@@ -1786,6 +1786,11 @@ model Conversation {
   naoLidas         Int                   @default(0)
   ultimaMsgEm      DateTime?
   ultimaMsgPreview String?               @db.VarChar(140)
+  /// Tombstone do "Zerar conversa": marca QUANDO as mensagens foram apagadas.
+  /// A ingestão ignora reimportações de histórico anteriores a esta data (o
+  /// history sync do WhatsApp reentrega tudo e ressuscitava o que foi zerado).
+  /// Mensagens novas (timestamp > este) passam normalmente.
+  mensagensZeradasEm DateTime?
   /// Metadados canal-específicos (ex: ML packId, itemId, claimId; Shopee chatRoomId).
   metadata         Json?
   /// Quando a conversa está atrelada a um incidente (reclamação/devolução/disputa).

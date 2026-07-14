@@ -296,7 +296,15 @@ export class InboxService {
     const msgs = await this.prisma.message.deleteMany({ where: { conversationId: id } });
     await this.prisma.conversation.update({
       where: { id },
-      data: { naoLidas: 0, precisaHumano: false, ultimaMsgPreview: null },
+      data: {
+        naoLidas: 0,
+        precisaHumano: false,
+        ultimaMsgPreview: null,
+        ultimaMsgEm: null,
+        // Tombstone: a partir de agora, reimportação de histórico anterior é ignorada
+        // (senão o history sync do WhatsApp ressuscita tudo que acabamos de apagar).
+        mensagensZeradasEm: new Date(),
+      },
     });
     this.logger.warn(
       `[inbox] conversa ${id} ZERADA: ${msgs.count} msgs apagadas (por ${user.email})`,
@@ -964,6 +972,14 @@ export class InboxService {
     );
 
     const conv = await this.upsertConversation(params, clienteId);
+
+    // Tombstone "Zerar conversa": se a conversa foi zerada e ESTA mensagem é uma
+    // reimportação de histórico anterior ao zeramento (timestamp <= zeradasEm),
+    // NÃO recria — senão o history sync do WhatsApp ressuscita o que foi apagado.
+    // Mensagens genuinamente novas têm timestamp > zeradasEm e passam normalmente.
+    if (conv.mensagensZeradasEm && params.data && params.data <= conv.mensagensZeradasEm) {
+      return { conversationId: conv.id, messageId: '', duplicada: true };
+    }
 
     // Direction: default INBOUND. OUTBOUND quando o próprio número enviou
     // a mensagem (ex: dono respondeu pelo celular enquanto Baileys está

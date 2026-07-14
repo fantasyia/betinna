@@ -116,6 +116,61 @@ describe('InboxService.processarMensagemEntrante', () => {
     );
   });
 
+  it('tombstone "zerar": NÃO recria msg de history sync anterior ao zeramento', async () => {
+    const zeradasEm = new Date('2026-01-02T00:00:00Z');
+    prisma.cliente.findFirst.mockResolvedValueOnce(null);
+    // upsertConversation: acha a conversa existente (com tombstone) e a devolve.
+    prisma.conversation.findFirst.mockResolvedValueOnce({
+      id: 'conv-1',
+      mensagensZeradasEm: zeradasEm,
+    });
+    prisma.conversation.update.mockResolvedValueOnce({
+      id: 'conv-1',
+      mensagensZeradasEm: zeradasEm,
+    });
+
+    const r = await svc.processarMensagemEntrante({
+      empresaId: 'emp-1',
+      canal: 'WHATSAPP',
+      peerId: '5511988887777@s.whatsapp.net',
+      tipo: 'TEXT',
+      conteudo: 'mensagem antiga reentregue',
+      externalId: 'wamid-old',
+      data: new Date('2026-01-01T12:00:00Z'), // anterior ao zeramento
+    });
+
+    expect(r).toEqual({ conversationId: 'conv-1', messageId: '', duplicada: true });
+    expect(prisma.message.create).not.toHaveBeenCalled();
+  });
+
+  it('tombstone "zerar": mensagem NOVA (posterior) passa normalmente', async () => {
+    const zeradasEm = new Date('2026-01-02T00:00:00Z');
+    prisma.cliente.findFirst.mockResolvedValueOnce(null);
+    prisma.conversation.findFirst.mockResolvedValueOnce({
+      id: 'conv-1',
+      mensagensZeradasEm: zeradasEm,
+    });
+    prisma.conversation.update.mockResolvedValueOnce({
+      id: 'conv-1',
+      mensagensZeradasEm: zeradasEm,
+    });
+    prisma.message.create.mockResolvedValueOnce({ id: 'msg-novo', criadoEm: new Date() });
+    prisma.conversation.update.mockResolvedValueOnce({});
+
+    const r = await svc.processarMensagemEntrante({
+      empresaId: 'emp-1',
+      canal: 'WHATSAPP',
+      peerId: '5511988887777@s.whatsapp.net',
+      tipo: 'TEXT',
+      conteudo: 'mensagem nova depois de zerar',
+      externalId: 'wamid-novo',
+      data: new Date('2026-01-03T09:00:00Z'), // posterior ao zeramento
+    });
+
+    expect(r.duplicada).toBe(false);
+    expect(prisma.message.create).toHaveBeenCalled();
+  });
+
   it('é idempotente quando recebe mesmo externalId duas vezes', async () => {
     prisma.message.findFirst.mockResolvedValueOnce({
       id: 'msg-1',
