@@ -2,13 +2,15 @@ import {
   useReactFlow,
   BaseEdge,
   EdgeLabelRenderer,
-  getSmoothStepPath,
+  getBezierPath,
   type EdgeProps,
 } from '@xyflow/react';
 
 /**
  * Aresta com botão "×" pra REMOVER a conexão (antes só dava via Backspace —
  * ninguém descobria). Mostra o label (Sim/Não dos ramos de condição) + o botão.
+ *
+ * Fio em curva bezier suave (estilo ComfyUI) — não mais o "step" de cantos retos.
  */
 export function EdgeRemovivel({
   id,
@@ -23,7 +25,7 @@ export function EdgeRemovivel({
   label,
 }: EdgeProps) {
   const { deleteElements } = useReactFlow();
-  const [edgePath, labelX, labelY] = getSmoothStepPath({
+  const [edgePath, labelX, labelY] = getBezierPath({
     sourceX,
     sourceY,
     targetX,

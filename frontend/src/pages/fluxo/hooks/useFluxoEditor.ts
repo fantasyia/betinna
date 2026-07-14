@@ -201,8 +201,8 @@ export function useFluxoEditor({
           {
             ...conn,
             type: 'removivel',
-            animated: true,
-            style: { stroke: 'var(--border-strong)' },
+            animated: false,
+            style: { stroke: 'var(--secondary)', strokeWidth: 2.5 },
             // O id do handle de saída vira o label da aresta — contrato central em
             // lib/saidas.ts (true→Sim, false→Não, roteador: o próprio id).
             label: labelDaAresta(conn.sourceHandle),

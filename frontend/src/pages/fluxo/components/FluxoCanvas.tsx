@@ -63,9 +63,10 @@ export function FluxoCanvas({
         colorMode="dark"
         defaultEdgeOptions={{
           type: 'removivel',
-          animated: true,
-          style: { stroke: 'var(--border-strong)', strokeWidth: 1.5 },
+          animated: false,
+          style: { stroke: 'var(--secondary)', strokeWidth: 2.5 },
         }}
+        connectionLineStyle={{ stroke: 'var(--secondary)', strokeWidth: 2.5 }}
       >
         <Background variant={BackgroundVariant.Dots} gap={20} size={1} color="var(--border)" />
         <Controls

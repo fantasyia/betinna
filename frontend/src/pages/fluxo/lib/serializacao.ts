@@ -55,8 +55,8 @@ export function inserirTriggerManual(
       source: manualId,
       target: n.id,
       type: 'removivel',
-      animated: true,
-      style: { stroke: 'var(--border-strong)' },
+      animated: false,
+      style: { stroke: 'var(--secondary)', strokeWidth: 2.5 },
     }));
   return { nodes: [manual, ...nodes], edges: [...edges, ...novasEdges] };
 }
@@ -117,8 +117,8 @@ export function hidratarFluxo(data: FluxoDetailApi): HidratacaoResultado {
       label: e.label ?? undefined,
       sourceHandle: reconstruirSourceHandle(e.label, srcData),
       type: 'removivel',
-      animated: true,
-      style: { stroke: 'var(--border-strong)' },
+      animated: false,
+      style: { stroke: 'var(--secondary)', strokeWidth: 2.5 },
     };
   });
 
