@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState, type ReactNode } from 'react';
+import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
   Search,
@@ -14,6 +14,7 @@ import {
   Upload,
   Target as TargetIcon,
   Briefcase,
+  ChevronDown,
 } from 'lucide-react';
 import { useApiQuery, type PaginatedResponse } from '@/hooks/useApiQuery';
 import { useDebouncedValue } from '@/hooks/useDebouncedValue';
@@ -214,43 +215,13 @@ export default function ContatosPage() {
             <option value="CLIENTE">Clientes</option>
             <option value="CONVERSA">Conversas</option>
           </Select>
+          <TagFilterSelect
+            tags={tagsDisponiveis ?? []}
+            selecionadas={tagFiltro}
+            onToggle={toggleTagFiltro}
+            onLimpar={() => setTagFiltro([])}
+          />
         </div>
-
-        {/* Filtro por tags — chips clicáveis (múltiplas = E, contato tem TODAS). */}
-        {(tagsDisponiveis?.length ?? 0) > 0 && (
-          <div className="flex flex-wrap items-center gap-1.5 px-4 py-2.5 border-b border-border">
-            <span className="text-xs text-muted mr-1">Tags:</span>
-            {tagsDisponiveis!.map((t) => {
-              const ativo = tagFiltro.includes(t.id);
-              return (
-                <button
-                  key={t.id}
-                  type="button"
-                  onClick={() => toggleTagFiltro(t.id)}
-                  className={cn(
-                    'text-[11px] px-2 py-0.5 rounded-full font-medium border transition-colors',
-                    ativo
-                      ? 'border-transparent text-white'
-                      : 'border-border text-muted hover:text-text',
-                  )}
-                  style={ativo ? { backgroundColor: t.cor } : undefined}
-                  data-testid={`contatos-tag-filtro-${t.id}`}
-                >
-                  {t.nome}
-                </button>
-              );
-            })}
-            {tagFiltro.length > 0 && (
-              <button
-                type="button"
-                onClick={() => setTagFiltro([])}
-                className="text-[11px] text-muted underline ml-1 hover:text-text"
-              >
-                limpar
-              </button>
-            )}
-          </div>
-        )}
 
         {data?.truncado && (
           <div className="flex items-center gap-2 px-4 py-2 bg-warning/12 border-b border-warning/19 text-[13px] text-warning">
@@ -623,6 +594,76 @@ function Td({ children, onClick }: { children: ReactNode; onClick?: (e: React.Mo
     <td onClick={onClick} className="px-4 py-2.5 align-middle">
       {children}
     </td>
+  );
+}
+
+/** Caixa selecionadora de tags pro filtro (multi-seleção com checkboxes). */
+function TagFilterSelect({
+  tags,
+  selecionadas,
+  onToggle,
+  onLimpar,
+}: {
+  tags: { id: string; nome: string; cor: string }[];
+  selecionadas: string[];
+  onToggle: (id: string) => void;
+  onLimpar: () => void;
+}) {
+  const [aberto, setAberto] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!aberto) return;
+    function onDoc(e: MouseEvent) {
+      if (ref.current && !ref.current.contains(e.target as Node)) setAberto(false);
+    }
+    document.addEventListener('mousedown', onDoc);
+    return () => document.removeEventListener('mousedown', onDoc);
+  }, [aberto]);
+
+  const n = selecionadas.length;
+  return (
+    <div className="relative" ref={ref}>
+      <button
+        type="button"
+        onClick={() => setAberto((v) => !v)}
+        disabled={tags.length === 0}
+        className={cn(
+          'inline-flex items-center gap-1.5 h-9 px-3 rounded-[10px] border text-sm transition-colors disabled:opacity-50',
+          n > 0
+            ? 'border-primary/40 bg-primary/8 text-text'
+            : 'border-border bg-surface text-text-subtle hover:bg-surface-elevated',
+        )}
+        data-testid="contatos-tag-filtro-btn"
+      >
+        <TagIcon className="h-3.5 w-3.5" />
+        <span>{n > 0 ? `${n} tag${n > 1 ? 's' : ''}` : 'Filtrar por tags'}</span>
+        <ChevronDown className="h-3.5 w-3.5 text-muted" />
+      </button>
+      {aberto && (
+        <div className="absolute z-20 mt-1 w-64 max-h-72 overflow-auto rounded-[10px] border border-border bg-surface shadow-lg p-1.5">
+          {tags.map((t) => (
+            <label
+              key={t.id}
+              className="flex items-center gap-2 px-2 py-1.5 rounded-[8px] hover:bg-surface-elevated cursor-pointer"
+              data-testid={`contatos-tag-filtro-opt-${t.id}`}
+            >
+              <Checkbox checked={selecionadas.includes(t.id)} onChange={() => onToggle(t.id)} />
+              <TagChip nome={t.nome} cor={t.cor} />
+            </label>
+          ))}
+          {n > 0 && (
+            <button
+              type="button"
+              onClick={onLimpar}
+              className="w-full text-left text-[11px] text-muted underline px-2 py-1.5 mt-0.5 hover:text-text"
+            >
+              limpar seleção
+            </button>
+          )}
+        </div>
+      )}
+    </div>
   );
 }
 
