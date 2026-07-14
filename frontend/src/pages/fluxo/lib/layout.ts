@@ -12,12 +12,14 @@ import type { FlowNode } from './types';
  * - Centraliza cada nível em relação ao mais largo → árvore simétrica e limpa.
  */
 
-const NODE_W = 220;
-const NODE_H = 130;
-const GAP_X = 60;
-const GAP_Y = 90;
-const STEP_X = NODE_W + GAP_X;
-const STEP_Y = NODE_H + GAP_Y;
+// Passos generosos de propósito: melhor um fluxo grande e arejado do que
+// compacto e amontoado. STEP_X/Y = espaço de um nó pro próximo (centro a centro).
+const NODE_W = 240;
+const NODE_H = 190;
+const GAP_X = 110;
+const GAP_Y = 130;
+const STEP_X = NODE_W + GAP_X; // 350
+const STEP_Y = NODE_H + GAP_Y; // 320
 
 export function organizarNos(nodes: FlowNode[], edges: Edge[]): FlowNode[] {
   if (nodes.length === 0) return nodes;
