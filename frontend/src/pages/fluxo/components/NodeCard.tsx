@@ -9,6 +9,7 @@ import {
   isManualTrigger,
 } from '../lib/metadata';
 import { saidasDoNo } from '../lib/saidas';
+import { resumoNo } from '../lib/resumo';
 import type { FlowNode } from '../lib/types';
 
 /**
@@ -22,6 +23,7 @@ export function NodeCard({ data, selected }: NodeProps<FlowNode>) {
   const Icon = pickIcon(data);
   const accent = TIPO_ACCENT[tipo];
   const saidas = saidasDoNo(data);
+  const resumo = resumoNo(data);
 
   return (
     <div
@@ -71,6 +73,15 @@ export function NodeCard({ data, selected }: NodeProps<FlowNode>) {
                   : ''}
             </div>
           )
+        )}
+        {/* Resumo da config — deixa o fluxo legível sem abrir cada nó */}
+        {resumo && (
+          <div
+            className="mt-1.5 rounded border-l-2 border-border-strong bg-bg/50 px-1.5 py-1 text-[10px] leading-snug text-text/80"
+            title={resumo}
+          >
+            {resumo}
+          </div>
         )}
       </div>
       {/* Saídas: CONDICAO simples = true/false; CONDICAO roteador = N saídas +

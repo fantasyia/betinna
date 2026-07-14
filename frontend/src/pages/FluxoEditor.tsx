@@ -1,10 +1,16 @@
 import { useCallback, useState } from 'react';
 import { ReactFlowProvider } from '@xyflow/react';
 import '@xyflow/react/dist/style.css';
-import { AlertCircle } from 'lucide-react';
+import {
+  AlertCircle,
+  MousePointerClick,
+  PanelRight,
+  PanelRightClose,
+} from 'lucide-react';
 import { useApiQuery } from '@/hooks/useApiQuery';
 import { FullPageSpinner } from '@/components/ui';
-import { type FluxoDetailApi } from '@/pages/fluxo/lib/types';
+import { type FluxoDetailApi, type TriggerTipo } from '@/pages/fluxo/lib/types';
+import { TRIGGER_LABEL } from '@/pages/fluxo/lib/metadata';
 import { NodeCard } from '@/pages/fluxo/components/NodeCard';
 import { EdgeRemovivel } from '@/pages/fluxo/components/EdgeRemovivel';
 import { FluxoToolbar } from '@/pages/fluxo/components/FluxoToolbar';
@@ -73,6 +79,9 @@ function FluxoEditorInner({
   // Mobile: painéis viram drawers sobrepostos (só um aberto por vez). Em desktop
   // (md+) os painéis são fixos e este estado é ignorado pelo layout.
   const [mobilePanel, setMobilePanel] = useState<'palette' | 'inspector' | null>(null);
+  // Recolher painéis no desktop → sobra canvas pra fluxos grandes (ignorado no mobile).
+  const [paletteCollapsed, setPaletteCollapsed] = useState(false);
+  const [inspectorCollapsed, setInspectorCollapsed] = useState(false);
   // Teste manual — dispara o fluxo agora (do nó gatilho), sem esperar cron/evento.
   const [testarAberto, setTestarAberto] = useState(false);
   const [testLeadId, setTestLeadId] = useState('');
@@ -131,8 +140,13 @@ function FluxoEditorInner({
             onClick={() => setMobilePanel(null)}
           />
         )}
-        {/* Palette — fixa no desktop; drawer pela esquerda no mobile */}
-        <PaletteSidebar editor={editor} mobileAberto={mobilePanel === 'palette'} />
+        {/* Palette — fixa no desktop (recolhível); drawer pela esquerda no mobile */}
+        <PaletteSidebar
+          editor={editor}
+          mobileAberto={mobilePanel === 'palette'}
+          collapsed={paletteCollapsed}
+          onToggleCollapse={() => setPaletteCollapsed((v) => !v)}
+        />
 
         {/* Canvas */}
         <FluxoCanvas
@@ -143,30 +157,107 @@ function FluxoEditorInner({
           onPaneClickExtra={() => setMobilePanel(null)}
         />
 
-        {/* Inspector — fixo no desktop; drawer pela direita no mobile */}
-        <aside
-          className={`w-[88vw] max-w-[320px] md:w-[300px] shrink-0 border-l border-border bg-bg-alt overflow-y-auto
-            absolute inset-y-0 right-0 z-20 shadow-xl transition-transform duration-200
-            md:static md:z-auto md:shadow-none md:translate-x-0
-            ${mobilePanel === 'inspector' ? 'translate-x-0' : 'translate-x-full'}`}
-        >
-          {selectedNode ? (
-            <NodeInspector
-              node={selectedNode}
-              onUpdate={editor.updateSelectedNode}
-              onDelete={editor.deleteSelectedNode}
-              onRemoveSaida={editor.removeSaidaDoNoSelecionado}
-              onRenameSaida={editor.renameSaidaDoNoSelecionado}
-              onChangeModo={editor.trocarModoDoNoSelecionado}
-              onDisparar={editor.dispararManual}
-            />
-          ) : (
-            <div className="p-4 text-center flex flex-col items-center gap-2 mt-8">
-              <AlertCircle className="h-6 w-6 text-muted-light" />
-              <p className="text-sm text-muted">Selecione um nó pra editar</p>
+        {/* Inspector — fixo no desktop (recolhível); drawer pela direita no mobile.
+            Colapsado (só desktop) vira um rail fino; o drawer mobile segue inteiro. */}
+        {inspectorCollapsed ? (
+          <aside className="hidden md:flex w-10 shrink-0 border-l border-border bg-bg-alt flex-col items-center py-2 gap-3">
+            <button
+              type="button"
+              onClick={() => setInspectorCollapsed(false)}
+              title="Expandir painel"
+              className="p-1.5 rounded hover:bg-surface-hover text-muted hover:text-text transition-colors"
+            >
+              <PanelRight className="h-4 w-4" />
+            </button>
+            <span className="text-[10px] font-semibold uppercase tracking-wider text-muted [writing-mode:vertical-rl] rotate-180">
+              Painel
+            </span>
+          </aside>
+        ) : (
+          <aside
+            className={`w-[88vw] max-w-[320px] md:w-[300px] shrink-0 border-l border-border bg-bg-alt overflow-y-auto
+              absolute inset-y-0 right-0 z-20 shadow-xl transition-transform duration-200
+              md:static md:z-auto md:shadow-none md:translate-x-0
+              ${mobilePanel === 'inspector' ? 'translate-x-0' : 'translate-x-full'}`}
+          >
+            <div className="hidden md:flex items-center justify-between px-3 py-2 border-b border-border">
+              <h3 className="text-xs font-bold uppercase tracking-wider text-text">
+                {selectedNode ? 'Editar nó' : 'Painel'}
+              </h3>
+              <button
+                type="button"
+                onClick={() => setInspectorCollapsed(true)}
+                title="Recolher painel"
+                className="p-1 rounded hover:bg-surface-hover text-muted hover:text-text transition-colors"
+              >
+                <PanelRightClose className="h-4 w-4" />
+              </button>
             </div>
-          )}
-        </aside>
+            {selectedNode ? (
+              <NodeInspector
+                node={selectedNode}
+                onUpdate={editor.updateSelectedNode}
+                onDelete={editor.deleteSelectedNode}
+                onRemoveSaida={editor.removeSaidaDoNoSelecionado}
+                onRenameSaida={editor.renameSaidaDoNoSelecionado}
+                onChangeModo={editor.trocarModoDoNoSelecionado}
+                onDisparar={editor.dispararManual}
+              />
+            ) : (
+              <FluxoResumoVazio
+                nodeCount={editor.nodes.length}
+                edgeCount={editor.edges.length}
+                triggerTipo={editor.triggerTipo}
+              />
+            )}
+          </aside>
+        )}
+      </div>
+    </div>
+  );
+}
+
+/**
+ * Estado vazio do inspector — em vez de só "selecione um nó", dá uma visão-geral
+ * do fluxo (disparo + contagem de blocos/conexões) e a dica de como editar.
+ */
+function FluxoResumoVazio({
+  nodeCount,
+  edgeCount,
+  triggerTipo,
+}: {
+  nodeCount: number;
+  edgeCount: number;
+  triggerTipo: TriggerTipo | '';
+}) {
+  return (
+    <div className="p-4 flex flex-col gap-4">
+      <div className="flex flex-col items-center gap-2 text-center mt-2">
+        <MousePointerClick className="h-6 w-6 text-muted-light" />
+        <p className="text-sm text-muted">
+          Clique num nó pra editar,
+          <br />
+          ou arraste um bloco da esquerda.
+        </p>
+      </div>
+      <div className="rounded-lg border border-border bg-surface p-3 flex flex-col gap-2">
+        <h4 className="text-[10px] font-semibold uppercase tracking-wider text-muted">
+          Resumo do fluxo
+        </h4>
+        <div className="flex items-center justify-between text-xs">
+          <span className="text-muted">Disparo</span>
+          <span className="text-text font-medium">
+            {triggerTipo ? TRIGGER_LABEL[triggerTipo] : 'Manual'}
+          </span>
+        </div>
+        <div className="flex items-center justify-between text-xs">
+          <span className="text-muted">Blocos</span>
+          <span className="text-text font-medium">{nodeCount}</span>
+        </div>
+        <div className="flex items-center justify-between text-xs">
+          <span className="text-muted">Conexões</span>
+          <span className="text-text font-medium">{edgeCount}</span>
+        </div>
       </div>
     </div>
   );
