@@ -8,6 +8,7 @@ import { DeadLetterService } from '@modules/dead-letter/dead-letter.service';
 import { IdempotencyService } from '@shared/utils/idempotency.service';
 import { interpolate } from '@shared/utils/interpolate';
 import { WhatsappPacingService } from '@shared/whatsapp-pacing/whatsapp-pacing.service';
+import { SupressaoService } from '@shared/supressao/supressao.service';
 import { CampanhaIaService } from './campanha-ia.service';
 import { CAMPANHA_ENVIO_QUEUE, type CampanhaEnvioJobData } from './campanha-envio.types';
 import { CampanhasService } from './campanhas.service';
@@ -34,6 +35,7 @@ export class CampanhaEnvioProcessor extends WorkerHost {
     private readonly idempotency: IdempotencyService,
     private readonly deadLetter: DeadLetterService,
     private readonly pacing: WhatsappPacingService,
+    private readonly supressao: SupressaoService,
   ) {
     super();
   }
@@ -118,6 +120,24 @@ export class CampanhaEnvioProcessor extends WorkerHost {
     if (['PAUSADA', 'CANCELADA'].includes(dest.campanha.status)) {
       this.logger.log(
         `Campanha ${campanhaId} está ${dest.campanha.status} — destinatário ${destinatarioId} ignorado`,
+      );
+      return;
+    }
+
+    // Supressão LGPD: destinatário com a tag "Não Reabordar - LGPD ⛔" NÃO recebe.
+    // Marca status SUPRIMIDO (não é erro) e encerra sem enviar.
+    if (
+      await this.supressao.suprimido(dest.campanha.empresaId, {
+        clienteId: dest.clienteId,
+        telefone: dest.telefone,
+      })
+    ) {
+      await this.prisma.campanhaDestinatario.update({
+        where: { id: destinatarioId },
+        data: { status: 'SUPRIMIDO', erro: 'Não Reabordar (LGPD)' },
+      });
+      this.logger.log(
+        `Campanha ${campanhaId}: destinatário ${destinatarioId} suprimido (LGPD) — não enviado`,
       );
       return;
     }

@@ -81,6 +81,8 @@ function makeService() {
     { aguardarSlot: vi.fn() } as never,
     { marcarDesconectado: vi.fn() } as never,
     queue as never,
+    { criarCardsDeTarefa: vi.fn(async () => ({})) } as never, // kanbanTarefa
+    { suprimido: vi.fn(async () => false) } as never, // supressao
   );
   return { service, prisma, claim, whatsapp, conversarIa, queue };
 }

@@ -7,6 +7,7 @@ import { EnvService } from '@config/env.service';
 import { HttpClientService } from '@shared/http/http-client.service';
 import { WhatsAppService } from '@integrations/whatsapp/whatsapp.service';
 import { WhatsappPacingService } from '@shared/whatsapp-pacing/whatsapp-pacing.service';
+import { SupressaoService } from '@shared/supressao/supressao.service';
 import { TransactionalEmailService } from '@integrations/email/transactional-email.service';
 import { IntegracaoStatusService } from '@modules/integracoes/integracao-status.service';
 import { KanbanTarefaService } from '@modules/kanban/kanban-tarefa.service';
@@ -168,6 +169,7 @@ export class FluxoExecutorService {
     private readonly integracaoStatus: IntegracaoStatusService,
     @InjectQueue(FLUXO_QUEUE) private readonly queue: Queue<FluxoStepJobData>,
     private readonly kanbanTarefa: KanbanTarefaService,
+    private readonly supressao: SupressaoService,
   ) {}
 
   /**
@@ -667,10 +669,26 @@ export class FluxoExecutorService {
     idemBase: string,
   ): Promise<Record<string, unknown>> {
     this.assertEmpresaId(empresaId, 'ENVIAR_WHATSAPP');
-    // Pacing global: espaça este envio dos demais da empresa (anti-rajada).
-    await this.pacing.aguardarSlot(empresaId);
     const mensagem = interpolate(cfg.mensagem, ctx);
     const modo = cfg.destinatarioModo ?? 'lead';
+
+    // Supressão LGPD: se o destino é o PRÓPRIO lead (modo 'lead') e ele tem a tag
+    // "Não Reabordar - LGPD ⛔", NÃO envia. Avisos pra grupo/número fixo (modo
+    // 'contato'/'numero', ex.: diretoria) NÃO são suprimidos — a supressão é sobre
+    // CONTATAR o suprimido, não sobre falar dele internamente.
+    if (modo === 'lead') {
+      const suprimido = await this.supressao.suprimido(empresaId, {
+        leadId: ctx['leadId'] as string | undefined,
+        clienteId: ctx['clienteId'] as string | undefined,
+      });
+      if (suprimido) {
+        this.logger.log('ENVIAR_WHATSAPP suprimido (LGPD) — modo lead');
+        return { suprimido: true, motivo: 'LGPD', canal: 'whatsapp' };
+      }
+    }
+
+    // Pacing global: espaça este envio dos demais da empresa (anti-rajada).
+    await this.pacing.aguardarSlot(empresaId);
 
     // Envio: se há anexo (midia), manda mídia com a `mensagem` como legenda; senão, texto.
     // Único ponto de envio (reusado pelo caminho de grupo e pelo de telefone).
@@ -790,6 +808,29 @@ export class FluxoExecutorService {
     return undefined;
   }
 
+  /** E-mail (lowercase) do lead/cliente do contexto — pra filtrar da supressão LGPD. */
+  private async emailDoContato(
+    empresaId: string,
+    leadId?: string,
+    clienteId?: string,
+  ): Promise<string | undefined> {
+    if (leadId) {
+      const l = await this.prisma.lead.findFirst({
+        where: { id: leadId, empresaId },
+        select: { contatoEmail: true },
+      });
+      if (l?.contatoEmail) return l.contatoEmail.trim().toLowerCase();
+    }
+    if (clienteId) {
+      const c = await this.prisma.cliente.findFirst({
+        where: { id: clienteId, empresaId },
+        select: { email: true },
+      });
+      if (c?.email) return c.email.trim().toLowerCase();
+    }
+    return undefined;
+  }
+
   private async acaoEnviarEmail(
     cfg: EnviarEmailConfig,
     ctx: ExecucaoContexto,
@@ -797,10 +838,36 @@ export class FluxoExecutorService {
     idemBase: string,
   ): Promise<Record<string, unknown>> {
     this.assertEmpresaId(empresaId, 'ENVIAR_EMAIL');
-    const emails = await this.resolverDestinatarios(cfg, ctx, empresaId);
+    let emails = await this.resolverDestinatarios(cfg, ctx, empresaId);
     if (emails.length === 0) {
       throw new Error('Nenhum destinatário resolvido para ENVIAR_EMAIL');
     }
+
+    // Supressão LGPD: se o lead/cliente do contexto tem a tag "Não Reabordar",
+    // REMOVE o e-mail dele da lista (destinatários internos seguem recebendo).
+    const leadIdSup = ctx['leadId'] as string | undefined;
+    const clienteIdSup = ctx['clienteId'] as string | undefined;
+    if (leadIdSup || clienteIdSup) {
+      const suprimido = await this.supressao.suprimido(empresaId, {
+        leadId: leadIdSup,
+        clienteId: clienteIdSup,
+      });
+      if (suprimido) {
+        const emailContato = await this.emailDoContato(empresaId, leadIdSup, clienteIdSup);
+        if (emailContato) {
+          const antes = emails.length;
+          emails = emails.filter((e) => e.trim().toLowerCase() !== emailContato);
+          if (emails.length < antes) {
+            this.logger.log('ENVIAR_EMAIL: e-mail do contato suprimido (LGPD) removido da lista');
+          }
+        }
+        if (emails.length === 0) {
+          this.logger.log('ENVIAR_EMAIL suprimido (LGPD) — sem destinatário restante');
+          return { suprimido: true, motivo: 'LGPD', canal: 'email' };
+        }
+      }
+    }
+
     const assunto = interpolate(cfg.assunto, ctx);
     const corpo = interpolate(cfg.corpo, ctx);
     // Resend sistêmico — envia 1 e-mail por destinatário resolvido. Chave de idempotência

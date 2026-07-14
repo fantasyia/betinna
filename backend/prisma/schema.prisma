@@ -1669,6 +1669,7 @@ enum DestinatarioStatus {
   ENVIADO
   LIDO
   ERRO
+  SUPRIMIDO
 }
 
 model Campanha {

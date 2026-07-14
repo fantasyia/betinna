@@ -19,6 +19,7 @@ import {
 import type { MensagemEntranteParams } from '@modules/inbox/inbox.types';
 import type { HistoricoMsg } from '@modules/mullerbot/mullerbot-cache.service';
 import { WhatsappPacingService } from '@shared/whatsapp-pacing/whatsapp-pacing.service';
+import { SupressaoService } from '@shared/supressao/supressao.service';
 import { FluxoEventBusService } from './fluxo-event-bus.service';
 import {
   FLUXO_QUEUE,
@@ -208,6 +209,7 @@ export class ConversarIaService {
     private readonly whatsapp: WhatsAppService,
     private readonly bus: FluxoEventBusService,
     private readonly pacing: WhatsappPacingService,
+    private readonly supressao: SupressaoService,
     @InjectQueue(FLUXO_QUEUE) private readonly queue: Queue<FluxoStepJobData>,
   ) {}
 
@@ -371,6 +373,18 @@ export class ConversarIaService {
         pulado: true,
         motivo:
           'contexto sem lead — o nó "Conversar com IA" precisa de um lead (no teste manual, escolha um lead)',
+      };
+    }
+
+    // Supressão LGPD: lead com a tag "Não Reabordar - LGPD ⛔" não é abordado.
+    if (await this.supressao.suprimido(empresaId, { leadId })) {
+      this.logger.log(
+        `CONVERSAR_IA: lead ${leadId} suprimido (LGPD) — pulado (exec ${execucaoId})`,
+      );
+      return {
+        aguardando: false,
+        pulado: true,
+        motivo: 'lead suprimido (Não Reabordar - LGPD)',
       };
     }
 

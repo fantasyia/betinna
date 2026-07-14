@@ -179,6 +179,8 @@ describe('FluxoExecutorService', () => {
       { aguardarSlot: vi.fn() } as never,
       integracaoStatus as never,
       queue as never,
+      { criarCardsDeTarefa: vi.fn(async () => ({})) } as never, // kanbanTarefa
+      { suprimido: vi.fn(async () => false) } as never, // supressao
     );
   });
 

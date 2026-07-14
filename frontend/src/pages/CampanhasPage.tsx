@@ -99,7 +99,7 @@ interface CampanhaDestinatarioLite {
   cliente?: { nome: string } | null;
   email?: string | null;
   telefone?: string | null;
-  status: 'PENDENTE' | 'ENVIADO' | 'LIDO' | 'ERRO';
+  status: 'PENDENTE' | 'ENVIADO' | 'LIDO' | 'ERRO' | 'SUPRIMIDO';
   erro?: string | null;
   enviadoEm?: string | null;
   lido: boolean;
@@ -128,6 +128,8 @@ interface Metricas {
   enviados: number;
   lidos: number;
   erros: number;
+  /** Excluídos por supressão LGPD (tag "Não Reabordar") — não são falha. */
+  suprimidos: number;
   /** 0-100 (inteiro) */
   taxaEnvio: number;
   /** 0-100 (inteiro) */
@@ -749,6 +751,7 @@ function CampanhaDetailModal({
                     const enviados = metricas.enviados ?? 0;
                     const erros = metricas.erros ?? 0;
                     const lidos = metricas.lidos ?? 0;
+                    const suprimidos = metricas.suprimidos ?? 0;
                     const taxaEnvio = metricas.taxaEnvio ?? 0;
                     const taxaLeitura = metricas.taxaLeitura ?? 0;
                     // Backend não retorna taxaErro — calcula no client (0-100).
@@ -760,6 +763,9 @@ function CampanhaDetailModal({
                           <Stat label="Enviados" value={String(enviados)} color={cssVar.success} />
                           <Stat label="Falhas" value={String(erros)} color={erros > 0 ? cssVar.danger : cssVar.muted} />
                           <Stat label="Lidos" value={String(lidos)} color={cssVar.info} />
+                          {suprimidos > 0 && (
+                            <Stat label="Suprimidos (LGPD)" value={String(suprimidos)} color={cssVar.muted} />
+                          )}
                           <Stat label="Taxa envio" value={fmtPct(taxaEnvio)} color={cssVar.success} />
                           <Stat label="Taxa leitura" value={fmtPct(taxaLeitura)} color={cssVar.info} />
                           <Stat label="Taxa erro" value={fmtPct(taxaErro)} color={taxaErro > 5 ? cssVar.danger : cssVar.muted} />

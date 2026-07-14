@@ -417,6 +417,7 @@ export class CampanhasService {
     enviados: number;
     lidos: number;
     erros: number;
+    suprimidos: number;
     taxaEnvio: number;
     taxaLeitura: number;
   }> {
@@ -436,6 +437,10 @@ export class CampanhasService {
     const enviados = byStatus['ENVIADO'] ?? 0;
     const lidos = byStatus['LIDO'] ?? 0;
     const erros = byStatus['ERRO'] ?? 0;
+    const suprimidos = byStatus['SUPRIMIDO'] ?? 0;
+    // Suprimidos (LGPD) foram excluídos DE PROPÓSITO — não entram na base da taxa
+    // de envio (senão diluiriam a taxa como se fossem falha de entrega).
+    const base = total - suprimidos;
 
     return {
       total,
@@ -443,7 +448,8 @@ export class CampanhasService {
       enviados,
       lidos,
       erros,
-      taxaEnvio: total > 0 ? Math.round(((enviados + lidos) / total) * 100) : 0,
+      suprimidos,
+      taxaEnvio: base > 0 ? Math.round(((enviados + lidos) / base) * 100) : 0,
       taxaLeitura: enviados + lidos > 0 ? Math.round((lidos / (enviados + lidos)) * 100) : 0,
     };
   }

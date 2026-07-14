@@ -35,6 +35,7 @@ describe('CampanhaEnvioProcessor.onFailed — #erro-retry', () => {
       {} as never,
       deps.deadLetter as never,
       {} as never,
+      { suprimido: vi.fn(async () => false) } as never, // supressao
     );
   });
 

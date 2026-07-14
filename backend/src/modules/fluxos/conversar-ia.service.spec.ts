@@ -135,6 +135,7 @@ describe('ConversarIaService', () => {
       whatsapp as never,
       bus as never,
       { aguardarSlot: vi.fn() } as never,
+      { suprimido: vi.fn(async () => false) } as never, // supressao
       queue as never,
     );
   });
