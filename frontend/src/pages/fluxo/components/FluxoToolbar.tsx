@@ -1,4 +1,4 @@
-import { Undo2, Redo2, Play, Save, X as XIcon } from 'lucide-react';
+import { Undo2, Redo2, Play, Save, X as XIcon, Network } from 'lucide-react';
 import { Button, Badge, IconButton, Input } from '@/components/ui';
 import type { FluxoEditorApi } from '@/pages/fluxo/hooks/useFluxoEditor';
 
@@ -102,6 +102,15 @@ export function FluxoToolbar({
             onClick={editor.redo}
             disabled={!editor.canRedo}
             data-testid="fluxo-redo"
+          />
+          <IconButton
+            aria-label="Organizar nós"
+            title="Organizar nós — arruma tudo em camadas automaticamente"
+            variant="ghost"
+            icon={<Network className="h-4 w-4" />}
+            onClick={editor.organizarLayout}
+            disabled={editor.nodes.length === 0}
+            data-testid="fluxo-organizar"
           />
           <div className="w-px h-6 bg-border mx-1" />
         </div>

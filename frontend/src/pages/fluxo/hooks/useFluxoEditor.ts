@@ -24,6 +24,7 @@ import {
   hidratarFluxo,
   inserirTriggerManual,
 } from '@/pages/fluxo/lib/serializacao';
+import { organizarNos } from '@/pages/fluxo/lib/layout';
 
 /**
  * useFluxoEditor — O CÉREBRO do editor de fluxos.
@@ -449,6 +450,20 @@ export function useFluxoEditor({
     setDirty(true);
   }
 
+  // Auto-organizar — reposiciona os nós em camadas (top-down) e reenquadra.
+  const organizarLayout = useCallback(() => {
+    setNodes((nds) => {
+      if (nds.length === 0) return nds;
+      const next = organizarNos(nds, edges);
+      pushHistory({ nodes: next, edges });
+      return next;
+    });
+    setDirty(true);
+    // Reenquadra depois do reposicionamento (deixa o React Flow aplicar as posições).
+    setTimeout(() => reactFlowInstance?.fitView({ padding: 0.2, duration: 300 }), 60);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [setNodes, edges, reactFlowInstance]);
+
   const selectedNode = nodes.find((n) => n.id === selectedNodeId) ?? null;
 
   return {
@@ -490,6 +505,8 @@ export function useFluxoEditor({
     undo,
     redo,
     pushHistory,
+    // layout
+    organizarLayout,
     // save / disparo
     handleSave,
     dispararManual,
