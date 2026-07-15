@@ -113,7 +113,13 @@ const INSTRUCAO_CLASSIFICACAO =
   'reconheça o que o lead disse, agradeça e deixe uma porta aberta amigável — sem ser seco ' +
   'nem robótico. NÃO termine com pergunta que exija resposta (a conversa está se encerrando).\n' +
   '- "classificacao"/"variaveis": preencha só quando "classificou" for true (ficam na anotação, ' +
-  'fora da "resposta").';
+  'fora da "resposta").\n' +
+  '- REGRA DE ENCERRAMENTO (CRÍTICA): TODA vez que você ENCERRAR/se despedir — sem sinergia, ' +
+  'pedido de remoção, contato não engaja, fim natural da conversa — marque "classificou": true E ' +
+  'grave a "classificacao" + as "variaveis" de fechamento (ex: classificacao_final, trilho, ' +
+  'pedido_remocao) NO MESMO turno da despedida. NUNCA mande a mensagem de despedida com ' +
+  '"classificou": false nem "esqueça" a variável de fechamento — é ESSE sinal que a plataforma usa ' +
+  'pra finalizar e rotear; sem ele NO turno da despedida, a conversa fica presa sem tag nem ação.';
 
 interface IaTurno {
   resposta: string;
