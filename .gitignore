@@ -78,3 +78,6 @@ session/
 # Misc
 *.local
 .vercel
+
+# Screenshots do shot.mjs (verificação visual via Playwright — outputs descartáveis)
+frontend/*.png

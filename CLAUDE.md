@@ -132,6 +132,25 @@ Objetivo: não gastar token à toa nem trabalhar sub/superdimensionado.
 
 ---
 
+## 👁️ Verificação visual (o browser pane embutido é cego neste PC)
+
+O painel de browser embutido do Claude Code fica com viewport 0×0 nesta máquina —
+screenshots saem vazios. Pra **ver o que você está construindo**, use o
+`frontend/shot.mjs` (Playwright headless que loga em prod e tira screenshot de
+qualquer rota):
+
+```bash
+cd frontend
+MSYS_NO_PATHCONV=1 BET_EMAIL=admin@betinna.ai BET_SENHA=Betinna@2026 \
+  node shot.mjs "/calendario-marketing" cal.png
+# depois: Read cal.png
+```
+
+- `MSYS_NO_PATHCONV=1` é obrigatório no Git Bash (senão ele converte `/rota` em path Windows).
+- Fecha o tour de boas-vindas automaticamente. Alvo = prod (frontend Railway).
+- Chromium do Playwright: se faltar, `npx playwright install chromium` no `frontend/`.
+- Os `.png` de saída são git-ignored.
+
 ## 📚 Docs relacionados
 
 - [`BRANDBOOK.md`](./BRANDBOOK.md) — identidade visual completa
