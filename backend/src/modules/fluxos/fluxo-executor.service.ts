@@ -90,11 +90,23 @@ function delayParaMs(valor: number, unidade: UnidadeTempo): number {
  * `conversa.<v>` (a IA grava em uma dessas, dependendo do escopo).
  */
 function resolveVariavel(nome: string, ctx: ExecucaoContexto): string {
-  const raw =
-    resolveField(nome, ctx) ??
-    resolveField(`custom.${nome}`, ctx) ??
-    resolveField(`conversa.${nome}`, ctx);
+  const raw = resolveCampoFresco(nome, ctx);
   return raw != null ? String(raw) : '';
+}
+
+/**
+ * Resolve um campo priorizando a cópia FRESCA (`custom.*`/`conversa.*`, remontada
+ * do lead a cada passo) ANTES do atalho no topo do contexto — que pode ter ficado
+ * VELHO (espelho achatado de um turno/execução anterior persistido no contexto).
+ * Sem isto, roteador/condição liam o rótulo velho (ex: classificacao_final="LGPD"
+ * de um teste anterior) em vez do novo do turno atual.
+ */
+function resolveCampoFresco(nome: string, ctx: ExecucaoContexto): unknown {
+  return (
+    resolveField(`custom.${nome}`, ctx) ??
+    resolveField(`conversa.${nome}`, ctx) ??
+    resolveField(nome, ctx)
+  );
 }
 
 /**
@@ -108,7 +120,9 @@ function avaliarCondicao(config: CondicaoConfig, ctx: ExecucaoContexto): string 
     const match = (config.saidas ?? []).find((s) => s.trim().toLowerCase() === valor.toLowerCase());
     return match ?? 'default';
   }
-  const val = resolveField(config.campo ?? '', ctx);
+  // Fresco (custom antes do topo) — mesma razão do roteador: o lgpd_c lia o
+  // pedido_remocao VELHO do espelho achatado e roteava LGPD errado.
+  const val = resolveCampoFresco(config.campo ?? '', ctx);
   const ref = config.valor;
   let resultado: boolean;
   switch (config.operador) {
@@ -571,10 +585,20 @@ export class FluxoExecutorService {
     // as variáveis CAPTURADAS pela IA (Lead.variaveis) direto no topo, pra esses nomes
     // resolverem na interpolação. Precedência: variáveis capturadas > defaults > campos
     // do lead. NÃO sobrescreve chaves que o evento já trouxe (leadId, clienteId, texto…).
+    // leadVars (variáveis CAPTURADAS pela IA) = estado ATUAL do lead → SEMPRE
+    // sobrescrevem o atalho no topo. Antes o `if (ctx[k] === undefined)` deixava
+    // um valor VELHO (achatado num turno/execução anterior e persistido no
+    // contexto) mascarar o novo → o roteador lia classificacao_final="LGPD"
+    // velho em vez do "Sem Sinergia" fresco. leadVars não colide com chaves de
+    // evento (leadId/texto/…), então sobrescrever é seguro.
+    for (const [k, v] of Object.entries(leadVars)) {
+      if (v != null) ctx[k] = v;
+    }
+    // Campos do lead + defaults da empresa: só preenchem quando AUSENTES (não
+    // clobber o que o evento já trouxe).
     const atalhos: Record<string, unknown> = {
       ...(ctx.lead as Record<string, unknown> | undefined),
       ...defaults,
-      ...leadVars,
     };
     for (const [k, v] of Object.entries(atalhos)) {
       // `v != null` deixa string vazia passar (campo vazio → renderiza em branco, não

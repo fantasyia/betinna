@@ -606,6 +606,62 @@ describe('FluxoExecutorService', () => {
       );
     });
 
+    it('roteador usa a variável FRESCA do lead, não o espelho velho no topo do contexto', async () => {
+      // BUG do card: o contexto persistido tinha classificacao_final="LGPD" (velho, de
+      // um turno anterior) no TOPO; o lead.variaveis atual traz "Sem Sinergia" (fresco).
+      // O roteador tem que rotear pelo FRESCO (custom), não pelo espelho velho.
+      const rotNo = fakeNo({
+        id: 'rot',
+        tipo: 'CONDICAO',
+        config: {
+          modo: 'roteador',
+          variavel: 'classificacao_final',
+          saidas: ['Ativar Agora', 'Reaquecer', 'Sem Sinergia'],
+        },
+      });
+      prisma.fluxoExecucao.findUnique.mockResolvedValue(
+        fakeExecucao({
+          status: 'EM_EXECUCAO',
+          contexto: { leadId: 'lead-1', classificacao_final: 'LGPD' }, // espelho VELHO no topo
+        }),
+      );
+      prisma.fluxoNo.findUnique.mockResolvedValue(rotNo);
+      prisma.lead.findFirst.mockResolvedValue({
+        nome: 'Rep Teste',
+        contatoNome: null,
+        contatoTelefone: null,
+        contatoEmail: null,
+        cidade: null,
+        uf: null,
+        segmento: null,
+        score: 0,
+        etapa: 'NOVO',
+        variaveis: { classificacao_final: 'Sem Sinergia' }, // FRESCO
+        funil: null,
+        funilEtapa: null,
+        tags: [],
+      });
+      prisma.fluxoEdge.findMany.mockResolvedValue([
+        fakeEdge('rot', 'no-ativar', 'Ativar Agora'),
+        fakeEdge('rot', 'no-semsin', 'Sem Sinergia'),
+        fakeEdge('rot', 'no-default', 'default'),
+      ]);
+
+      await service.executarPasso('exec-1', 'rot', 'job-test');
+
+      expect(queue.add).toHaveBeenCalledWith(
+        'step',
+        { execucaoId: 'exec-1', noId: 'no-semsin' },
+        expect.any(Object),
+      );
+      // NÃO pode cair no default (que seria o efeito de ler o "LGPD" velho).
+      expect(queue.add).not.toHaveBeenCalledWith(
+        'step',
+        { execucaoId: 'exec-1', noId: 'no-default' },
+        expect.any(Object),
+      );
+    });
+
     it('registra log do passo após executar nó', async () => {
       prisma.fluxoExecucao.findUnique.mockResolvedValue(fakeExecucao({ status: 'EM_EXECUCAO' }));
       prisma.fluxoNo.findUnique.mockResolvedValue(fakeNo());
