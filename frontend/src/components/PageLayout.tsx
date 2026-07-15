@@ -8,6 +8,7 @@ import {
   Package,
   MessageSquare,
   CalendarDays,
+  CalendarRange,
   Briefcase,
   Settings,
   Inbox,
@@ -120,6 +121,12 @@ const SECTIONS: NavSection[] = [
         to: '/kanban',
         label: 'Quadros',
         icon: KanbanSquare,
+        modulo: 'quadros',
+      },
+      {
+        to: '/calendario-marketing',
+        label: 'Calendário Mkt',
+        icon: CalendarRange,
         modulo: 'quadros',
       },
       {

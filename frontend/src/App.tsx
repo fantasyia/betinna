@@ -19,6 +19,7 @@ const WelcomePage = lazy(() => import('@/pages/WelcomePage'));
 const PropostaAceitePage = lazy(() => import('@/pages/PropostaAceitePage'));
 const DashboardPage = lazy(() => import('@/pages/DashboardPage'));
 const KanbanBoardsPage = lazy(() => import('@/pages/kanban/KanbanBoardsPage'));
+const CalendarioMarketingPage = lazy(() => import('@/pages/CalendarioMarketingPage'));
 const KanbanBoardPage = lazy(() => import('@/pages/kanban/KanbanBoardPage'));
 const KanbanTokensPage = lazy(() => import('@/pages/kanban/KanbanTokensPage'));
 const MeusItensPage = lazy(() => import('@/pages/kanban/MeusItensPage'));
@@ -509,6 +510,18 @@ const router = createBrowserRouter([
         <ProtectedRoute>
           <PageSuspense>
             <KanbanBoardsPage />
+          </PageSuspense>
+        </ProtectedRoute>
+      </ErrorBoundary>
+    ),
+  },
+  {
+    path: '/calendario-marketing',
+    element: (
+      <ErrorBoundary>
+        <ProtectedRoute>
+          <PageSuspense>
+            <CalendarioMarketingPage />
           </PageSuspense>
         </ProtectedRoute>
       </ErrorBoundary>
