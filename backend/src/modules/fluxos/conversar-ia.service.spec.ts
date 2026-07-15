@@ -489,6 +489,45 @@ describe('ConversarIaService', () => {
       );
     });
 
+    // BUG do card: encerramento comum (Sem Sinergia) sinaliza o fim nas VARIÁVEIS
+    // (trilho=encerrar + classificacao_final) SEM setar o flag top-level classificou.
+    // O motor tem que reconhecer isso e ROTEAR — antes ficava AGUARDANDO até 24h.
+    it('encerramento via variáveis (trilho=encerrar) sem flag → avança e roteia', async () => {
+      prisma.fluxoExecucao.findUnique.mockResolvedValue(execAguardando);
+      prisma.fluxoNo.findUnique.mockResolvedValue({ id: 'no-ia', config: { promptId: 'p1' } });
+      prisma.lead.findFirst.mockResolvedValue({ contatoTelefone: '11999990000', variaveis: {} });
+      prisma.fluxoEdge.findMany.mockResolvedValue([{ targetNoId: 'no-2' }]);
+      muller.gerarRespostaIa.mockResolvedValue({
+        texto:
+          '{"resposta":"Tranquilo, então não é o perfil por aqui. Sucesso!","classificou":false,' +
+          '"variaveis":{"trilho":"encerrar","classificacao_final":"Sem Sinergia"}}',
+        modelo: 'gpt',
+      });
+
+      await svc.retomar('exec-1', 'conv-1', 'neca de pitibiribas');
+
+      // Gravou a classificacao_final DESTE turno (não valor velho) + dispara o gatilho
+      const upd = prisma.lead.update.mock.calls.at(-1)?.[0];
+      expect(upd.data.variaveis).toMatchObject({
+        classificacao_final: 'Sem Sinergia',
+        classificacao: 'Sem Sinergia',
+      });
+      expect(bus.disparar).toHaveBeenCalledWith(
+        'emp-1',
+        'IA_CLASSIFICOU',
+        expect.objectContaining({ leadId: 'lead-1', classificacao: 'Sem Sinergia' }),
+      );
+      // Avançou pelo ramo "classificou" e saiu de AGUARDANDO
+      expect(queue.add).toHaveBeenCalledWith(
+        'step',
+        { execucaoId: 'exec-1', noId: 'no-2' },
+        expect.any(Object),
+      );
+      expect(prisma.fluxoExecucao.update).toHaveBeenCalledWith(
+        expect.objectContaining({ data: expect.objectContaining({ status: 'EM_EXECUCAO' }) }),
+      );
+    });
+
     it('IA não classificou → responde e continua AGUARDANDO (renova timeout)', async () => {
       prisma.fluxoExecucao.findUnique.mockResolvedValue(execAguardando);
       prisma.fluxoNo.findUnique.mockResolvedValue({ id: 'no-ia', config: {} });

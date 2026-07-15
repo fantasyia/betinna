@@ -405,6 +405,12 @@ export class ConversarIaService {
       };
     }
 
+    // Isolamento por conversa: zera os sinais de roteamento/encerramento que
+    // sobraram de uma abordagem ANTERIOR do mesmo lead. Sem isto, um
+    // `classificacao_final` velho poderia rotear a conversa nova (o roteador lê
+    // custom.classificacao_final) — a "classificação velha" do card.
+    await this.limparSinaisRoteamento(leadId, empresaId);
+
     // Teto de tokens do prompt (Fase C — spec §7).
     if (!(await this.tetoPromptOk(cfg.promptId))) {
       this.logger.warn(
@@ -711,6 +717,27 @@ export class ConversarIaService {
     await this.custo.registrarUso(empresaId, r.tokensIn ?? 0, r.tokensOut ?? 0);
     const turno = parseTurnoIa(r.texto);
 
+    // ── Encerramento/classificação DESTE turno ──────────────────────────────
+    // O nó NÃO pode depender só do flag top-level `classificou`: prompts ricos
+    // (ex. Reps v1.9) sinalizam o fim gravando nas VARIÁVEIS — `trilho=encerrar`,
+    // `pedido_remocao=sim`, `classificacao_final=<rótulo>` — sem setar classificou.
+    // Sem reconhecer isso, o nó ficava AGUARDANDO até o timeout de 24h (só o LGPD
+    // roteava). Tratamos qualquer SINAL TERMINAL deste turno como classificação —
+    // e usamos a classificação deste turno (não valor velho do lead) pra rotear.
+    const vTurno = (turno.variaveis ?? {}) as Record<string, unknown>;
+    const norm = (x: unknown): string =>
+      String(x ?? '')
+        .trim()
+        .toLowerCase();
+    const classificacaoFinalTurno = String(vTurno.classificacao_final ?? '').trim();
+    const sinalEncerramento =
+      norm(vTurno.trilho) === 'encerrar' ||
+      norm(vTurno.pedido_remocao) === 'sim' ||
+      ['sim', 'true', '1'].includes(norm(vTurno.encerrar_conversa)) ||
+      classificacaoFinalTurno.length > 0;
+    const classificouEfetivo = turno.classificou === true || sinalEncerramento;
+    const classificacaoTurno = turno.classificacao ?? (classificacaoFinalTurno || undefined);
+
     const respostaPersonalizada = personalizarNome(turno.resposta, lead.contatoNome);
     // Tool-use por marcador: a IA pode pedir o envio de arquivos com [[ENVIAR_DOC:id]].
     // Separa o texto (sem as marcações) dos ids; o envio real acontece após o texto.
@@ -743,7 +770,7 @@ export class ConversarIaService {
     // Continua a conversa quando: (a) a IA ainda NÃO classificou (segue a entrevista),
     // OU (b) já classificou e está no ENCERRAMENTO EDUCADO (segue respondendo o rep pra
     // fechar com gentileza, SEM re-disparar tag/aviso). Renova o timeout + memória.
-    if (!turno.classificou || jaClassificou) {
+    if (!classificouEfetivo || jaClassificou) {
       const renovaMs = jaClassificou ? esperaMs : (cfg.timeoutHoras ?? 24) * 3_600_000;
       await this.prisma.fluxoExecucao.update({
         where: { id: execucaoId },
@@ -776,7 +803,7 @@ export class ConversarIaService {
       ...variaveisAtuais,
       ...gravadas,
     };
-    if (turno.classificacao) novas.classificacao = turno.classificacao;
+    if (classificacaoTurno) novas.classificacao = classificacaoTurno;
     await this.prisma.lead.update({
       where: { id: leadId },
       data: { variaveis: toJsonInput(novas) },
@@ -784,7 +811,7 @@ export class ConversarIaService {
 
     await this.bus.disparar(empresaId, 'IA_CLASSIFICOU', {
       leadId,
-      classificacao: turno.classificacao ?? null,
+      classificacao: classificacaoTurno ?? null,
     });
 
     // SEM janela de encerramento (esperaMs<=0): comportamento clássico — avança o ramo
@@ -796,7 +823,7 @@ export class ConversarIaService {
       });
       await this.enfileirarSucessores(execucaoId, no.id, 'classificou', true);
       this.logger.log(
-        `Execução ${execucaoId} — IA classificou "${turno.classificacao ?? '?'}" (lead ${leadId})`,
+        `Execução ${execucaoId} — IA classificou "${classificacaoTurno ?? '?'}" (lead ${leadId})`,
       );
       return;
     }
@@ -813,12 +840,12 @@ export class ConversarIaService {
           ...ctx,
           _iaHistorico: novoHist,
           _iaClassificou: true,
-          classificacao: turno.classificacao ?? null,
+          classificacao: classificacaoTurno ?? null,
         }),
       },
     });
     this.logger.log(
-      `Execução ${execucaoId} — IA classificou "${turno.classificacao ?? '?'}" (lead ${leadId}); ` +
+      `Execução ${execucaoId} — IA classificou "${classificacaoTurno ?? '?'}" (lead ${leadId}); ` +
         `ramo disparado, conversa segue ${Math.round(esperaMs / 1000)}s pro encerramento educado`,
     );
   }
@@ -965,6 +992,40 @@ export class ConversarIaService {
       );
     }
     return vencidas.length;
+  }
+
+  /**
+   * Limpa os sinais TERMINAIS de roteamento das variáveis do lead (custom) no
+   * início de uma nova abordagem — pra a conversa nova não herdar a classificação
+   * de uma conversa anterior. Preserva as demais variáveis (tipo_atuacao, etc.).
+   */
+  private async limparSinaisRoteamento(leadId: string, empresaId: string): Promise<void> {
+    const CHAVES = [
+      'classificacao_final',
+      'classificacao',
+      'trilho',
+      'pedido_remocao',
+      'encerrar_conversa',
+    ];
+    try {
+      const lead = await this.prisma.lead.findFirst({
+        where: { id: leadId, empresaId },
+        select: { variaveis: true },
+      });
+      const v =
+        lead?.variaveis && typeof lead.variaveis === 'object'
+          ? (lead.variaveis as Record<string, unknown>)
+          : {};
+      if (!CHAVES.some((k) => k in v)) return; // nada a limpar
+      const limpo = { ...v };
+      for (const k of CHAVES) delete limpo[k];
+      await this.prisma.lead.update({
+        where: { id: leadId },
+        data: { variaveis: toJsonInput(limpo) },
+      });
+    } catch {
+      /* best-effort — não trava a abordagem */
+    }
   }
 
   // ─── Internals ──────────────────────────────────────────────────────
