@@ -179,6 +179,33 @@ export function pedidoRemocaoNoTexto(texto: string): boolean {
   return t.length > 0 && PADROES_REMOCAO.some((re) => re.test(t));
 }
 
+/**
+ * Detecta que a IA está ENCERRANDO a conversa pela RESPOSTA dela (despedida),
+ * mesmo sem ter emitido a variável de classificação. Padrões do prompt de
+ * encerramento (Sem Sinergia / trava anti-loop / "não é o perfil"). Conservador:
+ * só dispara em frases claras de despedida — pra não classificar no meio da
+ * conversa. Quando dispara sem classificação, o motor força a classificação
+ * (classificarEncerramento) em vez de deixar o nó preso em AGUARDANDO.
+ */
+const PADROES_DESPEDIDA: RegExp[] = [
+  /\bte\s+deixar\s+em\s+paz/i,
+  /\bvou\s+(te\s+)?deixar\s+(voc[eê]\s+)?(em\s+paz|por\s+aqui|tranquil)/i,
+  /\bn[aã]o\s+é\s+(bem\s+)?o\s+(perfil|encaixe)/i,
+  /\bn[aã]o\s+é\s+bem\s+o\s+que\s+eu\s+(procuro|busco)/i,
+  /\bsucesso\s+(a[íi]|pra\s+voc[eê]|no|nos)/i,
+  /\bé\s+só\s+me\s+chamar/i,
+  /\bfico\s+à\s+disposi/i,
+  /\bvaleu\s+(demais\s+)?pela\s+conversa/i,
+  /\bse\s+um\s+dia\s+quiser/i,
+  /\bpeguei\s+voc[eê]\s+num\s+momento/i,
+  /\bqualquer\s+coisa\s+(é\s+só|estou|tô)/i,
+];
+
+export function respostaEhDespedida(texto: string): boolean {
+  const t = (texto ?? '').trim();
+  return t.length > 0 && PADROES_DESPEDIDA.some((re) => re.test(t));
+}
+
 const toJsonInput = (v: Record<string, unknown>): Prisma.InputJsonObject =>
   v as unknown as Prisma.InputJsonObject;
 
@@ -371,6 +398,53 @@ export class ConversarIaService {
           }`,
         );
       }
+    }
+  }
+
+  /**
+   * Classificação de ENCERRAMENTO forçada: quando a IA se despede SEM emitir o
+   * rótulo, uma chamada dedicada (schema estrito, não fala com o lead) devolve a
+   * classificação pro roteador — em vez de deixar o nó preso em AGUARDANDO.
+   * Default "Sem Sinergia" (despedida sem engajamento ≈ não-encaixe; outcome
+   * seguro → Perdido). Best-effort: qualquer falha cai em "Sem Sinergia".
+   */
+  private async classificarEncerramento(
+    empresaId: string,
+    _cfg: ConversarIaConfig,
+    historico: HistoricoMsg[],
+  ): Promise<string> {
+    const LABELS = ['Ativar Agora', 'Reaquecer', 'Sem Sinergia'];
+    const prompt =
+      'Você é um CLASSIFICADOR interno (NÃO fala com o lead). Com base na conversa acima, ' +
+      'classifique o LEAD e responda APENAS um JSON {"classificacao_final":"<opção>"}, uma das ' +
+      'opções EXATAS:\n' +
+      '- "Ativar Agora": tem acesso a indústria E topa representar E já sinalizou oportunidade concreta.\n' +
+      '- "Reaquecer": tem perfil de representante mas ainda SEM oportunidade concreta (ou indeciso).\n' +
+      '- "Sem Sinergia": NÃO tem acesso a indústria, ou NÃO quer representar, ou não engajou/só zoou.\n' +
+      'Na dúvida, ou se o contato não engajou de verdade, use "Sem Sinergia".';
+    try {
+      const r = await this.muller.gerarRespostaIa(
+        empresaId,
+        prompt,
+        '(classifique a conversa acima em UMA opção)',
+        historico,
+      );
+      await this.custo.registrarUso(empresaId, r.tokensIn ?? 0, r.tokensOut ?? 0);
+      const limpo = r.texto
+        .trim()
+        .replace(/^```(?:json)?\s*/i, '')
+        .replace(/```$/i, '')
+        .trim();
+      let rotulo = '';
+      try {
+        const o = JSON.parse(limpo) as Record<string, unknown>;
+        rotulo = typeof o.classificacao_final === 'string' ? o.classificacao_final.trim() : '';
+      } catch {
+        rotulo = LABELS.find((l) => limpo.toLowerCase().includes(l.toLowerCase())) ?? '';
+      }
+      return LABELS.find((l) => l.toLowerCase() === rotulo.toLowerCase()) ?? 'Sem Sinergia';
+    } catch {
+      return 'Sem Sinergia';
     }
   }
 
@@ -776,8 +850,8 @@ export class ConversarIaService {
       norm(vTurno.pedido_remocao) === 'sim' ||
       ['sim', 'true', '1'].includes(norm(vTurno.encerrar_conversa)) ||
       classificacaoFinalTurno.length > 0;
-    const classificouEfetivo = turno.classificou === true || sinalEncerramento;
-    const classificacaoTurno = turno.classificacao ?? (classificacaoFinalTurno || undefined);
+    let classificouEfetivo = turno.classificou === true || sinalEncerramento;
+    let classificacaoTurno = turno.classificacao ?? (classificacaoFinalTurno || undefined);
 
     const respostaPersonalizada = personalizarNome(turno.resposta, lead.contatoNome);
     // Tool-use por marcador: a IA pode pedir o envio de arquivos com [[ENVIAR_DOC:id]].
@@ -807,6 +881,22 @@ export class ConversarIaService {
       ? unidadeTempoMs(cfg.encerramentoEspera.valor, cfg.encerramentoEspera.unidade)
       : 0;
     const jaClassificou = (ctx as Record<string, unknown>)._iaClassificou === true;
+
+    // REDE DE SEGURANÇA "encerrou por texto sem classificar": se a IA se DESPEDIU
+    // (trava anti-loop / "não é o perfil" / "vou te deixar em paz") mas NÃO emitiu
+    // classificação NESTE turno, o motor força a classificação com uma chamada
+    // dedicada (classificarEncerramento) — em vez de deixar o nó preso em
+    // AGUARDANDO. Sem isto, todo Sem Sinergia em que o LLM "esquece" a variável
+    // travava o funil. Só roda quando de fato houve despedida (conservador).
+    if (!classificouEfetivo && !jaClassificou && respostaEhDespedida(respostaTexto)) {
+      const rotulo = await this.classificarEncerramento(empresaId, cfg, novoHist);
+      turno.variaveis = { ...(turno.variaveis ?? {}), classificacao_final: rotulo };
+      classificacaoTurno = rotulo;
+      classificouEfetivo = true;
+      this.logger.log(
+        `CONVERSAR_IA: IA se despediu sem classificar — fallback classificou "${rotulo}" (lead ${leadId}, exec ${execucaoId})`,
+      );
+    }
 
     // Continua a conversa quando: (a) a IA ainda NÃO classificou (segue a entrevista),
     // OU (b) já classificou e está no ENCERRAMENTO EDUCADO (segue respondendo o rep pra

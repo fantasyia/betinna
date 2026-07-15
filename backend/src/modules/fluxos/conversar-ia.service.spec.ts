@@ -577,6 +577,36 @@ describe('ConversarIaService', () => {
       );
     });
 
+    // O CASO SEM SINERGIA QUE TRAVAVA: a IA se despede (trava anti-loop) mas NÃO
+    // grava classificacao_final → antes ficava AGUARDANDO. Agora o motor força a
+    // classificação com uma chamada dedicada (fallback) e finaliza.
+    it('IA se despede sem classificar → fallback classifica e finaliza', async () => {
+      prisma.fluxoExecucao.findUnique.mockResolvedValue(execAguardando);
+      prisma.fluxoNo.findUnique.mockResolvedValue({ id: 'no-ia', config: { promptId: 'p1' } });
+      prisma.lead.findFirst.mockResolvedValue({ contatoTelefone: '11999990000', variaveis: {} });
+      prisma.fluxoEdge.findMany.mockResolvedValue([{ targetNoId: 'no-2' }]);
+      // 1ª chamada = turno normal (despedida, sem classificar); 2ª = fallback classificador.
+      muller.gerarRespostaIa
+        .mockResolvedValueOnce({
+          texto: 'Acho que te peguei num momento de zoeira. Vou te deixar em paz por aqui.',
+          modelo: 'gpt',
+        })
+        .mockResolvedValueOnce({ texto: '{"classificacao_final":"Sem Sinergia"}', modelo: 'gpt' });
+
+      await svc.retomar('exec-1', 'conv-1', 'beibe beibe du biruleibe');
+
+      const upd = prisma.lead.update.mock.calls.at(-1)?.[0];
+      expect(upd.data.variaveis).toMatchObject({ classificacao_final: 'Sem Sinergia' });
+      expect(queue.add).toHaveBeenCalledWith(
+        'step',
+        { execucaoId: 'exec-1', noId: 'no-2' },
+        expect.any(Object),
+      );
+      expect(prisma.fluxoExecucao.update).toHaveBeenCalledWith(
+        expect.objectContaining({ data: expect.objectContaining({ status: 'EM_EXECUCAO' }) }),
+      );
+    });
+
     it('IA não classificou → responde e continua AGUARDANDO (renova timeout)', async () => {
       prisma.fluxoExecucao.findUnique.mockResolvedValue(execAguardando);
       prisma.fluxoNo.findUnique.mockResolvedValue({ id: 'no-ia', config: {} });
