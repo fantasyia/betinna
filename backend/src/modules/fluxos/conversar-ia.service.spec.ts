@@ -3,6 +3,7 @@ import {
   ConversarIaService,
   extrairMarcadoresDoc,
   parseTurnoIa,
+  pedidoRemocaoNoTexto,
   personalizarNome,
 } from './conversar-ia.service';
 
@@ -67,6 +68,27 @@ describe('parseTurnoIa', () => {
   it('cai pra texto puro quando não é JSON', () => {
     const r = parseTurnoIa('continua a conversa normal');
     expect(r).toEqual({ resposta: 'continua a conversa normal', classificou: false });
+  });
+});
+
+describe('pedidoRemocaoNoTexto', () => {
+  it('detecta pedidos de remoção comuns (pt-BR)', () => {
+    for (const t of [
+      'tira meu numero da sua lista de contatos',
+      'me remove dessa lista',
+      'não quero mais receber mensagens',
+      'para de me mandar mensagem',
+      'me descadastra por favor',
+      'não me chame mais',
+      'sair da lista',
+    ]) {
+      expect(pedidoRemocaoNoTexto(t)).toBe(true);
+    }
+  });
+  it('NÃO dispara em conversa normal', () => {
+    for (const t of ['oi tudo bem?', 'trabalho com metalurgia', 'me manda mais detalhes', '']) {
+      expect(pedidoRemocaoNoTexto(t)).toBe(false);
+    }
   });
 });
 
@@ -518,6 +540,33 @@ describe('ConversarIaService', () => {
         expect.objectContaining({ leadId: 'lead-1', classificacao: 'Sem Sinergia' }),
       );
       // Avançou pelo ramo "classificou" e saiu de AGUARDANDO
+      expect(queue.add).toHaveBeenCalledWith(
+        'step',
+        { execucaoId: 'exec-1', noId: 'no-2' },
+        expect.any(Object),
+      );
+      expect(prisma.fluxoExecucao.update).toHaveBeenCalledWith(
+        expect.objectContaining({ data: expect.objectContaining({ status: 'EM_EXECUCAO' }) }),
+      );
+    });
+
+    // O CASO QUE TRAVAVA (repro do card): lead pede remoção, a IA responde a
+    // despedida SÓ EM TEXTO (sem JSON/variável) → antes o nó ficava AGUARDANDO.
+    // A rede de segurança determinística força pedido_remocao=sim e finaliza.
+    it('pedido de remoção no texto do lead → finaliza mesmo com a IA em texto puro', async () => {
+      prisma.fluxoExecucao.findUnique.mockResolvedValue(execAguardando);
+      prisma.fluxoNo.findUnique.mockResolvedValue({ id: 'no-ia', config: { promptId: 'p1' } });
+      prisma.lead.findFirst.mockResolvedValue({ contatoTelefone: '11999990000', variaveis: {} });
+      prisma.fluxoEdge.findMany.mockResolvedValue([{ targetNoId: 'no-2' }]);
+      muller.gerarRespostaIa.mockResolvedValue({
+        texto: 'Entendi, peço desculpas. Vou te tirar da nossa lista e não te procuro mais.',
+        modelo: 'gpt',
+      });
+
+      await svc.retomar('exec-1', 'conv-1', 'tira meu numero da sua lista de contatos');
+
+      const upd = prisma.lead.update.mock.calls.at(-1)?.[0];
+      expect(upd.data.variaveis).toMatchObject({ pedido_remocao: 'sim' });
       expect(queue.add).toHaveBeenCalledWith(
         'step',
         { execucaoId: 'exec-1', noId: 'no-2' },

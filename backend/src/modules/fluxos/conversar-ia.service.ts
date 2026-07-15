@@ -154,6 +154,31 @@ export function parseTurnoIa(texto: string): IaTurno {
   return { resposta: texto, classificou: false };
 }
 
+/**
+ * Detecta PEDIDO DE REMOÇÃO / descadastro (LGPD) na mensagem do LEAD. Rede de
+ * segurança DETERMINÍSTICA: o LLM às vezes responde a despedida de remoção só em
+ * TEXTO, sem gravar `pedido_remocao=sim` naquele turno → o nó ficava preso em
+ * AGUARDANDO e não roteava. Detectar no texto do lead força o sinal, sem depender
+ * do LLM. É um direito legal — tem que funcionar SEMPRE.
+ */
+const PADROES_REMOCAO: RegExp[] = [
+  /\btir[ae]r?\s+(o\s+)?(meu|meu\s+)?\s*(n[uú]mero|contato|nome|cadastro)/i,
+  /\bme\s+(tir[ae]|remov[ae]|exclu[ai]|descadastr\w*|desinscrev\w*)/i,
+  /\bdescadastr\w*/i,
+  /\bsai[ar]?\s+d[ae]\s+(sua|essa|dessa)\s+lista/i,
+  /\bsair\s+da\s+lista/i,
+  /\bn[aã]o\s+(quero|desejo)\s+(mais\s+)?(receber|ser\s+(contact|procurad|chamad|abordad))/i,
+  /\bn[aã]o\s+me\s+(mand|envi|cham|procur|perturb|contat)\w*/i,
+  /\bpar[ae]\s+de\s+(me\s+)?(mand|envi|cham|procur|contat)\w*/i,
+  /\bremov[ae]r?\s+(o\s+)?(meu|minha)/i,
+  /\bunsubscribe\b/i,
+];
+
+export function pedidoRemocaoNoTexto(texto: string): boolean {
+  const t = (texto ?? '').trim();
+  return t.length > 0 && PADROES_REMOCAO.some((re) => re.test(t));
+}
+
 const toJsonInput = (v: Record<string, unknown>): Prisma.InputJsonObject =>
   v as unknown as Prisma.InputJsonObject;
 
@@ -730,6 +755,16 @@ export class ConversarIaService {
     // Sem reconhecer isso, o nó ficava AGUARDANDO até o timeout de 24h (só o LGPD
     // roteava). Tratamos qualquer SINAL TERMINAL deste turno como classificação —
     // e usamos a classificação deste turno (não valor velho do lead) pra rotear.
+    // Rede de segurança LGPD (DETERMINÍSTICA): se o LEAD pediu remoção no texto,
+    // força pedido_remocao=sim mesmo que a IA tenha respondido só a despedida sem
+    // gravar a variável — senão o nó fica preso em AGUARDANDO e nunca roteia.
+    if (pedidoRemocaoNoTexto(textoLead)) {
+      turno.variaveis = { ...(turno.variaveis ?? {}), pedido_remocao: 'sim' };
+      this.logger.log(
+        `CONVERSAR_IA: pedido de remoção detectado no texto do lead ${leadId} — forçando pedido_remocao=sim (exec ${execucaoId})`,
+      );
+    }
+
     const vTurno = (turno.variaveis ?? {}) as Record<string, unknown>;
     const norm = (x: unknown): string =>
       String(x ?? '')
