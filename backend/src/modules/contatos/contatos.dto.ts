@@ -88,6 +88,9 @@ export const criarLeadsSchema = z.object({
   funilId: z.string().min(1).optional(),
   /** Etapa inicial. Omitida → 1ª etapa ATIVA do funil. */
   funilEtapaId: z.string().min(1).optional(),
+  /** Cria os leads SEM funil (contatos soltos, fora de qualquer funil/cron).
+   *  Tem precedência sobre funilId/funilEtapaId — usado na importação de base fria. */
+  semFunil: z.boolean().optional(),
   representanteId: z.string().cuid().optional(),
   contatos: z
     .array(

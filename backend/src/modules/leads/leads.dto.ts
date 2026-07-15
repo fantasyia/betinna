@@ -30,6 +30,10 @@ export const createLeadSchema = z.object({
   proximaAcao: z.string().max(300).optional(),
   observacoes: z.string().max(2000).optional(),
   representanteId: z.string().cuid().optional(),
+  /** Cria o lead SEM funil (funilId/funilEtapaId nulos) — vira "contato solto"
+   *  que NÃO é trabalhado por nenhum funil/cron. Usado na importação de base fria.
+   *  Tem precedência sobre funilId/funilEtapaId. */
+  semFunil: z.boolean().optional(),
 });
 export type CreateLeadDto = z.infer<typeof createLeadSchema>;
 

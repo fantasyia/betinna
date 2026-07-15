@@ -265,19 +265,20 @@ export class LeadsService {
       await this.assertRepValido(empresaId, representanteId);
     }
 
+    // `semFunil` sai do spread (não é coluna do Lead) e força funil nulo:
+    // contato solto, fora de qualquer funil/cron (importação de base fria).
+    const { semFunil, ...dadosLead } = dto;
+
     // Resolve funil + etapa inicial. Se o user não informou funil, usa o
     // padrão da empresa. Se a etapa-inicial específica não foi pedida,
-    // pega a primeira etapa ATIVA na ordem.
-    const { funilId, funilEtapaId } = await this.resolverFunilInicial(
-      empresaId,
-      dto.funilId,
-      dto.funilEtapaId,
-      dto.etapa,
-    );
+    // pega a primeira etapa ATIVA na ordem. `semFunil` pula tudo isso.
+    const { funilId, funilEtapaId } = semFunil
+      ? { funilId: null, funilEtapaId: null }
+      : await this.resolverFunilInicial(empresaId, dto.funilId, dto.funilEtapaId, dto.etapa);
 
     const lead = await this.prisma.lead.create({
       data: {
-        ...dto,
+        ...dadosLead,
         representanteId,
         empresaId,
         funilId,

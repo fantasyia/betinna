@@ -857,12 +857,13 @@ export class ContatosService {
     const sufixosLote = Array.from(
       new Set(dto.contatos.map((c) => this.sufixoTel(c.telefone)).filter((s): s is string => !!s)),
     );
+    const scopeSql =
+      scope !== null
+        ? Prisma.sql`AND "representanteId" IN (${Prisma.join(scope.length ? scope : ['__none__'])})`
+        : Prisma.empty;
+
     const sufixosComLead = new Set<string>();
     if (sufixosLote.length > 0) {
-      const scopeSql =
-        scope !== null
-          ? Prisma.sql`AND "representanteId" IN (${Prisma.join(scope.length ? scope : ['__none__'])})`
-          : Prisma.empty;
       const rows = await this.prisma.$queryRaw<Array<{ sufixo: string }>>(Prisma.sql`
         SELECT DISTINCT RIGHT(REGEXP_REPLACE("contatoTelefone", '[^0-9]', '', 'g'), 8) AS sufixo
         FROM "Lead"
@@ -872,6 +873,28 @@ export class ContatosService {
           AND RIGHT(REGEXP_REPLACE("contatoTelefone", '[^0-9]', '', 'g'), 8) IN (${Prisma.join(sufixosLote)})
       `);
       for (const r of rows) if (r.sufixo) sufixosComLead.add(r.sufixo);
+    }
+
+    // Dedup por E-MAIL (a base fria de e-mail marketing não tem telefone, então a
+    // dedup por sufixo não pega — sem isso, re-importar duplicaria tudo).
+    const emailsLote = Array.from(
+      new Set(
+        dto.contatos
+          .map((c) => (c.email && /.+@.+\..+/.test(c.email) ? c.email.trim().toLowerCase() : null))
+          .filter((e): e is string => !!e),
+      ),
+    );
+    const emailsComLead = new Set<string>();
+    if (emailsLote.length > 0) {
+      const rows = await this.prisma.$queryRaw<Array<{ email: string }>>(Prisma.sql`
+        SELECT DISTINCT LOWER("contatoEmail") AS email
+        FROM "Lead"
+        WHERE "empresaId" = ${empresaId}
+          AND "contatoEmail" IS NOT NULL
+          ${scopeSql}
+          AND LOWER("contatoEmail") IN (${Prisma.join(emailsLote)})
+      `);
+      for (const r of rows) if (r.email) emailsComLead.add(r.email);
     }
 
     let criados = 0;
@@ -886,6 +909,11 @@ export class ContatosService {
       const tel = (c.telefone ?? '').replace(/\D/g, '');
       const nomeLead = nome.length >= 2 ? nome : tel || 'Contato';
       const email = c.email && /.+@.+\..+/.test(c.email) ? c.email : undefined;
+      const emailKey = email?.trim().toLowerCase();
+      if (emailKey && emailsComLead.has(emailKey)) {
+        jaEramLead += 1;
+        continue;
+      }
       try {
         // parse() aplica os defaults do createLeadSchema (valorEstimado/etapa/etc).
         const payload = createLeadSchema.parse({
@@ -897,11 +925,13 @@ export class ContatosService {
           uf: c.uf,
           funilId: dto.funilId,
           funilEtapaId: dto.funilEtapaId,
+          semFunil: dto.semFunil,
           representanteId: c.representanteId ?? dto.representanteId,
         });
         await this.leads.create(user, payload);
         criados += 1;
         if (sufixo) sufixosComLead.add(sufixo); // evita duplicar dentro do próprio lote
+        if (emailKey) emailsComLead.add(emailKey); // idem, dedup por e-mail no lote
       } catch (err) {
         falhas.push({
           id: `#${i + 1} ${nomeLead}`,
