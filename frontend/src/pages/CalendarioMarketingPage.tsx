@@ -112,7 +112,7 @@ interface TabelaCard {
   campoValores: Array<{ campoId: string; valor: unknown }>;
 }
 
-type Vista = 'mes' | 'semana' | 'agenda';
+type Vista = 'mes' | 'semana' | 'agenda' | 'tema';
 
 export default function CalendarioMarketingPage() {
   const navigate = useNavigate();
@@ -210,6 +210,18 @@ function CalendarioConteudo({
     return m;
   }, [tabela.data]);
 
+  // Campo "Impulsionado" (checkbox) — marca peças que foram impulsionadas (ads).
+  const campoImpuls = board.data?.campos.find((c) => /impulsion/i.test(c.nome));
+  const impulsDoCard = useMemo(() => {
+    const m = new Map<string, boolean>();
+    if (!campoImpuls) return m;
+    for (const c of tabela.data ?? []) {
+      const v = c.campoValores.find((cv) => cv.campoId === campoImpuls.id)?.valor;
+      if (v === true || v === 'true') m.set(c.id, true);
+    }
+    return m;
+  }, [tabela.data, campoImpuls]);
+
   // Opções de filtro
   const pilares = useMemo(() => {
     const m = new Map<string, KEtiqueta>();
@@ -304,6 +316,7 @@ function CalendarioConteudo({
     const cor = ('corCapa' in c ? c.corCapa : null) ?? c.etiquetas[0]?.etiqueta.cor ?? '#5C88DA';
     const ehCase = c.etiquetas.some((e) => /case/i.test(e.etiqueta.nome ?? ''));
     const arco = arcoDoCard.get(c.id);
+    const impuls = impulsDoCard.get(c.id);
     const st = 'lista' in c ? c.lista.nome : '';
     const est = estiloStatus(st);
     return (
@@ -318,6 +331,7 @@ function CalendarioConteudo({
         >
           {ehCase && <span>⭐</span>}
           {arco && <span title={arco.label}>{arco.icon}</span>}
+          {impuls && <span title="Impulsionada (ads)">🚀</span>}
           <span className="truncate">{c.titulo}</span>
         </span>
       </MkDraggableCard>
@@ -348,7 +362,7 @@ function CalendarioConteudo({
         {/* Barra: view + navegação + filtros */}
         <div className="flex items-center gap-2 mb-3 flex-wrap">
           <div className="inline-flex rounded-[8px] border border-border overflow-hidden">
-            {(['mes', 'semana', 'agenda'] as Vista[]).map((v) => (
+            {(['mes', 'semana', 'agenda', 'tema'] as Vista[]).map((v) => (
               <button
                 key={v}
                 type="button"
@@ -469,6 +483,17 @@ function CalendarioConteudo({
             {vista === 'agenda' && (
               <Agenda porDia={porDia} chipCard={chipCard} chipCanal={chipCanal} />
             )}
+            {vista === 'tema' && (
+              <TimelineTema
+                cards={cal.data?.cards ?? []}
+                itens={cal.data?.itensChecklist ?? []}
+                statusById={statusById}
+                fCanal={fCanal}
+                fStatus={fStatus}
+                chipCard={chipCard}
+                onAbrir={abrir}
+              />
+            )}
           </DndContext>
         </StateView>
         <p className="text-[11px] text-muted mt-2">
@@ -484,6 +509,8 @@ function CalendarioConteudo({
           tabela={tabela.data}
           arcoDoCard={arcoDoCard}
           temArco={!!campoArco}
+          impulsDoCard={impulsDoCard}
+          temImpuls={!!campoImpuls}
         />
         <div className="rounded-[10px] border border-border bg-surface p-3">
           <h4 className="text-xs font-semibold uppercase tracking-wider text-muted mb-2">
@@ -705,6 +732,110 @@ function Agenda({
   );
 }
 
+// ─── View: TIMELINE POR TEMA (card = slug/âncora + derivados) ────────────
+function TimelineTema({
+  cards,
+  itens,
+  statusById,
+  fCanal,
+  fStatus,
+  chipCard,
+  onAbrir,
+}: {
+  cards: CalCard[];
+  itens: CalItem[];
+  statusById: Map<string, string>;
+  fCanal: string;
+  fStatus: string;
+  chipCard: ChipCard;
+  onAbrir: (id: string) => void;
+}) {
+  const temas = useMemo(() => {
+    const m = new Map<string, { cardId: string; titulo: string; card?: CalCard; itens: CalItem[] }>();
+    for (const c of cards) {
+      if (fStatus && c.lista.nome !== fStatus) continue;
+      m.set(c.id, { cardId: c.id, titulo: c.titulo, card: c, itens: [] });
+    }
+    for (const i of itens) {
+      const cid = i.checklist.card.id;
+      if (fCanal && canalDe(i.texto)?.key !== fCanal) continue;
+      if (fStatus && (statusById.get(cid) ?? '') !== fStatus) continue;
+      const t = m.get(cid) ?? { cardId: cid, titulo: i.checklist.card.titulo, itens: [] };
+      t.itens.push(i);
+      m.set(cid, t);
+    }
+    const menor = (t: { card?: CalCard; itens: CalItem[] }) =>
+      Math.min(
+        ...(t.card ? [new Date(t.card.dataEntrega).getTime()] : []),
+        ...t.itens.map((i) => new Date(i.dataEntrega).getTime()),
+        Infinity,
+      );
+    return [...m.values()]
+      .map((t) => ({
+        ...t,
+        itens: [...t.itens].sort(
+          (a, b) => new Date(a.dataEntrega).getTime() - new Date(b.dataEntrega).getTime(),
+        ),
+      }))
+      .sort((a, b) => menor(a) - menor(b));
+  }, [cards, itens, statusById, fCanal, fStatus]);
+
+  if (!temas.length)
+    return (
+      <p className="text-sm text-muted">
+        Sem peças datadas neste mês — defina data no card ou nos canais (checklist).
+      </p>
+    );
+  const dia = (iso: string) =>
+    new Date(iso).toLocaleDateString('pt-BR', { day: '2-digit', month: 'short', timeZone: 'UTC' });
+
+  return (
+    <div className="flex flex-col gap-2">
+      {temas.map((t) => (
+        <div
+          key={t.cardId}
+          className="rounded-[10px] border border-border bg-surface p-2 flex items-center gap-3"
+        >
+          <div className="w-56 shrink-0">
+            {t.card ? (
+              chipCard(t.card, 'tema')
+            ) : (
+              <button
+                type="button"
+                onClick={() => onAbrir(t.cardId)}
+                className="text-[11px] text-text hover:underline truncate text-left w-full"
+              >
+                {t.titulo}
+              </button>
+            )}
+          </div>
+          <div className="flex-1 flex items-center gap-1 flex-wrap">
+            {t.itens.length === 0 ? (
+              <span className="text-[10px] text-muted">só data de publicação</span>
+            ) : (
+              t.itens.map((i) => {
+                const c = canalDe(i.texto);
+                return (
+                  <button
+                    key={i.id}
+                    type="button"
+                    onClick={() => onAbrir(t.cardId)}
+                    title={i.texto}
+                    style={{ background: (c?.cor ?? '#838C91') + '22', color: c?.cor }}
+                    className="text-[10px] px-1.5 py-0.5 rounded-[5px] whitespace-nowrap"
+                  >
+                    {c?.label ?? i.texto} · {dia(i.dataEntrega)}
+                  </button>
+                );
+              })
+            )}
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
 function ToggleChip({
   ativo,
   onClick,
@@ -736,11 +867,15 @@ function PainelAnalise({
   tabela,
   arcoDoCard,
   temArco,
+  impulsDoCard,
+  temImpuls,
 }: {
   cal?: { cards: CalCard[]; itensChecklist: CalItem[] } | null;
   tabela?: TabelaCard[] | null;
   arcoDoCard: Map<string, { label: string; icon: string } | null>;
   temArco: boolean;
+  impulsDoCard: Map<string, boolean>;
+  temImpuls: boolean;
 }) {
   const a = useMemo(() => {
     const cards = cal?.cards ?? [];
@@ -779,6 +914,8 @@ function PainelAnalise({
         arcos.set(arc.label, e);
       }
     }
+    let impuls = 0;
+    for (const c of cards) if (impulsDoCard.get(c.id)) impuls += 1;
     const status = new Map<string, number>();
     for (const c of tabela ?? []) status.set(c.lista.nome, (status.get(c.lista.nome) ?? 0) + 1);
     return {
@@ -788,9 +925,10 @@ function PainelAnalise({
       cases: casesDatas.length,
       caseApertado,
       arcos: [...arcos.entries()],
+      impuls,
       status,
     };
-  }, [cal, tabela, arcoDoCard]);
+  }, [cal, tabela, arcoDoCard, impulsDoCard]);
 
   return (
     <div className="rounded-[10px] border border-border bg-surface p-3 flex flex-col gap-3">
@@ -878,12 +1016,17 @@ function PainelAnalise({
         </div>
       )}
 
-      <div className="flex items-center gap-2 text-[11px]">
+      <div className="flex items-center gap-2 text-[11px] flex-wrap">
         <span className="text-muted">Cases no mês:</span>
         <span className="font-semibold text-text">{a.cases}</span>
         {a.caseApertado && (
           <span className="inline-flex items-center gap-1 text-warning">
             <AlertTriangle className="h-3 w-3" /> 2 cases em &lt; 4 semanas
+          </span>
+        )}
+        {temImpuls && (
+          <span className="ml-2 text-muted">
+            🚀 Impulsionadas: <span className="font-semibold text-text">{a.impuls}</span>
           </span>
         )}
       </div>
