@@ -91,6 +91,8 @@ export const criarLeadsSchema = z.object({
   /** Cria os leads SEM funil (contatos soltos, fora de qualquer funil/cron).
    *  Tem precedência sobre funilId/funilEtapaId — usado na importação de base fria. */
   semFunil: z.boolean().optional(),
+  /** Tags aplicadas a CADA lead criado (ex: cold, email-mkt, <segmento>). */
+  tagIds: z.array(z.string().cuid()).max(50).optional(),
   representanteId: z.string().cuid().optional(),
   contatos: z
     .array(

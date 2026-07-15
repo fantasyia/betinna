@@ -928,7 +928,11 @@ export class ContatosService {
           semFunil: dto.semFunil,
           representanteId: c.representanteId ?? dto.representanteId,
         });
-        await this.leads.create(user, payload);
+        const leadCriado = await this.leads.create(user, payload);
+        // Aplica as tags do lote (cold/email-mkt/segmento) — best-effort por tag.
+        for (const tagId of dto.tagIds ?? []) {
+          await this.leads.adicionarTag(user, leadCriado.id, tagId).catch(() => undefined);
+        }
         criados += 1;
         if (sufixo) sufixosComLead.add(sufixo); // evita duplicar dentro do próprio lote
         if (emailKey) emailsComLead.add(emailKey); // idem, dedup por e-mail no lote
