@@ -1,7 +1,18 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { ChevronLeft, ChevronRight, AlertTriangle } from 'lucide-react';
+import {
+  DndContext,
+  PointerSensor,
+  useDraggable,
+  useDroppable,
+  useSensor,
+  useSensors,
+  type DragEndEvent,
+} from '@dnd-kit/core';
+import { api, apiErrorMessage } from '@/lib/api';
 import { useApiQuery } from '@/hooks/useApiQuery';
+import { useToast } from '@/components/toast';
 import { PageLayout } from '@/components/PageLayout';
 import { StateView } from '@/components/StateView';
 import { Select } from '@/components/ui';
@@ -9,14 +20,12 @@ import { cn } from '@/lib/cn';
 import type { KEtiqueta, KUsuarioResumo } from '@/pages/kanban/kanban-types';
 
 /**
- * 📅 Calendário de Marketing — VIEW por DATA sobre o board de conteúdo
- * ("Somatec — Conteúdo"). NÃO cria base paralela: lê os cards do board via o
- * endpoint `/kanban/boards/:id/calendario` (cards por `entrega` + itens de
- * checklist por data = data POR CANAL). Codifica por canal/pilar/status/case e
- * traz um painel de análise (cadência, mix de canais, cobertura de pilares).
- *
- * v1: mês + backlog "sem data" + análise + filtros + clique abre o card.
- * Deferido: semana/agenda, drag-drop, arco/cluster (precisam de campo novo).
+ * 📅 Calendário de Marketing — VIEW por DATA sobre o board de conteúdo.
+ * NÃO cria base paralela: lê os cards via `/kanban/boards/:id/calendario`
+ * (cards por `entrega` + itens de checklist por data = data POR CANAL) e a
+ * `tabela` (status/pilar/arco/case + backlog sem data). Codifica por
+ * canal/pilar/status/arco/case, com painel de análise, 3 views (mês/semana/
+ * agenda), drag-drop pra reagendar e filtros.
  */
 
 // ─── Canais (derivados do TEXTO dos itens de checklist do card) ──────────
@@ -37,6 +46,26 @@ function canalDe(texto: string): Canal | null {
   return CANAIS.find((c) => c.re.test(texto)) ?? null;
 }
 
+// ─── Arcos narrativos (lidos do campo personalizado "Arco" do card) ──────
+const ARCOS: Array<{ re: RegExp; label: string; icon: string }> = [
+  { re: /pergunta/i, label: 'Pergunta', icon: '❓' },
+  { re: /mito/i, label: 'Mito', icon: '🚫' },
+  { re: /hist[óo]ria/i, label: 'História', icon: '📖' },
+  { re: /resultado|n[úu]mero/i, label: 'Resultado', icon: '📊' },
+];
+function arcoDe(valor: unknown): { label: string; icon: string } | null {
+  const s = String(valor ?? '').trim();
+  if (!s) return null;
+  return ARCOS.find((a) => a.re.test(s)) ?? { label: s, icon: '•' };
+}
+
+// ─── Status (a partir do nome da lista) → opacidade/estilo ───────────────
+function estiloStatus(lista: string): { pub: boolean; planejado: boolean; opacidade: string } {
+  const pub = /publicad/i.test(lista);
+  const planejado = /planejad/i.test(lista);
+  return { pub, planejado, opacidade: pub ? 'opacity-100' : planejado ? 'opacity-60' : 'opacity-85' };
+}
+
 const STORAGE_KEY = 'calendario-marketing-board';
 const DIAS_SEMANA = ['dom', 'seg', 'ter', 'qua', 'qui', 'sex', 'sáb'];
 
@@ -48,10 +77,13 @@ function chaveDia(d: Date): string {
   return `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, '0')}-${String(d.getUTCDate()).padStart(2, '0')}`;
 }
 
-// ─── Tipos das respostas reusadas do kanban ──────────────────────────────
+// ─── Tipos das respostas do kanban ───────────────────────────────────────
 interface BoardResumo {
   id: string;
   nome: string;
+}
+interface BoardCampos {
+  campos: Array<{ id: string; nome: string; tipo: string; opcoes: string[] | null }>;
 }
 interface CalCard {
   id: string;
@@ -77,21 +109,20 @@ interface TabelaCard {
   concluido: boolean;
   lista: { id: string; nome: string; posicao: number };
   etiquetas: Array<{ etiqueta: KEtiqueta }>;
+  campoValores: Array<{ campoId: string; valor: unknown }>;
 }
+
+type Vista = 'mes' | 'semana' | 'agenda';
 
 export default function CalendarioMarketingPage() {
   const navigate = useNavigate();
   const { data: boards, loading: loadingBoards } = useApiQuery<BoardResumo[]>('/kanban/boards');
-
   const [boardId, setBoardId] = useState<string | null>(() => localStorage.getItem(STORAGE_KEY));
 
-  // Default: o board cujo nome tem "conteúdo" (ou o 1º), quando ainda não escolhido.
   useEffect(() => {
     if (boardId || !boards?.length) return;
-    const conteudo = boards.find((b) => /conte[uú]do/i.test(b.nome)) ?? boards[0];
-    setBoardId(conteudo.id);
+    setBoardId((boards.find((b) => /conte[uú]do/i.test(b.nome)) ?? boards[0]).id);
   }, [boards, boardId]);
-
   useEffect(() => {
     if (boardId) localStorage.setItem(STORAGE_KEY, boardId);
   }, [boardId]);
@@ -134,14 +165,23 @@ function CalendarioConteudo({
   boardId: string;
   navigate: ReturnType<typeof useNavigate>;
 }) {
+  const toast = useToast();
   const hoje = new Date();
+  const [vista, setVista] = useState<Vista>('mes');
   const [mes, setMes] = useState(
     `${hoje.getFullYear()}-${String(hoje.getMonth() + 1).padStart(2, '0')}`,
   );
-  // Filtros
-  const [fCanal, setFCanal] = useState<string>('');
-  const [fPilar, setFPilar] = useState<string>('');
+  const [semanaBase, setSemanaBase] = useState<Date>(() => inicioSemanaUTC(new Date()));
 
+  // Filtros
+  const [fCanal, setFCanal] = useState('');
+  const [fPilar, setFPilar] = useState('');
+  const [fStatus, setFStatus] = useState('');
+  const [fSoCase, setFSoCase] = useState(false);
+  const [fSoPlanejado, setFSoPlanejado] = useState(false);
+  const [fSoPublicado, setFSoPublicado] = useState(false);
+
+  const board = useApiQuery<BoardCampos>(`/kanban/boards/${boardId}`);
   const cal = useApiQuery<{ cards: CalCard[]; itensChecklist: CalItem[] }>(
     `/kanban/boards/${boardId}/calendario?mes=${mes}`,
   );
@@ -152,47 +192,61 @@ function CalendarioConteudo({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [mes, boardId]);
 
-  const [ano, mesNum] = mes.split('-').map(Number);
-  const semanas = useMemo(() => {
-    const primeiro = new Date(Date.UTC(ano, mesNum - 1, 1));
-    const inicio = new Date(primeiro);
-    inicio.setUTCDate(1 - primeiro.getUTCDay());
-    const linhas: Date[][] = [];
-    for (let i = 0; i < 6; i++) {
-      const linha: Date[] = [];
-      for (let j = 0; j < 7; j++) {
-        const d = new Date(inicio);
-        d.setUTCDate(inicio.getUTCDate() + i * 7 + j);
-        linha.push(d);
-      }
-      if (i >= 4 && linha.every((d) => d.getUTCMonth() !== mesNum - 1)) break;
-      linhas.push(linha);
+  // Campo "Arco" do board (se existir) — pra ícone + rotação
+  const campoArco = board.data?.campos.find((c) => /arco/i.test(c.nome));
+  const arcoDoCard = useMemo(() => {
+    const m = new Map<string, { label: string; icon: string } | null>();
+    if (!campoArco) return m;
+    for (const c of tabela.data ?? []) {
+      const v = c.campoValores.find((cv) => cv.campoId === campoArco.id)?.valor;
+      m.set(c.id, arcoDe(v));
     }
-    return linhas;
-  }, [ano, mesNum]);
+    return m;
+  }, [tabela.data, campoArco]);
 
-  // Pilares (etiquetas) presentes — pro filtro
-  const pilares = useMemo(() => {
-    const mapa = new Map<string, KEtiqueta>();
-    for (const c of tabela.data ?? [])
-      for (const { etiqueta } of c.etiquetas) mapa.set(etiqueta.id, etiqueta);
-    return [...mapa.values()];
+  const statusById = useMemo(() => {
+    const m = new Map<string, string>();
+    for (const c of tabela.data ?? []) m.set(c.id, c.lista.nome);
+    return m;
   }, [tabela.data]);
 
-  const passaFiltroCard = (c: CalCard) =>
-    (!fPilar || c.etiquetas.some((e) => e.etiqueta.id === fPilar));
-  const passaFiltroItem = (i: CalItem) => !fCanal || canalDe(i.texto)?.key === fCanal;
+  // Opções de filtro
+  const pilares = useMemo(() => {
+    const m = new Map<string, KEtiqueta>();
+    for (const c of tabela.data ?? []) for (const { etiqueta } of c.etiquetas) m.set(etiqueta.id, etiqueta);
+    return [...m.values()];
+  }, [tabela.data]);
+  const statusOpcoes = useMemo(() => {
+    const s = new Set<string>();
+    for (const c of tabela.data ?? []) s.add(c.lista.nome);
+    return [...s];
+  }, [tabela.data]);
 
+  const cardPassa = (etiquetas: Array<{ etiqueta: KEtiqueta }>, listaNome: string) => {
+    if (fPilar && !etiquetas.some((e) => e.etiqueta.id === fPilar)) return false;
+    if (fStatus && listaNome !== fStatus) return false;
+    if (fSoCase && !etiquetas.some((e) => /case/i.test(e.etiqueta.nome ?? ''))) return false;
+    if (fSoPlanejado && !/planejad/i.test(listaNome)) return false;
+    if (fSoPublicado && !/publicad/i.test(listaNome)) return false;
+    return true;
+  };
+
+  // Cards + itens (canais) por dia, aplicando filtros
   const porDia = useMemo(() => {
     const mapa = new Map<string, { cards: CalCard[]; itens: CalItem[] }>();
-    for (const c of (cal.data?.cards ?? []).filter(passaFiltroCard)) {
+    for (const c of cal.data?.cards ?? []) {
+      if (!cardPassa(c.etiquetas, c.lista.nome)) continue;
       const k = diaUTC(c.dataEntrega);
       const v = mapa.get(k) ?? { cards: [], itens: [] };
       v.cards.push(c);
       mapa.set(k, v);
     }
-    for (const i of (cal.data?.itensChecklist ?? []).filter(passaFiltroItem)) {
+    for (const i of cal.data?.itensChecklist ?? []) {
       if (fCanal && canalDe(i.texto)?.key !== fCanal) continue;
+      const st = statusById.get(i.checklist.card.id) ?? '';
+      if (fStatus && st !== fStatus) continue;
+      if (fSoPlanejado && !/planejad/i.test(st)) continue;
+      if (fSoPublicado && !/publicad/i.test(st)) continue;
       const k = diaUTC(i.dataEntrega);
       const v = mapa.get(k) ?? { cards: [], itens: [] };
       v.itens.push(i);
@@ -200,44 +254,137 @@ function CalendarioConteudo({
     }
     return mapa;
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [cal.data, fCanal, fPilar]);
+  }, [cal.data, statusById, fCanal, fPilar, fStatus, fSoCase, fSoPlanejado, fSoPublicado]);
 
-  function mudarMes(delta: number) {
-    const d = new Date(ano, mesNum - 1 + delta, 1);
-    setMes(`${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`);
+  const semData = (tabela.data ?? []).filter(
+    (c) => !c.dataEntrega && !c.concluido && cardPassa(c.etiquetas, c.lista.nome),
+  );
+
+  const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 6 } }));
+  function onDragEnd(ev: DragEndEvent) {
+    const cardId = String(ev.active.id).replace('mkcard:', '');
+    const diaDestino = ev.over ? String(ev.over.id).replace('mkdia:', '') : null;
+    if (!diaDestino || !cardId) return;
+    void api
+      .patch(`/kanban/cards/${cardId}`, { dataEntrega: `${diaDestino}T12:00:00.000Z` })
+      .then(() => {
+        cal.refetch();
+        tabela.refetch();
+        toast.success('Data atualizada');
+      })
+      .catch((err) => toast.error(apiErrorMessage(err)));
   }
+
   const abrir = (cardId: string) => navigate(`/kanban/${boardId}?card=${cardId}`);
+  const [ano, mesNum] = mes.split('-').map(Number);
   const nomeMes = new Date(ano, mesNum - 1, 1).toLocaleDateString('pt-BR', {
     month: 'long',
     year: 'numeric',
   });
 
-  const semData = (tabela.data ?? []).filter((c) => !c.dataEntrega && !c.concluido);
+  function navPrev() {
+    if (vista === 'semana') setSemanaBase(addDiasUTC(semanaBase, -7));
+    else mudarMes(-1);
+  }
+  function navNext() {
+    if (vista === 'semana') setSemanaBase(addDiasUTC(semanaBase, 7));
+    else mudarMes(1);
+  }
+  function mudarMes(delta: number) {
+    const d = new Date(ano, mesNum - 1 + delta, 1);
+    setMes(`${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`);
+  }
+
+  const rotuloNav =
+    vista === 'semana'
+      ? `Semana de ${semanaBase.toLocaleDateString('pt-BR', { day: '2-digit', month: 'short', timeZone: 'UTC' })}`
+      : nomeMes;
+
+  const chipCard = (c: CalCard | TabelaCard, dataStr?: string) => {
+    const cor = ('corCapa' in c ? c.corCapa : null) ?? c.etiquetas[0]?.etiqueta.cor ?? '#5C88DA';
+    const ehCase = c.etiquetas.some((e) => /case/i.test(e.etiqueta.nome ?? ''));
+    const arco = arcoDoCard.get(c.id);
+    const st = 'lista' in c ? c.lista.nome : '';
+    const est = estiloStatus(st);
+    return (
+      <MkDraggableCard key={c.id + (dataStr ?? '')} id={c.id} onAbrir={() => abrir(c.id)}>
+        <span
+          style={{ borderLeft: `3px solid ${cor}` }}
+          className={cn(
+            'w-full flex items-center gap-1 text-[10px] px-1.5 py-0.5 rounded-[5px] bg-surface-elevated truncate',
+            est.opacidade,
+            (c.concluido || est.pub) && 'line-through',
+          )}
+        >
+          {ehCase && <span>⭐</span>}
+          {arco && <span title={arco.label}>{arco.icon}</span>}
+          <span className="truncate">{c.titulo}</span>
+        </span>
+      </MkDraggableCard>
+    );
+  };
+  const chipCanal = (i: CalItem) => {
+    const canal = canalDe(i.texto);
+    return (
+      <button
+        key={i.id}
+        type="button"
+        onClick={() => abrir(i.checklist.card.id)}
+        title={`${canal?.label ?? 'Canal'} · ${i.checklist.card.titulo}`}
+        style={{ background: (canal?.cor ?? '#838C91') + '22', color: canal?.cor }}
+        className={cn(
+          'w-full text-left text-[10px] px-1.5 py-0.5 rounded-[5px] truncate',
+          i.concluido && 'line-through opacity-60',
+        )}
+      >
+        {canal?.label ?? i.texto} · {i.checklist.card.titulo}
+      </button>
+    );
+  };
 
   return (
     <div className="grid grid-cols-1 xl:grid-cols-[1fr_320px] gap-4">
       <div>
-        {/* Barra: navegação de mês + filtros + legenda de canais */}
-        <div className="flex items-center gap-3 mb-3 flex-wrap">
-          <button
-            type="button"
-            aria-label="Mês anterior"
-            onClick={() => mudarMes(-1)}
-            className="p-1 rounded-[6px] hover:bg-surface-elevated"
-          >
-            <ChevronLeft className="h-4 w-4" />
-          </button>
-          <span className="text-sm font-semibold text-text capitalize min-w-40 text-center">
-            {nomeMes}
-          </span>
-          <button
-            type="button"
-            aria-label="Próximo mês"
-            onClick={() => mudarMes(1)}
-            className="p-1 rounded-[6px] hover:bg-surface-elevated"
-          >
-            <ChevronRight className="h-4 w-4" />
-          </button>
+        {/* Barra: view + navegação + filtros */}
+        <div className="flex items-center gap-2 mb-3 flex-wrap">
+          <div className="inline-flex rounded-[8px] border border-border overflow-hidden">
+            {(['mes', 'semana', 'agenda'] as Vista[]).map((v) => (
+              <button
+                key={v}
+                type="button"
+                onClick={() => setVista(v)}
+                className={cn(
+                  'px-2.5 py-1 text-xs capitalize',
+                  vista === v ? 'bg-primary text-primary-contrast' : 'hover:bg-surface-elevated',
+                )}
+              >
+                {v === 'mes' ? 'Mês' : v}
+              </button>
+            ))}
+          </div>
+          {vista !== 'agenda' && (
+            <>
+              <button
+                type="button"
+                aria-label="Anterior"
+                onClick={navPrev}
+                className="p-1 rounded-[6px] hover:bg-surface-elevated"
+              >
+                <ChevronLeft className="h-4 w-4" />
+              </button>
+              <span className="text-sm font-semibold text-text capitalize min-w-40 text-center">
+                {rotuloNav}
+              </span>
+              <button
+                type="button"
+                aria-label="Próximo"
+                onClick={navNext}
+                className="p-1 rounded-[6px] hover:bg-surface-elevated"
+              >
+                <ChevronRight className="h-4 w-4" />
+              </button>
+            </>
+          )}
           <div className="w-px h-5 bg-border mx-1" />
           <Select size="sm" value={fCanal} onChange={(e) => setFCanal(e.target.value)}>
             <option value="">Todos os canais</option>
@@ -255,6 +402,35 @@ function CalendarioConteudo({
               </option>
             ))}
           </Select>
+          <Select size="sm" value={fStatus} onChange={(e) => setFStatus(e.target.value)}>
+            <option value="">Todos os status</option>
+            {statusOpcoes.map((s) => (
+              <option key={s} value={s}>
+                {s}
+              </option>
+            ))}
+          </Select>
+          <ToggleChip ativo={fSoCase} onClick={() => setFSoCase((v) => !v)}>
+            ⭐ Só cases
+          </ToggleChip>
+          <ToggleChip
+            ativo={fSoPlanejado}
+            onClick={() => {
+              setFSoPlanejado((v) => !v);
+              setFSoPublicado(false);
+            }}
+          >
+            Só planejado
+          </ToggleChip>
+          <ToggleChip
+            ativo={fSoPublicado}
+            onClick={() => {
+              setFSoPublicado((v) => !v);
+              setFSoPlanejado(false);
+            }}
+          >
+            Só publicado
+          </ToggleChip>
         </div>
 
         {/* Legenda de canais */}
@@ -265,83 +441,50 @@ function CalendarioConteudo({
               {c.label}
             </span>
           ))}
+          {campoArco && (
+            <span className="ml-2">
+              {ARCOS.map((a) => (
+                <span key={a.label} className="mr-2" title={a.label}>
+                  {a.icon} {a.label}
+                </span>
+              ))}
+            </span>
+          )}
         </div>
 
         <StateView loading={cal.loading && !cal.data} error={cal.error} onRetry={cal.refetch}>
-          <div className="grid grid-cols-7 gap-px bg-border rounded-[10px] overflow-hidden border border-border">
-            {DIAS_SEMANA.map((d) => (
-              <div
-                key={d}
-                className="bg-surface-elevated px-2 py-1 text-[10px] uppercase tracking-wider text-muted font-semibold"
-              >
-                {d}
-              </div>
-            ))}
-            {semanas.flat().map((dia) => {
-              const chave = chaveDia(dia);
-              const doMes = dia.getUTCMonth() === mesNum - 1;
-              const conteudo = porDia.get(chave);
-              return (
-                <div
-                  key={chave}
-                  className={cn(
-                    'bg-surface min-h-24 p-1 flex flex-col gap-0.5',
-                    !doMes && 'opacity-40',
-                  )}
-                >
-                  <span className="text-[10px] text-muted">{dia.getUTCDate()}</span>
-                  {conteudo?.cards.map((c) => {
-                    const cor = c.corCapa ?? c.etiquetas[0]?.etiqueta.cor ?? '#5C88DA';
-                    const ehCase = c.etiquetas.some((e) => /case/i.test(e.etiqueta.nome ?? ''));
-                    return (
-                      <button
-                        key={c.id}
-                        type="button"
-                        onClick={() => abrir(c.id)}
-                        title={`${c.titulo} · ${c.lista.nome}`}
-                        style={{ borderLeft: `3px solid ${cor}` }}
-                        className={cn(
-                          'w-full text-left text-[10px] px-1.5 py-0.5 rounded-[5px] bg-surface-elevated truncate',
-                          c.concluido && 'line-through text-muted',
-                        )}
-                      >
-                        {ehCase && '⭐ '}
-                        {c.titulo}
-                      </button>
-                    );
-                  })}
-                  {conteudo?.itens.map((i) => {
-                    const canal = canalDe(i.texto);
-                    return (
-                      <button
-                        key={i.id}
-                        type="button"
-                        onClick={() => abrir(i.checklist.card.id)}
-                        title={`${canal?.label ?? 'Canal'} · ${i.checklist.card.titulo}`}
-                        style={{ background: (canal?.cor ?? '#838C91') + '22', color: canal?.cor }}
-                        className={cn(
-                          'w-full text-left text-[10px] px-1.5 py-0.5 rounded-[5px] truncate',
-                          i.concluido && 'line-through opacity-60',
-                        )}
-                      >
-                        {canal?.label ?? i.texto} · {i.checklist.card.titulo}
-                      </button>
-                    );
-                  })}
-                </div>
-              );
-            })}
-          </div>
+          <DndContext sensors={sensors} onDragEnd={onDragEnd}>
+            {vista === 'mes' && (
+              <GridMes
+                ano={ano}
+                mesNum={mesNum}
+                porDia={porDia}
+                chipCard={chipCard}
+                chipCanal={chipCanal}
+              />
+            )}
+            {vista === 'semana' && (
+              <GridSemana base={semanaBase} porDia={porDia} chipCard={chipCard} chipCanal={chipCanal} />
+            )}
+            {vista === 'agenda' && (
+              <Agenda porDia={porDia} chipCard={chipCard} chipCanal={chipCanal} />
+            )}
+          </DndContext>
         </StateView>
         <p className="text-[11px] text-muted mt-2">
-          Chips coloridos = canais (data por canal via checklist do card). Cards = peça inteira na
-          data de publicação. Clique abre o card no board.
+          Chips = canais (data por canal) e a peça inteira na data de publicação. Arraste um card pra
+          outro dia (ou do backlog "Sem data") pra agendar. Clique abre o card.
         </p>
       </div>
 
-      {/* Painel lateral: backlog sem data + análise */}
+      {/* Painel lateral */}
       <div className="flex flex-col gap-4">
-        <PainelAnalise cal={cal.data} tabela={tabela.data} />
+        <PainelAnalise
+          cal={cal.data}
+          tabela={tabela.data}
+          arcoDoCard={arcoDoCard}
+          temArco={!!campoArco}
+        />
         <div className="rounded-[10px] border border-border bg-surface p-3">
           <h4 className="text-xs font-semibold uppercase tracking-wider text-muted mb-2">
             Sem data ainda ({semData.length})
@@ -351,47 +494,262 @@ function CalendarioConteudo({
           ) : (
             <ul className="flex flex-col gap-1 max-h-72 overflow-y-auto">
               {semData.map((c) => (
-                <li key={c.id}>
-                  <button
-                    type="button"
-                    onClick={() => abrir(c.id)}
-                    className="w-full text-left text-[11px] px-2 py-1 rounded-[6px] border border-border hover:bg-surface-elevated truncate"
-                    title={c.titulo}
-                    style={{ borderLeftColor: c.etiquetas[0]?.etiqueta.cor, borderLeftWidth: 3 }}
-                  >
-                    {c.titulo}
-                  </button>
-                </li>
+                <li key={c.id}>{chipCard(c)}</li>
               ))}
             </ul>
           )}
-          <p className="text-[10px] text-muted mt-2">
-            Clique pra abrir e definir a data de publicação no card.
-          </p>
+          <p className="text-[10px] text-muted mt-2">Arraste pra um dia, ou clique pra abrir o card.</p>
         </div>
       </div>
     </div>
   );
 }
 
-// ─── Painel de análise (o "análise visual") ──────────────────────────────
+// ─── Helpers de data ─────────────────────────────────────────────────────
+function inicioSemanaUTC(d: Date): Date {
+  const u = new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate()));
+  u.setUTCDate(u.getUTCDate() - u.getUTCDay());
+  return u;
+}
+function addDiasUTC(d: Date, n: number): Date {
+  const u = new Date(d);
+  u.setUTCDate(u.getUTCDate() + n);
+  return u;
+}
+
+// ─── Drag helpers ────────────────────────────────────────────────────────
+function MkDraggableCard({
+  id,
+  onAbrir,
+  children,
+}: {
+  id: string;
+  onAbrir: () => void;
+  children: React.ReactNode;
+}) {
+  const { attributes, listeners, setNodeRef, transform, isDragging } = useDraggable({
+    id: `mkcard:${id}`,
+  });
+  const arrastou = useRef(false);
+  useEffect(() => {
+    if (isDragging) arrastou.current = true;
+  }, [isDragging]);
+  return (
+    <button
+      ref={setNodeRef}
+      {...attributes}
+      {...listeners}
+      type="button"
+      onClick={() => {
+        if (arrastou.current) {
+          arrastou.current = false;
+          return;
+        }
+        onAbrir();
+      }}
+      style={{ transform: transform ? `translate(${transform.x}px, ${transform.y}px)` : undefined }}
+      className={cn('w-full text-left cursor-grab', isDragging && 'opacity-50 z-10 relative')}
+    >
+      {children}
+    </button>
+  );
+}
+function DiaDroppable({
+  chave,
+  className,
+  children,
+}: {
+  chave: string;
+  className?: string;
+  children: React.ReactNode;
+}) {
+  const { setNodeRef, isOver } = useDroppable({ id: `mkdia:${chave}` });
+  return (
+    <div ref={setNodeRef} className={cn(className, isOver && 'bg-primary/10')} data-testid={`mk-dia-${chave}`}>
+      {children}
+    </div>
+  );
+}
+
+// ─── View: MÊS ───────────────────────────────────────────────────────────
+type ChipCard = (c: CalCard | TabelaCard, dataStr?: string) => React.ReactNode;
+type ChipCanal = (i: CalItem) => React.ReactNode;
+type PorDia = Map<string, { cards: CalCard[]; itens: CalItem[] }>;
+
+function GridMes({
+  ano,
+  mesNum,
+  porDia,
+  chipCard,
+  chipCanal,
+}: {
+  ano: number;
+  mesNum: number;
+  porDia: PorDia;
+  chipCard: ChipCard;
+  chipCanal: ChipCanal;
+}) {
+  const semanas = useMemo(() => {
+    const primeiro = new Date(Date.UTC(ano, mesNum - 1, 1));
+    const inicio = new Date(primeiro);
+    inicio.setUTCDate(1 - primeiro.getUTCDay());
+    const linhas: Date[][] = [];
+    for (let i = 0; i < 6; i++) {
+      const linha: Date[] = [];
+      for (let j = 0; j < 7; j++) linha.push(addDiasUTC(inicio, i * 7 + j));
+      if (i >= 4 && linha.every((d) => d.getUTCMonth() !== mesNum - 1)) break;
+      linhas.push(linha);
+    }
+    return linhas;
+  }, [ano, mesNum]);
+
+  return (
+    <div className="grid grid-cols-7 gap-px bg-border rounded-[10px] overflow-hidden border border-border">
+      {DIAS_SEMANA.map((d) => (
+        <div
+          key={d}
+          className="bg-surface-elevated px-2 py-1 text-[10px] uppercase tracking-wider text-muted font-semibold"
+        >
+          {d}
+        </div>
+      ))}
+      {semanas.flat().map((dia) => {
+        const chave = chaveDia(dia);
+        const doMes = dia.getUTCMonth() === mesNum - 1;
+        const conteudo = porDia.get(chave);
+        return (
+          <DiaDroppable
+            key={chave}
+            chave={chave}
+            className={cn('bg-surface min-h-24 p-1 flex flex-col gap-0.5', !doMes && 'opacity-40')}
+          >
+            <span className="text-[10px] text-muted">{dia.getUTCDate()}</span>
+            {conteudo?.cards.map((c) => chipCard(c, chave))}
+            {conteudo?.itens.map((i) => chipCanal(i))}
+          </DiaDroppable>
+        );
+      })}
+    </div>
+  );
+}
+
+// ─── View: SEMANA ────────────────────────────────────────────────────────
+function GridSemana({
+  base,
+  porDia,
+  chipCard,
+  chipCanal,
+}: {
+  base: Date;
+  porDia: PorDia;
+  chipCard: ChipCard;
+  chipCanal: ChipCanal;
+}) {
+  const dias = useMemo(() => Array.from({ length: 7 }, (_, i) => addDiasUTC(base, i)), [base]);
+  return (
+    <div className="grid grid-cols-7 gap-px bg-border rounded-[10px] overflow-hidden border border-border">
+      {dias.map((dia) => {
+        const chave = chaveDia(dia);
+        const conteudo = porDia.get(chave);
+        return (
+          <DiaDroppable key={chave} chave={chave} className="bg-surface min-h-64 p-1.5 flex flex-col gap-1">
+            <span className="text-[11px] font-semibold text-text">
+              {DIAS_SEMANA[dia.getUTCDay()]} {dia.getUTCDate()}
+            </span>
+            {conteudo?.cards.map((c) => chipCard(c, chave))}
+            {conteudo?.itens.map((i) => chipCanal(i))}
+          </DiaDroppable>
+        );
+      })}
+    </div>
+  );
+}
+
+// ─── View: AGENDA (cronológica) ──────────────────────────────────────────
+function Agenda({
+  porDia,
+  chipCard,
+  chipCanal,
+}: {
+  porDia: PorDia;
+  chipCard: ChipCard;
+  chipCanal: ChipCanal;
+}) {
+  const dias = [...porDia.entries()]
+    .filter(([, v]) => v.cards.length > 0 || v.itens.length > 0)
+    .sort((a, b) => (a[0] < b[0] ? -1 : 1));
+  if (dias.length === 0)
+    return <p className="text-sm text-muted">Nada agendado neste mês (veja o backlog "Sem data").</p>;
+  return (
+    <div className="flex flex-col gap-2">
+      {dias.map(([chave, v]) => {
+        const d = new Date(chave + 'T12:00:00Z');
+        return (
+          <div key={chave} className="rounded-[10px] border border-border bg-surface p-3">
+            <p className="text-xs font-semibold text-text mb-1.5">
+              {d.toLocaleDateString('pt-BR', {
+                weekday: 'long',
+                day: '2-digit',
+                month: 'long',
+                timeZone: 'UTC',
+              })}
+            </p>
+            <div className="flex flex-col gap-1">
+              {v.cards.map((c) => chipCard(c, chave))}
+              {v.itens.map((i) => chipCanal(i))}
+            </div>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+function ToggleChip({
+  ativo,
+  onClick,
+  children,
+}: {
+  ativo: boolean;
+  onClick: () => void;
+  children: React.ReactNode;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className={cn(
+        'text-[11px] px-2 py-1 rounded-full border',
+        ativo
+          ? 'bg-primary/15 border-primary text-primary'
+          : 'border-border text-muted hover:bg-surface-elevated',
+      )}
+    >
+      {children}
+    </button>
+  );
+}
+
+// ─── Painel de análise ───────────────────────────────────────────────────
 function PainelAnalise({
   cal,
   tabela,
+  arcoDoCard,
+  temArco,
 }: {
   cal?: { cards: CalCard[]; itensChecklist: CalItem[] } | null;
   tabela?: TabelaCard[] | null;
+  arcoDoCard: Map<string, { label: string; icon: string } | null>;
+  temArco: boolean;
 }) {
-  const analise = useMemo(() => {
+  const a = useMemo(() => {
     const cards = cal?.cards ?? [];
     const itens = cal?.itensChecklist ?? [];
-    // Mix de canais no mês (por item de checklist datado)
     const mix = new Map<string, number>();
     for (const i of itens) {
       const c = canalDe(i.texto);
       if (c) mix.set(c.key, (mix.get(c.key) ?? 0) + 1);
     }
-    // Cobertura de pilares (etiquetas dos cards datados no mês)
     const pil = new Map<string, { nome: string; cor: string; n: number }>();
     for (const c of cards)
       for (const { etiqueta } of c.etiquetas) {
@@ -399,47 +757,55 @@ function PainelAnalise({
         p.n += 1;
         pil.set(etiqueta.id, p);
       }
-    // Cadência: peças (cards datados) por semana do mês
     const porSemana = new Map<number, number>();
     for (const c of cards) {
-      const d = new Date(c.dataEntrega);
-      const semana = Math.ceil(d.getUTCDate() / 7);
-      porSemana.set(semana, (porSemana.get(semana) ?? 0) + 1);
+      const s = Math.ceil(new Date(c.dataEntrega).getUTCDate() / 7);
+      porSemana.set(s, (porSemana.get(s) ?? 0) + 1);
     }
-    // Cases datados no mês + alerta de espaçamento (< 4 semanas entre dois cases)
     const casesDatas = cards
       .filter((c) => c.etiquetas.some((e) => /case/i.test(e.etiqueta.nome ?? '')))
       .map((c) => new Date(c.dataEntrega).getTime())
-      .sort((a, b) => a - b);
+      .sort((x, y) => x - y);
     let caseApertado = false;
-    for (let i = 1; i < casesDatas.length; i++) {
+    for (let i = 1; i < casesDatas.length; i++)
       if (casesDatas[i] - casesDatas[i - 1] < 28 * 86_400_000) caseApertado = true;
+    // Rotação de arcos (dos cards datados)
+    const arcos = new Map<string, { icon: string; n: number }>();
+    for (const c of cards) {
+      const arc = arcoDoCard.get(c.id);
+      if (arc) {
+        const e = arcos.get(arc.label) ?? { icon: arc.icon, n: 0 };
+        e.n += 1;
+        arcos.set(arc.label, e);
+      }
     }
-    // Status geral (do board inteiro, não só o mês)
     const status = new Map<string, number>();
     for (const c of tabela ?? []) status.set(c.lista.nome, (status.get(c.lista.nome) ?? 0) + 1);
-
-    return { mix, pil: [...pil.values()], porSemana, cases: casesDatas.length, caseApertado, status };
-  }, [cal, tabela]);
+    return {
+      mix,
+      pil: [...pil.values()],
+      porSemana,
+      cases: casesDatas.length,
+      caseApertado,
+      arcos: [...arcos.entries()],
+      status,
+    };
+  }, [cal, tabela, arcoDoCard]);
 
   return (
     <div className="rounded-[10px] border border-border bg-surface p-3 flex flex-col gap-3">
       <h4 className="text-xs font-semibold uppercase tracking-wider text-muted">Análise do mês</h4>
 
-      {/* Cadência por semana */}
       <div>
         <p className="text-[11px] text-muted mb-1">Cadência (peças/semana)</p>
         <div className="flex items-end gap-1 h-12">
           {[1, 2, 3, 4, 5].map((s) => {
-            const n = analise.porSemana.get(s) ?? 0;
-            const max = Math.max(1, ...[...analise.porSemana.values()]);
+            const n = a.porSemana.get(s) ?? 0;
+            const max = Math.max(1, ...[...a.porSemana.values()]);
             return (
               <div key={s} className="flex-1 flex flex-col items-center gap-0.5">
                 <div
-                  className={cn(
-                    'w-full rounded-t-[3px]',
-                    n === 0 ? 'bg-danger/30' : 'bg-secondary',
-                  )}
+                  className={cn('w-full rounded-t-[3px]', n === 0 ? 'bg-danger/30' : 'bg-secondary')}
                   style={{ height: `${(n / max) * 100}%`, minHeight: n === 0 ? 2 : 4 }}
                   title={n === 0 ? `Semana ${s}: buraco (sem peça)` : `Semana ${s}: ${n}`}
                 />
@@ -450,12 +816,11 @@ function PainelAnalise({
         </div>
       </div>
 
-      {/* Mix de canais */}
       <div>
         <p className="text-[11px] text-muted mb-1">Mix de canais</p>
         <div className="flex flex-col gap-1">
           {CANAIS.map((c) => {
-            const n = analise.mix.get(c.key) ?? 0;
+            const n = a.mix.get(c.key) ?? 0;
             return (
               <div key={c.key} className="flex items-center gap-2 text-[11px]">
                 <span className="w-16 shrink-0" style={{ color: c.cor }}>
@@ -474,14 +839,13 @@ function PainelAnalise({
         </div>
       </div>
 
-      {/* Pilares cobertos */}
       <div>
         <p className="text-[11px] text-muted mb-1">Pilares no mês</p>
         <div className="flex flex-wrap gap-1">
-          {analise.pil.length === 0 ? (
+          {a.pil.length === 0 ? (
             <span className="text-[11px] text-muted">—</span>
           ) : (
-            analise.pil.map((p) => (
+            a.pil.map((p) => (
               <span
                 key={p.nome}
                 className="text-[10px] px-1.5 py-0.5 rounded-full"
@@ -494,22 +858,40 @@ function PainelAnalise({
         </div>
       </div>
 
-      {/* Cases + alerta */}
+      {temArco && (
+        <div>
+          <p className="text-[11px] text-muted mb-1">Rotação de arcos</p>
+          <div className="flex flex-wrap gap-1">
+            {a.arcos.length === 0 ? (
+              <span className="text-[11px] text-muted">— (defina o campo "Arco" nos cards)</span>
+            ) : (
+              a.arcos.map(([label, e]) => (
+                <span
+                  key={label}
+                  className="text-[10px] px-1.5 py-0.5 rounded-full bg-surface-elevated text-text"
+                >
+                  {e.icon} {label} · {e.n}
+                </span>
+              ))
+            )}
+          </div>
+        </div>
+      )}
+
       <div className="flex items-center gap-2 text-[11px]">
         <span className="text-muted">Cases no mês:</span>
-        <span className="font-semibold text-text">{analise.cases}</span>
-        {analise.caseApertado && (
+        <span className="font-semibold text-text">{a.cases}</span>
+        {a.caseApertado && (
           <span className="inline-flex items-center gap-1 text-warning">
             <AlertTriangle className="h-3 w-3" /> 2 cases em &lt; 4 semanas
           </span>
         )}
       </div>
 
-      {/* Status geral */}
       <div>
         <p className="text-[11px] text-muted mb-1">Status (board inteiro)</p>
         <div className="flex flex-wrap gap-1">
-          {[...analise.status.entries()].map(([nome, n]) => (
+          {[...a.status.entries()].map(([nome, n]) => (
             <span
               key={nome}
               className="text-[10px] px-1.5 py-0.5 rounded-full bg-surface-elevated text-muted"
