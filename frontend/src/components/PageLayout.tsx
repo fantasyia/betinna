@@ -18,8 +18,23 @@ import {
   Sun,
   Moon,
   LogOut,
+  GripVertical,
   type LucideIcon,
 } from 'lucide-react';
+import {
+  DndContext,
+  PointerSensor,
+  useSensor,
+  useSensors,
+  closestCenter,
+  type DragEndEvent,
+} from '@dnd-kit/core';
+import {
+  SortableContext,
+  useSortable,
+  arrayMove,
+  verticalListSortingStrategy,
+} from '@dnd-kit/sortable';
 import { clearSession } from '@/lib/auth-store';
 import { useRole, usePermission, type ModuloName } from '@/hooks/usePermission';
 import { getPermissoes, subscribePermissoes } from '@/lib/permissions-store';
@@ -290,6 +305,48 @@ function SidebarNavItem({
   );
 }
 
+// ─── Item reordenável (arrasta pelo "punho") ─────────────────────────
+const SIDEBAR_ORDER_KEY = 'sidebar-nav-order-v1';
+
+function SortableNavItem({
+  item,
+  active,
+  count,
+}: {
+  item: NavItem;
+  active: boolean;
+  count: number;
+}) {
+  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
+    id: item.to,
+  });
+  const style = {
+    transform: transform ? `translate3d(0px, ${transform.y}px, 0)` : undefined,
+    transition,
+  };
+  return (
+    <div
+      ref={setNodeRef}
+      style={style}
+      className={cn('group/nav flex items-center', isDragging && 'opacity-70 z-10 relative')}
+    >
+      <button
+        type="button"
+        {...attributes}
+        {...listeners}
+        aria-label="Arrastar para reordenar"
+        title="Arrastar para reordenar"
+        className="shrink-0 cursor-grab touch-none px-0.5 text-muted-light opacity-0 group-hover/nav:opacity-100 focus:opacity-100"
+      >
+        <GripVertical className="h-3.5 w-3.5" />
+      </button>
+      <div className="flex-1 min-w-0">
+        <SidebarNavItem item={item} active={active} count={count} />
+      </div>
+    </div>
+  );
+}
+
 // ─── Sidebar ────────────────────────────────────────────────────────
 
 function Sidebar({
@@ -334,6 +391,36 @@ function Sidebar({
     return false;
   }
 
+  // Ordem customizada da sidebar (drag-and-drop, persistida por dispositivo).
+  const [ordem, setOrdem] = useState<string[]>(() => {
+    try {
+      const raw = localStorage.getItem(SIDEBAR_ORDER_KEY);
+      return Array.isArray(JSON.parse(raw ?? '')) ? (JSON.parse(raw as string) as string[]) : [];
+    } catch {
+      return [];
+    }
+  });
+  const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 5 } }));
+
+  // Itens visíveis (por papel/permissão), na ordem salva; novos itens vão pro fim.
+  const todos = SECTIONS.flatMap((s) => s.items);
+  const posOrdem = (to: string) => {
+    const i = ordem.indexOf(to);
+    return i === -1 ? 1000 + todos.findIndex((t) => t.to === to) : i;
+  };
+  const visiveis = [...todos].filter(canSee).sort((a, b) => posOrdem(a.to) - posOrdem(b.to));
+
+  function onDragEnd(e: DragEndEvent) {
+    const { active, over } = e;
+    if (!over || active.id === over.id) return;
+    const de = visiveis.findIndex((i) => i.to === active.id);
+    const para = visiveis.findIndex((i) => i.to === over.id);
+    if (de < 0 || para < 0) return;
+    const nova = arrayMove(visiveis, de, para).map((i) => i.to);
+    setOrdem(nova);
+    localStorage.setItem(SIDEBAR_ORDER_KEY, JSON.stringify(nova));
+  }
+
   return (
     <aside
       data-testid="sidebar"
@@ -375,20 +462,13 @@ function Sidebar({
         </div>
       </div>
 
-      {/* Nav scrollable */}
+      {/* Nav scrollable — arrastável (reordena pelos "punhos", persiste no dispositivo) */}
       <nav className="flex-1 overflow-y-auto px-2 py-2.5">
-        {SECTIONS.map((section, idx) => {
-          const visibleItems = section.items.filter(canSee);
-          if (visibleItems.length === 0) return null;
-          return (
-            <div key={section.title ?? `section-${idx}`} className="mb-3">
-              {section.title && (
-                <div className="px-2.5 pt-2 pb-1 text-[10px] font-semibold uppercase tracking-wider text-muted-light">
-                  {section.title}
-                </div>
-              )}
-              {visibleItems.map((item) => (
-                <SidebarNavItem
+        <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={onDragEnd}>
+          <SortableContext items={visiveis.map((i) => i.to)} strategy={verticalListSortingStrategy}>
+            <div className="mb-3">
+              {visiveis.map((item) => (
+                <SortableNavItem
                   key={item.to}
                   item={item}
                   active={isActive(item)}
@@ -396,8 +476,8 @@ function Sidebar({
                 />
               ))}
             </div>
-          );
-        })}
+          </SortableContext>
+        </DndContext>
       </nav>
 
       {/* User card no rodapé */}
