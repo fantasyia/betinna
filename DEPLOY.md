@@ -131,8 +131,9 @@ $env:SUPABASE_SERVICE_ROLE_KEY = "<>"
 npm run db:seed
 ```
 
-Cria usuário ADMIN (`admin@betinna.ai` / `Betinna@2026`) — **trocar senha
-imediatamente** via Supabase Auth dashboard.
+Cria usuário ADMIN (`admin@betinna.ai` / senha = `SEED_ADMIN_PASSWORD` do env,
+**obrigatória, sem default**) — **trocar senha periodicamente** via Supabase
+Auth dashboard. Senha nunca fica no repo.
 
 ---
 

@@ -46,7 +46,11 @@ async function main(): Promise<void> {
   const SUPABASE_URL = process.env.SUPABASE_URL;
   const SUPABASE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY;
   const ADMIN_EMAIL = process.env.SEED_ADMIN_EMAIL ?? 'admin@betinna.ai';
-  const ADMIN_PASS = process.env.SEED_ADMIN_PASSWORD ?? 'Betinna@2026';
+  // Senha NUNCA hardcoded no repo — obrigatória via env (backend/.env.local, gitignored).
+  const ADMIN_PASS = process.env.SEED_ADMIN_PASSWORD;
+  if (!ADMIN_PASS) {
+    throw new Error('SEED_ADMIN_PASSWORD ausente — defina em backend/.env.local antes do seed');
+  }
   const ADMIN_NOME = process.env.SEED_ADMIN_NOME ?? 'Diretor Betinna';
 
   if (!SUPABASE_URL || !SUPABASE_KEY) {

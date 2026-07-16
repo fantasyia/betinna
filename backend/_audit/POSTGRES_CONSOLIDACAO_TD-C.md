@@ -154,7 +154,7 @@ curl https://api-<railway>.up.railway.app/api/v1/health
 curl -X POST "https://<supabase-ref>.supabase.co/auth/v1/token?grant_type=password" \
   -H "apikey: $SUPABASE_ANON_KEY" \
   -H "Content-Type: application/json" \
-  -d '{"email":"admin@betinna.ai","password":"Betinna@2026"}' | jq .access_token
+  -d '{"email":"admin@betinna.ai","password":"<SEED_ADMIN_PASSWORD>"}' | jq .access_token
 
 # Endpoint autenticado
 curl https://api-<railway>.up.railway.app/api/v1/auth/me \

@@ -8,22 +8,28 @@ export const API_URL =
   process.env.VITE_API_URL ??
   'http://localhost:3001';
 
+// Senha NUNCA hardcoded no repo — obrigatória via env/secret do CI.
+const E2E_PASSWORD = process.env.E2E_TEST_PASSWORD ?? '';
+if (!E2E_PASSWORD) {
+  throw new Error('E2E_TEST_PASSWORD ausente — defina no env (secret do CI) antes de rodar os E2E');
+}
+
 export const TEST_USERS = {
   ADMIN: {
     email: process.env.E2E_TEST_EMAIL_ADMIN ?? process.env.E2E_TEST_EMAIL ?? 'admin@betinna.ai',
-    password: process.env.E2E_TEST_PASSWORD ?? 'Betinna@2026',
+    password: E2E_PASSWORD,
   },
   DIRETOR: {
     email: process.env.E2E_TEST_EMAIL_DIRETOR ?? 'diretor@betinna.ai',
-    password: process.env.E2E_TEST_PASSWORD ?? 'Betinna@2026',
+    password: E2E_PASSWORD,
   },
   GERENTE: {
     email: process.env.E2E_TEST_EMAIL_GERENTE ?? 'gerente@betinna.ai',
-    password: process.env.E2E_TEST_PASSWORD ?? 'Betinna@2026',
+    password: E2E_PASSWORD,
   },
   REP: {
     email: process.env.E2E_TEST_EMAIL_REP ?? 'rep@betinna.ai',
-    password: process.env.E2E_TEST_PASSWORD ?? 'Betinna@2026',
+    password: E2E_PASSWORD,
   },
 };
 

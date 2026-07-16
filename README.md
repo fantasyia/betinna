@@ -33,7 +33,7 @@ Plataforma comercial B2B para indústria de alimentos / químicos / bebidas / em
 cd backend
 npm install
 npm run db:push           # aplica schema no Supabase
-npm run db:seed           # admin@betinna.ai / Betinna@2026
+npm run db:seed           # admin@betinna.ai (senha = SEED_ADMIN_PASSWORD do .env.local)
 npm run start:dev         # http://localhost:3001/api/v1/health
 
 # Worker (separado)

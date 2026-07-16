@@ -55,7 +55,7 @@ npm run start:dev
 
 ### 6. Login do admin (criado pelo seed)
 - e-mail: `admin@betinna.ai`
-- senha: `Betinna@2026`
+- senha: a de `SEED_ADMIN_PASSWORD` em `.env.local` (gitignored — nunca no repo)
 
 Para autenticar, faça login via Supabase Auth (frontend) e use o `access_token` no header:
 ```

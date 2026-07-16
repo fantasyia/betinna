@@ -104,7 +104,7 @@ New repository secret**. Adicione:
 | `E2E_TEST_EMAIL_DIRETOR` | (opcional — pode reusar admin no início) | Quando tiver E2E |
 | `E2E_TEST_EMAIL_GERENTE` | (opcional) | Quando tiver E2E |
 | `E2E_TEST_EMAIL_REP` | (opcional) | Quando tiver E2E |
-| `E2E_TEST_PASSWORD` | `Betinna@2026` (senha do seed) | Quando tiver E2E |
+| `E2E_TEST_PASSWORD` | (senha do seed — ver `.env.local`) | Quando tiver E2E |
 
 **Mínimo absoluto pra ter auto-deploy funcionando:** só o `RAILWAY_TOKEN`. Os
 `E2E_*` podem vir depois quando você quiser gate por E2E.

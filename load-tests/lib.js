@@ -17,7 +17,11 @@ export const API_BASE = BASE_RAW.endsWith('/api/v1')
 export const SUPABASE_URL = __ENV.SUPABASE_URL || '';
 export const SUPABASE_KEY = __ENV.SUPABASE_ANON_KEY || '';
 export const TEST_EMAIL = __ENV.TEST_EMAIL || 'admin@betinna.ai';
-export const TEST_PASSWORD = __ENV.TEST_PASSWORD || 'Betinna@2026';
+// Senha NUNCA hardcoded no repo — passe -e TEST_PASSWORD=... ao rodar o k6.
+export const TEST_PASSWORD = __ENV.TEST_PASSWORD || '';
+if (!TEST_PASSWORD) {
+  throw new Error('TEST_PASSWORD ausente — rode o k6 com -e TEST_PASSWORD=<senha>');
+}
 
 /**
  * Faz login via Supabase Auth e retorna o access_token.

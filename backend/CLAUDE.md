@@ -276,7 +276,7 @@ cd C:\Users\Dell\dev\betinna\backend
 
 **Credenciais admin (criadas pelo seed):**
 - Email: `admin@betinna.ai`
-- Senha: `Betinna@2026`
+- Senha: a de `SEED_ADMIN_PASSWORD` em `backend/.env.local` (gitignored — **nunca no repo**)
 
 **Endpoints:**
 - `GET /api/v1/health` (público)
@@ -285,7 +285,7 @@ cd C:\Users\Dell\dev\betinna\backend
 
 **Login via Supabase** (pra testar API com token real):
 ```powershell
-$body = @{ email = "admin@betinna.ai"; password = "Betinna@2026" } | ConvertTo-Json
+$body = @{ email = "admin@betinna.ai"; password = "<SEED_ADMIN_PASSWORD de .env.local>" } | ConvertTo-Json
 $r = Invoke-RestMethod -Method POST `
   -Uri "https://grdiuggfklaoqhvnctto.supabase.co/auth/v1/token?grant_type=password" `
   -Headers @{ "apikey" = "<ANON_KEY de .env.local>"; "Content-Type" = "application/json" } `

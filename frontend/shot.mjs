@@ -1,10 +1,28 @@
 // Screenshot de qualquer rota do Betinna (prod) — visão própria via Playwright.
-// uso: node shot.mjs /rota saida.png   (creds via env BET_EMAIL/BET_SENHA)
+// uso: node shot.mjs /rota saida.png   (creds via env BET_EMAIL/BET_SENHA ou frontend/.env.local)
 import { chromium } from 'playwright';
+import { readFileSync } from 'node:fs';
+
+// Senha NUNCA hardcoded (repo já esteve público): env primeiro, senão
+// frontend/.env.local (gitignored) — parse simples KEY=VALUE, sem dependência.
+function envLocal(chave) {
+  try {
+    const linha = readFileSync(new URL('./.env.local', import.meta.url), 'utf8')
+      .split(/\r?\n/)
+      .find((l) => l.startsWith(chave + '='));
+    return linha ? linha.slice(chave.length + 1).trim() : undefined;
+  } catch {
+    return undefined;
+  }
+}
 
 const BASE = process.env.BASE || 'https://frontend-production-fd70.up.railway.app';
-const EMAIL = process.env.BET_EMAIL || 'admin@betinna.ai';
-const SENHA = process.env.BET_SENHA || 'Betinna@2026';
+const EMAIL = process.env.BET_EMAIL || envLocal('BET_EMAIL') || 'admin@betinna.ai';
+const SENHA = process.env.BET_SENHA || envLocal('BET_SENHA');
+if (!SENHA) {
+  console.error('BET_SENHA ausente — defina no env ou em frontend/.env.local (gitignored)');
+  process.exit(1);
+}
 const ROUTE = process.argv[2] || '/dashboard';
 const OUT = process.argv[3] || 'shot.png';
 const CLICK = process.argv[4] || ''; // texto de um botão pra clicar antes do print

@@ -141,11 +141,12 @@ qualquer rota):
 
 ```bash
 cd frontend
-MSYS_NO_PATHCONV=1 BET_EMAIL=admin@betinna.ai BET_SENHA=Betinna@2026 \
-  node shot.mjs "/calendario-marketing" cal.png
+MSYS_NO_PATHCONV=1 node shot.mjs "/calendario-marketing" cal.png
 # depois: Read cal.png
 ```
 
+- **Credenciais**: `BET_EMAIL`/`BET_SENHA` via env ou `frontend/.env.local` (gitignored) —
+  o script carrega sozinho. **Senha NUNCA no repo.**
 - `MSYS_NO_PATHCONV=1` é obrigatório no Git Bash (senão ele converte `/rota` em path Windows).
 - Fecha o tour de boas-vindas automaticamente. Alvo = prod (frontend Railway).
 - Chromium do Playwright: se faltar, `npx playwright install chromium` no `frontend/`.

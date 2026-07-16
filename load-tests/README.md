@@ -13,7 +13,7 @@ Sprint 5 FIX 3 — k6 load tests pra validar Railway auto-scaling + budgets.
 |---|---|---|
 | `BASE_URL` | `http://localhost:3001` | URL backend (com ou sem `/api/v1`) |
 | `TEST_EMAIL` | `admin@betinna.ai` | User de teste pra POST /auth |
-| `TEST_PASSWORD` | `Betinna@2026` | Senha do user de teste |
+| `TEST_PASSWORD` | — (obrigatória) | Senha do user de teste — nunca no repo |
 | `SUPABASE_URL` | — | URL Supabase pra obter token JWT |
 | `SUPABASE_ANON_KEY` | — | apikey header pra Supabase Auth |
 
