@@ -848,19 +848,17 @@ export class ContatosService {
     dto: CriarLeadsDto,
   ): Promise<AcaoMassaResult & { jaEramLead: number }> {
     const empresaId = this.requireEmpresa(user);
-    const scope = await this.repScope.getRepIds(user);
     const falhas: Array<{ id: string; erro: string }> = [];
 
     // Telefones (sufixo 8 díg.) que JÁ têm lead — consultamos só os sufixos DO LOTE via match
     // por sufixo (D18), não a base inteira em memória. O(lote) em vez de O(base) — importação
     // grande não vira leitura pesada + pico de memória.
+    // DEDUP É INTEGRIDADE, NÃO VISIBILIDADE: a checagem varre a EMPRESA INTEIRA
+    // (sem escopo de rep) — senão um GERENTE re-importando não enxergava o lead
+    // de outro rep (nem os sem representante) e duplicava a pessoa.
     const sufixosLote = Array.from(
       new Set(dto.contatos.map((c) => this.sufixoTel(c.telefone)).filter((s): s is string => !!s)),
     );
-    const scopeSql =
-      scope !== null
-        ? Prisma.sql`AND "representanteId" IN (${Prisma.join(scope.length ? scope : ['__none__'])})`
-        : Prisma.empty;
 
     const sufixosComLead = new Set<string>();
     if (sufixosLote.length > 0) {
@@ -869,7 +867,6 @@ export class ContatosService {
         FROM "Lead"
         WHERE "empresaId" = ${empresaId}
           AND "contatoTelefone" IS NOT NULL
-          ${scopeSql}
           AND RIGHT(REGEXP_REPLACE("contatoTelefone", '[^0-9]', '', 'g'), 8) IN (${Prisma.join(sufixosLote)})
       `);
       for (const r of rows) if (r.sufixo) sufixosComLead.add(r.sufixo);
@@ -891,7 +888,6 @@ export class ContatosService {
         FROM "Lead"
         WHERE "empresaId" = ${empresaId}
           AND "contatoEmail" IS NOT NULL
-          ${scopeSql}
           AND LOWER("contatoEmail") IN (${Prisma.join(emailsLote)})
       `);
       for (const r of rows) if (r.email) emailsComLead.add(r.email);
@@ -937,6 +933,17 @@ export class ContatosService {
         if (sufixo) sufixosComLead.add(sufixo); // evita duplicar dentro do próprio lote
         if (emailKey) emailsComLead.add(emailKey); // idem, dedup por e-mail no lote
       } catch (err) {
+        // Corrida fechada pelo índice único de e-mail: request concorrente criou
+        // primeiro → conta como "já era lead", não como falha do import.
+        const conflito =
+          (err instanceof Prisma.PrismaClientKnownRequestError && err.code === 'P2002') ||
+          (err instanceof Error && /já existe um lead com este e-mail/i.test(err.message));
+        if (conflito) {
+          jaEramLead += 1;
+          if (emailKey) emailsComLead.add(emailKey);
+          if (sufixo) sufixosComLead.add(sufixo);
+          continue;
+        }
         falhas.push({
           id: `#${i + 1} ${nomeLead}`,
           erro: err instanceof Error ? err.message : String(err),

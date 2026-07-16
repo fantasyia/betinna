@@ -495,7 +495,13 @@ export class ConversarIaService {
     }
 
     // Supressão LGPD: lead com a tag "Não Reabordar - LGPD ⛔" não é abordado.
-    if (await this.supressao.suprimido(empresaId, { leadId })) {
+    // Passa também o TELEFONE: o match por sufixo (D18) pega o caso do lead
+    // DUPLICADO (mesma pessoa, outro leadId) em que só a outra cópia tem a tag.
+    const leadTel = await this.prisma.lead.findFirst({
+      where: { id: leadId, empresaId },
+      select: { contatoTelefone: true },
+    });
+    if (await this.supressao.suprimido(empresaId, { leadId, telefone: leadTel?.contatoTelefone })) {
       this.logger.log(
         `CONVERSAR_IA: lead ${leadId} suprimido (LGPD) — pulado (exec ${execucaoId})`,
       );

@@ -191,6 +191,34 @@ function CalendarioConteudo({
     `/kanban/boards/${boardId}/calendario?mes=${mes}`,
   );
   const tabela = useApiQuery<TabelaCard[]>(`/kanban/boards/${boardId}/tabela`);
+  // Semana pode CRUZAR o mês (o fetch é mensal): busca também o mês vizinho do
+  // fim da semana visível e funde — senão os dias do mês seguinte ficavam vazios.
+  const fimSemanaVisivel = addDiasUTC(semanaBase, 6);
+  const mesFimSemana = `${fimSemanaVisivel.getUTCFullYear()}-${String(fimSemanaVisivel.getUTCMonth() + 1).padStart(2, '0')}`;
+  const mesVizinho = vista === 'semana' && mesFimSemana !== mes ? mesFimSemana : null;
+  const calViz = useApiQuery<{ cards: CalCard[]; itensChecklist: CalItem[] }>(
+    mesVizinho ? `/kanban/boards/${boardId}/calendario?mes=${mesVizinho}` : null,
+  );
+  const calCards = useMemo(() => {
+    const vistos = new Set<string>();
+    const out: CalCard[] = [];
+    for (const c of [...(cal.data?.cards ?? []), ...(calViz.data?.cards ?? [])]) {
+      if (vistos.has(c.id)) continue;
+      vistos.add(c.id);
+      out.push(c);
+    }
+    return out;
+  }, [cal.data, calViz.data]);
+  const calItens = useMemo(() => {
+    const vistos = new Set<string>();
+    const out: CalItem[] = [];
+    for (const i of [...(cal.data?.itensChecklist ?? []), ...(calViz.data?.itensChecklist ?? [])]) {
+      if (vistos.has(i.id)) continue;
+      vistos.add(i.id);
+      out.push(i);
+    }
+    return out;
+  }, [cal.data, calViz.data]);
   useEffect(() => {
     cal.refetch();
     tabela.refetch();
@@ -279,14 +307,14 @@ function CalendarioConteudo({
   // Cards + itens (canais) por dia, aplicando filtros
   const porDia = useMemo(() => {
     const mapa = new Map<string, { cards: CalCard[]; itens: CalItem[] }>();
-    for (const c of cal.data?.cards ?? []) {
+    for (const c of calCards) {
       if (!cardPassa(c.etiquetas, c.lista.nome)) continue;
       const k = diaUTC(c.dataEntrega);
       const v = mapa.get(k) ?? { cards: [], itens: [] };
       v.cards.push(c);
       mapa.set(k, v);
     }
-    for (const i of cal.data?.itensChecklist ?? []) {
+    for (const i of calItens) {
       if (fCanal && canalDe(i.texto)?.key !== fCanal) continue;
       const st = statusById.get(i.checklist.card.id) ?? '';
       if (fStatus && st !== fStatus) continue;
@@ -299,7 +327,7 @@ function CalendarioConteudo({
     }
     return mapa;
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [cal.data, statusById, fCanal, fPilar, fStatus, fSoCase, fSoPlanejado, fSoPublicado]);
+  }, [calCards, calItens, statusById, fCanal, fPilar, fStatus, fSoCase, fSoPlanejado, fSoPublicado]);
 
   const semData = (tabela.data ?? []).filter(
     (c) => !c.dataEntrega && !c.concluido && cardPassa(c.etiquetas, c.lista.nome),
@@ -328,12 +356,28 @@ function CalendarioConteudo({
   });
 
   function navPrev() {
-    if (vista === 'semana') setSemanaBase(addDiasUTC(semanaBase, -7));
+    if (vista === 'semana') irParaSemana(addDiasUTC(semanaBase, -7));
     else mudarMes(-1);
   }
   function navNext() {
-    if (vista === 'semana') setSemanaBase(addDiasUTC(semanaBase, 7));
+    if (vista === 'semana') irParaSemana(addDiasUTC(semanaBase, 7));
     else mudarMes(1);
+  }
+  // Navegação semanal mantém o fetch mensal SINCRONIZADO com a semana visível
+  // (antes: 2-3 cliques em "próxima" e a grade ficava vazia — mês não seguia).
+  function irParaSemana(base: Date) {
+    setSemanaBase(base);
+    const m = `${base.getUTCFullYear()}-${String(base.getUTCMonth() + 1).padStart(2, '0')}`;
+    if (m !== mes) setMes(m);
+  }
+  // Entrar na vista Semana vindo de OUTRO mês navegado: re-ancora a semana no
+  // 1º dia do mês visível (senão mostrava a semana de hoje com dados de lá).
+  function trocarVista(v: Vista) {
+    if (v === 'semana') {
+      const mesDaSemana = `${semanaBase.getUTCFullYear()}-${String(semanaBase.getUTCMonth() + 1).padStart(2, '0')}`;
+      if (mesDaSemana !== mes) setSemanaBase(inicioSemanaUTC(new Date(Date.UTC(ano, mesNum - 1, 1))));
+    }
+    setVista(v);
   }
   function mudarMes(delta: number) {
     const d = new Date(ano, mesNum - 1 + delta, 1);
@@ -423,6 +467,9 @@ function CalendarioConteudo({
   };
 
   return (
+    // DndContext envolve as DUAS colunas: o backlog "Sem data" (painel lateral)
+    // também tem cards arrastáveis — fora do contexto, os listeners viravam no-op.
+    <DndContext sensors={sensors} onDragEnd={onDragEnd}>
     <div className="grid grid-cols-1 xl:grid-cols-[1fr_320px] gap-4">
       <div>
         {/* Barra: view + navegação + filtros */}
@@ -432,7 +479,7 @@ function CalendarioConteudo({
               <button
                 key={v}
                 type="button"
-                onClick={() => setVista(v)}
+                onClick={() => trocarVista(v)}
                 className={cn(
                   'px-2.5 py-1 text-xs capitalize',
                   vista === v ? 'bg-primary text-primary-contrast' : 'hover:bg-surface-elevated',
@@ -533,7 +580,6 @@ function CalendarioConteudo({
         </div>
 
         <StateView loading={cal.loading && !cal.data} error={cal.error} onRetry={cal.refetch}>
-          <DndContext sensors={sensors} onDragEnd={onDragEnd}>
             {vista === 'mes' && (
               <GridMes
                 ano={ano}
@@ -551,8 +597,8 @@ function CalendarioConteudo({
             )}
             {vista === 'tema' && (
               <TimelineTema
-                cards={cal.data?.cards ?? []}
-                itens={cal.data?.itensChecklist ?? []}
+                cards={calCards}
+                itens={calItens}
                 statusById={statusById}
                 fCanal={fCanal}
                 fStatus={fStatus}
@@ -560,7 +606,6 @@ function CalendarioConteudo({
                 onAbrir={abrir}
               />
             )}
-          </DndContext>
         </StateView>
         <p className="text-[11px] text-muted mt-2">
           Chips = canais (data por canal) e a peça inteira na data de publicação. Arraste um card pra
@@ -597,6 +642,7 @@ function CalendarioConteudo({
         </div>
       </div>
     </div>
+    </DndContext>
   );
 }
 

@@ -710,10 +710,16 @@ export class FluxoExecutorService {
     // "Não Reabordar - LGPD ⛔", NÃO envia. Avisos pra grupo/número fixo (modo
     // 'contato'/'numero', ex.: diretoria) NÃO são suprimidos — a supressão é sobre
     // CONTATAR o suprimido, não sobre falar dele internamente.
+    let telefoneLeadResolvido: string | undefined;
     if (modo === 'lead') {
+      // Telefone resolvido ANTES da checagem: a supressão também casa por SUFIXO
+      // (D18) — pega lead DUPLICADO (mesma pessoa, outro leadId) em que só a
+      // outra cópia tem a tag. Reusado abaixo no envio (sem query dupla).
+      telefoneLeadResolvido = await this.resolverTelefoneLeadOuCliente(ctx, empresaId);
       const suprimido = await this.supressao.suprimido(empresaId, {
         leadId: ctx['leadId'] as string | undefined,
         clienteId: ctx['clienteId'] as string | undefined,
+        telefone: telefoneLeadResolvido,
       });
       if (suprimido) {
         this.logger.log('ENVIAR_WHATSAPP suprimido (LGPD) — modo lead');
@@ -781,7 +787,9 @@ export class FluxoExecutorService {
       if (!telefone) throw new Error('ENVIAR_WHATSAPP: destinatário "contato" não selecionado');
     } else {
       // 'lead' (default): lead do contexto, senão cliente do contexto.
-      telefone = await this.resolverTelefoneLeadOuCliente(ctx, empresaId);
+      // Já resolvido no gate de supressão acima — não repete a query.
+      telefone =
+        telefoneLeadResolvido ?? (await this.resolverTelefoneLeadOuCliente(ctx, empresaId));
       if (!telefone) {
         throw new Error('ENVIAR_WHATSAPP: contexto sem lead/cliente com telefone (modo "lead")');
       }

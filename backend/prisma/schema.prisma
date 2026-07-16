@@ -1013,6 +1013,10 @@ model Lead {
   @@index([clienteId])
   // Aging por etapa (dashboard funil): WHERE etapaDesde < cutoff
   @@index([empresaId, etapa, etapaDesde])
+  // + índice ÚNICO parcial em SQL puro (não representável aqui):
+  //   "Lead_empresa_email_lower_unique" ON (empresaId, LOWER(contatoEmail))
+  //   WHERE contatoEmail IS NOT NULL AND <> ''  → 1 lead por e-mail por empresa
+  //   (migration 20260716090000; P2002 mapeado pra ConflictException no create).
 }
 
 // ─── FUNIS CUSTOMIZADOS ───────────────────────────────────────────────

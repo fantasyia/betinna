@@ -259,6 +259,7 @@ export type ModuloName =
 export const ROUTE_MODULO: ReadonlyArray<readonly [prefix: string, modulo: ModuloName]> = [
   ['/dashboard', 'dashboard'],
   ['/kanban', 'quadros'],
+  ['/calendario-marketing', 'quadros'],
   ['/leads', 'kanban'],
   ['/funis', 'kanban'],
   ['/segmentos', 'kanban'],

@@ -3,6 +3,7 @@ import { type LeadEtapa, Prisma } from '@prisma/client';
 import { PrismaService } from '@database/prisma.service';
 import {
   BusinessRuleException,
+  ConflictException,
   ForbiddenException,
   NotFoundException,
 } from '@shared/errors/app-exception';
@@ -276,17 +277,26 @@ export class LeadsService {
       ? { funilId: null, funilEtapaId: null }
       : await this.resolverFunilInicial(empresaId, dto.funilId, dto.funilEtapaId, dto.etapa);
 
-    const lead = await this.prisma.lead.create({
-      data: {
-        ...dadosLead,
-        representanteId,
-        empresaId,
-        funilId,
-        funilEtapaId,
-        etapaDesde: new Date(),
-      },
-      include: leadInclude,
-    });
+    const lead = await this.prisma.lead
+      .create({
+        data: {
+          ...dadosLead,
+          representanteId,
+          empresaId,
+          funilId,
+          funilEtapaId,
+          etapaDesde: new Date(),
+        },
+        include: leadInclude,
+      })
+      .catch((err: unknown) => {
+        // Índice único (empresaId, LOWER(contatoEmail)): pessoa já é lead →
+        // erro CLARO em vez de 500 (regra do produto: 1 lead por pessoa/empresa).
+        if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === 'P2002') {
+          throw new ConflictException('Já existe um lead com este e-mail nesta empresa');
+        }
+        throw err;
+      });
 
     // Trigger: LEAD_CRIADO
     void this.bus.disparar(empresaId, 'LEAD_CRIADO', {
