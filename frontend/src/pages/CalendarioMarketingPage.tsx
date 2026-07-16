@@ -76,6 +76,11 @@ function diaUTC(iso: string): string {
 function chaveDia(d: Date): string {
   return `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, '0')}-${String(d.getUTCDate()).padStart(2, '0')}`;
 }
+/** Número compacto pro badge (1234 → 1,2k). */
+function compacto(n: number): string {
+  if (n >= 1000) return `${(n / 1000).toFixed(1).replace('.', ',').replace(',0', '')}k`;
+  return String(n);
+}
 
 // ─── Tipos das respostas do kanban ───────────────────────────────────────
 interface BoardResumo {
@@ -222,6 +227,34 @@ function CalendarioConteudo({
     return m;
   }, [tabela.data, campoImpuls]);
 
+  // Fase 2 — métricas por peça publicada + links (via campos personalizados).
+  const campos = board.data?.campos ?? [];
+  const cAlcance = campos.find((c) => /alcance/i.test(c.nome));
+  const cEngaj = campos.find((c) => /engaj/i.test(c.nome));
+  const cSalv = campos.find((c) => /salvam/i.test(c.nome));
+  const cLinkArt = campos.find((c) => /artigo|link\s*public/i.test(c.nome));
+  const cLinkPost = campos.find((c) => /\bpost\b|social|blotato/i.test(c.nome));
+  const temMetricas = !!(cAlcance || cEngaj || cSalv);
+  const num = (v: unknown) => (v == null || v === '' ? null : Number(v));
+  const metricasDoCard = useMemo(() => {
+    const m = new Map<string, { alcance: number | null; engaj: number | null; salv: number | null }>();
+    for (const c of tabela.data ?? []) {
+      const val = (id?: string) => (id ? num(c.campoValores.find((cv) => cv.campoId === id)?.valor) : null);
+      m.set(c.id, { alcance: val(cAlcance?.id), engaj: val(cEngaj?.id), salv: val(cSalv?.id) });
+    }
+    return m;
+  }, [tabela.data, cAlcance, cEngaj, cSalv]);
+  const linksDoCard = useMemo(() => {
+    const m = new Map<string, { artigo?: string; post?: string }>();
+    const str = (v: unknown) => (typeof v === 'string' && /^https?:\/\//i.test(v.trim()) ? v.trim() : undefined);
+    for (const c of tabela.data ?? []) {
+      const artigo = str(cLinkArt ? c.campoValores.find((cv) => cv.campoId === cLinkArt.id)?.valor : null);
+      const post = str(cLinkPost ? c.campoValores.find((cv) => cv.campoId === cLinkPost.id)?.valor : null);
+      if (artigo || post) m.set(c.id, { artigo, post });
+    }
+    return m;
+  }, [tabela.data, cLinkArt, cLinkPost]);
+
   // Opções de filtro
   const pilares = useMemo(() => {
     const m = new Map<string, KEtiqueta>();
@@ -317,24 +350,57 @@ function CalendarioConteudo({
     const ehCase = c.etiquetas.some((e) => /case/i.test(e.etiqueta.nome ?? ''));
     const arco = arcoDoCard.get(c.id);
     const impuls = impulsDoCard.get(c.id);
+    const links = linksDoCard.get(c.id);
+    const met = metricasDoCard.get(c.id);
     const st = 'lista' in c ? c.lista.nome : '';
     const est = estiloStatus(st);
     return (
-      <MkDraggableCard key={c.id + (dataStr ?? '')} id={c.id} onAbrir={() => abrir(c.id)}>
-        <span
-          style={{ borderLeft: `3px solid ${cor}` }}
-          className={cn(
-            'w-full flex items-center gap-1 text-[10px] px-1.5 py-0.5 rounded-[5px] bg-surface-elevated truncate',
-            est.opacidade,
-            (c.concluido || est.pub) && 'line-through',
-          )}
-        >
-          {ehCase && <span>⭐</span>}
-          {arco && <span title={arco.label}>{arco.icon}</span>}
-          {impuls && <span title="Impulsionada (ads)">🚀</span>}
-          <span className="truncate">{c.titulo}</span>
-        </span>
-      </MkDraggableCard>
+      <div key={c.id + (dataStr ?? '')} className="flex items-center gap-0.5">
+        <MkDraggableCard id={c.id} onAbrir={() => abrir(c.id)}>
+          <span
+            style={{ borderLeft: `3px solid ${cor}` }}
+            className={cn(
+              'w-full flex items-center gap-1 text-[10px] px-1.5 py-0.5 rounded-[5px] bg-surface-elevated truncate',
+              est.opacidade,
+              (c.concluido || est.pub) && 'line-through',
+            )}
+          >
+            {ehCase && <span>⭐</span>}
+            {arco && <span title={arco.label}>{arco.icon}</span>}
+            {impuls && <span title="Impulsionada (ads)">🚀</span>}
+            <span className="truncate">{c.titulo}</span>
+            {est.pub && met?.engaj != null && (
+              <span className="ml-auto shrink-0 text-[9px] text-muted no-underline" title="Engajamento">
+                ❤ {compacto(met.engaj)}
+              </span>
+            )}
+          </span>
+        </MkDraggableCard>
+        {links?.artigo && (
+          <a
+            href={links.artigo}
+            target="_blank"
+            rel="noreferrer"
+            onClick={(e) => e.stopPropagation()}
+            title="Artigo publicado"
+            className="shrink-0 text-[11px] no-underline"
+          >
+            🔗
+          </a>
+        )}
+        {links?.post && (
+          <a
+            href={links.post}
+            target="_blank"
+            rel="noreferrer"
+            onClick={(e) => e.stopPropagation()}
+            title="Post social"
+            className="shrink-0 text-[11px] no-underline"
+          >
+            📱
+          </a>
+        )}
+      </div>
     );
   };
   const chipCanal = (i: CalItem) => {
@@ -511,6 +577,8 @@ function CalendarioConteudo({
           temArco={!!campoArco}
           impulsDoCard={impulsDoCard}
           temImpuls={!!campoImpuls}
+          metricasDoCard={metricasDoCard}
+          temMetricas={temMetricas}
         />
         <div className="rounded-[10px] border border-border bg-surface p-3">
           <h4 className="text-xs font-semibold uppercase tracking-wider text-muted mb-2">
@@ -869,6 +937,8 @@ function PainelAnalise({
   temArco,
   impulsDoCard,
   temImpuls,
+  metricasDoCard,
+  temMetricas,
 }: {
   cal?: { cards: CalCard[]; itensChecklist: CalItem[] } | null;
   tabela?: TabelaCard[] | null;
@@ -876,6 +946,8 @@ function PainelAnalise({
   temArco: boolean;
   impulsDoCard: Map<string, boolean>;
   temImpuls: boolean;
+  metricasDoCard: Map<string, { alcance: number | null; engaj: number | null; salv: number | null }>;
+  temMetricas: boolean;
 }) {
   const a = useMemo(() => {
     const cards = cal?.cards ?? [];
@@ -916,6 +988,14 @@ function PainelAnalise({
     }
     let impuls = 0;
     for (const c of cards) if (impulsDoCard.get(c.id)) impuls += 1;
+    // Fase 2 — top por engajamento + alcance total (peças com métrica)
+    let alcanceTotal = 0;
+    for (const c of cards) alcanceTotal += metricasDoCard.get(c.id)?.alcance ?? 0;
+    const topEngaj = cards
+      .map((c) => ({ titulo: c.titulo, engaj: metricasDoCard.get(c.id)?.engaj ?? null }))
+      .filter((x): x is { titulo: string; engaj: number } => x.engaj != null)
+      .sort((a, b) => b.engaj - a.engaj)
+      .slice(0, 3);
     const status = new Map<string, number>();
     for (const c of tabela ?? []) status.set(c.lista.nome, (status.get(c.lista.nome) ?? 0) + 1);
     return {
@@ -926,9 +1006,11 @@ function PainelAnalise({
       caseApertado,
       arcos: [...arcos.entries()],
       impuls,
+      alcanceTotal,
+      topEngaj,
       status,
     };
-  }, [cal, tabela, arcoDoCard, impulsDoCard]);
+  }, [cal, tabela, arcoDoCard, impulsDoCard, metricasDoCard]);
 
   return (
     <div className="rounded-[10px] border border-border bg-surface p-3 flex flex-col gap-3">
@@ -1030,6 +1112,34 @@ function PainelAnalise({
           </span>
         )}
       </div>
+
+      {temMetricas && (
+        <div>
+          <p className="text-[11px] text-muted mb-1">Performance (peças publicadas)</p>
+          {a.alcanceTotal > 0 && (
+            <p className="text-[11px] text-text mb-1">
+              👁 Alcance no mês: <span className="font-semibold">{compacto(a.alcanceTotal)}</span>
+            </p>
+          )}
+          {a.topEngaj.length === 0 ? (
+            <span className="text-[11px] text-muted">
+              — (preencha alcance/engajamento nos cards publicados)
+            </span>
+          ) : (
+            <ul className="flex flex-col gap-0.5">
+              {a.topEngaj.map((t, i) => (
+                <li key={t.titulo} className="flex items-center gap-1 text-[11px]">
+                  <span className="text-muted">{i + 1}º</span>
+                  <span className="truncate flex-1 text-text" title={t.titulo}>
+                    {t.titulo}
+                  </span>
+                  <span className="shrink-0 text-muted">❤ {compacto(t.engaj)}</span>
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
+      )}
 
       <div>
         <p className="text-[11px] text-muted mb-1">Status (board inteiro)</p>
