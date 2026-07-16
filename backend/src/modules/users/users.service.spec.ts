@@ -146,6 +146,7 @@ describe('UsersService', () => {
         enviarAmostraFollowup: vi.fn().mockResolvedValue({ ok: true }),
       } as never,
       { desativar: vi.fn() } as never,
+      { garantirQuadroRep: vi.fn().mockResolvedValue(undefined) } as never,
     );
     mockInviteUserByEmail.mockReset();
     mockGenerateLink.mockReset();
@@ -650,6 +651,7 @@ describe('UsersService', () => {
             .mockResolvedValue({ ok: false, motivo: 'Resend não configurado' }),
         } as never,
         { desativar: vi.fn() } as never,
+        { garantirQuadroRep: vi.fn().mockResolvedValue(undefined) } as never,
       );
 
       const result = (await serviceEmailFail.create(fakeUser(), baseDto)) as {

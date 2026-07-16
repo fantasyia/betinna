@@ -305,10 +305,12 @@ export class UsersService {
     if (created.role === 'REP') {
       for (const vinc of created.empresas ?? []) {
         try {
-          await this.kanbanTarefa.garantirQuadroRep(vinc.empresa.id, created.id, created.nome);
+          // usa o ESCALAR empresaId (sempre presente) — vinc.empresa.id dependia
+          // do include e, se undefined, o próprio catch re-explodia (500 no create)
+          await this.kanbanTarefa.garantirQuadroRep(vinc.empresaId, created.id, created.nome);
         } catch (err) {
           this.logger.warn(
-            `Falha ao provisionar quadro do rep ${created.id} na empresa ${vinc.empresa.id}: ${String(err)}`,
+            `Falha ao provisionar quadro do rep ${created.id} na empresa ${vinc.empresaId}: ${String(err)}`,
           );
         }
       }

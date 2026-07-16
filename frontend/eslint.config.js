@@ -14,6 +14,12 @@ export default [
   // Base JS recommended rules
   js.configs.recommended,
 
+  // Scripts Node soltos na raiz (ex: shot.mjs) — globals de Node
+  {
+    files: ['*.mjs'],
+    languageOptions: { globals: { ...globals.node } },
+  },
+
   // TypeScript + React files
   {
     files: ['src/**/*.{ts,tsx}'],

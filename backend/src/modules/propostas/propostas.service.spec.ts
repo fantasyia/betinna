@@ -339,7 +339,7 @@ describe('PropostasService', () => {
       await service.create(fakeUser({ role: 'REP', id: 'rep-77' }), baseDto);
 
       // pedidoTotals(itens, descontoGeralPct, comissaoPct, descAVistaPct) — 3º arg = pct do rep.
-      const comissaoPctArg = pedidoPricing.pedidoTotals.mock.calls[0][2];
+      const comissaoPctArg = (pedidoPricing.pedidoTotals.mock.calls[0] as unknown[])[2];
       expect(comissaoPctArg).toBe(8);
     });
 

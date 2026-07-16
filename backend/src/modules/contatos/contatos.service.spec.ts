@@ -36,10 +36,12 @@ const makePrismaMock = () => ({
   leadTag: {
     createMany: vi.fn(),
     deleteMany: vi.fn(),
+    findMany: vi.fn().mockResolvedValue([]),
   },
   clienteTag: {
     createMany: vi.fn(),
     deleteMany: vi.fn(),
+    findMany: vi.fn().mockResolvedValue([]),
   },
 });
 

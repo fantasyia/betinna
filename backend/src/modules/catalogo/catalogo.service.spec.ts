@@ -416,7 +416,7 @@ describe('CatalogoService', () => {
       const out = await service.resolverShareToken('token-valido');
 
       expect(out.produtos).toHaveLength(1);
-      const prod = out.produtos[0].produto as Record<string, unknown>;
+      const prod = out.produtos[0].produto as unknown as Record<string, unknown>;
       expect(prod).not.toHaveProperty('precoFabrica');
       expect(prod).not.toHaveProperty('estoque');
       expect(prod).not.toHaveProperty('estoqueAtualizadoEm');
