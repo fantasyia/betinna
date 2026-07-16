@@ -163,14 +163,18 @@ export function parseTurnoIa(texto: string): IaTurno {
  */
 const PADROES_REMOCAO: RegExp[] = [
   /\btir[ae]r?\s+(o\s+)?(meu|meu\s+)?\s*(n[uú]mero|contato|nome|cadastro)/i,
-  /\bme\s+(tir[ae]|remov[ae]|exclu[ai]|descadastr\w*|desinscrev\w*)/i,
+  // "me tira/remove/exclui" SÓ com destino de cadastro — "me tira uma dúvida" /
+  // "pode me tirar uma foto" é lead ENGAJADO, não LGPD (falso positivo real)
+  /\bme\s+(tir[ae]r?|remov[ae]r?|exclu[ai]r?)\s+(daqui|(d[aeo]s?|dess[ae]s?|dest[ae]s?)\s+(seus?\s+|suas?\s+)?\w*(lista|grupo|cadastro|base|mailing|whats\w*|zap|contatos?))/i,
+  /\bme\s+(descadastr\w*|desinscrev\w*)/i,
   /\bdescadastr\w*/i,
   /\bsai[ar]?\s+d[ae]\s+(sua|essa|dessa)\s+lista/i,
   /\bsair\s+da\s+lista/i,
   /\bn[aã]o\s+(quero|desejo)\s+(mais\s+)?(receber|ser\s+(contact|procurad|chamad|abordad))/i,
   /\bn[aã]o\s+me\s+(mand|envi|cham|procur|perturb|contat)\w*/i,
   /\bpar[ae]\s+de\s+(me\s+)?(mand|envi|cham|procur|contat)\w*/i,
-  /\bremov[ae]r?\s+(o\s+)?(meu|minha)/i,
+  // idem: "remover o meu" precisa do OBJETO de cadastro ("remove meu desconto" ≠ LGPD)
+  /\bremov[ae]r?\s+(o\s+|a\s+)?(meu|minha)\s+(n[uú]mero|contato|nome|cadastro|telefone|zap|whats\w*)/i,
   /\bunsubscribe\b/i,
 ];
 

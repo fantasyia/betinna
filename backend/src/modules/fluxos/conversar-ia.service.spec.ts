@@ -90,6 +90,29 @@ describe('pedidoRemocaoNoTexto', () => {
       expect(pedidoRemocaoNoTexto(t)).toBe(false);
     }
   });
+  it('REGRESSÃO: "me tira/remove" sem destino de cadastro é lead ENGAJADO, não LGPD', () => {
+    for (const t of [
+      'me tira uma dúvida, funciona em 380V?',
+      'pode me tirar uma foto do produto?',
+      'esse preço me tira do sério haha',
+      'remove o meu desconto então',
+    ]) {
+      expect(pedidoRemocaoNoTexto(t)).toBe(false);
+    }
+  });
+  it('e segue detectando remoção COM destino de cadastro', () => {
+    for (const t of [
+      'me tira da lista por favor',
+      'me tira daqui',
+      'me remove do grupo',
+      'me exclui dessa base',
+      'me tira do seu mailing',
+      'remove meu contato aí',
+      'unsubscribe',
+    ]) {
+      expect(pedidoRemocaoNoTexto(t)).toBe(true);
+    }
+  });
 });
 
 describe('personalizarNome', () => {
