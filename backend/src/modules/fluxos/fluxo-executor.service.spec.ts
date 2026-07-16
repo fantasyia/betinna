@@ -222,6 +222,41 @@ describe('FluxoExecutorService', () => {
       );
     });
 
+    it('filtroComTag: só busca leads com ALGUMA das tags de inclusão (e mantém a exclusão)', async () => {
+      prisma.fluxoExecucao.findUnique.mockResolvedValue(fakeExecucao({ status: 'EM_EXECUCAO' }));
+      prisma.fluxoNo.findUnique.mockResolvedValue(
+        fakeNo({
+          tipo: 'ACAO',
+          acaoTipo: 'LIBERAR_LOTE',
+          config: {
+            etapaOrigemId: 'et-base',
+            etapaDestinoId: 'et-reabord',
+            quantidade: 10,
+            filtroComTag: ['Reaquecer 🟡', 'Sem Resposta ⚫'],
+            filtroExcluiTag: ['Esfriado ❄️', 'reaquec-3'],
+          },
+        }),
+      );
+      prisma.funilEtapa.findFirst.mockResolvedValue({
+        id: 'et-reabord',
+        funilId: 'funil-1',
+        tipo: 'ATIVA',
+      });
+      prisma.lead.findMany.mockResolvedValue([]);
+
+      await service.executarPasso('exec-1', 'no-1', 'job-test');
+
+      expect(prisma.lead.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: expect.objectContaining({
+            funilEtapaId: 'et-base',
+            tags: { some: { tag: { nome: { in: ['Reaquecer 🟡', 'Sem Resposta ⚫'] } } } },
+            NOT: { tags: { some: { tag: { nome: { in: ['Esfriado ❄️', 'reaquec-3'] } } } } },
+          }),
+        }),
+      );
+    });
+
     it('cron sem leads elegíveis (movidos:0) → DESCARTA a execução vazia', async () => {
       prisma.fluxoExecucao.findUnique.mockResolvedValue(
         fakeExecucao({ status: 'EM_EXECUCAO', contexto: { _cron: true } }),
@@ -656,6 +691,63 @@ describe('FluxoExecutorService', () => {
       );
       // NÃO pode cair no default (que seria o efeito de ler o "LGPD" velho).
       expect(queue.add).not.toHaveBeenCalledWith(
+        'step',
+        { execucaoId: 'exec-1', noId: 'no-default' },
+        expect.any(Object),
+      );
+    });
+
+    it('sinal LIMPO do lead não ressuscita pelo espelho velho no topo (roteia default)', async () => {
+      // Lead REUTILIZADO (reaquecimento): limparSinaisRoteamento removeu
+      // classificacao_final do lead, mas o espelho achatado "LGPD" de uma
+      // execução ANTERIOR segue no contexto persistido. Sem a limpeza do
+      // espelho, o fallback do resolveCampoFresco lia o velho → roteava LGPD.
+      const rotNo = fakeNo({
+        id: 'rot',
+        tipo: 'CONDICAO',
+        config: {
+          modo: 'roteador',
+          variavel: 'classificacao_final',
+          saidas: ['LGPD', 'Sem Sinergia'],
+        },
+      });
+      prisma.fluxoExecucao.findUnique.mockResolvedValue(
+        fakeExecucao({
+          status: 'EM_EXECUCAO',
+          contexto: { leadId: 'lead-1', classificacao_final: 'LGPD' }, // espelho VELHO
+        }),
+      );
+      prisma.fluxoNo.findUnique.mockResolvedValue(rotNo);
+      prisma.lead.findFirst.mockResolvedValue({
+        nome: 'Rep Teste',
+        contatoNome: null,
+        contatoTelefone: null,
+        contatoEmail: null,
+        cidade: null,
+        uf: null,
+        segmento: null,
+        score: 0,
+        etapa: 'NOVO',
+        variaveis: {}, // sinais LIMPOS (limparSinaisRoteamento) — sem classificação nova
+        funil: null,
+        funilEtapa: null,
+        tags: [],
+      });
+      prisma.fluxoEdge.findMany.mockResolvedValue([
+        fakeEdge('rot', 'no-lgpd', 'LGPD'),
+        fakeEdge('rot', 'no-semsin', 'Sem Sinergia'),
+        fakeEdge('rot', 'no-default', 'default'),
+      ]);
+
+      await service.executarPasso('exec-1', 'rot', 'job-test');
+
+      // NÃO pode rotear LGPD (espelho velho); sem sinal novo → default.
+      expect(queue.add).not.toHaveBeenCalledWith(
+        'step',
+        { execucaoId: 'exec-1', noId: 'no-lgpd' },
+        expect.any(Object),
+      );
+      expect(queue.add).toHaveBeenCalledWith(
         'step',
         { execucaoId: 'exec-1', noId: 'no-default' },
         expect.any(Object),

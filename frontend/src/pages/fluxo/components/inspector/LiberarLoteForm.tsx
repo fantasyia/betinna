@@ -123,6 +123,43 @@ export function LiberarLoteForm({
         </div>
       )}
       <Field
+        label="Só leads com tag"
+        hint="Clique pra marcar — só entram leads com QUALQUER uma delas (vazio = todos; ex: Reaquecer + Sem Resposta no cron de reaquecimento)"
+      >
+        <div className="flex flex-wrap gap-1.5">
+          {(tags ?? []).length === 0 && (
+            <span className="text-[11px] text-muted">Nenhuma tag cadastrada</span>
+          )}
+          {(tags ?? []).map((t) => {
+            const sel = ((data.config.filtroComTag as string[]) ?? []).includes(t.nome);
+            return (
+              <button
+                key={t.id}
+                type="button"
+                data-testid={`lote-comtag-${t.id}`}
+                onClick={() =>
+                  onUpdate((d) => {
+                    const atual = (d.config.filtroComTag as string[]) ?? [];
+                    const next = atual.includes(t.nome)
+                      ? atual.filter((n) => n !== t.nome)
+                      : [...atual, t.nome];
+                    return { ...d, config: { ...d.config, filtroComTag: next } };
+                  })
+                }
+                className={cn(
+                  'text-[11px] px-2 py-1 rounded-md border transition-colors',
+                  sel
+                    ? 'bg-primary text-white border-primary'
+                    : 'bg-surface text-text border-border hover:border-border-strong',
+                )}
+              >
+                {t.nome}
+              </button>
+            );
+          })}
+        </div>
+      </Field>
+      <Field
         label="Excluir leads com tag"
         hint="Clique pra marcar — leads com qualquer uma são ignorados (ex: pausado)"
       >
@@ -136,6 +173,7 @@ export function LiberarLoteForm({
               <button
                 key={t.id}
                 type="button"
+                data-testid={`lote-excluitag-${t.id}`}
                 onClick={() =>
                   onUpdate((d) => {
                     const atual = (d.config.filtroExcluiTag as string[]) ?? [];

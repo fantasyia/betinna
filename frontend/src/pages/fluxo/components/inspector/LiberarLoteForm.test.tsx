@@ -195,7 +195,7 @@ describe('LiberarLoteForm — filtroExcluiTag (toggle de botões → array)', ()
     const data = makeData({ filtroExcluiTag: ['pausado'] });
     const { fn, captured } = makeOnUpdate(data);
     render(<LiberarLoteForm data={data} onUpdate={fn} etapasOpts={etapasOpts} tags={tags} />);
-    fireEvent.click(screen.getByRole('button', { name: 'vip' }));
+    fireEvent.click(screen.getByTestId('lote-excluitag-tag-2'));
     expect(captured.last!.config.filtroExcluiTag).toEqual(['pausado', 'vip']);
   });
 
@@ -203,7 +203,7 @@ describe('LiberarLoteForm — filtroExcluiTag (toggle de botões → array)', ()
     const data = makeData({ filtroExcluiTag: ['pausado', 'vip'] });
     const { fn, captured } = makeOnUpdate(data);
     render(<LiberarLoteForm data={data} onUpdate={fn} etapasOpts={etapasOpts} tags={tags} />);
-    fireEvent.click(screen.getByRole('button', { name: 'pausado' }));
+    fireEvent.click(screen.getByTestId('lote-excluitag-tag-1'));
     expect(captured.last!.config.filtroExcluiTag).toEqual(['vip']);
   });
 
@@ -211,13 +211,41 @@ describe('LiberarLoteForm — filtroExcluiTag (toggle de botões → array)', ()
     const data = makeData({ filtroExcluiTag: undefined });
     const { fn, captured } = makeOnUpdate(data);
     render(<LiberarLoteForm data={data} onUpdate={fn} etapasOpts={etapasOpts} tags={tags} />);
-    fireEvent.click(screen.getByRole('button', { name: 'vip' }));
+    fireEvent.click(screen.getByTestId('lote-excluitag-tag-2'));
     expect(captured.last!.config.filtroExcluiTag).toEqual(['vip']);
   });
 
   it('mostra fallback "Nenhuma tag cadastrada" quando tags é null', () => {
     const data = makeData();
     render(<LiberarLoteForm data={data} onUpdate={vi.fn()} etapasOpts={etapasOpts} tags={null} />);
-    expect(screen.getByText('Nenhuma tag cadastrada')).toBeTruthy();
+    // 2 ocorrências: uma no filtro de INCLUSÃO, outra no de EXCLUSÃO.
+    expect(screen.getAllByText('Nenhuma tag cadastrada').length).toBe(2);
+  });
+});
+
+describe('LiberarLoteForm — filtroComTag (só leads com tag)', () => {
+  it('faz APPEND da tag de inclusão ao clicar (inicializa no vazio)', () => {
+    const data = makeData({ filtroComTag: undefined });
+    const { fn, captured } = makeOnUpdate(data);
+    render(<LiberarLoteForm data={data} onUpdate={fn} etapasOpts={etapasOpts} tags={tags} />);
+    fireEvent.click(screen.getByTestId('lote-comtag-tag-2'));
+    expect(captured.last!.config.filtroComTag).toEqual(['vip']);
+  });
+
+  it('faz REMOVE ao clicar numa tag de inclusão já selecionada', () => {
+    const data = makeData({ filtroComTag: ['pausado', 'vip'] });
+    const { fn, captured } = makeOnUpdate(data);
+    render(<LiberarLoteForm data={data} onUpdate={fn} etapasOpts={etapasOpts} tags={tags} />);
+    fireEvent.click(screen.getByTestId('lote-comtag-tag-1'));
+    expect(captured.last!.config.filtroComTag).toEqual(['vip']);
+  });
+
+  it('inclusão e exclusão são INDEPENDENTES (clicar numa não mexe na outra)', () => {
+    const data = makeData({ filtroComTag: ['vip'], filtroExcluiTag: ['pausado'] });
+    const { fn, captured } = makeOnUpdate(data);
+    render(<LiberarLoteForm data={data} onUpdate={fn} etapasOpts={etapasOpts} tags={tags} />);
+    fireEvent.click(screen.getByTestId('lote-comtag-tag-1'));
+    expect(captured.last!.config.filtroComTag).toEqual(['vip', 'pausado']);
+    expect(captured.last!.config.filtroExcluiTag).toEqual(['pausado']);
   });
 });

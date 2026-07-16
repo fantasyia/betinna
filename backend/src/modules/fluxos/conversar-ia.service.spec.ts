@@ -5,6 +5,7 @@ import {
   parseTurnoIa,
   pedidoRemocaoNoTexto,
   personalizarNome,
+  respostaEhDespedida,
 } from './conversar-ia.service';
 
 const makePrisma = () => ({
@@ -112,6 +113,36 @@ describe('pedidoRemocaoNoTexto', () => {
     ]) {
       expect(pedidoRemocaoNoTexto(t)).toBe(true);
     }
+  });
+});
+
+describe('respostaEhDespedida', () => {
+  it('detecta despedidas reais (padrão forte, ou 2+ cortesias)', () => {
+    for (const t of [
+      'Acho que peguei você num momento corrido. Vou te deixar em paz por aqui. Sucesso aí!',
+      'Entendi — não é bem o perfil que buscamos agora. Valeu pela conversa!',
+      'Sem problemas, vou te deixar em paz.',
+      'Se um dia quiser retomar, é só me chamar. Sucesso!',
+      'Qualquer coisa é só chamar. Sucesso aí!', // 2 cortesias juntas = despedida
+    ]) {
+      expect(respostaEhDespedida(t)).toBe(true);
+    }
+  });
+  it('REGRESSÃO: cortesia de MEIO de conversa NÃO encerra entrevista viva', () => {
+    for (const t of [
+      'Fico à disposição pra qualquer dúvida. Prefere o kit trifásico ou o monofásico?',
+      'Sucesso no evento de amanhã! Depois me conta como foi.',
+      'É só me chamar quando tiver a medição em mãos.',
+      'Perfeito! Fico à disposição. Qual o melhor horário pra gente conversar?',
+      'Ótima pergunta! Qualquer coisa tô por aqui. Você atende a região de Campinas?',
+    ]) {
+      expect(respostaEhDespedida(t)).toBe(false);
+    }
+  });
+  it('turno que TERMINA perguntando nunca é despedida (mesmo com padrão forte)', () => {
+    expect(
+      respostaEhDespedida('Não é bem o perfil que buscamos… mas me conta, você revende o quê?'),
+    ).toBe(false);
   });
 });
 

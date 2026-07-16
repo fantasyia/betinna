@@ -33,6 +33,7 @@ import {
   type WebhookExternoConfig,
   type LiberarLoteConfig,
   type ExecucaoContexto,
+  SINAIS_ROTEAMENTO,
 } from './fluxo-executor.types';
 
 // ─── Helpers ──────────────────────────────────────────────────────────
@@ -593,6 +594,15 @@ export class FluxoExecutorService {
     // evento (leadId/texto/…), então sobrescrever é seguro.
     for (const [k, v] of Object.entries(leadVars)) {
       if (v != null) ctx[k] = v;
+    }
+    // Cauda do espelho velho: sinal de roteamento LIMPO do lead (limparSinais-
+    // Roteamento) some do leadVars — mas o atalho achatado numa execução ANTERIOR
+    // ainda vive no contexto persistido e voltaria a rotear ("removido" viraria
+    // "sem sinal novo" e o fallback lia o velho). Remove o espelho órfão.
+    for (const k of SINAIS_ROTEAMENTO) {
+      // 'classificacao' também é payload de EVENTO (IA_CLASSIFICOU) — não é só espelho.
+      if (k === 'classificacao') continue;
+      if (!(k in leadVars)) delete ctx[k];
     }
     // Campos do lead + defaults da empresa: só preenchem quando AUSENTES (não
     // clobber o que o evento já trouxe).
@@ -1426,10 +1436,16 @@ export class FluxoExecutorService {
     const excluiTags = (cfg.filtroExcluiTag ?? []).filter(
       (t) => typeof t === 'string' && t.trim().length > 0,
     );
+    // Inclusão: só leads que TÊM alguma das tags (ex: cron de reaquecimento pega
+    // 'Reaquecer 🟡' OU 'Sem Resposta ⚫'). Vazio = sem restrição (comportamento legado).
+    const comTags = (cfg.filtroComTag ?? []).filter(
+      (t) => typeof t === 'string' && t.trim().length > 0,
+    );
     const where: Prisma.LeadWhereInput = {
       empresaId,
       funilEtapaId: cfg.etapaOrigemId,
       ...(cfg.funilId ? { funilId: cfg.funilId } : {}),
+      ...(comTags.length ? { tags: { some: { tag: { nome: { in: comTags } } } } } : {}),
       ...(excluiTags.length
         ? { NOT: { tags: { some: { tag: { nome: { in: excluiTags } } } } } }
         : {}),

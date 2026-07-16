@@ -27,6 +27,7 @@ import {
   type FluxoStepJobData,
   type ConversarIaConfig,
   type ExecucaoContexto,
+  SINAIS_ROTEAMENTO,
 } from './fluxo-executor.types';
 
 /** Default de mensagens no histórico quando a empresa não configurou (= persona.service). */
@@ -191,23 +192,31 @@ export function pedidoRemocaoNoTexto(texto: string): boolean {
  * conversa. Quando dispara sem classificação, o motor força a classificação
  * (classificarEncerramento) em vez de deixar o nó preso em AGUARDANDO.
  */
-const PADROES_DESPEDIDA: RegExp[] = [
+const PADROES_DESPEDIDA_FORTE: RegExp[] = [
   /\bte\s+deixar\s+em\s+paz/i,
   /\bvou\s+(te\s+)?deixar\s+(voc[eê]\s+)?(em\s+paz|por\s+aqui|tranquil)/i,
   /\bn[aã]o\s+é\s+(bem\s+)?o\s+(perfil|encaixe)/i,
   /\bn[aã]o\s+é\s+bem\s+o\s+que\s+eu\s+(procuro|busco)/i,
-  /\bsucesso\s+(a[íi]|pra\s+voc[eê]|no|nos)/i,
-  /\bé\s+só\s+me\s+chamar/i,
-  /\bfico\s+à\s+disposi/i,
   /\bvaleu\s+(demais\s+)?pela\s+conversa/i,
   /\bse\s+um\s+dia\s+quiser/i,
   /\bpeguei\s+voc[eê]\s+num\s+momento/i,
+];
+// Cortesia que também aparece no MEIO da conversa ("fico à disposição", "sucesso
+// no evento") — sozinha NÃO é despedida (encerrava entrevista viva); só em dupla.
+const PADROES_DESPEDIDA_FRACA: RegExp[] = [
+  /\bsucesso\s+(a[íi]|pra\s+voc[eê]|no|nos)/i,
+  /\bé\s+só\s+me\s+chamar/i,
+  /\bfico\s+à\s+disposi/i,
   /\bqualquer\s+coisa\s+(é\s+só|estou|tô)/i,
 ];
 
 export function respostaEhDespedida(texto: string): boolean {
   const t = (texto ?? '').trim();
-  return t.length > 0 && PADROES_DESPEDIDA.some((re) => re.test(t));
+  if (!t) return false;
+  // Turno que TERMINA perguntando ainda está engajando — não é despedida.
+  if (/[?？]\s*$/.test(t)) return false;
+  if (PADROES_DESPEDIDA_FORTE.some((re) => re.test(t))) return true;
+  return PADROES_DESPEDIDA_FRACA.filter((re) => re.test(t)).length >= 2;
 }
 
 const toJsonInput = (v: Record<string, unknown>): Prisma.InputJsonObject =>
@@ -1135,13 +1144,9 @@ export class ConversarIaService {
    * de uma conversa anterior. Preserva as demais variáveis (tipo_atuacao, etc.).
    */
   private async limparSinaisRoteamento(leadId: string, empresaId: string): Promise<void> {
-    const CHAVES = [
-      'classificacao_final',
-      'classificacao',
-      'trilho',
-      'pedido_remocao',
-      'encerrar_conversa',
-    ];
+    // Lista COMPARTILHADA com o montarContexto (remoção do espelho no topo) —
+    // divergência entre as duas ressuscitava o sinal velho. Ver SINAIS_ROTEAMENTO.
+    const CHAVES = SINAIS_ROTEAMENTO;
     try {
       const lead = await this.prisma.lead.findFirst({
         where: { id: leadId, empresaId },

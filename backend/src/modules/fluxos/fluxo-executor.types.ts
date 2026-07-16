@@ -171,6 +171,11 @@ export interface LiberarLoteConfig {
   campoOrdem?: string;
   /** Direção do 'custom' (default asc). */
   ordemDir?: 'asc' | 'desc';
+  /**
+   * Nomes de tags — só entram leads com PELO MENOS uma delas (ex: 'Reaquecer 🟡' /
+   * 'Sem Resposta ⚫' no cron de reaquecimento). Vazio/ausente = sem restrição.
+   */
+  filtroComTag?: string[];
   /** Nomes de tags — leads com QUALQUER uma são EXCLUÍDOS do lote (ex: 'pausado'). */
   filtroExcluiTag?: string[];
   /**
@@ -180,6 +185,20 @@ export interface LiberarLoteConfig {
    */
   filtroSoComWhatsapp?: boolean;
 }
+
+/**
+ * Sinais TERMINAIS de roteamento que a IA grava em Lead.variaveis. A lista é
+ * COMPARTILHADA entre a limpeza no início da abordagem (limparSinaisRoteamento)
+ * e a remoção do espelho achatado no topo do contexto (montarContexto) — se as
+ * duas divergirem, um sinal limpo do lead volta a rotear pelo espelho velho.
+ */
+export const SINAIS_ROTEAMENTO = [
+  'classificacao_final',
+  'classificacao',
+  'trilho',
+  'pedido_remocao',
+  'encerrar_conversa',
+] as const;
 
 /** Contexto de execução — enriquecido progressivamente. */
 export type ExecucaoContexto = Record<string, unknown>;
