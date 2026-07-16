@@ -23,6 +23,7 @@ import {
 } from 'lucide-react';
 import {
   DndContext,
+  KeyboardSensor,
   PointerSensor,
   useSensor,
   useSensors,
@@ -33,6 +34,7 @@ import {
   SortableContext,
   useSortable,
   arrayMove,
+  sortableKeyboardCoordinates,
   verticalListSortingStrategy,
 } from '@dnd-kit/sortable';
 import { clearSession } from '@/lib/auth-store';
@@ -400,7 +402,11 @@ function Sidebar({
       return [];
     }
   });
-  const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 5 } }));
+  // KeyboardSensor: o punho de reordenar é focável — Enter/Espaço pega, setas movem.
+  const sensors = useSensors(
+    useSensor(PointerSensor, { activationConstraint: { distance: 5 } }),
+    useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates }),
+  );
 
   // Itens visíveis (por papel/permissão), na ordem salva; novos itens vão pro fim.
   const todos = SECTIONS.flatMap((s) => s.items);

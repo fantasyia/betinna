@@ -20,20 +20,27 @@ export class SupressaoService {
   constructor(private readonly prisma: PrismaService) {}
 
   /**
-   * True se o contato deve ser SUPRIMIDO (tem a tag LGPD). Best-effort: em erro
-   * de checagem, loga e retorna false (uma falha transitória não deve travar TODO
-   * o envio outbound — a tag é aplicada de novo no próximo hard-stop se preciso).
+   * True se o contato deve ser SUPRIMIDO (tem a tag LGPD).
+   *
+   * FAIL-CLOSED: erro transitório na checagem PROPAGA (os 4 pontos gateados —
+   * fluxo WhatsApp/Email, Conversar-IA, campanhas — rodam em job BullMQ com
+   * retry). Enviar pra quem pediu remoção é violação legal; atrasar um envio
+   * até a re-tentativa não é.
    */
   async suprimido(
     empresaId: string,
     alvo: { leadId?: string | null; clienteId?: string | null; telefone?: string | null },
   ): Promise<boolean> {
     try {
-      const tag = await this.prisma.tag.findFirst({
-        where: { empresaId, nome: SupressaoService.TAG_LGPD },
-        select: { id: true },
-      });
-      if (!tag) return false;
+      const tag = await this.acharTagLgpd(empresaId);
+      if (!tag) {
+        // Tag ausente ≠ erro: é estado de configuração (nunca criada ou renomeada
+        // além do reconhecível). WARN alto pra não virar supressão inerte silenciosa.
+        this.logger.warn(
+          `Tag de supressão LGPD não encontrada na empresa ${empresaId} — supressão INERTE (tag renomeada/apagada?)`,
+        );
+        return false;
+      }
 
       if (alvo.leadId) {
         const n = await this.prisma.leadTag.count({
@@ -66,9 +73,42 @@ export class SupressaoService {
 
       return false;
     } catch (err) {
-      this.logger.warn(`Falha ao checar supressão LGPD (segue sem bloquear): ${String(err)}`);
-      return false;
+      // FAIL-CLOSED: não decide "pode enviar" sem conseguir checar — propaga e
+      // deixa o retry do BullMQ resolver (antes: fail-open → suprimido RECEBIA).
+      this.logger.error(
+        `Falha ao checar supressão LGPD — bloqueando o envio até a re-tentativa: ${String(err)}`,
+      );
+      throw err;
     }
+  }
+
+  /**
+   * Acha a tag de supressão por nome NORMALIZADO (sem acento/emoji/caixa/espaço
+   * extra) — renomear "Não Reabordar - LGPD ⛔" pra "nao reabordar lgpd" continua
+   * casando. Match exato por string quebrava silenciosamente a supressão.
+   */
+  private async acharTagLgpd(empresaId: string): Promise<{ id: string } | null> {
+    const alvoNorm = this.normalizar(SupressaoService.TAG_LGPD);
+    const candidatas = await this.prisma.tag.findMany({
+      where: { empresaId, nome: { contains: 'reabordar', mode: 'insensitive' } },
+      select: { id: true, nome: true },
+    });
+    return (
+      candidatas.find((t) => this.normalizar(t.nome) === alvoNorm) ??
+      candidatas.find((t) => this.normalizar(t.nome).includes('nao reabordar')) ??
+      null
+    );
+  }
+
+  /** minúsculas, sem acento, sem emoji/pontuação, espaços colapsados. */
+  private normalizar(s: string): string {
+    return s
+      .normalize('NFD')
+      .replace(/[̀-ͯ]/g, '')
+      .replace(/[^a-zA-Z0-9 ]/g, ' ')
+      .replace(/\s+/g, ' ')
+      .trim()
+      .toLowerCase();
   }
 
   private sufixoTelefone(tel?: string | null): string | null {

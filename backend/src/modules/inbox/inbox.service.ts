@@ -977,6 +977,10 @@ export class InboxService {
     // reimportação de histórico anterior ao zeramento (timestamp <= zeradasEm),
     // NÃO recria — senão o history sync do WhatsApp ressuscita o que foi apagado.
     // Mensagens genuinamente novas têm timestamp > zeradasEm e passam normalmente.
+    // Janela conhecida e ACEITA: timestamp do WhatsApp tem granularidade de
+    // segundo (relógio do remetente) — mensagem legítima no MESMO segundo do
+    // zerar (ou com skew) é descartada. Trade-off consciente: janela ínfima vs
+    // ressuscitar o histórico inteiro; não vale complexidade extra.
     if (conv.mensagensZeradasEm && params.data && params.data <= conv.mensagensZeradasEm) {
       return { conversationId: conv.id, messageId: '', duplicada: true };
     }

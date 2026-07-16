@@ -3,6 +3,7 @@ import {
   formatMoeda,
   formatMoedaCompacta,
   formatNumero,
+  formatNumeroCompacto,
   formatPercent,
   maskDinheiro,
   parseDinheiro,
@@ -42,6 +43,23 @@ describe('formatMoeda', () => {
 
   it('valor negativo', () => {
     expect(nbsp(formatMoeda(-50.5))).toBe('-R$ 50,50');
+  });
+});
+
+describe('formatNumeroCompacto', () => {
+  it('milhares → "1,2k" (vírgula pt-BR, sem ,0)', () => {
+    expect(formatNumeroCompacto(1234)).toBe('1,2k');
+    expect(formatNumeroCompacto(1000)).toBe('1k');
+  });
+  it('milhões → M, e 999.999 NÃO vira "1000k"', () => {
+    expect(formatNumeroCompacto(1_234_567)).toBe('1,2M');
+    expect(formatNumeroCompacto(999_999)).toBe('1M');
+  });
+  it('abaixo de mil delega pro formatNumero (pt-BR)', () => {
+    expect(formatNumeroCompacto(999)).toBe('999');
+  });
+  it('negativo preserva o sinal', () => {
+    expect(formatNumeroCompacto(-1500)).toBe('-1,5k');
   });
 });
 

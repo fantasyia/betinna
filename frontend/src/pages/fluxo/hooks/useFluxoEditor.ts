@@ -178,15 +178,15 @@ export function useFluxoEditor({
           config: defaultConfig(item),
         },
       };
-      setNodes((nds) => {
-        const next = nds.concat(newNode);
-        pushHistory({ nodes: next, edges });
-        return next;
-      });
+      // pushHistory FORA do updater: StrictMode roda o updater 2x em dev e
+      // duplicava o snapshot (undo pedia 2 Ctrl+Z).
+      const next = nodes.concat(newNode);
+      pushHistory({ nodes: next, edges });
+      setNodes(next);
       setDirty(true);
     },
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [reactFlowInstance, setNodes, edges],
+    [reactFlowInstance, setNodes, nodes, edges],
   );
 
   const onDragOver = useCallback((event: DragEvent<HTMLDivElement>) => {
@@ -197,26 +197,25 @@ export function useFluxoEditor({
   // Connection
   const onConnect = useCallback(
     (conn: Connection) => {
-      setEdges((eds) => {
-        const next = addEdge(
-          {
-            ...conn,
-            type: 'removivel',
-            animated: false,
-            style: { stroke: 'var(--secondary)', strokeWidth: 2.5 },
-            // O id do handle de saída vira o label da aresta — contrato central em
-            // lib/saidas.ts (true→Sim, false→Não, roteador: o próprio id).
-            label: labelDaAresta(conn.sourceHandle),
-          },
-          eds,
-        );
-        pushHistory({ nodes, edges: next });
-        return next;
-      });
+      // pushHistory FORA do updater (StrictMode dev rodava 2x → snapshot dobrado).
+      const next = addEdge(
+        {
+          ...conn,
+          type: 'removivel',
+          animated: false,
+          style: { stroke: 'var(--secondary)', strokeWidth: 2.5 },
+          // O id do handle de saída vira o label da aresta — contrato central em
+          // lib/saidas.ts (true→Sim, false→Não, roteador: o próprio id).
+          label: labelDaAresta(conn.sourceHandle),
+        },
+        edges,
+      );
+      pushHistory({ nodes, edges: next });
+      setEdges(next);
       setDirty(true);
     },
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [setEdges, nodes],
+    [setEdges, nodes, edges],
   );
 
   // Wrappers de onNodesChange/onEdgesChange — marcam dirty no fim do drag/edição.
@@ -452,17 +451,16 @@ export function useFluxoEditor({
 
   // Auto-organizar — reposiciona os nós em camadas (top-down) e reenquadra.
   const organizarLayout = useCallback(() => {
-    setNodes((nds) => {
-      if (nds.length === 0) return nds;
-      const next = organizarNos(nds, edges);
-      pushHistory({ nodes: next, edges });
-      return next;
-    });
+    if (nodes.length === 0) return;
+    // pushHistory FORA do updater (StrictMode dev rodava 2x → undo pedia 2 Ctrl+Z).
+    const next = organizarNos(nodes, edges);
+    pushHistory({ nodes: next, edges });
+    setNodes(next);
     setDirty(true);
     // Reenquadra depois do reposicionamento (deixa o React Flow aplicar as posições).
     setTimeout(() => reactFlowInstance?.fitView({ padding: 0.2, duration: 300 }), 60);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [setNodes, edges, reactFlowInstance]);
+  }, [setNodes, nodes, edges, reactFlowInstance]);
 
   const selectedNode = nodes.find((n) => n.id === selectedNodeId) ?? null;
 

@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, Logger } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { PrismaService } from '@database/prisma.service';
 import { ForbiddenException } from '@shared/errors/app-exception';
@@ -79,6 +79,8 @@ interface ChaveRow {
 
 @Injectable()
 export class ContatosService {
+  private readonly logger = new Logger(ContatosService.name);
+
   constructor(
     private readonly prisma: PrismaService,
     private readonly repScope: RepScopeService,
@@ -846,7 +848,7 @@ export class ContatosService {
   async criarLeads(
     user: AuthenticatedUser,
     dto: CriarLeadsDto,
-  ): Promise<AcaoMassaResult & { jaEramLead: number }> {
+  ): Promise<AcaoMassaResult & { jaEramLead: number; tagFalhas: number }> {
     const empresaId = this.requireEmpresa(user);
     const falhas: Array<{ id: string; erro: string }> = [];
 
@@ -895,6 +897,7 @@ export class ContatosService {
 
     let criados = 0;
     let jaEramLead = 0;
+    let tagFalhas = 0;
     for (const [i, c] of dto.contatos.entries()) {
       const sufixo = this.sufixoTel(c.telefone);
       if (sufixo && sufixosComLead.has(sufixo)) {
@@ -925,9 +928,12 @@ export class ContatosService {
           representanteId: c.representanteId ?? dto.representanteId,
         });
         const leadCriado = await this.leads.create(user, payload);
-        // Aplica as tags do lote (cold/email-mkt/segmento) — best-effort por tag.
+        // Aplica as tags do lote (cold/email-mkt/segmento) — best-effort por tag,
+        // mas CONTADO: falha silenciosa fazia o import reportar ok sem as tags.
         for (const tagId of dto.tagIds ?? []) {
-          await this.leads.adicionarTag(user, leadCriado.id, tagId).catch(() => undefined);
+          await this.leads.adicionarTag(user, leadCriado.id, tagId).catch(() => {
+            tagFalhas += 1;
+          });
         }
         criados += 1;
         if (sufixo) sufixosComLead.add(sufixo); // evita duplicar dentro do próprio lote
@@ -950,6 +956,9 @@ export class ContatosService {
         });
       }
     }
-    return { ok: true, afetados: criados, falhas, jaEramLead };
+    if (tagFalhas > 0) {
+      this.logger.warn(`criarLeads: ${tagFalhas} aplicação(ões) de tag falharam no lote`);
+    }
+    return { ok: true, afetados: criados, falhas, jaEramLead, tagFalhas };
   }
 }

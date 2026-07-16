@@ -423,18 +423,44 @@ export class ConversarIaService {
    */
   private async classificarEncerramento(
     empresaId: string,
-    _cfg: ConversarIaConfig,
+    fluxoId: string,
     historico: HistoricoMsg[],
   ): Promise<string> {
-    const LABELS = ['Ativar Agora', 'Reaquecer', 'Sem Sinergia'];
-    const prompt =
-      'Você é um CLASSIFICADOR interno (NÃO fala com o lead). Com base na conversa acima, ' +
-      'classifique o LEAD e responda APENAS um JSON {"classificacao_final":"<opção>"}, uma das ' +
-      'opções EXATAS:\n' +
-      '- "Ativar Agora": tem acesso a indústria E topa representar E já sinalizou oportunidade concreta.\n' +
-      '- "Reaquecer": tem perfil de representante mas ainda SEM oportunidade concreta (ou indeciso).\n' +
-      '- "Sem Sinergia": NÃO tem acesso a indústria, ou NÃO quer representar, ou não engajou/só zoou.\n' +
-      'Na dúvida, ou se o contato não engajou de verdade, use "Sem Sinergia".';
+    const PADRAO = ['Ativar Agora', 'Reaquecer', 'Sem Sinergia'];
+    // Rótulos REAIS do roteador DESTE fluxo (variável ~classificacao*): tenant
+    // com saídas próprias não ganha mais rótulo alheio que não casa aresta nenhuma.
+    let labels = PADRAO;
+    try {
+      const nos = await this.prisma.fluxoNo.findMany({
+        where: { fluxoId, tipo: 'CONDICAO' },
+        select: { config: true },
+      });
+      const rot = nos
+        .map((n) => n.config as { modo?: string; variavel?: string; saidas?: unknown } | null)
+        .find((c) => c?.modo === 'roteador' && /classifica/i.test(c?.variavel ?? ''));
+      const saidas = Array.isArray(rot?.saidas)
+        ? rot.saidas.filter((s): s is string => typeof s === 'string' && s.trim().length > 0)
+        : [];
+      if (saidas.length >= 2) labels = saidas;
+    } catch {
+      /* mantém o padrão */
+    }
+    // Fallback seguro: o rótulo "pior caso" (convenção: saídas ordenadas da
+    // melhor pra pior — no padrão, "Sem Sinergia" → Perdido).
+    const fallback = labels.includes('Sem Sinergia') ? 'Sem Sinergia' : labels[labels.length - 1];
+    const ehPadrao = labels.length === PADRAO.length && PADRAO.every((l) => labels.includes(l));
+    const prompt = ehPadrao
+      ? 'Você é um CLASSIFICADOR interno (NÃO fala com o lead). Com base na conversa acima, ' +
+        'classifique o LEAD e responda APENAS um JSON {"classificacao_final":"<opção>"}, uma das ' +
+        'opções EXATAS:\n' +
+        '- "Ativar Agora": tem acesso a indústria E topa representar E já sinalizou oportunidade concreta.\n' +
+        '- "Reaquecer": tem perfil de representante mas ainda SEM oportunidade concreta (ou indeciso).\n' +
+        '- "Sem Sinergia": NÃO tem acesso a indústria, ou NÃO quer representar, ou não engajou/só zoou.\n' +
+        'Na dúvida, ou se o contato não engajou de verdade, use "Sem Sinergia".'
+      : 'Você é um CLASSIFICADOR interno (NÃO fala com o lead). Com base na conversa acima, ' +
+        'classifique o LEAD e responda APENAS um JSON {"classificacao_final":"<opção>"}, uma das ' +
+        `opções EXATAS: ${labels.map((l) => `"${l}"`).join(', ')}.\n` +
+        `Na dúvida, ou se o contato não engajou de verdade, use "${fallback}".`;
     try {
       const r = await this.muller.gerarRespostaIa(
         empresaId,
@@ -453,9 +479,9 @@ export class ConversarIaService {
         const o = JSON.parse(limpo) as Record<string, unknown>;
         rotulo = typeof o.classificacao_final === 'string' ? o.classificacao_final.trim() : '';
       } catch {
-        rotulo = LABELS.find((l) => limpo.toLowerCase().includes(l.toLowerCase())) ?? '';
+        rotulo = labels.find((l) => limpo.toLowerCase().includes(l.toLowerCase())) ?? '';
       }
-      return LABELS.find((l) => l.toLowerCase() === rotulo.toLowerCase()) ?? 'Sem Sinergia';
+      return labels.find((l) => l.toLowerCase() === rotulo.toLowerCase()) ?? fallback;
     } catch {
       return 'Sem Sinergia';
     }
@@ -908,7 +934,7 @@ export class ConversarIaService {
     // AGUARDANDO. Sem isto, todo Sem Sinergia em que o LLM "esquece" a variável
     // travava o funil. Só roda quando de fato houve despedida (conservador).
     if (!classificouEfetivo && !jaClassificou && respostaEhDespedida(respostaTexto)) {
-      const rotulo = await this.classificarEncerramento(empresaId, cfg, novoHist);
+      const rotulo = await this.classificarEncerramento(empresaId, execucao.fluxoId, novoHist);
       turno.variaveis = { ...(turno.variaveis ?? {}), classificacao_final: rotulo };
       classificacaoTurno = rotulo;
       classificouEfetivo = true;

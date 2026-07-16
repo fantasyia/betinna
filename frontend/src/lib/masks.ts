@@ -35,6 +35,19 @@ export function formatMoeda(v: number): string {
  * usa sufixo abreviado; abaixo cai no `formatMoeda` completo. Era a função
  * `fmtBRLCompact` copiada idêntica em 7 páginas.
  */
+/**
+ * Número compacto pt-BR (sem R$) — 1234 → "1,2k", 1.234.567 → "1,2M".
+ * Badges/dashboards. Corte do M em 999.950 evita o "1000k" do arredondamento.
+ */
+export function formatNumeroCompacto(v: number): string {
+  const a = Math.abs(v);
+  const sinal = v < 0 ? '-' : '';
+  const um = (x: number) => x.toFixed(1).replace('.', ',').replace(',0', '');
+  if (a >= 999_950) return `${sinal}${um(a / 1_000_000)}M`;
+  if (a >= 1_000) return `${sinal}${um(a / 1_000)}k`;
+  return formatNumero(v);
+}
+
 export function formatMoedaCompacta(v: number): string {
   // Compacta pelo módulo e reanexa o sinal — senão negativos (estornos/saldos) caíam no
   // formato completo enquanto positivos viravam 'R$ 1.2M', inconsistente em dashboards.

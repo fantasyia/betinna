@@ -266,7 +266,7 @@ export class KanbanTarefaService {
       where: {
         OR: [{ origemCardId: cardId }, ...(card.origemCardId ? [{ id: card.origemCardId }] : [])],
       },
-      select: { id: true, lista: { select: { boardId: true } } },
+      select: { id: true, listaId: true, lista: { select: { boardId: true } } },
     });
     if (contrapartes.length === 0) return;
 
@@ -295,7 +295,10 @@ export class KanbanTarefaService {
         where: { boardId: alvo.lista.boardId, nome: card.lista.nome, arquivada: false },
         select: { id: true },
       });
-      if (listaDestino) {
+      // Só re-posiciona quando a contraparte MUDA de coluna — antes, qualquer
+      // edição de título/descrição jogava a contraparte pro FIM da coluna dela,
+      // embaralhando a ordenação manual do outro lado.
+      if (listaDestino && listaDestino.id !== alvo.listaId) {
         const ultimo = await this.prisma.kanbanCard.findFirst({
           where: { listaId: listaDestino.id },
           orderBy: { posicao: 'desc' },

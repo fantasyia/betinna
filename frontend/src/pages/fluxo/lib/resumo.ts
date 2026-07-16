@@ -20,7 +20,9 @@ export function resumoNo(data: NodePayload): string | null {
   }
 
   if (data.tipo === 'CONDICAO') {
-    const roteador = str(c.modo) === 'roteador' || Array.isArray(c.saidas);
+    // SÓ o modo decide: trocar roteador→simples mantém `saidas` órfãs no config,
+    // e o Array.isArray fazia o card mentir "roteador · N saídas".
+    const roteador = str(c.modo) === 'roteador';
     if (roteador) {
       const n = Array.isArray(c.saidas) ? c.saidas.length : 0;
       const v = str(c.variavel);

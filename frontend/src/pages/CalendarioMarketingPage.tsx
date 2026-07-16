@@ -17,6 +17,7 @@ import { PageLayout } from '@/components/PageLayout';
 import { StateView } from '@/components/StateView';
 import { Select } from '@/components/ui';
 import { cn } from '@/lib/cn';
+import { formatNumeroCompacto } from '@/lib/masks';
 import type { KEtiqueta, KUsuarioResumo } from '@/pages/kanban/kanban-types';
 
 /**
@@ -35,12 +36,17 @@ interface Canal {
   cor: string;
   re: RegExp;
 }
+// ORDEM IMPORTA (primeira que casa vence): específicos ANTES do blog — "Carrossel
+// do artigo X" é carrossel, "Reel sobre o artigo" é reel; blog fica por último.
+// Cores: paleta oficial onde há vaga (carrossel=magenta, e-mail=cyan, blog=blue);
+// reel/ads mantêm cor categórica própria (distinguibilidade > paleta em data-viz;
+// navy #201554 some no dark).
 const CANAIS: Canal[] = [
-  { key: 'blog', label: 'Blog', cor: '#1565C0', re: /blog|artigo|wordpress|seo/i },
   { key: 'carrossel', label: 'Carrossel', cor: '#bd1fbf', re: /carross?el|carousel/i },
   { key: 'reel', label: 'Reel', cor: '#E4405F', re: /reel|v[ií]deo|short|tiktok/i },
   { key: 'email', label: 'E-mail', cor: '#2bcae5', re: /e-?mail|newsletter|resend/i },
   { key: 'ads', label: 'Ads', cor: '#F59E0B', re: /\bads?\b|an[uú]ncio|tr[aá]fego|impuls/i },
+  { key: 'blog', label: 'Blog', cor: '#5C88DA', re: /blog|artigo|wordpress|seo/i },
 ];
 function canalDe(texto: string): Canal | null {
   return CANAIS.find((c) => c.re.test(texto)) ?? null;
@@ -76,11 +82,8 @@ function diaUTC(iso: string): string {
 function chaveDia(d: Date): string {
   return `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, '0')}-${String(d.getUTCDate()).padStart(2, '0')}`;
 }
-/** Número compacto pro badge (1234 → 1,2k). */
-function compacto(n: number): string {
-  if (n >= 1000) return `${(n / 1000).toFixed(1).replace('.', ',').replace(',0', '')}k`;
-  return String(n);
-}
+/** Número compacto pro badge (1234 → 1,2k) — delega pra @/lib/masks (regra do repo). */
+const compacto = formatNumeroCompacto;
 
 // ─── Tipos das respostas do kanban ───────────────────────────────────────
 interface BoardResumo {
@@ -125,7 +128,10 @@ export default function CalendarioMarketingPage() {
   const [boardId, setBoardId] = useState<string | null>(() => localStorage.getItem(STORAGE_KEY));
 
   useEffect(() => {
-    if (boardId || !boards?.length) return;
+    if (!boards?.length) return;
+    // Board salvo pode ter sido DELETADO: valida contra a lista antes de usar —
+    // senão a página ficava presa no erro com o Select mostrando outro board.
+    if (boardId && boards.some((b) => b.id === boardId)) return;
     setBoardId((boards.find((b) => /conte[uú]do/i.test(b.nome)) ?? boards[0]).id);
   }, [boards, boardId]);
   useEffect(() => {
@@ -219,11 +225,9 @@ function CalendarioConteudo({
     }
     return out;
   }, [cal.data, calViz.data]);
-  useEffect(() => {
-    cal.refetch();
-    tabela.refetch();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [mes, boardId]);
+  // (Sem refetch manual aqui: queryKey = URL já refaz `cal` quando o mês muda e
+  // `key={boardId}` remonta tudo ao trocar de board — o efeito antigo DOBRAVA
+  // as requisições, abortando o fetch em voo e re-disparando.)
 
   // Campo "Arco" do board (se existir) — pra ícone + rotação
   const campoArco = board.data?.campos.find((c) => /arco/i.test(c.nome));
@@ -295,6 +299,14 @@ function CalendarioConteudo({
     return [...s];
   }, [tabela.data]);
 
+  // Meta do card-pai (etiquetas + lista) por id — pros CHIPS DE CANAL respeitarem
+  // os filtros de card (pilar/case/status): a etiqueta mora no card, não no item.
+  const cardMetaById = useMemo(() => {
+    const m = new Map<string, { etiquetas: Array<{ etiqueta: KEtiqueta }>; listaNome: string }>();
+    for (const c of tabela.data ?? []) m.set(c.id, { etiquetas: c.etiquetas, listaNome: c.lista.nome });
+    return m;
+  }, [tabela.data]);
+
   const cardPassa = (etiquetas: Array<{ etiqueta: KEtiqueta }>, listaNome: string) => {
     if (fPilar && !etiquetas.some((e) => e.etiqueta.id === fPilar)) return false;
     if (fStatus && listaNome !== fStatus) return false;
@@ -316,10 +328,10 @@ function CalendarioConteudo({
     }
     for (const i of calItens) {
       if (fCanal && canalDe(i.texto)?.key !== fCanal) continue;
-      const st = statusById.get(i.checklist.card.id) ?? '';
-      if (fStatus && st !== fStatus) continue;
-      if (fSoPlanejado && !/planejad/i.test(st)) continue;
-      if (fSoPublicado && !/publicad/i.test(st)) continue;
+      // TODOS os filtros de card valem pro chip do canal (via card-pai) —
+      // antes pilar/case eram ignorados e o chip sobrava com o card filtrado.
+      const meta = cardMetaById.get(i.checklist.card.id);
+      if (meta && !cardPassa(meta.etiquetas, meta.listaNome)) continue;
       const k = diaUTC(i.dataEntrega);
       const v = mapa.get(k) ?? { cards: [], itens: [] };
       v.itens.push(i);
@@ -327,7 +339,7 @@ function CalendarioConteudo({
     }
     return mapa;
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [calCards, calItens, statusById, fCanal, fPilar, fStatus, fSoCase, fSoPlanejado, fSoPublicado]);
+  }, [calCards, calItens, cardMetaById, fCanal, fPilar, fStatus, fSoCase, fSoPlanejado, fSoPublicado]);
 
   const semData = (tabela.data ?? []).filter(
     (c) => !c.dataEntrega && !c.concluido && cardPassa(c.etiquetas, c.lista.nome),
@@ -479,6 +491,7 @@ function CalendarioConteudo({
               <button
                 key={v}
                 type="button"
+                data-testid={`cal-vista-${v}`}
                 onClick={() => trocarVista(v)}
                 className={cn(
                   'px-2.5 py-1 text-xs capitalize',
@@ -494,6 +507,7 @@ function CalendarioConteudo({
               <button
                 type="button"
                 aria-label="Anterior"
+                data-testid="cal-nav-prev"
                 onClick={navPrev}
                 className="p-1 rounded-[6px] hover:bg-surface-elevated"
               >
@@ -505,6 +519,7 @@ function CalendarioConteudo({
               <button
                 type="button"
                 aria-label="Próximo"
+                data-testid="cal-nav-next"
                 onClick={navNext}
                 className="p-1 rounded-[6px] hover:bg-surface-elevated"
               >
@@ -513,7 +528,7 @@ function CalendarioConteudo({
             </>
           )}
           <div className="w-px h-5 bg-border mx-1" />
-          <Select size="sm" value={fCanal} onChange={(e) => setFCanal(e.target.value)}>
+          <Select size="sm" data-testid="cal-f-canal" value={fCanal} onChange={(e) => setFCanal(e.target.value)}>
             <option value="">Todos os canais</option>
             {CANAIS.map((c) => (
               <option key={c.key} value={c.key}>
@@ -521,7 +536,7 @@ function CalendarioConteudo({
               </option>
             ))}
           </Select>
-          <Select size="sm" value={fPilar} onChange={(e) => setFPilar(e.target.value)}>
+          <Select size="sm" data-testid="cal-f-pilar" value={fPilar} onChange={(e) => setFPilar(e.target.value)}>
             <option value="">Todos os pilares</option>
             {pilares.map((p) => (
               <option key={p.id} value={p.id}>
@@ -529,7 +544,7 @@ function CalendarioConteudo({
               </option>
             ))}
           </Select>
-          <Select size="sm" value={fStatus} onChange={(e) => setFStatus(e.target.value)}>
+          <Select size="sm" data-testid="cal-f-status" value={fStatus} onChange={(e) => setFStatus(e.target.value)}>
             <option value="">Todos os status</option>
             {statusOpcoes.map((s) => (
               <option key={s} value={s}>
@@ -537,11 +552,12 @@ function CalendarioConteudo({
               </option>
             ))}
           </Select>
-          <ToggleChip ativo={fSoCase} onClick={() => setFSoCase((v) => !v)}>
+          <ToggleChip ativo={fSoCase} testId="cal-f-socase" onClick={() => setFSoCase((v) => !v)}>
             ⭐ Só cases
           </ToggleChip>
           <ToggleChip
             ativo={fSoPlanejado}
+            testId="cal-f-soplanejado"
             onClick={() => {
               setFSoPlanejado((v) => !v);
               setFSoPublicado(false);
@@ -551,6 +567,7 @@ function CalendarioConteudo({
           </ToggleChip>
           <ToggleChip
             ativo={fSoPublicado}
+            testId="cal-f-sopublicado"
             onClick={() => {
               setFSoPublicado((v) => !v);
               setFSoPlanejado(false);
@@ -597,8 +614,11 @@ function CalendarioConteudo({
             )}
             {vista === 'tema' && (
               <TimelineTema
-                cards={calCards}
-                itens={calItens}
+                cards={calCards.filter((c) => cardPassa(c.etiquetas, c.lista.nome))}
+                itens={calItens.filter((i) => {
+                  const meta = cardMetaById.get(i.checklist.card.id);
+                  return !meta || cardPassa(meta.etiquetas, meta.listaNome);
+                })}
                 statusById={statusById}
                 fCanal={fCanal}
                 fStatus={fStatus}
@@ -673,7 +693,18 @@ function MkDraggableCard({
   });
   const arrastou = useRef(false);
   useEffect(() => {
-    if (isDragging) arrastou.current = true;
+    if (isDragging) {
+      arrastou.current = true;
+      return;
+    }
+    // Drag terminou (solto OU cancelado): zera DEPOIS do click sintético deste
+    // gesto — sem isso, drop cancelado no mesmo dia engolia o PRÓXIMO clique.
+    if (arrastou.current) {
+      const t = setTimeout(() => {
+        arrastou.current = false;
+      }, 0);
+      return () => clearTimeout(t);
+    }
   }, [isDragging]);
   return (
     <button
@@ -954,14 +985,17 @@ function ToggleChip({
   ativo,
   onClick,
   children,
+  testId,
 }: {
   ativo: boolean;
   onClick: () => void;
   children: React.ReactNode;
+  testId?: string;
 }) {
   return (
     <button
       type="button"
+      data-testid={testId}
       onClick={onClick}
       className={cn(
         'text-[11px] px-2 py-1 rounded-full border',
