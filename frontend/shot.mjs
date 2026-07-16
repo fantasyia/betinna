@@ -7,6 +7,7 @@ const EMAIL = process.env.BET_EMAIL || 'admin@betinna.ai';
 const SENHA = process.env.BET_SENHA || 'Betinna@2026';
 const ROUTE = process.argv[2] || '/dashboard';
 const OUT = process.argv[3] || 'shot.png';
+const CLICK = process.argv[4] || ''; // texto de um botão pra clicar antes do print
 
 const browser = await chromium.launch();
 const page = await browser.newPage({ viewport: { width: 1600, height: 1000 } });
@@ -27,6 +28,10 @@ try {
   await page.keyboard.press('Escape').catch(() => {});
   await page.getByText('Pular tour', { exact: false }).click({ timeout: 1500 }).catch(() => {});
   await page.waitForTimeout(800);
+  if (CLICK) {
+    await page.getByRole('button', { name: CLICK, exact: true }).click({ timeout: 4000 }).catch(() => {});
+    await page.waitForTimeout(1000);
+  }
   await page.screenshot({ path: OUT, fullPage: true });
   console.log('OK screenshot ->', OUT, '(url', page.url() + ')');
 } catch (e) {
