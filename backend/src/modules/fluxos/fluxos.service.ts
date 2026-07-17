@@ -276,9 +276,10 @@ export class FluxosService {
         include: fluxoInclude,
         skip,
         take: params.limit,
-        // Ordem ESTÁVEL por criação: ativar/editar um fluxo NÃO deve fazê-lo
-        // pular pro topo (antes era atualizadoEm desc, que reordenava a cada ação).
-        orderBy: { criadoEm: 'asc' },
+        // Ordem por NOME (convenção E1 < E1-R < E2 < E2-R sai natural — espaço
+        // antes do hífen). Estável: ativar/editar NÃO reordena (antes era
+        // atualizadoEm desc, que pulava pro topo a cada ação); criadoEm desempata.
+        orderBy: [{ nome: 'asc' }, { criadoEm: 'asc' }],
       }),
       this.prisma.fluxo.count({ where }),
     ]);
