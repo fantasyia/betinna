@@ -76,12 +76,12 @@
 </style>
 
 <div class="wrap">
-  <p class="eyebrow">Projeto · marca própria de beleza</p>
-  <h1>Skincare do zero, fabricação 100% terceirizada</h1>
-  <p class="lede">Mapa mental do projeto — cada nó puxa o próximo, e as linhas pontilhadas mostram
-    onde uma decisão alimenta a outra (o SaaS que vira cashback e comunidade, a pediatra que vira
-    linha baby e voz da tribo, a comunidade que vira rede de representantes).</p>
-  <p class="meta">v1 · síntese das conversas · atualizável</p>
+  <p class="eyebrow">Projeto HOG · cosméticos de família</p>
+  <h1>HOG — seguro para um bebê, eficaz para você</h1>
+  <p class="lede">Marca-mãe única (HOG + HOG Baby), fabricação 100% terceirizada, DNA de posicionamento:
+    pele &amp; fio sensível com respaldo técnico. Abaixo, o mapa de pilares (cada nó puxa o próximo, as
+    linhas pontilhadas mostram as conexões) e a árvore genealógica de produtos.</p>
+  <p class="meta">v3 · marca HOG · Fase 1 = Rosto + Cabelo + Baby · atualizável</p>
 
   <div class="mapcard">
     <div class="maphead">
@@ -92,7 +92,7 @@
 <pre class="mermaid">
 %%{init: {'theme':'base','themeVariables':{'fontFamily':'ui-sans-serif, system-ui, sans-serif','fontSize':'12.5px','lineColor':'#9aa39b','primaryColor':'#EEF0EC'},'flowchart':{'curve':'basis','nodeSpacing':42,'rankSpacing':54,'padding':6}}}%%
 flowchart TD
-  C(("MARCA<br/>SKINCARE<br/>100% terceirizada")):::center
+  C(("HOG<br/>seguro p/ bebê,<br/>eficaz p/ você")):::center
 
   C --> REG["1 · Fundação ANVISA<br/>CNPJ · AFE · RT · Licença<br/>Notif. G1 / Registro G2<br/>gargalo 3–12 meses"]:::reg
   C --> PROD["2 · Produto / Catálogo<br/>Linha herói 6 SKUs<br/>NÃO catálogo grande<br/>protetor solar = fase 2"]:::prod
@@ -144,15 +144,58 @@ flowchart TD
     </div>
   </div>
 
+  <p class="sectlabel">Árvore genealógica de produtos — HOG</p>
+  <div class="mapcard">
+    <div class="maphead">
+      <b>Arquitetura de produtos</b>
+      <span>marca-mãe única · linhas enxutas (teto 3–4 SKUs) · largura por galhos, não por profundidade</span>
+    </div>
+    <div class="mapscroll">
+<pre class="mermaid">
+%%{init: {'theme':'base','themeVariables':{'fontFamily':'ui-sans-serif, system-ui, sans-serif','fontSize':'12.5px','lineColor':'#9aa39b','primaryColor':'#EEF0EC'},'flowchart':{'curve':'basis','nodeSpacing':36,'rankSpacing':50,'padding':6}}}%%
+flowchart TD
+  R(("HOG<br/>DNA: sensível<br/>+ respaldo técnico")):::root
+  R --> RO["🌳 ROSTO — HOG<br/>Fase 1"]:::t
+  R --> CA["🌳 CABELO — HOG<br/>Fase 1"]:::t
+  R --> BA["🌳 BABY — HOG Baby<br/>selo da pediatra · Fase 1"]:::tb
+
+  RO --> RO1["Limpeza &amp; Preparo<br/>gel de limpeza · água micelar"]:::l
+  RO --> RO2["Tratamento — herói<br/>sérum · hidratante · renovador noturno"]:::l
+  RO --> RO3["Proteção<br/>protetor solar · Grau 2"]:::ld
+
+  CA --> CA1["Cuidado diário<br/>shampoo · condicionador"]:::l
+  CA --> CA2["Tratamento / Reconstrução<br/>máscara · leave-in ou óleo · ampola"]:::l
+
+  BA --> BA1["Baby essenciais — piloto<br/>hidratante · banho · proteção de barreira"]:::l
+
+  R -.galhos dormentes.-> DORM["Corpo · Banho · Kids · Profissional salão<br/>fase futura, já na genética"]:::dorm
+
+  classDef root fill:#17242A,stroke:#17242A,color:#F1EFE8;
+  classDef t fill:#D6E9DF,stroke:#2F7A6B,color:#123c31;
+  classDef tb fill:#E5DEF1,stroke:#7C6BB0,color:#352a5c;
+  classDef l fill:#EDEBE6,stroke:#9AA09A,color:#2A2E2B;
+  classDef ld fill:#F1E4C8,stroke:#B9842B,color:#4a3410;
+  classDef dorm fill:#EFEDE9,stroke:#C3C0B8,color:#6b6b63;
+</pre>
+    </div>
+    <div class="legend">
+      <span class="lg"><i class="dot" style="background:#D6E9DF;border-color:#2F7A6B"></i>Tronco HOG (Fase 1)</span>
+      <span class="lg"><i class="dot" style="background:#E5DEF1;border-color:#7C6BB0"></i>HOG Baby</span>
+      <span class="lg"><i class="dot" style="background:#F1E4C8;border-color:#B9842B"></i>Fase 2 / Grau 2</span>
+      <span class="lg"><i class="dot" style="background:#EFEDE9;border-color:#C3C0B8"></i>Galho dormente</span>
+      <span class="lg cross"><i></i>regra: máx. 3–4 SKUs por galho</span>
+    </div>
+  </div>
+
   <p class="sectlabel">Decisões registradas</p>
   <div class="grid">
     <div class="card"><div class="n">01</div><h3><span class="tag" style="background:#7A8079"></span>Fundação ANVISA</h3>
       <p>Pré-requisito de <b>todos</b> os canais. CNPJ + AFE + RT (farmacêutico/químico) + licença sanitária + notificação (G1) ou registro (G2) por produto.</p>
       <p><b>Atalho:</b> terceirizadora com "regulatório incluso" corta meses e tira o RT do custo fixo. Gargalo de 3–12 meses — começar já.</p></div>
 
-    <div class="card"><div class="n">02</div><h3><span class="tag" style="background:#2F7A6B"></span>Produto / catálogo</h3>
-      <p><b>Linha herói de 6 SKUs</b>, não catálogo grande — cada SKU extra = 1 notificação + 1 MOQ + capital parado.</p>
-      <p>Skincare: limpeza · sérum herói · hidratante · renovador noturno · máscara/óleo. <b>Protetor solar fica pra fase 2</b> (Grau 2, mais caro/lento).</p></div>
+    <div class="card"><div class="n">02</div><h3><span class="tag" style="background:#2F7A6B"></span>Produto / árvore</h3>
+      <p>Marca-mãe <b>HOG</b> + <b>HOG Baby</b>. Largura por <b>galhos</b>, não por profundidade — <b>teto de 3–4 SKUs por linha</b>.</p>
+      <p><b>Fase 1 = Rosto + Cabelo + Baby</b> (~15 SKUs no core). Protetor solar e galhos Corpo/Banho/Kids/Salão ficam dormentes p/ fase futura.</p></div>
 
     <div class="card"><div class="n">03</div><h3><span class="tag" style="background:#3B7A84"></span>Canais de venda</h3>
       <p><b>Marketplaces</b> (ML, Shopee, Amazon, Magalu + pure players Beleza na Web/Época) pra tração e caixa.</p>
@@ -185,7 +228,7 @@ flowchart TD
 
   <div class="kill"><b>Fora de escopo (decidido):</b> criptomoeda própria e token lastreado em stablecoin — descartados pro cashback por risco regulatório (Banco Central/CVM), capital travado e fuga de foco. Reavaliar só como projeto separado no futuro.</div>
 
-  <footer>Betinna · projeto marca de skincare · mapa vivo — cada conversa nova atualiza este mapa</footer>
+  <footer>Projeto HOG · marca-mãe de cosméticos · mapa vivo — cada conversa nova atualiza este mapa</footer>
 </div>
 
 </body>

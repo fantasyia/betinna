@@ -158,12 +158,56 @@ só gasta na loja, não saca, **expira** — construída **dentro do SaaS**.
 
 ## 9. Roadmap resumido
 
-**Fase 1 (0–12 meses):** regularizar (ANVISA/terceirizadora) · linha herói 6 SKUs skincare ·
-site próprio D2C + 2–3 marketplaces · tráfego pago como motor · validar CAC×LTV · semear comunidade ·
-cashback fechado no SaaS · piloto baby com a pediatra (2–3 SKUs).
+**Fase 1 (0–12 meses):** regularizar (ANVISA/terceirizadora) · lançar **HOG Rosto + HOG Cabelo + HOG Baby**
+(~15 SKUs no core) · site próprio D2C + 2–3 marketplaces · tráfego pago como motor · validar CAC×LTV ·
+semear comunidade · cashback fechado no SaaS.
 
-**Fase 2:** ampliar catálogo por dado · protetor solar (G2) · representantes/embaixadoras (portal no SaaS) ·
-canal profissional B2B (salão) · níveis de comunidade maduros · avaliar linha baby completa.
+**Fase 2:** ampliar por dado de recompra · protetor solar (G2) · reativar galho Corpo · representantes/embaixadoras
+(portal no SaaS) · canal profissional B2B (salão) · níveis de comunidade maduros.
+
+**Fase 3:** Banho · HOG Baby Kids · Profissional salão maduro.
+
+---
+
+## 10. Arquitetura de produtos — árvore genealógica HOG
+
+**Decisões-raiz travadas:**
+- **Marca-mãe única: HOG** + **HOG Baby** (linha endossada, mesmo DNA, selo da pediatra).
+- **DNA / posicionamento:** *"seguro para um bebê, eficaz para você"* — pele & fio **sensível + respaldo técnico**,
+  para a família toda. A pediatra/HOG Baby é o **núcleo genético** (prova de confiança que Rosto e Cabelo herdam),
+  não um nicho lateral.
+- **Escopo enxuto:** largura por **galhos**, não por profundidade.
+
+**Regras da árvore (governança de SKU):**
+1. **Teto de 3–4 SKUs por linha (galho).** Passou disso: poda um antigo ou cria galho novo — nunca engorda o galho.
+2. Todo SKU novo precisa de um **porquê de negócio** (herói · gateway de entrada · reposição de recompra).
+3. **O DNA tem que aparecer** no produto (sensível + respaldo). Se não carrega, é órfão — corta ou repensa.
+
+**Árvore (v3):**
+
+```
+RAIZ — HOG · "seguro para um bebê, eficaz para você"
+│
+├── 🌳 ROSTO — HOG                                              [Fase 1]
+│   ├── Limpeza & Preparo    gel de limpeza · água micelar                        (2)
+│   ├── Tratamento (herói)   sérum assinatura · hidratante · renovador noturno    (3)
+│   └── Proteção             protetor solar facial            ⏳ fase 2 · Grau 2   (1)
+│
+├── 🌳 CABELO — HOG                                             [Fase 1]
+│   ├── Cuidado diário             shampoo · condicionador                        (2)
+│   └── Tratamento / Reconstrução  máscara · leave-in ou óleo · ampola            (3)
+│
+└── 🌳 BABY — HOG Baby (selo da pediatra)                       [Fase 1 · piloto]
+    └── Baby essenciais      hidratante · banho/sabonete · proteção de barreira   (3)
+
+   · · · galhos dormentes (na genética, fase futura) · · ·
+   CORPO · BANHO · KIDS (HOG Baby) · PROFISSIONAL salão (HOG)
+```
+
+**Contagem:** 3 troncos ativos · 6 galhos · ~15 SKUs no core; nenhum galho acima de 3–4.
+
+**Pendências de produto a fechar depois:** ativo(s)/fragrância assinatura que materializam o DNA · nomes das
+linhas · definição exata dos SKUs herói de cada galho · estrutura comercial da parceria com a pediatra (HOG Baby).
 
 ---
 
