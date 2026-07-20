@@ -15,8 +15,13 @@ export const periodoSchema = z
     de: z.coerce.date().optional(),
     ate: z.coerce.date().optional(),
     periodo: z.enum(PERIODOS).optional(),
-    representanteId: z.string().cuid().optional(),
-    funilId: z.string().cuid().optional(),
+    // NÃO validar .cuid(): funis/etapas criados pela migration usam id
+    // `funil_<hash>`/`fet_<hash>` (não-cuid). O .cuid() dava 400 "Invalid cuid" e
+    // o card do dashboard mostrava "Sem leads ainda" ao selecionar esses funis
+    // (ex: "Clientes"). O service já valida que o funil pertence à empresa.
+    // Mesmo motivo do fix do reordenar de etapas.
+    representanteId: z.string().min(1).optional(),
+    funilId: z.string().min(1).optional(),
   })
   .refine((d) => !d.de || !d.ate || d.de <= d.ate, {
     message: 'Data inicial (de) deve ser <= data final (ate)',
