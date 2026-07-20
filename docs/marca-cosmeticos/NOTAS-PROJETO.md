@@ -161,23 +161,23 @@ só gasta na loja, não saca, **expira** — construída **dentro do SaaS**.
 
 ## 9. Roadmap resumido
 
-**Fase 1 (0–12 meses):** regularizar (ANVISA/terceirizadora) · lançar **HOG Rosto + HOG Cabelo + HOG Baby**
+**Fase 1 (0–12 meses):** regularizar (ANVISA/terceirizadora) · lançar **Höfe Rosto + Höfe Cabelo + Höfe Baby**
 (~15 SKUs no core) · site próprio D2C + 2–3 marketplaces · tráfego pago como motor · validar CAC×LTV ·
 semear comunidade · cashback fechado no SaaS.
 
 **Fase 2:** ampliar por dado de recompra · protetor solar (G2) · reativar galho Corpo · representantes/embaixadoras
 (portal no SaaS) · canal profissional B2B (salão) · níveis de comunidade maduros.
 
-**Fase 3:** Banho · HOG Baby Kids · Profissional salão maduro.
+**Fase 3:** Banho · Höfe Baby Kids · Profissional salão maduro.
 
 ---
 
-## 10. Arquitetura de produtos — árvore genealógica HOG
+## 10. Arquitetura de produtos — árvore genealógica Höfe
 
 **Decisões-raiz travadas:**
-- **Marca-mãe única: HOG** + **HOG Baby** (linha endossada, mesmo DNA, selo da pediatra).
+- **Marca-mãe única: Höfe** + **Höfe Baby** (linha endossada, mesmo DNA, selo da pediatra).
 - **DNA / posicionamento:** *"seguro para um bebê, eficaz para você"* — pele & fio **sensível + respaldo técnico**,
-  para a família toda. A pediatra/HOG Baby é o **núcleo genético** (prova de confiança que Rosto e Cabelo herdam),
+  para a família toda. A pediatra/Höfe Baby é o **núcleo genético** (prova de confiança que Rosto e Cabelo herdam),
   não um nicho lateral.
 - **Escopo enxuto:** largura por **galhos**, não por profundidade.
 
@@ -189,28 +189,28 @@ semear comunidade · cashback fechado no SaaS.
 **Árvore (v3):**
 
 ```
-RAIZ — HOG · "seguro para um bebê, eficaz para você"
+RAIZ — Höfe · "seguro para um bebê, eficaz para você"
 │
-├── 🌳 ROSTO — HOG                                              [Fase 1]
+├── 🌳 ROSTO — Höfe                                              [Fase 1]
 │   ├── Limpeza & Preparo    gel de limpeza · água micelar                        (2)
 │   ├── Tratamento (herói)   sérum assinatura · hidratante · renovador noturno    (3)
 │   └── Proteção             protetor solar facial            ⏳ fase 2 · Grau 2   (1)
 │
-├── 🌳 CABELO — HOG                                             [Fase 1]
+├── 🌳 CABELO — Höfe                                             [Fase 1]
 │   ├── Cuidado diário             shampoo · condicionador                        (2)
 │   └── Tratamento / Reconstrução  máscara · leave-in ou óleo · ampola            (3)
 │
-└── 🌳 BABY — HOG Baby (selo da pediatra)                       [Fase 1 · piloto]
+└── 🌳 BABY — Höfe Baby (selo da pediatra)                       [Fase 1 · piloto]
     └── Baby essenciais      hidratante · banho/sabonete · proteção de barreira   (3)
 
    · · · galhos dormentes (na genética, fase futura) · · ·
-   CORPO · BANHO · KIDS (HOG Baby) · PROFISSIONAL salão (HOG)
+   CORPO · BANHO · KIDS (Höfe Baby) · PROFISSIONAL salão (Höfe)
 ```
 
 **Contagem:** 3 troncos ativos · 6 galhos · ~15 SKUs no core; nenhum galho acima de 3–4.
 
 **Pendências de produto a fechar depois:** ativo(s)/fragrância assinatura que materializam o DNA · nomes das
-linhas · definição exata dos SKUs herói de cada galho · estrutura comercial da parceria com a pediatra (HOG Baby).
+linhas · definição exata dos SKUs herói de cada galho · estrutura comercial da parceria com a pediatra (Höfe Baby).
 
 ---
 
@@ -223,3 +223,32 @@ linhas · definição exata dos SKUs herói de cada galho · estrutura comercial
 - Revenda/comissão: [Serasa](https://www.serasa.com.br/renda-extra/revenda-de-cosmeticos/) · [RediRedi — comissão por segmento](https://rediredi.com/br/blog/quanto-pagar-de-comissao-para-revendedores-um-guia-por-segmento/)
 - Canal profissional: [Truss Professional](https://www.trussprofessional.com.br/) · [Sebrae — tratamentos capilares](https://sebrae.com.br/sites/PortalSebrae/artigos/dicas-para-vender-tratamentos-capilares-no-salao-de-beleza,11ce8bb0fed47810VgnVCM1000001b00320aRCRD)
 - Cripto/regulação: Lei 14.478/2022 (Marco Legal dos Ativos Virtuais) — supervisão do Banco Central.
+
+---
+
+## 11. Nome da marca — Höfe
+
+**Decisão:** marca-mãe **Höfe** (linha infantil **Höfe Baby**). Substitui o nome anterior **HOG**.
+
+**Origem / racional:**
+- **HOG** vinha do sobrenome do fundador, **Hografe** (alemão) → boa herança, mas em inglês "hog" = **porco**
+  (e "Höfe Baby" leria "porquinho"), além de colidir com Harley (HOG = Harley Owners Group / ticker NYSE).
+- **Höfe** (plural alemão de *Hof* = pátio/corte) mantém a **herança alemã** — ativo forte em skincare
+  (confiança/dermocosmético: Weleda, Eucerin, Nivea, Dr. Hauschka são alemãs) — e casa com o DNA
+  "seguro + respaldo técnico". Elimina o problema do "porco".
+
+**Pontos de atenção do nome:**
+- **Umlaut (ö):** não entra em domínio comum (viraria punycode). Padrão: **wordmark "Höfe"**, mas todo
+  **handle/domínio/@ = "hofe"** (sem umlaut). Decidir que o ö é decorativo do logotipo.
+- **Pronúncia:** em alemão ≈ "RÖ-fe"; em PT o H é mudo → fixar a locução na comunicação.
+- **"Höfe" é palavra comum alemã** (pátios) e aparece em nomes de imóveis/empreendimentos alemães →
+  **checar distintividade em marca** (INPI classe 3 no Brasil; EUIPO/USPTO se for global).
+
+**Domínio (a decidir/registrar):**
+- **Prioridade 1 — `.com.br`** (mercado primário Brasil, confiança + tráfego direto): `hofe.com.br`.
+- **Prioridade 2 — um `.com`** (credibilidade/global): se `hofe.com` estiver ocupado (4 letras, provável),
+  usar variante de marca: `hofeskin.com`, `usehofe.com`, `hofecare.com`, `hofebeauty.com`.
+- **Novos gTLDs (`.beauty` / `.care`):** ótimos como conceito/redirect.
+  - **`.care` casa MELHOR com o DNA** (cuidado/seguro/família/derm) do que `.beauty` (que puxa glam/maquiagem).
+  - Recomendado como domínio-conceito: **`hofe.care`**, mantendo `.com.br`/`.com` como âncoras de confiança.
+- **Antes de fechar:** garantir @hofe (Instagram/TikTok) coerente e a checagem de marca acima.
