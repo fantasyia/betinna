@@ -20,6 +20,7 @@ import {
   updateFunilSchema,
 } from './funis.dto';
 import { FunisService } from './funis.service';
+import { type HistoricoEtapasQueryDto, historicoEtapasQuerySchema } from '@modules/leads/leads.dto';
 
 @ApiTags('funis')
 @ApiBearerAuth()
@@ -32,6 +33,19 @@ export class FunisController {
   @ApiOperation({ summary: 'Lista funis da empresa (padrão primeiro)' })
   list(@CurrentUser() user: AuthenticatedUser) {
     return this.funis.list(user);
+  }
+
+  // ⚠️ ANTES de :id (senão a rota literal cai no findOne com id="etapa-historico").
+  @Get('etapa-historico')
+  @RequirePermissions({ module: 'kanban', action: 'view' })
+  @ApiOperation({
+    summary: 'Histórico de transição de etapas (filtro funil/lead/período) — MCP etapa_historico',
+  })
+  etapaHistorico(
+    @CurrentUser() user: AuthenticatedUser,
+    @Query(new ZodValidationPipe(historicoEtapasQuerySchema)) query: HistoricoEtapasQueryDto,
+  ) {
+    return this.funis.historicoEtapas(user, query);
   }
 
   @Get(':id')

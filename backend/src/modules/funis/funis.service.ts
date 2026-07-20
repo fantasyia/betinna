@@ -19,6 +19,7 @@ import type {
   UpdateFunilDto,
   UpdateFunilEtapaDto,
 } from './funis.dto';
+import type { HistoricoEtapasQueryDto } from '@modules/leads/leads.dto';
 
 /** Lead resumido dentro de uma etapa (Demanda MCP `leads_por_etapa`). */
 export interface LeadEtapaResumo {
@@ -112,6 +113,107 @@ export class FunisService {
       atribuicao: resumoAtribuicao(l),
       // ResponseInterceptor converte Decimal→number nas respostas; aqui pra manter o tipo.
       valorFechado: l.valorFechado === null ? null : Number(l.valorFechado),
+    }));
+    return buildPaginated(data, total, q.page, q.limit);
+  }
+
+  /**
+   * Histórico de transição de etapas (MCP `etapa_historico`). READ-only. Filtra
+   * por funil/lead/período; escopo tenant + carteira (RepScope via relação Lead).
+   * Resolve nomes de etapa (funilEtapa), do lead e de quem moveu. Ordem: trajetória
+   * cronológica (asc) quando é 1 lead; feed recente (desc) quando é varredura.
+   */
+  async historicoEtapas(
+    user: AuthenticatedUser,
+    q: HistoricoEtapasQueryDto,
+  ): Promise<
+    Paginated<{
+      leadId: string;
+      leadNome: string;
+      funilId: string | null;
+      etapaOrigem: { id: string; nome: string } | null;
+      etapaDestino: { id: string; nome: string } | null;
+      quem: { id: string; nome: string } | null;
+      origemMudanca: string;
+      ocorridoEm: string;
+    }>
+  > {
+    const empresaId = this.requireEmpresa(user);
+    const scope = await this.repScope.getRepIds(user);
+    const where: Prisma.LeadEtapaHistoricoWhereInput = {
+      empresaId,
+      ...(q.funilId ? { funilId: q.funilId } : {}),
+      ...(q.leadId ? { leadId: q.leadId } : {}),
+      ...(q.de || q.ate
+        ? {
+            ocorridoEm: {
+              ...(q.de ? { gte: new Date(q.de) } : {}),
+              ...(q.ate ? { lte: new Date(q.ate) } : {}),
+            },
+          }
+        : {}),
+      // Carteira: só transições de leads que o usuário ENXERGA (via relação).
+      ...(scope !== null
+        ? { lead: { representanteId: { in: scope.length ? scope : ['__none__'] } } }
+        : {}),
+    };
+
+    const [total, rows] = await Promise.all([
+      this.prisma.leadEtapaHistorico.count({ where }),
+      this.prisma.leadEtapaHistorico.findMany({
+        where,
+        orderBy: { ocorridoEm: q.leadId ? 'asc' : 'desc' },
+        skip: (q.page - 1) * q.limit,
+        take: q.limit,
+        select: {
+          leadId: true,
+          funilId: true,
+          etapaOrigem: true,
+          etapaDestino: true,
+          quem: true,
+          origemMudanca: true,
+          ocorridoEm: true,
+          lead: { select: { nome: true, contatoNome: true } },
+        },
+      }),
+    ]);
+
+    // Resolve nomes de etapa (funilEtapa) e de quem moveu, em lote.
+    const etapaIds = [
+      ...new Set(
+        rows.flatMap((r) => [r.etapaOrigem, r.etapaDestino]).filter((x): x is string => !!x),
+      ),
+    ];
+    const userIds = [...new Set(rows.map((r) => r.quem).filter((x): x is string => !!x))];
+    const [etapas, usuarios] = await Promise.all([
+      etapaIds.length
+        ? this.prisma.funilEtapa.findMany({
+            where: { id: { in: etapaIds }, funil: { empresaId } },
+            select: { id: true, nome: true },
+          })
+        : [],
+      userIds.length
+        ? this.prisma.usuario.findMany({
+            where: { id: { in: userIds } },
+            select: { id: true, nome: true },
+          })
+        : [],
+    ]);
+    const nomeEtapa = new Map(etapas.map((e) => [e.id, e.nome]));
+    const nomeUser = new Map(usuarios.map((u) => [u.id, u.nome]));
+    // Etapa que não é funilEtapa (enum legado / criação) → usa o valor cru como nome.
+    const resolverEtapa = (id: string | null) =>
+      id ? { id, nome: nomeEtapa.get(id) ?? id } : null;
+
+    const data = rows.map((r) => ({
+      leadId: r.leadId,
+      leadNome: r.lead?.contatoNome || r.lead?.nome || r.leadId,
+      funilId: r.funilId,
+      etapaOrigem: resolverEtapa(r.etapaOrigem),
+      etapaDestino: resolverEtapa(r.etapaDestino),
+      quem: r.quem ? { id: r.quem, nome: nomeUser.get(r.quem) ?? r.quem } : null,
+      origemMudanca: r.origemMudanca,
+      ocorridoEm: r.ocorridoEm.toISOString(),
     }));
     return buildPaginated(data, total, q.page, q.limit);
   }

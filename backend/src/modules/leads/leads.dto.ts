@@ -99,6 +99,18 @@ export const atribuirRepSchema = z.object({
 });
 export type AtribuirRepDto = z.infer<typeof atribuirRepSchema>;
 
+/** Query do histórico de etapas (MCP etapa_historico) — filtro funil/lead/período. */
+export const historicoEtapasQuerySchema = z.object({
+  funilId: z.string().min(1).optional(),
+  leadId: z.string().min(1).optional(),
+  /** Período (ISO) sobre `ocorridoEm`. */
+  de: z.string().datetime().optional(),
+  ate: z.string().datetime().optional(),
+  page: z.coerce.number().int().min(1).default(1),
+  limit: z.coerce.number().int().min(1).max(200).default(50),
+});
+export type HistoricoEtapasQueryDto = z.infer<typeof historicoEtapasQuerySchema>;
+
 export const adicionarTagLeadSchema = z.object({
   tagId: z.string().min(1),
 });

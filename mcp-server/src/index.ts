@@ -1431,6 +1431,42 @@ server.registerTool(
   ),
 );
 
+server.registerTool(
+  'etapa_historico',
+  {
+    description:
+      'Histórico IRREVERSÍVEL de transição de etapas dos leads no funil, paginado. ' +
+      'Filtra por funil, lead e/ou período (de/ate ISO). 1 lead → trajetória cronológica (asc); ' +
+      'varredura → feed recente (desc). Retorna leadId, leadNome, etapaOrigem/Destino {id,nome}, ' +
+      'quem {id,nome} (null=sistema/fluxo), origemMudanca (manual|fluxo|api|criacao|seed) e ocorridoEm. ' +
+      'Somente leitura. Responde "como esse lead andou no funil" e "quantas transições nesta campanha/período".',
+    inputSchema: {
+      funilId: z.string().optional().describe('Filtra por funil (use funis_listar)'),
+      leadId: z.string().optional().describe('Trajetória de UM lead (use contatos_ver/leads_por_etapa)'),
+      de: z.string().datetime().optional().describe('Início do período (ISO), sobre ocorridoEm'),
+      ate: z.string().datetime().optional().describe('Fim do período (ISO)'),
+      page: z.number().int().min(1).default(1),
+      limit: z.number().int().min(1).max(200).default(50),
+    },
+    annotations: { readOnlyHint: true, destructiveHint: false },
+  },
+  seguro(
+    async (args: {
+      funilId?: string;
+      leadId?: string;
+      de?: string;
+      ate?: string;
+      page: number;
+      limit: number;
+    }) => {
+      const qs = new URLSearchParams();
+      for (const [k, v] of Object.entries(args)) if (v != null) qs.set(k, String(v));
+      const resp = await api.get<unknown>(`/funis/etapa-historico?${qs}`);
+      return ok(resp);
+    },
+  ),
+);
+
 // ─── Contatos (SOMENTE LEITURA — escopo "contatos" · DADOS PESSOAIS) ─────
 // Visão unificada Lead + Cliente + Conversa, deduplicada por telefone (D18).
 // Paginada. Sem endpoint de detalhe único: filtre com `search`. NUNCA escreve
