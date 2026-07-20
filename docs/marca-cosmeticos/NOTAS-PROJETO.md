@@ -173,7 +173,12 @@ só gasta na loja, não saca, **expira** — construída **dentro do SaaS**.
 - **Fase 2 — Höfe Cabelo** (decisão aberta: manter na Fase 1 ou mover pra cá — trade-off de foco).
 - **Fase 2/3 — Höfe Mature (pele madura)**, via **loop de indicação filha→mãe** (CAC quase zero) — ver §12.
   Regulatório mais complexo (ativos G2: retinol, peptídeos) reforça deixar pra depois.
-- **Fase 3+:** Corpo · Banho · Höfe Baby Kids · Profissional salão · protetor solar (G2).
+- **Fase 3/4 — Maquiagem de tratamento (skin-first) — CONFIRMADA como linha futura.** Só o tipo
+  "skinification" (multifuncional universal, skin tint/BB com ativo), poucos/1 tom, sem shade-matching,
+  respeitando o teto de SKUs e o DNA. **NÃO** maquiagem "cheia" (paletas/muitos tons/glam). Serve as 3 gerações.
+- **Demais galhos dormentes:** Corpo · Banho · Höfe Baby Kids · Profissional salão · protetor solar (G2).
+
+> **Sequência de linhas CONFIRMADA pelo fundador:** Adulto (Rosto) → Baby → Mature → Maquiagem de tratamento (skin-first).
 
 ---
 
