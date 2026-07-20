@@ -86,7 +86,7 @@
   <p class="lede">Marca-mãe única (HOG + HOG Baby), fabricação 100% terceirizada, DNA de posicionamento:
     pele &amp; fio sensível com respaldo técnico. Abaixo, o mapa de pilares (cada nó puxa o próximo, as
     linhas pontilhadas mostram as conexões) e a árvore genealógica de produtos.</p>
-  <p class="meta">v7 · marca HOG · Fase 1 = Rosto + Cabelo + Baby · zoom até 10× (scroll + botões − ⟲ +) · atualizável</p>
+  <p class="meta">v8 · marca HOG · Fase 1 = Rosto + Cabelo + Baby · zoom suave (scroll + botões − ⟲ +) · atualizável</p>
 
   <div class="mapcard">
     <div class="maphead">
@@ -246,7 +246,7 @@ flowchart TD
   // O listener fica no container fixo e o SVG é buscado na hora do evento,
   // então não importa quando o Mermaid termina de renderizar.
   (function () {
-    var MIN = 0.5, MAX = 10, STEP = 0.5;
+    var MIN = 0.6, MAX = 3, STEP = 0.2;
 
     function baseWidth(svg) {
       if (svg._baseW) return svg._baseW;
