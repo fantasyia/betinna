@@ -3,6 +3,7 @@
 > Documento vivo. Registra as decisões e ideias discutidas para o projeto de uma marca
 > própria de cosméticos. Cada nova conversa deve atualizar este arquivo e o
 > [`mapa-mental.html`](./mapa-mental.html).
+> Ver também: [`CONCORRENTES.md`](./CONCORRENTES.md) — análise de concorrentes e cases de marketplace.
 >
 > **Status:** exploração/estratégia — pré-lançamento.
 
