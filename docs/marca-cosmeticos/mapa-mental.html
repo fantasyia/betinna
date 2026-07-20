@@ -86,7 +86,7 @@
   <p class="lede">Marca-mãe única (Höfe + Höfe Baby), fabricação 100% terceirizada, DNA de posicionamento:
     pele &amp; fio sensível com respaldo técnico. Abaixo, o mapa de pilares (cada nó puxa o próximo, as
     linhas pontilhadas mostram as conexões) e a árvore genealógica de produtos.</p>
-  <p class="meta">v10 · marca Höfe (ex-HOG, do sobrenome Hografe) · Fase 1 = Rosto + Cabelo + Baby · atualizável</p>
+  <p class="meta">v11 · marca Höfe · Rosto-first (hub) · 3 gerações: Baby ↓ · Mature ↑ · atualizável</p>
 
   <div class="mapcard">
     <div class="maphead">
@@ -154,7 +154,7 @@ flowchart TD
     </div>
   </div>
 
-  <p class="sectlabel">Árvore genealógica de produtos — Höfe</p>
+  <p class="sectlabel">Árvore genealógica de produtos — Höfe · 3 gerações</p>
   <div class="mapcard">
     <div class="maphead">
       <b>Arquitetura de produtos</b>
@@ -166,35 +166,36 @@ flowchart TD
 %%{init: {'theme':'base','securityLevel':'loose','htmlLabels':true,'themeVariables':{'fontFamily':'ui-sans-serif, system-ui, sans-serif','fontSize':'15px','lineColor':'#9aa39b','primaryColor':'#EEF0EC'},'flowchart':{'htmlLabels':true,'curve':'basis','nodeSpacing':36,'rankSpacing':50,'padding':8}}}%%
 flowchart TD
   R(("Höfe<br/>DNA: sensível<br/>+ respaldo técnico")):::root
-  R --> RO["🌳 ROSTO — Höfe<br/>Fase 1"]:::t
-  R --> CA["🌳 CABELO — Höfe<br/>Fase 1"]:::t
-  R --> BA["🌳 BABY — Höfe Baby<br/>selo da pediatra · Fase 1"]:::tb
+  R --> RO["🌳 ROSTO — adulto · HUB<br/>Fase 1 (largada)"]:::t
+  R --> CA["🌳 CABELO<br/>Fase 2 · em aberto"]:::t
 
   RO --> RO1["Limpeza &amp; Preparo<br/>gel de limpeza · água micelar"]:::l
   RO --> RO2["Tratamento — herói<br/>sérum · hidratante · renovador noturno"]:::l
-  RO --> RO3["Proteção<br/>protetor solar · Grau 2"]:::ld
+  RO --> RO3["Proteção<br/>protetor solar · Grau 2 · fase 2"]:::ld
 
-  CA --> CA1["Cuidado diário<br/>shampoo · condicionador"]:::l
-  CA --> CA2["Tratamento / Reconstrução<br/>máscara · leave-in ou óleo · ampola"]:::l
+  RO -.mãe compra p/ o filho.-> BA["🌳 BABY — Höfe Baby<br/>Fase 1.5 · com pediatra"]:::tb
+  RO -.filha indica p/ a mãe.-> MAT["🌳 MATURE — pele madura<br/>Fase 2/3 · via indicação · CAC quase 0"]:::mat
 
   BA --> BA1["Baby essenciais — piloto<br/>hidratante · banho · proteção de barreira"]:::l
+  CA --> CA1["Cuidado diário · Reconstrução<br/>shampoo · condicionador · máscara"]:::l
 
-  R -.galhos dormentes.-> DORM["Corpo · Banho · Kids · Profissional salão<br/>fase futura, já na genética"]:::dorm
+  R -.galhos dormentes.-> DORM["Corpo · Banho · Kids · Profissional salão<br/>Maquiagem skin-first — a validar<br/>fase futura"]:::dorm
 
   classDef root fill:#17242A,stroke:#17242A,color:#F1EFE8;
   classDef t fill:#D6E9DF,stroke:#2F7A6B,color:#123c31;
   classDef tb fill:#E5DEF1,stroke:#7C6BB0,color:#352a5c;
+  classDef mat fill:#EFE0D6,stroke:#C08552,color:#5c3a1c;
   classDef l fill:#EDEBE6,stroke:#9AA09A,color:#2A2E2B;
   classDef ld fill:#F1E4C8,stroke:#B9842B,color:#4a3410;
   classDef dorm fill:#EFEDE9,stroke:#C3C0B8,color:#6b6b63;
 </pre>
     </div>
     <div class="legend">
-      <span class="lg"><i class="dot" style="background:#D6E9DF;border-color:#2F7A6B"></i>Tronco Höfe (Fase 1)</span>
-      <span class="lg"><i class="dot" style="background:#E5DEF1;border-color:#7C6BB0"></i>Höfe Baby</span>
-      <span class="lg"><i class="dot" style="background:#F1E4C8;border-color:#B9842B"></i>Fase 2 / Grau 2</span>
+      <span class="lg"><i class="dot" style="background:#D6E9DF;border-color:#2F7A6B"></i>Rosto (hub) · Cabelo</span>
+      <span class="lg"><i class="dot" style="background:#E5DEF1;border-color:#7C6BB0"></i>Höfe Baby (↓ mãe compra)</span>
+      <span class="lg"><i class="dot" style="background:#EFE0D6;border-color:#C08552"></i>Höfe Mature (↑ filha indica)</span>
       <span class="lg"><i class="dot" style="background:#EFEDE9;border-color:#C3C0B8"></i>Galho dormente</span>
-      <span class="lg cross"><i></i>regra: máx. 3–4 SKUs por galho</span>
+      <span class="lg cross"><i></i>indicação entre gerações · máx. 3–4 SKUs/galho</span>
     </div>
   </div>
 

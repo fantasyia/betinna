@@ -207,8 +207,8 @@ flowchart TD
     </div>
 
     <div class="mapcard">
-      <div class="maphead"><b>Árvore genealógica de produtos</b>
-        <span>teto 3–4 SKUs por galho · 🖱️ zoom no scroll/botões</span>
+      <div class="maphead"><b>Árvore genealógica — 3 gerações</b>
+        <span>Rosto adulto = hub · Baby ↓ · Mature ↑ (indicação) · 🖱️ zoom no scroll/botões</span>
         <div class="zc"><button type="button" data-act="out">−</button><button type="button" data-act="reset">⟲</button><button type="button" data-act="in">+</button></div>
       </div>
       <div class="mapscroll">
@@ -216,19 +216,20 @@ flowchart TD
 %%{init: {'theme':'base','securityLevel':'loose','htmlLabels':true,'themeVariables':{'fontFamily':'ui-sans-serif, system-ui, sans-serif','fontSize':'15px','lineColor':'#9aa39b','primaryColor':'#EEF0EC'},'flowchart':{'htmlLabels':true,'curve':'basis','nodeSpacing':36,'rankSpacing':50,'padding':8}}}%%
 flowchart TD
   R(("Höfe<br/>DNA: sensível<br/>+ respaldo técnico")):::root
-  R --> RO["🌳 ROSTO — Höfe<br/>Fase 1"]:::t
-  R --> CA["🌳 CABELO — Höfe<br/>Fase 1"]:::t
-  R --> BA["🌳 BABY — Höfe Baby<br/>selo da pediatra · Fase 1"]:::tb
+  R --> RO["🌳 ROSTO — adulto · HUB<br/>Fase 1 (largada)"]:::t
+  R --> CA["🌳 CABELO<br/>Fase 2 · em aberto"]:::t
   RO --> RO1["Limpeza &amp; Preparo<br/>gel de limpeza · água micelar"]:::l
   RO --> RO2["Tratamento — herói<br/>sérum · hidratante · renovador noturno"]:::l
-  RO --> RO3["Proteção<br/>protetor solar · fase 2 · Grau 2"]:::ld
-  CA --> CA1["Cuidado diário<br/>shampoo · condicionador"]:::l
-  CA --> CA2["Tratamento / Reconstrução<br/>máscara · leave-in ou óleo · ampola"]:::l
+  RO --> RO3["Proteção<br/>protetor solar · Grau 2 · fase 2"]:::ld
+  RO -.mãe compra p/ o filho.-> BA["🌳 BABY — Höfe Baby<br/>Fase 1.5 · com pediatra"]:::tb
+  RO -.filha indica p/ a mãe.-> MAT["🌳 MATURE — pele madura<br/>Fase 2/3 · via indicação · CAC quase 0"]:::mat
   BA --> BA1["Baby essenciais — piloto<br/>hidratante · banho · proteção de barreira"]:::l
-  R -.galhos dormentes.-> DORM["Corpo · Banho · Kids · Profissional salão<br/>fase futura, já na genética"]:::dorm
+  CA --> CA1["Cuidado diário · Reconstrução<br/>shampoo · condicionador · máscara"]:::l
+  R -.galhos dormentes.-> DORM["Corpo · Banho · Kids · Profissional salão<br/>Maquiagem skin-first — a validar<br/>fase futura"]:::dorm
   classDef root fill:#17242A,stroke:#17242A,color:#F1EFE8;
   classDef t fill:#D6E9DF,stroke:#2F7A6B,color:#123c31;
   classDef tb fill:#E5DEF1,stroke:#7C6BB0,color:#352a5c;
+  classDef mat fill:#EFE0D6,stroke:#C08552,color:#5c3a1c;
   classDef l fill:#EDEBE6,stroke:#9AA09A,color:#2A2E2B;
   classDef ld fill:#F1E4C8,stroke:#B9842B,color:#4a3410;
   classDef dorm fill:#EFEDE9,stroke:#C3C0B8,color:#6b6b63;
