@@ -1021,6 +1021,7 @@ model Lead {
   funilEtapa          FunilEtapa?          @relation(fields: [funilEtapaId], references: [id], onDelete: SetNull)
   tags                LeadTag[]
   formularioRespostas FormularioResposta[]
+  etapaHistorico      LeadEtapaHistorico[]
 
   @@index([empresaId, etapa])
   @@index([empresaId, funilId, funilEtapaId])
@@ -1035,6 +1036,33 @@ model Lead {
   //   "Lead_empresa_email_lower_unique" ON (empresaId, LOWER(contatoEmail))
   //   WHERE contatoEmail IS NOT NULL AND <> ''  → 1 lead por e-mail por empresa
   //   (migration 20260716090000; P2002 mapeado pra ConflictException no create).
+}
+
+/// Histórico IRREVERSÍVEL de transição de etapa (transição não gravada = perdida).
+/// Alimentado por registrarTransicaoEtapa() em TODO caminho de move. Hoje só se
+/// sabe a etapa ATUAL + etapaDesde; isto reconstrói a trajetória do lead no funil.
+model LeadEtapaHistorico {
+  id            String   @id @default(cuid())
+  empresaId     String
+  leadId        String
+  funilId       String?
+  /// funilEtapaId (ou enum legado) de origem. null = criação/entrada no funil.
+  etapaOrigem   String?
+  /// funilEtapaId (ou enum legado) de destino.
+  etapaDestino  String?
+  /// userId que moveu; null = sistema (fluxo/cron/seed).
+  quem          String?
+  /// manual | fluxo | api | criacao | seed. VARCHAR (nunca enum — extensível).
+  origemMudanca String
+  ocorridoEm    DateTime @default(now())
+  criadoEm      DateTime @default(now())
+
+  lead Lead @relation(fields: [leadId], references: [id], onDelete: Cascade)
+
+  // Trajetória de UM lead (ordem cronológica).
+  @@index([leadId, ocorridoEm])
+  // Consulta por período/funil dentro do tenant (histórico via MCP).
+  @@index([empresaId, funilId, ocorridoEm])
 }
 
 // ─── FUNIS CUSTOMIZADOS ───────────────────────────────────────────────

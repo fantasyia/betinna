@@ -53,6 +53,9 @@ const makePrismaMock = () => ({
     update: vi.fn().mockResolvedValue({}),
     count: vi.fn().mockResolvedValue(0),
   } satisfies MockModel,
+  leadEtapaHistorico: {
+    create: vi.fn().mockResolvedValue({}),
+  } satisfies MockModel,
   funilEtapa: {
     findFirst: vi.fn().mockResolvedValue(null),
   } satisfies MockModel,

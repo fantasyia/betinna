@@ -20,6 +20,7 @@ import type {
   UpdateLeadDto,
 } from './leads.dto';
 import { PROBABILIDADE_POR_ETAPA, SLA_DIAS_POR_ETAPA, TRANSICOES_ETAPA } from './leads.constants';
+import { registrarTransicaoEtapa } from './lead-etapa-historico.util';
 
 const leadInclude = {
   representante: { select: { id: true, nome: true, email: true } },
@@ -298,6 +299,17 @@ export class LeadsService {
         throw err;
       });
 
+    // Histórico: entrada inicial no funil (origem null). Irreversível.
+    await registrarTransicaoEtapa(this.prisma, this.logger, {
+      empresaId,
+      leadId: lead.id,
+      funilId,
+      etapaOrigem: null,
+      etapaDestino: funilEtapaId ?? lead.etapa,
+      quem: user.id,
+      origemMudanca: 'criacao',
+    });
+
     // Trigger: LEAD_CRIADO
     void this.bus.disparar(empresaId, 'LEAD_CRIADO', {
       leadId: lead.id,
@@ -376,6 +388,17 @@ export class LeadsService {
       select: { id: true, nome: true, etapa: true, valorEstimado: true },
     });
 
+    // Histórico: entrada inicial no funil (sistema — sem usuário logado).
+    await registrarTransicaoEtapa(this.prisma, this.logger, {
+      empresaId,
+      leadId: lead.id,
+      funilId,
+      etapaOrigem: null,
+      etapaDestino: funilEtapaId ?? lead.etapa,
+      quem: null,
+      origemMudanca: 'criacao',
+    });
+
     void this.bus.disparar(empresaId, 'LEAD_CRIADO', {
       leadId: lead.id,
       lead: {
@@ -444,6 +467,19 @@ export class LeadsService {
       where: { id, empresaId: existing.empresaId },
       data: dto,
     });
+    // Histórico: o update também pode mover de etapa (form de edição do lead com
+    // funil/etapa). Só registra quando a etapa REALMENTE muda.
+    if (dto.funilEtapaId && dto.funilEtapaId !== existing.funilEtapaId) {
+      await registrarTransicaoEtapa(this.prisma, this.logger, {
+        empresaId: existing.empresaId,
+        leadId: id,
+        funilId: dto.funilId ?? existing.funilId,
+        etapaOrigem: existing.funilEtapaId ?? existing.etapa,
+        etapaDestino: dto.funilEtapaId,
+        quem: user.id,
+        origemMudanca: 'manual',
+      });
+    }
     return this.prisma.lead.findUniqueOrThrow({ where: { id }, include: leadInclude });
   }
 
@@ -584,6 +620,18 @@ export class LeadsService {
     this.logger.log(
       `Lead ${lead.id} movido ${lead.etapa} → ${novaEtapaEnum}${dto.motivo ? ` (${dto.motivo})` : ''}`,
     );
+
+    // Histórico: transição manual (cobre UI, API e acaoMassa em lote, que reusa
+    // este método). Prioriza o funilEtapaId; cai no enum quando não há funil custom.
+    await registrarTransicaoEtapa(this.prisma, this.logger, {
+      empresaId: lead.empresaId,
+      leadId: lead.id,
+      funilId: novoFunilId,
+      etapaOrigem: deFunilEtapaId ?? lead.etapa,
+      etapaDestino: novoFunilEtapaId ?? novaEtapaEnum,
+      quem: user.id,
+      origemMudanca: 'manual',
+    });
 
     // Trigger: LEAD_ETAPA_MUDOU — só a transição vencedora (count===1) dispara, com o
     // payload refletindo a transição realmente aplicada.

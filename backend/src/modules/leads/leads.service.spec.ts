@@ -28,6 +28,7 @@ const makePrismaMock = () => ({
   },
   tag: { findFirst: vi.fn(), upsert: vi.fn() },
   leadTag: { upsert: vi.fn(), deleteMany: vi.fn() },
+  leadEtapaHistorico: { create: vi.fn().mockResolvedValue({}) },
 });
 
 const makeRepScope = () => ({
@@ -293,6 +294,36 @@ describe('LeadsService', () => {
       expect(result.etapa).toBe('QUALIFICANDO');
       const data = prisma.lead.updateMany.mock.calls[0][0].data;
       expect(data.etapaDesde).toBeInstanceOf(Date);
+      // Histórico: a transição vencedora registra (manual, origem→destino corretos).
+      expect(prisma.leadEtapaHistorico.create).toHaveBeenCalledOnce();
+      const hist = prisma.leadEtapaHistorico.create.mock.calls[0][0].data;
+      expect(hist).toMatchObject({
+        leadId: 'l1',
+        etapaOrigem: 'NOVO',
+        etapaDestino: 'QUALIFICANDO',
+        quem: 'rep-1',
+        origemMudanca: 'manual',
+      });
+    });
+
+    it('MESMA etapa (no-op) NÃO registra histórico', async () => {
+      prisma.lead.findFirst.mockResolvedValue({
+        id: 'l1',
+        empresaId: 'emp-1',
+        representanteId: 'rep-1',
+        etapa: 'QUALIFICANDO',
+        funilEtapaId: 'et-1',
+        funilId: 'funil-1',
+      });
+      prisma.funilEtapa.findFirst.mockResolvedValue({
+        id: 'et-1',
+        tipo: 'ATIVA',
+        ordem: 1,
+        funil: { id: 'funil-1', empresaId: 'emp-1' },
+      });
+      prisma.lead.findUniqueOrThrow.mockResolvedValue({ id: 'l1', etapa: 'QUALIFICANDO' });
+      await svc.moverEtapa(fakeUser(), 'l1', { funilEtapaId: 'et-1' });
+      expect(prisma.leadEtapaHistorico.create).not.toHaveBeenCalled();
     });
 
     it('CAÇADA-BUG #36: mover pra a MESMA etapa (funilEtapaId) é no-op — não atualiza nem zera SLA', async () => {

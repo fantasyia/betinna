@@ -14,6 +14,7 @@ import { KanbanTarefaService } from '@modules/kanban/kanban-tarefa.service';
 import { Prisma } from '@prisma/client';
 import { safeRequest, SsrfBlockedError } from '@shared/utils/safe-request';
 import { interpolate } from '@shared/utils/interpolate';
+import { registrarTransicaoEtapa } from '@modules/leads/lead-etapa-historico.util';
 import { ConversarIaService } from './conversar-ia.service';
 import { FluxoEventBusService } from './fluxo-event-bus.service';
 import {
@@ -1251,6 +1252,18 @@ export class FluxoExecutorService {
         },
       });
       if (count === 0) throw new Error(`Lead ${leadId} não encontrado na empresa ${empresaId}`);
+      // Histórico: transição por FLUXO (só quando muda de verdade).
+      if (origemId !== etapa.id) {
+        await registrarTransicaoEtapa(this.prisma, this.logger, {
+          empresaId,
+          leadId,
+          funilId: etapa.funilId,
+          etapaOrigem: origemId ?? null,
+          etapaDestino: etapa.id,
+          quem: null,
+          origemMudanca: 'fluxo',
+        });
+      }
       // Lead mudou de etapa → dispara LEAD_ETAPA_MUDOU pros fluxos da etapa destino
       // (ex: "Primeira Abordagem"), mesma semântica do LIBERAR_LOTE. Só quando a
       // etapa realmente muda, pra não disparar em re-move no-op nem criar laço.
@@ -1270,6 +1283,11 @@ export class FluxoExecutorService {
 
     // Fallback: enum legado.
     if (!cfg.etapa) throw new Error('MOVER_LEAD_ETAPA sem funilEtapaId nem etapa definidos');
+    // Etapa de origem ANTES do move (pro histórico registrar a transição real).
+    const antesLegado = await this.prisma.lead.findFirst({
+      where: { id: leadId, empresaId },
+      select: { etapa: true, funilId: true },
+    });
     // AUDITORIA 2026-05-15: updateMany com empresaId no where evita write cross-tenant.
     const { count } = await this.prisma.lead.updateMany({
       where: { id: leadId, empresaId },
@@ -1277,6 +1295,18 @@ export class FluxoExecutorService {
     });
     if (count === 0) {
       throw new Error(`Lead ${leadId} não encontrado na empresa ${empresaId}`);
+    }
+    // Histórico: transição por FLUXO (enum legado). Só quando muda de verdade.
+    if (antesLegado && antesLegado.etapa !== cfg.etapa) {
+      await registrarTransicaoEtapa(this.prisma, this.logger, {
+        empresaId,
+        leadId,
+        funilId: antesLegado.funilId,
+        etapaOrigem: antesLegado.etapa,
+        etapaDestino: cfg.etapa,
+        quem: null,
+        origemMudanca: 'fluxo',
+      });
     }
     return { leadId, novaEtapa: cfg.etapa };
   }
@@ -1522,6 +1552,16 @@ export class FluxoExecutorService {
       });
       if (r.count === 0) continue; // outro lote já moveu este lead
       movidos++;
+      // Histórico: transição por FLUXO (LIBERAR_LOTE move o lead pela etapa).
+      await registrarTransicaoEtapa(this.prisma, this.logger, {
+        empresaId,
+        leadId: lead.id,
+        funilId: destino.funilId,
+        etapaOrigem: cfg.etapaOrigemId,
+        etapaDestino: cfg.etapaDestinoId,
+        quem: null,
+        origemMudanca: 'fluxo',
+      });
       // Dispara os fluxos da etapa destino (1 por lead). Nomes canônicos +
       // funilId pra o filtro do gatilho "Lead mudou etapa" casar (FluxoEventBus).
       // _hops=1: início de cadeia interna (corta-loop do FluxoEventBus).
