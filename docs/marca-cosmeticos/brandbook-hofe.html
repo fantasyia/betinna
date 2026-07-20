@@ -1,0 +1,200 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+</head>
+<body>
+<title>Höfe — mini-brandbook</title>
+<style>
+  :root{
+    --ink:#21302E; --porcelain:#EFEEE8; --surface:#FFFFFF; --muted:#6A736E; --hair:#E1E0D8;
+    --sage:#6E8B7D; --botanic:#3C5A4E; --sand:#C9A98C; --lilac:#B3A6D4;
+    --bg:#EFEEE8; --card:#FFFFFF;
+    --shadow:0 1px 2px rgba(33,48,46,.05),0 10px 34px rgba(33,48,46,.08);
+  }
+  @media (prefers-color-scheme: dark){
+    :root{ --ink:#E8ECE7; --bg:#161B19; --card:#1E2523; --muted:#9BA49E; --hair:#2C3431; --porcelain:#161B19; --surface:#1E2523; }
+  }
+  :root[data-theme="light"]{ --ink:#21302E; --bg:#EFEEE8; --card:#FFFFFF; --muted:#6A736E; --hair:#E1E0D8; --surface:#FFFFFF; }
+  :root[data-theme="dark"]{ --ink:#E8ECE7; --bg:#161B19; --card:#1E2523; --muted:#9BA49E; --hair:#2C3431; --surface:#1E2523; }
+
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--ink);
+    font-family:ui-sans-serif,"Segoe UI",system-ui,-apple-system,sans-serif;line-height:1.55;-webkit-font-smoothing:antialiased}
+  .wrap{max-width:940px;margin:0 auto;padding:0 22px 80px}
+  .serif{font-family:"Iowan Old Style","Palatino Linotype",Palatino,"Book Antiqua",Georgia,serif}
+  .mono{font-family:ui-monospace,"SF Mono",Menlo,monospace}
+
+  /* hero */
+  .hero{text-align:center;padding:64px 0 40px;border-bottom:1px solid var(--hair)}
+  .logo{font-family:"Iowan Old Style",Palatino,Georgia,serif;font-weight:600;
+    font-size:clamp(52px,12vw,104px);line-height:1;letter-spacing:.01em;color:var(--ink)}
+  .logo .u{color:var(--sage)}
+  .tag{margin-top:14px;font-size:15px;color:var(--muted);letter-spacing:.01em}
+  .pron{margin-top:6px;font-size:12px;letter-spacing:.14em;text-transform:uppercase;color:var(--sage)}
+
+  section{padding:40px 0;border-bottom:1px solid var(--hair)}
+  .eyebrow{font-family:ui-monospace,monospace;font-size:11px;letter-spacing:.2em;text-transform:uppercase;
+    color:var(--sage);margin:0 0 14px}
+  h2{font-family:"Iowan Old Style",Palatino,Georgia,serif;font-weight:600;font-size:clamp(22px,3.4vw,30px);
+    margin:0 0 6px;letter-spacing:-.01em}
+  p{font-size:15px;max-width:66ch}
+  .muted{color:var(--muted)}
+  b{font-weight:650}
+
+  .grid{display:grid;gap:16px;margin-top:20px}
+  .g2{grid-template-columns:repeat(auto-fit,minmax(230px,1fr))}
+  .g3{grid-template-columns:repeat(auto-fit,minmax(180px,1fr))}
+  .card{background:var(--card);border:1px solid var(--hair);border-radius:14px;padding:20px;box-shadow:var(--shadow)}
+
+  /* logo lockups */
+  .locks{display:flex;flex-wrap:wrap;gap:16px;margin-top:20px}
+  .lock{flex:1 1 200px;background:var(--card);border:1px solid var(--hair);border-radius:14px;
+    display:flex;align-items:center;justify-content:center;min-height:150px;box-shadow:var(--shadow)}
+  .lock.dark{background:var(--ink)}
+  .mono-mark{width:66px;height:66px;border-radius:50%;border:2px solid var(--sage);color:var(--sage);
+    font-family:"Iowan Old Style",Palatino,Georgia,serif;font-size:34px;font-weight:600;
+    display:flex;align-items:center;justify-content:center}
+  .wordmark{font-family:"Iowan Old Style",Palatino,Georgia,serif;font-weight:600;font-size:44px;color:var(--ink)}
+  .wordmark .u{color:var(--sage)}
+  .lock.dark .wordmark{color:var(--porcelain)} .lock.dark .wordmark .u{color:var(--sand)}
+  .lock.baby .wordmark small{color:var(--lilac)}
+  .wordmark small{font-size:.42em;letter-spacing:.06em;color:var(--muted);font-family:ui-sans-serif,system-ui}
+
+  /* swatches */
+  .sw{border-radius:12px;overflow:hidden;border:1px solid var(--hair)}
+  .sw .chip{height:96px}
+  .sw .meta{padding:11px 13px;background:var(--card)}
+  .sw .nm{font-size:13.5px;font-weight:650}
+  .sw .hex{font-family:ui-monospace,monospace;font-size:12px;color:var(--muted)}
+  .sw .role{font-size:11.5px;color:var(--muted);margin-top:3px}
+
+  /* type specimens */
+  .spec{background:var(--card);border:1px solid var(--hair);border-radius:14px;padding:20px 22px;box-shadow:var(--shadow)}
+  .spec .big{font-family:"Iowan Old Style",Palatino,Georgia,serif;font-size:34px;line-height:1.1;margin:0}
+  .spec .san{font-size:16px;margin:12px 0 0}
+  .spec .lab{font-family:ui-monospace,monospace;font-size:11px;letter-spacing:.16em;text-transform:uppercase;color:var(--muted);margin-bottom:8px}
+
+  ul{font-size:14.5px;color:var(--muted);padding-left:18px} li{margin:5px 0} li b{color:var(--ink)}
+
+  .dodont{display:grid;gap:16px;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));margin-top:18px}
+  .do{border-left:3px solid var(--sage)} .dont{border-left:3px solid var(--sand)}
+  .do h3,.dont h3{margin:0 0 8px;font-size:14px}
+  .do h3{color:var(--botanic)} .dont h3{color:#a9743f}
+
+  .subline{display:flex;gap:10px;align-items:center;margin:6px 0;font-size:14px}
+  .swatch-dot{width:16px;height:16px;border-radius:4px;flex:none;border:1px solid rgba(0,0,0,.12)}
+  footer{padding:26px 0;font-family:ui-monospace,monospace;font-size:11px;color:var(--muted)}
+</style>
+
+<div class="wrap">
+
+  <div class="hero">
+    <div class="logo">H<span class="u">ö</span>fe</div>
+    <div class="tag serif">Seguro para um bebê, eficaz para você.</div>
+    <div class="pron mono">Höfe · herança alemã · "RÖ-fe"</div>
+  </div>
+
+  <section>
+    <p class="eyebrow">Essência</p>
+    <h2>O que a marca é</h2>
+    <p class="muted">Höfe é a <b>derma da família toda</b> — eficácia adulta e segurança infantil sob uma marca-mãe única,
+      com raiz alemã (do sobrenome Hografe) e respaldo pediátrico. A identidade traduz isso em <b>"farmácia-jardim alemã"</b>:
+      clínica o bastante para transmitir confiança, calorosa o bastante para uma família. Nada de glam agressivo — sobriedade,
+      ingrediente à mostra, respiro.</p>
+    <div class="grid g3">
+      <div class="card"><b>Confiável</b><p class="muted" style="margin:6px 0 0">Rigor clínico, sem promessa exagerada.</p></div>
+      <div class="card"><b>Calma</b><p class="muted" style="margin:6px 0 0">Sensorial suave, pele/fio sensível.</p></div>
+      <div class="card"><b>Herança</b><p class="muted" style="margin:6px 0 0">Sobriedade alemã, feita à mão e à prova.</p></div>
+    </div>
+  </section>
+
+  <section>
+    <p class="eyebrow">Logo</p>
+    <h2>Wordmark &amp; monograma</h2>
+    <p class="muted">Wordmark em serifa de transição (herança/premium), com o <b>ö como acento-assinatura</b> em cor.
+      Os dois pontos do umlaut são o <b>motivo gráfico</b> da marca (podem virar selo/carimbo). Monograma <b>H</b> para ícone/app/lacre.</p>
+    <div class="locks">
+      <div class="lock"><div class="wordmark">H<span class="u">ö</span>fe</div></div>
+      <div class="lock"><div class="mono-mark">H</div></div>
+      <div class="lock dark"><div class="wordmark">H<span class="u">ö</span>fe</div></div>
+      <div class="lock baby"><div class="wordmark">H<span class="u">ö</span>fe <small>BABY</small></div></div>
+    </div>
+    <p class="muted" style="margin-top:14px;font-size:13.5px">Regras: umlaut só no <b>wordmark</b> (logo) — em domínio/@ usar <b>hofe</b>.
+      Manter respiro generoso ao redor. Não inclinar, não aplicar sombra, não trocar a serifa.</p>
+  </section>
+
+  <section>
+    <p class="eyebrow">Cores</p>
+    <h2>Paleta</h2>
+    <p class="muted">Base porcelana + tinta profunda; <b>sálvia de boticário</b> como assinatura; areia como calor;
+      lilás reservado à sub-linha Baby. Semântica de cuidado, não de glamour.</p>
+    <div class="grid g3">
+      <div class="sw"><div class="chip" style="background:#21302E"></div><div class="meta"><div class="nm">Tinta</div><div class="hex">#21302E</div><div class="role">Texto, wordmark, fundo escuro</div></div></div>
+      <div class="sw"><div class="chip" style="background:#EFEEE8"></div><div class="meta"><div class="nm">Porcelana</div><div class="hex">#EFEEE8</div><div class="role">Fundo base (limpo/seguro)</div></div></div>
+      <div class="sw"><div class="chip" style="background:#6E8B7D"></div><div class="meta"><div class="nm">Sálvia (assinatura)</div><div class="hex">#6E8B7D</div><div class="role">Acento principal, ö do logo</div></div></div>
+      <div class="sw"><div class="chip" style="background:#3C5A4E"></div><div class="meta"><div class="nm">Botânico</div><div class="hex">#3C5A4E</div><div class="role">Sálvia profunda, detalhes</div></div></div>
+      <div class="sw"><div class="chip" style="background:#C9A98C"></div><div class="meta"><div class="nm">Areia</div><div class="hex">#C9A98C</div><div class="role">Calor, toques premium</div></div></div>
+      <div class="sw"><div class="chip" style="background:#B3A6D4"></div><div class="meta"><div class="nm">Lilás Baby</div><div class="hex">#B3A6D4</div><div class="role">Só na sub-linha Höfe Baby</div></div></div>
+    </div>
+    <div class="card" style="margin-top:16px">
+      <div class="lab mono" style="font-size:11px;letter-spacing:.14em;text-transform:uppercase;color:var(--muted);margin-bottom:8px">Código de cor por linha (embalagem)</div>
+      <div class="subline"><span class="swatch-dot" style="background:#6E8B7D"></span><b>Höfe Rosto</b> — sálvia</div>
+      <div class="subline"><span class="swatch-dot" style="background:#3C5A4E"></span><b>Höfe Cabelo</b> — botânico profundo</div>
+      <div class="subline"><span class="swatch-dot" style="background:#B3A6D4"></span><b>Höfe Baby</b> — lilás suave</div>
+    </div>
+  </section>
+
+  <section>
+    <p class="eyebrow">Tipografia</p>
+    <h2>Vozes tipográficas</h2>
+    <div class="grid g2">
+      <div class="spec"><div class="lab">Display · serifa de transição</div>
+        <p class="big">Cuidado que herda confiança.</p>
+        <p class="muted" style="font-size:13px;margin:10px 0 0">Títulos e wordmark. Referências reais: <b>Tiempos / Freight / Recoleta</b>. (Aqui: fallback serifado do sistema.)</p></div>
+      <div class="spec"><div class="lab">Texto · sans humanista</div>
+        <p class="san">Fórmulas seguras para pele e fio sensível, com respaldo técnico. Clareza acima de tudo — o rótulo explica, não promete demais.</p>
+        <p class="muted" style="font-size:13px;margin:12px 0 0">Corpo, UI, e-commerce. Referências: <b>Söhne / Neue Haas / Inter</b> em peso regular.</p></div>
+      <div class="spec"><div class="lab">Dados · monoespaçada</div>
+        <p class="mono" style="font-size:15px;margin:0">LOTE 2026·03 — VAL 24m — NOTIF. ANVISA 000000</p>
+        <p class="muted" style="font-size:13px;margin:12px 0 0">Números de lote, validade, INCI — reforça o ar "boticário/laboratório".</p></div>
+    </div>
+  </section>
+
+  <section>
+    <p class="eyebrow">Voz &amp; tom</p>
+    <h2>Como a Höfe fala</h2>
+    <div class="grid g2">
+      <div class="card"><b>Princípios</b>
+        <ul style="margin:8px 0 0"><li><b>Honesta</b> — diz o que o produto faz e o que não faz.</li>
+        <li><b>Calma e experta</b> — segurança sem alarmismo.</li>
+        <li><b>Próxima</b> — fala com a família, não com "a consumidora".</li></ul></div>
+      <div class="card"><b>Assinaturas verbais</b>
+        <ul style="margin:8px 0 0"><li>"Seguro para um bebê, eficaz para você."</li>
+        <li>Ingrediente em destaque, jargão traduzido.</li>
+        <li>Evitar: "milagre", "instantâneo", promessa médica.</li></ul></div>
+    </div>
+  </section>
+
+  <section>
+    <p class="eyebrow">Embalagem</p>
+    <h2>Direção de embalagem</h2>
+    <ul>
+      <li><b>Minimalismo caloroso:</b> muito respiro, fundo porcelana, tinta e sálvia; acabamento <b>fosco</b>.</li>
+      <li><b>Ingrediente à frente:</b> ativo-herói e benefício em destaque; INCI e selos com clareza.</li>
+      <li><b>Código de cor por linha</b> (sálvia/botânico/lilás) — família reconhecível na prateleira.</li>
+      <li><b>Monograma H</b> como lacre/carimbo; motivo dos <b>dois pontos</b> (¨) como textura sutil.</li>
+      <li><b>Baby = fragrance-free</b> declarado no rótulo — o selo de confiança visível.</li>
+    </ul>
+    <div class="dodont">
+      <div class="card do"><h3>FAZER</h3><ul style="margin:0"><li>Respiro e sobriedade</li><li>Fosco, toque suave</li><li>Selos: dermatologicamente testado, vegano</li></ul></div>
+      <div class="card dont"><h3>EVITAR</h3><ul style="margin:0"><li>Neon, glitter, "glam"</li><li>Excesso de claims na frente</li><li>Trocar a serifa do logo</li></ul></div>
+    </div>
+  </section>
+
+  <footer class="mono">Höfe · mini-brandbook v1 (primeira direção) · fontes/tokens a materializar com designer · documento vivo</footer>
+</div>
+
+</body>
+</html>
