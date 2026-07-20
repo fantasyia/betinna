@@ -82,6 +82,9 @@ diluição de marketing.
 
 - Referência de renda do revendedor: 10 clientes ≈ R$300–800/mês; 30+ ≈ R$800–2.000/mês.
 - **Sinergia com o SaaS:** portal/app do representante (pedido, comissão, acompanhamento).
+- **Prospecção de representantes via betinna.ai** — a venda por representantes usa a **betinna.ai** para
+  prospectar/recrutar e nutrir a rede, **no mesmo formato usado pela Somatec**. É um canal confirmado do
+  projeto (não "fase futura"): betinna.ai gera/qualifica os representantes e o portal cuida de pedido/comissão.
 
 ### Canal profissional / B2B (salões) — para premium/reconstrução — **fase 2**
 - Linhas profissionais de tratamento/reconstrução vendem via distribuidor/representação a salões.

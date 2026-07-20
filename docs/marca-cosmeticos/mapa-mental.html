@@ -86,11 +86,11 @@
   <div class="mapcard">
     <div class="maphead">
       <b>Mapa do projeto</b>
-      <span>linhas cheias = estrutura · linhas pontilhadas = conexões entre pilares</span>
+      <span>linhas cheias = estrutura · pontilhadas = conexões · 🖱️ role o mouse sobre o mapa p/ aproximar/afastar</span>
     </div>
     <div class="mapscroll">
 <pre class="mermaid">
-%%{init: {'theme':'base','themeVariables':{'fontFamily':'ui-sans-serif, system-ui, sans-serif','fontSize':'12.5px','lineColor':'#9aa39b','primaryColor':'#EEF0EC'},'flowchart':{'curve':'basis','nodeSpacing':42,'rankSpacing':54,'padding':6}}}%%
+%%{init: {'theme':'base','themeVariables':{'fontFamily':'ui-sans-serif, system-ui, sans-serif','fontSize':'15px','lineColor':'#9aa39b','primaryColor':'#EEF0EC'},'flowchart':{'curve':'basis','nodeSpacing':42,'rankSpacing':54,'padding':6}}}%%
 flowchart TD
   C(("HOG<br/>seguro p/ bebê,<br/>eficaz p/ você")):::center
 
@@ -107,12 +107,14 @@ flowchart TD
   CAN --> MK["Marketplaces<br/>ML · Shopee · Amazon · Magalu<br/>pure players: Beleza na Web · Época"]:::sub
   CAN --> D2C["Site próprio D2C<br/>Nuvemshop / Tray"]:::sub
   CAN --> REP["Representantes<br/>comissão 10% · revenda 25–50%<br/>distribuidor 45–50% off"]:::sub
+  REP --> PROS["Prospecção via betinna.ai<br/>modelo Somatec"]:::ai
   CAN --> B2B["Profissional B2B — fase 2<br/>salões · exige CNPJ beleza"]:::sub
 
   REG -.cada SKU = 1 notificação.-> PROD
   EDGE -.constrói no sistema.-> CB
   EDGE -.níveis = features.-> COM
   EDGE -.portal de comissão.-> REP
+  EDGE -.betinna.ai prospecta.-> PROS
   PED -.voz das mães.-> COM
   PED -.abre a linha.-> PROD
   COM -.embaixadoras viram.-> REP
@@ -130,6 +132,7 @@ flowchart TD
   classDef cb fill:#DEEAD9,stroke:#5E8C4E,color:#1f3d17;
   classDef ped fill:#E5DEF1,stroke:#7C6BB0,color:#352a5c;
   classDef sub fill:#EDEBE6,stroke:#9AA09A,color:#2A2E2B;
+  classDef ai fill:#D3EEF4,stroke:#2BA9C4,color:#0f3d47;
 </pre>
     </div>
     <div class="legend">
@@ -140,6 +143,7 @@ flowchart TD
       <span class="lg"><i class="dot" style="background:#DEEAD9;border-color:#5E8C4E"></i>Cashback</span>
       <span class="lg"><i class="dot" style="background:#E5DEF1;border-color:#7C6BB0"></i>Pediatra / Baby</span>
       <span class="lg"><i class="dot" style="background:#2B2A66;border-color:#2B2A66"></i>Seu diferencial</span>
+      <span class="lg"><i class="dot" style="background:#D3EEF4;border-color:#2BA9C4"></i>betinna.ai (prospecção)</span>
       <span class="lg cross"><i></i>conexão entre pilares</span>
     </div>
   </div>
@@ -148,11 +152,11 @@ flowchart TD
   <div class="mapcard">
     <div class="maphead">
       <b>Arquitetura de produtos</b>
-      <span>marca-mãe única · linhas enxutas (teto 3–4 SKUs) · largura por galhos, não por profundidade</span>
+      <span>marca-mãe única · linhas enxutas (teto 3–4 SKUs) · 🖱️ role o mouse sobre o mapa p/ aproximar/afastar</span>
     </div>
     <div class="mapscroll">
 <pre class="mermaid">
-%%{init: {'theme':'base','themeVariables':{'fontFamily':'ui-sans-serif, system-ui, sans-serif','fontSize':'12.5px','lineColor':'#9aa39b','primaryColor':'#EEF0EC'},'flowchart':{'curve':'basis','nodeSpacing':36,'rankSpacing':50,'padding':6}}}%%
+%%{init: {'theme':'base','themeVariables':{'fontFamily':'ui-sans-serif, system-ui, sans-serif','fontSize':'15px','lineColor':'#9aa39b','primaryColor':'#EEF0EC'},'flowchart':{'curve':'basis','nodeSpacing':36,'rankSpacing':50,'padding':6}}}%%
 flowchart TD
   R(("HOG<br/>DNA: sensível<br/>+ respaldo técnico")):::root
   R --> RO["🌳 ROSTO — HOG<br/>Fase 1"]:::t
@@ -199,7 +203,7 @@ flowchart TD
 
     <div class="card"><div class="n">03</div><h3><span class="tag" style="background:#3B7A84"></span>Canais de venda</h3>
       <p><b>Marketplaces</b> (ML, Shopee, Amazon, Magalu + pure players Beleza na Web/Época) pra tração e caixa.</p>
-      <p><b>Site próprio D2C</b> (Nuvemshop/Tray) pra margem e recompra. <b>Representantes</b> e <b>B2B salão</b> na fase 2.</p></div>
+      <p><b>Site próprio D2C</b> (Nuvemshop/Tray) pra margem e recompra. <b>Representantes com prospecção via betinna.ai</b> (modelo Somatec); <b>B2B salão</b> na fase 2.</p></div>
 
     <div class="card"><div class="n">04</div><h3><span class="tag" style="background:#B9842B"></span>Aquisição</h3>
       <p>Escolher <b>um motor</b>: tráfego pago lidera (mensurável, escala com caixa, casa com perfil de dado).</p>
@@ -226,10 +230,31 @@ flowchart TD
       <p>É o fosso: transforma "comunidade bonita" em <b>máquina de retenção medível</b>.</p></div>
   </div>
 
-  <div class="kill"><b>Fora de escopo (decidido):</b> criptomoeda própria e token lastreado em stablecoin — descartados pro cashback por risco regulatório (Banco Central/CVM), capital travado e fuga de foco. Reavaliar só como projeto separado no futuro.</div>
-
   <footer>Projeto HOG · marca-mãe de cosméticos · mapa vivo — cada conversa nova atualiza este mapa</footer>
 </div>
+
+<script>
+  // Zoom por scroll do mouse sobre cada mapa (usa CSS zoom p/ reflow + scroll corretos)
+  (function () {
+    function attach(container) {
+      var scale = 1;
+      container.addEventListener('wheel', function (e) {
+        e.preventDefault();
+        scale += (e.deltaY < 0 ? 0.12 : -0.12);
+        scale = Math.min(3, Math.max(0.6, scale));
+        var target = container.querySelector('svg') || container.querySelector('.mermaid');
+        if (target) { target.style.zoom = scale; }
+      }, { passive: false });
+      container.style.cursor = 'zoom-in';
+    }
+    function init() {
+      var maps = document.querySelectorAll('.mapscroll');
+      for (var i = 0; i < maps.length; i++) { attach(maps[i]); }
+    }
+    if (document.readyState !== 'loading') { setTimeout(init, 400); }
+    else { document.addEventListener('DOMContentLoaded', function () { setTimeout(init, 400); }); }
+  })();
+</script>
 
 </body>
 </html>
