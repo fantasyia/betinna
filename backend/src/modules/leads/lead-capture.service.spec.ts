@@ -12,6 +12,8 @@ const makePrismaMock = () => ({
   },
   lead: {
     findFirst: vi.fn().mockResolvedValue(null),
+    findUnique: vi.fn().mockResolvedValue(null),
+    update: vi.fn().mockResolvedValue({}),
   },
   funil: {
     findMany: vi.fn().mockResolvedValue([]),
@@ -144,6 +146,68 @@ describe('LeadCaptureService', () => {
         consentimentoLgpd: { aceito: true, versaoTexto: 'v1' },
         metadados: { referer: 'https://somatecblocking.com.br/contato' },
       });
+    });
+
+    it('ACEITA payload SEM bloco atribuicao sem quebrar (estado normal até o site instrumentar)', async () => {
+      prisma.leadCaptureChave.findUnique.mockResolvedValue({ empresaId: 'emp-1', ativo: true });
+
+      const r = await svc.capturar(CHAVE, { ...dto, mensagem: 'oi' });
+
+      expect(r).toEqual({ ok: true, leadId: 'lead-novo', duplicado: false });
+      const [, arg] = leads.createPublico.mock.calls[0];
+      // Sem atribuição: colunas null, origemCadastro default "site", sem chave atribuicao no JSON.
+      expect(arg.utmSource).toBeNull();
+      expect(arg.utmCampaign).toBeNull();
+      expect(arg.origemCadastro).toBe('site');
+      expect(arg.variaveis.atribuicao).toBeUndefined();
+    });
+
+    it('grava atribuição NORMALIZADA + colunas do 1º toque (source/medium/campaign)', async () => {
+      prisma.leadCaptureChave.findUnique.mockResolvedValue({ empresaId: 'emp-1', ativo: true });
+
+      await svc.capturar(CHAVE, {
+        ...dto,
+        formulario: 'Calculadora',
+        atribuicao: {
+          primeiro: { utmSource: 'Google', utmMedium: 'PAID', utmCampaign: 'VTCD-Alim ' },
+          ultimo: { utmSource: 'google', utmMedium: 'cpc', utmCampaign: 'remarketing' },
+        },
+      });
+
+      const [, arg] = leads.createPublico.mock.calls[0];
+      // Colunas = 1º toque, normalizadas (lowercase+trim).
+      expect(arg.utmSource).toBe('google');
+      expect(arg.utmCampaign).toBe('vtcd-alim');
+      expect(arg.formularioOrigem).toBe('calculadora');
+      // JSON tem primeiro E último.
+      expect(arg.variaveis.atribuicao.primeiro.utmCampaign).toBe('vtcd-alim');
+      expect(arg.variaveis.atribuicao.ultimo.utmCampaign).toBe('remarketing');
+    });
+
+    it('DUPLICADO: último toque atualiza, 1º toque PRESERVADO (imutável)', async () => {
+      prisma.leadCaptureChave.findUnique.mockResolvedValue({ empresaId: 'emp-1', ativo: true });
+      // acharLeadAberto por telefone usa $queryRaw → devolve o lead existente
+      prisma.$queryRaw.mockResolvedValue([{ id: 'lead-existente' }]);
+      prisma.lead.findUnique.mockResolvedValue({
+        utmCampaign: 'blog-seo-original', // 1º toque JÁ existe
+        utmSource: 'blog',
+        utmMedium: 'organic',
+        variaveis: { atribuicao: { primeiro: { utmCampaign: 'blog-seo-original' } } },
+      });
+
+      const r = await svc.capturar(CHAVE, {
+        ...dto,
+        atribuicao: { ultimo: { utmSource: 'google', utmCampaign: 'nova-campanha' } },
+      });
+
+      expect(r).toEqual({ ok: true, leadId: 'lead-existente', duplicado: true });
+      expect(leads.createPublico).not.toHaveBeenCalled(); // não cria lead novo
+      const [[updateArg]] = prisma.lead.update.mock.calls;
+      // 1º toque NÃO sobrescrito → update NÃO mexe nas colunas utm*
+      expect(updateArg.data.utmCampaign).toBeUndefined();
+      // Último toque atualizado no JSON; primeiro preservado
+      expect(updateArg.data.variaveis.atribuicao.primeiro.utmCampaign).toBe('blog-seo-original');
+      expect(updateArg.data.variaveis.atribuicao.ultimo.utmCampaign).toBe('nova-campanha');
     });
 
     it('encoding: corpo em latin1 (acentos como �) é recuperado a partir do rawBody', async () => {

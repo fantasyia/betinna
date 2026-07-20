@@ -334,6 +334,12 @@ export class LeadsService {
       funilEtapaId?: string;
       /** Campos estruturados extras da captura → Lead.variaveis (lidos nos fluxos). */
       variaveis?: Record<string, unknown>;
+      /** Atribuição de marketing — colunas indexáveis do 1º toque. */
+      utmSource?: string | null;
+      utmMedium?: string | null;
+      utmCampaign?: string | null;
+      origemCadastro?: string | null;
+      formularioOrigem?: string | null;
     },
   ): Promise<{ id: string }> {
     const { funilId, funilEtapaId } = await this.resolverFunilInicial(
@@ -358,6 +364,11 @@ export class LeadsService {
         funilId,
         funilEtapaId,
         etapaDesde: new Date(),
+        utmSource: dto.utmSource ?? null,
+        utmMedium: dto.utmMedium ?? null,
+        utmCampaign: dto.utmCampaign ?? null,
+        origemCadastro: dto.origemCadastro ?? null,
+        formularioOrigem: dto.formularioOrigem ?? null,
         ...(dto.variaveis !== undefined
           ? { variaveis: dto.variaveis as Prisma.InputJsonValue }
           : {}),

@@ -1,4 +1,5 @@
 import { HttpStatus, Injectable, Logger } from '@nestjs/common';
+import { Prisma } from '@prisma/client';
 import { createHash, randomBytes } from 'node:crypto';
 import { PrismaService } from '@database/prisma.service';
 import { RedisService } from '@database/redis.service';
@@ -7,6 +8,13 @@ import { ErrorCode } from '@shared/errors/error-codes';
 import type { AuthenticatedUser } from '@shared/types/authenticated-user';
 import { LeadsService } from './leads.service';
 import { leadCapturePublicoSchema, type LeadCapturePublicoDto } from './lead-capture.dto';
+import {
+  type Atribuicao,
+  colunasPrimeiroToque,
+  normalizarAtribuicao,
+  normalizarFormulario,
+  normalizarOrigemCadastro,
+} from './atribuicao.util';
 
 /** Teto de POSTs por chave por minuto (formulário de site não passa disso). */
 const RL_MAX_POR_MIN = 60;
@@ -101,11 +109,18 @@ export class LeadCaptureService {
       .updateMany({ where: { empresaId }, data: { ultimoUsoEm: new Date() } })
       .catch(() => undefined);
 
+    // Atribuição normalizada/sanitizada UMA vez (usada nos dois caminhos).
+    const atribuicao = normalizarAtribuicao(dto.atribuicao);
+    const origemCadastro = normalizarOrigemCadastro(dto.origemCadastro); // ausente → "site"
+
     const duplicado = await this.acharLeadAberto(empresaId, dto.telefone, dto.email);
     if (duplicado) {
+      // Lead já existe: ÚLTIMO toque sempre atualiza; 1º toque só se estava vazio.
+      await this.aplicarAtribuicaoEmLeadExistente(duplicado, atribuicao);
       return { ok: true, leadId: duplicado, duplicado: true };
     }
 
+    const colunas = colunasPrimeiroToque(atribuicao);
     const lead = await this.leads.createPublico(empresaId, {
       nome: dto.nome,
       contatoNome: dto.contatoNome,
@@ -118,10 +133,72 @@ export class LeadCaptureService {
       observacoes: dto.mensagem?.trim() || undefined,
       funilId: dto.funilId,
       funilEtapaId: dto.funilEtapaId,
-      variaveis: this.montarVariaveis(dto),
+      variaveis: this.montarVariaveis(dto, atribuicao),
+      utmSource: colunas.utmSource,
+      utmMedium: colunas.utmMedium,
+      utmCampaign: colunas.utmCampaign,
+      origemCadastro,
+      formularioOrigem: normalizarFormulario(dto.formulario) ?? null,
     });
     this.logger.log(`Lead capturado do site: ${lead.id} (empresa ${empresaId})`);
     return { ok: true, leadId: lead.id, duplicado: false };
+  }
+
+  /**
+   * Reenvio de formulário / lead que volta por OUTRA campanha (regra "preservar"
+   * — é onde a atribuição costuma quebrar). ÚLTIMO toque SEMPRE sobrescreve; 1º
+   * toque é IMUTÁVEL (só grava se as colunas ainda estão vazias). Não toca em mais
+   * nada do lead (etapa, dono…). Best-effort: falha aqui não quebra o "duplicado".
+   */
+  private async aplicarAtribuicaoEmLeadExistente(
+    leadId: string,
+    atribuicao?: Atribuicao,
+  ): Promise<void> {
+    if (!atribuicao) return;
+    try {
+      const lead = await this.prisma.lead.findUnique({
+        where: { id: leadId },
+        select: { utmCampaign: true, utmSource: true, utmMedium: true, variaveis: true },
+      });
+      if (!lead) return;
+
+      const vars =
+        lead.variaveis && typeof lead.variaveis === 'object' && !Array.isArray(lead.variaveis)
+          ? { ...(lead.variaveis as Record<string, unknown>) }
+          : {};
+      const atrAtual = (vars.atribuicao ?? {}) as Atribuicao;
+
+      // 1º toque vazio? (nenhuma coluna nem primeiro no JSON) → este vira o 1º toque.
+      const semPrimeiroToque =
+        !lead.utmCampaign && !lead.utmSource && !lead.utmMedium && !atrAtual.primeiro;
+      const primeiro = semPrimeiroToque
+        ? (atribuicao.primeiro ?? atrAtual.primeiro)
+        : atrAtual.primeiro;
+      // Último toque = o que veio agora (ou o primeiro, se só veio um bloco).
+      const ultimo = atribuicao.ultimo ?? atribuicao.primeiro ?? atrAtual.ultimo;
+
+      const novaAtrib: Atribuicao = {};
+      if (primeiro) novaAtrib.primeiro = primeiro;
+      if (ultimo) novaAtrib.ultimo = ultimo;
+      vars.atribuicao = novaAtrib;
+
+      const colunas = semPrimeiroToque ? colunasPrimeiroToque({ primeiro }) : null;
+      await this.prisma.lead.update({
+        where: { id: leadId },
+        data: {
+          variaveis: vars as Prisma.InputJsonValue,
+          ...(colunas
+            ? {
+                utmSource: colunas.utmSource,
+                utmMedium: colunas.utmMedium,
+                utmCampaign: colunas.utmCampaign,
+              }
+            : {}),
+        },
+      });
+    } catch (err) {
+      this.logger.warn(`Falha ao atualizar atribuição do lead ${leadId}: ${String(err)}`);
+    }
   }
 
   /**
@@ -210,7 +287,10 @@ export class LeadCaptureService {
    * Monta o JSON `Lead.variaveis` com os campos estruturados da captura (só os
    * enviados). Ficam legíveis nos fluxos como {{custom.<chave>}} e na tela do lead.
    */
-  private montarVariaveis(dto: LeadCapturePublicoDto): Record<string, unknown> {
+  private montarVariaveis(
+    dto: LeadCapturePublicoDto,
+    atribuicao?: Atribuicao,
+  ): Record<string, unknown> {
     const v: Record<string, unknown> = {};
     if (dto.origem?.trim()) v.origem = dto.origem.trim();
     if (dto.empresa?.trim()) v.empresa = dto.empresa.trim();
@@ -220,6 +300,9 @@ export class LeadCaptureService {
     if (dto.paginaOrigem?.trim()) v.paginaOrigem = dto.paginaOrigem.trim();
     if (dto.consentimentoLgpd) v.consentimentoLgpd = dto.consentimentoLgpd;
     if (dto.metadados) v.metadados = dto.metadados;
+    // Atribuição completa (1º toque não-indexado + ÚLTIMO toque inteiro) no JSON.
+    // As colunas indexáveis do 1º toque vão à parte, em createPublico.
+    if (atribuicao) v.atribuicao = atribuicao;
     return v;
   }
 

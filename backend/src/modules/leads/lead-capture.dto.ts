@@ -5,6 +5,27 @@ import { z } from 'zod';
  * Exige nome + pelo menos UM contato (telefone ou e-mail) — sem contato o
  * lead é inacionável e vira lixo no funil.
  */
+/**
+ * Um bloco de atribuição (primeiro OU último toque). Todos opcionais. `.max`
+ * generoso (só barra abuso — o site é nosso e a chave é secreta); o corte real
+ * (255) + normalização é na ingestão. Sem `.strict()`/`.passthrough()`: chave
+ * desconhecida é ignorada, não vira dado nem derruba o payload.
+ */
+const atribuicaoBlocoSchema = z
+  .object({
+    utmSource: z.string().trim().max(2048).optional(),
+    utmMedium: z.string().trim().max(2048).optional(),
+    utmCampaign: z.string().trim().max(2048).optional(),
+    utmContent: z.string().trim().max(2048).optional(),
+    utmTerm: z.string().trim().max(2048).optional(),
+    gclid: z.string().trim().max(2048).optional(),
+    fbclid: z.string().trim().max(2048).optional(),
+    landingPage: z.string().trim().max(2048).optional(),
+    referrer: z.string().trim().max(2048).optional(),
+    capturadoEm: z.string().trim().max(60).optional(),
+  })
+  .optional();
+
 export const leadCapturePublicoSchema = z
   .object({
     nome: z.string().trim().min(2).max(200),
@@ -48,6 +69,21 @@ export const leadCapturePublicoSchema = z
         userAgent: z.string().trim().max(500).optional(),
         referer: z.string().trim().max(500).optional(),
       })
+      .optional(),
+
+    // ── ATRIBUIÇÃO de marketing (opcional; tráfego direto/orgânico não manda) ──
+    /** Porta de entrada. Validado por LISTA na ingestão; ausente/inválido → "site". */
+    origemCadastro: z.string().trim().max(60).optional(),
+    /** Qual formulário converteu (contato|representante|amostra|calculadora|seletor). */
+    formulario: z.string().trim().max(60).optional(),
+    /**
+     * Primeiro e ÚLTIMO toque. O site persiste o 1º toque no navegador e envia os
+     * dois. Normalização/sanitização/corte acontece na ingestão (atribuicao.util),
+     * NÃO aqui — o `.max` generoso só barra abuso, sem derrubar lead legítimo.
+     * `.passthrough()` deliberadamente AUSENTE: chave estranha não vira dado.
+     */
+    atribuicao: z
+      .object({ primeiro: atribuicaoBlocoSchema, ultimo: atribuicaoBlocoSchema })
       .optional(),
   })
   .refine((v) => !!(v.telefone?.trim() || v.email?.trim()), {

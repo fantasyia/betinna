@@ -989,6 +989,21 @@ model Lead {
   motivoGanho String?
   motivoPerda String?
   pedidoId    String? // se ganho gerou pedido
+
+  // ── Atribuição de marketing (nullable; leads antigos = null, sem backfill) ──
+  /// PRIMEIRO toque — colunas indexáveis (creditam a campanha, são consultadas).
+  /// O resto (content/term/gclid/fbclid/landingPage/referrer) + o ÚLTIMO toque
+  /// inteiro moram em `variaveis.atribuicao`. Ver atribuicao.util.ts.
+  utmSource        String?
+  utmMedium        String?
+  utmCampaign      String?
+  /// Porta de entrada: site|meta_lead_ads|google_lead_form|importacao|manual_rep|
+  /// whatsapp|api. VARCHAR (nunca enum — porta nova não pode exigir migration).
+  origemCadastro   String?
+  /// Qual formulário converteu (contato|representante|amostra|calculadora|seletor).
+  formularioOrigem String?
+  /// Valor real fechado no GANHO (≠ valorEstimado, que é a expectativa). Nullable.
+  valorFechado     Decimal? @db.Decimal(14, 2)
   /**
    * Quando a etapa atual começou (usado pra calcular dias na etapa)
    */
@@ -1013,6 +1028,9 @@ model Lead {
   @@index([clienteId])
   // Aging por etapa (dashboard funil): WHERE etapaDesde < cutoff
   @@index([empresaId, etapa, etapaDesde])
+  // Atribuição: chaves de junção das consultas de campanha (sempre multi-tenant)
+  @@index([empresaId, utmCampaign])
+  @@index([empresaId, origemCadastro])
   // + índice ÚNICO parcial em SQL puro (não representável aqui):
   //   "Lead_empresa_email_lower_unique" ON (empresaId, LOWER(contatoEmail))
   //   WHERE contatoEmail IS NOT NULL AND <> ''  → 1 lead por e-mail por empresa
