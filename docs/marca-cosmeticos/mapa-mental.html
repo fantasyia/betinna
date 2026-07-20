@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <script src="https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.min.js"></script>
-<script>window.addEventListener("DOMContentLoaded",function(){mermaid.initialize({startOnLoad:true});});</script>
+<script>window.addEventListener("DOMContentLoaded",function(){mermaid.initialize({startOnLoad:true,securityLevel:"loose"});});</script>
 </head>
 <body>
 <title>Mapa mental — Marca de skincare (do zero)</title>
@@ -86,7 +86,7 @@
   <p class="lede">Marca-mãe única (HOG + HOG Baby), fabricação 100% terceirizada, DNA de posicionamento:
     pele &amp; fio sensível com respaldo técnico. Abaixo, o mapa de pilares (cada nó puxa o próximo, as
     linhas pontilhadas mostram as conexões) e a árvore genealógica de produtos.</p>
-  <p class="meta">v8 · marca HOG · Fase 1 = Rosto + Cabelo + Baby · zoom suave (scroll + botões − ⟲ +) · atualizável</p>
+  <p class="meta">v9 · marca HOG · Fase 1 = Rosto + Cabelo + Baby · zoom suave + espaçamento corrigido · atualizável</p>
 
   <div class="mapcard">
     <div class="maphead">
@@ -96,7 +96,7 @@
     </div>
     <div class="mapscroll">
 <pre class="mermaid">
-%%{init: {'theme':'base','themeVariables':{'fontFamily':'ui-sans-serif, system-ui, sans-serif','fontSize':'15px','lineColor':'#9aa39b','primaryColor':'#EEF0EC'},'flowchart':{'curve':'basis','nodeSpacing':42,'rankSpacing':54,'padding':6}}}%%
+%%{init: {'theme':'base','securityLevel':'loose','htmlLabels':true,'themeVariables':{'fontFamily':'ui-sans-serif, system-ui, sans-serif','fontSize':'15px','lineColor':'#9aa39b','primaryColor':'#EEF0EC'},'flowchart':{'htmlLabels':true,'curve':'basis','nodeSpacing':42,'rankSpacing':54,'padding':8}}}%%
 flowchart TD
   C(("HOG<br/>seguro p/ bebê,<br/>eficaz p/ você")):::center
 
@@ -163,7 +163,7 @@ flowchart TD
     </div>
     <div class="mapscroll">
 <pre class="mermaid">
-%%{init: {'theme':'base','themeVariables':{'fontFamily':'ui-sans-serif, system-ui, sans-serif','fontSize':'15px','lineColor':'#9aa39b','primaryColor':'#EEF0EC'},'flowchart':{'curve':'basis','nodeSpacing':36,'rankSpacing':50,'padding':6}}}%%
+%%{init: {'theme':'base','securityLevel':'loose','htmlLabels':true,'themeVariables':{'fontFamily':'ui-sans-serif, system-ui, sans-serif','fontSize':'15px','lineColor':'#9aa39b','primaryColor':'#EEF0EC'},'flowchart':{'htmlLabels':true,'curve':'basis','nodeSpacing':36,'rankSpacing':50,'padding':8}}}%%
 flowchart TD
   R(("HOG<br/>DNA: sensível<br/>+ respaldo técnico")):::root
   R --> RO["🌳 ROSTO — HOG<br/>Fase 1"]:::t
