@@ -19,7 +19,11 @@ import type {
   UpdateFunilDto,
   UpdateFunilEtapaDto,
 } from './funis.dto';
-import type { HistoricoEtapasQueryDto } from '@modules/leads/leads.dto';
+import type {
+  AtribuicaoPorCampanhaQueryDto,
+  HistoricoEtapasQueryDto,
+} from '@modules/leads/leads.dto';
+import { PROBABILIDADE_POR_ETAPA } from '@modules/leads/leads.constants';
 
 /** Lead resumido dentro de uma etapa (Demanda MCP `leads_por_etapa`). */
 export interface LeadEtapaResumo {
@@ -216,6 +220,110 @@ export class FunisService {
       ocorridoEm: r.ocorridoEm.toISOString(),
     }));
     return buildPaginated(data, total, q.page, q.limit);
+  }
+
+  /**
+   * Atribuição por campanha (MCP `atribuicao_por_campanha`). READ-only, multi-tenant
+   * (empresaId — usa o índice (empresaId, utmCampaign)) + carteira. utmCampaign
+   * AUSENTE → leads SEM atribuição (vazamento de rastreio). Filtra por origem/
+   * source/medium e período (criadoEm). Responde "essa campanha vale a pena?".
+   */
+  async atribuicaoPorCampanha(user: AuthenticatedUser, q: AtribuicaoPorCampanhaQueryDto) {
+    const empresaId = this.requireEmpresa(user);
+    const scope = await this.repScope.getRepIds(user);
+    const de = q.dataInicio ? new Date(q.dataInicio) : undefined;
+    const ate = q.dataFim ? new Date(q.dataFim) : undefined;
+
+    const where: Prisma.LeadWhereInput = {
+      empresaId,
+      // utmCampaign ausente = "sem atribuição" (IS NULL); presente = igualdade.
+      utmCampaign: q.utmCampaign ?? null,
+      ...(q.origemCadastro ? { origemCadastro: q.origemCadastro } : {}),
+      ...(q.utmSource ? { utmSource: q.utmSource } : {}),
+      ...(q.utmMedium ? { utmMedium: q.utmMedium } : {}),
+      ...(de || ate
+        ? { criadoEm: { ...(de ? { gte: de } : {}), ...(ate ? { lte: ate } : {}) } }
+        : {}),
+      ...(scope !== null ? { representanteId: { in: scope.length ? scope : ['__none__'] } } : {}),
+    };
+
+    const [totalLeads, ganhos, perdidos, porEtapa, porOrigem, fechado, ganhosLeads] =
+      await Promise.all([
+        this.prisma.lead.count({ where }),
+        this.prisma.lead.count({ where: { ...where, etapa: 'GANHO' } }),
+        this.prisma.lead.count({ where: { ...where, etapa: 'PERDIDO' } }),
+        // Distribuição por etapa (funilEtapaId; null = sem funil/etapa custom).
+        this.prisma.lead.groupBy({
+          by: ['funilEtapaId', 'etapa'],
+          where,
+          _count: { _all: true },
+          _sum: { valorEstimado: true },
+        }),
+        // Breakdown por origemCadastro (o card pede filtrar/agrupar por origem).
+        this.prisma.lead.groupBy({
+          by: ['origemCadastro'],
+          where,
+          _count: { _all: true },
+        }),
+        // valorFechado real dos GANHOS (nulls ignorados no _sum).
+        this.prisma.lead.aggregate({ where, _sum: { valorFechado: true } }),
+        // Ciclo médio: da captura (criadoEm) ao fechamento (fechadoEm) dos GANHOS.
+        this.prisma.lead.findMany({
+          where: { ...where, etapa: 'GANHO', fechadoEm: { not: null } },
+          select: { criadoEm: true, fechadoEm: true },
+        }),
+      ]);
+
+    // Nomes + probabilidade das etapas custom presentes.
+    const etapaIds = [
+      ...new Set(porEtapa.map((g) => g.funilEtapaId).filter((x): x is string => !!x)),
+    ];
+    const etapas = etapaIds.length
+      ? await this.prisma.funilEtapa.findMany({
+          where: { id: { in: etapaIds }, funil: { empresaId } },
+          select: { id: true, nome: true, probabilidade: true },
+        })
+      : [];
+    const etapaInfo = new Map(etapas.map((e) => [e.id, e]));
+
+    // valorPonderado = Σ(valorEstimado × probabilidade/100). Etapa custom usa a
+    // probabilidade dela; lead sem funil (funilEtapaId null) usa o enum legado.
+    let valorPonderado = 0;
+    const leadsPorEtapa = porEtapa.map((g) => {
+      const info = g.funilEtapaId ? etapaInfo.get(g.funilEtapaId) : null;
+      const prob = info ? info.probabilidade : PROBABILIDADE_POR_ETAPA[g.etapa];
+      const soma = g._sum.valorEstimado ? Number(g._sum.valorEstimado) : 0;
+      valorPonderado += (soma * prob) / 100;
+      return {
+        etapaId: g.funilEtapaId,
+        nome: info?.nome ?? g.etapa, // custom → nome; sem funil → enum legado
+        quantidade: g._count._all,
+        valorEstimado: soma,
+      };
+    });
+
+    const dias = ganhosLeads
+      .map((l) => (l.fechadoEm!.getTime() - l.criadoEm.getTime()) / (1000 * 60 * 60 * 24))
+      .filter((d) => d >= 0);
+    const cicloMedioDias = dias.length
+      ? Math.round(dias.reduce((s, d) => s + d, 0) / dias.length)
+      : 0;
+
+    return {
+      utmCampaign: q.utmCampaign ?? null,
+      periodo: { de: de?.toISOString() ?? null, ate: ate?.toISOString() ?? null },
+      totalLeads,
+      leadsPorEtapa,
+      porOrigemCadastro: porOrigem.map((o) => ({
+        origemCadastro: o.origemCadastro,
+        quantidade: o._count._all,
+      })),
+      valorPonderado: Math.round(valorPonderado * 100) / 100,
+      valorFechado: fechado._sum.valorFechado ? Number(fechado._sum.valorFechado) : 0,
+      ganhos,
+      perdidos,
+      cicloMedioDias,
+    };
   }
 
   private requireEmpresa(user: AuthenticatedUser): string {

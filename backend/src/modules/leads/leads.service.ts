@@ -591,16 +591,21 @@ export class LeadsService {
     if (etapaTipo === 'GANHO') {
       data.motivoGanho = dto.motivo;
       data.fechadoEm = new Date();
+      // valorFechado (usado no atribuicao_por_campanha): proxy = valorEstimado no
+      // momento do ganho (não há campo dedicado de valor real ainda; refino futuro
+      // = puxar do Pedido vinculado). Só grava se ainda não tinha valor fechado.
+      data.valorFechado = lead.valorEstimado;
     }
     if (etapaTipo === 'PERDIDO') {
       data.motivoPerda = dto.motivo;
       data.fechadoEm = new Date();
     }
-    // Reabrir lead fechado: limpa motivos e fechadoEm
+    // Reabrir lead fechado: limpa motivos, fechadoEm e valor fechado.
     if ((lead.etapa === 'PERDIDO' || lead.etapa === 'GANHO') && etapaTipo === 'ATIVA') {
       data.motivoPerda = null;
       data.motivoGanho = null;
       data.fechadoEm = null;
+      data.valorFechado = null;
     }
 
     // CAS: inclui a etapa (e o funilEtapaId) de origem no where. Duas transições

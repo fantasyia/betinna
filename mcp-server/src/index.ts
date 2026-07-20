@@ -1467,6 +1467,46 @@ server.registerTool(
   ),
 );
 
+server.registerTool(
+  'atribuicao_por_campanha',
+  {
+    description:
+      'Retorno de atribuição de UMA campanha de marketing (responde "essa campanha vale a pena?"). ' +
+      'Passe utmCampaign (ex: "vtcd-industria-alimenticia"); OMITA utmCampaign pra ver os leads SEM ' +
+      'atribuição (indicador de vazamento de rastreio). Filtros opcionais: origemCadastro, utmSource, ' +
+      'utmMedium, período (dataInicio/dataFim ISO, sobre criadoEm). Retorna totalLeads, leadsPorEtapa ' +
+      '[{etapaId,nome,quantidade,valorEstimado}], porOrigemCadastro, valorPonderado (Σ valorEstimado×' +
+      'probabilidade/100), valorFechado, ganhos, perdidos e cicloMedioDias. Somente leitura, multi-tenant.',
+    inputSchema: {
+      utmCampaign: z.string().optional().describe('Slug da campanha. Omitido = leads SEM atribuição.'),
+      origemCadastro: z
+        .string()
+        .optional()
+        .describe('Filtra por porta de entrada (site|meta_lead_ads|importacao|manual_rep|...)'),
+      utmSource: z.string().optional(),
+      utmMedium: z.string().optional(),
+      dataInicio: z.string().datetime().optional().describe('Início do período (ISO), sobre criadoEm'),
+      dataFim: z.string().datetime().optional().describe('Fim do período (ISO)'),
+    },
+    annotations: { readOnlyHint: true, destructiveHint: false },
+  },
+  seguro(
+    async (args: {
+      utmCampaign?: string;
+      origemCadastro?: string;
+      utmSource?: string;
+      utmMedium?: string;
+      dataInicio?: string;
+      dataFim?: string;
+    }) => {
+      const qs = new URLSearchParams();
+      for (const [k, v] of Object.entries(args)) if (v != null) qs.set(k, String(v));
+      const resp = await api.get<unknown>(`/funis/atribuicao-campanha?${qs}`);
+      return ok(resp);
+    },
+  ),
+);
+
 // ─── Contatos (SOMENTE LEITURA — escopo "contatos" · DADOS PESSOAIS) ─────
 // Visão unificada Lead + Cliente + Conversa, deduplicada por telefone (D18).
 // Paginada. Sem endpoint de detalhe único: filtre com `search`. NUNCA escreve

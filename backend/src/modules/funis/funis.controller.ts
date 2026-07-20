@@ -20,7 +20,12 @@ import {
   updateFunilSchema,
 } from './funis.dto';
 import { FunisService } from './funis.service';
-import { type HistoricoEtapasQueryDto, historicoEtapasQuerySchema } from '@modules/leads/leads.dto';
+import {
+  type AtribuicaoPorCampanhaQueryDto,
+  type HistoricoEtapasQueryDto,
+  atribuicaoPorCampanhaQuerySchema,
+  historicoEtapasQuerySchema,
+} from '@modules/leads/leads.dto';
 
 @ApiTags('funis')
 @ApiBearerAuth()
@@ -35,7 +40,22 @@ export class FunisController {
     return this.funis.list(user);
   }
 
-  // ⚠️ ANTES de :id (senão a rota literal cai no findOne com id="etapa-historico").
+  // ⚠️ Rotas literais ANTES de :id (senão o findOne engole "etapa-historico"/etc).
+  @Get('atribuicao-campanha')
+  @RequirePermissions({ module: 'kanban', action: 'view' })
+  @ApiOperation({
+    summary:
+      'Atribuição por campanha (leads/etapa/valor/ciclo). utmCampaign ausente = sem atribuição. ' +
+      'MCP atribuicao_por_campanha',
+  })
+  atribuicaoCampanha(
+    @CurrentUser() user: AuthenticatedUser,
+    @Query(new ZodValidationPipe(atribuicaoPorCampanhaQuerySchema))
+    query: AtribuicaoPorCampanhaQueryDto,
+  ) {
+    return this.funis.atribuicaoPorCampanha(user, query);
+  }
+
   @Get('etapa-historico')
   @RequirePermissions({ module: 'kanban', action: 'view' })
   @ApiOperation({

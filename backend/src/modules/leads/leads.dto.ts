@@ -99,6 +99,21 @@ export const atribuirRepSchema = z.object({
 });
 export type AtribuirRepDto = z.infer<typeof atribuirRepSchema>;
 
+/**
+ * Query de atribuição por campanha (MCP atribuicao_por_campanha). utmCampaign
+ * AUSENTE = leads SEM atribuição (vazamento de rastreio). Filtros opcionais por
+ * origem/source/medium; período (ISO) sobre criadoEm.
+ */
+export const atribuicaoPorCampanhaQuerySchema = z.object({
+  utmCampaign: z.string().min(1).optional(),
+  origemCadastro: z.string().min(1).optional(),
+  utmSource: z.string().min(1).optional(),
+  utmMedium: z.string().min(1).optional(),
+  dataInicio: z.string().datetime().optional(),
+  dataFim: z.string().datetime().optional(),
+});
+export type AtribuicaoPorCampanhaQueryDto = z.infer<typeof atribuicaoPorCampanhaQuerySchema>;
+
 /** Query do histórico de etapas (MCP etapa_historico) — filtro funil/lead/período. */
 export const historicoEtapasQuerySchema = z.object({
   funilId: z.string().min(1).optional(),
