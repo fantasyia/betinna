@@ -8,6 +8,7 @@ import {
 } from '@shared/errors/app-exception';
 import { ErrorCode } from '@shared/errors/error-codes';
 import { RepScopeService } from '@shared/scope/rep-scope.service';
+import { type AtribuicaoResumo, resumoAtribuicao } from '@modules/leads/atribuicao.util';
 import { type Paginated, buildPaginated } from '@shared/types/pagination';
 import type { AuthenticatedUser } from '@shared/types/authenticated-user';
 import type {
@@ -28,6 +29,9 @@ export interface LeadEtapaResumo {
   tags: string[];
   dataEntrada: string;
   representante: { id: string; nome: string } | null;
+  /** Atribuição de marketing (null nos leads sem rastreio — antigos/orgânicos). */
+  atribuicao: AtribuicaoResumo;
+  valorFechado: number | null;
 }
 
 const funilInclude = {
@@ -87,6 +91,13 @@ export class FunisService {
           etapaDesde: true,
           representante: { select: { id: true, nome: true } },
           tags: { select: { tag: { select: { nome: true } } } },
+          utmSource: true,
+          utmMedium: true,
+          utmCampaign: true,
+          origemCadastro: true,
+          formularioOrigem: true,
+          valorFechado: true,
+          variaveis: true,
         },
       }),
     ]);
@@ -98,6 +109,9 @@ export class FunisService {
       tags: l.tags.map((t) => t.tag.nome),
       dataEntrada: l.etapaDesde.toISOString(),
       representante: l.representante,
+      atribuicao: resumoAtribuicao(l),
+      // ResponseInterceptor converte Decimal→number nas respostas; aqui pra manter o tipo.
+      valorFechado: l.valorFechado === null ? null : Number(l.valorFechado),
     }));
     return buildPaginated(data, total, q.page, q.limit);
   }

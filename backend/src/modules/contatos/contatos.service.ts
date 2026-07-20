@@ -7,6 +7,7 @@ import { RepScopeService } from '@shared/scope/rep-scope.service';
 import { PermissionsService } from '@modules/permissions/permissions.service';
 import { LeadsService } from '@modules/leads/leads.service';
 import { createLeadSchema } from '@modules/leads/leads.dto';
+import { type AtribuicaoResumo, resumoAtribuicao } from '@modules/leads/atribuicao.util';
 import type { AuthenticatedUser } from '@shared/types/authenticated-user';
 import { type Paginated, buildPaginated } from '@shared/types/pagination';
 import type { AcaoMassaDto, CriarLeadsDto, ListContatosDto } from './contatos.dto';
@@ -42,6 +43,9 @@ export interface ContatoAgregado {
   canal: string | null;
   ultimaInteracaoEm: string | null;
   criadoEm: string;
+  /** Atribuição leve pro skim/filtro da lista (do lead representativo). Null = sem rastreio. */
+  utmCampaign: string | null;
+  origemCadastro: string | null;
 }
 
 export interface ContatoDetalheFunil {
@@ -66,6 +70,10 @@ export interface ContatoDetalhe {
   clienteIds: string[];
   conversaIds: string[];
   criadoEm: string;
+  /** Atribuição de marketing do contato = 1º toque (lead MAIS ANTIGO). Null se sem rastreio. */
+  atribuicao: AtribuicaoResumo | null;
+  /** Soma do valorFechado dos leads GANHOS do contato. Null se nenhum. */
+  valorFechado: number | null;
 }
 
 /** Linha do dedup-no-banco (paginarChaves): a chave + os ids das entidades daquele contato. */
@@ -188,6 +196,8 @@ export class ContatosService {
               clienteId: true,
               criadoEm: true,
               representante: repSel,
+              utmCampaign: true,
+              origemCadastro: true,
             },
           })
         : [],
@@ -288,6 +298,8 @@ export class ContatosService {
         canal: null,
         ultimaInteracaoEm: null,
         criadoEm: new Date().toISOString(),
+        utmCampaign: null,
+        origemCadastro: null,
       };
       map.set(chave, novo);
       return novo;
@@ -307,6 +319,8 @@ export class ContatosService {
       acumularTags(c, tagsPorLead.get(l.id) ?? []);
       c.leadId = l.id;
       c.leadEtapa = l.etapa;
+      c.utmCampaign ??= l.utmCampaign;
+      c.origemCadastro ??= l.origemCadastro;
       c.nome ||= l.contatoNome || l.nome;
       c.telefone ??= l.contatoTelefone;
       c.email ??= l.contatoEmail;
@@ -619,6 +633,13 @@ export class ContatosService {
               funil: { select: { id: true, nome: true } },
               funilEtapa: { select: { id: true, nome: true } },
               tags: { select: { tag: { select: { nome: true } } } },
+              utmSource: true,
+              utmMedium: true,
+              utmCampaign: true,
+              origemCadastro: true,
+              formularioOrigem: true,
+              valorFechado: true,
+              variaveis: true,
             },
           })
         : [],
@@ -687,6 +708,15 @@ export class ContatosService {
       ? new Date(Math.min(...criadoEmVals.map((d) => d.getTime()))).toISOString()
       : new Date().toISOString();
 
+    // Atribuição do contato = 1º toque = lead MAIS ANTIGO (leads vêm criadoEm desc).
+    const leadMaisAntigo = leads.length ? leads[leads.length - 1] : null;
+    const atribuicao = leadMaisAntigo ? resumoAtribuicao(leadMaisAntigo) : null;
+    // valorFechado do contato = soma dos leads ganhos que têm valor.
+    const somaFechado = leads.reduce(
+      (s, l) => s + (l.valorFechado ? Number(l.valorFechado) : 0),
+      0,
+    );
+
     return {
       chave: sufixo ?? email ?? (lead ? `lead:${lead.id}` : cliente ? `cliente:${cliente.id}` : ''),
       nome,
@@ -700,6 +730,8 @@ export class ContatosService {
       clienteIds: [...clienteIds],
       conversaIds: [...conversaIds],
       criadoEm,
+      atribuicao,
+      valorFechado: somaFechado > 0 ? somaFechado : null,
     };
   }
 

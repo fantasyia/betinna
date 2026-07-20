@@ -1,9 +1,11 @@
 import { describe, expect, it } from 'vitest';
 import {
+  atribuicaoDoJson,
   colunasPrimeiroToque,
   normalizarAtribuicao,
   normalizarFormulario,
   normalizarOrigemCadastro,
+  resumoAtribuicao,
 } from './atribuicao.util';
 
 describe('normalizarAtribuicao', () => {
@@ -90,5 +92,59 @@ describe('normalizarFormulario', () => {
   it('lower+trim, corta em 40', () => {
     expect(normalizarFormulario('  Calculadora ')).toBe('calculadora');
     expect(normalizarFormulario('x'.repeat(60))).toHaveLength(40);
+  });
+});
+
+describe('atribuicaoDoJson', () => {
+  it('extrai o bloco atribuicao do variaveis', () => {
+    const a = atribuicaoDoJson({ atribuicao: { primeiro: { utmCampaign: 'x' } }, outra: 1 });
+    expect(a.primeiro?.utmCampaign).toBe('x');
+  });
+  it('variaveis sem atribuicao / inválido → {}', () => {
+    expect(atribuicaoDoJson({ origem: 'site' })).toEqual({});
+    expect(atribuicaoDoJson(null)).toEqual({});
+    expect(atribuicaoDoJson([1, 2])).toEqual({});
+  });
+});
+
+describe('resumoAtribuicao', () => {
+  it('junta colunas (1º toque) + blocos do JSON', () => {
+    const r = resumoAtribuicao({
+      utmSource: 'google',
+      utmMedium: 'paid',
+      utmCampaign: 'vtcd',
+      origemCadastro: 'site',
+      formularioOrigem: 'contato',
+      variaveis: {
+        atribuicao: { primeiro: { utmCampaign: 'vtcd' }, ultimo: { utmCampaign: 'remkt' } },
+      },
+    });
+    expect(r).toMatchObject({
+      utmSource: 'google',
+      utmCampaign: 'vtcd',
+      origemCadastro: 'site',
+      formulario: 'contato',
+      primeiro: { utmCampaign: 'vtcd' },
+      ultimo: { utmCampaign: 'remkt' },
+    });
+  });
+  it('lead sem rastreio → tudo null e blocos null', () => {
+    const r = resumoAtribuicao({
+      utmSource: null,
+      utmMedium: null,
+      utmCampaign: null,
+      origemCadastro: null,
+      formularioOrigem: null,
+      variaveis: {},
+    });
+    expect(r).toEqual({
+      origemCadastro: null,
+      formulario: null,
+      utmSource: null,
+      utmMedium: null,
+      utmCampaign: null,
+      primeiro: null,
+      ultimo: null,
+    });
   });
 });

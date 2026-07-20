@@ -113,6 +113,49 @@ export function normalizarFormulario(v: unknown): string | undefined {
   return sanitizarLower(v)?.slice(0, 40);
 }
 
+/** Lê o bloco `atribuicao` já normalizado de dentro de Lead.variaveis (JSON). */
+export function atribuicaoDoJson(variaveis: unknown): Atribuicao {
+  if (variaveis && typeof variaveis === 'object' && !Array.isArray(variaveis)) {
+    const a = (variaveis as Record<string, unknown>).atribuicao;
+    if (a && typeof a === 'object' && !Array.isArray(a)) return a as Atribuicao;
+  }
+  return {};
+}
+
+/** Forma de LEITURA da atribuição (MCP contatos_ver / leads_por_etapa). */
+export interface AtribuicaoResumo {
+  origemCadastro: string | null;
+  formulario: string | null;
+  /** 1º toque (colunas indexáveis) — o que credita a campanha. */
+  utmSource: string | null;
+  utmMedium: string | null;
+  utmCampaign: string | null;
+  /** Blocos completos (1º + último toque) do JSON. */
+  primeiro: AtribuicaoBloco | null;
+  ultimo: AtribuicaoBloco | null;
+}
+
+/** Monta o resumo de leitura a partir das colunas + variaveis de um Lead. */
+export function resumoAtribuicao(lead: {
+  utmSource: string | null;
+  utmMedium: string | null;
+  utmCampaign: string | null;
+  origemCadastro: string | null;
+  formularioOrigem: string | null;
+  variaveis: unknown;
+}): AtribuicaoResumo {
+  const j = atribuicaoDoJson(lead.variaveis);
+  return {
+    origemCadastro: lead.origemCadastro,
+    formulario: lead.formularioOrigem,
+    utmSource: lead.utmSource,
+    utmMedium: lead.utmMedium,
+    utmCampaign: lead.utmCampaign,
+    primeiro: j.primeiro ?? null,
+    ultimo: j.ultimo ?? null,
+  };
+}
+
 /**
  * Colunas indexáveis do PRIMEIRO toque (o que credita a campanha e é consultado).
  * Extraídas de `primeiro`; `ultimo` inteiro mora no JSON.
