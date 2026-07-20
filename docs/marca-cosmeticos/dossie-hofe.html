@@ -1,0 +1,401 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.min.js"></script>
+<script>window.addEventListener("DOMContentLoaded",function(){mermaid.initialize({startOnLoad:true,securityLevel:"loose"});});</script>
+</head>
+<body>
+<title>Dossiê Höfe — projeto completo</title>
+<style>
+  :root{
+    --paper:#EEF0EC; --paper-line:#DADED6;
+    --bg:#F4F5F2; --surface:#FFFFFF; --ink:#1B2A2A; --muted:#5C665F;
+    --hair:#E1E4DE; --accent:#2F7A6B; --clay:#C1674F; --lilac:#7C6BB0;
+    --amber:#B9842B; --indigo:#2B2A66; --stone:#7A8079; --cyan:#2BA9C4;
+    --shadow:0 1px 2px rgba(20,35,30,.05),0 8px 30px rgba(20,35,30,.07);
+  }
+  @media (prefers-color-scheme: dark){
+    :root{ --bg:#121614; --surface:#1A201D; --ink:#E9ECE7; --muted:#9DA79F;
+      --hair:#2A302C; --shadow:0 1px 2px rgba(0,0,0,.3),0 10px 30px rgba(0,0,0,.35); }
+  }
+  :root[data-theme="light"]{ --bg:#F4F5F2; --surface:#FFFFFF; --ink:#1B2A2A; --muted:#5C665F; --hair:#E1E4DE; }
+  :root[data-theme="dark"]{ --bg:#121614; --surface:#1A201D; --ink:#E9ECE7; --muted:#9DA79F; --hair:#2A302C; }
+
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--ink);
+    font-family:ui-sans-serif,system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
+    line-height:1.55;-webkit-font-smoothing:antialiased}
+  a{color:var(--accent)}
+
+  /* topo fixo com abas */
+  .top{position:sticky;top:0;z-index:20;background:color-mix(in srgb,var(--bg) 88%,transparent);
+    backdrop-filter:blur(8px);border-bottom:1px solid var(--hair)}
+  .topin{max-width:1080px;margin:0 auto;padding:11px 20px;display:flex;flex-wrap:wrap;
+    align-items:center;gap:10px 20px}
+  .brand{font-family:"Iowan Old Style","Palatino Linotype",Palatino,Georgia,serif;
+    font-weight:600;font-size:19px;letter-spacing:.01em}
+  .brand small{font-family:ui-monospace,monospace;font-size:10.5px;letter-spacing:.14em;
+    text-transform:uppercase;color:var(--muted);margin-left:8px;font-weight:400}
+  .tabs{display:flex;flex-wrap:wrap;gap:4px;margin-left:auto}
+  .tab{font:inherit;font-size:13px;padding:7px 13px;border:1px solid transparent;border-radius:9px;
+    background:transparent;color:var(--muted);cursor:pointer;white-space:nowrap}
+  .tab:hover{color:var(--ink);background:color-mix(in srgb,var(--accent) 8%,transparent)}
+  .tab.active{color:#fff;background:var(--accent);border-color:var(--accent)}
+
+  .wrap{max-width:1080px;margin:0 auto;padding:34px 20px 80px}
+  .panel{display:none;animation:fade .25s ease}
+  .panel.active{display:block}
+  @keyframes fade{from{opacity:0;transform:translateY(4px)}to{opacity:1;transform:none}}
+  @media (prefers-reduced-motion:reduce){.panel{animation:none}}
+
+  .eyebrow{font-family:ui-monospace,monospace;font-size:11.5px;letter-spacing:.18em;
+    text-transform:uppercase;color:var(--accent);margin:0 0 10px}
+  h1{font-family:"Iowan Old Style","Palatino Linotype",Palatino,Georgia,serif;
+    font-weight:600;font-size:clamp(26px,4.2vw,38px);line-height:1.08;margin:0 0 12px;
+    letter-spacing:-.01em;text-wrap:balance;max-width:20ch}
+  h2{font-family:"Iowan Old Style",Palatino,Georgia,serif;font-weight:600;font-size:22px;
+    margin:34px 0 4px;letter-spacing:-.01em}
+  h3{font-size:15.5px;font-weight:650;margin:0 0 8px;display:flex;align-items:center;gap:8px}
+  h3 .tag{width:9px;height:9px;border-radius:50%;flex:none}
+  .lede{font-size:16px;color:var(--muted);max-width:66ch;margin:0}
+  .sub{font-family:ui-monospace,monospace;font-size:11px;letter-spacing:.14em;text-transform:uppercase;
+    color:var(--muted);margin:34px 0 10px;padding-bottom:6px;border-bottom:1px solid var(--hair)}
+  p{font-size:14.5px}
+  .muted{color:var(--muted)}
+  b{color:var(--ink);font-weight:650}
+
+  .grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(258px,1fr));gap:15px;margin-top:16px}
+  .card{background:var(--surface);border:1px solid var(--hair);border-radius:12px;padding:15px 16px;
+    box-shadow:var(--shadow)}
+  .card p{margin:0;font-size:13.6px;color:var(--muted)}
+  .card p+p{margin-top:7px}
+
+  .callout{margin:20px 0 0;padding:15px 17px;border-radius:12px;border:1px solid var(--hair);
+    border-left:3px solid var(--accent);background:color-mix(in srgb,var(--accent) 6%,var(--surface))}
+  .callout b{color:var(--ink)}
+  .callout.clay{border-left-color:var(--clay);background:color-mix(in srgb,var(--clay) 6%,var(--surface))}
+
+  table{width:100%;border-collapse:collapse;margin:12px 0;font-size:13.4px}
+  .tablewrap{overflow-x:auto}
+  th,td{text-align:left;padding:8px 10px;border-bottom:1px solid var(--hair);vertical-align:top}
+  th{font-size:11px;letter-spacing:.06em;text-transform:uppercase;color:var(--muted);font-weight:600}
+  td b{color:var(--ink)}
+
+  ol,ul{font-size:14px;color:var(--muted);padding-left:20px;margin:8px 0}
+  li{margin:4px 0}
+  li b{color:var(--ink)}
+
+  /* mapas mermaid */
+  .mapcard{margin:16px 0 0;background:var(--paper);border:1px solid var(--paper-line);
+    border-radius:14px;box-shadow:var(--shadow);overflow:hidden}
+  .maphead{display:flex;flex-wrap:wrap;gap:10px 16px;align-items:center;
+    padding:13px 18px;border-bottom:1px solid var(--paper-line)}
+  .maphead b{font-size:13px;color:#243330}
+  .maphead span{font-family:ui-monospace,monospace;font-size:10.5px;color:#5f6b64;letter-spacing:.02em}
+  .mapscroll{overflow:auto;padding:16px 12px 20px;max-height:76vh;cursor:zoom-in}
+  .zc{margin-left:auto;display:flex;gap:6px;align-items:center}
+  .zc button{font:inherit;font-size:15px;line-height:1;width:28px;height:28px;border:1px solid var(--paper-line);
+    background:#fff;border-radius:8px;cursor:pointer;color:#243330;display:flex;align-items:center;justify-content:center}
+  .zc button:hover{background:#e6e9e4}
+  .mermaid{min-width:720px;text-align:center}
+
+  footer{margin-top:44px;padding-top:16px;border-top:1px solid var(--hair);
+    font-family:ui-monospace,monospace;font-size:11px;color:var(--muted);letter-spacing:.02em}
+</style>
+
+<div class="top">
+  <div class="topin">
+    <div class="brand">Höfe <small>dossiê do projeto</small></div>
+    <nav class="tabs">
+      <button class="tab active" data-tab="resumo" type="button">Resumo</button>
+      <button class="tab" data-tab="mapa" type="button">Mapa</button>
+      <button class="tab" data-tab="estrategia" type="button">Estratégia</button>
+      <button class="tab" data-tab="concorrentes" type="button">Concorrentes</button>
+      <button class="tab" data-tab="nome" type="button">Nome &amp; Domínio</button>
+    </nav>
+  </div>
+</div>
+
+<div class="wrap">
+
+  <!-- ============ RESUMO ============ -->
+  <section id="resumo" class="panel active">
+    <p class="eyebrow">Marca própria de cosméticos · fabricação 100% terceirizada</p>
+    <h1>Höfe — seguro para um bebê, eficaz para você</h1>
+    <p class="lede">A derma da <b>família toda</b>: eficácia adulta e segurança infantil sob uma marca-mãe única,
+      com <b>herança alemã</b> (do sobrenome Hografe) e <b>respaldo pediátrico</b>. Marca-mãe <b>Höfe</b> +
+      linha <b>Höfe Baby</b>. Fase 1 = Rosto + Cabelo + Baby.</p>
+
+    <div class="grid">
+      <div class="card"><h3><span class="tag" style="background:var(--accent)"></span>DNA / posicionamento</h3>
+        <p>Pele &amp; fio <b>sensível + respaldo técnico</b>. A pediatra/Höfe Baby é o <b>núcleo de confiança</b> que Rosto e Cabelo herdam — não um nicho lateral.</p></div>
+      <div class="card"><h3><span class="tag" style="background:var(--lilac)"></span>Arquitetura</h3>
+        <p>Marca-mãe única <b>Höfe</b> + <b>Höfe Baby</b>. Largura por galhos, não por profundidade — <b>teto 3–4 SKUs/linha</b>. ~15 SKUs no core.</p></div>
+      <div class="card"><h3><span class="tag" style="background:var(--indigo)"></span>Seu diferencial</h3>
+        <p>SaaS próprio (Betinna) constrói D2C, portal de rep, cashback e comunidade <b>sem agência</b> → máquina de retenção medível.</p></div>
+      <div class="card"><h3><span class="tag" style="background:var(--stone)"></span>Capital · ciclo 1</h3>
+        <p><b>R$ 80–250k</b>. Estoque 40–50% · mídia 25–35%. <b>Validar CAC×LTV antes</b> de escalar estoque.</p></div>
+    </div>
+
+    <div class="callout"><b>O vão da Höfe:</b> nenhuma nacional forte une <b>eficácia adulta (Rosto) + segurança infantil (Baby)</b>
+      na mesma marca, com herança alemã e selo pediátrico. Sallve/Creamy não têm baby; Granado não tem skincare de ativos;
+      Weleda/Mustela são importadas e caras. Território livre = <b>"a derma segura da família toda"</b>.</p></div>
+
+    <p class="sub">Veredito de potencial</p>
+    <p class="muted">Alto e acima do fundador típico — <b>desde que</b> troque "catálogo grande de largada" por
+      <b>linha herói enxuta + 1 canal de aquisição liderando + terceirizadora com regulatório incluso</b>, e use o
+      caixa de mídia para provar <b>CAC×LTV</b> antes de comprar estoque grande.</p>
+  </section>
+
+  <!-- ============ MAPA ============ -->
+  <section id="mapa" class="panel">
+    <p class="eyebrow">Visão de sistema</p>
+    <h1>Mapa do projeto</h1>
+    <p class="lede">Os pilares conectados e a árvore genealógica de produtos. Linhas cheias = estrutura,
+      pontilhadas = conexões entre pilares.</p>
+
+    <div class="mapcard">
+      <div class="maphead"><b>Pilares</b>
+        <span>🖱️ role o mouse ou use os botões p/ aproximar</span>
+        <div class="zc"><button type="button" data-act="out">−</button><button type="button" data-act="reset">⟲</button><button type="button" data-act="in">+</button></div>
+      </div>
+      <div class="mapscroll">
+<pre class="mermaid">
+%%{init: {'theme':'base','securityLevel':'loose','htmlLabels':true,'themeVariables':{'fontFamily':'ui-sans-serif, system-ui, sans-serif','fontSize':'15px','lineColor':'#9aa39b','primaryColor':'#EEF0EC'},'flowchart':{'htmlLabels':true,'curve':'basis','nodeSpacing':42,'rankSpacing':54,'padding':8}}}%%
+flowchart TD
+  C(("Höfe<br/>seguro p/ bebê,<br/>eficaz p/ você")):::center
+  C --> REG["1 · Fundação ANVISA<br/>CNPJ · AFE · RT · Licença<br/>Notif. G1 / Registro G2<br/>gargalo 3–12 meses"]:::reg
+  C --> PROD["2 · Produto / Catálogo<br/>Linha herói · teto 3–4 SKUs<br/>NÃO catálogo grande"]:::prod
+  C --> CAN["3 · Canais de venda"]:::chan
+  C --> AQ["4 · Aquisição<br/>tráfego pago = motor<br/>conteúdo reduz CAC"]:::aq
+  C --> CAP["5 · Capital R$ 80–250k<br/>estoque 40–50% · mídia 25–35%<br/>validar CAC×LTV 1º"]:::cap
+  C --> COM["6 · Comunidade / Tribo<br/>níveis · indicação · UGC · drops"]:::com
+  C --> CB["7 · Cashback moeda da marca<br/>closed-loop · lastro R$ · expira"]:::cb
+  C --> PED["8 · Parceria Pediatra<br/>Höfe Baby · selo de confiança"]:::ped
+  C --> EDGE["★ Seu diferencial<br/>SaaS Betinna · rigor de marca<br/>capital · aquisição"]:::edge
+  CAN --> MK["Marketplaces<br/>ML · Shopee · Amazon · Magalu<br/>pure players: Beleza na Web · Época"]:::sub
+  CAN --> D2C["Site próprio D2C<br/>Nuvemshop / Tray"]:::sub
+  CAN --> REP["Representantes<br/>comissão · revenda · distribuidor"]:::sub
+  REP --> PROS["Prospecção via betinna.ai<br/>modelo Somatec"]:::ai
+  CAN --> B2B["Profissional B2B — fase 2<br/>salões · exige CNPJ beleza"]:::sub
+  REG -.cada SKU = 1 notificação.-> PROD
+  EDGE -.constrói no sistema.-> CB
+  EDGE -.níveis = features.-> COM
+  EDGE -.portal de comissão.-> REP
+  EDGE -.prospecta.-> PROS
+  PED -.voz das mães.-> COM
+  PED -.abre a linha.-> PROD
+  COM -.embaixadoras viram.-> REP
+  CB -.níveis rendem cashback.-> COM
+  AQ -.valida antes do estoque.-> CAP
+  classDef center fill:#17242A,stroke:#17242A,color:#F1EFE8;
+  classDef edge fill:#2B2A66,stroke:#2B2A66,color:#ECEAFA;
+  classDef reg fill:#ECE9E3,stroke:#7A8079,color:#2A2E2B;
+  classDef prod fill:#D6E9DF,stroke:#2F7A6B,color:#123c31;
+  classDef chan fill:#DBE9EB,stroke:#3B7A84,color:#123236;
+  classDef aq fill:#F1E4C8,stroke:#B9842B,color:#4a3410;
+  classDef cap fill:#ECE9E3,stroke:#7A8079,color:#2A2E2B;
+  classDef com fill:#F3DDD4,stroke:#C1674F,color:#5c2a1c;
+  classDef cb fill:#DEEAD9,stroke:#5E8C4E,color:#1f3d17;
+  classDef ped fill:#E5DEF1,stroke:#7C6BB0,color:#352a5c;
+  classDef sub fill:#EDEBE6,stroke:#9AA09A,color:#2A2E2B;
+  classDef ai fill:#D3EEF4,stroke:#2BA9C4,color:#0f3d47;
+</pre>
+      </div>
+    </div>
+
+    <div class="mapcard">
+      <div class="maphead"><b>Árvore genealógica de produtos</b>
+        <span>teto 3–4 SKUs por galho · 🖱️ zoom no scroll/botões</span>
+        <div class="zc"><button type="button" data-act="out">−</button><button type="button" data-act="reset">⟲</button><button type="button" data-act="in">+</button></div>
+      </div>
+      <div class="mapscroll">
+<pre class="mermaid">
+%%{init: {'theme':'base','securityLevel':'loose','htmlLabels':true,'themeVariables':{'fontFamily':'ui-sans-serif, system-ui, sans-serif','fontSize':'15px','lineColor':'#9aa39b','primaryColor':'#EEF0EC'},'flowchart':{'htmlLabels':true,'curve':'basis','nodeSpacing':36,'rankSpacing':50,'padding':8}}}%%
+flowchart TD
+  R(("Höfe<br/>DNA: sensível<br/>+ respaldo técnico")):::root
+  R --> RO["🌳 ROSTO — Höfe<br/>Fase 1"]:::t
+  R --> CA["🌳 CABELO — Höfe<br/>Fase 1"]:::t
+  R --> BA["🌳 BABY — Höfe Baby<br/>selo da pediatra · Fase 1"]:::tb
+  RO --> RO1["Limpeza &amp; Preparo<br/>gel de limpeza · água micelar"]:::l
+  RO --> RO2["Tratamento — herói<br/>sérum · hidratante · renovador noturno"]:::l
+  RO --> RO3["Proteção<br/>protetor solar · fase 2 · Grau 2"]:::ld
+  CA --> CA1["Cuidado diário<br/>shampoo · condicionador"]:::l
+  CA --> CA2["Tratamento / Reconstrução<br/>máscara · leave-in ou óleo · ampola"]:::l
+  BA --> BA1["Baby essenciais — piloto<br/>hidratante · banho · proteção de barreira"]:::l
+  R -.galhos dormentes.-> DORM["Corpo · Banho · Kids · Profissional salão<br/>fase futura, já na genética"]:::dorm
+  classDef root fill:#17242A,stroke:#17242A,color:#F1EFE8;
+  classDef t fill:#D6E9DF,stroke:#2F7A6B,color:#123c31;
+  classDef tb fill:#E5DEF1,stroke:#7C6BB0,color:#352a5c;
+  classDef l fill:#EDEBE6,stroke:#9AA09A,color:#2A2E2B;
+  classDef ld fill:#F1E4C8,stroke:#B9842B,color:#4a3410;
+  classDef dorm fill:#EFEDE9,stroke:#C3C0B8,color:#6b6b63;
+</pre>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============ ESTRATÉGIA ============ -->
+  <section id="estrategia" class="panel">
+    <p class="eyebrow">Como o negócio se sustenta</p>
+    <h1>Estratégia</h1>
+
+    <h2>1 · Fundação regulatória (ANVISA)</h2>
+    <p class="muted">Pré-requisito de <b>todos</b> os canais — fiscalização apertou em 2026. Precisa de:
+      CNPJ (comércio/import. de cosméticos) · <b>AFE</b> · <b>RT</b> (farmacêutico/químico com CRF) ·
+      licença sanitária · <b>notificação (G1)</b> ou <b>registro (G2)</b> por produto.</p>
+    <div class="callout"><b>Atalho:</b> escolher terceirizadora com "marca própria + regulatório incluso" (ela notifica) →
+      corta meses e tira o RT do custo fixo. Prazo ANVISA: 3–12 meses — <b>começar já</b>. Protetor solar é G2 → fase 2.</div>
+
+    <h2>2 · Produto / árvore — regras de SKU</h2>
+    <ol>
+      <li><b>Teto de 3–4 SKUs por linha.</b> Passou disso: poda um antigo ou cria galho novo — nunca engorda o galho.</li>
+      <li>Todo SKU novo precisa de um <b>porquê de negócio</b> (herói · gateway · reposição de recompra).</li>
+      <li><b>O DNA tem que aparecer</b> (sensível + respaldo). Se não carrega, é órfão — corta ou repensa.</li>
+    </ol>
+
+    <h2>3 · Canais de venda</h2>
+    <div class="tablewrap"><table>
+      <tr><th>Canal</th><th>Papel</th></tr>
+      <tr><td><b>Marketplaces</b> (ML, Shopee, Amazon, Magalu + Beleza na Web/Época)</td><td>Tração e caixa; exigem nº ANVISA no anúncio</td></tr>
+      <tr><td><b>Site próprio D2C</b> (Nuvemshop/Tray)</td><td>Margem, marca e recompra — construído internamente</td></tr>
+      <tr><td><b>Representantes</b> + <b>prospecção via betinna.ai</b> (modelo Somatec)</td><td>Capilaridade e baixo CAC; portal de comissão no SaaS</td></tr>
+      <tr><td><b>Profissional B2B (salão)</b> — fase 2</td><td>Linha premium/reconstrução; exige CNPJ do ramo</td></tr>
+    </table></div>
+
+    <h2>4 · Aquisição, capital e retenção</h2>
+    <div class="grid">
+      <div class="card"><h3><span class="tag" style="background:var(--amber)"></span>Aquisição</h3>
+        <p>Escolher <b>um motor</b>: tráfego pago lidera (mensurável, escala com caixa). Conteúdo reduz CAC. Não espalhar nos 3 de uma vez.</p></div>
+      <div class="card"><h3><span class="tag" style="background:var(--stone)"></span>Capital R$ 80–250k</h3>
+        <p>Estoque 40–50% · regulatório · marca/embalagem · <b>mídia 25–35%</b>. Validar CAC×LTV com R$ 5–10k antes de escalar.</p></div>
+      <div class="card"><h3><span class="tag" style="background:var(--clay)"></span>Comunidade / tribo</h3>
+        <p>Nome da tribo · manifesto · ritual · níveis · indicação · UGC · drops. Público mãe = tribo mais engajada.</p></div>
+      <div class="card"><h3><span class="tag" style="background:#5E8C4E"></span>Cashback</h3>
+        <p><b>Moeda fechada em R$</b>, expira, construída no SaaS. <b>Cripto/stablecoin descartada</b> (regulação BC/CVM, capital travado).</p></div>
+    </div>
+  </section>
+
+  <!-- ============ CONCORRENTES ============ -->
+  <section id="concorrentes" class="panel">
+    <p class="eyebrow">Brasil · Rosto · Cabelo · Baby</p>
+    <h1>Análise de concorrentes</h1>
+    <p class="lede muted">Beleza é a categoria que mais cresce no Mercado Livre (+28% lifestyle, 9,1 mi visitantes/mês,
+      41% de recompra em 12 meses). Grandes marcas já têm loja oficial dentro do marketplace.</p>
+
+    <p class="sub">Linha Rosto (skincare / dermocosmético)</p>
+    <div class="tablewrap"><table>
+      <tr><th>Marca</th><th>Posição</th><th>Faixa</th></tr>
+      <tr><td><b>CeraVe / La Roche / Vichy</b></td><td>Derm gigante, recomendação médica</td><td>médio-alto</td></tr>
+      <tr><td><b>Eucerin</b> (alemã)</td><td>Referência "alemão + seguro" que a Höfe evoca</td><td>médio-alto</td></tr>
+      <tr><td><b>Sallve / Creamy</b></td><td>Nacionais nativas digitais, acessíveis</td><td>entrada-médio</td></tr>
+      <tr><td><b>Darrow / Principia / Adcos</b></td><td>Dermocosmético nacional</td><td>médio</td></tr>
+    </table></div>
+    <p class="muted"><b>Cases de marketplace:</b> ① Creamy Skincare · ② Sallve · ③ CeraVe (benchmark de recompra).</p>
+
+    <p class="sub">Linha Cabelo (tratamento / reconstrução)</p>
+    <div class="tablewrap"><table>
+      <tr><th>Marca</th><th>Posição</th><th>Faixa</th></tr>
+      <tr><td><b>Forever Liss</b></td><td>Máscara UTI ("efeito teia"), campeã de marketplace</td><td>entrada-médio</td></tr>
+      <tr><td><b>Widi Care</b></td><td>Reconstrução/nutrição, forte em ML/Amazon</td><td>entrada-médio</td></tr>
+      <tr><td><b>Lola / Braé / Inoar / Amend</b></td><td>Reconstrução da fibra, natural/profissional</td><td>médio</td></tr>
+      <tr><td><b>Kérastase / Truss</b></td><td>Premium / salão</td><td>alto</td></tr>
+    </table></div>
+    <p class="muted"><b>Cases de marketplace:</b> ① Forever Liss (Máscara UTI) · ② Widi Care · ③ Lola Be(m)dita Ghee.</p>
+
+    <p class="sub">Linha Baby (Höfe Baby)</p>
+    <div class="tablewrap"><table>
+      <tr><th>Marca</th><th>Posição</th><th>Faixa</th></tr>
+      <tr><td><b>Granado Bebê</b></td><td>Líder nacional, tradição, hipoalergênico</td><td>médio</td></tr>
+      <tr><td><b>Weleda / Mustela</b></td><td>Derm baby premium importado — benchmark do posicionamento</td><td>alto</td></tr>
+      <tr><td><b>Bepantol Baby / Hipoglós / Dermodex</b></td><td>Assadura (óxido de zinco), campeões de drograria</td><td>entrada-médio</td></tr>
+      <tr><td><b>Johnson's / Huggies</b></td><td>Massa, preço, distribuição ampla</td><td>entrada</td></tr>
+    </table></div>
+    <p class="muted"><b>Cases de marketplace:</b> ① Granado Bebê · ② Bepantol Baby · ③ Mustela (benchmark premium).</p>
+
+    <div class="callout clay"><b>Como competir:</b> <b>não brigar por preço</b> (sobretudo em cabelo). Vender confiança +
+      coerência de DNA + comunidade (tribo de mães), com D2C próprio e representantes via betinna.ai.
+      Benchmarks a estudar: <b>Eucerin/Weleda</b> (alemão+seguro), <b>Sallve/Creamy</b> (playbook de marketplace),
+      <b>Granado Bebê</b> (confiança nacional no baby).</div>
+  </section>
+
+  <!-- ============ NOME & DOMÍNIO ============ -->
+  <section id="nome" class="panel">
+    <p class="eyebrow">Identidade verbal</p>
+    <h1>Nome &amp; domínio</h1>
+    <p class="lede muted">Marca-mãe <b>Höfe</b> (plural alemão de <i>Hof</i> = pátio/corte), derivada do sobrenome
+      <b>Hografe</b>. Substitui o nome anterior HOG.</p>
+
+    <div class="grid">
+      <div class="card"><h3><span class="tag" style="background:var(--accent)"></span>Por que trocou de HOG</h3>
+        <p>Em inglês <b>"hog" = porco</b> (e "Höfe Baby" leria "porquinho"), além de colidir com Harley (HOG = ticker/Harley Owners Group).</p></div>
+      <div class="card"><h3><span class="tag" style="background:var(--indigo)"></span>Por que Höfe funciona</h3>
+        <p>Mantém a <b>herança alemã</b> — ativo forte em skincare (Weleda, Eucerin, Nivea, Dr. Hauschka são alemãs) — e casa com o DNA "seguro + respaldo técnico".</p></div>
+      <div class="card"><h3><span class="tag" style="background:var(--amber)"></span>Cuidados</h3>
+        <p><b>Umlaut (ö)</b> não entra em domínio → wordmark "Höfe", handle/@ = "hofe". Pronúncia: fixar na comunicação. "Höfe" é palavra comum alemã → <b>checar marca no INPI (classe 3)</b>.</p></div>
+    </div>
+
+    <p class="sub">Domínio — recomendação</p>
+    <ol>
+      <li><b>Prioridade 1 — <code>hofe.com.br</code></b>: mercado primário Brasil, confiança e tráfego direto.</li>
+      <li><b>Prioridade 2 — um <code>.com</code></b> para credibilidade: se <code>hofe.com</code> estiver ocupado, usar
+        <code>hofeskin.com</code> · <code>usehofe.com</code> · <code>hofecare.com</code>.</li>
+      <li><b>Novos gTLDs:</b> <code>.care</code> casa melhor com o DNA (cuidado/seguro) que <code>.beauty</code> (glam).
+        Recomendado como domínio-conceito: <b><code>hofe.care</code></b>, com <code>.com.br</code>/<code>.com</code> de âncora.</li>
+      <li>Garantir <b>@hofe</b> (Instagram/TikTok) coerente antes de fechar.</li>
+    </ol>
+  </section>
+
+  <footer>Dossiê Höfe · documento vivo — cada conversa nova atualiza este dossiê · fonte no repo betinna/docs/marca-cosmeticos</footer>
+</div>
+
+<script>
+  // Abas
+  (function () {
+    var tabs = document.querySelectorAll('.tab');
+    function show(id) {
+      document.querySelectorAll('.panel').forEach(function (p) { p.classList.toggle('active', p.id === id); });
+      tabs.forEach(function (t) { t.classList.toggle('active', t.dataset.tab === id); });
+      window.scrollTo({ top: 0, behavior: 'auto' });
+    }
+    tabs.forEach(function (t) { t.addEventListener('click', function () { show(t.dataset.tab); }); });
+  })();
+
+  // Zoom dos mapas (redimensiona a largura do SVG — nítido e rola)
+  (function () {
+    var MIN = 0.6, MAX = 3, STEP = 0.2;
+    function baseWidth(svg) {
+      if (svg._baseW) return svg._baseW;
+      var w = svg.getBoundingClientRect().width;
+      if (!w) { try { w = svg.viewBox.baseVal.width; } catch (e) { w = 600; } }
+      svg._baseW = w || 600; return svg._baseW;
+    }
+    function apply(c) {
+      var svg = c.querySelector('svg'); if (!svg) return;
+      svg.style.maxWidth = 'none';
+      svg.style.width = (baseWidth(svg) * (c._zoom || 1)) + 'px';
+      svg.style.height = 'auto';
+    }
+    function bump(c, d) { c._zoom = Math.min(MAX, Math.max(MIN, Math.round(((c._zoom || 1) + d * STEP) * 100) / 100)); apply(c); }
+    function wire(c, ctrls) {
+      c._zoom = 1;
+      c.addEventListener('wheel', function (e) { e.preventDefault(); e.stopPropagation(); bump(c, e.deltaY < 0 ? 1 : -1); }, { passive: false });
+      if (ctrls) ctrls.addEventListener('click', function (e) {
+        var b = e.target.closest('button'); if (!b) return; e.preventDefault();
+        var a = b.getAttribute('data-act');
+        if (a === 'in') bump(c, 1); else if (a === 'out') bump(c, -1); else { c._zoom = 1; apply(c); }
+      });
+    }
+    function init() {
+      document.querySelectorAll('.mapcard').forEach(function (card) {
+        wire(card.querySelector('.mapscroll'), card.querySelector('.zc'));
+      });
+    }
+    if (document.readyState !== 'loading') init(); else document.addEventListener('DOMContentLoaded', init);
+  })();
+</script>
+
+</body>
+</html>
