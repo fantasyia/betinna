@@ -162,14 +162,18 @@ só gasta na loja, não saca, **expira** — construída **dentro do SaaS**.
 
 ## 9. Roadmap resumido
 
-**Fase 1 (0–12 meses):** regularizar (ANVISA/terceirizadora) · lançar **Höfe Rosto + Höfe Cabelo + Höfe Baby**
-(~15 SKUs no core) · site próprio D2C + 2–3 marketplaces · tráfego pago como motor · validar CAC×LTV ·
-semear comunidade · cashback fechado no SaaS.
+> **Revisão (working plan): sequência por "wedge", não tudo de uma vez.** O gatilho foi a incerteza
+> da parceria com a pediatra (ver §8) + o princípio de foco com R$ 80–250k. Recomendação: **começar
+> pelo Adulto (Rosto)**, que é o *hub* da árvore de gerações (ver §12), sem depender da pediatra pra lançar.
 
-**Fase 2:** ampliar por dado de recompra · protetor solar (G2) · reativar galho Corpo · representantes/embaixadoras
-(portal no SaaS) · canal profissional B2B (salão) · níveis de comunidade maduros.
-
-**Fase 3:** Banho · Höfe Baby Kids · Profissional salão maduro.
+- **Fase 1 — Höfe Rosto (adulto), posicionada em "pele sensível".** O hub. ~4–5 SKUs herói.
+  Regularizar (ANVISA/terceirizadora) · D2C + 2–3 marketplaces · tráfego pago como motor ·
+  validar CAC×LTV · semear comunidade · cashback fechado no SaaS.
+- **Fase 1.5 — Höfe Baby**, assim que a pediatra fechar — vendida para a **base de mães já adquirida** no Rosto.
+- **Fase 2 — Höfe Cabelo** (decisão aberta: manter na Fase 1 ou mover pra cá — trade-off de foco).
+- **Fase 2/3 — Höfe Mature (pele madura)**, via **loop de indicação filha→mãe** (CAC quase zero) — ver §12.
+  Regulatório mais complexo (ativos G2: retinol, peptídeos) reforça deixar pra depois.
+- **Fase 3+:** Corpo · Banho · Höfe Baby Kids · Profissional salão · protetor solar (G2).
 
 ---
 
@@ -253,3 +257,38 @@ linhas · definição exata dos SKUs herói de cada galho · estrutura comercial
   - **`.care` casa MELHOR com o DNA** (cuidado/seguro/família/derm) do que `.beauty` (que puxa glam/maquiagem).
   - Recomendado como domínio-conceito: **`hofe.care`**, mantendo `.com.br`/`.com` como âncoras de confiança.
 - **Antes de fechar:** garantir @hofe (Instagram/TikTok) coerente e a checagem de marca acima.
+
+---
+
+## 12. Estratégia geracional — a mulher adulta como hub (indicação filha→mãe)
+
+**Insight (do fundador):** as próprias clientes adultas indicam a marca para as pessoas mais velhas que
+conhecem → porta de entrada natural para uma linha de **pele madura (Höfe Mature)**.
+
+**Reframe — a árvore de 3 gerações:** a **mulher adulta é o nó central**. Ela:
+- compra o próprio skincare (**Rosto**),
+- compra para o filho (**Höfe Baby**, ↓),
+- indica para a mãe/sogra/avó (**Höfe Mature**, ↑).
+
+Uma cliente → três receitas → três gerações sob a mesma marca. É a materialização do "família toda"
+que **nenhuma concorrente nacional forte tem**.
+
+**Por que a indicação é o canal CERTO (não só um bônus):**
+- O público de pele madura (55+) é **caro de adquirir por tráfego pago** (não vive em social como o de 30).
+- O canal que converte nesse segmento é **indicação de confiança** — e a mais quente é **filha → mãe**.
+- Logo, a Höfe **herda** a cliente madura da filha via o **programa de indicação** (o "indique e ganhe" +
+  cashback já desenhado no SaaS) → **CAC quase zero** para a linha Mature.
+
+**Consequências no plano:**
+- **Adquirir a mulher adulta primeiro** (Rosto) é o que destrava as duas pontas — decisão que sustenta o roadmap revisado (§9).
+- **Höfe Mature = galho dormente** (fase 2/3), acionado pelo loop de indicação, não pelo caixa de mídia.
+- Ativos de pele madura (retinol, peptídeos, firmeza) são majoritariamente **Grau 2** (registro ANVISA,
+  mais caro/lento) → mais um motivo para ser fase posterior.
+
+## 8-bis. Status da parceria com a pediatra (atualização)
+
+**Incerto** — a decidir com o fundador *o que exatamente* trava (não conversou / sem compromisso firmado /
+receio de misturar amizade e negócio / regras do conselho). **Boa notícia:** com o roadmap Rosto-first (§9),
+**o lançamento NÃO depende da pediatra**. Isso permite abordá-la de uma **posição de força** (marca + clientes
+já existindo) e trazê-la para o **Höfe Baby como fast-follow**, com proposta leve (embaixadora + royalty,
+teste, equity depois). A incerteza deixa de ser bloqueio.
