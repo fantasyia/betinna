@@ -6,6 +6,7 @@ import { WhatsAppSessionService } from '@integrations/whatsapp/whatsapp-session.
 import { WhatsAppMediaService } from '@integrations/whatsapp/whatsapp-media.service';
 import { EvolutionInstanciaService } from './evolution-instancia.service';
 import { EvolutionService } from './evolution.service';
+import { extrairCtwaReferral } from './ctwa-referral.util';
 
 /** Mensagem como o Evolution entrega no webhook messages.upsert (formato Baileys). */
 interface EvoMessage {
@@ -205,6 +206,11 @@ export class EvolutionInboundService {
           : (m.pushName ?? undefined);
       const senderName = isGroup && !fromMe ? (m.pushName ?? undefined) : undefined;
 
+      // Atribuição de anúncio (CTWA). Só faz sentido em 1:1 INBOUND: grupo não vem
+      // de anúncio e mensagem nossa (fromMe) não tem referral.
+      const ctwaReferral =
+        !isGroup && !fromMe ? extrairCtwaReferral(m.message as unknown) : undefined;
+
       await this.inbox.processarMensagemEntrante({
         empresaId,
         canal: 'WHATSAPP',
@@ -220,7 +226,15 @@ export class EvolutionInboundService {
         direction: fromMe ? 'OUTBOUND' : 'INBOUND',
         ...(mediaUrl ? { mediaUrl } : {}),
         ...(mediaMime ? { mediaMime } : {}),
-        meta: { ...(extras ?? {}), jid: peerId, provider: 'evolution' },
+        meta: {
+          ...(extras ?? {}),
+          jid: peerId,
+          provider: 'evolution',
+          // Click-to-WhatsApp: o referral do anúncio vem SÓ na 1ª mensagem da
+          // conversa. Extraímos aqui (é onde o proto do Baileys chega inteiro) e
+          // o InboxService grava na Conversation com 1ª-vez-vence.
+          ...(ctwaReferral ? { ctwaReferral } : {}),
+        },
       });
     }
   }

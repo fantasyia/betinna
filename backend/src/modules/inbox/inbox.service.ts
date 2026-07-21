@@ -28,6 +28,7 @@ import type {
   ResponderDto,
 } from './inbox.dto';
 import type { MensagemEntranteParams } from './inbox.types';
+import { type CtwaReferral, campanhaDoReferral } from '@integrations/evolution/ctwa-referral.util';
 
 const conversationInclude = {
   cliente: { select: { id: true, nome: true, telefone: true, cidade: true } },
@@ -1163,6 +1164,15 @@ export class InboxService {
     const metaPatch: Record<string, unknown> = {};
     if (p.peerTelefone) metaPatch.telefone = p.peerTelefone;
 
+    // ── Atribuição de anúncio (Click-to-WhatsApp) ──────────────────────────
+    // O referral vem SÓ na 1ª mensagem da conversa. Guardamos o bloco cru em
+    // metadata.atribuicao + a campanha na COLUNA utmCampaign (indexada). Regra
+    // 1ª-VEZ-VENCE: uma conversa que já tem atribuição NUNCA é sobrescrita —
+    // mesma semântica do 1º toque da UTM do site. É o dado que o Lead vai HERDAR
+    // quando nascer na triagem; perder aqui = perder a campanha que trouxe.
+    const referral = p.meta?.ctwaReferral as Record<string, unknown> | undefined;
+    const campanha = referral ? campanhaDoReferral(referral as CtwaReferral) : undefined;
+
     // Lookup primeiro
     const existente = await this.prisma.conversation.findFirst({
       where: {
@@ -1174,15 +1184,20 @@ export class InboxService {
     });
     if (existente) {
       // Mescla avatarUrl/telefone na metadata existente quando o adapter informa.
+      const metaAtual = (existente.metadata as Record<string, unknown> | null) ?? {};
+      // 1ª-VEZ-VENCE: só grava a atribuição se a conversa ainda não tiver nenhuma.
+      const jaTemAtribuicao = !!existente.utmCampaign || !!metaAtual.atribuicao;
+      const gravarAtrib = !!referral && !jaTemAtribuicao;
+      if (gravarAtrib) metaPatch.atribuicao = referral;
+
       const nextMetadata =
-        Object.keys(metaPatch).length > 0
-          ? { ...((existente.metadata as Record<string, unknown> | null) ?? {}), ...metaPatch }
-          : undefined;
+        Object.keys(metaPatch).length > 0 ? { ...metaAtual, ...metaPatch } : undefined;
       return this.prisma.conversation.update({
         where: { id: existente.id },
         data: {
           peerNome: p.peerNome ?? undefined,
           clienteId: clienteId ?? undefined,
+          ...(gravarAtrib && campanha ? { utmCampaign: campanha } : {}),
           ...(nextMetadata ? { metadata: nextMetadata as Prisma.InputJsonValue } : {}),
         },
       });
@@ -1204,9 +1219,12 @@ export class InboxService {
           clienteId,
           status: 'PENDENTE',
           naoLidas: 0,
-          ...(Object.keys(metaPatch).length > 0
-            ? { metadata: metaPatch as Prisma.InputJsonValue }
-            : {}),
+          // Conversa NOVA: se veio de anúncio, nasce já com a atribuição.
+          ...(campanha ? { utmCampaign: campanha } : {}),
+          ...(() => {
+            const meta = referral ? { ...metaPatch, atribuicao: referral } : metaPatch;
+            return Object.keys(meta).length > 0 ? { metadata: meta as Prisma.InputJsonValue } : {};
+          })(),
         },
       });
     } catch (err) {

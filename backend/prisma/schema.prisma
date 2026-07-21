@@ -1828,6 +1828,14 @@ model Conversation {
   /// distintos (ex: o mesmo cliente fala com o rep João e com o rep Maria).
   proprietarioId   String?
   clienteId        String? // resolvido por match telefone/e-mail; pode ser null pra contato anônimo
+  /// Lead gerado a partir desta conversa (triagem → CRIAR_LEAD). Ligação EXPLÍCITA:
+  /// o match por telefone é frágil (formatação, número que muda, contato com mais de
+  /// um número) e a atribuição depende dessa ligação ser confiável.
+  leadId           String?
+  /// Campanha que originou a conversa (Click-to-WhatsApp). COLUNA (não só JSON)
+  /// porque `totalConversas` por campanha degradaria em filtro de JSON não-indexado.
+  /// O payload cru do referral (ctwa_clid, source_id, headline…) fica em `metadata.atribuicao`.
+  utmCampaign      String?
   atribuidoId      String? // usuário responsável pelo atendimento
   status           ConversationStatus    @default(ABERTA)
   categoria        ConversationCategoria @default(GERAL)
@@ -1885,6 +1893,9 @@ model Conversation {
   @@index([clienteId])
   @@index([atribuidoId])
   @@index([proprietarioId])
+  @@index([leadId])
+  // Camada de CONVERSA do atribuicao_por_campanha (sempre multi-tenant).
+  @@index([empresaId, utmCampaign])
   @@index([status])
   @@index([categoria])
   @@index([incidentId])
