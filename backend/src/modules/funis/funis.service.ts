@@ -247,11 +247,32 @@ export class FunisService {
       ...(scope !== null ? { representanteId: { in: scope.length ? scope : ['__none__'] } } : {}),
     };
 
+    // Funis de TRIAGEM da empresa — precisam ser conhecidos ANTES das contagens
+    // porque separam "descartado na triagem" de "perdido de verdade" (ver abaixo).
+    const triagemIds = (
+      await this.prisma.funil.findMany({
+        where: { empresaId, triagem: true },
+        select: { id: true },
+      })
+    ).map((f) => f.id);
+
+    // ⚠️ Perda COMERCIAL vs DESCARTE de triagem. Os dois viram `etapa: 'PERDIDO'`
+    // no enum legado (uma etapa custom tipo PERDIDO mapeia pro mesmo enum), então
+    // contar só pelo enum misturaria "o cliente disse não" com "era spam". São
+    // coisas diferentes: perdido é sinal sobre a OFERTA, descartado é sinal sobre
+    // a QUALIDADE DO TRÁFEGO da campanha. Separamos pelo funil.
+    const wherePerdaComercial: Prisma.LeadWhereInput = {
+      ...where,
+      etapa: 'PERDIDO',
+      // `notIn` descarta NULL no Postgres — lead sem funil é perda comercial.
+      ...(triagemIds.length ? { OR: [{ funilId: null }, { funilId: { notIn: triagemIds } }] } : {}),
+    };
+
     const [totalLeads, ganhos, perdidos, porEtapa, porOrigem, fechado, ganhosLeads] =
       await Promise.all([
         this.prisma.lead.count({ where }),
         this.prisma.lead.count({ where: { ...where, etapa: 'GANHO' } }),
-        this.prisma.lead.count({ where: { ...where, etapa: 'PERDIDO' } }),
+        this.prisma.lead.count({ where: wherePerdaComercial }),
         // Distribuição por etapa (funilEtapaId; null = sem funil/etapa custom).
         this.prisma.lead.groupBy({
           by: ['funilEtapaId', 'etapa'],
@@ -302,6 +323,36 @@ export class FunisService {
       };
     });
 
+    // Descartados na triagem (só existe se a empresa tiver funil de triagem).
+    const descartadosTriagem = triagemIds.length
+      ? await this.prisma.lead.count({
+          where: { ...where, etapa: 'PERDIDO', funilId: { in: triagemIds } },
+        })
+      : 0;
+
+    // ── CAMADA DE CONVERSA ────────────────────────────────────────────────
+    // O lead de Click-to-WhatsApp nasce de uma CONVERSA, e nem toda conversa vira
+    // lead (a triagem existe justamente pra isso). Medir só lead esconderia metade
+    // da campanha: 300 conversas que geraram 12 leads e 300 que geraram 120 têm o
+    // mesmo `totalLeads` por real gasto só se você olhar o topo do funil.
+    // Usa a COLUNA indexada Conversation.utmCampaign (por isso ela não é só JSON).
+    const whereConversa: Prisma.ConversationWhereInput = {
+      empresaId,
+      utmCampaign: q.utmCampaign ?? null,
+      ...(de || ate
+        ? { criadoEm: { ...(de ? { gte: de } : {}), ...(ate ? { lte: ate } : {}) } }
+        : {}),
+      // Carteira: conversa de WhatsApp PESSOAL tem dono (proprietarioId); a do
+      // número da empresa é null e fica com a gestão. Mesmo recorte do Inbox.
+      ...(scope !== null ? { proprietarioId: { in: scope.length ? scope : ['__none__'] } } : {}),
+    };
+    const [totalConversas, conversasQueViraramLead] = await Promise.all([
+      this.prisma.conversation.count({ where: whereConversa }),
+      this.prisma.conversation.count({ where: { ...whereConversa, leadId: { not: null } } }),
+    ]);
+    const taxaConversaParaLead =
+      totalConversas > 0 ? Math.round((conversasQueViraramLead / totalConversas) * 1000) / 10 : 0;
+
     const dias = ganhosLeads
       .map((l) => (l.fechadoEm!.getTime() - l.criadoEm.getTime()) / (1000 * 60 * 60 * 24))
       .filter((d) => d >= 0);
@@ -321,7 +372,15 @@ export class FunisService {
       valorPonderado: Math.round(valorPonderado * 100) / 100,
       valorFechado: fechado._sum.valorFechado ? Number(fechado._sum.valorFechado) : 0,
       ganhos,
+      /** Perda COMERCIAL (a oferta não convenceu) — NÃO inclui descarte de triagem. */
       perdidos,
+      /** Descartado na TRIAGEM (não era oportunidade) — sinal sobre a QUALIDADE do tráfego. */
+      descartadosTriagem,
+      /** Conversas de WhatsApp atribuídas a esta campanha (topo do funil do CTWA). */
+      totalConversas,
+      conversasQueViraramLead,
+      /** % das conversas da campanha que viraram lead (1 casa decimal). */
+      taxaConversaParaLead,
       cicloMedioDias,
     };
   }

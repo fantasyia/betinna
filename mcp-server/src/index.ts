@@ -1502,7 +1502,12 @@ server.registerTool(
       'atribuição (indicador de vazamento de rastreio). Filtros opcionais: origemCadastro, utmSource, ' +
       'utmMedium, período (dataInicio/dataFim ISO, sobre criadoEm). Retorna totalLeads, leadsPorEtapa ' +
       '[{etapaId,nome,quantidade,valorEstimado}], porOrigemCadastro, valorPonderado (Σ valorEstimado×' +
-      'probabilidade/100), valorFechado, ganhos, perdidos e cicloMedioDias. Somente leitura, multi-tenant.',
+      'probabilidade/100), valorFechado, ganhos e cicloMedioDias. ' +
+      'CAMADA DE CONVERSA (Click-to-WhatsApp): totalConversas, conversasQueViraramLead e ' +
+      'taxaConversaParaLead (%) — nem toda conversa de anúncio vira lead, e medir só lead esconde ' +
+      'o topo do funil. PERDA vs DESCARTE: `perdidos` é perda COMERCIAL (a oferta não convenceu); ' +
+      '`descartadosTriagem` é quem foi descartado na triagem (não era oportunidade) — o primeiro ' +
+      'fala da OFERTA, o segundo da QUALIDADE DO TRÁFEGO. Somente leitura, multi-tenant.',
     inputSchema: {
       utmCampaign: z.string().optional().describe('Slug da campanha. Omitido = leads SEM atribuição.'),
       origemCadastro: z

@@ -11,6 +11,9 @@ const makePrisma = () => ({
     findMany: vi.fn().mockResolvedValue([]),
   },
   funilEtapa: { findMany: vi.fn().mockResolvedValue([]) },
+  // Sem funil de triagem por padrão (empresa que ainda não usa triagem).
+  funil: { findMany: vi.fn().mockResolvedValue([]) },
+  conversation: { count: vi.fn().mockResolvedValue(0) },
 });
 
 const admin: AuthenticatedUser = {
@@ -110,5 +113,68 @@ describe('FunisService.atribuicaoPorCampanha', () => {
     ]);
     const r = await svc.atribuicaoPorCampanha(admin, { utmCampaign: 'x' });
     expect(r.cicloMedioDias).toBe(7);
+  });
+  it('SEPARA descartado na triagem de perdido de verdade (não podem se misturar)', async () => {
+    prisma.funil.findMany.mockResolvedValue([{ id: 'funil-triagem' }]);
+    prisma.lead.count
+      .mockResolvedValueOnce(10) // total
+      .mockResolvedValueOnce(2) // ganhos
+      .mockResolvedValueOnce(3) // perdidos (COMERCIAL — já exclui triagem no where)
+      .mockResolvedValueOnce(5); // descartadosTriagem
+
+    const r = await svc.atribuicaoPorCampanha(admin, { utmCampaign: 'ctwa-verao' });
+
+    expect(r.perdidos).toBe(3);
+    expect(r.descartadosTriagem).toBe(5);
+    // Perda comercial EXCLUI o funil de triagem — mas mantém lead sem funil
+    // ('notIn' sozinho descartaria os NULL no Postgres).
+    const wherePerda = prisma.lead.count.mock.calls[2][0].where;
+    expect(wherePerda).toMatchObject({ etapa: 'PERDIDO' });
+    expect(wherePerda.OR).toEqual([{ funilId: null }, { funilId: { notIn: ['funil-triagem'] } }]);
+    // Descarte é o espelho: SÓ o funil de triagem.
+    expect(prisma.lead.count.mock.calls[3][0].where).toMatchObject({
+      etapa: 'PERDIDO',
+      funilId: { in: ['funil-triagem'] },
+    });
+  });
+
+  it('sem funil de triagem: descartadosTriagem = 0 e perda comercial sem filtro extra', async () => {
+    prisma.lead.count.mockResolvedValue(4);
+
+    const r = await svc.atribuicaoPorCampanha(admin, { utmCampaign: 'x' });
+
+    expect(r.descartadosTriagem).toBe(0);
+    // Empresa sem triagem não paga query nem ganha OR à toa.
+    expect(prisma.lead.count.mock.calls[2][0].where.OR).toBeUndefined();
+  });
+
+  it('camada de CONVERSA: total, quantas viraram lead e a taxa', async () => {
+    prisma.conversation.count
+      .mockResolvedValueOnce(300) // conversas da campanha
+      .mockResolvedValueOnce(12); // viraram lead
+
+    const r = await svc.atribuicaoPorCampanha(admin, { utmCampaign: 'ctwa-verao' });
+
+    expect(r.totalConversas).toBe(300);
+    expect(r.conversasQueViraramLead).toBe(12);
+    expect(r.taxaConversaParaLead).toBe(4);
+    // Agrupa pela COLUNA indexada da Conversation (não por JSON).
+    expect(prisma.conversation.count.mock.calls[0][0].where).toMatchObject({
+      empresaId: 'emp-1',
+      utmCampaign: 'ctwa-verao',
+    });
+    expect(prisma.conversation.count.mock.calls[1][0].where.leadId).toEqual({ not: null });
+  });
+
+  it('sem conversa nenhuma, taxa é 0 (não divide por zero)', async () => {
+    const r = await svc.atribuicaoPorCampanha(admin, { utmCampaign: 'x' });
+    expect(r.taxaConversaParaLead).toBe(0);
+  });
+
+  it('REP: camada de conversa respeita a carteira (WhatsApp pessoal tem dono)', async () => {
+    await svc.atribuicaoPorCampanha(rep, { utmCampaign: 'x' });
+    expect(prisma.conversation.count.mock.calls[0][0].where.proprietarioId).toEqual({
+      in: ['rep-1'],
+    });
   });
 });
