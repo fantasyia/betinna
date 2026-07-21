@@ -155,6 +155,28 @@ export class KanbanAnexosService implements OnModuleInit {
     return { url: data.signedUrl, expiresIn: SIGNED_URL_EXPIRES, nome: anexo.nome };
   }
 
+  /**
+   * Remove do STORAGE os arquivos dos cards informados (não mexe no banco — o
+   * cascade do delete do card já apaga as linhas de KanbanAnexo). Usado quando
+   * um card é excluído: sem isso o arquivo fica órfão no bucket pra sempre.
+   * Best-effort: falha no storage loga e segue (o card tem que sumir do mesmo jeito).
+   */
+  async purgarArquivosDosCards(cardIds: string[]): Promise<number> {
+    if (cardIds.length === 0) return 0;
+    const arquivos = await this.prisma.kanbanAnexo.findMany({
+      where: { cardId: { in: cardIds }, tipo: 'arquivo' },
+      select: { url: true },
+    });
+    if (arquivos.length === 0) return 0;
+    try {
+      const { error } = await this.storage.storage.from(BUCKET).remove(arquivos.map((a) => a.url));
+      if (error) this.logger.warn(`Falha ao purgar arquivos do storage: ${error.message}`);
+    } catch (err) {
+      this.logger.warn(`Falha ao purgar arquivos do storage: ${String(err)}`);
+    }
+    return arquivos.length;
+  }
+
   async remove(user: AuthenticatedUser, anexoId: string): Promise<void> {
     const anexo = await this.findComAcesso(user, anexoId);
 

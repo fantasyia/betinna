@@ -99,6 +99,20 @@ export class KanbanCardsController {
     return this.etiquetas.aplicarNoCard(user, id, etiquetaId);
   }
 
+  // ⚠️ ANTES das rotas mais específicas de card não faz diferença (path distinto),
+  // mas mantém junto do bloco de card. Exclusão DEFINITIVA (≠ arquivar).
+  @Delete('cards/:id')
+  @RequirePermissions({ module: 'quadros', action: 'edit' })
+  @Audit({ action: 'delete', resource: 'kanban_card', resourceIdFrom: 'params.id' })
+  @ApiOperation({
+    summary:
+      'EXCLUI o card definitivamente (cascade: checklists, comentários, anexos, etiquetas, ' +
+      'membros, campos). Excluir o card ORIGEM apaga os ESPELHOS dele.',
+  })
+  remover(@CurrentUser() user: AuthenticatedUser, @Param('id') id: string) {
+    return this.cards.remover(user, id);
+  }
+
   @Delete('cards/:id/etiquetas/:etiquetaId')
   @RequirePermissions({ module: 'quadros', action: 'edit' })
   @HttpCode(HttpStatus.NO_CONTENT)

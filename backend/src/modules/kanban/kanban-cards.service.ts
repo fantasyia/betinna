@@ -8,6 +8,7 @@ import {
 } from '@shared/errors/app-exception';
 import type { AuthenticatedUser } from '@shared/types/authenticated-user';
 import { KanbanAcessoService } from './kanban-acesso.service';
+import { KanbanAnexosService } from './kanban-anexos.service';
 import { KanbanAtividadeService } from './kanban-atividade.service';
 import { KanbanTarefaService } from './kanban-tarefa.service';
 import { CARD_ATIVIDADES_LIMIT, USUARIO_RESUMO } from './kanban.constants';
@@ -23,6 +24,7 @@ export class KanbanCardsService {
     private readonly acesso: KanbanAcessoService,
     private readonly atividade: KanbanAtividadeService,
     private readonly tarefa: KanbanTarefaService,
+    private readonly anexos: KanbanAnexosService,
   ) {}
 
   /**
@@ -181,6 +183,51 @@ export class KanbanCardsService {
   }
 
   /** Título, descrição, datas, concluído, capa, arquivar/restaurar. */
+  /**
+   * EXCLUI o card de vez (não é arquivar). Cascade do banco leva junto
+   * checklists+itens, comentários, anexos, etiquetas, membros e campos.
+   *
+   * ⚠️ ESPELHO: a FK `origemCardId` é ON DELETE CASCADE — excluir o card ORIGEM
+   * apaga os ESPELHOS dele (é o mesmo card nos dois quadros; deixar espelho órfão
+   * seria pior). Excluir um espelho não mexe na origem. O nº de espelhos removidos
+   * volta na resposta pra quem chamou não ser pego de surpresa.
+   *
+   * A atividade é registrada ANTES do delete (KanbanAtividade.cardId não tem FK,
+   * então o rastro sobrevive à exclusão) e os arquivos saem do storage antes —
+   * senão ficariam órfãos no bucket.
+   */
+  async remover(
+    user: AuthenticatedUser,
+    cardId: string,
+  ): Promise<{ ok: true; titulo: string; espelhosRemovidos: number; arquivosRemovidos: number }> {
+    const { board } = await this.acesso.verificarAcessoPorCard(user, cardId);
+    const card = await this.prisma.kanbanCard.findUniqueOrThrow({
+      where: { id: cardId },
+      select: { id: true, titulo: true, espelhos: { select: { id: true } } },
+    });
+    const espelhoIds = card.espelhos.map((e) => e.id);
+
+    await this.atividade.registrar({
+      boardId: board.id,
+      usuarioId: user.id,
+      tipo: 'card_excluido',
+      cardId,
+      dados: { titulo: card.titulo, espelhosRemovidos: espelhoIds.length },
+    });
+
+    const arquivosRemovidos = await this.anexos.purgarArquivosDosCards([cardId, ...espelhoIds]);
+    await this.prisma.kanbanCard.delete({ where: { id: cardId } });
+    this.logger.log(
+      `Card excluído: ${cardId} "${card.titulo}" (board ${board.id}, ${espelhoIds.length} espelho(s))`,
+    );
+    return {
+      ok: true,
+      titulo: card.titulo,
+      espelhosRemovidos: espelhoIds.length,
+      arquivosRemovidos,
+    };
+  }
+
   async update(user: AuthenticatedUser, cardId: string, dto: UpdateCardDto): Promise<KanbanCard> {
     const { board } = await this.acesso.verificarAcessoPorCard(user, cardId);
     const antes = await this.prisma.kanbanCard.findUniqueOrThrow({ where: { id: cardId } });

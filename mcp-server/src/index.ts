@@ -457,6 +457,32 @@ server.registerTool(
 );
 
 server.registerTool(
+  'kanban_excluir_card',
+  {
+    description:
+      'EXCLUI o card DEFINITIVAMENTE (não é arquivar — não tem desfazer). Leva junto, por cascade: ' +
+      'checklists+itens, comentários, anexos, etiquetas, membros e campos personalizados. ' +
+      '⚠️ Se o card for a ORIGEM de um espelho (tarefa espelhada rep↔Diretor), os ESPELHOS dele ' +
+      'também são apagados — a resposta informa quantos. Excluir um espelho não afeta a origem. ' +
+      'Use pra limpar card criado por engano/duplicado; pra tirar da vista sem perder, prefira ' +
+      'arquivar (kanban_atualizar_card) ou mover pra "Concluído".',
+    inputSchema: {
+      cardId: z.string().describe('ID do card (use kanban_ver_board / kanban_buscar)'),
+    },
+    annotations: { readOnlyHint: false, destructiveHint: true },
+  },
+  seguro(async ({ cardId }: { cardId: string }) => {
+    const r = await api.delete<{
+      ok: true;
+      titulo: string;
+      espelhosRemovidos: number;
+      arquivosRemovidos: number;
+    }>(`/kanban/cards/${cardId}`);
+    return ok(r);
+  }),
+);
+
+server.registerTool(
   'kanban_mover_card',
   {
     description:
