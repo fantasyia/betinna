@@ -320,6 +320,7 @@ model Empresa {
   evolutionInstancias   EvolutionInstancia[]
   kanbanBoards          KanbanBoard[]
   kanbanApiTokens       KanbanApiToken[]
+  mesclagens            MesclagemContato[]
 
   @@index([ativo])
 }
@@ -1063,6 +1064,45 @@ model LeadEtapaHistorico {
   @@index([leadId, ocorridoEm])
   // Consulta por período/funil dentro do tenant (histórico via MCP).
   @@index([empresaId, funilId, ocorridoEm])
+}
+
+/// Registro de uma mesclagem de contatos duplicados — o que permite DESFAZER.
+///
+/// Mesclar é destrutivo: o registro absorvido deixa de existir. Sem guardar o que
+/// ele era (e pra onde cada vínculo foi), um par mesclado por engano seria perda
+/// definitiva de histórico e de atribuição de campanha. O `snapshot` guarda a
+/// linha inteira do absorvido + os ids dos vínculos migrados + os campos que
+/// foram preenchidos no sobrevivente, que é o necessário pra reverter.
+model MesclagemContato {
+  id        String @id @default(cuid())
+  empresaId String
+
+  /// `lead_lead` = fusão destrutiva. `lead_cliente` = apenas VÍNCULO (nada é
+  /// apagado — o Lead guarda a história de aquisição, o Cliente a relação
+  /// comercial, e um cliente pode virar lead de novo numa recompra).
+  tipo String
+
+  /// Quem sobreviveu / quem foi absorvido (ou, no vínculo, quem foi ligado).
+  principalId String
+  absorvidoId String
+
+  /// Estado do absorvido + vínculos migrados + campos preenchidos no principal.
+  snapshot Json
+
+  /// Quem executou (Usuario.id) — mesclagem é operação de gestão, tem dono.
+  quem String?
+
+  criadoEm   DateTime  @default(now())
+  /// Preenchido quando a mesclagem é revertida (mantém o rastro dos dois eventos).
+  desfeitaEm DateTime?
+
+  empresa Empresa @relation(fields: [empresaId], references: [id], onDelete: Cascade)
+
+  // Feed de mesclagens do tenant (auditoria + tela de histórico).
+  @@index([empresaId, criadoEm])
+  // "este contato já foi mesclado alguma vez?" — nos dois papéis.
+  @@index([principalId])
+  @@index([absorvidoId])
 }
 
 // ─── FUNIS CUSTOMIZADOS ───────────────────────────────────────────────

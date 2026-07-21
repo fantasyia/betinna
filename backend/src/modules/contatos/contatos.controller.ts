@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Post, Query } from '@nestjs/common';
+import { Body, Controller, Get, Param, Post, Query } from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
 import { Audit } from '@shared/decorators/audit.decorator';
 import { CurrentUser } from '@shared/decorators/current-user.decorator';
@@ -6,12 +6,19 @@ import { RequirePermissions } from '@shared/decorators/permissions.decorator';
 import { ZodValidationPipe } from '@shared/pipes/zod-validation.pipe';
 import type { AuthenticatedUser } from '@shared/types/authenticated-user';
 import { ContatosService } from './contatos.service';
+import { ContatosMesclagemService } from './contatos-mesclagem.service';
 import {
   type AcaoMassaDto,
   type CriarLeadsDto,
   type DetalheContatoDto,
+  type DuplicatasQueryDto,
   type ListContatosDto,
+  type MesclarLeadsDto,
+  type VincularLeadClienteDto,
   acaoMassaSchema,
+  duplicatasQuerySchema,
+  mesclarLeadsSchema,
+  vincularLeadClienteSchema,
   criarLeadsSchema,
   detalheContatoSchema,
   listContatosSchema,
@@ -21,7 +28,10 @@ import {
 @ApiBearerAuth()
 @Controller('contatos')
 export class ContatosController {
-  constructor(private readonly contatos: ContatosService) {}
+  constructor(
+    private readonly contatos: ContatosService,
+    private readonly mesclagem: ContatosMesclagemService,
+  ) {}
 
   @Get()
   @RequirePermissions({ module: 'clientes', action: 'view' })
@@ -79,5 +89,74 @@ export class ContatosController {
     @Body(new ZodValidationPipe(criarLeadsSchema)) dto: CriarLeadsDto,
   ) {
     return this.contatos.criarLeads(user, dto);
+  }
+
+  // ─── Mesclagem de duplicatas ────────────────────────────────────────
+  // ⚠️ Rotas LITERAIS antes de qualquer ':id' (senão o param engole a rota).
+
+  @Get('duplicatas')
+  @RequirePermissions({ module: 'clientes', action: 'view' })
+  @ApiOperation({
+    summary:
+      'Grupos de leads suspeitos de serem a mesma pessoa (sufixo de telefone ou ' +
+      'e-mail). SÓ LISTA — duplicata é decisão humana, nada é mesclado sozinho.',
+  })
+  duplicatas(
+    @CurrentUser() user: AuthenticatedUser,
+    @Query(new ZodValidationPipe(duplicatasQuerySchema)) q: DuplicatasQueryDto,
+  ) {
+    return this.mesclagem.duplicatas(user, q.limite);
+  }
+
+  @Post('mesclar/previa')
+  @RequirePermissions({ module: 'clientes', action: 'view' })
+  @ApiOperation({
+    summary:
+      'Prévia da mesclagem: o que sobrevive, qual atribuição fica (a do MAIS ANTIGO) ' +
+      'e quantos vínculos migram. Não altera nada.',
+  })
+  previaMesclagem(
+    @CurrentUser() user: AuthenticatedUser,
+    @Body(new ZodValidationPipe(mesclarLeadsSchema)) dto: MesclarLeadsDto,
+  ) {
+    return this.mesclagem.previa(user, dto.principalId, dto.absorvidoId);
+  }
+
+  @Post('mesclar')
+  @RequirePermissions({ module: 'clientes', action: 'edit' })
+  @Audit({ action: 'mesclar_leads', resource: 'contato' })
+  @ApiOperation({
+    summary:
+      'Funde dois leads duplicados: o principal sobrevive, o outro é absorvido. ' +
+      'A atribuição de campanha vem do registro MAIS ANTIGO. Reversível.',
+  })
+  mesclar(
+    @CurrentUser() user: AuthenticatedUser,
+    @Body(new ZodValidationPipe(mesclarLeadsSchema)) dto: MesclarLeadsDto,
+  ) {
+    return this.mesclagem.mesclarLeads(user, dto.principalId, dto.absorvidoId);
+  }
+
+  @Post('vincular-cliente')
+  @RequirePermissions({ module: 'clientes', action: 'edit' })
+  @Audit({ action: 'vincular_lead_cliente', resource: 'contato' })
+  @ApiOperation({
+    summary:
+      'Liga um Lead a um Cliente. NADA é apagado — o Cliente vira a cara do contato ' +
+      'e o Lead segue guardando a história de aquisição (campanha, etapas, IA).',
+  })
+  vincularCliente(
+    @CurrentUser() user: AuthenticatedUser,
+    @Body(new ZodValidationPipe(vincularLeadClienteSchema)) dto: VincularLeadClienteDto,
+  ) {
+    return this.mesclagem.vincularLeadCliente(user, dto.leadId, dto.clienteId);
+  }
+
+  @Post('mesclagens/:id/desfazer')
+  @RequirePermissions({ module: 'clientes', action: 'edit' })
+  @Audit({ action: 'desfazer_mesclagem', resource: 'contato', resourceIdFrom: 'params.id' })
+  @ApiOperation({ summary: 'Desfaz uma mesclagem: recria o absorvido e devolve os vínculos.' })
+  desfazerMesclagem(@CurrentUser() user: AuthenticatedUser, @Param('id') id: string) {
+    return this.mesclagem.desfazer(user, id);
   }
 }

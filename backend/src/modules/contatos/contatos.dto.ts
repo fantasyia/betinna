@@ -109,3 +109,24 @@ export const criarLeadsSchema = z.object({
     .max(500),
 });
 export type CriarLeadsDto = z.infer<typeof criarLeadsSchema>;
+
+// ─── Mesclagem de duplicatas ──────────────────────────────────────────
+
+/** Par a mesclar/prever. `principalId` é quem SOBREVIVE. */
+export const mesclarLeadsSchema = z.object({
+  principalId: z.string().min(1),
+  absorvidoId: z.string().min(1),
+});
+export type MesclarLeadsDto = z.infer<typeof mesclarLeadsSchema>;
+
+/** Vínculo Lead ↔ Cliente — nada é apagado, só ligamos os dois. */
+export const vincularLeadClienteSchema = z.object({
+  leadId: z.string().min(1),
+  clienteId: z.string().min(1),
+});
+export type VincularLeadClienteDto = z.infer<typeof vincularLeadClienteSchema>;
+
+export const duplicatasQuerySchema = z.object({
+  limite: z.coerce.number().int().min(1).max(200).optional().default(50),
+});
+export type DuplicatasQueryDto = z.infer<typeof duplicatasQuerySchema>;
