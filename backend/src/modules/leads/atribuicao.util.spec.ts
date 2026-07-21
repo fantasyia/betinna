@@ -81,6 +81,11 @@ describe('normalizarOrigemCadastro', () => {
   it('válido (lower) passa', () => {
     expect(normalizarOrigemCadastro('MANUAL_REP')).toBe('manual_rep');
   });
+  it('click_to_whatsapp (PAGO) é SEPARADO de whatsapp (orgânico)', () => {
+    // Juntar os dois poluiria o CPL do CTWA com lead que não custou nada.
+    expect(normalizarOrigemCadastro('click_to_whatsapp')).toBe('click_to_whatsapp');
+    expect(normalizarOrigemCadastro('whatsapp')).toBe('whatsapp');
+  });
   it('ausente/inválido → fallback (nunca derruba o lead)', () => {
     expect(normalizarOrigemCadastro(undefined)).toBe('site');
     expect(normalizarOrigemCadastro('lixo')).toBe('site');

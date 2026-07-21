@@ -259,6 +259,47 @@ describe('LeadsService', () => {
     });
   });
 
+  describe('create — origemCadastro (porta de entrada) nunca fica nulo', () => {
+    const base = { nome: 'Lead Novo', valorEstimado: 0, canalOrigem: 'WHATSAPP', etapa: 'NOVO' };
+    beforeEach(() => {
+      prisma.lead.create.mockResolvedValue({
+        id: 'l-novo',
+        nome: 'Lead Novo',
+        etapa: 'NOVO',
+        valorEstimado: new Prisma.Decimal(0),
+        clienteId: null,
+        representanteId: null,
+      });
+    });
+
+    it('cadastro autenticado SEM origem → "manual_rep" (rep cadastrando na mão)', async () => {
+      // DIRECTOR: não força representanteId (REP forçaria e cairia no assertRepValido).
+      await svc.create(fakeUser({ role: 'DIRECTOR' as UserRole }), {
+        ...base,
+        semFunil: true,
+      } as never);
+      expect(prisma.lead.create.mock.calls[0][0].data.origemCadastro).toBe('manual_rep');
+    });
+
+    it('importação passa "importacao" e NÃO cai no default manual_rep', async () => {
+      await svc.create(fakeUser({ role: 'DIRECTOR' as UserRole }), {
+        ...base,
+        semFunil: true,
+        origemCadastro: 'importacao',
+      } as never);
+      expect(prisma.lead.create.mock.calls[0][0].data.origemCadastro).toBe('importacao');
+    });
+
+    it('valor fora da lista NÃO derruba o lead — cai no fallback', async () => {
+      await svc.create(fakeUser({ role: 'DIRECTOR' as UserRole }), {
+        ...base,
+        semFunil: true,
+        origemCadastro: 'lixo',
+      } as never);
+      expect(prisma.lead.create.mock.calls[0][0].data.origemCadastro).toBe('manual_rep');
+    });
+  });
+
   describe('máquina de estados', () => {
     it('rejeita transição inválida (PERDIDO → GANHO direto)', async () => {
       // PERDIDO só pode voltar pra etapas ATIVAS (reabrir o lead).

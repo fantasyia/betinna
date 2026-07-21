@@ -16,13 +16,21 @@ const LIMITE = 255;
 
 const CONTROLE = /[\x00-\x1F\x7F]/g;
 
+/**
+ * Portas de entrada do lead. ⚠️ `click_to_whatsapp` (anúncio PAGO) é SEPARADO de
+ * `whatsapp` (orgânico: botão do site, contato do rep, indicação) — juntar os dois
+ * poluiria o CPL do CTWA com lead que não custou nada.
+ * `meta_lead_ads`/`google_lead_form` seguem na lista só por retrocompat do schema;
+ * Lead Ads foi DESCARTADO como produto (decisão do Léo, 2026-07-21).
+ */
 const ORIGENS_VALIDAS = [
   'site',
+  'click_to_whatsapp',
+  'whatsapp',
   'meta_lead_ads',
   'google_lead_form',
   'importacao',
   'manual_rep',
-  'whatsapp',
   'api',
 ] as const;
 export type OrigemCadastro = (typeof ORIGENS_VALIDAS)[number];

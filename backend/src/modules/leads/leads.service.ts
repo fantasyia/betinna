@@ -21,6 +21,7 @@ import type {
 } from './leads.dto';
 import { PROBABILIDADE_POR_ETAPA, SLA_DIAS_POR_ETAPA, TRANSICOES_ETAPA } from './leads.constants';
 import { registrarTransicaoEtapa } from './lead-etapa-historico.util';
+import { normalizarOrigemCadastro } from './atribuicao.util';
 
 const leadInclude = {
   representante: { select: { id: true, nome: true, email: true } },
@@ -269,7 +270,12 @@ export class LeadsService {
 
     // `semFunil` sai do spread (não é coluna do Lead) e força funil nulo:
     // contato solto, fora de qualquer funil/cron (importação de base fria).
-    const { semFunil, ...dadosLead } = dto;
+    // `origemCadastro` também sai: é normalizado/validado por lista abaixo.
+    const { semFunil, origemCadastro: origemInformada, ...dadosLead } = dto;
+    // Porta de entrada: quem chama SEM informar é o cadastro autenticado (rep/admin
+    // criando na mão) → "manual_rep". A importação em massa passa "importacao".
+    // Nunca fica nulo — é o que separa "sem UTM porque foi manual" de "rastreio quebrado".
+    const origemCadastro = normalizarOrigemCadastro(origemInformada, 'manual_rep');
 
     // Resolve funil + etapa inicial. Se o user não informou funil, usa o
     // padrão da empresa. Se a etapa-inicial específica não foi pedida,
@@ -286,6 +292,7 @@ export class LeadsService {
           empresaId,
           funilId,
           funilEtapaId,
+          origemCadastro,
           etapaDesde: new Date(),
         },
         include: leadInclude,

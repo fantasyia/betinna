@@ -19,6 +19,14 @@ export const createLeadSchema = z.object({
   valorEstimado: z.number().min(0).default(0),
   canalOrigem: z.nativeEnum(CanalOrigem).default('WHATSAPP'),
   etapa: z.nativeEnum(LeadEtapa).default('NOVO'),
+  /**
+   * Porta de entrada do lead (atribuição). Ausente no cadastro autenticado →
+   * "manual_rep" (é o que distingue "sem UTM porque o rep cadastrou na mão" de
+   * "sem UTM porque o rastreio quebrou"). A importação em massa passa
+   * "importacao". Validado por LISTA na ingestão (atribuicao.util), nunca enum
+   * de banco — porta nova não pode exigir migration.
+   */
+  origemCadastro: z.string().trim().max(60).optional(),
   /** Funil customizado. Se omitido, usa o funil padrão da empresa.
    *  NÃO valida `.cuid()`: o funil padrão criado pela migration usa ids no
    *  formato `funil_<hash>` (não-cuid). O service valida existência + tenant. */

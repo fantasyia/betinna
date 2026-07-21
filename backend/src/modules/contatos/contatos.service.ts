@@ -958,6 +958,9 @@ export class ContatosService {
           funilEtapaId: dto.funilEtapaId,
           semFunil: dto.semFunil,
           representanteId: c.representanteId ?? dto.representanteId,
+          // Porta de entrada explícita: sem isso cairia no default "manual_rep" do
+          // create e a base importada seria confundida com cadastro do rep.
+          origemCadastro: 'importacao',
         });
         const leadCriado = await this.leads.create(user, payload);
         // Aplica as tags do lote (cold/email-mkt/segmento) — best-effort por tag,
