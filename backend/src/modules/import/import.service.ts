@@ -267,6 +267,12 @@ export class ImportService {
           etapa: alvo.etapa,
           funilId: alvo.funilId,
           funilEtapaId: alvo.funilEtapaId,
+          // Porta de entrada explícita. Este caminho monta o `data` na mão (não
+          // passa pelo leads.service.create), então o default "manual_rep" de lá
+          // não vale aqui — sem isto o lead nascia com origemCadastro NULO e
+          // "sem UTM porque veio de planilha" virava indistinguível de
+          // "rastreio quebrado", que é justamente o que o campo existe pra separar.
+          origemCadastro: 'importacao',
           variaveis: variaveis as Prisma.InputJsonValue,
         };
         return { ok: true, existente, data };
@@ -274,9 +280,30 @@ export class ImportService {
       async (data, existenteId, dryRun) => {
         if (dryRun) return existenteId ?? 'dry-run';
         if (existenteId) {
+          // ⚠️ Lead que JÁ EXISTE: o import não pode destruir o que ele acumulou.
+          //
+          // 1) `variaveis` é JSON — no Prisma, gravar o campo SUBSTITUI o valor
+          //    inteiro. Passar o objetinho do import direto apagava o
+          //    `variaveis.atribuicao` (1º e último toque da UTM), junto com
+          //    classificação da IA, histórico etc. Por isso: MERGE, não replace.
+          // 2) `origemCadastro` fica FORA do update: a porta de entrada é do
+          //    PRIMEIRO cadastro. Uma reimportação não transforma retroativamente
+          //    um lead que veio do site em lead "de importação".
+          const { origemCadastro: _porta, variaveis: novas, ...resto } = data;
+          const atual = await this.prisma.lead.findUnique({
+            where: { id: existenteId },
+            select: { variaveis: true },
+          });
+          const base =
+            atual?.variaveis &&
+            typeof atual.variaveis === 'object' &&
+            !Array.isArray(atual.variaveis)
+              ? (atual.variaveis as Record<string, unknown>)
+              : {};
+          const mescladas = { ...base, ...((novas ?? {}) as Record<string, unknown>) };
           const r = await this.prisma.lead.update({
             where: { id: existenteId },
-            data,
+            data: { ...resto, variaveis: mescladas as Prisma.InputJsonValue },
             select: { id: true },
           });
           return r.id;

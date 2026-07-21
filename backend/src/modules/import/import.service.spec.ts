@@ -27,6 +27,7 @@ const makePrisma = () => ({
   },
   lead: {
     findFirst: vi.fn().mockResolvedValue(null),
+    findUnique: vi.fn().mockResolvedValue(null),
     create: vi.fn().mockResolvedValue({ id: 'lead-novo' }),
     update: vi.fn().mockResolvedValue({ id: 'lead-existente' }),
   },
@@ -355,5 +356,68 @@ describe('ImportService.importarLeads', () => {
     });
     expect(r.criados).toBe(1);
     expect(prisma.lead.create).not.toHaveBeenCalled();
+  });
+  it('lead NOVO nasce com origemCadastro=importacao (nunca nulo)', async () => {
+    await svc.importarLeads(fakeUser(), {
+      rows: [{ nome: 'Lead Z', telefone: '11999990000' }],
+      dryRun: false,
+      onDuplicate: 'skip',
+    });
+    // Sem isto, "sem UTM porque veio de planilha" ficava indistinguível de
+    // "rastreio quebrado" — que é o motivo do campo existir.
+    expect(prisma.lead.create.mock.calls[0][0].data.origemCadastro).toBe('importacao');
+  });
+
+  it('onDuplicate=update PRESERVA a atribuição do lead existente (não substitui variaveis)', async () => {
+    prisma.lead.findFirst.mockResolvedValueOnce({ id: 'lead-velho' });
+    prisma.lead.findUnique.mockResolvedValueOnce({
+      variaveis: {
+        atribuicao: { primeiro: { utmCampaign: 'vtcd-alimenticia' } },
+        classificacao_betinna: 'forte',
+      },
+    });
+
+    await svc.importarLeads(fakeUser(), {
+      rows: [{ nome: 'Dup', telefone: '11999990000', empresa: 'ACME' }],
+      dryRun: false,
+      onDuplicate: 'update',
+    });
+
+    const vars = prisma.lead.update.mock.calls[0][0].data.variaveis;
+    // Campo JSON no Prisma SUBSTITUI o valor inteiro — por isso o merge.
+    // A campanha que trouxe o lead não pode morrer numa reimportação.
+    expect(vars.atribuicao).toEqual({ primeiro: { utmCampaign: 'vtcd-alimenticia' } });
+    expect(vars.classificacao_betinna).toBe('forte');
+    // E o que o import traz entra junto.
+    expect(vars.origem).toBe('importacao_excel');
+    expect(vars.empresa).toBe('ACME');
+  });
+
+  it('onDuplicate=update NÃO reescreve a porta de entrada do lead existente', async () => {
+    prisma.lead.findFirst.mockResolvedValueOnce({ id: 'lead-velho' });
+
+    await svc.importarLeads(fakeUser(), {
+      rows: [{ nome: 'Dup', telefone: '11999990000' }],
+      dryRun: false,
+      onDuplicate: 'update',
+    });
+
+    // Reimportar não transforma retroativamente um lead do site em lead de planilha.
+    expect(prisma.lead.update.mock.calls[0][0].data.origemCadastro).toBeUndefined();
+  });
+
+  it('lead existente SEM variaveis não quebra o merge', async () => {
+    prisma.lead.findFirst.mockResolvedValueOnce({ id: 'lead-velho' });
+    prisma.lead.findUnique.mockResolvedValueOnce({ variaveis: null });
+
+    await svc.importarLeads(fakeUser(), {
+      rows: [{ nome: 'Dup', telefone: '11999990000' }],
+      dryRun: false,
+      onDuplicate: 'update',
+    });
+
+    expect(prisma.lead.update.mock.calls[0][0].data.variaveis).toMatchObject({
+      origem: 'importacao_excel',
+    });
   });
 });
