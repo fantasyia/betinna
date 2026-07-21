@@ -110,11 +110,17 @@ export class FluxoEventBusService {
             const cfg = (triggerNo.config ?? {}) as PalavraChaveConfig & {
               canais?: string[];
               apenasComLead?: boolean;
+              apenasSemLead?: boolean;
             };
             const canais = Array.isArray(cfg.canais) ? cfg.canais.filter(Boolean) : [];
             const canalCtx = contexto['canal'] as string | undefined;
             if (canais.length > 0 && (!canalCtx || !canais.includes(canalCtx))) continue;
             if (cfg.apenasComLead && !contexto['leadId']) continue;
+            // Espelho do anterior, pro fluxo de TRIAGEM: só quem AINDA não é lead.
+            // Sem ele, todo recado de contato já conhecido reentraria no fluxo de
+            // triagem à toa (a ação CRIAR_LEAD é idempotente, mas gastaria execução
+            // e poluiria o histórico a cada mensagem).
+            if (cfg.apenasSemLead && contexto['leadId']) continue;
             const temPalavras = (cfg.palavrasChave ?? []).some((p) => p.trim());
             if (temPalavras) {
               const texto = typeof contexto['texto'] === 'string' ? contexto['texto'] : '';

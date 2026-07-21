@@ -100,6 +100,29 @@ export interface MoverLeadEtapaConfig {
   etapa?: 'NOVO' | 'QUALIFICANDO' | 'PROPOSTA' | 'NEGOCIACAO' | 'GANHO' | 'PERDIDO';
 }
 
+/**
+ * Config da ação CRIAR_LEAD — promove uma CONVERSA a Lead (triagem).
+ *
+ * Nasce pro Click-to-WhatsApp: o inbound de WhatsApp não cria lead nenhum, então
+ * sem esse passo a atribuição gravada na conversa nunca chega ao funil. A ação
+ * HERDA a atribuição da conversa (utmCampaign + bloco de atribuição) e amarra os
+ * dois lados com `Conversation.leadId`.
+ *
+ * É IDEMPOTENTE: conversa que já tem lead (ou telefone que já é lead) não cria
+ * outro — só amarra e devolve o existente. Sem isso, cada mensagem nova do mesmo
+ * contato viraria um lead duplicado.
+ */
+export interface CriarLeadConfig {
+  /** Etapa de destino (id da FunilEtapa) — normalmente a entrada do funil de triagem. */
+  funilEtapaId?: string;
+  /** Origem gravada no lead. Default `click_to_whatsapp` quando a conversa veio de anúncio. */
+  origemCadastro?: string;
+  /** Representante atribuído no nascimento. Vazio = sem dono (triagem é da casa). */
+  representanteId?: string;
+  /** Tag aplicada ao lead criado (opcional). */
+  tagNome?: string;
+}
+
 /** Config da ação PAUSAR_IA — desliga (ou religa) o bot na conversa do lead. */
 export interface PausarIaConfig {
   /** true = religa (botLigado=true); default/false = pausa (botLigado=false). */

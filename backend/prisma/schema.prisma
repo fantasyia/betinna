@@ -1091,6 +1091,12 @@ model Funil {
   /// Funil OBRIGATÓRIO/protegido: só ADMIN/DIRETOR edita/exclui; REP não mexe nem
   /// exclui. Ligado pelo ADMIN/DIRETOR na config do próprio funil.
   protegido      Boolean @default(false)
+  /// Funil de TRIAGEM: caixa de entrada bruta (todo inbound 1:1 do número da
+  /// empresa cai aqui — campanha, spam, fornecedor, ex-cliente). Quem está aqui
+  /// AINDA NÃO é lead comercial, então fica FORA dos KPIs globais do dashboard
+  /// (senão "Leads ativos" infla com lixo e perde o significado). Ligado pelo
+  /// ADMIN/DIRETOR na config do funil.
+  triagem        Boolean @default(false)
   /// Allow-list de tags permitidas neste funil (Fase C — spec §2.1). Array de
   /// nomes de tag; null = todas as tags da empresa são permitidas.
   tagsPermitidas Json?
@@ -1523,6 +1529,7 @@ enum FluxoAcaoTipo {
   CONVERSAR_IA // carrega prompt da biblioteca, conversa via WhatsApp e classifica
   LIBERAR_LOTE // libera N leads de uma etapa (disparo controlado anti-sobrecarga)
   PAUSAR_IA // desliga o bot (Bot=Desligado) na conversa do lead até religar manual
+  CRIAR_LEAD // cria Lead a partir da conversa (triagem) HERDANDO a atribuição dela
 }
 
 enum FluxoExecucaoStatus {

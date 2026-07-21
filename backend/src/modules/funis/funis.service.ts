@@ -396,6 +396,8 @@ export class FunisService {
           isPadrao: dto.isPadrao,
           // Só ADMIN/DIRETOR pode marcar um funil como protegido/obrigatório.
           protegido: this.ehAdminOuDiretor(user) ? (dto.protegido ?? false) : false,
+          // Idem pra triagem: tira o funil dos KPIs globais, é decisão de gestão.
+          triagem: this.ehAdminOuDiretor(user) ? (dto.triagem ?? false) : false,
           tagsPermitidas: dto.tagsPermitidas
             ? (dto.tagsPermitidas as Prisma.InputJsonValue)
             : Prisma.JsonNull,
@@ -431,6 +433,10 @@ export class FunisService {
     // num protegido, mas garante que não ligue/desligue num não-protegido.
     if (dto.protegido !== undefined && !this.ehAdminOuDiretor(user)) {
       delete dto.protegido;
+    }
+    // Mesma regra pra `triagem` — tirar um funil dos KPIs globais é decisão de gestão.
+    if (dto.triagem !== undefined && !this.ehAdminOuDiretor(user)) {
+      delete dto.triagem;
     }
 
     if (dto.isPadrao && !existing.isPadrao) {

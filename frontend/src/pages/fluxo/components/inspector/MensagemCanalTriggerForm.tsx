@@ -87,6 +87,14 @@ export function MensagemCanalTriggerForm({
         }
       />
 
+      <Checkbox
+        label="Só disparar se AINDA NÃO for lead (triagem)"
+        checked={data.config.apenasSemLead === true}
+        onChange={(e) =>
+          onUpdate((d) => ({ ...d, config: { ...d.config, apenasSemLead: e.target.checked } }))
+        }
+      />
+
       <p className="text-[11px] text-muted">
         Disponível nas ações: <code className="text-text">{'{{canal}}'}</code> e{' '}
         <code className="text-text">{'{{texto}}'}</code>. Pra rotear por canal, use um nó{' '}

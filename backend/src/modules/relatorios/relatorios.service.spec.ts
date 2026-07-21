@@ -29,6 +29,7 @@ const makePrismaMock = () => ({
   } satisfies MockModel,
   funil: {
     findFirst: vi.fn().mockResolvedValue(null),
+    findMany: vi.fn().mockResolvedValue([]),
   } satisfies MockModel,
   ocorrencia: {
     count: vi.fn().mockResolvedValue(0),
@@ -238,6 +239,50 @@ describe('RelatoriosService', () => {
       for (const call of prisma.lead.count.mock.calls) {
         expect(call[0].where.empresaId).toBe('emp-3');
       }
+    });
+
+    it('SEM funilId, exclui os funis de TRIAGEM dos KPIs globais (mas mantém lead sem funil)', async () => {
+      prisma.funil.findMany.mockResolvedValueOnce([{ id: 'fun-triagem' }]);
+
+      await service.funil(fakeUser(), basePeriodo);
+
+      // Só busca funil de triagem da empresa certa.
+      expect(prisma.funil.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({ where: { empresaId: 'emp-1', triagem: true } }),
+      );
+      // Toda query de lead ganha o OR. `notIn` sozinho descartaria os NULL no
+      // Postgres — lead sem funil (caminho legado) TEM que continuar contando.
+      const esperado = [{ funilId: null }, { funilId: { notIn: ['fun-triagem'] } }];
+      for (const call of prisma.lead.count.mock.calls) {
+        expect(call[0].where.OR).toEqual(esperado);
+      }
+      for (const call of prisma.lead.groupBy.mock.calls) {
+        expect(call[0].where.OR).toEqual(esperado);
+      }
+    });
+
+    it('SEM funil de triagem cadastrado, não mexe no filtro (nada de OR à toa)', async () => {
+      await service.funil(fakeUser(), basePeriodo);
+
+      for (const call of prisma.lead.count.mock.calls) {
+        expect(call[0].where.OR).toBeUndefined();
+      }
+    });
+
+    it('COM funilId de triagem selecionado, mostra o funil normalmente (exclusão é só global)', async () => {
+      prisma.funil.findFirst.mockResolvedValueOnce({
+        id: 'fun-triagem',
+        etapas: [{ id: 'et-novo', nome: 'Novo (inbound)', cor: '#111111', tipo: 'ATIVA' }],
+      });
+      prisma.lead.groupBy.mockResolvedValueOnce([
+        { funilEtapaId: 'et-novo', _count: { _all: 7 }, _sum: { valorEstimado: 0 } },
+      ]);
+
+      const result = await service.funil(fakeUser(), { ...basePeriodo, funilId: 'fun-triagem' });
+
+      // Quem seleciona a triagem QUER ver a triagem: 7 leads, sem exclusão.
+      expect(result.totalAtivos).toBe(7);
+      expect(prisma.funil.findMany).not.toHaveBeenCalled();
     });
 
     it('com funilId, usa as etapas do funil customizado (snapshot por funilEtapaId)', async () => {

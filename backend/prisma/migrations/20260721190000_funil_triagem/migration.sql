@@ -1,0 +1,12 @@
+-- Funil de TRIAGEM (caixa de entrada bruta do WhatsApp).
+--
+-- Todo inbound 1:1 do número da EMPRESA vai cair num funil de triagem — e a maior
+-- parte NÃO é campanha (spam, fornecedor, ex-cliente, engano). Quem está lá ainda
+-- não é lead comercial: por isso o funil marcado com esta flag sai dos KPIs
+-- GLOBAIS do dashboard. Sem isso, "Leads ativos" infla com lixo no dia em que a
+-- triagem começar a encher e ninguém consegue mais dizer se o número subiu porque
+-- a campanha funcionou ou porque entrou entulho.
+--
+-- Escolher/desmarcar é do tenant (ADMIN/DIRETOR na config do funil) — nada é
+-- imposto: default false mantém TODOS os funis existentes contando como antes.
+ALTER TABLE "Funil" ADD COLUMN IF NOT EXISTS "triagem" BOOLEAN NOT NULL DEFAULT false;

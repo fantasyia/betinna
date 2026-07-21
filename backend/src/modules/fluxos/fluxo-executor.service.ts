@@ -15,6 +15,11 @@ import { Prisma } from '@prisma/client';
 import { safeRequest, SsrfBlockedError } from '@shared/utils/safe-request';
 import { interpolate } from '@shared/utils/interpolate';
 import { registrarTransicaoEtapa } from '@modules/leads/lead-etapa-historico.util';
+import {
+  type CtwaReferral,
+  atribuicaoDeReferral,
+  campanhaDoReferral,
+} from '@integrations/evolution/ctwa-referral.util';
 import { ConversarIaService } from './conversar-ia.service';
 import { FluxoEventBusService } from './fluxo-event-bus.service';
 import {
@@ -29,6 +34,7 @@ import {
   type CriarTarefaConfig,
   type MudarTagConfig,
   type MoverLeadEtapaConfig,
+  type CriarLeadConfig,
   type PausarIaConfig,
   type AtribuirRepConfig,
   type WebhookExternoConfig,
@@ -318,6 +324,7 @@ export class FluxoExecutorService {
           contexto,
           execucao.empresaId,
           `fx:${execucaoId}:${noId}`,
+          execucaoId,
         );
       }
     } catch (err) {
@@ -629,6 +636,7 @@ export class FluxoExecutorService {
     ctx: ExecucaoContexto,
     empresaId: string,
     idemBase: string,
+    execucaoId: string,
   ): Promise<Record<string, unknown>> {
     switch (no.tipo) {
       case 'TRIGGER':
@@ -645,7 +653,7 @@ export class FluxoExecutorService {
       }
 
       case 'ACAO':
-        return this.executarAcao(no, ctx, empresaId, idemBase);
+        return this.executarAcao(no, ctx, empresaId, idemBase, execucaoId);
 
       default:
         return {};
@@ -657,6 +665,7 @@ export class FluxoExecutorService {
     ctx: ExecucaoContexto,
     empresaId: string,
     idemBase: string,
+    execucaoId: string,
   ): Promise<Record<string, unknown>> {
     const acaoTipo = no.acaoTipo;
     if (!acaoTipo) throw new Error(`Nó ACAO sem acaoTipo definido`);
@@ -689,6 +698,9 @@ export class FluxoExecutorService {
 
       case 'PAUSAR_IA':
         return this.acaoPausarIa(cfg as PausarIaConfig, ctx, empresaId);
+
+      case 'CRIAR_LEAD':
+        return this.acaoCriarLead(cfg as CriarLeadConfig, ctx, empresaId, execucaoId);
 
       default:
         throw new Error(`Tipo de ação desconhecido: ${acaoTipo}`);
@@ -1309,6 +1321,234 @@ export class FluxoExecutorService {
       });
     }
     return { leadId, novaEtapa: cfg.etapa };
+  }
+
+  /**
+   * CRIAR_LEAD — promove uma CONVERSA a Lead (a TRIAGEM do Click-to-WhatsApp).
+   *
+   * O inbound de WhatsApp cria Conversation/Message e mais nada: sem este passo, a
+   * atribuição do anúncio que já está gravada na conversa nunca chega ao funil.
+   *
+   * ⚠️ O PONTO QUE NÃO PODE FALHAR é a HERANÇA: o lead nasce com a campanha da
+   * conversa (colunas utm* + `variaveis.atribuicao` no mesmo formato do lead de
+   * site) e com o bloco CRU do referral em `variaveis.ctwa`. Se nascer sem herdar,
+   * perde-se qual anúncio trouxe o contato — e esse dado não volta.
+   *
+   * IDEMPOTENTE em dois níveis: conversa que já aponta pra um lead, ou telefone que
+   * já é lead (match por sufixo D18), só AMARRA e devolve o existente. Sem isso
+   * cada mensagem nova do mesmo contato viraria um lead duplicado.
+   */
+  private async acaoCriarLead(
+    cfg: CriarLeadConfig,
+    ctx: ExecucaoContexto,
+    empresaId: string,
+    execucaoId: string,
+  ): Promise<Record<string, unknown>> {
+    this.assertEmpresaId(empresaId, 'CRIAR_LEAD');
+    const conversationId = ctx['conversationId'] as string | undefined;
+    if (!conversationId) {
+      throw new Error(
+        'contexto.conversationId ausente para CRIAR_LEAD — use o gatilho "Chegou mensagem num canal"',
+      );
+    }
+    const conversa = await this.prisma.conversation.findFirst({
+      where: { id: conversationId, empresaId },
+      select: {
+        id: true,
+        peerId: true,
+        peerNome: true,
+        leadId: true,
+        clienteId: true,
+        proprietarioId: true,
+        utmCampaign: true,
+        metadata: true,
+      },
+    });
+    if (!conversa) {
+      throw new Error(`Conversa ${conversationId} não encontrada na empresa ${empresaId}`);
+    }
+    // Grupo não é contato comercial — não vira lead.
+    if (conversa.peerId.includes('@g.us')) {
+      return { criado: false, motivo: 'grupo', conversationId };
+    }
+    // Já amarrada: nada a fazer além de publicar o leadId pros nós seguintes.
+    if (conversa.leadId) {
+      await this.publicarLeadNoContexto(execucaoId, ctx, conversa.leadId);
+      return { criado: false, motivo: 'conversa_ja_tem_lead', leadId: conversa.leadId };
+    }
+
+    const meta = (conversa.metadata as Record<string, unknown> | null) ?? {};
+    // Telefone REAL: metadata.telefone (preenchido quando o peerId é LID opaco) >
+    // parte local do peerId. @lid nunca vira telefone.
+    const ehLid = conversa.peerId.includes('@lid');
+    const telefone =
+      (typeof meta.telefone === 'string' ? meta.telefone : undefined) ??
+      (ehLid ? undefined : conversa.peerId.split('@')[0]?.split(':')[0]);
+    const digitos = (telefone ?? '').replace(/\D/g, '');
+
+    // Telefone que já é lead: AMARRA em vez de duplicar (D18 — sufixo de 8 dígitos
+    // normalizando o valor ARMAZENADO; `contains` quebra com telefone formatado).
+    if (digitos.length >= 8) {
+      const sufixo = digitos.slice(-8);
+      const existente = await this.prisma.$queryRaw<Array<{ id: string }>>`
+        SELECT "id" FROM "Lead"
+        WHERE "empresaId" = ${empresaId}
+          AND RIGHT(REGEXP_REPLACE(COALESCE("contatoTelefone", ''), '[^0-9]', '', 'g'), 8) = ${sufixo}
+        ORDER BY "atualizadoEm" DESC
+        LIMIT 1
+      `;
+      if (existente[0]) {
+        await this.prisma.conversation.updateMany({
+          where: { id: conversa.id, empresaId },
+          data: { leadId: existente[0].id },
+        });
+        await this.publicarLeadNoContexto(execucaoId, ctx, existente[0].id);
+        return { criado: false, motivo: 'telefone_ja_e_lead', leadId: existente[0].id };
+      }
+    }
+
+    // Etapa de destino (entrada do funil de triagem). Sem etapa configurada o lead
+    // ainda nasce — só cai no funil padrão pelo caminho legado do enum.
+    let funilId: string | null = null;
+    let funilEtapaId: string | null = null;
+    let etapaEnum: 'NOVO' | 'GANHO' | 'PERDIDO' | 'QUALIFICANDO' = 'NOVO';
+    if (cfg.funilEtapaId) {
+      const etapa = await this.prisma.funilEtapa.findFirst({
+        where: { id: cfg.funilEtapaId, funil: { empresaId } },
+        select: { id: true, funilId: true, tipo: true },
+      });
+      if (!etapa) {
+        throw new Error(`Etapa ${cfg.funilEtapaId} não encontrada na empresa ${empresaId}`);
+      }
+      funilId = etapa.funilId;
+      funilEtapaId = etapa.id;
+      etapaEnum = etapa.tipo === 'GANHO' ? 'GANHO' : etapa.tipo === 'PERDIDO' ? 'PERDIDO' : 'NOVO';
+    }
+
+    // ── HERANÇA DA ATRIBUIÇÃO (o requisito crítico) ──────────────────────
+    const referral = meta.atribuicao as CtwaReferral | undefined;
+    const campanha = conversa.utmCampaign ?? campanhaDoReferral(referral);
+    const variaveis: Record<string, unknown> = {};
+    if (referral) {
+      variaveis.atribuicao = atribuicaoDeReferral(referral, new Date().toISOString());
+      // Bloco CRU junto: se amanhã precisarmos casar `ctwaClid` com o gerenciador
+      // do Meta, o dado está aqui — não dá pra buscar de novo.
+      variaveis.ctwa = referral;
+    }
+    // Veio de anúncio → click_to_whatsapp; inbound orgânico do número → whatsapp.
+    const origemCadastro = cfg.origemCadastro ?? (referral ? 'click_to_whatsapp' : 'whatsapp');
+
+    const nome = conversa.peerNome?.trim() || (digitos ? `Contato ${digitos}` : 'Contato WhatsApp');
+    const lead = await this.prisma.lead.create({
+      data: {
+        empresaId,
+        nome: nome.slice(0, 255),
+        contatoNome: conversa.peerNome?.trim() ? conversa.peerNome.trim().slice(0, 255) : null,
+        contatoTelefone: telefone ?? null,
+        clienteId: conversa.clienteId,
+        // Triagem é da casa: sem rep por padrão (o rep entra quando for triado).
+        representanteId: cfg.representanteId ?? conversa.proprietarioId ?? null,
+        canalOrigem: 'WHATSAPP',
+        etapa: etapaEnum,
+        funilId,
+        funilEtapaId,
+        origemCadastro,
+        utmSource: referral ? 'meta' : null,
+        utmMedium: referral ? 'click_to_whatsapp' : null,
+        utmCampaign: campanha ?? null,
+        variaveis: variaveis as Prisma.InputJsonValue,
+      },
+      select: { id: true, nome: true, etapa: true },
+    });
+
+    // Amarra os dois lados. Sem isto a próxima mensagem criaria outro lead.
+    await this.prisma.conversation.updateMany({
+      where: { id: conversa.id, empresaId },
+      data: { leadId: lead.id },
+    });
+
+    // Histórico: nascimento do lead na etapa de triagem.
+    if (funilEtapaId) {
+      await registrarTransicaoEtapa(this.prisma, this.logger, {
+        empresaId,
+        leadId: lead.id,
+        funilId,
+        etapaOrigem: null,
+        etapaDestino: funilEtapaId,
+        quem: null,
+        origemMudanca: 'fluxo',
+      });
+    }
+
+    // Publica o lead no contexto ANTES de qualquer coisa que dependa dele — é o que
+    // deixa os nós seguintes (Mudar tag, Enviar WhatsApp, Mover etapa) enxergarem
+    // o lead recém-nascido. Sem isso a ação não encadeia com nada.
+    await this.publicarLeadNoContexto(execucaoId, ctx, lead.id);
+
+    if (cfg.tagNome?.trim()) {
+      const nomeTag = cfg.tagNome.trim();
+      const tag = await this.prisma.tag.upsert({
+        where: { empresaId_nome: { empresaId, nome: nomeTag } },
+        create: { empresaId, nome: nomeTag },
+        update: {},
+      });
+      await this.prisma.leadTag.upsert({
+        where: { leadId_tagId: { leadId: lead.id, tagId: tag.id } },
+        create: { leadId: lead.id, tagId: tag.id, origem: 'fluxo' },
+        update: {},
+      });
+    }
+
+    // Mesmo evento que o lead do site dispara — fluxos de boas-vindas funcionam
+    // igual pros dois. `_hops` propaga o corta-loop do FluxoEventBus.
+    const hops = typeof ctx['_hops'] === 'number' ? (ctx['_hops'] as number) : 0;
+    void this.bus.disparar(empresaId, 'LEAD_CRIADO', {
+      leadId: lead.id,
+      lead: { id: lead.id, nome: lead.nome, etapa: lead.etapa, valorEstimado: 0 },
+      clienteId: conversa.clienteId,
+      representanteId: cfg.representanteId ?? conversa.proprietarioId ?? null,
+      _hops: hops + 1,
+    });
+
+    return {
+      criado: true,
+      leadId: lead.id,
+      conversationId: conversa.id,
+      origemCadastro,
+      utmCampaign: campanha ?? null,
+      herdouAtribuicao: !!referral,
+    };
+  }
+
+  /**
+   * Grava o `leadId` no contexto DA EXECUÇÃO (não só na cópia em memória): cada
+   * passo seguinte é um job novo que recarrega `FluxoExecucao.contexto` do banco.
+   * Sem persistir, o lead criado pelo CRIAR_LEAD sumiria no próximo nó.
+   * Best-effort — o lead já existe; falhar aqui não pode desfazer a criação.
+   */
+  private async publicarLeadNoContexto(
+    execucaoId: string,
+    ctx: ExecucaoContexto,
+    leadId: string,
+  ): Promise<void> {
+    ctx['leadId'] = leadId;
+    try {
+      const atual = await this.prisma.fluxoExecucao.findUnique({
+        where: { id: execucaoId },
+        select: { contexto: true },
+      });
+      const base = (atual?.contexto as Record<string, unknown> | null) ?? {};
+      await this.prisma.fluxoExecucao.update({
+        where: { id: execucaoId },
+        data: { contexto: { ...base, leadId } as Prisma.InputJsonValue },
+      });
+    } catch (err) {
+      this.logger.error(
+        `CRIAR_LEAD: lead ${leadId} criado mas não publicado no contexto da execução ${execucaoId}: ${
+          err instanceof Error ? err.message : String(err)
+        }`,
+      );
+    }
   }
 
   /**

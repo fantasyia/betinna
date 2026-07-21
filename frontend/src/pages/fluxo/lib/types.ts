@@ -37,7 +37,8 @@ export type AcaoTipo =
   | 'WEBHOOK_EXTERNO'
   | 'CONVERSAR_IA'
   | 'LIBERAR_LOTE'
-  | 'PAUSAR_IA';
+  | 'PAUSAR_IA'
+  | 'CRIAR_LEAD';
 
 export interface FluxoNoApi {
   id?: string;

@@ -41,6 +41,11 @@ export const createFunilSchema = z.object({
   isPadrao: z.boolean().default(false),
   /** Funil obrigatório/protegido — só ADMIN/DIRETOR liga; REP não edita/exclui. */
   protegido: z.boolean().optional(),
+  /**
+   * Funil de TRIAGEM — caixa de entrada bruta (inbound ainda não qualificado).
+   * Leads aqui ficam FORA dos KPIs globais do dashboard. Só ADMIN/DIRETOR liga.
+   */
+  triagem: z.boolean().optional(),
   /** Allow-list de tags permitidas no funil (Fase C). null = todas. */
   tagsPermitidas: z.array(z.string().trim().min(1)).nullable().optional(),
   /**

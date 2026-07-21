@@ -93,3 +93,31 @@ export function campanhaDoReferral(ref?: CtwaReferral): string | undefined {
   const bruto = ref.headline ?? ref.sourceId;
   return bruto ? bruto.toLowerCase().slice(0, 255) : undefined;
 }
+
+/**
+ * Traduz o referral do anúncio pro MESMO formato de atribuição que o Lead do site
+ * usa (`{ primeiro, ultimo }` em `variaveis.atribuicao` + colunas utm*). É o que
+ * permite o `atribuicao_por_campanha` somar lead de site e lead de CTWA no mesmo
+ * relatório, em vez de ter dois mundos paralelos.
+ *
+ * O CTWA tem UM toque só (o clique no anúncio que abriu a conversa), então
+ * `primeiro` e `ultimo` nascem iguais — mas o formato é o mesmo, e se o contato
+ * depois voltar pelo site o último toque é atualizado pelo caminho normal.
+ */
+export function atribuicaoDeReferral(
+  ref: CtwaReferral,
+  capturadoEm?: string,
+): { primeiro: Record<string, string>; ultimo: Record<string, string> } {
+  const bloco: Record<string, string> = {
+    // Convenção do card de atribuição: source = plataforma, medium = como chegou.
+    utmSource: 'meta',
+    utmMedium: 'click_to_whatsapp',
+  };
+  const campanha = campanhaDoReferral(ref);
+  if (campanha) bloco.utmCampaign = campanha;
+  // sourceId = id do anúncio/criativo no Meta — é o que amarra ao gerenciador.
+  if (ref.sourceId) bloco.utmContent = ref.sourceId;
+  if (ref.sourceUrl) bloco.landingPage = ref.sourceUrl;
+  if (capturadoEm) bloco.capturadoEm = capturadoEm;
+  return { primeiro: { ...bloco }, ultimo: { ...bloco } };
+}

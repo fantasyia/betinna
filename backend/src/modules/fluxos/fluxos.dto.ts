@@ -35,6 +35,7 @@ export const fluxoAcaoTipoValues = [
   'CONVERSAR_IA',
   'LIBERAR_LOTE',
   'PAUSAR_IA',
+  'CRIAR_LEAD',
 ] as const;
 
 // ─── Nó (FluxoNo) ────────────────────────────────────────────────────

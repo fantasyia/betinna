@@ -81,6 +81,8 @@ interface Funil {
   ativo: boolean;
   isPadrao: boolean;
   protegido?: boolean;
+  /** Funil de triagem: entrada bruta, fica fora dos KPIs globais do dashboard. */
+  triagem?: boolean;
   tagsPermitidas?: string[] | null;
   etapas: FunilEtapa[];
   _count?: { leads: number };
@@ -358,6 +360,7 @@ function FunilEditor({
             <h3 className="text-md font-semibold text-text truncate">{funil.nome}</h3>
             {funil.isPadrao && <Badge variant="primary">padrão</Badge>}
             {funil.protegido && <Badge variant="warning">obrigatório</Badge>}
+            {funil.triagem && <Badge variant="neutral">triagem · fora dos KPIs</Badge>}
             {!funil.ativo && <Badge variant="neutral">inativo</Badge>}
           </div>
           {funil.descricao && (
@@ -611,6 +614,7 @@ function FunilFormDialog({
   const [cor, setCor] = useState(funil?.cor ?? '#201554');
   const [isPadrao, setIsPadrao] = useState(funil?.isPadrao ?? false);
   const [protegido, setProtegido] = useState(funil?.protegido ?? false);
+  const [triagem, setTriagem] = useState(funil?.triagem ?? false);
   const [ativo, setAtivo] = useState(funil?.ativo ?? true);
   const formRole = useRole();
   const podeProteger = formRole === 'ADMIN' || formRole === 'DIRECTOR';
@@ -636,8 +640,11 @@ function FunilFormDialog({
       isPadrao,
       ativo,
     };
-    // Só ADMIN/DIRETOR manda 'protegido' (backend ignora dos demais de qualquer jeito).
-    if (podeProteger) payload.protegido = protegido;
+    // Só ADMIN/DIRETOR manda 'protegido'/'triagem' (backend ignora dos demais de qualquer jeito).
+    if (podeProteger) {
+      payload.protegido = protegido;
+      payload.triagem = triagem;
+    }
     if (descricao.trim()) payload.descricao = descricao.trim();
     // Allow-list de tags: vazio = null (todas permitidas); senão array de nomes.
     const tags = tagsPermitidas
@@ -748,6 +755,25 @@ function FunilFormDialog({
               <strong>Funil obrigatório (protegido)</strong>
               <span className="block text-xs text-muted">
                 Representantes não podem editar nem excluir este funil. Só ADMIN/Diretor.
+              </span>
+            </span>
+          </label>
+        )}
+        {podeProteger && (
+          <label className="flex items-start gap-2 text-sm cursor-pointer mt-1">
+            <input
+              type="checkbox"
+              checked={triagem}
+              onChange={(e) => setTriagem(e.target.checked)}
+              data-testid="funil-triagem-cb"
+              className="mt-0.5"
+            />
+            <span>
+              <strong>Funil de triagem (fora dos KPIs)</strong>
+              <span className="block text-xs text-muted">
+                Caixa de entrada bruta: recebe todo contato novo, inclusive o que não é
+                oportunidade. Quem está aqui não conta como "Leads ativos" no dashboard —
+                só depois de ser triado pro funil comercial.
               </span>
             </span>
           </label>

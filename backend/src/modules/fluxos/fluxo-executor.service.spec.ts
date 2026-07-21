@@ -51,7 +51,12 @@ const makePrismaMock = () => ({
     findFirst: vi.fn().mockResolvedValue(null),
     findMany: vi.fn().mockResolvedValue([]),
     update: vi.fn().mockResolvedValue({}),
+    create: vi.fn().mockResolvedValue({ id: 'lead-novo', nome: 'Fulano', etapa: 'NOVO' }),
     count: vi.fn().mockResolvedValue(0),
+  } satisfies MockModel,
+  conversation: {
+    findFirst: vi.fn().mockResolvedValue(null),
+    updateMany: vi.fn().mockResolvedValue({ count: 1 }),
   } satisfies MockModel,
   leadEtapaHistorico: {
     create: vi.fn().mockResolvedValue({}),
@@ -88,6 +93,8 @@ const makePrismaMock = () => ({
     update: vi.fn().mockResolvedValue({}),
   } satisfies MockModel,
   $transaction: vi.fn(async (ops: unknown[]) => Promise.all(ops as Promise<unknown>[])),
+  // Match de lead por sufixo de telefone (D18) — vazio = telefone ainda não é lead.
+  $queryRaw: vi.fn().mockResolvedValue([]),
 });
 
 const makeWhatsappMock = () => ({
@@ -185,6 +192,167 @@ describe('FluxoExecutorService', () => {
       { criarCardsDeTarefa: vi.fn(async () => ({})) } as never, // kanbanTarefa
       { suprimido: vi.fn(async () => false) } as never, // supressao
     );
+  });
+
+  describe('CRIAR_LEAD (triagem do Click-to-WhatsApp)', () => {
+    /** Conversa de WhatsApp vinda de anúncio, com a atribuição já gravada (etapa 1). */
+    const conversaComAnuncio = (over: Record<string, unknown> = {}) => ({
+      id: 'conv-1',
+      peerId: '5511987654321@s.whatsapp.net',
+      peerNome: 'Fulano da Silva',
+      leadId: null,
+      clienteId: null,
+      proprietarioId: null,
+      utmCampaign: 'vtcd-alimenticia',
+      metadata: {
+        atribuicao: {
+          ctwaClid: 'ARabc123',
+          sourceId: '120210000',
+          headline: 'VTCD-Alimenticia',
+          sourceUrl: 'https://fb.me/x',
+        },
+      },
+      ...over,
+    });
+
+    const prepararNo = (config: Record<string, unknown> = {}) => {
+      prisma.fluxoExecucao.findUnique.mockResolvedValue(
+        fakeExecucao({ status: 'EM_EXECUCAO', contexto: { conversationId: 'conv-1' } }),
+      );
+      prisma.fluxoNo.findUnique.mockResolvedValue(
+        fakeNo({ tipo: 'ACAO', acaoTipo: 'CRIAR_LEAD', config }),
+      );
+    };
+
+    it('HERDA a atribuição da conversa pro lead (colunas + variaveis) — requisito crítico', async () => {
+      prepararNo({ funilEtapaId: 'et-triagem' });
+      prisma.conversation.findFirst.mockResolvedValue(conversaComAnuncio());
+      prisma.funilEtapa.findFirst.mockResolvedValue({
+        id: 'et-triagem',
+        funilId: 'funil-triagem',
+        tipo: 'ATIVA',
+      });
+
+      await service.executarPasso('exec-1', 'no-1', 'job-test');
+
+      const criado = prisma.lead.create.mock.calls[0][0].data;
+      // Colunas indexadas: é por elas que o atribuicao_por_campanha agrupa.
+      expect(criado).toMatchObject({
+        empresaId: 'emp-1',
+        utmCampaign: 'vtcd-alimenticia',
+        utmSource: 'meta',
+        utmMedium: 'click_to_whatsapp',
+        origemCadastro: 'click_to_whatsapp',
+        contatoTelefone: '5511987654321',
+        funilId: 'funil-triagem',
+        funilEtapaId: 'et-triagem',
+      });
+      // Bloco no MESMO formato do lead de site (é o que soma os dois no relatório).
+      expect(criado.variaveis.atribuicao.primeiro).toMatchObject({
+        utmSource: 'meta',
+        utmMedium: 'click_to_whatsapp',
+        utmCampaign: 'vtcd-alimenticia',
+        utmContent: '120210000',
+      });
+      // Referral CRU preservado: se um dia precisar casar o ctwaClid com o Meta,
+      // o dado tem que estar aqui — não dá pra buscar de novo.
+      expect(criado.variaveis.ctwa).toMatchObject({ ctwaClid: 'ARabc123' });
+    });
+
+    it('amarra Conversation.leadId e publica o leadId no contexto da execução', async () => {
+      prepararNo({ funilEtapaId: 'et-triagem' });
+      prisma.conversation.findFirst.mockResolvedValue(conversaComAnuncio());
+      prisma.funilEtapa.findFirst.mockResolvedValue({
+        id: 'et-triagem',
+        funilId: 'funil-triagem',
+        tipo: 'ATIVA',
+      });
+
+      await service.executarPasso('exec-1', 'no-1', 'job-test');
+
+      expect(prisma.conversation.updateMany).toHaveBeenCalledWith({
+        where: { id: 'conv-1', empresaId: 'emp-1' },
+        data: { leadId: 'lead-novo' },
+      });
+      // Sem persistir no contexto, o nó SEGUINTE (tag/WhatsApp/mover) não enxerga
+      // o lead — cada passo é um job novo que relê o contexto do banco.
+      expect(prisma.fluxoExecucao.update).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: { contexto: expect.objectContaining({ leadId: 'lead-novo' }) },
+        }),
+      );
+    });
+
+    it('IDEMPOTENTE: conversa que já tem lead não cria outro', async () => {
+      prepararNo({ funilEtapaId: 'et-triagem' });
+      prisma.conversation.findFirst.mockResolvedValue(
+        conversaComAnuncio({ leadId: 'lead-antigo' }),
+      );
+
+      await service.executarPasso('exec-1', 'no-1', 'job-test');
+
+      expect(prisma.lead.create).not.toHaveBeenCalled();
+    });
+
+    it('IDEMPOTENTE: telefone que já é lead só AMARRA (match por sufixo D18)', async () => {
+      prepararNo({ funilEtapaId: 'et-triagem' });
+      prisma.conversation.findFirst.mockResolvedValue(conversaComAnuncio());
+      prisma.$queryRaw.mockResolvedValueOnce([{ id: 'lead-existente' }]);
+
+      await service.executarPasso('exec-1', 'no-1', 'job-test');
+
+      expect(prisma.lead.create).not.toHaveBeenCalled();
+      expect(prisma.conversation.updateMany).toHaveBeenCalledWith({
+        where: { id: 'conv-1', empresaId: 'emp-1' },
+        data: { leadId: 'lead-existente' },
+      });
+    });
+
+    it('conversa SEM anúncio: nasce como whatsapp orgânico, sem atribuição fantasma', async () => {
+      prepararNo({ funilEtapaId: 'et-triagem' });
+      prisma.conversation.findFirst.mockResolvedValue(
+        conversaComAnuncio({ utmCampaign: null, metadata: {} }),
+      );
+      prisma.funilEtapa.findFirst.mockResolvedValue({
+        id: 'et-triagem',
+        funilId: 'funil-triagem',
+        tipo: 'ATIVA',
+      });
+
+      await service.executarPasso('exec-1', 'no-1', 'job-test');
+
+      const criado = prisma.lead.create.mock.calls[0][0].data;
+      expect(criado).toMatchObject({
+        origemCadastro: 'whatsapp',
+        utmCampaign: null,
+        utmSource: null,
+      });
+      expect(criado.variaveis).toEqual({});
+    });
+
+    it('GRUPO não vira lead', async () => {
+      prepararNo({ funilEtapaId: 'et-triagem' });
+      prisma.conversation.findFirst.mockResolvedValue(
+        conversaComAnuncio({ peerId: '55119999@g.us' }),
+      );
+
+      await service.executarPasso('exec-1', 'no-1', 'job-test');
+
+      expect(prisma.lead.create).not.toHaveBeenCalled();
+    });
+
+    it('sem conversationId no contexto, falha explicando o gatilho certo', async () => {
+      prisma.fluxoExecucao.findUnique.mockResolvedValue(
+        fakeExecucao({ status: 'EM_EXECUCAO', contexto: {} }),
+      );
+      prisma.fluxoNo.findUnique.mockResolvedValue(
+        fakeNo({ tipo: 'ACAO', acaoTipo: 'CRIAR_LEAD', config: {} }),
+      );
+
+      await expect(service.executarPasso('exec-1', 'no-1', 'job-test')).rejects.toThrow(
+        /conversationId/,
+      );
+    });
   });
 
   describe('LIBERAR_LOTE (Fase B)', () => {

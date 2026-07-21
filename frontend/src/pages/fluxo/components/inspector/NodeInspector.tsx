@@ -17,6 +17,7 @@ import { DelayForm } from './DelayForm';
 import { WhatsAppActionForm } from './WhatsAppActionForm';
 import { EmailActionForm } from './EmailActionForm';
 import { MoverLeadEtapaForm } from './MoverLeadEtapaForm';
+import { CriarLeadForm } from './CriarLeadForm';
 import { CriarTarefaForm } from './CriarTarefaForm';
 import { WebhookExternoForm } from './WebhookExternoForm';
 import { MudarTagForm } from './MudarTagForm';
@@ -208,6 +209,10 @@ export function NodeInspector({
 
         {data.acaoTipo === 'CONVERSAR_IA' && (
           <ConversarIaForm data={data} onUpdate={onUpdate} prompts={prompts} />
+        )}
+
+        {data.acaoTipo === 'CRIAR_LEAD' && (
+          <CriarLeadForm data={data} onUpdate={onUpdate} etapasOpts={etapasOpts} />
         )}
 
         {data.acaoTipo === 'LIBERAR_LOTE' && (

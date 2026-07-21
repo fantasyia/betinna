@@ -281,7 +281,29 @@ export class RelatoriosService {
         })
       : null;
     if (params.funilId && !funilCustom) throw new NotFoundException('Funil', params.funilId);
-    if (funilCustom) baseFilter = { ...baseFilter, funilId: funilCustom.id };
+    if (funilCustom) {
+      baseFilter = { ...baseFilter, funilId: funilCustom.id };
+    } else {
+      // SEM funil selecionado = visão GLOBAL da empresa. Aqui os funis de TRIAGEM
+      // ficam de fora: a triagem recebe todo inbound 1:1 (spam, fornecedor,
+      // ex-cliente), e quem está lá ainda não é lead comercial. Contá-los infla
+      // "Leads ativos" com lixo e o KPI deixa de dizer se o número subiu porque a
+      // campanha funcionou. Quem quiser ver a triagem, seleciona o funil dela.
+      // OR com `funilId: null` porque `notIn` no Postgres descarta NULL — lead sem
+      // funil (caminho legado) TEM que continuar contando.
+      const triagemIds = (
+        await this.prisma.funil.findMany({
+          where: { empresaId, triagem: true },
+          select: { id: true },
+        })
+      ).map((f) => f.id);
+      if (triagemIds.length > 0) {
+        baseFilter = {
+          ...baseFilter,
+          OR: [{ funilId: null }, { funilId: { notIn: triagemIds } }],
+        };
+      }
+    }
 
     const [
       porEtapa,
