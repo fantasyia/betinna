@@ -1068,6 +1068,9 @@ server.registerTool(
 // ═══════════════════════════════════════════════════════════════════════
 
 const FLUXO_NO_TIPO = z.enum(['TRIGGER', 'CONDICAO', 'ACAO', 'DELAY']);
+// ⚠️ MANTER SINCRONIZADO com fluxoAcaoTipoValues do backend (fluxos.dto.ts) E com
+// o enum FluxoAcaoTipo do Prisma. Toda ação nova criada no editor precisa entrar
+// AQUI também — senão a master não consegue montá-la via fluxos_importar.
 const FLUXO_ACAO_TIPO = z.enum([
   'ENVIAR_WHATSAPP',
   'ENVIAR_EMAIL',
@@ -1079,6 +1082,8 @@ const FLUXO_ACAO_TIPO = z.enum([
   'CONVERSAR_IA',
   'LIBERAR_LOTE',
   'PAUSAR_IA',
+  'CRIAR_LEAD', // promove a conversa a Lead (triagem CTWA), herdando a atribuição
+  'TRANSFERIR_ATENDIMENTO', // handoff pro humano: atribui + pausa o bot + notifica
 ]);
 const FLUXO_TRIGGER_TIPO = z.enum([
   'LEAD_CRIADO',
