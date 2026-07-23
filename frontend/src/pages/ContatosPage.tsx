@@ -15,6 +15,7 @@ import {
   Target as TargetIcon,
   Briefcase,
   ChevronDown,
+  GitMerge,
 } from 'lucide-react';
 import { useApiQuery, type PaginatedResponse } from '@/hooks/useApiQuery';
 import { useDebouncedValue } from '@/hooks/useDebouncedValue';
@@ -23,6 +24,8 @@ import { PageLayout, useIsMobile } from '@/components/PageLayout';
 import { CrmTabs } from '@/components/CrmTabs';
 import { ImportLeadsModal } from '@/components/ImportLeadsModal';
 import { ImportClientesModal } from '@/components/ImportClientesModal';
+import { DuplicatasModal } from '@/components/DuplicatasModal';
+import { VincularClienteDialog } from '@/components/VincularClienteDialog';
 import { StateView } from '@/components/StateView';
 import { useToast } from '@/components/toast';
 import { api, apiErrorMessage } from '@/lib/api';
@@ -107,6 +110,7 @@ export default function ContatosPage() {
   const [selected, setSelected] = useState<Map<string, Contato>>(new Map());
   const [bulk, setBulk] = useState<'tag' | 'mover' | 'add-funil' | 'excluir' | null>(null);
   const [importKind, setImportKind] = useState<'choose' | 'leads' | 'clientes' | null>(null);
+  const [verDuplicatas, setVerDuplicatas] = useState(false);
 
   function toggle(c: Contato) {
     setSelected((prev) => {
@@ -183,13 +187,23 @@ export default function ContatosPage() {
       }
       actions={
         canEdit ? (
-          <Button
-            onClick={() => setImportKind('choose')}
-            leftIcon={<Upload className="h-3.5 w-3.5" />}
-            data-testid="contatos-importar-btn"
-          >
-            Importar
-          </Button>
+          <div className="flex items-center gap-2">
+            <Button
+              variant="secondary"
+              onClick={() => setVerDuplicatas(true)}
+              leftIcon={<GitMerge className="h-3.5 w-3.5" />}
+              data-testid="contatos-duplicatas-btn"
+            >
+              Duplicatas
+            </Button>
+            <Button
+              onClick={() => setImportKind('choose')}
+              leftIcon={<Upload className="h-3.5 w-3.5" />}
+              data-testid="contatos-importar-btn"
+            >
+              Importar
+            </Button>
+          </div>
         ) : undefined
       }
     >
@@ -483,13 +497,22 @@ export default function ContatosPage() {
         />
       )}
 
+      {verDuplicatas && (
+        <DuplicatasModal onClose={() => setVerDuplicatas(false)} onMerged={refetch} />
+      )}
+
       {detail && (
         <ContatoDrawer
           contato={detail}
+          canEdit={canEdit}
           onClose={() => setDetail(null)}
           onNavigate={(to) => {
             setDetail(null);
             navigate(to);
+          }}
+          onChanged={() => {
+            setDetail(null);
+            refetch();
           }}
           isMobile={isMobile}
         />
@@ -500,16 +523,21 @@ export default function ContatosPage() {
 
 function ContatoDrawer({
   contato,
+  canEdit,
   onClose,
   onNavigate,
+  onChanged,
   isMobile,
 }: {
   contato: Contato;
+  canEdit: boolean;
   onClose: () => void;
   onNavigate: (to: string) => void;
+  onChanged: () => void;
   isMobile: boolean;
 }) {
   const c = contato;
+  const [vinculando, setVinculando] = useState(false);
   return (
     <Drawer
       open
@@ -566,6 +594,18 @@ function ContatoDrawer({
               Ver no funil
             </Button>
           )}
+          {/* Lead que ainda não está ligado a um cliente: oferece o vínculo. É o
+              caso "essa pessoa também é meu cliente" — liga sem fundir. */}
+          {canEdit && c.leadId && !c.clienteId && (
+            <Button
+              variant="secondary"
+              onClick={() => setVinculando(true)}
+              leftIcon={<GitMerge className="h-3.5 w-3.5" />}
+              data-testid="vincular-cliente-btn"
+            >
+              Vincular a um cliente
+            </Button>
+          )}
           {c.conversaId && (
             <Button
               variant="secondary"
@@ -577,6 +617,17 @@ function ContatoDrawer({
           )}
         </div>
       </div>
+
+      {vinculando && c.leadId && (
+        <VincularClienteDialog
+          leadId={c.leadId}
+          onClose={() => setVinculando(false)}
+          onDone={() => {
+            setVinculando(false);
+            onChanged();
+          }}
+        />
+      )}
     </Drawer>
   );
 }
