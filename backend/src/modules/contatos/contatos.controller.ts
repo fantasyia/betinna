@@ -13,10 +13,12 @@ import {
   type DetalheContatoDto,
   type DuplicatasQueryDto,
   type ListContatosDto,
+  type MesclarClientesDto,
   type MesclarLeadsDto,
   type VincularLeadClienteDto,
   acaoMassaSchema,
   duplicatasQuerySchema,
+  mesclarClientesSchema,
   mesclarLeadsSchema,
   vincularLeadClienteSchema,
   criarLeadsSchema,
@@ -150,6 +152,51 @@ export class ContatosController {
     @Body(new ZodValidationPipe(vincularLeadClienteSchema)) dto: VincularLeadClienteDto,
   ) {
     return this.mesclagem.vincularLeadCliente(user, dto.leadId, dto.clienteId);
+  }
+
+  // ─── Mesclagem de CLIENTES (Fase 2 — fiscal/financeiro, só ADMIN/DIRECTOR) ──
+
+  @Get('clientes/duplicatas')
+  @RequirePermissions({ module: 'clientes', action: 'view' })
+  @ApiOperation({
+    summary:
+      'Grupos de CLIENTES suspeitos de duplicata (CNPJ, telefone ou e-mail). Só lista. ' +
+      'Só ADMIN/Diretor — envolve dado fiscal.',
+  })
+  duplicatasClientes(
+    @CurrentUser() user: AuthenticatedUser,
+    @Query(new ZodValidationPipe(duplicatasQuerySchema)) q: DuplicatasQueryDto,
+  ) {
+    return this.mesclagem.duplicatasClientes(user, q.limite);
+  }
+
+  @Post('clientes/mesclar/previa')
+  @RequirePermissions({ module: 'clientes', action: 'view' })
+  @ApiOperation({
+    summary:
+      'Prévia da mesclagem de clientes: pedidos/propostas/amostras que migram, conflitos ' +
+      'de preço especial, pontos somados. Comissão fechada NÃO é tocada. Não altera nada.',
+  })
+  previaCliente(
+    @CurrentUser() user: AuthenticatedUser,
+    @Body(new ZodValidationPipe(mesclarClientesSchema)) dto: MesclarClientesDto,
+  ) {
+    return this.mesclagem.previaCliente(user, dto.principalId, dto.absorvidoId);
+  }
+
+  @Post('clientes/mesclar')
+  @RequirePermissions({ module: 'clientes', action: 'edit' })
+  @Audit({ action: 'mesclar_clientes', resource: 'contato' })
+  @ApiOperation({
+    summary:
+      'Funde dois clientes (só CNPJ igual ou um sem CNPJ). Migra os 15 dependentes; ' +
+      'preço especial: sobrevivente vence; pontos somados; comissão nunca recalcula. Reversível.',
+  })
+  mesclarClientes(
+    @CurrentUser() user: AuthenticatedUser,
+    @Body(new ZodValidationPipe(mesclarClientesSchema)) dto: MesclarClientesDto,
+  ) {
+    return this.mesclagem.mesclarClientes(user, dto.principalId, dto.absorvidoId);
   }
 
   @Post('mesclagens/:id/desfazer')

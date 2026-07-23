@@ -130,3 +130,11 @@ export const duplicatasQuerySchema = z.object({
   limite: z.coerce.number().int().min(1).max(200).optional().default(50),
 });
 export type DuplicatasQueryDto = z.infer<typeof duplicatasQuerySchema>;
+
+// ─── Mesclagem de CLIENTES (Fase 2) ───────────────────────────────────
+
+export const mesclarClientesSchema = z.object({
+  principalId: z.string().min(1),
+  absorvidoId: z.string().min(1),
+});
+export type MesclarClientesDto = z.infer<typeof mesclarClientesSchema>;
