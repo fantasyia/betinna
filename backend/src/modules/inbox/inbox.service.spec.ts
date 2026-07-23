@@ -71,6 +71,10 @@ describe('InboxService.processarMensagemEntrante', () => {
       {
         publicar: () => Promise.resolve(),
       } as never,
+      {
+        criarParaUsuario: () => Promise.resolve(null),
+        criarParaRole: () => Promise.resolve(0),
+      } as never,
     );
   });
 
@@ -309,6 +313,10 @@ describe('InboxService.responder', () => {
       {
         publicar: () => Promise.resolve(),
       } as never,
+      {
+        criarParaUsuario: () => Promise.resolve(null),
+        criarParaRole: () => Promise.resolve(0),
+      } as never,
     );
   });
 
@@ -427,6 +435,10 @@ describe('InboxService.atribuir', () => {
       {
         publicar: () => Promise.resolve(),
       } as never,
+      {
+        criarParaUsuario: () => Promise.resolve(null),
+        criarParaRole: () => Promise.resolve(0),
+      } as never,
     );
   });
 
@@ -474,6 +486,68 @@ describe('InboxService.atribuir', () => {
     });
     expect(r.atribuidoId).toBe('u2');
   });
+
+  it('notifica o NOVO responsável ao atribuir (item do card de atendimento)', async () => {
+    const criarParaUsuario = vi.fn().mockResolvedValue(null);
+    const svcN = new InboxService(
+      prisma as never,
+      new CanalAdapterRegistry(),
+      { get: () => 24 } as never,
+      { publicar: () => Promise.resolve() } as never,
+      { criarParaUsuario, criarParaRole: vi.fn() } as never,
+    );
+    // existing tinha atribuidoId=u1; atribui pra u2 (mudança → notifica).
+    prisma.conversation.findFirst.mockResolvedValueOnce({
+      id: 'conv-1',
+      empresaId: 'emp-1',
+      canal: 'WHATSAPP',
+      peerId: 'x',
+      peerNome: 'Fulano',
+      atribuidoId: 'u1',
+    });
+    prisma.usuario.findFirst.mockResolvedValueOnce({ id: 'u2' });
+    prisma.conversation.updateMany.mockResolvedValueOnce({ count: 1 });
+    prisma.conversation.findUniqueOrThrow.mockResolvedValueOnce({
+      id: 'conv-1',
+      atribuidoId: 'u2',
+    });
+
+    await svcN.atribuir(fakeUser({ role: 'ADMIN' as UserRole, id: 'admin' }), 'conv-1', {
+      atribuidoId: 'u2',
+    });
+    expect(criarParaUsuario).toHaveBeenCalledWith(
+      expect.objectContaining({ usuarioId: 'u2', empresaId: 'emp-1' }),
+    );
+  });
+
+  it('NÃO notifica quem se auto-atribui (já sabe)', async () => {
+    const criarParaUsuario = vi.fn().mockResolvedValue(null);
+    const svcN = new InboxService(
+      prisma as never,
+      new CanalAdapterRegistry(),
+      { get: () => 24 } as never,
+      { publicar: () => Promise.resolve() } as never,
+      { criarParaUsuario, criarParaRole: vi.fn() } as never,
+    );
+    prisma.conversation.findFirst.mockResolvedValueOnce({
+      id: 'conv-1',
+      empresaId: 'emp-1',
+      canal: 'WHATSAPP',
+      peerId: 'x',
+      atribuidoId: null,
+    });
+    prisma.usuario.findFirst.mockResolvedValueOnce({ id: 'admin' });
+    prisma.conversation.updateMany.mockResolvedValueOnce({ count: 1 });
+    prisma.conversation.findUniqueOrThrow.mockResolvedValueOnce({
+      id: 'conv-1',
+      atribuidoId: 'admin',
+    });
+
+    await svcN.atribuir(fakeUser({ role: 'ADMIN' as UserRole, id: 'admin' }), 'conv-1', {
+      atribuidoId: 'admin',
+    });
+    expect(criarParaUsuario).not.toHaveBeenCalled();
+  });
 });
 
 describe('InboxService bulk operations', () => {
@@ -488,6 +562,10 @@ describe('InboxService bulk operations', () => {
       { get: () => 24 } as never,
       {
         publicar: () => Promise.resolve(),
+      } as never,
+      {
+        criarParaUsuario: () => Promise.resolve(null),
+        criarParaRole: () => Promise.resolve(0),
       } as never,
     );
   });
@@ -611,6 +689,10 @@ describe('InboxService.list — SLA (aguardandoDesde)', () => {
       {
         publicar: () => Promise.resolve(),
       } as never,
+      {
+        criarParaUsuario: () => Promise.resolve(null),
+        criarParaRole: () => Promise.resolve(0),
+      } as never,
     );
   });
 
@@ -667,6 +749,10 @@ describe('InboxService.listarContatosWhatsapp', () => {
       { get: () => 24 } as never,
       {
         publicar: () => Promise.resolve(),
+      } as never,
+      {
+        criarParaUsuario: () => Promise.resolve(null),
+        criarParaRole: () => Promise.resolve(0),
       } as never,
     );
   });

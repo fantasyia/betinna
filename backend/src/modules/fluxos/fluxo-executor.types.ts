@@ -134,6 +134,33 @@ export interface AtribuirRepConfig {
   representanteId: string;
 }
 
+/**
+ * Config da ação TRANSFERIR_ATENDIMENTO — passa a conversa do bot pro humano no
+ * MESMO número (atrito zero). É o nó que a branch financeiro/suporte da triagem
+ * chama. Faz de uma vez: atribui + PAUSA o bot + notifica.
+ *
+ * `atendenteId` OPCIONAL define o modelo:
+ *  - preenchido → atribui a esse agente e notifica ELE (modo A).
+ *  - vazio → cai na FILA (sem dono), com a categoria de atendimento, e notifica o
+ *    papel SAC — quem estiver livre pega (modo B; mais resiliente com 1 atendente,
+ *    não trava se a pessoa sair). A escolha A/B é por-nó, definida ao montar o fluxo.
+ */
+export interface TransferirAtendimentoConfig {
+  /** Agente que recebe a conversa. Vazio = fila (notifica SAC). */
+  atendenteId?: string;
+  /** Categoria da conversa após transferir. Default POS_VENDA (fila de atendimento). */
+  categoria?:
+    | 'GERAL'
+    | 'PRE_VENDA'
+    | 'POS_VENDA'
+    | 'RECLAMACAO'
+    | 'MEDIACAO'
+    | 'DEVOLUCAO'
+    | 'DISPUTA';
+  /** Papéis notificados quando cai na fila (sem atendenteId). Default ['SAC']. */
+  notificarRoles?: Array<'SAC' | 'GERENTE' | 'DIRECTOR' | 'ADMIN'>;
+}
+
 /** Config da ação WEBHOOK_EXTERNO. */
 export interface WebhookExternoConfig {
   url: string;

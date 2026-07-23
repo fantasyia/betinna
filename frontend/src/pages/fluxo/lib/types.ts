@@ -38,7 +38,8 @@ export type AcaoTipo =
   | 'CONVERSAR_IA'
   | 'LIBERAR_LOTE'
   | 'PAUSAR_IA'
-  | 'CRIAR_LEAD';
+  | 'CRIAR_LEAD'
+  | 'TRANSFERIR_ATENDIMENTO';
 
 export interface FluxoNoApi {
   id?: string;

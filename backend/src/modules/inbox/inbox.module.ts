@@ -1,6 +1,7 @@
 import { Global, Module, forwardRef } from '@nestjs/common';
 import { MetaModule } from '@integrations/meta/meta.module';
 import { WhatsAppModule } from '@integrations/whatsapp/whatsapp.module';
+import { NotificacoesModule } from '@modules/notificacoes/notificacoes.module';
 import { CanalAdapterRegistry } from './canal-adapter.registry';
 import { ConversationNotasService } from './conversation-notas.service';
 import { ConversationPresencaService } from './conversation-presenca.service';
@@ -19,7 +20,7 @@ import { InboxService } from './inbox.service';
  */
 @Global()
 @Module({
-  imports: [forwardRef(() => WhatsAppModule), forwardRef(() => MetaModule)],
+  imports: [forwardRef(() => WhatsAppModule), forwardRef(() => MetaModule), NotificacoesModule],
   controllers: [InboxController],
   providers: [
     InboxService,

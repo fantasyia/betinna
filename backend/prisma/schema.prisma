@@ -1570,6 +1570,7 @@ enum FluxoAcaoTipo {
   LIBERAR_LOTE // libera N leads de uma etapa (disparo controlado anti-sobrecarga)
   PAUSAR_IA // desliga o bot (Bot=Desligado) na conversa do lead até religar manual
   CRIAR_LEAD // cria Lead a partir da conversa (triagem) HERDANDO a atribuição dela
+  TRANSFERIR_ATENDIMENTO // passa a conversa pro humano: atribui + pausa o bot + notifica (atrito zero)
 }
 
 enum FluxoExecucaoStatus {

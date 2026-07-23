@@ -11,6 +11,7 @@ import { SupressaoService } from '@shared/supressao/supressao.service';
 import { TransactionalEmailService } from '@integrations/email/transactional-email.service';
 import { IntegracaoStatusService } from '@modules/integracoes/integracao-status.service';
 import { KanbanTarefaService } from '@modules/kanban/kanban-tarefa.service';
+import { NotificacoesService } from '@modules/notificacoes/notificacoes.service';
 import { Prisma } from '@prisma/client';
 import { safeRequest, SsrfBlockedError } from '@shared/utils/safe-request';
 import { interpolate } from '@shared/utils/interpolate';
@@ -35,6 +36,7 @@ import {
   type MudarTagConfig,
   type MoverLeadEtapaConfig,
   type CriarLeadConfig,
+  type TransferirAtendimentoConfig,
   type PausarIaConfig,
   type AtribuirRepConfig,
   type WebhookExternoConfig,
@@ -192,6 +194,7 @@ export class FluxoExecutorService {
     @InjectQueue(FLUXO_QUEUE) private readonly queue: Queue<FluxoStepJobData>,
     private readonly kanbanTarefa: KanbanTarefaService,
     private readonly supressao: SupressaoService,
+    private readonly notificacoes: NotificacoesService,
   ) {}
 
   /**
@@ -701,6 +704,9 @@ export class FluxoExecutorService {
 
       case 'CRIAR_LEAD':
         return this.acaoCriarLead(cfg as CriarLeadConfig, ctx, empresaId, execucaoId);
+
+      case 'TRANSFERIR_ATENDIMENTO':
+        return this.acaoTransferirAtendimento(cfg as TransferirAtendimentoConfig, ctx, empresaId);
 
       default:
         throw new Error(`Tipo de ação desconhecido: ${acaoTipo}`);
@@ -1517,6 +1523,105 @@ export class FluxoExecutorService {
       origemCadastro,
       utmCampaign: campanha ?? null,
       herdouAtribuicao: !!referral,
+    };
+  }
+
+  /**
+   * TRANSFERIR_ATENDIMENTO — passa a conversa do bot pro humano no MESMO número
+   * (atrito zero). A branch financeiro/suporte da triagem chama este nó.
+   *
+   * Faz três coisas de uma vez, na ordem que importa:
+   *  1. PAUSA o bot na conversa (`precisaHumano=true`) — item MAIS crítico: sem
+   *     isso o bot e o atendente respondem juntos na frente do cliente. O gate do
+   *     bot (muller-whatsapp) checa `precisaHumano` e cala até o operador responder.
+   *  2. ATRIBUI: com `atendenteId` → dono direto (modo A); sem → fila sem dono
+   *     (modo B). `categoria` (default POS_VENDA) tira a conversa do fluxo de venda.
+   *  3. NOTIFICA: o atendente (modo A) ou o papel SAC (modo B) — best-effort.
+   */
+  private async acaoTransferirAtendimento(
+    cfg: TransferirAtendimentoConfig,
+    ctx: ExecucaoContexto,
+    empresaId: string,
+  ): Promise<Record<string, unknown>> {
+    this.assertEmpresaId(empresaId, 'TRANSFERIR_ATENDIMENTO');
+    const conversationId = ctx['conversationId'] as string | undefined;
+    if (!conversationId) {
+      throw new Error(
+        'contexto.conversationId ausente para TRANSFERIR_ATENDIMENTO — use o gatilho "Chegou mensagem num canal"',
+      );
+    }
+    const conversa = await this.prisma.conversation.findFirst({
+      where: { id: conversationId, empresaId },
+      select: { id: true, peerNome: true, atribuidoId: true },
+    });
+    if (!conversa) {
+      throw new Error(`Conversa ${conversationId} não encontrada na empresa ${empresaId}`);
+    }
+
+    // Atendente específico (modo A): valida que é da empresa antes de atribuir.
+    let atendenteId: string | null = null;
+    if (cfg.atendenteId) {
+      const ok = await this.prisma.usuario.findFirst({
+        where: { id: cfg.atendenteId, empresas: { some: { empresaId } } },
+        select: { id: true },
+      });
+      if (!ok) throw new Error(`Atendente ${cfg.atendenteId} não pertence à empresa ${empresaId}`);
+      atendenteId = cfg.atendenteId;
+    }
+
+    const categoria = cfg.categoria ?? 'POS_VENDA';
+    await this.prisma.conversation.updateMany({
+      where: { id: conversa.id, empresaId },
+      data: {
+        // 1) PAUSA o bot — o dado que garante "atrito zero".
+        precisaHumano: true,
+        // 2) atribui (ou deixa na fila) + tira do fluxo de venda + reabre.
+        ...(atendenteId ? { atribuidoId: atendenteId } : {}),
+        categoria,
+        status: 'ABERTA',
+      },
+    });
+
+    // 3) Notifica (best-effort — falhar aqui não desfaz a transferência).
+    const quem = conversa.peerNome?.trim() || 'um contato';
+    const link = `/inbox?conversa=${conversa.id}`;
+    try {
+      if (atendenteId) {
+        await this.notificacoes.criarParaUsuario({
+          empresaId,
+          usuarioId: atendenteId,
+          tipo: 'MENSAGEM_INBOX',
+          titulo: 'Conversa transferida pra você',
+          mensagem: `${quem} foi transferido pra você no atendimento. O bot foi pausado nessa conversa.`,
+          link,
+          metadata: { conversationId: conversa.id },
+        });
+      } else {
+        const roles = cfg.notificarRoles?.length ? cfg.notificarRoles : (['SAC'] as const);
+        await this.notificacoes.criarParaRole({
+          empresaId,
+          roles: [...roles],
+          tipo: 'MENSAGEM_INBOX',
+          titulo: 'Nova conversa na fila de atendimento',
+          mensagem: `${quem} caiu na fila de atendimento. O bot foi pausado — quem estiver livre pode assumir.`,
+          link,
+          metadata: { conversationId: conversa.id },
+        });
+      }
+    } catch (err) {
+      this.logger.error(
+        `TRANSFERIR_ATENDIMENTO: conversa ${conversa.id} transferida mas notificação falhou: ${
+          err instanceof Error ? err.message : String(err)
+        }`,
+      );
+    }
+
+    return {
+      transferido: true,
+      conversationId: conversa.id,
+      atendenteId,
+      fila: !atendenteId,
+      categoria,
     };
   }
 

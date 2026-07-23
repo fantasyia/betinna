@@ -7,6 +7,7 @@ import { RODAR_BACKGROUND } from '@shared/utils/service-type';
 import { MullerBotModule } from '@modules/mullerbot/mullerbot.module';
 import { RagModule } from '@modules/rag/rag.module';
 import { KanbanModule } from '@modules/kanban/kanban.module';
+import { NotificacoesModule } from '@modules/notificacoes/notificacoes.module';
 import { FluxoEventBusService } from './fluxo-event-bus.service';
 import { FluxoExecutorProcessor } from './fluxo-executor.processor';
 import { FluxoExecutorService } from './fluxo-executor.service';
@@ -44,6 +45,8 @@ import { DEAD_LETTER_QUEUE } from '@modules/dead-letter/dead-letter.types';
     RagModule,
     // CRIAR_TAREFA → card Kanban (quadro do rep + espelho no Diretor).
     KanbanModule,
+    // TRANSFERIR_ATENDIMENTO → notifica o agente/SAC ao passar a conversa.
+    NotificacoesModule,
   ],
   controllers: [FluxosController, MonitorController, WebhookEntradaController],
   providers: [

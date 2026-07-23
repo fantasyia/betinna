@@ -18,6 +18,7 @@ import { WhatsAppActionForm } from './WhatsAppActionForm';
 import { EmailActionForm } from './EmailActionForm';
 import { MoverLeadEtapaForm } from './MoverLeadEtapaForm';
 import { CriarLeadForm } from './CriarLeadForm';
+import { TransferirAtendimentoForm } from './TransferirAtendimentoForm';
 import { CriarTarefaForm } from './CriarTarefaForm';
 import { WebhookExternoForm } from './WebhookExternoForm';
 import { MudarTagForm } from './MudarTagForm';
@@ -213,6 +214,10 @@ export function NodeInspector({
 
         {data.acaoTipo === 'CRIAR_LEAD' && (
           <CriarLeadForm data={data} onUpdate={onUpdate} etapasOpts={etapasOpts} />
+        )}
+
+        {data.acaoTipo === 'TRANSFERIR_ATENDIMENTO' && (
+          <TransferirAtendimentoForm data={data} onUpdate={onUpdate} usuarios={usuarios} />
         )}
 
         {data.acaoTipo === 'LIBERAR_LOTE' && (

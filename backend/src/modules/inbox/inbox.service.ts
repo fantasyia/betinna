@@ -20,6 +20,7 @@ import type { AuthenticatedUser } from '@shared/types/authenticated-user';
 import { type Paginated, buildPaginated } from '@shared/types/pagination';
 import { CanalAdapterRegistry } from './canal-adapter.registry';
 import { type InboxEvento, InboxEventsService } from './inbox-events.service';
+import { NotificacoesService } from '@modules/notificacoes/notificacoes.service';
 import type {
   AlterarStatusDto,
   AtribuirDto,
@@ -78,6 +79,7 @@ export class InboxService {
     private readonly registry: CanalAdapterRegistry,
     private readonly env: EnvService,
     private readonly eventos: InboxEventsService,
+    private readonly notificacoes: NotificacoesService,
   ) {}
 
   /**
@@ -473,6 +475,27 @@ export class InboxService {
       where: { id, empresaId: existing.empresaId },
       data: { atribuidoId: dto.atribuidoId },
     });
+
+    // Notifica o novo responsável (item do card de atendimento). Só quando MUDA
+    // pra alguém — reatribuir pra mesma pessoa ou desatribuir (null) não notifica.
+    // Não notifica quem se auto-atribui (já sabe). Best-effort.
+    if (
+      dto.atribuidoId &&
+      dto.atribuidoId !== existing.atribuidoId &&
+      dto.atribuidoId !== user.id
+    ) {
+      const quem = existing.peerNome?.trim() || existing.cliente?.nome || 'um contato';
+      await this.notificacoes.criarParaUsuario({
+        empresaId: existing.empresaId,
+        usuarioId: dto.atribuidoId,
+        tipo: 'MENSAGEM_INBOX',
+        titulo: 'Conversa atribuída a você',
+        mensagem: `${quem} foi atribuído a você no atendimento.`,
+        link: `/inbox?conversa=${id}`,
+        metadata: { conversationId: id },
+      });
+    }
+
     return this.prisma.conversation.findUniqueOrThrow({
       where: { id },
       include: conversationInclude,

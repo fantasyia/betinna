@@ -61,6 +61,8 @@ export function resumoNo(data: NodePayload): string | null {
       return c.aguardarResposta === false ? 'IA responde e segue' : 'IA conversa e aguarda resposta';
     case 'PAUSAR_IA':
       return 'pausa a IA na conversa';
+    case 'TRANSFERIR_ATENDIMENTO':
+      return c.atendenteId ? 'transfere pro atendente escolhido' : 'joga na fila de atendimento';
     case 'CRIAR_LEAD':
       return c.funilEtapaId ? 'cria lead na etapa escolhida' : 'cria lead da conversa';
     default:
@@ -81,6 +83,7 @@ export const BLOCO_DESC: Partial<Record<AcaoTipo, string>> & Record<string, stri
   LIBERAR_LOTE: 'Move um lote controlado de leads',
   PAUSAR_IA: 'Pausa a IA naquela conversa',
   CRIAR_LEAD: 'Vira lead a conversa (herda a campanha)',
+  TRANSFERIR_ATENDIMENTO: 'Passa a conversa pro humano (pausa o bot + notifica)',
   CONDICAO: 'Bifurca o fluxo por uma condição',
   DELAY: 'Espera um tempo antes do próximo passo',
   TRIGGER: 'Quando o fluxo começa',

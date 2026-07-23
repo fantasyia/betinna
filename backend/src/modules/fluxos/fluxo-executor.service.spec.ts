@@ -167,6 +167,10 @@ describe('FluxoExecutorService', () => {
   let bus: ReturnType<typeof makeBusMock>;
   let conversarIa: ReturnType<typeof makeConversarIaMock>;
   let integracaoStatus: { marcarDesconectado: ReturnType<typeof vi.fn> };
+  let notificacoes: {
+    criarParaUsuario: ReturnType<typeof vi.fn>;
+    criarParaRole: ReturnType<typeof vi.fn>;
+  };
   let service: FluxoExecutorService;
 
   beforeEach(() => {
@@ -178,6 +182,10 @@ describe('FluxoExecutorService', () => {
     bus = makeBusMock();
     conversarIa = makeConversarIaMock();
     integracaoStatus = { marcarDesconectado: vi.fn().mockResolvedValue(undefined) };
+    notificacoes = {
+      criarParaUsuario: vi.fn().mockResolvedValue(null),
+      criarParaRole: vi.fn().mockResolvedValue(0),
+    };
     service = new FluxoExecutorService(
       prisma as never,
       makeEnvMock() as never,
@@ -191,7 +199,80 @@ describe('FluxoExecutorService', () => {
       queue as never,
       { criarCardsDeTarefa: vi.fn(async () => ({})) } as never, // kanbanTarefa
       { suprimido: vi.fn(async () => false) } as never, // supressao
+      notificacoes as never,
     );
+  });
+
+  describe('TRANSFERIR_ATENDIMENTO (handoff do bot pro humano)', () => {
+    const prepararNo = (config: Record<string, unknown> = {}) => {
+      prisma.fluxoExecucao.findUnique.mockResolvedValue(
+        fakeExecucao({ status: 'EM_EXECUCAO', contexto: { conversationId: 'conv-1' } }),
+      );
+      prisma.fluxoNo.findUnique.mockResolvedValue(
+        fakeNo({ tipo: 'ACAO', acaoTipo: 'TRANSFERIR_ATENDIMENTO', config }),
+      );
+      prisma.conversation.findFirst.mockResolvedValue({
+        id: 'conv-1',
+        peerNome: 'Fulano',
+        atribuidoId: null,
+      });
+    };
+
+    it('⚠️ PAUSA o bot (precisaHumano=true) — o dado do atrito zero', async () => {
+      prepararNo({}); // sem atendente = fila
+      await service.executarPasso('exec-1', 'no-1', 'job-test');
+
+      const data = prisma.conversation.updateMany.mock.calls[0][0].data;
+      expect(data.precisaHumano).toBe(true);
+      expect(data.categoria).toBe('POS_VENDA');
+      expect(data.status).toBe('ABERTA');
+    });
+
+    it('COM atendente: atribui a ele + notifica ELE (modo A)', async () => {
+      prepararNo({ atendenteId: 'u-atende' });
+      prisma.usuario.findFirst.mockResolvedValue({ id: 'u-atende' }); // pertence à empresa
+
+      await service.executarPasso('exec-1', 'no-1', 'job-test');
+
+      expect(prisma.conversation.updateMany.mock.calls[0][0].data.atribuidoId).toBe('u-atende');
+      expect(notificacoes.criarParaUsuario).toHaveBeenCalledWith(
+        expect.objectContaining({ usuarioId: 'u-atende', empresaId: 'emp-1' }),
+      );
+      expect(notificacoes.criarParaRole).not.toHaveBeenCalled();
+    });
+
+    it('SEM atendente: fila (sem dono) + notifica o SAC (modo B)', async () => {
+      prepararNo({});
+      await service.executarPasso('exec-1', 'no-1', 'job-test');
+
+      // Não atribui a ninguém.
+      expect(prisma.conversation.updateMany.mock.calls[0][0].data.atribuidoId).toBeUndefined();
+      expect(notificacoes.criarParaRole).toHaveBeenCalledWith(
+        expect.objectContaining({ roles: ['SAC'] }),
+      );
+      expect(notificacoes.criarParaUsuario).not.toHaveBeenCalled();
+    });
+
+    it('atendente de outra empresa é recusado (anti cross-tenant)', async () => {
+      prepararNo({ atendenteId: 'u-alheio' });
+      prisma.usuario.findFirst.mockResolvedValue(null); // não pertence à empresa
+
+      await expect(service.executarPasso('exec-1', 'no-1', 'job-test')).rejects.toThrow(
+        /não pertence à empresa/,
+      );
+    });
+
+    it('sem conversationId no contexto, falha apontando o gatilho certo', async () => {
+      prisma.fluxoExecucao.findUnique.mockResolvedValue(
+        fakeExecucao({ status: 'EM_EXECUCAO', contexto: {} }),
+      );
+      prisma.fluxoNo.findUnique.mockResolvedValue(
+        fakeNo({ tipo: 'ACAO', acaoTipo: 'TRANSFERIR_ATENDIMENTO', config: {} }),
+      );
+      await expect(service.executarPasso('exec-1', 'no-1', 'job-test')).rejects.toThrow(
+        /conversationId/,
+      );
+    });
   });
 
   describe('CRIAR_LEAD (triagem do Click-to-WhatsApp)', () => {
