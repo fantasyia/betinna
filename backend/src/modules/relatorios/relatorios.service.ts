@@ -275,7 +275,7 @@ export class RelatoriosService {
             id: true,
             etapas: {
               orderBy: { ordem: 'asc' },
-              select: { id: true, nome: true, cor: true, tipo: true },
+              select: { id: true, nome: true, cor: true, tipo: true, probabilidade: true },
             },
           },
         })
@@ -386,6 +386,14 @@ export class RelatoriosService {
       cor?: string;
       count: number;
       valorEstimado: number;
+      /** % de fechamento da etapa (campo já cadastrado no funil). Custom only. */
+      probabilidade?: number;
+      /** valorEstimado × probabilidade/100 — pipeline realista. Custom only. */
+      valorPonderado?: number;
+      /** Leads que ENTRARAM na etapa no período (histórico) — base da conversão. */
+      entradasPeriodo?: number;
+      /** Tempo médio (dias) que um lead fica nesta etapa, via histórico. */
+      tempoMedioDias?: number | null;
     }>;
     let totalAtivos: number;
     if (funilCustom) {
@@ -395,14 +403,56 @@ export class RelatoriosService {
         _sum: { valorEstimado: Prisma.Decimal | null };
       }>;
       const byEtapa = new Map(porFunilEtapa.map((g) => [g.funilEtapaId, g]));
+
+      // M5 (dashboard): conversão entre etapas + tempo médio parado — as duas
+      // vêm do HISTÓRICO de transições, não do snapshot. Métricas de GESTÃO:
+      // computadas no âmbito da empresa/funil (sem recorte de carteira — o
+      // recorte do rep vale pras contagens, não pra taxa histórica do funil).
+      const [entradas, tempos] = await Promise.all([
+        this.prisma.leadEtapaHistorico.groupBy({
+          by: ['etapaDestino'],
+          where: {
+            empresaId,
+            funilId: funilCustom.id,
+            ocorridoEm: { gte: de, lte: ate },
+            etapaDestino: { not: null },
+          },
+          _count: { _all: true },
+        }),
+        // Tempo na etapa = intervalo entre ENTRAR nela (etapaDestino=E) e a
+        // PRÓXIMA transição do mesmo lead (janela LAG/LEAD por lead).
+        this.prisma.$queryRaw<Array<{ etapa: string; dias: number }>>`
+          WITH t AS (
+            SELECT "leadId", "etapaDestino" AS etapa, "ocorridoEm",
+                   LEAD("ocorridoEm") OVER (PARTITION BY "leadId" ORDER BY "ocorridoEm") AS saida
+            FROM "LeadEtapaHistorico"
+            WHERE "empresaId" = ${empresaId} AND "funilId" = ${funilCustom.id}
+          )
+          SELECT etapa, (AVG(EXTRACT(EPOCH FROM (saida - "ocorridoEm")) / 86400))::float AS dias
+          FROM t
+          WHERE saida IS NOT NULL AND etapa IS NOT NULL
+          GROUP BY etapa
+        `,
+      ]);
+      const entradasPorEtapa = new Map(entradas.map((e) => [e.etapaDestino, e._count._all]));
+      const tempoPorEtapa = new Map(tempos.map((t) => [t.etapa, t.dias]));
+
       funilAtual = funilCustom.etapas.map((et) => {
         const g = byEtapa.get(et.id);
+        const valor = arredondar(g?._sum.valorEstimado ?? null);
         return {
           etapa: et.id,
           label: et.nome,
           cor: et.cor,
           count: g?._count._all ?? 0,
-          valorEstimado: arredondar(g?._sum.valorEstimado ?? null),
+          valorEstimado: valor,
+          probabilidade: et.probabilidade,
+          valorPonderado: Math.round(valor * et.probabilidade) / 100,
+          entradasPeriodo: entradasPorEtapa.get(et.id) ?? 0,
+          tempoMedioDias:
+            tempoPorEtapa.get(et.id) != null
+              ? Math.round(tempoPorEtapa.get(et.id)! * 10) / 10
+              : null,
         };
       });
       totalAtivos = funilCustom.etapas

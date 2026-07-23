@@ -18,6 +18,7 @@ const makeAggrResult = (overrides: Record<string, unknown> = {}) => ({
 });
 
 const makePrismaMock = () => ({
+  $queryRaw: vi.fn().mockResolvedValue([]),
   pedido: {
     aggregate: vi.fn().mockResolvedValue(makeAggrResult()),
     groupBy: vi.fn().mockResolvedValue([]),
@@ -26,6 +27,9 @@ const makePrismaMock = () => ({
     count: vi.fn().mockResolvedValue(0),
     groupBy: vi.fn().mockResolvedValue([]),
     findMany: vi.fn().mockResolvedValue([]),
+  } satisfies MockModel,
+  leadEtapaHistorico: {
+    groupBy: vi.fn().mockResolvedValue([]),
   } satisfies MockModel,
   funil: {
     findFirst: vi.fn().mockResolvedValue(null),
@@ -289,9 +293,9 @@ describe('RelatoriosService', () => {
       prisma.funil.findFirst.mockResolvedValueOnce({
         id: 'fun-1',
         etapas: [
-          { id: 'et-novo', nome: 'Entrada', cor: '#111111', tipo: 'ATIVA' },
-          { id: 'et-prop', nome: 'Proposta', cor: '#222222', tipo: 'ATIVA' },
-          { id: 'et-fechado', nome: 'Fechado', cor: '#00ff00', tipo: 'GANHO' },
+          { id: 'et-novo', nome: 'Entrada', cor: '#111111', tipo: 'ATIVA', probabilidade: 10 },
+          { id: 'et-prop', nome: 'Proposta', cor: '#222222', tipo: 'ATIVA', probabilidade: 50 },
+          { id: 'et-fechado', nome: 'Fechado', cor: '#00ff00', tipo: 'GANHO', probabilidade: 100 },
         ],
       });
       // 1ª chamada de groupBy = snapshot (agora por funilEtapaId).
@@ -303,7 +307,7 @@ describe('RelatoriosService', () => {
       const result = await service.funil(fakeUser(), { ...basePeriodo, funilId: 'fun-1' });
 
       // funilAtual segue a ORDEM das etapas do funil, com nome/cor e count 0 nas vazias.
-      expect(result.funilAtual).toEqual([
+      expect(result.funilAtual).toMatchObject([
         { etapa: 'et-novo', label: 'Entrada', cor: '#111111', count: 4, valorEstimado: 1000 },
         { etapa: 'et-prop', label: 'Proposta', cor: '#222222', count: 0, valorEstimado: 0 },
         { etapa: 'et-fechado', label: 'Fechado', cor: '#00ff00', count: 1, valorEstimado: 500 },

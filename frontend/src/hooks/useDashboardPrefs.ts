@@ -8,6 +8,8 @@ import { getSession } from '@/lib/auth-store';
 export type DashboardModulo =
   | 'pulso'
   | 'precisa'
+  | 'agenda'
+  | 'mensagens'
   | 'fluxosSala'
   | 'kpis'
   | 'topReps'
@@ -17,6 +19,8 @@ export type DashboardModulo =
 export const DASHBOARD_MODULOS: Array<{ key: DashboardModulo; label: string }> = [
   { key: 'pulso', label: 'Barra de pulso' },
   { key: 'precisa', label: 'Precisa de você' },
+  { key: 'agenda', label: 'Agenda de hoje' },
+  { key: 'mensagens', label: 'Mensagens internas' },
   { key: 'fluxosSala', label: 'Fluxos — sala de controle' },
   { key: 'kpis', label: 'Indicadores de vendas' },
   { key: 'topReps', label: 'Top representantes' },
@@ -28,6 +32,8 @@ type Prefs = Record<DashboardModulo, boolean>;
 const DEFAULT: Prefs = {
   pulso: true,
   precisa: true,
+  agenda: true,
+  mensagens: true,
   fluxosSala: true,
   kpis: true,
   topReps: true,

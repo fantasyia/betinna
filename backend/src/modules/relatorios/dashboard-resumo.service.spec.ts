@@ -56,7 +56,21 @@ const makePrisma = () => ({
       },
     ]),
   },
-  agendaItem: { count: vi.fn().mockResolvedValue(2) },
+  agendaItem: {
+    count: vi.fn().mockResolvedValue(2),
+    findMany: vi.fn().mockResolvedValue([]),
+  },
+  kanbanComentario: {
+    findMany: vi.fn().mockResolvedValue([
+      {
+        id: 'cm-1',
+        texto: 'Dir, olha isso aqui',
+        criadoEm: new Date(),
+        autor: { nome: 'Master' },
+        card: { id: 'c-1', titulo: 'Card X', lista: { boardId: 'b-1' } },
+      },
+    ]),
+  },
   funilEtapa: { count: vi.fn().mockResolvedValue(6) },
   evolutionInstancia: { count: vi.fn().mockResolvedValue(0) },
   kanbanBoard: {

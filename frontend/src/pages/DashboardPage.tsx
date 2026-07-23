@@ -56,6 +56,9 @@ import { FluxosSala } from './dashboard/FluxosSala';
 import { ProntidaoCard } from './dashboard/ProntidaoCard';
 import { TrilhoAcao } from './dashboard/TrilhoAcao';
 import type { DashboardResumo } from './dashboard/types';
+import { AgendaHoje } from './dashboard/AgendaHoje';
+import { MensagensInternas } from './dashboard/MensagensInternas';
+import { FunilEtapaDrawer } from './dashboard/FunilEtapaDrawer';
 
 /**
  * DashboardPage v2 — design system dark, KPIs em grid, top reps + funil, atalhos
@@ -95,6 +98,10 @@ interface FunilStage {
   cor?: string;
   count: number;
   valorEstimado: number;
+  probabilidade?: number;
+  valorPonderado?: number;
+  entradasPeriodo?: number;
+  tempoMedioDias?: number | null;
 }
 
 /** Item do seletor de funil (vem de GET /funis). */
@@ -211,6 +218,15 @@ export default function DashboardPage() {
               <TrilhoAcao badge={resumo?.triagem.length ?? 0}>
                 {prefs.precisa &&
                   (resumo ? <PrecisaDeVoce itens={resumo.triagem} /> : <SkeletonCard />)}
+                {prefs.agenda &&
+                  (resumo ? <AgendaHoje itens={resumo.agendaHoje ?? []} /> : <SkeletonCard />)}
+                {prefs.mensagens &&
+                  ehGestao &&
+                  (resumo ? (
+                    <MensagensInternas mensagens={resumo.mensagens ?? []} />
+                  ) : (
+                    <SkeletonCard />
+                  ))}
               </TrilhoAcao>
             </div>
 
@@ -552,61 +568,108 @@ function FunilCard() {
           }
         />
       ) : (
-        <FunnelView stages={stages} />
+        <FunnelView stages={stages} funilId={effectiveFunilId} />
       )}
     </Card>
   );
 }
 
-function FunnelView({ stages }: { stages: FunilStage[] }) {
+function FunnelView({ stages, funilId }: { stages: FunilStage[]; funilId: string }) {
   const max = Math.max(...stages.map((s) => s.count), 1);
+  const [etapaAberta, setEtapaAberta] = useState<{ id: string; nome: string } | null>(null);
+  // Conversão entre etapas: ENTRADAS no período (histórico), etapa i → i+1.
+  const conv = (i: number): number | null => {
+    const de = stages[i]?.entradasPeriodo ?? 0;
+    const para = stages[i + 1]?.entradasPeriodo ?? 0;
+    if (de <= 0) return null;
+    return Math.round((para / de) * 100);
+  };
   return (
-    <ul className="flex flex-col gap-1.5">
-      {stages.map((s) => {
-        const pct = (s.count / max) * 100;
-        const label = s.label ?? ETAPA_LABEL[s.etapa] ?? s.etapa;
-        const variant = ETAPA_BADGE[s.etapa] ?? 'neutral';
-        return (
-          <li key={s.etapa} className="flex items-center gap-3 py-1">
-            {s.cor ? (
-              // Funil customizado: chip sólido com a cor da etapa.
-              <span
-                className="min-w-[88px] inline-flex items-center justify-center truncate rounded-md px-2 py-0.5 text-xs font-medium text-white"
-                style={{ backgroundColor: s.cor }}
-                title={label}
+    <>
+      <ul className="flex flex-col gap-0">
+        {stages.map((s, i) => {
+          const pct = (s.count / max) * 100;
+          const label = s.label ?? ETAPA_LABEL[s.etapa] ?? s.etapa;
+          const variant = ETAPA_BADGE[s.etapa] ?? 'neutral';
+          const taxa = conv(i);
+          return (
+            <li key={s.etapa}>
+              <button
+                type="button"
+                data-testid="funil-etapa"
+                onClick={() => setEtapaAberta({ id: s.etapa, nome: label })}
+                className="w-full flex items-center gap-3 py-1 rounded-md hover:bg-surface-hover/60 transition-colors text-left"
+                aria-label={`Abrir leads de ${label}`}
               >
-                {label}
-              </span>
-            ) : (
-              <Badge variant={variant} className="min-w-[88px] justify-center">
-                {label}
-              </Badge>
-            )}
-            <div className="flex-1 relative h-7 rounded-md bg-surface-hover overflow-hidden">
-              <div
-                className={cn(
-                  'absolute inset-y-0 left-0 transition-all duration-300',
-                  s.cor && 'opacity-30',
-                  !s.cor && variant === 'success' && 'bg-success/30',
-                  !s.cor && variant === 'danger' && 'bg-danger/30',
-                  !s.cor && variant === 'warning' && 'bg-warning/30',
-                  !s.cor && variant === 'info' && 'bg-info/30',
-                  !s.cor && variant === 'primary' && 'bg-primary/30',
-                  !s.cor && variant === 'neutral' && 'bg-muted/30',
+                {s.cor ? (
+                  <span
+                    className="min-w-[88px] inline-flex items-center justify-center truncate rounded-md px-2 py-0.5 text-xs font-medium text-white"
+                    style={{ backgroundColor: s.cor }}
+                    title={label}
+                  >
+                    {label}
+                  </span>
+                ) : (
+                  <Badge variant={variant} className="min-w-[88px] justify-center">
+                    {label}
+                  </Badge>
                 )}
-                style={s.cor ? { width: `${pct}%`, backgroundColor: s.cor } : { width: `${pct}%` }}
-              />
-              <span className="absolute inset-y-0 left-3 right-3 flex items-center justify-between text-xs">
-                <span className="font-medium text-text">{s.count}</span>
-                {s.valorEstimado > 0 && (
-                  <span className="tabular text-muted">{fmtBRLCompact(s.valorEstimado)}</span>
-                )}
-              </span>
-            </div>
-          </li>
-        );
-      })}
-    </ul>
+                <div className="flex-1 relative h-7 rounded-md bg-surface-hover overflow-hidden">
+                  <div
+                    className={cn(
+                      'absolute inset-y-0 left-0 transition-all duration-300',
+                      s.cor && 'opacity-30',
+                      !s.cor && variant === 'success' && 'bg-success/30',
+                      !s.cor && variant === 'danger' && 'bg-danger/30',
+                      !s.cor && variant === 'warning' && 'bg-warning/30',
+                      !s.cor && variant === 'info' && 'bg-info/30',
+                      !s.cor && variant === 'primary' && 'bg-primary/30',
+                      !s.cor && variant === 'neutral' && 'bg-muted/30',
+                    )}
+                    style={s.cor ? { width: `${pct}%`, backgroundColor: s.cor } : { width: `${pct}%` }}
+                  />
+                  <span className="absolute inset-y-0 left-3 right-3 flex items-center justify-between text-xs">
+                    <span className="font-medium text-text">
+                      {s.count}
+                      {s.tempoMedioDias != null && (
+                        <span className="ml-2 text-muted font-normal">média {s.tempoMedioDias}d</span>
+                      )}
+                    </span>
+                    {(s.valorPonderado ?? 0) > 0 ? (
+                      <span
+                        className="tabular text-muted"
+                        title="Valor ponderado pela probabilidade da etapa"
+                      >
+                        {fmtBRLCompact(s.valorPonderado ?? 0)} pond.
+                      </span>
+                    ) : s.valorEstimado > 0 ? (
+                      <span className="tabular text-muted">{fmtBRLCompact(s.valorEstimado)}</span>
+                    ) : null}
+                  </span>
+                </div>
+              </button>
+              {/* Conversão entre esta etapa e a PRÓXIMA (entradas do período). */}
+              {taxa !== null && i < stages.length - 1 && (
+                <div
+                  className="pl-[100px] py-0.5 text-[10px] text-muted tabular"
+                  data-testid="funil-conversao"
+                >
+                  ↓ {taxa}% avançam
+                </div>
+              )}
+            </li>
+          );
+        })}
+      </ul>
+      {etapaAberta && (
+        <FunilEtapaDrawer
+          funilId={funilId}
+          etapaId={etapaAberta.id}
+          etapaNome={etapaAberta.nome}
+          onClose={() => setEtapaAberta(null)}
+        />
+      )}
+    </>
   );
 }
 

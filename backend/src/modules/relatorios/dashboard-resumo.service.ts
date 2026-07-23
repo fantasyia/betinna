@@ -218,6 +218,62 @@ export class DashboardResumoService {
         : Promise.resolve([]),
     ]);
 
+    // ── M3 Agenda de hoje — "o que EU faço" + "o que a MÁQUINA faz" ───────
+    // Uma lista SÓ, ordenada por hora: ver o robô agendado ao lado dos próprios
+    // compromissos é o que dá sensação de controle (regra do card: não separar).
+    const fimDoDia = new Date(inicioDoDia(agora).getTime() + DIA_MS);
+    const agendaEventos = await this.prisma.agendaItem.findMany({
+      where: { empresaId, usuarioId: user.id, data: { gte: inicioDoDia(agora), lt: fimDoDia } },
+      orderBy: { data: 'asc' },
+      take: 12,
+      select: { id: true, titulo: true, data: true, tipo: true },
+    });
+    const agendaHoje: Array<{
+      hora: string;
+      titulo: string;
+      tipo: 'compromisso' | 'robo';
+      detalhe: string | null;
+      link: string;
+    }> = agendaEventos.map((a) => ({
+      hora: a.data.toISOString(),
+      titulo: a.titulo,
+      tipo: 'compromisso' as const,
+      detalhe: a.tipo,
+      link: '/agenda',
+    }));
+    if (ehGestao) {
+      // Disparos do ROBÔ hoje: fluxos ATIVOS com CRON_AGENDADO cuja próxima
+      // execução ainda cai hoje.
+      for (const f of fluxosLista) {
+        if (f.status !== 'ATIVO' || f.triggerTipo !== 'CRON_AGENDADO') continue;
+        const cfg = (f.triggerConfig ?? {}) as {
+          expressoes?: string[];
+          expressao?: string;
+          timezone?: string;
+        };
+        const exprs = cfg.expressoes?.length
+          ? cfg.expressoes
+          : cfg.expressao
+            ? [cfg.expressao]
+            : [];
+        try {
+          const prox = proximaExecucaoCrons(exprs, cfg.timezone ?? TZ_PADRAO, agora);
+          if (prox && prox.getTime() < fimDoDia.getTime()) {
+            agendaHoje.push({
+              hora: prox.toISOString(),
+              titulo: f.nome,
+              tipo: 'robo',
+              detalhe: 'disparo automático',
+              link: `/fluxos/${f.id}`,
+            });
+          }
+        } catch {
+          // expressão inválida não derruba a agenda
+        }
+      }
+    }
+    agendaHoje.sort((a, b) => a.hora.localeCompare(b.hora));
+
     // ── Quadros (Diretor atrasados + 📥 Nutrir) — só gestão ────────────────
     let cardsAtrasados: Array<{
       id: string;
@@ -227,6 +283,17 @@ export class DashboardResumoService {
     }> = [];
     let nutrirPendentes = 0;
     let nutrirBoardId: string | null = null;
+    // ── M4 Mensagens internas — feed dos comentários dos quadros ─────────
+    let mensagens: Array<{
+      id: string;
+      autorNome: string;
+      cardId: string;
+      cardTitulo: string;
+      boardId: string;
+      texto: string;
+      criadoEm: string;
+      mencionaMim: boolean;
+    }> = [];
     if (ehGestao) {
       const boards = await this.prisma.kanbanBoard.findMany({
         where: { empresaId },
@@ -235,6 +302,32 @@ export class DashboardResumoService {
       const boardDiretor = boards.find((b) => b.nome.toLowerCase().includes('diretor'));
       const boardNutrir = boards.find((b) => b.nome.toLowerCase().includes('nutrir'));
       nutrirBoardId = boardNutrir?.id ?? null;
+
+      // Feed de mensagens: últimos comentários de QUALQUER quadro da empresa,
+      // com autor + card + quadro. "Menção" = heurística barata (cita meu nome).
+      const nomeLower = (user.nome ?? '').trim().toLowerCase();
+      const comentarios = await this.prisma.kanbanComentario.findMany({
+        where: { card: { lista: { board: { empresaId } } } },
+        orderBy: { criadoEm: 'desc' },
+        take: 12,
+        select: {
+          id: true,
+          texto: true,
+          criadoEm: true,
+          autor: { select: { nome: true } },
+          card: { select: { id: true, titulo: true, lista: { select: { boardId: true } } } },
+        },
+      });
+      mensagens = comentarios.map((c) => ({
+        id: c.id,
+        autorNome: c.autor.nome,
+        cardId: c.card.id,
+        cardTitulo: c.card.titulo,
+        boardId: c.card.lista.boardId,
+        texto: c.texto.slice(0, 240),
+        criadoEm: c.criadoEm.toISOString(),
+        mencionaMim: nomeLower.length > 2 && c.texto.toLowerCase().includes(nomeLower),
+      }));
 
       const [atrasados, nutrirCount] = await Promise.all([
         boardDiretor
@@ -483,7 +576,7 @@ export class DashboardResumoService {
       };
     });
 
-    return { pulso, triagem, prontidao, fluxosSala };
+    return { pulso, triagem, prontidao, fluxosSala, agendaHoje, mensagens };
   }
 }
 

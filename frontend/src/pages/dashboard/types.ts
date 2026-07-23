@@ -35,11 +35,32 @@ export interface FluxoSalaRow {
   proximoDisparo: string | null;
 }
 
+export interface AgendaHojeItem {
+  hora: string;
+  titulo: string;
+  tipo: 'compromisso' | 'robo';
+  detalhe: string | null;
+  link: string;
+}
+
+export interface MensagemInterna {
+  id: string;
+  autorNome: string;
+  cardId: string;
+  cardTitulo: string;
+  boardId: string;
+  texto: string;
+  criadoEm: string;
+  mencionaMim: boolean;
+}
+
 export interface DashboardResumo {
   pulso: PulsoResumo;
   triagem: TriagemItem[];
   prontidao: { ativo: boolean; linhas: ProntidaoLinha[] };
   fluxosSala: FluxoSalaRow[];
+  agendaHoje: AgendaHojeItem[];
+  mensagens: MensagemInterna[];
 }
 
 /** "há 3d" / "há 5h" / "agora" — curto de propósito (densidade do cockpit). */
