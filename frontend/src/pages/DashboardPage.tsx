@@ -59,6 +59,7 @@ import type { DashboardResumo } from './dashboard/types';
 import { AgendaHoje } from './dashboard/AgendaHoje';
 import { MensagensInternas } from './dashboard/MensagensInternas';
 import { FunilEtapaDrawer } from './dashboard/FunilEtapaDrawer';
+import { CalendarioResumo } from './dashboard/CalendarioResumo';
 
 /**
  * DashboardPage v2 — design system dark, KPIs em grid, top reps + funil, atalhos
@@ -244,6 +245,9 @@ export default function DashboardPage() {
                 ) : resumoLoading ? (
                   <SkeletonCard />
                 ) : null)}
+
+              {/* M7 — resumo do calendário de marketing (gestão). */}
+              {prefs.calendario && ehGestao && <CalendarioResumo />}
 
               {/* Vendas / funil / atalhos — módulo independente com estado próprio. */}
               <StateView loading={loading} error={error} onRetry={refetch}>

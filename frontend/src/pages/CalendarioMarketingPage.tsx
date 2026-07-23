@@ -19,6 +19,7 @@ import { Select } from '@/components/ui';
 import { cn } from '@/lib/cn';
 import { formatNumeroCompacto } from '@/lib/masks';
 import type { KEtiqueta, KUsuarioResumo } from '@/pages/kanban/kanban-types';
+import { CANAIS_CONTEUDO as CANAIS, canalDe } from '@/lib/canais-conteudo';
 
 /**
  * 📅 Calendário de Marketing — VIEW por DATA sobre o board de conteúdo.
@@ -30,28 +31,6 @@ import type { KEtiqueta, KUsuarioResumo } from '@/pages/kanban/kanban-types';
  */
 
 // ─── Canais (derivados do TEXTO dos itens de checklist do card) ──────────
-interface Canal {
-  key: string;
-  label: string;
-  cor: string;
-  re: RegExp;
-}
-// ORDEM IMPORTA (primeira que casa vence): específicos ANTES do blog — "Carrossel
-// do artigo X" é carrossel, "Reel sobre o artigo" é reel; blog fica por último.
-// Cores: paleta oficial onde há vaga (carrossel=magenta, e-mail=cyan, blog=blue);
-// reel/ads mantêm cor categórica própria (distinguibilidade > paleta em data-viz;
-// navy #201554 some no dark).
-const CANAIS: Canal[] = [
-  { key: 'carrossel', label: 'Carrossel', cor: '#bd1fbf', re: /carross?el|carousel/i },
-  { key: 'reel', label: 'Reel', cor: '#E4405F', re: /reel|v[ií]deo|short|tiktok/i },
-  { key: 'email', label: 'E-mail', cor: '#2bcae5', re: /e-?mail|newsletter|resend/i },
-  { key: 'ads', label: 'Ads', cor: '#F59E0B', re: /\bads?\b|an[uú]ncio|tr[aá]fego|impuls/i },
-  { key: 'blog', label: 'Blog', cor: '#5C88DA', re: /blog|artigo|wordpress|seo/i },
-];
-function canalDe(texto: string): Canal | null {
-  return CANAIS.find((c) => c.re.test(texto)) ?? null;
-}
-
 // ─── Arcos narrativos (lidos do campo personalizado "Arco" do card) ──────
 const ARCOS: Array<{ re: RegExp; label: string; icon: string }> = [
   { re: /pergunta/i, label: 'Pergunta', icon: '❓' },
