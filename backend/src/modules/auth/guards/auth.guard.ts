@@ -156,11 +156,16 @@ export class AuthGuard implements CanActivate {
     // /crm = ações de CRM por MCP (ESCRITA: tags, mover etapa). Surface estreita e explícita.
     else if (/\/crm(\/|$)/.test(path)) moduloRequerido = 'crm';
     // /mullerbot/prompts = biblioteca de prompts da IA (ESCRITA: criar/editar prompt).
-    // Só esta subárvore do mullerbot é acessível por PAT (não /perguntar, /persona, etc.).
-    else if (/\/mullerbot\/prompts(\/|$)/.test(path)) moduloRequerido = 'prompts';
+    // /mullerbot/persona = config do BOT (nome/modelo/prompt) — mesma família, mesmo
+    // escopo "prompts". /mullerbot/bot/modelos = lista viva de modelos OpenAI (leitura,
+    // usada pra validar o modelo no bot_config_atualizar). O RESTO do mullerbot
+    // (/perguntar etc.) segue FORA do alcance do PAT.
+    else if (/\/mullerbot\/(prompts|persona|bot\/modelos)(\/|$)/.test(path))
+      moduloRequerido = 'prompts';
     if (!moduloRequerido) {
       throw new ForbiddenException(
-        'Token de API só acessa rotas /kanban, /fluxos, /funis, /contatos, /crm e /mullerbot/prompts',
+        'Token de API só acessa rotas /kanban, /fluxos, /funis, /contatos, /crm, ' +
+          '/mullerbot/prompts e /mullerbot/persona',
       );
     }
 

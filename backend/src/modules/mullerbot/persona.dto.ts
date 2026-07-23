@@ -48,3 +48,33 @@ export const upsertPersonaSchema = z.object({
   analisarImagem: z.boolean().optional(),
 });
 export type UpsertPersonaDto = z.infer<typeof upsertPersonaSchema>;
+
+/**
+ * PATCH parcial da config do bot (usado pelo MCP `bot_config_atualizar`). TODOS
+ * os campos são opcionais e SEM default: só o que vier é alterado, o resto fica
+ * como está. (O PUT/upsert acima substitui — omitir `nome` lá volta pro default;
+ * aqui não.) Espelha o comportamento "passe só o que muda" dos prompts de fluxo.
+ */
+export const patchPersonaSchema = z
+  .object({
+    nome: z.string().trim().min(1).max(60),
+    tomVoz: z.enum(TOM_VOZ),
+    instrucoes: z.string().trim().max(2000).nullable(),
+    exemplos: z.array(exemploSchema).max(10),
+    saudacao: z.string().trim().max(280).nullable(),
+    ativo: z.boolean(),
+    promptCustom: z.string().trim().max(50000).nullable(),
+    modelo: z.string().trim().max(60).nullable(),
+    limiteTokensDiaIn: z.number().int().min(0).max(100_000_000),
+    limiteTokensMesIn: z.number().int().min(0).max(2_000_000_000),
+    historicoMensagens: z.number().int().min(1).max(50),
+    delayRespostaSegundos: z.number().int().min(0).max(60),
+    mostrarDigitando: z.boolean(),
+    quebrarMensagens: z.boolean(),
+    maxMensagens: z.number().int().min(2).max(6),
+    transcreverAudio: z.boolean(),
+    analisarImagem: z.boolean(),
+  })
+  .partial()
+  .refine((o) => Object.keys(o).length > 0, { message: 'Informe ao menos um campo para alterar' });
+export type PatchPersonaDto = z.infer<typeof patchPersonaSchema>;

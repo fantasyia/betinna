@@ -2,8 +2,35 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { MullerBotPersonaService } from './persona.service';
 
 const makePrisma = () => ({
-  mullerBotPersona: { findUnique: vi.fn().mockResolvedValue(null) },
+  mullerBotPersona: {
+    findUnique: vi.fn().mockResolvedValue(null),
+    upsert: vi.fn().mockImplementation(({ update }) =>
+      Promise.resolve({
+        id: 'p1',
+        empresaId: 'emp-1',
+        nome: 'MullerBot',
+        tomVoz: 'PROFISSIONAL',
+        instrucoes: null,
+        exemplosJson: null,
+        saudacao: null,
+        ativo: true,
+        promptCustom: null,
+        modelo: null,
+        atualizadoEm: new Date('2026-01-01'),
+        ...update,
+      }),
+    ),
+  },
 });
+
+const DIRECTOR = {
+  id: 'u1',
+  email: 'd@x.ai',
+  nome: 'Dir',
+  role: 'DIRECTOR' as const,
+  empresaIds: ['emp-1'],
+  empresaIdAtiva: 'emp-1',
+};
 const makeBotPrompts = () => ({
   obterTextoPadrao: vi.fn().mockResolvedValue(null),
   obterTextoPorId: vi.fn().mockResolvedValue(null),
@@ -65,5 +92,51 @@ describe('MullerBotPersonaService — resolução do prompt de conversa (orquest
     const r = await service.compilarSystemPrompt('emp-1');
     expect(r).toContain('Prompt de catálogo.');
     expect(r).toContain('REGRAS DE ESCOPO E SEGURANÇA');
+  });
+});
+
+describe('MullerBotPersonaService.patch — edição parcial (base do MCP)', () => {
+  let prisma: ReturnType<typeof makePrisma>;
+  let service: MullerBotPersonaService;
+
+  beforeEach(() => {
+    prisma = makePrisma();
+    service = new MullerBotPersonaService(prisma as never, makeBotPrompts() as never);
+  });
+
+  it('só o campo enviado entra no update (não zera o resto)', async () => {
+    prisma.mullerBotPersona.findUnique.mockResolvedValue({
+      empresaId: 'emp-1',
+      nome: 'Bot Antigo',
+      tomVoz: 'AMIGAVEL',
+      promptCustom: 'prompt velho',
+      modelo: 'gpt-4o-mini',
+      instrucoes: null,
+      saudacao: null,
+      ativo: true,
+    });
+
+    await service.patch(DIRECTOR, { promptCustom: 'prompt NOVO' });
+
+    const call = prisma.mullerBotPersona.upsert.mock.calls[0][0];
+    // Update SÓ tem promptCustom — nome/modelo/tom intocados.
+    expect(call.update).toEqual({ promptCustom: 'prompt NOVO' });
+    expect(call.update.nome).toBeUndefined();
+    expect(call.update.modelo).toBeUndefined();
+  });
+
+  it('modelo vazio vira null (volta pro padrão do servidor)', async () => {
+    await service.patch(DIRECTOR, { modelo: '  ' });
+    expect(prisma.mullerBotPersona.upsert.mock.calls[0][0].update.modelo).toBeNull();
+  });
+
+  it('create parte do estado atual + aplica o patch (quando ainda não há linha)', async () => {
+    prisma.mullerBotPersona.findUnique.mockResolvedValue(null); // sem persona ainda
+    await service.patch(DIRECTOR, { nome: 'Somatec Bot' });
+
+    const call = prisma.mullerBotPersona.upsert.mock.calls[0][0];
+    // Create tem os campos do default + o patch por cima.
+    expect(call.create.empresaId).toBe('emp-1');
+    expect(call.create.nome).toBe('Somatec Bot');
   });
 });

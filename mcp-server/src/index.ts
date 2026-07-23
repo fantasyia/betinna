@@ -1788,10 +1788,96 @@ server.registerTool(
   ),
 );
 
+// ─── Config do BOT de atendimento (escopo "prompts") ────────────────────
+// A config do BOT (nome + modelo OpenAI + system prompt completo) é editável por
+// aqui, no mesmo escopo "prompts". Diferente dos prompts_* (biblioteca de prompts
+// de FLUXO): isto é a config do bot em si — o classificador da triagem. NÃO
+// versiona (é 1 config só por empresa, ajustada e estabilizada); pra histórico use
+// os prompts de fluxo. Exige token com escopo "prompts".
+
+type BotConfig = {
+  nome: string;
+  modelo?: string | null;
+  promptCustom?: string | null;
+  tomVoz?: string;
+  saudacao?: string | null;
+  ativo?: boolean;
+  instrucoes?: string | null;
+};
+
+server.registerTool(
+  'bot_config_ver',
+  {
+    description:
+      'Retorna a config COMPLETA do bot de atendimento da empresa: nome, modelo OpenAI e o system ' +
+      'prompt completo (promptCustom) + tom/saudação. É a config da tela "Prompt do Muller". ' +
+      'Exige escopo "prompts".',
+    inputSchema: {},
+    annotations: { readOnlyHint: true, destructiveHint: false },
+  },
+  seguro(async () => {
+    const c = await api.get<BotConfig>('/mullerbot/persona');
+    return ok({
+      nome: c.nome,
+      modelo: c.modelo ?? null,
+      promptCustom: c.promptCustom ?? null,
+      tomVoz: c.tomVoz ?? null,
+      saudacao: c.saudacao ?? null,
+      ativo: c.ativo ?? true,
+    });
+  }),
+);
+
+server.registerTool(
+  'bot_config_atualizar',
+  {
+    description:
+      'Edita a config do bot de atendimento — passe SÓ o que muda (nome, modelo e/ou promptCustom); ' +
+      'o resto fica como está. O modelo é validado contra a lista viva da OpenAI da empresa (modelo ' +
+      'inexistente é barrado); modelo vazio volta pro padrão do servidor. NÃO versiona. Exige escopo "prompts".',
+    inputSchema: {
+      nome: z.string().max(60).optional().describe('Nome do bot'),
+      modelo: z
+        .string()
+        .max(60)
+        .nullable()
+        .optional()
+        .describe('Modelo OpenAI (ex: gpt-4o-mini); null/"" = padrão do servidor'),
+      promptCustom: z
+        .string()
+        .max(50000)
+        .nullable()
+        .optional()
+        .describe('System prompt COMPLETO do bot (usado tal e qual)'),
+      saudacao: z.string().max(280).nullable().optional(),
+      ativo: z.boolean().optional(),
+    },
+    annotations: { readOnlyHint: false, destructiveHint: false },
+  },
+  seguro(
+    async (rest: {
+      nome?: string;
+      modelo?: string | null;
+      promptCustom?: string | null;
+      saudacao?: string | null;
+      ativo?: boolean;
+    }) => {
+      const definidos = Object.fromEntries(
+        Object.entries(rest).filter(([, v]) => v !== undefined),
+      );
+      if (Object.keys(definidos).length === 0) {
+        return erro('Informe ao menos um campo (nome, modelo, promptCustom, saudacao ou ativo).');
+      }
+      const c = await api.patch<BotConfig>('/mullerbot/persona', definidos);
+      return ok({ nome: c.nome, modelo: c.modelo ?? null, promptCustom: c.promptCustom ?? null });
+    },
+  ),
+);
+
 // ─── Boot ───────────────────────────────────────────────────────────────
 
 const transport = new StdioServerTransport();
 await server.connect(transport);
 console.error(
-  '[betinna-kanban-mcp] conectado — 26 tools kanban_* + 11 tools fluxos_* + 6 tools funis_/contatos_/crm + 4 tools prompts_* disponíveis',
+  '[betinna-kanban-mcp] conectado — 26 tools kanban_* + 11 tools fluxos_* + 6 tools funis_/contatos_/crm + 4 tools prompts_* + 2 tools bot_config_* disponíveis',
 );

@@ -5,7 +5,7 @@ import { ForbiddenException } from '@shared/errors/app-exception';
 import { ErrorCode } from '@shared/errors/error-codes';
 import type { AuthenticatedUser } from '@shared/types/authenticated-user';
 import { BotPromptsService } from '@modules/bot-prompts/bot-prompts.service';
-import type { UpsertPersonaDto, ExemploDto, TomVoz } from './persona.dto';
+import type { UpsertPersonaDto, PatchPersonaDto, ExemploDto, TomVoz } from './persona.dto';
 
 const TOM_INSTRUCAO: Record<TomVoz, string> = {
   FORMAL: 'Tom formal e respeitoso. Use "senhor"/"senhora", evite gírias e seja direto.',
@@ -160,6 +160,64 @@ export class MullerBotPersonaService {
     });
     this.invalidatePersona(empresaId);
     this.logger.log(`Persona atualizada para empresa ${empresaId}`);
+    return this.toResult(row);
+  }
+
+  /**
+   * PATCH parcial — só altera os campos PRESENTES no dto (o resto fica como está).
+   * Diferente do `upsert` (PUT), que substitui tudo. Base do MCP `bot_config_atualizar`.
+   * Se ainda não existe persona, parte do default da empresa e aplica o patch por cima.
+   */
+  async patch(user: AuthenticatedUser, dto: PatchPersonaDto): Promise<PersonaResult> {
+    const empresaId = this.requireEmpresa(user);
+    const atual = await this.getPersonaRow(empresaId);
+    const base = atual ?? (await this.defaultPersona(empresaId));
+
+    // Só as chaves presentes no dto entram no patch (objeto plano — serve tanto pro
+    // create quanto pro update sem os wrappers de FieldUpdateOperations do Prisma).
+    // `exemplos` (array) vira exemplosJson; os demais mapeiam 1:1.
+    const patch: Record<string, unknown> = {};
+    if (dto.nome !== undefined) patch.nome = dto.nome;
+    if (dto.tomVoz !== undefined) patch.tomVoz = dto.tomVoz;
+    if (dto.instrucoes !== undefined) patch.instrucoes = dto.instrucoes;
+    if (dto.saudacao !== undefined) patch.saudacao = dto.saudacao;
+    if (dto.ativo !== undefined) patch.ativo = dto.ativo;
+    if (dto.promptCustom !== undefined) patch.promptCustom = dto.promptCustom;
+    if (dto.modelo !== undefined) patch.modelo = dto.modelo?.trim() || null;
+    if (dto.exemplos !== undefined)
+      patch.exemplosJson =
+        dto.exemplos.length > 0
+          ? (dto.exemplos as unknown as Prisma.InputJsonValue)
+          : Prisma.JsonNull;
+    if (dto.limiteTokensDiaIn !== undefined) patch.limiteTokensDiaIn = dto.limiteTokensDiaIn;
+    if (dto.limiteTokensMesIn !== undefined) patch.limiteTokensMesIn = dto.limiteTokensMesIn;
+    if (dto.historicoMensagens !== undefined) patch.historicoMensagens = dto.historicoMensagens;
+    if (dto.delayRespostaSegundos !== undefined)
+      patch.delayRespostaSegundos = dto.delayRespostaSegundos;
+    if (dto.mostrarDigitando !== undefined) patch.mostrarDigitando = dto.mostrarDigitando;
+    if (dto.quebrarMensagens !== undefined) patch.quebrarMensagens = dto.quebrarMensagens;
+    if (dto.maxMensagens !== undefined) patch.maxMensagens = dto.maxMensagens;
+    if (dto.transcreverAudio !== undefined) patch.transcreverAudio = dto.transcreverAudio;
+    if (dto.analisarImagem !== undefined) patch.analisarImagem = dto.analisarImagem;
+
+    const row = await this.prisma.mullerBotPersona.upsert({
+      where: { empresaId },
+      // Create: começa do estado atual (default quando não há linha) e aplica o patch.
+      create: {
+        empresaId,
+        nome: base.nome,
+        tomVoz: base.tomVoz,
+        instrucoes: base.instrucoes ?? null,
+        saudacao: base.saudacao ?? null,
+        ativo: base.ativo,
+        promptCustom: base.promptCustom ?? null,
+        modelo: base.modelo ?? null,
+        ...patch,
+      } as Prisma.MullerBotPersonaUncheckedCreateInput,
+      update: patch as Prisma.MullerBotPersonaUncheckedUpdateInput,
+    });
+    this.invalidatePersona(empresaId);
+    this.logger.log(`Persona (patch MCP) atualizada para empresa ${empresaId}`);
     return this.toResult(row);
   }
 
