@@ -5,17 +5,35 @@ import { getSession } from '@/lib/auth-store';
  * F7 (Lote 8) — Dashboard modular: cada usuário escolhe quais seções ver.
  * Preferência guardada no localStorage por usuário (sem banco, reversível).
  */
-export type DashboardModulo = 'kpis' | 'topReps' | 'funil' | 'atalhos';
+export type DashboardModulo =
+  | 'pulso'
+  | 'precisa'
+  | 'fluxosSala'
+  | 'kpis'
+  | 'topReps'
+  | 'funil'
+  | 'atalhos';
 
 export const DASHBOARD_MODULOS: Array<{ key: DashboardModulo; label: string }> = [
-  { key: 'kpis', label: 'Indicadores (KPIs)' },
+  { key: 'pulso', label: 'Barra de pulso' },
+  { key: 'precisa', label: 'Precisa de você' },
+  { key: 'fluxosSala', label: 'Fluxos — sala de controle' },
+  { key: 'kpis', label: 'Indicadores de vendas' },
   { key: 'topReps', label: 'Top representantes' },
   { key: 'funil', label: 'Funil de leads' },
   { key: 'atalhos', label: 'Atalhos rápidos' },
 ];
 
 type Prefs = Record<DashboardModulo, boolean>;
-const DEFAULT: Prefs = { kpis: true, topReps: true, funil: true, atalhos: true };
+const DEFAULT: Prefs = {
+  pulso: true,
+  precisa: true,
+  fluxosSala: true,
+  kpis: true,
+  topReps: true,
+  funil: true,
+  atalhos: true,
+};
 
 function storageKey(): string {
   return `betinna:dashboard:${getSession()?.user?.id ?? 'anon'}`;
