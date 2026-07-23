@@ -19,7 +19,7 @@ import {
 } from 'lucide-react';
 import { useApiQuery, type PaginatedResponse } from '@/hooks/useApiQuery';
 import { useDebouncedValue } from '@/hooks/useDebouncedValue';
-import { usePermission } from '@/hooks/usePermission';
+import { usePermission, useRole } from '@/hooks/usePermission';
 import { PageLayout, useIsMobile } from '@/components/PageLayout';
 import { CrmTabs } from '@/components/CrmTabs';
 import { ImportLeadsModal } from '@/components/ImportLeadsModal';
@@ -107,6 +107,8 @@ export default function ContatosPage() {
   const [tagFiltro, setTagFiltro] = useState<string[]>([]);
   const [detail, setDetail] = useState<Contato | null>(null);
   const canEdit = usePermission('clientes.edit');
+  const role = useRole();
+  const podeMesclarCliente = role === 'ADMIN' || role === 'DIRECTOR';
   const [selected, setSelected] = useState<Map<string, Contato>>(new Map());
   const [bulk, setBulk] = useState<'tag' | 'mover' | 'add-funil' | 'excluir' | null>(null);
   const [importKind, setImportKind] = useState<'choose' | 'leads' | 'clientes' | null>(null);
@@ -498,7 +500,11 @@ export default function ContatosPage() {
       )}
 
       {verDuplicatas && (
-        <DuplicatasModal onClose={() => setVerDuplicatas(false)} onMerged={refetch} />
+        <DuplicatasModal
+          onClose={() => setVerDuplicatas(false)}
+          onMerged={refetch}
+          podeCliente={podeMesclarCliente}
+        />
       )}
 
       {detail && (

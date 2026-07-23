@@ -43,8 +43,21 @@ const GRUPOS = [
   },
 ];
 
+const GRUPOS_CLIENTE = [
+  {
+    chave: '11222333000144',
+    motivo: 'cnpj',
+    clientes: [
+      { id: 'cli-velho', nome: 'ACME LTDA', cnpj: '11.222.333/0001-44', telefone: '1130001122', email: null, criadoEm: '2026-01-01', maisAntigo: true },
+      { id: 'cli-novo', nome: 'Acme', cnpj: '11222333000144', telefone: null, email: null, criadoEm: '2026-06-01', maisAntigo: false },
+    ],
+  },
+];
+
 vi.mock('@/hooks/useApiQuery', () => ({
   useApiQuery: (path: string | null) => {
+    if (path?.startsWith('/contatos/clientes/duplicatas'))
+      return { data: GRUPOS_CLIENTE, loading: false, error: null, refetch: vi.fn() };
     if (path?.startsWith('/contatos/duplicatas'))
       return { data: GRUPOS, loading: false, error: null, refetch: vi.fn() };
     if (path?.startsWith('/clientes'))
@@ -70,6 +83,14 @@ const post = vi.fn((path: string) => {
       atribuicaoMudou: true,
       camposPreenchidos: [{ campo: 'contatoEmail', valor: 'contato@acme.com' }],
       vinculosMigrados: { tags: 2, historicoEtapas: 3, conversas: 1, formularios: 0 },
+    });
+  if (path === '/contatos/clientes/mesclar/previa')
+    return Promise.resolve({
+      principal: { id: 'cli-novo', nome: 'Acme', cnpj: '11222333000144' },
+      absorvido: { id: 'cli-velho', nome: 'ACME LTDA', cnpj: '11.222.333/0001-44' },
+      migra: { pedidos: 3, propostas: 1, amostras: 0 },
+      conflitosPreco: 1,
+      pontosFidelidadeSomados: 50,
     });
   return Promise.resolve({ mesclagemId: 'msc-1' });
 });
@@ -118,6 +139,38 @@ describe('DuplicatasModal', () => {
         absorvidoId: 'lead-velho',
       }),
     );
+  });
+});
+
+describe('DuplicatasModal — aba de clientes', () => {
+  it('podeCliente mostra a aba Clientes e mescla via /contatos/clientes/mesclar', async () => {
+    render(<DuplicatasModal onClose={vi.fn()} onMerged={vi.fn()} podeCliente />);
+
+    fireEvent.click(screen.getByText('Clientes'));
+    expect(screen.getByText('ACME LTDA')).toBeTruthy();
+
+    fireEvent.click(screen.getByText(/Manter "Acme"/));
+    // Prévia de cliente pedida com o par certo.
+    await waitFor(() =>
+      expect(post).toHaveBeenCalledWith('/contatos/clientes/mesclar/previa', {
+        principalId: 'cli-novo',
+        absorvidoId: 'cli-velho',
+      }),
+    );
+    await waitFor(() => expect(screen.getByTestId('confirmar-mesclagem-cliente')).toBeTruthy());
+
+    fireEvent.click(screen.getByTestId('confirmar-mesclagem-cliente'));
+    await waitFor(() =>
+      expect(post).toHaveBeenCalledWith('/contatos/clientes/mesclar', {
+        principalId: 'cli-novo',
+        absorvidoId: 'cli-velho',
+      }),
+    );
+  });
+
+  it('sem podeCliente, a aba Clientes não aparece', () => {
+    render(<DuplicatasModal onClose={vi.fn()} onMerged={vi.fn()} />);
+    expect(screen.queryByText('Clientes')).toBeNull();
   });
 });
 

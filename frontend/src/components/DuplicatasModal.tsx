@@ -42,7 +42,17 @@ type Previa = {
  * os candidatos; a decisão e o "quem sobrevive" são humanos — telefone parecido
  * virando fusão automática é como se perde cliente.
  */
-export function DuplicatasModal({ onClose, onMerged }: { onClose: () => void; onMerged: () => void }) {
+export function DuplicatasModal({
+  onClose,
+  onMerged,
+  podeCliente = false,
+}: {
+  onClose: () => void;
+  onMerged: () => void;
+  /** ADMIN/DIRECTOR: libera a aba de duplicatas de CLIENTE (fiscal/financeiro). */
+  podeCliente?: boolean;
+}) {
+  const [aba, setAba] = useState<'leads' | 'clientes'>('leads');
   const { data, loading, error, refetch } = useApiQuery<Grupo[]>('/contatos/duplicatas');
   const [par, setPar] = useState<{ grupo: Grupo; principal: LeadDup; absorvido: LeadDup } | null>(
     null,
@@ -61,6 +71,21 @@ export function DuplicatasModal({ onClose, onMerged }: { onClose: () => void; on
           </Button>
         }
       >
+        {podeCliente && (
+          <div className="flex gap-1 mb-3 border-b border-border">
+            <AbaBtn ativa={aba === 'leads'} onClick={() => setAba('leads')}>
+              Leads
+            </AbaBtn>
+            <AbaBtn ativa={aba === 'clientes'} onClick={() => setAba('clientes')}>
+              Clientes
+            </AbaBtn>
+          </div>
+        )}
+
+        {aba === 'clientes' ? (
+          <ClientesDuplicatas onMerged={onMerged} />
+        ) : (
+          <>
         <p className="text-sm text-text-subtle mb-3">
           Leads que parecem ser a mesma pessoa (mesmo telefone ou e-mail). Escolha quem fica e
           quem é absorvido — a campanha que trouxe o contato é sempre preservada.
@@ -134,6 +159,8 @@ export function DuplicatasModal({ onClose, onMerged }: { onClose: () => void; on
             ))}
           </div>
         </StateView>
+          </>
+        )}
       </Dialog>
 
       {par && (
@@ -149,6 +176,251 @@ export function DuplicatasModal({ onClose, onMerged }: { onClose: () => void; on
         />
       )}
     </>
+  );
+}
+
+function AbaBtn({
+  ativa,
+  onClick,
+  children,
+}: {
+  ativa: boolean;
+  onClick: () => void;
+  children: React.ReactNode;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className={
+        'px-3 py-1.5 text-sm font-medium border-b-2 -mb-px transition-colors ' +
+        (ativa ? 'border-primary text-primary' : 'border-transparent text-muted hover:text-text')
+      }
+    >
+      {children}
+    </button>
+  );
+}
+
+// ─── Duplicatas de CLIENTE (fiscal/financeiro — ADMIN/DIRECTOR) ──────────
+
+type ClienteDup = {
+  id: string;
+  nome: string;
+  cnpj: string | null;
+  telefone: string | null;
+  email: string | null;
+  criadoEm: string;
+  maisAntigo: boolean;
+};
+type GrupoCliente = { chave: string; motivo: 'cnpj' | 'telefone' | 'email'; clientes: ClienteDup[] };
+type PreviaCliente = {
+  principal: { id: string; nome: string; cnpj: string | null };
+  absorvido: { id: string; nome: string; cnpj: string | null };
+  migra: { pedidos: number; propostas: number; amostras: number };
+  conflitosPreco: number;
+  pontosFidelidadeSomados: number;
+};
+
+const MOTIVO_LABEL: Record<GrupoCliente['motivo'], string> = {
+  cnpj: 'Mesmo CNPJ',
+  telefone: 'Mesmo telefone',
+  email: 'Mesmo e-mail',
+};
+
+function ClientesDuplicatas({ onMerged }: { onMerged: () => void }) {
+  const { data, loading, error, refetch } = useApiQuery<GrupoCliente[]>(
+    '/contatos/clientes/duplicatas',
+  );
+  const [par, setPar] = useState<{ principal: ClienteDup; absorvido: ClienteDup } | null>(null);
+
+  return (
+    <>
+      <p className="text-sm text-text-subtle mb-3">
+        Clientes que parecem ser a mesma empresa. Envolve pedidos e dado fiscal — só mescla com
+        CNPJ igual, e a comissão já fechada nunca é recalculada.
+      </p>
+      <StateView loading={loading} error={error} onRetry={refetch}>
+        {data && data.length === 0 && (
+          <div className="flex flex-col items-center gap-2 py-8 text-center text-text-subtle">
+            <GitMerge className="h-8 w-8 opacity-40" />
+            <p className="text-sm">Nenhum cliente duplicado encontrado.</p>
+          </div>
+        )}
+        <div className="flex flex-col gap-4">
+          {data?.map((g) => (
+            <div key={`${g.motivo}:${g.chave}`} className="rounded-lg border border-border p-3">
+              <div className="flex items-center gap-2 mb-2 text-xs text-muted">
+                <Badge variant="warning">{MOTIVO_LABEL[g.motivo]}</Badge>
+                <span className="tabular truncate">{g.chave}</span>
+                <span>· {g.clientes.length} registros</span>
+              </div>
+              <div className="flex flex-col gap-1.5">
+                {g.clientes.map((c) => (
+                  <div key={c.id} className="rounded-md bg-bg-alt px-3 py-2">
+                    <div className="flex items-center gap-2">
+                      <span className="text-sm font-medium text-text truncate">{c.nome}</span>
+                      {c.maisAntigo && <Badge variant="info">mais antigo</Badge>}
+                    </div>
+                    <div className="text-xs text-muted truncate">
+                      {c.cnpj ? `CNPJ ${c.cnpj}` : 'sem CNPJ'}
+                      {c.telefone ? ` · ${formatTelefone(c.telefone)}` : ''}
+                    </div>
+                  </div>
+                ))}
+              </div>
+              {g.clientes.length === 2 ? (
+                <div className="mt-2 flex flex-wrap gap-2">
+                  <Button
+                    size="sm"
+                    variant="secondary"
+                    leftIcon={<GitMerge className="h-3.5 w-3.5" />}
+                    onClick={() => setPar({ principal: g.clientes[0], absorvido: g.clientes[1] })}
+                  >
+                    Manter &quot;{nomeCurto(g.clientes[0].nome)}&quot;
+                  </Button>
+                  <Button
+                    size="sm"
+                    variant="secondary"
+                    leftIcon={<GitMerge className="h-3.5 w-3.5" />}
+                    onClick={() => setPar({ principal: g.clientes[1], absorvido: g.clientes[0] })}
+                  >
+                    Manter &quot;{nomeCurto(g.clientes[1].nome)}&quot;
+                  </Button>
+                </div>
+              ) : (
+                <span className="mt-2 block text-xs text-muted">
+                  3+ registros: mescle de dois em dois.
+                </span>
+              )}
+            </div>
+          ))}
+        </div>
+      </StateView>
+
+      {par && (
+        <MesclarClienteConfirm
+          principalId={par.principal.id}
+          absorvidoId={par.absorvido.id}
+          onClose={() => setPar(null)}
+          onDone={() => {
+            setPar(null);
+            refetch();
+            onMerged();
+          }}
+        />
+      )}
+    </>
+  );
+}
+
+function MesclarClienteConfirm({
+  principalId,
+  absorvidoId,
+  onClose,
+  onDone,
+}: {
+  principalId: string;
+  absorvidoId: string;
+  onClose: () => void;
+  onDone: () => void;
+}) {
+  const toast = useToast();
+  const [previa, setPrevia] = useState<PreviaCliente | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [erro, setErro] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+
+  useEffect(() => {
+    let vivo = true;
+    setLoading(true);
+    setErro(null);
+    api
+      .post<PreviaCliente>('/contatos/clientes/mesclar/previa', { principalId, absorvidoId })
+      .then((r) => vivo && setPrevia(r))
+      .catch((err) => vivo && setErro(apiErrorMessage(err)))
+      .finally(() => vivo && setLoading(false));
+    return () => {
+      vivo = false;
+    };
+  }, [principalId, absorvidoId]);
+
+  async function mesclar() {
+    setBusy(true);
+    try {
+      await api.post('/contatos/clientes/mesclar', { principalId, absorvidoId });
+      toast.success('Clientes mesclados', 'Use "Desfazer" no histórico se foi engano.');
+      onDone();
+    } catch (err) {
+      toast.error('Falha ao mesclar', apiErrorMessage(err));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <Dialog
+      open
+      onClose={onClose}
+      title="Mesclar clientes"
+      size="md"
+      footer={
+        <>
+          <Button variant="secondary" onClick={onClose} disabled={busy}>
+            Cancelar
+          </Button>
+          <Button
+            variant="danger"
+            loading={busy}
+            disabled={loading || !!erro}
+            leftIcon={<GitMerge className="h-3.5 w-3.5" />}
+            onClick={() => void mesclar()}
+            data-testid="confirmar-mesclagem-cliente"
+          >
+            Mesclar
+          </Button>
+        </>
+      }
+    >
+      {loading && (
+        <div className="flex items-center gap-2 py-6 text-sm text-muted">
+          <Spinner /> Calculando o que vai acontecer…
+        </div>
+      )}
+      {erro && (
+        <div className="flex items-start gap-2 rounded-md bg-danger/10 border border-danger/30 px-3 py-2 text-sm text-danger">
+          <AlertTriangle className="h-4 w-4 mt-0.5 shrink-0" />
+          {erro}
+        </div>
+      )}
+      {previa && (
+        <div className="flex flex-col gap-3 text-sm">
+          <p>
+            Vai ficar <strong className="text-text">{previa.principal.nome}</strong>. O cliente{' '}
+            <strong className="text-text">{previa.absorvido.nome}</strong> é absorvido e deixa de
+            existir.
+          </p>
+          <div className="rounded-md bg-bg-alt px-3 py-2 text-text-subtle">
+            Migram pro sobrevivente: <strong className="text-text">{previa.migra.pedidos}</strong>{' '}
+            pedido(s), {previa.migra.propostas} proposta(s), {previa.migra.amostras} amostra(s).
+            <div className="text-xs text-muted mt-1">
+              Comissão já fechada NÃO é recalculada.
+            </div>
+          </div>
+          {previa.conflitosPreco > 0 && (
+            <div className="rounded-md bg-warning/12 px-3 py-2 text-warning text-xs">
+              {previa.conflitosPreco} preço(s) especial(is) em conflito — vence o do sobrevivente.
+            </div>
+          )}
+          {previa.pontosFidelidadeSomados > 0 && (
+            <div className="text-xs text-muted">
+              {previa.pontosFidelidadeSomados} ponto(s) de fidelidade serão somados ao sobrevivente.
+            </div>
+          )}
+          <div className="text-xs text-muted">Dá pra desfazer depois.</div>
+        </div>
+      )}
+    </Dialog>
   );
 }
 
