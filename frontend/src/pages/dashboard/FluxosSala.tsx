@@ -140,7 +140,9 @@ export function FluxosSala({ fluxos, onChanged }: { fluxos: FluxoSalaRow[]; onCh
         <p className="py-3 text-sm text-muted">Nenhum fluxo criado ainda.</p>
       ) : (
         <div className="overflow-x-auto -mx-2">
-          <table className="w-full min-w-[720px]">
+          {/* w-auto (não w-full): a tabela toma a largura do CONTEÚDO em vez de
+              esticar pro card inteiro e espalhar as colunas com gaps enormes. */}
+          <table className="w-auto min-w-[640px] max-w-full">
             <thead>
               <tr className="text-[11px] font-semibold uppercase tracking-wider text-muted border-b border-border">
                 <th className="text-left px-2 py-2">Fluxo</th>
