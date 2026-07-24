@@ -140,18 +140,19 @@ export function FluxosSala({ fluxos, onChanged }: { fluxos: FluxoSalaRow[]; onCh
         <p className="py-3 text-sm text-muted">Nenhum fluxo criado ainda.</p>
       ) : (
         <div className="overflow-x-auto -mx-2">
-          {/* w-auto (não w-full): a tabela toma a largura do CONTEÚDO em vez de
-              esticar pro card inteiro e espalhar as colunas com gaps enormes. */}
-          <table className="w-auto min-w-[640px] max-w-full">
+          {/* A coluna FLUXO é flexível (w-full) e absorve toda a folga; as demais
+              ficam tight (whitespace-nowrap) — sem espalhar as colunas com gaps
+              enormes e sem sobrar vão à direita, em qualquer largura de card. */}
+          <table className="w-full min-w-[640px] table-auto">
             <thead>
               <tr className="text-[11px] font-semibold uppercase tracking-wider text-muted border-b border-border">
-                <th className="text-left px-2 py-2">Fluxo</th>
-                <th className="text-left px-2 py-2">Status</th>
-                <th className="text-left px-2 py-2">Gatilho</th>
-                <th className="text-left px-2 py-2">Exec. 7d</th>
-                <th className="text-left px-2 py-2">Sucesso</th>
-                <th className="text-left px-2 py-2">Próx. disparo</th>
-                <th className="text-right px-2 py-2">Ações</th>
+                <th className="text-left px-2 py-2 w-full">Fluxo</th>
+                <th className="text-left px-2 py-2 whitespace-nowrap">Status</th>
+                <th className="text-left px-2 py-2 whitespace-nowrap">Gatilho</th>
+                <th className="text-left px-2 py-2 whitespace-nowrap">Exec. 7d</th>
+                <th className="text-left px-2 py-2 whitespace-nowrap">Sucesso</th>
+                <th className="text-left px-2 py-2 whitespace-nowrap">Próx. disparo</th>
+                <th className="text-right px-2 py-2 whitespace-nowrap">Ações</th>
               </tr>
             </thead>
             <tbody>
@@ -230,12 +231,12 @@ function FamiliaRows({
               <button
                 type="button"
                 onClick={() => onAbrir(f)}
-                className="text-sm font-medium text-text hover:text-primary text-left truncate max-w-[220px] block"
+                className="text-sm font-medium text-text hover:text-primary text-left truncate block w-full"
               >
                 {f.nome}
               </button>
             </td>
-            <td className="px-2 py-2">
+            <td className="px-2 py-2 whitespace-nowrap">
               <span className={cn('inline-flex items-center gap-1 text-xs font-medium', st.classe)}>
                 <st.icone className="h-3.5 w-3.5" aria-hidden />
                 {st.label}
@@ -244,13 +245,13 @@ function FamiliaRows({
             <td className="px-2 py-2 text-xs text-text-subtle truncate max-w-[140px]">
               {f.triggerTipo ? (TRIGGER_LABEL[f.triggerTipo as TriggerTipo] ?? f.triggerTipo) : 'Manual'}
             </td>
-            <td className="px-2 py-2">
+            <td className="px-2 py-2 whitespace-nowrap">
               <div className="flex items-center gap-2">
                 <Sparkline serie={f.exec7d.serie} />
                 <span className="text-xs tabular text-text-subtle">{f.exec7d.total}</span>
               </div>
             </td>
-            <td className="px-2 py-2">
+            <td className="px-2 py-2 whitespace-nowrap">
               {f.pctSucesso === null ? (
                 <span className="text-xs text-muted">—</span>
               ) : (
@@ -276,8 +277,10 @@ function FamiliaRows({
                 </div>
               )}
             </td>
-            <td className="px-2 py-2 text-xs tabular text-text-subtle">{fmtProximo(f.proximoDisparo)}</td>
-            <td className="px-2 py-2">
+            <td className="px-2 py-2 text-xs tabular text-text-subtle whitespace-nowrap">
+              {fmtProximo(f.proximoDisparo)}
+            </td>
+            <td className="px-2 py-2 whitespace-nowrap">
               <div className="flex items-center justify-end gap-0.5">
                 {f.status === 'ATIVO' ? (
                   <IconButton

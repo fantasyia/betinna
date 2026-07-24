@@ -26,7 +26,10 @@ import { PrimeirosPassosRep } from '@/components/PrimeirosPassosRep';
 import {
   useDashboardPrefs,
   DASHBOARD_MODULOS,
+  RESIZABLE_MODULOS,
+  WIDTH_OPCOES,
   type DashboardModulo,
+  type ModuloWidth,
 } from '@/hooks/useDashboardPrefs';
 import { PageLayout } from '@/components/PageLayout';
 import { StateView } from '@/components/StateView';
@@ -141,11 +144,22 @@ const ROLE_LABEL: Record<string, string> = {
   REP: 'Representante',
 };
 
+/**
+ * Largura do módulo → classe de col-span no grid de 12 colunas do canvas.
+ * Literais (não `col-span-${w}`) pra o Tailwind JIT enxergar as classes.
+ */
+const SPAN: Record<ModuloWidth, string> = {
+  4: 'min-[1024px]:col-span-4',
+  6: 'min-[1024px]:col-span-6',
+  8: 'min-[1024px]:col-span-8',
+  12: 'min-[1024px]:col-span-12',
+};
+
 export default function DashboardPage() {
   const role = useRole();
   const canSeeRelatorios = usePermission('relatorios.view');
   const canSeeCampanhas = usePermission('campanhas.view');
-  const { prefs, toggle } = useDashboardPrefs();
+  const { prefs, toggle, setWidth, widthOf } = useDashboardPrefs();
 
   // Cockpit: UMA chamada de agregação (pulso + triagem + prontidão + sala de
   // fluxos). O módulo de VENDAS carrega em paralelo, independente — módulo
@@ -177,7 +191,12 @@ export default function DashboardPage() {
       actions={
         canSeeRelatorios ? (
           <div className="flex items-center gap-2">
-            <PersonalizarMenu prefs={prefs} onToggle={toggle} />
+            <PersonalizarMenu
+              prefs={prefs}
+              onToggle={toggle}
+              widthOf={widthOf}
+              onSetWidth={setWidth}
+            />
             <Link to="/relatorios">
               <Button rightIcon={<ArrowRight className="h-3.5 w-3.5" />}>
                 Ver relatórios completos
@@ -232,167 +251,82 @@ export default function DashboardPage() {
               </TrilhoAcao>
             </div>
 
-            <div className="min-[1024px]:order-1 min-w-0 flex flex-col gap-3">
-              {/* MODO PRONTIDÃO — só quando a máquina está desligada (0 fluxos ativos). */}
+            {/* Canvas = grid de 12 colunas com dense-flow: cada módulo tem
+                largura própria (Personalizar) e o empacotamento preenche os
+                vãos. items-stretch deixa cards da mesma fileira com altura
+                igual (sem buraco entre eles). */}
+            <div className="min-[1024px]:order-1 min-w-0 grid grid-cols-1 gap-3 min-[1024px]:grid-cols-12 min-[1024px]:grid-flow-row-dense">
+              {/* MODO PRONTIDÃO — sempre cheio, só quando a máquina está desligada. */}
               {ehGestao && resumo?.prontidao.ativo && resumo.prontidao.linhas.length > 0 && (
-                <ProntidaoCard linhas={resumo.prontidao.linhas} />
+                <div className="min-w-0 min-[1024px]:col-span-12">
+                  <ProntidaoCard linhas={resumo.prontidao.linhas} />
+                </div>
               )}
 
               {/* M6 — sala de controle (gestão; pro REP o backend devolve vazio). */}
-              {prefs.fluxosSala &&
-                ehGestao &&
-                (resumo ? (
-                  <FluxosSala fluxos={resumo.fluxosSala} onChanged={refetchResumo} />
-                ) : resumoLoading ? (
-                  <SkeletonCard />
-                ) : null)}
+              {prefs.fluxosSala && ehGestao && (resumo || resumoLoading) && (
+                <div className={cn('min-w-0 [&>*]:h-full', SPAN[widthOf('fluxosSala')])}>
+                  {resumo ? (
+                    <FluxosSala fluxos={resumo.fluxosSala} onChanged={refetchResumo} />
+                  ) : (
+                    <SkeletonCard />
+                  )}
+                </div>
+              )}
 
               {/* M7 — resumo do calendário de marketing (gestão). */}
-              {prefs.calendario && ehGestao && <CalendarioResumo />}
+              {prefs.calendario && ehGestao && (
+                <div className={cn('min-w-0 [&>*]:h-full', SPAN[widthOf('calendario')])}>
+                  <CalendarioResumo />
+                </div>
+              )}
 
               {/* M8 — gráficos de relatórios (endpoint único /dashboard/graficos). */}
-              {prefs.graficos && canSeeRelatorios && <RelatoriosGraficos ehGestao={ehGestao} />}
+              {prefs.graficos && canSeeRelatorios && (
+                <div className={cn('min-w-0 [&>*]:h-full', SPAN[widthOf('graficos')])}>
+                  <RelatoriosGraficos ehGestao={ehGestao} />
+                </div>
+              )}
 
-              {/* Vendas / funil / atalhos — módulo independente com estado próprio. */}
-              <StateView loading={loading} error={error} onRetry={refetch}>
-                {data &&
-                  (() => {
-                    const vendas = data.vendas ?? ({} as DashboardResp['vendas']);
-                    const funil = data.funil ?? ({} as DashboardResp['funil']);
-                    const sac = data.sac ?? ({} as DashboardResp['sac']);
-                    const faturamento = vendas.faturamento ?? { atual: 0, anterior: 0, variacao: 0 };
-                    const porRep = vendas.porRep ?? [];
-                    const totalPedidos = vendas.totalPedidos ?? 0;
-                    const ticketMedio = vendas.ticketMedio ?? 0;
-                    const totalAtivos = funil.totalAtivos ?? 0;
-                    const taxaConversao = funil.taxaConversao ?? 0;
+              {/* Vendas: cada card é uma célula PRÓPRIA do grid — o dense-flow
+                  empacota e o usuário escolhe a largura de cada um. */}
+              {error && !data && (
+                <div className="min-w-0 min-[1024px]:col-span-12">
+                  <StateView loading={false} error={error} onRetry={refetch}>
+                    {null}
+                  </StateView>
+                </div>
+              )}
 
-                    const isEmpty =
-                      totalPedidos === 0 && totalAtivos === 0 && (sac.abertas ?? 0) === 0;
+              {prefs.kpis && (data || loading) && (
+                <div id="mod-funil" className={cn('min-w-0 scroll-mt-24', SPAN[widthOf('kpis')])}>
+                  {data ? <VendasKpis data={data} /> : <SkeletonCard />}
+                </div>
+              )}
 
-                    return (
-                      <div className="flex flex-col gap-3">
-                        {/* Indicadores de vendas (mês) */}
-                        {prefs.kpis && (
-                          <section className="grid gap-2.5 grid-cols-2 sm:grid-cols-3 xl:grid-cols-5">
-                            <Stat
-                              dense
-                              label="Faturamento"
-                              icon={<DollarSign />}
-                              iconTone="primary"
-                              value={fmtBRLCompact(faturamento.atual)}
-                              hint={
-                                faturamento.anterior > 0
-                                  ? `Anterior: ${fmtBRLCompact(faturamento.anterior)}`
-                                  : 'no mês'
-                              }
-                              delta={faturamento.variacao || undefined}
-                              sparkColor="var(--primary)"
-                            />
-                            <Stat
-                              dense
-                              label="Pedidos"
-                              icon={<ShoppingCart />}
-                              iconTone="secondary"
-                              value={formatNumero(totalPedidos)}
-                              hint="no período"
-                            />
-                            <Stat
-                              dense
-                              label="Ticket médio"
-                              icon={<Receipt />}
-                              iconTone="magenta"
-                              value={totalPedidos > 0 ? fmtBRL(ticketMedio) : '—'}
-                              hint={totalPedidos > 0 ? undefined : 'sem pedidos no período'}
-                            />
-                            <Stat
-                              dense
-                              label="Leads ativos"
-                              icon={<Target />}
-                              iconTone="blue"
-                              value={formatNumero(totalAtivos)}
-                              hint="no funil"
-                            />
-                            <Stat
-                              dense
-                              label="Conversão"
-                              icon={<TrendingUp />}
-                              iconTone="success"
-                              value={formatPercent(taxaConversao, 0)}
-                              trend={taxaConversao > 25 ? 'up' : taxaConversao > 10 ? 'flat' : 'down'}
-                            />
-                          </section>
-                        )}
+              {prefs.topReps && (data || loading) && (
+                <div className={cn('min-w-0 [&>*]:h-full', SPAN[widthOf('topReps')])}>
+                  {data ? <TopRepsCard porRep={data.vendas?.porRep ?? []} /> : <SkeletonCard />}
+                </div>
+              )}
 
-                        {/* Top reps + Funil */}
-                        {(prefs.topReps || prefs.funil) && (
-                          <section
-                            id="mod-funil"
-                            className={cn(
-                              'grid grid-cols-1 gap-3 scroll-mt-24',
-                              prefs.topReps && prefs.funil ? 'xl:grid-cols-2' : 'xl:grid-cols-1',
-                            )}
-                          >
-                            {prefs.topReps && (
-                              <Card padding="md">
-                                <CardHeader>
-                                  <CardTitle>Top representantes</CardTitle>
-                                  <CardDescription>Maior faturamento no período</CardDescription>
-                                </CardHeader>
-                                {porRep.length === 0 ? (
-                                  <EmptyState
-                                    size="sm"
-                                    icon={<Users />}
-                                    title="Sem vendas no período"
-                                    description="Quando houver pedidos, o ranking aparece aqui."
-                                    action={
-                                      <Link to="/pedidos">
-                                        <Button
-                                          variant="secondary"
-                                          size="sm"
-                                          rightIcon={<ArrowRight className="h-3 w-3" />}
-                                        >
-                                          Criar pedido
-                                        </Button>
-                                      </Link>
-                                    }
-                                  />
-                                ) : (
-                                  <TopRepsList reps={porRep.slice(0, 5)} />
-                                )}
-                              </Card>
-                            )}
-                            {prefs.funil && <FunilCard />}
-                          </section>
-                        )}
+              {prefs.funil && (
+                <div className={cn('min-w-0 [&>*]:h-full', SPAN[widthOf('funil')])}>
+                  <FunilCard />
+                </div>
+              )}
 
-                        {/* Atalhos rápidos */}
-                        {prefs.atalhos && (
-                          <Card padding="md">
-                            <CardHeader>
-                              <CardTitle>Atalhos rápidos</CardTitle>
-                            </CardHeader>
-                            <div className="flex flex-wrap gap-2">
-                              <QuickAction to="/clientes" label="Clientes" icon={Briefcase} tone="primary" />
-                              <QuickAction to="/pedidos" label="Pedidos" icon={ShoppingCart} tone="secondary" />
-                              <QuickAction to="/leads" label="Funil" icon={Target} tone="blue" />
-                              <QuickAction to="/inbox" label="Inbox" icon={MessageSquare} tone="magenta" />
-                              <QuickAction to="/agenda" label="Agenda" icon={CalendarDays} tone="primary" />
-                              <QuickAction to="/comissoes" label="Comissões" icon={Wallet} tone="success" />
-                              <QuickAction to="/catalogo" label="Catálogo" icon={Sparkles} tone="secondary" />
-                              {canSeeCampanhas && (
-                                <QuickAction to="/campanhas" label="Campanhas" icon={Megaphone} tone="magenta" />
-                              )}
-                              <QuickAction to="/integracoes" label="Integrações" icon={Plug} tone="blue" />
-                            </div>
-                          </Card>
-                        )}
+              {prefs.atalhos && (
+                <div className={cn('min-w-0 [&>*]:h-full', SPAN[widthOf('atalhos')])}>
+                  <AtalhosCard canSeeCampanhas={canSeeCampanhas} />
+                </div>
+              )}
 
-                        {isEmpty && <FirstStepsCard />}
-                      </div>
-                    );
-                  })()}
-              </StateView>
+              {data && dashboardVazio(data) && (
+                <div className="min-w-0 min-[1024px]:col-span-12">
+                  <FirstStepsCard />
+                </div>
+              )}
             </div>
           </div>
         </>
@@ -403,13 +337,20 @@ export default function DashboardPage() {
 
 // ─── Componentes locais ──────────────────────────────────────────────
 
-/** F7 — menu pra ligar/desligar seções do dashboard (persistido por usuário). */
+/**
+ * F7 — menu pra ligar/desligar seções do dashboard E escolher a largura de cada
+ * módulo do canvas (⅓/½/⅔/cheio). Tudo persistido por usuário.
+ */
 function PersonalizarMenu({
   prefs,
   onToggle,
+  widthOf,
+  onSetWidth,
 }: {
   prefs: Record<DashboardModulo, boolean>;
   onToggle: (k: DashboardModulo) => void;
+  widthOf: (k: DashboardModulo) => ModuloWidth;
+  onSetWidth: (k: DashboardModulo, w: ModuloWidth) => void;
 }) {
   const [open, setOpen] = useState(false);
   return (
@@ -427,31 +368,186 @@ function PersonalizarMenu({
           <div className="fixed inset-0 z-30" onClick={() => setOpen(false)} aria-hidden />
           <div
             className={cn(
-              'absolute right-0 top-full mt-1 z-40 min-w-[230px]',
+              'absolute right-0 top-full mt-1 z-40 w-[300px] max-h-[75vh] overflow-y-auto',
               'bg-surface-elevated border border-border-strong rounded-md shadow-lg p-2',
               'flex flex-col gap-0.5 animate-fade-in',
             )}
           >
             <div className="px-1.5 pb-1 text-[11px] font-semibold uppercase tracking-wider text-muted">
-              Mostrar no dashboard
+              Módulos e largura
             </div>
-            {DASHBOARD_MODULOS.map((m) => (
-              <label
-                key={m.key}
-                className="flex items-center gap-2 px-1.5 py-1.5 rounded hover:bg-surface-hover cursor-pointer"
-              >
-                <Checkbox
-                  checked={prefs[m.key]}
-                  onChange={() => onToggle(m.key)}
-                  data-testid={`dashboard-toggle-${m.key}`}
-                />
-                <span className="text-sm text-text">{m.label}</span>
-              </label>
-            ))}
+            {DASHBOARD_MODULOS.map((m) => {
+              const resizable = RESIZABLE_MODULOS.includes(m.key);
+              return (
+                <div key={m.key} className="px-1.5 py-1 rounded hover:bg-surface-hover">
+                  <label className="flex items-center gap-2 cursor-pointer">
+                    <Checkbox
+                      checked={prefs[m.key]}
+                      onChange={() => onToggle(m.key)}
+                      data-testid={`dashboard-toggle-${m.key}`}
+                    />
+                    <span className="text-sm text-text">{m.label}</span>
+                  </label>
+                  {resizable && prefs[m.key] && (
+                    <div className="mt-1 ml-6 flex items-center gap-1">
+                      <span className="text-[10px] text-muted mr-0.5">Largura</span>
+                      {WIDTH_OPCOES.map((o) => (
+                        <button
+                          key={o.w}
+                          type="button"
+                          title={o.titulo}
+                          onClick={() => onSetWidth(m.key, o.w)}
+                          data-testid={`dashboard-width-${m.key}-${o.w}`}
+                          className={cn(
+                            'px-1.5 py-0.5 rounded text-[11px] font-medium border transition-colors',
+                            widthOf(m.key) === o.w
+                              ? 'bg-primary text-primary-contrast border-primary'
+                              : 'bg-surface text-muted border-border-strong hover:text-text',
+                          )}
+                        >
+                          {o.label}
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+            <p className="px-1.5 pt-1.5 text-[10px] text-muted leading-snug">
+              A largura vale no desktop; no celular tudo empilha. Os módulos se
+              reempacotam pra não sobrar buraco.
+            </p>
           </div>
         </>
       )}
     </div>
+  );
+}
+
+/** Dashboard "vazio" = sem pedidos, sem leads ativos e sem ocorrências abertas. */
+function dashboardVazio(data: DashboardResp): boolean {
+  return (
+    (data.vendas?.totalPedidos ?? 0) === 0 &&
+    (data.funil?.totalAtivos ?? 0) === 0 &&
+    (data.sac?.abertas ?? 0) === 0
+  );
+}
+
+/** Indicadores de vendas do mês — 5 tiles densos. Célula própria do canvas. */
+function VendasKpis({ data }: { data: DashboardResp }) {
+  const vendas = data.vendas ?? ({} as DashboardResp['vendas']);
+  const funil = data.funil ?? ({} as DashboardResp['funil']);
+  const faturamento = vendas.faturamento ?? { atual: 0, anterior: 0, variacao: 0 };
+  const totalPedidos = vendas.totalPedidos ?? 0;
+  const ticketMedio = vendas.ticketMedio ?? 0;
+  const totalAtivos = funil.totalAtivos ?? 0;
+  const taxaConversao = funil.taxaConversao ?? 0;
+  return (
+    <section className="grid gap-2.5 grid-cols-2 sm:grid-cols-3 xl:grid-cols-5">
+      <Stat
+        dense
+        label="Faturamento"
+        icon={<DollarSign />}
+        iconTone="primary"
+        value={fmtBRLCompact(faturamento.atual)}
+        hint={
+          faturamento.anterior > 0 ? `Anterior: ${fmtBRLCompact(faturamento.anterior)}` : 'no mês'
+        }
+        delta={faturamento.variacao || undefined}
+        sparkColor="var(--primary)"
+      />
+      <Stat
+        dense
+        label="Pedidos"
+        icon={<ShoppingCart />}
+        iconTone="secondary"
+        value={formatNumero(totalPedidos)}
+        hint="no período"
+      />
+      <Stat
+        dense
+        label="Ticket médio"
+        icon={<Receipt />}
+        iconTone="magenta"
+        value={totalPedidos > 0 ? fmtBRL(ticketMedio) : '—'}
+        hint={totalPedidos > 0 ? undefined : 'sem pedidos no período'}
+      />
+      <Stat
+        dense
+        label="Leads ativos"
+        icon={<Target />}
+        iconTone="blue"
+        value={formatNumero(totalAtivos)}
+        hint="no funil"
+      />
+      <Stat
+        dense
+        label="Conversão"
+        icon={<TrendingUp />}
+        iconTone="success"
+        value={formatPercent(taxaConversao, 0)}
+        trend={taxaConversao > 25 ? 'up' : taxaConversao > 10 ? 'flat' : 'down'}
+      />
+    </section>
+  );
+}
+
+/** Top representantes por faturamento. Preenche a altura da célula (flex). */
+function TopRepsCard({
+  porRep,
+}: {
+  porRep: Array<{ repId: string; repNome: string; pedidos: number; total: number }>;
+}) {
+  return (
+    <Card padding="md" className="flex flex-col">
+      <CardHeader>
+        <CardTitle>Top representantes</CardTitle>
+        <CardDescription>Maior faturamento no período</CardDescription>
+      </CardHeader>
+      {porRep.length === 0 ? (
+        <div className="flex-1 grid place-items-center">
+          <EmptyState
+            size="sm"
+            icon={<Users />}
+            title="Sem vendas no período"
+            description="Quando houver pedidos, o ranking aparece aqui."
+            action={
+              <Link to="/pedidos">
+                <Button variant="secondary" size="sm" rightIcon={<ArrowRight className="h-3 w-3" />}>
+                  Criar pedido
+                </Button>
+              </Link>
+            }
+          />
+        </div>
+      ) : (
+        <TopRepsList reps={porRep.slice(0, 5)} />
+      )}
+    </Card>
+  );
+}
+
+/** Atalhos rápidos. */
+function AtalhosCard({ canSeeCampanhas }: { canSeeCampanhas: boolean }) {
+  return (
+    <Card padding="md">
+      <CardHeader>
+        <CardTitle>Atalhos rápidos</CardTitle>
+      </CardHeader>
+      <div className="flex flex-wrap gap-2">
+        <QuickAction to="/clientes" label="Clientes" icon={Briefcase} tone="primary" />
+        <QuickAction to="/pedidos" label="Pedidos" icon={ShoppingCart} tone="secondary" />
+        <QuickAction to="/leads" label="Funil" icon={Target} tone="blue" />
+        <QuickAction to="/inbox" label="Inbox" icon={MessageSquare} tone="magenta" />
+        <QuickAction to="/agenda" label="Agenda" icon={CalendarDays} tone="primary" />
+        <QuickAction to="/comissoes" label="Comissões" icon={Wallet} tone="success" />
+        <QuickAction to="/catalogo" label="Catálogo" icon={Sparkles} tone="secondary" />
+        {canSeeCampanhas && (
+          <QuickAction to="/campanhas" label="Campanhas" icon={Megaphone} tone="magenta" />
+        )}
+        <QuickAction to="/integracoes" label="Integrações" icon={Plug} tone="blue" />
+      </div>
+    </Card>
   );
 }
 
