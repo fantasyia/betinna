@@ -235,7 +235,7 @@ function TagFormModal({
             onChange={(e) => setNome(e.target.value)}
             required
             minLength={1}
-            maxLength={50}
+            maxLength={100}
             autoFocus
           />
         </FormField>
