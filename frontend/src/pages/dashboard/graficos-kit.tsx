@@ -71,7 +71,7 @@ export function ChartCard<T>({
     'bg-surface text-text border border-border-strong rounded-md px-2 py-0.5 text-[11px] font-medium cursor-pointer';
 
   return (
-    <div className="bg-surface border border-border rounded-[10px] p-3 min-w-0">
+    <div className="bg-surface border border-border rounded-[10px] p-3 min-w-0 flex flex-col h-full">
       <div className="flex items-start justify-between gap-2 mb-2 flex-wrap">
         <div className="min-w-0">
           <h3 className="m-0 text-[13px] font-semibold leading-tight">{titulo}</h3>
@@ -104,9 +104,11 @@ export function ChartCard<T>({
       </div>
 
       {vazio ? (
-        // Card sem dado NÃO ocupa altura cheia — encolhe pro aviso centrado.
-        // Quando o dado chegar, o gráfico cresce naturalmente.
-        <p className="text-[12px] text-muted m-0 py-3 text-center">Sem dados ainda.</p>
+        // Card vazio ESTICA e centraliza o aviso (flex-1) — acompanha a altura
+        // do vizinho com dado, sem deixar buraco embaixo.
+        <p className="flex-1 grid place-items-center text-[12px] text-muted m-0 py-3 text-center">
+          Sem dados ainda.
+        </p>
       ) : vista === 'grafico' ? (
         <div ref={wrapRef} className="relative max-h-[260px] overflow-hidden">
           {children}
