@@ -310,7 +310,7 @@ function DiaCelula({
       ref={setNodeRef}
       className={cn(
         'rounded-md border p-1 flex flex-col gap-1',
-        compacto ? 'min-h-[52px]' : 'min-h-[92px]',
+        compacto ? 'min-h-[48px]' : 'min-h-[68px]',
         isOver ? 'border-primary bg-primary/5' : 'border-border',
         hoje && 'bg-surface-hover/50',
       )}

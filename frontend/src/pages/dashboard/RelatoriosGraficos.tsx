@@ -86,7 +86,9 @@ export function RelatoriosGraficos({ ehGestao }: { ehGestao: boolean }) {
         </Select>
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-2.5">
+      {/* items-start: um card VAZIO não estica pra acompanhar o vizinho alto —
+          encolhe pro "sem dados ainda" (regra da passada de densidade). */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-2.5 items-start">
         <ChartCard
           titulo="Leads ao longo do tempo"
           subtitulo={`${formatNumero(totalLeads)} no período · fora da triagem`}
