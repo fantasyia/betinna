@@ -48,6 +48,15 @@ export class PermissionsService implements OnModuleInit, OnModuleDestroy {
   constructor(private readonly prisma: PrismaService) {}
 
   async onModuleInit(): Promise<void> {
+    // Semeia os defaults que FALTAM antes de carregar o cache. Conserta o caso
+    // "matriz Permissao nunca semeada em prod → todo não-ADMIN cai em 403".
+    // Falha aqui não pode derrubar o boot — loga e segue com o que houver.
+    try {
+      await this.seedMissingDefaults();
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      this.logger.warn(`Seed de permissões faltantes falhou (segue sem derrubar): ${msg}`);
+    }
     await this.reloadCache();
     // Em teste não agenda o timer (evita handle aberto segurando o runner).
     if (process.env.NODE_ENV !== 'test') {
@@ -231,6 +240,48 @@ export class PermissionsService implements OnModuleInit, OnModuleDestroy {
   async removeUserOverride(usuarioId: string, modulo: string): Promise<void> {
     await this.prisma.usuarioPermissao.deleteMany({ where: { usuarioId, modulo } });
     await this.reloadCache();
+  }
+
+  /**
+   * Semeia os defaults SÓ nas linhas que FALTAM (create-only) — NUNCA sobrescreve
+   * uma linha já existente, então respeita a customização do painel e qualquer
+   * ajuste manual. Roda no boot (idempotente): em env novo/réplica sem seed,
+   * preenche a matriz; em prod já configurado, é no-op (só um findMany).
+   *
+   * Diferença pro applyDefaults(): este NÃO faz update — por isso é seguro rodar
+   * sempre. O applyDefaults (update+create) fica pro seed manual / reset.
+   */
+  async seedMissingDefaults(): Promise<number> {
+    const existentes = await this.prisma.permissao.findMany({
+      select: { role: true, modulo: true },
+    });
+    const has = new Set(existentes.map((r) => `${r.role}:${r.modulo}`));
+    const faltantes: Array<{
+      role: UserRole;
+      modulo: string;
+      podeVer: boolean;
+      podeEditar: boolean;
+      acoes: ActionName[];
+    }> = [];
+    for (const role of Object.keys(DEFAULT_PERMISSIONS) as UserRole[]) {
+      const moduleMap = DEFAULT_PERMISSIONS[role];
+      for (const m of MODULES) {
+        if (has.has(`${role}:${m}`)) continue; // já existe → preserva
+        const actions = moduleMap[m] ?? [];
+        faltantes.push({
+          role,
+          modulo: m,
+          podeVer: actions.includes('view'),
+          podeEditar: actions.some((a) => a !== 'view'),
+          acoes: actions,
+        });
+      }
+    }
+    if (faltantes.length === 0) return 0;
+    // skipDuplicates cobre corrida entre réplicas subindo ao mesmo tempo.
+    await this.prisma.permissao.createMany({ data: faltantes, skipDuplicates: true });
+    this.logger.log(`Permissões: semeadas ${faltantes.length} linha(s) que faltavam (create-only)`);
+    return faltantes.length;
   }
 
   /**

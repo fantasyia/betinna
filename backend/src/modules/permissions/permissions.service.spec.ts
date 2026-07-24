@@ -1,6 +1,7 @@
 import { describe, expect, it, vi, beforeEach } from 'vitest';
 import type { UserRole } from '@prisma/client';
 import { PermissionsService } from './permissions.service';
+import { MODULES } from './permissions.constants';
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -12,6 +13,7 @@ const makePrismaMock = () => ({
   permissao: {
     findMany: vi.fn(),
     upsert: vi.fn(),
+    createMany: vi.fn().mockResolvedValue({ count: 0 }),
   } satisfies MockModel,
   usuarioPermissao: {
     findMany: vi.fn().mockResolvedValue([]),
@@ -42,6 +44,12 @@ describe('PermissionsService', () => {
     prisma.permissao.findMany.mockResolvedValue([]);
     service = new PermissionsService(prisma as never);
     await service.onModuleInit(); // carrega cache vazio inicialmente
+    // O boot agora roda seedMissingDefaults → limpa o histórico das spies pra
+    // cada teste contar só as SUAS chamadas (mantém as implementações/retornos).
+    prisma.permissao.findMany.mockClear();
+    prisma.permissao.createMany.mockClear();
+    prisma.permissao.upsert.mockClear();
+    prisma.usuarioPermissao.findMany.mockClear();
   });
 
   // -------------------------------------------------------------------------
@@ -387,8 +395,47 @@ describe('PermissionsService', () => {
 
       // upsert deve ter sido chamado múltiplas vezes (muitos roles × módulos)
       expect(prisma.permissao.upsert.mock.calls.length).toBeGreaterThan(0);
-      // Cache deve ter sido recarregado
-      expect(prisma.permissao.findMany).toHaveBeenCalledTimes(2); // onModuleInit + applyDefaults
+      // Cache deve ter sido recarregado (1 findMany do reloadCache do applyDefaults;
+      // o histórico do boot foi limpo no beforeEach).
+      expect(prisma.permissao.findMany).toHaveBeenCalledTimes(1);
+    });
+  });
+
+  describe('seedMissingDefaults (create-only)', () => {
+    it('cria só as linhas que faltam e NUNCA toca nas existentes', async () => {
+      // Estado tipo-prod: só "quadros" existe pra cada papel; resto faltando.
+      const roles: UserRole[] = ['ADMIN', 'DIRECTOR', 'GERENTE', 'SAC', 'REP'];
+      prisma.permissao.findMany.mockResolvedValueOnce(
+        roles.map((role) => ({ role, modulo: 'quadros' })),
+      );
+
+      const n = await service.seedMissingDefaults();
+
+      expect(prisma.permissao.createMany).toHaveBeenCalledTimes(1);
+      const data = prisma.permissao.createMany.mock.calls[0][0].data as Array<{
+        role: string;
+        modulo: string;
+        podeVer: boolean;
+        acoes: string[];
+      }>;
+      // Nenhuma linha de "quadros" é recriada (já existe → preservada).
+      expect(data.some((d) => d.modulo === 'quadros')).toBe(false);
+      // DIRECTOR ganha o "dashboard" que faltava (causa do 403), com view.
+      const dash = data.find((d) => d.role === 'DIRECTOR' && d.modulo === 'dashboard');
+      expect(dash?.podeVer).toBe(true);
+      expect(dash?.acoes).toContain('view');
+      expect(n).toBe(data.length);
+    });
+
+    it('é no-op quando todas as linhas já existem', async () => {
+      const roles: UserRole[] = ['ADMIN', 'DIRECTOR', 'GERENTE', 'SAC', 'REP'];
+      const todas = roles.flatMap((role) => MODULES.map((modulo) => ({ role, modulo })));
+      prisma.permissao.findMany.mockResolvedValueOnce(todas);
+
+      const n = await service.seedMissingDefaults();
+
+      expect(n).toBe(0);
+      expect(prisma.permissao.createMany).not.toHaveBeenCalled();
     });
   });
 });
