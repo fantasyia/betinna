@@ -199,6 +199,9 @@ export const API_TOKEN_ESCOPOS = [
   'contatos',
   'crm',
   'prompts',
+  // usuarios = leitura (GET) de /users: a master descobre userId/role pra
+  // configurar atendenteId/responsavelId/ATRIBUIR_REP nos fluxos. NUNCA escrita.
+  'usuarios',
 ] as const;
 
 export const createApiTokenSchema = z.object({

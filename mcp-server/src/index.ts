@@ -1879,10 +1879,118 @@ server.registerTool(
   ),
 );
 
+// ─── Usuários (leitura — a master descobre userId/role) ──────────────────
+//
+// PAPÉIS (role) VÁLIDOS no Betinna — use estes valores EXATOS (em maiúsculas):
+//   ADMIN     = master da plataforma (bypass total)
+//   DIRECTOR  = diretor/mandatário do tenant (acesso total ao tenant)
+//   GERENTE   = gestão operacional (sem config/integrações)
+//   SAC       = atendimento (inbox marketplaces + ocorrências)
+//   REP       = representante (só a própria carteira)
+// É este o valor que vai em `notificarRoles` do TRANSFERIR_ATENDIMENTO (ex.: ["SAC"]).
+
+interface UsuarioLite {
+  id: string;
+  nome: string;
+  email: string;
+  role: string;
+  status: string;
+}
+
+function projetarUsuario(u: Record<string, unknown>): UsuarioLite {
+  return {
+    id: String(u.id ?? ''),
+    nome: String(u.nome ?? ''),
+    email: String(u.email ?? ''),
+    role: String(u.role ?? ''),
+    status: String(u.status ?? ''),
+  };
+}
+
+server.registerTool(
+  'usuarios_listar',
+  {
+    description:
+      'Lista usuários da empresa (id, nome, email, papel/role, status), paginado. Serve pra ' +
+      'a master DESCOBRIR o userId de uma pessoa e apontar nós de fluxo que apontam pra gente: ' +
+      'TRANSFERIR_ATENDIMENTO (atendenteId), CRIAR_TAREFA (responsavelId), ATRIBUIR_REP. ' +
+      'PAPÉIS/role válidos (use exatos): ADMIN, DIRECTOR, GERENTE, SAC, REP — são os mesmos ' +
+      'valores de `notificarRoles` do TRANSFERIR_ATENDIMENTO. Contém DADOS PESSOAIS. Somente leitura.',
+    inputSchema: {
+      search: z
+        .string()
+        .optional()
+        .describe('Busca por nome ou e-mail (parcial, case-insensitive)'),
+      role: z
+        .enum(['ADMIN', 'DIRECTOR', 'GERENTE', 'SAC', 'REP'])
+        .optional()
+        .describe('Filtra por papel'),
+      status: z
+        .enum(['ATIVO', 'PENDENTE', 'INATIVO'])
+        .optional()
+        .describe('Filtra por status (PENDENTE = convite não aceito ainda)'),
+      page: z.number().int().min(1).default(1).describe('Página (1-based)'),
+      limit: z.number().int().min(1).max(100).default(30).describe('Itens por página (máx 100)'),
+    },
+    annotations: { readOnlyHint: true, destructiveHint: false },
+  },
+  seguro(
+    async (args: {
+      search?: string;
+      role?: string;
+      status?: string;
+      page: number;
+      limit: number;
+    }) => {
+      const qs = new URLSearchParams();
+      qs.set('page', String(args.page));
+      qs.set('limit', String(args.limit));
+      if (args.search) qs.set('search', args.search);
+      if (args.role) qs.set('role', args.role);
+      if (args.status) qs.set('status', args.status);
+      const resp = await api.get<{ data?: Array<Record<string, unknown>>; pagination?: unknown }>(
+        `/users?${qs.toString()}`,
+      );
+      const arr = Array.isArray(resp?.data) ? resp.data : [];
+      return ok({ usuarios: arr.map(projetarUsuario), pagination: resp?.pagination });
+    },
+  ),
+);
+
+server.registerTool(
+  'usuarios_ver',
+  {
+    description:
+      'Detalha UM usuário por id OU por e-mail (id/nome/email/role/status). Atalho pro caso comum ' +
+      'da master: "qual o userId do fulano@email?". Informe `id` OU `email` (um dos dois). Somente leitura.',
+    inputSchema: {
+      id: z.string().optional().describe('userId (uuid). Use este OU email.'),
+      email: z.string().optional().describe('E-mail exato do usuário. Use este OU id.'),
+    },
+    annotations: { readOnlyHint: true, destructiveHint: false },
+  },
+  seguro(async (args: { id?: string; email?: string }) => {
+    if (!args.id && !args.email) return erro('Informe `id` ou `email`.');
+    if (args.id) {
+      const u = await api.get<Record<string, unknown>>(`/users/${encodeURIComponent(args.id)}`);
+      return ok(projetarUsuario(u));
+    }
+    // Por e-mail: busca e casa exato (case-insensitive).
+    const alvo = args.email!.trim().toLowerCase();
+    const resp = await api.get<{ data?: Array<Record<string, unknown>> }>(
+      `/users?search=${encodeURIComponent(args.email!)}&limit=20`,
+    );
+    const arr = Array.isArray(resp?.data) ? resp.data : [];
+    const match = arr.find((u) => String(u.email ?? '').toLowerCase() === alvo);
+    if (!match) return erro(`Nenhum usuário com o e-mail exato "${args.email}".`);
+    return ok(projetarUsuario(match));
+  }),
+);
+
 // ─── Boot ───────────────────────────────────────────────────────────────
 
 const transport = new StdioServerTransport();
 await server.connect(transport);
 console.error(
-  '[betinna-kanban-mcp] conectado — 26 tools kanban_* + 11 tools fluxos_* + 6 tools funis_/contatos_/crm + 4 tools prompts_* + 2 tools bot_config_* disponíveis',
+  '[betinna-kanban-mcp] conectado — 26 tools kanban_* + 11 tools fluxos_* + 6 tools funis_/contatos_/crm + 4 tools prompts_* + 2 tools bot_config_* + 2 tools usuarios_* disponíveis',
 );

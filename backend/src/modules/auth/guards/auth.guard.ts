@@ -147,12 +147,22 @@ export class AuthGuard implements CanActivate {
     }
 
     // Módulo exigido pela rota → escopo correspondente.
-    let moduloRequerido: 'kanban' | 'fluxos' | 'funis' | 'contatos' | 'crm' | 'prompts' | null =
-      null;
+    let moduloRequerido:
+      | 'kanban'
+      | 'fluxos'
+      | 'funis'
+      | 'contatos'
+      | 'crm'
+      | 'prompts'
+      | 'usuarios'
+      | null = null;
     if (/\/kanban(\/|$)/.test(path)) moduloRequerido = 'kanban';
     else if (/\/fluxos(\/|$)/.test(path)) moduloRequerido = 'fluxos';
     else if (/\/funis(\/|$)/.test(path)) moduloRequerido = 'funis';
     else if (/\/contatos(\/|$)/.test(path)) moduloRequerido = 'contatos';
+    // /users = leitura de usuários (id/nome/email/role) pra a master achar userId.
+    // SOMENTE GET (restringido abaixo) — PAT nunca cria/edita/apaga usuário.
+    else if (/\/users(\/|$)/.test(path)) moduloRequerido = 'usuarios';
     // /crm = ações de CRM por MCP (ESCRITA: tags, mover etapa). Surface estreita e explícita.
     else if (/\/crm(\/|$)/.test(path)) moduloRequerido = 'crm';
     // /mullerbot/prompts = biblioteca de prompts da IA (ESCRITA: criar/editar prompt).
@@ -164,14 +174,17 @@ export class AuthGuard implements CanActivate {
       moduloRequerido = 'prompts';
     if (!moduloRequerido) {
       throw new ForbiddenException(
-        'Token de API só acessa rotas /kanban, /fluxos, /funis, /contatos, /crm, ' +
+        'Token de API só acessa rotas /kanban, /fluxos, /funis, /contatos, /crm, /users, ' +
           '/mullerbot/prompts e /mullerbot/persona',
       );
     }
 
-    // Funis e contatos via PAT são SOMENTE LEITURA (contatos = PII; nunca escrita por token).
+    // Funis, contatos e usuários via PAT são SOMENTE LEITURA (contatos/usuários = PII;
+    // usuários também expõe gestão sensível — nunca criar/editar/apagar por token).
     if (
-      (moduloRequerido === 'funis' || moduloRequerido === 'contatos') &&
+      (moduloRequerido === 'funis' ||
+        moduloRequerido === 'contatos' ||
+        moduloRequerido === 'usuarios') &&
       (request.method ?? 'GET').toUpperCase() !== 'GET'
     ) {
       throw new ForbiddenException(`Token de API só faz leitura (GET) em /${moduloRequerido}`);
