@@ -36,6 +36,7 @@ export default function KanbanTokensPage() {
   const [incluirContatos, setIncluirContatos] = useState(false);
   const [incluirCrm, setIncluirCrm] = useState(false);
   const [incluirPrompts, setIncluirPrompts] = useState(false);
+  const [incluirUsuarios, setIncluirUsuarios] = useState(false);
   const [salvando, setSalvando] = useState(false);
   /** Token recém-criado — única chance de copiar. */
   const [novoToken, setNovoToken] = useState<string | null>(null);
@@ -55,6 +56,7 @@ export default function KanbanTokensPage() {
       if (incluirContatos) escopo.push('contatos');
       if (incluirCrm) escopo.push('crm');
       if (incluirPrompts) escopo.push('prompts');
+      if (incluirUsuarios) escopo.push('usuarios');
       const criado = await api.post<ApiToken & { token: string }>('/kanban/api-tokens', {
         nome: nome.trim(),
         escopo,
@@ -66,6 +68,7 @@ export default function KanbanTokensPage() {
       setIncluirContatos(false);
       setIncluirCrm(false);
       setIncluirPrompts(false);
+      setIncluirUsuarios(false);
       refetch();
     } catch (err) {
       toast.error(apiErrorMessage(err));
@@ -160,7 +163,9 @@ export default function KanbanTokensPage() {
                                   ? 'CRM (escrita)'
                                   : e === 'prompts'
                                     ? 'Prompts (IA)'
-                                    : 'Quadros'}
+                                    : e === 'usuarios'
+                                      ? 'Usuários (leitura)'
+                                      : 'Quadros'}
                         </Badge>
                       ))}
                     </span>
@@ -282,6 +287,12 @@ export default function KanbanTokensPage() {
                   checked={incluirPrompts}
                   onChange={(e) => setIncluirPrompts(e.target.checked)}
                   data-testid="token-escopo-prompts"
+                />
+                <Checkbox
+                  label="Usuários (somente leitura · id/nome/email/papel)"
+                  checked={incluirUsuarios}
+                  onChange={(e) => setIncluirUsuarios(e.target.checked)}
+                  data-testid="token-escopo-usuarios"
                 />
               </div>
             </Field>
