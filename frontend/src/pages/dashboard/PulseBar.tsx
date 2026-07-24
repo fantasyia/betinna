@@ -103,7 +103,7 @@ export function PulseBar({ pulso }: { pulso: PulsoResumo }) {
       data-testid="pulse-bar"
       className={cn(
         // Sticky no topo do scroll do dashboard; fundo sólido pra cobrir o canvas.
-        'sticky top-0 z-30 -mx-2 px-2 py-2 bg-bg/95 backdrop-blur-sm',
+        'sticky top-0 z-30 -mx-2 px-2 py-1.5 bg-bg/95 backdrop-blur-sm',
         'grid gap-2 grid-cols-2 sm:grid-cols-3 min-[1280px]:grid-cols-6',
       )}
     >
@@ -114,7 +114,7 @@ export function PulseBar({ pulso }: { pulso: PulsoResumo }) {
           data-testid={t.testid}
           onClick={t.onClick}
           className={cn(
-            'text-left rounded-[10px] border border-border bg-surface px-3.5 py-2.5',
+            'text-left rounded-[10px] border border-border bg-surface px-3 py-2',
             'hover:border-border-strong hover:bg-surface-hover transition-colors',
             'focus-visible:outline focus-visible:outline-2 focus-visible:outline-primary',
           )}
@@ -124,7 +124,7 @@ export function PulseBar({ pulso }: { pulso: PulsoResumo }) {
             <span className="truncate">{t.label}</span>
           </div>
           <div className="mt-0.5 flex items-baseline gap-2 flex-wrap">
-            <span className="text-2xl font-bold tabular text-text leading-none">{t.valor}</span>
+            <span className="text-xl font-bold tabular text-text leading-none">{t.valor}</span>
             {t.estado && (
               <span
                 className={cn(

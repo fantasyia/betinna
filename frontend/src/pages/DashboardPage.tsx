@@ -215,7 +215,7 @@ export default function DashboardPage() {
 
           {/* Canvas + trilho fixo. O trilho vem ANTES no DOM: abaixo de 1024px
               ele empilha no TOPO da página (regra do card). */}
-          <div className="mt-4 grid grid-cols-1 gap-5 min-[1024px]:grid-cols-[minmax(0,1fr)_auto]">
+          <div className="mt-3 grid grid-cols-1 gap-4 min-[1024px]:grid-cols-[minmax(0,1fr)_auto]">
             <div className="min-[1024px]:order-2 min-w-0">
               <TrilhoAcao badge={resumo?.triagem.length ?? 0}>
                 {prefs.precisa &&
@@ -232,7 +232,7 @@ export default function DashboardPage() {
               </TrilhoAcao>
             </div>
 
-            <div className="min-[1024px]:order-1 min-w-0 flex flex-col gap-5">
+            <div className="min-[1024px]:order-1 min-w-0 flex flex-col gap-3">
               {/* MODO PRONTIDÃO — só quando a máquina está desligada (0 fluxos ativos). */}
               {ehGestao && resumo?.prontidao.ativo && resumo.prontidao.linhas.length > 0 && (
                 <ProntidaoCard linhas={resumo.prontidao.linhas} />
@@ -271,11 +271,12 @@ export default function DashboardPage() {
                       totalPedidos === 0 && totalAtivos === 0 && (sac.abertas ?? 0) === 0;
 
                     return (
-                      <div className="flex flex-col gap-5">
+                      <div className="flex flex-col gap-3">
                         {/* Indicadores de vendas (mês) */}
                         {prefs.kpis && (
-                          <section className="grid gap-3 grid-cols-1 sm:grid-cols-2 xl:grid-cols-5">
+                          <section className="grid gap-2.5 grid-cols-2 sm:grid-cols-3 xl:grid-cols-5">
                             <Stat
+                              dense
                               label="Faturamento"
                               icon={<DollarSign />}
                               iconTone="primary"
@@ -289,6 +290,7 @@ export default function DashboardPage() {
                               sparkColor="var(--primary)"
                             />
                             <Stat
+                              dense
                               label="Pedidos"
                               icon={<ShoppingCart />}
                               iconTone="secondary"
@@ -296,6 +298,7 @@ export default function DashboardPage() {
                               hint="no período"
                             />
                             <Stat
+                              dense
                               label="Ticket médio"
                               icon={<Receipt />}
                               iconTone="magenta"
@@ -303,6 +306,7 @@ export default function DashboardPage() {
                               hint={totalPedidos > 0 ? undefined : 'sem pedidos no período'}
                             />
                             <Stat
+                              dense
                               label="Leads ativos"
                               icon={<Target />}
                               iconTone="blue"
@@ -310,6 +314,7 @@ export default function DashboardPage() {
                               hint="no funil"
                             />
                             <Stat
+                              dense
                               label="Conversão"
                               icon={<TrendingUp />}
                               iconTone="success"
@@ -324,7 +329,7 @@ export default function DashboardPage() {
                           <section
                             id="mod-funil"
                             className={cn(
-                              'grid grid-cols-1 gap-4 scroll-mt-24',
+                              'grid grid-cols-1 gap-3 scroll-mt-24',
                               prefs.topReps && prefs.funil ? 'xl:grid-cols-2' : 'xl:grid-cols-1',
                             )}
                           >

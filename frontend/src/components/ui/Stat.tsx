@@ -35,6 +35,7 @@ export function Stat({
   trend,
   spark,
   sparkColor = 'currentColor',
+  dense = false,
   className,
 }: {
   label: string;
@@ -52,6 +53,8 @@ export function Stat({
   trend?: 'up' | 'down' | 'flat';
   spark?: number[];
   sparkColor?: string;
+  /** Versão compacta (dashboard denso): menos padding/gap, valor menor. */
+  dense?: boolean;
   className?: string;
 }) {
   const computedTrend: 'up' | 'down' | 'flat' =
@@ -68,13 +71,18 @@ export function Stat({
         : 'text-muted';
 
   return (
-    <Card variant="default" padding="md" className={cn('flex flex-col gap-3', className)}>
+    <Card
+      variant="default"
+      padding={dense ? 'sm' : 'md'}
+      className={cn('flex flex-col', dense ? 'gap-1.5' : 'gap-3', className)}
+    >
       <header className="flex items-start justify-between gap-2">
         <div className="flex items-center gap-2 text-text-subtle min-w-0">
           {icon && (
             <span
               className={cn(
-                'flex h-7 w-7 items-center justify-center rounded-md shrink-0',
+                'flex items-center justify-center rounded-md shrink-0',
+                dense ? 'h-6 w-6' : 'h-7 w-7',
                 TONE_BG[iconTone],
                 '[&>svg]:h-3.5 [&>svg]:w-3.5',
               )}
@@ -101,13 +109,20 @@ export function Stat({
         )}
       </header>
       <div className="flex items-end justify-between gap-3">
-        <div className="flex flex-col gap-1 min-w-0">
-          <span className="text-2xl font-semibold text-text tabular tracking-tight">{value}</span>
+        <div className="flex flex-col gap-0.5 min-w-0">
+          <span
+            className={cn(
+              'font-semibold text-text tabular tracking-tight',
+              dense ? 'text-xl' : 'text-2xl',
+            )}
+          >
+            {value}
+          </span>
           {hint && <span className="text-xs text-muted">{hint}</span>}
         </div>
         {spark && spark.length > 1 && (
           <div style={{ color: sparkColor }}>
-            <Sparkline data={spark} width={88} height={28} fill strokeWidth={1.5} />
+            <Sparkline data={spark} width={88} height={dense ? 24 : 28} fill strokeWidth={1.5} />
           </div>
         )}
       </div>

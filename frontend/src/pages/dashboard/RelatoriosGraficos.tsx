@@ -86,24 +86,22 @@ export function RelatoriosGraficos({ ehGestao }: { ehGestao: boolean }) {
         </Select>
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
-        <div className="lg:col-span-2">
-          <ChartCard
-            titulo="Leads ao longo do tempo"
-            subtitulo={`${formatNumero(totalLeads)} no período · fora da triagem`}
-            filename="leads-no-tempo"
-            vazio={totalLeads === 0}
-            tabela={{
-              colunas: [
-                { header: 'Dia', value: (r: GraficosResp['leadsPorDia'][number]) => r.dia },
-                { header: 'Leads', value: (r) => r.total },
-              ],
-              rows: data.leadsPorDia,
-            }}
-          >
-            <GraficoLinha pontos={data.leadsPorDia} rotuloSerie="Leads" />
-          </ChartCard>
-        </div>
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-2.5">
+        <ChartCard
+          titulo="Leads ao longo do tempo"
+          subtitulo={`${formatNumero(totalLeads)} no período · fora da triagem`}
+          filename="leads-no-tempo"
+          vazio={totalLeads === 0}
+          tabela={{
+            colunas: [
+              { header: 'Dia', value: (r: GraficosResp['leadsPorDia'][number]) => r.dia },
+              { header: 'Leads', value: (r) => r.total },
+            ],
+            rows: data.leadsPorDia,
+          }}
+        >
+          <GraficoLinha pontos={data.leadsPorDia} rotuloSerie="Leads" />
+        </ChartCard>
 
         <ChartCard
           titulo="Origem por campanha (UTM)"
@@ -145,50 +143,46 @@ export function RelatoriosGraficos({ ehGestao }: { ehGestao: boolean }) {
         </ChartCard>
 
         {ehGestao && (
-          <div className="lg:col-span-2">
-            <ChartCard
-              titulo="Saúde dos fluxos (execuções por dia)"
-              subtitulo={`${formatNumero(totalExec)} execuções no período`}
-              filename="saude-fluxos"
-              vazio={totalExec === 0}
-              tabela={{
-                colunas: [
-                  { header: 'Dia', value: (r: GraficosResp['saudeFluxos'][number]) => r.dia },
-                  { header: 'OK', value: (r) => r.ok },
-                  { header: 'Erro', value: (r) => r.erro },
-                ],
-                rows: data.saudeFluxos,
-              }}
-            >
-              <GraficoEmpilhadoDiario dados={data.saudeFluxos} />
-            </ChartCard>
-          </div>
-        )}
-
-        <div className="lg:col-span-2">
           <ChartCard
-            titulo={`Tempo médio por etapa${data.funilSelecionado ? ` — ${data.funilSelecionado.nome}` : ''}`}
-            subtitulo="Dias que um lead fica em cada etapa (histórico completo)"
-            filename="tempo-por-etapa"
-            vazio={data.tempoPorEtapa.every((e) => e.dias == null)}
+            titulo="Saúde dos fluxos (execuções por dia)"
+            subtitulo={`${formatNumero(totalExec)} execuções no período`}
+            filename="saude-fluxos"
+            vazio={totalExec === 0}
             tabela={{
               colunas: [
-                { header: 'Etapa', value: (r: GraficosResp['tempoPorEtapa'][number]) => r.nome },
-                { header: 'Dias (média)', value: (r) => fmtDias(r.dias) },
+                { header: 'Dia', value: (r: GraficosResp['saudeFluxos'][number]) => r.dia },
+                { header: 'OK', value: (r) => r.ok },
+                { header: 'Erro', value: (r) => r.erro },
               ],
-              rows: data.tempoPorEtapa,
+              rows: data.saudeFluxos,
             }}
           >
-            <GraficoBarrasH
-              dados={data.tempoPorEtapa.map((e) => ({
-                label: e.nome,
-                valor: e.dias ?? 0,
-                cor: e.cor,
-              }))}
-              formatValor={(v) => fmtDias(v)}
-            />
+            <GraficoEmpilhadoDiario dados={data.saudeFluxos} />
           </ChartCard>
-        </div>
+        )}
+
+        <ChartCard
+          titulo={`Tempo médio por etapa${data.funilSelecionado ? ` — ${data.funilSelecionado.nome}` : ''}`}
+          subtitulo="Dias que um lead fica em cada etapa (histórico completo)"
+          filename="tempo-por-etapa"
+          vazio={data.tempoPorEtapa.every((e) => e.dias == null)}
+          tabela={{
+            colunas: [
+              { header: 'Etapa', value: (r: GraficosResp['tempoPorEtapa'][number]) => r.nome },
+              { header: 'Dias (média)', value: (r) => fmtDias(r.dias) },
+            ],
+            rows: data.tempoPorEtapa,
+          }}
+        >
+          <GraficoBarrasH
+            dados={data.tempoPorEtapa.map((e) => ({
+              label: e.nome,
+              valor: e.dias ?? 0,
+              cor: e.cor,
+            }))}
+            formatValor={(v) => fmtDias(v)}
+          />
+        </ChartCard>
       </div>
     </section>
   );

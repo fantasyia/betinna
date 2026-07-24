@@ -71,10 +71,10 @@ export function ChartCard<T>({
     'bg-surface text-text border border-border-strong rounded-md px-2 py-0.5 text-[11px] font-medium cursor-pointer';
 
   return (
-    <div className="bg-surface border border-border rounded-[10px] p-4 min-w-0">
-      <div className="flex items-start justify-between gap-2 mb-3 flex-wrap">
+    <div className="bg-surface border border-border rounded-[10px] p-3 min-w-0">
+      <div className="flex items-start justify-between gap-2 mb-2 flex-wrap">
         <div className="min-w-0">
-          <h3 className="m-0 text-[14px] font-semibold">{titulo}</h3>
+          <h3 className="m-0 text-[13px] font-semibold leading-tight">{titulo}</h3>
           {subtitulo && <p className="m-0 text-[11px] text-muted">{subtitulo}</p>}
         </div>
         <div className="flex items-center gap-1.5 shrink-0">
@@ -104,9 +104,11 @@ export function ChartCard<T>({
       </div>
 
       {vazio ? (
-        <p className="text-[13px] text-muted m-0 py-6 text-center">Sem dados no período.</p>
+        // Card sem dado NÃO ocupa altura cheia — encolhe pro aviso centrado.
+        // Quando o dado chegar, o gráfico cresce naturalmente.
+        <p className="text-[12px] text-muted m-0 py-3 text-center">Sem dados ainda.</p>
       ) : vista === 'grafico' ? (
-        <div ref={wrapRef} className="relative">
+        <div ref={wrapRef} className="relative max-h-[260px] overflow-hidden">
           {children}
         </div>
       ) : (
@@ -166,7 +168,7 @@ const diaCurto = (iso: string) => `${iso.slice(8, 10)}/${iso.slice(5, 7)}`;
 export function GraficoLinha({
   pontos,
   rotuloSerie,
-  altura = 220,
+  altura = 190,
 }: {
   pontos: Array<{ dia: string; total: number }>;
   /** Rótulo direto na ponta da linha (1 série não leva legenda). */
@@ -288,7 +290,7 @@ export function GraficoBarrasH({
 }) {
   const [hover, setHover] = useState<number | null>(null);
   const W = 720;
-  const rowH = 30;
+  const rowH = 24;
   const H = dados.length * rowH + 6;
   const LBL = 170;
   const VAL = 64;
@@ -329,7 +331,7 @@ export function GraficoBarrasH({
           <div className="relative" style={{ left: '40%' }}>
             <Tooltip
               x={0}
-              y={(hover + 1) * 30 + 14}
+              y={(hover + 1) * 24 + 12}
               linhas={[
                 dados[hover].label,
                 `${formatValor(dados[hover].valor)}${sufixoTooltip ? ` ${sufixoTooltip}` : ''}`,
@@ -347,7 +349,7 @@ export function GraficoBarrasH({
 
 export function GraficoEmpilhadoDiario({
   dados,
-  altura = 200,
+  altura = 176,
 }: {
   dados: Array<{ dia: string; ok: number; erro: number }>;
   altura?: number;
@@ -436,8 +438,8 @@ export function GraficoConversao({
     return <p className="text-[13px] text-muted m-0">Sem etapas no funil.</p>;
   }
   const W = 720;
-  const rowH = 28;
-  const taxaH = 17;
+  const rowH = 24;
+  const taxaH = 15;
   const LBL = 170;
   const VAL = 64;
   const iw = W - LBL - VAL;
