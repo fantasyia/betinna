@@ -6,6 +6,7 @@ import { ErrorCode } from '@shared/errors/error-codes';
 import { RepScopeService } from '@shared/scope/rep-scope.service';
 import type { AuthenticatedUser } from '@shared/types/authenticated-user';
 import { proximaExecucaoCrons } from '@modules/fluxos/cron.util';
+import type { GraficosDto } from './relatorios.dto';
 
 const DIA_MS = 24 * 60 * 60 * 1000;
 const TZ_PADRAO = 'America/Sao_Paulo';
@@ -577,6 +578,190 @@ export class DashboardResumoService {
     });
 
     return { pulso, triagem, prontidao, fluxosSala, agendaHoje, mensagens };
+  }
+
+  /**
+   * M8 — séries pros gráficos de relatórios do dashboard, em UMA chamada:
+   * leads/dia (linha) · origem por UTM (barra horizontal) · conversão do funil
+   * (entradas por etapa + taxa de avanço) · saúde dos fluxos (ok/erro por dia)
+   * · tempo médio por etapa. Tudo agregado no banco; buckets zero-fill aqui —
+   * o front SÓ renderiza.
+   *
+   * Escopo: leads respeitam a carteira (RepScope) e ficam FORA da triagem
+   * (mesma regra do resumo). Conversão/tempo são métricas de GESTÃO do funil
+   * (âmbito empresa — mesmo racional do M5). Saúde dos fluxos: só gestão.
+   */
+  async graficos(user: AuthenticatedUser, params: GraficosDto) {
+    const empresaId = this.requireEmpresa(user);
+    const scope = await this.repScope.getRepIds(user);
+    const ehGestao = user.role !== 'REP';
+    const agora = new Date();
+    const dias = params.dias;
+    const de = new Date(inicioDoDia(agora).getTime() - (dias - 1) * DIA_MS);
+
+    const repFilter: Prisma.LeadWhereInput =
+      scope !== null ? { representanteId: { in: scope.length ? scope : ['__none__'] } } : {};
+    const scopeSql =
+      scope !== null
+        ? Prisma.sql`AND l."representanteId" = ANY(${scope.length ? scope : ['__none__']})`
+        : Prisma.empty;
+
+    const funis = await this.prisma.funil.findMany({
+      where: { empresaId, ativo: true, triagem: false },
+      orderBy: { criadoEm: 'asc' },
+      select: { id: true, nome: true },
+    });
+    const triagemIds = (
+      await this.prisma.funil.findMany({
+        where: { empresaId, triagem: true },
+        select: { id: true },
+      })
+    ).map((f) => f.id);
+    const foraDaTriagem: Prisma.LeadWhereInput = triagemIds.length
+      ? { OR: [{ funilId: null }, { funilId: { notIn: triagemIds } }] }
+      : {};
+    const triagemSql = triagemIds.length
+      ? Prisma.sql`AND (l."funilId" IS NULL OR l."funilId" != ALL(${triagemIds}))`
+      : Prisma.empty;
+
+    // Funil dos gráficos de etapa: o pedido, se pertence à empresa; senão o 1º.
+    const funilSel = funis.find((f) => f.id === params.funilId) ?? funis[0] ?? null;
+
+    const [leadsDia, utmGrp, etapas, entradas, tempos, saudeDia] = await Promise.all([
+      this.prisma.$queryRaw<Array<{ dia: Date; total: bigint }>>`
+        SELECT date_trunc('day', l."criadoEm") AS dia, COUNT(*) AS total
+        FROM "Lead" l
+        WHERE l."empresaId" = ${empresaId} AND l."criadoEm" >= ${de}
+          ${scopeSql} ${triagemSql}
+        GROUP BY 1
+      `,
+      this.prisma.lead.groupBy({
+        by: ['utmCampaign'],
+        where: {
+          empresaId,
+          criadoEm: { gte: de },
+          utmCampaign: { not: null },
+          ...repFilter,
+          ...foraDaTriagem,
+        },
+        _count: { _all: true },
+        orderBy: { _count: { id: 'desc' } },
+      }),
+      funilSel
+        ? this.prisma.funilEtapa.findMany({
+            where: { funilId: funilSel.id },
+            orderBy: { ordem: 'asc' },
+            select: { id: true, nome: true, cor: true, tipo: true },
+          })
+        : Promise.resolve([]),
+      funilSel
+        ? this.prisma.leadEtapaHistorico.groupBy({
+            by: ['etapaDestino'],
+            where: {
+              empresaId,
+              funilId: funilSel.id,
+              ocorridoEm: { gte: de },
+              etapaDestino: { not: null },
+            },
+            _count: { _all: true },
+          })
+        : Promise.resolve([]),
+      // Tempo na etapa = ENTRAR nela → PRÓXIMA transição do mesmo lead (janela
+      // LEAD por lead) — mesma conta do M5, histórico completo do funil.
+      funilSel
+        ? this.prisma.$queryRaw<Array<{ etapa: string; dias: number }>>`
+            WITH t AS (
+              SELECT "leadId", "etapaDestino" AS etapa, "ocorridoEm",
+                     LEAD("ocorridoEm") OVER (PARTITION BY "leadId" ORDER BY "ocorridoEm") AS saida
+              FROM "LeadEtapaHistorico"
+              WHERE "empresaId" = ${empresaId} AND "funilId" = ${funilSel.id}
+            )
+            SELECT etapa, (AVG(EXTRACT(EPOCH FROM (saida - "ocorridoEm")) / 86400))::float AS dias
+            FROM t
+            WHERE saida IS NOT NULL AND etapa IS NOT NULL
+            GROUP BY etapa
+          `
+        : Promise.resolve([]),
+      ehGestao
+        ? this.prisma.$queryRaw<Array<{ dia: Date; ok: bigint; erro: bigint }>>`
+            SELECT date_trunc('day', "criadoEm") AS dia,
+                   COUNT(*) FILTER (WHERE "status" = 'CONCLUIDO') AS ok,
+                   COUNT(*) FILTER (WHERE "status" = 'FALHOU') AS erro
+            FROM "FluxoExecucao"
+            WHERE "empresaId" = ${empresaId} AND "criadoEm" >= ${de}
+            GROUP BY 1
+          `
+        : Promise.resolve([]),
+    ]);
+
+    // Buckets diários zero-fill (de … hoje) — a linha e a empilhada não podem
+    // "pular" dia sem dado.
+    const chaveDia = (d: Date) => inicioDoDia(d).getTime();
+    const buckets: Date[] = [];
+    for (let i = 0; i < dias; i++) buckets.push(new Date(de.getTime() + i * DIA_MS));
+    const leadsPorChave = new Map(
+      leadsDia.map((r) => [chaveDia(new Date(r.dia)), Number(r.total)]),
+    );
+    const saudePorChave = new Map(
+      saudeDia.map((r) => [chaveDia(new Date(r.dia)), { ok: Number(r.ok), erro: Number(r.erro) }]),
+    );
+    const leadsPorDia = buckets.map((b) => ({
+      dia: b.toISOString().slice(0, 10),
+      total: leadsPorChave.get(b.getTime()) ?? 0,
+    }));
+    const saudeFluxos = ehGestao
+      ? buckets.map((b) => ({
+          dia: b.toISOString().slice(0, 10),
+          ok: saudePorChave.get(b.getTime())?.ok ?? 0,
+          erro: saudePorChave.get(b.getTime())?.erro ?? 0,
+        }))
+      : [];
+
+    // UTM: ordenado por magnitude; 9ª campanha em diante vira "Outros" (regra
+    // do card — nunca uma cor/série gerada na hora).
+    const utmTodos = utmGrp.map((g) => ({
+      campanha: g.utmCampaign as string,
+      total: g._count._all,
+    }));
+    const utm = utmTodos.slice(0, 8);
+    const resto = utmTodos.slice(8).reduce((s, u) => s + u.total, 0);
+    if (resto > 0) utm.push({ campanha: 'Outros', total: resto });
+
+    const entradasPorEtapa = new Map(entradas.map((e) => [e.etapaDestino, e._count._all]));
+    const tempoPorEtapa = new Map(tempos.map((t) => [t.etapa, t.dias]));
+    const etapasAtivas = etapas.filter((e) => e.tipo === 'ATIVA');
+    const conversaoFunil = etapasAtivas.map((et, i) => {
+      const entrou = entradasPorEtapa.get(et.id) ?? 0;
+      const proxima = etapasAtivas[i + 1];
+      const entrouProx = proxima ? (entradasPorEtapa.get(proxima.id) ?? 0) : null;
+      return {
+        id: et.id,
+        nome: et.nome,
+        cor: et.cor,
+        entradas: entrou,
+        // % dos que entraram AQUI que avançaram pra próxima etapa no período.
+        taxaAvanco:
+          entrouProx !== null && entrou > 0 ? Math.round((entrouProx / entrou) * 1000) / 10 : null,
+      };
+    });
+    const tempoEtapas = etapasAtivas.map((et) => ({
+      id: et.id,
+      nome: et.nome,
+      cor: et.cor,
+      dias:
+        tempoPorEtapa.get(et.id) != null ? Math.round(tempoPorEtapa.get(et.id)! * 10) / 10 : null,
+    }));
+
+    return {
+      periodo: { de: de.toISOString(), ate: agora.toISOString(), dias },
+      funis,
+      funilSelecionado: funilSel ? { id: funilSel.id, nome: funilSel.nome } : null,
+      leadsPorDia,
+      utm,
+      conversaoFunil,
+      tempoPorEtapa: tempoEtapas,
+      saudeFluxos,
+    };
   }
 }
 

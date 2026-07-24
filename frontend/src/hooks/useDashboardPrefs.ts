@@ -12,6 +12,7 @@ export type DashboardModulo =
   | 'mensagens'
   | 'fluxosSala'
   | 'calendario'
+  | 'graficos'
   | 'kpis'
   | 'topReps'
   | 'funil'
@@ -24,6 +25,7 @@ export const DASHBOARD_MODULOS: Array<{ key: DashboardModulo; label: string }> =
   { key: 'mensagens', label: 'Mensagens internas' },
   { key: 'fluxosSala', label: 'Fluxos — sala de controle' },
   { key: 'calendario', label: 'Calendário de marketing' },
+  { key: 'graficos', label: 'Gráficos de relatórios' },
   { key: 'kpis', label: 'Indicadores de vendas' },
   { key: 'topReps', label: 'Top representantes' },
   { key: 'funil', label: 'Funil de leads' },
@@ -38,6 +40,7 @@ const DEFAULT: Prefs = {
   mensagens: true,
   fluxosSala: true,
   calendario: true,
+  graficos: true,
   kpis: true,
   topReps: true,
   funil: true,

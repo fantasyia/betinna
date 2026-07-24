@@ -60,6 +60,7 @@ import { AgendaHoje } from './dashboard/AgendaHoje';
 import { MensagensInternas } from './dashboard/MensagensInternas';
 import { FunilEtapaDrawer } from './dashboard/FunilEtapaDrawer';
 import { CalendarioResumo } from './dashboard/CalendarioResumo';
+import { RelatoriosGraficos } from './dashboard/RelatoriosGraficos';
 
 /**
  * DashboardPage v2 — design system dark, KPIs em grid, top reps + funil, atalhos
@@ -248,6 +249,9 @@ export default function DashboardPage() {
 
               {/* M7 — resumo do calendário de marketing (gestão). */}
               {prefs.calendario && ehGestao && <CalendarioResumo />}
+
+              {/* M8 — gráficos de relatórios (endpoint único /dashboard/graficos). */}
+              {prefs.graficos && canSeeRelatorios && <RelatoriosGraficos ehGestao={ehGestao} />}
 
               {/* Vendas / funil / atalhos — módulo independente com estado próprio. */}
               <StateView loading={loading} error={error} onRetry={refetch}>

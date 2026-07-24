@@ -55,3 +55,20 @@ export const periodoSchema = z
   });
 
 export type PeriodoDto = z.infer<typeof periodoSchema>;
+
+/**
+ * Parâmetros do /dashboard/graficos (M8): janela em DIAS corridos (7/30/90) +
+ * funil opcional pros gráficos de conversão/tempo por etapa. Mesma razão do
+ * periodoSchema pra NÃO validar .cuid() no funilId (ids `funil_<hash>`).
+ */
+export const graficosSchema = z.object({
+  dias: z.coerce
+    .number()
+    .int()
+    .pipe(z.union([z.literal(7), z.literal(30), z.literal(90)]))
+    .optional()
+    .default(30),
+  funilId: z.string().min(1).optional(),
+});
+
+export type GraficosDto = z.infer<typeof graficosSchema>;

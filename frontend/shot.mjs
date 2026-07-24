@@ -27,8 +27,11 @@ const ROUTE = process.argv[2] || '/dashboard';
 const OUT = process.argv[3] || 'shot.png';
 const CLICK = process.argv[4] || ''; // texto de um botão pra clicar antes do print
 
+const TEMA = process.env.TEMA || 'light'; // TEMA=dark valida o modo escuro
+
 const browser = await chromium.launch();
 const page = await browser.newPage({ viewport: { width: 1600, height: 1000 } });
+await page.addInitScript((tema) => localStorage.setItem('betinna:theme', tema), TEMA);
 page.on('console', (m) => {
   if (m.type() === 'error') console.log('  [console.error]', m.text().slice(0, 200));
 });

@@ -177,3 +177,106 @@ describe('DashboardResumoService', () => {
     expect(prisma.kanbanBoard.findMany).not.toHaveBeenCalled();
   });
 });
+
+// ─── M8 — /dashboard/graficos ───────────────────────────────────────────
+
+const makePrismaGraficos = () => {
+  const hoje = new Date();
+  return {
+    funil: {
+      findMany: vi
+        .fn()
+        // 1ª chamada: funis não-triagem (selector); 2ª: ids de triagem.
+        .mockResolvedValueOnce([
+          { id: 'fun-1', nome: 'Clientes' },
+          { id: 'fun-2', nome: 'Prospecção' },
+        ])
+        .mockResolvedValue([{ id: 'fun-tri' }]),
+    },
+    lead: {
+      groupBy: vi.fn().mockResolvedValue([
+        ...Array.from({ length: 9 }, (_, i) => ({
+          utmCampaign: `camp-${i + 1}`,
+          _count: { _all: 20 - i },
+        })),
+        { utmCampaign: 'camp-10', _count: { _all: 1 } },
+      ]),
+    },
+    funilEtapa: {
+      findMany: vi.fn().mockResolvedValue([
+        { id: 'et-1', nome: 'Novo', cor: '#111111', tipo: 'ATIVA' },
+        { id: 'et-2', nome: 'Qualificando', cor: '#222222', tipo: 'ATIVA' },
+        { id: 'et-g', nome: 'Ganho', cor: '#333333', tipo: 'GANHO' },
+      ]),
+    },
+    leadEtapaHistorico: {
+      groupBy: vi.fn().mockResolvedValue([
+        { etapaDestino: 'et-1', _count: { _all: 10 } },
+        { etapaDestino: 'et-2', _count: { _all: 4 } },
+      ]),
+    },
+    // 1ª = leads por dia · 2ª = tempo por etapa · 3ª = saúde dos fluxos.
+    $queryRaw: vi
+      .fn()
+      .mockResolvedValueOnce([{ dia: hoje, total: 3n }])
+      .mockResolvedValueOnce([{ etapa: 'et-1', dias: 2.34 }])
+      .mockResolvedValueOnce([{ dia: hoje, ok: 5n, erro: 1n }]),
+  };
+};
+
+describe('DashboardResumoService.graficos (M8)', () => {
+  beforeEach(() => vi.clearAllMocks());
+
+  it('devolve as 5 séries numa chamada, com buckets diários zero-fill', async () => {
+    const prisma = makePrismaGraficos();
+    const svc = new DashboardResumoService(prisma as never, makeRepScope(null) as never);
+    const r = await svc.graficos(user(), { dias: 7 });
+
+    // Linha: 7 buckets (zero-fill) e o dia de HOJE carrega os 3 leads.
+    expect(r.leadsPorDia).toHaveLength(7);
+    expect(r.leadsPorDia[6].total).toBe(3);
+    expect(r.leadsPorDia[0].total).toBe(0);
+    // Empilhada: mesmo zero-fill, ok/erro de hoje preenchidos.
+    expect(r.saudeFluxos).toHaveLength(7);
+    expect(r.saudeFluxos[6]).toMatchObject({ ok: 5, erro: 1 });
+    // Funis do seletor (sem triagem) + selecionado = 1º.
+    expect(r.funis).toHaveLength(2);
+    expect(r.funilSelecionado).toEqual({ id: 'fun-1', nome: 'Clientes' });
+  });
+
+  it('UTM: ordena por magnitude e agrega a 9ª+ em "Outros" (nunca série nova)', async () => {
+    const prisma = makePrismaGraficos();
+    const svc = new DashboardResumoService(prisma as never, makeRepScope(null) as never);
+    const r = await svc.graficos(user(), { dias: 30 });
+
+    expect(r.utm).toHaveLength(9); // top 8 + Outros
+    expect(r.utm[0]).toEqual({ campanha: 'camp-1', total: 20 });
+    expect(r.utm[8]).toEqual({ campanha: 'Outros', total: 12 + 1 }); // camp-9 (12) + camp-10 (1)
+  });
+
+  it('conversão: só etapas ATIVAS, com taxa de avanço entre consecutivas e tempo médio', async () => {
+    const prisma = makePrismaGraficos();
+    const svc = new DashboardResumoService(prisma as never, makeRepScope(null) as never);
+    const r = await svc.graficos(user(), { dias: 30 });
+
+    expect(r.conversaoFunil).toHaveLength(2); // GANHO fica fora
+    expect(r.conversaoFunil[0]).toMatchObject({ nome: 'Novo', entradas: 10, taxaAvanco: 40 });
+    expect(r.conversaoFunil[1]).toMatchObject({
+      nome: 'Qualificando',
+      entradas: 4,
+      taxaAvanco: null,
+    });
+    expect(r.tempoPorEtapa[0]).toMatchObject({ nome: 'Novo', dias: 2.3 });
+    expect(r.tempoPorEtapa[1]).toMatchObject({ nome: 'Qualificando', dias: null });
+  });
+
+  it('REP: saúde dos fluxos volta VAZIA (módulo de gestão) e carteira entra no groupBy de UTM', async () => {
+    const prisma = makePrismaGraficos();
+    const svc = new DashboardResumoService(prisma as never, makeRepScope(['rep-1']) as never);
+    const r = await svc.graficos(user({ id: 'rep-1', role: 'REP' as UserRole }), { dias: 7 });
+
+    expect(r.saudeFluxos).toEqual([]);
+    const where = prisma.lead.groupBy.mock.calls[0][0].where;
+    expect(where.representanteId).toEqual({ in: ['rep-1'] });
+  });
+});

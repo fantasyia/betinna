@@ -1,8 +1,10 @@
-import { Controller, Get } from '@nestjs/common';
+import { Controller, Get, Query } from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
 import { CurrentUser } from '@shared/decorators/current-user.decorator';
 import { RequirePermissions } from '@shared/decorators/permissions.decorator';
+import { ZodValidationPipe } from '@shared/pipes/zod-validation.pipe';
 import type { AuthenticatedUser } from '@shared/types/authenticated-user';
+import { type GraficosDto, graficosSchema } from './relatorios.dto';
 import { DashboardResumoService } from './dashboard-resumo.service';
 
 /**
@@ -24,5 +26,18 @@ export class DashboardResumoController {
   })
   resumo(@CurrentUser() user: AuthenticatedUser) {
     return this.svc.resumo(user);
+  }
+
+  @Get('graficos')
+  @RequirePermissions({ module: 'relatorios', action: 'view' })
+  @ApiOperation({
+    summary:
+      'M8 — séries dos gráficos de relatórios (leads/dia, UTM, conversão do funil, saúde dos fluxos, tempo por etapa) numa chamada',
+  })
+  graficos(
+    @CurrentUser() user: AuthenticatedUser,
+    @Query(new ZodValidationPipe(graficosSchema)) params: GraficosDto,
+  ) {
+    return this.svc.graficos(user, params);
   }
 }

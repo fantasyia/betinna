@@ -60,6 +60,16 @@
   --warning: #b07820;
   --info: #2bcae5;
 
+  /* Gráficos (M8) — tokens PRÓPRIOS, validados pra daltonismo (cvd-check:
+     ΔE >= 25 em prot/deuter/tritanopia em todos os pares que convivem).
+     ok/erro = teal × vermelho-alaranjado (distinguíveis sob CVD, ao contrário
+     do par verde/vermelho puro). NÃO reusar como cor de status de UI. */
+  --chart-linha: #201554;
+  --chart-barra: #5C88DA;
+  --chart-ok: #0e7a6a;
+  --chart-erro: #d1582f;
+  --chart-grade: #eceaf4;
+
   /* Channels */
   --channel-whatsapp: #25d366;
   --channel-instagram: #e1306c;
@@ -133,6 +143,14 @@ html.dark {
   --success: #4cc984;
   --warning: #e0a040;
   --info: #5ad8ee;
+
+  /* Gráficos — passos PRÓPRIOS da rampa validados contra a superfície escura
+     (não é inversão automática do claro). */
+  --chart-linha: #5ad8ee;
+  --chart-barra: #7da3ed;
+  --chart-ok: #34c9a3;
+  --chart-erro: #ff8a5c;
+  --chart-grade: #2a1b6a;
 
   /* Gradients */
   --gradient-brand: linear-gradient(135deg, #bd1fbf 0%, #2bcae5 100%);
