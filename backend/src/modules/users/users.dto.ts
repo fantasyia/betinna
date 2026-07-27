@@ -1,5 +1,6 @@
 import { UserRole, UserStatus } from '@prisma/client';
 import { z } from 'zod';
+import { usuarioIdSchema } from '@shared/validators/id.schema';
 
 const roleEnum = z.nativeEnum(UserRole);
 const statusEnum = z.nativeEnum(UserStatus);
@@ -15,7 +16,7 @@ export const createUserSchema = z
     comissaoPadrao: z.number().min(0).max(100).optional(),
     empresaIds: z.array(z.string().cuid()).min(1, 'Pelo menos uma empresa é necessária'),
     /** Apenas para REP: id do GERENTE responsável pela carteira (opcional — sem gerente, DIRECTOR cuida). */
-    gerenteId: z.string().cuid().nullable().optional(),
+    gerenteId: usuarioIdSchema.nullable().optional(),
   })
   .superRefine((data, ctx) => {
     if (data.role === 'REP' && !data.regiao) {
@@ -45,7 +46,7 @@ export const updateUserSchema = z.object({
   tetoDesconto: z.number().min(0).max(100).optional(),
   comissaoPadrao: z.number().min(0).max(100).optional(),
   empresaIds: z.array(z.string().cuid()).optional(),
-  gerenteId: z.string().cuid().nullable().optional(),
+  gerenteId: usuarioIdSchema.nullable().optional(),
 });
 export type UpdateUserDto = z.infer<typeof updateUserSchema>;
 

@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { usuarioIdSchema } from '@shared/validators/id.schema';
 
 // ─── Enums (espelham o schema Prisma) ─────────────────────────────────────────
 
@@ -22,7 +23,7 @@ export const createCampanhaSchema = z
     canal: z.enum(CAMPANHA_CANAIS),
     // Segmentação — todos vazios = toda a base ativa da empresa
     segTagIds: z.array(z.string().cuid()).default([]),
-    segRepIds: z.array(z.string().cuid()).default([]),
+    segRepIds: z.array(usuarioIdSchema).default([]),
     segClienteIds: z.array(z.string().cuid()).default([]),
     // Conteúdo
     assunto: z.string().max(200).optional(),
@@ -51,7 +52,7 @@ export const updateCampanhaSchema = z.object({
   nome: z.string().min(1).max(120).optional(),
   canal: z.enum(CAMPANHA_CANAIS).optional(),
   segTagIds: z.array(z.string().cuid()).optional(),
-  segRepIds: z.array(z.string().cuid()).optional(),
+  segRepIds: z.array(usuarioIdSchema).optional(),
   segClienteIds: z.array(z.string().cuid()).optional(),
   assunto: z.string().max(200).optional(),
   mensagemWa: z.string().min(1).max(4096).optional(),

@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { usuarioIdSchema } from '@shared/validators/id.schema';
 
 const channelEnum = z.enum([
   'WHATSAPP',
@@ -16,7 +17,7 @@ const statusEnum = z.enum(['ABERTA', 'PENDENTE', 'RESOLVIDA', 'ARQUIVADA']);
 export const listConversationsSchema = z.object({
   canal: channelEnum.optional(),
   status: statusEnum.optional(),
-  atribuidoId: z.string().cuid().optional(),
+  atribuidoId: usuarioIdSchema.optional(),
   /** "me" → filtra atribuído ao usuário atual. */
   meu: z.coerce.boolean().optional(),
   /** true → apenas não atribuídas. */
@@ -106,7 +107,7 @@ export type ResponderMidiaDto = z.infer<typeof responderMidiaSchema>;
 
 export const atribuirSchema = z.object({
   /** null pra desatribuir. */
-  atribuidoId: z.string().cuid().nullable(),
+  atribuidoId: usuarioIdSchema.nullable(),
 });
 export type AtribuirDto = z.infer<typeof atribuirSchema>;
 
@@ -128,7 +129,7 @@ export const bulkIdsSchema = z.object({
 });
 
 export const bulkAtribuirSchema = bulkIdsSchema.extend({
-  atribuidoId: z.string().cuid().nullable(),
+  atribuidoId: usuarioIdSchema.nullable(),
 });
 export type BulkAtribuirDto = z.infer<typeof bulkAtribuirSchema>;
 

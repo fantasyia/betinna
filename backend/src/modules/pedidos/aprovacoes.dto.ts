@@ -1,11 +1,12 @@
 import { AprovacaoStatus } from '@prisma/client';
 import { z } from 'zod';
+import { usuarioIdSchema } from '@shared/validators/id.schema';
 
 export const listAprovacoesSchema = z.object({
   page: z.coerce.number().int().positive().default(1),
   limit: z.coerce.number().int().positive().max(100).default(20),
   status: z.nativeEnum(AprovacaoStatus).optional(),
-  representanteId: z.string().cuid().optional(),
+  representanteId: usuarioIdSchema.optional(),
 });
 export type ListAprovacoesDto = z.infer<typeof listAprovacoesSchema>;
 

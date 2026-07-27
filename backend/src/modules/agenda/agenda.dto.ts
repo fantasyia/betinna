@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { usuarioIdSchema } from '@shared/validators/id.schema';
 
 export const AGENDA_TIPOS = ['VISITA', 'LIGACAO', 'REUNIAO', 'ENTREGA', 'TAREFA'] as const;
 export const agendaTipoEnum = z.enum(AGENDA_TIPOS);
@@ -59,7 +60,7 @@ export const listAgendaSchema = z.object({
   clienteId: z.string().cuid().optional(),
   tipo: agendaTipoEnum.optional(),
   /** Listar agenda de outro usuário (apenas ADMIN/GERENTE). Default: o próprio. */
-  usuarioId: z.string().cuid().optional(),
+  usuarioId: usuarioIdSchema.optional(),
 });
 export type ListAgendaDto = z.infer<typeof listAgendaSchema>;
 

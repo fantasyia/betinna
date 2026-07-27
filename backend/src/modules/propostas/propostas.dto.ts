@@ -1,5 +1,6 @@
 import { PagamentoForma, PropostaStatus } from '@prisma/client';
 import { z } from 'zod';
+import { usuarioIdSchema } from '@shared/validators/id.schema';
 
 export const propostaItemInputSchema = z.object({
   produtoId: z.string().cuid(),
@@ -41,6 +42,6 @@ export const listPropostasSchema = z.object({
   search: z.string().optional(),
   status: z.nativeEnum(PropostaStatus).optional(),
   clienteId: z.string().cuid().optional(),
-  representanteId: z.string().cuid().optional(),
+  representanteId: usuarioIdSchema.optional(),
 });
 export type ListPropostasDto = z.infer<typeof listPropostasSchema>;

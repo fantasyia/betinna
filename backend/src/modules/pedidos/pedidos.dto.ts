@@ -1,5 +1,6 @@
 import { PagamentoForma, PedidoCancelamentoStatus, PedidoStatus } from '@prisma/client';
 import { z } from 'zod';
+import { usuarioIdSchema } from '@shared/validators/id.schema';
 
 const QTY_MIN = 1;
 const DISC_MIN = 0;
@@ -52,7 +53,7 @@ export const listPedidosSchema = z.object({
   search: z.string().optional(),
   status: z.nativeEnum(PedidoStatus).optional(),
   clienteId: z.string().cuid().optional(),
-  representanteId: z.string().cuid().optional(),
+  representanteId: usuarioIdSchema.optional(),
   dataInicio: z.coerce.date().optional(),
   dataFim: z.coerce.date().optional(),
 });

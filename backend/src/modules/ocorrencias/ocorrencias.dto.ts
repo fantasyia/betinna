@@ -1,5 +1,6 @@
 import { OcorrenciaStatus, OcorrenciaTipo } from '@prisma/client';
 import { z } from 'zod';
+import { usuarioIdSchema } from '@shared/validators/id.schema';
 
 const SLA_HORAS_POR_SEVERIDADE: Record<string, number> = {
   baixa: 72,
@@ -13,7 +14,7 @@ export const severidadeSchema = z.enum(['baixa', 'media', 'alta', 'critica']);
 export const createOcorrenciaSchema = z.object({
   clienteId: z.string().cuid(),
   pedidoId: z.string().cuid().optional(),
-  responsavelId: z.string().cuid().optional(),
+  responsavelId: usuarioIdSchema.optional(),
   tipo: z.nativeEnum(OcorrenciaTipo),
   severidade: severidadeSchema.default('media'),
   titulo: z.string().trim().min(3).max(200),
@@ -28,7 +29,7 @@ export const updateOcorrenciaSchema = z.object({
   descricao: z.string().min(3).max(5000).optional(),
   severidade: severidadeSchema.optional(),
   tipo: z.nativeEnum(OcorrenciaTipo).optional(),
-  responsavelId: z.string().cuid().nullable().optional(),
+  responsavelId: usuarioIdSchema.nullable().optional(),
 });
 export type UpdateOcorrenciaDto = z.infer<typeof updateOcorrenciaSchema>;
 
@@ -58,7 +59,7 @@ export const listOcorrenciasSchema = z.object({
   tipo: z.nativeEnum(OcorrenciaTipo).optional(),
   severidade: severidadeSchema.optional(),
   clienteId: z.string().cuid().optional(),
-  responsavelId: z.string().cuid().optional(),
+  responsavelId: usuarioIdSchema.optional(),
   /** Filtra apenas ocorrências com SLA vencido (não resolvidas) */
   slaEstourado: z.coerce.boolean().optional(),
 });

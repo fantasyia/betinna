@@ -1,5 +1,6 @@
 import { ComissaoTipo } from '@prisma/client';
 import { z } from 'zod';
+import { usuarioIdSchema } from '@shared/validators/id.schema';
 
 const MES_MIN = 1;
 const MES_MAX = 12;
@@ -19,7 +20,7 @@ export const listComissoesSchema = z.object({
   limit: z.coerce.number().int().positive().max(100).default(20),
   ano: z.coerce.number().int().min(ANO_MIN).max(ANO_MAX).optional(),
   mes: z.coerce.number().int().min(MES_MIN).max(MES_MAX).optional(),
-  representanteId: z.string().cuid().optional(),
+  representanteId: usuarioIdSchema.optional(),
   pago: z.coerce.boolean().optional(),
   tipo: z.nativeEnum(ComissaoTipo).optional(),
 });

@@ -1,6 +1,7 @@
 import { CanalOrigem, LeadEtapa } from '@prisma/client';
 import { z } from 'zod';
 import { normalizarTelefoneIntl } from '@shared/validators/br-validators';
+import { usuarioIdSchema } from '@shared/validators/id.schema';
 
 export const createLeadSchema = z.object({
   nome: z.string().trim().min(2).max(200),
@@ -37,7 +38,7 @@ export const createLeadSchema = z.object({
   score: z.number().int().min(0).max(100).default(50),
   proximaAcao: z.string().max(300).optional(),
   observacoes: z.string().max(2000).optional(),
-  representanteId: z.string().cuid().optional(),
+  representanteId: usuarioIdSchema.optional(),
   /** Cria o lead SEM funil (funilId/funilEtapaId nulos) — vira "contato solto"
    *  que NÃO é trabalhado por nenhum funil/cron. Usado na importação de base fria.
    *  Tem precedência sobre funilId/funilEtapaId. */
@@ -96,14 +97,14 @@ export const listLeadsSchema = z.object({
   search: z.string().optional(),
   etapa: z.nativeEnum(LeadEtapa).optional(),
   canalOrigem: z.nativeEnum(CanalOrigem).optional(),
-  representanteId: z.string().cuid().optional(),
+  representanteId: usuarioIdSchema.optional(),
   /** Filtra leads em aging (passou do SLA na etapa atual) */
   aging: z.coerce.boolean().optional(),
 });
 export type ListLeadsDto = z.infer<typeof listLeadsSchema>;
 
 export const atribuirRepSchema = z.object({
-  representanteId: z.string().cuid().nullable(),
+  representanteId: usuarioIdSchema.nullable(),
 });
 export type AtribuirRepDto = z.infer<typeof atribuirRepSchema>;
 

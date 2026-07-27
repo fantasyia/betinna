@@ -1,6 +1,7 @@
 import { ClienteOmieStatus, ClienteStatus } from '@prisma/client';
 import { z } from 'zod';
 import { cnpjSchema, cepSchema, telefoneIntlSchema } from '@shared/validators/br-validators';
+import { usuarioIdSchema } from '@shared/validators/id.schema';
 
 const clienteStatusEnum = z.nativeEnum(ClienteStatus);
 const omieStatusEnum = z.nativeEnum(ClienteOmieStatus);
@@ -38,7 +39,7 @@ export const createClienteSchema = z.object({
   omieStatus: omieStatusEnum.default('ATIVO'),
   prazoPagamento: z.number().int().min(0).max(180).default(30),
   limiteCredito: z.number().min(0).optional(),
-  representanteId: z.string().cuid().optional(),
+  representanteId: usuarioIdSchema.optional(),
   tagIds: z.array(z.string().cuid()).optional().default([]),
 });
 export type CreateClienteDto = z.infer<typeof createClienteSchema>;
@@ -57,7 +58,7 @@ export const listClientesSchema = z.object({
   regiao: z.string().optional(),
   status: clienteStatusEnum.optional(),
   omieStatus: omieStatusEnum.optional(),
-  representanteId: z.string().cuid().optional(),
+  representanteId: usuarioIdSchema.optional(),
   tagId: z.string().cuid().optional(),
   /** ID da lista dinâmica (risco, criticos, novos, horeca, inadimplentes) */
   lista: z.enum(['risco', 'criticos', 'novos', 'horeca', 'inadimplentes']).optional(),
@@ -65,13 +66,13 @@ export const listClientesSchema = z.object({
 export type ListClientesDto = z.infer<typeof listClientesSchema>;
 
 export const assignRepSchema = z.object({
-  representanteId: z.string().cuid().nullable(),
+  representanteId: usuarioIdSchema.nullable(),
 });
 export type AssignRepDto = z.infer<typeof assignRepSchema>;
 
 export const bulkAssignRepSchema = z.object({
   clienteIds: z.array(z.string().cuid()).min(1).max(500),
-  representanteId: z.string().cuid().nullable(),
+  representanteId: usuarioIdSchema.nullable(),
 });
 export type BulkAssignRepDto = z.infer<typeof bulkAssignRepSchema>;
 

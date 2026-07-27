@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { usuarioIdSchema } from '@shared/validators/id.schema';
 
 /**
  * Contatos — visão UNIFICADA de Lead + Cliente + Conversa (Inbox).
@@ -13,7 +14,7 @@ export const listContatosSchema = z.object({
   search: z.string().trim().max(120).optional(),
   /** Filtra pra contatos que SÃO desse tipo (um contato pode ter vários). */
   tipo: z.enum(['LEAD', 'CLIENTE', 'CONVERSA']).optional(),
-  representanteId: z.string().cuid().optional(),
+  representanteId: usuarioIdSchema.optional(),
   /** Filtra por tags (CSV `a,b` ou repetido `?tagIds=a&tagIds=b`). Semântica E:
    *  o contato precisa ter TODAS as tags selecionadas. Conversas não têm tag. */
   tagIds: z
@@ -93,7 +94,7 @@ export const criarLeadsSchema = z.object({
   semFunil: z.boolean().optional(),
   /** Tags aplicadas a CADA lead criado (ex: cold, email-mkt, <segmento>). */
   tagIds: z.array(z.string().cuid()).max(50).optional(),
-  representanteId: z.string().cuid().optional(),
+  representanteId: usuarioIdSchema.optional(),
   contatos: z
     .array(
       z.object({
@@ -102,7 +103,7 @@ export const criarLeadsSchema = z.object({
         email: z.string().trim().max(200).optional(),
         cidade: z.string().trim().max(100).optional(),
         uf: z.string().trim().length(2).optional(),
-        representanteId: z.string().cuid().optional(),
+        representanteId: usuarioIdSchema.optional(),
       }),
     )
     .min(1)
