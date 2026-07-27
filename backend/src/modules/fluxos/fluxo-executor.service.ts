@@ -126,8 +126,18 @@ function resolveCampoFresco(nome: string, ctx: ExecucaoContexto): unknown {
  */
 function avaliarCondicao(config: CondicaoConfig, ctx: ExecucaoContexto): string {
   if (config.modo === 'roteador') {
-    const valor = resolveVariavel(config.variavel ?? '', ctx).trim();
-    const match = (config.saidas ?? []).find((s) => s.trim().toLowerCase() === valor.toLowerCase());
+    // Normaliza p/ casar rótulo com o valor gravado pela IA: trim + minúsculas +
+    // SEM acento (NFKD). A IA solta "Nao e lead"/"Não é lead" indistintamente —
+    // sem isso, um acento a menos desviava tudo pro "default"→tarefa manual. O
+    // retorno é o rótulo ORIGINAL de `saidas` (a aresta usa o label acentuado).
+    const norm = (s: string) =>
+      s
+        .trim()
+        .toLowerCase()
+        .normalize('NFKD')
+        .replace(/\p{Diacritic}/gu, '');
+    const valor = norm(resolveVariavel(config.variavel ?? '', ctx));
+    const match = (config.saidas ?? []).find((s) => norm(s) === valor);
     return match ?? 'default';
   }
   // Fresco (custom antes do topo) — mesma razão do roteador: o lgpd_c lia o

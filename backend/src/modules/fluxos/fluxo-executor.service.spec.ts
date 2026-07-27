@@ -949,6 +949,60 @@ describe('FluxoExecutorService', () => {
       );
     });
 
+    it('roteador casa acento-INSENSÍVEL: IA grava "Nao e lead" e roteia pra saída "Não é lead"', async () => {
+      // A IA solta o valor com/sem acento indistintamente. O roteador normaliza
+      // (NFKD) → não pode desviar pro default só por um acento a menos.
+      const rotNo = fakeNo({
+        id: 'rot',
+        tipo: 'CONDICAO',
+        config: {
+          modo: 'roteador',
+          variavel: 'classificacao_final',
+          saidas: ['Interesse comercial', 'Não é lead', 'Indefinido'],
+        },
+      });
+      prisma.fluxoExecucao.findUnique.mockResolvedValue(
+        fakeExecucao({
+          status: 'EM_EXECUCAO',
+          contexto: { leadId: 'lead-1', classificacao_final: 'Nao e lead' }, // SEM acento
+        }),
+      );
+      prisma.fluxoNo.findUnique.mockResolvedValue(rotNo);
+      prisma.lead.findFirst.mockResolvedValue({
+        nome: 'Contato',
+        contatoNome: null,
+        contatoTelefone: null,
+        contatoEmail: null,
+        cidade: null,
+        uf: null,
+        segmento: null,
+        score: 0,
+        etapa: 'NOVO',
+        variaveis: { classificacao_final: 'Nao e lead' },
+        funil: null,
+        funilEtapa: null,
+        tags: [],
+      });
+      prisma.fluxoEdge.findMany.mockResolvedValue([
+        fakeEdge('rot', 'no-comercial', 'Interesse comercial'),
+        fakeEdge('rot', 'no-naolead', 'Não é lead'),
+        fakeEdge('rot', 'no-default', 'default'),
+      ]);
+
+      await service.executarPasso('exec-1', 'rot', 'job-test');
+
+      expect(queue.add).toHaveBeenCalledWith(
+        'step',
+        { execucaoId: 'exec-1', noId: 'no-naolead' },
+        expect.any(Object),
+      );
+      expect(queue.add).not.toHaveBeenCalledWith(
+        'step',
+        { execucaoId: 'exec-1', noId: 'no-default' },
+        expect.any(Object),
+      );
+    });
+
     it('sinal LIMPO do lead não ressuscita pelo espelho velho no topo (roteia default)', async () => {
       // Lead REUTILIZADO (reaquecimento): limparSinaisRoteamento removeu
       // classificacao_final do lead, mas o espelho achatado "LGPD" de uma
