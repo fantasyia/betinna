@@ -273,6 +273,52 @@ describe('FluxoEventBusService', () => {
       expect(prisma.fluxoExecucao.create).toHaveBeenCalledOnce();
     });
 
+    it('MENSAGEM_CANAL: apenasComBotLigado PULA o fluxo quando o bot está desligado', async () => {
+      // Caso de prod: dono ligou o bot só numa conversa; outro contato mandou msg
+      // e virou lead na triagem (o CRIAR_LEAD roda ANTES do nó de IA, então gatear
+      // só na IA não bastava).
+      prisma.fluxo.findMany.mockResolvedValue([
+        fakeFluxo({
+          triggerTipo: 'MENSAGEM_CANAL',
+          nos: [{ id: 'trg', config: { apenasComBotLigado: true } }],
+        }),
+      ]);
+      prisma.empresa = { findUnique: vi.fn().mockResolvedValue({ botWhatsappAtivo: false }) };
+      prisma.conversation = { findUnique: vi.fn().mockResolvedValue({ botLigado: null }) };
+
+      await service.disparar('emp-1', 'MENSAGEM_CANAL' as FluxoTriggerTipo, {
+        canal: 'WHATSAPP',
+        conversationId: 'conv-desligada',
+        texto: 'oi',
+        leadId: null,
+      });
+
+      expect(prisma.fluxoExecucao.create).not.toHaveBeenCalled();
+    });
+
+    it('MENSAGEM_CANAL: apenasComBotLigado DISPARA na conversa com bot ligado (override)', async () => {
+      prisma.fluxo.findMany.mockResolvedValue([
+        fakeFluxo({
+          triggerTipo: 'MENSAGEM_CANAL',
+          nos: [{ id: 'trg', config: { apenasComBotLigado: true } }],
+        }),
+      ]);
+      // Global DESLIGADO, mas a conversa tem override ligado → roda.
+      prisma.empresa = { findUnique: vi.fn().mockResolvedValue({ botWhatsappAtivo: false }) };
+      prisma.conversation = { findUnique: vi.fn().mockResolvedValue({ botLigado: true }) };
+      prisma.fluxoExecucao.create.mockResolvedValue(fakeExecucao());
+      prisma.fluxoExecucao.update.mockResolvedValue({});
+
+      await service.disparar('emp-1', 'MENSAGEM_CANAL' as FluxoTriggerTipo, {
+        canal: 'WHATSAPP',
+        conversationId: 'conv-ligada',
+        texto: 'oi',
+        leadId: null,
+      });
+
+      expect(prisma.fluxoExecucao.create).toHaveBeenCalledOnce();
+    });
+
     it('MENSAGEM_CANAL: canal DIFERENTE segue sendo filtrado (não vira passa-tudo)', async () => {
       prisma.fluxo.findMany.mockResolvedValue([
         fakeFluxo({

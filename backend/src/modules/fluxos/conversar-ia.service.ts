@@ -168,7 +168,11 @@ export function parseTurnoIa(texto: string): IaTurno {
     const obj = JSON.parse(limpo) as Record<string, unknown>;
     if (obj && typeof obj === 'object' && typeof obj.resposta === 'string') {
       return {
-        resposta: obj.resposta,
+        // Limpa TAMBÉM aqui, não só no fallback: a IA devolve JSON VÁLIDO com o
+        // vazamento DENTRO do texto da resposta ("…?\nclassificacao_final = "X"").
+        // Foi assim que a variável chegou no WhatsApp do cliente mesmo depois do
+        // fix anterior, que só cobria o caminho "não é JSON".
+        resposta: limparVazamentoDeVariaveis(obj.resposta),
         classificou: obj.classificou === true,
         classificacao: typeof obj.classificacao === 'string' ? obj.classificacao : undefined,
         variaveis:

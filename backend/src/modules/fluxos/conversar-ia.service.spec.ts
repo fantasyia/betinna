@@ -85,6 +85,22 @@ describe('parseTurnoIa', () => {
     const r = parseTurnoIa('Perfeito: vou encaminhar seu pedido pro time comercial agora mesmo.');
     expect(r.resposta).toBe('Perfeito: vou encaminhar seu pedido pro time comercial agora mesmo.');
   });
+
+  it('NÃO vaza variável quando o JSON é VÁLIDO mas a resposta traz a variável dentro', () => {
+    // 2º caso real de prod: o JSON parseou certo, mas o vazamento estava DENTRO
+    // de `resposta` — o fix anterior (só no fallback) não pegava.
+    const r = parseTurnoIa(
+      JSON.stringify({
+        resposta:
+          'Me conta: você quer proteger algum equipamento ou ambiente específico? \nclassificacao_final = "Indefinido"',
+        classificou: false,
+      }),
+    );
+    expect(r.resposta).toBe(
+      'Me conta: você quer proteger algum equipamento ou ambiente específico?',
+    );
+    expect(r.resposta).not.toContain('classificacao_final');
+  });
 });
 
 describe('pedidoRemocaoNoTexto', () => {

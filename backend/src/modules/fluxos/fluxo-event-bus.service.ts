@@ -111,6 +111,7 @@ export class FluxoEventBusService {
               canais?: string[];
               apenasComLead?: boolean;
               apenasSemLead?: boolean;
+              apenasComBotLigado?: boolean;
             };
             // Case-INSENSITIVE de propósito: o contexto traz o enum do Prisma
             // ("WHATSAPP"), mas a config é escrita à mão (MCP/API — o editor não
@@ -131,6 +132,30 @@ export class FluxoEventBusService {
             if (temPalavras) {
               const texto = typeof contexto['texto'] === 'string' ? contexto['texto'] : '';
               if (!matchPalavraChave(texto, cfg)) continue;
+            }
+            // `apenasComBotLigado`: o fluxo INTEIRO só roda onde o atendimento
+            // automático está ligado (mesma precedência do bot: botLigado da
+            // conversa > botWhatsappAtivo da empresa > desligado).
+            //
+            // Por que no GATILHO e não só no nó de IA: o CRIAR_LEAD roda ANTES da
+            // IA, então gatear só lá deixava um rastro de leads de contatos que o
+            // dono nunca quis processar (aconteceu em prod — bot ligado só numa
+            // conversa e outro contato virou lead na triagem, mudo).
+            // Opt-in: sem a flag, nada muda pros fluxos existentes.
+            if (cfg.apenasComBotLigado) {
+              const convId = contexto['conversationId'] as string | undefined;
+              if (!convId) continue;
+              const [emp, conv] = await Promise.all([
+                this.prisma.empresa.findUnique({
+                  where: { id: empresaId },
+                  select: { botWhatsappAtivo: true },
+                }),
+                this.prisma.conversation.findUnique({
+                  where: { id: convId },
+                  select: { botLigado: true },
+                }),
+              ]);
+              if (!(conv?.botLigado ?? emp?.botWhatsappAtivo ?? false)) continue;
             }
           }
 
