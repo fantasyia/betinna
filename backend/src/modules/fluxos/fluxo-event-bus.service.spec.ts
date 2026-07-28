@@ -249,6 +249,47 @@ describe('FluxoEventBusService', () => {
 
       expect(prisma.fluxoExecucao.create).toHaveBeenCalledOnce();
     });
+
+    it('MENSAGEM_CANAL: filtro de canal é case-INSENSITIVE (config "whatsapp" × contexto "WHATSAPP")', async () => {
+      // O contexto traz o enum do Prisma (WHATSAPP); a config é escrita à mão via
+      // MCP/API e sai minúscula. Sem normalizar, o fluxo não dispara e NÃO sobra
+      // erro nenhum — falha silenciosa que matou o teste do T1 em prod.
+      prisma.fluxo.findMany.mockResolvedValue([
+        fakeFluxo({
+          triggerTipo: 'MENSAGEM_CANAL',
+          nos: [{ id: 'trg', config: { canais: ['whatsapp'] } }],
+        }),
+      ]);
+      prisma.fluxoExecucao.create.mockResolvedValue(fakeExecucao());
+      prisma.fluxoExecucao.update.mockResolvedValue({});
+
+      await service.disparar('emp-1', 'MENSAGEM_CANAL' as FluxoTriggerTipo, {
+        canal: 'WHATSAPP',
+        conversationId: 'conv-1',
+        texto: 'oi',
+        leadId: null,
+      });
+
+      expect(prisma.fluxoExecucao.create).toHaveBeenCalledOnce();
+    });
+
+    it('MENSAGEM_CANAL: canal DIFERENTE segue sendo filtrado (não vira passa-tudo)', async () => {
+      prisma.fluxo.findMany.mockResolvedValue([
+        fakeFluxo({
+          triggerTipo: 'MENSAGEM_CANAL',
+          nos: [{ id: 'trg', config: { canais: ['whatsapp'] } }],
+        }),
+      ]);
+
+      await service.disparar('emp-1', 'MENSAGEM_CANAL' as FluxoTriggerTipo, {
+        canal: 'INSTAGRAM',
+        conversationId: 'conv-1',
+        texto: 'oi',
+        leadId: null,
+      });
+
+      expect(prisma.fluxoExecucao.create).not.toHaveBeenCalled();
+    });
   });
 
   // -------------------------------------------------------------------------

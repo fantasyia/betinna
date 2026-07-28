@@ -112,8 +112,14 @@ export class FluxoEventBusService {
               apenasComLead?: boolean;
               apenasSemLead?: boolean;
             };
-            const canais = Array.isArray(cfg.canais) ? cfg.canais.filter(Boolean) : [];
-            const canalCtx = contexto['canal'] as string | undefined;
+            // Case-INSENSITIVE de propósito: o contexto traz o enum do Prisma
+            // ("WHATSAPP"), mas a config é escrita à mão (MCP/API — o editor não
+            // tem UI pra `canais`) e sai "whatsapp" naturalmente. Sem normalizar,
+            // o fluxo NÃO dispara e não sobra erro nenhum — falha 100% silenciosa.
+            const canais = Array.isArray(cfg.canais)
+              ? cfg.canais.filter(Boolean).map((c) => String(c).trim().toUpperCase())
+              : [];
+            const canalCtx = (contexto['canal'] as string | undefined)?.toUpperCase();
             if (canais.length > 0 && (!canalCtx || !canais.includes(canalCtx))) continue;
             if (cfg.apenasComLead && !contexto['leadId']) continue;
             // Espelho do anterior, pro fluxo de TRIAGEM: só quem AINDA não é lead.
