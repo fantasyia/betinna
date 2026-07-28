@@ -582,10 +582,21 @@ export class ConversarIaService {
     );
     // Passa o primeiro nome do lead pra IA (pra ela saudar pelo nome de verdade,
     // em vez de devolver "[primeiro_nome]" cru).
-    const primeiro = primeiroNomeDe(lead.contatoNome);
+    //
+    // `usarNomeDoLead: false` desliga isso — usar em INBOUND/triagem, onde o nome
+    // vem do PERFIL DO WHATSAPP (apelido/emoji/nome de loja, o que a pessoa pôs
+    // lá). Nesses casos a IA recebe uma instrução explícita de NÃO usar nome
+    // nenhum: sem ela, o modelo pesca o nome do histórico da conversa e saúda
+    // errado do mesmo jeito.
+    const usarNome = cfg.usarNomeDoLead !== false;
+    const primeiro = usarNome ? primeiroNomeDe(lead.contatoNome) : null;
     const opener =
       INSTRUCAO_OPENER +
-      (primeiro ? `\n[Dado] O primeiro nome do lead é "${primeiro}". Use-o na saudação.` : '');
+      (primeiro
+        ? `\n[Dado] O primeiro nome do lead é "${primeiro}". Use-o na saudação.`
+        : !usarNome
+          ? '\n[Regra] NÃO use o nome do contato em nenhuma mensagem (o nome do perfil não é confiável). Saúde de forma neutra, ex.: "Oi! Tudo bem?".'
+          : '');
     // Teto de custo do bot (por-empresa): se a empresa estourou o orçamento de tokens
     // do dia/mês, o nó NÃO abre conversa por IA — roteia pela saída "erro" (mesmo gate
     // do bot reativo; antes o fluxo ignorava o teto e gerava custo mesmo pausado).
@@ -795,7 +806,13 @@ export class ConversarIaService {
         : '\n[Dado] Ainda NÃO temos o e-mail do lead. No FECHAMENTO (quando for encerrar/' +
           'classificar), peça o e-mail dele de forma calorosa — pra enviar o convite da reunião ' +
           'com o diretor — e mantenha "classificou":false até recebê-lo; só classifique ' +
-          '(classificou:true) DEPOIS de ter o e-mail (ou se o lead recusar dar).');
+          '(classificou:true) DEPOIS de ter o e-mail (ou se o lead recusar dar).') +
+      // Vale em TODO turno, não só na abertura: sem repetir a regra aqui, a IA
+      // pescava o nome do histórico e voltava a chamar o contato pelo apelido do
+      // perfil do WhatsApp a partir da 2ª mensagem.
+      (cfg.usarNomeDoLead === false
+        ? '\n[Regra] NÃO use o nome do contato em nenhuma mensagem (o nome do perfil não é confiável).'
+        : '');
     // Histórico da conversa = memória da IA no contexto da execução (inclui o
     // opener + os turnos), com fallback pro montarHistorico (execuções antigas).
     // Sem isto a IA não via as próprias mensagens e se reapresentava a cada resposta.

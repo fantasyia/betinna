@@ -307,9 +307,13 @@ export class MullerWhatsappService implements OnModuleInit {
       );
 
       // 1.5 Orquestração (Fase B) — se um fluxo "Conversar com IA" está conduzindo
-      // esta conversa (lead com execução AGUARDANDO), o bot geral NÃO responde
-      // (evita resposta dupla — quem fala é o motor do fluxo).
-      if (leadDoPeer && (await this.fluxoConduzindoLead(params.empresaId, leadDoPeer.id))) {
+      // esta conversa, o bot geral NÃO responde (evita resposta dupla — quem fala
+      // é o motor do fluxo). Dois caminhos: por LEAD (fluxos que já têm lead) e
+      // por CONVERSA (triagem — o lead ainda nem existe na 1ª mensagem).
+      if (
+        (leadDoPeer && (await this.fluxoConduzindoLead(params.empresaId, leadDoPeer.id))) ||
+        (await this.fluxoConduzindoConversa(params.empresaId, convId))
+      ) {
         this.logger.debug(
           `[bot] conversa conduzida por fluxo de IA — bot geral silencia conv=${convId}`,
         );
@@ -500,6 +504,18 @@ export class MullerWhatsappService implements OnModuleInit {
       //    fonte única, sem divergência entre bot geral e fluxo. O "digitando…" usa
       //    `void` (no Evolution a chamada bloqueia pelo delay; roda em paralelo ao sleep).
       const tel = params.peerTelefone ?? params.peerId;
+
+      // RE-CHECK antes de enviar (fecha a corrida): o gate do passo 1.5 rodou ANTES
+      // da chamada à IA, que leva ~15s. Nesse meio-tempo um fluxo de triagem pode
+      // ter assumido a conversa (o inbound dispara bot e fluxo EM PARALELO, hooks
+      // fire-and-forget). Sem este segundo olhar, os dois respondiam o mesmo "oi".
+      if (await this.fluxoConduzindoConversa(params.empresaId, convId)) {
+        this.logger.log(
+          `[bot] fluxo assumiu a conversa durante a geração — bot geral descarta a resposta conv=${convId}`,
+        );
+        return;
+      }
+
       // Pacing global (faixa REATIVA — cliente escreveu): espaça das demais respostas
       // da empresa (nunca todas ao mesmo tempo se muitos clientes escrevem juntos).
       await this.pacing.aguardarSlot(params.empresaId, true);
@@ -713,6 +729,35 @@ export class MullerWhatsappService implements OnModuleInit {
     } catch {
       // Fail-open: um erro no guard NÃO pode impedir o bot de responder.
       return false;
+    }
+  }
+
+  /**
+   * Mesmo guard, mas pela CONVERSA — cobre o caso que o `fluxoConduzindoLead`
+   * não cobria: fluxo de TRIAGEM, em que o lead AINDA NÃO EXISTE na 1ª mensagem
+   * (é o próprio fluxo que o cria). Sem isto, bot geral e nó "Conversar com IA"
+   * respondiam os dois o mesmo "oi" (resposta dupla com ~1s de diferença).
+   *
+   * Considera execução VIVA (não só AGUARDANDO): entre o CRIAR_LEAD e o nó de
+   * IA a execução está PENDENTE/EM_EXECUCAO — janela em que o bot geral ainda
+   * estaria gerando a resposta dele.
+   */
+  private async fluxoConduzindoConversa(
+    empresaId: string,
+    conversationId: string,
+  ): Promise<boolean> {
+    try {
+      const viva = await this.prisma.fluxoExecucao.findFirst({
+        where: {
+          empresaId,
+          status: { in: ['PENDENTE', 'EM_EXECUCAO', 'AGUARDANDO'] },
+          contexto: { path: ['conversationId'], equals: conversationId },
+        },
+        select: { id: true },
+      });
+      return viva != null;
+    } catch {
+      return false; // fail-open (igual ao guard por lead)
     }
   }
 }

@@ -191,6 +191,16 @@ export interface ConversarIaConfig {
    * já, em paralelo). Ausente ou valor 0 = encerra na hora (comportamento antigo).
    */
   encerramentoEspera?: { valor: number; unidade: UnidadeTempo };
+  /**
+   * Saudar o lead pelo primeiro nome. Default true (fluxos de base própria —
+   * reps/importação — têm nome real e fica melhor com ele).
+   *
+   * ⚠️ Ponha `false` em fluxo de INBOUND/triagem: ali o "nome" é o que a pessoa
+   * escreveu no perfil do WhatsApp (apelido, emoji, nome de loja, qualquer
+   * coisa) — chamar por ele soa errado. Com false, a IA não recebe o nome e
+   * saúda de forma neutra.
+   */
+  usarNomeDoLead?: boolean;
 }
 
 /** Config da ação LIBERAR_LOTE (orquestração Fase B). */
