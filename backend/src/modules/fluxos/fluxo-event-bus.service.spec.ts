@@ -273,6 +273,37 @@ describe('FluxoEventBusService', () => {
       expect(prisma.fluxoExecucao.create).toHaveBeenCalledOnce();
     });
 
+    it('MENSAGEM_CANAL: NÃO cria 2ª execução quando já há uma VIVA pra mesma conversationId (anti-reabertura)', async () => {
+      // Bug de prod: cada mensagem do WhatsApp republicava MENSAGEM_CANAL e o
+      // anti-duplicata de IA cancelava a execução AGUARDANDO e recriava do zero —
+      // o CONVERSAR_IA reabria a saudação em loop a cada resposta do lead.
+      prisma.fluxo.findMany.mockResolvedValue([
+        fakeFluxo({
+          triggerTipo: 'MENSAGEM_CANAL',
+          nos: [{ id: 'trg', config: { canais: ['WHATSAPP'] } }],
+        }),
+      ]);
+      prisma.fluxoExecucao.findFirst.mockResolvedValueOnce({ id: 'exec-viva' });
+
+      await service.disparar('emp-1', 'MENSAGEM_CANAL' as FluxoTriggerTipo, {
+        canal: 'WHATSAPP',
+        conversationId: 'conv-1',
+        texto: 'segunda mensagem',
+        leadId: 'lead-1',
+      });
+
+      expect(prisma.fluxoExecucao.findFirst).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: expect.objectContaining({
+            fluxoId: 'fluxo-1',
+            status: { in: ['PENDENTE', 'EM_EXECUCAO', 'AGUARDANDO'] },
+            contexto: { path: ['conversationId'], equals: 'conv-1' },
+          }),
+        }),
+      );
+      expect(prisma.fluxoExecucao.create).not.toHaveBeenCalled();
+    });
+
     it('MENSAGEM_CANAL: apenasComBotLigado PULA o fluxo quando o bot está desligado', async () => {
       // Caso de prod: dono ligou o bot só numa conversa; outro contato mandou msg
       // e virou lead na triagem (o CRIAR_LEAD roda ANTES do nó de IA, então gatear

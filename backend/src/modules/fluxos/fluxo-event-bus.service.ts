@@ -142,6 +142,31 @@ export class FluxoEventBusService {
             // dono nunca quis processar (aconteceu em prod — bot ligado só numa
             // conversa e outro contato virou lead na triagem, mudo).
             // Opt-in: sem a flag, nada muda pros fluxos existentes.
+            // Anti-reabertura: se JÁ há uma execução VIVA deste fluxo pra esta MESMA
+            // conversa (PENDENTE/EM_EXECUCAO/AGUARDANDO), não cria uma 2ª — a resposta
+            // do lead é entregue à execução existente por outro caminho, via
+            // OrquestracaoLeadEventsService.aoReceberMensagem → ConversarIaService.retomar
+            // (LEAD_RESPONDEU + `aguardandoPorLead`).
+            //
+            // Sem isto: CADA mensagem do WhatsApp republicava MENSAGEM_CANAL, e o bloco
+            // anti-duplicata de IA logo abaixo (linha ~200) CANCELAVA a execução AGUARDANDO
+            // e recriava do zero — o nó CONVERSAR_IA rodava `iniciar()` de novo a cada
+            // resposta do lead, reabrindo a mesma saudação em loop (visto em prod: a
+            // triagem repetia "Oi! Aqui é da Somatec..." pra cada mensagem, nunca avançava
+            // pra pergunta real nem fechava como Indefinido).
+            const convIdChk = contexto['conversationId'] as string | undefined;
+            if (convIdChk) {
+              const jaViva = await this.prisma.fluxoExecucao.findFirst({
+                where: {
+                  fluxoId: fluxo.id,
+                  empresaId,
+                  status: { in: ['PENDENTE', 'EM_EXECUCAO', 'AGUARDANDO'] },
+                  contexto: { path: ['conversationId'], equals: convIdChk },
+                },
+                select: { id: true },
+              });
+              if (jaViva) continue;
+            }
             if (cfg.apenasComBotLigado) {
               const convId = contexto['conversationId'] as string | undefined;
               if (!convId) continue;
