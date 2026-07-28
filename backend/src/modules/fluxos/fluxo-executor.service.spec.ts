@@ -364,15 +364,45 @@ describe('FluxoExecutorService', () => {
       );
     });
 
-    it('IDEMPOTENTE: conversa que já tem lead não cria outro', async () => {
+    it('IDEMPOTENTE: conversa que já tem lead (VIVO) não cria outro', async () => {
       prepararNo({ funilEtapaId: 'et-triagem' });
       prisma.conversation.findFirst.mockResolvedValue(
         conversaComAnuncio({ leadId: 'lead-antigo' }),
       );
+      // O lead apontado ainda existe → caminho de idempotência.
+      prisma.lead.findFirst.mockResolvedValue({ id: 'lead-antigo' });
 
       await service.executarPasso('exec-1', 'no-1', 'job-test');
 
       expect(prisma.lead.create).not.toHaveBeenCalled();
+    });
+
+    it('leadId ÓRFÃO (lead apagado) não trava a triagem — limpa o ponteiro e cria de novo', async () => {
+      // Bug de prod: Conversation.leadId é campo SOLTO (sem FK). Lead apagado na
+      // UI deixava a conversa apontando pra id morto → CRIAR_LEAD dizia "já tem
+      // lead", o nó de IA não achava o lead e pulava: conversa nunca mais triada.
+      prepararNo({ funilEtapaId: 'et-triagem' });
+      prisma.conversation.findFirst.mockResolvedValue(
+        conversaComAnuncio({ leadId: 'lead-apagado' }),
+      );
+      prisma.lead.findFirst.mockResolvedValue(null); // lead não existe mais
+      prisma.$queryRaw.mockResolvedValueOnce([]); // e o telefone não é lead
+      prisma.funilEtapa.findFirst.mockResolvedValue({
+        id: 'et-triagem',
+        funilId: 'funil-triagem',
+        tipo: 'ATIVA',
+      });
+      prisma.lead.create.mockResolvedValue({ id: 'lead-novo' });
+
+      await service.executarPasso('exec-1', 'no-1', 'job-test');
+
+      // Desamarrou o ponteiro órfão…
+      expect(prisma.conversation.updateMany).toHaveBeenCalledWith({
+        where: { id: 'conv-1', empresaId: 'emp-1' },
+        data: { leadId: null },
+      });
+      // …e criou o lead que faltava.
+      expect(prisma.lead.create).toHaveBeenCalled();
     });
 
     it('IDEMPOTENTE: telefone que já é lead só AMARRA (match por sufixo D18)', async () => {

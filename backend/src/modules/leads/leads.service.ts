@@ -823,7 +823,18 @@ export class LeadsService {
 
   async remove(user: AuthenticatedUser, id: string): Promise<void> {
     const existing = await this.findById(user, id);
-    await this.prisma.lead.deleteMany({ where: { id, empresaId: existing.empresaId } });
+    // `Conversation.leadId` é campo SOLTO (sem FK) — apagar o lead deixava a
+    // conversa apontando pra um id morto. Efeito em prod: o CRIAR_LEAD da triagem
+    // via `conversa.leadId` preenchido, concluía "já tem lead" e NÃO criava; o nó
+    // de IA não achava o lead e pulava → a conversa nunca mais era triada, sem
+    // erro nenhum. Desamarra junto com o delete.
+    await this.prisma.$transaction([
+      this.prisma.conversation.updateMany({
+        where: { leadId: id, empresaId: existing.empresaId },
+        data: { leadId: null },
+      }),
+      this.prisma.lead.deleteMany({ where: { id, empresaId: existing.empresaId } }),
+    ]);
   }
 
   /**

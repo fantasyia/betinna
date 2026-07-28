@@ -1388,9 +1388,27 @@ export class FluxoExecutorService {
       return { criado: false, motivo: 'grupo', conversationId };
     }
     // Já amarrada: nada a fazer além de publicar o leadId pros nós seguintes.
+    // MAS confere que o lead ainda EXISTE — `Conversation.leadId` é campo solto
+    // (sem FK), então um lead apagado (na UI ou por script) deixa o ponteiro
+    // órfão. Sem esta checagem a triagem morria de vez naquela conversa: dizia
+    // "já tem lead", o nó de IA não achava o lead e pulava, e nada era criado
+    // nem classificado — sem erro nenhum. Órfão → desamarra e segue criando.
     if (conversa.leadId) {
-      await this.publicarLeadNoContexto(execucaoId, ctx, conversa.leadId);
-      return { criado: false, motivo: 'conversa_ja_tem_lead', leadId: conversa.leadId };
+      const vivo = await this.prisma.lead.findFirst({
+        where: { id: conversa.leadId, empresaId },
+        select: { id: true },
+      });
+      if (vivo) {
+        await this.publicarLeadNoContexto(execucaoId, ctx, conversa.leadId);
+        return { criado: false, motivo: 'conversa_ja_tem_lead', leadId: conversa.leadId };
+      }
+      this.logger.warn(
+        `CRIAR_LEAD: conversa ${conversa.id} apontava pro lead ${conversa.leadId} (apagado) — ponteiro órfão limpo`,
+      );
+      await this.prisma.conversation.updateMany({
+        where: { id: conversa.id, empresaId },
+        data: { leadId: null },
+      });
     }
 
     const meta = (conversa.metadata as Record<string, unknown> | null) ?? {};
