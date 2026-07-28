@@ -285,10 +285,13 @@ export class InboxService {
   }
 
   /**
-   * Zera UMA conversa: apaga as mensagens da thread (o bot monta contexto pelo
-   * histórico → isso reseta a "memória" dele) e zera não-lidas + precisaHumano.
-   * MANTÉM a conversa e o contato — pra testar o bot do zero sem trocar de número.
-   * Escopo por tenant/papel (mesma regra de visibilidade da Inbox).
+   * Zera UMA conversa POR COMPLETO: apaga as mensagens da thread (o bot monta
+   * contexto pelo histórico → isso reseta a "memória" dele) e devolve a conversa
+   * pro estado de "nunca atendida" — inclusive o que um atendimento anterior
+   * (manual ou de fluxo, ex: TRANSFERIR_ATENDIMENTO) tenha deixado gravado:
+   * responsável, status e categoria. MANTÉM a conversa e o contato — pra testar
+   * o bot do zero sem trocar de número. Escopo por tenant/papel (mesma regra de
+   * visibilidade da Inbox).
    */
   async limparConversa(user: AuthenticatedUser, id: string): Promise<{ mensagens: number }> {
     const conv = await this.prisma.conversation.findFirst({
@@ -304,6 +307,14 @@ export class InboxService {
         precisaHumano: false,
         ultimaMsgPreview: null,
         ultimaMsgEm: null,
+        // Devolve pro estado "nunca atendida" — sem isso um teste anterior (ex:
+        // TRANSFERIR_ATENDIMENTO gravando atribuidoId+categoria) ficava colado
+        // no reset, e "zerar" não zerava de fato.
+        atribuidoId: null,
+        status: 'ABERTA',
+        categoria: 'GERAL',
+        botPausadoAte: null,
+        incidentId: null,
         // Tombstone: a partir de agora, reimportação de histórico anterior é ignorada
         // (senão o history sync do WhatsApp ressuscita tudo que acabamos de apagar).
         mensagensZeradasEm: new Date(),

@@ -39,6 +39,7 @@ const makePrismaMock = () => ({
     create: vi.fn(),
     update: vi.fn(),
     updateMany: vi.fn(),
+    deleteMany: vi.fn(async () => ({ count: 0 })),
   },
   cliente: {
     findFirst: vi.fn(),
@@ -547,6 +548,44 @@ describe('InboxService.atribuir', () => {
       atribuidoId: 'admin',
     });
     expect(criarParaUsuario).not.toHaveBeenCalled();
+  });
+});
+
+describe('InboxService.limparConversa', () => {
+  let prisma: ReturnType<typeof makePrismaMock>;
+  let svc: InboxService;
+
+  beforeEach(() => {
+    prisma = makePrismaMock();
+    svc = new InboxService(
+      prisma as never,
+      new CanalAdapterRegistry(),
+      { get: () => 24 } as never,
+      {
+        publicar: () => Promise.resolve(),
+      } as never,
+      {
+        criarParaUsuario: () => Promise.resolve(null),
+        criarParaRole: () => Promise.resolve(0),
+      } as never,
+    );
+  });
+
+  it('zera atribuidoId/status/categoria/botPausadoAte/incidentId — não só as mensagens', async () => {
+    prisma.conversation.findFirst.mockResolvedValueOnce({ id: 'conv-1' });
+    prisma.message.deleteMany.mockResolvedValueOnce({ count: 5 });
+    prisma.conversation.update.mockResolvedValueOnce({});
+
+    await svc.limparConversa(fakeUser(), 'conv-1');
+
+    const data = prisma.conversation.update.mock.calls[0][0].data as Record<string, unknown>;
+    expect(data.atribuidoId).toBeNull();
+    expect(data.status).toBe('ABERTA');
+    expect(data.categoria).toBe('GERAL');
+    expect(data.botPausadoAte).toBeNull();
+    expect(data.incidentId).toBeNull();
+    expect(data.precisaHumano).toBe(false);
+    expect(data.naoLidas).toBe(0);
   });
 });
 
