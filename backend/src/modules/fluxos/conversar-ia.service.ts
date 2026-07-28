@@ -129,6 +129,34 @@ interface IaTurno {
   variaveis?: Record<string, unknown>;
 }
 
+/**
+ * Linha que é VAZAMENTO de variável interna, não fala pro cliente:
+ * `classificacao_final="Indefinido"`, `trilho: encerrar`, `classificou=false`…
+ * (identificador snake_case + = ou : + valor, sozinho na linha).
+ *
+ * Aconteceu em prod: a IA respondeu a saudação E, na linha seguinte, o
+ * `classificacao_final="Indefinido"` — como o conjunto não era JSON válido, o
+ * parser devolvia o texto CRU e o cliente recebia a variável como mensagem.
+ */
+const LINHA_VARIAVEL_VAZADA = /^\s*[a-z_][a-z0-9_]{2,}\s*[=:]\s*.{0,80}$/i;
+
+/** Tira do texto de RESPOSTA as linhas que são variável interna vazada. */
+export function limparVazamentoDeVariaveis(texto: string): string {
+  const linhas = texto.split(/\r?\n/);
+  const uteis = linhas.filter((l) => {
+    if (!l.trim()) return true; // preserva parágrafos
+    // Só corta se parecer atribuição de variável E não tiver cara de frase
+    // (frase real quase sempre tem espaço antes do ":" ou mais texto depois).
+    return !(
+      LINHA_VARIAVEL_VAZADA.test(l) && !/\s\S+\s\S+\s\S+/.test(l.replace(/^[^=:]*[=:]/, ''))
+    );
+  });
+  return uteis
+    .join('\n')
+    .replace(/\n{3,}/g, '\n\n')
+    .trim();
+}
+
 /** Extrai o JSON do turno da IA. Tolerante a cercas ```json e a texto puro. */
 export function parseTurnoIa(texto: string): IaTurno {
   const limpo = texto
@@ -152,7 +180,8 @@ export function parseTurnoIa(texto: string): IaTurno {
   } catch {
     /* não é JSON — trata como texto puro (continua conversando) */
   }
-  return { resposta: texto, classificou: false };
+  // Fallback texto puro: NUNCA mandar variável interna pro cliente.
+  return { resposta: limparVazamentoDeVariaveis(texto), classificou: false };
 }
 
 /**
@@ -518,6 +547,33 @@ export class ConversarIaService {
         motivo:
           'contexto sem lead — o nó "Conversar com IA" precisa de um lead (no teste manual, escolha um lead)',
       };
+    }
+
+    // GATE DO BOT — o "desligado" do dono vale pra TODA IA, não só pro bot geral.
+    // Sem isto o fluxo respondia contato com o bot desligado (aconteceu em prod:
+    // dono deixou o bot ON só numa conversa, e a triagem respondeu outro contato).
+    // Precedência igual à do bot geral: Conversation.botLigado (override por
+    // conversa) > Empresa.botWhatsappAtivo (global) > desligado.
+    const convIdGate = typeof ctx.conversationId === 'string' ? ctx.conversationId : undefined;
+    if (convIdGate) {
+      const [empresaCfg, convCfg] = await Promise.all([
+        this.prisma.empresa.findUnique({
+          where: { id: empresaId },
+          select: { botWhatsappAtivo: true },
+        }),
+        this.prisma.conversation.findUnique({
+          where: { id: convIdGate },
+          select: { botLigado: true, precisaHumano: true },
+        }),
+      ]);
+      const ligado = convCfg?.botLigado ?? empresaCfg?.botWhatsappAtivo ?? false;
+      if (!ligado || convCfg?.precisaHumano) {
+        const motivo = !ligado
+          ? 'bot desligado nesta conversa (ou no global da empresa)'
+          : 'conversa já escalada pra humano (precisaHumano)';
+        this.logger.log(`CONVERSAR_IA: ${motivo} — nó pulado (exec ${execucaoId})`);
+        return { aguardando: false, pulado: true, motivo };
+      }
     }
 
     // Supressão LGPD: lead com a tag "Não Reabordar - LGPD ⛔" não é abordado.

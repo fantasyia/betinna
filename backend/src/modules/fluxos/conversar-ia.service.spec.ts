@@ -70,6 +70,21 @@ describe('parseTurnoIa', () => {
     const r = parseTurnoIa('continua a conversa normal');
     expect(r).toEqual({ resposta: 'continua a conversa normal', classificou: false });
   });
+
+  it('NÃO vaza variável interna pro cliente no fallback de texto puro', () => {
+    // Caso real de prod: a IA respondeu a saudação E colou a variável embaixo.
+    // Como o conjunto não era JSON, o texto CRU ia pro WhatsApp do cliente.
+    const r = parseTurnoIa(
+      'Oi! Tudo bem? Posso te ajudar a proteger qual equipamento?\nclassificacao_final="Indefinido"',
+    );
+    expect(r.resposta).toBe('Oi! Tudo bem? Posso te ajudar a proteger qual equipamento?');
+    expect(r.resposta).not.toContain('classificacao_final');
+  });
+
+  it('preserva frase legítima com dois-pontos (não corta demais)', () => {
+    const r = parseTurnoIa('Perfeito: vou encaminhar seu pedido pro time comercial agora mesmo.');
+    expect(r.resposta).toBe('Perfeito: vou encaminhar seu pedido pro time comercial agora mesmo.');
+  });
 });
 
 describe('pedidoRemocaoNoTexto', () => {
