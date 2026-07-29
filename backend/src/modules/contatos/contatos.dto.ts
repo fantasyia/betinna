@@ -92,7 +92,9 @@ export const criarLeadsSchema = z.object({
   /** Cria os leads SEM funil (contatos soltos, fora de qualquer funil/cron).
    *  Tem precedência sobre funilId/funilEtapaId — usado na importação de base fria. */
   semFunil: z.boolean().optional(),
-  /** Tags aplicadas a CADA lead criado (ex: cold, email-mkt, <segmento>). */
+  /** Tags aplicadas a CADA lead criado. SÓ tags estruturais (cold, email-mkt).
+   *  NUNCA use tag pra nicho/segmento — isso gerou 620 etiquetas em prod (uma por
+   *  texto livre da planilha). Nicho vai no campo `segmento` de cada contato. */
   tagIds: z.array(z.string().cuid()).max(50).optional(),
   representanteId: usuarioIdSchema.optional(),
   contatos: z
@@ -103,6 +105,9 @@ export const criarLeadsSchema = z.object({
         email: z.string().trim().max(200).optional(),
         cidade: z.string().trim().max(100).optional(),
         uf: z.string().trim().length(2).optional(),
+        /** Ramo/nicho do contato (ex: "Alimentos / Laticinios"). Campo filtrável —
+         *  é AQUI que o segmento mora, não em tag. Limite espelha `createLeadSchema`. */
+        segmento: z.string().trim().max(60).optional(),
         representanteId: usuarioIdSchema.optional(),
       }),
     )

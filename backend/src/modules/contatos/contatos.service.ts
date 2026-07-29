@@ -954,6 +954,9 @@ export class ContatosService {
           contatoEmail: email,
           cidade: c.cidade,
           uf: c.uf,
+          // Nicho/ramo vai no CAMPO (filtrável), não em tag: uma tag por texto livre
+          // da planilha gerou 620 etiquetas em prod.
+          segmento: c.segmento,
           funilId: dto.funilId,
           funilEtapaId: dto.funilEtapaId,
           semFunil: dto.semFunil,
