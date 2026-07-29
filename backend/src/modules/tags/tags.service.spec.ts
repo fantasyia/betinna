@@ -50,7 +50,7 @@ const fakeTag = (overrides: Partial<Tag> = {}): Tag => ({
 
 const fakeTagWithCount = (overrides: Partial<Tag> = {}) => ({
   ...fakeTag(overrides),
-  _count: { clientes: 0 },
+  _count: { clientes: 0, leads: 0 },
 });
 
 /** Constrói um Prisma.PrismaClientKnownRequestError com code P2002. */
@@ -90,13 +90,13 @@ describe('TagsService', () => {
       expect(prisma.tag.findMany).toHaveBeenCalledOnce();
     });
 
-    it('inclui include _count.clientes na query', async () => {
+    it('inclui include _count de clientes E leads na query', async () => {
       prisma.tag.findMany.mockResolvedValue([]);
 
       await service.list(fakeUser(), {});
 
       const args = prisma.tag.findMany.mock.calls[0][0];
-      expect(args.include).toEqual({ _count: { select: { clientes: true } } });
+      expect(args.include).toEqual({ _count: { select: { clientes: true, leads: true } } });
     });
 
     it('ordena por nome asc', async () => {
@@ -185,13 +185,13 @@ describe('TagsService', () => {
       );
     });
 
-    it('inclui _count.clientes no resultado', async () => {
+    it('inclui _count de clientes E leads no resultado', async () => {
       prisma.tag.findFirst.mockResolvedValue(fakeTagWithCount());
 
       await service.findById(fakeUser(), 'tag-1');
 
       const args = prisma.tag.findFirst.mock.calls[0][0];
-      expect(args.include).toEqual({ _count: { select: { clientes: true } } });
+      expect(args.include).toEqual({ _count: { select: { clientes: true, leads: true } } });
     });
   });
 

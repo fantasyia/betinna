@@ -11,15 +11,20 @@ import { FormField, Input } from '@/components/FormField';
 import { useConfirm } from '@/hooks/useConfirm';
 import { useToast } from '@/components/toast';
 import { cn } from '@/lib/cn';
+import { formatNumero } from '@/lib/masks';
 
 interface Tag {
   id: string;
   nome: string;
   cor: string;
-  /** Quantidade de clientes que usam essa tag */
-  clientesCount?: number;
+  /** Uso da tag. A API devolve `_count` (Prisma); o campo plano `clientesCount`
+   *  nunca existiu na resposta — por isso a tela mostrava "0 clientes" em tudo. */
+  _count?: { clientes?: number; leads?: number };
   criadoEm?: string;
 }
+
+/** Total de usos da tag (contatos/leads + clientes). */
+const usosDe = (t: Tag) => (t._count?.leads ?? 0) + (t._count?.clientes ?? 0);
 
 const PRESET_COLORS = [
   '#7c3aed', '#2563eb', '#0891b2', '#16a34a', '#facc15',
@@ -47,9 +52,11 @@ export default function TagsPage() {
   const [confirmAsync, ConfirmDialog] = useConfirm();
 
   async function delTag(t: Tag) {
+    const usos = usosDe(t);
     const message =
-      t.clientesCount && t.clientesCount > 0
-        ? `A tag está em uso em ${t.clientesCount} cliente${t.clientesCount === 1 ? '' : 's'} — sairá deles também.`
+      usos > 0
+        ? `A tag está em uso em ${usos} registro${usos === 1 ? '' : 's'} ` +
+          `(${t._count?.leads ?? 0} contato(s), ${t._count?.clientes ?? 0} cliente(s)) — sairá deles também.`
         : 'Não pode ser desfeito.';
     const ok = await confirmAsync({
       title: `Excluir a tag "${t.nome}"?`,
@@ -115,8 +122,17 @@ export default function TagsPage() {
                     {t.nome}
                   </strong>
                 </header>
-                <p className="m-0 text-[12px] text-muted">
-                  {t.clientesCount ?? 0} {t.clientesCount === 1 ? 'cliente' : 'clientes'}
+                <p className="m-0 text-[12px] text-muted tabular-nums">
+                  {formatNumero(usosDe(t))} {usosDe(t) === 1 ? 'uso' : 'usos'}
+                  <span className="opacity-60">
+                    {' '}
+                    · {formatNumero(t._count?.leads ?? 0)} contato
+                    {(t._count?.leads ?? 0) === 1 ? '' : 's'}
+                    {(t._count?.clientes ?? 0) > 0 &&
+                      ` · ${formatNumero(t._count?.clientes ?? 0)} cliente${
+                        (t._count?.clientes ?? 0) === 1 ? '' : 's'
+                      }`}
+                  </span>
                 </p>
                 {canEdit && (
                   <div className="flex gap-1">

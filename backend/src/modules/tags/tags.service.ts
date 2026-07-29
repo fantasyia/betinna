@@ -7,7 +7,9 @@ import type { AuthenticatedUser } from '@shared/types/authenticated-user';
 import type { CreateTagDto, ListTagsDto, UpdateTagDto } from './tags.dto';
 
 export interface TagWithCount extends Tag {
-  _count: { clientes: number };
+  /** `leads` conta contatos/leads marcados — sem ele a tela de Tags mostrava só
+   *  clientes e uma etiqueta com 3.000 leads aparecia como "0 usos". */
+  _count: { clientes: number; leads: number };
 }
 
 /**
@@ -31,7 +33,7 @@ export class TagsService {
     return this.prisma.tag.findMany({
       where,
       orderBy: { nome: 'asc' },
-      include: { _count: { select: { clientes: true } } },
+      include: { _count: { select: { clientes: true, leads: true } } },
     });
   }
 
@@ -39,7 +41,7 @@ export class TagsService {
     // findFirst com empresaId filter (defesa em profundidade)
     const tag = await this.prisma.tag.findFirst({
       where: { id, ...empresaFilter(user) },
-      include: { _count: { select: { clientes: true } } },
+      include: { _count: { select: { clientes: true, leads: true } } },
     });
     if (!tag) throw new NotFoundException('Tag', id);
     return tag;
