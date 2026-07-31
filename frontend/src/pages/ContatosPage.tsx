@@ -107,7 +107,7 @@ export default function ContatosPage() {
   const buscaDebounced = useDebouncedValue(search, 300);
   const [tipo, setTipo] = useState('');
   const [tagFiltro, setTagFiltro] = useState<string[]>([]);
-  const [uf, setUf] = useState('');
+  const [uf, setUf] = useState<string[]>([]);
   const [cidade, setCidade] = useState('');
   const cidadeDebounced = useDebouncedValue(cidade, 300);
   const [detail, setDetail] = useState<Contato | null>(null);
@@ -139,15 +139,16 @@ export default function ContatosPage() {
   }, [buscaDebounced, tipo, tagFiltro, uf, cidadeDebounced]);
 
   const tagFiltroKey = tagFiltro.join(',');
+  const ufKey = uf.join(',');
   const listPath = useMemo(() => {
     const qs = new URLSearchParams({ page: String(page), limit: '30' });
     if (buscaDebounced.trim()) qs.set('search', buscaDebounced.trim());
     if (tipo) qs.set('tipo', tipo);
     if (tagFiltroKey) qs.set('tagIds', tagFiltroKey);
-    if (uf) qs.set('uf', uf);
+    if (ufKey) qs.set('uf', ufKey);
     if (cidadeDebounced.trim()) qs.set('cidade', cidadeDebounced.trim());
     return `/contatos?${qs.toString()}`;
-  }, [page, buscaDebounced, tipo, tagFiltroKey, uf, cidadeDebounced]);
+  }, [page, buscaDebounced, tipo, tagFiltroKey, ufKey, cidadeDebounced]);
 
   const { data, loading, error, refetch } = useApiQuery<ContatosResp>(listPath);
   // Tags disponíveis pro filtro (chips clicáveis).
@@ -244,19 +245,15 @@ export default function ContatosPage() {
             onToggle={toggleTagFiltro}
             onLimpar={() => setTagFiltro([])}
           />
-          <Select
-            value={uf}
-            onChange={(e) => setUf(e.target.value)}
-            data-testid="contatos-filter-uf"
-            className="w-[7.5rem]"
-          >
-            <option value="">Todos os estados</option>
-            {[...UF_SIGLAS].sort().map((u) => (
-              <option key={u} value={u}>
-                {u}
-              </option>
-            ))}
-          </Select>
+          <UfFilterSelect
+            selecionadas={uf}
+            onToggle={(sigla) =>
+              setUf((prev) =>
+                prev.includes(sigla) ? prev.filter((x) => x !== sigla) : [...prev, sigla],
+              )
+            }
+            onLimpar={() => setUf([])}
+          />
           <Input
             leftIcon={<MapPin />}
             placeholder="Cidade…"
@@ -764,6 +761,78 @@ function TagFilterSelect({
                 Nenhuma tag encontrada.
               </p>
             )}
+          </div>
+          {n > 0 && (
+            <button
+              type="button"
+              onClick={onLimpar}
+              className="w-full text-left text-[11px] text-muted underline px-2 py-1.5 mt-0.5 hover:text-text"
+            >
+              limpar seleção
+            </button>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+/** Filtro de estados — multi-seleção (semântica OU: de SP OU de MG). */
+function UfFilterSelect({
+  selecionadas,
+  onToggle,
+  onLimpar,
+}: {
+  selecionadas: string[];
+  onToggle: (sigla: string) => void;
+  onLimpar: () => void;
+}) {
+  const [aberto, setAberto] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!aberto) return;
+    function onDoc(e: MouseEvent) {
+      if (ref.current && !ref.current.contains(e.target as Node)) setAberto(false);
+    }
+    document.addEventListener('mousedown', onDoc);
+    return () => document.removeEventListener('mousedown', onDoc);
+  }, [aberto]);
+
+  const n = selecionadas.length;
+  const rotulo = n === 0 ? 'Estados' : n <= 3 ? [...selecionadas].sort().join(', ') : `${n} estados`;
+
+  return (
+    <div className="relative" ref={ref}>
+      <button
+        type="button"
+        onClick={() => setAberto((v) => !v)}
+        className={cn(
+          'inline-flex items-center gap-1.5 h-9 px-3 rounded-[10px] border text-sm transition-colors',
+          n > 0
+            ? 'border-primary/40 bg-primary/8 text-text'
+            : 'border-border bg-surface text-text-subtle hover:bg-surface-elevated',
+        )}
+        data-testid="contatos-uf-filtro-btn"
+      >
+        <MapPin className="h-3.5 w-3.5" />
+        <span>{rotulo}</span>
+        <ChevronDown className="h-3.5 w-3.5 text-muted" />
+      </button>
+      {aberto && (
+        <div className="absolute z-20 mt-1 w-56 rounded-[10px] border border-border bg-surface shadow-lg p-1.5">
+          {/* 27 UFs em 3 colunas: cabe sem rolar e a sigla é curta. */}
+          <div className="grid grid-cols-3 gap-0.5 max-h-64 overflow-auto">
+            {[...UF_SIGLAS].sort().map((u) => (
+              <label
+                key={u}
+                className="flex items-center gap-1.5 px-1.5 py-1 rounded-[8px] hover:bg-surface-elevated cursor-pointer text-sm"
+                data-testid={`contatos-uf-filtro-opt-${u}`}
+              >
+                <Checkbox checked={selecionadas.includes(u)} onChange={() => onToggle(u)} />
+                <span className="tabular">{u}</span>
+              </label>
+            ))}
           </div>
           {n > 0 && (
             <button

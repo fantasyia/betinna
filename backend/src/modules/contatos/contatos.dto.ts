@@ -28,13 +28,20 @@ export const listContatosSchema = z.object({
             .filter(Boolean)
             .slice(0, 50),
     ),
-  /** Filtra por estado (sigla, ex: `SP`). Case-insensitive. */
+  /** Filtra por estado(s) — CSV `SP,MG` ou repetido `?uf=SP&uf=MG`. Semântica OU
+   *  (contato de QUALQUER uma das UFs). Case-insensitive. */
   uf: z
-    .string()
-    .trim()
-    .length(2)
+    .union([z.string(), z.array(z.string())])
     .optional()
-    .transform((v) => v?.toUpperCase()),
+    .transform((v) =>
+      v == null
+        ? undefined
+        : (Array.isArray(v) ? v : v.split(','))
+            .map((s) => s.trim().toUpperCase())
+            .filter((s) => /^[A-Z]{2}$/.test(s))
+            .slice(0, 27),
+    )
+    .transform((v) => (v && v.length > 0 ? v : undefined)),
   /** Filtra por cidade (match parcial, case-insensitive). */
   cidade: z.string().trim().max(100).optional(),
   sortBy: z.enum(['recente', 'nome']).default('recente'),

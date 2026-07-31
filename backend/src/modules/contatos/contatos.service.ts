@@ -413,7 +413,7 @@ export class ContatosService {
       term?: string;
       repId?: string;
       tagIds?: string[];
-      uf?: string;
+      uf?: string[];
       cidade?: string;
       want: { lead: boolean; cliente: boolean; conversa: boolean };
     },
@@ -426,9 +426,11 @@ export class ContatosService {
 
     // Filtro geográfico. Só Lead/Cliente têm uf/cidade — Conversation não tem,
     // então filtrar por local exclui conversas (mesma lógica do filtro de tags).
-    const temLocal = Boolean(uf || cidade);
+    // UF é multi-seleção com semântica OU (SP,MG = de SP OU de MG).
+    const ufs = uf?.length ? uf : undefined;
+    const temLocal = Boolean(ufs || cidade);
     const localFilter = Prisma.sql`
-      ${uf ? Prisma.sql`AND upper(coalesce(uf,'')) = ${uf}` : Prisma.empty}
+      ${ufs ? Prisma.sql`AND upper(coalesce(uf,'')) IN (${Prisma.join(ufs)})` : Prisma.empty}
       ${cidade ? Prisma.sql`AND cidade ILIKE ${`%${cidade}%`}` : Prisma.empty}`;
 
     // Filtro por tags (semântica E: precisa ter TODAS). Conversa não tem tag →
