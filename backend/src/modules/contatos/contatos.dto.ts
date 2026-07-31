@@ -28,6 +28,15 @@ export const listContatosSchema = z.object({
             .filter(Boolean)
             .slice(0, 50),
     ),
+  /** Filtra por estado (sigla, ex: `SP`). Case-insensitive. */
+  uf: z
+    .string()
+    .trim()
+    .length(2)
+    .optional()
+    .transform((v) => v?.toUpperCase()),
+  /** Filtra por cidade (match parcial, case-insensitive). */
+  cidade: z.string().trim().max(100).optional(),
   sortBy: z.enum(['recente', 'nome']).default('recente'),
 });
 export type ListContatosDto = z.infer<typeof listContatosSchema>;

@@ -787,9 +787,15 @@ function LeadCardInner({
       )}
 
       <div className="flex items-center justify-between">
-        <span className="text-sm font-semibold text-text tabular tracking-tight">
-          {fmtBRLCompact(lead.valorEstimado)}
-        </span>
+        {/* Só mostra valor em quem TEM. Base importada entra com 0 e um "R$ 0,00"
+            em cada card virava ruído sem informação. */}
+        {lead.valorEstimado > 0 ? (
+          <span className="text-sm font-semibold text-text tabular tracking-tight">
+            {fmtBRLCompact(lead.valorEstimado)}
+          </span>
+        ) : (
+          <span />
+        )}
         {lead.representante ? (
           <Avatar name={lead.representante.nome} size="xs" />
         ) : (
@@ -964,10 +970,14 @@ function LeadDetailDrawer({
                 Score {lead.score}
               </Badge>
             </div>
-            <div className="text-2xl font-semibold text-text mt-2 tabular tracking-tight">
-              {fmtBRL(lead.valorEstimado)}
-            </div>
-            <div className="text-[11px] text-muted">valor estimado</div>
+            {lead.valorEstimado > 0 && (
+              <>
+                <div className="text-2xl font-semibold text-text mt-2 tabular tracking-tight">
+                  {fmtBRL(lead.valorEstimado)}
+                </div>
+                <div className="text-[11px] text-muted">valor estimado</div>
+              </>
+            )}
           </div>
         </div>
 

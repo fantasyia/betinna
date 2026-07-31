@@ -159,6 +159,8 @@ export class ContatosService {
         term,
         repId,
         tagIds: params.tagIds,
+        uf: params.uf,
+        cidade: params.cidade,
         want: {
           lead: !params.tipo || params.tipo === 'LEAD',
           cliente: !params.tipo || params.tipo === 'CLIENTE',
@@ -411,14 +413,23 @@ export class ContatosService {
       term?: string;
       repId?: string;
       tagIds?: string[];
+      uf?: string;
+      cidade?: string;
       want: { lead: boolean; cliente: boolean; conversa: boolean };
     },
     sortBy: 'nome' | 'recente',
     limit: number,
     offset: number,
   ): Promise<{ rows: ChaveRow[]; total: number }> {
-    const { empresaId, scope, role, uid, term, repId, want, tagIds } = opts;
+    const { empresaId, scope, role, uid, term, repId, want, tagIds, uf, cidade } = opts;
     const like = term ? `%${term}%` : undefined;
+
+    // Filtro geográfico. Só Lead/Cliente têm uf/cidade — Conversation não tem,
+    // então filtrar por local exclui conversas (mesma lógica do filtro de tags).
+    const temLocal = Boolean(uf || cidade);
+    const localFilter = Prisma.sql`
+      ${uf ? Prisma.sql`AND upper(coalesce(uf,'')) = ${uf}` : Prisma.empty}
+      ${cidade ? Prisma.sql`AND cidade ILIKE ${`%${cidade}%`}` : Prisma.empty}`;
 
     // Filtro por tags (semântica E: precisa ter TODAS). Conversa não tem tag →
     // filtrar por tag exclui conversas. HAVING COUNT(DISTINCT) = N garante o "todas".
@@ -460,7 +471,7 @@ export class ContatosService {
           COALESCE(NULLIF("contatoNome",''), nome) nome_cand, "contatoTelefone" tel_cand, "contatoEmail" email_cand,
           1 ord_nome, 1 ord_tipo, "criadoEm" quando
         FROM "Lead"
-        WHERE "empresaId" = ${empresaId} ${scopeLeadCli} ${leadTagFilter}
+        WHERE "empresaId" = ${empresaId} ${scopeLeadCli} ${leadTagFilter} ${localFilter}
           ${like ? Prisma.sql`AND (nome ILIKE ${like} OR "contatoNome" ILIKE ${like} OR "contatoTelefone" LIKE ${like} OR "contatoEmail" ILIKE ${like})` : Prisma.empty}`);
     }
     if (want.cliente) {
@@ -470,10 +481,10 @@ export class ContatosService {
           nome nome_cand, telefone tel_cand, email email_cand,
           0 ord_nome, 2 ord_tipo, "criadoEm" quando
         FROM "Cliente"
-        WHERE "empresaId" = ${empresaId} ${scopeLeadCli} ${clienteTagFilter}
+        WHERE "empresaId" = ${empresaId} ${scopeLeadCli} ${clienteTagFilter} ${localFilter}
           ${like ? Prisma.sql`AND (nome ILIKE ${like} OR telefone LIKE ${like} OR email ILIKE ${like} OR cnpj LIKE ${like})` : Prisma.empty}`);
     }
-    if (want.conversa && !temTags) {
+    if (want.conversa && !temTags && !temLocal) {
       // REP só vê o próprio WhatsApp; repId filtra por atribuído (igual ao where Prisma anterior).
       const repConv =
         role === 'REP'

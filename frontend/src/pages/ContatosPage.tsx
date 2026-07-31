@@ -16,6 +16,7 @@ import {
   Briefcase,
   ChevronDown,
   GitMerge,
+  MapPin,
 } from 'lucide-react';
 import { useApiQuery, type PaginatedResponse } from '@/hooks/useApiQuery';
 import { useDebouncedValue } from '@/hooks/useDebouncedValue';
@@ -31,6 +32,7 @@ import { useToast } from '@/components/toast';
 import { api, apiErrorMessage } from '@/lib/api';
 import { formatNumero } from '@/lib/masks';
 import { formatTelefone } from '@/lib/phone';
+import { UF_SIGLAS } from '@/lib/localidades';
 import {
   Avatar,
   Badge,
@@ -105,6 +107,9 @@ export default function ContatosPage() {
   const buscaDebounced = useDebouncedValue(search, 300);
   const [tipo, setTipo] = useState('');
   const [tagFiltro, setTagFiltro] = useState<string[]>([]);
+  const [uf, setUf] = useState('');
+  const [cidade, setCidade] = useState('');
+  const cidadeDebounced = useDebouncedValue(cidade, 300);
   const [detail, setDetail] = useState<Contato | null>(null);
   const canEdit = usePermission('clientes.edit');
   const role = useRole();
@@ -131,7 +136,7 @@ export default function ContatosPage() {
     // #16: limpa a seleção ao trocar filtro — senão uma ação em lote (excluir/mover/tag) atingiria
     // contatos que não estão mais visíveis na tela.
     setSelected(new Map());
-  }, [buscaDebounced, tipo, tagFiltro]);
+  }, [buscaDebounced, tipo, tagFiltro, uf, cidadeDebounced]);
 
   const tagFiltroKey = tagFiltro.join(',');
   const listPath = useMemo(() => {
@@ -139,8 +144,10 @@ export default function ContatosPage() {
     if (buscaDebounced.trim()) qs.set('search', buscaDebounced.trim());
     if (tipo) qs.set('tipo', tipo);
     if (tagFiltroKey) qs.set('tagIds', tagFiltroKey);
+    if (uf) qs.set('uf', uf);
+    if (cidadeDebounced.trim()) qs.set('cidade', cidadeDebounced.trim());
     return `/contatos?${qs.toString()}`;
-  }, [page, buscaDebounced, tipo, tagFiltroKey]);
+  }, [page, buscaDebounced, tipo, tagFiltroKey, uf, cidadeDebounced]);
 
   const { data, loading, error, refetch } = useApiQuery<ContatosResp>(listPath);
   // Tags disponíveis pro filtro (chips clicáveis).
@@ -236,6 +243,27 @@ export default function ContatosPage() {
             selecionadas={tagFiltro}
             onToggle={toggleTagFiltro}
             onLimpar={() => setTagFiltro([])}
+          />
+          <Select
+            value={uf}
+            onChange={(e) => setUf(e.target.value)}
+            data-testid="contatos-filter-uf"
+            className="w-[7.5rem]"
+          >
+            <option value="">Todos os estados</option>
+            {[...UF_SIGLAS].sort().map((u) => (
+              <option key={u} value={u}>
+                {u}
+              </option>
+            ))}
+          </Select>
+          <Input
+            leftIcon={<MapPin />}
+            placeholder="Cidade…"
+            value={cidade}
+            onChange={(e: React.ChangeEvent<HTMLInputElement>) => setCidade(e.target.value)}
+            className="w-44"
+            data-testid="contatos-filter-cidade"
           />
         </div>
 
@@ -667,6 +695,7 @@ function TagFilterSelect({
   onLimpar: () => void;
 }) {
   const [aberto, setAberto] = useState(false);
+  const [busca, setBusca] = useState('');
   const ref = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -678,7 +707,19 @@ function TagFilterSelect({
     return () => document.removeEventListener('mousedown', onDoc);
   }, [aberto]);
 
+  // Fechar zera a busca — reabrir com filtro velho escondia tags e parecia bug.
+  useEffect(() => {
+    if (!aberto) setBusca('');
+  }, [aberto]);
+
   const n = selecionadas.length;
+  // Sem acento e sem caixa: "maquina" acha "Máquinas e Equipamentos".
+  const norm = (s: string) =>
+    s.trim().toLowerCase().normalize('NFKD').replace(/\p{Diacritic}/gu, '');
+  const visiveis = useMemo(() => {
+    const q = norm(busca);
+    return q ? tags.filter((t) => norm(t.nome).includes(q)) : tags;
+  }, [tags, busca]);
   return (
     <div className="relative" ref={ref}>
       <button
@@ -698,17 +739,32 @@ function TagFilterSelect({
         <ChevronDown className="h-3.5 w-3.5 text-muted" />
       </button>
       {aberto && (
-        <div className="absolute z-20 mt-1 w-64 max-h-72 overflow-auto rounded-[10px] border border-border bg-surface shadow-lg p-1.5">
-          {tags.map((t) => (
-            <label
-              key={t.id}
-              className="flex items-center gap-2 px-2 py-1.5 rounded-[8px] hover:bg-surface-elevated cursor-pointer"
-              data-testid={`contatos-tag-filtro-opt-${t.id}`}
-            >
-              <Checkbox checked={selecionadas.includes(t.id)} onChange={() => onToggle(t.id)} />
-              <TagChip nome={t.nome} cor={t.cor} />
-            </label>
-          ))}
+        <div className="absolute z-20 mt-1 w-64 rounded-[10px] border border-border bg-surface shadow-lg p-1.5">
+          <input
+            autoFocus
+            value={busca}
+            onChange={(e) => setBusca(e.target.value)}
+            placeholder="Buscar tag..."
+            data-testid="contatos-tag-filtro-busca"
+            className="w-full h-8 px-2 mb-1 rounded-[8px] border border-border bg-surface-elevated text-sm text-text placeholder:text-muted outline-none focus:border-primary/50"
+          />
+          <div className="max-h-64 overflow-auto">
+            {visiveis.map((t) => (
+              <label
+                key={t.id}
+                className="flex items-center gap-2 px-2 py-1.5 rounded-[8px] hover:bg-surface-elevated cursor-pointer"
+                data-testid={`contatos-tag-filtro-opt-${t.id}`}
+              >
+                <Checkbox checked={selecionadas.includes(t.id)} onChange={() => onToggle(t.id)} />
+                <TagChip nome={t.nome} cor={t.cor} />
+              </label>
+            ))}
+            {visiveis.length === 0 && (
+              <p className="m-0 px-2 py-3 text-[12px] text-muted text-center">
+                Nenhuma tag encontrada.
+              </p>
+            )}
+          </div>
           {n > 0 && (
             <button
               type="button"
