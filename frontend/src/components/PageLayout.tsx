@@ -12,6 +12,7 @@ import {
   Briefcase,
   Settings,
   Inbox,
+  Bot,
   Menu,
   ChevronRight,
   Search,
@@ -157,8 +158,16 @@ const SECTIONS: NavSection[] = [
         label: 'Atendimento',
         icon: MessageSquare,
         modulo: 'inbox',
-        match: ['/ocorrencias', '/incidentes', '/whatsapp', '/mullerbot'],
+        // `/mullerbot` saiu daqui: o Assistente IA virou item próprio do menu
+        // (abaixo). Se ficasse no match, os dois acendiam juntos na sidebar.
+        match: ['/ocorrencias', '/incidentes', '/whatsapp'],
         badgeKey: 'atendimento',
+      },
+      {
+        to: '/mullerbot',
+        label: 'Assistente IA',
+        icon: Bot,
+        match: ['/mullerbot/persona', '/mullerbot/conhecimento', '/mullerbot/auditoria'],
       },
       {
         to: '/produtos',

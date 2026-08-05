@@ -1,4 +1,4 @@
-import { MessageSquare, AlertTriangle, ShieldAlert, Smartphone, Bot } from 'lucide-react';
+import { MessageSquare, AlertTriangle, ShieldAlert, Smartphone } from 'lucide-react';
 import { useRole, usePermission } from '@/hooks/usePermission';
 import { SubTabsBar, type SubTab } from '@/components/SubTabsBar';
 
@@ -16,8 +16,9 @@ import { SubTabsBar, type SubTab } from '@/components/SubTabsBar';
  *  - /ocorrencias        → todos (SAC interno)
  *  - /incidentes         → ADMIN/DIRECTOR/GERENTE/SAC
  *  - /whatsapp           → permission 'whatsapp.pessoal'
- *  - /mullerbot          → todos
- *  - /mullerbot/persona  → ADMIN/DIRECTOR
+ *
+ * O Assistente IA (/mullerbot) NÃO está aqui — virou item próprio do menu
+ * lateral (PageLayout → SECTIONS), com as sub-abas dele em AssistenteTabs.
  */
 export function AtendimentoTabs() {
   const role = useRole();
@@ -51,15 +52,9 @@ export function AtendimentoTabs() {
       icon: <Smartphone size={14} />,
     });
   }
-  // Assistente IA = UMA aba só. As antigas Persona/Conhecimento/Auditoria viraram
-  // sub-abas DENTRO da seção (AssistenteTabs). `match` mantém esta aba ativa em
-  // todas as rotas /mullerbot/*.
-  tabs.push({
-    to: '/mullerbot',
-    label: 'Assistente IA',
-    icon: <Bot size={14} />,
-    match: ['/mullerbot/persona', '/mullerbot/conhecimento', '/mullerbot/auditoria'],
-  });
+  // Assistente IA saiu daqui: virou item PRÓPRIO do menu lateral (PageLayout →
+  // SECTIONS). Como as sub-abas dele (Persona/Conhecimento/Auditoria) já vivem
+  // em AssistenteTabs, mantê-lo aqui deixaria a mesma seção em dois lugares.
 
   return <SubTabsBar tabs={tabs} ariaLabel="Sub-abas de Atendimento" />;
 }
