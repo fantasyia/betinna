@@ -15,7 +15,6 @@ import {
   Bot,
   Menu,
   ChevronRight,
-  Search,
   Sun,
   Moon,
   LogOut,
@@ -459,23 +458,10 @@ function Sidebar({
       {/* Multi-tenant: trocar empresa ativa (ADMIN vê todas; demais só vinculadas) */}
       <EmpresaSwitcher />
 
-      {/* Quick search (placeholder pra futuro cmdk) */}
-      <div className="px-3 py-2.5 border-b border-border">
-        <div
-          className={cn(
-            'flex items-center gap-2 h-7 px-2 rounded',
-            'bg-surface border border-border text-muted text-xs',
-            'cursor-pointer hover:bg-surface-hover hover:border-border-strong transition-colors',
-          )}
-          title="Buscar (em breve)"
-        >
-          <Search className="h-3 w-3" />
-          <span className="flex-1">Buscar…</span>
-          <kbd className="text-[10px] font-mono text-muted-light bg-bg px-1 rounded border border-border">
-            ⌘K
-          </kbd>
-        </div>
-      </div>
+      {/* Quick search (cmdk) — DESATIVADO por pedido do Léo (2026-08-05): o
+          placeholder parecia clicável (cursor-pointer + hover) mas não fazia
+          nada — sem onClick nem atalho ⌘K real. Reativar quando a busca
+          global existir de verdade. */}
 
       {/* Nav scrollable — arrastável (reordena pelos "punhos", persiste no dispositivo) */}
       <nav className="flex-1 overflow-y-auto px-2 py-2.5">
