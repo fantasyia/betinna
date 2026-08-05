@@ -22,10 +22,10 @@ function makeOnUpdate(data: NodePayload) {
 }
 
 describe('MensagemCanalTriggerForm', () => {
-  it('sem palavras: o seletor de modo NÃO aparece', () => {
+  it('sem palavras: o seletor de modo NÃO aparece (só o de escopo, que é sempre visível)', () => {
     render(<MensagemCanalTriggerForm data={makeData()} onUpdate={vi.fn()} />);
-    // Só o checkbox "lead conhecido" existe; nenhum combobox (modo) renderizado.
-    expect(screen.queryByRole('combobox')).toBeNull();
+    expect(screen.queryByRole('combobox', { name: /como casar/i })).toBeNull();
+    expect(screen.getByRole('combobox', { name: /de qual whatsapp/i })).toBeTruthy();
   });
 
   it('ESCRITA: textarea grava config.palavrasChave como array (split/trim/filter)', () => {
@@ -44,10 +44,23 @@ describe('MensagemCanalTriggerForm', () => {
     const { onUpdate, getLast } = makeOnUpdate(data);
     render(<MensagemCanalTriggerForm data={data} onUpdate={onUpdate} />);
 
-    const modo = screen.getByRole('combobox') as HTMLSelectElement;
+    const modo = screen.getByRole('combobox', { name: /como casar/i }) as HTMLSelectElement;
     expect(modo.value).toBe('qualquer'); // default
     fireEvent.change(modo, { target: { value: 'exata' } });
     expect(getLast().config.modo).toBe('exata');
+  });
+
+  it('ESCRITA: seletor "de qual WhatsApp" grava config.escopo (default "ambos")', () => {
+    const data = makeData();
+    const { onUpdate, getLast } = makeOnUpdate(data);
+    render(<MensagemCanalTriggerForm data={data} onUpdate={onUpdate} />);
+
+    const escopo = screen.getByRole('combobox', {
+      name: /de qual whatsapp/i,
+    }) as HTMLSelectElement;
+    expect(escopo.value).toBe('ambos'); // default — compat retroativa
+    fireEvent.change(escopo, { target: { value: 'empresa' } });
+    expect(getLast().config.escopo).toBe('empresa');
   });
 
   it('ESCRITA: checkbox "lead conhecido" grava config.apenasComLead', () => {

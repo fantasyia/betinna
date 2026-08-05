@@ -112,6 +112,7 @@ export class FluxoEventBusService {
               apenasComLead?: boolean;
               apenasSemLead?: boolean;
               apenasComBotLigado?: boolean;
+              escopo?: 'empresa' | 'pessoal' | 'ambos';
             };
             // Case-INSENSITIVE de propósito: o contexto traz o enum do Prisma
             // ("WHATSAPP"), mas a config é escrita à mão (MCP/API — o editor não
@@ -122,6 +123,15 @@ export class FluxoEventBusService {
               : [];
             const canalCtx = (contexto['canal'] as string | undefined)?.toUpperCase();
             if (canais.length > 0 && (!canalCtx || !canais.includes(canalCtx))) continue;
+            // `escopo`: dual-owner (D38) — WhatsApp CENTRAL da empresa (proprietarioId
+            // null) vs WhatsApp PESSOAL do rep (proprietarioId preenchido). Default
+            // "ambos" mantém compatibilidade com fluxo já configurado. "empresa" é o
+            // que o T1 (triagem) precisa: mensagem no celular pessoal do rep NÃO pode
+            // virar lead na Triagem da empresa.
+            const escopo = cfg.escopo ?? 'ambos';
+            const ehPessoal = Boolean(contexto['proprietarioId']);
+            if (escopo === 'empresa' && ehPessoal) continue;
+            if (escopo === 'pessoal' && !ehPessoal) continue;
             if (cfg.apenasComLead && !contexto['leadId']) continue;
             // Espelho do anterior, pro fluxo de TRIAGEM: só quem AINDA não é lead.
             // Sem ele, todo recado de contato já conhecido reentraria no fluxo de

@@ -114,6 +114,43 @@ describe('OrquestracaoLeadEventsService', () => {
     expect(bus.disparar).not.toHaveBeenCalledWith('emp-1', 'LEAD_RESPONDEU', expect.anything());
   });
 
+  it('propaga proprietarioId no MENSAGEM_CANAL (dual-owner D38 — base do filtro escopo)', async () => {
+    prisma.lead.findFirst.mockResolvedValue(null);
+    await svc.aoReceberMensagem(
+      {
+        empresaId: 'emp-1',
+        peerTelefone: '11999990000',
+        conteudo: 'x',
+        canal: 'WHATSAPP',
+        proprietarioId: 'rep-1', // WhatsApp PESSOAL do rep
+      } as never,
+      resultado(),
+    );
+    expect(bus.disparar).toHaveBeenCalledWith(
+      'emp-1',
+      'MENSAGEM_CANAL',
+      expect.objectContaining({ proprietarioId: 'rep-1' }),
+    );
+  });
+
+  it('proprietarioId ausente vira null no MENSAGEM_CANAL (WhatsApp central da empresa)', async () => {
+    prisma.lead.findFirst.mockResolvedValue(null);
+    await svc.aoReceberMensagem(
+      {
+        empresaId: 'emp-1',
+        peerTelefone: '11999990000',
+        conteudo: 'x',
+        canal: 'WHATSAPP',
+      } as never,
+      resultado(),
+    );
+    expect(bus.disparar).toHaveBeenCalledWith(
+      'emp-1',
+      'MENSAGEM_CANAL',
+      expect.objectContaining({ proprietarioId: null }),
+    );
+  });
+
   it('dedup: split webhook/poll (setNxEx=false) NÃO redispara MENSAGEM_CANAL', async () => {
     redis.setNxEx.mockResolvedValue(false); // 2ª chegada do mesmo texto na janela
     await svc.aoReceberMensagem(

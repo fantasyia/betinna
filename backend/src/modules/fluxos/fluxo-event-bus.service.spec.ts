@@ -350,6 +350,88 @@ describe('FluxoEventBusService', () => {
       expect(prisma.fluxoExecucao.create).toHaveBeenCalledOnce();
     });
 
+    it('MENSAGEM_CANAL: escopo "empresa" PULA mensagem do WhatsApp PESSOAL do rep', async () => {
+      // Dual-owner (D38): proprietarioId preenchido = WhatsApp pessoal do rep.
+      // Fluxo de triagem geral não pode processar isso (viraria lead da empresa).
+      prisma.fluxo.findMany.mockResolvedValue([
+        fakeFluxo({
+          triggerTipo: 'MENSAGEM_CANAL',
+          nos: [{ id: 'trg', config: { canais: ['WHATSAPP'], escopo: 'empresa' } }],
+        }),
+      ]);
+
+      await service.disparar('emp-1', 'MENSAGEM_CANAL' as FluxoTriggerTipo, {
+        canal: 'WHATSAPP',
+        conversationId: 'conv-1',
+        texto: 'oi',
+        leadId: null,
+        proprietarioId: 'rep-1',
+      });
+
+      expect(prisma.fluxoExecucao.create).not.toHaveBeenCalled();
+    });
+
+    it('MENSAGEM_CANAL: escopo "empresa" DISPARA no WhatsApp central (proprietarioId ausente)', async () => {
+      prisma.fluxo.findMany.mockResolvedValue([
+        fakeFluxo({
+          triggerTipo: 'MENSAGEM_CANAL',
+          nos: [{ id: 'trg', config: { canais: ['WHATSAPP'], escopo: 'empresa' } }],
+        }),
+      ]);
+      prisma.fluxoExecucao.create.mockResolvedValue(fakeExecucao());
+      prisma.fluxoExecucao.update.mockResolvedValue({});
+
+      await service.disparar('emp-1', 'MENSAGEM_CANAL' as FluxoTriggerTipo, {
+        canal: 'WHATSAPP',
+        conversationId: 'conv-1',
+        texto: 'oi',
+        leadId: null,
+        proprietarioId: null,
+      });
+
+      expect(prisma.fluxoExecucao.create).toHaveBeenCalledOnce();
+    });
+
+    it('MENSAGEM_CANAL: escopo "pessoal" PULA mensagem do WhatsApp central', async () => {
+      prisma.fluxo.findMany.mockResolvedValue([
+        fakeFluxo({
+          triggerTipo: 'MENSAGEM_CANAL',
+          nos: [{ id: 'trg', config: { escopo: 'pessoal' } }],
+        }),
+      ]);
+
+      await service.disparar('emp-1', 'MENSAGEM_CANAL' as FluxoTriggerTipo, {
+        canal: 'WHATSAPP',
+        conversationId: 'conv-1',
+        texto: 'oi',
+        leadId: null,
+        proprietarioId: null,
+      });
+
+      expect(prisma.fluxoExecucao.create).not.toHaveBeenCalled();
+    });
+
+    it('MENSAGEM_CANAL: SEM escopo configurado (default "ambos") dispara pros dois — compat retroativa', async () => {
+      prisma.fluxo.findMany.mockResolvedValue([
+        fakeFluxo({
+          triggerTipo: 'MENSAGEM_CANAL',
+          nos: [{ id: 'trg', config: { canais: ['WHATSAPP'] } }],
+        }),
+      ]);
+      prisma.fluxoExecucao.create.mockResolvedValue(fakeExecucao());
+      prisma.fluxoExecucao.update.mockResolvedValue({});
+
+      await service.disparar('emp-1', 'MENSAGEM_CANAL' as FluxoTriggerTipo, {
+        canal: 'WHATSAPP',
+        conversationId: 'conv-1',
+        texto: 'oi',
+        leadId: null,
+        proprietarioId: 'rep-1', // pessoal — mas sem `escopo` configurado, deve passar
+      });
+
+      expect(prisma.fluxoExecucao.create).toHaveBeenCalledOnce();
+    });
+
     it('MENSAGEM_CANAL: canal DIFERENTE segue sendo filtrado (não vira passa-tudo)', async () => {
       prisma.fluxo.findMany.mockResolvedValue([
         fakeFluxo({

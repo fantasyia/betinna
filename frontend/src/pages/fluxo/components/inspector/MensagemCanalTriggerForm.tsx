@@ -17,6 +17,7 @@ export function MensagemCanalTriggerForm({
 }) {
   const palavras = (data.config.palavrasChave as string[] | undefined) ?? [];
   const modo = (data.config.modo as string | undefined) ?? 'qualquer';
+  const escopo = (data.config.escopo as string | undefined) ?? 'ambos';
 
   return (
     <>
@@ -78,6 +79,23 @@ export function MensagemCanalTriggerForm({
           />
         </>
       )}
+
+      <Field
+        label="De qual WhatsApp"
+        hint="Empresa = número central (SAC). Pessoal = celular do rep. A triagem geral deve ficar em Empresa — senão contato novo do celular pessoal de um rep vira lead na Triagem da empresa."
+      >
+        <Select
+          size="sm"
+          value={escopo}
+          onChange={(e) =>
+            onUpdate((d) => ({ ...d, config: { ...d.config, escopo: e.target.value } }))
+          }
+        >
+          <option value="ambos">Ambos (empresa + pessoal)</option>
+          <option value="empresa">Só WhatsApp da empresa</option>
+          <option value="pessoal">Só WhatsApp pessoal dos reps</option>
+        </Select>
+      </Field>
 
       <Checkbox
         label="Só disparar se for um lead conhecido"

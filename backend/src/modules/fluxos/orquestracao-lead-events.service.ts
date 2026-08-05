@@ -69,6 +69,11 @@ export class OrquestracaoLeadEventsService implements OnModuleInit {
           conversationId: resultado.conversationId,
           texto: params.conteudo,
           leadId: lead?.id ?? null,
+          // Dual-owner (D38): null/ausente = WhatsApp CENTRAL da empresa;
+          // preenchido = WhatsApp PESSOAL do rep dono da sessão. O gatilho filtra
+          // por isso (`escopo`) — sem este campo, mensagem no celular do rep
+          // disparava a triagem da empresa e virava lead na Triagem.
+          proprietarioId: params.proprietarioId ?? null,
         });
       }
 

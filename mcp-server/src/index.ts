@@ -1108,7 +1108,17 @@ const fluxoNoInput = z.object({
   tipo: FLUXO_NO_TIPO,
   acaoTipo: FLUXO_ACAO_TIPO.nullable().optional().describe('Obrigatório quando tipo=ACAO'),
   titulo: z.string().min(1).max(100),
-  config: z.record(z.unknown()).optional().describe('Config do nó (varia por tipo/ação)'),
+  config: z
+    .record(z.unknown())
+    .optional()
+    .describe(
+      'Config do nó (varia por tipo/ação). Trigger MENSAGEM_CANAL aceita: canais (string[], ' +
+        'ex: ["WHATSAPP"]), palavrasChave (string[]), modo ("qualquer"|"todas"|"exata"), ' +
+        'apenasComLead (bool), apenasSemLead (bool, uso de TRIAGEM), apenasComBotLigado (bool), ' +
+        'escopo ("empresa"|"pessoal"|"ambos", default "ambos" — dual-owner D38: "empresa" = só ' +
+        'WhatsApp CENTRAL, "pessoal" = só celular dos reps. Fluxo de TRIAGEM geral deve usar ' +
+        '"empresa": sem isso, mensagem no WhatsApp pessoal de um rep vira lead na Triagem da empresa).',
+    ),
   posX: z.number().optional(),
   posY: z.number().optional(),
 });
