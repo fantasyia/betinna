@@ -28,6 +28,7 @@ const makeRedisMock = () => ({
 
 const makeLeadsMock = () => ({
   createPublico: vi.fn().mockResolvedValue({ id: 'lead-novo' }),
+  aplicarTagPorNome: vi.fn().mockResolvedValue(undefined),
 });
 
 const fakeUser = (overrides: Partial<AuthenticatedUser> = {}): AuthenticatedUser => ({
@@ -116,6 +117,75 @@ describe('LeadCaptureService', () => {
           variaveis: expect.objectContaining({ origem: 'landing-x' }),
         }),
       );
+    });
+
+    it('aplica as tags do site no lead NOVO (cada uma dispara LEAD_RECEBEU_TAG)', async () => {
+      prisma.leadCaptureChave.findUnique.mockResolvedValue({ empresaId: 'emp-1', ativo: true });
+
+      await svc.capturar(CHAVE, {
+        ...dto,
+        tags: ['publico:comercio', 'setor:cadeia-do-frio'],
+      });
+
+      expect(leads.aplicarTagPorNome).toHaveBeenCalledTimes(2);
+      expect(leads.aplicarTagPorNome).toHaveBeenCalledWith(
+        'emp-1',
+        'lead-novo',
+        'publico:comercio',
+        'usuario',
+      );
+      expect(leads.aplicarTagPorNome).toHaveBeenCalledWith(
+        'emp-1',
+        'lead-novo',
+        'setor:cadeia-do-frio',
+        'usuario',
+      );
+    });
+
+    it('aplica tags também no lead DUPLICADO (reenvio com outro setor)', async () => {
+      prisma.leadCaptureChave.findUnique.mockResolvedValue({ empresaId: 'emp-1', ativo: true });
+      // acharLeadAberto usa $queryRaw — devolve um lead existente.
+      prisma.$queryRaw.mockResolvedValue([{ id: 'lead-existente' }]);
+
+      const r = await svc.capturar(CHAVE, { ...dto, tags: ['setor:autopecas'] });
+
+      expect(r.duplicado).toBe(true);
+      expect(leads.createPublico).not.toHaveBeenCalled();
+      expect(leads.aplicarTagPorNome).toHaveBeenCalledWith(
+        'emp-1',
+        'lead-existente',
+        'setor:autopecas',
+        'usuario',
+      );
+    });
+
+    it('dedup de tags repetidas e ignora vazias', async () => {
+      prisma.leadCaptureChave.findUnique.mockResolvedValue({ empresaId: 'emp-1', ativo: true });
+
+      await svc.capturar(CHAVE, {
+        ...dto,
+        tags: ['setor:outros', 'setor:outros', '  '],
+      });
+
+      expect(leads.aplicarTagPorNome).toHaveBeenCalledTimes(1);
+    });
+
+    it('falha ao aplicar tag NÃO derruba a captura do lead', async () => {
+      prisma.leadCaptureChave.findUnique.mockResolvedValue({ empresaId: 'emp-1', ativo: true });
+      leads.aplicarTagPorNome.mockRejectedValueOnce(new Error('tag explodiu'));
+
+      // Perder o lead é pior que perder a etiqueta — a captura tem que sobreviver.
+      const r = await svc.capturar(CHAVE, { ...dto, tags: ['publico:industria'] });
+
+      expect(r).toEqual({ ok: true, leadId: 'lead-novo', duplicado: false });
+    });
+
+    it('sem tags no payload, não chama aplicarTagPorNome', async () => {
+      prisma.leadCaptureChave.findUnique.mockResolvedValue({ empresaId: 'emp-1', ativo: true });
+
+      await svc.capturar(CHAVE, dto);
+
+      expect(leads.aplicarTagPorNome).not.toHaveBeenCalled();
     });
 
     it('campos estruturados vão pra variaveis; observações só a mensagem', async () => {

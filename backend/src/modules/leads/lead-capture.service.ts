@@ -117,6 +117,9 @@ export class LeadCaptureService {
     if (duplicado) {
       // Lead já existe: ÚLTIMO toque sempre atualiza; 1º toque só se estava vazio.
       await this.aplicarAtribuicaoEmLeadExistente(duplicado, atribuicao);
+      // Tags também no reenvio: quem volta pelo formulário marcando OUTRO setor
+      // precisa receber a etiqueta nova (o upsert cobre a repetida).
+      await this.aplicarTagsDoSite(empresaId, duplicado, dto.tags);
       return { ok: true, leadId: duplicado, duplicado: true };
     }
 
@@ -140,8 +143,39 @@ export class LeadCaptureService {
       origemCadastro,
       formularioOrigem: normalizarFormulario(dto.formulario) ?? null,
     });
+    await this.aplicarTagsDoSite(empresaId, lead.id, dto.tags);
     this.logger.log(`Lead capturado do site: ${lead.id} (empresa ${empresaId})`);
     return { ok: true, leadId: lead.id, duplicado: false };
+  }
+
+  /**
+   * Aplica as etiquetas que o site mandou (ex: `publico:comercio`,
+   * `setor:cadeia-do-frio`). Cada tag dispara LEAD_RECEBEU_TAG — é ela que
+   * ROTEIA o fluxo de nutrição. `aplicarTagPorNome` cria a tag se não existir
+   * e é idempotente (upsert dos dois lados), então reenvio não duplica.
+   *
+   * Best-effort POR TAG: falhar uma etiqueta não pode derrubar a captura (perder
+   * o lead é pior que perder a etiqueta), mas a falha é LOGADA — senão o lead
+   * entraria sem roteamento e ninguém ficaria sabendo.
+   */
+  private async aplicarTagsDoSite(
+    empresaId: string,
+    leadId: string,
+    tags: string[] | undefined,
+  ): Promise<void> {
+    if (!tags?.length) return;
+    // Dedup + normaliza: o site pode repetir a mesma etiqueta em campos diferentes.
+    const nomes = [...new Set(tags.map((t) => t.trim()).filter(Boolean))];
+    for (const nome of nomes) {
+      try {
+        await this.leads.aplicarTagPorNome(empresaId, leadId, nome, 'usuario');
+      } catch (err) {
+        this.logger.warn(
+          `Falha aplicando tag "${nome}" no lead ${leadId} (empresa ${empresaId}): ` +
+            `${err instanceof Error ? err.message : String(err)}`,
+        );
+      }
+    }
   }
 
   /**

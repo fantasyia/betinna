@@ -85,6 +85,14 @@ export const leadCapturePublicoSchema = z
     atribuicao: z
       .object({ primeiro: atribuicaoBlocoSchema, ultimo: atribuicaoBlocoSchema })
       .optional(),
+
+    /**
+     * Etiquetas a aplicar no lead (ex: `publico:comercio`, `setor:cadeia-do-frio`).
+     * É a etiqueta que ROTEIA o fluxo de nutrição — cada uma dispara
+     * LEAD_RECEBEU_TAG. Tag inexistente é criada na hora (aplicarTagPorNome).
+     * Teto de 10 evita que um POST público encha a lista de etiquetas.
+     */
+    tags: z.array(z.string().trim().min(1).max(60)).max(10).optional(),
   })
   .refine((v) => !!(v.telefone?.trim() || v.email?.trim()), {
     message: 'Informe pelo menos telefone ou e-mail',
