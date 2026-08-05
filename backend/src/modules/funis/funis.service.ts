@@ -44,7 +44,24 @@ const funilInclude = {
   _count: { select: { leads: true } },
 } satisfies Prisma.FunilInclude;
 
-type FunilWithRel = Prisma.FunilGetPayload<{ include: typeof funilInclude }>;
+type FunilRaw = Prisma.FunilGetPayload<{ include: typeof funilInclude }>;
+
+/** Fluxo que aponta pra uma etapa (via CRIAR_LEAD ou MOVER_LEAD_ETAPA). */
+export interface FluxoQueAponta {
+  id: string;
+  nome: string;
+  status: string;
+  acaoTipo: string;
+}
+
+/** Etapa decorada com uso real — base pra não apagar/mexer em etapa em produção
+ *  sem saber o impacto (card "MCP: escrita de FUNIL e ETAPA", item 7). */
+export type EtapaComUso = FunilRaw['etapas'][number] & {
+  leadsCount: number;
+  fluxosQueApontam: FluxoQueAponta[];
+};
+
+export type FunilWithRel = Omit<FunilRaw, 'etapas'> & { etapas: EtapaComUso[] };
 
 @Injectable()
 export class FunisService {
@@ -415,11 +432,12 @@ export class FunisService {
 
   async list(user: AuthenticatedUser): Promise<FunilWithRel[]> {
     const empresaId = this.requireEmpresa(user);
-    return this.prisma.funil.findMany({
+    const funis = await this.prisma.funil.findMany({
       where: { empresaId },
       orderBy: [{ isPadrao: 'desc' }, { ordem: 'asc' }, { nome: 'asc' }],
       include: funilInclude,
     });
+    return this.comUso(funis);
   }
 
   async findById(user: AuthenticatedUser, id: string): Promise<FunilWithRel> {
@@ -429,7 +447,57 @@ export class FunisService {
       include: funilInclude,
     });
     if (!funil) throw new NotFoundException('Funil', id);
-    return funil;
+    return (await this.comUso([funil]))[0];
+  }
+
+  /**
+   * Fluxos ativos/os que apontam pra estas etapas (via config JSON dos nós
+   * CRIAR_LEAD/MOVER_LEAD_ETAPA — sem FK, então é busca por texto no JSON).
+   * Base pra não apagar/renomear etapa sem saber o impacto real (card "MCP:
+   * escrita de FUNIL e ETAPA", item 7 — evita quebrar fluxo silenciosamente).
+   */
+  private async fluxosPorEtapaIds(etapaIds: string[]): Promise<Map<string, FluxoQueAponta[]>> {
+    const mapa = new Map<string, FluxoQueAponta[]>();
+    if (etapaIds.length === 0) return mapa;
+    const rows = await this.prisma.$queryRaw<
+      Array<{ etapaId: string; id: string; nome: string; status: string; acaoTipo: string }>
+    >(Prisma.sql`
+      SELECT fn."config" ->> 'funilEtapaId' AS "etapaId", f.id, f.nome, f.status, fn."acaoTipo"
+      FROM "FluxoNo" fn
+      JOIN "Fluxo" f ON f.id = fn."fluxoId"
+      WHERE fn."acaoTipo" IN ('MOVER_LEAD_ETAPA', 'CRIAR_LEAD')
+        AND fn."config" ->> 'funilEtapaId' IN (${Prisma.join(etapaIds)})
+    `);
+    for (const r of rows) {
+      const lista = mapa.get(r.etapaId) ?? [];
+      lista.push({ id: r.id, nome: r.nome, status: r.status, acaoTipo: r.acaoTipo });
+      mapa.set(r.etapaId, lista);
+    }
+    return mapa;
+  }
+
+  /** Decora etapas com leadsCount + fluxosQueApontam (1 query de cada pro lote inteiro). */
+  private async comUso(funis: FunilRaw[]): Promise<FunilWithRel[]> {
+    const etapaIds = funis.flatMap((f) => f.etapas.map((e) => e.id));
+    const [porFluxo, porLead] = await Promise.all([
+      this.fluxosPorEtapaIds(etapaIds),
+      etapaIds.length
+        ? this.prisma.lead.groupBy({
+            by: ['funilEtapaId'],
+            where: { funilEtapaId: { in: etapaIds } },
+            _count: true,
+          })
+        : Promise.resolve([]),
+    ]);
+    const leadsPorEtapa = new Map(porLead.map((r) => [r.funilEtapaId, r._count]));
+    return funis.map((f) => ({
+      ...f,
+      etapas: f.etapas.map((e) => ({
+        ...e,
+        leadsCount: leadsPorEtapa.get(e.id) ?? 0,
+        fluxosQueApontam: porFluxo.get(e.id) ?? [],
+      })),
+    }));
   }
 
   async create(user: AuthenticatedUser, dto: CreateFunilDto): Promise<FunilWithRel> {
@@ -625,12 +693,19 @@ export class FunisService {
     const etapa = funil.etapas.find((e) => e.id === etapaId);
     if (!etapa) throw new NotFoundException('Etapa', etapaId);
 
-    const leadsCount = await this.prisma.lead.count({
-      where: { funilEtapaId: etapaId },
-    });
-    if (leadsCount > 0) {
+    if (etapa.leadsCount > 0) {
       throw new BusinessRuleException(
-        `Etapa tem ${leadsCount} lead(s) — mova-os pra outra etapa antes de excluir.`,
+        `Etapa tem ${etapa.leadsCount} lead(s) — mova-os pra outra etapa antes de excluir.`,
+      );
+    }
+    // Etapa referenciada por fluxo (CRIAR_LEAD/MOVER_LEAD_ETAPA) NÃO pode sumir:
+    // sem ela o nó falha ou o lead deixa de ser movido, e isso NÃO dá erro visível
+    // — é a exata cilada que gerou o card 🔧 "Reestruturar as etapas dos 4 funis".
+    if (etapa.fluxosQueApontam.length > 0) {
+      const nomes = etapa.fluxosQueApontam.map((f) => f.nome).join(', ');
+      throw new BusinessRuleException(
+        `Etapa usada por ${etapa.fluxosQueApontam.length} fluxo(s) (${nomes}) — ` +
+          'ajuste o(s) fluxo(s) pra apontar pra outra etapa antes de excluir.',
       );
     }
     await this.prisma.funilEtapa.delete({ where: { id: etapaId } });

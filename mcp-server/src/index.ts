@@ -1394,10 +1394,15 @@ server.registerTool(
   }),
 );
 
-// ─── Funis (SOMENTE LEITURA — escopo "funis") ───────────────────────────
+// ─── Funis (leitura + escrita — escopo "funis") ─────────────────────────
 // Base pro email-marketing: o orquestrador precisa enxergar os funis e etapas
-// pra decidir a quem/quando escrever. NUNCA escreve (o token nem consegue: o
-// guard barra métodos != GET em /funis).
+// pra decidir a quem/quando escrever. Escrita (criar/renomear/reordenar/
+// remover funil e etapa) liberada — card "MCP: escrita de FUNIL e ETAPA": a
+// master precisa executar mudança de estrutura sem depender do Léo na UI.
+// ⚠️ RENOMEAR é sempre UPDATE (preserva o id) — nunca apagar+recriar: o
+// funilEtapaId fica guardado nos nós CRIAR_LEAD/MOVER_LEAD_ETAPA dos fluxos,
+// e um id novo quebra o fluxo SILENCIOSAMENTE. `funis_ver` já devolve
+// leadsCount + fluxosQueApontam por etapa — confira ANTES de excluir/reordenar.
 
 server.registerTool(
   'funis_listar',
@@ -1418,12 +1423,168 @@ server.registerTool(
 server.registerTool(
   'funis_ver',
   {
-    description: 'Detalhe de um funil: dados + etapas ordenadas. Somente leitura.',
+    description:
+      'Detalhe de um funil: dados + etapas ordenadas. Cada etapa vem com `leadsCount` ' +
+      '(quantos leads estão nela) e `fluxosQueApontam` (fluxos que a referenciam via ' +
+      'CRIAR_LEAD/MOVER_LEAD_ETAPA) — confira os dois ANTES de reordenar/excluir uma etapa.',
     inputSchema: { funilId: z.string().describe('ID do funil (use funis_listar)') },
     annotations: { readOnlyHint: true, destructiveHint: false },
   },
   seguro(async ({ funilId }: { funilId: string }) => {
     const f = await api.get<Record<string, unknown>>(`/funis/${funilId}`);
+    return ok(f);
+  }),
+);
+
+const etapaTipoSchema = z.enum(['ATIVA', 'GANHO', 'PERDIDO']);
+
+server.registerTool(
+  'funis_criar',
+  {
+    description:
+      'Cria um funil (pipeline) novo, com etapas opcionais já no create. Pra adicionar etapa ' +
+      'depois, use etapas_criar.',
+    inputSchema: {
+      nome: z.string().min(1).max(100),
+      descricao: z.string().max(500).optional(),
+      cor: z.string().regex(/^#[0-9A-Fa-f]{6}$/).optional().describe('hex, ex: #201554'),
+      triagem: z
+        .boolean()
+        .optional()
+        .describe('true = caixa de entrada bruta, FORA dos KPIs globais do dashboard'),
+      etapas: z
+        .array(
+          z.object({
+            nome: z.string().min(1).max(60),
+            cor: z.string().regex(/^#[0-9A-Fa-f]{6}$/).optional(),
+            tipo: etapaTipoSchema.default('ATIVA'),
+            probabilidade: z.number().int().min(0).max(100).default(50),
+            slaDias: z.number().int().min(1).max(365).optional(),
+          }),
+        )
+        .optional(),
+    },
+    annotations: { readOnlyHint: false, destructiveHint: false },
+  },
+  seguro(async (args: Record<string, unknown>) => {
+    const f = await api.post<Record<string, unknown>>('/funis', args);
+    return ok(f);
+  }),
+);
+
+server.registerTool(
+  'funis_atualizar',
+  {
+    description: 'Atualiza dados do funil (nome/descrição/cor/ativo/triagem). NÃO mexe em etapas.',
+    inputSchema: {
+      funilId: z.string().describe('ID do funil (use funis_listar)'),
+      nome: z.string().min(1).max(100).optional(),
+      descricao: z.string().max(500).optional(),
+      cor: z.string().regex(/^#[0-9A-Fa-f]{6}$/).optional(),
+      ativo: z.boolean().optional(),
+      triagem: z.boolean().optional().describe('true = fora dos KPIs globais do dashboard'),
+    },
+    annotations: { readOnlyHint: false, destructiveHint: false },
+  },
+  seguro(async ({ funilId, ...body }: { funilId: string } & Record<string, unknown>) => {
+    const f = await api.patch<Record<string, unknown>>(`/funis/${funilId}`, body);
+    return ok(f);
+  }),
+);
+
+server.registerTool(
+  'etapas_criar',
+  {
+    description: 'Cria uma etapa nova no funil (vai pro final por padrão — informe `ordem` pra outra posição).',
+    inputSchema: {
+      funilId: z.string().describe('ID do funil (use funis_listar)'),
+      nome: z.string().min(1).max(60),
+      cor: z.string().regex(/^#[0-9A-Fa-f]{6}$/).optional(),
+      tipo: etapaTipoSchema.default('ATIVA'),
+      probabilidade: z.number().int().min(0).max(100).default(50),
+      ordem: z.number().int().min(0).optional().describe('0 = auto (vai pro final)'),
+      slaDias: z.number().int().min(1).max(365).optional(),
+      slaHoras: z.number().int().min(1).max(8760).optional(),
+    },
+    annotations: { readOnlyHint: false, destructiveHint: false },
+  },
+  seguro(async ({ funilId, ...body }: { funilId: string } & Record<string, unknown>) => {
+    const f = await api.post<Record<string, unknown>>(`/funis/${funilId}/etapas`, body);
+    return ok(f);
+  }),
+);
+
+server.registerTool(
+  'etapas_atualizar',
+  {
+    description:
+      'Atualiza uma etapa — nome, cor, ordem, tipo, probabilidade, SLA. ' +
+      '⚠️ Isto é sempre um UPDATE: o id da etapa NUNCA muda, então é seguro pra renomear ' +
+      '(o funilEtapaId que os fluxos guardam continua válido). NUNCA use etapas_remover + ' +
+      'etapas_criar pra "renomear" — isso troca o id e quebra o fluxo que apontava pra ela.',
+    inputSchema: {
+      funilId: z.string().describe('ID do funil (use funis_listar)'),
+      etapaId: z.string().describe('ID da etapa (use funis_ver → etapas)'),
+      nome: z.string().min(1).max(60).optional(),
+      cor: z.string().regex(/^#[0-9A-Fa-f]{6}$/).optional(),
+      tipo: etapaTipoSchema.optional(),
+      probabilidade: z.number().int().min(0).max(100).optional(),
+      ordem: z.number().int().min(0).optional(),
+      slaDias: z.number().int().min(1).max(365).nullable().optional(),
+      slaHoras: z.number().int().min(1).max(8760).nullable().optional(),
+    },
+    annotations: { readOnlyHint: false, destructiveHint: false },
+  },
+  seguro(
+    async ({
+      funilId,
+      etapaId,
+      ...body
+    }: { funilId: string; etapaId: string } & Record<string, unknown>) => {
+      const f = await api.patch<Record<string, unknown>>(
+        `/funis/${funilId}/etapas/${etapaId}`,
+        body,
+      );
+      return ok(f);
+    },
+  ),
+);
+
+server.registerTool(
+  'etapas_reordenar',
+  {
+    description:
+      'Reordena TODAS as etapas do funil de uma vez — passe a lista COMPLETA de etapaIds na ' +
+      'ordem desejada (use funis_ver pra pegar todos os ids atuais primeiro).',
+    inputSchema: {
+      funilId: z.string().describe('ID do funil (use funis_listar)'),
+      etapaIds: z.array(z.string()).min(1).describe('TODOS os ids do funil, na ordem final'),
+    },
+    annotations: { readOnlyHint: false, destructiveHint: false },
+  },
+  seguro(async ({ funilId, etapaIds }: { funilId: string; etapaIds: string[] }) => {
+    const f = await api.put<Record<string, unknown>>(`/funis/${funilId}/etapas/reordenar`, {
+      etapaIds,
+    });
+    return ok(f);
+  }),
+);
+
+server.registerTool(
+  'etapas_remover',
+  {
+    description:
+      'Exclui uma etapa. PROTEGIDO: recusa se houver lead nela OU fluxo (CRIAR_LEAD/' +
+      'MOVER_LEAD_ETAPA) apontando pra ela — a mensagem de erro já diz quantos leads/quais ' +
+      'fluxos. Resolva isso primeiro (mova os leads, ajuste o fluxo) antes de tentar de novo.',
+    inputSchema: {
+      funilId: z.string().describe('ID do funil (use funis_listar)'),
+      etapaId: z.string().describe('ID da etapa (use funis_ver → etapas)'),
+    },
+    annotations: { readOnlyHint: false, destructiveHint: true },
+  },
+  seguro(async ({ funilId, etapaId }: { funilId: string; etapaId: string }) => {
+    const f = await api.delete<Record<string, unknown>>(`/funis/${funilId}/etapas/${etapaId}`);
     return ok(f);
   }),
 );

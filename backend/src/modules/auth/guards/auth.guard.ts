@@ -179,12 +179,14 @@ export class AuthGuard implements CanActivate {
       );
     }
 
-    // Funis, contatos e usuários via PAT são SOMENTE LEITURA (contatos/usuários = PII;
-    // usuários também expõe gestão sensível — nunca criar/editar/apagar por token).
+    // Contatos e usuários via PAT são SOMENTE LEITURA (PII; usuários também expõe
+    // gestão sensível — nunca criar/editar/apagar por token).
+    // `funis` teve escrita liberada (card "MCP: escrita de FUNIL e ETAPA") — a
+    // master precisa criar/renomear/reordenar/remover etapa sem depender do Léo
+    // na UI. Segue OK: FunilEtapa não é PII, e o service já protege contra apagar
+    // etapa com lead ou com fluxo apontando pra ela.
     if (
-      (moduloRequerido === 'funis' ||
-        moduloRequerido === 'contatos' ||
-        moduloRequerido === 'usuarios') &&
+      (moduloRequerido === 'contatos' || moduloRequerido === 'usuarios') &&
       (request.method ?? 'GET').toUpperCase() !== 'GET'
     ) {
       throw new ForbiddenException(`Token de API só faz leitura (GET) em /${moduloRequerido}`);
