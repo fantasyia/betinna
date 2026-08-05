@@ -157,11 +157,11 @@ export default function SegmentosPage() {
 
   return (
     <PageLayout
-      title="Segmentação"
-      description="Crie grupos de clientes com filtros encadeáveis. Use pra campanhas, fluxos ou análise."
+      title="Listas dinâmicas"
+      description="Listas de CLIENTES que se atualizam sozinhas conforme regras (status, região, limite de crédito). Diferente de tag, que é marcação fixa."
       actions={
         <Button onClick={() => setEditing('new')} leftIcon={<Plus className="h-3.5 w-3.5" />}>
-          Novo segmento
+          Nova lista
         </Button>
       }
     >
@@ -170,11 +170,11 @@ export default function SegmentosPage() {
         {data && data.length === 0 ? (
           <EmptyState
             icon={<PieChart />}
-            title="Nenhum segmento criado"
-            description="Crie um segmento pra agrupar clientes por status, região, segmento, etc."
+            title="Nenhuma lista dinâmica criada"
+            description="Listas dinâmicas agrupam CLIENTES por regra (status, região, limite). Como a carteira ainda vem do OMIE, esta tela fica vazia até existirem clientes — pra agrupar contatos/leads hoje, use Tags."
             action={
               <Button onClick={() => setEditing('new')} leftIcon={<Plus className="h-3.5 w-3.5" />}>
-                Criar primeiro segmento
+                Criar primeira lista
               </Button>
             }
           />
