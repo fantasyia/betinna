@@ -265,7 +265,9 @@ export class DashboardResumoService {
               titulo: f.nome,
               tipo: 'robo',
               detalhe: 'disparo automático',
-              link: `/fluxos/${f.id}`,
+              // /fluxos/:id NÃO é rota — o editor é overlay dentro de /fluxos
+              // (aberto por state via ?edit=). Link direto quebrava o clique.
+              link: `/fluxos?edit=${f.id}`,
             });
           }
         } catch {
@@ -406,7 +408,8 @@ export class DashboardResumoService {
         titulo: f.fluxo.nome,
         motivo: `Execução falhou: ${(f.erroMsg ?? 'erro desconhecido').slice(0, 120)}`,
         desde: (f.terminouEm ?? f.criadoEm).toISOString(),
-        link: `/fluxos/${f.fluxoId}`,
+        // Mesmo motivo do trecho acima: /fluxos/:id não existe como rota.
+        link: `/fluxos?edit=${f.fluxoId}`,
         urgencia: 90,
       });
     }

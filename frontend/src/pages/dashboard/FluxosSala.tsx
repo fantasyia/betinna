@@ -163,7 +163,10 @@ export function FluxosSala({ fluxos, onChanged }: { fluxos: FluxoSalaRow[]; onCh
                   lista={lista}
                   onAtivar={(f) => setConfirmar({ fluxo: f, acao: 'ativar' })}
                   onPausar={(f) => setConfirmar({ fluxo: f, acao: 'pausar' })}
-                  onAbrir={(f) => navigate(`/fluxos/${f.id}`)}
+                  // /fluxos/:id NÃO é rota (o editor é overlay dentro de /fluxos, aberto
+                  // por state). O deep-link certo é /fluxos?edit=<id> — mesmo padrão que
+                  // Templates já usa. Sem isso, o clique aqui não abria nada (URL sem match).
+                  onAbrir={(f) => navigate(`/fluxos?edit=${f.id}`)}
                 />
               ))}
             </tbody>
