@@ -1312,8 +1312,10 @@ server.registerTool(
   'fluxos_atualizar',
   {
     description:
-      'Atualiza um fluxo em rascunho: nome/descrição/trigger e/ou FULL-REPLACE de nós e arestas ' +
-      '(quando fornecidos, substituem TODOS os existentes). Não ativa.',
+      'Atualiza um fluxo: nome/descrição/trigger e/ou FULL-REPLACE de nós e arestas (quando ' +
+      'fornecidos, substituem TODOS os existentes). Funciona em RASCUNHO, ATIVO e PAUSADO — SÓ ' +
+      'recusa ARQUIVADO (use fluxos_desarquivar antes). Editar um fluxo ATIVO o rebaixa pra ' +
+      'RASCUNHO automaticamente (o Léo reativa depois de revisar). Nunca ativa sozinho.',
     inputSchema: {
       fluxoId: z.string(),
       nome: z.string().min(1).max(150).optional(),
