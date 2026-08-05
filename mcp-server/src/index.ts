@@ -1362,14 +1362,53 @@ server.registerTool(
   'fluxos_arquivar',
   {
     description:
-      'Arquiva um fluxo (status → ARQUIVADO). REVERSÍVEL e seguro mesmo com histórico — não apaga ' +
-      'nada, só tira o fluxo de circulação (não dispara mais). Use pra aposentar fluxos superados.',
+      'Arquiva um fluxo (status → ARQUIVADO). Não apaga nada, só tira de circulação (não dispara ' +
+      'mais). Reversível via fluxos_desarquivar (→ RASCUNHO, precisa reativar depois). ' +
+      '⚠️ Use SÓ pra aposentar fluxo superado de vez — pra parar algo TEMPORARIAMENTE (vai religar ' +
+      'em breve), use fluxos_pausar, não este. Arquivar+desarquivar rebaixa o fluxo a RASCUNHO; ' +
+      'pausar mantém o histórico "vivo" e volta com 1 clique do Léo na UI.',
     inputSchema: { fluxoId: z.string().describe('ID do fluxo (use fluxos_listar)') },
     annotations: { readOnlyHint: false, destructiveHint: false },
   },
   seguro(async ({ fluxoId }: { fluxoId: string }) => {
     await api.delete(`/fluxos/${fluxoId}`);
-    return ok({ fluxoId, status: 'ARQUIVADO', reversivel: true });
+    return ok({ fluxoId, status: 'ARQUIVADO', reversivel: 'via fluxos_desarquivar' });
+  }),
+);
+
+server.registerTool(
+  'fluxos_desarquivar',
+  {
+    description:
+      'Desarquiva um fluxo (ARQUIVADO → RASCUNHO). Única rota de volta pra um fluxo arquivado — ' +
+      'sem isso, arquivar era mão única (incidente real: 2026-08-05, fluxo de triagem arquivado por ' +
+      'engano e sem forma de desfazer via API/MCP; precisou recriar o fluxo do zero). ' +
+      '⚠️ NÃO ativa de volta — vira RASCUNHO. Ativar é SEMPRE decisão do Léo na UI (ele revisa e ' +
+      'clica); não existe tool de MCP pra isso, de propósito.',
+    inputSchema: { fluxoId: z.string().describe('ID do fluxo ARQUIVADO (use fluxos_listar)') },
+    annotations: { readOnlyHint: false, destructiveHint: false },
+  },
+  seguro(async ({ fluxoId }: { fluxoId: string }) => {
+    await api.post(`/fluxos/${fluxoId}/desarquivar`);
+    return ok({ fluxoId, status: 'RASCUNHO' });
+  }),
+);
+
+server.registerTool(
+  'fluxos_pausar',
+  {
+    description:
+      'Pausa um fluxo ATIVO (status → PAUSADO). Pra uso TEMPORÁRIO — o fluxo continua na lista ' +
+      'normal, com o histórico intacto, e o Léo religa quando quiser com 1 clique na UI (não existe ' +
+      'tool de MCP pra religar — ativar é sempre decisão dele). ' +
+      'Diferença de fluxos_arquivar: pausar NÃO rebaixa a RASCUNHO — é o botão certo quando a ' +
+      'intenção é "desligar por enquanto", não "aposentar". Cancela execuções em andamento ao pausar.',
+    inputSchema: { fluxoId: z.string().describe('ID do fluxo ATIVO (use fluxos_listar)') },
+    annotations: { readOnlyHint: false, destructiveHint: false },
+  },
+  seguro(async ({ fluxoId }: { fluxoId: string }) => {
+    await api.post(`/fluxos/${fluxoId}/pausar`);
+    return ok({ fluxoId, status: 'PAUSADO' });
   }),
 );
 

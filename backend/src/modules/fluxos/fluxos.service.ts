@@ -447,6 +447,30 @@ export class FluxosService {
   }
 
   /**
+   * Desarquiva: ARQUIVADO → RASCUNHO. NÃO pula direto pra ATIVO — reativar
+   * continua exigindo o `ativar()` normal (valida grafo de novo), então quem
+   * desarquiva precisa revisar antes de ligar.
+   *
+   * Existe pra fechar a mão-única que `arquivar` deixava: hoje é a ÚNICA rota
+   * de volta pra um fluxo arquivado (incidente 2026-08-05 — a master arquivou
+   * o T1 achando que estava pausando, e não tinha como desfazer nem pela API
+   * nem pelo MCP; precisou recriar o fluxo do zero).
+   */
+  async desarquivar(user: AuthenticatedUser, id: string): Promise<FluxoWithRel> {
+    this.requireAdminOrDirector(user);
+    const fluxo = await this.findOne(user, id);
+    if (fluxo.status !== 'ARQUIVADO') {
+      throw new BusinessRuleException(
+        'Apenas fluxos arquivados podem ser desarquivados',
+        ErrorCode.BUSINESS_RULE_VIOLATION,
+      );
+    }
+    await this.prisma.fluxo.update({ where: { id }, data: { status: 'RASCUNHO' } });
+    this.logger.log(`Fluxo ${id} desarquivado (→ RASCUNHO) por ${user.id}`);
+    return this.findOneById(id);
+  }
+
+  /**
    * Congela as execuções em voo de um fluxo (ao pausar/arquivar): cancela as que
    * estão PENDENTE/AGUARDANDO/EM_EXECUCAO pra o fluxo NÃO seguir disparando
    * (timeout, follow-up, próximos passos). Sem isto, um fluxo pausado continuava

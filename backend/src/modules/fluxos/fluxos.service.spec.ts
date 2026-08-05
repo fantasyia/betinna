@@ -201,6 +201,30 @@ describe('FluxosService', () => {
     });
   });
 
+  describe('desarquivar', () => {
+    it('desarquiva fluxo ARQUIVADO → RASCUNHO', async () => {
+      prisma.fluxo.findFirst.mockResolvedValue(fakeFluxo({ status: 'ARQUIVADO' }));
+      prisma.fluxo.update.mockResolvedValue({});
+      prisma.fluxo.findUniqueOrThrow.mockResolvedValue(fakeFluxo({ status: 'RASCUNHO' }));
+
+      const result = await svc.desarquivar(fakeUser(), 'fluxo-1');
+
+      expect(result.status).toBe('RASCUNHO');
+      expect(prisma.fluxo.update).toHaveBeenCalledWith({
+        where: { id: 'fluxo-1' },
+        data: { status: 'RASCUNHO' },
+      });
+    });
+
+    it('rejeita desarquivar fluxo que NÃO está arquivado', async () => {
+      prisma.fluxo.findFirst.mockResolvedValue(fakeFluxo({ status: 'PAUSADO' }));
+      await expect(svc.desarquivar(fakeUser(), 'fluxo-1')).rejects.toMatchObject({
+        code: 'BUSINESS_RULE_VIOLATION',
+      });
+      expect(prisma.fluxo.update).not.toHaveBeenCalled();
+    });
+  });
+
   describe('pausar', () => {
     it('pausa fluxo ATIVO e congela (cancela) as execuções em andamento', async () => {
       prisma.fluxo.findFirst.mockResolvedValue(fakeFluxo({ status: 'ATIVO' }));

@@ -129,6 +129,17 @@ export class FluxosController {
     return this.svc.arquivar(user, id);
   }
 
+  @Post(':id/desarquivar')
+  @Roles('ADMIN', 'DIRECTOR')
+  @ApiOperation({
+    summary:
+      'Desarquiva o fluxo (ARQUIVADO → RASCUNHO). Única rota de volta pra um fluxo arquivado — ' +
+      'ativar continua exigindo revisão/validação de grafo normal depois.',
+  })
+  desarquivar(@CurrentUser() user: AuthenticatedUser, @Param('id') id: string) {
+    return this.svc.desarquivar(user, id);
+  }
+
   @Delete(':id/permanente')
   @Roles('ADMIN', 'DIRECTOR')
   @ApiOperation({ summary: 'Exclui o fluxo PERMANENTEMENTE (apaga nós, arestas e execuções).' })
