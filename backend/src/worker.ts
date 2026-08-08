@@ -32,13 +32,17 @@ initSentry();
 import { NestFactory } from '@nestjs/core';
 import { Logger as NestLogger } from '@nestjs/common';
 import { Logger as PinoLogger } from 'nestjs-pino';
+// A identidade do processo tem que valer ANTES do import do AppModule: os
+// imports são hoisted e avaliados no topo, então setar dentro do bootstrap era
+// tarde demais pra qualquer módulo que leia SERVICE_TYPE no carregamento.
+// Crítico pro WhatsAppSessionService: só a API abre o socket Baileys; o worker
+// NÃO (dois sockets do mesmo número brigam e o WhatsApp derruba os dois).
+process.env.SERVICE_TYPE = 'worker';
+
+import { EnvService } from '@config/env.service';
 import { AppModule } from './app.module';
 
 async function bootstrap(): Promise<void> {
-  // Garante a identidade do processo ANTES de carregar o AppModule. Crítico pro
-  // WhatsAppSessionService: só a API abre o socket Baileys; o worker NÃO (senão
-  // dois sockets do mesmo número brigam e o WhatsApp derruba os dois).
-  process.env.SERVICE_TYPE = 'worker';
   const logger = new NestLogger('Worker');
 
   // createApplicationContext: NÃO inicia HTTP server, mas inicializa todos
@@ -49,6 +53,11 @@ async function bootstrap(): Promise<void> {
 
   // Usa Pino global como nos outros serviços
   app.useLogger(app.get(PinoLogger));
+
+  // MESMA auditoria de env que a API faz no boot (main.ts). O worker é quem roda
+  // os CRONS e os jobs — subir com REDIS_URL apontando pra localhost ou chave de
+  // cripto fraca aqui é tão grave quanto na API, e passava batido.
+  app.get(EnvService).enforceProductionReadiness();
 
   // Graceful shutdown — Railway envia SIGTERM em redeploys
   app.enableShutdownHooks();

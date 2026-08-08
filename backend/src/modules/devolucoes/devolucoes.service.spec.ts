@@ -33,6 +33,10 @@ function makePrisma(dev: Record<string, unknown>, pedido: Record<string, unknown
       findUnique: vi.fn().mockResolvedValue(pedido),
       update: vi.fn().mockResolvedValue({}),
     },
+    comissao: { findFirst: vi.fn().mockResolvedValue(null), update: vi.fn() },
+    // SELECT ... FOR UPDATE serializa duas devoluções do MESMO pedido (o clamp
+    // do estorno era calculado sobre leitura suja).
+    $queryRaw: vi.fn().mockResolvedValue([]),
   };
   return {
     tx,

@@ -101,7 +101,7 @@ export class BackupService {
       return;
     }
     const quando = new Date().toISOString();
-    await this.email.enviarAlertaSistema({
+    const envio = await this.email.enviarAlertaSistema({
       para,
       assunto: '🚨 Falha no backup automático do banco — Betinna.ai',
       titulo: 'Backup automático falhou',
@@ -112,6 +112,16 @@ export class BackupService {
         `Por favor verifique o serviço o quanto antes — sem backup, uma falha no banco ` +
         `não tem recuperação. Confira os logs do Worker no Railway.`,
     });
+    // O retorno {ok:false} era IGNORADO: se o Resend estava sem chave ou fora do
+    // ar, a falha do backup ficava 100% silenciosa — ninguém sabia que o banco
+    // estava sem cópia. O log de ERROR é o último recurso que sobra.
+    if (envio?.ok === false) {
+      this.logger.error(
+        `🚨 BACKUP FALHOU E O ALERTA POR E-MAIL TAMBÉM (${envio.motivo ?? 'motivo desconhecido'}). ` +
+          `Destinatário: ${para}. Erro do backup: ${erro}`,
+      );
+      return;
+    }
     this.logger.log(`Alerta de falha de backup enviado para ${para}`);
   }
 

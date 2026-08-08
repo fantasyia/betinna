@@ -200,6 +200,12 @@ export class DevolucoesService {
     tx: Prisma.TransactionClient,
     dev: Devolucao,
   ): Promise<void> {
+    // LOCK DE LINHA no pedido: duas devoluções do MESMO pedido aprovadas quase
+    // juntas liam `comissaoEstornada` antes de qualquer um dos dois incrementos,
+    // e o clamp (que impede estornar mais que a comissão total) era calculado
+    // sobre um valor velho — dava pra estornar além do devido. O SELECT ... FOR
+    // UPDATE serializa as duas transações neste ponto.
+    await tx.$queryRaw`SELECT id FROM "Pedido" WHERE id = ${dev.pedidoId} FOR UPDATE`;
     const pedido = await tx.pedido.findUnique({
       where: { id: dev.pedidoId },
       select: {

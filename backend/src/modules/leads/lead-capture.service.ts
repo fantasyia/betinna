@@ -380,11 +380,16 @@ export class LeadCaptureService {
       if (rows[0]) return rows[0].id;
     }
     if (email) {
+      // SEM o filtro de etapa aqui (diferente do match por telefone): existe um
+      // índice ÚNICO parcial por (empresa, lower(email)) no banco, que proíbe um
+      // segundo lead com o mesmo e-mail INDEPENDENTE da etapa. Ignorando leads
+      // GANHO/PERDIDO, a captura tentava criar o segundo, estourava P2002 e o
+      // formulário do site devolvia 500 — o lead ia embora. Deduplicar por
+      // e-mail em qualquer etapa só alinha o código com a constraint.
       const porEmail = await this.prisma.lead.findFirst({
         where: {
           empresaId,
           contatoEmail: { equals: email, mode: 'insensitive' },
-          etapa: { notIn: ['GANHO', 'PERDIDO'] },
         },
         orderBy: { criadoEm: 'desc' },
         select: { id: true },
