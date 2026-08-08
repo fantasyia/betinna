@@ -2,7 +2,7 @@ import { Injectable, Logger } from '@nestjs/common';
 import { parse } from 'papaparse';
 import type { Prisma, LeadEtapa } from '@prisma/client';
 import { PrismaService } from '@database/prisma.service';
-import { ForbiddenException } from '@shared/errors/app-exception';
+import { BusinessRuleException, ForbiddenException } from '@shared/errors/app-exception';
 import { ErrorCode } from '@shared/errors/error-codes';
 import { getCallerEmpresaId } from '@shared/utils/auth-context';
 import { normalizarTelefoneIntl } from '@shared/validators/br-validators';
@@ -24,9 +24,12 @@ const DETALHES_LIMITE = 100;
  * Estratégia:
  *  - Parsing tolerante via papaparse (cabeçalho obrigatório na 1ª linha)
  *  - Aceita aspas, BOM UTF-8, separador vírgula ou ponto-e-vírgula (auto-detect)
- *  - Cada linha → 1 transação atômica via Prisma upsert (`skip`/`update`)
- *  - `dryRun=true` faz tudo mas com transação rollback (sem persistir)
- *  - Limite 5000 linhas/request — passa disso, frontend faz batches
+ *  - Cada linha: match (findFirst) + create/update em chamadas SEPARADAS —
+ *    não há upsert nem transação por linha (a doc antiga dizia que havia).
+ *  - `dryRun=true` retorna antes de qualquer escrita (não é rollback: nada
+ *    chega a ser escrito; o validador só lê).
+ *  - Limite 5000 linhas/request — acima disso o arquivo é REJEITADO com erro
+ *    claro (antes era truncado em silêncio e o total mentia).
  *
  * Permissões:
  *  - Clientes: ADMIN/DIRECTOR/GERENTE (não-REP)
@@ -78,17 +81,23 @@ export class ImportService {
         const uf = (linha.uf ?? linha.estado ?? '').trim().toUpperCase().slice(0, 2) || null;
         const segmento = (linha.segmento ?? linha.ramo ?? '').trim() || null;
 
-        // Match: prioriza CNPJ, depois email
+        // Match: prioriza CNPJ, depois email.
+        // CNPJ compara SÓ DÍGITOS dos dois lados: o sync do OMIE grava formatado
+        // ("12.345.678/0001-90") e a igualdade crua nunca casava — re-importar a
+        // carteira duplicava a base inteira.
         let existente: { id: string } | null = null;
         if (cnpj) {
-          existente = await this.prisma.cliente.findFirst({
-            where: { empresaId, cnpj },
-            select: { id: true },
-          });
+          const rows = await this.prisma.$queryRaw<Array<{ id: string }>>`
+            SELECT id FROM "Cliente"
+            WHERE "empresaId" = ${empresaId}
+              AND cnpj IS NOT NULL
+              AND REGEXP_REPLACE(cnpj, '[^0-9]', '', 'g') = ${cnpj}
+            LIMIT 1`;
+          existente = rows[0] ?? null;
         }
         if (!existente && email) {
           existente = await this.prisma.cliente.findFirst({
-            where: { empresaId, email },
+            where: { empresaId, email: { equals: email, mode: 'insensitive' } },
             select: { id: true },
           });
         }
@@ -111,9 +120,19 @@ export class ImportService {
       async (data, existenteId, dryRun) => {
         if (dryRun) return existenteId ?? 'dry-run';
         if (existenteId) {
+          // Cliente que JÁ EXISTE: o import não pode reativar quem o financeiro
+          // bloqueou no OMIE (D2) nem apagar campo que a planilha não trouxe.
+          // status/omieStatus são do OMIE/gestão — só valem no CREATE.
+          const { status: _s, omieStatus: _o, empresaId: _e, ...resto } = data;
+          void _s;
+          void _o;
+          void _e;
+          const patch = Object.fromEntries(
+            Object.entries(resto).filter(([, v]) => v !== null && v !== undefined),
+          );
           const r = await this.prisma.cliente.update({
             where: { id: existenteId },
-            data,
+            data: patch,
             select: { id: true },
           });
           return r.id;
@@ -183,9 +202,15 @@ export class ImportService {
       async (data, existenteId, dryRun) => {
         if (dryRun) return existenteId ?? 'dry-run';
         if (existenteId) {
+          // precoFabrica FICA DE FORA do update: aqui ele é só heurística (70%),
+          // enquanto o produto existente pode ter o custo REAL vindo do OMIE.
+          // Sobrescrever quebrava margem e comissão da empresa inteira.
+          const { precoFabrica: _pf, empresaId: _e, ...resto } = data;
+          void _pf;
+          void _e;
           const r = await this.prisma.produto.update({
             where: { id: existenteId },
-            data,
+            data: resto,
             select: { id: true },
           });
           return r.id;
@@ -207,7 +232,9 @@ export class ImportService {
       );
     }
 
-    const rows = (dto.rows ?? this.parseCsv(dto.csv ?? '')).slice(0, MAX_LINHAS);
+    // Sem slice: o parseCsv já rejeita acima do limite, e o caminho `rows`
+    // (xlsx) é barrado pelo .max(5000) do zod. Cortar aqui escondia linhas.
+    const rows = dto.rows ?? this.parseCsv(dto.csv ?? '');
     const alvo = await this.resolverFunilEtapa(empresaId, dto.funilId, dto.funilEtapaId);
 
     return this.processarLote(
@@ -233,18 +260,38 @@ export class ImportService {
         const segmento = (linha.segmento ?? linha.ramo ?? '').trim() || null;
         const empresaLead =
           (linha.empresa ?? linha.razao_social ?? linha['razão social'] ?? '').trim() || null;
-        const valorEstimado =
-          parseDecimal(linha.valor ?? linha.valor_estimado ?? linha['valor estimado']) ?? 0;
+        // `null` = coluna ausente na planilha (≠ zero informado). O update usa
+        // isso pra não zerar o valor de um lead que já está em negociação.
+        const valorEstimadoRaw = parseDecimal(
+          linha.valor ?? linha.valor_estimado ?? linha['valor estimado'],
+        );
+        const valorEstimado = valorEstimadoRaw ?? 0;
         // Prioridade pro disparo em lote ("coluna LEO"): menor = libera antes.
         const prioridadeRaw = (linha.prioridade ?? linha.ordem ?? linha.leo ?? '').trim();
         const ordemPrioridade =
           prioridadeRaw && Number.isFinite(Number(prioridadeRaw)) ? Number(prioridadeRaw) : null;
 
-        // Dedup por telefone dentro da empresa.
+        // Dedup D18: sufixo de 8 dígitos, NUNCA igualdade crua. O lead criado por
+        // conversa de WhatsApp guarda o número do JID (sem '+', às vezes sem o 9º
+        // dígito) — a igualdade nunca casava e a planilha duplicava a pessoa.
+        // Fallback por e-mail: linha sem telefone não tinha chave nenhuma, então
+        // todo reenvio da planilha duplicava essas linhas.
         let existente: { id: string } | null = null;
-        if (telefone) {
+        const digitos = (telefone ?? '').replace(/\D/g, '');
+        if (digitos.length >= 8) {
+          const sufixo = digitos.slice(-8);
+          const rows = await this.prisma.$queryRaw<Array<{ id: string }>>`
+            SELECT id FROM "Lead"
+            WHERE "empresaId" = ${empresaId}
+              AND "contatoTelefone" IS NOT NULL
+              AND RIGHT(REGEXP_REPLACE("contatoTelefone", '[^0-9]', '', 'g'), 8) = ${sufixo}
+            ORDER BY "atualizadoEm" DESC
+            LIMIT 1`;
+          existente = rows[0] ?? null;
+        }
+        if (!existente && email) {
           existente = await this.prisma.lead.findFirst({
-            where: { empresaId, contatoTelefone: telefone },
+            where: { empresaId, contatoEmail: { equals: email, mode: 'insensitive' } },
             select: { id: true },
           });
         }
@@ -275,7 +322,12 @@ export class ImportService {
           origemCadastro: 'importacao',
           variaveis: variaveis as Prisma.InputJsonValue,
         };
-        return { ok: true, existente, data };
+        // Marca o que a PLANILHA de fato trouxe — o update só toca nesses campos.
+        const _presentes = {
+          valorEstimado: valorEstimadoRaw !== null,
+          ordemPrioridade: ordemPrioridade !== null,
+        };
+        return { ok: true, existente, data: { ...data, _presentes } as never };
       },
       async (data, existenteId, dryRun) => {
         if (dryRun) return existenteId ?? 'dry-run';
@@ -289,7 +341,15 @@ export class ImportService {
           // 2) `origemCadastro` fica FORA do update: a porta de entrada é do
           //    PRIMEIRO cadastro. Uma reimportação não transforma retroativamente
           //    um lead que veio do site em lead "de importação".
-          const { origemCadastro: _porta, variaveis: novas, ...resto } = data;
+          // 3) etapa/funil/canalOrigem FICAM DE FORA: re-importar mirando a etapa
+          //    de prospecção arrastava de volta um lead que já estava em
+          //    Negociação — sem disparar LEAD_ETAPA_MUDOU e sem histórico.
+          // 4) Campo ausente na planilha NÃO vira null (apagava e-mail/cidade/uf
+          //    já preenchidos), e valorEstimado só muda se a coluna existe.
+          const d = data as Prisma.LeadUncheckedCreateInput & {
+            _presentes?: { valorEstimado: boolean; ordemPrioridade: boolean };
+          };
+          const presentes = d._presentes ?? { valorEstimado: false, ordemPrioridade: false };
           const atual = await this.prisma.lead.findUnique({
             where: { id: existenteId },
             select: { variaveis: true },
@@ -300,15 +360,33 @@ export class ImportService {
             !Array.isArray(atual.variaveis)
               ? (atual.variaveis as Record<string, unknown>)
               : {};
-          const mescladas = { ...base, ...((novas ?? {}) as Record<string, unknown>) };
+          const mescladas = { ...base, ...((d.variaveis ?? {}) as Record<string, unknown>) };
+
+          const patch: Prisma.LeadUncheckedUpdateInput = {
+            variaveis: mescladas as Prisma.InputJsonValue,
+          };
+          if (d.nome) patch.nome = d.nome;
+          if (d.contatoNome) patch.contatoNome = d.contatoNome;
+          if (d.contatoTelefone) patch.contatoTelefone = d.contatoTelefone;
+          if (d.contatoEmail) patch.contatoEmail = d.contatoEmail;
+          if (d.cidade) patch.cidade = d.cidade;
+          if (d.uf) patch.uf = d.uf;
+          if (d.segmento) patch.segmento = d.segmento;
+          if (presentes.valorEstimado) patch.valorEstimado = d.valorEstimado;
+          if (presentes.ordemPrioridade) patch.ordemPrioridade = d.ordemPrioridade;
+
           const r = await this.prisma.lead.update({
             where: { id: existenteId },
-            data: { ...resto, variaveis: mescladas as Prisma.InputJsonValue },
+            data: patch,
             select: { id: true },
           });
           return r.id;
         }
-        const r = await this.prisma.lead.create({ data, select: { id: true } });
+        const { _presentes: _p, ...dataCreate } = data as Prisma.LeadUncheckedCreateInput & {
+          _presentes?: unknown;
+        };
+        void _p;
+        const r = await this.prisma.lead.create({ data: dataCreate, select: { id: true } });
         return r.id;
       },
     );
@@ -364,7 +442,16 @@ export class ImportService {
     if (parsed.errors.length > 0) {
       this.logger.warn(`CSV com ${parsed.errors.length} erro(s) de parsing`);
     }
-    return parsed.data.slice(0, MAX_LINHAS);
+    // Falha ALTO em vez de truncar: o slice silencioso descartava as linhas
+    // excedentes e o `total` reportava o tamanho já cortado — o usuário achava
+    // que importou tudo. (O caminho `rows`/xlsx já falha no .max(5000) do zod.)
+    if (parsed.data.length > MAX_LINHAS) {
+      throw new BusinessRuleException(
+        `O arquivo tem ${parsed.data.length} linhas e o limite é ${MAX_LINHAS} por importação. Divida em arquivos menores.`,
+        ErrorCode.BUSINESS_RULE_VIOLATION,
+      );
+    }
+    return parsed.data;
   }
 
   /**

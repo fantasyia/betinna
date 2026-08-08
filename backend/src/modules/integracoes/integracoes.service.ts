@@ -2,6 +2,7 @@ import { Injectable, Logger } from '@nestjs/common';
 import type { IntegracaoConexao, Prisma } from '@prisma/client';
 import { EnvService } from '@config/env.service';
 import { PrismaService } from '@database/prisma.service';
+import { RedisService } from '@database/redis.service';
 import {
   BusinessRuleException,
   ForbiddenException,
@@ -68,6 +69,7 @@ export class IntegracoesService {
     private readonly env: EnvService,
     private readonly status: IntegracaoStatusService,
     private readonly resend: ResendService,
+    private readonly redis: RedisService,
   ) {
     this.crypto = new CryptoUtil(env.get('ENCRYPTION_KEY'));
   }
@@ -385,6 +387,60 @@ export class IntegracoesService {
     this.invalidarCache(empresaId, servico);
     // Atualiza o semáforo de saúde (best-effort).
     void this.status.registrarSucesso(empresaId, servico);
+  }
+
+  /**
+   * Só sinaliza SAÚDE (zera erros + semáforo verde) — NÃO mexe no `ultimoSync`.
+   *
+   * O `ultimoSync` é o high-water-mark do sync INCREMENTAL. Quem só quer dizer
+   * "a integração está viva" (push de pedido, envio de amostra) tem que usar
+   * isto: usar o registrarSyncOk avançava o cutoff e o próximo sync incremental
+   * pulava tudo que mudou no ERP no meio do caminho.
+   */
+  async registrarSaudeOk(empresaId: string, servico: ServicoEmpresa): Promise<void> {
+    await this.prisma.integracaoConexao.updateMany({
+      where: { empresaId, servico },
+      data: { errosRecentes: 0 },
+    });
+    void this.status.registrarSucesso(empresaId, servico);
+  }
+
+  /**
+   * High-water-mark POR RECURSO (ex.: 'omie:clientes', 'omie:produtos').
+   *
+   * Clientes e produtos dividiam o MESMO `ultimoSync`: o job de estoque roda de
+   * 30 em 30min e avançava o marco, então o sync diário de clientes lia um
+   * cutoff de ~30min atrás e pulava ~23h de alterações TODO DIA. Guardado em
+   * Redis com fallback pro `ultimoSync` (cursor perdido = 1 sync mais largo,
+   * que é idempotente — nunca perda).
+   */
+  async obterCursorRecurso(
+    empresaId: string,
+    servico: ServicoEmpresa,
+    recurso: string,
+  ): Promise<Date | undefined> {
+    const chave = `sync:cursor:${servico}:${recurso}:${empresaId}`;
+    const bruto = await this.redis.get(chave).catch(() => null);
+    if (bruto) {
+      const d = new Date(bruto);
+      if (!Number.isNaN(d.getTime())) return d;
+    }
+    const conn = await this.prisma.integracaoConexao.findUnique({
+      where: { empresaId_servico: { empresaId, servico } },
+      select: { ultimoSync: true },
+    });
+    return conn?.ultimoSync ?? undefined;
+  }
+
+  /** Grava o cursor do recurso (passe o INÍCIO do sync — ver registrarSyncOk). */
+  async gravarCursorRecurso(
+    empresaId: string,
+    servico: ServicoEmpresa,
+    recurso: string,
+    quando: Date,
+  ): Promise<void> {
+    const chave = `sync:cursor:${servico}:${recurso}:${empresaId}`;
+    await this.redis.set(chave, quando.toISOString()).catch(() => undefined);
   }
 
   /**

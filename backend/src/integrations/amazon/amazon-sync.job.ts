@@ -3,6 +3,7 @@ import { Cron } from '@nestjs/schedule';
 import { EnvService } from '@config/env.service';
 import { IntegracoesService } from '@modules/integracoes/integracoes.service';
 import { CronLockService } from '@shared/utils/cron-lock.service';
+import { ehFalhaDeCredencial } from '../falha-credencial.util';
 import { AmazonOrdersService } from './amazon-orders.service';
 
 /**
@@ -54,6 +55,11 @@ export class AmazonSyncJob {
       } catch (err) {
         const m = err instanceof Error ? err.message : String(err);
         this.logger.warn(`Amazon sync fallback empresa=${empresaId}: ${m}`);
+        // Semáforo: sem isto o painel seguia 'ATIVA' com a integração morta.
+        // Falha de credencial (401/invalid_grant) = desconexão definitiva.
+        await this.integracoes
+          .registrarSyncErro(empresaId, 'amazon', m, { desconectado: ehFalhaDeCredencial(m) })
+          .catch(() => undefined);
       }
     }
   }

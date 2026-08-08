@@ -46,7 +46,10 @@ export class OmieClientesService {
     // perder registros alterados no OMIE durante o processamento.
     const syncStartedAt = new Date();
     const modo: OmieSyncModo = options.modo ?? 'incremental';
-    const desde = modo === 'incremental' ? await this.obterUltimoSync(empresaId) : undefined;
+    const desde =
+      modo === 'incremental'
+        ? await this.integracoes.obterCursorRecurso(empresaId, 'omie', 'clientes')
+        : undefined;
 
     let pagina = 1;
     let totalPaginas = 1;
@@ -103,6 +106,10 @@ export class OmieClientesService {
       pagina++;
     } while (pagina <= totalPaginas);
 
+    // Cursor POR RECURSO: clientes e produtos dividiam o mesmo ultimoSync e o
+    // job de estoque (30/30min) avançava o marco — o sync diário de clientes
+    // pulava ~23h de alterações todo dia.
+    await this.integracoes.gravarCursorRecurso(empresaId, 'omie', 'clientes', syncStartedAt);
     await this.integracoes.registrarSyncOk(empresaId, 'omie', syncStartedAt);
 
     const result: OmieClientesSyncResult = {
@@ -120,13 +127,5 @@ export class OmieClientesService {
       `Sync clientes OMIE empresa ${empresaId} [${modo}]: ${inseridos} novos, ${atualizados} atualizados, ${ignorados} sem alteração (${result.duracaoMs}ms)`,
     );
     return result;
-  }
-
-  private async obterUltimoSync(empresaId: string): Promise<Date | undefined> {
-    const conn = await this.prisma.integracaoConexao.findUnique({
-      where: { empresaId_servico: { empresaId, servico: 'omie' } },
-      select: { ultimoSync: true },
-    });
-    return conn?.ultimoSync ?? undefined;
   }
 }

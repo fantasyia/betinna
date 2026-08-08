@@ -123,7 +123,11 @@ export class EvolutionService {
               ...(headerSecret
                 ? { headers: { [EvolutionService.WEBHOOK_HEADER]: headerSecret } }
                 : {}),
-              events: ['MESSAGES_UPSERT', 'CONNECTION_UPDATE', 'QRCODE_UPDATED'],
+              // MESSAGES_UPDATE = recibos de leitura (READ/PLAYED). Sem ele a
+              // taxa de leitura das campanhas ficava 0% pra sempre no Evolution
+              // (só o Baileys tratava recibo). Instância JÁ criada não herda a
+              // mudança — o sync de instâncias reaplica a config do webhook.
+              events: ['MESSAGES_UPSERT', 'MESSAGES_UPDATE', 'CONNECTION_UPDATE', 'QRCODE_UPDATED'],
             },
           }
         : {}),

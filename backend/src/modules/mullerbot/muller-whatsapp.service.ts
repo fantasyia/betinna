@@ -267,6 +267,39 @@ export class MullerWhatsappService implements OnModuleInit {
       // Grupos (@g.us): o bot geral NUNCA atua em grupo de WhatsApp (auditoria 2026-06).
       if (params.peerId?.endsWith('@g.us')) return;
 
+      // 1.2 Anti-backlog — não auto-responde mensagem VELHA. Fica ANTES do lock
+      // (é cálculo puro sobre params.data) por dois motivos: não gasta lock com
+      // histórico, e a contagem anti-spam logo abaixo não pode contar a
+      // reentrega do Baileys pós-reconnect (pausaria conversas legítimas em
+      // massa depois de todo deploy).
+      const idadeMsg = params.data ? Date.now() - params.data.getTime() : 0;
+      if (idadeMsg > IDADE_MAX_RESPOSTA_MS) {
+        this.logger.log(
+          `[bot] NÃO-RESPONDE conv=${convId} peer=${params.peerId} — msg antiga ` +
+            `(${Math.round(idadeMsg / 1000)}s, backlog/history sync)`,
+        );
+        return;
+      }
+
+      // 1.3 Anti-spam ANTES do lock. O contador ficava DEPOIS: numa rajada, as
+      // mensagens concorrentes morriam no lock e NUNCA eram contadas — só a que
+      // era processada entrava na conta (~3-10/min, sempre abaixo do limite), e
+      // o gate praticamente nunca disparava. O flood era respondido
+      // indefinidamente, queimando o teto DIÁRIO de tokens da empresa.
+      if ((await this.contarMensagemPeer(params.empresaId, params.peerId)) > SPAM_LIMITE) {
+        const handoffMs = this.env.get('BOT_HANDOFF_HORAS') * 60 * 60 * 1000;
+        await this.prisma.conversation
+          .update({
+            where: { id: convId },
+            data: { precisaHumano: true, botPausadoAte: new Date(Date.now() + handoffMs) },
+          })
+          .catch(() => undefined);
+        this.logger.warn(
+          `[bot] anti-spam: peer=${params.peerId} excedeu ${SPAM_LIMITE}/min — pausado + precisa humano`,
+        );
+        return;
+      }
+
       // Lock por conversa: 2 mensagens distintas do mesmo peer em rajada disparam
       // 2 aoReceber concorrentes (hook fire-and-forget). Sem isso ambos passam os gates
       // (status só muda no fim) e o bot responde em dobro. SETNX serializa; quem não
@@ -283,19 +316,6 @@ export class MullerWhatsappService implements OnModuleInit {
       }
       lockConv = lockKey;
       lockTokenAtual = lockToken;
-
-      // 1.4 Anti-backlog — não auto-responde mensagem VELHA. Após reconnect, o
-      // Baileys reentrega o histórico (append / messaging-history.set) e cada
-      // mensagem do downtime chegaria aqui como nova. A msg já foi salva na
-      // inbox; aqui só evitamos a rajada de respostas a conversas que já passaram.
-      const idadeMs = params.data ? Date.now() - params.data.getTime() : 0;
-      if (idadeMs > IDADE_MAX_RESPOSTA_MS) {
-        this.logger.log(
-          `[bot] NÃO-RESPONDE conv=${convId} peer=${params.peerId} — msg antiga ` +
-            `(${Math.round(idadeMs / 1000)}s, backlog/history sync)`,
-        );
-        return;
-      }
 
       // Resolve o lead do peer UMA vez (telefone indexado) — serve as duas regras do
       // gate abaixo: "fluxo conduzindo" e "lead encerrado". Antes eram duas buscas de
@@ -363,18 +383,7 @@ export class MullerWhatsappService implements OnModuleInit {
         return;
       }
 
-      // 4. Anti-spam — mesmo número floodando → pausa + manda pra humano
-      if (await this.ehSpam(params.empresaId, params.peerId)) {
-        const handoffMs = this.env.get('BOT_HANDOFF_HORAS') * 60 * 60 * 1000;
-        await this.prisma.conversation.update({
-          where: { id: convId },
-          data: { precisaHumano: true, botPausadoAte: new Date(Date.now() + handoffMs) },
-        });
-        this.logger.warn(
-          `[bot] anti-spam: peer=${params.peerId} excedeu ${SPAM_LIMITE}/min — pausado + precisa humano`,
-        );
-        return;
-      }
+      // (Anti-spam foi pra ANTES do lock — ver 1.3.)
 
       // 4.5 Config do bot (precisa ANTES — decide se transcreve áudio / vê imagem).
       const cfgBot = await this.persona.obterConfigBot(params.empresaId);
@@ -520,24 +529,56 @@ export class MullerWhatsappService implements OnModuleInit {
       // da empresa (nunca todas ao mesmo tempo se muitos clientes escrevem juntos).
       await this.pacing.aguardarSlot(params.empresaId, true);
       let balaoIdx = 0;
-      const baloesFinais = await enviarEmBaloes(resposta.texto, cfgBot, {
-        // idemKey estável por (mensagem inbound + posição + hash do conteúdo): reprocesso do
-        // mesmo inbound após o TTL do lock não reenvia balões já enviados.
-        enviar: (balao) => {
-          const hash = createHash('sha1').update(balao).digest('hex').slice(0, 12);
-          return this.inbox.responderComoBot(
-            convId,
-            balao,
-            `bot:${resultado.messageId}:b${balaoIdx++}:${hash}`,
-          );
-        },
-        digitando: (ms) =>
-          void this.whatsapp
-            .enviarPresenca(params.empresaId, tel, 'composing', ms)
-            .catch(() => undefined),
-        pausado: () =>
-          this.whatsapp.enviarPresenca(params.empresaId, tel, 'paused').catch(() => undefined),
-      });
+      let baloesFinais: string[];
+      try {
+        baloesFinais = await enviarEmBaloes(resposta.texto, cfgBot, {
+          // idemKey estável por (mensagem inbound + posição + hash do conteúdo): reprocesso do
+          // mesmo inbound após o TTL do lock não reenvia balões já enviados.
+          enviar: (balao) => {
+            const hash = createHash('sha1').update(balao).digest('hex').slice(0, 12);
+            return this.inbox.responderComoBot(
+              convId,
+              balao,
+              `bot:${resultado.messageId}:b${balaoIdx++}:${hash}`,
+            );
+          },
+          digitando: (ms) =>
+            void this.whatsapp
+              .enviarPresenca(params.empresaId, tel, 'composing', ms)
+              .catch(() => undefined),
+          pausado: () =>
+            this.whatsapp.enviarPresenca(params.empresaId, tel, 'paused').catch(() => undefined),
+        });
+      } catch (errEnvio) {
+        // A IA respondeu mas o ENVIO falhou (Evolution fora, JID inválido) —
+        // antes isso caía no catch genérico e virava silêncio TOTAL: cliente sem
+        // resposta (ou pela metade), conversa não subia na inbox, ninguém sabia.
+        // Escala pra humano e pausa curto (evita loop de reenvio com o provider fora).
+        const m = errEnvio instanceof Error ? errEnvio.message : String(errEnvio);
+        this.logger.error(
+          `[bot] FALHA DE ENVIO conv=${convId} (${balaoIdx} balão(ões) saíram): ${m}`,
+        );
+        await this.prisma.conversation
+          .update({
+            where: { id: convId },
+            data: { precisaHumano: true, botPausadoAte: new Date(Date.now() + FALLBACK_PAUSA_MS) },
+          })
+          .catch(() => undefined);
+        void this.auditoria.registrar({
+          empresaId: params.empresaId,
+          conversationId: convId,
+          messageId: resultado.messageId,
+          pergunta: params.conteudo,
+          // A IA gerou, o envio é que falhou — guarda o texto pra o operador ver
+          // o que o cliente DEVERIA ter recebido. SEM_RESPOSTA porque, do ponto
+          // de vista do cliente, foi exatamente isso que aconteceu.
+          resposta: `[falha de envio: ${m}]\n${resposta.texto}`,
+          tokensIn: resposta.tokensIn,
+          tokensOut: resposta.tokensOut,
+          status: 'SEM_RESPOSTA',
+        });
+        return;
+      }
       // Texto efetivamente enviado (pra auditoria/log refletir a realidade).
       const respostaEnviada = baloesFinais.join('\n');
       // Auditoria + contagem de tokens (Sprint 2.2) — best-effort.
@@ -688,7 +729,12 @@ export class MullerWhatsappService implements OnModuleInit {
    * crescia sem limpeza. Fail-open: se o Redis cair, NÃO bloqueia o bot (anti-spam
    * é proteção secundária, não pode derrubar o atendimento).
    */
-  private async ehSpam(empresaId: string, peerId: string): Promise<boolean> {
+  /**
+   * Conta a mensagem na janela anti-spam do peer e devolve o total da janela.
+   * Chamado ANTES do lock de conversa — senão as mensagens da rajada morrem no
+   * lock sem serem contadas e o gate nunca dispara. Fail-open se o Redis cair.
+   */
+  private async contarMensagemPeer(empresaId: string, peerId: string): Promise<number> {
     const key = `bot:spam:${empresaId}:${peerId}`;
     const ttl = Math.ceil(SPAM_JANELA_MS / 1000);
     try {
@@ -697,12 +743,12 @@ export class MullerWhatsappService implements OnModuleInit {
         [key],
         [ttl],
       )) as number;
-      return Number(n) > SPAM_LIMITE;
+      return Number(n);
     } catch (err) {
       this.logger.warn(
         `[bot] anti-spam Redis indisponível (${err instanceof Error ? err.message : String(err)}) — fail-open`,
       );
-      return false;
+      return 0;
     }
   }
 

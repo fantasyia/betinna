@@ -3,6 +3,7 @@ import { Cron } from '@nestjs/schedule';
 import { EnvService } from '@config/env.service';
 import { IntegracoesService } from '@modules/integracoes/integracoes.service';
 import { CronLockService } from '@shared/utils/cron-lock.service';
+import { ehFalhaDeCredencial } from '../falha-credencial.util';
 import { MLClaimsService } from './ml-claims.service';
 import { MLClientService } from './ml-client.service';
 import { MLOrdersService } from './ml-orders.service';
@@ -53,6 +54,14 @@ export class MLSyncJob {
       } catch (err) {
         const m = err instanceof Error ? err.message : String(err);
         this.logger.warn(`ML sync fallback empresa=${empresaId}: ${m}`);
+        // Semáforo: sem isto o painel seguia 'ATIVA' com a integração morta —
+        // a empresa só descobria quando a reputação no ML caía. 401/invalid_grant
+        // = token revogado/expirado: desconexão definitiva, alerta imediato.
+        await this.integracoes
+          .registrarSyncErro(empresaId, 'mercadolivre', m, {
+            desconectado: ehFalhaDeCredencial(m),
+          })
+          .catch(() => undefined);
       }
     }
   }

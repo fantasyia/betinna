@@ -156,7 +156,7 @@ export class OmieAmostrasService {
       data: { numeroOmie, enviadoOmieEm: new Date(), cfop },
     });
 
-    await this.integracoes.registrarSyncOk(amostra.empresaId, 'omie').catch(() => {});
+    await this.integracoes.registrarSaudeOk(amostra.empresaId, 'omie').catch(() => {});
 
     this.logger.log(
       `Amostra ${amostraId} → OMIE remessa ${numeroOmie} (CFOP ${cfop}, ${response.descricao_status})`,

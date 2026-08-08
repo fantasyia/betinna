@@ -24,6 +24,9 @@ const makeOmieClientMock = () => ({
 
 const makeIntegracoesMock = () => ({
   registrarSyncOk: vi.fn().mockResolvedValue({}),
+  registrarSaudeOk: vi.fn().mockResolvedValue({}),
+  obterCursorRecurso: vi.fn().mockResolvedValue(undefined),
+  gravarCursorRecurso: vi.fn().mockResolvedValue(undefined),
 });
 
 const makeNotificacoesMock = () => ({
@@ -183,7 +186,7 @@ describe('OmieProdutosService', () => {
     it('ignora produtos com data_alteracao <= ultimoSync', async () => {
       const { OmieMapper } = await import('./omie.mapper');
       const ultimoSync = new Date('2026-01-15');
-      prisma.integracaoConexao.findUnique.mockResolvedValue({ ultimoSync });
+      integracoes.obterCursorRecurso.mockResolvedValue(ultimoSync);
       vi.mocked(OmieMapper.omieDateTimeToDate).mockReturnValueOnce(new Date('2026-01-10'));
 
       omie.listarProdutos.mockResolvedValue(
@@ -199,7 +202,7 @@ describe('OmieProdutosService', () => {
     it('processa produtos com data_alteracao > ultimoSync', async () => {
       const { OmieMapper } = await import('./omie.mapper');
       const ultimoSync = new Date('2026-01-15');
-      prisma.integracaoConexao.findUnique.mockResolvedValue({ ultimoSync });
+      integracoes.obterCursorRecurso.mockResolvedValue(ultimoSync);
       vi.mocked(OmieMapper.omieDateTimeToDate).mockReturnValueOnce(new Date('2026-01-20'));
 
       omie.listarProdutos.mockResolvedValue(

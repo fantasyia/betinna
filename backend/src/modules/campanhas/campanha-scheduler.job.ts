@@ -71,13 +71,25 @@ export class CampanhaSchedulerJob {
           (err.code === ErrorCode.CAMPANHA_SEM_DESTINATARIOS ||
             err.code === ErrorCode.CAMPANHA_NAO_PODE_DISPARAR);
         if (naoDisparavel) {
-          await this.prisma.campanha.update({
-            where: { id: c.id },
+          // Guard de status: CAMPANHA_NAO_PODE_DISPARAR também é lançado quando a
+          // campanha JÁ ESTÁ ENVIANDO (disparo manual correndo em paralelo com o
+          // cron, ou claim perdido). Sem o guard, o scheduler CANCELAVA uma
+          // campanha em pleno envio. RASCUNHO precisa estar na lista: nos casos
+          // legítimos (sem destinatário / cap de IA) o disparar já reverteu pra
+          // RASCUNHO antes de lançar.
+          const { count } = await this.prisma.campanha.updateMany({
+            where: { id: c.id, status: { in: ['RASCUNHO', 'AGENDADA'] } },
             data: { status: 'CANCELADA' },
           });
-          this.logger.warn(
-            `Campanha "${c.nome}" (${c.id}) CANCELADA pelo scheduler — ${err.message}`,
-          );
+          if (count > 0) {
+            this.logger.warn(
+              `Campanha "${c.nome}" (${c.id}) CANCELADA pelo scheduler — ${err.message}`,
+            );
+          } else {
+            this.logger.log(
+              `Campanha "${c.nome}" (${c.id}) já saiu de AGENDADA (provável disparo manual em paralelo) — nada a cancelar`,
+            );
+          }
         }
       }
     }

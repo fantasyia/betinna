@@ -18,6 +18,9 @@ const makeOmieClientMock = () => ({
 
 const makeIntegracoesMock = () => ({
   registrarSyncOk: vi.fn().mockResolvedValue({}),
+  registrarSaudeOk: vi.fn().mockResolvedValue({}),
+  obterCursorRecurso: vi.fn().mockResolvedValue(undefined),
+  gravarCursorRecurso: vi.fn().mockResolvedValue(undefined),
 });
 
 const makeMetricsMock = () => ({

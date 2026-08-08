@@ -129,7 +129,7 @@ export class OmiePedidosService {
       },
     });
 
-    await this.integracoes.registrarSyncOk(pedido.empresaId, 'omie').catch(() => {});
+    await this.integracoes.registrarSaudeOk(pedido.empresaId, 'omie').catch(() => {});
 
     this.logger.log(`Pedido ${pedido.numero} → OMIE ${numeroOmie} (${response.descricao_status})`);
 

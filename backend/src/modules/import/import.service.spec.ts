@@ -37,6 +37,9 @@ const makePrisma = () => ({
   funilEtapa: {
     findFirst: vi.fn().mockResolvedValue({ id: 'etapa-1', funilId: 'funil-pad', tipo: 'ATIVA' }),
   },
+  // Dedup por sufixo de telefone (D18) e por CNPJ só-dígitos usam SQL cru.
+  // Default: nada encontrado.
+  $queryRaw: vi.fn().mockResolvedValue([]),
 });
 
 describe('ImportService.importarClientes', () => {
@@ -103,7 +106,7 @@ describe('ImportService.importarClientes', () => {
   });
 
   it('onDuplicate=skip pula registros existentes', async () => {
-    prisma.cliente.findFirst.mockResolvedValueOnce({ id: 'cli-velho' });
+    prisma.$queryRaw.mockResolvedValueOnce([{ id: 'cli-velho' }]);
     const csv = 'nome,cnpj\nCliente A,12.345.678/0001-90';
     const r = await svc.importarClientes(fakeUser(), {
       csv,
@@ -116,7 +119,7 @@ describe('ImportService.importarClientes', () => {
   });
 
   it('onDuplicate=update atualiza existente', async () => {
-    prisma.cliente.findFirst.mockResolvedValueOnce({ id: 'cli-velho' });
+    prisma.$queryRaw.mockResolvedValueOnce([{ id: 'cli-velho' }]);
     const csv = 'nome,cnpj\nCliente A,12.345.678/0001-90';
     const r = await svc.importarClientes(fakeUser(), {
       csv,
@@ -128,7 +131,7 @@ describe('ImportService.importarClientes', () => {
   });
 
   it('onDuplicate=error reporta erro', async () => {
-    prisma.cliente.findFirst.mockResolvedValueOnce({ id: 'cli-velho' });
+    prisma.$queryRaw.mockResolvedValueOnce([{ id: 'cli-velho' }]);
     const csv = 'nome,cnpj\nCliente A,12.345.678/0001-90';
     const r = await svc.importarClientes(fakeUser(), {
       csv,
@@ -310,7 +313,7 @@ describe('ImportService.importarLeads', () => {
   });
 
   it('dedup por telefone: onDuplicate=skip pula o existente', async () => {
-    prisma.lead.findFirst.mockResolvedValueOnce({ id: 'lead-velho' });
+    prisma.$queryRaw.mockResolvedValueOnce([{ id: 'lead-velho' }]);
     const r = await svc.importarLeads(fakeUser(), {
       rows: [{ nome: 'Dup', telefone: '11999990000' }],
       dryRun: false,
@@ -369,7 +372,7 @@ describe('ImportService.importarLeads', () => {
   });
 
   it('onDuplicate=update PRESERVA a atribuição do lead existente (não substitui variaveis)', async () => {
-    prisma.lead.findFirst.mockResolvedValueOnce({ id: 'lead-velho' });
+    prisma.$queryRaw.mockResolvedValueOnce([{ id: 'lead-velho' }]);
     prisma.lead.findUnique.mockResolvedValueOnce({
       variaveis: {
         atribuicao: { primeiro: { utmCampaign: 'vtcd-alimenticia' } },
@@ -394,7 +397,7 @@ describe('ImportService.importarLeads', () => {
   });
 
   it('onDuplicate=update NÃO reescreve a porta de entrada do lead existente', async () => {
-    prisma.lead.findFirst.mockResolvedValueOnce({ id: 'lead-velho' });
+    prisma.$queryRaw.mockResolvedValueOnce([{ id: 'lead-velho' }]);
 
     await svc.importarLeads(fakeUser(), {
       rows: [{ nome: 'Dup', telefone: '11999990000' }],
@@ -407,7 +410,7 @@ describe('ImportService.importarLeads', () => {
   });
 
   it('lead existente SEM variaveis não quebra o merge', async () => {
-    prisma.lead.findFirst.mockResolvedValueOnce({ id: 'lead-velho' });
+    prisma.$queryRaw.mockResolvedValueOnce([{ id: 'lead-velho' }]);
     prisma.lead.findUnique.mockResolvedValueOnce({ variaveis: null });
 
     await svc.importarLeads(fakeUser(), {
@@ -419,5 +422,157 @@ describe('ImportService.importarLeads', () => {
     expect(prisma.lead.update.mock.calls[0][0].data.variaveis).toMatchObject({
       origem: 'importacao_excel',
     });
+  });
+});
+
+// ─── Auditoria 2026-08: o import não pode destruir dado acumulado ─────
+
+describe('ImportService — proteções do onDuplicate=update (auditoria)', () => {
+  let prisma: ReturnType<typeof makePrisma>;
+  let svc: ImportService;
+
+  beforeEach(() => {
+    prisma = makePrisma();
+    svc = new ImportService(prisma as never);
+  });
+
+  it('lead: update NÃO move o lead de volta pra etapa alvo do import', async () => {
+    // O bug: re-importar a planilha de prospecção arrastava de volta um lead que
+    // já estava em Negociação — sem disparar LEAD_ETAPA_MUDOU e sem histórico.
+    prisma.$queryRaw.mockResolvedValueOnce([{ id: 'lead-velho' }]);
+
+    await svc.importarLeads(fakeUser(), {
+      rows: [{ nome: 'Dup', telefone: '11999990000' }],
+      dryRun: false,
+      onDuplicate: 'update',
+    });
+
+    const data = prisma.lead.update.mock.calls[0][0].data;
+    expect(data.etapa).toBeUndefined();
+    expect(data.funilId).toBeUndefined();
+    expect(data.funilEtapaId).toBeUndefined();
+    expect(data.canalOrigem).toBeUndefined();
+  });
+
+  it('lead: update NÃO zera valorEstimado quando a planilha não traz a coluna', async () => {
+    prisma.$queryRaw.mockResolvedValueOnce([{ id: 'lead-velho' }]);
+
+    await svc.importarLeads(fakeUser(), {
+      rows: [{ nome: 'Dup', telefone: '11999990000' }],
+      dryRun: false,
+      onDuplicate: 'update',
+    });
+
+    expect(prisma.lead.update.mock.calls[0][0].data.valorEstimado).toBeUndefined();
+  });
+
+  it('lead: update GRAVA valorEstimado quando a coluna existe', async () => {
+    prisma.$queryRaw.mockResolvedValueOnce([{ id: 'lead-velho' }]);
+
+    await svc.importarLeads(fakeUser(), {
+      rows: [{ nome: 'Dup', telefone: '11999990000', valor: '5000' }],
+      dryRun: false,
+      onDuplicate: 'update',
+    });
+
+    expect(prisma.lead.update.mock.calls[0][0].data.valorEstimado).toBe(5000);
+  });
+
+  it('lead: update NÃO apaga e-mail/cidade que a planilha não trouxe', async () => {
+    prisma.$queryRaw.mockResolvedValueOnce([{ id: 'lead-velho' }]);
+
+    await svc.importarLeads(fakeUser(), {
+      rows: [{ nome: 'Dup', telefone: '11999990000' }],
+      dryRun: false,
+      onDuplicate: 'update',
+    });
+
+    const data = prisma.lead.update.mock.calls[0][0].data;
+    expect(data.contatoEmail).toBeUndefined();
+    expect(data.cidade).toBeUndefined();
+    expect(data.uf).toBeUndefined();
+  });
+
+  it('lead: dedup casa por SUFIXO de 8 dígitos (D18), não igualdade crua', async () => {
+    // Lead criado por conversa de WhatsApp guarda o número do JID (sem '+').
+    prisma.$queryRaw.mockResolvedValueOnce([{ id: 'lead-do-whatsapp' }]);
+
+    const r = await svc.importarLeads(fakeUser(), {
+      rows: [{ nome: 'Mesma pessoa', telefone: '(11) 99999-0000' }],
+      dryRun: false,
+      onDuplicate: 'skip',
+    });
+
+    expect(r.pulados).toBe(1);
+    expect(prisma.lead.create).not.toHaveBeenCalled();
+  });
+
+  it('lead SEM telefone deduplica por e-mail (antes duplicava a cada reenvio)', async () => {
+    prisma.lead.findFirst.mockResolvedValueOnce({ id: 'lead-por-email' });
+
+    const r = await svc.importarLeads(fakeUser(), {
+      rows: [{ nome: 'Sem fone', email: 'Contato@Empresa.com' }],
+      dryRun: false,
+      onDuplicate: 'skip',
+    });
+
+    expect(r.pulados).toBe(1);
+    expect(prisma.lead.create).not.toHaveBeenCalled();
+  });
+
+  it('cliente: update NÃO reativa quem está BLOQUEADO no OMIE', async () => {
+    prisma.$queryRaw.mockResolvedValueOnce([{ id: 'cli-bloqueado' }]);
+
+    await svc.importarClientes(fakeUser(), {
+      csv: 'nome,cnpj\nCliente A,12.345.678/0001-90',
+      dryRun: false,
+      onDuplicate: 'update',
+    });
+
+    const data = prisma.cliente.update.mock.calls[0][0].data;
+    expect(data.omieStatus).toBeUndefined();
+    expect(data.status).toBeUndefined();
+  });
+
+  it('cliente: update não apaga campos ausentes na planilha', async () => {
+    prisma.$queryRaw.mockResolvedValueOnce([{ id: 'cli-velho' }]);
+
+    await svc.importarClientes(fakeUser(), {
+      csv: 'nome,cnpj\nCliente A,12.345.678/0001-90',
+      dryRun: false,
+      onDuplicate: 'update',
+    });
+
+    const data = prisma.cliente.update.mock.calls[0][0].data;
+    expect(data.email).toBeUndefined();
+    expect(data.telefone).toBeUndefined();
+    expect(data.cidade).toBeUndefined();
+  });
+
+  it('produto: update NÃO sobrescreve precoFabrica real com a heurística 70%', async () => {
+    prisma.produto.findFirst.mockResolvedValueOnce({ id: 'prod-velho' });
+
+    await svc.importarProdutos(fakeUser(), {
+      csv: 'nome,sku,preco\nProd A,SKU1,100',
+      dryRun: false,
+      onDuplicate: 'update',
+    });
+
+    const data = prisma.produto.update.mock.calls[0][0].data;
+    expect(data.precoFabrica).toBeUndefined();
+    expect(data.precoTabela).toBe(100);
+  });
+
+  it('CSV acima do limite é REJEITADO (antes truncava e o total mentia)', async () => {
+    const lines = ['nome'];
+    for (let i = 0; i < 5001; i++) lines.push(`Cliente ${i}`);
+
+    await expect(
+      svc.importarClientes(fakeUser(), {
+        csv: lines.join('\n'),
+        dryRun: false,
+        onDuplicate: 'skip',
+      }),
+    ).rejects.toMatchObject({ code: 'BUSINESS_RULE_VIOLATION' });
   });
 });

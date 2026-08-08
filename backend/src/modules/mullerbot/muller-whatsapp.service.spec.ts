@@ -149,7 +149,7 @@ function build(
     setNxEx: vi.fn().mockResolvedValue(true),
     del: vi.fn().mockResolvedValue(1),
   };
-  return new MullerWhatsappService(
+  const svc = new MullerWhatsappService(
     prisma as never,
     inbox as never,
     muller as never,
@@ -161,6 +161,10 @@ function build(
     redis as never,
     { aguardarSlot: vi.fn() } as never,
   );
+  // Expostos pros testes de anti-spam (contador no Redis) e falha de envio.
+  (svc as unknown as Record<string, unknown>).__redis = redis;
+  (svc as unknown as Record<string, unknown>).__auditoria = auditoria;
+  return svc;
 }
 
 const baseParams = {
@@ -418,5 +422,81 @@ describe('MullerWhatsappService — regras do bot', () => {
       }),
     );
     expect(inbox.responderComoBot).toHaveBeenCalled();
+  });
+});
+
+// ─── Auditoria 2026-08: anti-spam e falha de envio ───────────────────
+
+describe('MullerWhatsappService — anti-spam e falha de envio (auditoria)', () => {
+  let prisma: ReturnType<typeof makePrisma>;
+  let inbox: ReturnType<typeof makeInbox>;
+  let muller: ReturnType<typeof makeMuller>;
+
+  beforeEach(() => {
+    prisma = makePrisma();
+    inbox = makeInbox();
+    muller = makeMuller();
+  });
+
+  it('conta a mensagem no anti-spam ANTES do lock (rajada era descartada sem contar)', async () => {
+    const svc = build(prisma, inbox, muller);
+    const redis = (
+      svc as unknown as {
+        __redis: { setNxEx: ReturnType<typeof vi.fn>; eval: ReturnType<typeof vi.fn> };
+      }
+    ).__redis;
+    redis.setNxEx.mockResolvedValue(false); // perdeu o lock (msg concorrente da rajada)
+
+    await aoReceber(svc, baseParams);
+
+    // Mesmo perdendo o lock, a mensagem foi CONTADA — senão o gate nunca dispara.
+    expect(redis.eval).toHaveBeenCalled();
+    expect(muller.responderComoEmpresa).not.toHaveBeenCalled();
+  });
+
+  it('estourou o limite → pausa a conversa e escala pra humano', async () => {
+    const svc = build(prisma, inbox, muller);
+    const redis = (svc as unknown as { __redis: { eval: ReturnType<typeof vi.fn> } }).__redis;
+    redis.eval.mockResolvedValue(999); // acima do SPAM_LIMITE
+
+    await aoReceber(svc, baseParams);
+
+    expect(prisma.conversation.update).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({ precisaHumano: true }),
+      }),
+    );
+    expect(muller.responderComoEmpresa).not.toHaveBeenCalled();
+  });
+
+  it('mensagem VELHA (backlog) não conta no anti-spam', async () => {
+    // Reentrega do histórico após reconnect pausaria conversas legítimas em massa.
+    const svc = build(prisma, inbox, muller);
+    const redis = (svc as unknown as { __redis: { eval: ReturnType<typeof vi.fn> } }).__redis;
+
+    await aoReceber(svc, { ...baseParams, data: new Date(Date.now() - 48 * 3600_000) });
+
+    expect(redis.eval).not.toHaveBeenCalled();
+  });
+
+  it('falha ao ENVIAR depois da IA responder → escala pra humano (antes era silêncio total)', async () => {
+    inbox.responderComoBot = vi.fn(async () => {
+      throw new Error('Evolution fora do ar');
+    });
+    const svc = build(prisma, inbox, muller);
+
+    await aoReceber(svc, baseParams);
+
+    expect(prisma.conversation.update).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({ precisaHumano: true }),
+      }),
+    );
+    // E registra na auditoria o que o cliente DEVERIA ter recebido.
+    const auditoria = (svc as unknown as { __auditoria: { registrar: ReturnType<typeof vi.fn> } })
+      .__auditoria;
+    const arg = auditoria.registrar.mock.calls[0][0] as { status: string; resposta: string };
+    expect(arg.status).toBe('SEM_RESPOSTA');
+    expect(arg.resposta).toContain('falha de envio');
   });
 });

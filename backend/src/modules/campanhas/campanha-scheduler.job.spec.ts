@@ -11,6 +11,8 @@ const makePrisma = () => ({
         { id: 'camp-1', empresaId: 'emp-1', criadoPorId: 'u-1', nome: 'Agendada X' },
       ]),
     update: vi.fn().mockResolvedValue({}),
+    // Cancelar usa updateMany com guard de status (não pisa em campanha ENVIANDO).
+    updateMany: vi.fn().mockResolvedValue({ count: 1 }),
   },
 });
 const makeCronLock = () => ({ acquire: vi.fn().mockResolvedValue(true) });
@@ -38,8 +40,8 @@ describe('CampanhaSchedulerJob — #R6 campanha agendada não-disparável vira C
 
     await job.avaliarAgendadas();
 
-    expect(prisma.campanha.update).toHaveBeenCalledWith({
-      where: { id: 'camp-1' },
+    expect(prisma.campanha.updateMany).toHaveBeenCalledWith({
+      where: { id: 'camp-1', status: { in: ['RASCUNHO', 'AGENDADA'] } },
       data: { status: 'CANCELADA' },
     });
   });
@@ -51,8 +53,8 @@ describe('CampanhaSchedulerJob — #R6 campanha agendada não-disparável vira C
 
     await job.avaliarAgendadas();
 
-    expect(prisma.campanha.update).toHaveBeenCalledWith({
-      where: { id: 'camp-1' },
+    expect(prisma.campanha.updateMany).toHaveBeenCalledWith({
+      where: { id: 'camp-1', status: { in: ['RASCUNHO', 'AGENDADA'] } },
       data: { status: 'CANCELADA' },
     });
   });
@@ -62,6 +64,24 @@ describe('CampanhaSchedulerJob — #R6 campanha agendada não-disparável vira C
 
     await job.avaliarAgendadas();
 
-    expect(prisma.campanha.update).not.toHaveBeenCalled();
+    expect(prisma.campanha.updateMany).not.toHaveBeenCalled();
+  });
+
+  it('NÃO cancela campanha que já saiu de AGENDADA (disparo manual em paralelo)', async () => {
+    // O bug: CAMPANHA_NAO_PODE_DISPARAR também é lançado quando a campanha já
+    // está ENVIANDO — o scheduler cancelava um envio em pleno curso.
+    campanhas.disparar.mockRejectedValue(
+      new BusinessRuleException(
+        'Campanha em status ENVIANDO não pode ser disparada',
+        ErrorCode.CAMPANHA_NAO_PODE_DISPARAR,
+      ),
+    );
+    prisma.campanha.updateMany.mockResolvedValue({ count: 0 }); // guard não casou
+
+    await job.avaliarAgendadas();
+
+    // Tentou com o guard de status, e o guard protegeu (count 0 = nada mudou).
+    const where = prisma.campanha.updateMany.mock.calls[0][0].where;
+    expect(where.status).toEqual({ in: ['RASCUNHO', 'AGENDADA'] });
   });
 });

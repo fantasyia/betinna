@@ -105,6 +105,8 @@ export class EvolutionInboundService {
     try {
       if (evento === 'messages.upsert') {
         await this.onMensagem(instance, body.data as EvoMessage | { messages?: EvoMessage[] });
+      } else if (evento === 'messages.update') {
+        await this.onRecibos(body.data);
       } else if (evento === 'connection.update') {
         const d = body.data as { state?: string; wuid?: string };
         const estado = d?.state ?? '?';
@@ -124,6 +126,46 @@ export class EvolutionInboundService {
       this.logger.warn(
         `[evolution] falha no evento ${evento} (${instance}): ${err instanceof Error ? err.message : String(err)}`,
       );
+    }
+  }
+
+  /**
+   * Recibos de leitura (MESSAGES_UPDATE) — espelha o que o Baileys já fazia:
+   * casa `key.id` das mensagens que NÓS enviamos com
+   * `CampanhaDestinatario.waMessageId` e marca LIDO. Sem isto, a taxa de leitura
+   * das campanhas ficava 0% pra sempre no provider Evolution.
+   *
+   * O Evolution v2 manda ora um objeto, ora um array; o id vem em `key.id`,
+   * `keyId` ou `messageId` conforme a versão. Status pode vir como número
+   * (Baileys: READ=4, PLAYED=5) ou string ('READ'/'PLAYED').
+   */
+  private async onRecibos(data: unknown): Promise<void> {
+    const itens = Array.isArray(data) ? data : [data];
+    const lidos: string[] = [];
+    for (const bruto of itens) {
+      const u = (bruto ?? {}) as {
+        key?: { id?: string; fromMe?: boolean };
+        keyId?: string;
+        messageId?: string;
+        fromMe?: boolean;
+        status?: string | number;
+      };
+      const id = u.key?.id ?? u.keyId ?? u.messageId;
+      if (!id) continue;
+      // fromMe pode não vir no payload — o updateMany por waMessageId já filtra
+      // (só casa mensagem que nós mesmos enviamos numa campanha).
+      if (u.key?.fromMe === false || u.fromMe === false) continue;
+      const s = u.status;
+      const leu = typeof s === 'number' ? s >= 4 : typeof s === 'string' && /READ|PLAYED/i.test(s);
+      if (leu) lidos.push(id);
+    }
+    if (lidos.length === 0) return;
+    const res = await this.prisma.campanhaDestinatario.updateMany({
+      where: { waMessageId: { in: lidos }, status: 'ENVIADO' },
+      data: { status: 'LIDO', lido: true, lidoEm: new Date() },
+    });
+    if (res.count > 0) {
+      this.logger.debug(`[evolution] recibo de leitura: ${res.count} destinatário(s) → LIDO`);
     }
   }
 
