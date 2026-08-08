@@ -805,7 +805,17 @@ export class ConversarIaService {
       where: { id: execucaoId, status: 'AGUARDANDO', processandoTurno: false },
       data: { processandoTurno: true, turnoIniciadoEm: new Date() },
     });
-    if (claim.count === 0) return; // outro turno já está processando esta execução
+    if (claim.count === 0) {
+      // A mensagem que PERDE o claim era descartada em silêncio: numa rajada
+      // ("oi" + "tudo bem?" em 1s), o 2º recado nunca virava turno e a IA
+      // respondia só o primeiro. Quem perde o claim não processa AGORA (senão
+      // roda em dobro) — o vencedor varre as mensagens novas no finally.
+      this.logger.debug(
+        `CONVERSAR_IA: turno concorrente na exec ${execucaoId} — o vencedor vai varrer as novas`,
+      );
+      return;
+    }
+    const inicioDoTurno = new Date();
     try {
       await this.processarTurno(execucao, empresaId, conversationId, textoLead, imagemDataUrl);
     } finally {
@@ -815,6 +825,63 @@ export class ConversarIaService {
         .updateMany({ where: { id: execucaoId }, data: { processandoTurno: false } })
         .catch(() => undefined);
     }
+    // Chegou mensagem do lead DURANTE o turno? Processa agora (a que perdeu o
+    // claim lá em cima). Guardas: só se a execução ainda está AGUARDANDO (se
+    // classificou e avançou, não há mais turno) e uma passada só — o próprio CAS
+    // protege a recursão de virar loop.
+    if (conversationId) {
+      await this.processarMensagensPerdidas(
+        execucaoId,
+        empresaId,
+        conversationId,
+        inicioDoTurno,
+      ).catch((err) =>
+        this.logger.warn(
+          `CONVERSAR_IA: varredura pós-turno falhou (exec ${execucaoId}): ` +
+            `${err instanceof Error ? err.message : String(err)}`,
+        ),
+      );
+    }
+  }
+
+  /**
+   * Recolhe mensagens do lead que chegaram DURANTE o turno (perderam o claim) e
+   * roda um turno extra com elas. Sem isso, mensagem em rajada ficava sem
+   * resposta e o lead achava que o bot travou.
+   */
+  private async processarMensagensPerdidas(
+    execucaoId: string,
+    empresaId: string,
+    conversationId: string,
+    desde: Date,
+  ): Promise<void> {
+    const aindaAguardando = await this.prisma.fluxoExecucao.findFirst({
+      where: { id: execucaoId, status: 'AGUARDANDO' },
+      select: { id: true },
+    });
+    if (!aindaAguardando) return;
+
+    const novas = await this.prisma.message.findMany({
+      where: {
+        conversationId,
+        direction: 'INBOUND',
+        criadoEm: { gt: desde },
+      },
+      orderBy: { criadoEm: 'asc' },
+      select: { conteudo: true },
+      take: 5,
+    });
+    const texto = novas
+      .map((m) => (m.conteudo ?? '').trim())
+      .filter(Boolean)
+      .join('\n');
+    if (!texto) return;
+
+    this.logger.log(
+      `CONVERSAR_IA: ${novas.length} mensagem(ns) chegaram durante o turno — processando agora ` +
+        `(exec ${execucaoId})`,
+    );
+    await this.retomar(execucaoId, conversationId, texto);
   }
 
   /** Corpo de um turno do nó Conversar com IA (já com o claim atômico adquirido). */
@@ -951,13 +1018,25 @@ export class ConversarIaService {
       return;
     }
     if (!(await this.tetoPromptOk(cfg.promptId))) {
+      // O "já te respondo" era uma PROMESSA que ninguém cumpria: o teto do
+      // prompt dura até a virada do dia/mês, quase sempre mais que o timeout que
+      // ficou correndo — a execução expirava pelo ramo de timeout e o lead nunca
+      // recebia resposta. Trata igual ao teto de custo logo acima: avisa o lead e
+      // ROTEIA pela saída de erro, pra o fluxo decidir (tarefa/humano).
       await this.enviarWhatsapp(
         empresaId,
         lead.contatoTelefone,
         'Só um instante, já te respondo. 🙏',
         true, // reativo
+      ).catch(() => undefined);
+      await this.rotearParaErro(
+        execucaoId,
+        no.id,
+        ctx,
+        'ia_teto_prompt',
+        new Error('Teto de tokens do prompt atingido'),
       );
-      return; // teto de tokens do prompt atingido — não roda a IA agora
+      return;
     }
     // RAG — anexa catálogo/conhecimento relevantes ao prompt (com guardrails), se o
     // nó pediu. Recupera com base na mensagem do lead (busca semântica + fallback).

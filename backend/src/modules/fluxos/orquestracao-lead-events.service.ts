@@ -87,6 +87,14 @@ export class OrquestracaoLeadEventsService implements OnModuleInit {
         })
         .catch(() => undefined);
 
+      // O MESMO `primeira` do dedup acima: o recado físico chega DUAS vezes
+      // (webhook do Evolution + poll de fallback). Sem o guard, LEAD_RESPONDEU
+      // disparava 2x e o retomar rodava o turno da IA em dobro pro mesmo texto —
+      // o cliente via a resposta duplicada. A chave já identifica o recado
+      // (empresa+conversa+hash do texto) e o fail-open preserva o comportamento
+      // com o Redis fora.
+      if (!primeira) return;
+
       await this.bus.disparar(params.empresaId, 'LEAD_RESPONDEU', {
         leadId: lead.id,
         conversationId: resultado.conversationId,
@@ -96,7 +104,22 @@ export class OrquestracaoLeadEventsService implements OnModuleInit {
 
       // Se há um fluxo pausado no nó "Conversar com IA" esperando este lead,
       // retoma a conversa (a IA processa a resposta e pode classificar/avançar).
-      const aguardando = await this.conversarIa.aguardandoPorLead(params.empresaId, lead.id);
+      // Lead DUPLICADO (mesma pessoa, outro id): a execução pode estar presa no
+      // id "irmão" — tenta os demais que casam o mesmo telefone antes de desistir.
+      let aguardando = await this.conversarIa.aguardandoPorLead(params.empresaId, lead.id);
+      if (!aguardando) {
+        for (const outroId of lead.idsIrmaos ?? []) {
+          if (outroId === lead.id) continue;
+          aguardando = await this.conversarIa.aguardandoPorLead(params.empresaId, outroId);
+          if (aguardando) {
+            this.logger.log(
+              `Retomada resolvida por lead DUPLICADO: execução estava no lead ${outroId} ` +
+                `(principal ${lead.id})`,
+            );
+            break;
+          }
+        }
+      }
       if (aguardando) {
         // Multimodal IGUAL ao bot geral: transcreve áudio / prepara imagem pra visão
         // antes de alimentar a IA (a Persona decide). Sem isso o fluxo via "[áudio]".
@@ -122,7 +145,7 @@ export class OrquestracaoLeadEventsService implements OnModuleInit {
     empresaId: string,
     telefone?: string,
     email?: string,
-  ): Promise<{ id: string } | null> {
+  ): Promise<{ id: string; idsIrmaos?: string[] } | null> {
     if (telefone) {
       const sufixo = telefone.replace(/\D/g, '').slice(-8);
       if (sufixo.length === 8) {
@@ -133,14 +156,18 @@ export class OrquestracaoLeadEventsService implements OnModuleInit {
         // ("97053-5832" tem hífen no meio do sufixo de 8 dígitos) → o lead nunca casava,
         // o `retomar` nunca era chamado e o nó "Conversar com IA" ficava preso em
         // AGUARDANDO (bot "parava de responder" depois do opener).
+        // SEM LIMIT 1: leads DUPLICADOS (mesma pessoa, ids diferentes) são comuns
+        // na base. O principal segue sendo o mais recente, mas os "irmãos" vão
+        // junto — a execução da IA pode estar presa em um deles, e sem isso o
+        // retomar não achava nada e a conversa morria em silêncio.
         const rows = await this.prisma.$queryRaw<Array<{ id: string }>>`
           SELECT "id" FROM "Lead"
           WHERE "empresaId" = ${empresaId}
             AND RIGHT(REGEXP_REPLACE(COALESCE("contatoTelefone", ''), '[^0-9]', '', 'g'), 8) = ${sufixo}
           ORDER BY "atualizadoEm" DESC
-          LIMIT 1
+          LIMIT 10
         `;
-        if (rows[0]) return rows[0];
+        if (rows[0]) return { id: rows[0].id, idsIrmaos: rows.map((r) => r.id) };
       }
     }
     if (email) {

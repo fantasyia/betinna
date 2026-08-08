@@ -768,8 +768,16 @@ export class MullerWhatsappService implements OnModuleInit {
    */
   private async fluxoConduzindoLead(empresaId: string, leadId: string): Promise<boolean> {
     try {
+      // Espelha o guard por CONVERSA: só AGUARDANDO deixava uma janela em que o
+      // fluxo estava rodando (PENDENTE/EM_EXECUCAO, ex.: entre o CRIAR_LEAD e o
+      // opener da IA) e o bot geral respondia por cima — o lead recebia duas
+      // mensagens diferentes, do fluxo e do bot.
       const aguardando = await this.prisma.fluxoExecucao.findFirst({
-        where: { empresaId, status: 'AGUARDANDO', contexto: { path: ['leadId'], equals: leadId } },
+        where: {
+          empresaId,
+          status: { in: ['PENDENTE', 'EM_EXECUCAO', 'AGUARDANDO'] },
+          contexto: { path: ['leadId'], equals: leadId },
+        },
         select: { id: true },
       });
       return aguardando != null;
