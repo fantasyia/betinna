@@ -29,7 +29,12 @@ const makePrismaMock = () => ({
   } satisfies MockModel,
   usuario: {
     findUnique: vi.fn(),
+    // O link público revalida vínculo rep↔empresa (rep movido de tenant sem
+    // desativação seguia servindo catálogo da empresa que ele deixou).
+    findFirst: vi.fn(),
   } satisfies MockModel,
+  // ...e que o tenant do token segue ATIVO.
+  empresa: { findFirst: vi.fn().mockResolvedValue({ id: 'emp-1' }) } satisfies MockModel,
   $transaction: vi.fn(async (ops: unknown[]) => ops), // returns array for batch upsert
 });
 
@@ -91,6 +96,7 @@ describe('CatalogoService', () => {
       pricing as never,
       {
         gerar: vi.fn().mockResolvedValue('fake.jwt.token'),
+        ttlMaximoSegundos: 60 * 60 * 24 * 7,
         validar: vi.fn().mockResolvedValue({
           repId: 'rep-1',
           clienteId: 'cli-1',
@@ -404,12 +410,8 @@ describe('CatalogoService', () => {
     });
 
     it('NÃO expõe precoFabrica, estoque, popularidade nem flags internas ao cliente', async () => {
-      prisma.usuario.findUnique.mockResolvedValue({
-        id: 'rep-1',
-        nome: 'Rep Teste',
-        status: 'ATIVO',
-        role: 'REP',
-      });
+      // O filtro (ATIVO + REP + vínculo com a empresa DO TOKEN) foi pro where.
+      prisma.usuario.findFirst.mockResolvedValue({ id: 'rep-1', nome: 'Rep Teste' });
       // validar (default) devolve clienteId → caminho previewParaCliente; espionamos.
       vi.spyOn(service, 'previewParaCliente').mockResolvedValue([previewSensivel()]);
 
@@ -432,12 +434,7 @@ describe('CatalogoService', () => {
     });
 
     it('rejeita link de rep inativo', async () => {
-      prisma.usuario.findUnique.mockResolvedValue({
-        id: 'rep-1',
-        nome: 'X',
-        status: 'INATIVO',
-        role: 'REP',
-      });
+      prisma.usuario.findFirst.mockResolvedValue(null); // não casa ATIVO/REP/vínculo
       await expect(service.resolverShareToken('token')).rejects.toBeInstanceOf(
         BusinessRuleException,
       );

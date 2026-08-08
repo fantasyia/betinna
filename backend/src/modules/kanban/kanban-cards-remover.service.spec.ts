@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { AuthenticatedUser } from '@shared/types/authenticated-user';
+import { ForbiddenException } from '@shared/errors/app-exception';
 import { KanbanCardsService } from './kanban-cards.service';
 
 const user: AuthenticatedUser = {
@@ -44,6 +45,7 @@ describe('KanbanCardsService.remover', () => {
       id: 'c1',
       titulo: 'Card duplicado',
       espelhos: [],
+      lista: { boardId: 'b1' },
     });
     d.anexos.purgarArquivosDosCards.mockResolvedValue(2);
 
@@ -73,6 +75,7 @@ describe('KanbanCardsService.remover', () => {
       id: 'origem',
       titulo: 'Tarefa espelhada',
       espelhos: [{ id: 'esp-1' }, { id: 'esp-2' }],
+      lista: { boardId: 'b1' }, // MESMO board que autorizou = é o dono da origem
     });
 
     const r = await d.svc.remover(user, 'origem');
@@ -82,6 +85,35 @@ describe('KanbanCardsService.remover', () => {
     expect(d.anexos.purgarArquivosDosCards).toHaveBeenCalledWith(['origem', 'esp-1', 'esp-2']);
     expect(d.atividade.registrar).toHaveBeenCalledWith(
       expect.objectContaining({ dados: expect.objectContaining({ espelhosRemovidos: 2 }) }),
+    );
+  });
+
+  it('dono de ESPELHO não apaga a ORIGEM do quadro alheio', async () => {
+    // O acesso "ciente de grupo" liberava o card-origem pra quem tinha o espelho:
+    // o rep "limpava" o quadro dele e a tarefa do Diretor sumia com anexos.
+    d.prisma.kanbanCard.findUniqueOrThrow.mockResolvedValue({
+      id: 'origem',
+      titulo: 'Tarefa do diretor',
+      espelhos: [{ id: 'esp-1' }],
+      lista: { boardId: 'board-do-diretor' }, // ≠ do board que liberou (b1)
+    });
+
+    await expect(d.svc.remover(user, 'origem')).rejects.toBeInstanceOf(ForbiddenException);
+    expect(d.prisma.kanbanCard.delete).not.toHaveBeenCalled();
+  });
+
+  it('a atividade da exclusão vai pro quadro do CARD, não pro que liberou o acesso', async () => {
+    d.prisma.kanbanCard.findUniqueOrThrow.mockResolvedValue({
+      id: 'c1',
+      titulo: 'Card comum',
+      espelhos: [],
+      lista: { boardId: 'board-do-card' },
+    });
+
+    await d.svc.remover(user, 'c1');
+
+    expect(d.atividade.registrar).toHaveBeenCalledWith(
+      expect.objectContaining({ boardId: 'board-do-card' }),
     );
   });
 

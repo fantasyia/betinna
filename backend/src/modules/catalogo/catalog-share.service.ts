@@ -55,10 +55,17 @@ export class CatalogShareService {
       parseInt(process.env.CATALOG_SHARE_TTL_SECONDS ?? '', 10) || TTL_DEFAULT_SECONDS;
   }
 
+  /** TTL máximo (global) — o rep pode encurtar, nunca esticar. */
+  get ttlMaximoSegundos(): number {
+    return this.ttlSeconds;
+  }
+
   /**
-   * Gera token assinado com TTL. Default 7 dias, override por env.
+   * Gera token assinado com TTL. Default 7 dias (ou o da env), e o caller pode
+   * pedir um TTL MENOR (validade escolhida pelo rep no share).
    */
-  async gerar(payload: SharePayload): Promise<string> {
+  async gerar(payload: SharePayload, ttlSegundos?: number): Promise<string> {
+    const ttl = Math.min(Math.max(1, Math.floor(ttlSegundos ?? this.ttlSeconds)), this.ttlSeconds);
     // `cid` é opcional — só inclui no JWT se houver clienteId.
     // Token sem `cid` = share "livre" (sem cliente vinculado).
     const claims: Record<string, string> = {
@@ -69,7 +76,7 @@ export class CatalogShareService {
     return new SignJWT(claims)
       .setProtectedHeader({ alg: 'HS256' })
       .setIssuedAt()
-      .setExpirationTime(`${this.ttlSeconds}s`)
+      .setExpirationTime(`${ttl}s`)
       .sign(this.secret);
   }
 

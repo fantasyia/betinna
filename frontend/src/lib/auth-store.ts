@@ -64,11 +64,54 @@ export function setSession(next: AuthSession | null): void {
   }
 }
 
-export function clearSession(): void {
+/**
+ * Canal cross-tab do logout.
+ *
+ * O accessToken vive em MEMÓRIA por aba: clicar em "Sair" numa aba deixava as
+ * outras plenamente autenticadas até o token expirar (num PC compartilhado,
+ * quem sentasse depois lia e operava o CRM). BroadcastChannel avisa as outras
+ * abas na hora; o `storage` event cobre navegador sem BroadcastChannel.
+ */
+const LOGOUT_CHANNEL = 'betinna:auth';
+const LOGOUT_KEY = 'betinna:logout';
+
+let canal: BroadcastChannel | null = null;
+function getCanal(): BroadcastChannel | null {
+  if (typeof window === 'undefined' || typeof BroadcastChannel === 'undefined') return null;
+  canal ??= new BroadcastChannel(LOGOUT_CHANNEL);
+  return canal;
+}
+
+/** Encerra a sessão LOCAL da aba (sem avisar ninguém — evita eco entre abas). */
+function encerrarSessaoLocal(): void {
   cancelRefresh();
   setSession(null);
   try {
     if (typeof window !== 'undefined') window.localStorage.removeItem(EMPRESA_KEY);
+  } catch {
+    /* best-effort */
+  }
+}
+
+let ouvindoLogout = false;
+/** Liga a escuta do logout de outras abas. Idempotente. */
+export function iniciarSincroniaDeLogout(): void {
+  if (ouvindoLogout || typeof window === 'undefined') return;
+  ouvindoLogout = true;
+  getCanal()?.addEventListener('message', (ev: MessageEvent) => {
+    if ((ev.data as { type?: string } | null)?.type === 'logout') encerrarSessaoLocal();
+  });
+  window.addEventListener('storage', (ev) => {
+    if (ev.key === LOGOUT_KEY && ev.newValue) encerrarSessaoLocal();
+  });
+}
+
+export function clearSession(): void {
+  encerrarSessaoLocal();
+  // Avisa as outras abas ANTES do fetch (não depende da rede).
+  try {
+    getCanal()?.postMessage({ type: 'logout' });
+    window.localStorage.setItem(LOGOUT_KEY, String(Date.now()));
   } catch {
     /* best-effort */
   }
@@ -277,6 +320,8 @@ async function doRefreshAccessToken(): Promise<AuthSession | null> {
  * popula store; se não, fica sem sessão (UI mostra login).
  */
 export async function bootstrapAuthFromBackend(): Promise<AuthSession | null> {
+  // Escuta o logout das outras abas desde o boot (idempotente).
+  iniciarSincroniaDeLogout();
   try {
     return await refreshAccessToken();
   } finally {

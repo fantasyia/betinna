@@ -4,8 +4,10 @@ import { PrismaService } from '@database/prisma.service';
 import {
   BusinessRuleException,
   ConflictException,
+  ForbiddenException,
   NotFoundException,
 } from '@shared/errors/app-exception';
+import { ErrorCode } from '@shared/errors/error-codes';
 import type { AuthenticatedUser } from '@shared/types/authenticated-user';
 import { KanbanAcessoService } from './kanban-acesso.service';
 import { KanbanAnexosService } from './kanban-anexos.service';
@@ -203,12 +205,31 @@ export class KanbanCardsService {
     const { board } = await this.acesso.verificarAcessoPorCard(user, cardId);
     const card = await this.prisma.kanbanCard.findUniqueOrThrow({
       where: { id: cardId },
-      select: { id: true, titulo: true, espelhos: { select: { id: true } } },
+      select: {
+        id: true,
+        titulo: true,
+        espelhos: { select: { id: true } },
+        lista: { select: { boardId: true } },
+      },
     });
     const espelhoIds = card.espelhos.map((e) => e.id);
 
+    // Card ORIGEM de um grupo: apagar leva junto os espelhos, comentários e
+    // anexos compartilhados. O acesso "ciente de grupo" dava ao dono de um
+    // ESPELHO o direito de apagar a origem — o rep limpava o quadro dele e a
+    // tarefa de acompanhamento do Diretor sumia. Só o dono do quadro de origem
+    // pode fazer isso.
+    if (espelhoIds.length > 0 && board.id !== card.lista.boardId) {
+      throw new ForbiddenException(
+        'Só o dono do quadro de origem pode excluir esta tarefa — no seu quadro, exclua o espelho.',
+        ErrorCode.INSUFFICIENT_PERMISSIONS,
+      );
+    }
+
     await this.atividade.registrar({
-      boardId: board.id,
+      // O feed vai pro quadro do CARD (origem), não pro que liberou o acesso —
+      // senão a exclusão sumia do histórico do quadro que perdeu o card.
+      boardId: card.lista.boardId,
       usuarioId: user.id,
       tipo: 'card_excluido',
       cardId,

@@ -286,6 +286,8 @@ export class CatalogoService {
     itens: number;
     token: string;
     previewUrl: string;
+    /** Quando o link deixa de funcionar (respeita o "válido até" escolhido). */
+    expiraEm: string;
   }> {
     if (!user.empresaIdAtiva) {
       throw new BusinessRuleException('Empresa não definida');
@@ -305,11 +307,27 @@ export class CatalogoService {
         'Seu catálogo está vazio. Adicione produtos antes de compartilhar.',
       );
     }
-    const token = await this.share.gerar({
-      repId: user.id,
-      clienteId,
-      empresaId: user.empresaIdAtiva,
-    });
+    // A tela deixa o rep escolher "válido até" e o backend ACEITAVA e IGNORAVA:
+    // o link vivia sempre os 7 dias globais, com o preço negociado dentro. Agora
+    // a data escolhida encurta o TTL de verdade (nunca estica além do global).
+    let ttlSegundos: number | undefined;
+    if (dto.validoAte) {
+      const restanteMs = dto.validoAte.getTime() - Date.now();
+      if (restanteMs <= 0) {
+        throw new BusinessRuleException('A validade escolhida já passou. Escolha uma data futura.');
+      }
+      ttlSegundos = Math.floor(restanteMs / 1000);
+    }
+    const token = await this.share.gerar(
+      {
+        repId: user.id,
+        clienteId,
+        empresaId: user.empresaIdAtiva,
+      },
+      ttlSegundos,
+    );
+    const tetoTtl = this.share.ttlMaximoSegundos;
+    const validadeEfetivaMs = Math.min(ttlSegundos ?? tetoTtl, tetoTtl) * 1000;
     return {
       ok: true,
       canal: dto.canal,
@@ -317,6 +335,8 @@ export class CatalogoService {
       itens: items.length,
       token,
       previewUrl: `/catalogo/share/${token}`,
+      // Validade REAL do link (o rep pode ter pedido menos que o teto global).
+      expiraEm: new Date(Date.now() + validadeEfetivaMs).toISOString(),
     };
   }
 
@@ -328,19 +348,36 @@ export class CatalogoService {
     token: string,
   ): Promise<{ rep: { id: string; nome: string }; produtos: PublicShareItem[] }> {
     const payload = await this.share.validar(token);
-    // Reconstruir AuthenticatedUser mínimo pra reuso de previewParaCliente
-    const rep = await this.prisma.usuario.findUnique({
-      where: { id: payload.repId },
-      select: { id: true, nome: true, status: true, role: true },
+    // Reconstruir AuthenticatedUser mínimo pra reuso de previewParaCliente.
+    // O vínculo com a empresa DO TOKEN entra no filtro: o fluxo normal de editar
+    // usuário troca os vínculos SEM desativar, então um rep movido de tenant
+    // (ou removido da empresa) seguia com o link vivo, servindo o catálogo e os
+    // preços negociados da empresa que ele deixou.
+    const rep = await this.prisma.usuario.findFirst({
+      where: {
+        id: payload.repId,
+        status: 'ATIVO',
+        role: 'REP',
+        empresas: { some: { empresaId: payload.empresaId } },
+      },
+      select: { id: true, nome: true },
     });
-    if (!rep || rep.status !== 'ATIVO' || rep.role !== 'REP') {
+    if (!rep) {
       throw new BusinessRuleException('Representante não encontrado ou inativo. Link inválido.');
+    }
+    // Tenant desativado (churn/inadimplência) não serve mais catálogo público.
+    const empresa = await this.prisma.empresa.findFirst({
+      where: { id: payload.empresaId, ativo: true },
+      select: { id: true },
+    });
+    if (!empresa) {
+      throw new BusinessRuleException('Este link não está mais disponível.');
     }
     const fakeAuth: AuthenticatedUser = {
       id: rep.id,
       email: '',
       nome: rep.nome,
-      role: rep.role,
+      role: 'REP',
       empresaIds: [payload.empresaId],
       empresaIdAtiva: payload.empresaId,
     };

@@ -44,6 +44,9 @@ const makeRepScopeMock = () => ({
     if (u.role === 'GERENTE') return ['rep-a', 'rep-b'];
     return null;
   }),
+  // Escopo do DONO da campanha (o cron dispara como sistema). Default: sem
+  // restrição — os testes de carteira sobrescrevem.
+  getRepIdsPorUsuario: vi.fn(async () => null),
 });
 
 const makeQueueMock = () => ({
@@ -173,7 +176,9 @@ describe('CampanhasService', () => {
       await service.list(fakeUser({ role: 'REP', id: 'rep-5' }), { page: 1, limit: 10 });
 
       const whereArg = prisma.campanha.findMany.mock.calls[0][0].where;
-      expect(whereArg.criadoPorId).toBe('rep-5');
+      // REP: só as próprias (o `in` cobre o caso do GERENTE, que também vê as
+      // criadas pelos reps da gerência dele).
+      expect(whereArg.criadoPorId).toEqual({ in: ['rep-5'] });
     });
 
     it('ADMIN não tem filtro de criadoPorId', async () => {
@@ -846,5 +851,73 @@ describe('CampanhasService', () => {
         ]),
       );
     });
+  });
+});
+
+// ─── Auditoria 2026-08: campanha respeita o recorte de carteira ───────
+
+describe('CampanhasService — escopo de carteira (auditoria)', () => {
+  let prisma: ReturnType<typeof makePrismaMock>;
+  let repScope: ReturnType<typeof makeRepScopeMock>;
+  let queue: ReturnType<typeof makeQueueMock>;
+  let service: CampanhasService;
+
+  beforeEach(() => {
+    prisma = makePrismaMock();
+    repScope = makeRepScopeMock();
+    queue = makeQueueMock();
+    service = new CampanhasService(prisma as never, repScope as never, queue as never);
+  });
+
+  it('GERENTE só enxerga campanhas dele e dos reps da gerência', async () => {
+    // Antes via TODAS as campanhas da empresa — e com elas nome/telefone/e-mail
+    // de clientes de outras carteiras na lista de destinatários.
+    await service.list(fakeUser({ role: 'GERENTE', id: 'ger-1' }), { page: 1, limit: 10 });
+
+    const where = prisma.campanha.findMany.mock.calls[0][0].where;
+    expect(where.criadoPorId).toEqual({ in: ['ger-1', 'rep-a', 'rep-b'] });
+  });
+
+  it('ADMIN/DIRECTOR seguem sem filtro de criador', async () => {
+    await service.list(fakeUser({ role: 'DIRECTOR' }), { page: 1, limit: 10 });
+
+    const where = prisma.campanha.findMany.mock.calls[0][0].where;
+    expect(where.criadoPorId).toBeUndefined();
+  });
+
+  it('destinatários são limitados à carteira de QUEM CRIOU a campanha', async () => {
+    // Sem isto, GERENTE criava campanha sem segmento e a mensagem saía pelo
+    // número EMPRESARIAL pra base inteira da empresa.
+    repScope.getRepIdsPorUsuario.mockResolvedValue(['rep-a', 'rep-b']);
+    prisma.cliente.findMany.mockResolvedValue([]);
+
+    await service.resolverDestinatarios({
+      empresaId: 'emp-1',
+      canal: 'WHATSAPP',
+      segTagIds: [],
+      segRepIds: [],
+      segClienteIds: [],
+      criadoPorId: 'ger-1',
+    });
+
+    const where = prisma.cliente.findMany.mock.calls[0][0].where;
+    expect(where.AND).toContainEqual({ representanteId: { in: ['rep-a', 'rep-b'] } });
+  });
+
+  it('criador sem restrição (DIRECTOR) não filtra por representante', async () => {
+    repScope.getRepIdsPorUsuario.mockResolvedValue(null);
+    prisma.cliente.findMany.mockResolvedValue([]);
+
+    await service.resolverDestinatarios({
+      empresaId: 'emp-1',
+      canal: 'WHATSAPP',
+      segTagIds: [],
+      segRepIds: [],
+      segClienteIds: [],
+      criadoPorId: 'dir-1',
+    });
+
+    const where = prisma.cliente.findMany.mock.calls[0][0].where;
+    expect(where.AND).toBeUndefined();
   });
 });

@@ -826,12 +826,44 @@ export class LeadsService {
       create: { empresaId, nome },
       update: {},
     });
+    await this.vincularTag(empresaId, leadId, tag.id, origem);
+  }
+
+  /**
+   * Igual ao aplicarTagPorNome, mas NUNCA cria etiqueta: só aplica se ela já
+   * existir na empresa. É o que a captura PÚBLICA usa — a chave de captura vive
+   * no JS do site (qualquer visitante extrai), e criar tag de nome livre por ali
+   * deixava um estranho poluir a base com centenas de etiquetas E, pior, casar
+   * os fluxos de nutrição (LEAD_RECEBEU_TAG) pra fazer o WhatsApp da empresa
+   * disparar. Retorna false quando a etiqueta não existe (caller loga).
+   */
+  async aplicarTagExistentePorNome(
+    empresaId: string,
+    leadId: string,
+    nome: string,
+    origem: 'usuario' | 'ia' = 'ia',
+  ): Promise<boolean> {
+    const tag = await this.prisma.tag.findUnique({
+      where: { empresaId_nome: { empresaId, nome } },
+      select: { id: true },
+    });
+    if (!tag) return false;
+    await this.vincularTag(empresaId, leadId, tag.id, origem);
+    return true;
+  }
+
+  private async vincularTag(
+    empresaId: string,
+    leadId: string,
+    tagId: string,
+    origem: 'usuario' | 'ia',
+  ): Promise<void> {
     await this.prisma.leadTag.upsert({
-      where: { leadId_tagId: { leadId, tagId: tag.id } },
-      create: { leadId, tagId: tag.id, origem },
+      where: { leadId_tagId: { leadId, tagId } },
+      create: { leadId, tagId, origem },
       update: {},
     });
-    await this.bus.disparar(empresaId, 'LEAD_RECEBEU_TAG', { leadId, tagId: tag.id });
+    await this.bus.disparar(empresaId, 'LEAD_RECEBEU_TAG', { leadId, tagId });
   }
 
   async remove(user: AuthenticatedUser, id: string): Promise<void> {

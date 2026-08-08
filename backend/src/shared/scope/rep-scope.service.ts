@@ -36,4 +36,19 @@ export class RepScopeService {
     });
     return reps.map((r) => r.id);
   }
+
+  /**
+   * Mesma regra, mas a partir de um userId — pra quando quem executa não é quem
+   * define o escopo (ex.: o cron de campanhas dispara como sistema, mas o
+   * alcance tem que ser o da carteira de QUEM CRIOU a campanha).
+   * Usuário inexistente → `[]` (nega tudo), nunca `null`.
+   */
+  async getRepIdsPorUsuario(userId: string): Promise<string[] | null> {
+    const dono = await this.prisma.usuario.findUnique({
+      where: { id: userId },
+      select: { id: true, role: true },
+    });
+    if (!dono) return [];
+    return this.getRepIds({ id: dono.id, role: dono.role } as AuthenticatedUser);
+  }
 }

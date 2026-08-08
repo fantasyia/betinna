@@ -168,7 +168,23 @@ export class LeadCaptureService {
     const nomes = [...new Set(tags.map((t) => t.trim()).filter(Boolean))];
     for (const nome of nomes) {
       try {
-        await this.leads.aplicarTagPorNome(empresaId, leadId, nome, 'usuario');
+        // SÓ etiqueta que já existe na empresa. A chave de captura vive no JS
+        // público do site: criar tag de nome livre por aqui deixava qualquer
+        // visitante poluir a base (reprise das 620 tags) e — pior — inventar
+        // uma etiqueta que casa fluxo de nutrição real, fazendo o WhatsApp da
+        // empresa disparar pro número que ele mesmo informou.
+        const aplicou = await this.leads.aplicarTagExistentePorNome(
+          empresaId,
+          leadId,
+          nome,
+          'usuario',
+        );
+        if (!aplicou) {
+          this.logger.warn(
+            `Tag "${nome}" veio da captura pública mas NÃO existe na empresa ${empresaId} — ` +
+              `ignorada (crie a etiqueta no CRM antes de usá-la no site).`,
+          );
+        }
       } catch (err) {
         this.logger.warn(
           `Falha aplicando tag "${nome}" no lead ${leadId} (empresa ${empresaId}): ` +

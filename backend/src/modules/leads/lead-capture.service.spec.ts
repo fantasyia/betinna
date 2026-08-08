@@ -29,6 +29,10 @@ const makeRedisMock = () => ({
 const makeLeadsMock = () => ({
   createPublico: vi.fn().mockResolvedValue({ id: 'lead-novo' }),
   aplicarTagPorNome: vi.fn().mockResolvedValue(undefined),
+  // A captura PÚBLICA nunca cria etiqueta — só aplica as que já existem (a chave
+  // vive no JS do site; nome livre deixava qualquer visitante poluir a base e
+  // casar fluxo de nutrição). true = a tag existia e foi aplicada.
+  aplicarTagExistentePorNome: vi.fn().mockResolvedValue(true),
 });
 
 const fakeUser = (overrides: Partial<AuthenticatedUser> = {}): AuthenticatedUser => ({
@@ -127,19 +131,34 @@ describe('LeadCaptureService', () => {
         tags: ['publico:comercio', 'setor:cadeia-do-frio'],
       });
 
-      expect(leads.aplicarTagPorNome).toHaveBeenCalledTimes(2);
-      expect(leads.aplicarTagPorNome).toHaveBeenCalledWith(
+      expect(leads.aplicarTagExistentePorNome).toHaveBeenCalledTimes(2);
+      expect(leads.aplicarTagExistentePorNome).toHaveBeenCalledWith(
         'emp-1',
         'lead-novo',
         'publico:comercio',
         'usuario',
       );
-      expect(leads.aplicarTagPorNome).toHaveBeenCalledWith(
+      expect(leads.aplicarTagExistentePorNome).toHaveBeenCalledWith(
         'emp-1',
         'lead-novo',
         'setor:cadeia-do-frio',
         'usuario',
       );
+    });
+
+    it('tag que NÃO existe na empresa é ignorada (captura pública não CRIA etiqueta)', async () => {
+      // A chave de captura vive no JS público do site: nome livre deixava
+      // qualquer visitante poluir a base E inventar etiqueta que casa fluxo de
+      // nutrição real, fazendo o WhatsApp da empresa disparar.
+      prisma.leadCaptureChave.findUnique.mockResolvedValue({ empresaId: 'emp-1', ativo: true });
+      leads.aplicarTagExistentePorNome.mockResolvedValue(false);
+
+      const r = await svc.capturar(CHAVE, { ...dto, tags: ['inventada-pelo-atacante'] });
+
+      // O lead entra normalmente (perder o lead é pior que perder a etiqueta)...
+      expect(r.ok).toBe(true);
+      // ...mas o caminho que CRIA etiqueta nunca é usado na captura pública.
+      expect(leads.aplicarTagPorNome).not.toHaveBeenCalled();
     });
 
     it('aplica tags também no lead DUPLICADO (reenvio com outro setor)', async () => {
@@ -151,7 +170,7 @@ describe('LeadCaptureService', () => {
 
       expect(r.duplicado).toBe(true);
       expect(leads.createPublico).not.toHaveBeenCalled();
-      expect(leads.aplicarTagPorNome).toHaveBeenCalledWith(
+      expect(leads.aplicarTagExistentePorNome).toHaveBeenCalledWith(
         'emp-1',
         'lead-existente',
         'setor:autopecas',
@@ -167,12 +186,12 @@ describe('LeadCaptureService', () => {
         tags: ['setor:outros', 'setor:outros', '  '],
       });
 
-      expect(leads.aplicarTagPorNome).toHaveBeenCalledTimes(1);
+      expect(leads.aplicarTagExistentePorNome).toHaveBeenCalledTimes(1);
     });
 
     it('falha ao aplicar tag NÃO derruba a captura do lead', async () => {
       prisma.leadCaptureChave.findUnique.mockResolvedValue({ empresaId: 'emp-1', ativo: true });
-      leads.aplicarTagPorNome.mockRejectedValueOnce(new Error('tag explodiu'));
+      leads.aplicarTagExistentePorNome.mockRejectedValueOnce(new Error('tag explodiu'));
 
       // Perder o lead é pior que perder a etiqueta — a captura tem que sobreviver.
       const r = await svc.capturar(CHAVE, { ...dto, tags: ['publico:industria'] });
@@ -185,7 +204,7 @@ describe('LeadCaptureService', () => {
 
       await svc.capturar(CHAVE, dto);
 
-      expect(leads.aplicarTagPorNome).not.toHaveBeenCalled();
+      expect(leads.aplicarTagExistentePorNome).not.toHaveBeenCalled();
     });
 
     it('campos estruturados vão pra variaveis; observações só a mensagem', async () => {

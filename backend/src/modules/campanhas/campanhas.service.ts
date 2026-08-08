@@ -89,14 +89,20 @@ export class CampanhasService {
     return user.empresaIdAtiva;
   }
 
-  /** REP/GERENTE não acessa campanhas — somente ADMIN/DIRECTOR/SAC/GERENTE com permissão. */
+  /**
+   * Escopo de LEITURA das campanhas.
+   *
+   * REP vê só o que criou. GERENTE vê o que ele e os reps da gerência dele
+   * criaram — antes via TODAS as campanhas da empresa e, com elas, nome/telefone
+   * /e-mail de clientes de outras carteiras (o detalhe da campanha lista os
+   * destinatários), furando o isolamento que clientes/pedidos/aprovações aplicam.
+   */
   private async baseWhere(user: AuthenticatedUser): Promise<Prisma.CampanhaWhereInput> {
     const empresaId = this.requireEmpresa(user);
     const where: Prisma.CampanhaWhereInput = { empresaId };
-    // REP vê somente as campanhas que criou
     const scope = await this.repScope.getRepIds(user);
-    if (scope !== null && user.role === 'REP') {
-      where.criadoPorId = user.id;
+    if (scope !== null) {
+      where.criadoPorId = { in: [...new Set([user.id, ...scope])] };
     }
     return where;
   }
@@ -506,6 +512,8 @@ export class CampanhasService {
     segTagIds: string[];
     segRepIds: string[];
     segClienteIds: string[];
+    /** Dono da campanha — o alcance é limitado à carteira DELE. */
+    criadoPorId?: string;
   }): Promise<Array<{ clienteId: string; email: string | null; telefone: string | null }>> {
     const needsWa = campanha.canal !== 'EMAIL';
     const needsEmail = campanha.canal !== 'WHATSAPP';
@@ -515,18 +523,30 @@ export class CampanhasService {
       omieStatus: 'ATIVO',
     };
 
+    // Recorte de carteira do CRIADOR (não de quem dispara — o cron roda como
+    // sistema). Sem isto, um GERENTE criava campanha sem segmento e a mensagem
+    // saía pelo número EMPRESARIAL pra base inteira, incluindo carteiras de
+    // outros gerentes. ADMIN/DIRECTOR/SAC seguem sem restrição (scope null).
+    const escopoCarteira = campanha.criadoPorId
+      ? await this.repScope.getRepIdsPorUsuario(campanha.criadoPorId)
+      : null;
+
+    const and: Prisma.ClienteWhereInput[] = [];
+    if (escopoCarteira !== null) {
+      and.push({ representanteId: { in: escopoCarteira.length ? escopoCarteira : ['__none__'] } });
+    }
+
     if (campanha.segClienteIds.length > 0) {
       where.id = { in: campanha.segClienteIds };
     } else {
-      const and: Prisma.ClienteWhereInput[] = [];
       if (campanha.segTagIds.length > 0) {
         and.push({ tags: { some: { tagId: { in: campanha.segTagIds } } } });
       }
       if (campanha.segRepIds.length > 0) {
         and.push({ representanteId: { in: campanha.segRepIds } });
       }
-      if (and.length > 0) where.AND = and;
     }
+    if (and.length > 0) where.AND = and;
 
     // Exige ao menos um contato válido para o canal
     const orContact: Prisma.ClienteWhereInput[] = [];
