@@ -111,9 +111,19 @@ if (typeof window !== 'undefined') {
   });
 
   // Convergência periódica (espelha o REFRESH_MS do cache do backend).
+  // Pula quando a ABA ESTÁ OCULTA: era o único poller que batia no servidor com
+  // o app em segundo plano — em quem deixa o Betinna aberto o dia todo, é
+  // request de graça (e bateria no celular). Ao voltar pra aba, o listener de
+  // visibilitychange abaixo já força um refresh.
   const timer = setInterval(() => {
+    if (typeof document !== 'undefined' && document.visibilityState === 'hidden') return;
     if (getSession()) void refreshPermissoes();
   }, REFRESH_MS);
+  if (typeof document !== 'undefined') {
+    document.addEventListener('visibilitychange', () => {
+      if (document.visibilityState === 'visible' && getSession()) void refreshPermissoes();
+    });
+  }
   // Vite HMR: não acumular timers.
   if (import.meta.hot) {
     import.meta.hot.dispose(() => clearInterval(timer));

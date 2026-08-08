@@ -363,6 +363,9 @@ function AmostraDetailModal({
   const { data, loading, error, refetch } = useApiQuery<Amostra>(`/amostras/${id}`);
   const role = useRole();
   const podeAprovar = role === 'ADMIN' || role === 'DIRECTOR';
+  // Espelha o @Roles do DELETE /amostras/:id — pro REP o botão só devolvia 403
+  // depois de ele confirmar a exclusão.
+  const podeExcluir = role === 'ADMIN' || role === 'DIRECTOR' || role === 'GERENTE';
   const [busy, setBusy] = useState(false);
   const [actionError, setActionError] = useState<string | null>(null);
   const [transition, setTransition] = useState<AmostraStatus | null>(null);
@@ -465,7 +468,7 @@ function AmostraDetailModal({
           >
             Fechar
           </button>
-          {data && !confirmDel && (
+          {data && podeExcluir && !confirmDel && (
             <button
               type="button"
               data-testid="amostra-delete"

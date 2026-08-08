@@ -991,7 +991,9 @@ export class ConversarIaService {
     // Fonte da verdade = a conversa REAL do inbox (cobre todas as execuções do lead);
     // o _iaHistorico desta execução entra como reforço (provider que não ecoa). Merge
     // + dedupe → a IA enxerga o pitch já dado mesmo numa execução "amnésica".
-    const daConversa = conversationId ? await this.montarHistorico(conversationId, limiteHist) : [];
+    const daConversa = conversationId
+      ? await this.montarHistorico(conversationId, limiteHist, empresaId)
+      : [];
     let historico = mesclarHistorico(daConversa, doContexto, limiteHist);
     // A mensagem ATUAL do lead já está salva na conversa (foi ela que disparou o
     // retomar) — remove do fim pra não duplicar: ela vai como `mensagem` na chamada.
@@ -1533,13 +1535,17 @@ export class ConversarIaService {
   private async montarHistorico(
     conversationId: string,
     limite = HISTORICO_DEFAULT,
+    empresaId?: string,
   ): Promise<HistoricoMsg[]> {
     // Inclui TODOS os tipos (não só TEXT): áudio transcrito (tipo=AUDIO) carrega
     // a resposta do lead no conteudo. Filtrar só TEXT fazia a IA esquecer as
     // respostas em áudio e re-perguntar tudo na entrevista.
     // `limite` = quantas mensagens a empresa configurou (Persona Bot → histórico).
     const msgs = await this.prisma.message.findMany({
-      where: { conversationId },
+      // empresaId no filtro: defesa em profundidade. A conversa já vem do
+      // contexto da execução (mesmo tenant), mas montar histórico é o ponto que
+      // ALIMENTA O PROMPT DA IA — um id trocado aqui vazaria conversa alheia.
+      where: { conversationId, ...(empresaId ? { conversation: { empresaId } } : {}) },
       orderBy: { criadoEm: 'desc' },
       take: Math.max(1, limite),
       select: { direction: true, conteudo: true, criadoEm: true },

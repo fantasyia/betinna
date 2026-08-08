@@ -1,4 +1,14 @@
 import { z } from 'zod';
+
+/**
+ * Booleano de QUERY STRING. `boolQuery` faz `Boolean('false') === true`
+ * — então `?meu=false` filtrava como se fosse `true` e a lista vinha errada.
+ * Aqui a string é interpretada de verdade ('false'/'0' = false).
+ */
+const boolQuery = z.preprocess(
+  (v) => (typeof v === 'string' ? !['false', '0', ''].includes(v.trim().toLowerCase()) : v),
+  z.boolean(),
+);
 import { usuarioIdSchema } from '@shared/validators/id.schema';
 
 const channelEnum = z.enum([
@@ -19,13 +29,13 @@ export const listConversationsSchema = z.object({
   status: statusEnum.optional(),
   atribuidoId: usuarioIdSchema.optional(),
   /** "me" → filtra atribuído ao usuário atual. */
-  meu: z.coerce.boolean().optional(),
+  meu: boolQuery.optional(),
   /** true → apenas não atribuídas. */
-  naoAtribuidas: z.coerce.boolean().optional(),
+  naoAtribuidas: boolQuery.optional(),
   /** true → apenas conversas marcadas como "precisa de humano" (bot escalou). */
-  precisaHumano: z.coerce.boolean().optional(),
+  precisaHumano: boolQuery.optional(),
   /** true → apenas conversas com mensagens não lidas (cliente esperando). */
-  naoLidas: z.coerce.boolean().optional(),
+  naoLidas: boolQuery.optional(),
   clienteId: z.string().cuid().optional(),
   search: z.string().min(1).max(200).optional(),
   page: z.coerce.number().int().positive().default(1),

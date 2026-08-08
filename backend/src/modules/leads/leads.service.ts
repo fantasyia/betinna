@@ -821,9 +821,14 @@ export class LeadsService {
     nome: string,
     origem: 'usuario' | 'ia' = 'ia',
   ): Promise<void> {
+    // trim + teto de 100 chars: o DTO de tag aplica os dois, mas quem cria por
+    // AQUI (IA, fluxo, import) passava direto — nascia tag com espaço na ponta
+    // (" VIP" ≠ "VIP", duas linhas na lista) ou texto gigante do modelo.
+    const limpo = nome.trim().slice(0, 100);
+    if (!limpo) return;
     const tag = await this.prisma.tag.upsert({
-      where: { empresaId_nome: { empresaId, nome } },
-      create: { empresaId, nome },
+      where: { empresaId_nome: { empresaId, nome: limpo } },
+      create: { empresaId, nome: limpo },
       update: {},
     });
     await this.vincularTag(empresaId, leadId, tag.id, origem);
@@ -843,8 +848,10 @@ export class LeadsService {
     nome: string,
     origem: 'usuario' | 'ia' = 'ia',
   ): Promise<boolean> {
+    const limpo = nome.trim().slice(0, 100);
+    if (!limpo) return false;
     const tag = await this.prisma.tag.findUnique({
-      where: { empresaId_nome: { empresaId, nome } },
+      where: { empresaId_nome: { empresaId, nome: limpo } },
       select: { id: true },
     });
     if (!tag) return false;

@@ -23,6 +23,10 @@ export class CampanhaSchedulerJob {
 
   @Cron('*/5 * * * *', { name: 'campanha-scheduler-5min' })
   async avaliarAgendadas(): Promise<void> {
+    // Guard de ambiente: é o ÚNICO cron sem ele, e este dispara CAMPANHA DE
+    // VERDADE (WhatsApp/e-mail pra base real). Rodar em suíte de teste manda
+    // mensagem pra cliente.
+    if (process.env.NODE_ENV === 'test') return;
     // AUDITORIA P0-5: TTL 270s (4min30s) — antes da próxima execução.
     if (!(await this.cronLock.acquire('campanha-scheduler-5min', 270))) return;
     const agora = new Date();

@@ -202,6 +202,16 @@ export class NotificacoesService {
     dto: CriarNotificacaoDto,
   ): Promise<Notificacao | null> {
     const empresaId = this.requireEmpresa(user);
+    // O destinatário TEM que ser da empresa: sem o check, dava pra criar
+    // notificação "cross-tenant" (usuário de outra empresa recebia um aviso com
+    // link/metadata da nossa) só passando o id.
+    const destinatario = await this.prisma.usuario.findFirst({
+      where: { id: dto.usuarioId, empresas: { some: { empresaId } } },
+      select: { id: true },
+    });
+    if (!destinatario) {
+      throw new NotFoundException('Usuário destinatário não encontrado nesta empresa');
+    }
     return this.criarParaUsuario({
       empresaId,
       usuarioId: dto.usuarioId,

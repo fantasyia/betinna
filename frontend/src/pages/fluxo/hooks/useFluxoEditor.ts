@@ -239,7 +239,10 @@ export function useFluxoEditor({
   const onEdgesChangeWrap = useCallback(
     (c: EdgeChange<Edge>[]) => {
       onEdgesChange(c);
-      if (c.length > 0) setDirty(true);
+      // 'select' NÃO é edição: só CLICAR numa aresta marcava o fluxo como sujo e
+      // o editor passava a avisar "alterações não salvas" sem nada ter mudado —
+      // o usuário aprendia a ignorar o aviso, que é o pior resultado possível.
+      if (c.some((ch) => ch.type !== 'select')) setDirty(true);
     },
     [onEdgesChange],
   );

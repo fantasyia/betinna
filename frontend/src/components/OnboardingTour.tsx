@@ -140,8 +140,10 @@ const STEPS_SAC: Step[] = [
   {
     icon: '🛒',
     title: 'Incidentes de marketplaces',
-    body: 'Reclamações, devoluções e disputas viram /marketplace/incidentes. Filtre por "Aguardando vendedor" pra priorizar.',
-    route: '/marketplace/incidentes',
+    body: 'Reclamações, devoluções e disputas viram incidentes. Filtre por "Aguardando vendedor" pra priorizar.',
+    // A rota é /incidentes (App.tsx). Com /marketplace/incidentes o passo do
+    // tour caía no catch-all e mandava o SAC pro dashboard.
+    route: '/incidentes',
   },
   {
     icon: '🎫',

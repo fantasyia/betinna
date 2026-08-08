@@ -549,7 +549,11 @@ function ItemRow({
         max={80}
         step="0.1"
         value={item.desconto}
-        onChange={(e) => onChange({ desconto: Number(e.target.value) })}
+        // CLAMP no estado: `max` do input não impede digitar 999 nem colar. Sem
+        // isto o total exibido divergia do que o backend calcula (que clampa) —
+        // o rep fechava o pedido vendo um valor e recebendo outro. Mesmo fix já
+        // aplicado na PropostasPage.
+        onChange={(e) => onChange({ desconto: Math.min(80, Math.max(0, Number(e.target.value) || 0)) })}
         data-testid={`${testId}-desc`}
         aria-label="Desconto %"
         placeholder="% desc"

@@ -1,4 +1,4 @@
-import { describe, expect, it, vi, beforeEach } from 'vitest';
+import { afterAll, beforeAll, describe, expect, it, vi, beforeEach } from 'vitest';
 import { BusinessRuleException } from '@shared/errors/app-exception';
 import { ErrorCode } from '@shared/errors/error-codes';
 import { CampanhaSchedulerJob } from './campanha-scheduler.job';
@@ -16,6 +16,17 @@ const makePrisma = () => ({
   },
 });
 const makeCronLock = () => ({ acquire: vi.fn().mockResolvedValue(true) });
+
+// O job tem guard de ambiente (NODE_ENV=test → não roda): ele dispara CAMPANHA
+// DE VERDADE pra base real. Estes testes exercitam a LÓGICA de decisão, então
+// saem do modo test só aqui dentro e restauram depois.
+const NODE_ENV_ORIGINAL = process.env.NODE_ENV;
+beforeAll(() => {
+  process.env.NODE_ENV = 'development';
+});
+afterAll(() => {
+  process.env.NODE_ENV = NODE_ENV_ORIGINAL;
+});
 
 describe('CampanhaSchedulerJob — #R6 campanha agendada não-disparável vira CANCELADA', () => {
   let prisma: ReturnType<typeof makePrisma>;

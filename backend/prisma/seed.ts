@@ -96,7 +96,11 @@ async function main(): Promise<void> {
           throw error ?? new Error('Falha desconhecida');
         }
         userId = data.user.id;
-        console.log(`  ✓ Admin criado no Supabase: ${ADMIN_EMAIL} / senha: ${ADMIN_PASS}`);
+        // NUNCA imprimir a senha: o stdout do seed vai pro log do deploy (e pro
+        // histórico do terminal de quem roda). Quem executou já a definiu.
+        console.log(
+          `  ✓ Admin criado no Supabase: ${ADMIN_EMAIL} (senha = SEED_ADMIN_PASSWORD do .env.local)`,
+        );
       }
 
       await prisma.usuario.create({
