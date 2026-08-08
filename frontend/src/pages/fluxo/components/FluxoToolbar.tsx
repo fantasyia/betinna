@@ -22,23 +22,26 @@ export function FluxoToolbar({
   onTestar: () => void;
   onMobilePanel: (p: 'palette' | 'inspector' | null) => void;
 }) {
+  // CAÇADA-BUG #45: fechar com alterações não salvas descartava tudo em silêncio.
+  // O guard existia SÓ no X — o botão "Cancelar" ao lado do Salvar fechava direto.
+  // Compartilhado pelos dois pra não divergir de novo.
+  function fecharComGuard() {
+    if (
+      editor.dirty &&
+      !window.confirm('Você tem alterações não salvas. Descartar e sair do editor?')
+    ) {
+      return;
+    }
+    onClose();
+  }
+
   return (
     <header className="flex items-center gap-3 px-4 h-[56px] border-b border-border bg-bg-alt shrink-0">
       <IconButton
         aria-label="Fechar editor"
         variant="ghost"
         icon={<XIcon />}
-        onClick={() => {
-          // CAÇADA-BUG #45: fechar com alterações não salvas descartava tudo silenciosamente (sem
-          // confirmação nem beforeunload) — 20 min de fluxo montado sumiam num clique no X.
-          if (
-            editor.dirty &&
-            !window.confirm('Você tem alterações não salvas. Descartar e sair do editor?')
-          ) {
-            return;
-          }
-          onClose();
-        }}
+        onClick={fecharComGuard}
       />
       <div className="flex-1 min-w-0 flex items-center gap-3">
         <Input
@@ -124,7 +127,11 @@ export function FluxoToolbar({
         >
           Testar
         </Button>
-        <Button variant="ghost" className="hidden md:inline-flex" onClick={onClose}>
+        <Button
+          variant="ghost"
+          className="hidden md:inline-flex"
+          onClick={fecharComGuard}
+        >
           Cancelar
         </Button>
         <Button

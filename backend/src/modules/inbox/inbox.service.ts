@@ -1,6 +1,7 @@
 import { Injectable, Logger } from '@nestjs/common';
 import {
   type Conversation,
+  type ConversationCategoria,
   type ConversationStatus,
   type Message,
   type MessageChannel,
@@ -1290,6 +1291,25 @@ export class InboxService {
       if (p.meta?.[k] !== undefined && p.meta[k] !== null) metaPatch[k] = p.meta[k];
     }
 
+    // CATEGORIA: os adapters de marketplace já informam (POS_VENDA etc.) dentro
+    // do `meta`, mas ela nunca era gravada na Conversation — TODA conversa de
+    // marketplace ficava GERAL, e o Composer não sabia bloquear os canais que não
+    // aceitam texto livre. Promove no create e no update (só PROMOVE: nunca
+    // rebaixa uma categoria mais específica de volta pra GERAL).
+    const CATEGORIAS_VALIDAS = [
+      'GERAL',
+      'PRE_VENDA',
+      'POS_VENDA',
+      'RECLAMACAO',
+      'MEDIACAO',
+      'DEVOLUCAO',
+      'DISPUTA',
+    ];
+    const categoriaMeta =
+      typeof p.meta?.categoria === 'string' && CATEGORIAS_VALIDAS.includes(p.meta.categoria)
+        ? (p.meta.categoria as ConversationCategoria)
+        : undefined;
+
     // ── Atribuição de anúncio (Click-to-WhatsApp) ──────────────────────────
     // O referral vem SÓ na 1ª mensagem da conversa. Guardamos o bloco cru em
     // metadata.atribuicao + a campanha na COLUNA utmCampaign (indexada). Regra
@@ -1341,6 +1361,8 @@ export class InboxService {
         data: {
           peerNome: p.peerNome ?? undefined,
           clienteId: clienteId ?? undefined,
+          // Só promove de GERAL — não rebaixa classificação já feita.
+          ...(categoriaMeta && existente.categoria === 'GERAL' ? { categoria: categoriaMeta } : {}),
           ...(gravarAtrib && campanha ? { utmCampaign: campanha } : {}),
           ...(nextMetadata ? { metadata: nextMetadata as Prisma.InputJsonValue } : {}),
         },
@@ -1363,6 +1385,7 @@ export class InboxService {
           clienteId,
           status: 'PENDENTE',
           naoLidas: 0,
+          ...(categoriaMeta ? { categoria: categoriaMeta } : {}),
           // Conversa NOVA: se veio de anúncio, nasce já com a atribuição.
           ...(campanha ? { utmCampaign: campanha } : {}),
           ...(() => {

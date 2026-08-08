@@ -118,6 +118,14 @@ export class DashboardResumoService {
               (COALESCE(fe."slaDias", 0) * INTERVAL '1 day') +
               (COALESCE(fe."slaHoras", 0) * INTERVAL '1 hour') < NOW()
           ${scope !== null ? Prisma.sql`AND l."representanteId" = ANY(${scope.length ? scope : ['__none__']})` : Prisma.empty}
+          ${
+            // MESMO recorte das demais métricas: funil de TRIAGEM não entra no
+            // dashboard (é fila de entrada, não pipeline). Sem isto o KPI de SLA
+            // estourado contava a triagem e divergia de tudo em volta.
+            triagemIds.length
+              ? Prisma.sql`AND (l."funilId" IS NULL OR l."funilId" != ALL(${triagemIds}))`
+              : Prisma.empty
+          }
         ORDER BY l."etapaDesde" ASC
         LIMIT 20
       `,

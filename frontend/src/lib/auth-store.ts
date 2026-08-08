@@ -277,6 +277,13 @@ async function doRefreshAccessToken(): Promise<AuthSession | null> {
       credentials: 'include', // envia cookie httpOnly
     });
     if (!res.ok) {
+      // 5xx / 429 NÃO são "sessão inválida" — são o servidor com problema. Só
+      // derruba a sessão quando o backend de fato REJEITA a credencial (401/403).
+      // Antes, um blip do servidor deslogava o usuário no meio do trabalho.
+      if (res.status >= 500 || res.status === 429) {
+        agendarRetentativaDeRefresh();
+        return getSession();
+      }
       setSession(null);
       return null;
     }
@@ -308,9 +315,24 @@ async function doRefreshAccessToken(): Promise<AuthSession | null> {
     setSession(next);
     return next;
   } catch {
-    setSession(null);
-    return null;
+    // Falha de REDE (offline, DNS, timeout): não é credencial inválida. Mantém a
+    // sessão em memória e tenta de novo em 30s — uma oscilação de conexão
+    // deslogava o usuário em silêncio, no meio de um cadastro.
+    agendarRetentativaDeRefresh();
+    return getSession();
   }
+}
+
+/**
+ * Reagenda o refresh após uma falha TRANSIENTE (rede/servidor). Curto de
+ * propósito: o access token pode estar perto de expirar.
+ */
+function agendarRetentativaDeRefresh(): void {
+  if (typeof window === 'undefined') return;
+  cancelRefresh();
+  refreshTimer = setTimeout(() => {
+    void refreshAccessToken();
+  }, 30_000);
 }
 
 /**

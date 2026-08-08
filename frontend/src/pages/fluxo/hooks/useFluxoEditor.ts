@@ -222,7 +222,16 @@ export function useFluxoEditor({
   const onNodesChangeWrap = useCallback(
     (c: NodeChange<FlowNode>[]) => {
       onNodesChange(c);
-      if (c.some((ch) => ch.type === 'position' && ch.dragging === false)) setDirty(true);
+      // 'remove' entra junto: apagar nó com Backspace (delete padrão do React
+      // Flow) não marcava dirty — o botão Salvar ficava CINZA, não dava pra
+      // persistir a remoção, e ao reabrir o nó "ressuscitava".
+      if (
+        c.some(
+          (ch) => (ch.type === 'position' && ch.dragging === false) || ch.type === 'remove',
+        )
+      ) {
+        setDirty(true);
+      }
     },
     [onNodesChange],
   );

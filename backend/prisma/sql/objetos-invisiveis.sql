@@ -33,6 +33,11 @@ CREATE UNIQUE INDEX IF NOT EXISTS "Lead_empresa_email_lower_unique"
   ON "Lead" ("empresaId", LOWER("contatoEmail"))
   WHERE "contatoEmail" IS NOT NULL AND "contatoEmail" <> '';
 
+-- ── Dedup do inbound da Inbox (20260808200000) ───────────────────────
+CREATE INDEX IF NOT EXISTS "Message_externalId_idx"
+  ON "Message" ("externalId")
+  WHERE "externalId" IS NOT NULL;
+
 -- ── Busca semântica / RAG (20260623150000) ───────────────────────────
 CREATE EXTENSION IF NOT EXISTS vector;
 

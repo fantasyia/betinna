@@ -301,7 +301,7 @@ export class EvolutionInboundService {
     // USUARIO: empresa vinculada (primeira).
     const u = await this.prisma.usuario.findUnique({
       where: { id: dono.id },
-      select: { empresas: { select: { empresaId: true }, take: 1 } },
+      select: { empresas: { select: { empresaId: true }, orderBy: { empresaId: 'asc' }, take: 1 } },
     });
     return u?.empresas[0]?.empresaId;
   }

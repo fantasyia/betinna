@@ -99,7 +99,7 @@ export class EvolutionInstanciaService {
     if (dono.type === 'EMPRESA') return dono.id;
     const u = await this.prisma.usuario.findUnique({
       where: { id: dono.id },
-      select: { empresas: { select: { empresaId: true }, take: 1 } },
+      select: { empresas: { select: { empresaId: true }, orderBy: { empresaId: 'asc' }, take: 1 } },
     });
     return u?.empresas[0]?.empresaId;
   }

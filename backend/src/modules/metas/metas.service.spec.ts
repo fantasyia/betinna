@@ -182,7 +182,9 @@ describe('MetasService', () => {
       await svc.list(fakeUser());
       const where = prisma.pedido.aggregate.mock.calls[0][0].where;
       expect(where.empresaId).toBe('emp-1');
-      expect(where.criadoEm).toEqual({ gte: inicio, lte: fim });
+      // Janela pela data de ENVIO ao OMIE — a mesma que a folha de comissão usa
+      // pra fechar o mês (com criadoEm, meta e comissão divergiam na virada).
+      expect(where.enviadoOmieEm).toEqual({ gte: inicio, lte: fim });
       expect(where.status.in).toEqual([
         'ENVIADO_OMIE',
         'PAGO',
@@ -519,5 +521,44 @@ describe('MetasService', () => {
       expect(prisma.meta.findFirst).not.toHaveBeenCalled();
       expect(prisma.meta.create).toHaveBeenCalled();
     });
+  });
+});
+
+// ─── Auditoria 2026-08: meta líquida (igual à folha) ─────────────────
+
+describe('MetasService — atingimento líquido de devolução', () => {
+  let prisma: ReturnType<typeof makePrismaMock>;
+  let svc: MetasService;
+
+  beforeEach(() => {
+    prisma = makePrismaMock();
+    svc = new MetasService(prisma as never);
+  });
+
+  it('desconta o valor devolvido do atingimento (a folha já descontava)', async () => {
+    prisma.meta.findMany.mockResolvedValue([
+      makeMetaRow({ valorAlvo: new Prisma.Decimal('10000') }),
+    ]);
+    prisma.pedido.aggregate.mockResolvedValue({
+      _sum: { total: new Prisma.Decimal('8000'), valorDevolvido: new Prisma.Decimal('3000') },
+    });
+
+    const [m] = await svc.list(fakeUser());
+
+    expect(m.atingido).toBe(5000); // 8000 vendidos − 3000 devolvidos
+    expect(m.progresso).toBe(50);
+  });
+
+  it('nunca fica negativo (devolução maior que o período)', async () => {
+    prisma.meta.findMany.mockResolvedValue([
+      makeMetaRow({ valorAlvo: new Prisma.Decimal('10000') }),
+    ]);
+    prisma.pedido.aggregate.mockResolvedValue({
+      _sum: { total: new Prisma.Decimal('1000'), valorDevolvido: new Prisma.Decimal('4000') },
+    });
+
+    const [m] = await svc.list(fakeUser());
+
+    expect(m.atingido).toBe(0);
   });
 });

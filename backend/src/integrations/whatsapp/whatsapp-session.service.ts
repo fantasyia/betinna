@@ -196,7 +196,11 @@ export class WhatsAppSessionService implements OnModuleInit, OnModuleDestroy {
       where: { servico: 'whatsapp', ativo: true },
       select: {
         usuarioId: true,
-        usuario: { select: { empresas: { select: { empresaId: true }, take: 1 } } },
+        usuario: {
+          select: {
+            empresas: { select: { empresaId: true }, orderBy: { empresaId: 'asc' }, take: 1 },
+          },
+        },
       },
     });
     if (ativas.length > 0) {

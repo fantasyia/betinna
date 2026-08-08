@@ -201,7 +201,11 @@ export class MetasService {
       status: {
         in: ['ENVIADO_OMIE', 'PAGO', 'EM_SEPARACAO', 'ENVIADO', 'ENTREGUE'],
       },
-      criadoEm: { gte: meta.inicio, lte: meta.fim },
+      // `enviadoOmieEm` (não `criadoEm`): é a data que a FOLHA DE COMISSÃO usa
+      // pra fechar o mês. Com criadoEm, um pedido criado em 30/jun e enviado em
+      // 01/jul contava em meses diferentes nos dois lugares — o rep batia a meta
+      // e não via a comissão (ou o contrário).
+      enviadoOmieEm: { gte: meta.inicio, lte: meta.fim },
     };
 
     if (meta.alvoTipo === 'REP' && meta.alvoId) {
@@ -223,11 +227,15 @@ export class MetasService {
       const count = await this.prisma.pedido.count({ where });
       return { atingido: count };
     }
+    // LÍQUIDO de devolução — mesma regra da folha (comissoes.service fecharMes
+    // subtrai valorDevolvido). Sem isso a meta contava venda que voltou.
     const agg = await this.prisma.pedido.aggregate({
       where,
-      _sum: { total: true },
+      _sum: { total: true, valorDevolvido: true },
     });
-    return { atingido: Number(agg._sum.total ?? 0) };
+    const bruto = Number(agg._sum.total ?? 0);
+    const devolvido = Number(agg._sum.valorDevolvido ?? 0);
+    return { atingido: Math.max(0, bruto - devolvido) };
   }
 
   private requireEmpresa(user: AuthenticatedUser): string {
