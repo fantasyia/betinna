@@ -107,7 +107,7 @@ describe('FunisService — uso de etapa (leadsCount + fluxosQueApontam)', () => 
 
   it('atualizarEtapa faz UPDATE (preserva o id) — não apaga e recria', async () => {
     prisma.funil.findFirst.mockResolvedValue(fakeFunil([{ id: 'et-1', nome: 'Novo' }]));
-    prisma.funilEtapa.findFirst.mockResolvedValue({ id: 'et-1', funilId: 'f1' });
+    prisma.funilEtapa.findFirst.mockResolvedValue({ id: 'et-1', funilId: 'f1', nome: 'Novo' });
     prisma.funilEtapa.update = vi.fn().mockResolvedValue({});
 
     await svc.atualizarEtapa(admin, 'f1', 'et-1', { nome: 'Em conversa' });
@@ -116,5 +116,50 @@ describe('FunisService — uso de etapa (leadsCount + fluxosQueApontam)', () => 
       expect.objectContaining({ where: { id: 'et-1' } }),
     );
     expect(prisma.funilEtapa.delete).not.toHaveBeenCalled();
+  });
+
+  it('AVISA quando o rename quebra uma CONDICAO que compara a etapa por NOME', async () => {
+    // O rename preserva o id (seguro pros nós MOVER_LEAD_ETAPA), mas condição que
+    // compara `lead.etapa_atual` por string para de casar EM SILÊNCIO. Tem que avisar.
+    prisma.funil.findFirst.mockResolvedValue(fakeFunil([{ id: 'et-1', nome: 'Descartado' }]));
+    prisma.funilEtapa.findFirst.mockResolvedValue({
+      id: 'et-1',
+      funilId: 'f1',
+      nome: 'Descartado',
+    });
+    prisma.funilEtapa.update = vi.fn().mockResolvedValue({});
+    // 1ª chamada = fluxosQueApontam (findById inicial); 2ª = condicoesQueComparamPorNome
+    prisma.$queryRaw
+      .mockResolvedValueOnce([])
+      .mockResolvedValueOnce([{ fluxoNome: 'T1', noTitulo: 'Estava em Descartado?' }])
+      .mockResolvedValue([]);
+
+    const r = await svc.atualizarEtapa(admin, 'f1', 'et-1', { nome: 'Arquivado' });
+
+    expect(r.avisos).toHaveLength(1);
+    expect(r.avisos?.[0]).toContain('T1');
+    expect(r.avisos?.[0]).toContain('lead.etapa_id');
+  });
+
+  it('NÃO avisa quando o rename não afeta condição nenhuma', async () => {
+    prisma.funil.findFirst.mockResolvedValue(fakeFunil([{ id: 'et-1', nome: 'Novo' }]));
+    prisma.funilEtapa.findFirst.mockResolvedValue({ id: 'et-1', funilId: 'f1', nome: 'Novo' });
+    prisma.funilEtapa.update = vi.fn().mockResolvedValue({});
+
+    const r = await svc.atualizarEtapa(admin, 'f1', 'et-1', { nome: 'Em conversa' });
+
+    expect(r.avisos).toBeUndefined();
+  });
+
+  it('NÃO checa condições quando o update não mexe no nome (só cor/SLA)', async () => {
+    prisma.funil.findFirst.mockResolvedValue(fakeFunil([{ id: 'et-1', nome: 'Novo' }]));
+    prisma.funilEtapa.findFirst.mockResolvedValue({ id: 'et-1', funilId: 'f1', nome: 'Novo' });
+    prisma.funilEtapa.update = vi.fn().mockResolvedValue({});
+    prisma.$queryRaw.mockClear();
+
+    await svc.atualizarEtapa(admin, 'f1', 'et-1', { slaDias: 5 });
+
+    // Só as chamadas dos dois findById (fluxosQueApontam) — nenhuma busca de condição.
+    expect(prisma.$queryRaw).toHaveBeenCalledTimes(2);
   });
 });

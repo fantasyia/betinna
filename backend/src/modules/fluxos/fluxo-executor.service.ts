@@ -563,6 +563,8 @@ export class FluxoExecutorService {
             score: true,
             etapa: true,
             variaveis: true,
+            funilId: true,
+            funilEtapaId: true,
             funil: { select: { nome: true } },
             funilEtapa: { select: { nome: true } },
             tags: { select: { tag: { select: { nome: true } } } },
@@ -582,6 +584,12 @@ export class FluxoExecutorService {
             segmento: lead.segmento ?? '',
             score: lead.score,
             etapa_atual: lead.funilEtapa?.nome ?? lead.etapa,
+            // IDs pra CONDICAO comparar de forma ESTÁVEL. `etapa_atual`/`funil`
+            // são NOME e quebram silenciosamente quando alguém renomeia a etapa
+            // (a condição só deixa de casar e o fluxo segue pelo ramo errado).
+            // Em condição, use SEMPRE `lead.etapa_id`; o nome fica pra template.
+            etapa_id: lead.funilEtapaId ?? '',
+            funil_id: lead.funilId ?? '',
             funil: lead.funil?.nome ?? '',
             tags: lead.tags.map((t) => t.tag.nome).join(', '),
             empresa: (leadVars.empresa as string | undefined) ?? lead.nome,

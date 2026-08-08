@@ -69,6 +69,7 @@ export function CondicaoEditor({
   data,
   onUpdate,
   variaveis,
+  etapasOpts,
   onRemoveSaida,
   onRenameSaida,
   onChangeModo,
@@ -76,6 +77,8 @@ export function CondicaoEditor({
   data: NodePayload;
   onUpdate: (updater: (data: NodePayload) => NodePayload) => void;
   variaveis: Array<{ id: string; chave: string }>;
+  /** Etapas de todos os funis — pro seletor quando o campo é `lead.etapa_id`. */
+  etapasOpts: Array<{ id: string; label: string }>;
   onRemoveSaida: (valor: string) => void;
   onRenameSaida: (antigo: string, novo: string) => void;
   onChangeModo: (novoModo: string) => void;
@@ -84,6 +87,11 @@ export function CondicaoEditor({
   const [novaSaida, setNovaSaida] = useState('');
   const modo = (data.config.modo as string) ?? 'simples';
   const saidas = (data.config.saidas as string[]) ?? [];
+  const campo = (data.config.campo as string) ?? '';
+  const valorAtual = ((data.config.valor as string | number | undefined) ?? '').toString();
+  // `lead.etapa_id`/`funil_id` guardam ID: o valor vira dropdown (grava id, mostra
+  // nome) em vez de texto livre — é o que impede alguém digitar o NOME de novo.
+  const ehCampoEtapa = campo === 'lead.etapa_id' || campo === 'lead.funil_id';
   const setCfg = (patch: Record<string, unknown>) =>
     onUpdate((d) => ({ ...d, config: { ...d.config, ...patch } }));
   // RESERVADOS / norm vêm do contrato central em @/pages/fluxo/lib/saidas.
@@ -175,21 +183,53 @@ export function CondicaoEditor({
         </>
       ) : (
         <>
-          <Field label="Variável / campo" hint="Ex: classificacao_final, lead.etapa">
+          <Field
+            label="Variável / campo"
+            hint="Ex: classificacao_final, lead.tags, lead.etapa_id"
+          >
             <div>
               <Input
                 list="fluxo-variaveis"
-                value={(data.config.campo as string) ?? ''}
+                value={campo}
                 onChange={(e) => setCfg({ campo: e.target.value })}
                 placeholder="classificacao_final"
               />
               <datalist id="fluxo-variaveis">
+                {/* Campos do lead que o motor entende — sem isso a única forma de
+                    descobrir era tentativa e erro. `etapa_id` vem antes de
+                    `etapa_atual` de propósito: é o estável. */}
+                <option value="lead.etapa_id" />
+                <option value="lead.funil_id" />
+                <option value="lead.tags" />
+                <option value="lead.etapa_atual" />
+                <option value="lead.segmento" />
+                <option value="lead.uf" />
+                <option value="lead.cidade" />
+                <option value="lead.score" />
                 {variaveis.map((v) => (
                   <option key={v.id} value={v.chave} />
                 ))}
               </datalist>
             </div>
           </Field>
+
+          {/* Renomear etapa NÃO quebra quem compara por id — mas quebra quem compara
+              por nome, e em silêncio. Avisa e oferece a troca com 1 clique. */}
+          {campo === 'lead.etapa_atual' && (
+            <p className="text-[11px] text-warning -mt-1">
+              ⚠️ Comparar a etapa pelo <strong>nome</strong> quebra em silêncio se alguém
+              renomear a etapa.{' '}
+              <button
+                type="button"
+                className="underline hover:text-text"
+                onClick={() => setCfg({ campo: 'lead.etapa_id', valor: '' })}
+                data-testid="condicao-trocar-para-etapa-id"
+              >
+                Usar lead.etapa_id
+              </button>{' '}
+              (estável).
+            </p>
+          )}
           <Field label="Operador">
             <Select
               size="sm"
@@ -205,11 +245,27 @@ export function CondicaoEditor({
               <option value="lte">≤ menor ou igual</option>
             </Select>
           </Field>
-          <Field label="Valor">
-            <Input
-              value={((data.config.valor as string | number | undefined) ?? '').toString()}
-              onChange={(e) => setCfg({ valor: e.target.value })}
-            />
+          <Field
+            label="Valor"
+            hint={ehCampoEtapa ? 'Escolha a etapa — grava o id, que não muda se renomearem' : undefined}
+          >
+            {ehCampoEtapa ? (
+              <Select
+                size="sm"
+                value={valorAtual}
+                onChange={(e) => setCfg({ valor: e.target.value })}
+                data-testid="condicao-valor-etapa"
+              >
+                <option value="">— escolha a etapa —</option>
+                {etapasOpts.map((e) => (
+                  <option key={e.id} value={e.id}>
+                    {e.label}
+                  </option>
+                ))}
+              </Select>
+            ) : (
+              <Input value={valorAtual} onChange={(e) => setCfg({ valor: e.target.value })} />
+            )}
           </Field>
         </>
       )}

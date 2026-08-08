@@ -1112,7 +1112,15 @@ const fluxoNoInput = z.object({
     .record(z.unknown())
     .optional()
     .describe(
-      'Config do nó (varia por tipo/ação). Trigger MENSAGEM_CANAL aceita: canais (string[], ' +
+      'Config do nó (varia por tipo/ação). ' +
+        'CONDICAO (modo "simples") usa {campo, operador, valor}; (modo "roteador") usa ' +
+        '{modo:"roteador", variavel, saidas:[...]}. Campos de lead disponíveis: ' +
+        'lead.etapa_id · lead.funil_id · lead.tags · lead.segmento · lead.uf · lead.cidade · ' +
+        'lead.score · lead.nome · lead.email · lead.whatsapp · lead.etapa_atual · lead.funil. ' +
+        '⚠️ Pra comparar ETAPA use SEMPRE `lead.etapa_id` (id, estável) — NÃO `lead.etapa_atual` ' +
+        '(nome): renomear a etapa faz a condição parar de casar SEM erro, o fluxo só desvia pro ' +
+        'outro ramo e ninguém percebe. `etapa_atual`/`funil` servem pra texto de mensagem. ' +
+        'Trigger MENSAGEM_CANAL aceita: canais (string[], ' +
         'ex: ["WHATSAPP"]), palavrasChave (string[]), modo ("qualquer"|"todas"|"exata"), ' +
         'apenasComLead (bool), apenasSemLead (bool, uso de TRIAGEM), apenasComBotLigado (bool), ' +
         'escopo ("empresa"|"pessoal"|"ambos", default "ambos" — dual-owner D38: "empresa" = só ' +

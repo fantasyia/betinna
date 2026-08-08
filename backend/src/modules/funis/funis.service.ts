@@ -61,7 +61,11 @@ export type EtapaComUso = FunilRaw['etapas'][number] & {
   fluxosQueApontam: FluxoQueAponta[];
 };
 
-export type FunilWithRel = Omit<FunilRaw, 'etapas'> & { etapas: EtapaComUso[] };
+export type FunilWithRel = Omit<FunilRaw, 'etapas'> & {
+  etapas: EtapaComUso[];
+  /** Alertas não-fatais da última operação (ex: rename que deixa condição frágil). */
+  avisos?: string[];
+};
 
 @Injectable()
 export class FunisService {
@@ -664,6 +668,14 @@ export class FunisService {
       where: { id: etapaId, funilId },
     });
     if (!etapa) throw new NotFoundException('Etapa', etapaId);
+
+    // RENAME é seguro pros nós que guardam `funilEtapaId` (o id não muda), mas
+    // NÃO pros CONDICAO que comparam a etapa por NOME (`lead.etapa_atual`).
+    // Esses param de casar em silêncio: nenhum erro, o fluxo só desvia pro outro
+    // ramo. Detecta e avisa — mesmo espírito do `fluxosQueApontam`.
+    const renomeando = dto.nome !== undefined && dto.nome !== etapa.nome;
+    const fragil = renomeando ? await this.condicoesQueComparamPorNome(etapa.nome) : [];
+
     // acaoSlaExpirado é Json nullable — null explícito precisa de Prisma.JsonNull.
     const { acaoSlaExpirado, ...rest } = dto;
     await this.prisma.funilEtapa.update({
@@ -680,7 +692,49 @@ export class FunisService {
           : {}),
       },
     });
-    return this.findById(user, funilId);
+
+    if (fragil.length > 0) {
+      const alvo = fragil.map((c) => `"${c.fluxoNome}" (nó "${c.noTitulo}")`).join(', ');
+      this.logger.warn(
+        `Etapa "${etapa.nome}" → "${dto.nome}": ${fragil.length} condição(ões) comparam essa ` +
+          `etapa por NOME e vão parar de casar em silêncio — ${alvo}. ` +
+          `Troque o campo pra "lead.etapa_id" (valor: ${etapaId}).`,
+      );
+    }
+    const funil = await this.findById(user, funilId);
+    return fragil.length > 0
+      ? {
+          ...funil,
+          avisos: fragil.map(
+            (c) =>
+              `⚠️ O fluxo "${c.fluxoNome}" tem uma condição (nó "${c.noTitulo}") que compara esta ` +
+              `etapa pelo NOME antigo ("${etapa.nome}") — vai parar de casar SEM dar erro. ` +
+              `Edite o nó pra usar o campo "lead.etapa_id" com o valor "${etapaId}".`,
+          ),
+        }
+      : funil;
+  }
+
+  /**
+   * Nós CONDICAO que comparam a etapa do lead pelo NOME (campo `lead.etapa_atual`).
+   * São os frágeis a rename — ao contrário de MOVER_LEAD_ETAPA/CRIAR_LEAD, que
+   * guardam o `funilEtapaId` e sobrevivem. Busca no JSON do nó (sem FK).
+   */
+  private async condicoesQueComparamPorNome(
+    nomeEtapa: string,
+  ): Promise<Array<{ fluxoNome: string; noTitulo: string }>> {
+    return this.prisma.$queryRaw<Array<{ fluxoNome: string; noTitulo: string }>>(Prisma.sql`
+      SELECT f.nome AS "fluxoNome", fn.titulo AS "noTitulo"
+      FROM "FluxoNo" fn
+      JOIN "Fluxo" f ON f.id = fn."fluxoId"
+      WHERE fn.tipo = 'CONDICAO'
+        AND f.status <> 'ARQUIVADO'
+        AND (
+          (fn."config" ->> 'campo' = 'lead.etapa_atual' AND fn."config" ->> 'valor' = ${nomeEtapa})
+          OR (fn."config" ->> 'variavel' = 'lead.etapa_atual'
+              AND fn."config"::text LIKE ${`%${nomeEtapa}%`})
+        )
+    `);
   }
 
   async removerEtapa(

@@ -29,6 +29,11 @@ const variaveis = [
   { id: 'v2', chave: 'canal' },
 ];
 
+const etapasOpts = [
+  { id: 'et-descartado', label: 'Triagem (WhatsApp) · Descartado' },
+  { id: 'et-novo', label: 'Triagem (WhatsApp) · Novo (inbound)' },
+];
+
 /** NodePayload representativo de CONDICAO, com config já preenchido. */
 function makeData(configOverrides: Record<string, unknown> = {}): NodePayload {
   return {
@@ -78,6 +83,7 @@ function Harness({
         });
       }}
       variaveis={variaveis}
+      etapasOpts={etapasOpts}
       onChangeModo={onChangeModo}
       onRemoveSaida={onRemoveSaida}
       onRenameSaida={onRenameSaida}
@@ -330,5 +336,64 @@ describe('CondicaoEditor — fronteira edge-aware + contrato de config-keys', ()
     fireEvent.click(screen.getByRole('button', { name: '+' }));
 
     expect(box.current.config.saidas).toEqual(['Forte', 'Fraco']);
+  });
+
+  // ─── Etapa por ID (anti-quebra-em-silêncio no rename) ──────────────
+
+  it('campo lead.etapa_id: valor vira SELECT de etapas e grava o ID', () => {
+    const initial = makeData({ campo: 'lead.etapa_id', valor: '' });
+    const box = { current: initial };
+    render(
+      <Harness
+        initial={initial}
+        box={box}
+        onChangeModo={vi.fn()}
+        onRemoveSaida={vi.fn()}
+        onRenameSaida={vi.fn()}
+      />,
+    );
+
+    const sel = screen.getByTestId('condicao-valor-etapa') as HTMLSelectElement;
+    fireEvent.change(sel, { target: { value: 'et-descartado' } });
+
+    // Grava o ID (estável), não o nome exibido.
+    expect(box.current.config.valor).toBe('et-descartado');
+  });
+
+  it('campo lead.etapa_atual: avisa da fragilidade e troca pra etapa_id em 1 clique', () => {
+    const initial = makeData({ campo: 'lead.etapa_atual', valor: 'Descartado' });
+    const box = { current: initial };
+    render(
+      <Harness
+        initial={initial}
+        box={box}
+        onChangeModo={vi.fn()}
+        onRemoveSaida={vi.fn()}
+        onRenameSaida={vi.fn()}
+      />,
+    );
+
+    fireEvent.click(screen.getByTestId('condicao-trocar-para-etapa-id'));
+
+    expect(box.current.config.campo).toBe('lead.etapa_id');
+    // Limpa o valor antigo (era um NOME, não serve como id).
+    expect(box.current.config.valor).toBe('');
+  });
+
+  it('campo comum segue com INPUT de texto livre (não vira dropdown)', () => {
+    const initial = makeData({ campo: 'classificacao_final', valor: 'forte' });
+    const box = { current: initial };
+    render(
+      <Harness
+        initial={initial}
+        box={box}
+        onChangeModo={vi.fn()}
+        onRemoveSaida={vi.fn()}
+        onRenameSaida={vi.fn()}
+      />,
+    );
+
+    expect(screen.queryByTestId('condicao-valor-etapa')).toBeNull();
+    expect(screen.queryByTestId('condicao-trocar-para-etapa-id')).toBeNull();
   });
 });

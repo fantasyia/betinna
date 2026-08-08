@@ -178,6 +178,7 @@ export function NodeInspector({
             data={data}
             onUpdate={onUpdate}
             variaveis={variaveis}
+            etapasOpts={etapasOpts}
             onRemoveSaida={onRemoveSaida}
             onRenameSaida={onRenameSaida}
             onChangeModo={onChangeModo}
