@@ -34,7 +34,7 @@ export class MetasService {
   async list(user: AuthenticatedUser): Promise<MetaComProgresso[]> {
     const empresaId = this.requireEmpresa(user);
     const metas = await this.prisma.meta.findMany({
-      where: { empresaId },
+      where: { empresaId, ...(await this.visibilidadeWhere(user)) },
       orderBy: [{ ativo: 'desc' }, { fim: 'asc' }],
     });
 
@@ -111,14 +111,17 @@ export class MetasService {
       ativo: dto.ativo,
     };
 
+    await this.assertEscopoDeEscrita(user, empresaId, data.alvoTipo, data.alvoId);
+
     if (id) {
       // IDOR guard: só edita meta da PRÓPRIA empresa. Sem isso, editar por id puro
       // deixava sobrescrever E reatribuir (data.empresaId) a meta de OUTRO tenant.
       const existente = await this.prisma.meta.findFirst({
         where: { id, empresaId },
-        select: { id: true },
+        select: { id: true, alvoTipo: true, alvoId: true },
       });
       if (!existente) throw new NotFoundException('Meta não encontrada');
+      await this.assertEscopoDeEscrita(user, empresaId, existente.alvoTipo, existente.alvoId);
       return this.prisma.meta.update({ where: { id }, data });
     }
     return this.prisma.meta.create({ data });
@@ -128,11 +131,56 @@ export class MetasService {
     const empresaId = this.requireEmpresa(user);
     const m = await this.prisma.meta.findFirst({
       where: { id, empresaId },
-      select: { id: true },
+      select: { id: true, alvoTipo: true, alvoId: true },
     });
     if (!m) throw new NotFoundException('Meta não encontrada');
+    await this.assertEscopoDeEscrita(user, empresaId, m.alvoTipo, m.alvoId);
     await this.prisma.meta.delete({ where: { id } });
     return { deleted: true };
+  }
+
+  // ─── Escopo por papel ─────────────────────────────────────
+
+  /** REP enxerga metas da empresa + as próprias; GERENTE idem + as dos seus reps. */
+  private async visibilidadeWhere(user: AuthenticatedUser): Promise<Prisma.MetaWhereInput> {
+    if (user.role === 'REP') {
+      return { OR: [{ alvoTipo: 'EMPRESA' }, { alvoId: user.id }] };
+    }
+    if (user.role === 'GERENTE') {
+      const reps = await this.prisma.usuario.findMany({
+        where: { gerenteId: user.id },
+        select: { id: true },
+      });
+      return {
+        OR: [{ alvoTipo: 'EMPRESA' }, { alvoId: { in: [user.id, ...reps.map((r) => r.id)] } }],
+      };
+    }
+    return {};
+  }
+
+  /**
+   * Escrita: alvo tem que ser usuário DESTE tenant; GERENTE só mexe em meta
+   * própria ou dos reps sob sua gerência (meta de EMPRESA é DIRECTOR/ADMIN).
+   */
+  private async assertEscopoDeEscrita(
+    user: AuthenticatedUser,
+    empresaId: string,
+    alvoTipo: string,
+    alvoId: string | null,
+  ) {
+    if (alvoId) {
+      const alvo = await this.prisma.usuario.findFirst({
+        where: { id: alvoId, empresas: { some: { empresaId } } },
+        select: { id: true, gerenteId: true },
+      });
+      if (!alvo) throw new NotFoundException('Usuário alvo não encontrado nesta empresa');
+      if (user.role === 'GERENTE' && alvo.id !== user.id && alvo.gerenteId !== user.id) {
+        throw new ForbiddenException('GERENTE só define meta pra si ou pros reps da sua gerência');
+      }
+    }
+    if (user.role === 'GERENTE' && alvoTipo === 'EMPRESA') {
+      throw new ForbiddenException('Meta da empresa é definida pelo diretor');
+    }
   }
 
   // ─── Cálculo de atingimento ────────────────────────────────

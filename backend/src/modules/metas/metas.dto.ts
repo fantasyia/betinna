@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { usuarioIdSchema } from '@shared/validators/id.schema';
 
 export const META_TIPO = ['FATURAMENTO', 'PEDIDOS'] as const;
 export const META_ALVO_TIPO = ['EMPRESA', 'REP', 'GERENTE'] as const;
@@ -11,7 +12,8 @@ export const upsertMetaSchema = z
     tipo: z.enum(META_TIPO).default('FATURAMENTO'),
     valorAlvo: z.number().min(0),
     alvoTipo: z.enum(META_ALVO_TIPO).default('REP'),
-    alvoId: z.string().cuid().nullable().optional(),
+    // Usuario.id é UUID (Supabase) — .cuid() rejeitava todo alvo REP/GERENTE com 400.
+    alvoId: usuarioIdSchema.nullable().optional(),
     periodicidade: z.enum(META_PERIODO).default('MES'),
     inicio: z.string().datetime(),
     fim: z.string().datetime(),

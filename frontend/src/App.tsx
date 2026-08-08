@@ -36,7 +36,6 @@ const PromptsBotPage = lazy(() => import('@/pages/PromptsBotPage'));
 const KnowledgePage = lazy(() => import('@/pages/KnowledgePage'));
 const BotAuditoriaPage = lazy(() => import('@/pages/BotAuditoriaPage'));
 const RespostasRapidasPage = lazy(() => import('@/pages/RespostasRapidasPage'));
-const NpsPublicoPage = lazy(() => import('@/pages/NpsPublicoPage'));
 const MetasPage = lazy(() => import('@/pages/MetasPage'));
 const SegmentosPage = lazy(() => import('@/pages/SegmentosPage'));
 const MarketplaceIncidentsPage = lazy(() => import('@/pages/MarketplaceIncidentsPage'));
@@ -118,17 +117,6 @@ const router = createBrowserRouter([
       <ErrorBoundary>
         <PageSuspense>
           <PropostaAceitePage />
-        </PageSuspense>
-      </ErrorBoundary>
-    ),
-  },
-  {
-    // NPS público em /n/:slug
-    path: '/n/:slug',
-    element: (
-      <ErrorBoundary>
-        <PageSuspense>
-          <NpsPublicoPage />
         </PageSuspense>
       </ErrorBoundary>
     ),

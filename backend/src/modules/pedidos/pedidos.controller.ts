@@ -76,6 +76,44 @@ export class PedidosController {
     return this.pedidos.bulkCancelar(user, dto.ids, dto.motivo);
   }
 
+  // ─── P6.2 — Cancelamentos ──────────────────────────────────────────────
+  // Rotas literais ANTES de @Get(':id'): declarada depois, 'cancelamentos'
+  // casaria com ':id' e a listagem morreria em 404 (mesma regra do bloco B2).
+
+  @Get('cancelamentos')
+  @RequirePermissions({ module: 'pedidos', action: 'view' })
+  @ApiOperation({
+    summary:
+      'Lista solicitações de cancelamento. DIRECTOR/ADMIN vê todas do tenant; REP/GERENTE vê só as suas.',
+  })
+  listSolicitacoesCancelamento(
+    @CurrentUser() user: AuthenticatedUser,
+    @Query(new ZodValidationPipe(listSolicitacoesCancelamentoSchema))
+    query: ListSolicitacoesCancelamentoDto,
+  ) {
+    return this.pedidos.listSolicitacoesCancelamento(user, query);
+  }
+
+  @Post('cancelamentos/:id/decidir')
+  @Roles('ADMIN', 'DIRECTOR')
+  @RequirePermissions({ module: 'pedidos', action: 'edit' })
+  @Audit({
+    action: 'decidir_cancelamento',
+    resource: 'pedido_cancelamento_solicitacao',
+    resourceIdFrom: 'params.id',
+  })
+  @ApiOperation({
+    summary:
+      'DIRECTOR/ADMIN aprova ou rejeita uma solicitação de cancelamento. APROVADA → pedido vira CANCELADO.',
+  })
+  decidirCancelamento(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param('id') id: string,
+    @Body(new ZodValidationPipe(decidirCancelamentoSchema)) dto: DecidirCancelamentoDto,
+  ) {
+    return this.pedidos.decidirCancelamento(user, id, dto);
+  }
+
   @Get()
   @RequirePermissions({ module: 'pedidos', action: 'view' })
   list(
@@ -179,39 +217,5 @@ export class PedidosController {
     @Body(new ZodValidationPipe(solicitarCancelamentoSchema)) dto: SolicitarCancelamentoDto,
   ) {
     return this.pedidos.solicitarCancelamento(user, id, dto);
-  }
-
-  @Get('cancelamentos')
-  @RequirePermissions({ module: 'pedidos', action: 'view' })
-  @ApiOperation({
-    summary:
-      'Lista solicitações de cancelamento. DIRECTOR/ADMIN vê todas do tenant; REP/GERENTE vê só as suas.',
-  })
-  listSolicitacoesCancelamento(
-    @CurrentUser() user: AuthenticatedUser,
-    @Query(new ZodValidationPipe(listSolicitacoesCancelamentoSchema))
-    query: ListSolicitacoesCancelamentoDto,
-  ) {
-    return this.pedidos.listSolicitacoesCancelamento(user, query);
-  }
-
-  @Post('cancelamentos/:id/decidir')
-  @Roles('ADMIN', 'DIRECTOR')
-  @RequirePermissions({ module: 'pedidos', action: 'edit' })
-  @Audit({
-    action: 'decidir_cancelamento',
-    resource: 'pedido_cancelamento_solicitacao',
-    resourceIdFrom: 'params.id',
-  })
-  @ApiOperation({
-    summary:
-      'DIRECTOR/ADMIN aprova ou rejeita uma solicitação de cancelamento. APROVADA → pedido vira CANCELADO.',
-  })
-  decidirCancelamento(
-    @CurrentUser() user: AuthenticatedUser,
-    @Param('id') id: string,
-    @Body(new ZodValidationPipe(decidirCancelamentoSchema)) dto: DecidirCancelamentoDto,
-  ) {
-    return this.pedidos.decidirCancelamento(user, id, dto);
   }
 }

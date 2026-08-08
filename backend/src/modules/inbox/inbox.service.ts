@@ -1198,6 +1198,14 @@ export class InboxService {
     const metaPatch: Record<string, unknown> = {};
     if (p.peerTelefone) metaPatch.telefone = p.peerTelefone;
 
+    // Chaves que os adapters de ENVIO leem do Conversation.metadata (ML pack /
+    // Shopee conv). Vêm em params.meta mas até aqui só iam pra Message.meta —
+    // resultado: responder chat pós-venda ML/Shopee pela Inbox falhava sempre.
+    const CHAVES_ADAPTER = ['ml_seller_id', 'ml_buyer_id', 'shopee_from_id'] as const;
+    for (const k of CHAVES_ADAPTER) {
+      if (p.meta?.[k] !== undefined && p.meta[k] !== null) metaPatch[k] = p.meta[k];
+    }
+
     // ── Atribuição de anúncio (Click-to-WhatsApp) ──────────────────────────
     // O referral vem SÓ na 1ª mensagem da conversa. Guardamos o bloco cru em
     // metadata.atribuicao + a campanha na COLUNA utmCampaign (indexada). Regra

@@ -555,25 +555,31 @@ export class ContatosService {
         : Prisma.empty;
 
     // 1) Descobre sufixo de telefone + email a partir do identificador informado.
+    // O lookup por id SEMPRE roda escopado (empresa + RepScope): id que não passa
+    // no escopo não entra nos sets — senão REP leria qualquer lead/cliente por id.
     let sufixo = q.telefone ? this.sufixoTel(q.telefone) : null;
     let email = q.email?.trim().toLowerCase() || null;
-    if (!sufixo && q.leadId) {
+    let leadIdAutorizado: string | null = null;
+    let clienteIdAutorizado: string | null = null;
+    if (q.leadId) {
       const l = await this.prisma.lead.findFirst({
         where: { id: q.leadId, empresaId, ...scopeWhere },
-        select: { contatoTelefone: true, contatoEmail: true },
+        select: { id: true, contatoTelefone: true, contatoEmail: true },
       });
       if (l) {
-        sufixo = this.sufixoTel(l.contatoTelefone);
+        leadIdAutorizado = l.id;
+        sufixo ??= this.sufixoTel(l.contatoTelefone);
         email ??= l.contatoEmail?.trim().toLowerCase() || null;
       }
     }
-    if (!sufixo && q.clienteId) {
+    if (q.clienteId) {
       const c = await this.prisma.cliente.findFirst({
         where: { id: q.clienteId, empresaId, ...(scopeWhere as Prisma.ClienteWhereInput) },
-        select: { telefone: true, email: true },
+        select: { id: true, telefone: true, email: true },
       });
       if (c) {
-        sufixo = this.sufixoTel(c.telefone);
+        clienteIdAutorizado = c.id;
+        sufixo ??= this.sufixoTel(c.telefone);
         email ??= c.email?.trim().toLowerCase() || null;
       }
     }
@@ -582,8 +588,8 @@ export class ContatosService {
     const leadIds = new Set<string>();
     const clienteIds = new Set<string>();
     const conversaIds = new Set<string>();
-    if (q.leadId) leadIds.add(q.leadId);
-    if (q.clienteId) clienteIds.add(q.clienteId);
+    if (leadIdAutorizado) leadIds.add(leadIdAutorizado);
+    if (clienteIdAutorizado) clienteIds.add(clienteIdAutorizado);
 
     if (sufixo) {
       const [lr, cr, cv] = await Promise.all([

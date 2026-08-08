@@ -1133,7 +1133,15 @@ const fluxoNoInput = z.object({
 const fluxoArestaInput = z.object({
   sourceNoId: z.string().min(1).describe('id (chave) do nó de origem'),
   targetNoId: z.string().min(1).describe('id (chave) do nó de destino'),
-  label: z.string().max(40).nullable().optional().describe('Ex: "true"/"false" após CONDICAO'),
+  label: z
+    .string()
+    .max(40)
+    .nullable()
+    .optional()
+    .describe(
+      'CONDICAO simples: use "Sim"/"Não" (mesmos labels do editor; o motor também aceita ' +
+        '"true"/"false" como alias). CONDICAO modo roteador: o label é o VALOR literal da saída.',
+    ),
 });
 
 interface FluxoResumo {

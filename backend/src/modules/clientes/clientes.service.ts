@@ -243,6 +243,19 @@ export class ClientesService {
   ): Promise<ClienteWithRel> {
     const existing = await this.findById(user, id);
 
+    // Mesma regra do PUT :id/omie-status: bloqueio vem do financeiro/OMIE (D2).
+    // Sem isso o PATCH geral era a porta dos fundos pro REP se desbloquear.
+    if (
+      user.role === 'REP' &&
+      dto.omieStatus !== undefined &&
+      dto.omieStatus !== existing.omieStatus
+    ) {
+      throw new ForbiddenException(
+        'REP não pode alterar o status OMIE do cliente — apenas ADMIN/DIRECTOR/GERENTE',
+        ErrorCode.TENANT_ACCESS_DENIED,
+      );
+    }
+
     if (dto.representanteId !== undefined && dto.representanteId !== existing.representanteId) {
       // Auditoria 2026-05-15, P0-3: REP não pode transferir cliente pra outro REP.
       // Mudança de representanteId é função gerencial.

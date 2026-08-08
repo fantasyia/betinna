@@ -430,6 +430,26 @@ export class FluxoExecutorService {
         ? avaliarCondicao(no.config as unknown as CondicaoConfig, contexto)
         : null;
 
+    // Alias do CONDICAO simples: o editor grava 'Sim'/'Não', mas fluxo importado
+    // (MCP/JSON) pode vir com 'true'/'false' ou sem acento — sem o alias nenhum
+    // ramo casava e a execução concluía VERDE sem executar nada. NÃO vale pro
+    // modo roteador (lá o label é o valor literal da saída, ex.: 'sim, quero').
+    const condicaoSimples =
+      no.tipo === 'CONDICAO' && (no.config as unknown as CondicaoConfig).modo !== 'roteador';
+    const casaLabel = (label: string | null): boolean => {
+      if (labelParaNavegar === null) return true;
+      if (label === labelParaNavegar) return true;
+      if (!condicaoSimples || !label) return false;
+      const n = label
+        .trim()
+        .toLowerCase()
+        .normalize('NFKD')
+        .replace(/\p{Diacritic}/gu, '');
+      return labelParaNavegar === 'Sim'
+        ? n === 'sim' || n === 'true'
+        : n === 'nao' || n === 'false';
+    };
+
     const proximosNoIds = arestas
       .filter((e: FluxoEdge) => e.sourceNoId === noId)
       .filter((e: FluxoEdge) => {
@@ -441,7 +461,7 @@ export class FluxoExecutorService {
         if (no.acaoTipo === 'CONVERSAR_IA') {
           return !e.label || !SAIDAS_RESERVADAS_IA.has(e.label);
         }
-        return labelParaNavegar === null || e.label === labelParaNavegar;
+        return casaLabel(e.label);
       })
       .map((e: FluxoEdge) => e.targetNoId);
 

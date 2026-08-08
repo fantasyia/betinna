@@ -12,6 +12,7 @@ import { useConfirm } from '@/hooks/useConfirm';
 import { useToast } from '@/components/toast';
 import { maskCNPJ, normalizeUF, formatMoeda as fmtBRL, formatNumero, formatPercent } from '@/lib/masks';
 import { PhoneInput } from '@/components/PhoneInput';
+import { useRole } from '@/hooks/usePermission';
 import { cn } from '@/lib/cn';
 
 // ─── Estilos legados traduzidos pra Tailwind ─────────────────────────
@@ -362,6 +363,10 @@ function DadosTab({
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [confirmDel, setConfirmDel] = useState(false);
+  const role = useRole();
+  // Espelha o @Roles do PUT :id/omie-status — bloqueio vem do financeiro (D2),
+  // REP não desbloqueia o próprio cliente pra fechar pedido.
+  const podeMudarOmie = role === 'ADMIN' || role === 'DIRECTOR' || role === 'GERENTE';
 
   async function save(e: React.FormEvent) {
     e.preventDefault();
@@ -473,6 +478,8 @@ function DadosTab({
           <FormField label="OMIE">
             <Select
               value={form.omieStatus}
+              disabled={!podeMudarOmie}
+              title={podeMudarOmie ? undefined : 'Status OMIE é alterado pela gestão'}
               onChange={(e) =>
                 setForm((s) => ({ ...s, omieStatus: e.target.value as OmieStatus }))
               }
@@ -1553,6 +1560,10 @@ function DocumentosTab({ clienteId }: { clienteId: string }) {
 // ─── Tab Preços especiais ────────────────────────────────────────────
 
 function PrecosTab({ clienteId }: { clienteId: string }) {
+  const role = useRole();
+  // Espelha o @Roles do backend: preço negociado define o piso do pedido sem
+  // aprovação de desconto — escrita é DIRECTOR/ADMIN (D4/D46).
+  const podeEditarPrecos = role === 'ADMIN' || role === 'DIRECTOR';
   const toast = useToast();
   const { data, loading, error, refetch } = useApiQuery<PrecoEspecial[]>(
     `/clientes/${clienteId}/precos-especiais`,
@@ -1582,14 +1593,16 @@ function PrecosTab({ clienteId }: { clienteId: string }) {
     <div className={cardCls}>
       <header className="flex justify-between items-center mb-3">
         <h3 className="m-0 text-[15px]">Preços negociados</h3>
-        <button
-          type="button"
-          data-testid="preco-add"
-          onClick={() => setAdding(true)}
-          className={btnCls}
-        >
-          + Novo preço especial
-        </button>
+        {podeEditarPrecos && (
+          <button
+            type="button"
+            data-testid="preco-add"
+            onClick={() => setAdding(true)}
+            className={btnCls}
+          >
+            + Novo preço especial
+          </button>
+        )}
       </header>
 
       <p className="text-[12px] text-muted mt-0">
@@ -1632,14 +1645,16 @@ function PrecosTab({ clienteId }: { clienteId: string }) {
                 <td className={tdStyleCls}>{p.descontoBase}%</td>
                 <td className={tdStyleCls}>{p.validoAte ? fmtDate(p.validoAte) : 'sem expiração'}</td>
                 <td className={tdStyleCls}>
-                  <button
-                    type="button"
-                    data-testid={`preco-del-${p.produtoId}`}
-                    onClick={() => delPreco(p.produtoId)}
-                    className={cn(btnDangerCls, 'px-2 py-0.5 text-[11px]')}
-                  >
-                    Remover
-                  </button>
+                  {podeEditarPrecos && (
+                    <button
+                      type="button"
+                      data-testid={`preco-del-${p.produtoId}`}
+                      onClick={() => delPreco(p.produtoId)}
+                      className={cn(btnDangerCls, 'px-2 py-0.5 text-[11px]')}
+                    >
+                      Remover
+                    </button>
+                  )}
                 </td>
               </tr>
             ))}

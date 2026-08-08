@@ -41,7 +41,6 @@ export class SegmentosService {
     }
 
     const data = {
-      empresaId,
       nome: dto.nome,
       descricao: dto.descricao ?? null,
       regrasJson: dto.regras as unknown as Prisma.InputJsonValue,
@@ -49,8 +48,17 @@ export class SegmentosService {
       ativo: dto.ativo,
     };
 
-    if (id) return this.prisma.segmento.update({ where: { id }, data });
-    return this.prisma.segmento.create({ data });
+    if (id) {
+      // Update escopado ao tenant: sem isso o id de outra empresa seria
+      // sobrescrito e re-parenteado (empresaId nunca muda num update).
+      const row = await this.prisma.segmento.findFirst({
+        where: { id, empresaId },
+        select: { id: true },
+      });
+      if (!row) throw new NotFoundException('Segmento não encontrado');
+      return this.prisma.segmento.update({ where: { id }, data });
+    }
+    return this.prisma.segmento.create({ data: { ...data, empresaId } });
   }
 
   async delete(user: AuthenticatedUser, id: string) {

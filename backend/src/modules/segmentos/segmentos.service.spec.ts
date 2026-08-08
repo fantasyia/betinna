@@ -255,19 +255,42 @@ describe('SegmentosService', () => {
   // -------------------------------------------------------------------------
 
   describe('upsert (update)', () => {
-    it('atualiza segmento existente quando id é passado', async () => {
-      prisma.segmento.findFirst.mockResolvedValue(null);
+    it('atualiza segmento existente quando id é passado (escopado ao tenant)', async () => {
+      // 1ª findFirst = conflito de nome (null); 2ª = check de pertença ao tenant.
+      prisma.segmento.findFirst.mockResolvedValueOnce(null).mockResolvedValueOnce({ id: 'seg-1' });
       prisma.segmento.update.mockResolvedValue(fakeSegmento({ nome: 'Premium' }));
 
-      const result = await service.upsert(fakeUser(), 'seg-1', upsertDto({ nome: 'Premium' }));
+      const result = await service.upsert(
+        fakeUser({ empresaIdAtiva: 'emp-9' }),
+        'seg-1',
+        upsertDto({ nome: 'Premium' }),
+      );
 
       expect(result).toEqual(fakeSegmento({ nome: 'Premium' }));
+      // Check de pertença filtra por id + empresaId do chamador.
+      expect(prisma.segmento.findFirst.mock.calls[1][0].where).toEqual({
+        id: 'seg-1',
+        empresaId: 'emp-9',
+      });
       expect(prisma.segmento.update.mock.calls[0][0].where).toEqual({ id: 'seg-1' });
+      // empresaId NUNCA entra no data do update — o dono não muda num PUT.
+      expect(prisma.segmento.update.mock.calls[0][0].data.empresaId).toBeUndefined();
       expect(prisma.segmento.create).not.toHaveBeenCalled();
     });
 
+    it('NÃO atualiza segmento de outro tenant (id fora da empresa → NotFound)', async () => {
+      prisma.segmento.findFirst
+        .mockResolvedValueOnce(null) // sem conflito de nome
+        .mockResolvedValueOnce(null); // segmento não pertence à empresa do caller
+
+      await expect(
+        service.upsert(fakeUser(), 'seg-de-outra-empresa', upsertDto({ nome: 'Hack' })),
+      ).rejects.toBeInstanceOf(NotFoundException);
+      expect(prisma.segmento.update).not.toHaveBeenCalled();
+    });
+
     it('exclui o próprio id do check de conflito (NOT) ao atualizar', async () => {
-      prisma.segmento.findFirst.mockResolvedValue(null);
+      prisma.segmento.findFirst.mockResolvedValueOnce(null).mockResolvedValueOnce({ id: 'seg-1' });
       prisma.segmento.update.mockResolvedValue(fakeSegmento());
 
       await service.upsert(fakeUser(), 'seg-1', upsertDto({ nome: 'VIP' }));

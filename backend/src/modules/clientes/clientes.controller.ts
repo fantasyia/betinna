@@ -200,6 +200,9 @@ export class ClientesController {
   }
 
   @Put(':id/omie-status')
+  // Bloqueio vem do financeiro/OMIE (D2) — REP não pode "desbloquear" o próprio
+  // cliente pra fechar pedido. Espelho manual é operação de gestão.
+  @Roles('ADMIN', 'DIRECTOR', 'GERENTE')
   @RequirePermissions({ module: 'clientes', action: 'edit' })
   @Audit({ action: 'update_omie_status', resource: 'cliente', resourceIdFrom: 'params.id' })
   @ApiOperation({

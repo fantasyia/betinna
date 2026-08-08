@@ -16,6 +16,8 @@ const makePrismaMock = () => ({
   },
   usuario: {
     findUnique: vi.fn(),
+    // Alvo default: usuário existente no tenant, sem gerente (escopo de escrita passa).
+    findFirst: vi.fn().mockResolvedValue({ id: 'rep-1', gerenteId: null }),
     findMany: vi.fn().mockResolvedValue([]),
   },
   pedido: {
@@ -396,6 +398,68 @@ describe('MetasService', () => {
       await expect(
         svc.upsert(fakeUser({ empresaIdAtiva: null }), null, baseDto),
       ).rejects.toBeInstanceOf(ForbiddenException);
+    });
+
+    it('rejeita alvoId que não pertence ao tenant (NotFound)', async () => {
+      prisma.usuario.findFirst.mockResolvedValue(null); // usuário de outra empresa
+      await expect(svc.upsert(fakeUser(), null, baseDto)).rejects.toBeInstanceOf(NotFoundException);
+      expect(prisma.meta.create).not.toHaveBeenCalled();
+    });
+
+    it('GERENTE não cria meta pra rep de OUTRA gerência (Forbidden)', async () => {
+      prisma.usuario.findFirst.mockResolvedValue({ id: 'rep-1', gerenteId: 'outro-gerente' });
+      await expect(
+        svc.upsert(fakeUser({ id: 'ger-1', role: 'GERENTE' as UserRole }), null, baseDto),
+      ).rejects.toBeInstanceOf(ForbiddenException);
+      expect(prisma.meta.create).not.toHaveBeenCalled();
+    });
+
+    it('GERENTE cria meta pro próprio rep', async () => {
+      prisma.usuario.findFirst.mockResolvedValue({ id: 'rep-1', gerenteId: 'ger-1' });
+      prisma.meta.create.mockImplementation((args: { data: unknown }) =>
+        Promise.resolve(args.data),
+      );
+      await svc.upsert(fakeUser({ id: 'ger-1', role: 'GERENTE' as UserRole }), null, baseDto);
+      expect(prisma.meta.create).toHaveBeenCalledTimes(1);
+    });
+
+    it('GERENTE não define meta de EMPRESA (Forbidden)', async () => {
+      await expect(
+        svc.upsert(fakeUser({ id: 'ger-1', role: 'GERENTE' as UserRole }), null, {
+          ...baseDto,
+          alvoTipo: 'EMPRESA',
+          alvoId: null,
+        }),
+      ).rejects.toBeInstanceOf(ForbiddenException);
+    });
+  });
+
+  // ─── visibilidade por papel ────────────────────────────────
+
+  describe('list — escopo por papel', () => {
+    it('REP só enxerga metas da empresa + as próprias', async () => {
+      prisma.meta.findMany.mockResolvedValue([]);
+      await svc.list(fakeUser({ id: 'rep-7', role: 'REP' as UserRole }));
+      const where = prisma.meta.findMany.mock.calls[0][0].where;
+      expect(where.OR).toEqual([{ alvoTipo: 'EMPRESA' }, { alvoId: 'rep-7' }]);
+    });
+
+    it('GERENTE enxerga empresa + si + reps da própria gerência', async () => {
+      prisma.usuario.findMany.mockResolvedValue([{ id: 'rep-a' }, { id: 'rep-b' }]);
+      prisma.meta.findMany.mockResolvedValue([]);
+      await svc.list(fakeUser({ id: 'ger-1', role: 'GERENTE' as UserRole }));
+      const where = prisma.meta.findMany.mock.calls[0][0].where;
+      expect(where.OR).toEqual([
+        { alvoTipo: 'EMPRESA' },
+        { alvoId: { in: ['ger-1', 'rep-a', 'rep-b'] } },
+      ]);
+    });
+
+    it('ADMIN/DIRECTOR sem filtro extra (só empresaId)', async () => {
+      prisma.meta.findMany.mockResolvedValue([]);
+      await svc.list(fakeUser());
+      const where = prisma.meta.findMany.mock.calls[0][0].where;
+      expect(where.OR).toBeUndefined();
     });
   });
 

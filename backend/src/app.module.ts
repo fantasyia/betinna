@@ -25,7 +25,7 @@ import { EvolutionWebhookModule } from '@integrations/evolution/evolution-webhoo
 import { CampanhasModule } from '@modules/campanhas/campanhas.module';
 import { DeadLetterModule } from '@modules/dead-letter/dead-letter.module';
 import { RelatoriosModule } from '@modules/relatorios/relatorios.module';
-import { NpsModule } from '@modules/nps/nps.module';
+// NpsModule desligado (produto): import removido junto do registro abaixo.
 import { MetasModule } from '@modules/metas/metas.module';
 import { SegmentosModule } from '@modules/segmentos/segmentos.module';
 import { NotificacoesModule } from '@modules/notificacoes/notificacoes.module';
@@ -242,7 +242,8 @@ import { RODAR_BACKGROUND } from '@shared/utils/service-type';
     OcorrenciasModule,
     AgendaModule,
     FluxosModule,
-    NpsModule,
+    // NpsModule DESLIGADO por decisão de produto (2026-08): NPS não vai existir.
+    // O código fica no repo mas nenhuma rota /nps é registrada.
     MetasModule,
     SegmentosModule,
     NotificacoesModule,

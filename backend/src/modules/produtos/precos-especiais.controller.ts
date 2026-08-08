@@ -13,6 +13,7 @@ import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
 import { Audit } from '@shared/decorators/audit.decorator';
 import { CurrentUser } from '@shared/decorators/current-user.decorator';
 import { RequirePermissions } from '@shared/decorators/permissions.decorator';
+import { Roles } from '@shared/decorators/roles.decorator';
 import { ZodValidationPipe } from '@shared/pipes/zod-validation.pipe';
 import type { AuthenticatedUser } from '@shared/types/authenticated-user';
 import {
@@ -37,6 +38,9 @@ export class PrecosEspeciaisController {
   }
 
   @Put()
+  // Preço negociado define o piso do pedido sem passar pela aprovação de
+  // desconto — escrita é decisão de preço da empresa (D4/D46), nunca do REP.
+  @Roles('ADMIN', 'DIRECTOR')
   @RequirePermissions({ module: 'clientes', action: 'edit' })
   @Audit({
     action: 'upsert_preco_especial',
@@ -53,6 +57,7 @@ export class PrecosEspeciaisController {
   }
 
   @Post('bulk')
+  @Roles('ADMIN', 'DIRECTOR')
   @RequirePermissions({ module: 'clientes', action: 'edit' })
   @Audit({
     action: 'bulk_upsert_preco_especial',
@@ -70,6 +75,7 @@ export class PrecosEspeciaisController {
   }
 
   @Delete(':produtoId')
+  @Roles('ADMIN', 'DIRECTOR')
   @RequirePermissions({ module: 'clientes', action: 'edit' })
   @HttpCode(HttpStatus.NO_CONTENT)
   @Audit({
