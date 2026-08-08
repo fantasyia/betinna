@@ -1,6 +1,8 @@
 import { Injectable } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { PrismaService } from '@database/prisma.service';
+import { RedisService } from '@database/redis.service';
+import { AuthGuard } from '@modules/auth/guards/auth.guard';
 import { ForbiddenException, NotFoundException } from '@shared/errors/app-exception';
 import { ErrorCode } from '@shared/errors/error-codes';
 import type { AuthenticatedUser } from '@shared/types/authenticated-user';
@@ -20,7 +22,23 @@ export class EmpresasService {
     private readonly prisma: PrismaService,
     private readonly knowledgeConfig: KnowledgeConfigService,
     private readonly evolutionInstancias: EvolutionInstanciaService,
+    private readonly redis: RedisService,
   ) {}
+
+  /**
+   * Derruba o cache de auth de todos os usuários do tenant. O AuthGuard só
+   * enxerga vínculos de empresa ATIVA, mas o cache (TTL) manteria a sessão
+   * operando no tenant recém-desativado até expirar — aqui a mudança vale já.
+   */
+  private async invalidarSessoesDoTenant(empresaId: string): Promise<void> {
+    const vinculos = await this.prisma.usuarioEmpresa.findMany({
+      where: { empresaId },
+      select: { usuarioId: true },
+    });
+    await Promise.all(
+      vinculos.map((v) => AuthGuard.invalidate(this.redis, v.usuarioId).catch(() => undefined)),
+    );
+  }
 
   /**
    * Lista as empresas que o usuário autenticado pode ACESSAR.
@@ -205,13 +223,21 @@ export class EmpresasService {
     // Cleanup on-deactivation: desconecta + deleta a instância WhatsApp central no Evolution
     // (best-effort, fire-and-forget).
     void this.evolutionInstancias.desativar({ type: 'EMPRESA', id });
+    await this.invalidarSessoesDoTenant(id);
     return atualizada;
   }
 
   async activate(user: AuthenticatedUser, id: string) {
     this.assertCanManageEmpresa(user, id);
     await this.findById(id);
-    return this.prisma.empresa.update({ where: { id }, data: { ativo: true } });
+    const atualizada = await this.prisma.empresa.update({
+      where: { id },
+      data: { ativo: true },
+    });
+    // Reativar também precisa derrubar o cache — senão os vínculos ficam de fora
+    // até o TTL expirar e o pessoal do tenant segue sem acesso.
+    await this.invalidarSessoesDoTenant(id);
+    return atualizada;
   }
 
   /**

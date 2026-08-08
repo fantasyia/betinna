@@ -70,9 +70,12 @@ type BootstrapDto = z.infer<typeof bootstrapSchema>;
 @ApiTags('auth')
 @ApiBearerAuth()
 @Controller('auth')
-// Auditoria Sprint 2: rate limit estrito em endpoints de auth.
-// 10 req/15min por IP — bloqueia brute force / token enumeration.
-@Throttle({ default: { limit: 10, ttl: seconds(15 * 60) } })
+// Rate limit estrito vale SÓ nos endpoints de CREDENCIAL (login/welcome/bootstrap)
+// — ver o @Throttle em cada um. Estava na CLASSE, e como a chave do
+// TenantThrottlerGuard é `tenant:<empresaId>` nas rotas autenticadas, os 10/15min
+// eram do TENANT INTEIRO: o 11º carregamento de app dentro da janela tomava 429
+// em /auth/me e o usuário ficava sem contexto, sem erro de credencial nenhum.
+// /me, /refresh, /logout e /signout ficam nos buckets globais (short/medium/long).
 export class AuthController {
   constructor(
     private readonly refreshTokens: RefreshTokenService,
@@ -97,10 +100,11 @@ export class AuthController {
    * por tokens e set o refresh em cookie httpOnly; o frontend só vê o
    * access (em memória).
    *
-   * Throttle estrito (10/15min do controller) já cobre brute force.
+   * Throttle estrito de credencial: 10/15min (bloqueia brute force).
    */
   @Post('login')
   @Public()
+  @Throttle({ default: { limit: 10, ttl: seconds(15 * 60) } })
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: 'Login com cookie httpOnly. Retorna accessToken+expiresAt.' })
   async login(
@@ -119,10 +123,11 @@ export class AuthController {
    * banco e abre a sessão httpOnly normal (mesmo retorno do login).
    *
    * Público (não exige token válido — o próprio body traz o token de
-   * convite). Rate limit do controller já cobre brute force.
+   * convite). Throttle estrito de credencial: 10/15min.
    */
   @Post('welcome')
   @Public()
+  @Throttle({ default: { limit: 10, ttl: seconds(15 * 60) } })
   @HttpCode(HttpStatus.OK)
   @ApiOperation({
     summary: 'Finaliza convite: valida token Supabase, seta senha, ativa usuário e abre sessão',

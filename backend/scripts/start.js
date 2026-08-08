@@ -19,7 +19,6 @@ const path = require('path');
 const SERVICE_TYPE = (process.env.SERVICE_TYPE || 'api').toLowerCase();
 
 function log(msg) {
-  // eslint-disable-next-line no-console
   console.log(`[start] ${msg}`);
 }
 

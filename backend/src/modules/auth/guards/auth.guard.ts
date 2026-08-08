@@ -156,21 +156,26 @@ export class AuthGuard implements CanActivate {
       | 'prompts'
       | 'usuarios'
       | null = null;
-    if (/\/kanban(\/|$)/.test(path)) moduloRequerido = 'kanban';
-    else if (/\/fluxos(\/|$)/.test(path)) moduloRequerido = 'fluxos';
-    else if (/\/funis(\/|$)/.test(path)) moduloRequerido = 'funis';
-    else if (/\/contatos(\/|$)/.test(path)) moduloRequerido = 'contatos';
+    // ANCORADO no 1º segmento — o regex de "contém" casava /leads/kanban, então
+    // um token de escopo `kanban` (quadros estilo Trello) lia o PIPELINE DE LEADS
+    // inteiro, com PII. Em runtime o path traz o prefixo global (/api/v1); o spec
+    // usa sem prefixo — por isso removemos o prefixo antes de ancorar.
+    const rel = path.replace(/^\/api\/v[0-9]+/, '');
+    if (/^\/kanban(\/|$)/.test(rel)) moduloRequerido = 'kanban';
+    else if (/^\/fluxos(\/|$)/.test(rel)) moduloRequerido = 'fluxos';
+    else if (/^\/funis(\/|$)/.test(rel)) moduloRequerido = 'funis';
+    else if (/^\/contatos(\/|$)/.test(rel)) moduloRequerido = 'contatos';
     // /users = leitura de usuários (id/nome/email/role) pra a master achar userId.
     // SOMENTE GET (restringido abaixo) — PAT nunca cria/edita/apaga usuário.
-    else if (/\/users(\/|$)/.test(path)) moduloRequerido = 'usuarios';
+    else if (/^\/users(\/|$)/.test(rel)) moduloRequerido = 'usuarios';
     // /crm = ações de CRM por MCP (ESCRITA: tags, mover etapa). Surface estreita e explícita.
-    else if (/\/crm(\/|$)/.test(path)) moduloRequerido = 'crm';
+    else if (/^\/crm(\/|$)/.test(rel)) moduloRequerido = 'crm';
     // /mullerbot/prompts = biblioteca de prompts da IA (ESCRITA: criar/editar prompt).
     // /mullerbot/persona = config do BOT (nome/modelo/prompt) — mesma família, mesmo
     // escopo "prompts". /mullerbot/bot/modelos = lista viva de modelos OpenAI (leitura,
     // usada pra validar o modelo no bot_config_atualizar). O RESTO do mullerbot
     // (/perguntar etc.) segue FORA do alcance do PAT.
-    else if (/\/mullerbot\/(prompts|persona|bot\/modelos)(\/|$)/.test(path))
+    else if (/^\/mullerbot\/(prompts|persona|bot\/modelos)(\/|$)/.test(rel))
       moduloRequerido = 'prompts';
     if (!moduloRequerido) {
       throw new ForbiddenException(
@@ -267,7 +272,12 @@ export class AuthGuard implements CanActivate {
     // Miss — busca DB
     const dbUser = await this.prisma.usuario.findUnique({
       where: { id: userId },
-      include: { empresas: { select: { empresaId: true } } },
+      include: {
+        // SÓ vínculos com empresa ATIVA. Sem o filtro, desativar um tenant era
+        // puramente cosmético: quem já tinha sessão seguia criando pedido e
+        // mandando WhatsApp normalmente (bastava o header X-Empresa-Id).
+        empresas: { where: { empresa: { ativo: true } }, select: { empresaId: true } },
+      },
     });
     if (!dbUser) return null;
 
@@ -346,7 +356,9 @@ export class AuthGuard implements CanActivate {
   ): string | null {
     if (requested) {
       // ADMIN é master da plataforma (cross-tenant, D48): pode operar qualquer
-      // empresa via o seletor — não precisa estar vinculado a ela.
+      // empresa via o seletor — não precisa estar vinculado a ela. Inclui tenant
+      // DESATIVADO, de propósito (suporte/reativação). Pros demais papéis, o
+      // vínculo com empresa inativa nem chega aqui: `loadUser` já os exclui.
       if (role === 'ADMIN') return requested;
       if (!empresaIds.includes(requested)) {
         throw new ForbiddenException(

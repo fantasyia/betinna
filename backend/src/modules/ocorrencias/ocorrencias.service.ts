@@ -218,7 +218,7 @@ export class OcorrenciasService {
         prioridade: ocorrencia.severidade === 'CRITICA' ? 'URGENTE' : 'ALTA',
         titulo: `Ocorrência ${ocorrencia.severidade} aberta`,
         mensagem: `${ocorrencia.numero} · ${ocorrencia.titulo}`,
-        link: `/ocorrencias/${ocorrencia.id}`,
+        link: `/ocorrencias?highlight=${ocorrencia.id}`,
         metadata: { ocorrenciaId: ocorrencia.id, severidade: ocorrencia.severidade },
       });
       // E-mail transacional pra cada GERENTE+DIRECTOR+SAC ativo da empresa
@@ -347,7 +347,7 @@ export class OcorrenciasService {
         prioridade: 'NORMAL',
         titulo: 'Ocorrência resolvida',
         mensagem: `${existing.numero} foi marcada como resolvida.`,
-        link: `/ocorrencias/${existing.id}`,
+        link: `/ocorrencias?highlight=${existing.id}`,
         metadata: { ocorrenciaId: existing.id },
       });
     }

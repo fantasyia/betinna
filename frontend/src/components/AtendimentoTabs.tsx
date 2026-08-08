@@ -15,14 +15,18 @@ import { SubTabsBar, type SubTab } from '@/components/SubTabsBar';
  *  - /inbox              → todos
  *  - /ocorrencias        → todos (SAC interno)
  *  - /incidentes         → ADMIN/DIRECTOR/GERENTE/SAC
- *  - /whatsapp           → permission 'whatsapp.pessoal'
+ *  - /whatsapp           → permission 'whatsapp.empresa'
  *
  * O Assistente IA (/mullerbot) NÃO está aqui — virou item próprio do menu
  * lateral (PageLayout → SECTIONS), com as sub-abas dele em AssistenteTabs.
  */
 export function AtendimentoTabs() {
   const role = useRole();
-  const canWhatsApp = usePermission('whatsapp.pessoal');
+  // MESMO gate da rota (App.tsx: requirePermission='whatsapp.empresa'). Estava
+  // invertido: GERENTE/REP viam a aba e caíam em /403, e o SAC — que gerencia o
+  // WhatsApp empresarial — não via a aba. REP/GERENTE só têm WhatsApp pessoal,
+  // que vive em /minhas-integracoes.
+  const canWhatsApp = usePermission('whatsapp.empresa');
 
   const canMarketplaces =
     role === 'ADMIN' ||

@@ -31,6 +31,44 @@ import type { AuthenticatedUser } from '@shared/types/authenticated-user';
  * Cliente + Cliente fica FORA desta fase: Cliente tem 15 dependentes, incluindo
  * pedidos/propostas/comissões. Fundir dinheiro merece card próprio.
  */
+/** Campos do modelo Lead que podem migrar do absorvido pro principal. */
+const CANDIDATOS_LEAD = [
+  'contatoNome',
+  'contatoEmail',
+  'contatoTelefone',
+  'cidade',
+  'uf',
+  'segmento',
+  'observacoes',
+  'proximaAcao',
+  'clienteId',
+  'representanteId',
+];
+
+/**
+ * Idem pro modelo Cliente — os nomes das colunas são OUTROS (`email`, `telefone`,
+ * `cnpj`…). Reusar a lista de Lead fazia `cliente['contatoEmail']` ser sempre
+ * undefined dos dois lados: email/telefone/cnpj nunca eram preenchidos e o
+ * sobrevivente ficava sem telefone (o match D18 da Inbox parava de resolver).
+ * `cnpj` é seguro aqui: assertCnpjCompativel roda antes e só deixa preencher
+ * quando o principal está vazio.
+ */
+const CANDIDATOS_CLIENTE = [
+  'email',
+  'telefone',
+  'cnpj',
+  'cep',
+  'endereco',
+  'numero',
+  'complemento',
+  'bairro',
+  'cidade',
+  'uf',
+  'regiao',
+  'segmento',
+  'representanteId',
+];
+
 @Injectable()
 export class ContatosMesclagemService {
   private readonly logger = new Logger(ContatosMesclagemService.name);
@@ -279,6 +317,15 @@ export class ContatosMesclagemService {
       const maisAntigo = principal.criadoEm <= absorvido.criadoEm ? principal : absorvido;
       const atribJson = this.objeto(maisAntigo.variaveis).atribuicao;
       if (atribJson) variaveis.atribuicao = atribJson;
+
+      // O e-mail MIGRA pro principal enquanto o absorvido ainda existe, e há
+      // índice único parcial por (empresa, lower(email)) — o update estourava
+      // P2002 e a mesclagem inteira dava rollback com 500. Libera o e-mail do
+      // absorvido antes (ele vai ser apagado logo abaixo; o snapshot já foi
+      // tirado do objeto em memória, então nada se perde no desfazer).
+      if ('contatoEmail' in patchCampos) {
+        await tx.lead.update({ where: { id: absorvido.id }, data: { contatoEmail: null } });
+      }
 
       await tx.lead.update({
         where: { id: principal.id },
@@ -547,7 +594,10 @@ export class ContatosMesclagemService {
     this.assertCnpjCompativel(principal, absorvido);
 
     // Campos do absorvido que preenchem buraco no principal (nunca sobrescreve).
-    const campos = this.camposAPreencher(principal, absorvido);
+    // Candidatos de CLIENTE — o default é a lista de LEAD ('contatoEmail' etc.),
+    // que em Cliente é sempre undefined: email/telefone/cnpj nunca migravam e o
+    // sobrevivente ficava sem telefone (quebrando o match D18 da Inbox).
+    const campos = this.camposAPreencher(principal, absorvido, CANDIDATOS_CLIENTE);
     const patchCampos = Object.fromEntries(campos.map((c) => [c.campo, c.valor]));
 
     const mesclagemId = await this.prisma.$transaction(async (tx) => {
@@ -962,19 +1012,8 @@ export class ContatosMesclagemService {
   private camposAPreencher(
     principal: Record<string, unknown>,
     absorvido: Record<string, unknown>,
+    candidatos: string[] = CANDIDATOS_LEAD,
   ): Array<{ campo: string; valor: unknown }> {
-    const candidatos = [
-      'contatoNome',
-      'contatoEmail',
-      'contatoTelefone',
-      'cidade',
-      'uf',
-      'segmento',
-      'observacoes',
-      'proximaAcao',
-      'clienteId',
-      'representanteId',
-    ];
     const out: Array<{ campo: string; valor: unknown }> = [];
     for (const campo of candidatos) {
       const vazio =

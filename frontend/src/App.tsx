@@ -1,5 +1,5 @@
 import { lazy, Suspense } from 'react';
-import { createBrowserRouter, RouterProvider, Navigate } from 'react-router-dom';
+import { createBrowserRouter, RouterProvider, Navigate, useParams } from 'react-router-dom';
 import { ErrorBoundary } from '@/components/ErrorBoundary';
 import { ProtectedRoute } from '@/components/ProtectedRoute';
 import { PwaBanner } from '@/components/PwaBanner';
@@ -82,6 +82,12 @@ function PageSuspense({ children }: { children: React.ReactNode }) {
       {children}
     </Suspense>
   );
+}
+
+/** Compat de links antigos: /ocorrencias/:id → /ocorrencias?highlight=:id. */
+function RedirectOcorrencia() {
+  const { id } = useParams();
+  return <Navigate to={`/ocorrencias${id ? `?highlight=${id}` : ''}`} replace />;
 }
 
 const router = createBrowserRouter([
@@ -658,6 +664,13 @@ const router = createBrowserRouter([
         </ProtectedRoute>
       </ErrorBoundary>
     ),
+  },
+  {
+    // Notificações ANTIGAS já gravadas apontam pra /ocorrencias/:id, que não
+    // existia — o catch-all mandava pro dashboard e o ticket sumia. Redireciona
+    // pro formato que a página consome (?highlight=).
+    path: '/ocorrencias/:id',
+    element: <RedirectOcorrencia />,
   },
   {
     path: '/produtos',

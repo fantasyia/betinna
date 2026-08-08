@@ -272,6 +272,11 @@ export class EvolutionInboundService {
           ...(extras ?? {}),
           jid: peerId,
           provider: 'evolution',
+          // LID do contato quando a mensagem veio com o telefone real junto.
+          // O Evolution ora entrega `<id>@lid` COM remoteJidAlt, ora SEM — sem
+          // esse mapeamento, a segunda variante abria uma conversa paralela
+          // (peerId = LID opaco), sem telefone e sem cliente vinculado.
+          ...(rjid.endsWith('@lid') && rjidAlt ? { lid: rjid } : {}),
           // Click-to-WhatsApp: o referral do anúncio vem SÓ na 1ª mensagem da
           // conversa. Extraímos aqui (é onde o proto do Baileys chega inteiro) e
           // o InboxService grava na Conversation com 1ª-vez-vence.

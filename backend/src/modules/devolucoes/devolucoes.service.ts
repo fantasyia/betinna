@@ -202,7 +202,15 @@ export class DevolucoesService {
   ): Promise<void> {
     const pedido = await tx.pedido.findUnique({
       where: { id: dev.pedidoId },
-      select: { total: true, comissao: true, comissaoEstornada: true, valorDevolvido: true },
+      select: {
+        total: true,
+        comissao: true,
+        comissaoEstornada: true,
+        valorDevolvido: true,
+        empresaId: true,
+        representanteId: true,
+        enviadoOmieEm: true,
+      },
     });
     if (!pedido) return;
     const total = Number(pedido.total);
@@ -235,6 +243,69 @@ export class DevolucoesService {
     this.logger.log(
       `Estorno comissão dev ${dev.numero}: pedido ${dev.pedidoId} -R$${estorno.toFixed(2)} ` +
         `(devolvido R$${valorDev.toFixed(2)}/${total.toFixed(2)})`,
+    );
+
+    // O `fecharMes` só desconta o estorno se rodar DEPOIS. Com janela de
+    // devolução de até 60 dias, o normal é a devolução ser aprovada com o mês do
+    // pedido JÁ FECHADO — e como o cron roda com reprocessar=false, o upsert
+    // daquela linha vira no-op: a comissão ficava paga sobre venda devolvida,
+    // sem nenhum alerta. Aqui ajustamos a linha na hora (se ainda não foi paga)
+    // ou avisamos alto (se já foi).
+    await this.ajustarComissaoJaFechada(tx, pedido, estorno, valorDev, dev.numero);
+  }
+
+  /** Desconta o estorno numa Comissao já fechada, ou alerta se já foi paga. */
+  private async ajustarComissaoJaFechada(
+    tx: Prisma.TransactionClient,
+    pedido: {
+      empresaId: string;
+      representanteId: string | null;
+      enviadoOmieEm: Date | null;
+    },
+    estorno: number,
+    valorDev: number,
+    devNumero: string | number,
+  ): Promise<void> {
+    if (!pedido.representanteId || !pedido.enviadoOmieEm || estorno <= 0) return;
+
+    // MESMO offset BRT do fecharMes — senão pedido de virada de mês cai no mês
+    // errado e o ajuste bate na linha vizinha.
+    const OFFSET_BRT_MS = 3 * 60 * 60 * 1000;
+    const ref = new Date(pedido.enviadoOmieEm.getTime() - OFFSET_BRT_MS);
+    const ano = ref.getUTCFullYear();
+    const mes = ref.getUTCMonth() + 1;
+
+    const comissao = await tx.comissao.findFirst({
+      where: {
+        empresaId: pedido.empresaId,
+        representanteId: pedido.representanteId,
+        tipo: 'REP',
+        ano,
+        mes,
+      },
+      select: { id: true, pago: true, totalComissao: true, totalVendas: true },
+    });
+    // Mês ainda não fechado: o fechamento futuro já agrega o líquido. Nada a fazer.
+    if (!comissao) return;
+
+    if (comissao.pago) {
+      this.logger.warn(
+        `⚠️ Devolução ${devNumero}: comissão de ${mes}/${ano} do rep ${pedido.representanteId} ` +
+          `JÁ FOI PAGA — estorno de R$${estorno.toFixed(2)} precisa de acerto MANUAL na próxima folha.`,
+      );
+      return;
+    }
+
+    await tx.comissao.update({
+      where: { id: comissao.id },
+      data: {
+        totalComissao: { decrement: estorno },
+        totalVendas: { decrement: valorDev },
+      },
+    });
+    this.logger.log(
+      `Devolução ${devNumero}: comissão fechada de ${mes}/${ano} ajustada ` +
+        `(-R$${estorno.toFixed(2)}) antes do pagamento.`,
     );
   }
 }

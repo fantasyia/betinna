@@ -470,21 +470,34 @@ export class LeadsService {
         dto.funilEtapaId = primeira.id;
       }
     }
-    await this.prisma.lead.updateMany({
-      where: { id, empresaId: existing.empresaId },
-      data: dto,
-    });
-    // Histórico: o update também pode mover de etapa (form de edição do lead com
-    // funil/etapa). Só registra quando a etapa REALMENTE muda.
-    if (dto.funilEtapaId && dto.funilEtapaId !== existing.funilEtapaId) {
-      await registrarTransicaoEtapa(this.prisma, this.logger, {
-        empresaId: existing.empresaId,
-        leadId: id,
-        funilId: dto.funilId ?? existing.funilId,
-        etapaOrigem: existing.funilEtapaId ?? existing.etapa,
-        etapaDestino: dto.funilEtapaId,
-        quem: user.id,
-        origemMudanca: 'manual',
+    // `semFunil` não é coluna (o create desestrutura antes de gravar) e mover de
+    // etapa é responsabilidade do moverEtapa — ver abaixo.
+    const { semFunil: _semFunil, funilId: _fId, funilEtapaId: _feId, ...dadosLead } = dto;
+    void _semFunil;
+    void _fId;
+    void _feId;
+    const mudouEtapa = Boolean(dto.funilEtapaId && dto.funilEtapaId !== existing.funilEtapaId);
+
+    if (Object.keys(dadosLead).length > 0) {
+      await this.prisma.lead.updateMany({
+        where: { id, empresaId: existing.empresaId },
+        data: dadosLead,
+      });
+    }
+
+    if (mudouEtapa) {
+      // DELEGA pro moverEtapa em vez de gravar funil/etapa no cru. O updateMany
+      // com o dto inteiro não sincronizava o enum legado `etapa`, não zerava
+      // `etapaDesde`/`proximoSlaEm` (o cron de SLA disparava a ação da etapa
+      // nova NA HORA, usando o carimbo antigo), não tratava GANHO/PERDIDO e não
+      // disparava LEAD_ETAPA_MUDOU — nenhuma automação de etapa rodava quando a
+      // troca vinha pelo formulário de edição.
+      await this.moverEtapa(user, id, { funilEtapaId: dto.funilEtapaId as string });
+    } else if (dto.funilId && dto.funilId !== existing.funilId) {
+      // Só o funil mudou (a etapa alvo já foi resolvida acima e é a mesma).
+      await this.prisma.lead.updateMany({
+        where: { id, empresaId: existing.empresaId },
+        data: { funilId: dto.funilId },
       });
     }
     return this.prisma.lead.findUniqueOrThrow({ where: { id }, include: leadInclude });

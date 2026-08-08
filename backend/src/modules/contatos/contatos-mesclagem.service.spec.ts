@@ -127,7 +127,12 @@ describe('ContatosMesclagemService', () => {
       // que trouxe o contato, então a campanha dele é que vale.
       await svc.mesclarLeads(user(), 'lead-novo', 'lead-velho');
 
-      const patch = prisma.tx.lead.update.mock.calls[0][0].data;
+      // O 1º update pode ser o que LIBERA o e-mail do absorvido (índice único
+      // parcial por empresa+lower(email) estourava P2002 no update do principal).
+      // O patch do principal é o update que traz `variaveis`.
+      const patch = prisma.tx.lead.update.mock.calls.find(
+        (c: [{ data: Record<string, unknown> }]) => 'variaveis' in c[0].data,
+      )![0].data;
       expect(patch.utmCampaign).toBe('vtcd-alimenticia');
       expect(patch.utmSource).toBe('google');
       expect(patch.origemCadastro).toBe('site');
@@ -140,7 +145,12 @@ describe('ContatosMesclagemService', () => {
     it('preenche buraco do principal com dado do absorvido, sem sobrescrever o que já tem', async () => {
       await svc.mesclarLeads(user(), 'lead-novo', 'lead-velho');
 
-      const patch = prisma.tx.lead.update.mock.calls[0][0].data;
+      // O 1º update pode ser o que LIBERA o e-mail do absorvido (índice único
+      // parcial por empresa+lower(email) estourava P2002 no update do principal).
+      // O patch do principal é o update que traz `variaveis`.
+      const patch = prisma.tx.lead.update.mock.calls.find(
+        (c: [{ data: Record<string, unknown> }]) => 'variaveis' in c[0].data,
+      )![0].data;
       // Principal não tinha e-mail → herda do absorvido.
       expect(patch.contatoEmail).toBe('contato@acme.com');
       // Principal JÁ tinha telefone e cidade → intocados (nem aparecem no patch).

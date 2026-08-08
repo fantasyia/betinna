@@ -229,7 +229,7 @@ export class TransactionalEmailService {
       titulo: params.titulo,
       severidade: params.severidade,
       slaHoras: params.slaHoras,
-      ocorrenciaUrl: this.safeUrl(`/ocorrencias/${params.ocorrenciaId}`),
+      ocorrenciaUrl: this.safeUrl(`/ocorrencias?highlight=${params.ocorrenciaId}`),
     });
     return this.send(params.para, assunto, html);
   }

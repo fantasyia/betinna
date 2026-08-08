@@ -17,6 +17,9 @@ const makePrismaMock = () => ({
     create: vi.fn(),
     update: vi.fn(),
   } satisfies MockModel,
+  // Desativar/reativar derruba o cache de auth dos usuários do tenant (senão a
+  // sessão seguia operando na empresa desativada até o TTL expirar).
+  usuarioEmpresa: { findMany: vi.fn().mockResolvedValue([]) } satisfies MockModel,
   $transaction: vi.fn(),
 });
 
@@ -53,6 +56,7 @@ describe('EmpresasService', () => {
         sincronizar: vi.fn(async () => undefined),
       } as never,
       { desativar: vi.fn() } as never,
+      { del: vi.fn().mockResolvedValue(1) } as never,
     );
   });
 

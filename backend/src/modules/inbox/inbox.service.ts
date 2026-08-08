@@ -1215,8 +1215,12 @@ export class InboxService {
     const referral = p.meta?.ctwaReferral as Record<string, unknown> | undefined;
     const campanha = referral ? campanhaDoReferral(referral as CtwaReferral) : undefined;
 
+    // Guarda o LID do contato (quando o adapter informa) pra casar a mensagem
+    // que vier SÓ com o LID lá embaixo.
+    if (typeof p.meta?.lid === 'string') metaPatch.lid = p.meta.lid;
+
     // Lookup primeiro
-    const existente = await this.prisma.conversation.findFirst({
+    let existente = await this.prisma.conversation.findFirst({
       where: {
         empresaId: p.empresaId,
         canal: p.canal,
@@ -1224,6 +1228,20 @@ export class InboxService {
         proprietarioId: propId,
       },
     });
+    // Fallback do LID: o WhatsApp entrega `<id>@lid` ora COM o telefone real
+    // (remoteJidAlt), ora SEM. Sem este segundo lookup, a variante sem telefone
+    // criava uma conversa PARALELA do mesmo contato — sem cliente vinculado,
+    // sem histórico, e a triagem gerava um lead fantasma sem telefone.
+    if (!existente && p.peerId.endsWith('@lid')) {
+      existente = await this.prisma.conversation.findFirst({
+        where: {
+          empresaId: p.empresaId,
+          canal: p.canal,
+          proprietarioId: propId,
+          metadata: { path: ['lid'], equals: p.peerId },
+        },
+      });
+    }
     if (existente) {
       // Mescla avatarUrl/telefone na metadata existente quando o adapter informa.
       const metaAtual = (existente.metadata as Record<string, unknown> | null) ?? {};

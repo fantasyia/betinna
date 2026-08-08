@@ -27,7 +27,7 @@ ${RED}${BOLD}❌ db:push está bloqueado.${RESET}
 Schema do banco DEVE evoluir por migrations versionadas, não por push direto.
 
 ${BOLD}Use:${RESET}
-  ${YELLOW}npm run db:migrate -- --name <descricao_curta>${RESET}
+  ${YELLOW}escreva prisma/migrations/<ts>_<nome>/migration.sql à mão + npm run db:update-hash${RESET}
 
 Isso gera ${BOLD}prisma/migrations/<timestamp>_<descricao>/migration.sql${RESET}
 que pode ser commitado e aplicado em produção via ${BOLD}prisma migrate deploy${RESET}.

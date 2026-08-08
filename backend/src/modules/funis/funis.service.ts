@@ -463,14 +463,41 @@ export class FunisService {
   private async fluxosPorEtapaIds(etapaIds: string[]): Promise<Map<string, FluxoQueAponta[]>> {
     const mapa = new Map<string, FluxoQueAponta[]>();
     if (etapaIds.length === 0) return mapa;
+    // TODAS as formas de um nó apontar pra uma etapa — cada tipo guarda numa
+    // chave diferente. Só a 1ª era coberta: apagar uma etapa vazia que era
+    // `paraEtapa` de um gatilho, ou origem/destino de um LIBERAR_LOTE, passava
+    // sem aviso e o fluxo parava de disparar em silêncio.
     const rows = await this.prisma.$queryRaw<
       Array<{ etapaId: string; id: string; nome: string; status: string; acaoTipo: string }>
     >(Prisma.sql`
-      SELECT fn."config" ->> 'funilEtapaId' AS "etapaId", f.id, f.nome, f.status, fn."acaoTipo"
-      FROM "FluxoNo" fn
-      JOIN "Fluxo" f ON f.id = fn."fluxoId"
-      WHERE fn."acaoTipo" IN ('MOVER_LEAD_ETAPA', 'CRIAR_LEAD')
-        AND fn."config" ->> 'funilEtapaId' IN (${Prisma.join(etapaIds)})
+      SELECT "etapaId", id, nome, status, "acaoTipo" FROM (
+        SELECT fn."config" ->> 'funilEtapaId' AS "etapaId", f.id, f.nome, f.status,
+               COALESCE(fn."acaoTipo"::text, fn.tipo::text) AS "acaoTipo"
+          FROM "FluxoNo" fn JOIN "Fluxo" f ON f.id = fn."fluxoId"
+         WHERE fn."config" ->> 'funilEtapaId' IS NOT NULL
+        UNION ALL
+        SELECT fn."config" ->> 'paraEtapa', f.id, f.nome, f.status, 'TRIGGER'
+          FROM "FluxoNo" fn JOIN "Fluxo" f ON f.id = fn."fluxoId"
+         WHERE fn."config" ->> 'paraEtapa' IS NOT NULL
+        UNION ALL
+        SELECT fn."config" ->> 'deEtapa', f.id, f.nome, f.status, 'TRIGGER'
+          FROM "FluxoNo" fn JOIN "Fluxo" f ON f.id = fn."fluxoId"
+         WHERE fn."config" ->> 'deEtapa' IS NOT NULL
+        UNION ALL
+        SELECT fn."config" ->> 'etapaOrigemId', f.id, f.nome, f.status, 'LIBERAR_LOTE'
+          FROM "FluxoNo" fn JOIN "Fluxo" f ON f.id = fn."fluxoId"
+         WHERE fn."config" ->> 'etapaOrigemId' IS NOT NULL
+        UNION ALL
+        SELECT fn."config" ->> 'etapaDestinoId', f.id, f.nome, f.status, 'LIBERAR_LOTE'
+          FROM "FluxoNo" fn JOIN "Fluxo" f ON f.id = fn."fluxoId"
+         WHERE fn."config" ->> 'etapaDestinoId' IS NOT NULL
+        UNION ALL
+        -- CONDICAO comparando lead.etapa_id (valor = id da etapa).
+        SELECT fn."config" ->> 'valor', f.id, f.nome, f.status, 'CONDICAO'
+          FROM "FluxoNo" fn JOIN "Fluxo" f ON f.id = fn."fluxoId"
+         WHERE fn.tipo = 'CONDICAO' AND fn."config" ->> 'campo' = 'lead.etapa_id'
+      ) refs
+      WHERE "etapaId" IN (${Prisma.join(etapaIds)})
     `);
     for (const r of rows) {
       const lista = mapa.get(r.etapaId) ?? [];
@@ -663,7 +690,9 @@ export class FunisService {
     etapaId: string,
     dto: UpdateFunilEtapaDto,
   ): Promise<FunilWithRel> {
-    this.assertPodeEditar(user, await this.findById(user, funilId)); // valida acesso + proteção
+    const funilDaEtapa = await this.findById(user, funilId);
+    this.assertPodeEditar(user, funilDaEtapa); // valida acesso + proteção
+    const empresaId = funilDaEtapa.empresaId;
     const etapa = await this.prisma.funilEtapa.findFirst({
       where: { id: etapaId, funilId },
     });
@@ -674,7 +703,7 @@ export class FunisService {
     // Esses param de casar em silêncio: nenhum erro, o fluxo só desvia pro outro
     // ramo. Detecta e avisa — mesmo espírito do `fluxosQueApontam`.
     const renomeando = dto.nome !== undefined && dto.nome !== etapa.nome;
-    const fragil = renomeando ? await this.condicoesQueComparamPorNome(etapa.nome) : [];
+    const fragil = renomeando ? await this.condicoesQueComparamPorNome(empresaId, etapa.nome) : [];
 
     // acaoSlaExpirado é Json nullable — null explícito precisa de Prisma.JsonNull.
     const { acaoSlaExpirado, ...rest } = dto;
@@ -721,6 +750,7 @@ export class FunisService {
    * guardam o `funilEtapaId` e sobrevivem. Busca no JSON do nó (sem FK).
    */
   private async condicoesQueComparamPorNome(
+    empresaId: string,
     nomeEtapa: string,
   ): Promise<Array<{ fluxoNome: string; noTitulo: string }>> {
     return this.prisma.$queryRaw<Array<{ fluxoNome: string; noTitulo: string }>>(Prisma.sql`
@@ -728,6 +758,7 @@ export class FunisService {
       FROM "FluxoNo" fn
       JOIN "Fluxo" f ON f.id = fn."fluxoId"
       WHERE fn.tipo = 'CONDICAO'
+        AND f."empresaId" = ${empresaId}
         AND f.status <> 'ARQUIVADO'
         AND (
           (fn."config" ->> 'campo' = 'lead.etapa_atual' AND fn."config" ->> 'valor' = ${nomeEtapa})

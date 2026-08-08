@@ -22,7 +22,7 @@
     "db:generate": "prisma generate",
     "db:push": "node scripts/guard-db-push.js",
     "db:push:force": "dotenv -e .env.local -- prisma db push",
-    "db:migrate": "dotenv -e .env.local -- prisma migrate dev && node scripts/update-schema-hash.js",
+    "db:migrate": "node scripts/guard-migrate-dev.js",
     "db:migrate:deploy": "prisma migrate deploy",
     "db:check-drift": "node scripts/check-migration-drift.js",
     "db:update-hash": "node scripts/update-schema-hash.js",

@@ -100,7 +100,15 @@ scripts/  — deploy helpers (start.js, deploy-migrations.js)
 
 1. **Antes de implementar feature visual**: leia `BRANDBOOK.md`
 2. **Antes de mexer em deploy/Railway**: lembra que healthcheck é só api
-3. **Antes de criar migration**: rodar `prisma migrate dev` local primeiro
+3. **Migration NUNCA por `prisma migrate dev`** — `backend/.env.local` aponta pro
+   Postgres de **PRODUÇÃO** (não existe banco dev), e `migrate dev` detecta drift
+   e OFERECE RESET do banco. O fluxo real é:
+   a. escrever `backend/prisma/migrations/<timestamp>_<nome>/migration.sql` à mão;
+   b. `npm run db:update-hash`;
+   c. deixar o deploy aplicar no startup (`scripts/deploy-migrations.js`).
+   Índice que não existe no `schema.prisma` (unique parcial, índice de expressão)
+   vai TAMBÉM em `backend/prisma/sql/objetos-invisiveis.sql` — senão o fallback
+   `db push` do deploy o apaga em silêncio.
 4. **Sempre criar commit novo** — nunca `--amend` em pre-commit hook failure
 5. **Nunca pular hooks** com `--no-verify`
 6. **Idioma**: PR titles e commits em pt-BR, código em inglês ou pt-BR consistente com o arquivo

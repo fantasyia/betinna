@@ -24,7 +24,6 @@
 const { spawnSync } = require('child_process');
 
 function log(msg) {
-  // eslint-disable-next-line no-console
   console.log(`[deploy-migrations] ${msg}`);
 }
 
@@ -78,6 +77,34 @@ function isTransientNetworkError(prismaOutput) {
  * Verifica se uma tabela existe usando prisma db execute.
  * Retorna true/false/null (null = não conseguiu determinar).
  */
+/**
+ * Reaplica os objetos que o Prisma não conhece (índices só-SQL) — o
+ * `db push` os REMOVE ao reconciliar o schema, com exit 0 e log de sucesso.
+ * Entre eles estão os dois UNIQUE parciais que protegem o upsert da Inbox
+ * contra corrida. Todos os statements são idempotentes.
+ */
+function reaplicarObjetosInvisiveis() {
+  const fs = require('fs');
+  const path = require('path');
+  const arquivo = path.join(__dirname, '..', 'prisma', 'sql', 'objetos-invisiveis.sql');
+  if (!fs.existsSync(arquivo)) {
+    log(`⚠️ ${arquivo} não encontrado — índices só-SQL NÃO foram reaplicados.`);
+    return false;
+  }
+  const res = spawnSync('npx', ['prisma', 'db', 'execute', '--stdin'], {
+    input: fs.readFileSync(arquivo, 'utf-8'),
+    encoding: 'utf-8',
+    shell: process.platform === 'win32',
+  });
+  if (res.status !== 0) {
+    log('❌ Falha ao reaplicar os índices só-SQL (objetos-invisiveis.sql):');
+    if (res.stderr) process.stderr.write(res.stderr);
+    return false;
+  }
+  log('✅ Índices só-SQL reaplicados (unique parciais da Inbox, sufixo de telefone, HNSW).');
+  return true;
+}
+
 function tableExists(tableName) {
   const sql = `SELECT EXISTS (
     SELECT FROM information_schema.tables
@@ -206,6 +233,13 @@ async function main() {
       process.exit(1);
     }
     log('✅ db push sincronizou schema com DB.');
+    // OBRIGATÓRIO após db push: ele acabou de dropar os índices que o Prisma
+    // não conhece. Sem isto o app sobe "verde" mas sem a proteção de corrida
+    // da Inbox (contato ganha 2 conversas) e sem os índices de match D18.
+    if (!reaplicarObjetosInvisiveis()) {
+      log('❌ Schema sincronizado mas SEM os índices só-SQL — abortando o deploy.');
+      process.exit(1);
+    }
   } else {
     log('✅ Migrate deploy completou com sucesso.');
   }

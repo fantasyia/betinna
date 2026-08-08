@@ -120,3 +120,65 @@ describe('AuthGuard — token de API (bkt_) em /funis', () => {
     await expect(guard.canActivate(ctx)).rejects.toBeInstanceOf(ForbiddenException);
   });
 });
+
+// ─── Auditoria 2026-08: escopo do PAT ancorado no 1º segmento ─────────
+
+describe('AuthGuard — escopo do bkt_ não vaza por rota que CONTÉM o nome', () => {
+  let guard: AuthGuard;
+  let prisma: {
+    kanbanApiToken: { findUnique: ReturnType<typeof vi.fn>; update: ReturnType<typeof vi.fn> };
+    usuario: { findUnique: ReturnType<typeof vi.fn> };
+  };
+
+  beforeEach(() => {
+    prisma = {
+      kanbanApiToken: {
+        findUnique: vi.fn().mockResolvedValue({
+          id: 'tok-1',
+          empresaId: 'emp-1',
+          usuarioId: 'u1',
+          escopo: ['kanban'],
+          revogado: false,
+        }),
+        update: vi.fn().mockResolvedValue({}),
+      },
+      usuario: { findUnique: vi.fn().mockResolvedValue(bktUser) },
+    };
+    const redis = {
+      get: vi.fn().mockResolvedValue(null),
+      setNxEx: vi.fn().mockResolvedValue(true),
+      setEx: vi.fn().mockResolvedValue(undefined),
+    };
+    const reflector = { getAllAndOverride: vi.fn().mockReturnValue(false) };
+    guard = new AuthGuard(
+      reflector as unknown as Reflector,
+      {} as never,
+      prisma as never,
+      redis as never,
+      { get: () => 300 } as never,
+    );
+  });
+
+  it('token de escopo "kanban" NÃO acessa /leads/kanban (pipeline de leads, PII)', async () => {
+    // O regex de "contém" casava /leads/kanban: um token vendido como acesso aos
+    // QUADROS lia o funil de leads inteiro.
+    const ctx = fakeContext({
+      method: 'GET',
+      path: '/api/v1/leads/kanban',
+      headers: { authorization: 'Bearer bkt_abc' },
+    });
+
+    await expect(guard.canActivate(ctx)).rejects.toBeInstanceOf(ForbiddenException);
+  });
+
+  it('o quadro de verdade (/kanban) segue passando, com ou sem prefixo da API', async () => {
+    for (const path of ['/kanban/boards', '/api/v1/kanban/boards']) {
+      const ctx = fakeContext({
+        method: 'GET',
+        path,
+        headers: { authorization: 'Bearer bkt_abc' },
+      });
+      await expect(guard.canActivate(ctx)).resolves.toBe(true);
+    }
+  });
+});

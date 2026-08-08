@@ -229,17 +229,24 @@ describe('LeadsService', () => {
       prisma.lead.updateMany.mockResolvedValue({ count: 1 });
       prisma.lead.findUniqueOrThrow.mockResolvedValue({ id: 'l1', etapa: 'NOVO' });
 
+      // A troca de etapa é DELEGADA ao moverEtapa (que sincroniza o enum legado,
+      // zera etapaDesde/SLA e dispara LEAD_ETAPA_MUDOU) — antes o update gravava
+      // funil/etapa no cru e nada disso acontecia.
+      const mover = vi.spyOn(svc, 'moverEtapa').mockResolvedValue({ id: 'l1' } as never);
+
       await svc.update(fakeUser(), 'l1', { funilId: 'funil-B' }); // SEM funilEtapaId
 
-      // Resolveu a 1ª etapa ATIVA e gravou no update (senão o lead sumiria do kanban).
+      // Resolveu a 1ª etapa ATIVA do funil novo (senão o lead sumiria do kanban).
       expect(prisma.funilEtapa.findFirst).toHaveBeenCalledWith(
         expect.objectContaining({
           where: { funilId: 'funil-B', tipo: 'ATIVA' },
           orderBy: { ordem: 'asc' },
         }),
       );
-      const data = prisma.lead.updateMany.mock.calls[0][0].data;
-      expect(data.funilEtapaId).toBe('et-ativa-B');
+      expect(mover).toHaveBeenCalledWith(expect.anything(), 'l1', {
+        funilEtapaId: 'et-ativa-B',
+      });
+      mover.mockRestore();
     });
 
     it('#35: funil novo sem etapa ativa → erro (não deixa lead órfão)', async () => {
