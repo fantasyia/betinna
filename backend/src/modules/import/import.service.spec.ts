@@ -287,7 +287,7 @@ describe('ImportService.importarLeads', () => {
     ).rejects.toBeInstanceOf(ForbiddenException);
   });
 
-  it('importa rows (Excel) caindo no funil/etapa padrão', async () => {
+  it('importa rows (Excel) — sem etapa escolhida, entra como CONTATO (sem funil)', async () => {
     const r = await svc.importarLeads(fakeUser(), {
       rows: [{ nome: 'Rep João', telefone: '11999990000', cidade: 'São Paulo' }],
       dryRun: false,
@@ -298,7 +298,8 @@ describe('ImportService.importarLeads', () => {
     expect(arg.data.nome).toBe('Rep João');
     // Import normaliza pra E.164 (assume BR quando vem sem DDI).
     expect(arg.data.contatoTelefone).toBe('+5511999990000');
-    expect(arg.data.funilEtapaId).toBe('etapa-1');
+    // Regra de produto: só entra no funil quando o import diz a ETAPA.
+    expect(arg.data.funilEtapaId).toBeNull();
     expect(arg.data.variaveis).toMatchObject({ origem: 'importacao_excel' });
   });
 
@@ -572,6 +573,78 @@ describe('ImportService — proteções do onDuplicate=update (auditoria)', () =
         csv: lines.join('\n'),
         dryRun: false,
         onDuplicate: 'skip',
+      }),
+    ).rejects.toMatchObject({ code: 'BUSINESS_RULE_VIOLATION' });
+  });
+});
+
+// ─── Regra de produto: lead só entra no funil com etapa EXPLÍCITA ─────
+
+describe('ImportService.importarLeads — destino no funil', () => {
+  let prisma: ReturnType<typeof makePrisma>;
+  let svc: ImportService;
+
+  beforeEach(() => {
+    prisma = makePrisma();
+    svc = new ImportService(prisma as never);
+  });
+
+  it('SEM funil/etapa: lead entra como CONTATO (sem funil), não no kanban', async () => {
+    // Antes caía no "funil padrão da empresa": qualquer importação (base de
+    // e-mail marketing, lista de reps, prospecção fria) despejava tudo no
+    // pipeline principal e depois era trabalho manual tirar.
+    await svc.importarLeads(fakeUser(), {
+      rows: [{ nome: 'Contato Frio', telefone: '11999990000' }],
+      dryRun: false,
+      onDuplicate: 'skip',
+    });
+
+    const data = prisma.lead.create.mock.calls[0][0].data;
+    expect(data.funilId).toBeNull();
+    expect(data.funilEtapaId).toBeNull();
+    // Não consultou funil padrão nenhum.
+    expect(prisma.funil.findFirst).not.toHaveBeenCalled();
+  });
+
+  it('COM etapa escolhida: entra no funil daquela etapa', async () => {
+    prisma.funilEtapa.findFirst.mockResolvedValue({
+      id: 'et-abordagem',
+      funilId: 'funil-reps',
+      tipo: 'ATIVA',
+    });
+
+    await svc.importarLeads(fakeUser(), {
+      rows: [{ nome: 'Lead Quente', telefone: '11999990000' }],
+      dryRun: false,
+      onDuplicate: 'skip',
+      funilEtapaId: 'et-abordagem',
+    });
+
+    const data = prisma.lead.create.mock.calls[0][0].data;
+    expect(data.funilId).toBe('funil-reps');
+    expect(data.funilEtapaId).toBe('et-abordagem');
+  });
+
+  it('funil SEM etapa é recusado (a etapa é decisão de quem importa)', async () => {
+    await expect(
+      svc.importarLeads(fakeUser(), {
+        rows: [{ nome: 'X', telefone: '11999990000' }],
+        dryRun: false,
+        onDuplicate: 'skip',
+        funilId: 'funil-reps',
+      }),
+    ).rejects.toMatchObject({ code: 'BUSINESS_RULE_VIOLATION' });
+  });
+
+  it('etapa de OUTRA empresa é recusada', async () => {
+    prisma.funilEtapa.findFirst.mockResolvedValue(null);
+
+    await expect(
+      svc.importarLeads(fakeUser(), {
+        rows: [{ nome: 'X', telefone: '11999990000' }],
+        dryRun: false,
+        onDuplicate: 'skip',
+        funilEtapaId: 'et-de-outro-tenant',
       }),
     ).rejects.toMatchObject({ code: 'BUSINESS_RULE_VIOLATION' });
   });

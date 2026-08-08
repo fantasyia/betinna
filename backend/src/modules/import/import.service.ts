@@ -393,40 +393,47 @@ export class ImportService {
   }
 
   /** Resolve o funil/etapa alvo do import: etapa explícita → funil (ou padrão) → legado. */
+  /**
+   * Destino do lote importado.
+   *
+   * REGRA DE PRODUTO: lead importado só ENTRA NO FUNIL quando o import diz
+   * explicitamente em qual funil E em qual etapa. Sem essa escolha, ele entra
+   * como CONTATO (sem funil) — aparece em Contatos, não polui o kanban.
+   *
+   * Antes havia um fallback pro "funil padrão da empresa" + "primeira etapa":
+   * QUALQUER importação (inclusive base de e-mail marketing, lista de reps,
+   * planilha de prospecção fria) despejava tudo no pipeline principal, e depois
+   * era trabalho manual tirar. O fallback SUMIU de propósito.
+   */
   private async resolverFunilEtapa(
     empresaId: string,
     funilId?: string,
     funilEtapaId?: string,
   ): Promise<{ funilId: string | null; funilEtapaId: string | null; etapa: LeadEtapa }> {
-    if (funilEtapaId) {
-      const et = await this.prisma.funilEtapa.findFirst({
-        where: { id: funilEtapaId, funil: { empresaId } },
-        select: { id: true, funilId: true, tipo: true },
-      });
-      if (et) return { funilId: et.funilId, funilEtapaId: et.id, etapa: etapaEnum(et.tipo) };
+    // Sem etapa escolhida = contato sem funil. Escolher só o funil não basta:
+    // "em qual etapa entra" é decisão de quem importa, não default nosso.
+    if (!funilEtapaId) {
+      if (funilId) {
+        throw new BusinessRuleException(
+          'Escolha também a ETAPA do funil — sem ela os leads entram como contato, sem funil.',
+        );
+      }
+      return { funilId: null, funilEtapaId: null, etapa: 'NOVO' };
     }
-    const funilAlvo = funilId
-      ? await this.prisma.funil.findFirst({
-          where: { id: funilId, empresaId },
-          select: { id: true },
-        })
-      : await this.prisma.funil.findFirst({
-          where: { empresaId, isPadrao: true },
-          select: { id: true },
-        });
-    if (funilAlvo) {
-      const primeira = await this.prisma.funilEtapa.findFirst({
-        where: { funilId: funilAlvo.id },
-        orderBy: { ordem: 'asc' },
-        select: { id: true, tipo: true },
-      });
-      return {
-        funilId: funilAlvo.id,
-        funilEtapaId: primeira?.id ?? null,
-        etapa: primeira ? etapaEnum(primeira.tipo) : 'NOVO',
-      };
+
+    const et = await this.prisma.funilEtapa.findFirst({
+      where: { id: funilEtapaId, funil: { empresaId } },
+      select: { id: true, funilId: true, tipo: true },
+    });
+    if (!et) {
+      throw new BusinessRuleException('Etapa de destino inválida (não pertence a esta empresa).');
     }
-    return { funilId: null, funilEtapaId: null, etapa: 'NOVO' };
+    // Coerência: se o funil também veio, a etapa TEM que ser dele — senão o lead
+    // fica com funil de um e etapa de outro e some do kanban.
+    if (funilId && et.funilId !== funilId) {
+      throw new BusinessRuleException('A etapa informada não pertence ao funil informado.');
+    }
+    return { funilId: et.funilId, funilEtapaId: et.id, etapa: etapaEnum(et.tipo) };
   }
 
   // ─── Core engine ─────────────────────────────────────────────────────

@@ -77,6 +77,9 @@ export function ImportLeadsModal({
 
   const funisAtivos = useMemo(() => funis.filter((f) => f.ativo), [funis]);
   const funilSel = funisAtivos.find((f) => f.id === funilId) ?? null;
+  // Funil escolhido SEM etapa = destino incompleto. O backend recusa (a etapa é
+  // decisão de quem importa, não default nosso) — bloqueia antes de gastar a ida.
+  const destinoIncompleto = Boolean(funilId) && !funilEtapaId;
   const etapas = funilSel?.etapas ?? [];
 
   const rowsCount = payload && 'rows' in payload ? payload.rows.length : null;
@@ -189,7 +192,7 @@ export function ImportLeadsModal({
             <Button
               data-testid="import-confirm-btn"
               loading={busy === 'confirm'}
-              disabled={preview.criados + preview.atualizados === 0}
+              disabled={preview.criados + preview.atualizados === 0 || destinoIncompleto}
               onClick={() => void doConfirm()}
               leftIcon={<CheckCircle2 className="h-3.5 w-3.5" />}
             >
@@ -199,7 +202,8 @@ export function ImportLeadsModal({
             <Button
               data-testid="import-preview-btn"
               loading={busy === 'preview'}
-              disabled={!payload || busy != null}
+              disabled={!payload || busy != null || destinoIncompleto}
+              title={destinoIncompleto ? 'Escolha a etapa do funil' : undefined}
               onClick={() => void doPreview()}
             >
               Pré-visualizar
@@ -272,6 +276,10 @@ export function ImportLeadsModal({
           <span className="block text-[10px] font-semibold uppercase tracking-wider text-muted mb-1.5">
             2. Onde os leads entram
           </span>
+          <p className="text-[12px] text-muted mt-0 mb-2">
+            Sem funil escolhido, entram só como <strong>contatos</strong> (não aparecem no kanban).
+            Pra entrar no funil, escolha o funil <strong>e</strong> a etapa.
+          </p>
           <div className="grid grid-cols-2 gap-3">
             <Field label="Funil">
               <Select
@@ -283,7 +291,7 @@ export function ImportLeadsModal({
                   setPreview(null);
                 }}
               >
-                <option value="">Funil padrão da empresa</option>
+                <option value="">Não colocar em funil (só contato)</option>
                 {funisAtivos.map((f) => (
                   <option key={f.id} value={f.id}>
                     {f.nome}
@@ -292,7 +300,14 @@ export function ImportLeadsModal({
                 ))}
               </Select>
             </Field>
-            <Field label="Etapa" hint={funilSel ? undefined : 'Escolha um funil pra definir a etapa'}>
+            <Field
+              label="Etapa"
+              hint={
+                funilSel
+                  ? 'Obrigatória — é você quem decide em que etapa o lote entra'
+                  : 'Só contato: sem funil, sem etapa'
+              }
+            >
               <Select
                 data-testid="import-etapa-select"
                 value={funilEtapaId}
@@ -302,7 +317,7 @@ export function ImportLeadsModal({
                   setPreview(null);
                 }}
               >
-                <option value="">Primeira etapa do funil</option>
+                <option value="">Selecione a etapa…</option>
                 {etapas.map((et) => (
                   <option key={et.id} value={et.id}>
                     {et.nome}
