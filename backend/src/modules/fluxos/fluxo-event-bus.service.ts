@@ -164,8 +164,18 @@ export class FluxoEventBusService {
             // resposta do lead, reabrindo a mesma saudação em loop (visto em prod: a
             // triagem repetia "Oi! Aqui é da Somatec..." pra cada mensagem, nunca avançava
             // pra pergunta real nem fechava como Indefinido).
+            // O guard existe pra impedir o LOOP DA IA (execução AGUARDANDO
+            // cancelada e recriada a cada mensagem). Num fluxo SEM nó de IA ele
+            // vira só descarte: qualquer execução viva (um DELAY de 1h, por ex.)
+            // fazia a mensagem seguinte do contato ser IGNORADA em silêncio.
             const convIdChk = contexto['conversationId'] as string | undefined;
-            if (convIdChk) {
+            const temNoIa =
+              convIdChk !== undefined
+                ? (await this.prisma.fluxoNo.count({
+                    where: { fluxoId: fluxo.id, tipo: 'ACAO', acaoTipo: 'CONVERSAR_IA' },
+                  })) > 0
+                : false;
+            if (convIdChk && temNoIa) {
               const jaViva = await this.prisma.fluxoExecucao.findFirst({
                 where: {
                   fluxoId: fluxo.id,
@@ -175,7 +185,13 @@ export class FluxoEventBusService {
                 },
                 select: { id: true },
               });
-              if (jaViva) continue;
+              if (jaViva) {
+                this.logger.debug(
+                  `Fluxo "${fluxo.nome}": MENSAGEM_CANAL suprimido — já há execução viva ` +
+                    `pra conversa ${convIdChk} (a resposta vai pelo retomar da IA)`,
+                );
+                continue;
+              }
             }
             if (cfg.apenasComBotLigado) {
               const convId = contexto['conversationId'] as string | undefined;
@@ -335,6 +351,16 @@ export class FluxoEventBusService {
   /**
    * Enfileira diretamente um job para uma execução já criada (usado em testes manuais).
    */
+  /**
+   * O job ainda existe na fila (waiting/delayed/active/etc.)? Usado pelo reaper
+   * de execuções PENDENTE pra não apagar execução que só está atrasada por
+   * backlog do worker. Erro na consulta = assume que existe (fail-safe).
+   */
+  async jobExiste(jobId: string): Promise<boolean> {
+    const job = await this.queue.getJob(jobId);
+    return Boolean(job);
+  }
+
   async dispararDireto(
     execucaoId: string,
     noId: string,

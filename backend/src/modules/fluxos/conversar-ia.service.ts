@@ -697,7 +697,12 @@ export class ConversarIaService {
     // Contabiliza os tokens no orçamento de custo do bot (best-effort) — senão o nó de
     // fluxo gastava sem nunca contar pro teto.
     await this.custo.registrarUso(empresaId, abertura.tokensIn ?? 0, abertura.tokensOut ?? 0);
-    const aberturaTexto = personalizarNome(abertura.texto, lead.contatoNome);
+    // O opener ia CRU pro cliente: se o modelo devolvesse o JSON do turno (ou um
+    // bloco ```json), o lead recebia `{"resposta":"Oi!","classificou":false}` —
+    // ou linhas de variável interna vazando. parseTurnoIa cobre os 3 formatos
+    // (JSON, cerca, texto puro) e já roda o limparVazamentoDeVariaveis. Como o
+    // texto é reusado no _iaHistorico, sanitiza envio E memória de uma vez.
+    const aberturaTexto = personalizarNome(parseTurnoIa(abertura.texto).resposta, lead.contatoNome);
     try {
       await this.enviarWhatsapp(
         empresaId,
@@ -1000,15 +1005,33 @@ export class ConversarIaService {
         .trim()
         .toLowerCase();
     const classificacaoFinalTurno = String(vTurno.classificacao_final ?? '').trim();
-    const sinalEncerramento =
+    const respostaPersonalizada = personalizarNome(turno.resposta, lead.contatoNome);
+
+    // `classificacao_final` SOZINHA não encerra mais a conversa. O modelo às
+    // vezes preenche a variável no 1º turno (ex.: "Indefinido") só por estar no
+    // schema — e a entrevista morria na largada, com o lead classificado errado.
+    // Só vale como terminal com outro sinal junto: a IA declarou classificou,
+    // um trilho terminal, ou a resposta ser de fato uma despedida.
+    const sinalExplicito =
       norm(vTurno.trilho) === 'encerrar' ||
       norm(vTurno.pedido_remocao) === 'sim' ||
-      ['sim', 'true', '1'].includes(norm(vTurno.encerrar_conversa)) ||
-      classificacaoFinalTurno.length > 0;
+      ['sim', 'true', '1'].includes(norm(vTurno.encerrar_conversa));
+    const classificacaoFinalConfiavel =
+      classificacaoFinalTurno.length > 0 &&
+      (turno.classificou === true || sinalExplicito || respostaEhDespedida(respostaPersonalizada));
+    if (classificacaoFinalTurno.length > 0 && !classificacaoFinalConfiavel) {
+      this.logger.log(
+        `CONVERSAR_IA: classificacao_final="${classificacaoFinalTurno}" no meio da conversa sem ` +
+          `sinal de encerramento — IGNORADA (exec ${execucaoId}, lead ${leadId})`,
+      );
+      delete (turno.variaveis as Record<string, unknown> | undefined)?.classificacao_final;
+    }
+    const sinalEncerramento = sinalExplicito || classificacaoFinalConfiavel;
     let classificouEfetivo = turno.classificou === true || sinalEncerramento;
-    let classificacaoTurno = turno.classificacao ?? (classificacaoFinalTurno || undefined);
+    let classificacaoTurno =
+      turno.classificacao ??
+      (classificacaoFinalConfiavel ? classificacaoFinalTurno || undefined : undefined);
 
-    const respostaPersonalizada = personalizarNome(turno.resposta, lead.contatoNome);
     // Tool-use por marcador: a IA pode pedir o envio de arquivos com [[ENVIAR_DOC:id]].
     // Separa o texto (sem as marcações) dos ids; o envio real acontece após o texto.
     const { limpo, ids: docIds } = extrairMarcadoresDoc(respostaPersonalizada);

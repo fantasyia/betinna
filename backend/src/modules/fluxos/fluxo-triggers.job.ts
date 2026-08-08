@@ -46,15 +46,33 @@ export class FluxoTriggersJob {
       select: { id: true },
     });
 
+    // Isolamento POR EMPRESA: sem o try/catch, uma exceção num tenant abortava a
+    // rodada inteira e os tenants seguintes ficavam sem SLA/follow-up/inativos —
+    // silenciosamente, porque o cron só roda de novo em 30min.
     for (const { id: empresaId } of empresas) {
-      await this.avaliarClientesInativos(empresaId);
-      await this.avaliarAmostrasFollowUp(empresaId);
-      await this.avaliarSlaEtapas(empresaId);
+      try {
+        await this.avaliarClientesInativos(empresaId);
+        await this.avaliarAmostrasFollowUp(empresaId);
+        await this.avaliarSlaEtapas(empresaId);
+      } catch (err) {
+        this.logger.warn(
+          `Triggers temporais falharam na empresa ${empresaId}: ` +
+            `${err instanceof Error ? err.message : String(err)}`,
+        );
+      }
     }
 
     // Orquestração (Fase B) — conversas de IA sem resposta além do timeout
     // disparam LEAD_SEM_RESPOSTA e são encerradas (consulta global, todas empresas).
-    await this.conversarIa.processarTimeouts();
+    // try/catch próprio: falha de trigger não pode derrubar os timeouts de IA
+    // (e vice-versa) — são responsabilidades independentes.
+    try {
+      await this.conversarIa.processarTimeouts();
+    } catch (err) {
+      this.logger.error(
+        `processarTimeouts falhou: ${err instanceof Error ? err.message : String(err)}`,
+      );
+    }
   }
 
   /**
@@ -96,13 +114,31 @@ export class FluxoTriggersJob {
     // Órfãs PENDENTE do cron: o CRON_AGENDADO cria a execução ANTES do dedup por jobId;
     // numa rodada sobreposta o job é deduplicado e a execução fica PENDENTE pra sempre.
     // PENDENTE de cron com >15min (job nunca rodou) é lixo seguro de remover.
-    const cronOrfas = await this.prisma.fluxoExecucao.deleteMany({
+    // ATENÇÃO: só é órfã se o job NÃO está mais na fila. Sob backlog do BullMQ
+    // (worker atrasado), o deleteMany cego apagava execução cujo job ia rodar —
+    // o passo então falhava com "execução não encontrada" e o disparo sumia.
+    const candidatas = await this.prisma.fluxoExecucao.findMany({
       where: {
         status: 'PENDENTE',
         criadoEm: { lt: new Date(agora - 15 * 60 * 1000) },
         contexto: { path: ['_cron'], equals: true },
       },
+      select: { id: true, jobId: true },
     });
+    const idsOrfas: string[] = [];
+    for (const c of candidatas) {
+      if (!c.jobId) {
+        // Execução antiga (criada antes de a gente gravar o jobId): mantém o
+        // comportamento anterior — >15min PENDENTE é lixo.
+        idsOrfas.push(c.id);
+        continue;
+      }
+      const naFila = await this.bus.jobExiste(c.jobId).catch(() => true);
+      if (!naFila) idsOrfas.push(c.id);
+    }
+    const cronOrfas = idsOrfas.length
+      ? await this.prisma.fluxoExecucao.deleteMany({ where: { id: { in: idsOrfas } } })
+      : { count: 0 };
     if (orfaos.count > 0 || antigos.count > 0 || lockOrfaos.count > 0 || cronOrfas.count > 0) {
       this.logger.log(
         `Reconciliação: ${orfaos.count} claim(s) órfão(s) + ${antigos.count} antigo(s) removidos, ` +
@@ -153,9 +189,28 @@ export class FluxoTriggersJob {
       const corte = new Date();
       if (etapa.slaHoras) corte.setHours(corte.getHours() - etapa.slaHoras);
       else corte.setDate(corte.getDate() - (etapa.slaDias as number));
+      // Pra ações NÃO-destrutivas (tag/notificar) o lead continua na etapa depois
+      // de processado — sem excluir quem já tem a tag, o mesmo lote de 100 era
+      // reprocessado a cada 30min PRA SEMPRE e o lead 101 nunca era atendido.
+      // (Em 'mover' o lead sai da etapa, então o próprio filtro já converge.)
+      // MESMA regra do aplicarAcaoSla (senão o filtro procura outra tag e não
+      // filtra nada): 'tag' com nome próprio usa o nome; o resto usa o padrão.
+      const tagSla =
+        acao.tipo === 'mover'
+          ? null
+          : acao.tipo === 'tag' && acao.tagNome
+            ? acao.tagNome
+            : '⚠ SLA vencido';
       const leads = await this.prisma.lead.findMany({
-        where: { empresaId, funilEtapaId: etapa.id, etapaDesde: { lt: corte } },
+        where: {
+          empresaId,
+          funilEtapaId: etapa.id,
+          etapaDesde: { lt: corte },
+          ...(tagSla ? { tags: { none: { tag: { nome: tagSla, empresaId } } } } : {}),
+        },
         select: { id: true },
+        // Mais antigos primeiro: quem está esperando há mais tempo é atendido antes.
+        orderBy: { etapaDesde: 'asc' },
         take: 100,
       });
       for (const lead of leads) {
@@ -235,6 +290,29 @@ export class FluxoTriggersJob {
     });
     const agora = new Date();
     for (const f of flows) {
+      try {
+        await this.avaliarCronDeUmFluxo(f, agora);
+      } catch (err) {
+        this.logger.error(
+          `CRON_AGENDADO: fluxo "${f.nome}" (${f.id}) falhou nesta rodada: ` +
+            `${err instanceof Error ? err.message : String(err)}`,
+        );
+      }
+    }
+  }
+
+  /** Avalia UM fluxo CRON (extraído pra isolar falha por fluxo — ver acima). */
+  private async avaliarCronDeUmFluxo(
+    f: {
+      id: string;
+      nome: string;
+      empresaId: string;
+      triggerConfig: unknown;
+      nos: Array<{ id: string }>;
+    },
+    agora: Date,
+  ): Promise<void> {
+    {
       const cfg = (f.triggerConfig ?? {}) as {
         expressao?: string;
         expressoes?: string[];
@@ -246,7 +324,7 @@ export class FluxoTriggersJob {
       const exprs = (cfg.expressoes?.length ? cfg.expressoes : cfg.expressao ? [cfg.expressao] : [])
         .map((e) => (e ?? '').trim())
         .filter(Boolean);
-      if (exprs.length === 0) continue;
+      if (exprs.length === 0) return;
       const tz = cfg.timezone || CRON_TZ_PADRAO;
       // Cursor do próximo disparo no Redis (não no triggerConfig) — assim editar a
       // expressão não mexe no cursor e o cursor não sobrescreve a config do usuário.
@@ -257,7 +335,7 @@ export class FluxoTriggersJob {
       if (!proximo || Number.isNaN(proximo.getTime())) {
         const prox = proximaExecucaoCrons(exprs, tz, agora);
         if (prox) await this.gravarProximoCron(f.id, prox);
-        continue;
+        return;
       }
 
       if (proximo.getTime() <= agora.getTime()) {
@@ -282,12 +360,17 @@ export class FluxoTriggersJob {
         const noFeriado = cfg.pularFeriados === true && ehFeriadoNacional(slot, tz);
         const triggerNo = f.nos[0];
         if (triggerNo && !noFeriado) {
+          // jobId gravado JUNTO: o reaper de execuções PENDENTE precisa dele pra
+          // distinguir "job nunca existiu" (órfã) de "job ainda na fila"
+          // (backlog) — sem isso ele apagava execução que ia rodar.
+          const jobIdCron = `cron_${f.id}_${slot.getTime()}`;
           const exec = await this.prisma.fluxoExecucao.create({
             data: {
               fluxoId: f.id,
               empresaId: f.empresaId,
               status: 'PENDENTE',
               contexto: { _cron: true },
+              jobId: jobIdCron,
             },
           });
           // jobId determinístico por slot → reforço: BullMQ deduplica enfileiramento
@@ -295,9 +378,7 @@ export class FluxoTriggersJob {
           // SEM ":" — o BullMQ (v5) REJEITA custom job id com ":" ("Custom Id cannot
           // contain :"), o que fazia o queue.add lançar e a execução ficar PENDENTE pra
           // sempre. Usa epoch (getTime) do slot no lugar do ISO (que tinha ":").
-          await this.bus.dispararDireto(exec.id, triggerNo.id, {
-            jobId: `cron_${f.id}_${slot.getTime()}`,
-          });
+          await this.bus.dispararDireto(exec.id, triggerNo.id, { jobId: jobIdCron });
           // Métrica de latência: atraso entre o horário agendado e o disparo real.
           await this.cronMetrics.registrar(agora.getTime() - slot.getTime());
           this.logger.log(`CRON_AGENDADO: fluxo "${f.nome}" disparado (exec ${exec.id})`);
@@ -327,14 +408,25 @@ export class FluxoTriggersJob {
     // (garante que nenhum cliente-alvo é perdido) e passa a inatividade REAL de cada cliente no
     // contexto (`diasSemPedido`); o `FluxoEventBus` FILTRA por fluxo, disparando só quem cruzou o
     // `diasInativo` DAQUELE fluxo. Cooldown segue por-cliente (anti-spam da rodada).
+    // FONTE DO `diasInativo`: o editor grava no CONFIG DO NÓ de gatilho, e é de
+    // lá que o FluxoEventBus filtra. O job lia só o `Fluxo.triggerConfig` e caía
+    // no default 30 — então um fluxo configurado pra 15 dias nunca selecionava
+    // clientes entre 15 e 30 dias e simplesmente não disparava. Lê os dois,
+    // com precedência pro nó (mesma fonte do filtro).
     const fluxos = await this.prisma.fluxo.findMany({
       where: { empresaId, status: 'ATIVO', triggerTipo: 'CLIENTE_INATIVO_30D' },
-      select: { triggerConfig: true },
+      select: {
+        triggerConfig: true,
+        nos: { where: { tipo: 'TRIGGER' }, select: { config: true }, take: 1 },
+      },
     });
     if (fluxos.length === 0) return;
-    const diasPorFluxo = fluxos.map((f) =>
-      Number((f.triggerConfig as Record<string, unknown> | null)?.['diasInativo'] ?? 30),
-    );
+    const diasPorFluxo = fluxos.map((f) => {
+      const doNo = (f.nos[0]?.config as Record<string, unknown> | null)?.['diasInativo'];
+      const doFluxo = (f.triggerConfig as Record<string, unknown> | null)?.['diasInativo'];
+      const bruto = Number(doNo ?? doFluxo ?? 30);
+      return Number.isFinite(bruto) && bruto > 0 ? bruto : 30;
+    });
     const diasInativo = Math.min(...diasPorFluxo);
 
     const agora = Date.now();

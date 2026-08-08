@@ -44,6 +44,9 @@ const makePrismaMock = () => ({
   cliente: {
     findFirst: vi.fn(),
   },
+  // "Zerar conversa" cancela as execuções de fluxo vivas (a memória da IA mora
+  // no contexto da execução, não nas Messages).
+  fluxoExecucao: { updateMany: vi.fn(async () => ({ count: 0 })) },
   usuario: {
     findFirst: vi.fn(),
   },
@@ -572,7 +575,12 @@ describe('InboxService.limparConversa', () => {
   });
 
   it('zera atribuidoId/status/categoria/botPausadoAte/incidentId — não só as mensagens', async () => {
-    prisma.conversation.findFirst.mockResolvedValueOnce({ id: 'conv-1' });
+    prisma.conversation.findFirst.mockResolvedValueOnce({
+      id: 'conv-1',
+      empresaId: 'emp-1',
+      peerId: '5511999990000@s.whatsapp.net',
+      leadId: null,
+    });
     prisma.message.deleteMany.mockResolvedValueOnce({ count: 5 });
     prisma.conversation.update.mockResolvedValueOnce({});
 
@@ -586,6 +594,50 @@ describe('InboxService.limparConversa', () => {
     expect(data.incidentId).toBeNull();
     expect(data.precisaHumano).toBe(false);
     expect(data.naoLidas).toBe(0);
+  });
+
+  it('CANCELA as execuções de fluxo vivas — senão a IA retoma de onde parou', async () => {
+    // O reset apagava só as Messages. A memória da conversa vive em
+    // FluxoExecucao.contexto._iaHistorico: no próximo "oi" a IA continuava a
+    // entrevista anterior, e o "zerei" do usuário era mentira.
+    prisma.conversation.findFirst.mockResolvedValueOnce({
+      id: 'conv-1',
+      empresaId: 'emp-1',
+      peerId: '5511999990000@s.whatsapp.net',
+      leadId: 'lead-1',
+    });
+    prisma.message.deleteMany.mockResolvedValueOnce({ count: 3 });
+    prisma.conversation.update.mockResolvedValueOnce({});
+    prisma.fluxoExecucao.updateMany.mockResolvedValueOnce({ count: 2 });
+
+    await svc.limparConversa(fakeUser(), 'conv-1');
+
+    const args = prisma.fluxoExecucao.updateMany.mock.calls[0][0];
+    expect(args.where.status.in).toEqual(['PENDENTE', 'EM_EXECUCAO', 'AGUARDANDO']);
+    expect(args.where.OR).toEqual(
+      expect.arrayContaining([
+        { contexto: { path: ['conversationId'], equals: 'conv-1' } },
+        { contexto: { path: ['leadId'], equals: 'lead-1' } },
+      ]),
+    );
+    expect(args.data.status).toBe('CANCELADO');
+  });
+
+  it('falha ao cancelar execução NÃO impede o zeramento das mensagens', async () => {
+    prisma.conversation.findFirst.mockResolvedValueOnce({
+      id: 'conv-1',
+      empresaId: 'emp-1',
+      peerId: '5511999990000@s.whatsapp.net',
+      leadId: 'lead-1',
+    });
+    prisma.message.deleteMany.mockResolvedValueOnce({ count: 7 });
+    prisma.conversation.update.mockResolvedValueOnce({});
+    prisma.fluxoExecucao.updateMany.mockRejectedValueOnce(new Error('DB fora'));
+
+    const r = await svc.limparConversa(fakeUser(), 'conv-1');
+
+    expect(r.mensagens).toBe(7);
+    expect(prisma.conversation.update).toHaveBeenCalled();
   });
 });
 

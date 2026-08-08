@@ -296,10 +296,16 @@ export class InboxService {
   async limparConversa(user: AuthenticatedUser, id: string): Promise<{ mensagens: number }> {
     const conv = await this.prisma.conversation.findFirst({
       where: { id, ...this.baseWhere(user) },
-      select: { id: true },
+      select: { id: true, empresaId: true, peerId: true, leadId: true },
     });
     if (!conv) throw new NotFoundException('Conversation', id);
     const msgs = await this.prisma.message.deleteMany({ where: { conversationId: id } });
+
+    // "Zerar" tem que zerar A CONVERSA INTEIRA, incluindo o que o MOTOR guarda:
+    // a execução do nó "Conversar com IA" fica AGUARDANDO com o histórico dela
+    // em contexto._iaHistorico. Apagar só as Messages deixava a IA retomar do
+    // ponto anterior no próximo "oi" — o reset parecia funcionar e não era real.
+    const execsCanceladas = await this.cancelarExecucoesDaConversa(conv);
     await this.prisma.conversation.update({
       where: { id },
       data: {
@@ -321,9 +327,66 @@ export class InboxService {
       },
     });
     this.logger.warn(
-      `[inbox] conversa ${id} ZERADA: ${msgs.count} msgs apagadas (por ${user.email})`,
+      `[inbox] conversa ${id} ZERADA: ${msgs.count} msgs apagadas, ` +
+        `${execsCanceladas} execução(ões) de fluxo cancelada(s) (por ${user.email})`,
     );
     return { mensagens: msgs.count };
+  }
+
+  /**
+   * Cancela as execuções de fluxo vivas da conversa — por conversationId e
+   * também pelo LEAD do contato (o nó de IA guarda o histórico no contexto da
+   * execução; deixar viva faz a IA retomar de onde parou depois do reset).
+   * Best-effort: falhar aqui não pode impedir o zeramento das mensagens.
+   */
+  private async cancelarExecucoesDaConversa(conv: {
+    id: string;
+    empresaId: string;
+    peerId: string;
+    leadId: string | null;
+  }): Promise<number> {
+    try {
+      const filtros: Prisma.FluxoExecucaoWhereInput[] = [
+        { contexto: { path: ['conversationId'], equals: conv.id } },
+      ];
+      // Lead do contato: o da conversa, ou resolvido por sufixo de telefone
+      // (D18) — nunca `contains`.
+      let leadId = conv.leadId;
+      if (!leadId) {
+        const digitos = conv.peerId.split('@')[0]?.replace(/\D/g, '') ?? '';
+        if (digitos.length >= 8) {
+          const rows = await this.prisma.$queryRaw<Array<{ id: string }>>`
+            SELECT id FROM "Lead"
+            WHERE "empresaId" = ${conv.empresaId}
+              AND "contatoTelefone" IS NOT NULL
+              AND RIGHT(REGEXP_REPLACE("contatoTelefone", '[^0-9]', '', 'g'), 8) = ${digitos.slice(-8)}
+            ORDER BY "atualizadoEm" DESC LIMIT 1`;
+          leadId = rows[0]?.id ?? null;
+        }
+      }
+      if (leadId) filtros.push({ contexto: { path: ['leadId'], equals: leadId } });
+
+      const { count } = await this.prisma.fluxoExecucao.updateMany({
+        where: {
+          empresaId: conv.empresaId,
+          status: { in: ['PENDENTE', 'EM_EXECUCAO', 'AGUARDANDO'] },
+          OR: filtros,
+        },
+        data: {
+          status: 'CANCELADO',
+          aguardandoNoId: null,
+          timeoutEm: null,
+          terminouEm: new Date(),
+        },
+      });
+      return count;
+    } catch (err) {
+      this.logger.warn(
+        `[inbox] falha ao cancelar execuções da conversa ${conv.id}: ` +
+          `${err instanceof Error ? err.message : String(err)}`,
+      );
+      return 0;
+    }
   }
 
   /**
@@ -668,14 +731,7 @@ export class InboxService {
       // assumiu) e PAUSA o bot — MAS só pausa se o bot está de fato ATIVO nesta
       // conversa. Pausar um bot desligado gerava o selo "Bot pausado"/"Religar bot"
       // enganoso (o bot é off por padrão; o usuário liga só pra alguns contatos).
-      const empresaBot = await this.prisma.empresa.findUnique({
-        where: { id: conv.empresaId },
-        select: { botWhatsappAtivo: true },
-      });
-      const botAtivoNaConversa =
-        conv.botLigado === true ||
-        (conv.botLigado == null && empresaBot?.botWhatsappAtivo === true);
-      const handoffMs = this.env.get('BOT_HANDOFF_HORAS') * 60 * 60 * 1000;
+      const handoff = await this.fragmentoHandoffHumano(conv);
       await this.prisma.conversation.update({
         where: { id: conversationId },
         data: {
@@ -683,8 +739,7 @@ export class InboxService {
           ultimaMsgPreview: this.preview(dto.texto),
           status: conv.status === 'PENDENTE' ? 'ABERTA' : conv.status,
           naoLidas: 0,
-          precisaHumano: false,
-          ...(botAtivoNaConversa ? { botPausadoAte: new Date(Date.now() + handoffMs) } : {}),
+          ...handoff,
         },
       });
       return atualizada;
@@ -831,6 +886,31 @@ export class InboxService {
    * Forçamos canal=WHATSAPP no MVP. Quando outros adapters ganharem
    * `enviarMidia`, generaliza.
    */
+  /**
+   * Fragmento de HANDOFF pro update da conversa: humano respondeu → limpa o
+   * "precisa humano" e PAUSA o bot. Só pausa se o bot está de fato ativo nesta
+   * conversa (pausar bot desligado gerava o selo "Bot pausado" enganoso).
+   * Compartilhado por `responder` e `responderComMidia` — a versão com mídia não
+   * fazia nada disso, então o bot respondia POR CIMA do atendente que acabou de
+   * mandar um arquivo.
+   */
+  private async fragmentoHandoffHumano(conv: {
+    empresaId: string;
+    botLigado: boolean | null;
+  }): Promise<{ precisaHumano: boolean; botPausadoAte?: Date }> {
+    const empresaBot = await this.prisma.empresa.findUnique({
+      where: { id: conv.empresaId },
+      select: { botWhatsappAtivo: true },
+    });
+    const botAtivoNaConversa =
+      conv.botLigado === true || (conv.botLigado == null && empresaBot?.botWhatsappAtivo === true);
+    const handoffMs = this.env.get('BOT_HANDOFF_HORAS') * 60 * 60 * 1000;
+    return {
+      precisaHumano: false,
+      ...(botAtivoNaConversa ? { botPausadoAte: new Date(Date.now() + handoffMs) } : {}),
+    };
+  }
+
   async responderComMidia(
     user: AuthenticatedUser,
     conversationId: string,
@@ -920,6 +1000,9 @@ export class InboxService {
         where: { id: msg.id },
         data: { status: MessageStatus.SENT, externalId: r.externalId ?? null },
       });
+      // Mesmo handoff do `responder`: mandar um arquivo TAMBÉM é o humano
+      // assumindo a conversa.
+      const handoff = await this.fragmentoHandoffHumano(conv);
       await this.prisma.conversation.update({
         where: { id: conversationId },
         data: {
@@ -927,6 +1010,7 @@ export class InboxService {
           ultimaMsgPreview: this.preview(conteudoPlaceholder),
           status: conv.status === 'PENDENTE' ? 'ABERTA' : conv.status,
           naoLidas: 0,
+          ...handoff,
         },
       });
       return atualizada;

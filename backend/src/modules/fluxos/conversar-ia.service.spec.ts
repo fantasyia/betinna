@@ -561,6 +561,47 @@ describe('ConversarIaService', () => {
       expect(prisma.fluxoNo.findUnique).not.toHaveBeenCalled();
     });
 
+    it('classificacao_final SOZINHA no meio da conversa NÃO encerra a entrevista', async () => {
+      // O modelo às vezes preenche a variável no 1º turno (ex.: "Indefinido") só
+      // por estar no schema. Antes isso valia como sinal terminal: a entrevista
+      // morria na largada e o lead saía classificado errado.
+      prisma.fluxoExecucao.findUnique.mockResolvedValue(execAguardando);
+      prisma.fluxoNo.findUnique.mockResolvedValue({ id: 'no-ia', config: { promptId: 'p1' } });
+      prisma.lead.findFirst.mockResolvedValue({ contatoTelefone: '11999990000', variaveis: {} });
+      prisma.fluxoEdge.findMany.mockResolvedValue([{ targetNoId: 'no-2' }]);
+      muller.gerarRespostaIa.mockResolvedValue({
+        texto:
+          '{"resposta":"Legal! Me conta qual equipamento você quer proteger?","classificou":false,"variaveis":{"classificacao_final":"Indefinido"}}',
+        modelo: 'gpt',
+      });
+
+      await svc.retomar('exec-1', 'conv-1', 'oi');
+
+      // Segue conversando: NÃO disparou classificação nem avançou o fluxo.
+      expect(bus.disparar).not.toHaveBeenCalledWith('emp-1', 'IA_CLASSIFICOU', expect.anything());
+      expect(queue.add).not.toHaveBeenCalled();
+    });
+
+    it('classificacao_final COM classificou=true encerra normalmente', async () => {
+      prisma.fluxoExecucao.findUnique.mockResolvedValue(execAguardando);
+      prisma.fluxoNo.findUnique.mockResolvedValue({ id: 'no-ia', config: { promptId: 'p1' } });
+      prisma.lead.findFirst.mockResolvedValue({ contatoTelefone: '11999990000', variaveis: {} });
+      prisma.fluxoEdge.findMany.mockResolvedValue([{ targetNoId: 'no-2' }]);
+      muller.gerarRespostaIa.mockResolvedValue({
+        texto:
+          '{"resposta":"Obrigado! Já passo pro time.","classificou":true,"variaveis":{"classificacao_final":"Forte Sinergia"}}',
+        modelo: 'gpt',
+      });
+
+      await svc.retomar('exec-1', 'conv-1', 'tenho interesse');
+
+      expect(bus.disparar).toHaveBeenCalledWith(
+        'emp-1',
+        'IA_CLASSIFICOU',
+        expect.objectContaining({ classificacao: 'Forte Sinergia' }),
+      );
+    });
+
     it('IA classificou → grava variáveis, dispara IA_CLASSIFICOU e avança', async () => {
       prisma.fluxoExecucao.findUnique.mockResolvedValue(execAguardando);
       prisma.fluxoNo.findUnique.mockResolvedValue({ id: 'no-ia', config: { promptId: 'p1' } });

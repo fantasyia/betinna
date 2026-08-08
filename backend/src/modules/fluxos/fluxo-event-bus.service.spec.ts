@@ -283,6 +283,8 @@ describe('FluxoEventBusService', () => {
           nos: [{ id: 'trg', config: { canais: ['WHATSAPP'] } }],
         }),
       ]);
+      // O guard só vale pra fluxo COM nó de IA (é dele o loop que ele evita).
+      prisma.fluxoNo.count.mockResolvedValue(1);
       prisma.fluxoExecucao.findFirst.mockResolvedValueOnce({ id: 'exec-viva' });
 
       await service.disparar('emp-1', 'MENSAGEM_CANAL' as FluxoTriggerTipo, {
@@ -541,5 +543,43 @@ describe('FluxoEventBusService', () => {
       const opts = queue.add.mock.calls[0][2];
       expect(opts.attempts).toBe(3);
     });
+  });
+});
+
+// ─── Auditoria 2026-08: o guard não pode calar fluxo SEM IA ───────────
+
+describe('FluxoEventBusService — anti-reabertura só vale pra fluxo COM nó de IA', () => {
+  let prisma: ReturnType<typeof makePrismaMock>;
+  let queue: ReturnType<typeof makeQueueMock>;
+  let service: FluxoEventBusService;
+
+  beforeEach(() => {
+    prisma = makePrismaMock();
+    queue = makeQueueMock();
+    service = new FluxoEventBusService(prisma as never, queue as never);
+  });
+
+  it('fluxo SEM nó de IA dispara mesmo com execução viva na conversa', async () => {
+    // O guard existe pra impedir o loop da IA. Num fluxo comum (ex.: com um
+    // DELAY de 1h em voo), ele virava descarte: a mensagem seguinte do contato
+    // era IGNORADA em silêncio.
+    prisma.fluxo.findMany.mockResolvedValue([
+      fakeFluxo({
+        triggerTipo: 'MENSAGEM_CANAL',
+        nos: [{ id: 'trg', config: { canais: ['WHATSAPP'] } }],
+      }),
+    ]);
+    prisma.fluxoNo.count.mockResolvedValue(0); // sem CONVERSAR_IA
+    prisma.fluxoExecucao.findFirst.mockResolvedValue({ id: 'exec-viva' });
+    prisma.fluxoExecucao.create.mockResolvedValue(fakeExecucao());
+    prisma.fluxoExecucao.update.mockResolvedValue({});
+
+    await service.disparar('emp-1', 'MENSAGEM_CANAL' as FluxoTriggerTipo, {
+      canal: 'WHATSAPP',
+      conversationId: 'conv-1',
+      texto: 'segunda mensagem',
+    });
+
+    expect(prisma.fluxoExecucao.create).toHaveBeenCalledOnce();
   });
 });

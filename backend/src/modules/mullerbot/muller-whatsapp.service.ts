@@ -385,6 +385,24 @@ export class MullerWhatsappService implements OnModuleInit {
 
       // (Anti-spam foi pra ANTES do lock — ver 1.3.)
 
+      // 4.4 Teto de custo — ANTES do multimodal. A transcrição do áudio (Whisper)
+      // é uma chamada PAGA à OpenAI: rodar antes do gate deixava o bot gastando
+      // exatamente quando o orçamento já tinha estourado.
+      const teto = await this.custo.verificarTeto(params.empresaId);
+      if (teto.bloqueado) {
+        await this.inbox.marcarPrecisaHumano(convId).catch(() => undefined);
+        void this.auditoria.registrar({
+          empresaId: params.empresaId,
+          conversationId: convId,
+          messageId: resultado.messageId,
+          pergunta: params.conteudo,
+          resposta: null,
+          status: 'SEM_RESPOSTA',
+        });
+        this.logger.warn(`[bot] BLOQUEADO-CUSTO conv=${convId}: ${teto.motivo}`);
+        return;
+      }
+
       // 4.5 Config do bot (precisa ANTES — decide se transcreve áudio / vê imagem).
       const cfgBot = await this.persona.obterConfigBot(params.empresaId);
 
@@ -416,23 +434,6 @@ export class MullerWhatsappService implements OnModuleInit {
           );
           return;
         }
-      }
-
-      // 4.8 Teto de custo (Sprint 2.2) — se estourou o limite de tokens, o bot
-      // pausa e escala pra humano.
-      const teto = await this.custo.verificarTeto(params.empresaId);
-      if (teto.bloqueado) {
-        await this.inbox.marcarPrecisaHumano(convId).catch(() => undefined);
-        void this.auditoria.registrar({
-          empresaId: params.empresaId,
-          conversationId: convId,
-          messageId: resultado.messageId,
-          pergunta: mensagemIA,
-          resposta: null,
-          status: 'SEM_RESPOSTA',
-        });
-        this.logger.warn(`[bot] BLOQUEADO-CUSTO conv=${convId}: ${teto.motivo}`);
-        return;
       }
 
       // 5. Histórico (últimas N msgs de texto)
