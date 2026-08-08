@@ -2,6 +2,7 @@ import { Injectable, Logger } from '@nestjs/common';
 import { parse } from 'papaparse';
 import type { Prisma, LeadEtapa } from '@prisma/client';
 import { PrismaService } from '@database/prisma.service';
+import { FluxoEventBusService } from '@modules/fluxos/fluxo-event-bus.service';
 import { BusinessRuleException, ForbiddenException } from '@shared/errors/app-exception';
 import { ErrorCode } from '@shared/errors/error-codes';
 import { getCallerEmpresaId } from '@shared/utils/auth-context';
@@ -39,7 +40,10 @@ const DETALHES_LIMITE = 100;
 export class ImportService {
   private readonly logger = new Logger(ImportService.name);
 
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly bus: FluxoEventBusService,
+  ) {}
 
   private requireEmpresa(user: AuthenticatedUser): string {
     const empresaId = getCallerEmpresaId(user);
@@ -236,6 +240,10 @@ export class ImportService {
     // (xlsx) é barrado pelo .max(5000) do zod. Cortar aqui escondia linhas.
     const rows = dto.rows ?? this.parseCsv(dto.csv ?? '');
     const alvo = await this.resolverFunilEtapa(empresaId, dto.funilId, dto.funilEtapaId);
+    // Só faz sentido com destino de funil escolhido: sem funil o lead é contato
+    // puro, e disparar régua de nutrição em quem não entrou em pipeline nenhum
+    // é justamente o disparo acidental que a regra nova veio evitar.
+    const dispararReguas = Boolean(dto.dispararReguas) && Boolean(alvo.funilEtapaId);
 
     return this.processarLote(
       rows,
@@ -386,7 +394,35 @@ export class ImportService {
           _presentes?: unknown;
         };
         void _p;
-        const r = await this.prisma.lead.create({ data: dataCreate, select: { id: true } });
+        const r = await this.prisma.lead.create({
+          data: dataCreate,
+          select: { id: true, nome: true, etapa: true, valorEstimado: true },
+        });
+        // Automação é OPT-IN e só pros leads NOVOS. Um lote de 5000 linhas com
+        // isso ligado enfileira 5000 execuções de fluxo — quem importa decide,
+        // marcando o checkbox no modal. Lead que já existia NUNCA dispara (não
+        // é criação; re-importar a mesma planilha re-disparava a régua inteira).
+        if (dispararReguas) {
+          // best-effort: o bus já engole erro, mas um throw aqui derrubaria a
+          // linha inteira e o lead ficaria criado marcado como falha.
+          try {
+            void this.bus.disparar(empresaId, 'LEAD_CRIADO', {
+              leadId: r.id,
+              lead: {
+                id: r.id,
+                nome: r.nome,
+                etapa: r.etapa,
+                valorEstimado: Number(r.valorEstimado),
+              },
+              clienteId: null,
+              representanteId: null,
+            });
+          } catch (e) {
+            this.logger.warn(
+              `Falha ao disparar LEAD_CRIADO do import (lead ${r.id}): ${String(e)}`,
+            );
+          }
+        }
         return r.id;
       },
     );

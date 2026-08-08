@@ -21,8 +21,9 @@ import { cn } from '@/lib/cn';
  * → confirmar. xlsx é parseado no client (exceljs); csv vai como texto.
  *
  * O backend (`POST /import/leads`) reusa o engine genérico de import: dedup por
- * telefone, onDuplicate skip/update/error, e cai no funil/etapa informado
- * (ou no funil padrão da empresa).
+ * telefone, onDuplicate skip/update/error, e cai no funil/etapa informado.
+ * Sem funil+etapa explícitos o lote entra como CONTATO (sem funil) — não existe
+ * mais fallback pro funil padrão da empresa.
  */
 
 interface FunilEtapaLite {
@@ -71,6 +72,8 @@ export function ImportLeadsModal({
   const [funilId, setFunilId] = useState<string>(defaultFunilId ?? '');
   const [funilEtapaId, setFunilEtapaId] = useState<string>('');
   const [onDuplicate, setOnDuplicate] = useState<'skip' | 'update' | 'error'>('skip');
+  // Desligado por padrão: importar planilha NÃO é motivo pra disparar régua.
+  const [dispararReguas, setDispararReguas] = useState(false);
   const [preview, setPreview] = useState<ImportResult | null>(null);
   const [busy, setBusy] = useState<'parse' | 'preview' | 'confirm' | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -126,6 +129,8 @@ export function ImportLeadsModal({
       funilEtapaId: funilEtapaId || undefined,
       dryRun,
       onDuplicate,
+      // Só vai junto quando o lote tem destino de funil de verdade.
+      dispararReguas: dispararReguas && Boolean(funilEtapaId),
     };
   }
 
@@ -342,6 +347,28 @@ export function ImportLeadsModal({
               </Select>
             </Field>
           </div>
+          <label
+            className={`mt-3 flex items-start gap-2 text-sm ${
+              funilEtapaId ? 'text-fg' : 'text-fg-muted'
+            }`}
+          >
+            <input
+              type="checkbox"
+              data-testid="import-disparar-reguas"
+              className="mt-0.5"
+              checked={dispararReguas && Boolean(funilEtapaId)}
+              disabled={!funilEtapaId}
+              onChange={(e) => setDispararReguas(e.target.checked)}
+            />
+            <span>
+              Disparar automações (gatilho <strong>Lead criado</strong>) para os leads novos
+              <span className="block text-xs text-fg-muted">
+                {funilEtapaId
+                  ? 'Cada lead novo entra nos fluxos ativos com esse gatilho — pode virar mensagem de WhatsApp em massa. Leads já existentes nunca disparam.'
+                  : 'Disponível só quando o lote entra num funil e etapa.'}
+              </span>
+            </span>
+          </label>
         </div>
 
         {/* 3 — Prévia */}

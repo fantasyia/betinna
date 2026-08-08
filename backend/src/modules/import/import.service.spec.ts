@@ -28,7 +28,12 @@ const makePrisma = () => ({
   lead: {
     findFirst: vi.fn().mockResolvedValue(null),
     findUnique: vi.fn().mockResolvedValue(null),
-    create: vi.fn().mockResolvedValue({ id: 'lead-novo' }),
+    create: vi.fn().mockResolvedValue({
+      id: 'lead-novo',
+      nome: 'Lead Novo',
+      etapa: 'NOVO',
+      valorEstimado: 0,
+    }),
     update: vi.fn().mockResolvedValue({ id: 'lead-existente' }),
   },
   funil: {
@@ -42,13 +47,18 @@ const makePrisma = () => ({
   $queryRaw: vi.fn().mockResolvedValue([]),
 });
 
+// Bus de fluxos: o import só dispara LEAD_CRIADO quando o opt-in vem ligado.
+const makeBus = () => ({ disparar: vi.fn().mockResolvedValue(undefined) });
+
 describe('ImportService.importarClientes', () => {
   let prisma: ReturnType<typeof makePrisma>;
+  let bus: ReturnType<typeof makeBus>;
   let svc: ImportService;
 
   beforeEach(() => {
     prisma = makePrisma();
-    svc = new ImportService(prisma as never);
+    bus = makeBus();
+    svc = new ImportService(prisma as never, bus as never);
   });
 
   it('REP recebe ForbiddenException', async () => {
@@ -194,11 +204,13 @@ describe('ImportService.importarClientes', () => {
 
 describe('ImportService.importarProdutos', () => {
   let prisma: ReturnType<typeof makePrisma>;
+  let bus: ReturnType<typeof makeBus>;
   let svc: ImportService;
 
   beforeEach(() => {
     prisma = makePrisma();
-    svc = new ImportService(prisma as never);
+    bus = makeBus();
+    svc = new ImportService(prisma as never, bus as never);
   });
 
   it('GERENTE recebe ForbiddenException (produtos é DIRECTOR/ADMIN)', async () => {
@@ -270,11 +282,13 @@ describe('ImportService.importarProdutos', () => {
 
 describe('ImportService.importarLeads', () => {
   let prisma: ReturnType<typeof makePrisma>;
+  let bus: ReturnType<typeof makeBus>;
   let svc: ImportService;
 
   beforeEach(() => {
     prisma = makePrisma();
-    svc = new ImportService(prisma as never);
+    bus = makeBus();
+    svc = new ImportService(prisma as never, bus as never);
   });
 
   it('REP recebe ForbiddenException', async () => {
@@ -430,11 +444,13 @@ describe('ImportService.importarLeads', () => {
 
 describe('ImportService — proteções do onDuplicate=update (auditoria)', () => {
   let prisma: ReturnType<typeof makePrisma>;
+  let bus: ReturnType<typeof makeBus>;
   let svc: ImportService;
 
   beforeEach(() => {
     prisma = makePrisma();
-    svc = new ImportService(prisma as never);
+    bus = makeBus();
+    svc = new ImportService(prisma as never, bus as never);
   });
 
   it('lead: update NÃO move o lead de volta pra etapa alvo do import', async () => {
@@ -582,11 +598,13 @@ describe('ImportService — proteções do onDuplicate=update (auditoria)', () =
 
 describe('ImportService.importarLeads — destino no funil', () => {
   let prisma: ReturnType<typeof makePrisma>;
+  let bus: ReturnType<typeof makeBus>;
   let svc: ImportService;
 
   beforeEach(() => {
     prisma = makePrisma();
-    svc = new ImportService(prisma as never);
+    bus = makeBus();
+    svc = new ImportService(prisma as never, bus as never);
   });
 
   it('SEM funil/etapa: lead entra como CONTATO (sem funil), não no kanban', async () => {
@@ -647,5 +665,82 @@ describe('ImportService.importarLeads — destino no funil', () => {
         funilEtapaId: 'et-de-outro-tenant',
       }),
     ).rejects.toMatchObject({ code: 'BUSINESS_RULE_VIOLATION' });
+  });
+});
+
+describe('ImportService.importarLeads — opt-in de automações (dispararReguas)', () => {
+  let prisma: ReturnType<typeof makePrisma>;
+  let bus: ReturnType<typeof makeBus>;
+  let svc: ImportService;
+
+  beforeEach(() => {
+    prisma = makePrisma();
+    bus = makeBus();
+    svc = new ImportService(prisma as never, bus as never);
+  });
+
+  it('default (flag ausente) NÃO dispara nada — planilha não é motivo pra régua', async () => {
+    await svc.importarLeads(fakeUser(), {
+      rows: [{ nome: 'Lead A', telefone: '11999990000' }],
+      funilId: 'funil-pad',
+      funilEtapaId: 'etapa-1',
+      dryRun: false,
+      onDuplicate: 'skip',
+      dispararReguas: false,
+    });
+    expect(bus.disparar).not.toHaveBeenCalled();
+  });
+
+  it('flag ligada + destino de funil → dispara LEAD_CRIADO por lead NOVO', async () => {
+    await svc.importarLeads(fakeUser(), {
+      rows: [{ nome: 'Lead A', telefone: '11999990000' }],
+      funilId: 'funil-pad',
+      funilEtapaId: 'etapa-1',
+      dryRun: false,
+      onDuplicate: 'skip',
+      dispararReguas: true,
+    });
+    expect(bus.disparar).toHaveBeenCalledTimes(1);
+    const [empresaId, evento, payload] = bus.disparar.mock.calls[0];
+    expect(empresaId).toBe('emp-1');
+    expect(evento).toBe('LEAD_CRIADO');
+    expect(payload.leadId).toBe('lead-novo');
+  });
+
+  it('flag ligada SEM funil/etapa não dispara — contato puro não entra em régua', async () => {
+    await svc.importarLeads(fakeUser(), {
+      rows: [{ nome: 'Lead A', telefone: '11999990000' }],
+      dryRun: false,
+      onDuplicate: 'skip',
+      dispararReguas: true,
+    });
+    expect(prisma.lead.create).toHaveBeenCalled();
+    expect(bus.disparar).not.toHaveBeenCalled();
+  });
+
+  it('dryRun não dispara (nada foi criado de verdade)', async () => {
+    await svc.importarLeads(fakeUser(), {
+      rows: [{ nome: 'Lead A', telefone: '11999990000' }],
+      funilId: 'funil-pad',
+      funilEtapaId: 'etapa-1',
+      dryRun: true,
+      onDuplicate: 'skip',
+      dispararReguas: true,
+    });
+    expect(bus.disparar).not.toHaveBeenCalled();
+  });
+
+  it('lead que JÁ EXISTE não dispara — re-importar não re-dispara a régua', async () => {
+    prisma.$queryRaw.mockResolvedValue([{ id: 'lead-existente' }]);
+    await svc.importarLeads(fakeUser(), {
+      rows: [{ nome: 'Lead A', telefone: '11999990000' }],
+      funilId: 'funil-pad',
+      funilEtapaId: 'etapa-1',
+      dryRun: false,
+      onDuplicate: 'update',
+      dispararReguas: true,
+    });
+    expect(prisma.lead.update).toHaveBeenCalled();
+    expect(bus.disparar).not.toHaveBeenCalled();
   });
 });

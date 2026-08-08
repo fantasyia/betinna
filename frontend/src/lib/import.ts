@@ -57,6 +57,8 @@ export interface ImportLeadsRequest {
   funilEtapaId?: string;
   dryRun?: boolean;
   onDuplicate?: OnDuplicate;
+  /** Opt-in: dispara as automações de LEAD_CRIADO pros leads novos do lote. */
+  dispararReguas?: boolean;
 }
 
 /**

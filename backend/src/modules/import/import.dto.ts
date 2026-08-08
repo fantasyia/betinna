@@ -64,6 +64,13 @@ export const importLeadsSchema = z
     funilEtapaId: z.string().optional(),
     dryRun: z.boolean().optional().default(false),
     onDuplicate: z.enum(['skip', 'update', 'error']).optional().default('skip'),
+    /**
+     * Dispara LEAD_CRIADO pros leads NOVOS do lote (réguas de automação rodam).
+     * Default FALSE de propósito: importar 5000 linhas com isso ligado enfileira
+     * 5000 execuções de fluxo — pode virar rajada de WhatsApp. É opt-in
+     * consciente, e só faz sentido junto da escolha de funil+etapa.
+     */
+    dispararReguas: z.boolean().optional().default(false),
   })
   .refine((d) => Boolean(d.csv) || (d.rows?.length ?? 0) > 0, {
     message: 'Envie o conteúdo (csv) ou as linhas (rows)',
