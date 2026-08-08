@@ -287,6 +287,19 @@ export class PropostasService {
     // sido desativados DEPOIS da criação da proposta).
     this.assertPropostaNoPrazo(proposta.validoAte);
     await this.assertProdutosDaPropostaAtivos(empresaId, proposta.itens);
+    // Revalida o bloqueio no OMIE AQUI também: o cliente pode ter sido bloqueado
+    // DEPOIS de a proposta ser criada, e a conversão é o ponto em que a venda de
+    // fato nasce (mesmo espírito dos checks #23/#24 acima).
+    const clienteAtual = await this.prisma.cliente.findFirst({
+      where: { id: proposta.clienteId, empresaId },
+      select: { omieStatus: true },
+    });
+    if (clienteAtual && clienteAtual.omieStatus !== 'ATIVO') {
+      throw new BusinessRuleException(
+        'Cliente bloqueado no OMIE — não é possível converter a proposta em pedido. Acione o financeiro.',
+        ErrorCode.CLIENTE_BLOQUEADO_OMIE,
+      );
+    }
 
     // Teto de desconto / aprovação (D3/D46) via gate ÚNICO no PedidoPricingService —
     // MESMO ponto que o aceite externo usa, pra não voltar a divergir e reabrir o bypass.
@@ -419,6 +432,15 @@ export class PropostasService {
       },
     });
     if (!cliente) throw new NotFoundException('Cliente', clienteId);
+    // `omieStatus` era selecionado e nunca checado: dava pra montar proposta e
+    // convertê-la em pedido pra cliente BLOQUEADO no OMIE (D2), furando pelo
+    // caminho da proposta o bloqueio que o pedido direto aplica.
+    if (cliente.omieStatus !== 'ATIVO') {
+      throw new BusinessRuleException(
+        'Cliente bloqueado no OMIE — não é possível abrir proposta. Acione o financeiro.',
+        ErrorCode.CLIENTE_BLOQUEADO_OMIE,
+      );
+    }
     const scope = await this.repScope.getRepIds(user);
     if (
       scope !== null &&

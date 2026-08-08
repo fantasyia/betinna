@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { Inbox as InboxIcon } from 'lucide-react';
 import { useRole } from '@/hooks/usePermission';
 import { useDebouncedValue } from '@/hooks/useDebouncedValue';
@@ -40,7 +41,23 @@ export default function InboxPage() {
   // #46: debounce da busca — sem ele, cada tecla mudava o listPath (queryKey nova + pageResp null)
   // → a lista inteira sumia e piscava spinner a cada caractere na rota mais pesada do SAC.
   const searchDebounced = useDebouncedValue(search, 300);
-  const [selectedId, setSelectedId] = useState<string | null>(null);
+  // Deep-link: notificação e alerta de fluxo mandam /inbox?conversa=<id>; a
+  // página de incidentes usa ?conv=. Nenhum dos dois era lido — o clique abria a
+  // Inbox e caía na primeira conversa da lista, sem nenhum sinal de erro.
+  // Inicializa DIRETO no useState pra o efeito de auto-seleção não competir.
+  const [searchParams, setSearchParams] = useSearchParams();
+  const [selectedId, setSelectedId] = useState<string | null>(
+    () => searchParams.get('conversa') ?? searchParams.get('conv'),
+  );
+
+  // Limpa o param depois de aplicar (senão um F5 reabre a conversa antiga).
+  useEffect(() => {
+    if (!searchParams.has('conversa') && !searchParams.has('conv')) return;
+    const next = new URLSearchParams(searchParams);
+    next.delete('conversa');
+    next.delete('conv');
+    setSearchParams(next, { replace: true });
+  }, [searchParams, setSearchParams]);
 
   const canal = useMemo(() => {
     const map: Record<string, Canal | ''> = {

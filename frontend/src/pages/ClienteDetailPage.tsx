@@ -367,6 +367,9 @@ function DadosTab({
   // Espelha o @Roles do PUT :id/omie-status — bloqueio vem do financeiro (D2),
   // REP não desbloqueia o próprio cliente pra fechar pedido.
   const podeMudarOmie = role === 'ADMIN' || role === 'DIRECTOR' || role === 'GERENTE';
+  // Espelha o @Roles do DELETE /clientes/:id — o botão aparecia pra REP/SAC e o
+  // clique só devolvia 403 depois da confirmação.
+  const podeExcluir = role === 'ADMIN' || role === 'DIRECTOR' || role === 'GERENTE';
 
   async function save(e: React.FormEvent) {
     e.preventDefault();
@@ -520,7 +523,7 @@ function DadosTab({
           <button type="submit" data-testid="cliente-save" disabled={busy} className={btnCls}>
             {busy ? 'Salvando…' : 'Salvar alterações'}
           </button>
-          {!confirmDel && (
+          {podeExcluir && !confirmDel && (
             <button
               type="button"
               data-testid="cliente-del"
@@ -530,7 +533,7 @@ function DadosTab({
               Excluir cliente
             </button>
           )}
-          {confirmDel && (
+          {podeExcluir && confirmDel && (
             <>
               <button
                 type="button"

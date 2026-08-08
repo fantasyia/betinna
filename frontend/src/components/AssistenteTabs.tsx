@@ -12,7 +12,7 @@ import { SubTabsBar, type SubTab } from '@/components/SubTabsBar';
  *  - Chat         → /mullerbot               (todos)
  *  - Configuração → /mullerbot/persona       (ADMIN/DIRECTOR)
  *  - Conhecimento → /mullerbot/conhecimento  (ADMIN/DIRECTOR)
- *  - Histórico    → /mullerbot/auditoria     (ADMIN/DIRECTOR/GERENTE/SAC)
+ *  - Histórico    → /mullerbot/auditoria     (ADMIN/DIRECTOR/GERENTE)
  *
  * REP vê só o Chat → SubTabsBar (que some com <2 abas) não renderiza a barra;
  * fica só o nome do bot no topo. Renderizado após o <AtendimentoTabs /> nas
@@ -21,8 +21,9 @@ import { SubTabsBar, type SubTab } from '@/components/SubTabsBar';
 export function AssistenteTabs() {
   const role = useRole();
   const canConfig = role === 'ADMIN' || role === 'DIRECTOR';
-  const canHistorico =
-    role === 'ADMIN' || role === 'DIRECTOR' || role === 'GERENTE' || role === 'SAC';
+  // SAC não audita — regra do backend (@Roles ADMIN/DIRECTOR/GERENTE) e da
+  // matriz de permissões. A aba aparecia pra ele e o clique caía em /403.
+  const canHistorico = role === 'ADMIN' || role === 'DIRECTOR' || role === 'GERENTE';
 
   const { data: persona } = useApiQuery<{ nome?: string }>('/mullerbot/persona');
   const nome = persona?.nome?.trim() || 'Assistente IA';

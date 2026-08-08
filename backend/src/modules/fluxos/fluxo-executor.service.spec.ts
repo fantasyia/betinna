@@ -923,6 +923,56 @@ describe('FluxoExecutorService', () => {
       );
     });
 
+    it('CONDICAO simples casa texto sem depender de ACENTO (a IA grava com/sem)', async () => {
+      // Antes comparava cru (val == ref): "Não" gravado pela IA contra "Nao" no
+      // config mandava o lead pro ramo errado, sem erro nenhum.
+      const condicaoNo = fakeNo({
+        id: 'no-cond',
+        tipo: 'CONDICAO',
+        config: { campo: 'resposta', operador: 'eq', valor: 'Nao e lead' },
+      });
+      prisma.fluxoExecucao.findUnique.mockResolvedValue(
+        fakeExecucao({ status: 'EM_EXECUCAO', contexto: { resposta: 'Não é lead' } }),
+      );
+      prisma.fluxoNo.findUnique.mockResolvedValue(condicaoNo);
+      prisma.fluxoEdge.findMany.mockResolvedValue([
+        fakeEdge('no-cond', 'no-true', 'Sim'),
+        fakeEdge('no-cond', 'no-false', 'Não'),
+      ]);
+
+      await service.executarPasso('exec-1', 'no-cond', 'job-test');
+
+      expect(queue.add).toHaveBeenCalledWith(
+        'step',
+        { execucaoId: 'exec-1', noId: 'no-true' },
+        expect.any(Object),
+      );
+    });
+
+    it('CONDICAO simples com operador numérico NÃO vira comparação de texto', async () => {
+      const condicaoNo = fakeNo({
+        id: 'no-cond',
+        tipo: 'CONDICAO',
+        config: { campo: 'valor', operador: 'eq', valor: 100 },
+      });
+      prisma.fluxoExecucao.findUnique.mockResolvedValue(
+        fakeExecucao({ status: 'EM_EXECUCAO', contexto: { valor: 100 } }),
+      );
+      prisma.fluxoNo.findUnique.mockResolvedValue(condicaoNo);
+      prisma.fluxoEdge.findMany.mockResolvedValue([
+        fakeEdge('no-cond', 'no-true', 'Sim'),
+        fakeEdge('no-cond', 'no-false', 'Não'),
+      ]);
+
+      await service.executarPasso('exec-1', 'no-cond', 'job-test');
+
+      expect(queue.add).toHaveBeenCalledWith(
+        'step',
+        { execucaoId: 'exec-1', noId: 'no-true' },
+        expect.any(Object),
+      );
+    });
+
     it('roteador usa a variável FRESCA do lead, não o espelho velho no topo do contexto', async () => {
       // BUG do card: o contexto persistido tinha classificacao_final="LGPD" (velho, de
       // um turno anterior) no TOPO; o lead.variaveis atual traz "Sem Sinergia" (fresco).

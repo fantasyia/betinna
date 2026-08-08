@@ -11,13 +11,23 @@ export const DEFAULT_MATERIAIS_TIPOS = [
   { key: 'tutorial', label: 'Tutorial' },
 ] as const;
 
+/**
+ * O upload é multipart: TODO campo chega como STRING. `z.coerce.boolean()` faz
+ * `Boolean("false") === true`, então todo material subido pela UI virava
+ * confidencial. Aqui a string é interpretada de verdade.
+ */
+const booleanoDeFormulario = z.preprocess(
+  (v) => (typeof v === 'string' ? v.trim().toLowerCase() === 'true' : v),
+  z.boolean(),
+);
+
 export const createMaterialSchema = z.object({
   tipo: z.string().trim().min(1).max(40),
   titulo: z.string().trim().min(2).max(200),
   descricao: z.string().trim().max(1000).optional(),
   produtoId: z.string().cuid().optional(),
   categoria: z.string().trim().max(100).optional(),
-  confidencial: z.coerce.boolean().optional(),
+  confidencial: booleanoDeFormulario.optional(),
 });
 export type CreateMaterialDto = z.infer<typeof createMaterialSchema>;
 
@@ -27,7 +37,9 @@ export const updateMaterialSchema = z.object({
   descricao: z.string().trim().max(1000).nullable().optional(),
   produtoId: z.string().cuid().nullable().optional(),
   categoria: z.string().trim().max(100).nullable().optional(),
-  confidencial: z.coerce.boolean().optional(),
+  // PATCH é JSON (boolean de verdade), mas aceita string por segurança —
+  // manter o coerce aqui deixava a mesma armadilha armada.
+  confidencial: booleanoDeFormulario.optional(),
 });
 export type UpdateMaterialDto = z.infer<typeof updateMaterialSchema>;
 

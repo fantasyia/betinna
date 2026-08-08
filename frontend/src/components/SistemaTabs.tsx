@@ -26,7 +26,10 @@ export function SistemaTabs() {
   const isAdminTier =
     role === 'ADMIN' || role === 'DIRECTOR' || role === 'GERENTE';
   const canSeeUsuarios = isAdminTier;
-  const canSeeConfiguracoes = role === 'ADMIN';
+  // Mesmo gate da rota e do backend (ADMIN/DIRECTOR). Estava só ADMIN: o
+  // DIRECTOR — que É o mandatário do tenant e tem a permissão — não via a aba e
+  // só chegava em Configurações digitando a URL.
+  const canSeeConfiguracoes = usePermission('configuracoes.empresa');
 
   const tabs: SubTab[] = [
     { to: '/perfil', label: 'Meu perfil', icon: <UserCircle size={14} /> },

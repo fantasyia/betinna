@@ -615,6 +615,9 @@ function AprovacaoDetailDialog({
   onChanged: () => void;
 }) {
   const { data, loading, error, refetch } = useApiQuery<Aprovacao>(`/aprovacoes/${id}`);
+  // Espelha `aprovacoes:approve` do backend (ADMIN/DIRECTOR/GERENTE). REP só tem
+  // `view`: os botões apareciam pra ele e a decisão morria em 403.
+  const podeDecidir = usePermission('aprovacoes.approve');
   const [comentario, setComentario] = useState('');
   const [busy, setBusy] = useState(false);
   const [actionError, setActionError] = useState<string | null>(null);
@@ -648,7 +651,7 @@ function AprovacaoDetailDialog({
       description={data ? `Pedido #${data.pedido?.numero ?? '—'}` : undefined}
       size="lg"
       footer={
-        isPendente ? (
+        isPendente && podeDecidir ? (
           acao === null ? (
             <>
               <Button

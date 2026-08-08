@@ -124,21 +124,24 @@ function resolveCampoFresco(nome: string, ctx: ExecucaoContexto): unknown {
  * - modo 'roteador': casa o valor da `variavel` com uma das `saidas` (label = valor) ou 'default'.
  * - modo 'simples' (default): 'true' | 'false'.
  */
+/**
+ * Normalização ÚNICA de rótulo/valor: trim + minúsculas + SEM acento (NFKD) +
+ * espaços internos colapsados. A IA solta "Nao e lead"/"Não é lead"
+ * indistintamente — sem isso um acento a menos desviava tudo pro ramo errado.
+ * O editor usa exatamente a mesma (frontend saidas.ts) pra não divergir.
+ */
+function normalizarValor(s: string): string {
+  return s
+    .trim()
+    .toLowerCase()
+    .normalize('NFKD')
+    .replace(/\p{Diacritic}/gu, '')
+    .replace(/\s+/g, ' ');
+}
+
 function avaliarCondicao(config: CondicaoConfig, ctx: ExecucaoContexto): string {
   if (config.modo === 'roteador') {
-    // Normaliza p/ casar rótulo com o valor gravado pela IA: trim + minúsculas +
-    // SEM acento (NFKD). A IA solta "Nao e lead"/"Não é lead" indistintamente —
-    // sem isso, um acento a menos desviava tudo pro "default"→tarefa manual. O
-    // retorno é o rótulo ORIGINAL de `saidas` (a aresta usa o label acentuado).
-    // Colapsa espaços internos também — o editor faz o mesmo (saidas.ts), senão
-    // "Nao  e lead" (2 espaços) vira ramo morto contra a saída de 1 espaço.
-    const norm = (s: string) =>
-      s
-        .trim()
-        .toLowerCase()
-        .normalize('NFKD')
-        .replace(/\p{Diacritic}/gu, '')
-        .replace(/\s+/g, ' ');
+    const norm = normalizarValor;
     const valor = norm(resolveVariavel(config.variavel ?? '', ctx));
     const match = (config.saidas ?? []).find((s) => norm(s) === valor);
     return match ?? 'default';
@@ -148,12 +151,18 @@ function avaliarCondicao(config: CondicaoConfig, ctx: ExecucaoContexto): string 
   const val = resolveCampoFresco(config.campo ?? '', ctx);
   const ref = config.valor;
   let resultado: boolean;
+  // eq/neq/contains comparam TEXTO normalizado (mesma regra do roteador): a IA
+  // grava "Não" e o config tem "Nao" (ou vice-versa) — comparação crua mandava o
+  // lead pro ramo errado sem erro nenhum. gt/lt/gte/lte seguem numéricos.
+  const ehTextoDosDoisLados = typeof ref !== 'number' && typeof ref !== 'boolean';
+  const valTxt = normalizarValor(String(val ?? ''));
+  const refTxt = normalizarValor(String(ref ?? ''));
   switch (config.operador) {
     case 'eq':
-      resultado = val == ref;
+      resultado = ehTextoDosDoisLados ? valTxt === refTxt : val == ref;
       break;
     case 'neq':
-      resultado = val != ref;
+      resultado = ehTextoDosDoisLados ? valTxt !== refTxt : val != ref;
       break;
     case 'gt':
       resultado = Number(val) > Number(ref);
@@ -168,7 +177,7 @@ function avaliarCondicao(config: CondicaoConfig, ctx: ExecucaoContexto): string 
       resultado = Number(val) <= Number(ref);
       break;
     case 'contains':
-      resultado = String(val).includes(String(ref));
+      resultado = valTxt.includes(refTxt);
       break;
     default:
       resultado = false;

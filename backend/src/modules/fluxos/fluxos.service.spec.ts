@@ -414,6 +414,48 @@ describe('FluxosService', () => {
       await expect(svc.ativar(fakeUser(), 'fluxo-1')).resolves.toBeTruthy();
     });
 
+    it('rejeita CRON_AGENDADO sem nenhuma expressão (ativava e nunca disparava)', async () => {
+      prisma.fluxo.findFirst.mockResolvedValue(
+        fakeFluxo({
+          triggerTipo: 'CRON_AGENDADO',
+          triggerConfig: { expressoes: [] },
+          nos: [{ id: 'n1', tipo: 'TRIGGER', acaoTipo: null }],
+          arestas: [],
+        }),
+      );
+      await expect(svc.ativar(fakeUser(), 'fluxo-1')).rejects.toMatchObject({
+        code: 'FLUXO_INVALIDO',
+      });
+    });
+
+    it('rejeita CRON_AGENDADO com expressão inválida', async () => {
+      prisma.fluxo.findFirst.mockResolvedValue(
+        fakeFluxo({
+          triggerTipo: 'CRON_AGENDADO',
+          triggerConfig: { expressoes: ['2'] }, // 1 campo: o cron-parser leria como "segundos"
+          nos: [{ id: 'n1', tipo: 'TRIGGER', acaoTipo: null }],
+          arestas: [],
+        }),
+      );
+      await expect(svc.ativar(fakeUser(), 'fluxo-1')).rejects.toMatchObject({
+        code: 'FLUXO_INVALIDO',
+      });
+    });
+
+    it('ACEITA CRON_AGENDADO com expressão válida de 5 campos', async () => {
+      prisma.fluxo.findFirst.mockResolvedValue(
+        fakeFluxo({
+          triggerTipo: 'CRON_AGENDADO',
+          triggerConfig: { expressoes: ['0 9 * * 1-5'] },
+          nos: [{ id: 'n1', tipo: 'TRIGGER', acaoTipo: null }],
+          arestas: [],
+        }),
+      );
+      prisma.fluxo.update.mockResolvedValue({});
+      prisma.fluxo.findUniqueOrThrow.mockResolvedValue(fakeFluxo({ status: 'ATIVO' }));
+      await expect(svc.ativar(fakeUser(), 'fluxo-1')).resolves.toBeTruthy();
+    });
+
     it('rejeita ATRIBUIR_REP sem representante (runtime pegaria um usuário arbitrário)', async () => {
       prisma.fluxo.findFirst.mockResolvedValue(
         fakeFluxo({

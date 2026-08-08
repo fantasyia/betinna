@@ -401,10 +401,16 @@ export class PedidosService {
             total: totalsRecalc.total,
             comissao: totalsRecalc.comissao,
           }),
-          // Só força AGUARDANDO_APROVACAO quando exceder o teto. Quando NÃO
-          // exceder, não mexe no status (não inventa política de "voltar a
-          // RASCUNHO" — decisão de produto pendente).
-          ...(requerAprovacao ? { status: 'AGUARDANDO_APROVACAO' as const } : {}),
+          // Exceder o teto → AGUARDANDO_APROVACAO. E o caminho de volta: se a
+          // edição DERRUBOU o desconto abaixo do teto e o pedido estava travado
+          // esperando aprovação, ele volta pra RASCUNHO — senão ficava preso
+          // aguardando uma decisão sobre um desconto que não existe mais, e o
+          // gerente rejeitando cancelava um pedido já corrigido.
+          ...(requerAprovacao
+            ? { status: 'AGUARDANDO_APROVACAO' as const }
+            : precisaRecalcular && existing.status === 'AGUARDANDO_APROVACAO'
+              ? { status: 'RASCUNHO' as const }
+              : {}),
         },
       });
 
@@ -444,6 +450,21 @@ export class PedidosService {
             gerenteId: null,
             comentarioAprovador: null,
             resolvidoEm: null,
+          },
+        });
+      }
+
+      // Desconto voltou pra dentro do teto: a solicitação PENDENTE fica órfã
+      // (com o valor ANTIGO). Resolve como REJEITADA com carimbo automático —
+      // sem isso o gerente decidia sobre um número que não existe mais.
+      if (!requerAprovacao && precisaRecalcular && existing.status === 'AGUARDANDO_APROVACAO') {
+        await tx.aprovacaoDesconto.updateMany({
+          where: { pedidoId: id, status: 'PENDENTE' },
+          data: {
+            status: 'REJEITADA',
+            comentarioAprovador:
+              'Resolvida automaticamente: o pedido foi editado e o desconto voltou pra dentro do teto.',
+            resolvidoEm: new Date(),
           },
         });
       }
@@ -594,6 +615,13 @@ export class PedidosService {
     if (['ENTREGUE', 'CANCELADO'].includes(existing.status)) {
       throw new BusinessRuleException(`Pedido em status ${existing.status} não pode ser cancelado`);
     }
+    // Pedido JÁ ENVIADO ao OMIE: cancelar aqui só muda o status local — o ERP
+    // segue com o pedido e vai faturar. Carimba o aviso na observação pra quem
+    // abrir o pedido ver que falta cancelar no OMIE também.
+    const avisoOmie = existing.numeroOmie
+      ? `\n[ATENÇÃO] Pedido já enviado ao OMIE (nº ${existing.numeroOmie}) — cancele TAMBÉM no ERP, senão ele continua faturando.`
+      : '';
+
     // CAS: só cancela se ainda não estiver ENTREGUE/CANCELADO (corrida com avançar/cancelar).
     const cas = await this.prisma.pedido.updateMany({
       where: {
@@ -603,9 +631,10 @@ export class PedidosService {
       },
       data: {
         status: 'CANCELADO',
-        observacoes: dto.motivo
-          ? `${existing.observacoes ? existing.observacoes + '\n' : ''}[Cancelado] ${dto.motivo}`
-          : existing.observacoes,
+        observacoes:
+          dto.motivo || avisoOmie
+            ? `${existing.observacoes ? existing.observacoes + '\n' : ''}${dto.motivo ? `[Cancelado] ${dto.motivo}` : '[Cancelado]'}${avisoOmie}`
+            : existing.observacoes,
       },
     });
     if (cas.count === 0) {
@@ -617,6 +646,13 @@ export class PedidosService {
 
     // Fidelidade removida do projeto Betinna (gerenciada agora no ERP do
     // cliente). Não há mais estorno de pontos em cancelamento — limpo 2026-05-21.
+
+    if (existing.numeroOmie) {
+      this.logger.warn(
+        `Pedido ${existing.numero} cancelado no app MAS já estava no OMIE (nº ${existing.numeroOmie}) — ` +
+          `precisa de cancelamento MANUAL no ERP.`,
+      );
+    }
 
     return this.prisma.pedido.findUniqueOrThrow({ where: { id }, include: pedidoInclude });
   }
@@ -720,7 +756,16 @@ export class PedidosService {
     const solicitacao = await this.prisma.pedidoCancelamentoSolicitacao.findFirst({
       where: { id: solicitacaoId, pedido: { empresaId } },
       include: {
-        pedido: { select: { id: true, status: true, observacoes: true, empresaId: true } },
+        pedido: {
+          select: {
+            id: true,
+            status: true,
+            observacoes: true,
+            empresaId: true,
+            numero: true,
+            numeroOmie: true,
+          },
+        },
       },
     });
     if (!solicitacao) {

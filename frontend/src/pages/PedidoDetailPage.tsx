@@ -1,5 +1,6 @@
 import { useState, type ReactNode } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
+import { useRole } from '@/hooks/usePermission';
 import {
   Send,
   ArrowRight,
@@ -167,6 +168,9 @@ export default function PedidoDetailPage() {
     id ? `/pedidos/${id}` : null,
   );
 
+  const role = useRole();
+  // Cancelamento direto é @Roles('ADMIN','DIRECTOR') no backend (P6).
+  const podeCancelarDireto = role === 'ADMIN' || role === 'DIRECTOR';
   const [busy, setBusy] = useState<string | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
   const [cancelOpen, setCancelOpen] = useState(false);
@@ -190,12 +194,19 @@ export default function PedidoDetailPage() {
     callAction('enviar', () => api.post(`/pedidos/${id}/enviar-omie`));
   const avancar = () =>
     callAction('avancar', () => api.post(`/pedidos/${id}/avancar-status`));
+  // DIRECTOR/ADMIN cancelam direto; REP/GERENTE SOLICITAM (P6.2) — o backend
+  // recusa o cancelamento direto pra eles. Antes o botão era o mesmo pra todos:
+  // o rep tomava 403 e ficava sem caminho nenhum pra pedir o cancelamento.
   const doCancel = () =>
     callAction('cancelar', () =>
-      api.post(
-        `/pedidos/${id}/cancelar`,
-        cancelMotivo.trim() ? { motivo: cancelMotivo.trim() } : {},
-      ),
+      podeCancelarDireto
+        ? api.post(
+            `/pedidos/${id}/cancelar`,
+            cancelMotivo.trim() ? { motivo: cancelMotivo.trim() } : {},
+          )
+        : api.post(`/pedidos/${id}/solicitar-cancelamento`, {
+            motivo: cancelMotivo.trim(),
+          }),
     );
   /**
    * Duplicar usa o endpoint dedicado do backend (POST /pedidos/:id/duplicar)
@@ -327,7 +338,7 @@ export default function PedidoDetailPage() {
               onClick={() => setCancelOpen(true)}
               leftIcon={<XCircle className="h-3.5 w-3.5" />}
             >
-              Cancelar
+              {podeCancelarDireto ? 'Cancelar' : 'Solicitar cancelamento'}
             </Button>
           )}
         </div>
@@ -595,8 +606,12 @@ export default function PedidoDetailPage() {
       <Dialog
         open={cancelOpen}
         onClose={() => setCancelOpen(false)}
-        title="Cancelar pedido?"
-        description="Essa ação não pode ser desfeita."
+        title={podeCancelarDireto ? 'Cancelar pedido?' : 'Solicitar cancelamento'}
+        description={
+          podeCancelarDireto
+            ? 'Essa ação não pode ser desfeita.'
+            : 'A solicitação vai pra aprovação do diretor. Explique o motivo.'
+        }
         size="sm"
         footer={
           <>
@@ -607,18 +622,26 @@ export default function PedidoDetailPage() {
               variant="danger"
               data-testid="pedido-page-confirmar-cancelar"
               loading={busy === 'cancelar'}
+              disabled={!podeCancelarDireto && cancelMotivo.trim().length < 5}
               onClick={() => {
                 setCancelOpen(false);
                 void doCancel();
               }}
               leftIcon={<XCircle className="h-3.5 w-3.5" />}
             >
-              Confirmar cancelamento
+              {podeCancelarDireto ? 'Confirmar cancelamento' : 'Enviar solicitação'}
             </Button>
           </>
         }
       >
-        <Field label="Motivo" hint="Opcional, mas recomendado pro histórico">
+        <Field
+          label="Motivo"
+          hint={
+            podeCancelarDireto
+              ? 'Opcional, mas recomendado pro histórico'
+              : 'Obrigatório (mínimo 5 caracteres) — o diretor lê isso pra decidir'
+          }
+        >
           <Textarea
             value={cancelMotivo}
             onChange={(e) => setCancelMotivo(e.target.value)}

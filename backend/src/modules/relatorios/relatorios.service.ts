@@ -751,7 +751,7 @@ export class RelatoriosService {
       }),
     ]);
 
-    // Métricas de destinatários agregadas
+    // Destinatários das 20 campanhas listadas (alimenta a linha de cada card).
     const campanhaIds = campanhasList.map((c) => c.id);
     const destGrp =
       campanhaIds.length > 0
@@ -762,23 +762,33 @@ export class RelatoriosService {
           })
         : [];
 
+    // Métricas GLOBAIS do período — sobre TODAS as campanhas, não só as 20 mais
+    // recentes. Antes o `take: 20` da lista contaminava totalCampanhas e as
+    // taxas: com mais de 20 campanhas no período, o relatório mentia.
+    const destGlobal = await this.prisma.campanhaDestinatario.groupBy({
+      by: ['status'],
+      where: { campanha: where },
+      _count: { _all: true },
+    });
+
     const destPorCampanha: Record<string, Record<string, number>> = {};
     for (const d of destGrp) {
       if (!destPorCampanha[d.campanhaId]) destPorCampanha[d.campanhaId] = {};
       destPorCampanha[d.campanhaId][d.status] = d._count._all;
     }
 
-    const totalEnviados = destGrp
+    const totalEnviados = destGlobal
       .filter((d) => d.status === 'ENVIADO' || d.status === 'LIDO')
       .reduce((s, d) => s + d._count._all, 0);
-    const totalLidos = destGrp
+    const totalLidos = destGlobal
       .filter((d) => d.status === 'LIDO')
       .reduce((s, d) => s + d._count._all, 0);
-    const totalDestinatarios = destGrp.reduce((s, d) => s + d._count._all, 0);
+    const totalDestinatarios = destGlobal.reduce((s, d) => s + d._count._all, 0);
 
     return {
       periodo: { de, ate },
-      totalCampanhas: campanhasList.length,
+      // Soma do groupBy (sem take) — não o tamanho da lista capada em 20.
+      totalCampanhas: porCanal.reduce((acc, c) => acc + c._count._all, 0),
       totalDestinatarios,
       taxaEnvio:
         totalDestinatarios > 0 ? Math.round((totalEnviados / totalDestinatarios) * 100) : 0,

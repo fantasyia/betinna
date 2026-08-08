@@ -425,7 +425,7 @@ function IncidentDetailModal({ id, onClose }: { id: string; onClose: () => void 
             {data.conversation?.id && (
               <p className="text-[13px] mt-4">
                 💬 Conversa vinculada:{' '}
-                <a href={`/inbox?conv=${data.conversation.id}`} className="text-primary">
+                <a href={`/inbox?conversa=${data.conversation.id}`} className="text-primary">
                   abrir no Inbox →
                 </a>
               </p>

@@ -13,6 +13,7 @@ import type { AuthenticatedUser } from '@shared/types/authenticated-user';
 import { type Paginated, buildPaginated } from '@shared/types/pagination';
 import { WhatsAppMediaService } from '@integrations/whatsapp/whatsapp-media.service';
 import { FluxoEventBusService } from './fluxo-event-bus.service';
+import { validarCronExpr } from './cron.util';
 import type {
   CreateFluxoDto,
   UpdateFluxoDto,
@@ -238,6 +239,43 @@ export class FluxosService {
       // VERDE sem executar ramo nenhum — a falha mais silenciosa do sistema.
       if (n.tipo === 'CONDICAO') {
         this.validarCondicao(n, arestas);
+      }
+    }
+  }
+
+  /**
+   * Fluxo CRON_AGENDADO precisa de expressão VÁLIDA pra rodar. Sem esta checagem
+   * ele ativava com agendamento vazio ou inválido, ficava verde na lista e
+   * simplesmente nunca disparava — sem erro em lugar nenhum.
+   */
+  private validarAgendamentoCron(fluxo: {
+    triggerTipo: string | null;
+    triggerConfig: unknown;
+  }): void {
+    if (fluxo.triggerTipo !== 'CRON_AGENDADO') return;
+    const cfg = (fluxo.triggerConfig ?? {}) as { expressoes?: unknown; expressao?: unknown };
+    const exprs = (
+      Array.isArray(cfg.expressoes) && cfg.expressoes.length
+        ? (cfg.expressoes as unknown[])
+        : [cfg.expressao]
+    )
+      .filter((e): e is string => typeof e === 'string')
+      .map((e) => e.trim())
+      .filter(Boolean);
+
+    if (exprs.length === 0) {
+      throw new BusinessRuleException(
+        'Este fluxo é agendado, mas não tem nenhum horário definido. Configure o agendamento no bloco de gatilho.',
+        ErrorCode.FLUXO_INVALIDO,
+      );
+    }
+    for (const e of exprs) {
+      const { valido, erro } = validarCronExpr(e);
+      if (!valido) {
+        throw new BusinessRuleException(
+          `Agendamento inválido ("${e}"): ${erro ?? 'expressão cron não reconhecida'}`,
+          ErrorCode.FLUXO_INVALIDO,
+        );
       }
     }
   }
@@ -544,6 +582,7 @@ export class FluxosService {
 
     // Valida grafo antes de ativar
     this.validarGrafo(fluxo.nos, fluxo.arestas, fluxo.triggerTipo);
+    this.validarAgendamentoCron(fluxo);
 
     // Começa LIMPO: cancela execuções velhas que ficaram em voo (ex: fluxo
     // pausado antes do fix de cancelamento). Sem isto, reativar ressuscitava

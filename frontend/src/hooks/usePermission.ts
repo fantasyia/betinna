@@ -72,6 +72,7 @@ export type Permission =
   | 'integracoes.view'      // ADMIN, DIRECTOR, GERENTE
   // Ações gated inline (checks em componentes/páginas)
   | 'aprovacoes.decide'     // ADMIN, DIRECTOR — aprovar/rejeitar descontos e cancelamentos
+  | 'aprovacoes.approve'    // ADMIN, DIRECTOR, GERENTE — espelha `aprovacoes:approve` do backend
   | 'campanhas.manage'      // ADMIN, DIRECTOR, GERENTE — disparar/pausar/cancelar campanhas
   | 'comissoes.manage'      // ADMIN, DIRECTOR — fechar mês / marcar pago
   | 'inbox.zerar';          // ADMIN, DIRECTOR, GERENTE, SAC — zerar conversa (reset bot)
@@ -113,6 +114,7 @@ const PERMISSION_MATRIX: Record<UserRole, ReadonlySet<Permission>> = {
     'segmentos.view',
     'integracoes.view',
     'aprovacoes.decide',
+    'aprovacoes.approve',
     'campanhas.manage',
     'comissoes.manage',
     'inbox.zerar',
@@ -143,9 +145,12 @@ const PERMISSION_MATRIX: Record<UserRole, ReadonlySet<Permission>> = {
     'segmentos.view',
     'integracoes.view',
     'aprovacoes.decide',
+    'aprovacoes.approve',
     'inbox.zerar',
   ]),
   GERENTE: new Set<Permission>([
+    // GERENTE decide aprovação de desconto (matriz do backend dá 'approve').
+    'aprovacoes.approve',
     'mullerbot.auditoria',
     'clientes.view',
     'clientes.edit',

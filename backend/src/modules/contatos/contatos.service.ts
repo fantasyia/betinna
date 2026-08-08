@@ -517,10 +517,13 @@ export class ContatosService {
           (array_remove(array_agg(email_cand ORDER BY ord_tipo, quando DESC), NULL))[1] email_pick
         FROM src GROUP BY chave
       )`;
+    // `chave` como tie-break (é única por linha — o GROUP BY é por ela): sem
+    // ordem TOTAL, o Postgres pode devolver empates em ordem diferente a cada
+    // página e o mesmo contato aparece duas vezes (ou some) na paginação.
     const ordem =
       sortBy === 'nome'
-        ? Prisma.sql`ORDER BY COALESCE(nome_pick, tel_pick, email_pick, 'Sem nome') COLLATE "pt-BR-x-icu" ASC`
-        : Prisma.sql`ORDER BY ultima DESC NULLS LAST`;
+        ? Prisma.sql`ORDER BY COALESCE(nome_pick, tel_pick, email_pick, 'Sem nome') COLLATE "pt-BR-x-icu" ASC, chave ASC`
+        : Prisma.sql`ORDER BY ultima DESC NULLS LAST, chave ASC`;
 
     const rows = await this.prisma.$queryRaw<ChaveRow[]>(Prisma.sql`
       ${cte}
