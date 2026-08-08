@@ -91,14 +91,36 @@ function reaplicarObjetosInvisiveis() {
     log(`⚠️ ${arquivo} não encontrado — índices só-SQL NÃO foram reaplicados.`);
     return false;
   }
-  const res = spawnSync('npx', ['prisma', 'db', 'execute', '--stdin'], {
-    input: fs.readFileSync(arquivo, 'utf-8'),
-    encoding: 'utf-8',
-    shell: process.platform === 'win32',
-  });
-  if (res.status !== 0) {
-    log('❌ Falha ao reaplicar os índices só-SQL (objetos-invisiveis.sql):');
-    if (res.stderr) process.stderr.write(res.stderr);
+  // UM statement por vez: `db execute` aborta o script inteiro no primeiro erro,
+  // e aí um índice problemático (ex.: HNSW sem a extensão vector no ambiente)
+  // levava junto os UNIQUE parciais da Inbox, que são o que mais importa aqui.
+  const statements = fs
+    .readFileSync(arquivo, 'utf-8')
+    .split(';')
+    .map((s) =>
+      s
+        .split('\n')
+        .filter((l) => !l.trim().startsWith('--'))
+        .join('\n')
+        .trim(),
+    )
+    .filter(Boolean);
+
+  let falhas = 0;
+  for (const stmt of statements) {
+    const res = spawnSync('npx', ['prisma', 'db', 'execute', '--stdin'], {
+      input: `${stmt};`,
+      encoding: 'utf-8',
+      shell: process.platform === 'win32',
+    });
+    if (res.status !== 0) {
+      falhas += 1;
+      log(`⚠️ Falhou: ${stmt.slice(0, 90).replace(/\s+/g, ' ')}…`);
+      if (res.stderr) process.stderr.write(res.stderr);
+    }
+  }
+  if (falhas > 0) {
+    log(`⚠️ ${falhas}/${statements.length} objeto(s) só-SQL não reaplicado(s) — VERIFIQUE.`);
     return false;
   }
   log('✅ Índices só-SQL reaplicados (unique parciais da Inbox, sufixo de telefone, HNSW).');
@@ -233,12 +255,16 @@ async function main() {
       process.exit(1);
     }
     log('✅ db push sincronizou schema com DB.');
-    // OBRIGATÓRIO após db push: ele acabou de dropar os índices que o Prisma
-    // não conhece. Sem isto o app sobe "verde" mas sem a proteção de corrida
-    // da Inbox (contato ganha 2 conversas) e sem os índices de match D18.
+    // Após db push: ele acabou de dropar os índices que o Prisma não conhece.
+    // Sem isto o app sobe "verde" mas sem a proteção de corrida da Inbox
+    // (contato ganha 2 conversas) e sem os índices de match D18.
+    //
+    // NÃO aborta o deploy: derrubar a API inteira porque um índice não subiu é
+    // pior que rodar sem ele — o app funciona (os índices são rede de segurança
+    // e performance). Falha fica LOUD no log pra alguém reaplicar na mão.
     if (!reaplicarObjetosInvisiveis()) {
-      log('❌ Schema sincronizado mas SEM os índices só-SQL — abortando o deploy.');
-      process.exit(1);
+      log('⚠️ ATENÇÃO: o app vai subir SEM parte dos índices só-SQL.');
+      log('⚠️ Reaplique à mão: prisma db execute --file prisma/sql/objetos-invisiveis.sql');
     }
   } else {
     log('✅ Migrate deploy completou com sucesso.');
