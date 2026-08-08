@@ -216,6 +216,36 @@ export class FluxoEventBusService {
             if (real < req) continue;
           }
 
+          // Anti-reabertura do LEAD_RESPONDEU: a orquestração dispara este gatilho
+          // a CADA mensagem inbound do lead — sem o guard, o supersede logo abaixo
+          // cancelava a execução AGUARDANDO e recriava, e o opener da IA repetia em
+          // loop (mesmo bug do MENSAGEM_CANAL, outro gatilho). A resposta do lead é
+          // entregue à execução viva pelo retomar(), que roda logo depois. NÃO vale
+          // pros demais gatilhos: re-entrada por etapa é legítima e o supersede é o
+          // comportamento desejado lá.
+          if (triggerTipo === 'LEAD_RESPONDEU') {
+            const convId = contexto['conversationId'] as string | undefined;
+            const leadIdResp =
+              typeof contexto['leadId'] === 'string' ? contexto['leadId'] : undefined;
+            const filtroCtx = convId
+              ? { path: ['conversationId'], equals: convId }
+              : leadIdResp
+                ? { path: ['leadId'], equals: leadIdResp }
+                : null;
+            if (filtroCtx) {
+              const viva = await this.prisma.fluxoExecucao.findFirst({
+                where: {
+                  fluxoId: fluxo.id,
+                  empresaId,
+                  status: { in: ['PENDENTE', 'EM_EXECUCAO', 'AGUARDANDO'] },
+                  contexto: filtroCtx,
+                },
+                select: { id: true },
+              });
+              if (viva) continue;
+            }
+          }
+
           // Anti-duplicata (IA) por SUBSTITUIÇÃO: um fluxo com nó "Conversar com IA"
           // não pode ter duas execuções ativas pro MESMO lead (senão duas IAs conversam
           // em paralelo, cada uma sem o histórico da outra → re-apresenta a empresa).

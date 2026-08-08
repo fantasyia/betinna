@@ -43,6 +43,27 @@ export class FluxoExecutorProcessor extends WorkerHost {
   async onFailed(job: Job<FluxoStepJobData>, err: Error): Promise<void> {
     const attempts = job.opts?.attempts ?? 1;
     if (job.attemptsMade < attempts) return;
+
+    // Falha FINAL: marca a execução como FALHOU. Sem isso ela ficava EM_EXECUCAO
+    // pra sempre e o anti-reabertura do MENSAGEM_CANAL bloqueava a conversa
+    // definitivamente. updateMany + filtro de status: não derruba AGUARDANDO
+    // (timeout próprio) nem CONCLUIDO/CANCELADO; antes do dead-letter e em
+    // try/catch próprio pra uma falha não impedir a outra.
+    try {
+      await this.prisma.fluxoExecucao.updateMany({
+        where: { id: job.data.execucaoId, status: { in: ['PENDENTE', 'EM_EXECUCAO'] } },
+        data: {
+          status: 'FALHOU',
+          terminouEm: new Date(),
+          erroMsg: `Passo ${job.data.noId} esgotou ${attempts} tentativas: ${err.message}`,
+        },
+      });
+    } catch (markErr) {
+      this.logger.error(
+        `Falha ao marcar execução ${job.data.execucaoId} como FALHOU: ${String(markErr)}`,
+      );
+    }
+
     // Enriquece com empresaId via FluxoExecucao
     let empresaId: string | undefined;
     try {

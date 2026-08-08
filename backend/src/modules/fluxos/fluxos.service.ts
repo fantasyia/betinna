@@ -47,6 +47,19 @@ export interface ExportedFluxo {
 const toJson = (v: Record<string, unknown>): Prisma.InputJsonObject =>
   v as unknown as Prisma.InputJsonObject;
 
+/**
+ * Mesma normalização do motor (fluxo-executor.service.ts avaliarCondicao):
+ * trim + minúsculas + sem acento (NFKD) + espaços colapsados. Usada pra casar
+ * rótulo de aresta com saída configurada sem depender de acento/espaço.
+ */
+const normalizarRotulo = (s: string): string =>
+  s
+    .trim()
+    .toLowerCase()
+    .normalize('NFKD')
+    .replace(/\p{Diacritic}/gu, '')
+    .replace(/\s+/g, ' ');
+
 const fluxoInclude = {
   nos: { orderBy: { posY: 'asc' as const } },
   arestas: true,
@@ -155,8 +168,14 @@ export class FluxosService {
    * - Nenhuma aresta pode referenciar nó inexistente.
    */
   private validarGrafo(
-    nos: { id: string; tipo: string; acaoTipo?: string | null; config?: unknown }[],
-    arestas: { sourceNoId: string; targetNoId: string }[],
+    nos: {
+      id: string;
+      tipo: string;
+      titulo?: string;
+      acaoTipo?: string | null;
+      config?: unknown;
+    }[],
+    arestas: { sourceNoId: string; targetNoId: string; label?: string | null }[],
     triggerTipo?: string | null,
   ): void {
     const triggersCount = nos.filter((n) => n.tipo === 'TRIGGER').length;
@@ -188,6 +207,17 @@ export class FluxosService {
           ErrorCode.FLUXO_INVALIDO,
         );
       }
+      // ATRIBUIR_REP sem representante: o runtime casaria um usuário arbitrário
+      // da empresa (filtro undefined é descartado pelo Prisma). Barra no ativar.
+      if (n.acaoTipo === 'ATRIBUIR_REP') {
+        const cfg = (n.config ?? {}) as { representanteId?: string };
+        if (!cfg.representanteId?.trim()) {
+          throw new BusinessRuleException(
+            `O bloco ${n.titulo ? `"${n.titulo}"` : `id=${n.id}`} (Atribuir representante) está sem representante escolhido.`,
+            ErrorCode.FLUXO_INVALIDO,
+          );
+        }
+      }
       // DELAY precisa de quantidade > 0. Sem isso o runtime cai em delay 0/indefinido
       // (o fluxo "pula" a espera em silêncio) — barra no ativar com erro claro.
       if (n.tipo === 'DELAY') {
@@ -201,7 +231,107 @@ export class FluxosService {
           );
         }
       }
+
+      // CONDICAO: o motor roteia comparando o LABEL da aresta com o que ele
+      // emite ('Sim'/'Não' no modo simples, o valor da saída/'default' no
+      // roteador). Config incompleta ou label que não casa = execução conclui
+      // VERDE sem executar ramo nenhum — a falha mais silenciosa do sistema.
+      if (n.tipo === 'CONDICAO') {
+        this.validarCondicao(n, arestas);
+      }
     }
+  }
+
+  /** Checa config + labels de saída de um nó CONDICAO (ver validarGrafo). */
+  private validarCondicao(
+    no: { id: string; titulo?: string; config?: unknown },
+    arestas: { sourceNoId: string; label?: string | null }[],
+  ): void {
+    const cfg = (no.config ?? {}) as {
+      modo?: string;
+      campo?: string;
+      operador?: string;
+      variavel?: string;
+      saidas?: string[];
+    };
+    const nome = no.titulo ? `"${no.titulo}"` : `id=${no.id}`;
+    const saindo = arestas.filter((e) => e.sourceNoId === no.id);
+    // Nó-folha (sem saída nenhuma) é legítimo: fim de caminho.
+    if (saindo.length === 0) return;
+
+    const semLabel = saindo.filter((e) => !e.label?.trim());
+    if (semLabel.length > 0) {
+      throw new BusinessRuleException(
+        `A condição ${nome} tem ${semLabel.length} conexão(ões) sem rótulo — o fluxo não saberia por onde seguir. Reconecte a partir das saídas do bloco.`,
+        ErrorCode.FLUXO_INVALIDO,
+      );
+    }
+
+    const labels = new Set(saindo.map((e) => normalizarRotulo(e.label as string)));
+
+    if (cfg.modo === 'roteador') {
+      if (!cfg.variavel?.trim()) {
+        throw new BusinessRuleException(
+          `A condição ${nome} está no modo roteador mas não tem variável definida.`,
+          ErrorCode.FLUXO_INVALIDO,
+        );
+      }
+      const saidas = (cfg.saidas ?? []).filter((s) => s?.trim());
+      if (saidas.length === 0) {
+        throw new BusinessRuleException(
+          `A condição ${nome} está no modo roteador mas não tem nenhuma saída configurada.`,
+          ErrorCode.FLUXO_INVALIDO,
+        );
+      }
+      const faltando = saidas.filter((s) => !labels.has(normalizarRotulo(s)));
+      if (faltando.length > 0) {
+        throw new BusinessRuleException(
+          `A condição ${nome} tem saída(s) sem conexão: ${faltando.join(', ')}. Todo caminho classificado precisa levar a algum bloco.`,
+          ErrorCode.FLUXO_INVALIDO,
+        );
+      }
+      return;
+    }
+
+    // Modo simples: precisa de campo + operador e dos DOIS ramos ligados.
+    if (!cfg.campo?.trim() || !cfg.operador?.trim()) {
+      throw new BusinessRuleException(
+        `A condição ${nome} está incompleta (falta campo ou operador) — ela sempre cairia no "Não".`,
+        ErrorCode.FLUXO_INVALIDO,
+      );
+    }
+    const temSim = labels.has('sim') || labels.has('true');
+    const temNao = labels.has('nao') || labels.has('false');
+    if (!temSim || !temNao) {
+      const falta = [!temSim && 'Sim', !temNao && 'Não'].filter(Boolean).join(' e ');
+      throw new BusinessRuleException(
+        `A condição ${nome} não tem o caminho "${falta}" conectado — leads que caírem nele parariam sem ação.`,
+        ErrorCode.FLUXO_INVALIDO,
+      );
+    }
+  }
+
+  /**
+   * Remapeia as CHAVES dos nós vindas do cliente ("trigger", "ia1") pra ids
+   * internos novos. FluxoNo.id é PK GLOBAL: gravar a chave literal fazia dois
+   * fluxos com as mesmas chaves colidirem em P2002 (o import já remapeava; o
+   * create/update não). Arestas sempre ganham id novo e apontam pro id novo.
+   */
+  private remapearGrafo<
+    N extends { id: string },
+    E extends { sourceNoId: string; targetNoId: string; label?: string | null },
+  >(nos: N[], arestas: E[]): { nos: N[]; arestas: (E & { id: string })[] } {
+    const idMap = new Map<string, string>();
+    for (const n of nos) idMap.set(n.id, randomUUID());
+    return {
+      nos: nos.map((n) => ({ ...n, id: idMap.get(n.id) as string })),
+      arestas: arestas.map((e) => ({
+        ...e,
+        id: randomUUID(),
+        sourceNoId: idMap.get(e.sourceNoId) ?? e.sourceNoId,
+        targetNoId: idMap.get(e.targetNoId) ?? e.targetNoId,
+      })),
+    };
   }
 
   // ─── CRUD ───────────────────────────────────────────────────────
@@ -211,6 +341,7 @@ export class FluxosService {
     const empresaId = this.requireEmpresa(user);
 
     // Cria fluxo + nós + arestas em transação
+    const grafo = this.remapearGrafo(dto.nos, dto.arestas);
     let fluxoId!: string;
     await this.prisma.$transaction(async (tx) => {
       const created = await tx.fluxo.create({
@@ -225,9 +356,9 @@ export class FluxosService {
       });
       fluxoId = created.id;
 
-      if (dto.nos.length > 0) {
+      if (grafo.nos.length > 0) {
         await tx.fluxoNo.createMany({
-          data: dto.nos.map((n) => ({
+          data: grafo.nos.map((n) => ({
             id: n.id,
             fluxoId: created.id,
             tipo: n.tipo,
@@ -239,9 +370,9 @@ export class FluxosService {
           })),
         });
       }
-      if (dto.arestas.length > 0) {
+      if (grafo.arestas.length > 0) {
         await tx.fluxoEdge.createMany({
-          data: dto.arestas.map((e) => ({
+          data: grafo.arestas.map((e) => ({
             id: e.id,
             fluxoId: created.id,
             sourceNoId: e.sourceNoId,
@@ -316,17 +447,23 @@ export class FluxosService {
       );
     }
 
+    // Full replace do grafo: remapeia as chaves pra ids novos (FluxoNo.id é PK
+    // global — reusar "trigger"/"ia1" entre fluxos colidia em P2002).
+    const grafo =
+      dto.nos !== undefined && dto.arestas !== undefined
+        ? this.remapearGrafo(dto.nos, dto.arestas)
+        : null;
+
     let rebaixouParaRascunho = false;
     await this.prisma.$transaction(async (tx) => {
-      // Se nos/arestas foram fornecidos, faz full replace
-      if (dto.nos !== undefined || dto.arestas !== undefined) {
+      if (grafo) {
         // Delete arestas primeiro (FK para nos)
         await tx.fluxoEdge.deleteMany({ where: { fluxoId: id } });
         await tx.fluxoNo.deleteMany({ where: { fluxoId: id } });
 
-        if (dto.nos?.length) {
+        if (grafo.nos.length) {
           await tx.fluxoNo.createMany({
-            data: dto.nos.map((n) => ({
+            data: grafo.nos.map((n) => ({
               id: n.id,
               fluxoId: id,
               tipo: n.tipo,
@@ -338,9 +475,9 @@ export class FluxosService {
             })),
           });
         }
-        if (dto.arestas?.length) {
+        if (grafo.arestas.length) {
           await tx.fluxoEdge.createMany({
-            data: dto.arestas.map((e) => ({
+            data: grafo.arestas.map((e) => ({
               id: e.id,
               fluxoId: id,
               sourceNoId: e.sourceNoId,
@@ -361,7 +498,7 @@ export class FluxosService {
           : Prisma.JsonNull;
       }
       // Se estava ATIVO e editou o grafo, volta pra RASCUNHO
-      if (existing.status === 'ATIVO' && (dto.nos !== undefined || dto.arestas !== undefined)) {
+      if (existing.status === 'ATIVO' && grafo) {
         updateData.status = 'RASCUNHO';
         rebaixouParaRascunho = true;
       }
@@ -539,11 +676,10 @@ export class FluxosService {
   async importar(user: AuthenticatedUser, dto: ImportFluxoDto): Promise<FluxoWithRel> {
     this.requireAdminOrDirector(user);
 
-    const idMap = new Map<string, string>();
-    for (const n of dto.nos) idMap.set(n.id, randomUUID());
-
+    // O `create` já remapeia as chaves → ids internos (helper compartilhado),
+    // então o mesmo arquivo pode ser importado várias vezes sem colisão.
     const nos = dto.nos.map((n) => ({
-      id: idMap.get(n.id) as string,
+      id: n.id,
       tipo: n.tipo,
       acaoTipo: n.acaoTipo ?? undefined,
       titulo: n.titulo,
@@ -552,9 +688,9 @@ export class FluxosService {
       posY: n.posY,
     }));
     const arestas = dto.arestas.map((e) => ({
-      id: randomUUID(),
-      sourceNoId: idMap.get(e.sourceNoId) as string,
-      targetNoId: idMap.get(e.targetNoId) as string,
+      id: e.sourceNoId + '->' + e.targetNoId,
+      sourceNoId: e.sourceNoId,
+      targetNoId: e.targetNoId,
       label: e.label ?? null,
     }));
 

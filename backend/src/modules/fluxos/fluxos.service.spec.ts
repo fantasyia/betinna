@@ -328,6 +328,145 @@ describe('FluxosService', () => {
         code: 'FLUXO_INVALIDO',
       });
     });
+
+    // ── CONDICAO: o motor roteia por LABEL. Grafo que não bate concluía VERDE
+    //    sem executar nada — a falha mais silenciosa do sistema.
+    const fluxoComCondicao = (config: unknown, arestas: unknown[]) =>
+      fakeFluxo({
+        triggerTipo: 'LEAD_CRIADO',
+        nos: [
+          { id: 'n1', tipo: 'TRIGGER', acaoTipo: null },
+          { id: 'c1', tipo: 'CONDICAO', titulo: 'É industrial?', acaoTipo: null, config },
+          { id: 'a1', tipo: 'ACAO', titulo: 'Msg', acaoTipo: 'ENVIAR_WHATSAPP', config: {} },
+          { id: 'a2', tipo: 'ACAO', titulo: 'Msg2', acaoTipo: 'ENVIAR_WHATSAPP', config: {} },
+        ],
+        arestas: [{ sourceNoId: 'n1', targetNoId: 'c1', label: null }, ...arestas],
+      });
+
+    it('rejeita CONDICAO simples com só um ramo ligado (o outro pararia sem ação)', async () => {
+      prisma.fluxo.findFirst.mockResolvedValue(
+        fluxoComCondicao({ modo: 'simples', campo: 'lead.uf', operador: 'eq', valor: 'SP' }, [
+          { sourceNoId: 'c1', targetNoId: 'a1', label: 'Sim' },
+        ]),
+      );
+      await expect(svc.ativar(fakeUser(), 'fluxo-1')).rejects.toMatchObject({
+        code: 'FLUXO_INVALIDO',
+      });
+    });
+
+    it('rejeita CONDICAO com conexão SEM rótulo (nunca casaria)', async () => {
+      prisma.fluxo.findFirst.mockResolvedValue(
+        fluxoComCondicao({ modo: 'simples', campo: 'lead.uf', operador: 'eq', valor: 'SP' }, [
+          { sourceNoId: 'c1', targetNoId: 'a1', label: null },
+          { sourceNoId: 'c1', targetNoId: 'a2', label: 'Não' },
+        ]),
+      );
+      await expect(svc.ativar(fakeUser(), 'fluxo-1')).rejects.toMatchObject({
+        code: 'FLUXO_INVALIDO',
+      });
+    });
+
+    it('rejeita CONDICAO simples sem campo/operador (cairia sempre no Não)', async () => {
+      prisma.fluxo.findFirst.mockResolvedValue(
+        fluxoComCondicao({ modo: 'simples' }, [
+          { sourceNoId: 'c1', targetNoId: 'a1', label: 'Sim' },
+          { sourceNoId: 'c1', targetNoId: 'a2', label: 'Não' },
+        ]),
+      );
+      await expect(svc.ativar(fakeUser(), 'fluxo-1')).rejects.toMatchObject({
+        code: 'FLUXO_INVALIDO',
+      });
+    });
+
+    it('ACEITA CONDICAO simples com Sim+Não (e também os aliases true/false do import)', async () => {
+      prisma.fluxo.findFirst.mockResolvedValue(
+        fluxoComCondicao({ modo: 'simples', campo: 'lead.uf', operador: 'eq', valor: 'SP' }, [
+          { sourceNoId: 'c1', targetNoId: 'a1', label: 'true' },
+          { sourceNoId: 'c1', targetNoId: 'a2', label: 'false' },
+        ]),
+      );
+      prisma.fluxo.update.mockResolvedValue({});
+      prisma.fluxo.findUniqueOrThrow.mockResolvedValue(fakeFluxo({ status: 'ATIVO' }));
+      await expect(svc.ativar(fakeUser(), 'fluxo-1')).resolves.toBeTruthy();
+    });
+
+    it('rejeita roteador com saída sem aresta correspondente (ramo morto)', async () => {
+      prisma.fluxo.findFirst.mockResolvedValue(
+        fluxoComCondicao(
+          { modo: 'roteador', variavel: 'lead.classificacao', saidas: ['Forte', 'Fraca'] },
+          [{ sourceNoId: 'c1', targetNoId: 'a1', label: 'Forte' }],
+        ),
+      );
+      await expect(svc.ativar(fakeUser(), 'fluxo-1')).rejects.toMatchObject({
+        code: 'FLUXO_INVALIDO',
+      });
+    });
+
+    it('roteador casa saída por acento/espaço (mesma normalização do motor)', async () => {
+      prisma.fluxo.findFirst.mockResolvedValue(
+        fluxoComCondicao(
+          { modo: 'roteador', variavel: 'lead.classificacao', saidas: ['Não é lead'] },
+          [{ sourceNoId: 'c1', targetNoId: 'a1', label: 'Nao e lead' }],
+        ),
+      );
+      prisma.fluxo.update.mockResolvedValue({});
+      prisma.fluxo.findUniqueOrThrow.mockResolvedValue(fakeFluxo({ status: 'ATIVO' }));
+      await expect(svc.ativar(fakeUser(), 'fluxo-1')).resolves.toBeTruthy();
+    });
+
+    it('rejeita ATRIBUIR_REP sem representante (runtime pegaria um usuário arbitrário)', async () => {
+      prisma.fluxo.findFirst.mockResolvedValue(
+        fakeFluxo({
+          triggerTipo: 'LEAD_CRIADO',
+          nos: [
+            { id: 'n1', tipo: 'TRIGGER', acaoTipo: null },
+            { id: 'a1', tipo: 'ACAO', titulo: 'Atribuir', acaoTipo: 'ATRIBUIR_REP', config: {} },
+          ],
+          arestas: [{ sourceNoId: 'n1', targetNoId: 'a1', label: null }],
+        }),
+      );
+      await expect(svc.ativar(fakeUser(), 'fluxo-1')).rejects.toMatchObject({
+        code: 'FLUXO_INVALIDO',
+      });
+    });
+  });
+
+  describe('remapeamento de chaves (PK global do FluxoNo)', () => {
+    it('update NÃO grava a chave literal do dto como id (colidia entre fluxos)', async () => {
+      prisma.fluxo.findFirst.mockResolvedValue(fakeFluxo({ status: 'RASCUNHO' }));
+      prisma.fluxo.update.mockResolvedValue({});
+      prisma.fluxo.findUniqueOrThrow.mockResolvedValue(fakeFluxo());
+      prisma.$transaction.mockImplementation(async (fn: (tx: unknown) => Promise<unknown>) =>
+        fn(prisma),
+      );
+
+      await svc.update(fakeUser(), 'fluxo-1', {
+        nos: [
+          { id: 'trigger', tipo: 'TRIGGER', titulo: 'T', config: {}, posX: 0, posY: 0 },
+          {
+            id: 'ia1',
+            tipo: 'ACAO',
+            acaoTipo: 'CONVERSAR_IA',
+            titulo: 'IA',
+            config: {},
+            posX: 0,
+            posY: 0,
+          },
+        ],
+        arestas: [{ sourceNoId: 'trigger', targetNoId: 'ia1' }],
+      });
+
+      const nosGravados = prisma.fluxoNo.createMany.mock.calls[0][0].data as { id: string }[];
+      expect(nosGravados.map((n) => n.id)).not.toContain('trigger');
+      expect(nosGravados.map((n) => n.id)).not.toContain('ia1');
+      // A aresta tem que apontar pros ids NOVOS (senão a FK quebra).
+      const arestas = prisma.fluxoEdge.createMany.mock.calls[0][0].data as {
+        sourceNoId: string;
+        targetNoId: string;
+      }[];
+      expect(arestas[0].sourceNoId).toBe(nosGravados[0].id);
+      expect(arestas[0].targetNoId).toBe(nosGravados[1].id);
+    });
   });
 
   describe('metricas', () => {

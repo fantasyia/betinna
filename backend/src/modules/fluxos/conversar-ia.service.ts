@@ -829,6 +829,39 @@ export class ConversarIaService {
     const leadId = typeof ctx.leadId === 'string' ? ctx.leadId : undefined;
     if (!leadId) return;
 
+    // GATE DO BOT também no RETOMAR — o mesmo do iniciar(). Sem isto, depois que
+    // a execução entrava em AGUARDANDO, desligar o bot na conversa ou o operador
+    // assumir (precisaHumano) não tinha efeito: a IA seguia respondendo e
+    // disputava a conversa com o humano. Mantém AGUARDANDO renovando o timeout
+    // (sem tocar _iaHistorico/_iaTurno) — religou o bot, a conversa retoma na
+    // próxima mensagem do lead.
+    if (conversationId) {
+      const [empresaCfg, convCfg] = await Promise.all([
+        this.prisma.empresa.findUnique({
+          where: { id: empresaId },
+          select: { botWhatsappAtivo: true },
+        }),
+        this.prisma.conversation.findUnique({
+          where: { id: conversationId },
+          select: { botLigado: true, precisaHumano: true },
+        }),
+      ]);
+      const ligado = convCfg?.botLigado ?? empresaCfg?.botWhatsappAtivo ?? false;
+      if (!ligado || convCfg?.precisaHumano) {
+        const motivo = !ligado
+          ? 'bot desligado nesta conversa (ou no global da empresa)'
+          : 'conversa escalada pra humano (precisaHumano)';
+        this.logger.log(`CONVERSAR_IA: ${motivo} — turno NÃO processado (exec ${execucaoId})`);
+        await this.prisma.fluxoExecucao
+          .update({
+            where: { id: execucaoId },
+            data: { timeoutEm: new Date(Date.now() + (cfg.timeoutHoras ?? 24) * 3_600_000) },
+          })
+          .catch(() => undefined);
+        return;
+      }
+    }
+
     const lead = await this.prisma.lead.findFirst({
       where: { id: leadId, empresaId },
       select: { contatoTelefone: true, contatoNome: true, contatoEmail: true, variaveis: true },

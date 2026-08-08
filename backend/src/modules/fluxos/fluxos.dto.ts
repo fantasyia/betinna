@@ -152,15 +152,26 @@ export const updateFluxoEdgeSchema = createFluxoEdgeSchema.extend({
   id: z.string().min(1).optional(),
 });
 
-export const updateFluxoSchema = z.object({
-  nome: z.string().min(1).max(150).optional(),
-  descricao: z.string().max(500).optional(),
-  triggerTipo: z.enum(fluxoTriggerTipoValues).optional(),
-  triggerConfig: z.record(z.unknown()).optional(),
-  /// Quando fornecidos, substituem TODOS os nós e arestas existentes (full replace).
-  nos: z.array(createFluxoNoSchema).optional(),
-  arestas: z.array(updateFluxoEdgeSchema).optional(),
-});
+export const updateFluxoSchema = z
+  .object({
+    nome: z.string().min(1).max(150).optional(),
+    descricao: z.string().max(500).optional(),
+    // nullable: converter o gatilho pra Manual manda triggerTipo=null (o front
+    // omitia o campo, então o gatilho ANTIGO ficava gravado e o fluxo continuava
+    // disparando no evento antigo em silêncio). null = manual.
+    triggerTipo: z.enum(fluxoTriggerTipoValues).nullable().optional(),
+    triggerConfig: z.record(z.unknown()).nullable().optional(),
+    /// Quando fornecidos, substituem TODOS os nós e arestas existentes (full replace).
+    nos: z.array(createFluxoNoSchema).optional(),
+    arestas: z.array(updateFluxoEdgeSchema).optional(),
+  })
+  .refine((d) => (d.nos === undefined) === (d.arestas === undefined), {
+    // Full-replace é do grafo INTEIRO: mandar só `nos` apagava todas as arestas
+    // (topologia perdida em silêncio); só `arestas` deletava os nós e a FK
+    // estourava. Ou os dois juntos, ou nenhum.
+    message: 'nos e arestas devem ser enviados juntos (full replace do grafo) ou ambos omitidos',
+    path: ['arestas'],
+  });
 
 // ─── Listar fluxos ───────────────────────────────────────────────────
 export const listFluxosSchema = z.object({

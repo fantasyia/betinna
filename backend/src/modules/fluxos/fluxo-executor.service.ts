@@ -130,12 +130,15 @@ function avaliarCondicao(config: CondicaoConfig, ctx: ExecucaoContexto): string 
     // SEM acento (NFKD). A IA solta "Nao e lead"/"Não é lead" indistintamente —
     // sem isso, um acento a menos desviava tudo pro "default"→tarefa manual. O
     // retorno é o rótulo ORIGINAL de `saidas` (a aresta usa o label acentuado).
+    // Colapsa espaços internos também — o editor faz o mesmo (saidas.ts), senão
+    // "Nao  e lead" (2 espaços) vira ramo morto contra a saída de 1 espaço.
     const norm = (s: string) =>
       s
         .trim()
         .toLowerCase()
         .normalize('NFKD')
-        .replace(/\p{Diacritic}/gu, '');
+        .replace(/\p{Diacritic}/gu, '')
+        .replace(/\s+/g, ' ');
     const valor = norm(resolveVariavel(config.variavel ?? '', ctx));
     const match = (config.saidas ?? []).find((s) => norm(s) === valor);
     return match ?? 'default';
@@ -466,6 +469,21 @@ export class FluxoExecutorService {
       .map((e: FluxoEdge) => e.targetNoId);
 
     if (proximosNoIds.length === 0) {
+      // REDE DE SEGURANÇA: condição que TEM saídas mas nenhuma casou com o
+      // rótulo emitido não é "fim de caminho" — é grafo quebrado (label errado
+      // vindo de import/MCP, saída renomeada sem religar a aresta). Antes isso
+      // concluía VERDE sem executar nada: a falha mais silenciosa do sistema.
+      if (no.tipo === 'CONDICAO' && labelParaNavegar !== null) {
+        const saindo = arestas.filter((e: FluxoEdge) => e.sourceNoId === noId);
+        if (saindo.length > 0) {
+          const rotulos = saindo.map((e: FluxoEdge) => e.label ?? '(sem rótulo)').join(', ');
+          await this.marcarFalhou(
+            execucaoId,
+            `Condição "${no.titulo}" resultou em "${labelParaNavegar}", mas nenhuma conexão tem esse rótulo (existentes: ${rotulos}). O fluxo parou aqui.`,
+          );
+          return;
+        }
+      }
       // Execução do CRON que terminou SEM efeito (ex: LIBERAR_LOTE com 0 leads
       // elegíveis): descarta o registro (cascade nos logs) pra não poluir o
       // histórico com execuções vazias a cada minuto. Disparos manuais e
@@ -1766,6 +1784,12 @@ export class FluxoExecutorService {
     empresaId: string,
   ): Promise<Record<string, unknown>> {
     this.assertEmpresaId(empresaId, 'ATRIBUIR_REP');
+    // Config vazia (a ação ficou tempos na paleta sem formulário): o findFirst
+    // com id undefined DESCARTA o filtro e casaria o primeiro usuário qualquer
+    // da empresa. Falha explícita em vez de atribuir pra alguém aleatório.
+    if (!cfg.representanteId) {
+      throw new Error('ATRIBUIR_REP exige representanteId — configure o representante no nó');
+    }
     const clienteId = ctx['clienteId'] as string | undefined;
     const leadId = ctx['leadId'] as string | undefined;
 

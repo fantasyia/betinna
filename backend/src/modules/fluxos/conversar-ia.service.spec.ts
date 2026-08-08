@@ -22,6 +22,11 @@ const makePrisma = () => ({
   fluxoNo: { findUnique: vi.fn() },
   fluxoEdge: { findMany: vi.fn().mockResolvedValue([]) },
   message: { findMany: vi.fn().mockResolvedValue([]), update: vi.fn().mockResolvedValue({}) },
+  // Gate do bot no retomar (default: bot LIGADO, sem escalação pra humano).
+  empresa: { findUnique: vi.fn().mockResolvedValue({ botWhatsappAtivo: true }) },
+  conversation: {
+    findUnique: vi.fn().mockResolvedValue({ botLigado: true, precisaHumano: false }),
+  },
 });
 const makePersona = () => ({
   compilarSystemPromptConversa: vi.fn().mockResolvedValue('PROMPT BASE'),

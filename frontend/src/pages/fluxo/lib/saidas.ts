@@ -152,13 +152,19 @@ export function dedupConfigSaidas(config: Record<string, unknown>): Record<strin
 export const RESERVADOS = ['default', 'true', 'false', 'sim', 'não', 'nao'];
 
 /**
- * Normaliza igual ao matching do backend (avaliarCondicao: trim + toLowerCase),
- * colapsando espaços internos. Duas saídas que normalizam igual roteariam ambas
- * pro PRIMEIRO match no motor → a segunda viraria ramo morto. Por isso
- * bloqueamos.
+ * Normaliza igual ao matching do backend (avaliarCondicao): trim + toLowerCase
+ * + SEM acento (NFKD) + espaços internos colapsados. Duas saídas que normalizam
+ * igual roteariam ambas pro PRIMEIRO match no motor → a segunda viraria ramo
+ * morto. Por isso bloqueamos. O NFKD é essencial: sem ele o editor aceitava
+ * "Não é lead" e "Nao e lead" como distintas, mas o motor via as duas iguais.
  */
 export function norm(s: string): string {
-  return s.trim().toLowerCase().replace(/\s+/g, ' ');
+  return s
+    .trim()
+    .toLowerCase()
+    .normalize('NFKD')
+    .replace(/\p{Diacritic}/gu, '')
+    .replace(/\s+/g, ' ');
 }
 
 // ─── Config default por item de paleta ───────────────────────────

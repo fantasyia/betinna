@@ -208,17 +208,40 @@ describe('serializarFluxo / hidratarFluxo — round-trip do grafo', () => {
     });
   });
 
-  it('triggerConfig CRON com config faltando → defaults (vazio, SP, sem feriado)', () => {
+  it('CRON sem expressão no nó OMITE triggerConfig (não apaga o agendamento salvo)', () => {
+    // Fluxo CRON criado por MCP/import guarda o horário só em Fluxo.triggerConfig.
+    // Antes, salvar pela UI mandava {expressoes: []} e matava o agendamento em
+    // silêncio — o cron parava de disparar sem erro nenhum.
     const nodes: FlowNode[] = [
       node({ id: 'trg', data: { titulo: 'Cron', tipo: 'TRIGGER', triggerTipo: 'CRON_AGENDADO', config: {} } }),
     ];
     const payload = serializarFluxo(nodes, [], 'Cron', '');
-    expect(payload.triggerConfig).toEqual({
-      expressoes: [],
-      expressao: '',
-      timezone: 'America/Sao_Paulo',
-      pularFeriados: false,
+    expect(payload.triggerConfig).toBeUndefined();
+  });
+
+  it('hidratação espelha o agendamento do triggerConfig no nó TRIGGER (fluxo criado por MCP)', () => {
+    const { nodes } = hidratarFluxo({
+      id: 'f1',
+      nome: 'Cron do MCP',
+      status: 'ATIVO',
+      triggerTipo: 'CRON_AGENDADO',
+      triggerConfig: { expressoes: ['0 9 * * 1-5'], timezone: 'America/Sao_Paulo' },
+      nos: [{ id: 'trg', tipo: 'TRIGGER', titulo: 'Cron', config: {}, posX: 0, posY: 0 }],
+      arestas: [],
     });
+    const trg = nodes.find((n) => n.data.tipo === 'TRIGGER');
+    expect(trg?.data.config.expressoes).toEqual(['0 9 * * 1-5']);
+    // E o round-trip preserva: salvar depois de hidratar não perde o horário.
+    const payload = serializarFluxo(nodes, [], 'Cron do MCP', '');
+    expect((payload.triggerConfig as { expressoes: string[] }).expressoes).toEqual([
+      '0 9 * * 1-5',
+    ]);
+  });
+
+  it('converter pra Manual envia triggerTipo=null (antes omitia e o gatilho antigo ficava)', () => {
+    // Sem isto o fluxo continuava disparando no evento antigo em silêncio.
+    const payload = serializarFluxo([], [], 'Agora manual', '');
+    expect(payload.triggerTipo).toBeNull();
   });
 
   it('triggerTipo top-level só é fallback quando não há nó TRIGGER', () => {

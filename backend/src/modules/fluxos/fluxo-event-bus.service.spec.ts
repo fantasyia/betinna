@@ -452,6 +452,68 @@ describe('FluxoEventBusService', () => {
   });
 
   // -------------------------------------------------------------------------
+  // LEAD_RESPONDEU — anti-reabertura (loop de saudação)
+  // -------------------------------------------------------------------------
+
+  describe('LEAD_RESPONDEU: não recria execução quando já há uma viva', () => {
+    const fluxoIa = () => fakeFluxo({ triggerTipo: 'LEAD_RESPONDEU' });
+
+    it('pula o disparo quando existe execução viva pra mesma conversa', async () => {
+      // O bug: cada mensagem do lead re-disparava LEAD_RESPONDEU, o supersede
+      // cancelava a execução AGUARDANDO e recriava → a IA repetia a saudação.
+      prisma.fluxo.findMany.mockResolvedValue([fluxoIa()]);
+      prisma.fluxoExecucao.findFirst.mockResolvedValue({ id: 'exec-viva' });
+
+      await service.disparar('emp-1', 'LEAD_RESPONDEU' as FluxoTriggerTipo, {
+        leadId: 'lead-1',
+        conversationId: 'conv-1',
+      });
+
+      expect(prisma.fluxoExecucao.create).not.toHaveBeenCalled();
+      expect(prisma.$executeRaw).not.toHaveBeenCalled(); // supersede nem roda
+    });
+
+    it('usa leadId como chave quando não há conversationId (lead trocou de canal)', async () => {
+      prisma.fluxo.findMany.mockResolvedValue([fluxoIa()]);
+      prisma.fluxoExecucao.findFirst.mockResolvedValue({ id: 'exec-viva' });
+
+      await service.disparar('emp-1', 'LEAD_RESPONDEU' as FluxoTriggerTipo, { leadId: 'lead-1' });
+
+      const where = prisma.fluxoExecucao.findFirst.mock.calls[0][0].where;
+      expect(where.contexto).toEqual({ path: ['leadId'], equals: 'lead-1' });
+      expect(prisma.fluxoExecucao.create).not.toHaveBeenCalled();
+    });
+
+    it('dispara normalmente quando NÃO há execução viva (1ª resposta)', async () => {
+      prisma.fluxo.findMany.mockResolvedValue([fluxoIa()]);
+      prisma.fluxoExecucao.findFirst.mockResolvedValue(null);
+      prisma.fluxoExecucao.create.mockResolvedValue(fakeExecucao());
+      prisma.fluxoExecucao.update.mockResolvedValue({});
+
+      await service.disparar('emp-1', 'LEAD_RESPONDEU' as FluxoTriggerTipo, {
+        leadId: 'lead-1',
+        conversationId: 'conv-1',
+      });
+
+      expect(prisma.fluxoExecucao.create).toHaveBeenCalledOnce();
+    });
+
+    it('outros gatilhos NÃO ganham o guard (re-entrada por etapa segue substituindo)', async () => {
+      prisma.fluxo.findMany.mockResolvedValue([fakeFluxo({ triggerTipo: 'LEAD_ETAPA_MUDOU' })]);
+      prisma.fluxoExecucao.findFirst.mockResolvedValue({ id: 'exec-viva' });
+      prisma.fluxoExecucao.create.mockResolvedValue(fakeExecucao());
+      prisma.fluxoExecucao.update.mockResolvedValue({});
+
+      await service.disparar('emp-1', 'LEAD_ETAPA_MUDOU' as FluxoTriggerTipo, {
+        leadId: 'lead-1',
+        conversationId: 'conv-1',
+      });
+
+      expect(prisma.fluxoExecucao.create).toHaveBeenCalledOnce();
+    });
+  });
+
+  // -------------------------------------------------------------------------
   // dispararDireto
   // -------------------------------------------------------------------------
 

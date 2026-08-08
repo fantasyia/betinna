@@ -73,6 +73,37 @@ export interface HidratacaoResultado {
 }
 
 /**
+ * Config de um nó na hidratação. Pro nó TRIGGER de um fluxo CRON, mescla o
+ * agendamento que vive em Fluxo.triggerConfig quando o nó não tem o seu — é o
+ * caso de fluxo criado por MCP/import, cujo horário o editor não enxergava (e
+ * apagava ao salvar).
+ */
+function hidratarConfigNo(
+  n: { tipo: string; config?: unknown },
+  data: FluxoDetailApi,
+): Record<string, unknown> {
+  const cfg = dedupConfigSaidas((n.config as Record<string, unknown>) ?? {});
+  if (n.tipo !== 'TRIGGER' || data.triggerTipo !== 'CRON_AGENDADO') return cfg;
+  const tc = data.triggerConfig ?? {};
+  const temNoNo =
+    (Array.isArray(cfg.expressoes) && cfg.expressoes.length > 0) || Boolean(cfg.expressao);
+  if (temNoNo) return cfg;
+  const expressoes = Array.isArray(tc.expressoes)
+    ? (tc.expressoes as string[])
+    : tc.expressao
+      ? [tc.expressao as string]
+      : [];
+  if (expressoes.length === 0) return cfg;
+  return {
+    ...cfg,
+    expressoes,
+    expressao: expressoes[0],
+    timezone: (tc.timezone as string) ?? 'America/Sao_Paulo',
+    pularFeriados: tc.pularFeriados === true,
+  };
+}
+
+/**
  * Reconstrói o grafo do canvas a partir do payload da API. Espelha o efeito de
  * hidratação do FluxoEditor:
  *  - dedup das saídas do roteador (dedupConfigSaidas);
@@ -93,7 +124,7 @@ export function hidratarFluxo(data: FluxoDetailApi): HidratacaoResultado {
       // a config certa (antes ficava undefined → config do gatilho sumia ao recarregar).
       triggerTipo:
         n.tipo === 'TRIGGER' ? (data.triggerTipo as TriggerTipo | undefined) : undefined,
-      config: dedupConfigSaidas((n.config as Record<string, unknown>) ?? {}),
+      config: hidratarConfigNo(n, data),
     },
   }));
   // Mapa nó→config pra reconstruir o sourceHandle ciente do MODO do nó de origem.
@@ -187,7 +218,10 @@ export function serializarFluxo(
   const triggerNode = nodes.find((n) => n.data.tipo === 'TRIGGER');
   const ttFinal =
     (triggerNode?.data.triggerTipo as TriggerTipo | undefined) ?? (triggerTipo || undefined);
-  if (ttFinal) payload.triggerTipo = ttFinal;
+  // SEMPRE envia (null = Manual). Antes o campo era omitido quando vazio e o
+  // backend mantinha o gatilho ANTIGO — converter pra Manual não desligava nada
+  // e o fluxo seguia disparando no evento de antes, em silêncio.
+  payload.triggerTipo = ttFinal ?? null;
   // CRON: a config de horário vive em Fluxo.triggerConfig (o job lê de lá).
   // Persiste o ARRAY de expressões (múltiplos horários) + expressao (back-compat,
   // a 1ª) + pularFeriados. Antes só ia expressao/timezone → múltiplos horários e
@@ -200,12 +234,17 @@ export function serializarFluxo(
         : c.expressao
           ? [c.expressao as string]
           : [];
-    payload.triggerConfig = {
-      expressoes,
-      expressao: expressoes[0] ?? '',
-      timezone: (c.timezone as string) ?? 'America/Sao_Paulo',
-      pularFeriados: c.pularFeriados === true,
-    };
+    // Sem expressão nenhuma no nó, OMITE o campo em vez de gravar vazio: fluxo
+    // CRON criado por MCP/import guarda o agendamento só no triggerConfig, e
+    // salvar pela UI apagava esse agendamento sem aviso.
+    if (expressoes.length > 0) {
+      payload.triggerConfig = {
+        expressoes,
+        expressao: expressoes[0] ?? '',
+        timezone: (c.timezone as string) ?? 'America/Sao_Paulo',
+        pularFeriados: c.pularFeriados === true,
+      };
+    }
   }
   return payload;
 }

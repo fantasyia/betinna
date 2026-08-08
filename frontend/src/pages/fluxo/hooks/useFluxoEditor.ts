@@ -252,11 +252,42 @@ export function useFluxoEditor({
   // "Falha ao salvar" E "disparado 🚀" juntos, achando que testou a nova).
   async function handleSave(): Promise<boolean> {
     setSaving(true);
+    // Lido ANTES do PUT: editar o grafo de um fluxo ATIVO rebaixa pra RASCUNHO
+    // e cancela execuções em voo (regra do backend). Depois do onSaved() o
+    // refetch já traz RASCUNHO, então não dá pra descobrir isso depois.
+    const eraAtivo = data?.status === 'ATIVO';
     try {
       const payload = serializarFluxo(nodes, edges, name, triggerTipo);
       await api.put(`/fluxos/${fluxoId}`, payload);
-      toast.success('Fluxo salvo');
       setDirty(false);
+      if (eraAtivo) {
+        // Aviso pegajoso com ação: sem isso o gestor salvava um ajuste de texto,
+        // via "Fluxo salvo" ✓ e o fluxo parava de rodar sem ninguém perceber.
+        toast.warning(
+          'Fluxo salvo — mas voltou pra Rascunho',
+          'Editar um fluxo ativo o desativa e cancela as conversas em andamento. Reative pra ele voltar a rodar.',
+          {
+            sticky: true,
+            action: {
+              label: 'Reativar agora',
+              onClick: async () => {
+                try {
+                  await api.post(`/fluxos/${fluxoId}/ativar`, {});
+                  toast.success('Fluxo reativado');
+                  onSaved?.();
+                } catch (err) {
+                  toast.error(
+                    'Não deu pra reativar',
+                    err instanceof ApiError ? err.message : undefined,
+                  );
+                }
+              },
+            },
+          },
+        );
+      } else {
+        toast.success('Fluxo salvo');
+      }
       onSaved?.();
       return true;
     } catch (err) {

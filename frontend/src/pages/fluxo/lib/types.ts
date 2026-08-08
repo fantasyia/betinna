@@ -64,6 +64,9 @@ export interface FluxoDetailApi {
   descricao?: string | null;
   status: 'RASCUNHO' | 'ATIVO' | 'PAUSADO' | 'ARQUIVADO';
   triggerTipo?: TriggerTipo | null;
+  /// Agendamento do CRON (o job lê daqui). Fluxo criado por MCP/import guarda o
+  /// horário SÓ aqui — a hidratação espelha no nó TRIGGER pro editor mostrar.
+  triggerConfig?: Record<string, unknown> | null;
   nos?: FluxoNoApi[];
   arestas?: FluxoEdgeApi[];
 }

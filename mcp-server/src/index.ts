@@ -1338,8 +1338,17 @@ server.registerTool(
       descricao: z.string().max(500).optional(),
       triggerTipo: FLUXO_TRIGGER_TIPO.optional(),
       triggerConfig: z.record(z.unknown()).optional(),
-      nos: z.array(fluxoNoInput).optional().describe('Se enviado, substitui TODOS os nós'),
-      arestas: z.array(fluxoArestaInput).optional().describe('Se enviado, substitui TODAS as arestas'),
+      nos: z
+        .array(fluxoNoInput)
+        .optional()
+        .describe(
+          'Full replace do grafo INTEIRO — envie SEMPRE junto com `arestas` (busque o grafo atual ' +
+            'com fluxos_ver antes e mande os dois). Mandar só `nos` é rejeitado: apagaria toda a topologia.',
+        ),
+      arestas: z
+        .array(fluxoArestaInput)
+        .optional()
+        .describe('Full replace — envie SEMPRE junto com `nos` (ou omita os dois).'),
     },
     annotations: { readOnlyHint: false, destructiveHint: false },
   },

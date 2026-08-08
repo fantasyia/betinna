@@ -47,9 +47,11 @@ interface FluxoTemplate {
   slug: string;
   nome: string;
   descricao: string;
-  categoria: 'Retenção' | 'Pós-venda' | 'Cobrança' | 'Boas-vindas' | 'NPS' | 'Engajamento';
+  categoria: 'Retenção' | 'Pós-venda' | 'Cobrança' | 'Boas-vindas' | 'Engajamento';
   icon: typeof Zap;
   triggerTipo: TriggerTipo;
+  /** CRON: o agendamento vive em Fluxo.triggerConfig (o job lê de lá). */
+  triggerConfig?: Record<string, unknown>;
   nos: TemplateNode[];
   arestas: TemplateEdge[];
   /** Estimativa visual pro card (em palavras). */
@@ -77,65 +79,51 @@ const TEMPLATES: FluxoTemplate[] = [
         config: { dias: 21, ticketMinimo: 2000 },
       },
       {
-        id: 'c1',
-        tipo: 'CONDICAO',
-        titulo: 'Cliente está na blacklist?',
-        posX: 100,
-        posY: 220,
-        config: { campo: 'cliente.blacklist', operador: 'igual', valor: false },
-      },
-      {
         id: 'a1',
         tipo: 'ACAO',
         acaoTipo: 'ENVIAR_WHATSAPP',
         titulo: 'Enviar WhatsApp de reativação',
-        posX: 380,
+        posX: 100,
         posY: 220,
         config: {
+          destinatarioModo: 'lead',
           mensagem:
-            'Olá {{nome}}, faz tempo! Tenho ofertas novas que podem te interessar. Quer dar uma olhada?',
+            'Olá {{lead.contato}}, faz tempo! Tenho novidades que podem te interessar. Quer dar uma olhada?',
         },
       },
       {
         id: 'd1',
         tipo: 'DELAY',
         titulo: 'Aguardar 48h',
-        posX: 380,
+        posX: 100,
         posY: 360,
         config: { quantidade: 48, unidade: 'horas' },
       },
       {
-        id: 'c2',
-        tipo: 'CONDICAO',
-        titulo: 'Cliente respondeu?',
-        posX: 380,
-        posY: 500,
-        config: { campo: 'inbox.respondeu', operador: 'igual', valor: false },
-      },
-      {
         id: 'a2',
         tipo: 'ACAO',
-        acaoTipo: 'WEBHOOK_EXTERNO',
-        titulo: 'Notificar diretor',
-        posX: 680,
+        acaoTipo: 'CRIAR_TAREFA',
+        titulo: 'Tarefa: retomar contato',
+        posX: 100,
         posY: 500,
-        config: { url: '/internal/notify-director', method: 'POST' },
+        config: {
+          titulo: 'Retomar contato com {{lead.nome}} (reativação sem resposta)',
+          descricao: 'Reativação enviada há 48h. Ligar ou passar mais contexto.',
+        },
       },
     ],
     arestas: [
-      { sourceNoId: 't1', targetNoId: 'c1' },
-      { sourceNoId: 'c1', targetNoId: 'a1', label: 'Sim' },
+      { sourceNoId: 't1', targetNoId: 'a1' },
       { sourceNoId: 'a1', targetNoId: 'd1' },
-      { sourceNoId: 'd1', targetNoId: 'c2' },
-      { sourceNoId: 'c2', targetNoId: 'a2', label: 'Não' },
+      { sourceNoId: 'd1', targetNoId: 'a2' },
     ],
-    highlights: ['WhatsApp', 'Delay 48h', 'Condição blacklist', 'Notifica diretor'],
+    highlights: ['WhatsApp de reativação', 'Delay 48h', 'Tarefa de follow-up'],
   },
   {
     slug: 'pos-venda-agradecimento',
-    nome: 'Pós-venda — agradecimento + NPS',
+    nome: 'Pós-venda — agradecimento + acompanhamento',
     descricao:
-      'Após pedido entregue, envia WhatsApp de agradecimento. Em 3 dias, envia pesquisa NPS por e-mail.',
+      'Após pedido entregue, envia WhatsApp de agradecimento. Em 3 dias, um e-mail perguntando como foi.',
     categoria: 'Pós-venda',
     icon: Heart,
     triggerTipo: 'PEDIDO_ENTREGUE',
@@ -149,8 +137,9 @@ const TEMPLATES: FluxoTemplate[] = [
         posX: 100,
         posY: 220,
         config: {
+          destinatarioModo: 'lead',
           mensagem:
-            'Olá {{nome}}, seu pedido {{pedido_numero}} foi entregue! Esperamos que goste. Qualquer coisa, é só me chamar 🙏',
+            'Olá {{lead.contato}}, seu pedido foi entregue! Esperamos que goste. Qualquer coisa, é só me chamar 🙏',
         },
       },
       {
@@ -165,13 +154,13 @@ const TEMPLATES: FluxoTemplate[] = [
         id: 'a2',
         tipo: 'ACAO',
         acaoTipo: 'ENVIAR_EMAIL',
-        titulo: 'Pesquisa NPS',
+        titulo: 'E-mail de acompanhamento',
         posX: 100,
         posY: 500,
         config: {
           assunto: 'Como foi sua experiência?',
           corpo:
-            '<p>Olá {{nome}},</p><p>Quanto você nos recomendaria de 0 a 10?</p><p><a href="{{nps_url}}">Responder NPS</a></p>',
+            '<p>Olá {{lead.contato}},</p><p>Queremos saber como foi sua experiência com a entrega. Pode responder este e-mail contando?</p>',
         },
       },
     ],
@@ -180,79 +169,65 @@ const TEMPLATES: FluxoTemplate[] = [
       { sourceNoId: 'a1', targetNoId: 'd1' },
       { sourceNoId: 'd1', targetNoId: 'a2' },
     ],
-    highlights: ['Trigger entrega', 'WhatsApp imediato', 'E-mail NPS após 3d'],
+    highlights: ['Trigger entrega', 'WhatsApp imediato', 'E-mail após 3d'],
   },
   {
-    slug: 'cobranca-suave',
-    nome: 'Cobrança suave — lembrete amistoso',
+    slug: 'lead-parado-follow-up',
+    nome: 'Lead parado — follow-up em 3 dias',
     descricao:
-      'Pedido com vencimento próximo dispara lembrete WhatsApp 2 dias antes. Se passa do prazo, escalona para o representante.',
+      'Lead que entra na etapa e não avança recebe um toque por WhatsApp em 3 dias, e vira tarefa se continuar parado.',
     categoria: 'Cobrança',
     icon: AlertTriangle,
-    triggerTipo: 'CRON_AGENDADO',
+    triggerTipo: 'LEAD_ETAPA_MUDOU',
     nos: [
       {
         id: 't1',
         tipo: 'TRIGGER',
-        titulo: 'Cron diário 9h',
+        titulo: 'Lead mudou de etapa',
         posX: 100,
         posY: 80,
-        config: { cron: '0 9 * * *' },
-      },
-      {
-        id: 'c1',
-        tipo: 'CONDICAO',
-        titulo: 'Vencimento em 2 dias?',
-        posX: 100,
-        posY: 220,
-        config: { campo: 'pedido.vencimento', operador: 'em_dias', valor: 2 },
-      },
-      {
-        id: 'a1',
-        tipo: 'ACAO',
-        acaoTipo: 'ENVIAR_WHATSAPP',
-        titulo: 'Lembrete amistoso',
-        posX: 380,
-        posY: 220,
-        config: {
-          mensagem:
-            'Oi {{nome}}, só passando pra lembrar que o pedido {{pedido_numero}} vence em 2 dias. Qualquer dúvida me chama!',
-        },
+        config: {},
       },
       {
         id: 'd1',
         tipo: 'DELAY',
         titulo: 'Aguardar 3 dias',
-        posX: 380,
-        posY: 360,
+        posX: 100,
+        posY: 220,
         config: { quantidade: 3, unidade: 'dias' },
       },
       {
-        id: 'c2',
-        tipo: 'CONDICAO',
-        titulo: 'Está em atraso?',
-        posX: 380,
-        posY: 500,
-        config: { campo: 'pedido.vencido', operador: 'igual', valor: true },
+        id: 'a1',
+        tipo: 'ACAO',
+        acaoTipo: 'ENVIAR_WHATSAPP',
+        titulo: 'Toque amistoso',
+        posX: 100,
+        posY: 360,
+        config: {
+          destinatarioModo: 'lead',
+          mensagem:
+            'Oi {{lead.contato}}, tudo bem? Só passando pra saber se ficou alguma dúvida do que conversamos. Qualquer coisa me chama!',
+        },
       },
       {
         id: 'a2',
         tipo: 'ACAO',
         acaoTipo: 'CRIAR_TAREFA',
-        titulo: 'Tarefa pro representante cobrar',
-        posX: 680,
+        titulo: 'Tarefa pro responsável',
+        posX: 100,
         posY: 500,
-        config: { titulo: 'Cobrar {{cliente_nome}} — pedido {{pedido_numero}}', responsavel: 'rep' },
+        config: {
+          titulo: 'Follow-up: {{lead.nome}} parado em {{lead.etapa_atual}}',
+          descricao: 'Lead sem avanço há 3 dias. Ligar ou reengajar.',
+        },
       },
     ],
     arestas: [
-      { sourceNoId: 't1', targetNoId: 'c1' },
-      { sourceNoId: 'c1', targetNoId: 'a1', label: 'Sim' },
-      { sourceNoId: 'a1', targetNoId: 'd1' },
-      { sourceNoId: 'd1', targetNoId: 'c2' },
-      { sourceNoId: 'c2', targetNoId: 'a2', label: 'Sim' },
+      { sourceNoId: 't1', targetNoId: 'd1' },
+      { sourceNoId: 'd1', targetNoId: 'a1' },
+      { sourceNoId: 'a1', targetNoId: 'a2' },
     ],
-    highlights: ['Cron diário', 'Lembrete antes do vencimento', 'Escala pro rep'],
+    highlights: ['Delay 3 dias', 'Toque por WhatsApp', 'Vira tarefa'],
   },
   {
     slug: 'boas-vindas-novo-lead',
@@ -267,22 +242,26 @@ const TEMPLATES: FluxoTemplate[] = [
       {
         id: 'a1',
         tipo: 'ACAO',
-        acaoTipo: 'ATRIBUIR_REP',
-        titulo: 'Atribuir representante por região',
+        acaoTipo: 'ENVIAR_WHATSAPP',
+        titulo: 'WhatsApp de boas-vindas',
         posX: 100,
         posY: 220,
-        config: { criterio: 'regiao' },
+        config: {
+          destinatarioModo: 'lead',
+          mensagem:
+            'Oi {{lead.contato}}, prazer em conhecer! Vou te atender por aqui. O que posso fazer por você?',
+        },
       },
       {
         id: 'a2',
         tipo: 'ACAO',
-        acaoTipo: 'ENVIAR_WHATSAPP',
-        titulo: 'WhatsApp de boas-vindas',
+        acaoTipo: 'CRIAR_TAREFA',
+        titulo: 'Tarefa: dar sequência no lead novo',
         posX: 100,
         posY: 360,
         config: {
-          mensagem:
-            'Oi {{nome}}, prazer em conhecer! Sou {{rep_nome}}, vou te atender por aqui. O que posso fazer por você?',
+          titulo: 'Lead novo: {{lead.nome}} ({{lead.cidade}}/{{lead.uf}})',
+          descricao: 'Boas-vindas enviada. Dar sequência no atendimento.',
         },
       },
     ],
@@ -290,51 +269,50 @@ const TEMPLATES: FluxoTemplate[] = [
       { sourceNoId: 't1', targetNoId: 'a1' },
       { sourceNoId: 'a1', targetNoId: 'a2' },
     ],
-    highlights: ['Atribui rep', 'WhatsApp imediato', 'Variáveis dinâmicas'],
+    highlights: ['WhatsApp imediato', 'Vira tarefa', 'Variáveis do lead'],
   },
   {
-    slug: 'aniversario-cliente',
-    nome: 'Aniversário do cliente — felicitação',
+    slug: 'lote-diario-abordagem',
+    nome: 'Abordagem diária — libera um lote por dia',
     descricao:
-      'No aniversário do contato principal, envia WhatsApp de feliz aniversário + cupom de desconto.',
+      'Todo dia útil às 9h, libera um lote de leads de uma etapa pra outra (ritmo controlado, sem rajada).',
     categoria: 'Engajamento',
     icon: Gift,
     triggerTipo: 'CRON_AGENDADO',
+    // O agendamento vive em Fluxo.triggerConfig (é de lá que o job lê).
+    triggerConfig: {
+      expressoes: ['0 9 * * 1-5'],
+      expressao: '0 9 * * 1-5',
+      timezone: 'America/Sao_Paulo',
+      pularFeriados: true,
+    },
     nos: [
       {
         id: 't1',
         tipo: 'TRIGGER',
-        titulo: 'Cron diário 10h',
+        titulo: 'Todo dia útil às 9h',
         posX: 100,
         posY: 80,
-        config: { cron: '0 10 * * *' },
-      },
-      {
-        id: 'c1',
-        tipo: 'CONDICAO',
-        titulo: 'Hoje é aniversário?',
-        posX: 100,
-        posY: 220,
-        config: { campo: 'cliente.aniversario_hoje', operador: 'igual', valor: true },
+        config: {
+          expressoes: ['0 9 * * 1-5'],
+          expressao: '0 9 * * 1-5',
+          timezone: 'America/Sao_Paulo',
+          pularFeriados: true,
+        },
       },
       {
         id: 'a1',
         tipo: 'ACAO',
-        acaoTipo: 'ENVIAR_WHATSAPP',
-        titulo: 'Mensagem de feliz aniversário',
-        posX: 380,
+        acaoTipo: 'LIBERAR_LOTE',
+        titulo: 'Liberar 50 leads pra abordagem',
+        posX: 100,
         posY: 220,
-        config: {
-          mensagem:
-            'Feliz aniversário, {{nome}}! 🎂 Como presente, 10% off no próximo pedido. Use o cupom ANIVER10 até o fim do mês.',
-        },
+        // etapaOrigemId/etapaDestinoId: escolher no inspector depois de criar.
+        config: { quantidade: 50 },
       },
     ],
-    arestas: [
-      { sourceNoId: 't1', targetNoId: 'c1' },
-      { sourceNoId: 'c1', targetNoId: 'a1', label: 'Sim' },
-    ],
-    highlights: ['Cron diário', 'Cupom de desconto', 'Personalização'],
+    arestas: [{ sourceNoId: 't1', targetNoId: 'a1' }],
+    highlights: ['Cron dias úteis', 'Pula feriados', 'Lote controlado'],
   },
   {
     slug: 'lead-qualificado-alerta',
@@ -351,67 +329,82 @@ const TEMPLATES: FluxoTemplate[] = [
         titulo: 'Lead mudou de etapa',
         posX: 100,
         posY: 80,
-        config: { etapa: 'NEGOCIACAO' },
+        config: {},
       },
       {
         id: 'a1',
         tipo: 'ACAO',
         acaoTipo: 'ENVIAR_WHATSAPP',
-        titulo: 'Avisar diretor',
+        titulo: 'Avisar o diretor',
         posX: 100,
         posY: 220,
         config: {
+          // ⚠️ destinatarioModo 'numero' é OBRIGATÓRIO aqui: no default ('lead')
+          // este aviso INTERNO ia direto pro WhatsApp do próprio lead — com nome
+          // do rep e valor da negociação. Preencher `numero` ao criar o fluxo.
+          destinatarioModo: 'numero',
+          numero: '',
           mensagem:
-            '🎯 Lead {{lead_nome}} ({{valor_estimado}}) entrou em NEGOCIAÇÃO com o representante {{rep_nome}}.',
+            '🎯 Lead {{lead.nome}} entrou na etapa {{lead.etapa_atual}} (funil {{lead.funil}}).',
         },
       },
     ],
     arestas: [{ sourceNoId: 't1', targetNoId: 'a1' }],
-    highlights: ['Alerta em tempo real', 'WhatsApp pro diretor', 'Filtro por etapa'],
+    highlights: ['Alerta em tempo real', 'WhatsApp pro diretor', 'Preencher o número'],
   },
   {
-    slug: 'agenda-visita',
-    nome: 'Agenda de visita — lembrete prévio',
+    slug: 'roteia-por-uf',
+    nome: 'Roteia por estado — SP vs resto do Brasil',
     descricao:
-      'Visita agendada dispara lembrete 1h antes pro representante com endereço completo do cliente.',
+      'Lead novo de SP recebe uma mensagem; os demais recebem outra. Exemplo de condição com os dois caminhos ligados.',
     categoria: 'Engajamento',
     icon: Calendar,
-    triggerTipo: 'CRON_AGENDADO',
+    triggerTipo: 'LEAD_CRIADO',
     nos: [
-      {
-        id: 't1',
-        tipo: 'TRIGGER',
-        titulo: 'Cron a cada hora',
-        posX: 100,
-        posY: 80,
-        config: { cron: '0 * * * *' },
-      },
+      { id: 't1', tipo: 'TRIGGER', titulo: 'Lead criado', posX: 100, posY: 80, config: {} },
       {
         id: 'c1',
         tipo: 'CONDICAO',
-        titulo: 'Visita em 1h?',
+        titulo: 'É de São Paulo?',
         posX: 100,
         posY: 220,
-        config: { campo: 'agenda.proxima_visita_em_minutos', operador: 'menor_que', valor: 60 },
+        // Só campos que o motor expõe ({{lead.*}}) e operadores do switch.
+        config: { modo: 'simples', campo: 'lead.uf', operador: 'eq', valor: 'SP' },
       },
       {
         id: 'a1',
         tipo: 'ACAO',
         acaoTipo: 'ENVIAR_WHATSAPP',
-        titulo: 'Lembrete pro representante',
+        titulo: 'Mensagem SP',
         posX: 380,
-        posY: 220,
+        posY: 160,
         config: {
+          destinatarioModo: 'lead',
           mensagem:
-            '⏰ Em 1h: visita ao cliente {{cliente_nome}}. Endereço: {{endereco_completo}}. Última observação: {{obs}}',
+            'Oi {{lead.contato}}! Atendemos {{lead.cidade}} com visita presencial. Quer marcar uma conversa?',
+        },
+      },
+      {
+        id: 'a2',
+        tipo: 'ACAO',
+        acaoTipo: 'ENVIAR_WHATSAPP',
+        titulo: 'Mensagem demais estados',
+        posX: 380,
+        posY: 320,
+        config: {
+          destinatarioModo: 'lead',
+          mensagem:
+            'Oi {{lead.contato}}! Atendemos {{lead.uf}} remotamente, com entrega. Posso te mandar mais detalhes?',
         },
       },
     ],
+    // Os DOIS ramos ligados: condição com um caminho solto não ativa mais.
     arestas: [
       { sourceNoId: 't1', targetNoId: 'c1' },
       { sourceNoId: 'c1', targetNoId: 'a1', label: 'Sim' },
+      { sourceNoId: 'c1', targetNoId: 'a2', label: 'Não' },
     ],
-    highlights: ['Cron horário', 'Lembrete logístico', 'Endereço dinâmico'],
+    highlights: ['Condição por UF', 'Dois caminhos', 'Mensagem personalizada'],
   },
 ];
 
@@ -423,7 +416,6 @@ const CATEGORIA_VARIANT: Record<
   'Pós-venda': 'success',
   Cobrança: 'warning',
   'Boas-vindas': 'primary',
-  NPS: 'info',
   Engajamento: 'info',
 };
 
@@ -448,6 +440,9 @@ export default function FluxoTemplatesPage() {
         nome: template.nome,
         descricao: template.descricao,
         triggerTipo: template.triggerTipo,
+        // O agendamento do CRON vive em Fluxo.triggerConfig (é de lá que o job
+        // lê) — sem mandar aqui, o fluxo nascia sem horário nenhum.
+        ...(template.triggerConfig ? { triggerConfig: template.triggerConfig } : {}),
         nos: template.nos.map((n) => ({
           id: n.id, // ← obrigatório (referência das arestas usa esses ids)
           tipo: n.tipo,
