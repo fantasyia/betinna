@@ -12,6 +12,7 @@ import { CondicaoEditor } from './CondicaoEditor';
 import { WebhookTriggerConfig } from './WebhookTriggerConfig';
 import { CronTriggerConfig } from './CronTriggerConfig';
 import { LeadEtapaTriggerForm } from './LeadEtapaTriggerForm';
+import { LeadTagTriggerForm } from './LeadTagTriggerForm';
 import { MensagemCanalTriggerForm } from './MensagemCanalTriggerForm';
 import { DelayForm } from './DelayForm';
 import { WhatsAppActionForm } from './WhatsAppActionForm';
@@ -151,6 +152,10 @@ export function NodeInspector({
             funis={funis}
             etapasDoFunil={etapasDoFunil}
           />
+        )}
+
+        {data.tipo === 'TRIGGER' && data.triggerTipo === 'LEAD_RECEBEU_TAG' && (
+          <LeadTagTriggerForm data={data} onUpdate={onUpdate} tags={tags} />
         )}
 
         {data.tipo === 'ACAO' && (

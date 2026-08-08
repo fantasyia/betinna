@@ -117,6 +117,27 @@ describe('TagsService', () => {
       expect(args.where.nome).toEqual({ contains: 'vip', mode: 'insensitive' });
     });
 
+    it('busca de etiqueta-DIMENSÃO: o ":" passa intacto pro contains', async () => {
+      // As etiquetas do site vêm namespaced ("publico:comercio", "setor:cadeia-do-frio").
+      // O ":" não é caractere especial em ILIKE nem é tratado em lugar nenhum —
+      // este teste trava isso: nada de split/escape/strip no caminho de leitura.
+      prisma.tag.findMany.mockResolvedValue([]);
+
+      await service.list(fakeUser(), { search: 'publico:comercio' });
+
+      const args = prisma.tag.findMany.mock.calls[0][0];
+      expect(args.where.nome).toEqual({ contains: 'publico:comercio', mode: 'insensitive' });
+    });
+
+    it('busca só pelo prefixo da dimensão ("setor:") também passa inteiro', async () => {
+      prisma.tag.findMany.mockResolvedValue([]);
+
+      await service.list(fakeUser(), { search: 'setor:' });
+
+      const args = prisma.tag.findMany.mock.calls[0][0];
+      expect(args.where.nome).toEqual({ contains: 'setor:', mode: 'insensitive' });
+    });
+
     it('não inclui filtro de nome quando search não é passado', async () => {
       prisma.tag.findMany.mockResolvedValue([]);
 

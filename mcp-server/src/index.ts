@@ -1125,7 +1125,13 @@ const fluxoNoInput = z.object({
         'apenasComLead (bool), apenasSemLead (bool, uso de TRIAGEM), apenasComBotLigado (bool), ' +
         'escopo ("empresa"|"pessoal"|"ambos", default "ambos" — dual-owner D38: "empresa" = só ' +
         'WhatsApp CENTRAL, "pessoal" = só celular dos reps. Fluxo de TRIAGEM geral deve usar ' +
-        '"empresa": sem isso, mensagem no WhatsApp pessoal de um rep vira lead na Triagem da empresa).',
+        '"empresa": sem isso, mensagem no WhatsApp pessoal de um rep vira lead na Triagem da empresa). ' +
+        'Trigger LEAD_RECEBEU_TAG aceita: tagNome (string) ou tagNomes (string[]) ou tagIds ' +
+        '(string[]), e modo ("exato"|"prefixo"|"contem", default "exato"). SEM config nenhuma o ' +
+        'fluxo dispara em QUALQUER etiqueta. Etiqueta-dimensão usa ":" (ex: "setor:cadeia-do-frio", ' +
+        '"publico:comercio") e o ":" é caractere comum — pra pegar a família inteira use ' +
+        'modo "prefixo" com tagNome "setor:". Evite "contem": colide entre slugs parecidos ' +
+        '("varejo" casa "varejo-alimentar") e o fluxo errado dispara em silêncio.',
     ),
   posX: z.number().optional(),
   posY: z.number().optional(),

@@ -23,6 +23,10 @@ import {
 } from '@integrations/evolution/ctwa-referral.util';
 import { ConversarIaService } from './conversar-ia.service';
 import { FluxoEventBusService } from './fluxo-event-bus.service';
+// Mesma normalização usada pelo match de etiqueta no bus — mora num util pra
+// os dois caminhos não divergirem (a IA solta "Nao e lead"/"Não é lead"
+// indistintamente; um acento a menos desviava tudo pro ramo errado).
+import { normalizarValor } from './normalizar-valor.util';
 import {
   FLUXO_QUEUE,
   unidadeTempoMs,
@@ -124,20 +128,6 @@ function resolveCampoFresco(nome: string, ctx: ExecucaoContexto): unknown {
  * - modo 'roteador': casa o valor da `variavel` com uma das `saidas` (label = valor) ou 'default'.
  * - modo 'simples' (default): 'true' | 'false'.
  */
-/**
- * Normalização ÚNICA de rótulo/valor: trim + minúsculas + SEM acento (NFKD) +
- * espaços internos colapsados. A IA solta "Nao e lead"/"Não é lead"
- * indistintamente — sem isso um acento a menos desviava tudo pro ramo errado.
- * O editor usa exatamente a mesma (frontend saidas.ts) pra não divergir.
- */
-function normalizarValor(s: string): string {
-  return s
-    .trim()
-    .toLowerCase()
-    .normalize('NFKD')
-    .replace(/\p{Diacritic}/gu, '')
-    .replace(/\s+/g, ' ');
-}
 
 function avaliarCondicao(config: CondicaoConfig, ctx: ExecucaoContexto): string {
   if (config.modo === 'roteador') {

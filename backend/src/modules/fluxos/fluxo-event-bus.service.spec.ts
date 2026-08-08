@@ -29,6 +29,10 @@ const makePrismaMock = () => ({
   } satisfies MockModel,
   // Supersede anti-duplicata IA usa $executeRaw (IS DISTINCT FROM trata _ramoFilha ausente).
   $executeRaw: vi.fn().mockResolvedValue(0),
+  // Fallback de nome de etiqueta (evento antigo, sem tagNome no payload).
+  tag: {
+    findFirst: vi.fn().mockResolvedValue(null),
+  } satisfies MockModel,
 });
 
 const fakeFluxo = (overrides: Record<string, unknown> = {}) => ({
@@ -581,5 +585,104 @@ describe('FluxoEventBusService — anti-reabertura só vale pra fluxo COM nó de
     });
 
     expect(prisma.fluxoExecucao.create).toHaveBeenCalledOnce();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// LEAD_RECEBEU_TAG — QUAL etiqueta dispara (antes: nenhuma filtragem)
+// ---------------------------------------------------------------------------
+
+describe('FluxoEventBusService — filtro do gatilho LEAD_RECEBEU_TAG', () => {
+  let prisma: ReturnType<typeof makePrismaMock>;
+  let queue: ReturnType<typeof makeQueueMock>;
+  let service: FluxoEventBusService;
+
+  const comConfig = (config: Record<string, unknown>) => {
+    prisma.fluxo.findMany.mockResolvedValue([
+      fakeFluxo({ triggerTipo: 'LEAD_RECEBEU_TAG', nos: [{ id: 'no-trigger-1', config }] }),
+    ]);
+    prisma.fluxoExecucao.create.mockResolvedValue(fakeExecucao());
+  };
+  const receber = (tagNome: string, tagId = 'tag-1') =>
+    service.disparar('emp-1', 'LEAD_RECEBEU_TAG', { leadId: 'lead-1', tagId, tagNome });
+
+  beforeEach(() => {
+    prisma = makePrismaMock();
+    queue = makeQueueMock();
+    service = new FluxoEventBusService(prisma as never, queue as never);
+  });
+
+  it('sem config: qualquer etiqueta dispara (compatível com o que já está no ar)', async () => {
+    comConfig({});
+    await receber('setor:cadeia-do-frio');
+    expect(queue.add).toHaveBeenCalled();
+  });
+
+  it('modo default é EXATO — a etiqueta certa dispara', async () => {
+    comConfig({ tagNome: 'setor:cadeia-do-frio' });
+    await receber('setor:cadeia-do-frio');
+    expect(queue.add).toHaveBeenCalled();
+  });
+
+  it('o `:` sobrevive à leitura — etiqueta-dimensão casa igualzinho', async () => {
+    comConfig({ tagNome: 'publico:comercio' });
+    await receber('publico:comercio');
+    expect(queue.add).toHaveBeenCalled();
+  });
+
+  it('exato NÃO dispara pra outra etiqueta da mesma família', async () => {
+    comConfig({ tagNome: 'setor:cadeia-do-frio' });
+    await receber('setor:laticinios');
+    expect(queue.add).not.toHaveBeenCalled();
+  });
+
+  it('exato não sofre colisão de substring (varejo ≠ varejo-alimentar)', async () => {
+    comConfig({ tagNome: 'setor:varejo' });
+    await receber('setor:varejo-alimentar');
+    expect(queue.add).not.toHaveBeenCalled();
+  });
+
+  it('modo prefixo pega a família inteira da dimensão', async () => {
+    comConfig({ tagNome: 'setor:', modo: 'prefixo' });
+    await receber('setor:cadeia-do-frio');
+    expect(queue.add).toHaveBeenCalled();
+  });
+
+  it('modo prefixo NÃO vaza pra outra dimensão', async () => {
+    comConfig({ tagNome: 'setor:', modo: 'prefixo' });
+    await receber('publico:comercio');
+    expect(queue.add).not.toHaveBeenCalled();
+  });
+
+  it('modo contem casa no meio (escape hatch explícito)', async () => {
+    comConfig({ tagNome: 'frio', modo: 'contem' });
+    await receber('setor:cadeia-do-frio');
+    expect(queue.add).toHaveBeenCalled();
+  });
+
+  it('match ignora caixa e acento (mesma normalização do roteador)', async () => {
+    comConfig({ tagNome: 'setor:comercio' });
+    await receber('  SETOR:Comércio ');
+    expect(queue.add).toHaveBeenCalled();
+  });
+
+  it('aceita lista de nomes (tagNomes) — dispara em qualquer uma delas', async () => {
+    comConfig({ tagNomes: ['setor:laticinios', 'setor:cadeia-do-frio'] });
+    await receber('setor:cadeia-do-frio');
+    expect(queue.add).toHaveBeenCalled();
+  });
+
+  it('filtro por tagIds usa o id, não o nome', async () => {
+    comConfig({ tagIds: ['tag-9'] });
+    await receber('setor:cadeia-do-frio', 'tag-1');
+    expect(queue.add).not.toHaveBeenCalled();
+  });
+
+  it('evento antigo sem tagNome no payload: busca o nome no banco', async () => {
+    comConfig({ tagNome: 'setor:cadeia-do-frio' });
+    prisma.tag.findFirst.mockResolvedValue({ nome: 'setor:cadeia-do-frio' });
+    await service.disparar('emp-1', 'LEAD_RECEBEU_TAG', { leadId: 'lead-1', tagId: 'tag-1' });
+    expect(prisma.tag.findFirst).toHaveBeenCalled();
+    expect(queue.add).toHaveBeenCalled();
   });
 });

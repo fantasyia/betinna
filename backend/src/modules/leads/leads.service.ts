@@ -798,8 +798,13 @@ export class LeadsService {
       create: { leadId, tagId, origem },
       update: {},
     });
-    // Gatilho de fluxo "Lead recebeu tag" (best-effort).
-    await this.bus.disparar(empresaId, 'LEAD_RECEBEU_TAG', { leadId, tagId });
+    // Gatilho de fluxo "Lead recebeu tag" (best-effort). `tagNome` acompanha:
+    // é por ele que o gatilho filtra QUAL etiqueta dispara o fluxo.
+    await this.bus.disparar(empresaId, 'LEAD_RECEBEU_TAG', {
+      leadId,
+      tagId,
+      tagNome: tag.nome,
+    });
     return this.findById(user, leadId);
   }
 
@@ -831,7 +836,7 @@ export class LeadsService {
       create: { empresaId, nome: limpo },
       update: {},
     });
-    await this.vincularTag(empresaId, leadId, tag.id, origem);
+    await this.vincularTag(empresaId, leadId, tag.id, origem, limpo);
   }
 
   /**
@@ -855,7 +860,7 @@ export class LeadsService {
       select: { id: true },
     });
     if (!tag) return false;
-    await this.vincularTag(empresaId, leadId, tag.id, origem);
+    await this.vincularTag(empresaId, leadId, tag.id, origem, limpo);
     return true;
   }
 
@@ -864,13 +869,18 @@ export class LeadsService {
     leadId: string,
     tagId: string,
     origem: 'usuario' | 'ia',
+    tagNome?: string,
   ): Promise<void> {
     await this.prisma.leadTag.upsert({
       where: { leadId_tagId: { leadId, tagId } },
       create: { leadId, tagId, origem },
       update: {},
     });
-    await this.bus.disparar(empresaId, 'LEAD_RECEBEU_TAG', { leadId, tagId });
+    // `tagNome` vai no payload porque é por ele que o gatilho LEAD_RECEBEU_TAG
+    // filtra QUAL etiqueta dispara o fluxo (match exato/prefixo). Sem o nome, o
+    // bus teria que ir ao banco a cada evento — e as famílias de etiqueta
+    // (`publico:`, `setor:`) dependem disso pra rotear.
+    await this.bus.disparar(empresaId, 'LEAD_RECEBEU_TAG', { leadId, tagId, tagNome });
   }
 
   async remove(user: AuthenticatedUser, id: string): Promise<void> {

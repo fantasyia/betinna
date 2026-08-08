@@ -6,6 +6,7 @@ import { PrismaService } from '@database/prisma.service';
 import { FLUXO_QUEUE, type FluxoStepJobData } from './fluxo-executor.types';
 import { matchPalavraChave, type PalavraChaveConfig } from './match-palavra-chave.util';
 import { matchFiltroPayload, type FiltroPayload } from './match-payload-filtro.util';
+import { normalizarValor } from './normalizar-valor.util';
 
 const toJsonInput = (v: Record<string, unknown>): Prisma.InputJsonObject =>
   v as unknown as Prisma.InputJsonObject;
@@ -207,6 +208,66 @@ export class FluxoEventBusService {
                 }),
               ]);
               if (!(conv?.botLigado ?? emp?.botWhatsappAtivo ?? false)) continue;
+            }
+          }
+
+          // Filtro do gatilho LEAD_RECEBEU_TAG: QUAL etiqueta.
+          //
+          // Até aqui NÃO existia filtro nenhum — todo fluxo ativo com este gatilho
+          // rodava a CADA etiqueta aplicada a qualquer lead. Com etiqueta-DIMENSÃO
+          // (`publico:comercio`, `setor:cadeia-do-frio`) isso é fatal: a régua de um
+          // setor dispararia pra todos os outros, em silêncio.
+          //
+          // Operador default = EXATO (`modo` ausente). Sem config nenhuma, segue
+          // "qualquer etiqueta" (compatível com o que já está no ar).
+          //  - exato   → nome idêntico (normalizado: trim/minúsculas/sem acento)
+          //  - prefixo → família inteira de uma dimensão ("setor:")
+          //  - contem  → escape hatch; colide entre slugs ("varejo" casa
+          //              "varejo-alimentar"), por isso NÃO é o default
+          // O `:` não tem tratamento especial em lugar nenhum: é caractere comum.
+          if (triggerTipo === 'LEAD_RECEBEU_TAG') {
+            const cfg = (triggerNo.config ?? {}) as {
+              tagIds?: string[];
+              tagNomes?: string[];
+              tagNome?: string;
+              modo?: 'exato' | 'prefixo' | 'contem';
+            };
+            const ids = (cfg.tagIds ?? []).map((t) => String(t).trim()).filter(Boolean);
+            const nomes = [...(cfg.tagNomes ?? []), ...(cfg.tagNome ? [cfg.tagNome] : [])]
+              .map((n) => normalizarValor(String(n)))
+              .filter(Boolean);
+
+            if (ids.length > 0 || nomes.length > 0) {
+              const tagIdCtx =
+                typeof contexto['tagId'] === 'string' ? (contexto['tagId'] as string) : undefined;
+              // O nome vem no payload; só cai no banco por compatibilidade com
+              // eventos antigos ainda em voo (e é 1 SELECT por id, não por fluxo).
+              let nomeCtx =
+                typeof contexto['tagNome'] === 'string'
+                  ? (contexto['tagNome'] as string)
+                  : undefined;
+              if (nomes.length > 0 && !nomeCtx && tagIdCtx) {
+                const t = await this.prisma.tag.findFirst({
+                  where: { id: tagIdCtx, empresaId },
+                  select: { nome: true },
+                });
+                nomeCtx = t?.nome;
+                if (nomeCtx) contexto['tagNome'] = nomeCtx;
+              }
+              const alvo = normalizarValor(nomeCtx ?? '');
+              const modo = cfg.modo ?? 'exato';
+              const casouId = ids.length > 0 && tagIdCtx !== undefined && ids.includes(tagIdCtx);
+              const casouNome =
+                nomes.length > 0 &&
+                alvo.length > 0 &&
+                nomes.some((n) =>
+                  modo === 'prefixo'
+                    ? alvo.startsWith(n)
+                    : modo === 'contem'
+                      ? alvo.includes(n)
+                      : alvo === n,
+                );
+              if (!casouId && !casouNome) continue;
             }
           }
 
