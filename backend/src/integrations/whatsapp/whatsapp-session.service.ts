@@ -691,6 +691,24 @@ export class WhatsAppSessionService implements OnModuleInit, OnModuleDestroy {
       desligadoManualmente: false,
       groupNameCache: this.sessions.get(key)?.groupNameCache ?? new Map(),
     };
+    // AUDITORIA #B2: o `set` sobrescrevia o contexto ANTERIOR sem encerrar nada.
+    // Numa reconexão, o socket velho continuava vivo e ouvindo — dois sockets no
+    // mesmo número processando o mesmo `messages.upsert` (a idempotência por
+    // externalId segurava a duplicata no banco, mas o trabalho dobrava e o timer
+    // de reconexão órfão seguia agendando um TERCEIRO). A cada ciclo sobrava
+    // mais um. Aposenta o anterior antes de assumir.
+    const anterior = this.sessions.get(key);
+    if (anterior && anterior.sock !== sock) {
+      anterior.desligadoManualmente = true; // impede o handler do velho de reagendar
+      if (anterior.reconectTimer) clearTimeout(anterior.reconectTimer);
+      anterior.reconectTimer = null;
+      try {
+        void anterior.sock.end(undefined);
+      } catch {
+        // socket já morto — o que importa é não deixar o listener ativo
+      }
+      this.logger.debug(`[${ownerKey(owner)}] socket anterior encerrado antes da reconexão`);
+    }
     this.sessions.set(key, ctx);
 
     sock.ev.on('creds.update', saveCreds);

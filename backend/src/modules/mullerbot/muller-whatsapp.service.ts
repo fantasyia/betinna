@@ -197,6 +197,8 @@ export async function prepararEntradaMultimodal(
     /** Grava a transcrição na inbox ("🎤 ...") + loga (opcional). */
     aoTranscrever?: (texto: string) => Promise<void>;
     aoFalharTranscricao?: (erro: string) => void;
+    /** #B13: download da imagem falhou — o bot vai responder SEM ter visto a foto. */
+    aoFalharImagem?: (url: string) => void;
   },
 ): Promise<{ mensagemIA: string; imagemDataUrl?: string }> {
   let mensagemIA = params.conteudo;
@@ -222,6 +224,16 @@ export async function prepararEntradaMultimodal(
       imagemDataUrl = `data:${params.mediaMime ?? 'image/jpeg'};base64,${bytes.toString('base64')}`;
       // Legenda real (se houver) vira o texto; placeholder "[imagem]" → vazio.
       mensagemIA = PLACEHOLDERS_MIDIA.has(params.conteudo) ? '' : params.conteudo;
+    } else {
+      // AUDITORIA #B13: sem os bytes, o bot seguia adiante com o conteúdo
+      // "[imagem]" e RESPONDIA SOBRE A FOTO sem tê-la visto — alucinação
+      // garantida, e mudo: nenhum log dizia que o download tinha falhado. Agora
+      // sinaliza (o caller loga) e diz explicitamente ao modelo que não viu.
+      deps.aoFalharImagem?.(params.mediaUrl);
+      mensagemIA = PLACEHOLDERS_MIDIA.has(params.conteudo)
+        ? '[o cliente enviou uma imagem, mas não consegui abrir o arquivo]'
+        : `${params.conteudo}
+[obs: o cliente enviou uma imagem que não consegui abrir]`;
     }
   }
   return { mensagemIA, imagemDataUrl };
@@ -421,6 +433,11 @@ export class MullerWhatsappService implements OnModuleInit {
         },
         aoFalharTranscricao: (m) =>
           this.logger.warn(`[bot] transcrição falhou conv=${convId}: ${m}`),
+        aoFalharImagem: (url) =>
+          this.logger.warn(
+            `[bot] download da imagem falhou conv=${convId} (${url.slice(0, 80)}) — ` +
+              'o modelo vai responder SEM ver a foto',
+          ),
       });
 
       // 4.7 Sem imagem pra ver E sem texto real → escala pra humano (regra antiga).

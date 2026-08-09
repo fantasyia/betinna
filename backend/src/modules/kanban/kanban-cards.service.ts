@@ -308,24 +308,31 @@ export class KanbanCardsService {
       throw new BusinessRuleException('Não é possível mover card para lista arquivada');
     }
 
-    const movido = await this.prisma.kanbanCard.update({
-      where: { id: cardId },
-      data: { listaId: destino.id, posicao: dto.posicao },
-    });
+    // AUDITORIA #B19: o update, a LEITURA da lista e o rebalanceamento rodavam
+    // soltos. Dois usuários arrastando na mesma lista ao mesmo tempo liam a
+    // fotografia um do outro e gravavam posições calculadas sobre estado velho —
+    // cards trocavam de lugar sozinhos na tela do outro. Agora os três passos são
+    // uma transação interativa: quem chegar depois lê o resultado de quem chegou
+    // antes.
+    const movido = await this.prisma.$transaction(async (tx) => {
+      const atualizado = await tx.kanbanCard.update({
+        where: { id: cardId },
+        data: { listaId: destino.id, posicao: dto.posicao },
+      });
 
-    // Rebalanceamento da lista destino (mesma técnica do Trello)
-    const cards = await this.prisma.kanbanCard.findMany({
-      where: { listaId: destino.id, arquivado: false },
-      orderBy: { posicao: 'asc' },
-      select: { id: true, posicao: true },
+      // Rebalanceamento da lista destino (mesma técnica do Trello)
+      const cards = await tx.kanbanCard.findMany({
+        where: { listaId: destino.id, arquivado: false },
+        orderBy: { posicao: 'asc' },
+        select: { id: true, posicao: true },
+      });
+      if (precisaRebalancear(cards.map((c) => c.posicao))) {
+        for (const r of rebalancear(cards)) {
+          await tx.kanbanCard.update({ where: { id: r.id }, data: { posicao: r.posicao } });
+        }
+      }
+      return atualizado;
     });
-    if (precisaRebalancear(cards.map((c) => c.posicao))) {
-      await this.prisma.$transaction(
-        rebalancear(cards).map((r) =>
-          this.prisma.kanbanCard.update({ where: { id: r.id }, data: { posicao: r.posicao } }),
-        ),
-      );
-    }
 
     await this.atividade.registrar({
       boardId: board.id,
