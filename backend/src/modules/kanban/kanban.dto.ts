@@ -156,7 +156,16 @@ export type CreateComentarioDto = z.infer<typeof createComentarioSchema>;
 /** Anexo tipo LINK (JSON). Upload de arquivo vai por multipart no mesmo endpoint. */
 export const createAnexoLinkSchema = z.object({
   nome: z.string().trim().min(1, 'Nome é obrigatório').max(200),
-  url: z.string().trim().url('URL inválida').max(2000),
+  // AUDITORIA #B18: `z.string().url()` valida o formato, não o ESQUEMA — e
+  // "javascript:alert(1)" é uma URL perfeitamente válida pro WHATWG. O anexo
+  // vira um <a href> no modal do card: qualquer membro do quadro clicando
+  // executaria o script na sessão dele. Só http(s) entra.
+  url: z
+    .string()
+    .trim()
+    .url('URL inválida')
+    .max(2000)
+    .refine((u) => /^https?:\/\//i.test(u), 'A URL precisa começar com http:// ou https://'),
 });
 export type CreateAnexoLinkDto = z.infer<typeof createAnexoLinkSchema>;
 

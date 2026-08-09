@@ -49,6 +49,9 @@ const makeIntegracoes = () => ({
 // Args do salvarCredenciaisInternas: (empresaId, servico, credenciais, externalAccountId).
 type SalvarArgs = [string, string, Record<string, unknown>, string];
 
+// #B17: consumidor de nonce (anti-replay do state OAuth). true = 1º uso.
+const makeRedis = () => ({ setNxEx: vi.fn().mockResolvedValue(true) });
+
 describe('MetaOAuthService.buildAuthUrl', () => {
   it('inclui scope amplo + state JWT quando configurado', async () => {
     const svc = new MetaOAuthService(
@@ -56,6 +59,7 @@ describe('MetaOAuthService.buildAuthUrl', () => {
       makeGraph() as never,
       makePrisma() as never,
       makeIntegracoes() as never,
+      makeRedis() as never,
     );
     const url = await svc.buildAuthUrl('emp-1');
     expect(url).toContain('client_id=app-1');
@@ -70,6 +74,7 @@ describe('MetaOAuthService.buildAuthUrl', () => {
       makeGraph() as never,
       makePrisma() as never,
       makeIntegracoes() as never,
+      makeRedis() as never,
     );
     await expect(svc.buildAuthUrl('emp-1')).rejects.toBeInstanceOf(IntegrationException);
   });
@@ -95,6 +100,7 @@ describe('MetaOAuthService.processCallback', () => {
       graph as never,
       makePrisma() as never,
       integ as never,
+      makeRedis() as never,
     );
     const url = await svc.buildAuthUrl('emp-99');
     const state = new URL(url).searchParams.get('state')!;
@@ -135,6 +141,7 @@ describe('MetaOAuthService.processCallback', () => {
       graph as never,
       makePrisma() as never,
       integ as never,
+      makeRedis() as never,
     );
     const url = await svc.buildAuthUrl('emp-1');
     const state = new URL(url).searchParams.get('state')!;
@@ -151,6 +158,7 @@ describe('MetaOAuthService.processCallback', () => {
       makeGraph() as never,
       makePrisma() as never,
       makeIntegracoes() as never,
+      makeRedis() as never,
     );
     const url = await svc1.buildAuthUrl('emp-1');
     const state = new URL(url).searchParams.get('state')!;
@@ -160,6 +168,7 @@ describe('MetaOAuthService.processCallback', () => {
       makeGraph() as never,
       makePrisma() as never,
       makeIntegracoes() as never,
+      makeRedis() as never,
     );
     await expect(svc2.processCallback('c', state)).rejects.toBeInstanceOf(UnauthorizedException);
   });
@@ -175,6 +184,7 @@ describe('MetaOAuthService.resolverPorAccount', () => {
       makeGraph() as never,
       prisma as never,
       makeIntegracoes() as never,
+      makeRedis() as never,
     );
     const r = await svc.resolverPorAccount('facebook', 'page-xyz');
     expect(r).toBeNull();
@@ -193,6 +203,7 @@ describe('MetaOAuthService.resolverPorAccount', () => {
       makeGraph() as never,
       prisma as never,
       integ as never,
+      makeRedis() as never,
     );
     const r = await svc.resolverPorAccount('instagram', 'ig-1');
     expect(r).toEqual({
@@ -227,6 +238,7 @@ describe('MetaOAuthService.renovarTokenSeNecessario', () => {
       makeGraph() as never,
       makePrisma() as never,
       integ as never,
+      makeRedis() as never,
     );
     expect(await svc.renovarTokenSeNecessario('emp-1', 'facebook')).toBe('sem-conexao');
   });
@@ -240,6 +252,7 @@ describe('MetaOAuthService.renovarTokenSeNecessario', () => {
       graph as never,
       makePrisma() as never,
       integ as never,
+      makeRedis() as never,
     );
 
     expect(await svc.renovarTokenSeNecessario('emp-1', 'facebook', 14)).toBe('ok');
@@ -263,6 +276,7 @@ describe('MetaOAuthService.renovarTokenSeNecessario', () => {
       graph as never,
       makePrisma() as never,
       integ as never,
+      makeRedis() as never,
     );
 
     const r = await svc.renovarTokenSeNecessario('emp-1', 'facebook', 14);
@@ -294,6 +308,7 @@ describe('MetaOAuthService.renovarTokenSeNecessario', () => {
       graph as never,
       makePrisma() as never,
       integ as never,
+      makeRedis() as never,
     );
 
     await expect(svc.renovarTokenSeNecessario('emp-1', 'facebook', 14)).rejects.toBeInstanceOf(
@@ -311,6 +326,7 @@ describe('MetaOAuthService.renovarTokenSeNecessario', () => {
       makeGraph() as never,
       makePrisma() as never,
       integ as never,
+      makeRedis() as never,
     );
     expect(await svc.renovarTokenSeNecessario('emp-1', 'facebook')).toBe('sem-expiracao');
   });

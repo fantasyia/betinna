@@ -1,4 +1,5 @@
 import { Injectable, Logger } from '@nestjs/common';
+import { RedisService } from '@database/redis.service';
 import { EnvService } from '@config/env.service';
 import { PrismaService } from '@database/prisma.service';
 import { IntegracoesService } from '@modules/integracoes/integracoes.service';
@@ -44,6 +45,7 @@ export class TikTokOAuthService {
     private readonly http: HttpClientService,
     private readonly prisma: PrismaService,
     private readonly integracoes: IntegracoesService,
+    private readonly redis: RedisService,
   ) {
     this.stateSecret = deriveOAuthStateSecret(this.env.get('ENCRYPTION_KEY'), 'tiktok-oauth-state');
   }
@@ -214,6 +216,9 @@ export class TikTokOAuthService {
   }
 
   private verifyState(state: string): Promise<string> {
-    return verifyOAuthState(this.stateSecret, state, 'eid');
+    return verifyOAuthState(this.stateSecret, state, 'eid', (jti, ttl) =>
+      // #B17: SET NX = o 1º callback queima o jti; replay não passa.
+      this.redis.setNxEx(`oauth:jti:${jti}`, '1', ttl),
+    );
   }
 }

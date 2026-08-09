@@ -1,4 +1,5 @@
 import { Injectable, Logger } from '@nestjs/common';
+import { RedisService } from '@database/redis.service';
 import { EnvService } from '@config/env.service';
 import { UsuarioIntegracoesService } from '@modules/integracoes/usuario-integracoes.service';
 import { IntegrationException } from '@shared/errors/app-exception';
@@ -51,6 +52,7 @@ export class GoogleOAuthService {
     private readonly env: EnvService,
     private readonly http: HttpClientService,
     private readonly userIntegracoes: UsuarioIntegracoesService,
+    private readonly redis: RedisService,
   ) {
     // Deriva uma chave separada pro state JWT a partir da ENCRYPTION_KEY
     // (mesmo segredo mas hash diferente — isolamento criptográfico).
@@ -210,6 +212,9 @@ export class GoogleOAuthService {
   }
 
   private verifyState(state: string): Promise<string> {
-    return verifyOAuthState(this.stateSecret, state, 'uid');
+    return verifyOAuthState(this.stateSecret, state, 'uid', (jti, ttl) =>
+      // #B17: SET NX = o 1º callback queima o jti; replay não passa.
+      this.redis.setNxEx(`oauth:jti:${jti}`, '1', ttl),
+    );
   }
 }

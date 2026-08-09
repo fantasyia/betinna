@@ -32,6 +32,9 @@ const makeIntegracoesMock = () => ({
   registrarSyncOk: vi.fn().mockResolvedValue({}),
 });
 
+// #B17: consumidor de nonce (anti-replay do state OAuth). true = 1º uso.
+const makeRedis = () => ({ setNxEx: vi.fn().mockResolvedValue(true) });
+
 describe('TikTokOAuthService', () => {
   let env: ReturnType<typeof makeEnvMock>;
   let http: ReturnType<typeof makeHttpMock>;
@@ -49,6 +52,7 @@ describe('TikTokOAuthService', () => {
       http as never,
       prisma as never,
       integracoes as never,
+      makeRedis() as never,
     );
   });
 
@@ -63,6 +67,7 @@ describe('TikTokOAuthService', () => {
         http as never,
         prisma as never,
         integracoes as never,
+        makeRedis() as never,
       );
       expect(svc.isConfigured()).toBe(false);
     });
@@ -73,6 +78,7 @@ describe('TikTokOAuthService', () => {
         http as never,
         prisma as never,
         integracoes as never,
+        makeRedis() as never,
       );
       expect(svc.isConfigured()).toBe(false);
     });
@@ -85,6 +91,7 @@ describe('TikTokOAuthService', () => {
         http as never,
         prisma as never,
         integracoes as never,
+        makeRedis() as never,
       );
 
       await expect(svc.buildAuthUrl('emp-1')).rejects.toBeInstanceOf(IntegrationException);

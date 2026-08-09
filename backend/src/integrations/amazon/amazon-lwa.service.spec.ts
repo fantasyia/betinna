@@ -34,6 +34,9 @@ const makeIntegracoes = () => ({
   registrarSyncOk: vi.fn(async () => undefined),
 });
 
+// #B17: consumidor de nonce (anti-replay do state OAuth). true = 1º uso.
+const makeRedis = () => ({ setNxEx: vi.fn().mockResolvedValue(true) });
+
 describe('AmazonLwaService.buildAuthUrl', () => {
   it('inclui application_id + state + version=beta quando configurado', async () => {
     const svc = new AmazonLwaService(
@@ -41,6 +44,7 @@ describe('AmazonLwaService.buildAuthUrl', () => {
       makeHttp() as never,
       makePrisma() as never,
       makeIntegracoes() as never,
+      makeRedis() as never,
     );
     const url = await svc.buildAuthUrl('emp-1');
     expect(url).toContain('sellercentral.amazon.com.br');
@@ -55,6 +59,7 @@ describe('AmazonLwaService.buildAuthUrl', () => {
       makeHttp() as never,
       makePrisma() as never,
       makeIntegracoes() as never,
+      makeRedis() as never,
     );
     await expect(svc.buildAuthUrl('emp-1')).rejects.toBeInstanceOf(IntegrationException);
   });
@@ -79,6 +84,7 @@ describe('AmazonLwaService.processCallback', () => {
       http as never,
       prisma as never,
       integ as never,
+      makeRedis() as never,
     );
     const url = await svc.buildAuthUrl('emp-1');
     const state = new URL(url).searchParams.get('state')!;
@@ -110,6 +116,7 @@ describe('AmazonLwaService.processCallback', () => {
       http as never,
       makePrisma() as never,
       makeIntegracoes() as never,
+      makeRedis() as never,
     );
     const url = await svc.buildAuthUrl('emp-1');
     const state = new URL(url).searchParams.get('state')!;
@@ -124,6 +131,7 @@ describe('AmazonLwaService.processCallback', () => {
       makeHttp() as never,
       makePrisma() as never,
       makeIntegracoes() as never,
+      makeRedis() as never,
     );
     const url = await svc1.buildAuthUrl('emp-1');
     const state = new URL(url).searchParams.get('state')!;
@@ -132,6 +140,7 @@ describe('AmazonLwaService.processCallback', () => {
       makeHttp() as never,
       makePrisma() as never,
       makeIntegracoes() as never,
+      makeRedis() as never,
     );
     await expect(svc2.processCallback('c', 'A1', state)).rejects.toBeInstanceOf(
       UnauthorizedException,
@@ -156,6 +165,7 @@ describe('AmazonLwaService.getCredenciais refresh', () => {
       http as never,
       makePrisma() as never,
       integ as never,
+      makeRedis() as never,
     );
     const r = await svc.getCredenciais('emp-1');
     expect(r.accessToken).toBe('still-valid');
@@ -189,6 +199,7 @@ describe('AmazonLwaService.getCredenciais refresh', () => {
       http as never,
       prisma as never,
       integ as never,
+      makeRedis() as never,
     );
     const r = await svc.getCredenciais('emp-1');
     expect(r.accessToken).toBe('fresh-at');

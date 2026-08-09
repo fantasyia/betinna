@@ -27,12 +27,16 @@ const makeUserIntegracoes = () => ({
   obterCredenciaisInternas: vi.fn(),
 });
 
+// #B17: consumidor de nonce (anti-replay do state OAuth). true = 1º uso.
+const makeRedis = () => ({ setNxEx: vi.fn().mockResolvedValue(true) });
+
 describe('GoogleOAuthService.buildAuthUrl', () => {
   it('monta URL com scope+state+prompt=consent quando configurado', async () => {
     const svc = new GoogleOAuthService(
       makeEnv() as never,
       makeHttp() as never,
       makeUserIntegracoes() as never,
+      makeRedis() as never,
     );
     const url = await svc.buildAuthUrl('u1');
     expect(url).toContain('accounts.google.com/o/oauth2/v2/auth');
@@ -47,6 +51,7 @@ describe('GoogleOAuthService.buildAuthUrl', () => {
       makeEnv({ GOOGLE_CLIENT_ID: '' }) as never,
       makeHttp() as never,
       makeUserIntegracoes() as never,
+      makeRedis() as never,
     );
     await expect(svc.buildAuthUrl('u1')).rejects.toBeInstanceOf(IntegrationException);
   });
@@ -68,7 +73,12 @@ describe('GoogleOAuthService state JWT (CSRF protection)', () => {
     http.get.mockResolvedValueOnce({ status: 200, data: { sub: 'g1', email: 'a@gmail.com' } });
 
     const ui = makeUserIntegracoes();
-    const svc = new GoogleOAuthService(makeEnv() as never, http as never, ui as never);
+    const svc = new GoogleOAuthService(
+      makeEnv() as never,
+      http as never,
+      ui as never,
+      makeRedis() as never,
+    );
     const url = await svc.buildAuthUrl('u1');
     const state = new URL(url).searchParams.get('state')!;
 
@@ -87,6 +97,7 @@ describe('GoogleOAuthService state JWT (CSRF protection)', () => {
       makeEnv() as never,
       makeHttp() as never,
       makeUserIntegracoes() as never,
+      makeRedis() as never,
     );
     const url = await svc1.buildAuthUrl('u1');
     const state = new URL(url).searchParams.get('state')!;
@@ -96,6 +107,7 @@ describe('GoogleOAuthService state JWT (CSRF protection)', () => {
       makeEnv({ ENCRYPTION_KEY: otherKey }) as never,
       makeHttp() as never,
       makeUserIntegracoes() as never,
+      makeRedis() as never,
     );
     await expect(svc2.exchangeCode('code-x', state)).rejects.toBeInstanceOf(UnauthorizedException);
   });
@@ -105,6 +117,7 @@ describe('GoogleOAuthService state JWT (CSRF protection)', () => {
       makeEnv() as never,
       makeHttp() as never,
       makeUserIntegracoes() as never,
+      makeRedis() as never,
     );
     await expect(svc.exchangeCode('code', 'not-a-jwt')).rejects.toBeInstanceOf(
       UnauthorizedException,
@@ -121,6 +134,7 @@ describe('GoogleOAuthService state JWT (CSRF protection)', () => {
       makeEnv() as never,
       http as never,
       makeUserIntegracoes() as never,
+      makeRedis() as never,
     );
     const url = await svc.buildAuthUrl('u1');
     const state = new URL(url).searchParams.get('state')!;
@@ -139,7 +153,12 @@ describe('GoogleOAuthService.getAccessToken', () => {
       },
     });
     const http = makeHttp();
-    const svc = new GoogleOAuthService(makeEnv() as never, http as never, ui as never);
+    const svc = new GoogleOAuthService(
+      makeEnv() as never,
+      http as never,
+      ui as never,
+      makeRedis() as never,
+    );
     const t = await svc.getAccessToken('u1');
     expect(t).toBe('still-valid');
     expect(http.post).not.toHaveBeenCalled();
@@ -159,7 +178,12 @@ describe('GoogleOAuthService.getAccessToken', () => {
       status: 200,
       data: { access_token: 'fresh', expires_in: 3600, scope: '', token_type: 'Bearer' },
     });
-    const svc = new GoogleOAuthService(makeEnv() as never, http as never, ui as never);
+    const svc = new GoogleOAuthService(
+      makeEnv() as never,
+      http as never,
+      ui as never,
+      makeRedis() as never,
+    );
     const t = await svc.getAccessToken('u1');
     expect(t).toBe('fresh');
     expect(http.post).toHaveBeenCalledTimes(1);

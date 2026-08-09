@@ -36,6 +36,9 @@ const makeIntegracoes = () => ({
   salvarCredenciaisInternas: vi.fn(async () => undefined),
 });
 
+// #B17: consumidor de nonce (anti-replay do state OAuth). true = 1º uso.
+const makeRedis = () => ({ setNxEx: vi.fn().mockResolvedValue(true) });
+
 describe('MLOAuthService.buildAuthUrl', () => {
   it('inclui state JWT + client_id quando configurado', async () => {
     const svc = new MLOAuthService(
@@ -43,6 +46,7 @@ describe('MLOAuthService.buildAuthUrl', () => {
       makeHttp() as never,
       makePrisma() as never,
       makeIntegracoes() as never,
+      makeRedis() as never,
     );
     const url = await svc.buildAuthUrl('emp-1');
     expect(url).toContain('auth.mercadolivre.com.br');
@@ -56,6 +60,7 @@ describe('MLOAuthService.buildAuthUrl', () => {
       makeHttp() as never,
       makePrisma() as never,
       makeIntegracoes() as never,
+      makeRedis() as never,
     );
     await expect(svc.buildAuthUrl('emp-1')).rejects.toBeInstanceOf(IntegrationException);
   });
@@ -86,6 +91,7 @@ describe('MLOAuthService.processCallback', () => {
       http as never,
       prisma as never,
       integ as never,
+      makeRedis() as never,
     );
     const url = await svc.buildAuthUrl('emp-1');
     const state = new URL(url).searchParams.get('state')!;
@@ -107,6 +113,7 @@ describe('MLOAuthService.processCallback', () => {
       makeHttp() as never,
       makePrisma() as never,
       makeIntegracoes() as never,
+      makeRedis() as never,
     );
     const url = await svc1.buildAuthUrl('emp-1');
     const state = new URL(url).searchParams.get('state')!;
@@ -116,6 +123,7 @@ describe('MLOAuthService.processCallback', () => {
       makeHttp() as never,
       makePrisma() as never,
       makeIntegracoes() as never,
+      makeRedis() as never,
     );
     await expect(svc2.processCallback('code', state)).rejects.toBeInstanceOf(UnauthorizedException);
   });
@@ -138,6 +146,7 @@ describe('MLOAuthService.getAccessToken refresh', () => {
       http as never,
       makePrisma() as never,
       integ as never,
+      makeRedis() as never,
     );
     const r = await svc.getAccessToken('emp-1');
     expect(r.accessToken).toBe('still-valid');
@@ -172,6 +181,7 @@ describe('MLOAuthService.getAccessToken refresh', () => {
       http as never,
       prisma as never,
       integ as never,
+      makeRedis() as never,
     );
     const r = await svc.getAccessToken('emp-1');
     expect(r.accessToken).toBe('fresh');

@@ -41,19 +41,50 @@ export async function signOAuthState(
 }
 
 /**
+ * Consumidor de nonce: retorna `true` se o `jti` NUNCA foi usado (e o marca como
+ * usado), `false` se é replay. Injetado pelos services (Redis) — o util segue
+ * puro e testável.
+ */
+export type ConsumirNonce = (jti: string, ttlSegundos: number) => Promise<boolean>;
+
+/**
  * Verifica o state e devolve o valor do claim `claimKey` (ex: 'eid' ou 'uid').
  * Lança `UnauthorizedException` se inválido/expirado (CSRF protection).
+ *
+ * AUDITORIA #B17: o `jti` era GERADO na assinatura e nunca verificado — o D14
+ * prometia anti-replay que não existia. Um callback de OAuth interceptado
+ * (histórico do browser, log de proxy, referer) podia ser reenviado quantas
+ * vezes quisesse dentro da janela de 5min, re-vinculando a integração. Com
+ * `consumirNonce`, o primeiro uso queima o jti e os seguintes caem como
+ * inválidos.
  */
 export async function verifyOAuthState(
   secret: Uint8Array,
   state: string,
   claimKey: string,
+  consumirNonce?: ConsumirNonce,
 ): Promise<string> {
   try {
     const { payload } = await jwtVerify(state, secret);
     const value = (payload as Record<string, unknown>)[claimKey];
     if (typeof value !== 'string' || value.length === 0) {
       throw new UnauthorizedException('state inválido', ErrorCode.AUTH_INVALID_TOKEN);
+    }
+    if (consumirNonce) {
+      const jti = (payload as Record<string, unknown>)['jti'];
+      if (typeof jti !== 'string' || !jti) {
+        throw new UnauthorizedException('state sem nonce', ErrorCode.AUTH_INVALID_TOKEN);
+      }
+      // TTL = o que resta do próprio state (+30s de folga). Guardar mais tempo
+      // que isso é desperdício: state expirado já é recusado pelo jwtVerify.
+      const exp = typeof payload.exp === 'number' ? payload.exp : 0;
+      const restam = Math.max(30, Math.ceil(exp - Date.now() / 1000) + 30);
+      if (!(await consumirNonce(jti, restam))) {
+        throw new UnauthorizedException(
+          'state já utilizado (replay)',
+          ErrorCode.AUTH_INVALID_TOKEN,
+        );
+      }
     }
     return value;
   } catch {

@@ -35,7 +35,13 @@ const ALLOWED_MIMES = new Set([
   'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
   'text/csv',
   'text/plain',
-  // Assets web (ex.: HTML do backbone de conteúdo + CSS/JS/JSON e bundle .zip)
+  // Assets web (ex.: HTML do backbone de conteúdo + CSS/JS/JSON e bundle .zip).
+  // AUDITORIA #B18 apontou HTML/SVG/JS como risco de XSS armazenado — MANTIDOS
+  // de propósito: hospedar esses assets é o uso real do anexo (mapas de cluster
+  // do site). O que neutraliza o risco é o SERVIÇO, não a lista: o arquivo sai
+  // por signed URL do bucket do Supabase, em OUTRA origem (sem cookie do app),
+  // nunca inline pelo domínio do Betinna. Se um dia forem servidos pelo mesmo
+  // domínio, estes três MIMEs têm que sair daqui.
   'text/html',
   'text/css',
   'text/javascript',

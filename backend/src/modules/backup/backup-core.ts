@@ -59,15 +59,45 @@ function getSupabase(): SupabaseClient {
   });
 }
 
+/**
+ * Quebra a connection string em flags + PGPASSWORD.
+ *
+ * AUDITORIA #B37: passar a URL inteira em `--dbname` põe a SENHA DO POSTGRES na
+ * linha de comando do processo — visível em `ps aux`, em /proc, e em qualquer
+ * log de auditoria de processos do host. Como a máquina é compartilhada com o
+ * worker e o dump roda por cron, a senha ficava exposta periodicamente. Host,
+ * porta, usuário e banco viram flags; a senha vai pelo ENV do filho, que não
+ * aparece em `ps`.
+ */
+function conexaoParaArgs(connectionString: string): { args: string[]; env: NodeJS.ProcessEnv } {
+  const u = new URL(connectionString);
+  const args = [
+    '--host',
+    u.hostname,
+    '--port',
+    u.port || '5432',
+    '--username',
+    decodeURIComponent(u.username),
+    '--dbname',
+    u.pathname.replace(/^\//, '') || 'postgres',
+  ];
+  const env: NodeJS.ProcessEnv = { ...process.env, PGPASSWORD: decodeURIComponent(u.password) };
+  // sslmode e afins vivem na query string — repassa como PGSSLMODE etc.
+  const sslmode = u.searchParams.get('sslmode');
+  if (sslmode) env.PGSSLMODE = sslmode;
+  return { args, env };
+}
+
 /** Executa um binário e resolve quando termina; rejeita se exit != 0. */
 function run(
   cmd: string,
   args: string[],
-  opts: { captureStdout?: boolean } = {},
+  opts: { captureStdout?: boolean; env?: NodeJS.ProcessEnv } = {},
 ): Promise<{ stdout: string }> {
   return new Promise((resolve, reject) => {
     const proc = spawn(cmd, args, {
       stdio: ['ignore', opts.captureStdout ? 'pipe' : 'inherit', 'inherit'],
+      ...(opts.env ? { env: opts.env } : {}),
     });
     let stdout = '';
     if (opts.captureStdout && proc.stdout) {
@@ -90,18 +120,22 @@ function run(
 }
 
 async function pgDump(connectionString: string, outFile: string): Promise<void> {
-  await run('pg_dump', [
-    '--dbname',
-    connectionString,
-    '--format',
-    'custom',
-    '--compress',
-    '9',
-    '--no-owner',
-    '--no-acl',
-    '--file',
-    outFile,
-  ]);
+  const { args: conexao, env } = conexaoParaArgs(connectionString);
+  await run(
+    'pg_dump',
+    [
+      ...conexao,
+      '--format',
+      'custom',
+      '--compress',
+      '9',
+      '--no-owner',
+      '--no-acl',
+      '--file',
+      outFile,
+    ],
+    { env },
+  );
 }
 
 async function uploadBackup(file: string, storagePath: string): Promise<number> {
@@ -327,15 +361,12 @@ export async function restoreTest(): Promise<RestoreTestResult> {
 
     if (sandboxUrl) {
       // Restauração REAL num banco sandbox (clean + no-owner pra não exigir roles)
-      await run('pg_restore', [
-        '--clean',
-        '--if-exists',
-        '--no-owner',
-        '--no-acl',
-        '--dbname',
-        sandboxUrl,
-        localFile,
-      ]);
+      const { args: conexaoSandbox, env: envSandbox } = conexaoParaArgs(sandboxUrl);
+      await run(
+        'pg_restore',
+        ['--clean', '--if-exists', '--no-owner', '--no-acl', ...conexaoSandbox, localFile],
+        { env: envSandbox },
+      );
       return { ok: true, path, modo };
     }
 
