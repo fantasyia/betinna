@@ -153,6 +153,12 @@ export class TransactionalEmailService {
   }
 
   // ─── Templates de alto nível ─────────────────────────────────────────
+  //
+  // AUDITORIA #B21: o `send` tem 2 retries com backoff, mas nenhum template
+  // passava `idempotencyKey`. Um timeout DEPOIS do Resend aceitar (resposta
+  // perdida na volta) fazia o retry mandar o MESMO e-mail de novo: o rep recebia
+  // "sua comissão fechou" duas vezes. A chave é determinística por evento —
+  // mesmo evento, mesma chave, Resend deduplica.
 
   async enviarBoasVindas(params: { para: string; nome: string; empresaNome: string }) {
     const { assunto, html } = templateBoasVindas({
@@ -160,7 +166,7 @@ export class TransactionalEmailService {
       empresaNome: params.empresaNome,
       loginUrl: this.safeUrl('/login'),
     });
-    return this.send(params.para, assunto, html);
+    return this.send(params.para, assunto, html, undefined, `boas-vindas:${params.para}`);
   }
 
   async enviarReenvioConvite(params: {
@@ -174,7 +180,15 @@ export class TransactionalEmailService {
       empresaNome: params.empresaNome,
       inviteUrl: params.inviteUrl,
     });
-    return this.send(params.para, assunto, html);
+    // O convite PODE ser reenviado de propósito — a chave inclui a URL, que muda
+    // a cada novo convite gerado.
+    return this.send(
+      params.para,
+      assunto,
+      html,
+      undefined,
+      `convite:${params.para}:${params.inviteUrl.slice(-24)}`,
+    );
   }
 
   async enviarAprovacaoResolvida(params: {
@@ -192,7 +206,13 @@ export class TransactionalEmailService {
       comentario: params.comentario,
       pedidoUrl: this.safeUrl(`/pedidos/${params.pedidoId}`),
     });
-    return this.send(params.para, assunto, html);
+    return this.send(
+      params.para,
+      assunto,
+      html,
+      undefined,
+      `aprovacao:${params.pedidoId}:${params.status}`,
+    );
   }
 
   async enviarComissaoFechada(params: {
@@ -211,7 +231,13 @@ export class TransactionalEmailService {
       totalComissao: params.totalComissao,
       comissoesUrl: this.safeUrl('/comissoes'),
     });
-    return this.send(params.para, assunto, html);
+    return this.send(
+      params.para,
+      assunto,
+      html,
+      undefined,
+      `comissao-fechada:${params.para}:${params.ano}-${params.mes}`,
+    );
   }
 
   async enviarOcorrenciaCritica(params: {
@@ -231,7 +257,13 @@ export class TransactionalEmailService {
       slaHoras: params.slaHoras,
       ocorrenciaUrl: this.safeUrl(`/ocorrencias?highlight=${params.ocorrenciaId}`),
     });
-    return this.send(params.para, assunto, html);
+    return this.send(
+      params.para,
+      assunto,
+      html,
+      undefined,
+      `ocorrencia-critica:${params.ocorrenciaId}:${params.para}`,
+    );
   }
 
   async enviarAmostraFollowup(params: {
@@ -248,7 +280,14 @@ export class TransactionalEmailService {
       diasDesdeEnvio: params.diasDesdeEnvio,
       amostrasUrl: this.safeUrl('/amostras'),
     });
-    return this.send(params.para, assunto, html);
+    // Follow-up é por AMOSTRA e por marco de dias — o cron reavalia todo dia.
+    return this.send(
+      params.para,
+      assunto,
+      html,
+      undefined,
+      `amostra-followup:${params.para}:${params.clienteNome}:${params.diasDesdeEnvio}`,
+    );
   }
 
   /**

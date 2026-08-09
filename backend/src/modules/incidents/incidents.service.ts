@@ -1,5 +1,5 @@
 import { Injectable, Logger } from '@nestjs/common';
-import { type MarketplaceIncident, type Prisma, MarketplaceIncidentStatus } from '@prisma/client';
+import { type MarketplaceIncident, Prisma, MarketplaceIncidentStatus } from '@prisma/client';
 import { PrismaService } from '@database/prisma.service';
 import { ForbiddenException, NotFoundException } from '@shared/errors/app-exception';
 import { ErrorCode } from '@shared/errors/error-codes';
@@ -238,21 +238,36 @@ export class IncidentsService {
     externalId: string,
     status: MarketplaceIncidentStatus,
   ): Promise<MarketplaceIncident | null> {
-    return this.prisma.marketplaceIncident
-      .update({
-        where: {
-          empresaId_canal_externalId: { empresaId, canal: canal as never, externalId },
-        },
-        data: {
-          status,
-          resolvidoEm:
-            status === MarketplaceIncidentStatus.RESOLVIDO ||
-            status === MarketplaceIncidentStatus.CANCELADO ||
-            status === MarketplaceIncidentStatus.EXPIRADO
-              ? new Date()
-              : null,
-        },
-      })
-      .catch(() => null);
+    return (
+      this.prisma.marketplaceIncident
+        .update({
+          where: {
+            empresaId_canal_externalId: { empresaId, canal: canal as never, externalId },
+          },
+          data: {
+            status,
+            resolvidoEm:
+              status === MarketplaceIncidentStatus.RESOLVIDO ||
+              status === MarketplaceIncidentStatus.CANCELADO ||
+              status === MarketplaceIncidentStatus.EXPIRADO
+                ? new Date()
+                : null,
+          },
+        })
+        // AUDITORIA #B32: `.catch(() => null)` engolia QUALQUER erro. O contrato é
+        // "incidente não encontrado → null" (P2025), mas queda de banco, timeout ou
+        // violação de constraint viravam o mesmo null silencioso — o webhook do
+        // marketplace respondia 200 e o status ficava desatualizado pra sempre, sem
+        // rastro nenhum. Só o "não existe" continua virando null.
+        .catch((err: unknown) => {
+          if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === 'P2025') {
+            return null;
+          }
+          this.logger.error(
+            `Falha ao atualizar status do incidente ${externalId}: ${err instanceof Error ? err.message : String(err)}`,
+          );
+          throw err;
+        })
+    );
   }
 }

@@ -24,6 +24,8 @@ const makePrismaMock = () => ({
     deleteMany: vi.fn(),
   },
   conversation: {
+    // #B3: excluir lead em lote desamarra Conversation.leadId na mesma transação.
+    updateMany: vi.fn().mockResolvedValue({ count: 0 }),
     findMany: vi.fn(),
     deleteMany: vi.fn(),
   },
@@ -415,6 +417,13 @@ describe('ContatosService', () => {
       expect(result.afetados).toBe(3);
       expect(prisma.lead.deleteMany).toHaveBeenCalledWith({
         where: { id: { in: ['l1', 'l2', 'l3'] }, empresaId: 'emp-1' },
+      });
+      // #B3: desamarra as conversas ANTES do delete (Conversation.leadId não tem
+      // FK — sem isso a conversa ficava apontando pra id morto e a triagem
+      // achava que o contato já era lead, sem nunca criar).
+      expect(prisma.conversation.updateMany).toHaveBeenCalledWith({
+        where: { leadId: { in: ['l1', 'l2', 'l3'] }, empresaId: 'emp-1' },
+        data: { leadId: null },
       });
     });
 

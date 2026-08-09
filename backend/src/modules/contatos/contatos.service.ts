@@ -865,7 +865,19 @@ export class ContatosService {
     }
     let excluidos = 0;
     if (leadIds.length) {
-      const r = await this.prisma.lead.deleteMany({ where: { id: { in: leadIds }, empresaId } });
+      // AUDITORIA #B3: o delete SOLTO deixava `Conversation.leadId` apontando pra
+      // id morto (campo sem FK). O efeito já foi visto em prod pelo caminho 1-a-1
+      // (leads.service.remove): o CRIAR_LEAD da triagem via a conversa com leadId
+      // preenchido, concluía "já tem lead" e não criava; a conversa nunca mais
+      // era triada, sem erro nenhum. A exclusão em MASSA tinha o mesmo buraco —
+      // agora usa a mesma transação: desamarra e só então apaga.
+      const [, r] = await this.prisma.$transaction([
+        this.prisma.conversation.updateMany({
+          where: { leadId: { in: leadIds }, empresaId },
+          data: { leadId: null },
+        }),
+        this.prisma.lead.deleteMany({ where: { id: { in: leadIds }, empresaId } }),
+      ]);
       excluidos += r.count;
     }
     if (conversaIds.length) {

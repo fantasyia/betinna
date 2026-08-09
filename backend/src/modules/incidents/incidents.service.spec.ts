@@ -1,5 +1,5 @@
 import { describe, expect, it, vi, beforeEach } from 'vitest';
-import { MarketplaceIncidentStatus, type UserRole } from '@prisma/client';
+import { Prisma, MarketplaceIncidentStatus, type UserRole } from '@prisma/client';
 import { ForbiddenException, NotFoundException } from '@shared/errors/app-exception';
 import type { AuthenticatedUser } from '@shared/types/authenticated-user';
 import { IncidentsService } from './incidents.service';
@@ -513,8 +513,13 @@ describe('IncidentsService', () => {
       expect(data.resolvidoEm).toBeNull();
     });
 
-    it('retorna null quando update falha (incidente não existe)', async () => {
-      prisma.marketplaceIncident.update.mockRejectedValue(new Error('Not found'));
+    it('retorna null quando o incidente NÃO EXISTE (P2025)', async () => {
+      prisma.marketplaceIncident.update.mockRejectedValue(
+        new Prisma.PrismaClientKnownRequestError('Record not found', {
+          code: 'P2025',
+          clientVersion: 'x',
+        }),
+      );
 
       const result = await service.atualizarStatus(
         'emp-1',
@@ -524,6 +529,21 @@ describe('IncidentsService', () => {
       );
 
       expect(result).toBeNull();
+    });
+
+    it('#B32: erro REAL (banco fora, timeout) PROPAGA em vez de virar null', async () => {
+      // Antes, `.catch(() => null)` engolia tudo: o webhook do marketplace
+      // respondia 200 e o status ficava desatualizado pra sempre, sem rastro.
+      prisma.marketplaceIncident.update.mockRejectedValue(new Error('connection terminated'));
+
+      await expect(
+        service.atualizarStatus(
+          'emp-1',
+          'MARKETPLACE_ML',
+          'existe',
+          MarketplaceIncidentStatus.RESOLVIDO,
+        ),
+      ).rejects.toThrow(/connection terminated/);
     });
   });
 });

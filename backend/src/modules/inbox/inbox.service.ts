@@ -521,6 +521,7 @@ export class InboxService {
   async marcarComoLida(user: AuthenticatedUser, id: string): Promise<{ ok: true }> {
     await this.findById(user, id);
     await this.prisma.conversation.update({ where: { id }, data: { naoLidas: 0 } });
+    await this.emitirEventoIds([id], 'status');
     return { ok: true };
   }
 
@@ -571,6 +572,10 @@ export class InboxService {
       });
     }
 
+    // #B12: o painel dos OUTROS atendentes precisa saber que essa conversa
+    // trocou de dono — senão dois respondem o mesmo cliente.
+    await this.emitirEventoIds([id], 'atribuicao');
+
     return this.prisma.conversation.findUniqueOrThrow({
       where: { id },
       include: conversationInclude,
@@ -587,6 +592,7 @@ export class InboxService {
       where: { id, empresaId: existing.empresaId },
       data: { status: dto.status },
     });
+    await this.emitirEventoIds([id], 'status');
     return this.prisma.conversation.findUniqueOrThrow({
       where: { id },
       include: conversationInclude,
@@ -602,6 +608,35 @@ export class InboxService {
    * Filtra pelo escopo do user — IDs que ele não pode ver não são atualizados.
    * Retorna o count real de updates aplicados (pode ser menor que ids.length).
    */
+  /**
+   * AUDITORIA #B12: só mensagem emitia SSE. Atribuir/mudar status/bulk mudavam o
+   * estado da conversa e NINGUÉM era avisado — o outro atendente seguia vendo a
+   * conversa como dele até dar refresh, e dois respondiam o mesmo cliente. Como
+   * o updateMany não devolve as linhas, relemos o essencial pra montar o evento.
+   */
+  private async emitirEventoIds(ids: string[], tipo: InboxEvento['tipo']): Promise<void> {
+    if (ids.length === 0) return;
+    // Best-effort igual ao emitirEvento: avisar a UI NUNCA pode derrubar a
+    // operação que já foi persistida.
+    try {
+      const convs = await this.prisma.conversation.findMany({
+        where: { id: { in: ids } },
+        select: {
+          id: true,
+          empresaId: true,
+          proprietarioId: true,
+          atribuidoId: true,
+          canal: true,
+        },
+      });
+      for (const c of convs ?? []) this.emitirEvento(c, tipo);
+    } catch (err) {
+      this.logger.warn(
+        `Falha ao emitir evento SSE de ${tipo}: ${err instanceof Error ? err.message : String(err)}`,
+      );
+    }
+  }
+
   async bulkAtribuir(
     user: AuthenticatedUser,
     ids: string[],
@@ -626,6 +661,7 @@ export class InboxService {
       where,
       data: { atribuidoId },
     });
+    await this.emitirEventoIds(ids, 'atribuicao');
     return { atualizados: r.count };
   }
 
@@ -639,6 +675,7 @@ export class InboxService {
       where,
       data: { status },
     });
+    await this.emitirEventoIds(ids, 'status');
     return { atualizados: r.count };
   }
 
@@ -663,6 +700,10 @@ export class InboxService {
       },
       data: { status: MessageStatus.READ },
     });
+    await this.emitirEventoIds(
+      visibles.map((c) => c.id),
+      'status',
+    );
     return { atualizados: r.count };
   }
 

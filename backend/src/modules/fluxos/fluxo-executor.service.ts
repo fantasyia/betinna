@@ -1237,9 +1237,12 @@ export class FluxoExecutorService {
 
     // Sprint 2: Tag tem empresaId (@@unique([empresaId, nome])). Upsert pela chave
     // composta — tags são scoped por tenant.
+    // #B16: mesma normalização do TagsService.upsertByName — sem trim/teto, um
+    // {{variavel}} interpolado com espaço ou texto longo criava etiqueta duplicada.
+    const nomeTagLimpo = cfg.tagNome.trim().slice(0, 100);
     const tag = await this.prisma.tag.upsert({
-      where: { empresaId_nome: { empresaId, nome: cfg.tagNome } },
-      create: { empresaId, nome: cfg.tagNome },
+      where: { empresaId_nome: { empresaId, nome: nomeTagLimpo } },
+      create: { empresaId, nome: nomeTagLimpo },
       update: {},
     });
     const adicionar = cfg.operacao === 'adicionar';

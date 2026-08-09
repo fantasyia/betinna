@@ -286,10 +286,25 @@ export class OcorrenciasService {
     if (existing.status === 'RESOLVIDA' && dto.status === 'CANCELADA') {
       throw new BusinessRuleException('Ocorrência resolvida não pode ser cancelada');
     }
+    // AUDITORIA #B4: esta rota gravava status RESOLVIDA direto, sem `resolvidoEm`
+    // nem `resolucao` — o `POST /resolver` existe justamente pra exigir os dois.
+    // Ocorrência "resolvida" sem data envenena o SLA (tempo de resolução nulo)
+    // e sem texto ninguém sabe o que foi feito. Quem resolve usa a rota certa.
+    if (dto.status === 'RESOLVIDA') {
+      throw new BusinessRuleException(
+        'Para marcar como RESOLVIDA use POST /ocorrencias/:id/resolver (exige a descrição da resolução).',
+      );
+    }
+    // Reabrir uma ocorrência resolvida tem que LIMPAR o carimbo antigo, senão
+    // ela reabre carregando data e texto de uma resolução que não vale mais.
+    const reabrindo = existing.status === 'RESOLVIDA';
     await this.prisma.$transaction(async (tx) => {
       await tx.ocorrencia.updateMany({
         where: { id, empresaId: existing.empresaId },
-        data: { status: dto.status },
+        data: {
+          status: dto.status,
+          ...(reabrindo ? { resolvidoEm: null, resolucao: null } : {}),
+        },
       });
       await tx.ocorrenciaComentario.create({
         data: {

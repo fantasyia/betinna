@@ -85,9 +85,17 @@ export class TagsService {
    * Upsert por (empresaId, nome) garantindo tenant scope.
    */
   async upsertByName(empresaId: string, nome: string): Promise<Tag> {
+    // AUDITORIA #B16: o DTO de tag aplica trim + max(100), mas quem cria por AQUI
+    // (fluxo/IA) passava direto — nascia tag com espaço na ponta (" VIP" ≠ "VIP",
+    // duas linhas na lista de etiquetas) ou com um parágrafo inteiro cuspido pelo
+    // modelo. Mesma normalização do `aplicarTagPorNome`, pra não divergirem.
+    const limpo = nome.trim().slice(0, 100);
+    if (!limpo) {
+      throw new BusinessRuleException('Nome de etiqueta vazio');
+    }
     return this.prisma.tag.upsert({
-      where: { empresaId_nome: { empresaId, nome } },
-      create: { empresaId, nome },
+      where: { empresaId_nome: { empresaId, nome: limpo } },
+      create: { empresaId, nome: limpo },
       update: {},
     });
   }
