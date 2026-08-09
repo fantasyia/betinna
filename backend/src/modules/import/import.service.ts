@@ -408,6 +408,9 @@ export class ImportService {
           try {
             void this.bus.disparar(empresaId, 'LEAD_CRIADO', {
               leadId: r.id,
+              // Bate com o `origemCadastro` gravado no lead acima — é o que
+              // permite a régua filtrar "não quero lote importado".
+              origemCadastro: 'importacao',
               lead: {
                 id: r.id,
                 nome: r.nome,

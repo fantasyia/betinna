@@ -1583,6 +1583,7 @@ export class FluxoExecutorService {
     const hops = typeof ctx['_hops'] === 'number' ? (ctx['_hops'] as number) : 0;
     void this.bus.disparar(empresaId, 'LEAD_CRIADO', {
       leadId: lead.id,
+      origemCadastro,
       lead: { id: lead.id, nome: lead.nome, etapa: lead.etapa, valorEstimado: 0 },
       clienteId: conversa.clienteId,
       representanteId: cfg.representanteId ?? conversa.proprietarioId ?? null,

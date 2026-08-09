@@ -1131,7 +1131,11 @@ const fluxoNoInput = z.object({
         'fluxo dispara em QUALQUER etiqueta. Etiqueta-dimensão usa ":" (ex: "setor:cadeia-do-frio", ' +
         '"publico:comercio") e o ":" é caractere comum — pra pegar a família inteira use ' +
         'modo "prefixo" com tagNome "setor:". Evite "contem": colide entre slugs parecidos ' +
-        '("varejo" casa "varejo-alimentar") e o fluxo errado dispara em silêncio.',
+        '("varejo" casa "varejo-alimentar") e o fluxo errado dispara em silêncio. ' +
+        'Trigger LEAD_CRIADO aceita: origens (string[] de Lead.origemCadastro) ou origem (1 valor ' +
+        'OU grupo "inbound" = site/whatsapp/click_to_whatsapp/meta_lead_ads/google_lead_form, ' +
+        '"outbound" = importacao/manual_rep). "api" fica fora dos grupos — liste explícito. ' +
+        'SEM config o fluxo dispara pra QUALQUER lead novo, inclusive lote importado.',
     ),
   posX: z.number().optional(),
   posY: z.number().optional(),

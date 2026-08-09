@@ -719,3 +719,100 @@ describe('FluxoEventBusService — filtro do gatilho LEAD_RECEBEU_TAG', () => {
     expect(queue.add).toHaveBeenCalled();
   });
 });
+
+// ---------------------------------------------------------------------------
+// LEAD_CRIADO — por qual PORTA o lead entrou (antes: sem filtro nenhum)
+// ---------------------------------------------------------------------------
+
+describe('FluxoEventBusService — filtro de origem do gatilho LEAD_CRIADO', () => {
+  let prisma: ReturnType<typeof makePrismaMock>;
+  let queue: ReturnType<typeof makeQueueMock>;
+  let service: FluxoEventBusService;
+
+  const comConfig = (config: Record<string, unknown>, noFluxo = false) => {
+    prisma.fluxo.findMany.mockResolvedValue([
+      fakeFluxo({
+        triggerTipo: 'LEAD_CRIADO',
+        ...(noFluxo ? { triggerConfig: config } : {}),
+        nos: [{ id: 'no-trigger-1', config: noFluxo ? {} : config }],
+      }),
+    ]);
+    prisma.fluxoExecucao.create.mockResolvedValue(fakeExecucao());
+  };
+  const criar = (origemCadastro: string | null) =>
+    service.disparar('emp-1', 'LEAD_CRIADO', { leadId: 'lead-1', origemCadastro });
+
+  beforeEach(() => {
+    prisma = makePrismaMock();
+    queue = makeQueueMock();
+    service = new FluxoEventBusService(prisma as never, queue as never);
+  });
+
+  it('sem config: qualquer origem dispara (não quebra fluxo que já está no ar)', async () => {
+    comConfig({});
+    await criar('importacao');
+    expect(queue.add).toHaveBeenCalled();
+  });
+
+  it('grupo "inbound" aceita lead do site', async () => {
+    comConfig({ origem: 'inbound' });
+    await criar('site');
+    expect(queue.add).toHaveBeenCalled();
+  });
+
+  it('grupo "inbound" REJEITA lote importado — o bug que ligaria drip pra 5.000 linhas', async () => {
+    comConfig({ origem: 'inbound' });
+    await criar('importacao');
+    expect(queue.add).not.toHaveBeenCalled();
+  });
+
+  it('grupo "inbound" aceita whatsapp e click_to_whatsapp', async () => {
+    comConfig({ origem: 'inbound' });
+    await criar('whatsapp');
+    await criar('click_to_whatsapp');
+    expect(queue.add).toHaveBeenCalledTimes(2);
+  });
+
+  it('grupo "outbound" aceita importacao e manual_rep, e rejeita site', async () => {
+    comConfig({ origem: 'outbound' });
+    await criar('manual_rep');
+    expect(queue.add).toHaveBeenCalledTimes(1);
+    await criar('site');
+    expect(queue.add).toHaveBeenCalledTimes(1);
+  });
+
+  it('lista explícita de origens', async () => {
+    comConfig({ origens: ['site', 'meta_lead_ads'] });
+    await criar('meta_lead_ads');
+    expect(queue.add).toHaveBeenCalledTimes(1);
+    await criar('manual_rep');
+    expect(queue.add).toHaveBeenCalledTimes(1);
+  });
+
+  it('"api" não entra em grupo nenhum — só por lista explícita', async () => {
+    comConfig({ origem: 'inbound' });
+    await criar('api');
+    expect(queue.add).not.toHaveBeenCalled();
+
+    prisma = makePrismaMock();
+    queue = makeQueueMock();
+    service = new FluxoEventBusService(prisma as never, queue as never);
+    comConfig({ origens: ['api'] });
+    await criar('api');
+    expect(queue.add).toHaveBeenCalled();
+  });
+
+  it('lead SEM origem gravada (base antiga) não entra em régua filtrada', async () => {
+    comConfig({ origem: 'inbound' });
+    await criar(null);
+    expect(queue.add).not.toHaveBeenCalled();
+  });
+
+  it('config no Fluxo.triggerConfig também vale (é onde o E1 guarda o dele)', async () => {
+    comConfig({ origem: 'inbound' }, true);
+    await criar('site');
+    expect(queue.add).toHaveBeenCalledTimes(1);
+    await criar('importacao');
+    expect(queue.add).toHaveBeenCalledTimes(1);
+  });
+});

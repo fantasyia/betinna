@@ -211,6 +211,57 @@ export class FluxoEventBusService {
             }
           }
 
+          // Filtro do gatilho LEAD_CRIADO: por QUAL PORTA o lead entrou.
+          //
+          // Também não existia — todo fluxo ativo de LEAD_CRIADO rodava pra
+          // qualquer lead novo da empresa. Um drip de e-mail de boas-vindas
+          // saía igual pro lead do site e pras 5.000 linhas de uma planilha
+          // importada. O E1 até carregava `{ origem: "inbound" }`, mas ninguém
+          // lia — era decoração.
+          //
+          // `origens` = lista de valores exatos de Lead.origemCadastro.
+          // `origem`  = 1 valor OU um grupo: "inbound" (o lead veio até nós:
+          //             site, whatsapp, click_to_whatsapp, meta_lead_ads,
+          //             google_lead_form) / "outbound" (fomos atrás:
+          //             importacao, manual_rep). "api" não entra em grupo
+          //             nenhum de propósito — pode ser tanto um formulário
+          //             parceiro quanto carga em massa; liste explícito.
+          // Sem config = qualquer origem (compatível com o que está no ar).
+          if (triggerTipo === 'LEAD_CRIADO') {
+            type OrigemCfg = { origens?: string[]; origem?: string };
+            const cfgNo = (triggerNo.config ?? {}) as OrigemCfg;
+            const cfgFluxo = (fluxo.triggerConfig ?? {}) as OrigemCfg;
+            const cfg: OrigemCfg = { ...cfgFluxo, ...cfgNo };
+
+            const GRUPOS: Record<string, string[]> = {
+              inbound: [
+                'site',
+                'whatsapp',
+                'click_to_whatsapp',
+                'meta_lead_ads',
+                'google_lead_form',
+              ],
+              outbound: ['importacao', 'manual_rep'],
+            };
+            const brutos = [...(cfg.origens ?? []), ...(cfg.origem ? [cfg.origem] : [])]
+              .map((o) => normalizarValor(String(o)))
+              .filter(Boolean);
+            const aceitas = new Set(brutos.flatMap((o) => GRUPOS[o] ?? [o]));
+
+            if (aceitas.size > 0) {
+              const origemCtx = normalizarValor(String(contexto['origemCadastro'] ?? ''));
+              // Lead sem origem gravada (base antiga) NÃO entra numa régua
+              // filtrada: preferir não disparar a disparar pra quem não devia.
+              if (!origemCtx || !aceitas.has(origemCtx)) {
+                this.logger.debug(
+                  `Fluxo "${fluxo.nome}": LEAD_CRIADO ignorado — origem "${origemCtx || '(vazia)'}" ` +
+                    `fora do filtro [${[...aceitas].join(', ')}]`,
+                );
+                continue;
+              }
+            }
+          }
+
           // Filtro do gatilho LEAD_RECEBEU_TAG: QUAL etiqueta.
           //
           // Até aqui NÃO existia filtro nenhum — todo fluxo ativo com este gatilho

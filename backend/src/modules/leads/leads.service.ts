@@ -317,9 +317,12 @@ export class LeadsService {
       origemMudanca: 'criacao',
     });
 
-    // Trigger: LEAD_CRIADO
+    // Trigger: LEAD_CRIADO. `origemCadastro` vai junto porque é por ele que o
+    // gatilho filtra a PORTA DE ENTRADA (régua de nutrição de lead do site não
+    // pode disparar pra lote importado).
     void this.bus.disparar(empresaId, 'LEAD_CRIADO', {
       leadId: lead.id,
+      origemCadastro,
       lead: {
         id: lead.id,
         nome: lead.nome,
@@ -408,6 +411,7 @@ export class LeadsService {
 
     void this.bus.disparar(empresaId, 'LEAD_CRIADO', {
       leadId: lead.id,
+      origemCadastro: dto.origemCadastro ?? null,
       lead: {
         id: lead.id,
         nome: lead.nome,
