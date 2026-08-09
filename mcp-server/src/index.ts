@@ -1371,6 +1371,41 @@ server.registerTool(
 );
 
 server.registerTool(
+  'fluxos_definir_gatilho',
+  {
+    description:
+      'Define/atualiza SÓ o nó de GATILHO do fluxo, sem mexer no resto do grafo. Use quando o ' +
+      'fluxo nasceu sem nó TRIGGER (não dá pra ATIVAR: o validador recusa) ou pra trocar o filtro ' +
+      'do gatilho. Se o nó não existe, cria e liga no nó inicial; se existe, só atualiza a config. ' +
+      'Alternativa ao fluxos_atualizar, que faz FULL-REPLACE e exigiria reenviar corpos de e-mail ' +
+      'inteiros. Não ativa o fluxo. Ex. de config p/ LEAD_RECEBEU_TAG: { tagNome: "setor:", modo: "prefixo" }.',
+    inputSchema: {
+      fluxoId: z.string(),
+      triggerTipo: FLUXO_TRIGGER_TIPO.optional().describe('Omita pra manter o do fluxo'),
+      titulo: z.string().min(1).max(100).optional(),
+      config: z.record(z.unknown()).optional().describe('Filtro do gatilho (ver fluxoNoInput.config)'),
+    },
+    annotations: { readOnlyHint: false, destructiveHint: false },
+  },
+  seguro(async ({ fluxoId, ...campos }: { fluxoId: string; [k: string]: unknown }) => {
+    const definidos = Object.fromEntries(
+      Object.entries(campos).filter(([, v]) => v !== undefined),
+    );
+    const f = await api.post<{ id: string; nome: string; status: string; nos: { tipo: string }[] }>(
+      `/fluxos/${fluxoId}/gatilho`,
+      definidos,
+    );
+    return ok({
+      id: f.id,
+      nome: f.nome,
+      status: f.status,
+      gatilhos: f.nos.filter((n) => n.tipo === 'TRIGGER').length,
+      dica: 'Gatilho definido. Ativação continua sendo no app (nunca via MCP).',
+    });
+  }),
+);
+
+server.registerTool(
   'fluxos_testar',
   {
     description:

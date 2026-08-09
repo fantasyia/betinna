@@ -22,6 +22,7 @@ import type {
   TestarFluxoDto,
   ImportFluxoDto,
   UploadFluxoMidiaDto,
+  DefinirGatilhoDto,
 } from './fluxos.dto';
 
 /** Fluxo serializado pro arquivo de export/import (.json). */
@@ -596,6 +597,93 @@ export class FluxosService {
     return this.findOneById(id);
   }
 
+  /**
+   * Define o nó de GATILHO do fluxo sem full-replace do grafo.
+   *
+   * O único write de grafo era o PUT (substitui TUDO) — pra consertar um fluxo
+   * que nasceu sem gatilho era preciso reenviar todos os nós, incluindo corpos
+   * de e-mail inteiros. Qualquer deslize no caminho reescrevia a copy de
+   * produção. Esta rota mexe só no nó TRIGGER:
+   *  - não existe → cria e liga na RAIZ atual (nó sem aresta de entrada);
+   *  - já existe  → atualiza tipo/config, preservando as arestas.
+   */
+  async definirGatilho(
+    user: AuthenticatedUser,
+    id: string,
+    dto: DefinirGatilhoDto,
+  ): Promise<FluxoWithRel> {
+    this.requireAdminOrDirector(user);
+    const fluxo = await this.findOne(user, id);
+    if (fluxo.status === 'ARQUIVADO') {
+      throw new BusinessRuleException(
+        'Fluxo arquivado — desarquive antes de mexer no gatilho',
+        ErrorCode.BUSINESS_RULE_VIOLATION,
+      );
+    }
+
+    const triggerTipo = dto.triggerTipo ?? fluxo.triggerTipo ?? undefined;
+    if (!triggerTipo) {
+      throw new BusinessRuleException(
+        'Informe o triggerTipo (o fluxo também não tem um definido)',
+        ErrorCode.FLUXO_INVALIDO,
+      );
+    }
+
+    const existentes = fluxo.nos.filter((n) => n.tipo === 'TRIGGER');
+    if (existentes.length > 1) {
+      throw new BusinessRuleException(
+        `O fluxo tem ${existentes.length} nós TRIGGER — conserte pelo editor antes.`,
+        ErrorCode.FLUXO_INVALIDO,
+      );
+    }
+
+    const config = (dto.config ?? {}) as Prisma.InputJsonValue;
+    if (existentes[0]) {
+      await this.prisma.fluxoNo.update({
+        where: { id: existentes[0].id },
+        data: {
+          config,
+          ...(dto.titulo ? { titulo: dto.titulo } : {}),
+        },
+      });
+    } else {
+      // RAIZ = nó que ninguém aponta. É onde o gatilho tem que entrar; se houver
+      // mais de um candidato (grafo com ramos soltos), o de menor posX vence —
+      // é o começo visual do fluxo no editor.
+      const alvos = new Set(fluxo.arestas.map((e) => e.targetNoId));
+      const raizes = fluxo.nos
+        .filter((n) => n.tipo !== 'TRIGGER' && !alvos.has(n.id))
+        .sort((a, b) => (a.posX ?? 0) - (b.posX ?? 0));
+      const raiz = raizes[0];
+      if (!raiz) {
+        throw new BusinessRuleException(
+          'Não achei o nó inicial do fluxo pra ligar o gatilho (grafo vazio ou todo em ciclo).',
+          ErrorCode.FLUXO_INVALIDO,
+        );
+      }
+      const no = await this.prisma.fluxoNo.create({
+        data: {
+          fluxoId: fluxo.id,
+          tipo: 'TRIGGER',
+          titulo: dto.titulo ?? 'Gatilho',
+          config,
+          posX: (raiz.posX ?? 0) - 250,
+          posY: raiz.posY ?? 0,
+        },
+      });
+      await this.prisma.fluxoEdge.create({
+        data: { fluxoId: fluxo.id, sourceNoId: no.id, targetNoId: raiz.id },
+      });
+    }
+
+    await this.prisma.fluxo.update({
+      where: { id: fluxo.id },
+      data: { triggerTipo },
+    });
+    this.logger.log(`Gatilho definido no fluxo ${fluxo.id} (${triggerTipo}) por ${user.id}`);
+    return this.findOne(user, fluxo.id);
+  }
+
   async pausar(user: AuthenticatedUser, id: string): Promise<FluxoWithRel> {
     this.requireAdminOrDirector(user);
     const fluxo = await this.findOne(user, id);
@@ -732,6 +820,19 @@ export class FluxosService {
       targetNoId: e.targetNoId,
       label: e.label ?? null,
     }));
+
+    // Grafo SEM nó de gatilho é fluxo natimorto: o `ativar` recusa (validarGrafo)
+    // e o motor não teria por onde começar. A leva de e-mail E1/E1-R/E2/E2-R foi
+    // importada assim em jul/2026 e ficou um mês parecendo pronta — o erro só
+    // apareceria na tentativa de ativar. Recusar AQUI é onde dói barato.
+    const triggers = nos.filter((n) => n.tipo === 'TRIGGER').length;
+    if (triggers !== 1) {
+      throw new BusinessRuleException(
+        `O fluxo importado precisa ter exatamente 1 nó TRIGGER (encontrados: ${triggers}). ` +
+          'Inclua o nó de gatilho no arquivo, ou use POST /fluxos/:id/gatilho depois de importar.',
+        ErrorCode.FLUXO_INVALIDO,
+      );
+    }
 
     const fluxo = await this.create(user, {
       nome: dto.nome,

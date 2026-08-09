@@ -12,6 +12,7 @@ import {
   listFluxosSchema,
   listExecucoesSchema,
   testarFluxoSchema,
+  definirGatilhoSchema,
   importFluxoSchema,
   cronPreviewSchema,
   uploadFluxoMidiaSchema,
@@ -20,6 +21,7 @@ import {
   type ListFluxosDto,
   type ListExecucoesDto,
   type TestarFluxoDto,
+  type DefinirGatilhoDto,
   type ImportFluxoDto,
   type CronPreviewDto,
   type UploadFluxoMidiaDto,
@@ -113,6 +115,19 @@ export class FluxosController {
   @ApiOperation({ summary: 'Ativa o fluxo (valida grafo antes)' })
   ativar(@CurrentUser() user: AuthenticatedUser, @Param('id') id: string) {
     return this.svc.ativar(user, id);
+  }
+
+  @Post(':id/gatilho')
+  @Roles('ADMIN', 'DIRECTOR')
+  @ApiOperation({
+    summary: 'Define/atualiza SÓ o nó de gatilho (sem full-replace do grafo)',
+  })
+  definirGatilho(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param('id') id: string,
+    @Body(new ZodValidationPipe(definirGatilhoSchema)) dto: DefinirGatilhoDto,
+  ) {
+    return this.svc.definirGatilho(user, id, dto);
   }
 
   @Post(':id/pausar')

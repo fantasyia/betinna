@@ -196,6 +196,17 @@ export const testarFluxoSchema = z.object({
   contexto: z.record(z.unknown()).default({}),
 });
 
+/**
+ * Define/atualiza SÓ o nó de gatilho, sem full-replace do grafo (o PUT reescreve
+ * tudo, incluindo corpos de e-mail — caro e arriscado pra um ajuste de gatilho).
+ */
+export const definirGatilhoSchema = z.object({
+  triggerTipo: z.enum(fluxoTriggerTipoValues).optional(),
+  titulo: z.string().min(1).max(100).optional(),
+  config: z.record(z.unknown()).optional(),
+});
+export type DefinirGatilhoDto = z.infer<typeof definirGatilhoSchema>;
+
 export const cronPreviewSchema = z
   .object({
     // `expressao` (singular) mantém back-compat; `expressoes` (plural) cobre

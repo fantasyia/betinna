@@ -20,10 +20,13 @@ const makePrismaMock = () => ({
   fluxoNo: {
     createMany: vi.fn(),
     deleteMany: vi.fn(),
+    create: vi.fn().mockResolvedValue({ id: 'no-gatilho' }),
+    update: vi.fn().mockResolvedValue({ id: 'no-gatilho' }),
   },
   fluxoEdge: {
     createMany: vi.fn(),
     deleteMany: vi.fn(),
+    create: vi.fn().mockResolvedValue({ id: 'edge-1' }),
   },
   fluxoExecucao: {
     create: vi.fn(),
@@ -771,5 +774,169 @@ describe('importFluxoSchema', () => {
   it('rejeita triggerTipo inválido', () => {
     const r = importFluxoSchema.safeParse({ ...base, triggerTipo: 'NAO_EXISTE' });
     expect(r.success).toBe(false);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// definirGatilho — conserta fluxo que nasceu sem nó de gatilho
+// ---------------------------------------------------------------------------
+
+describe('FluxosService.definirGatilho', () => {
+  let prisma: ReturnType<typeof makePrismaMock>;
+  let svc: FluxosService;
+
+  const comGrafo = (nos: unknown[], arestas: unknown[] = [], extra = {}) => {
+    const fluxo = fakeFluxo({ nos, arestas, ...extra });
+    prisma.fluxo.findFirst.mockResolvedValue(fluxo);
+    prisma.fluxo.update.mockResolvedValue(fluxo);
+    return fluxo;
+  };
+
+  beforeEach(() => {
+    prisma = makePrismaMock();
+    svc = new FluxosService(
+      prisma as never,
+      makeBusMock() as never,
+      { del: vi.fn() } as never,
+      { uploadOutbound: vi.fn() } as never,
+    );
+  });
+
+  it('fluxo SEM gatilho: cria o nó TRIGGER e liga na raiz — sem tocar nos outros nós', async () => {
+    // É o caso real da leva E1/E2: 100% ação/delay, zero TRIGGER.
+    comGrafo(
+      [
+        { id: 'email-1', tipo: 'ACAO', acaoTipo: 'ENVIAR_EMAIL', posX: 0, posY: 0 },
+        { id: 'delay-1', tipo: 'DELAY', posX: 250, posY: 0 },
+      ],
+      [{ sourceNoId: 'email-1', targetNoId: 'delay-1' }],
+    );
+
+    await svc.definirGatilho(fakeUser(), 'fluxo-1', {
+      triggerTipo: 'LEAD_RECEBEU_TAG',
+      config: { tagNome: 'setor:cadeia-do-frio', modo: 'exato' },
+    });
+
+    const criado = prisma.fluxoNo.create.mock.calls[0][0].data;
+    expect(criado.tipo).toBe('TRIGGER');
+    expect(criado.config).toEqual({ tagNome: 'setor:cadeia-do-frio', modo: 'exato' });
+    // Ligou na RAIZ (o e-mail 1, que ninguém aponta), não no delay.
+    expect(prisma.fluxoEdge.create.mock.calls[0][0].data.targetNoId).toBe('email-1');
+    // Nada de deleteMany/createMany: o resto do grafo fica intacto.
+    expect(prisma.fluxoNo.deleteMany).not.toHaveBeenCalled();
+    expect(prisma.fluxoEdge.deleteMany).not.toHaveBeenCalled();
+  });
+
+  it('posiciona o gatilho ANTES da raiz no canvas', async () => {
+    comGrafo([{ id: 'email-1', tipo: 'ACAO', acaoTipo: 'ENVIAR_EMAIL', posX: 500, posY: 120 }]);
+
+    await svc.definirGatilho(fakeUser(), 'fluxo-1', { triggerTipo: 'LEAD_CRIADO' });
+
+    const criado = prisma.fluxoNo.create.mock.calls[0][0].data;
+    expect(criado.posX).toBe(250);
+    expect(criado.posY).toBe(120);
+  });
+
+  it('fluxo que JÁ tem gatilho: atualiza a config, não cria outro nó', async () => {
+    comGrafo(
+      [
+        { id: 'trg', tipo: 'TRIGGER', posX: 0, posY: 0 },
+        { id: 'email-1', tipo: 'ACAO', acaoTipo: 'ENVIAR_EMAIL', posX: 250, posY: 0 },
+      ],
+      [{ sourceNoId: 'trg', targetNoId: 'email-1' }],
+    );
+
+    await svc.definirGatilho(fakeUser(), 'fluxo-1', {
+      config: { tagNome: 'publico:', modo: 'prefixo' },
+    });
+
+    expect(prisma.fluxoNo.create).not.toHaveBeenCalled();
+    expect(prisma.fluxoEdge.create).not.toHaveBeenCalled();
+    expect(prisma.fluxoNo.update.mock.calls[0][0].data.config).toEqual({
+      tagNome: 'publico:',
+      modo: 'prefixo',
+    });
+  });
+
+  it('recusa fluxo com 2+ nós TRIGGER (conserto tem que ser no editor)', async () => {
+    comGrafo([
+      { id: 't1', tipo: 'TRIGGER', posX: 0, posY: 0 },
+      { id: 't2', tipo: 'TRIGGER', posX: 0, posY: 100 },
+    ]);
+
+    await expect(
+      svc.definirGatilho(fakeUser(), 'fluxo-1', { triggerTipo: 'LEAD_CRIADO' }),
+    ).rejects.toThrow(/2 n/);
+  });
+
+  it('recusa quando não há triggerTipo (nem no dto, nem no fluxo)', async () => {
+    comGrafo([{ id: 'email-1', tipo: 'ACAO', acaoTipo: 'ENVIAR_EMAIL', posX: 0, posY: 0 }], [], {
+      triggerTipo: null,
+    });
+
+    await expect(svc.definirGatilho(fakeUser(), 'fluxo-1', {})).rejects.toThrow(/triggerTipo/);
+  });
+
+  it('recusa fluxo ARQUIVADO', async () => {
+    comGrafo([{ id: 'email-1', tipo: 'ACAO', acaoTipo: 'ENVIAR_EMAIL', posX: 0, posY: 0 }], [], {
+      status: 'ARQUIVADO',
+    });
+
+    await expect(
+      svc.definirGatilho(fakeUser(), 'fluxo-1', { triggerTipo: 'LEAD_CRIADO' }),
+    ).rejects.toThrow(/arquivado/i);
+  });
+
+  it('REP não mexe em gatilho', async () => {
+    await expect(
+      svc.definirGatilho(fakeUser({ role: 'REP' as UserRole }), 'fluxo-1', {
+        triggerTipo: 'LEAD_CRIADO',
+      }),
+    ).rejects.toBeInstanceOf(ForbiddenException);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// importar — grafo sem gatilho não entra mais
+// ---------------------------------------------------------------------------
+
+describe('FluxosService.importar — exige nó TRIGGER', () => {
+  let prisma: ReturnType<typeof makePrismaMock>;
+  let svc: FluxosService;
+
+  beforeEach(() => {
+    prisma = makePrismaMock();
+    svc = new FluxosService(
+      prisma as never,
+      makeBusMock() as never,
+      { del: vi.fn() } as never,
+      { uploadOutbound: vi.fn() } as never,
+    );
+  });
+
+  it('recusa import de grafo SEM nó TRIGGER (o bug da leva E1/E2)', async () => {
+    await expect(
+      svc.importar(fakeUser(), {
+        nome: 'E-mail sem gatilho',
+        triggerTipo: 'LEAD_CRIADO',
+        nos: [{ id: 'a', tipo: 'ACAO', acaoTipo: 'ENVIAR_EMAIL', titulo: 'E1' }],
+        arestas: [],
+      } as never),
+    ).rejects.toThrow(/1 n[óo] TRIGGER/i);
+    expect(prisma.fluxo.create).not.toHaveBeenCalled();
+  });
+
+  it('recusa import com 2 nós TRIGGER', async () => {
+    await expect(
+      svc.importar(fakeUser(), {
+        nome: 'Dois gatilhos',
+        triggerTipo: 'LEAD_CRIADO',
+        nos: [
+          { id: 't1', tipo: 'TRIGGER', titulo: 'G1' },
+          { id: 't2', tipo: 'TRIGGER', titulo: 'G2' },
+        ],
+        arestas: [],
+      } as never),
+    ).rejects.toThrow(/1 n[óo] TRIGGER/i);
   });
 });
