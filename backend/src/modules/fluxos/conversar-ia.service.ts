@@ -263,6 +263,15 @@ const toJsonInput = (v: Record<string, unknown>): Prisma.InputJsonObject =>
  * com execução duplicada (race) ou eco faltando, a IA SEMPRE enxerga o que já foi
  * dito ao lead → não se reapresenta do zero.
  */
+/**
+ * Tira o prefixo de áudio transcrito ("🎤 ") + trim, pra comparar conteúdo de
+ * mensagem. Ver #B8 — o prefixo é decoração de UI, não faz parte do que a pessoa
+ * disse; comparar com ele fazia todo áudio escapar do dedup.
+ */
+export function semMic(s: string): string {
+  return s.replace(/^\s*🎤\s*/u, '').trim();
+}
+
 export function mesclarHistorico(
   daConversa: HistoricoMsg[],
   doContexto: HistoricoMsg[],
@@ -279,7 +288,10 @@ export function mesclarHistorico(
   const out: HistoricoMsg[] = [];
   for (const m of todos) {
     const ult = out[out.length - 1];
-    const mesmaFala = ult && ult.role === m.role && ult.content.trim() === m.content.trim();
+    // #B8: mesma normalização do dedup do turno — o eco vindo do contexto não
+    // tem o prefixo "🎤 " que a Message ganha ao transcrever, então áudio
+    // duplicado escapava por aqui também.
+    const mesmaFala = ult && ult.role === m.role && semMic(ult.content) === semMic(m.content);
     const proximo = ult ? Math.abs((m.at ?? 0) - (ult.at ?? 0)) <= ECO_MS : false;
     if (mesmaFala && proximo) continue;
     out.push(m);
@@ -997,10 +1009,16 @@ export class ConversarIaService {
     let historico = mesclarHistorico(daConversa, doContexto, limiteHist);
     // A mensagem ATUAL do lead já está salva na conversa (foi ela que disparou o
     // retomar) — remove do fim pra não duplicar: ela vai como `mensagem` na chamada.
+    //
+    // AUDITORIA #B8: a comparação era literal, mas ÁUDIO transcrito é gravado na
+    // Message com prefixo "🎤 " (aoTranscrever) enquanto `textoLead` chega sem
+    // ele. Nenhum áudio casava, e o mesmo recado ia DUAS vezes pro modelo — uma
+    // no histórico, outra como mensagem do turno. Além do custo, o bot lia como
+    // se a pessoa tivesse repetido e respondia estranho.
     if (
       historico.length > 0 &&
       historico[historico.length - 1].role === 'user' &&
-      historico[historico.length - 1].content.trim() === textoLead.trim()
+      semMic(historico[historico.length - 1].content) === semMic(textoLead)
     ) {
       historico = historico.slice(0, -1);
     }

@@ -212,6 +212,21 @@ export class EvolutionService {
     return inst.connectionStatus === 'open' && inst.disconnectionReasonCode == null;
   }
 
+  /**
+   * A instância está REALMENTE apta a enviar? (público — usado pelo
+   * `WhatsAppService.estaDisponivel`)
+   *
+   * AUDITORIA #B11: o `estaDisponivel` olhava só `connectionState.state === 'open'`,
+   * e o Evolution deixa o status preso em 'open' mesmo depois de a sessão ser
+   * DESLOGADA no celular (instância ZUMBI, reason 401). Resultado: o sistema se
+   * achava conectado, os fluxos seguiam enfileirando envio e cada mensagem
+   * falhava lá na ponta — sem ninguém marcar a integração como caída.
+   */
+  async estaSaudavel(instance: string): Promise<boolean> {
+    const inst = await this.buscarInstancia(instance).catch(() => null);
+    return inst ? this.saudavel(inst) : false;
+  }
+
   /** Extrai só os dígitos do número a partir do ownerJid (ex: '5511...@s.whatsapp.net'). */
   private jidParaNumero(jid?: string | null): string | undefined {
     if (!jid) return undefined;

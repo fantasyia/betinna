@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import {
+  semMic,
   ConversarIaService,
   extrairMarcadoresDoc,
   parseTurnoIa,
@@ -944,5 +945,25 @@ describe('ConversarIaService', () => {
         expect.objectContaining({ data: expect.objectContaining({ status: 'CONCLUIDO' }) }),
       );
     });
+  });
+});
+
+describe('semMic — dedup de áudio transcrito (#B8)', () => {
+  it('remove o prefixo 🎤 que a Message ganha ao transcrever', () => {
+    expect(semMic('🎤 quero saber o preço')).toBe('quero saber o preço');
+  });
+
+  it('texto sem prefixo passa igual (só trim)', () => {
+    expect(semMic('  quero saber o preço  ')).toBe('quero saber o preço');
+  });
+
+  it('as duas formas do MESMO áudio colapsam — era isso que escapava do dedup', () => {
+    // O histórico traz "🎤 <texto>" (Message) e o turno traz "<texto>" cru; a
+    // comparação literal nunca casava e o recado ia DUAS vezes pro modelo.
+    expect(semMic('🎤 tenho interesse')).toBe(semMic('tenho interesse'));
+  });
+
+  it('🎤 no MEIO do texto não é tocado (só o prefixo é decoração)', () => {
+    expect(semMic('falei 🎤 no microfone')).toBe('falei 🎤 no microfone');
   });
 });

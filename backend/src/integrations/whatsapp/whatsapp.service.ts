@@ -147,10 +147,10 @@ export class WhatsAppService implements CanalAdapter, OnModuleInit {
   async estaDisponivel(empresaId: string, proprietarioId?: string | null): Promise<boolean> {
     const owner = this.ownerDe(empresaId, proprietarioId ? { proprietarioId } : undefined);
     if (this.viaEvolution) {
-      const st = await this.evolution
-        .estado(EvolutionService.instanceName(owner))
-        .catch(() => null);
-      return st?.instance?.state === 'open';
+      // #B11: `state === 'open'` sozinho aceita instância ZUMBI (deslogada no
+      // celular, com o status preso em 'open'). estaSaudavel também exige que
+      // não haja disconnectionReasonCode.
+      return this.evolution.estaSaudavel(EvolutionService.instanceName(owner)).catch(() => false);
     }
     return this.sessions.estaConectado(owner);
   }
