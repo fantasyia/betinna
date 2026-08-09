@@ -462,6 +462,7 @@ export default function ContatosPage() {
           <Button
             size="sm"
             variant="secondary"
+            data-testid="contatos-bulk-tag"
             onClick={() => setBulk('tag')}
             leftIcon={<TagIcon className="h-3.5 w-3.5" />}
           >
@@ -471,6 +472,7 @@ export default function ContatosPage() {
             size="sm"
             variant="secondary"
             disabled={nLeads === 0}
+            data-testid="contatos-bulk-mover"
             onClick={() => setBulk('mover')}
             leftIcon={<ArrowRightLeft className="h-3.5 w-3.5" />}
           >
@@ -480,6 +482,7 @@ export default function ContatosPage() {
             size="sm"
             variant="secondary"
             disabled={semLead.length === 0}
+            data-testid="contatos-bulk-add-funil"
             onClick={() => setBulk('add-funil')}
             leftIcon={<Target className="h-3.5 w-3.5" />}
           >
@@ -488,6 +491,7 @@ export default function ContatosPage() {
           <Button
             size="sm"
             variant="danger"
+            data-testid="contatos-bulk-excluir"
             onClick={() => setBulk('excluir')}
             leftIcon={<Trash2 className="h-3.5 w-3.5" />}
           >

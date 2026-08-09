@@ -1,4 +1,5 @@
 import { useMemo, useState } from 'react';
+import { formatTamanhoArquivo } from '@/lib/masks';
 import { Lock, Link2, Trash2 } from 'lucide-react';
 import { api, apiErrorMessage } from '@/lib/api';
 import { useApiQuery, type PaginatedResponse } from '@/hooks/useApiQuery';
@@ -45,7 +46,7 @@ const DEFAULT_TIPOS: TipoMaterial[] = [
 const fmtTamanho = (b?: number | null) => {
   if (!b) return '—';
   if (b < 1024 * 1024) return `${Math.round(b / 1024)} KB`;
-  return `${(b / 1024 / 1024).toFixed(1)} MB`;
+  return formatTamanhoArquivo(b);
 };
 
 export default function MateriaisPage() {

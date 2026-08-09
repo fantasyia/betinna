@@ -10,7 +10,7 @@ import { AtendimentoTabs } from '@/components/AtendimentoTabs';
 import { AssistenteTabs } from '@/components/AssistenteTabs';
 import { StateView } from '@/components/StateView';
 import { Badge, Button, Card, Field, Select } from '@/components/ui';
-import { formatNumero } from '@/lib/masks';
+import { formatNumero, formatSegundos } from '@/lib/masks';
 
 type StatusBot = 'OK' | 'FALLBACK' | 'SEM_RESPOSTA';
 
@@ -199,7 +199,7 @@ export default function BotAuditoriaPage() {
                       {formatNumero(r.tokensIn + r.tokensOut)}
                     </td>
                     <td className="p-2 whitespace-nowrap text-right tabular text-muted">
-                      {r.tempoMs != null ? `${(r.tempoMs / 1000).toFixed(1)}s` : '—'}
+                      {r.tempoMs != null ? formatSegundos(r.tempoMs) : '—'}
                     </td>
                     <td className="p-2 whitespace-nowrap">
                       {r.conversationId && (

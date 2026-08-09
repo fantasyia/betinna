@@ -160,7 +160,8 @@
 - [x] Produtos (CRUD + tenant + facets + validações)
 - [x] PricingService (preço negociado × tabela × validade × batch)
 - [x] Preços especiais (sub-recurso de Cliente)
-- [x] Catálogo do Rep (markup % + preview pra cliente + share)
+- [x] Catálogo do Rep (subset de produtos ao preço da EMPRESA — **sem markup do rep**, ver D5 —
+      + preview pra cliente + share)
 
 ### Fase 4 — Vendas ✅
 - [x] **Pedidos** (preview + create + listar + cancelar + envio OMIE mock)
@@ -243,7 +244,12 @@
   (bucket `kanban-anexos`, magic-number); atividade; busca; views ★ calendário/tabela/dashboard;
   `GET /kanban/meus-itens`; imagem de fundo (bucket `kanban-fundos`, signed URL 24h em lote).
 - [x] **Tokens de API `bkt_`** (`KanbanApiToken`): sha256 no banco (valor mostrado 1x), branch no
-  `AuthGuard` com escopo DURO a rotas `/kanban` (nunca à gestão de tokens), revogado = 401.
+  `AuthGuard`, revogado = 401. **Escopo real (não é só `/kanban`)** — o guard deriva o módulo do
+  1º segmento da rota e exige que ele esteja no `escopo` do token: `/kanban`, `/fluxos`, `/funis`,
+  `/contatos` (**somente leitura**), `/crm` (escrita: tags, mover etapa), `/users` (**somente GET**)
+  e `/mullerbot/{prompts,persona,bot/modelos}`. Qualquer outra rota → 403; `/kanban/api-tokens`
+  NUNCA (token não cunha token). Fonte da verdade = docblock de `autenticarApiToken`
+  (`src/modules/auth/guards/auth.guard.ts`) — se mexer lá, atualize aqui.
 - [x] **MCP server** (`/mcp-server`, stdio): 16 tools `kanban_*` (readOnlyHint nas leituras, erros
   acionáveis, mover por NOME de lista, delegação por e-mail). Registro:
   `claude mcp add betinna-kanban --env BETINNA_API_URL=... --env BETINNA_API_TOKEN=bkt_... --

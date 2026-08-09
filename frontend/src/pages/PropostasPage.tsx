@@ -41,10 +41,7 @@ import {
   Textarea,
 } from '@/components/ui';
 import { cn } from '@/lib/cn';
-import {
-  formatMoeda as fmtBRL,
-  formatNumero,
-} from '@/lib/masks';
+import { formatMoeda as fmtBRL, formatNumero, formatPercent } from '@/lib/masks';
 
 /**
  * PropostasPage v2 — design system dark, drawer detail + transitions visuais.
@@ -858,7 +855,7 @@ function PropostaDetailDrawer({
                             {fmtBRL(it.precoUnitario)}
                           </td>
                           <td className="px-3 py-2 text-right text-sm text-text-subtle tabular">
-                            {it.desconto > 0 ? `${it.desconto}%` : '—'}
+                            {it.desconto > 0 ? formatPercent(it.desconto, 1) : '—'}
                           </td>
                           <td className="px-3 py-2 text-right text-sm font-semibold text-text tabular">
                             {fmtBRL(it.total)}

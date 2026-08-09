@@ -85,6 +85,36 @@ export function formatPercent(v: number, casas = 1): string {
 }
 
 /**
+ * Tamanho de arquivo em pt-BR: "820 KB", "1,4 MB".
+ *
+ * AUDITORIA #B24: cada tela reimplementava `(b/1024).toFixed(1)`, que solta
+ * PONTO decimal ("1.4 MB") no meio de uma UI que usa vírgula em todo o resto.
+ * Um lugar só, como manda o CLAUDE.md.
+ */
+export function formatTamanhoArquivo(bytes: number): string {
+  if (!Number.isFinite(bytes) || bytes < 0) return '—';
+  if (bytes < 1024) return `${bytes} B`;
+  if (bytes < 1024 * 1024) return `${decimais(bytes / 1024, 0)} KB`;
+  return `${decimais(bytes / 1024 / 1024, 1)} MB`;
+}
+
+/**
+ * Duração curta em segundos, pt-BR: "1,4s".
+ * Mesmo motivo do acima — `toFixed` dá ponto decimal.
+ */
+export function formatSegundos(ms: number, casas = 1): string {
+  return `${decimais(ms / 1000, casas)}s`;
+}
+
+/** Número com N casas em pt-BR (vírgula decimal). Base dos dois helpers acima. */
+function decimais(v: number, casas: number): string {
+  return new Intl.NumberFormat('pt-BR', {
+    minimumFractionDigits: casas,
+    maximumFractionDigits: casas,
+  }).format(v);
+}
+
+/**
  * CNPJ: 00.000.000/0001-00
  * Aceita parcial — aplica máscara conforme dígitos disponíveis.
  */

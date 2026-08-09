@@ -1,4 +1,5 @@
 import { useRef, useState } from 'react';
+import { formatTamanhoArquivo } from '@/lib/masks';
 import {
   BookPlus,
   Pencil,
@@ -64,8 +65,7 @@ function fileToBase64(file: File): Promise<string> {
 
 function formatBytes(b: number): string {
   if (b < 1024) return `${b} B`;
-  if (b < 1024 * 1024) return `${(b / 1024).toFixed(0)} KB`;
-  return `${(b / 1024 / 1024).toFixed(1)} MB`;
+  return formatTamanhoArquivo(b);
 }
 
 export default function KnowledgePage() {

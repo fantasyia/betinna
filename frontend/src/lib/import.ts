@@ -3,6 +3,7 @@
  * sem precisar montar tipos manualmente.
  */
 import { api } from './api';
+import { formatTamanhoArquivo } from '@/lib/masks';
 
 export type ImportTipo = 'clientes' | 'produtos';
 export type OnDuplicate = 'skip' | 'update' | 'error';
@@ -38,7 +39,7 @@ export async function readCsvFile(file: File): Promise<string> {
   const MAX_BYTES = 1024 * 1024;
   if (file.size > MAX_BYTES) {
     throw new Error(
-      `Arquivo muito grande (${(file.size / 1024).toFixed(0)} KB). Máximo ${MAX_BYTES / 1024} KB.`,
+      `Arquivo muito grande (${formatTamanhoArquivo(file.size)}). Máximo ${formatTamanhoArquivo(MAX_BYTES)}.`,
     );
   }
   return new Promise((resolve, reject) => {

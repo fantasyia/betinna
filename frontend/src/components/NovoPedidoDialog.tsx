@@ -429,7 +429,13 @@ export function NovoPedidoDialog({
                 max={50}
                 step="0.1"
                 value={descontoGeral}
-                onChange={(e) => setDescontoGeral(Number(e.target.value))}
+                // AUDITORIA #B40: min/max são só do spinner — digitar 999 ou -5
+                // passava direto pro estado e ia pro backend (que recusa, mas só
+                // depois de montar o pedido inteiro). O clamp por ITEM já existia;
+                // faltava o geral.
+                onChange={(e) =>
+                  setDescontoGeral(Math.min(50, Math.max(0, Number(e.target.value) || 0)))
+                }
               />
             </Field>
           </div>

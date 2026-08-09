@@ -83,7 +83,8 @@ scripts/  — deploy helpers (start.js, deploy-migrations.js)
 
 - Branch `main` deploya automaticamente
 - Dois serviços: **api** e **worker** — diferenciam por `SERVICE_TYPE=api|worker`
-- Healthcheck **só na api** (`/health`) — worker não tem HTTP server
+- Healthcheck **só na api**, em `/api/v1/health` (a raiz `/health` dá 404 — o app tem prefixo
+  global `/api/v1`) — worker não tem HTTP server
 - Migrations rodam no startup via `scripts/deploy-migrations.js`
 
 ---

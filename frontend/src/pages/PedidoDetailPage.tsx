@@ -36,7 +36,7 @@ import {
   Textarea,
 } from '@/components/ui';
 import { cn } from '@/lib/cn';
-import { formatMoeda as fmtBRL } from '@/lib/masks';
+import { formatMoeda as fmtBRL, formatPercent } from '@/lib/masks';
 
 /**
  * PedidoDetailPage — versão página cheia do pedido (vs Drawer).
@@ -450,7 +450,7 @@ export default function PedidoDetailPage() {
                               {fmtBRL(it.precoUnitario)}
                             </td>
                             <td className="px-3 py-2.5 text-right text-sm text-text-subtle tabular">
-                              {it.desconto > 0 ? `${it.desconto}%` : '—'}
+                              {it.desconto > 0 ? formatPercent(it.desconto, 1) : '—'}
                             </td>
                             <td className="px-3 py-2.5 text-right text-sm font-semibold text-text tabular">
                               {fmtBRL(it.total)}

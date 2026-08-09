@@ -1,4 +1,5 @@
 import { useRef, useState } from 'react';
+import { formatTamanhoArquivo } from '@/lib/masks';
 import { api, ApiError } from '@/lib/api';
 import type { Mensagem } from '../lib/types';
 
@@ -105,7 +106,7 @@ export function useEnvioMensagem({
     const MAX_MB = 12;
     if (file.size > MAX_MB * 1024 * 1024) {
       setSendError(
-        `Arquivo muito grande (${(file.size / 1024 / 1024).toFixed(1)}MB). Limite ${MAX_MB}MB.`,
+        `Arquivo muito grande (${formatTamanhoArquivo(file.size)}). Limite ${MAX_MB}MB.`,
       );
       return;
     }

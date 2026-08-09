@@ -129,12 +129,14 @@ export function FluxoToolbar({
         </Button>
         <Button
           variant="ghost"
+          data-testid="fluxo-cancelar"
           className="hidden md:inline-flex"
           onClick={fecharComGuard}
         >
           Cancelar
         </Button>
         <Button
+          data-testid="fluxo-salvar"
           onClick={editor.handleSave}
           loading={editor.saving}
           disabled={!editor.dirty}
