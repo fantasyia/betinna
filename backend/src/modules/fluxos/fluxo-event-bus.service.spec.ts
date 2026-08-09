@@ -678,6 +678,39 @@ describe('FluxoEventBusService — filtro do gatilho LEAD_RECEBEU_TAG', () => {
     expect(queue.add).not.toHaveBeenCalled();
   });
 
+  it('config no `Fluxo.triggerConfig` (chave legada `tag`) também filtra', async () => {
+    // O E2 de nutrição foi montado à mão com { tag: "cold-setor-generico" } no
+    // fluxo, não no nó. Ler só o nó fazia essa config virar decoração.
+    prisma.fluxo.findMany.mockResolvedValue([
+      fakeFluxo({
+        triggerTipo: 'LEAD_RECEBEU_TAG',
+        triggerConfig: { tag: 'cold-setor-generico' },
+        nos: [{ id: 'no-trigger-1', config: {} }],
+      }),
+    ]);
+    prisma.fluxoExecucao.create.mockResolvedValue(fakeExecucao());
+
+    await receber('setor:cadeia-do-frio');
+    expect(queue.add).not.toHaveBeenCalled();
+
+    await receber('cold-setor-generico');
+    expect(queue.add).toHaveBeenCalledTimes(1);
+  });
+
+  it('config do NÓ tem precedência sobre a do fluxo', async () => {
+    prisma.fluxo.findMany.mockResolvedValue([
+      fakeFluxo({
+        triggerTipo: 'LEAD_RECEBEU_TAG',
+        triggerConfig: { tag: 'cold-setor-generico' },
+        nos: [{ id: 'no-trigger-1', config: { tagNome: 'setor:cadeia-do-frio' } }],
+      }),
+    ]);
+    prisma.fluxoExecucao.create.mockResolvedValue(fakeExecucao());
+
+    await receber('setor:cadeia-do-frio');
+    expect(queue.add).toHaveBeenCalledTimes(1);
+  });
+
   it('evento antigo sem tagNome no payload: busca o nome no banco', async () => {
     comConfig({ tagNome: 'setor:cadeia-do-frio' });
     prisma.tag.findFirst.mockResolvedValue({ nome: 'setor:cadeia-do-frio' });

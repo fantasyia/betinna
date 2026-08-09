@@ -226,14 +226,28 @@ export class FluxoEventBusService {
           //              "varejo-alimentar"), por isso NÃO é o default
           // O `:` não tem tratamento especial em lugar nenhum: é caractere comum.
           if (triggerTipo === 'LEAD_RECEBEU_TAG') {
-            const cfg = (triggerNo.config ?? {}) as {
+            type TagTriggerCfg = {
               tagIds?: string[];
               tagNomes?: string[];
               tagNome?: string;
+              /** Alias legado: fluxo montado antes do form (E2 usa `tag`). */
+              tag?: string;
               modo?: 'exato' | 'prefixo' | 'contem';
             };
+            // DUAS moradas pra mesma config: o nó TRIGGER (o que o editor grava) e
+            // o `Fluxo.triggerConfig` (o que a master preencheu à mão em fluxo já
+            // montado). Ler só uma delas fazia a outra virar decoração — o fluxo
+            // ignoraria o filtro e voltaria a disparar em qualquer etiqueta.
+            // Nó tem precedência; o do fluxo entra como base.
+            const cfgNo = (triggerNo.config ?? {}) as TagTriggerCfg;
+            const cfgFluxo = (fluxo.triggerConfig ?? {}) as TagTriggerCfg;
+            const cfg: TagTriggerCfg = { ...cfgFluxo, ...cfgNo };
             const ids = (cfg.tagIds ?? []).map((t) => String(t).trim()).filter(Boolean);
-            const nomes = [...(cfg.tagNomes ?? []), ...(cfg.tagNome ? [cfg.tagNome] : [])]
+            const nomes = [
+              ...(cfg.tagNomes ?? []),
+              ...(cfg.tagNome ? [cfg.tagNome] : []),
+              ...(cfg.tag ? [cfg.tag] : []),
+            ]
               .map((n) => normalizarValor(String(n)))
               .filter(Boolean);
 
