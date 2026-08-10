@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, Logger } from '@nestjs/common';
 import type { KanbanCampoPersonalizado } from '@prisma/client';
 import { PrismaService } from '@database/prisma.service';
 import { BusinessRuleException, NotFoundException } from '@shared/errors/app-exception';
@@ -9,6 +9,8 @@ import type { CreateCampoDto, SetCampoValorDto, UpdateCampoDto } from './kanban.
 
 @Injectable()
 export class KanbanCamposService {
+  private readonly logger = new Logger(KanbanCamposService.name);
+
   constructor(
     private readonly prisma: PrismaService,
     private readonly acesso: KanbanAcessoService,
@@ -163,8 +165,14 @@ export class KanbanCamposService {
           });
         }
       }
-    } catch {
-      /* best-effort */
+    } catch (err) {
+      // AUDITORIA (média): era `catch {}` puro — falha de espelhamento ficava
+      // 100% invisível. Best-effort continua (não derruba a operação principal),
+      // mas agora deixa rastro: espelho dessincronizado sem nenhum log é
+      // indepurável quando alguém reclama que o card do espelho está diferente.
+      this.logger.warn(
+        `Falha ao espelhar campo personalizado: ${err instanceof Error ? err.message : String(err)}`,
+      );
     }
   }
 

@@ -669,3 +669,53 @@ describe('Amostra.valor é Decimal (#B20)', () => {
     expect(a.plus(b).toFixed(2)).toBe('0.30'); // 0.1 + 0.2 em float dá 0.30000000000000004
   });
 });
+
+describe('AmostrasService.changeStatus — observação persistida (auditoria média)', () => {
+  // O DTO aceitava `observacao` (max 500) e o service DESCARTAVA: a API
+  // respondia 200 e o motivo da não-conversão evaporava.
+  it('grava observacaoStatus quando a observação vem', async () => {
+    const prisma = makePrismaMock();
+    prisma.amostra.findFirst.mockResolvedValue({
+      id: 'am-1',
+      empresaId: 'emp-1',
+      status: 'ENVIADA',
+    });
+    prisma.amostra.updateMany.mockResolvedValue({ count: 1 });
+    prisma.amostra.findUniqueOrThrow.mockResolvedValue({ id: 'am-1' });
+    const svc = new AmostrasService(
+      prisma as never,
+      makeRepScope() as never,
+      makeOmieAmostras() as never,
+    );
+
+    await svc.changeStatus(fakeUser(), 'am-1', {
+      status: 'NAO_CONVERTEU',
+      observacao: '  cliente achou caro  ',
+    } as never);
+
+    expect(prisma.amostra.updateMany.mock.calls[0][0].data).toMatchObject({
+      status: 'NAO_CONVERTEU',
+      observacaoStatus: 'cliente achou caro',
+    });
+  });
+
+  it('sem observação, NÃO apaga a que já estava lá', async () => {
+    const prisma = makePrismaMock();
+    prisma.amostra.findFirst.mockResolvedValue({
+      id: 'am-1',
+      empresaId: 'emp-1',
+      status: 'ENVIADA',
+    });
+    prisma.amostra.updateMany.mockResolvedValue({ count: 1 });
+    prisma.amostra.findUniqueOrThrow.mockResolvedValue({ id: 'am-1' });
+    const svc = new AmostrasService(
+      prisma as never,
+      makeRepScope() as never,
+      makeOmieAmostras() as never,
+    );
+
+    await svc.changeStatus(fakeUser(), 'am-1', { status: 'CONVERTIDA' } as never);
+
+    expect(prisma.amostra.updateMany.mock.calls[0][0].data).not.toHaveProperty('observacaoStatus');
+  });
+});

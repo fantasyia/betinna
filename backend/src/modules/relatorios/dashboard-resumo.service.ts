@@ -74,6 +74,7 @@ export class DashboardResumoService {
     const [
       leadsNovos7d,
       slaRows,
+      slaTotalRows,
       paradoRows,
       fluxosPorStatus,
       exec24h,
@@ -128,6 +129,29 @@ export class DashboardResumoService {
           }
         ORDER BY l."etapaDesde" ASC
         LIMIT 20
+      `,
+      // AUDITORIA (média): o KPI usava `slaRows.length`, mas a query acima tem
+      // LIMIT 20 (ela alimenta a LISTA "estourados" da tela). Empresa com 60
+      // leads estourados via o tile cravado em "20" — número errado, e errado
+      // pra MENOS, que é o pior tipo: some a urgência. A lista continua capada
+      // (é uma lista), mas a CONTAGEM agora é COUNT(*) sem limite, com
+      // exatamente os mesmos filtros.
+      this.prisma.$queryRaw<Array<{ total: bigint }>>`
+        SELECT COUNT(*)::bigint AS total
+        FROM "Lead" l
+        JOIN "FunilEtapa" fe ON fe."id" = l."funilEtapaId"
+        WHERE l."empresaId" = ${empresaId}
+          AND fe."tipo" = 'ATIVA'
+          AND (fe."slaDias" IS NOT NULL OR fe."slaHoras" IS NOT NULL)
+          AND l."etapaDesde" +
+              (COALESCE(fe."slaDias", 0) * INTERVAL '1 day') +
+              (COALESCE(fe."slaHoras", 0) * INTERVAL '1 hour') < NOW()
+          ${scope !== null ? Prisma.sql`AND l."representanteId" = ANY(${scope.length ? scope : ['__none__']})` : Prisma.empty}
+          ${
+            triagemIds.length
+              ? Prisma.sql`AND (l."funilId" IS NULL OR l."funilId" != ALL(${triagemIds}))`
+              : Prisma.empty
+          }
       `,
       // Mais parados: top leads em etapa ativa há mais tempo (sem SLA definido
       // também contam — parado é parado).
@@ -388,7 +412,9 @@ export class DashboardResumoService {
 
     const pulso = {
       leadsNovos7d,
-      leadsSlaEstourado: slaRows.length,
+      // #56: COUNT sem LIMIT — `slaRows` é a lista (capada em 20) e virava um
+      // tile mentindo "20" pra qualquer volume maior.
+      leadsSlaEstourado: Number(slaTotalRows[0]?.total ?? 0),
       fluxos: { ativos: fluxosAtivos, total: fluxosTotal },
       execucoes24h: { ok: contagem(exec24h, 'CONCLUIDO'), erro: contagem(exec24h, 'FALHOU') },
       nutrirPendentes,

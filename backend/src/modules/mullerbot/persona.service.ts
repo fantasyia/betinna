@@ -279,6 +279,16 @@ export class MullerBotPersonaService {
     if (promptId) {
       const doFluxo = await this.botPrompts.obterTextoPorId(empresaId, promptId);
       if (doFluxo) return this.comGuardrail(doFluxo);
+      // AUDITORIA (média): promptId que não resolve (desativado, apagado, ou de
+      // outro tenant) caía MUDO no prompt padrão da biblioteca. O nó continuava
+      // "funcionando" — só que conversando com outra personalidade e outras
+      // regras que o dono do fluxo nunca escolheu, e ninguém tinha como saber.
+      // Não dá pra abortar aqui (o método é usado em caminho best-effort), mas
+      // o silêncio acaba: quem investigar o comportamento estranho acha no log.
+      this.logger.warn(
+        `Prompt ${promptId} não resolveu na empresa ${empresaId} (desativado/removido?) — ` +
+          'caindo no prompt PADRÃO da biblioteca. O fluxo vai responder com outra persona.',
+      );
     }
     const padrao = await this.botPrompts.obterTextoPadrao(empresaId);
     if (padrao) return this.comGuardrail(padrao);

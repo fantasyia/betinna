@@ -1,4 +1,5 @@
 import { Body, Controller, Headers, Param, Post, UnauthorizedException } from '@nestjs/common';
+import { Throttle, seconds } from '@nestjs/throttler';
 import { timingSafeEqual } from 'node:crypto';
 import { ApiExcludeController } from '@nestjs/swagger';
 import { Public } from '@shared/decorators/public.decorator';
@@ -27,6 +28,14 @@ interface EvolutionWebhookBody {
  *  - ANTI-REPLAY nas mensagens: dedup por (instância + id) via WebhookAntiReplayService.
  */
 @ApiExcludeController()
+// AUDITORIA (média): era o ÚNICO receiver de webhook sem @Throttle — ficava capado
+// pelos limites GLOBAIS por IP (short 10/s, medium 100/min). O Evolution manda TODO
+// o tráfego do WhatsApp de UM único IP: numa rajada (sync de histórico, grupo
+// movimentado, campanha) o throttler global devolvia 429 e a mensagem se perdia,
+// porque o Evolution não reentrega indefinidamente. Limite próprio e alto, como os
+// outros webhooks (OMIE 100/min, ML 200/min) — a autenticidade quem garante é o
+// segredo no header, não o rate-limit.
+@Throttle({ default: { limit: 600, ttl: seconds(60) } })
 @Controller('webhooks/evolution')
 export class EvolutionWebhookController {
   constructor(

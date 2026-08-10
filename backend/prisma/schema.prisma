@@ -1364,6 +1364,9 @@ model Amostra {
   aprovadorNome     String?
   aprovadoEm        DateTime?
   motivoDecisao     String?
+  /// Observação do último change-status (ex.: por que NÃO converteu). O DTO já
+  /// aceitava o campo e o service DESCARTAVA — o motivo evaporava com 200 OK.
+  observacaoStatus  String?       @db.Text
   /// Snapshot da média kg/mês do cliente no momento da solicitação (sinal pro aprovador).
   mediaKgMes        Float?
   /// Marca registros gerados pelo seed-demo.

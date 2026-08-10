@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, Logger } from '@nestjs/common';
 import type { KanbanEtiqueta } from '@prisma/client';
 import { PrismaService } from '@database/prisma.service';
 import { ConflictException, NotFoundException } from '@shared/errors/app-exception';
@@ -9,6 +9,8 @@ import type { CreateEtiquetaDto, UpdateEtiquetaDto } from './kanban.dto';
 
 @Injectable()
 export class KanbanEtiquetasService {
+  private readonly logger = new Logger(KanbanEtiquetasService.name);
+
   constructor(
     private readonly prisma: PrismaService,
     private readonly acesso: KanbanAcessoService,
@@ -155,8 +157,14 @@ export class KanbanEtiquetasService {
           });
         }
       }
-    } catch {
-      /* best-effort: não derruba a operação principal */
+    } catch (err) {
+      // AUDITORIA (média): era `catch {}` puro — falha de espelhamento ficava
+      // 100% invisível. Best-effort continua (não derruba a operação principal),
+      // mas agora deixa rastro: espelho dessincronizado sem nenhum log é
+      // indepurável quando alguém reclama que o card do espelho está diferente.
+      this.logger.warn(
+        `Falha ao espelhar etiqueta: ${err instanceof Error ? err.message : String(err)}`,
+      );
     }
   }
 }

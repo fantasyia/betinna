@@ -239,9 +239,15 @@ export class AmostrasService {
       throw new BusinessRuleException(`Transição inválida: ${existing.status} → ${dto.status}`);
     }
     // CAS: status de origem no where evita dupla-transição concorrente (last-write-wins).
+    // AUDITORIA (média): `dto.observacao` era aceito pelo DTO (max 500) e
+    // DESCARTADO aqui — a API respondia 200 e o motivo da não-conversão sumia.
+    // Persistido em `observacaoStatus`; ausente = não apaga o que já estava.
     const cas = await this.prisma.amostra.updateMany({
       where: { id, empresaId: existing.empresaId, status: existing.status },
-      data: { status: dto.status },
+      data: {
+        status: dto.status,
+        ...(dto.observacao?.trim() ? { observacaoStatus: dto.observacao.trim() } : {}),
+      },
     });
     if (cas.count === 0) {
       throw new BusinessRuleException('Amostra mudou de status — recarregue e tente novamente');

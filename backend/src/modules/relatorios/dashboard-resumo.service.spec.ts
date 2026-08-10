@@ -96,6 +96,9 @@ const makePrisma = () => ({
         slaHoras: null,
       },
     ])
+    // #56: COUNT(*) do SLA estourado — separado da lista (que tem LIMIT 20).
+    // 47 > 20 de propósito: prova que o tile NÃO usa mais o tamanho da lista.
+    .mockResolvedValueOnce([{ total: 47n }])
     .mockResolvedValueOnce([{ fluxoId: 'fx-1', dia: new Date(), ok: 8n, erro: 2n, total: 10n }]),
 });
 
@@ -115,7 +118,8 @@ describe('DashboardResumoService', () => {
 
     expect(r.pulso).toEqual({
       leadsNovos7d: 4,
-      leadsSlaEstourado: 1,
+      // #56: vem do COUNT(*), não do tamanho da lista (que é 1 e tem LIMIT 20).
+      leadsSlaEstourado: 47,
       fluxos: { ativos: 0, total: 6 },
       execucoes24h: { ok: 10, erro: 2 },
       nutrirPendentes: 3,

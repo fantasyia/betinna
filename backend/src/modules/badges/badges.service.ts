@@ -39,8 +39,14 @@ export class BadgesService {
     };
     if (user.role === 'REP') convWhere.proprietarioId = user.id;
 
-    // Vendas: aprovações + cancelamentos pendentes. REP não aprova → 0.
-    const podeAprovar = user.role !== 'REP';
+    // Vendas: aprovações + cancelamentos pendentes.
+    //
+    // AUDITORIA (média): era `user.role !== 'REP'`, o que incluía o SAC. E o
+    // RepScopeService devolve `null` (= SEM filtro) pro SAC, então ele via o
+    // badge "vendas: N" da EMPRESA INTEIRA — de um módulo que a matriz de
+    // permissões nem dá pra ele. Badge é isca: mostra número, o cara clica e
+    // toma 403. Quem decide desconto/cancelamento é gerência.
+    const podeAprovar = ['ADMIN', 'DIRECTOR', 'GERENTE'].includes(user.role);
     // O badge tem que contar o que a LISTA do usuário mostra. Pro GERENTE a
     // lista é escopada pela carteira dele, mas o contador somava a empresa
     // inteira: ele via "12 pendentes" e abria a tela com 3.

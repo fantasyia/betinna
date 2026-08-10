@@ -71,6 +71,22 @@ export class MetaTokenRefreshJob {
           if (r === 'renovado') {
             await this.status.registrarSucesso(empresaId, servico);
             this.logger.log(`Token ${servico} renovado (empresa=${empresaId})`);
+          } else if (r === 'sem-expiracao') {
+            // AUDITORIA (média): este ramo era MUDO. Conexão sem
+            // `userTokenExpiresAt` (legado, ou porque o Meta não devolveu
+            // `expires_in` na troca) sai do ciclo de renovação PRA SEMPRE: o job
+            // roda todo dia, não renova nada, não loga nada — e um dia o token
+            // vence e FB/IG param sem aviso. Agora fica visível e o diretor é
+            // alertado, que é o único caminho de conserto (re-conectar).
+            this.logger.warn(
+              `Conexão ${servico} da empresa ${empresaId} está SEM data de expiração — ` +
+                'fora do ciclo de renovação automática. Reconecte a integração pra voltar a renovar.',
+            );
+            await this.status.registrarErro(
+              empresaId,
+              servico,
+              'Conexão sem data de expiração do token — reconecte a integração (a renovação automática não alcança esta conexão).',
+            );
           }
         } catch (err) {
           const msg = err instanceof Error ? err.message : String(err);
