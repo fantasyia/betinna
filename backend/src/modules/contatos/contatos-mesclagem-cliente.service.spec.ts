@@ -62,7 +62,6 @@ const makePrisma = () => {
     'campanhaDestinatario',
     'conversation',
     'marketplaceIncident',
-    'respostaNPS',
     'movimentoFidelidade',
     'lead',
     'clienteTag',

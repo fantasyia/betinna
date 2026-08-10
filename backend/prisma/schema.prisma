@@ -300,7 +300,6 @@ model Empresa {
   webhooksEntrada       WebhookEntrada[]
   leadCaptureChave      LeadCaptureChave?
   formularios           Formulario[]
-  pesquisasNPS          PesquisaNPS[]
   metas                 Meta[]
   segmentos             Segmento[]
   saldosFidelidade      SaldoFidelidade[]
@@ -495,7 +494,6 @@ model Cliente {
   campanhasDestinatarios CampanhaDestinatario[]
   saldoFidelidade        SaldoFidelidade?
   movimentosFidelidade   MovimentoFidelidade[]
-  respostasNPS           RespostaNPS[]          @relation("ClienteRespostaNPS")
 
   @@unique([empresaId, codigoOmie])
   @@index([representanteId])
@@ -2290,61 +2288,6 @@ model Meta {
 
   @@index([empresaId, ativo])
   @@index([empresaId, alvoTipo, alvoId])
-}
-
-/// NPS — pesquisas de Net Promoter Score.
-/// Pesquisa tem prazo de envio (criadoEm → expiraEm), slug público pra responder.
-model PesquisaNPS {
-  id                    String    @id @default(cuid())
-  empresaId             String
-  slug                  String    @unique
-  titulo                String
-  descricao             String?   @db.Text
-  /// Mensagem exibida após responder
-  mensagemAgradecimento String?   @db.Text
-  /// Pergunta principal (default: "O quanto você nos recomendaria?")
-  pergunta              String    @default("O quanto você nos recomendaria de 0 a 10?")
-  /// Pergunta de follow-up (default: "Por quê?")
-  perguntaFollowUp      String?   @default("Conta pra gente o que motivou essa nota")
-  ativo                 Boolean   @default(true)
-  /// Quando expira (link vira inválido)
-  expiraEm              DateTime?
-  criadoEm              DateTime  @default(now())
-  atualizadoEm          DateTime  @updatedAt
-
-  empresa   Empresa       @relation(fields: [empresaId], references: [id], onDelete: Cascade)
-  respostas RespostaNPS[]
-
-  @@index([empresaId, ativo])
-}
-
-model RespostaNPS {
-  id         String   @id @default(cuid())
-  pesquisaId String
-  /// Nota de 0 a 10
-  nota       Int
-  /// Resposta textual do follow-up
-  comentario String?  @db.Text
-  /// E-mail/telefone do respondente (pra contactar se promotor/detrator)
-  contato    String?
-  /// Cliente identificado (se a pesquisa veio por link tracking)
-  clienteId  String?
-  /// Categoria derivada: DETRATOR (0-6), PASSIVO (7-8), PROMOTOR (9-10)
-  categoria  String
-  ip         String?
-  userAgent  String?
-  /// Marca registros gerados pelo seed-demo.
-  isDemo     Boolean  @default(false)
-  criadoEm   DateTime @default(now())
-
-  pesquisa PesquisaNPS @relation(fields: [pesquisaId], references: [id], onDelete: Cascade)
-  cliente  Cliente?    @relation("ClienteRespostaNPS", fields: [clienteId], references: [id], onDelete: SetNull)
-
-  @@index([pesquisaId, criadoEm])
-  @@index([pesquisaId, categoria])
-  @@index([clienteId])
-  // Seed demo
-  @@index([isDemo])
 }
 
 /// Form Builder — formulários públicos pra capturar leads.

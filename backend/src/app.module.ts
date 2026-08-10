@@ -25,7 +25,6 @@ import { EvolutionWebhookModule } from '@integrations/evolution/evolution-webhoo
 import { CampanhasModule } from '@modules/campanhas/campanhas.module';
 import { DeadLetterModule } from '@modules/dead-letter/dead-letter.module';
 import { RelatoriosModule } from '@modules/relatorios/relatorios.module';
-// NpsModule desligado (produto): import removido junto do registro abaixo.
 import { MetasModule } from '@modules/metas/metas.module';
 import { SegmentosModule } from '@modules/segmentos/segmentos.module';
 import { NotificacoesModule } from '@modules/notificacoes/notificacoes.module';
@@ -138,7 +137,7 @@ import { RODAR_BACKGROUND } from '@shared/utils/service-type';
     //  - long: 300 req/min — sustained per-user throughput
     //
     // CAÇADA-BUG #19: os 18 decorators `@Throttle({ default: {...} })` (login 10/15min, bootstrap
-    // 3/15min, import 5/min, propostas, mullerbot, nps, whatsapp, catálogo-share) eram NO-OP — não
+    // 3/15min, import 5/min, propostas, mullerbot, whatsapp, catálogo-share) eram NO-OP — não
     // existia bucket 'default', então o guard nunca lia o override e o login ficava só nos limites
     // globais (~6000 tentativas/h por IP em vez de 40). Adicionar o bucket 'default' faz TODOS os
     // overrides passarem a valer. Como o guard exige `.every()` (todos os buckets), um override
@@ -242,8 +241,6 @@ import { RODAR_BACKGROUND } from '@shared/utils/service-type';
     OcorrenciasModule,
     AgendaModule,
     FluxosModule,
-    // NpsModule DESLIGADO por decisão de produto (2026-08): NPS não vai existir.
-    // O código fica no repo mas nenhuma rota /nps é registrada.
     MetasModule,
     SegmentosModule,
     NotificacoesModule,

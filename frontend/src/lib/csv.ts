@@ -23,7 +23,7 @@ export interface CsvColumn<T> {
  */
 /**
  * Neutraliza CSV/formula injection: célula que começa com = + - @ TAB ou CR é interpretada como
- * FÓRMULA no Excel/Sheets. Como PII de canal público (NPS, WhatsApp) entra crua nos exports, um
+ * FÓRMULA no Excel/Sheets. Como PII de canal público (formulário do site, WhatsApp) entra crua nos exports, um
  * atacante planta `=HYPERLINK(...)`/`=cmd|...` que dispara na planilha do operador. Prefixa com aspa
  * simples (desarma a fórmula sem perder o conteúdo). Reusado por csv e xlsx.
  */

@@ -721,7 +721,6 @@ export class ContatosMesclagemService {
     'campanhaDestinatario',
     'conversation',
     'marketplaceIncident',
-    'respostaNPS',
     'movimentoFidelidade',
     'lead',
   ] as const;
