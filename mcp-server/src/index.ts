@@ -434,13 +434,21 @@ server.registerTool(
 server.registerTool(
   'kanban_atualizar_card',
   {
-    description: 'Atualiza título, descrição, prazo e/ou status de concluído do card.',
+    description:
+      'Atualiza título, descrição, prazo, concluído e/ou ARQUIVADO do card. ' +
+      'arquivado=true tira o card do quadro sem apagar (REVERSÍVEL: mande false pra restaurar) — ' +
+      'é a alternativa segura ao kanban_excluir_card, que é definitivo e leva junto checklists, ' +
+      'comentários e anexos.',
     inputSchema: {
       cardId: z.string(),
       titulo: z.string().min(1).max(200).optional(),
       descricao: z.string().max(10000).nullable().optional(),
       dataEntrega: z.string().datetime({ offset: true }).nullable().optional(),
       concluido: z.boolean().optional(),
+      arquivado: z
+        .boolean()
+        .optional()
+        .describe('true = arquiva (some do quadro, reversível); false = restaura'),
     },
     annotations: { readOnlyHint: false, destructiveHint: false },
   },
@@ -449,7 +457,9 @@ server.registerTool(
       Object.entries(campos).filter(([, v]) => v !== undefined),
     );
     if (Object.keys(definidos).length === 0) {
-      return erro('Informe pelo menos um campo (titulo, descricao, dataEntrega, concluido)');
+      return erro(
+        'Informe pelo menos um campo (titulo, descricao, dataEntrega, concluido, arquivado)',
+      );
     }
     const card = await api.patch<{ id: string; titulo: string }>(`/kanban/cards/${cardId}`, definidos);
     return ok({ id: card.id, titulo: card.titulo, atualizado: Object.keys(definidos) });
@@ -465,7 +475,7 @@ server.registerTool(
       '⚠️ Se o card for a ORIGEM de um espelho (tarefa espelhada rep↔Diretor), os ESPELHOS dele ' +
       'também são apagados — a resposta informa quantos. Excluir um espelho não afeta a origem. ' +
       'Use pra limpar card criado por engano/duplicado; pra tirar da vista sem perder, prefira ' +
-      'arquivar (kanban_atualizar_card) ou mover pra "Concluído".',
+      'ARQUIVAR (kanban_atualizar_card com arquivado:true — reversível) ou mover pra "Concluído".',
     inputSchema: {
       cardId: z.string().describe('ID do card (use kanban_ver_board / kanban_buscar)'),
     },
