@@ -101,36 +101,53 @@ export class EvolutionService {
   // ─── Instâncias ───────────────────────────────────────────────────────────
 
   /** Cria a instância (idempotente do lado nosso — se já existe, o Evolution avisa). */
-  async criarInstancia(
-    instance: string,
-    webhookUrl?: string,
-  ): Promise<{ hash?: string } & RespostaQr> {
+  /**
+   * Config do webhook — a MESMA na criação e na reaplicação.
+   *
+   * MESSAGES_UPDATE = recibos de leitura (READ/PLAYED). Sem ele a taxa de leitura
+   * das campanhas fica 0% pra sempre no Evolution (só o Baileys tratava recibo).
+   */
+  private webhookConfig(webhookUrl: string): Record<string, unknown> {
     // Segredo do webhook vai num HEADER (não na URL — URLs vazam em log/Referer).
     // O Evolution v2 anexa esses headers em CADA POST do webhook.
     const headerSecret = EvolutionService.webhookHeaderSecret(
       this.env.get('EVOLUTION_API_KEY') || '',
     );
+    return {
+      url: webhookUrl,
+      byEvents: false,
+      base64: true,
+      ...(headerSecret ? { headers: { [EvolutionService.WEBHOOK_HEADER]: headerSecret } } : {}),
+      events: ['MESSAGES_UPSERT', 'MESSAGES_UPDATE', 'CONNECTION_UPDATE', 'QRCODE_UPDATED'],
+    };
+  }
+
+  /**
+   * Reaplica a config do webhook numa instância JÁ EXISTENTE.
+   *
+   * AUDITORIA (alta): o comentário do `criarInstancia` prometia que "o sync de
+   * instâncias reaplica a config do webhook" — e não reaplicava: o job só lia
+   * status e tratava zumbi, sem NUNCA tocar em /webhook/set. Ou seja, a instância
+   * que já estava criada no servidor Evolution ficou com os 3 eventos ANTIGOS pra
+   * sempre: MESSAGES_UPDATE nunca chegava, CampanhaDestinatario nunca virava LIDO
+   * e a taxa de leitura ficava cravada em 0%, sem erro nenhum. Só um
+   * re-pareamento consertaria. Agora a promessa do comentário existe de fato.
+   */
+  async reaplicarWebhook(instance: string, webhookUrl: string): Promise<void> {
+    await this.req('post', `/webhook/set/${encodeURIComponent(instance)}`, {
+      webhook: { enabled: true, ...this.webhookConfig(webhookUrl) },
+    });
+  }
+
+  async criarInstancia(
+    instance: string,
+    webhookUrl?: string,
+  ): Promise<{ hash?: string } & RespostaQr> {
     return this.req('post', '/instance/create', {
       instanceName: instance,
       integration: 'WHATSAPP-BAILEYS',
       qrcode: true,
-      ...(webhookUrl
-        ? {
-            webhook: {
-              url: webhookUrl,
-              byEvents: false,
-              base64: true,
-              ...(headerSecret
-                ? { headers: { [EvolutionService.WEBHOOK_HEADER]: headerSecret } }
-                : {}),
-              // MESSAGES_UPDATE = recibos de leitura (READ/PLAYED). Sem ele a
-              // taxa de leitura das campanhas ficava 0% pra sempre no Evolution
-              // (só o Baileys tratava recibo). Instância JÁ criada não herda a
-              // mudança — o sync de instâncias reaplica a config do webhook.
-              events: ['MESSAGES_UPSERT', 'MESSAGES_UPDATE', 'CONNECTION_UPDATE', 'QRCODE_UPDATED'],
-            },
-          }
-        : {}),
+      ...(webhookUrl ? { webhook: this.webhookConfig(webhookUrl) } : {}),
     });
   }
 

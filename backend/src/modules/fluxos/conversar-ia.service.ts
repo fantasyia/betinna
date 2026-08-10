@@ -1269,9 +1269,21 @@ export class ConversarIaService {
         ? (lead.variaveis as Record<string, unknown>)
         : {};
     // Filtra pro conjunto permitido (se o nó restringe as variáveis graváveis).
+    //
+    // AUDITORIA (alta): os SINAIS DE ROTEAMENTO passam SEMPRE, mesmo fora da
+    // allowlist. Eles não são "variáveis de negócio" que o nó escolhe coletar —
+    // são o mecanismo pelo qual o motor decide o próximo passo, e boa parte deles
+    // é FORÇADA pelo próprio motor (pedido_remocao quando o lead pede pra sair,
+    // classificacao_final no fallback de despedida), não pela IA.
+    //
+    // Com um nó configurado com `variaveisGravadas: ['tipo_atuacao','regiao']`, o
+    // motor forçava pedido_remocao='sim', logava "forçando…", e a linha seguinte
+    // JOGAVA FORA a chave. O roteador a jusante lia custom.pedido_remocao vazio,
+    // a tag de LGPD não era aplicada e o lead que pediu pra sair continuava sendo
+    // abordado — sem erro em lugar nenhum.
     let gravadas = turno.variaveis ?? {};
     if (gravaveis.length) {
-      const permitidas = new Set(gravaveis);
+      const permitidas = new Set([...gravaveis, ...SINAIS_ROTEAMENTO]);
       gravadas = Object.fromEntries(Object.entries(gravadas).filter(([k]) => permitidas.has(k)));
     }
     const novas: Record<string, unknown> = {

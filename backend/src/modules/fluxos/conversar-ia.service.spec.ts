@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { SINAIS_ROTEAMENTO } from './fluxo-executor.types';
 import {
   semMic,
   ConversarIaService,
@@ -965,5 +966,49 @@ describe('semMic — dedup de áudio transcrito (#B8)', () => {
 
   it('🎤 no MEIO do texto não é tocado (só o prefixo é decoração)', () => {
     expect(semMic('falei 🎤 no microfone')).toBe('falei 🎤 no microfone');
+  });
+});
+
+describe('allowlist de variaveisGravadas NÃO come os sinais de roteamento', () => {
+  // Reproduz o filtro do turno (conversar-ia.service, "Filtra pro conjunto
+  // permitido"). O bug: `new Set(gravaveis)` jogava fora pedido_remocao e
+  // classificacao_final — que o MOTOR força, não a IA. O lead pedia pra sair,
+  // o motor logava "forçando pedido_remocao=sim", e a chave morria aqui: a tag
+  // de LGPD nunca era aplicada e ele seguia sendo abordado.
+  const filtrar = (gravaveis: string[], vars: Record<string, unknown>) => {
+    // Espelha o código: sem allowlist configurada, NADA é filtrado.
+    if (!gravaveis.length) return vars;
+    const permitidas = new Set([...gravaveis, ...SINAIS_ROTEAMENTO]);
+    return Object.fromEntries(Object.entries(vars).filter(([k]) => permitidas.has(k)));
+  };
+
+  it('pedido_remocao sobrevive a uma allowlist que não o lista (LGPD)', () => {
+    const out = filtrar(['tipo_atuacao', 'regiao'], {
+      tipo_atuacao: 'industria',
+      pedido_remocao: 'sim',
+    });
+    expect(out.pedido_remocao).toBe('sim');
+  });
+
+  it('classificacao_final sobrevive (fallback de despedida roteia o nó)', () => {
+    const out = filtrar(['regiao'], { classificacao_final: 'Sem Sinergia', lixo: 'x' });
+    expect(out.classificacao_final).toBe('Sem Sinergia');
+    expect(out.lixo).toBeUndefined();
+  });
+
+  it('TODOS os sinais de roteamento passam', () => {
+    const vars = Object.fromEntries(SINAIS_ROTEAMENTO.map((k) => [k, 'v']));
+    expect(Object.keys(filtrar(['nada'], vars)).sort()).toEqual([...SINAIS_ROTEAMENTO].sort());
+  });
+
+  it('variável de negócio FORA da allowlist continua sendo descartada', () => {
+    const out = filtrar(['regiao'], { regiao: 'SP', orcamento: '10k' });
+    expect(out.regiao).toBe('SP');
+    expect(out.orcamento).toBeUndefined();
+  });
+
+  it('sem allowlist, nada é filtrado', () => {
+    const vars = { qualquer: '1', outra: '2' };
+    expect(filtrar([], vars)).toEqual(vars);
   });
 });

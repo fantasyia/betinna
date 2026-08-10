@@ -40,8 +40,25 @@ export class EvolutionInstanciasSyncJob {
     if (!(await this.cronLock.acquire('evolution-instancias-sync', 540))) return;
     try {
       const lista = await this.evolution.listarInstanciasDetalhadas();
+      // AUDITORIA (alta): reaplica a config do webhook nas instâncias que JÁ
+      // existiam. O `criarInstancia` só configura no ato da criação — quem já
+      // estava no servidor Evolution ficou com a lista de eventos ANTIGA (sem
+      // MESSAGES_UPDATE), então recibo de leitura nunca chegava e a taxa de
+      // leitura das campanhas ficava 0% pra sempre, sem erro nenhum. Idempotente
+      // e barato (1 POST por instância a cada 10min); best-effort — falhar aqui
+      // não pode derrubar o resto do sync.
+      const urlWebhook = this.evolution.webhookUrl();
       let zumbis = 0;
       for (const i of lista) {
+        if (urlWebhook) {
+          await this.evolution.reaplicarWebhook(i.name, urlWebhook).catch((err: unknown) => {
+            this.logger.warn(
+              `[evolution] falha ao reaplicar webhook em ${i.name}: ${
+                err instanceof Error ? err.message : String(err)
+              }`,
+            );
+          });
+        }
         await this.instancias.sincronizarConexao(i.name, i.connectionStatus ?? 'close', i.ownerJid);
         // Zumbi = 'open' mas com motivo de desconexão (deslogado/travado).
         if (i.connectionStatus === 'open' && i.disconnectionReasonCode != null) {

@@ -6,6 +6,10 @@ function setup(opts: { provider?: string; lock?: boolean; zumbiCount?: number } 
   const evolution = {
     listarInstanciasDetalhadas: vi.fn().mockResolvedValue([]),
     resetarForte: vi.fn().mockResolvedValue(undefined),
+    // Reaplicação do webhook nas instâncias JÁ existentes (auditoria alta):
+    // sem MESSAGES_UPDATE a taxa de leitura das campanhas ficava 0% pra sempre.
+    webhookUrl: vi.fn().mockReturnValue('https://api.exemplo/api/v1/webhooks/evolution'),
+    reaplicarWebhook: vi.fn().mockResolvedValue(undefined),
   };
   const instancias = { sincronizarConexao: vi.fn().mockResolvedValue(undefined) };
   const env = {
@@ -116,5 +120,47 @@ describe('EvolutionInstanciasSyncJob', () => {
     const { job, evolution } = setup();
     evolution.listarInstanciasDetalhadas.mockRejectedValue(new Error('evolution down'));
     await expect(job.sincronizar()).resolves.toBeUndefined();
+  });
+});
+
+describe('EvolutionInstanciasSyncJob — reaplicação do webhook (auditoria alta)', () => {
+  it('reaplica o webhook em CADA instância existente', async () => {
+    const { job, evolution } = setup();
+    evolution.listarInstanciasDetalhadas.mockResolvedValue([
+      { name: 'emp_a', connectionStatus: 'open' },
+      { name: 'emp_b', connectionStatus: 'close' },
+    ]);
+
+    await job.sincronizar();
+
+    expect(evolution.reaplicarWebhook).toHaveBeenCalledTimes(2);
+    expect(evolution.reaplicarWebhook).toHaveBeenCalledWith(
+      'emp_a',
+      'https://api.exemplo/api/v1/webhooks/evolution',
+    );
+  });
+
+  it('falha ao reaplicar NÃO derruba o resto do sync (best-effort)', async () => {
+    const { job, evolution, instancias } = setup();
+    evolution.listarInstanciasDetalhadas.mockResolvedValue([
+      { name: 'emp_a', connectionStatus: 'open' },
+    ]);
+    evolution.reaplicarWebhook.mockRejectedValue(new Error('502 do Evolution'));
+
+    await job.sincronizar();
+
+    expect(instancias.sincronizarConexao).toHaveBeenCalled();
+  });
+
+  it('sem API_PUBLIC_URL (webhookUrl vazia) não tenta reaplicar', async () => {
+    const { job, evolution } = setup();
+    evolution.webhookUrl.mockReturnValue('');
+    evolution.listarInstanciasDetalhadas.mockResolvedValue([
+      { name: 'emp_a', connectionStatus: 'open' },
+    ]);
+
+    await job.sincronizar();
+
+    expect(evolution.reaplicarWebhook).not.toHaveBeenCalled();
   });
 });
