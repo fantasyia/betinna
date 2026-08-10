@@ -94,8 +94,8 @@ function reaplicarObjetosInvisiveis() {
   // UM statement por vez: `db execute` aborta o script inteiro no primeiro erro,
   // e aí um índice problemático (ex.: HNSW sem a extensão vector no ambiente)
   // levava junto os UNIQUE parciais da Inbox, que são o que mais importa aqui.
-  const statements = fs
-    .readFileSync(arquivo, 'utf-8')
+  const arquivoTexto = fs.readFileSync(arquivo, 'utf-8');
+  const statements = arquivoTexto
     .split(';')
     .map((s) =>
       s
@@ -119,11 +119,41 @@ function reaplicarObjetosInvisiveis() {
       if (res.stderr) process.stderr.write(res.stderr);
     }
   }
-  if (falhas > 0) {
-    log(`⚠️ ${falhas}/${statements.length} objeto(s) só-SQL não reaplicado(s) — VERIFIQUE.`);
+  // CONFERÊNCIA PÓS-APLICAÇÃO. Rodar os statements com exit 0 NÃO prova que os
+  // objetos existem — em 2026-08-09 os dois índices HNSW estavam ausentes em
+  // produção mesmo com esta rotina em vigor, e o log não dizia nada porque
+  // ninguém checava o RESULTADO. O `db execute` não devolve linhas, então a
+  // verificação é indireta: um SELECT que falha se o índice não existir.
+  const esperados = [...arquivoTexto.matchAll(/CREATE (?:UNIQUE )?INDEX IF NOT EXISTS "([^"]+)"/g)].map(
+    (m) => m[1],
+  );
+  const ausentes = esperados.filter((nome) => {
+    const r = spawnSync('npx', ['prisma', 'db', 'execute', '--stdin'], {
+      // RAISE EXCEPTION é o que faz o `db execute` sair != 0. Um SELECT comum
+      // sai 0 mesmo devolvendo zero linhas (o `db execute` não lê resultado) —
+      // o check "funcionaria" sempre e não detectaria nada.
+      input:
+        `DO $$ BEGIN IF NOT EXISTS (SELECT 1 FROM pg_class WHERE relname = '${nome}' ` +
+        `AND relkind = 'i') THEN RAISE EXCEPTION 'indice ausente: ${nome}'; END IF; END $$;`,
+      encoding: 'utf-8',
+      shell: process.platform === 'win32',
+    });
+    return r.status !== 0;
+  });
+
+  if (falhas > 0 || ausentes.length > 0) {
+    if (falhas > 0) {
+      log(`⚠️ ${falhas}/${statements.length} statement(s) só-SQL falharam.`);
+    }
+    if (ausentes.length > 0) {
+      // Nome a nome: sem isto o problema fica invisível e ninguém sabe O QUÊ falta.
+      log(`⚠️ Objetos AUSENTES depois da reaplicação: ${ausentes.join(', ')}`);
+    }
     return false;
   }
-  log('✅ Índices só-SQL reaplicados (unique parciais da Inbox, sufixo de telefone, HNSW).');
+  log(
+    `✅ ${esperados.length} índices só-SQL conferidos (unique parciais da Inbox, sufixo de telefone, HNSW).`,
+  );
   return true;
 }
 
