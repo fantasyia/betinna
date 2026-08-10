@@ -441,3 +441,32 @@ describe('CatalogoService', () => {
     });
   });
 });
+
+describe('CatalogoService.shareWithClient — só REP gera link (auditoria média)', () => {
+  // O resolverShareToken exige `role: 'REP'` no dono do catálogo. Sem gate na
+  // geração, DIRECTOR/GERENTE recebiam ok:true + previewUrl e o cliente batia em
+  // "Representante não encontrado" — link nascia morto e quem gerou só descobria
+  // pelo cliente reclamando.
+  const montar = () =>
+    new CatalogoService(
+      makePrismaMock() as never,
+      makeClientesMock() as never,
+      makePricingMock() as never,
+      {
+        gerar: vi.fn().mockResolvedValue('fake.jwt.token'),
+        ttlMaximoSegundos: 60 * 60 * 24 * 7,
+        validar: vi.fn(),
+      } as never,
+    );
+
+  it.each(['DIRECTOR', 'GERENTE', 'ADMIN', 'SAC'] as const)(
+    '%s é recusado com mensagem acionável',
+    async (role) => {
+      await expect(
+        montar().shareWithClient(fakeUser({ role: role as UserRole }), {
+          clienteId: undefined,
+        } as never),
+      ).rejects.toThrow(/REPRESENTANTE|REP/);
+    },
+  );
+});

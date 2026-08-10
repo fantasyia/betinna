@@ -55,6 +55,21 @@ interface ProdutoOpt {
   estoqueAtualizadoEm?: string | null;
 }
 
+/** Resposta do POST /pedidos/preview — o backend é a fonte da verdade do preço. */
+interface PreviewResposta {
+  totals: { subtotal: number; total: number; desconto?: number };
+  itens: Array<{
+    produtoId: string;
+    nome: string;
+    precoUnitario: number;
+    quantidade: number;
+    desconto: number;
+    total: number;
+    negociado: boolean;
+  }>;
+  requerAprovacao: boolean;
+}
+
 interface FormItem {
   uiKey: string;
   produto: ProdutoOpt | null;
@@ -207,8 +222,16 @@ export function NovoPedidoDialog({
   const { data: empresaCfg } = useEmpresaConfig();
   const descAVistaPctPreview = descontoAVistaPct(empresaCfg, formaPagamento, condicaoPagamento);
 
-  // Preview de total client-side
-  const subtotal = itens.reduce((acc, it) => {
+  // Preview LOCAL — otimista, só pra a UI não piscar enquanto o servidor responde.
+  //
+  // AUDITORIA (média): este cálculo usa `produto.precoTabela` e NÃO conhece o
+  // preço NEGOCIADO do cliente (ClientePrecoEspecial, resolvido pelo
+  // PricingService). O rep abria o pedido, lia R$ 10.000 na tela, citava esse
+  // número ao telefone — e o pedido persistia R$ 8.000, porque o backend aplica
+  // o preço negociado. A fórmula duplicada no client é a causa; a correção é
+  // deixar o SERVIDOR ser a fonte da verdade (POST /pedidos/preview, que já
+  // devolve precoUnitario resolvido, `negociado` e os totais).
+  const subtotalLocal = itens.reduce((acc, it) => {
     if (!it.produto) return acc;
     const unit = it.precoUnitarioOverride.trim()
       ? Number(it.precoUnitarioOverride) || 0
@@ -219,7 +242,58 @@ export function NovoPedidoDialog({
   // Soma desconto geral (manual) + desconto à vista (automático da empresa),
   // capado em 90% pra não dar total negativo — mesma regra do backend.
   const descontoTotalPct = Math.min(90, descontoGeral + descAVistaPctPreview);
-  const total = subtotal * (1 - descontoTotalPct / 100);
+  const totalLocal = subtotalLocal * (1 - descontoTotalPct / 100);
+
+  // Preview do SERVIDOR (autoritativo). Debounce de 400ms pra não bater a cada tecla.
+  const [previewSrv, setPreviewSrv] = useState<PreviewResposta | null>(null);
+  const itensChave = JSON.stringify(
+    itens
+      .filter((i) => i.produto)
+      .map((i) => [i.produto!.id, i.quantidade, i.desconto, i.precoUnitarioOverride.trim()]),
+  );
+  useEffect(() => {
+    const prontos = itens.filter((i) => i.produto && i.quantidade > 0);
+    if (!cliente || prontos.length === 0) {
+      setPreviewSrv(null);
+      return;
+    }
+    let cancelado = false;
+    const t = setTimeout(() => {
+      void api
+        .post<PreviewResposta>('/pedidos/preview', {
+          clienteId: cliente.id,
+          itens: prontos.map((it) => ({
+            produtoId: it.produto!.id,
+            quantidade: it.quantidade,
+            desconto: it.desconto,
+            ...(it.precoUnitarioOverride.trim()
+              ? { precoUnitarioOverride: Number(it.precoUnitarioOverride) }
+              : {}),
+          })),
+          formaPagamento,
+          condicaoPagamento,
+          descontoGeral,
+        })
+        .then((r) => {
+          if (!cancelado) setPreviewSrv(r);
+        })
+        .catch(() => {
+          // Falhou (offline, validação): cai no cálculo local em vez de travar a tela.
+          if (!cancelado) setPreviewSrv(null);
+        });
+    }, 400);
+    return () => {
+      cancelado = true;
+      clearTimeout(t);
+    };
+    // itensChave serializa os itens — evita refazer o preview a cada re-render.
+  }, [cliente, itensChave, formaPagamento, condicaoPagamento, descontoGeral, itens]);
+
+  const subtotal = previewSrv?.totals.subtotal ?? subtotalLocal;
+  const total = previewSrv?.totals.total ?? totalLocal;
+  // Itens cujo preço veio de NEGOCIAÇÃO (≠ tabela) — a UI avisa em vez de
+  // mostrar um número que não é o que vai ser cobrado.
+  const itensNegociados = (previewSrv?.itens ?? []).filter((i) => i.negociado);
 
   async function submit(e: React.FormEvent) {
     e.preventDefault();
@@ -452,7 +526,9 @@ export function NovoPedidoDialog({
         <Card variant="outline" padding="md" className="bg-primary/5 border-primary/30">
           <div className="flex items-center justify-between gap-3">
             <div>
-              <div className="text-[11px] uppercase tracking-wider text-muted">Total estimado</div>
+              <div className="text-[11px] uppercase tracking-wider text-muted">
+                {previewSrv ? 'Total (confirmado pelo servidor)' : 'Total estimado'}
+              </div>
               <div className="text-2xl font-bold text-text tabular tracking-tight flex items-center gap-2">
                 <Receipt className="h-5 w-5 text-primary" />
                 {fmtBRL(total)}
@@ -466,7 +542,18 @@ export function NovoPedidoDialog({
                   Desconto à vista: {descAVistaPctPreview}%
                 </div>
               )}
-              <div className="text-muted-light mt-1">Backend recalcula no save.</div>
+              {itensNegociados.length > 0 && (
+                <div className="text-primary mt-1" data-testid="pedido-preco-negociado">
+                  {itensNegociados.length === 1
+                    ? '1 item com preço negociado deste cliente'
+                    : `${itensNegociados.length} itens com preço negociado deste cliente`}
+                </div>
+              )}
+              <div className="text-muted-light mt-1">
+                {previewSrv
+                  ? 'Preço já resolvido pelo servidor (inclui negociado).'
+                  : 'Estimativa pela tabela — o servidor recalcula no save.'}
+              </div>
             </div>
           </div>
         </Card>

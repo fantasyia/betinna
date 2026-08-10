@@ -292,6 +292,19 @@ export class CatalogoService {
     if (!user.empresaIdAtiva) {
       throw new BusinessRuleException('Empresa não definida');
     }
+    // AUDITORIA (média): a GERAÇÃO não checava papel, mas o `resolverShareToken`
+    // exige `role: 'REP'` no dono do catálogo. DIRECTOR/GERENTE geravam o link,
+    // recebiam `ok:true` + previewUrl, mandavam pro cliente — e o cliente batia
+    // em "Representante não encontrado ou inativo". Link nascia morto, e quem
+    // gerou só descobria pelo cliente reclamando. Erro agora sai de cara, no
+    // lado de quem pode agir. (O catálogo é uma curadoria POR REP — não existe
+    // catálogo de diretor; por isso o gate é aqui, não no resolver.)
+    if (user.role !== 'REP') {
+      throw new BusinessRuleException(
+        'O catálogo compartilhável é do REPRESENTANTE — só um REP pode gerar o link. ' +
+          'Peça ao rep responsável pela carteira, ou compartilhe o catálogo dele.',
+      );
+    }
     // Vínculo com cliente é OPCIONAL — share livre quando dto.clienteId vazio.
     let clienteId: string | undefined;
     let items: PreviewItem[];

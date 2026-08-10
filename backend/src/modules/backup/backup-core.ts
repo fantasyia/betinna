@@ -370,9 +370,17 @@ export async function restoreTest(): Promise<RestoreTestResult> {
       return { ok: true, path, modo };
     }
 
-    // Validação de integridade: lista a TOC do dump (lê o arquivo inteiro)
+    // Passo 1 — TOC (índice): valida o cabeçalho e conta os objetos.
     const { stdout } = await run('pg_restore', ['--list', localFile], { captureStdout: true });
     const objetos = stdout.split('\n').filter((l) => l.trim() && !l.trim().startsWith(';')).length;
+
+    // Passo 2 — varre os DADOS. Sem isto, truncamento no meio do arquivo passava:
+    // a TOC fica no COMEÇO do dump, então `--list` sozinho não toca na seção de
+    // dados. Converter tudo pra SQL descartando a saída faz o mesmo trabalho de
+    // uma restauração real, sem precisar de banco, e falha em bloco corrompido.
+    const nulo = process.platform === 'win32' ? 'NUL' : '/dev/null';
+    await run('pg_restore', ['--file', nulo, localFile]);
+
     return { ok: true, path, modo, objetos };
   } catch (err) {
     return { ok: false, path, modo, erro: err instanceof Error ? err.message : String(err) };
