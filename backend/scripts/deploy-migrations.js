@@ -255,19 +255,28 @@ async function main() {
       process.exit(1);
     }
     log('✅ db push sincronizou schema com DB.');
-    // Após db push: ele acabou de dropar os índices que o Prisma não conhece.
-    // Sem isto o app sobe "verde" mas sem a proteção de corrida da Inbox
-    // (contato ganha 2 conversas) e sem os índices de match D18.
-    //
-    // NÃO aborta o deploy: derrubar a API inteira porque um índice não subiu é
-    // pior que rodar sem ele — o app funciona (os índices são rede de segurança
-    // e performance). Falha fica LOUD no log pra alguém reaplicar na mão.
-    if (!reaplicarObjetosInvisiveis()) {
-      log('⚠️ ATENÇÃO: o app vai subir SEM parte dos índices só-SQL.');
-      log('⚠️ Reaplique à mão: prisma db execute --file prisma/sql/objetos-invisiveis.sql');
-    }
   } else {
     log('✅ Migrate deploy completou com sucesso.');
+  }
+
+  // Objetos só-SQL: reaplica SEMPRE, não só depois do fallback.
+  //
+  // Antes isto vivia DENTRO do `if (shouldFallback)`, e o raciocínio parecia
+  // certo ("só o db push dropa índice"). Mas ele deixava o sistema sem
+  // convergência: uma vez que um objeto sumisse — por um db push antigo, por um
+  // drop manual, ou por um statement que falhou naquele boot — nada nunca mais o
+  // recriava, porque o caminho feliz (migrate deploy OK) pulava a reaplicação.
+  //
+  // Foi o que aconteceu em produção: os dois índices HNSW (Produto e
+  // KnowledgeChunk) estavam AUSENTES em 2026-08-09, com a extensão vector
+  // instalada e as colunas vector(1536) no lugar — ou seja, a busca semântica do
+  // RAG rodando em seq scan, sem erro nenhum, desde algum deploy antigo.
+  //
+  // Todos os statements são idempotentes (IF NOT EXISTS), então rodar sempre é
+  // barato e faz o schema CONVERGIR a cada boot em vez de depender de um branch.
+  if (!reaplicarObjetosInvisiveis()) {
+    log('⚠️ ATENÇÃO: o app vai subir SEM parte dos índices só-SQL.');
+    log('⚠️ Reaplique à mão: prisma db execute --file prisma/sql/objetos-invisiveis.sql');
   }
 
   log('=== Smart migrate deploy concluído ===');
