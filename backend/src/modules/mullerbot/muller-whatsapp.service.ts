@@ -141,6 +141,13 @@ export async function enviarEmBaloes(
     digitando?: (ms: number) => void;
     /** Marca "parou de digitar" (só chamado quando mostrarDigitando=true). */
     pausado?: () => Promise<void>;
+    /**
+     * Chamado ANTES de cada balão. Serve pra renovar o lock da conversa (#B15):
+     * o envio pode levar minutos (delay de "pensar" + pausa proporcional entre N
+     * balões) e o TTL fixo estourava no meio — uma 2ª mensagem do cliente pegava
+     * o lock livre e o bot respondia em dobro, intercalado.
+     */
+    aoProgredir?: () => Promise<void>;
   },
 ): Promise<string[]> {
   const limpo = texto.trim();
@@ -153,6 +160,7 @@ export async function enviarEmBaloes(
 
   for (let i = 0; i < finais.length; i++) {
     const balao = finais[i];
+    await handlers.aoProgredir?.();
     // 1º balão respeita o delay configurado (tempo de "pensar"); os próximos levam
     // uma pausa curta proporcional ao tamanho (≈ digitação) e preservam a ordem.
     const esperaMs =
@@ -169,6 +177,15 @@ export async function enviarEmBaloes(
  * Placeholders que o adapter do WhatsApp usa quando a mídia NÃO tem legenda.
  * Mensagem cujo conteúdo é só isso = não tem texto do cliente → escala humano.
  */
+/**
+ * TTL do lock de resposta por conversa. #B15: 120s era um chute que cobria o caso
+ * comum, mas persona com delay alto + muitos balões passava disso e o lock caía
+ * no meio do envio. O TTL segue existindo como rede de segurança (processo que
+ * morre não deixa a conversa travada pra sempre), só que agora é RENOVADO a cada
+ * balão — não precisa mais adivinhar a duração total.
+ */
+const LOCK_TTL_MS = 120_000;
+
 const PLACEHOLDERS_MIDIA = new Set([
   '[imagem]',
   '[vídeo]',
@@ -321,7 +338,9 @@ export class MullerWhatsappService implements OnModuleInit {
       // lock expirava no meio e uma 2ª msg respondia em dobro). Valor ÚNICO por handler p/
       // o release com fencing (Lua compare-and-delete) não apagar o lock de OUTRO handler.
       const lockToken = randomUUID();
-      const lockOk = await this.redis.setNxEx(lockKey, lockToken, 120).catch(() => true);
+      const lockOk = await this.redis
+        .setNxEx(lockKey, lockToken, LOCK_TTL_MS / 1000)
+        .catch(() => true);
       if (!lockOk) {
         this.logger.log(`[bot] conv=${convId} já em processamento — descarta msg concorrente`);
         return;
@@ -550,6 +569,10 @@ export class MullerWhatsappService implements OnModuleInit {
       let baloesFinais: string[];
       try {
         baloesFinais = await enviarEmBaloes(resposta.texto, cfgBot, {
+          // #B15: estende o lock a cada balão, SÓ se ainda formos o dono
+          // (mesmo fencing do release). Sem isso, um envio longo perdia o lock
+          // no meio e a resposta saía duplicada.
+          aoProgredir: () => this.renovarLock(lockConv, lockTokenAtual),
           // idemKey estável por (mensagem inbound + posição + hash do conteúdo): reprocesso do
           // mesmo inbound após o TTL do lock não reenvia balões já enviados.
           enviar: (balao) => {
@@ -637,6 +660,22 @@ export class MullerWhatsappService implements OnModuleInit {
           .catch(() => undefined);
       }
     }
+  }
+
+  /**
+   * Estende o TTL do lock da conversa, com fencing: só renova se o valor ainda
+   * for o NOSSO token. Best-effort — sem Redis o fluxo segue (degrada gracioso,
+   * igual à aquisição).
+   */
+  private async renovarLock(chave: string | null, token: string): Promise<void> {
+    if (!chave || !token) return;
+    await this.redis
+      .eval(
+        "if redis.call('get',KEYS[1])==ARGV[1] then return redis.call('pexpire',KEYS[1],ARGV[2]) else return 0 end",
+        [chave],
+        [token, LOCK_TTL_MS],
+      )
+      .catch(() => undefined);
   }
 
   /**

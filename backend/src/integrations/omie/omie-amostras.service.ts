@@ -188,7 +188,10 @@ export class OmieAmostrasService {
           produtoSku: produto.sku,
           quantidade: amostra.quantidade,
           // valor de referência: usa o valor da amostra, ou cai no preço de tabela do produto
-          valorReferencia: amostra.valor > 0 ? amostra.valor : Number(produto.precoTabela),
+          // #B20: `valor` virou Decimal(14,2) — Number() explícito (o typecheck
+          // pegou este ponto, que alimenta o valor da REMESSA FISCAL no OMIE).
+          valorReferencia:
+            Number(amostra.valor) > 0 ? Number(amostra.valor) : Number(produto.precoTabela),
           cfop,
         }),
       ],

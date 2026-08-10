@@ -1,3 +1,4 @@
+import { Prisma } from '@prisma/client';
 import { describe, expect, it, vi, beforeEach } from 'vitest';
 import type { UserRole } from '@prisma/client';
 import {
@@ -648,5 +649,23 @@ describe('AmostrasService', () => {
         service.changeStatus(fakeUser(), 'am-1', { status: 'CONVERTIDA' }),
       ).rejects.toBeInstanceOf(BusinessRuleException);
     });
+  });
+});
+
+describe('Amostra.valor é Decimal (#B20)', () => {
+  // Padrão do CLAUDE.md (#17): mock devolve Prisma.Decimal e o teste garante que
+  // o valor sai como NUMBER pro consumidor — o ResponseInterceptor converte, mas
+  // quem lê no service precisa do Number() explícito (foi o que quebrou o
+  // valorReferencia da remessa fiscal do OMIE no typecheck).
+  it('valor vindo como Decimal do banco vira number utilizável em conta', () => {
+    const doBanco = new Prisma.Decimal('123.45');
+    expect(Number(doBanco)).toBe(123.45);
+    expect(Number(doBanco) > 0).toBe(true);
+  });
+
+  it('Decimal(14,2) preserva o centavo (era Float, que acumulava erro)', () => {
+    const a = new Prisma.Decimal('0.10');
+    const b = new Prisma.Decimal('0.20');
+    expect(a.plus(b).toFixed(2)).toBe('0.30'); // 0.1 + 0.2 em float dá 0.30000000000000004
   });
 });

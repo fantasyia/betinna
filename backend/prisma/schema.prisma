@@ -1349,7 +1349,8 @@ model Amostra {
   empresaId         String
   clienteId         String
   produtoNome       String
-  valor             Float
+  /// #B20: era o ÚLTIMO campo de dinheiro em Float do schema (ver #17 no CLAUDE.md).
+  valor             Decimal       @db.Decimal(14, 2)
   notaFiscal        String?
   enviadoEm         DateTime
   followUpEm        DateTime?

@@ -1,4 +1,5 @@
 import { createHash } from 'node:crypto';
+import { diaBrasilia, mesBrasilia } from '@shared/utils/data-brasilia.util';
 import { Injectable, Logger } from '@nestjs/common';
 import { InjectQueue } from '@nestjs/bullmq';
 import type { Queue } from 'bullmq';
@@ -470,19 +471,75 @@ export class ConversarIaService {
     empresaId: string,
     fluxoId: string,
     historico: HistoricoMsg[],
+    /** Nó de IA que está encerrando — define QUAL roteador vale (#B9). */
+    noIaId?: string,
+    /** Prompt do nó, pra contabilizar os tokens do classificador no teto (#B14). */
+    promptId?: string,
   ): Promise<string> {
     const PADRAO = ['Ativar Agora', 'Reaquecer', 'Sem Sinergia'];
     // Rótulos REAIS do roteador DESTE fluxo (variável ~classificacao*): tenant
     // com saídas próprias não ganha mais rótulo alheio que não casa aresta nenhuma.
+    //
+    // AUDITORIA #B9: pegava o PRIMEIRO roteador do fluxo inteiro. Fluxo com dois
+    // nós de IA (ex.: triagem + qualificação), cada um com seu roteador de
+    // classificação, classificava o encerramento do 2º com os rótulos do 1º — o
+    // rótulo devolvido não casava aresta nenhuma e a execução caía no 'default'.
+    // Agora sai do nó ATUAL e segue as arestas; a busca ampla vira só fallback.
     let labels = PADRAO;
     try {
-      const nos = await this.prisma.fluxoNo.findMany({
-        where: { fluxoId, tipo: 'CONDICAO' },
-        select: { config: true },
-      });
-      const rot = nos
-        .map((n) => n.config as { modo?: string; variavel?: string; saidas?: unknown } | null)
-        .find((c) => c?.modo === 'roteador' && /classifica/i.test(c?.variavel ?? ''));
+      const [nos, arestas] = await Promise.all([
+        this.prisma.fluxoNo.findMany({
+          where: { fluxoId, tipo: 'CONDICAO' },
+          select: { id: true, config: true },
+        }),
+        noIaId
+          ? this.prisma.fluxoEdge.findMany({
+              where: { fluxoId },
+              select: { sourceNoId: true, targetNoId: true },
+            })
+          : Promise.resolve([]),
+      ]);
+      const ehRoteadorClassif = (
+        c: {
+          modo?: string;
+          variavel?: string;
+          saidas?: unknown;
+        } | null,
+      ) => c?.modo === 'roteador' && /classifica/i.test(c?.variavel ?? '');
+      const porId = new Map(
+        nos.map((n) => [
+          n.id,
+          n.config as { modo?: string; variavel?: string; saidas?: unknown } | null,
+        ]),
+      );
+
+      // BFS a partir do nó de IA: o 1º roteador de classificação ALCANÇÁVEL é o
+      // dele. Cap de visitados evita ciclo.
+      let rot: { modo?: string; variavel?: string; saidas?: unknown } | null = null;
+      if (noIaId && arestas.length > 0) {
+        const vizinhos = new Map<string, string[]>();
+        for (const e of arestas) {
+          const l = vizinhos.get(e.sourceNoId) ?? [];
+          l.push(e.targetNoId);
+          vizinhos.set(e.sourceNoId, l);
+        }
+        const vistos = new Set<string>([noIaId]);
+        const fila = [...(vizinhos.get(noIaId) ?? [])];
+        while (fila.length > 0 && vistos.size < 200) {
+          const atual = fila.shift() as string;
+          if (vistos.has(atual)) continue;
+          vistos.add(atual);
+          const cfgNo = porId.get(atual);
+          if (cfgNo && ehRoteadorClassif(cfgNo)) {
+            rot = cfgNo;
+            break;
+          }
+          fila.push(...(vizinhos.get(atual) ?? []));
+        }
+      }
+      // Fallback: fluxo sem aresta mapeada (ou nó solto) → comportamento antigo.
+      rot ??= nos.map((n) => porId.get(n.id) ?? null).find((c) => ehRoteadorClassif(c)) ?? null;
+
       const saidas = Array.isArray(rot?.saidas)
         ? rot.saidas.filter((s): s is string => typeof s === 'string' && s.trim().length > 0)
         : [];
@@ -514,6 +571,10 @@ export class ConversarIaService {
         historico,
       );
       await this.custo.registrarUso(empresaId, r.tokensIn ?? 0, r.tokensOut ?? 0);
+      // #B14: esta chamada gastava tokens do prompt e NÃO entrava no teto dele —
+      // só no custo da empresa. Com encerramento forçado frequente, o teto diário
+      // ficava subcontado e o guard nunca segurava.
+      await this.registrarUsoPrompt(promptId, (r.tokensIn ?? 0) + (r.tokensOut ?? 0));
       const limpo = r.texto
         .trim()
         .replace(/^```(?:json)?\s*/i, '')
@@ -1166,7 +1227,13 @@ export class ConversarIaService {
     // AGUARDANDO. Sem isto, todo Sem Sinergia em que o LLM "esquece" a variável
     // travava o funil. Só roda quando de fato houve despedida (conservador).
     if (!classificouEfetivo && !jaClassificou && respostaEhDespedida(respostaTexto)) {
-      const rotulo = await this.classificarEncerramento(empresaId, execucao.fluxoId, novoHist);
+      const rotulo = await this.classificarEncerramento(
+        empresaId,
+        execucao.fluxoId,
+        novoHist,
+        no.id,
+        cfg.promptId,
+      );
       turno.variaveis = { ...(turno.variaveis ?? {}), classificacao_final: rotulo };
       classificacaoTurno = rotulo;
       classificouEfetivo = true;
@@ -1492,11 +1559,11 @@ export class ConversarIaService {
   // ─── Teto de tokens por prompt (Fase C — spec §7) ────────────────────
 
   private dataRefs(): { dia: string; mes: string } {
-    const d = new Date();
-    const dia = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(
-      d.getDate(),
-    ).padStart(2, '0')}`;
-    return { dia, mes: dia.slice(0, 7) };
+    // #B14: era o relógio do SERVIDOR (container em UTC) — o teto diário zerava
+    // às 21:00 de Brasília, dando 3h de cota extra todo fim de tarde e sem bater
+    // com o relatório de custo, que já usava BRT.
+    const dia = diaBrasilia();
+    return { dia, mes: mesBrasilia() };
   }
 
   /** True se o prompt ainda pode rodar (não estourou o teto de tokens dia/mês). */

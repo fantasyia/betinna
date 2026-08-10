@@ -1,4 +1,8 @@
 import { Injectable, Logger } from '@nestjs/common';
+import {
+  diaBrasilia as diaBrasiliaUtil,
+  mesBrasilia as mesBrasiliaUtil,
+} from '@shared/utils/data-brasilia.util';
 import { PrismaService } from '@database/prisma.service';
 import { TransactionalEmailService } from '@integrations/email/transactional-email.service';
 
@@ -44,14 +48,14 @@ export class BotCustoService {
 
   // ─── Fuso de Brasília ────────────────────────────────────────────────────
 
-  /** Data YYYY-MM-DD no fuso de Brasília. */
+  /** Data YYYY-MM-DD no fuso de Brasília (delega pro util compartilhado — #B14). */
   private diaBrasilia(d = new Date()): string {
-    return new Date(d.getTime() - BotCustoService.BRT_OFFSET_MS).toISOString().slice(0, 10);
+    return diaBrasiliaUtil(d);
   }
 
   /** Mês YYYY-MM no fuso de Brasília. */
   private mesBrasilia(d = new Date()): string {
-    return this.diaBrasilia(d).slice(0, 7);
+    return mesBrasiliaUtil(d);
   }
 
   /** Próxima meia-noite de Brasília (em UTC). 00:00 BRT = 03:00 UTC. */
