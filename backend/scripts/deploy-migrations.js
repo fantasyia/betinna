@@ -83,7 +83,24 @@ function isTransientNetworkError(prismaOutput) {
  * Entre eles estão os dois UNIQUE parciais que protegem o upsert da Inbox
  * contra corrida. Todos os statements são idempotentes.
  */
-function reaplicarObjetosInvisiveis() {
+/**
+ * Reaplica (e CONFERE) os objetos que só existem em SQL.
+ *
+ * ⚠️ POR QUE VIA PRISMA CLIENT E NÃO `npx prisma db execute`:
+ *
+ * Em 2026-08-11, com a rotina de "reaplica sempre + confere nome a nome" JÁ em
+ * produção, os dois índices HNSW continuavam AUSENTES depois do deploy — e os
+ * mesmos statements, rodados contra o MESMO banco de produção pelo Prisma
+ * Client, funcionaram de primeira. Ou seja: o problema não era o SQL nem
+ * permissão; era o caminho `npx prisma db execute --stdin` dentro do container.
+ * Ele também é cego por natureza: `db execute` não devolve linhas nem mensagem
+ * de erro útil, o que obrigava aquele truque de `DO $$ ... RAISE EXCEPTION` só
+ * pra descobrir se um índice existia.
+ *
+ * Com o Client: o erro real aparece no log do deploy, a conferência é um SELECT
+ * de verdade, e não dependemos do CLI resolver dentro do container.
+ */
+async function reaplicarObjetosInvisiveis() {
   const fs = require('fs');
   const path = require('path');
   const arquivo = path.join(__dirname, '..', 'prisma', 'sql', 'objetos-invisiveis.sql');
@@ -91,70 +108,71 @@ function reaplicarObjetosInvisiveis() {
     log(`⚠️ ${arquivo} não encontrado — índices só-SQL NÃO foram reaplicados.`);
     return false;
   }
-  // UM statement por vez: `db execute` aborta o script inteiro no primeiro erro,
-  // e aí um índice problemático (ex.: HNSW sem a extensão vector no ambiente)
-  // levava junto os UNIQUE parciais da Inbox, que são o que mais importa aqui.
+
+  let PrismaClient;
+  try {
+    ({ PrismaClient } = require('@prisma/client'));
+  } catch (err) {
+    log(`⚠️ @prisma/client indisponível no deploy (${err.message}) — objetos só-SQL NÃO reaplicados.`);
+    return false;
+  }
+
+  const NL = String.fromCharCode(10);
   const arquivoTexto = fs.readFileSync(arquivo, 'utf-8');
+  // UM statement por vez: um índice problemático não pode levar junto os UNIQUE
+  // parciais da Inbox, que são o que mais importa aqui.
   const statements = arquivoTexto
     .split(';')
-    .map((s) =>
-      s
-        .split('\n')
+    .map((st) =>
+      st
+        .split(NL)
         .filter((l) => !l.trim().startsWith('--'))
-        .join('\n')
+        .join(NL)
         .trim(),
     )
     .filter(Boolean);
 
+  const prisma = new PrismaClient();
   let falhas = 0;
-  for (const stmt of statements) {
-    const res = spawnSync('npx', ['prisma', 'db', 'execute', '--stdin'], {
-      input: `${stmt};`,
-      encoding: 'utf-8',
-      shell: process.platform === 'win32',
-    });
-    if (res.status !== 0) {
-      falhas += 1;
-      log(`⚠️ Falhou: ${stmt.slice(0, 90).replace(/\s+/g, ' ')}…`);
-      if (res.stderr) process.stderr.write(res.stderr);
+  let ausentes = [];
+  try {
+    for (const stmt of statements) {
+      try {
+        await prisma.$executeRawUnsafe(stmt);
+      } catch (err) {
+        falhas += 1;
+        // A mensagem REAL do Postgres — era exatamente isto que faltava.
+        log(`⚠️ Falhou: ${stmt.slice(0, 80).replace(/\s+/g, ' ')}… → ${err.message.split(NL)[0]}`);
+      }
     }
-  }
-  // CONFERÊNCIA PÓS-APLICAÇÃO. Rodar os statements com exit 0 NÃO prova que os
-  // objetos existem — em 2026-08-09 os dois índices HNSW estavam ausentes em
-  // produção mesmo com esta rotina em vigor, e o log não dizia nada porque
-  // ninguém checava o RESULTADO. O `db execute` não devolve linhas, então a
-  // verificação é indireta: um SELECT que falha se o índice não existir.
-  const esperados = [...arquivoTexto.matchAll(/CREATE (?:UNIQUE )?INDEX IF NOT EXISTS "([^"]+)"/g)].map(
-    (m) => m[1],
-  );
-  const ausentes = esperados.filter((nome) => {
-    const r = spawnSync('npx', ['prisma', 'db', 'execute', '--stdin'], {
-      // RAISE EXCEPTION é o que faz o `db execute` sair != 0. Um SELECT comum
-      // sai 0 mesmo devolvendo zero linhas (o `db execute` não lê resultado) —
-      // o check "funcionaria" sempre e não detectaria nada.
-      input:
-        `DO $$ BEGIN IF NOT EXISTS (SELECT 1 FROM pg_class WHERE relname = '${nome}' ` +
-        `AND relkind = 'i') THEN RAISE EXCEPTION 'indice ausente: ${nome}'; END IF; END $$;`,
-      encoding: 'utf-8',
-      shell: process.platform === 'win32',
-    });
-    return r.status !== 0;
-  });
 
-  if (falhas > 0 || ausentes.length > 0) {
-    if (falhas > 0) {
-      log(`⚠️ ${falhas}/${statements.length} statement(s) só-SQL falharam.`);
+    // CONFERÊNCIA PÓS-APLICAÇÃO: rodar sem erro NÃO prova que o objeto existe.
+    const esperados = [
+      ...arquivoTexto.matchAll(/CREATE (?:UNIQUE )?INDEX IF NOT EXISTS "([^"]+)"/g),
+    ].map((m) => m[1]);
+    const presentes = await prisma.$queryRawUnsafe(
+      `SELECT relname FROM pg_class WHERE relkind = 'i' AND relname = ANY($1::text[])`,
+      esperados,
+    );
+    const nomesPresentes = new Set(presentes.map((r) => r.relname));
+    ausentes = esperados.filter((nome) => !nomesPresentes.has(nome));
+
+    if (falhas === 0 && ausentes.length === 0) {
+      log(
+        `✅ ${esperados.length} índices só-SQL conferidos (unique parciais da Inbox, sufixo de telefone, HNSW).`,
+      );
+      return true;
     }
-    if (ausentes.length > 0) {
-      // Nome a nome: sem isto o problema fica invisível e ninguém sabe O QUÊ falta.
-      log(`⚠️ Objetos AUSENTES depois da reaplicação: ${ausentes.join(', ')}`);
-    }
+    if (falhas > 0) log(`⚠️ ${falhas}/${statements.length} statement(s) só-SQL falharam.`);
+    // Nome a nome: sem isto o problema fica invisível e ninguém sabe O QUÊ falta.
+    if (ausentes.length > 0) log(`⚠️ Objetos AUSENTES depois da reaplicação: ${ausentes.join(', ')}`);
     return false;
+  } catch (err) {
+    log(`⚠️ Reaplicação dos objetos só-SQL falhou: ${err.message.split(NL)[0]}`);
+    return false;
+  } finally {
+    await prisma.$disconnect().catch(() => undefined);
   }
-  log(
-    `✅ ${esperados.length} índices só-SQL conferidos (unique parciais da Inbox, sufixo de telefone, HNSW).`,
-  );
-  return true;
 }
 
 function tableExists(tableName) {
@@ -304,7 +322,7 @@ async function main() {
   //
   // Todos os statements são idempotentes (IF NOT EXISTS), então rodar sempre é
   // barato e faz o schema CONVERGIR a cada boot em vez de depender de um branch.
-  if (!reaplicarObjetosInvisiveis()) {
+  if (!(await reaplicarObjetosInvisiveis())) {
     log('⚠️ ATENÇÃO: o app vai subir SEM parte dos índices só-SQL.');
     log('⚠️ Reaplique à mão: prisma db execute --file prisma/sql/objetos-invisiveis.sql');
   }
