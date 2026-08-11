@@ -103,6 +103,17 @@ export function iniciarSincroniaDeLogout(): void {
   });
   window.addEventListener('storage', (ev) => {
     if (ev.key === LOGOUT_KEY && ev.newValue) encerrarSessaoLocal();
+    // AUDITORIA (média): trocar de empresa numa aba mudava o localStorage, e a
+    // OUTRA aba só percebia no próximo refresh agendado — que reaplica
+    // `getStoredEmpresaId()` no `me`. Na prática o tenant da aba 2 trocava
+    // SOZINHO, no meio de um formulário aberto, sem nada na tela mudar: o
+    // usuário salvava dados da empresa A dentro da empresa B. Agora a troca é
+    // percebida na hora e a aba recarrega, que é o único jeito honesto de
+    // reconstruir todas as queries já cacheadas com o tenant antigo.
+    if (ev.key === EMPRESA_KEY && ev.newValue && ev.newValue !== ev.oldValue) {
+      const atual = getSession()?.user?.empresaIdAtiva;
+      if (atual && atual !== ev.newValue) window.location.reload();
+    }
   });
 }
 
@@ -237,16 +248,25 @@ async function fetchWithTimeout(url: string, init: RequestInit, ms = 10_000): Pr
 }
 
 /** Busca AuthenticatedUser completo do backend usando o access token atual. */
-async function fetchMe(accessToken: string): Promise<AuthenticatedUser | null> {
+async function fetchMe(
+  accessToken: string,
+): Promise<{ user: AuthenticatedUser | null; transitorio: boolean }> {
   try {
     const res = await fetchWithTimeout(`${API_BASE}/api/v1/auth/me`, {
       headers: { Authorization: `Bearer ${accessToken}` },
     });
-    if (!res.ok) return null;
+    // AUDITORIA (média): antes qualquer falha virava `null`, e o chamador
+    // interpretava null como SESSÃO INVÁLIDA e deslogava. Com o /auth/refresh
+    // tendo PASSADO, um timeout no /auth/me (queda de sinal no PWA, 502 do
+    // proxy) derrubava o usuário com cookie perfeitamente válido — perdendo o
+    // que ele estivesse digitando. 5xx/429 e erro de rede são TRANSITÓRIOS.
+    if (res.status >= 500 || res.status === 429) return { user: null, transitorio: true };
+    if (!res.ok) return { user: null, transitorio: false };
     const json = (await res.json()) as { data?: AuthenticatedUser };
-    return json.data ?? null;
+    return { user: json.data ?? null, transitorio: false };
   } catch {
-    return null;
+    // Rede/timeout/abort — não é veredito sobre a sessão.
+    return { user: null, transitorio: true };
   }
 }
 
@@ -296,8 +316,14 @@ async function doRefreshAccessToken(): Promise<AuthSession | null> {
       return null;
     }
     // Busca AuthenticatedUser do backend (role, empresas, etc — não vem do JWT)
-    const me = await fetchMe(data.accessToken);
+    const { user: me, transitorio } = await fetchMe(data.accessToken);
     if (!me) {
+      if (transitorio) {
+        // Mantém a sessão e reagenda — mesmo tratamento que o refresh já dá pra
+        // 5xx/rede. Deslogar aqui seria punir o usuário por um soluço de rede.
+        agendarRetentativaDeRefresh();
+        return null;
+      }
       setSession(null);
       return null;
     }

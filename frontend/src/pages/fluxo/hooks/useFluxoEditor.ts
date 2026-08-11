@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState, type DragEvent } from 'react';
+import { marcarSujo } from '@/lib/dirty';
 import {
   addEdge,
   useNodesState,
@@ -54,6 +55,14 @@ export function useFluxoEditor({
   const [saving, setSaving] = useState(false);
   const [testando, setTestando] = useState(false);
   const [dirty, setDirty] = useState(false);
+
+  // Registro global de "não salvo" (#43): o reload automático do PWA consulta
+  // isto antes de recarregar. Sem o registro, um deploy no meio da edição
+  // levava o fluxo inteiro embora, sem aviso.
+  useEffect(() => {
+    marcarSujo('fluxo-editor', dirty);
+    return () => marcarSujo('fluxo-editor', false);
+  }, [dirty]);
   const [name, setName] = useState('');
   const [triggerTipo, setTriggerTipo] = useState<TriggerTipo | ''>('');
   const [reactFlowInstance, setReactFlowInstance] = useState<ReactFlowInstance<FlowNode, Edge> | null>(null);
@@ -221,6 +230,12 @@ export function useFluxoEditor({
   // Wrappers de onNodesChange/onEdgesChange — marcam dirty no fim do drag/edição.
   const onNodesChangeWrap = useCallback(
     (c: NodeChange<FlowNode>[]) => {
+      // AUDITORIA (média): a REMOÇÃO marcava dirty mas NÃO entrava no histórico.
+      // Apagar um nó com Backspace e dar Ctrl+Z restaurava um estado que não
+      // correspondia à sequência de edições — o undo "pulava" a remoção e
+      // desfazia a alteração ANTERIOR, o que é pior que não ter undo. Empilha o
+      // snapshot ANTES de aplicar (o histórico guarda o estado a restaurar).
+      if (c.some((ch) => ch.type === 'remove')) pushHistory({ nodes, edges });
       onNodesChange(c);
       // 'remove' entra junto: apagar nó com Backspace (delete padrão do React
       // Flow) não marcava dirty — o botão Salvar ficava CINZA, não dava pra
@@ -233,18 +248,22 @@ export function useFluxoEditor({
         setDirty(true);
       }
     },
-    [onNodesChange],
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [onNodesChange, nodes, edges],
   );
 
   const onEdgesChangeWrap = useCallback(
     (c: EdgeChange<Edge>[]) => {
+      // Mesma coisa pras arestas: apagar conexão precisa ser desfazível.
+      if (c.some((ch) => ch.type === 'remove')) pushHistory({ nodes, edges });
       onEdgesChange(c);
       // 'select' NÃO é edição: só CLICAR numa aresta marcava o fluxo como sujo e
       // o editor passava a avisar "alterações não salvas" sem nada ter mudado —
       // o usuário aprendia a ignorar o aviso, que é o pior resultado possível.
       if (c.some((ch) => ch.type !== 'select')) setDirty(true);
     },
-    [onEdgesChange],
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [onEdgesChange, nodes, edges],
   );
 
   const onNodeClick = useCallback((_: unknown, n: FlowNode) => {

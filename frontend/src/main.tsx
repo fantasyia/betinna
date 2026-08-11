@@ -1,4 +1,5 @@
 import { StrictMode } from 'react';
+import { temAlteracaoNaoSalva } from '@/lib/dirty';
 import { createRoot } from 'react-dom/client';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import App from './App';
@@ -51,13 +52,32 @@ if (typeof navigator !== 'undefined' && 'serviceWorker' in navigator) {
   });
 
   // Quando o SW novo finalmente assume controle, reload pra usar bundle atualizado.
+  //
+  // AUDITORIA (média): o reload era INCONDICIONAL. Deploy caindo no meio de um
+  // editor de fluxo aberto ou de um pedido meio preenchido levava o trabalho
+  // embora, sem aviso e sem o usuário entender o motivo. Agora, se houver
+  // alteração não salva, adia: recarrega quando a tela ficar limpa, ou na
+  // próxima navegação. Bundle velho por mais alguns minutos é bem menos pior
+  // que perder o que a pessoa estava fazendo.
   let refreshing = false;
-  navigator.serviceWorker.addEventListener('controllerchange', () => {
+  const recarregar = () => {
     if (refreshing) return;
     refreshing = true;
-     
     console.info('[pwa] SW assumiu controle — recarregando página…');
     window.location.reload();
+  };
+  navigator.serviceWorker.addEventListener('controllerchange', () => {
+    if (!temAlteracaoNaoSalva()) {
+      recarregar();
+      return;
+    }
+    console.info('[pwa] nova versão pronta, mas há alteração não salva — reload adiado.');
+    const tentar = () => {
+      if (temAlteracaoNaoSalva()) return;
+      clearInterval(timer);
+      recarregar();
+    };
+    const timer = setInterval(tentar, 5_000);
   });
 }
 
