@@ -8,6 +8,7 @@ import { TransactionalEmailService } from '@integrations/email/transactional-ema
 import { FluxoEventBusService } from './fluxo-event-bus.service';
 import { ConversarIaService } from './conversar-ia.service';
 import { CronMetricsService } from './cron-metrics.service';
+import { NotificacoesService } from '@modules/notificacoes/notificacoes.service';
 import { proximaExecucaoCrons, CRON_TZ_PADRAO } from './cron.util';
 import { ehFeriadoNacional } from './feriados.util';
 
@@ -33,6 +34,7 @@ export class FluxoTriggersJob {
     private readonly email: TransactionalEmailService,
     private readonly conversarIa: ConversarIaService,
     private readonly cronMetrics: CronMetricsService,
+    private readonly notificacoes: NotificacoesService,
   ) {}
 
   @Cron('*/30 * * * *', { name: 'fluxo-triggers-temporais', timeZone: 'UTC' })
@@ -251,6 +253,40 @@ export class FluxoTriggersJob {
       });
       return;
     }
+    // AUDITORIA (média): a ação 'notificar' NÃO notificava ninguém — caía no
+    // mesmo caminho da 'tag' e só carimbava uma etiqueta silenciosa. Quem
+    // configurou "me avise quando estourar o SLA" nunca era avisado. Agora
+    // notifica de verdade (in-app) ANTES de aplicar o rótulo, que continua
+    // valendo como marcador visual no kanban.
+    if (acao.tipo === 'notificar') {
+      const lead = await this.prisma.lead
+        .findUnique({
+          where: { id: leadId },
+          select: { nome: true, representanteId: true, funilEtapa: { select: { nome: true } } },
+        })
+        .catch(() => null);
+      const nomeLead = lead?.nome ?? 'Lead';
+      const etapa = lead?.funilEtapa?.nome ?? 'etapa atual';
+      const params = {
+        empresaId,
+        tipo: 'LEAD_INATIVO' as const,
+        titulo: 'SLA de etapa estourado',
+        mensagem: `${nomeLead} passou do prazo em "${etapa}".`,
+        link: `/kanban?lead=${leadId}`,
+        metadata: { leadId, etapaOrigemId },
+      };
+      // Dono da carteira primeiro; sem rep atribuído, avisa a gerência.
+      if (lead?.representanteId) {
+        await this.notificacoes
+          .criarParaUsuario({ ...params, usuarioId: lead.representanteId })
+          .catch(() => null);
+      } else {
+        await this.notificacoes
+          .criarParaRole({ ...params, roles: ['GERENTE', 'DIRECTOR'] })
+          .catch(() => null);
+      }
+    }
+
     // 'tag' (rótulo escolhido) ou 'notificar' (rótulo de alerta) — idempotente.
     const nome = acao.tipo === 'tag' && acao.tagNome ? acao.tagNome : '⚠ SLA vencido';
     const tag = await this.prisma.tag.upsert({
@@ -495,11 +531,31 @@ export class FluxoTriggersJob {
       const diasSemPedido = cliente.ultimoPedidoEm
         ? Math.floor((agora - cliente.ultimoPedidoEm.getTime()) / MS_DIA)
         : Number.MAX_SAFE_INTEGER;
+      // AUDITORIA (média): o cooldown era UM só, com o MENOR limiar entre os
+      // fluxos. Cliente parado 150 dias com réguas de 30 e 90 recebia a de 90
+      // A CADA 30 DIAS, indefinidamente — o `reativacaoDisparadaEm` liberava
+      // pelo corte de 30, e o filtro do bus deixava passar (150 >= 90).
+      //
+      // Agora o cooldown é POR LIMIAR, com TTL igual ao próprio limiar: quem
+      // recebeu a régua de 90 só volta a recebê-la daqui a 90 dias. Redis em vez
+      // de coluna nova porque expira sozinho e não precisa de migration.
+      const cruzados = [...new Set(diasPorFluxo)].filter((d) => diasSemPedido >= d);
+      const liberados: number[] = [];
+      for (const d of cruzados) {
+        const chave = `reativ:${empresaId}:${cliente.id}:${d}`;
+        const primeiro = await this.redis.setNxEx(chave, '1', d * 86_400).catch(() => true);
+        if (primeiro) liberados.push(d);
+      }
+      // Todos os limiares que este cliente cruza já dispararam dentro da janela.
+      if (liberados.length === 0) continue;
+
       await this.bus.disparar(empresaId, 'CLIENTE_INATIVO_30D', {
         clienteId: cliente.id,
         cliente: { id: cliente.id, nome: cliente.nome },
         representanteId: cliente.representanteId,
         diasSemPedido,
+        // O bus filtra por fluxo: só dispara o fluxo cujo limiar está liberado.
+        limiaresLiberados: liberados,
       });
     }
 

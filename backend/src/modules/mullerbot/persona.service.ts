@@ -17,6 +17,19 @@ const TOM_INSTRUCAO: Record<TomVoz, string> = {
     'Tom entusiasmado e energético. Destaque benefícios, use vocabulário positivo (ótimo, excelente).',
 };
 
+/**
+ * Regras anti-alucinação do CATÁLOGO, isoladas do texto de persona.
+ *
+ * AUDITORIA (média): elas viviam grudadas no SYSTEM_PROMPT_BASE, então o único
+ * jeito de tê-las no modo RAG era usar aquele prompt inteiro — que fala "da
+ * Betinna.ai" e "ajudar o representante comercial", texto interno vazando pro
+ * cliente final no WhatsApp. Separadas, dá pra anexá-las a QUALQUER persona.
+ */
+export const REGRAS_CATALOGO = `Regras OBRIGATÓRIAS sobre o catálogo:
+1. Use APENAS o catálogo fornecido na mensagem do usuário. NÃO invente produtos, preços, especificações nem disponibilidade.
+2. Se a informação não estiver no catálogo fornecido, diga que vai confirmar com a equipe — nunca chute.
+3. Preço e disponibilidade mudam: trate os valores do catálogo como referência, não como promessa.`;
+
 const SYSTEM_PROMPT_BASE = `Você é o {{nome}}, assistente comercial da Betinna.ai.
 
 Responsabilidade: ajudar o representante comercial respondendo perguntas sobre o catálogo de produtos da empresa dele.

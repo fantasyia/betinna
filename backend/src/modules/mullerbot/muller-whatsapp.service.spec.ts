@@ -159,7 +159,8 @@ function build(
     persona as never,
     whatsapp as never,
     redis as never,
-    { aguardarSlot: vi.fn() } as never,
+    // Devolve Promise: o fallback (#17) agora encadeia `.catch` no aguardarSlot.
+    { aguardarSlot: vi.fn().mockResolvedValue(undefined) } as never,
   );
   // Expostos pros testes de anti-spam (contador no Redis) e falha de envio.
   (svc as unknown as Record<string, unknown>).__redis = redis;

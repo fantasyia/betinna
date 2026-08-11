@@ -520,6 +520,12 @@ export class MullerWhatsappService implements OnModuleInit {
 
       // 7. Fallback se a IA falhou/demorou/veio vazia
       if (!resposta || !resposta.texto.trim()) {
+        // AUDITORIA (média): o fallback saía SEM passar pelo pacing. Numa falha
+        // sistêmica da IA (chave inválida, OpenAI fora), TODA conversa ativa
+        // dispara o fallback ao mesmo tempo — uma rajada de mensagens no mesmo
+        // número, que é exatamente o padrão que a Meta bane. O pacing existe pra
+        // isso e este era um dos poucos envios fora dele.
+        await this.pacing.aguardarSlot(params.empresaId, true).catch(() => undefined);
         await this.inbox.responderComoBot(convId, FALLBACK_MSG).catch(() => undefined);
         // Marca precisa-humano E pausa o bot por uma janela CURTA: assim o
         // fallback NÃO se repete a cada nova mensagem, mas a conversa não fica

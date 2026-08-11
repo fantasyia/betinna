@@ -356,6 +356,11 @@ export class FluxoEventBusService {
             const req = Number(cfg.diasInativo ?? 30);
             const real = Number(contexto['diasSemPedido'] ?? 0);
             if (real < req) continue;
+            // Cooldown POR LIMIAR (ver fluxo-triggers.job): o job já reivindicou
+            // no Redis quais limiares deste cliente estão liberados nesta janela.
+            // Sem isto, a régua de 90 dias se repetia a cada 30 pro mesmo cliente.
+            const liberados = contexto['limiaresLiberados'];
+            if (Array.isArray(liberados) && !liberados.includes(req)) continue;
           }
 
           // Anti-reabertura do LEAD_RESPONDEU: a orquestração dispara este gatilho

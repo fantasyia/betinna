@@ -15,6 +15,7 @@ import { EnvService } from '@config/env.service';
 import { PrismaService } from '@database/prisma.service';
 import { InboxService } from '@modules/inbox/inbox.service';
 import { IntegracaoStatusService } from '@modules/integracoes/integracao-status.service';
+import { WhatsappPacingService } from '@shared/whatsapp-pacing/whatsapp-pacing.service';
 import { BusinessRuleException } from '@shared/errors/app-exception';
 import { WhatsAppAuthState, ownerKey, type WhatsAppOwner } from './whatsapp-auth-state';
 import { WhatsAppMediaService } from './whatsapp-media.service';
@@ -118,6 +119,7 @@ export class WhatsAppSessionService implements OnModuleInit, OnModuleDestroy {
     private readonly inbox: InboxService,
     private readonly media: WhatsAppMediaService,
     private readonly statusIntegracao: IntegracaoStatusService,
+    private readonly pacing: WhatsappPacingService,
   ) {}
 
   /** Concorrência máxima ao restaurar sessões no boot — evita boot-storm (memória/FDs) a muitas sessões. */
@@ -448,6 +450,11 @@ export class WhatsAppSessionService implements OnModuleInit, OnModuleDestroy {
           // messageId determinístico por Message.id: se o envio sair mas o update p/ SENT
           // falhar, a próxima reconexão re-pega como FAILED e reenvia com o MESMO id →
           // o destinatário deduplica (não recebe 2×). FAILED = não saiu, então reenviar é ok.
+          // AUDITORIA (média): o reenvio pós-reconexão disparava até 50 mensagens
+          // em loop apertado, FORA do pacing. Depois de uma queda, é justamente
+          // o pior momento pra despejar rajada no número — é o padrão que a Meta
+          // pune. Passa pelo mesmo pacing de todo outbound.
+          await this.pacing.aguardarSlot(ctx.empresaId).catch(() => undefined);
           const r = await this.enviarTexto(
             ctx.owner,
             m.conversation.peerId,

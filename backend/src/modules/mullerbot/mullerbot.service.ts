@@ -19,7 +19,7 @@ import type { PerguntarDto } from './mullerbot.dto';
 import type { LlmCredenciais, MullerBotResposta } from './mullerbot.types';
 import { BotCustoService } from './bot-custo.service';
 import { MullerBotCacheService, type HistoricoMsg } from './mullerbot-cache.service';
-import { MullerBotPersonaService } from './persona.service';
+import { MullerBotPersonaService, REGRAS_CATALOGO } from './persona.service';
 import { ProdutoSearchService, type ProdutoRelevante } from './produto-search.service';
 
 // SYSTEM_PROMPT agora vem do MullerBotPersonaService.compilarSystemPrompt
@@ -35,6 +35,13 @@ const CHARS_PER_TOKEN = 4;
 const SAFETY_MARGIN_TOKENS = 200;
 /** Custo fixo aproximado de uma imagem no orçamento (gpt-4o vision, tile padrão ~765 tk). */
 const IMAGE_TOKENS_APROX = 765;
+/**
+ * Equivalência grosseira pra contabilizar TRANSCRIÇÃO no mesmo contador de
+ * tokens do bot. O Whisper cobra por minuto (~US$0,006/min); a ordem de grandeza
+ * bate com ~100 tokens de entrada por segundo de áudio nos modelos usados aqui.
+ * Serve pra o custo APARECER — não é fatura.
+ */
+const TOKENS_EQUIV_POR_SEGUNDO_AUDIO = 100;
 
 /**
  * Lista de reserva pro dropdown de modelo quando a OpenAI não lista (chave sem
@@ -323,7 +330,15 @@ export class MullerBotService {
       // ── Modo RAG (pronto, ligado via env MULLERBOT_WHATSAPP_CATALOGO) ──
       // System prompt COM guardrails de catálogo (proíbe alucinação) + produtos
       // relevantes montados com orçamento de tokens (mesma lógica do perguntar()).
-      systemPrompt = await this.persona.compilarSystemPrompt(empresaId);
+      // AUDITORIA (média): aqui era `compilarSystemPrompt`, que NÃO consulta a
+      // biblioteca de BotPrompt — ligar a flag de catálogo trocava a persona
+      // inteira em silêncio, e ainda vazava o texto base ("assistente comercial
+      // da Betinna.ai", "ajudar o representante comercial") pra um cliente final
+      // no WhatsApp. Agora usa o MESMO prompt do modo conversa e anexa só as
+      // regras de catálogo.
+      systemPrompt = `${await this.persona.compilarSystemPromptConversa(empresaId)}
+
+${REGRAS_CATALOGO}`;
       const maxInputTokens = this.env.get('MULLERBOT_MAX_INPUT_TOKENS');
       // CAÇADA-BUG #30: busca produtos E base de CONHECIMENTO (FAQ/regras), igual ao perguntar().
       // Sem passar o conhecimento pro montarUserMessage, uma saudação ("oi") com 0 produtos caía no
@@ -468,7 +483,21 @@ export class MullerBotService {
       );
     }
     const data = (await res.json()) as { text?: string };
-    return (data.text ?? '').trim();
+    const texto = (data.text ?? '').trim();
+
+    // AUDITORIA (média): a transcrição É CUSTO da OpenAI e não entrava em conta
+    // nenhuma — nem no teto do bot, nem no relatório. Empresa com muito áudio
+    // gastava sem aparecer em lugar nenhum. O Whisper cobra por MINUTO, não por
+    // token; convertemos pra "tokens equivalentes" só pra o contador existir,
+    // usando o tamanho do áudio como proxy da duração (ogg/opus do WhatsApp
+    // roda ~1,5 KB/s). É estimativa, e está anotado como tal — melhor um número
+    // aproximado no lugar certo do que zero.
+    const segundos = Math.max(1, Math.round(audio.byteLength / 1500));
+    await this.custo
+      .registrarUso(empresaId, Math.round(segundos * TOKENS_EQUIV_POR_SEGUNDO_AUDIO), 0)
+      .catch(() => undefined);
+
+    return texto;
   }
 
   /**
@@ -689,6 +718,14 @@ export class MullerBotService {
     produtos: ProdutoRelevante[],
     orcamentoTokens: number,
     conhecimento = '',
+    /**
+     * true = atendimento por WhatsApp (conversa), não consulta a catálogo.
+     * AUDITORIA (média): sem isso, catálogo E conhecimento vazios mandavam
+     * "Responda dizendo que não encontrou" — e o bot respondia a um "oi" ou a
+     * "quero falar com um humano" com "não encontrei essa informação no
+     * catálogo". No modo conversa, catálogo vazio é o normal, não uma falha.
+     */
+    modoConversa = false,
   ): {
     userMessage: string;
     produtosIncluidos: ProdutoRelevante[];
@@ -700,7 +737,11 @@ export class MullerBotService {
     if (produtos.length === 0) {
       const msg = conhecimento
         ? `${conhecimento}\n\n# Pergunta\n${pergunta}`
-        : `O catálogo da empresa não retornou nenhum produto relevante para a pergunta abaixo. Responda dizendo que não encontrou.\n\nPergunta: ${pergunta}`;
+        : modoConversa
+          ? // Conversa sem material de apoio: passa a mensagem crua e deixa a
+            // persona conduzir. Nada de instrução de "não encontrei".
+            pergunta
+          : `O catálogo da empresa não retornou nenhum produto relevante para a pergunta abaixo. Responda dizendo que não encontrou.\n\nPergunta: ${pergunta}`;
       return {
         userMessage: msg,
         produtosIncluidos: [],
