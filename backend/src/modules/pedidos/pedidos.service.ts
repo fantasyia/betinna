@@ -826,6 +826,13 @@ export class PedidosService {
       });
     });
     this.logger.log(`Solicitação #${solicitacaoId} ${dto.decisao} por ${user.nome} (${user.role})`);
+    if (dto.decisao === 'APROVADA' && solicitacao.pedido.numeroOmie) {
+      // Mesmo aviso do cancelar() direto — o log é o que a operação enxerga.
+      this.logger.warn(
+        `Pedido ${solicitacao.pedido.numero} cancelado por SOLICITAÇÃO aprovada MAS já estava no ` +
+          `OMIE (nº ${solicitacao.pedido.numeroOmie}) — precisa de cancelamento MANUAL no ERP.`,
+      );
+    }
     return updated;
   }
 

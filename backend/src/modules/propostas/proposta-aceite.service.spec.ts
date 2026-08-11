@@ -146,3 +146,47 @@ describe('PropostaAceiteService.registrarDecisao — CAS anti duplo-pedido', () 
     );
   });
 });
+
+describe('PropostaAceiteService — cliente BLOQUEADO no OMIE não aceita (auditoria média)', () => {
+  beforeEach(() => vi.clearAllMocks());
+
+  it('ACEITE de cliente bloqueado é barrado ANTES de criar pedido', async () => {
+    // Cenário do achado: cliente vira BLOQUEADO no ERP depois do envio da
+    // proposta. O link público já revalidava validade e produto inativo, mas não
+    // o omieStatus — o pedido era criado, o rep notificado "aceita!", e a falha
+    // só aparecia no envio ao OMIE.
+    const { svc, prisma, tx } = makeService(1);
+    prisma.proposta.findUnique.mockResolvedValue({
+      ...PROPOSTA,
+      cliente: { omieStatus: 'BLOQUEADO' },
+    });
+
+    await expect(svc.registrarDecisao(TOKEN, 'ACEITA', '203.0.113.9')).rejects.toThrow(
+      /não é possível aceitar/i,
+    );
+    expect(tx.pedido.create).not.toHaveBeenCalled();
+  });
+
+  it('RECUSAR proposta de cliente bloqueado continua permitido', async () => {
+    const { svc, prisma } = makeService(1);
+    prisma.proposta.findUnique.mockResolvedValue({
+      ...PROPOSTA,
+      cliente: { omieStatus: 'BLOQUEADO' },
+    });
+
+    const r = await svc.registrarDecisao(TOKEN, 'RECUSADA', '203.0.113.9');
+    expect(r.status).toBe('RECUSADA');
+  });
+
+  it('cliente ATIVO segue aceitando normalmente', async () => {
+    const { svc, prisma, tx } = makeService(1);
+    prisma.proposta.findUnique.mockResolvedValue({
+      ...PROPOSTA,
+      cliente: { omieStatus: 'ATIVO' },
+    });
+
+    const r = await svc.registrarDecisao(TOKEN, 'ACEITA', '203.0.113.9');
+    expect(r.status).toBe('ACEITA');
+    expect(tx.pedido.create).toHaveBeenCalled();
+  });
+});

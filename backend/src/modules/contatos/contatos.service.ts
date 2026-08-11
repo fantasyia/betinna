@@ -608,9 +608,18 @@ export class ContatosService {
           SELECT cv.id FROM "Conversation" cv LEFT JOIN "Cliente" cli ON cli.id = cv."clienteId"
           WHERE cv."empresaId" = ${empresaId}
             ${user.role === 'REP' ? Prisma.sql`AND cv."proprietarioId" = ${user.id}` : Prisma.empty}
+            -- AUDITORIA (média): faltavam DOIS degraus que a LISTA (telConversa)
+            -- já tinha: o metadata->>'telefone' e o guard numérico. Efeito: a
+            -- conversa aparecia na lista de contatos e SUMIA no detalhe — quem
+            -- clicava via "contato não encontrado". Espelha o telConversa.
             AND RIGHT(REGEXP_REPLACE(COALESCE(cli.telefone,
+              CASE WHEN jsonb_typeof(cv.metadata->'telefone')='string'
+                        AND (cv.metadata->>'telefone') <> ''
+                   THEN cv.metadata->>'telefone' END,
               CASE WHEN cv."peerId" LIKE '%@g.us%' OR cv."peerId" LIKE '%@lid%' THEN NULL
-                   ELSE split_part(split_part(cv."peerId", '@', 1), ':', 1) END), '[^0-9]', '', 'g'), 8) = ${sufixo}`),
+                   WHEN split_part(split_part(cv."peerId", '@', 1), ':', 1) ~ '[0-9]{8,}'
+                   THEN split_part(split_part(cv."peerId", '@', 1), ':', 1)
+                   ELSE NULL END), '[^0-9]', '', 'g'), 8) = ${sufixo}`),
       ]);
       lr.forEach((x) => leadIds.add(x.id));
       cr.forEach((x) => clienteIds.add(x.id));

@@ -260,6 +260,15 @@ export class UsersService {
       throw new BusinessRuleException('Não é possível vincular usuário a empresa inativa');
     }
 
+    // AUDITORIA (média): esta validação vinha DEPOIS do convite no Supabase.
+    // `gerenteId` inválido → o e-mail já tinha sido criado no Auth, o create no
+    // nosso banco nunca acontecia, e aquele endereço ficava ÓRFÃO e INUTILIZÁVEL
+    // pra sempre (o inviteUserByEmail recusa e-mail já existente). Toda validação
+    // barata roda ANTES de tocar em sistema externo.
+    if (dto.gerenteId) {
+      await this.assertGerenteValido(dto.gerenteId);
+    }
+
     // 3) Cria no Supabase Auth (envia convite por e-mail)
     const redirectTo = this.resolveInviteRedirectUrl();
     const { data: authData, error } = await this.supabaseAdmin.auth.admin.inviteUserByEmail(
@@ -272,32 +281,43 @@ export class UsersService {
       );
     }
 
-    // Validação: gerenteId deve apontar pra um usuário com role=GERENTE
-    if (dto.gerenteId) {
-      await this.assertGerenteValido(dto.gerenteId);
-    }
-
-    // 4) Cria registro no nosso banco
-    const created = await this.prisma.usuario.create({
-      data: {
-        id: authData.user.id,
-        email: dto.email,
-        nome: dto.nome,
-        telefone: dto.telefone,
-        role: dto.role,
-        status: 'PENDENTE',
-        regiao: dto.regiao,
-        tetoDesconto: dto.tetoDesconto ?? (dto.role === 'REP' ? 5 : null),
-        comissaoPadrao: dto.comissaoPadrao ?? (dto.role === 'REP' ? 5 : null),
-        gerenteId: dto.role === 'REP' ? (dto.gerenteId ?? null) : null,
-        empresas: {
-          create: dto.empresaIds.map((empresaId) => ({ empresaId })),
+    // 4) Cria registro no nosso banco.
+    // COMPENSAÇÃO: se falhar aqui (unique, FK, banco fora), o usuário do Supabase
+    // já existe. Sem desfazer, o e-mail fica órfão — o Auth tem o registro, nós
+    // não, e uma nova tentativa com o mesmo e-mail é recusada pelo Supabase.
+    let created;
+    try {
+      created = await this.prisma.usuario.create({
+        data: {
+          id: authData.user.id,
+          email: dto.email,
+          nome: dto.nome,
+          telefone: dto.telefone,
+          role: dto.role,
+          status: 'PENDENTE',
+          regiao: dto.regiao,
+          tetoDesconto: dto.tetoDesconto ?? (dto.role === 'REP' ? 5 : null),
+          comissaoPadrao: dto.comissaoPadrao ?? (dto.role === 'REP' ? 5 : null),
+          gerenteId: dto.role === 'REP' ? (dto.gerenteId ?? null) : null,
+          empresas: {
+            create: dto.empresaIds.map((empresaId) => ({ empresaId })),
+          },
         },
-      },
-      include: {
-        empresas: { include: { empresa: { select: { id: true, nome: true } } } },
-      },
-    });
+        include: {
+          empresas: { include: { empresa: { select: { id: true, nome: true } } } },
+        },
+      });
+    } catch (err) {
+      await this.supabaseAdmin.auth.admin.deleteUser(authData.user.id).catch((e: unknown) => {
+        // Falhou o rollback: o e-mail fica órfão MESMO. Log alto e nomeado pra
+        // alguém apagar no painel do Supabase — pior que o erro é não saber.
+        this.logger.error(
+          `ROLLBACK FALHOU: usuário ${dto.email} (${authData.user.id}) ficou órfão no Supabase Auth ` +
+            `e precisa ser removido à mão. Causa: ${e instanceof Error ? e.message : String(e)}`,
+        );
+      });
+      throw err;
+    }
     this.logger.log(`Usuário criado: ${created.id} (${created.role})`);
 
     // REP já nasce com o quadro de tarefas dele (colunas padrão). Best-effort:
