@@ -1,4 +1,12 @@
-import { Body, Controller, Headers, Param, Post, UnauthorizedException } from '@nestjs/common';
+import {
+  Body,
+  Controller,
+  Headers,
+  Param,
+  Post,
+  UnauthorizedException,
+  Logger,
+} from '@nestjs/common';
 import { Throttle, seconds } from '@nestjs/throttler';
 import { timingSafeEqual } from 'node:crypto';
 import { ApiExcludeController } from '@nestjs/swagger';
@@ -38,6 +46,8 @@ interface EvolutionWebhookBody {
 @Throttle({ default: { limit: 600, ttl: seconds(60) } })
 @Controller('webhooks/evolution')
 export class EvolutionWebhookController {
+  private readonly logger = new Logger(EvolutionWebhookController.name);
+
   constructor(
     private readonly env: EnvService,
     private readonly inbound: EvolutionInboundService,
@@ -88,7 +98,18 @@ export class EvolutionWebhookController {
       if (!fresh) return { ok: true }; // replay → ACK sem reprocessar
     }
     // Responde 200 na hora (pro Evolution não re-tentar) e processa em background.
-    void this.inbound.processarEvento(body);
+    // AUDITORIA (média): era `void` puro — se o processamento explodisse, o erro
+    // sumia num unhandled rejection e a marca de anti-replay ficava gravada, o
+    // que fazia qualquer reentrega ser descartada como "replay". Libera a marca
+    // no erro, pra reentrega/poll ter chance, e loga em vez de sumir.
+    void this.inbound.processarEvento(body).catch(async (err: unknown) => {
+      this.logger.error(
+        `[evolution] processamento do webhook falhou: ${err instanceof Error ? err.message : String(err)}`,
+      );
+      if (chaveReplay) {
+        await this.antiReplay.releaseWebhook('evolution', chaveReplay).catch(() => undefined);
+      }
+    });
     return { ok: true };
   }
 

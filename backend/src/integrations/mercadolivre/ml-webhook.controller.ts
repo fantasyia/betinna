@@ -81,9 +81,10 @@ export class MLWebhookController {
     // Sprint 3 FIX 1: anti-replay. ML não tem HMAC, mas envia `_id` único +
     // `sent` (timestamp ISO). Usamos `_id` como "signature" para dedup.
     // Combinado com IP whitelist (Sprint 1), essa é nossa proteção máxima.
+    const chaveReplay = body._id ?? `${body.user_id}:${body.resource}`;
     const replay = await this.antiReplay.checkAndMarkWebhook(
       'mercadolivre',
-      body._id ?? `${body.user_id}:${body.resource}`,
+      chaveReplay,
       body.sent,
     );
     if (!replay.fresh) {
@@ -99,7 +100,13 @@ export class MLWebhookController {
       this.logger.warn(
         `Falha processando webhook ML (topic=${body.topic} resource=${body.resource}): ${m}`,
       );
-      // Retornamos 200 mesmo assim — não queremos ML retentando em erros nossos
+      // AUDITORIA (média): a marca de anti-replay JÁ FOI GRAVADA lá em cima. Se
+      // falhamos aqui, o ML até pode reentregar (ele reentrega em não-2xx), mas
+      // a reentrega batia na marca e era descartada como "replay" — a notificação
+      // se perdia de vez. Libera a marca ANTES de responder, pra reentrega ter
+      // chance. O 200 continua: o ML corta a integração depois de muitos erros,
+      // e o cron de 10min é a rede de segurança real.
+      await this.antiReplay.releaseWebhook('mercadolivre', chaveReplay).catch(() => undefined);
       return { ok: false };
     }
   }

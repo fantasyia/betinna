@@ -194,14 +194,43 @@ export class EvolutionInboundService {
     }
     const proprietarioId = dono.type === 'USUARIO' ? dono.id : undefined;
 
+    // AUDITORIA (média): o loop não tinha try/catch POR MENSAGEM. Um erro no
+    // meio (nome de grupo que falha, uma mensagem com payload estranho) abortava
+    // o LOTE INTEIRO — as mensagens seguintes do mesmo webhook eram perdidas em
+    // silêncio, porque o controller já tinha respondido 200 e o Evolution não
+    // reentrega. Cada mensagem é independente; o erro de uma não pode calar as
+    // outras.
+    let falhas = 0;
     for (const m of msgs) {
+      try {
+        await this.processarUmaMensagem(m, { empresaId, proprietarioId, instance });
+      } catch (err) {
+        falhas += 1;
+        this.logger.error(
+          `[evolution] falha processando mensagem ${m.key?.id ?? '(sem id)'}: ` +
+            `${err instanceof Error ? err.message : String(err)}`,
+        );
+      }
+    }
+    if (falhas > 0) {
+      this.logger.warn(`[evolution] ${falhas}/${msgs.length} mensagem(ns) do lote falharam`);
+    }
+  }
+
+  /** Processa UMA mensagem do lote. Extraído pra isolar a falha (ver acima). */
+  private async processarUmaMensagem(
+    m: EvoMessage,
+    ctx: { empresaId: string; proprietarioId?: string; instance: string },
+  ): Promise<void> {
+    const { empresaId, proprietarioId, instance } = ctx;
+    {
       const rjid = m.key?.remoteJid ?? '';
       // WhatsApp LID: o remoteJid vem como `<id>@lid` (ID opaco) e o telefone
       // real fica em remoteJidAlt. Prefere o telefone (@s.whatsapp.net) — é
       // estável e casa o cliente por sufixo; senão a conversa fica "sem contato".
       const rjidAlt = m.key?.remoteJidAlt ?? '';
       const peerId = rjid.endsWith('@lid') && rjidAlt ? rjidAlt : rjid;
-      if (!peerId || peerId.endsWith('@broadcast') || peerId === 'status@broadcast') continue;
+      if (!peerId || peerId.endsWith('@broadcast') || peerId === 'status@broadcast') return;
       // Grupos (@g.us) AGORA passam — peerNome = subject do grupo, senderName = autor.
       const isGroup = peerId.endsWith('@g.us');
 
@@ -236,7 +265,7 @@ export class EvolutionInboundService {
       }
 
       const conteudoFinal = conteudo || (tipo === 'TEXT' ? '[mensagem não suportada]' : conteudo);
-      if (!conteudoFinal) continue;
+      if (!conteudoFinal) return;
 
       // Em grupos: peerNome = nome do grupo (subject via Evolution), senderName =
       // quem mandou (pushName do membro), sem telefone único. Em 1:1, peerNome =
