@@ -1640,6 +1640,56 @@ describe('FluxoExecutorService', () => {
       );
     });
 
+    it('rep INATIVO é RECUSADO — lead ficaria com dono que não entra no sistema', async () => {
+      // Pergunta que veio da master de fluxos (11/08). O motor aceitava qualquer
+      // status; INATIVO é o caso perigoso (mesmo problema que o D42 evita no
+      // gerente: carteira invisível, ninguém percebe).
+      const acaoNo = fakeNo({
+        tipo: 'ACAO',
+        acaoTipo: 'ATRIBUIR_REP',
+        config: { representanteId: 'rep-off' },
+      });
+      prisma.fluxoExecucao.findUnique.mockResolvedValue(
+        fakeExecucao({ status: 'EM_EXECUCAO', contexto: { clienteId: 'cli-1' } }),
+      );
+      prisma.fluxoNo.findUnique.mockResolvedValue(acaoNo);
+      prisma.fluxoEdge.findMany.mockResolvedValue([]);
+      prisma.usuario.findFirst.mockResolvedValue({
+        id: 'rep-off',
+        nome: 'Rep Desligado',
+        status: 'INATIVO',
+        role: 'REP',
+      });
+
+      await expect(service.executarPasso('exec-1', 'no-1', 'job-test')).rejects.toThrow(/INATIVO/);
+      expect(prisma.cliente.updateMany).not.toHaveBeenCalled();
+    });
+
+    it('rep PENDENTE (convidado, sem 1º acesso) É ACEITO — é assim que rep novo ganha carteira', async () => {
+      const acaoNo = fakeNo({
+        tipo: 'ACAO',
+        acaoTipo: 'ATRIBUIR_REP',
+        config: { representanteId: 'rep-novo' },
+      });
+      prisma.fluxoExecucao.findUnique.mockResolvedValue(
+        fakeExecucao({ status: 'EM_EXECUCAO', contexto: { clienteId: 'cli-1' } }),
+      );
+      prisma.fluxoNo.findUnique.mockResolvedValue(acaoNo);
+      prisma.fluxoEdge.findMany.mockResolvedValue([]);
+      prisma.usuario.findFirst.mockResolvedValue({
+        id: 'rep-novo',
+        nome: 'Marcelo',
+        status: 'PENDENTE',
+        role: 'REP',
+      });
+
+      await service.executarPasso('exec-1', 'no-1', 'job-test');
+
+      expect(prisma.cliente.updateMany).toHaveBeenCalledWith(
+        expect.objectContaining({ data: { representanteId: 'rep-novo' } }),
+      );
+    });
+
     it('lança quando rep não pertence à empresa', async () => {
       const acaoNo = fakeNo({
         tipo: 'ACAO',

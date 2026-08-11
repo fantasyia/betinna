@@ -1126,7 +1126,16 @@ const FLUXO_TRIGGER_TIPO = z.enum([
 
 /** Nó no arquivo de import: `id` é a CHAVE estável referenciada pelas arestas. */
 const fluxoNoInput = z.object({
-  id: z.string().min(1).max(120).describe('Chave estável (ex: "trigger", "ia1") usada nas arestas'),
+  id: z
+    .string()
+    .min(1)
+    .max(120)
+    .describe(
+      'Chave LOCAL deste payload (ex: "trigger", "ia1") — serve só pra ligar as arestas. ' +
+        'NÃO é persistida: o motor gera ids novos a cada atualização, mesmo que você reenvie ' +
+        'os ids atuais. Consequência: id de nó NÃO serve como referência entre sessões/cards — ' +
+        'referencie o nó pelo TÍTULO.',
+    ),
   tipo: FLUXO_NO_TIPO,
   acaoTipo: FLUXO_ACAO_TIPO.nullable().optional().describe('Obrigatório quando tipo=ACAO'),
   titulo: z.string().min(1).max(100),

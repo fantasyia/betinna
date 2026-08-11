@@ -1814,10 +1814,36 @@ export class FluxoExecutorService {
         id: cfg.representanteId,
         empresas: { some: { empresaId } },
       },
-      select: { id: true },
+      select: { id: true, nome: true, status: true, role: true },
     });
     if (!rep) {
       throw new Error(`Rep ${cfg.representanteId} não pertence à empresa ${empresaId}`);
+    }
+    // Pergunta que veio da master de fluxos (11/08): o motor aceita atribuir a
+    // usuário PENDENTE? Aceitava — e a usuário INATIVO também, que é o problema
+    // de verdade. Atribuir carteira a quem foi DESATIVADO repete exatamente o
+    // que o D42 evita no lado do gerente: o lead fica com dono que não entra no
+    // sistema, some da fila de todo mundo e ninguém percebe. Aqui é erro.
+    if (rep.status === 'INATIVO') {
+      throw new Error(
+        `Rep ${rep.nome} está INATIVO — atribuir a ele deixaria o lead sem dono efetivo. ` +
+          'Escolha outro representante no nó ou reative o usuário.',
+      );
+    }
+    // PENDENTE (convidado, ainda não entrou) é LEGÍTIMO: é assim que um rep novo
+    // recebe carteira antes do primeiro login. Só fica visível no log.
+    if (rep.status === 'PENDENTE') {
+      this.logger.warn(
+        `ATRIBUIR_REP: ${rep.nome} ainda está PENDENTE (não fez o primeiro acesso). ` +
+          'A atribuição vale, mas ele só vê a carteira depois de entrar.',
+      );
+    }
+    // Papel: não bloqueia (config antiga pode apontar pra GERENTE de propósito),
+    // mas atribuir carteira a SAC/ADMIN é quase sempre engano de configuração.
+    if (rep.role !== 'REP' && rep.role !== 'GERENTE') {
+      this.logger.warn(
+        `ATRIBUIR_REP: ${rep.nome} tem papel ${rep.role}, não REP/GERENTE — confira o nó.`,
+      );
     }
 
     if (clienteId) {
