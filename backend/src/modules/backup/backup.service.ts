@@ -2,6 +2,7 @@ import { Injectable, Logger } from '@nestjs/common';
 import { EnvService } from '@config/env.service';
 import { PrismaService } from '@database/prisma.service';
 import { TransactionalEmailService } from '@integrations/email/transactional-email.service';
+import { NotificacoesService } from '@modules/notificacoes/notificacoes.service';
 import { captureException } from '@shared/observability/sentry';
 import {
   runBackup,
@@ -31,6 +32,7 @@ export class BackupService {
     private readonly prisma: PrismaService,
     private readonly env: EnvService,
     private readonly email: TransactionalEmailService,
+    private readonly notificacoes: NotificacoesService,
   ) {}
 
   /**
@@ -112,6 +114,14 @@ export class BackupService {
         `Por favor verifique o serviço o quanto antes — sem backup, uma falha no banco ` +
         `não tem recuperação. Confira os logs do Worker no Railway.`,
     });
+    // AUDITORIA (média): o e-mail era o ÚNICO canal, e o Resend é justamente o
+    // que pode não estar configurado (é pendência conhecida do go-live). Sem
+    // chave, a falha de backup ficava com o log do worker como única evidência —
+    // que ninguém lê. A notificação IN-APP não depende de provedor externo e
+    // aparece pro ADMIN/DIRECTOR no sino: canal independente de verdade. Vai
+    // SEMPRE, não só quando o e-mail falha.
+    await this.notificarNoApp(erro);
+
     // O retorno {ok:false} era IGNORADO: se o Resend estava sem chave ou fora do
     // ar, a falha do backup ficava 100% silenciosa — ninguém sabia que o banco
     // estava sem cópia. O log de ERROR é o último recurso que sobra.
@@ -123,6 +133,33 @@ export class BackupService {
       return;
     }
     this.logger.log(`Alerta de falha de backup enviado para ${para}`);
+  }
+
+  /**
+   * Alerta IN-APP da falha de backup — canal que não depende do Resend.
+   * Best-effort: se isto falhar, o log de ERROR ainda existe.
+   */
+  private async notificarNoApp(erro: string): Promise<void> {
+    try {
+      const empresas = await this.prisma.empresa.findMany({
+        where: { ativo: true },
+        select: { id: true },
+      });
+      for (const e of empresas) {
+        await this.notificacoes.criarParaRole({
+          empresaId: e.id,
+          roles: ['ADMIN', 'DIRECTOR'],
+          tipo: 'GENERICO',
+          titulo: '🚨 Backup do banco FALHOU',
+          mensagem: `O backup automático não completou: ${erro.slice(0, 300)}`,
+          prioridade: 'URGENTE',
+        });
+      }
+    } catch (err) {
+      this.logger.error(
+        `Falha ao criar a notificação in-app do backup: ${err instanceof Error ? err.message : String(err)}`,
+      );
+    }
   }
 
   private async resolverDestinatario(): Promise<string | null> {

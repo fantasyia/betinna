@@ -561,7 +561,15 @@ export class MullerWhatsappService implements OnModuleInit {
       // da chamada à IA, que leva ~15s. Nesse meio-tempo um fluxo de triagem pode
       // ter assumido a conversa (o inbound dispara bot e fluxo EM PARALELO, hooks
       // fire-and-forget). Sem este segundo olhar, os dois respondiam o mesmo "oi".
-      if (await this.fluxoConduzindoConversa(params.empresaId, convId)) {
+      // AUDITORIA (média): o re-check olhava SÓ por conversa. Um fluxo que começou
+      // DURANTE a geração e tem apenas `leadId` no contexto (LEAD_CRIADO,
+      // CRON_AGENDADO, mudança de etapa) passava batido — e os dois respondiam a
+      // mesma pessoa. O gate inicial (passo 1.5) já checa os dois; o re-check
+      // precisa do mesmo par pra fechar a corrida de verdade.
+      if (
+        (await this.fluxoConduzindoConversa(params.empresaId, convId)) ||
+        (leadDoPeer && (await this.fluxoConduzindoLead(params.empresaId, leadDoPeer.id)))
+      ) {
         this.logger.log(
           `[bot] fluxo assumiu a conversa durante a geração — bot geral descarta a resposta conv=${convId}`,
         );

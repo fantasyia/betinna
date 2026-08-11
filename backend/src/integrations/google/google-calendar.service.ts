@@ -49,8 +49,38 @@ export class GoogleCalendarService {
       end: { dateTime: params.fim.toISOString(), timeZone: tz },
       attendees: params.participantes?.map((p) => ({ email: p.email, displayName: p.nome })),
       reminders: this.montarReminders(params.alertas),
+      ...(params.betinnaId
+        ? { extendedProperties: { private: { betinnaId: params.betinnaId } } }
+        : {}),
     };
+
+    // AUDITORIA (média): o espelhamento não era idempotente. Duplo-clique em
+    // "salvar", ou um crash entre o POST e o update do `googleEventId`, criava um
+    // SEGUNDO evento no calendário do usuário — e nada relacionava os dois. Com o
+    // `betinnaId` marcado, dá pra perguntar ao Google se o evento já existe antes
+    // de criar. É best-effort: se a busca falhar, cria (o pior caso volta a ser o
+    // de antes, nunca pior).
+    if (params.betinnaId) {
+      const jaExiste = await this.buscarPorBetinnaId(usuarioId, params.betinnaId).catch(() => null);
+      if (jaExiste?.id) {
+        this.logger.log(
+          `Evento do item ${params.betinnaId} JÁ existe no Google (${jaExiste.id}) — reusando`,
+        );
+        return jaExiste;
+      }
+    }
+
     return this.call<GoogleEvent>('POST', `${CALENDAR_BASE}/events`, token, body);
+  }
+
+  /** Busca o evento que ESTE item já criou (marca `private.betinnaId`). */
+  async buscarPorBetinnaId(usuarioId: string, betinnaId: string): Promise<GoogleEvent | null> {
+    const token = await this.oauth.getAccessToken(usuarioId);
+    const url =
+      `${CALENDAR_BASE}/events?privateExtendedProperty=` +
+      `${encodeURIComponent(`betinnaId=${betinnaId}`)}&maxResults=1&showDeleted=false`;
+    const r = await this.call<{ items?: GoogleEvent[] }>('GET', url, token);
+    return r.items?.[0] ?? null;
   }
 
   async atualizarEvento(

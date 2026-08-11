@@ -347,6 +347,9 @@ export class AgendaService {
       try {
         const ev = await this.googleCalendar.criarEvento(user.id, {
           titulo: item.titulo,
+          // #60: marca o evento com o id do AgendaItem — é o que permite reconhecer
+          // um espelho já criado e não duplicar na agenda do usuário.
+          betinnaId: item.id,
           inicio: item.data,
           fim: this.calcFim(item.data, item.duracao),
           descricao: item.observacao ?? undefined,
@@ -609,6 +612,9 @@ export class AgendaService {
     try {
       const ev = await this.googleCalendar.criarEvento(usuarioId, {
         titulo: item.titulo,
+        // #60: marca o evento com o id do AgendaItem — é o que permite reconhecer
+        // um espelho já criado e não duplicar na agenda do usuário.
+        betinnaId: item.id,
         inicio: item.data,
         fim: this.calcFim(item.data, item.duracao),
         descricao: item.observacao ?? undefined,

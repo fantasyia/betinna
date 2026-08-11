@@ -33,7 +33,11 @@ const makeIntegracoesMock = () => ({
 });
 
 // #B17: consumidor de nonce (anti-replay do state OAuth). true = 1º uso.
-const makeRedis = () => ({ setNxEx: vi.fn().mockResolvedValue(true) });
+const makeRedis = () => ({
+  setNxEx: vi.fn().mockResolvedValue(true),
+  // #40: o lock de refresh libera a chave no finally.
+  del: vi.fn().mockResolvedValue(1),
+});
 
 describe('TikTokOAuthService', () => {
   let env: ReturnType<typeof makeEnvMock>;

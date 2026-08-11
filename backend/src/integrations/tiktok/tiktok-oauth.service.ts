@@ -1,5 +1,6 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { RedisService } from '@database/redis.service';
+import { comLockDeRefresh } from '@shared/utils/refresh-lock.util';
 import { EnvService } from '@config/env.service';
 import { PrismaService } from '@database/prisma.service';
 import { IntegracoesService } from '@modules/integracoes/integracoes.service';
@@ -123,29 +124,42 @@ export class TikTokOAuthService {
     if (c.expiresAt - TOKEN_REFRESH_MARGIN_MS > Date.now()) {
       return c as TikTokCredenciais;
     }
-    this.logger.debug(`Refresh access_token TikTok — empresa=${empresaId}`);
-    const tokenRes = await this.refresh(c.refreshToken);
-    if (tokenRes.code !== 0 || !tokenRes.data?.access_token) {
-      throw new IntegrationException(
-        `TikTok refresh falhou: ${tokenRes.message ?? '?'}`,
-        ErrorCode.INTEGRATION_ERROR,
-      );
-    }
-    const data = tokenRes.data;
-    const novo: TikTokCredenciais = {
-      shopId: c.shopId,
-      shopCipher: c.shopCipher,
-      accessToken: data.access_token,
-      refreshToken: data.refresh_token ?? c.refreshToken,
-      expiresAt: data.access_token_expire_in * 1000,
-      refreshExpiresAt: data.refresh_token_expire_in
-        ? data.refresh_token_expire_in * 1000
-        : c.refreshExpiresAt,
-      sellerName: c.sellerName,
-      region: c.region,
-    };
-    await this.persistir(empresaId, novo);
-    return novo;
+    // Refresh SERIALIZADO — o TikTok rotaciona o refresh_token; duas chamadas
+    // concorrentes com o mesmo refresh derrubavam a conexão. Ver refresh-lock.util.
+    return comLockDeRefresh<TikTokCredenciais>(this.redis, `oauth:refresh:tiktok:${empresaId}`, {
+      reler: async () => {
+        const conn2 = await this.integracoes.obterCredenciaisInternas(empresaId, 'tiktok');
+        return conn2.credenciais as unknown as TikTokCredenciais;
+      },
+      valida: (cred) =>
+        Boolean(cred?.expiresAt && cred.expiresAt - TOKEN_REFRESH_MARGIN_MS > Date.now()),
+      renovar: async () => {
+        this.logger.debug(`Refresh access_token TikTok — empresa=${empresaId}`);
+        const tokenRes = await this.refresh(c.refreshToken as string);
+        if (tokenRes.code !== 0 || !tokenRes.data?.access_token) {
+          throw new IntegrationException(
+            `TikTok refresh falhou: ${tokenRes.message ?? '?'}`,
+            ErrorCode.INTEGRATION_ERROR,
+          );
+        }
+        const data = tokenRes.data;
+        const novo: TikTokCredenciais = {
+          shopId: c.shopId as string,
+          shopCipher: c.shopCipher,
+          accessToken: data.access_token,
+          refreshToken: data.refresh_token ?? (c.refreshToken as string),
+          expiresAt: data.access_token_expire_in * 1000,
+          refreshExpiresAt: data.refresh_token_expire_in
+            ? data.refresh_token_expire_in * 1000
+            : c.refreshExpiresAt,
+          sellerName: c.sellerName,
+          region: c.region,
+        };
+        await this.persistir(empresaId, novo);
+        return novo;
+        return novo;
+      },
+    });
   }
 
   /** Lookup reverso: shop_id → empresaId (pro webhook). */

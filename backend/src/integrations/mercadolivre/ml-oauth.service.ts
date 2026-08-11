@@ -1,5 +1,6 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { RedisService } from '@database/redis.service';
+import { comLockDeRefresh } from '@shared/utils/refresh-lock.util';
 import { EnvService } from '@config/env.service';
 import { PrismaService } from '@database/prisma.service';
 import { IntegracoesService } from '@modules/integracoes/integracoes.service';
@@ -110,19 +111,31 @@ export class MLOAuthService {
     if (c.expiresAt - TOKEN_REFRESH_MARGIN_MS > Date.now()) {
       return c as MLCredenciais;
     }
-    // Refresh
-    this.logger.debug(`Refresh access_token ML — empresa=${empresaId}`);
-    const tokenRes = await this.refreshToken(c.refreshToken);
-    const novo: MLCredenciais = {
-      userId: c.userId,
-      accessToken: tokenRes.access_token,
-      refreshToken: tokenRes.refresh_token, // ML emite novo refresh_token a cada exchange
-      expiresAt: Date.now() + tokenRes.expires_in * 1000,
-      nickname: c.nickname,
-      siteId: c.siteId,
-    };
-    await this.persistir(empresaId, novo);
-    return novo;
+    // Refresh SERIALIZADO: o ML rotaciona o refresh_token a cada troca, então
+    // duas chamadas concorrentes com o mesmo refresh quebram a integração
+    // (invalid_grant + token inválido persistido). Ver refresh-lock.util.
+    return comLockDeRefresh<MLCredenciais>(this.redis, `oauth:refresh:mercadolivre:${empresaId}`, {
+      reler: async () => {
+        const conn2 = await this.integracoes.obterCredenciaisInternas(empresaId, 'mercadolivre');
+        return conn2.credenciais as unknown as MLCredenciais;
+      },
+      valida: (cred) =>
+        Boolean(cred?.expiresAt && cred.expiresAt - TOKEN_REFRESH_MARGIN_MS > Date.now()),
+      renovar: async () => {
+        this.logger.debug(`Refresh access_token ML — empresa=${empresaId}`);
+        const tokenRes = await this.refreshToken(c.refreshToken as string);
+        const novo: MLCredenciais = {
+          userId: c.userId as string,
+          accessToken: tokenRes.access_token,
+          refreshToken: tokenRes.refresh_token, // ML emite novo refresh_token a cada exchange
+          expiresAt: Date.now() + tokenRes.expires_in * 1000,
+          nickname: c.nickname,
+          siteId: c.siteId,
+        };
+        await this.persistir(empresaId, novo);
+        return novo;
+      },
+    });
   }
 
   /** Lookup reverso: dado user_id ML, retorna empresaId. Usado pelo webhook. */

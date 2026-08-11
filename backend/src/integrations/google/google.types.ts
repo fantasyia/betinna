@@ -47,6 +47,13 @@ export interface GoogleEvent {
   start: GoogleEventDateTime;
   end: GoogleEventDateTime;
   attendees?: Array<{ email: string; displayName?: string }>;
+  /**
+   * Marca nossa no evento (#60): `private.betinnaId = <AgendaItem.id>`. É o que
+   * permite RECONHECER um evento que já criamos — sem isso, um duplo-clique ou
+   * um crash entre o POST e o update do googleEventId criava um 2º evento na
+   * agenda do usuário, e ninguém tinha como saber que era o mesmo compromisso.
+   */
+  extendedProperties?: { private?: Record<string, string> };
   htmlLink?: string;
   hangoutLink?: string;
   reminders?: {
@@ -94,4 +101,6 @@ export interface GoogleEventCreateParams {
   alertas?: number[];
   /** Default 'America/Sao_Paulo'. */
   timezone?: string;
+  /** Id do AgendaItem — grava como extendedProperties.private.betinnaId (#60). */
+  betinnaId?: string;
 }

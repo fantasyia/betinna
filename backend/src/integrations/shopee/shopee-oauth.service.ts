@@ -1,5 +1,6 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { RedisService } from '@database/redis.service';
+import { comLockDeRefresh } from '@shared/utils/refresh-lock.util';
 import { EnvService } from '@config/env.service';
 import { PrismaService } from '@database/prisma.service';
 import { IntegracoesService } from '@modules/integracoes/integracoes.service';
@@ -125,24 +126,36 @@ export class ShopeeOAuthService {
     if (c.expiresAt - TOKEN_REFRESH_MARGIN_MS > Date.now()) {
       return c as ShopeeCredenciais;
     }
-    this.logger.debug(`Refresh access_token Shopee — empresa=${empresaId}`);
-    const tokenRes = await this.refresh(c.refreshToken, c.shopId);
-    if (!tokenRes.access_token) {
-      throw new IntegrationException(
-        `Shopee refresh falhou: ${tokenRes.message ?? '?'}`,
-        ErrorCode.INTEGRATION_ERROR,
-      );
-    }
-    const novo: ShopeeCredenciais = {
-      shopId: c.shopId,
-      accessToken: tokenRes.access_token,
-      refreshToken: tokenRes.refresh_token ?? c.refreshToken,
-      expiresAt: Date.now() + tokenRes.expire_in * 1000,
-      mainAccountId: c.mainAccountId,
-      region: c.region,
-    };
-    await this.persistir(empresaId, novo);
-    return novo;
+    // Refresh SERIALIZADO — a Shopee também rotaciona o refresh_token, e duas
+    // chamadas concorrentes quebravam a conexão. Ver refresh-lock.util.
+    return comLockDeRefresh<ShopeeCredenciais>(this.redis, `oauth:refresh:shopee:${empresaId}`, {
+      reler: async () => {
+        const conn2 = await this.integracoes.obterCredenciaisInternas(empresaId, 'shopee');
+        return conn2.credenciais as unknown as ShopeeCredenciais;
+      },
+      valida: (cred) =>
+        Boolean(cred?.expiresAt && cred.expiresAt - TOKEN_REFRESH_MARGIN_MS > Date.now()),
+      renovar: async () => {
+        this.logger.debug(`Refresh access_token Shopee — empresa=${empresaId}`);
+        const tokenRes = await this.refresh(c.refreshToken as string, c.shopId as string);
+        if (!tokenRes.access_token) {
+          throw new IntegrationException(
+            `Shopee refresh falhou: ${tokenRes.message ?? '?'}`,
+            ErrorCode.INTEGRATION_ERROR,
+          );
+        }
+        const novo: ShopeeCredenciais = {
+          shopId: c.shopId as string,
+          accessToken: tokenRes.access_token,
+          refreshToken: tokenRes.refresh_token ?? (c.refreshToken as string),
+          expiresAt: Date.now() + tokenRes.expire_in * 1000,
+          mainAccountId: c.mainAccountId,
+          region: c.region,
+        };
+        await this.persistir(empresaId, novo);
+        return novo;
+      },
+    });
   }
 
   /** Lookup reverso: dado shop_id, retorna empresaId (pro webhook). */

@@ -1,4 +1,6 @@
 import { Injectable, Logger } from '@nestjs/common';
+import { randomUUID } from 'node:crypto';
+import { RedisService } from '@database/redis.service';
 import { createHash } from 'node:crypto';
 import { SignJWT, jwtVerify } from 'jose';
 import { EnvService } from '@config/env.service';
@@ -43,7 +45,10 @@ export class CatalogShareService {
   private readonly secret: Uint8Array;
   private readonly ttlSeconds: number;
 
-  constructor(env: EnvService) {
+  constructor(
+    env: EnvService,
+    private readonly redis: RedisService,
+  ) {
     const encryptionKey = env.get('ENCRYPTION_KEY');
     // Derivação isolada: comprometer este JWT não vaza ENCRYPTION_KEY raw.
     const derivedKey = createHash('sha256')
@@ -73,11 +78,30 @@ export class CatalogShareService {
       eid: payload.empresaId,
     };
     if (payload.clienteId) claims.cid = payload.clienteId;
+    // AUDITORIA (média): sem identificador, um link vazado só morria pelo TTL (até
+    // 7 dias) — não havia como cortar UM link sem desativar o rep inteiro. `jti`
+    // dá o gancho da revogação (ver `revogar`).
+    const jti = randomUUID();
     return new SignJWT(claims)
       .setProtectedHeader({ alg: 'HS256' })
+      .setJti(jti)
       .setIssuedAt()
       .setExpirationTime(`${ttl}s`)
       .sign(this.secret);
+  }
+
+  /**
+   * Revoga UM link específico (o `jti` do token). Marca fica no Redis com TTL
+   * igual ao que resta do token — depois disso ele expira sozinho.
+   */
+  async revogar(token: string): Promise<void> {
+    const { payload } = await jwtVerify(token, this.secret).catch(() => ({ payload: null }));
+    const jti = typeof payload?.jti === 'string' ? payload.jti : null;
+    if (!jti) return;
+    const exp = typeof payload?.exp === 'number' ? payload.exp : 0;
+    const restam = Math.max(60, Math.ceil(exp - Date.now() / 1000) + 60);
+    await this.redis.setEx(`share:revogado:${jti}`, '1', restam).catch(() => undefined);
+    this.logger.log(`Link de catálogo revogado (jti ${jti})`);
   }
 
   /**
@@ -92,6 +116,16 @@ export class CatalogShareService {
       const clienteId = typeof payload.cid === 'string' ? payload.cid : undefined;
       if (!repId || !empresaId) {
         throw new BusinessRuleException('Token de compartilhamento mal formado');
+      }
+      // Revogação: token com jti marcado não vale mais, mesmo dentro do TTL.
+      // Fail-OPEN se o Redis cair — preferir o link funcionando a derrubar o
+      // catálogo de todos os reps por causa de uma indisponibilidade.
+      const jti = typeof payload.jti === 'string' ? payload.jti : null;
+      if (jti) {
+        const revogado = await this.redis.get(`share:revogado:${jti}`).catch(() => null);
+        if (revogado) {
+          throw new BusinessRuleException('Link revogado pelo representante');
+        }
       }
       return { repId, clienteId, empresaId };
     } catch (err) {

@@ -1158,9 +1158,17 @@ export class InboxService {
     // externalId acima não acha a linha em-voo (externalId ainda null) → criaria um 2º balão.
     // Aqui adotamos o externalId do eco na linha já existente em vez de duplicar.
     if (!isInbound && params.externalId) {
+      // AUDITORIA (média): a busca era escopada em `conversationId: conv.id`. O eco
+      // @lid do WhatsApp pode resolver pra OUTRA conversa quando chega sem
+      // `remoteJidAlt` e a conversa ainda não tem `metadata.lid` gravado — a
+      // linha em-voo está na conversa do telefone, e o eco procura na conversa
+      // do LID. Não achava, criava um 2º balão e nascia conversa fantasma.
+      // Agora procura na EMPRESA (mesma janela de 2min + mesmo conteúdo +
+      // externalId nulo já são um filtro estreitíssimo) e usa a conversa da
+      // linha encontrada, não a resolvida pelo peer.
       const emVoo = await this.prisma.message.findFirst({
         where: {
-          conversationId: conv.id,
+          conversation: { empresaId: conv.empresaId },
           direction: MessageDirection.OUTBOUND,
           externalId: null,
           conteudo: params.conteudo,

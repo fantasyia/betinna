@@ -13,9 +13,12 @@ const makeEnv = () => ({
 
 describe('CatalogShareService', () => {
   let svc: CatalogShareService;
+  let redis: { get: ReturnType<typeof vi.fn>; setEx: ReturnType<typeof vi.fn> };
 
   beforeEach(() => {
-    svc = new CatalogShareService(makeEnv() as never);
+    // #74: revogação por jti — Redis é consultado no validar e escrito no revogar.
+    redis = { get: vi.fn().mockResolvedValue(null), setEx: vi.fn().mockResolvedValue(undefined) };
+    svc = new CatalogShareService(makeEnv() as never, redis as never);
   });
 
   it('gerar + validar retorna mesmo payload (roundtrip)', async () => {
@@ -77,5 +80,55 @@ describe('CatalogShareService', () => {
     expect(p.repId).toBe('rep-X');
     expect(p.clienteId).toBe('cli-Y');
     expect(p.empresaId).toBe('emp-Z');
+  });
+});
+
+describe('CatalogShareService — revogação de link (#74)', () => {
+  const env = { get: vi.fn().mockReturnValue('k'.repeat(64)) };
+
+  it('token revogado deixa de valer ANTES do TTL', async () => {
+    const redisLocal = { get: vi.fn(), setEx: vi.fn().mockResolvedValue(undefined) };
+    const s = new CatalogShareService(env as never, redisLocal as never);
+    const token = await s.gerar({ repId: 'rep-1', empresaId: 'emp-1' });
+
+    // Antes de revogar: vale.
+    redisLocal.get.mockResolvedValue(null);
+    await expect(s.validar(token)).resolves.toMatchObject({ repId: 'rep-1' });
+
+    // Revoga e o validar passa a recusar.
+    await s.revogar(token);
+    expect(redisLocal.setEx).toHaveBeenCalled();
+    redisLocal.get.mockResolvedValue('1');
+    await expect(s.validar(token)).rejects.toThrow(/revogado|expirado|inválido/i);
+  });
+
+  it('Redis fora no validar → FAIL-OPEN (link segue valendo)', async () => {
+    // Derrubar o catálogo de todos os reps por indisponibilidade do Redis seria
+    // pior que o risco de um link revogado sobreviver alguns minutos.
+    const redisLocal = {
+      get: vi.fn().mockRejectedValue(new Error('redis down')),
+      setEx: vi.fn(),
+    };
+    const s = new CatalogShareService(env as never, redisLocal as never);
+    const token = await s.gerar({ repId: 'rep-1', empresaId: 'emp-1' });
+
+    await expect(s.validar(token)).resolves.toMatchObject({ repId: 'rep-1' });
+  });
+
+  it('cada link tem jti próprio — revogar um não derruba o outro', async () => {
+    const redisLocal = {
+      get: vi.fn().mockResolvedValue(null),
+      setEx: vi.fn().mockResolvedValue(undefined),
+    };
+    const s = new CatalogShareService(env as never, redisLocal as never);
+    const t1 = await s.gerar({ repId: 'rep-1', empresaId: 'emp-1' });
+    const t2 = await s.gerar({ repId: 'rep-1', empresaId: 'emp-1' });
+
+    await s.revogar(t1);
+    const chave1 = redisLocal.setEx.mock.calls[0][0] as string;
+    await s.revogar(t2);
+    const chave2 = redisLocal.setEx.mock.calls[1][0] as string;
+
+    expect(chave1).not.toBe(chave2);
   });
 });
