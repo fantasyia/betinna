@@ -10,6 +10,7 @@ import { TRIGGER_LABEL, ACAO_LABEL, TIPO_LABEL, isManualTrigger } from '@/pages/
 import { useInspectorData } from '@/pages/fluxo/hooks/useInspectorData';
 import { CondicaoEditor } from './CondicaoEditor';
 import { WebhookTriggerConfig } from './WebhookTriggerConfig';
+import { ClienteInativoTriggerForm } from './ClienteInativoTriggerForm';
 import { CronTriggerConfig } from './CronTriggerConfig';
 import { LeadEtapaTriggerForm } from './LeadEtapaTriggerForm';
 import { LeadTagTriggerForm } from './LeadTagTriggerForm';
@@ -156,6 +157,10 @@ export function NodeInspector({
 
         {data.tipo === 'TRIGGER' && data.triggerTipo === 'LEAD_RECEBEU_TAG' && (
           <LeadTagTriggerForm data={data} onUpdate={onUpdate} tags={tags} />
+        )}
+
+        {data.tipo === 'TRIGGER' && data.triggerTipo === 'CLIENTE_INATIVO_30D' && (
+          <ClienteInativoTriggerForm data={data} onUpdate={onUpdate} />
         )}
 
         {data.tipo === 'ACAO' && (

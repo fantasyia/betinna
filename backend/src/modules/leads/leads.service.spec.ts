@@ -492,3 +492,85 @@ describe('LeadsService', () => {
     });
   });
 });
+
+/**
+ * #19b — o teto do kanban era GLOBAL: uma coluna quente comia os 500 e as
+ * outras voltavam vazias, com o poll de 20s repetindo o mesmo recorte.
+ */
+describe('LeadsService.kanban — teto por etapa (#19b)', () => {
+  it('cada coluna tem o próprio teto (uma quente não esvazia as outras)', async () => {
+    const prisma = makePrismaMock();
+    const svc = new LeadsService(
+      prisma as never,
+      makeRepScope() as never,
+      { disparar: vi.fn() } as never,
+    );
+
+    prisma.funil.findFirst.mockResolvedValue({
+      id: 'f1',
+      nome: 'Vendas',
+      cor: '#000',
+      etapas: [
+        { id: 'e1', nome: 'Novo', cor: '#1', ordem: 0, tipo: 'ATIVA', probabilidade: 10 },
+        { id: 'e2', nome: 'Negociação', cor: '#2', ordem: 1, tipo: 'ATIVA', probabilidade: 50 },
+      ],
+    });
+    // Uma consulta POR etapa: a 1ª volta cheia, a 2ª volta com 2 leads.
+    prisma.lead.findMany
+      .mockResolvedValueOnce(
+        Array.from({ length: 100 }, (_, i) => ({
+          id: `a${i}`,
+          funilEtapaId: 'e1',
+          valorEstimado: 0,
+        })),
+      )
+      .mockResolvedValueOnce([
+        { id: 'b1', funilEtapaId: 'e2', valorEstimado: 0 },
+        { id: 'b2', funilEtapaId: 'e2', valorEstimado: 0 },
+      ]);
+    prisma.lead.groupBy.mockResolvedValue([
+      { funilEtapaId: 'e1', _count: { _all: 340 } },
+      { funilEtapaId: 'e2', _count: { _all: 2 } },
+    ]);
+
+    const r = await svc.kanban(fakeUser());
+
+    // O que quebrava: 'e2' vinha VAZIA porque 'e1' consumiu o teto global.
+    expect(r.grupos.e2).toHaveLength(2);
+    expect(r.grupos.e1).toHaveLength(100);
+    // E a UI precisa saber o total de verdade pra não fingir que a coluna acabou.
+    expect(r.totaisPorEtapa).toEqual({ e1: 340, e2: 2 });
+    expect(r.truncado).toBe(true);
+  });
+
+  it('leads sem funilEtapaId caem na PRIMEIRA etapa (regra de antes preservada)', async () => {
+    const prisma = makePrismaMock();
+    const svc = new LeadsService(
+      prisma as never,
+      makeRepScope() as never,
+      { disparar: vi.fn() } as never,
+    );
+
+    prisma.funil.findFirst.mockResolvedValue({
+      id: 'f1',
+      nome: 'Vendas',
+      cor: '#000',
+      etapas: [
+        { id: 'e1', nome: 'Novo', cor: '#1', ordem: 0, tipo: 'ATIVA', probabilidade: 10 },
+        { id: 'e2', nome: 'Negociação', cor: '#2', ordem: 1, tipo: 'ATIVA', probabilidade: 50 },
+      ],
+    });
+    prisma.lead.findMany.mockResolvedValue([]);
+    prisma.lead.groupBy.mockResolvedValue([
+      { funilEtapaId: null, _count: { _all: 7 } },
+      { funilEtapaId: 'e1', _count: { _all: 3 } },
+    ]);
+
+    const r = await svc.kanban(fakeUser());
+
+    expect(r.totaisPorEtapa?.e1).toBe(10); // 3 da etapa + 7 sem etapa
+    // A consulta da 1ª etapa aceita os órfãos; a da 2ª não.
+    const whereE1 = prisma.lead.findMany.mock.calls[0][0].where as Record<string, unknown>;
+    expect(whereE1.OR).toEqual([{ funilEtapaId: 'e1' }, { funilEtapaId: null }]);
+  });
+});

@@ -43,6 +43,13 @@ type LeadWithRel = Prisma.LeadGetPayload<{ include: typeof leadInclude }>;
 // Teto global ordenado por etapaDesde desc (os mais recentes primeiro = "trabalho atual") + flag
 // `truncado` pra UI avisar (não-silencioso). Cap por etapa/paginação por coluna = follow-up.
 const KANBAN_CAP = 500;
+// AUDITORIA (#19b): o teto de 500 era GLOBAL e a ordem era `etapaDesde desc`.
+// Numa coluna quente (ex: "Novo" com importação recente de 2 mil leads) os 500
+// primeiros eram todos dela — as outras colunas voltavam VAZIAS e o vendedor
+// achava que não tinha nada em negociação. O poll de 20s repetia o mesmo recorte
+// pra sempre. Agora o teto é POR ETAPA (nenhuma coluna mata as outras) e vem o
+// total real de cada uma, pra UI dizer "100 de 340".
+const KANBAN_CAP_POR_ETAPA = 100;
 
 @Injectable()
 export class LeadsService {
@@ -142,7 +149,12 @@ export class LeadsService {
     };
     /** Mapa etapaId → leads. Quando enum legado, a key é o nome do enum. */
     grupos: Record<string, LeadWithRel[]>;
-    /** true quando atingiu KANBAN_CAP — a UI deve avisar que há mais leads não exibidos. */
+    /**
+     * Total REAL de leads por etapa (#19b) — inclui os que ficaram fora do teto.
+     * A UI usa pra mostrar "100 de 340" em vez de fingir que a coluna acabou.
+     */
+    totaisPorEtapa?: Record<string, number>;
+    /** true quando alguma coluna bateu o teto — a UI deve avisar. */
     truncado: boolean;
   }> {
     const empresaId = this.requireEmpresa(user);
@@ -170,27 +182,52 @@ export class LeadsService {
     }
 
     if (funil) {
-      // Filtra leads desse funil + agrupa por funilEtapaId
-      const items = await this.prisma.lead.findMany({
-        where: { ...where, funilId: funil.id },
-        orderBy: { etapaDesde: 'desc' },
-        include: leadInclude,
-        take: KANBAN_CAP,
+      const etapas = funil.etapas;
+      const primeiraId = etapas[0]?.id;
+      // Uma consulta por COLUNA (são poucas, 4–8) — cada uma com o próprio teto.
+      // A primeira etapa acumula também os leads do funil sem `funilEtapaId`
+      // (mesma regra do agrupamento antigo).
+      const [porEtapa, totais] = await Promise.all([
+        Promise.all(
+          etapas.map((e) =>
+            this.prisma.lead.findMany({
+              where: {
+                ...where,
+                funilId: funil.id,
+                ...(e.id === primeiraId
+                  ? { OR: [{ funilEtapaId: e.id }, { funilEtapaId: null }] }
+                  : { funilEtapaId: e.id }),
+              },
+              orderBy: { etapaDesde: 'desc' },
+              include: leadInclude,
+              take: KANBAN_CAP_POR_ETAPA,
+            }),
+          ),
+        ),
+        this.prisma.lead.groupBy({
+          by: ['funilEtapaId'],
+          where: { ...where, funilId: funil.id },
+          _count: { _all: true },
+        }),
+      ]);
+
+      const contagem = new Map(totais.map((t) => [t.funilEtapaId ?? '', t._count._all]));
+      const grupos: Record<string, LeadWithRel[]> = {};
+      const totaisPorEtapa: Record<string, number> = {};
+      etapas.forEach((e, i) => {
+        grupos[e.id] = porEtapa[i];
+        totaisPorEtapa[e.id] =
+          (contagem.get(e.id) ?? 0) + (e.id === primeiraId ? (contagem.get('') ?? 0) : 0);
       });
-      const truncado = items.length >= KANBAN_CAP;
+
+      const truncado = etapas.some((e) => grupos[e.id].length >= KANBAN_CAP_POR_ETAPA);
       if (truncado) {
         this.logger.warn(
-          `Kanban truncado em ${KANBAN_CAP} leads (funil ${funil.id}) — UI deve avisar.`,
+          `Kanban truncado em ${KANBAN_CAP_POR_ETAPA} leads por etapa (funil ${funil.id}) — UI deve avisar.`,
         );
       }
-      const grupos: Record<string, LeadWithRel[]> = Object.fromEntries(
-        funil.etapas.map((e) => [e.id, [] as LeadWithRel[]]),
-      );
-      for (const lead of items) {
-        const key = lead.funilEtapaId ?? funil.etapas[0]?.id;
-        if (key && grupos[key]) grupos[key].push(lead);
-      }
       return {
+        totaisPorEtapa,
         funil: {
           id: funil.id,
           nome: funil.nome,

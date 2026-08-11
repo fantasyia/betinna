@@ -1,6 +1,7 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { parse } from 'papaparse';
-import type { Prisma, LeadEtapa } from '@prisma/client';
+import { Prisma } from '@prisma/client';
+import type { LeadEtapa } from '@prisma/client';
 import { PrismaService } from '@database/prisma.service';
 import { EnvService } from '@config/env.service';
 import { FluxoEventBusService } from '@modules/fluxos/fluxo-event-bus.service';
@@ -643,6 +644,26 @@ export class ImportService {
           }
         }
       } catch (err) {
+        // AUDITORIA (#71): o dedup é POR REQUISIÇÃO (`vistasNoArquivo` + a
+        // consulta de existentes feita no começo). Duas importações rodando ao
+        // mesmo tempo — a planilha mandada duas vezes, ou o mesmo arquivo em
+        // duas abas — não se enxergam: as duas leem "não existe" e as duas
+        // tentam criar. O que segura é o índice único do banco (CNPJ, SKU,
+        // telefone), que devolve P2002. Isso NÃO é erro do arquivo: a linha já
+        // está no sistema, então conta como duplicata, igual às outras.
+        if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === 'P2002') {
+          pulados++;
+          if (detalhes.length < DETALHES_LIMITE) {
+            detalhes.push({
+              linha: linhaNum,
+              status: 'pulado',
+              motivo:
+                'já existe — criada por outra importação rodando ao mesmo tempo ' +
+                '(conflito no índice único do banco)',
+            });
+          }
+          continue;
+        }
         erros++;
         const motivo = err instanceof Error ? err.message : String(err);
         if (detalhes.length < DETALHES_LIMITE) {

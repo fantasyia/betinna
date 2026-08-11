@@ -142,12 +142,17 @@ interface KanbanResponse {
   };
   /** Mapa etapaId → leads (etapaId = FunilEtapa.id ou enum name no fallback) */
   grupos: Record<string, Lead[]>;
-  /** true quando o backend cortou em KANBAN_CAP (500) — a UI avisa que há mais. */
+  /**
+   * Total REAL por etapa (#19b) — inclui o que ficou fora do teto. Sem isto a
+   * coluna mostrava só a contagem do que veio e parecia que tinha acabado.
+   */
+  totaisPorEtapa?: Record<string, number>;
+  /** true quando alguma coluna bateu o teto por etapa — a UI avisa que há mais. */
   truncado?: boolean;
 }
 
-/** Cap do kanban no backend (KANBAN_CAP). Usado só pra mensagem de truncamento. */
-const KANBAN_CAP = 500;
+/** Teto POR ETAPA no backend (KANBAN_CAP_POR_ETAPA). Só pra mensagem. */
+const KANBAN_CAP_POR_ETAPA = 100;
 
 interface FunilListItem {
   id: string;
@@ -497,8 +502,9 @@ export default function LeadsPage() {
           >
             <AlertCircle className="h-4 w-4 mt-0.5 shrink-0" />
             <span>
-              Mostrando os primeiros {KANBAN_CAP} leads deste funil. Há mais leads não
-              exibidos — use os filtros ou a busca em Contatos pra encontrá-los.
+              Alguma coluna passou de {KANBAN_CAP_POR_ETAPA} leads — o quadro mostra os mais
+              recentes de cada etapa. O número no topo da coluna é o total de verdade; pra
+              chegar nos demais, use os filtros ou a busca em Contatos.
             </span>
           </div>
         )}
@@ -521,6 +527,7 @@ export default function LeadsPage() {
                   key={etapa.id}
                   etapa={etapa}
                   leads={optimistic.grupos[etapa.id] ?? []}
+                  totalReal={optimistic.totaisPorEtapa?.[etapa.id]}
                   onCardClick={setSelected}
                 />
               ))}
@@ -594,14 +601,20 @@ export default function LeadsPage() {
 function KanbanColumn({
   etapa,
   leads,
+  totalReal,
   onCardClick,
 }: {
   etapa: FunilEtapaLite;
   leads: Lead[];
+  /** Total de verdade da etapa (#19b) — pode ser maior que `leads.length`. */
+  totalReal?: number;
   onCardClick: (l: Lead) => void;
 }) {
   const { setNodeRef, isOver } = useDroppable({ id: etapa.id });
   const total = leads.reduce((s, l) => s + l.valorEstimado, 0);
+  // #19b: quando a coluna bateu o teto, o contador tem que dizer o total REAL —
+  // senão o vendedor lê "100" e acha que a etapa acabou ali.
+  const cortada = typeof totalReal === 'number' && totalReal > leads.length;
 
   return (
     <div
@@ -627,8 +640,15 @@ function KanbanColumn({
           >
             {etapa.nome}
           </span>
-          <span className="text-[10px] text-muted tabular bg-surface px-1.5 py-0.5 rounded-full border border-border">
-            {leads.length}
+          <span
+            className="text-[10px] text-muted tabular bg-surface px-1.5 py-0.5 rounded-full border border-border"
+            title={
+              cortada
+                ? `Mostrando ${leads.length} dos ${totalReal} leads desta etapa`
+                : undefined
+            }
+          >
+            {cortada ? `${leads.length} de ${totalReal}` : leads.length}
           </span>
         </div>
         {total > 0 && (

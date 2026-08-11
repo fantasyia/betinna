@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { Prisma } from '@prisma/client';
 import type { UserRole } from '@prisma/client';
 import { ForbiddenException } from '@shared/errors/app-exception';
 import type { AuthenticatedUser } from '@shared/types/authenticated-user';
@@ -827,5 +828,53 @@ A,Z9,10`,
 
     expect(r.erros).toBeGreaterThan(0);
     expect(r.detalhes.some((d) => d.motivo?.includes('linha ilegível'))).toBe(true);
+  });
+});
+
+/**
+ * #71 — a corrida entre DUAS requisições (o dedup interno só enxerga a própria).
+ */
+describe('ImportService — corrida entre importações simultâneas (#71)', () => {
+  let prisma: ReturnType<typeof makePrisma>;
+  let svc: ImportService;
+
+  beforeEach(() => {
+    prisma = makePrisma();
+    svc = new ImportService(prisma as never, makeBus() as never, makeEnv() as never);
+  });
+
+  it('P2002 do índice único conta como DUPLICATA, não como erro do arquivo', async () => {
+    // A outra importação criou o produto entre a nossa leitura e a nossa escrita.
+    prisma.produto.create.mockRejectedValueOnce(
+      new Prisma.PrismaClientKnownRequestError('Unique constraint failed', {
+        code: 'P2002',
+        clientVersion: '6.0.0',
+      }),
+    );
+
+    const r = await svc.importarProdutos(fakeUser(), {
+      csv: `nome,sku,preco
+Master Block,MB-01,100`,
+      dryRun: false,
+      onDuplicate: 'skip',
+    });
+
+    expect(r.erros).toBe(0); // ← o ponto do achado: não é erro do arquivo
+    expect(r.pulados).toBe(1);
+    expect(r.detalhes[0].motivo).toMatch(/outra importação/i);
+  });
+
+  it('erro de verdade continua sendo erro (não vira duplicata silenciosa)', async () => {
+    prisma.produto.create.mockRejectedValueOnce(new Error('conexão caiu'));
+
+    const r = await svc.importarProdutos(fakeUser(), {
+      csv: `nome,sku,preco
+Master Block,MB-01,100`,
+      dryRun: false,
+      onDuplicate: 'skip',
+    });
+
+    expect(r.erros).toBe(1);
+    expect(r.pulados).toBe(0);
   });
 });
