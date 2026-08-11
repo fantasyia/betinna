@@ -18,6 +18,8 @@ import {
 
 /** Teto de POSTs por chave por minuto (formulário de site não passa disso). */
 const RL_MAX_POR_MIN = 60;
+/** Teto diário por chave — 60/min sustentado daria 86 mil leads/dia. */
+const RL_MAX_POR_DIA = 2_000;
 
 /**
  * Captura PÚBLICA de leads — formulários do site do tenant POSTam aqui.
@@ -399,18 +401,58 @@ export class LeadCaptureService {
     return null;
   }
 
-  /** Rate-limit por chave (janela 1min). Fail-open se Redis cair. */
+  /**
+   * Rate-limit por chave: janela de 1min E teto DIÁRIO.
+   *
+   * AUDITORIA (média): o `catch { return true }` era fail-open puro. A chave de
+   * captura vive no JS do site (qualquer visitante extrai), então com o Redis
+   * oscilando dava pra martelar o endereço público SEM LIMITE NENHUM, aplicando
+   * etiquetas que roteiam fluxos de nutrição reais. E mesmo com Redis de pé, 60
+   * por minuto sustentados = 86 mil leads/dia, o que também não é limite.
+   *
+   * Agora: (a) contador DIÁRIO além do por-minuto; (b) o fail-open vira
+   * fail-open COM TETO — em vez de liberar geral quando o Redis some, um
+   * contador em memória do processo segura a rajada. Não é distribuído (cada
+   * réplica tem o seu), mas transforma "ilimitado" em "limitado por réplica",
+   * que é a diferença entre um incidente e um arranhão.
+   */
   private async dentroDoLimite(chave: string): Promise<boolean> {
-    const bucket = Math.floor(Date.now() / 60_000);
-    const key = `leadcap:rl:${this.hash(chave).slice(0, 16)}:${bucket}`;
+    const agora = Date.now();
+    const bucket = Math.floor(agora / 60_000);
+    const hash = this.hash(chave).slice(0, 16);
     try {
-      const n = await this.redis.incr(key);
-      if (n === 1) await this.redis.client.expire(key, 90);
-      return n <= RL_MAX_POR_MIN;
+      const n = await this.redis.incr(`leadcap:rl:${hash}:${bucket}`);
+      if (n === 1) await this.redis.client.expire(`leadcap:rl:${hash}:${bucket}`, 90);
+      if (n > RL_MAX_POR_MIN) return false;
+
+      const dia = new Date(agora).toISOString().slice(0, 10);
+      const nd = await this.redis.incr(`leadcap:rl:dia:${hash}:${dia}`);
+      if (nd === 1) await this.redis.client.expire(`leadcap:rl:dia:${hash}:${dia}`, 172_800);
+      if (nd > RL_MAX_POR_DIA) {
+        this.logger.warn(`Captura pública: teto DIÁRIO estourado (${nd}) pra chave ${hash}`);
+        return false;
+      }
+      return true;
     } catch {
+      // Redis fora: degrada pra um balde em memória, NÃO pra "pode tudo".
+      const janela = this.rlMemoria.get(hash);
+      if (!janela || janela.bucket !== bucket) {
+        this.rlMemoria.set(hash, { bucket, n: 1 });
+        // Evita crescer sem fim se muitas chaves distintas baterem.
+        if (this.rlMemoria.size > 5_000) this.rlMemoria.clear();
+        return true;
+      }
+      janela.n += 1;
+      if (janela.n > RL_MAX_POR_MIN) {
+        this.logger.warn(`Captura pública: Redis fora e limite em memória estourado (${hash})`);
+        return false;
+      }
       return true;
     }
   }
+
+  /** Fallback do rate-limit quando o Redis está fora (por processo). */
+  private readonly rlMemoria = new Map<string, { bucket: number; n: number }>();
 
   private hash(chave: string): string {
     return createHash('sha256').update(chave).digest('hex');

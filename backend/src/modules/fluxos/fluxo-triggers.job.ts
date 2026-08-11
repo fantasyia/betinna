@@ -364,21 +364,55 @@ export class FluxoTriggersJob {
           // distinguir "job nunca existiu" (órfã) de "job ainda na fila"
           // (backlog) — sem isso ele apagava execução que ia rodar.
           const jobIdCron = `cron_${f.id}_${slot.getTime()}`;
-          const exec = await this.prisma.fluxoExecucao.create({
-            data: {
-              fluxoId: f.id,
-              empresaId: f.empresaId,
-              status: 'PENDENTE',
-              contexto: { _cron: true },
-              jobId: jobIdCron,
-            },
-          });
+          // AUDITORIA (média): o cursor já foi gravado ACIMA (claim, pra evitar
+          // disparo duplicado). Se o create/enfileiramento falhar aqui, o slot
+          // está perdido PRA SEMPRE — o cron das 09:00 simplesmente não roda
+          // naquele dia por causa de um erro transiente. A compensação devolve o
+          // cursor pro próprio slot, e a rodada seguinte (1min depois) tenta de
+          // novo; o jobId determinístico por slot garante que, se o disparo
+          // tiver ido, o BullMQ deduplica em vez de rodar duas vezes.
+          let exec;
+          try {
+            exec = await this.prisma.fluxoExecucao.create({
+              data: {
+                fluxoId: f.id,
+                empresaId: f.empresaId,
+                status: 'PENDENTE',
+                contexto: { _cron: true },
+                jobId: jobIdCron,
+              },
+            });
+          } catch (err) {
+            await this.gravarProximoCron(f.id, slot).catch(() => undefined);
+            this.logger.error(
+              `Cron do fluxo ${f.id}: falha ao criar execução do slot ${slot.toISOString()} — ` +
+                `cursor devolvido pra retentar. Causa: ${err instanceof Error ? err.message : String(err)}`,
+            );
+            return;
+          }
           // jobId determinístico por slot → reforço: BullMQ deduplica enfileiramento
           // duplicado se duas rodadas correrem o mesmo slot antes do claim do cursor.
           // SEM ":" — o BullMQ (v5) REJEITA custom job id com ":" ("Custom Id cannot
           // contain :"), o que fazia o queue.add lançar e a execução ficar PENDENTE pra
           // sempre. Usa epoch (getTime) do slot no lugar do ISO (que tinha ":").
-          await this.bus.dispararDireto(exec.id, triggerNo.id, { jobId: jobIdCron });
+          try {
+            await this.bus.dispararDireto(exec.id, triggerNo.id, { jobId: jobIdCron });
+          } catch (err) {
+            // Execução criada mas não enfileirada: devolve o cursor E marca a
+            // execução como falha, senão ela fica PENDENTE órfã pra sempre.
+            await this.gravarProximoCron(f.id, slot).catch(() => undefined);
+            await this.prisma.fluxoExecucao
+              .update({
+                where: { id: exec.id },
+                data: { status: 'FALHOU', erroMsg: 'falha ao enfileirar o job do cron' },
+              })
+              .catch(() => undefined);
+            this.logger.error(
+              `Cron do fluxo ${f.id}: falha ao ENFILEIRAR o slot ${slot.toISOString()} — ` +
+                `cursor devolvido. Causa: ${err instanceof Error ? err.message : String(err)}`,
+            );
+            return;
+          }
           // Métrica de latência: atraso entre o horário agendado e o disparo real.
           await this.cronMetrics.registrar(agora.getTime() - slot.getTime());
           this.logger.log(`CRON_AGENDADO: fluxo "${f.nome}" disparado (exec ${exec.id})`);

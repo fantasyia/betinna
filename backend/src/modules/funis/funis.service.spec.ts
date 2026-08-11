@@ -18,6 +18,8 @@ const makePrisma = () => ({
     count: vi.fn().mockResolvedValue(0),
   },
   $queryRaw: vi.fn().mockResolvedValue([]),
+  // #29: remove() e create() passaram a usar transação interativa.
+  $transaction: vi.fn(),
 });
 
 const admin: AuthenticatedUser = {
@@ -161,5 +163,43 @@ describe('FunisService — uso de etapa (leadsCount + fluxosQueApontam)', () => 
 
     // Só as chamadas dos dois findById (fluxosQueApontam) — nenhuma busca de condição.
     expect(prisma.$queryRaw).toHaveBeenCalledTimes(2);
+  });
+});
+
+describe('FunisService.remove — corrida com lead novo (#29)', () => {
+  const montar = () => {
+    const prisma = makePrisma();
+    // Transação interativa: roda o callback com o MESMO mock (o tx é o prisma).
+    prisma.$transaction.mockImplementation((cb: (t: unknown) => unknown) => cb(prisma));
+    prisma.funil.findFirst.mockResolvedValue({
+      id: 'f1',
+      empresaId: 'emp-1',
+      nome: 'Funil',
+      isPadrao: false,
+      protegido: false,
+      etapas: [],
+      _count: { leads: 0 },
+    });
+    return { prisma, svc: new FunisService(prisma as never) };
+  };
+
+  it('lead criado DEPOIS da checagem inicial impede o delete (re-contagem na tx)', async () => {
+    const { prisma, svc } = montar();
+    // findById viu 0 leads; dentro da transação já existe 1 (captura do site,
+    // importação, triagem entrando na janela). Antes, o funil era apagado e o
+    // lead virava órfão por SetNull — sumia de todo kanban, sem erro.
+    prisma.lead.count.mockResolvedValue(1);
+
+    await expect(svc.remove(admin, 'f1')).rejects.toThrow(/1 lead/);
+    expect(prisma.funil.delete).not.toHaveBeenCalled();
+  });
+
+  it('sem lead na janela, apaga normalmente', async () => {
+    const { prisma, svc } = montar();
+    prisma.lead.count.mockResolvedValue(0);
+
+    await svc.remove(admin, 'f1');
+
+    expect(prisma.funil.delete).toHaveBeenCalledWith({ where: { id: 'f1' } });
   });
 });

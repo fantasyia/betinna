@@ -101,7 +101,19 @@ function seguro<A>(fn: (args: A) => Promise<{ content: Array<{ type: 'text'; tex
       return await fn(args);
     } catch (err) {
       if (err instanceof ApiError) return erro(err.message);
-      return erro(err instanceof Error ? err.message : String(err));
+      // #34: erro NÃO-ApiError (bug do próprio server, JSON malformado, etc.)
+      // perdia a `cause`, que costuma ser a única pista real do que quebrou.
+      if (err instanceof Error) {
+        const causa = err.cause;
+        const extra =
+          causa instanceof Error
+            ? ` (causa: ${causa.message})`
+            : causa
+              ? ` (causa: ${String(causa).slice(0, 200)})`
+              : '';
+        return erro(`${err.message}${extra}`);
+      }
+      return erro(String(err));
     }
   };
 }

@@ -534,15 +534,18 @@ export class FunisService {
   async create(user: AuthenticatedUser, dto: CreateFunilDto): Promise<FunilWithRel> {
     const empresaId = this.requireEmpresa(user);
 
-    // Se marcando este como padrão, desmarca os outros antes
-    if (dto.isPadrao) {
-      await this.prisma.funil.updateMany({
-        where: { empresaId, isPadrao: true },
-        data: { isPadrao: false },
-      });
-    }
-
     const created = await this.prisma.$transaction(async (tx) => {
+      // AUDITORIA (média): o desmarque dos outros `isPadrao` rodava FORA da
+      // transação, antes do create. Se o create falhasse, a empresa ficava SEM
+      // funil padrão nenhum — e dois creates concorrentes podiam terminar com
+      // dois padrões (cada um desmarcou antes de o outro inserir). Dentro da tx,
+      // ou tudo acontece ou nada.
+      if (dto.isPadrao) {
+        await tx.funil.updateMany({
+          where: { empresaId, isPadrao: true },
+          data: { isPadrao: false },
+        });
+      }
       const funil = await tx.funil.create({
         data: {
           empresaId,
@@ -629,22 +632,31 @@ export class FunisService {
     // Funil protegido/obrigatório: rep não exclui.
     this.assertPodeEditar(user, existing);
 
-    if (existing._count.leads > 0) {
-      throw new BusinessRuleException(
-        `Funil tem ${existing._count.leads} lead(s) — mova-os pra outro funil antes de excluir.`,
-      );
-    }
-    if (existing.isPadrao) {
-      // Permite excluir o padrão mas avisa pra ter outro funil
-      const outros = await this.prisma.funil.count({
-        where: { empresaId: existing.empresaId, id: { not: id } },
-      });
-      if (outros === 0) {
-        throw new BusinessRuleException('Não pode excluir o único funil. Crie outro funil antes.');
+    // AUDITORIA (média): a contagem de leads e o delete eram operações separadas.
+    // Um lead criado NA JANELA entre as duas (captura do site, importação,
+    // triagem) era apagado junto — o `funilId` do lead tem onDelete: SetNull, o
+    // lead virava órfão sem funil e sumia de todo kanban, sem erro. Re-contamos
+    // DENTRO da transação, imediatamente antes de apagar.
+    await this.prisma.$transaction(async (tx) => {
+      const leads = await tx.lead.count({ where: { funilId: id } });
+      if (leads > 0) {
+        throw new BusinessRuleException(
+          `Funil tem ${leads} lead(s) — mova-os pra outro funil antes de excluir.`,
+        );
       }
-    }
-
-    await this.prisma.funil.delete({ where: { id } });
+      if (existing.isPadrao) {
+        // Permite excluir o padrão mas avisa pra ter outro funil
+        const outros = await tx.funil.count({
+          where: { empresaId: existing.empresaId, id: { not: id } },
+        });
+        if (outros === 0) {
+          throw new BusinessRuleException(
+            'Não pode excluir o único funil. Crie outro funil antes.',
+          );
+        }
+      }
+      await tx.funil.delete({ where: { id } });
+    });
   }
 
   // ─── Etapas ──────────────────────────────────────────────────────

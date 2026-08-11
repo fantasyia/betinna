@@ -20,7 +20,40 @@ const BASE = `${API_URL.replace(/\/+$/, '')}/api/v1`;
 interface Envelope<T> {
   success: boolean;
   data?: T;
-  error?: { code?: string; message?: string };
+  /** `details` carrega os issues do Zod — é onde mora o motivo REAL do 400. */
+  error?: { code?: string; message?: string; details?: unknown };
+}
+
+/**
+ * Achata `error.details` num texto curto e legível.
+ *
+ * AUDITORIA (média): o MCP descartava `details` e `code`, então TODO erro de
+ * validação chegava como "ERRO: Dados inválidos" — sem dizer qual campo, o que
+ * transformava cada ajuste de fluxo/card numa adivinhação por tentativa. O Zod
+ * manda `[{ path: ['nos',0,'acaoTipo'], message: '...' }]`; é isso que interessa.
+ */
+function formatarDetalhes(details: unknown): string {
+  if (!details) return '';
+  if (typeof details === 'string') return ` — ${details}`;
+  if (Array.isArray(details)) {
+    const linhas = details
+      .map((d) => {
+        if (typeof d === 'string') return d;
+        const o = d as { path?: unknown; message?: unknown; campo?: unknown };
+        const caminho = Array.isArray(o.path) ? o.path.join('.') : String(o.campo ?? '');
+        const msg = typeof o.message === 'string' ? o.message : JSON.stringify(d);
+        return caminho ? `${caminho}: ${msg}` : msg;
+      })
+      .filter(Boolean);
+    // Cap de 5: erro de grafo pode ter dezenas de issues e o resto vira ruído.
+    const mostrar = linhas.slice(0, 5).join('; ');
+    return linhas.length > 5 ? ` — ${mostrar} (+${linhas.length - 5})` : ` — ${mostrar}`;
+  }
+  try {
+    return ` — ${JSON.stringify(details).slice(0, 400)}`;
+  } catch {
+    return '';
+  }
 }
 
 export class ApiError extends Error {
@@ -40,11 +73,24 @@ async function interpretar<T>(res: Response): Promise<T> {
   try {
     json = (await res.json()) as Envelope<T>;
   } catch {
-    throw new ApiError(`Resposta inválida da API (HTTP ${res.status})`, res.status);
+    // Não-JSON (HTML de proxy, 502 do Railway): mostra o começo do corpo — sem
+    // isso o operador só via "resposta inválida" e não sabia se era o proxy.
+    const corpo = await res
+      .clone()
+      .text()
+      .catch(() => '');
+    const trecho = corpo.trim().slice(0, 200).replace(/\s+/g, ' ');
+    throw new ApiError(
+      `Resposta inválida da API (HTTP ${res.status})${trecho ? ` — ${trecho}` : ''}`,
+      res.status,
+    );
   }
 
   if (!res.ok || !json.success) {
-    const msg = json.error?.message ?? `Erro HTTP ${res.status}`;
+    const base = json.error?.message ?? `Erro HTTP ${res.status}`;
+    // code + details: sem eles, "Dados inválidos" não diz NADA de acionável.
+    const codigo = json.error?.code ? ` [${json.error.code}]` : '';
+    const msg = `${base}${codigo}${formatarDetalhes(json.error?.details)}`;
     if (res.status === 401) {
       throw new ApiError(`${msg}. O token pode ter sido revogado — gere outro em Quadros → Tokens de API.`, 401);
     }

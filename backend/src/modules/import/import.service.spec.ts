@@ -50,6 +50,9 @@ const makePrisma = () => ({
 // Bus de fluxos: o import só dispara LEAD_CRIADO quando o opt-in vem ligado.
 const makeBus = () => ({ disparar: vi.fn().mockResolvedValue(undefined) });
 
+// #72: o precoFabrica do create usa OMIE_PRECO_FABRICA_RATIO (era 0.7 cravado).
+const makeEnv = () => ({ get: vi.fn().mockReturnValue(0.7) });
+
 describe('ImportService.importarClientes', () => {
   let prisma: ReturnType<typeof makePrisma>;
   let bus: ReturnType<typeof makeBus>;
@@ -58,7 +61,7 @@ describe('ImportService.importarClientes', () => {
   beforeEach(() => {
     prisma = makePrisma();
     bus = makeBus();
-    svc = new ImportService(prisma as never, bus as never);
+    svc = new ImportService(prisma as never, bus as never, makeEnv() as never);
   });
 
   it('REP recebe ForbiddenException', async () => {
@@ -210,7 +213,7 @@ describe('ImportService.importarProdutos', () => {
   beforeEach(() => {
     prisma = makePrisma();
     bus = makeBus();
-    svc = new ImportService(prisma as never, bus as never);
+    svc = new ImportService(prisma as never, bus as never, makeEnv() as never);
   });
 
   it('GERENTE recebe ForbiddenException (produtos é DIRECTOR/ADMIN)', async () => {
@@ -288,7 +291,7 @@ describe('ImportService.importarLeads', () => {
   beforeEach(() => {
     prisma = makePrisma();
     bus = makeBus();
-    svc = new ImportService(prisma as never, bus as never);
+    svc = new ImportService(prisma as never, bus as never, makeEnv() as never);
   });
 
   it('REP recebe ForbiddenException', async () => {
@@ -450,7 +453,7 @@ describe('ImportService — proteções do onDuplicate=update (auditoria)', () =
   beforeEach(() => {
     prisma = makePrisma();
     bus = makeBus();
-    svc = new ImportService(prisma as never, bus as never);
+    svc = new ImportService(prisma as never, bus as never, makeEnv() as never);
   });
 
   it('lead: update NÃO move o lead de volta pra etapa alvo do import', async () => {
@@ -604,7 +607,7 @@ describe('ImportService.importarLeads — destino no funil', () => {
   beforeEach(() => {
     prisma = makePrisma();
     bus = makeBus();
-    svc = new ImportService(prisma as never, bus as never);
+    svc = new ImportService(prisma as never, bus as never, makeEnv() as never);
   });
 
   it('SEM funil/etapa: lead entra como CONTATO (sem funil), não no kanban', async () => {
@@ -676,7 +679,7 @@ describe('ImportService.importarLeads — opt-in de automações (dispararReguas
   beforeEach(() => {
     prisma = makePrisma();
     bus = makeBus();
-    svc = new ImportService(prisma as never, bus as never);
+    svc = new ImportService(prisma as never, bus as never, makeEnv() as never);
   });
 
   it('default (flag ausente) NÃO dispara nada — planilha não é motivo pra régua', async () => {
@@ -742,5 +745,87 @@ describe('ImportService.importarLeads — opt-in de automações (dispararReguas
     });
     expect(prisma.lead.update).toHaveBeenCalled();
     expect(bus.disparar).not.toHaveBeenCalled();
+  });
+});
+
+describe('ImportService — duplicata DENTRO do arquivo (#71) e linha ilegível (#69)', () => {
+  let prisma: ReturnType<typeof makePrisma>;
+  let svc: ImportService;
+
+  beforeEach(() => {
+    prisma = makePrisma();
+    svc = new ImportService(prisma as never, makeBus() as never, makeEnv() as never);
+  });
+
+  it('mesmo SKU repetido no arquivo cria UMA vez e pula a 2ª (era criar duas)', async () => {
+    // O `existente` é calculado antes de qualquer escrita: as duas linhas viam
+    // null e criavam dois produtos.
+    const r = await svc.importarProdutos(fakeUser(), {
+      csv: `nome,sku,preco
+Master Block,MB-01,100
+Master Block (repetido),MB-01,100`,
+      dryRun: false,
+      onDuplicate: 'skip',
+    });
+
+    expect(r.criados).toBe(1);
+    expect(r.pulados).toBe(1);
+    expect(prisma.produto.create).toHaveBeenCalledTimes(1);
+    const pulada = r.detalhes.find((d) => d.status === 'pulado');
+    expect(pulada?.motivo).toContain('duplicada no próprio arquivo');
+    expect(pulada?.motivo).toContain('linha 2');
+  });
+
+  it('no dryRun o preview também não conta a repetida como "a criar"', async () => {
+    const r = await svc.importarProdutos(fakeUser(), {
+      csv: `nome,sku,preco
+A,X1,10
+A de novo,X1,10
+B,X2,20`,
+      dryRun: true,
+      onDuplicate: 'skip',
+    });
+
+    expect(r.criados).toBe(2);
+    expect(r.pulados).toBe(1);
+  });
+
+  it('lead repetido casa pelo SUFIXO do telefone, não pela string crua', async () => {
+    const r = await svc.importarLeads(fakeUser(), {
+      rows: [
+        { nome: 'João', telefone: '11999990000' },
+        { nome: 'Joao (outro formato)', telefone: '+55 11 99999-0000' },
+      ],
+      dryRun: false,
+      onDuplicate: 'skip',
+    });
+
+    expect(r.criados).toBe(1);
+    expect(r.pulados).toBe(1);
+  });
+
+  it('onDuplicate=error trata a repetida do arquivo como erro', async () => {
+    const r = await svc.importarProdutos(fakeUser(), {
+      csv: `nome,sku,preco
+A,Z9,10
+A,Z9,10`,
+      dryRun: false,
+      onDuplicate: 'error',
+    });
+
+    expect(r.criados).toBe(1);
+    expect(r.erros).toBe(1);
+  });
+
+  it('#69: linha ilegível do CSV vira ERRO no relatório, não só log', async () => {
+    // Aspas não fechadas: o papaparse reporta em `errors` e a linha some do data.
+    const r = await svc.importarProdutos(fakeUser(), {
+      csv: ['nome,sku,preco', '"Produto sem fechar,SKU1,10', 'Outro,SKU2,20'].join('\n'),
+      dryRun: true,
+      onDuplicate: 'skip',
+    });
+
+    expect(r.erros).toBeGreaterThan(0);
+    expect(r.detalhes.some((d) => d.motivo?.includes('linha ilegível'))).toBe(true);
   });
 });

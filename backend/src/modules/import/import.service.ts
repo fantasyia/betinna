@@ -2,6 +2,7 @@ import { Injectable, Logger } from '@nestjs/common';
 import { parse } from 'papaparse';
 import type { Prisma, LeadEtapa } from '@prisma/client';
 import { PrismaService } from '@database/prisma.service';
+import { EnvService } from '@config/env.service';
 import { FluxoEventBusService } from '@modules/fluxos/fluxo-event-bus.service';
 import { BusinessRuleException, ForbiddenException } from '@shared/errors/app-exception';
 import { ErrorCode } from '@shared/errors/error-codes';
@@ -39,10 +40,17 @@ const DETALHES_LIMITE = 100;
 @Injectable()
 export class ImportService {
   private readonly logger = new Logger(ImportService.name);
+  /**
+   * Linhas que o papaparse NÃO conseguiu ler no CSV atual. Preenchido por
+   * `parseCsv` e consumido por `processarLote` (#69) — antes só iam pro log e
+   * sumiam do relatório que o usuário recebe.
+   */
+  private errosParsing: ImportResultLinha[] = [];
 
   constructor(
     private readonly prisma: PrismaService,
     private readonly bus: FluxoEventBusService,
+    private readonly env: EnvService,
   ) {}
 
   private requireEmpresa(user: AuthenticatedUser): string {
@@ -119,7 +127,8 @@ export class ImportService {
           omieStatus: 'ATIVO',
         };
 
-        return { ok: true, existente, data };
+        // #71: mesma chave do dedup do banco (CNPJ só-dígitos > e-mail).
+        return { ok: true, existente, data, chave: cnpj || email || undefined };
       },
       async (data, existenteId, dryRun) => {
         if (dryRun) return existenteId ?? 'dry-run';
@@ -193,7 +202,12 @@ export class ImportService {
           nome,
           sku,
           precoTabela,
-          precoFabrica: precoTabela * 0.7,
+          // AUDITORIA (média): era `* 0.7` cravado, enquanto o env
+          // OMIE_PRECO_FABRICA_RATIO existia e não tinha NENHUM consumidor. Duas
+          // heurísticas pro mesmo número, e a do import ignorava a configuração
+          // do tenant — margem e comissão saíam de bases diferentes conforme o
+          // produto tivesse vindo do OMIE ou de planilha.
+          precoFabrica: precoTabela * this.env.get('OMIE_PRECO_FABRICA_RATIO'),
           marca,
           linha: linhaCampo,
           categoria,
@@ -201,7 +215,8 @@ export class ImportService {
           ativo: true,
         };
 
-        return { ok: true, existente, data };
+        // #71: o dedup do banco é por SKU — mesma chave aqui.
+        return { ok: true, existente, data, chave: sku || undefined };
       },
       async (data, existenteId, dryRun) => {
         if (dryRun) return existenteId ?? 'dry-run';
@@ -335,7 +350,10 @@ export class ImportService {
           valorEstimado: valorEstimadoRaw !== null,
           ordemPrioridade: ordemPrioridade !== null,
         };
-        return { ok: true, existente, data: { ...data, _presentes } as never };
+        // #71: mesma chave do dedup D18 (sufixo de 8 dígitos) com fallback e-mail.
+        const chaveLead =
+          digitos.length >= 8 ? `tel:${digitos.slice(-8)}` : email ? `em:${email}` : undefined;
+        return { ok: true, existente, data: { ...data, _presentes } as never, chave: chaveLead };
       },
       async (data, existenteId, dryRun) => {
         if (dryRun) return existenteId ?? 'dry-run';
@@ -486,7 +504,21 @@ export class ImportService {
       delimitersToGuess: [',', ';', '\t', '|'],
     });
     if (parsed.errors.length > 0) {
+      // AUDITORIA (média): os erros do papaparse só iam pro log do servidor —
+      // quem importava recebia o resultado sem nenhuma menção às linhas que o
+      // parser não conseguiu ler (aspas não fechadas, coluna a mais). O total
+      // batia com o que foi PARSEADO, então parecia que tudo entrou.
+      // Guardados pra virar linhas de "erro" no relatório do import.
       this.logger.warn(`CSV com ${parsed.errors.length} erro(s) de parsing`);
+      this.errosParsing = parsed.errors.slice(0, DETALHES_LIMITE).map((e) => ({
+        // papaparse é 0-indexed e não conta o header: +2 pra bater com o que a
+        // pessoa vê aberto no Excel.
+        linha: typeof e.row === 'number' ? e.row + 2 : 0,
+        status: 'erro' as const,
+        motivo: `linha ilegível no CSV: ${e.message}`,
+      }));
+    } else {
+      this.errosParsing = [];
     }
     // Falha ALTO em vez de truncar: o slice silencioso descartava as linhas
     // excedentes e o `total` reportava o tamanho já cortado — o usuário achava
@@ -512,15 +544,35 @@ export class ImportService {
       linha: Record<string, string>,
       idx: number,
     ) => Promise<
-      { ok: false; motivo: string } | { ok: true; existente: { id: string } | null; data: T }
+      | { ok: false; motivo: string }
+      | {
+          ok: true;
+          existente: { id: string } | null;
+          data: T;
+          /**
+           * Chave natural de dedup DA LINHA (cnpj, sku, sufixo de telefone…).
+           * Usada pra detectar repetição DENTRO DO PRÓPRIO ARQUIVO — ver #71.
+           */
+          chave?: string;
+        }
     >,
     persist: (data: T, existenteId: string | null, dryRun: boolean) => Promise<string>,
   ): Promise<ImportResultDto> {
     let criados = 0;
     let atualizados = 0;
     let pulados = 0;
-    let erros = 0;
-    const detalhes: ImportResultLinha[] = [];
+    // #69: linhas ilegíveis do CSV entram como erro no relatório, não só no log.
+    let erros = this.errosParsing.length;
+    const detalhes: ImportResultLinha[] = [...this.errosParsing];
+    this.errosParsing = [];
+
+    // AUDITORIA (média): o `existente` é calculado ANTES de qualquer escrita, uma
+    // linha por vez. Duas linhas IGUAIS no mesmo arquivo viam as duas
+    // `existente = null` e criavam DOIS registros — e no dryRun o preview dizia
+    // "a criar: 100" pra um arquivo com 20 repetidas. Aqui guardamos o id que a
+    // 1ª ocorrência produziu; da 2ª em diante a linha é tratada como duplicata e
+    // obedece o `onDuplicate` (skip/update/error), igual a uma duplicata do banco.
+    const vistasNoArquivo = new Map<string, { id: string; linha: number }>();
 
     for (let i = 0; i < rows.length; i++) {
       const linhaNum = i + 2; // +1 (header) +1 (1-indexed)
@@ -533,31 +585,41 @@ export class ImportService {
           }
           continue;
         }
-        if (val.existente && onDuplicate === 'skip') {
+        // Repetição no próprio arquivo tem a mesma semântica de duplicata.
+        const repetida = val.chave ? vistasNoArquivo.get(val.chave) : undefined;
+        const existenteEfetivo = val.existente ?? (repetida ? { id: repetida.id } : null);
+        const motivoDup = repetida
+          ? `duplicada no próprio arquivo (1ª ocorrência na linha ${repetida.linha})`
+          : 'já existe';
+
+        if (existenteEfetivo && onDuplicate === 'skip') {
           pulados++;
           if (detalhes.length < DETALHES_LIMITE) {
             detalhes.push({
               linha: linhaNum,
               status: 'pulado',
-              id: val.existente.id,
-              motivo: 'já existe — onDuplicate=skip',
+              id: existenteEfetivo.id,
+              motivo: `${motivoDup} — onDuplicate=skip`,
             });
           }
           continue;
         }
-        if (val.existente && onDuplicate === 'error') {
+        if (existenteEfetivo && onDuplicate === 'error') {
           erros++;
           if (detalhes.length < DETALHES_LIMITE) {
             detalhes.push({
               linha: linhaNum,
               status: 'erro',
-              motivo: `duplicata — onDuplicate=error (id=${val.existente.id})`,
+              motivo: `${motivoDup} — onDuplicate=error (id=${existenteEfetivo.id})`,
             });
           }
           continue;
         }
-        const id = await persist(val.data, val.existente?.id ?? null, dryRun);
-        if (val.existente) {
+        const id = await persist(val.data, existenteEfetivo?.id ?? null, dryRun);
+        if (val.chave && !vistasNoArquivo.has(val.chave)) {
+          vistasNoArquivo.set(val.chave, { id, linha: linhaNum });
+        }
+        if (existenteEfetivo) {
           atualizados++;
           if (detalhes.length < DETALHES_LIMITE) {
             detalhes.push({ linha: linhaNum, status: 'atualizado', id });

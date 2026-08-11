@@ -76,7 +76,10 @@ const TEMPLATES: FluxoTemplate[] = [
         titulo: 'Cliente sem pedido há 21d',
         posX: 100,
         posY: 80,
-        config: { dias: 21, ticketMinimo: 2000 },
+        // AUDITORIA (média): a chave era `dias`, mas o job e o bus leem
+        // `diasInativo`. O template prometia 21 dias e o fluxo rodava em 30 (o
+        // default), sem erro — e o número da tela nunca batia com o do disparo.
+        config: { diasInativo: 21, ticketMinimo: 2000 },
       },
       {
         id: 'a1',
