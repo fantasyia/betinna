@@ -369,6 +369,12 @@ ${REGRAS_CATALOGO}`;
         produtos,
         orcamentoCatalogo,
         blocoConhecimento,
+        // ⚠️ REVISÃO (11/08): na 1ª versão deste fix eu CRIEI o parâmetro
+        // `modoConversa` e não passei em lugar nenhum — o default `false`
+        // mantinha o "responda que não encontrou" intacto. Fachada pura: o
+        // docblock citava o achado e o comportamento não mudava. Este é o
+        // caminho de ATENDIMENTO por WhatsApp, então true.
+        true,
       );
       userMessage = montado.userMessage;
       produtosIncluidos = montado.produtosIncluidos.length;

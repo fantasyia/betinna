@@ -352,8 +352,16 @@ export class FluxoEventBusService {
           // só disparamos os fluxos cujo limiar o cliente de fato cruzou. CAÇADA-BUG #37 (revisão):
           // sem isto, um cliente de 35 dias recebia TAMBÉM a régua de um fluxo de 90 dias.
           if (triggerTipo === 'CLIENTE_INATIVO_30D') {
-            const cfg = (triggerNo.config ?? {}) as { diasInativo?: number };
-            const req = Number(cfg.diasInativo ?? 30);
+            // ⚠️ REVISÃO (11/08): o bus lia SÓ o config do nó, enquanto o job lê
+            // `nó ?? Fluxo.triggerConfig ?? 30`. Com o filtro de limiar novo, um
+            // fluxo com `diasInativo` só no `triggerConfig` (montado por
+            // MCP/import) passava a NUNCA disparar: o job liberava [90] e o bus
+            // pedia 30. Regressão que eu introduzi. As duas pontas agora leem a
+            // MESMA coisa, com a mesma precedência.
+            const cfgNo = (triggerNo.config ?? {}) as { diasInativo?: number };
+            const cfgFluxo = (fluxo.triggerConfig ?? {}) as { diasInativo?: number };
+            const bruto = Number(cfgNo.diasInativo ?? cfgFluxo.diasInativo ?? 30);
+            const req = Number.isFinite(bruto) && bruto > 0 ? bruto : 30;
             const real = Number(contexto['diasSemPedido'] ?? 0);
             if (real < req) continue;
             // Cooldown POR LIMIAR (ver fluxo-triggers.job): o job já reivindicou

@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { SINAIS_ROTEAMENTO } from './fluxo-executor.types';
+import { filtrarVariaveisGravaveis } from './conversar-ia.service';
 import {
   semMic,
   ConversarIaService,
@@ -11,6 +12,9 @@ import {
 } from './conversar-ia.service';
 
 const makePrisma = () => ({
+  // #4: cancelamento cross-fluxo das AGUARDANDO usa raw (o filtro JSON do
+  // Prisma trata chave ausente como NULL — ver fluxo-event-bus).
+  $executeRaw: vi.fn().mockResolvedValue(0),
   lead: { findFirst: vi.fn(), update: vi.fn().mockResolvedValue({}) },
   fluxoExecucao: {
     findUnique: vi.fn(),
@@ -975,12 +979,10 @@ describe('allowlist de variaveisGravadas NÃO come os sinais de roteamento', () 
   // classificacao_final — que o MOTOR força, não a IA. O lead pedia pra sair,
   // o motor logava "forçando pedido_remocao=sim", e a chave morria aqui: a tag
   // de LGPD nunca era aplicada e ele seguia sendo abordado.
-  const filtrar = (gravaveis: string[], vars: Record<string, unknown>) => {
-    // Espelha o código: sem allowlist configurada, NADA é filtrado.
-    if (!gravaveis.length) return vars;
-    const permitidas = new Set([...gravaveis, ...SINAIS_ROTEAMENTO]);
-    return Object.fromEntries(Object.entries(vars).filter(([k]) => permitidas.has(k)));
-  };
+  // ⚠️ Antes este teste REIMPLEMENTAVA o filtro aqui dentro e testava a cópia —
+  // reverter a linha de produção mantinha tudo verde. Agora aponta pra função
+  // exportada que o service usa de verdade.
+  const filtrar = filtrarVariaveisGravaveis;
 
   it('pedido_remocao sobrevive a uma allowlist que não o lista (LGPD)', () => {
     const out = filtrar(['tipo_atuacao', 'regiao'], {

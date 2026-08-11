@@ -273,6 +273,24 @@ export function semMic(s: string): string {
   return s.replace(/^\s*🎤\s*/u, '').trim();
 }
 
+/**
+ * Aplica a allowlist `variaveisGravadas` do nó, SEMPRE deixando passar os
+ * SINAIS DE ROTEAMENTO.
+ *
+ * Exportada de propósito: a spec anterior reimplementava este filtro dentro do
+ * próprio teste e testava a cópia — reverter a linha de produção mantinha a
+ * suíte verde. Um teste que não trava nada é pior que nenhum, porque dá
+ * confiança falsa.
+ */
+export function filtrarVariaveisGravaveis(
+  gravaveis: string[],
+  vars: Record<string, unknown>,
+): Record<string, unknown> {
+  if (!gravaveis.length) return vars;
+  const permitidas = new Set<string>([...gravaveis, ...SINAIS_ROTEAMENTO]);
+  return Object.fromEntries(Object.entries(vars).filter(([k]) => permitidas.has(k)));
+}
+
 export function mesclarHistorico(
   daConversa: HistoricoMsg[],
   doContexto: HistoricoMsg[],
@@ -626,31 +644,6 @@ export class ConversarIaService {
       };
     }
 
-    // AUDITORIA (média): duas conversacionais VIVAS no mesmo lead, em fluxos
-    // DIFERENTES, ficavam ambas AGUARDANDO. O supersede do bus é escopado por
-    // `fluxoId`, então a antiga (E1) nunca era retomada nem cancelada: esperava
-    // o timeout e disparava LEAD_SEM_RESPOSTA no meio da conversa viva do E2 —
-    // o lead recebia "sumiu?" enquanto estava respondendo. Ao INICIAR uma nova
-    // conversa com este lead, encerra as AGUARDANDO de QUALQUER fluxo. Não
-    // tocamos em execuções de outros leads nem em ramos-filha (que rodam ações
-    // terminais e não esperam resposta).
-    const orfas = await this.prisma.fluxoExecucao.updateMany({
-      where: {
-        empresaId,
-        status: 'AGUARDANDO',
-        contexto: { path: ['leadId'], equals: leadId },
-        id: { not: execucaoId },
-        NOT: { contexto: { path: ['_ramoFilha'], equals: true } },
-      },
-      data: { status: 'CANCELADO', aguardandoNoId: null, timeoutEm: null, terminouEm: new Date() },
-    });
-    if (orfas.count > 0) {
-      this.logger.log(
-        `CONVERSAR_IA: ${orfas.count} execução(ões) AGUARDANDO de OUTROS fluxos encerradas — ` +
-          `conversa nova assume o lead ${leadId} (evita LEAD_SEM_RESPOSTA no meio do papo)`,
-      );
-    }
-
     // GATE DO BOT — o "desligado" do dono vale pra TODA IA, não só pro bot geral.
     // Sem isto o fluxo respondia contato com o bot desligado (aconteceu em prod:
     // dono deixou o bot ON só numa conversa, e a triagem respondeu outro contato).
@@ -840,6 +833,37 @@ export class ConversarIaService {
         }),
       },
     });
+    // AUDITORIA (média): duas conversacionais VIVAS no mesmo lead, em fluxos
+    // DIFERENTES, ficavam ambas AGUARDANDO. O supersede do bus é escopado por
+    // `fluxoId`, então a antiga (E1) nunca era retomada nem cancelada: esperava
+    // o timeout e disparava LEAD_SEM_RESPOSTA no meio da conversa viva do E2 —
+    // o lead recebia "sumiu?" enquanto estava respondendo.
+    //
+    // ⚠️ DUAS CORREÇÕES DA 1ª TENTATIVA (11/08):
+    // 1. Estava no TOPO do `iniciar()`, ANTES dos gates de bot desligado, LGPD e
+    //    lead sem telefone. Uma execução que seria PULADA já tinha derrubado a
+    //    conversa viva do outro fluxo. Agora roda aqui, no ponto em que ESTA
+    //    execução de fato entra em AGUARDANDO — só quem vai conversar cancela.
+    // 2. Usava `NOT: { contexto: { path: ['_ramoFilha'], equals: true } }`, e o
+    //    fluxo-event-bus JÁ DOCUMENTA que esse filtro do Prisma trata chave
+    //    AUSENTE como NULL e exclui as execuções-raiz — ou seja, o updateMany
+    //    casava ZERO linhas e o cancelamento era no-op. Mesmo remédio de lá:
+    //    raw com `IS DISTINCT FROM 'true'::jsonb`.
+    const orfas = await this.prisma.$executeRaw`
+      UPDATE "FluxoExecucao"
+      SET status = 'CANCELADO', "aguardandoNoId" = NULL, "timeoutEm" = NULL, "terminouEm" = now()
+      WHERE "empresaId" = ${empresaId}
+        AND status = 'AGUARDANDO'
+        AND (contexto #>> '{leadId}') = ${leadId}
+        AND id <> ${execucaoId}
+        AND (contexto #> '{_ramoFilha}') IS DISTINCT FROM 'true'::jsonb`;
+    if (orfas > 0) {
+      this.logger.log(
+        `CONVERSAR_IA: ${orfas} execução(ões) AGUARDANDO de OUTROS fluxos encerradas — ` +
+          `conversa nova assume o lead ${leadId} (evita LEAD_SEM_RESPOSTA no meio do papo)`,
+      );
+    }
+
     this.logger.log(`Execução ${execucaoId} pausada (Conversar com IA) — lead ${leadId}`);
     return { aguardando: true };
   }
@@ -1328,11 +1352,7 @@ export class ConversarIaService {
     // JOGAVA FORA a chave. O roteador a jusante lia custom.pedido_remocao vazio,
     // a tag de LGPD não era aplicada e o lead que pediu pra sair continuava sendo
     // abordado — sem erro em lugar nenhum.
-    let gravadas = turno.variaveis ?? {};
-    if (gravaveis.length) {
-      const permitidas = new Set([...gravaveis, ...SINAIS_ROTEAMENTO]);
-      gravadas = Object.fromEntries(Object.entries(gravadas).filter(([k]) => permitidas.has(k)));
-    }
+    const gravadas = filtrarVariaveisGravaveis(gravaveis, turno.variaveis ?? {});
     const novas: Record<string, unknown> = {
       ...variaveisAtuais,
       ...gravadas,

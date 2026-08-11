@@ -7,7 +7,7 @@ import {
   UnauthorizedException,
   Logger,
 } from '@nestjs/common';
-import { Throttle, seconds } from '@nestjs/throttler';
+import { Throttle, SkipThrottle, seconds } from '@nestjs/throttler';
 import { timingSafeEqual } from 'node:crypto';
 import { ApiExcludeController } from '@nestjs/swagger';
 import { Public } from '@shared/decorators/public.decorator';
@@ -43,7 +43,14 @@ interface EvolutionWebhookBody {
 // porque o Evolution não reentrega indefinidamente. Limite próprio e alto, como os
 // outros webhooks (OMIE 100/min, ML 200/min) — a autenticidade quem garante é o
 // segredo no header, não o rate-limit.
-@Throttle({ default: { limit: 600, ttl: seconds(60) } })
+// ⚠️ REVISÃO (11/08): só o @Throttle NÃO bastava. O guard exige `.every()` sobre
+// TODOS os buckets, e o app.module documenta explicitamente que "overrides que
+// queriam AUMENTAR o cap seguem limitados pelo medium=100/min — pra webhooks
+// passarem de 100/min, usar @SkipThrottle nos buckets medium/long". Ou seja: o
+// override de 600/min que eu tinha posto era decorativo, o 429 na 101ª msg/min
+// continuava. Pulando medium/long, o limite efetivo passa a ser este de fato.
+@SkipThrottle({ medium: true, long: true })
+@Throttle({ default: { limit: 600, ttl: seconds(60) }, short: { limit: 60, ttl: seconds(1) } })
 @Controller('webhooks/evolution')
 export class EvolutionWebhookController {
   private readonly logger = new Logger(EvolutionWebhookController.name);

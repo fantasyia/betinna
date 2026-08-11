@@ -40,12 +40,6 @@ const DETALHES_LIMITE = 100;
 @Injectable()
 export class ImportService {
   private readonly logger = new Logger(ImportService.name);
-  /**
-   * Linhas que o papaparse NÃO conseguiu ler no CSV atual. Preenchido por
-   * `parseCsv` e consumido por `processarLote` (#69) — antes só iam pro log e
-   * sumiam do relatório que o usuário recebe.
-   */
-  private errosParsing: ImportResultLinha[] = [];
 
   constructor(
     private readonly prisma: PrismaService,
@@ -75,7 +69,9 @@ export class ImportService {
       );
     }
 
-    const rows = dto.rows ?? this.parseCsv(dto.csv ?? '');
+    const { rows, errosParsing } = dto.rows
+      ? { rows: dto.rows, errosParsing: [] as ImportResultLinha[] }
+      : this.parseCsv(dto.csv ?? '');
     return this.processarLote(
       rows,
       dto.dryRun,
@@ -153,6 +149,7 @@ export class ImportService {
         const r = await this.prisma.cliente.create({ data, select: { id: true } });
         return r.id;
       },
+      errosParsing,
     );
   }
 
@@ -170,7 +167,7 @@ export class ImportService {
       );
     }
 
-    const rows = this.parseCsv(dto.csv);
+    const { rows, errosParsing } = this.parseCsv(dto.csv);
     return this.processarLote(
       rows,
       dto.dryRun,
@@ -237,6 +234,7 @@ export class ImportService {
         const r = await this.prisma.produto.create({ data, select: { id: true } });
         return r.id;
       },
+      errosParsing,
     );
   }
 
@@ -253,7 +251,9 @@ export class ImportService {
 
     // Sem slice: o parseCsv já rejeita acima do limite, e o caminho `rows`
     // (xlsx) é barrado pelo .max(5000) do zod. Cortar aqui escondia linhas.
-    const rows = dto.rows ?? this.parseCsv(dto.csv ?? '');
+    const { rows, errosParsing } = dto.rows
+      ? { rows: dto.rows, errosParsing: [] as ImportResultLinha[] }
+      : this.parseCsv(dto.csv ?? '');
     const alvo = await this.resolverFunilEtapa(empresaId, dto.funilId, dto.funilEtapaId);
     // Só faz sentido com destino de funil escolhido: sem funil o lead é contato
     // puro, e disparar régua de nutrição em quem não entrou em pipeline nenhum
@@ -446,6 +446,7 @@ export class ImportService {
         }
         return r.id;
       },
+      errosParsing,
     );
   }
 
@@ -495,7 +496,19 @@ export class ImportService {
 
   // ─── Core engine ─────────────────────────────────────────────────────
 
-  private parseCsv(content: string): Record<string, string>[] {
+  /**
+   * ⚠️ REVISÃO (11/08): a 1ª versão deste fix guardava os erros num CAMPO DE
+   * INSTÂNCIA (`this.errosParsing`). O service é singleton no Nest: dois
+   * imports concorrentes trocavam os erros entre si, e quando o parseCsv
+   * lançava por >5000 linhas o campo ficava populado e vazava pro import
+   * SEGUINTE daquele processo. Agora os erros voltam junto com as linhas —
+   * escopo de request, sem estado compartilhado.
+   */
+  private parseCsv(content: string): {
+    rows: Record<string, string>[];
+    errosParsing: ImportResultLinha[];
+  } {
+    let errosParsing: ImportResultLinha[] = [];
     const parsed = parse<Record<string, string>>(content.trim(), {
       header: true,
       skipEmptyLines: 'greedy',
@@ -510,15 +523,13 @@ export class ImportService {
       // batia com o que foi PARSEADO, então parecia que tudo entrou.
       // Guardados pra virar linhas de "erro" no relatório do import.
       this.logger.warn(`CSV com ${parsed.errors.length} erro(s) de parsing`);
-      this.errosParsing = parsed.errors.slice(0, DETALHES_LIMITE).map((e) => ({
+      errosParsing = parsed.errors.slice(0, DETALHES_LIMITE).map((e) => ({
         // papaparse é 0-indexed e não conta o header: +2 pra bater com o que a
         // pessoa vê aberto no Excel.
         linha: typeof e.row === 'number' ? e.row + 2 : 0,
         status: 'erro' as const,
         motivo: `linha ilegível no CSV: ${e.message}`,
       }));
-    } else {
-      this.errosParsing = [];
     }
     // Falha ALTO em vez de truncar: o slice silencioso descartava as linhas
     // excedentes e o `total` reportava o tamanho já cortado — o usuário achava
@@ -529,7 +540,7 @@ export class ImportService {
         ErrorCode.BUSINESS_RULE_VIOLATION,
       );
     }
-    return parsed.data;
+    return { rows: parsed.data, errosParsing };
   }
 
   /**
@@ -557,14 +568,15 @@ export class ImportService {
         }
     >,
     persist: (data: T, existenteId: string | null, dryRun: boolean) => Promise<string>,
+    /** Linhas que o parser não conseguiu ler — viram erro no relatório (#69). */
+    errosParsing: ImportResultLinha[] = [],
   ): Promise<ImportResultDto> {
     let criados = 0;
     let atualizados = 0;
     let pulados = 0;
     // #69: linhas ilegíveis do CSV entram como erro no relatório, não só no log.
-    let erros = this.errosParsing.length;
-    const detalhes: ImportResultLinha[] = [...this.errosParsing];
-    this.errosParsing = [];
+    let erros = errosParsing.length;
+    const detalhes: ImportResultLinha[] = [...errosParsing];
 
     // AUDITORIA (média): o `existente` é calculado ANTES de qualquer escrita, uma
     // linha por vez. Duas linhas IGUAIS no mesmo arquivo viam as duas

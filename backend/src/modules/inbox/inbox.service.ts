@@ -1221,7 +1221,20 @@ export class InboxService {
       // linha encontrada, não a resolvida pelo peer.
       const emVoo = await this.prisma.message.findFirst({
         where: {
-          conversation: { empresaId: conv.empresaId },
+          // ⚠️ REVISÃO (11/08): a 1ª tentativa deste fix abriu o escopo pra
+          // `empresaId` puro — largo DEMAIS. Numa campanha ou em resposta
+          // padronizada ("Bom dia!"), o eco do contato A adotava a linha em-voo
+          // do contato B: mensagem atribuída à CONVERSA ERRADA e a certa
+          // marcada como duplicada. Trocar um balão duplicado por mensagem no
+          // chat de outra pessoa é pior que o bug original.
+          // Escopo correto: mesma empresa + mesmo CANAL + mesmo dono da sessão
+          // (dual-owner D38). Isso cobre o caso do @lid (peerId diferente,
+          // mesma sessão) sem cruzar contatos de sessões/canais distintos.
+          conversation: {
+            empresaId: conv.empresaId,
+            canal: conv.canal,
+            proprietarioId: conv.proprietarioId,
+          },
           direction: MessageDirection.OUTBOUND,
           externalId: null,
           conteudo: params.conteudo,
