@@ -32,8 +32,16 @@ import { KnowledgeDocumentoService } from './knowledge-documento.service';
 import { KnowledgeService } from './knowledge.service';
 
 /**
- * Base de conhecimento da empresa (RAG). Leitura = qualquer usuário autenticado;
- * mutações = ADMIN/DIRECTOR (mesmo padrão de @Roles dos materiais).
+ * Base de conhecimento da empresa (RAG). Mutações = ADMIN/DIRECTOR.
+ *
+ * AUDITORIA (#24): a LEITURA era "qualquer autenticado" — um REP com o token
+ * dele batia em `/conhecimento` e baixava a base inteira: playbook comercial,
+ * política de desconto, tabela de margem, o que a empresa escreve pro bot usar.
+ * Nada disso é material de rep. Agora leitura = ADMIN/DIRECTOR/GERENTE/SAC.
+ *
+ * O bot NÃO passa por aqui: `RagService`/`KnowledgeService` consultam a base
+ * server-side, então o REP continua tendo as respostas do assistente — só não
+ * consegue mais exportar a fonte crua.
  */
 @ApiTags('conhecimento')
 @ApiBearerAuth()
@@ -45,6 +53,7 @@ export class KnowledgeController {
   ) {}
 
   @Get()
+  @Roles('ADMIN', 'DIRECTOR', 'GERENTE', 'SAC')
   @ApiOperation({ summary: 'Lista os chunks de conhecimento da empresa' })
   list(
     @CurrentUser() user: AuthenticatedUser,
@@ -56,6 +65,7 @@ export class KnowledgeController {
   // ─── Documentos (PDF/DOCX/TXT) — rotas ANTES do @Get(':id') pra não colidir ───
 
   @Get('documentos')
+  @Roles('ADMIN', 'DIRECTOR', 'GERENTE', 'SAC')
   @ApiOperation({ summary: 'Lista os documentos anexados à base de conhecimento' })
   listarDocumentos(@CurrentUser() user: AuthenticatedUser) {
     return this.documentos.listar(user);
@@ -97,6 +107,7 @@ export class KnowledgeController {
   }
 
   @Get(':id')
+  @Roles('ADMIN', 'DIRECTOR', 'GERENTE', 'SAC')
   @ApiOperation({ summary: 'Detalha um chunk' })
   findById(@CurrentUser() user: AuthenticatedUser, @Param('id') id: string) {
     return this.service.findById(user, id);

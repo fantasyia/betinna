@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { boolQuery } from '@shared/validators/query.schema';
 
 export const createEmpresaSchema = z.object({
   nome: z.string().min(2).max(200),
@@ -27,7 +28,7 @@ export const listEmpresasSchema = z.object({
   page: z.coerce.number().int().positive().default(1),
   limit: z.coerce.number().int().positive().max(100).default(20),
   search: z.string().optional(),
-  ativo: z.coerce.boolean().optional(),
+  ativo: boolQuery.optional(),
 });
 export type ListEmpresasDto = z.infer<typeof listEmpresasSchema>;
 

@@ -183,6 +183,7 @@ export class BotCustoService {
           `🚨 O bot atingiu 100% do teto de tokens (${estouLimiteMes ? 'mensal' : 'diário'}) e foi ` +
             `<strong>pausado automaticamente</strong> até ${this.fmt(ate)}. As mensagens que chegarem ` +
             `serão marcadas como "precisa humano" no Inbox.`,
+          `pausa:${estouLimiteMes ? 'mes' : 'dia'}:${this.diaBrasilia()}`,
         );
       }
       return;
@@ -202,6 +203,7 @@ export class BotCustoService {
           empresaId,
           `⚠️ O bot já consumiu <strong>${Math.round(pct)}%</strong> do teto de tokens. ` +
             `Ao chegar em 100% ele pausa sozinho até a virada do período.`,
+          `80pct:${this.diaBrasilia()}`,
         );
       }
     }
@@ -217,7 +219,11 @@ export class BotCustoService {
 
   // ─── Alerta por e-mail ───────────────────────────────────────────────────
 
-  private async alertar(empresaId: string, mensagem: string): Promise<void> {
+  /**
+   * `chave` (#20): idempotência do alerta. Sem ela, um retry do provedor mandava
+   * o mesmo "bot pausado por custo" duas vezes pro diretor.
+   */
+  private async alertar(empresaId: string, mensagem: string, chave: string): Promise<void> {
     const para = await this.resolverDestinatario(empresaId);
     if (!para) return;
     const empresa = await this.prisma.empresa.findUnique({
@@ -229,6 +235,7 @@ export class BotCustoService {
       assunto: `Bot Muller — alerta de custo (${empresa?.nome ?? 'empresa'})`,
       titulo: 'Alerta de custo do bot',
       mensagem,
+      idempotencyKey: `bot-custo:${empresaId}:${chave}`,
     });
   }
 

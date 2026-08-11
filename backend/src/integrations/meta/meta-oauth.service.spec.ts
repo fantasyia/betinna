@@ -52,6 +52,7 @@ type SalvarArgs = [string, string, Record<string, unknown>, string];
 // #B17: consumidor de nonce (anti-replay do state OAuth). true = 1º uso.
 const makeRedis = () => ({
   setNxEx: vi.fn().mockResolvedValue(true),
+  eval: vi.fn().mockResolvedValue(1),
   // #40: o lock de refresh libera a chave no finally.
   del: vi.fn().mockResolvedValue(1),
 });

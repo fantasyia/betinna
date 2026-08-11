@@ -22,13 +22,19 @@ export class KanbanListasService {
     dto: CreateListaDto,
   ): Promise<KanbanLista> {
     const board = await this.acesso.verificarAcessoBoard(user, boardId);
-    const ultima = await this.prisma.kanbanLista.findFirst({
-      where: { boardId: board.id },
-      orderBy: { posicao: 'desc' },
-      select: { posicao: true },
-    });
-    const lista = await this.prisma.kanbanLista.create({
-      data: { boardId: board.id, nome: dto.nome, posicao: posicaoNoFim(ultima?.posicao) },
+    // Mesmo motivo do #18 no `mover`: ler a última posição e criar em passos
+    // separados fazia duas listas criadas ao mesmo tempo nascerem na MESMA
+    // posição (e a ordem virava sorteio a cada reload).
+    const lista = await this.prisma.$transaction(async (tx) => {
+      await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${board.id}))`;
+      const ultima = await tx.kanbanLista.findFirst({
+        where: { boardId: board.id },
+        orderBy: { posicao: 'desc' },
+        select: { posicao: true },
+      });
+      return tx.kanbanLista.create({
+        data: { boardId: board.id, nome: dto.nome, posicao: posicaoNoFim(ultima?.posicao) },
+      });
     });
     await this.atividade.registrar({
       boardId: board.id,
@@ -74,24 +80,33 @@ export class KanbanListasService {
    */
   async mover(user: AuthenticatedUser, listaId: string, dto: MoverListaDto): Promise<KanbanLista> {
     const { board } = await this.acesso.verificarAcessoPorLista(user, listaId);
-    const lista = await this.prisma.kanbanLista.update({
-      where: { id: listaId },
-      data: { posicao: dto.posicao },
-    });
 
-    // Rebalanceamento (mesma técnica do Trello) quando o espaço aperta
-    const listas = await this.prisma.kanbanLista.findMany({
-      where: { boardId: board.id, arquivada: false },
-      orderBy: { posicao: 'asc' },
-      select: { id: true, posicao: true },
+    // AUDITORIA (#18): o move gravava a posição, LIA as listas e rebalanceava em
+    // outra transação. Duas pessoas arrastando listas do mesmo board ao mesmo
+    // tempo liam o estado no meio do rebalanceamento da outra — o board voltava
+    // com listas fora de ordem ou duas na mesma posição, e só um F5 + novo
+    // arrasto consertava. Agora é uma transação só, serializada por board com
+    // advisory lock (o lock cai sozinho no commit/rollback).
+    const lista = await this.prisma.$transaction(async (tx) => {
+      await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${board.id}))`;
+      const movida = await tx.kanbanLista.update({
+        where: { id: listaId },
+        data: { posicao: dto.posicao },
+      });
+
+      // Rebalanceamento (mesma técnica do Trello) quando o espaço aperta
+      const listas = await tx.kanbanLista.findMany({
+        where: { boardId: board.id, arquivada: false },
+        orderBy: { posicao: 'asc' },
+        select: { id: true, posicao: true },
+      });
+      if (precisaRebalancear(listas.map((l) => l.posicao))) {
+        for (const r of rebalancear(listas)) {
+          await tx.kanbanLista.update({ where: { id: r.id }, data: { posicao: r.posicao } });
+        }
+      }
+      return movida;
     });
-    if (precisaRebalancear(listas.map((l) => l.posicao))) {
-      await this.prisma.$transaction(
-        rebalancear(listas).map((r) =>
-          this.prisma.kanbanLista.update({ where: { id: r.id }, data: { posicao: r.posicao } }),
-        ),
-      );
-    }
 
     await this.atividade.registrar({
       boardId: board.id,

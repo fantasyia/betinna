@@ -162,6 +162,11 @@ export class IntegracaoStatusService {
     await this.email.enviarAlertaSistema({
       para,
       assunto: `⚠ Integração ${nomeServico} ${rotulo} na empresa ${nomeEmpresa}`,
+      // #20: casa com o throttle de 1h descrito na mensagem — mesmo evento na
+      // mesma hora = mesma chave, então retry não duplica o aviso.
+      idempotencyKey: `integracao-${status}:${empresaId}:${servico}:${new Date()
+        .toISOString()
+        .slice(0, 13)}`,
       titulo: `Integração ${nomeServico} ${rotulo}`,
       mensagem:
         `A integração <strong>${nomeServico}</strong> da empresa <strong>${nomeEmpresa}</strong> ` +

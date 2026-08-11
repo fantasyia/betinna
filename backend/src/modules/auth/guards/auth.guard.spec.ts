@@ -54,6 +54,7 @@ describe('AuthGuard — token de API (bkt_) em /funis', () => {
     redis = {
       get: vi.fn().mockResolvedValue(null), // sempre cache-miss → força ir no Prisma
       setNxEx: vi.fn().mockResolvedValue(true),
+      eval: vi.fn().mockResolvedValue(1),
       setEx: vi.fn().mockResolvedValue(undefined),
     };
     const reflector = { getAllAndOverride: vi.fn().mockReturnValue(false) } as unknown as Reflector;

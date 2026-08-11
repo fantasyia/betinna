@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { boolQuery } from '@shared/validators/query.schema';
 
 const channelEnum = z.enum([
   'WHATSAPP',
@@ -29,9 +30,9 @@ export const listIncidentsSchema = z.object({
   status: statusEnum.optional(),
   clienteId: z.string().cuid().optional(),
   /** True: só aguardando ação nossa (AGUARDANDO_VENDEDOR ou ABERTO sem prazo expirado). */
-  aguardandoMim: z.coerce.boolean().optional(),
+  aguardandoMim: boolQuery.optional(),
   /** True: incidentes com prazo expirando nas próximas 24h. */
-  prazoUrgente: z.coerce.boolean().optional(),
+  prazoUrgente: boolQuery.optional(),
   page: z.coerce.number().int().positive().default(1),
   limit: z.coerce.number().int().positive().max(100).default(30),
 });

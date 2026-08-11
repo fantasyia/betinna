@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { boolQuery } from '@shared/validators/query.schema';
 import { SERVICOS_EMPRESA, SERVICOS_INTEGRACAO, SERVICOS_USUARIO } from './integracoes.constants';
 
 const servicoEnum = z.enum(SERVICOS_INTEGRACAO);
@@ -26,7 +27,7 @@ export type DesconectarDto = z.infer<typeof desconectarSchema>;
 
 export const listConexoesSchema = z.object({
   servico: servicoEmpresaEnum.optional(),
-  ativo: z.coerce.boolean().optional(),
+  ativo: boolQuery.optional(),
 });
 export type ListConexoesDto = z.infer<typeof listConexoesSchema>;
 
@@ -40,6 +41,6 @@ export type ConectarUsuarioDto = z.infer<typeof conectarUsuarioSchema>;
 
 export const listConexoesUsuarioSchema = z.object({
   servico: servicoUsuarioEnum.optional(),
-  ativo: z.coerce.boolean().optional(),
+  ativo: boolQuery.optional(),
 });
 export type ListConexoesUsuarioDto = z.infer<typeof listConexoesUsuarioSchema>;

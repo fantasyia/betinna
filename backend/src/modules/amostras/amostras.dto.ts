@@ -1,5 +1,6 @@
 import { AmostraStatus } from '@prisma/client';
 import { z } from 'zod';
+import { boolQuery } from '@shared/validators/query.schema';
 
 export const createAmostraSchema = z.object({
   clienteId: z.string().cuid(),
@@ -48,6 +49,6 @@ export const listAmostrasSchema = z.object({
   status: z.nativeEnum(AmostraStatus).optional(),
   clienteId: z.string().cuid().optional(),
   /** Filtra amostras com follow-up vencido (data <= hoje e status != CONVERTIDA/NAO_CONVERTEU) */
-  vencidas: z.coerce.boolean().optional(),
+  vencidas: boolQuery.optional(),
 });
 export type ListAmostrasDto = z.infer<typeof listAmostrasSchema>;

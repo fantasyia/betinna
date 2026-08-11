@@ -1,5 +1,6 @@
 import { ComissaoTipo } from '@prisma/client';
 import { z } from 'zod';
+import { boolQuery } from '@shared/validators/query.schema';
 import { usuarioIdSchema } from '@shared/validators/id.schema';
 
 const MES_MIN = 1;
@@ -21,7 +22,7 @@ export const listComissoesSchema = z.object({
   ano: z.coerce.number().int().min(ANO_MIN).max(ANO_MAX).optional(),
   mes: z.coerce.number().int().min(MES_MIN).max(MES_MAX).optional(),
   representanteId: usuarioIdSchema.optional(),
-  pago: z.coerce.boolean().optional(),
+  pago: boolQuery.optional(),
   tipo: z.nativeEnum(ComissaoTipo).optional(),
 });
 export type ListComissoesDto = z.infer<typeof listComissoesSchema>;

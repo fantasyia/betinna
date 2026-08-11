@@ -72,6 +72,10 @@ export default function KnowledgePage() {
   const toast = useToast();
   const role = useRole();
   const podeEditar = role === 'ADMIN' || role === 'DIRECTOR';
+  // AUDITORIA (#24): a base traz playbook/margem/política interna — o backend
+  // passou a barrar REP nos GETs. Espelha aqui pra não mostrar tela que só
+  // renderiza 403.
+  const podeVer = podeEditar || role === 'GERENTE' || role === 'SAC';
 
   const { data, loading, error, refetch } = useApiQuery<Paginado>(
     '/conhecimento?incluirConfig=true&limit=100',
@@ -198,6 +202,19 @@ export default function KnowledgePage() {
     } catch (err) {
       toast.error('Falha ao apagar', err instanceof ApiError ? err.message : undefined);
     }
+  }
+
+  if (!podeVer) {
+    return (
+      <PageLayout title="Base de conhecimento">
+        <StateView
+          empty
+          emptyMessage="Acesso restrito: a base de conhecimento é da gestão. Você continua tendo as respostas pelo assistente."
+        >
+          {null}
+        </StateView>
+      </PageLayout>
+    );
   }
 
   return (

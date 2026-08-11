@@ -331,6 +331,12 @@ export class InboxService {
       `[inbox] conversa ${id} ZERADA: ${msgs.count} msgs apagadas, ` +
         `${execsCanceladas} execução(ões) de fluxo cancelada(s) (por ${user.email})`,
     );
+    // AUDITORIA (#11): zerar não emitia SSE. Quem estava com a thread aberta
+    // (inclusive em OUTRA aba/máquina) continuava vendo as mensagens apagadas
+    // até dar F5 — e podia responder em cima de uma conversa que não existe
+    // mais. 'mensagem' recarrega a thread; 'status' recarrega o preview da lista.
+    await this.emitirEventoIds([id], 'mensagem');
+    await this.emitirEventoIds([id], 'status');
     return { mensagens: msgs.count };
   }
 

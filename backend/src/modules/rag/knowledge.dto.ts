@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { boolQuery } from '@shared/validators/query.schema';
 
 export const createKnowledgeSchema = z.object({
   titulo: z.string().trim().min(2).max(160),
@@ -38,6 +39,6 @@ export const listKnowledgeSchema = z.object({
   limit: z.coerce.number().int().positive().max(100).default(20),
   search: z.string().optional(),
   /** Inclui chunks derivados da config (fonte=CONFIG). Default só os MANUAL. */
-  incluirConfig: z.coerce.boolean().optional(),
+  incluirConfig: boolQuery.optional(),
 });
 export type ListKnowledgeDto = z.infer<typeof listKnowledgeSchema>;

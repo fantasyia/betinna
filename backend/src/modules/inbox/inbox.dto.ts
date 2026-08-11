@@ -1,14 +1,6 @@
 import { z } from 'zod';
 
-/**
- * Booleano de QUERY STRING. `boolQuery` faz `Boolean('false') === true`
- * — então `?meu=false` filtrava como se fosse `true` e a lista vinha errada.
- * Aqui a string é interpretada de verdade ('false'/'0' = false).
- */
-const boolQuery = z.preprocess(
-  (v) => (typeof v === 'string' ? !['false', '0', ''].includes(v.trim().toLowerCase()) : v),
-  z.boolean(),
-);
+import { boolQuery } from '@shared/validators/query.schema';
 import { usuarioIdSchema } from '@shared/validators/id.schema';
 
 const channelEnum = z.enum([

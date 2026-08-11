@@ -663,6 +663,9 @@ export class PropostasService {
       assunto: `Proposta ${data.numero} — ${data.empresa.nome}`,
       html,
       attachments: [{ filename: `proposta-${data.numero}.pdf`, content: pdf.toString('base64') }],
+      // #20: sem chave, um timeout na volta do Resend fazia o retry mandar o
+      // MESMO PDF de novo e o cliente ligava perguntando qual proposta valia.
+      idempotencyKey: `proposta-email:${id}:${data.cliente.email}`,
     });
     if (!enviado.ok) {
       throw new BusinessRuleException(

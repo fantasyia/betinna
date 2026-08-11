@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { boolQuery } from '@shared/validators/query.schema';
 
 export const createProdutoSchema = z.object({
   codigoOmie: z.string().trim().max(50).optional(),
@@ -37,8 +38,8 @@ export const listProdutosSchema = z.object({
   linha: z.string().optional(),
   categoria: z.string().optional(),
   marca: z.string().optional(),
-  ativo: z.coerce.boolean().optional(),
-  semEstoque: z.coerce.boolean().optional(),
+  ativo: boolQuery.optional(),
+  semEstoque: boolQuery.optional(),
   precoMin: z.coerce.number().min(0).optional(),
   precoMax: z.coerce.number().min(0).optional(),
 });

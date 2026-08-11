@@ -20,6 +20,7 @@ function makeSvc() {
   };
   const redis = {
     setNxEx: vi.fn().mockResolvedValue(true),
+    eval: vi.fn().mockResolvedValue(1),
     get: vi.fn().mockResolvedValue(null),
     setEx: vi.fn().mockResolvedValue(undefined),
     del: vi.fn().mockResolvedValue(1),

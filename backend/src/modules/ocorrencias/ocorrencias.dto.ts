@@ -1,5 +1,6 @@
 import { OcorrenciaStatus, OcorrenciaTipo } from '@prisma/client';
 import { z } from 'zod';
+import { boolQuery } from '@shared/validators/query.schema';
 import { usuarioIdSchema } from '@shared/validators/id.schema';
 
 const SLA_HORAS_POR_SEVERIDADE: Record<string, number> = {
@@ -61,7 +62,7 @@ export const listOcorrenciasSchema = z.object({
   clienteId: z.string().cuid().optional(),
   responsavelId: usuarioIdSchema.optional(),
   /** Filtra apenas ocorrências com SLA vencido (não resolvidas) */
-  slaEstourado: z.coerce.boolean().optional(),
+  slaEstourado: boolQuery.optional(),
 });
 export type ListOcorrenciasDto = z.infer<typeof listOcorrenciasSchema>;
 

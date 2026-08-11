@@ -259,6 +259,27 @@ describe('IncidentsService', () => {
       expect(result.porCanal[0].total).toBe(3);
     });
 
+    it('#31: aguardandoMim POR CANAL vem do groupBy filtrado, não do zero cravado', async () => {
+      prisma.marketplaceIncident.count
+        .mockResolvedValueOnce(4)
+        .mockResolvedValueOnce(0)
+        .mockResolvedValueOnce(0);
+      prisma.marketplaceIncident.groupBy
+        .mockResolvedValueOnce([
+          { canal: 'MARKETPLACE_ML', _count: { _all: 10 } },
+          { canal: 'MARKETPLACE_SHOPEE', _count: { _all: 5 } },
+        ])
+        // Só o ML tem incidente aguardando; a Shopee não aparece no groupBy.
+        .mockResolvedValueOnce([{ canal: 'MARKETPLACE_ML', _count: { _all: 4 } }]);
+
+      const result = await service.resumo(fakeUser());
+
+      expect(result.porCanal).toEqual([
+        { canal: 'MARKETPLACE_ML', total: 10, aguardandoMim: 4 },
+        { canal: 'MARKETPLACE_SHOPEE', total: 5, aguardandoMim: 0 },
+      ]);
+    });
+
     it('REP → ForbiddenException', async () => {
       await expect(service.resumo(fakeUser({ role: 'REP' }))).rejects.toBeInstanceOf(
         ForbiddenException,

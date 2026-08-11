@@ -14,7 +14,9 @@ export const DEFAULT_MATERIAIS_TIPOS = [
 /**
  * O upload é multipart: TODO campo chega como STRING. `z.coerce.boolean()` faz
  * `Boolean("false") === true`, então todo material subido pela UI virava
- * confidencial. Aqui a string é interpretada de verdade.
+ * confidencial. Aqui só o literal "true" é verdadeiro — mais estrito que o
+ * `boolQuery` de query string (@shared/validators/query.schema), de propósito:
+ * checkbox de formulário só manda "true" ou nada.
  */
 const booleanoDeFormulario = z.preprocess(
   (v) => (typeof v === 'string' ? v.trim().toLowerCase() === 'true' : v),

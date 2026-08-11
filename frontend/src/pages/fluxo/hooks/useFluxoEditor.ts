@@ -55,6 +55,8 @@ export function useFluxoEditor({
   const [saving, setSaving] = useState(false);
   const [testando, setTestando] = useState(false);
   const [dirty, setDirty] = useState(false);
+  /** Instante da última remoção de NÓ — evita snapshot duplo na cascata de arestas. */
+  const ultimaRemocaoRef = useRef(0);
 
   // Registro global de "não salvo" (#43): o reload automático do PWA consulta
   // isto antes de recarregar. Sem o registro, um deploy no meio da edição
@@ -237,6 +239,10 @@ export function useFluxoEditor({
       // snapshot ANTES de aplicar (o histórico guarda o estado a restaurar).
       if (c.some((ch) => ch.type === 'remove')) pushHistory({ nodes, edges });
       onNodesChange(c);
+      // Marca a passada: apagar um nó COM arestas dispara 'remove' aqui e também
+      // no onEdgesChange (o React Flow remove as arestas órfãs). Sem isto,
+      // empilhava DOIS snapshots pra uma deleção e o Ctrl+Z exigia dois passes.
+      ultimaRemocaoRef.current = Date.now();
       // 'remove' entra junto: apagar nó com Backspace (delete padrão do React
       // Flow) não marcava dirty — o botão Salvar ficava CINZA, não dava pra
       // persistir a remoção, e ao reabrir o nó "ressuscitava".
@@ -254,8 +260,11 @@ export function useFluxoEditor({
 
   const onEdgesChangeWrap = useCallback(
     (c: EdgeChange<Edge>[]) => {
-      // Mesma coisa pras arestas: apagar conexão precisa ser desfazível.
-      if (c.some((ch) => ch.type === 'remove')) pushHistory({ nodes, edges });
+      // Mesma coisa pras arestas: apagar conexão precisa ser desfazível. Mas se
+      // a remoção veio no MESMO tick de uma remoção de nó, o snapshot já foi
+      // empilhado lá — é a mesma ação do usuário.
+      const cascataDeNo = Date.now() - ultimaRemocaoRef.current < 50;
+      if (!cascataDeNo && c.some((ch) => ch.type === 'remove')) pushHistory({ nodes, edges });
       onEdgesChange(c);
       // 'select' NÃO é edição: só CLICAR numa aresta marcava o fluxo como sujo e
       // o editor passava a avisar "alterações não salvas" sem nada ter mudado —
@@ -376,13 +385,17 @@ export function useFluxoEditor({
   // Sync selected node updates back to nodes state
   function updateSelectedNode(updater: (data: NodePayload) => NodePayload) {
     if (!selectedNodeId) return;
-    setNodes((nds) => {
-      const next = nds.map((n) =>
-        n.id === selectedNodeId ? { ...n, data: updater(n.data) } : n,
-      );
-      pushHistory({ nodes: next, edges });
-      return next;
-    });
+    // AUDITORIA: o `pushHistory` estava DENTRO do updater do setNodes. Em
+    // StrictMode (dev) o React roda o updater 2x, então cada tecla digitada no
+    // inspector empilhava DOIS snapshots: o Ctrl+Z virava dois passes por
+    // caractere e o limite de 50 do histórico esgotava em ~25 edições.
+    // Os irmãos (onDrop, onConnect, deleteSelectedNode) já faziam certo — este
+    // era o único errado, e é justamente o mais usado do editor.
+    const next = nodes.map((n) =>
+      n.id === selectedNodeId ? { ...n, data: updater(n.data) } : n,
+    );
+    pushHistory({ nodes: next, edges });
+    setNodes(next);
     setDirty(true);
   }
 

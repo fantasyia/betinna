@@ -1,5 +1,6 @@
 import { CanalOrigem, LeadEtapa } from '@prisma/client';
 import { z } from 'zod';
+import { boolQuery } from '@shared/validators/query.schema';
 import { normalizarTelefoneIntl } from '@shared/validators/br-validators';
 import { usuarioIdSchema } from '@shared/validators/id.schema';
 
@@ -99,7 +100,7 @@ export const listLeadsSchema = z.object({
   canalOrigem: z.nativeEnum(CanalOrigem).optional(),
   representanteId: usuarioIdSchema.optional(),
   /** Filtra leads em aging (passou do SLA na etapa atual) */
-  aging: z.coerce.boolean().optional(),
+  aging: boolQuery.optional(),
 });
 export type ListLeadsDto = z.infer<typeof listLeadsSchema>;
 

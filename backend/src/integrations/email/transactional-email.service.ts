@@ -142,14 +142,30 @@ export class TransactionalEmailService {
     );
   }
 
-  /** E-mail com anexo (ex: PDF de proposta em base64). */
+  /**
+   * E-mail com anexo (ex: PDF de proposta em base64).
+   *
+   * AUDITORIA (#20): era o último caminho SEM `idempotencyKey`. O retry do
+   * `send` depois de um timeout na volta mandava a proposta DE NOVO — o cliente
+   * recebia dois PDFs da mesma proposta e ligava perguntando qual valia.
+   * O chamador passa a chave do evento (ex: `proposta:<id>:<versao>`).
+   */
   async enviarComAnexo(params: {
     para: string;
     assunto: string;
     html: string;
     attachments: Array<{ filename: string; content: string }>;
+    idempotencyKey?: string;
+    empresaId?: string;
   }) {
-    return this.send(params.para, params.assunto, params.html, params.attachments);
+    return this.send(
+      params.para,
+      params.assunto,
+      params.html,
+      params.attachments,
+      params.idempotencyKey,
+      params.empresaId,
+    );
   }
 
   // ─── Templates de alto nível ─────────────────────────────────────────
@@ -299,6 +315,12 @@ export class TransactionalEmailService {
     assunto: string;
     titulo: string;
     mensagem: string;
+    /**
+     * Chave do evento que gerou o alerta (#20). Sem ela, um alerta que dispara
+     * a cada ciclo do cron (integração caída, backup falhou, teto de custo)
+     * enchia a caixa do responsável com o MESMO aviso repetido.
+     */
+    idempotencyKey?: string;
   }) {
     const html = `<!doctype html>
 <html lang="pt-BR"><body style="margin:0;background:#f4f4f7;font-family:Arial,Helvetica,sans-serif;color:#201554">
@@ -315,6 +337,6 @@ export class TransactionalEmailService {
     </div>
   </div>
 </body></html>`;
-    return this.send(params.para, params.assunto, html);
+    return this.send(params.para, params.assunto, html, undefined, params.idempotencyKey);
   }
 }

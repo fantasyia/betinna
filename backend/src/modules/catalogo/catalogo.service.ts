@@ -133,8 +133,10 @@ export class CatalogoService {
 
     const item = await this.prisma.repCatalogoItem.upsert({
       where: { usuarioId_produtoId: { usuarioId: user.id, produtoId: dto.produtoId } },
-      // Sem markup: adicionar produto é só vinculá-lo ao catálogo (preço = MSM).
-      // Re-adicionar é idempotente (update vazio). markup default 0 no schema.
+      // Sem markup (D5): adicionar produto é só vinculá-lo ao catálogo — o preço
+      // é o da empresa. Re-adicionar é idempotente (update vazio). A coluna
+      // `markup` foi DROPADA do schema em 2026-06-17; o comentário antigo ainda
+      // falava do "default 0" e mandava gente procurar campo que não existe.
       update: {},
       create: { usuarioId: user.id, produtoId: dto.produtoId },
       include: {

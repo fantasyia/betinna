@@ -107,6 +107,9 @@ export class BackupService {
       para,
       assunto: '🚨 Falha no backup automático do banco — Betinna.ai',
       titulo: 'Backup automático falhou',
+      // #20: 1 alerta por dia por destinatário — o cron roda de novo e o retry
+      // do provedor não pode virar enxurrada de e-mail igual.
+      idempotencyKey: `backup-falhou:${para}:${quando.slice(0, 10)}`,
       mensagem:
         `O backup automático do banco de dados <strong>não foi concluído</strong>.<br><br>` +
         `<strong>Quando:</strong> ${quando} (UTC)<br>` +

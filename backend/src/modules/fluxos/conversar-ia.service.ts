@@ -1672,25 +1672,30 @@ export class ConversarIaService {
     }
   }
 
-  /** Acumula os tokens usados pelo prompt, com reset por dia/mês. */
+  /**
+   * Acumula os tokens usados pelo prompt, com reset por dia/mês.
+   *
+   * AUDITORIA (#13): era LER o uso e ESCREVER a soma em dois passos. Duas
+   * conversas respondendo ao mesmo tempo (o caso normal — o bot atende em
+   * paralelo) liam o mesmo valor e a segunda gravava por cima da primeira:
+   * update perdido. Na prática o teto de tokens do prompt era furado — o
+   * contador andava mais devagar que o gasto real e o custo passava do limite
+   * que o diretor configurou.
+   *
+   * Agora é um único UPDATE atômico; o CASE faz o reset de dia/mês dentro do
+   * próprio statement, então não existe janela entre ler e somar.
+   */
   private async registrarUsoPrompt(promptId: string | undefined, tokens: number): Promise<void> {
     if (!promptId || tokens <= 0) return;
     try {
-      const p = await this.prisma.botPrompt.findUnique({
-        where: { id: promptId },
-        select: { usoTokensDia: true, usoDiaRef: true, usoTokensMes: true, usoMesRef: true },
-      });
-      if (!p) return;
       const { dia, mes } = this.dataRefs();
-      await this.prisma.botPrompt.update({
-        where: { id: promptId },
-        data: {
-          usoTokensDia: (p.usoDiaRef === dia ? p.usoTokensDia : 0) + tokens,
-          usoDiaRef: dia,
-          usoTokensMes: (p.usoMesRef === mes ? p.usoTokensMes : 0) + tokens,
-          usoMesRef: mes,
-        },
-      });
+      await this.prisma.$executeRaw`
+        UPDATE "BotPrompt"
+        SET "usoTokensDia" = CASE WHEN "usoDiaRef" = ${dia} THEN "usoTokensDia" ELSE 0 END + ${tokens},
+            "usoDiaRef" = ${dia},
+            "usoTokensMes" = CASE WHEN "usoMesRef" = ${mes} THEN "usoTokensMes" ELSE 0 END + ${tokens},
+            "usoMesRef" = ${mes}
+        WHERE "id" = ${promptId}`;
     } catch {
       /* best-effort */
     }

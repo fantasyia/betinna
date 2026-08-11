@@ -72,12 +72,21 @@ if (typeof navigator !== 'undefined' && 'serviceWorker' in navigator) {
       return;
     }
     console.info('[pwa] nova versão pronta, mas há alteração não salva — reload adiado.');
-    const tentar = () => {
+    // Teto de 30min: se a pessoa deixar a aba aberta com rascunho e for embora,
+    // o timer ficava vivo pra sempre pollando de 5 em 5s. Passado o teto,
+    // desiste — o reload acontece na próxima navegação, que é o fallback já
+    // documentado acima.
+    const limite = Date.now() + 30 * 60_000;
+    const timer = setInterval(() => {
+      if (Date.now() > limite) {
+        clearInterval(timer);
+        console.info('[pwa] reload adiado expirou — a nova versão entra na próxima navegação.');
+        return;
+      }
       if (temAlteracaoNaoSalva()) return;
       clearInterval(timer);
       recarregar();
-    };
-    const timer = setInterval(tentar, 5_000);
+    }, 5_000);
   });
 }
 

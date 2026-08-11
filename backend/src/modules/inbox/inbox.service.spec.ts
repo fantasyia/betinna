@@ -599,6 +599,42 @@ describe('InboxService.limparConversa', () => {
     expect(data.naoLidas).toBe(0);
   });
 
+  it('#11: avisa por SSE — quem está com a thread aberta não fica vendo msg apagada', async () => {
+    const publicar = vi.fn().mockResolvedValue(undefined);
+    svc = new InboxService(
+      prisma as never,
+      new CanalAdapterRegistry(),
+      { get: () => 24 } as never,
+      { publicar } as never,
+      {
+        criarParaUsuario: () => Promise.resolve(null),
+        criarParaRole: () => Promise.resolve(0),
+      } as never,
+    );
+    prisma.conversation.findFirst.mockResolvedValueOnce({
+      id: 'conv-1',
+      empresaId: 'emp-1',
+      peerId: '5511999990000@s.whatsapp.net',
+      leadId: null,
+    });
+    prisma.message.deleteMany.mockResolvedValueOnce({ count: 5 });
+    prisma.conversation.update.mockResolvedValueOnce({});
+    prisma.conversation.findMany.mockResolvedValue([
+      {
+        id: 'conv-1',
+        empresaId: 'emp-1',
+        proprietarioId: null,
+        atribuidoId: null,
+        canal: 'WHATSAPP',
+      },
+    ]);
+
+    await svc.limparConversa(fakeUser(), 'conv-1');
+
+    const tipos = publicar.mock.calls.map((c) => (c[0] as { tipo: string }).tipo);
+    expect(tipos).toEqual(expect.arrayContaining(['mensagem', 'status']));
+  });
+
   it('CANCELA as execuções de fluxo vivas — senão a IA retoma de onde parou', async () => {
     // O reset apagava só as Messages. A memória da conversa vive em
     // FluxoExecucao.contexto._iaHistorico: no próximo "oi" a IA continuava a

@@ -27,6 +27,7 @@ function makeService(prisma: ReturnType<typeof makePrisma>): WhatsAppSessionServ
     undefined as never,
     undefined as never,
     undefined as never,
+    undefined as never,
   );
 }
 

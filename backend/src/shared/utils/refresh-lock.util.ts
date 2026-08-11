@@ -1,4 +1,19 @@
+import { randomUUID } from 'node:crypto';
 import type { RedisService } from '@database/redis.service';
+
+/**
+ * Libera o lock SÓ se ainda formos o dono (compare-and-delete atômico).
+ *
+ * Sem isto: o refresh do ML às vezes passa dos 20s de TTL; a chave expira, um
+ * segundo processo pega o lock, e aí o PRIMEIRO termina e dá `del` — apagando o
+ * lock de OUTRO dono. Os dois passam a refrescar em paralelo, que é exatamente
+ * a corrida que este util existe pra impedir.
+ */
+const LIBERAR_SE_DONO = `
+if redis.call('get', KEYS[1]) == ARGV[1] then
+  return redis.call('del', KEYS[1])
+end
+return 0`;
 
 /**
  * Serializa o REFRESH de token OAuth entre requisições concorrentes.
@@ -31,13 +46,15 @@ export async function comLockDeRefresh<T>(
   const tentativas = opts.tentativas ?? 10;
   const espera = opts.esperaMs ?? 300;
 
+  // Token de cerca: identifica ESTA tentativa como dona do lock.
+  const token = randomUUID();
   // Redis fora → sem lock, mas o refresh precisa acontecer (degrada gracioso).
-  const pegou = await redis.setNxEx(chave, '1', ttl).catch(() => true);
+  const pegou = await redis.setNxEx(chave, token, ttl).catch(() => true);
   if (pegou) {
     try {
       return await deps.renovar();
     } finally {
-      await redis.del(chave).catch(() => undefined);
+      await redis.eval(LIBERAR_SE_DONO, [chave], [token]).catch(() => undefined);
     }
   }
 

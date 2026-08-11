@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { boolQuery } from '@shared/validators/query.schema';
 import { usuarioIdSchema } from '@shared/validators/id.schema';
 
 export const AGENDA_TIPOS = ['VISITA', 'LIGACAO', 'REUNIAO', 'ENTREGA', 'TAREFA'] as const;
@@ -36,7 +37,7 @@ export const createAgendaItemSchema = z.object({
   alertas: z.array(z.coerce.number().int().min(0).max(40320)).max(5).optional(),
   clienteId: z.string().cuid().optional(),
   /** Quando true e o user tem Google Calendar conectado, espelha no Google. */
-  espelharGoogle: z.coerce.boolean().default(true),
+  espelharGoogle: boolQuery.default(true),
   /** Convidados opcionais (apenas se espelhar). */
   participantes: z
     .array(z.object({ email: z.string().email(), nome: z.string().optional() }))

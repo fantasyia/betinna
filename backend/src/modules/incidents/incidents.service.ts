@@ -127,7 +127,7 @@ export class IncidentsService {
     const baseWhere = this.baseWhere(user);
     const dentroDe24h = new Date(Date.now() + 24 * 60 * 60 * 1000);
 
-    const [aguardando, urgente, mediacao, porCanal] = await Promise.all([
+    const [aguardando, urgente, mediacao, porCanal, porCanalAguardando] = await Promise.all([
       this.prisma.marketplaceIncident.count({
         where: {
           ...baseWhere,
@@ -147,7 +147,25 @@ export class IncidentsService {
         where: baseWhere,
         _count: { _all: true },
       }),
+      // AUDITORIA (#31): o `aguardandoMim` por canal vinha 0 CRAVADO. O widget
+      // do dashboard mostrava "ML: 12 incidentes, 0 aguardando você" enquanto o
+      // total geral acusava 9 aguardando — o operador confiava no zero e o prazo
+      // do marketplace vencia. É o mesmo groupBy, só com o filtro de status.
+      this.prisma.marketplaceIncident.groupBy({
+        by: ['canal'],
+        where: {
+          ...baseWhere,
+          status: {
+            in: [MarketplaceIncidentStatus.AGUARDANDO_VENDEDOR, MarketplaceIncidentStatus.ABERTO],
+          },
+        },
+        _count: { _all: true },
+      }),
     ]);
+
+    const aguardandoPorCanal = new Map(
+      porCanalAguardando.map((c) => [c.canal, c._count._all] as const),
+    );
 
     return {
       aguardandoMim: aguardando,
@@ -156,7 +174,7 @@ export class IncidentsService {
       porCanal: porCanal.map((c) => ({
         canal: c.canal,
         total: c._count._all,
-        aguardandoMim: 0, // simplificação — UI pode chamar com filtro específico
+        aguardandoMim: aguardandoPorCanal.get(c.canal) ?? 0,
       })),
     };
   }

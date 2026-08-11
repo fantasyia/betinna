@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { UnauthorizedException } from '@shared/errors/app-exception';
 import { CatalogShareService } from './catalog-share.service';
 
@@ -41,9 +41,10 @@ describe('CatalogShareService', () => {
 
   it('token assinado com secret diferente é rejeitado', async () => {
     // Gera token com env diferente
-    const otherSvc = new CatalogShareService({
-      get: () => 'A'.repeat(64),
-    } as never);
+    const otherSvc = new CatalogShareService(
+      { get: () => 'A'.repeat(64) } as never,
+      { get: vi.fn().mockResolvedValue(null), setEx: vi.fn() } as never,
+    );
     const token = await otherSvc.gerar({
       repId: 'r',
       clienteId: 'c',
@@ -57,7 +58,7 @@ describe('CatalogShareService', () => {
     // Force TTL muito curto via env
     const origTtl = process.env.CATALOG_SHARE_TTL_SECONDS;
     process.env.CATALOG_SHARE_TTL_SECONDS = '1';
-    const shortSvc = new CatalogShareService(makeEnv() as never);
+    const shortSvc = new CatalogShareService(makeEnv() as never, redis as never);
     const token = await shortSvc.gerar({ repId: 'r', clienteId: 'c', empresaId: 'e' });
 
     // Espera mais que 1s

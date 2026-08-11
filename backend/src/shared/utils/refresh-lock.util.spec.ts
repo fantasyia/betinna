@@ -10,6 +10,7 @@ import { comLockDeRefresh } from './refresh-lock.util';
 const redisOk = () => ({
   setNxEx: vi.fn().mockResolvedValue(true),
   del: vi.fn().mockResolvedValue(1),
+  eval: vi.fn().mockResolvedValue(1),
 });
 
 describe('comLockDeRefresh', () => {
@@ -25,7 +26,9 @@ describe('comLockDeRefresh', () => {
 
     expect(r).toEqual({ token: 'novo' });
     expect(renovar).toHaveBeenCalledTimes(1);
-    expect(redis.del).toHaveBeenCalledWith('k');
+    // Libera por compare-and-delete: o token gravado tem que voltar como ARGV[1].
+    const token = redis.setNxEx.mock.calls[0][1] as string;
+    expect(redis.eval).toHaveBeenCalledWith(expect.stringContaining('del'), ['k'], [token]);
   });
 
   it('libera o lock mesmo se o refresh FALHAR (senão trava todo mundo até o TTL)', async () => {
@@ -35,11 +38,11 @@ describe('comLockDeRefresh', () => {
     await expect(
       comLockDeRefresh(redis as never, 'k', { reler: vi.fn(), valida: () => true, renovar }),
     ).rejects.toThrow('invalid_grant');
-    expect(redis.del).toHaveBeenCalledWith('k');
+    expect(redis.eval).toHaveBeenCalledTimes(1);
   });
 
   it('quem PERDE o lock não renova — espera e relê a credencial do vencedor', async () => {
-    const redis = { setNxEx: vi.fn().mockResolvedValue(false), del: vi.fn() };
+    const redis = { setNxEx: vi.fn().mockResolvedValue(false), del: vi.fn(), eval: vi.fn() };
     const renovar = vi.fn();
     const reler = vi.fn().mockResolvedValue({ token: 'do-vencedor' });
 
@@ -55,7 +58,7 @@ describe('comLockDeRefresh', () => {
   });
 
   it('se o vencedor travar, o perdedor tenta assim mesmo (não deixa sem token)', async () => {
-    const redis = { setNxEx: vi.fn().mockResolvedValue(false), del: vi.fn() };
+    const redis = { setNxEx: vi.fn().mockResolvedValue(false), del: vi.fn(), eval: vi.fn() };
     const renovar = vi.fn().mockResolvedValue({ token: 'fallback' });
 
     const r = await comLockDeRefresh(
@@ -70,7 +73,7 @@ describe('comLockDeRefresh', () => {
   });
 
   it('credencial relida INVÁLIDA não conta como sucesso', async () => {
-    const redis = { setNxEx: vi.fn().mockResolvedValue(false), del: vi.fn() };
+    const redis = { setNxEx: vi.fn().mockResolvedValue(false), del: vi.fn(), eval: vi.fn() };
     const renovar = vi.fn().mockResolvedValue({ token: 'fallback' });
 
     await comLockDeRefresh(
@@ -87,6 +90,7 @@ describe('comLockDeRefresh', () => {
     const redis = {
       setNxEx: vi.fn().mockRejectedValue(new Error('redis down')),
       del: vi.fn().mockRejectedValue(new Error('redis down')),
+      eval: vi.fn().mockRejectedValue(new Error('redis down')),
     };
     const renovar = vi.fn().mockResolvedValue({ token: 'novo' });
 
@@ -97,5 +101,25 @@ describe('comLockDeRefresh', () => {
     });
 
     expect(r).toEqual({ token: 'novo' });
+  });
+});
+
+describe('comLockDeRefresh — cerca (fencing)', () => {
+  it('NÃO apaga o lock quando o dono já é outro (TTL estourou no meio do refresh)', async () => {
+    // Simula o Lua real: só apaga se o valor bater.
+    const dono = { valor: 'de-outro-processo' };
+    const redis = {
+      setNxEx: vi.fn().mockResolvedValue(true),
+      del: vi.fn(),
+      eval: vi.fn(async (_s: string, _k: string[], a: string[]) => (a[0] === dono.valor ? 1 : 0)),
+    };
+
+    await comLockDeRefresh(redis as never, 'k', {
+      reler: vi.fn(),
+      valida: () => true,
+      renovar: vi.fn().mockResolvedValue({ token: 'novo' }),
+    });
+
+    await expect(redis.eval.mock.results[0].value).resolves.toBe(0); // ← não apagou o alheio
   });
 });
