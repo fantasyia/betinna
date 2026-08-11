@@ -500,6 +500,31 @@ export class FluxoEventBusService {
     return Boolean(job);
   }
 
+  /**
+   * IDs de execução que AINDA têm algum job vivo na fila.
+   *
+   * O reaper de PENDENTE usa `jobExiste(execucao.jobId)`, mas `jobId` é gravado
+   * uma vez, na CRIAÇÃO — uma execução que já andou alguns passos tem um jobId
+   * que há muito saiu da fila (removeOnComplete), então aquele check não serve
+   * pra decidir se ela está viva. Aqui a pergunta é feita ao contrário: quais
+   * execuções têm job vivo AGORA.
+   *
+   * `delayed` é o estado que mais importa: um nó DELAY de 3 dias mantém a
+   * execução EM_EXECUCAO legitimamente esse tempo todo. Sem olhar os delayed, um
+   * reaper por tempo mataria toda espera longa.
+   */
+  async execucoesComJobVivo(): Promise<Set<string>> {
+    const jobs = await this.queue.getJobs([
+      'waiting',
+      'delayed',
+      'active',
+      'paused',
+      'prioritized',
+      'waiting-children',
+    ]);
+    return new Set(jobs.map((j) => j?.data?.execucaoId).filter((id): id is string => Boolean(id)));
+  }
+
   async dispararDireto(
     execucaoId: string,
     noId: string,

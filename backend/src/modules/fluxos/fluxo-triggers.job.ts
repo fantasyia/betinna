@@ -141,10 +141,67 @@ export class FluxoTriggersJob {
     const cronOrfas = idsOrfas.length
       ? await this.prisma.fluxoExecucao.deleteMany({ where: { id: { in: idsOrfas } } })
       : { count: 0 };
-    if (orfaos.count > 0 || antigos.count > 0 || lockOrfaos.count > 0 || cronOrfas.count > 0) {
+    // Execuções ABANDONADAS (EM_EXECUCAO/PENDENTE sem job vivo).
+    //
+    // Achado real: a execução `cmsjoo6or…` estava EM_EXECUCAO desde 08/08 —
+    // `terminouEm` null, `erroMsg` null, tentativas 0. Ninguém a reaproveita e
+    // ninguém a mata: o `onFailed` do processor só marca FALHOU quando existe um
+    // job que falhou. Se o job NUNCA chegou a existir (enqueue que se perdeu,
+    // worker fora do ar na janela, jobId rejeitado pelo BullMQ), a execução fica
+    // EM_EXECUCAO pra sempre — e o anti-reabertura do MENSAGEM_CANAL, que
+    // considera PENDENTE/EM_EXECUCAO/AGUARDANDO como "já tem execução viva",
+    // passa a BLOQUEAR aquela conversa em definitivo. Um lead que escreve nunca
+    // mais dispara fluxo nenhum, sem erro em lugar nenhum.
+    //
+    // O critério NÃO pode ser só tempo: um nó DELAY de 3 dias mantém a execução
+    // EM_EXECUCAO legitimamente. Por isso a pergunta é "tem job vivo na fila?" —
+    // incluindo os delayed. Sem job vivo + parada há mais de 30min = abandonada.
+    let abandonadas = 0;
+    try {
+      const vivos = await this.bus.execucoesComJobVivo();
+      const paradas = await this.prisma.fluxoExecucao.findMany({
+        where: {
+          status: { in: ['PENDENTE', 'EM_EXECUCAO'] },
+          // Não existe `atualizadoEm` nesta tabela; `criadoEm` basta como
+          // pré-filtro barato — quem protege a espera longa é o job vivo.
+          criadoEm: { lt: new Date(agora - 30 * 60 * 1000) },
+        },
+        select: { id: true },
+        take: 200,
+      });
+      const mortas = paradas.map((e) => e.id).filter((id) => !vivos.has(id));
+      if (mortas.length > 0) {
+        const r = await this.prisma.fluxoExecucao.updateMany({
+          where: { id: { in: mortas }, status: { in: ['PENDENTE', 'EM_EXECUCAO'] } },
+          data: {
+            status: 'FALHOU',
+            terminouEm: new Date(),
+            erroMsg:
+              'Execução abandonada: nenhum job na fila e sem progresso há mais de 30min. ' +
+              'Marcada como FALHOU pela reconciliação (senão travaria novas execuções da conversa).',
+          },
+        });
+        abandonadas = r.count;
+      }
+    } catch (err) {
+      // Fila inacessível: NÃO varre. Sem a lista de jobs vivos, todo delayed
+      // legítimo viraria "abandonada" — o remédio seria pior que a doença.
+      this.logger.warn(
+        `Reconciliação: não deu pra checar jobs vivos (${err instanceof Error ? err.message : String(err)}) — varredura de abandonadas pulada.`,
+      );
+    }
+
+    if (
+      orfaos.count > 0 ||
+      antigos.count > 0 ||
+      lockOrfaos.count > 0 ||
+      cronOrfas.count > 0 ||
+      abandonadas > 0
+    ) {
       this.logger.log(
         `Reconciliação: ${orfaos.count} claim(s) órfão(s) + ${antigos.count} antigo(s) removidos, ` +
-          `${lockOrfaos.count} lock(s) destravado(s), ${cronOrfas.count} execução(ões) cron órfã(s)`,
+          `${lockOrfaos.count} lock(s) destravado(s), ${cronOrfas.count} execução(ões) cron órfã(s), ` +
+          `${abandonadas} execução(ões) abandonada(s) marcada(s) como FALHOU`,
       );
     }
   }
