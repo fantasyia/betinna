@@ -334,11 +334,23 @@ export class FluxoExecutorService {
         // desce até cada efeito externo (WhatsApp/email/webhook/tarefa) pra dedup no provider.
         // Estável ao passo pra que um retry de dead-letter (jobId NOVO, mesmo passo) caia na
         // mesma chave → a dedup do provider evita reenvio dentro da janela (Resend 24h / gate).
+        //
+        // AUDITORIA (média): a chave não distinguia PASSADAS. Num fluxo com laço
+        // (o lead volta pro mesmo nó de ENVIAR_WHATSAPP), a 2ª passada gerava a
+        // MESMA chave e o gate do provider (TTL 24h) SUPRIMIA o envio — o passo
+        // fechava verde, com "suprimido por idempotência" no log do adapter, e a
+        // mensagem simplesmente não saía. Discriminador = quantas vezes este nó
+        // JÁ CONCLUIU nesta execução. Retry de falha não conta (o log de falha
+        // não é CONCLUIDO), então a chave do retry continua idêntica — que é
+        // exatamente o que a dedup de retry precisa.
+        const passada = await this.prisma.fluxoExecucaoLog.count({
+          where: { execucaoId, noId, status: 'CONCLUIDO' },
+        });
         output = await this.executarNo(
           no,
           contexto,
           execucao.empresaId,
-          `fx:${execucaoId}:${noId}`,
+          `fx:${execucaoId}:${noId}:p${passada}`,
           execucaoId,
         );
       }

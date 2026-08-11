@@ -79,10 +79,16 @@ export class OrquestracaoLeadEventsService implements OnModuleInit {
 
       if (!lead) return;
 
-      // Fase C — registra a última mensagem recebida do lead (spec §4).
+      // AUDITORIA (média): quando a pessoa tem lead DUPLICADO (mesmo telefone,
+      // dois ids), `lead.id` é o mais recente — mas a execução viva pode estar no
+      // irmão. O carimbo de última mensagem e o LEAD_RESPONDEU saíam com o id
+      // ERRADO: o lead "B" ficava marcado como quem respondeu e disparava as
+      // réguas, enquanto a conversa real acontecia no "A". Carimba TODOS os
+      // irmãos (é a mesma pessoa) e resolve o id do evento ANTES de disparar.
+      const idsDaPessoa = [...new Set([lead.id, ...(lead.idsIrmaos ?? [])])];
       await this.prisma.lead
         .updateMany({
-          where: { id: lead.id, empresaId: params.empresaId },
+          where: { id: { in: idsDaPessoa }, empresaId: params.empresaId },
           data: { ultimaMensagemEm: new Date() },
         })
         .catch(() => undefined);
@@ -95,31 +101,31 @@ export class OrquestracaoLeadEventsService implements OnModuleInit {
       // com o Redis fora.
       if (!primeira) return;
 
-      await this.bus.disparar(params.empresaId, 'LEAD_RESPONDEU', {
-        leadId: lead.id,
-        conversationId: resultado.conversationId,
-        telefone: params.peerTelefone ?? null,
-        texto: params.conteudo,
-      });
-
-      // Se há um fluxo pausado no nó "Conversar com IA" esperando este lead,
-      // retoma a conversa (a IA processa a resposta e pode classificar/avançar).
-      // Lead DUPLICADO (mesma pessoa, outro id): a execução pode estar presa no
-      // id "irmão" — tenta os demais que casam o mesmo telefone antes de desistir.
+      // Resolve a execução ANTES de disparar: se ela está num irmão, é ESSE o id
+      // que representa a conversa viva, e é ele que tem que ir no evento.
       let aguardando = await this.conversarIa.aguardandoPorLead(params.empresaId, lead.id);
+      let leadIdEvento = lead.id;
       if (!aguardando) {
-        for (const outroId of lead.idsIrmaos ?? []) {
+        for (const outroId of idsDaPessoa) {
           if (outroId === lead.id) continue;
           aguardando = await this.conversarIa.aguardandoPorLead(params.empresaId, outroId);
           if (aguardando) {
+            leadIdEvento = outroId;
             this.logger.log(
               `Retomada resolvida por lead DUPLICADO: execução estava no lead ${outroId} ` +
-                `(principal ${lead.id})`,
+                `(principal ${lead.id}) — LEAD_RESPONDEU sai com o id da execução viva`,
             );
             break;
           }
         }
       }
+
+      await this.bus.disparar(params.empresaId, 'LEAD_RESPONDEU', {
+        leadId: leadIdEvento,
+        conversationId: resultado.conversationId,
+        telefone: params.peerTelefone ?? null,
+        texto: params.conteudo,
+      });
       if (aguardando) {
         // Multimodal IGUAL ao bot geral: transcreve áudio / prepara imagem pra visão
         // antes de alimentar a IA (a Persona decide). Sem isso o fluxo via "[áudio]".

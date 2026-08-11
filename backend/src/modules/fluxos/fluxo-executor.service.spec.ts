@@ -40,7 +40,9 @@ const makePrismaMock = () => ({
   } satisfies MockModel,
   fluxoExecucaoLog: {
     create: vi.fn().mockResolvedValue({}),
-    count: vi.fn().mockResolvedValue(0), // #18: contador de passos (0 = longe do teto anti-loop)
+    // #18: contador de passos (0 = longe do teto anti-loop).
+    // #0: também é o discriminador de PASSADA no idempotencyKey (p0 = 1ª volta).
+    count: vi.fn().mockResolvedValue(0),
   } satisfies MockModel,
   cliente: {
     findFirst: vi.fn().mockResolvedValue(null),
@@ -1200,7 +1202,7 @@ describe('FluxoExecutorService', () => {
         'emp-1',
         '11987654321@s.whatsapp.net',
         'Olá Carlos!',
-        { idempotencyKey: 'fx:exec-1:no-wa' },
+        { idempotencyKey: 'fx:exec-1:no-wa:p0' },
       );
     });
 
@@ -1240,7 +1242,7 @@ describe('FluxoExecutorService', () => {
           fileName: 'tabela.pdf',
           caption: 'Segue a tabela, Carlos',
         }),
-        { idempotencyKey: 'fx:exec-1:no-wa' },
+        { idempotencyKey: 'fx:exec-1:no-wa:p0' },
       );
       expect(whatsapp.enviarTexto).not.toHaveBeenCalled();
     });
@@ -1306,7 +1308,7 @@ describe('FluxoExecutorService', () => {
         'emp-1',
         '120363000000000000@g.us',
         'Bom dia, time!',
-        { idempotencyKey: 'fx:exec-1:no-wa' },
+        { idempotencyKey: 'fx:exec-1:no-wa:p0' },
       );
     });
   });
@@ -1476,7 +1478,7 @@ describe('FluxoExecutorService', () => {
         'emp-1',
         '11999990000@s.whatsapp.net',
         'Lead: Padaria Forte (Campinas/SP) wpp +55 19 98888-7777 | canal atacado | obs Compra 3x/mês',
-        { idempotencyKey: 'fx:exec-1:no-1' },
+        { idempotencyKey: 'fx:exec-1:no-1:p0' },
       );
     });
   });

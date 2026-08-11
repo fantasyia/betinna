@@ -626,6 +626,31 @@ export class ConversarIaService {
       };
     }
 
+    // AUDITORIA (média): duas conversacionais VIVAS no mesmo lead, em fluxos
+    // DIFERENTES, ficavam ambas AGUARDANDO. O supersede do bus é escopado por
+    // `fluxoId`, então a antiga (E1) nunca era retomada nem cancelada: esperava
+    // o timeout e disparava LEAD_SEM_RESPOSTA no meio da conversa viva do E2 —
+    // o lead recebia "sumiu?" enquanto estava respondendo. Ao INICIAR uma nova
+    // conversa com este lead, encerra as AGUARDANDO de QUALQUER fluxo. Não
+    // tocamos em execuções de outros leads nem em ramos-filha (que rodam ações
+    // terminais e não esperam resposta).
+    const orfas = await this.prisma.fluxoExecucao.updateMany({
+      where: {
+        empresaId,
+        status: 'AGUARDANDO',
+        contexto: { path: ['leadId'], equals: leadId },
+        id: { not: execucaoId },
+        NOT: { contexto: { path: ['_ramoFilha'], equals: true } },
+      },
+      data: { status: 'CANCELADO', aguardandoNoId: null, timeoutEm: null, terminouEm: new Date() },
+    });
+    if (orfas.count > 0) {
+      this.logger.log(
+        `CONVERSAR_IA: ${orfas.count} execução(ões) AGUARDANDO de OUTROS fluxos encerradas — ` +
+          `conversa nova assume o lead ${leadId} (evita LEAD_SEM_RESPOSTA no meio do papo)`,
+      );
+    }
+
     // GATE DO BOT — o "desligado" do dono vale pra TODA IA, não só pro bot geral.
     // Sem isto o fluxo respondia contato com o bot desligado (aconteceu em prod:
     // dono deixou o bot ON só numa conversa, e a triagem respondeu outro contato).
@@ -822,6 +847,28 @@ export class ConversarIaService {
   /** Existe execução pausada (AGUARDANDO) esperando resposta deste lead? */
   async aguardandoPorLead(empresaId: string, leadId: string): Promise<{ id: string } | null> {
     return this.prisma.fluxoExecucao.findFirst({
+      where: {
+        empresaId,
+        status: 'AGUARDANDO',
+        contexto: { path: ['leadId'], equals: leadId },
+      },
+      orderBy: { criadoEm: 'desc' },
+      select: { id: true },
+    });
+  }
+
+  /**
+   * TODAS as execuções AGUARDANDO deste lead (qualquer fluxo), da mais nova pra
+   * mais velha.
+   *
+   * AUDITORIA (média): `aguardandoPorLead` devolve só a MAIS RECENTE, e o
+   * supersede do bus é escopado por `fluxoId`. Com duas conversacionais vivas no
+   * mesmo lead (E1 antigo + E2 novo), a do E1 nunca era retomada nem encerrada:
+   * ficava AGUARDANDO até o timeout e disparava LEAD_SEM_RESPOSTA no meio da
+   * conversa viva do E2 — o lead recebia "sumiu?" enquanto estava conversando.
+   */
+  async todasAguardandoPorLead(empresaId: string, leadId: string): Promise<Array<{ id: string }>> {
+    return this.prisma.fluxoExecucao.findMany({
       where: {
         empresaId,
         status: 'AGUARDANDO',

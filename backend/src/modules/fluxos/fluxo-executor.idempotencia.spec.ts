@@ -169,4 +169,42 @@ describe('FluxoExecutor — idempotência por job.id', () => {
     expect(ctx.claim.create).toHaveBeenCalledTimes(2);
     expect(ctx.whatsapp.enviarTexto).toHaveBeenCalledTimes(2);
   });
+
+  it('#0: a 2ª passada leva idempotencyKey DIFERENTE (senão o gate do provider suprime)', async () => {
+    // O claim (banco) já deixava a 2ª volta executar — mas o idemBase era o mesmo,
+    // e o gate do adapter (TTL 24h) engolia o envio: passo verde, mensagem não sai.
+    // O discriminador é quantas vezes o nó JÁ CONCLUIU nesta execução.
+    // O mock de `count` é compartilhado com o contador anti-loop (#18), que roda
+    // no mesmo passo — por isso diferencia pelo ARGUMENTO em vez de por ordem.
+    let concluidos = 0;
+    ctx.prisma.fluxoExecucaoLog.count.mockImplementation((args: { where?: { status?: string } }) =>
+      Promise.resolve(args?.where?.status === 'CONCLUIDO' ? concluidos : 0),
+    );
+
+    await ctx.service.executarPasso('exec-1', 'no-wa', 'job-A1');
+    concluidos = 1; // a 1ª passada concluiu
+    await ctx.service.executarPasso('exec-1', 'no-wa', 'job-A2');
+
+    const chaves = ctx.whatsapp.enviarTexto.mock.calls.map(
+      (c: unknown[]) => (c[c.length - 1] as { idempotencyKey?: string })?.idempotencyKey,
+    );
+    expect(chaves[0]).toBe('fx:exec-1:no-wa:p0');
+    expect(chaves[1]).toBe('fx:exec-1:no-wa:p1');
+    expect(new Set(chaves).size).toBe(2);
+  });
+
+  it('#0: RETRY da mesma passada mantém a chave (a dedup do retry depende disso)', async () => {
+    // Log de FALHA não é CONCLUIDO → o contador não avança → mesma chave.
+    // Nenhuma passada CONCLUIU (a 1ª falhou) → contador fica em 0 nas duas.
+    ctx.prisma.fluxoExecucaoLog.count.mockResolvedValue(0);
+    ctx.whatsapp.enviarTexto.mockRejectedValueOnce(new Error('timeout'));
+
+    await ctx.service.executarPasso('exec-1', 'no-wa', 'job-A1').catch(() => undefined);
+    await ctx.service.executarPasso('exec-1', 'no-wa', 'job-A1-retry');
+
+    const chaves = ctx.whatsapp.enviarTexto.mock.calls.map(
+      (c: unknown[]) => (c[c.length - 1] as { idempotencyKey?: string })?.idempotencyKey,
+    );
+    expect(new Set(chaves).size).toBe(1);
+  });
 });
