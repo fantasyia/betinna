@@ -21,6 +21,9 @@ const fakeUser = (overrides: Partial<AuthenticatedUser> = {}): AuthenticatedUser
 });
 
 const makePrismaMock = () => ({
+  // Religar o bot limpa a tag `triado` do lead (regra do Léo, 11/08).
+  tag: { findUnique: vi.fn().mockResolvedValue({ id: 'tag-triado' }) },
+  leadTag: { deleteMany: vi.fn().mockResolvedValue({ count: 1 }) },
   conversation: {
     findUnique: vi.fn(),
     findFirst: vi.fn(),
@@ -907,5 +910,97 @@ describe('InboxService.listarContatosWhatsapp', () => {
     const out = await svc.listarContatosWhatsapp(fakeUser());
 
     expect(out).toEqual([]);
+  });
+});
+
+describe('InboxService — religar o bot limpa a tag `triado`', () => {
+  // O ramo Financeiro/Suporte da triagem termina marcando `triado`, que é a
+  // guarda do 1º nó. Cliente que pediu 2ª via e volta meses depois querendo
+  // COMPRAR morria no primeiro nó, sem virar lead comercial e sem ninguém ver.
+  const montar = () => {
+    const prisma = makePrismaMock();
+    prisma.conversation.findFirst.mockResolvedValue({
+      id: 'conv-1',
+      empresaId: 'emp-1',
+      leadId: 'lead-1',
+      canal: 'WHATSAPP',
+      proprietarioId: null,
+      atribuidoId: null,
+    });
+    prisma.conversation.findUniqueOrThrow.mockResolvedValue({ id: 'conv-1' });
+    prisma.conversation.updateMany.mockResolvedValue({ count: 1 });
+    const svc = new InboxService(
+      prisma as never,
+      new CanalAdapterRegistry(),
+      { get: () => 24 } as never,
+      { publicar: () => Promise.resolve() } as never,
+      {
+        criarParaUsuario: () => Promise.resolve(null),
+        criarParaRole: () => Promise.resolve(0),
+      } as never,
+    );
+    return { prisma, svc };
+  };
+
+  it('religarBot remove a tag triado do lead da conversa', async () => {
+    const { prisma, svc } = montar();
+
+    await svc.religarBot(fakeUser({ role: 'ADMIN' as UserRole }), 'conv-1');
+
+    expect(prisma.leadTag.deleteMany).toHaveBeenCalledWith({
+      where: { leadId: 'lead-1', tagId: 'tag-triado' },
+    });
+  });
+
+  it('setBotLigado(true) também limpa — é o mesmo gesto na UI', async () => {
+    const { prisma, svc } = montar();
+
+    await svc.setBotLigado(fakeUser({ role: 'ADMIN' as UserRole }), 'conv-1', true);
+
+    expect(prisma.leadTag.deleteMany).toHaveBeenCalled();
+  });
+
+  it('setBotLigado(false) NÃO limpa — desligar não é "encerrei o atendimento"', async () => {
+    const { prisma, svc } = montar();
+
+    await svc.setBotLigado(fakeUser({ role: 'ADMIN' as UserRole }), 'conv-1', false);
+
+    expect(prisma.leadTag.deleteMany).not.toHaveBeenCalled();
+  });
+
+  it('conversa SEM lead vinculado: ignora sem erro', async () => {
+    const { prisma, svc } = montar();
+    prisma.conversation.findFirst.mockResolvedValue({
+      id: 'conv-1',
+      empresaId: 'emp-1',
+      leadId: null,
+      canal: 'WHATSAPP',
+      proprietarioId: null,
+      atribuidoId: null,
+    });
+
+    await expect(
+      svc.religarBot(fakeUser({ role: 'ADMIN' as UserRole }), 'conv-1'),
+    ).resolves.toBeDefined();
+    expect(prisma.leadTag.deleteMany).not.toHaveBeenCalled();
+  });
+
+  it('empresa sem a tag `triado` criada: não quebra', async () => {
+    const { prisma, svc } = montar();
+    prisma.tag.findUnique.mockResolvedValue(null);
+
+    await expect(
+      svc.religarBot(fakeUser({ role: 'ADMIN' as UserRole }), 'conv-1'),
+    ).resolves.toBeDefined();
+    expect(prisma.leadTag.deleteMany).not.toHaveBeenCalled();
+  });
+
+  it('falha ao limpar a tag NÃO derruba o religar (best-effort)', async () => {
+    const { prisma, svc } = montar();
+    prisma.leadTag.deleteMany.mockRejectedValue(new Error('banco fora'));
+
+    await expect(
+      svc.religarBot(fakeUser({ role: 'ADMIN' as UserRole }), 'conv-1'),
+    ).resolves.toBeDefined();
   });
 });

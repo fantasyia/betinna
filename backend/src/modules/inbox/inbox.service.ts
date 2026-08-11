@@ -884,10 +884,57 @@ export class InboxService {
       where: { id, empresaId: existing.empresaId },
       data: { botPausadoAte: null, precisaHumano: false },
     });
+    await this.limparTriadoAoReligar(existing.empresaId, existing.leadId, user);
     return this.prisma.conversation.findUniqueOrThrow({
       where: { id },
       include: conversationInclude,
     });
+  }
+
+  /**
+   * Religar o bot LIMPA a tag `triado` do lead da conversa (regra do Léo, 11/08).
+   *
+   * Por quê: o ramo Financeiro/Suporte da triagem termina marcando `triado`, e
+   * essa tag é a guarda do 1º nó — quem a tem não é re-triado. Um cliente que
+   * pediu 2ª via e, meses depois, volta querendo COMPRAR morria no primeiro nó,
+   * sem virar lead comercial e sem ninguém perceber.
+   *
+   * Por que AQUI e não tirando a tag do fluxo: sem a tag, o fluxo dispararia,
+   * passaria as guardas e morreria no CONVERSAR_IA com o bot desligado (o
+   * PAUSAR_IA do transfer). Trocaria lead perdido em silêncio por fluxo travado
+   * em silêncio. Religar significa "o robô assume de novo" — daí o próximo
+   * contato ser contato novo, que merece triagem nova. E não depende de ninguém
+   * lembrar de destaguear.
+   *
+   * NÃO mexe nas tags de triagem (`Indefinido (triagem)`, `Sem resposta …`):
+   * elas têm rota de retomada própria dentro do fluxo.
+   */
+  private async limparTriadoAoReligar(
+    empresaId: string,
+    leadId: string | null | undefined,
+    user: AuthenticatedUser,
+  ): Promise<void> {
+    if (!leadId) return; // conversa sem lead vinculado: nada a fazer, sem erro
+    try {
+      const tag = await this.prisma.tag.findUnique({
+        where: { empresaId_nome: { empresaId, nome: 'triado' } },
+        select: { id: true },
+      });
+      if (!tag) return;
+      const { count } = await this.prisma.leadTag.deleteMany({ where: { leadId, tagId: tag.id } });
+      if (count > 0) {
+        this.logger.log(
+          `Bot religado por ${user.nome} (${user.id}) — tag "triado" removida do lead ${leadId}, ` +
+            'o próximo contato volta a ser triado do zero',
+        );
+      }
+    } catch (err) {
+      // Best-effort: religar o bot é a operação principal e não pode falhar por
+      // causa da limpeza da tag.
+      this.logger.warn(
+        `Falha ao limpar a tag "triado" do lead ${leadId}: ${err instanceof Error ? err.message : String(err)}`,
+      );
+    }
   }
 
   /**
@@ -908,6 +955,12 @@ export class InboxService {
           ? { botLigado: true, botPausadoAte: null, precisaHumano: false }
           : { botLigado: ligado },
     });
+    // Mesma regra do religarBot: LIGAR o bot nesta conversa devolve o controle
+    // ao robô, então o próximo contato merece triagem nova. Só no `true` —
+    // desligar ou voltar pro global não é "encerrei o atendimento".
+    if (ligado === true) {
+      await this.limparTriadoAoReligar(existing.empresaId, existing.leadId, user);
+    }
     return this.prisma.conversation.findUniqueOrThrow({
       where: { id },
       include: conversationInclude,
