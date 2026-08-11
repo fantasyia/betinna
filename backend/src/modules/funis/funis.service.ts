@@ -600,29 +600,36 @@ export class FunisService {
       delete dto.triagem;
     }
 
-    if (dto.isPadrao && !existing.isPadrao) {
-      // Desmarca outros antes
-      await this.prisma.funil.updateMany({
-        where: { empresaId: existing.empresaId, isPadrao: true },
-        data: { isPadrao: false },
-      });
-    }
-
     // tagsPermitidas é Json nullable — null explícito precisa de Prisma.JsonNull.
     const { tagsPermitidas, ...rest } = dto;
-    await this.prisma.funil.update({
-      where: { id },
-      data: {
-        ...rest,
-        ...(tagsPermitidas !== undefined
-          ? {
-              tagsPermitidas:
-                tagsPermitidas === null
-                  ? Prisma.JsonNull
-                  : (tagsPermitidas as Prisma.InputJsonValue),
-            }
-          : {}),
-      },
+
+    // AUDITORIA (#29): "desmarcar os outros padrão" e "marcar este" eram dois
+    // comandos soltos. Duas pessoas promovendo funis diferentes a padrão ao
+    // mesmo tempo (ou o mesmo usuário com clique duplo) terminavam com DOIS
+    // funis `isPadrao: true` — e aí o lead sem funil explícito caía num ou noutro
+    // dependendo da ordem do banco. Uma transação só, serializada por empresa.
+    await this.prisma.$transaction(async (tx) => {
+      if (dto.isPadrao) {
+        await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${existing.empresaId}))`;
+        await tx.funil.updateMany({
+          where: { empresaId: existing.empresaId, isPadrao: true, id: { not: id } },
+          data: { isPadrao: false },
+        });
+      }
+      await tx.funil.update({
+        where: { id },
+        data: {
+          ...rest,
+          ...(tagsPermitidas !== undefined
+            ? {
+                tagsPermitidas:
+                  tagsPermitidas === null
+                    ? Prisma.JsonNull
+                    : (tagsPermitidas as Prisma.InputJsonValue),
+              }
+            : {}),
+        },
+      });
     });
     return this.findById(user, id);
   }
@@ -790,11 +797,6 @@ export class FunisService {
     const etapa = funil.etapas.find((e) => e.id === etapaId);
     if (!etapa) throw new NotFoundException('Etapa', etapaId);
 
-    if (etapa.leadsCount > 0) {
-      throw new BusinessRuleException(
-        `Etapa tem ${etapa.leadsCount} lead(s) — mova-os pra outra etapa antes de excluir.`,
-      );
-    }
     // Etapa referenciada por fluxo (CRIAR_LEAD/MOVER_LEAD_ETAPA) NÃO pode sumir:
     // sem ela o nó falha ou o lead deixa de ser movido, e isso NÃO dá erro visível
     // — é a exata cilada que gerou o card 🔧 "Reestruturar as etapas dos 4 funis".
@@ -805,7 +807,21 @@ export class FunisService {
           'ajuste o(s) fluxo(s) pra apontar pra outra etapa antes de excluir.',
       );
     }
-    await this.prisma.funilEtapa.delete({ where: { id: etapaId } });
+
+    // AUDITORIA (#29): o `leadsCount` vinha do findById — LIDO antes, e o delete
+    // acontecia depois. Um lead que entrasse na etapa nessa janela (captura do
+    // site, importação, bot movendo) era apagado junto: `Lead.etapaId` tem
+    // onDelete SetNull, então o lead sumia do kanban sem erro nenhum. Mesmo
+    // padrão do `remove`: re-conta DENTRO da transação, colado no delete.
+    await this.prisma.$transaction(async (tx) => {
+      const leads = await tx.lead.count({ where: { funilEtapaId: etapaId } });
+      if (leads > 0) {
+        throw new BusinessRuleException(
+          `Etapa tem ${leads} lead(s) — mova-os pra outra etapa antes de excluir.`,
+        );
+      }
+      await tx.funilEtapa.delete({ where: { id: etapaId } });
+    });
     return this.findById(user, funilId);
   }
 

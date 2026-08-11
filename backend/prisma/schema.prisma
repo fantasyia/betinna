@@ -1509,6 +1509,11 @@ model AgendaItem {
   usuario Usuario  @relation(fields: [usuarioId], references: [id], onDelete: Cascade)
   cliente Cliente? @relation(fields: [clienteId], references: [id])
 
+  /// #60: um evento do Google só pode espelhar UM AgendaItem do mesmo usuário.
+  /// Sem isto, duas gravações concorrentes criavam dois espelhos e um deles
+  /// ficava órfão na agenda do Google (impossível de apagar pelo Betinna).
+  /// NULL não colide no Postgres, então itens não espelhados seguem livres.
+  @@unique([usuarioId, googleEventId])
   @@index([usuarioId])
   @@index([empresaId, data])
   @@index([data])

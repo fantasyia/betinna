@@ -321,7 +321,7 @@ describe('MetaOAuthService.renovarTokenSeNecessario', () => {
     );
   });
 
-  it("retorna 'sem-expiracao' pra conexão legada sem userAccessToken/expiração", async () => {
+  it("sem userAccessToken → 'sem-conexao' (não há o que renovar)", async () => {
     const integ = makeIntegracoes();
     integ.obterCredenciaisInternas.mockResolvedValueOnce({
       credenciais: { pageId: 'page-1', pageName: 'X', pageAccessToken: 'só-page' },
@@ -333,6 +333,34 @@ describe('MetaOAuthService.renovarTokenSeNecessario', () => {
       integ as never,
       makeRedis() as never,
     );
-    expect(await svc.renovarTokenSeNecessario('emp-1', 'facebook')).toBe('sem-expiracao');
+    expect(await svc.renovarTokenSeNecessario('emp-1', 'facebook')).toBe('sem-conexao');
+  });
+
+  it('#41: conexão SEM prazo salvo é renovada (antes o cron pulava e o token morria)', async () => {
+    // O Graph às vezes omite `expires_in`. Nesse caso userTokenExpiresAt ficava
+    // undefined, o cron devolvia 'sem-expiracao' pra sempre e por volta do 60º
+    // dia a Inbox de IG/FB parava de receber — sem alerta nenhum.
+    const integ = makeIntegracoes();
+    integ.obterCredenciaisInternas.mockResolvedValue({
+      credenciais: { pageId: 'page-1', pageName: 'X', userAccessToken: 'ut-sem-prazo' },
+    });
+    const graph = makeGraph();
+    graph.exchangeLongLived.mockResolvedValue({ access_token: 'ut-novo' }); // sem expires_in
+    graph.listarPages.mockResolvedValue([{ id: 'page-1', name: 'X', access_token: 'pt-novo' }]);
+    const svc = new MetaOAuthService(
+      makeEnv() as never,
+      graph as never,
+      makePrisma() as never,
+      integ as never,
+      makeRedis() as never,
+    );
+
+    expect(await svc.renovarTokenSeNecessario('emp-1', 'facebook')).toBe('renovado');
+
+    // E o novo prazo NÃO fica undefined — senão o problema volta no próximo ciclo.
+    const salvo = integ.salvarCredenciaisInternas.mock.calls[0][2] as {
+      userTokenExpiresAt?: number;
+    };
+    expect(salvo.userTokenExpiresAt).toBeGreaterThan(Date.now());
   });
 });

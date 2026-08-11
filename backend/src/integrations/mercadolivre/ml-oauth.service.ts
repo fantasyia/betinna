@@ -122,15 +122,47 @@ export class MLOAuthService {
       valida: (cred) =>
         Boolean(cred?.expiresAt && cred.expiresAt - TOKEN_REFRESH_MARGIN_MS > Date.now()),
       renovar: async () => {
+        // AUDITORIA (#40) — DOUBLE-CHECK dentro do lock. O `c` acima foi lido
+        // ANTES de disputar o lock e ainda pode ter vindo do cache de 5min do
+        // IntegracoesService. Se outro processo renovou nesse meio-tempo, o
+        // refresh_token do `c` já foi ROTACIONADO pelo ML e usar ele devolve
+        // invalid_grant — derrubando a integração inteira até alguém reconectar
+        // na mão. Relê descartando o cache e só refresca se ainda precisar.
+        this.integracoes.descartarCacheDeCredenciais(empresaId, 'mercadolivre');
+        const fresco = (await this.integracoes.obterCredenciaisInternas(empresaId, 'mercadolivre'))
+          .credenciais as Partial<MLCredenciais>;
+        if (fresco?.expiresAt && fresco.expiresAt - TOKEN_REFRESH_MARGIN_MS > Date.now()) {
+          this.logger.debug(`ML: outro processo já renovou — empresa=${empresaId}`);
+          return fresco as MLCredenciais;
+        }
+
         this.logger.debug(`Refresh access_token ML — empresa=${empresaId}`);
-        const tokenRes = await this.refreshToken(c.refreshToken as string);
+        const tokenRes = await this.refreshToken(
+          (fresco?.refreshToken ?? c.refreshToken) as string,
+        ).catch(async (err: unknown) => {
+          // invalid_grant = o refresh morreu de vez (rotacionado ou revogado).
+          // Sem isto, o cache seguia servindo a credencial morta por até 5min e
+          // TODA chamada do período falhava com o mesmo erro sem explicação.
+          const msg = err instanceof Error ? err.message : String(err);
+          if (/invalid_grant/i.test(msg)) {
+            this.integracoes.descartarCacheDeCredenciais(empresaId, 'mercadolivre');
+            await this.integracoes
+              .marcarDesconectado(
+                empresaId,
+                'mercadolivre',
+                'refresh_token inválido (invalid_grant) — reconecte o Mercado Livre',
+              )
+              .catch(() => undefined);
+          }
+          throw err;
+        });
         const novo: MLCredenciais = {
-          userId: c.userId as string,
+          userId: (fresco?.userId ?? c.userId) as string,
           accessToken: tokenRes.access_token,
           refreshToken: tokenRes.refresh_token, // ML emite novo refresh_token a cada exchange
           expiresAt: Date.now() + tokenRes.expires_in * 1000,
-          nickname: c.nickname,
-          siteId: c.siteId,
+          nickname: fresco?.nickname ?? c.nickname,
+          siteId: fresco?.siteId ?? c.siteId,
         };
         await this.persistir(empresaId, novo);
         return novo;
@@ -191,9 +223,14 @@ export class MLOAuthService {
           typeof err.body === 'object' && err.body !== null
             ? JSON.stringify(err.body).slice(0, 300)
             : String(err.body ?? '').slice(0, 300);
+        // AUDITORIA (#38): o status do ML era jogado só no texto. Quem trata o
+        // erro acima (job, webhook, tela) não conseguia distinguir 400
+        // invalid_grant (precisa reconectar) de 5xx do ML (é só tentar de novo)
+        // sem parsear string. `upstreamStatus` existe pra isso.
         throw new IntegrationException(
           `ML /oauth/token HTTP ${err.status}: ${detail}`,
           ErrorCode.INTEGRATION_ERROR,
+          err.status,
         );
       }
       throw err;

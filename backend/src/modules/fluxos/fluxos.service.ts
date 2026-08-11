@@ -920,10 +920,28 @@ export class FluxosService {
       );
     }
 
+    // AUDITORIA (#35): o cancelamento só existia na linha de log do container.
+    // Na tela de execuções a execução aparecia CANCELADA sem dizer por quem nem
+    // por quê — e quando o lead reclamava que o fluxo parou no meio, ninguém
+    // conseguia reconstruir se foi cancelamento manual, erro ou expiração.
+    // Agora carimba o motivo na execução e grava a entrada na timeline.
+    const carimbo = `Cancelado manualmente por ${user.nome || user.email} (${user.role})`;
     await this.prisma.fluxoExecucao.update({
       where: { id: execucaoId },
-      data: { status: 'CANCELADO', terminouEm: new Date() },
+      data: { status: 'CANCELADO', terminouEm: new Date(), erroMsg: carimbo },
     });
+    await this.prisma.fluxoExecucaoLog
+      .create({
+        data: {
+          execucaoId,
+          noId: execucao.aguardandoNoId ?? null,
+          noTitulo: 'Cancelamento manual',
+          status: 'CANCELADO',
+          erroMsg: carimbo,
+          terminadoEm: new Date(),
+        },
+      })
+      .catch(() => undefined); // timeline é best-effort: não desfaz o cancelamento
     this.logger.log(`Execução ${execucaoId} cancelada por ${user.id}`);
   }
 

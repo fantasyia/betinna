@@ -1,6 +1,7 @@
 import { Injectable, Logger } from '@nestjs/common';
 import type { AgendaItem, Prisma } from '@prisma/client';
 import { PrismaService } from '@database/prisma.service';
+import { RedisService } from '@database/redis.service';
 import { GoogleCalendarService } from '@integrations/google/google-calendar.service';
 import { UsuarioIntegracoesService } from '@modules/integracoes/usuario-integracoes.service';
 import {
@@ -36,6 +37,7 @@ export class AgendaService {
 
   constructor(
     private readonly prisma: PrismaService,
+    private readonly redis: RedisService,
     private readonly userIntegracoes: UsuarioIntegracoesService,
     private readonly googleCalendar: GoogleCalendarService,
     private readonly repScope: RepScopeService,
@@ -245,13 +247,35 @@ export class AgendaService {
       // Item ainda NÃO espelhado (ex.: criado antes de conectar o Google). Ao
       // editar, cria o evento no Google agora (se o usuário estiver conectado) —
       // senão editar um compromisso antigo nunca o levava pra agenda do Google.
-      const gid = await this.tentarEspelharGoogle(user.id, updated, dto.participantes);
-      if (gid) {
-        await this.prisma.agendaItem.updateMany({
-          where: { id, empresaId: existing.empresaId },
-          data: { googleEventId: gid },
-        });
-        updated.googleEventId = gid;
+      //
+      // AUDITORIA (#60): dois saves seguidos (duplo clique, aba duplicada, ou o
+      // app e o celular salvando junto) chegavam aqui os dois com
+      // `googleEventId` nulo e criavam DOIS eventos no Google — um deles órfão,
+      // que o usuário via na agenda dele e não conseguia apagar pelo Betinna.
+      // Lock por item + re-checagem: só o primeiro espelha.
+      const chave = `agenda:espelho:${id}`;
+      const pegou = await this.redis.setNxEx(chave, '1', 30).catch(() => true);
+      if (pegou) {
+        try {
+          const atual = await this.prisma.agendaItem.findUnique({
+            where: { id },
+            select: { googleEventId: true },
+          });
+          if (!atual?.googleEventId) {
+            const gid = await this.tentarEspelharGoogle(user.id, updated, dto.participantes);
+            if (gid) {
+              await this.prisma.agendaItem.updateMany({
+                where: { id, empresaId: existing.empresaId },
+                data: { googleEventId: gid },
+              });
+              updated.googleEventId = gid;
+            }
+          } else {
+            updated.googleEventId = atual.googleEventId;
+          }
+        } finally {
+          await this.redis.del(chave).catch(() => undefined);
+        }
       }
     }
     return updated;

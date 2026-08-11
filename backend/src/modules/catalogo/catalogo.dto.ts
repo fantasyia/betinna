@@ -30,3 +30,9 @@ export const shareCatalogSchema = z.object({
   validoAte: z.coerce.date().optional(),
 });
 export type ShareCatalogDto = z.infer<typeof shareCatalogSchema>;
+
+/** Revogação de link público (#74) — o token é o próprio identificador. */
+export const revogarShareSchema = z.object({
+  token: z.string().min(20),
+});
+export type RevogarShareDto = z.infer<typeof revogarShareSchema>;

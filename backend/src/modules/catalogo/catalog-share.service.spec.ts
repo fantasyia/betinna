@@ -133,3 +133,58 @@ describe('CatalogShareService — revogação de link (#74)', () => {
     expect(chave1).not.toBe(chave2);
   });
 });
+
+/**
+ * #74: o `revogar` existia mas nenhum endpoint chamava — o gancho era
+ * decorativo e um link vazado ficava aberto até o TTL de 7 dias.
+ */
+describe('CatalogShareService.revogarComoUsuario', () => {
+  const makeSvc = () => {
+    const redis = {
+      get: vi.fn().mockResolvedValue(null),
+      setEx: vi.fn().mockResolvedValue(undefined),
+    };
+    return { svc: new CatalogShareService(makeEnv() as never, redis as never), redis };
+  };
+
+  it('REP dono revoga o próprio link (e o token para de valer)', async () => {
+    const { svc, redis } = makeSvc();
+    const token = await svc.gerar({ repId: 'rep-1', clienteId: 'c', empresaId: 'emp-1' });
+
+    await svc.revogarComoUsuario({ id: 'rep-1', role: 'REP', empresaIdAtiva: 'emp-1' }, token);
+
+    expect(redis.setEx).toHaveBeenCalledWith(
+      expect.stringContaining('share:revogado:'),
+      '1',
+      expect.any(Number),
+    );
+  });
+
+  it('REP NÃO derruba link de outro rep', async () => {
+    const { svc, redis } = makeSvc();
+    const token = await svc.gerar({ repId: 'rep-1', empresaId: 'emp-1' });
+
+    await expect(
+      svc.revogarComoUsuario({ id: 'rep-2', role: 'REP', empresaIdAtiva: 'emp-1' }, token),
+    ).rejects.toThrow(/representante dono/i);
+    expect(redis.setEx).not.toHaveBeenCalled();
+  });
+
+  it('DIRECTOR derruba qualquer link da própria empresa', async () => {
+    const { svc, redis } = makeSvc();
+    const token = await svc.gerar({ repId: 'rep-1', empresaId: 'emp-1' });
+
+    await svc.revogarComoUsuario({ id: 'dir', role: 'DIRECTOR', empresaIdAtiva: 'emp-1' }, token);
+
+    expect(redis.setEx).toHaveBeenCalledTimes(1);
+  });
+
+  it('link de OUTRA empresa é barrado (multi-tenant)', async () => {
+    const { svc } = makeSvc();
+    const token = await svc.gerar({ repId: 'rep-1', empresaId: 'emp-1' });
+
+    await expect(
+      svc.revogarComoUsuario({ id: 'dir', role: 'ADMIN', empresaIdAtiva: 'emp-OUTRA' }, token),
+    ).rejects.toThrow(/outra empresa/i);
+  });
+});

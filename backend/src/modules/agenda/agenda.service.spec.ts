@@ -18,7 +18,8 @@ const makePrismaMock = () => ({
   agendaItem: {
     findFirst: vi.fn(),
     findMany: vi.fn().mockResolvedValue([]),
-    findUnique: vi.fn(),
+    // #60: o update relê o googleEventId dentro do lock antes de espelhar.
+    findUnique: vi.fn().mockResolvedValue(null),
     findUniqueOrThrow: vi.fn(),
     create: vi.fn(),
     update: vi.fn(),
@@ -97,6 +98,8 @@ describe('AgendaService', () => {
     repScope = makeRepScopeMock();
     service = new AgendaService(
       prisma as never,
+      // #60: lock por item no espelhamento do Google.
+      { setNxEx: vi.fn().mockResolvedValue(true), del: vi.fn().mockResolvedValue(1) } as never,
       userIntegracoes as never,
       googleCalendar as never,
       repScope as never,
@@ -768,5 +771,70 @@ describe('AgendaService', () => {
       expect(r.eventos[0]).toMatchObject({ id: 'g1', titulo: 'Reunião', allDay: false });
       expect(r.eventos[1]).toMatchObject({ id: 'g2', allDay: true });
     });
+  });
+});
+
+/**
+ * #60: dois saves concorrentes do MESMO item criavam DOIS eventos no Google —
+ * só um id era persistido e o outro virava órfão na agenda da pessoa.
+ */
+describe('AgendaService — espelho único no Google (#60)', () => {
+  it('quem perde o lock NÃO cria segundo evento', async () => {
+    const prisma = makePrismaMock();
+    const userIntegracoes = { findByServico: vi.fn() };
+    const googleCalendar = {
+      criarEvento: vi.fn(),
+      atualizarEvento: vi.fn(),
+      removerEvento: vi.fn(),
+    };
+    const repScope = { getRepIds: vi.fn().mockResolvedValue(null) };
+    const redis = { setNxEx: vi.fn().mockResolvedValue(false), del: vi.fn().mockResolvedValue(1) };
+
+    const svc = new AgendaService(
+      prisma as never,
+      redis as never,
+      userIntegracoes as never,
+      googleCalendar as never,
+      repScope as never,
+    );
+
+    prisma.agendaItem.findFirst.mockResolvedValue(fakeAgendaItem({ googleEventId: null }));
+    prisma.agendaItem.updateMany.mockResolvedValue({ count: 1 });
+    prisma.agendaItem.findUniqueOrThrow.mockResolvedValue(fakeAgendaItem({ googleEventId: null }));
+
+    await svc.update(fakeUser(), 'ag-1', { titulo: 'Novo título' } as never);
+
+    expect(googleCalendar.criarEvento).not.toHaveBeenCalled();
+  });
+
+  it('quem PEGA o lock relê antes: se o outro já espelhou, não duplica', async () => {
+    const prisma = makePrismaMock();
+    const userIntegracoes = { findByServico: vi.fn() };
+    const googleCalendar = {
+      criarEvento: vi.fn(),
+      atualizarEvento: vi.fn(),
+      removerEvento: vi.fn(),
+    };
+    const repScope = { getRepIds: vi.fn().mockResolvedValue(null) };
+    const redis = { setNxEx: vi.fn().mockResolvedValue(true), del: vi.fn().mockResolvedValue(1) };
+
+    const svc = new AgendaService(
+      prisma as never,
+      redis as never,
+      userIntegracoes as never,
+      googleCalendar as never,
+      repScope as never,
+    );
+
+    prisma.agendaItem.findFirst.mockResolvedValue(fakeAgendaItem({ googleEventId: null }));
+    prisma.agendaItem.updateMany.mockResolvedValue({ count: 1 });
+    prisma.agendaItem.findUniqueOrThrow.mockResolvedValue(fakeAgendaItem({ googleEventId: null }));
+    // A re-leitura dentro do lock já enxerga o espelho do concorrente.
+    prisma.agendaItem.findUnique.mockResolvedValue({ googleEventId: 'gcal-do-outro' });
+
+    const r = await svc.update(fakeUser(), 'ag-1', { titulo: 'Novo título' } as never);
+
+    expect(googleCalendar.criarEvento).not.toHaveBeenCalled();
+    expect(r.googleEventId).toBe('gcal-do-outro');
   });
 });

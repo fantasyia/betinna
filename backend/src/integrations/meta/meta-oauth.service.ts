@@ -49,6 +49,19 @@ interface ConectarPagesResult {
  * usamos a primeira por padrão (MVP). Pra multi-page por empresa precisaremos
  * de tabela separada (decisão futura — fica anotada em CLAUDE.md).
  */
+/**
+ * Validade assumida do user token long-lived quando o Meta NÃO manda
+ * `expires_in` (#41).
+ *
+ * O Graph às vezes responde a troca long-lived sem o campo. Nesse caso
+ * `userTokenExpiresAt` ficava `undefined`, o cron de renovação devolvia
+ * 'sem-expiracao' e NUNCA renovava: por volta do 60º dia o token morria sozinho
+ * e a Inbox de IG/FB parava de receber mensagem sem nenhum alerta — quem
+ * descobria era o cliente reclamando que ninguém respondeu. 55 dias (não 60) dá
+ * margem pro cron de 14 dias agir antes do vencimento real.
+ */
+const META_LONG_LIVED_FALLBACK_MS = 55 * 86_400_000;
+
 @Injectable()
 export class MetaOAuthService {
   private readonly logger = new Logger(MetaOAuthService.name);
@@ -100,7 +113,7 @@ export class MetaOAuthService {
     const userToken = longLived.access_token;
     const userTokenExpiresAt = longLived.expires_in
       ? Date.now() + longLived.expires_in * 1000
-      : undefined;
+      : Date.now() + META_LONG_LIVED_FALLBACK_MS; // #41: nunca deixa sem prazo
 
     // 3. Lista pages do user
     const pages = await this.graph.listarPages(userToken);
@@ -183,9 +196,12 @@ export class MetaOAuthService {
       return 'sem-conexao';
     }
 
-    if (!creds.userAccessToken || !creds.userTokenExpiresAt) return 'sem-expiracao';
+    if (!creds.userAccessToken) return 'sem-conexao';
+    // #41: conexão ANTIGA, salva antes do fallback, pode não ter prazo nenhum.
+    // Tratar como "vence agora" é o certo — renova e passa a ter data.
+    const expiraEm = creds.userTokenExpiresAt ?? 0;
 
-    const diasRestantes = (creds.userTokenExpiresAt - Date.now()) / 86_400_000;
+    const diasRestantes = (expiraEm - Date.now()) / 86_400_000;
     if (diasRestantes > limiarDias) return 'ok';
 
     // Renova o user token long-lived (Meta estende por mais ~60d).
@@ -193,7 +209,7 @@ export class MetaOAuthService {
     const novoUserToken = longLived.access_token;
     const novoExpiresAt = longLived.expires_in
       ? Date.now() + longLived.expires_in * 1000
-      : undefined;
+      : Date.now() + META_LONG_LIVED_FALLBACK_MS; // #41
 
     // Re-obtém o page token a partir do user token renovado.
     const pages = await this.graph.listarPages(novoUserToken);

@@ -26,6 +26,11 @@ const makePrisma = () => ({
     create: vi.fn().mockResolvedValue({ id: 'filha-1' }),
   },
   fluxoNo: { findUnique: vi.fn() },
+  // #23: prompt do nó tem que existir/estar ativo — default: existe.
+  botPrompt: {
+    findFirst: vi.fn().mockResolvedValue({ id: 'p1' }),
+    findUnique: vi.fn().mockResolvedValue(null),
+  },
   fluxoEdge: { findMany: vi.fn().mockResolvedValue([]) },
   message: { findMany: vi.fn().mockResolvedValue([]), update: vi.fn().mockResolvedValue({}) },
   // Gate do bot no retomar (default: bot LIGADO, sem escalação pra humano).
@@ -304,6 +309,24 @@ describe('ConversarIaService', () => {
       expect(whatsapp.enviarTexto).not.toHaveBeenCalled();
     });
 
+    it('#23: prompt do nó apagado/desativado → NÃO abre conversa com a persona errada', async () => {
+      prisma.lead.findFirst.mockResolvedValue({ contatoTelefone: '11999990000' });
+      // Prompt não resolve (apagado, desativado ou de outro tenant).
+      prisma.botPrompt.findFirst.mockResolvedValue(null);
+
+      const r = await svc.iniciar(
+        'exec-1',
+        no({ promptId: 'p1' }) as never,
+        { leadId: 'lead-1' },
+        'emp-1',
+      );
+
+      expect(r.pulado).toBe(true);
+      expect(r.motivo).toMatch(/desativado/i);
+      expect(muller.gerarRespostaIa).not.toHaveBeenCalled();
+      expect(whatsapp.enviarTexto).not.toHaveBeenCalled();
+    });
+
     it('registra o uso de tokens no orçamento de custo do bot', async () => {
       prisma.lead.findFirst.mockResolvedValue({ contatoTelefone: '11999990000' });
       muller.gerarRespostaIa.mockResolvedValue({
@@ -543,6 +566,25 @@ describe('ConversarIaService', () => {
 
       expect(r.mensagemIA).toBe('[áudio]');
       expect(muller.transcreverAudio).not.toHaveBeenCalled();
+    });
+
+    it('#21: teto de custo batido → NÃO paga Whisper (a transcrição vinha antes do teto)', async () => {
+      persona.obterConfigBot.mockResolvedValue(cfg({ transcreverAudio: true }));
+      custo.verificarTeto.mockResolvedValue({ bloqueado: true, motivo: 'Teto atingido' });
+
+      const r = await svc.prepararEntrada(
+        {
+          empresaId: 'emp-1',
+          tipo: 'AUDIO',
+          conteudo: '[áudio]',
+          mediaUrl: 'u',
+          mediaMime: 'audio/ogg',
+        } as never,
+        'msg-1',
+      );
+
+      expect(muller.transcreverAudio).not.toHaveBeenCalled();
+      expect(r.mensagemIA).toBe('[áudio]');
     });
   });
 

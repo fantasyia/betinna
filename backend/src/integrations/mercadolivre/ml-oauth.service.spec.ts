@@ -34,6 +34,9 @@ const makeIntegracoes = () => ({
   obterCredenciaisInternas: vi.fn(),
   registrarSyncOk: vi.fn(async () => undefined),
   salvarCredenciaisInternas: vi.fn(async () => undefined),
+  // #40: double-check dentro do lock + invalidação em invalid_grant.
+  descartarCacheDeCredenciais: vi.fn(),
+  marcarDesconectado: vi.fn(async () => undefined),
 });
 
 // #B17: consumidor de nonce (anti-replay do state OAuth). true = 1º uso.
@@ -160,7 +163,8 @@ describe('MLOAuthService.getAccessToken refresh', () => {
 
   it('faz refresh quando token está próximo de expirar', async () => {
     const integ = makeIntegracoes();
-    integ.obterCredenciaisInternas.mockResolvedValueOnce({
+    // #40: agora são DUAS leituras — a de fora e a re-leitura dentro do lock.
+    integ.obterCredenciaisInternas.mockResolvedValue({
       credenciais: {
         userId: '9876543',
         accessToken: 'expired',
@@ -194,5 +198,72 @@ describe('MLOAuthService.getAccessToken refresh', () => {
     expect(http.post).toHaveBeenCalledTimes(1);
     // Confirma persist com novo refresh token + externalAccountId (centralizado).
     expect(integ.salvarCredenciaisInternas).toHaveBeenCalled();
+  });
+
+  it('#40: se OUTRO processo já renovou, NÃO refresca com o refresh rotacionado', async () => {
+    // Este é o caso que quebrava a integração: o `c` lido antes do lock (ou do
+    // cache de 5min) traz um refresh_token que o ML já rotacionou. Usar ele
+    // devolve invalid_grant e derruba tudo até alguém reconectar na mão.
+    const integ = makeIntegracoes();
+    integ.obterCredenciaisInternas
+      .mockResolvedValueOnce({
+        credenciais: {
+          userId: '9876543',
+          accessToken: 'expired',
+          refreshToken: 'rt-old',
+          expiresAt: Date.now() - 1000,
+        },
+      })
+      // Re-leitura DENTRO do lock: o vencedor já publicou credencial válida.
+      .mockResolvedValue({
+        credenciais: {
+          userId: '9876543',
+          accessToken: 'do-vencedor',
+          refreshToken: 'rt-new',
+          expiresAt: Date.now() + 3_600_000,
+        },
+      });
+    const http = makeHttp();
+    const svc = new MLOAuthService(
+      makeEnv() as never,
+      http as never,
+      makePrisma() as never,
+      integ as never,
+      makeRedis() as never,
+    );
+
+    const r = await svc.getAccessToken('emp-1');
+
+    expect(r.accessToken).toBe('do-vencedor');
+    expect(http.post).not.toHaveBeenCalled(); // não gastou o refresh velho
+    expect(integ.descartarCacheDeCredenciais).toHaveBeenCalledWith('emp-1', 'mercadolivre');
+  });
+
+  it('#40: invalid_grant descarta o cache e marca a integração desconectada', async () => {
+    const integ = makeIntegracoes();
+    integ.obterCredenciaisInternas.mockResolvedValue({
+      credenciais: {
+        userId: '9876543',
+        accessToken: 'expired',
+        refreshToken: 'rt-morto',
+        expiresAt: Date.now() - 1000,
+      },
+    });
+    const http = makeHttp();
+    http.post.mockRejectedValue(new Error('ML /oauth/token HTTP 400: invalid_grant'));
+    const svc = new MLOAuthService(
+      makeEnv() as never,
+      http as never,
+      makePrisma() as never,
+      integ as never,
+      makeRedis() as never,
+    );
+
+    await expect(svc.getAccessToken('emp-1')).rejects.toThrow(/invalid_grant/i);
+    expect(integ.marcarDesconectado).toHaveBeenCalledWith(
+      'emp-1',
+      'mercadolivre',
+      expect.stringMatching(/reconecte/i),
+    );
   });
 });

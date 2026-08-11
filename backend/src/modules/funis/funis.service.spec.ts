@@ -3,24 +3,50 @@ import type { AuthenticatedUser } from '@shared/types/authenticated-user';
 import { BusinessRuleException } from '@shared/errors/app-exception';
 import { FunisService } from './funis.service';
 
-const makePrisma = () => ({
-  funil: {
-    findFirst: vi.fn(),
-    findMany: vi.fn(),
-    delete: vi.fn(),
-  },
-  funilEtapa: {
-    findFirst: vi.fn(),
-    delete: vi.fn(),
-  },
-  lead: {
-    groupBy: vi.fn().mockResolvedValue([]),
-    count: vi.fn().mockResolvedValue(0),
-  },
-  $queryRaw: vi.fn().mockResolvedValue([]),
-  // #29: remove() e create() passaram a usar transação interativa.
-  $transaction: vi.fn(),
-});
+const makePrisma = () => {
+  const p: Record<string, unknown> = {
+    funil: {
+      findFirst: vi.fn(),
+      findMany: vi.fn(),
+      delete: vi.fn(),
+    },
+    funilEtapa: {
+      findFirst: vi.fn(),
+      delete: vi.fn(),
+    },
+    lead: {
+      groupBy: vi.fn().mockResolvedValue([]),
+      count: vi.fn().mockResolvedValue(0),
+    },
+    $queryRaw: vi.fn().mockResolvedValue([]),
+    $executeRaw: vi.fn().mockResolvedValue(0),
+    // #29: remove/create/update/removerEtapa usam transação interativa — o default
+    // roda o callback contra o próprio mock (senão o corpo da transação some e o
+    // teste passa sem exercitar nada).
+    $transaction: vi.fn(),
+  };
+  p.$transaction = vi.fn((cb: unknown) =>
+    typeof cb === 'function' ? (cb as (t: unknown) => unknown)(p) : Promise.all(cb as unknown[]),
+  );
+  return p as never as {
+    funil: {
+      findFirst: ReturnType<typeof vi.fn>;
+      findMany: ReturnType<typeof vi.fn>;
+      delete: ReturnType<typeof vi.fn>;
+      update?: ReturnType<typeof vi.fn>;
+      updateMany?: ReturnType<typeof vi.fn>;
+    };
+    funilEtapa: {
+      findFirst: ReturnType<typeof vi.fn>;
+      delete: ReturnType<typeof vi.fn>;
+      update?: ReturnType<typeof vi.fn>;
+    };
+    lead: { groupBy: ReturnType<typeof vi.fn>; count: ReturnType<typeof vi.fn> };
+    $queryRaw: ReturnType<typeof vi.fn>;
+    $executeRaw: ReturnType<typeof vi.fn>;
+    $transaction: ReturnType<typeof vi.fn>;
+  };
+};
 
 const admin: AuthenticatedUser = {
   id: 'adm',
@@ -78,6 +104,8 @@ describe('FunisService — uso de etapa (leadsCount + fluxosQueApontam)', () => 
   it('removerEtapa BLOQUEIA quando há lead na etapa', async () => {
     prisma.funil.findFirst.mockResolvedValue(fakeFunil([{ id: 'et-1', nome: 'Novo' }]));
     prisma.lead.groupBy.mockResolvedValue([{ funilEtapaId: 'et-1', _count: 2 }]);
+    // #29: a checagem que vale é a re-contagem DENTRO da transação.
+    prisma.lead.count.mockResolvedValue(2);
 
     await expect(svc.removerEtapa(admin, 'f1', 'et-1')).rejects.toBeInstanceOf(
       BusinessRuleException,
@@ -201,5 +229,48 @@ describe('FunisService.remove — corrida com lead novo (#29)', () => {
     await svc.remove(admin, 'f1');
 
     expect(prisma.funil.delete).toHaveBeenCalledWith({ where: { id: 'f1' } });
+  });
+});
+
+/**
+ * #29: os dois check-then-act que sobraram no service.
+ */
+describe('FunisService — corridas do #29', () => {
+  let prisma: ReturnType<typeof makePrisma>;
+  let svc: FunisService;
+
+  beforeEach(() => {
+    prisma = makePrisma();
+    svc = new FunisService(prisma as never);
+    prisma.funil.update = vi.fn().mockResolvedValue({});
+    prisma.funil.updateMany = vi.fn().mockResolvedValue({ count: 0 });
+  });
+
+  it('lead que entra na etapa DEPOIS da leitura bloqueia o delete (re-conta na transação)', async () => {
+    prisma.funil.findFirst.mockResolvedValue(fakeFunil([{ id: 'et-1', nome: 'Novo' }]));
+    // A leitura do findById viu 0 leads…
+    prisma.lead.groupBy.mockResolvedValue([]);
+    // …mas na hora de apagar já tem 1 (capturado do site no meio do caminho).
+    prisma.lead.count.mockResolvedValue(1);
+
+    await expect(svc.removerEtapa(admin, 'f1', 'et-1')).rejects.toBeInstanceOf(
+      BusinessRuleException,
+    );
+    expect(prisma.funilEtapa.delete).not.toHaveBeenCalled();
+  });
+
+  it('promover funil a padrão desmarca os outros na MESMA transação', async () => {
+    prisma.funil.findFirst.mockResolvedValue({ ...fakeFunil([]), isPadrao: false });
+
+    await svc.update(admin, 'f1', { isPadrao: true } as never);
+
+    // Advisory lock por empresa + desmarcação + marcação, tudo no mesmo tx.
+    expect(prisma.$executeRaw).toHaveBeenCalled();
+    expect(prisma.funil.updateMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({ isPadrao: true, id: { not: 'f1' } }),
+      }),
+    );
+    expect(prisma.$transaction).toHaveBeenCalled();
   });
 });

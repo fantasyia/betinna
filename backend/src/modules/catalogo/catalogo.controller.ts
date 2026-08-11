@@ -20,19 +20,25 @@ import { ZodValidationPipe } from '@shared/pipes/zod-validation.pipe';
 import type { AuthenticatedUser } from '@shared/types/authenticated-user';
 import {
   type BulkUpsertCatalogoDto,
+  type RevogarShareDto,
   type ShareCatalogDto,
   type UpsertCatalogoItemDto,
   bulkUpsertCatalogoSchema,
+  revogarShareSchema,
   shareCatalogSchema,
   upsertCatalogoItemSchema,
 } from './catalogo.dto';
+import { CatalogShareService } from './catalog-share.service';
 import { CatalogoService } from './catalogo.service';
 
 @ApiTags('catalogo')
 @ApiBearerAuth()
 @Controller('catalogo')
 export class CatalogoController {
-  constructor(private readonly catalogo: CatalogoService) {}
+  constructor(
+    private readonly catalogo: CatalogoService,
+    private readonly shareSvc: CatalogShareService,
+  ) {}
 
   @Get()
   @RequirePermissions({ module: 'catalogo', action: 'view' })
@@ -114,5 +120,23 @@ export class CatalogoController {
   })
   acessarShare(@Param('token') token: string) {
     return this.catalogo.resolverShareToken(token);
+  }
+
+  /**
+   * Derruba UM link compartilhado (#74).
+   *
+   * O `CatalogShareService.revogar` existia desde a auditoria mas nenhum
+   * endpoint chamava — o gancho de revogação era decorativo e um link vazado
+   * ficava aberto até o TTL de 7 dias. REP revoga o do próprio catálogo;
+   * ADMIN/DIRECTOR/GERENTE revogam qualquer um da empresa.
+   */
+  @Delete('share')
+  @Audit({ action: 'revoke_share', resource: 'catalogo_rep' })
+  @ApiOperation({ summary: 'Revoga um link público de catálogo (por token)' })
+  revogarShare(
+    @CurrentUser() user: AuthenticatedUser,
+    @Body(new ZodValidationPipe(revogarShareSchema)) dto: RevogarShareDto,
+  ) {
+    return this.shareSvc.revogarComoUsuario(user, dto.token);
   }
 }

@@ -4,7 +4,11 @@ import { RedisService } from '@database/redis.service';
 import { createHash } from 'node:crypto';
 import { SignJWT, jwtVerify } from 'jose';
 import { EnvService } from '@config/env.service';
-import { BusinessRuleException, UnauthorizedException } from '@shared/errors/app-exception';
+import {
+  BusinessRuleException,
+  ForbiddenException,
+  UnauthorizedException,
+} from '@shared/errors/app-exception';
 import { ErrorCode } from '@shared/errors/error-codes';
 
 /**
@@ -102,6 +106,36 @@ export class CatalogShareService {
     const restam = Math.max(60, Math.ceil(exp - Date.now() / 1000) + 60);
     await this.redis.setEx(`share:revogado:${jti}`, '1', restam).catch(() => undefined);
     this.logger.log(`Link de catálogo revogado (jti ${jti})`);
+  }
+
+  /**
+   * Revogação pedida por um usuário logado (#74).
+   *
+   * O `revogar` existia mas NENHUM endpoint chamava — na prática o gancho de
+   * revogação era decorativo: um link vazado no WhatsApp do cliente seguia
+   * aberto até o TTL de 7 dias e não havia como cortar. Aqui entra o gate de
+   * dono: o REP só derruba link do próprio catálogo; ADMIN/DIRECTOR/GERENTE
+   * derrubam qualquer link da própria empresa.
+   */
+  async revogarComoUsuario(
+    user: { id: string; role: string; empresaIdAtiva?: string | null },
+    token: string,
+  ): Promise<{ ok: true }> {
+    const { payload } = await jwtVerify(token, this.secret).catch(() => ({ payload: null }));
+    if (!payload) {
+      throw new UnauthorizedException('Link inválido ou já expirado', ErrorCode.AUTH_INVALID_TOKEN);
+    }
+    const dono = typeof payload.sub === 'string' ? payload.sub : null;
+    const empresaId = typeof payload.eid === 'string' ? payload.eid : null;
+    if (!empresaId || empresaId !== user.empresaIdAtiva) {
+      throw new ForbiddenException('Link de outra empresa');
+    }
+    const podeQualquer = ['ADMIN', 'DIRECTOR', 'GERENTE'].includes(user.role);
+    if (!podeQualquer && dono !== user.id) {
+      throw new ForbiddenException('Só o representante dono do catálogo pode revogar este link');
+    }
+    await this.revogar(token);
+    return { ok: true };
   }
 
   /**

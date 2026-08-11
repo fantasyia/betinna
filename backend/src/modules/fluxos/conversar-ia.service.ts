@@ -712,6 +712,19 @@ export class ConversarIaService {
     // custom.classificacao_final) — a "classificação velha" do card.
     await this.limparSinaisRoteamento(leadId, empresaId);
 
+    // #23: prompt do nó apagado/desativado — não abre conversa com a persona
+    // ERRADA só porque o compilador tem fallback. Encerra limpo, com motivo.
+    if (await this.promptIndisponivel(empresaId, cfg.promptId)) {
+      this.logger.warn(
+        `Prompt ${cfg.promptId} indisponível (apagado/desativado) — CONVERSAR_IA pulado (exec ${execucaoId})`,
+      );
+      return {
+        aguardando: false,
+        pulado: true,
+        motivo: 'prompt do nó não existe ou está desativado — abordagem pulada',
+      };
+    }
+
     // Teto de tokens do prompt (Fase C — spec §7).
     if (!(await this.tetoPromptOk(cfg.promptId))) {
       this.logger.warn(
@@ -915,6 +928,20 @@ export class ConversarIaService {
   ): Promise<{ mensagemIA: string; imagemDataUrl?: string }> {
     const cfg = await this.persona.obterConfigBot(params.empresaId).catch(() => null);
     if (!cfg) return { mensagemIA: params.conteudo };
+
+    // AUDITORIA (#21): a transcrição (Whisper) roda ANTES do `retomar`, e é o
+    // `retomar` que checa o teto de custo. Resultado: empresa com o bot pausado
+    // por estouro de orçamento continuava PAGANDO Whisper em todo áudio que
+    // chegava — o teto que deveria estancar o gasto só barrava a etapa seguinte.
+    // Com o teto batido, entrega o conteúdo cru: a mensagem ainda vira o ramo de
+    // erro do fluxo (tarefa/humano), só que sem gerar custo novo.
+    const teto = await this.custo.verificarTeto(params.empresaId).catch(() => null);
+    if (teto?.bloqueado) {
+      this.logger.warn(
+        `CONVERSAR_IA: teto de custo batido (${params.empresaId}) — pulando transcrição/visão`,
+      );
+      return { mensagemIA: params.conteudo };
+    }
     return prepararEntradaMultimodal(params, cfg, {
       baixarMidia: (url) => this.whatsapp.baixarMidia(url),
       transcreverAudio: (emp, bytes, mime) => this.muller.transcreverAudio(emp, bytes, mime),
@@ -1166,6 +1193,16 @@ export class ConversarIaService {
         ctx,
         'ia_custo_excedido',
         new Error(custoTurno.motivo ?? 'Teto de custo do bot atingido'),
+      );
+      return;
+    }
+    if (await this.promptIndisponivel(empresaId, cfg.promptId)) {
+      await this.rotearParaErro(
+        execucaoId,
+        no.id,
+        ctx,
+        'prompt_indisponivel',
+        new Error(`Prompt ${cfg.promptId} não existe, foi desativado ou é de outra empresa`),
       );
       return;
     }
@@ -1643,6 +1680,29 @@ export class ConversarIaService {
     // com o relatório de custo, que já usava BRT.
     const dia = diaBrasilia();
     return { dia, mes: mesBrasilia() };
+  }
+
+  /**
+   * O prompt escolhido no nó existe, é da empresa e está ATIVO? (#23)
+   *
+   * Quando não resolve (apagado, desativado ou de outro tenant), o
+   * `compilarSystemPromptConversa` caía no prompt PADRÃO da biblioteca: o nó
+   * seguia "funcionando" e o lead conversava com OUTRA persona, com outras
+   * regras, que o dono do fluxo nunca escolheu. A auditoria só acrescentou um
+   * warn no log — o comportamento errado continuou. Agora o nó trata como falha
+   * e roteia pela saída de erro, que é onde o fluxo decide (tarefa/humano).
+   */
+  private async promptIndisponivel(empresaId: string, promptId?: string): Promise<boolean> {
+    if (!promptId) return false;
+    try {
+      const row = await this.prisma.botPrompt.findFirst({
+        where: { id: promptId, empresaId, ativo: true },
+        select: { id: true },
+      });
+      return !row;
+    } catch {
+      return false; // fail-open: erro de infra não pode travar a conversa
+    }
   }
 
   /** True se o prompt ainda pode rodar (não estourou o teto de tokens dia/mês). */

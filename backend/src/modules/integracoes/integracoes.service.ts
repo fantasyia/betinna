@@ -490,6 +490,18 @@ export class IntegracoesService {
     return items.map((i) => ({ empresaId: i.empresaId, conexaoId: i.id }));
   }
 
+  /**
+   * Descarta o cache de credenciais de um serviço (#40).
+   *
+   * Público porque os OAuth services precisam disso quando o provedor devolve
+   * `invalid_grant`: as credenciais em cache estão comprovadamente mortas, e
+   * seguir servindo elas por até 5 minutos faz TODA chamada do período falhar
+   * com o mesmo erro.
+   */
+  descartarCacheDeCredenciais(empresaId: string, servico: string): void {
+    this.invalidarCache(empresaId, servico);
+  }
+
   private invalidarCache(empresaId: string, servico: string): void {
     this.cache.delete(`${empresaId}:${servico}`);
   }
