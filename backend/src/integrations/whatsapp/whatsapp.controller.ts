@@ -9,6 +9,7 @@ import { ErrorCode } from '@shared/errors/error-codes';
 import type { AuthenticatedUser } from '@shared/types/authenticated-user';
 import { EnvService } from '@config/env.service';
 import { EvolutionService } from '@integrations/evolution/evolution.service';
+import { EvolutionInstanciaService } from '@integrations/evolution/evolution-instancia.service';
 import { WhatsAppSessionService } from './whatsapp-session.service';
 
 /**
@@ -26,6 +27,7 @@ export class WhatsAppController {
     private readonly sessions: WhatsAppSessionService,
     private readonly env: EnvService,
     private readonly evolution: EvolutionService,
+    private readonly instancias: EvolutionInstanciaService,
   ) {}
 
   private get viaEvolution(): boolean {
@@ -45,6 +47,15 @@ export class WhatsAppController {
     const empresaId = this.requireEmpresa(user);
     if (this.viaEvolution) return this.evolution.estadoComQr(this.instancia(empresaId));
     return this.sessions.statusEmpresa(empresaId);
+  }
+
+  @Get('instancias')
+  @Roles('ADMIN', 'DIRECTOR')
+  @ApiOperation({
+    summary: 'Painel do diretor: status de TODAS as instâncias WhatsApp (empresa + reps)',
+  })
+  listarInstancias(@CurrentUser() user: AuthenticatedUser) {
+    return this.instancias.listarDaEmpresa(this.requireEmpresa(user));
   }
 
   @Post('conectar')

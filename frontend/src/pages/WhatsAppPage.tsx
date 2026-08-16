@@ -1,7 +1,9 @@
 import { useEffect, useRef, useState } from 'react';
 import { api, ApiError } from '@/lib/api';
+import { useApiQuery } from '@/hooks/useApiQuery';
 import { useRole } from '@/hooks/usePermission';
 import { PageLayout } from '@/components/PageLayout';
+import { StateView } from '@/components/StateView';
 import { AtendimentoTabs } from '@/components/AtendimentoTabs';
 import { cn } from '@/lib/cn';
 
@@ -43,6 +45,8 @@ const STATUS_LABEL: Record<Status, string> = {
 };
 
 type Scope = 'empresa' | 'pessoal';
+/** Abas da página: os 2 escopos de pareamento + o painel de equipe (diretor). */
+type Aba = Scope | 'equipe';
 
 const ENDPOINTS: Record<Scope, { status: string; conectar: string; desconectar: string; resetar: string }> = {
   empresa: {
@@ -64,13 +68,13 @@ export default function WhatsAppPage() {
   const canAccessEmpresa = role === 'ADMIN' || role === 'DIRECTOR' || role === 'SAC';
   const canManageEmpresa = role === 'ADMIN' || role === 'DIRECTOR';
 
-  const [scope, setScope] = useState<Scope>(canAccessEmpresa ? 'empresa' : 'pessoal');
+  const [scope, setScope] = useState<Aba>(canAccessEmpresa ? 'empresa' : 'pessoal');
 
   return (
     <PageLayout title="WhatsApp">
       <AtendimentoTabs />
       {/* Tabs scope */}
-      <div role="tablist" className="flex gap-1 mb-4">
+      <div role="tablist" className="flex gap-1 mb-4 flex-wrap">
         {canAccessEmpresa && (
           <ScopeTab
             label="Número da empresa"
@@ -87,14 +91,118 @@ export default function WhatsAppPage() {
           onClick={() => setScope('pessoal')}
           testId="tab-pessoal"
         />
+        {canManageEmpresa && (
+          <ScopeTab
+            label="Equipe"
+            description="Status dos números dos reps"
+            active={scope === 'equipe'}
+            onClick={() => setScope('equipe')}
+            testId="tab-equipe"
+          />
+        )}
       </div>
 
-      <SessionPanel
-        key={scope}
-        scope={scope}
-        canManage={scope === 'pessoal' ? true : canManageEmpresa}
-      />
+      {scope === 'equipe' ? (
+        <InstanciasPanel />
+      ) : (
+        <SessionPanel
+          key={scope}
+          scope={scope}
+          canManage={scope === 'pessoal' ? true : canManageEmpresa}
+        />
+      )}
     </PageLayout>
+  );
+}
+
+interface InstanciaRow {
+  tipo: 'empresa' | 'rep';
+  usuarioId: string | null;
+  nome: string;
+  email: string | null;
+  numero: string | null;
+  conectado: boolean;
+  connectionStatus: string;
+  ultimoEventoEm: string | null;
+}
+
+/**
+ * Painel do diretor — status de TODAS as instâncias WhatsApp da empresa (número
+ * central + o pessoal de cada rep). Só leitura: mostra quem está conectado e quem
+ * caiu, pra o diretor cobrar reconexão. Atualiza ao focar (via useApiQuery).
+ */
+function InstanciasPanel() {
+  const { data, loading, error, refetch } = useApiQuery<InstanciaRow[]>(
+    '/integracoes/whatsapp/instancias',
+  );
+  const linhas = data ?? [];
+  const caidos = linhas.filter((l) => !l.conectado).length;
+
+  return (
+    <StateView loading={loading} error={error} onRetry={refetch}>
+      {linhas.length === 0 ? (
+        <div className="rounded-[10px] border border-border bg-surface p-6 text-center text-sm text-muted">
+          Nenhuma instância de WhatsApp registrada ainda. Elas aparecem aqui quando a empresa ou
+          os reps parearem seus números.
+        </div>
+      ) : (
+        <div className="rounded-[10px] border border-border bg-surface overflow-hidden">
+          {caidos > 0 && (
+            <div className="px-4 py-2 text-[12px] text-warning bg-warning/10 border-b border-warning/20">
+              {caidos} de {linhas.length}{' '}
+              {caidos === 1 ? 'número está desconectado' : 'números estão desconectados'} — peça pra
+              reconectar em “Meu WhatsApp pessoal”.
+            </div>
+          )}
+          <table className="w-full text-[13px]">
+            <thead>
+              <tr className="text-left text-[11px] uppercase tracking-wider text-muted border-b border-border">
+                <th className="px-4 py-2 font-semibold">Dono</th>
+                <th className="px-4 py-2 font-semibold">Número</th>
+                <th className="px-4 py-2 font-semibold">Status</th>
+                <th className="px-4 py-2 font-semibold">Último evento</th>
+              </tr>
+            </thead>
+            <tbody>
+              {linhas.map((l) => (
+                <tr
+                  key={l.usuarioId ?? 'empresa'}
+                  className="border-b border-border last:border-0"
+                  data-testid={`instancia-${l.usuarioId ?? 'empresa'}`}
+                >
+                  <td className="px-4 py-2.5">
+                    <div className="font-medium text-text">{l.nome}</div>
+                    <div className="text-[11px] text-muted">
+                      {l.tipo === 'empresa' ? 'Número central' : (l.email ?? 'Representante')}
+                    </div>
+                  </td>
+                  <td className="px-4 py-2.5 tabular text-text-subtle">{l.numero ?? '—'}</td>
+                  <td className="px-4 py-2.5">
+                    <span
+                      className={cn(
+                        'inline-flex items-center gap-1.5 text-[12px] font-medium',
+                        l.conectado ? 'text-success' : 'text-danger',
+                      )}
+                    >
+                      <span
+                        className={cn(
+                          'h-2 w-2 rounded-full',
+                          l.conectado ? 'bg-success' : 'bg-danger',
+                        )}
+                      />
+                      {l.conectado ? 'Conectado' : 'Desconectado'}
+                    </span>
+                  </td>
+                  <td className="px-4 py-2.5 text-[12px] text-muted tabular">
+                    {l.ultimoEventoEm ? new Date(l.ultimoEventoEm).toLocaleString('pt-BR') : '—'}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </StateView>
   );
 }
 

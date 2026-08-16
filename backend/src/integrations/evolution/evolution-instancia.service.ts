@@ -18,6 +18,49 @@ export class EvolutionInstanciaService {
   ) {}
 
   /**
+   * Painel do diretor: status de TODAS as instâncias WhatsApp da empresa — a do
+   * número central (usuarioId=null) + a pessoal de cada rep (usuarioId preenchido),
+   * com nome do dono e se está conectado. Lê a tabela local (mantida fresca pelo
+   * webhook + cron de 10min) — sem chamar a API do Evolution.
+   */
+  async listarDaEmpresa(empresaId: string): Promise<
+    Array<{
+      tipo: 'empresa' | 'rep';
+      usuarioId: string | null;
+      nome: string;
+      email: string | null;
+      numero: string | null;
+      conectado: boolean;
+      connectionStatus: string;
+      ultimoEventoEm: Date | null;
+    }>
+  > {
+    const instancias = await this.prisma.evolutionInstancia.findMany({
+      where: { empresaId },
+      orderBy: [{ usuarioId: 'asc' }],
+    });
+    const userIds = instancias.map((i) => i.usuarioId).filter((id): id is string => !!id);
+    const usuarios = userIds.length
+      ? await this.prisma.usuario.findMany({
+          where: { id: { in: userIds } },
+          select: { id: true, nome: true, email: true },
+        })
+      : [];
+    const nomeMap = new Map(usuarios.map((u) => [u.id, u]));
+    return instancias.map((i) => ({
+      tipo: i.usuarioId ? ('rep' as const) : ('empresa' as const),
+      usuarioId: i.usuarioId,
+      nome: i.usuarioId ? (nomeMap.get(i.usuarioId)?.nome ?? 'Representante') : 'Número da empresa',
+      email: i.usuarioId ? (nomeMap.get(i.usuarioId)?.email ?? null) : null,
+      // ownerJid = 5511...@s.whatsapp.net → só o número.
+      numero: i.ownerJid ? i.ownerJid.replace(/@.*/, '') : null,
+      conectado: i.connectionStatus === 'open',
+      connectionStatus: i.connectionStatus,
+      ultimoEventoEm: i.ultimoEventoEm,
+    }));
+  }
+
+  /**
    * Cleanup on-deactivation: ao desativar uma empresa/rep, desconecta + deleta a instância no
    * Evolution e remove o registro local. Best-effort (nunca lança — não pode derrubar a desativação).
    * No-op se o provider não for Evolution.

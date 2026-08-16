@@ -5,8 +5,9 @@ const makePrisma = () => ({
   evolutionInstancia: {
     upsert: vi.fn().mockResolvedValue({}),
     deleteMany: vi.fn().mockResolvedValue({ count: 1 }),
+    findMany: vi.fn().mockResolvedValue([]),
   },
-  usuario: { findUnique: vi.fn() },
+  usuario: { findUnique: vi.fn(), findMany: vi.fn().mockResolvedValue([]) },
 });
 
 const makeEvolution = () => ({
@@ -97,6 +98,52 @@ describe('EvolutionInstanciaService', () => {
     expect(evolution.logout).not.toHaveBeenCalled();
     expect(prisma.evolutionInstancia.deleteMany).toHaveBeenCalledWith({
       where: { instanceName: 'user_rep-1' },
+    });
+  });
+
+  describe('listarDaEmpresa', () => {
+    it('mapeia número da empresa + reps com nome, número e status', async () => {
+      prisma.evolutionInstancia.findMany.mockResolvedValue([
+        {
+          instanceName: 'emp_e1',
+          empresaId: 'e1',
+          usuarioId: null,
+          ownerJid: '5511000000000@s.whatsapp.net',
+          connectionStatus: 'open',
+          ultimoEventoEm: new Date('2026-01-01'),
+        },
+        {
+          instanceName: 'user_u1',
+          empresaId: 'e1',
+          usuarioId: 'u1',
+          ownerJid: null,
+          connectionStatus: 'close',
+          ultimoEventoEm: null,
+        },
+      ]);
+      prisma.usuario.findMany.mockResolvedValue([{ id: 'u1', nome: 'Rep Ana', email: 'ana@x.com' }]);
+
+      const r = await svc.listarDaEmpresa('e1');
+
+      expect(r).toHaveLength(2);
+      expect(r.find((x) => x.tipo === 'empresa')).toMatchObject({
+        nome: 'Número da empresa',
+        numero: '5511000000000',
+        conectado: true,
+      });
+      expect(r.find((x) => x.tipo === 'rep')).toMatchObject({
+        nome: 'Rep Ana',
+        email: 'ana@x.com',
+        numero: null,
+        conectado: false,
+      });
+    });
+
+    it('sem instâncias → lista vazia (sem buscar usuários)', async () => {
+      prisma.evolutionInstancia.findMany.mockResolvedValue([]);
+      const r = await svc.listarDaEmpresa('e1');
+      expect(r).toEqual([]);
+      expect(prisma.usuario.findMany).not.toHaveBeenCalled();
     });
   });
 });
