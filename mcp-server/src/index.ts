@@ -2061,13 +2061,35 @@ server.registerTool(
       nome: z.string().describe('Nome do prompt (único na empresa)'),
       texto: z.string().describe('Conteúdo / system prompt (até 100k chars)'),
       descricao: z.string().optional(),
+      modelo: z
+        .string()
+        .optional()
+        .describe('Modelo OpenAI deste prompt. Vazio = usa o da empresa/persona.'),
+      temperatura: z
+        .number()
+        .min(0)
+        .max(2)
+        .optional()
+        .describe(
+          'Aleatoriedade (0–2). CLASSIFICADOR que grava valor literal quer BAIXA (0–0.4): ' +
+            'temperatura alta varia a escrita, a saída não casa com o roteador e o fluxo cai no ' +
+            'ramo default. 0.7+ é temperatura de REDAÇÃO.',
+        ),
     },
     annotations: { readOnlyHint: false, destructiveHint: false },
   },
-  seguro(async (args: { nome: string; texto: string; descricao?: string }) => {
-    const p = await api.post<PromptCompleto>('/mullerbot/prompts', args);
-    return ok({ id: p.id, nome: p.nome, versao: p.versao });
-  }),
+  seguro(
+    async (args: {
+      nome: string;
+      texto: string;
+      descricao?: string;
+      modelo?: string;
+      temperatura?: number;
+    }) => {
+      const p = await api.post<PromptCompleto>('/mullerbot/prompts', args);
+      return ok({ id: p.id, nome: p.nome, versao: p.versao });
+    },
+  ),
 );
 
 server.registerTool(
@@ -2081,6 +2103,23 @@ server.registerTool(
       nome: z.string().optional(),
       texto: z.string().optional().describe('Novo conteúdo / system prompt'),
       descricao: z.string().optional(),
+      modelo: z
+        .string()
+        .optional()
+        .describe(
+          'Modelo OpenAI deste prompt. Nome inválido volta com a LISTA dos aceitos no erro. ' +
+            'Vazio = usa o da empresa/persona.',
+        ),
+      temperatura: z
+        .number()
+        .min(0)
+        .max(2)
+        .optional()
+        .describe(
+          'Aleatoriedade (0–2). CLASSIFICADOR que grava valor literal quer BAIXA (0–0.4): ' +
+            'temperatura alta varia a escrita, a saída não casa com o roteador e o fluxo cai no ' +
+            'ramo default. 0.7+ é temperatura de REDAÇÃO.',
+        ),
     },
     annotations: { readOnlyHint: false, destructiveHint: false },
   },
@@ -2093,15 +2132,25 @@ server.registerTool(
       nome?: string;
       texto?: string;
       descricao?: string;
+      modelo?: string;
+      temperatura?: number;
     }) => {
       const definidos = Object.fromEntries(
         Object.entries(rest).filter(([, v]) => v !== undefined),
       );
       if (Object.keys(definidos).length === 0) {
-        return erro('Informe ao menos um campo (nome, texto ou descricao).');
+        return erro('Informe ao menos um campo (nome, texto, descricao, modelo ou temperatura).');
       }
       const p = await api.patch<PromptCompleto>(`/mullerbot/prompts/${promptId}`, definidos);
-      return ok({ id: p.id, nome: p.nome, versao: p.versao });
+      // Devolve modelo/temperatura EFETIVOS: quem acabou de ajustar precisa ver
+      // o que ficou valendo, não só "ok" (o backend pode normalizar/recusar).
+      return ok({
+        id: p.id,
+        nome: p.nome,
+        versao: p.versao,
+        modelo: p.modelo ?? null,
+        temperatura: p.temperatura ?? null,
+      });
     },
   ),
 );
