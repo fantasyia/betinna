@@ -439,22 +439,83 @@ export class FluxosService {
       ];
     }
 
-    const skip = (params.page - 1) * params.limit;
-    const [data, total] = await Promise.all([
-      this.prisma.fluxo.findMany({
-        where,
-        include: fluxoInclude,
-        skip,
-        take: params.limit,
-        // Ordem por NOME (convenção E1 < E1-R < E2 < E2-R sai natural — espaço
-        // antes do hífen). Estável: ativar/editar NÃO reordena (antes era
-        // atualizadoEm desc, que pulava pro topo a cada ação); criadoEm desempata.
-        orderBy: [{ nome: 'asc' }, { criadoEm: 'asc' }],
-      }),
-      this.prisma.fluxo.count({ where }),
-    ]);
+    // Favoritos são POR USUÁRIO — o SAC vive na triagem, o diretor na
+    // prospecção. Lidos antes pra (a) marcar cada item e (b) subir pro topo.
+    const favoritos = new Set(
+      (
+        await this.prisma.fluxoFavorito.findMany({
+          where: { usuarioId: user.id },
+          select: { fluxoId: true },
+        })
+      ).map((f) => f.fluxoId),
+    );
+    if (params.favoritos) {
+      // Filtro "só favoritos": lista vazia tem que dar ZERO resultado, não a
+      // lista inteira — daí o `in: []` explícito em vez de pular a condição.
+      where.id = { in: [...favoritos] };
+    }
 
-    return buildPaginated(data, total, params.page, params.limit);
+    // Ordenar favorito-primeiro não é expressável no orderBy do Prisma (a
+    // relação é filtrada por usuário). Em vez de duplicar os filtros em SQL cru
+    // — que é onde esse tipo de coisa apodrece —, ordena a lista de IDS (2
+    // colunas, barato mesmo com centenas de fluxos) e busca só a página.
+    const chaves = await this.prisma.fluxo.findMany({
+      where,
+      select: { id: true, nome: true, criadoEm: true },
+    });
+    chaves.sort((a, b) => {
+      const fa = favoritos.has(a.id) ? 0 : 1;
+      const fb = favoritos.has(b.id) ? 0 : 1;
+      if (fa !== fb) return fa - fb;
+      // Ordem por NOME (convenção E1 < E1-R < E2 < E2-R sai natural — espaço
+      // antes do hífen). Estável: ativar/editar NÃO reordena (antes era
+      // atualizadoEm desc, que pulava pro topo a cada ação); criadoEm desempata.
+      const porNome = a.nome.localeCompare(b.nome, 'pt-BR');
+      return porNome !== 0 ? porNome : a.criadoEm.getTime() - b.criadoEm.getTime();
+    });
+
+    const skip = (params.page - 1) * params.limit;
+    const idsDaPagina = chaves.slice(skip, skip + params.limit).map((f) => f.id);
+    const rows = idsDaPagina.length
+      ? await this.prisma.fluxo.findMany({
+          where: { id: { in: idsDaPagina } },
+          include: fluxoInclude,
+        })
+      : [];
+    // O `in` do Postgres não preserva ordem — reordena pelo que foi calculado.
+    const porId = new Map(rows.map((r) => [r.id, r]));
+    const data = idsDaPagina
+      .map((id) => porId.get(id))
+      .filter((f): f is (typeof rows)[number] => Boolean(f))
+      .map((f) => ({ ...f, favorito: favoritos.has(f.id) }));
+
+    return buildPaginated(data, chaves.length, params.page, params.limit);
+  }
+
+  /**
+   * Marca/desmarca o fluxo como favorito DO USUÁRIO logado.
+   *
+   * Idempotente dos dois lados: favoritar o que já é favorito (duplo clique,
+   * duas abas) não estoura P2002, e desfavoritar o que não é não dá 404.
+   */
+  async definirFavorito(
+    user: AuthenticatedUser,
+    fluxoId: string,
+    favorito: boolean,
+  ): Promise<{ favorito: boolean }> {
+    // findOne valida o tenant: ninguém favorita fluxo de outra empresa.
+    await this.findOne(user, fluxoId);
+    if (favorito) {
+      await this.prisma.fluxoFavorito
+        .create({ data: { usuarioId: user.id, fluxoId } })
+        .catch((err: unknown) => {
+          if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === 'P2002') return;
+          throw err;
+        });
+    } else {
+      await this.prisma.fluxoFavorito.deleteMany({ where: { usuarioId: user.id, fluxoId } });
+    }
+    return { favorito };
   }
 
   async findOne(user: AuthenticatedUser, id: string): Promise<FluxoWithRel> {

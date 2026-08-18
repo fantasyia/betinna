@@ -387,6 +387,7 @@ model Usuario {
   kanbanComentarios         KanbanComentario[]
   kanbanAtividades          KanbanAtividade[]
   kanbanApiTokens           KanbanApiToken[]
+  fluxosFavoritos           FluxoFavorito[]
 
   @@index([role])
   @@index([status])
@@ -1611,9 +1612,27 @@ model Fluxo {
   nos       FluxoNo[]
   arestas   FluxoEdge[]
   execucoes FluxoExecucao[]
+  favoritos FluxoFavorito[]
 
   @@index([empresaId, status])
   @@index([empresaId, triggerTipo])
+}
+
+/// Fluxo marcado como favorito POR UM USUÁRIO.
+///
+/// Favorito é pessoal, não da empresa: o SAC vive na triagem, o diretor vive na
+/// prospecção — se fosse um campo em `Fluxo`, um marcaria e desmarcaria o do
+/// outro. Por isso a chave é (usuário, fluxo) e não uma coluna booleana.
+model FluxoFavorito {
+  usuarioId String
+  fluxoId   String
+  criadoEm  DateTime @default(now())
+
+  usuario Usuario @relation(fields: [usuarioId], references: [id], onDelete: Cascade)
+  fluxo   Fluxo   @relation(fields: [fluxoId], references: [id], onDelete: Cascade)
+
+  @@id([usuarioId, fluxoId])
+  @@index([fluxoId])
 }
 
 /**

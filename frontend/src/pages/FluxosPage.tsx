@@ -16,6 +16,7 @@ import {
   Trash2,
   LayoutGrid,
   List,
+  Star,
 } from 'lucide-react';
 import { api, ApiError } from '@/lib/api';
 import { formatNumero } from '@/lib/masks';
@@ -66,6 +67,8 @@ interface FluxoListItem {
   criadoEm: string;
   atualizadoEm: string;
   _count?: { nos?: number; execucoes?: number };
+  /** Favorito DESTE usuário (é preferência pessoal, não da empresa). */
+  favorito?: boolean;
 }
 
 const STATUS_VARIANT: Record<FluxoStatus, 'success' | 'warning' | 'neutral'> = {
@@ -156,6 +159,7 @@ export default function FluxosPage() {
   const searchDebounced = useDebouncedValue(search, 300); // #46: sem debounce a lista piscava por tecla
   const [status, setStatus] = useState('');
   const [triggerTipo, setTriggerTipo] = useState('');
+  const [soFavoritos, setSoFavoritos] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [creating, setCreating] = useState(false);
   // Visão: cards (grid) ou lista (linhas compactas) — persistida por usuário.
@@ -181,14 +185,41 @@ export default function FluxosPage() {
     if (searchDebounced.trim()) qs.set('search', searchDebounced.trim());
     if (status) qs.set('status', status);
     if (triggerTipo) qs.set('triggerTipo', triggerTipo);
+    if (soFavoritos) qs.set('favoritos', 'true');
     return `/fluxos?${qs.toString()}`;
-  }, [page, searchDebounced, status, triggerTipo]);
+  }, [page, searchDebounced, status, triggerTipo, soFavoritos]);
 
   const { data: pageResp, loading, error, refetch } = useApiQuery<PaginatedResponse<FluxoListItem>>(listPath);
 
   // Guard anti-duplo-clique por fluxo (ref síncrono): sem ele, 2 cliques rápidos em "Arquivar"
   // mandavam 2× DELETE /fluxos/:id → o 2º dava 404 (já arquivado) e um toast de erro espúrio.
   const emAcaoRef = useRef<Set<string>>(new Set());
+
+  /**
+   * Marca/desmarca favorito. A estrela pinta na hora (otimista) e o `refetch`
+   * vem depois pra reordenar a lista — sem o otimismo, o clique parece não ter
+   * funcionado durante o round-trip, e favoritar é gesto de 1 segundo.
+   *
+   * Sem refetch imediato quando o filtro "só favoritos" está ligado seria pior:
+   * o item some da lista embaixo do cursor. Por isso o refetch é sempre no fim.
+   */
+  const [favoritoOtimista, setFavoritoOtimista] = useState<Record<string, boolean>>({});
+  async function toggleFavorito(f: FluxoListItem) {
+    const novo = !(favoritoOtimista[f.id] ?? f.favorito ?? false);
+    setFavoritoOtimista((m) => ({ ...m, [f.id]: novo }));
+    try {
+      if (novo) await api.put(`/fluxos/${f.id}/favorito`, {});
+      else await api.delete(`/fluxos/${f.id}/favorito`);
+      refetch();
+    } catch (err) {
+      // Desfaz o otimismo: deixar a estrela acesa mentindo é pior que não ter.
+      setFavoritoOtimista((m) => ({ ...m, [f.id]: !novo }));
+      toast.error(
+        'Não deu pra salvar o favorito',
+        err instanceof ApiError ? err.message : undefined,
+      );
+    }
+  }
 
   async function callAction(id: string, action: 'ativar' | 'pausar' | 'arquivar' | 'excluir') {
     if (emAcaoRef.current.has(id)) return;
@@ -354,6 +385,22 @@ export default function FluxosPage() {
               </option>
             ))}
           </Select>
+          {/* Só favoritos — o filtro que faz a estrela valer a pena */}
+          <Tooltip content={soFavoritos ? 'Mostrando só favoritos' : 'Ver só os favoritos'}>
+            <IconButton
+              aria-label="Filtrar favoritos"
+              aria-pressed={soFavoritos}
+              variant={soFavoritos ? 'secondary' : 'ghost'}
+              size="sm"
+              icon={<Star {...(soFavoritos ? { fill: 'currentColor' } : {})} />}
+              className={soFavoritos ? 'text-warning' : undefined}
+              onClick={() => {
+                setSoFavoritos((v) => !v);
+                setPage(1);
+              }}
+              data-testid="fluxos-filtro-favoritos"
+            />
+          </Tooltip>
           {/* Toggle de visão: cards ou lista */}
           <div className="ml-auto inline-flex rounded-md border border-border-strong overflow-hidden">
             <Tooltip content="Ver em cards">
@@ -402,12 +449,13 @@ export default function FluxosPage() {
                   {pageResp.data.map((f) => (
                     <FluxoRow
                       key={f.id}
-                      fluxo={f}
+                      fluxo={{ ...f, favorito: favoritoOtimista[f.id] ?? f.favorito }}
                       canEdit={canEdit}
                       onEdit={() => setEditingId(f.id)}
                       onAction={(a) => callAction(f.id, a)}
                       onExport={() => onExport(f)}
                       onVerExecucoes={() => setVerExecucoes(f)}
+                      onToggleFavorito={() => toggleFavorito(f)}
                     />
                   ))}
                 </div>
@@ -416,12 +464,13 @@ export default function FluxosPage() {
                   {pageResp.data.map((f) => (
                     <FluxoCard
                       key={f.id}
-                      fluxo={f}
+                      fluxo={{ ...f, favorito: favoritoOtimista[f.id] ?? f.favorito }}
                       canEdit={canEdit}
                       onEdit={() => setEditingId(f.id)}
                       onAction={(a) => callAction(f.id, a)}
                       onExport={() => onExport(f)}
                       onVerExecucoes={() => setVerExecucoes(f)}
+                      onToggleFavorito={() => toggleFavorito(f)}
                     />
                   ))}
                 </div>
@@ -477,6 +526,42 @@ export default function FluxosPage() {
 
 // ─── Fluxo card ──────────────────────────────────────────────────
 
+/**
+ * Estrela de favoritar. Fica fora dos dois componentes de item (linha e card)
+ * porque as duas visões usam a MESMA estrela — duplicar significaria consertar
+ * comportamento em dois lugares.
+ *
+ * `stopPropagation` é obrigatório: o item inteiro é clicável e abre o editor.
+ * Sem isso, favoritar arrastaria o usuário pra dentro do fluxo.
+ */
+export function BotaoFavorito({
+  favorito,
+  onToggle,
+}: {
+  favorito: boolean;
+  onToggle: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      data-testid="fluxo-favorito"
+      aria-pressed={favorito}
+      title={favorito ? 'Remover dos favoritos' : 'Favoritar (fica no topo da lista)'}
+      aria-label={favorito ? 'Remover dos favoritos' : 'Favoritar'}
+      onClick={(e) => {
+        e.stopPropagation();
+        onToggle();
+      }}
+      className="shrink-0 p-1 rounded-md border-none bg-transparent cursor-pointer text-muted-light hover:text-warning transition-colors"
+    >
+      <Star
+        className={cn('h-4 w-4', favorito && 'text-warning')}
+        {...(favorito ? { fill: 'currentColor' } : {})}
+      />
+    </button>
+  );
+}
+
 function FluxoCard({
   fluxo,
   canEdit,
@@ -484,6 +569,7 @@ function FluxoCard({
   onAction,
   onExport,
   onVerExecucoes,
+  onToggleFavorito,
 }: {
   fluxo: FluxoListItem;
   canEdit: boolean;
@@ -491,6 +577,7 @@ function FluxoCard({
   onAction: (a: 'ativar' | 'pausar' | 'arquivar' | 'excluir') => void;
   onExport: () => void;
   onVerExecucoes: () => void;
+  onToggleFavorito: () => void;
 }) {
   return (
     <Card
@@ -500,6 +587,7 @@ function FluxoCard({
       className="flex flex-col gap-3 group"
     >
       <header className="flex items-start justify-between gap-2">
+        <BotaoFavorito favorito={Boolean(fluxo.favorito)} onToggle={onToggleFavorito} />
         <div className="min-w-0 flex-1">
           <h3 className="text-md font-semibold text-text tracking-tight truncate">
             {fluxo.nome}
@@ -625,6 +713,7 @@ function FluxoRow({
   onAction,
   onExport,
   onVerExecucoes,
+  onToggleFavorito,
 }: {
   fluxo: FluxoListItem;
   canEdit: boolean;
@@ -632,12 +721,14 @@ function FluxoRow({
   onAction: (a: 'ativar' | 'pausar' | 'arquivar' | 'excluir') => void;
   onExport: () => void;
   onVerExecucoes: () => void;
+  onToggleFavorito: () => void;
 }) {
   return (
     <div
       className="flex items-center gap-3 px-4 py-2.5 hover:bg-bg-alt cursor-pointer border-b border-border last:border-b-0"
       onClick={onEdit}
     >
+      <BotaoFavorito favorito={Boolean(fluxo.favorito)} onToggle={onToggleFavorito} />
       <div className="min-w-0 flex-1">
         <div className="flex items-center gap-2">
           <span className="text-sm font-semibold text-text truncate">{fluxo.nome}</span>

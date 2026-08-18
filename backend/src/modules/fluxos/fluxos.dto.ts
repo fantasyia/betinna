@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { boolQuery } from '@shared/validators/query.schema';
 
 // ─── Enums sync com Prisma ────────────────────────────────────────────
 export const fluxoStatusValues = ['RASCUNHO', 'ATIVO', 'PAUSADO', 'ARQUIVADO'] as const;
@@ -180,6 +181,8 @@ export const listFluxosSchema = z.object({
   status: z.enum(fluxoStatusValues).optional(),
   triggerTipo: z.enum(fluxoTriggerTipoValues).optional(),
   search: z.string().optional(),
+  /** true → só os fluxos favoritados PELO usuário logado. */
+  favoritos: boolQuery.optional(),
 });
 
 // ─── Listar execuções ────────────────────────────────────────────────

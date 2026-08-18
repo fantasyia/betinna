@@ -1,4 +1,15 @@
-import { Body, Controller, Delete, Get, Param, Post, Put, Query } from '@nestjs/common';
+import {
+  Body,
+  Controller,
+  Delete,
+  Get,
+  HttpCode,
+  HttpStatus,
+  Param,
+  Post,
+  Put,
+  Query,
+} from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiBearerAuth } from '@nestjs/swagger';
 import { CurrentUser } from '@shared/decorators/current-user.decorator';
 import { Roles } from '@shared/decorators/roles.decorator';
@@ -106,6 +117,26 @@ export class FluxosController {
   @ApiOperation({ summary: 'Exporta o fluxo como JSON (.json) pronto pra reimportar' })
   exportar(@CurrentUser() user: AuthenticatedUser, @Param('id') id: string) {
     return this.svc.exportar(user, id);
+  }
+
+  // ─── Favoritos ───────────────────────────────────────────────────
+  //
+  // Sem @Roles: favoritar é preferência PESSOAL de quem já enxerga o fluxo
+  // (o service valida o tenant). Prender no ADMIN/DIRECTOR faria o SAC — que é
+  // quem mais vive na lista de fluxos — não poder organizar a própria tela.
+
+  @Put(':id/favorito')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Marca o fluxo como favorito do usuário logado' })
+  favoritar(@CurrentUser() user: AuthenticatedUser, @Param('id') id: string) {
+    return this.svc.definirFavorito(user, id, true);
+  }
+
+  @Delete(':id/favorito')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Desmarca o fluxo como favorito do usuário logado' })
+  desfavoritar(@CurrentUser() user: AuthenticatedUser, @Param('id') id: string) {
+    return this.svc.definirFavorito(user, id, false);
   }
 
   // ─── Ciclo de vida ───────────────────────────────────────────────

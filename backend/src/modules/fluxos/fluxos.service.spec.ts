@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { Prisma } from '@prisma/client';
 import type { UserRole } from '@prisma/client';
 import { BusinessRuleException, ForbiddenException } from '@shared/errors/app-exception';
 import type { AuthenticatedUser } from '@shared/types/authenticated-user';
@@ -35,6 +36,11 @@ const makePrismaMock = () => ({
     update: vi.fn(),
     updateMany: vi.fn().mockResolvedValue({ count: 0 }),
     count: vi.fn(),
+  },
+  fluxoFavorito: {
+    findMany: vi.fn().mockResolvedValue([]),
+    create: vi.fn().mockResolvedValue({}),
+    deleteMany: vi.fn().mockResolvedValue({ count: 1 }),
   },
   $transaction: vi.fn(async (fn: (tx: unknown) => Promise<unknown>) => fn(makePrismaMock())),
 });
@@ -938,5 +944,85 @@ describe('FluxosService.importar — exige nó TRIGGER', () => {
         arestas: [],
       } as never),
     ).rejects.toThrow(/1 n[óo] TRIGGER/i);
+  });
+});
+
+/**
+ * Favoritar fluxo. Favorito é PESSOAL: o SAC vive na triagem, o diretor na
+ * prospecção — se fosse coluna em `Fluxo`, um desmarcaria o do outro.
+ */
+describe('FluxosService — favoritos', () => {
+  let prisma: ReturnType<typeof makePrismaMock>;
+  let svc: FluxosService;
+
+  const fluxo = (id: string, nome: string) => ({
+    id,
+    nome,
+    empresaId: 'emp-1',
+    criadoEm: new Date('2026-01-01'),
+    nos: [],
+    arestas: [],
+  });
+
+  beforeEach(() => {
+    prisma = makePrismaMock();
+    svc = new FluxosService(prisma as never, makeBusMock() as never);
+  });
+
+  it('favorito sobe pro topo, o resto segue em ordem de nome', async () => {
+    prisma.fluxo.findMany
+      // 1ª chamada: as chaves (id/nome/criadoEm) pra ordenar
+      .mockResolvedValueOnce([
+        { id: 'a', nome: 'A · Primeiro no alfabeto', criadoEm: new Date('2026-01-01') },
+        { id: 'z', nome: 'Z · Último no alfabeto', criadoEm: new Date('2026-01-01') },
+      ])
+      // 2ª chamada: as linhas da página
+      .mockResolvedValueOnce([
+        fluxo('a', 'A · Primeiro no alfabeto'),
+        fluxo('z', 'Z · Último no alfabeto'),
+      ]);
+    prisma.fluxoFavorito.findMany.mockResolvedValue([{ fluxoId: 'z' }]);
+
+    const r = await svc.list(fakeUser(), { page: 1, limit: 20 } as never);
+
+    expect(r.data.map((f) => f.id)).toEqual(['z', 'a']); // ← favorito primeiro
+    expect(r.data[0].favorito).toBe(true);
+    expect(r.data[1].favorito).toBe(false);
+  });
+
+  it('filtro "só favoritos" com NENHUM favorito devolve vazio (não a lista toda)', async () => {
+    prisma.fluxoFavorito.findMany.mockResolvedValue([]);
+    prisma.fluxo.findMany.mockResolvedValueOnce([]);
+
+    const r = await svc.list(fakeUser(), { page: 1, limit: 20, favoritos: true } as never);
+
+    const where = prisma.fluxo.findMany.mock.calls[0][0].where as { id?: { in: string[] } };
+    expect(where.id).toEqual({ in: [] });
+    expect(r.data).toEqual([]);
+  });
+
+  it('favoritar duas vezes não estoura (duplo clique / duas abas)', async () => {
+    prisma.fluxo.findFirst.mockResolvedValue(fluxo('f1', 'X'));
+    prisma.fluxoFavorito.create.mockRejectedValue(
+      new Prisma.PrismaClientKnownRequestError('dup', { code: 'P2002', clientVersion: '6.0.0' }),
+    );
+
+    await expect(svc.definirFavorito(fakeUser(), 'f1', true)).resolves.toEqual({ favorito: true });
+  });
+
+  it('desfavoritar o que não é favorito não dá erro', async () => {
+    prisma.fluxo.findFirst.mockResolvedValue(fluxo('f1', 'X'));
+    prisma.fluxoFavorito.deleteMany.mockResolvedValue({ count: 0 });
+
+    await expect(svc.definirFavorito(fakeUser(), 'f1', false)).resolves.toEqual({
+      favorito: false,
+    });
+  });
+
+  it('não dá pra favoritar fluxo de OUTRA empresa', async () => {
+    prisma.fluxo.findFirst.mockResolvedValue(null); // findOne filtra por empresaId
+
+    await expect(svc.definirFavorito(fakeUser(), 'de-outro-tenant', true)).rejects.toThrow();
+    expect(prisma.fluxoFavorito.create).not.toHaveBeenCalled();
   });
 });
