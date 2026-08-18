@@ -181,6 +181,28 @@ const emailTransacionalSchema = z
   .partial()
   .optional();
 
+/**
+ * Alerta de conversa esquecida (card 🔔) — 9º consumidor.
+ *
+ * Depois de uma transferência o bot fica desligado até o atendente religar. Se
+ * ele esquecer, a conversa fica muda. A varredura abre tarefa pro atendente
+ * quando passa de `horas` SEM resposta — contadas só dentro do expediente,
+ * senão o alarme dispara toda noite e todo fim de semana e vira ruído.
+ * Vazio/null = default (4h, seg–sex, 8h–18h).
+ */
+const alertaConversaEsquecidaSchema = z
+  .object({
+    ativo: z.boolean().nullable(),
+    /** Horas COMERCIAIS sem resposta até alertar. */
+    horas: z.number().int().positive().max(240).nullable(),
+    /** Dias úteis (0=domingo … 6=sábado). */
+    dias: z.array(z.number().int().min(0).max(6)).max(7).nullable(),
+    horaInicio: z.number().int().min(0).max(23).nullable(),
+    horaFim: z.number().int().min(1).max(24).nullable(),
+  })
+  .partial()
+  .optional();
+
 export const tenantConfigPatchSchema = z
   .object({
     // #R4 — cada seção aceita `null` = remover a seção inteira (reset pro default). O merge no service
@@ -194,6 +216,7 @@ export const tenantConfigPatchSchema = z
     inboxInterna: inboxInternaSchema.nullable(),
     envioWhatsapp: envioWhatsappSchema.nullable(),
     emailTransacional: emailTransacionalSchema.nullable(),
+    alertaConversaEsquecida: alertaConversaEsquecidaSchema.nullable(),
   })
   // .strip() (default zod): DESCARTA chaves desconhecidas em vez de deixá-las entrar no
   // Empresa.config (o front só manda as seções conhecidas; .passthrough deixava lixo crescer).

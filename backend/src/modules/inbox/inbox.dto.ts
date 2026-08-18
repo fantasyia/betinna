@@ -28,6 +28,8 @@ export const listConversationsSchema = z.object({
   precisaHumano: boolQuery.optional(),
   /** true → apenas conversas com mensagens não lidas (cliente esperando). */
   naoLidas: boolQuery.optional(),
+  /** true → apenas conversas ESQUECIDAS (bot desligado + sem resposta humana). */
+  esquecidas: boolQuery.optional(),
   clienteId: z.string().cuid().optional(),
   search: z.string().min(1).max(200).optional(),
   page: z.coerce.number().int().positive().default(1),

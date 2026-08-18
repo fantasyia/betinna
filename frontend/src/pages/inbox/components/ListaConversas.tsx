@@ -126,6 +126,7 @@ export function ListaConversas({
             <option value="">Qualquer situação</option>
             <option value="precisa_humano">🧑 Precisa de humano</option>
             <option value="nao_lidas">🔵 Não lidas (cliente esperando)</option>
+            <option value="esquecidas">⏰ Esquecidas (bot off, ninguém respondeu)</option>
           </Select>
         </div>
       </div>

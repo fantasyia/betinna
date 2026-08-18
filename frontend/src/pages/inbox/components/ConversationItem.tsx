@@ -58,6 +58,10 @@ export const ConversationItem = memo(function ConversationItem({
           'relative',
           // Fase 2 — conversa que precisa de humano (bot caiu no fallback)
           conv.precisaHumano && 'bg-danger/5',
+          // Card 🔔 — esquecida: bot desligado e ninguém respondeu no expediente.
+          // Âmbar (e não vermelho) pra não competir com o "precisa de humano",
+          // que é urgência do bot; esquecida é urgência da AGENDA de alguém.
+          !conv.precisaHumano && conv.alertaEsquecidaEm && 'bg-warning/5',
         )}
       >
         {/* Fase 2 — faixa vermelha quando precisa de humano */}
@@ -66,6 +70,10 @@ export const ConversationItem = memo(function ConversationItem({
             aria-hidden
             className="absolute left-0 top-0 bottom-0 w-1 bg-danger"
           />
+        )}
+        {/* Card 🔔 — faixa âmbar quando a conversa foi esquecida */}
+        {!conv.precisaHumano && conv.alertaEsquecidaEm && (
+          <span aria-hidden className="absolute left-0 top-0 bottom-0 w-1 bg-warning" />
         )}
         {/* Indicador lateral âmbar quando ativo */}
         {active && (
@@ -125,6 +133,7 @@ export const ConversationItem = memo(function ConversationItem({
             conv.atribuido ||
             (conv.naoLidas ?? 0) > 1 ||
             conv.precisaHumano ||
+            conv.alertaEsquecidaEm ||
             botPausado ||
             sla) && (
             <div className="flex items-center gap-1.5 mt-1.5 flex-wrap">
@@ -143,6 +152,11 @@ export const ConversationItem = memo(function ConversationItem({
               {conv.precisaHumano && (
                 <Badge variant="danger" size="sm">
                   🚨 Precisa de humano
+                </Badge>
+              )}
+              {conv.alertaEsquecidaEm && (
+                <Badge variant="warning" size="sm">
+                  ⏰ Esquecida — religue ou responda
                 </Badge>
               )}
               {botPausado && (

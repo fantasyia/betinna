@@ -82,6 +82,7 @@ export default function InboxPage() {
     if (filterMeu === 'nao_atribuidas') qs.set('naoAtribuidas', 'true');
     if (situacao === 'precisa_humano') qs.set('precisaHumano', 'true');
     if (situacao === 'nao_lidas') qs.set('naoLidas', 'true');
+    if (situacao === 'esquecidas') qs.set('esquecidas', 'true');
     if (searchDebounced.trim()) qs.set('search', searchDebounced.trim());
     return `/inbox?${qs.toString()}`;
   }, [canal, status, filterMeu, situacao, searchDebounced]);

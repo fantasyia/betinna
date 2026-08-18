@@ -354,3 +354,31 @@ describe('atribuído', () => {
     expect(screen.getByText(/Carlos Atendente/)).toBeTruthy();
   });
 });
+
+/**
+ * Card 🔔 — destaque de conversa ESQUECIDA (bot desligado, ninguém respondeu
+ * dentro do expediente). Sem o destaque, o alerta só existiria na agenda do
+ * atendente e a conversa continuaria invisível na tela onde ela vive.
+ */
+describe('destaque de conversa esquecida', () => {
+  it('sem carimbo, nada aparece', () => {
+    render(<ConversationItem conv={makeConv({})} active={false} onClick={() => {}} />);
+    expect(screen.queryByText(/Esquecida/i)).toBeNull();
+  });
+
+  it('com carimbo, mostra o selo dizendo o que fazer', () => {
+    const conv = makeConv({ alertaEsquecidaEm: '2026-08-12T14:00:00.000Z' });
+    render(<ConversationItem conv={conv} active={false} onClick={() => {}} />);
+    expect(screen.getByText(/Esquecida/i)).toBeTruthy();
+    expect(screen.getByText(/religue ou responda/i)).toBeTruthy();
+  });
+
+  it('"precisa de humano" tem precedência — não empilha dois alarmes na mesma linha', () => {
+    const conv = makeConv({
+      precisaHumano: true,
+      alertaEsquecidaEm: '2026-08-12T14:00:00.000Z',
+    });
+    render(<ConversationItem conv={conv} active={false} onClick={() => {}} />);
+    expect(screen.getByText(/Precisa de humano/i)).toBeTruthy();
+  });
+});

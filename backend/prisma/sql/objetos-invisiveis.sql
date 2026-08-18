@@ -46,3 +46,8 @@ CREATE INDEX IF NOT EXISTS "Produto_embedding_hnsw_idx"
 
 CREATE INDEX IF NOT EXISTS "KnowledgeChunk_embedding_hnsw_idx"
   ON "KnowledgeChunk" USING hnsw ("embedding" vector_cosine_ops);
+
+-- ── Alerta de conversa esquecida, card 🔔 (20260812010000) ───────────
+CREATE INDEX IF NOT EXISTS "Conversation_alertaEsquecidaEm_idx"
+  ON "Conversation" ("empresaId", "alertaEsquecidaEm")
+  WHERE "alertaEsquecidaEm" IS NOT NULL;

@@ -1919,6 +1919,13 @@ model Conversation {
   /// Fase 2 — marcado quando o bot caiu no fallback (IA falhou/demorou):
   /// a conversa precisa de humano e sobe pro topo da lista.
   precisaHumano    Boolean               @default(false)
+  /// Card 🔔 — quando o alerta de CONVERSA ESQUECIDA foi disparado.
+  /// Depois de uma transferência o bot fica desligado até o atendente religar;
+  /// se ele esquecer, a conversa fica muda (nem bot, nem humano) e ninguém
+  /// percebe. A varredura carimba aqui ao abrir a tarefa — o carimbo é o que
+  /// destaca no Inbox E o que impede o alerta de repetir a cada rodada.
+  /// Limpo quando alguém responde ou religa o bot.
+  alertaEsquecidaEm DateTime?
   /// Marca registros gerados pelo seed-demo.
   isDemo           Boolean               @default(false)
   criadoEm         DateTime              @default(now())

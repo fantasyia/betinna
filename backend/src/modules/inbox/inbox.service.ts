@@ -226,6 +226,10 @@ export class InboxService {
     if (params.atribuidoId) conds.push({ atribuidoId: params.atribuidoId });
     if (params.naoAtribuidas) conds.push({ atribuidoId: null });
     if (params.precisaHumano) conds.push({ precisaHumano: true });
+    // Card 🔔 — conversa que a varredura marcou como esquecida (bot desligado,
+    // ninguém respondeu no expediente). O carimbo some quando alguém responde
+    // ou religa o bot, então este filtro é sempre "o que está parado AGORA".
+    if (params.esquecidas) conds.push({ alertaEsquecidaEm: { not: null } });
     if (params.naoLidas) conds.push({ naoLidas: { gt: 0 } });
     if (params.search) {
       conds.push({
@@ -888,7 +892,10 @@ export class InboxService {
     const existing = await this.findById(user, id);
     await this.prisma.conversation.updateMany({
       where: { id, empresaId: existing.empresaId },
-      data: { botPausadoAte: null, precisaHumano: false },
+      // `alertaEsquecidaEm: null` (card 🔔): religar É a ação que o alerta pediu.
+      // Sem limpar, o destaque de "esquecida" ficaria colado na conversa pra
+      // sempre e o Inbox viraria um mar de vermelho que ninguém mais lê.
+      data: { botPausadoAte: null, precisaHumano: false, alertaEsquecidaEm: null },
     });
     await this.limparTriadoAoReligar(existing.empresaId, existing.leadId, user);
     return this.prisma.conversation.findUniqueOrThrow({
@@ -958,7 +965,12 @@ export class InboxService {
       where: { id, empresaId: existing.empresaId },
       data:
         ligado === true
-          ? { botLigado: true, botPausadoAte: null, precisaHumano: false }
+          ? {
+              botLigado: true,
+              botPausadoAte: null,
+              precisaHumano: false,
+              alertaEsquecidaEm: null,
+            }
           : { botLigado: ligado },
     });
     // Mesma regra do religarBot: LIGAR o bot nesta conversa devolve o controle
@@ -998,7 +1010,7 @@ export class InboxService {
   private async fragmentoHandoffHumano(conv: {
     empresaId: string;
     botLigado: boolean | null;
-  }): Promise<{ precisaHumano: boolean; botPausadoAte?: Date }> {
+  }): Promise<{ precisaHumano: boolean; alertaEsquecidaEm: null; botPausadoAte?: Date }> {
     const empresaBot = await this.prisma.empresa.findUnique({
       where: { id: conv.empresaId },
       select: { botWhatsappAtivo: true },
@@ -1008,6 +1020,10 @@ export class InboxService {
     const handoffMs = this.env.get('BOT_HANDOFF_HORAS') * 60 * 60 * 1000;
     return {
       precisaHumano: false,
+      // Card 🔔: humano respondeu ⇒ a conversa não está mais esquecida. Fica
+      // aqui (e não em cada caminho de envio) porque este fragmento já é o
+      // ponto único por onde passa TODA resposta humana — texto e mídia.
+      alertaEsquecidaEm: null,
       ...(botAtivoNaConversa ? { botPausadoAte: new Date(Date.now() + handoffMs) } : {}),
     };
   }

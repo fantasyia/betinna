@@ -9,6 +9,7 @@ import { InboxEventsService } from './inbox-events.service';
 import { InboxMetricasService } from './inbox-metricas.service';
 import { InboxController } from './inbox.controller';
 import { InboxService } from './inbox.service';
+import { ConversaEsquecidaJob } from './conversa-esquecida.job';
 
 /**
  * InboxModule é `@Global` porque adapters de canal (em outros módulos)
@@ -29,6 +30,9 @@ import { InboxService } from './inbox.service';
     ConversationPresencaService,
     InboxMetricasService,
     InboxEventsService,
+    // Varredura de conversa esquecida (card 🔔). O @Cron já é gateado pela
+    // ausência do ScheduleModule na api — mesmo padrão do FluxoTriggersJob.
+    ConversaEsquecidaJob,
   ],
   exports: [InboxService, CanalAdapterRegistry, InboxEventsService],
 })

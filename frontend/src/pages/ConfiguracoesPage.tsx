@@ -229,6 +229,7 @@ export default function ConfiguracoesPage() {
           <DevolucaoConfig />
           <InboxInternaConfig />
           <EnvioWhatsappConfig />
+          <AlertaEsquecidaConfig />
         </>
       )}
       {tab === 'empresas' && (
@@ -1547,6 +1548,173 @@ function EnvioWhatsappConfig() {
               className="bg-primary text-white rounded-md py-2 px-4 text-sm font-semibold cursor-pointer border-none self-start mt-2 disabled:opacity-60"
             >
               {busy ? 'Salvando…' : 'Salvar ritmo'}
+            </button>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+/**
+ * Alerta de conversa esquecida (card 🔔) — 9º consumidor (no-code).
+ *
+ * Depois de transferir pra humano o bot NÃO volta sozinho: quem religa é o
+ * atendente. Se ele esquecer, a conversa fica muda — nem bot, nem humano. Esta
+ * varredura abre tarefa pro atendente da conversa quando passa do prazo.
+ *
+ * As horas são de EXPEDIENTE, não de relógio: 4h corridas a partir das 17h
+ * venceriam às 21h, quando ninguém esqueceu nada — o expediente acabou. Alarme
+ * que toca toda noite e todo fim de semana vira ruído que ninguém lê.
+ */
+interface AlertaEsquecidaForm {
+  ativo: boolean;
+  horas: string;
+  horaInicio: string;
+  horaFim: string;
+  sabado: boolean;
+}
+
+function AlertaEsquecidaConfig() {
+  const toast = useToast();
+  const podeEditar = usePermission('configuracoes.empresa');
+  const { data: cfg, loading, refetch } = useApiQuery<Record<string, unknown>>('/empresas/config');
+  const [edit, setEdit] = useState<AlertaEsquecidaForm | null>(null);
+  const [busy, setBusy] = useState(false);
+
+  const base: AlertaEsquecidaForm = useMemo(() => {
+    const r = (cfg?.alertaConversaEsquecida ?? {}) as {
+      ativo?: boolean;
+      horas?: number;
+      dias?: number[];
+      horaInicio?: number;
+      horaFim?: number;
+    };
+    return {
+      ativo: r.ativo !== false,
+      horas: String(r.horas ?? 4),
+      horaInicio: String(r.horaInicio ?? 8),
+      horaFim: String(r.horaFim ?? 18),
+      sabado: Array.isArray(r.dias) ? r.dias.includes(6) : false,
+    };
+  }, [cfg]);
+  const form = edit ?? base;
+  const set = <K extends keyof AlertaEsquecidaForm>(k: K, v: AlertaEsquecidaForm[K]) =>
+    setEdit({ ...form, [k]: v });
+
+  async function save() {
+    setBusy(true);
+    try {
+      const num = (str: string, padrao: number, min: number, max: number) => {
+        const v = Math.round(Number(str));
+        return Number.isFinite(v) && v >= min && v <= max ? v : padrao;
+      };
+      const horaInicio = num(form.horaInicio, 8, 0, 23);
+      const horaFim = num(form.horaFim, 18, 1, 24);
+      await api.patch('/empresas/config', {
+        alertaConversaEsquecida: {
+          ativo: form.ativo,
+          horas: num(form.horas, 4, 1, 240),
+          horaInicio,
+          // Janela invertida não existe — devolve o padrão em vez de gravar um
+          // expediente de duração negativa (que nunca venceria o prazo).
+          horaFim: horaFim > horaInicio ? horaFim : 18,
+          dias: form.sabado ? [1, 2, 3, 4, 5, 6] : [1, 2, 3, 4, 5],
+        },
+      });
+      toast.success('Alerta de conversa esquecida salvo');
+      setEdit(null);
+      refetch();
+    } catch (err) {
+      toast.error('Falha ao salvar', apiErrorMessage(err));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <div className="bg-surface border border-border rounded-[10px] p-6 mt-4">
+      <h2 className="mt-0 text-[16px]" style={{ color: 'var(--text)' }}>
+        ⏰ Alerta de conversa esquecida
+      </h2>
+      <p className="text-xs text-muted mt-0">
+        Depois de uma transferência o bot fica desligado até o atendente religar. Se ninguém
+        responder nem religar dentro do prazo, o atendente da conversa ganha uma tarefa e a conversa
+        fica destacada no Inbox. As horas contam só dentro do expediente.
+      </p>
+      {loading ? (
+        <p className="text-sm text-muted mt-4">Carregando…</p>
+      ) : (
+        <div className="flex flex-col gap-3 mt-4 max-w-[480px]">
+          <label className="flex items-center gap-2 text-xs text-muted">
+            <input
+              type="checkbox"
+              checked={form.ativo}
+              disabled={!podeEditar}
+              data-testid="alerta-esquecida-ativo"
+              onChange={(e) => set('ativo', e.target.checked)}
+            />
+            Avisar quando uma conversa ficar parada
+          </label>
+          <div className="flex flex-col gap-2 sm:flex-row">
+            <label className="flex flex-col gap-1 text-xs text-muted flex-1">
+              Horas de expediente sem resposta
+              <Input
+                type="number"
+                min="1"
+                max="240"
+                value={form.horas}
+                disabled={!podeEditar || !form.ativo}
+                data-testid="alerta-esquecida-horas"
+                onChange={(e) => set('horas', e.target.value)}
+              />
+            </label>
+            <label className="flex flex-col gap-1 text-xs text-muted flex-1">
+              Expediente começa (h)
+              <Input
+                type="number"
+                min="0"
+                max="23"
+                value={form.horaInicio}
+                disabled={!podeEditar || !form.ativo}
+                onChange={(e) => set('horaInicio', e.target.value)}
+              />
+            </label>
+            <label className="flex flex-col gap-1 text-xs text-muted flex-1">
+              Expediente termina (h)
+              <Input
+                type="number"
+                min="1"
+                max="24"
+                value={form.horaFim}
+                disabled={!podeEditar || !form.ativo}
+                onChange={(e) => set('horaFim', e.target.value)}
+              />
+            </label>
+          </div>
+          <label className="flex items-center gap-2 text-xs text-muted">
+            <input
+              type="checkbox"
+              checked={form.sabado}
+              disabled={!podeEditar || !form.ativo}
+              onChange={(e) => set('sabado', e.target.checked)}
+            />
+            Contar sábado como dia útil
+          </label>
+          <p className="text-[11px] text-muted m-0">
+            Hoje: avisa depois de {form.horas}h de expediente ({form.horaInicio}h–{form.horaFim}h,
+            seg–{form.sabado ? 'sáb' : 'sex'}) sem ninguém responder.
+          </p>
+
+          {podeEditar && (
+            <button
+              type="button"
+              data-testid="alerta-esquecida-salvar"
+              onClick={save}
+              disabled={busy}
+              className="bg-primary text-white rounded-md py-2 px-4 text-sm font-semibold cursor-pointer border-none self-start mt-2 disabled:opacity-60"
+            >
+              {busy ? 'Salvando…' : 'Salvar alerta'}
             </button>
           )}
         </div>

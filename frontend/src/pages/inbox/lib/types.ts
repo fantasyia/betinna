@@ -70,6 +70,12 @@ export interface Conversation {
   // Fase 2 — estado do bot Muller nesta conversa
   botPausadoAte?: string | null;
   precisaHumano?: boolean;
+  /**
+   * Card 🔔 — quando a varredura marcou a conversa como ESQUECIDA: bot desligado
+   * e ninguém respondeu dentro do expediente. `null` = tudo certo. Some sozinho
+   * quando alguém responde ou religa o bot.
+   */
+  alertaEsquecidaEm?: string | null;
   // Override do bot por conversa: null = segue o global da empresa;
   // true = ligado aqui mesmo com o global off; false = desligado só aqui.
   botLigado?: boolean | null;
