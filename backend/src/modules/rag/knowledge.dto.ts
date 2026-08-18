@@ -27,11 +27,19 @@ export type CreateKnowledgeDocumentoDto = z.infer<typeof createKnowledgeDocument
 export const updateKnowledgeDocumentoSchema = z
   .object({
     titulo: z.string().trim().min(2).max(160).optional(),
+    /** Anexar o ARQUIVO na conversa. */
     podeEnviar: z.boolean().optional(),
+    /**
+     * Usar o CONTEÚDO como fonte de resposta (liga/desliga todos os trechos).
+     * Permissão diferente de `podeEnviar`: um documento interno pode merecer
+     * nenhuma das duas, e antes só dava pra controlar a primeira.
+     */
+    usarComoFonte: z.boolean().optional(),
   })
-  .refine((d) => d.titulo !== undefined || d.podeEnviar !== undefined, {
-    message: 'Informe titulo ou podeEnviar',
-  });
+  .refine(
+    (d) => d.titulo !== undefined || d.podeEnviar !== undefined || d.usarComoFonte !== undefined,
+    { message: 'Informe titulo, podeEnviar ou usarComoFonte' },
+  );
 export type UpdateKnowledgeDocumentoDto = z.infer<typeof updateKnowledgeDocumentoSchema>;
 
 export const listKnowledgeSchema = z.object({

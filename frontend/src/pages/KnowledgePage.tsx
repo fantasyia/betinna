@@ -39,6 +39,8 @@ interface KnowledgeDocumento {
   tamanhoBytes: number;
   podeEnviar: boolean;
   totalChunks: number;
+  /** Trechos ATIVOS — >0 significa que o conteúdo alimenta as respostas do bot. */
+  chunksAtivos?: number;
   erroExtracao: string | null;
   criadoEm: string;
 }
@@ -139,6 +141,24 @@ export default function KnowledgePage() {
   async function alternarEnvio(d: KnowledgeDocumento) {
     try {
       await api.patch(`/conhecimento/documento/${d.id}`, { podeEnviar: !d.podeEnviar });
+      docsQuery.refetch();
+    } catch (err) {
+      toast.error('Falha ao atualizar', err instanceof ApiError ? err.message : undefined);
+    }
+  }
+
+  /**
+   * Liga/desliga o documento como FONTE de resposta (todos os trechos de uma vez).
+   *
+   * Sem isso, tirar um documento interno da base eram N cliques — um por trecho
+   * — e na prática ninguém tirava. São duas permissões diferentes: "o bot pode
+   * anexar o arquivo" e "o bot pode usar o conteúdo pra responder". Um playbook
+   * de vendas pode merecer nenhuma das duas.
+   */
+  async function alternarFonte(d: KnowledgeDocumento) {
+    const ativoHoje = (d.chunksAtivos ?? d.totalChunks) > 0;
+    try {
+      await api.patch(`/conhecimento/documento/${d.id}`, { usarComoFonte: !ativoHoje });
       docsQuery.refetch();
     } catch (err) {
       toast.error('Falha ao atualizar', err instanceof ApiError ? err.message : undefined);
@@ -266,9 +286,14 @@ export default function KnowledgePage() {
                 <div className="flex items-center justify-between gap-2">
                   <strong className="truncate text-sm text-text">{d.titulo}</strong>
                   {d.podeEnviar && (
-                    <Badge variant="info" size="sm">
+                    <Badge variant="danger" size="sm" title="O bot pode MANDAR ESTE ARQUIVO pro cliente">
                       <Send className="mr-0.5 inline h-3 w-3" />
-                      enviável
+                      o bot anexa este arquivo
+                    </Badge>
+                  )}
+                  {(d.chunksAtivos ?? d.totalChunks) === 0 && d.totalChunks > 0 && (
+                    <Badge variant="neutral" size="sm" title="O conteúdo NÃO alimenta as respostas">
+                      fora das respostas
                     </Badge>
                   )}
                 </div>
@@ -292,7 +317,12 @@ export default function KnowledgePage() {
                     <Switch
                       checked={d.podeEnviar}
                       onChange={() => void alternarEnvio(d)}
-                      label="Bot pode enviar"
+                      label="Anexar o ARQUIVO na conversa"
+                    />
+                    <Switch
+                      checked={(d.chunksAtivos ?? d.totalChunks) > 0}
+                      onChange={() => void alternarFonte(d)}
+                      label="Usar o conteúdo como fonte"
                     />
                     <Button
                       variant="ghost"
@@ -469,7 +499,11 @@ export default function KnowledgePage() {
               <Switch
                 checked={docForm.podeEnviar}
                 onChange={(e) => setDocForm({ ...docForm, podeEnviar: e.target.checked })}
-                label={docForm.podeEnviar ? 'Pode enviar o arquivo' : 'Só fonte de informação'}
+                label={
+                  docForm.podeEnviar
+                    ? '⚠️ O bot pode ANEXAR este arquivo na conversa do cliente'
+                    : 'Só fonte de informação (o bot lê, mas não manda o arquivo)'
+                }
               />
             </Field>
             <p className="text-[11px] text-muted">

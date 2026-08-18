@@ -39,11 +39,31 @@ export class KnowledgeDocumentoService {
     return user.empresaIdAtiva;
   }
 
-  async listar(user: AuthenticatedUser): Promise<KnowledgeDocumento[]> {
-    return this.prisma.knowledgeDocumento.findMany({
-      where: { empresaId: this.requireEmpresa(user) },
+  /**
+   * Lista os documentos + quantos trechos estão ATIVOS em cada um.
+   *
+   * A contagem de ativos é o que revela, na tela, se o documento é fonte de
+   * resposta do bot. São duas permissões MUITO diferentes e a tela precisa
+   * mostrar as duas: um playbook de vendas interno pode legitimamente nunca ser
+   * anexado E também nunca alimentar a resposta — mas até aqui só a primeira
+   * dava pra ver.
+   */
+  async listar(
+    user: AuthenticatedUser,
+  ): Promise<Array<KnowledgeDocumento & { chunksAtivos: number }>> {
+    const empresaId = this.requireEmpresa(user);
+    const docs = await this.prisma.knowledgeDocumento.findMany({
+      where: { empresaId },
       orderBy: { criadoEm: 'desc' },
     });
+    if (docs.length === 0) return [];
+    const ativos = await this.prisma.knowledgeChunk.groupBy({
+      by: ['documentoId'],
+      where: { documentoId: { in: docs.map((d) => d.id) }, ativo: true },
+      _count: { _all: true },
+    });
+    const porDoc = new Map(ativos.map((a) => [a.documentoId, a._count._all]));
+    return docs.map((d) => ({ ...d, chunksAtivos: porDoc.get(d.id) ?? 0 }));
   }
 
   async criar(
@@ -142,6 +162,22 @@ export class KnowledgeDocumentoService {
       where: { id },
       data: { titulo: dto.titulo, podeEnviar: dto.podeEnviar },
     });
+    // "Usar como fonte" liga/desliga TODOS os trechos de uma vez.
+    //
+    // O `ativo` do chunk sempre existiu, mas só dava pra mexer trecho a trecho:
+    // tirar um playbook de 23 páginas da base eram 23 cliques, então na prática
+    // ninguém tirava. A busca do RAG já filtra `ativo = true`, então desligar
+    // aqui é o suficiente pro conteúdo parar de alimentar respostas.
+    if (dto.usarComoFonte !== undefined) {
+      const r = await this.prisma.knowledgeChunk.updateMany({
+        where: { documentoId: id },
+        data: { ativo: dto.usarComoFonte },
+      });
+      this.logger.log(
+        `Documento ${id} ${dto.usarComoFonte ? 'VOLTOU a ser' : 'saiu de'} fonte de resposta ` +
+          `(${r.count} trecho(s)) — por ${user.email}`,
+      );
+    }
     // Renomear o doc renomeia os chunks (mantém o "(trecho N/M)" coerente via re-fetch).
     if (dto.titulo && dto.titulo !== existing.titulo) {
       await this.renomearChunks(id, dto.titulo);
