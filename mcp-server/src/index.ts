@@ -2071,9 +2071,11 @@ server.registerTool(
         .max(2)
         .optional()
         .describe(
-          'Aleatoriedade (0–2). CLASSIFICADOR que grava valor literal quer BAIXA (0–0.4): ' +
-            'temperatura alta varia a escrita, a saída não casa com o roteador e o fluxo cai no ' +
-            'ramo default. 0.7+ é temperatura de REDAÇÃO.',
+          'Aleatoriedade (0–2). ⚠️ Modelos de RACIOCÍNIO (gpt-5.x) REJEITAM este parâmetro — a ' +
+            'chamada é refeita sem ele e o valor não tem efeito nenhum. Onde vale: classificador ' +
+            'que grava valor literal quer BAIXA (0–0.4); 0.7+ é temperatura de REDAÇÃO. Pra ' +
+            'blindar a classificação de verdade, declare os valores aceitos na variável do nó ' +
+            '("nome: A | B | C") — vira enum e o modelo não CONSEGUE sair da lista.',
         ),
     },
     annotations: { readOnlyHint: false, destructiveHint: false },
@@ -2116,9 +2118,11 @@ server.registerTool(
         .max(2)
         .optional()
         .describe(
-          'Aleatoriedade (0–2). CLASSIFICADOR que grava valor literal quer BAIXA (0–0.4): ' +
-            'temperatura alta varia a escrita, a saída não casa com o roteador e o fluxo cai no ' +
-            'ramo default. 0.7+ é temperatura de REDAÇÃO.',
+          'Aleatoriedade (0–2). ⚠️ Modelos de RACIOCÍNIO (gpt-5.x) REJEITAM este parâmetro — a ' +
+            'chamada é refeita sem ele e o valor não tem efeito nenhum. Onde vale: classificador ' +
+            'que grava valor literal quer BAIXA (0–0.4); 0.7+ é temperatura de REDAÇÃO. Pra ' +
+            'blindar a classificação de verdade, declare os valores aceitos na variável do nó ' +
+            '("nome: A | B | C") — vira enum e o modelo não CONSEGUE sair da lista.',
         ),
     },
     annotations: { readOnlyHint: false, destructiveHint: false },

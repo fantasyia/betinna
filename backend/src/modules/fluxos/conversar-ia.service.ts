@@ -22,6 +22,7 @@ import type { HistoricoMsg } from '@modules/mullerbot/mullerbot-cache.service';
 import { WhatsappPacingService } from '@shared/whatsapp-pacing/whatsapp-pacing.service';
 import { SupressaoService } from '@shared/supressao/supressao.service';
 import { FluxoEventBusService } from './fluxo-event-bus.service';
+import { montarSchemaDoTurno, parseVariaveisGravadas } from './variaveis-gravadas.util';
 import {
   FLUXO_QUEUE,
   unidadeTempoMs,
@@ -1128,12 +1129,23 @@ export class ConversarIaService {
     }
 
     // Variáveis que a IA pode gravar (nó "Conversar com IA" — spec §2.5).
-    const gravaveis = (cfg.variaveisGravadas ?? []).filter(
-      (v) => typeof v === 'string' && v.trim().length > 0,
-    );
+    // Cada entrada pode declarar os VALORES aceitos (`nome: A | B | C`), que
+    // viram enum no structured output.
+    const declaradas = parseVariaveisGravadas(cfg.variaveisGravadas);
+    const gravaveis = declaradas.map((v) => v.nome);
     const systemPrompt =
       interpolate(await this.persona.compilarSystemPromptConversa(empresaId, cfg.promptId), ctx) +
       INSTRUCAO_CLASSIFICACAO +
+      // O enum já IMPEDE valor fora da lista; repetir no texto melhora a ESCOLHA
+      // (o modelo vê as opções ao decidir, não só ao serializar) e mantém o
+      // prompt legível pra quem for revisar o fluxo.
+      declaradas
+        .filter((v) => v.valores?.length)
+        .map(
+          (v) => `
+- "${v.nome}" aceita EXATAMENTE um destes: ${(v.valores ?? []).join(' | ')}.`,
+        )
+        .join('') +
       (gravaveis.length
         ? `\n- Em "variaveis", grave APENAS estas chaves: ${gravaveis.join(', ')}.`
         : '') +
@@ -1231,6 +1243,17 @@ export class ConversarIaService {
     // nó pediu. Recupera com base na mensagem do lead (busca semântica + fallback).
     const blocoRag = await this.montarBlocoRag(empresaId, textoLead, cfg);
 
+    // Overrides do prompt do nó. Best-effort: sem prompt (ou erro de leitura), a
+    // chamada segue com o modelo da empresa, que é o comportamento de sempre.
+    const prompt = cfg.promptId
+      ? await this.prisma.botPrompt
+          .findFirst({
+            where: { id: cfg.promptId, empresaId },
+            select: { modelo: true, temperatura: true },
+          })
+          .catch(() => null)
+      : null;
+
     let r: { texto: string; tokensIn?: number; tokensOut?: number };
     try {
       r = await this.muller.gerarRespostaIa(
@@ -1239,6 +1262,15 @@ export class ConversarIaService {
         textoLead,
         historico,
         imagemDataUrl,
+        {
+          // O prompt do nó manda no modelo e na temperatura (antes isso era
+          // ignorado e valia sempre a persona da empresa).
+          modelo: prompt?.modelo,
+          temperatura: prompt?.temperatura == null ? null : Number(prompt.temperatura),
+          // Enum das variáveis declaradas: o modelo deixa de PODER responder
+          // fora da lista, em vez de a gente torcer pra que não responda.
+          responseFormat: montarSchemaDoTurno(declaradas),
+        },
       );
     } catch (err) {
       // Falha da IA: roteia pela saída "erro" e SAI de AGUARDANDO. Antes esse erro

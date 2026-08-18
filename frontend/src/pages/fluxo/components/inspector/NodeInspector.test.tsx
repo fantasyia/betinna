@@ -199,9 +199,7 @@ describe('NodeInspector (dispatcher)', () => {
       />,
     );
 
-    const varsInput = screen.getByPlaceholderText(
-      'classificacao, canal, potencial_pedidos',
-    ) as HTMLInputElement;
+    const varsInput = screen.getByTestId('ia-variaveis-gravadas') as HTMLInputElement;
     fireEvent.change(varsInput, { target: { value: 'classificacao, canal' } });
 
     // TRANSFORMAÇÃO exata: a string vírgula-separada vira array trimado.

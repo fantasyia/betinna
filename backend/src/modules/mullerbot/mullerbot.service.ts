@@ -418,6 +418,21 @@ ${REGRAS_CATALOGO}`;
     mensagem: string,
     historico: HistoricoMsg[] = [],
     imagemDataUrl?: string,
+    /**
+     * Overrides DO PROMPT do nó.
+     *
+     * ⚠️ Até 18/08 estes campos existiam no `BotPrompt`, apareciam na tela e no
+     * MCP — e NÃO chegavam na chamada: o modelo vinha sempre da persona da
+     * empresa e a temperatura não era enviada nunca. Quem calibrava um prompt
+     * estava mexendo em campo decorativo, e a mudança "não pegava" sem nenhum
+     * sinal. Agora o override do prompt tem precedência sobre o da empresa.
+     */
+    opts: {
+      modelo?: string | null;
+      temperatura?: number | null;
+      /** JSON Schema do structured output (enum das variáveis do nó). */
+      responseFormat?: Record<string, unknown> | null;
+    } = {},
   ): Promise<{ texto: string; tokensIn?: number; tokensOut?: number; modelo: string }> {
     const apiKey = await this.resolverChaveEmpresa(empresaId);
     if (!apiKey) {
@@ -426,7 +441,11 @@ ${REGRAS_CATALOGO}`;
         ErrorCode.INTEGRATION_ERROR,
       );
     }
-    const modelo = (await this.persona.obterModelo(empresaId)) ?? this.env.get('MULLERBOT_MODEL');
+    // Precedência: prompt do nó > persona da empresa > default do servidor.
+    const modelo =
+      opts.modelo?.trim() ||
+      (await this.persona.obterModelo(empresaId)) ||
+      this.env.get('MULLERBOT_MODEL');
     const maxOutputTokens = this.env.get('MULLERBOT_MAX_OUTPUT_TOKENS');
     const r = await this.chamarOpenAI(
       { apiKey },
@@ -437,6 +456,7 @@ ${REGRAS_CATALOGO}`;
       historico,
       // Visão: quando o lead manda foto no fluxo (e "analisar imagem" está ligado).
       imagemDataUrl,
+      { temperatura: opts.temperatura, responseFormat: opts.responseFormat },
     );
     return { ...r, modelo };
   }
@@ -858,6 +878,10 @@ ${REGRAS_CATALOGO}`;
     maxOutputTokens: number,
     historicoRaw: HistoricoMsg[] = [],
     imagemDataUrl?: string,
+    extras: {
+      temperatura?: number | null;
+      responseFormat?: Record<string, unknown> | null;
+    } = {},
   ): Promise<{ texto: string; tokensIn?: number; tokensOut?: number }> {
     // Cap do histórico ao orçamento de tokens RESTANTE (mantém as mensagens mais recentes). Sem isto,
     // conversa longa levava systemPrompt+userMessage+histórico além do context window (400 da OpenAI →
@@ -911,7 +935,7 @@ ${REGRAS_CATALOGO}`;
     // o bot caía no fallback (ex: gpt-5.4-mini). Escolhe pelo nome do modelo e
     // auto-corrige refazendo com o outro parâmetro se a OpenAI reclamar.
     const usaMaxCompletion = /^(o\d|gpt-[5-9])/i.test(modelo);
-    const enviar = (maxCompletion: boolean) =>
+    const enviar = (maxCompletion: boolean, comTemperatura: boolean) =>
       this.http.post<{
         choices: Array<{ message?: { content?: string } }>;
         usage?: { prompt_tokens?: number; completion_tokens?: number };
@@ -921,6 +945,16 @@ ${REGRAS_CATALOGO}`;
           ...(maxCompletion
             ? { max_completion_tokens: maxOutputTokens }
             : { max_tokens: maxOutputTokens }),
+          // Temperatura só quando o prompt define. Modelos de raciocínio
+          // (gpt-5.x com reasoning) RECUSAM o parâmetro — por isso o retry
+          // abaixo refaz sem ele em vez de deixar a chamada morrer.
+          ...(comTemperatura && typeof extras.temperatura === 'number'
+            ? { temperature: extras.temperatura }
+            : {}),
+          // Structured output: trava as variáveis de classificação num enum.
+          ...(extras.responseFormat
+            ? { response_format: { type: 'json_schema', json_schema: extras.responseFormat } }
+            : {}),
           messages,
         },
         headers: { Authorization: `Bearer ${creds.apiKey}` },
@@ -931,16 +965,24 @@ ${REGRAS_CATALOGO}`;
       });
 
     try {
-      const res = await enviar(usaMaxCompletion).catch((e: unknown) => {
-        const reclamouDoParam =
-          e instanceof HttpClientError &&
-          e.status === 400 &&
-          /max_completion_tokens|max_tokens/i.test(JSON.stringify(e.body ?? ''));
-        if (reclamouDoParam) {
+      const res = await enviar(usaMaxCompletion, true).catch((e: unknown) => {
+        const corpo = e instanceof HttpClientError ? JSON.stringify(e.body ?? '') : '';
+        const ehErro400 = e instanceof HttpClientError && e.status === 400;
+        if (ehErro400 && /max_completion_tokens|max_tokens/i.test(corpo)) {
           this.logger.warn(
             `[openai] modelo ${modelo} recusou o parâmetro de tokens — refazendo com ${usaMaxCompletion ? 'max_tokens' : 'max_completion_tokens'}`,
           );
-          return enviar(!usaMaxCompletion);
+          return enviar(!usaMaxCompletion, true);
+        }
+        // Modelo de raciocínio rejeita `temperature`. Refaz SEM ela: perder o
+        // ajuste fino é infinitamente melhor que o bot não responder — e o log
+        // deixa claro que aquele valor não vale pra este modelo.
+        if (ehErro400 && /temperature/i.test(corpo)) {
+          this.logger.warn(
+            `[openai] modelo ${modelo} não aceita "temperature" (modelo de raciocínio) — ` +
+              `refazendo sem ela. O valor configurado no prompt NÃO tem efeito aqui.`,
+          );
+          return enviar(usaMaxCompletion, false);
         }
         throw e;
       });

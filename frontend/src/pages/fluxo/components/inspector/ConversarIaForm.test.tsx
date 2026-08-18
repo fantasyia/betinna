@@ -145,9 +145,7 @@ describe('ConversarIaForm — contrato de config-keys', () => {
     render(<Harness initial={initial} box={box} />);
 
     // ROUND-TRIP DE LEITURA: array renderiza como "classificacao, canal".
-    const varsInput = screen.getByPlaceholderText(
-      'classificacao, canal, potencial_pedidos',
-    ) as HTMLInputElement;
+    const varsInput = screen.getByTestId('ia-variaveis-gravadas') as HTMLInputElement;
     expect(varsInput.value).toBe('classificacao, canal');
 
     // ESCRITA: "a, b" vira ['a','b'] (split por vírgula + trim).
@@ -160,9 +158,7 @@ describe('ConversarIaForm — contrato de config-keys', () => {
     const box = { current: initial };
     render(<Harness initial={initial} box={box} />);
 
-    const varsInput = screen.getByPlaceholderText(
-      'classificacao, canal, potencial_pedidos',
-    ) as HTMLInputElement;
+    const varsInput = screen.getByTestId('ia-variaveis-gravadas') as HTMLInputElement;
     fireEvent.change(varsInput, { target: { value: '  classificacao ,, canal , ' } });
     expect(box.current.config.variaveisGravadas).toEqual(['classificacao', 'canal']);
   });
@@ -187,5 +183,22 @@ describe('ConversarIaForm — contrato de config-keys', () => {
 
     const promptSelect = screen.getAllByRole('combobox')[0] as HTMLSelectElement;
     expect(promptSelect.value).toBe('');
+  });
+
+  it('a sintaxe "nome: A | B" passa INTEIRA pro config (é ela que vira o enum)', () => {
+    // O backend parseia; o form não pode "limpar" os valores no caminho, senão
+    // a trava de enum nunca chega lá.
+    const initial = makeData({ variaveisGravadas: [] });
+    const box = { current: initial };
+    render(<Harness initial={initial} box={box} />);
+
+    fireEvent.change(screen.getByTestId('ia-variaveis-gravadas'), {
+      target: { value: 'perfil_energia: Industrial | Nao industrial, regiao' },
+    });
+
+    expect(box.current.config.variaveisGravadas).toEqual([
+      'perfil_energia: Industrial | Nao industrial',
+      'regiao',
+    ]);
   });
 });

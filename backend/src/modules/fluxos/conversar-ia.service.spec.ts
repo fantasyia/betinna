@@ -1056,3 +1056,120 @@ describe('allowlist de variaveisGravadas NÃO come os sinais de roteamento', () 
     expect(filtrar([], vars)).toEqual(vars);
   });
 });
+
+/**
+ * O prompt do nó manda no modelo e na temperatura — e as variáveis declaradas
+ * viram enum no structured output.
+ *
+ * ⚠️ Até 18/08 `BotPrompt.modelo` e `BotPrompt.temperatura` existiam no banco,
+ * na tela e no MCP, e NÃO chegavam na chamada: o modelo vinha sempre da persona
+ * da empresa e a temperatura não era enviada nunca. Quem calibrava um prompt
+ * estava mexendo em campo decorativo, sem nenhum sinal de que não pegou.
+ */
+describe('ConversarIaService — overrides do prompt e enum das variáveis', () => {
+  let prisma: ReturnType<typeof makePrisma>;
+  let muller: ReturnType<typeof makeMuller>;
+  let svc: ConversarIaService;
+
+  const execAguardando = {
+    id: 'exec-1',
+    status: 'AGUARDANDO',
+    aguardandoNoId: 'no-ia',
+    empresaId: 'emp-1',
+    contexto: { leadId: 'lead-1' },
+  };
+
+  const preparar = (config: Record<string, unknown>) => {
+    prisma.fluxoExecucao.findUnique.mockResolvedValue(execAguardando);
+    prisma.fluxoNo.findUnique.mockResolvedValue({ id: 'no-ia', config });
+    prisma.lead.findFirst.mockResolvedValue({ contatoTelefone: '11999990000', variaveis: {} });
+    prisma.fluxoEdge.findMany.mockResolvedValue([{ targetNoId: 'no-2' }]);
+    muller.gerarRespostaIa.mockResolvedValue({
+      texto: '{"resposta":"oi","classificou":false}',
+      modelo: 'gpt',
+    });
+  };
+
+  beforeEach(() => {
+    prisma = makePrisma();
+    muller = makeMuller();
+    svc = new ConversarIaService(
+      prisma as never,
+      makePersona() as never,
+      muller as never,
+      { buscar: vi.fn(async () => []) } as never, // produtoSearch (RAG)
+      { buscar: vi.fn(async () => []) } as never, // conhecimentoSearch (RAG)
+      makeCusto() as never,
+      makeWhatsapp() as never,
+      makeBus() as never,
+      { aguardarSlot: vi.fn() } as never,
+      { suprimido: vi.fn(async () => false) } as never, // supressao
+      makeQueue() as never,
+    );
+  });
+
+  it('manda o MODELO e a TEMPERATURA do prompt (antes ia só o da empresa)', async () => {
+    preparar({ promptId: 'p1' });
+    prisma.botPrompt.findFirst.mockResolvedValue({ modelo: 'gpt-5.6-terra', temperatura: 0.4 });
+
+    await svc.retomar('exec-1', 'conv-1', 'oi');
+
+    const opts = muller.gerarRespostaIa.mock.calls[0][5] as {
+      modelo?: string;
+      temperatura?: number;
+    };
+    expect(opts.modelo).toBe('gpt-5.6-terra');
+    expect(opts.temperatura).toBe(0.4);
+  });
+
+  it('variáveis com valores declarados viram ENUM no structured output', async () => {
+    preparar({
+      promptId: 'p1',
+      variaveisGravadas: ['perfil_energia: Industrial | Nao industrial', 'regiao'],
+    });
+    prisma.botPrompt.findFirst.mockResolvedValue({ modelo: null, temperatura: null });
+
+    await svc.retomar('exec-1', 'conv-1', 'oi');
+
+    const opts = muller.gerarRespostaIa.mock.calls[0][5] as {
+      responseFormat?: {
+        schema: { properties: { variaveis: { properties: Record<string, { enum?: unknown[] }> } } };
+      };
+    };
+    expect(opts.responseFormat?.schema.properties.variaveis.properties.perfil_energia.enum).toEqual(
+      ['Industrial', 'Nao industrial', null],
+    );
+  });
+
+  it('sem valores declarados, NÃO liga structured output (não muda fluxo existente)', async () => {
+    preparar({ promptId: 'p1', variaveisGravadas: ['regiao', 'canal'] });
+    prisma.botPrompt.findFirst.mockResolvedValue({ modelo: null, temperatura: null });
+
+    await svc.retomar('exec-1', 'conv-1', 'oi');
+
+    const opts = muller.gerarRespostaIa.mock.calls[0][5] as { responseFormat?: unknown };
+    expect(opts.responseFormat).toBeNull();
+  });
+
+  it('os valores aceitos entram TAMBÉM no texto do prompt (ajuda a escolha, não só o formato)', async () => {
+    preparar({
+      promptId: 'p1',
+      variaveisGravadas: ['classificacao_final: Não é lead | Interesse comercial'],
+    });
+    prisma.botPrompt.findFirst.mockResolvedValue({ modelo: null, temperatura: null });
+
+    await svc.retomar('exec-1', 'conv-1', 'oi');
+
+    const systemPrompt = muller.gerarRespostaIa.mock.calls[0][1] as string;
+    expect(systemPrompt).toContain('Não é lead | Interesse comercial');
+  });
+
+  it('prompt inacessível não derruba o turno (segue com o modelo da empresa)', async () => {
+    preparar({ promptId: 'p1' });
+    prisma.botPrompt.findFirst.mockRejectedValue(new Error('banco fora'));
+
+    await svc.retomar('exec-1', 'conv-1', 'oi');
+
+    expect(muller.gerarRespostaIa).toHaveBeenCalled();
+  });
+});

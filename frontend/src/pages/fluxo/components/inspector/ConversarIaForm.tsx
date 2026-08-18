@@ -114,7 +114,11 @@ export function ConversarIaForm({
       </p>
       <Field
         label="Variáveis que a IA pode gravar"
-        hint="Separe por vírgula (ex: classificacao, canal). Vazio = livre."
+        hint={
+          'Separe por vírgula (ex: classificacao, canal). Vazio = livre. ' +
+          'Pra travar os valores aceitos, use "nome: A | B | C" — aí a IA fica IMPEDIDA ' +
+          'de gravar fora da lista (útil quando o roteador compara por texto exato).'
+        }
       >
         <Input
           value={
@@ -134,7 +138,8 @@ export function ConversarIaForm({
               },
             }))
           }
-          placeholder="classificacao, canal, potencial_pedidos"
+          placeholder="perfil_energia: Industrial | Nao industrial, regiao"
+          data-testid="ia-variaveis-gravadas"
         />
       </Field>
       <Field
