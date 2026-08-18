@@ -161,3 +161,152 @@ describe('KanbanTarefaService — etiqueta do rep no cartão do Diretor', () => 
     expect(criado.nome).toBe('Tarefas de Marcelo Harada');
   });
 });
+
+/**
+ * Espelho de card criado À MÃO.
+ *
+ * Achado do Léo em produção: card criado na tela ficava sozinho. O rep anotava
+ * uma tarefa no quadro dele e o Diretor nunca via; o Diretor abria um card e
+ * não tinha como mandar pro rep. Os dois quadros pareciam espelho e não eram —
+ * o espelho só existia no caminho de FLUXO.
+ */
+describe('KanbanTarefaService.espelharCardManual', () => {
+  const cardNoQuadroDoRep = {
+    id: 'card-rep',
+    titulo: 'Ligar pro cliente',
+    descricao: null,
+    dataInicio: null,
+    dataEntrega: null,
+    origemCardId: null,
+    lista: {
+      nome: '📋 A fazer',
+      board: {
+        id: 'board-rep',
+        empresaId: 'emp-1',
+        tipoSistema: 'rep_tarefas',
+        criadoPorId: 'rep-1',
+      },
+    },
+  };
+
+  const montar = () => {
+    const prisma = makePrisma();
+    prisma.kanbanCard.findUnique = vi.fn().mockResolvedValue(cardNoQuadroDoRep);
+    prisma.kanbanCard.update = vi.fn().mockResolvedValue({});
+    prisma.kanbanCard.findFirst = vi.fn().mockResolvedValue(null); // sem espelho ainda
+    prisma.kanbanBoard.findFirst.mockResolvedValue({ id: 'board-diretor' });
+    prisma.usuario.findFirst.mockResolvedValue({ role: 'REP', nome: 'Marcelo Harada' });
+    prisma.usuario.findUnique = vi.fn().mockResolvedValue({ role: 'REP', nome: 'Marcelo Harada' });
+    return { prisma, svc: new KanbanTarefaService(prisma as never) };
+  };
+
+  it('card do REP cria a ORIGEM no quadro do Diretor e amarra o par', async () => {
+    const { prisma, svc } = montar();
+
+    const r = await svc.espelharCardManual('card-rep');
+
+    expect(r?.espelhoId).toBe('card-novo');
+    // O card do Diretor é o CANÔNICO — é onde moram comentário/checklist/membro.
+    expect(prisma.kanbanCard.update).toHaveBeenCalledWith({
+      where: { id: 'card-rep' },
+      data: { origemCardId: 'card-novo' },
+    });
+  });
+
+  it('a contraparte cai na coluna de MESMO NOME', async () => {
+    const { prisma, svc } = montar();
+
+    await svc.espelharCardManual('card-rep');
+
+    const criado = prisma.kanbanCard.create.mock.calls[0][0].data as { listaId: string };
+    expect(criado.listaId).toBe('l1'); // '📋 A fazer' nos dois quadros
+  });
+
+  it('card do Diretor atribuído a um REP cria o espelho no quadro dele', async () => {
+    const { prisma, svc } = montar();
+    prisma.kanbanCard.findUnique = vi.fn().mockResolvedValue({
+      ...cardNoQuadroDoRep,
+      id: 'card-diretor',
+      lista: {
+        nome: '📋 A fazer',
+        board: {
+          id: 'board-diretor',
+          empresaId: 'emp-1',
+          tipoSistema: 'diretor_tarefas',
+          criadoPorId: 'leo',
+        },
+      },
+    });
+
+    const r = await svc.espelharCardManual('card-diretor', { repId: 'rep-1' });
+
+    expect(r?.espelhoId).toBeTruthy();
+    const criado = prisma.kanbanCard.create.mock.calls[0][0].data as { origemCardId: string };
+    // Aqui o card do Diretor JÁ é a origem — o novo é que aponta pra ele.
+    expect(criado.origemCardId).toBe('card-diretor');
+    // E o cartão do Diretor ganha a etiqueta do rep (card 🏷️).
+    expect(prisma.kanbanCardEtiqueta.create).toHaveBeenCalled();
+  });
+
+  it('card que JÁ faz parte de um par não duplica', async () => {
+    const { prisma, svc } = montar();
+    prisma.kanbanCard.findUnique = vi
+      .fn()
+      .mockResolvedValue({ ...cardNoQuadroDoRep, origemCardId: 'ja-tem' });
+
+    expect(await svc.espelharCardManual('card-rep')).toBeNull();
+    expect(prisma.kanbanCard.create).not.toHaveBeenCalled();
+  });
+
+  it('rodar duas vezes não cria dois espelhos (idempotente)', async () => {
+    const { prisma, svc } = montar();
+    prisma.kanbanCard.findFirst = vi.fn().mockResolvedValue({ id: 'espelho-existente' });
+
+    const r = await svc.espelharCardManual('card-rep');
+
+    expect(r).toEqual({ espelhoId: 'espelho-existente' });
+    expect(prisma.kanbanCard.create).not.toHaveBeenCalled();
+  });
+
+  it('quadro COMUM não vira espelho de nada', async () => {
+    const { prisma, svc } = montar();
+    prisma.kanbanCard.findUnique = vi.fn().mockResolvedValue({
+      ...cardNoQuadroDoRep,
+      lista: {
+        nome: 'A fazer',
+        board: { id: 'b', empresaId: 'emp-1', tipoSistema: null, criadoPorId: 'x' },
+      },
+    });
+
+    expect(await svc.espelharCardManual('card-rep')).toBeNull();
+    expect(prisma.kanbanCard.create).not.toHaveBeenCalled();
+  });
+
+  it('atribuir alguém que NÃO é rep no quadro do Diretor não cria quadro nenhum', async () => {
+    const { prisma, svc } = montar();
+    prisma.kanbanCard.findUnique = vi.fn().mockResolvedValue({
+      ...cardNoQuadroDoRep,
+      id: 'card-diretor',
+      lista: {
+        nome: '📋 A fazer',
+        board: {
+          id: 'board-diretor',
+          empresaId: 'emp-1',
+          tipoSistema: 'diretor_tarefas',
+          criadoPorId: 'leo',
+        },
+      },
+    });
+    prisma.usuario.findFirst.mockResolvedValue({ role: 'SAC', nome: 'Atendente' });
+
+    expect(await svc.espelharCardManual('card-diretor', { repId: 'sac-1' })).toBeNull();
+    expect(prisma.kanbanCard.create).not.toHaveBeenCalled();
+  });
+
+  it('falha no espelho NÃO propaga (não pode derrubar a criação do card)', async () => {
+    const { prisma, svc } = montar();
+    prisma.kanbanCard.findUnique = vi.fn().mockRejectedValue(new Error('banco fora'));
+
+    await expect(svc.espelharCardManual('card-rep')).resolves.toBeNull();
+  });
+});

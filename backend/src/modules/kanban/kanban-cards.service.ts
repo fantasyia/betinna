@@ -69,6 +69,11 @@ export class KanbanCardsService {
       },
     });
 
+    // Card criado À MÃO no quadro pessoal do rep vira card também no quadro do
+    // Diretor. Antes o espelho só existia no caminho de FLUXO: o rep anotava uma
+    // tarefa e o Diretor nunca via — os dois quadros pareciam espelho e não eram.
+    await this.tarefa.espelharCardManual(card.id);
+
     await this.atividade.registrar({
       boardId: board.id,
       usuarioId: user.id,
@@ -347,10 +352,28 @@ export class KanbanCardsService {
 
   // ─── Membros do card ────────────────────────────────────────────────
 
-  /** Atribui membro ao card (precisa ser membro do board, igual Trello). */
+  /**
+   * Atribui membro ao card (precisa ser membro do board, igual Trello).
+   *
+   * EXCEÇÃO no quadro-espelho do Diretor: qualquer REP da empresa pode ser
+   * atribuído sem ser membro do quadro. É o gesto de "essa tarefa é do fulano"
+   * — e é ele que CRIA o card no quadro pessoal do rep. Sem a exceção, o
+   * Diretor não tinha como mandar nada pra um rep: o rep nunca é membro do
+   * quadro dele (e não deve ser, senão passaria a enxergar as tarefas de todos).
+   */
   async addMembro(user: AuthenticatedUser, cardId: string, usuarioId: string) {
     const { board, canonicoId } = await this.acesso.verificarAcessoPorCard(user, cardId);
-    await this.acesso.exigirMembroDoBoard(board.id, usuarioId, 'Membro do card');
+    const ehQuadroDoDiretor = board.tipoSistema === 'diretor_tarefas';
+    const alvo = ehQuadroDoDiretor
+      ? await this.prisma.usuario.findFirst({
+          where: { id: usuarioId, empresas: { some: { empresaId: board.empresaId } } },
+          select: { role: true },
+        })
+      : null;
+    const repDoTenant = alvo?.role === 'REP';
+    if (!repDoTenant) {
+      await this.acesso.exigirMembroDoBoard(board.id, usuarioId, 'Membro do card');
+    }
 
     try {
       // Membro mora no card CANÔNICO (compartilhado pelo par de espelho).
@@ -365,6 +388,9 @@ export class KanbanCardsService {
         cardId,
         dados: { membroId: usuarioId, membroNome: membro.usuario.nome },
       });
+      // Atribuir um REP no quadro do Diretor É o gesto de delegar: cria o card
+      // no quadro pessoal dele (com a etiqueta do nome) e amarra o par.
+      if (repDoTenant) await this.tarefa.espelharCardManual(canonicoId, { repId: usuarioId });
       return membro;
     } catch (err) {
       if (err && typeof err === 'object' && 'code' in err && err.code === 'P2002') {

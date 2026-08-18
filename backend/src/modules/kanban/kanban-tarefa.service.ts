@@ -319,6 +319,148 @@ export class KanbanTarefaService {
     });
   }
 
+  // ─── Espelho de card criado À MÃO ────────────────────────────────────────
+
+  /**
+   * Cria a contraparte de um card que nasceu À MÃO num dos dois quadros.
+   *
+   * O espelho até aqui só existia pro caminho de FLUXO (`criarCardsDeTarefa`).
+   * Card criado na tela ficava sozinho: o rep anotava uma tarefa no quadro dele
+   * e o Diretor nunca via; o Diretor abria um card e não tinha como mandar pro
+   * rep. Os dois quadros pareciam espelho e não eram.
+   *
+   * O card do DIRETOR é sempre o CANÔNICO (é onde moram comentário, checklist,
+   * anexo e membro — ver 74a39f6). Então:
+   * - nasceu no quadro do rep → cria a origem no Diretor e aponta o card do rep
+   *   pra ela (o de cá vira espelho, sem perder nada: ainda não tem relação
+   *   nenhuma pendurada, acabou de nascer);
+   * - nasceu no Diretor e foi atribuído a um rep → cria o espelho lá.
+   *
+   * Idempotente e best-effort: já espelhado não duplica, e falhar aqui não pode
+   * derrubar a criação do card.
+   */
+  async espelharCardManual(
+    cardId: string,
+    opts: { repId?: string } = {},
+  ): Promise<{ espelhoId?: string } | null> {
+    try {
+      const card = await this.prisma.kanbanCard.findUnique({
+        where: { id: cardId },
+        select: {
+          id: true,
+          titulo: true,
+          descricao: true,
+          dataInicio: true,
+          dataEntrega: true,
+          origemCardId: true,
+          lista: {
+            select: {
+              nome: true,
+              board: {
+                select: { id: true, empresaId: true, tipoSistema: true, criadoPorId: true },
+              },
+            },
+          },
+        },
+      });
+      if (!card) return null;
+      // Já faz parte de um par (veio de fluxo ou já espelhado) — nada a fazer.
+      if (card.origemCardId) return null;
+      const jaTemEspelho = await this.prisma.kanbanCard.findFirst({
+        where: { origemCardId: card.id },
+        select: { id: true },
+      });
+      if (jaTemEspelho) return { espelhoId: jaTemEspelho.id };
+
+      const board = card.lista.board;
+      const dados = {
+        titulo: card.titulo,
+        descricao: card.descricao ?? undefined,
+        dataInicio: card.dataInicio ?? undefined,
+        dataEntrega: card.dataEntrega ?? undefined,
+      };
+      // Coluna casada por NOME (mesma regra do sync) — cai na inicial se o
+      // quadro de destino não tiver uma coluna com o mesmo nome.
+      const colunaDestino = (listas: Map<string, string>) =>
+        listas.get(card.lista.nome) ?? listas.get(KanbanTarefaService.COL_INICIAL);
+
+      if (board.tipoSistema === 'rep_tarefas') {
+        const diretor = await this.garantirQuadroDiretor(board.empresaId);
+        const listaId = diretor && colunaDestino(diretor.listas);
+        if (!diretor || !listaId) return null;
+        const origem = await this.criarCardSimples(listaId, dados);
+        // O card do rep passa a apontar pra origem: daqui pra frente os dois são
+        // o mesmo card (comentário/checklist/membro moram no canônico).
+        await this.prisma.kanbanCard.update({
+          where: { id: card.id },
+          data: { origemCardId: origem.id },
+        });
+        if (board.criadoPorId) {
+          const rep = await this.prisma.usuario.findUnique({
+            where: { id: board.criadoPorId },
+            select: { nome: true, role: true },
+          });
+          if (rep?.role === 'REP') {
+            await this.aplicarEtiquetaDoRep(diretor.boardId, origem.id, {
+              id: board.criadoPorId,
+              nome: rep.nome,
+            });
+          }
+        }
+        return { espelhoId: origem.id };
+      }
+
+      if (board.tipoSistema === 'diretor_tarefas' && opts.repId) {
+        const rep = await this.prisma.usuario.findFirst({
+          where: { id: opts.repId, empresas: { some: { empresaId: board.empresaId } } },
+          select: { nome: true, role: true },
+        });
+        if (rep?.role !== 'REP') return null;
+        const quadroRep = await this.garantirQuadroRep(board.empresaId, opts.repId, rep.nome);
+        const listaId = colunaDestino(quadroRep.listas);
+        if (!listaId) return null;
+        const espelho = await this.criarCardSimples(listaId, { ...dados, origemCardId: card.id });
+        await this.aplicarEtiquetaDoRep(board.id, card.id, { id: opts.repId, nome: rep.nome });
+        return { espelhoId: espelho.id };
+      }
+
+      return null;
+    } catch (err) {
+      this.logger.warn(`Falha ao espelhar card criado à mão (${cardId}): ${String(err)}`);
+      return null;
+    }
+  }
+
+  /** Card sem `origemJobId` — é criação manual, não passo de fluxo. */
+  private async criarCardSimples(
+    listaId: string,
+    dados: {
+      titulo: string;
+      descricao?: string;
+      dataInicio?: Date;
+      dataEntrega?: Date;
+      origemCardId?: string;
+    },
+  ) {
+    const ultimo = await this.prisma.kanbanCard.findFirst({
+      where: { listaId },
+      orderBy: { posicao: 'desc' },
+      select: { posicao: true },
+    });
+    return this.prisma.kanbanCard.create({
+      data: {
+        listaId,
+        titulo: dados.titulo,
+        descricao: dados.descricao ?? null,
+        dataInicio: dados.dataInicio ?? null,
+        dataEntrega: dados.dataEntrega ?? null,
+        posicao: posicaoNoFim(ultimo?.posicao),
+        origemCardId: dados.origemCardId ?? null,
+      },
+      select: { id: true },
+    });
+  }
+
   // ─── Sincronização bidirecional (Diretor ↔ rep — é o MESMO card) ─────────
 
   /**

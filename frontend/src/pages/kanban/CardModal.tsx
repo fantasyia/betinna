@@ -43,6 +43,7 @@ import {
   type KCardCompleto,
   type KChecklist,
   type KChecklistItem,
+  type KUsuarioResumo,
 } from './kanban-types';
 
 /**
@@ -108,6 +109,27 @@ export function CardModal({
   const [secao, setSecao] = useState<string | null>(secaoInicial ?? null);
 
   const membrosDoCard = useMemo(() => new Set(card?.membros.map((m) => m.usuario.id)), [card]);
+
+  /**
+   * No quadro-espelho do Diretor, dá pra atribuir QUALQUER REP da empresa — não
+   * só quem é membro do quadro. É o gesto de "essa tarefa é do fulano", e é ele
+   * que cria o card no quadro pessoal do rep.
+   *
+   * O rep nunca é membro do quadro do Diretor (e não deve ser: passaria a
+   * enxergar as tarefas de todos os outros). Sem esta lista, a tela só oferecia
+   * os membros do quadro — ou seja, ninguém pra quem delegar.
+   */
+  const ehQuadroDoDiretor = board.tipoSistema === 'diretor_tarefas';
+  const { data: repsDaEmpresa } = useApiQuery<{ data?: KUsuarioResumo[] } | KUsuarioResumo[]>(
+    ehQuadroDoDiretor && secao === 'membros' ? '/users?role=REP&status=ATIVO&limit=100' : null,
+  );
+  const atribuiveis = useMemo(() => {
+    const doQuadro = board.membros.map((m) => m.usuario);
+    if (!ehQuadroDoDiretor) return doQuadro;
+    const lista = Array.isArray(repsDaEmpresa) ? repsDaEmpresa : (repsDaEmpresa?.data ?? []);
+    const vistos = new Set(doQuadro.map((u) => u.id));
+    return [...doQuadro, ...lista.filter((u) => !vistos.has(u.id))];
+  }, [board.membros, ehQuadroDoDiretor, repsDaEmpresa]);
   const etiquetasDoCard = useMemo(() => new Set(card?.etiquetas.map((e) => e.etiqueta.id)), [card]);
 
   // Erro (ex.: deep-link de card deletado → 404): mostra a mensagem em vez de
@@ -263,7 +285,7 @@ export function CardModal({
           />
           {secao === 'membros' && (
             <div className="rounded-[8px] border border-border p-2 flex flex-col gap-1">
-              {board.membros.map(({ usuario }) => {
+              {atribuiveis.map((usuario) => {
                 const atribuido = membrosDoCard.has(usuario.id);
                 return (
                   <button
