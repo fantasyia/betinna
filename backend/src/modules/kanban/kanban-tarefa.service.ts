@@ -21,6 +21,22 @@ import { posicaoNoFim } from './kanban-posicao.util';
 export class KanbanTarefaService {
   private readonly logger = new Logger(KanbanTarefaService.name);
 
+  /**
+   * Paleta das etiquetas de rep. Mesma do seletor de cores do kanban, pra a
+   * etiqueta automática não destoar das criadas à mão.
+   */
+  private static readonly CORES_REP = [
+    '#0079BF',
+    '#201554',
+    '#bd1fbf',
+    '#5C88DA',
+    '#519839',
+    '#B04632',
+    '#89609E',
+    '#CD5A91',
+    '#00AECC',
+  ] as const;
+
   /** Colunas padrão dos quadros de tarefas — a sincronia do espelho casa POR NOME. */
   static readonly COLUNAS = ['📋 A fazer', '🔨 Fazendo', '✅ Feito'] as const;
   private static readonly COL_INICIAL = KanbanTarefaService.COLUNAS[0];
@@ -168,7 +184,7 @@ export class KanbanTarefaService {
 
     const responsavel = await this.prisma.usuario.findFirst({
       where: { id: responsavelId, empresas: { some: { empresaId } } },
-      select: { role: true },
+      select: { role: true, nome: true },
     });
 
     // 1) ORIGEM = quadro do Diretor (sempre).
@@ -185,7 +201,17 @@ export class KanbanTarefaService {
     // 2) ESPELHO no quadro do rep (aponta pra origem do Diretor).
     let repCardId: string | undefined;
     if (responsavel?.role === 'REP') {
-      const rep = await this.garantirQuadroRep(empresaId, responsavelId);
+      // Etiqueta com o nome do rep NO CARTÃO DO DIRETOR — é lá que os cartões de
+      // todos os reps se misturam.
+      if (diretor && diretorCardId) {
+        await this.aplicarEtiquetaDoRep(diretor.boardId, diretorCardId, {
+          id: responsavelId,
+          nome: responsavel.nome,
+        });
+      }
+      // Passa o nome: sem ele o quadro pessoal nasce como "Minhas Tarefas" e o
+      // Diretor, que enxerga todos, não sabe de quem é o quadro.
+      const rep = await this.garantirQuadroRep(empresaId, responsavelId, responsavel.nome);
       const listaId = rep.listas.get(KanbanTarefaService.COL_INICIAL);
       if (listaId) {
         const card = await this.criarCard(listaId, {
@@ -200,6 +226,68 @@ export class KanbanTarefaService {
     }
 
     return { repCardId, diretorCardId };
+  }
+
+  /**
+   * Aplica no cartão do DIRETOR uma etiqueta com o NOME DO REP.
+   *
+   * O quadro do Diretor junta as tarefas de todos os reps numa coluna só: com 1
+   * rep dá pra deduzir de quem é, com 5 vira uma pilha sem dono — e o quadro
+   * existe justamente pra ele saber QUEM está tratando O QUÊ.
+   *
+   * Cor DERIVADA do id do usuário (hash simples): o mesmo rep sai sempre na
+   * mesma cor, em qualquer empresa e entre deploys, sem ninguém precisar
+   * cadastrar cor nenhuma. É o que faz bater o olho e reconhecer.
+   *
+   * Só no cartão do Diretor de propósito: no quadro do rep TODO cartão é dele,
+   * então a etiqueta lá seria ruído. Como aplicamos direto pelo Prisma (e não
+   * pelo service de etiquetas), o espelhamento automático não roda — o que aqui
+   * é exatamente o comportamento desejado.
+   */
+  private async aplicarEtiquetaDoRep(
+    boardId: string,
+    cardId: string,
+    rep: { id: string; nome: string },
+  ): Promise<void> {
+    try {
+      const nome = rep.nome.trim();
+      if (!nome) return;
+      const cor = KanbanTarefaService.corDoRep(rep.id);
+      // Casa por usuarioId (o vínculo de verdade) e cai pro nome pra adotar uma
+      // etiqueta que já exista no quadro, criada à mão antes desta feature.
+      let etiqueta = await this.prisma.kanbanEtiqueta.findFirst({
+        where: { boardId, OR: [{ usuarioId: rep.id }, { nome }] },
+        select: { id: true, usuarioId: true },
+      });
+      if (!etiqueta) {
+        etiqueta = await this.prisma.kanbanEtiqueta.create({
+          data: { boardId, nome, cor, usuarioId: rep.id },
+          select: { id: true, usuarioId: true },
+        });
+      } else if (!etiqueta.usuarioId) {
+        // Adotou a etiqueta criada à mão: carimba o dono pra o clique funcionar.
+        await this.prisma.kanbanEtiqueta.update({
+          where: { id: etiqueta.id },
+          data: { usuarioId: rep.id },
+        });
+      }
+      await this.prisma.kanbanCardEtiqueta
+        .create({ data: { cardId, etiquetaId: etiqueta.id } })
+        .catch(() => undefined); // P2002 = já tem
+    } catch (err) {
+      // Best-effort: etiqueta é camada de visibilidade, não pode derrubar a
+      // criação da tarefa.
+      this.logger.warn(`Falha ao etiquetar cartão com o rep: ${String(err)}`);
+    }
+  }
+
+  /** Cor estável por usuário — mesmo rep, mesma cor, sempre. */
+  private static corDoRep(usuarioId: string): string {
+    let h = 0;
+    for (let i = 0; i < usuarioId.length; i++) {
+      h = (h * 31 + usuarioId.charCodeAt(i)) >>> 0;
+    }
+    return KanbanTarefaService.CORES_REP[h % KanbanTarefaService.CORES_REP.length];
   }
 
   private async criarCard(

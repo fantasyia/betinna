@@ -15,6 +15,11 @@ export interface KEtiqueta {
   boardId: string;
   nome: string | null;
   cor: string;
+  /**
+   * Quando a etiqueta REPRESENTA UMA PESSOA (o rep dono da tarefa, no quadro
+   * espelho do Diretor). É o que permite clicar nela e abrir o quadro do rep.
+   */
+  usuarioId?: string | null;
 }
 
 export interface KCardResumo {
@@ -53,6 +58,11 @@ export interface KBoardResumo {
   imagemFundoUrl?: string | null;
   criadoPorId: string;
   criadoPor: KUsuarioResumo;
+  /**
+   * Quadro provisionado pelo sistema: `rep_tarefas` (pessoal de um rep) ou
+   * `diretor_tarefas` (espelho central). Null = quadro de trabalho normal.
+   */
+  tipoSistema?: string | null;
   membros: Array<{ usuario: KUsuarioResumo; papel: string }>;
   _count?: { listas: number };
   atualizadoEm: string;

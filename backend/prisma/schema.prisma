@@ -388,6 +388,7 @@ model Usuario {
   kanbanAtividades          KanbanAtividade[]
   kanbanApiTokens           KanbanApiToken[]
   fluxosFavoritos           FluxoFavorito[]
+  kanbanEtiquetasPessoais   KanbanEtiqueta[]
 
   @@index([role])
   @@index([status])
@@ -2907,11 +2908,18 @@ model KanbanEtiqueta {
   boardId String
   nome    String?
   cor     String
+  /// Quando a etiqueta REPRESENTA UMA PESSOA (ex: o rep dono da tarefa no quadro
+  /// espelho do Diretor). Guardar o id — em vez de casar pelo nome — é o que
+  /// permite clicar na etiqueta e abrir o quadro daquele rep sem depender de
+  /// nomes iguais, e sobrevive a renomear o usuário.
+  usuarioId String?
 
-  board KanbanBoard          @relation(fields: [boardId], references: [id], onDelete: Cascade)
-  cards KanbanCardEtiqueta[]
+  board   KanbanBoard          @relation(fields: [boardId], references: [id], onDelete: Cascade)
+  usuario Usuario?             @relation(fields: [usuarioId], references: [id], onDelete: SetNull)
+  cards   KanbanCardEtiqueta[]
 
   @@index([boardId])
+  @@index([usuarioId])
 }
 
 model KanbanCardEtiqueta {

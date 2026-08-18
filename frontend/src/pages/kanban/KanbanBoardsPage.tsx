@@ -1,6 +1,14 @@
 import { useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { CheckSquare, KanbanSquare, KeyRound, Plus, Users } from 'lucide-react';
+import {
+  CheckSquare,
+  ChevronDown,
+  ChevronRight,
+  KanbanSquare,
+  KeyRound,
+  Plus,
+  Users,
+} from 'lucide-react';
 import { api, apiErrorMessage } from '@/lib/api';
 import { getSession } from '@/lib/auth-store';
 import { useApiQuery } from '@/hooks/useApiQuery';
@@ -17,6 +25,30 @@ import { BOARD_CORES, type KBoardResumo } from './kanban-types';
  * Regra dura: REPRESENTANTE pode criar no máximo 1 quadro — o backend
  * bloqueia; aqui o botão desabilita com tooltip explicando.
  */
+/**
+ * Separa os quadros da listagem: os de trabalho ficam na grade principal, os
+ * quadros PESSOAIS de rep (`rep_tarefas`) vão pra uma seção própria — MENOS o
+ * seu, que continua onde sempre esteve.
+ *
+ * A exceção do "seu" não é detalhe: sem ela o REP abre a tela, vê a lista
+ * principal VAZIA e encontra o próprio quadro escondido numa seção chamada
+ * "dos representantes" — o oposto do que a mudança resolve. O incômodo é do
+ * ADMIN/DIRECTOR, que enxerga o quadro de todo mundo: com 10 reps a lista dele
+ * vira 10 quadros que não são dele.
+ *
+ * Exportada porque é a REGRA da tela — o teste tem que exercitar esta função, e
+ * não uma cópia dela.
+ */
+export function separarQuadros(
+  boards: KBoardResumo[],
+  meuId: string | undefined,
+): { principais: KBoardResumo[]; deReps: KBoardResumo[] } {
+  const deReps = boards.filter((b) => b.tipoSistema === 'rep_tarefas' && b.criadoPorId !== meuId);
+  const idsDeReps = new Set(deReps.map((b) => b.id));
+  return { principais: boards.filter((b) => !idsDeReps.has(b.id)), deReps };
+}
+
+
 export default function KanbanBoardsPage() {
   const navigate = useNavigate();
   const toast = useToast();
@@ -35,6 +67,10 @@ export default function KanbanBoardsPage() {
     () => role === 'REP' && (boards ?? []).some((b) => b.criadoPorId === meuId),
     [role, boards, meuId],
   );
+
+  const { principais, deReps } = useMemo(() => separarQuadros(boards ?? [], meuId), [boards, meuId]);
+  // Colapsada por padrão: é consulta eventual, não o trabalho do dia.
+  const [repsAberto, setRepsAberto] = useState(false);
 
   async function criarBoard() {
     if (!nome.trim()) {
@@ -111,7 +147,7 @@ export default function KanbanBoardsPage() {
         emptyMessage="Nenhum quadro ainda. Crie o primeiro!"
       >
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3">
-          {(boards ?? []).map((board) => (
+          {principais.map((board) => (
             <button
               key={board.id}
               type="button"
@@ -153,6 +189,45 @@ export default function KanbanBoardsPage() {
             </button>
           ))}
         </div>
+
+        {/* Quadros pessoais dos reps — consulta eventual, não o trabalho do dia. */}
+        {deReps.length > 0 && (
+          <div className="mt-6 border-t border-border pt-4">
+            <button
+              type="button"
+              onClick={() => setRepsAberto((v) => !v)}
+              data-testid="kanban-secao-reps"
+              aria-expanded={repsAberto}
+              className="flex items-center gap-2 bg-transparent border-none cursor-pointer p-0 text-sm font-semibold text-text"
+            >
+              {repsAberto ? (
+                <ChevronDown className="h-4 w-4" />
+              ) : (
+                <ChevronRight className="h-4 w-4" />
+              )}
+              Quadros dos representantes
+              <span className="text-xs font-normal text-muted">({deReps.length})</span>
+            </button>
+            {repsAberto && (
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3 mt-3">
+                {deReps.map((board) => (
+                  <button
+                    key={board.id}
+                    type="button"
+                    onClick={() => navigate(`/kanban/${board.id}`)}
+                    data-testid={`kanban-board-${board.id}`}
+                    className="rounded-[10px] border border-border bg-surface p-3 text-left hover:border-primary/40 transition-colors cursor-pointer"
+                  >
+                    <div className="text-sm font-semibold text-text truncate">{board.nome}</div>
+                    <div className="text-[11px] text-muted mt-1 truncate">
+                      {board.criadoPor?.nome ?? 'Representante'}
+                    </div>
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
       </StateView>
 
       <Dialog

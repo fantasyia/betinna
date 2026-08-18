@@ -58,6 +58,7 @@ import {
   progressoChecklist,
   statusPrazo,
   type KBoardCompleto,
+  type KBoardResumo,
   type KCardResumo,
   type KLista,
 } from './kanban-types';
@@ -80,6 +81,31 @@ export default function KanbanBoardPage() {
     error,
     refetch,
   } = useApiQuery<KBoardCompleto>(boardId ? `/kanban/boards/${boardId}` : null);
+
+  /**
+   * Atalho "etiqueta do rep → quadro do rep" (só no quadro-espelho do Diretor).
+   *
+   * A lista de quadros só é buscada NESSE caso — em quadro comum seria uma
+   * requisição a mais sem nenhum uso. Do id do usuário na etiqueta chegamos ao
+   * quadro pessoal dele por `criadoPorId`; casar por NOME seria frágil (dois
+   * "Marcelo", rep renomeado) e é justamente o que o vínculo por id evita.
+   */
+  const ehQuadroDoDiretor = board?.tipoSistema === 'diretor_tarefas';
+  const { data: todosOsQuadros } = useApiQuery<KBoardResumo[]>(
+    ehQuadroDoDiretor ? '/kanban/boards' : null,
+  );
+  function abrirQuadroDoRep(usuarioId: string) {
+    const quadro = (todosOsQuadros ?? []).find(
+      (b) => b.tipoSistema === 'rep_tarefas' && b.criadoPorId === usuarioId,
+    );
+    if (!quadro) {
+      // Rep sem quadro ainda (nenhuma tarefa criada) — dizer isso é melhor que
+      // um clique que não faz nada e parece bug.
+      toast.info('Esse representante ainda não tem quadro de tarefas');
+      return;
+    }
+    navigate(`/kanban/${quadro.id}`);
+  }
 
   // Snapshot pra rollback quando a API recusar o movimento
   const snapshotRef = useRef<KLista[] | null>(null);
@@ -649,6 +675,7 @@ export default function KanbanBoardPage() {
                   onRenomear={(nome) => void renomearLista(lista.id, nome)}
                   etiquetasAmpliadas={etiquetasAmpliadas}
                   onAlternarEtiquetas={alternarEtiquetas}
+                  onEtiquetaPessoa={abrirQuadroDoRep}
                 />
               ))}
             </SortableContext>
@@ -757,6 +784,7 @@ function ListaColuna({
   onRenomear,
   etiquetasAmpliadas,
   onAlternarEtiquetas,
+  onEtiquetaPessoa,
 }: {
   lista: KLista;
   onCriarCard: (titulo: string) => void;
@@ -765,6 +793,7 @@ function ListaColuna({
   onRenomear: (nome: string) => void;
   etiquetasAmpliadas: boolean;
   onAlternarEtiquetas: () => void;
+  onEtiquetaPessoa?: (usuarioId: string) => void;
 }) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
     id: `lista:${lista.id}`,
@@ -847,6 +876,7 @@ function ListaColuna({
               onContext={(e) => onContextCard(e, card)}
               etiquetasAmpliadas={etiquetasAmpliadas}
               onAlternarEtiquetas={onAlternarEtiquetas}
+              onEtiquetaPessoa={onEtiquetaPessoa}
             />
           ))}
         </SortableContext>
@@ -865,12 +895,14 @@ function CardSortable({
   onContext,
   etiquetasAmpliadas,
   onAlternarEtiquetas,
+  onEtiquetaPessoa,
 }: {
   card: KCardResumo;
   onAbrir: () => void;
   onContext: (e: ReactMouseEvent) => void;
   etiquetasAmpliadas: boolean;
   onAlternarEtiquetas: () => void;
+  onEtiquetaPessoa?: (usuarioId: string) => void;
 }) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
     id: `card:${card.id}`,
@@ -901,6 +933,7 @@ function CardSortable({
         card={card}
         etiquetasAmpliadas={etiquetasAmpliadas}
         onAlternarEtiquetas={onAlternarEtiquetas}
+        onEtiquetaPessoa={onEtiquetaPessoa}
       />
     </div>
   );
@@ -911,11 +944,19 @@ function CardVisual({
   arrastando,
   etiquetasAmpliadas = false,
   onAlternarEtiquetas,
+  onEtiquetaPessoa,
 }: {
   card: KCardResumo;
   arrastando?: boolean;
   etiquetasAmpliadas?: boolean;
   onAlternarEtiquetas?: () => void;
+  /**
+   * Só no quadro-espelho do Diretor: clicar na etiqueta de um REP abre o quadro
+   * dele. Quando ausente, a etiqueta mantém o gesto padrão (alternar
+   * reduzida/ampliada) — não vale trocar um comportamento existente em TODO
+   * quadro por causa de um caso específico.
+   */
+  onEtiquetaPessoa?: (usuarioId: string) => void;
 }) {
   const prazo = statusPrazo(card.dataEntrega, card.concluido);
   const checklist = progressoChecklist(card);
@@ -938,11 +979,21 @@ function CardVisual({
             <button
               key={etiqueta.id}
               type="button"
-              title={etiqueta.nome ?? 'Etiqueta'}
+              title={
+                etiqueta.usuarioId && onEtiquetaPessoa
+                  ? `Abrir o quadro de ${etiqueta.nome ?? 'quem é responsável'}`
+                  : (etiqueta.nome ?? 'Etiqueta')
+              }
               aria-label={`Etiqueta ${etiqueta.nome ?? ''}`.trim()}
               onClick={(e) => {
-                // não abre o card nem inicia drag — só alterna reduzida/ampliada
+                // não abre o card nem inicia drag
                 e.stopPropagation();
+                // Etiqueta de PESSOA no quadro do Diretor: o gesto natural é
+                // "quero ver o resto do que esse rep tem na mão".
+                if (etiqueta.usuarioId && onEtiquetaPessoa) {
+                  onEtiquetaPessoa(etiqueta.usuarioId);
+                  return;
+                }
                 onAlternarEtiquetas?.();
               }}
               onPointerDown={(e) => e.stopPropagation()}
