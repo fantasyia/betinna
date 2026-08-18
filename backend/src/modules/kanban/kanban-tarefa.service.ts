@@ -336,8 +336,19 @@ export class KanbanTarefaService {
    *   nenhuma pendurada, acabou de nascer);
    * - nasceu no Diretor e foi atribuído a um rep → cria o espelho lá.
    *
+   * AUTO-CURÁVEL: é chamado em toda mutação relevante (criar, atribuir, editar,
+   * mover), não só na criação. Card que ficou órfão — porque nasceu antes disso
+   * existir, ou porque o par falhou naquele instante — ganha a contraparte na
+   * primeira vez que alguém encostar nele. Sem isso, "1:1" seria verdade só pros
+   * cards criados a partir de hoje, e o Léo continuaria vendo quadro
+   * dessincronizado sem entender por quê.
+   *
+   * No quadro do Diretor, quando o `repId` não vem explícito, ele é deduzido dos
+   * MEMBROS do card: um card atribuído a um rep pertence ao quadro dele. Card do
+   * Diretor sem rep atribuído não vira nada — não é de ninguém ainda.
+   *
    * Idempotente e best-effort: já espelhado não duplica, e falhar aqui não pode
-   * derrubar a criação do card.
+   * derrubar a operação que o usuário pediu.
    */
   async espelharCardManual(
     cardId: string,
@@ -410,17 +421,28 @@ export class KanbanTarefaService {
         return { espelhoId: origem.id };
       }
 
-      if (board.tipoSistema === 'diretor_tarefas' && opts.repId) {
+      if (board.tipoSistema === 'diretor_tarefas') {
+        // Sem repId explícito, deduz pelos membros: card atribuído a um rep é
+        // card do quadro dele. É o que faz a cura funcionar num card antigo.
+        const repId =
+          opts.repId ??
+          (
+            await this.prisma.kanbanCardMembro.findFirst({
+              where: { cardId: card.id, usuario: { role: 'REP' } },
+              select: { usuarioId: true },
+            })
+          )?.usuarioId;
+        if (!repId) return null;
         const rep = await this.prisma.usuario.findFirst({
-          where: { id: opts.repId, empresas: { some: { empresaId: board.empresaId } } },
+          where: { id: repId, empresas: { some: { empresaId: board.empresaId } } },
           select: { nome: true, role: true },
         });
         if (rep?.role !== 'REP') return null;
-        const quadroRep = await this.garantirQuadroRep(board.empresaId, opts.repId, rep.nome);
+        const quadroRep = await this.garantirQuadroRep(board.empresaId, repId, rep.nome);
         const listaId = colunaDestino(quadroRep.listas);
         if (!listaId) return null;
         const espelho = await this.criarCardSimples(listaId, { ...dados, origemCardId: card.id });
-        await this.aplicarEtiquetaDoRep(board.id, card.id, { id: opts.repId, nome: rep.nome });
+        await this.aplicarEtiquetaDoRep(board.id, card.id, { id: repId, nome: rep.nome });
         return { espelhoId: espelho.id };
       }
 

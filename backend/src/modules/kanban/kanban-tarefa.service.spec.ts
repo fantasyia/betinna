@@ -310,3 +310,71 @@ describe('KanbanTarefaService.espelharCardManual', () => {
     await expect(svc.espelharCardManual('card-rep')).resolves.toBeNull();
   });
 });
+
+/**
+ * CURA de card órfão — o que o Léo achou testando: card criado antes do espelho
+ * manual existir ficava sem par pra sempre, e assinar/desassinar rep nele não
+ * refletia no Diretor. "1:1" que só vale pros cards novos não é 1:1.
+ */
+describe('KanbanTarefaService.espelharCardManual — cura de órfão', () => {
+  const orfaoNoDiretor = {
+    id: 'card-orfao',
+    titulo: 'teste44444',
+    descricao: null,
+    dataInicio: null,
+    dataEntrega: null,
+    origemCardId: null,
+    lista: {
+      nome: '📋 A fazer',
+      board: {
+        id: 'board-diretor',
+        empresaId: 'emp-1',
+        tipoSistema: 'diretor_tarefas',
+        criadoPorId: 'leo',
+      },
+    },
+  };
+
+  const montar = () => {
+    const prisma = makePrisma();
+    prisma.kanbanCard.findUnique = vi.fn().mockResolvedValue(orfaoNoDiretor);
+    prisma.kanbanCard.update = vi.fn().mockResolvedValue({});
+    prisma.kanbanCard.findFirst = vi.fn().mockResolvedValue(null);
+    prisma.kanbanCardMembro = { findFirst: vi.fn().mockResolvedValue(null) } as never;
+    prisma.kanbanBoard.findFirst.mockResolvedValue({ id: 'board-rep', tipoSistema: 'rep_tarefas' });
+    prisma.usuario.findFirst.mockResolvedValue({ role: 'REP', nome: 'Marcelo Harada' });
+    return { prisma, svc: new KanbanTarefaService(prisma as never) };
+  };
+
+  it('deduz o rep pelos MEMBROS quando o repId não vem explícito', async () => {
+    const { prisma, svc } = montar();
+    // Card antigo do Diretor que alguém atribuiu ao rep depois.
+    prisma.kanbanCardMembro.findFirst = vi.fn().mockResolvedValue({ usuarioId: 'rep-1' });
+
+    const r = await svc.espelharCardManual('card-orfao');
+
+    expect(r?.espelhoId).toBeTruthy();
+    const criado = prisma.kanbanCard.create.mock.calls[0][0].data as { origemCardId: string };
+    expect(criado.origemCardId).toBe('card-orfao');
+  });
+
+  it('card do Diretor SEM rep atribuído não vira card de ninguém', async () => {
+    const { prisma, svc } = montar();
+    prisma.kanbanCardMembro.findFirst = vi.fn().mockResolvedValue(null);
+
+    expect(await svc.espelharCardManual('card-orfao')).toBeNull();
+    expect(prisma.kanbanCard.create).not.toHaveBeenCalled();
+  });
+
+  it('o repId explícito tem precedência sobre a dedução', async () => {
+    const { prisma, svc } = montar();
+    prisma.kanbanCardMembro.findFirst = vi.fn().mockResolvedValue({ usuarioId: 'rep-dos-membros' });
+
+    await svc.espelharCardManual('card-orfao', { repId: 'rep-escolhido' });
+
+    const buscaDoRep = prisma.usuario.findFirst.mock.calls.at(-1)?.[0] as {
+      where: { id: string };
+    };
+    expect(buscaDoRep.where.id).toBe('rep-escolhido');
+  });
+});

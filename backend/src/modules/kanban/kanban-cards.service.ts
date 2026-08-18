@@ -34,8 +34,17 @@ export class KanbanCardsService {
    * nos dois sentidos. Best-effort: falha na sincronia NÃO pode derrubar a
    * operação do usuário no card.
    */
+  /**
+   * Garante o PAR e depois sincroniza o conteúdo.
+   *
+   * A ordem importa: `sincronizarContraparte` só copia pra quem já tem par.
+   * Card órfão — nascido antes do espelho manual existir, ou cujo par falhou
+   * naquele instante — nunca sincronizava porque nunca ganhava par. Curar
+   * primeiro é o que faz "1:1" valer também pro que já estava lá.
+   */
   private async sincronizarEspelho(cardId: string): Promise<void> {
     try {
+      await this.tarefa.espelharCardManual(cardId);
       await this.tarefa.sincronizarContraparte(cardId);
     } catch (err) {
       this.logger.warn(`Falha ao sincronizar espelho do card ${cardId}: ${String(err)}`);
@@ -390,7 +399,12 @@ export class KanbanCardsService {
       });
       // Atribuir um REP no quadro do Diretor É o gesto de delegar: cria o card
       // no quadro pessoal dele (com a etiqueta do nome) e amarra o par.
-      if (repDoTenant) await this.tarefa.espelharCardManual(canonicoId, { repId: usuarioId });
+      //
+      // Fora desse caso, ainda assim garante o par: atribuir alguém num card
+      // ÓRFÃO do quadro do rep é justamente quando o Diretor precisa passar a
+      // enxergar aquele card. Era o buraco relatado — o card ficava mudo pro
+      // Diretor porque nada disparava a criação do par depois do `create`.
+      await this.sincronizarEspelho(repDoTenant ? canonicoId : cardId);
       return membro;
     } catch (err) {
       if (err && typeof err === 'object' && 'code' in err && err.code === 'P2002') {
@@ -413,5 +427,9 @@ export class KanbanCardsService {
       cardId,
       dados: { membroId: usuarioId },
     });
+    // Membro mora no canônico, então a remoção JÁ é 1:1 — mas o card pode estar
+    // órfão (sem par). Curar aqui faz o Diretor passar a ver o card mesmo tendo
+    // sido "encostado" só por uma remoção.
+    await this.sincronizarEspelho(cardId);
   }
 }
