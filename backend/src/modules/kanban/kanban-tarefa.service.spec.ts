@@ -197,6 +197,15 @@ describe('KanbanTarefaService.espelharCardManual', () => {
     prisma.kanbanBoard.findFirst.mockResolvedValue({ id: 'board-diretor' });
     prisma.usuario.findFirst.mockResolvedValue({ role: 'REP', nome: 'Marcelo Harada' });
     prisma.usuario.findUnique = vi.fn().mockResolvedValue({ role: 'REP', nome: 'Marcelo Harada' });
+    prisma.kanbanCardMembro = {
+      findMany: vi.fn().mockResolvedValue([]),
+      create: vi.fn().mockResolvedValue({}),
+      deleteMany: vi.fn().mockResolvedValue({ count: 0 }),
+      findFirst: vi.fn().mockResolvedValue(null),
+    } as never;
+    prisma.kanbanComentario = { updateMany: vi.fn().mockResolvedValue({ count: 0 }) } as never;
+    prisma.kanbanChecklist = { updateMany: vi.fn().mockResolvedValue({ count: 0 }) } as never;
+    prisma.kanbanAnexo = { updateMany: vi.fn().mockResolvedValue({ count: 0 }) } as never;
     return { prisma, svc: new KanbanTarefaService(prisma as never) };
   };
 
@@ -376,5 +385,86 @@ describe('KanbanTarefaService.espelharCardManual — cura de órfão', () => {
       where: { id: string };
     };
     expect(buscaDoRep.where.id).toBe('rep-escolhido');
+  });
+});
+
+/**
+ * O card que vira espelho não pode PERDER o que já tinha.
+ *
+ * A leitura busca membro/comentário/checklist/anexo no canônico. Um card que
+ * existia sozinho — com membro atribuído, comentário escrito — e ganha par
+ * agora apareceria VAZIO se as relações ficassem pra trás. O usuário veria as
+ * coisas dele sumirem no instante em que o espelho foi criado.
+ */
+describe('KanbanTarefaService — migração das relações ao virar espelho', () => {
+  const cardDoRepComMembro = {
+    id: 'card-rep',
+    titulo: 'teste44444',
+    descricao: null,
+    dataInicio: null,
+    dataEntrega: null,
+    origemCardId: null,
+    lista: {
+      nome: '📋 A fazer',
+      board: {
+        id: 'board-rep',
+        empresaId: 'emp-1',
+        tipoSistema: 'rep_tarefas',
+        criadoPorId: 'rep-1',
+      },
+    },
+  };
+
+  const montar = () => {
+    const prisma = makePrisma();
+    prisma.kanbanCard.findUnique = vi.fn().mockResolvedValue(cardDoRepComMembro);
+    prisma.kanbanCard.update = vi.fn().mockResolvedValue({});
+    prisma.kanbanCard.findFirst = vi.fn().mockResolvedValue(null);
+    prisma.kanbanBoard.findFirst.mockResolvedValue({ id: 'board-diretor' });
+    prisma.usuario.findUnique = vi.fn().mockResolvedValue({ role: 'REP', nome: 'Marcelo Harada' });
+    prisma.kanbanCardMembro = {
+      findMany: vi.fn().mockResolvedValue([{ usuarioId: 'rep-1' }]),
+      create: vi.fn().mockResolvedValue({}),
+      deleteMany: vi.fn().mockResolvedValue({ count: 1 }),
+      findFirst: vi.fn().mockResolvedValue(null),
+    } as never;
+    prisma.kanbanComentario = { updateMany: vi.fn().mockResolvedValue({ count: 2 }) } as never;
+    prisma.kanbanChecklist = { updateMany: vi.fn().mockResolvedValue({ count: 1 }) } as never;
+    prisma.kanbanAnexo = { updateMany: vi.fn().mockResolvedValue({ count: 0 }) } as never;
+    return { prisma, svc: new KanbanTarefaService(prisma as never) };
+  };
+
+  it('membro atribuído ANTES do par migra pro canônico (senão some da tela)', async () => {
+    const { prisma, svc } = montar();
+
+    await svc.espelharCardManual('card-rep');
+
+    expect(prisma.kanbanCardMembro.create).toHaveBeenCalledWith({
+      data: { cardId: 'card-novo', usuarioId: 'rep-1' },
+    });
+    expect(prisma.kanbanCardMembro.deleteMany).toHaveBeenCalledWith({
+      where: { cardId: 'card-rep' },
+    });
+  });
+
+  it('comentário, checklist e anexo migram junto', async () => {
+    const { prisma, svc } = montar();
+
+    await svc.espelharCardManual('card-rep');
+
+    for (const rel of [prisma.kanbanComentario, prisma.kanbanChecklist, prisma.kanbanAnexo]) {
+      expect(rel.updateMany).toHaveBeenCalledWith({
+        where: { cardId: 'card-rep' },
+        data: { cardId: 'card-novo' },
+      });
+    }
+  });
+
+  it('membro que já existe do outro lado não quebra a migração', async () => {
+    const { prisma, svc } = montar();
+    prisma.kanbanCardMembro.create = vi.fn().mockRejectedValue({ code: 'P2002' });
+
+    await expect(svc.espelharCardManual('card-rep')).resolves.toBeTruthy();
+    expect(prisma.kanbanCardMembro.deleteMany).toHaveBeenCalled();
   });
 });

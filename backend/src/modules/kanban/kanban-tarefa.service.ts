@@ -406,6 +406,14 @@ export class KanbanTarefaService {
           where: { id: card.id },
           data: { origemCardId: origem.id },
         });
+        // …e o que JÁ estava pendurado nele muda de lado junto.
+        //
+        // Isto não é firula: a leitura do card busca membro/comentário/checklist/
+        // anexo no CANÔNICO. Um card que existia sozinho (com membro atribuído,
+        // comentários escritos) e vira espelho agora, se deixasse as relações pra
+        // trás, apareceria VAZIO na tela — o usuário veria as coisas dele
+        // sumirem no momento em que o par foi criado. Pior que não ter espelho.
+        await this.migrarRelacoesParaCanonico(card.id, origem.id);
         if (board.criadoPorId) {
           const rep = await this.prisma.usuario.findUnique({
             where: { id: board.criadoPorId },
@@ -451,6 +459,54 @@ export class KanbanTarefaService {
       this.logger.warn(`Falha ao espelhar card criado à mão (${cardId}): ${String(err)}`);
       return null;
     }
+  }
+
+  /**
+   * Move as relações COMPARTILHADAS de um card que acabou de virar espelho pro
+   * card canônico (o do Diretor). Sem isso elas ficariam órfãs do ponto de vista
+   * da leitura, que sempre busca no canônico.
+   */
+  private async migrarRelacoesParaCanonico(deCardId: string, paraCardId: string): Promise<void> {
+    try {
+      await this.moverRelacoes(deCardId, paraCardId);
+    } catch (err) {
+      // O PAR já existe neste ponto e vale mais que a migração: falhar aqui não
+      // pode desfazer o espelho. Mas grita no log — relação presa do lado
+      // errado some da tela, e some CALADO é o pior jeito de descobrir.
+      this.logger.warn(
+        `Espelho criado, mas as relações do card ${deCardId} NÃO migraram pro canônico ` +
+          `${paraCardId}: ${String(err)}`,
+      );
+    }
+  }
+
+  private async moverRelacoes(deCardId: string, paraCardId: string): Promise<void> {
+    // Membro tem PK composta (cardId, usuarioId): quem já existe do outro lado
+    // colidiria. Move um a um, ignorando o que já está lá.
+    const membros = await this.prisma.kanbanCardMembro.findMany({
+      where: { cardId: deCardId },
+      select: { usuarioId: true },
+    });
+    for (const m of membros) {
+      await this.prisma.kanbanCardMembro
+        .create({ data: { cardId: paraCardId, usuarioId: m.usuarioId } })
+        .catch(() => undefined); // P2002 = já é membro do canônico
+    }
+    if (membros.length) {
+      await this.prisma.kanbanCardMembro.deleteMany({ where: { cardId: deCardId } });
+    }
+    await this.prisma.kanbanComentario.updateMany({
+      where: { cardId: deCardId },
+      data: { cardId: paraCardId },
+    });
+    await this.prisma.kanbanChecklist.updateMany({
+      where: { cardId: deCardId },
+      data: { cardId: paraCardId },
+    });
+    await this.prisma.kanbanAnexo.updateMany({
+      where: { cardId: deCardId },
+      data: { cardId: paraCardId },
+    });
   }
 
   /** Card sem `origemJobId` — é criação manual, não passo de fluxo. */
