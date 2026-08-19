@@ -25,7 +25,8 @@ export type ServicoEmpresa = (typeof SERVICOS_EMPRESA)[number];
 export const SERVICOS_USUARIO = [
   'google_calendar',
   'openai',
-  // WhatsApp pessoal — cada rep conecta o próprio celular/número via Baileys.
+  // WhatsApp pessoal — cada rep conecta o próprio celular/número. Qual provider
+  // atende (Baileys embutido ou Evolution) é decisão do env, não desta lista.
   // O WhatsApp empresa (central) continua em SERVICOS_EMPRESA.
   'whatsapp',
 ] as const;
@@ -82,7 +83,7 @@ export const SERVICO_METADATA: Record<
     requerDirector: true,
   },
   whatsapp: {
-    nome: 'WhatsApp (Baileys)',
+    nome: 'WhatsApp (número da empresa)',
     tipo: 'mensageria',
     escopo: 'ambos',
     obrigatorio: false,

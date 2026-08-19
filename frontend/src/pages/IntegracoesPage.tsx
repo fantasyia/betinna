@@ -52,7 +52,7 @@ interface ServicoMeta {
    * Como conectar:
    *  - 'oauth': abre popup pra fluxo OAuth (Meta/ML/Shopee/Amazon/TikTok)
    *  - 'credentials': formulário simples com appKey/secret (OMIE)
-   *  - 'qr': pareamento via QR code em página dedicada (WhatsApp Baileys)
+   *  - 'qr': pareamento via QR code em página dedicada (WhatsApp da empresa)
    */
   connectMode: 'oauth' | 'credentials' | 'qr';
   /** OAuth: path do start endpoint */
@@ -79,13 +79,14 @@ const SERVICOS: Record<ServicoEmpresa, ServicoMeta> = {
     ],
   },
   whatsapp: {
-    nome: 'WhatsApp (Baileys)',
+    nome: 'WhatsApp (número da empresa)',
     tipo: 'mensageria',
     obrigatorio: false,
     color: '#25d366',
     icon: '💬',
     description:
-      'Número central de SAC da empresa via WhatsApp não-oficial (Baileys). Use número dedicado.',
+      'Número central de SAC da empresa, pareado por QR code. Não é a API oficial da Meta — ' +
+      'use um número dedicado.',
     connectMode: 'qr',
     qrRoute: '/whatsapp',
   },

@@ -55,7 +55,8 @@ export class WhatsAppController {
   @Audit({ action: 'whatsapp_empresa_conectar', resource: 'integracao' })
   @ApiOperation({
     summary:
-      'Inicia sessão Baileys da empresa. Primeiro pareamento retorna QR. **DIRETOR-only (D45)**.',
+      'Inicia a sessão de WhatsApp da empresa (provider conforme WHATSAPP_PROVIDER). ' +
+      'Primeiro pareamento retorna QR. **DIRETOR-only (D45)**.',
   })
   async conectar(@CurrentUser() user: AuthenticatedUser) {
     const empresaId = this.requireEmpresa(user);

@@ -165,7 +165,7 @@ function SessionPanel({ scope, canManage }: { scope: Scope; canManage: boolean }
       }
     }
     void load();
-    // Poll 3s — Baileys regenera QR cada ~20s e mudança de status é frequente
+    // Poll 3s — o QR é regerado a cada ~20s e mudança de status é frequente
     interval = setInterval(load, 3000);
     return () => {
       cancelledRef.current = true;
@@ -343,8 +343,9 @@ function SessionPanel({ scope, canManage }: { scope: Scope; canManage: boolean }
               </p>
               {scope === 'empresa' && (
                 <p className="text-[12px] text-warning mb-3">
-                  ⚠️ Use um número <strong>dedicado</strong> da empresa (não pessoal). A Meta pode
-                  banir números que parecem operar via Baileys.
+                  ⚠️ Use um número <strong>dedicado</strong> da empresa (não pessoal). A conexão é
+                  por WhatsApp Web, não pela API oficial da Meta — e a Meta pode banir números que
+                  ela identifica assim.
                 </p>
               )}
             </div>

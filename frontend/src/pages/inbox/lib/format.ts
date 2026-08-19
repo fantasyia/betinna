@@ -69,7 +69,7 @@ export function formatTempoResposta(s: number | null): string {
  * No WhatsApp o peer vem como JID cru (ex: `5511988887777@s.whatsapp.net`).
  *
  * ⚠️ Atenção aos JIDs que NÃO são telefone:
- *  - `@lid`  → "número oculto" (privacidade do WhatsApp / Baileys). O número
+ *  - `@lid`  → "número oculto" (privacidade do próprio WhatsApp). O número
  *    visível é um ID interno gigante, NÃO o telefone real → não exibimos.
  *  - `@g.us` → grupo. Também não tem telefone.
  * Nesses casos (e em IDs com tamanho implausível) retorna '' — quem chama
