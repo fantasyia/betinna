@@ -9,6 +9,39 @@ versionamento segue [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Não versionado] — 2026-08-19
 
+### 🔴 A janela de envio segurava o C1 no meio da conversa
+
+Achado pela master ao conferir o `da8857d`. A primeira versão decidia
+"resposta vs abordagem" pelo **gatilho** do fluxo, e furou no handoff entre
+fluxos:
+
+1. pessoa escreve às 22h → T1 dispara por `MENSAGEM_CANAL` → isento, responde ✅
+2. ela responde a triagem → T1 classifica e **move o lead de etapa**
+3. C1 dispara por `LEAD_ETAPA_MUDOU` → tratado como abordagem → **adiado pras 8h**
+4. quem acabou de responder leva 10 horas de silêncio
+
+Exatamente o dano que a regra existia pra evitar, entrando por outra porta. O C1
+não é abordagem: é a mesma conversa, dois segundos depois.
+
+**Consertado trocando o critério:** não é mais o gatilho, é **ter alguém do
+outro lado agora**. Se o lead mandou mensagem nas últimas 4h, o que o fluxo
+manda é resposta — passa a qualquer hora. Senão é abordagem e espera. O gatilho
+(`MENSAGEM_CANAL`/`LEAD_RESPONDEU`) continua como atalho, sem consultar nada.
+
+Por que é melhor que isentar `LEAD_ETAPA_MUDOU`: esse gatilho também é o da
+família S, que é abordagem de verdade — isentar por atacado liberaria disparo às
+3h. E o critério novo cobre o handoff T1→C1, o C1→C2 e qualquer fluxo futuro sem
+precisar lembrar de nada.
+
+Usa `Lead.ultimaMensagemEm`, que já é carimbado a cada mensagem recebida do lead
+(em todos os ids irmãos, quando há duplicata). **Falha fechado**: sem leadId, sem
+carimbo ou com o banco fora, a resposta é "não" e a mensagem espera.
+
+4h é folgado de propósito — o handoff leva segundos, a folga é pra conversa com
+pausa humana no meio, e cada mensagem nova do lead reinicia a contagem. Não pode
+ser 24h: quem escreveu de manhã e recebe fluxo às 23h não está do outro lado.
+
+
 ### 🚦 Teto diário de envio proativo
 
 A janela de horário fechou o "não manda de madrugada". Faltava a outra metade:

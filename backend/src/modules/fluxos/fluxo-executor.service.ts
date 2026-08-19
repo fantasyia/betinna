@@ -95,6 +95,20 @@ function interpolateDeep(obj: unknown, ctx: ExecucaoContexto): unknown {
 const toJsonInput = (v: Record<string, unknown>): Prisma.InputJsonObject =>
   v as unknown as Prisma.InputJsonObject;
 
+/**
+ * Quanto tempo depois da última mensagem DO LEAD a conversa ainda conta como
+ * "viva" — e portanto o que o fluxo manda é resposta, não abordagem.
+ *
+ * 4h é folgado de propósito. O caso que isto existe pra cobrir é o handoff
+ * T1 → C1, que leva SEGUNDOS; a folga é pra conversa em andamento com pausa
+ * humana no meio (a pessoa saiu, voltou). E qualquer mensagem nova do lead
+ * reinicia a contagem, então conversa realmente ativa nunca expira.
+ *
+ * Não pode ser 24h: quem escreveu de manhã e recebe fluxo às 23h NÃO está do
+ * outro lado, e aí a janela tem que valer.
+ */
+const INBOUND_RECENTE_MS = 4 * 60 * 60 * 1000;
+
 /** Converte unidade de delay para milissegundos (segundos/minutos/horas/dias). */
 function delayParaMs(valor: number, unidade: UnidadeTempo): number {
   return unidadeTempoMs(valor, unidade);
@@ -305,11 +319,20 @@ export class FluxoExecutorService {
     // prenderia um dos 5 slots de concorrência do worker a noite inteira, e
     // sumiria no primeiro redeploy — a execução ficaria EM_EXECUCAO pra sempre.
     // Job com delay vive no Redis e sobrevive a deploy.
-    // Nem todo fluxo é proativo. O T1 dispara por MENSAGEM_CANAL: o lead ACABOU de
-    // escrever, e tudo que o fluxo manda ali é RESPOSTA, não abordagem. Segurar
-    // isso até as 8h deixaria quem escreveu às 23h falando sozinho a noite toda —
-    // a proteção viraria o defeito. Quem decide é o GATILHO do fluxo, não o nó.
-    let reativoPorGatilho = false;
+    // Nem todo envio de fluxo é abordagem. O que decide NÃO é o gatilho: é se tem
+    // alguém do outro lado AGORA.
+    //
+    // A primeira versão disto olhava só o gatilho (MENSAGEM_CANAL/LEAD_RESPONDEU
+    // = resposta) e furou no handoff entre fluxos: o T1 responde por
+    // MENSAGEM_CANAL, classifica, move o lead de etapa — e o C1, que dispara por
+    // LEAD_ETAPA_MUDOU, era tratado como abordagem. Resultado às 22h: a pessoa
+    // acabava de responder a triagem e levava 10 horas de silêncio, que é
+    // exatamente o dano que a regra existia pra evitar, entrando por outra porta.
+    // O C1 não é abordagem: é a MESMA conversa, dois segundos depois.
+    //
+    // Então o gatilho vira só atalho, e o critério de verdade é a conversa viva.
+    // Falha FECHADO: sem inbound recente, é abordagem e espera.
+    let ehResposta = false;
     if (
       no.tipo === 'ACAO' &&
       (no.acaoTipo === 'ENVIAR_WHATSAPP' || no.acaoTipo === 'CONVERSAR_IA')
@@ -318,9 +341,14 @@ export class FluxoExecutorService {
         where: { id: execucao.fluxoId },
         select: { triggerTipo: true },
       });
-      reativoPorGatilho =
-        fluxo?.triggerTipo === 'MENSAGEM_CANAL' || fluxo?.triggerTipo === 'LEAD_RESPONDEU';
-      const esperaJanela = reativoPorGatilho
+      ehResposta =
+        fluxo?.triggerTipo === 'MENSAGEM_CANAL' ||
+        fluxo?.triggerTipo === 'LEAD_RESPONDEU' ||
+        (await this.conversaViva(
+          execucao.empresaId,
+          (execucao.contexto as ExecucaoContexto | null)?.['leadId'] as string | undefined,
+        ));
+      const esperaJanela = ehResposta
         ? 0
         : await this.pacing.esperaAntesDoProativoMs(execucao.empresaId).catch(() => 0);
       if (esperaJanela > 0) {
@@ -375,7 +403,7 @@ export class FluxoExecutorService {
           no,
           contexto,
           execucao.empresaId,
-          reativoPorGatilho,
+          ehResposta,
         );
         aguardando = r.aguardando;
         pulado = r.pulado ?? false;
@@ -411,7 +439,7 @@ export class FluxoExecutorService {
           execucao.empresaId,
           `fx:${execucaoId}:${noId}:p${passada}`,
           execucaoId,
-          reativoPorGatilho,
+          ehResposta,
         );
       }
     } catch (err) {
@@ -625,6 +653,31 @@ export class FluxoExecutorService {
           removeOnFail: { count: 200 },
         },
       );
+    }
+  }
+
+  /**
+   * Tem alguém do outro lado agora? Ou seja: o lead mandou mensagem há pouco.
+   *
+   * `Lead.ultimaMensagemEm` é carimbado a cada mensagem RECEBIDA do lead (e em
+   * todos os ids irmãos, quando a pessoa tem lead duplicado), então já é o sinal
+   * exato — sem inventar tabela nem varrer a inbox.
+   *
+   * Falha FECHADO de propósito: sem leadId, sem carimbo ou com o banco fora, a
+   * resposta é "não". O custo de errar pra cá é uma mensagem legítima sair mais
+   * tarde; errar pro outro lado é acordar alguém às 3h.
+   */
+  private async conversaViva(empresaId: string, leadId?: string): Promise<boolean> {
+    if (!leadId) return false;
+    try {
+      const lead = await this.prisma.lead.findFirst({
+        where: { id: leadId, empresaId },
+        select: { ultimaMensagemEm: true },
+      });
+      const ultima = lead?.ultimaMensagemEm?.getTime();
+      return !!ultima && Date.now() - ultima <= INBOUND_RECENTE_MS;
+    } catch {
+      return false;
     }
   }
 

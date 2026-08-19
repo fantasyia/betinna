@@ -34,6 +34,8 @@ function makeService(opts: {
   triggerTipo: string;
   acaoTipo?: string | null;
   tipo?: string;
+  /** Há quanto tempo o lead mandou a última mensagem (min). undefined = nunca. */
+  ultimoInboundMin?: number;
 }) {
   const prisma = {
     fluxoExecucao: {
@@ -42,7 +44,7 @@ function makeService(opts: {
         fluxoId: 'fluxo-1',
         empresaId: 'emp-1',
         status: 'EM_EXECUCAO',
-        contexto: {},
+        contexto: { leadId: 'lead-1' },
       }),
       update: vi.fn().mockResolvedValue({}),
     },
@@ -65,7 +67,15 @@ function makeService(opts: {
       update: vi.fn().mockResolvedValue({}),
       delete: vi.fn().mockResolvedValue({}),
     },
-    lead: { findFirst: vi.fn().mockResolvedValue(null) },
+    lead: {
+      findFirst: vi
+        .fn()
+        .mockResolvedValue(
+          opts.ultimoInboundMin === undefined
+            ? { ultimaMensagemEm: null }
+            : { ultimaMensagemEm: new Date(Date.now() - opts.ultimoInboundMin * 60_000) },
+        ),
+    },
     cliente: { findFirst: vi.fn().mockResolvedValue(null) },
     $transaction: vi.fn(async (ops: unknown[]) => Promise.all(ops as Promise<unknown>[])),
   };
@@ -194,5 +204,62 @@ describe('Janela de envio no motor de fluxos', () => {
     );
     // Não virou passo falhado no histórico.
     expect(prisma.fluxoExecucaoLog.create).not.toHaveBeenCalled();
+  });
+
+  // ── Handoff entre fluxos: o furo que a primeira versão tinha ────────────
+  //
+  // T1 responde por MENSAGEM_CANAL, classifica e move o lead de etapa. O C1
+  // dispara por LEAD_ETAPA_MUDOU — pelo gatilho, "abordagem". Mas é a mesma
+  // conversa continuando: segurar até as 8h deixaria quem acabou de responder
+  // a triagem às 22h com 10 horas de silêncio.
+
+  it('LEAD_ETAPA_MUDOU com o lead tendo escrito agora: NÃO segura (é a mesma conversa)', async () => {
+    const { service, queue, prisma } = makeService({
+      esperaMs: 9 * 3600_000,
+      triggerTipo: 'LEAD_ETAPA_MUDOU',
+      acaoTipo: 'CONVERSAR_IA',
+      ultimoInboundMin: 1,
+    });
+
+    await service.executarPasso('exec-1', 'no-1', 'job-1');
+
+    expect(queue.add).not.toHaveBeenCalledWith(
+      'step',
+      expect.anything(),
+      expect.objectContaining({ delay: expect.any(Number) as number }),
+    );
+    expect(prisma.fluxoExecucaoLog.create).toHaveBeenCalled();
+  });
+
+  it('mesmo gatilho, mas o lead escreveu há 10h: SEGURA (não está do outro lado)', async () => {
+    const { service, queue } = makeService({
+      esperaMs: 9 * 3600_000,
+      triggerTipo: 'LEAD_ETAPA_MUDOU',
+      acaoTipo: 'CONVERSAR_IA',
+      ultimoInboundMin: 600,
+    });
+
+    await service.executarPasso('exec-1', 'no-1', 'job-1');
+
+    expect(queue.add).toHaveBeenCalledWith(
+      'step',
+      { execucaoId: 'exec-1', noId: 'no-1' },
+      expect.objectContaining({ delay: 9 * 3600_000 }),
+    );
+  });
+
+  it('lead que NUNCA escreveu (família S, veio de formulário): SEGURA', async () => {
+    const { service, queue } = makeService({
+      esperaMs: 9 * 3600_000,
+      triggerTipo: 'LEAD_RECEBEU_TAG',
+    });
+
+    await service.executarPasso('exec-1', 'no-1', 'job-1');
+
+    expect(queue.add).toHaveBeenCalledWith(
+      'step',
+      { execucaoId: 'exec-1', noId: 'no-1' },
+      expect.objectContaining({ delay: 9 * 3600_000 }),
+    );
   });
 });
