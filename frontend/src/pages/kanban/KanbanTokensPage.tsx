@@ -1,6 +1,14 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { ArrowLeft, Check, Copy, KeyRound, Plus, Trash2 } from 'lucide-react';
+import {
+  ArrowLeft,
+  Check,
+  Copy,
+  KeyRound,
+  Plus,
+  SlidersHorizontal,
+  Trash2,
+} from 'lucide-react';
 import { api, apiErrorMessage } from '@/lib/api';
 import { useApiQuery } from '@/hooks/useApiQuery';
 import { useToast } from '@/components/toast';
@@ -19,6 +27,36 @@ interface ApiToken {
 }
 
 /**
+ * Escopos que um token pode ter, com o rótulo que aparece na tela.
+ *
+ * Lista única (em vez de um booleano por módulo) porque escopo novo entra quase
+ * todo mês — com um estado por checkbox, cada novo módulo mexia em 6 lugares e
+ * era fácil esquecer um.
+ */
+const ESCOPOS: Array<{ key: string; label: string; badge: string }> = [
+  { key: 'fluxos', label: 'Fluxos de automação', badge: 'Fluxos' },
+  { key: 'funis', label: 'Funis e etapas', badge: 'Funis' },
+  { key: 'contatos', label: 'Contatos (somente leitura · dados pessoais)', badge: 'Contatos' },
+  { key: 'crm', label: 'CRM — escrita (tags e mover etapa de lead)', badge: 'CRM (escrita)' },
+  { key: 'prompts', label: 'Prompts da IA — escrita (criar/editar prompts do bot)', badge: 'Prompts (IA)' },
+  { key: 'usuarios', label: 'Usuários (somente leitura · id/nome/email/papel)', badge: 'Usuários (leitura)' },
+  {
+    key: 'conhecimento',
+    label: 'Base de conhecimento — escrita (documentos e trechos do RAG)',
+    badge: 'Conhecimento',
+  },
+  { key: 'tags', label: 'Etiquetas de lead (ler e criar)', badge: 'Etiquetas' },
+  {
+    key: 'inbox',
+    label: 'Inbox (somente leitura · CONVERSA DE CLIENTE)',
+    badge: 'Inbox (leitura)',
+  },
+];
+
+const rotuloEscopo = (key: string) =>
+  ESCOPOS.find((e) => e.key === key)?.badge ?? (key === 'kanban' ? 'Quadros' : key);
+
+/**
  * Tokens de API do Kanban (pro MCP server / Claude Code).
  * O VALOR do token aparece UMA única vez na criação — copie na hora.
  */
@@ -31,12 +69,9 @@ export default function KanbanTokensPage() {
 
   const [dialogAberto, setDialogAberto] = useState(false);
   const [nome, setNome] = useState('');
-  const [incluirFluxos, setIncluirFluxos] = useState(false);
-  const [incluirFunis, setIncluirFunis] = useState(false);
-  const [incluirContatos, setIncluirContatos] = useState(false);
-  const [incluirCrm, setIncluirCrm] = useState(false);
-  const [incluirPrompts, setIncluirPrompts] = useState(false);
-  const [incluirUsuarios, setIncluirUsuarios] = useState(false);
+  const [escopos, setEscopos] = useState<string[]>([]);
+  /** Token cujo ACESSO está sendo editado (null = ninguém). */
+  const [editandoEscopo, setEditandoEscopo] = useState<ApiToken | null>(null);
   const [salvando, setSalvando] = useState(false);
   /** Token recém-criado — única chance de copiar. */
   const [novoToken, setNovoToken] = useState<string | null>(null);
@@ -50,25 +85,14 @@ export default function KanbanTokensPage() {
     setSalvando(true);
     try {
       // Kanban sempre incluso; demais módulos opcionais (PAT de plataforma).
-      const escopo = ['kanban'];
-      if (incluirFluxos) escopo.push('fluxos');
-      if (incluirFunis) escopo.push('funis');
-      if (incluirContatos) escopo.push('contatos');
-      if (incluirCrm) escopo.push('crm');
-      if (incluirPrompts) escopo.push('prompts');
-      if (incluirUsuarios) escopo.push('usuarios');
+      const escopo = ['kanban', ...escopos];
       const criado = await api.post<ApiToken & { token: string }>('/kanban/api-tokens', {
         nome: nome.trim(),
         escopo,
       });
       setNovoToken(criado.token);
       setNome('');
-      setIncluirFluxos(false);
-      setIncluirFunis(false);
-      setIncluirContatos(false);
-      setIncluirCrm(false);
-      setIncluirPrompts(false);
-      setIncluirUsuarios(false);
+      setEscopos([]);
       refetch();
     } catch (err) {
       toast.error(apiErrorMessage(err));
@@ -87,6 +111,31 @@ export default function KanbanTokensPage() {
     } catch {
       // contexto não-seguro ou permissão negada — não deixa rejeitar sem tratar
       toast.error('Não foi possível copiar. Selecione o token e copie manualmente.');
+    }
+  }
+
+  /**
+   * Salva o acesso de um token JÁ existente.
+   *
+   * Sem isto, escopo novo (ex: "conhecimento") obrigava a REGERAR o token — e
+   * regerar significa reconfigurar o MCP em toda máquina que usa. O valor do
+   * token não muda: só o que ele alcança.
+   */
+  async function salvarEscopo() {
+    if (!editandoEscopo) return;
+    setSalvando(true);
+    try {
+      await api.patch(`/kanban/api-tokens/${editandoEscopo.id}`, {
+        escopo: ['kanban', ...escopos],
+      });
+      toast.success('Acesso do token atualizado', 'O valor do token continua o mesmo.');
+      setEditandoEscopo(null);
+      setEscopos([]);
+      refetch();
+    } catch (err) {
+      toast.error('Falha ao atualizar', apiErrorMessage(err));
+    } finally {
+      setSalvando(false);
     }
   }
 
@@ -153,19 +202,7 @@ export default function KanbanTokensPage() {
                     <span className="flex gap-1">
                       {(t.escopo ?? ['kanban']).map((e) => (
                         <Badge key={e} variant="neutral" size="sm">
-                          {e === 'fluxos'
-                            ? 'Fluxos'
-                            : e === 'funis'
-                              ? 'Funis'
-                              : e === 'contatos'
-                                ? 'Contatos'
-                                : e === 'crm'
-                                  ? 'CRM (escrita)'
-                                  : e === 'prompts'
-                                    ? 'Prompts (IA)'
-                                    : e === 'usuarios'
-                                      ? 'Usuários (leitura)'
-                                      : 'Quadros'}
+                          {rotuloEscopo(e)}
                         </Badge>
                       ))}
                     </span>
@@ -183,6 +220,17 @@ export default function KanbanTokensPage() {
                 ) : (
                   <>
                     <Badge variant="success">ativo</Badge>
+                    <IconButton
+                      aria-label="Editar acesso do token"
+                      title="Editar acesso (sem trocar o valor do token)"
+                      variant="ghost"
+                      icon={<SlidersHorizontal className="h-4 w-4" />}
+                      onClick={() => {
+                        setEditandoEscopo(t);
+                        setEscopos((t.escopo ?? []).filter((e) => e !== 'kanban'));
+                      }}
+                      data-testid={`token-editar-${t.id}`}
+                    />
                     <IconButton
                       aria-label="Revogar token"
                       variant="ghost"
@@ -258,46 +306,71 @@ export default function KanbanTokensPage() {
             <Field label="Acesso do token" hint="Quadros vem sempre; marque os módulos extras que o token pode ler/operar">
               <div className="flex flex-col gap-1.5">
                 <Checkbox label="Quadros (Kanban)" checked disabled />
-                <Checkbox
-                  label="Fluxos de automação"
-                  checked={incluirFluxos}
-                  onChange={(e) => setIncluirFluxos(e.target.checked)}
-                  data-testid="token-escopo-fluxos"
-                />
-                <Checkbox
-                  label="Funis (somente leitura)"
-                  checked={incluirFunis}
-                  onChange={(e) => setIncluirFunis(e.target.checked)}
-                  data-testid="token-escopo-funis"
-                />
-                <Checkbox
-                  label="Contatos (somente leitura · dados pessoais)"
-                  checked={incluirContatos}
-                  onChange={(e) => setIncluirContatos(e.target.checked)}
-                  data-testid="token-escopo-contatos"
-                />
-                <Checkbox
-                  label="CRM — escrita (tags e mover etapa de lead)"
-                  checked={incluirCrm}
-                  onChange={(e) => setIncluirCrm(e.target.checked)}
-                  data-testid="token-escopo-crm"
-                />
-                <Checkbox
-                  label="Prompts da IA — escrita (criar/editar prompts do bot)"
-                  checked={incluirPrompts}
-                  onChange={(e) => setIncluirPrompts(e.target.checked)}
-                  data-testid="token-escopo-prompts"
-                />
-                <Checkbox
-                  label="Usuários (somente leitura · id/nome/email/papel)"
-                  checked={incluirUsuarios}
-                  onChange={(e) => setIncluirUsuarios(e.target.checked)}
-                  data-testid="token-escopo-usuarios"
-                />
+                {ESCOPOS.map((e) => (
+                  <Checkbox
+                    key={e.key}
+                    label={e.label}
+                    checked={escopos.includes(e.key)}
+                    onChange={(ev) =>
+                      setEscopos((atual) =>
+                        ev.target.checked
+                          ? [...atual, e.key]
+                          : atual.filter((k) => k !== e.key),
+                      )
+                    }
+                    data-testid={`token-escopo-${e.key}`}
+                  />
+                ))}
               </div>
             </Field>
           </div>
         )}
+      </Dialog>
+
+      {/* Editar ACESSO de um token existente — sem trocar o valor. */}
+      <Dialog
+        open={editandoEscopo !== null}
+        onClose={() => setEditandoEscopo(null)}
+        title={`Acesso de "${editandoEscopo?.nome ?? ''}"`}
+        footer={
+          <>
+            <Button variant="ghost" onClick={() => setEditandoEscopo(null)}>
+              Cancelar
+            </Button>
+            <Button
+              onClick={() => void salvarEscopo()}
+              loading={salvando}
+              data-testid="token-escopo-salvar"
+            >
+              Salvar acesso
+            </Button>
+          </>
+        }
+      >
+        <div className="flex flex-col gap-3">
+          <p className="text-xs text-muted m-0">
+            O <strong>valor do token não muda</strong> — quem já está conectado continua
+            funcionando, só passa a alcançar mais (ou menos) módulos.
+          </p>
+          <Field label="Acesso do token" hint="Quadros vem sempre">
+            <div className="flex flex-col gap-1.5">
+              <Checkbox label="Quadros (Kanban)" checked disabled />
+              {ESCOPOS.map((e) => (
+                <Checkbox
+                  key={e.key}
+                  label={e.label}
+                  checked={escopos.includes(e.key)}
+                  onChange={(ev) =>
+                    setEscopos((atual) =>
+                      ev.target.checked ? [...atual, e.key] : atual.filter((k) => k !== e.key),
+                    )
+                  }
+                  data-testid={`token-editar-escopo-${e.key}`}
+                />
+              ))}
+            </div>
+          </Field>
+        </div>
       </Dialog>
       {confirmDialog}
     </PageLayout>

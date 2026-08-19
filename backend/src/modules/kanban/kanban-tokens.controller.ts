@@ -1,4 +1,14 @@
-import { Body, Controller, Delete, Get, HttpCode, HttpStatus, Param, Post } from '@nestjs/common';
+import {
+  Body,
+  Controller,
+  Delete,
+  Get,
+  HttpCode,
+  HttpStatus,
+  Param,
+  Patch,
+  Post,
+} from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
 import { Audit } from '@shared/decorators/audit.decorator';
 import { CurrentUser } from '@shared/decorators/current-user.decorator';
@@ -6,7 +16,12 @@ import { RequirePermissions } from '@shared/decorators/permissions.decorator';
 import { ZodValidationPipe } from '@shared/pipes/zod-validation.pipe';
 import type { AuthenticatedUser } from '@shared/types/authenticated-user';
 import { KanbanTokensService } from './kanban-tokens.service';
-import { type CreateApiTokenDto, createApiTokenSchema } from './kanban.dto';
+import {
+  type CreateApiTokenDto,
+  type UpdateApiTokenDto,
+  createApiTokenSchema,
+  updateApiTokenSchema,
+} from './kanban.dto';
 
 /**
  * Tokens de API do Kanban (pro MCP server). O AuthGuard bloqueia acesso a
@@ -34,6 +49,18 @@ export class KanbanTokensController {
   @ApiOperation({ summary: 'Lista meus tokens (sem o valor)' })
   list(@CurrentUser() user: AuthenticatedUser) {
     return this.tokens.list(user);
+  }
+
+  @Patch(':id')
+  @RequirePermissions({ module: 'quadros', action: 'edit' })
+  @ApiOperation({ summary: 'Ajusta o ESCOPO do token (sem trocar o valor)' })
+  @Audit({ action: 'update', resource: 'kanban_api_token', resourceIdFrom: 'params.id' })
+  atualizar(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param('id') id: string,
+    @Body(new ZodValidationPipe(updateApiTokenSchema)) dto: UpdateApiTokenDto,
+  ) {
+    return this.tokens.atualizarEscopo(user, id, dto);
   }
 
   @Delete(':id')

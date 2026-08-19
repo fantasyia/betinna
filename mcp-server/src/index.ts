@@ -2045,13 +2045,24 @@ server.registerTool(
   'prompts_ver',
   {
     description:
-      'Retorna o conteúdo COMPLETO de um prompt da IA (inclui o TEXTO). Use o promptId (de prompts_listar ' +
-      'ou do config do nó "Conversar com IA" em fluxos_ver). Exige escopo "prompts".',
+      'Retorna o conteúdo COMPLETO de um prompt da IA (inclui o TEXTO, o modelo e a temperatura) ' +
+      'MAIS o `usadoEm`: quais fluxos/nós referenciam este promptId. Confira o `usadoEm` antes de ' +
+      'editar o texto — prompt compartilhado muda o comportamento de TODOS os fluxos da lista. ' +
+      'Exige escopo "prompts".',
     inputSchema: { promptId: z.string().describe('ID do prompt') },
     annotations: { readOnlyHint: true, destructiveHint: false },
   },
   seguro(async ({ promptId }: { promptId: string }) => {
-    const p = await api.get<PromptCompleto>(`/mullerbot/prompts/${promptId}`);
+    const p = await api.get<
+      PromptCompleto & {
+        usadoEm?: Array<{
+          fluxoId: string;
+          fluxoNome: string;
+          fluxoStatus: string;
+          noTitulo: string;
+        }>;
+      }
+    >(`/mullerbot/prompts/${promptId}`);
     return ok(p);
   }),
 );
@@ -2161,6 +2172,22 @@ server.registerTool(
       });
     },
   ),
+);
+
+server.registerTool(
+  'prompts_deletar',
+  {
+    description:
+      'Apaga um prompt da biblioteca. ⚠️ Rode `prompts_ver` antes: se o `usadoEm` não estiver ' +
+      'vazio, os nós daqueles fluxos ficam apontando pra um prompt que não existe mais (o nó ' +
+      'passa a rotear pela saída de erro). Exige escopo "prompts".',
+    inputSchema: { promptId: z.string() },
+    annotations: { readOnlyHint: false, destructiveHint: true },
+  },
+  seguro(async ({ promptId }: { promptId: string }) => {
+    await api.delete(`/mullerbot/prompts/${encodeURIComponent(promptId)}`);
+    return ok({ removido: promptId });
+  }),
 );
 
 // ─── Config do BOT de atendimento (escopo "prompts") ────────────────────
@@ -2357,10 +2384,509 @@ server.registerTool(
   }),
 );
 
+// ═══════════════════════════════════════════════════════════════════════
+// BASE DE CONHECIMENTO — RAG do bot (escopo "conhecimento")
+// ═══════════════════════════════════════════════════════════════════════
+//
+// Duas entidades, com permissões DIFERENTES sobre a mesma coisa:
+//  • DOCUMENTO (PDF/DOCX/MD/TXT) — o texto é extraído e vira trechos indexados.
+//      - `usarComoFonte`: o CONTEÚDO alimenta a resposta do bot;
+//      - `podeEnviar`: o bot ANEXA o arquivo na conversa do cliente.
+//    São permissões independentes. Um material interno pode não merecer nenhuma.
+//  • TRECHO manual (chunk) — FAQ/regra escrita à mão, sem arquivo.
+
+type DocumentoResumo = {
+  id: string;
+  titulo: string;
+  fileName?: string;
+  mimetype?: string;
+  tamanhoBytes?: number;
+  podeEnviar?: boolean;
+  totalChunks?: number;
+  chunksAtivos?: number;
+  erroExtracao?: string | null;
+};
+
+const projetarDocumento = (d: DocumentoResumo) => ({
+  id: d.id,
+  titulo: d.titulo,
+  arquivo: d.fileName,
+  trechos: d.totalChunks ?? 0,
+  // O que o bot pode fazer com ele — as duas permissões, sempre explícitas.
+  usaComoFonte: (d.chunksAtivos ?? d.totalChunks ?? 0) > 0,
+  anexaArquivoNaConversa: d.podeEnviar === true,
+  ...(d.erroExtracao ? { erroExtracao: d.erroExtracao } : {}),
+});
+
+server.registerTool(
+  'conhecimento_documentos_listar',
+  {
+    description:
+      'Lista os DOCUMENTOS da base de conhecimento com o que o bot pode fazer com cada um: ' +
+      '`usaComoFonte` (o conteúdo alimenta respostas) e `anexaArquivoNaConversa` (o bot manda o ' +
+      'arquivo pro cliente). Exige escopo "conhecimento".',
+    inputSchema: {},
+    annotations: { readOnlyHint: true, destructiveHint: false },
+  },
+  seguro(async () => {
+    const docs = await api.get<DocumentoResumo[]>('/conhecimento/documentos');
+    return ok((Array.isArray(docs) ? docs : []).map(projetarDocumento));
+  }),
+);
+
+server.registerTool(
+  'conhecimento_documento_subir',
+  {
+    description:
+      'Sobe um DOCUMENTO pra base de conhecimento (o texto é extraído e indexado pra busca). ' +
+      'Aceita .md/.txt como texto plano — material escrito em markdown sobe como está, sem virar ' +
+      'PDF. Passe `conteudo` (texto) OU `dataBase64` (binário). Exige escopo "conhecimento".',
+    inputSchema: {
+      titulo: z.string().describe('Título do documento na base'),
+      conteudo: z
+        .string()
+        .optional()
+        .describe('Texto/markdown do documento. Use ISTO pra material escrito (o caminho normal).'),
+      fileName: z
+        .string()
+        .optional()
+        .describe('Nome do arquivo. Default: <titulo>.md quando você passa `conteudo`.'),
+      mimetype: z.string().optional().describe('Default: text/markdown com `conteudo`.'),
+      dataBase64: z
+        .string()
+        .optional()
+        .describe('Binário em base64 (PDF/DOCX). Só quando NÃO é texto.'),
+      podeEnviar: z
+        .boolean()
+        .optional()
+        .describe(
+          'Libera o bot a ANEXAR ESTE ARQUIVO na conversa do CLIENTE. Default false. ' +
+            'Subir documento é rotina; liberar envio de arquivo não é — exige também ' +
+            '`confirmoEnvioAoCliente: true`.',
+        ),
+      confirmoEnvioAoCliente: z
+        .boolean()
+        .optional()
+        .describe('Confirmação explícita exigida quando `podeEnviar: true`.'),
+    },
+    annotations: { readOnlyHint: false, destructiveHint: false },
+  },
+  seguro(
+    async (args: {
+      titulo: string;
+      conteudo?: string;
+      fileName?: string;
+      mimetype?: string;
+      dataBase64?: string;
+      podeEnviar?: boolean;
+      confirmoEnvioAoCliente?: boolean;
+    }) => {
+      if (!args.conteudo && !args.dataBase64) {
+        return erro('Informe `conteudo` (texto/markdown) ou `dataBase64` (binário).');
+      }
+      // GUARDA: liberar o bot a mandar arquivo pro cliente não pode ser efeito
+      // colateral de um upload. Um playbook interno marcado por engano vira
+      // entrega de estratégia comercial pra quem pode ser concorrente.
+      if (args.podeEnviar && !args.confirmoEnvioAoCliente) {
+        return erro(
+          'podeEnviar=true faz o BOT ANEXAR ESTE ARQUIVO na conversa do cliente. ' +
+            'Se é isso mesmo, repita com `confirmoEnvioAoCliente: true`. ' +
+            'Material interno (playbook, tabela de custo, argumentário) NAO deve ir.',
+        );
+      }
+      const ehTexto = !args.dataBase64;
+      const doc = await api.post<DocumentoResumo>('/conhecimento/documento', {
+        titulo: args.titulo,
+        fileName: args.fileName ?? (ehTexto ? `${args.titulo}.md` : 'arquivo'),
+        mimetype: args.mimetype ?? (ehTexto ? 'text/markdown' : 'application/octet-stream'),
+        dataBase64: args.dataBase64 ?? Buffer.from(args.conteudo!, 'utf-8').toString('base64'),
+        podeEnviar: args.podeEnviar === true,
+      });
+      return ok(projetarDocumento(doc));
+    },
+  ),
+);
+
+server.registerTool(
+  'conhecimento_documento_atualizar',
+  {
+    description:
+      'Renomeia um documento e/ou liga-desliga as DUAS permissões: `usarComoFonte` (o conteúdo ' +
+      'alimenta as respostas — liga/desliga todos os trechos de uma vez) e `podeEnviar` (o bot ' +
+      'anexa o arquivo na conversa). Exige escopo "conhecimento".',
+    inputSchema: {
+      documentoId: z.string(),
+      titulo: z.string().optional(),
+      usarComoFonte: z
+        .boolean()
+        .optional()
+        .describe('false = o conteúdo PARA de alimentar respostas (documento sai da base).'),
+      podeEnviar: z
+        .boolean()
+        .optional()
+        .describe('true = o bot ANEXA o arquivo pro cliente. Exige `confirmoEnvioAoCliente`.'),
+      confirmoEnvioAoCliente: z.boolean().optional(),
+    },
+    annotations: { readOnlyHint: false, destructiveHint: false },
+  },
+  seguro(
+    async ({
+      documentoId,
+      confirmoEnvioAoCliente,
+      ...rest
+    }: {
+      documentoId: string;
+      titulo?: string;
+      usarComoFonte?: boolean;
+      podeEnviar?: boolean;
+      confirmoEnvioAoCliente?: boolean;
+    }) => {
+      if (rest.podeEnviar && !confirmoEnvioAoCliente) {
+        return erro(
+          'podeEnviar=true faz o BOT ANEXAR ESTE ARQUIVO na conversa do cliente. ' +
+            'Se é isso mesmo, repita com `confirmoEnvioAoCliente: true`.',
+        );
+      }
+      const definidos = Object.fromEntries(
+        Object.entries(rest).filter(([, v]) => v !== undefined),
+      );
+      if (Object.keys(definidos).length === 0) {
+        return erro('Informe titulo, usarComoFonte ou podeEnviar.');
+      }
+      const doc = await api.patch<DocumentoResumo>(
+        `/conhecimento/documento/${encodeURIComponent(documentoId)}`,
+        definidos,
+      );
+      return ok(projetarDocumento(doc));
+    },
+  ),
+);
+
+server.registerTool(
+  'conhecimento_documento_remover',
+  {
+    description:
+      'Remove um documento da base (e os trechos indexados dele). Pra apenas TIRAR das respostas ' +
+      'sem perder o arquivo, use `conhecimento_documento_atualizar` com `usarComoFonte: false`. ' +
+      'Exige escopo "conhecimento".',
+    inputSchema: { documentoId: z.string() },
+    annotations: { readOnlyHint: false, destructiveHint: true },
+  },
+  seguro(async ({ documentoId }: { documentoId: string }) => {
+    await api.delete(`/conhecimento/documento/${encodeURIComponent(documentoId)}`);
+    return ok({ removido: documentoId });
+  }),
+);
+
+server.registerTool(
+  'conhecimento_listar',
+  {
+    description:
+      'Lista os TRECHOS da base (o que o bot efetivamente consulta). Inclui os derivados de ' +
+      'documento e os manuais. `ativo: false` = fora das respostas. Exige escopo "conhecimento".',
+    inputSchema: {
+      search: z.string().optional(),
+      incluirConfig: z
+        .boolean()
+        .optional()
+        .describe('Inclui os trechos gerados da configuração da empresa.'),
+      limit: z.number().int().positive().max(200).optional(),
+    },
+    annotations: { readOnlyHint: true, destructiveHint: false },
+  },
+  seguro(async (args: { search?: string; incluirConfig?: boolean; limit?: number }) => {
+    const qs = new URLSearchParams({ limit: String(args.limit ?? 100) });
+    if (args.search) qs.set('search', args.search);
+    if (args.incluirConfig) qs.set('incluirConfig', 'true');
+    const r = await api.get<{
+      data?: Array<{
+        id: string;
+        titulo: string;
+        conteudo: string;
+        categoria?: string | null;
+        fonte?: string;
+        ativo?: boolean;
+      }>;
+      pagination?: { total?: number };
+    }>(`/conhecimento?${qs.toString()}`);
+    const itens = (r?.data ?? []).map((c) => ({
+      id: c.id,
+      titulo: c.titulo,
+      categoria: c.categoria ?? null,
+      fonte: c.fonte,
+      ativo: c.ativo !== false,
+      previa: c.conteudo.length > 160 ? `${c.conteudo.slice(0, 160)}…` : c.conteudo,
+    }));
+    return ok({ total: r?.pagination?.total ?? itens.length, itens });
+  }),
+);
+
+server.registerTool(
+  'conhecimento_criar',
+  {
+    description:
+      'Cria um TRECHO manual na base (FAQ, regra, condição comercial) — sem arquivo. ' +
+      'Exige escopo "conhecimento".',
+    inputSchema: {
+      titulo: z.string(),
+      conteudo: z.string().describe('Até 5000 caracteres.'),
+      categoria: z.string().optional(),
+      ativo: z.boolean().optional().describe('false = já nasce fora das respostas.'),
+    },
+    annotations: { readOnlyHint: false, destructiveHint: false },
+  },
+  seguro(
+    async (args: { titulo: string; conteudo: string; categoria?: string; ativo?: boolean }) => {
+      const c = await api.post<{ id: string; titulo: string }>('/conhecimento', args);
+      return ok({ id: c.id, titulo: c.titulo });
+    },
+  ),
+);
+
+server.registerTool(
+  'conhecimento_atualizar',
+  {
+    description:
+      'Edita um TRECHO manual (texto, categoria) ou liga/desliga ele nas respostas (`ativo`). ' +
+      'Exige escopo "conhecimento".',
+    inputSchema: {
+      chunkId: z.string(),
+      titulo: z.string().optional(),
+      conteudo: z.string().optional(),
+      categoria: z.string().optional(),
+      ativo: z.boolean().optional(),
+    },
+    annotations: { readOnlyHint: false, destructiveHint: false },
+  },
+  seguro(
+    async ({
+      chunkId,
+      ...rest
+    }: {
+      chunkId: string;
+      titulo?: string;
+      conteudo?: string;
+      categoria?: string;
+      ativo?: boolean;
+    }) => {
+      const definidos = Object.fromEntries(
+        Object.entries(rest).filter(([, v]) => v !== undefined),
+      );
+      if (Object.keys(definidos).length === 0) {
+        return erro('Informe ao menos um campo (titulo, conteudo, categoria ou ativo).');
+      }
+      const c = await api.patch<{ id: string; titulo: string; ativo?: boolean }>(
+        `/conhecimento/${encodeURIComponent(chunkId)}`,
+        definidos,
+      );
+      return ok({ id: c.id, titulo: c.titulo, ativo: c.ativo !== false });
+    },
+  ),
+);
+
+server.registerTool(
+  'conhecimento_remover',
+  {
+    description:
+      'Remove um TRECHO manual. Pra só tirar das respostas sem apagar, use ' +
+      '`conhecimento_atualizar` com `ativo: false`. Exige escopo "conhecimento".',
+    inputSchema: { chunkId: z.string() },
+    annotations: { readOnlyHint: false, destructiveHint: true },
+  },
+  seguro(async ({ chunkId }: { chunkId: string }) => {
+    await api.delete(`/conhecimento/${encodeURIComponent(chunkId)}`);
+    return ok({ removido: chunkId });
+  }),
+);
+
+// ═══════════════════════════════════════════════════════════════════════
+// ETIQUETAS DE LEAD (escopo "tags")
+// ═══════════════════════════════════════════════════════════════════════
+//
+// ⚠️ NÃO confundir com `kanban_criar_etiqueta`, que é etiqueta de QUADRO.
+// Estas são as tags do CRM — as que os nós MUDAR_TAG aplicam e as CONDICAO
+// testam com `lead.tags contains`.
+//
+// Por que listar importa: os dois lados comparam por TEXTO LITERAL. Escrever
+// "Sem resposta (triagem)" sem o ⚫, ou "Nao industrial" com til, CRIA uma tag
+// nova e a condição nunca casa — sem erro, sem log. Mesma família do bug de
+// comparar etapa por nome. Conferir o nome exato antes de escrever no fluxo é
+// mais barato que caçar o fluxo mudo depois.
+
+server.registerTool(
+  'tags_listar',
+  {
+    description:
+      'Lista as ETIQUETAS DE LEAD da empresa (nome EXATO, cor, quantos contatos usam). Use ANTES ' +
+      'de escrever um nome de tag num nó MUDAR_TAG ou numa CONDICAO `lead.tags contains` — os ' +
+      'dois comparam por texto literal, e um acento a mais cria tag nova em silêncio. ' +
+      'NÃO é a etiqueta de quadro (essa é kanban_*). Exige escopo "tags".',
+    inputSchema: {
+      search: z.string().optional().describe('Filtra por trecho do nome.'),
+    },
+    annotations: { readOnlyHint: true, destructiveHint: false },
+  },
+  seguro(async (args: { search?: string }) => {
+    const qs = args.search ? `?search=${encodeURIComponent(args.search)}` : '';
+    const r = await api.get<
+      | Array<{ id: string; nome: string; cor?: string; _count?: { clientes?: number } }>
+      | { data?: Array<{ id: string; nome: string; cor?: string; _count?: { clientes?: number } }> }
+    >(`/tags${qs}`);
+    const arr = Array.isArray(r) ? r : (r?.data ?? []);
+    return ok(
+      arr.map((t) => ({ id: t.id, nome: t.nome, cor: t.cor, usos: t._count?.clientes ?? 0 })),
+    );
+  }),
+);
+
+server.registerTool(
+  'tags_criar',
+  {
+    description:
+      'Cria uma ETIQUETA DE LEAD com o nome EXATO informado. Use quando o fluxo precisa de uma ' +
+      'tag que ainda não existe — criar aqui e copiar o nome pro nó evita a divergência de ' +
+      'escrita. Exige escopo "tags".',
+    inputSchema: {
+      nome: z.string().describe('Nome exato, com acento/emoji se for o caso.'),
+      cor: z.string().optional().describe('Hex #RRGGBB. Default: #7c3aed.'),
+    },
+    annotations: { readOnlyHint: false, destructiveHint: false },
+  },
+  seguro(async (args: { nome: string; cor?: string }) => {
+    const t = await api.post<{ id: string; nome: string; cor?: string }>('/tags', args);
+    return ok({ id: t.id, nome: t.nome, cor: t.cor });
+  }),
+);
+
+server.registerTool(
+  'tags_renomear',
+  {
+    description:
+      'Renomeia (ou recolore) uma etiqueta de LEAD. ⚠️ Renomear NÃO atualiza os fluxos: todo nó ' +
+      'MUDAR_TAG e toda CONDICAO que citam o nome antigo param de casar. Ajuste os fluxos junto. ' +
+      'Exige escopo "tags".',
+    inputSchema: {
+      tagId: z.string(),
+      nome: z.string().optional(),
+      cor: z.string().optional(),
+    },
+    annotations: { readOnlyHint: false, destructiveHint: false },
+  },
+  seguro(async ({ tagId, ...rest }: { tagId: string; nome?: string; cor?: string }) => {
+    const definidos = Object.fromEntries(Object.entries(rest).filter(([, v]) => v !== undefined));
+    if (Object.keys(definidos).length === 0) return erro('Informe `nome` ou `cor`.');
+    const t = await api.patch<{ id: string; nome: string; cor?: string }>(
+      `/tags/${encodeURIComponent(tagId)}`,
+      definidos,
+    );
+    return ok({ id: t.id, nome: t.nome, cor: t.cor });
+  }),
+);
+
+// ═══════════════════════════════════════════════════════════════════════
+// INBOX — SOMENTE LEITURA (escopo "inbox")
+// ═══════════════════════════════════════════════════════════════════════
+//
+// Serve pra ANALISAR: ler o que o lead disse na triagem que levou a uma
+// classificação errada e devolver isso como ajuste de prompt. Sem isso, todo QA
+// de fluxo depende de alguém abrir a conversa na tela.
+//
+// ⛔ De propósito NÃO existe tool de responder nem de atribuir: mandar mensagem
+// pro cliente não é papel de agente, e transferir conversa é decisão de quem
+// atende. O backend também barra — PAT em /inbox só aceita GET.
+//
+// ⚠️ É conversa de cliente (PII). Use pra investigar um lead específico, não pra
+// varrer a base.
+
+server.registerTool(
+  'inbox_conversas_listar',
+  {
+    description:
+      'Lista conversas do Inbox (id, contato, canal, status, última mensagem). SOMENTE LEITURA. ' +
+      'Use `search` ou `clienteId` pra chegar na conversa de um lead específico em vez de varrer. ' +
+      'Exige escopo "inbox".',
+    inputSchema: {
+      search: z.string().optional().describe('Nome/telefone do contato ou trecho da última msg.'),
+      canal: z.string().optional().describe('WHATSAPP, INSTAGRAM, FACEBOOK…'),
+      status: z.string().optional().describe('ABERTA, PENDENTE, RESOLVIDA…'),
+      limit: z.number().int().positive().max(50).optional(),
+    },
+    annotations: { readOnlyHint: true, destructiveHint: false },
+  },
+  seguro(async (args: { search?: string; canal?: string; status?: string; limit?: number }) => {
+    const qs = new URLSearchParams({ limit: String(args.limit ?? 20) });
+    if (args.search) qs.set('search', args.search);
+    if (args.canal) qs.set('canal', args.canal);
+    if (args.status) qs.set('status', args.status);
+    const r = await api.get<{
+      data?: Array<{
+        id: string;
+        canal: string;
+        status: string;
+        peerNome?: string | null;
+        peerId: string;
+        ultimaMsgEm?: string | null;
+        ultimaMsgPreview?: string | null;
+        naoLidas?: number;
+        leadId?: string | null;
+      }>;
+      pagination?: { total?: number };
+    }>(`/inbox?${qs.toString()}`);
+    const itens = (r?.data ?? []).map((c) => ({
+      conversationId: c.id,
+      contato: c.peerNome ?? c.peerId,
+      canal: c.canal,
+      status: c.status,
+      leadId: c.leadId ?? null,
+      ultimaMsgEm: c.ultimaMsgEm ?? null,
+      previa: c.ultimaMsgPreview ?? null,
+    }));
+    return ok({ total: r?.pagination?.total ?? itens.length, conversas: itens });
+  }),
+);
+
+server.registerTool(
+  'inbox_mensagens_ver',
+  {
+    description:
+      'Lê o histórico de mensagens de UMA conversa (quem falou, quando, o quê). SOMENTE LEITURA — ' +
+      'não existe tool pra responder nem atribuir, e o backend recusa. Use pra entender o que o ' +
+      'lead disse antes de uma classificação errada. Exige escopo "inbox".',
+    inputSchema: {
+      conversationId: z.string(),
+      limit: z.number().int().positive().max(200).optional().describe('Default 50, mais recentes.'),
+    },
+    annotations: { readOnlyHint: true, destructiveHint: false },
+  },
+  seguro(async ({ conversationId, limit }: { conversationId: string; limit?: number }) => {
+    const r = await api.get<{
+      data?: Array<{
+        id: string;
+        direction: string;
+        conteudo?: string | null;
+        tipo?: string;
+        criadoEm: string;
+        autor?: { nome?: string } | null;
+      }>;
+    }>(
+      `/inbox/${encodeURIComponent(conversationId)}/mensagens?limit=${String(limit ?? 50)}`,
+    );
+    const msgs = (r?.data ?? []).map((m) => ({
+      quem: m.direction === 'INBOUND' ? 'lead' : (m.autor?.nome ?? 'bot/equipe'),
+      quando: m.criadoEm,
+      tipo: m.tipo,
+      texto: m.conteudo ?? '',
+    }));
+    return ok({ conversationId, total: msgs.length, mensagens: msgs });
+  }),
+);
+
 // ─── Boot ───────────────────────────────────────────────────────────────
 
 const transport = new StdioServerTransport();
 await server.connect(transport);
 console.error(
-  '[betinna-kanban-mcp] conectado — 26 tools kanban_* + 11 tools fluxos_* + 6 tools funis_/contatos_/crm + 4 tools prompts_* + 2 tools bot_config_* + 2 tools usuarios_* disponíveis',
+  '[betinna-kanban-mcp] conectado — kanban_* + fluxos_* + funis_/contatos_/crm + prompts_* + ' +
+    'bot_config_* + usuarios_* + conhecimento_* (base do RAG) + tags_* (etiquetas de LEAD) + ' +
+    'inbox_* (SÓ leitura)',
 );

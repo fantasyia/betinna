@@ -155,6 +155,9 @@ export class AuthGuard implements CanActivate {
       | 'crm'
       | 'prompts'
       | 'usuarios'
+      | 'conhecimento'
+      | 'tags'
+      | 'inbox'
       | null = null;
     // ANCORADO no 1º segmento — o regex de "contém" casava /leads/kanban, então
     // um token de escopo `kanban` (quadros estilo Trello) lia o PIPELINE DE LEADS
@@ -170,6 +173,14 @@ export class AuthGuard implements CanActivate {
     else if (/^\/users(\/|$)/.test(rel)) moduloRequerido = 'usuarios';
     // /crm = ações de CRM por MCP (ESCRITA: tags, mover etapa). Surface estreita e explícita.
     else if (/^\/crm(\/|$)/.test(rel)) moduloRequerido = 'crm';
+    // /conhecimento = base do RAG (documentos + trechos). ESCRITA liberada: é o
+    // material que o bot consulta, e publicar conteúdo dependia do navegador.
+    else if (/^\/conhecimento(\/|$)/.test(rel)) moduloRequerido = 'conhecimento';
+    // /tags = etiquetas de LEAD (≠ etiqueta de quadro, que vive em /kanban).
+    else if (/^\/tags(\/|$)/.test(rel)) moduloRequerido = 'tags';
+    // /inbox = conversa de cliente. SÓ GET (restringido abaixo) — PAT não manda
+    // mensagem nem reatribui atendimento.
+    else if (/^\/inbox(\/|$)/.test(rel)) moduloRequerido = 'inbox';
     // /mullerbot/prompts = biblioteca de prompts da IA (ESCRITA: criar/editar prompt).
     // /mullerbot/persona = config do BOT (nome/modelo/prompt) — mesma família, mesmo
     // escopo "prompts". /mullerbot/bot/modelos = lista viva de modelos OpenAI (leitura,
@@ -180,7 +191,7 @@ export class AuthGuard implements CanActivate {
     if (!moduloRequerido) {
       throw new ForbiddenException(
         'Token de API só acessa rotas /kanban, /fluxos, /funis, /contatos, /crm, /users, ' +
-          '/mullerbot/prompts e /mullerbot/persona',
+          '/conhecimento, /tags, /inbox e /mullerbot/prompts|persona',
       );
     }
 
@@ -191,7 +202,11 @@ export class AuthGuard implements CanActivate {
     // na UI. Segue OK: FunilEtapa não é PII, e o service já protege contra apagar
     // etapa com lead ou com fluxo apontando pra ela.
     if (
-      (moduloRequerido === 'contatos' || moduloRequerido === 'usuarios') &&
+      (moduloRequerido === 'contatos' ||
+        moduloRequerido === 'usuarios' ||
+        // inbox é conversa de CLIENTE: ler pra analisar, nunca responder nem
+        // reatribuir. Mandar mensagem não é papel de agente.
+        moduloRequerido === 'inbox') &&
       (request.method ?? 'GET').toUpperCase() !== 'GET'
     ) {
       throw new ForbiddenException(`Token de API só faz leitura (GET) em /${moduloRequerido}`);

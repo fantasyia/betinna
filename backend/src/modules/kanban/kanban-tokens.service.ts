@@ -4,7 +4,7 @@ import { NotFoundException } from '@shared/errors/app-exception';
 import { getCallerEmpresaId } from '@shared/utils/auth-context';
 import type { AuthenticatedUser } from '@shared/types/authenticated-user';
 import { gerarKanbanToken, hashKanbanToken } from './kanban-token.util';
-import type { CreateApiTokenDto } from './kanban.dto';
+import type { CreateApiTokenDto, UpdateApiTokenDto } from './kanban.dto';
 
 /** Shape público do token (NUNCA inclui tokenHash nem o valor). */
 const TOKEN_PUBLICO = {
@@ -48,6 +48,25 @@ export class KanbanTokensService {
     return this.prisma.kanbanApiToken.findMany({
       where: { usuarioId: user.id, empresaId: getCallerEmpresaId(user) },
       orderBy: { criadoEm: 'desc' },
+      select: TOKEN_PUBLICO,
+    });
+  }
+
+  /**
+   * Ajusta o ESCOPO de um token que já existe — sem trocar o valor.
+   *
+   * Escopo novo (ex: `conhecimento`) obrigava a regerar o token, e regerar
+   * significa reconfigurar o MCP em toda máquina que usa. Só o dono altera, e
+   * só na empresa do token.
+   */
+  async atualizarEscopo(user: AuthenticatedUser, id: string, dto: UpdateApiTokenDto) {
+    const atualizados = await this.prisma.kanbanApiToken.updateMany({
+      where: { id, usuarioId: user.id, empresaId: getCallerEmpresaId(user) },
+      data: { escopo: dto.escopo },
+    });
+    if (atualizados.count === 0) throw new NotFoundException('Token', id);
+    return this.prisma.kanbanApiToken.findUniqueOrThrow({
+      where: { id },
       select: TOKEN_PUBLICO,
     });
   }

@@ -211,6 +211,18 @@ export const API_TOKEN_ESCOPOS = [
   // usuarios = leitura (GET) de /users: a master descobre userId/role pra
   // configurar atendenteId/responsavelId/ATRIBUIR_REP nos fluxos. NUNCA escrita.
   'usuarios',
+  // conhecimento = base do RAG (/conhecimento): subir/editar/remover documento e
+  // trecho manual. Escrita liberada — é o material que o bot consulta, e depender
+  // do navegador pra publicar conteúdo era o gargalo.
+  'conhecimento',
+  // tags = etiquetas de LEAD (/tags). Existe pra a master CONFERIR o nome exato
+  // antes de escrevê-lo num nó MUDAR_TAG e na CONDICAO que o testa: divergir por
+  // um acento cria tag nova e a condição nunca casa, sem erro nem log.
+  'tags',
+  // inbox = conversas de cliente (/inbox), SOMENTE LEITURA (restringido abaixo).
+  // É PII: serve pra analisar o histórico de um lead e ajustar prompt, não pra
+  // responder nem reatribuir — isso é de quem atende.
+  'inbox',
 ] as const;
 
 export const createApiTokenSchema = z.object({
@@ -220,3 +232,15 @@ export const createApiTokenSchema = z.object({
   escopo: z.array(z.enum(API_TOKEN_ESCOPOS)).min(1).optional(),
 });
 export type CreateApiTokenDto = z.infer<typeof createApiTokenSchema>;
+
+/**
+ * Ajuste de ESCOPO de um token existente.
+ *
+ * Sem isto, todo escopo novo (ex: `conhecimento`) obrigava a REGERAR o token —
+ * e regerar significa reconfigurar o MCP em cada máquina que usa. O valor do
+ * token não muda aqui; só o que ele alcança.
+ */
+export const updateApiTokenSchema = z.object({
+  escopo: z.array(z.enum(API_TOKEN_ESCOPOS)).min(1),
+});
+export type UpdateApiTokenDto = z.infer<typeof updateApiTokenSchema>;

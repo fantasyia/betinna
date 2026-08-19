@@ -31,10 +31,44 @@ export class BotPromptsService {
     });
   }
 
-  async findById(user: AuthenticatedUser, id: string): Promise<BotPrompt> {
+  /**
+   * Detalhe do prompt + ONDE ele é usado.
+   *
+   * `usadoEm` não é enfeite: prompt compartilhado por mais de um fluxo muda o
+   * comportamento dos DOIS quando alguém edita o texto. Sem essa lista, a única
+   * forma de descobrir era abrir fluxo por fluxo procurando o `promptId`.
+   */
+  async findById(
+    user: AuthenticatedUser,
+    id: string,
+  ): Promise<
+    BotPrompt & {
+      usadoEm: Array<{ fluxoId: string; fluxoNome: string; noTitulo: string; fluxoStatus: string }>;
+    }
+  > {
     const row = await this.prisma.botPrompt.findFirst({ where: { id, ...empresaFilter(user) } });
     if (!row) throw new NotFoundException('Prompt', id);
-    return row;
+    const nos = await this.prisma.fluxoNo
+      .findMany({
+        where: {
+          config: { path: ['promptId'], equals: id },
+          fluxo: { empresaId: row.empresaId },
+        },
+        select: {
+          titulo: true,
+          fluxo: { select: { id: true, nome: true, status: true } },
+        },
+      })
+      .catch(() => []);
+    return {
+      ...row,
+      usadoEm: nos.map((n) => ({
+        fluxoId: n.fluxo.id,
+        fluxoNome: n.fluxo.nome,
+        fluxoStatus: n.fluxo.status,
+        noTitulo: n.titulo,
+      })),
+    };
   }
 
   async create(user: AuthenticatedUser, dto: CreateBotPromptDto): Promise<BotPrompt> {
