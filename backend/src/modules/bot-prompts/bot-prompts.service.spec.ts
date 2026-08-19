@@ -173,3 +173,95 @@ describe('BotPromptsService.findById — usadoEm', () => {
     expect(r.usadoEm).toEqual([]);
   });
 });
+
+/**
+ * Edição por trecho no service: o que interessa aqui é que a validação acontece
+ * ANTES de qualquer escrita, e que a versão nova é gravada com o texto já
+ * substituído (senão o histórico guardaria uma versão que nunca existiu).
+ */
+describe('BotPromptsService.update — substituir', () => {
+  const user = { id: 'u1', role: 'DIRECTOR', empresaIdAtiva: 'emp-1' } as never;
+  const TEXTO = 'linha 1\nBoa noite! 😊 tudo bem?\nlinha 3';
+
+  const montar = () => {
+    const atualizado = { id: 'p1', texto: '', versao: 2 };
+    const tx = {
+      botPrompt: {
+        updateMany: vi.fn().mockResolvedValue({}),
+        update: vi.fn().mockImplementation(({ data }: { data: { texto?: string } }) => {
+          atualizado.texto = data.texto ?? '';
+          return Promise.resolve({});
+        }),
+        findUniqueOrThrow: vi.fn().mockImplementation(() => Promise.resolve({ ...atualizado })),
+      },
+      botPromptVersao: { create: vi.fn().mockResolvedValue({}) },
+    };
+    const prisma = {
+      // findById também resolve `usadoEm` (nós de fluxo que citam o promptId).
+      fluxoNo: { findMany: vi.fn().mockResolvedValue([]) },
+      botPrompt: {
+        findFirst: vi.fn().mockResolvedValue({
+          id: 'p1',
+          empresaId: 'emp-1',
+          nome: 'R1',
+          texto: TEXTO,
+          modelo: null,
+          temperatura: null,
+          versao: 1,
+        }),
+      },
+      $transaction: vi.fn(async (fn: (t: unknown) => Promise<unknown>) => fn(tx)),
+    };
+    return { svc: new BotPromptsService(prisma as never), prisma, tx };
+  };
+
+  it('grava o texto com o trecho trocado e devolve tamanho antes/depois', async () => {
+    const { svc, tx } = montar();
+
+    const r = await svc.update(user, 'p1', {
+      substituir: [{ de: 'Boa noite! 😊 tudo bem?', para: 'Olá, tudo bem?' }],
+    } as never);
+
+    const gravado = (tx.botPrompt.update.mock.calls[0][0] as { data: { texto: string } }).data
+      .texto;
+    expect(gravado).toBe('linha 1\nOlá, tudo bem?\nlinha 3');
+    expect(r.tamanhoAntes).toBe(TEXTO.length);
+    expect(r.tamanhoDepois).toBe(gravado.length);
+  });
+
+  it('versiona: guarda snapshot do texto ANTIGO e sobe a versão', async () => {
+    const { svc, tx } = montar();
+
+    await svc.update(user, 'p1', {
+      substituir: [{ de: 'Boa noite! 😊 tudo bem?', para: 'Olá, tudo bem?' }],
+    } as never);
+
+    expect(
+      (tx.botPromptVersao.create.mock.calls[0][0] as { data: { texto: string } }).data.texto,
+    ).toBe(TEXTO);
+    expect((tx.botPrompt.update.mock.calls[0][0] as { data: { versao: number } }).data.versao).toBe(
+      2,
+    );
+  });
+
+  it('trecho ambíguo/inexistente: NÃO abre transação nenhuma', async () => {
+    const { svc, prisma } = montar();
+
+    await expect(
+      svc.update(user, 'p1', { substituir: [{ de: 'não existe', para: 'x' }] } as never),
+    ).rejects.toThrow(/não encontrado/i);
+    expect(prisma.$transaction).not.toHaveBeenCalled();
+  });
+
+  it('texto + substituir juntos: recusa (a intenção é ambígua)', async () => {
+    const { svc, prisma } = montar();
+
+    await expect(
+      svc.update(user, 'p1', {
+        texto: 'outro',
+        substituir: [{ de: 'linha 1', para: 'x' }],
+      } as never),
+    ).rejects.toThrow(/não os dois/i);
+    expect(prisma.$transaction).not.toHaveBeenCalled();
+  });
+});

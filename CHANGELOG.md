@@ -9,6 +9,32 @@ versionamento segue [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Não versionado] — 2026-08-19
 
+### ✏️ Editar prompt por TRECHO, em vez de reenviar o texto inteiro
+
+Trocar uma linha do prompt de prospecção exigia reenviar os 64 mil caracteres —
+não porque é caro, porque é **arriscado**: quem edita tem que reproduzir 754
+linhas verbatim, e uma linha comida no meio de um prompt de produção é bem pior
+que o erro que a edição conserta. Uma correção de emoji ficou parada por isso.
+
+`PATCH /mullerbot/prompts/:id` (e a tool `prompts_atualizar`) aceitam
+`substituir: [{ de, para }]`, com o contrato de um editor de arquivo:
+
+- cada `de` tem que casar **exatamente uma vez** — zero → erro dizendo que não
+  achou; duas ou mais → erro dizendo quantas. **Nunca "troca a primeira"**: um
+  prompt de 64k repete frase o tempo todo, e acertar a ocorrência errada em
+  silêncio é o pior desfecho possível;
+- **tudo ou nada** — a validação roda antes de qualquer escrita, então se a
+  segunda falhar a primeira não fica gravada (nem abre transação);
+- retorna `tamanhoAntes`/`tamanhoDepois`/`delta`, pra conferir a troca sem
+  baixar o prompt de volta;
+- versiona igual: o snapshot guarda o texto ANTIGO e a versão sobe;
+- `texto` completo continua aceito — mas junto com `substituir` é recusado, que
+  é intenção ambígua.
+
+O `para` é literal: `$&` e afins não viram referência de regex (`replace` com
+string as interpretaria, e prompt cheio de template tem `$` à vontade).
+
+
 ### 📊 Execução de teste não conta mais como resultado de produção
 
 O painel do T1 mostrava **0% de sucesso** com erro de nó, e o fluxo estava

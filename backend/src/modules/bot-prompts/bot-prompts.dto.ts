@@ -21,7 +21,26 @@ export const createBotPromptSchema = z.object({
 });
 export type CreateBotPromptDto = z.infer<typeof createBotPromptSchema>;
 
-export const updateBotPromptSchema = createBotPromptSchema.partial();
+/**
+ * Edição CIRÚRGICA do texto: troca trechos em vez de reenviar o prompt inteiro.
+ *
+ * Os prompts do projeto são grandes (o de prospecção passa de 64 mil caracteres)
+ * e as edições são quase sempre de uma linha — uma regra nova, uma URL, um
+ * exemplo errado. Exigir o texto completo pra isso não é caro, é ARRISCADO:
+ * quem edita tem que reproduzir centenas de linhas verbatim, e uma linha comida
+ * no meio de um prompt de produção é bem pior que o erro que a edição conserta.
+ *
+ * Contrato igual ao de um editor de arquivo: cada `de` tem que casar UMA vez.
+ * Zero → erro; duas ou mais → erro dizendo quantas. Nunca "troca a primeira".
+ */
+export const substituicaoPromptSchema = z.object({
+  de: z.string().min(1, 'Trecho a procurar não pode ser vazio'),
+  para: z.string(),
+});
+
+export const updateBotPromptSchema = createBotPromptSchema.partial().extend({
+  substituir: z.array(substituicaoPromptSchema).min(1).max(50).optional(),
+});
 export type UpdateBotPromptDto = z.infer<typeof updateBotPromptSchema>;
 
 export const listBotPromptsSchema = z.object({

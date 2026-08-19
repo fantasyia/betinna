@@ -2,9 +2,11 @@ import { Injectable, Logger } from '@nestjs/common';
 import { Prisma, type BotPrompt, type BotPromptVersao } from '@prisma/client';
 import { PrismaService } from '@database/prisma.service';
 import { BusinessRuleException, NotFoundException } from '@shared/errors/app-exception';
+import { ErrorCode } from '@shared/errors/error-codes';
 import { empresaFilter, getCallerEmpresaId } from '@shared/utils/auth-context';
 import type { AuthenticatedUser } from '@shared/types/authenticated-user';
 import type { CreateBotPromptDto, ListBotPromptsDto, UpdateBotPromptDto } from './bot-prompts.dto';
+import { SubstituicaoInvalidaError, aplicarSubstituicoes } from './substituir-texto.util';
 
 /**
  * Biblioteca de prompts do bot, por empresa (orquestração Fase A).
@@ -89,16 +91,43 @@ export class BotPromptsService {
     }
   }
 
-  async update(user: AuthenticatedUser, id: string, dto: UpdateBotPromptDto): Promise<BotPrompt> {
+  async update(
+    user: AuthenticatedUser,
+    id: string,
+    dto: UpdateBotPromptDto,
+  ): Promise<BotPrompt & { tamanhoAntes?: number; tamanhoDepois?: number }> {
     const existing = await this.findById(user, id);
+
+    // Edição por trecho: resolve pro texto final ANTES de qualquer escrita. Se
+    // alguma substituição não casar exatamente uma vez, lança aqui e nada é
+    // gravado — nem as substituições anteriores da mesma chamada.
+    const { substituir, ...campos } = dto;
+    let dados: Omit<UpdateBotPromptDto, 'substituir'> = campos;
+    if (substituir?.length) {
+      if (campos.texto !== undefined) {
+        throw new BusinessRuleException(
+          'Mande `texto` (substituição completa) OU `substituir` (edição por trecho), não os dois.',
+          ErrorCode.BUSINESS_RULE_VIOLATION,
+        );
+      }
+      try {
+        dados = { ...campos, texto: aplicarSubstituicoes(existing.texto, substituir) };
+      } catch (err) {
+        if (err instanceof SubstituicaoInvalidaError) {
+          throw new BusinessRuleException(err.message, ErrorCode.BUSINESS_RULE_VIOLATION);
+        }
+        throw err;
+      }
+    }
+
     // Versiona só quando o CONTEÚDO muda (texto/modelo/temperatura) — spec §7.
     const conteudoMudou =
-      (dto.texto !== undefined && dto.texto !== existing.texto) ||
-      (dto.modelo !== undefined && dto.modelo !== existing.modelo) ||
-      (dto.temperatura !== undefined && dto.temperatura !== existing.temperatura);
+      (dados.texto !== undefined && dados.texto !== existing.texto) ||
+      (dados.modelo !== undefined && dados.modelo !== existing.modelo) ||
+      (dados.temperatura !== undefined && dados.temperatura !== existing.temperatura);
     try {
       return await this.prisma.$transaction(async (tx) => {
-        if (dto.isPadrao) {
+        if (dados.isPadrao) {
           await tx.botPrompt.updateMany({
             where: { empresaId: existing.empresaId, isPadrao: true, id: { not: id } },
             data: { isPadrao: false },
@@ -119,9 +148,14 @@ export class BotPromptsService {
         }
         await tx.botPrompt.update({
           where: { id },
-          data: { ...dto, ...(conteudoMudou ? { versao: existing.versao + 1 } : {}) },
+          data: { ...dados, ...(conteudoMudou ? { versao: existing.versao + 1 } : {}) },
         });
-        return tx.botPrompt.findUniqueOrThrow({ where: { id } });
+        const salvo = await tx.botPrompt.findUniqueOrThrow({ where: { id } });
+        // Tamanho antes/depois quando a edição foi por trecho: é como quem
+        // editou confere que trocou o que queria sem baixar o prompt inteiro.
+        return substituir?.length
+          ? { ...salvo, tamanhoAntes: existing.texto.length, tamanhoDepois: salvo.texto.length }
+          : salvo;
       });
     } catch (err) {
       return this.rethrowUnique(err, dto.nome);

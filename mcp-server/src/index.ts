@@ -2155,11 +2155,25 @@ server.registerTool(
   {
     description:
       'Edita um prompt existente (o "up" do prompt na plataforma). Mudar o TEXTO versiona automaticamente ' +
-      '(rollback fica disponível no app). Passe só os campos a alterar. Exige escopo "prompts".',
+      '(rollback fica disponível no app). Passe só os campos a alterar. ' +
+      'Pra mudança CIRÚRGICA use `substituir` em vez de reenviar o texto inteiro — prompt grande ' +
+      'reenviado à mão é onde nasce linha comida. Exige escopo "prompts".',
     inputSchema: {
       promptId: z.string().describe('ID do prompt a editar'),
       nome: z.string().optional(),
-      texto: z.string().optional().describe('Novo conteúdo / system prompt'),
+      texto: z
+        .string()
+        .optional()
+        .describe('Substitui o prompt INTEIRO. Pra trocar uma linha, prefira `substituir`.'),
+      substituir: z
+        .array(z.object({ de: z.string(), para: z.string() }))
+        .optional()
+        .describe(
+          'Busca-e-substituição no texto atual, mesmo contrato de um editor de arquivo: cada `de` ' +
+            'tem que casar EXATAMENTE UMA vez. Zero ocorrências ou mais de uma → erro e NADA é ' +
+            'gravado (nem as substituições anteriores da mesma chamada). Inclua contexto ao redor ' +
+            'pra deixar único. Não pode vir junto com `texto`. Retorna tamanho antes/depois.',
+        ),
       descricao: z.string().optional(),
       modelo: z
         .string()
@@ -2191,6 +2205,7 @@ server.registerTool(
       promptId: string;
       nome?: string;
       texto?: string;
+      substituir?: Array<{ de: string; para: string }>;
       descricao?: string;
       modelo?: string;
       temperatura?: number;
@@ -2199,9 +2214,19 @@ server.registerTool(
         Object.entries(rest).filter(([, v]) => v !== undefined),
       );
       if (Object.keys(definidos).length === 0) {
-        return erro('Informe ao menos um campo (nome, texto, descricao, modelo ou temperatura).');
+        return erro(
+          'Informe ao menos um campo (nome, texto, substituir, descricao, modelo ou temperatura).',
+        );
       }
-      const p = await api.patch<PromptCompleto>(`/mullerbot/prompts/${promptId}`, definidos);
+      if (rest.texto !== undefined && rest.substituir?.length) {
+        return erro(
+          'Mande `texto` (substitui o prompt inteiro) OU `substituir` (troca trechos), não os dois.',
+        );
+      }
+      const p = await api.patch<PromptCompleto & { tamanhoAntes?: number; tamanhoDepois?: number }>(
+        `/mullerbot/prompts/${promptId}`,
+        definidos,
+      );
       // Devolve modelo/temperatura EFETIVOS: quem acabou de ajustar precisa ver
       // o que ficou valendo, não só "ok" (o backend pode normalizar/recusar).
       return ok({
@@ -2210,6 +2235,15 @@ server.registerTool(
         versao: p.versao,
         modelo: p.modelo ?? null,
         temperatura: p.temperatura ?? null,
+        // Tamanho antes/depois só vem na edição por trecho — é como conferir que
+        // a troca foi a esperada sem baixar o prompt inteiro de volta.
+        ...(p.tamanhoAntes !== undefined
+          ? {
+              tamanhoAntes: p.tamanhoAntes,
+              tamanhoDepois: p.tamanhoDepois,
+              delta: (p.tamanhoDepois ?? 0) - p.tamanhoAntes,
+            }
+          : {}),
       });
     },
   ),
