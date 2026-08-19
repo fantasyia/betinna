@@ -147,6 +147,12 @@ export class EvolutionService {
       instanceName: instance,
       integration: 'WHATSAPP-BAILEYS',
       qrcode: true,
+      // EXPLÍCITO, mesmo sendo o default do Evolution: no pareamento, NÃO
+      // importar o histórico do aparelho. A Inbox é o registro do atendimento
+      // feito pelo app — não um espelho do WhatsApp do celular. Sem isto, um
+      // re-pareamento enche o banco do Evolution de conversa antiga, e daí ela
+      // tem chance de vazar pra Inbox pelo poll.
+      syncFullHistory: false,
       ...(webhookUrl ? { webhook: this.webhookConfig(webhookUrl) } : {}),
     });
   }
