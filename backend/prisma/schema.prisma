@@ -320,6 +320,7 @@ model Empresa {
   kanbanBoards          KanbanBoard[]
   kanbanApiTokens       KanbanApiToken[]
   mesclagens            MesclagemContato[]
+  inboxLimpezas          InboxLimpeza[]
 
   @@index([ativo])
 }
@@ -1989,6 +1990,31 @@ model Conversation {
   @@index([empresaId, ultimaMsgEm])
   // Seed demo
   @@index([empresaId, isDemo])
+}
+
+/// Marca de LIMPEZA da Inbox por (empresa, canal).
+///
+/// Existe porque o tombstone de "conversa zerada" mora na PRÓPRIA Conversation
+/// — e a limpeza geral APAGA a Conversation. O tombstone morria junto, e a
+/// primeira reimportação (poll do Evolution, history sync do Baileys)
+/// ressuscitava tudo em segundos, com a conversa nascendo limpa de novo.
+///
+/// Esta linha SOBREVIVE à exclusão: qualquer mensagem com timestamp anterior a
+/// `em` é descartada na ingestão, para sempre.
+model InboxLimpeza {
+  id        String         @id @default(cuid())
+  empresaId String
+  canal     MessageChannel
+  /// Momento da limpeza — mensagem anterior a isto nunca mais entra.
+  em        DateTime       @default(now())
+  /// Quem mandou limpar (rastro; a limpeza é destrutiva).
+  usuarioId String?
+  criadoEm  DateTime       @default(now())
+
+  empresa Empresa @relation(fields: [empresaId], references: [id], onDelete: Cascade)
+
+  @@unique([empresaId, canal])
+  @@index([empresaId])
 }
 
 /// #25 — notas internas por conversa (anotações da equipe; o cliente não vê).

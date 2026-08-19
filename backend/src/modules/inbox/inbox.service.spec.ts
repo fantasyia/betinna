@@ -21,6 +21,12 @@ const fakeUser = (overrides: Partial<AuthenticatedUser> = {}): AuthenticatedUser
 });
 
 const makePrismaMock = () => ({
+  // Marca de LIMPEZA por empresa+canal — consultada em TODA mensagem entrante.
+  // Default: nunca limpou.
+  inboxLimpeza: {
+    findUnique: vi.fn().mockResolvedValue(null),
+    upsert: vi.fn().mockResolvedValue({}),
+  },
   // Religar o bot limpa a tag `triado` do lead (regra do Léo, 11/08).
   tag: { findUnique: vi.fn().mockResolvedValue({ id: 'tag-triado' }) },
   leadTag: { deleteMany: vi.fn().mockResolvedValue({ count: 1 }) },
@@ -34,6 +40,7 @@ const makePrismaMock = () => ({
     update: vi.fn(),
     updateMany: vi.fn(),
     findUniqueOrThrow: vi.fn(),
+    deleteMany: vi.fn().mockResolvedValue({ count: 0 }),
   },
   message: {
     findFirst: vi.fn(),
@@ -128,7 +135,10 @@ describe('InboxService.processarMensagemEntrante', () => {
   });
 
   it('tombstone "zerar": NÃO recria msg de history sync anterior ao zeramento', async () => {
-    const zeradasEm = new Date('2026-01-02T00:00:00Z');
+    // Datas RELATIVAS: além do tombstone existe um teto de IDADE na ingestão
+    // (30min) — com data fixa de meses atrás, o teto barraria antes e o teste
+    // passaria pelo motivo errado.
+    const zeradasEm = new Date(Date.now() - 5 * 60_000);
     prisma.cliente.findFirst.mockResolvedValueOnce(null);
     // upsertConversation: acha a conversa existente (com tombstone) e a devolve.
     prisma.conversation.findFirst.mockResolvedValueOnce({
@@ -147,7 +157,7 @@ describe('InboxService.processarMensagemEntrante', () => {
       tipo: 'TEXT',
       conteudo: 'mensagem antiga reentregue',
       externalId: 'wamid-old',
-      data: new Date('2026-01-01T12:00:00Z'), // anterior ao zeramento
+      data: new Date(Date.now() - 10 * 60_000), // anterior ao zeramento, dentro do teto
     });
 
     expect(r).toEqual({ conversationId: 'conv-1', messageId: '', duplicada: true });
@@ -155,7 +165,7 @@ describe('InboxService.processarMensagemEntrante', () => {
   });
 
   it('tombstone "zerar": mensagem NOVA (posterior) passa normalmente', async () => {
-    const zeradasEm = new Date('2026-01-02T00:00:00Z');
+    const zeradasEm = new Date(Date.now() - 5 * 60_000);
     prisma.cliente.findFirst.mockResolvedValueOnce(null);
     prisma.conversation.findFirst.mockResolvedValueOnce({
       id: 'conv-1',
@@ -175,7 +185,7 @@ describe('InboxService.processarMensagemEntrante', () => {
       tipo: 'TEXT',
       conteudo: 'mensagem nova depois de zerar',
       externalId: 'wamid-novo',
-      data: new Date('2026-01-03T09:00:00Z'), // posterior ao zeramento
+      data: new Date(), // posterior ao zeramento
     });
 
     expect(r.duplicada).toBe(false);
@@ -1038,5 +1048,124 @@ describe('InboxService — religar o bot limpa a tag `triado`', () => {
     await expect(
       svc.religarBot(fakeUser({ role: 'ADMIN' as UserRole }), 'conv-1'),
     ).resolves.toBeDefined();
+  });
+});
+
+/**
+ * INCIDENTE 18/08 — "apaguei todas as conversas do WhatsApp e elas voltaram".
+ *
+ * A trilha do banco: limpeza às 21:53:24, conversas recriadas às 21:54:00 — 36
+ * segundos depois, com as mensagens de 21:45–21:47 dentro.
+ *
+ * Causa: o tombstone que impede reimportação mora na PRÓPRIA Conversation, e a
+ * limpeza geral APAGA a Conversation. O tombstone ia junto. O poll de fallback
+ * do Evolution (a cada minuto, janela de 45s a 12min) reimportou tudo em
+ * conversas novas — sem tombstone, prontas pra ressuscitar de novo.
+ */
+describe('InboxService — marca de limpeza e teto de histórico', () => {
+  let prisma: ReturnType<typeof makePrismaMock>;
+  let svc: InboxService;
+
+  const entrante = (over: Record<string, unknown> = {}) => ({
+    empresaId: 'emp-1',
+    canal: 'WHATSAPP' as const,
+    peerId: '5511988887777@s.whatsapp.net',
+    tipo: 'TEXT' as const,
+    conteudo: 'oi',
+    externalId: `wamid-${Math.random()}`,
+    data: new Date(),
+    ...over,
+  });
+
+  beforeEach(() => {
+    prisma = makePrismaMock();
+    svc = new InboxService(
+      prisma as never,
+      new CanalAdapterRegistry(),
+      { get: () => 24 } as never,
+      { publicar: () => Promise.resolve() } as never,
+      {
+        criarParaUsuario: () => Promise.resolve(null),
+        criarParaRole: () => Promise.resolve(0),
+      } as never,
+    );
+  });
+
+  it('mensagem ANTERIOR à limpeza é descartada — mesmo sem conversa existir', async () => {
+    // O cenário exato do incidente: a conversa foi apagada, então não há
+    // tombstone nenhum pra consultar. A marca por EMPRESA é o que segura.
+    prisma.inboxLimpeza.findUnique.mockResolvedValue({ em: new Date(Date.now() - 60_000) });
+
+    const r = await svc.processarMensagemEntrante(
+      entrante({ data: new Date(Date.now() - 8 * 60_000) }) as never,
+    );
+
+    expect(r.duplicada).toBe(true);
+    expect(prisma.message.create).not.toHaveBeenCalled();
+    expect(prisma.conversation.create).not.toHaveBeenCalled();
+  });
+
+  it('mensagem POSTERIOR à limpeza entra normalmente (não trava o número)', async () => {
+    prisma.inboxLimpeza.findUnique.mockResolvedValue({ em: new Date(Date.now() - 10 * 60_000) });
+    prisma.cliente.findFirst.mockResolvedValueOnce(null);
+    prisma.conversation.findFirst.mockResolvedValueOnce({ id: 'conv-1' });
+    prisma.conversation.update.mockResolvedValue({ id: 'conv-1' });
+    prisma.message.create.mockResolvedValueOnce({ id: 'msg-1', criadoEm: new Date() });
+
+    const r = await svc.processarMensagemEntrante(entrante() as never);
+
+    expect(r.duplicada).toBe(false);
+    expect(prisma.message.create).toHaveBeenCalled();
+  });
+
+  it('mensagem VELHA é descartada mesmo sem nunca ter havido limpeza (history sync)', async () => {
+    prisma.inboxLimpeza.findUnique.mockResolvedValue(null);
+
+    const r = await svc.processarMensagemEntrante(
+      entrante({ data: new Date(Date.now() - 3 * 60 * 60_000) }) as never, // 3h atrás
+    );
+
+    expect(r.duplicada).toBe(true);
+    expect(prisma.message.create).not.toHaveBeenCalled();
+  });
+
+  it('o teto NÃO atrapalha a recuperação do poll (janela de 45s a 12min)', async () => {
+    prisma.inboxLimpeza.findUnique.mockResolvedValue(null);
+    prisma.cliente.findFirst.mockResolvedValueOnce(null);
+    prisma.conversation.findFirst.mockResolvedValueOnce({ id: 'conv-1' });
+    prisma.conversation.update.mockResolvedValue({ id: 'conv-1' });
+    prisma.message.create.mockResolvedValueOnce({ id: 'msg-1', criadoEm: new Date() });
+
+    const r = await svc.processarMensagemEntrante(
+      entrante({ data: new Date(Date.now() - 11 * 60_000) }) as never,
+    );
+
+    expect(r.duplicada).toBe(false);
+  });
+
+  it('limpar WhatsApp GRAVA a marca — é o que faz a exclusão colar', async () => {
+    prisma.conversation.findMany.mockResolvedValue([{ id: 'c1' }, { id: 'c2' }]);
+    prisma.message.deleteMany.mockResolvedValue({ count: 9 });
+    prisma.conversation.deleteMany.mockResolvedValue({ count: 2 });
+
+    await svc.limparWhatsapp(fakeUser());
+
+    expect(prisma.inboxLimpeza.upsert).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { empresaId_canal: { empresaId: 'emp-1', canal: 'WHATSAPP' } },
+      }),
+    );
+  });
+
+  it('mensagem sem timestamp não é barrada (tempo real sem data confiável)', async () => {
+    prisma.inboxLimpeza.findUnique.mockResolvedValue({ em: new Date() });
+    prisma.cliente.findFirst.mockResolvedValueOnce(null);
+    prisma.conversation.findFirst.mockResolvedValueOnce({ id: 'conv-1' });
+    prisma.conversation.update.mockResolvedValue({ id: 'conv-1' });
+    prisma.message.create.mockResolvedValueOnce({ id: 'msg-1', criadoEm: new Date() });
+
+    const r = await svc.processarMensagemEntrante(entrante({ data: undefined }) as never);
+
+    expect(r.duplicada).toBe(false);
   });
 });

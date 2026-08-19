@@ -75,6 +75,42 @@ type ConversationComSla = Omit<ConversationListRow, 'mensagens'> & {
 export class InboxService {
   private readonly logger = new Logger(InboxService.name);
 
+  /**
+   * Cache curto da MARCA DE LIMPEZA por (empresa, canal).
+   *
+   * A checagem roda em TODA mensagem entrante — o caminho mais quente do app.
+   * A marca muda no máximo algumas vezes por ano; 60s de staleness é
+   * irrelevante e evita uma consulta por mensagem.
+   */
+  private readonly limpezaCache = new Map<string, { em: Date | null; expiraEm: number }>();
+  private static readonly LIMPEZA_TTL_MS = 60_000;
+
+  /**
+   * Idade MÁXIMA de uma mensagem pra ser ingerida.
+   *
+   * O poll de fallback do Evolution existe pra recuperar o que o webhook
+   * perdeu, e trabalha numa janela de 45s a 12min. Qualquer coisa mais velha
+   * que isto não é recuperação: é HISTÓRICO — o `messaging-history.set` do
+   * Baileys e o sync inicial do Evolution despejam conversas de dias atrás a
+   * cada reconexão. 30min dá folga ao poll e mata o histórico.
+   */
+  private static readonly IDADE_MAX_INGESTAO_MS = 30 * 60_000;
+
+  /** Marca de limpeza vigente da empresa/canal (null = nunca limpou). */
+  private async marcaDeLimpeza(empresaId: string, canal: MessageChannel): Promise<Date | null> {
+    const chave = `${empresaId}:${canal}`;
+    const hit = this.limpezaCache.get(chave);
+    if (hit && hit.expiraEm > Date.now()) return hit.em;
+    const row = await this.prisma.inboxLimpeza
+      .findUnique({ where: { empresaId_canal: { empresaId, canal } }, select: { em: true } })
+      .catch(() => null);
+    this.limpezaCache.set(chave, {
+      em: row?.em ?? null,
+      expiraEm: Date.now() + InboxService.LIMPEZA_TTL_MS,
+    });
+    return row?.em ?? null;
+  }
+
   constructor(
     private readonly prisma: PrismaService,
     private readonly registry: CanalAdapterRegistry,
@@ -283,8 +319,24 @@ export class InboxService {
       where: { conversationId: { in: ids } },
     });
     const cs = await this.prisma.conversation.deleteMany({ where: { id: { in: ids } } });
+
+    // MARCA DE LIMPEZA — o que faz a exclusão colar.
+    //
+    // O tombstone de "conversa zerada" mora na própria Conversation, e esta
+    // função APAGA a Conversation: o tombstone ia junto. Em produção (18/08) o
+    // poll do Evolution reimportou tudo 36 SEGUNDOS depois, criando conversas
+    // novas e limpas — a exclusão parecia funcionar e desfazia sozinha.
+    // Esta marca sobrevive à exclusão e barra qualquer mensagem anterior a ela.
+    await this.prisma.inboxLimpeza.upsert({
+      where: { empresaId_canal: { empresaId, canal: 'WHATSAPP' } },
+      create: { empresaId, canal: 'WHATSAPP', em: new Date(), usuarioId: user.id },
+      update: { em: new Date(), usuarioId: user.id },
+    });
+    this.limpezaCache.delete(`${empresaId}:WHATSAPP`);
+
     this.logger.warn(
-      `[inbox] LIMPOU WhatsApp empresa=${empresaId}: ${cs.count} conversas + ${msgs.count} msgs (por ${user.email})`,
+      `[inbox] LIMPOU WhatsApp empresa=${empresaId}: ${cs.count} conversas + ${msgs.count} msgs (por ${user.email}) — ` +
+        'marca de limpeza gravada: mensagem anterior a agora não entra mais',
     );
     return { conversas: cs.count, mensagens: msgs.count };
   }
@@ -1147,6 +1199,34 @@ export class InboxService {
   async processarMensagemEntrante(
     params: MensagemEntranteParams,
   ): Promise<{ conversationId: string; messageId: string; duplicada: boolean }> {
+    // ── PORTEIRO DE HISTÓRICO ────────────────────────────────────────────
+    // Duas travas, ANTES de qualquer coisa — as duas nasceram do mesmo
+    // incidente: apagar todas as conversas de WhatsApp e vê-las voltar 36
+    // segundos depois, com as mensagens antigas dentro.
+    if (params.data) {
+      // (1) MARCA DE LIMPEZA — vale por empresa+canal e sobrevive à exclusão
+      // das conversas. Sem ela, o tombstone morria junto com a linha apagada.
+      const limpezaEm = await this.marcaDeLimpeza(params.empresaId, params.canal);
+      if (limpezaEm && params.data <= limpezaEm) {
+        this.logger.debug(
+          `[inbox] descartada msg anterior à limpeza (${params.canal}, ${params.data.toISOString()} <= ${limpezaEm.toISOString()})`,
+        );
+        return { conversationId: '', messageId: '', duplicada: true };
+      }
+      // (2) IDADE MÁXIMA — recuperar mensagem perdida é uma coisa (o poll
+      // trabalha em 45s–12min); despejar conversa de dias atrás a cada
+      // reconexão é outra. Acima do teto não é recuperação, é histórico.
+      const idade = Date.now() - params.data.getTime();
+      if (idade > InboxService.IDADE_MAX_INGESTAO_MS) {
+        this.logger.debug(
+          `[inbox] descartada msg de histórico (${Math.round(idade / 60_000)}min, teto ${
+            InboxService.IDADE_MAX_INGESTAO_MS / 60_000
+          }min)`,
+        );
+        return { conversationId: '', messageId: '', duplicada: true };
+      }
+    }
+
     // Idempotência: se já temos mensagem com mesmo externalId nessa conversa
     // (mesmo proprietário/sessão), retornar. Diferentes proprietários podem ter
     // o mesmo peer com IDs diferentes — então o escopo da idempotência inclui

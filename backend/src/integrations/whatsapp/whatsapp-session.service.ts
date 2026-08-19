@@ -107,6 +107,13 @@ export function extrairTextoProfundo(obj: unknown, profundidade = 0): string | u
  *  - Grupos e broadcasts são ignorados (apenas 1:1)
  *  - Mídia recebida tem placeholder no conteúdo
  */
+/**
+ * Teto de idade do history sync do Baileys. Precisa ser <= ao teto de ingestão
+ * do InboxService (30min) — aqui é só pra não percorrer centenas de mensagens
+ * que seriam descartadas uma a uma depois.
+ */
+const IDADE_MAX_HISTORICO_MS = 30 * 60_000;
+
 @Injectable()
 export class WhatsAppSessionService implements OnModuleInit, OnModuleDestroy {
   private readonly logger = new Logger(WhatsAppSessionService.name);
@@ -725,9 +732,10 @@ export class WhatsAppSessionService implements OnModuleInit, OnModuleDestroy {
     });
 
     sock.ev.on('messages.upsert', (u) => {
-      // Aceita tanto 'notify' (tempo real) quanto 'append' (history sync após
-      // reconnect — ex: deploy Railway que restarta container). Idempotência
-      // por externalId garante que não duplica nada.
+      // 'notify' = tempo real. 'append' = history sync do reconnect: cobre o que
+      // chegou durante um downtime. O porteiro do InboxService descarta o que
+      // for mais velho que o teto de ingestão, então 'append' só entrega o que
+      // é de fato recente.
       if (u.type !== 'notify' && u.type !== 'append') return;
       void this.handleMensagensEntrantes(ctx, u.messages).catch((err) => {
         const m = err instanceof Error ? err.message : String(err);
@@ -735,15 +743,30 @@ export class WhatsAppSessionService implements OnModuleInit, OnModuleDestroy {
       });
     });
 
-    // Após reconnect, Baileys emite messaging-history.set com TODAS as msgs
-    // recentes (últimas N do servidor WhatsApp). Crítico pra cobrir mensagens
-    // que chegaram durante o downtime (redeploy Railway). Idempotência por
-    // externalId previne duplicação das que a gente já tem.
+    // Após reconnect, Baileys emite messaging-history.set com as mensagens
+    // recentes do servidor WhatsApp — inclusive de DIAS atrás. Serve pra cobrir
+    // um downtime curto (redeploy), mas despejar histórico velho na Inbox é
+    // exatamente o que não se quer: conversa que o operador apagou reaparece, e
+    // contato que nunca falou com a gente pelo app vira conversa do nada.
+    //
+    // Filtramos AQUI, antes de processar: o porteiro do InboxService descartaria
+    // uma a uma, mas aí seriam centenas de mensagens percorridas a cada
+    // reconexão só pra jogar fora.
     sock.ev.on('messaging-history.set', (h) => {
-      const msgs = Array.isArray(h.messages) ? h.messages : [];
+      const todas = Array.isArray(h.messages) ? h.messages : [];
+      const corte = Date.now() - IDADE_MAX_HISTORICO_MS;
+      const msgs = todas.filter((m) => {
+        const ts = m.messageTimestamp ? Number(m.messageTimestamp) * 1000 : 0;
+        return ts > 0 && ts >= corte;
+      });
+      if (todas.length > msgs.length) {
+        this.logger.log(
+          `[${ownerKey(ctx.owner)}] history sync: ${todas.length - msgs.length} mensagem(ns) ANTIGAS descartadas (histórico não entra na Inbox)`,
+        );
+      }
       if (msgs.length > 0) {
         this.logger.log(
-          `[${ownerKey(ctx.owner)}] history sync: ${msgs.length} mensagens (syncType=${h.syncType ?? '?'}, isLatest=${h.isLatest ?? '?'})`,
+          `[${ownerKey(ctx.owner)}] history sync: ${msgs.length} mensagens recentes (syncType=${h.syncType ?? '?'}, isLatest=${h.isLatest ?? '?'})`,
         );
         void this.handleMensagensEntrantes(ctx, msgs).catch((err) => {
           const m = err instanceof Error ? err.message : String(err);
