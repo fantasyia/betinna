@@ -611,6 +611,13 @@ export class FluxoExecutorService {
             segmento: true,
             score: true,
             etapa: true,
+            // Porta de entrada e formulário que converteu. Existiam no banco e
+            // NUNCA chegavam ao contexto — então a CONDICAO não conseguia
+            // separar "veio do orçamento industrial" de "veio do checkout NI",
+            // e sobrava comparar `segmento`, que é texto livre. Texto livre em
+            // condição é a mesma armadilha da etapa comparada por nome.
+            origemCadastro: true,
+            formularioOrigem: true,
             variaveis: true,
             funilId: true,
             funilEtapaId: true,
@@ -632,6 +639,11 @@ export class FluxoExecutorService {
             uf: lead.uf ?? '',
             segmento: lead.segmento ?? '',
             score: lead.score,
+            // Estáveis pra CONDICAO: valores de vocabulário controlado
+            // (site|meta_lead_ads|…, contato|calculadora|seletor|…), não texto
+            // digitado. Use ESTES pra rotear por origem — nunca `segmento`.
+            origem: lead.origemCadastro ?? '',
+            formulario: lead.formularioOrigem ?? '',
             etapa_atual: lead.funilEtapa?.nome ?? lead.etapa,
             // IDs pra CONDICAO comparar de forma ESTÁVEL. `etapa_atual`/`funil`
             // são NOME e quebram silenciosamente quando alguém renomeia a etapa
