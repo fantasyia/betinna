@@ -2728,13 +2728,27 @@ server.registerTool(
   },
   seguro(async (args: { search?: string }) => {
     const qs = args.search ? `?search=${encodeURIComponent(args.search)}` : '';
-    const r = await api.get<
-      | Array<{ id: string; nome: string; cor?: string; _count?: { clientes?: number } }>
-      | { data?: Array<{ id: string; nome: string; cor?: string; _count?: { clientes?: number } }> }
-    >(`/tags${qs}`);
+    type TagApi = {
+      id: string;
+      nome: string;
+      cor?: string;
+      categoria?: string | null;
+      _count?: { clientes?: number; leads?: number };
+    };
+    const r = await api.get<TagApi[] | { data?: TagApi[] }>(`/tags${qs}`);
     const arr = Array.isArray(r) ? r : (r?.data ?? []);
+    // LEADS e clientes são contagens separadas. Mostrar só `clientes` faria uma
+    // tag com 315 leads aparecer como "0 usos" — e a master decidiria renomear
+    // ou apagar achando que não tem ninguém nela.
     return ok(
-      arr.map((t) => ({ id: t.id, nome: t.nome, cor: t.cor, usos: t._count?.clientes ?? 0 })),
+      arr.map((t) => ({
+        id: t.id,
+        nome: t.nome,
+        cor: t.cor,
+        categoria: t.categoria ?? null,
+        leads: t._count?.leads ?? 0,
+        clientes: t._count?.clientes ?? 0,
+      })),
     );
   }),
 );
