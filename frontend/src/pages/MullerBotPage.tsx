@@ -140,15 +140,29 @@ export default function MullerBotPage() {
   // sessionId persiste em localStorage pra contexto multi-turn sobreviver
   // a reload. "Nova conversa" rotaciona via rotateSessionId.
   const [sessionId, setSessionId] = useState<string>(() => loadOrCreateSessionId());
-  const endRef = useRef<HTMLDivElement | null>(null);
+  // Ref na LISTA, não num marcador no fim dela: a rolagem tem que acontecer
+  // DENTRO do painel de mensagens. Ver o efeito abaixo.
+  const listaRef = useRef<HTMLDivElement | null>(null);
   // CAÇADA-BUG #8: guard síncrono anti-duplo-envio (Ctrl+Enter rápido = 2 chamadas OpenAI/custo).
   const busyRef = useRef(false);
 
   useEffect(() => {
     saveHistory(history);
   }, [history]);
+  // Desce o painel de mensagens até o fim.
+  //
+  // Era um scrollIntoView num marcador no fim da lista, e isso comia o
+  // cabeçalho: o scrollIntoView não rola só o container com overflow — rola
+  // TODOS os ancestrais necessários pra trazer o elemento à vista, inclusive a
+  // página. Como o efeito também roda na montagem (o histórico vem do
+  // localStorage), abrir o Assistente já entrava com o título "SomaBOT" e a
+  // descrição fora da tela.
+  //
+  // Mexer no scrollTop do próprio painel faz o que se queria desde o início e
+  // não tem como tocar no scroll da página.
   useEffect(() => {
-    endRef.current?.scrollIntoView({ behavior: 'smooth' });
+    const lista = listaRef.current;
+    if (lista) lista.scrollTop = lista.scrollHeight;
   }, [history]);
 
   async function enviar(e?: React.FormEvent, customQ?: string) {
@@ -254,7 +268,7 @@ export default function MullerBotPage() {
           className="flex flex-col overflow-hidden"
           style={{ height: 'calc(100vh - 220px)', minHeight: 500 }}
         >
-          <div className="flex-1 overflow-y-auto px-4 py-4 bg-bg">
+          <div ref={listaRef} className="flex-1 overflow-y-auto px-4 py-4 bg-bg">
             {history.length === 0 ? (
               <EmptyChat onSuggest={(q) => void enviar(undefined, q)} />
             ) : (
@@ -320,7 +334,6 @@ export default function MullerBotPage() {
                 ))}
               </ul>
             )}
-            <div ref={endRef} />
           </div>
 
           {/* Compose */}
