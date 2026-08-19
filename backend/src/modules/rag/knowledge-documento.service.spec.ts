@@ -24,6 +24,9 @@ const makePrisma = () => ({
     updateMany: vi.fn().mockResolvedValue({ count: 23 }),
     findMany: vi.fn().mockResolvedValue([]),
     update: vi.fn(),
+    // O PATCH devolve a contagem REAL de ativos junto — senão a resposta
+    // afirmaria "ainda é fonte" logo depois de desligar.
+    count: vi.fn().mockResolvedValue(0),
   },
 });
 
@@ -90,5 +93,16 @@ describe('KnowledgeDocumentoService — fonte de resposta vs anexar arquivo', ()
       svc.atualizar(user, 'de-outro', { usarComoFonte: false } as never),
     ).rejects.toThrow();
     expect(prisma.knowledgeChunk.updateMany).not.toHaveBeenCalled();
+  });
+
+  it('a resposta do PATCH reflete o estado REAL (não o total de trechos)', async () => {
+    // O bug que isto trava: a resposta era montada a partir do total de trechos,
+    // que NÃO muda ao desligar a fonte. Desligar o playbook respondia
+    // "usaComoFonte: true" — e o operador conclui que o toggle não pegou.
+    prisma.knowledgeChunk.count.mockResolvedValue(0);
+
+    const r = await svc.atualizar(user, 'doc-1', { usarComoFonte: false } as never);
+
+    expect(r.chunksAtivos).toBe(0);
   });
 });

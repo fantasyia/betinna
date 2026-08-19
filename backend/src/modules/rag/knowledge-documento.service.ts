@@ -154,7 +154,7 @@ export class KnowledgeDocumentoService {
     user: AuthenticatedUser,
     id: string,
     dto: UpdateKnowledgeDocumentoDto,
-  ): Promise<KnowledgeDocumento> {
+  ): Promise<KnowledgeDocumento & { chunksAtivos: number }> {
     const empresaId = this.requireEmpresa(user);
     const existing = await this.prisma.knowledgeDocumento.findFirst({ where: { id, empresaId } });
     if (!existing) throw new NotFoundException('Documento', id);
@@ -182,7 +182,18 @@ export class KnowledgeDocumentoService {
     if (dto.titulo && dto.titulo !== existing.titulo) {
       await this.renomearChunks(id, dto.titulo);
     }
-    return this.prisma.knowledgeDocumento.findUniqueOrThrow({ where: { id } });
+    // Devolve TAMBÉM a contagem de trechos ativos.
+    //
+    // Sem isto a resposta do PATCH mentia: quem lê o retorno (MCP, front)
+    // deduzia "é fonte?" pelo total de trechos, e o total não muda quando se
+    // desliga a fonte. Resultado: desligar o playbook respondia
+    // `usaComoFonte: true` logo depois de desligar — o operador conclui que o
+    // toggle não pegou e desliga de novo, ou pior, acredita e segue.
+    const [doc, chunksAtivos] = await Promise.all([
+      this.prisma.knowledgeDocumento.findUniqueOrThrow({ where: { id } }),
+      this.prisma.knowledgeChunk.count({ where: { documentoId: id, ativo: true } }),
+    ]);
+    return { ...doc, chunksAtivos };
   }
 
   private async renomearChunks(documentoId: string, titulo: string): Promise<void> {
