@@ -15,6 +15,7 @@ import { ResendService } from '@integrations/resend/resend.service';
 import type { ConectarDto, ListConexoesDto } from './integracoes.dto';
 import { servicoRequerDirector, type ServicoEmpresa } from './integracoes.constants';
 import { IntegracaoStatusService } from './integracao-status.service';
+import { EvolutionService } from '@integrations/evolution/evolution.service';
 
 /** Mascara o local-part de um e-mail pra exibição (contato@x → co***@x). */
 function mascararEmail(email: string): string {
@@ -70,6 +71,10 @@ export class IntegracoesService {
     private readonly status: IntegracaoStatusService,
     private readonly resend: ResendService,
     private readonly redis: RedisService,
+    // Só pra CONSULTAR o estado do número quando o provider é o Evolution —
+    // ver reconciliarWhatsapp. EvolutionService não depende deste módulo
+    // (só de http/env/redis), então não fecha ciclo.
+    private readonly evolution: EvolutionService,
   ) {
     this.crypto = new CryptoUtil(env.get('ENCRYPTION_KEY'));
   }
@@ -208,7 +213,41 @@ export class IntegracoesService {
       where,
       orderBy: { servico: 'asc' },
     });
-    return items.map((c) => this.toPublic(c));
+    return this.reconciliarWhatsapp(
+      empresaId,
+      items.map((c) => this.toPublic(c)),
+    );
+  }
+
+  /**
+   * O `ativo` da linha `IntegracaoConexao` do WhatsApp descreve a sessão do
+   * BAILEYS. Com `WHATSAPP_PROVIDER=evolution`, quem sabe se o número está
+   * pareado é o Evolution — a linha fica `ativo: false` (ou nem existe) e a tela
+   * de Integrações dizia "não conectado" com o WhatsApp funcionando.
+   *
+   * Aqui a linha é reconciliada com o provider que está DE FATO no ar, que é a
+   * mesma fonte que a tela `/whatsapp` já consultava. Duas telas do mesmo app
+   * discordando sobre a mesma conexão é o tipo de coisa que faz alguém reparear
+   * um número que estava ótimo.
+   *
+   * Best-effort: se o Evolution não responder, devolve a linha como está — a
+   * lista de integrações não pode cair por causa disso.
+   */
+  private async reconciliarWhatsapp(
+    empresaId: string,
+    conexoes: ConexaoPublica[],
+  ): Promise<ConexaoPublica[]> {
+    if (this.env.get('WHATSAPP_PROVIDER') !== 'evolution') return conexoes;
+    const idx = conexoes.findIndex((c) => c.servico === 'whatsapp');
+    if (idx < 0) return conexoes;
+    try {
+      const instancia = EvolutionService.instanceName({ type: 'EMPRESA', id: empresaId });
+      const conectado = await this.evolution.estaSaudavel(instancia);
+      conexoes[idx] = { ...conexoes[idx], ativo: conectado };
+    } catch {
+      /* provider fora do ar: mantém o que está gravado */
+    }
+    return conexoes;
   }
 
   async findByServico(
@@ -219,7 +258,9 @@ export class IntegracoesService {
     const c = await this.prisma.integracaoConexao.findUnique({
       where: { empresaId_servico: { empresaId, servico } },
     });
-    return c ? this.toPublic(c) : null;
+    if (!c) return null;
+    const [reconciliada] = await this.reconciliarWhatsapp(empresaId, [this.toPublic(c)]);
+    return reconciliada;
   }
 
   /**

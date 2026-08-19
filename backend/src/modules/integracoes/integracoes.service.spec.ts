@@ -582,3 +582,72 @@ describe('IntegracoesService', () => {
     });
   });
 });
+
+/**
+ * O `ativo` gravado descreve a sessão do BAILEYS. Com o provider em Evolution,
+ * quem sabe se o número está pareado é o Evolution — e a tela de Integrações
+ * dizia "não conectado" com o WhatsApp funcionando, enquanto a tela /whatsapp
+ * (que já consultava o provider) dizia conectado. Duas telas do mesmo app
+ * discordando sobre a mesma conexão.
+ */
+describe('IntegracoesService — status do WhatsApp segue o provider ativo', () => {
+  const user = { id: 'u1', role: 'DIRECTOR', empresaIdAtiva: 'emp-1' } as never;
+
+  const montar = (provider: string, saudavel: boolean, ativoGravado = false) => {
+    const prisma = {
+      integracaoConexao: {
+        findMany: vi.fn().mockResolvedValue([
+          {
+            id: 'c1',
+            empresaId: 'emp-1',
+            servico: 'whatsapp',
+            ativo: ativoGravado,
+            credenciais: 'x',
+            criadoEm: new Date(),
+            atualizadoEm: new Date(),
+          },
+        ]),
+        findUnique: vi.fn(),
+      },
+    };
+    const evolution = { estaSaudavel: vi.fn().mockResolvedValue(saudavel) };
+    const svc = new IntegracoesService(
+      prisma as never,
+      {
+        get: (k: string) =>
+          k === 'ENCRYPTION_KEY' ? '0'.repeat(64) : k === 'WHATSAPP_PROVIDER' ? provider : '',
+      } as never,
+      {} as never,
+      {} as never,
+      {} as never,
+      evolution as never,
+    );
+    return { svc, evolution };
+  };
+
+  it('Evolution pareado: aparece CONECTADO mesmo com a linha do Baileys em false', async () => {
+    const { svc } = montar('evolution', true);
+    const [wa] = await svc.list(user, {} as never);
+    expect(wa.ativo).toBe(true);
+  });
+
+  it('Evolution deslogado: aparece DESCONECTADO mesmo com a linha em true', async () => {
+    const { svc } = montar('evolution', false, true);
+    const [wa] = await svc.list(user, {} as never);
+    expect(wa.ativo).toBe(false);
+  });
+
+  it('provider Baileys: NÃO consulta o Evolution — a linha é a verdade', async () => {
+    const { svc, evolution } = montar('baileys', true, false);
+    const [wa] = await svc.list(user, {} as never);
+    expect(evolution.estaSaudavel).not.toHaveBeenCalled();
+    expect(wa.ativo).toBe(false);
+  });
+
+  it('Evolution fora do ar: mantém o gravado em vez de derrubar a lista', async () => {
+    const { svc, evolution } = montar('evolution', true, true);
+    evolution.estaSaudavel.mockRejectedValue(new Error('evolution down'));
+    const [wa] = await svc.list(user, {} as never);
+    expect(wa.ativo).toBe(true);
+  });
+});
