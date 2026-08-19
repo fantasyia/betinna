@@ -9,6 +9,48 @@ versionamento segue [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Não versionado] — 2026-08-19
 
+### 📊 Execução de teste não conta mais como resultado de produção
+
+O painel do T1 mostrava **0% de sucesso** com erro de nó, e o fluxo estava
+PAUSADO — nunca tinha visto mensagem real. As duas execuções vinham do botão de
+testar. O número mandou alguém caçar um bug que não existia.
+
+**`FluxoExecucao.teste` virou coluna** (migration + backfill do que já estava
+gravado com `_teste` no contexto). Coluna e não filtro por JSON de propósito:
+excluir por caminho JSON no Postgres tropeça em NULL — `NOT (contexto->'_teste'
+= 'true')` é NULL quando a chave não existe, e a linha some. O filtro esconderia
+exatamente as execuções de PRODUÇÃO.
+
+Agora ficam de fora do que é resultado: métricas do fluxo, contadores do Monitor,
+"N execuções" do card, e o histórico (que abre em **Produção** por padrão, com
+abas Produção / Testes / Todas e selo 🧪 em cada execução de teste). As métricas
+devolvem `testes` à parte, pra tela poder dizer "não rodou ainda (N testes)" em
+vez de "0% de sucesso".
+
+### 🧪 Dá pra testar fluxo de WhatsApp contra uma conversa real
+
+Todo fluxo com `MENSAGEM_CANAL` + `CRIAR_LEAD` falhava **sempre** no teste: o
+teste não simula conversa, `conversationId` vinha vazio e o nó morria. Ou seja,
+o T1 — porta de entrada de todo o inbound — era justamente o que a ferramenta de
+teste não alcançava.
+
+- `fluxos_testar` aceita `conversationId` e semeia o contexto **no formato do
+  evento real** (canal/conversationId/texto/leadId/proprietarioId), a partir da
+  conversa escolhida. Copiar o formato importa: teste com contexto diferente do
+  de produção valida o fluxo errado.
+- Sem conversa, e com nó que exige uma (`CRIAR_LEAD`, `TRANSFERIR_ATENDIMENTO`,
+  `PAUSAR_IA`), **recusa antes de criar a execução**, nomeando o nó e dizendo o
+  que fazer. Melhor recusar do que gerar um FALHOU que não diz nada.
+- A mensagem de erro do nó parou de mandar consertar o que estava certo: agora
+  separa "em produção = gatilho errado" de "num teste = teste sem conversa".
+
+### 🕰️ Passo de versão anterior do grafo fica marcado no histórico
+
+Reescrever um fluxo regenera os ids dos nós, então um erro antigo apontava pra um
+nó que não existe mais e mandava a pessoa procurar um passo que sumiu. O painel
+agora marca "· versão anterior" quando o `noId` do log não está no grafo atual.
+
+
 ### 🏷️ Selo de regra de envio no nó do fluxo
 
 A janela e o teto moram no pacing — decisão certa, mas deixa a regra **invisível

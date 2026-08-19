@@ -1590,7 +1590,9 @@ export class FluxoExecutorService {
     const conversationId = ctx['conversationId'] as string | undefined;
     if (!conversationId) {
       throw new Error(
-        'contexto.conversationId ausente para CRIAR_LEAD — use o gatilho "Chegou mensagem num canal"',
+        'contexto.conversationId ausente para CRIAR_LEAD. Em produção isso quer dizer gatilho errado ' +
+          '(use "Chegou mensagem num canal"); num TESTE quer dizer que o teste rodou sem ' +
+          'conversa — informe uma conversa existente ao testar.',
       );
     }
     const conversa = await this.prisma.conversation.findFirst({
@@ -1802,7 +1804,9 @@ export class FluxoExecutorService {
     const conversationId = ctx['conversationId'] as string | undefined;
     if (!conversationId) {
       throw new Error(
-        'contexto.conversationId ausente para TRANSFERIR_ATENDIMENTO — use o gatilho "Chegou mensagem num canal"',
+        'contexto.conversationId ausente para TRANSFERIR_ATENDIMENTO. Em produção isso quer dizer gatilho errado ' +
+          '(use "Chegou mensagem num canal"); num TESTE quer dizer que o teste rodou sem ' +
+          'conversa — informe uma conversa existente ao testar.',
       );
     }
     const conversa = await this.prisma.conversation.findFirst({

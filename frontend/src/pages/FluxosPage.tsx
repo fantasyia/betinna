@@ -881,6 +881,8 @@ type ExecStatus = 'EM_EXECUCAO' | 'AGUARDANDO' | 'CONCLUIDO' | 'FALHOU' | 'CANCE
 type LogStatus = 'CONCLUIDO' | 'FALHOU';
 
 interface ExecLog {
+  /** Id do nó no momento da execução — pode não existir mais no grafo atual. */
+  noId?: string;
   id: string;
   noTitulo: string;
   status: LogStatus;
@@ -894,8 +896,13 @@ interface ExecItem {
   criadoEm: string;
   terminouEm?: string | null;
   contexto?: Record<string, unknown> | null;
+  /** Veio do botão testar, não de evento real. */
+  teste?: boolean;
   logs: ExecLog[];
 }
+
+/** Do que o histórico está falando. Produção é o default: é a pergunta usual. */
+type OrigemExec = 'producao' | 'teste' | 'todas';
 
 const EXEC_VARIANT: Record<ExecStatus, 'success' | 'warning' | 'danger' | 'neutral'> = {
   EM_EXECUCAO: 'neutral',
@@ -959,9 +966,27 @@ function ExecResumo({ execs }: { execs: ExecItem[] }) {
 }
 
 function ExecucoesModal({ fluxo, onClose }: { fluxo: FluxoListItem; onClose: () => void }) {
+  // Produção por padrão. Misturar teste com real foi o que fez o painel do T1
+  // anunciar "0% de sucesso" num fluxo pausado que nunca viu mensagem — e
+  // custou uma investigação atrás de um bug que não existia.
+  const [origem, setOrigem] = useState<OrigemExec>('producao');
   const { data, loading, error, refetch } = useApiQuery<PaginatedResponse<ExecItem>>(
-    `/fluxos/${fluxo.id}/execucoes?limit=30`,
+    `/fluxos/${fluxo.id}/execucoes?limit=30&origem=${origem}`,
   );
+
+  const ABAS: Array<{ id: OrigemExec; label: string }> = [
+    { id: 'producao', label: 'Produção' },
+    { id: 'teste', label: 'Testes' },
+    { id: 'todas', label: 'Todas' },
+  ];
+
+  // Ids do grafo ATUAL. Reescrever um fluxo regenera os ids dos nós, então um
+  // erro antigo pode apontar pra um nó que não existe mais — e quem lê vai
+  // procurar no editor um passo que sumiu. Com isto o painel avisa em vez de
+  // deixar a pessoa caçar fantasma. (O título do passo é snapshot do log, então
+  // continua legível mesmo depois da reescrita.)
+  const { data: grafo } = useApiQuery<{ nos?: Array<{ id: string }> }>(`/fluxos/${fluxo.id}`);
+  const idsAtuais = grafo?.nos ? new Set(grafo.nos.map((n) => n.id)) : null;
 
   return (
     <Dialog
@@ -979,12 +1004,38 @@ function ExecucoesModal({ fluxo, onClose }: { fluxo: FluxoListItem; onClose: () 
         </>
       }
     >
+      <div className="flex gap-1 mb-3" role="tablist" aria-label="Origem das execuções">
+        {ABAS.map((a) => (
+          <button
+            key={a.id}
+            type="button"
+            role="tab"
+            aria-selected={origem === a.id}
+            data-testid={`exec-origem-${a.id}`}
+            onClick={() => setOrigem(a.id)}
+            className={cn(
+              'px-3 py-1 rounded-md text-xs border',
+              origem === a.id
+                ? 'bg-primary text-primary-contrast border-primary'
+                : 'bg-bg-alt text-muted border-border hover:text-text',
+            )}
+          >
+            {a.label}
+          </button>
+        ))}
+      </div>
       <StateView loading={loading} error={error} onRetry={refetch}>
         {!data || data.data.length === 0 ? (
           <EmptyState
             icon={<Activity />}
-            title="Nenhuma execução ainda"
-            description="Quando o fluxo disparar pra um lead, a execução aparece aqui."
+            title={
+              origem === 'producao' ? 'Nenhuma execução em produção' : 'Nenhuma execução ainda'
+            }
+            description={
+              origem === 'producao'
+                ? 'Este fluxo ainda não rodou pra ninguém de verdade. Se você testou, veja a aba Testes — teste não conta como resultado do fluxo.'
+                : 'Quando o fluxo disparar pra um lead, a execução aparece aqui.'
+            }
             className="border-0"
           />
         ) : (
@@ -1000,7 +1051,14 @@ function ExecucoesModal({ fluxo, onClose }: { fluxo: FluxoListItem; onClose: () 
             return (
               <div key={ex.id} className="rounded-lg border border-border bg-surface p-3">
                 <div className="flex items-center justify-between gap-2 mb-2">
-                  <Badge variant={EXEC_VARIANT[ex.status]}>{EXEC_LABEL[ex.status]}</Badge>
+                  <div className="flex items-center gap-1.5">
+                    <Badge variant={EXEC_VARIANT[ex.status]}>{EXEC_LABEL[ex.status]}</Badge>
+                    {ex.teste && (
+                      <Badge variant="neutral" data-testid="exec-badge-teste">
+                        🧪 teste
+                      </Badge>
+                    )}
+                  </div>
                   <span className="text-[11px] text-muted tabular">{fmtData(ex.criadoEm)}</span>
                 </div>
                 {leadId && (
@@ -1031,7 +1089,18 @@ function ExecucoesModal({ fluxo, onClose }: { fluxo: FluxoListItem; onClose: () 
                           )}
                         >
                           <div className="flex items-center justify-between gap-2">
-                            <span className="font-medium text-text">{l.noTitulo}</span>
+                            <span className="font-medium text-text">
+                              {l.noTitulo}
+                              {idsAtuais && l.noId && !idsAtuais.has(l.noId) && (
+                                <span
+                                  className="ml-1.5 text-[10px] font-normal text-muted"
+                                  title="Este passo é de uma versão anterior do fluxo — o nó não existe mais no grafo atual."
+                                  data-testid="exec-passo-versao-antiga"
+                                >
+                                  · versão anterior
+                                </span>
+                              )}
+                            </span>
                             <span
                               className={cn(
                                 'text-[10px] uppercase tracking-wide',

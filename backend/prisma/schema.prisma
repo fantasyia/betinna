@@ -1703,6 +1703,10 @@ model FluxoExecucao {
   status           FluxoExecucaoStatus @default(PENDENTE)
   /// Dados do evento que disparou: { clienteId, pedidoId, leadId, ocorrenciaId, ... }
   contexto         Json
+  /// Execução veio do botão "testar" (ou do MCP), não de evento real. As métricas
+  /// e o alerta do painel IGNORAM estas — senão dois testes num fluxo pausado
+  /// viram "0% de sucesso" e mandam alguém caçar bug que não existe.
+  teste            Boolean             @default(false)
   /// ID do job BullMQ ativo (para monitoramento).
   jobId            String?
   /// Orquestração (Fase B) — nó em que a execução está pausada aguardando
@@ -1727,6 +1731,7 @@ model FluxoExecucao {
   logs  FluxoExecucaoLog[]
 
   @@index([fluxoId, status])
+  @@index([fluxoId, teste])
   @@index([empresaId])
   @@index([criadoEm])
 }

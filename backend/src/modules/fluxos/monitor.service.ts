@@ -155,21 +155,27 @@ export class MonitorService {
       });
     }
 
+    // Só PRODUÇÃO: execução de teste não diz nada sobre a saúde da operação, e
+    // misturada vira alarme falso (dois testes num fluxo pausado apareciam como
+    // falha de produção no painel).
+    const prod = { empresaId, teste: false } as const;
     const [iaAtivas, fluxosAtivos, total, concluidas, falhas, aguardando] = await Promise.all([
-      this.prisma.fluxoExecucao.count({ where: { empresaId, status: 'AGUARDANDO' } }),
+      this.prisma.fluxoExecucao.count({ where: { ...prod, status: 'AGUARDANDO' } }),
       this.prisma.fluxo.count({ where: { empresaId, status: 'ATIVO' } }),
-      this.prisma.fluxoExecucao.count({ where: { empresaId } }),
-      this.prisma.fluxoExecucao.count({ where: { empresaId, status: 'CONCLUIDO' } }),
-      this.prisma.fluxoExecucao.count({ where: { empresaId, status: 'FALHOU' } }),
+      this.prisma.fluxoExecucao.count({ where: prod }),
+      this.prisma.fluxoExecucao.count({ where: { ...prod, status: 'CONCLUIDO' } }),
+      this.prisma.fluxoExecucao.count({ where: { ...prod, status: 'FALHOU' } }),
       this.prisma.fluxoExecucao.count({
-        where: { empresaId, status: { in: ['PENDENTE', 'EM_EXECUCAO', 'AGUARDANDO'] } },
+        where: { ...prod, status: { in: ['PENDENTE', 'EM_EXECUCAO', 'AGUARDANDO'] } },
       }),
     ]);
 
     const inicioHoje = new Date();
     inicioHoje.setHours(0, 0, 0, 0);
     const [disparosHoje, custoOpenAi] = await Promise.all([
-      this.prisma.fluxoExecucao.count({ where: { empresaId, criadoEm: { gte: inicioHoje } } }),
+      this.prisma.fluxoExecucao.count({
+        where: { ...prod, criadoEm: { gte: inicioHoje } },
+      }),
       this.custo.statusCusto(empresaId),
     ]);
 

@@ -65,7 +65,9 @@ const normalizarRotulo = (s: string): string =>
 const fluxoInclude = {
   nos: { orderBy: { posY: 'asc' as const } },
   arestas: true,
-  _count: { select: { execucoes: true } },
+  // Só PRODUÇÃO: o "N execuções" do card é o que o usuário lê como "quanto este
+  // fluxo rodou". Somar teste aí faz um fluxo pausado parecer que trabalhou.
+  _count: { select: { execucoes: { where: { teste: false } } } },
 } satisfies Prisma.FluxoInclude;
 
 type FluxoWithRel = Prisma.FluxoGetPayload<{ include: typeof fluxoInclude }>;
@@ -920,6 +922,11 @@ export class FluxosService {
 
     const where: Prisma.FluxoExecucaoWhereInput = { fluxoId: fluxo.id };
     if (params.status) where.status = params.status;
+    // `teste` é coluna, não caminho no JSON: filtrar por JSON no Postgres some
+    // com as linhas em que a chave não existe (NULL), que aqui seria justamente
+    // a produção inteira.
+    if (params.origem === 'producao') where.teste = false;
+    else if (params.origem === 'teste') where.teste = true;
 
     const skip = (params.page - 1) * params.limit;
     const [data, total] = await Promise.all([
@@ -1029,12 +1036,57 @@ export class FluxosService {
       );
     }
 
+    // Contexto semeado a partir de uma CONVERSA REAL, quando informada.
+    // Sem isto, fluxo de WhatsApp com CRIAR_LEAD/TRANSFERIR_ATENDIMENTO morria
+    // sempre no primeiro nó — o T1, porta de entrada de todo o inbound, era
+    // justamente o fluxo que a ferramenta de teste não conseguia testar.
+    let contexto: Record<string, unknown> = { ...dto.contexto };
+    if (dto.conversationId) {
+      const conversa = await this.prisma.conversation.findFirst({
+        where: { id: dto.conversationId, empresaId: fluxo.empresaId },
+        select: {
+          id: true,
+          canal: true,
+          leadId: true,
+          proprietarioId: true,
+          mensagens: {
+            where: { direction: 'INBOUND' },
+            orderBy: { criadoEm: 'desc' },
+            take: 1,
+            select: { conteudo: true },
+          },
+        },
+      });
+      if (!conversa) {
+        throw new BusinessRuleException(
+          'Conversa não encontrada nesta empresa — escolha uma conversa do Inbox',
+          ErrorCode.BUSINESS_RULE_VIOLATION,
+        );
+      }
+      // MESMO formato do evento MENSAGEM_CANAL real (canal/conversationId/texto/
+      // leadId/proprietarioId). Copiar o formato importa: teste que roda com um
+      // contexto diferente do de produção valida o fluxo errado.
+      contexto = {
+        canal: conversa.canal,
+        conversationId: conversa.id,
+        texto: (contexto.texto as string | undefined) ?? conversa.mensagens[0]?.conteudo ?? '',
+        leadId: conversa.leadId ?? null,
+        proprietarioId: conversa.proprietarioId ?? null,
+        ...contexto,
+      };
+    } else {
+      this.assertTesteNaoPrecisaDeConversa(fluxo.nos, contexto);
+    }
+
     const execucao = await this.prisma.fluxoExecucao.create({
       data: {
         fluxoId: fluxo.id,
         empresaId: fluxo.empresaId,
         status: 'PENDENTE',
-        contexto: toJson({ ...dto.contexto, _teste: true }),
+        // Coluna, além da marca antiga no contexto (que fica por compat com o
+        // que já está gravado). É ela que tira o teste das métricas do painel.
+        teste: true,
+        contexto: toJson({ ...contexto, _teste: true }),
       },
     });
 
@@ -1048,6 +1100,42 @@ export class FluxosService {
     return { execucaoId: execucao.id };
   }
 
+  /**
+   * Ações que só funcionam dentro de uma conversa. Testar um fluxo que as tem
+   * sem informar conversa produz execução que falha SEMPRE no primeiro nó — e
+   * antes essa execução ainda ia sujar o painel.
+   */
+  private static readonly ACOES_EXIGEM_CONVERSA = new Set([
+    'CRIAR_LEAD',
+    'TRANSFERIR_ATENDIMENTO',
+    'PAUSAR_IA',
+  ]);
+
+  /**
+   * Recusa ANTES de criar a execução, em vez de deixar falhar no meio.
+   *
+   * Recusar é melhor que gerar execução falha por dois motivos: quem testou
+   * recebe a instrução certa na hora, e o histórico não ganha um FALHOU que não
+   * diz nada sobre o fluxo.
+   */
+  private assertTesteNaoPrecisaDeConversa(
+    nos: Array<{ tipo: string; acaoTipo: string | null; titulo: string }>,
+    contexto: Record<string, unknown>,
+  ): void {
+    if (typeof contexto.conversationId === 'string' && contexto.conversationId) return;
+    const bloqueante = nos.find(
+      (n) => n.tipo === 'ACAO' && n.acaoTipo && FluxosService.ACOES_EXIGEM_CONVERSA.has(n.acaoTipo),
+    );
+    if (!bloqueante) return;
+    throw new BusinessRuleException(
+      `Este fluxo precisa de uma CONVERSA pra ser testado: o nó "${bloqueante.titulo}" ` +
+        `(${bloqueante.acaoTipo}) age sobre uma conversa de WhatsApp, que o teste não inventa. ` +
+        'Escolha uma conversa existente no teste (campo "conversa") — ou teste mandando ' +
+        'mensagem real pro número. Nenhuma execução foi criada.',
+      ErrorCode.BUSINESS_RULE_VIOLATION,
+    );
+  }
+
   // ─── Métricas ────────────────────────────────────────────────────
 
   async metricas(
@@ -1059,19 +1147,28 @@ export class FluxosService {
     falhos: number;
     emExecucao: number;
     taxaSucesso: number;
+    /** Execuções de teste (NÃO entram em nenhum dos números acima). */
+    testes: number;
   }> {
     await this.findOne(user, id);
 
-    const [total, concluidos, falhos, emExecucao] = await Promise.all([
-      this.prisma.fluxoExecucao.count({ where: { fluxoId: id } }),
-      this.prisma.fluxoExecucao.count({ where: { fluxoId: id, status: 'CONCLUIDO' } }),
-      this.prisma.fluxoExecucao.count({ where: { fluxoId: id, status: 'FALHOU' } }),
+    // PRODUÇÃO apenas. Execução de teste não é resultado do fluxo: as duas do
+    // T1 (um fluxo PAUSADO, que nunca viu mensagem real) faziam o painel anunciar
+    // "0% de sucesso" e mandaram alguém investigar um bug que não existia.
+    const producao = { fluxoId: id, teste: false } as const;
+    const [total, concluidos, falhos, emExecucao, testes] = await Promise.all([
+      this.prisma.fluxoExecucao.count({ where: producao }),
+      this.prisma.fluxoExecucao.count({ where: { ...producao, status: 'CONCLUIDO' } }),
+      this.prisma.fluxoExecucao.count({ where: { ...producao, status: 'FALHOU' } }),
       this.prisma.fluxoExecucao.count({
-        where: { fluxoId: id, status: { in: ['PENDENTE', 'EM_EXECUCAO'] } },
+        where: { ...producao, status: { in: ['PENDENTE', 'EM_EXECUCAO'] } },
       }),
+      this.prisma.fluxoExecucao.count({ where: { fluxoId: id, teste: true } }),
     ]);
 
     const taxaSucesso = total > 0 ? Math.round((concluidos / total) * 100) : 0;
-    return { total, concluidos, falhos, emExecucao, taxaSucesso };
+    // `testes` vai junto pra tela poder dizer "nunca rodou em produção (N testes)"
+    // em vez de "0% de sucesso", que é a leitura que enganou.
+    return { total, concluidos, falhos, emExecucao, taxaSucesso, testes };
   }
 }

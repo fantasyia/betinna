@@ -190,6 +190,14 @@ export const listExecucoesSchema = z.object({
   page: z.coerce.number().int().positive().default(1),
   limit: z.coerce.number().int().min(1).max(100).default(20),
   status: z.enum(['PENDENTE', 'EM_EXECUCAO', 'CONCLUIDO', 'FALHOU', 'CANCELADO']).optional(),
+  /**
+   * Quais execuções listar: `producao` (default), `teste` ou `todas`.
+   *
+   * Default é produção porque a pergunta que se faz abrindo o histórico é "como
+   * o fluxo está se comportando" — e teste misturado com real é o que fez o
+   * painel do T1 anunciar 0% de sucesso num fluxo que nunca rodou.
+   */
+  origem: z.enum(['producao', 'teste', 'todas']).default('producao'),
 });
 
 // ─── Testar fluxo (execução manual) ─────────────────────────────────
@@ -197,6 +205,17 @@ export const testarFluxoSchema = z.object({
   fluxoId: z.string().cuid(),
   /// Contexto inicial da execução de teste
   contexto: z.record(z.unknown()).default({}),
+  /**
+   * Conversa REAL contra a qual testar. Sem isto, fluxo de WhatsApp com
+   * `CRIAR_LEAD` morre sempre no primeiro nó ("conversationId ausente") — ou
+   * seja, o T1, que é a porta de entrada de todo inbound, era justo o fluxo que
+   * a ferramenta de teste não alcançava.
+   *
+   * Informando a conversa, o teste semeia conversationId, canal, leadId e
+   * telefone a partir dela — roda o grafo de ponta a ponta sem precisar mandar
+   * mensagem de verdade pro número.
+   */
+  conversationId: z.string().min(1).optional(),
 });
 
 /**
