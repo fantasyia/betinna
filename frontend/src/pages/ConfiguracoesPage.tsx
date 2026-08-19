@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useSearchParams } from 'react-router-dom';
 import { api, apiErrorMessage } from '@/lib/api';
 import { useApiQuery, type PaginatedResponse } from '@/hooks/useApiQuery';
 import { usePermission } from '@/hooks/usePermission';
@@ -70,7 +70,13 @@ export default function ConfiguracoesPage() {
   const podeCriarEmpresa = usePermission('configuracoes.view');
   const podeEditarEmpresa = usePermission('configuracoes.empresa');
 
-  const [tab, setTab] = useState<Tab>('empresas');
+  // O selo de regra de envio (editor de fluxos) linka pra cá com ?tab=avancado.
+  // Sem ler o parâmetro, o link cairia na aba Empresas e quem clicou teria que
+  // procurar — que é justo o atrito que o selo existe pra tirar.
+  const [searchParams] = useSearchParams();
+  const [tab, setTab] = useState<Tab>(
+    searchParams.get('tab') === 'avancado' ? 'avancado' : 'empresas',
+  );
   const [page, setPage] = useState(1);
   const [search, setSearch] = useState('');
   const [ativo, setAtivo] = useState('');
@@ -1517,7 +1523,7 @@ function EnvioWhatsappConfig() {
     Math.ceil(60 / Math.max(1, Math.round(Number(s) || d)));
 
   return (
-    <div className="bg-surface border border-border rounded-[10px] p-6 mt-4">
+    <div id="ritmo-envio" className="bg-surface border border-border rounded-[10px] p-6 mt-4">
       <h2 className="mt-0 text-[16px]" style={{ color: 'var(--text)' }}>
         🐢 Ritmo de envio (WhatsApp)
       </h2>

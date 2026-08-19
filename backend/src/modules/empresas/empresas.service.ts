@@ -9,6 +9,15 @@ import type { AuthenticatedUser } from '@shared/types/authenticated-user';
 import { buildPaginated, type Paginated } from '@shared/types/pagination';
 import { KnowledgeConfigService } from '@modules/rag/knowledge-config.service';
 import { EvolutionInstanciaService } from '@integrations/evolution/evolution-instancia.service';
+import {
+  type EnvioWhatsappConfig,
+  INBOUND_RECENTE_HORAS,
+  type JanelaEnvioConfig,
+  type TetoDiarioConfig,
+  resolveEnvioWhatsapp,
+  resolveJanelaEnvio,
+  resolveTetoDiario,
+} from '@shared/whatsapp-pacing/whatsapp-pacing.util';
 import type {
   CreateEmpresaDto,
   ListEmpresasDto,
@@ -106,6 +115,37 @@ export class EmpresasService {
       select: { config: true },
     });
     return (emp?.config as Record<string, unknown> | null) ?? {};
+  }
+
+  /**
+   * Regras de envio de WhatsApp já RESOLVIDAS — o que o motor de fato aplica,
+   * não o que está gravado.
+   *
+   * Existe porque a tela precisa dizer a verdade sobre o runtime. `getConfig`
+   * devolve o JSON cru: numa empresa que nunca salvou, `envioWhatsapp` vem
+   * vazio, e quem lê teria que reimplementar os defaults e as correções (janela
+   * invertida, lista de dias vazia) pra saber o que acontece de verdade. Duas
+   * implementações da mesma regra divergem no dia em que alguém corrige uma —
+   * que é exatamente o defeito do rótulo do PAUSAR_IA, de novo.
+   *
+   * Aqui passa pelas MESMAS funções que o `WhatsappPacingService` usa.
+   */
+  async getEnvioWhatsappEfetivo(user: AuthenticatedUser): Promise<{
+    envio: EnvioWhatsappConfig;
+    janela: JanelaEnvioConfig;
+    tetoDiario: TetoDiarioConfig;
+    /** Horas desde a última mensagem do lead em que o envio ainda conta como resposta. */
+    conversaVivaHoras: number;
+  }> {
+    const cfg = await this.getConfig(user);
+    const raw = (cfg as { envioWhatsapp?: { janela?: unknown; tetoDiario?: unknown } })
+      .envioWhatsapp;
+    return {
+      envio: resolveEnvioWhatsapp(raw),
+      janela: resolveJanelaEnvio(raw?.janela),
+      tetoDiario: resolveTetoDiario(raw?.tetoDiario),
+      conversaVivaHoras: INBOUND_RECENTE_HORAS,
+    };
   }
 
   /**

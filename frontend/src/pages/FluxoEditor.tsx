@@ -202,6 +202,7 @@ function FluxoEditorInner({
                 onRenameSaida={editor.renameSaidaDoNoSelecionado}
                 onChangeModo={editor.trocarModoDoNoSelecionado}
                 onDisparar={editor.dispararManual}
+                gatilhoDoFluxo={editor.triggerTipo}
               />
             ) : (
               <FluxoResumoVazio

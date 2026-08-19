@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, fireEvent, cleanup } from '@testing-library/react';
+import { MemoryRouter } from 'react-router-dom';
 import type { FlowNode, NodePayload } from '@/pages/fluxo/lib/types';
 
 /**
@@ -53,7 +54,12 @@ function renderInspector(data: NodePayload): InspectorProps {
     onChangeModo: vi.fn(),
     onDisparar: vi.fn(),
   };
-  render(<NodeInspector node={makeNode(data)} {...props} />);
+  // MemoryRouter: o selo de regra de envio (nós de WhatsApp) usa <Link>.
+  render(
+    <MemoryRouter>
+      <NodeInspector node={makeNode(data)} {...props} />
+    </MemoryRouter>,
+  );
   return props;
 }
 

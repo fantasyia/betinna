@@ -7,7 +7,10 @@ import { EnvService } from '@config/env.service';
 import { HttpClientService } from '@shared/http/http-client.service';
 import { WhatsAppService } from '@integrations/whatsapp/whatsapp.service';
 import { WhatsappPacingService } from '@shared/whatsapp-pacing/whatsapp-pacing.service';
-import { ForaDaJanelaEnvioError } from '@shared/whatsapp-pacing/whatsapp-pacing.util';
+import {
+  ForaDaJanelaEnvioError,
+  INBOUND_RECENTE_HORAS,
+} from '@shared/whatsapp-pacing/whatsapp-pacing.util';
 import { SupressaoService } from '@shared/supressao/supressao.service';
 import { TransactionalEmailService } from '@integrations/email/transactional-email.service';
 import { IntegracaoStatusService } from '@modules/integracoes/integracao-status.service';
@@ -107,7 +110,7 @@ const toJsonInput = (v: Record<string, unknown>): Prisma.InputJsonObject =>
  * Não pode ser 24h: quem escreveu de manhã e recebe fluxo às 23h NÃO está do
  * outro lado, e aí a janela tem que valer.
  */
-const INBOUND_RECENTE_MS = 4 * 60 * 60 * 1000;
+const INBOUND_RECENTE_MS = INBOUND_RECENTE_HORAS * 60 * 60 * 1000;
 
 /** Converte unidade de delay para milissegundos (segundos/minutos/horas/dias). */
 function delayParaMs(valor: number, unidade: UnidadeTempo): number {

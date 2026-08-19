@@ -9,6 +9,32 @@ versionamento segue [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Não versionado] — 2026-08-19
 
+### 🏷️ Selo de regra de envio no nó do fluxo
+
+A janela e o teto moram no pacing — decisão certa, mas deixa a regra **invisível
+pra quem monta o fluxo**: quem abre o C2 no editor não tem como saber que aquela
+mensagem pode esperar até as 8h. Tirar a regra da memória do runtime e deixá-la
+exigida de quem monta não fecha o problema.
+
+Agora o nó `ENVIAR_WHATSAPP` e o `CONVERSAR_IA` mostram o que vale pra eles:
+- gatilho de mensagem (`MENSAGEM_CANAL`/`LEAD_RESPONDEU`) → "responde a qualquer hora";
+- qualquer outro → horário configurado, teto configurado, aviso de que nada é
+  descartado, e a exceção de conversa viva.
+
+**O texto vem de `GET /empresas/config/envio-whatsapp`, que devolve a config já
+RESOLVIDA** pelas mesmas funções que o `WhatsappPacingService` usa. Sem isso o
+front teria que reimplementar defaults e correções (janela invertida, dias
+vazios) pra saber o que o motor faz — duas implementações que divergem no dia em
+que alguém corrige uma. É o defeito do rótulo do `PAUSAR_IA` de novo.
+
+Enquanto a config não carrega, o selo **some** em vez de chutar 8h–20h: selo que
+mente é pior que selo ausente.
+
+Link no selo abre Configurações já na aba Avançado, na âncora do card de ritmo.
+
+8 testes de render.
+
+
 ### 🔴 A janela de envio segurava o C1 no meio da conversa
 
 Achado pela master ao conferir o `da8857d`. A primeira versão decidia

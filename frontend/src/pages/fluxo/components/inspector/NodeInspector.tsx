@@ -28,6 +28,7 @@ import { MudarTagForm } from './MudarTagForm';
 import { ConversarIaForm } from './ConversarIaForm';
 import { LiberarLoteForm } from './LiberarLoteForm';
 import { PausarIaForm } from './PausarIaForm';
+import { JanelaEnvioSelo } from './JanelaEnvioSelo';
 
 /**
  * NodeInspector — dispatcher fino do painel direito.
@@ -49,6 +50,7 @@ export function NodeInspector({
   onRenameSaida,
   onChangeModo,
   onDisparar,
+  gatilhoDoFluxo,
 }: {
   node: FlowNode;
   onUpdate: (updater: (data: NodePayload) => NodePayload) => void;
@@ -57,6 +59,11 @@ export function NodeInspector({
   onRenameSaida: (antigo: string, novo: string) => void;
   onChangeModo: (novoModo: string) => void;
   onDisparar: () => void;
+  /**
+   * Gatilho do FLUXO (não do nó). O selo de regra de envio depende dele: é o
+   * mesmo atalho que o runtime usa pra saber se o que sai daqui é resposta.
+   */
+  gatilhoDoFluxo?: TriggerTipo | '';
 }) {
   const { data } = node;
   const { tags, prompts, funis, usuarios, variaveis, contatosWa, etapasOpts, etapasDoFunil } =
@@ -223,6 +230,12 @@ export function NodeInspector({
 
         {data.acaoTipo === 'CONVERSAR_IA' && (
           <ConversarIaForm data={data} onUpdate={onUpdate} prompts={prompts} />
+        )}
+
+        {/* Regra de envio: a janela/teto moram no pacing, então quem monta o
+            fluxo não teria como saber que esta mensagem pode esperar até as 8h. */}
+        {(data.acaoTipo === 'ENVIAR_WHATSAPP' || data.acaoTipo === 'CONVERSAR_IA') && (
+          <JanelaEnvioSelo gatilho={gatilhoDoFluxo || null} />
         )}
 
         {data.acaoTipo === 'CRIAR_LEAD' && (

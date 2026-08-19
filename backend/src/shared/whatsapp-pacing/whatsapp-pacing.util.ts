@@ -90,6 +90,15 @@ export function incrementoMs(cfg: EnvioWhatsappConfig, rnd: number, reativo = fa
 // invasão — a pessoa está acordada e falando com você AGORA. Segurar essa
 // resposta até as 8h seria um defeito, não uma proteção.
 
+/**
+ * Quanto tempo depois da última mensagem DO LEAD a conversa ainda conta como
+ * viva — e portanto o que o fluxo manda é resposta, não abordagem.
+ *
+ * Mora aqui junto das outras regras de envio pra a TELA poder mostrar o mesmo
+ * número que o motor aplica (o executor importa esta constante).
+ */
+export const INBOUND_RECENTE_HORAS = 4;
+
 export interface JanelaEnvioConfig {
   /** Liga/desliga o silêncio noturno pro tenant. */
   ativa: boolean;

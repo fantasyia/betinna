@@ -90,6 +90,19 @@ export class EmpresasController {
     return this.empresas.getConfig(user);
   }
 
+  /**
+   * Regras de envio JÁ RESOLVIDAS (defaults aplicados). É o que a tela usa pra
+   * dizer o que o motor faz — sem reimplementar default nenhum no front.
+   * Leitura livre: quem monta fluxo precisa ver a regra, não só quem configura.
+   */
+  @Get('config/envio-whatsapp')
+  @ApiOperation({
+    summary: 'Regras EFETIVAS de envio de WhatsApp (ritmo, janela, teto) — resolvidas.',
+  })
+  getEnvioWhatsapp(@CurrentUser() user: AuthenticatedUser) {
+    return this.empresas.getEnvioWhatsappEfetivo(user);
+  }
+
   @Patch('config')
   @Roles('ADMIN', 'DIRECTOR')
   @Audit({ action: 'update_config', resource: 'empresa' })
