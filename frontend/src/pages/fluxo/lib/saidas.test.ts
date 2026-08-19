@@ -222,8 +222,16 @@ describe('defaultConfig', () => {
     });
   });
 
-  it('PAUSAR_IA → { acao: pausar_ia }', () => {
-    expect(defaultConfig(item({ acaoTipo: 'PAUSAR_IA' }))).toEqual({ acao: 'pausar_ia' });
+  it('PAUSAR_IA → {} (a chave `acao` era MORTA — o backend só lê `religar`)', () => {
+    expect(defaultConfig(item({ acaoTipo: 'PAUSAR_IA' }))).toEqual({});
+  });
+
+  it('config declarada NO ITEM vence — é o que dá dois blocos com o mesmo acaoTipo', () => {
+    // "Religar IA na conversa" e "Pausar IA na conversa" são o mesmo acaoTipo
+    // com config oposta.
+    expect(
+      defaultConfig(item({ acaoTipo: 'PAUSAR_IA', config: { religar: true } })),
+    ).toEqual({ religar: true });
   });
 
   it('ação sem default conhecido → {}', () => {

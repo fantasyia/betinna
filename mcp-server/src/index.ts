@@ -1103,6 +1103,10 @@ const FLUXO_ACAO_TIPO = z.enum([
   'WEBHOOK_EXTERNO',
   'CONVERSAR_IA',
   'LIBERAR_LOTE',
+  // PAUSAR_IA faz DUAS coisas OPOSTAS conforme a config:
+  //   { }                  → pausa o bot na conversa (botLigado=false)
+  //   { religar: true }    → RELIGA: liga o bot, tira a pausa e limpa precisaHumano
+  // Não existe `acao: "pausar_ia"` — essa chave é ignorada pelo backend.
   'PAUSAR_IA',
   'CRIAR_LEAD', // promove a conversa a Lead (triagem CTWA), herdando a atribuição
   'TRANSFERIR_ATENDIMENTO', // handoff pro humano: atribui + pausa o bot + notifica

@@ -60,7 +60,11 @@ export function resumoNo(data: NodePayload): string | null {
     case 'CONVERSAR_IA':
       return c.aguardarResposta === false ? 'IA responde e segue' : 'IA conversa e aguarda resposta';
     case 'PAUSAR_IA':
-      return 'pausa a IA na conversa';
+      // O mesmo acaoTipo faz o OPOSTO conforme o `religar`. Resumo fixo era o
+      // que fazia o editor dizer "pausa" num nó que religa.
+      return c.religar === true
+        ? 'RELIGA a IA na conversa (bot volta a responder)'
+        : 'pausa a IA na conversa (bot para de responder)';
     case 'TRANSFERIR_ATENDIMENTO':
       return c.atendenteId ? 'transfere pro atendente escolhido' : 'joga na fila de atendimento';
     case 'CRIAR_LEAD':
@@ -81,8 +85,10 @@ export const BLOCO_DESC: Partial<Record<AcaoTipo, string>> & Record<string, stri
   WEBHOOK_EXTERNO: 'Chama uma URL externa',
   CONVERSAR_IA: 'A IA conversa e classifica o lead',
   LIBERAR_LOTE: 'Move um lote controlado de leads',
-  PAUSAR_IA: 'Pausa a IA naquela conversa',
+  PAUSAR_IA: 'Pausa a IA naquela conversa (bot para de responder)',
   CRIAR_LEAD: 'Vira lead a conversa (herda a campanha)',
+  // Chave por ID do item da paleta: o mesmo acaoTipo tem dois blocos.
+  'a-religa-ia': 'Religa a IA naquela conversa (bot volta a responder)',
   TRANSFERIR_ATENDIMENTO: 'Passa a conversa pro humano (pausa o bot + notifica)',
   CONDICAO: 'Bifurca o fluxo por uma condição',
   DELAY: 'Espera um tempo antes do próximo passo',

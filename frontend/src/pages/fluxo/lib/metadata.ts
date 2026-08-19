@@ -12,6 +12,7 @@ import {
   Webhook,
   Bot,
   Send,
+  Power,
   PowerOff,
   UserPlus,
   Headset,
@@ -52,10 +53,37 @@ export const ACAO_LABEL: Record<AcaoTipo, string> = {
   WEBHOOK_EXTERNO: 'Webhook externo',
   CONVERSAR_IA: 'Conversar com IA',
   LIBERAR_LOTE: 'Liberar lote',
-  PAUSAR_IA: 'Pausar IA na conversa',
+  // Rótulo NEUTRO: o mesmo acaoTipo pausa OU religa, dependendo do
+  // `config.religar`. Quem quer o rótulo real do nó usa `rotuloDaAcao(...)`.
+  PAUSAR_IA: 'Pausar/Religar IA na conversa',
   CRIAR_LEAD: 'Criar lead da conversa',
   TRANSFERIR_ATENDIMENTO: 'Transferir pro atendimento',
 };
+
+/**
+ * Rótulo REAL do nó — leva a config em conta.
+ *
+ * `PAUSAR_IA` com `religar: true` faz o OPOSTO do nome do tipo: religa o bot na
+ * conversa. Enquanto o rótulo saía direto do `acaoTipo`, o editor mostrava
+ * "Pausar IA" num nó que religa. Nó que diz o contrário do que faz é a pior
+ * classe de bug de automação: não quebra, não loga, não alerta — só faz alguém
+ * remover o nó certo achando que removeu o errado.
+ */
+export function rotuloDaAcao(
+  acaoTipo: AcaoTipo,
+  config?: Record<string, unknown> | null,
+): string {
+  if (acaoTipo === 'PAUSAR_IA') {
+    return config?.religar === true ? 'Religar IA na conversa' : 'Pausar IA na conversa';
+  }
+  return ACAO_LABEL[acaoTipo];
+}
+
+/** Ícone do nó — igual ao rótulo, PAUSAR_IA depende do `religar`. */
+export function iconeDaAcao(acaoTipo: AcaoTipo, config?: Record<string, unknown> | null) {
+  if (acaoTipo === 'PAUSAR_IA' && config?.religar === true) return Power;
+  return ACAO_ICONS[acaoTipo];
+}
 
 export const ACAO_ICONS: Record<AcaoTipo, typeof MessageSquare> = {
   ENVIAR_WHATSAPP: MessageSquare,
@@ -98,7 +126,7 @@ export function pickIcon(data: NodePayload) {
   if (data.tipo === 'TRIGGER') return isManualTrigger(data) ? Play : Zap;
   if (data.tipo === 'CONDICAO') return GitBranch;
   if (data.tipo === 'DELAY') return Timer;
-  if (data.acaoTipo) return ACAO_ICONS[data.acaoTipo];
+  if (data.acaoTipo) return iconeDaAcao(data.acaoTipo, data.config);
   return Play;
 }
 
@@ -142,6 +170,15 @@ export const PALETTE_CATEGORIES: Array<{ title: string; items: PaletteItem[] }> 
       { id: 'a-ia', label: 'Conversar com IA', tipo: 'ACAO', acaoTipo: 'CONVERSAR_IA' },
       { id: 'a-lote', label: 'Liberar lote', tipo: 'ACAO', acaoTipo: 'LIBERAR_LOTE' },
       { id: 'a-pausa-ia', label: 'Pausar IA na conversa', tipo: 'ACAO', acaoTipo: 'PAUSAR_IA' },
+      // MESMO acaoTipo, config oposta. Dois blocos em vez de um toggle escondido:
+      // quem monta o fluxo arrasta o que quer e lê o que arrastou.
+      {
+        id: 'a-religa-ia',
+        label: 'Religar IA na conversa',
+        tipo: 'ACAO',
+        acaoTipo: 'PAUSAR_IA',
+        config: { religar: true },
+      },
       { id: 'a-lead', label: 'Criar lead da conversa', tipo: 'ACAO', acaoTipo: 'CRIAR_LEAD' },
       { id: 'a-transf', label: 'Transferir pro atendimento', tipo: 'ACAO', acaoTipo: 'TRANSFERIR_ATENDIMENTO' },
     ],

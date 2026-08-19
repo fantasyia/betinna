@@ -27,6 +27,7 @@ import { WebhookExternoForm } from './WebhookExternoForm';
 import { MudarTagForm } from './MudarTagForm';
 import { ConversarIaForm } from './ConversarIaForm';
 import { LiberarLoteForm } from './LiberarLoteForm';
+import { PausarIaForm } from './PausarIaForm';
 
 /**
  * NodeInspector — dispatcher fino do painel direito.
@@ -235,6 +236,8 @@ export function NodeInspector({
         {data.acaoTipo === 'ATRIBUIR_REP' && (
           <AtribuirRepForm data={data} onUpdate={onUpdate} usuarios={usuarios} />
         )}
+
+        {data.acaoTipo === 'PAUSAR_IA' && <PausarIaForm data={data} onUpdate={onUpdate} />}
 
         {data.acaoTipo === 'LIBERAR_LOTE' && (
           <LiberarLoteForm data={data} onUpdate={onUpdate} etapasOpts={etapasOpts} tags={tags} />

@@ -170,6 +170,9 @@ export function norm(s: string): string {
 // ─── Config default por item de paleta ───────────────────────────
 
 export function defaultConfig(item: PaletteItem): Record<string, unknown> {
+  // Config declarada no próprio item da paleta tem precedência — é o que
+  // permite dois blocos com o mesmo acaoTipo e comportamentos opostos.
+  if (item.config) return { ...item.config };
   if (item.manual) return { manual: true, descricao: '' };
   if (item.triggerTipo === 'CRON_AGENDADO')
     return { cronFreq: 'dias_uteis', cronHorario: '09:00', timezone: 'America/Sao_Paulo' };
@@ -181,8 +184,11 @@ export function defaultConfig(item: PaletteItem): Record<string, unknown> {
   if (item.acaoTipo === 'MUDAR_TAG') return { operacao: 'adicionar', tagNome: '' };
   if (item.acaoTipo === 'CONVERSAR_IA') return { aguardarResposta: true, timeoutHoras: 24 };
   if (item.acaoTipo === 'LIBERAR_LOTE') return { quantidade: 50 };
-  // Trava simples — sem config visível. Desliga o bot na conversa (botLigado=false).
-  // O backend (acaoPausarIa) trata religar:true como religar; ausente = pausar.
-  if (item.acaoTipo === 'PAUSAR_IA') return { acao: 'pausar_ia' };
+  // Desliga o bot na conversa (botLigado=false). O backend (acaoPausarIa) lê
+  // SÓ o `religar`; ausente = pausar.
+  //
+  // Não grava mais `acao: 'pausar_ia'`: era chave MORTA — ninguém lê — e só
+  // servia pra confundir quem abria o JSON do nó procurando o que ele faz.
+  if (item.acaoTipo === 'PAUSAR_IA') return {};
   return {};
 }

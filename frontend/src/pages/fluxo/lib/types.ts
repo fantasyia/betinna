@@ -81,6 +81,14 @@ export interface PaletteItem {
   triggerTipo?: TriggerTipo;
   /** Gatilho "Manual" (sem trigger automático) — nó TRIGGER sem triggerTipo. */
   manual?: boolean;
+  /**
+   * Config inicial do nó criado por este item.
+   *
+   * Existe pra o mesmo `acaoTipo` poder aparecer na paleta como DOIS blocos com
+   * comportamentos opostos — é o caso de PAUSAR_IA, que com `religar: true` faz
+   * o contrário do nome do tipo.
+   */
+  config?: Record<string, unknown>;
 }
 
 // ─── Node data interno ────────────────────────────────────────────

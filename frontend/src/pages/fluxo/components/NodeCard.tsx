@@ -1,7 +1,7 @@
 import { Handle, Position, type NodeProps } from '@xyflow/react';
 import { cn } from '@/lib/cn';
 import {
-  ACAO_LABEL,
+  rotuloDaAcao,
   TRIGGER_LABEL,
   TIPO_LABEL,
   TIPO_ACCENT,
@@ -67,7 +67,7 @@ export function NodeCard({ data, selected }: NodeProps<FlowNode>) {
           (data.acaoTipo || data.triggerTipo) && (
             <div className="text-[10px] text-muted mt-1">
               {data.acaoTipo
-                ? ACAO_LABEL[data.acaoTipo]
+                ? rotuloDaAcao(data.acaoTipo, data.config)
                 : data.triggerTipo
                   ? TRIGGER_LABEL[data.triggerTipo]
                   : ''}

@@ -5,7 +5,7 @@ import { cn } from '@/lib/cn';
 import { type TriggerTipo, type PaletteItem } from '@/pages/fluxo/lib/types';
 import {
   TRIGGER_LABEL,
-  ACAO_ICONS,
+  iconeDaAcao,
   TIPO_ACCENT,
   PALETTE_CATEGORIES,
 } from '@/pages/fluxo/lib/metadata';
@@ -138,10 +138,12 @@ function PaletteItemView({ item }: { item: PaletteItem }) {
         : item.tipo === 'DELAY'
           ? Timer
           : item.acaoTipo
-            ? ACAO_ICONS[item.acaoTipo]
+            ? iconeDaAcao(item.acaoTipo, item.config)
             : Play;
   const accent = TIPO_ACCENT[item.tipo];
-  const desc = item.acaoTipo ? BLOCO_DESC[item.acaoTipo] : BLOCO_DESC[item.tipo];
+  // Descrição por ID do item primeiro: dois blocos podem dividir o mesmo
+  // acaoTipo com comportamentos opostos (pausar × religar IA).
+  const desc = BLOCO_DESC[item.id] ?? (item.acaoTipo ? BLOCO_DESC[item.acaoTipo] : BLOCO_DESC[item.tipo]);
 
   function handleDragStart(event: DragEvent<HTMLDivElement>) {
     event.dataTransfer.setData('application/fluxo-node', JSON.stringify(item));
