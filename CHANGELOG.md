@@ -7,6 +7,38 @@ versionamento segue [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ---
 
+## [Não versionado] — 2026-08-19
+
+### 🐛 Incidente: conversas de WhatsApp voltavam depois de excluídas
+
+**Sintoma:** "apaguei todas as conversas do WhatsApp e no dia seguinte elas
+estavam de volta, com o histórico".
+
+**Trilha do banco:** limpeza às 21:53:24 · conversas recriadas às 21:54:00 —
+36 segundos depois, com as mensagens de 21:45–21:47 dentro.
+
+**Causa raiz:** o tombstone que impede reimportação
+(`Conversation.mensagensZeradasEm`) mora na PRÓPRIA conversa, e a limpeza geral
+APAGA a conversa. O tombstone morria junto. O poll de fallback do Evolution
+(a cada minuto, janela de 45s–12min) reimportava tudo em conversas novas — sem
+tombstone, prontas pra ressuscitar de novo. `zerar UMA conversa` funcionava (a
+linha permanece); `limpar TODAS` nunca teve chance.
+
+**Correção:**
+- `InboxLimpeza` (empresa, canal) — marca que SOBREVIVE à exclusão. Mensagem
+  anterior à marca não entra mais, nunca. Migration `20260819010000_inbox_limpeza`.
+- Teto de idade na ingestão (30min) **só no WhatsApp** — mata o
+  `messaging-history.set` do Baileys e o sync inicial do Evolution sem quebrar o
+  poll de recuperação (45s–12min). Escopado por canal de propósito: marketplace
+  ingere por pull com timestamp de origem, e pergunta do ML de 3h sem resposta é
+  SAC legítimo.
+- `syncFullHistory: false` explícito na criação da instância Evolution.
+
+**Lição:** tombstone de anti-reimportação não pode morar na linha que a operação
+destrutiva apaga.
+
+---
+
 ## [1.5.0] — 2026-05-19
 
 Entrega da **SESSÃO MASTER 3** — follow-ups + features deferidas +
