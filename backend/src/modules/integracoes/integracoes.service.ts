@@ -270,8 +270,11 @@ export class IntegracoesService {
       externalAccountId: null,
       ultimoSync: null,
       errosRecentes: 0,
-      criadoEm: new Date(),
-      atualizadoEm: new Date(),
+      // Sem data: esta entrada não vem de linha nenhuma, então não existe
+      // "conectado em". Carimbar `new Date()` faria a tela dizer que o número
+      // pareou agora, toda vez que alguém abrisse a página.
+      criadoEm: null,
+      atualizadoEm: null,
       credenciaisConfiguradas: true,
       camposCredenciais: [],
     } as unknown as ConexaoPublica);

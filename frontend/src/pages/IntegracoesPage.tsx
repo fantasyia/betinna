@@ -193,8 +193,9 @@ interface Conexao {
   ativo: boolean;
   externalAccountId?: string | null;
   ultimoSync?: string | null;
-  criadoEm: string;
-  atualizadoEm: string;
+  /** Null quando a conexão vive só no provider (sem linha na tabela). */
+  criadoEm: string | null;
+  atualizadoEm: string | null;
 }
 
 type StatusValor = 'ATIVA' | 'DEGRADADA' | 'CAIDA' | 'DESCONECTADA';
@@ -440,9 +441,14 @@ function ServicoCard({
               <strong>Último sync:</strong> {fmtDate(conexao.ultimoSync)}
             </div>
           )}
-          <div>
-            <strong>Conectado em:</strong> {fmtDate(conexao.criadoEm)}
-          </div>
+          {/* Conexão que vive só no provider (WhatsApp/Evolution) não tem linha
+              na tabela — e portanto não tem "conectado em". Mostrar a data de
+              agora seria dizer que pareou neste instante. */}
+          {conexao.criadoEm && (
+            <div>
+              <strong>Conectado em:</strong> {fmtDate(conexao.criadoEm)}
+            </div>
+          )}
         </dl>
       )}
 
