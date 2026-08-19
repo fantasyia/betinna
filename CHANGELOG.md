@@ -44,6 +44,17 @@ teste não alcançava.
 - A mensagem de erro do nó parou de mandar consertar o que estava certo: agora
   separa "em produção = gatilho errado" de "num teste = teste sem conversa".
 
+### 🔇 Teste não manda mensagem pra pessoa (a não ser que você peça)
+
+Consequência do item acima que não podia ficar de pé: testar contra uma conversa
+REAL significa que do outro lado tem alguém real. Um teste do T1 dispararia o
+opener — "oi, é da Somatec…" — pra um cliente que não pediu nada, sem desfazer.
+
+Agora `enviarDeVerdade` é **opt-in** (default `false`). Desmarcado, o fluxo roda
+inteiro (condições, IA, tags, etapas) e os envios de WhatsApp ficam registrados
+como **simulados**, com o texto que sairia — que é o que se quer conferir num
+teste. Marcado, envia.
+
 ### 🕰️ Passo de versão anterior do grafo fica marcado no histórico
 
 Reescrever um fluxo regenera os ids dos nós, então um erro antigo apontava pra um

@@ -182,3 +182,28 @@ describe('testar fluxo', () => {
     expect(prisma.fluxoExecucao.create).toHaveBeenCalled();
   });
 });
+
+describe('modo seco: teste NÃO manda mensagem pra pessoa', () => {
+  beforeEach(() => vi.clearAllMocks());
+
+  it('default é NÃO enviar — a marca vai no contexto', async () => {
+    const { svc, prisma } = makeService();
+
+    await svc.testar(user, { fluxoId: 'f1', contexto: {}, enviarDeVerdade: false });
+
+    const ctx = (prisma.fluxoExecucao.create.mock.calls[0][0] as { data: { contexto: unknown } })
+      .data.contexto as Record<string, unknown>;
+    expect(ctx._teste).toBe(true);
+    expect(ctx._testeEnviaDeVerdade).toBe(false);
+  });
+
+  it('só envia de verdade com opt-in explícito', async () => {
+    const { svc, prisma } = makeService();
+
+    await svc.testar(user, { fluxoId: 'f1', contexto: {}, enviarDeVerdade: true });
+
+    const ctx = (prisma.fluxoExecucao.create.mock.calls[0][0] as { data: { contexto: unknown } })
+      .data.contexto as Record<string, unknown>;
+    expect(ctx._testeEnviaDeVerdade).toBe(true);
+  });
+});

@@ -124,8 +124,8 @@ function FluxoEditorInner({
         testLeadId={testLeadId}
         setTestLeadId={setTestLeadId}
         testando={editor.testando}
-        onRodar={async () => {
-          const ok = await editor.runTeste(testLeadId);
+        onRodar={async (opts) => {
+          const ok = await editor.runTeste(testLeadId, opts);
           if (ok) setTestarAberto(false);
         }}
       />

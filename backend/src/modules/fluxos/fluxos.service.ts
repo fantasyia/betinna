@@ -1086,7 +1086,13 @@ export class FluxosService {
         // Coluna, além da marca antiga no contexto (que fica por compat com o
         // que já está gravado). É ela que tira o teste das métricas do painel.
         teste: true,
-        contexto: toJson({ ...contexto, _teste: true }),
+        contexto: toJson({
+          ...contexto,
+          _teste: true,
+          // Sem isto, o motor manda de verdade. A marca viaja no contexto porque
+          // é ela que os nós de envio consultam na hora de decidir.
+          _testeEnviaDeVerdade: dto.enviarDeVerdade === true,
+        }),
       },
     });
 

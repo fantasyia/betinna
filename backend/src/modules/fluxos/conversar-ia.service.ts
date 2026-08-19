@@ -815,6 +815,22 @@ export class ConversarIaService {
     // (JSON, cerca, texto puro) e já roda o limparVazamentoDeVariaveis. Como o
     // texto é reusado no _iaHistorico, sanitiza envio E memória de uma vez.
     const aberturaTexto = personalizarNome(parseTurnoIa(abertura.texto).resposta, lead.contatoNome);
+    // MODO SECO do teste: o opener é a primeira mensagem que a pessoa recebe.
+    // Num teste contra conversa REAL, mandar isso significa abordar um cliente
+    // que não pediu nada — e não tem desfazer. Roda tudo (IA inclusive), só não
+    // entrega. Quem quiser entregar marca "enviar de verdade" ao testar.
+    const ctxRec = ctx as Record<string, unknown>;
+    if (ctxRec['_teste'] === true && ctxRec['_testeEnviaDeVerdade'] !== true) {
+      this.logger.log(
+        `CONVERSAR_IA em TESTE (exec ${execucaoId}): opener NÃO enviado — "${aberturaTexto.slice(0, 60)}…"`,
+      );
+      return {
+        aguardando: false,
+        pulado: true,
+        motivo: `TESTE — opener não enviado: ${aberturaTexto}`,
+      };
+    }
+
     try {
       await this.enviarWhatsapp(
         empresaId,

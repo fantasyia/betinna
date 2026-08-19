@@ -361,17 +361,24 @@ export function useFluxoEditor({
 
   // Dispara um teste manual (POST /fluxos/testar) — salva antes se estiver sujo.
   // Retorna true em sucesso (pra o caller fechar o modal de teste).
-  async function runTeste(testLeadId: string): Promise<boolean> {
+  async function runTeste(
+    testLeadId: string,
+    opts: { conversationId?: string; enviarDeVerdade?: boolean } = {},
+  ): Promise<boolean> {
     setTestando(true);
     try {
       if (dirty && !(await handleSave())) return false; // #44: save falhou → não testa a versão antiga
       const r = await api.post<{ execucaoId: string }>('/fluxos/testar', {
         fluxoId,
         contexto: testLeadId.trim() ? { leadId: testLeadId.trim() } : {},
+        ...(opts.conversationId?.trim() ? { conversationId: opts.conversationId.trim() } : {}),
+        enviarDeVerdade: opts.enviarDeVerdade === true,
       });
       toast.success(
-        'Teste disparado 🚀',
-        `Execução ${r.execucaoId.slice(0, 8)}… — acompanhe em Fluxos › Execuções.`,
+        opts.enviarDeVerdade ? 'Teste disparado 🚀 (enviando de verdade)' : 'Teste disparado 🚀',
+        `Execução ${r.execucaoId.slice(0, 8)}… — acompanhe em Fluxos › Execuções${
+          opts.enviarDeVerdade ? '.' : ' (aba Testes). Mensagens ficaram como simuladas.'
+        }`,
       );
       return true;
     } catch (err) {

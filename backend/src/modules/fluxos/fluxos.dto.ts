@@ -216,6 +216,19 @@ export const testarFluxoSchema = z.object({
    * mensagem de verdade pro número.
    */
   conversationId: z.string().min(1).optional(),
+  /**
+   * Deixar o teste MANDAR MENSAGEM DE VERDADE pro contato da conversa.
+   *
+   * Default `false`, e default seguro importa aqui: testar contra uma conversa
+   * real significa que do outro lado tem uma pessoa real. Um teste do T1 que
+   * dispara o opener manda "oi, é da Somatec…" pra um cliente que não pediu
+   * nada — e não tem como desfazer.
+   *
+   * Com `false`, o fluxo roda inteiro (condições, IA, tags, etapas) e os envios
+   * de WhatsApp ficam registrados como SIMULADOS no histórico: dá pra ver o
+   * texto que sairia, sem mandar.
+   */
+  enviarDeVerdade: z.boolean().default(false),
 });
 
 /**

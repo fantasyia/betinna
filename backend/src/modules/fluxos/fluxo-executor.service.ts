@@ -660,6 +660,17 @@ export class FluxoExecutorService {
   }
 
   /**
+   * Execução de teste que NÃO deve mandar mensagem de verdade.
+   *
+   * A marca viaja no contexto (`_teste` + `_testeEnviaDeVerdade`) porque é lá
+   * que os nós de envio a enxergam, sem precisar recarregar a execução.
+   */
+  private testeSemEnvio(ctx: ExecucaoContexto): boolean {
+    const c = ctx as Record<string, unknown>;
+    return c['_teste'] === true && c['_testeEnviaDeVerdade'] !== true;
+  }
+
+  /**
    * Tem alguém do outro lado agora? Ou seja: o lead mandou mensagem há pouco.
    *
    * `Lead.ultimaMensagemEm` é carimbado a cada mensagem RECEBIDA do lead (e em
@@ -977,6 +988,20 @@ export class FluxoExecutorService {
         this.logger.log('ENVIAR_WHATSAPP suprimido (LGPD) — modo lead');
         return { suprimido: true, motivo: 'LGPD', canal: 'whatsapp' };
       }
+    }
+
+    // MODO SECO do teste: execução de teste NÃO manda mensagem pra pessoa, a não
+    // ser que quem testou tenha pedido explicitamente. Do outro lado da conversa
+    // tem gente de verdade, e mensagem enviada não volta. O passo é registrado
+    // com o texto que sairia — que é o que se quer conferir num teste.
+    if (this.testeSemEnvio(ctx)) {
+      return {
+        simulado: true,
+        motivo: 'Execução de TESTE — mensagem não enviada (marque "enviar de verdade" pra enviar)',
+        modo,
+        mensagem,
+        ...(cfg.midia?.storagePath ? { midia: cfg.midia.tipo } : {}),
+      };
     }
 
     // Pacing global: espaça este envio dos demais da empresa (anti-rajada).
