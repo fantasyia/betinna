@@ -1189,6 +1189,19 @@ export class FluxoExecutorService {
 
     const assunto = interpolate(cfg.assunto, ctx);
     const corpo = interpolate(cfg.corpo, ctx);
+
+    // MODO SECO do teste, mesma regra do WhatsApp: e-mail de teste chegaria na
+    // caixa de uma pessoa real. O card falava de WhatsApp, mas deixar o e-mail
+    // de fora seria uma inconsistência que morde na primeira leva de nutrição.
+    if (this.testeSemEnvio(ctx)) {
+      return {
+        simulado: true,
+        motivo: 'Execução de TESTE — e-mail não enviado (marque "enviar de verdade" pra enviar)',
+        destinatarios: emails,
+        assunto,
+      };
+    }
+
     // Resend sistêmico — envia 1 e-mail por destinatário resolvido. Chave de idempotência
     // por destinatário (Resend deduplica nativamente por 24h) → retry não duplica e-mail.
     const messageIds: string[] = [];
