@@ -6,7 +6,6 @@ import { inicioDoDiaLocalISO, fimDoDiaLocalISO } from '@/lib/dates';
 import { useApiQuery } from '@/hooks/useApiQuery';
 import { useToast } from '@/components/toast';
 import { PageLayout } from '@/components/PageLayout';
-import { AtendimentoTabs } from '@/components/AtendimentoTabs';
 import { AssistenteTabs } from '@/components/AssistenteTabs';
 import { StateView } from '@/components/StateView';
 import { Badge, Button, Card, Field, Select } from '@/components/ui';
@@ -103,7 +102,6 @@ export default function BotAuditoriaPage() {
         </Button>
       }
     >
-      <AtendimentoTabs />
       <AssistenteTabs />
 
       {/* Filtros */}

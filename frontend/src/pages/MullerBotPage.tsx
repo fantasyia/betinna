@@ -11,7 +11,6 @@ import {
 } from 'lucide-react';
 import { api, ApiError } from '@/lib/api';
 import { PageLayout } from '@/components/PageLayout';
-import { AtendimentoTabs } from '@/components/AtendimentoTabs';
 import { AssistenteTabs } from '@/components/AssistenteTabs';
 import { Markdown } from '@/components/Markdown';
 import {
@@ -247,7 +246,6 @@ export default function MullerBotPage() {
         ) : undefined
       }
     >
-      <AtendimentoTabs />
       <AssistenteTabs />
       <div className="grid gap-4 grid-cols-1 lg:grid-cols-[minmax(0,1fr)_280px]">
         {/* Chat */}

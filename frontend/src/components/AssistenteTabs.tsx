@@ -15,8 +15,13 @@ import { SubTabsBar, type SubTab } from '@/components/SubTabsBar';
  *  - Histórico    → /mullerbot/auditoria     (ADMIN/DIRECTOR/GERENTE)
  *
  * REP vê só o Chat → SubTabsBar (que some com <2 abas) não renderiza a barra;
- * fica só o nome do bot no topo. Renderizado após o <AtendimentoTabs /> nas
- * páginas do assistente.
+ * fica só o nome do bot no topo.
+ *
+ * ⚠️ É a ÚNICA barra de sub-abas das páginas do assistente. Elas mostravam
+ * também o <AtendimentoTabs /> (Inbox / SAC interno / Marketplaces / WhatsApp),
+ * resto de quando o assistente era sub-aba de Atendimento. Depois que ele virou
+ * item próprio do menu, aquela fila passou a anunciar uma seção em que a página
+ * não está — dois níveis de navegação de seções DIFERENTES, empilhados.
  */
 export function AssistenteTabs() {
   const role = useRole();

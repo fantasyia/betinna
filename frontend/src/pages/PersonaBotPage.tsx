@@ -7,7 +7,6 @@ import { useApiQuery } from '@/hooks/useApiQuery';
 import { useToast } from '@/components/toast';
 import { usePermission } from '@/hooks/usePermission';
 import { PageLayout } from '@/components/PageLayout';
-import { AtendimentoTabs } from '@/components/AtendimentoTabs';
 import { AssistenteTabs } from '@/components/AssistenteTabs';
 import {
   Button,
@@ -289,7 +288,6 @@ export default function PersonaBotPage() {
         </Button>
       }
     >
-      <AtendimentoTabs />
       <AssistenteTabs />
       <div className="mb-3">
         <Link
