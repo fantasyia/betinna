@@ -1997,6 +1997,47 @@ server.registerTool(
   ),
 );
 
+server.registerTool(
+  'leads_excluir',
+  {
+    description:
+      'APAGA leads DEFINITIVAMENTE, por lista explícita de ids (1 a 50). Serve pra limpar resíduo ' +
+      'de teste de fluxo. Não existe versão por filtro nem "apagar todos": monte a lista com ' +
+      '`leads_por_etapa` e confira antes. Recusa lead SEM FUNIL (esses são a base de prospecção ' +
+      'importada, ~30 mil contatos na mesma tabela). É tudo-ou-nada: se um id não resolver ou ' +
+      'estiver fora de funil, NADA é apagado. Não tem desfazer. Exige escopo "crm".',
+    inputSchema: {
+      leadIds: z
+        .array(z.string())
+        .min(1)
+        .max(50)
+        .describe('Ids EXATOS, obtidos numa leitura (leads_por_etapa / contatos_ver).'),
+      confirmoExclusaoDe: z
+        .number()
+        .int()
+        .positive()
+        .describe('Repita aqui quantos ids DISTINTOS você está mandando. Se não bater, recusa.'),
+      motivo: z.string().max(300).optional().describe('Fica no log de auditoria.'),
+    },
+    annotations: { readOnlyHint: false, destructiveHint: true },
+  },
+  seguro(
+    async (args: { leadIds: string[]; confirmoExclusaoDe: number; motivo?: string }) => {
+      // A checagem de verdade é do backend (que enxerga funil e tenant); esta é
+      // só pra devolver o número certo sem gastar uma ida ao servidor.
+      const distintos = new Set(args.leadIds).size;
+      if (distintos !== args.confirmoExclusaoDe) {
+        return erro(
+          `Você mandou ${distintos} id(s) distinto(s) e confirmou ${args.confirmoExclusaoDe}. ` +
+            'Confira a lista — divergência aqui costuma ser lista montada errada.',
+        );
+      }
+      const r = await api.post<unknown>('/crm/contato/excluir', args);
+      return ok(r);
+    },
+  ),
+);
+
 // ─── Prompts da IA (escopo "prompts" — biblioteca de prompts do bot) ─────
 // Ver/criar/editar os prompts referenciados por promptId nos nós "Conversar
 // com IA" dos fluxos. Exige token com escopo "prompts". Editar o TEXTO versiona
@@ -2809,6 +2850,50 @@ server.registerTool(
       definidos,
     );
     return ok({ id: t.id, nome: t.nome, cor: t.cor });
+  }),
+);
+
+server.registerTool(
+  'tags_remover',
+  {
+    description:
+      'APAGA uma etiqueta de LEAD da empresa (some de todo contato que a tinha). Recusa por ' +
+      'padrão se a tag estiver EM USO — pra apagar mesmo assim, repita com ' +
+      '`confirmoRemocaoComUsos: true`. ⚠️ Nó MUDAR_TAG e CONDICAO que citam o nome NÃO são ' +
+      'ajustados: o MUDAR_TAG recria a tag do zero e a CONDICAO passa a nunca casar. ' +
+      'Exige escopo "tags".',
+    inputSchema: {
+      tagId: z.string().describe('Id da tag (use tags_listar).'),
+      confirmoRemocaoComUsos: z
+        .boolean()
+        .optional()
+        .describe('Obrigatório quando a tag tem lead ou cliente — apagar tira a tag de todos.'),
+    },
+    annotations: { readOnlyHint: false, destructiveHint: true },
+  },
+  seguro(async ({ tagId, confirmoRemocaoComUsos }: { tagId: string; confirmoRemocaoComUsos?: boolean }) => {
+    // Lê ANTES de apagar: o caso de uso real é a faxina depois de uma auditoria
+    // (tag torta, 0 leads), e aí apagar é inofensivo. Mas a mesma chamada em cima
+    // de uma tag com 315 leads desfaz uma classificação inteira sem volta — e
+    // quem chama não tem como saber a diferença sem conferir. Então a tool
+    // confere por conta própria, em vez de confiar na memória de quem pediu.
+    const t = await api.get<{
+      id: string;
+      nome: string;
+      _count?: { clientes?: number; leads?: number };
+    }>(`/tags/${encodeURIComponent(tagId)}`);
+    const leads = t._count?.leads ?? 0;
+    const clientes = t._count?.clientes ?? 0;
+    if (leads + clientes > 0 && confirmoRemocaoComUsos !== true) {
+      return erro(
+        `A etiqueta "${t.nome}" está EM USO: ${leads} lead(s) e ${clientes} cliente(s) a perdem ` +
+          'se você apagar, e não tem desfazer. Se é isso mesmo, repita com ' +
+          '`confirmoRemocaoComUsos: true`. Se o objetivo era só corrigir o nome, use ' +
+          'tags_renomear.',
+      );
+    }
+    await api.delete(`/tags/${encodeURIComponent(tagId)}`);
+    return ok({ removida: t.nome, id: t.id, tinhaLeads: leads, tinhaClientes: clientes });
   }),
 );
 

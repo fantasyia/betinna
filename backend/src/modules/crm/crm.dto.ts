@@ -30,3 +30,34 @@ export const contatoEtapaSchema = z.object({
   motivo: z.string().max(300).optional(),
 });
 export type ContatoEtapaDto = z.infer<typeof contatoEtapaSchema>;
+
+/**
+ * Exclusão de LEAD por MCP — a tool mais perigosa da superfície `crm`.
+ *
+ * O motivo da paranoia está no banco: hoje a empresa tem 30.308 leads, dos quais
+ * 30.282 são a base de prospecção importada (sem funil) e 26 são os leads reais
+ * dentro do funil de Triagem. As duas coisas moram na MESMA tabela — a única
+ * diferença é o `funilId`. Um filtro errado aqui apaga o ativo mais caro do
+ * projeto, e não tem volta.
+ *
+ * Por isso NÃO existe exclusão por filtro. Só por lista EXPLÍCITA de ids, que
+ * obriga quem chama a passar por uma leitura antes (leads_por_etapa), e com a
+ * contagem repetida no payload — o mesmo padrão do `confirmoEnvioAoCliente`:
+ * se o número não bate com a lista, nada é apagado. A recusa de lead SEM FUNIL
+ * é validada no service, onde dá pra dizer quais ids ofenderam.
+ */
+export const contatoExcluirSchema = z
+  .object({
+    leadIds: z.array(z.string().min(1)).min(1).max(50),
+    confirmoExclusaoDe: z
+      .number()
+      .int()
+      .positive()
+      .describe('Quantidade esperada — precisa bater com os leadIds distintos'),
+    motivo: z.string().max(300).optional(),
+  })
+  .refine((d) => new Set(d.leadIds).size === d.confirmoExclusaoDe, {
+    message: 'confirmoExclusaoDe precisa ser exatamente a quantidade de leadIds DISTINTOS enviados',
+    path: ['confirmoExclusaoDe'],
+  });
+export type ContatoExcluirDto = z.infer<typeof contatoExcluirSchema>;

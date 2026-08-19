@@ -9,6 +9,31 @@ versionamento segue [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Não versionado] — 2026-08-19
 
+### 🧹 MCP: excluir lead e apagar etiqueta — as duas faltavam
+
+**`leads_excluir`** (`POST /crm/contato/excluir`, escopo `crm`). Existia
+`DELETE /leads/:id` na API, mas nada no MCP — limpar resíduo de teste de fluxo
+dependia do Léo na tela.
+
+O cuidado extra tem motivo concreto: em produção a tabela `Lead` guarda **26**
+leads de funil e **30.282** contatos da base de prospecção importada, separados
+só pelo `funilId`. Um filtro errado apagaria o ativo mais caro do projeto. Por
+isso a rota **não aceita filtro**, só lista explícita de até 50 ids, com três
+travas antes de apagar qualquer coisa (tudo-ou-nada): id que não resolve derruba
+a chamada inteira, lead **sem funil** é recusado por definição, e a contagem tem
+que ser repetida no payload (`confirmoExclusaoDe`) — mesmo padrão do
+`confirmoEnvioAoCliente`. Devolve o que foi apagado (nome/telefone/funil/etapa),
+porque depois a linha não existe mais pra ser consultada.
+
+**`tags_remover`** — a falta que a master apontou depois de usar o `tags_listar`:
+achou uma etiqueta torta fora da taxonomia e não tinha como apagar (renomear só
+desloca o lixo quando o nome certo já existe). A tool lê os usos antes e
+**recusa** se a etiqueta tiver lead ou cliente, a menos que venha
+`confirmoRemocaoComUsos: true`.
+
+80 tools no MCP (era 78).
+
+
 ### 🐛 Incidente: conversas de WhatsApp voltavam depois de excluídas
 
 **Sintoma:** "apaguei todas as conversas do WhatsApp e no dia seguinte elas

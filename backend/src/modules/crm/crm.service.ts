@@ -7,7 +7,7 @@ import { NotFoundException } from '@shared/errors/app-exception';
 import { RepScopeService } from '@shared/scope/rep-scope.service';
 import { LeadsService } from '@modules/leads/leads.service';
 import type { AuthenticatedUser } from '@shared/types/authenticated-user';
-import type { ContatoEtapaDto, ContatoTagsDto } from './crm.dto';
+import type { ContatoEtapaDto, ContatoExcluirDto, ContatoTagsDto } from './crm.dto';
 
 /**
  * Ações de CRM (ESCRITA) sobre um contato, disparadas pelo Claude Code via MCP
@@ -200,6 +200,87 @@ export class CrmService {
         ? { etapaId: antes.funilEtapa.id, etapaNome: antes.funilEtapa.nome }
         : null,
       para: { etapaId: etapa.id, etapaNome: etapa.nome },
+    };
+  }
+
+  /**
+   * Exclui leads por lista EXPLÍCITA de ids. Não existe versão por filtro, e não
+   * vai existir: o `Lead` guarda ao mesmo tempo os poucos leads de funil e os
+   * ~30 mil contatos da base de prospecção importada (esses ficam com `funilId`
+   * null). Um `deleteMany` com filtro errado aqui é irreversível.
+   *
+   * Três travas, todas antes de apagar qualquer coisa (all-or-nothing):
+   *  1. todo id tem que existir na empresa (e na carteira) — se um não existe,
+   *     não apaga NENHUM, porque id que não resolve é sinal de lista errada;
+   *  2. lead SEM FUNIL é recusado — é a base de prospecção, não resíduo de teste;
+   *  3. a contagem já foi conferida no DTO (`confirmoExclusaoDe`).
+   *
+   * Devolve o que foi apagado (nome/telefone/funil/etapa), não só um ok: sem
+   * isso não há como auditar depois — a linha já não existe pra ser consultada.
+   */
+  async excluirLeads(user: AuthenticatedUser, dto: ContatoExcluirDto) {
+    const empresaId = this.requireEmpresa(user);
+    const ids = [...new Set(dto.leadIds)];
+
+    const scope = await this.repScope.getRepIds(user);
+    const scopeLead: Prisma.LeadWhereInput =
+      scope !== null ? { representanteId: { in: scope.length ? scope : ['__none__'] } } : {};
+
+    const achados = await this.prisma.lead.findMany({
+      where: { id: { in: ids }, empresaId, ...scopeLead },
+      select: {
+        id: true,
+        nome: true,
+        contatoTelefone: true,
+        funilId: true,
+        funil: { select: { nome: true } },
+        funilEtapa: { select: { nome: true } },
+      },
+    });
+
+    // 1. Id que não resolve = lista errada (ou de outro tenant/carteira).
+    if (achados.length !== ids.length) {
+      const vistos = new Set(achados.map((l) => l.id));
+      const faltando = ids.filter((id) => !vistos.has(id));
+      throw new BusinessRuleException(
+        `Nada foi excluído: ${faltando.length} id(s) não existem nesta empresa ou estão fora da ` +
+          `sua carteira — ${faltando.join(', ')}. Confira a lista antes de repetir.`,
+      );
+    }
+
+    // 2. Lead sem funil é a BASE DE PROSPECÇÃO, não resíduo de teste.
+    const semFunil = achados.filter((l) => !l.funilId);
+    if (semFunil.length > 0) {
+      throw new BusinessRuleException(
+        `Nada foi excluído: ${semFunil.length} lead(s) não estão em nenhum funil. Lead sem funil é ` +
+          'a base de prospecção importada — esta rota só alcança lead DENTRO de funil. ' +
+          `Ids recusados: ${semFunil.map((l) => l.id).join(', ')}.`,
+      );
+    }
+
+    // `Conversation.leadId` é campo SOLTO (sem FK): apagar o lead sem desamarrar
+    // deixa a conversa apontando pra id morto, e o CRIAR_LEAD da triagem conclui
+    // "já tem lead" e não cria — a conversa nunca mais é triada, sem erro nenhum.
+    // Mesmo cuidado do LeadsService.remove.
+    await this.prisma.$transaction([
+      this.prisma.conversation.updateMany({
+        where: { leadId: { in: ids }, empresaId },
+        data: { leadId: null },
+      }),
+      this.prisma.lead.deleteMany({ where: { id: { in: ids }, empresaId } }),
+    ]);
+
+    return {
+      ok: true,
+      total: achados.length,
+      motivo: dto.motivo ?? null,
+      excluidos: achados.map((l) => ({
+        id: l.id,
+        nome: l.nome,
+        telefone: l.contatoTelefone ?? null,
+        funil: l.funil?.nome ?? null,
+        etapa: l.funilEtapa?.nome ?? null,
+      })),
     };
   }
 }
