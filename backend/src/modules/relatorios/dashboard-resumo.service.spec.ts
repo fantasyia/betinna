@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { readFileSync } from 'node:fs';
 import type { UserRole } from '@prisma/client';
 import type { AuthenticatedUser } from '@shared/types/authenticated-user';
 import { DashboardResumoService } from './dashboard-resumo.service';
@@ -282,5 +283,32 @@ describe('DashboardResumoService.graficos (M8)', () => {
     expect(r.saudeFluxos).toEqual([]);
     const where = prisma.lead.groupBy.mock.calls[0][0].where;
     expect(where.representanteId).toEqual({ in: ['rep-1'] });
+  });
+});
+
+/**
+ * Execução de TESTE não entra no dashboard.
+ *
+ * O caso real: o Léo viu "⚠ 0%" na sala de fluxos com o erro
+ * "Passo b9ad952b… esgotou 3 tentativas" — de dois testes num fluxo PAUSADO.
+ * Ficou vermelho por uma execução que nunca foi operação.
+ */
+describe('DashboardResumoService — teste fora do painel', () => {
+  it('TODA leitura de execução filtra teste (groupBy, falhas e as duas SQL cruas)', () => {
+    const fonte = readFileSync(new URL('./dashboard-resumo.service.ts', import.meta.url), 'utf8');
+
+    // As duas queries Prisma sobre FluxoExecucao.
+    const trechosPrisma = fonte.split('prisma.fluxoExecucao.').slice(1);
+    expect(trechosPrisma.length).toBeGreaterThanOrEqual(2);
+    for (const t of trechosPrisma) {
+      expect(t.slice(0, 400)).toContain('teste: false');
+    }
+
+    // As duas SQL cruas — aqui o filtro tem que estar escrito à mão.
+    const trechosSql = fonte.split('FROM "FluxoExecucao"').slice(1);
+    expect(trechosSql.length).toBeGreaterThanOrEqual(2);
+    for (const t of trechosSql) {
+      expect(t.slice(0, 300)).toContain('"teste" = false');
+    }
   });
 });

@@ -44,6 +44,18 @@ teste não alcançava.
 - A mensagem de erro do nó parou de mandar consertar o que estava certo: agora
   separa "em produção = gatilho errado" de "num teste = teste sem conversa".
 
+### 🩹 O alerta do dashboard também contava teste (faltou na primeira passada)
+
+O painel de fluxos (`/dashboard/resumo`, sala de fluxos do Monitor) tem as
+PRÓPRIAS consultas de execução — duas do Prisma e **duas em SQL crua** — e não
+passam pelo `fluxos.service`. Corrigi as métricas e o histórico e o alerta
+vermelho continuou lá: "⚠ 0%" com "Passo b9ad952b… esgotou 3 tentativas", de dois
+testes num fluxo pausado.
+
+As quatro filtram `teste = false` agora. Um teste lê o próprio arquivo-fonte e
+exige o filtro em toda leitura de `FluxoExecucao` — o problema aqui não foi a
+regra, foi ter mais consultas do que eu tinha achado.
+
 ### 🔇 Teste não manda mensagem pra pessoa (a não ser que você peça)
 
 Consequência do item acima que não podia ficar de pé: testar contra uma conversa

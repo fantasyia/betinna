@@ -177,9 +177,16 @@ export class DashboardResumoService {
         where: { empresaId, status: { not: 'ARQUIVADO' } },
         _count: { _all: true },
       }),
+      // `teste: false` — execução de teste não é resultado do fluxo. Sem isto, dois
+      // testes num fluxo PAUSADO viravam "0% de sucesso" com alerta vermelho no
+      // dashboard, e mandavam caçar bug que não existia.
       this.prisma.fluxoExecucao.groupBy({
         by: ['status'],
-        where: { empresaId, criadoEm: { gte: new Date(agora.getTime() - DIA_MS) } },
+        where: {
+          empresaId,
+          teste: false,
+          criadoEm: { gte: new Date(agora.getTime() - DIA_MS) },
+        },
         _count: { _all: true },
       }),
       // Execuções com FALHA (últimos 7d) — vão pra triagem com o erro e o link.
@@ -188,6 +195,9 @@ export class DashboardResumoService {
             where: {
               empresaId,
               status: 'FALHOU',
+              // Idem: falha de TESTE não vira alerta de operação. O erro do teste
+              // continua visível no histórico do fluxo, na aba Testes.
+              teste: false,
               criadoEm: { gte: new Date(agora.getTime() - 7 * DIA_MS) },
             },
             orderBy: { criadoEm: 'desc' },
@@ -245,6 +255,7 @@ export class DashboardResumoService {
                    COUNT(*) AS total
             FROM "FluxoExecucao"
             WHERE "empresaId" = ${empresaId}
+              AND "teste" = false
               AND "criadoEm" >= ${new Date(agora.getTime() - 7 * DIA_MS)}
             GROUP BY 1, 2
           `
@@ -608,6 +619,9 @@ export class DashboardResumoService {
         status: f.status,
         triggerTipo: f.triggerTipo,
         exec7d: exec,
+        // `null` quando não houve execução de PRODUÇÃO — a tela mostra "—" em vez
+        // de "0%". Fluxo que não rodou não está falhando, e foi essa confusão que
+        // pintou o T1 de vermelho no dashboard.
         pctSucesso: exec.total > 0 ? Math.round((exec.ok / exec.total) * 100) : null,
         ultimoErro: ultimoErroPorFluxo.get(f.id) ?? null,
         proximoDisparo,
@@ -725,7 +739,7 @@ export class DashboardResumoService {
                    COUNT(*) FILTER (WHERE "status" = 'CONCLUIDO') AS ok,
                    COUNT(*) FILTER (WHERE "status" = 'FALHOU') AS erro
             FROM "FluxoExecucao"
-            WHERE "empresaId" = ${empresaId} AND "criadoEm" >= ${de}
+            WHERE "empresaId" = ${empresaId} AND "teste" = false AND "criadoEm" >= ${de}
             GROUP BY 1
           `
         : Promise.resolve([]),
