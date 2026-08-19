@@ -4,8 +4,13 @@ import { RedisService } from '@database/redis.service';
 import {
   ENVIO_WHATSAPP_DEFAULT,
   type EnvioWhatsappConfig,
+  ForaDaJanelaEnvioError,
+  JANELA_ENVIO_DEFAULT,
+  type JanelaEnvioConfig,
+  esperaAteJanelaMs,
   incrementoMs,
   resolveEnvioWhatsapp,
+  resolveJanelaEnvio,
 } from './whatsapp-pacing.util';
 
 /**
@@ -40,18 +45,36 @@ return slot`;
     private readonly redis: RedisService,
   ) {}
 
-  private async lerConfig(empresaId: string): Promise<EnvioWhatsappConfig> {
+  private async lerConfig(
+    empresaId: string,
+  ): Promise<{ envio: EnvioWhatsappConfig; janela: JanelaEnvioConfig }> {
     try {
       const empresa = await this.prisma.empresa.findUnique({
         where: { id: empresaId },
         select: { config: true },
       });
-      return resolveEnvioWhatsapp(
-        (empresa?.config as { envioWhatsapp?: unknown } | null)?.envioWhatsapp,
-      );
+      const raw = (empresa?.config as { envioWhatsapp?: { janela?: unknown } } | null)
+        ?.envioWhatsapp;
+      return { envio: resolveEnvioWhatsapp(raw), janela: resolveJanelaEnvio(raw?.janela) };
     } catch {
-      return ENVIO_WHATSAPP_DEFAULT;
+      // Banco fora não pode virar silêncio: cai no default (que tem janela ativa
+      // 8h–20h) em vez de bloquear ou liberar geral.
+      return { envio: ENVIO_WHATSAPP_DEFAULT, janela: JANELA_ENVIO_DEFAULT };
     }
+  }
+
+  /**
+   * Quantos ms faltam pra janela de envio PROATIVO abrir (0 = pode mandar agora).
+   *
+   * É o que os pontos que sabem reagendar (motor de fluxos, campanhas) consultam
+   * ANTES de começar o trabalho — assim eles devolvem o job pra fila com delay em
+   * vez de segurar um slot de worker a noite inteira num `setTimeout` que evapora
+   * no primeiro redeploy.
+   */
+  async esperaPorJanelaMs(empresaId: string): Promise<number> {
+    if (!empresaId) return 0;
+    const { janela } = await this.lerConfig(empresaId);
+    return esperaAteJanelaMs(janela, new Date());
   }
 
   /**
@@ -61,10 +84,30 @@ return slot`;
    * faixa conservadora. As faixas têm cursores separados (não competem entre si).
    * Degrada gracioso: se o Redis estiver fora, não trava o envio (perde espaçamento).
    */
-  async aguardarSlot(empresaId: string, reativo = false): Promise<void> {
+  async aguardarSlot(
+    empresaId: string,
+    reativo = false,
+    opts: { ignorarJanela?: boolean } = {},
+  ): Promise<void> {
     if (!empresaId) return;
-    const cfg = await this.lerConfig(empresaId);
-    const incremento = incrementoMs(cfg, Math.random(), reativo);
+    const { envio, janela } = await this.lerConfig(empresaId);
+
+    // JANELA: envio proativo fora do horário NÃO sai — e falha alto em vez de
+    // esperar. Um `await` de 10 horas aqui prenderia o worker e sumiria no
+    // próximo deploy; quem chama é que sabe como reagendar (fila, cron, retry).
+    // Reativo passa direto: responder quem escreveu às 23h é o certo.
+    //
+    // `ignorarJanela` é a válvula pra REPARO — reenviar algo que já passou pelo
+    // gate uma vez e falhou no transporte. Não é atalho pra envio novo: quem
+    // usar isso num caminho novo está mandando mensagem de madrugada.
+    if (!reativo && !opts.ignorarJanela) {
+      const esperaJanela = esperaAteJanelaMs(janela, new Date());
+      if (esperaJanela > 0) {
+        throw new ForaDaJanelaEnvioError(esperaJanela, new Date(Date.now() + esperaJanela));
+      }
+    }
+
+    const incremento = incrementoMs(envio, Math.random(), reativo);
     const now = Date.now();
     const ttl = Math.max(60_000, incremento * 4);
     const key = reativo ? `wa:pace:r:${empresaId}` : `wa:pace:${empresaId}`;

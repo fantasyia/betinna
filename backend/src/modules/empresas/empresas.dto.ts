@@ -168,6 +168,20 @@ const envioWhatsappSchema = z
     maxPorMinutoReativo: z.number().int().positive().max(600).nullable(),
     jitterMinSeg: z.number().nonnegative().max(120).nullable(),
     jitterMaxSeg: z.number().nonnegative().max(120).nullable(),
+    /**
+     * Janela de envio (silêncio noturno). Vale só pro PROATIVO — responder quem
+     * escreveu às 23h continua saindo na hora. Vazio/null = default (8h–20h,
+     * todos os dias).
+     */
+    janela: z
+      .object({
+        ativa: z.boolean().nullable(),
+        horaInicio: z.number().int().min(0).max(23).nullable(),
+        horaFim: z.number().int().min(1).max(24).nullable(),
+        dias: z.array(z.number().int().min(0).max(6)).max(7).nullable(),
+      })
+      .partial()
+      .nullable(),
   })
   .partial()
   .optional();

@@ -35,6 +35,10 @@ const makePrismaMock = () => ({
   fluxoNo: {
     findUnique: vi.fn().mockResolvedValue(null),
   } satisfies MockModel,
+  // Gatilho do fluxo: define se o envio é abordagem (janela vale) ou resposta.
+  fluxo: {
+    findUnique: vi.fn().mockResolvedValue({ triggerTipo: 'LEAD_CRIADO' }),
+  } satisfies MockModel,
   fluxoEdge: {
     findMany: vi.fn().mockResolvedValue([]),
   } satisfies MockModel,
@@ -196,7 +200,7 @@ describe('FluxoExecutorService', () => {
       emailSvc as never,
       conversarIa as never,
       bus as never,
-      { aguardarSlot: vi.fn() } as never,
+      { aguardarSlot: vi.fn(), esperaPorJanelaMs: vi.fn().mockResolvedValue(0) } as never,
       integracaoStatus as never,
       queue as never,
       { criarCardsDeTarefa: vi.fn(async () => ({})) } as never, // kanbanTarefa

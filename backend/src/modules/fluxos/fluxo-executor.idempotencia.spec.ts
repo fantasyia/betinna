@@ -58,6 +58,7 @@ function makeService() {
       update: vi.fn().mockResolvedValue({}),
     },
     fluxoNo: { findUnique: vi.fn().mockResolvedValue(waNo()) },
+    fluxo: { findUnique: vi.fn().mockResolvedValue({ triggerTipo: 'LEAD_CRIADO' }) },
     fluxoEdge: { findMany: vi.fn().mockResolvedValue([]) },
     fluxoExecucaoLog: {
       create: vi.fn().mockResolvedValue({}),
@@ -78,7 +79,7 @@ function makeService() {
     { enviarHtmlLivre: vi.fn() } as never,
     conversarIa as never,
     { disparar: vi.fn() } as never,
-    { aguardarSlot: vi.fn() } as never,
+    { aguardarSlot: vi.fn(), esperaPorJanelaMs: vi.fn().mockResolvedValue(0) } as never,
     { marcarDesconectado: vi.fn() } as never,
     queue as never,
     { criarCardsDeTarefa: vi.fn(async () => ({})) } as never, // kanbanTarefa

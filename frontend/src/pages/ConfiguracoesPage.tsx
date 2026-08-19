@@ -1421,6 +1421,12 @@ interface EnvioWaForm {
   maxPorMinutoReativo: string;
   jitterMinSeg: string;
   jitterMaxSeg: string;
+  /** Janela de envio: silêncio noturno pro que é ABORDAGEM. */
+  janelaAtiva: boolean;
+  janelaInicio: string;
+  janelaFim: string;
+  /** Fim de semana liberado pra abordagem? */
+  janelaFimDeSemana: boolean;
 }
 
 function EnvioWhatsappConfig() {
@@ -1436,16 +1442,22 @@ function EnvioWhatsappConfig() {
       maxPorMinutoReativo?: number;
       jitterMinSeg?: number;
       jitterMaxSeg?: number;
+      janela?: { ativa?: boolean; horaInicio?: number; horaFim?: number; dias?: number[] };
     };
+    const dias = Array.isArray(r.janela?.dias) ? r.janela.dias : [0, 1, 2, 3, 4, 5, 6];
     return {
       maxPorMinuto: String(r.maxPorMinuto ?? 12),
       maxPorMinutoReativo: String(r.maxPorMinutoReativo ?? 30),
       jitterMinSeg: String(r.jitterMinSeg ?? 1),
       jitterMaxSeg: String(r.jitterMaxSeg ?? 4),
+      janelaAtiva: r.janela?.ativa !== false,
+      janelaInicio: String(r.janela?.horaInicio ?? 8),
+      janelaFim: String(r.janela?.horaFim ?? 20),
+      janelaFimDeSemana: dias.includes(0) || dias.includes(6),
     };
   }, [cfg]);
   const form = edit ?? base;
-  const set = (k: keyof EnvioWaForm, v: string) => setEdit({ ...form, [k]: v });
+  const set = (k: keyof EnvioWaForm, v: string | boolean) => setEdit({ ...form, [k]: v });
 
   async function save() {
     setBusy(true);
@@ -1458,8 +1470,28 @@ function EnvioWhatsappConfig() {
       const maxPorMinutoReativo = Math.max(1, n(form.maxPorMinutoReativo, 30));
       const jitterMinSeg = n(form.jitterMinSeg, 1);
       const jitterMaxSeg = Math.max(jitterMinSeg, n(form.jitterMaxSeg, 4));
+      const hora = (v: string, d: number, min: number, max: number) => {
+        const x = Math.round(Number(v));
+        return Number.isFinite(x) && x >= min && x <= max ? x : d;
+      };
+      const horaInicio = hora(form.janelaInicio, 8, 0, 23);
+      // Fim sempre depois do início: janela invertida nunca abriria e calaria a
+      // empresa inteira. O backend também protege; aqui é pra não salvar torto.
+      const horaFimBruta = hora(form.janelaFim, 20, 1, 24);
+      const horaFim = horaFimBruta > horaInicio ? horaFimBruta : 20;
       await api.patch('/empresas/config', {
-        envioWhatsapp: { maxPorMinuto, maxPorMinutoReativo, jitterMinSeg, jitterMaxSeg },
+        envioWhatsapp: {
+          maxPorMinuto,
+          maxPorMinutoReativo,
+          jitterMinSeg,
+          jitterMaxSeg,
+          janela: {
+            ativa: form.janelaAtiva,
+            horaInicio,
+            horaFim,
+            dias: form.janelaFimDeSemana ? [0, 1, 2, 3, 4, 5, 6] : [1, 2, 3, 4, 5],
+          },
+        },
       });
       toast.success('Ritmo de envio salvo');
       setEdit(null);
@@ -1538,6 +1570,60 @@ function EnvioWhatsappConfig() {
             {intervalo(form.maxPorMinutoReativo, 30)}s — ambos + {form.jitterMinSeg}–
             {form.jitterMaxSeg}s de variação aleatória.
           </p>
+
+          <div className="border-t border-border mt-2 pt-3 flex flex-col gap-2">
+            <label className="flex items-center gap-2 text-sm" style={{ color: 'var(--text)' }}>
+              <input
+                type="checkbox"
+                data-testid="janela-envio-ativa"
+                checked={form.janelaAtiva}
+                disabled={!podeEditar}
+                onChange={(e) => set('janelaAtiva', e.target.checked)}
+              />
+              🌙 Não mandar abordagem fora do horário
+            </label>
+            <p className="text-[11px] text-muted m-0">
+              Vale só pro que a empresa INICIA (fluxo, campanha, primeira mensagem). Resposta a
+              quem escreveu sai na hora, inclusive de madrugada — segurar isso seria defeito, não
+              proteção. O que cai fora do horário não é descartado: espera e sai quando abrir.
+            </p>
+            <div className="flex flex-col gap-2 sm:flex-row">
+              <label className="flex flex-col gap-1 text-xs text-muted flex-1">
+                Começa às (h)
+                <Input
+                  type="number"
+                  min="0"
+                  max="23"
+                  data-testid="janela-envio-inicio"
+                  value={form.janelaInicio}
+                  disabled={!podeEditar || !form.janelaAtiva}
+                  onChange={(e) => set('janelaInicio', e.target.value)}
+                />
+              </label>
+              <label className="flex flex-col gap-1 text-xs text-muted flex-1">
+                Para às (h)
+                <Input
+                  type="number"
+                  min="1"
+                  max="24"
+                  data-testid="janela-envio-fim"
+                  value={form.janelaFim}
+                  disabled={!podeEditar || !form.janelaAtiva}
+                  onChange={(e) => set('janelaFim', e.target.value)}
+                />
+              </label>
+            </div>
+            <label className="flex items-center gap-2 text-xs text-muted">
+              <input
+                type="checkbox"
+                data-testid="janela-envio-fds"
+                checked={form.janelaFimDeSemana}
+                disabled={!podeEditar || !form.janelaAtiva}
+                onChange={(e) => set('janelaFimDeSemana', e.target.checked)}
+              />
+              Abordar também no fim de semana
+            </label>
+          </div>
 
           {podeEditar && (
             <button

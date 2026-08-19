@@ -15,6 +15,8 @@
  * andamento; depois disso é esquecimento.
  */
 
+import { diaSemanaDeBrt, emBrt } from '@shared/tempo/brt.util';
+
 export interface AlertaEsquecidaConfig {
   /** Liga/desliga a varredura pro tenant. */
   ativo: boolean;
@@ -36,9 +38,6 @@ export const ALERTA_ESQUECIDA_DEFAULT: AlertaEsquecidaConfig = {
   horaInicio: 8,
   horaFim: 18,
 };
-
-/** O Brasil não tem mais horário de verão desde 2019 — offset fixo. */
-const BRT_OFFSET_MS = 3 * 60 * 60 * 1000;
 
 /** Resolve a config do tenant sobre o default (aceita parcial e lixo). */
 export function resolveAlertaEsquecida(raw: unknown): AlertaEsquecidaConfig {
@@ -64,16 +63,6 @@ function numeroNaFaixa(v: unknown, min: number, max: number, padrao: number): nu
   return typeof v === 'number' && Number.isFinite(v) && v >= min && v <= max ? v : padrao;
 }
 
-/** Partes da data no fuso de Brasília (dia da semana + hora fracionária). */
-function emBrt(d: Date): { diaSemana: number; hora: number; inicioDoDiaUtc: number } {
-  const brt = new Date(d.getTime() - BRT_OFFSET_MS);
-  const hora = brt.getUTCHours() + brt.getUTCMinutes() / 60 + brt.getUTCSeconds() / 3600;
-  // Meia-noite BRT daquele dia, expressa em epoch UTC.
-  const inicioDoDiaUtc =
-    Date.UTC(brt.getUTCFullYear(), brt.getUTCMonth(), brt.getUTCDate()) + BRT_OFFSET_MS;
-  return { diaSemana: brt.getUTCDay(), hora, inicioDoDiaUtc };
-}
-
 /**
  * Quantas horas COMERCIAIS se passaram entre `inicio` e `fim`.
  *
@@ -92,8 +81,7 @@ export function horasComerciaisEntre(
   let cursor = emBrt(inicio).inicioDoDiaUtc;
   const limite = fim.getTime();
   for (let i = 0; i < 400 && cursor < limite; i++) {
-    const { diaSemana } = emBrt(new Date(cursor + 12 * 3600_000)); // meio-dia: imune a borda
-    if (diasUteis.has(diaSemana)) {
+    if (diasUteis.has(diaSemanaDeBrt(cursor))) {
       const abre = cursor + cfg.horaInicio * 3600_000;
       const fecha = cursor + cfg.horaFim * 3600_000;
       const de = Math.max(abre, inicio.getTime());

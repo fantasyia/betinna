@@ -622,6 +622,13 @@ export class ConversarIaService {
     no: FluxoNo,
     ctx: ExecucaoContexto,
     empresaId: string,
+    /**
+     * O fluxo foi disparado por mensagem do lead (ex: T1 no MENSAGEM_CANAL)?
+     * Então esta "abertura" é RESPOSTA a quem acabou de escrever: usa a faixa
+     * rápida de pacing e não é segurada pela janela de envio. Fluxo proativo
+     * (cron, lead criado, tag) segue como abordagem — e essa sim tem hora.
+     */
+    reativo = false,
   ): Promise<{
     aguardando: boolean;
     pulado?: boolean;
@@ -813,7 +820,7 @@ export class ConversarIaService {
         empresaId,
         lead.contatoTelefone,
         aberturaTexto,
-        false,
+        reativo,
         `fx:${execucaoId}:${no.id}:opener`,
       );
     } catch (err) {

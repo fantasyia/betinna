@@ -9,6 +9,37 @@ versionamento segue [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Não versionado] — 2026-08-19
 
+### 🌙 Janela de envio: abordagem por WhatsApp não sai de madrugada
+
+O motor de fluxos conta milissegundos, não sabe que horas são: um `DELAY` de 3h
+disparado às 21h manda à meia-noite. Mensagem ativa de madrugada é o padrão mais
+denunciável que existe — e o número é o mesmo que atende o SAC.
+
+A regra ficou no **pacing**, não em cada fluxo: é o gargalo único por onde já
+passava todo outbound, então uma regra só cobre T1, C1, C2, campanhas e o que for
+criado amanhã. Padrão **8h–20h, todos os dias** (configurável em Configurações →
+"🐢 Ritmo de envio": horário, e se pode abordar no fim de semana).
+
+**Só vale pro PROATIVO.** Responder quem acabou de escrever às 23h continua
+saindo na hora — a pessoa está acordada e falando com você. Quem decide é o
+GATILHO do fluxo: `MENSAGEM_CANAL` e `LEAD_RESPONDEU` são resposta; cron, tag,
+lead criado são abordagem.
+
+**Adia, não descarta.** Fora do horário o passo volta pra fila com delay até a
+janela abrir — nunca um `await` de 10 horas, que prenderia um slot do worker a
+noite inteira e evaporaria no primeiro redeploy, deixando a execução
+`EM_EXECUCAO` pra sempre.
+
+Cobre os três caminhos proativos: nó `ENVIAR_WHATSAPP`, abertura do
+`CONVERSAR_IA` e campanha (campanha de e-mail passa direto — e-mail às 3h não
+acorda ninguém). O reenvio pós-reconexão do Baileys tem dispensa explícita
+(`ignorarJanela`): é reparo de mensagem que já passou pelo gate uma vez.
+
+Config torta não pode calar a empresa: janela invertida (22h→6h) e lista de dias
+vazia caem no padrão, e a busca é fail-open. 18 testes na janela, 5 no motor, 3
+na campanha.
+
+
 ### 🧹 MCP: excluir lead e apagar etiqueta — as duas faltavam
 
 **`leads_excluir`** (`POST /crm/contato/excluir`, escopo `crm`). Existia

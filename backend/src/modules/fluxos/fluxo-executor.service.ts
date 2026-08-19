@@ -294,6 +294,58 @@ export class FluxoExecutorService {
       return;
     }
 
+    // JANELA DE ENVIO: nó que fala com o lead por WhatsApp de forma PROATIVA
+    // (disparo do fluxo, não resposta a quem escreveu) não sai de madrugada —
+    // volta pra fila com delay até a janela abrir. O `DELAY` do motor é cego pra
+    // relógio de parede: um "espere 3h" disparado às 21h cai à 0h, e ninguém
+    // percebe até o lead reclamar.
+    //
+    // REAGENDA, não espera: a pausa pode ser de 10 horas. Um `await` aqui
+    // prenderia um dos 5 slots de concorrência do worker a noite inteira, e
+    // sumiria no primeiro redeploy — a execução ficaria EM_EXECUCAO pra sempre.
+    // Job com delay vive no Redis e sobrevive a deploy.
+    // Nem todo fluxo é proativo. O T1 dispara por MENSAGEM_CANAL: o lead ACABOU de
+    // escrever, e tudo que o fluxo manda ali é RESPOSTA, não abordagem. Segurar
+    // isso até as 8h deixaria quem escreveu às 23h falando sozinho a noite toda —
+    // a proteção viraria o defeito. Quem decide é o GATILHO do fluxo, não o nó.
+    let reativoPorGatilho = false;
+    if (
+      no.tipo === 'ACAO' &&
+      (no.acaoTipo === 'ENVIAR_WHATSAPP' || no.acaoTipo === 'CONVERSAR_IA')
+    ) {
+      const fluxo = await this.prisma.fluxo.findUnique({
+        where: { id: execucao.fluxoId },
+        select: { triggerTipo: true },
+      });
+      reativoPorGatilho =
+        fluxo?.triggerTipo === 'MENSAGEM_CANAL' || fluxo?.triggerTipo === 'LEAD_RESPONDEU';
+      const esperaJanela = reativoPorGatilho
+        ? 0
+        : await this.pacing.esperaPorJanelaMs(execucao.empresaId).catch(() => 0);
+      if (esperaJanela > 0) {
+        // Solta o claim ANTES de reenfileirar: o job novo tem jobId próprio, e
+        // deixar este como EXECUTANDO só daria trabalho ao reaper depois.
+        await this.prisma.fluxoStepClaim.delete({ where: { jobId } }).catch(() => undefined);
+        await this.queue.add(
+          'step',
+          { execucaoId, noId },
+          {
+            delay: esperaJanela,
+            attempts: 3,
+            backoff: { type: 'exponential', delay: 2000 },
+            removeOnComplete: { count: 500 },
+            removeOnFail: { count: 200 },
+          },
+        );
+        this.logger.log(
+          `Execução ${execucaoId} nó ${noId} (${no.acaoTipo}) adiado ${Math.round(
+            esperaJanela / 60000,
+          )} min — fora da janela de envio`,
+        );
+        return;
+      }
+    }
+
     const contexto = await this.enriquecerContexto(
       execucao.contexto as ExecucaoContexto,
       execucao.empresaId,
@@ -317,7 +369,13 @@ export class FluxoExecutorService {
 
     try {
       if (no.tipo === 'ACAO' && no.acaoTipo === 'CONVERSAR_IA') {
-        const r = await this.conversarIa.iniciar(execucaoId, no, contexto, execucao.empresaId);
+        const r = await this.conversarIa.iniciar(
+          execucaoId,
+          no,
+          contexto,
+          execucao.empresaId,
+          reativoPorGatilho,
+        );
         aguardando = r.aguardando;
         pulado = r.pulado ?? false;
         puladoMotivo = r.motivo ?? null;
@@ -352,6 +410,7 @@ export class FluxoExecutorService {
           execucao.empresaId,
           `fx:${execucaoId}:${noId}:p${passada}`,
           execucaoId,
+          reativoPorGatilho,
         );
       }
     } catch (err) {
@@ -719,6 +778,8 @@ export class FluxoExecutorService {
     empresaId: string,
     idemBase: string,
     execucaoId: string,
+    /** Fluxo disparado por mensagem do lead → o que ele manda é RESPOSTA. */
+    reativo = false,
   ): Promise<Record<string, unknown>> {
     switch (no.tipo) {
       case 'TRIGGER':
@@ -735,7 +796,7 @@ export class FluxoExecutorService {
       }
 
       case 'ACAO':
-        return this.executarAcao(no, ctx, empresaId, idemBase, execucaoId);
+        return this.executarAcao(no, ctx, empresaId, idemBase, execucaoId, reativo);
 
       default:
         return {};
@@ -748,6 +809,7 @@ export class FluxoExecutorService {
     empresaId: string,
     idemBase: string,
     execucaoId: string,
+    reativo = false,
   ): Promise<Record<string, unknown>> {
     const acaoTipo = no.acaoTipo;
     if (!acaoTipo) throw new Error(`Nó ACAO sem acaoTipo definido`);
@@ -755,7 +817,13 @@ export class FluxoExecutorService {
     const cfg = no.config as unknown;
     switch (acaoTipo) {
       case 'ENVIAR_WHATSAPP':
-        return this.acaoEnviarWhatsapp(cfg as EnviarWhatsappConfig, ctx, empresaId, idemBase);
+        return this.acaoEnviarWhatsapp(
+          cfg as EnviarWhatsappConfig,
+          ctx,
+          empresaId,
+          idemBase,
+          reativo,
+        );
 
       case 'ENVIAR_EMAIL':
         return this.acaoEnviarEmail(cfg as EnviarEmailConfig, ctx, empresaId, idemBase);
@@ -799,6 +867,12 @@ export class FluxoExecutorService {
     ctx: ExecucaoContexto,
     empresaId: string,
     idemBase: string,
+    /**
+     * Fluxo disparado por mensagem do lead. Muda duas coisas: usa a faixa RÁPIDA
+     * de pacing (responder quem chamou não é rajada) e dispensa a janela de
+     * envio — a janela já foi conferida no passo, e resposta não tem horário.
+     */
+    reativo = false,
   ): Promise<Record<string, unknown>> {
     this.assertEmpresaId(empresaId, 'ENVIAR_WHATSAPP');
     const mensagem = interpolate(cfg.mensagem, ctx);
@@ -826,7 +900,7 @@ export class FluxoExecutorService {
     }
 
     // Pacing global: espaça este envio dos demais da empresa (anti-rajada).
-    await this.pacing.aguardarSlot(empresaId);
+    await this.pacing.aguardarSlot(empresaId, reativo);
 
     // Envio: se há anexo (midia), manda mídia com a `mensagem` como legenda; senão, texto.
     // Único ponto de envio (reusado pelo caminho de grupo e pelo de telefone).

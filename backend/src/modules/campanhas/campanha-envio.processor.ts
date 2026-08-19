@@ -1,6 +1,6 @@
 import { Logger } from '@nestjs/common';
-import { OnWorkerEvent, Processor, WorkerHost } from '@nestjs/bullmq';
-import { Job } from 'bullmq';
+import { InjectQueue, OnWorkerEvent, Processor, WorkerHost } from '@nestjs/bullmq';
+import { Job, Queue } from 'bullmq';
 import { PrismaService } from '@database/prisma.service';
 import { TransactionalEmailService } from '@integrations/email/transactional-email.service';
 import { WhatsAppService } from '@integrations/whatsapp/whatsapp.service';
@@ -36,6 +36,7 @@ export class CampanhaEnvioProcessor extends WorkerHost {
     private readonly deadLetter: DeadLetterService,
     private readonly pacing: WhatsappPacingService,
     private readonly supressao: SupressaoService,
+    @InjectQueue(CAMPANHA_ENVIO_QUEUE) private readonly queue: Queue<CampanhaEnvioJobData>,
   ) {
     super();
   }
@@ -122,6 +123,37 @@ export class CampanhaEnvioProcessor extends WorkerHost {
         `Campanha ${campanhaId} está ${dest.campanha.status} — destinatário ${destinatarioId} ignorado`,
       );
       return;
+    }
+
+    // JANELA DE ENVIO: campanha é o disparo proativo por excelência — bate no
+    // celular de gente que não pediu nada naquele momento. Fora do horário, o
+    // destinatário volta pra fila com delay até a janela abrir, em vez de sair
+    // de madrugada. Devolver pra fila (e não dormir aqui) porque a espera pode
+    // ser de horas e são só 3 slots de concorrência neste worker.
+    //
+    // Antes da supressão e do claim de idempotência de propósito: nada de efeito
+    // pode acontecer antes de a gente saber se pode enviar.
+    if (dest.campanha.canal !== 'EMAIL') {
+      const espera = await this.pacing.esperaPorJanelaMs(dest.campanha.empresaId).catch(() => 0);
+      if (espera > 0) {
+        await this.queue.add(
+          'enviar',
+          { campanhaId, destinatarioId },
+          {
+            delay: espera,
+            attempts: 3,
+            backoff: { type: 'exponential', delay: 5_000 },
+            removeOnComplete: { count: 500 },
+            removeOnFail: { count: 200 },
+          },
+        );
+        this.logger.log(
+          `Campanha ${campanhaId} · destinatário ${destinatarioId} adiado ${Math.round(
+            espera / 60000,
+          )} min — fora da janela de envio`,
+        );
+        return;
+      }
     }
 
     // Supressão LGPD: destinatário com a tag "Não Reabordar - LGPD ⛔" NÃO recebe.

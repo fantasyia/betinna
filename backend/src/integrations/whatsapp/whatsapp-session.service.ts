@@ -461,7 +461,15 @@ export class WhatsAppSessionService implements OnModuleInit, OnModuleDestroy {
           // em loop apertado, FORA do pacing. Depois de uma queda, é justamente
           // o pior momento pra despejar rajada no número — é o padrão que a Meta
           // pune. Passa pelo mesmo pacing de todo outbound.
-          await this.pacing.aguardarSlot(ctx.empresaId).catch(() => undefined);
+          // `ignorarJanela`: isto é REPARO, não abordagem. Cada uma destas já
+          // passou pela janela quando foi decidida — só não chegou ao destino
+          // porque o socket caiu. Segurá-las até as 8h atrasaria resposta a
+          // quem estava conversando às 2h da manhã. Continua na faixa LENTA de
+          // pacing de propósito: 50 mensagens logo após uma queda é justamente
+          // a rajada que a auditoria pegou.
+          await this.pacing
+            .aguardarSlot(ctx.empresaId, false, { ignorarJanela: true })
+            .catch(() => undefined);
           const r = await this.enviarTexto(
             ctx.owner,
             m.conversation.peerId,
