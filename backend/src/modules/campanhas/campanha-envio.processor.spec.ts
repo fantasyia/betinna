@@ -105,7 +105,7 @@ function makeProc(canal: string, esperaMs: number) {
   const whatsapp = { enviarTexto: vi.fn().mockResolvedValue({ externalId: 'wa-1' }) };
   const pacing = {
     aguardarSlot: vi.fn().mockResolvedValue(undefined),
-    esperaPorJanelaMs: vi.fn().mockResolvedValue(esperaMs),
+    esperaAntesDoProativoMs: vi.fn().mockResolvedValue(esperaMs),
   };
   const idempotency = { claimStrict: vi.fn().mockResolvedValue(true), release: vi.fn() };
   const proc = new CampanhaEnvioProcessor(
@@ -142,7 +142,7 @@ describe('CampanhaEnvioProcessor.process — janela de envio', () => {
 
     await proc.process(makeJob(0, 3));
 
-    expect(pacing.esperaPorJanelaMs).not.toHaveBeenCalled();
+    expect(pacing.esperaAntesDoProativoMs).not.toHaveBeenCalled();
     expect(queue.add).not.toHaveBeenCalled();
   });
 

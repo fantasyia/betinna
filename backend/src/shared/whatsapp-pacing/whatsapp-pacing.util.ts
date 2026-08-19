@@ -166,6 +166,75 @@ export function esperaAteJanelaMs(cfg: JanelaEnvioConfig, agora: Date): number {
   return 0;
 }
 
+// ═══════════════════════════════════════════════════════════════════════
+// TETO DIÁRIO DE ENVIO PROATIVO
+// ═══════════════════════════════════════════════════════════════════════
+//
+// A janela de horário e o teto diário protegem contra coisas DIFERENTES, e é
+// por isso que os dois precisam existir. O ritmo (12/min) impede rajada; a
+// janela impede madrugada. Nenhum dos dois impede VOLUME: 12/min dentro de uma
+// janela de 12 horas dá 8.640 mensagens num dia, e é volume acumulado com taxa
+// de bloqueio que derruba número pareado — não pico por minuto.
+//
+// O teto não existe pra ritmar a operação normal. Existe pro acidente: fluxo
+// com laço, importação torta, campanha com filtro errado transformando 30 mil
+// contatos em disparo. É a diferença entre "número banido" e "log com 200
+// adiados" — e o número é ponto único de falha de T1, C1, C2 e da família S.
+
+/** Teto diário de envios PROATIVOS por empresa. 0 = sem teto. */
+export interface TetoDiarioConfig {
+  ativo: boolean;
+  maxPorDia: number;
+}
+
+/**
+ * Padrão: 500/dia.
+ *
+ * Conservador de propósito, e bem abaixo do que o ritmo permitiria (8.640).
+ * Uma campanha de 3.000 reps leva 6 dias em vez de sair num pico — e essa é a
+ * forma segura de fazer num número pareado (Baileys/Evolution não tem template
+ * nem janela de 24h pra proteger). Como estourar ADIA em vez de descartar,
+ * teto baixo demais atrasa; teto alto demais é o que não dá pra desfazer.
+ */
+export const TETO_DIARIO_DEFAULT: TetoDiarioConfig = { ativo: true, maxPorDia: 500 };
+
+export function resolveTetoDiario(raw: unknown): TetoDiarioConfig {
+  const c = (raw ?? {}) as Partial<TetoDiarioConfig>;
+  const max = naFaixa(c.maxPorDia, 1, 100_000, TETO_DIARIO_DEFAULT.maxPorDia);
+  return {
+    ativo: typeof c.ativo === 'boolean' ? c.ativo : TETO_DIARIO_DEFAULT.ativo,
+    maxPorDia: max,
+  };
+}
+
+/** Chave do contador diário — a data é a de BRASÍLIA, igual à janela. */
+export function chaveTetoDiario(empresaId: string, agora: Date): string {
+  const meiaNoite = new Date(emBrt(agora).inicioDoDiaUtc + 12 * 3600_000);
+  const dia = meiaNoite.toISOString().slice(0, 10);
+  return `wa:dia:${empresaId}:${dia}`;
+}
+
+/**
+ * Quanto falta até o PRÓXIMO dia em que se pode enviar — usado quando o teto do
+ * dia estourou. Começa a busca amanhã de propósito: o contador só zera na
+ * virada da data de Brasília, então esperar a reabertura de hoje não adiantaria.
+ *
+ * Com a janela desligada, o que interessa é só a virada do dia (meia-noite BRT).
+ */
+export function esperaAteProximoDiaMs(cfg: JanelaEnvioConfig, agora: Date): number {
+  const t = agora.getTime();
+  let cursor = emBrt(agora).inicioDoDiaUtc + 24 * 3600_000;
+  for (let i = 0; i < 8; i++) {
+    if (!cfg.ativa) return cursor - t;
+    if (new Set(cfg.dias).has(diaSemanaDeBrt(cursor))) {
+      return cursor + cfg.horaInicio * 3600_000 - t;
+    }
+    cursor += 24 * 3600_000;
+  }
+  // Fail-open igual ao da janela: 24h em vez de silêncio permanente.
+  return 24 * 3600_000;
+}
+
 /**
  * Erro levantado pelo pacing quando um envio PROATIVO cai fora da janela.
  *
@@ -178,10 +247,12 @@ export class ForaDaJanelaEnvioError extends Error {
   constructor(
     readonly esperaMs: number,
     readonly retomarEm: Date,
+    /** `horario` = fora da janela; `teto_diario` = a cota do dia acabou. */
+    readonly motivo: 'horario' | 'teto_diario' = 'horario',
   ) {
     super(
-      `Fora da janela de envio: envio proativo retomável em ${retomarEm.toISOString()} ` +
-        `(${Math.round(esperaMs / 60000)} min).`,
+      `${motivo === 'teto_diario' ? 'Teto diário de envio proativo atingido' : 'Fora da janela de envio'}: ` +
+        `retomável em ${retomarEm.toISOString()} (${Math.round(esperaMs / 60000)} min).`,
     );
     this.name = 'ForaDaJanelaEnvioError';
   }

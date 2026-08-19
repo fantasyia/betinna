@@ -182,6 +182,19 @@ const envioWhatsappSchema = z
       })
       .partial()
       .nullable(),
+    /**
+     * Teto DIÁRIO de envios proativos. Ritmo e horário não limitam volume:
+     * 12/min numa janela de 12h dá 8.640/dia. O teto é o que transforma um
+     * acidente (fluxo em laço, campanha mal filtrada) em "log com N adiados"
+     * em vez de número banido. Vazio/null = default (500/dia).
+     */
+    tetoDiario: z
+      .object({
+        ativo: z.boolean().nullable(),
+        maxPorDia: z.number().int().min(1).max(100_000).nullable(),
+      })
+      .partial()
+      .nullable(),
   })
   .partial()
   .optional();

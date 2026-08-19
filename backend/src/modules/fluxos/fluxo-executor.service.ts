@@ -7,6 +7,7 @@ import { EnvService } from '@config/env.service';
 import { HttpClientService } from '@shared/http/http-client.service';
 import { WhatsAppService } from '@integrations/whatsapp/whatsapp.service';
 import { WhatsappPacingService } from '@shared/whatsapp-pacing/whatsapp-pacing.service';
+import { ForaDaJanelaEnvioError } from '@shared/whatsapp-pacing/whatsapp-pacing.util';
 import { SupressaoService } from '@shared/supressao/supressao.service';
 import { TransactionalEmailService } from '@integrations/email/transactional-email.service';
 import { IntegracaoStatusService } from '@modules/integracoes/integracao-status.service';
@@ -321,7 +322,7 @@ export class FluxoExecutorService {
         fluxo?.triggerTipo === 'MENSAGEM_CANAL' || fluxo?.triggerTipo === 'LEAD_RESPONDEU';
       const esperaJanela = reativoPorGatilho
         ? 0
-        : await this.pacing.esperaPorJanelaMs(execucao.empresaId).catch(() => 0);
+        : await this.pacing.esperaAntesDoProativoMs(execucao.empresaId).catch(() => 0);
       if (esperaJanela > 0) {
         // Solta o claim ANTES de reenfileirar: o job novo tem jobId próprio, e
         // deixar este como EXECUTANDO só daria trabalho ao reaper depois.
@@ -414,6 +415,29 @@ export class FluxoExecutorService {
         );
       }
     } catch (err) {
+      // Janela/teto batendo no ÚLTIMO instante (a checagem lá em cima passou, e
+      // entre ela e o envio o horário virou ou a cota do dia acabou numa corrida
+      // com outro worker). Não é falha do nó: reagenda igual ao caminho de cima,
+      // em vez de deixar o BullMQ tentar 3× em 2s e marcar a execução FALHOU.
+      if (err instanceof ForaDaJanelaEnvioError) {
+        await this.prisma.fluxoStepClaim.delete({ where: { jobId } }).catch(() => undefined);
+        await this.queue.add(
+          'step',
+          { execucaoId, noId },
+          {
+            delay: err.esperaMs,
+            attempts: 3,
+            backoff: { type: 'exponential', delay: 2000 },
+            removeOnComplete: { count: 500 },
+            removeOnFail: { count: 200 },
+          },
+        );
+        this.logger.log(
+          `Execução ${execucaoId} nó ${noId} adiado ${Math.round(err.esperaMs / 60000)} min ` +
+            `(${err.motivo}) — corrida na borda do gate`,
+        );
+        return;
+      }
       sucesso = false;
       erroMsg = err instanceof Error ? err.message : String(err);
       this.logger.warn(

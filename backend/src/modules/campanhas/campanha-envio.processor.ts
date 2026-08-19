@@ -134,7 +134,9 @@ export class CampanhaEnvioProcessor extends WorkerHost {
     // Antes da supressão e do claim de idempotência de propósito: nada de efeito
     // pode acontecer antes de a gente saber se pode enviar.
     if (dest.campanha.canal !== 'EMAIL') {
-      const espera = await this.pacing.esperaPorJanelaMs(dest.campanha.empresaId).catch(() => 0);
+      const espera = await this.pacing
+        .esperaAntesDoProativoMs(dest.campanha.empresaId)
+        .catch(() => 0);
       if (espera > 0) {
         await this.queue.add(
           'enviar',

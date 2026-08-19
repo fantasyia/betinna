@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { FluxoExecutorService } from './fluxo-executor.service';
+import { ForaDaJanelaEnvioError } from '@shared/whatsapp-pacing/whatsapp-pacing.util';
 
 vi.mock('@shared/utils/safe-request', () => ({
   safeRequest: vi.fn().mockResolvedValue({ status: 200 }),
@@ -71,7 +72,7 @@ function makeService(opts: {
   const queue = { add: vi.fn().mockResolvedValue({ id: 'job-x' }) };
   const pacing = {
     aguardarSlot: vi.fn().mockResolvedValue(undefined),
-    esperaPorJanelaMs: vi.fn().mockResolvedValue(opts.esperaMs),
+    esperaAntesDoProativoMs: vi.fn().mockResolvedValue(opts.esperaMs),
   };
   const conversarIa = { iniciar: vi.fn().mockResolvedValue({ aguardando: false }) };
   const service = new FluxoExecutorService(
@@ -123,7 +124,7 @@ describe('Janela de envio no motor de fluxos', () => {
     await service.executarPasso('exec-1', 'no-1', 'job-1');
 
     // Nem consulta a janela: o gatilho já resolve.
-    expect(pacing.esperaPorJanelaMs).not.toHaveBeenCalled();
+    expect(pacing.esperaAntesDoProativoMs).not.toHaveBeenCalled();
     expect(prisma.fluxoExecucaoLog.create).toHaveBeenCalled();
   });
 
@@ -167,7 +168,31 @@ describe('Janela de envio no motor de fluxos', () => {
 
     await service.executarPasso('exec-1', 'no-1', 'job-1');
 
-    expect(pacing.esperaPorJanelaMs).not.toHaveBeenCalled();
+    expect(pacing.esperaAntesDoProativoMs).not.toHaveBeenCalled();
     expect(prisma.fluxoExecucaoLog.create).toHaveBeenCalled();
+  });
+
+  it('teto/janela batendo NA BORDA (corrida) reagenda em vez de marcar FALHOU', async () => {
+    // A consulta lá em cima passou (0), mas entre ela e o envio a cota do dia
+    // acabou numa corrida com outro worker. Isso não é falha do nó: se virasse
+    // erro, o BullMQ tentaria 3× em 2s e a execução morreria FALHOU — perdendo
+    // uma mensagem legítima por causa de uma trava que só queria adiar.
+    const { service, queue, prisma, pacing } = makeService({
+      esperaMs: 0,
+      triggerTipo: 'CRON_AGENDADO',
+    });
+    pacing.aguardarSlot.mockRejectedValue(
+      new ForaDaJanelaEnvioError(6 * 3600_000, new Date(), 'teto_diario'),
+    );
+
+    await service.executarPasso('exec-1', 'no-1', 'job-1');
+
+    expect(queue.add).toHaveBeenCalledWith(
+      'step',
+      { execucaoId: 'exec-1', noId: 'no-1' },
+      expect.objectContaining({ delay: 6 * 3600_000 }),
+    );
+    // Não virou passo falhado no histórico.
+    expect(prisma.fluxoExecucaoLog.create).not.toHaveBeenCalled();
   });
 });

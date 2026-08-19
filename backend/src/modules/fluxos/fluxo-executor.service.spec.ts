@@ -200,7 +200,7 @@ describe('FluxoExecutorService', () => {
       emailSvc as never,
       conversarIa as never,
       bus as never,
-      { aguardarSlot: vi.fn(), esperaPorJanelaMs: vi.fn().mockResolvedValue(0) } as never,
+      { aguardarSlot: vi.fn(), esperaAntesDoProativoMs: vi.fn().mockResolvedValue(0) } as never,
       integracaoStatus as never,
       queue as never,
       { criarCardsDeTarefa: vi.fn(async () => ({})) } as never, // kanbanTarefa

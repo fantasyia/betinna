@@ -9,6 +9,41 @@ versionamento segue [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Não versionado] — 2026-08-19
 
+### 🚦 Teto diário de envio proativo
+
+A janela de horário fechou o "não manda de madrugada". Faltava a outra metade:
+ritmo e horário **não limitam volume**. 12/min dentro de uma janela de 12h dá
+**8.640 mensagens num dia** sem nada barrar — e o que derruba número pareado
+(Evolution, sem template nem janela de 24h) é volume acumulado com taxa de
+bloqueio, não pico por minuto.
+
+O teto não existe pra ritmar o trabalho normal. Existe pro acidente: fluxo com
+laço, importação torta, campanha com filtro errado transformando 30 mil contatos
+em disparo. É a diferença entre "número banido" e "log com N adiados".
+
+**Padrão: 500/dia**, configurável em ⚙️ Avançado → 🐢 Ritmo de envio. Conservador
+de propósito e bem abaixo do que o ritmo permitiria: uma campanha de 3.000 reps
+leva 6 dias em vez de sair num pico — que é a forma segura de fazer num número
+pareado. Como estourar **adia** (nunca descarta), teto baixo atrasa; teto alto é
+o que não dá pra desfazer.
+
+**Só conta PROATIVO.** Resposta a quem escreveu não gasta cota.
+
+Detalhes que importam:
+- reserva **atômica** em Lua (`GET` + compara + `INCR`): ler e depois incrementar
+  em duas chamadas deixaria dois workers passarem juntos no último slot, e um
+  `INCR` seco inflaria o contador nas tentativas negadas — o teto "vazaria" pra
+  baixo a cada retry;
+- a cota é consumida no **último instante** antes do envio, não na consulta —
+  senão passo descartado depois (LGPD, lead sem telefone) gastaria cota;
+- contador por **data de Brasília** (23h de quarta ainda é quarta), TTL 36h;
+- corrida na borda do teto **reagenda** em vez de marcar a execução `FALHOU`;
+- Redis fora = passa direto. Teto que vira apagão quando o Redis pisca seria pior
+  que não ter teto.
+
+23 testes novos.
+
+
 ### 🌙 Janela de envio: abordagem por WhatsApp não sai de madrugada
 
 O motor de fluxos conta milissegundos, não sabe que horas são: um `DELAY` de 3h

@@ -1427,6 +1427,9 @@ interface EnvioWaForm {
   janelaFim: string;
   /** Fim de semana liberado pra abordagem? */
   janelaFimDeSemana: boolean;
+  /** Teto de abordagens por dia (protege contra volume, não contra rajada). */
+  tetoAtivo: boolean;
+  tetoMaxPorDia: string;
 }
 
 function EnvioWhatsappConfig() {
@@ -1443,6 +1446,7 @@ function EnvioWhatsappConfig() {
       jitterMinSeg?: number;
       jitterMaxSeg?: number;
       janela?: { ativa?: boolean; horaInicio?: number; horaFim?: number; dias?: number[] };
+      tetoDiario?: { ativo?: boolean; maxPorDia?: number };
     };
     const dias = Array.isArray(r.janela?.dias) ? r.janela.dias : [0, 1, 2, 3, 4, 5, 6];
     return {
@@ -1454,6 +1458,8 @@ function EnvioWhatsappConfig() {
       janelaInicio: String(r.janela?.horaInicio ?? 8),
       janelaFim: String(r.janela?.horaFim ?? 20),
       janelaFimDeSemana: dias.includes(0) || dias.includes(6),
+      tetoAtivo: r.tetoDiario?.ativo !== false,
+      tetoMaxPorDia: String(r.tetoDiario?.maxPorDia ?? 500),
     };
   }, [cfg]);
   const form = edit ?? base;
@@ -1490,6 +1496,10 @@ function EnvioWhatsappConfig() {
             horaInicio,
             horaFim,
             dias: form.janelaFimDeSemana ? [0, 1, 2, 3, 4, 5, 6] : [1, 2, 3, 4, 5],
+          },
+          tetoDiario: {
+            ativo: form.tetoAtivo,
+            maxPorDia: Math.min(100000, Math.max(1, n(form.tetoMaxPorDia, 500))),
           },
         },
       });
@@ -1622,6 +1632,42 @@ function EnvioWhatsappConfig() {
                 onChange={(e) => set('janelaFimDeSemana', e.target.checked)}
               />
               Abordar também no fim de semana
+            </label>
+          </div>
+
+          <div className="border-t border-border mt-2 pt-3 flex flex-col gap-2">
+            <label className="flex items-center gap-2 text-sm" style={{ color: 'var(--text)' }}>
+              <input
+                type="checkbox"
+                data-testid="teto-diario-ativo"
+                checked={form.tetoAtivo}
+                disabled={!podeEditar}
+                onChange={(e) => set('tetoAtivo', e.target.checked)}
+              />
+              🚦 Limitar abordagens por dia
+            </label>
+            <p className="text-[11px] text-muted m-0">
+              O ritmo acima impede rajada; o horário impede madrugada. Nenhum dos dois impede
+              VOLUME — {form.maxPorMinuto}/min dentro da janela daria{' '}
+              {Number(form.maxPorMinuto || 12) * 60 * Math.max(
+                1,
+                Number(form.janelaFim || 20) - Number(form.janelaInicio || 8),
+              )}{' '}
+              mensagens num dia. Este teto não é pra ritmar o trabalho normal: é pra um fluxo em
+              laço ou uma campanha mal filtrada virar "N adiados" em vez de número banido. O que
+              passa do teto espera o dia seguinte — nada é descartado.
+            </p>
+            <label className="flex flex-col gap-1 text-xs text-muted max-w-[220px]">
+              Máximo de abordagens por dia
+              <Input
+                type="number"
+                min="1"
+                max="100000"
+                data-testid="teto-diario-max"
+                value={form.tetoMaxPorDia}
+                disabled={!podeEditar || !form.tetoAtivo}
+                onChange={(e) => set('tetoMaxPorDia', e.target.value)}
+              />
             </label>
           </div>
 
