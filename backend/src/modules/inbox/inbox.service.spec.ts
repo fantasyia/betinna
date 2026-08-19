@@ -1168,4 +1168,36 @@ describe('InboxService — marca de limpeza e teto de histórico', () => {
 
     expect(r.duplicada).toBe(false);
   });
+
+  it('o teto NÃO vale pra MARKETPLACE — pergunta antiga do ML é SAC legítimo', async () => {
+    // Marketplaces ingerem por PULL com o timestamp de ORIGEM: uma pergunta do
+    // ML aberta há 3 horas e ainda sem resposta é justamente o que o cron de
+    // 10min existe pra trazer. Aplicar o teto lá descartaria atendimento em
+    // silêncio — o oposto do problema que o teto resolve.
+    prisma.inboxLimpeza.findUnique.mockResolvedValue(null);
+    prisma.cliente.findFirst.mockResolvedValueOnce(null);
+    prisma.conversation.findFirst.mockResolvedValueOnce({ id: 'conv-ml' });
+    prisma.conversation.update.mockResolvedValue({ id: 'conv-ml' });
+    prisma.message.create.mockResolvedValueOnce({ id: 'msg-1', criadoEm: new Date() });
+
+    const r = await svc.processarMensagemEntrante(
+      entrante({
+        canal: 'MARKETPLACE_ML',
+        data: new Date(Date.now() - 3 * 60 * 60_000),
+      }) as never,
+    );
+
+    expect(r.duplicada).toBe(false);
+    expect(prisma.message.create).toHaveBeenCalled();
+  });
+
+  it('mas a MARCA DE LIMPEZA vale pra qualquer canal', async () => {
+    prisma.inboxLimpeza.findUnique.mockResolvedValue({ em: new Date(Date.now() - 60_000) });
+
+    const r = await svc.processarMensagemEntrante(
+      entrante({ canal: 'MARKETPLACE_ML', data: new Date(Date.now() - 5 * 60_000) }) as never,
+    );
+
+    expect(r.duplicada).toBe(true);
+  });
 });

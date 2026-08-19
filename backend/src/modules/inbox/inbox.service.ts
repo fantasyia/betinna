@@ -86,15 +86,22 @@ export class InboxService {
   private static readonly LIMPEZA_TTL_MS = 60_000;
 
   /**
-   * Idade MÁXIMA de uma mensagem pra ser ingerida.
+   * Idade MÁXIMA de uma mensagem pra ser ingerida — SÓ NO WHATSAPP.
    *
    * O poll de fallback do Evolution existe pra recuperar o que o webhook
    * perdeu, e trabalha numa janela de 45s a 12min. Qualquer coisa mais velha
    * que isto não é recuperação: é HISTÓRICO — o `messaging-history.set` do
    * Baileys e o sync inicial do Evolution despejam conversas de dias atrás a
    * cada reconexão. 30min dá folga ao poll e mata o histórico.
+   *
+   * ⚠️ SÓ WHATSAPP, e isso é essencial: os marketplaces ingerem por PULL e com
+   * o timestamp de ORIGEM do item. Uma pergunta do ML aberta há 3 horas e ainda
+   * sem resposta é exatamente o que o cron de 10min existe pra trazer — aplicar
+   * o teto lá descartaria SAC legítimo em silêncio. Histórico reaparecendo é
+   * problema de canal com sync de aparelho; marketplace não tem isso.
    */
   private static readonly IDADE_MAX_INGESTAO_MS = 30 * 60_000;
+  private static readonly CANAIS_COM_HISTORICO: ReadonlySet<string> = new Set(['WHATSAPP']);
 
   /** Marca de limpeza vigente da empresa/canal (null = nunca limpou). */
   private async marcaDeLimpeza(empresaId: string, canal: MessageChannel): Promise<Date | null> {
@@ -1216,8 +1223,12 @@ export class InboxService {
       // (2) IDADE MÁXIMA — recuperar mensagem perdida é uma coisa (o poll
       // trabalha em 45s–12min); despejar conversa de dias atrás a cada
       // reconexão é outra. Acima do teto não é recuperação, é histórico.
+      // Só em canal que sincroniza aparelho (WhatsApp) — ver a constante.
       const idade = Date.now() - params.data.getTime();
-      if (idade > InboxService.IDADE_MAX_INGESTAO_MS) {
+      if (
+        InboxService.CANAIS_COM_HISTORICO.has(params.canal) &&
+        idade > InboxService.IDADE_MAX_INGESTAO_MS
+      ) {
         this.logger.debug(
           `[inbox] descartada msg de histórico (${Math.round(idade / 60_000)}min, teto ${
             InboxService.IDADE_MAX_INGESTAO_MS / 60_000
