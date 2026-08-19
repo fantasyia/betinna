@@ -36,8 +36,11 @@ export class KnowledgeService {
     // plana — eles já são representados pelo card do Documento (que mostra a
     // contagem "N trechos indexados") e poluiriam a UI com dezenas de cards.
     // Seguem indexados e buscáveis pela IA normalmente (RAG lê o banco direto).
-    const where: Prisma.KnowledgeChunkWhereInput = { empresaId, documentoId: null };
-    if (!params.incluirConfig) where.fonte = 'MANUAL';
+    const where: Prisma.KnowledgeChunkWhereInput = { empresaId };
+    // `incluirDocumentos` existe pra quem pergunta "o que o bot consulta HOJE?"
+    // (MCP, auditoria): sem ele a resposta era `0 trechos` com a base cheia.
+    if (!params.incluirDocumentos) where.documentoId = null;
+    if (!params.incluirConfig && !params.incluirDocumentos) where.fonte = 'MANUAL';
     if (params.search) {
       where.OR = [
         { titulo: { contains: params.search, mode: 'insensitive' } },

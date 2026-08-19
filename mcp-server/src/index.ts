@@ -2582,10 +2582,16 @@ server.registerTool(
   'conhecimento_listar',
   {
     description:
-      'Lista os TRECHOS da base (o que o bot efetivamente consulta). Inclui os derivados de ' +
-      'documento e os manuais. `ativo: false` = fora das respostas. Exige escopo "conhecimento".',
+      'Lista os TRECHOS da base — o que o bot efetivamente consulta. Por padrão inclui os ' +
+      'derivados de DOCUMENTO (é o que responde "o que o bot sabe hoje?"); passe ' +
+      '`somenteManuais: true` pra ver só os escritos à mão. `ativo: false` = fora das ' +
+      'respostas. Exige escopo "conhecimento".',
     inputSchema: {
       search: z.string().optional(),
+      somenteManuais: z
+        .boolean()
+        .optional()
+        .describe('Só os trechos escritos à mão (esconde os derivados de documento).'),
       incluirConfig: z
         .boolean()
         .optional()
@@ -2594,10 +2600,18 @@ server.registerTool(
     },
     annotations: { readOnlyHint: true, destructiveHint: false },
   },
-  seguro(async (args: { search?: string; incluirConfig?: boolean; limit?: number }) => {
+  seguro(
+    async (args: {
+      search?: string;
+      somenteManuais?: boolean;
+      incluirConfig?: boolean;
+      limit?: number;
+    }) => {
     const qs = new URLSearchParams({ limit: String(args.limit ?? 100) });
     if (args.search) qs.set('search', args.search);
     if (args.incluirConfig) qs.set('incluirConfig', 'true');
+    // Default INCLUI os de documento — a pergunta natural é "o que o bot sabe".
+    if (!args.somenteManuais) qs.set('incluirDocumentos', 'true');
     const r = await api.get<{
       data?: Array<{
         id: string;
@@ -2618,7 +2632,8 @@ server.registerTool(
       previa: c.conteudo.length > 160 ? `${c.conteudo.slice(0, 160)}…` : c.conteudo,
     }));
     return ok({ total: r?.pagination?.total ?? itens.length, itens });
-  }),
+    },
+  ),
 );
 
 server.registerTool(

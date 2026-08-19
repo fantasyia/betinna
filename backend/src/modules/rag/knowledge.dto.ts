@@ -42,11 +42,20 @@ export const updateKnowledgeDocumentoSchema = z
   );
 export type UpdateKnowledgeDocumentoDto = z.infer<typeof updateKnowledgeDocumentoSchema>;
 
+/**
+ * `incluirDocumentos`: por padrão a lista plana OMITE os trechos derivados de
+ * documento — a UI os mostra dentro do card do Documento e dezenas de cards
+ * soltos poluiriam a tela. Mas quem pergunta "o que o bot consulta hoje?"
+ * (MCP, auditoria) precisa ver TUDO: sem esta opção a resposta era `0 trechos`
+ * com a base cheia, que é pior que não ter a listagem.
+ */
 export const listKnowledgeSchema = z.object({
   page: z.coerce.number().int().positive().default(1),
   limit: z.coerce.number().int().positive().max(100).default(20),
   search: z.string().optional(),
   /** Inclui chunks derivados da config (fonte=CONFIG). Default só os MANUAL. */
   incluirConfig: boolQuery.optional(),
+  /** Inclui os trechos derivados de DOCUMENTO (ver docblock acima). */
+  incluirDocumentos: boolQuery.optional(),
 });
 export type ListKnowledgeDto = z.infer<typeof listKnowledgeSchema>;
