@@ -216,6 +216,9 @@ export class IntegracoesService {
     return this.reconciliarWhatsapp(
       empresaId,
       items.map((c) => this.toPublic(c)),
+      // Só na LISTA: é ela que decide se o card mostra "Conectar". No detalhe
+      // por serviço, ausência de linha continua significando ausência.
+      !params.servico || params.servico === 'whatsapp',
     );
   }
 
@@ -236,17 +239,42 @@ export class IntegracoesService {
   private async reconciliarWhatsapp(
     empresaId: string,
     conexoes: ConexaoPublica[],
+    /** Sintetiza a entrada quando não há linha (só faz sentido na LISTA). */
+    sintetizarSeAusente = false,
   ): Promise<ConexaoPublica[]> {
     if (this.env.get('WHATSAPP_PROVIDER') !== 'evolution') return conexoes;
     const idx = conexoes.findIndex((c) => c.servico === 'whatsapp');
-    if (idx < 0) return conexoes;
+    if (idx < 0 && !sintetizarSeAusente) return conexoes;
+
+    let conectado: boolean;
     try {
       const instancia = EvolutionService.instanceName({ type: 'EMPRESA', id: empresaId });
-      const conectado = await this.evolution.estaSaudavel(instancia);
-      conexoes[idx] = { ...conexoes[idx], ativo: conectado };
+      conectado = await this.evolution.estaSaudavel(instancia);
     } catch {
-      /* provider fora do ar: mantém o que está gravado */
+      return conexoes; // provider fora do ar: mantém o que está gravado
     }
+
+    if (idx >= 0) {
+      conexoes[idx] = { ...conexoes[idx], ativo: conectado };
+      return conexoes;
+    }
+    // Sem linha na tabela: o número pareado existe só no Evolution. Sem isto a
+    // tela mostra "não conectado" e oferece "Conectar" pra quem já está no ar.
+    if (!conectado) return conexoes;
+    conexoes.push({
+      id: `evolution:${empresaId}`,
+      empresaId,
+      servico: 'whatsapp',
+      ativo: true,
+      credenciais: null,
+      externalAccountId: null,
+      ultimoSync: null,
+      errosRecentes: 0,
+      criadoEm: new Date(),
+      atualizadoEm: new Date(),
+      credenciaisConfiguradas: true,
+      camposCredenciais: [],
+    } as unknown as ConexaoPublica);
     return conexoes;
   }
 

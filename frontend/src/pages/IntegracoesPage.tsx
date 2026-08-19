@@ -476,14 +476,27 @@ function ServicoCard({
             >
               Reconectar
             </button>
-            <button
-              type="button"
-              data-testid={`desconectar-${servico}`}
-              onClick={onDisconnect}
-              className="bg-danger text-white rounded-md px-3 py-2 text-[13px] font-semibold cursor-pointer tracking-[-0.1px]"
-            >
-              Desconectar
-            </button>
+            {/* Pareamento por QR (WhatsApp): desconectar é no provider, não na
+                tabela de credenciais. O DELETE daqui apagaria a linha e deixaria
+                o número conectado — botão que parece funcionar e não funciona. */}
+            {meta.connectMode === 'qr' ? (
+              <a
+                href={meta.qrRoute}
+                data-testid={`desconectar-${servico}`}
+                className="bg-danger text-white rounded-md px-3 py-2 text-[13px] font-semibold cursor-pointer tracking-[-0.1px] no-underline"
+              >
+                Desconectar
+              </a>
+            ) : (
+              <button
+                type="button"
+                data-testid={`desconectar-${servico}`}
+                onClick={onDisconnect}
+                className="bg-danger text-white rounded-md px-3 py-2 text-[13px] font-semibold cursor-pointer tracking-[-0.1px]"
+              >
+                Desconectar
+              </button>
+            )}
           </>
         )}
       </div>

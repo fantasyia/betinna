@@ -625,6 +625,25 @@ describe('IntegracoesService — status do WhatsApp segue o provider ativo', () 
     return { svc, evolution };
   };
 
+  const montarSemLinha = (saudavel: boolean) => {
+    const prisma = {
+      integracaoConexao: { findMany: vi.fn().mockResolvedValue([]), findUnique: vi.fn() },
+    };
+    const evolution = { estaSaudavel: vi.fn().mockResolvedValue(saudavel) };
+    const svc = new IntegracoesService(
+      prisma as never,
+      {
+        get: (k: string) =>
+          k === 'ENCRYPTION_KEY' ? '0'.repeat(64) : k === 'WHATSAPP_PROVIDER' ? 'evolution' : '',
+      } as never,
+      {} as never,
+      {} as never,
+      {} as never,
+      evolution as never,
+    );
+    return { svc, evolution };
+  };
+
   it('Evolution pareado: aparece CONECTADO mesmo com a linha do Baileys em false', async () => {
     const { svc } = montar('evolution', true);
     const [wa] = await svc.list(user, {} as never);
@@ -642,6 +661,22 @@ describe('IntegracoesService — status do WhatsApp segue o provider ativo', () 
     const [wa] = await svc.list(user, {} as never);
     expect(evolution.estaSaudavel).not.toHaveBeenCalled();
     expect(wa.ativo).toBe(false);
+  });
+
+  it('SEM linha na tabela e número pareado: a entrada é sintetizada', async () => {
+    // É o caso da Somatec: não existe IntegracaoConexao(whatsapp) pra essa
+    // empresa — o pareamento só existe no Evolution. Sem sintetizar, a tela
+    // oferece "Conectar" pra um número que já está no ar.
+    const { svc } = montarSemLinha(true);
+    const lista = await svc.list(user, {} as never);
+    const wa = lista.find((c) => c.servico === 'whatsapp');
+    expect(wa?.ativo).toBe(true);
+  });
+
+  it('SEM linha e SEM pareamento: não inventa entrada conectada', async () => {
+    const { svc } = montarSemLinha(false);
+    const lista = await svc.list(user, {} as never);
+    expect(lista.find((c) => c.servico === 'whatsapp')).toBeUndefined();
   });
 
   it('Evolution fora do ar: mantém o gravado em vez de derrubar a lista', async () => {
