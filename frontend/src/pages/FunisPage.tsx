@@ -83,6 +83,8 @@ interface Funil {
   protegido?: boolean;
   /** Funil de triagem: entrada bruta, fica fora dos KPIs globais do dashboard. */
   triagem?: boolean;
+  /** O REPRESENTANTE enxerga este funil? Default false. */
+  visivelParaRep?: boolean;
   tagsPermitidas?: string[] | null;
   etapas: FunilEtapa[];
   _count?: { leads: number };
@@ -615,6 +617,7 @@ function FunilFormDialog({
   const [isPadrao, setIsPadrao] = useState(funil?.isPadrao ?? false);
   const [protegido, setProtegido] = useState(funil?.protegido ?? false);
   const [triagem, setTriagem] = useState(funil?.triagem ?? false);
+  const [visivelParaRep, setVisivelParaRep] = useState(funil?.visivelParaRep ?? false);
   const [ativo, setAtivo] = useState(funil?.ativo ?? true);
   const formRole = useRole();
   const podeProteger = formRole === 'ADMIN' || formRole === 'DIRECTOR';
@@ -644,6 +647,7 @@ function FunilFormDialog({
     if (podeProteger) {
       payload.protegido = protegido;
       payload.triagem = triagem;
+      payload.visivelParaRep = visivelParaRep;
     }
     if (descricao.trim()) payload.descricao = descricao.trim();
     // Allow-list de tags: vazio = null (todas permitidas); senão array de nomes.
@@ -774,6 +778,29 @@ function FunilFormDialog({
                 Caixa de entrada bruta: recebe todo contato novo, inclusive o que não é
                 oportunidade. Quem está aqui não conta como "Leads ativos" no dashboard —
                 só depois de ser triado pro funil comercial.
+              </span>
+            </span>
+          </label>
+        )}
+        {podeProteger && (
+          /* Quem VÊ o funil. Sem isso o rep enxergava todos os funis da
+              empresa — inclusive a triagem bruta do SAC, a nutrição de e-mail
+              marketing e o funil de RECRUTAMENTO DE REPS, a esteira em que ele
+              mesmo foi captado, com os concorrentes dele dentro. */
+          <label className="flex items-start gap-2 text-sm cursor-pointer mt-1">
+            <input
+              type="checkbox"
+              checked={visivelParaRep}
+              onChange={(e) => setVisivelParaRep(e.target.checked)}
+              data-testid="funil-visivel-rep-cb"
+              className="mt-0.5"
+            />
+            <span>
+              <strong>Representantes veem este funil</strong>
+              <span className="block text-xs text-muted">
+                Desmarcado (padrão), o funil só aparece pra gestão. O rep continua vendo apenas
+                os leads da carteira dele, e as contagens por etapa também são só da carteira —
+                nunca o total da empresa.
               </span>
             </span>
           </label>

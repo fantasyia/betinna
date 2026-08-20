@@ -1138,6 +1138,12 @@ model Funil {
   /// (senão "Leads ativos" infla com lixo e perde o significado). Ligado pelo
   /// ADMIN/DIRETOR na config do funil.
   triagem        Boolean @default(false)
+  /// O REPRESENTANTE enxerga este funil? Default `false` — o rep só vê o que for
+  /// marcado aqui. Sem isso ele via TODOS os funis da empresa, incluindo a
+  /// triagem bruta do SAC, a nutrição de e-mail marketing e o funil de
+  /// RECRUTAMENTO DE REPS (a esteira em que ele mesmo foi captado, com os
+  /// concorrentes dele dentro). Ligado pelo ADMIN/DIRETOR na config do funil.
+  visivelParaRep Boolean @default(false)
   /// Allow-list de tags permitidas neste funil (Fase C — spec §2.1). Array de
   /// nomes de tag; null = todas as tags da empresa são permitidas.
   tagsPermitidas Json?
@@ -1151,6 +1157,7 @@ model Funil {
 
   @@unique([empresaId, nome])
   @@index([empresaId, ativo])
+  @@index([empresaId, visivelParaRep])
 }
 
 model FunilEtapa {

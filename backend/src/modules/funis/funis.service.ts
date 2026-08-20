@@ -437,21 +437,27 @@ export class FunisService {
   async list(user: AuthenticatedUser): Promise<FunilWithRel[]> {
     const empresaId = this.requireEmpresa(user);
     const funis = await this.prisma.funil.findMany({
-      where: { empresaId },
+      // REP vê SÓ funil marcado como visível pra ele. Antes vinham todos: a
+      // triagem bruta do SAC, a nutrição de e-mail e o funil de RECRUTAMENTO DE
+      // REPS — a esteira em que ele mesmo foi captado, com os concorrentes dele
+      // dentro. Gestão (ADMIN/DIRECTOR/GERENTE/SAC) continua vendo tudo.
+      where: { empresaId, ...(user.role === 'REP' ? { visivelParaRep: true } : {}) },
       orderBy: [{ isPadrao: 'desc' }, { ordem: 'asc' }, { nome: 'asc' }],
       include: funilInclude,
     });
-    return this.comUso(funis);
+    return this.comUso(funis, user);
   }
 
   async findById(user: AuthenticatedUser, id: string): Promise<FunilWithRel> {
     const empresaId = this.requireEmpresa(user);
     const funil = await this.prisma.funil.findFirst({
-      where: { id, empresaId },
+      // MESMO filtro da lista. Sem ele, esconder na listagem seria decoração:
+      // bastava o rep abrir a URL do funil direto pra ver o que não é dele.
+      where: { id, empresaId, ...(user.role === 'REP' ? { visivelParaRep: true } : {}) },
       include: funilInclude,
     });
     if (!funil) throw new NotFoundException('Funil', id);
-    return (await this.comUso([funil]))[0];
+    return (await this.comUso([funil], user))[0];
   }
 
   /**
@@ -508,14 +514,24 @@ export class FunisService {
   }
 
   /** Decora etapas com leadsCount + fluxosQueApontam (1 query de cada pro lote inteiro). */
-  private async comUso(funis: FunilRaw[]): Promise<FunilWithRel[]> {
+  /**
+   * Enriquece com contagem de leads por etapa e fluxos que apontam pra ela.
+   *
+   * A contagem respeita a CARTEIRA quando `user` é passado. Sem isso o rep via
+   * o número de leads da EMPRESA INTEIRA em cada etapa — vazamento pior que ver
+   * o nome do funil, porque entrega o tamanho do pipeline de todo mundo.
+   */
+  private async comUso(funis: FunilRaw[], user?: AuthenticatedUser): Promise<FunilWithRel[]> {
     const etapaIds = funis.flatMap((f) => f.etapas.map((e) => e.id));
+    const escopo = user ? await this.repScope.getRepIds(user) : null;
+    const filtroCarteira =
+      escopo !== null ? { representanteId: { in: escopo.length ? escopo : ['__none__'] } } : {};
     const [porFluxo, porLead] = await Promise.all([
       this.fluxosPorEtapaIds(etapaIds),
       etapaIds.length
         ? this.prisma.lead.groupBy({
             by: ['funilEtapaId'],
-            where: { funilEtapaId: { in: etapaIds } },
+            where: { funilEtapaId: { in: etapaIds }, ...filtroCarteira },
             _count: true,
           })
         : Promise.resolve([]),

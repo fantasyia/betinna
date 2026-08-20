@@ -46,6 +46,8 @@ export const createFunilSchema = z.object({
    * Leads aqui ficam FORA dos KPIs globais do dashboard. Só ADMIN/DIRETOR liga.
    */
   triagem: z.boolean().optional(),
+  /** O REP enxerga este funil? Default false — ver `Funil.visivelParaRep`. */
+  visivelParaRep: z.boolean().optional(),
   /** Allow-list de tags permitidas no funil (Fase C). null = todas. */
   tagsPermitidas: z.array(z.string().trim().min(1)).nullable().optional(),
   /**

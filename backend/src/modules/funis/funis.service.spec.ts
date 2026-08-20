@@ -83,7 +83,14 @@ describe('FunisService — uso de etapa (leadsCount + fluxosQueApontam)', () => 
 
   beforeEach(() => {
     prisma = makePrisma();
-    svc = new FunisService(prisma as never, {} as never);
+    // `comUso` consulta o RepScope pra filtrar a contagem por carteira — sem o
+    // mock, o service quebra ao decorar as etapas.
+    svc = new FunisService(
+      prisma as never,
+      {
+        getRepIds: vi.fn().mockResolvedValue(null),
+      } as never,
+    );
   });
 
   it('findById decora cada etapa com leadsCount e fluxosQueApontam', async () => {
@@ -208,7 +215,13 @@ describe('FunisService.remove — corrida com lead novo (#29)', () => {
       etapas: [],
       _count: { leads: 0 },
     });
-    return { prisma, svc: new FunisService(prisma as never) };
+    return {
+      prisma,
+      svc: new FunisService(
+        prisma as never,
+        { getRepIds: vi.fn().mockResolvedValue(null) } as never,
+      ),
+    };
   };
 
   it('lead criado DEPOIS da checagem inicial impede o delete (re-contagem na tx)', async () => {
@@ -241,7 +254,10 @@ describe('FunisService — corridas do #29', () => {
 
   beforeEach(() => {
     prisma = makePrisma();
-    svc = new FunisService(prisma as never);
+    svc = new FunisService(
+      prisma as never,
+      { getRepIds: vi.fn().mockResolvedValue(null) } as never,
+    );
     prisma.funil.update = vi.fn().mockResolvedValue({});
     prisma.funil.updateMany = vi.fn().mockResolvedValue({ count: 0 });
   });
