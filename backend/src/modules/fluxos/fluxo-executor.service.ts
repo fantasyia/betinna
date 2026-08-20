@@ -1572,7 +1572,36 @@ export class FluxoExecutorService {
           create: { leadId, tagId: tag.id, origem: 'fluxo' },
           update: {},
         });
+        // A função ACABAVA no upsert — gravava o LeadTag direto pelo prisma e
+        // pronto. Quem emite o evento é o LeadsService.vincularTag, e o executor
+        // não passa por lá: um fluxo NÃO conseguia acender outro por etiqueta.
+        // O recurso existe na UI (gatilho "Lead recebeu etiqueta") e o motor não
+        // entregava — sem erro, só silêncio.
+        //
+        // 3ª vez desta classe: 'notificar' e 'tag' do SLA tinham o mesmo buraco.
+        //
+        // Dispara SEMPRE, e aqui isso é DIFERENTE do SLA de propósito: lá o
+        // "só quando é nova" é a proteção anti-spam; aqui re-aplicar a mesma
+        // etiqueta é evento legítimo (quem sumiu e voltou pela 2ª vez precisa
+        // acender a retomada de novo, e já tem a etiqueta da 1ª). É também o que
+        // o vincularTag faz — mesma semântica pros dois caminhos.
+        //
+        // `nomeTagLimpo` e não `cfg.tagNome`: é por ele que o gatilho casa
+        // (exato/prefixo). Mandar o cru faria a etiqueta GRAVADA e a FILTRADA
+        // divergirem quando houver espaço sobrando ou {{variavel}} interpolada.
+        //
+        // `_hops` propaga o corta-loop do bus (mesmo padrão do MOVER_LEAD_ETAPA):
+        // fluxo que carimba a própria etiqueta que o dispara morre no teto de 10,
+        // com warning, em vez de ping-pong infinito.
+        const hops = typeof ctx['_hops'] === 'number' ? (ctx['_hops'] as number) : 0;
+        await this.bus.disparar(empresaId, 'LEAD_RECEBEU_TAG', {
+          leadId,
+          tagId: tag.id,
+          tagNome: nomeTagLimpo,
+          _hops: hops + 1,
+        });
       } else {
+        // `remover` não dispara: não existe evento de "perdeu etiqueta" no enum.
         await this.prisma.leadTag.deleteMany({ where: { leadId, tagId: tag.id } });
       }
       alvos.push('lead');
@@ -1871,6 +1900,16 @@ export class FluxoExecutorService {
         where: { leadId_tagId: { leadId: lead.id, tagId: tag.id } },
         create: { leadId: lead.id, tagId: tag.id, origem: 'fluxo' },
         update: {},
+      });
+      // Mesmo buraco do MUDAR_TAG: o CRIAR_LEAD com etiqueta gravava o LeadTag
+      // e seguia direto pro LEAD_CRIADO. Quem montasse "cria o lead já marcado
+      // como setor:X" esperando o fluxo de nutrição pegar recebia silêncio.
+      const hopsTag = typeof ctx['_hops'] === 'number' ? (ctx['_hops'] as number) : 0;
+      await this.bus.disparar(empresaId, 'LEAD_RECEBEU_TAG', {
+        leadId: lead.id,
+        tagId: tag.id,
+        tagNome: nomeTag,
+        _hops: hopsTag + 1,
       });
     }
 

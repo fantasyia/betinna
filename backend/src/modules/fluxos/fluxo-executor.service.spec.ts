@@ -1551,6 +1551,110 @@ describe('FluxoExecutorService', () => {
       expect(prisma.clienteTag.upsert).not.toHaveBeenCalled();
     });
 
+    // ── Encadeamento por etiqueta ────────────────────────────────────
+    // Um fluxo tem que conseguir ACENDER outro carimbando etiqueta. A ação
+    // gravava o LeadTag direto pelo prisma e não emitia nada — o gatilho "Lead
+    // recebeu etiqueta" existe na UI e o motor não entregava. Sem erro: silêncio.
+
+    /** Monta um passo MUDAR_TAG sobre um lead. */
+    const passoMudarTag = async (
+      cfg: Record<string, unknown>,
+      contexto: Record<string, unknown> = { leadId: 'lead-1' },
+    ) => {
+      prisma.fluxoExecucao.findUnique.mockResolvedValue(
+        fakeExecucao({ status: 'EM_EXECUCAO', contexto }),
+      );
+      prisma.fluxoNo.findUnique.mockResolvedValue(
+        fakeNo({ tipo: 'ACAO', acaoTipo: 'MUDAR_TAG', config: cfg }),
+      );
+      prisma.fluxoEdge.findMany.mockResolvedValue([]);
+      prisma.lead.findFirst.mockResolvedValue({ id: 'lead-1' });
+      prisma.tag.upsert.mockResolvedValue({ id: 'tag-x', nome: 'teste:encadeia' });
+      await service.executarPasso('exec-1', 'no-1', 'job-test');
+    };
+
+    it('carimbar etiqueta no LEAD dispara LEAD_RECEBEU_TAG', async () => {
+      await passoMudarTag({ tagNome: 'teste:encadeia', operacao: 'adicionar' });
+
+      expect(bus.disparar).toHaveBeenCalledWith(
+        'emp-1',
+        'LEAD_RECEBEU_TAG',
+        expect.objectContaining({
+          leadId: 'lead-1',
+          tagId: 'tag-x',
+          tagNome: 'teste:encadeia',
+        }),
+      );
+    });
+
+    it('dispara MESMO quando o lead JÁ tinha a etiqueta (≠ do SLA, e é de propósito)', async () => {
+      // No SLA, "só quando é nova" é a proteção anti-spam. Aqui re-aplicar é
+      // evento legítimo: quem sumiu e voltou pela 2ª vez precisa acender a
+      // retomada de novo — e já tem a etiqueta da 1ª. Se dependesse de ser
+      // nova, o fluxo de retomada funcionaria uma vez por lead na vida.
+      await passoMudarTag({ tagNome: 'teste:encadeia', operacao: 'adicionar' });
+      await passoMudarTag({ tagNome: 'teste:encadeia', operacao: 'adicionar' });
+
+      const disparos = bus.disparar.mock.calls.filter((c) => c[1] === 'LEAD_RECEBEU_TAG');
+      expect(disparos).toHaveLength(2);
+    });
+
+    it('o payload leva o nome NORMALIZADO — é por ele que o gatilho casa', async () => {
+      // Com o nome cru, a etiqueta GRAVADA e a FILTRADA divergiriam quando
+      // houvesse espaço sobrando ou {{variavel}} interpolada.
+      prisma.tag.upsert.mockResolvedValue({ id: 'tag-y', nome: 'retomou' });
+
+      await passoMudarTag({ tagNome: '  retomou  ', operacao: 'adicionar' });
+
+      expect(bus.disparar).toHaveBeenCalledWith(
+        'emp-1',
+        'LEAD_RECEBEU_TAG',
+        expect.objectContaining({ tagNome: 'retomou' }),
+      );
+    });
+
+    it('propaga _hops — é o corta-loop do bus, não uma guarda nova', async () => {
+      await passoMudarTag(
+        { tagNome: 'teste:encadeia', operacao: 'adicionar' },
+        {
+          leadId: 'lead-1',
+          _hops: 3,
+        },
+      );
+
+      expect(bus.disparar).toHaveBeenCalledWith(
+        'emp-1',
+        'LEAD_RECEBEU_TAG',
+        expect.objectContaining({ _hops: 4 }),
+      );
+    });
+
+    it('operacao=remover NÃO dispara (não existe evento de "perdeu etiqueta")', async () => {
+      await passoMudarTag({ tagNome: 'teste:encadeia', operacao: 'remover' });
+
+      expect(prisma.leadTag.deleteMany).toHaveBeenCalledOnce();
+      expect(bus.disparar).not.toHaveBeenCalled();
+    });
+
+    it('tag só no CLIENTE não dispara — o gatilho é de LEAD', async () => {
+      prisma.fluxoExecucao.findUnique.mockResolvedValue(
+        fakeExecucao({ status: 'EM_EXECUCAO', contexto: { clienteId: 'cli-1' } }),
+      );
+      prisma.fluxoNo.findUnique.mockResolvedValue(
+        fakeNo({
+          tipo: 'ACAO',
+          acaoTipo: 'MUDAR_TAG',
+          config: { tagNome: 'vip', operacao: 'adicionar' },
+        }),
+      );
+      prisma.fluxoEdge.findMany.mockResolvedValue([]);
+      prisma.cliente.findFirst.mockResolvedValue({ id: 'cli-1' });
+
+      await service.executarPasso('exec-1', 'no-1', 'job-test');
+
+      expect(bus.disparar).not.toHaveBeenCalled();
+    });
+
     it('falha só quando o contexto não tem nem clienteId nem leadId', async () => {
       const acaoNo = fakeNo({
         tipo: 'ACAO',
