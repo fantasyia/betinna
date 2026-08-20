@@ -1,14 +1,23 @@
 import { useEffect, useState } from 'react';
-import { Download, X, RefreshCw } from 'lucide-react';
+import { RefreshCw } from 'lucide-react';
 
 /**
- * PwaBanner — banner discreto pra instalação PWA e atualização.
+ * PwaBanner — aviso de NOVA VERSÃO disponível.
  *
- * Captura dois eventos do navegador:
- *  - `beforeinstallprompt` — só dispara em Chrome/Edge quando o app
- *    atende critérios PWA (manifest válido, SW ativo, HTTPS).
- *  - Evento custom `pwa:needRefresh` (emitido por main.tsx via lib/pwa)
- *    quando nova versão é detectada.
+ * Escuta o evento custom `pwa:needRefresh` (emitido por main.tsx via lib/pwa)
+ * quando o Service Worker detecta bundle novo, e oferece atualizar sem o usuário
+ * precisar de hard refresh.
+ *
+ * ⚠️ O convite de INSTALAÇÃO ("Instalar Betinna.ai · funciona offline") saiu em
+ * 2026-08-20, a pedido do Léo: o app é **somente online**. Ele depende de API,
+ * WhatsApp, fila e banco a cada tela — instalado no celular ele não fica
+ * "funcionando offline", fica quebrado de um jeito pior, porque parece um app
+ * nativo e não avisa que perdeu a rede. Prometer offline no banner era promessa
+ * que o app não cumpre.
+ *
+ * O Service Worker CONTINUA registrado — é ele que detecta versão nova e evita
+ * o bundle velho preso no browser (problema real que já mordeu neste projeto).
+ * O que saiu foi só o convite de instalar.
  *
  * Brandbook: magenta CTA + navy background + radius 10px.
  */
@@ -20,25 +29,10 @@ const BRAND = {
   offWhite: '#F8F7F2',
 } as const;
 
-interface BeforeInstallPromptEvent extends Event {
-  prompt: () => Promise<void>;
-  userChoice: Promise<{ outcome: 'accepted' | 'dismissed' }>;
-}
-
 export function PwaBanner() {
-  const [installEvent, setInstallEvent] = useState<BeforeInstallPromptEvent | null>(null);
   const [needRefresh, setNeedRefresh] = useState<(() => Promise<void>) | null>(null);
-  const [installDismissed, setInstallDismissed] = useState(false);
 
   useEffect(() => {
-    // 1) Install prompt
-    function onBefore(e: Event) {
-      e.preventDefault(); // Captura — só mostra quando user clica
-      setInstallEvent(e as BeforeInstallPromptEvent);
-    }
-    window.addEventListener('beforeinstallprompt', onBefore);
-
-    // 2) Need refresh (emitido por lib/pwa.ts via custom event)
     function onNeedRefresh(e: Event) {
       const detail = (e as CustomEvent<{ accept: () => Promise<void> }>).detail;
       if (detail?.accept) {
@@ -49,58 +43,10 @@ export function PwaBanner() {
       }
     }
     window.addEventListener('pwa:needRefresh', onNeedRefresh);
-
-    // Reset banner install se user instalou (app foi adicionado à home)
-    function onInstalled() {
-      setInstallEvent(null);
-    }
-    window.addEventListener('appinstalled', onInstalled);
-
-    // Dismiss persistido em localStorage
-    try {
-      if (localStorage.getItem('pwa:install-dismissed') === '1') {
-        setInstallDismissed(true);
-      }
-    } catch {
-      /* localStorage indisponível */
-    }
-
-    return () => {
-      window.removeEventListener('beforeinstallprompt', onBefore);
-      window.removeEventListener('pwa:needRefresh', onNeedRefresh);
-      window.removeEventListener('appinstalled', onInstalled);
-    };
+    return () => window.removeEventListener('pwa:needRefresh', onNeedRefresh);
   }, []);
 
-  async function handleInstall() {
-    if (!installEvent) return;
-    await installEvent.prompt();
-    const choice = await installEvent.userChoice;
-    if (choice.outcome === 'dismissed') {
-      try {
-        localStorage.setItem('pwa:install-dismissed', '1');
-      } catch {
-        /* ignore */
-      }
-      setInstallDismissed(true);
-    }
-    setInstallEvent(null);
-  }
-
-  function dismissInstall() {
-    try {
-      localStorage.setItem('pwa:install-dismissed', '1');
-    } catch {
-      /* ignore */
-    }
-    setInstallDismissed(true);
-  }
-
-  // Prioridade: refresh > install
-  const showRefresh = !!needRefresh;
-  const showInstall = !showRefresh && !!installEvent && !installDismissed;
-
-  if (!showRefresh && !showInstall) return null;
+  if (!needRefresh) return null;
 
   return (
     <div
@@ -126,81 +72,32 @@ export function PwaBanner() {
         fontFamily: 'var(--font-ui, Cabin, system-ui)',
       }}
     >
-      {showRefresh ? (
-        <>
-          <RefreshCw className="h-5 w-5 shrink-0" style={{ color: BRAND.cyan }} />
-          <div style={{ flex: 1, minWidth: 0 }}>
-            <div style={{ fontWeight: 700, fontSize: 14 }}>Nova versão disponível</div>
-            <div style={{ fontSize: 12, opacity: 0.7 }}>
-              Atualize pra ter as últimas melhorias.
-            </div>
-          </div>
-          <button
-            type="button"
-            data-testid="pwa-refresh"
-            onClick={() => {
-              void needRefresh?.();
-              setNeedRefresh(null);
-            }}
-            style={{
-              background: BRAND.magenta,
-              color: BRAND.offWhite,
-              border: 'none',
-              borderRadius: 10,
-              padding: '0.5rem 1rem',
-              fontWeight: 700,
-              fontSize: 13,
-              cursor: 'pointer',
-              boxShadow: `0 4px 12px ${BRAND.magenta}55`,
-            }}
-          >
-            Atualizar
-          </button>
-        </>
-      ) : (
-        <>
-          <Download className="h-5 w-5 shrink-0" style={{ color: BRAND.cyan }} />
-          <div style={{ flex: 1, minWidth: 0 }}>
-            <div style={{ fontWeight: 700, fontSize: 14 }}>Instalar Betinna.ai</div>
-            <div style={{ fontSize: 12, opacity: 0.7 }}>
-              Acesso rápido, funciona offline.
-            </div>
-          </div>
-          <button
-            type="button"
-            data-testid="pwa-install"
-            onClick={handleInstall}
-            style={{
-              background: BRAND.magenta,
-              color: BRAND.offWhite,
-              border: 'none',
-              borderRadius: 10,
-              padding: '0.5rem 1rem',
-              fontWeight: 700,
-              fontSize: 13,
-              cursor: 'pointer',
-              boxShadow: `0 4px 12px ${BRAND.magenta}55`,
-            }}
-          >
-            Instalar
-          </button>
-          <button
-            type="button"
-            aria-label="Dispensar instalação"
-            onClick={dismissInstall}
-            style={{
-              background: 'transparent',
-              border: 'none',
-              color: BRAND.offWhite,
-              opacity: 0.5,
-              cursor: 'pointer',
-              padding: 4,
-            }}
-          >
-            <X className="h-4 w-4" />
-          </button>
-        </>
-      )}
+      <RefreshCw className="h-5 w-5 shrink-0" style={{ color: BRAND.cyan }} />
+      <div style={{ flex: 1, minWidth: 0 }}>
+        <div style={{ fontWeight: 700, fontSize: 14 }}>Nova versão disponível</div>
+        <div style={{ fontSize: 12, opacity: 0.7 }}>Atualize pra ter as últimas melhorias.</div>
+      </div>
+      <button
+        type="button"
+        data-testid="pwa-refresh"
+        onClick={() => {
+          void needRefresh?.();
+          setNeedRefresh(null);
+        }}
+        style={{
+          background: BRAND.magenta,
+          color: BRAND.offWhite,
+          border: 'none',
+          borderRadius: 10,
+          padding: '0.5rem 1rem',
+          fontWeight: 700,
+          fontSize: 13,
+          cursor: 'pointer',
+          boxShadow: `0 4px 12px ${BRAND.magenta}55`,
+        }}
+      >
+        Atualizar
+      </button>
     </div>
   );
 }

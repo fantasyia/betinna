@@ -540,11 +540,30 @@ export class UsersService {
     // aceita user existente — porém o Supabase NÃO envia email automático
     // pra esse método, então enviamos manualmente via Resend.
     const redirectTo = this.resolveInviteRedirectUrl();
-    const { data, error } = await this.supabaseAdmin.auth.admin.generateLink({
+    let { data, error } = await this.supabaseAdmin.auth.admin.generateLink({
       type: 'invite',
       email: userScope.email,
       options: { redirectTo },
     });
+
+    // FALLBACK PRA 'recovery'. Basta ABRIR o link de convite uma vez pro
+    // Supabase dar o e-mail por confirmado — e a partir daí ele recusa
+    // `type: 'invite'` com "already been registered". Quem clicou e não
+    // terminou de definir a senha (fechou a aba, caiu na tela errada, deixou
+    // pra depois) ficava travado PARA SEMPRE: sem senha pra entrar e sem
+    // convite pra gerar. O link de recovery leva pra mesma tela `/welcome`,
+    // que já trata `type=recovery`.
+    if (error && /already been registered/i.test(error.message ?? '')) {
+      this.logger.log(
+        `Convite de ${userScope.email} já foi aberto uma vez — gerando link de recovery`,
+      );
+      ({ data, error } = await this.supabaseAdmin.auth.admin.generateLink({
+        type: 'recovery',
+        email: userScope.email,
+        options: { redirectTo },
+      }));
+    }
+
     if (error || !data?.properties?.action_link) {
       throw new BusinessRuleException(
         `Falha ao reenviar convite: ${error?.message ?? 'sem action_link'}`,

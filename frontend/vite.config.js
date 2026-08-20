@@ -40,7 +40,15 @@ export default defineConfig({
                 // Brandbook v1.5.0 — magenta primary + preto profundo background
                 theme_color: '#bd1fbf',
                 background_color: '#101820',
-                display: 'standalone',
+                // 'browser' (não 'standalone') porque o app é SOMENTE ONLINE — decisão do
+                // Léo em 2026-08-20. `standalone` + SW é o que torna o app "instalável",
+                // e aí o próprio Chrome passa a oferecer a instalação sozinho, além do
+                // nosso banner. Instalado, ele vira janela sem barra de endereço e sem
+                // nenhuma pista de que perdeu a rede — mas TODA tela depende de API,
+                // fila e banco. Parece app nativo e quebra como site offline: o pior
+                // dos dois. O Service Worker continua (é ele que detecta versão nova e
+                // evita bundle velho preso no browser); o que sai é a instalação.
+                display: 'browser',
                 orientation: 'portrait-primary',
                 scope: '/',
                 start_url: '/dashboard',
