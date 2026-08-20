@@ -300,6 +300,8 @@ function UserDetail({ userId, isOwnProfile }: { userId: string; isOwnProfile: bo
   const [editing, setEditing] = useState(false);
   const [busy, setBusy] = useState(false);
   const [actionError, setActionError] = useState<string | null>(null);
+  /** Link de cadastro de senha do convite — mostrado pra entregar por outro canal. */
+  const [conviteLink, setConviteLink] = useState<string | null>(null);
   const [tetoModalOpen, setTetoModalOpen] = useState(false);
   const [comissaoModalOpen, setComissaoModalOpen] = useState(false);
 
@@ -307,9 +309,21 @@ function UserDetail({ userId, isOwnProfile }: { userId: string; isOwnProfile: bo
     if (!data) return;
     setBusy(true);
     setActionError(null);
+    setConviteLink(null);
     try {
-      await api.post(`/users/${data.id}/reenviar-convite`);
-      toast.success('Convite reenviado', `E-mail enviado pra ${data.email}`);
+      const r = await api.post<{ inviteUrl?: string; emailEnviado?: boolean; motivo?: string }>(
+        `/users/${data.id}/reenviar-convite`,
+      );
+      // O link SEMPRE aparece na tela, tenha o e-mail saído ou não. Depender do
+      // e-mail deixava o admin sem saída em tenant sem Resend — e mesmo com ele
+      // configurado, endereço errado ou spam dão no mesmo. Com o link à mão, dá
+      // pra entregar por WhatsApp, chat, o que for.
+      if (r?.inviteUrl) setConviteLink(r.inviteUrl);
+      if (r?.emailEnviado === false) {
+        toast.info?.('Convite gerado — e-mail NÃO saiu', r.motivo ?? 'Use o link abaixo.');
+      } else {
+        toast.success('Convite reenviado', `E-mail enviado pra ${data.email}`);
+      }
     } catch (err) {
       const motivo = err instanceof ApiError ? err.message : 'Erro inesperado';
       // Log estruturado pra diagnóstico.
@@ -432,6 +446,43 @@ function UserDetail({ userId, isOwnProfile }: { userId: string; isOwnProfile: bo
                 <p className="text-danger text-[13px] mt-2">
                   {actionError}
                 </p>
+              )}
+
+              {/* Link de cadastro de senha. Fica visível pra ser entregue por
+                  qualquer canal — não depender do e-mail chegar é o que faz o
+                  convite funcionar em tenant sem Resend, com endereço errado ou
+                  com a mensagem no spam. */}
+              {conviteLink && (
+                <div
+                  data-testid="convite-link"
+                  className="mt-3 rounded-[10px] border border-border bg-bg p-3"
+                >
+                  <p className="m-0 text-[12px] font-semibold" style={{ color: 'var(--text)' }}>
+                    🔗 Link de cadastro de senha
+                  </p>
+                  <p className="m-0 mt-1 text-[11px] text-muted">
+                    Quem abrir este link define a senha desta conta. Mande só pra pessoa certa.
+                  </p>
+                  <textarea
+                    readOnly
+                    rows={3}
+                    value={conviteLink}
+                    onClick={(e) => e.currentTarget.select()}
+                    data-testid="convite-link-input"
+                    className="w-full mt-2 text-[11px] font-mono bg-surface border border-border rounded-md p-2 text-text"
+                  />
+                  <button
+                    type="button"
+                    data-testid="convite-link-copiar"
+                    onClick={() => {
+                      void navigator.clipboard?.writeText(conviteLink);
+                      toast.success('Link copiado');
+                    }}
+                    className={btnSecondaryCls}
+                  >
+                    Copiar link
+                  </button>
+                </div>
               )}
             </div>
 
