@@ -440,19 +440,27 @@ export default function MullerBotPage() {
                   ))}
                 </Select>
               </Field>
-              <Field
-                label="Modelo da IA"
-                hint="Em branco usa o modelo configurado. Mais inteligente = mais caro por pergunta."
-              >
-                <Select value={modelo} onChange={(e) => setModelo(e.target.value)}>
-                  <option value="">Modelo configurado</option>
-                  {modelosLive.map((m: string) => (
-                    <option key={m} value={m}>
-                      {m}
-                    </option>
-                  ))}
-                </Select>
-              </Field>
+              {/* Trocar o modelo é escolher o CUSTO da pergunta, e quem paga é
+                  a chave da empresa — então é da gestão, não do rep. Pra ele o
+                  modelo é o que o admin configurou; a consulta aqui é de base
+                  de dados (catálogo + conhecimento) e o configurado dá conta.
+                  O backend ignora o override vindo de REP de qualquer forma —
+                  isto aqui só evita oferecer o que não vai valer. */}
+              {!isRep && (
+                <Field
+                  label="Modelo da IA"
+                  hint="Em branco usa o modelo configurado. Mais inteligente = mais caro por pergunta."
+                >
+                  <Select value={modelo} onChange={(e) => setModelo(e.target.value)}>
+                    <option value="">Modelo configurado</option>
+                    {modelosLive.map((m: string) => (
+                      <option key={m} value={m}>
+                        {m}
+                      </option>
+                    ))}
+                  </Select>
+                </Field>
+              )}
             </div>
           </Card>
 

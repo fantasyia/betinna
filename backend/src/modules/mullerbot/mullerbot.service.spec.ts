@@ -203,6 +203,60 @@ describe('MullerBotService.perguntar — credenciais', () => {
     expect(opts.headers.Authorization).toBe('Bearer sk-empresa');
   });
 
+  it('REP NÃO escolhe o modelo — vale o configurado, mesmo mandando outro no body', async () => {
+    // Quem paga a pergunta é a chave da EMPRESA. Sem esta trava, bastava o rep
+    // mandar `modelo` no body pra trocar por um modelo caro no custo da empresa.
+    const http = makeHttp();
+    const persona = makePersona();
+    persona.obterModelo.mockResolvedValue('gpt-5.4-mini');
+    const svc = new MullerBotService(
+      http as never,
+      makeEnv() as never,
+      makeUserIntegracoes() as never,
+      makeProdutoSearch() as never,
+      makeCache() as never,
+      persona as never,
+      makeIntegracoes(async () => ({ credenciais: { apiKey: 'sk-empresa' } })) as never,
+      makeCusto() as never,
+      makeConhecimento() as never,
+    );
+
+    await svc.perguntar(fakeUser({ role: 'REP' as UserRole }), {
+      pergunta: 'tem óleo?',
+      topK: 5,
+      modelo: 'gpt-5.4-max-caro',
+    });
+
+    const [, opts] = http.post.mock.calls[0] as [string, { body: { model: string } }];
+    expect(opts.body.model).toBe('gpt-5.4-mini');
+  });
+
+  it('gestão CONTINUA podendo trocar de modelo — é quem responde pelo custo', async () => {
+    const http = makeHttp();
+    const persona = makePersona();
+    persona.obterModelo.mockResolvedValue('gpt-5.4-mini');
+    const svc = new MullerBotService(
+      http as never,
+      makeEnv() as never,
+      makeUserIntegracoes() as never,
+      makeProdutoSearch() as never,
+      makeCache() as never,
+      persona as never,
+      makeIntegracoes(async () => ({ credenciais: { apiKey: 'sk-empresa' } })) as never,
+      makeCusto() as never,
+      makeConhecimento() as never,
+    );
+
+    await svc.perguntar(fakeUser({ role: 'DIRECTOR' as UserRole }), {
+      pergunta: 'tem óleo?',
+      topK: 5,
+      modelo: 'gpt-5.4',
+    });
+
+    const [, opts] = http.post.mock.calls[0] as [string, { body: { model: string } }];
+    expect(opts.body.model).toBe('gpt-5.4');
+  });
+
   it('cai pro env (OPENAI_API_KEY) quando a empresa não tem chave própria', async () => {
     const http = makeHttp();
     const svc = new MullerBotService(

@@ -159,12 +159,24 @@ export class MullerBotService {
     // O bot INTERNO da empresa (rep tira dúvidas de produto/regras/FAQ) usa a chave
     // da EMPRESA — a chave pessoal do rep é só pro bot pessoal dele, nada da empresa.
     const creds = await this.resolverCredenciaisEmpresa(user.empresaIdAtiva);
+    // O REP usa o que o admin configurou — ponto. Quem paga esta pergunta é a
+    // chave da EMPRESA, então deixar o override de modelo/teto passar pelo DTO
+    // era o rep escolhendo o custo da empresa: bastava mandar `modelo` no body
+    // pra trocar por um modelo caro. Aqui a consulta é de base de dados
+    // (catálogo + conhecimento), e o modelo configurado dá conta.
+    //
+    // Gestão mantém o override: é quem responde pelo custo e usa isso pra
+    // comparar modelo antes de fixar um na persona.
+    const podeEscolherModelo = user.role !== 'REP';
     const modelo =
-      dto.modelo ??
+      (podeEscolherModelo ? dto.modelo : undefined) ??
       (await this.persona.obterModelo(user.empresaIdAtiva)) ??
       this.env.get('MULLERBOT_MODEL');
     const maxInputTokens = this.env.get('MULLERBOT_MAX_INPUT_TOKENS');
-    const maxOutputTokens = dto.maxOutputTokens ?? this.env.get('MULLERBOT_MAX_OUTPUT_TOKENS');
+    // Mesmo raciocínio do modelo: teto de saída é custo por pergunta.
+    const maxOutputTokens =
+      (podeEscolherModelo ? dto.maxOutputTokens : undefined) ??
+      this.env.get('MULLERBOT_MAX_OUTPUT_TOKENS');
 
     // 0. Compila system prompt usando persona ativa da empresa
     const systemPrompt = await this.persona.compilarSystemPrompt(user.empresaIdAtiva);
