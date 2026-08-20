@@ -521,6 +521,10 @@ model Tag {
   funilId   String?
   /// Categoria livre: status | segmento | logistica | alerta | sistema
   categoria String?
+  /// O REP usa esta tag? Default false — tag nova nasce só pra gestão. As tags
+  /// operacionais (triagem, e-mail mkt, gatilhos de fluxo) não são trabalho do
+  /// rep e só poluíam a tela dele. Mesma convenção de `Funil.visivelParaRep`.
+  visivelParaRep Boolean @default(false)
 
   empresa  Empresa      @relation(fields: [empresaId], references: [id], onDelete: Cascade)
   clientes ClienteTag[]

@@ -34,10 +34,12 @@ const STATUS_META: Record<FluxoSalaRow['status'], { label: string; icone: Lucide
   RASCUNHO: { label: 'Rascunho', icone: FileEdit, classe: 'text-muted' },
 };
 
-/** Família do fluxo pelo prefixo do nome ("E1 …" → E-mail, "R2 …" → Reps, "W…" → WhatsApp). */
+/** Família do fluxo pelo prefixo do nome ("E1 …" → E-mail, "R2 …" → Reps, "W…" → WhatsApp).
+ *  Sem prefixo conhecido = "Clientes": C1/C2 (consultivos), S (site), T1 (triagem)
+ *  são todos fluxos de atendimento a cliente — "Outros" não dizia nada. */
 function familiaDe(nome: string): string {
   const m = nome.trim().match(/^([ERW])\d/i);
-  if (!m) return 'Outros';
+  if (!m) return 'Clientes';
   const letra = m[1].toUpperCase();
   return letra === 'E' ? 'E-mail' : letra === 'R' ? 'Reps' : 'WhatsApp';
 }

@@ -64,8 +64,9 @@ export function PrimeirosPassosRep() {
       // chave da EMPRESA e funciona sem isto. A chave pessoal só entra quando o
       // rep quer gastar o crédito OpenAI dele nos recursos de IA.
       opcional: true,
-      titulo: 'Adicione sua chave OpenAI (opcional)',
-      desc: 'O assistente já funciona sem ela. Serve pra usar seu próprio crédito da OpenAI.',
+      // O "(opcional)" quem põe é o render (i.opcional) — no título duplicava.
+      titulo: 'Adicione sua chave OpenAI',
+      desc: 'Só é necessária pra ligar o bot de IA no seu WhatsApp. O assistente do chat já funciona sem ela.',
     },
     {
       key: 'calendar',

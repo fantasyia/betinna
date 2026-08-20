@@ -14,6 +14,8 @@ import type { AuthenticatedUser } from '@shared/types/authenticated-user';
 
 type MockTag = Record<string, ReturnType<typeof vi.fn>>;
 
+let repScope: { getRepIds: ReturnType<typeof vi.fn> };
+
 const makePrismaMock = () => ({
   tag: {
     findMany: vi.fn(),
@@ -72,7 +74,8 @@ describe('TagsService', () => {
 
   beforeEach(() => {
     prisma = makePrismaMock();
-    service = new TagsService(prisma as never);
+    repScope = { getRepIds: vi.fn().mockResolvedValue(null) };
+    service = new TagsService(prisma as never, repScope as never);
   });
 
   // -------------------------------------------------------------------------
@@ -97,6 +100,40 @@ describe('TagsService', () => {
 
       const args = prisma.tag.findMany.mock.calls[0][0];
       expect(args.include).toEqual({ _count: { select: { clientes: true, leads: true } } });
+    });
+
+    it('REP só recebe as tags marcadas pra ele', async () => {
+      repScope.getRepIds.mockResolvedValue(['rep-7']);
+      prisma.tag.findMany.mockResolvedValue([]);
+
+      await service.list(fakeUser({ id: 'rep-7', role: 'REP' as UserRole }), {});
+
+      const args = prisma.tag.findMany.mock.calls[0][0];
+      expect(args.where.visivelParaRep).toBe(true);
+    });
+
+    it('REP vê o uso na CARTEIRA dele, não o total da empresa', async () => {
+      repScope.getRepIds.mockResolvedValue(['rep-7']);
+      prisma.tag.findMany.mockResolvedValue([]);
+
+      await service.list(fakeUser({ id: 'rep-7', role: 'REP' as UserRole }), {});
+
+      // Sem isto, o rep lia "cold — 30.282 usos", que é o volume do ADMIN.
+      const args = prisma.tag.findMany.mock.calls[0][0];
+      expect(args.include._count.select).toEqual({
+        clientes: { where: { cliente: { representanteId: { in: ['rep-7'] } } } },
+        leads: { where: { lead: { representanteId: { in: ['rep-7'] } } } },
+      });
+    });
+
+    it('gestão continua vendo TODAS as tags e a contagem cheia', async () => {
+      prisma.tag.findMany.mockResolvedValue([]);
+
+      await service.list(fakeUser(), {});
+
+      const args = prisma.tag.findMany.mock.calls[0][0];
+      expect(args.where.visivelParaRep).toBeUndefined();
+      expect(args.include._count.select).toEqual({ clientes: true, leads: true });
     });
 
     it('ordena por nome asc', async () => {

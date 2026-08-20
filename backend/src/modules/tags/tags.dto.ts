@@ -5,6 +5,8 @@ const HEX_COLOR = /^#[0-9a-fA-F]{6}$/;
 export const createTagSchema = z.object({
   nome: z.string().trim().min(1).max(100),
   cor: z.string().regex(HEX_COLOR, 'Cor deve estar no formato #RRGGBB').default('#7c3aed'),
+  /** O REP usa esta tag? Default false — ver `Tag.visivelParaRep`. */
+  visivelParaRep: z.boolean().optional(),
 });
 export type CreateTagDto = z.infer<typeof createTagSchema>;
 

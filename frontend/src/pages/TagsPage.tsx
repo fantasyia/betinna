@@ -20,6 +20,7 @@ interface Tag {
   /** Uso da tag. A API devolve `_count` (Prisma); o campo plano `clientesCount`
    *  nunca existiu na resposta — por isso a tela mostrava "0 clientes" em tudo. */
   _count?: { clientes?: number; leads?: number };
+  visivelParaRep?: boolean;
   criadoEm?: string;
 }
 
@@ -191,6 +192,7 @@ function TagFormModal({
   const isEdit = Boolean(tag);
   const [nome, setNome] = useState(tag?.nome ?? '');
   const [cor, setCor] = useState(tag?.cor ?? PRESET_COLORS[0]);
+  const [visivelParaRep, setVisivelParaRep] = useState(tag?.visivelParaRep ?? false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -199,7 +201,7 @@ function TagFormModal({
     setBusy(true);
     setError(null);
     try {
-      const payload = { nome: nome.trim(), cor };
+      const payload = { nome: nome.trim(), cor, visivelParaRep };
       if (isEdit && tag) {
         await api.patch(`/tags/${tag.id}`, payload);
       } else {
@@ -296,6 +298,26 @@ function TagFormModal({
             title="Hex color no formato #RRGGBB (ex: #7c3aed)"
           />
         </FormField>
+        {/* Quem USA a tag. Sem isto o rep via as 24 tags da empresa — incluindo
+            triagem, e-mail marketing e gatilhos de fluxo, que são trabalho da
+            gestão e não dele. */}
+        <label className="flex items-start gap-2 text-sm cursor-pointer mt-2">
+          <input
+            type="checkbox"
+            checked={visivelParaRep}
+            onChange={(e) => setVisivelParaRep(e.target.checked)}
+            data-testid="tag-visivel-rep-cb"
+            className="mt-0.5"
+          />
+          <span>
+            <strong>Representantes usam esta tag</strong>
+            <span className="block text-xs text-muted">
+              Desmarcado (padrão), a tag só aparece pra gestão. Marque as que o rep precisa aplicar
+              nos leads dele — a contagem de usos que ele vê é só da carteira dele, nunca o total
+              da empresa.
+            </span>
+          </span>
+        </label>
         <div className="flex items-center gap-2 p-3 bg-bg-alt border border-border rounded-md mt-2">
           <span
             className="w-4 h-4 rounded-full"
