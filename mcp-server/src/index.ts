@@ -1638,7 +1638,8 @@ server.registerTool(
 server.registerTool(
   'funis_atualizar',
   {
-    description: 'Atualiza dados do funil (nome/descrição/cor/ativo/triagem). NÃO mexe em etapas.',
+    description:
+      'Atualiza dados do funil (nome/descrição/cor/ativo/triagem/visível pro rep). NÃO mexe em etapas.',
     inputSchema: {
       funilId: z.string().describe('ID do funil (use funis_listar)'),
       nome: z.string().min(1).max(100).optional(),
@@ -1646,6 +1647,13 @@ server.registerTool(
       cor: z.string().regex(/^#[0-9A-Fa-f]{6}$/).optional(),
       ativo: z.boolean().optional(),
       triagem: z.boolean().optional().describe('true = fora dos KPIs globais do dashboard'),
+      visivelParaRep: z
+        .boolean()
+        .optional()
+        .describe(
+          'true = o REP enxerga este funil. Default false: funil novo nasce só pra gestão. ' +
+            'Marque nos funis de carteira, senão o rep abre a tela e não vê pipeline nenhum.',
+        ),
     },
     annotations: { readOnlyHint: false, destructiveHint: false },
   },
