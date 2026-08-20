@@ -2021,11 +2021,15 @@ model InboxLimpeza {
   em        DateTime       @default(now())
   /// Quem mandou limpar (rastro; a limpeza é destrutiva).
   usuarioId String?
+  /// De QUAL caixa é a marca: '' = número da EMPRESA; id do usuário = WhatsApp
+  /// PESSOAL dele. Não-nulo de propósito — NULL é distinto de NULL em índice
+  /// único no Postgres, e a chave deixaria duplicar a linha da empresa.
+  proprietarioId String   @default("")
   criadoEm  DateTime       @default(now())
 
   empresa Empresa @relation(fields: [empresaId], references: [id], onDelete: Cascade)
 
-  @@unique([empresaId, canal])
+  @@unique([empresaId, canal, proprietarioId])
   @@index([empresaId])
 }
 

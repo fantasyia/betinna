@@ -1,4 +1,5 @@
 import { StateView } from '@/components/StateView';
+import { useNomeBot } from '@/hooks/useNomeBot';
 import type { Canal, Mensagem } from '../lib/types';
 import { MessageBubble } from './MessageBubble';
 
@@ -31,6 +32,8 @@ export function ThreadMensagens({
   onResponder: (msg: Mensagem) => void;
 }) {
   const podeReagir = canal === 'WHATSAPP';
+  // Busca o nome do bot UMA vez aqui e repassa: a bolha renderiza as centenas.
+  const nomeBot = useNomeBot();
   return (
     <div className="flex-1 overflow-y-auto px-4 py-4 bg-bg flex flex-col gap-2">
       <StateView
@@ -59,6 +62,7 @@ export function ThreadMensagens({
               onReagir={(emoji) => onReagir(m.id, emoji)}
               onResponder={podeReagir ? () => onResponder(m) : undefined}
               citada={citada}
+              nomeBot={nomeBot}
             />
           );
         })}

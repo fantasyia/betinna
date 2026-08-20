@@ -7,6 +7,7 @@ import type { AuthenticatedUser } from '@shared/types/authenticated-user';
 import { CryptoUtil } from '@shared/utils/crypto.util';
 import type { ServicoUsuario } from './integracoes.constants';
 import type { ConectarUsuarioDto, ListConexoesUsuarioDto } from './integracoes.dto';
+import { EvolutionService } from '@integrations/evolution/evolution.service';
 
 export interface ConexaoUsuarioDescriptada {
   id: string;
@@ -45,7 +46,9 @@ export class UsuarioIntegracoesService {
 
   constructor(
     private readonly prisma: PrismaService,
-    env: EnvService,
+    private readonly env: EnvService,
+    // Só pra CONSULTAR o estado do número quando o provider é o Evolution.
+    private readonly evolution: EvolutionService,
   ) {
     this.crypto = new CryptoUtil(env.get('ENCRYPTION_KEY'));
   }
@@ -62,7 +65,56 @@ export class UsuarioIntegracoesService {
       where,
       orderBy: { servico: 'asc' },
     });
-    return items.map((c) => this.toPublic(c));
+    return this.reconciliarWhatsapp(
+      user.id,
+      items.map((c) => this.toPublic(c)),
+    );
+  }
+
+  /**
+   * O `ativo` da linha descreve a sessão do BAILEYS. Com
+   * `WHATSAPP_PROVIDER=evolution`, quem sabe se o número do rep está pareado é o
+   * Evolution — a instância `user_<id>` — e a linha da tabela pode estar `false`
+   * ou nem existir.
+   *
+   * Sem isto, o rep parear o WhatsApp e a tela continuar dizendo "não
+   * conectado": foi o que aconteceu no primeiro rep de teste, em DOIS lugares ao
+   * mesmo tempo (o card em Minhas Integrações e o "Conecte seu WhatsApp" do
+   * dashboard, que leem a mesma lista). A tela de pareamento dizia conectado
+   * porque consulta o provider direto — três telas do mesmo app discordando.
+   *
+   * Best-effort: provider fora do ar devolve o que está gravado.
+   */
+  private async reconciliarWhatsapp(
+    usuarioId: string,
+    conexoes: ConexaoUsuarioPublica[],
+  ): Promise<ConexaoUsuarioPublica[]> {
+    if (this.env.get('WHATSAPP_PROVIDER') !== 'evolution') return conexoes;
+    let conectado: boolean;
+    try {
+      const instancia = EvolutionService.instanceName({ type: 'USUARIO', id: usuarioId });
+      conectado = await this.evolution.estaSaudavel(instancia);
+    } catch {
+      return conexoes;
+    }
+    const idx = conexoes.findIndex((c) => c.servico === 'whatsapp');
+    if (idx >= 0) {
+      conexoes[idx] = { ...conexoes[idx], ativo: conectado };
+      return conexoes;
+    }
+    // Sem linha na tabela: o pareamento existe só no Evolution. Sem sintetizar, a
+    // tela oferece "Conectar" pra quem já está no ar.
+    if (!conectado) return conexoes;
+    conexoes.push({
+      id: `evolution:${usuarioId}`,
+      usuarioId,
+      servico: 'whatsapp',
+      ativo: true,
+      criadoEm: null,
+      atualizadoEm: null,
+      credenciaisConfiguradas: true,
+    } as unknown as ConexaoUsuarioPublica);
+    return conexoes;
   }
 
   async findByServico(

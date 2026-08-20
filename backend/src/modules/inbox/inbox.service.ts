@@ -104,18 +104,35 @@ export class InboxService {
   private static readonly CANAIS_COM_HISTORICO: ReadonlySet<string> = new Set(['WHATSAPP']);
 
   /** Marca de limpeza vigente da empresa/canal (null = nunca limpou). */
-  private async marcaDeLimpeza(empresaId: string, canal: MessageChannel): Promise<Date | null> {
-    const chave = `${empresaId}:${canal}`;
+  /**
+   * Marca de limpeza que vale pra ESTA mensagem.
+   *
+   * Duas caixas podem barrar: a da EMPRESA (`''`, limpeza do número central) e a
+   * do DONO da conversa (WhatsApp pessoal do rep). Vale a MAIS RECENTE das duas:
+   * a limpeza da empresa protege tudo, e a do rep protege a caixa dele sem
+   * afetar as outras.
+   */
+  private async marcaDeLimpeza(
+    empresaId: string,
+    canal: MessageChannel,
+    proprietarioId?: string | null,
+  ): Promise<Date | null> {
+    const dono = proprietarioId ?? '';
+    const chave = `${empresaId}:${canal}:${dono}`;
     const hit = this.limpezaCache.get(chave);
     if (hit && hit.expiraEm > Date.now()) return hit.em;
-    const row = await this.prisma.inboxLimpeza
-      .findUnique({ where: { empresaId_canal: { empresaId, canal } }, select: { em: true } })
-      .catch(() => null);
-    this.limpezaCache.set(chave, {
-      em: row?.em ?? null,
-      expiraEm: Date.now() + InboxService.LIMPEZA_TTL_MS,
-    });
-    return row?.em ?? null;
+    const donos = dono ? ['', dono] : [''];
+    const rows = await this.prisma.inboxLimpeza
+      .findMany({
+        where: { empresaId, canal, proprietarioId: { in: donos } },
+        select: { em: true },
+      })
+      .catch(() => [] as Array<{ em: Date }>);
+    const em = rows.length
+      ? rows.reduce((maior, r) => (r.em > maior ? r.em : maior), rows[0].em)
+      : null;
+    this.limpezaCache.set(chave, { em, expiraEm: Date.now() + InboxService.LIMPEZA_TTL_MS });
+    return em;
   }
 
   constructor(
@@ -314,10 +331,24 @@ export class InboxService {
    * mensagens (do banco mesmo). Usado pra começar limpo na migração p/ Evolution.
    * Apaga mensagens primeiro (FK), depois as conversas.
    */
+  /**
+   * Apaga conversas+mensagens de WhatsApp do banco (NÃO desconecta o número).
+   *
+   * Escopo pelo PAPEL: gestão zera a caixa da empresa inteira; REP/GERENTE zeram
+   * SÓ o próprio WhatsApp pessoal. Sem essa separação o rep não tinha como
+   * limpar o histórico dele (a única opção era ADMIN/DIRECTOR apagando tudo de
+   * todo mundo), e é ele quem mais precisa — é o número dele testando fluxo.
+   */
   async limparWhatsapp(user: AuthenticatedUser): Promise<{ conversas: number; mensagens: number }> {
     const empresaId = this.requireEmpresa(user);
+    const soMinhas = user.role === 'REP' || user.role === 'GERENTE';
+    const dono = soMinhas ? user.id : '';
     const convs = await this.prisma.conversation.findMany({
-      where: { empresaId, canal: 'WHATSAPP' },
+      where: {
+        empresaId,
+        canal: 'WHATSAPP',
+        ...(soMinhas ? { proprietarioId: user.id } : {}),
+      },
       select: { id: true },
     });
     const ids = convs.map((c) => c.id);
@@ -335,14 +366,26 @@ export class InboxService {
     // novas e limpas — a exclusão parecia funcionar e desfazia sozinha.
     // Esta marca sobrevive à exclusão e barra qualquer mensagem anterior a ela.
     await this.prisma.inboxLimpeza.upsert({
-      where: { empresaId_canal: { empresaId, canal: 'WHATSAPP' } },
-      create: { empresaId, canal: 'WHATSAPP', em: new Date(), usuarioId: user.id },
+      where: {
+        empresaId_canal_proprietarioId: { empresaId, canal: 'WHATSAPP', proprietarioId: dono },
+      },
+      create: {
+        empresaId,
+        canal: 'WHATSAPP',
+        proprietarioId: dono,
+        em: new Date(),
+        usuarioId: user.id,
+      },
       update: { em: new Date(), usuarioId: user.id },
     });
-    this.limpezaCache.delete(`${empresaId}:WHATSAPP`);
+    // Invalida as duas chaves possíveis: a marca da empresa passa a valer pra
+    // TODA caixa, então o cache do dono também fica velho.
+    this.limpezaCache.delete(`${empresaId}:WHATSAPP:`);
+    this.limpezaCache.delete(`${empresaId}:WHATSAPP:${dono}`);
 
     this.logger.warn(
-      `[inbox] LIMPOU WhatsApp empresa=${empresaId}: ${cs.count} conversas + ${msgs.count} msgs (por ${user.email}) — ` +
+      `[inbox] LIMPOU WhatsApp empresa=${empresaId}${dono ? ` (só do usuário ${dono})` : ''}: ` +
+        `${cs.count} conversas + ${msgs.count} msgs (por ${user.email}) — ` +
         'marca de limpeza gravada: mensagem anterior a agora não entra mais',
     );
     return { conversas: cs.count, mensagens: msgs.count };
@@ -1213,7 +1256,11 @@ export class InboxService {
     if (params.data) {
       // (1) MARCA DE LIMPEZA — vale por empresa+canal e sobrevive à exclusão
       // das conversas. Sem ela, o tombstone morria junto com a linha apagada.
-      const limpezaEm = await this.marcaDeLimpeza(params.empresaId, params.canal);
+      const limpezaEm = await this.marcaDeLimpeza(
+        params.empresaId,
+        params.canal,
+        params.proprietarioId,
+      );
       if (limpezaEm && params.data <= limpezaEm) {
         this.logger.debug(
           `[inbox] descartada msg anterior à limpeza (${params.canal}, ${params.data.toISOString()} <= ${limpezaEm.toISOString()})`,

@@ -15,8 +15,9 @@ import { SubTabsBar, type SubTab } from '@/components/SubTabsBar';
  *  - /inbox              → todos
  *  - /ocorrencias        → todos (SAC interno)
  *  - /incidentes         → ADMIN/DIRECTOR/GERENTE/SAC
- *  - /whatsapp           → rota LIVRE (a página escolhe a aba pelo papel);
- *                          esta ABA de Atendimento é que exige 'whatsapp.empresa'
+ *  - /whatsapp           → rota LIVRE e ABA SEMPRE visível. A página escolhe o
+ *                          escopo pelo papel: gestão vê "Número da empresa" +
+ *                          "Meu WhatsApp pessoal"; REP/GERENTE só o pessoal.
  *
  * O Assistente IA (/mullerbot) NÃO está aqui — virou item próprio do menu
  * lateral (PageLayout → SECTIONS), com as sub-abas dele em AssistenteTabs.
@@ -51,13 +52,15 @@ export function AtendimentoTabs() {
       icon: <ShieldAlert size={14} />,
     });
   }
-  if (canWhatsApp) {
-    tabs.push({
-      to: '/whatsapp',
-      label: 'WhatsApp',
-      icon: <Smartphone size={14} />,
-    });
-  }
+  // A aba SEMPRE aparece — muda só o rótulo. Antes ela existia só pra quem tem
+  // `whatsapp.empresa`, e o REP ficava SEM CAMINHO NENHUM até a tela de parear:
+  // o app oferece o WhatsApp pessoal pra ele, mas chegar lá só pelo card do
+  // dashboard. Quem dispensou o card não achava mais.
+  tabs.push({
+    to: '/whatsapp',
+    label: canWhatsApp ? 'WhatsApp' : 'Meu WhatsApp',
+    icon: <Smartphone size={14} />,
+  });
   // Assistente IA saiu daqui: virou item PRÓPRIO do menu lateral (PageLayout →
   // SECTIONS). Como as sub-abas dele (Persona/Conhecimento/Auditoria) já vivem
   // em AssistenteTabs, mantê-lo aqui deixaria a mesma seção em dois lugares.

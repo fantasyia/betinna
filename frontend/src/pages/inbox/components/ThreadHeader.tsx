@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { useNomeBot } from '@/hooks/useNomeBot';
 import {
   ArrowLeft,
   Building2,
@@ -199,7 +200,7 @@ export function ThreadHeader({
           >
             {c.atribuido ? c.atribuido.nome : 'Atribuir'}
           </Button>
-          {/* Fase 2 — controle do bot Muller nesta conversa (só WhatsApp da empresa) */}
+          {/* Fase 2 — controle do bot nesta conversa (só WhatsApp da empresa) */}
           {c.canal === 'WHATSAPP' && (
             <ControlesBot conv={c} botGlobalAtivo={botGlobalAtivo} acoes={acoes} />
           )}
@@ -241,7 +242,7 @@ export function ThreadHeader({
 }
 
 /**
- * Bloco WhatsApp-only de controle do bot Muller nesta conversa: <select> de
+ * Bloco WhatsApp-only de controle do bot nesta conversa: <select> de
  * override (Padrão/Ligado/Desligado) + botões Religar/Pausar condicionais.
  * `botEfetivoOnConv`/`botPausadoConv` derivados de `conv` + `botGlobalAtivo`.
  * Subcomponente interno (não exportado) — só desmembra o JSX grande do header.
@@ -258,6 +259,7 @@ function ControlesBot({
     definirBotLigado: (ligado: boolean | null) => void;
   };
 }) {
+  const nomeBot = useNomeBot();
   // "Bot pausado"/"Religar" só quando o bot está EFETIVAMENTE ligado nesta conversa
   // (override on, ou padrão seguindo o global ligado) — senão são selos enganosos
   // pra um bot que é off por padrão.
@@ -302,7 +304,7 @@ function ControlesBot({
           size="sm"
           data-testid="inbox-bot-religar"
           onClick={() => acoes.alternarBot('religar')}
-          title="Religar o bot Muller agora (limpa a pausa e o 'precisa humano')"
+          title={`Religar o ${nomeBot} agora (limpa a pausa e o 'precisa humano')`}
         >
           ▶ Religar bot
         </Button>
@@ -315,7 +317,7 @@ function ControlesBot({
           size="sm"
           data-testid="inbox-bot-btn"
           onClick={() => acoes.alternarBot('pausar')}
-          title="Pausar o bot Muller nesta conversa (atendimento humano)"
+          title={`Pausar o ${nomeBot} nesta conversa (atendimento humano)`}
         >
           ⏸ Pausar bot
         </Button>

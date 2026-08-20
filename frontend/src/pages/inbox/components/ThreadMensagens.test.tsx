@@ -3,6 +3,10 @@ import { render, screen, cleanup } from '@testing-library/react';
 import { ThreadMensagens } from './ThreadMensagens';
 import type { Mensagem } from '../lib/types';
 
+// useNomeBot bate na API (persona da empresa) e estes testes montam o componente
+// sem QueryClientProvider — o nome do bot não é o alvo aqui.
+vi.mock('@/hooks/useNomeBot', () => ({ useNomeBot: () => 'SomaBOT' }));
+
 // Mock pesado: MessageBubble não é o alvo — só contamos as bolhas.
 vi.mock('./MessageBubble', () => ({
   MessageBubble: ({ msg }: { msg: Mensagem }) => (

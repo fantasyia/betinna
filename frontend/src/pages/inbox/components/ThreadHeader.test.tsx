@@ -3,6 +3,10 @@ import { render, screen, fireEvent, cleanup } from '@testing-library/react';
 import { ThreadHeader } from './ThreadHeader';
 import type { Conversation } from '../lib/types';
 
+// useNomeBot bate na API (persona da empresa) e estes testes montam o componente
+// sem QueryClientProvider — o nome do bot não é o alvo aqui.
+vi.mock('@/hooks/useNomeBot', () => ({ useNomeBot: () => 'SomaBOT' }));
+
 afterEach(() => cleanup());
 
 // Conversa mínima válida pra maioria dos testes

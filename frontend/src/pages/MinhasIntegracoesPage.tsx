@@ -41,7 +41,7 @@ const SERVICOS: Record<ServicoUsuario, ServicoMeta> = {
     color: '#10a37f',
     icon: 'AI',
     description:
-      'Chave pessoal para usar o MullerBot. REPs precisam ter chave própria (rastreabilidade + custo).',
+      'Chave pessoal para usar o assistente de IA. REPs precisam ter chave própria (rastreabilidade + custo).',
     connectMode: 'credentials',
     credentialFields: [
       {

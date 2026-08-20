@@ -21,10 +21,12 @@ const fakeUser = (overrides: Partial<AuthenticatedUser> = {}): AuthenticatedUser
 });
 
 const makePrismaMock = () => ({
-  // Marca de LIMPEZA por empresa+canal — consultada em TODA mensagem entrante.
+  // Marca de LIMPEZA por empresa+canal+DONO — consultada em TODA mensagem
+  // entrante. É findMany porque duas marcas podem barrar a mesma mensagem: a da
+  // empresa ('') e a do dono da conversa (WhatsApp pessoal do rep).
   // Default: nunca limpou.
   inboxLimpeza: {
-    findUnique: vi.fn().mockResolvedValue(null),
+    findMany: vi.fn().mockResolvedValue([]),
     upsert: vi.fn().mockResolvedValue({}),
   },
   // Religar o bot limpa a tag `triado` do lead (regra do Léo, 11/08).
@@ -1094,7 +1096,7 @@ describe('InboxService — marca de limpeza e teto de histórico', () => {
   it('mensagem ANTERIOR à limpeza é descartada — mesmo sem conversa existir', async () => {
     // O cenário exato do incidente: a conversa foi apagada, então não há
     // tombstone nenhum pra consultar. A marca por EMPRESA é o que segura.
-    prisma.inboxLimpeza.findUnique.mockResolvedValue({ em: new Date(Date.now() - 60_000) });
+    prisma.inboxLimpeza.findMany.mockResolvedValue([{ em: new Date(Date.now() - 60_000) }]);
 
     const r = await svc.processarMensagemEntrante(
       entrante({ data: new Date(Date.now() - 8 * 60_000) }) as never,
@@ -1106,7 +1108,7 @@ describe('InboxService — marca de limpeza e teto de histórico', () => {
   });
 
   it('mensagem POSTERIOR à limpeza entra normalmente (não trava o número)', async () => {
-    prisma.inboxLimpeza.findUnique.mockResolvedValue({ em: new Date(Date.now() - 10 * 60_000) });
+    prisma.inboxLimpeza.findMany.mockResolvedValue([{ em: new Date(Date.now() - 10 * 60_000) }]);
     prisma.cliente.findFirst.mockResolvedValueOnce(null);
     prisma.conversation.findFirst.mockResolvedValueOnce({ id: 'conv-1' });
     prisma.conversation.update.mockResolvedValue({ id: 'conv-1' });
@@ -1119,7 +1121,7 @@ describe('InboxService — marca de limpeza e teto de histórico', () => {
   });
 
   it('mensagem VELHA é descartada mesmo sem nunca ter havido limpeza (history sync)', async () => {
-    prisma.inboxLimpeza.findUnique.mockResolvedValue(null);
+    prisma.inboxLimpeza.findMany.mockResolvedValue([]);
 
     const r = await svc.processarMensagemEntrante(
       entrante({ data: new Date(Date.now() - 3 * 60 * 60_000) }) as never, // 3h atrás
@@ -1130,7 +1132,7 @@ describe('InboxService — marca de limpeza e teto de histórico', () => {
   });
 
   it('o teto NÃO atrapalha a recuperação do poll (janela de 45s a 12min)', async () => {
-    prisma.inboxLimpeza.findUnique.mockResolvedValue(null);
+    prisma.inboxLimpeza.findMany.mockResolvedValue([]);
     prisma.cliente.findFirst.mockResolvedValueOnce(null);
     prisma.conversation.findFirst.mockResolvedValueOnce({ id: 'conv-1' });
     prisma.conversation.update.mockResolvedValue({ id: 'conv-1' });
@@ -1152,13 +1154,49 @@ describe('InboxService — marca de limpeza e teto de histórico', () => {
 
     expect(prisma.inboxLimpeza.upsert).toHaveBeenCalledWith(
       expect.objectContaining({
-        where: { empresaId_canal: { empresaId: 'emp-1', canal: 'WHATSAPP' } },
+        where: {
+          empresaId_canal_proprietarioId: {
+            empresaId: 'emp-1',
+            canal: 'WHATSAPP',
+            // '' = a marca da EMPRESA. Gestão zera a caixa toda; REP/GERENTE
+            // gravam a marca com o próprio id e só limpam o WhatsApp deles.
+            proprietarioId: '',
+          },
+        },
+      }),
+    );
+  });
+
+  it('REP limpa SÓ o WhatsApp dele — não encosta na caixa da empresa', async () => {
+    prisma.conversation.findMany.mockResolvedValue([{ id: 'c1' }]);
+    prisma.message.deleteMany.mockResolvedValue({ count: 4 });
+    prisma.conversation.deleteMany.mockResolvedValue({ count: 1 });
+
+    await svc.limparWhatsapp(fakeUser({ id: 'rep-9', role: 'REP' as UserRole }));
+
+    // A busca das conversas é filtrada pelo dono...
+    expect(prisma.conversation.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({ proprietarioId: 'rep-9' }),
+      }),
+    );
+    // ...e a marca vai no nome dele, não na da empresa ('') — senão a limpeza
+    // do rep barraria o histórico de todo mundo na ingestão.
+    expect(prisma.inboxLimpeza.upsert).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: {
+          empresaId_canal_proprietarioId: {
+            empresaId: 'emp-1',
+            canal: 'WHATSAPP',
+            proprietarioId: 'rep-9',
+          },
+        },
       }),
     );
   });
 
   it('mensagem sem timestamp não é barrada (tempo real sem data confiável)', async () => {
-    prisma.inboxLimpeza.findUnique.mockResolvedValue({ em: new Date() });
+    prisma.inboxLimpeza.findMany.mockResolvedValue([{ em: new Date() }]);
     prisma.cliente.findFirst.mockResolvedValueOnce(null);
     prisma.conversation.findFirst.mockResolvedValueOnce({ id: 'conv-1' });
     prisma.conversation.update.mockResolvedValue({ id: 'conv-1' });
@@ -1174,7 +1212,7 @@ describe('InboxService — marca de limpeza e teto de histórico', () => {
     // ML aberta há 3 horas e ainda sem resposta é justamente o que o cron de
     // 10min existe pra trazer. Aplicar o teto lá descartaria atendimento em
     // silêncio — o oposto do problema que o teto resolve.
-    prisma.inboxLimpeza.findUnique.mockResolvedValue(null);
+    prisma.inboxLimpeza.findMany.mockResolvedValue([]);
     prisma.cliente.findFirst.mockResolvedValueOnce(null);
     prisma.conversation.findFirst.mockResolvedValueOnce({ id: 'conv-ml' });
     prisma.conversation.update.mockResolvedValue({ id: 'conv-ml' });
@@ -1192,7 +1230,7 @@ describe('InboxService — marca de limpeza e teto de histórico', () => {
   });
 
   it('mas a MARCA DE LIMPEZA vale pra qualquer canal', async () => {
-    prisma.inboxLimpeza.findUnique.mockResolvedValue({ em: new Date(Date.now() - 60_000) });
+    prisma.inboxLimpeza.findMany.mockResolvedValue([{ em: new Date(Date.now() - 60_000) }]);
 
     const r = await svc.processarMensagemEntrante(
       entrante({ canal: 'MARKETPLACE_ML', data: new Date(Date.now() - 5 * 60_000) }) as never,

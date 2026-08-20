@@ -4,6 +4,7 @@ import { Download, ExternalLink, Flag } from 'lucide-react';
 import { ApiError, downloadFile } from '@/lib/api';
 import { inicioDoDiaLocalISO, fimDoDiaLocalISO } from '@/lib/dates';
 import { useApiQuery } from '@/hooks/useApiQuery';
+import { useNomeBot } from '@/hooks/useNomeBot';
 import { useToast } from '@/components/toast';
 import { PageLayout } from '@/components/PageLayout';
 import { AssistenteTabs } from '@/components/AssistenteTabs';
@@ -84,13 +85,14 @@ export default function BotAuditoriaPage() {
     }
   }
 
+  const nomeBot = useNomeBot();
   const rows = data?.data ?? [];
   const pag = data?.pagination;
 
   return (
     <PageLayout
       title="Auditoria do bot"
-      description="Tudo que o Muller respondeu. Respostas que citam preço/estoque/prazo vêm marcadas 🚩 pra você revisar."
+      description={`Tudo que o ${nomeBot} respondeu. Respostas que citam preço/estoque/prazo vêm marcadas 🚩 pra você revisar.`}
       actions={
         <Button
           variant="secondary"

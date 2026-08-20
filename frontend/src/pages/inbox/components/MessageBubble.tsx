@@ -24,6 +24,7 @@ export function MessageBubble({
   onReagir,
   onResponder,
   citada,
+  nomeBot,
 }: {
   msg: Mensagem;
   showAuthor: boolean;
@@ -31,7 +32,11 @@ export function MessageBubble({
   onReagir?: (emoji: string) => void;
   onResponder?: () => void;
   citada?: Mensagem | null;
+  /** Nome do bot da empresa (ex: "SomaBOT"). Vem pronto da thread, que busca uma
+   *  vez só — a bolha é renderizada às centenas e não deve consultar sozinha. */
+  nomeBot?: string;
 }) {
+  const nomeExibido = nomeBot?.trim() || 'Assistente IA';
   const outbound = msg.direction === 'OUTBOUND';
   const reacao = typeof msg.meta?.reacao === 'string' ? msg.meta.reacao : null;
   // Em mensagens INBOUND vindas de GRUPO, meta.senderName tem o nome do
@@ -168,14 +173,14 @@ export function MessageBubble({
           )}
           title={fmtTime(msg.criadoEm)}
         >
-          {/* Fase 2 — marca mensagens respondidas automaticamente pelo bot Muller */}
+          {/* Fase 2 — marca as mensagens que o bot respondeu sozinho */}
           {msg.enviadaPorBot && (
             <span
               className="text-[10px] font-semibold text-primary"
               data-testid={`msg-bot-tag-${msg.id}`}
-              title="Resposta automática do bot Muller"
+              title={`Resposta automática do ${nomeExibido}`}
             >
-              🤖 Muller ·
+              🤖 {nomeExibido} ·
             </span>
           )}
           {fmtHHMM(msg.criadoEm)}

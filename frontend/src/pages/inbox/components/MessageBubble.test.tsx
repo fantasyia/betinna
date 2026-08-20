@@ -153,12 +153,24 @@ describe('MessageBubble — reação e bot', () => {
     expect(reacao).toBeNull();
   });
 
-  it('exibe tag de bot (🤖 Muller) quando enviadaPorBot=true', () => {
+  it('exibe a tag de bot com o NOME configurado quando enviadaPorBot=true', () => {
+    const msg = makeMsg({ enviadaPorBot: true });
+    render(<MessageBubble msg={msg} showAuthor={false} nomeBot="SomaBOT" />);
+
+    const botTag = document.querySelector('[data-testid="msg-bot-tag-msg1"]');
+    expect(botTag).toBeTruthy();
+    // O nome vem da empresa. Antes era "Muller" no código — o tenant renomeava
+    // pra SomaBOT e o rep continuava lendo um nome que não existe pra ele.
+    expect(botTag?.textContent).toContain('SomaBOT');
+    expect(botTag?.textContent).not.toContain('Muller');
+  });
+
+  it('sem nome configurado, a tag cai no genérico (nunca em "Muller")', () => {
     const msg = makeMsg({ enviadaPorBot: true });
     render(<MessageBubble msg={msg} showAuthor={false} />);
 
     const botTag = document.querySelector('[data-testid="msg-bot-tag-msg1"]');
-    expect(botTag).toBeTruthy();
+    expect(botTag?.textContent).toContain('Assistente IA');
   });
 
   it('não exibe tag de bot quando enviadaPorBot=false', () => {

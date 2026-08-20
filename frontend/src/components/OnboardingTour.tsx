@@ -185,7 +185,7 @@ const STEPS_REP: Step[] = [
   },
   {
     icon: '🤖',
-    title: 'MullerBot',
+    title: 'Assistente IA',
     body: 'Em /mullerbot pergunte sobre produtos da empresa (ex: "que produto serve pra bolo?"). Precisa configurar sua chave OpenAI antes em Minhas integrações.',
     route: '/mullerbot',
   },

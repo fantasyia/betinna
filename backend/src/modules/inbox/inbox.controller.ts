@@ -210,12 +210,16 @@ export class InboxController {
   }
 
   @Delete('whatsapp/limpar')
-  @Roles('ADMIN', 'DIRECTOR')
+  // REP/GERENTE entram aqui, mas o SERVICE limita ao WhatsApp pessoal deles —
+  // eles nunca zeram a caixa da empresa. Sem isso, o rep não tinha como limpar o
+  // próprio histórico: dependia de um ADMIN apagar o de todo mundo.
+  @Roles('ADMIN', 'DIRECTOR', 'GERENTE', 'REP')
   @HttpCode(HttpStatus.OK)
   @Audit({ action: 'inbox_limpar_whatsapp', resource: 'conversation' })
   @ApiOperation({
     summary:
-      'DESTRUTIVO — apaga TODAS as conversas+mensagens de WhatsApp da empresa (do banco). DIRETOR/ADMIN.',
+      'DESTRUTIVO — apaga conversas+mensagens de WhatsApp do banco. ADMIN/DIRETOR: a empresa toda. ' +
+      'REP/GERENTE: só o próprio WhatsApp pessoal.',
   })
   limparWhatsapp(@CurrentUser() user: AuthenticatedUser) {
     return this.svc.limparWhatsapp(user);

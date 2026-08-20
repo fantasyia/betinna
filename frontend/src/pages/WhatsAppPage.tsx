@@ -193,8 +193,9 @@ function SessionPanel({ scope, canManage }: { scope: Scope; canManage: boolean }
     }
   }
 
-  // Limpa TODAS as conversas+mensagens de WhatsApp da empresa (DESTRUTIVO).
-  // Não desconecta o número — só zera o histórico no banco.
+  // Limpa conversas+mensagens de WhatsApp no banco (DESTRUTIVO). O ESCOPO é
+  // decidido no backend pelo papel: gestão zera a empresa, REP/GERENTE zeram só
+  // o próprio WhatsApp pessoal. Não desconecta o número.
   async function limparWhatsapp() {
     setLimpando(true);
     setLimparMsg(null);
@@ -426,14 +427,28 @@ function SessionPanel({ scope, canManage }: { scope: Scope; canManage: boolean }
             </div>
           )}
 
-          {/* Manutenção — limpar mensagens de WhatsApp (DESTRUTIVO, empresa toda) */}
-          {scope === 'empresa' && canManage && (
+          {/* Manutenção — limpar mensagens de WhatsApp (DESTRUTIVO).
+              Vale nos DOIS escopos: o backend limita o REP/GERENTE ao WhatsApp
+              pessoal deles. Antes só existia pra empresa, e o rep — que é quem
+              mais precisa, porque é o número dele testando fluxo — dependia de um
+              ADMIN apagar o histórico de todo mundo. */}
+          {canManage && (
             <div className="mt-6 pt-4 border-t border-border">
               <div className="text-[13px] font-semibold mb-1">Manutenção</div>
               <p className="text-[12px] text-muted mt-0 mb-3">
-                Apaga <strong>todas</strong> as conversas e mensagens de WhatsApp da empresa (no
-                banco). Útil pra zerar o histórico antes de começar os disparos.{' '}
-                <strong>Não desconecta</strong> o número.
+                {scope === 'empresa' ? (
+                  <>
+                    Apaga <strong>todas</strong> as conversas e mensagens de WhatsApp da empresa
+                    (no banco). Útil pra zerar o histórico antes de começar os disparos.{' '}
+                    <strong>Não desconecta</strong> o número.
+                  </>
+                ) : (
+                  <>
+                    Apaga as conversas e mensagens do <strong>seu</strong> WhatsApp (no banco). Não
+                    mexe no número da empresa nem no de outros representantes, e{' '}
+                    <strong>não desconecta</strong> o seu.
+                  </>
+                )}
               </p>
               {!confirmLimpar ? (
                 <button
@@ -446,7 +461,9 @@ function SessionPanel({ scope, canManage }: { scope: Scope; canManage: boolean }
                   }}
                   className="bg-danger text-white rounded-md px-4 py-2 text-[13px] font-semibold cursor-pointer tracking-[-0.1px]"
                 >
-                  Limpar mensagens do WhatsApp
+                  {scope === 'empresa'
+                    ? 'Limpar mensagens do WhatsApp'
+                    : 'Limpar minhas mensagens'}
                 </button>
               ) : (
                 <div className="flex gap-2 flex-wrap">
@@ -464,7 +481,11 @@ function SessionPanel({ scope, canManage }: { scope: Scope; canManage: boolean }
                     onClick={() => void limparWhatsapp()}
                     className="bg-danger text-white rounded-md px-4 py-2 text-[13px] font-semibold cursor-pointer tracking-[-0.1px]"
                   >
-                    {limpando ? 'Apagando…' : 'Confirmar — apagar TUDO de WhatsApp'}
+                    {limpando
+                      ? 'Apagando…'
+                      : scope === 'empresa'
+                        ? 'Confirmar — apagar TUDO de WhatsApp'
+                        : 'Confirmar — apagar as MINHAS mensagens'}
                   </button>
                 </div>
               )}

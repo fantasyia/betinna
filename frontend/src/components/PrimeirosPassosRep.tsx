@@ -62,7 +62,7 @@ export function PrimeirosPassosRep() {
       done: openaiOk,
       opcional: false,
       titulo: 'Adicione sua chave OpenAI',
-      desc: 'Pra usar o MullerBot e tirar dúvidas sobre os produtos.',
+      desc: 'Pra usar o assistente de IA e tirar dúvidas sobre os produtos.',
     },
     {
       key: 'calendar',

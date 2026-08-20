@@ -23,7 +23,7 @@ import {
 } from '@/components/ui';
 
 /**
- * PersonaBotPage — configura o Muller por empresa.
+ * PersonaBotPage — configura o bot da empresa (o NOME vem de `persona.nome`).
  *
  * Modelo simples: UM prompt completo escrito pelo usuário (usado tal e qual como
  * system prompt) + liga/desliga do bot no WhatsApp + diagnóstico da conexão IA.
@@ -99,8 +99,11 @@ export default function PersonaBotPage() {
 
   const { data, loading, refetch } = useApiQuery<Persona>('/mullerbot/persona');
 
-  // Estado de edição — o prompt completo do Muller + modelo da IA
+  // Estado de edição — o prompt completo do bot + modelo da IA
   const [nomeBot, setNomeBot] = useState('');
+  // O nome que a TELA mostra. Acompanha o campo enquanto a pessoa digita;
+  // vazio cai no genérico em vez de "Muller", que é nome de outro produto.
+  const nomeExibido = nomeBot.trim() || 'Assistente IA';
   const [prompt, setPrompt] = useState('');
   const [modelo, setModelo] = useState('');
   const [dirty, setDirty] = useState(false);
@@ -221,7 +224,7 @@ export default function PersonaBotPage() {
       await api.put<Persona>('/mullerbot/persona', {
         // Nome do bot escolhido pela empresa (ex.: "SomaBOT"). Aparece no chat e
         // onde o prompt usar {{nome}}.
-        nome: nomeBot.trim() || 'MullerBot',
+        nome: nomeBot.trim() || 'Assistente IA',
         tomVoz: 'PROFISSIONAL',
         ativo: true,
         promptCustom: prompt.trim() || null,
@@ -240,7 +243,7 @@ export default function PersonaBotPage() {
         transcreverAudio,
         analisarImagem,
       });
-      toast.success('Configuração do Muller salva');
+      toast.success(`Configuração do ${nomeExibido} salva`);
       setDirty(false);
       refetch();
       custoQuery.refetch();
@@ -253,7 +256,7 @@ export default function PersonaBotPage() {
 
   if (loading && !data) {
     return (
-      <PageLayout title="Muller — Prompt">
+      <PageLayout title={`${nomeExibido} — Prompt`}>
         <Card padding="lg">
           <div className="text-muted text-center py-8">Carregando…</div>
         </Card>
@@ -263,11 +266,11 @@ export default function PersonaBotPage() {
 
   if (!canEdit) {
     return (
-      <PageLayout title="Muller — Prompt">
+      <PageLayout title={`${nomeExibido} — Prompt`}>
         <EmptyState
           icon={<AlertCircle />}
           title="Acesso restrito"
-          description="O prompt do Muller só pode ser editado por DIRECTOR ou ADMIN."
+          description={`O prompt do ${nomeExibido} só pode ser editado por DIRECTOR ou ADMIN.`}
         />
       </PageLayout>
     );
@@ -275,7 +278,7 @@ export default function PersonaBotPage() {
 
   return (
     <PageLayout
-      title="Muller — Prompt"
+      title={`${nomeExibido} — Prompt`}
       description="Escreva o prompt completo do seu assistente. É exatamente esse texto que vai pra IA."
       actions={
         <Button
@@ -309,7 +312,7 @@ export default function PersonaBotPage() {
                 Bot no WhatsApp da empresa
               </CardTitle>
               <CardDescription>
-                Quando ligado, o Muller responde automaticamente as mensagens que chegam no
+                Quando ligado, o {nomeExibido} responde automaticamente as mensagens que chegam no
                 WhatsApp central da empresa. Não afeta o WhatsApp pessoal dos representantes.
               </CardDescription>
             </CardHeader>
@@ -320,7 +323,7 @@ export default function PersonaBotPage() {
                 onChange={(e) => void alternarBotWhatsapp(e.target.checked)}
                 label={
                   botWhatsappAtivo
-                    ? 'Ligado — o Muller responde os clientes automaticamente'
+                    ? `Ligado — o ${nomeExibido} responde os clientes automaticamente`
                     : 'Desligado — só atendimento humano no WhatsApp'
                 }
               />
@@ -479,12 +482,12 @@ export default function PersonaBotPage() {
             </div>
           </Card>
 
-          {/* Prompt do Muller — o coração da configuração */}
+          {/* Prompt do bot — o coração da configuração */}
           <Card padding="md">
             <CardHeader>
               <CardTitle className="flex items-center gap-2">
                 <Bot className="h-4 w-4 text-primary" />
-                Prompt do Muller
+                Prompt do {nomeExibido}
               </CardTitle>
               <CardDescription>
                 Este texto é o prompt completo do assistente — usado exatamente como você escrever.
