@@ -205,7 +205,12 @@ export function NodeInspector({
         )}
 
         {data.acaoTipo === 'ENVIAR_WHATSAPP' && (
-          <WhatsAppActionForm data={data} onUpdate={onUpdate} contatosWa={contatosWa} />
+          <WhatsAppActionForm
+            data={data}
+            onUpdate={onUpdate}
+            contatosWa={contatosWa}
+            usuarios={usuarios}
+          />
         )}
 
         {data.acaoTipo === 'ENVIAR_EMAIL' && (

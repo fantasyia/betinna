@@ -54,6 +54,16 @@ export interface EnviarWhatsappConfig {
   /** Modo 'contato': telefone do contato escolhido no dropdown da inbox. */
   destinatarioContato?: string;
   /**
+   * De QUAL número sai a mensagem: o WhatsApp pessoal deste usuário, em vez do
+   * número da empresa. Vazio = regra automática (ver `resolverRemetente`).
+   *
+   * Existe porque o app oferece conectar o WhatsApp pessoal do rep e o inbound
+   * já sabe recebê-lo (instância `user_<id>`, gatilho com `escopo: 'pessoal'`),
+   * mas o ENVIO nunca seguiu: fluxo rodando na conversa do rep respondia pelo
+   * número da empresa, e o cliente via a conversa trocar de número no meio.
+   */
+  remetenteUsuarioId?: string;
+  /**
    * Anexo OPCIONAL (subido pro Storage no editor → guarda só o storagePath, não base64). Quando
    * presente, envia mídia em vez de texto e a `mensagem` (interpolada) vira a legenda.
    */

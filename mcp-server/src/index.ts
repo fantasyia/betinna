@@ -1093,6 +1093,13 @@ const FLUXO_NO_TIPO = z.enum(['TRIGGER', 'CONDICAO', 'ACAO', 'DELAY']);
 // ⚠️ MANTER SINCRONIZADO com fluxoAcaoTipoValues do backend (fluxos.dto.ts) E com
 // o enum FluxoAcaoTipo do Prisma. Toda ação nova criada no editor precisa entrar
 // AQUI também — senão a master não consegue montá-la via fluxos_importar.
+// ENVIAR_WHATSAPP · config aceita, além de mensagem/destinatario*:
+//   remetenteUsuarioId?: string
+// De QUAL número sai. Vazio = automático: responde pelo número que RECEBEU a
+// mensagem (WhatsApp pessoal do rep, quando a conversa chegou por ele) se o
+// destinatário for o lead; nos modos `numero`/`contato` (aviso interno) sai pela
+// empresa. Preenchido = manda pelo WhatsApp pessoal daquele usuário — e se ele
+// não estiver conectado o passo FALHA, nunca cai calado pro número da empresa.
 const FLUXO_ACAO_TIPO = z.enum([
   'ENVIAR_WHATSAPP',
   'ENVIAR_EMAIL',

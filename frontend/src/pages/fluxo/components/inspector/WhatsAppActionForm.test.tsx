@@ -63,7 +63,7 @@ describe('WhatsAppActionForm', () => {
     const onUpdate = vi.fn();
     renderForm({ data, onUpdate, contatosWa: CONTATOS });
 
-    const modo = screen.getByRole('combobox') as HTMLSelectElement;
+    const modo = screen.getByTestId('wa-destinatario') as HTMLSelectElement;
     expect(modo.value).toBe('lead');
 
     const msg = screen.getByPlaceholderText('Olá {{nome}}, tudo bem?') as HTMLTextAreaElement;
@@ -75,7 +75,7 @@ describe('WhatsAppActionForm', () => {
     const onUpdate = vi.fn();
     renderForm({ data, onUpdate, contatosWa: null });
 
-    const modo = screen.getByRole('combobox') as HTMLSelectElement;
+    const modo = screen.getByTestId('wa-destinatario') as HTMLSelectElement;
     expect(modo.value).toBe('lead');
   });
 
@@ -84,7 +84,7 @@ describe('WhatsAppActionForm', () => {
     const { onUpdate, getLast } = makeOnUpdate(data);
     renderForm({ data, onUpdate, contatosWa: CONTATOS });
 
-    const modo = screen.getByRole('combobox') as HTMLSelectElement;
+    const modo = screen.getByTestId('wa-destinatario') as HTMLSelectElement;
     fireEvent.change(modo, { target: { value: 'numero' } });
 
     expect(onUpdate).toHaveBeenCalledTimes(1);
@@ -115,10 +115,9 @@ describe('WhatsAppActionForm', () => {
     const { onUpdate, getLast } = makeOnUpdate(data);
     renderForm({ data, onUpdate, contatosWa: CONTATOS });
 
-    // Dois selects no modo "contato": [0] = modo, [1] = contato.
-    const combos = screen.getAllByRole('combobox') as HTMLSelectElement[];
-    expect(combos).toHaveLength(2);
-    const contatoSelect = combos[1];
+    // O form tem vários selects (destinatário, contato, remetente) — mira por
+    // testid em vez de posição, que quebra a cada campo novo.
+    const contatoSelect = screen.getByTestId('wa-contato') as HTMLSelectElement;
     expect(contatoSelect.value).toBe('5511999999999');
 
     // As opções da lista de contatos foram renderizadas (grupo prefixado).
@@ -157,5 +156,53 @@ describe('WhatsAppActionForm', () => {
     expect(resultado.config.destinatarioNumero).toBe('+55 11 2');
     expect(resultado.config.mensagem).toBe('oi');
     expect(resultado.config.destinatarioModo).toBe('numero');
+  });
+});
+
+/**
+ * De qual número sai a mensagem. O campo existe porque o app deixa o rep
+ * conectar o WhatsApp pessoal — sem ele, conversa que chega no celular do rep
+ * era respondida pelo número da empresa e o cliente via dois números.
+ */
+describe('WhatsAppActionForm — remetente', () => {
+  const USUARIOS = [
+    { id: 'u1', nome: 'Leandro', role: 'REP' },
+    { id: 'u2', nome: 'Léo', role: 'DIRECTOR' },
+  ];
+
+  it('default é automático e lista os usuários da empresa', () => {
+    const data = makeData({ destinatarioModo: 'lead' });
+    renderForm({ data, onUpdate: vi.fn(), contatosWa: CONTATOS, usuarios: USUARIOS });
+
+    const sel = screen.getByTestId('wa-remetente') as HTMLSelectElement;
+    expect(sel.value).toBe('');
+    expect(screen.getByText('Leandro · REP')).toBeTruthy();
+  });
+
+  it('escolher usuário grava config.remetenteUsuarioId', () => {
+    const data = makeData({ destinatarioModo: 'lead' });
+    const { onUpdate, getLast } = makeOnUpdate(data);
+    renderForm({ data, onUpdate, contatosWa: CONTATOS, usuarios: USUARIOS });
+
+    fireEvent.change(screen.getByTestId('wa-remetente'), { target: { value: 'u1' } });
+    expect(getLast().config.remetenteUsuarioId).toBe('u1');
+  });
+
+  it('voltar pra automático LIMPA a chave (não grava string vazia)', () => {
+    // String vazia no config seria lida como "escolheu alguém" no backend.
+    const data = makeData({ destinatarioModo: 'lead', remetenteUsuarioId: 'u1' });
+    const { onUpdate, getLast } = makeOnUpdate(data);
+    renderForm({ data, onUpdate, contatosWa: CONTATOS, usuarios: USUARIOS });
+
+    fireEvent.change(screen.getByTestId('wa-remetente'), { target: { value: '' } });
+    expect(getLast().config.remetenteUsuarioId).toBeUndefined();
+  });
+
+  it('avisa que o passo FALHA se o WhatsApp do escolhido estiver fora', () => {
+    const data = makeData({ destinatarioModo: 'lead', remetenteUsuarioId: 'u1' });
+    renderForm({ data, onUpdate: vi.fn(), contatosWa: CONTATOS, usuarios: USUARIOS });
+
+    expect(document.body.textContent).toMatch(/FALHA/);
+    expect(document.body.textContent).toMatch(/não cai pro número da empresa/i);
   });
 });

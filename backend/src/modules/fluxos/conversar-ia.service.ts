@@ -442,6 +442,8 @@ export class ConversarIaService {
     telefone: string,
     ids: string[],
     idemBase: string,
+    /** Mesma conversa = mesmo número. Ver `donoDaConversa`. */
+    proprietarioId?: string | null,
   ): Promise<void> {
     if (ids.length === 0) return;
     const peerId = `${telefone.replace(/[^\d+]/g, '')}@s.whatsapp.net`;
@@ -467,7 +469,10 @@ export class ConversarIaService {
             mimetype: doc.mimetype,
             fileName: doc.fileName,
           },
-          { idempotencyKey: `${idemBase}:doc:${doc.id}` },
+          {
+            idempotencyKey: `${idemBase}:doc:${doc.id}`,
+            ...(proprietarioId ? { proprietarioId } : {}),
+          },
         );
       } catch (err) {
         this.logger.warn(
@@ -838,6 +843,7 @@ export class ConversarIaService {
         aberturaTexto,
         reativo,
         `fx:${execucaoId}:${no.id}:opener`,
+        this.donoDaConversa(ctx),
       );
     } catch (err) {
       const { tipo_erro } = await this.rotearParaErro(
@@ -1252,6 +1258,8 @@ export class ConversarIaService {
         lead.contatoTelefone,
         'Só um instante, já te respondo. 🙏',
         true, // reativo
+        undefined, // sem idemKey: aviso pontual
+        this.donoDaConversa(ctx),
       ).catch(() => undefined);
       await this.rotearParaErro(
         execucaoId,
@@ -1362,13 +1370,26 @@ export class ConversarIaService {
       limpo || (docIds.length > 0 ? 'Segue o arquivo solicitado. 📎' : respostaPersonalizada);
     const idemTurno = `fx:${execucaoId}:${no.id}:t${(ctx._iaTurno as number) ?? 0}`;
     try {
-      await this.enviarWhatsapp(empresaId, lead.contatoTelefone, respostaTexto, true, idemTurno);
+      await this.enviarWhatsapp(
+        empresaId,
+        lead.contatoTelefone,
+        respostaTexto,
+        true,
+        idemTurno,
+        this.donoDaConversa(ctx),
+      );
     } catch (err) {
       await this.rotearParaErro(execucaoId, no.id, ctx, 'whatsapp_falha', err);
       return;
     }
     // Depois do texto, manda os arquivos pedidos (best-effort, re-valida podeEnviar).
-    await this.enviarDocumentos(empresaId, lead.contatoTelefone, docIds, idemTurno);
+    await this.enviarDocumentos(
+      empresaId,
+      lead.contatoTelefone,
+      docIds,
+      idemTurno,
+      this.donoDaConversa(ctx),
+    );
 
     // Atualiza a memória da conversa (pergunta do lead + resposta da IA).
     const novoHist: HistoricoMsg[] = [
@@ -1670,6 +1691,20 @@ export class ConversarIaService {
     }
   }
 
+  /**
+   * Dono da conversa que originou a execução (instância pessoal do rep) — ou
+   * null quando a mensagem entrou pelo número da empresa.
+   *
+   * O nó CONVERSAR_IA manda por TELEFONE, não pela conversa, então sem isto ele
+   * perdia por onde a conversa chegou e respondia sempre pela empresa. Como ele
+   * conduz o diálogo INTEIRO (abertura, cada turno, documentos), era o pedaço
+   * que mais fazia o cliente ver dois números na mesma conversa.
+   */
+  private donoDaConversa(ctx: ExecucaoContexto): string | null {
+    const v = (ctx as Record<string, unknown>)['proprietarioId'];
+    return typeof v === 'string' && v ? v : null;
+  }
+
   // ─── Internals ──────────────────────────────────────────────────────
 
   /**
@@ -1684,6 +1719,13 @@ export class ConversarIaService {
     texto: string,
     reativo = false,
     idemKey?: string,
+    /**
+     * Dono da instância que envia (WhatsApp pessoal do rep). Vem da conversa que
+     * originou a execução — a resposta tem que sair pela MESMA porta por onde a
+     * mensagem entrou, senão o cliente vê a conversa trocar de número no meio.
+     * Null/undefined = número da empresa.
+     */
+    proprietarioId?: string | null,
   ): Promise<void> {
     if (!texto.trim()) return;
     // Pacing global: espaça este envio dos demais da empresa (nunca tudo de uma vez).
@@ -1713,7 +1755,10 @@ export class ConversarIaService {
           let i = 0;
           return (balao: string) => {
             const hash = createHash('sha1').update(balao).digest('hex').slice(0, 12);
-            const ctx = idemKey ? { idempotencyKey: `${idemKey}:b${i++}:${hash}` } : {};
+            const ctx = {
+              ...(idemKey ? { idempotencyKey: `${idemKey}:b${i++}:${hash}` } : {}),
+              ...(proprietarioId ? { proprietarioId } : {}),
+            };
             return this.whatsapp.enviarTexto(empresaId, peerId, balao, ctx).then(() => undefined);
           };
         })(),

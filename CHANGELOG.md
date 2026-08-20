@@ -9,6 +9,38 @@ versionamento segue [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Não versionado] — 2026-08-19
 
+### 📤 Fluxo pode falar pelo WhatsApp PESSOAL do rep (a metade que faltava)
+
+O app deixa cada rep conectar o próprio WhatsApp, o inbound já recebe por ele
+(instância `user_<id>`) e o gatilho até tem `escopo: 'pessoal'` — filtro que só
+faz sentido se a intenção sempre foi rodar fluxo em cima da conversa do rep.
+**Mas o envio nunca seguiu:** os nós de fluxo mandavam sempre pelo número da
+empresa. Na prática o cliente escrevia pro rep e a Somatec respondia de outro
+número; do lado do rep, o WhatsApp conectado era só leitura pro motor.
+
+Não era feature faltando, era **inconsistência**: a resposta humana pela Inbox e
+o bot do WhatsApp já passavam o `proprietarioId` certo. Só o motor de fluxos não.
+
+**Regra (`remetente-whatsapp.util.ts`), em duas partes:**
+1. resposta sai pela porta por onde a mensagem entrou;
+2. **mas só quando o destinatário é o LEAD.** Os modos `numero`/`contato` são
+   aviso interno (diretoria, grupo) — mandar ISSO do celular do rep faria o
+   diretor receber alerta do sistema pelo número pessoal de um funcionário.
+
+`remetenteUsuarioId` no nó (com dropdown no editor) escolhe explicitamente, e
+ganha de tudo. **Validação dura:** usuário tem que ser da empresa e a instância
+dele estar conectada — senão o passo **falha com o motivo**, nunca cai calado pro
+número da empresa. Mandar do número errado é pior que não mandar.
+
+Cobre os dois nós: `ENVIAR_WHATSAPP` (texto e mídia) e `CONVERSAR_IA` — este era
+a metade maior, porque conduz a conversa inteira (abertura, cada turno, os
+documentos e o aviso de espera). O passo grava de onde veio a decisão
+(`remetente: configurado | conversa | empresa`), que é o que responde "por qual
+número isso saiu?" quando o cliente reclama.
+
+18 testes novos.
+
+
 ### ✏️ Editar prompt por TRECHO, em vez de reenviar o texto inteiro
 
 Trocar uma linha do prompt de prospecção exigia reenviar os 64 mil caracteres —

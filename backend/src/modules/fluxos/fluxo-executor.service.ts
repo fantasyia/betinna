@@ -11,6 +11,8 @@ import {
   ForaDaJanelaEnvioError,
   INBOUND_RECENTE_HORAS,
 } from '@shared/whatsapp-pacing/whatsapp-pacing.util';
+import type { DestinatarioModo, Remetente } from './remetente-whatsapp.util';
+import { resolverRemetente } from './remetente-whatsapp.util';
 import { SupressaoService } from '@shared/supressao/supressao.service';
 import { TransactionalEmailService } from '@integrations/email/transactional-email.service';
 import { IntegracaoStatusService } from '@modules/integracoes/integracao-status.service';
@@ -671,6 +673,50 @@ export class FluxoExecutorService {
   }
 
   /**
+   * Resolve — e VALIDA — de qual número a mensagem sai.
+   *
+   * A regra está no util puro; aqui entra o que precisa de banco/provider. A
+   * validação só é exigida quando alguém ESCOLHEU o remetente: se o usuário não
+   * é da empresa, ou o WhatsApp pessoal dele não está conectado, o passo FALHA
+   * com o motivo. Nunca cai calado pro número da empresa — mandar do número
+   * errado é pior que não mandar, porque ninguém percebe.
+   *
+   * No caminho automático (dono da conversa) não há o que validar: aquela
+   * instância acabou de RECEBER a mensagem que originou a execução.
+   */
+  private async resolverRemetenteValidado(
+    empresaId: string,
+    cfg: { remetenteUsuarioId?: string; destinatarioModo?: DestinatarioModo },
+    ctx: ExecucaoContexto,
+  ): Promise<Remetente> {
+    const r = resolverRemetente({
+      configurado: cfg.remetenteUsuarioId,
+      donoDaConversa: (ctx as Record<string, unknown>)['proprietarioId'] as string | undefined,
+      modo: cfg.destinatarioModo ?? 'lead',
+    });
+    if (r.origem !== 'configurado' || !r.proprietarioId) return r;
+
+    const usuario = await this.prisma.usuario.findFirst({
+      where: { id: r.proprietarioId, empresas: { some: { empresaId } } },
+      select: { id: true, nome: true },
+    });
+    if (!usuario) {
+      throw new Error(
+        `Remetente inválido: usuário ${r.proprietarioId} não pertence a esta empresa. ` +
+          'Nada foi enviado.',
+      );
+    }
+    const disponivel = await this.whatsapp.estaDisponivel(empresaId, r.proprietarioId);
+    if (!disponivel) {
+      throw new Error(
+        `WhatsApp pessoal de ${usuario.nome} não está conectado — o envio NÃO saiu pelo número ` +
+          'da empresa de propósito (sairia do remetente errado). Conecte em Integrações e repita.',
+      );
+    }
+    return r;
+  }
+
+  /**
    * Tem alguém do outro lado agora? Ou seja: o lead mandou mensagem há pouco.
    *
    * `Lead.ultimaMensagemEm` é carimbado a cada mensagem RECEBIDA do lead (e em
@@ -1004,6 +1050,14 @@ export class FluxoExecutorService {
       };
     }
 
+    // De qual NÚMERO sai. Validado antes do pacing: se o remetente escolhido não
+    // serve, o passo falha aqui, sem gastar slot nem cota do dia.
+    const remetente = await this.resolverRemetenteValidado(empresaId, cfg, ctx);
+    const ctxEnvio = {
+      idempotencyKey: idemBase,
+      ...(remetente.proprietarioId ? { proprietarioId: remetente.proprietarioId } : {}),
+    };
+
     // Pacing global: espaça este envio dos demais da empresa (anti-rajada).
     await this.pacing.aguardarSlot(empresaId, reativo);
 
@@ -1023,7 +1077,7 @@ export class FluxoExecutorService {
               ptt: cfg.midia.ptt,
               caption: mensagem || undefined,
             },
-            { idempotencyKey: idemBase },
+            ctxEnvio,
           );
           return {
             peerId,
@@ -1031,12 +1085,14 @@ export class FluxoExecutorService {
             midia: cfg.midia.tipo,
             caption: mensagem,
             externalId: r.externalId,
+            remetente: remetente.origem,
           };
         }
-        const r = await this.whatsapp.enviarTexto(empresaId, peerId, mensagem, {
-          idempotencyKey: idemBase,
-        });
-        return { peerId, modo, mensagem, externalId: r.externalId };
+        const r = await this.whatsapp.enviarTexto(empresaId, peerId, mensagem, ctxEnvio);
+        // `remetente` no output: sem isso, olhar o histórico não diz por qual
+        // número a mensagem saiu — e é exatamente essa a dúvida quando o cliente
+        // diz que recebeu de outro contato.
+        return { peerId, modo, mensagem, externalId: r.externalId, remetente: remetente.origem };
       } catch (err) {
         // BL-1: se o envio falhou porque o WhatsApp da empresa está desconectado,
         // avisa o DIRETOR proativamente (senão o fluxo falha em silêncio e o dono
