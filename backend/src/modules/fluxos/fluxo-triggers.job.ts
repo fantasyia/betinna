@@ -351,11 +351,39 @@ export class FluxoTriggersJob {
       create: { empresaId, nome, categoria: 'alerta' },
       update: {},
     });
-    await this.prisma.leadTag.upsert({
-      where: { leadId_tagId: { leadId, tagId: tag.id } },
-      create: { leadId, tagId: tag.id, origem: 'ia' },
-      update: {},
+    // createMany + skipDuplicates em vez de upsert porque aqui precisamos SABER
+    // se a etiqueta é nova: `count` é 1 quando criou, 0 quando o lead já tinha.
+    // O upsert não distingue os dois casos, e é essa distinção que decide se o
+    // evento abaixo dispara.
+    const { count: aplicou } = await this.prisma.leadTag.createMany({
+      data: [{ leadId, tagId: tag.id, origem: 'ia' }],
+      skipDuplicates: true,
     });
+
+    // Aqui a função ACABAVA — gravava o LeadTag direto pelo prisma e pronto.
+    // Quem dispara o evento é o LeadsService.vincularTag, e o job não passa por
+    // lá: quem configurava "quando estourar o SLA, marca a etiqueta X" esperando
+    // um fluxo reagir recebia SILÊNCIO. A etiqueta aparecia no kanban e nada
+    // acontecia. É o irmão gêmeo do bug da ação 'notificar', consertado logo
+    // acima nesta mesma função — mesma classe, mesma vítima.
+    //
+    // Com isto, cada etapa vira seu próprio gatilho de "lead parado", no prazo
+    // que já está configurado nela: SLA + tagNome `parado:<etapa>` + um fluxo
+    // com gatilho LEAD_RECEBEU_TAG em modo prefixo `parado:` pega todas.
+    //
+    // Dispara SÓ quando a etiqueta é nova (`aplicou`). Há duas defesas contra
+    // repetição e as duas importam: a busca em avaliarSlaEtapas já exclui quem
+    // tem a etiqueta, e esta confere no momento da escrita — o filtro sozinho
+    // é uma corrida (duas rodadas do job concorrentes leem antes de escrever).
+    // `tagNome` vai no payload porque é por ele que o gatilho filtra qual
+    // etiqueta dispara o fluxo (match exato/prefixo).
+    if (aplicou > 0) {
+      await this.bus.disparar(empresaId, 'LEAD_RECEBEU_TAG', {
+        leadId,
+        tagId: tag.id,
+        tagNome: nome,
+      });
+    }
   }
 
   // ─── Cron agendado (SPEC 1) ───────────────────────────────────────

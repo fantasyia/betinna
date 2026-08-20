@@ -817,6 +817,15 @@ export class FluxoExecutorService {
             variaveis: true,
             funilId: true,
             funilEtapaId: true,
+            // DONO da carteira. Existia no banco desde sempre e não chegava ao
+            // contexto — então uma CONDICAO "esse lead tem rep?" não tinha em
+            // que campo bater. E não dava erro: comparava contra vazio e seguia
+            // pelo ramo errado EM SILÊNCIO. Num fluxo de reabordagem isso vira
+            // o bot mandando mensagem pro cliente de quem está negociando.
+            representanteId: true,
+            representante: { select: { nome: true } },
+            // Há quanto tempo parado na etapa (vira `dias_na_etapa`).
+            etapaDesde: true,
             funil: { select: { nome: true } },
             funilEtapa: { select: { nome: true } },
             tags: { select: { tag: { select: { nome: true } } } },
@@ -848,6 +857,16 @@ export class FluxoExecutorService {
             etapa_id: lead.funilEtapaId ?? '',
             funil_id: lead.funilId ?? '',
             funil: lead.funil?.nome ?? '',
+            // `representante_id` é o campo ESTÁVEL pra CONDICAO (mesma regra do
+            // `etapa_id`): vazio = lead sem dono. `representante_nome` é pra
+            // template — "o {{lead.representante_nome}} está com esse cliente".
+            representante_id: lead.representanteId ?? '',
+            representante_nome: lead.representante?.nome ?? '',
+            // Dias parado na etapa atual (inteiro, arredondado pra baixo).
+            // Permite condição "parado há mais de N dias" sem cron próprio.
+            dias_na_etapa: Math.floor(
+              (Date.now() - new Date(lead.etapaDesde).getTime()) / 86_400_000,
+            ),
             tags: lead.tags.map((t) => t.tag.nome).join(', '),
             empresa: (leadVars.empresa as string | undefined) ?? lead.nome,
           };

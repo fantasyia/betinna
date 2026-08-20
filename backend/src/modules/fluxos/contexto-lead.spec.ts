@@ -28,6 +28,9 @@ const leadNoBanco = {
   funil: { nome: 'Canal Própio' },
   funilEtapa: { nome: 'Novo' },
   tags: [{ tag: { nome: 'publico:comercio' } }],
+  representanteId: 'rep-7',
+  representante: { nome: 'Marcelo Harada' },
+  etapaDesde: new Date(Date.now() - 3 * 86_400_000),
 };
 
 const makeSvc = (lead: unknown) => {
@@ -72,6 +75,38 @@ describe('contexto do fluxo — campos de ORIGEM do lead', () => {
 
     expect(lead.origem).toBe('');
     expect(lead.formulario).toBe('');
+  });
+
+  it('expõe `lead.representante_id` e `lead.representante_nome`', async () => {
+    const { svc } = makeSvc(leadNoBanco);
+
+    const ctx = await enriquecer(svc, { leadId: 'lead-1' });
+    const lead = ctx.lead as Record<string, unknown>;
+
+    expect(lead.representante_id).toBe('rep-7');
+    expect(lead.representante_nome).toBe('Marcelo Harada');
+  });
+
+  it('lead SEM dono: `representante_id` vazio — é como a CONDICAO separa os dois', async () => {
+    // Este é o campo que decide, num fluxo de reabordagem, se o bot cutuca o
+    // REP ou fala com o CLIENTE. Sem ele no contexto a condição comparava
+    // contra vazio pros DOIS casos e caía sempre no mesmo ramo, em silêncio —
+    // o bot mandando mensagem pro cliente de quem está negociando.
+    const { svc } = makeSvc({ ...leadNoBanco, representanteId: null, representante: null });
+
+    const ctx = await enriquecer(svc, { leadId: 'lead-1' });
+    const lead = ctx.lead as Record<string, unknown>;
+
+    expect(lead.representante_id).toBe('');
+    expect(lead.representante_nome).toBe('');
+  });
+
+  it('expõe `lead.dias_na_etapa` a partir de `etapaDesde`', async () => {
+    const { svc } = makeSvc(leadNoBanco);
+
+    const ctx = await enriquecer(svc, { leadId: 'lead-1' });
+
+    expect((ctx.lead as Record<string, unknown>).dias_na_etapa).toBe(3);
   });
 
   it('`segmento` continua exposto — mas é texto livre, não serve pra rotear', async () => {

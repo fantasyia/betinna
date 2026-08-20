@@ -1663,6 +1663,29 @@ server.registerTool(
   }),
 );
 
+/**
+ * O que acontece quando o SLA da etapa vence. Mesmo shape que o job de gatilhos
+ * le (fluxo-triggers.job.ts -> avaliarSlaEtapas).
+ *
+ * `tag` e a peca que transforma cada etapa no SEU PROPRIO gatilho de "lead
+ * parado": a etiqueta carimbada dispara LEAD_RECEBEU_TAG, entao um unico fluxo
+ * com filtro por PREFIXO (ex.: `parado:`) atende o funil inteiro, cada etapa no
+ * prazo dela.
+ */
+const acaoSlaSchema = z
+  .object({
+    tipo: z.enum(['notificar', 'mover', 'tag']),
+    etapaDestinoId: z.string().min(1).optional().describe('so tipo=mover'),
+    tagNome: z
+      .string()
+      .min(1)
+      .max(60)
+      .optional()
+      .describe('so tipo=tag — nome da etiqueta a carimbar (ex.: "parado:proposta")'),
+  })
+  .nullable()
+  .describe('Acao quando o SLA da etapa vence. null limpa.');
+
 server.registerTool(
   'etapas_criar',
   {
@@ -1676,6 +1699,7 @@ server.registerTool(
       ordem: z.number().int().min(0).optional().describe('0 = auto (vai pro final)'),
       slaDias: z.number().int().min(1).max(365).optional(),
       slaHoras: z.number().int().min(1).max(8760).optional(),
+      acaoSlaExpirado: acaoSlaSchema.optional(),
     },
     annotations: { readOnlyHint: false, destructiveHint: false },
   },
@@ -1689,7 +1713,7 @@ server.registerTool(
   'etapas_atualizar',
   {
     description:
-      'Atualiza uma etapa — nome, cor, ordem, tipo, probabilidade, SLA. ' +
+      'Atualiza uma etapa — nome, cor, ordem, tipo, probabilidade, SLA e a AÇÃO do SLA. ' +
       '⚠️ Isto é sempre um UPDATE: o id da etapa NUNCA muda, então é seguro pra renomear ' +
       '(o funilEtapaId que os fluxos guardam continua válido). NUNCA use etapas_remover + ' +
       'etapas_criar pra "renomear" — isso troca o id e quebra o fluxo que apontava pra ela.',
@@ -1703,6 +1727,7 @@ server.registerTool(
       ordem: z.number().int().min(0).optional(),
       slaDias: z.number().int().min(1).max(365).nullable().optional(),
       slaHoras: z.number().int().min(1).max(8760).nullable().optional(),
+      acaoSlaExpirado: acaoSlaSchema.optional(),
     },
     annotations: { readOnlyHint: false, destructiveHint: false },
   },
