@@ -12,6 +12,38 @@ import { initI18n } from '@/lib/i18n';
 import { bootstrapTheme } from '@/hooks/useTheme';
 import './index.css';
 
+/**
+ * Convite/recuperação que caiu na rota ERRADA → manda pro /welcome.
+ *
+ * O Supabase só respeita o `redirect_to` se a URL estiver na allowlist do
+ * projeto (Auth → URL Configuration). Se não estiver, ele NÃO falha: cai
+ * calado no "Site URL", ou seja, na raiz do app. O usuário chega com os tokens
+ * no fragmento (#access_token=…&type=invite), a raiz não sabe o que fazer com
+ * isso, e ele vê a TELA DE LOGIN — sendo que ele ainda nem tem senha. Foi
+ * exatamente o que aconteceu com o primeiro convite.
+ *
+ * Depender da allowlist é frágil: ela vive num painel fora do repositório, e
+ * qualquer domínio novo (preview, staging, troca de host) quebra o convite de
+ * novo, do mesmo jeito silencioso. Aqui o app reconhece o fragmento em QUALQUER
+ * rota e leva pro lugar certo, preservando o hash.
+ *
+ * `replace` e não `assign`: o link do convite não fica no histórico do browser.
+ */
+(() => {
+  const hash = window.location.hash.startsWith('#')
+    ? window.location.hash.slice(1)
+    : window.location.hash;
+  if (!hash) return;
+  const p = new URLSearchParams(hash);
+  const tipo = p.get('type');
+  const ehFluxoDeSenha =
+    !!p.get('access_token') &&
+    (tipo === 'invite' || tipo === 'recovery' || tipo === 'signup' || tipo === 'magiclink');
+  if (ehFluxoDeSenha && window.location.pathname !== '/welcome') {
+    window.location.replace(`/welcome#${hash}`);
+  }
+})();
+
 // Aplica tema (light/dark) ANTES de renderizar pra evitar flash
 bootstrapTheme();
 
