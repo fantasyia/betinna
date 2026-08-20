@@ -157,8 +157,55 @@ describe('LeadCaptureService', () => {
 
       // O lead entra normalmente (perder o lead é pior que perder a etiqueta)...
       expect(r.ok).toBe(true);
-      // ...mas o caminho que CRIA etiqueta nunca é usado na captura pública.
-      expect(leads.aplicarTagPorNome).not.toHaveBeenCalled();
+      // ...e o caminho que CRIA etiqueta nunca recebe NOME VINDO DO VISITANTE.
+      // (Ele é usado, sim — pela etiqueta de origem, cujo valor é o
+      // `origemCadastro` já normalizado pelo vocabulário controlado. O que não
+      // pode existir é nome livre de fora criando etiqueta.)
+      const criadas = leads.aplicarTagPorNome.mock.calls.map((c) => c[2] as string);
+      expect(criadas).not.toContain('inventada-pelo-atacante');
+      expect(criadas.every((n) => n.startsWith('origem:'))).toBe(true);
+    });
+
+    it('carimba a etiqueta de ORIGEM — é o que torna o lead do site visível no quadro', async () => {
+      // Sem ela, lead de formulário cai na Triagem indistinguível de quem
+      // escreveu no WhatsApp: se o roteamento estiver desligado, ele fica
+      // parado lá e ninguém enxerga que veio do site. O campo origemCadastro
+      // já existia, mas campo não é filtrável no quadro — etiqueta é.
+      prisma.leadCaptureChave.findUnique.mockResolvedValue({ empresaId: 'emp-1', ativo: true });
+
+      await svc.capturar(CHAVE, dto);
+
+      expect(leads.aplicarTagPorNome).toHaveBeenCalledWith(
+        'emp-1',
+        'lead-novo',
+        'origem:site',
+        'usuario',
+      );
+    });
+
+    it('a etiqueta de origem também vale no lead DUPLICADO', async () => {
+      prisma.leadCaptureChave.findUnique.mockResolvedValue({ empresaId: 'emp-1', ativo: true });
+      prisma.$queryRaw.mockResolvedValue([{ id: 'lead-existente' }]);
+
+      await svc.capturar(CHAVE, dto);
+
+      expect(leads.aplicarTagPorNome).toHaveBeenCalledWith(
+        'emp-1',
+        'lead-existente',
+        'origem:site',
+        'usuario',
+      );
+    });
+
+    it('falha ao carimbar a origem NÃO derruba a captura', async () => {
+      prisma.leadCaptureChave.findUnique.mockResolvedValue({ empresaId: 'emp-1', ativo: true });
+      leads.aplicarTagPorNome.mockRejectedValue(new Error('banco fora'));
+
+      const r = await svc.capturar(CHAVE, dto);
+
+      // Perder o lead é pior que perder a etiqueta.
+      expect(r.ok).toBe(true);
+      expect(r.leadId).toBe('lead-novo');
     });
 
     it('aplica tags também no lead DUPLICADO (reenvio com outro setor)', async () => {
