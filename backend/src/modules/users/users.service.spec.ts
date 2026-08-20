@@ -531,7 +531,10 @@ describe('UsersService', () => {
 
       const result = await service.resendInvite(fakeUser(), 'user-1');
 
-      expect(result).toEqual({ ok: true, sentTo: 'novo@empresa.com' });
+      // O link agora VOLTA na resposta (o e-mail é o elo frágil — ver o describe
+      // "link na resposta"), então a asserção passa a olhar os campos que importam.
+      expect(result).toMatchObject({ ok: true, sentTo: 'novo@empresa.com', emailEnviado: true });
+      expect(result.inviteUrl).toBeTruthy();
       // Agora usa generateLink (não mais inviteUserByEmail) — U2 fix 2026-05-23
       expect(mockGenerateLink).toHaveBeenCalledWith(
         expect.objectContaining({ type: 'invite', email: 'novo@empresa.com' }),
@@ -852,5 +855,62 @@ describe('UsersService', () => {
 
       expect(redis.del).toHaveBeenCalledWith('auth:user:user-1');
     });
+  });
+});
+
+/**
+ * O link de convite tem que VOLTAR pro admin.
+ *
+ * O e-mail é o elo frágil: tenant sem Resend configurado (o caso antes do
+ * go-live) deixava o admin sem caminho nenhum — o método falhava inteiro e o
+ * convite regerado ia pro lixo junto.
+ */
+describe('UsersService.resendInvite — link na resposta', () => {
+  const admin = { id: 'a1', role: 'ADMIN', empresaIdAtiva: 'emp-1' } as never;
+  const LINK = 'https://supabase/invite-link';
+
+  function montar(emailOk: boolean) {
+    const prisma = makePrismaMock();
+    prisma.usuario.findUnique.mockResolvedValue({
+      id: 'u9',
+      email: 'teste@exemplo.com',
+      nome: 'TESTE',
+      status: 'PENDENTE',
+      role: 'REP',
+      empresas: [{ empresaId: 'emp-1' }],
+    });
+    prisma.empresa = { findUnique: vi.fn().mockResolvedValue({ nome: 'Somatec' }) } as never;
+    const svc = new UsersService(
+      prisma as never,
+      makeEnv() as never,
+      makeRedis() as never,
+      {
+        enviarReenvioConvite: vi
+          .fn()
+          .mockResolvedValue(
+            emailOk ? { ok: true } : { ok: false, motivo: 'Resend não configurado' },
+          ),
+      } as never,
+      { desativar: vi.fn() } as never,
+      { garantirQuadroRep: vi.fn() } as never,
+    );
+    mockGenerateLink.mockResolvedValue({
+      data: { properties: { action_link: LINK } },
+      error: null,
+    });
+    return svc;
+  }
+
+  it('e-mail OK: devolve o link e marca enviado', async () => {
+    const r = await montar(true).resendInvite(admin, 'u9');
+    expect(r.inviteUrl).toBe(LINK);
+    expect(r.emailEnviado).toBe(true);
+  });
+
+  it('e-mail FALHOU: NÃO derruba — devolve o link e diz o motivo', async () => {
+    const r = await montar(false).resendInvite(admin, 'u9');
+    expect(r.inviteUrl).toBe(LINK);
+    expect(r.emailEnviado).toBe(false);
+    expect(r.motivo).toMatch(/Resend não configurado/);
   });
 });

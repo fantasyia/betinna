@@ -165,7 +165,14 @@ const router = createBrowserRouter([
     path: '/whatsapp',
     element: (
       <ErrorBoundary>
-        <ProtectedRoute requirePermission="whatsapp.empresa">
+        {/* SEM requirePermission: esta página tem DUAS abas e a própria página
+            decide qual mostrar — "Número da empresa" só pra ADMIN/DIRECTOR/SAC,
+            "Meu WhatsApp pessoal" pra qualquer um. Exigir `whatsapp.empresa` no
+            guard trancava o REP na porta: o card "WhatsApp pessoal" em Minhas
+            Integrações aponta pra cá, e o clique caía em /403 — ou seja, quem o
+            recurso existe pra atender era justamente quem não conseguia parear.
+            O backend não gateia por papel em /usuario/integracoes/whatsapp/*. */}
+        <ProtectedRoute>
           <PageSuspense>
             <WhatsAppPage />
           </PageSuspense>

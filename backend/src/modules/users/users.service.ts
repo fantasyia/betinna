@@ -506,7 +506,28 @@ export class UsersService {
     });
   }
 
-  async resendInvite(caller: AuthenticatedUser, id: string): Promise<{ ok: true; sentTo: string }> {
+  /**
+   * Regera o convite e DEVOLVE o link, além de tentar mandar por e-mail.
+   *
+   * Devolver o link importa porque o e-mail é o elo frágil: tenant sem Resend
+   * configurado (ou endereço que não recebe) deixava o admin sem NENHUM caminho
+   * — o método falhava inteiro e o convite regerado se perdia. Agora o admin
+   * sempre fica com o link em mãos e decide como entregar.
+   *
+   * ⚠️ O link cadastra a senha de quem clicar. Só volta pra ADMIN (gate no
+   * controller), que já podia regerar convite desse usuário de qualquer forma —
+   * não abre poder novo, só torna utilizável o que já existia.
+   */
+  async resendInvite(
+    caller: AuthenticatedUser,
+    id: string,
+  ): Promise<{
+    ok: true;
+    sentTo: string;
+    inviteUrl: string;
+    emailEnviado: boolean;
+    motivo?: string;
+  }> {
     const userScope = await this.loadAndAssertScope(caller, id);
     if (userScope.status !== 'PENDENTE') {
       throw new BusinessRuleException('Usuário não está com convite pendente');
@@ -553,19 +574,25 @@ export class UsersService {
       inviteUrl,
     });
     if (!sent.ok) {
-      // A falha do e-mail era silenciosa (best-effort). Pra reenvio de convite
-      // isso é catastrófico — user nunca recebia o link mas o admin via
-      // "sucesso" no toast. Agora a falha sobe com o motivo real (Resend).
+      // A falha do e-mail era silenciosa (best-effort), e virar "sucesso" no
+      // toast sem o user receber nada era catastrófico. Mas DERRUBAR a operação
+      // também não serve: o link já foi gerado e é válido — jogá-lo fora deixa o
+      // admin sem saída em tenant sem Resend configurado, que é o caso comum
+      // antes do go-live. Agora o link VOLTA, com o motivo do e-mail não ter ido.
       const motivo = sent.motivo ?? 'motivo desconhecido';
-      this.logger.error(
-        `Reenvio: link Supabase OK mas envio de e-mail FALHOU pra ${userScope.email}: ${motivo}`,
+      this.logger.warn(
+        `Reenvio: link Supabase OK mas e-mail NÃO saiu pra ${userScope.email}: ${motivo} — ` +
+          'link devolvido pro admin entregar por outro canal',
       );
-      throw new BusinessRuleException(
-        `Link de convite gerado, mas falha ao enviar o e-mail para ${userScope.email}. ` +
-          `Motivo: ${motivo}. Verifique RESEND_API_KEY e RESEND_FROM_EMAIL no Railway e tente novamente.`,
-      );
+      return {
+        ok: true,
+        sentTo: userScope.email,
+        inviteUrl,
+        emailEnviado: false,
+        motivo: `E-mail não enviado (${motivo}). Entregue o link abaixo por outro canal.`,
+      };
     }
-    return { ok: true, sentTo: userScope.email };
+    return { ok: true, sentTo: userScope.email, inviteUrl, emailEnviado: true };
   }
 
   /** Marca o usuário como ATIVO (chamado pelo onboarding após definir senha) */
