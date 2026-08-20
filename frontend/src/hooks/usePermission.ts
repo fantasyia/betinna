@@ -183,6 +183,9 @@ const PERMISSION_MATRIX: Record<UserRole, ReadonlySet<Permission>> = {
     // Config do BOT PESSOAL (persona + prompts do WhatsApp dele) — o backend
     // resolve o escopo pelo papel, então isto nunca abre o bot da empresa.
     'mullerbot.config',
+    // Relatórios da CARTEIRA dele (todo endpoint filtra por RepScope). Sem
+    // 'export': baixar planilha não foi pedido e é o caminho de vazamento.
+    'relatorios.view',
     'clientes.view',
     'comissoes.own',
     'whatsapp.pessoal',

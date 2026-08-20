@@ -1,5 +1,6 @@
 import { useMemo, useState } from 'react';
 import { useApiQuery } from '@/hooks/useApiQuery';
+import { useRole } from '@/hooks/usePermission';
 import { PageLayout } from '@/components/PageLayout';
 import { StateView } from '@/components/StateView';
 import { Select } from '@/components/FormField';
@@ -186,6 +187,12 @@ const SEV_COLOR: Record<string, string> = {
 // ─── Página principal ────────────────────────────────────────────────
 
 export default function RelatoriosPage() {
+  const role = useRole();
+  // O REP vê os relatórios do trabalho DELE (todo endpoint já filtra por
+  // RepScope). SAC e Campanhas ficam de fora: SLA de atendimento e disparo de
+  // marketing não são função dele, e abrir aba pra um número sempre zerado é
+  // pior que não ter a aba.
+  const isRep = role === 'REP';
   const [tab, setTab] = useState<Tab>('overview');
   const [periodo, setPeriodo] = useState<Periodo>('mes');
 
@@ -193,7 +200,8 @@ export default function RelatoriosPage() {
 
   return (
     <PageLayout
-      title="Relatórios"
+      title={isRep ? 'Meus relatórios' : 'Relatórios'}
+      description={isRep ? 'Os números da sua carteira: vendas, comissões, funil e amostras.' : undefined}
       actions={
         <Select
           value={periodo}
@@ -225,24 +233,28 @@ export default function RelatoriosPage() {
         <TabButton current={tab} value="comissoes" onChange={setTab}>
           Comissões
         </TabButton>
-        <TabButton current={tab} value="sac" onChange={setTab}>
-          SAC
-        </TabButton>
+        {!isRep && (
+          <TabButton current={tab} value="sac" onChange={setTab}>
+            SAC
+          </TabButton>
+        )}
         <TabButton current={tab} value="amostras" onChange={setTab}>
           Amostras
         </TabButton>
-        <TabButton current={tab} value="campanhas" onChange={setTab}>
-          Campanhas
-        </TabButton>
+        {!isRep && (
+          <TabButton current={tab} value="campanhas" onChange={setTab}>
+            Campanhas
+          </TabButton>
+        )}
       </div>
 
       {tab === 'overview' && <OverviewTab qs={qs} />}
       {tab === 'vendas' && <VendasTab qs={qs} />}
       {tab === 'funil' && <FunilTab qs={qs} />}
       {tab === 'comissoes' && <ComissoesTab qs={qs} />}
-      {tab === 'sac' && <SacTab qs={qs} />}
+      {tab === 'sac' && !isRep && <SacTab qs={qs} />}
       {tab === 'amostras' && <AmostrasTab qs={qs} />}
-      {tab === 'campanhas' && <CampanhasTab qs={qs} />}
+      {tab === 'campanhas' && !isRep && <CampanhasTab qs={qs} />}
     </PageLayout>
   );
 }
@@ -279,6 +291,7 @@ function TabButton({
 // ─── Tab: Overview ───────────────────────────────────────────────────
 
 function OverviewTab({ qs }: { qs: string }) {
+  const isRep = useRole() === 'REP';
   const { data, loading, error, refetch } = useApiQuery<DashboardResp>(`/relatorios/dashboard${qs}`);
   // Snapshot por etapa do funil — vem do /relatorios/funil (sem funilId = funil padrão),
   // já que o /relatorios/dashboard parou de mandar funilAtual. Sem isso o card abaixo crashava.
@@ -311,11 +324,14 @@ function OverviewTab({ qs }: { qs: string }) {
               value={`${data.funil.taxaConversao ?? 0}%`}
               color={(data.funil.taxaConversao ?? 0) > 30 ? 'var(--success)' : (data.funil.taxaConversao ?? 0) > 15 ? 'var(--warning)' : 'var(--danger)'}
             />
-            <KPICard
-              label="SLA estourado"
-              value={String(data.sac.slaEstourado)}
-              color={data.sac.slaEstourado > 0 ? 'var(--danger)' : 'var(--success)'}
-            />
+            {/* SLA de atendimento é indicador do time de SAC, não do rep. */}
+            {!isRep && (
+              <KPICard
+                label="SLA estourado"
+                value={String(data.sac.slaEstourado)}
+                color={data.sac.slaEstourado > 0 ? 'var(--danger)' : 'var(--success)'}
+              />
+            )}
             <KPICard
               label="Amostras convertidas"
               value={`${data.amostras.taxaConversao ?? 0}%`}
@@ -326,7 +342,11 @@ function OverviewTab({ qs }: { qs: string }) {
           {/* Resumo Vendas + Funil */}
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div className="bg-surface border border-border rounded-[10px] p-4 md:p-6">
-              <h3 className="m-0 mb-3 text-[15px]">Top representantes (vendas)</h3>
+              {/* Pro rep o gráfico tem uma barra só — a dele (o backend filtra
+                  por carteira), então "Top representantes" soaria errado. */}
+              <h3 className="m-0 mb-3 text-[15px]">
+                {isRep ? 'Minhas vendas' : 'Top representantes (vendas)'}
+              </h3>
               <BarChart
                 data={data.vendas.porRep.slice(0, 5).map((r) => ({
                   label: r.repNome,

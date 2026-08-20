@@ -96,6 +96,10 @@ export const DEFAULT_PERMISSIONS: PermissionMatrix = {
     ocorrencias: ['view', 'create'],
     catalogo: ['view', 'create', 'edit'],
     comissoes: ['view'],
+    // Relatórios: TODO endpoint de relatório já filtra por RepScope, então o
+    // rep vê os números da carteira dele — vendas, comissões, funil e amostras.
+    // A tela esconde as abas que não são trabalho dele (SAC, campanhas).
+    relatorios: ['view'],
     amostras: ['view', 'create'],
     metas: ['view'],
     agenda: ['view', 'create', 'edit', 'delete'],

@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
+import { Link } from 'react-router-dom';
 import {
   Bot,
   Send,
@@ -10,12 +11,15 @@ import {
   Info,
 } from 'lucide-react';
 import { api, ApiError } from '@/lib/api';
+import { useApiQuery } from '@/hooks/useApiQuery';
+import { useRole } from '@/hooks/usePermission';
 import { PageLayout } from '@/components/PageLayout';
 import { AssistenteTabs } from '@/components/AssistenteTabs';
 import { Markdown } from '@/components/Markdown';
 import {
   Button,
   Card,
+  CardDescription,
   CardHeader,
   CardTitle,
   Field,
@@ -126,6 +130,15 @@ export default function MullerBotPage() {
   const [pergunta, setPergunta] = useState('');
   const [topK, setTopK] = useState(5);
   const [modelo, setModelo] = useState<string>('');
+  const role = useRole();
+  const isRep = role === 'REP';
+  // Modelos da conta OpenAI de quem está usando — mesma fonte da tela de
+  // configuração. A lista aqui era fixa no código (gpt-4o-mini/4o/4-turbo) e
+  // já estava velha: oferecia modelo que a conta não tem e escondia os novos.
+  const { data: modelosResp } = useApiQuery<{ modelos: string[]; fonte: string }>(
+    '/mullerbot/bot/modelos',
+  );
+  const modelosLive = modelosResp?.modelos ?? [];
   // Nome do bot definido pela empresa (ex.: "SomaBOT") — cabeçalho da página.
   const [nomeBot, setNomeBot] = useState<string>('');
   useEffect(() => {
@@ -380,17 +393,41 @@ export default function MullerBotPage() {
           </form>
         </Card>
 
-        {/* Sidebar */}
+        {/* Sidebar — um card de "o que ele consulta" + os ajustes, em vez de
+            três cartões repetindo a mesma informação com jargão ("Top-K",
+            "Default (env)") e um link solto pra mesma página. */}
         <div className="flex flex-col gap-3">
+          <Card padding="md" variant="outline" className="bg-primary/5 border-primary/30">
+            <h4 className="text-xs font-semibold text-primary mb-2 flex items-center gap-1.5 uppercase tracking-wider">
+              <Info className="h-3 w-3" />
+              O que ele consulta
+            </h4>
+            <ul className="text-xs text-text-subtle space-y-1.5 leading-relaxed list-disc pl-4 m-0">
+              <li>O catálogo de produtos da empresa e a base de conhecimento (FAQ e regras)</li>
+              <li>Só o que está lá — se não achar, ele diz, em vez de inventar preço ou prazo</li>
+              <li>Lembra do que já foi dito nesta conversa; "Nova conversa" começa do zero</li>
+              <li>
+                A conta da OpenAI é a da empresa — você não precisa conectar chave nenhuma pra
+                usar este chat
+              </li>
+            </ul>
+          </Card>
+
           <Card padding="md">
             <CardHeader>
               <CardTitle className="flex items-center gap-2">
                 <Settings className="h-4 w-4 text-primary" />
-                Configurações
+                Ajustes desta conversa
               </CardTitle>
+              <CardDescription>
+                Valem só aqui no chat — não mudam o bot que atende no WhatsApp.
+              </CardDescription>
             </CardHeader>
             <div className="flex flex-col gap-3">
-              <Field label="Top-K produtos" hint="Quantos produtos no contexto">
+              <Field
+                label="Produtos por resposta"
+                hint="Quantos itens do catálogo ele lê antes de responder. Mais = respostas mais completas e mais lentas."
+              >
                 <Select
                   data-testid="muller-topk"
                   value={String(topK)}
@@ -403,29 +440,20 @@ export default function MullerBotPage() {
                   ))}
                 </Select>
               </Field>
-              <Field label="Modelo" hint="Default: gpt-4o-mini">
+              <Field
+                label="Modelo da IA"
+                hint="Em branco usa o modelo configurado. Mais inteligente = mais caro por pergunta."
+              >
                 <Select value={modelo} onChange={(e) => setModelo(e.target.value)}>
-                  <option value="">Default (env)</option>
-                  <option value="gpt-4o-mini">gpt-4o-mini</option>
-                  <option value="gpt-4o">gpt-4o</option>
-                  <option value="gpt-4-turbo">gpt-4-turbo</option>
+                  <option value="">Modelo configurado</option>
+                  {modelosLive.map((m: string) => (
+                    <option key={m} value={m}>
+                      {m}
+                    </option>
+                  ))}
                 </Select>
               </Field>
             </div>
-          </Card>
-
-          <Card padding="md" variant="outline" className="bg-primary/5 border-primary/30">
-            <h4 className="text-xs font-semibold text-primary mb-2 flex items-center gap-1.5 uppercase tracking-wider">
-              <Info className="h-3 w-3" />
-              Como funciona
-            </h4>
-            <ul className="text-xs text-text-subtle space-y-1.5 leading-relaxed list-disc pl-4 m-0">
-              <li>Busca no catálogo (OMIE) + base de conhecimento (FAQ/regras)</li>
-              <li>Tom, nome e estilo configuráveis em Persona Bot</li>
-              <li>Usa a chave OpenAI da EMPRESA (o rep não precisa de chave própria)</li>
-              <li>Lembra da conversa enquanto você conversa</li>
-              <li>"Nova conversa" reseta o contexto do bot</li>
-            </ul>
           </Card>
 
           <Card padding="md" variant="outline" className="bg-secondary/5 border-secondary/30">
@@ -434,11 +462,23 @@ export default function MullerBotPage() {
               Dica
             </h4>
             <p className="text-xs text-text-subtle leading-relaxed m-0">
-              Customize a identidade do bot (tom de voz, instruções, exemplos) na página{' '}
-              <a href="/mullerbot/persona" className="text-primary font-semibold">
-                Persona Bot
-              </a>
-              .
+              {isRep ? (
+                <>
+                  O jeito de responder (nome, tom, instruções) sai do bot da empresa. Em{' '}
+                  <Link to="/mullerbot/persona" className="text-primary font-semibold">
+                    Meu bot
+                  </Link>{' '}
+                  você configura o SEU, o que responde no seu WhatsApp.
+                </>
+              ) : (
+                <>
+                  Nome, tom de voz, instruções e exemplos ficam em{' '}
+                  <Link to="/mullerbot/persona" className="text-primary font-semibold">
+                    Configuração
+                  </Link>
+                  .
+                </>
+              )}
             </p>
           </Card>
         </div>
