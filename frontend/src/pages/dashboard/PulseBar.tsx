@@ -14,11 +14,17 @@ import { cn } from '@/lib/cn';
 import type { PulsoResumo } from './types';
 
 /**
- * M1 — Barra de pulso (sticky, full-width). 6 stat tiles: número GRANDE +
+ * M1 — Barra de pulso (sticky, full-width). Stat tiles: número GRANDE +
  * rótulo + estado. NÃO é gráfico. Cada tile é clicável e leva/rola pro módulo
  * correspondente. Status sempre com ÍCONE + TEXTO — nunca cor sozinha.
+ *
+ * ⚠️ Três tiles são da MÁQUINA da empresa, não do trabalho do rep: fluxos
+ * ativos, execuções 24h e a caixa de nutrir. O rep não tem fluxo nenhum — via
+ * "0/11 ⚠ máquina parada", um alarme sobre automação que não é dele e que ele
+ * não pode ligar. Pior: os dois primeiros rolam pra `mod-fluxos`, que só existe
+ * pra gestão — clicar não levava a lugar nenhum.
  */
-export function PulseBar({ pulso }: { pulso: PulsoResumo }) {
+export function PulseBar({ pulso, ehGestao }: { pulso: PulsoResumo; ehGestao: boolean }) {
   const navigate = useNavigate();
   const rolarPara = (id: string) => () =>
     document.getElementById(id)?.scrollIntoView({ behavior: 'smooth', block: 'start' });
@@ -33,6 +39,8 @@ export function PulseBar({ pulso }: { pulso: PulsoResumo }) {
     estado: { texto: string; tom: 'ok' | 'atencao' | 'grave'; icone: LucideIcon } | null;
     onClick: () => void;
     testid: string;
+    /** Só pra gestão — ver a nota no docblock. */
+    soGestao?: boolean;
   }> = [
     {
       label: 'Leads novos (7d)',
@@ -55,6 +63,7 @@ export function PulseBar({ pulso }: { pulso: PulsoResumo }) {
     },
     {
       label: 'Fluxos ativos',
+      soGestao: true,
       valor: `${pulso.fluxos.ativos}/${pulso.fluxos.total}`,
       icon: Zap,
       estado:
@@ -66,6 +75,7 @@ export function PulseBar({ pulso }: { pulso: PulsoResumo }) {
     },
     {
       label: 'Execuções 24h',
+      soGestao: true,
       valor: formatNumero(execTotal),
       icon: Activity,
       estado:
@@ -79,6 +89,7 @@ export function PulseBar({ pulso }: { pulso: PulsoResumo }) {
     },
     {
       label: '📥 Nutrir',
+      soGestao: true,
       valor: formatNumero(pulso.nutrirPendentes),
       icon: Inbox,
       estado:
@@ -107,7 +118,9 @@ export function PulseBar({ pulso }: { pulso: PulsoResumo }) {
         'grid gap-2 grid-cols-2 sm:grid-cols-3 min-[1280px]:grid-cols-6',
       )}
     >
-      {tiles.map((t) => (
+      {tiles
+        .filter((t) => ehGestao || !t.soGestao)
+        .map((t) => (
         <button
           key={t.testid}
           type="button"

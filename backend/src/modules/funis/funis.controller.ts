@@ -3,6 +3,7 @@ import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
 import { Audit } from '@shared/decorators/audit.decorator';
 import { CurrentUser } from '@shared/decorators/current-user.decorator';
 import { RequirePermissions } from '@shared/decorators/permissions.decorator';
+import { Roles } from '@shared/decorators/roles.decorator';
 import { ZodValidationPipe } from '@shared/pipes/zod-validation.pipe';
 import type { AuthenticatedUser } from '@shared/types/authenticated-user';
 import {
@@ -86,7 +87,15 @@ export class FunisController {
     return this.funis.leadsPorEtapa(user, id, etapaId, query);
   }
 
+  // Estrutura de funil é CONFIG da empresa, não trabalho de carteira. O
+  // @RequirePermissions abaixo pede `kanban:edit` — que o REP tem, porque é a
+  // MESMA permissão de mover lead de etapa e etiquetar lead (trabalho diário
+  // dele). Sem este @Roles, quem podia arrastar um card no quadro também podia
+  // criar, renomear e EXCLUIR funil e etapa — e os fluxos apontam pra etapa por
+  // id, então excluir uma quebra automação em silêncio. Tirar `edit` da matriz
+  // não serve: derrubaria o trabalho de lead junto.
   @Post()
+  @Roles('ADMIN', 'DIRECTOR', 'GERENTE')
   @RequirePermissions({ module: 'kanban', action: 'edit' })
   @Audit({ action: 'create', resource: 'funil', resourceIdFrom: 'response.id' })
   create(
@@ -96,7 +105,9 @@ export class FunisController {
     return this.funis.create(user, dto);
   }
 
+  // Config de funil — ver a nota no @Post() acima.
   @Patch(':id')
+  @Roles('ADMIN', 'DIRECTOR', 'GERENTE')
   @RequirePermissions({ module: 'kanban', action: 'edit' })
   @Audit({ action: 'update', resource: 'funil', resourceIdFrom: 'params.id' })
   update(
@@ -107,7 +118,9 @@ export class FunisController {
     return this.funis.update(user, id, dto);
   }
 
+  // Config de funil — ver a nota no @Post() acima.
   @Delete(':id')
+  @Roles('ADMIN', 'DIRECTOR', 'GERENTE')
   @RequirePermissions({ module: 'kanban', action: 'edit' })
   @Audit({ action: 'delete', resource: 'funil', resourceIdFrom: 'params.id' })
   async remove(@CurrentUser() user: AuthenticatedUser, @Param('id') id: string) {
@@ -117,7 +130,9 @@ export class FunisController {
 
   // ─── Etapas ──────────────────────────────────────────────────────
 
+  // Config de funil — ver a nota no @Post() acima.
   @Post(':id/etapas')
+  @Roles('ADMIN', 'DIRECTOR', 'GERENTE')
   @RequirePermissions({ module: 'kanban', action: 'edit' })
   @Audit({ action: 'add_etapa', resource: 'funil', resourceIdFrom: 'params.id' })
   adicionarEtapa(
@@ -128,7 +143,9 @@ export class FunisController {
     return this.funis.adicionarEtapa(user, id, dto);
   }
 
+  // Config de funil — ver a nota no @Post() acima.
   @Patch(':id/etapas/:etapaId')
+  @Roles('ADMIN', 'DIRECTOR', 'GERENTE')
   @RequirePermissions({ module: 'kanban', action: 'edit' })
   @Audit({ action: 'update_etapa', resource: 'funil', resourceIdFrom: 'params.id' })
   atualizarEtapa(
@@ -140,7 +157,9 @@ export class FunisController {
     return this.funis.atualizarEtapa(user, id, etapaId, dto);
   }
 
+  // Config de funil — ver a nota no @Post() acima.
   @Delete(':id/etapas/:etapaId')
+  @Roles('ADMIN', 'DIRECTOR', 'GERENTE')
   @RequirePermissions({ module: 'kanban', action: 'edit' })
   @Audit({ action: 'delete_etapa', resource: 'funil', resourceIdFrom: 'params.id' })
   removerEtapa(

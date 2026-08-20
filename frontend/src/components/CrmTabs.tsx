@@ -47,11 +47,17 @@ export function CrmTabs() {
     tabs.push({ to: '/contatos', label: 'Contatos', icon: <Users size={14} /> });
   }
   tabs.push({ to: '/leads', label: 'Funil', icon: <Target size={14} /> });
-  tabs.push({
-    to: '/funis',
-    label: 'Configurar funis',
-    icon: <FunnelIcon size={14} />,
-  });
+  // Estrutura de funil é config da empresa. Ficava aberta a qualquer papel —
+  // o REP via "Configurar funis" junto do funil de trabalho dele, e o backend
+  // deixava passar porque a permissão de mexer em funil era a MESMA de mover
+  // lead de etapa (`kanban:edit`). O backend agora exige papel de gestão.
+  if (isAdminTier) {
+    tabs.push({
+      to: '/funis',
+      label: 'Configurar funis',
+      icon: <FunnelIcon size={14} />,
+    });
+  }
   if (canClientes) {
     tabs.push({ to: '/tags', label: 'Tags', icon: <Tags size={14} /> });
   }

@@ -230,8 +230,16 @@ export class DashboardResumoService {
         },
       }),
       this.prisma.funil.findMany({
-        where: { empresaId, ativo: true },
-        select: { id: true, nome: true, _count: { select: { leads: true } } },
+        // Mesma regra do /funis: o rep só enxerga os funis marcados pra ele.
+        // A contagem também é filtrada pela carteira — `_count.leads` cru era o
+        // total da EMPRESA, então o rep lia quantos leads existem no funil
+        // inteiro, não os dele.
+        where: { empresaId, ativo: true, ...(ehGestao ? {} : { visivelParaRep: true }) },
+        select: {
+          id: true,
+          nome: true,
+          _count: { select: { leads: ehGestao ? true : { where: repFilter } } },
+        },
       }),
       this.prisma.evolutionInstancia.count({ where: { empresaId } }),
       // M6 — sala de controle: todos os fluxos não-arquivados.
@@ -646,6 +654,7 @@ export class DashboardResumoService {
     const empresaId = this.requireEmpresa(user);
     const scope = await this.repScope.getRepIds(user);
     const ehGestao = user.role !== 'REP';
+    const visivelParaEsteUsuario = ehGestao ? {} : { visivelParaRep: true };
     const agora = new Date();
     const dias = params.dias;
     const de = new Date(inicioDoDia(agora).getTime() - (dias - 1) * DIA_MS);
@@ -658,7 +667,11 @@ export class DashboardResumoService {
         : Prisma.empty;
 
     const funis = await this.prisma.funil.findMany({
-      where: { empresaId, ativo: true, triagem: false },
+      // `visivelParaRep` de novo aqui: este seletor NÃO passa pelo /funis (que
+      // já filtra) — é lista própria. O rep abria Relatórios e via "Clientes -
+      // Canal Própio" no dropdown, um funil que não é dele e cujo nome não
+      // deveria nem ser mencionado pra ele.
+      where: { empresaId, ativo: true, triagem: false, ...visivelParaEsteUsuario },
       orderBy: { criadoEm: 'asc' },
       select: { id: true, nome: true },
     });

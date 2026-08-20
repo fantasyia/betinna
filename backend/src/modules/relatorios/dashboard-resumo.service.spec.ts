@@ -180,6 +180,28 @@ describe('DashboardResumoService', () => {
     expect(r.fluxosSala).toEqual([]);
     expect(r.pulso.nutrirPendentes).toBe(0);
     expect(prisma.kanbanBoard.findMany).not.toHaveBeenCalled();
+
+    // A lista de funis é filtrada por `visivelParaRep` E a contagem de leads é
+    // da CARTEIRA. Sem isso o rep lia o nome de funis que não são dele e o
+    // total de leads da empresa inteira em cada um.
+    const funisCall = prisma.funil.findMany.mock.calls.find(
+      (c) => c[0]?.select?._count !== undefined,
+    );
+    expect(funisCall?.[0].where.visivelParaRep).toBe(true);
+    expect(funisCall?.[0].select._count.select.leads).toEqual({
+      where: { representanteId: { in: ['rep-1'] } },
+    });
+  });
+
+  it('gestão NÃO é filtrada por visivelParaRep — vê todos os funis e o total real', async () => {
+    const svc = new DashboardResumoService(prisma as never, makeRepScope(null) as never);
+    await svc.resumo(user());
+
+    const funisCall = prisma.funil.findMany.mock.calls.find(
+      (c) => c[0]?.select?._count !== undefined,
+    );
+    expect(funisCall?.[0].where.visivelParaRep).toBeUndefined();
+    expect(funisCall?.[0].select._count.select.leads).toBe(true);
   });
 });
 

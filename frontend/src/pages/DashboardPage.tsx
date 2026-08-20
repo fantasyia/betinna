@@ -174,6 +174,10 @@ export default function DashboardPage() {
   );
 
   const ehGestao = role !== 'REP';
+  // Quem consegue de fato executar os "Primeiros passos" (OMIE + convidar
+  // usuário são ADMIN/DIRECTOR no backend). GERENTE e SAC ficam de fora de
+  // propósito: pra eles o cartão também só levaria a 403.
+  const podeConfigurarInstancia = role === 'ADMIN' || role === 'DIRECTOR';
 
   return (
     <PageLayout
@@ -218,7 +222,7 @@ export default function DashboardPage() {
           {/* M1 — barra de pulso (sticky). Skeleton independente. */}
           {prefs.pulso &&
             (resumo ? (
-              <PulseBar pulso={resumo.pulso} />
+              <PulseBar pulso={resumo.pulso} ehGestao={ehGestao} />
             ) : resumoLoading ? (
               <div className="grid gap-2 grid-cols-2 sm:grid-cols-3 min-[1280px]:grid-cols-6 py-2">
                 {Array.from({ length: 6 }).map((_, i) => (
@@ -322,7 +326,11 @@ export default function DashboardPage() {
                 </div>
               )}
 
-              {data && dashboardVazio(data) && (
+              {/* Só ADMIN/Diretor. O gate era só "dashboard vazio", sem olhar
+                  papel — e dashboard vazio é exatamente a situação do REP novo,
+                  que via um cartão mandando conectar o OMIE e convidar usuários.
+                  Nesses dois ele nem entra: são ADMIN/DIRECTOR no backend. */}
+              {data && dashboardVazio(data) && podeConfigurarInstancia && (
                 <div className="min-w-0 min-[1024px]:col-span-12">
                   <FirstStepsCard />
                 </div>

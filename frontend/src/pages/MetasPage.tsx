@@ -14,6 +14,7 @@ import {
 import { api, apiErrorMessage } from '@/lib/api';
 import { inicioDoDiaLocalISO, fimDoDiaLocalISO } from '@/lib/dates';
 import { useApiQuery } from '@/hooks/useApiQuery';
+import { useRole } from '@/hooks/usePermission';
 import { useToast } from '@/components/toast';
 import { PageLayout } from '@/components/PageLayout';
 import { VendasTabs } from '@/components/VendasTabs';
@@ -88,6 +89,9 @@ function diasRestantes(fim: string): { texto: string; tone: 'normal' | 'warning'
 
 export default function MetasPage() {
   const toast = useToast();
+  const role = useRole();
+  // Espelha o @Roles do backend (ADMIN/DIRECTOR/GERENTE).
+  const podeGerirMetas = role === 'ADMIN' || role === 'DIRECTOR' || role === 'GERENTE';
   const { data, loading, error, refetch } = useApiQuery<MetaComProgresso[]>('/metas');
   const [editing, setEditing] = useState<MetaComProgresso | 'new' | null>(null);
   const [confirmDelete, setConfirmDelete] = useState<MetaComProgresso | null>(null);
@@ -122,9 +126,14 @@ export default function MetasPage() {
       title="Metas"
       description="Defina alvos de faturamento ou pedidos por representante, gerente ou empresa toda."
       actions={
-        <Button onClick={() => setEditing('new')} leftIcon={<Plus className="h-3.5 w-3.5" />}>
-          Nova meta
-        </Button>
+        // Criar/editar meta é ADMIN/DIRECTOR/GERENTE no backend. O botão
+        // aparecia pra todo mundo e o REP levava 403 ao salvar — quem define
+        // alvo de faturamento é a gestão, não quem é medido por ele.
+        podeGerirMetas ? (
+          <Button onClick={() => setEditing('new')} leftIcon={<Plus className="h-3.5 w-3.5" />}>
+            Nova meta
+          </Button>
+        ) : undefined
       }
     >
       <VendasTabs />
@@ -166,6 +175,7 @@ export default function MetasPage() {
                   meta={m}
                   onEdit={() => setEditing(m)}
                   onDelete={() => setConfirmDelete(m)}
+                  podeGerir={podeGerirMetas}
                 />
               ))}
             </div>
@@ -247,10 +257,13 @@ function MetaCard({
   meta,
   onEdit,
   onDelete,
+  podeGerir,
 }: {
   meta: MetaComProgresso;
   onEdit: () => void;
   onDelete: () => void;
+  /** Mesma regra do botão "Nova meta": só gestão altera alvo. */
+  podeGerir: boolean;
 }) {
   const progresso = meta.progresso ?? 0;
   const atingido = meta.atingido ?? 0;
@@ -284,16 +297,24 @@ function MetaCard({
             <span className="truncate">{meta.alvoNome ?? meta.alvoTipo}</span>
           </div>
         </div>
-        <div className="flex items-center gap-1 shrink-0">
-          <IconButton aria-label="Editar" variant="ghost" size="sm" icon={<Edit3 />} onClick={onEdit} />
-          <IconButton
-            aria-label="Excluir"
-            variant="ghost"
-            size="sm"
-            icon={<Trash2 className="text-danger" />}
-            onClick={onDelete}
-          />
-        </div>
+        {podeGerir && (
+          <div className="flex items-center gap-1 shrink-0">
+            <IconButton
+              aria-label="Editar"
+              variant="ghost"
+              size="sm"
+              icon={<Edit3 />}
+              onClick={onEdit}
+            />
+            <IconButton
+              aria-label="Excluir"
+              variant="ghost"
+              size="sm"
+              icon={<Trash2 className="text-danger" />}
+              onClick={onDelete}
+            />
+          </div>
+        )}
       </header>
 
       <div className="flex items-end justify-between gap-2">

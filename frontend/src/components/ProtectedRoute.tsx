@@ -35,11 +35,19 @@ interface ProtectedRouteProps {
   children: ReactNode;
   /** Permission específica que o user deve ter (via PERMISSION_MATRIX). */
   requirePermission?: Permission;
+  /**
+   * Papéis BLOQUEADOS nesta rota, independente da matriz.
+   *
+   * Existe pro caso em que o módulo é compartilhado mas a tela não é daquele
+   * papel — esconder só do menu não resolve, porque a URL continua alcançável.
+   */
+  bloquearPara?: string[];
 }
 
 export function ProtectedRoute({
   children,
   requirePermission,
+  bloquearPara,
 }: ProtectedRouteProps) {
   const role = useRole();
   const location = useLocation();
@@ -75,6 +83,11 @@ export function ProtectedRoute({
   // Não autenticado → login
   if (!role) {
     return <Navigate to="/login" state={{ from: location }} replace />;
+  }
+
+  // Papel explicitamente bloqueado nesta rota (ver `bloquearPara`).
+  if (bloquearPara?.includes(role)) {
+    return <Navigate to="/403" replace />;
   }
 
   // Check permission (matriz fixa de UI)

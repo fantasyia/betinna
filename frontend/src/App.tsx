@@ -520,7 +520,7 @@ const router = createBrowserRouter([
     path: '/calendario-marketing',
     element: (
       <ErrorBoundary>
-        <ProtectedRoute>
+        <ProtectedRoute bloquearPara={['REP']}>
           <PageSuspense>
             <CalendarioMarketingPage />
           </PageSuspense>

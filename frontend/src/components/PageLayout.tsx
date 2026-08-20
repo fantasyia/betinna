@@ -87,6 +87,11 @@ interface NavItem {
   /** Rotas filhas — usadas pra manter o item ativo quando o usuário está em
    * uma sub-aba (ex: /pedidos ativa 'Vendas', /comissoes também). */
   match?: string[];
+  /** Esconde de papéis específicos, INDEPENDENTE da matriz de permissões.
+   *  Pra quando o módulo é compartilhado mas a tela não é do trabalho daquele
+   *  papel (ex: Calendário de Marketing usa o módulo `quadros`, que o rep tem
+   *  pro quadro de tarefas dele — mas planejar campanha não é trabalho dele). */
+  ocultarPara?: string[];
 }
 
 interface NavSection {
@@ -145,6 +150,10 @@ const SECTIONS: NavSection[] = [
         label: 'Calendário Mkt',
         icon: CalendarRange,
         modulo: 'quadros',
+        // O módulo `quadros` existe pro rep por causa do quadro de tarefas
+        // dele; o calendário de marketing veio de carona. Planejamento de
+        // campanha não é trabalho de representante.
+        ocultarPara: ['REP'],
       },
       {
         to: '/agenda',
@@ -384,6 +393,7 @@ function Sidebar({
   const matriz = useSyncExternalStore(subscribePermissoes, getPermissoes, getPermissoes);
 
   function canSee(item: NavItem): boolean {
+    if (item.ocultarPara && role && item.ocultarPara.includes(role)) return false;
     if (item.permission && !perms[item.permission as keyof typeof perms]) return false;
     if (item.modulo && role !== 'ADMIN' && matriz) {
       return matriz.get(item.modulo)?.ver ?? false;
