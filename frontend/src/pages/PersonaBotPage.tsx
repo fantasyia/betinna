@@ -5,7 +5,7 @@ import { api, ApiError } from '@/lib/api';
 import { formatNumero } from '@/lib/masks';
 import { useApiQuery } from '@/hooks/useApiQuery';
 import { useToast } from '@/components/toast';
-import { usePermission } from '@/hooks/usePermission';
+import { usePermission, useRole } from '@/hooks/usePermission';
 import { PageLayout } from '@/components/PageLayout';
 import { AssistenteTabs } from '@/components/AssistenteTabs';
 import {
@@ -96,8 +96,21 @@ function motivoModeloTexto(motivo: string): string {
 export default function PersonaBotPage() {
   const toast = useToast();
   const canEdit = usePermission('mullerbot.config');
+  const role = useRole();
+  // REP edita o bot PESSOAL dele (o backend resolve o escopo pelo papel):
+  // mesmo formulario, mas o liga/desliga e o da persona DELE (nao o da empresa),
+  // o teto de custo some (o gasto e na chave OpenAI dele) e aparece o aviso da
+  // chave quando falta.
+  const isRep = role === 'REP';
 
   const { data, loading, refetch } = useApiQuery<Persona>('/mullerbot/persona');
+  // Chave OpenAI pessoal conectada? So importa pro REP (o bot dele exige).
+  const { data: minhasInteg } = useApiQuery<Array<{ servico: string; ativo: boolean }>>(
+    isRep ? '/usuario/integracoes' : null,
+  );
+  const temChaveOpenai = (minhasInteg ?? []).some((i) => i.servico === 'openai' && i.ativo);
+  const [botPessoalAtivo, setBotPessoalAtivo] = useState(false);
+  const [salvandoBotPessoal, setSalvandoBotPessoal] = useState(false);
 
   // Estado de edição — o prompt completo do bot + modelo da IA
   const [nomeBot, setNomeBot] = useState('');
@@ -114,7 +127,7 @@ export default function PersonaBotPage() {
   // Um único limite por período, aplicado a entrada e saída no backend.
   const [limDia, setLimDia] = useState(100000);
   const [limMes, setLimMes] = useState(2000000);
-  const custoQuery = useApiQuery<CustoStatus>('/mullerbot/custo');
+  const custoQuery = useApiQuery<CustoStatus>(isRep ? null : '/mullerbot/custo');
 
   // Comportamento da conversa do bot — quão "humano" ele responde.
   const [histMsgs, setHistMsgs] = useState(10); // mensagens de contexto passadas pra IA
@@ -132,6 +145,7 @@ export default function PersonaBotPage() {
 
   useEffect(() => {
     if (!data) return;
+    setBotPessoalAtivo(data.ativo === true);
     setNomeBot(data.nome ?? '');
     setPrompt(data.promptCustom ?? '');
     setModelo(data.modelo ?? '');
@@ -196,6 +210,21 @@ export default function PersonaBotPage() {
      
   }, []);
 
+  async function alternarBotPessoal(ativo: boolean) {
+    setSalvandoBotPessoal(true);
+    setBotPessoalAtivo(ativo); // otimista
+    try {
+      await api.patch('/mullerbot/persona', { ativo });
+      toast.success(ativo ? 'Bot pessoal ligado' : 'Bot pessoal desligado');
+      refetch();
+    } catch (err) {
+      setBotPessoalAtivo(!ativo); // reverte
+      toast.error(err instanceof ApiError ? err.message : 'Falha ao alterar o bot');
+    } finally {
+      setSalvandoBotPessoal(false);
+    }
+  }
+
   async function alternarBotWhatsapp(ativo: boolean) {
     const empresaId = empresaQuery.data?.id;
     if (!empresaId) return;
@@ -226,7 +255,9 @@ export default function PersonaBotPage() {
         // onde o prompt usar {{nome}}.
         nome: nomeBot.trim() || 'Assistente IA',
         tomVoz: 'PROFISSIONAL',
-        ativo: true,
+        // REP: preserva o liga/desliga atual do bot pessoal (o Switch e quem
+        // muda). Empresa: sempre true — o on/off dela e empresa.botWhatsappAtivo.
+        ativo: isRep ? botPessoalAtivo : true,
         promptCustom: prompt.trim() || null,
         modelo: modelo || null,
         // Teto de custo — orçamento ÚNICO por período (total de tokens).
@@ -304,29 +335,70 @@ export default function PersonaBotPage() {
       <div className="grid grid-cols-1 lg:grid-cols-[1fr_320px] gap-4">
         {/* Coluna principal */}
         <div className="flex flex-col gap-4">
-          {/* Liga/desliga + diagnóstico do bot no WhatsApp */}
-          <Card padding="md" className={botWhatsappAtivo ? 'border-success/40 bg-success/5' : ''}>
+          {/* Liga/desliga do bot: da EMPRESA (gestão) ou o PESSOAL do rep. */}
+          <Card
+            padding="md"
+            className={
+              (isRep ? botPessoalAtivo : botWhatsappAtivo) ? 'border-success/40 bg-success/5' : ''
+            }
+          >
             <CardHeader>
               <CardTitle className="flex items-center gap-2">
                 <MessageCircle className="h-4 w-4 text-primary" />
-                Bot no WhatsApp da empresa
+                {isRep ? 'Bot no meu WhatsApp' : 'Bot no WhatsApp da empresa'}
               </CardTitle>
               <CardDescription>
-                Quando ligado, o {nomeExibido} responde automaticamente as mensagens que chegam no
-                WhatsApp central da empresa. Não afeta o WhatsApp pessoal dos representantes.
+                {isRep ? (
+                  <>
+                    Quando ligado, o {nomeExibido} responde automaticamente as mensagens que chegam
+                    no <strong>seu</strong> WhatsApp pessoal, usando a <strong>sua</strong> chave
+                    OpenAI (o custo é no seu crédito). Não afeta o número da empresa.
+                  </>
+                ) : (
+                  <>
+                    Quando ligado, o {nomeExibido} responde automaticamente as mensagens que chegam
+                    no WhatsApp central da empresa. Não afeta o WhatsApp pessoal dos
+                    representantes.
+                  </>
+                )}
               </CardDescription>
             </CardHeader>
+            {isRep && !temChaveOpenai && (
+              <div className="mb-3 px-3 py-2.5 rounded-md bg-warning/10 border border-warning/40 text-[13px] flex items-start gap-2">
+                <AlertCircle className="h-4 w-4 mt-0.5 shrink-0 text-warning" />
+                <span>
+                  O seu bot usa a <strong>sua chave OpenAI</strong> e ela ainda não está conectada
+                  — sem ela, o bot não responde mesmo ligado.{' '}
+                  <Link to="/minhas-integracoes" className="underline">
+                    Conectar chave em Minhas integrações →
+                  </Link>
+                </span>
+              </div>
+            )}
             <Field label="Resposta automática">
-              <Switch
-                checked={botWhatsappAtivo}
-                disabled={savingBot || !empresaQuery.data}
-                onChange={(e) => void alternarBotWhatsapp(e.target.checked)}
-                label={
-                  botWhatsappAtivo
-                    ? `Ligado — o ${nomeExibido} responde os clientes automaticamente`
-                    : 'Desligado — só atendimento humano no WhatsApp'
-                }
-              />
+              {isRep ? (
+                <Switch
+                  checked={botPessoalAtivo}
+                  disabled={salvandoBotPessoal}
+                  onChange={(e) => void alternarBotPessoal(e.target.checked)}
+                  label={
+                    botPessoalAtivo
+                      ? `Ligado — o ${nomeExibido} responde no seu WhatsApp`
+                      : 'Desligado — só você responde no seu WhatsApp'
+                  }
+                />
+              ) : (
+                <Switch
+                  checked={botWhatsappAtivo}
+                  disabled={savingBot || !empresaQuery.data}
+                  onChange={(e) => void alternarBotWhatsapp(e.target.checked)}
+                  label={
+                    botWhatsappAtivo
+                      ? `Ligado — o ${nomeExibido} responde os clientes automaticamente`
+                      : 'Desligado — só atendimento humano no WhatsApp'
+                  }
+                />
+              )}
             </Field>
 
             {/* Comportamento da conversa — deixa o bot mais humano.
@@ -563,7 +635,9 @@ export default function PersonaBotPage() {
 
         {/* Coluna lateral — teto de custo + dicas */}
         <aside className="flex flex-col gap-3">
-          {/* Teto de custo (Sprint 2.2) */}
+          {/* Teto de custo (Sprint 2.2) — só pro bot da EMPRESA: o gasto do bot
+              pessoal é na conta OpenAI do próprio rep, e ele controla lá. */}
+          {!isRep && (
           <Card padding="md">
             <CardHeader>
               <CardTitle className="text-sm flex items-center gap-2">
@@ -637,6 +711,7 @@ export default function PersonaBotPage() {
               Salve (botão no topo) pra aplicar os novos limites.
             </p>
           </Card>
+          )}
 
           <Card padding="md" variant="outline">
             <CardHeader>

@@ -114,6 +114,27 @@ export class MullerBotService {
   }
 
   /**
+   * Chave OpenAI PESSOAL de um usuário (UsuarioIntegracao servico='openai').
+   * É a chave do bot pessoal do rep — o crédito é dele, então NÃO há fallback
+   * pro env: sem chave, o bot pessoal não responde (o motor loga e cala).
+   */
+  private async resolverChaveDoUsuario(usuarioId: string): Promise<string | undefined> {
+    if (this.env.get('MULLERBOT_MOCK')) return 'mock';
+    try {
+      const conn = await this.userIntegracoes.obterCredenciaisInternas(usuarioId, 'openai');
+      const k = (conn.credenciais as { apiKey?: string }).apiKey;
+      return k?.trim() || undefined;
+    } catch {
+      return undefined;
+    }
+  }
+
+  /** O usuário tem chave OpenAI pessoal conectada? (gate barato do motor). */
+  async temChaveOpenAI(usuarioId: string): Promise<boolean> {
+    return Boolean(await this.resolverChaveDoUsuario(usuarioId));
+  }
+
+  /**
    * Credenciais LLM pro bot INTERNO da empresa (chat do rep + WhatsApp): usa a
    * chave da EMPRESA (resolverChaveEmpresa). A chave PESSOAL do usuário NÃO entra
    * aqui — ela é só pro bot pessoal do rep. Mock em MULLERBOT_MOCK.
@@ -267,10 +288,14 @@ export class MullerBotService {
   }
 
   /**
-   * Fase 2 — resposta automática do bot no WhatsApp da EMPRESA.
+   * Fase 2 — resposta automática do bot no WhatsApp da EMPRESA — ou, com
+   * `opts.proprietarioId`, do bot PESSOAL do rep no WhatsApp dele.
    *
    * Diferente de `perguntar`:
-   *  - Credencial = chave OpenAI da empresa (env OPENAI_API_KEY), não a do rep.
+   *  - Credencial: empresa → chave da empresa (env/integração). Bot pessoal →
+   *    a chave OpenAI DO REP, obrigatória e sem fallback pro env — é o crédito
+   *    dele; sem chave o bot pessoal simplesmente não responde.
+   *  - Persona/prompt/modelo: resolvidos pelo DONO (linha usuarioId='' vs id).
    *  - Sem cache (cada conversa é única).
    *
    * Catálogo no contexto: HOJE o bot do WhatsApp roda em modo "puro conversa"
@@ -295,6 +320,8 @@ export class MullerBotService {
       maxMensagens?: number;
       /** Imagem (data URL base64) pra visão da IA — quando o cliente manda foto. */
       imagemDataUrl?: string;
+      /** Dono do bot: id do rep = bot PESSOAL dele (persona, prompt e CHAVE dele). */
+      proprietarioId?: string;
     } = {},
   ): Promise<{
     texto: string;
@@ -305,18 +332,23 @@ export class MullerBotService {
     usouCatalogo: boolean;
     produtosIncluidos: number;
   }> {
-    const apiKey = await this.resolverChaveEmpresa(empresaId);
+    const dono = opts.proprietarioId ?? '';
+    const apiKey = dono
+      ? await this.resolverChaveDoUsuario(dono)
+      : await this.resolverChaveEmpresa(empresaId);
     if (!apiKey) {
       throw new IntegrationException(
-        'OpenAI não configurada — defina a chave da empresa em Integrações (ou OPENAI_API_KEY no ambiente). O bot do WhatsApp não pode responder.',
+        dono
+          ? 'O bot pessoal usa a SUA chave OpenAI e ela não está conectada — cadastre em Minhas integrações.'
+          : 'OpenAI não configurada — defina a chave da empresa em Integrações (ou OPENAI_API_KEY no ambiente). O bot do WhatsApp não pode responder.',
         ErrorCode.INTEGRATION_ERROR,
       );
     }
     // Modelo: pra IMAGEM usa o modelo de VISÃO (o de chat pode não enxergar);
-    // senão, o escolhido pela empresa (tela Persona Bot) ou o padrão do servidor.
+    // senão, o escolhido pelo dono do bot (tela Persona) ou o padrão do servidor.
     const modelo = opts.imagemDataUrl
       ? this.env.get('MULLERBOT_VISION_MODEL')
-      : ((await this.persona.obterModelo(empresaId)) ?? this.env.get('MULLERBOT_MODEL'));
+      : ((await this.persona.obterModelo(empresaId, dono)) ?? this.env.get('MULLERBOT_MODEL'));
     const maxOutputTokens = this.env.get('MULLERBOT_MAX_OUTPUT_TOKENS');
 
     // Liga o catálogo (RAG) quando pedido. Default = puro conversa.
@@ -336,7 +368,7 @@ export class MullerBotService {
       // da Betinna.ai", "ajudar o representante comercial") pra um cliente final
       // no WhatsApp. Agora usa o MESMO prompt do modo conversa e anexa só as
       // regras de catálogo.
-      systemPrompt = `${await this.persona.compilarSystemPromptConversa(empresaId)}
+      systemPrompt = `${await this.persona.compilarSystemPromptConversa(empresaId, undefined, dono)}
 
 ${REGRAS_CATALOGO}`;
       const maxInputTokens = this.env.get('MULLERBOT_MAX_INPUT_TOKENS');
@@ -380,7 +412,7 @@ ${REGRAS_CATALOGO}`;
       produtosIncluidos = montado.produtosIncluidos.length;
     } else {
       // ── Modo puro conversa (atual): prompt conversacional, sem catálogo ──
-      systemPrompt = await this.persona.compilarSystemPromptConversa(empresaId);
+      systemPrompt = await this.persona.compilarSystemPromptConversa(empresaId, undefined, dono);
     }
 
     // Quebra de resposta em vários balões (mais humano). Só no WhatsApp — a IA
@@ -623,9 +655,15 @@ ${REGRAS_CATALOGO}`;
      *  listar modelos (project key restrita → 401 só no GET /models). */
     motivo?: 'sem_chave' | 'mock' | 'erro_openai' | 'sem_modelos_chat' | 'sem_permissao_modelos';
   }> {
-    // Chave da EMPRESA (a que o bot usa) — NÃO a pessoal do usuário.
+    // Chave de QUEM vai usar o modelo: REP lista com a chave PESSOAL (o bot
+    // dele roda nela); gestão lista com a da empresa (a que o bot central usa).
     const empresaId = user.empresaIdAtiva;
-    const apiKey = empresaId ? await this.resolverChaveEmpresa(empresaId) : undefined;
+    const apiKey =
+      user.role === 'REP'
+        ? await this.resolverChaveDoUsuario(user.id)
+        : empresaId
+          ? await this.resolverChaveEmpresa(empresaId)
+          : undefined;
     if (!apiKey) {
       return { modelos: [...MODELOS_FALLBACK], fonte: 'fallback', motivo: 'sem_chave' };
     }

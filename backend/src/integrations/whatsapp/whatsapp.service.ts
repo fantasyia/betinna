@@ -107,8 +107,13 @@ export class WhatsAppService implements CanalAdapter, OnModuleInit {
     peerId: string,
     estado: 'composing' | 'paused',
     delayMs?: number,
+    proprietarioId?: string,
   ): Promise<void> {
-    const owner: Owner = { type: 'EMPRESA', id: empresaId };
+    // Com dono, o "digitando…" sai da sessão PESSOAL do rep (bot pessoal) — a
+    // da empresa nem conhece esse peer.
+    const owner: Owner = proprietarioId
+      ? { type: 'USUARIO', id: proprietarioId }
+      : { type: 'EMPRESA', id: empresaId };
     if (this.viaEvolution) {
       await this.evolution.enviarPresenca(
         EvolutionService.instanceName(owner),

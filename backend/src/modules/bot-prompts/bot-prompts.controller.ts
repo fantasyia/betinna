@@ -33,11 +33,14 @@ import { BotPromptsService } from './bot-prompts.service';
 /**
  * Biblioteca de prompts do bot (orquestração Fase A).
  * Config de IA da empresa → DIRECTOR (ADMIN como override de suporte, D48).
+ * REP também entra — mas o SERVICE o prende à biblioteca PESSOAL dele
+ * (escopoDe): lista, cria e edita só os prompts do bot pessoal, nunca os da
+ * empresa que os fluxos usam.
  */
 @ApiTags('bot-prompts')
 @ApiBearerAuth()
 @Controller('mullerbot/prompts')
-@Roles('ADMIN', 'DIRECTOR')
+@Roles('ADMIN', 'DIRECTOR', 'REP')
 export class BotPromptsController {
   constructor(
     private readonly prompts: BotPromptsService,

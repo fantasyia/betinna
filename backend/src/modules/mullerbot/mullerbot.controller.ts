@@ -43,7 +43,8 @@ export class MullerBotController {
   }
 
   @Get('bot/modelos')
-  @Roles('ADMIN', 'DIRECTOR')
+  // REP escolhe o modelo do bot PESSOAL — a lista sai da chave DELE.
+  @Roles('ADMIN', 'DIRECTOR', 'REP')
   @ApiOperation({
     summary:
       'Lista os modelos de chat da chave OpenAI da EMPRESA (a que o bot usa), não a pessoal.',

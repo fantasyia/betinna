@@ -85,8 +85,12 @@ export interface PersonaResult {
 }
 
 /**
- * Gerencia a persona do MullerBot por empresa.
- * Singleton via UNIQUE(empresaId).
+ * Gerencia a persona do bot por DONO: a linha `usuarioId=''` e o bot da
+ * EMPRESA (numero central); linhas com id de usuario sao o bot PESSOAL de cada
+ * rep. Singleton via UNIQUE(empresaId, usuarioId). O escopo NAO vem de
+ * parametro do request: `escopoDe(user)` deriva do papel — REP sempre opera a
+ * propria linha, gestao sempre a da empresa. Nao ha como um rep editar o bot
+ * central por aqui.
  *
  * `compilarSystemPrompt` é chamado pelo MullerBotService antes de cada
  * pergunta — substitui o SYSTEM_PROMPT hardcoded.
@@ -110,33 +114,43 @@ export class MullerBotPersonaService {
     private readonly botPrompts: BotPromptsService,
   ) {}
 
+  /** Dono da persona que ESTE usuario opera: REP = a dele; gestao = a da empresa. */
+  private escopoDe(user: AuthenticatedUser): string {
+    return user.role === 'REP' ? user.id : '';
+  }
+
   /** Busca a linha MullerBotPersona com cache de 30s (alimenta os reads do caminho quente). */
-  private async getPersonaRow(empresaId: string): Promise<MullerBotPersona | null> {
-    const hit = this.personaCache.get(empresaId);
+  private async getPersonaRow(empresaId: string, usuarioId = ''): Promise<MullerBotPersona | null> {
+    const chave = `${empresaId}:${usuarioId}`;
+    const hit = this.personaCache.get(chave);
     if (hit && hit.expiresAt > Date.now()) return hit.row;
-    const row = await this.prisma.mullerBotPersona.findUnique({ where: { empresaId } });
-    this.personaCache.set(empresaId, {
+    const row = await this.prisma.mullerBotPersona.findUnique({
+      where: { empresaId_usuarioId: { empresaId, usuarioId } },
+    });
+    this.personaCache.set(chave, {
       row,
       expiresAt: Date.now() + MullerBotPersonaService.PERSONA_TTL_MS,
     });
     return row;
   }
 
-  private invalidatePersona(empresaId: string): void {
-    this.personaCache.delete(empresaId);
+  private invalidatePersona(empresaId: string, usuarioId = ''): void {
+    this.personaCache.delete(`${empresaId}:${usuarioId}`);
   }
 
   async get(user: AuthenticatedUser): Promise<PersonaResult> {
     const empresaId = this.requireEmpresa(user);
-    const row = await this.getPersonaRow(empresaId);
+    const usuarioId = this.escopoDe(user);
+    const row = await this.getPersonaRow(empresaId, usuarioId);
     if (!row) {
-      return this.defaultPersona(empresaId);
+      return this.defaultPersona(empresaId, usuarioId);
     }
     return this.toResult(row);
   }
 
   async upsert(user: AuthenticatedUser, dto: UpsertPersonaDto): Promise<PersonaResult> {
     const empresaId = this.requireEmpresa(user);
+    const usuarioId = this.escopoDe(user);
     const data = {
       nome: dto.nome,
       tomVoz: dto.tomVoz,
@@ -167,12 +181,15 @@ export class MullerBotPersonaService {
       ...(dto.analisarImagem !== undefined ? { analisarImagem: dto.analisarImagem } : {}),
     };
     const row = await this.prisma.mullerBotPersona.upsert({
-      where: { empresaId },
-      create: { empresaId, ...data },
+      where: { empresaId_usuarioId: { empresaId, usuarioId } },
+      create: { empresaId, usuarioId, ...data },
       update: data,
     });
-    this.invalidatePersona(empresaId);
-    this.logger.log(`Persona atualizada para empresa ${empresaId}`);
+    this.invalidatePersona(empresaId, usuarioId);
+    this.logger.log(
+      `Persona atualizada para empresa ${empresaId}` +
+        (usuarioId ? ` (bot pessoal ${usuarioId})` : ''),
+    );
     return this.toResult(row);
   }
 
@@ -183,8 +200,9 @@ export class MullerBotPersonaService {
    */
   async patch(user: AuthenticatedUser, dto: PatchPersonaDto): Promise<PersonaResult> {
     const empresaId = this.requireEmpresa(user);
-    const atual = await this.getPersonaRow(empresaId);
-    const base = atual ?? (await this.defaultPersona(empresaId));
+    const usuarioId = this.escopoDe(user);
+    const atual = await this.getPersonaRow(empresaId, usuarioId);
+    const base = atual ?? (await this.defaultPersona(empresaId, usuarioId));
 
     // Só as chaves presentes no dto entram no patch (objeto plano — serve tanto pro
     // create quanto pro update sem os wrappers de FieldUpdateOperations do Prisma).
@@ -214,10 +232,11 @@ export class MullerBotPersonaService {
     if (dto.analisarImagem !== undefined) patch.analisarImagem = dto.analisarImagem;
 
     const row = await this.prisma.mullerBotPersona.upsert({
-      where: { empresaId },
+      where: { empresaId_usuarioId: { empresaId, usuarioId } },
       // Create: começa do estado atual (default quando não há linha) e aplica o patch.
       create: {
         empresaId,
+        usuarioId,
         nome: base.nome,
         tomVoz: base.tomVoz,
         instrucoes: base.instrucoes ?? null,
@@ -229,16 +248,19 @@ export class MullerBotPersonaService {
       } as Prisma.MullerBotPersonaUncheckedCreateInput,
       update: patch as Prisma.MullerBotPersonaUncheckedUpdateInput,
     });
-    this.invalidatePersona(empresaId);
+    this.invalidatePersona(empresaId, usuarioId);
     this.logger.log(`Persona (patch MCP) atualizada para empresa ${empresaId}`);
     return this.toResult(row);
   }
 
   async reset(user: AuthenticatedUser): Promise<PersonaResult> {
     const empresaId = this.requireEmpresa(user);
-    await this.prisma.mullerBotPersona.deleteMany({ where: { empresaId } });
-    this.invalidatePersona(empresaId);
-    return this.defaultPersona(empresaId);
+    const usuarioId = this.escopoDe(user);
+    // deleteMany COM o dono no filtro: o reset do rep nao pode apagar o bot da
+    // empresa (nem o de outro rep).
+    await this.prisma.mullerBotPersona.deleteMany({ where: { empresaId, usuarioId } });
+    this.invalidatePersona(empresaId, usuarioId);
+    return this.defaultPersona(empresaId, usuarioId);
   }
 
   /** Anexa a trava de escopo/segurança a qualquer prompt compilado do bot. */
@@ -285,7 +307,11 @@ export class MullerBotPersonaService {
    * Quando o catálogo for conectado (próxima fase), trocamos por uma versão
    * que injeta produtos.
    */
-  async compilarSystemPromptConversa(empresaId: string, promptId?: string): Promise<string> {
+  async compilarSystemPromptConversa(
+    empresaId: string,
+    promptId?: string,
+    usuarioId = '',
+  ): Promise<string> {
     // Orquestração (Fase A): prompt do fluxo (Fase B) → senão o prompt marcado
     // como padrão na biblioteca → senão a persona (retrocompat). Sem BotPrompt
     // criado, o comportamento é idêntico ao de antes.
@@ -303,10 +329,10 @@ export class MullerBotPersonaService {
           'caindo no prompt PADRÃO da biblioteca. O fluxo vai responder com outra persona.',
       );
     }
-    const padrao = await this.botPrompts.obterTextoPadrao(empresaId);
+    const padrao = await this.botPrompts.obterTextoPadrao(empresaId, usuarioId);
     if (padrao) return this.comGuardrail(padrao);
 
-    const row = await this.getPersonaRow(empresaId);
+    const row = await this.getPersonaRow(empresaId, usuarioId);
 
     // Forma principal: prompt completo escrito pelo usuário → usado tal e qual,
     // tanto no modo puro conversa quanto no RAG (o catálogo entra na msg do user).
@@ -388,14 +414,17 @@ Se o cliente pedir algo que você não pode resolver, avise com gentileza que um
     };
   }
 
-  /** Modelo da OpenAI escolhido pela empresa (null = usa o padrão do servidor). */
-  async obterModelo(empresaId: string): Promise<string | null> {
-    const row = await this.getPersonaRow(empresaId);
+  /** Modelo da OpenAI escolhido pelo dono do bot (null = usa o padrão do servidor). */
+  async obterModelo(empresaId: string, usuarioId = ''): Promise<string | null> {
+    const row = await this.getPersonaRow(empresaId, usuarioId);
     return row?.modelo?.trim() || null;
   }
 
   /** Config de comportamento do bot: histórico, delay, "digitando…" e quebra em balões. */
-  async obterConfigBot(empresaId: string): Promise<{
+  async obterConfigBot(
+    empresaId: string,
+    usuarioId = '',
+  ): Promise<{
     historicoMensagens: number;
     delayRespostaSegundos: number;
     mostrarDigitando: boolean;
@@ -404,7 +433,7 @@ Se o cliente pedir algo que você não pode resolver, avise com gentileza que um
     transcreverAudio: boolean;
     analisarImagem: boolean;
   }> {
-    const row = await this.getPersonaRow(empresaId);
+    const row = await this.getPersonaRow(empresaId, usuarioId);
     return {
       historicoMensagens: Math.max(1, row?.historicoMensagens ?? 10),
       delayRespostaSegundos: Math.max(0, row?.delayRespostaSegundos ?? 0),
@@ -417,11 +446,22 @@ Se o cliente pedir algo que você não pode resolver, avise com gentileza que um
     };
   }
 
-  private async defaultPersona(empresaId: string): Promise<PersonaResult> {
+  /**
+   * Estado do bot PESSOAL de um rep, pro gate do motor de WhatsApp:
+   * existe linha E esta ativa? (Sem linha = rep nunca configurou = bot off.)
+   */
+  async botPessoalAtivo(empresaId: string, usuarioId: string): Promise<boolean> {
+    const row = await this.getPersonaRow(empresaId, usuarioId);
+    return row?.ativo === true;
+  }
+
+  private async defaultPersona(empresaId: string, usuarioId = ''): Promise<PersonaResult> {
     return {
       id: '',
       empresaId,
-      nome: 'MullerBot',
+      // Bot pessoal nasce com o nome generico — "MullerBot" e o legado do
+      // primeiro tenant e nao faz sentido pro rep.
+      nome: usuarioId ? 'Assistente IA' : 'MullerBot',
       tomVoz: 'PROFISSIONAL',
       instrucoes: null,
       exemplos: [],

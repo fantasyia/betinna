@@ -22,8 +22,20 @@ export class BotPromptsService {
 
   constructor(private readonly prisma: PrismaService) {}
 
+  /**
+   * Dono da biblioteca que ESTE usuario opera: REP = a dele (prompts do bot
+   * pessoal); gestao = a da empresa (''). Derivado do papel, nunca de parametro
+   * do request — o rep nao alcanca a biblioteca da empresa por aqui.
+   */
+  private escopoDe(user: AuthenticatedUser): string {
+    return user.role === 'REP' ? user.id : '';
+  }
+
   async list(user: AuthenticatedUser, params: ListBotPromptsDto): Promise<BotPrompt[]> {
-    const where: Prisma.BotPromptWhereInput = { ...empresaFilter(user) };
+    const where: Prisma.BotPromptWhereInput = {
+      ...empresaFilter(user),
+      usuarioId: this.escopoDe(user),
+    };
     if (params.search) {
       where.nome = { contains: params.search, mode: 'insensitive' };
     }
@@ -48,7 +60,9 @@ export class BotPromptsService {
       usadoEm: Array<{ fluxoId: string; fluxoNome: string; noTitulo: string; fluxoStatus: string }>;
     }
   > {
-    const row = await this.prisma.botPrompt.findFirst({ where: { id, ...empresaFilter(user) } });
+    const row = await this.prisma.botPrompt.findFirst({
+      where: { id, ...empresaFilter(user), usuarioId: this.escopoDe(user) },
+    });
     if (!row) throw new NotFoundException('Prompt', id);
     const nos = await this.prisma.fluxoNo
       .findMany({
@@ -75,16 +89,18 @@ export class BotPromptsService {
 
   async create(user: AuthenticatedUser, dto: CreateBotPromptDto): Promise<BotPrompt> {
     const empresaId = getCallerEmpresaId(user);
+    const usuarioId = this.escopoDe(user);
     try {
       return await this.prisma.$transaction(async (tx) => {
-        // Só 1 padrão por empresa: ao criar um novo padrão, desmarca os demais.
+        // Só 1 padrão por BIBLIOTECA (empresa OU bot pessoal de cada rep): ao
+        // criar um novo padrão, desmarca os demais DO MESMO dono.
         if (dto.isPadrao) {
           await tx.botPrompt.updateMany({
-            where: { empresaId, isPadrao: true },
+            where: { empresaId, usuarioId, isPadrao: true },
             data: { isPadrao: false },
           });
         }
-        return tx.botPrompt.create({ data: { ...dto, empresaId } });
+        return tx.botPrompt.create({ data: { ...dto, empresaId, usuarioId } });
       });
     } catch (err) {
       return this.rethrowUnique(err, dto.nome);
@@ -129,7 +145,12 @@ export class BotPromptsService {
       return await this.prisma.$transaction(async (tx) => {
         if (dados.isPadrao) {
           await tx.botPrompt.updateMany({
-            where: { empresaId: existing.empresaId, isPadrao: true, id: { not: id } },
+            where: {
+              empresaId: existing.empresaId,
+              usuarioId: existing.usuarioId,
+              isPadrao: true,
+              id: { not: id },
+            },
             data: { isPadrao: false },
           });
         }
@@ -207,7 +228,12 @@ export class BotPromptsService {
     const existing = await this.findById(user, id);
     return this.prisma.$transaction(async (tx) => {
       await tx.botPrompt.updateMany({
-        where: { empresaId: existing.empresaId, isPadrao: true, id: { not: id } },
+        where: {
+          empresaId: existing.empresaId,
+          usuarioId: existing.usuarioId,
+          isPadrao: true,
+          id: { not: id },
+        },
         data: { isPadrao: false },
       });
       await tx.botPrompt.update({ where: { id }, data: { isPadrao: true } });
@@ -222,16 +248,20 @@ export class BotPromptsService {
 
   // ─── Helpers internos (usados pelo bot / Fase B) ──────────────────────────
 
-  /** Texto do prompt padrão ATIVO da empresa, ou null se não houver. */
-  async obterTextoPadrao(empresaId: string): Promise<string | null> {
+  /** Texto do prompt padrão ATIVO do dono ('' = biblioteca da empresa), ou null. */
+  async obterTextoPadrao(empresaId: string, usuarioId = ''): Promise<string | null> {
     const row = await this.prisma.botPrompt.findFirst({
-      where: { empresaId, isPadrao: true, ativo: true },
+      where: { empresaId, usuarioId, isPadrao: true, ativo: true },
       select: { texto: true },
     });
     return row?.texto?.trim() || null;
   }
 
-  /** Texto de um prompt específico da empresa (null se inexistente/inativo/de outra empresa). */
+  /**
+   * Texto de um prompt específico (null se inexistente/inativo/de outra empresa).
+   * Não filtra por dono de propósito: quem chama por ID (nó de fluxo) escolheu o
+   * prompt numa lista já escopada — e o id é opaco, não enumerável.
+   */
   async obterTextoPorId(empresaId: string, promptId: string): Promise<string | null> {
     const row = await this.prisma.botPrompt.findFirst({
       where: { id: promptId, empresaId, ativo: true },
@@ -242,7 +272,7 @@ export class BotPromptsService {
 
   private rethrowUnique(err: unknown, nome?: string): never {
     if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === 'P2002') {
-      throw new BusinessRuleException(`Já existe um prompt com o nome "${nome}" nesta empresa`);
+      throw new BusinessRuleException(`Já existe um prompt com o nome "${nome}" nesta biblioteca`);
     }
     throw err instanceof Error ? err : new Error(String(err));
   }

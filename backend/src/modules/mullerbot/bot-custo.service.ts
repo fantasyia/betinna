@@ -98,7 +98,9 @@ export class BotCustoService {
    * (caso o limite tenha sido atingido entre uma checagem e outra).
    */
   async verificarTeto(empresaId: string): Promise<{ bloqueado: boolean; motivo?: string }> {
-    const persona = await this.prisma.mullerBotPersona.findUnique({ where: { empresaId } });
+    const persona = await this.prisma.mullerBotPersona.findUnique({
+      where: { empresaId_usuarioId: { empresaId, usuarioId: '' } },
+    });
     // CAÇADA-BUG #31: antes retornava `bloqueado: false` cedo quando NÃO havia persona salva — mas o
     // statusCusto já exibe os limites default (100k/2M). Empresa com o bot ligado que nunca abriu a
     // tela Persona gastava tokens SEM teto nenhum. Aplica os mesmos defaults quando não há persona.
@@ -142,7 +144,9 @@ export class BotCustoService {
 
   /** Status pra UI (barras de progresso dia/mês). */
   async statusCusto(empresaId: string): Promise<StatusCusto> {
-    const persona = await this.prisma.mullerBotPersona.findUnique({ where: { empresaId } });
+    const persona = await this.prisma.mullerBotPersona.findUnique({
+      where: { empresaId_usuarioId: { empresaId, usuarioId: '' } },
+    });
     const uso = await this.usoAtual(empresaId);
     // Um orçamento por período (total in+out). limiteTokens*In guarda esse total.
     const limiteDia = persona?.limiteTokensDiaIn ?? LIMITE_TOKENS_DIA_DEFAULT;
@@ -159,7 +163,9 @@ export class BotCustoService {
   // ─── Limites: alerta 80% / pausa 100% ────────────────────────────────────
 
   private async avaliarLimites(empresaId: string): Promise<void> {
-    const persona = await this.prisma.mullerBotPersona.findUnique({ where: { empresaId } });
+    const persona = await this.prisma.mullerBotPersona.findUnique({
+      where: { empresaId_usuarioId: { empresaId, usuarioId: '' } },
+    });
     if (!persona) return;
     const uso = await this.usoAtual(empresaId);
 
@@ -174,7 +180,7 @@ export class BotCustoService {
       const jaPausado =
         persona.pausadoPorCustoAte && persona.pausadoPorCustoAte.getTime() > Date.now();
       await this.prisma.mullerBotPersona.update({
-        where: { empresaId },
+        where: { empresaId_usuarioId: { empresaId, usuarioId: '' } },
         data: { pausadoPorCustoAte: ate },
       });
       if (!jaPausado) {
@@ -196,7 +202,7 @@ export class BotCustoService {
         this.diaBrasilia(persona.ultimoAlertaCustoEm) === this.diaBrasilia();
       if (!jaAlertouHoje) {
         await this.prisma.mullerBotPersona.update({
-          where: { empresaId },
+          where: { empresaId_usuarioId: { empresaId, usuarioId: '' } },
           data: { ultimoAlertaCustoEm: new Date() },
         });
         await this.alertar(

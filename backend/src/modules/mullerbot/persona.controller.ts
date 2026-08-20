@@ -42,9 +42,11 @@ export class MullerBotPersonaController {
   }
 
   @Put()
-  @Roles('ADMIN', 'DIRECTOR')
+  // REP edita o bot PESSOAL dele — o service resolve o dono pelo papel
+  // (escopoDe), então o rep nunca alcança a persona da EMPRESA por aqui.
+  @Roles('ADMIN', 'DIRECTOR', 'REP')
   @Audit({ action: 'update', resource: 'mullerbot-persona' })
-  @ApiOperation({ summary: 'Atualizar persona (DIRECTOR-only)' })
+  @ApiOperation({ summary: 'Atualizar persona (gestão: da empresa; REP: a pessoal dele)' })
   async upsert(
     @CurrentUser() user: AuthenticatedUser,
     // Pipe SÓ no body — @UsePipes no método inteiro corrompia o @CurrentUser
@@ -55,7 +57,7 @@ export class MullerBotPersonaController {
   }
 
   @Patch()
-  @Roles('ADMIN', 'DIRECTOR')
+  @Roles('ADMIN', 'DIRECTOR', 'REP')
   @Audit({ action: 'patch', resource: 'mullerbot-persona' })
   @ApiOperation({
     summary:
@@ -83,9 +85,9 @@ export class MullerBotPersonaController {
   }
 
   @Post('reset')
-  @Roles('ADMIN', 'DIRECTOR')
+  @Roles('ADMIN', 'DIRECTOR', 'REP')
   @Audit({ action: 'reset', resource: 'mullerbot-persona' })
-  @ApiOperation({ summary: 'Resetar pra default (DIRECTOR-only)' })
+  @ApiOperation({ summary: 'Resetar pra default (cada papel reseta só a persona do seu escopo)' })
   async reset(@CurrentUser() user: AuthenticatedUser) {
     return this.svc.reset(user);
   }

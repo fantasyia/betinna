@@ -25,8 +25,8 @@ describe('mullerbot.config', () => {
   it('SAC NÃO tem acesso', () => {
     expect(hasPermission('SAC', 'mullerbot.config')).toBe(false);
   });
-  it('REP NÃO tem acesso', () => {
-    expect(hasPermission('REP', 'mullerbot.config')).toBe(false);
+  it('REP TEM acesso — configura o bot PESSOAL dele (o backend prende o escopo)', () => {
+    expect(hasPermission('REP', 'mullerbot.config')).toBe(true);
   });
 });
 

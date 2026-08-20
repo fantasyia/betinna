@@ -15,14 +15,20 @@ import { BotAuditoriaService } from './bot-auditoria.service';
 import { BotCustoService } from './bot-custo.service';
 
 /**
- * Fase 2 — Motor do bot Muller no WhatsApp da EMPRESA.
+ * Fase 2 — Motor do bot no WhatsApp: número da EMPRESA e (opt-in) o PESSOAL
+ * de cada rep.
  *
  * Registra-se como hook do InboxService (sem acoplamento circular) e, a cada
  * mensagem INBOUND nova, decide se responde automaticamente:
  *
- *   só WhatsApp + número da empresa (NUNCA o pessoal do rep)
- *   → bot global ligado? → conversa não pausada (handoff)? → não é spam?
- *   → monta histórico (últimas 10 msgs) + prompt da persona → chama OpenAI (15s)
+ *   só WhatsApp → dono da conversa decide QUAL bot:
+ *     · sem proprietarioId → bot da EMPRESA: liga/desliga global
+ *       (empresa.botWhatsappAtivo), chave OpenAI da empresa, teto de custo.
+ *     · com proprietarioId → bot PESSOAL do rep: só atua se a persona DELE
+ *       existe e está ativa E ele tem chave OpenAI própria (o crédito é dele —
+ *       por isso o teto de custo da EMPRESA não gateia nem conta este caminho).
+ *   → conversa não pausada (handoff)? → não é spam?
+ *   → monta histórico + prompt da persona DO DONO → chama OpenAI (15s)
  *   → sucesso: envia a resposta · falha/timeout: fallback + marca "precisa humano"
  */
 const FALLBACK_MSG = 'Recebi sua mensagem! Vou conferir e já te respondo. 👍';
@@ -290,7 +296,9 @@ export class MullerWhatsappService implements OnModuleInit {
     try {
       // 1. Filtros duros
       if (params.canal !== 'WHATSAPP') return;
-      if (params.proprietarioId) return; // WhatsApp pessoal do rep — bot NUNCA atua
+      // Dono da conversa: '' = número da empresa; id = WhatsApp pessoal do rep
+      // (bot PESSOAL — só responde se o rep ativou o dele, ver passo 2).
+      const dono = params.proprietarioId ?? '';
       if (params.direction === 'OUTBOUND') return; // anti-eco (mensagem do próprio número)
       if (resultado.duplicada) return;
       // Grupos (@g.us): o bot geral NUNCA atua em grupo de WhatsApp (auditoria 2026-06).
@@ -372,21 +380,33 @@ export class MullerWhatsappService implements OnModuleInit {
       }
 
       // 2. Bot ligado nesta conversa? O override por conversa (Conversation.botLigado)
-      //    tem precedência sobre o liga/desliga global da empresa:
-      //    null = segue o global · true = ligado aqui mesmo com global off ·
-      //    false = desligado aqui mesmo com global on.
-      const [empresa, conv] = await Promise.all([
-        this.prisma.empresa.findUnique({
-          where: { id: params.empresaId },
-          select: { botWhatsappAtivo: true },
-        }),
+      //    tem precedência sobre o liga/desliga do DONO:
+      //    · empresa → empresa.botWhatsappAtivo (como sempre);
+      //    · bot pessoal → persona ATIVA do rep. Sem persona = nunca configurou
+      //      = off. E sem a chave OpenAI DELE o bot cala (log, não fallback:
+      //      fallback mandaria mensagem — exatamente o que não pode sem chave).
+      const [globalLigado, conv] = await Promise.all([
+        dono
+          ? this.persona.botPessoalAtivo(params.empresaId, dono)
+          : this.prisma.empresa
+              .findUnique({
+                where: { id: params.empresaId },
+                select: { botWhatsappAtivo: true },
+              })
+              .then((e) => e?.botWhatsappAtivo ?? false),
         this.prisma.conversation.findUnique({
           where: { id: convId },
           select: { botPausadoAte: true, botLigado: true, precisaHumano: true },
         }),
       ]);
-      const ligado = conv?.botLigado ?? empresa?.botWhatsappAtivo ?? false;
+      const ligado = conv?.botLigado ?? globalLigado;
       if (!ligado) return;
+      if (dono && !(await this.muller.temChaveOpenAI(dono))) {
+        this.logger.warn(
+          `[bot] bot pessoal de ${dono} ativo mas SEM chave OpenAI — não responde conv=${convId}`,
+        );
+        return;
+      }
 
       // 3. Conversa pausada por handoff?
       if (conv?.botPausadoAte && conv.botPausadoAte.getTime() > Date.now()) return;
@@ -419,7 +439,11 @@ export class MullerWhatsappService implements OnModuleInit {
       // 4.4 Teto de custo — ANTES do multimodal. A transcrição do áudio (Whisper)
       // é uma chamada PAGA à OpenAI: rodar antes do gate deixava o bot gastando
       // exatamente quando o orçamento já tinha estourado.
-      const teto = await this.custo.verificarTeto(params.empresaId);
+      // Bot PESSOAL não passa aqui: a chave é do rep, o gasto é no crédito dele —
+      // gatear (ou consumir) o orçamento da empresa estaria contando dinheiro errado.
+      const teto = dono
+        ? { bloqueado: false as const }
+        : await this.custo.verificarTeto(params.empresaId);
       if (teto.bloqueado) {
         await this.inbox.marcarPrecisaHumano(convId).catch(() => undefined);
         void this.auditoria.registrar({
@@ -430,12 +454,14 @@ export class MullerWhatsappService implements OnModuleInit {
           resposta: null,
           status: 'SEM_RESPOSTA',
         });
-        this.logger.warn(`[bot] BLOQUEADO-CUSTO conv=${convId}: ${teto.motivo}`);
+        this.logger.warn(
+          `[bot] BLOQUEADO-CUSTO conv=${convId}: ${'motivo' in teto ? teto.motivo : ''}`,
+        );
         return;
       }
 
-      // 4.5 Config do bot (precisa ANTES — decide se transcreve áudio / vê imagem).
-      const cfgBot = await this.persona.obterConfigBot(params.empresaId);
+      // 4.5 Config do bot DO DONO (precisa ANTES — decide se transcreve áudio / vê imagem).
+      const cfgBot = await this.persona.obterConfigBot(params.empresaId, dono);
 
       // 4.6 Multimodal — o que o bot vai "ler" (FONTE ÚNICA com o nó "Conversar com
       //     IA"): áudio→transcrição, imagem→visão, conforme a config da Persona.
@@ -491,6 +517,8 @@ export class MullerWhatsappService implements OnModuleInit {
         produtosIncluidos?: number;
       } | null = null;
       const iaPromise = this.muller.responderComoEmpresa(params.empresaId, mensagemIA, historico, {
+        // Bot pessoal: persona, prompt e CHAVE do rep dono da conversa.
+        ...(dono ? { proprietarioId: dono } : {}),
         // Puro conversa por padrão; vira RAG quando MULLERBOT_WHATSAPP_CATALOGO=true.
         incluirCatalogo: this.env.get('MULLERBOT_WHATSAPP_CATALOGO'),
         // Quebra em balões (mais humano): a IA separa com "|||"; split no envio.
@@ -505,7 +533,9 @@ export class MullerWhatsappService implements OnModuleInit {
       // gasta). Por isso o registro saiu do caminho de sucesso pra cá (senão contaria 2x).
       void iaPromise
         .then((r) => {
-          if ((r.tokensIn ?? 0) > 0 || (r.tokensOut ?? 0) > 0) {
+          // Bot pessoal fica FORA do contador da empresa (crédito do rep) — o
+          // gasto dele aparece na auditoria (tokensIn/Out por resposta).
+          if (!dono && ((r.tokensIn ?? 0) > 0 || (r.tokensOut ?? 0) > 0)) {
             void this.custo.registrarUso(params.empresaId, r.tokensIn ?? 0, r.tokensOut ?? 0);
           }
         })
@@ -599,10 +629,12 @@ export class MullerWhatsappService implements OnModuleInit {
           },
           digitando: (ms) =>
             void this.whatsapp
-              .enviarPresenca(params.empresaId, tel, 'composing', ms)
+              .enviarPresenca(params.empresaId, tel, 'composing', ms, dono || undefined)
               .catch(() => undefined),
           pausado: () =>
-            this.whatsapp.enviarPresenca(params.empresaId, tel, 'paused').catch(() => undefined),
+            this.whatsapp
+              .enviarPresenca(params.empresaId, tel, 'paused', undefined, dono || undefined)
+              .catch(() => undefined),
         });
       } catch (errEnvio) {
         // A IA respondeu mas o ENVIO falhou (Evolution fora, JID inválido) —

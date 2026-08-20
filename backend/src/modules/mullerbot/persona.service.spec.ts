@@ -36,6 +36,51 @@ const makeBotPrompts = () => ({
   obterTextoPorId: vi.fn().mockResolvedValue(null),
 });
 
+describe('MullerBotPersonaService — escopo por dono (bot pessoal do rep)', () => {
+  let prisma: ReturnType<typeof makePrisma>;
+  let service: MullerBotPersonaService;
+  const REP = { ...DIRECTOR, id: 'rep-7', role: 'REP' as const };
+
+  beforeEach(() => {
+    prisma = makePrisma();
+    prisma.mullerBotPersona.deleteMany = vi.fn().mockResolvedValue({ count: 1 });
+    service = new MullerBotPersonaService(prisma as never, makeBotPrompts() as never);
+  });
+
+  it('REP lê e grava a persona DELE (usuarioId = id do rep), nunca a da empresa', async () => {
+    await service.get(REP);
+    expect(prisma.mullerBotPersona.findUnique).toHaveBeenCalledWith({
+      where: { empresaId_usuarioId: { empresaId: 'emp-1', usuarioId: 'rep-7' } },
+    });
+
+    await service.patch(REP, { nome: 'Meu bot' });
+    expect(prisma.mullerBotPersona.upsert).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { empresaId_usuarioId: { empresaId: 'emp-1', usuarioId: 'rep-7' } },
+        create: expect.objectContaining({ usuarioId: 'rep-7' }),
+      }),
+    );
+  });
+
+  it('gestão continua na linha da EMPRESA (usuarioId="")', async () => {
+    await service.get(DIRECTOR);
+    expect(prisma.mullerBotPersona.findUnique).toHaveBeenCalledWith({
+      where: { empresaId_usuarioId: { empresaId: 'emp-1', usuarioId: '' } },
+    });
+  });
+
+  it('reset do REP apaga SÓ a linha dele — não a da empresa', async () => {
+    await service.reset(REP);
+    expect(prisma.mullerBotPersona.deleteMany).toHaveBeenCalledWith({
+      where: { empresaId: 'emp-1', usuarioId: 'rep-7' },
+    });
+  });
+
+  it('botPessoalAtivo: sem linha = off (rep nunca configurou)', async () => {
+    expect(await service.botPessoalAtivo('emp-1', 'rep-7')).toBe(false);
+  });
+});
+
 describe('MullerBotPersonaService — resolução do prompt de conversa (orquestração)', () => {
   let prisma: ReturnType<typeof makePrisma>;
   let botPrompts: ReturnType<typeof makeBotPrompts>;

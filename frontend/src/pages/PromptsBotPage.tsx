@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import { api, ApiError } from '@/lib/api';
+import { useRole } from '@/hooks/usePermission';
 import { useApiQuery } from '@/hooks/useApiQuery';
 import { PageLayout } from '@/components/PageLayout';
 import { StateView } from '@/components/StateView';
@@ -34,6 +35,8 @@ const VARIAVEIS_REF: { escopo: string; exemplos: string[] }[] = [
 ];
 
 export default function PromptsBotPage() {
+  const role = useRole();
+  const podeVariaveis = role === 'ADMIN' || role === 'DIRECTOR';
   const toast = useToast();
   const { data, loading, error, refetch } = useApiQuery<BotPrompt[] | { data: BotPrompt[] }>(
     '/mullerbot/prompts',
@@ -199,7 +202,9 @@ export default function PromptsBotPage() {
         </div>
       </div>
 
-      <VariaveisCustomizadasSection />
+      {/* Variáveis da EMPRESA ({{custom.*}}) — só gestão: alimentam fluxos e o
+          bot central; o endpoint é ADMIN/DIRECTOR e pro rep viraria um 403 mudo. */}
+      {podeVariaveis && <VariaveisCustomizadasSection />}
 
       {(creating || editing) && (
         <PromptFormModal

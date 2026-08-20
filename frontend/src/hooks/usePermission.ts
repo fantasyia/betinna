@@ -32,7 +32,8 @@ import {
  * Convenção: `modulo.acao` — case sensitive.
  */
 export type Permission =
-  // MullerBot config — só DIRECTOR/ADMIN
+  // Config do bot — DIRECTOR/ADMIN (bot da empresa) e REP (o bot PESSOAL dele;
+  // o backend prende cada papel ao próprio escopo)
   | 'mullerbot.config'
   // MullerBot auditoria — ADMIN, DIRECTOR, GERENTE
   | 'mullerbot.auditoria'
@@ -179,6 +180,9 @@ const PERMISSION_MATRIX: Record<UserRole, ReadonlySet<Permission>> = {
     'inbox.zerar',
   ]),
   REP: new Set<Permission>([
+    // Config do BOT PESSOAL (persona + prompts do WhatsApp dele) — o backend
+    // resolve o escopo pelo papel, então isto nunca abre o bot da empresa.
+    'mullerbot.config',
     'clientes.view',
     'comissoes.own',
     'whatsapp.pessoal',

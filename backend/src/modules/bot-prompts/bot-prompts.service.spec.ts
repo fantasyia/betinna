@@ -59,7 +59,8 @@ describe('BotPromptsService', () => {
     await service.create(fakeUser(), { nome: 'P1', texto: 'oi', isPadrao: true });
     expect(prisma.botPrompt.updateMany).toHaveBeenCalledWith(
       expect.objectContaining({
-        where: { empresaId: 'emp-1', isPadrao: true },
+        // '' = biblioteca da EMPRESA; um rep criando padrão só desmarca os DELE.
+        where: { empresaId: 'emp-1', usuarioId: '', isPadrao: true },
         data: { isPadrao: false },
       }),
     );

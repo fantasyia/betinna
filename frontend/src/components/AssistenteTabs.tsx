@@ -10,12 +10,10 @@ import { SubTabsBar, type SubTab } from '@/components/SubTabsBar';
  *
  * Sub-abas:
  *  - Chat         → /mullerbot               (todos)
- *  - Configuração → /mullerbot/persona       (ADMIN/DIRECTOR)
+ *  - Configuração → /mullerbot/persona       (ADMIN/DIRECTOR: bot da empresa;
+ *                                             REP: "Meu bot" — o bot PESSOAL dele)
  *  - Conhecimento → /mullerbot/conhecimento  (ADMIN/DIRECTOR)
  *  - Histórico    → /mullerbot/auditoria     (ADMIN/DIRECTOR/GERENTE)
- *
- * REP vê só o Chat → SubTabsBar (que some com <2 abas) não renderiza a barra;
- * fica só o nome do bot no topo.
  *
  * ⚠️ É a ÚNICA barra de sub-abas das páginas do assistente. Elas mostravam
  * também o <AtendimentoTabs /> (Inbox / SAC interno / Marketplaces / WhatsApp),
@@ -25,7 +23,10 @@ import { SubTabsBar, type SubTab } from '@/components/SubTabsBar';
  */
 export function AssistenteTabs() {
   const role = useRole();
-  const canConfig = role === 'ADMIN' || role === 'DIRECTOR';
+  // REP também configura — o BOT PESSOAL dele (persona + prompts do WhatsApp
+  // dele, com a chave OpenAI dele). O backend prende cada papel ao seu escopo.
+  const canConfig = role === 'ADMIN' || role === 'DIRECTOR' || role === 'REP';
+  const canConhecimento = role === 'ADMIN' || role === 'DIRECTOR';
   // SAC não audita — regra do backend (@Roles ADMIN/DIRECTOR/GERENTE) e da
   // matriz de permissões. A aba aparecia pra ele e o clique caía em /403.
   const canHistorico = role === 'ADMIN' || role === 'DIRECTOR' || role === 'GERENTE';
@@ -39,10 +40,13 @@ export function AssistenteTabs() {
   if (canConfig) {
     tabs.push({
       to: '/mullerbot/persona',
-      label: 'Configuração',
+      label: role === 'REP' ? 'Meu bot' : 'Configuração',
       icon: <Sparkles size={14} />,
       testId: 'assist-config',
     });
+  }
+  // Conhecimento segue da EMPRESA (catálogo + FAQ) — rep não edita.
+  if (canConhecimento) {
     tabs.push({
       to: '/mullerbot/conhecimento',
       label: 'Conhecimento',

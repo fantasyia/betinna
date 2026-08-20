@@ -109,9 +109,15 @@ const makeMuller = (resp: unknown = { texto: 'Olá! Como posso ajudar?' }) => ({
     ) => Promise<unknown>
   >(async () => resp),
   transcreverAudio: vi.fn(async () => 'texto transcrito do áudio'),
+  // Chave OpenAI pessoal do rep (bot pessoal exige) — default: tem.
+  temChaveOpenAI: vi.fn(async () => true),
 });
 
 const env = { get: () => 24 };
+
+// Handle da persona construída no último build() — os testes do bot pessoal
+// precisam ligar `botPessoalAtivo` depois de construir o serviço.
+let buildPersona: { botPessoalAtivo: ReturnType<typeof vi.fn> } | null = null;
 
 function build(
   prisma: ReturnType<typeof makePrisma>,
@@ -127,6 +133,8 @@ function build(
     registrarUso: vi.fn().mockResolvedValue(undefined),
   };
   const persona = {
+    // Bot PESSOAL: default false = rep nunca configurou (testes ligam quando querem).
+    botPessoalAtivo: vi.fn().mockResolvedValue(false),
     obterConfigBot: vi.fn().mockResolvedValue({
       historicoMensagens: 10,
       delayRespostaSegundos: 0,
@@ -149,6 +157,8 @@ function build(
     setNxEx: vi.fn().mockResolvedValue(true),
     del: vi.fn().mockResolvedValue(1),
   };
+  // Exposto pros testes do bot pessoal ligarem a persona do rep.
+  buildPersona = persona;
   const svc = new MullerWhatsappService(
     prisma as never,
     inbox as never,
@@ -198,10 +208,45 @@ describe('MullerWhatsappService — regras do bot', () => {
     muller = makeMuller();
   });
 
-  it('NUNCA responde no WhatsApp pessoal do rep (proprietarioId preenchido)', async () => {
+  it('WhatsApp pessoal SEM bot configurado: cala (rep nunca ativou)', async () => {
     await aoReceber(build(prisma, inbox, muller), { ...baseParams, proprietarioId: 'user-1' });
     expect(inbox.responderComoBot).not.toHaveBeenCalled();
     expect(muller.responderComoEmpresa).not.toHaveBeenCalled();
+  });
+
+  it('bot PESSOAL ativo responde no WhatsApp do rep — com a persona e a chave DELE', async () => {
+    const svc = build(prisma, inbox, muller);
+    buildPersona!.botPessoalAtivo.mockResolvedValue(true);
+    await aoReceber(svc, { ...baseParams, proprietarioId: 'user-1' });
+    expect(muller.responderComoEmpresa).toHaveBeenCalled();
+    // O dono vai na chamada: é o que troca persona/prompt/CHAVE pro escopo do rep.
+    const opts = muller.responderComoEmpresa.mock.calls[0][3];
+    expect(opts).toMatchObject({ proprietarioId: 'user-1' });
+    expect(inbox.responderComoBot).toHaveBeenCalled();
+  });
+
+  it('bot pessoal ativo mas SEM chave OpenAI: cala (sem fallback — fallback enviaria msg)', async () => {
+    const svc = build(prisma, inbox, muller);
+    buildPersona!.botPessoalAtivo.mockResolvedValue(true);
+    muller.temChaveOpenAI.mockResolvedValue(false);
+    await aoReceber(svc, { ...baseParams, proprietarioId: 'user-1' });
+    expect(muller.responderComoEmpresa).not.toHaveBeenCalled();
+    expect(inbox.responderComoBot).not.toHaveBeenCalled();
+  });
+
+  it('bot pessoal NÃO passa (nem conta) no teto de custo da empresa — a chave é do rep', async () => {
+    const svc = build(prisma, inbox, muller);
+    buildPersona!.botPessoalAtivo.mockResolvedValue(true);
+    const custo = (
+      svc as unknown as {
+        custo: { verificarTeto: ReturnType<typeof vi.fn>; registrarUso: ReturnType<typeof vi.fn> };
+      }
+    ).custo;
+    await aoReceber(svc, { ...baseParams, proprietarioId: 'user-1' });
+    expect(custo.verificarTeto).not.toHaveBeenCalled();
+    // registrarUso é fire-and-forget via .then — dá um tick pro microtask rodar.
+    await new Promise((r) => setTimeout(r, 0));
+    expect(custo.registrarUso).not.toHaveBeenCalled();
   });
 
   it('NUNCA responde o próprio eco (mensagem OUTBOUND)', async () => {

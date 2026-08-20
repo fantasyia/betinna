@@ -294,7 +294,7 @@ model Empresa {
   sequencias            EmpresaSequence[]
   programaFidelidade    ProgramaFidelidade?
   recompensasFidelidade RecompensaFidelidade[]
-  mullerBotPersona      MullerBotPersona?
+  mullerBotPersonas     MullerBotPersona[]
   botPrompts            BotPrompt[]
   variaveisCustomizadas VariavelCustomizada[]
   webhooksEntrada       WebhookEntrada[]
@@ -2450,7 +2450,11 @@ model FormularioResposta {
 /// Singleton por empresa (1 persona ativa por tenant).
 model MullerBotPersona {
   id           String  @id @default(cuid())
-  empresaId    String  @unique
+  empresaId    String
+  /// Dono do bot: '' = bot da EMPRESA (número central); id de usuário = bot
+  /// PESSOAL do rep (responde no WhatsApp dele, com a chave OpenAI dele).
+  /// '' e não NULL: NULL em índice único no Postgres não deduplica.
+  usuarioId    String  @default("")
   nome         String  @default("MullerBot")
   /// Tom de voz: FORMAL, PROFISSIONAL, AMIGAVEL, DESCONTRAIDO, ENTUSIASMADO
   tomVoz       String  @default("PROFISSIONAL")
@@ -2503,6 +2507,8 @@ model MullerBotPersona {
   atualizadoEm DateTime @updatedAt
 
   empresa Empresa @relation(fields: [empresaId], references: [id], onDelete: Cascade)
+
+  @@unique([empresaId, usuarioId])
 }
 
 /// Orquestração Fase A — biblioteca de prompts por empresa (multi-prompt).
@@ -2511,6 +2517,10 @@ model MullerBotPersona {
 model BotPrompt {
   id            String  @id @default(cuid())
   empresaId     String
+  /// Dono do prompt: '' = biblioteca da EMPRESA (fluxos, bot central); id de
+  /// usuário = prompt PESSOAL do rep (bot do WhatsApp dele). Mesma convenção
+  /// da MullerBotPersona.
+  usuarioId     String  @default("")
   nome          String
   descricao     String? @db.Text
   /// System prompt completo — usado tal e qual pelo bot.
@@ -2538,8 +2548,8 @@ model BotPrompt {
   empresa Empresa           @relation(fields: [empresaId], references: [id], onDelete: Cascade)
   versoes BotPromptVersao[]
 
-  @@unique([empresaId, nome])
-  @@index([empresaId, isPadrao])
+  @@unique([empresaId, usuarioId, nome])
+  @@index([empresaId, usuarioId, isPadrao])
 }
 
 /// Histórico de versões de um BotPrompt (Fase C — rollback/A-B). Snapshot tirado
