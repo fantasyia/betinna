@@ -50,6 +50,24 @@ export const updateUserSchema = z.object({
 });
 export type UpdateUserDto = z.infer<typeof updateUserSchema>;
 
+/**
+ * O que o usuário pode mudar NO PRÓPRIO cadastro (PATCH /users/me).
+ *
+ * Schema separado do `updateUserSchema` de propósito: aqui é lista de permissão,
+ * não de bloqueio. `role`, `status`, `tetoDesconto`, `comissaoPadrao`,
+ * `empresaIds` e `gerenteId` NÃO existem neste schema — um campo novo lá não
+ * vaza pra cá por esquecimento, que é como escalada de privilégio costuma
+ * nascer. Quem muda esses continua sendo ADMIN/DIRECTOR pelas rotas próprias.
+ *
+ * `regiao` fica de fora: é atribuição comercial (quem atende onde), não dado
+ * pessoal — o rep não escolhe a própria área.
+ */
+export const updateMeSchema = z.object({
+  nome: z.string().min(2).max(150).optional(),
+  telefone: z.string().min(8).max(30).optional(),
+});
+export type UpdateMeDto = z.infer<typeof updateMeSchema>;
+
 export const listUsersSchema = z.object({
   page: z.coerce.number().int().positive().default(1),
   limit: z.coerce.number().int().positive().max(100).default(20),

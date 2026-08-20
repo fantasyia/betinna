@@ -259,6 +259,30 @@ describe('UsersService', () => {
   });
 
   // -------------------------------------------------------------------------
+  // updateMe
+  // -------------------------------------------------------------------------
+
+  describe('updateMe', () => {
+    it('salva nome e telefone do próprio usuário', async () => {
+      const dbUser = fakeDbUser({ id: 'rep-7', empresas: [{ empresaId: 'emp-1' }] });
+      prisma.usuario.findUnique.mockResolvedValue(dbUser);
+      prisma.usuario.update.mockResolvedValue(dbUser);
+
+      await service.updateMe(fakeUser({ id: 'rep-7', role: 'REP' as UserRole }), {
+        nome: '  João Silva  ',
+        telefone: ' 11988887777 ',
+      });
+
+      expect(prisma.usuario.update).toHaveBeenCalledWith(
+        expect.objectContaining({
+          // O alvo é sempre o próprio caller — não vem id de fora.
+          where: { id: 'rep-7' },
+          data: { nome: 'João Silva', telefone: '11988887777' },
+        }),
+      );
+    });
+  });
+
   // findById
   // -------------------------------------------------------------------------
 
@@ -291,6 +315,33 @@ describe('UsersService', () => {
       await expect(
         service.findById(fakeUser({ role: 'DIRECTOR', empresaIdAtiva: 'emp-1' }), 'user-1'),
       ).rejects.toBeInstanceOf(NotFoundException);
+    });
+
+    it('REP abre o PRÓPRIO cadastro — é a tela /perfil', async () => {
+      // Regressão: a regra vivia no @Roles(ADMIN,DIRECTOR,GERENTE) do
+      // controller, então o rep tomava 403 no próprio perfil e não conseguia
+      // nem ver, quanto mais trocar o telefone.
+      const dbUser = fakeDbUser({ id: 'rep-7', empresas: [{ empresaId: 'emp-1' }] });
+      prisma.usuario.findUnique.mockResolvedValue(dbUser);
+
+      const result = await service.findById(
+        fakeUser({ id: 'rep-7', role: 'REP' as UserRole, empresaIdAtiva: 'emp-1' }),
+        'rep-7',
+      );
+
+      expect(result).toEqual(dbUser);
+    });
+
+    it('REP NÃO abre o cadastro de outra pessoa', async () => {
+      const dbUser = fakeDbUser({ id: 'rep-8', empresas: [{ empresaId: 'emp-1' }] });
+      prisma.usuario.findUnique.mockResolvedValue(dbUser);
+
+      await expect(
+        service.findById(
+          fakeUser({ id: 'rep-7', role: 'REP' as UserRole, empresaIdAtiva: 'emp-1' }),
+          'rep-8',
+        ),
+      ).rejects.toBeInstanceOf(ForbiddenException);
     });
 
     it('usuário inexistente → NotFoundException', async () => {

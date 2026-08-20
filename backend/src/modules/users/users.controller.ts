@@ -22,10 +22,12 @@ import {
   type ListUsersDto,
   type UpdateComissaoPercentualDto,
   type UpdateRepDiscountLimitDto,
+  type UpdateMeDto,
   type UpdateUserDto,
   createUserSchema,
   listUsersSchema,
   updateComissaoPercentualSchema,
+  updateMeSchema,
   updateRepDiscountLimitSchema,
   updateUserSchema,
 } from './users.dto';
@@ -47,8 +49,30 @@ export class UsersController {
     return this.users.list(user, query);
   }
 
+  /**
+   * Edita o PRÓPRIO cadastro (nome/telefone).
+   *
+   * Sem esta rota o REP não conseguia mexer em nada de si: `PATCH /users/:id` é
+   * ADMIN-only, então trocar de telefone virava pedido pro admin. Só aceita os
+   * campos do `updateMeSchema` — papel, teto e comissão seguem fora do alcance.
+   *
+   * ⚠️ Declarada ANTES de `@Patch(':id')`: o Nest casa na ordem, e 'me' seria
+   * capturado como :id.
+   */
+  @Patch('me')
+  @Audit({ action: 'update_self', resource: 'usuario' })
+  @ApiOperation({ summary: 'Edita o próprio cadastro (nome/telefone). Qualquer papel.' })
+  updateMe(
+    @CurrentUser() caller: AuthenticatedUser,
+    @Body(new ZodValidationPipe(updateMeSchema)) dto: UpdateMeDto,
+  ) {
+    return this.users.updateMe(caller, dto);
+  }
+
+  // Sem @Roles: o próprio usuário sempre pode ler o cadastro DELE (a tela
+  // /perfil). Pra ler o de OUTRA pessoa, o service exige ADMIN/DIRECTOR/GERENTE
+  // — antes isso era o @Roles daqui, e o REP tomava 403 no próprio perfil.
   @Get(':id')
-  @Roles('ADMIN', 'DIRECTOR', 'GERENTE')
   findOne(@CurrentUser() user: AuthenticatedUser, @Param('id') id: string) {
     return this.users.findById(user, id);
   }

@@ -186,7 +186,7 @@ const STEPS_REP: Step[] = [
   {
     icon: '🤖',
     title: 'Assistente IA',
-    body: 'Em /mullerbot pergunte sobre produtos da empresa (ex: "que produto serve pra bolo?"). Precisa configurar sua chave OpenAI antes em Minhas integrações.',
+    body: 'Em /mullerbot pergunte sobre produtos da empresa (ex: "que produto serve pra bolo?"). Já funciona — a chave da OpenAI é a da empresa, você não precisa configurar nada.',
     route: '/mullerbot',
   },
   {

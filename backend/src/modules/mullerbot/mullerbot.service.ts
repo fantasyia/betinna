@@ -682,47 +682,6 @@ ${REGRAS_CATALOGO}`;
 
   // ─── Credenciais (OpenAI only) ────────────────────────────────────────
 
-  /**
-   * Política de resolução de credenciais OpenAI:
-   *  - REP: OBRIGADO a ter chave própria em `UsuarioIntegracao(servico=openai)`.
-   *    Sem chave própria → erro com instrução pra conectar. Não há fallback
-   *    pro env (cada rep usa o próprio crédito OpenAI).
-   *  - ADMIN/DIRECTOR/GERENTE/SAC: usam chave própria se tiverem; senão,
-   *    fallback pro `OPENAI_API_KEY` do env (chave corporativa).
-   */
-  private async resolverCredenciais(user: AuthenticatedUser): Promise<LlmCredenciais> {
-    // Modo mock (E2E/dev): não exige chave real — a chamada à OpenAI é
-    // curto-circuitada em chamarOpenAI. Permite testar o bot até como REP.
-    if (this.env.get('MULLERBOT_MOCK')) {
-      return { apiKey: 'mock' };
-    }
-
-    // 1. tenta credencial do usuário
-    try {
-      const conn = await this.userIntegracoes.obterCredenciaisInternas(user.id, 'openai');
-      const c = conn.credenciais as { apiKey?: string; model?: string };
-      if (c.apiKey) return { apiKey: c.apiKey, model: c.model };
-    } catch {
-      // se REP não configurou, vai cair no throw abaixo. Outros roles podem usar env.
-    }
-
-    if (user.role === 'REP') {
-      throw new IntegrationException(
-        'Para usar o MullerBot você precisa conectar sua chave OpenAI pessoal. ' +
-          'Vá em Configurações → Integrações e cadastre uma chave do serviço "openai".',
-        ErrorCode.INTEGRATION_ERROR,
-      );
-    }
-
-    // 2. fallback env (apenas pra equipe interna)
-    const envKey = this.env.get('OPENAI_API_KEY');
-    if (envKey) return { apiKey: envKey };
-    throw new IntegrationException(
-      'OpenAI não configurado. Conecte sua chave em /usuario/integracoes (servico=openai) ou defina OPENAI_API_KEY no ambiente.',
-      ErrorCode.INTEGRATION_ERROR,
-    );
-  }
-
   // ─── Montagem do prompt (com orçamento de tokens) ─────────────────────
 
   /**

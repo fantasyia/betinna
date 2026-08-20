@@ -653,9 +653,10 @@ function EditUserModal({
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  // Só ADMIN pode salvar — usuário comum tem que pedir pra ADMIN
-  // (endpoint PATCH /users/:id é restrito a ADMIN; sem `/users/me`)
-  const canSave = isAdmin;
+  // ADMIN salva qualquer cadastro; qualquer pessoa salva o PRÓPRIO (nome e
+  // telefone) via PATCH /users/me. Antes o rep abria o próprio perfil e não
+  // podia mudar nada — trocar de telefone virava pedido pro admin.
+  const canSave = isAdmin || isOwnProfile;
   // Banner informativo (linha sutil) em vez de error trancante.
   // Antes: useEffect setava setError() logo na montagem → modal abria com
   // mensagem "erro" e usuário achava que algo quebrou. Agora é um aviso
@@ -668,13 +669,19 @@ function EditUserModal({
     setError(null);
     const payload: Record<string, unknown> = { nome: form.nome.trim() };
     if (form.telefone.trim()) payload.telefone = form.telefone.trim();
-    if (form.regiao.trim()) payload.regiao = form.regiao.trim();
-    if (canChangeRole) {
-      payload.role = form.role;
-      payload.status = form.status;
+    // Só o caminho de ADMIN manda região/papel/status — /users/me nem aceita
+    // esses campos (região é atribuição comercial, não dado pessoal).
+    if (isAdmin) {
+      if (form.regiao.trim()) payload.regiao = form.regiao.trim();
+      if (canChangeRole) {
+        payload.role = form.role;
+        payload.status = form.status;
+      }
     }
     try {
-      await api.patch(`/users/${user.id}`, payload);
+      // Editando a si mesmo sem ser ADMIN, vai pela rota do próprio cadastro.
+      const rota = isAdmin ? `/users/${user.id}` : '/users/me';
+      await api.patch(rota, payload);
       onSaved();
     } catch (err) {
       setError(err instanceof ApiError ? err.message : 'Falha');
@@ -714,6 +721,12 @@ function EditUserModal({
             abaixo, mas precisa pedir pro admin alterar.
           </div>
         )}
+        {canSave && !isAdmin && (
+          <div className="px-3 py-2.5 mb-3.5 bg-[#fef3c7] border border-[#facc15] rounded-md text-[13px] text-[#78350f]">
+            Você pode alterar seu <strong>nome</strong> e <strong>telefone</strong>. Papel, região,
+            teto de desconto e comissão são definidos pela empresa.
+          </div>
+        )}
         <FormField label="Nome" required>
           <Input
             value={form.nome}
@@ -736,10 +749,13 @@ function EditUserModal({
             />
           </FormField>
           <FormField label="Região">
+            {/* Só ADMIN edita: região é atribuição comercial. Pros outros fica
+                visível e travado — digitar num campo que o /users/me descarta
+                em silêncio seria pior que não poder mexer. */}
             <Input
               value={form.regiao}
               onChange={(e) => setForm((s) => ({ ...s, regiao: e.target.value }))}
-              disabled={!canSave}
+              disabled={!isAdmin}
             />
           </FormField>
           {canChangeRole && (

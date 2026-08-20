@@ -41,7 +41,7 @@ const SERVICOS: Record<ServicoUsuario, ServicoMeta> = {
     color: '#10a37f',
     icon: 'AI',
     description:
-      'Chave pessoal para usar o assistente de IA. REPs precisam ter chave própria (rastreabilidade + custo).',
+      'Opcional: usa seu próprio crédito da OpenAI. O assistente de IA já responde com a chave da empresa, sem precisar desta.',
     connectMode: 'credentials',
     credentialFields: [
       {

@@ -60,9 +60,12 @@ export function PrimeirosPassosRep() {
     {
       key: 'openai',
       done: openaiOk,
-      opcional: false,
-      titulo: 'Adicione sua chave OpenAI',
-      desc: 'Pra usar o assistente de IA e tirar dúvidas sobre os produtos.',
+      // Opcional, e não obrigatório como estava: o assistente responde com a
+      // chave da EMPRESA e funciona sem isto. A chave pessoal só entra quando o
+      // rep quer gastar o crédito OpenAI dele nos recursos de IA.
+      opcional: true,
+      titulo: 'Adicione sua chave OpenAI (opcional)',
+      desc: 'O assistente já funciona sem ela. Serve pra usar seu próprio crédito da OpenAI.',
     },
     {
       key: 'calendar',

@@ -21,6 +21,7 @@ import { buildPaginated, type Paginated } from '@shared/types/pagination';
 import type {
   CreateUserDto,
   ListUsersDto,
+  UpdateMeDto,
   UpdateUserDto,
   UpdateRepDiscountLimitDto,
   UpdateComissaoPercentualDto,
@@ -188,7 +189,34 @@ export class UsersService {
     return buildPaginated(items.map(this.serialize), total, params.page, params.limit);
   }
 
+  /**
+   * Atualiza o PRÓPRIO cadastro. O alvo é sempre `caller.id` — não recebe id de
+   * fora, então não há como apontar pra outra pessoa. Os campos permitidos vêm
+   * do `updateMeSchema` (nome/telefone).
+   */
+  async updateMe(caller: AuthenticatedUser, dto: UpdateMeDto) {
+    const atual = await this.prisma.usuario.findUnique({ where: { id: caller.id } });
+    if (!atual) throw new NotFoundException('Usuário', caller.id);
+    const atualizado = await this.prisma.usuario.update({
+      where: { id: caller.id },
+      data: {
+        ...(dto.nome !== undefined ? { nome: dto.nome.trim() } : {}),
+        ...(dto.telefone !== undefined ? { telefone: dto.telefone.trim() } : {}),
+      },
+      include: {
+        empresas: { include: { empresa: { select: { id: true, nome: true } } } },
+      },
+    });
+    return this.serialize(atualizado);
+  }
+
   async findById(caller: AuthenticatedUser, id: string) {
+    // Ler o PRÓPRIO cadastro é livre — é a tela /perfil, que todo mundo tem.
+    // Pra ler o de outra pessoa vale a regra de sempre. (Este teste ficava no
+    // @Roles do controller, o que barrava o REP no próprio perfil.)
+    if (id !== caller.id && !['ADMIN', 'DIRECTOR', 'GERENTE'].includes(caller.role)) {
+      throw new ForbiddenException('Você só pode ver o seu próprio cadastro.', ErrorCode.FORBIDDEN);
+    }
     const target = await this.prisma.usuario.findUnique({
       where: { id },
       include: {
