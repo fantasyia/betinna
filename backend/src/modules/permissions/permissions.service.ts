@@ -277,11 +277,56 @@ export class PermissionsService implements OnModuleInit, OnModuleDestroy {
         });
       }
     }
-    if (faltantes.length === 0) return 0;
-    // skipDuplicates cobre corrida entre réplicas subindo ao mesmo tempo.
-    await this.prisma.permissao.createMany({ data: faltantes, skipDuplicates: true });
-    this.logger.log(`Permissões: semeadas ${faltantes.length} linha(s) que faltavam (create-only)`);
+    if (faltantes.length > 0) {
+      // skipDuplicates cobre corrida entre réplicas subindo ao mesmo tempo.
+      await this.prisma.permissao.createMany({ data: faltantes, skipDuplicates: true });
+      this.logger.log(
+        `Permissões: semeadas ${faltantes.length} linha(s) que faltavam (create-only)`,
+      );
+    }
+    await this.avisarDivergencias();
     return faltantes.length;
+  }
+
+  /**
+   * Aponta no log as linhas que DIVERGEM de DEFAULT_PERMISSIONS.
+   *
+   * Existe por um erro que custou caro: `fluxos` foi liberado pro REP no código
+   * e não aconteceu NADA em produção, três vezes seguidas. Motivo: a linha
+   * REP×fluxos já existia (semeada como podeVer=false antes de fluxo pessoal
+   * existir), e o seed é create-only — ele nunca corrige quem já está lá.
+   *
+   * Não corrige automaticamente de propósito: o toggle do admin na tela grava
+   * exatamente a mesma forma (podeVer/podeEditar com `acoes` vazio), então não
+   * há como distinguir "default velho" de "o diretor desligou isso". Reconciliar
+   * no boot desfaria a escolha dele em silêncio — pior que o problema.
+   *
+   * O que dá pra fazer sem risco é NÃO deixar a divergência invisível: quem
+   * mudar um default vê no boot que ele não pegou em quem já existe, e escreve
+   * a migration.
+   */
+  private async avisarDivergencias(): Promise<void> {
+    const linhas = await this.prisma.permissao.findMany();
+    const divergentes: string[] = [];
+    for (const row of linhas) {
+      const esperado = DEFAULT_PERMISSIONS[row.role]?.[row.modulo as ModuleName] ?? [];
+      const atual =
+        row.acoes && row.acoes.length > 0
+          ? row.acoes
+          : [...(row.podeVer ? ['view'] : []), ...(row.podeEditar ? ['edit'] : [])];
+      const mesmo = esperado.length === atual.length && esperado.every((a) => atual.includes(a));
+      if (!mesmo) {
+        divergentes.push(
+          `${row.role}:${row.modulo} (banco=[${atual.join(',')}] padrão=[${esperado.join(',')}])`,
+        );
+      }
+    }
+    if (divergentes.length === 0) return;
+    this.logger.warn(
+      `Permissões: ${divergentes.length} linha(s) divergem do padrão do código. ` +
+        `Ajuste feito na tela? ignore. Default alterado no código? ele NÃO se aplica a quem ` +
+        `já existe — precisa de migration. ${divergentes.join(' | ')}`,
+    );
   }
 
   /**
