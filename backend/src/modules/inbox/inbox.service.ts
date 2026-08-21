@@ -229,6 +229,43 @@ export class InboxService {
   }
 
   /**
+   * Instâncias de WhatsApp da empresa com estado de conexão (card 🔁 21/08).
+   * `numero` sai do ownerJid pareado ("5511...@s.whatsapp.net" → "5511...").
+   * É config de canal, não conteúdo de conversa — a regra de privacidade das
+   * MENSAGENS pessoais (baseWhere) não se aplica: saber SE o WhatsApp do rep
+   * está conectado é pergunta legítima da gestão.
+   */
+  async canaisConectados(user: AuthenticatedUser): Promise<
+    Array<{
+      tipo: 'empresa' | 'pessoal';
+      dono: string | null;
+      numero: string | null;
+      status: string;
+      ultimoEventoEm: Date | null;
+    }>
+  > {
+    const empresaId = this.requireEmpresa(user);
+    const instancias = await this.prisma.evolutionInstancia.findMany({
+      where: { empresaId },
+      orderBy: [{ usuarioId: 'asc' }],
+      select: {
+        usuarioId: true,
+        ownerJid: true,
+        connectionStatus: true,
+        ultimoEventoEm: true,
+        usuario: { select: { nome: true } },
+      },
+    });
+    return instancias.map((i) => ({
+      tipo: i.usuarioId ? ('pessoal' as const) : ('empresa' as const),
+      dono: i.usuario?.nome ?? null,
+      numero: i.ownerJid ? i.ownerJid.replace(/@.*$/, '') : null,
+      status: i.connectionStatus,
+      ultimoEventoEm: i.ultimoEventoEm,
+    }));
+  }
+
+  /**
    * Contatos WhatsApp (distintos por telefone) pra dropdowns — ex: destinatário
    * "contato salvo" da ação Enviar WhatsApp nos fluxos. Mais recentes primeiro.
    */

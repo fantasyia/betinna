@@ -1271,19 +1271,42 @@ server.registerTool(
   'fluxos_execucoes',
   {
     description:
-      'Histórico de execuções de um fluxo (mais recentes primeiro). Cada execução inclui ' +
-      'contatoId (leadId/clienteId que a disparou) + contatoNome — pra auditar "esse lead ' +
-      'passou por esse fluxo?".',
+      'Histórico de execuções de um fluxo (mais recentes primeiro), COM os passos (logs por nó — ' +
+      'é onde está o motivo quando um caso falha). Cada execução inclui contatoId ' +
+      '(leadId/clienteId que a disparou) + contatoNome. Default lista só PRODUÇÃO; ' +
+      'use origem: "teste" pra ler execução de teste, ou "todas".',
     inputSchema: {
       fluxoId: z.string(),
       limit: z.number().int().min(1).max(100).default(20),
+      origem: z
+        .enum(['producao', 'teste', 'todas'])
+        .optional()
+        .describe('Default producao (o painel separa teste de produção de propósito).'),
+      status: z
+        .enum(['PENDENTE', 'EM_EXECUCAO', 'AGUARDANDO', 'CONCLUIDO', 'FALHOU', 'CANCELADO'])
+        .optional(),
     },
     annotations: { readOnlyHint: true, destructiveHint: false },
   },
-  seguro(async ({ fluxoId, limit }: { fluxoId: string; limit: number }) => {
-    const resp = await api.get<unknown>(`/fluxos/${fluxoId}/execucoes?limit=${limit}`);
-    return ok(resp);
-  }),
+  seguro(
+    async ({
+      fluxoId,
+      limit,
+      origem,
+      status,
+    }: {
+      fluxoId: string;
+      limit: number;
+      origem?: string;
+      status?: string;
+    }) => {
+      const qs = new URLSearchParams({ limit: String(limit) });
+      if (origem) qs.set('origem', origem);
+      if (status) qs.set('status', status);
+      const resp = await api.get<unknown>(`/fluxos/${fluxoId}/execucoes?${qs.toString()}`);
+      return ok(resp);
+    },
+  ),
 );
 
 server.registerTool(
@@ -3098,6 +3121,46 @@ server.registerTool(
       previa: c.ultimaMsgPreview ?? null,
     }));
     return ok({ total: r?.pagination?.total ?? itens.length, conversas: itens });
+  }),
+);
+
+server.registerTool(
+  'inbox_conversa_zerar',
+  {
+    description:
+      'ZERA uma conversa: apaga as mensagens da thread e reseta a memória do bot (o contato ' +
+      'permanece). DESTRUTIVO e irreversível — apagar histórico de conversa REAL é estrago ' +
+      'sério; a razão de existir é o reset entre casos de TESTE (mesmo número de origem = ' +
+      'mesma conversa). Exige confirmo: true. Escopo "inbox".',
+    inputSchema: {
+      conversationId: z.string(),
+      confirmo: z
+        .literal(true)
+        .describe('Obrigatório: confirma que a conversa pode ter o histórico apagado.'),
+    },
+    annotations: { readOnlyHint: false, destructiveHint: true },
+  },
+  seguro(async ({ conversationId }: { conversationId: string; confirmo: true }) => {
+    const r = await api.delete<unknown>(
+      `/inbox/${encodeURIComponent(conversationId)}/mensagens`,
+    );
+    return ok(r);
+  }),
+);
+
+server.registerTool(
+  'canais_conectados',
+  {
+    description:
+      'Instâncias de WhatsApp da empresa: tipo (empresa/pessoal), dono, NÚMERO pareado e status ' +
+      'de conexão (open/connecting/close). Responde "qual é o número da empresa?" e "o WhatsApp ' +
+      'do rep está conectado?" sem abrir a tela. SOMENTE LEITURA. Escopo "inbox".',
+    inputSchema: {},
+    annotations: { readOnlyHint: true, destructiveHint: false },
+  },
+  seguro(async () => {
+    const r = await api.get<unknown>('/inbox/canais-conectados');
+    return ok(r);
   }),
 );
 

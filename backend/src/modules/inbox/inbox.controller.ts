@@ -180,6 +180,18 @@ export class InboxController {
     return { canais: this.svc.canaisDisponiveis() };
   }
 
+  // Card 🔁 (21/08): o teste autônomo precisa saber O NÚMERO da empresa (pra
+  // configurar o disparador) e se as instâncias estão conectadas — e nenhuma
+  // tool respondia isso sem abrir a tela. Gestão-only: expõe número pareado.
+  @Get('canais-conectados')
+  @Roles('ADMIN', 'DIRECTOR', 'GERENTE', 'SAC')
+  @ApiOperation({
+    summary: 'Instâncias de WhatsApp da empresa (tipo, dono, número pareado, status de conexão)',
+  })
+  canaisConectados(@CurrentUser() user: AuthenticatedUser) {
+    return this.svc.canaisConectados(user);
+  }
+
   // #25 fatia 3 — painel gerencial (REP não tem dashboard de SAC). Declarado
   // ANTES de `:id` pra rota literal não cair no param.
   @Get('metricas')
