@@ -3115,20 +3115,31 @@ server.registerTool(
     annotations: { readOnlyHint: true, destructiveHint: false },
   },
   seguro(async ({ conversationId, limit }: { conversationId: string; limit?: number }) => {
-    const r = await api.get<{
-      data?: Array<{
-        id: string;
-        direction: string;
-        conteudo?: string | null;
-        tipo?: string;
-        criadoEm: string;
-        autor?: { nome?: string } | null;
-      }>;
-    }>(
+    type Msg = {
+      id: string;
+      direction: string;
+      conteudo?: string | null;
+      tipo?: string;
+      criadoEm: string;
+      enviadaPorBot?: boolean;
+      autor?: { nome?: string } | null;
+    };
+    const r = await api.get<Msg[] | { data?: Msg[] }>(
       `/inbox/${encodeURIComponent(conversationId)}/mensagens?limit=${String(limit ?? 50)}`,
     );
-    const msgs = (r?.data ?? []).map((m) => ({
-      quem: m.direction === 'INBOUND' ? 'lead' : (m.autor?.nome ?? 'bot/equipe'),
+    // O api.get JÁ desembrulha o envelope ({success,data}) — e este endpoint
+    // devolve o ARRAY direto em data. O `r?.data` aqui era um SEGUNDO
+    // desembrulho: array não tem .data, então a tool devolvia sempre vazio
+    // numa conversa cheia de mensagem (4º bloqueador do card 🤖). O
+    // Array.isArray cobre os dois formatos, como as outras tools de lista.
+    const lista: Msg[] = Array.isArray(r) ? r : (r?.data ?? []);
+    const msgs = lista.map((m) => ({
+      quem:
+        m.direction === 'INBOUND'
+          ? 'lead'
+          : m.enviadaPorBot
+            ? 'bot'
+            : (m.autor?.nome ?? 'equipe'),
       quando: m.criadoEm,
       tipo: m.tipo,
       texto: m.conteudo ?? '',
