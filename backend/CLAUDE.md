@@ -246,7 +246,7 @@
 - [x] **Tokens de API `bkt_`** (`KanbanApiToken`): sha256 no banco (valor mostrado 1x), branch no
   `AuthGuard`, revogado = 401. **Escopo real (não é só `/kanban`)** — o guard deriva o módulo do
   1º segmento da rota e exige que ele esteja no `escopo` do token: `/kanban`, `/fluxos`, `/funis`,
-  `/contatos` (**somente leitura**), `/crm` (escrita: tags, mover etapa), `/users` (**somente GET**)
+  `/contatos` (**somente leitura**), `/crm` (escrita: tags, mover etapa c/ etapaDesde retroativo, atribuir rep, excluir), `/users` (**somente GET**)
   e `/mullerbot/{prompts,persona,bot/modelos}`. Qualquer outra rota → 403; `/kanban/api-tokens`
   NUNCA (token não cunha token). Fonte da verdade = docblock de `autenticarApiToken`
   (`src/modules/auth/guards/auth.guard.ts`) — se mexer lá, atualize aqui.

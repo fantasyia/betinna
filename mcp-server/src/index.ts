@@ -1456,6 +1456,10 @@ server.registerTool(
   {
     description:
       'Dispara uma execução de TESTE manual do fluxo (não é ativação — não liga o gatilho real). ' +
+      'Default = modo SECO (nada é enviado). `enviarDeVerdade: true` envia DE VERDADE — use só ' +
+      'com destinatário de teste. ⚠️ Execução de teste NUNCA acende outros fluxos (os eventos ' +
+      'que ela emite são suprimidos) — pra exercitar uma cadeia, provoque a entrada REAL ' +
+      '(ex: fluxo disparador mandando WhatsApp pro número da empresa). ' +
       'Use fluxos_execucoes pra ler o resultado.',
     inputSchema: {
       fluxoId: z.string(),
@@ -1463,13 +1467,40 @@ server.registerTool(
         .record(z.unknown())
         .optional()
         .describe('Contexto inicial da execução (ex: { leadId, tag })'),
+      enviarDeVerdade: z
+        .boolean()
+        .default(false)
+        .describe('true = envia WhatsApp/e-mail DE VERDADE. Default false (modo seco).'),
+      conversationId: z
+        .string()
+        .optional()
+        .describe('Conversa REAL contra a qual testar (chega no contexto da execução).'),
     },
     annotations: { readOnlyHint: false, destructiveHint: false },
   },
-  seguro(async ({ fluxoId, contexto }: { fluxoId: string; contexto?: Record<string, unknown> }) => {
-    const r = await api.post<unknown>('/fluxos/testar', { fluxoId, contexto: contexto ?? {} });
-    return ok(r);
-  }),
+  seguro(
+    async ({
+      fluxoId,
+      contexto,
+      enviarDeVerdade,
+      conversationId,
+    }: {
+      fluxoId: string;
+      contexto?: Record<string, unknown>;
+      enviarDeVerdade?: boolean;
+      conversationId?: string;
+    }) => {
+      // enviarDeVerdade/conversationId são TOP-LEVEL no endpoint (irmãos do
+      // contexto) — dentro do contexto eles seriam ignorados em silêncio.
+      const r = await api.post<unknown>('/fluxos/testar', {
+        fluxoId,
+        contexto: contexto ?? {},
+        enviarDeVerdade: enviarDeVerdade === true,
+        ...(conversationId ? { conversationId } : {}),
+      });
+      return ok(r);
+    },
+  ),
 );
 
 server.registerTool(
@@ -2026,15 +2057,52 @@ server.registerTool(
       etapaId: z.string().describe('ID da etapa DESTINO (use funis_ver → etapas)'),
       funilId: z.string().optional().describe('Opcional — valida que a etapa é desse funil'),
       motivo: z.string().max(300).optional(),
+      etapaDesde: z
+        .string()
+        .datetime()
+        .optional()
+        .describe(
+          'TESTE: data RETROATIVA de entrada na etapa (ISO). Faz o SLA vencer sem esperar ' +
+            'dias reais — ex: 10 dias atrás → o job pega na rodada seguinte. Recusa futuro.',
+        ),
     },
     annotations: { readOnlyHint: false, destructiveHint: false },
   },
   seguro(
-    async (args: { leadId: string; etapaId: string; funilId?: string; motivo?: string }) => {
+    async (args: {
+      leadId: string;
+      etapaId: string;
+      funilId?: string;
+      motivo?: string;
+      etapaDesde?: string;
+    }) => {
       const r = await api.post<unknown>('/crm/contato/etapa', args);
       return ok(r);
     },
   ),
+);
+
+server.registerTool(
+  'contatos_atribuir_rep',
+  {
+    description:
+      'Atribui (ou DESATRIBUI, com representanteId: null) o representante de um LEAD. ' +
+      'Valida que o rep existe e é da empresa — mesmas regras da UI. O desatribuir existe ' +
+      'pra alternar o mesmo lead entre "com dono" e "sem dono" nos testes de fluxo. ' +
+      'Exige escopo "crm".',
+    inputSchema: {
+      leadId: z.string().describe('ID do lead (use contatos_ver / leads_por_etapa)'),
+      representanteId: z
+        .string()
+        .nullable()
+        .describe('ID do usuário REP (usuarios_listar) — null desatribui'),
+    },
+    annotations: { readOnlyHint: false, destructiveHint: false },
+  },
+  seguro(async (args: { leadId: string; representanteId: string | null }) => {
+    const r = await api.post<unknown>('/crm/contato/representante', args);
+    return ok(r);
+  }),
 );
 
 server.registerTool(

@@ -7,7 +7,12 @@ import { NotFoundException } from '@shared/errors/app-exception';
 import { RepScopeService } from '@shared/scope/rep-scope.service';
 import { LeadsService } from '@modules/leads/leads.service';
 import type { AuthenticatedUser } from '@shared/types/authenticated-user';
-import type { ContatoEtapaDto, ContatoExcluirDto, ContatoTagsDto } from './crm.dto';
+import type {
+  ContatoEtapaDto,
+  ContatoExcluirDto,
+  ContatoRepresentanteDto,
+  ContatoTagsDto,
+} from './crm.dto';
 
 /**
  * Ações de CRM (ESCRITA) sobre um contato, disparadas pelo Claude Code via MCP
@@ -192,6 +197,16 @@ export class CrmService {
       motivo: dto.motivo,
     });
 
+    // Facilidade de TESTE (ver o comentário no DTO): grava a entrada na etapa
+    // com data RETROATIVA pra o SLA vencer sem esperar dias reais. Vem DEPOIS
+    // do moverEtapa (que carimba etapaDesde=agora) de propósito — é override.
+    if (dto.etapaDesde) {
+      await this.prisma.lead.updateMany({
+        where: { id: dto.leadId, empresaId },
+        data: { etapaDesde: dto.etapaDesde },
+      });
+    }
+
     return {
       ok: true,
       leadId: dto.leadId,
@@ -200,6 +215,23 @@ export class CrmService {
         ? { etapaId: antes.funilEtapa.id, etapaNome: antes.funilEtapa.nome }
         : null,
       para: { etapaId: etapa.id, etapaNome: etapa.nome },
+    };
+  }
+
+  /**
+   * Atribui (ou DESATRIBUI, com null) o representante de um lead. Reusa o
+   * `LeadsService.atribuirRep` — carteira, tenant e validação do rep (existe,
+   * é da empresa) já moram lá; aqui é só a porta de MCP (escopo `crm`).
+   */
+  async atribuirRepresentante(user: AuthenticatedUser, dto: ContatoRepresentanteDto) {
+    const lead = await this.leads.atribuirRep(user, dto.leadId, {
+      representanteId: dto.representanteId,
+    });
+    return {
+      ok: true,
+      leadId: dto.leadId,
+      representanteId: lead.representanteId ?? null,
+      representanteNome: lead.representante?.nome ?? null,
     };
   }
 

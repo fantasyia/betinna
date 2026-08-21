@@ -10,9 +10,11 @@ import { CrmService } from './crm.service';
 import {
   type ContatoEtapaDto,
   type ContatoExcluirDto,
+  type ContatoRepresentanteDto,
   type ContatoTagsDto,
   contatoEtapaSchema,
   contatoExcluirSchema,
+  contatoRepresentanteSchema,
   contatoTagsSchema,
 } from './crm.dto';
 
@@ -48,6 +50,20 @@ export class CrmController {
     @Body(new ZodValidationPipe(contatoEtapaSchema)) dto: ContatoEtapaDto,
   ) {
     return this.crm.moverEtapa(user, dto);
+  }
+
+  @Post('contato/representante')
+  @RequirePermissions({ module: 'kanban', action: 'edit' })
+  @ApiOperation({
+    summary:
+      'Atribui (ou desatribui, com null) o representante de um lead. Mesmas validações da UI.',
+  })
+  @Audit({ action: 'atribuir_rep', resource: 'lead', resourceIdFrom: 'body.leadId' })
+  atribuirRepresentante(
+    @CurrentUser() user: AuthenticatedUser,
+    @Body(new ZodValidationPipe(contatoRepresentanteSchema)) dto: ContatoRepresentanteDto,
+  ) {
+    return this.crm.atribuirRepresentante(user, dto);
   }
 
   /**
