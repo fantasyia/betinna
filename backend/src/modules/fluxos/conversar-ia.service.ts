@@ -38,11 +38,25 @@ const HISTORICO_DEFAULT = 10;
 /** Teto de re-disparos do ramo "timeout" por execução (anti-loop de follow-up). */
 const MAX_TIMEOUT_FOLLOWS = 5;
 
-/** Instrução pra IA abrir a conversa (primeira mensagem). */
+/** Instrução pra IA abrir a conversa (primeira mensagem) — fluxo PROATIVO. */
 const INSTRUCAO_OPENER =
   '\n\n[Tarefa agora] Inicie a conversa com o lead: escreva a PRIMEIRA mensagem de abordagem, ' +
   'curta e natural (estilo WhatsApp). Pode separar em 2-3 mensagens curtas com "|||". ' +
   'Responda apenas com a mensagem, sem aspas nem rótulos.';
+
+/**
+ * Instrução do caminho REATIVO — o lead escreveu e este nó é a RESPOSTA.
+ *
+ * Existe porque o `iniciar()` mandava abrir conversa mesmo quando o fluxo tinha
+ * sido disparado POR uma mensagem: o T1 respondia "me conta, o que você
+ * precisa?" a quem acabou de dizer o que precisava. Aqui não se abre nada — se
+ * responde ao que está no histórico.
+ */
+const INSTRUCAO_RESPOSTA =
+  '\n\n[Tarefa agora] O lead ACABOU DE ESCREVER (a mensagem dele é a última do histórico). ' +
+  'RESPONDA a ela: trate do que a pessoa disse, sem se reapresentar e sem perguntar o que ela ' +
+  'precisa se ela já disse. Curta e natural (estilo WhatsApp). Pode separar em 2-3 mensagens ' +
+  'curtas com "|||". Responda apenas com a mensagem, sem aspas nem rótulos.';
 
 /** Primeiro nome a partir do nome completo (vazio se não houver). */
 function primeiroNomeDe(nome?: string | null): string {
@@ -768,12 +782,20 @@ export class ConversarIaService {
     // errado do mesmo jeito.
     const usarNome = cfg.usarNomeDoLead !== false;
     const primeiro = usarNome ? primeiroNomeDe(lead.contatoNome) : null;
+    // REATIVO = o fluxo foi disparado POR uma mensagem do lead (T1 no
+    // MENSAGEM_CANAL, C1/C2/RB/RT assumindo depois da triagem). Este nó é
+    // RESPOSTA, não abordagem — e é o que a doc do parâmetro `reativo` sempre
+    // disse, mas só o pacing usava.
     const opener =
-      INSTRUCAO_OPENER +
+      (reativo ? INSTRUCAO_RESPOSTA : INSTRUCAO_OPENER) +
       (primeiro
         ? `\n[Dado] O primeiro nome do lead é "${primeiro}". Use-o na saudação.`
         : !usarNome
-          ? '\n[Regra] NÃO use o nome do contato em nenhuma mensagem (o nome do perfil não é confiável). Saúde de forma neutra, ex.: "Oi! Tudo bem?".'
+          ? // Sem exemplo de saudação no reativo: o `"Oi! Tudo bem?"` daqui era
+            // literalmente o que o cliente recebia depois de descrever o problema
+            // dele — o modelo seguia a instrução do MOTOR, não a do prompt.
+            '\n[Regra] NÃO use o nome do contato em nenhuma mensagem (o nome do perfil não é confiável).' +
+            (reativo ? '' : ' Saúde de forma neutra, ex.: "Oi! Tudo bem?".')
           : '');
     // Teto de custo do bot (por-empresa): se a empresa estourou o orçamento de tokens
     // do dia/mês, o nó NÃO abre conversa por IA — roteia pela saída "erro" (mesmo gate
@@ -789,13 +811,51 @@ export class ConversarIaService {
       );
       return { aguardando: false, roteado: true, tipoErro: tipo_erro };
     }
+    // No REATIVO o modelo tem que RECEBER a fala do lead e o que já foi dito na
+    // conversa. Antes ia `'(inicie)'` + histórico `[]` — o texto do cliente
+    // estava no contexto (ctx.texto) e simplesmente não era repassado, e o
+    // `_iaHistorico` nascia só com o turno do assistant. Efeito: os prompts do
+    // C1/C2/RB/RT mandam "não se reapresente" e não tinham como obedecer.
+    let mensagemDoTurno = '(inicie)';
+    let historicoInicial: HistoricoMsg[] = [];
+    if (reativo) {
+      const textoLeadCtx =
+        typeof (ctx as Record<string, unknown>)['texto'] === 'string'
+          ? ((ctx as Record<string, unknown>)['texto'] as string).trim()
+          : '';
+      const limiteHistIni =
+        (await this.persona.obterConfigBot(empresaId).catch(() => null))?.historicoMensagens ??
+        HISTORICO_DEFAULT;
+      const convIdCtx =
+        typeof (ctx as Record<string, unknown>)['conversationId'] === 'string'
+          ? ((ctx as Record<string, unknown>)['conversationId'] as string)
+          : null;
+      historicoInicial = convIdCtx
+        ? await this.montarHistorico(convIdCtx, limiteHistIni, empresaId).catch(() => [])
+        : [];
+      // A mensagem ATUAL do lead já está na conversa (foi ela que disparou o
+      // fluxo): tira do fim pra não ir DUAS vezes — no histórico e como turno.
+      // Mesmo cuidado do retomar(), inclusive o áudio com prefixo 🎤.
+      if (
+        historicoInicial.length > 0 &&
+        historicoInicial[historicoInicial.length - 1].role === 'user' &&
+        (!textoLeadCtx ||
+          semMic(historicoInicial[historicoInicial.length - 1].content) === semMic(textoLeadCtx))
+      ) {
+        const ultima = historicoInicial.pop();
+        // Sem texto no contexto, a última do histórico É a fala do lead.
+        if (!textoLeadCtx && ultima) mensagemDoTurno = ultima.content;
+      }
+      if (textoLeadCtx) mensagemDoTurno = textoLeadCtx;
+    }
+
     let abertura: { texto: string; tokensIn?: number; tokensOut?: number };
     try {
       abertura = await this.muller.gerarRespostaIa(
         empresaId,
         systemPrompt + opener,
-        '(inicie)',
-        [],
+        mensagemDoTurno,
+        historicoInicial,
       );
     } catch (err) {
       // Falha da IA/provedor: roteia pela saída "erro" em vez de derrubar a execução.
@@ -880,7 +940,15 @@ export class ConversarIaService {
         // o montarHistorico não tinha as mensagens do bot → IA repetia o opener.
         contexto: toJsonInput({
           ...ctx,
-          _iaHistorico: [{ role: 'assistant', content: aberturaTexto, at: Date.now() }],
+          // No REATIVO grava os DOIS turnos (a fala do lead + a resposta): a
+          // memória tem que refletir a conversa como ela aconteceu, senão o
+          // próximo turno lê um diálogo que começa pelo assistant do nada.
+          _iaHistorico: [
+            ...(reativo && mensagemDoTurno !== '(inicie)'
+              ? [{ role: 'user' as const, content: mensagemDoTurno, at: Date.now() }]
+              : []),
+            { role: 'assistant' as const, content: aberturaTexto, at: Date.now() },
+          ],
         }),
       },
     });

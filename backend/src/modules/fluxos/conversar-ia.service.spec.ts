@@ -292,6 +292,113 @@ describe('ConversarIaService', () => {
       );
     });
 
+    // ── T1.1: reativo tem que RESPONDER, não abrir conversa ──────────
+    // O caso que reprovou a bateria: o cliente escreveu "queimou o CLP..." e a
+    // Betinna respondeu "me conta, o que você precisa?". O modelo recebia
+    // '(inicie)' + histórico [] e a instrução de ABORDAR — a fala dele estava
+    // no contexto e não era repassada.
+
+    it('REATIVO: manda a FALA DO LEAD como turno do usuário, não "(inicie)"', async () => {
+      prisma.lead.findFirst.mockResolvedValue({ contatoTelefone: '11999990000' });
+      muller.gerarRespostaIa.mockResolvedValue({ texto: 'Sobre o CLP…', modelo: 'gpt' });
+
+      await svc.iniciar(
+        'exec-1',
+        no({ promptId: 'p1' }) as never,
+        { leadId: 'lead-1', texto: 'queimou o CLP da linha de produção', conversationId: 'conv-1' },
+        'emp-1',
+        true, // reativo
+      );
+
+      const [, systemPrompt, mensagem] = muller.gerarRespostaIa.mock.calls[0];
+      expect(mensagem).toBe('queimou o CLP da linha de produção');
+      // E a instrução é de RESPONDER, não de abrir conversa.
+      expect(systemPrompt).toContain('ACABOU DE ESCREVER');
+      expect(systemPrompt).not.toContain('PRIMEIRA mensagem de abordagem');
+    });
+
+    it('REATIVO + usarNomeDoLead=false: o motor NÃO injeta exemplo de saudação', async () => {
+      // O `"Oi! Tudo bem?"` estava escrito NO CÓDIGO — era literalmente o que o
+      // cliente recebia depois de descrever o problema.
+      prisma.lead.findFirst.mockResolvedValue({ contatoTelefone: '11999990000' });
+      muller.gerarRespostaIa.mockResolvedValue({ texto: 'ok', modelo: 'gpt' });
+
+      await svc.iniciar(
+        'exec-1',
+        no({ promptId: 'p1', usarNomeDoLead: false }) as never,
+        { leadId: 'lead-1', texto: 'oi, tenho um problema' },
+        'emp-1',
+        true,
+      );
+
+      const [, systemPrompt] = muller.gerarRespostaIa.mock.calls[0];
+      expect(systemPrompt).toContain('NÃO use o nome do contato');
+      expect(systemPrompt).not.toContain('Oi! Tudo bem?');
+    });
+
+    it('REATIVO: semeia o histórico da conversa (é o que sustenta o "não se reapresente")', async () => {
+      prisma.lead.findFirst.mockResolvedValue({ contatoTelefone: '11999990000' });
+      muller.gerarRespostaIa.mockResolvedValue({ texto: 'ok', modelo: 'gpt' });
+      // A query do montarHistorico é `orderBy: criadoEm desc` — o mock precisa
+      // vir na MESMA ordem (mais recente primeiro), senão o teste valida um
+      // cenário que o banco nunca produz.
+      prisma.message.findMany.mockResolvedValue([
+        { direction: 'INBOUND', conteudo: 'queimou o CLP', criadoEm: new Date() },
+        {
+          direction: 'OUTBOUND',
+          conteudo: 'Oi, aqui é da Somatec',
+          criadoEm: new Date(Date.now() - 60_000),
+        },
+      ]);
+
+      await svc.iniciar(
+        'exec-1',
+        no({ promptId: 'p1' }) as never,
+        { leadId: 'lead-1', texto: 'queimou o CLP', conversationId: 'conv-1' },
+        'emp-1',
+        true,
+      );
+
+      const [, , , historico] = muller.gerarRespostaIa.mock.calls[0];
+      expect(Array.isArray(historico)).toBe(true);
+      // O que o bot já disse chega ao modelo...
+      expect(JSON.stringify(historico)).toContain('Somatec');
+      // ...e a mensagem ATUAL não vai duplicada (ela é o turno, não o histórico).
+      expect(
+        (historico as Array<{ content: string }>).filter((h) => h.content === 'queimou o CLP'),
+      ).toHaveLength(0);
+    });
+
+    it('REATIVO: grava os DOIS turnos no _iaHistorico (user + assistant)', async () => {
+      prisma.lead.findFirst.mockResolvedValue({ contatoTelefone: '11999990000' });
+      muller.gerarRespostaIa.mockResolvedValue({ texto: 'Sobre o CLP…', modelo: 'gpt' });
+
+      await svc.iniciar(
+        'exec-1',
+        no({ promptId: 'p1' }) as never,
+        { leadId: 'lead-1', texto: 'queimou o CLP' },
+        'emp-1',
+        true,
+      );
+
+      const upd = prisma.fluxoExecucao.update.mock.calls.at(-1)?.[0];
+      const hist = upd?.data?.contexto?._iaHistorico as Array<{ role: string; content: string }>;
+      expect(hist.map((h) => h.role)).toEqual(['user', 'assistant']);
+      expect(hist[0].content).toBe('queimou o CLP');
+    });
+
+    it('PROATIVO segue abrindo conversa — sem regressão no R1', async () => {
+      prisma.lead.findFirst.mockResolvedValue({ contatoTelefone: '11999990000' });
+      muller.gerarRespostaIa.mockResolvedValue({ texto: 'Olá! Tudo bem?', modelo: 'gpt' });
+
+      await svc.iniciar('exec-1', no({ promptId: 'p1' }) as never, { leadId: 'lead-1' }, 'emp-1');
+
+      const [, systemPrompt, mensagem, historico] = muller.gerarRespostaIa.mock.calls[0];
+      expect(mensagem).toBe('(inicie)');
+      expect(historico).toEqual([]);
+      expect(systemPrompt).toContain('PRIMEIRA mensagem de abordagem');
+    });
+
     it('teto de custo do bot atingido → roteia "erro" e NÃO chama a IA', async () => {
       prisma.lead.findFirst.mockResolvedValue({ contatoTelefone: '11999990000' });
       custo.verificarTeto.mockResolvedValue({ bloqueado: true, motivo: 'Teto atingido' });
