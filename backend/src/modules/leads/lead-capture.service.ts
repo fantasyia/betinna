@@ -122,7 +122,6 @@ export class LeadCaptureService {
       // Tags também no reenvio: quem volta pelo formulário marcando OUTRO setor
       // precisa receber a etiqueta nova (o upsert cobre a repetida).
       await this.aplicarTagsDoSite(empresaId, duplicado, dto.tags);
-      await this.aplicarTagDeOrigem(empresaId, duplicado, origemCadastro);
       return { ok: true, leadId: duplicado, duplicado: true };
     }
 
@@ -147,47 +146,20 @@ export class LeadCaptureService {
       formularioOrigem: normalizarFormulario(dto.formulario) ?? null,
     });
     await this.aplicarTagsDoSite(empresaId, lead.id, dto.tags);
-    await this.aplicarTagDeOrigem(empresaId, lead.id, origemCadastro);
     this.logger.log(`Lead capturado do site: ${lead.id} (empresa ${empresaId})`);
     return { ok: true, leadId: lead.id, duplicado: false };
   }
 
   /**
-   * Carimba a ORIGEM como etiqueta (`origem:site`, `origem:meta_lead_ads`, …).
-   *
-   * O campo `origemCadastro` já existe e é por ele que a família S roteia — mas
-   * campo não é filtrável no quadro, e etiqueta é. Sem isto, lead de formulário
-   * cai na Triagem INDISTINGUÍVEL de quem escreveu no WhatsApp: se o fluxo de
-   * roteamento estiver desligado (ou a condição dele não casar), o lead fica
-   * parado lá e ninguém tem como enxergar que ele veio do site.
-   *
-   * Usa `aplicarTagPorNome` (que CRIA a etiqueta) e não a variante restrita das
-   * tags do site — aqui o valor não vem do visitante: é o `origemCadastro` já
-   * normalizado pelo vocabulário controlado. Não há nome livre pra poluir a base.
-   *
-   * Best-effort: perder o lead é pior que perder a etiqueta.
-   */
-  private async aplicarTagDeOrigem(
-    empresaId: string,
-    leadId: string,
-    origemCadastro: string,
-  ): Promise<void> {
-    const nome = `origem:${origemCadastro}`;
-    try {
-      await this.leads.aplicarTagPorNome(empresaId, leadId, nome, 'usuario');
-    } catch (err) {
-      this.logger.warn(
-        `Falha aplicando a etiqueta de origem "${nome}" no lead ${leadId} ` +
-          `(empresa ${empresaId}): ${err instanceof Error ? err.message : String(err)}`,
-      );
-    }
-  }
-
-  /**
    * Aplica as etiquetas que o site mandou (ex: `publico:comercio`,
    * `setor:cadeia-do-frio`). Cada tag dispara LEAD_RECEBEU_TAG — é ela que
-   * ROTEIA o fluxo de nutrição. `aplicarTagPorNome` cria a tag se não existir
-   * e é idempotente (upsert dos dois lados), então reenvio não duplica.
+   * ROTEIA o fluxo de nutrição. Usa `aplicarTagExistentePorNome`, que só aplica
+   * etiqueta JÁ existente na empresa (nunca cria) e é idempotente, então reenvio
+   * não duplica.
+   *
+   * Esta é a ÚNICA etiqueta que a captura aplica. A de ORIGEM foi removida em
+   * 21/08 — a origem vive no campo `origemCadastro`, que a tela agora mostra e
+   * filtra; ver o guarda em lead-capture.service.spec.ts.
    *
    * Best-effort POR TAG: falhar uma etiqueta não pode derrubar a captura (perder
    * o lead é pior que perder a etiqueta), mas a falha é LOGADA — senão o lead

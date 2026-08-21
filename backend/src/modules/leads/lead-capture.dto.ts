@@ -89,7 +89,8 @@ export const leadCapturePublicoSchema = z
     /**
      * Etiquetas a aplicar no lead (ex: `publico:comercio`, `setor:cadeia-do-frio`).
      * É a etiqueta que ROTEIA o fluxo de nutrição — cada uma dispara
-     * LEAD_RECEBEU_TAG. Tag inexistente é criada na hora (aplicarTagPorNome).
+     * LEAD_RECEBEU_TAG. Etiqueta que NÃO existe na empresa é ignorada (a chave de
+     * captura vive no JS público do site — visitante não cunha etiqueta).
      * Teto de 10 evita que um POST público encha a lista de etiquetas.
      */
     tags: z.array(z.string().trim().min(1).max(60)).max(10).optional(),
