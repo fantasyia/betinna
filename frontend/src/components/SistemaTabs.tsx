@@ -1,11 +1,12 @@
-import { UserCircle, Users, Settings, Shield, Plug, Link as LinkIcon } from 'lucide-react';
-import { useRole, usePermission } from '@/hooks/usePermission';
+import { UserCircle, Users, Settings, Shield, Plug, KeyRound, Link as LinkIcon } from 'lucide-react';
+import { useRole, usePermission, useModulo } from '@/hooks/usePermission';
 import { SubTabsBar, type SubTab } from '@/components/SubTabsBar';
 
 /**
  * SistemaTabs — sub-abas da aba principal "Sistema".
  * Inclui (filtradas por permissão/role): Meu perfil · Usuários ·
- * Configurações · Integrações empresa · Minhas integrações · Painel Admin.
+ * Configurações · Tokens de API · Integrações empresa · Minhas integrações ·
+ * Painel Admin.
  * (Integrações empresa/Minhas integrações vieram da extinta aba "Automação".)
  *
  * Permissões espelham as definidas em App.tsx ProtectedRoute:
@@ -30,6 +31,10 @@ export function SistemaTabs() {
   // DIRECTOR — que É o mandatário do tenant e tem a permissão — não via a aba e
   // só chegava em Configurações digitando a URL.
   const canSeeConfiguracoes = usePermission('configuracoes.empresa');
+  // Tokens de API (MCP): o backend gateia por `quadros` — herança de quando a
+  // tela morava dentro do Kanban. A aba lê a MESMA matriz viva que a rota, pra
+  // não oferecer uma página que responde 403.
+  const canSeeTokens = useModulo('quadros').ver;
 
   const tabs: SubTab[] = [
     { to: '/perfil', label: 'Meu perfil', icon: <UserCircle size={14} /> },
@@ -48,6 +53,15 @@ export function SistemaTabs() {
             to: '/configuracoes',
             label: 'Configurações',
             icon: <Settings size={14} />,
+          } as SubTab,
+        ]
+      : []),
+    ...(canSeeTokens
+      ? [
+          {
+            to: '/configuracoes/tokens',
+            label: 'Tokens de API',
+            icon: <KeyRound size={14} />,
           } as SubTab,
         ]
       : []),

@@ -82,6 +82,26 @@ describe('RelatoriosGraficos (M8)', () => {
     expect(screen.getByTestId('graficos-funil')).toBeDefined();
   });
 
+  it('contagem ÍMPAR: o último cartão ocupa a linha toda — nada de célula vazia no rodapé', () => {
+    // Gestão vê 5 relatórios numa grade de 2 colunas: o 5º ficava sozinho e
+    // sobrava um buraco do lado dele. A regra é de CSS (`:last-child` que também
+    // é `:nth-child(odd)`), então relatório novo não precisa de ajuste na mão.
+    render(<RelatoriosGraficos ehGestao />);
+
+    const grade = screen.getByTestId('dash-graficos').querySelector('.grid')!;
+    expect(grade.className).toContain('[&>*:last-child:nth-child(odd)]:col-span-2');
+    expect(grade.children.length % 2).toBe(1);
+  });
+
+  it('contagem PAR: ninguém estica — a grade já fecha sozinha', () => {
+    // REP vê 4 (sem "Saúde dos fluxos"): as duas fileiras fecham e a regra do
+    // ímpar simplesmente não casa.
+    render(<RelatoriosGraficos ehGestao={false} />);
+
+    const grade = screen.getByTestId('dash-graficos').querySelector('.grid')!;
+    expect(grade.children.length % 2).toBe(0);
+  });
+
   it('REP: módulo de gestão "Saúde dos fluxos" não renderiza', () => {
     render(<RelatoriosGraficos ehGestao={false} />);
     expect(screen.queryByText('Saúde dos fluxos (execuções por dia)')).toBeNull();

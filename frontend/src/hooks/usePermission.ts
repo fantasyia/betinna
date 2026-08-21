@@ -277,6 +277,11 @@ export const ROUTE_MODULO: ReadonlyArray<readonly [prefix: string, modulo: Modul
   ['/dashboard', 'dashboard'],
   ['/kanban', 'quadros'],
   ['/calendario-marketing', 'quadros'],
+  // Tokens de API do MCP: a tela mudou pra Sistema, mas o backend segue
+  // gateando esses endpoints por `quadros` (herança de quando ela vivia dentro
+  // do Kanban). O prefixo é a rota INTEIRA — o resto de /configuracoes fica
+  // fora do painel granular de propósito.
+  ['/configuracoes/tokens', 'quadros'],
   ['/leads', 'kanban'],
   ['/funis', 'kanban'],
   ['/segmentos', 'kanban'],

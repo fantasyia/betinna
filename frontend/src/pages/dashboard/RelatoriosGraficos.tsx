@@ -87,8 +87,14 @@ export function RelatoriosGraficos({ ehGestao }: { ehGestao: boolean }) {
       </div>
 
       {/* Sem items-start: cards da mesma fileira ficam com altura igual (o card
-          vazio estica e centraliza o "sem dados ainda") — nada de buraco. */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-2.5">
+          vazio estica e centraliza o "sem dados ainda") — nada de buraco.
+
+          O último cartão ocupa a LINHA INTEIRA quando a contagem é ímpar: são 5
+          relatórios pra gestão (4 pra quem não é), então sobrava uma célula
+          vazia do lado do último — o buraco no rodapé do bloco. Como regra de
+          CSS (`:last-child:nth-child(odd)`) e não contagem na mão, entrar ou
+          sair relatório daqui continua funcionando sozinho. */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-2.5 lg:[&>*:last-child:nth-child(odd)]:col-span-2">
         <ChartCard
           titulo="Leads ao longo do tempo"
           subtitulo={`${formatNumero(totalLeads)} no período · fora da triagem`}

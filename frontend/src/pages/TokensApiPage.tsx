@@ -1,7 +1,5 @@
 import { useState } from 'react';
-import { useNavigate } from 'react-router-dom';
 import {
-  ArrowLeft,
   Check,
   Copy,
   KeyRound,
@@ -13,6 +11,7 @@ import { api, apiErrorMessage } from '@/lib/api';
 import { useApiQuery } from '@/hooks/useApiQuery';
 import { useToast } from '@/components/toast';
 import { PageLayout } from '@/components/PageLayout';
+import { SistemaTabs } from '@/components/SistemaTabs';
 import { StateView } from '@/components/StateView';
 import { Badge, Button, Card, Checkbox, Dialog, Field, IconButton, Input } from '@/components/ui';
 import { useConfirm } from '@/hooks/useConfirm';
@@ -60,8 +59,7 @@ const rotuloEscopo = (key: string) =>
  * Tokens de API do Kanban (pro MCP server / Claude Code).
  * O VALOR do token aparece UMA única vez na criação — copie na hora.
  */
-export default function KanbanTokensPage() {
-  const navigate = useNavigate();
+export default function TokensApiPage() {
   const toast = useToast();
   const [confirm, confirmDialog] = useConfirm();
 
@@ -163,17 +161,10 @@ export default function KanbanTokensPage() {
 
   return (
     <PageLayout
-      title="Tokens de API — Quadros"
-      description="Conectam o Claude Code (MCP) aos seus quadros. O token só acessa rotas do Kanban."
+      title="Tokens de API (MCP)"
+      description="Conectam o Claude Code aos dados desta empresa. Cada token só alcança os módulos que você marcar."
       actions={
         <div className="flex gap-2">
-          <Button
-            variant="ghost"
-            leftIcon={<ArrowLeft className="h-4 w-4" />}
-            onClick={() => navigate('/kanban')}
-          >
-            Quadros
-          </Button>
           <Button
             leftIcon={<Plus className="h-4 w-4" />}
             onClick={() => setDialogAberto(true)}
@@ -184,6 +175,7 @@ export default function KanbanTokensPage() {
         </div>
       }
     >
+      <SistemaTabs />
       <StateView
         loading={loading}
         error={error}

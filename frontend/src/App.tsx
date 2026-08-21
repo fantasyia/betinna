@@ -21,7 +21,7 @@ const DashboardPage = lazy(() => import('@/pages/DashboardPage'));
 const KanbanBoardsPage = lazy(() => import('@/pages/kanban/KanbanBoardsPage'));
 const CalendarioMarketingPage = lazy(() => import('@/pages/CalendarioMarketingPage'));
 const KanbanBoardPage = lazy(() => import('@/pages/kanban/KanbanBoardPage'));
-const KanbanTokensPage = lazy(() => import('@/pages/kanban/KanbanTokensPage'));
+const TokensApiPage = lazy(() => import('@/pages/TokensApiPage'));
 const MeusItensPage = lazy(() => import('@/pages/kanban/MeusItensPage'));
 const WhatsAppPage = lazy(() => import('@/pages/WhatsAppPage'));
 const AdminPage = lazy(() => import('@/pages/AdminPage'));
@@ -529,16 +529,28 @@ const router = createBrowserRouter([
     ),
   },
   {
-    path: '/kanban/tokens',
+    // Tokens de API do MCP moraram em /kanban/tokens até 21/08. Saíram de lá
+    // porque o escopo deles nunca foi só o quadro (fluxos, funis, CRM, inbox…)
+    // e configuração de acesso pertence a Sistema, junto do resto.
+    path: '/configuracoes/tokens',
     element: (
       <ErrorBoundary>
+        {/* Sem `requirePermission`: o gate vem do mapa ROUTE_MODULO
+            (/configuracoes/tokens → `quadros`), que é como o backend gateia
+            estes endpoints. Senão a tela abre e a chamada volta 403. */}
         <ProtectedRoute>
           <PageSuspense>
-            <KanbanTokensPage />
+            <TokensApiPage />
           </PageSuspense>
         </ProtectedRoute>
       </ErrorBoundary>
     ),
+  },
+  {
+    // Endereço antigo: quem tem link salvo (ou o passo a passo do MCP colado
+    // num README) não pode cair num 404.
+    path: '/kanban/tokens',
+    element: <Navigate to="/configuracoes/tokens" replace />,
   },
   {
     path: '/kanban/meus-itens',

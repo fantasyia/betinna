@@ -5,7 +5,6 @@ import {
   ChevronDown,
   ChevronRight,
   KanbanSquare,
-  KeyRound,
   Plus,
   Users,
 } from 'lucide-react';
@@ -120,14 +119,6 @@ export default function KanbanBoardsPage() {
             data-testid="kanban-ir-meus-itens"
           >
             Meus itens
-          </Button>
-          <Button
-            variant="ghost"
-            leftIcon={<KeyRound className="h-4 w-4" />}
-            onClick={() => navigate('/kanban/tokens')}
-            data-testid="kanban-ir-tokens"
-          >
-            Tokens de API
           </Button>
           {repNoLimite ? (
             <Tooltip content="Representante pode ter apenas 1 quadro. Arquive o atual para criar outro.">
