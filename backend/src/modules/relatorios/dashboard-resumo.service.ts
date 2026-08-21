@@ -175,7 +175,11 @@ export class DashboardResumoService {
       }),
       this.prisma.fluxo.groupBy({
         by: ['status'],
-        where: { empresaId, status: { not: 'ARQUIVADO' } },
+        // `usuarioId: null` = só fluxo da EMPRESA. O dashboard é o painel da
+        // OPERAÇÃO — fluxo pessoal de rep não entra no "X/Y ativos" nem na
+        // sala de controle (pedido do Léo 21/08). Quem quiser ver os pessoais
+        // usa o espelho na tela de Fluxos (incluirPessoais), que é leitura.
+        where: { empresaId, status: { not: 'ARQUIVADO' }, usuarioId: null },
         _count: { _all: true },
       }),
       // `teste: false` — execução de teste não é resultado do fluxo. Sem isto, dois
@@ -246,7 +250,8 @@ export class DashboardResumoService {
       // M6 — sala de controle: todos os fluxos não-arquivados.
       ehGestao
         ? this.prisma.fluxo.findMany({
-            where: { empresaId, status: { not: 'ARQUIVADO' } },
+            // Idem: sala de controle = fluxos da EMPRESA.
+            where: { empresaId, status: { not: 'ARQUIVADO' }, usuarioId: null },
             orderBy: { nome: 'asc' },
             select: { id: true, nome: true, status: true, triggerTipo: true, triggerConfig: true },
           })

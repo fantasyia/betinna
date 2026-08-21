@@ -189,6 +189,11 @@ const PERMISSION_MATRIX: Record<UserRole, ReadonlySet<Permission>> = {
     'clientes.view',
     'comissoes.own',
     'whatsapp.pessoal',
+    // Fluxos PESSOAIS do rep (card 👤): o backend gate por DONO — a lista já
+    // vem só com os dele e fluxo da empresa dá 403. Sem isto a feature existia
+    // no motor e no MCP, e a tela não deixava chegar nela.
+    'fluxos.view',
+    'fluxos.edit',
   ]),
 };
 

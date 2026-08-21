@@ -192,6 +192,15 @@ export const listFluxosSchema = z.object({
    * Ignorado pra papéis não-gestão (cada um já vê os seus).
    */
   incluirPessoais: boolQuery.optional(),
+  /**
+   * SITUAÇÃO (saúde de execução, últimos 7 dias) — o que a lista não respondia:
+   *  - `com_erro`   → teve execução FALHOU
+   *  - `rodando`    → executou e NENHUMA falhou
+   *  - `sem_execucao` → não rodou nada (fluxo ativo aqui = suspeito)
+   */
+  situacao: z.enum(['com_erro', 'rodando', 'sem_execucao']).optional(),
+  /** Ordenação da lista. Default `nome` (a convenção E1 < E1-R < E2 sai natural). */
+  ordenar: z.enum(['nome', 'recentes', 'execucoes']).optional(),
 });
 
 // ─── Listar execuções ────────────────────────────────────────────────

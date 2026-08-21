@@ -1047,8 +1047,18 @@ describe('FluxosService — favoritos', () => {
     prisma.fluxo.findMany
       // 1ª chamada: as chaves (id/nome/criadoEm) pra ordenar
       .mockResolvedValueOnce([
-        { id: 'a', nome: 'A · Primeiro no alfabeto', criadoEm: new Date('2026-01-01') },
-        { id: 'z', nome: 'Z · Último no alfabeto', criadoEm: new Date('2026-01-01') },
+        {
+          id: 'a',
+          nome: 'A · Primeiro no alfabeto',
+          criadoEm: new Date('2026-01-01'),
+          atualizadoEm: new Date('2026-01-01'),
+        },
+        {
+          id: 'z',
+          nome: 'Z · Último no alfabeto',
+          criadoEm: new Date('2026-01-01'),
+          atualizadoEm: new Date('2026-01-02'),
+        },
       ])
       // 2ª chamada: as linhas da página
       .mockResolvedValueOnce([
@@ -1062,6 +1072,77 @@ describe('FluxosService — favoritos', () => {
     expect(r.data.map((f) => f.id)).toEqual(['z', 'a']); // ← favorito primeiro
     expect(r.data[0].favorito).toBe(true);
     expect(r.data[1].favorito).toBe(false);
+  });
+
+  // ── Filtros de operação (21/08): situação + ordenação ──────────────
+  const chave = (id: string, nome: string, atualizadoEm = '2026-01-01') => ({
+    id,
+    nome,
+    criadoEm: new Date('2026-01-01'),
+    atualizadoEm: new Date(atualizadoEm),
+  });
+
+  it('situacao=com_erro deixa só os fluxos que FALHARAM nos últimos 7d', async () => {
+    prisma.fluxo.findMany
+      .mockResolvedValueOnce([chave('ok', 'A · Saudável'), chave('ruim', 'B · Quebrado')])
+      .mockResolvedValueOnce([fluxo('ruim', 'B · Quebrado')]);
+    prisma.fluxoExecucao.groupBy = vi.fn().mockResolvedValue([
+      { fluxoId: 'ok', status: 'CONCLUIDO', _count: { _all: 5 }, _max: { criadoEm: new Date() } },
+      { fluxoId: 'ruim', status: 'FALHOU', _count: { _all: 2 }, _max: { criadoEm: new Date() } },
+    ]);
+
+    const r = await svc.list(fakeUser(), { page: 1, limit: 20, situacao: 'com_erro' } as never);
+
+    expect(r.data.map((f) => f.id)).toEqual(['ruim']);
+    expect(r.pagination.total).toBe(1);
+    // Execução de TESTE não conta como saúde do fluxo.
+    expect(prisma.fluxoExecucao.groupBy.mock.calls[0][0].where.teste).toBe(false);
+  });
+
+  it('situacao=sem_execucao pega quem NÃO rodou (fluxo ativo aqui é suspeito)', async () => {
+    prisma.fluxo.findMany
+      .mockResolvedValueOnce([chave('rodou', 'A · Rodou'), chave('parado', 'B · Parado')])
+      .mockResolvedValueOnce([fluxo('parado', 'B · Parado')]);
+    prisma.fluxoExecucao.groupBy = vi.fn().mockResolvedValue([
+      {
+        fluxoId: 'rodou',
+        status: 'CONCLUIDO',
+        _count: { _all: 3 },
+        _max: { criadoEm: new Date() },
+      },
+    ]);
+
+    const r = await svc.list(fakeUser(), { page: 1, limit: 20, situacao: 'sem_execucao' } as never);
+
+    expect(r.data.map((f) => f.id)).toEqual(['parado']);
+  });
+
+  it('ordenar=recentes usa atualizadoEm desc (o default por NOME fica intacto)', async () => {
+    prisma.fluxo.findMany
+      .mockResolvedValueOnce([
+        chave('velho', 'A · Alterado antes', '2026-01-01'),
+        chave('novo', 'Z · Alterado agora', '2026-06-01'),
+      ])
+      .mockResolvedValueOnce([
+        fluxo('novo', 'Z · Alterado agora'),
+        fluxo('velho', 'A · Alterado antes'),
+      ]);
+
+    const r = await svc.list(fakeUser(), { page: 1, limit: 20, ordenar: 'recentes' } as never);
+
+    expect(r.data.map((f) => f.id)).toEqual(['novo', 'velho']);
+  });
+
+  it('sem situacao/ordenar a lista NÃO paga a query de execuções', async () => {
+    // A agregação só roda quando é pedida — lista comum segue com 2 queries.
+    prisma.fluxo.findMany
+      .mockResolvedValueOnce([chave('a', 'A · Um')])
+      .mockResolvedValueOnce([fluxo('a', 'A · Um')]);
+    prisma.fluxoExecucao.groupBy = vi.fn();
+
+    await svc.list(fakeUser(), { page: 1, limit: 20 } as never);
+
+    expect(prisma.fluxoExecucao.groupBy).not.toHaveBeenCalled();
   });
 
   it('filtro "só favoritos" com NENHUM favorito devolve vazio (não a lista toda)', async () => {

@@ -136,7 +136,10 @@ describe('usuarios.view', () => {
 });
 
 // ---------------------------------------------------------------------------
-// fluxos.view — allowedRoles original: ['ADMIN', 'DIRECTOR', 'GERENTE']
+// fluxos.view — ADMIN/DIRECTOR/GERENTE + REP (card 👤 21/08: o rep tem fluxo
+// PESSOAL). A matriz do FRONT só decide o que a TELA mostra; quem é dono de
+// qual fluxo é decidido no backend (FluxosService.assertPodeGerirFluxo), e lá
+// o rep leva 403 em fluxo da empresa.
 // ---------------------------------------------------------------------------
 describe('fluxos.view', () => {
   it('ADMIN tem acesso', () => {
@@ -151,8 +154,8 @@ describe('fluxos.view', () => {
   it('SAC NÃO tem acesso', () => {
     expect(hasPermission('SAC', 'fluxos.view')).toBe(false);
   });
-  it('REP NÃO tem acesso', () => {
-    expect(hasPermission('REP', 'fluxos.view')).toBe(false);
+  it('REP TEM acesso — vê os fluxos PESSOAIS dele (backend filtra por dono)', () => {
+    expect(hasPermission('REP', 'fluxos.view')).toBe(true);
   });
 });
 
@@ -299,8 +302,9 @@ describe('fluxos.edit', () => {
   it('SAC NÃO tem acesso', () => {
     expect(hasPermission('SAC', 'fluxos.edit')).toBe(false);
   });
-  it('REP NÃO tem acesso', () => {
-    expect(hasPermission('REP', 'fluxos.edit')).toBe(false);
+  it('REP TEM acesso — edita os fluxos PESSOAIS dele, nunca os da empresa', () => {
+    // O gate por DONO mora no backend; aqui é só o que a tela oferece.
+    expect(hasPermission('REP', 'fluxos.edit')).toBe(true);
   });
 });
 

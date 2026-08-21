@@ -565,21 +565,64 @@ export class FluxosService {
     // colunas, barato mesmo com centenas de fluxos) e busca só a página.
     const chaves = await this.prisma.fluxo.findMany({
       where,
-      select: { id: true, nome: true, criadoEm: true },
+      select: { id: true, nome: true, criadoEm: true, atualizadoEm: true },
     });
-    chaves.sort((a, b) => {
+
+    // SITUAÇÃO + ordem por atividade precisam do resumo de execução (7d), que
+    // não está no Fluxo. Uma agregação só pro lote inteiro — e apenas quando
+    // algum dos dois foi pedido, pra a lista comum não pagar a query.
+    const precisaExec = Boolean(params.situacao) || params.ordenar === 'execucoes';
+    const execPorFluxo = new Map<string, { total: number; erros: number; ultima: number }>();
+    if (precisaExec && chaves.length > 0) {
+      const desde = new Date(Date.now() - 7 * 86_400_000);
+      const agg = await this.prisma.fluxoExecucao.groupBy({
+        by: ['fluxoId', 'status'],
+        // `teste: false`: execução de teste não é sinal de saúde do fluxo — foi
+        // essa mistura que já pintou fluxo de vermelho no painel antes.
+        where: { empresaId, teste: false, criadoEm: { gte: desde } },
+        _count: { _all: true },
+        _max: { criadoEm: true },
+      });
+      for (const g of agg) {
+        const atual = execPorFluxo.get(g.fluxoId) ?? { total: 0, erros: 0, ultima: 0 };
+        atual.total += g._count._all;
+        if (g.status === 'FALHOU') atual.erros += g._count._all;
+        const em = g._max.criadoEm?.getTime() ?? 0;
+        if (em > atual.ultima) atual.ultima = em;
+        execPorFluxo.set(g.fluxoId, atual);
+      }
+    }
+
+    const chavesFiltradas = params.situacao
+      ? chaves.filter((c) => {
+          const e = execPorFluxo.get(c.id);
+          if (params.situacao === 'sem_execucao') return !e || e.total === 0;
+          if (params.situacao === 'com_erro') return Boolean(e && e.erros > 0);
+          return Boolean(e && e.total > 0 && e.erros === 0); // 'rodando'
+        })
+      : chaves;
+
+    chavesFiltradas.sort((a, b) => {
       const fa = favoritos.has(a.id) ? 0 : 1;
       const fb = favoritos.has(b.id) ? 0 : 1;
       if (fa !== fb) return fa - fb;
-      // Ordem por NOME (convenção E1 < E1-R < E2 < E2-R sai natural — espaço
-      // antes do hífen). Estável: ativar/editar NÃO reordena (antes era
+      if (params.ordenar === 'recentes') {
+        return b.atualizadoEm.getTime() - a.atualizadoEm.getTime();
+      }
+      if (params.ordenar === 'execucoes') {
+        const ea = execPorFluxo.get(a.id)?.total ?? 0;
+        const eb = execPorFluxo.get(b.id)?.total ?? 0;
+        if (ea !== eb) return eb - ea;
+      }
+      // Default: ordem por NOME (convenção E1 < E1-R < E2 < E2-R sai natural —
+      // espaço antes do hífen). Estável: ativar/editar NÃO reordena (antes era
       // atualizadoEm desc, que pulava pro topo a cada ação); criadoEm desempata.
       const porNome = a.nome.localeCompare(b.nome, 'pt-BR');
       return porNome !== 0 ? porNome : a.criadoEm.getTime() - b.criadoEm.getTime();
     });
 
     const skip = (params.page - 1) * params.limit;
-    const idsDaPagina = chaves.slice(skip, skip + params.limit).map((f) => f.id);
+    const idsDaPagina = chavesFiltradas.slice(skip, skip + params.limit).map((f) => f.id);
     const rows = idsDaPagina.length
       ? await this.prisma.fluxo.findMany({
           where: { id: { in: idsDaPagina } },
@@ -593,7 +636,7 @@ export class FluxosService {
       .filter((f): f is (typeof rows)[number] => Boolean(f))
       .map((f) => ({ ...f, favorito: favoritos.has(f.id) }));
 
-    return buildPaginated(data, chaves.length, params.page, params.limit);
+    return buildPaginated(data, chavesFiltradas.length, params.page, params.limit);
   }
 
   /**

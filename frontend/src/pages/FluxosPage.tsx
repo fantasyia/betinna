@@ -163,6 +163,12 @@ export default function FluxosPage() {
   const [status, setStatus] = useState('');
   const [triggerTipo, setTriggerTipo] = useState('');
   const [soFavoritos, setSoFavoritos] = useState(false);
+  // Filtros de OPERAÇÃO (pedido do Léo 21/08 — a barra só tinha busca, status e
+  // gatilho). Situação = saúde de execução nos últimos 7d, que é a pergunta
+  // real ("o que quebrou?", "o que está parado?"); ordem por atividade responde
+  // "o que mexeu?" sem abrir fluxo por fluxo.
+  const [situacao, setSituacao] = useState('');
+  const [ordenar, setOrdenar] = useState('');
   // Espelho dos fluxos PESSOAIS (card 👤): fora da lista por default, gestão
   // liga quando quer supervisionar — mesmo padrão dos quadros de rep.
   const [incluirPessoais, setIncluirPessoais] = useState(false);
@@ -193,8 +199,10 @@ export default function FluxosPage() {
     if (triggerTipo) qs.set('triggerTipo', triggerTipo);
     if (soFavoritos) qs.set('favoritos', 'true');
     if (incluirPessoais) qs.set('incluirPessoais', 'true');
+    if (situacao) qs.set('situacao', situacao);
+    if (ordenar) qs.set('ordenar', ordenar);
     return `/fluxos?${qs.toString()}`;
-  }, [page, searchDebounced, status, triggerTipo, soFavoritos, incluirPessoais]);
+  }, [page, searchDebounced, status, triggerTipo, soFavoritos, incluirPessoais, situacao, ordenar]);
 
   const { data: pageResp, loading, error, refetch } = useApiQuery<PaginatedResponse<FluxoListItem>>(listPath);
 
@@ -392,6 +400,50 @@ export default function FluxosPage() {
               </option>
             ))}
           </Select>
+          <Select
+            data-testid="filter-situacao"
+            value={situacao}
+            onChange={(e) => {
+              setSituacao(e.target.value);
+              setPage(1);
+            }}
+          >
+            <option value="">Qualquer situação</option>
+            <option value="com_erro">⚠ Com erro (7d)</option>
+            <option value="rodando">✓ Rodando sem erro (7d)</option>
+            <option value="sem_execucao">○ Sem execução (7d)</option>
+          </Select>
+          <Select
+            data-testid="filter-ordenar"
+            value={ordenar}
+            onChange={(e) => {
+              setOrdenar(e.target.value);
+              setPage(1);
+            }}
+          >
+            <option value="">Ordem: nome</option>
+            <option value="recentes">Ordem: alterados por último</option>
+            <option value="execucoes">Ordem: mais executados (7d)</option>
+          </Select>
+          {(status || triggerTipo || situacao || ordenar || soFavoritos || incluirPessoais || search) && (
+            <Button
+              variant="ghost"
+              size="sm"
+              data-testid="fluxos-limpar-filtros"
+              onClick={() => {
+                setStatus('');
+                setTriggerTipo('');
+                setSituacao('');
+                setOrdenar('');
+                setSoFavoritos(false);
+                setIncluirPessoais(false);
+                setSearch('');
+                setPage(1);
+              }}
+            >
+              Limpar
+            </Button>
+          )}
           {/* Espelho: fluxos pessoais dos usuários (leitura — quem edita é o dono) */}
           <Tooltip
             content={

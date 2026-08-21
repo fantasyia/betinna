@@ -32,6 +32,7 @@ export function CrmTabs() {
   const role = useRole();
   const canClientes = usePermission('clientes.view');
   const canCampanhas = usePermission('campanhas.view');
+  const canFluxos = usePermission('fluxos.view');
 
   const isAdminTier =
     role === 'ADMIN' || role === 'DIRECTOR' || role === 'GERENTE';
@@ -67,8 +68,13 @@ export function CrmTabs() {
   // viva em /segmentos; basta remover este bloco de comentário e restaurar o
   // tabs.push quando a carteira existir. Não apagar o módulo: a diferença dele
   // pra tag é ser regra DINÂMICA (recalcula sozinha), o que tag não faz.
-  if (isAdminTier) {
+  // Fluxos: gestão vê os da EMPRESA; o REP vê os PESSOAIS dele (card 👤 — o
+  // backend filtra por dono e recusa fluxo da empresa com 403). Templates e
+  // Monitor seguem só pra gestão: são visão da operação inteira.
+  if (isAdminTier || canFluxos) {
     tabs.push({ to: '/fluxos', label: 'Fluxos', icon: <Zap size={14} /> });
+  }
+  if (isAdminTier) {
     tabs.push({ to: '/fluxos/templates', label: 'Templates', icon: <Sparkles size={14} /> });
     tabs.push({ to: '/fluxos/monitor', label: 'Monitor', icon: <Activity size={14} /> });
   }

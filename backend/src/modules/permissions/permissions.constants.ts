@@ -87,6 +87,12 @@ export const DEFAULT_PERMISSIONS: PermissionMatrix = {
   REP: {
     dashboard: ['view'],
     kanban: ['view', 'create', 'edit'],
+    // Fluxos PESSOAIS (card 21/08). As rotas de fluxo NAO usam
+    // @RequirePermissions -- o gate real e por DONO no FluxosService
+    // (assertPodeGerirFluxo): pessoal so o dono mexe, e fluxo da empresa da 403
+    // pro rep ja na visibilidade. Esta entrada e o que faz o MODULO aparecer
+    // pra ele (a rota /fluxos e a aba do CRM consultam a matriz).
+    fluxos: ['view', 'create', 'edit'],
     quadros: ['view', 'create', 'edit'], // máx 1 board (regra no service)
     clientes: ['view', 'edit'],
     pedidos: ['view', 'create', 'edit'],
