@@ -629,7 +629,7 @@ describe('FluxoExecutorService', () => {
       await service.executarPasso('exec-1', 'no-1', 'job-test');
 
       expect(prisma.fluxoExecucao.delete).not.toHaveBeenCalled();
-      expect(prisma.fluxoExecucao.update).toHaveBeenCalledWith(
+      expect(prisma.fluxoExecucao.updateMany).toHaveBeenCalledWith(
         expect.objectContaining({ data: expect.objectContaining({ status: 'CONCLUIDO' }) }),
       );
     });
@@ -760,7 +760,7 @@ describe('FluxoExecutorService', () => {
 
       // NENHUM dos 3 ramos reservados é disparado → execução conclui sem enfileirar.
       expect(queue.add).not.toHaveBeenCalled();
-      const lastUpdate = prisma.fluxoExecucao.update.mock.calls.at(-1)?.[0];
+      const lastUpdate = prisma.fluxoExecucao.updateMany.mock.calls.at(-1)?.[0];
       expect(lastUpdate?.data?.status).toBe('CONCLUIDO');
     });
 
@@ -846,8 +846,11 @@ describe('FluxoExecutorService', () => {
 
       await service.executarPasso('exec-1', 'no-1', 'job-test');
 
-      const lastUpdate = prisma.fluxoExecucao.update.mock.calls.at(-1)?.[0];
+      // Conclusão vai por updateMany COM GUARDA de status (auditoria 20/08):
+      // não pode sobrescrever AGUARDANDO de um ramo paralelo (IA muda) nem FALHOU.
+      const lastUpdate = prisma.fluxoExecucao.updateMany.mock.calls.at(-1)?.[0];
       expect(lastUpdate?.data?.status).toBe('CONCLUIDO');
+      expect(lastUpdate?.where?.status).toEqual({ in: ['PENDENTE', 'EM_EXECUCAO'] });
     });
 
     it('enfileira próximos nós via queue.add', async () => {
@@ -1626,6 +1629,24 @@ describe('FluxoExecutorService', () => {
         'emp-1',
         'LEAD_RECEBEU_TAG',
         expect.objectContaining({ _hops: 4 }),
+      );
+    });
+
+    it('em execução de TESTE, o disparo leva a marca _teste — o bus vai suprimir', async () => {
+      // Sem a marca, o evento do teste acendia fluxo downstream como PRODUÇÃO
+      // (WhatsApp real). O gate fica no bus; aqui só garantimos que a marca chega.
+      await passoMudarTag(
+        { tagNome: 'teste:encadeia', operacao: 'adicionar' },
+        {
+          leadId: 'lead-1',
+          _teste: true,
+        },
+      );
+
+      expect(bus.disparar).toHaveBeenCalledWith(
+        'emp-1',
+        'LEAD_RECEBEU_TAG',
+        expect.objectContaining({ _teste: true }),
       );
     });
 

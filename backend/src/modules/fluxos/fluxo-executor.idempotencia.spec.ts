@@ -56,6 +56,7 @@ function makeService() {
     fluxoExecucao: {
       findUnique: vi.fn().mockResolvedValue(fakeExec()),
       update: vi.fn().mockResolvedValue({}),
+      updateMany: vi.fn().mockResolvedValue({ count: 1 }),
     },
     fluxoNo: { findUnique: vi.fn().mockResolvedValue(waNo()) },
     fluxo: { findUnique: vi.fn().mockResolvedValue({ triggerTipo: 'LEAD_CRIADO' }) },

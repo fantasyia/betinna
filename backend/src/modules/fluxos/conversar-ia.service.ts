@@ -1492,6 +1492,7 @@ export class ConversarIaService {
       leadId,
       classificacao: classificacaoTurno ?? null,
       _hops: hopsClassificou + 1,
+      ...(ctx['_teste'] === true ? { _teste: true } : {}),
     });
 
     // SEM janela de encerramento (esperaMs<=0): comportamento clássico — avança o ramo
@@ -1666,7 +1667,11 @@ export class ConversarIaService {
         // Mesmo motivo do IA_CLASSIFICOU acima: re-disparo interno propaga
         // `_hops`, senão o corta-loop do bus não enxerga a cadeia.
         const hops = typeof ctx['_hops'] === 'number' ? (ctx['_hops'] as number) : 0;
-        await this.bus.disparar(ex.empresaId, 'LEAD_SEM_RESPOSTA', { leadId, _hops: hops + 1 });
+        await this.bus.disparar(ex.empresaId, 'LEAD_SEM_RESPOSTA', {
+          leadId,
+          _hops: hops + 1,
+          ...(ctx['_teste'] === true ? { _teste: true } : {}),
+        });
       }
     }
     if (vencidas.length > 0) {

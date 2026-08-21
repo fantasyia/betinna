@@ -45,6 +45,21 @@ export class FluxoEventBusService {
     triggerTipo: FluxoTriggerTipo,
     contexto: Record<string, unknown>,
   ): Promise<void> {
+    // TESTE não acende outro fluxo (auditoria 20/08). As ações de mutação
+    // (MUDAR_TAG/MOVER_LEAD_ETAPA/CRIAR_LEAD/LIBERAR_LOTE) rodam de verdade no
+    // teste e disparavam eventos SEM a marca — o fluxo downstream nascia como
+    // PRODUÇÃO (coluna teste=false) e mandava WhatsApp REAL, exatamente o que o
+    // modo seco prometia não fazer. De quebra, o supersede anti-duplicata logo
+    // abaixo podia CANCELAR uma execução AGUARDANDO de produção do mesmo lead.
+    // A regra é uma só e vale até com enviarDeVerdade: o teste exercita o fluxo
+    // TESTADO; o encadeamento fica registrado no log e se valida ativando.
+    if (contexto['_teste'] === true) {
+      this.logger.log(
+        `[teste] ${triggerTipo} suprimido — execução de teste não acende outros fluxos`,
+      );
+      return;
+    }
+
     // #14 corta-loop: re-disparos internos (LEAD_ETAPA_MUDOU em cadeia entre fluxos sem
     // nó IA) não podem entrar em ping-pong infinito. A entrada externa começa em _hops=0;
     // só os re-disparos internos (executor) acumulam → corta acima de 10.

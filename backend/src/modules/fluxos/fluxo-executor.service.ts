@@ -546,8 +546,9 @@ export class FluxoExecutorService {
     // Lead pulado (ex: sem telefone): encerra a execução limpa, SEM enfileirar
     // sucessores (não há conversa a ter). O motivo já ficou no log do passo.
     if (pulado) {
-      await this.prisma.fluxoExecucao.update({
-        where: { id: execucaoId },
+      // updateMany COM GUARDA de status — ver a nota no fim do caminho abaixo.
+      await this.prisma.fluxoExecucao.updateMany({
+        where: { id: execucaoId, status: { in: ['PENDENTE', 'EM_EXECUCAO'] } },
         data: { status: 'CONCLUIDO', terminouEm: new Date() },
       });
       this.logger.log(`Execução ${execucaoId} encerrada (pulada: ${puladoMotivo ?? 'sem motivo'})`);
@@ -624,9 +625,19 @@ export class FluxoExecutorService {
         this.logger.debug(`Execução ${execucaoId} descartada (cron sem efeito — nada a fazer)`);
         return;
       }
-      // Fim do caminho — marca execução como CONCLUIDO
-      await this.prisma.fluxoExecucao.update({
-        where: { id: execucaoId },
+      // Fim do caminho — marca execução como CONCLUIDO.
+      //
+      // COM GUARDA de status (auditoria 20/08): nó com 2+ saídas roda os ramos
+      // em PARALELO (casaLabel aceita qualquer aresta em nó não-CONDICAO), e o
+      // update incondicional deixava o ramo CURTO sobrescrever o que o ramo
+      // longo tinha acabado de marcar. O caso que mata: ramo A = CONVERSAR_IA
+      // pausa em AGUARDANDO; ramo B = MUDAR_TAG sem sucessor conclui 1s depois
+      // → execução vira CONCLUIDO → o lead responde → o retomar exige
+      // AGUARDANDO e não acha nada → a IA fica MUDA, sem erro e sem timeout
+      // (o cron de expiração também só varre AGUARDANDO). O mesmo update
+      // incondicional ainda mascarava FALHOU/CANCELADO de outro ramo.
+      await this.prisma.fluxoExecucao.updateMany({
+        where: { id: execucaoId, status: { in: ['PENDENTE', 'EM_EXECUCAO'] } },
         data: { status: 'CONCLUIDO', terminouEm: new Date() },
       });
       this.logger.log(`Execução ${execucaoId} concluída`);
@@ -667,6 +678,15 @@ export class FluxoExecutorService {
    * A marca viaja no contexto (`_teste` + `_testeEnviaDeVerdade`) porque é lá
    * que os nós de envio a enxergam, sem precisar recarregar a execução.
    */
+  /**
+   * Marca de teste pros DISPAROS internos de evento. O bus suprime o disparo
+   * quando a vê — teste não acende outro fluxo. Propagar aqui (em vez de cada
+   * ponto lembrar de checar) mantém um caminho só.
+   */
+  private marcaDeTeste(ctx: ExecucaoContexto): { _teste?: true } {
+    return ctx['_teste'] === true ? { _teste: true } : {};
+  }
+
   private testeSemEnvio(ctx: ExecucaoContexto): boolean {
     const c = ctx as Record<string, unknown>;
     return c['_teste'] === true && c['_testeEnviaDeVerdade'] !== true;
@@ -1000,7 +1020,7 @@ export class FluxoExecutorService {
         return this.acaoWebhookExterno(cfg as WebhookExternoConfig, ctx, idemBase);
 
       case 'LIBERAR_LOTE':
-        return this.acaoLiberarLote(cfg as LiberarLoteConfig, empresaId);
+        return this.acaoLiberarLote(cfg as LiberarLoteConfig, empresaId, ctx);
 
       case 'PAUSAR_IA':
         return this.acaoPausarIa(cfg as PausarIaConfig, ctx, empresaId);
@@ -1599,6 +1619,7 @@ export class FluxoExecutorService {
           tagId: tag.id,
           tagNome: nomeTagLimpo,
           _hops: hops + 1,
+          ...this.marcaDeTeste(ctx),
         });
       } else {
         // `remover` não dispara: não existe evento de "perdeu etiqueta" no enum.
@@ -1672,6 +1693,7 @@ export class FluxoExecutorService {
           deFunilEtapaId: origemId,
           paraFunilEtapaId: etapa.id,
           _hops: hops + 1,
+          ...this.marcaDeTeste(ctx),
         });
       }
       return { leadId, funilEtapaId: etapa.id };
@@ -1910,6 +1932,7 @@ export class FluxoExecutorService {
         tagId: tag.id,
         tagNome: nomeTag,
         _hops: hopsTag + 1,
+        ...this.marcaDeTeste(ctx),
       });
     }
 
@@ -1923,6 +1946,7 @@ export class FluxoExecutorService {
       clienteId: conversa.clienteId,
       representanteId: cfg.representanteId ?? conversa.proprietarioId ?? null,
       _hops: hops + 1,
+      ...this.marcaDeTeste(ctx),
     });
 
     return {
@@ -2214,6 +2238,7 @@ export class FluxoExecutorService {
   private async acaoLiberarLote(
     cfg: LiberarLoteConfig,
     empresaId: string,
+    ctx: ExecucaoContexto,
   ): Promise<Record<string, unknown>> {
     this.assertEmpresaId(empresaId, 'LIBERAR_LOTE');
     if (!cfg.etapaOrigemId || !cfg.etapaDestinoId) {
@@ -2352,13 +2377,17 @@ export class FluxoExecutorService {
       });
       // Dispara os fluxos da etapa destino (1 por lead). Nomes canônicos +
       // funilId pra o filtro do gatilho "Lead mudou etapa" casar (FluxoEventBus).
-      // _hops=1: início de cadeia interna (corta-loop do FluxoEventBus).
+      // `_hops` PROPAGADO do contexto, não resetado (auditoria 20/08): o reset
+      // em 1 zerava o corta-loop toda vez que a cadeia passava por um
+      // LIBERAR_LOTE — dois fluxos que se liberam mutuamente entravam em
+      // ping-pong infinito que o teto de 10 nunca enxergava.
       await this.bus.disparar(empresaId, 'LEAD_ETAPA_MUDOU', {
         leadId: lead.id,
         funilId: destino.funilId,
         deFunilEtapaId: cfg.etapaOrigemId,
         paraFunilEtapaId: cfg.etapaDestinoId,
-        _hops: 1,
+        _hops: (typeof ctx['_hops'] === 'number' ? (ctx['_hops'] as number) : 0) + 1,
+        ...this.marcaDeTeste(ctx),
       });
     }
 

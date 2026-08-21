@@ -47,6 +47,7 @@ function makeService(opts: {
         contexto: { leadId: 'lead-1' },
       }),
       update: vi.fn().mockResolvedValue({}),
+      updateMany: vi.fn().mockResolvedValue({ count: 1 }),
     },
     fluxo: { findUnique: vi.fn().mockResolvedValue({ triggerTipo: opts.triggerTipo }) },
     fluxoNo: {
