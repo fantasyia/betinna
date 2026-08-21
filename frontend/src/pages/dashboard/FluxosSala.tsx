@@ -7,7 +7,6 @@ import {
   AlertTriangle,
   CheckCircle2,
   FileEdit,
-  FlaskConical,
   type LucideIcon,
 } from 'lucide-react';
 import {
@@ -304,14 +303,9 @@ function FamiliaRows({
                     onClick={() => onAtivar(f)}
                   />
                 )}
-                <IconButton
-                  aria-label={`Testar ${f.nome}`}
-                  variant="ghost"
-                  size="sm"
-                  icon={<FlaskConical />}
-                  onClick={() => onAbrir(f)}
-                  title="Abrir o grafo (painel de teste fica no editor)"
-                />
+                {/* O frasco saiu (card 🧪 21/08): o aria-label dizia "Testar" e
+                    o clique só abria o editor — mesma ação do botão ao lado. O
+                    teste continua onde mora: no painel dentro do editor. */}
                 <IconButton
                   aria-label={`Abrir grafo de ${f.nome}`}
                   variant="ghost"
