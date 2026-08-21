@@ -389,6 +389,44 @@ export class FluxoExecutorService {
       execucao.contexto as ExecucaoContexto,
       execucao.empresaId,
     );
+
+    // ── Fluxo PESSOAL (card 👤): guarda-corpos de runtime ────────────────
+    // O dono vem do fluxo, não da config: as regras valem por CONSTRUÇÃO, não
+    // por boa vontade de quem montou o grafo.
+    const fluxoDono = (
+      await this.prisma.fluxo.findUnique({
+        where: { id: execucao.fluxoId },
+        select: { usuarioId: true },
+      })
+    )?.usuarioId;
+    if (fluxoDono) {
+      // 1) Porta de saída: tudo que o fluxo pessoal fala sai pelo WhatsApp do
+      //    DONO. `_donoFluxo` força o remetente no ENVIAR_WHATSAPP, e o
+      //    proprietarioId herdado roteia o CONVERSAR_IA (donoDaConversa) —
+      //    inclusive em gatilho sem conversa (cron), que antes cairia na
+      //    instância da EMPRESA.
+      contexto['_donoFluxo'] = fluxoDono;
+      if (contexto['proprietarioId'] == null) contexto['proprietarioId'] = fluxoDono;
+      // 2) Carteira: ação sobre lead de OUTRO rep (ou da casa) não roda. O
+      //    gate do bus já filtra na entrada; este cobre lead que TROCOU de
+      //    dono no meio da execução (reatribuição durante um DELAY).
+      const leadIdCtx = typeof contexto['leadId'] === 'string' ? contexto['leadId'] : undefined;
+      if (no.tipo === 'ACAO' && leadIdCtx) {
+        const meu = await this.prisma.lead.findFirst({
+          where: { id: leadIdCtx, empresaId: execucao.empresaId, representanteId: fluxoDono },
+          select: { id: true },
+        });
+        if (!meu) {
+          await this.marcarFalhou(
+            execucaoId,
+            `Fluxo pessoal: o lead ${leadIdCtx} não está (mais) na carteira do dono — ` +
+              'nenhuma ação executada',
+          );
+          return;
+        }
+      }
+    }
+
     const iniciadoEm = new Date();
     let output: Record<string, unknown> | null = null;
     let erroMsg: string | null = null;
@@ -727,6 +765,26 @@ export class FluxoExecutorService {
     cfg: { remetenteUsuarioId?: string; destinatarioModo?: DestinatarioModo },
     ctx: ExecucaoContexto,
   ): Promise<Remetente> {
+    // Fluxo PESSOAL: o envio sai do número do DONO, sempre (card 👤). Config
+    // apontando pra OUTRO remetente é erro de montagem, não fallback — cair
+    // calado no número da empresa é exatamente o que o modelo proíbe.
+    const dono = (ctx as Record<string, unknown>)['_donoFluxo'] as string | undefined;
+    if (dono) {
+      if (cfg.remetenteUsuarioId && cfg.remetenteUsuarioId !== dono) {
+        throw new Error(
+          'Fluxo pessoal: o remetente é sempre o dono do fluxo — remova o remetente ' +
+            'configurado no nó. Nada foi enviado.',
+        );
+      }
+      const disponivelDono = await this.whatsapp.estaDisponivel(empresaId, dono);
+      if (!disponivelDono) {
+        throw new Error(
+          'Fluxo pessoal: seu WhatsApp não está conectado — o envio NÃO saiu pelo número ' +
+            'da empresa de propósito. Conecte em Minhas integrações e repita.',
+        );
+      }
+      return { proprietarioId: dono, origem: 'configurado' };
+    }
     const r = resolverRemetente({
       configurado: cfg.remetenteUsuarioId,
       donoDaConversa: (ctx as Record<string, unknown>)['proprietarioId'] as string | undefined,

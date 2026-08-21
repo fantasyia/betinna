@@ -69,6 +69,7 @@ const fakeFluxo = (overrides = {}) => ({
   versao: 1,
   triggerTipo: 'LEAD_CRIADO' as const,
   triggerConfig: null,
+  usuarioId: null,
   criadoEm: new Date(),
   atualizadoEm: new Date(),
   nos: [],
@@ -96,14 +97,42 @@ describe('FluxosService', () => {
   });
 
   describe('create', () => {
-    it('lança ForbiddenException para REP', async () => {
+    it('REP cria fluxo PESSOAL — usuarioId forçado pro dele, não escolhido (card 👤)', async () => {
+      prisma.fluxo.create.mockResolvedValue({ id: 'f1' });
+      prisma.fluxo.findFirst.mockResolvedValue(fakeFluxo({ id: 'f1', usuarioId: 'rep-1' }));
+      prisma.$transaction.mockImplementation(async (fn: (tx: unknown) => Promise<unknown>) =>
+        fn(prisma),
+      );
+
+      await svc.create(fakeUser({ id: 'rep-1', role: 'REP' as UserRole }), {
+        nome: 'Minha régua',
+        nos: [],
+        arestas: [],
+      });
+
+      expect(prisma.fluxo.create).toHaveBeenCalledWith(
+        expect.objectContaining({ data: expect.objectContaining({ usuarioId: 'rep-1' }) }),
+      );
+    });
+
+    it('REP NÃO cria fluxo pessoal com ação que extrapola a carteira (LIBERAR_LOTE)', async () => {
       await expect(
-        svc.create(fakeUser({ role: 'REP' as UserRole }), {
-          nome: 'Teste',
-          nos: [],
+        svc.create(fakeUser({ id: 'rep-1', role: 'REP' as UserRole }), {
+          nome: 'Régua torta',
+          nos: [
+            {
+              id: 'n1',
+              tipo: 'ACAO',
+              acaoTipo: 'LIBERAR_LOTE',
+              titulo: 'Lote',
+              config: {},
+              posX: 0,
+              posY: 0,
+            },
+          ],
           arestas: [],
-        }),
-      ).rejects.toBeInstanceOf(ForbiddenException);
+        } as never),
+      ).rejects.toThrow(/não é permitida em fluxo pessoal/);
     });
 
     it('cria fluxo com status RASCUNHO', async () => {
@@ -563,10 +592,21 @@ describe('FluxosService', () => {
       arestas: [{ sourceNoId: 'trigger', targetNoId: 'msg', label: null }],
     };
 
-    it('lança ForbiddenException para REP', async () => {
-      await expect(
-        svc.importar(fakeUser({ role: 'REP' as UserRole }), dtoBoasVindas),
-      ).rejects.toBeInstanceOf(ForbiddenException);
+    it('REP importa como fluxo PESSOAL dele (contrato novo do card 👤)', async () => {
+      prisma.fluxo.create.mockResolvedValue({ id: 'novo-fluxo' });
+      prisma.fluxo.findFirst.mockResolvedValue(fakeFluxo({ id: 'novo-fluxo', usuarioId: 'rep-1' }));
+      prisma.fluxo.findUniqueOrThrow.mockResolvedValue(
+        fakeFluxo({ id: 'novo-fluxo', usuarioId: 'rep-1' }),
+      );
+      prisma.$transaction.mockImplementation(async (fn: (tx: unknown) => Promise<unknown>) =>
+        fn(prisma),
+      );
+
+      await svc.importar(fakeUser({ id: 'rep-1', role: 'REP' as UserRole }), dtoBoasVindas);
+
+      expect(prisma.fluxo.create).toHaveBeenCalledWith(
+        expect.objectContaining({ data: expect.objectContaining({ usuarioId: 'rep-1' }) }),
+      );
     });
 
     it('cria como RASCUNHO re-mapeando as chaves dos nós e mantendo as ligações', async () => {
@@ -912,12 +952,27 @@ describe('FluxosService.definirGatilho', () => {
     ).rejects.toThrow(/arquivado/i);
   });
 
-  it('REP não mexe em gatilho', async () => {
+  it('REP não mexe em gatilho de fluxo da EMPRESA (403 já na visibilidade)', async () => {
+    comGrafo([{ id: 'trigger-1', tipo: 'TRIGGER', posX: 0, posY: 0 }]);
+
     await expect(
       svc.definirGatilho(fakeUser({ role: 'REP' as UserRole }), 'fluxo-1', {
         triggerTipo: 'LEAD_CRIADO',
       }),
     ).rejects.toBeInstanceOf(ForbiddenException);
+  });
+
+  it('REP define gatilho no fluxo PESSOAL dele', async () => {
+    comGrafo([{ id: 'trigger-1', tipo: 'TRIGGER', posX: 0, posY: 0 }], [], {
+      usuarioId: 'rep-1',
+    });
+
+    await svc.definirGatilho(fakeUser({ id: 'rep-1', role: 'REP' as UserRole }), 'fluxo-1', {
+      triggerTipo: 'MENSAGEM_CANAL',
+      config: { escopo: 'pessoal' },
+    });
+
+    expect(prisma.fluxoNo.update).toHaveBeenCalled();
   });
 });
 

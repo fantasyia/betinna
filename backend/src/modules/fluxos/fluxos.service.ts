@@ -163,6 +163,74 @@ export class FluxosService {
     }
   }
 
+  private ehGestao(user: AuthenticatedUser): boolean {
+    return ['ADMIN', 'DIRECTOR'].includes(user.role);
+  }
+
+  /**
+   * Quem pode MUTAR este fluxo (card 👤 21/08 — fluxo com dono):
+   *  - fluxo da EMPRESA (usuarioId null): gestão, como sempre foi;
+   *  - fluxo PESSOAL: SÓ o dono. Gestão enxerga (leitura, sob demanda — padrão
+   *    dos quadros de rep) mas NÃO edita/testa/ativa o fluxo de outra pessoa:
+   *    é a separação que o modelo existe pra criar.
+   */
+  private assertPodeGerirFluxo(user: AuthenticatedUser, fluxo: { usuarioId: string | null }): void {
+    if (fluxo.usuarioId) {
+      if (fluxo.usuarioId !== user.id) {
+        throw new ForbiddenException(
+          'Este fluxo é pessoal de outro usuário — só o dono pode mexer nele',
+          ErrorCode.FORBIDDEN,
+        );
+      }
+      return;
+    }
+    this.requireAdminOrDirector(user);
+  }
+
+  /** Ações que um fluxo PESSOAL não pode ter — extrapolam a carteira do dono. */
+  private static readonly ACOES_PROIBIDAS_PESSOAL = new Set([
+    'ATRIBUIR_REP',
+    'TRANSFERIR_ATENDIMENTO',
+    'LIBERAR_LOTE',
+  ]);
+
+  /**
+   * Guarda-corpo do fluxo pessoal, na VALIDAÇÃO (não só escondido no editor —
+   * senão qualquer um monta via API/import mesmo assim):
+   *  - ações que agem fora da carteira são recusadas;
+   *  - MOVER_LEAD_ETAPA só pra etapa de funil que o dono ENXERGA (visivelParaRep).
+   */
+  private async validarGrafoPessoal(
+    empresaId: string,
+    nos: Array<{ tipo: string; acaoTipo?: string | null; config?: unknown }>,
+  ): Promise<void> {
+    for (const no of nos) {
+      if (no.tipo !== 'ACAO' || !no.acaoTipo) continue;
+      if (FluxosService.ACOES_PROIBIDAS_PESSOAL.has(no.acaoTipo)) {
+        throw new BusinessRuleException(
+          `A ação ${no.acaoTipo} não é permitida em fluxo pessoal — ela age fora da sua carteira`,
+          ErrorCode.FLUXO_INVALIDO,
+        );
+      }
+      if (no.acaoTipo === 'MOVER_LEAD_ETAPA') {
+        const cfg = (no.config ?? {}) as { funilEtapaId?: string };
+        if (cfg.funilEtapaId) {
+          const etapa = await this.prisma.funilEtapa.findFirst({
+            where: { id: cfg.funilEtapaId, funil: { empresaId } },
+            select: { funil: { select: { nome: true, visivelParaRep: true } } },
+          });
+          if (etapa && !etapa.funil.visivelParaRep) {
+            throw new BusinessRuleException(
+              `MOVER_LEAD_ETAPA aponta pra etapa do funil "${etapa.funil.nome}", que não é ` +
+                'visível pra representantes — fluxo pessoal só move dentro dos funis que você vê',
+              ErrorCode.FLUXO_INVALIDO,
+            );
+          }
+        }
+      }
+    }
+  }
+
   // ─── Validação do grafo ──────────────────────────────────────────
 
   /**
@@ -389,8 +457,12 @@ export class FluxosService {
   // ─── CRUD ───────────────────────────────────────────────────────
 
   async create(user: AuthenticatedUser, dto: CreateFluxoDto): Promise<FluxoWithRel> {
-    this.requireAdminOrDirector(user);
     const empresaId = this.requireEmpresa(user);
+    // Gestão cria fluxo da EMPRESA; qualquer outro papel cria fluxo PESSOAL
+    // dele — o dono é o PAPEL, não um campo do body (rep não escolhe criar
+    // fluxo de empresa, nem em nome de outro).
+    const usuarioId = this.ehGestao(user) ? null : user.id;
+    if (usuarioId) await this.validarGrafoPessoal(empresaId, dto.nos);
 
     // Cria fluxo + nós + arestas em transação
     const grafo = this.remapearGrafo(dto.nos, dto.arestas);
@@ -399,6 +471,7 @@ export class FluxosService {
       const created = await tx.fluxo.create({
         data: {
           empresaId,
+          usuarioId,
           nome: dto.nome,
           descricao: dto.descricao ?? null,
           triggerTipo: dto.triggerTipo ?? null,
@@ -442,13 +515,31 @@ export class FluxosService {
   async list(user: AuthenticatedUser, params: ListFluxosDto): Promise<Paginated<FluxoWithRel>> {
     const empresaId = this.requireEmpresa(user);
     const where: Prisma.FluxoWhereInput = { empresaId };
+    // Fluxo com DONO (card 👤): pessoal fica FORA da lista da empresa por
+    // default — mesmo padrão dos quadros de rep. Gestão pede com
+    // incluirPessoais (leitura); REP vê SÓ os dele; GERENTE vê os da empresa
+    // (como sempre viu) + os dele.
+    if (user.role === 'REP') {
+      where.usuarioId = user.id;
+    } else if (!this.ehGestao(user)) {
+      // Em AND próprio: o filtro de `search` abaixo também usa OR e
+      // sobrescreveria este se dividissem o mesmo slot.
+      where.AND = [{ OR: [{ usuarioId: null }, { usuarioId: user.id }] }];
+    } else if (!params.incluirPessoais) {
+      where.usuarioId = null;
+    }
 
     if (params.status) where.status = params.status;
     if (params.triggerTipo) where.triggerTipo = params.triggerTipo;
     if (params.search) {
-      where.OR = [
-        { nome: { contains: params.search, mode: 'insensitive' } },
-        { descricao: { contains: params.search, mode: 'insensitive' } },
+      where.AND = [
+        ...((where.AND as Prisma.FluxoWhereInput[]) ?? []),
+        {
+          OR: [
+            { nome: { contains: params.search, mode: 'insensitive' } },
+            { descricao: { contains: params.search, mode: 'insensitive' } },
+          ],
+        },
       ];
     }
 
@@ -538,6 +629,24 @@ export class FluxosService {
       include: fluxoInclude,
     });
     if (!fluxo) throw new NotFoundException(`Fluxo ${id} não encontrado`);
+    // Visibilidade por DONO (card 👤): gestão LÊ tudo (empresa + pessoais, é o
+    // espelho); REP só o dele — inclusive fluxo da EMPRESA dá 403, é o aceite
+    // do modelo ("não está autorizado a operar pelo fluxo do admin");
+    // GERENTE/SAC leem os da empresa (como sempre) + os próprios.
+    if (!this.ehGestao(user)) {
+      const podeVer =
+        user.role === 'REP'
+          ? fluxo.usuarioId === user.id
+          : fluxo.usuarioId === null || fluxo.usuarioId === user.id;
+      if (!podeVer) {
+        throw new ForbiddenException(
+          fluxo.usuarioId
+            ? 'Este fluxo é pessoal de outro usuário'
+            : 'Fluxos da empresa são geridos pela gestão — seu acesso é aos seus fluxos pessoais',
+          ErrorCode.FORBIDDEN,
+        );
+      }
+    }
     return fluxo;
   }
 
@@ -550,8 +659,12 @@ export class FluxosService {
   }
 
   async update(user: AuthenticatedUser, id: string, dto: UpdateFluxoDto): Promise<FluxoWithRel> {
-    this.requireAdminOrDirector(user);
     const existing = await this.findOne(user, id);
+    this.assertPodeGerirFluxo(user, existing);
+    // Fluxo pessoal: guarda-corpos valem também na EDIÇÃO do grafo.
+    if (existing.usuarioId && dto.nos) {
+      await this.validarGrafoPessoal(existing.empresaId, dto.nos);
+    }
 
     if (existing.status === 'ARQUIVADO') {
       throw new BusinessRuleException(
@@ -660,8 +773,8 @@ export class FluxosService {
   }
 
   async ativar(user: AuthenticatedUser, id: string): Promise<FluxoWithRel> {
-    this.requireAdminOrDirector(user);
     const fluxo = await this.findOne(user, id);
+    this.assertPodeGerirFluxo(user, fluxo);
 
     if (fluxo.status === 'ATIVO') {
       throw new BusinessRuleException('Fluxo já está ativo', ErrorCode.FLUXO_JA_ATIVO);
@@ -704,8 +817,8 @@ export class FluxosService {
     id: string,
     dto: DefinirGatilhoDto,
   ): Promise<FluxoWithRel> {
-    this.requireAdminOrDirector(user);
     const fluxo = await this.findOne(user, id);
+    this.assertPodeGerirFluxo(user, fluxo);
     if (fluxo.status === 'ARQUIVADO') {
       throw new BusinessRuleException(
         'Fluxo arquivado — desarquive antes de mexer no gatilho',
@@ -790,8 +903,8 @@ export class FluxosService {
   }
 
   async pausar(user: AuthenticatedUser, id: string): Promise<FluxoWithRel> {
-    this.requireAdminOrDirector(user);
     const fluxo = await this.findOne(user, id);
+    this.assertPodeGerirFluxo(user, fluxo);
 
     if (fluxo.status !== 'ATIVO') {
       throw new BusinessRuleException(
@@ -807,8 +920,7 @@ export class FluxosService {
   }
 
   async arquivar(user: AuthenticatedUser, id: string): Promise<FluxoWithRel> {
-    this.requireAdminOrDirector(user);
-    await this.findOne(user, id);
+    this.assertPodeGerirFluxo(user, await this.findOne(user, id));
     await this.prisma.fluxo.update({ where: { id }, data: { status: 'ARQUIVADO' } });
     const cancel = await this.cancelarExecucoesEmAndamento(id);
     this.logger.log(`Fluxo ${id} arquivado por ${user.id} (${cancel} execução(ões) cancelada(s))`);
@@ -826,8 +938,8 @@ export class FluxosService {
    * nem pelo MCP; precisou recriar o fluxo do zero).
    */
   async desarquivar(user: AuthenticatedUser, id: string): Promise<FluxoWithRel> {
-    this.requireAdminOrDirector(user);
     const fluxo = await this.findOne(user, id);
+    this.assertPodeGerirFluxo(user, fluxo);
     if (fluxo.status !== 'ARQUIVADO') {
       throw new BusinessRuleException(
         'Apenas fluxos arquivados podem ser desarquivados',
@@ -858,8 +970,7 @@ export class FluxosService {
    * cascateiam os logs) e o fluxo (que cascateia nós e arestas).
    */
   async excluirPermanente(user: AuthenticatedUser, id: string): Promise<{ ok: true }> {
-    this.requireAdminOrDirector(user);
-    await this.findOne(user, id); // valida tenant + existência
+    this.assertPodeGerirFluxo(user, await this.findOne(user, id)); // tenant + dono
     await this.prisma.$transaction([
       this.prisma.fluxoExecucao.deleteMany({ where: { fluxoId: id } }),
       this.prisma.fluxo.delete({ where: { id } }),
@@ -906,7 +1017,11 @@ export class FluxosService {
    * e delega pro `create` (mesma transação/validação). Nunca ativa sozinho.
    */
   async importar(user: AuthenticatedUser, dto: ImportFluxoDto): Promise<FluxoWithRel> {
-    this.requireAdminOrDirector(user);
+    // Papel decide o dono (mesma regra do create): gestão importa fluxo da
+    // empresa; os demais importam como fluxo PESSOAL — com os guarda-corpos.
+    if (!this.ehGestao(user)) {
+      await this.validarGrafoPessoal(this.requireEmpresa(user), dto.nos);
+    }
 
     // O `create` já remapeia as chaves → ids internos (helper compartilhado),
     // então o mesmo arquivo pode ser importado várias vezes sem colisão.
@@ -1058,8 +1173,11 @@ export class FluxosService {
   // ─── Teste manual ────────────────────────────────────────────────
 
   async testar(user: AuthenticatedUser, dto: TestarFluxoDto): Promise<{ execucaoId: string }> {
-    this.requireAdminOrDirector(user);
     const fluxo = await this.findOne(user, dto.fluxoId);
+    // Testar é MUTAÇÃO na prática (dispara efeitos): dono do pessoal, gestão
+    // do da empresa. Gestão NÃO testa fluxo pessoal alheio — a separação que o
+    // modelo cria não tem exceção; quem opera o mundo do rep é o token do rep.
+    this.assertPodeGerirFluxo(user, fluxo);
 
     if (fluxo.status === 'ARQUIVADO') {
       throw new BusinessRuleException(

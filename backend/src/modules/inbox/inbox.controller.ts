@@ -256,7 +256,9 @@ export class InboxController {
   // Gestão POR-atendimento (reset da thread) — a equipe de atendimento (SAC) e a
   // gerência gerenciam os atendimentos do Inbox, então também zeram uma conversa.
   // (O nuke em massa `whatsapp/limpar` segue ADMIN/DIRECTOR — não é por-atendimento.)
-  @Roles('ADMIN', 'DIRECTOR', 'GERENTE', 'SAC')
+  // REP entra pra zerar A PRÓPRIA conversa (o baseWhere do service o limita à
+  // sessão pessoal dele) — é o reset entre casos do teste autônomo (card 🔁).
+  @Roles('ADMIN', 'DIRECTOR', 'GERENTE', 'SAC', 'REP')
   @HttpCode(HttpStatus.OK)
   @Audit({ action: 'inbox_zerar_conversa', resource: 'conversation', resourceIdFrom: 'params.id' })
   @ApiOperation({

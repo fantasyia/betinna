@@ -17,6 +17,7 @@ import {
   LayoutGrid,
   List,
   Star,
+  Users,
 } from 'lucide-react';
 import { api, ApiError } from '@/lib/api';
 import { formatNumero } from '@/lib/masks';
@@ -60,6 +61,8 @@ type TriggerTipo = EditorTriggerTipo;
 
 interface FluxoListItem {
   id: string;
+  /** Dono do fluxo PESSOAL (card 👤); null/ausente = fluxo da empresa. */
+  usuarioId?: string | null;
   nome: string;
   descricao?: string | null;
   status: FluxoStatus;
@@ -160,6 +163,9 @@ export default function FluxosPage() {
   const [status, setStatus] = useState('');
   const [triggerTipo, setTriggerTipo] = useState('');
   const [soFavoritos, setSoFavoritos] = useState(false);
+  // Espelho dos fluxos PESSOAIS (card 👤): fora da lista por default, gestão
+  // liga quando quer supervisionar — mesmo padrão dos quadros de rep.
+  const [incluirPessoais, setIncluirPessoais] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [creating, setCreating] = useState(false);
   // Visão: cards (grid) ou lista (linhas compactas) — persistida por usuário.
@@ -186,8 +192,9 @@ export default function FluxosPage() {
     if (status) qs.set('status', status);
     if (triggerTipo) qs.set('triggerTipo', triggerTipo);
     if (soFavoritos) qs.set('favoritos', 'true');
+    if (incluirPessoais) qs.set('incluirPessoais', 'true');
     return `/fluxos?${qs.toString()}`;
-  }, [page, searchDebounced, status, triggerTipo, soFavoritos]);
+  }, [page, searchDebounced, status, triggerTipo, soFavoritos, incluirPessoais]);
 
   const { data: pageResp, loading, error, refetch } = useApiQuery<PaginatedResponse<FluxoListItem>>(listPath);
 
@@ -385,6 +392,27 @@ export default function FluxosPage() {
               </option>
             ))}
           </Select>
+          {/* Espelho: fluxos pessoais dos usuários (leitura — quem edita é o dono) */}
+          <Tooltip
+            content={
+              incluirPessoais
+                ? 'Mostrando também os fluxos pessoais dos usuários'
+                : 'Incluir fluxos pessoais dos usuários (leitura)'
+            }
+          >
+            <IconButton
+              aria-label="Incluir fluxos pessoais"
+              aria-pressed={incluirPessoais}
+              variant={incluirPessoais ? 'secondary' : 'ghost'}
+              size="sm"
+              data-testid="fluxos-incluir-pessoais"
+              icon={<Users className="h-4 w-4" />}
+              onClick={() => {
+                setIncluirPessoais((v) => !v);
+                setPage(1);
+              }}
+            />
+          </Tooltip>
           {/* Só favoritos — o filtro que faz a estrela valer a pena */}
           <Tooltip content={soFavoritos ? 'Mostrando só favoritos' : 'Ver só os favoritos'}>
             <IconButton
@@ -597,6 +625,12 @@ function FluxoCard({
           )}
         </div>
         <Badge variant={STATUS_VARIANT[fluxo.status]}>{STATUS_LABEL[fluxo.status]}</Badge>
+        {fluxo.usuarioId && (
+          /* Fluxo PESSOAL no espelho da gestão — leitura; quem edita é o dono. */
+          <Badge variant="outline" size="sm" className="inline-flex items-center gap-1">
+            <Users className="h-3 w-3" /> pessoal
+          </Badge>
+        )}
       </header>
 
       <div className="flex items-center gap-2 flex-wrap">
@@ -732,6 +766,9 @@ function FluxoRow({
       <div className="min-w-0 flex-1">
         <div className="flex items-center gap-2">
           <span className="text-sm font-semibold text-text truncate">{fluxo.nome}</span>
+          {fluxo.usuarioId && (
+            <Badge variant="outline" size="sm">pessoal</Badge>
+          )}
           <Badge variant={STATUS_VARIANT[fluxo.status]} size="sm">
             {STATUS_LABEL[fluxo.status]}
           </Badge>

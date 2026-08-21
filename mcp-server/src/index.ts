@@ -1197,6 +1197,7 @@ const fluxoArestaInput = z.object({
 });
 
 interface FluxoResumo {
+  usuarioId?: string | null;
   id: string;
   nome: string;
   status: string;
@@ -1210,35 +1211,53 @@ server.registerTool(
   'fluxos_listar',
   {
     description:
-      'Lista os fluxos de automação da empresa (id, nome, status, trigger). Filtros opcionais.',
+      'Lista os fluxos de automação da empresa (id, nome, status, trigger). Fluxos PESSOAIS de ' +
+      'usuário ficam FORA por default (padrão dos quadros de rep) — gestão pede com ' +
+      'incluirPessoais: true (leitura). Com token de REP, a lista já vem só com os fluxos DELE.',
     inputSchema: {
       status: z
         .enum(['RASCUNHO', 'ATIVO', 'PAUSADO', 'ARQUIVADO'])
         .optional()
         .describe('Filtra por status'),
       search: z.string().optional().describe('Busca por nome'),
+      incluirPessoais: z
+        .boolean()
+        .optional()
+        .describe('Gestão: inclui os fluxos pessoais dos usuários (leitura).'),
     },
     annotations: { readOnlyHint: true, destructiveHint: false },
   },
-  seguro(async ({ status, search }: { status?: string; search?: string }) => {
-    const qs = new URLSearchParams();
-    if (status) qs.set('status', status);
-    if (search) qs.set('search', search);
-    const q = qs.toString();
-    const resp = await api.get<{ data: FluxoResumo[] } | FluxoResumo[]>(
-      `/fluxos${q ? `?${q}` : ''}`,
-    );
-    // O endpoint pagina: { data: [...], pagination } — normaliza os dois formatos.
-    const lista = Array.isArray(resp) ? resp : (resp.data ?? []);
-    return ok(
-      lista.map((f) => ({
-        id: f.id,
-        nome: f.nome,
-        status: f.status,
-        trigger: f.triggerTipo,
-      })),
-    );
-  }),
+  seguro(
+    async ({
+      status,
+      search,
+      incluirPessoais,
+    }: {
+      status?: string;
+      search?: string;
+      incluirPessoais?: boolean;
+    }) => {
+      const qs = new URLSearchParams();
+      if (status) qs.set('status', status);
+      if (search) qs.set('search', search);
+      if (incluirPessoais) qs.set('incluirPessoais', 'true');
+      const q = qs.toString();
+      const resp = await api.get<{ data: FluxoResumo[] } | FluxoResumo[]>(
+        `/fluxos${q ? `?${q}` : ''}`,
+      );
+      // O endpoint pagina: { data: [...], pagination } — normaliza os dois formatos.
+      const lista = Array.isArray(resp) ? resp : (resp.data ?? []);
+      return ok(
+        lista.map((f) => ({
+          id: f.id,
+          nome: f.nome,
+          status: f.status,
+          trigger: f.triggerTipo,
+          ...(f.usuarioId ? { dono: f.usuarioId } : {}),
+        })),
+      );
+    },
+  ),
 );
 
 server.registerTool(

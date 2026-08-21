@@ -320,7 +320,7 @@ model Empresa {
   kanbanBoards          KanbanBoard[]
   kanbanApiTokens       KanbanApiToken[]
   mesclagens            MesclagemContato[]
-  inboxLimpezas          InboxLimpeza[]
+  inboxLimpezas         InboxLimpeza[]
 
   @@index([ativo])
 }
@@ -357,6 +357,7 @@ model Usuario {
   pedidosAprovados          Pedido[]                        @relation("PedidoAprovador")
   clientesAtribuidos        Cliente[]
   agendaItens               AgendaItem[]
+  fluxosPessoais            Fluxo[]                         @relation("FluxosPessoais")
   aprovacoes                AprovacaoDesconto[]             @relation("AprovacaoRep")
   aprovacoesGerente         AprovacaoDesconto[]             @relation("AprovacaoGerente")
   cancelamentosSolicitados  PedidoCancelamentoSolicitacao[] @relation("CancelamentoSolicitante")
@@ -509,18 +510,18 @@ model Cliente {
 }
 
 model Tag {
-  id        String  @id @default(cuid())
+  id             String  @id @default(cuid())
   /// Tenant scope — auditoria 2026-05-15 P0. Antes globalmente única,
   /// agora cada empresa tem seu próprio conjunto de tags.
-  empresaId String
-  nome      String
-  cor       String  @default("#7c3aed")
+  empresaId      String
+  nome           String
+  cor            String  @default("#7c3aed")
   /// Orquestração (Fase B) — metadados de tag:
-  descricao String?
+  descricao      String?
   /// Tag de escopo de funil (null = global, vale pra qualquer funil).
-  funilId   String?
+  funilId        String?
   /// Categoria livre: status | segmento | logistica | alerta | sistema
-  categoria String?
+  categoria      String?
   /// O REP usa esta tag? Default false — tag nova nasce só pra gestão. As tags
   /// operacionais (triagem, e-mail mkt, gatilhos de fluxo) não são trabalho do
   /// rep e só poluíam a tela dele. Mesma convenção de `Funil.visivelParaRep`.
@@ -679,8 +680,8 @@ model KnowledgeChunk {
   criadoEm              DateTime                     @default(now())
   atualizadoEm          DateTime                     @updatedAt
 
-  empresa    Empresa             @relation(fields: [empresaId], references: [id], onDelete: Cascade)
-  documento  KnowledgeDocumento? @relation(fields: [documentoId], references: [id], onDelete: Cascade)
+  empresa   Empresa             @relation(fields: [empresaId], references: [id], onDelete: Cascade)
+  documento KnowledgeDocumento? @relation(fields: [documentoId], references: [id], onDelete: Cascade)
 
   // CONFIG/MATERIAL re-upsert por (empresa, fonte, refId). MANUAL tem refId null
   // (NULLs distintos no Postgres → vários manuais coexistem sem colidir).
@@ -763,10 +764,10 @@ model Pedido {
   prazoEntrega      DateTime?
 
   // #17 — dinheiro em Decimal (precisão de centavos). descontoGeral (%) segue Float.
-  subtotal      Decimal @default(0) @db.Decimal(14, 2)
-  descontoGeral Float   @default(0) // %
-  total         Decimal @default(0) @db.Decimal(14, 2)
-  comissao      Decimal @default(0) @db.Decimal(14, 2)
+  subtotal          Decimal @default(0) @db.Decimal(14, 2)
+  descontoGeral     Float   @default(0) // %
+  total             Decimal @default(0) @db.Decimal(14, 2)
+  comissao          Decimal @default(0) @db.Decimal(14, 2)
   /// Acumuladores de devolução APROVADA (estorno líquido no mês do pedido): o
   /// fecharMes desconta estes do total/comissão. Nunca mexe em folha já paga.
   comissaoEstornada Decimal @default(0) @db.Decimal(14, 2)
@@ -1009,12 +1010,12 @@ model Lead {
   /// Qual formulário converteu (contato|representante|amostra|calculadora|seletor).
   formularioOrigem String?
   /// Valor real fechado no GANHO (≠ valorEstimado, que é a expectativa). Nullable.
-  valorFechado     Decimal? @db.Decimal(14, 2)
+  valorFechado     Decimal?  @db.Decimal(14, 2)
   /**
    * Quando a etapa atual começou (usado pra calcular dias na etapa)
    */
-  etapaDesde  DateTime  @default(now())
-  fechadoEm   DateTime? // preenchido em GANHO ou PERDIDO
+  etapaDesde       DateTime  @default(now())
+  fechadoEm        DateTime? // preenchido em GANHO ou PERDIDO
 
   criadoEm     DateTime @default(now())
   atualizadoEm DateTime @updatedAt
@@ -1028,6 +1029,10 @@ model Lead {
   tags                LeadTag[]
   formularioRespostas FormularioResposta[]
   etapaHistorico      LeadEtapaHistorico[]
+  // + índice ÚNICO parcial em SQL puro (não representável aqui):
+  //   "Lead_empresa_email_lower_unique" ON (empresaId, LOWER(contatoEmail))
+  //   WHERE contatoEmail IS NOT NULL AND <> ''  → 1 lead por e-mail por empresa
+  //   (migration 20260716090000; P2002 mapeado pra ConflictException no create).
 
   @@index([empresaId, etapa])
   @@index([empresaId, funilId, funilEtapaId])
@@ -1038,10 +1043,6 @@ model Lead {
   // Atribuição: chaves de junção das consultas de campanha (sempre multi-tenant)
   @@index([empresaId, utmCampaign])
   @@index([empresaId, origemCadastro])
-  // + índice ÚNICO parcial em SQL puro (não representável aqui):
-  //   "Lead_empresa_email_lower_unique" ON (empresaId, LOWER(contatoEmail))
-  //   WHERE contatoEmail IS NOT NULL AND <> ''  → 1 lead por e-mail por empresa
-  //   (migration 20260716090000; P2002 mapeado pra ConflictException no create).
 }
 
 /// Histórico IRREVERSÍVEL de transição de etapa (transição não gravada = perdida).
@@ -1610,6 +1611,11 @@ enum FluxoExecucaoStatus {
 model Fluxo {
   id            String            @id @default(cuid())
   empresaId     String
+  /// DONO do fluxo (card 👤 21/08). null = fluxo da EMPRESA (tudo que existia
+  /// até aqui); preenchido = fluxo PESSOAL do usuário — o rep monta régua pros
+  /// clientes DELE, disparando pelo WhatsApp pessoal dele. Mesmo padrão dos
+  /// quadros de rep: fora da lista principal, gestão enxerga sob demanda.
+  usuarioId     String?
   nome          String
   descricao     String?
   status        FluxoStatus       @default(RASCUNHO)
@@ -1622,6 +1628,7 @@ model Fluxo {
   atualizadoEm  DateTime          @updatedAt
 
   empresa   Empresa         @relation(fields: [empresaId], references: [id], onDelete: Cascade)
+  usuario   Usuario?        @relation("FluxosPessoais", fields: [usuarioId], references: [id], onDelete: Cascade)
   nos       FluxoNo[]
   arestas   FluxoEdge[]
   execucoes FluxoExecucao[]
@@ -1629,6 +1636,7 @@ model Fluxo {
 
   @@index([empresaId, status])
   @@index([empresaId, triggerTipo])
+  @@index([empresaId, usuarioId])
 }
 
 /// Fluxo marcado como favorito POR UM USUÁRIO.
@@ -1908,65 +1916,65 @@ model CampanhaDestinatario {
 // `peerNome` é o nome exibido (pushName no WhatsApp, etc), pode mudar com o tempo.
 // `clienteId` é resolvido por match — telefone normalizado bate com Cliente.telefone.
 model Conversation {
-  id               String                @id @default(cuid())
-  empresaId        String
-  canal            MessageChannel
-  peerId           String // identificador externo do interlocutor no canal
-  peerNome         String? // nome exibido (pushName do WhatsApp, etc.)
+  id                 String                @id @default(cuid())
+  empresaId          String
+  canal              MessageChannel
+  peerId             String // identificador externo do interlocutor no canal
+  peerNome           String? // nome exibido (pushName do WhatsApp, etc.)
   /// Quando a conversa vem de uma sessão Baileys pessoal (WhatsApp do rep),
   /// aponta pro `Usuario` dono dessa sessão. NULL = conversa de canal escopo
   /// empresa (WhatsApp central, IG, FB, marketplaces, etc.).
   /// Permite múltiplas conversas com o mesmo `peerId` por canais pessoais
   /// distintos (ex: o mesmo cliente fala com o rep João e com o rep Maria).
-  proprietarioId   String?
-  clienteId        String? // resolvido por match telefone/e-mail; pode ser null pra contato anônimo
+  proprietarioId     String?
+  clienteId          String? // resolvido por match telefone/e-mail; pode ser null pra contato anônimo
   /// Lead gerado a partir desta conversa (triagem → CRIAR_LEAD). Ligação EXPLÍCITA:
   /// o match por telefone é frágil (formatação, número que muda, contato com mais de
   /// um número) e a atribuição depende dessa ligação ser confiável.
-  leadId           String?
+  leadId             String?
   /// Campanha que originou a conversa (Click-to-WhatsApp). COLUNA (não só JSON)
   /// porque `totalConversas` por campanha degradaria em filtro de JSON não-indexado.
   /// O payload cru do referral (ctwa_clid, source_id, headline…) fica em `metadata.atribuicao`.
-  utmCampaign      String?
-  atribuidoId      String? // usuário responsável pelo atendimento
-  status           ConversationStatus    @default(ABERTA)
-  categoria        ConversationCategoria @default(GERAL)
+  utmCampaign        String?
+  atribuidoId        String? // usuário responsável pelo atendimento
+  status             ConversationStatus    @default(ABERTA)
+  categoria          ConversationCategoria @default(GERAL)
   /// #25 — tags internas de triagem (só a equipe vê, não o cliente).
-  tagsInternas     String[]              @default([])
-  naoLidas         Int                   @default(0)
-  ultimaMsgEm      DateTime?
-  ultimaMsgPreview String?               @db.VarChar(140)
+  tagsInternas       String[]              @default([])
+  naoLidas           Int                   @default(0)
+  ultimaMsgEm        DateTime?
+  ultimaMsgPreview   String?               @db.VarChar(140)
   /// Tombstone do "Zerar conversa": marca QUANDO as mensagens foram apagadas.
   /// A ingestão ignora reimportações de histórico anteriores a esta data (o
   /// history sync do WhatsApp reentrega tudo e ressuscitava o que foi zerado).
   /// Mensagens novas (timestamp > este) passam normalmente.
   mensagensZeradasEm DateTime?
   /// Metadados canal-específicos (ex: ML packId, itemId, claimId; Shopee chatRoomId).
-  metadata         Json?
+  metadata           Json?
   /// Quando a conversa está atrelada a um incidente (reclamação/devolução/disputa).
-  incidentId       String?
+  incidentId         String?
   /// Fase 2 — Bot Muller no WhatsApp. Até quando o bot fica PAUSADO nesta
   /// conversa (handoff humano). NULL = bot livre pra responder. Setado quando
   /// um atendente humano responde a conversa.
-  botPausadoAte    DateTime?
+  botPausadoAte      DateTime?
   /// Override do bot NESTA conversa, independente do liga/desliga global:
   /// NULL = segue o global (botWhatsappAtivo da empresa); true = bot ligado aqui
   /// mesmo com o global desligado; false = bot desligado aqui mesmo com global ligado.
-  botLigado        Boolean?
+  botLigado          Boolean?
   /// Fase 2 — marcado quando o bot caiu no fallback (IA falhou/demorou):
   /// a conversa precisa de humano e sobe pro topo da lista.
-  precisaHumano    Boolean               @default(false)
+  precisaHumano      Boolean               @default(false)
   /// Card 🔔 — quando o alerta de CONVERSA ESQUECIDA foi disparado.
   /// Depois de uma transferência o bot fica desligado até o atendente religar;
   /// se ele esquecer, a conversa fica muda (nem bot, nem humano) e ninguém
   /// percebe. A varredura carimba aqui ao abrir a tarefa — o carimbo é o que
   /// destaca no Inbox E o que impede o alerta de repetir a cada rodada.
   /// Limpo quando alguém responde ou religa o bot.
-  alertaEsquecidaEm DateTime?
+  alertaEsquecidaEm  DateTime?
   /// Marca registros gerados pelo seed-demo.
-  isDemo           Boolean               @default(false)
-  criadoEm         DateTime              @default(now())
-  atualizadoEm     DateTime              @updatedAt
+  isDemo             Boolean               @default(false)
+  criadoEm           DateTime              @default(now())
+  atualizadoEm       DateTime              @updatedAt
 
   empresa       Empresa              @relation(fields: [empresaId], references: [id], onDelete: Cascade)
   cliente       Cliente?             @relation(fields: [clienteId], references: [id])
@@ -2018,18 +2026,18 @@ model Conversation {
 /// Esta linha SOBREVIVE à exclusão: qualquer mensagem com timestamp anterior a
 /// `em` é descartada na ingestão, para sempre.
 model InboxLimpeza {
-  id        String         @id @default(cuid())
-  empresaId String
-  canal     MessageChannel
+  id             String         @id @default(cuid())
+  empresaId      String
+  canal          MessageChannel
   /// Momento da limpeza — mensagem anterior a isto nunca mais entra.
-  em        DateTime       @default(now())
+  em             DateTime       @default(now())
   /// Quem mandou limpar (rastro; a limpeza é destrutiva).
-  usuarioId String?
+  usuarioId      String?
   /// De QUAL caixa é a marca: '' = número da EMPRESA; id do usuário = WhatsApp
   /// PESSOAL dele. Não-nulo de propósito — NULL é distinto de NULL em índice
   /// único no Postgres, e a chave deixaria duplicar a linha da empresa.
-  proprietarioId String   @default("")
-  criadoEm  DateTime       @default(now())
+  proprietarioId String         @default("")
+  criadoEm       DateTime       @default(now())
 
   empresa Empresa @relation(fields: [empresaId], references: [id], onDelete: Cascade)
 
@@ -2922,16 +2930,16 @@ model KanbanLista {
 }
 
 model KanbanCard {
-  id          String    @id @default(cuid())
-  listaId     String
-  titulo      String
-  descricao   String?   @db.Text
-  posicao     Float
-  dataInicio  DateTime?
-  dataEntrega DateTime?
-  concluido   Boolean   @default(false)
-  corCapa     String?
-  arquivado   Boolean   @default(false)
+  id           String    @id @default(cuid())
+  listaId      String
+  titulo       String
+  descricao    String?   @db.Text
+  posicao      Float
+  dataInicio   DateTime?
+  dataEntrega  DateTime?
+  concluido    Boolean   @default(false)
+  corCapa      String?
+  arquivado    Boolean   @default(false)
   /// Espelho de tarefa (CRIAR_TAREFA dos fluxos): quando preenchido, este card é a
   /// CÓPIA no quadro do Diretor de um card original no quadro do rep. Mover de
   /// coluna/concluir o card original sincroniza o espelho (uma direção: rep→Diretor).
@@ -2940,14 +2948,14 @@ model KanbanCard {
   /// Retry pós-efeito não recria o card (findFirst por esta chave antes de criar).
   origemJobId  String?
 
-  lista       KanbanLista          @relation(fields: [listaId], references: [id], onDelete: Cascade)
-  origem      KanbanCard?          @relation("CardEspelho", fields: [origemCardId], references: [id], onDelete: Cascade)
-  espelhos    KanbanCard[]         @relation("CardEspelho")
-  etiquetas   KanbanCardEtiqueta[]
-  membros     KanbanCardMembro[]
-  checklists  KanbanChecklist[]
-  comentarios KanbanComentario[]
-  anexos      KanbanAnexo[]
+  lista        KanbanLista          @relation(fields: [listaId], references: [id], onDelete: Cascade)
+  origem       KanbanCard?          @relation("CardEspelho", fields: [origemCardId], references: [id], onDelete: Cascade)
+  espelhos     KanbanCard[]         @relation("CardEspelho")
+  etiquetas    KanbanCardEtiqueta[]
+  membros      KanbanCardMembro[]
+  checklists   KanbanChecklist[]
+  comentarios  KanbanComentario[]
+  anexos       KanbanAnexo[]
   campoValores KanbanCampoValor[]
 
   criadoEm     DateTime @default(now())
@@ -2960,10 +2968,10 @@ model KanbanCard {
 }
 
 model KanbanEtiqueta {
-  id      String  @id @default(cuid())
-  boardId String
-  nome    String?
-  cor     String
+  id        String  @id @default(cuid())
+  boardId   String
+  nome      String?
+  cor       String
   /// Quando a etiqueta REPRESENTA UMA PESSOA (ex: o rep dono da tarefa no quadro
   /// espelho do Diretor). Guardar o id — em vez de casar pelo nome — é o que
   /// permite clicar na etiqueta e abrir o quadro daquele rep sem depender de

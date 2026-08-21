@@ -50,8 +50,10 @@ export class FluxosController {
 
   // ─── CRUD ────────────────────────────────────────────────────────
 
+  // Fluxo com DONO (card 👤): a rota abre pra GERENTE/REP e o SERVICE decide
+  // por dono — pessoal só o dono mexe; da empresa, só a gestão (como sempre).
   @Post()
-  @Roles('ADMIN', 'DIRECTOR')
+  @Roles('ADMIN', 'DIRECTOR', 'GERENTE', 'REP')
   @ApiOperation({ summary: 'Cria um novo fluxo de automação' })
   create(
     @CurrentUser() user: AuthenticatedUser,
@@ -61,7 +63,7 @@ export class FluxosController {
   }
 
   @Get()
-  @Roles('ADMIN', 'DIRECTOR', 'GERENTE')
+  @Roles('ADMIN', 'DIRECTOR', 'GERENTE', 'REP')
   @ApiOperation({ summary: 'Lista fluxos de automação da empresa' })
   list(
     @CurrentUser() user: AuthenticatedUser,
@@ -71,14 +73,16 @@ export class FluxosController {
   }
 
   @Get(':id')
-  @Roles('ADMIN', 'DIRECTOR', 'GERENTE')
+  @Roles('ADMIN', 'DIRECTOR', 'GERENTE', 'REP')
   @ApiOperation({ summary: 'Detalhes de um fluxo com nós e arestas' })
   findOne(@CurrentUser() user: AuthenticatedUser, @Param('id') id: string) {
     return this.svc.findOne(user, id);
   }
 
+  // Fluxo com DONO (card 👤): a rota abre pra GERENTE/REP e o SERVICE decide
+  // por dono — pessoal só o dono mexe; da empresa, só a gestão (como sempre).
   @Put(':id')
-  @Roles('ADMIN', 'DIRECTOR')
+  @Roles('ADMIN', 'DIRECTOR', 'GERENTE', 'REP')
   @ApiOperation({ summary: 'Atualiza fluxo (com full-replace de nós/arestas se fornecidos)' })
   update(
     @CurrentUser() user: AuthenticatedUser,
@@ -90,8 +94,10 @@ export class FluxosController {
 
   // ─── Import / Export (arquivo .json) ─────────────────────────────
 
+  // Fluxo com DONO (card 👤): a rota abre pra GERENTE/REP e o SERVICE decide
+  // por dono — pessoal só o dono mexe; da empresa, só a gestão (como sempre).
   @Post('importar')
-  @Roles('ADMIN', 'DIRECTOR')
+  @Roles('ADMIN', 'DIRECTOR', 'GERENTE', 'REP')
   @ApiOperation({ summary: 'Importa um fluxo de um arquivo JSON (cria como RASCUNHO)' })
   importar(
     @CurrentUser() user: AuthenticatedUser,
@@ -112,8 +118,10 @@ export class FluxosController {
     return this.svc.uploadMidia(user, dto);
   }
 
+  // Fluxo com DONO (card 👤): a rota abre pra GERENTE/REP e o SERVICE decide
+  // por dono — pessoal só o dono mexe; da empresa, só a gestão (como sempre).
   @Get(':id/exportar')
-  @Roles('ADMIN', 'DIRECTOR')
+  @Roles('ADMIN', 'DIRECTOR', 'GERENTE', 'REP')
   @ApiOperation({ summary: 'Exporta o fluxo como JSON (.json) pronto pra reimportar' })
   exportar(@CurrentUser() user: AuthenticatedUser, @Param('id') id: string) {
     return this.svc.exportar(user, id);
@@ -141,15 +149,19 @@ export class FluxosController {
 
   // ─── Ciclo de vida ───────────────────────────────────────────────
 
+  // Fluxo com DONO (card 👤): a rota abre pra GERENTE/REP e o SERVICE decide
+  // por dono — pessoal só o dono mexe; da empresa, só a gestão (como sempre).
   @Post(':id/ativar')
-  @Roles('ADMIN', 'DIRECTOR')
+  @Roles('ADMIN', 'DIRECTOR', 'GERENTE', 'REP')
   @ApiOperation({ summary: 'Ativa o fluxo (valida grafo antes)' })
   ativar(@CurrentUser() user: AuthenticatedUser, @Param('id') id: string) {
     return this.svc.ativar(user, id);
   }
 
+  // Fluxo com DONO (card 👤): a rota abre pra GERENTE/REP e o SERVICE decide
+  // por dono — pessoal só o dono mexe; da empresa, só a gestão (como sempre).
   @Post(':id/gatilho')
-  @Roles('ADMIN', 'DIRECTOR')
+  @Roles('ADMIN', 'DIRECTOR', 'GERENTE', 'REP')
   @ApiOperation({
     summary: 'Define/atualiza SÓ o nó de gatilho (sem full-replace do grafo)',
   })
@@ -161,22 +173,28 @@ export class FluxosController {
     return this.svc.definirGatilho(user, id, dto);
   }
 
+  // Fluxo com DONO (card 👤): a rota abre pra GERENTE/REP e o SERVICE decide
+  // por dono — pessoal só o dono mexe; da empresa, só a gestão (como sempre).
   @Post(':id/pausar')
-  @Roles('ADMIN', 'DIRECTOR')
+  @Roles('ADMIN', 'DIRECTOR', 'GERENTE', 'REP')
   @ApiOperation({ summary: 'Pausa o fluxo (novos eventos não disparam)' })
   pausar(@CurrentUser() user: AuthenticatedUser, @Param('id') id: string) {
     return this.svc.pausar(user, id);
   }
 
+  // Fluxo com DONO (card 👤): a rota abre pra GERENTE/REP e o SERVICE decide
+  // por dono — pessoal só o dono mexe; da empresa, só a gestão (como sempre).
   @Delete(':id')
-  @Roles('ADMIN', 'DIRECTOR')
+  @Roles('ADMIN', 'DIRECTOR', 'GERENTE', 'REP')
   @ApiOperation({ summary: 'Arquiva o fluxo' })
   arquivar(@CurrentUser() user: AuthenticatedUser, @Param('id') id: string) {
     return this.svc.arquivar(user, id);
   }
 
+  // Fluxo com DONO (card 👤): a rota abre pra GERENTE/REP e o SERVICE decide
+  // por dono — pessoal só o dono mexe; da empresa, só a gestão (como sempre).
   @Post(':id/desarquivar')
-  @Roles('ADMIN', 'DIRECTOR')
+  @Roles('ADMIN', 'DIRECTOR', 'GERENTE', 'REP')
   @ApiOperation({
     summary:
       'Desarquiva o fluxo (ARQUIVADO → RASCUNHO). Única rota de volta pra um fluxo arquivado — ' +
@@ -186,8 +204,10 @@ export class FluxosController {
     return this.svc.desarquivar(user, id);
   }
 
+  // Fluxo com DONO (card 👤): a rota abre pra GERENTE/REP e o SERVICE decide
+  // por dono — pessoal só o dono mexe; da empresa, só a gestão (como sempre).
   @Delete(':id/permanente')
-  @Roles('ADMIN', 'DIRECTOR')
+  @Roles('ADMIN', 'DIRECTOR', 'GERENTE', 'REP')
   @ApiOperation({ summary: 'Exclui o fluxo PERMANENTEMENTE (apaga nós, arestas e execuções).' })
   excluir(@CurrentUser() user: AuthenticatedUser, @Param('id') id: string) {
     return this.svc.excluirPermanente(user, id);
@@ -196,7 +216,7 @@ export class FluxosController {
   // ─── Execuções ───────────────────────────────────────────────────
 
   @Get(':id/execucoes')
-  @Roles('ADMIN', 'DIRECTOR', 'GERENTE')
+  @Roles('ADMIN', 'DIRECTOR', 'GERENTE', 'REP')
   @ApiOperation({ summary: 'Lista histórico de execuções do fluxo' })
   listExecucoes(
     @CurrentUser() user: AuthenticatedUser,
@@ -218,8 +238,10 @@ export class FluxosController {
 
   // ─── Teste + Métricas ────────────────────────────────────────────
 
+  // Fluxo com DONO (card 👤): a rota abre pra GERENTE/REP e o SERVICE decide
+  // por dono — pessoal só o dono mexe; da empresa, só a gestão (como sempre).
   @Post('testar')
-  @Roles('ADMIN', 'DIRECTOR')
+  @Roles('ADMIN', 'DIRECTOR', 'GERENTE', 'REP')
   @ApiOperation({ summary: 'Dispara execução de teste manual' })
   testar(
     @CurrentUser() user: AuthenticatedUser,

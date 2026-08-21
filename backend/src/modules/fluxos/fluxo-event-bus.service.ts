@@ -95,6 +95,30 @@ export class FluxoEventBusService {
             continue;
           }
 
+          // Fluxo PESSOAL (card 👤): o mundo dele é a carteira/porta do DONO.
+          //  - evento de mensagem: só a porta DELE (o WhatsApp pessoal dele) —
+          //    independente do `escopo` configurado no nó;
+          //  - evento com lead: só lead da CARTEIRA dele (1 query, e só pra
+          //    fluxo pessoal — a empresa não paga esse custo).
+          // Sem estes gates, o fluxo do rep reagiria a lead/conversa de outro
+          // rep ou da empresa — exatamente o que o modelo proíbe.
+          if (fluxo.usuarioId) {
+            // (LEAD_RESPONDEU não traz proprietarioId no payload — a carteira
+            // do lead logo abaixo é o gate dele.)
+            if (triggerTipo === 'MENSAGEM_CANAL') {
+              if ((contexto['proprietarioId'] ?? null) !== fluxo.usuarioId) continue;
+            }
+            const leadIdCtx =
+              typeof contexto['leadId'] === 'string' ? (contexto['leadId'] as string) : undefined;
+            if (leadIdCtx) {
+              const dono = await this.prisma.lead.findFirst({
+                where: { id: leadIdCtx, empresaId, representanteId: fluxo.usuarioId },
+                select: { id: true },
+              });
+              if (!dono) continue;
+            }
+          }
+
           // Filtro por config do gatilho (LEAD_ETAPA_MUDOU): só dispara quando o lead
           // ENTRA na `paraEtapa` (no `funil` certo) e, se `deEtapa` setado, veio dela.
           if (triggerTipo === 'LEAD_ETAPA_MUDOU') {

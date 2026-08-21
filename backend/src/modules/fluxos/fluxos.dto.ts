@@ -186,6 +186,12 @@ export const listFluxosSchema = z.object({
   search: z.string().optional(),
   /** true → só os fluxos favoritados PELO usuário logado. */
   favoritos: boolQuery.optional(),
+  /**
+   * Gestão: inclui os fluxos PESSOAIS dos usuários na lista (leitura — mesmo
+   * padrão do espelho dos quadros de rep). Default: só fluxos da empresa.
+   * Ignorado pra papéis não-gestão (cada um já vê os seus).
+   */
+  incluirPessoais: boolQuery.optional(),
 });
 
 // ─── Listar execuções ────────────────────────────────────────────────
