@@ -7,6 +7,8 @@ import { LeadsService } from './leads.service';
 const makePrismaMock = () => ({
   lead: {
     findFirst: vi.fn(),
+    // vincularTag consulta o funil do lead pro aviso de allow-list (automação).
+    findUnique: vi.fn().mockResolvedValue(null),
     findMany: vi.fn(),
     count: vi.fn(),
     create: vi.fn(),

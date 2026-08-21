@@ -572,21 +572,30 @@ export class FluxoExecutorService {
     // modo roteador (lá o label é o valor literal da saída, ex.: 'sim, quero').
     const condicaoSimples =
       no.tipo === 'CONDICAO' && (no.config as unknown as CondicaoConfig).modo !== 'roteador';
-    const casaLabel = (label: string | null): boolean => {
-      if (labelParaNavegar === null) return true;
-      if (label === labelParaNavegar) return true;
-      if (!condicaoSimples || !label) return false;
-      const n = label
+    // MESMA normalização do validarGrafo (auditoria 20/08): o ativar validava
+    // rótulos normalizados (trim+lowercase+sem acento), mas o motor casava
+    // EXATO — "Não Industrial" na aresta vs "nao industrial" na saída passava
+    // na validação e falhava em produção, com o lead caindo no ramo errado.
+    const normalizar = (v: string): string =>
+      v
         .trim()
         .toLowerCase()
         .normalize('NFKD')
-        .replace(/\p{Diacritic}/gu, '');
+        .replace(/\p{Diacritic}/gu, '')
+        .replace(/\s+/g, ' ');
+    const casaLabel = (label: string | null): boolean => {
+      if (labelParaNavegar === null) return true;
+      if (label === labelParaNavegar) return true;
+      if (!label) return false;
+      if (normalizar(label) === normalizar(labelParaNavegar)) return true;
+      if (!condicaoSimples) return false;
+      const n = normalizar(label);
       return labelParaNavegar === 'Sim'
         ? n === 'sim' || n === 'true'
         : n === 'nao' || n === 'false';
     };
 
-    const proximosNoIds = arestas
+    const proximosNoIdsBrutos = arestas
       .filter((e: FluxoEdge) => e.sourceNoId === noId)
       .filter((e: FluxoEdge) => {
         // CAÇADA-BUG #17: as saídas 'classificou'/'timeout'/'erro' do CONVERSAR_IA são EVENT-DRIVEN
@@ -600,6 +609,10 @@ export class FluxoExecutorService {
         return casaLabel(e.label);
       })
       .map((e: FluxoEdge) => e.targetNoId);
+    // Aresta DUPLICADA (mesmo source->target) executava o ramo inteiro 2x —
+    // mensagem em dobro pro cliente. O import agora deduplica, mas fluxo antigo
+    // no banco ainda pode ter a dupla; o Set é a defesa no motor.
+    const proximosNoIds = [...new Set(proximosNoIdsBrutos)];
 
     if (proximosNoIds.length === 0) {
       // REDE DE SEGURANÇA: condição que TEM saídas mas nenhuma casou com o
@@ -1661,10 +1674,25 @@ export class FluxoExecutorService {
     if (cfg.funilEtapaId) {
       const etapa = await this.prisma.funilEtapa.findFirst({
         where: { id: cfg.funilEtapaId, funil: { empresaId } },
-        select: { id: true, funilId: true, tipo: true },
+        select: { id: true, funilId: true, tipo: true, capacidadeMaxima: true },
       });
       if (!etapa) {
         throw new Error(`Etapa ${cfg.funilEtapaId} não encontrada na empresa ${empresaId}`);
+      }
+      // capacidadeMaxima valia SÓ no LIBERAR_LOTE (auditoria 20/08): o
+      // anti-sobrecarga da etapa era furado por qualquer MOVER_LEAD_ETAPA.
+      // Cheia → o passo FALHA com motivo claro no log da execução (mesma
+      // semântica do lote, que devolve "etapa destino cheia").
+      if (etapa.capacidadeMaxima != null) {
+        const ocupacao = await this.prisma.lead.count({
+          where: { empresaId, funilEtapaId: etapa.id, id: { not: leadId } },
+        });
+        if (ocupacao >= etapa.capacidadeMaxima) {
+          throw new Error(
+            `MOVER_LEAD_ETAPA: etapa destino cheia (${ocupacao}/${etapa.capacidadeMaxima}) — ` +
+              'o lead fica onde está até abrir vaga',
+          );
+        }
       }
       const enumEtapa =
         etapa.tipo === 'GANHO' ? 'GANHO' : etapa.tipo === 'PERDIDO' ? 'PERDIDO' : 'QUALIFICANDO';
@@ -2390,8 +2418,19 @@ export class FluxoExecutorService {
       const cand = await this.prisma.lead.findMany({
         where,
         take: 2000,
+        // Recorte DETERMINÍSTICO (auditoria 20/08): sem orderBy, o Postgres
+        // devolve 2000 linhas em ordem arbitrária — a "coluna LEO" ordenava um
+        // SUBCONJUNTO aleatório e a prioridade valia só por sorte. Prioridade +
+        // antiguidade primeiro; a ordenação custom refina DENTRO do recorte.
+        orderBy: [{ ordemPrioridade: 'asc' }, { criadoEm: 'asc' }],
         select: { id: true, variaveis: true },
       });
+      if (cand.length === 2000) {
+        this.logger.warn(
+          `LIBERAR_LOTE (ordem custom "${key}"): 2000+ candidatos — a ordenação vale só ` +
+            'dentro dos 2000 mais prioritários/antigos; o resto entra nas próximas rodadas',
+        );
+      }
       const valorDe = (l: { variaveis: unknown }): unknown => {
         const v = l.variaveis;
         return v && typeof v === 'object' ? (v as Record<string, unknown>)[key] : undefined;
@@ -2428,7 +2467,48 @@ export class FluxoExecutorService {
     }
 
     let movidos = 0;
+    // #15 (auditoria 20/08): a checagem de capacidade lá em cima é um snapshot —
+    // duas execuções concorrentes liam a mesma ocupação e moviam ambas, e a
+    // etapa estourava o teto. Quando há CAP, o move re-checa a ocupação DENTRO
+    // do UPDATE (condicional no SQL): a corrida perde no banco, não na leitura.
+    const capFinal = cap;
     for (const lead of leads) {
+      if (capFinal != null) {
+        const moved = await this.prisma.$executeRaw`
+          UPDATE "Lead" SET
+            "funilEtapaId" = ${cfg.etapaDestinoId},
+            "funilId" = ${destino.funilId},
+            etapa = ${etapaEnum}::"LeadEtapa",
+            "etapaDesde" = now()
+          WHERE id = ${lead.id}
+            AND "empresaId" = ${empresaId}
+            AND "funilEtapaId" = ${cfg.etapaOrigemId}
+            AND (
+              SELECT COUNT(*) FROM "Lead" l2
+              WHERE l2."empresaId" = ${empresaId}
+                AND l2."funilEtapaId" = ${cfg.etapaDestinoId}
+            ) < ${capFinal}`;
+        if (moved === 0) continue; // já movido por outra execução, ou destino encheu
+        movidos += 1;
+        await registrarTransicaoEtapa(this.prisma, this.logger, {
+          empresaId,
+          leadId: lead.id,
+          funilId: destino.funilId,
+          etapaOrigem: cfg.etapaOrigemId,
+          etapaDestino: cfg.etapaDestinoId,
+          quem: null,
+          origemMudanca: 'fluxo',
+        });
+        await this.bus.disparar(empresaId, 'LEAD_ETAPA_MUDOU', {
+          leadId: lead.id,
+          funilId: destino.funilId,
+          deFunilEtapaId: cfg.etapaOrigemId,
+          paraFunilEtapaId: cfg.etapaDestinoId,
+          _hops: (typeof ctx['_hops'] === 'number' ? (ctx['_hops'] as number) : 0) + 1,
+          ...this.marcaDeTeste(ctx),
+        });
+        continue;
+      }
       // CAS: só move se o lead AINDA está na etapa de origem. Duas execuções LIBERAR_LOTE
       // concorrentes (cron lento + sobreposição) não movem o mesmo lead 2× nem disparam
       // o opener em dobro — a 2ª acha count===0 e pula.

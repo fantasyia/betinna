@@ -56,7 +56,13 @@ export class OrquestracaoLeadEventsService implements OnModuleInit {
         .update(params.conteudo ?? '')
         .digest('hex')
         .slice(0, 16);
-      const dedupKey = `fx:msgcanal:${params.empresaId}:${resultado.conversationId}:${textoHash}`;
+      // O TIMESTAMP físico entra na chave (auditoria 20/08): o split
+      // webhook+poll entrega o MESMO recado com o mesmo messageTimestamp — mas
+      // duas mensagens genuínas de texto igual ("sim" duas vezes em 60s) têm
+      // timestamps diferentes. Sem ele, a segunda era engolida: nem gatilho,
+      // nem o turno da IA — o lead respondia e nada acontecia.
+      const tsFisico = params.data ? Math.floor(params.data.getTime() / 1000) : 0;
+      const dedupKey = `fx:msgcanal:${params.empresaId}:${resultado.conversationId}:${textoHash}:${tsFisico}`;
       let primeira = true;
       try {
         primeira = await this.redis.setNxEx(dedupKey, '1', 60);
@@ -126,6 +132,22 @@ export class OrquestracaoLeadEventsService implements OnModuleInit {
         telefone: params.peerTelefone ?? null,
         texto: params.conteudo,
       });
+      // A PORTA tem que bater (auditoria 20/08): a execução foi aberta numa
+      // conversa com um dono (empresa = null, ou o WhatsApp pessoal de um rep),
+      // e a resposta da IA sai por ESSA porta (donoDaConversa do contexto). Se
+      // o lead escreve no WhatsApp PESSOAL do rep e a execução viva é da
+      // conversa da EMPRESA, retomar aqui faria a IA responder pela empresa a
+      // uma mensagem que chegou no número do rep — conversa cruzada. O
+      // LEAD_RESPONDEU acima continua disparando (é evento de lead, não turno).
+      const portaDaMensagem = params.proprietarioId ?? null;
+      if (aguardando && (aguardando.proprietarioId ?? null) !== portaDaMensagem) {
+        this.logger.log(
+          `Retomar PULADO: mensagem chegou na porta ${portaDaMensagem ?? 'empresa'} e a ` +
+            `execução ${aguardando.id} é da porta ${aguardando.proprietarioId ?? 'empresa'} — ` +
+            'turno da IA não cruza conversas',
+        );
+        aguardando = null;
+      }
       if (aguardando) {
         // Multimodal IGUAL ao bot geral: transcreve áudio / prepara imagem pra visão
         // antes de alimentar a IA (a Persona decide). Sem isso o fluxo via "[áudio]".

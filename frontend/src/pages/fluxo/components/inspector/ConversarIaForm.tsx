@@ -70,6 +70,26 @@ export function ConversarIaForm({
           <option value="sim">Sim</option>
         </Select>
       </Field>
+      <Field
+        label="Usar o nome do lead na conversa?"
+        hint="Desligue em fluxo de INBOUND/triagem: ali o nome vem do perfil do WhatsApp (apelido, emoji, nome de loja) e chamar por ele soa errado. Ligado por padrão."
+      >
+        <Select
+          size="sm"
+          value={
+            ((data.config.usarNomeDoLead as boolean | undefined) ?? true) ? 'sim' : 'nao'
+          }
+          onChange={(e) =>
+            onUpdate((d) => ({
+              ...d,
+              config: { ...d.config, usarNomeDoLead: e.target.value === 'sim' },
+            }))
+          }
+        >
+          <option value="sim">Sim — trata pelo nome</option>
+          <option value="nao">Não — conversa sem citar o nome</option>
+        </Select>
+      </Field>
       <Field label="Aguardar resposta do lead?">
         <Select
           size="sm"

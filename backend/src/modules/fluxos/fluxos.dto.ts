@@ -58,7 +58,7 @@ export const createFluxoEdgeSchema = z.object({
   id: z.string().min(1),
   sourceNoId: z.string().min(1),
   targetNoId: z.string().min(1),
-  label: z.string().nullable().optional(),
+  label: z.string().max(200).nullable().optional(),
 });
 
 // ─── Criar fluxo ─────────────────────────────────────────────────────
@@ -91,7 +91,10 @@ const importFluxoNoSchema = z.object({
 const importFluxoEdgeSchema = z.object({
   sourceNoId: z.string().min(1),
   targetNoId: z.string().min(1),
-  label: z.string().max(40).nullable().optional(),
+  // max(200) e não 40 (auditoria 20/08): o editor grava rótulos maiores (saída
+  // longa de roteador) e o max(40) só do IMPORT quebrava o round-trip
+  // exportar→importar do próprio sistema. Simétrico ao createFluxoEdgeSchema.
+  label: z.string().max(200).nullable().optional(),
 });
 
 export const importFluxoSchema = z

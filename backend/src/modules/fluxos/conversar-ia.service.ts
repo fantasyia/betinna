@@ -920,16 +920,26 @@ export class ConversarIaService {
   }
 
   /** Existe execução pausada (AGUARDANDO) esperando resposta deste lead? */
-  async aguardandoPorLead(empresaId: string, leadId: string): Promise<{ id: string } | null> {
-    return this.prisma.fluxoExecucao.findFirst({
+  async aguardandoPorLead(
+    empresaId: string,
+    leadId: string,
+  ): Promise<{ id: string; proprietarioId: string | null } | null> {
+    const ex = await this.prisma.fluxoExecucao.findFirst({
       where: {
         empresaId,
         status: 'AGUARDANDO',
         contexto: { path: ['leadId'], equals: leadId },
       },
       orderBy: { criadoEm: 'desc' },
-      select: { id: true },
+      select: { id: true, contexto: true },
     });
+    if (!ex) return null;
+    const ctx = (ex.contexto ?? {}) as Record<string, unknown>;
+    // O DONO da conversa que originou a execução — é contra ele que o retomar
+    // compara a PORTA por onde a mensagem chegou (ver orquestracao-lead-events).
+    const dono =
+      typeof ctx['proprietarioId'] === 'string' ? (ctx['proprietarioId'] as string) : null;
+    return { id: ex.id, proprietarioId: dono };
   }
 
   /**
@@ -1783,12 +1793,17 @@ export class ConversarIaService {
             return this.whatsapp.enviarTexto(empresaId, peerId, balao, ctx).then(() => undefined);
           };
         })(),
+        // Presença sai pela MESMA porta dos balões (auditoria 20/08): sem o
+        // dono, o "digitando…" ia pela instância da EMPRESA numa conversa que
+        // é do WhatsApp pessoal do rep — a da empresa nem conhece esse peer.
         digitando: (ms) =>
           void this.whatsapp
-            .enviarPresenca(empresaId, peerId, 'composing', ms)
+            .enviarPresenca(empresaId, peerId, 'composing', ms, proprietarioId ?? undefined)
             .catch(() => undefined),
         pausado: () =>
-          this.whatsapp.enviarPresenca(empresaId, peerId, 'paused').catch(() => undefined),
+          this.whatsapp
+            .enviarPresenca(empresaId, peerId, 'paused', undefined, proprietarioId ?? undefined)
+            .catch(() => undefined),
       },
     );
   }

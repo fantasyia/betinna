@@ -364,9 +364,20 @@ export class FluxosService {
   >(nos: N[], arestas: E[]): { nos: N[]; arestas: (E & { id: string })[] } {
     const idMap = new Map<string, string>();
     for (const n of nos) idMap.set(n.id, randomUUID());
+    // Aresta DUPLICADA (mesmo source→target→label) executa o ramo 2× no motor —
+    // mensagem em dobro pro cliente (auditoria 20/08). Deduplica no ponto único
+    // por onde create/update/import passam; mantém a 1ª ocorrência. Bônus: a
+    // duplicata com label deixava o import estourar em P2002 feio.
+    const vistas = new Set<string>();
+    const semDuplicata = arestas.filter((e) => {
+      const chave = `${e.sourceNoId}|${e.targetNoId}|${e.label ?? ''}`;
+      if (vistas.has(chave)) return false;
+      vistas.add(chave);
+      return true;
+    });
     return {
       nos: nos.map((n) => ({ ...n, id: idMap.get(n.id) as string })),
-      arestas: arestas.map((e) => ({
+      arestas: semDuplicata.map((e) => ({
         ...e,
         id: randomUUID(),
         sourceNoId: idMap.get(e.sourceNoId) ?? e.sourceNoId,
@@ -588,6 +599,24 @@ export class FluxosService {
             })),
           });
         }
+      }
+
+      // Trocar o GATILHO de um fluxo ATIVO sem mexer no grafo não rebaixava nem
+      // revalidava (auditoria 20/08): virar CRON_AGENDADO sem expressão deixava
+      // o fluxo VERDE na lista e mudo pra sempre. Valida o estado RESULTANTE
+      // (tipo/config mesclados com o existente) antes de persistir — a troca
+      // inválida é rejeitada com o mesmo erro do ativar. Não rebaixa de
+      // propósito: ajustar o filtro do gatilho de um fluxo no ar é operação
+      // legítima da master, e pausar junto seria surpresa pior.
+      if (
+        existing.status === 'ATIVO' &&
+        (dto.triggerTipo !== undefined || dto.triggerConfig !== undefined)
+      ) {
+        this.validarAgendamentoCron({
+          triggerTipo: dto.triggerTipo ?? existing.triggerTipo,
+          triggerConfig:
+            dto.triggerConfig !== undefined ? dto.triggerConfig : existing.triggerConfig,
+        });
       }
 
       const updateData: Prisma.FluxoUpdateInput = { versao: { increment: 1 } };

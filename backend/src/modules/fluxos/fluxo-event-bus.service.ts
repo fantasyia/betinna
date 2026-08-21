@@ -144,7 +144,18 @@ export class FluxoEventBusService {
             // "ambos" mantém compatibilidade com fluxo já configurado. "empresa" é o
             // que o T1 (triagem) precisa: mensagem no celular pessoal do rep NÃO pode
             // virar lead na Triagem da empresa.
-            const escopo = cfg.escopo ?? 'ambos';
+            // Normalizado como `canais` (auditoria 20/08): config escrita à
+            // mão sai "Empresa"/" EMPRESA " e o match exato virava 'ambos' em
+            // silêncio — a triagem passava a ouvir o celular pessoal do rep.
+            const escopo = String(cfg.escopo ?? 'ambos')
+              .trim()
+              .toLowerCase();
+            if (!['empresa', 'pessoal', 'ambos'].includes(escopo)) {
+              this.logger.warn(
+                `MENSAGEM_CANAL: escopo "${String(cfg.escopo)}" inválido no fluxo "${fluxo.nome}" ` +
+                  `— tratando como 'ambos' (valores válidos: empresa|pessoal|ambos)`,
+              );
+            }
             const ehPessoal = Boolean(contexto['proprietarioId']);
             if (escopo === 'empresa' && ehPessoal) continue;
             if (escopo === 'pessoal' && !ehPessoal) continue;
@@ -302,12 +313,23 @@ export class FluxoEventBusService {
             };
             // DUAS moradas pra mesma config: o nó TRIGGER (o que o editor grava) e
             // o `Fluxo.triggerConfig` (o que a master preencheu à mão em fluxo já
-            // montado). Ler só uma delas fazia a outra virar decoração — o fluxo
-            // ignoraria o filtro e voltaria a disparar em qualquer etiqueta.
-            // Nó tem precedência; o do fluxo entra como base.
+            // montado). Ler só uma delas fazia a outra virar decoração.
+            //
+            // Precedência por FAMÍLIA, não por chave (auditoria 20/08): o spread
+            // por chave SOMAVA alias residual — fluxo antigo com `tag: 'x'` no
+            // triggerConfig + nó novo com `tagNome: 'y'` disparava pra x E y,
+            // porque cada alias vinha de uma morada. Se o NÓ define qualquer
+            // chave da família do filtro, só o nó vale; o fluxo é fallback
+            // integral. `modo` continua por chave (é modificador, não filtro).
             const cfgNo = (triggerNo.config ?? {}) as TagTriggerCfg;
             const cfgFluxo = (fluxo.triggerConfig ?? {}) as TagTriggerCfg;
-            const cfg: TagTriggerCfg = { ...cfgFluxo, ...cfgNo };
+            const noTemFiltro =
+              (cfgNo.tagIds?.length ?? 0) > 0 ||
+              (cfgNo.tagNomes?.length ?? 0) > 0 ||
+              Boolean(cfgNo.tagNome) ||
+              Boolean(cfgNo.tag);
+            const base = noTemFiltro ? cfgNo : cfgFluxo;
+            const cfg: TagTriggerCfg = { ...base, modo: cfgNo.modo ?? cfgFluxo.modo };
             const ids = (cfg.tagIds ?? []).map((t) => String(t).trim()).filter(Boolean);
             const nomes = [
               ...(cfg.tagNomes ?? []),

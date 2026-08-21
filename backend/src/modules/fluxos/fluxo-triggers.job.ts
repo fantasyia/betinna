@@ -289,12 +289,47 @@ export class FluxoTriggersJob {
     etapaOrigemId: string,
     acao: { tipo?: string; etapaDestinoId?: string; tagNome?: string },
   ): Promise<void> {
-    if (acao.tipo === 'mover' && acao.etapaDestinoId) {
+    if (acao.tipo === 'mover') {
+      // 'mover' NUNCA cai no ramo da etiqueta (auditoria 20/08): sem
+      // etapaDestinoId ele carimbava '⚠ SLA vencido' — mas a busca do
+      // avaliarSlaEtapas usa tagSla=null pro 'mover' (sem filtro de exclusão),
+      // então os MESMOS 100 leads eram re-selecionados a cada rodada, cada uma
+      // re-carimbando a tag, e os leads além dos 100 nunca eram processados.
+      // Destino inválido idem: o return silencioso deixava o lote preso pra
+      // sempre. Agora os dois casos LOGAM alto e saem — SLA mudo visível.
+      if (!acao.etapaDestinoId) {
+        this.logger.error(
+          `SLA 'mover' da etapa ${etapaOrigemId} SEM etapaDestinoId — ação ignorada ` +
+            '(configure o destino na etapa)',
+        );
+        return;
+      }
       const destino = await this.prisma.funilEtapa.findFirst({
         where: { id: acao.etapaDestinoId, funil: { empresaId } },
-        select: { id: true, funilId: true, tipo: true },
+        select: { id: true, funilId: true, tipo: true, capacidadeMaxima: true },
       });
-      if (!destino) return;
+      if (!destino) {
+        this.logger.error(
+          `SLA 'mover' da etapa ${etapaOrigemId}: destino ${acao.etapaDestinoId} não existe ` +
+            'na empresa — ação ignorada (o lote desta etapa NÃO anda até consertar)',
+        );
+        return;
+      }
+      // Anti-sobrecarga também aqui (auditoria 20/08): o SLA 'mover' furava a
+      // capacidadeMaxima do destino. Cheia → pula com log (job é batch; o lead
+      // fica na etapa e a rodada seguinte tenta de novo quando abrir vaga).
+      if (destino.capacidadeMaxima != null) {
+        const ocupacao = await this.prisma.lead.count({
+          where: { empresaId, funilEtapaId: destino.id },
+        });
+        if (ocupacao >= destino.capacidadeMaxima) {
+          this.logger.warn(
+            `SLA 'mover': destino ${destino.id} cheio (${ocupacao}/${destino.capacidadeMaxima}) — ` +
+              `lead ${leadId} fica na etapa até abrir vaga`,
+          );
+          return;
+        }
+      }
       const etapaEnum =
         destino.tipo === 'GANHO' ? 'GANHO' : destino.tipo === 'PERDIDO' ? 'PERDIDO' : 'NOVO';
       await this.prisma.lead.update({

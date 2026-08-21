@@ -557,6 +557,9 @@ export class FunisService {
       // dois padrões (cada um desmarcou antes de o outro inserir). Dentro da tx,
       // ou tudo acontece ou nada.
       if (dto.isPadrao) {
+        // Mesmo lock do update() (auditoria 20/08): dois CREATEs concorrentes
+        // com isPadrao desmarcavam um ao outro antes de inserir → dois padrões.
+        await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${empresaId}))`;
         await tx.funil.updateMany({
           where: { empresaId, isPadrao: true },
           data: { isPadrao: false },
@@ -654,6 +657,23 @@ export class FunisService {
     const existing = await this.findById(user, id);
     // Funil protegido/obrigatório: rep não exclui.
     this.assertPodeEditar(user, existing);
+
+    // Fluxo apontando pra QUALQUER etapa bloqueia (auditoria 20/08): o guard
+    // existia no removerEtapa, mas excluir o FUNIL inteiro pulava por cima —
+    // o cascade apagava as etapas e todo MOVER_LEAD_ETAPA/CRIAR_LEAD que
+    // guardava o id quebrava em silêncio na próxima execução. Mesmo molde do
+    // guard de etapa.
+    const fluxosApontando = new Map<string, string>();
+    for (const e of existing.etapas) {
+      for (const f of e.fluxosQueApontam) fluxosApontando.set(f.id, f.nome);
+    }
+    if (fluxosApontando.size > 0) {
+      const nomes = [...fluxosApontando.values()].join(', ');
+      throw new BusinessRuleException(
+        `Funil usado por ${fluxosApontando.size} fluxo(s) (${nomes}) — ` +
+          'ajuste os nós que apontam pras etapas dele antes de excluir.',
+      );
+    }
 
     // AUDITORIA (média): a contagem de leads e o delete eram operações separadas.
     // Um lead criado NA JANELA entre as duas (captura do site, importação,
@@ -848,6 +868,11 @@ export class FunisService {
   ): Promise<FunilWithRel> {
     const funil = await this.findById(user, funilId);
     this.assertPodeEditar(user, funil);
+    // Duplicado na lista quebrava a bijeção: com o mesmo id 2x, o check de
+    // tamanho passava e uma etapa REAL ficava de fora, com ordens colidindo.
+    if (new Set(dto.etapaIds).size !== dto.etapaIds.length) {
+      throw new BusinessRuleException('Lista de reordenação contém etapa duplicada');
+    }
     const etapaIds = new Set(funil.etapas.map((e) => e.id));
     for (const id of dto.etapaIds) {
       if (!etapaIds.has(id)) {

@@ -912,6 +912,33 @@ export class LeadsService {
     origem: 'usuario' | 'ia',
     tagNome?: string,
   ): Promise<void> {
+    // tagsPermitidas do funil e AUTOMAÇÃO (auditoria 20/08, decisão consciente):
+    // o caminho MANUAL bloqueia tag fora da allow-list; os caminhos de sistema
+    // (IA, fluxo, SLA, captura) NÃO bloqueiam de propósito — a allow-list é
+    // curadoria do que o HUMANO escolhe, e barrar aqui mataria as etiquetas de
+    // motor (parado:*, retomou, origem:*) em silêncio, quebrando RB/RT. O que
+    // não pode é a divergência ficar INVISÍVEL: quando a automação aplica tag
+    // fora da lista, loga alto pra alguém curar a lista (ou a config do fluxo).
+    if (origem !== 'usuario' && tagNome) {
+      const lead = await this.prisma.lead.findUnique({
+        where: { id: leadId },
+        select: { funilId: true },
+      });
+      if (lead?.funilId) {
+        const funil = await this.prisma.funil.findUnique({
+          where: { id: lead.funilId },
+          select: { nome: true, tagsPermitidas: true },
+        });
+        const permitidas = funil?.tagsPermitidas;
+        if (Array.isArray(permitidas) && permitidas.length > 0 && !permitidas.includes(tagNome)) {
+          this.logger.warn(
+            `Tag "${tagNome}" aplicada por AUTOMAÇÃO fora da allow-list do funil ` +
+              `"${funil?.nome}" — aplicada mesmo assim (automação não é barrada); ` +
+              'inclua-a em tagsPermitidas ou ajuste o fluxo',
+          );
+        }
+      }
+    }
     await this.prisma.leadTag.upsert({
       where: { leadId_tagId: { leadId, tagId } },
       create: { leadId, tagId, origem },
