@@ -798,14 +798,33 @@ describe('FluxosService.definirGatilho', () => {
     return fluxo;
   };
 
+  let redisGatilho: { del: ReturnType<typeof vi.fn> };
+
   beforeEach(() => {
     prisma = makePrismaMock();
+    redisGatilho = { del: vi.fn().mockResolvedValue(1) };
     svc = new FluxosService(
       prisma as never,
       makeBusMock() as never,
-      { del: vi.fn() } as never,
+      redisGatilho as never,
       { uploadOutbound: vi.fn() } as never,
     );
+  });
+
+  it('espelha o config em Fluxo.triggerConfig E limpa o cursor cron (auditoria 20/08)', async () => {
+    // O job de CRON_AGENDADO lê SÓ Fluxo.triggerConfig — gravar a agenda apenas
+    // no nó TRIGGER fazia a troca de horário pelo MCP ser ignorada em silêncio,
+    // com o cursor Redis preso na config antiga.
+    comGrafo([{ id: 'trigger-1', tipo: 'TRIGGER', posX: 0, posY: 0 }]);
+
+    await svc.definirGatilho(fakeUser(), 'fluxo-1', {
+      triggerTipo: 'CRON_AGENDADO',
+      config: { expressoes: ['0 9 * * 1'], pularFeriados: true },
+    });
+
+    const upd = prisma.fluxo.update.mock.calls.at(-1)?.[0];
+    expect(upd?.data?.triggerConfig).toEqual({ expressoes: ['0 9 * * 1'], pularFeriados: true });
+    expect(redisGatilho.del).toHaveBeenCalledWith('cron:next:fluxo-1');
   });
 
   it('fluxo SEM gatilho: cria o nó TRIGGER e liga na raiz — sem tocar nos outros nós', async () => {

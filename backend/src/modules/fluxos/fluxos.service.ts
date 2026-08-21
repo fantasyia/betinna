@@ -739,10 +739,23 @@ export class FluxosService {
       });
     }
 
+    // Espelha o AGENDAMENTO no Fluxo.triggerConfig (auditoria 20/08). O job de
+    // CRON_AGENDADO lê EXCLUSIVAMENTE f.triggerConfig — gravar a config só no
+    // nó TRIGGER (acima) fazia a troca de horário pelo MCP ser ignorada em
+    // silêncio: a tela mostrava a agenda nova e o cursor Redis seguia a antiga.
+    // O espelho vale pra QUALQUER gatilho (o filtro do bus também lê de lá como
+    // fallback), então gravamos o config inteiro, como o update() faz.
     await this.prisma.fluxo.update({
       where: { id: fluxo.id },
-      data: { triggerTipo },
+      data: {
+        triggerTipo,
+        triggerConfig: dto.config ? (toJson(dto.config) as Prisma.InputJsonValue) : Prisma.JsonNull,
+      },
     });
+    // Mesmo motivo do update(): agendamento mudou → cursor do cron zera, senão
+    // o próximo disparo ainda sai na config ANTIGA (o gotcha do cursor preso,
+    // por mais uma porta).
+    await this.limparCursorCron(fluxo.id);
     this.logger.log(`Gatilho definido no fluxo ${fluxo.id} (${triggerTipo}) por ${user.id}`);
     return this.findOne(user, fluxo.id);
   }

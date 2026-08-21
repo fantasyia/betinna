@@ -353,9 +353,14 @@ export class FluxoExecutorService {
           execucao.empresaId,
           (execucao.contexto as ExecucaoContexto | null)?.['leadId'] as string | undefined,
         ));
-      const esperaJanela = ehResposta
-        ? 0
-        : await this.pacing.esperaAntesDoProativoMs(execucao.empresaId).catch(() => 0);
+      // Modo SECO não espera janela (auditoria 20/08): o teste não manda nada
+      // por definição, mas era reagendado pra madrugada como se fosse mandar —
+      // ficava horas EM_EXECUCAO sem ninguém entender. Teste com
+      // enviarDeVerdade=true continua respeitando a janela: aí envia de fato.
+      const esperaJanela =
+        ehResposta || this.testeSemEnvio(execucao.contexto as ExecucaoContexto)
+          ? 0
+          : await this.pacing.esperaAntesDoProativoMs(execucao.empresaId).catch(() => 0);
       if (esperaJanela > 0) {
         // Solta o claim ANTES de reenfileirar: o job novo tem jobId próprio, e
         // deixar este como EXECUTANDO só daria trabalho ao reaper depois.
@@ -1152,10 +1157,12 @@ export class FluxoExecutorService {
     // Resolve o telefone do destinatário conforme o modo.
     let telefone: string | undefined;
     if (modo === 'numero') {
-      telefone = interpolate(cfg.destinatarioNumero ?? '', ctx).replace(/\D/g, '');
+      // Preserva o '+' (E.164) — igual ao conversar-ia: sem ele, número
+      // estrangeiro de 10/11 dígitos ganharia DDI 55 indevido no provider.
+      telefone = interpolate(cfg.destinatarioNumero ?? '', ctx).replace(/[^\d+]/g, '');
       if (!telefone) throw new Error('ENVIAR_WHATSAPP: destinatário "número específico" vazio');
     } else if (modo === 'contato') {
-      telefone = (cfg.destinatarioContato ?? '').replace(/\D/g, '');
+      telefone = (cfg.destinatarioContato ?? '').replace(/[^\d+]/g, '');
       if (!telefone) throw new Error('ENVIAR_WHATSAPP: destinatário "contato" não selecionado');
     } else {
       // 'lead' (default): lead do contexto, senão cliente do contexto.
@@ -1209,7 +1216,7 @@ export class FluxoExecutorService {
         where: { id: leadId, empresaId },
         select: { contatoTelefone: true },
       });
-      if (lead?.contatoTelefone) return lead.contatoTelefone.replace(/\D/g, '');
+      if (lead?.contatoTelefone) return lead.contatoTelefone.replace(/[^\d+]/g, '');
     }
     const clienteId = ctx['clienteId'] as string | undefined;
     if (clienteId) {
@@ -1217,7 +1224,7 @@ export class FluxoExecutorService {
         where: { id: clienteId, empresaId },
         select: { telefone: true },
       });
-      if (cliente?.telefone) return cliente.telefone.replace(/\D/g, '');
+      if (cliente?.telefone) return cliente.telefone.replace(/[^\d+]/g, '');
     }
     return undefined;
   }
@@ -1407,17 +1414,24 @@ export class FluxoExecutorService {
       clienteRepId = cliente.representanteId;
     }
     // Responsável: 1) o escolhido no nó (validado na empresa); 2) rep do cliente;
-    // 3) fallback primeiro ADMIN/DIRECTOR.
-    let responsavelId: string | undefined = cfg.responsavelId || undefined;
-    if (responsavelId) {
-      const u = await this.prisma.usuario.findFirst({
-        where: { id: responsavelId, empresas: { some: { empresaId } } },
+    // 3) rep do lead; 4) fallback primeiro ADMIN/DIRECTOR.
+    //
+    // Em TODOS os elos, usuário INATIVO é inválido e cai pro próximo fallback
+    // (auditoria 20/08): tarefa de INATIVO nasce num quadro que ninguém abre —
+    // o follow-up existe no banco e é invisível na prática. PENDENTE segue
+    // válido (ainda não fez o 1º acesso, mas vai ver), igual ao ATRIBUIR_REP.
+    const usuarioAtivoNaEmpresa = async (id: string): Promise<boolean> =>
+      (await this.prisma.usuario.findFirst({
+        where: { id, empresas: { some: { empresaId } }, status: { not: 'INATIVO' } },
         select: { id: true },
-      });
-      if (!u) responsavelId = undefined; // id inválido/foreign → cai no fallback
+      })) !== null;
+
+    let responsavelId: string | undefined = cfg.responsavelId || undefined;
+    if (responsavelId && !(await usuarioAtivoNaEmpresa(responsavelId))) {
+      responsavelId = undefined; // inválido/foreign/inativo → cai no fallback
     }
-    if (!responsavelId && clienteId) {
-      responsavelId = clienteRepId ?? undefined;
+    if (!responsavelId && clienteId && clienteRepId) {
+      responsavelId = (await usuarioAtivoNaEmpresa(clienteRepId)) ? clienteRepId : undefined;
     }
     // Fluxo LEAD-driven: sem cliente, usa o rep do lead como responsável.
     if (!responsavelId) {
@@ -1427,7 +1441,9 @@ export class FluxoExecutorService {
           where: { id: leadId, empresaId },
           select: { representanteId: true },
         });
-        responsavelId = lead?.representanteId ?? undefined;
+        if (lead?.representanteId && (await usuarioAtivoNaEmpresa(lead.representanteId))) {
+          responsavelId = lead.representanteId;
+        }
       }
     }
     if (!responsavelId) {
@@ -1706,10 +1722,43 @@ export class FluxoExecutorService {
       where: { id: leadId, empresaId },
       select: { etapa: true, funilId: true },
     });
+    // Lead DENTRO de funil: o ramo legado mudava só o enum e deixava
+    // `funilEtapaId` parado — o kanban continuava mostrando o lead na coluna
+    // antiga, "movido" só no relatório (auditoria 20/08). Resolve a etapa do
+    // funil DELE com o tipo correspondente e sincroniza os dois campos.
+    let funilEtapaLegado: { id: string } | null = null;
+    if (antesLegado?.funilId) {
+      const tipoAlvo = cfg.etapa === 'GANHO' ? 'GANHO' : cfg.etapa === 'PERDIDO' ? 'PERDIDO' : null;
+      if (tipoAlvo) {
+        funilEtapaLegado = await this.prisma.funilEtapa.findFirst({
+          where: { funilId: antesLegado.funilId, tipo: tipoAlvo },
+          select: { id: true },
+        });
+        if (!funilEtapaLegado) {
+          throw new Error(
+            `MOVER_LEAD_ETAPA (legado): o funil do lead não tem etapa do tipo ${tipoAlvo} — ` +
+              'use funilEtapaId no nó em vez do enum',
+          );
+        }
+      }
+      // Enum intermediário (NOVO/CONTATO/...) não tem correspondência única no
+      // funil custom — aí o certo é o nó usar funilEtapaId; mudar só o enum
+      // deixaria os campos divergentes, então recusa com instrução.
+      if (!tipoAlvo) {
+        throw new Error(
+          'MOVER_LEAD_ETAPA (legado): lead está num funil customizado — configure o nó com ' +
+            'funilEtapaId (a etapa do funil), não com o enum antigo',
+        );
+      }
+    }
     // AUDITORIA 2026-05-15: updateMany com empresaId no where evita write cross-tenant.
     const { count } = await this.prisma.lead.updateMany({
       where: { id: leadId, empresaId },
-      data: { etapa: cfg.etapa, etapaDesde: new Date() },
+      data: {
+        etapa: cfg.etapa,
+        etapaDesde: new Date(),
+        ...(funilEtapaLegado ? { funilEtapaId: funilEtapaLegado.id } : {}),
+      },
     });
     if (count === 0) {
       throw new Error(`Lead ${leadId} não encontrado na empresa ${empresaId}`);
@@ -1864,6 +1913,30 @@ export class FluxoExecutorService {
     // Veio de anúncio → click_to_whatsapp; inbound orgânico do número → whatsapp.
     const origemCadastro = cfg.origemCadastro ?? (referral ? 'click_to_whatsapp' : 'whatsapp');
 
+    // `representanteId` do nó é CONFIG LIVRE — sem validação, um id de outro
+    // tenant (ou um rep desativado) virava dono do lead em silêncio, e o lead
+    // sumia da carteira de todo mundo (auditoria 20/08). Valida como o
+    // ATRIBUIR_REP; inválido → warn e cai no fallback do dono da conversa —
+    // não LANÇA porque a herança de atribuição é o ponto crítico da ação.
+    let repConfigurado = cfg.representanteId ?? null;
+    if (repConfigurado) {
+      const rep = await this.prisma.usuario.findFirst({
+        where: {
+          id: repConfigurado,
+          empresas: { some: { empresaId } },
+          status: { not: 'INATIVO' },
+        },
+        select: { id: true },
+      });
+      if (!rep) {
+        this.logger.warn(
+          `CRIAR_LEAD: representanteId ${repConfigurado} inválido pra empresa ${empresaId} ` +
+            '(não é da empresa ou está inativo) — caindo no dono da conversa',
+        );
+        repConfigurado = null;
+      }
+    }
+
     const nome = conversa.peerNome?.trim() || (digitos ? `Contato ${digitos}` : 'Contato WhatsApp');
     const lead = await this.prisma.lead.create({
       data: {
@@ -1873,7 +1946,7 @@ export class FluxoExecutorService {
         contatoTelefone: telefone ?? null,
         clienteId: conversa.clienteId,
         // Triagem é da casa: sem rep por padrão (o rep entra quando for triado).
-        representanteId: cfg.representanteId ?? conversa.proprietarioId ?? null,
+        representanteId: repConfigurado ?? conversa.proprietarioId ?? null,
         canalOrigem: 'WHATSAPP',
         etapa: etapaEnum,
         funilId,
@@ -1944,7 +2017,7 @@ export class FluxoExecutorService {
       origemCadastro,
       lead: { id: lead.id, nome: lead.nome, etapa: lead.etapa, valorEstimado: 0 },
       clienteId: conversa.clienteId,
-      representanteId: cfg.representanteId ?? conversa.proprietarioId ?? null,
+      representanteId: repConfigurado ?? conversa.proprietarioId ?? null,
       _hops: hops + 1,
       ...this.marcaDeTeste(ctx),
     });
@@ -2430,6 +2503,19 @@ export class FluxoExecutorService {
       ...(cfg.headers ?? {}),
     };
 
+    // Modo seco cobre TAMBÉM o webhook (auditoria 20/08): era a única saída
+    // externa sem o gate — teste disparava POST real no sistema do cliente,
+    // com payload interpolado de lead real. Mesmo padrão do WhatsApp/e-mail.
+    if (this.testeSemEnvio(ctx)) {
+      return {
+        simulado: true,
+        url,
+        method,
+        payload,
+        motivo: 'Execução de TESTE — webhook não disparado (use "enviar de verdade" pra disparar)',
+      };
+    }
+
     try {
       // Type narrowing: WebhookExternoConfig.method é sempre POST/PUT/PATCH (sem GET)
       const resp = await safeRequest(
@@ -2441,6 +2527,13 @@ export class FluxoExecutorService {
         },
         { timeoutMs: 10_000 },
       );
+      // `enviado` SÓ em 2xx (auditoria 20/08): antes qualquer status virava
+      // sucesso — 500 do receptor aparecia verde no painel e ninguém sabia que
+      // a integração estava quebrada. Não-2xx agora FALHA o passo (o BullMQ
+      // re-tenta com o mesmo X-Idempotency-Key, que existe pra isso).
+      if (resp.status < 200 || resp.status >= 300) {
+        throw new Error(`Webhook respondeu HTTP ${resp.status} (${url})`);
+      }
       return { url, status: resp.status, enviado: true };
     } catch (err) {
       if (err instanceof SsrfBlockedError) {
