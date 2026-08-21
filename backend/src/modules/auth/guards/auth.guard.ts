@@ -134,6 +134,9 @@ export class AuthGuard implements CanActivate {
    *  - Exige que o `escopo` do token inclua o módulo da rota (default antigo
    *    ["kanban"] segue válido só no Kanban).
    *  - Valida o sha256; revogado/inexistente → 401.
+   *  - `/inbox` e `/contatos`/`/users` são SOMENTE LEITURA, com UMA exceção:
+   *    `DELETE /inbox/:id/mensagens` (Zerar conversa) — liberado por rota
+   *    exata pro reset entre casos de teste. Responder/atribuir seguem barrados.
    *  - Carrega o dono (com role/empresa) e injeta req.user — assim @Roles e o
    *    filtro multi-tenant dos controllers continuam valendo sem mudança.
    *  - Atualiza ultimoUso com throttle de 60s (best-effort).
@@ -201,13 +204,28 @@ export class AuthGuard implements CanActivate {
     // master precisa criar/renomear/reordenar/remover etapa sem depender do Léo
     // na UI. Segue OK: FunilEtapa não é PII, e o service já protege contra apagar
     // etapa com lead ou com fluxo apontando pra ela.
+    //
+    // ÚNICA exceção de escrita no inbox: `DELETE /inbox/:id/mensagens` — o
+    // "Zerar conversa". Não manda mensagem nem reatribui (que é o que a regra
+    // existe pra impedir): APAGA o histórico da thread. É o reset entre casos
+    // da bateria de testes — um número de origem = uma conversa, e sem zerar o
+    // caso seguinte roda com o histórico do anterior, o que invalida
+    // justamente as checagens sobre a fala da IA ("não se reapresenta", "não
+    // repete pergunta"). O verbo é liberado por ROTA EXATA, não pra /inbox
+    // inteiro: responder/atribuir por token continua barrado.
+    const zerarConversa =
+      moduloRequerido === 'inbox' &&
+      (request.method ?? 'GET').toUpperCase() === 'DELETE' &&
+      /^\/inbox\/[^/]+\/mensagens\/?$/.test(rel);
+
     if (
       (moduloRequerido === 'contatos' ||
         moduloRequerido === 'usuarios' ||
         // inbox é conversa de CLIENTE: ler pra analisar, nunca responder nem
         // reatribuir. Mandar mensagem não é papel de agente.
         moduloRequerido === 'inbox') &&
-      (request.method ?? 'GET').toUpperCase() !== 'GET'
+      (request.method ?? 'GET').toUpperCase() !== 'GET' &&
+      !zerarConversa
     ) {
       throw new ForbiddenException(`Token de API só faz leitura (GET) em /${moduloRequerido}`);
     }

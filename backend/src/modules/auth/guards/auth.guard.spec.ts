@@ -87,6 +87,51 @@ describe('AuthGuard — token de API (bkt_) em /funis', () => {
     await expect(guard.canActivate(ctx)).resolves.toBe(true);
   });
 
+  // ── /inbox: leitura, com UMA exceção de verbo ──────────────────────
+  const comEscopoInbox = () => {
+    prisma.kanbanApiToken.findUnique.mockResolvedValue({
+      id: 'tok-1',
+      empresaId: 'emp-1',
+      usuarioId: 'u1',
+      escopo: ['inbox'],
+      revogado: false,
+    });
+  };
+
+  it('DELETE em /inbox/:id/mensagens PASSA — é o "Zerar conversa" (reset entre casos de teste)', async () => {
+    comEscopoInbox();
+    const ctx = fakeContext({
+      method: 'DELETE',
+      path: '/inbox/conv-1/mensagens',
+      headers: { authorization: 'Bearer bkt_abc' },
+    });
+
+    await expect(guard.canActivate(ctx)).resolves.toBe(true);
+  });
+
+  it('POST em /inbox/:id/responder CONTINUA bloqueado — mandar mensagem não é papel de agente', async () => {
+    // A exceção é por ROTA EXATA + verbo, não "escrita liberada em /inbox".
+    comEscopoInbox();
+    const ctx = fakeContext({
+      method: 'POST',
+      path: '/inbox/conv-1/responder',
+      headers: { authorization: 'Bearer bkt_abc' },
+    });
+
+    await expect(guard.canActivate(ctx)).rejects.toThrow(/só faz leitura/);
+  });
+
+  it('DELETE em /inbox/whatsapp/limpar CONTINUA bloqueado — o nuke da empresa não é por token', async () => {
+    comEscopoInbox();
+    const ctx = fakeContext({
+      method: 'DELETE',
+      path: '/inbox/whatsapp/limpar',
+      headers: { authorization: 'Bearer bkt_abc' },
+    });
+
+    await expect(guard.canActivate(ctx)).rejects.toThrow(/só faz leitura/);
+  });
+
   it('POST em /contatos CONTINUA bloqueado (PII — regra não mudou)', async () => {
     prisma.kanbanApiToken.findUnique.mockResolvedValue({
       id: 'tok-1',
