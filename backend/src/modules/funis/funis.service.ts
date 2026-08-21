@@ -16,6 +16,7 @@ import type {
   CreateFunilEtapaDto,
   LeadsPorEtapaQueryDto,
   ReordenarEtapasDto,
+  ReordenarFunisDto,
   UpdateFunilDto,
   UpdateFunilEtapaDto,
 } from './funis.dto';
@@ -859,6 +860,39 @@ export class FunisService {
       await tx.funilEtapa.delete({ where: { id: etapaId } });
     });
     return this.findById(user, funilId);
+  }
+
+  /**
+   * Ordem de EXIBIÇÃO dos funis (a listagem já ordenava por `ordem`; faltava
+   * quem escrevesse). Exige a lista inteira e recusa duplicata — mesma regra do
+   * reordenar de etapas, pelo mesmo motivo: com id repetido a bijeção quebra e
+   * um funil real fica de fora, com ordens colidindo.
+   */
+  async reordenarFunis(user: AuthenticatedUser, dto: ReordenarFunisDto): Promise<FunilWithRel[]> {
+    const empresaId = this.requireEmpresa(user);
+    if (new Set(dto.funilIds).size !== dto.funilIds.length) {
+      throw new BusinessRuleException('Lista de reordenação contém funil duplicado');
+    }
+    const daEmpresa = await this.prisma.funil.findMany({
+      where: { empresaId },
+      select: { id: true },
+    });
+    const ids = new Set(daEmpresa.map((f) => f.id));
+    for (const id of dto.funilIds) {
+      if (!ids.has(id)) throw new NotFoundException('Funil', id);
+    }
+    if (dto.funilIds.length !== daEmpresa.length) {
+      throw new BusinessRuleException(
+        'Lista de reordenação precisa conter todos os funis da empresa',
+      );
+    }
+    await this.prisma.$transaction(
+      dto.funilIds.map((id, idx) =>
+        this.prisma.funil.update({ where: { id }, data: { ordem: idx } }),
+      ),
+    );
+    this.logger.log(`Funis reordenados na empresa ${empresaId} por ${user.id}`);
+    return this.list(user);
   }
 
   async reordenarEtapas(

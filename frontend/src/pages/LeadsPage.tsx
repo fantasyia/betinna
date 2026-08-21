@@ -1,4 +1,4 @@
-import { memo, useEffect, useMemo, useRef, useState } from 'react';
+import { memo, useEffect, useRef, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import {
   DndContext,
@@ -33,6 +33,7 @@ import {
   X,
   Tag as TagIcon,
   Phone,
+  ChevronDown,
 } from 'lucide-react';
 import { api, apiErrorMessage } from '@/lib/api';
 import { useApiQuery } from '@/hooks/useApiQuery';
@@ -247,27 +248,230 @@ function TagChip({
 // ─── Page principal ────────────────────────────────────────────────
 
 export default function LeadsPage() {
-  const toast = useToast();
   // Lista de funis pro seletor
   const { data: funis } = useApiQuery<FunilListItem[]>('/funis');
-  const [funilSelecionadoId, setFunilSelecionadoId] = useState<string | null>(null);
 
-  // Quando carrega a lista, seta o padrão como selecionado se nenhum estiver
+  /**
+   * Funis VISÍVEIS ao mesmo tempo (pedido do Léo 21/08: "ver vários funis,
+   * só rolando a página pra baixo"). Cada um vira um <FunilBoard> autônomo —
+   * fetch, estado otimista e drag próprios. Arrastar ENTRE funis não existe de
+   * propósito: mudar de funil é outra operação, não um drag de etapa.
+   *
+   * A ordem de exibição é a do `/funis` (campo `ordem`, reordenável na tela de
+   * Funis) — não a ordem em que a pessoa clicou.
+   */
+  const [visiveis, setVisiveis] = useState<string[]>([]);
+  const [menuFunis, setMenuFunis] = useState(false);
+  // Bumped quando algo fora dos boards muda leads (criar/importar): cada board
+  // observa e refaz o fetch. Evita plumbing de refs pra N boards.
+  const [versao, setVersao] = useState(0);
+  // Totais somados dos boards visíveis (o header mostra o conjunto).
+  const [totaisPorFunil, setTotaisPorFunil] = useState<
+    Record<string, { totalLeads: number; totalAtivos: number }>
+  >({});
+
+  // Sem seleção: abre no funil PADRÃO (comportamento de sempre).
   useEffect(() => {
-    if (funilSelecionadoId || !funis || funis.length === 0) return;
-    const padrao = funis.find((f) => f.isPadrao && f.ativo) ?? funis.find((f) => f.ativo) ?? funis[0];
-    setFunilSelecionadoId(padrao?.id ?? null);
-  }, [funis, funilSelecionadoId]);
-
-  const kanbanPath = funilSelecionadoId
-    ? `/leads/kanban?funilId=${funilSelecionadoId}`
-    : '/leads/kanban';
-  const { data, loading, error, refetch } = useApiQuery<KanbanResponse>(kanbanPath);
+    if (visiveis.length > 0 || !funis || funis.length === 0) return;
+    const padrao =
+      funis.find((f) => f.isPadrao && f.ativo) ?? funis.find((f) => f.ativo) ?? funis[0];
+    if (padrao) setVisiveis([padrao.id]);
+  }, [funis, visiveis.length]);
 
   const role = useRole();
   const canImport = role === 'ADMIN' || role === 'DIRECTOR' || role === 'GERENTE';
   const [creating, setCreating] = useState(false);
   const [importing, setImporting] = useState(false);
+
+  // Renderiza na ordem do /funis, não na ordem de clique.
+  const funisVisiveis = (funis ?? []).filter((f) => visiveis.includes(f.id));
+  const primeiro = funisVisiveis[0] ?? null;
+  const multi = funisVisiveis.length > 1;
+
+  const totals = funisVisiveis.reduce(
+    (acc, f) => {
+      const t = totaisPorFunil[f.id];
+      return t
+        ? { totalLeads: acc.totalLeads + t.totalLeads, totalAtivos: acc.totalAtivos + t.totalAtivos }
+        : acc;
+    },
+    { totalLeads: 0, totalAtivos: 0 },
+  );
+
+  function alternarFunil(id: string) {
+    setVisiveis((cur) => {
+      // Nunca deixa a tela sem funil nenhum: desmarcar o último é no-op.
+      if (cur.includes(id)) return cur.length === 1 ? cur : cur.filter((x) => x !== id);
+      return [...cur, id];
+    });
+  }
+
+  return (
+    <PageLayout
+      title="Funil"
+      description={`${totals.totalLeads} leads · ${fmtBRLCompact(totals.totalAtivos)} em ativo${
+        multi ? ` · ${funisVisiveis.length} funis` : ''
+      }`}
+      actions={
+        <div className="flex items-center gap-2">
+          {funis && funis.length > 1 && (
+            <div className="relative">
+              <Button
+                variant="secondary"
+                data-testid="funil-selector"
+                onClick={() => setMenuFunis((v) => !v)}
+                aria-expanded={menuFunis}
+              >
+                {multi
+                  ? `${funisVisiveis.length} funis`
+                  : (primeiro?.nome ?? 'Funil')}
+                <ChevronDown className="h-3.5 w-3.5 ml-1.5" />
+              </Button>
+              {menuFunis && (
+                <>
+                  {/* Clique fora fecha — sem lib de popover. */}
+                  <div
+                    className="fixed inset-0 z-40"
+                    aria-hidden
+                    onClick={() => setMenuFunis(false)}
+                  />
+                  <div className="absolute right-0 z-50 mt-1 w-64 rounded-md border border-border bg-surface shadow-lg p-1">
+                    <div className="px-2 py-1.5 text-[10px] uppercase tracking-wider text-muted font-semibold">
+                      Funis visíveis ao mesmo tempo
+                    </div>
+                    {funis.map((f) => {
+                      const marcado = visiveis.includes(f.id);
+                      return (
+                        <label
+                          key={f.id}
+                          className="flex items-center gap-2 px-2 py-1.5 rounded-md text-sm cursor-pointer hover:bg-surface-hover"
+                          data-testid={`funil-opt-${f.id}`}
+                        >
+                          <input
+                            type="checkbox"
+                            checked={marcado}
+                            onChange={() => alternarFunil(f.id)}
+                          />
+                          <span
+                            className="h-2 w-2 rounded-full shrink-0"
+                            style={{ background: f.cor }}
+                            aria-hidden
+                          />
+                          <span className="flex-1 truncate">{f.nome}</span>
+                          {f.isPadrao && (
+                            <Badge variant="primary" size="sm">
+                              padrão
+                            </Badge>
+                          )}
+                        </label>
+                      );
+                    })}
+                  </div>
+                </>
+              )}
+            </div>
+          )}
+          <Link
+            to="/funis"
+            className="inline-flex items-center gap-1.5 h-9 px-3 rounded-md text-sm font-medium text-text-subtle hover:text-primary hover:bg-surface-hover transition-colors"
+            data-testid="funis-manage-link"
+          >
+            <Settings className="h-3.5 w-3.5" />
+            Funis
+          </Link>
+          {canImport && (
+            <Button
+              variant="secondary"
+              data-testid="lead-import-btn"
+              onClick={() => setImporting(true)}
+              leftIcon={<Upload className="h-3.5 w-3.5" />}
+            >
+              Importar
+            </Button>
+          )}
+          <Button
+            data-testid="lead-new-btn"
+            onClick={() => setCreating(true)}
+            leftIcon={<Plus className="h-3.5 w-3.5" />}
+          >
+            Novo lead
+          </Button>
+        </div>
+      }
+    >
+      <CrmTabs />
+
+      {/* Um board por funil visível, empilhados. */}
+      <div className="flex flex-col gap-6">
+        {funisVisiveis.map((f) => (
+          <FunilBoard
+            key={f.id}
+            funilId={f.id}
+            nome={f.nome}
+            cor={f.cor}
+            mostrarTitulo={multi}
+            versao={versao}
+            onTotals={(t) => setTotaisPorFunil((cur) => ({ ...cur, [f.id]: t }))}
+          />
+        ))}
+      </div>
+
+      {creating && (
+        <LeadFormModal
+          funilSelecionado={primeiro ? { id: primeiro.id, etapas: primeiro.etapas } : null}
+          onClose={() => setCreating(false)}
+          onSaved={() => {
+            setCreating(false);
+            setVersao((v) => v + 1);
+          }}
+        />
+      )}
+
+      {importing && (
+        <ImportLeadsModal
+          funis={funis ?? []}
+          defaultFunilId={primeiro?.id ?? null}
+          onClose={() => setImporting(false)}
+          onDone={() => {
+            setImporting(false);
+            setVersao((v) => v + 1);
+          }}
+        />
+      )}
+    </PageLayout>
+  );
+}
+
+/**
+ * UM funil no kanban: fetch, estado otimista, drag-and-drop e o drawer do lead.
+ *
+ * Extraído da LeadsPage (21/08) pra a página poder empilhar VÁRIOS. Cada board
+ * é autônomo — dois funis na tela não compartilham estado nem DndContext, então
+ * um drag num deles não mexe no outro. Continua no MESMO arquivo de propósito:
+ * ele usa KanbanColumn/LeadCardInner/ReasonDialog/LeadDetailDrawer, que vivem
+ * logo abaixo.
+ */
+function FunilBoard({
+  funilId,
+  nome,
+  cor,
+  mostrarTitulo,
+  versao,
+  onTotals,
+}: {
+  funilId: string;
+  nome: string;
+  cor: string;
+  /** Com um funil só, o nome já está no seletor do header — não repete. */
+  mostrarTitulo: boolean;
+  /** Muda quando a página cria/importa lead: força refetch. */
+  versao: number;
+  onTotals: (t: { totalLeads: number; totalAtivos: number }) => void;
+}) {
+  const toast = useToast();
+  const { data, loading, error, refetch } = useApiQuery<KanbanResponse>(
+    `/leads/kanban?funilId=${funilId}`,
+  );
   const [selected, setSelected] = useState<Lead | null>(null);
 
   // Optimistic state pra mover durante drag
@@ -286,6 +490,14 @@ export default function LeadsPage() {
     if (movendoRef.current > 0 || activeLeadRef.current) return; // #49: não atropela o move otimista
     setOptimistic(data ?? null);
   }, [data]);
+
+  // Criar/importar lead acontece FORA do board — a página avisa por `versao`.
+  const primeiraVersao = useRef(versao);
+  useEffect(() => {
+    if (versao === primeiraVersao.current) return;
+    primeiraVersao.current = versao;
+    refetch();
+  }, [versao, refetch]);
 
   // Atualiza o board em BACKGROUND — fluxos/bot movem leads no backend, então
   // sem isso só dava pra ver a mudança com F5. Refetch ao focar a aba + a cada
@@ -373,12 +585,7 @@ export default function LeadsPage() {
     await persistMove(leadId, targetEtapaId, targetEtapa.nome);
   }
 
-  function moveLeadLocal(
-    leadId: string,
-    fromEtapaId: string,
-    toEtapaId: string,
-    lead: Lead,
-  ) {
+  function moveLeadLocal(leadId: string, fromEtapaId: string, toEtapaId: string, lead: Lead) {
     setOptimistic((cur) => {
       if (!cur) return cur;
       const grupos = { ...cur.grupos };
@@ -423,77 +630,37 @@ export default function LeadsPage() {
     await persistMove(lead.id, targetEtapaId, targetEtapaNome, motivo);
   }
 
-  const totals = useMemo(() => {
-    if (!optimistic) return null;
-    const etapas = optimistic.funil.etapas;
+  // Reporta os totais pro header da página (que soma os funis visíveis).
+  useEffect(() => {
+    if (!optimistic) return;
     let totalLeads = 0;
     let totalAtivos = 0;
-    for (const e of etapas) {
+    for (const e of optimistic.funil.etapas) {
       const leads = optimistic.grupos[e.id] ?? [];
       totalLeads += leads.length;
-      if (e.tipo === 'ATIVA') {
-        totalAtivos += leads.reduce((s, l) => s + l.valorEstimado, 0);
-      }
+      if (e.tipo === 'ATIVA') totalAtivos += leads.reduce((s, l) => s + l.valorEstimado, 0);
     }
-    return { totalLeads, totalAtivos };
+    onTotals({ totalLeads, totalAtivos });
+    // `onTotals` é recriado a cada render da página — fora das deps de propósito
+    // (com ele aqui, o efeito rodaria em loop).
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [optimistic]);
 
   const cols = optimistic?.funil.etapas.length ?? 6;
 
   return (
-    <PageLayout
-      title="Funil"
-      description={
-        totals
-          ? `${totals.totalLeads} leads · ${fmtBRLCompact(totals.totalAtivos)} em ativo`
-          : undefined
-      }
-      actions={
-        <div className="flex items-center gap-2">
-          {funis && funis.length > 1 && (
-            <Select
-              data-testid="funil-selector"
-              value={funilSelecionadoId ?? ''}
-              onChange={(e) => setFunilSelecionadoId(e.target.value)}
-              className="min-w-[180px]"
-            >
-              {funis.map((f) => (
-                <option key={f.id} value={f.id}>
-                  {f.nome}
-                  {f.isPadrao ? ' (padrão)' : ''}
-                </option>
-              ))}
-            </Select>
-          )}
-          <Link
-            to="/funis"
-            className="inline-flex items-center gap-1.5 h-9 px-3 rounded-md text-sm font-medium text-text-subtle hover:text-primary hover:bg-surface-hover transition-colors"
-            data-testid="funis-manage-link"
-          >
-            <Settings className="h-3.5 w-3.5" />
-            Funis
-          </Link>
-          {canImport && (
-            <Button
-              variant="secondary"
-              data-testid="lead-import-btn"
-              onClick={() => setImporting(true)}
-              leftIcon={<Upload className="h-3.5 w-3.5" />}
-            >
-              Importar
-            </Button>
-          )}
-          <Button
-            data-testid="lead-new-btn"
-            onClick={() => setCreating(true)}
-            leftIcon={<Plus className="h-3.5 w-3.5" />}
-          >
-            Novo lead
-          </Button>
+    <section data-testid={`funil-board-${funilId}`}>
+      {mostrarTitulo && (
+        <div className="flex items-center gap-2 mb-2">
+          <span className="h-2.5 w-2.5 rounded-full shrink-0" style={{ background: cor }} aria-hidden />
+          <h2 className="text-sm font-semibold text-text">{nome}</h2>
+          <span className="text-[11px] text-muted tabular">
+            {optimistic
+              ? `${Object.values(optimistic.grupos).reduce((s, g) => s + g.length, 0)} leads`
+              : '—'}
+          </span>
         </div>
-      }
-    >
-      <CrmTabs />
+      )}
       <StateView loading={loading && !optimistic} error={error} onRetry={refetch}>
         {optimistic?.truncado && (
           <div
@@ -543,33 +710,6 @@ export default function LeadsPage() {
         )}
       </StateView>
 
-      {creating && (
-        <LeadFormModal
-          funilSelecionado={
-            optimistic?.funil.id
-              ? { id: optimistic.funil.id, etapas: optimistic.funil.etapas }
-              : null
-          }
-          onClose={() => setCreating(false)}
-          onSaved={() => {
-            setCreating(false);
-            refetch();
-          }}
-        />
-      )}
-
-      {importing && (
-        <ImportLeadsModal
-          funis={funis ?? []}
-          defaultFunilId={funilSelecionadoId}
-          onClose={() => setImporting(false)}
-          onDone={() => {
-            setImporting(false);
-            refetch();
-          }}
-        />
-      )}
-
       {selected && (
         <LeadDetailDrawer
           lead={selected}
@@ -592,7 +732,7 @@ export default function LeadsPage() {
           onConfirm={confirmMoveWithReason}
         />
       )}
-    </PageLayout>
+    </section>
   );
 }
 

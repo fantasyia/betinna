@@ -29,6 +29,7 @@ const MUTACOES = [
   'atualizarEtapa',
   'removerEtapa',
   'reordenar',
+  'reordenarFunis',
 ] as const;
 
 const rolesDe = (metodo: string): string[] | undefined =>

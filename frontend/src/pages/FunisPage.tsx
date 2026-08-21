@@ -10,6 +10,8 @@ import {
   Target,
   Funnel,
   Copy,
+  ChevronUp,
+  ChevronDown,
 } from 'lucide-react';
 import {
   DndContext,
@@ -120,7 +122,26 @@ export default function FunisPage() {
   const { data, loading, error, refetch } = useApiQuery<Funil[]>('/funis');
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [creating, setCreating] = useState(false);
+  const [reordenando, setReordenando] = useState(false);
+  const role = useRole();
+  // Mesmo gate do backend (@Roles de gestão nas mutações de estrutura).
+  const podeReordenar = role === 'ADMIN' || role === 'DIRECTOR' || role === 'GERENTE';
   const navigate = useNavigate();
+
+  /** Troca a posição de dois funis e persiste a lista INTEIRA (a posição vira a ordem). */
+  async function moverFunil(de: number, para: number) {
+    if (!data || para < 0 || para >= data.length) return;
+    setReordenando(true);
+    try {
+      const ids = arrayMove(data.map((f) => f.id), de, para);
+      await api.put('/funis/reordenar', { funilIds: ids });
+      refetch();
+    } catch (err) {
+      toast.error('Falha ao reordenar', err instanceof ApiError ? err.message : undefined);
+    } finally {
+      setReordenando(false);
+    }
+  }
   const [confirmAsync, ConfirmDialog] = useConfirm();
 
   // Auto-seleciona o padrão quando carrega
@@ -199,18 +220,21 @@ export default function FunisPage() {
                 Funis ({data?.length ?? 0})
               </div>
               <ul className="flex flex-col">
-                {data?.map((f) => (
-                  <li key={f.id}>
+                {data?.map((f, idx) => (
+                  <li
+                    key={f.id}
+                    className={cn(
+                      'group relative flex items-center border-b border-border last:border-b-0',
+                      selectedId === f.id
+                        ? 'bg-primary/10 border-l-2 border-l-primary'
+                        : 'hover:bg-surface-hover',
+                    )}
+                  >
                     <button
                       type="button"
                       onClick={() => setSelectedId(f.id)}
                       data-testid={`funil-row-${f.id}`}
-                      className={cn(
-                        'w-full text-left flex items-center gap-2 px-3 py-2 border-b border-border last:border-b-0 transition-colors',
-                        selectedId === f.id
-                          ? 'bg-primary/10 border-l-2 border-l-primary'
-                          : 'hover:bg-surface-hover',
-                      )}
+                      className="flex-1 min-w-0 text-left flex items-center gap-2 px-3 py-2 transition-colors"
                     >
                       <span
                         className="h-2 w-2 rounded-full shrink-0"
@@ -244,6 +268,32 @@ export default function FunisPage() {
                         </div>
                       </div>
                     </button>
+                    {/* Ordem de EXIBIÇÃO do funil (pedido do Léo 21/08). Setas em
+                        vez de arrastar: a linha inteira já é o botão de seleção,
+                        e um drag ali brigaria com o clique. Só pra quem pode
+                        mexer na estrutura — o backend exige papel de gestão. */}
+                    {podeReordenar && (data?.length ?? 0) > 1 && (
+                      <div className="flex flex-col pr-1.5 opacity-0 group-hover:opacity-100 focus-within:opacity-100 transition-opacity">
+                        <IconButton
+                          aria-label={`Subir ${f.nome}`}
+                          data-testid={`funil-subir-${f.id}`}
+                          variant="ghost"
+                          size="sm"
+                          disabled={idx === 0 || reordenando}
+                          icon={<ChevronUp className="h-3 w-3" />}
+                          onClick={() => void moverFunil(idx, idx - 1)}
+                        />
+                        <IconButton
+                          aria-label={`Descer ${f.nome}`}
+                          data-testid={`funil-descer-${f.id}`}
+                          variant="ghost"
+                          size="sm"
+                          disabled={idx === (data?.length ?? 0) - 1 || reordenando}
+                          icon={<ChevronDown className="h-3 w-3" />}
+                          onClick={() => void moverFunil(idx, idx + 1)}
+                        />
+                      </div>
+                    )}
                   </li>
                 ))}
               </ul>

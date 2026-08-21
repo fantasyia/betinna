@@ -11,12 +11,14 @@ import {
   type CreateFunilEtapaDto,
   type LeadsPorEtapaQueryDto,
   type ReordenarEtapasDto,
+  type ReordenarFunisDto,
   type UpdateFunilDto,
   type UpdateFunilEtapaDto,
   createFunilEtapaSchema,
   createFunilSchema,
   leadsPorEtapaQuerySchema,
   reordenarEtapasSchema,
+  reordenarFunisSchema,
   updateFunilEtapaSchema,
   updateFunilSchema,
 } from './funis.dto';
@@ -94,6 +96,20 @@ export class FunisController {
   // criar, renomear e EXCLUIR funil e etapa — e os fluxos apontam pra etapa por
   // id, então excluir uma quebra automação em silêncio. Tirar `edit` da matriz
   // não serve: derrubaria o trabalho de lead junto.
+  // Rota LITERAL antes de `:id` (senão 'reordenar' cai como id de funil).
+  // Config de funil — ver a nota no @Post() abaixo.
+  @Put('reordenar')
+  @Roles('ADMIN', 'DIRECTOR', 'GERENTE')
+  @RequirePermissions({ module: 'kanban', action: 'edit' })
+  @Audit({ action: 'reorder_funis', resource: 'funil' })
+  @ApiOperation({ summary: 'Ordem de EXIBIÇÃO dos funis (lista inteira; a posição vira a ordem)' })
+  reordenarFunis(
+    @CurrentUser() user: AuthenticatedUser,
+    @Body(new ZodValidationPipe(reordenarFunisSchema)) dto: ReordenarFunisDto,
+  ) {
+    return this.funis.reordenarFunis(user, dto);
+  }
+
   @Post()
   @Roles('ADMIN', 'DIRECTOR', 'GERENTE')
   @RequirePermissions({ module: 'kanban', action: 'edit' })

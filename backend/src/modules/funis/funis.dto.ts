@@ -71,6 +71,16 @@ export const reordenarEtapasSchema = z.object({
 });
 export type ReordenarEtapasDto = z.infer<typeof reordenarEtapasSchema>;
 
+/**
+ * Ordem de exibição dos FUNIS (pedido do Léo 21/08). `Funil.ordem` existia no
+ * schema e a listagem já ordenava por ele — ninguém escrevia. Mesma forma do
+ * reordenar de etapas: a lista INTEIRA, e a posição no array vira a ordem.
+ */
+export const reordenarFunisSchema = z.object({
+  funilIds: z.array(z.string().min(1)).min(1),
+});
+export type ReordenarFunisDto = z.infer<typeof reordenarFunisSchema>;
+
 /** Query de `leads_por_etapa` (leads dentro de uma etapa do funil, paginado). */
 export const leadsPorEtapaQuerySchema = z.object({
   page: z.coerce.number().int().positive().default(1),
