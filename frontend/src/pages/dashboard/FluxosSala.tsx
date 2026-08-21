@@ -78,6 +78,30 @@ function fmtProximo(iso: string | null): string {
   return `${d.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' })} ${hora}`;
 }
 
+/** Tempo RELATIVO do último disparo — é sinal de vida, não agenda. */
+function fmtUltimo(iso: string): string {
+  const dif = Date.now() - new Date(iso).getTime();
+  const min = Math.floor(dif / 60_000);
+  if (min < 1) return 'agora';
+  if (min < 60) return `há ${min} min`;
+  const h = Math.floor(min / 60);
+  if (h < 24) return `há ${h}h`;
+  const d = new Date(iso);
+  const hora = d.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
+  const dias = Math.floor(h / 24);
+  if (dias === 1) return `ontem ${hora}`;
+  return `${d.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' })} ${hora}`;
+}
+
+/** Cor do carimbo pelo RESULTADO da última execução — um relance responde
+ *  "rodou E está saudável?". */
+function classeUltimo(status: string): string {
+  if (status === 'FALHOU') return 'text-danger';
+  if (status === 'CONCLUIDO') return 'text-success';
+  if (status === 'CANCELADO') return 'text-muted';
+  return 'text-info'; // PENDENTE / EM_EXECUCAO / AGUARDANDO — em andamento
+}
+
 /**
  * M6 — Fluxos: sala de controle. Grade com TODOS os fluxos agrupada por família,
  * ações rápidas por linha (ativar/pausar com confirmação · testar · abrir grafo).
@@ -152,7 +176,7 @@ export function FluxosSala({ fluxos, onChanged }: { fluxos: FluxoSalaRow[]; onCh
                 <th className="text-left px-2 py-2 whitespace-nowrap">Gatilho</th>
                 <th className="text-left px-2 py-2 whitespace-nowrap">Exec. 7d</th>
                 <th className="text-left px-2 py-2 whitespace-nowrap">Sucesso</th>
-                <th className="text-left px-2 py-2 whitespace-nowrap">Próx. disparo</th>
+                <th className="text-left px-2 py-2 whitespace-nowrap">Últ. disparo</th>
                 <th className="text-right px-2 py-2 whitespace-nowrap">Ações</th>
               </tr>
             </thead>
@@ -281,8 +305,26 @@ function FamiliaRows({
                 </div>
               )}
             </td>
-            <td className="px-2 py-2 text-xs tabular text-text-subtle whitespace-nowrap">
-              {fmtProximo(f.proximoDisparo)}
+            <td className="px-2 py-2 text-xs tabular whitespace-nowrap">
+              {/* Último disparo (pedido do Léo 21/08): "próximo" só existia pro
+                  cron — as linhas de evento mostravam "—" pra sempre. O último,
+                  colorido pelo resultado, é sinal de vida pra TODAS. No cron os
+                  dois aparecem: o próximo é o diagnóstico de agenda travada. */}
+              {f.ultimoDisparo ? (
+                <span
+                  className={classeUltimo(f.ultimoDisparo.status)}
+                  title={`Última execução: ${new Date(f.ultimoDisparo.em).toLocaleString('pt-BR')} — ${f.ultimoDisparo.status}`}
+                >
+                  {fmtUltimo(f.ultimoDisparo.em)}
+                </span>
+              ) : (
+                <span className="text-muted">nunca</span>
+              )}
+              {f.proximoDisparo && (
+                <span className="block text-[10px] text-text-subtle">
+                  próx: {fmtProximo(f.proximoDisparo)}
+                </span>
+              )}
             </td>
             <td className="px-2 py-2 whitespace-nowrap">
               <div className="flex items-center justify-end gap-0.5">

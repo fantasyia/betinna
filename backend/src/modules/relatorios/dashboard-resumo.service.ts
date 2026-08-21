@@ -85,6 +85,7 @@ export class DashboardResumoService {
       whatsappInstancias,
       fluxosLista,
       exec7dPorFluxo,
+      ultimoDisparoPorFluxo,
     ] = await Promise.all([
       // Pulso: leads novos nos últimos 7 dias (comercial — triagem fora).
       this.prisma.lead.count({
@@ -266,6 +267,18 @@ export class DashboardResumoService {
               AND "teste" = false
               AND "criadoEm" >= ${new Date(agora.getTime() - 7 * DIA_MS)}
             GROUP BY 1, 2
+          `
+        : Promise.resolve([]),
+      // ÚLTIMO disparo de PRODUÇÃO por fluxo (pedido do Léo 21/08: "último
+      // disparo" é sinal de vida pra TODAS as linhas; "próximo" só existe pro
+      // cron). SEM janela de 7d de propósito — fluxo que rodou há 10 dias
+      // mostra o carimbo em vez de sumir. DISTINCT ON usa o índice de fluxoId.
+      ehGestao
+        ? this.prisma.$queryRaw<Array<{ fluxoId: string; em: Date; status: string }>>`
+            SELECT DISTINCT ON ("fluxoId") "fluxoId", "criadoEm" AS em, "status"
+            FROM "FluxoExecucao"
+            WHERE "empresaId" = ${empresaId} AND "teste" = false
+            ORDER BY "fluxoId", "criadoEm" DESC
           `
         : Promise.resolve([]),
     ]);
@@ -587,6 +600,9 @@ export class DashboardResumoService {
       if (idx >= 0) atual.serie[idx] += total;
       execPorFluxo.set(g.fluxoId, atual);
     }
+    const ultimoDisparoMap = new Map(
+      ultimoDisparoPorFluxo.map((u) => [u.fluxoId, { em: u.em.toISOString(), status: u.status }]),
+    );
     const ultimoErroPorFluxo = new Map<string, string>();
     for (const f of falhas7d) {
       if (!ultimoErroPorFluxo.has(f.fluxoId)) {
@@ -632,6 +648,9 @@ export class DashboardResumoService {
         // pintou o T1 de vermelho no dashboard.
         pctSucesso: exec.total > 0 ? Math.round((exec.ok / exec.total) * 100) : null,
         ultimoErro: ultimoErroPorFluxo.get(f.id) ?? null,
+        // null = nunca disparou em produção (a tela mostra "nunca", não "—",
+        // pra distinguir de coluna sem dado).
+        ultimoDisparo: ultimoDisparoMap.get(f.id) ?? null,
         proximoDisparo,
       };
     });

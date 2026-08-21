@@ -39,6 +39,25 @@ describe('InboxMetricasService', () => {
     );
   });
 
+  it('KPIs da GESTÃO não contam o WhatsApp PESSOAL dos reps', async () => {
+    // O painel dizia "9 pendentes" e a lista abria com 1: as métricas tinham
+    // query própria com `{ empresaId }` puro, fora da regra de privacidade do
+    // baseWhere. Número que não bate com a tela manda procurar o que não
+    // existe — e entrega o volume da conversa privada de alguém.
+    await service.metricas(fakeUser({ role: 'ADMIN' as UserRole }));
+
+    const where = prisma.conversation.groupBy.mock.calls[0][0].where;
+    expect(where.OR).toEqual([{ canal: { not: 'WHATSAPP' } }, { proprietarioId: null }]);
+  });
+
+  it('KPIs do REP contam SÓ a caixa dele', async () => {
+    await service.metricas(fakeUser({ id: 'rep-7', role: 'REP' as UserRole }));
+
+    const where = prisma.conversation.groupBy.mock.calls[0][0].where;
+    expect(where.proprietarioId).toBe('rep-7');
+    expect(where.canal).toBe('WHATSAPP');
+  });
+
   it('agrega contagem por status', async () => {
     prisma.conversation.groupBy.mockResolvedValue([
       { status: 'ABERTA', _count: { _all: 4 } },

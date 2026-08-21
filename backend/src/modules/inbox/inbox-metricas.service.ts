@@ -1,5 +1,5 @@
 import { Injectable, Logger } from '@nestjs/common';
-import { MessageDirection } from '@prisma/client';
+import { MessageDirection, Prisma } from '@prisma/client';
 import { PrismaService } from '@database/prisma.service';
 import { ForbiddenException } from '@shared/errors/app-exception';
 import { ErrorCode } from '@shared/errors/error-codes';
@@ -47,14 +47,24 @@ export class InboxMetricasService {
       throw new ForbiddenException('Empresa não definida', ErrorCode.TENANT_ACCESS_DENIED);
     }
 
+    // MESMA regra de visibilidade da lista do Inbox (baseWhere): o WhatsApp
+    // PESSOAL do rep é privado. Sem isto os KPIs contavam a caixa dele — o
+    // painel do admin dizia "9 pendentes" e a lista abria com 1. Número que
+    // não bate com a tela é pior que número ausente: manda procurar o que não
+    // existe, e ainda entrega o volume da conversa privada de alguém.
+    const visivel: Prisma.ConversationWhereInput =
+      user.role === 'REP' || user.role === 'GERENTE'
+        ? { empresaId, canal: 'WHATSAPP', proprietarioId: user.id }
+        : { empresaId, OR: [{ canal: { not: 'WHATSAPP' } }, { proprietarioId: null }] };
+
     const [porStatus, abertas, tempoMedio] = await Promise.all([
       this.prisma.conversation.groupBy({
         by: ['status'],
-        where: { empresaId },
+        where: visivel,
         _count: { _all: true },
       }),
       this.prisma.conversation.findMany({
-        where: { empresaId, status: { in: ['ABERTA', 'PENDENTE'] } },
+        where: { ...visivel, status: { in: ['ABERTA', 'PENDENTE'] } },
         select: {
           id: true,
           ultimaMsgEm: true,
@@ -63,7 +73,7 @@ export class InboxMetricasService {
           mensagens: { take: 1, orderBy: { criadoEm: 'desc' }, select: { direction: true } },
         },
       }),
-      this.tempoMedioPrimeiraResposta(empresaId),
+      this.tempoMedioPrimeiraResposta(empresaId, user),
     ]);
 
     // Contagem por status
@@ -127,8 +137,17 @@ export class InboxMetricasService {
    * (não-bot) por conversa, nos últimos 30 dias. SQL agregado pra não puxar
    * mensagens em memória. Best-effort: erro → null (não derruba o painel).
    */
-  private async tempoMedioPrimeiraResposta(empresaId: string): Promise<number | null> {
+  private async tempoMedioPrimeiraResposta(
+    empresaId: string,
+    user: AuthenticatedUser,
+  ): Promise<number | null> {
     const desde = new Date(Date.now() - JANELA_DIAS * 86_400_000);
+    // Mesmo recorte do resto do painel (ver nota em `metricas`): o tempo de
+    // resposta do WhatsApp pessoal do rep não entra na média da empresa.
+    const soMinhas = user.role === 'REP' || user.role === 'GERENTE';
+    const filtroDono = soMinhas
+      ? Prisma.sql`AND c.canal = 'WHATSAPP' AND c."proprietarioId" = ${user.id}`
+      : Prisma.sql`AND (c.canal <> 'WHATSAPP' OR c."proprietarioId" IS NULL)`;
     try {
       const rows = await this.prisma.$queryRaw<Array<{ avg_segundos: number | null }>>`
         SELECT AVG(EXTRACT(EPOCH FROM (primeira_resposta - primeira_pergunta)))::float8 AS avg_segundos
@@ -140,6 +159,7 @@ export class InboxMetricasService {
           FROM "Conversation" c
           JOIN "Message" m ON m."conversationId" = c.id
           WHERE c."empresaId" = ${empresaId} AND c."criadoEm" >= ${desde}
+            ${filtroDono}
           GROUP BY c.id
         ) t
         WHERE t.primeira_resposta IS NOT NULL AND t.primeira_resposta > t.primeira_pergunta

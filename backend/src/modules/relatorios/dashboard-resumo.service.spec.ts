@@ -100,7 +100,9 @@ const makePrisma = () => ({
     // #56: COUNT(*) do SLA estourado — separado da lista (que tem LIMIT 20).
     // 47 > 20 de propósito: prova que o tile NÃO usa mais o tamanho da lista.
     .mockResolvedValueOnce([{ total: 47n }])
-    .mockResolvedValueOnce([{ fluxoId: 'fx-1', dia: new Date(), ok: 8n, erro: 2n, total: 10n }]),
+    .mockResolvedValueOnce([{ fluxoId: 'fx-1', dia: new Date(), ok: 8n, erro: 2n, total: 10n }])
+    // 4ª = último disparo por fluxo (coluna "Últ. disparo" da sala — 21/08).
+    .mockResolvedValueOnce([{ fluxoId: 'fx-1', em: new Date(), status: 'CONCLUIDO' }]),
 });
 
 const makeRepScope = (ids: string[] | null) => ({ getRepIds: vi.fn().mockResolvedValue(ids) });
@@ -167,6 +169,36 @@ describe('DashboardResumoService', () => {
     // Série tem 7 buckets e o dia de hoje carrega as execuções.
     expect(f.exec7d.serie).toHaveLength(7);
     expect(f.exec7d.serie[6]).toBe(10);
+  });
+
+  it('M6: cada fluxo leva o ÚLTIMO disparo de produção (sinal de vida, não agenda)', async () => {
+    // Pedido do Léo (21/08): "Próx. disparo" só tinha valor no cron — as linhas
+    // de evento mostravam "—" pra sempre, coluna morta. O ÚLTIMO responde
+    // "está rodando?" pra TODAS, e o status colore a célula na tela.
+    const svc = new DashboardResumoService(prisma as never, makeRepScope(null) as never);
+    const r = await svc.resumo(user());
+
+    const f = r.fluxosSala[0];
+    expect(f.ultimoDisparo).not.toBeNull();
+    expect(f.ultimoDisparo?.status).toBe('CONCLUIDO');
+    expect(typeof f.ultimoDisparo?.em).toBe('string');
+  });
+
+  it('fluxo que nunca rodou em produção fica com ultimoDisparo null (a tela diz "nunca")', async () => {
+    // Distingue de "coluna sem dado": nunca disparou é informação, não ausência.
+    prisma.fluxo.findMany.mockResolvedValue([
+      {
+        id: 'fx-novo',
+        nome: 'Fluxo recém-criado',
+        status: 'RASCUNHO',
+        triggerTipo: 'LEAD_CRIADO',
+        triggerConfig: null,
+      },
+    ]);
+    const svc = new DashboardResumoService(prisma as never, makeRepScope(null) as never);
+    const r = await svc.resumo(user());
+
+    expect(r.fluxosSala[0].ultimoDisparo).toBeNull();
   });
 
   it('REP: leads escopados pela carteira e módulos de GESTÃO voltam vazios (sem vazar visão)', async () => {

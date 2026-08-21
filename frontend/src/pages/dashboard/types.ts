@@ -33,6 +33,9 @@ export interface FluxoSalaRow {
   pctSucesso: number | null;
   ultimoErro: string | null;
   proximoDisparo: string | null;
+  /** Última execução de PRODUÇÃO (sinal de vida — pedido do Léo 21/08).
+   *  null = nunca disparou. `status` colore a célula (ok/falha/em andamento). */
+  ultimoDisparo: { em: string; status: string } | null;
 }
 
 export interface AgendaHojeItem {
