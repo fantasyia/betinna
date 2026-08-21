@@ -11,6 +11,7 @@ import {
   ForaDaJanelaEnvioError,
   INBOUND_RECENTE_HORAS,
 } from '@shared/whatsapp-pacing/whatsapp-pacing.util';
+import { WhatsappIndisponivelError } from '@integrations/evolution/whatsapp-indisponivel.error';
 import type { DestinatarioModo, Remetente } from './remetente-whatsapp.util';
 import { resolverRemetente } from './remetente-whatsapp.util';
 import { SupressaoService } from '@shared/supressao/supressao.service';
@@ -59,6 +60,27 @@ import {
 
 /** Papéis válidos pra destinatário "papel:<ROLE>" do ENVIAR_EMAIL (evita enum inválido no Prisma). */
 const PAPEIS_VALIDOS = new Set(['ADMIN', 'DIRECTOR', 'GERENTE', 'SAC', 'REP']);
+
+/**
+ * Retentativas CURTAS do BullMQ por passo (2s, 4s). Já era o valor usado em
+ * todo `queue.add` — virou constante porque agora o executor precisa SABER
+ * quando elas acabaram pra decidir entre relançar e reagendar.
+ */
+const TENTATIVAS_CURTAS = 3;
+
+/**
+ * Esperas do reagendamento LONGO quando o WhatsApp está fora: 1min → 5min →
+ * 15min → 1h, e daí em diante 1h. Crescente porque instância caída raramente
+ * volta no primeiro minuto, e martelar não acelera nada.
+ */
+const BACKOFF_INDISPONIVEL = [60_000, 300_000, 900_000, 3_600_000];
+
+/**
+ * Teto do reagendamento, contado desde a PRIMEIRA falha. Mensagem comercial que
+ * chega mais de meio dia depois do que a pessoa escreveu já perdeu o fio: passa
+ * a ser melhor avisar um humano (saída "erro" + tarefa) do que entregar tarde.
+ */
+const TETO_INDISPONIVEL_MS = 6 * 60 * 60 * 1000;
 
 // Saídas EVENT-DRIVEN do CONVERSAR_IA (classify no retomar, timeout no cron, erro via `roteado`) —
 // nunca seguidas na conclusão normal do passo. #17.
@@ -232,7 +254,17 @@ export class FluxoExecutorService {
   /**
    * Executa um passo da execução (chamado pelo BullMQ Processor).
    */
-  async executarPasso(execucaoId: string, noId: string, jobId: string): Promise<void> {
+  async executarPasso(
+    execucaoId: string,
+    noId: string,
+    jobId: string,
+    /**
+     * Qual tentativa do BullMQ é esta (1-based). Serve pra saber se ainda há
+     * retry curto pela frente ou se é hora de partir pro reagendamento longo.
+     * Default 1: chamadas de teste e caminhos sem fila seguem valendo.
+     */
+    tentativa = 1,
+  ): Promise<void> {
     // Carrega execução
     const execucao = await this.prisma.fluxoExecucao.findUnique({
       where: { id: execucaoId },
@@ -514,6 +546,74 @@ export class FluxoExecutorService {
         );
         return;
       }
+
+      // WhatsApp INDISPONÍVEL (instância caída, Evolution reiniciando, rede
+      // piscando). Dois níveis, porque são falhas de duração diferente:
+      //
+      //  curto  — as `TENTATIVAS_CURTAS` do próprio BullMQ (2s, 4s). Pega blip:
+      //           um 500 solto, o container reiniciando. Basta RELANÇAR.
+      //  longo  — esgotou as curtas: instância caída não volta em 8 segundos.
+      //           Reagenda com espera crescente até o teto.
+      //
+      // Um nível só erra numa das pontas: 3 tentativas em 8s não salvam
+      // instância derrubada, e esperar 1min por um 500 solto é lento demais.
+      if (err instanceof WhatsappIndisponivelError) {
+        if (tentativa < TENTATIVAS_CURTAS) throw err;
+
+        const ctxExec = (execucao.contexto ?? {}) as Record<string, unknown>;
+        const desde = Number(ctxExec._envioIndisponivelDesde ?? Date.now());
+        const jaReagendou = Number(ctxExec._envioReagendos ?? 0);
+        const espera = BACKOFF_INDISPONIVEL[Math.min(jaReagendou, BACKOFF_INDISPONIVEL.length - 1)];
+
+        // Teto: mensagem de WhatsApp que chega meio dia depois do que a pessoa
+        // escreveu já perdeu o fio. Passou disso, segue o ramo "erro" (e a
+        // tarefa que ele cria) — reagendar pra sempre é pior que desistir.
+        if (Date.now() + espera - desde <= TETO_INDISPONIVEL_MS) {
+          await this.prisma.fluxoExecucao.update({
+            where: { id: execucaoId },
+            data: {
+              contexto: {
+                ...ctxExec,
+                _envioIndisponivelDesde: desde,
+                _envioReagendos: jaReagendou + 1,
+              } as Prisma.InputJsonValue,
+            },
+          });
+          await this.prisma.fluxoStepClaim.delete({ where: { jobId } }).catch(() => undefined);
+          await this.queue.add(
+            'step',
+            { execucaoId, noId },
+            {
+              delay: espera,
+              attempts: TENTATIVAS_CURTAS,
+              backoff: { type: 'exponential', delay: 2000 },
+              removeOnComplete: { count: 500 },
+              removeOnFail: { count: 200 },
+            },
+          );
+          this.logger.warn(
+            `Execução ${execucaoId} nó ${noId}: WhatsApp indisponível — reagendado em ` +
+              `${Math.round(espera / 60000)} min (${jaReagendou + 1}ª espera): ${err.message}`,
+          );
+          return;
+        }
+        this.logger.error(
+          `Execução ${execucaoId} nó ${noId}: WhatsApp indisponível há mais de ` +
+            `${Math.round(TETO_INDISPONIVEL_MS / 3_600_000)}h — desistindo e seguindo pela saída "erro"`,
+        );
+        // Desistir NÃO é matar o job em silêncio: segue a saída "erro" do nó,
+        // que é o caminho que cria tarefa e avisa gente. Só vale pro nó de IA
+        // (é ele que tem a saída); o ENVIAR_WHATSAPP cai no caminho de falha
+        // normal logo abaixo, como sempre fez.
+        if (no.tipo === 'ACAO' && no.acaoTipo === 'CONVERSAR_IA') {
+          await this.conversarIa.desistirPorIndisponibilidade(execucaoId, noId, contexto, err);
+          await this.prisma.fluxoStepClaim
+            .update({ where: { jobId }, data: { estado: 'CONCLUIDO', concluidoEm: new Date() } })
+            .catch(() => undefined);
+          return;
+        }
+      }
+
       sucesso = false;
       erroMsg = err instanceof Error ? err.message : String(err);
       this.logger.warn(
@@ -542,6 +642,25 @@ export class FluxoExecutorService {
       iniciadoEm,
       terminadoEm: new Date(),
     };
+    // Passo concluiu = a porta voltou. Zera o relógio do reagendamento, senão
+    // uma queda HORAS depois herdaria o `_envioIndisponivelDesde` velho, o teto
+    // de 6h já apareceria estourado e a execução desistiria na primeira falha —
+    // sem nenhuma espera. Só escreve se houver o que limpar.
+    if (logStatus === 'CONCLUIDO' && contexto._envioIndisponivelDesde !== undefined) {
+      const { _envioIndisponivelDesde, _envioReagendos, ...limpo } = contexto as Record<
+        string,
+        unknown
+      >;
+      void _envioIndisponivelDesde;
+      void _envioReagendos;
+      await this.prisma.fluxoExecucao
+        .update({
+          where: { id: execucaoId },
+          data: { contexto: limpo as Prisma.InputJsonValue },
+        })
+        .catch(() => undefined);
+    }
+
     if (logStatus === 'CONCLUIDO') {
       // Marca o claim CONCLUIDO JUNTO com o log: qualquer throw DEPOIS daqui (update da
       // execução / queue.add dos sucessores) faz o BullMQ re-rodar o job, que acha o claim

@@ -2,6 +2,7 @@ import { createHash } from 'node:crypto';
 import { diaBrasilia, mesBrasilia } from '@shared/utils/data-brasilia.util';
 import { Injectable, Logger } from '@nestjs/common';
 import { ForaDaJanelaEnvioError } from '@shared/whatsapp-pacing/whatsapp-pacing.util';
+import { WhatsappIndisponivelError } from '@integrations/evolution/whatsapp-indisponivel.error';
 import { InjectQueue } from '@nestjs/bullmq';
 import type { Queue } from 'bullmq';
 import { MessageDirection, Prisma } from '@prisma/client';
@@ -914,6 +915,10 @@ export class ConversarIaService {
       // nunca descarta" era violada exatamente na borda. Relança: o executor
       // tem handler dedicado que deleta o claim e REAGENDA com o delay certo.
       if (err instanceof ForaDaJanelaEnvioError) throw err;
+      // Instância fora do ar é da MESMA família: "ainda não", não "nunca".
+      // Engolir aqui era o que fazia o erro passar por fora do `attempts: 3` do
+      // BullMQ — o passo ia pro ramo de erro em 3,4s, sem uma segunda tentativa.
+      if (err instanceof WhatsappIndisponivelError) throw err;
       const { tipo_erro } = await this.rotearParaErro(
         execucaoId,
         no.id,
@@ -1465,6 +1470,10 @@ export class ConversarIaService {
         this.donoDaConversa(ctx),
       );
     } catch (err) {
+      // Mesma regra do opener: porta fechada sobe pro executor (retry +
+      // reagendamento); erro permanente segue pro ramo de erro aqui mesmo.
+      if (err instanceof ForaDaJanelaEnvioError) throw err;
+      if (err instanceof WhatsappIndisponivelError) throw err;
       await this.rotearParaErro(execucaoId, no.id, ctx, 'whatsapp_falha', err);
       return;
     }
@@ -2049,6 +2058,21 @@ export class ConversarIaService {
    * pra fluxos antigos e conserta o lead que ficava preso em AGUARDANDO quando o
    * `retomar` falhava (erro antes engolido pelo orquestrador).
    */
+  /**
+   * Desistência DEPOIS do teto de reagendamento (executor): o WhatsApp ficou
+   * indisponível tempo demais e a mensagem já não faz sentido. Aqui a execução
+   * segue a saída "erro" — que é o que cria a tarefa e avisa alguém — em vez de
+   * o job simplesmente morrer e o lead ficar parado sem ninguém saber.
+   */
+  async desistirPorIndisponibilidade(
+    execucaoId: string,
+    noId: string,
+    ctx: ExecucaoContexto,
+    err: unknown,
+  ): Promise<void> {
+    await this.rotearParaErro(execucaoId, noId, ctx, 'whatsapp_falha', err);
+  }
+
   private async rotearParaErro(
     execucaoId: string,
     noId: string,

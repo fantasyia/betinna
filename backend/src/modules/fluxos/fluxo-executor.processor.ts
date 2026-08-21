@@ -33,7 +33,10 @@ export class FluxoExecutorProcessor extends WorkerHost {
       `Job ${job.id}: exec=${execucaoId} no=${noId} (tentativa ${job.attemptsMade + 1})`,
     );
     // job.id é a chave do claim de idempotência (estável no retry, fresco por enqueue).
-    await this.executor.executarPasso(execucaoId, noId, job.id!);
+    // `attemptsMade + 1` = qual tentativa é esta. O executor precisa disso pra
+    // saber se ainda há retry curto pela frente (relança) ou se é hora do
+    // reagendamento longo — WhatsApp fora do ar não volta em 8 segundos.
+    await this.executor.executarPasso(execucaoId, noId, job.id!, job.attemptsMade + 1);
   }
 
   /**

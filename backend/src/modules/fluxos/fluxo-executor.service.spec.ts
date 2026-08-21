@@ -1,5 +1,6 @@
 import { describe, expect, it, vi, beforeEach } from 'vitest';
 import { interpolate, FluxoExecutorService } from './fluxo-executor.service';
+import { WhatsappIndisponivelError } from '@integrations/evolution/whatsapp-indisponivel.error';
 
 // ---------------------------------------------------------------------------
 // Mock safeRequest (SSRF guard — não queremos chamadas de rede nos testes)
@@ -97,6 +98,9 @@ const makePrismaMock = () => ({
     create: vi.fn().mockResolvedValue({}),
     findUnique: vi.fn().mockResolvedValue(null),
     update: vi.fn().mockResolvedValue({}),
+    // Reagendamento (janela de horário / WhatsApp fora) solta o claim antes de
+    // devolver o passo pra fila.
+    delete: vi.fn().mockResolvedValue({}),
   } satisfies MockModel,
   $transaction: vi.fn(async (ops: unknown[]) => Promise.all(ops as Promise<unknown>[])),
   // Match de lead por sufixo de telefone (D18) — vazio = telefone ainda não é lead.
@@ -118,6 +122,7 @@ const makeQueueMock = () => ({
 
 const makeConversarIaMock = () => ({
   iniciar: vi.fn().mockResolvedValue({ aguardando: false }),
+  desistirPorIndisponibilidade: vi.fn().mockResolvedValue(undefined),
 });
 
 const makeBusMock = () => ({
@@ -1833,6 +1838,132 @@ describe('FluxoExecutorService', () => {
       prisma.usuario.findFirst.mockResolvedValue(null); // rep não encontrado na empresa
 
       await expect(service.executarPasso('exec-1', 'no-1', 'job-test')).rejects.toThrow();
+    });
+  });
+  // =========================================================================
+  // WhatsApp indisponível — retry curto, reagendamento longo, teto
+  // =========================================================================
+
+  describe('WhatsApp indisponível (instância caída)', () => {
+    /**
+     * Card 🔁 de 21/08. O que aconteceu em produção: a instância do Evolution
+     * caiu no meio de uma conversa, o passo foi pro ramo de erro em 3,4 s e o
+     * lead ficou parado sem receber nada — depois de a triagem ter prometido
+     * "já vou te passar pro comercial".
+     *
+     * A regra que já existia pra janela de horário é a mesma: "ADIA, não
+     * descarta". Instância fora é "ainda não", não é "nunca".
+     */
+    const noIa = () =>
+      fakeNo({ id: 'no-1', tipo: 'ACAO', acaoTipo: 'CONVERSAR_IA', titulo: 'Conversar com IA' });
+
+    beforeEach(() => {
+      prisma.fluxoExecucao.findUnique.mockResolvedValue(fakeExecucao({ status: 'EM_EXECUCAO' }));
+      prisma.fluxoNo.findUnique.mockResolvedValue(noIa());
+      conversarIa.iniciar.mockRejectedValue(
+        new WhatsappIndisponivelError('HTTP 400 — Error: Connection Closed'),
+      );
+    });
+
+    it('1ª tentativa: RELANÇA pro BullMQ retentar (2s) — não reagenda ainda', async () => {
+      // Blip de rede volta em segundos: as 3 tentativas curtas que já existiam
+      // resolvem, e elas só acontecem se o erro SUBIR.
+      await expect(service.executarPasso('exec-1', 'no-1', 'job-test', 1)).rejects.toThrow(
+        /indisponível/i,
+      );
+      expect(queue.add).not.toHaveBeenCalled();
+    });
+
+    it('esgotadas as 3 curtas: REAGENDA em 1 min e a execução NÃO conclui', async () => {
+      await expect(service.executarPasso('exec-1', 'no-1', 'job-test', 3)).resolves.toBeUndefined();
+
+      expect(queue.add).toHaveBeenCalledWith(
+        'step',
+        { execucaoId: 'exec-1', noId: 'no-1' },
+        expect.objectContaining({ delay: 60_000 }),
+      );
+      // Nada de concluir/falhar a execução: ela continua viva esperando a porta abrir.
+      expect(prisma.fluxoExecucao.updateMany).not.toHaveBeenCalled();
+    });
+
+    it('a espera CRESCE a cada reagendamento — martelar não levanta instância', async () => {
+      prisma.fluxoExecucao.findUnique.mockResolvedValue(
+        fakeExecucao({
+          status: 'EM_EXECUCAO',
+          contexto: { _envioIndisponivelDesde: Date.now(), _envioReagendos: 2 },
+        }),
+      );
+
+      await service.executarPasso('exec-1', 'no-1', 'job-test', 3);
+
+      expect(queue.add).toHaveBeenCalledWith(
+        'step',
+        expect.anything(),
+        expect.objectContaining({ delay: 900_000 }), // 3ª espera = 15 min
+      );
+    });
+
+    it('guarda desde QUANDO está fora — é o relógio do teto', async () => {
+      await service.executarPasso('exec-1', 'no-1', 'job-test', 3);
+
+      const upd = prisma.fluxoExecucao.update.mock.calls.at(-1)?.[0] as
+        | { data?: { contexto?: Record<string, unknown> } }
+        | undefined;
+      expect(upd?.data?.contexto?._envioReagendos).toBe(1);
+      expect(typeof upd?.data?.contexto?._envioIndisponivelDesde).toBe('number');
+    });
+
+    it('estourou o teto de 6h: segue a saída "erro" (que cria tarefa), não morre calado', async () => {
+      prisma.fluxoExecucao.findUnique.mockResolvedValue(
+        fakeExecucao({
+          status: 'EM_EXECUCAO',
+          contexto: {
+            _envioIndisponivelDesde: Date.now() - 7 * 60 * 60 * 1000, // fora há 7h
+            _envioReagendos: 9,
+          },
+        }),
+      );
+
+      await service.executarPasso('exec-1', 'no-1', 'job-test', 3);
+
+      // Desistir não é sumir: alguém precisa ser avisado de que o lead ficou sem resposta.
+      expect(conversarIa.desistirPorIndisponibilidade).toHaveBeenCalledWith(
+        'exec-1',
+        'no-1',
+        expect.anything(),
+        expect.anything(),
+      );
+      expect(queue.add).not.toHaveBeenCalled();
+    });
+
+    it('passo que CONCLUI zera o relógio — queda futura recomeça a contagem', async () => {
+      // Sem isto, uma queda horas depois herdaria o `_envioIndisponivelDesde`
+      // antigo: o teto de 6h já apareceria estourado e a execução desistiria na
+      // PRIMEIRA falha, sem nenhuma espera.
+      prisma.fluxoExecucao.findUnique.mockResolvedValue(
+        fakeExecucao({
+          status: 'EM_EXECUCAO',
+          contexto: { _envioIndisponivelDesde: Date.now() - 3_600_000, _envioReagendos: 2 },
+        }),
+      );
+      conversarIa.iniciar.mockResolvedValue({ aguardando: false });
+
+      await service.executarPasso('exec-1', 'no-1', 'job-test', 1);
+
+      const limpeza = prisma.fluxoExecucao.update.mock.calls
+        .map((c) => c[0] as { data?: { contexto?: Record<string, unknown> } })
+        .find((c) => c.data?.contexto && !('_envioIndisponivelDesde' in c.data.contexto));
+      expect(limpeza).toBeDefined();
+      expect(limpeza?.data?.contexto).not.toHaveProperty('_envioReagendos');
+    });
+
+    it('erro PERMANENTE não ganha reagendamento — esperar não conserta número inválido', async () => {
+      conversarIa.iniciar.mockRejectedValue(new Error('number not exists'));
+
+      await expect(service.executarPasso('exec-1', 'no-1', 'job-test', 3)).rejects.toThrow();
+
+      expect(queue.add).not.toHaveBeenCalled();
+      expect(conversarIa.desistirPorIndisponibilidade).not.toHaveBeenCalled();
     });
   });
 });
