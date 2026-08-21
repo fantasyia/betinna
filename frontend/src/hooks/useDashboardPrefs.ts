@@ -27,7 +27,7 @@ export const DASHBOARD_MODULOS: Array<{ key: DashboardModulo; label: string }> =
   { key: 'fluxosSala', label: 'Fluxos — sala de controle' },
   { key: 'calendario', label: 'Calendário de marketing' },
   { key: 'graficos', label: 'Gráficos de relatórios' },
-  { key: 'kpis', label: 'Indicadores de vendas' },
+  { key: 'kpis', label: 'Indicadores de vendas (topo)' },
   { key: 'topReps', label: 'Top representantes' },
   { key: 'funil', label: 'Funil de leads' },
   { key: 'atalhos', label: 'Atalhos rápidos' },
@@ -40,12 +40,18 @@ export const DASHBOARD_MODULOS: Array<{ key: DashboardModulo; label: string }> =
  */
 export type ModuloWidth = 4 | 6 | 8 | 12;
 
-/** Módulos do canvas que o usuário pode redimensionar. */
+/**
+ * Módulos do canvas que o usuário pode redimensionar.
+ *
+ * `kpis` NÃO está aqui: os indicadores de vendas saíram do canvas e moram na
+ * faixa do cabeçalho, ao lado do título (21/08). Largura ali não é escolha do
+ * usuário — é a metade que sobra do cabeçalho. Deixar a opção no menu seria
+ * oferecer um botão que não faz nada.
+ */
 export const RESIZABLE_MODULOS: DashboardModulo[] = [
   'fluxosSala',
   'calendario',
   'graficos',
-  'kpis',
   'topReps',
   'funil',
   'atalhos',
@@ -81,7 +87,6 @@ const DEFAULT_WIDTHS: Widths = {
   fluxosSala: 12,
   calendario: 12,
   graficos: 12,
-  kpis: 12,
   topReps: 6,
   funil: 6,
   atalhos: 12,

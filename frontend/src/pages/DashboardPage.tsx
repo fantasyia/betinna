@@ -182,6 +182,17 @@ export default function DashboardPage() {
           'Visão consolidada do seu negócio.'
         )
       }
+      // Indicadores de vendas na faixa do cabeçalho, ao lado do título: ali
+      // sobrava uma metade vazia e eles ficavam no fim do canvas, longe do
+      // primeiro olhar. Fora do canvas eles não têm mais largura escolhível —
+      // por isso saíram de RESIZABLE_MODULOS.
+      headerAside={
+        prefs.kpis && canSeeRelatorios && (data || loading) ? (
+          <div id="mod-funil" className="scroll-mt-24" data-testid="dashboard-kpis-topo">
+            {data ? <VendasKpis data={data} compacto /> : <SkeletonCard />}
+          </div>
+        ) : undefined
+      }
       actions={
         canSeeRelatorios ? (
           <div className="flex items-center gap-2">
@@ -291,12 +302,6 @@ export default function DashboardPage() {
                   <StateView loading={false} error={error} onRetry={refetch}>
                     {null}
                   </StateView>
-                </ModuloDoCanvas>
-              )}
-
-              {prefs.kpis && (data || loading) && (
-                <ModuloDoCanvas largura={widthOf('kpis')} id="mod-funil" className="scroll-mt-24">
-                  {data ? <VendasKpis data={data} /> : <SkeletonCard />}
                 </ModuloDoCanvas>
               )}
 
@@ -434,7 +439,7 @@ function dashboardVazio(data: DashboardResp): boolean {
 }
 
 /** Indicadores de vendas do mês — 5 tiles densos. Célula própria do canvas. */
-function VendasKpis({ data }: { data: DashboardResp }) {
+function VendasKpis({ data, compacto = false }: { data: DashboardResp; compacto?: boolean }) {
   const vendas = data.vendas ?? ({} as DashboardResp['vendas']);
   const funil = data.funil ?? ({} as DashboardResp['funil']);
   const faturamento = vendas.faturamento ?? { atual: 0, anterior: 0, variacao: 0 };
@@ -443,7 +448,17 @@ function VendasKpis({ data }: { data: DashboardResp }) {
   const totalAtivos = funil.totalAtivos ?? 0;
   const taxaConversao = funil.taxaConversao ?? 0;
   return (
-    <section className="grid gap-2.5 grid-cols-2 sm:grid-cols-3 xl:grid-cols-5">
+    <section
+      className={cn(
+        'grid gap-2.5',
+        // No cabeçalho o espaço é a metade da largura, não a tela inteira: as
+        // 5 colunas só entram quando a tela é larga o bastante pra que meia
+        // tela ainda comporte 5 cartões legíveis.
+        compacto
+          ? 'grid-cols-2 sm:grid-cols-3 min-[1600px]:grid-cols-5'
+          : 'grid-cols-2 sm:grid-cols-3 xl:grid-cols-5',
+      )}
+    >
       <Stat
         dense
         label="Faturamento"

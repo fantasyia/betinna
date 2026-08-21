@@ -736,11 +736,22 @@ export function PageLayout({
   description,
   actions,
   actionsBelow = false,
+  headerAside,
   children,
 }: {
   title: string;
   description?: ReactNode;
   actions?: ReactNode;
+  /**
+   * Conteúdo da METADE DIREITA do cabeçalho, embaixo dos botões de ação.
+   *
+   * O cabeçalho tem título e descrição à esquerda e os botões à direita — e no
+   * meio, uma faixa larga vazia que só crescia conforme a tela. É onde os
+   * indicadores de vendas do dashboard passaram a morar, em vez de ficarem no
+   * fim do canvas. Desktop apenas: no mobile o cabeçalho já empilha e não há
+   * "lado" nenhum.
+   */
+  headerAside?: ReactNode;
   /**
    * Força as ações numa linha PRÓPRIA abaixo do título/descrição (alinhadas à
    * esquerda), em vez do topo-direita. Padroniza o cabeçalho independente do
@@ -815,9 +826,19 @@ export function PageLayout({
                 <p className="text-sm text-text-subtle">{description}</p>
               )}
             </div>
-            <div className={cn('flex items-center gap-2 flex-wrap', !actionsBelow && 'shrink-0')}>
-              {actions}
-              <NotificationBell />
+            <div
+              className={cn(
+                'flex flex-col gap-3 min-w-0',
+                // Com a fatia preenchida a coluna direita vira metade do
+                // cabeçalho; sem ela, continua encolhida do lado dos botões.
+                headerAside ? 'flex-1 basis-[520px] max-w-[58%]' : !actionsBelow && 'shrink-0',
+              )}
+            >
+              <div className="flex items-center gap-2 flex-wrap justify-end">
+                {actions}
+                <NotificationBell />
+              </div>
+              {headerAside}
             </div>
           </header>
         )}
