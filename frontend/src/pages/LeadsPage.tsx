@@ -34,6 +34,7 @@ import {
   Tag as TagIcon,
   Phone,
   ChevronDown,
+  LogIn,
 } from 'lucide-react';
 import { api, apiErrorMessage } from '@/lib/api';
 import { useApiQuery } from '@/hooks/useApiQuery';
@@ -48,6 +49,7 @@ import {
   formatMoeda as fmtBRL,
   formatMoedaCompacta as fmtBRLCompact,
 } from '@/lib/masks';
+import { rotuloFormulario, rotuloOrigem } from '@/lib/origem-lead';
 import { PhoneInput } from '@/components/PhoneInput';
 import { UfSelect, CidadeSelect } from '@/components/LocalidadeSelects';
 import {
@@ -117,6 +119,10 @@ interface Lead {
   tags?: LeadTagRef[];
   criadoEm: string;
   etapaDesde?: string;
+  /** Por qual porta o lead entrou (site, whatsapp, importacao…). */
+  origemCadastro?: string | null;
+  /** Formulário do site que converteu, quando a origem foi o site. */
+  formularioOrigem?: string | null;
 }
 
 interface LeadTagRef {
@@ -933,6 +939,22 @@ function LeadCardInner({
             {lead.segmento}
           </span>
         )}
+        {/* Por onde entrou. Sem tag espelho: o campo já existe no lead, e tag de
+            origem poluiria a régua de etiquetas (que roteia fluxo). */}
+        {rotuloOrigem(lead.origemCadastro) && (
+          <span
+            className="inline-flex items-center gap-0.5 text-[10px] text-muted"
+            title={
+              rotuloFormulario(lead.formularioOrigem)
+                ? `Origem: ${rotuloOrigem(lead.origemCadastro)} — ${rotuloFormulario(lead.formularioOrigem)}`
+                : `Origem: ${rotuloOrigem(lead.origemCadastro)}`
+            }
+            data-testid="lead-card-origem"
+          >
+            <LogIn className="h-2.5 w-2.5" />
+            {rotuloFormulario(lead.formularioOrigem) ?? rotuloOrigem(lead.origemCadastro)}
+          </span>
+        )}
       </div>
 
       {lead.tags && lead.tags.length > 0 && (
@@ -1314,6 +1336,17 @@ function LeadDetailDrawer({
             <InfoCell icon={<TrendingUp />} label="Canal de origem">
               {CANAL_LABEL[lead.canalOrigem]}
             </InfoCell>
+            {/* `canalOrigem` é a classificação comercial (enum, editável); `origemCadastro`
+                é por qual PORTA técnica ele entrou — quem gravou o lead. São coisas
+                diferentes e o time confunde quando só uma aparece. */}
+            <InfoCell icon={<LogIn />} label="Entrou por">
+              {rotuloOrigem(lead.origemCadastro) ?? '—'}
+            </InfoCell>
+            {rotuloFormulario(lead.formularioOrigem) && (
+              <InfoCell icon={<Target />} label="Formulário">
+                {rotuloFormulario(lead.formularioOrigem)}
+              </InfoCell>
+            )}
             <InfoCell icon={<User />} label="Contato">
               {lead.contatoNome ?? '—'}
             </InfoCell>

@@ -42,6 +42,41 @@ export const listContatosSchema = z.object({
             .slice(0, 27),
     )
     .transform((v) => (v && v.length > 0 ? v : undefined)),
+  /**
+   * ORIGEM do cadastro (card 🔎 21/08 — em vez de tag espelho). VARCHAR, não
+   * enum: porta nova de captura não pode exigir migration. Aceita os valores do
+   * vocabulário controlado E os GRUPOS que o gatilho LEAD_CRIADO já usa, pra a
+   * tela falar a mesma língua do motor:
+   *   inbound  = site · whatsapp · click_to_whatsapp · meta_lead_ads · google_lead_form
+   *   outbound = importacao · manual_rep
+   * CSV ou repetido. Semântica OU. Só LEAD tem origem — filtrar por ela exclui
+   * cliente e conversa, mesma lógica do filtro de tags.
+   */
+  origem: z
+    .union([z.string(), z.array(z.string())])
+    .optional()
+    .transform((v) =>
+      v == null
+        ? undefined
+        : (Array.isArray(v) ? v : v.split(','))
+            .map((x) => x.trim().toLowerCase())
+            .filter(Boolean)
+            .slice(0, 20),
+    )
+    .transform((v) => (v && v.length > 0 ? v : undefined)),
+  /** Formulário que converteu: contato · representante · amostra · calculadora · seletor. */
+  formulario: z
+    .union([z.string(), z.array(z.string())])
+    .optional()
+    .transform((v) =>
+      v == null
+        ? undefined
+        : (Array.isArray(v) ? v : v.split(','))
+            .map((x) => x.trim().toLowerCase())
+            .filter(Boolean)
+            .slice(0, 20),
+    )
+    .transform((v) => (v && v.length > 0 ? v : undefined)),
   /** Filtra por cidade (match parcial, case-insensitive). */
   cidade: z.string().trim().max(100).optional(),
   sortBy: z.enum(['recente', 'nome']).default('recente'),

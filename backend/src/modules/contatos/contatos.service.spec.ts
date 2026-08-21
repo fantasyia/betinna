@@ -750,4 +750,123 @@ describe('ContatosService', () => {
       expect(res.data[0].chave).toBe('lead:l1');
     });
   });
+  // =========================================================================
+  // list — filtro por ORIGEM / FORMULÁRIO (card 🔎)
+  // =========================================================================
+
+  describe('list — filtro de origem e formulário', () => {
+    /** SQL cru montado pelo paginarChaves na 1ª chamada. */
+    const sqlDaChamada = () => {
+      const arg = prisma.$queryRaw.mock.calls[0][0] as { strings: string[]; values: unknown[] };
+      return { texto: arg.strings.join('?'), valores: arg.values };
+    };
+
+    beforeEach(() => {
+      prisma.$queryRaw.mockResolvedValue([]);
+      prisma.lead.findMany.mockResolvedValue([]);
+      prisma.cliente.findMany.mockResolvedValue([]);
+      prisma.conversation.findMany.mockResolvedValue([]);
+    });
+
+    it('grupo "inbound" expande para as MESMAS origens que o gatilho LEAD_CRIADO aceita', async () => {
+      await svc.list(adminUser, {
+        page: 1,
+        limit: 20,
+        sortBy: 'recente',
+        origem: ['inbound'],
+      } as never);
+
+      const { texto, valores } = sqlDaChamada();
+      expect(texto).toContain('origemCadastro');
+      // Se um dia entrar uma porta nova em ORIGENS_INBOUND, a tela acompanha sozinha.
+      for (const o of [
+        'site',
+        'whatsapp',
+        'click_to_whatsapp',
+        'meta_lead_ads',
+        'google_lead_form',
+      ]) {
+        expect(valores).toContain(o);
+      }
+    });
+
+    it('valor fora do vocabulário é filtrável do mesmo jeito (o campo é VARCHAR, não enum)', async () => {
+      await svc.list(adminUser, {
+        page: 1,
+        limit: 20,
+        sortBy: 'recente',
+        origem: ['porta_nova_2027'],
+      } as never);
+
+      expect(sqlDaChamada().valores).toContain('porta_nova_2027');
+    });
+
+    it('filtrar por origem exclui CLIENTE e CONVERSA da união — só LEAD tem o campo', async () => {
+      await svc.list(adminUser, {
+        page: 1,
+        limit: 20,
+        sortBy: 'recente',
+        origem: ['site'],
+      } as never);
+
+      const { texto } = sqlDaChamada();
+      expect(texto).toContain("'LEAD' tipo");
+      expect(texto).not.toContain("'CLIENTE' tipo");
+      expect(texto).not.toContain("'CONVERSA' tipo");
+    });
+
+    it('sem filtro de origem, os três tipos continuam na união', async () => {
+      await svc.list(adminUser, { page: 1, limit: 20, sortBy: 'recente' });
+
+      const { texto } = sqlDaChamada();
+      expect(texto).toContain("'LEAD' tipo");
+      expect(texto).toContain("'CLIENTE' tipo");
+      expect(texto).toContain("'CONVERSA' tipo");
+    });
+
+    it('formulário entra como filtro próprio (independente da origem)', async () => {
+      await svc.list(adminUser, {
+        page: 1,
+        limit: 20,
+        sortBy: 'recente',
+        formulario: ['calculadora'],
+      } as never);
+
+      const { texto, valores } = sqlDaChamada();
+      expect(texto).toContain('formularioOrigem');
+      expect(valores).toContain('calculadora');
+    });
+
+    it('devolve origemCadastro e formularioOrigem na linha — é o que a tela mostra', async () => {
+      prisma.$queryRaw.mockReset();
+      prisma.$queryRaw.mockResolvedValueOnce([
+        { chave: 'lead:l1', lead_ids: ['l1'], cliente_ids: [], conversa_ids: [], total: 1 },
+      ]);
+      prisma.lead.findMany.mockResolvedValue([
+        {
+          id: 'l1',
+          nome: 'Veio do site',
+          contatoNome: null,
+          contatoTelefone: null,
+          contatoEmail: null,
+          cidade: null,
+          uf: null,
+          etapa: 'NOVO',
+          clienteId: null,
+          criadoEm: new Date('2026-08-01T10:00:00Z'),
+          representante: null,
+          utmCampaign: null,
+          origemCadastro: 'site',
+          formularioOrigem: 'calculadora',
+        },
+      ]);
+
+      const res = await svc.list(adminUser, { page: 1, limit: 20, sortBy: 'recente' });
+
+      expect(res.data[0]).toMatchObject({
+        origemCadastro: 'site',
+        formularioOrigem: 'calculadora',
+      });
+    });
+  });
 });

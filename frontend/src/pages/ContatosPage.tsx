@@ -17,6 +17,7 @@ import {
   ChevronDown,
   GitMerge,
   MapPin,
+  Filter,
 } from 'lucide-react';
 import { useApiQuery, type PaginatedResponse } from '@/hooks/useApiQuery';
 import { useDebouncedValue } from '@/hooks/useDebouncedValue';
@@ -48,6 +49,15 @@ import {
   Select,
 } from '@/components/ui';
 import { cn } from '@/lib/cn';
+import {
+  FORMULARIOS_ORIGEM,
+  ORIGENS_INBOUND,
+  ORIGENS_OUTBOUND,
+  ORIGENS_SEM_GRUPO,
+  ROTULO_ORIGEM,
+  rotuloFormulario,
+  rotuloOrigem,
+} from '@/lib/origem-lead';
 
 type ContatoTipo = 'LEAD' | 'CLIENTE' | 'CONVERSA';
 
@@ -70,6 +80,10 @@ interface Contato {
   canal: string | null;
   ultimaInteracaoEm: string | null;
   criadoEm: string;
+  /** Por qual porta o contato entrou. Só o LEAD tem — cliente/conversa vêm null. */
+  origemCadastro: string | null;
+  /** Formulário do site que converteu (quando a origem foi o site). */
+  formularioOrigem: string | null;
 }
 
 type ContatosResp = PaginatedResponse<Contato> & { truncado?: boolean };
@@ -110,6 +124,8 @@ export default function ContatosPage() {
   const [uf, setUf] = useState<string[]>([]);
   const [cidade, setCidade] = useState('');
   const cidadeDebounced = useDebouncedValue(cidade, 300);
+  const [origem, setOrigem] = useState<string[]>([]);
+  const [formulario, setFormulario] = useState<string[]>([]);
   const [detail, setDetail] = useState<Contato | null>(null);
   const canEdit = usePermission('clientes.edit');
   const role = useRole();
@@ -136,10 +152,12 @@ export default function ContatosPage() {
     // #16: limpa a seleção ao trocar filtro — senão uma ação em lote (excluir/mover/tag) atingiria
     // contatos que não estão mais visíveis na tela.
     setSelected(new Map());
-  }, [buscaDebounced, tipo, tagFiltro, uf, cidadeDebounced]);
+  }, [buscaDebounced, tipo, tagFiltro, uf, cidadeDebounced, origem, formulario]);
 
   const tagFiltroKey = tagFiltro.join(',');
   const ufKey = uf.join(',');
+  const origemKey = origem.join(',');
+  const formularioKey = formulario.join(',');
   const listPath = useMemo(() => {
     const qs = new URLSearchParams({ page: String(page), limit: '30' });
     if (buscaDebounced.trim()) qs.set('search', buscaDebounced.trim());
@@ -147,8 +165,21 @@ export default function ContatosPage() {
     if (tagFiltroKey) qs.set('tagIds', tagFiltroKey);
     if (ufKey) qs.set('uf', ufKey);
     if (cidadeDebounced.trim()) qs.set('cidade', cidadeDebounced.trim());
+    // Origem/formulário só existem no LEAD — o backend tira cliente e conversa da
+    // busca quando estes vêm preenchidos (mesma regra do filtro de etiqueta).
+    if (origemKey) qs.set('origem', origemKey);
+    if (formularioKey) qs.set('formulario', formularioKey);
     return `/contatos?${qs.toString()}`;
-  }, [page, buscaDebounced, tipo, tagFiltroKey, ufKey, cidadeDebounced]);
+  }, [
+    page,
+    buscaDebounced,
+    tipo,
+    tagFiltroKey,
+    ufKey,
+    cidadeDebounced,
+    origemKey,
+    formularioKey,
+  ]);
 
   const { data, loading, error, refetch } = useApiQuery<ContatosResp>(listPath);
   // Tags disponíveis pro filtro (chips clicáveis).
@@ -262,6 +293,22 @@ export default function ContatosPage() {
             className="w-44"
             data-testid="contatos-filter-cidade"
           />
+          <OrigemFilterSelect
+            origens={origem}
+            formularios={formulario}
+            onToggleOrigem={(v) =>
+              setOrigem((prev) => (prev.includes(v) ? prev.filter((x) => x !== v) : [...prev, v]))
+            }
+            onToggleFormulario={(v) =>
+              setFormulario((prev) =>
+                prev.includes(v) ? prev.filter((x) => x !== v) : [...prev, v],
+              )
+            }
+            onLimpar={() => {
+              setOrigem([]);
+              setFormulario([]);
+            }}
+          />
         </div>
 
         {data?.truncado && (
@@ -297,6 +344,7 @@ export default function ContatosPage() {
                       )}
                       <Th>Contato</Th>
                       <Th>Tipo</Th>
+                      <Th>Origem</Th>
                       <Th>Local</Th>
                       <Th>Responsável</Th>
                       <th className="w-10" />
@@ -345,6 +393,12 @@ export default function ContatosPage() {
                               <TagChip key={tag.id} nome={tag.nome} cor={tag.cor} />
                             ))}
                           </div>
+                        </Td>
+                        <Td>
+                          <OrigemCell
+                            origem={c.origemCadastro}
+                            formulario={c.formularioOrigem}
+                          />
                         </Td>
                         <Td>
                           <span className="text-sm text-text-subtle">
@@ -771,6 +825,145 @@ function TagFilterSelect({
               type="button"
               onClick={onLimpar}
               className="w-full text-left text-[11px] text-muted underline px-2 py-1.5 mt-0.5 hover:text-text"
+            >
+              limpar seleção
+            </button>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+/**
+ * Origem na linha da lista: por qual porta o contato entrou, e — quando veio do
+ * site — qual formulário converteu.
+ */
+function OrigemCell({ origem, formulario }: { origem: string | null; formulario: string | null }) {
+  const o = rotuloOrigem(origem);
+  const f = rotuloFormulario(formulario);
+  if (!o) return <span className="text-sm text-muted">—</span>;
+  return (
+    <div className="min-w-0" data-testid="contato-origem">
+      <div className="text-sm text-text-subtle truncate">{o}</div>
+      {f && <div className="text-[11px] text-muted truncate">{f}</div>}
+    </div>
+  );
+}
+
+/**
+ * Filtro de origem — multi-seleção (semântica OU).
+ *
+ * Os grupos "inbound"/"outbound" são os MESMOS que o gatilho LEAD_CRIADO aceita
+ * (o backend expande a partir de uma lista única), então filtrar aqui por
+ * "inbound" mostra exatamente a fatia que uma régua de inbound alcançaria.
+ */
+function OrigemFilterSelect({
+  origens,
+  formularios,
+  onToggleOrigem,
+  onToggleFormulario,
+  onLimpar,
+}: {
+  origens: string[];
+  formularios: string[];
+  onToggleOrigem: (v: string) => void;
+  onToggleFormulario: (v: string) => void;
+  onLimpar: () => void;
+}) {
+  const [aberto, setAberto] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!aberto) return;
+    function onDoc(e: MouseEvent) {
+      if (ref.current && !ref.current.contains(e.target as Node)) setAberto(false);
+    }
+    document.addEventListener('mousedown', onDoc);
+    return () => document.removeEventListener('mousedown', onDoc);
+  }, [aberto]);
+
+  const n = origens.length + formularios.length;
+  const rotulo =
+    n === 0
+      ? 'Origem'
+      : n === 1
+        ? (rotuloOrigem(origens[0]) ?? rotuloFormulario(formularios[0]) ?? 'Origem')
+        : `${n} filtros de origem`;
+
+  const opcao = (valor: string, texto: string, marcado: boolean, onToggle: () => void) => (
+    <label
+      key={valor}
+      className="flex items-center gap-2 px-2 py-1.5 rounded-[8px] hover:bg-surface-elevated cursor-pointer text-sm"
+      data-testid={`contatos-origem-filtro-opt-${valor}`}
+    >
+      <Checkbox checked={marcado} onChange={onToggle} />
+      <span className="truncate">{texto}</span>
+    </label>
+  );
+
+  return (
+    <div className="relative" ref={ref}>
+      <button
+        type="button"
+        onClick={() => setAberto((v) => !v)}
+        className={cn(
+          'inline-flex items-center gap-1.5 h-9 px-3 rounded-[10px] border text-sm transition-colors',
+          n > 0
+            ? 'border-primary/40 bg-primary/8 text-text'
+            : 'border-border bg-surface text-text-subtle hover:bg-surface-elevated',
+        )}
+        data-testid="contatos-origem-filtro-btn"
+      >
+        <Filter className="h-3.5 w-3.5" />
+        <span className="truncate max-w-[10rem]">{rotulo}</span>
+        <ChevronDown className="h-3.5 w-3.5 text-muted" />
+      </button>
+      {aberto && (
+        <div className="absolute z-20 mt-1 right-0 w-64 rounded-[10px] border border-border bg-surface shadow-lg p-1.5 max-h-[26rem] overflow-auto">
+          <p className="m-0 px-2 pt-1 pb-1 text-[11px] uppercase tracking-wide text-muted">
+            Veio até nós
+          </p>
+          {ORIGENS_INBOUND.map((o) =>
+            opcao(o, ROTULO_ORIGEM[o] ?? o, origens.includes(o), () => onToggleOrigem(o)),
+          )}
+          {opcao('inbound', 'Qualquer inbound', origens.includes('inbound'), () =>
+            onToggleOrigem('inbound'),
+          )}
+
+          <p className="m-0 px-2 pt-2 pb-1 text-[11px] uppercase tracking-wide text-muted">
+            Fomos atrás
+          </p>
+          {ORIGENS_OUTBOUND.map((o) =>
+            opcao(o, ROTULO_ORIGEM[o] ?? o, origens.includes(o), () => onToggleOrigem(o)),
+          )}
+          {opcao('outbound', 'Qualquer outbound', origens.includes('outbound'), () =>
+            onToggleOrigem('outbound'),
+          )}
+
+          <p className="m-0 px-2 pt-2 pb-1 text-[11px] uppercase tracking-wide text-muted">Outros</p>
+          {ORIGENS_SEM_GRUPO.map((o) =>
+            opcao(o, ROTULO_ORIGEM[o] ?? o, origens.includes(o), () => onToggleOrigem(o)),
+          )}
+
+          <p className="m-0 px-2 pt-2 pb-1 text-[11px] uppercase tracking-wide text-muted">
+            Formulário que converteu
+          </p>
+          {FORMULARIOS_ORIGEM.map((f) =>
+            opcao(
+              `form-${f}`,
+              rotuloFormulario(f) ?? f,
+              formularios.includes(f),
+              () => onToggleFormulario(f),
+            ),
+          )}
+
+          {n > 0 && (
+            <button
+              type="button"
+              onClick={onLimpar}
+              className="w-full text-left text-[11px] text-muted underline px-2 py-1.5 mt-0.5 hover:text-text"
+              data-testid="contatos-origem-filtro-limpar"
             >
               limpar seleção
             </button>

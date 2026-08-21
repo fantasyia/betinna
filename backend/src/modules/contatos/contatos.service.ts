@@ -11,6 +11,7 @@ import { type AtribuicaoResumo, resumoAtribuicao } from '@modules/leads/atribuic
 import type { AuthenticatedUser } from '@shared/types/authenticated-user';
 import { type Paginated, buildPaginated } from '@shared/types/pagination';
 import type { AcaoMassaDto, CriarLeadsDto, ListContatosDto } from './contatos.dto';
+import { GRUPOS_ORIGEM } from '@shared/utils/origem-lead';
 
 export interface AcaoMassaResult {
   ok: true;
@@ -46,6 +47,8 @@ export interface ContatoAgregado {
   /** Atribuição leve pro skim/filtro da lista (do lead representativo). Null = sem rastreio. */
   utmCampaign: string | null;
   origemCadastro: string | null;
+  /** Formulário do site que converteu (só faz sentido quando origem = site). */
+  formularioOrigem: string | null;
 }
 
 export interface ContatoDetalheFunil {
@@ -161,6 +164,8 @@ export class ContatosService {
         tagIds: params.tagIds,
         uf: params.uf,
         cidade: params.cidade,
+        origem: params.origem,
+        formulario: params.formulario,
         want: {
           lead: !params.tipo || params.tipo === 'LEAD',
           cliente: !params.tipo || params.tipo === 'CLIENTE',
@@ -200,6 +205,7 @@ export class ContatosService {
               representante: repSel,
               utmCampaign: true,
               origemCadastro: true,
+              formularioOrigem: true,
             },
           })
         : [],
@@ -302,6 +308,7 @@ export class ContatosService {
         criadoEm: new Date().toISOString(),
         utmCampaign: null,
         origemCadastro: null,
+        formularioOrigem: null,
       };
       map.set(chave, novo);
       return novo;
@@ -323,6 +330,7 @@ export class ContatosService {
       c.leadEtapa = l.etapa;
       c.utmCampaign ??= l.utmCampaign;
       c.origemCadastro ??= l.origemCadastro;
+      c.formularioOrigem ??= l.formularioOrigem;
       c.nome ||= l.contatoNome || l.nome;
       c.telefone ??= l.contatoTelefone;
       c.email ??= l.contatoEmail;
@@ -415,6 +423,8 @@ export class ContatosService {
       tagIds?: string[];
       uf?: string[];
       cidade?: string;
+      origem?: string[];
+      formulario?: string[];
       want: { lead: boolean; cliente: boolean; conversa: boolean };
     },
     sortBy: 'nome' | 'recente',
@@ -423,6 +433,23 @@ export class ContatosService {
   ): Promise<{ rows: ChaveRow[]; total: number }> {
     const { empresaId, scope, role, uid, term, repId, want, tagIds, uf, cidade } = opts;
     const like = term ? `%${term}%` : undefined;
+
+    // ORIGEM/FORMULÁRIO (card 🔎): só LEAD tem esses campos, então filtrar por
+    // eles exclui cliente e conversa — mesma regra do filtro de tags/local.
+    // Os GRUPOS (inbound/outbound) expandem pros mesmos valores que o gatilho
+    // LEAD_CRIADO usa: a tela filtra pelo que o motor rotea, não por uma lista
+    // paralela que envelhece sozinha.
+    const origensExpandidas = (opts.origem ?? []).flatMap<string>((o) => [
+      ...(GRUPOS_ORIGEM[o] ?? [o]),
+    ]);
+    const temOrigem = origensExpandidas.length > 0;
+    const temFormulario = (opts.formulario?.length ?? 0) > 0;
+    const origemFilter = temOrigem
+      ? Prisma.sql`AND lower(coalesce("origemCadastro",'')) IN (${Prisma.join([...new Set(origensExpandidas)])})`
+      : Prisma.empty;
+    const formularioFilter = temFormulario
+      ? Prisma.sql`AND lower(coalesce("formularioOrigem",'')) IN (${Prisma.join(opts.formulario!)})`
+      : Prisma.empty;
 
     // Filtro geográfico. Só Lead/Cliente têm uf/cidade — Conversation não tem,
     // então filtrar por local exclui conversas (mesma lógica do filtro de tags).
@@ -473,10 +500,10 @@ export class ContatosService {
           COALESCE(NULLIF("contatoNome",''), nome) nome_cand, "contatoTelefone" tel_cand, "contatoEmail" email_cand,
           1 ord_nome, 1 ord_tipo, "criadoEm" quando
         FROM "Lead"
-        WHERE "empresaId" = ${empresaId} ${scopeLeadCli} ${leadTagFilter} ${localFilter}
+        WHERE "empresaId" = ${empresaId} ${scopeLeadCli} ${leadTagFilter} ${localFilter} ${origemFilter} ${formularioFilter}
           ${like ? Prisma.sql`AND (nome ILIKE ${like} OR "contatoNome" ILIKE ${like} OR "contatoTelefone" LIKE ${like} OR "contatoEmail" ILIKE ${like})` : Prisma.empty}`);
     }
-    if (want.cliente) {
+    if (want.cliente && !temOrigem && !temFormulario) {
       blocos.push(Prisma.sql`
         SELECT 'CLIENTE' tipo, NULL::text lead_id, id cliente_id, NULL::text conversa_id,
           COALESCE(${sufixo(Prisma.sql`telefone`)}, NULLIF(lower(btrim(email)),''), 'cliente:'||id) chave,
@@ -486,7 +513,7 @@ export class ContatosService {
         WHERE "empresaId" = ${empresaId} ${scopeLeadCli} ${clienteTagFilter} ${localFilter}
           ${like ? Prisma.sql`AND (nome ILIKE ${like} OR telefone LIKE ${like} OR email ILIKE ${like} OR cnpj LIKE ${like})` : Prisma.empty}`);
     }
-    if (want.conversa && !temTags && !temLocal) {
+    if (want.conversa && !temTags && !temLocal && !temOrigem && !temFormulario) {
       // REP só vê o próprio WhatsApp; repId filtra por atribuído (igual ao where Prisma anterior).
       const repConv =
         role === 'REP'

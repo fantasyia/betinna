@@ -7,6 +7,7 @@ import { FLUXO_QUEUE, type FluxoStepJobData } from './fluxo-executor.types';
 import { matchPalavraChave, type PalavraChaveConfig } from './match-palavra-chave.util';
 import { matchFiltroPayload, type FiltroPayload } from './match-payload-filtro.util';
 import { normalizarValor } from './normalizar-valor.util';
+import { GRUPOS_ORIGEM } from '@shared/utils/origem-lead';
 
 const toJsonInput = (v: Record<string, unknown>): Prisma.InputJsonObject =>
   v as unknown as Prisma.InputJsonObject;
@@ -283,20 +284,10 @@ export class FluxoEventBusService {
             const cfgFluxo = (fluxo.triggerConfig ?? {}) as OrigemCfg;
             const cfg: OrigemCfg = { ...cfgFluxo, ...cfgNo };
 
-            const GRUPOS: Record<string, string[]> = {
-              inbound: [
-                'site',
-                'whatsapp',
-                'click_to_whatsapp',
-                'meta_lead_ads',
-                'google_lead_form',
-              ],
-              outbound: ['importacao', 'manual_rep'],
-            };
             const brutos = [...(cfg.origens ?? []), ...(cfg.origem ? [cfg.origem] : [])]
               .map((o) => normalizarValor(String(o)))
               .filter(Boolean);
-            const aceitas = new Set(brutos.flatMap((o) => GRUPOS[o] ?? [o]));
+            const aceitas = new Set(brutos.flatMap((o) => GRUPOS_ORIGEM[o] ?? [o]));
 
             if (aceitas.size > 0) {
               const origemCtx = normalizarValor(String(contexto['origemCadastro'] ?? ''));
