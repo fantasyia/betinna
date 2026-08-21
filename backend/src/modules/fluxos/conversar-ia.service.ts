@@ -1,6 +1,7 @@
 import { createHash } from 'node:crypto';
 import { diaBrasilia, mesBrasilia } from '@shared/utils/data-brasilia.util';
 import { Injectable, Logger } from '@nestjs/common';
+import { ForaDaJanelaEnvioError } from '@shared/whatsapp-pacing/whatsapp-pacing.util';
 import { InjectQueue } from '@nestjs/bullmq';
 import type { Queue } from 'bullmq';
 import { MessageDirection, Prisma } from '@prisma/client';
@@ -846,6 +847,13 @@ export class ConversarIaService {
         this.donoDaConversa(ctx),
       );
     } catch (err) {
+      // Janela/teto NÃO é falha de WhatsApp — é "ainda não" (auditoria 20/08).
+      // O gate do passo passou às 19:59, a IA levou 30s gerando o opener e o
+      // aguardarSlot estourou às 20:00: tratar isso como 'whatsapp_falha'
+      // mandava a execução pro ramo de ERRO permanente — a regra "janela ADIA,
+      // nunca descarta" era violada exatamente na borda. Relança: o executor
+      // tem handler dedicado que deleta o claim e REAGENDA com o delay certo.
+      if (err instanceof ForaDaJanelaEnvioError) throw err;
       const { tipo_erro } = await this.rotearParaErro(
         execucaoId,
         no.id,
@@ -1476,9 +1484,14 @@ export class ConversarIaService {
       data: { variaveis: toJsonInput(novas) },
     });
 
+    // `_hops` propaga o corta-loop do bus (auditoria 20/08): este é um
+    // re-disparo INTERNO — sem o contador, uma cadeia IA_CLASSIFICOU → fluxo →
+    // CONVERSAR_IA → IA_CLASSIFICOU nunca era cortada.
+    const hopsClassificou = typeof ctx['_hops'] === 'number' ? (ctx['_hops'] as number) : 0;
     await this.bus.disparar(empresaId, 'IA_CLASSIFICOU', {
       leadId,
       classificacao: classificacaoTurno ?? null,
+      _hops: hopsClassificou + 1,
     });
 
     // SEM janela de encerramento (esperaMs<=0): comportamento clássico — avança o ramo
@@ -1650,7 +1663,10 @@ export class ConversarIaService {
       });
       if (claim.count === 0) continue;
       if (ex.empresaId && leadId) {
-        await this.bus.disparar(ex.empresaId, 'LEAD_SEM_RESPOSTA', { leadId });
+        // Mesmo motivo do IA_CLASSIFICOU acima: re-disparo interno propaga
+        // `_hops`, senão o corta-loop do bus não enxerga a cadeia.
+        const hops = typeof ctx['_hops'] === 'number' ? (ctx['_hops'] as number) : 0;
+        await this.bus.disparar(ex.empresaId, 'LEAD_SEM_RESPOSTA', { leadId, _hops: hops + 1 });
       }
     }
     if (vencidas.length > 0) {

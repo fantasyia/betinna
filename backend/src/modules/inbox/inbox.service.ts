@@ -206,18 +206,26 @@ export class InboxService {
 
   private baseWhere(user: AuthenticatedUser): Prisma.ConversationWhereInput {
     const empresaId = this.requireEmpresa(user);
-    // REP: acessa SÓ conversas do próprio WhatsApp (sessão Baileys pessoal).
-    // Qualquer pessoa que conversa com ele aparece — clientes da carteira,
-    // prospects, fornecedores, etc. É o WhatsApp dele.
-    // Marketplaces e redes sociais ficam com a equipe interna SAC.
-    if (user.role === 'REP') {
+    // REP/GERENTE: acessam SÓ conversas do próprio WhatsApp (sessão pessoal).
+    // Qualquer pessoa que conversa com eles aparece — clientes da carteira,
+    // prospects, fornecedores. É o WhatsApp DELES, e só deles.
+    if (user.role === 'REP' || user.role === 'GERENTE') {
       return {
         empresaId,
         canal: 'WHATSAPP',
         proprietarioId: user.id,
       };
     }
-    return { empresaId };
+    // Gestão/SAC: o WhatsApp que aparece é SÓ o da EMPRESA (proprietarioId
+    // null). Decisão do Léo (20/08): o número pessoal do rep é vida privada
+    // dele — assessoria jurídica, condomínio, família — e estava TODO listado
+    // no inbox do admin, porque o desenho original (D38) dava à gestão todas
+    // as sessões. Os demais canais (marketplaces, IG/FB) não têm dono pessoal
+    // e seguem visíveis.
+    return {
+      empresaId,
+      OR: [{ canal: { not: 'WHATSAPP' } }, { proprietarioId: null }],
+    };
   }
 
   /**
@@ -347,7 +355,10 @@ export class InboxService {
       where: {
         empresaId,
         canal: 'WHATSAPP',
-        ...(soMinhas ? { proprietarioId: user.id } : {}),
+        // Gestão limpa a caixa da EMPRESA (proprietarioId null) — nunca as
+        // conversas do WhatsApp pessoal dos reps, que agora nem aparecem pra
+        // ela. REP/GERENTE limpam só as próprias.
+        proprietarioId: soMinhas ? user.id : null,
       },
       select: { id: true },
     });

@@ -986,7 +986,12 @@ describe('ConversarIaService', () => {
       ]);
       const n = await svc.processarTimeouts();
       expect(n).toBe(1);
-      expect(bus.disparar).toHaveBeenCalledWith('emp-1', 'LEAD_SEM_RESPOSTA', { leadId: 'lead-1' });
+      // `_hops` no payload: re-disparo interno propaga o corta-loop do bus
+      // (auditoria 20/08) — sem ele a cadeia timeout→fluxo→IA→timeout não era cortada.
+      expect(bus.disparar).toHaveBeenCalledWith('emp-1', 'LEAD_SEM_RESPOSTA', {
+        leadId: 'lead-1',
+        _hops: 1,
+      });
       // CAS: agora via updateMany (claim antes de disparar) em vez de update cego.
       expect(prisma.fluxoExecucao.updateMany).toHaveBeenCalledWith(
         expect.objectContaining({ data: expect.objectContaining({ status: 'CONCLUIDO' }) }),

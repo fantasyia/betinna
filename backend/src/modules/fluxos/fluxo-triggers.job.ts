@@ -299,7 +299,16 @@ export class FluxoTriggersJob {
         destino.tipo === 'GANHO' ? 'GANHO' : destino.tipo === 'PERDIDO' ? 'PERDIDO' : 'NOVO';
       await this.prisma.lead.update({
         where: { id: leadId },
-        data: { funilEtapaId: destino.id, etapa: etapaEnum, etapaDesde: new Date() },
+        // `funilId` SINCRONIZADO junto (auditoria 20/08): destino de OUTRO funil
+        // deixava o lead com funilEtapaId de um funil e funilId de outro — o
+        // kanban mostra numa coluna e os filtros contam noutro funil. Mesmo
+        // padrão do MOVER_LEAD_ETAPA no executor.
+        data: {
+          funilEtapaId: destino.id,
+          funilId: destino.funilId,
+          etapa: etapaEnum,
+          etapaDesde: new Date(),
+        },
       });
       // Nomes canônicos + funilId pra o filtro do gatilho "Lead mudou etapa" casar.
       await this.bus.disparar(empresaId, 'LEAD_ETAPA_MUDOU', {

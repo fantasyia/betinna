@@ -486,6 +486,46 @@ describe('InboxService.atribuir', () => {
     expect(findArgs.where.proprietarioId).toBe('rep-x');
   });
 
+  it('GERENTE também é sessão pessoal — nunca o número da empresa', async () => {
+    prisma.conversation.findMany.mockResolvedValueOnce([]);
+    await svc.list(fakeUser({ role: 'GERENTE' as UserRole, id: 'ger-1' }), {
+      page: 1,
+      limit: 30,
+    } as never);
+    const findArgs = prisma.conversation.findMany.mock.calls[0][0] as {
+      where: { canal: string; proprietarioId: string };
+    };
+    expect(findArgs.where.canal).toBe('WHATSAPP');
+    expect(findArgs.where.proprietarioId).toBe('ger-1');
+  });
+
+  it('GESTÃO não vê o WhatsApp PESSOAL dos reps — só o número da EMPRESA', async () => {
+    // B.O. de 20/08: o inbox do admin listava a vida privada do rep (assessoria
+    // jurídica, condomínio, família) porque o desenho original dava à gestão
+    // TODAS as sessões. Agora WhatsApp pessoal é só do dono; a gestão fica com
+    // o número da empresa (proprietarioId null) e os demais canais.
+    prisma.conversation.findMany.mockResolvedValueOnce([]);
+    await svc.list(fakeUser({ role: 'ADMIN' as UserRole }), { page: 1, limit: 30 } as never);
+    const findArgs = prisma.conversation.findMany.mock.calls[0][0] as {
+      where: { OR?: Array<Record<string, unknown>> };
+    };
+    expect(findArgs.where.OR).toEqual([{ canal: { not: 'WHATSAPP' } }, { proprietarioId: null }]);
+  });
+
+  it('limpar da GESTÃO só apaga a caixa da EMPRESA — nunca as conversas pessoais dos reps', async () => {
+    prisma.conversation.findMany.mockResolvedValueOnce([{ id: 'c1' }]);
+    prisma.message.deleteMany.mockResolvedValueOnce({ count: 2 });
+    prisma.conversation.deleteMany.mockResolvedValueOnce({ count: 1 });
+
+    await svc.limparWhatsapp(fakeUser({ role: 'ADMIN' as UserRole }));
+
+    expect(prisma.conversation.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({ proprietarioId: null }),
+      }),
+    );
+  });
+
   it('ADMIN consegue atribuir quando usuário alvo existe', async () => {
     prisma.conversation.findFirst.mockResolvedValueOnce({
       id: 'conv-1',

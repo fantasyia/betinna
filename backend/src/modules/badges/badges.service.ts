@@ -37,7 +37,13 @@ export class BadgesService {
       precisaHumano: true,
       status: { notIn: ['RESOLVIDA', 'ARQUIVADA'] },
     };
-    if (user.role === 'REP') convWhere.proprietarioId = user.id;
+    if (user.role === 'REP' || user.role === 'GERENTE') {
+      convWhere.proprietarioId = user.id;
+    } else {
+      // Gestão/SAC: badge conta só a caixa da EMPRESA — as sessões pessoais dos
+      // reps saíram da visão deles (mesma regra do baseWhere do Inbox).
+      convWhere.OR = [{ canal: { not: 'WHATSAPP' } }, { proprietarioId: null }];
+    }
 
     // Vendas: aprovações + cancelamentos pendentes.
     //

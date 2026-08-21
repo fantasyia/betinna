@@ -170,7 +170,10 @@ export class FunisController {
     return this.funis.removerEtapa(user, id, etapaId);
   }
 
+  // Config de funil — ver a nota no @Post() acima. (Auditoria 20/08: esta rota
+  // ficou de fora do gate aplicado às outras seis mutações no mesmo dia.)
   @Put(':id/etapas/reordenar')
+  @Roles('ADMIN', 'DIRECTOR', 'GERENTE')
   @RequirePermissions({ module: 'kanban', action: 'edit' })
   @Audit({ action: 'reorder_etapas', resource: 'funil', resourceIdFrom: 'params.id' })
   reordenar(
