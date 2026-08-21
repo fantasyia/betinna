@@ -19,6 +19,8 @@ import {
   Moon,
   LogOut,
   GripVertical,
+  PanelLeftClose,
+  PanelLeftOpen,
   type LucideIcon,
 } from 'lucide-react';
 import {
@@ -214,6 +216,42 @@ const SECTIONS: NavSection[] = [
 ];
 
 const SIDEBAR_WIDTH = 240;
+/**
+ * Sidebar recolhida: só os ícones. 60px é o menor valor que ainda deixa o ícone
+ * (15px) centrado com área de clique confortável — abaixo disso o alvo fica
+ * menor que o mínimo de toque e o item vira uma isca de erro.
+ */
+const SIDEBAR_WIDTH_RECOLHIDA = 60;
+const SIDEBAR_RECOLHIDA_KEY = 'sidebar-recolhida-v1';
+
+/**
+ * Preferência de menu recolhido — por DISPOSITIVO (localStorage), igual à ordem
+ * dos itens. Quem usa notebook pequeno recolhe lá e mantém aberto no monitor
+ * grande, sem um mexer no outro.
+ *
+ * Só vale no desktop: no mobile a sidebar já é uma gaveta que abre e fecha
+ * inteira, e uma tira de ícones fixa comeria a largura da tela.
+ */
+function useSidebarRecolhida(ativo: boolean): [boolean, () => void] {
+  const [recolhida, setRecolhida] = useState<boolean>(() => {
+    try {
+      return localStorage.getItem(SIDEBAR_RECOLHIDA_KEY) === '1';
+    } catch {
+      return false;
+    }
+  });
+  const alternar = () =>
+    setRecolhida((v) => {
+      const nova = !v;
+      try {
+        localStorage.setItem(SIDEBAR_RECOLHIDA_KEY, nova ? '1' : '0');
+      } catch {
+        // localStorage cheio/bloqueado não pode impedir de recolher o menu.
+      }
+      return nova;
+    });
+  return [ativo && recolhida, alternar];
+}
 
 const ROLE_LABEL: Record<string, string> = {
   ADMIN: 'Admin',
@@ -225,8 +263,44 @@ const ROLE_LABEL: Record<string, string> = {
 
 // ─── Sidebar logo (com fallback do logo da empresa) ─────────────────────
 
-function SidebarLogo({ role }: { role: string | null }) {
+function SidebarLogo({
+  role,
+  recolhida,
+  onAlternar,
+}: {
+  role: string | null;
+  recolhida: boolean;
+  onAlternar?: () => void;
+}) {
   const { logoUrl } = useEmpresaLogo();
+
+  // Recolhida: só o símbolo, e ele VIRA o botão de expandir. Um ícone de logo
+  // que não faz nada, numa tira de 60px, seria o único elemento morto da coluna.
+  if (recolhida) {
+    return (
+      <div className="flex flex-col items-center gap-1 px-1 py-3 border-b border-border">
+        <button
+          type="button"
+          onClick={onAlternar}
+          data-testid="sidebar-expandir"
+          aria-label="Expandir menu"
+          aria-expanded={false}
+          title="Expandir menu"
+          className="group relative flex h-9 w-9 items-center justify-center rounded-md hover:bg-primary/8 transition-colors"
+        >
+          <img
+            src={logoUrl || '/betinna-symbol.svg'}
+            alt="Betinna.ai"
+            className="h-7 w-7 object-contain group-hover:opacity-0 transition-opacity"
+            draggable={false}
+          />
+          <PanelLeftOpen className="absolute h-4 w-4 text-primary opacity-0 group-hover:opacity-100 transition-opacity" />
+        </button>
+        <ThemeToggle />
+      </div>
+    );
+  }
+
   return (
     <div className="flex items-center justify-between gap-2 px-3.5 py-3 border-b border-border">
       <div className="flex items-center gap-2 min-w-0">
@@ -261,7 +335,22 @@ function SidebarLogo({ role }: { role: string | null }) {
           </span>
         </div>
       </div>
-      <ThemeToggle />
+      <div className="flex items-center gap-0.5 shrink-0">
+        <ThemeToggle />
+        {onAlternar && (
+          <button
+            type="button"
+            onClick={onAlternar}
+            data-testid="sidebar-recolher"
+            aria-label="Recolher menu"
+            aria-expanded
+            title="Recolher menu"
+            className="p-1.5 rounded-md text-muted hover:text-primary hover:bg-primary/8 transition-colors"
+          >
+            <PanelLeftClose className="h-4 w-4" />
+          </button>
+        )}
+      </div>
     </div>
   );
 }
@@ -272,20 +361,28 @@ function SidebarNavItem({
   item,
   active,
   count = 0,
+  recolhida = false,
 }: {
   item: NavItem;
   active: boolean;
   count?: number;
+  recolhida?: boolean;
 }) {
   const Icon = item.icon;
   return (
     <Link
       to={item.to}
       data-testid={`nav-${item.to.replace('/', '')}`}
+      // Recolhida, o rótulo some da tela — então ele PRECISA existir como nome
+      // acessível, senão o leitor de tela anuncia só "link" e o mouse não tem
+      // como descobrir o que é sem clicar.
+      title={recolhida ? (count > 0 ? `${item.label} (${count})` : item.label) : undefined}
+      aria-label={recolhida ? item.label : undefined}
       className={cn(
-        'group relative flex items-center gap-2.5 px-2.5 py-1.5 my-px rounded-md text-sm font-medium',
+        'group relative flex items-center py-1.5 my-px rounded-md text-sm font-medium',
         'transition-all duration-100',
         'whitespace-nowrap overflow-hidden text-ellipsis',
+        recolhida ? 'justify-center px-0' : 'gap-2.5 px-2.5',
         active
           ? 'bg-primary/10 text-primary font-semibold shadow-[inset_3px_0_0_0_var(--primary)]'
           : 'text-text-subtle hover:bg-primary/5 hover:text-primary',
@@ -298,9 +395,19 @@ function SidebarNavItem({
         )}
         strokeWidth={active ? 2.5 : 2}
       />
-      <span className="flex-1 truncate">{item.label}</span>
+      {/* Recolhida: o número não cabe, mas SUMIR com ele esconderia novidade
+          (pedido pra aprovar, mensagem no inbox). Vira um ponto — perde a
+          contagem, mantém o "tem coisa aqui". O total segue no title. */}
+      {recolhida && count > 0 && (
+        <span
+          data-testid={`nav-dot-${item.to.replace('/', '')}`}
+          className="absolute top-1 right-1.5 h-2 w-2 rounded-full bg-danger ring-2 ring-bg-alt"
+          aria-label={`${count} novidade${count === 1 ? '' : 's'}`}
+        />
+      )}
+      {!recolhida && <span className="flex-1 truncate">{item.label}</span>}
       {/* F5 — badge numérico de novidade (pedidos pra aprovar, msgs no inbox…) */}
-      {count > 0 && (
+      {!recolhida && count > 0 && (
         <span
           data-testid={`nav-badge-${item.to.replace('/', '')}`}
           className="min-w-[18px] h-[18px] px-1 inline-flex items-center justify-center rounded-full bg-danger text-white text-[10px] font-bold tabular leading-none"
@@ -309,7 +416,7 @@ function SidebarNavItem({
           {count > 99 ? '99+' : count}
         </span>
       )}
-      {item.badge && (
+      {!recolhida && item.badge && (
         <span
           className={cn(
             'px-1.5 py-px rounded-sm text-[9px] font-bold uppercase tracking-wide',
@@ -331,10 +438,12 @@ function SortableNavItem({
   item,
   active,
   count,
+  recolhida = false,
 }: {
   item: NavItem;
   active: boolean;
   count: number;
+  recolhida?: boolean;
 }) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
     id: item.to,
@@ -349,18 +458,22 @@ function SortableNavItem({
       style={style}
       className={cn('group/nav flex items-center', isDragging && 'opacity-70 z-10 relative')}
     >
-      <button
-        type="button"
-        {...attributes}
-        {...listeners}
-        aria-label="Arrastar para reordenar"
-        title="Arrastar para reordenar"
-        className="shrink-0 cursor-grab touch-none px-0.5 text-muted-light opacity-0 group-hover/nav:opacity-100 focus:opacity-100"
-      >
-        <GripVertical className="h-3.5 w-3.5" />
-      </button>
+      {/* Recolhida não tem punho: 60px não comportam ícone + punho sem espremer
+          o alvo de clique. Reordenar continua existindo — é só expandir. */}
+      {!recolhida && (
+        <button
+          type="button"
+          {...attributes}
+          {...listeners}
+          aria-label="Arrastar para reordenar"
+          title="Arrastar para reordenar"
+          className="shrink-0 cursor-grab touch-none px-0.5 text-muted-light opacity-0 group-hover/nav:opacity-100 focus:opacity-100"
+        >
+          <GripVertical className="h-3.5 w-3.5" />
+        </button>
+      )}
       <div className="flex-1 min-w-0">
-        <SidebarNavItem item={item} active={active} count={count} />
+        <SidebarNavItem item={item} active={active} count={count} recolhida={recolhida} />
       </div>
     </div>
   );
@@ -372,10 +485,14 @@ function Sidebar({
   isMobile,
   isOpen,
   onClose,
+  recolhida,
+  onAlternarRecolhida,
 }: {
   isMobile: boolean;
   isOpen: boolean;
   onClose: () => void;
+  recolhida: boolean;
+  onAlternarRecolhida: () => void;
 }) {
   const role = useRole();
   const location = useLocation();
@@ -448,13 +565,14 @@ function Sidebar({
   return (
     <aside
       data-testid="sidebar"
+      data-recolhida={recolhida ? 'sim' : 'nao'}
       className={cn(
         'fixed top-0 left-0 bottom-0 z-50',
         'flex flex-col bg-bg-alt border-r border-border',
-        isMobile ? 'transition-transform duration-200 ease-out' : '',
+        isMobile ? 'transition-transform duration-200 ease-out' : 'transition-[width] duration-150',
       )}
       style={{
-        width: SIDEBAR_WIDTH,
+        width: recolhida ? SIDEBAR_WIDTH_RECOLHIDA : SIDEBAR_WIDTH,
         transform: isMobile && !isOpen ? 'translateX(-100%)' : 'translateX(0)',
         zIndex: isMobile ? 100 : 50,
       }}
@@ -463,10 +581,16 @@ function Sidebar({
       }}
     >
       {/* Logo oficial (ou logo da empresa quando configurado) + dark mode toggle */}
-      <SidebarLogo role={role} />
+      <SidebarLogo
+        role={role}
+        recolhida={recolhida}
+        onAlternar={isMobile ? undefined : onAlternarRecolhida}
+      />
 
-      {/* Multi-tenant: trocar empresa ativa (ADMIN vê todas; demais só vinculadas) */}
-      <EmpresaSwitcher />
+      {/* Multi-tenant: trocar empresa ativa (ADMIN vê todas; demais só vinculadas).
+          Fora do modo recolhido: é um seletor com NOME de empresa — não existe
+          versão de 60px dele que não minta sobre qual empresa está ativa. */}
+      {!recolhida && <EmpresaSwitcher />}
 
       {/* Quick search (cmdk) — DESATIVADO por pedido do Léo (2026-08-05): o
           placeholder parecia clicável (cursor-pointer + hover) mas não fazia
@@ -474,7 +598,7 @@ function Sidebar({
           global existir de verdade. */}
 
       {/* Nav scrollable — arrastável (reordena pelos "punhos", persiste no dispositivo) */}
-      <nav className="flex-1 overflow-y-auto px-2 py-2.5">
+      <nav className={cn('flex-1 overflow-y-auto py-2.5', recolhida ? 'px-1.5' : 'px-2')}>
         <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={onDragEnd}>
           <SortableContext items={visiveis.map((i) => i.to)} strategy={verticalListSortingStrategy}>
             <div className="mb-3">
@@ -484,6 +608,7 @@ function Sidebar({
                   item={item}
                   active={isActive(item)}
                   count={item.badgeKey ? badges[item.badgeKey] : 0}
+                  recolhida={recolhida}
                 />
               ))}
             </div>
@@ -494,19 +619,26 @@ function Sidebar({
       {/* User card no rodapé */}
       <Link
         to="/perfil"
+        title={recolhida ? 'Ver perfil' : undefined}
+        aria-label={recolhida ? 'Ver perfil' : undefined}
         className={cn(
-          'flex items-center gap-2.5 px-3 py-2.5 border-t border-border',
+          'flex items-center py-2.5 border-t border-border',
           'hover:bg-surface-hover transition-colors group',
+          recolhida ? 'justify-center px-0' : 'gap-2.5 px-3',
         )}
       >
         <Avatar name={role ?? '—'} size="sm" />
-        <div className="flex-1 min-w-0">
-          <div className="text-sm font-medium text-text truncate">
-            {role ? ROLE_LABEL[role] ?? role : 'Sem sessão'}
-          </div>
-          <div className="text-[11px] text-muted truncate">Ver perfil</div>
-        </div>
-        <ChevronRight className="h-3.5 w-3.5 text-muted opacity-0 group-hover:opacity-100 transition-opacity" />
+        {!recolhida && (
+          <>
+            <div className="flex-1 min-w-0">
+              <div className="text-sm font-medium text-text truncate">
+                {role ? ROLE_LABEL[role] ?? role : 'Sem sessão'}
+              </div>
+              <div className="text-[11px] text-muted truncate">Ver perfil</div>
+            </div>
+            <ChevronRight className="h-3.5 w-3.5 text-muted opacity-0 group-hover:opacity-100 transition-opacity" />
+          </>
+        )}
       </Link>
 
       {/* Botão de sair (logout) */}
@@ -518,13 +650,16 @@ function Sidebar({
           // Volta pra tela de login (a sessão já foi limpa).
           window.location.assign('/login');
         }}
+        title={recolhida ? 'Sair' : undefined}
+        aria-label={recolhida ? 'Sair' : undefined}
         className={cn(
-          'flex items-center gap-2.5 px-3 py-2.5 w-full text-left',
+          'flex items-center py-2.5 w-full',
           'text-sm text-muted hover:text-danger hover:bg-surface-hover transition-colors',
+          recolhida ? 'justify-center px-0' : 'gap-2.5 px-3 text-left',
         )}
       >
         <LogOut className="h-3.5 w-3.5" />
-        Sair
+        {!recolhida && 'Sair'}
       </button>
     </aside>
   );
@@ -617,6 +752,7 @@ export function PageLayout({
 }) {
   const isMobile = useIsMobile();
   const [sidebarOpen, setSidebarOpen] = useState(false);
+  const [recolhida, alternarRecolhida] = useSidebarRecolhida(!isMobile);
   const location = useLocation();
 
   useEffect(() => {
@@ -635,15 +771,26 @@ export function PageLayout({
 
   return (
     <div className="bg-bg min-h-screen text-text">
-      <Sidebar isMobile={isMobile} isOpen={sidebarOpen} onClose={() => setSidebarOpen(false)} />
+      <Sidebar
+        isMobile={isMobile}
+        isOpen={sidebarOpen}
+        onClose={() => setSidebarOpen(false)}
+        recolhida={recolhida}
+        onAlternarRecolhida={alternarRecolhida}
+      />
       {isMobile && sidebarOpen && <MobileBackdrop onClick={() => setSidebarOpen(false)} />}
       {isMobile && <MobileTopBar title={title} onToggleSidebar={() => setSidebarOpen((v) => !v)} />}
       <main
         id="main-content"
-        style={{ marginLeft: isMobile ? 0 : SIDEBAR_WIDTH }}
+        style={{
+          marginLeft: isMobile ? 0 : recolhida ? SIDEBAR_WIDTH_RECOLHIDA : SIDEBAR_WIDTH,
+        }}
         className={cn(
           isMobile ? 'px-4 pb-10 pt-4' : 'px-8 pt-7 pb-12',
           'min-h-screen',
+          // Acompanha a largura da sidebar — sem isto o conteúdo salta e a
+          // transição fica pela metade (a coluna anima, o miolo não).
+          !isMobile && 'transition-[margin] duration-150',
         )}
         // a11y: focus-visible permite ao usuário pular pra cá via skip-to-content
         tabIndex={-1}
