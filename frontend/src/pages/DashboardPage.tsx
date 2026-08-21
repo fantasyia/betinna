@@ -32,6 +32,7 @@ import {
   type ModuloWidth,
 } from '@/hooks/useDashboardPrefs';
 import { PageLayout } from '@/components/PageLayout';
+import { ModuloDoCanvas } from '@/pages/dashboard/ModuloDoCanvas';
 import { StateView } from '@/components/StateView';
 import {
   Button,
@@ -144,17 +145,6 @@ const ROLE_LABEL: Record<string, string> = {
   REP: 'Representante',
 };
 
-/**
- * Largura do módulo → classe de col-span no grid de 12 colunas do canvas.
- * Literais (não `col-span-${w}`) pra o Tailwind JIT enxergar as classes.
- */
-const SPAN: Record<ModuloWidth, string> = {
-  4: 'min-[1024px]:col-span-4',
-  6: 'min-[1024px]:col-span-6',
-  8: 'min-[1024px]:col-span-8',
-  12: 'min-[1024px]:col-span-12',
-};
-
 export default function DashboardPage() {
   const role = useRole();
   const canSeeRelatorios = usePermission('relatorios.view');
@@ -255,75 +245,77 @@ export default function DashboardPage() {
               </TrilhoAcao>
             </div>
 
-            {/* Canvas = grid de 12 colunas com dense-flow: cada módulo tem
-                largura própria (Personalizar) e o empacotamento preenche os
-                vãos. items-stretch deixa cards da mesma fileira com altura
-                igual (sem buraco entre eles). */}
-            <div className="min-[1024px]:order-1 min-w-0 grid grid-cols-1 gap-3 min-[1024px]:grid-cols-12 min-[1024px]:grid-flow-row-dense">
+            {/* Canvas = grid de 12 colunas, MASONRY: cada módulo declara a
+                própria altura (linhas de 1px + span medido) e o de baixo sobe
+                até encostar. Antes a fileira era alinhada pelo módulo mais
+                alto, e o curto ao lado dele deixava um vão. Com `dense` os
+                módulos ainda preenchem colunas que sobraram na fileira.
+                O respiro entre eles é padding do item, não gap do grid. */}
+            <div className="min-[1024px]:order-1 min-w-0 grid grid-cols-1 gap-x-3 gap-y-0 min-[1024px]:grid-cols-12 min-[1024px]:grid-flow-row-dense min-[1024px]:auto-rows-[1px] auto-rows-[1px]">
               {/* MODO PRONTIDÃO — sempre cheio, só quando a máquina está desligada. */}
               {ehGestao && resumo?.prontidao.ativo && resumo.prontidao.linhas.length > 0 && (
-                <div className="min-w-0 min-[1024px]:col-span-12">
+                <ModuloDoCanvas largura={12}>
                   <ProntidaoCard linhas={resumo.prontidao.linhas} />
-                </div>
+                </ModuloDoCanvas>
               )}
 
               {/* M6 — sala de controle (gestão; pro REP o backend devolve vazio). */}
               {prefs.fluxosSala && ehGestao && (resumo || resumoLoading) && (
-                <div className={cn('min-w-0 [&>*]:h-full', SPAN[widthOf('fluxosSala')])}>
+                <ModuloDoCanvas largura={widthOf('fluxosSala')}>
                   {resumo ? (
                     <FluxosSala fluxos={resumo.fluxosSala} onChanged={refetchResumo} />
                   ) : (
                     <SkeletonCard />
                   )}
-                </div>
+                </ModuloDoCanvas>
               )}
 
               {/* M7 — resumo do calendário de marketing (gestão). */}
               {prefs.calendario && ehGestao && (
-                <div className={cn('min-w-0 [&>*]:h-full', SPAN[widthOf('calendario')])}>
+                <ModuloDoCanvas largura={widthOf('calendario')}>
                   <CalendarioResumo />
-                </div>
+                </ModuloDoCanvas>
               )}
 
               {/* M8 — gráficos de relatórios (endpoint único /dashboard/graficos). */}
               {prefs.graficos && canSeeRelatorios && (
-                <div className={cn('min-w-0 [&>*]:h-full', SPAN[widthOf('graficos')])}>
+                <ModuloDoCanvas largura={widthOf('graficos')}>
                   <RelatoriosGraficos ehGestao={ehGestao} />
-                </div>
+                </ModuloDoCanvas>
               )}
 
               {/* Vendas: cada card é uma célula PRÓPRIA do grid — o dense-flow
                   empacota e o usuário escolhe a largura de cada um. */}
               {error && !data && (
-                <div className="min-w-0 min-[1024px]:col-span-12">
+                <ModuloDoCanvas largura={12}>
                   <StateView loading={false} error={error} onRetry={refetch}>
                     {null}
                   </StateView>
-                </div>
+                </ModuloDoCanvas>
               )}
 
               {prefs.kpis && (data || loading) && (
-                <div id="mod-funil" className={cn('min-w-0 scroll-mt-24', SPAN[widthOf('kpis')])}>
+                <ModuloDoCanvas largura={widthOf('kpis')} id="mod-funil" className="scroll-mt-24">
                   {data ? <VendasKpis data={data} /> : <SkeletonCard />}
-                </div>
+                </ModuloDoCanvas>
               )}
 
               {prefs.topReps && (data || loading) && (
-                <div className={cn('min-w-0 [&>*]:h-full', SPAN[widthOf('topReps')])}>
+                <ModuloDoCanvas largura={widthOf('topReps')}>
                   {data ? <TopRepsCard porRep={data.vendas?.porRep ?? []} /> : <SkeletonCard />}
-                </div>
+                </ModuloDoCanvas>
               )}
 
               {prefs.funil && (
-                <div className={cn('min-w-0 [&>*]:h-full', SPAN[widthOf('funil')])}>
+                <ModuloDoCanvas largura={widthOf('funil')}>
                   <FunilCard />
-                </div>
+                </ModuloDoCanvas>
               )}
 
               {prefs.atalhos && (
-                <div className={cn('min-w-0 [&>*]:h-full', SPAN[widthOf('atalhos')])}>
+                <ModuloDoCanvas largura={widthOf('atalhos')}>
                   <AtalhosCard canSeeCampanhas={canSeeCampanhas} />
-                </div>
+                </ModuloDoCanvas>
               )}
 
               {/* Só ADMIN/Diretor. O gate era só "dashboard vazio", sem olhar
@@ -331,9 +323,9 @@ export default function DashboardPage() {
                   que via um cartão mandando conectar o OMIE e convidar usuários.
                   Nesses dois ele nem entra: são ADMIN/DIRECTOR no backend. */}
               {data && dashboardVazio(data) && podeConfigurarInstancia && (
-                <div className="min-w-0 min-[1024px]:col-span-12">
+                <ModuloDoCanvas largura={12}>
                   <FirstStepsCard />
-                </div>
+                </ModuloDoCanvas>
               )}
             </div>
           </div>
