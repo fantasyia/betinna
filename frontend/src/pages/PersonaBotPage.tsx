@@ -65,9 +65,12 @@ interface Diagnostico {
   teste: { ok: boolean; erro?: string };
 }
 
+// Exemplo neutro: nome do bot e da empresa saem da config do tenant, então o
+// placeholder não pode carregar os de ninguém — o antigo trazia "Muller" e
+// "MSM Alimentos" no meio da tela de outro cliente.
 const PLACEHOLDER_PROMPT = `Ex:
 
-Você é o Muller, atendente comercial da MSM Alimentos no WhatsApp.
+Você é o assistente comercial da empresa no WhatsApp.
 Fale em português brasileiro, de forma cordial e objetiva, com mensagens curtas.
 
 Regras:
