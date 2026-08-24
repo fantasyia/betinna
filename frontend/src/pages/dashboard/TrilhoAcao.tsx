@@ -1,4 +1,4 @@
-import { useEffect, useState, type ReactNode } from 'react';
+import { Children, useEffect, useState, type ReactNode } from 'react';
 import { BellRing, X } from 'lucide-react';
 import { IconButton } from '@/components/ui';
 import { cn } from '@/lib/cn';
@@ -36,6 +36,19 @@ export function TrilhoAcao({
   const largo = useMediaQuery('(min-width: 1600px)');
   const empilhado = useMediaQuery('(max-width: 1023px)');
   const [aberto, setAberto] = useState(false);
+
+  // TRILHO VAZIO NÃO OCUPA ESPAÇO.
+  //
+  // Os módulos do trilho são opcionais (Personalizar). Com os três desligados,
+  // `children` vira [false, false, false] e o <aside> continuava reservando
+  // 340px — uma coluna morta na direita da tela. E o preço não era só o vazio: o
+  // canvas ficava 340px mais estreito, e a tabela da sala de fluxos (mínimo de
+  // 640px) passava a precisar de ROLAGEM HORIZONTAL a meia largura. Era isso o
+  // "sumiu o layout e apareceu uma setinha pra arrastar".
+  //
+  // `Children.toArray` já descarta null/undefined/boolean — o que sobra é
+  // conteúdo de verdade.
+  if (Children.toArray(children).length === 0) return null;
 
   // <1024: sem coluna — os módulos empilham no topo do fluxo normal da página.
   if (empilhado) {
