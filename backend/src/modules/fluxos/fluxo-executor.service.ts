@@ -1297,7 +1297,24 @@ export class FluxoExecutorService {
 
     // Envio: se há anexo (midia), manda mídia com a `mensagem` como legenda; senão, texto.
     // Único ponto de envio (reusado pelo caminho de grupo e pelo de telefone).
+    // GATE ANTES DE ENVIAR: com a instância fora do ar, o Evolution ACEITA o
+    // POST e devolve id — o passo fechava CONCLUIDO com `externalId`, e a
+    // mensagem simplesmente não chegava. Falha silenciosa: não nascia lead, o
+    // fluxo seguinte não rodava, e a rodada de teste inteira passava batida como
+    // se fosse erro de quem testou.
+    //
+    // `WhatsappIndisponivelError` (e não Error solto) de propósito: cai no
+    // caminho de reagendamento — 3 tentativas curtas e depois espera crescente
+    // até a porta abrir, em vez de queimar o passo.
     const enviar = async (peerId: string): Promise<Record<string, unknown>> => {
+      const donoEnvio = remetente.proprietarioId ?? null;
+      if (!(await this.whatsapp.estaDisponivel(empresaId, donoEnvio))) {
+        throw new WhatsappIndisponivelError(
+          donoEnvio
+            ? 'WhatsApp pessoal do remetente não está conectado'
+            : 'WhatsApp da empresa não está conectado',
+        );
+      }
       try {
         if (cfg.midia?.storagePath) {
           const r = await this.whatsapp.enviarMidia(

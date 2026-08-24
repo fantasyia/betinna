@@ -69,7 +69,13 @@ function makeService() {
     cliente: { findFirst: vi.fn().mockResolvedValue({ telefone: '11987654321', nome: 'Carlos' }) },
     $transaction: vi.fn(async (ops: unknown[]) => Promise.all(ops as Promise<unknown>[])),
   };
-  const whatsapp = { enviarTexto: vi.fn().mockResolvedValue({ externalId: 'wa-1' }) };
+  const whatsapp = {
+    // Gate anterior ao envio: instância fora do ar não pode fechar o passo
+    // como CONCLUIDO. Default conectado — os testes que exercitam a queda
+    // sobrescrevem.
+    estaDisponivel: vi.fn().mockResolvedValue(true),
+    enviarTexto: vi.fn().mockResolvedValue({ externalId: 'wa-1' }),
+  };
   const conversarIa = { iniciar: vi.fn().mockResolvedValue({ aguardando: false }) };
   const queue = { add: vi.fn().mockResolvedValue({ id: 'job-x' }) };
   const service = new FluxoExecutorService(

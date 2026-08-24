@@ -60,6 +60,10 @@ const makeCusto = () => ({
   registrarUso: vi.fn().mockResolvedValue(undefined),
 });
 const makeWhatsapp = () => ({
+  // Gate anterior ao envio: instância fora do ar não pode fechar o passo
+  // como CONCLUIDO. Default conectado — os testes que exercitam a queda
+  // sobrescrevem.
+  estaDisponivel: vi.fn().mockResolvedValue(true),
   enviarTexto: vi.fn().mockResolvedValue({ externalId: 'x' }),
   enviarPresenca: vi.fn().mockResolvedValue(undefined),
   baixarMidia: vi.fn().mockResolvedValue(Buffer.from('midia')),

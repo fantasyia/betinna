@@ -228,12 +228,54 @@ export class EvolutionService {
     return lista.find((i) => (i.name ?? i.instanceName) === instance) ?? null;
   }
 
-  /** True quando a instância está REALMENTE conectada (open E não deslogada/401). */
+  /**
+   * Motivos que significam SESSÃO MORTA — só se resolve escaneando o QR de novo.
+   * 401 = deslogado no aparelho · 403 = bloqueado/banido pelo WhatsApp.
+   *
+   * O resto (428 conexão fechada, 440 sessão substituída, 515 restart) é queda
+   * TRANSITÓRIA: o Baileys reconecta sozinho.
+   */
+  private static readonly MOTIVOS_MORTE = new Set([401, 403]);
+
+  /**
+   * True quando a instância está REALMENTE conectada.
+   *
+   * A regra era `open && disconnectionReasonCode == null`, e isso tinha um furo
+   * grande: `disconnectionReasonCode` é o motivo da ÚLTIMA desconexão — campo
+   * HISTÓRICO, que o Evolution não zera ao reconectar. Uma instância que caiu
+   * uma vez e voltou passava a ser lida como doente PARA SEMPRE: a tela pedia
+   * reconexão com o número funcionando, os fluxos paravam de enviar, e o botão
+   * Conectar apagava a sessão (ver `conectarOuEstado`).
+   *
+   * Agora `open` só é derrubado por motivo de MORTE. O caso que motivou a regra
+   * original — zumbi `open` + 401, deslogado no celular com o status preso —
+   * continua coberto, porque 401 está na lista.
+   */
   private saudavel(inst: {
     connectionStatus?: string;
     disconnectionReasonCode?: number | null;
   }): boolean {
-    return inst.connectionStatus === 'open' && inst.disconnectionReasonCode == null;
+    if (inst.connectionStatus !== 'open') return false;
+    const motivo = inst.disconnectionReasonCode;
+    return motivo == null || !EvolutionService.MOTIVOS_MORTE.has(Number(motivo));
+  }
+
+  /**
+   * Precisa de QR? Diferente de "apto a enviar": instância `connecting` não
+   * envia, mas TAMBÉM não precisa de QR — está se recuperando sozinha. Tratar
+   * as duas como a mesma coisa é o que fazia o botão Conectar destruir sessão
+   * que ia voltar em segundos.
+   */
+  private precisaDeQr(inst: {
+    connectionStatus?: string;
+    ownerJid?: string | null;
+    disconnectionReasonCode?: number | null;
+  }): boolean {
+    if (!inst.ownerJid) return true; // nunca pareada
+    const motivo = inst.disconnectionReasonCode;
+    if (motivo != null && EvolutionService.MOTIVOS_MORTE.has(Number(motivo))) return true;
+    // `close` sem motivo de morte: o Baileys ainda tenta voltar sozinho.
+    return false;
   }
 
   /**
@@ -541,11 +583,25 @@ export class EvolutionService {
     const inst = await this.buscarInstancia(instance);
     if (inst && this.saudavel(inst)) return this.comNumero({ status: 'CONNECTED' }, inst);
 
-    // 2. Existe mas NÃO está são (zumbi/close/deslogado) → RESET FORTE antes de
-    //    recriar (senão o Evolution recusa recriar/deletar a instância travada).
+    // 2. Se está SE RECUPERANDO (pareada, sem motivo de morte), NÃO destrói.
+    //    Este botão se chama "Conectar" e chamava `resetarForte` = restart +
+    //    logout + delete em qualquer estado que não fosse `open`. Resultado: com
+    //    a instância em `connecting`, cada clique matava a recuperação e exigia
+    //    QR novo — quanto mais se apertava, mais longe ficava de voltar.
+    //    Reset destrutivo agora só pelo botão dedicado (DELETE /resetar).
+    if (inst && !this.precisaDeQr(inst)) {
+      this.logger.log(
+        `[evolution] ${instance} em recuperação (status=${inst.connectionStatus} ` +
+          `reason=${inst.disconnectionReasonCode ?? 'null'}) — aguardando, sem reset`,
+      );
+      return { status: 'CONNECTING' };
+    }
+
+    // 3. Morta de verdade (deslogada/banida) → RESET FORTE antes de recriar
+    //    (senão o Evolution recusa recriar/deletar a instância travada).
     if (inst) {
       this.logger.warn(
-        `[evolution] ${instance} não-são (status=${inst.connectionStatus} reason=${inst.disconnectionReasonCode ?? 'null'}) — reset forte`,
+        `[evolution] ${instance} morta (status=${inst.connectionStatus} reason=${inst.disconnectionReasonCode ?? 'null'}) — reset forte`,
       );
       await this.resetarForte(instance);
     }
@@ -600,14 +656,10 @@ export class EvolutionService {
     if (!inst) return { status: 'DISCONNECTED' };
     if (this.saudavel(inst)) return this.comNumero({ status: 'CONNECTED' }, inst);
 
-    // Pareada e só reconectando (sem logout) → não mexe (Baileys reconecta sozinho).
-    if (
-      inst.ownerJid &&
-      inst.connectionStatus === 'connecting' &&
-      inst.disconnectionReasonCode == null
-    ) {
-      return { status: 'CONNECTING' };
-    }
+    // Pareada e só reconectando → não mexe (o Baileys reconecta sozinho). Vale
+    // pra `connecting` E pra `close` sem motivo de morte: nos dois a sessão
+    // ainda existe, e pedir QR aqui é pedir pra pessoa quebrar o que ia voltar.
+    if (!this.precisaDeQr(inst)) return { status: 'CONNECTING' };
     // Nunca pareada → tenta o QR direto (connect é seguro aqui).
     if (!inst.ownerJid) {
       const qr = await this.extrairQrDataUrl(await this.conectar(instance).catch(() => null));

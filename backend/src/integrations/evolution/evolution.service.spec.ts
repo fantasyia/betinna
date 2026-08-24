@@ -7,7 +7,11 @@ import { EvolutionService } from './evolution.service';
  * — senão o Evolution devolve 400 (exists:false) e a 1ª mensagem nunca é enviada.
  */
 function makeSvc() {
-  const http = { post: vi.fn().mockResolvedValue({ data: { key: { id: 'X' } } }) };
+  const http = {
+    post: vi.fn().mockResolvedValue({ data: { key: { id: 'X' } } }),
+    get: vi.fn().mockResolvedValue({ data: [] }),
+    delete: vi.fn().mockResolvedValue({ data: {} }),
+  };
   const env = {
     get: vi.fn(
       (k: string) =>
@@ -126,5 +130,108 @@ describe('EvolutionService — gate de idempotência (dedup de envio)', () => {
     await svc.enviarTexto('inst', '5511999@s.whatsapp.net', 'oi');
     expect(http.post).toHaveBeenCalledTimes(1);
     expect(redis.setNxEx).not.toHaveBeenCalled();
+  });
+});
+
+/**
+ * Saúde da instância e o botão Conectar (card 📵 de 24/08).
+ *
+ * `disconnectionReasonCode` é o motivo da ÚLTIMA desconexão — campo HISTÓRICO,
+ * que o Evolution não zera ao reconectar. Tratar qualquer motivo como "doente"
+ * fazia uma instância que caiu UMA vez ser lida como morta pra sempre: a tela
+ * pedia reconexão com o número funcionando, os fluxos paravam de enviar, e o
+ * botão Conectar apagava a sessão.
+ */
+function comInstancia(
+  http: { get: ReturnType<typeof vi.fn> },
+  inst: Record<string, unknown> | null,
+) {
+  http.get.mockResolvedValue({ data: inst ? [{ name: 'inst', ...inst }] : [] });
+}
+
+describe('EvolutionService — saúde da instância', () => {
+  it('open com motivo ANTIGO de queda transitória continua SAUDÁVEL', async () => {
+    // 440 = sessão substituída. Se voltou a `open`, a sessão se recuperou —
+    // o motivo é histórico, não diagnóstico do agora.
+    const { svc, http } = makeSvc();
+    comInstancia(http, {
+      connectionStatus: 'open',
+      ownerJid: '5511@s.whatsapp.net',
+      disconnectionReasonCode: 440,
+    });
+
+    expect(await svc.estaSaudavel('inst')).toBe(true);
+  });
+
+  it('open com 401 (deslogado no aparelho) NÃO é saudável — é o zumbi', async () => {
+    // O caso que motivou a regra original: status preso em `open` depois de
+    // alguém desconectar o dispositivo no celular.
+    const { svc, http } = makeSvc();
+    comInstancia(http, {
+      connectionStatus: 'open',
+      ownerJid: '5511@s.whatsapp.net',
+      disconnectionReasonCode: 401,
+    });
+
+    expect(await svc.estaSaudavel('inst')).toBe(false);
+  });
+
+  it('connecting não é saudável (não envia), mesmo sem motivo nenhum', async () => {
+    const { svc, http } = makeSvc();
+    comInstancia(http, { connectionStatus: 'connecting', ownerJid: '5511@s.whatsapp.net' });
+
+    expect(await svc.estaSaudavel('inst')).toBe(false);
+  });
+});
+
+describe('EvolutionService — o botão Conectar não pode destruir sessão viva', () => {
+  it('CONNECTING: devolve CONNECTING e NÃO reseta — a recuperação segue', async () => {
+    // Era aqui que doía: `resetarForte` (restart+logout+delete) em qualquer
+    // estado != open. Cada clique em "Conectar" matava a reconexão em curso e
+    // exigia QR novo — quanto mais se apertava, mais longe de voltar.
+    const { svc, http } = makeSvc();
+    comInstancia(http, { connectionStatus: 'connecting', ownerJid: '5511@s.whatsapp.net' });
+
+    const r = await svc.conectarOuEstado('inst');
+
+    expect(r.status).toBe('CONNECTING');
+    expect(http.delete).not.toHaveBeenCalled();
+    expect(http.post).not.toHaveBeenCalled();
+  });
+
+  it('CLOSE sem motivo de morte também espera — o Baileys volta sozinho', async () => {
+    const { svc, http } = makeSvc();
+    comInstancia(http, { connectionStatus: 'close', ownerJid: '5511@s.whatsapp.net' });
+
+    const r = await svc.conectarOuEstado('inst');
+
+    expect(r.status).toBe('CONNECTING');
+    expect(http.delete).not.toHaveBeenCalled();
+  });
+
+  // `resetarForte` tem esperas reais (restart → 4s → logout → 1,5s → delete)
+  // pro socket sair do 'open' travado. Este é o único teste que percorre o
+  // caminho destrutivo inteiro, então ganha folga de tempo.
+  it('DESLOGADA (401): aí sim reseta — só o QR resolve', { timeout: 15_000 }, async () => {
+    const { svc, http } = makeSvc();
+    comInstancia(http, {
+      connectionStatus: 'close',
+      ownerJid: '5511@s.whatsapp.net',
+      disconnectionReasonCode: 401,
+    });
+
+    await svc.conectarOuEstado('inst');
+
+    expect(http.delete).toHaveBeenCalled(); // logout/delete do reset forte
+  });
+
+  it('já conectada: devolve CONNECTED sem tocar em nada', async () => {
+    const { svc, http } = makeSvc();
+    comInstancia(http, { connectionStatus: 'open', ownerJid: '5511@s.whatsapp.net' });
+
+    const r = await svc.conectarOuEstado('inst');
+
+    expect(r.status).toBe('CONNECTED');
+    expect(http.delete).not.toHaveBeenCalled();
   });
 });

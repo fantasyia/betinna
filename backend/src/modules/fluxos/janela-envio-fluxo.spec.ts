@@ -90,7 +90,13 @@ function makeService(opts: {
     prisma as never,
     { get: vi.fn().mockReturnValue('') } as never,
     {} as never,
-    { enviarTexto: vi.fn().mockResolvedValue({ externalId: 'wa-1' }) } as never,
+    {
+      // Gate anterior ao envio: instância fora do ar não pode fechar o passo
+      // como CONCLUIDO. Default conectado — os testes que exercitam a queda
+      // sobrescrevem.
+      estaDisponivel: vi.fn().mockResolvedValue(true),
+      enviarTexto: vi.fn().mockResolvedValue({ externalId: 'wa-1' }),
+    } as never,
     { enviarHtmlLivre: vi.fn() } as never,
     conversarIa as never,
     { disparar: vi.fn() } as never,

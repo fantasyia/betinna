@@ -108,6 +108,10 @@ const makePrismaMock = () => ({
 });
 
 const makeWhatsappMock = () => ({
+  // Gate anterior ao envio: instância fora do ar não pode fechar o passo
+  // como CONCLUIDO. Default conectado — os testes que exercitam a queda
+  // sobrescrevem.
+  estaDisponivel: vi.fn().mockResolvedValue(true),
   enviarTexto: vi.fn().mockResolvedValue({ externalId: 'wa-msg-1' }),
   enviarMidia: vi.fn().mockResolvedValue({ externalId: 'wa-midia-1' }),
 });
@@ -1215,6 +1219,26 @@ describe('FluxoExecutorService', () => {
         '11987654321@s.whatsapp.net',
         'Olá Carlos!',
         { idempotencyKey: 'fx:exec-1:no-wa:p0' },
+      );
+    });
+
+    it('instância FORA DO AR não fecha o passo como enviado — reagenda', async () => {
+      // O Evolution ACEITA o POST com a sessão caída e devolve id: o passo
+      // fechava CONCLUIDO com `externalId` e a mensagem não chegava. Falha
+      // silenciosa que custou uma rodada inteira de teste (card 📵 de 24/08).
+      setupWhatsappPasso({ clienteId: 'cli-1', cliente: { nome: 'Carlos' } });
+      whatsapp.estaDisponivel.mockResolvedValue(false);
+
+      await expect(
+        service.executarPasso('exec-1', 'no-wa', 'job-test', 3),
+      ).resolves.toBeUndefined();
+
+      expect(whatsapp.enviarTexto).not.toHaveBeenCalled();
+      // Reagendado (o passo volta pra fila) em vez de fechar verde.
+      expect(queue.add).toHaveBeenCalledWith(
+        'step',
+        { execucaoId: 'exec-1', noId: 'no-wa' },
+        expect.objectContaining({ delay: 60_000 }),
       );
     });
 
