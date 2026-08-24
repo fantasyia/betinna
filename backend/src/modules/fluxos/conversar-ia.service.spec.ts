@@ -296,6 +296,101 @@ describe('ConversarIaService', () => {
       );
     });
 
+    // ── Classificação no 1º turno (card 🔴🔴 de 24/08) ──────────────
+    // O bug que travou a bateria por dias: a IA classificava certo na PRIMEIRA
+    // mensagem, o motor lia só `.resposta` e parqueava em AGUARDANDO. O lead
+    // ouvia "já te passo pro comercial" e ficava parado na triagem — todo
+    // inbound objetivo morria ali, porque ninguém escreve de novo depois disso.
+    it('REATIVO que classifica no 1º turno AVANÇA o fluxo — não espera 2ª mensagem', async () => {
+      prisma.lead.findFirst.mockResolvedValue({ contatoTelefone: '11999990000', variaveis: {} });
+      prisma.fluxoExecucao.findUnique.mockResolvedValue({
+        id: 'exec-1',
+        fluxoId: 'fx-1',
+        empresaId: 'emp-1',
+      });
+      muller.gerarRespostaIa.mockResolvedValue({
+        texto: JSON.stringify({
+          resposta: 'Entendi, já te passo pro comercial',
+          classificou: true,
+          classificacao: 'Interesse comercial',
+          variaveis: { perfil_energia: 'Industrial' },
+        }),
+        modelo: 'gpt',
+      });
+
+      const r = await svc.iniciar(
+        'exec-1',
+        no({ promptId: 'p1' }) as never,
+        { leadId: 'lead-1', texto: 'queimou o CLP da linha de novo' },
+        'emp-1',
+        true, // reativo
+      );
+
+      // Não parqueia: o ramo "classificou" segue na mesma execução.
+      expect(r.aguardando).toBe(false);
+      expect(prisma.fluxoExecucao.update).not.toHaveBeenCalledWith(
+        expect.objectContaining({ data: expect.objectContaining({ status: 'AGUARDANDO' }) }),
+      );
+      // E a classificação não se perde: vai pro lead e pro gatilho.
+      expect(prisma.lead.update).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: expect.objectContaining({
+            variaveis: expect.objectContaining({ classificacao: 'Interesse comercial' }),
+          }),
+        }),
+      );
+      expect(bus.disparar).toHaveBeenCalledWith(
+        'emp-1',
+        'IA_CLASSIFICOU',
+        expect.objectContaining({ leadId: 'lead-1', classificacao: 'Interesse comercial' }),
+      );
+    });
+
+    it('REATIVO que NÃO classifica continua esperando (mensagem vaga)', async () => {
+      prisma.lead.findFirst.mockResolvedValue({ contatoTelefone: '11999990000', variaveis: {} });
+      muller.gerarRespostaIa.mockResolvedValue({
+        texto: JSON.stringify({ resposta: 'Oi! Como posso ajudar?', classificou: false }),
+        modelo: 'gpt',
+      });
+
+      const r = await svc.iniciar(
+        'exec-1',
+        no({ promptId: 'p1' }) as never,
+        { leadId: 'lead-1', texto: 'oi' },
+        'emp-1',
+        true,
+      );
+
+      expect(r.aguardando).toBe(true);
+      expect(bus.disparar).not.toHaveBeenCalledWith('emp-1', 'IA_CLASSIFICOU', expect.anything());
+    });
+
+    it('ABORDAGEM FRIA não se auto-classifica — o lead ainda não falou', async () => {
+      // Se o modelo devolvesse classificou:true na abertura de uma prospecção
+      // fria (R1), o fluxo fecharia ANTES de a pessoa responder. Só o reativo
+      // honra o 1º turno.
+      prisma.lead.findFirst.mockResolvedValue({ contatoTelefone: '11999990000', variaveis: {} });
+      muller.gerarRespostaIa.mockResolvedValue({
+        texto: JSON.stringify({
+          resposta: 'Oi! Tudo bem?',
+          classificou: true,
+          classificacao: 'Interesse comercial',
+        }),
+        modelo: 'gpt',
+      });
+
+      const r = await svc.iniciar(
+        'exec-1',
+        no({ promptId: 'p1' }) as never,
+        { leadId: 'lead-1' },
+        'emp-1',
+        false, // abordagem fria
+      );
+
+      expect(r.aguardando).toBe(true);
+      expect(bus.disparar).not.toHaveBeenCalledWith('emp-1', 'IA_CLASSIFICOU', expect.anything());
+    });
+
     // ── T1.1: reativo tem que RESPONDER, não abrir conversa ──────────
     // O caso que reprovou a bateria: o cliente escreveu "queimou o CLP..." e a
     // Betinna respondeu "me conta, o que você precisa?". O modelo recebia

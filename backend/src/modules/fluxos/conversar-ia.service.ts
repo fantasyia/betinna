@@ -720,7 +720,9 @@ export class ConversarIaService {
 
     const lead = await this.prisma.lead.findFirst({
       where: { id: leadId, empresaId },
-      select: { contatoTelefone: true, contatoNome: true },
+      // `variaveis`: a conclusão da classificação grava POR CIMA das atuais —
+      // sem trazer, o 1º turno que classifica apagaria o que o lead já tinha.
+      select: { contatoTelefone: true, contatoNome: true, variaveis: true },
     });
     // Sem WhatsApp não há como abordar: pula limpo (não é falha — o lead só não
     // tem número). A execução encerra com o motivo registrado no log do passo.
@@ -881,7 +883,11 @@ export class ConversarIaService {
     // ou linhas de variável interna vazando. parseTurnoIa cobre os 3 formatos
     // (JSON, cerca, texto puro) e já roda o limparVazamentoDeVariaveis. Como o
     // texto é reusado no _iaHistorico, sanitiza envio E memória de uma vez.
-    const aberturaTexto = personalizarNome(parseTurnoIa(abertura.texto).resposta, lead.contatoNome);
+    // O turno INTEIRO, não só `.resposta`: no caminho reativo a IA já pode ter
+    // classificado nesta primeira volta, e descartar isso era o que deixava o
+    // lead parado na triagem depois de ouvir "já te passo pro comercial".
+    const turnoAbertura = parseTurnoIa(abertura.texto);
+    const aberturaTexto = personalizarNome(turnoAbertura.resposta, lead.contatoNome);
     // MODO SECO do teste: o opener é a primeira mensagem que a pessoa recebe.
     // Num teste contra conversa REAL, mandar isso significa abordar um cliente
     // que não pediu nada — e não tem desfazer. Roda tudo (IA inclusive), só não
@@ -927,6 +933,48 @@ export class ConversarIaService {
         err,
       );
       return { aguardando: false, roteado: true, tipoErro: tipo_erro };
+    }
+
+    // ── CLASSIFICOU JÁ NO 1º TURNO? ────────────────────────────────────────
+    // Só no REATIVO: aqui o lead já falou e o modelo já tem tudo — exigir uma
+    // segunda mensagem é exigir que a pessoa escreva de novo logo depois de
+    // ouvir "já te passo pro comercial", coisa que ninguém faz. Na abordagem
+    // FRIA (a IA fala primeiro, o lead ainda não disse nada) continua esperando:
+    // classificar ali fecharia o fluxo antes de a pessoa responder.
+    if (reativo && turnoAbertura.classificou === true) {
+      const declaradasIni = parseVariaveisGravadas(cfg.variaveisGravadas);
+      const esperaIni = cfg.encerramentoEspera
+        ? unidadeTempoMs(cfg.encerramentoEspera.valor, cfg.encerramentoEspera.unidade)
+        : 0;
+      const histIni: HistoricoMsg[] = [
+        ...(mensagemDoTurno !== '(inicie)'
+          ? [{ role: 'user' as const, content: mensagemDoTurno, at: Date.now() }]
+          : []),
+        { role: 'assistant' as const, content: aberturaTexto, at: Date.now() },
+      ];
+      const execIni = await this.prisma.fluxoExecucao.findUnique({
+        where: { id: execucaoId },
+        select: { id: true, fluxoId: true, empresaId: true },
+      });
+      if (!execIni) return { aguardando: false };
+      await this.concluirClassificacao({
+        execucao: execIni,
+        noId: no.id,
+        ctx,
+        empresaId,
+        leadId,
+        leadVariaveis: lead.variaveis,
+        gravaveis: declaradasIni.map((v) => v.nome),
+        variaveisTurno: turnoAbertura.variaveis ?? {},
+        classificacao: turnoAbertura.classificacao,
+        historico: histIni,
+        esperaMs: esperaIni,
+      });
+      this.logger.log(
+        `CONVERSAR_IA: classificou no 1º turno "${turnoAbertura.classificacao ?? '?'}" ` +
+          `(exec ${execucaoId}, lead ${leadId}) — fluxo avança sem esperar 2ª mensagem`,
+      );
+      return { aguardando: false };
     }
 
     const aguardar = cfg.aguardarResposta ?? true;
@@ -1541,6 +1589,54 @@ export class ConversarIaService {
       });
       return;
     }
+
+    await this.concluirClassificacao({
+      execucao,
+      noId: no.id,
+      ctx,
+      empresaId,
+      leadId,
+      leadVariaveis: lead.variaveis,
+      gravaveis,
+      variaveisTurno: turno.variaveis ?? {},
+      classificacao: classificacaoTurno,
+      historico: novoHist,
+      esperaMs,
+    });
+  }
+
+  /**
+   * Conclusão da classificação: grava as variáveis no lead, dispara
+   * IA_CLASSIFICOU e avança o ramo "classificou" (na hora, ou por execução-filha
+   * quando há janela de encerramento educado).
+   *
+   * Vive fora do `processarTurno` porque DOIS caminhos precisam dela: o turno
+   * seguinte (lead respondeu) e o PRIMEIRO turno reativo — que classificava,
+   * pagava os tokens e jogava o resultado fora, deixando o lead parado na
+   * triagem depois de ouvir "já te passo pro comercial". Extraída em vez de
+   * duplicada: a lógica de "avança se classificou" já era o tipo de coisa que
+   * diverge entre cópias.
+   */
+  private async concluirClassificacao(p: {
+    execucao: { id: string; fluxoId: string; empresaId: string | null };
+    noId: string;
+    ctx: ExecucaoContexto;
+    empresaId: string;
+    leadId: string;
+    leadVariaveis: unknown;
+    gravaveis: string[];
+    variaveisTurno: Record<string, unknown>;
+    classificacao?: string;
+    historico: HistoricoMsg[];
+    esperaMs: number;
+  }): Promise<void> {
+    const { execucao, ctx, empresaId, leadId, gravaveis, esperaMs } = p;
+    const execucaoId = execucao.id;
+    const no = { id: p.noId };
+    const lead = { variaveis: p.leadVariaveis };
+    const turno = { variaveis: p.variaveisTurno };
+    const classificacaoTurno = p.classificacao;
+    const novoHist = p.historico;
 
     // 1ª vez que a IA classifica — grava variáveis no lead e dispara o gatilho.
     const variaveisAtuais =
