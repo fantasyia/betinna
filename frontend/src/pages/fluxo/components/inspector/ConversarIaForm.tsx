@@ -105,6 +105,21 @@ export function ConversarIaForm({
           <option value="nao">Não — segue o fluxo</option>
         </Select>
       </Field>
+      <Field label="Falar ao chegar neste nó?">
+        <Select
+          size="sm"
+          value={(data.config.naoFalarPrimeiro as boolean | undefined) ? 'nao' : 'sim'}
+          onChange={(e) =>
+            onUpdate((d) => ({
+              ...d,
+              config: { ...d.config, naoFalarPrimeiro: e.target.value === 'nao' },
+            }))
+          }
+        >
+          <option value="sim">Sim — a IA escreve assim que o fluxo chega aqui</option>
+          <option value="nao">Não — só espera a resposta (a pergunta veio de um nó fixo)</option>
+        </Select>
+      </Field>
       <Field label="Timeout (horas)">
         <Input
           type="number"

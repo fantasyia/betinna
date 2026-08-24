@@ -187,6 +187,23 @@ export interface ConversarIaConfig {
   promptId?: string;
   /** Pausa o fluxo até o lead responder no WhatsApp. Default true. */
   aguardarResposta?: boolean;
+  /**
+   * ESPERA SEM FALAR: o nó NÃO gera nem envia nada ao ser alcançado — só registra
+   * a espera e devolve o controle. Quando o lead responder, a IA conduz
+   * normalmente, com o histórico completo.
+   *
+   * Existe porque parte do que se pedia ao modelo não é trabalho de modelo:
+   * "qual o padrão de energia, 110V, 220V ou 380V?" é frase FIXA, e o modelo a
+   * variava entre rodadas com o mesmo prompt. Sem esta opção, um nó de IA depois
+   * de um ENVIAR_WHATSAPP fixo falava por cima e a pergunta virava mensagem
+   * órfã — o `aguardarResposta` só age DEPOIS do envio.
+   *
+   * Com ela dá pra montar: IA (acolhe) → texto fixo (a pergunta) → IA (conduz).
+   * IA onde precisa de julgamento, texto fixo onde precisa de exatidão.
+   *
+   * Default false: fluxo existente não muda.
+   */
+  naoFalarPrimeiro?: boolean;
   /** Timeout da espera (horas). Default 24. */
   timeoutHoras?: number;
   /** Variáveis que a IA pode gravar (referência; a IA grava o que devolver no JSON). */

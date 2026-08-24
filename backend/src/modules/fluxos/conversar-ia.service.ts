@@ -800,6 +800,42 @@ export class ConversarIaService {
       };
     }
 
+    // ESPERA SEM FALAR: o nó só registra a espera e devolve o controle.
+    //
+    // Existe pra deixar montar "IA (acolhe) → texto FIXO (a pergunta) → IA
+    // (conduz)". Sem isto o 2º nó de IA falava por cima assim que o fluxo
+    // chegava nele e a pergunta fixa virava mensagem órfã — o `aguardarResposta`
+    // só age DEPOIS do envio. O ganho é tirar do modelo o que é determinístico:
+    // "110V, 220V ou 380V?" é frase fixa, e o modelo a variava entre rodadas com
+    // o mesmo prompt.
+    //
+    // Sai ANTES do teto de custo e da geração: nó que não fala não gasta token.
+    if (cfg.naoFalarPrimeiro === true) {
+      if (cfg.aguardarResposta === false) {
+        // Não fala e não espera = nó que não faz nada. Erro de configuração —
+        // falhar aqui é melhor que concluir verde sem ter feito nada.
+        throw new Error(
+          'Configuração inválida no nó de IA: "não falar primeiro" com "aguardar resposta" ' +
+            'desligado — o nó não enviaria nada nem esperaria ninguém.',
+        );
+      }
+      await this.registrarEspera({
+        execucaoId,
+        noId: no.id,
+        ctx,
+        empresaId,
+        leadId,
+        horas: cfg.timeoutHoras ?? 24,
+        // Nada a acrescentar na memória: o nó não falou.
+        novasFalas: [],
+      });
+      this.logger.log(
+        `CONVERSAR_IA: nó em ESPERA SEM FALAR (exec ${execucaoId}, lead ${leadId}) — ` +
+          `nada enviado, aguardando o lead`,
+      );
+      return { aguardando: true };
+    }
+
     // Isolamento por conversa: zera os sinais de roteamento/encerramento que
     // sobraram de uma abordagem ANTERIOR do mesmo lead. Sem isto, um
     // `classificacao_final` velho poderia rotear a conversa nova (o roteador lê
@@ -1136,12 +1172,50 @@ export class ConversarIaService {
     const aguardar = cfg.aguardarResposta ?? true;
     if (!aguardar) return { aguardando: false };
 
-    const horas = cfg.timeoutHoras ?? 24;
+    await this.registrarEspera({
+      execucaoId,
+      noId: no.id,
+      ctx,
+      empresaId,
+      leadId,
+      horas: cfg.timeoutHoras ?? 24,
+      novasFalas: [
+        ...(reativo && mensagemDoTurno !== '(inicie)'
+          ? [{ role: 'user' as const, content: mensagemDoTurno, at: Date.now() }]
+          : []),
+        { role: 'assistant' as const, content: aberturaTexto, at: Date.now() },
+      ],
+    });
+    this.logger.log(`Execução ${execucaoId} pausada (Conversar com IA) — lead ${leadId}`);
+    return { aguardando: true };
+  }
+
+  /**
+   * Registra a ESPERA do nó: AGUARDANDO + timeout + memória da conversa, e
+   * cancela conversas vivas de OUTROS fluxos no mesmo lead.
+   *
+   * Extraído porque dois caminhos precisam dele: o normal (a IA falou e agora
+   * espera) e o `naoFalarPrimeiro` (o nó só espera, sem falar). Duplicar isto
+   * significaria duplicar também o cancelamento de órfãs — que é SQL cru com
+   * duas correções documentadas em cima.
+   */
+  private async registrarEspera(p: {
+    execucaoId: string;
+    noId: string;
+    ctx: ExecucaoContexto;
+    empresaId: string;
+    leadId: string;
+    horas: number;
+    /** Falas a acrescentar na memória. Vazio quando o nó não falou. */
+    novasFalas: HistoricoMsg[];
+  }): Promise<void> {
+    const { execucaoId, ctx, empresaId, leadId } = p;
+    const horas = p.horas;
     await this.prisma.fluxoExecucao.update({
       where: { id: execucaoId },
       data: {
         status: 'AGUARDANDO',
-        aguardandoNoId: no.id,
+        aguardandoNoId: p.noId,
         timeoutEm: new Date(Date.now() + horas * 3_600_000),
         // Memória da conversa da IA (no contexto da execução): guarda a abertura
         // pra a IA NÃO se reapresentar quando o lead responder. O fluxo manda via
@@ -1153,10 +1227,8 @@ export class ConversarIaService {
           // memória tem que refletir a conversa como ela aconteceu, senão o
           // próximo turno lê um diálogo que começa pelo assistant do nada.
           _iaHistorico: [
-            ...(reativo && mensagemDoTurno !== '(inicie)'
-              ? [{ role: 'user' as const, content: mensagemDoTurno, at: Date.now() }]
-              : []),
-            { role: 'assistant' as const, content: aberturaTexto, at: Date.now() },
+            ...(Array.isArray(ctx._iaHistorico) ? (ctx._iaHistorico as HistoricoMsg[]) : []),
+            ...p.novasFalas,
           ],
         }),
       },
@@ -1191,9 +1263,7 @@ export class ConversarIaService {
           `conversa nova assume o lead ${leadId} (evita LEAD_SEM_RESPOSTA no meio do papo)`,
       );
     }
-
     this.logger.log(`Execução ${execucaoId} pausada (Conversar com IA) — lead ${leadId}`);
-    return { aguardando: true };
   }
 
   /**

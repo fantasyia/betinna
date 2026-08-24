@@ -99,6 +99,21 @@ describe('ConversarIaForm — contrato de config-keys', () => {
     expect(box.current.config.promptId).toBe(undefined);
   });
 
+  it('naoFalarPrimeiro: default é FALAR (fluxo existente não muda)', () => {
+    // A opção nasceu pra permitir "IA acolhe → texto FIXO pergunta → IA conduz".
+    // Sem a flag, o nó fala como sempre falou.
+    const initial = makeData({});
+    const box = { current: initial };
+    render(<Harness initial={initial} box={box} />);
+
+    // Índice 5: entra logo depois de "Aguardar resposta" (4) e antes do timeout.
+    const select = screen.getAllByRole('combobox')[5] as HTMLSelectElement;
+    expect(select.value).toBe('sim');
+
+    fireEvent.change(select, { target: { value: 'nao' } });
+    expect(box.current.config.naoFalarPrimeiro).toBe(true);
+  });
+
   it('aguardarResposta: lê true como "sim" e escreve "nao" → false', () => {
     const initial = makeData({ aguardarResposta: true });
     const box = { current: initial };

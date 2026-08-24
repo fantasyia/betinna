@@ -437,6 +437,72 @@ describe('ConversarIaService', () => {
       expect(r.tipoErro).toBe('ia_fala_com_operador');
     });
 
+    // ── Espera sem falar (card 🔧 de 24/08) ─────────────────────────
+    // Tira do modelo o que é determinístico: "110V, 220V ou 380V?" é frase FIXA,
+    // e o modelo a variava entre rodadas com o mesmo prompt. Sem este modo, um
+    // nó de IA depois de um ENVIAR_WHATSAPP fixo falava por cima e a pergunta
+    // virava mensagem órfã.
+    it('naoFalarPrimeiro: NÃO gera nem envia nada, e fica AGUARDANDO', async () => {
+      prisma.lead.findFirst.mockResolvedValue({ contatoTelefone: '11999990000', variaveis: {} });
+
+      const r = await svc.iniciar(
+        'exec-1',
+        no({ promptId: 'p1', naoFalarPrimeiro: true }) as never,
+        { leadId: 'lead-1' },
+        'emp-1',
+      );
+
+      expect(r.aguardando).toBe(true);
+      expect(muller.gerarRespostaIa).not.toHaveBeenCalled();
+      expect(whatsapp.enviarTexto).not.toHaveBeenCalled();
+      expect(prisma.fluxoExecucao.update).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: expect.objectContaining({ status: 'AGUARDANDO', aguardandoNoId: 'no-ia' }),
+        }),
+      );
+    });
+
+    it('naoFalarPrimeiro NÃO apaga a memória que já existia na conversa', async () => {
+      // O nó não falou, mas o que já tinha sido dito antes dele continua valendo
+      // pro turno seguinte.
+      prisma.lead.findFirst.mockResolvedValue({ contatoTelefone: '11999990000', variaveis: {} });
+
+      await svc.iniciar(
+        'exec-1',
+        no({ promptId: 'p1', naoFalarPrimeiro: true }) as never,
+        { leadId: 'lead-1', _iaHistorico: [{ role: 'user', content: 'queimou o CLP', at: 1 }] },
+        'emp-1',
+      );
+
+      const upd = prisma.fluxoExecucao.update.mock.calls.at(-1)?.[0] as {
+        data?: { contexto?: { _iaHistorico?: unknown[] } };
+      };
+      expect(JSON.stringify(upd?.data?.contexto?._iaHistorico)).toContain('queimou o CLP');
+    });
+
+    it('naoFalarPrimeiro + aguardarResposta:false é recusado — o nó não faria nada', async () => {
+      prisma.lead.findFirst.mockResolvedValue({ contatoTelefone: '11999990000', variaveis: {} });
+
+      await expect(
+        svc.iniciar(
+          'exec-1',
+          no({ promptId: 'p1', naoFalarPrimeiro: true, aguardarResposta: false }) as never,
+          { leadId: 'lead-1' },
+          'emp-1',
+        ),
+      ).rejects.toThrow(/não enviaria nada nem esperaria/i);
+    });
+
+    it('sem a flag, o nó fala como sempre (fluxo existente não muda)', async () => {
+      prisma.lead.findFirst.mockResolvedValue({ contatoTelefone: '11999990000', variaveis: {} });
+      muller.gerarRespostaIa.mockResolvedValue({ texto: 'Olá!', modelo: 'gpt' });
+
+      await svc.iniciar('exec-1', no({ promptId: 'p1' }) as never, { leadId: 'lead-1' }, 'emp-1');
+
+      expect(muller.gerarRespostaIa).toHaveBeenCalled();
+      expect(whatsapp.enviarTexto).toHaveBeenCalled();
+    });
+
     // ── Falha de IA não pode virar silêncio (card 🔴 de 24/08) ──────
     it('🔴 IA falha → conversa marcada PRECISA HUMANO, mesmo sem aresta "erro"', async () => {
       // 6 dos 7 nós de IA em fluxo ATIVO estavam com a saída "erro" solta —
