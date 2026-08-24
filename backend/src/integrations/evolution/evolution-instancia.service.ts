@@ -114,7 +114,26 @@ export class EvolutionInstanciaService {
     type: 'EMPRESA' | 'USUARIO';
     id: string;
   }): Promise<string | undefined> {
-    if (dono.type === 'EMPRESA') return dono.id;
+    if (dono.type === 'EMPRESA') {
+      // Confere que a empresa AINDA existe. Instância órfã no Evolution (empresa
+      // apagada do banco, sessão viva lá) fazia o upsert violar a FK e cuspir
+      // `EvolutionInstancia_empresaId_fkey` a cada ciclo do sync — de 10 em 10
+      // minutos, desde sempre. Não quebrava nada, mas enchia o log de erro e
+      // atrapalhou o diagnóstico da queda de 24/08.
+      const existe = await this.prisma.empresa
+        .findUnique({ where: { id: dono.id }, select: { id: true } })
+        .catch(() => null);
+      if (!existe) {
+        // `debug` e não `warn`: repete a cada sync enquanto a instância órfã
+        // viver no Evolution — trocar um ruído por outro não resolve nada.
+        this.logger.debug(
+          `[evolution] instância órfã emp_${dono.id}: empresa não existe mais — ignorada ` +
+            `(apagar a instância no Evolution encerra o caso)`,
+        );
+        return undefined;
+      }
+      return dono.id;
+    }
     const u = await this.prisma.usuario.findUnique({
       where: { id: dono.id },
       select: { empresas: { select: { empresaId: true }, orderBy: { empresaId: 'asc' }, take: 1 } },

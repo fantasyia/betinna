@@ -10,6 +10,9 @@ const makePrisma = () => ({
     findUnique: vi.fn().mockResolvedValue(null),
   },
   usuario: { findUnique: vi.fn() },
+  // A instância de EMPRESA agora confere se a empresa ainda existe — órfã no
+  // Evolution (empresa apagada) fazia o upsert violar a FK a cada sync.
+  empresa: { findUnique: vi.fn().mockResolvedValue({ id: 'emp-1' }) },
 });
 
 const makeEvolution = () => ({

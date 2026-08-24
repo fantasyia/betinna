@@ -496,20 +496,43 @@ export class EvolutionService {
     });
   }
 
-  /** Presença "composing" (digitando) / "paused" — best-effort. */
+  /**
+   * Presença "composing" (digitando) / "paused" — best-effort.
+   *
+   * 🔴 `delay` é OBRIGATÓRIO no schema do Evolution v2, nas DUAS presenças.
+   * Omitir no `paused` devolvia 400 (`instance requires property "delay"`) e o
+   * erro não parava no 400: um segundo depois vinha `stream errored out` e
+   * LOGOUT da instância. Ou seja — cada resposta do bot matava a sessão do
+   * WhatsApp da empresa, e a gente lia o 401 resultante como "o WhatsApp
+   * deslogou o aparelho". Custou dias de bateria travada (log de 24/08).
+   *
+   * Por isso o campo vai SEMPRE, com 0 quando não há duração a mostrar.
+   */
   async enviarPresenca(
     instance: string,
     numero: string,
     presence: 'composing' | 'paused',
     delayMs?: number,
   ): Promise<void> {
-    // `delay` mantém o "digitando…" VISÍVEL pela duração (o Evolution v2 re-emite
-    // a presença nesse intervalo; sem ele o WhatsApp limpa em ~1s e mal aparece).
-    await this.req('post', `/chat/sendPresence/${encodeURIComponent(instance)}`, {
-      number: this.normalizarNumero(numero),
-      presence,
-      ...(delayMs && delayMs > 0 ? { delay: Math.min(Math.round(delayMs), 20_000) } : {}),
-    }).catch(() => undefined);
+    // `delay` > 0 mantém o "digitando…" VISÍVEL pela duração (o Evolution v2
+    // re-emite a presença nesse intervalo; sem ele o WhatsApp limpa em ~1s e mal
+    // aparece). No `paused` não há o que mostrar: 0 satisfaz o schema.
+    const delay = delayMs && delayMs > 0 ? Math.min(Math.round(delayMs), 20_000) : 0;
+    try {
+      await this.req('post', `/chat/sendPresence/${encodeURIComponent(instance)}`, {
+        number: this.normalizarNumero(numero),
+        presence,
+        delay,
+      });
+    } catch (err) {
+      // Era `.catch(() => undefined)` mudo, e foi ele que escondeu 52 ocorrências
+      // desde julho: o 400 que derrubava a sessão nunca apareceu em lugar nenhum.
+      // Segue best-effort (presença é cosmética, não pode derrubar o envio), mas
+      // AGORA aparece no log.
+      this.logger.warn(
+        `[evolution] ${instance} sendPresence(${presence}) falhou: ${this.detalheErro(err)}`,
+      );
+    }
   }
 
   /** Reage a uma mensagem com um emoji (ex: 👍). `emoji` vazio REMOVE a reação. */

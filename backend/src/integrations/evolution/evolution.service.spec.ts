@@ -235,3 +235,47 @@ describe('EvolutionService — o botão Conectar não pode destruir sessão viva
     expect(http.delete).not.toHaveBeenCalled();
   });
 });
+
+/**
+ * `sendPresence` — a causa raiz do "o WhatsApp da empresa cai toda hora"
+ * (card 🔴🔴 de 24/08, achada no log do Railway).
+ *
+ * O `delay` é obrigatório no schema do Evolution v2 nas DUAS presenças. Omitir
+ * no `paused` devolvia 400, e um segundo depois vinha `stream errored out` +
+ * LOGOUT da instância. Cada resposta do bot matava a sessão — e o 401 resultante
+ * era lido como "o WhatsApp deslogou o aparelho".
+ */
+describe('EvolutionService — presença (digitando/pausado)', () => {
+  const corpo = (http: { post: ReturnType<typeof vi.fn> }) =>
+    (http.post.mock.calls[0][1] as { body: Record<string, unknown> }).body;
+
+  it('composing manda o delay da duração', async () => {
+    const { svc, http } = makeSvc();
+    await svc.enviarPresenca('inst', '5511999998888', 'composing', 3000);
+    expect(corpo(http).delay).toBe(3000);
+  });
+
+  it('🔴 paused manda delay 0 — NUNCA omite o campo', async () => {
+    // Era aqui: sem `delay`, 400 → stream errored out → LOGOUT.
+    const { svc, http } = makeSvc();
+    await svc.enviarPresenca('inst', '5511999998888', 'paused');
+    expect(corpo(http)).toHaveProperty('delay', 0);
+  });
+
+  it('delay é limitado a 20s (o "digitando…" não fica preso)', async () => {
+    const { svc, http } = makeSvc();
+    await svc.enviarPresenca('inst', '5511999998888', 'composing', 120_000);
+    expect(corpo(http).delay).toBe(20_000);
+  });
+
+  it('falha na presença NÃO derruba o envio, mas é LOGADA', async () => {
+    // O `.catch(() => undefined)` mudo escondeu 52 ocorrências desde julho.
+    const { svc, http } = makeSvc();
+    http.post.mockRejectedValue(new Error('400 instance requires property "delay"'));
+    const warn = vi.spyOn(svc['logger'], 'warn').mockImplementation(() => undefined);
+
+    await expect(svc.enviarPresenca('inst', '5511999998888', 'paused')).resolves.toBeUndefined();
+
+    expect(warn).toHaveBeenCalledWith(expect.stringContaining('sendPresence'));
+  });
+});
