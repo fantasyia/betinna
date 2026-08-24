@@ -296,6 +296,49 @@ describe('ConversarIaService', () => {
       );
     });
 
+    // ── O contrato do 1º turno (card 🔴 de 24/08, o "pela metade") ──
+    // O motor passou a LER `classificou` no 1º turno, mas o prompt daquele turno
+    // mandava "responda apenas com a mensagem, sem aspas nem rótulos" — texto
+    // puro. O campo vinha `false` por construção e o conserto não podia
+    // funcionar. Estes dois testes travam as duas pontas do contrato.
+    it('REATIVO manda o contrato JSON e o schema já no 1º turno', async () => {
+      prisma.lead.findFirst.mockResolvedValue({ contatoTelefone: '11999990000', variaveis: {} });
+      muller.gerarRespostaIa.mockResolvedValue({
+        texto: JSON.stringify({ resposta: 'ok', classificou: false }),
+        modelo: 'gpt',
+      });
+
+      await svc.iniciar(
+        'exec-1',
+        no({ promptId: 'p1' }) as never,
+        { leadId: 'lead-1', texto: 'queimou o CLP' },
+        'emp-1',
+        true,
+      );
+
+      const [, systemPrompt, , , , opts] = muller.gerarRespostaIa.mock.calls[0];
+      // O contrato (quem define `classificou`)…
+      expect(systemPrompt).toContain('"classificou"');
+      // …e a proibição de JSON NÃO pode estar junto — são ordens opostas.
+      expect(systemPrompt).not.toContain('sem aspas nem rótulos');
+      // O texto PEDE o JSON; o schema GARANTE.
+      expect((opts as { responseFormat?: unknown })?.responseFormat).toBeDefined();
+    });
+
+    it('ABORDAGEM FRIA segue em texto puro, sem contrato nem schema', async () => {
+      // Lá o lead ainda não falou: não há o que classificar, e o contrato só
+      // encareceria o turno.
+      prisma.lead.findFirst.mockResolvedValue({ contatoTelefone: '11999990000', variaveis: {} });
+      muller.gerarRespostaIa.mockResolvedValue({ texto: 'Oi! Tudo bem?', modelo: 'gpt' });
+
+      await svc.iniciar('exec-1', no({ promptId: 'p1' }) as never, { leadId: 'lead-1' }, 'emp-1');
+
+      const [, systemPrompt, , , , opts] = muller.gerarRespostaIa.mock.calls[0];
+      expect(systemPrompt).toContain('sem aspas nem rótulos');
+      expect(systemPrompt).not.toContain('"classificou"');
+      expect((opts as { responseFormat?: unknown })?.responseFormat).toBeUndefined();
+    });
+
     // ── Classificação no 1º turno (card 🔴🔴 de 24/08) ──────────────
     // O bug que travou a bateria por dias: a IA classificava certo na PRIMEIRA
     // mensagem, o motor lia só `.resposta` e parqueava em AGUARDANDO. O lead

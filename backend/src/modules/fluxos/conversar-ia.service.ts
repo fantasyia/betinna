@@ -52,12 +52,21 @@ const INSTRUCAO_OPENER =
  * sido disparado POR uma mensagem: o T1 respondia "me conta, o que você
  * precisa?" a quem acabou de dizer o que precisava. Aqui não se abre nada — se
  * responde ao que está no histórico.
+ *
+ * SÓ COMPORTAMENTO: o formato vem do `INSTRUCAO_CLASSIFICACAO`, que o reativo
+ * leva SEMPRE. Antes esta constante terminava com "responda apenas com a
+ * mensagem, sem aspas nem rótulos" — texto puro — e isso contradizia o
+ * contrato JSON. Foi o que deixou o conserto do 1º turno pela metade: o motor
+ * passou a ler `classificou`, mas o prompt daquele turno proibia o formato que
+ * produz o campo, então ele vinha `false` por construção.
+ *
+ * A contagem de balões também saiu: quem manda no `|||` é o contrato (2 a 4).
+ * Duas regras diferentes pro mesmo separador é ordem contraditória pro modelo.
  */
-const INSTRUCAO_RESPOSTA =
+const INSTRUCAO_RESPOSTA_COMPORTAMENTO =
   '\n\n[Tarefa agora] O lead ACABOU DE ESCREVER (a mensagem dele é a última do histórico). ' +
   'RESPONDA a ela: trate do que a pessoa disse, sem se reapresentar e sem perguntar o que ela ' +
-  'precisa se ela já disse. Curta e natural (estilo WhatsApp). Pode separar em 2-3 mensagens ' +
-  'curtas com "|||". Responda apenas com a mensagem, sem aspas nem rótulos.';
+  'precisa se ela já disse. Curta e natural (estilo WhatsApp).';
 
 /** Primeiro nome a partir do nome completo (vazio se não houver). */
 function primeiroNomeDe(nome?: string | null): string {
@@ -789,8 +798,13 @@ export class ConversarIaService {
     // MENSAGEM_CANAL, C1/C2/RB/RT assumindo depois da triagem). Este nó é
     // RESPOSTA, não abordagem — e é o que a doc do parâmetro `reativo` sempre
     // disse, mas só o pacing usava.
+    // REATIVO leva o CONTRATO JSON ja no 1o turno: e ele que define `classificou`,
+    // e sem ele classificar a primeira mensagem e IMPOSSIVEL, nao "dificil".
+    // A abordagem FRIA segue em texto puro: la o lead ainda nao falou, nao ha o
+    // que classificar, e o contrato so encareceria o turno.
+    const declaradasAbertura = parseVariaveisGravadas(cfg.variaveisGravadas);
     const opener =
-      (reativo ? INSTRUCAO_RESPOSTA : INSTRUCAO_OPENER) +
+      (reativo ? INSTRUCAO_RESPOSTA_COMPORTAMENTO + INSTRUCAO_CLASSIFICACAO : INSTRUCAO_OPENER) +
       (primeiro
         ? `\n[Dado] O primeiro nome do lead é "${primeiro}". Use-o na saudação.`
         : !usarNome
@@ -859,6 +873,11 @@ export class ConversarIaService {
         systemPrompt + opener,
         mensagemDoTurno,
         historicoInicial,
+        undefined,
+        // O contrato no texto PEDE o JSON; o schema GARANTE. Sem ele o modelo
+        // ainda pode devolver texto puro num turno dificil, o parse cai no
+        // fallback `classificou:false` e o 1o turno volta a ser cego.
+        reativo ? { responseFormat: montarSchemaDoTurno(declaradasAbertura) } : {},
       );
     } catch (err) {
       // Falha da IA/provedor: roteia pela saída "erro" em vez de derrubar a execução.
@@ -942,7 +961,6 @@ export class ConversarIaService {
     // FRIA (a IA fala primeiro, o lead ainda não disse nada) continua esperando:
     // classificar ali fecharia o fluxo antes de a pessoa responder.
     if (reativo && turnoAbertura.classificou === true) {
-      const declaradasIni = parseVariaveisGravadas(cfg.variaveisGravadas);
       const esperaIni = cfg.encerramentoEspera
         ? unidadeTempoMs(cfg.encerramentoEspera.valor, cfg.encerramentoEspera.unidade)
         : 0;
@@ -964,7 +982,7 @@ export class ConversarIaService {
         empresaId,
         leadId,
         leadVariaveis: lead.variaveis,
-        gravaveis: declaradasIni.map((v) => v.nome),
+        gravaveis: declaradasAbertura.map((v) => v.nome),
         variaveisTurno: turnoAbertura.variaveis ?? {},
         classificacao: turnoAbertura.classificacao,
         historico: histIni,
