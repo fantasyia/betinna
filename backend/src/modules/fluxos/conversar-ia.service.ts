@@ -23,6 +23,7 @@ import type { MensagemEntranteParams } from '@modules/inbox/inbox.types';
 import type { HistoricoMsg } from '@modules/mullerbot/mullerbot-cache.service';
 import { WhatsappPacingService } from '@shared/whatsapp-pacing/whatsapp-pacing.service';
 import { SupressaoService } from '@shared/supressao/supressao.service';
+import { InboxService } from '@modules/inbox/inbox.service';
 import { FluxoEventBusService } from './fluxo-event-bus.service';
 import { montarSchemaDoTurno, parseVariaveisGravadas } from './variaveis-gravadas.util';
 import {
@@ -386,6 +387,7 @@ export class ConversarIaService {
     private readonly bus: FluxoEventBusService,
     private readonly pacing: WhatsappPacingService,
     private readonly supressao: SupressaoService,
+    private readonly inbox: InboxService,
     @InjectQueue(FLUXO_QUEUE) private readonly queue: Queue<FluxoStepJobData>,
   ) {}
 
@@ -1765,7 +1767,17 @@ export class ConversarIaService {
     if (esperaMs <= 0) {
       await this.prisma.fluxoExecucao.update({
         where: { id: execucaoId },
-        data: { status: 'EM_EXECUCAO', aguardandoNoId: null, timeoutEm: null },
+        data: {
+          status: 'EM_EXECUCAO',
+          aguardandoNoId: null,
+          timeoutEm: null,
+          // O histórico TEM que ser persistido também aqui. Este caminho gravava
+          // só o status, e quem classificava no 1º turno terminava com
+          // `_iaHistorico` VAZIO: ficava impossível auditar o que o bot disse —
+          // a conversa do inbox não tem a saída do fluxo, e a execução também
+          // não tinha. O ramo com janela de encerramento (abaixo) já gravava.
+          contexto: toJsonInput({ ...ctx, _iaHistorico: novoHist }),
+        },
       });
       await this.enfileirarSucessores(execucaoId, no.id, 'classificou', true);
       this.logger.log(
@@ -2045,7 +2057,34 @@ export class ConversarIaService {
               ...(idemKey ? { idempotencyKey: `${idemKey}:b${i++}:${hash}` } : {}),
               ...(proprietarioId ? { proprietarioId } : {}),
             };
-            return this.whatsapp.enviarTexto(empresaId, peerId, balao, ctx).then(() => undefined);
+            return this.whatsapp.enviarTexto(empresaId, peerId, balao, ctx).then(async (r) => {
+              // GRAVA a saída na conversa. O envio do fluxo ia direto pro
+              // provider e só virava Message quando o ECO (fromMe) voltasse
+              // pelo webhook — assíncrono e sem prazo. Quem lê a conversa
+              // depois (o C2 montando histórico, o inbox, um relatório) podia
+              // não achar nada: o bot não sabia o que ele mesmo tinha dito.
+              //
+              // Best-effort: a mensagem JÁ saiu; falhar o registro não pode
+              // desfazer envio nem derrubar o passo.
+              await this.inbox
+                .processarMensagemEntrante({
+                  empresaId,
+                  canal: 'WHATSAPP',
+                  peerId,
+                  tipo: 'TEXT',
+                  conteudo: balao,
+                  direction: 'OUTBOUND',
+                  enviadaPorBot: true,
+                  externalId: r.externalId ?? undefined,
+                  proprietarioId: proprietarioId ?? undefined,
+                })
+                .catch((err: unknown) =>
+                  this.logger.warn(
+                    `CONVERSAR_IA: falha ao registrar a saída na conversa: ` +
+                      `${err instanceof Error ? err.message : String(err)}`,
+                  ),
+                );
+            });
           };
         })(),
         // Presença sai pela MESMA porta dos balões (auditoria 20/08): sem o

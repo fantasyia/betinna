@@ -267,6 +267,9 @@ describe('ConversarIaService', () => {
       bus as never,
       { aguardarSlot: vi.fn() } as never,
       { suprimido: vi.fn(async () => false) } as never, // supressao
+      // inbox: a saída do fluxo passa a ser GRAVADA na conversa (antes só
+      // aparecia quando o eco do WhatsApp voltava, assíncrono e sem prazo).
+      { processarMensagemEntrante: vi.fn().mockResolvedValue({}) } as never,
       queue as never,
     );
   });

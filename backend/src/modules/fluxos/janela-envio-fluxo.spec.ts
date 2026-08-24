@@ -106,6 +106,8 @@ function makeService(opts: {
     { criarCardsDeTarefa: vi.fn(async () => ({})) } as never,
     { suprimido: vi.fn(async () => false) } as never,
     { criar: vi.fn() } as never,
+    // inbox: a saída do ENVIAR_WHATSAPP passa a ser gravada na conversa.
+    { processarMensagemEntrante: vi.fn().mockResolvedValue({}) } as never,
   );
   return { service, prisma, queue, pacing, conversarIa };
 }

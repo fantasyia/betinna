@@ -38,6 +38,8 @@ function build(criou = true) {
     {} as never,
     {} as never,
     notificacoes as never,
+    // inbox: a saída do ENVIAR_WHATSAPP passa a ser gravada na conversa.
+    { processarMensagemEntrante: vi.fn().mockResolvedValue({}) } as never,
   );
   return { job, prisma, bus };
 }

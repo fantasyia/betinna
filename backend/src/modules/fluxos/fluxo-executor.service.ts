@@ -19,6 +19,7 @@ import { TransactionalEmailService } from '@integrations/email/transactional-ema
 import { IntegracaoStatusService } from '@modules/integracoes/integracao-status.service';
 import { KanbanTarefaService } from '@modules/kanban/kanban-tarefa.service';
 import { NotificacoesService } from '@modules/notificacoes/notificacoes.service';
+import { InboxService } from '@modules/inbox/inbox.service';
 import { Prisma } from '@prisma/client';
 import { safeRequest, SsrfBlockedError } from '@shared/utils/safe-request';
 import { interpolate } from '@shared/utils/interpolate';
@@ -249,6 +250,7 @@ export class FluxoExecutorService {
     private readonly kanbanTarefa: KanbanTarefaService,
     private readonly supressao: SupressaoService,
     private readonly notificacoes: NotificacoesService,
+    private readonly inbox: InboxService,
   ) {}
 
   /**
@@ -1340,6 +1342,29 @@ export class FluxoExecutorService {
           };
         }
         const r = await this.whatsapp.enviarTexto(empresaId, peerId, mensagem, ctxEnvio);
+        // GRAVA a saída na conversa — o envio do fluxo ia direto pro provider e
+        // só virava Message quando o ECO (fromMe) voltasse pelo webhook, de
+        // forma assíncrona e sem prazo. Quem lê a conversa depois podia não
+        // achar nada. Best-effort: a mensagem já saiu, falhar o registro não
+        // pode derrubar o passo.
+        await this.inbox
+          .processarMensagemEntrante({
+            empresaId,
+            canal: 'WHATSAPP',
+            peerId,
+            tipo: 'TEXT',
+            conteudo: mensagem,
+            direction: 'OUTBOUND',
+            enviadaPorBot: true,
+            externalId: r.externalId ?? undefined,
+            proprietarioId: ctxEnvio.proprietarioId ?? undefined,
+          })
+          .catch((err: unknown) =>
+            this.logger.warn(
+              `ENVIAR_WHATSAPP: falha ao registrar a saída na conversa: ` +
+                `${err instanceof Error ? err.message : String(err)}`,
+            ),
+          );
         // `remetente` no output: sem isso, olhar o histórico não diz por qual
         // número a mensagem saiu — e é exatamente essa a dúvida quando o cliente
         // diz que recebeu de outro contato.

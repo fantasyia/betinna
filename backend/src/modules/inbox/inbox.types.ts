@@ -93,6 +93,12 @@ export interface MensagemEntranteParams {
    */
   direction?: 'INBOUND' | 'OUTBOUND';
   /**
+   * Saída do BOT/fluxo (não de um atendente humano). Só faz sentido com
+   * `direction: 'OUTBOUND'`. A tela usa pra marcar a bolha, e o histórico do
+   * atendimento pra separar o que a automação disse do que a pessoa disse.
+   */
+  enviadaPorBot?: boolean;
+  /**
    * Pra mensagens em GRUPO: nome do membro que mandou a mensagem (pushName).
    * Frontend renderiza acima da bolha INBOUND ("João: oi pessoal").
    * Em 1:1 fica undefined — quem mandou é o próprio peer já mostrado no header.

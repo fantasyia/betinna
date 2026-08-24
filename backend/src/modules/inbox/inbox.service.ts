@@ -1476,6 +1476,10 @@ export class InboxService {
           conteudo: params.conteudo,
           externalId: params.externalId ?? null,
           status: isInbound ? MessageStatus.RECEIVED : MessageStatus.SENT,
+          // Saída de fluxo/IA entra marcada como bot — é o que separa, no
+          // histórico do atendimento, o que a automação disse do que a pessoa
+          // disse. Eco vindo do WhatsApp (dono respondeu pelo celular) não marca.
+          enviadaPorBot: params.enviadaPorBot === true,
           mediaUrl: params.mediaUrl ?? null,
           mediaMime: params.mediaMime ?? null,
           meta:

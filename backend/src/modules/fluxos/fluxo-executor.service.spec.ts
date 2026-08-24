@@ -186,6 +186,8 @@ describe('FluxoExecutorService', () => {
     criarParaUsuario: ReturnType<typeof vi.fn>;
     criarParaRole: ReturnType<typeof vi.fn>;
   };
+  /** Gravação da saída na conversa (não depende mais do eco do WhatsApp). */
+  let inbox: { processarMensagemEntrante: ReturnType<typeof vi.fn> };
   let service: FluxoExecutorService;
 
   beforeEach(() => {
@@ -201,6 +203,7 @@ describe('FluxoExecutorService', () => {
       criarParaUsuario: vi.fn().mockResolvedValue(null),
       criarParaRole: vi.fn().mockResolvedValue(0),
     };
+    inbox = { processarMensagemEntrante: vi.fn().mockResolvedValue({}) };
     service = new FluxoExecutorService(
       prisma as never,
       makeEnvMock() as never,
@@ -215,6 +218,7 @@ describe('FluxoExecutorService', () => {
       { criarCardsDeTarefa: vi.fn(async () => ({})) } as never, // kanbanTarefa
       { suprimido: vi.fn(async () => false) } as never, // supressao
       notificacoes as never,
+      inbox as never,
     );
   });
 
@@ -1240,6 +1244,36 @@ describe('FluxoExecutorService', () => {
         { execucaoId: 'exec-1', noId: 'no-wa' },
         expect.objectContaining({ delay: 60_000 }),
       );
+    });
+
+    it('GRAVA a mensagem enviada na conversa — sem depender do eco do WhatsApp', async () => {
+      // O envio ia direto pro provider e só virava Message quando o ECO (fromMe)
+      // voltasse pelo webhook: assíncrono e sem prazo. Quem lesse a conversa
+      // depois (o consultivo montando histórico, o inbox, um relatório) podia
+      // não achar nada — o bot não sabia o que ele mesmo tinha dito.
+      setupWhatsappPasso({ clienteId: 'cli-1', cliente: { nome: 'Carlos' } });
+
+      await service.executarPasso('exec-1', 'no-wa', 'job-test');
+
+      expect(inbox.processarMensagemEntrante).toHaveBeenCalledWith(
+        expect.objectContaining({
+          direction: 'OUTBOUND',
+          enviadaPorBot: true,
+          conteudo: 'Olá Carlos!',
+          peerId: '11987654321@s.whatsapp.net',
+          // O externalId do provider é o que deixa o eco deduplicar depois.
+          externalId: 'wa-msg-1',
+        }),
+      );
+    });
+
+    it('falha ao gravar NÃO desfaz o envio — a mensagem já saiu', async () => {
+      setupWhatsappPasso({ clienteId: 'cli-1', cliente: { nome: 'Carlos' } });
+      inbox.processarMensagemEntrante.mockRejectedValue(new Error('banco fora'));
+
+      await expect(service.executarPasso('exec-1', 'no-wa', 'job-test')).resolves.toBeUndefined();
+
+      expect(whatsapp.enviarTexto).toHaveBeenCalled();
     });
 
     it('com anexo (midia): envia mídia com a mensagem como legenda interpolada (não texto)', async () => {
