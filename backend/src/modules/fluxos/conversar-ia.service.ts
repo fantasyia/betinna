@@ -184,6 +184,36 @@ interface IaTurno {
 const LINHA_VARIAVEL_VAZADA = /^\s*[a-z_][a-z0-9_]{2,}\s*[=:]\s*.{0,80}$/i;
 
 /** Tira do texto de RESPOSTA as linhas que são variável interna vazada. */
+/**
+ * A resposta está falando com o OPERADOR em vez do cliente?
+ *
+ * Existe porque aconteceu duas vezes em produção (24/08): o modelo recebia a
+ * sentinela `(inicie)` como se fosse fala do cliente, entrava em contradição com
+ * a instrução de "continue a conversa" e pedia AO CLIENTE que colasse o
+ * histórico — "cole a primeira mensagem do lead", "me manda o que a pessoa falou
+ * por último na conversa acima". Isso foi pro WhatsApp de uma indústria que
+ * tinha acabado de relatar um problema.
+ *
+ * A causa foi corrigida (a sentinela não vai mais como turno), mas a trava fica:
+ * texto meta dirigido a quem opera o sistema NUNCA deve chegar ao cliente, venha
+ * de onde vier. Melhor não responder do que responder isso.
+ *
+ * Deliberadamente ESTREITO — casa pedido de histórico/contexto ao interlocutor,
+ * não conversa comum. "Me manda o modelo do equipamento" é pergunta legítima e
+ * não pode cair aqui.
+ */
+const PADROES_FALA_COM_OPERADOR: RegExp[] = [
+  /\bcole\b[^.?!]{0,40}\b(mensagem|conversa|hist[oó]rico|trecho)\b/i,
+  /\b(me\s+(manda|envie|passa)|envie|informe)\b[^.?!]{0,40}\b(hist[oó]rico|conversa\s+(acima|anterior)|o\s+que\s+a\s+pessoa\s+(falou|disse)|primeira\s+mensagem)\b/i,
+  /\bconversa\s+j[aá]\s+existente\b/i,
+  /\b(pediu|pedir)\s+(para|pra)\s+iniciar\s+uma\s+conversa\b/i,
+  /\bn[aã]o\s+(tenho|recebi)\s+(acesso\s+ao|o)\s+hist[oó]rico\b/i,
+];
+
+export function falaComOperador(texto: string): boolean {
+  return PADROES_FALA_COM_OPERADOR.some((re) => re.test(texto));
+}
+
 export function limparVazamentoDeVariaveis(texto: string): string {
   const linhas = texto.split(/\r?\n/);
   const uteis = linhas.filter((l) => {
@@ -867,6 +897,26 @@ export class ConversarIaService {
         : [];
       // Quem ASSUME não tem mensagem-do-turno: ninguém acabou de escrever.
       assumindoConversa = !convIdCtx && !textoLeadCtx && historicoInicial.length > 0;
+      if (assumindoConversa) {
+        // 🔴 A sentinela `(inicie)` NÃO pode ir como turno do cliente.
+        //
+        // Ela ia — e o modelo lia como fala real: recebia "o histórico é a
+        // conversa, a pessoa já contou o problema" de um lado e `(inicie)` do
+        // outro, e NARRAVA a contradição pro cliente ("você acabou de pedir para
+        // iniciar uma conversa, mas aqui eu só consigo responder ao conteúdo da
+        // conversa já existente", "cole a primeira mensagem do lead"). O bot
+        // falando com o operador no WhatsApp de quem acabou de relatar um
+        // problema. Aconteceu duas vezes em produção em 24/08.
+        //
+        // Conserto: quem assume fica IGUAL ao reativo — a última fala do cliente
+        // vira o turno e sai do histórico (mesma dedup). O modelo recebe o que
+        // recebe no caminho que funciona: histórico + fala do cliente.
+        const idxUltimaDoLead = historicoInicial.map((m) => m.role).lastIndexOf('user');
+        if (idxUltimaDoLead >= 0) {
+          mensagemDoTurno = historicoInicial[idxUltimaDoLead].content;
+          historicoInicial = historicoInicial.filter((_, i) => i !== idxUltimaDoLead);
+        }
+      }
       // A mensagem ATUAL do lead já está na conversa (foi ela que disparou o
       // fluxo): tira do fim pra não ir DUAS vezes — no histórico e como turno.
       // Mesmo cuidado do retomar(), inclusive o áudio com prefixo 🎤.
@@ -944,6 +994,24 @@ export class ConversarIaService {
     // lead parado na triagem depois de ouvir "já te passo pro comercial".
     const turnoAbertura = parseTurnoIa(abertura.texto);
     const aberturaTexto = personalizarNome(turnoAbertura.resposta, lead.contatoNome);
+    // TRAVA: texto dirigido a quem OPERA o sistema não pode ir pro cliente.
+    // Melhor não responder do que pedir a uma indústria que "cole a primeira
+    // mensagem do lead". Roteia pela saída "erro" — assim alguém é avisado, em
+    // vez de o lead ficar mudo sem ninguém saber.
+    if (falaComOperador(aberturaTexto)) {
+      this.logger.error(
+        `CONVERSAR_IA: resposta falava com o OPERADOR e foi BLOQUEADA (exec ${execucaoId}, ` +
+          `lead ${leadId}): "${aberturaTexto.slice(0, 120)}"`,
+      );
+      const { tipo_erro } = await this.rotearParaErro(
+        execucaoId,
+        no.id,
+        ctx,
+        'ia_fala_com_operador',
+        new Error('A IA respondeu falando com o operador; nada foi enviado ao cliente.'),
+      );
+      return { aguardando: false, roteado: true, tipoErro: tipo_erro };
+    }
     // MODO SECO do teste: o opener é a primeira mensagem que a pessoa recebe.
     // Num teste contra conversa REAL, mandar isso significa abordar um cliente
     // que não pediu nada — e não tem desfazer. Roda tudo (IA inclusive), só não
@@ -1588,6 +1656,21 @@ export class ConversarIaService {
 
     // Tool-use por marcador: a IA pode pedir o envio de arquivos com [[ENVIAR_DOC:id]].
     // Separa o texto (sem as marcações) dos ids; o envio real acontece após o texto.
+    if (falaComOperador(respostaPersonalizada)) {
+      this.logger.error(
+        `CONVERSAR_IA: resposta falava com o OPERADOR e foi BLOQUEADA (exec ${execucaoId}, ` +
+          `lead ${leadId}): "${respostaPersonalizada.slice(0, 120)}"`,
+      );
+      await this.rotearParaErro(
+        execucaoId,
+        no.id,
+        ctx,
+        'ia_fala_com_operador',
+        new Error('A IA respondeu falando com o operador; nada foi enviado ao cliente.'),
+      );
+      return;
+    }
+
     const { limpo, ids: docIds } = extrairMarcadoresDoc(respostaPersonalizada);
     const respostaTexto =
       limpo || (docIds.length > 0 ? 'Segue o arquivo solicitado. 📎' : respostaPersonalizada);

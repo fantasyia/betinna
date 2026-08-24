@@ -329,17 +329,21 @@ describe('ConversarIaService', () => {
         true,
       );
 
-      const [, systemPrompt, , historico] = muller.gerarRespostaIa.mock.calls[0];
-      // A fala do cliente TEM que chegar — é o ponto do card.
-      expect(JSON.stringify(historico)).toContain('queimou o CLP');
+      const [, systemPrompt, turno, historico] = muller.gerarRespostaIa.mock.calls[0];
+      // A fala do cliente TEM que chegar. Ela vai como TURNO (não no histórico):
+      // é o que impede a sentinela `(inicie)` de ocupar esse lugar e o modelo
+      // narrar a contradição pro cliente.
+      expect(turno).toContain('queimou o CLP');
+      expect(turno).not.toContain('(inicie)');
+      expect(JSON.stringify(historico)).not.toContain('queimou o CLP');
       // E a instrução muda: quem assume não pode ser mandado responder "a última
       // mensagem do histórico" (a última é a do assistente que encerrou a triagem).
       expect(systemPrompt).toContain('ASSUMINDO uma conversa');
     });
 
-    it('quem assume NÃO perde a última fala do lead (a dedup é só de quem tem turno)', async () => {
-      // A dedup existe pra mensagem que vem DUAS vezes (histórico + turno). Quem
-      // assume não tem turno: cortar a última fala apagaria justamente o contexto.
+    it('quem assume NÃO perde a última fala do lead — ela vira o turno', async () => {
+      // A fala do cliente não pode sumir: ela sai do histórico e entra como
+      // turno, igual ao caminho reativo que já funcionava.
       prisma.lead.findFirst.mockResolvedValue({ contatoTelefone: '11999990000', variaveis: {} });
       prisma.conversation.findFirst.mockResolvedValue({ id: 'conv-empresa' });
       prisma.message.findMany.mockResolvedValue([
@@ -355,8 +359,8 @@ describe('ConversarIaService', () => {
         true,
       );
 
-      const [, , , historico] = muller.gerarRespostaIa.mock.calls[0];
-      expect(JSON.stringify(historico)).toContain('queimou o CLP');
+      const [, , turno] = muller.gerarRespostaIa.mock.calls[0];
+      expect(turno).toContain('queimou o CLP');
     });
 
     it('🔒 pega a conversa da EMPRESA — nunca a do WhatsApp pessoal do rep', async () => {
@@ -379,6 +383,55 @@ describe('ConversarIaService', () => {
           where: expect.objectContaining({ leadId: 'lead-1', proprietarioId: null }),
         }),
       );
+    });
+
+    // ── A sentinela `(inicie)` vazando (card 🔴🔴 de 24/08) ─────────
+    it('🔴 quem assume NUNCA recebe "(inicie)" como fala do cliente', async () => {
+      // O bug: `(inicie)` ia como turno do cliente e colidia com a instrução de
+      // "continue a conversa". O modelo não escolhia — NARRAVA a contradição pro
+      // cliente ("você acabou de pedir para iniciar uma conversa..."). Foi pro
+      // WhatsApp de uma indústria que tinha acabado de relatar um problema.
+      prisma.lead.findFirst.mockResolvedValue({ contatoTelefone: '11999990000', variaveis: {} });
+      prisma.conversation.findFirst.mockResolvedValue({ id: 'conv-empresa' });
+      prisma.message.findMany.mockResolvedValue([
+        { direction: 'OUTBOUND', conteudo: 'já te passo pro comercial', criadoEm: new Date(2) },
+        { direction: 'INBOUND', conteudo: 'queimou o CLP da linha', criadoEm: new Date(1) },
+      ]);
+      muller.gerarRespostaIa.mockResolvedValue({ texto: 'sobre o CLP...', modelo: 'gpt' });
+
+      await svc.iniciar(
+        'exec-1',
+        no({ promptId: 'p1' }) as never,
+        { leadId: 'lead-1' },
+        'emp-1',
+        true,
+      );
+
+      const [, , turno] = muller.gerarRespostaIa.mock.calls[0];
+      expect(turno).toBe('queimou o CLP da linha');
+    });
+
+    it('🔒 resposta que fala com o OPERADOR é bloqueada — não chega ao cliente', async () => {
+      // Trava de saída. A causa foi corrigida, mas texto meta dirigido a quem
+      // opera o sistema não pode chegar ao cliente venha de onde vier.
+      prisma.lead.findFirst.mockResolvedValue({ contatoTelefone: '11999990000', variaveis: {} });
+      muller.gerarRespostaIa.mockResolvedValue({
+        texto: 'Se quiser, cole a primeira mensagem do lead que eu continuo dali.',
+        modelo: 'gpt',
+      });
+
+      const r = await svc.iniciar(
+        'exec-1',
+        no({ promptId: 'p1' }) as never,
+        { leadId: 'lead-1', texto: 'oi' },
+        'emp-1',
+        true,
+      );
+
+      expect(whatsapp.enviarTexto).not.toHaveBeenCalled();
+      // Não fica mudo: segue a saída "erro", que é quem avisa gente.
+      expect(r.roteado).toBe(true);
+      expect(r.tipoErro).toBe('ia_fala_com_operador');
     });
 
     // ── O contrato do 1º turno (card 🔴 de 24/08, o "pela metade") ──
