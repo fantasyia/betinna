@@ -68,6 +68,21 @@ const INSTRUCAO_RESPOSTA_COMPORTAMENTO =
   'RESPONDA a ela: trate do que a pessoa disse, sem se reapresentar e sem perguntar o que ela ' +
   'precisa se ela já disse. Curta e natural (estilo WhatsApp).';
 
+/**
+ * Instrução de quem ASSUME uma conversa que já estava rolando (C1/C2 depois da
+ * triagem, RB/RT por etiqueta).
+ *
+ * Aqui ninguém "acabou de escrever": o gatilho foi mudança de etapa ou etiqueta,
+ * então não existe mensagem do turno — o que existe é HISTÓRICO. Dizer pro
+ * modelo que a última fala é do lead seria mentira (a última é a do assistente
+ * que encerrou a triagem), e mentira no prompt vira comportamento errado.
+ */
+const INSTRUCAO_ASSUMINDO =
+  '\n\n[Tarefa agora] Você está ASSUMINDO uma conversa JÁ EM ANDAMENTO (o histórico acima é ' +
+  'ela). A pessoa JÁ CONTOU o problema dela — leia e continue de onde parou. NUNCA pergunte ' +
+  'algo que ela já respondeu, e cite o que ela disse com as palavras dela (o equipamento, o ' +
+  'que queimou, quantas vezes) pra ela ver que foi lido. Curta e natural (estilo WhatsApp).';
+
 /** Primeiro nome a partir do nome completo (vazio se não houver). */
 function primeiroNomeDe(nome?: string | null): string {
   return (nome ?? '').trim().split(/\s+/)[0] ?? '';
@@ -802,18 +817,6 @@ export class ConversarIaService {
     // e sem ele classificar a primeira mensagem e IMPOSSIVEL, nao "dificil".
     // A abordagem FRIA segue em texto puro: la o lead ainda nao falou, nao ha o
     // que classificar, e o contrato so encareceria o turno.
-    const declaradasAbertura = parseVariaveisGravadas(cfg.variaveisGravadas);
-    const opener =
-      (reativo ? INSTRUCAO_RESPOSTA_COMPORTAMENTO + INSTRUCAO_CLASSIFICACAO : INSTRUCAO_OPENER) +
-      (primeiro
-        ? `\n[Dado] O primeiro nome do lead é "${primeiro}". Use-o na saudação.`
-        : !usarNome
-          ? // Sem exemplo de saudação no reativo: o `"Oi! Tudo bem?"` daqui era
-            // literalmente o que o cliente recebia depois de descrever o problema
-            // dele — o modelo seguia a instrução do MOTOR, não a do prompt.
-            '\n[Regra] NÃO use o nome do contato em nenhuma mensagem (o nome do perfil não é confiável).' +
-            (reativo ? '' : ' Saúde de forma neutra, ex.: "Oi! Tudo bem?".')
-          : '');
     // Teto de custo do bot (por-empresa): se a empresa estourou o orçamento de tokens
     // do dia/mês, o nó NÃO abre conversa por IA — roteia pela saída "erro" (mesmo gate
     // do bot reativo; antes o fluxo ignorava o teto e gerava custo mesmo pausado).
@@ -835,6 +838,11 @@ export class ConversarIaService {
     // C1/C2/RB/RT mandam "não se reapresente" e não tinham como obedecer.
     let mensagemDoTurno = '(inicie)';
     let historicoInicial: HistoricoMsg[] = [];
+    /**
+     * Assumiu conversa em andamento: veio por etapa/etiqueta, não por mensagem.
+     * Não há "mensagem do turno" — todo o contexto está no histórico.
+     */
+    let assumindoConversa = false;
     if (reativo) {
       const textoLeadCtx =
         typeof (ctx as Record<string, unknown>)['texto'] === 'string'
@@ -847,13 +855,24 @@ export class ConversarIaService {
         typeof (ctx as Record<string, unknown>)['conversationId'] === 'string'
           ? ((ctx as Record<string, unknown>)['conversationId'] as string)
           : null;
-      historicoInicial = convIdCtx
-        ? await this.montarHistorico(convIdCtx, limiteHistIni, empresaId).catch(() => [])
+      // Sem `conversationId` no contexto, acha a conversa pelo LEAD. É o caso do
+      // C1/C2 (LEAD_ETAPA_MUDOU) e do RB/RT (LEAD_RECEBEU_TAG): esses eventos
+      // carregam o lead, não a conversa — e sem isto o consultivo assumia CEGO,
+      // re-perguntando o que o cliente acabara de responder na triagem.
+      const convId = convIdCtx ?? (await this.conversaDaEmpresaDoLead(empresaId, leadId));
+      historicoInicial = convId
+        ? await this.montarHistorico(convId, limiteHistIni, empresaId).catch(() => [])
         : [];
+      // Quem ASSUME não tem mensagem-do-turno: ninguém acabou de escrever.
+      assumindoConversa = !convIdCtx && !textoLeadCtx && historicoInicial.length > 0;
       // A mensagem ATUAL do lead já está na conversa (foi ela que disparou o
       // fluxo): tira do fim pra não ir DUAS vezes — no histórico e como turno.
       // Mesmo cuidado do retomar(), inclusive o áudio com prefixo 🎤.
+      //
+      // NÃO vale pra quem assume: lá não existe segunda via da mensagem, e tirar
+      // a última fala apagaria justamente o que dá o contexto.
       if (
+        !assumindoConversa &&
         historicoInicial.length > 0 &&
         historicoInicial[historicoInicial.length - 1].role === 'user' &&
         (!textoLeadCtx ||
@@ -865,6 +884,22 @@ export class ConversarIaService {
       }
       if (textoLeadCtx) mensagemDoTurno = textoLeadCtx;
     }
+
+    const declaradasAbertura = parseVariaveisGravadas(cfg.variaveisGravadas);
+    const opener =
+      (reativo
+        ? (assumindoConversa ? INSTRUCAO_ASSUMINDO : INSTRUCAO_RESPOSTA_COMPORTAMENTO) +
+          INSTRUCAO_CLASSIFICACAO
+        : INSTRUCAO_OPENER) +
+      (primeiro
+        ? `\n[Dado] O primeiro nome do lead é "${primeiro}". Use-o na saudação.`
+        : !usarNome
+          ? // Sem exemplo de saudação no reativo: o `"Oi! Tudo bem?"` daqui era
+            // literalmente o que o cliente recebia depois de descrever o problema
+            // dele — o modelo seguia a instrução do MOTOR, não a do prompt.
+            '\n[Regra] NÃO use o nome do contato em nenhuma mensagem (o nome do perfil não é confiável).' +
+            (reativo ? '' : ' Saúde de forma neutra, ex.: "Oi! Tudo bem?".')
+          : '');
 
     let abertura: { texto: string; tokensIn?: number; tokensOut?: number };
     try {
@@ -1056,6 +1091,35 @@ export class ConversarIaService {
 
     this.logger.log(`Execução ${execucaoId} pausada (Conversar com IA) — lead ${leadId}`);
     return { aguardando: true };
+  }
+
+  /**
+   * Conversa da EMPRESA deste lead — pra quem assume sem `conversationId` no
+   * contexto (C1/C2 vêm de LEAD_ETAPA_MUDOU, RB/RT de LEAD_RECEBEU_TAG, e esses
+   * eventos carregam o LEAD, não a conversa).
+   *
+   * Sem isso o consultivo começava CEGO: `historicoInicial = []`, e ele
+   * re-perguntava o que o cliente tinha acabado de responder na triagem — o
+   * oposto do que o prompt do T1 promete ("o robô que assume depois LÊ esta
+   * conversa inteira").
+   *
+   * `proprietarioId: null` NÃO é detalhe: o lead pode ter conversa no WhatsApp
+   * da empresa E no pessoal de um rep. A triagem aconteceu na da empresa; pegar
+   * a do rep vazaria conversa particular dele pro prompt.
+   */
+  private async conversaDaEmpresaDoLead(
+    empresaId: string,
+    leadId?: string | null,
+  ): Promise<string | null> {
+    if (!leadId) return null;
+    const conv = await this.prisma.conversation
+      .findFirst({
+        where: { empresaId, leadId, canal: 'WHATSAPP', proprietarioId: null },
+        orderBy: { ultimaMsgEm: 'desc' },
+        select: { id: true },
+      })
+      .catch(() => null);
+    return conv?.id ?? null;
   }
 
   /** Existe execução pausada (AGUARDANDO) esperando resposta deste lead? */

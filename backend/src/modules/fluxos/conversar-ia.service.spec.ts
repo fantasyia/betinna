@@ -37,6 +37,10 @@ const makePrisma = () => ({
   empresa: { findUnique: vi.fn().mockResolvedValue({ botWhatsappAtivo: true }) },
   conversation: {
     findUnique: vi.fn().mockResolvedValue({ botLigado: true, precisaHumano: false }),
+    // Quem ASSUME a conversa (C1/C2 por etapa, RB/RT por etiqueta) não recebe
+    // `conversationId` no contexto e resolve a conversa da EMPRESA pelo lead.
+    // Default null = sem conversa anterior (o caso dos testes de abertura).
+    findFirst: vi.fn().mockResolvedValue(null),
   },
 });
 const makePersona = () => ({
@@ -292,6 +296,84 @@ describe('ConversarIaService', () => {
         expect.objectContaining({
           where: { id: 'exec-1' },
           data: expect.objectContaining({ status: 'AGUARDANDO', aguardandoNoId: 'no-ia' }),
+        }),
+      );
+    });
+
+    // ── C1/C2 assumindo a conversa (card 🔴🔴 de 24/08) ─────────────
+    // O consultivo dispara por LEAD_ETAPA_MUDOU, que carrega o LEAD e não a
+    // conversa. Sem `conversationId` o histórico nascia vazio e ele re-perguntava
+    // o que o cliente tinha acabado de responder na triagem — o oposto do que o
+    // prompt do T1 promete.
+    it('sem conversationId, acha a conversa pelo lead e LÊ o histórico da triagem', async () => {
+      prisma.lead.findFirst.mockResolvedValue({ contatoTelefone: '11999990000', variaveis: {} });
+      prisma.conversation.findFirst.mockResolvedValue({ id: 'conv-empresa' });
+      prisma.message.findMany.mockResolvedValue([
+        { direction: 'OUTBOUND', conteudo: 'já te passo pro comercial', criadoEm: new Date(2) },
+        { direction: 'INBOUND', conteudo: 'queimou o CLP da linha', criadoEm: new Date(1) },
+      ]);
+      muller.gerarRespostaIa.mockResolvedValue({
+        texto: JSON.stringify({ resposta: 'sobre o CLP...', classificou: false }),
+        modelo: 'gpt',
+      });
+
+      // Contexto do C2: leadId, SEM conversationId e SEM texto.
+      await svc.iniciar(
+        'exec-1',
+        no({ promptId: 'p1' }) as never,
+        { leadId: 'lead-1' },
+        'emp-1',
+        true,
+      );
+
+      const [, systemPrompt, , historico] = muller.gerarRespostaIa.mock.calls[0];
+      // A fala do cliente TEM que chegar — é o ponto do card.
+      expect(JSON.stringify(historico)).toContain('queimou o CLP');
+      // E a instrução muda: quem assume não pode ser mandado responder "a última
+      // mensagem do histórico" (a última é a do assistente que encerrou a triagem).
+      expect(systemPrompt).toContain('ASSUMINDO uma conversa');
+    });
+
+    it('quem assume NÃO perde a última fala do lead (a dedup é só de quem tem turno)', async () => {
+      // A dedup existe pra mensagem que vem DUAS vezes (histórico + turno). Quem
+      // assume não tem turno: cortar a última fala apagaria justamente o contexto.
+      prisma.lead.findFirst.mockResolvedValue({ contatoTelefone: '11999990000', variaveis: {} });
+      prisma.conversation.findFirst.mockResolvedValue({ id: 'conv-empresa' });
+      prisma.message.findMany.mockResolvedValue([
+        { direction: 'INBOUND', conteudo: 'queimou o CLP da linha', criadoEm: new Date(1) },
+      ]);
+      muller.gerarRespostaIa.mockResolvedValue({ texto: 'ok', modelo: 'gpt' });
+
+      await svc.iniciar(
+        'exec-1',
+        no({ promptId: 'p1' }) as never,
+        { leadId: 'lead-1' },
+        'emp-1',
+        true,
+      );
+
+      const [, , , historico] = muller.gerarRespostaIa.mock.calls[0];
+      expect(JSON.stringify(historico)).toContain('queimou o CLP');
+    });
+
+    it('🔒 pega a conversa da EMPRESA — nunca a do WhatsApp pessoal do rep', async () => {
+      // O lead pode ter conversa nos dois. A triagem aconteceu na da empresa;
+      // puxar a do rep vazaria conversa particular dele pro prompt.
+      prisma.lead.findFirst.mockResolvedValue({ contatoTelefone: '11999990000', variaveis: {} });
+      prisma.conversation.findFirst.mockResolvedValue({ id: 'conv-empresa' });
+      muller.gerarRespostaIa.mockResolvedValue({ texto: 'ok', modelo: 'gpt' });
+
+      await svc.iniciar(
+        'exec-1',
+        no({ promptId: 'p1' }) as never,
+        { leadId: 'lead-1' },
+        'emp-1',
+        true,
+      );
+
+      expect(prisma.conversation.findFirst).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: expect.objectContaining({ leadId: 'lead-1', proprietarioId: null }),
         }),
       );
     });
