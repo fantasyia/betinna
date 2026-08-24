@@ -50,6 +50,7 @@ import {
   formatMoedaCompacta as fmtBRLCompact,
 } from '@/lib/masks';
 import { rotuloFormulario, rotuloOrigem } from '@/lib/origem-lead';
+import { getSession } from '@/lib/auth-store';
 import { PhoneInput } from '@/components/PhoneInput';
 import { UfSelect, CidadeSelect } from '@/components/LocalidadeSelects';
 import {
@@ -206,6 +207,37 @@ const CANAIS: CanalOrigem[] = [
   'OUTRO',
 ];
 
+/**
+ * Funis visíveis ao mesmo tempo — preferência por USUÁRIO e por dispositivo.
+ *
+ * A chave leva o id do usuário: máquina compartilhada (ou troca de login) não
+ * pode fazer um herdar a seleção do outro — funil que o outro vê pode nem ser
+ * visível pro papel de quem entrou depois.
+ */
+const FUNIS_VISIVEIS_KEY = 'betinna:funis-visiveis';
+
+function chaveFunis(): string {
+  return `${FUNIS_VISIVEIS_KEY}:${getSession()?.user?.id ?? 'anon'}`;
+}
+
+function lerFunisSalvos(): string[] {
+  try {
+    const raw = localStorage.getItem(chaveFunis());
+    const v = raw ? (JSON.parse(raw) as unknown) : null;
+    return Array.isArray(v) ? v.filter((x): x is string => typeof x === 'string') : [];
+  } catch {
+    return [];
+  }
+}
+
+function salvarFunis(ids: string[]): void {
+  try {
+    localStorage.setItem(chaveFunis(), JSON.stringify(ids));
+  } catch {
+    // Modo privado / quota cheia não pode impedir de trocar de funil.
+  }
+}
+
 const CANAL_LABEL: Record<CanalOrigem, string> = {
   WHATSAPP: 'WhatsApp',
   INSTAGRAM: 'Instagram',
@@ -266,7 +298,7 @@ export default function LeadsPage() {
    * A ordem de exibição é a do `/funis` (campo `ordem`, reordenável na tela de
    * Funis) — não a ordem em que a pessoa clicou.
    */
-  const [visiveis, setVisiveis] = useState<string[]>([]);
+  const [visiveis, setVisiveis] = useState<string[]>(lerFunisSalvos);
   const [menuFunis, setMenuFunis] = useState(false);
   // Bumped quando algo fora dos boards muda leads (criar/importar): cada board
   // observa e refaz o fetch. Evita plumbing de refs pra N boards.
@@ -276,13 +308,22 @@ export default function LeadsPage() {
     Record<string, { totalLeads: number; totalAtivos: number }>
   >({});
 
-  // Sem seleção: abre no funil PADRÃO (comportamento de sempre).
+  // Sem seleção salva: abre no funil PADRÃO (comportamento de sempre).
+  //
+  // Também limpa id de funil que não existe mais (apagado/desativado depois de
+  // salvo) — senão a tela abriria vazia sem explicar por quê. Se sobrar nenhum
+  // válido, cai no padrão como se fosse a primeira visita.
   useEffect(() => {
-    if (visiveis.length > 0 || !funis || funis.length === 0) return;
+    if (!funis || funis.length === 0) return;
+    const validos = visiveis.filter((id) => funis.some((f) => f.id === id));
+    if (validos.length > 0) {
+      if (validos.length !== visiveis.length) setVisiveis(validos);
+      return;
+    }
     const padrao =
       funis.find((f) => f.isPadrao && f.ativo) ?? funis.find((f) => f.ativo) ?? funis[0];
     if (padrao) setVisiveis([padrao.id]);
-  }, [funis, visiveis.length]);
+  }, [funis, visiveis]);
 
   const role = useRole();
   const canImport = role === 'ADMIN' || role === 'DIRECTOR' || role === 'GERENTE';
@@ -307,8 +348,13 @@ export default function LeadsPage() {
   function alternarFunil(id: string) {
     setVisiveis((cur) => {
       // Nunca deixa a tela sem funil nenhum: desmarcar o último é no-op.
-      if (cur.includes(id)) return cur.length === 1 ? cur : cur.filter((x) => x !== id);
-      return [...cur, id];
+      const nova = cur.includes(id)
+        ? cur.length === 1
+          ? cur
+          : cur.filter((x) => x !== id)
+        : [...cur, id];
+      salvarFunis(nova);
+      return nova;
     });
   }
 

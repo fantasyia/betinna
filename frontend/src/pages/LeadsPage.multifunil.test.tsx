@@ -53,6 +53,8 @@ vi.mock('@/components/toast', () => ({
   useToast: () => ({ success: vi.fn(), error: vi.fn(), info: vi.fn() }),
 }));
 
+vi.mock('@/lib/auth-store', () => ({ getSession: () => ({ user: { id: 'u-1' } }) }));
+
 vi.mock('@/components/CrmTabs', () => ({ CrmTabs: () => null }));
 vi.mock('@/components/PageLayout', () => ({
   PageLayout: ({ children, actions }: { children: React.ReactNode; actions?: React.ReactNode }) => (
@@ -70,7 +72,10 @@ const montar = () =>
     </MemoryRouter>,
   );
 
-beforeEach(() => vi.clearAllMocks());
+beforeEach(() => {
+  vi.clearAllMocks();
+  localStorage.clear();
+});
 afterEach(() => cleanup());
 
 describe('Funil — vários funis ao mesmo tempo', () => {
@@ -126,6 +131,36 @@ describe('Funil — vários funis ao mesmo tempo', () => {
         el.getAttribute('data-testid'),
       );
       expect(boards).toEqual(['funil-board-f-a', 'funil-board-f-b']);
+    });
+  });
+  it('a seleção SOBREVIVE ao recarregar — é preferência do usuário', async () => {
+    montar();
+    await waitFor(() => {
+      expect(document.querySelector('[data-testid="funil-board-f-a"]')).toBeTruthy();
+    });
+    fireEvent.click(screen.getByTestId('funil-selector'));
+    fireEvent.click(screen.getByTestId('funil-opt-f-b').querySelector('input')!);
+    await waitFor(() => {
+      expect(document.querySelector('[data-testid="funil-board-f-b"]')).toBeTruthy();
+    });
+    cleanup();
+
+    montar(); // "recarregou"
+
+    await waitFor(() => {
+      expect(document.querySelector('[data-testid="funil-board-f-b"]')).toBeTruthy();
+    });
+    expect(document.querySelector('[data-testid="funil-board-f-a"]')).toBeTruthy();
+  });
+
+  it('funil salvo que não existe mais é descartado — a tela não abre vazia', async () => {
+    localStorage.setItem('betinna:funis-visiveis:u-1', JSON.stringify(['f-apagado']));
+
+    montar();
+
+    // Cai no padrão, como se fosse a primeira visita.
+    await waitFor(() => {
+      expect(document.querySelector('[data-testid="funil-board-f-a"]')).toBeTruthy();
     });
   });
 });
