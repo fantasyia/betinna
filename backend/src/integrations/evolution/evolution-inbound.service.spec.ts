@@ -423,6 +423,41 @@ describe('EvolutionInboundService — connection.update persiste o estado da ins
       'emp_emp-1',
       'open',
       '5511999998888@s.whatsapp.net',
+      null,
+    );
+  });
+
+  it('QUEDA: leva o motivo junto — sem ele a queda é anônima', async () => {
+    // `statusReason` é o único campo que diz POR QUE caiu. Ele vinha sendo
+    // descartado, e numa queda recorrente isso é a diferença entre diagnosticar
+    // (401 = deslogado no aparelho · 440 = sessão substituída · 428 · 515) e
+    // adivinhar.
+    const { svc, instancias } = setup();
+    await svc.processarEvento({
+      event: 'connection.update',
+      instance: 'emp_emp-1',
+      data: { state: 'close', statusReason: 440 },
+    });
+    expect(instancias.sincronizarConexao).toHaveBeenCalledWith(
+      'emp_emp-1',
+      'close',
+      undefined,
+      440,
+    );
+  });
+
+  it('motivo em string (o Evolution varia) vira número', async () => {
+    const { svc, instancias } = setup();
+    await svc.processarEvento({
+      event: 'connection.update',
+      instance: 'emp_emp-1',
+      data: { state: 'close', disconnectionReasonCode: '401' },
+    });
+    expect(instancias.sincronizarConexao).toHaveBeenCalledWith(
+      'emp_emp-1',
+      'close',
+      undefined,
+      401,
     );
   });
 });

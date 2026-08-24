@@ -108,12 +108,31 @@ export class EvolutionInboundService {
       } else if (evento === 'messages.update') {
         await this.onRecibos(body.data);
       } else if (evento === 'connection.update') {
-        const d = body.data as { state?: string; wuid?: string };
+        // `statusReason` é o ÚNICO campo que diz por que a sessão caiu, e ele
+        // vinha sendo descartado: sobrava "caiu de novo" sem causa. 401 =
+        // deslogado no aparelho · 440 = sessão substituída · 428 = conexão
+        // fechada · 515 = restart pedido pelo WhatsApp.
+        const d = body.data as {
+          state?: string;
+          wuid?: string;
+          statusReason?: number | string;
+          disconnectionReasonCode?: number | string;
+        };
         const estado = d?.state ?? '?';
+        const bruto = d?.statusReason ?? d?.disconnectionReasonCode;
+        const motivo = bruto == null ? null : Number(bruto);
         this.estadoPorInstancia.set(instance, estado);
-        this.logger.log(`[evolution] ${instance} conexão: ${estado}`);
+        this.logger.log(
+          `[evolution] ${instance} conexão: ${estado}` +
+            (motivo != null ? ` (motivo ${motivo})` : ''),
+        );
         // Persiste o estado na tabela durável (verdade local espelhada do Evolution).
-        void this.instancias.sincronizarConexao(instance, estado, d?.wuid);
+        void this.instancias.sincronizarConexao(
+          instance,
+          estado,
+          d?.wuid,
+          Number.isFinite(motivo) ? motivo : null,
+        );
       } else if (evento === 'qrcode.updated') {
         const d = body.data as { qrcode?: { base64?: string }; base64?: string };
         const base64 = d?.qrcode?.base64 ?? d?.base64;

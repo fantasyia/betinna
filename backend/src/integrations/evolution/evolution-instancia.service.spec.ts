@@ -5,6 +5,9 @@ const makePrisma = () => ({
   evolutionInstancia: {
     upsert: vi.fn().mockResolvedValue({}),
     deleteMany: vi.fn().mockResolvedValue({ count: 1 }),
+    // Estado anterior: o service compara pra logar só a TRANSIÇÃO
+    // (close repetido a cada sync não é notícia; open → close é).
+    findUnique: vi.fn().mockResolvedValue(null),
   },
   usuario: { findUnique: vi.fn() },
 });

@@ -44,6 +44,8 @@ export class EvolutionInstanciaService {
     instanceName: string,
     connectionStatus: string,
     ownerJid?: string | null,
+    /** `statusReason` / `disconnectionReasonCode` do Evolution — por que caiu. */
+    motivo?: number | null,
   ): Promise<void> {
     try {
       const dono = this.parseInstancia(instanceName);
@@ -52,6 +54,17 @@ export class EvolutionInstanciaService {
       if (!empresaId) return;
       const usuarioId = dono.type === 'USUARIO' ? dono.id : null;
       const agora = new Date();
+      // Estado anterior só pra LOGAR a transição: "close" repetido a cada sync
+      // não é notícia; `open → close` é. Sem isto o log não distingue a queda
+      // do eco dela, e foi por isso que a investigação de 24/08 não teve o que ler.
+      const anterior = await this.prisma.evolutionInstancia
+        .findUnique({ where: { instanceName }, select: { connectionStatus: true } })
+        .catch(() => null);
+      if (anterior && anterior.connectionStatus !== connectionStatus) {
+        const txt = `[evolution] ${instanceName}: ${anterior.connectionStatus} → ${connectionStatus}`;
+        if (connectionStatus === 'open') this.logger.log(txt);
+        else this.logger.warn(`${txt} (motivo=${motivo ?? 'não informado'})`);
+      }
       await this.prisma.evolutionInstancia.upsert({
         where: { instanceName },
         create: {
@@ -61,12 +74,17 @@ export class EvolutionInstanciaService {
           connectionStatus,
           ownerJid: ownerJid ?? null,
           ultimoEventoEm: agora,
+          ultimoMotivo: motivo ?? null,
+          ultimoMotivoEm: motivo != null ? agora : null,
         },
         // Não sobrescreve empresaId/usuarioId (estáveis); ownerJid só quando vem preenchido.
         update: {
           connectionStatus,
           ultimoEventoEm: agora,
           ...(ownerJid ? { ownerJid } : {}),
+          // Motivo só é gravado quando VEM: reconexão bem-sucedida não pode
+          // apagar o motivo da queda anterior — é o histórico que explica o ciclo.
+          ...(motivo != null ? { ultimoMotivo: motivo, ultimoMotivoEm: agora } : {}),
         },
       });
     } catch (err) {

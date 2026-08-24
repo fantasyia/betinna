@@ -2257,6 +2257,12 @@ model EvolutionInstancia {
   connectionStatus String    @default("close")
   /// Último CONNECTION_UPDATE recebido (pra detectar zumbi/staleness no sync).
   ultimoEventoEm   DateTime?
+  /// POR QUE caiu: `statusReason` do connection.update / `disconnectionReasonCode` do fetchInstances.
+  /// 401 = deslogado no aparelho · 440 = sessão substituída (outro device pegou o slot) ·
+  /// 428 = conexão fechada · 515 = restart pedido pelo WhatsApp.
+  /// Sem isto a queda era anônima: dava pra ver QUE caiu, nunca POR QUÊ.
+  ultimoMotivo     Int?
+  ultimoMotivoEm   DateTime?
   criadoEm         DateTime  @default(now())
   atualizadoEm     DateTime  @updatedAt
 

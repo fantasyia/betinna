@@ -69,11 +69,13 @@ describe('EvolutionInstanciasSyncJob', () => {
       'emp_emp-1',
       'open',
       '5511@s.whatsapp.net',
+      null,
     );
     expect(instancias.sincronizarConexao).toHaveBeenNthCalledWith(
       2,
       'user_rep-1',
       'connecting',
+      null,
       null,
     );
   });
@@ -82,7 +84,12 @@ describe('EvolutionInstanciasSyncJob', () => {
     const { job, evolution, instancias } = setup();
     evolution.listarInstanciasDetalhadas.mockResolvedValue([{ name: 'emp_emp-2' }]);
     await job.sincronizar();
-    expect(instancias.sincronizarConexao).toHaveBeenCalledWith('emp_emp-2', 'close', undefined);
+    expect(instancias.sincronizarConexao).toHaveBeenCalledWith(
+      'emp_emp-2',
+      'close',
+      undefined,
+      null,
+    );
   });
 
   it('1ª detecção de zumbi NÃO reseta (guard de 2 ciclos)', async () => {

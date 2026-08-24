@@ -59,7 +59,12 @@ export class EvolutionInstanciasSyncJob {
             );
           });
         }
-        await this.instancias.sincronizarConexao(i.name, i.connectionStatus ?? 'close', i.ownerJid);
+        await this.instancias.sincronizarConexao(
+          i.name,
+          i.connectionStatus ?? 'close',
+          i.ownerJid,
+          i.disconnectionReasonCode ?? null,
+        );
         // Zumbi = 'open' mas com motivo de desconexão (deslogado/travado).
         if (i.connectionStatus === 'open' && i.disconnectionReasonCode != null) {
           zumbis += 1;
