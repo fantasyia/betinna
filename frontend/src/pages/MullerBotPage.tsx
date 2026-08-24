@@ -119,12 +119,45 @@ function rotateSessionId(): string {
   return novo;
 }
 
-const SUGGESTED = [
-  'Quais produtos têm marca X?',
-  'Preciso de algo na linha de molhos',
-  'Recomende 3 produtos abaixo de R$ 50',
-  'O que tem disponível em embalagens grandes?',
+/**
+ * Sugestões NEUTRAS — usadas quando o catálogo ainda não tem marca/linha/
+ * categoria cadastrada.
+ *
+ * De propósito não citam produto, faixa de preço nem segmento: as antigas
+ * ("linha de molhos", "abaixo de R$ 50", "embalagens grandes") vieram do
+ * primeiro cliente e apareciam iguais em qualquer empresa — numa de proteção
+ * elétrica, sugeriam perguntar por molho de tomate.
+ */
+const SUGESTOES_NEUTRAS = [
+  'Quais produtos vocês têm no catálogo?',
+  'Me indique 3 produtos e explique quando usar cada um',
+  'Qual a diferença entre os modelos?',
+  'Preciso de ajuda pra escolher o produto certo',
 ];
+
+/**
+ * Monta sugestões a partir do catálogo REAL do tenant (marca, linha, categoria).
+ *
+ * Vem dos dados, e não de config, porque config precisaria ser preenchida por
+ * alguém em cada empresa — e o dado já existe. Catálogo vazio (ou sem esses
+ * campos) cai nas neutras, que servem pra qualquer negócio.
+ */
+export function montarSugestoes(facets?: {
+  marcas?: string[];
+  linhas?: string[];
+  categorias?: string[];
+}): string[] {
+  const marca = facets?.marcas?.[0];
+  const linha = facets?.linhas?.[0];
+  const categoria = facets?.categorias?.[0];
+  const doCatalogo = [
+    marca ? `Quais produtos são da marca ${marca}?` : null,
+    linha ? `Preciso de algo na linha ${linha}` : null,
+    categoria ? `O que vocês têm em ${categoria}?` : null,
+  ].filter((q): q is string => q !== null);
+  // Completa até 4 com as neutras, sem repetir o que já entrou.
+  return [...doCatalogo, ...SUGESTOES_NEUTRAS].slice(0, 4);
+}
 
 export default function MullerBotPage() {
   const [pergunta, setPergunta] = useState('');
@@ -496,6 +529,13 @@ export default function MullerBotPage() {
 }
 
 function EmptyChat({ onSuggest }: { onSuggest: (q: string) => void }) {
+  // Facets do catálogo da empresa (marca/linha/categoria dos produtos ativos).
+  const { data: facets } = useApiQuery<{
+    marcas: string[];
+    linhas: string[];
+    categorias: string[];
+  }>('/produtos/facets');
+  const sugestoes = montarSugestoes(facets ?? undefined);
   return (
     <div className="text-center py-12 px-4 max-w-xl mx-auto">
       <div
@@ -520,7 +560,7 @@ function EmptyChat({ onSuggest }: { onSuggest: (q: string) => void }) {
         <div className="text-[10px] uppercase tracking-wider text-muted-light text-left">
           Sugestões
         </div>
-        {SUGGESTED.map((q) => (
+        {sugestoes.map((q) => (
           <button
             key={q}
             type="button"
