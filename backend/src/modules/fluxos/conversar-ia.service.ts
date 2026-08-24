@@ -40,6 +40,13 @@ const HISTORICO_DEFAULT = 10;
 /** Teto de re-disparos do ramo "timeout" por execução (anti-loop de follow-up). */
 const MAX_TIMEOUT_FOLLOWS = 5;
 
+/**
+ * Quantas vezes REGERAR quando a resposta cai na trava de fala-com-operador.
+ * 2 porque o problema é de amostragem, não de prompt: a mesma instrução gerou
+ * resposta boa nas 8 rodadas seguintes. Mais que isso vira custo sem ganho.
+ */
+const REGERAR_MAX = 2;
+
 /** Instrução pra IA abrir a conversa (primeira mensagem) — fluxo PROATIVO. */
 const INSTRUCAO_OPENER =
   '\n\n[Tarefa agora] Inicie a conversa com o lead: escreva a PRIMEIRA mensagem de abordagem, ' +
@@ -992,12 +999,38 @@ export class ConversarIaService {
     // O turno INTEIRO, não só `.resposta`: no caminho reativo a IA já pode ter
     // classificado nesta primeira volta, e descartar isso era o que deixava o
     // lead parado na triagem depois de ouvir "já te passo pro comercial".
-    const turnoAbertura = parseTurnoIa(abertura.texto);
-    const aberturaTexto = personalizarNome(turnoAbertura.resposta, lead.contatoNome);
+    let turnoAbertura = parseTurnoIa(abertura.texto);
+    let aberturaTexto = personalizarNome(turnoAbertura.resposta, lead.contatoNome);
+
+    // REGERA antes de desistir. `ia_fala_com_operador` diz que ESTA geração saiu
+    // ruim, não que o prompt está quebrado — a rodada seguinte, com o mesmo
+    // prompt, quase sempre sai boa. Sem isto, UMA rolagem ruim matava a conversa
+    // inteira e o lead ficava no silêncio.
+    for (let t = 1; t <= REGERAR_MAX && falaComOperador(aberturaTexto); t++) {
+      this.logger.warn(
+        `CONVERSAR_IA: resposta falava com o operador — regerando (${t}/${REGERAR_MAX}, ` +
+          `exec ${execucaoId})`,
+      );
+      const nova = await this.muller
+        .gerarRespostaIa(
+          empresaId,
+          systemPrompt + opener,
+          mensagemDoTurno,
+          historicoInicial,
+          undefined,
+          reativo ? { responseFormat: montarSchemaDoTurno(declaradasAbertura) } : {},
+        )
+        .catch(() => null);
+      if (!nova) break;
+      await this.custo.registrarUso(empresaId, nova.tokensIn ?? 0, nova.tokensOut ?? 0);
+      turnoAbertura = parseTurnoIa(nova.texto);
+      aberturaTexto = personalizarNome(turnoAbertura.resposta, lead.contatoNome);
+    }
+
     // TRAVA: texto dirigido a quem OPERA o sistema não pode ir pro cliente.
     // Melhor não responder do que pedir a uma indústria que "cole a primeira
-    // mensagem do lead". Roteia pela saída "erro" — assim alguém é avisado, em
-    // vez de o lead ficar mudo sem ninguém saber.
+    // mensagem do lead". Roteia pela saída "erro" — e agora a conversa também
+    // sobe no inbox (precisaHumano), então ninguém fica no silêncio.
     if (falaComOperador(aberturaTexto)) {
       this.logger.error(
         `CONVERSAR_IA: resposta falava com o OPERADOR e foi BLOQUEADA (exec ${execucaoId}, ` +
@@ -2391,7 +2424,70 @@ export class ConversarIaService {
         contexto: toJsonInput({ ...ctx, tipo_erro, mensagem_erro }),
       },
     });
+    // A conversa PRECISA DE HUMANO — independente de existir aresta "erro".
+    //
+    // Sem isto o nó morria calado: em 24/08 a trava de saída bloqueou uma
+    // resposta ruim (certíssimo), a saída "erro" do nó não tinha nada ligado, e
+    // um lead industrial que acabou de relatar um problema ficou no silêncio sem
+    // ninguém na empresa saber. Varredura da empresa: 6 dos 7 nós de IA em fluxo
+    // ATIVO estavam com a saída "erro" solta — incluindo o T1, que é a porta de
+    // entrada de TODO inbound.
+    //
+    // Ligar a aresta resolve caso a caso, mas é frágil por construção: são 6
+    // fluxos pra editar, cada edição rebaixa o fluxo pra rascunho, e todo fluxo
+    // NOVO precisa lembrar — esquecer é silencioso. Aqui cobre os 6 de uma vez.
+    //
+    // O campo já existia pra exatamente isto (`Conversation.precisaHumano`: "o
+    // bot caiu no fallback, a conversa precisa de humano e sobe pro topo da
+    // lista"); só o caminho de fluxo não usava.
+    await this.marcarPrecisaHumano(ctx, tipo_erro, execucaoId);
     await this.enfileirarSucessores(execucaoId, noId, 'erro', false);
     return { tipo_erro, mensagem_erro };
+  }
+
+  /**
+   * Sobe a conversa pro topo do inbox quando a IA falha. Best-effort: o objetivo
+   * é NÃO deixar o lead no silêncio — falhar aqui não pode piorar o erro que já
+   * estamos tratando.
+   */
+  private async marcarPrecisaHumano(
+    ctx: ExecucaoContexto,
+    tipo_erro: string,
+    execucaoId: string,
+  ): Promise<void> {
+    try {
+      const rec = ctx as Record<string, unknown>;
+      let convId =
+        typeof rec['conversationId'] === 'string' && rec['conversationId']
+          ? (rec['conversationId'] as string)
+          : null;
+      if (!convId) {
+        // Sem conversationId no contexto (C1/C2 por etapa, RB/RT por etiqueta):
+        // acha pelo lead. `empresaId` vem da EXECUÇÃO — o contexto não carrega.
+        const exec = await this.prisma.fluxoExecucao.findUnique({
+          where: { id: execucaoId },
+          select: { empresaId: true },
+        });
+        if (!exec?.empresaId) return;
+        convId = await this.conversaDaEmpresaDoLead(
+          exec.empresaId,
+          typeof rec['leadId'] === 'string' ? (rec['leadId'] as string) : null,
+        );
+      }
+      if (!convId) return;
+      await this.prisma.conversation.update({
+        where: { id: convId },
+        data: { precisaHumano: true, status: 'PENDENTE' },
+      });
+      this.logger.warn(
+        `CONVERSAR_IA: conversa ${convId} marcada PRECISA HUMANO (${tipo_erro}, exec ${execucaoId}) ` +
+          `— o lead não pode ficar no silêncio`,
+      );
+    } catch (err) {
+      this.logger.warn(
+        `CONVERSAR_IA: falha ao marcar precisaHumano (exec ${execucaoId}): ` +
+          `${err instanceof Error ? err.message : String(err)}`,
+      );
+    }
   }
 }

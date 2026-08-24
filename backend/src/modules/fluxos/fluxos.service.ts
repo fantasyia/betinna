@@ -815,6 +815,32 @@ export class FluxosService {
     return this.findOne(user, id);
   }
 
+  /**
+   * Avisa (não recusa) quando um nó "Conversar com IA" ativa com a saída `erro`
+   * SOLTA.
+   *
+   * Em 24/08, 6 dos 7 nós de IA em fluxo ATIVO estavam assim — inclusive o T1,
+   * porta de entrada de todo inbound. Quando a IA falhava, a execução morria sem
+   * tarefa, sem alerta e sem tag, e o lead ficava no silêncio.
+   *
+   * NÃO recusa a ativação de propósito: o motor já marca a conversa como
+   * `precisaHumano` em qualquer falha de IA, então a aresta virou melhoria por
+   * fluxo, não obrigação. Recusar aqui bloquearia fluxo que funciona — e o
+   * remédio (rebaixar pra rascunho, editar, reativar) custaria mais que o
+   * problema que sobrou.
+   */
+  private avisarSaidaErroSolta(fluxo: FluxoWithRel): void {
+    const semErro = fluxo.nos
+      .filter((n) => n.tipo === 'ACAO' && n.acaoTipo === 'CONVERSAR_IA')
+      .filter((n) => !fluxo.arestas.some((e) => e.sourceNoId === n.id && e.label === 'erro'));
+    if (semErro.length === 0) return;
+    this.logger.warn(
+      `Fluxo "${fluxo.nome}" ativado com ${semErro.length} nó(s) de IA sem a saída "erro" ligada ` +
+        `(${semErro.map((n) => n.titulo).join(', ')}). A conversa ainda sobe pro humano quando a IA ` +
+        `falha, mas ligar a saída dá tratamento próprio ao caso.`,
+    );
+  }
+
   async ativar(user: AuthenticatedUser, id: string): Promise<FluxoWithRel> {
     const fluxo = await this.findOne(user, id);
     this.assertPodeGerirFluxo(user, fluxo);
@@ -832,6 +858,7 @@ export class FluxosService {
     // Valida grafo antes de ativar
     this.validarGrafo(fluxo.nos, fluxo.arestas, fluxo.triggerTipo);
     this.validarAgendamentoCron(fluxo);
+    this.avisarSaidaErroSolta(fluxo);
 
     // Começa LIMPO: cancela execuções velhas que ficaram em voo (ex: fluxo
     // pausado antes do fix de cancelamento). Sem isto, reativar ressuscitava

@@ -41,6 +41,9 @@ const makePrisma = () => ({
     // `conversationId` no contexto e resolve a conversa da EMPRESA pelo lead.
     // Default null = sem conversa anterior (o caso dos testes de abertura).
     findFirst: vi.fn().mockResolvedValue(null),
+    // Falha de IA sobe a conversa pro humano (precisaHumano) — sem depender de
+    // existir aresta "erro" no grafo.
+    update: vi.fn().mockResolvedValue({}),
   },
 });
 const makePersona = () => ({
@@ -432,6 +435,48 @@ describe('ConversarIaService', () => {
       // Não fica mudo: segue a saída "erro", que é quem avisa gente.
       expect(r.roteado).toBe(true);
       expect(r.tipoErro).toBe('ia_fala_com_operador');
+    });
+
+    // ── Falha de IA não pode virar silêncio (card 🔴 de 24/08) ──────
+    it('🔴 IA falha → conversa marcada PRECISA HUMANO, mesmo sem aresta "erro"', async () => {
+      // 6 dos 7 nós de IA em fluxo ATIVO estavam com a saída "erro" solta —
+      // inclusive o T1, porta de entrada de todo inbound. A execução morria sem
+      // tarefa, sem alerta e sem tag: o lead ficava esperando e ninguém sabia.
+      prisma.lead.findFirst.mockResolvedValue({ contatoTelefone: '11999990000', variaveis: {} });
+      prisma.fluxoExecucao.findUnique.mockResolvedValue({ empresaId: 'emp-1' });
+      prisma.conversation.findFirst.mockResolvedValue({ id: 'conv-1' });
+      muller.gerarRespostaIa.mockRejectedValue(new Error('openai fora'));
+
+      await svc.iniciar('exec-1', no({ promptId: 'p1' }) as never, { leadId: 'lead-1' }, 'emp-1');
+
+      expect(prisma.conversation.update).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: { id: 'conv-1' },
+          data: expect.objectContaining({ precisaHumano: true }),
+        }),
+      );
+    });
+
+    it('trava de fala-com-operador REGERA antes de desistir', async () => {
+      // `ia_fala_com_operador` diz que ESTA geração saiu ruim, não que o prompt
+      // quebrou. Sem regerar, uma rolagem ruim matava a conversa inteira.
+      prisma.lead.findFirst.mockResolvedValue({ contatoTelefone: '11999990000', variaveis: {} });
+      muller.gerarRespostaIa
+        .mockResolvedValueOnce({ texto: 'cole a primeira mensagem do lead', modelo: 'gpt' })
+        .mockResolvedValueOnce({ texto: 'Oi! Como posso ajudar com o CLP?', modelo: 'gpt' });
+
+      const r = await svc.iniciar(
+        'exec-1',
+        no({ promptId: 'p1' }) as never,
+        { leadId: 'lead-1', texto: 'oi' },
+        'emp-1',
+        true,
+      );
+
+      // Gerou de novo e a 2ª resposta SAIU — a conversa não morreu.
+      expect(muller.gerarRespostaIa).toHaveBeenCalledTimes(2);
+      expect(whatsapp.enviarTexto).toHaveBeenCalled();
+      expect(r.roteado).toBeFalsy();
     });
 
     // ── O contrato do 1º turno (card 🔴 de 24/08, o "pela metade") ──
