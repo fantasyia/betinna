@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { SINAIS_ROTEAMENTO } from './fluxo-executor.types';
-import { filtrarVariaveisGravaveis } from './conversar-ia.service';
+import { filtrarVariaveisGravaveis, normalizarPontuacao } from './conversar-ia.service';
 import {
   semMic,
   ConversarIaService,
@@ -108,9 +108,12 @@ describe('parseTurnoIa', () => {
     expect(r.resposta).not.toContain('classificacao_final');
   });
 
-  it('preserva frase legítima com dois-pontos (não corta demais)', () => {
+  it('frase legítima com dois-pontos NÃO é cortada — só a pontuação normaliza', () => {
+    // O propósito do teste continua: não cortar a frase junto com o vazamento.
+    // O que mudou é a pontuação — dois-pontos em prosa vira vírgula (card 24/08),
+    // porque é a assinatura mais reconhecível de texto de robô no WhatsApp.
     const r = parseTurnoIa('Perfeito: vou encaminhar seu pedido pro time comercial agora mesmo.');
-    expect(r.resposta).toBe('Perfeito: vou encaminhar seu pedido pro time comercial agora mesmo.');
+    expect(r.resposta).toBe('Perfeito, vou encaminhar seu pedido pro time comercial agora mesmo.');
   });
 
   it('NÃO vaza variável quando o JSON é VÁLIDO mas a resposta traz a variável dentro', () => {
@@ -124,7 +127,8 @@ describe('parseTurnoIa', () => {
       }),
     );
     expect(r.resposta).toBe(
-      'Me conta: você quer proteger algum equipamento ou ambiente específico?',
+      // Vazamento cortado (o ponto do teste) + dois-pontos normalizado.
+      'Me conta, você quer proteger algum equipamento ou ambiente específico?',
     );
     expect(r.resposta).not.toContain('classificacao_final');
   });
@@ -1674,5 +1678,65 @@ describe('ConversarIaService — overrides do prompt e enum das variáveis', () 
     await svc.retomar('exec-1', 'conv-1', 'oi');
 
     expect(muller.gerarRespostaIa).toHaveBeenCalled();
+  });
+});
+
+/**
+ * Normalizador de pontuacao (card de 24/08). Dois-pontos e travessao sao a
+ * assinatura mais reconhecivel de texto de IA — e o projeto inteiro depende de
+ * a Betinna nunca parecer uma.
+ *
+ * O teste que IMPORTA e o do link: ele leva ":" em tres lugares legitimos, e
+ * quebrar qualquer um joga o cliente numa pagina vazia.
+ */
+describe('normalizarPontuacao', () => {
+  it('dois-pontos em prosa vira virgula', () => {
+    expect(normalizarPontuacao('me diga onde esta a duvida: no modelo ou na instalacao?')).toBe(
+      'me diga onde esta a duvida, no modelo ou na instalacao?',
+    );
+  });
+
+  it('travessao e meia-risca viram virgula', () => {
+    expect(normalizarPontuacao('o Master Block — que fica no quadro — protege tudo')).toBe(
+      'o Master Block, que fica no quadro, protege tudo',
+    );
+    expect(normalizarPontuacao('faixa 110 – 220V')).toBe('faixa 110, 220V');
+  });
+
+  it('ponto-e-virgula encerra a frase e a proxima comeca em maiuscula', () => {
+    expect(normalizarPontuacao('ele nao substitui nada; ele complementa')).toBe(
+      'ele nao substitui nada. Ele complementa',
+    );
+  });
+
+  it('🔴 O LINK DO C1 PASSA INTACTO — inclusive o "rotulo:corrente" do quadros', () => {
+    const link =
+      'https://api-production-29e1f.up.railway.app/protecao-comercial' +
+      '?contexto=comercio&corrente=63&tensao=220V&origem=disjuntor' +
+      '&quadros=Freezers / refrigeracao:40#calculadora';
+    expect(normalizarPontuacao(`segue o link ${link} e me diz`)).toContain(link);
+  });
+
+  it('https:// nunca e alterado, mesmo com prosa em volta', () => {
+    const t = normalizarPontuacao('olha: https://somatecblocking.com.br/produtos — da uma olhada');
+    expect(t).toContain('https://somatecblocking.com.br/produtos');
+    expect(t.startsWith('olha,')).toBe(true);
+  });
+
+  it('hora nao e prosa: 10:30 fica como esta', () => {
+    expect(normalizarPontuacao('passo la as 10:30')).toBe('passo la as 10:30');
+  });
+
+  it('trecho entre crases passa intacto', () => {
+    expect(normalizarPontuacao('use `tensao:220` no campo')).toBe('use `tensao:220` no campo');
+  });
+
+  it('texto sem pontuacao problematica nao muda', () => {
+    const t = 'Oi! Aqui e da Somatec Blocking, como posso ajudar?';
+    expect(normalizarPontuacao(t)).toBe(t);
+  });
+
+  it('vazio nao quebra', () => {
+    expect(normalizarPontuacao('')).toBe('');
   });
 });

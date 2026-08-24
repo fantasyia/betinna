@@ -221,6 +221,52 @@ export function falaComOperador(texto: string): boolean {
   return PADROES_FALA_COM_OPERADOR.some((re) => re.test(texto));
 }
 
+/**
+ * Normaliza a pontuacao que denuncia texto de robo no WhatsApp.
+ *
+ * Os 7 prompts da empresa ja PROIBEM dois-pontos e travessao no texto pro
+ * cliente - e escapava assim mesmo ("me diga em que parte esta a duvida: no
+ * modelo, na instalacao..."). Pontuacao e regra de FORMATACAO, nao de
+ * julgamento: pedir ao modelo reduz a frequencia e nunca zera, e cada reforco
+ * novo compete com as outras regras de um prompt de 29 mil caracteres.
+ *
+ * URLs e trechos entre crases passam INTACTOS. O link do C1 leva ":" em tres
+ * lugares legitimos - o "https:", e o separador rotulo:corrente do parametro
+ * "quadros" (ex.: quadros=Freezers / refrigeracao:40). Trocar qualquer um
+ * quebra o link e joga o cliente numa pagina vazia: seria trocar um problema
+ * cosmetico por um que perde venda.
+ *
+ * Hora (10:30) tambem fica: ":" entre digitos nao e prosa.
+ */
+export function normalizarPontuacao(texto: string): string {
+  if (!texto) return texto;
+  // Recorta o que nao pode ser tocado e devolve no fim.
+  const cofre: string[] = [];
+  const guardar = (m: string): string => `§§${cofre.push(m) - 1}§§`;
+  let t = texto
+    .replace(/`[^`]*`/g, guardar)
+    .replace(/\bhttps?:\/\/\S+/gi, guardar)
+    .replace(/\bwww\.\S+/gi, guardar);
+
+  t = t
+    // ":" em prosa vira virgula. Entre digitos (hora, proporcao) fica.
+    .replace(/(?<!\d)\s*:\s*(?!\d)/g, ', ')
+    // Travessao e meia-risca viram virgula.
+    .replace(/\s*[—–]\s*/g, ', ')
+    // ";" encerra a frase.
+    .replace(/\s*;\s*/g, '. ');
+
+  t = t
+    // A troca pode encostar pontuacao: ", ." ou ",," viram um sinal so.
+    .replace(/,\s*([,.!?])/g, '$1')
+    .replace(/\s+([,.!?])/g, '$1')
+    // Depois de ";" -> ".", a frase nova comeca em maiuscula.
+    .replace(/\.\s+(\p{Ll})/gu, (_m, c) => `. ${c.toUpperCase()}`)
+    .replace(/[ \t]{2,}/g, ' ');
+
+  return t.replace(/§§(\d+)§§/g, (_m, i) => cofre[Number(i)] ?? '');
+}
+
 export function limparVazamentoDeVariaveis(texto: string): string {
   const linhas = texto.split(/\r?\n/);
   const uteis = linhas.filter((l) => {
@@ -252,7 +298,7 @@ export function parseTurnoIa(texto: string): IaTurno {
         // vazamento DENTRO do texto da resposta ("…?\nclassificacao_final = "X"").
         // Foi assim que a variável chegou no WhatsApp do cliente mesmo depois do
         // fix anterior, que só cobria o caminho "não é JSON".
-        resposta: limparVazamentoDeVariaveis(obj.resposta),
+        resposta: normalizarPontuacao(limparVazamentoDeVariaveis(obj.resposta)),
         classificou: obj.classificou === true,
         classificacao: typeof obj.classificacao === 'string' ? obj.classificacao : undefined,
         variaveis:
@@ -265,7 +311,7 @@ export function parseTurnoIa(texto: string): IaTurno {
     /* não é JSON — trata como texto puro (continua conversando) */
   }
   // Fallback texto puro: NUNCA mandar variável interna pro cliente.
-  return { resposta: limparVazamentoDeVariaveis(texto), classificou: false };
+  return { resposta: normalizarPontuacao(limparVazamentoDeVariaveis(texto)), classificou: false };
 }
 
 /**
