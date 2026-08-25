@@ -958,6 +958,28 @@ export class LeadsService {
     // via `conversa.leadId` preenchido, concluía "já tem lead" e NÃO criava; o nó
     // de IA não achava o lead e pulava → a conversa nunca mais era triada, sem
     // erro nenhum. Desamarra junto com o delete.
+    // As execucoes VIVAS do lead tambem morrem com ele. Sem isto, passo agendado
+    // (timeout de "sem resposta", follow-up) acordava depois e tentava etiquetar
+    // um lead que nao existe mais: falhava, o BullMQ tentava 3x e a execucao
+    // virava FALHOU. Cada limpeza de residuo de teste derrubava a taxa de
+    // sucesso do fluxo com erro que nao era erro de fluxo nenhum.
+    //
+    // Raw porque o leadId mora dentro do JSON do contexto (nao ha coluna) — e
+    // `contexto #>> '{leadId}'` e o mesmo caminho ja usado pelo cancelamento de
+    // conversas orfas no conversar-ia.
+    const canceladas = await this.prisma.$executeRaw`
+      UPDATE "FluxoExecucao"
+      SET status = 'CANCELADO', "aguardandoNoId" = NULL, "timeoutEm" = NULL, "terminouEm" = now()
+      WHERE "empresaId" = ${existing.empresaId}
+        AND status IN ('PENDENTE', 'EM_EXECUCAO', 'AGUARDANDO')
+        AND (contexto #>> '{leadId}') = ${id}`;
+    if (canceladas > 0) {
+      this.logger.log(
+        `Lead ${id} excluido: ${canceladas} execucao(oes) de fluxo cancelada(s) junto ` +
+          `(passo agendado nao vai mais acordar procurando um lead que nao existe)`,
+      );
+    }
+
     await this.prisma.$transaction([
       this.prisma.conversation.updateMany({
         where: { leadId: id, empresaId: existing.empresaId },

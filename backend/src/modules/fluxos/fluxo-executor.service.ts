@@ -67,6 +67,24 @@ const PAPEIS_VALIDOS = new Set(['ADMIN', 'DIRECTOR', 'GERENTE', 'SAC', 'REP']);
  * todo `queue.add` — virou constante porque agora o executor precisa SABER
  * quando elas acabaram pra decidir entre relançar e reagendar.
  */
+/**
+ * O lead FOI APAGADO — nao e falha do fluxo.
+ *
+ * Passo agendado (timeout de "sem resposta", follow-up) acorda depois e encontra
+ * o lead removido. Isso virava erro: falhava, o BullMQ tentava 3x e a execucao
+ * ia pra FALHOU — cada limpeza de residuo de teste derrubava a taxa de sucesso
+ * do fluxo com um erro que nao era erro nenhum.
+ *
+ * IMPORTANTE: so vale pra lead que NAO EXISTE. Lead que existe em OUTRA empresa
+ * continua sendo erro de verdade — e defesa cross-tenant, nao lixo de teste.
+ */
+class LeadRemovidoError extends Error {
+  constructor(leadId: string) {
+    super(`Lead ${leadId} foi excluido — passo encerrado sem acao`);
+    this.name = 'LeadRemovidoError';
+  }
+}
+
 const TENTATIVAS_CURTAS = 3;
 
 /**
@@ -616,8 +634,17 @@ export class FluxoExecutorService {
         }
       }
 
-      sucesso = false;
-      erroMsg = err instanceof Error ? err.message : String(err);
+      // Lead APAGADO: encerra limpo, nao conta como falha. O passo agendado
+      // acordou depois da limpeza do lead — nao ha o que fazer, e pintar isso de
+      // vermelho enterra a falha de verdade no meio do ruido.
+      if (err instanceof LeadRemovidoError) {
+        pulado = true;
+        puladoMotivo = err.message;
+        this.logger.log(`Execução ${execucaoId} nó ${noId}: ${err.message}`);
+      } else {
+        sucesso = false;
+        erroMsg = err instanceof Error ? err.message : String(err);
+      }
       this.logger.warn(
         `Fluxo ${execucao.fluxoId} / exec ${execucaoId} / nó ${no.titulo}: ${erroMsg}`,
       );
@@ -944,6 +971,18 @@ export class FluxoExecutorService {
    * resposta é "não". O custo de errar pra cá é uma mensagem legítima sair mais
    * tarde; errar pro outro lado é acordar alguém às 3h.
    */
+  /**
+   * O lead sumiu ou e de outro tenant? Decide entre encerrar limpo e falhar.
+   * Uma consulta a mais so no caminho de erro — o caminho feliz nao paga nada.
+   */
+  private async falharPorLeadAusente(leadId: string, empresaId: string): Promise<never> {
+    const existe = await this.prisma.lead
+      .findUnique({ where: { id: leadId }, select: { id: true } })
+      .catch(() => null);
+    if (!existe) throw new LeadRemovidoError(leadId);
+    throw new Error(`Lead ${leadId} nao encontrado na empresa ${empresaId}`);
+  }
+
   private async conversaViva(empresaId: string, leadId?: string): Promise<boolean> {
     if (!leadId) return false;
     try {
@@ -1833,7 +1872,7 @@ export class FluxoExecutorService {
         where: { id: leadId, empresaId },
         select: { id: true },
       });
-      if (!leadOk) throw new Error(`Lead ${leadId} não encontrado na empresa ${empresaId}`);
+      if (!leadOk) await this.falharPorLeadAusente(leadId, empresaId);
       if (adicionar) {
         await this.prisma.leadTag.upsert({
           where: { leadId_tagId: { leadId, tagId: tag.id } },
@@ -1931,7 +1970,7 @@ export class FluxoExecutorService {
           etapaDesde: new Date(),
         },
       });
-      if (count === 0) throw new Error(`Lead ${leadId} não encontrado na empresa ${empresaId}`);
+      if (count === 0) await this.falharPorLeadAusente(leadId, empresaId);
       // Histórico: transição por FLUXO (só quando muda de verdade).
       if (origemId !== etapa.id) {
         await registrarTransicaoEtapa(this.prisma, this.logger, {
@@ -2008,7 +2047,7 @@ export class FluxoExecutorService {
       },
     });
     if (count === 0) {
-      throw new Error(`Lead ${leadId} não encontrado na empresa ${empresaId}`);
+      await this.falharPorLeadAusente(leadId, empresaId);
     }
     // Histórico: transição por FLUXO (enum legado). Só quando muda de verdade.
     if (antesLegado && antesLegado.etapa !== cfg.etapa) {
@@ -2527,7 +2566,7 @@ export class FluxoExecutorService {
         data: { representanteId: cfg.representanteId },
       });
       if (count === 0) {
-        throw new Error(`Lead ${leadId} não encontrado na empresa ${empresaId}`);
+        await this.falharPorLeadAusente(leadId, empresaId);
       }
     }
     if (!clienteId && !leadId)

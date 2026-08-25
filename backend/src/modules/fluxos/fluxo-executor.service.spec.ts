@@ -60,6 +60,9 @@ const makePrismaMock = () => ({
     update: vi.fn().mockResolvedValue({}),
     create: vi.fn().mockResolvedValue({ id: 'lead-novo', nome: 'Fulano', etapa: 'NOVO' }),
     count: vi.fn().mockResolvedValue(0),
+    // Distingue lead APAGADO (lixo de teste) de lead de OUTRA empresa (defesa
+    // cross-tenant) quando o findFirst escopado não acha.
+    findUnique: vi.fn().mockResolvedValue({ id: 'lead-1' }),
   } satisfies MockModel,
   conversation: {
     findFirst: vi.fn().mockResolvedValue(null),
@@ -1898,6 +1901,62 @@ describe('FluxoExecutorService', () => {
       await expect(service.executarPasso('exec-1', 'no-1', 'job-test')).rejects.toThrow();
     });
   });
+  // =========================================================================
+  // Lead APAGADO no meio do fluxo (25/08)
+  // =========================================================================
+
+  describe('lead excluído durante a execução', () => {
+    /**
+     * O caso real: o C2 tem um nó de timeout ("Tag: Sem resposta") que acorda 30
+     * min depois. Quando acordava, o lead de teste já tinha sido apagado na
+     * limpeza de resíduo — o nó falhava, o BullMQ tentava 3× e a execução virava
+     * FALHOU. Cada limpeza derrubava a taxa de sucesso com erro que não era erro
+     * de fluxo nenhum.
+     */
+    const noTag = () =>
+      fakeNo({
+        id: 'no-1',
+        tipo: 'ACAO',
+        acaoTipo: 'MUDAR_TAG',
+        titulo: 'Tag: Sem resposta (consultivo)',
+        config: { tagNome: 'sem-resposta', modo: 'adicionar' },
+      });
+
+    it('lead APAGADO: encerra limpo — não conta como falha do fluxo', async () => {
+      prisma.fluxoExecucao.findUnique.mockResolvedValue(
+        fakeExecucao({ status: 'EM_EXECUCAO', contexto: { leadId: 'lead-morto' } }),
+      );
+      prisma.fluxoNo.findUnique.mockResolvedValue(noTag());
+      // Não está na empresa…
+      prisma.lead.findFirst.mockResolvedValue(null);
+      // …e não existe em lugar nenhum: foi excluído.
+      prisma.lead.findUnique.mockResolvedValue(null);
+
+      await expect(service.executarPasso('exec-1', 'no-1', 'job-test')).resolves.toBeUndefined();
+
+      const log = prisma.fluxoExecucaoLog.create.mock.calls.at(-1)?.[0] as {
+        data?: { status?: string };
+      };
+      expect(log?.data?.status).not.toBe('FALHOU');
+    });
+
+    it('🔒 lead de OUTRA empresa continua sendo FALHA — é defesa cross-tenant', async () => {
+      // A distinção que faz o conserto valer: "não existe" é lixo de teste,
+      // "existe noutro tenant" é tentativa de cruzar empresa. Achatar os dois
+      // num "pulado" silenciaria justamente o caso perigoso.
+      prisma.fluxoExecucao.findUnique.mockResolvedValue(
+        fakeExecucao({ status: 'EM_EXECUCAO', contexto: { leadId: 'lead-de-outro' } }),
+      );
+      prisma.fluxoNo.findUnique.mockResolvedValue(noTag());
+      prisma.lead.findFirst.mockResolvedValue(null);
+      prisma.lead.findUnique.mockResolvedValue({ id: 'lead-de-outro' });
+
+      await expect(service.executarPasso('exec-1', 'no-1', 'job-test')).rejects.toThrow(
+        /nao encontrado na empresa/i,
+      );
+    });
+  });
+
   // =========================================================================
   // WhatsApp indisponível — retry curto, reagendamento longo, teto
   // =========================================================================
