@@ -1402,7 +1402,12 @@ export class FluxosService {
       this.prisma.fluxoExecucao.count({ where: { fluxoId: id, teste: true } }),
     ]);
 
-    const taxaSucesso = total > 0 ? Math.round((concluidos / total) * 100) : 0;
+    // Denominador = o que TERMINOU (concluído + falhou). Fora ficam as
+    // CANCELADAS — mensagem nova do mesmo lead cancela a execução anterior, é o
+    // desenho do fluxo, não erro — e as ainda em voo. Com o total cru, o C1/C2
+    // do bot marcava 11% de sucesso sem um único erro (14 canceladas × 2 ok).
+    const terminadas = concluidos + falhos;
+    const taxaSucesso = terminadas > 0 ? Math.round((concluidos / terminadas) * 100) : 0;
     // `testes` vai junto pra tela poder dizer "nunca rodou em produção (N testes)"
     // em vez de "0% de sucesso", que é a leitura que enganou.
     return { total, concluidos, falhos, emExecucao, taxaSucesso, testes };

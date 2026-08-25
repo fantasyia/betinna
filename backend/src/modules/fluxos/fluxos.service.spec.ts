@@ -561,7 +561,9 @@ describe('FluxosService', () => {
       const m = await svc.metricas(fakeUser(), 'fluxo-1');
       expect(m.total).toBe(10);
       expect(m.concluidos).toBe(8);
-      expect(m.taxaSucesso).toBe(80);
+      // 8 ok de 9 TERMINADAS (8 + 1 falha) = 89%. A execução em andamento e as
+      // canceladas ficam fora do denominador — ver taxa-sucesso-canceladas.spec.
+      expect(m.taxaSucesso).toBe(89);
     });
 
     it('retorna taxaSucesso 0 quando não há execuções', async () => {

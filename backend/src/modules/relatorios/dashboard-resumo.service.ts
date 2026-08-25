@@ -586,13 +586,14 @@ export class DashboardResumoService {
     for (let i = 6; i >= 0; i--) buckets.push(diaKey(new Date(agora.getTime() - i * DIA_MS)));
     const execPorFluxo = new Map<
       string,
-      { ok: number; erro: number; total: number; serie: number[] }
+      { ok: number; erro: number; total: number; concluidas: number; serie: number[] }
     >();
     for (const g of exec7dPorFluxo) {
       const atual = execPorFluxo.get(g.fluxoId) ?? {
         ok: 0,
         erro: 0,
         total: 0,
+        concluidas: 0,
         serie: new Array<number>(buckets.length).fill(0),
       };
       const ok = Number(g.ok);
@@ -601,6 +602,8 @@ export class DashboardResumoService {
       atual.ok += ok;
       atual.erro += erro;
       atual.total += total;
+      // "concluídas" = terminaram de fato; é o denominador da taxa de sucesso.
+      atual.concluidas += ok + erro;
       const idx = buckets.indexOf(diaKey(new Date(g.dia)));
       if (idx >= 0) atual.serie[idx] += total;
       execPorFluxo.set(g.fluxoId, atual);
@@ -619,6 +622,7 @@ export class DashboardResumoService {
         ok: 0,
         erro: 0,
         total: 0,
+        concluidas: 0,
         serie: new Array<number>(buckets.length).fill(0),
       };
       // Próximo disparo só faz sentido pra CRON_AGENDADO ativo — usa o mesmo
@@ -648,10 +652,13 @@ export class DashboardResumoService {
         status: f.status,
         triggerTipo: f.triggerTipo,
         exec7d: exec,
-        // `null` quando não houve execução de PRODUÇÃO — a tela mostra "—" em vez
-        // de "0%". Fluxo que não rodou não está falhando, e foi essa confusão que
-        // pintou o T1 de vermelho no dashboard.
-        pctSucesso: exec.total > 0 ? Math.round((exec.ok / exec.total) * 100) : null,
+        // Denominador = execuções que TERMINARAM (CONCLUIDO + FALHOU). Ficam de
+        // fora as CANCELADAS (mensagem nova do mesmo lead cancela a execução
+        // anterior — é o desenho, não falha) e as ainda em voo (PENDENTE/
+        // EM_EXECUCAO/AGUARDANDO). Com o total cru, o C1/C2 do bot marcava ~11%
+        // de sucesso sem UM erro sequer: 14 canceladas contra 2 concluídas.
+        // `null` quando nada terminou — a tela mostra "—" em vez de "0%".
+        pctSucesso: exec.concluidas > 0 ? Math.round((exec.ok / exec.concluidas) * 100) : null,
         ultimoErro: ultimoErroPorFluxo.get(f.id) ?? null,
         // null = nunca disparou em produção (a tela mostra "nunca", não "—",
         // pra distinguir de coluna sem dado).

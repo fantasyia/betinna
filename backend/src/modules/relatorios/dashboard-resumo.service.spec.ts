@@ -171,6 +171,41 @@ describe('DashboardResumoService', () => {
     expect(f.exec7d.serie[6]).toBe(10);
   });
 
+  it('M6: CANCELADA não conta como fracasso — a taxa é sobre o que terminou', async () => {
+    // Caso real (25/08): C1 com 18 execuções em 7 dias, 2 concluídas, 2 em
+    // espera e 14 CANCELADAS — cada mensagem nova do lead cancela a execução
+    // anterior, é o desenho do fluxo. Com `ok/total` a coluna marcava 11% e
+    // pintava de vermelho um fluxo sem UM erro.
+    prisma.$queryRaw = vi
+      .fn()
+      .mockResolvedValueOnce([])
+      .mockResolvedValueOnce([{ total: 0n }])
+      .mockResolvedValueOnce([{ fluxoId: 'fx-1', dia: new Date(), ok: 2n, erro: 0n, total: 18n }])
+      .mockResolvedValueOnce([]) as never;
+
+    const svc = new DashboardResumoService(prisma as never, makeRepScope(null) as never);
+    const r = await svc.resumo(user());
+
+    expect(r.fluxosSala[0].pctSucesso).toBe(100);
+    // O volume segue sendo o real (18) — quem lê a linha vê quanto rodou.
+    expect(r.fluxosSala[0].exec7d.total).toBe(18);
+  });
+
+  it('M6: sem nada terminado (só canceladas/em voo) a coluna fica "—", não 0%', async () => {
+    prisma.$queryRaw = vi
+      .fn()
+      .mockResolvedValueOnce([])
+      .mockResolvedValueOnce([{ total: 0n }])
+      .mockResolvedValueOnce([{ fluxoId: 'fx-1', dia: new Date(), ok: 0n, erro: 0n, total: 7n }])
+      .mockResolvedValueOnce([]) as never;
+
+    const svc = new DashboardResumoService(prisma as never, makeRepScope(null) as never);
+    const r = await svc.resumo(user());
+
+    // null = "não dá pra dizer", diferente de 0% = "falhou tudo".
+    expect(r.fluxosSala[0].pctSucesso).toBeNull();
+  });
+
   it('M6: cada fluxo leva o ÚLTIMO disparo de produção (sinal de vida, não agenda)', async () => {
     // Pedido do Léo (21/08): "Próx. disparo" só tinha valor no cron — as linhas
     // de evento mostravam "—" pra sempre, coluna morta. O ÚLTIMO responde

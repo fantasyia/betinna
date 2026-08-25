@@ -284,11 +284,16 @@ function FamiliaRows({
                 <span className="text-xs text-muted">—</span>
               ) : (
                 <div className="flex flex-col">
+                  {/* O title explicita o denominador: a conta é sobre o que
+                      TERMINOU. Canceladas (execução substituída por mensagem
+                      nova do mesmo lead) e em andamento não entram — senão a
+                      taxa despenca sem ter havido erro nenhum. */}
                   <span
                     className={cn(
                       'inline-flex items-center gap-1 text-xs font-medium tabular',
                       f.pctSucesso >= 90 ? 'text-success' : f.pctSucesso >= 60 ? 'text-warning' : 'text-danger',
                     )}
+                    title={`${f.exec7d.ok} de ${f.exec7d.ok + f.exec7d.erro} execuções concluídas em 7 dias (canceladas e em andamento não contam)`}
                   >
                     {f.pctSucesso >= 90 ? (
                       <CheckCircle2 className="h-3 w-3" aria-hidden />
