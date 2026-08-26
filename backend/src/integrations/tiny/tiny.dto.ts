@@ -53,3 +53,31 @@ export const listaPrecoSchema = z.object({
 });
 
 export type ListaPrecoDto = z.infer<typeof listaPrecoSchema>;
+
+/** Pedido enviado ao Tiny. Itens por SKU — é o que as três pontas conhecem. */
+export const pedidoTinySchema = z.object({
+  cliente: z.object({
+    nome: z.string().min(1).max(120),
+    cpfCnpj: z.string().max(20).optional(),
+    email: z.string().email().max(160).optional(),
+    telefone: z.string().max(40).optional(),
+  }),
+  itens: z
+    .array(
+      z.object({
+        sku: z.string().min(1).max(60),
+        quantidade: z.number().positive(),
+        valorUnitario: z.number().nonnegative().optional(),
+      }),
+    )
+    .min(1)
+    .max(100),
+  numeroPedidoEcommerce: z.string().max(60).optional(),
+  valorFrete: z.number().nonnegative().optional(),
+  observacoes: z.string().max(2000).optional(),
+  marcadores: z.array(z.string().min(1).max(60)).max(20).optional(),
+  depositoId: z.number().int().positive().optional(),
+  vendedorId: z.number().int().positive().optional(),
+});
+
+export type PedidoTinyDto = z.infer<typeof pedidoTinySchema>;

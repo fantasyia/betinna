@@ -3,6 +3,7 @@ import { IntegracoesModule } from '@modules/integracoes/integracoes.module';
 import { TinyClientService } from './tiny-client.service';
 import { TinyContaService } from './tiny-conta.service';
 import { TinyProdutosService } from './tiny-produtos.service';
+import { TinyPedidosService } from './tiny-pedidos.service';
 import { TinyOAuthController } from './tiny-oauth.controller';
 import { TinyOAuthService } from './tiny-oauth.service';
 import { TinyTokenRefreshJob } from './tiny-token-refresh.job';
@@ -23,8 +24,15 @@ import { TinyWebhookController } from './tiny-webhook.controller';
     TinyClientService,
     TinyContaService,
     TinyProdutosService,
+    TinyPedidosService,
     TinyTokenRefreshJob,
   ],
-  exports: [TinyOAuthService, TinyClientService, TinyContaService, TinyProdutosService],
+  exports: [
+    TinyOAuthService,
+    TinyClientService,
+    TinyContaService,
+    TinyProdutosService,
+    TinyPedidosService,
+  ],
 })
 export class TinyModule {}

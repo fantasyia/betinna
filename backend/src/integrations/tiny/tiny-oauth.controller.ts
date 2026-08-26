@@ -12,11 +12,14 @@ import { frontendOrigin } from '@shared/utils/frontend-origin';
 import { TinyOAuthService } from './tiny-oauth.service';
 import { TinyContaService } from './tiny-conta.service';
 import { TinyProdutosService } from './tiny-produtos.service';
+import { TinyPedidosService } from './tiny-pedidos.service';
 import {
   importarProdutosSchema,
   listaPrecoSchema,
+  pedidoTinySchema,
   type ImportarProdutosDto,
   type ListaPrecoDto,
+  type PedidoTinyDto,
 } from './tiny.dto';
 import { ZodValidationPipe } from '@shared/pipes/zod-validation.pipe';
 import { Audit } from '@shared/decorators/audit.decorator';
@@ -30,6 +33,7 @@ export class TinyOAuthController {
     private readonly integracoes: IntegracoesService,
     private readonly conta: TinyContaService,
     private readonly produtos: TinyProdutosService,
+    private readonly pedidos: TinyPedidosService,
   ) {}
 
   @Get('oauth/start')
@@ -141,6 +145,27 @@ export class TinyOAuthController {
       throw new ForbiddenException('Empresa não definida', ErrorCode.TENANT_ACCESS_DENIED);
     }
     return this.produtos.definirListaPreco(user.empresaIdAtiva, dto);
+  }
+
+  /**
+   * Cria um pedido no Tiny a partir de itens por SKU.
+   *
+   * É o mesmo caminho que o pedido do site vai usar — a ponte site → Betinna →
+   * ERP (item 8) só monta este payload a partir do checkout.
+   */
+  @Post('pedidos')
+  @ApiBearerAuth()
+  @Roles('ADMIN', 'DIRECTOR')
+  @Audit({ action: 'CRIAR', resource: 'tiny_pedido' })
+  @ApiOperation({ summary: 'Cria pedido no Tiny (itens por SKU)' })
+  async criarPedido(
+    @CurrentUser() user: AuthenticatedUser,
+    @Body(new ZodValidationPipe(pedidoTinySchema)) dto: PedidoTinyDto,
+  ) {
+    if (!user.empresaIdAtiva) {
+      throw new ForbiddenException('Empresa não definida', ErrorCode.TENANT_ACCESS_DENIED);
+    }
+    return this.pedidos.criar(user.empresaIdAtiva, dto);
   }
 
   @Public()
