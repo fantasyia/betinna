@@ -1,4 +1,4 @@
-import { BadRequestException, Controller, Get, Query, Res } from '@nestjs/common';
+import { BadRequestException, Body, Controller, Get, Post, Query, Res } from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
 import type { Response } from 'express';
 import { CurrentUser } from '@shared/decorators/current-user.decorator';
@@ -11,6 +11,10 @@ import { IntegracoesService } from '@modules/integracoes/integracoes.service';
 import { frontendOrigin } from '@shared/utils/frontend-origin';
 import { TinyOAuthService } from './tiny-oauth.service';
 import { TinyContaService } from './tiny-conta.service';
+import { TinyProdutosService } from './tiny-produtos.service';
+import { importarProdutosSchema, type ImportarProdutosDto } from './tiny.dto';
+import { ZodValidationPipe } from '@shared/pipes/zod-validation.pipe';
+import { Audit } from '@shared/decorators/audit.decorator';
 import type { TinyCredenciais } from './tiny.types';
 
 @ApiTags('integracoes/tiny')
@@ -20,6 +24,7 @@ export class TinyOAuthController {
     private readonly oauth: TinyOAuthService,
     private readonly integracoes: IntegracoesService,
     private readonly conta: TinyContaService,
+    private readonly produtos: TinyProdutosService,
   ) {}
 
   @Get('oauth/start')
@@ -88,6 +93,30 @@ export class TinyOAuthController {
       throw new ForbiddenException('Empresa não definida', ErrorCode.TENANT_ACCESS_DENIED);
     }
     return this.conta.raioX(user.empresaIdAtiva);
+  }
+
+  /**
+   * Sobe catálogo pro Tiny. Caminho INVERSO do sync, e só faz sentido no
+   * bootstrap: a conta do ERP nasce vazia e o catálogo tem que chegar de algum
+   * lugar. Depois disso o Tiny vira a fonte da verdade e o app passa a LER.
+   *
+   * Idempotente por SKU — rodar duas vezes atualiza, não duplica.
+   */
+  @Post('produtos/importar')
+  @ApiBearerAuth()
+  @Roles('ADMIN', 'DIRECTOR')
+  @Audit({ action: 'IMPORTAR', resource: 'tiny_produtos' })
+  @ApiOperation({
+    summary: 'Cria/atualiza produtos no Tiny a partir de uma lista (idempotente por SKU)',
+  })
+  async importarProdutos(
+    @CurrentUser() user: AuthenticatedUser,
+    @Body(new ZodValidationPipe(importarProdutosSchema)) dto: ImportarProdutosDto,
+  ) {
+    if (!user.empresaIdAtiva) {
+      throw new ForbiddenException('Empresa não definida', ErrorCode.TENANT_ACCESS_DENIED);
+    }
+    return this.produtos.importar(user.empresaIdAtiva, dto.produtos);
   }
 
   @Public()
