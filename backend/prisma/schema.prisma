@@ -1753,6 +1753,10 @@ model FluxoExecucao {
   @@index([fluxoId, teste])
   @@index([empresaId])
   @@index([criadoEm])
+  /// Varredura de timeout do CONVERSAR_IA (cron de 1min, consulta global):
+  /// status='AGUARDANDO' AND "timeoutEm" < now(). Sem isto a varredura vira
+  /// seq scan da tabela inteira uma vez por minuto.
+  @@index([status, timeoutEm])
 }
 
 /**

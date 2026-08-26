@@ -15,11 +15,15 @@ import { ehFeriadoNacional } from './feriados.util';
 /**
  * FluxoTriggersJob — cron jobs que disparam fluxos com trigger baseado em tempo.
  *
- * Dois crons separados (latência diferente por necessidade):
- * - `avaliarTriggers` (a cada 30min): CLIENTE_INATIVO_30D, AMOSTRA_FOLLOWUP,
- *   SLA de etapas e timeouts de IA — nada disso precisa de precisão de minuto.
+ * Três crons separados (latência diferente por necessidade):
+ * - `avaliarTriggers` (a cada 30min): CLIENTE_INATIVO_30D, AMOSTRA_FOLLOWUP e
+ *   SLA de etapas — nada disso precisa de precisão de minuto.
  * - `avaliarCronsAgendados` (a cada 1min): CRON_AGENDADO, que dispara em horário
  *   exato escolhido pelo usuário — latência alvo ≤ 1min (antes era ~30min).
+ * - `avaliarTimeoutsIa` (a cada 1min): timeout de conversa do CONVERSAR_IA. Saiu
+ *   do cron de 30min porque o prazo configurado era arredondado pra cima até a
+ *   próxima :00/:30 — um timeout de 5min virava até 30min (6x o prometido), em
+ *   silêncio. Timeout longo (24h/72h) não notava; timeout curto é inviável assim.
  */
 @Injectable()
 export class FluxoTriggersJob {
@@ -62,18 +66,6 @@ export class FluxoTriggersJob {
             `${err instanceof Error ? err.message : String(err)}`,
         );
       }
-    }
-
-    // Orquestração (Fase B) — conversas de IA sem resposta além do timeout
-    // disparam LEAD_SEM_RESPOSTA e são encerradas (consulta global, todas empresas).
-    // try/catch próprio: falha de trigger não pode derrubar os timeouts de IA
-    // (e vice-versa) — são responsabilidades independentes.
-    try {
-      await this.conversarIa.processarTimeouts();
-    } catch (err) {
-      this.logger.error(
-        `processarTimeouts falhou: ${err instanceof Error ? err.message : String(err)}`,
-      );
     }
   }
 
@@ -217,6 +209,34 @@ export class FluxoTriggersJob {
     // TTL 50s — expira antes da próxima rodada de 1min (evita lock órfão travar).
     if (!(await this.cronLock.acquire('fluxo-cron-agendado', 50))) return;
     await this.avaliarCronAgendado();
+  }
+
+  /**
+   * Orquestração (Fase B) — conversas de IA sem resposta além do timeout disparam
+   * LEAD_SEM_RESPOSTA e são encerradas (consulta global, todas as empresas).
+   *
+   * Cron PRÓPRIO de 1min: o `timeoutHoras` grava um `timeoutEm` exato e aceita
+   * fração, mas quem detectava o vencimento era a varredura de 30min — o prazo
+   * real virava "o configurado, arredondado até a próxima :00/:30". 24h não
+   * notava; 5min virava até 30min. Agora a resolução é o minuto.
+   *
+   * A query é barata e indexada por (status, timeoutEm) — só execuções
+   * AGUARDANDO com prazo vencido, com `take: 200` por rodada.
+   */
+  @Cron('* * * * *', { name: 'fluxo-timeouts-ia', timeZone: 'UTC' })
+  async avaliarTimeoutsIa(): Promise<void> {
+    if (this.env.get('NODE_ENV') === 'test') return;
+    // TTL 50s, mesmo desenho do cron-agendado: expira antes da próxima rodada.
+    if (!(await this.cronLock.acquire('fluxo-timeouts-ia', 50))) return;
+    // try/catch próprio: falha aqui não pode derrubar os outros crons (e
+    // vice-versa) — são responsabilidades independentes.
+    try {
+      await this.conversarIa.processarTimeouts();
+    } catch (err) {
+      this.logger.error(
+        `processarTimeouts falhou: ${err instanceof Error ? err.message : String(err)}`,
+      );
+    }
   }
 
   // ─── SLA por etapa (orquestração Fase B) ──────────────────────────
