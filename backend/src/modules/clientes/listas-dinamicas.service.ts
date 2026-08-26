@@ -72,7 +72,7 @@ export class ListasDinamicasService {
       nome: '💸 Inadimplentes',
       descricao: 'Bloqueados no OMIE',
       cor: 'var(--rd)',
-      where: { omieStatus: 'BLOQUEADO' },
+      where: { erpStatus: 'BLOQUEADO' },
     },
   ];
 }

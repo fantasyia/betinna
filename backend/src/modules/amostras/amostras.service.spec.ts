@@ -511,12 +511,12 @@ describe('AmostrasService', () => {
   describe('enviarParaOmie', () => {
     it('delega pro OmieAmostrasService com id + empresaId e retorna { amostra, omie }', async () => {
       const am = fakeAmostra({ empresaId: 'emp-1' });
-      const enviada = fakeAmostra({ empresaId: 'emp-1', numeroOmie: '123456' });
+      const enviada = fakeAmostra({ empresaId: 'emp-1', numeroErp: '123456' });
       // 1ª findById (valida), 2ª findById (atualizada)
       prisma.amostra.findFirst.mockResolvedValueOnce(am).mockResolvedValueOnce(enviada);
       const omieResult = {
         amostraId: 'am-1',
-        numeroOmie: '123456',
+        numeroErp: '123456',
         cfop: '5911',
         codigoStatusOmie: '0',
         descricaoStatusOmie: 'Pedido incluído com sucesso',
@@ -527,7 +527,7 @@ describe('AmostrasService', () => {
 
       expect(omieAmostras.enviarAmostra).toHaveBeenCalledWith('am-1', 'emp-1');
       expect(result.omie).toEqual(omieResult);
-      expect(result.amostra.numeroOmie).toBe('123456');
+      expect(result.amostra.numeroErp).toBe('123456');
     });
 
     it('lança NotFoundException (via findById) quando amostra não existe', async () => {

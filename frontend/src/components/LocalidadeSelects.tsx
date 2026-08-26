@@ -9,7 +9,7 @@ import { fetchEstados, fetchMunicipios, type Estado } from '@/lib/localidades';
  * - CidadeSelect: municípios da UF escolhida (carregados sob demanda).
  *
  * Ambos preservam um valor "legado" que não esteja na lista (ex: dado antigo
- * importado do OMIE) adicionando-o como opção, pra nunca apagar o que já existe.
+ * importado do ERP) adicionando-o como opção, pra nunca apagar o que já existe.
  */
 
 interface UfSelectProps {

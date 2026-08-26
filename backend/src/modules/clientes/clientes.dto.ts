@@ -1,10 +1,10 @@
-import { ClienteOmieStatus, ClienteStatus } from '@prisma/client';
+import { ClienteErpStatus, ClienteStatus } from '@prisma/client';
 import { z } from 'zod';
 import { cnpjSchema, cepSchema, telefoneIntlSchema } from '@shared/validators/br-validators';
 import { usuarioIdSchema } from '@shared/validators/id.schema';
 
 const clienteStatusEnum = z.nativeEnum(ClienteStatus);
-const omieStatusEnum = z.nativeEnum(ClienteOmieStatus);
+const erpStatusEnum = z.nativeEnum(ClienteErpStatus);
 
 const UF_REGEX = /^[A-Z]{2}$/;
 
@@ -34,9 +34,9 @@ export const createClienteSchema = z.object({
   uf: z.string().trim().toUpperCase().regex(UF_REGEX, 'UF deve ter 2 letras maiúsculas (ex: SP)'),
   regiao: z.string().trim().max(60).optional(),
   // Campos não obrigatórios pro form (sistema/integração)
-  codigoOmie: z.string().max(50).optional(),
+  codigoErp: z.string().max(50).optional(),
   status: clienteStatusEnum.default('NOVO'),
-  omieStatus: omieStatusEnum.default('ATIVO'),
+  erpStatus: erpStatusEnum.default('ATIVO'),
   prazoPagamento: z.number().int().min(0).max(180).default(30),
   limiteCredito: z.number().min(0).optional(),
   representanteId: usuarioIdSchema.optional(),
@@ -57,7 +57,7 @@ export const listClientesSchema = z.object({
   segmento: z.string().optional(),
   regiao: z.string().optional(),
   status: clienteStatusEnum.optional(),
-  omieStatus: omieStatusEnum.optional(),
+  erpStatus: erpStatusEnum.optional(),
   representanteId: usuarioIdSchema.optional(),
   tagId: z.string().cuid().optional(),
   /** ID da lista dinâmica (risco, criticos, novos, horeca, inadimplentes) */
@@ -101,6 +101,6 @@ export const setTagsSchema = z.object({
 export type SetTagsDto = z.infer<typeof setTagsSchema>;
 
 export const updateOmieStatusSchema = z.object({
-  omieStatus: omieStatusEnum,
+  erpStatus: erpStatusEnum,
 });
 export type UpdateOmieStatusDto = z.infer<typeof updateOmieStatusSchema>;

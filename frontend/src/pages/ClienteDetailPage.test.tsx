@@ -23,7 +23,7 @@ const CLIENTE = {
   uf: 'SP',
   segmento: 'Padaria',
   status: 'ATIVO',
-  omieStatus: 'ATIVO',
+  erpStatus: 'ATIVO',
   score: 70,
   prazoPagamento: 30,
   limiteCredito: null,

@@ -49,7 +49,7 @@ export class ComissoesController {
   @Audit({ action: 'fechar_mes', resource: 'comissao' })
   @ApiOperation({
     summary:
-      'Fecha o mês: agrega pedidos comissionáveis (ENVIADO_OMIE+) e cria/atualiza registros. ' +
+      'Fecha o mês: agrega pedidos comissionáveis (ENVIADO_ERP+) e cria/atualiza registros. ' +
       '**DIRETOR-only (D46)** — determina valores a pagar aos reps.',
   })
   fecharMes(

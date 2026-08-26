@@ -115,7 +115,7 @@ const PRODUTO_BASE = {
   unidade: 'UN',
   precoTabela: 48,
   sku: 'OLE-GIR-5L',
-  codigoOmie: '2001',
+  codigoErp: '2001',
   score: 3,
   matches: [],
 };

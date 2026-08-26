@@ -44,13 +44,13 @@ interface Amostra {
   produto?: {
     id: string;
     nome: string;
-    codigoOmie?: string | null;
+    codigoErp?: string | null;
     sku?: string | null;
     unidade?: string | null;
   } | null;
   cfop?: string | null;
-  numeroOmie?: string | null;
-  enviadoOmieEm?: string | null;
+  numeroErp?: string | null;
+  enviadoErpEm?: string | null;
 }
 
 interface ClienteOpt {
@@ -63,7 +63,7 @@ interface ProdutoOpt {
   id: string;
   nome: string;
   sku?: string | null;
-  codigoOmie?: string | null;
+  codigoErp?: string | null;
   unidade?: string | null;
 }
 
@@ -538,14 +538,14 @@ function AmostraDetailModal({
             {/* P7 — Remessa de amostra grátis pro OMIE */}
             <div className="border-t border-border mt-4 pt-4">
               <h3 className="mt-0 text-sm">Remessa OMIE (amostra grátis)</h3>
-              {data.numeroOmie ? (
+              {data.numeroErp ? (
                 <div
                   data-testid="amostra-omie-enviada"
                   className="bg-[#e8f5ec] border border-success rounded-[10px] py-2.5 px-3 text-[13px]"
                 >
-                  ✅ Remessa enviada — OMIE <strong>#{data.numeroOmie}</strong>
+                  ✅ Remessa enviada — OMIE <strong>#{data.numeroErp}</strong>
                   {data.cfop ? ` · CFOP ${data.cfop}` : ''}
-                  {data.enviadoOmieEm ? ` · ${fmtDate(data.enviadoOmieEm)}` : ''}
+                  {data.enviadoErpEm ? ` · ${fmtDate(data.enviadoErpEm)}` : ''}
                 </div>
               ) : (
                 <div>
@@ -832,7 +832,7 @@ function AmostraFormModal({
             endpoint="/produtos"
             placeholder="Buscar produto do catálogo…"
             getLabel={(p) => p.nome}
-            getSubLabel={(p) => p.sku ?? p.codigoOmie ?? null}
+            getSubLabel={(p) => p.sku ?? p.codigoErp ?? null}
             getId={(p) => p.id}
             value={produto}
             onChange={onPickProduto}

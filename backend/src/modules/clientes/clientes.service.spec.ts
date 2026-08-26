@@ -1,5 +1,5 @@
 import { describe, expect, it, vi, beforeEach } from 'vitest';
-import type { Cliente, ClienteOmieStatus, ClienteStatus, UserRole } from '@prisma/client';
+import type { Cliente, ClienteErpStatus, ClienteStatus, UserRole } from '@prisma/client';
 import { ClientesService } from './clientes.service';
 import { ListasDinamicasService } from './listas-dinamicas.service';
 import type { CreateClienteDto } from './clientes.dto';
@@ -65,7 +65,7 @@ const fakeUser = (overrides: Partial<AuthenticatedUser> = {}): AuthenticatedUser
 const fakeCliente = (overrides: Partial<Cliente> = {}): Cliente => ({
   id: 'cli-1',
   empresaId: 'emp-1',
-  codigoOmie: null,
+  codigoErp: null,
   nome: 'Restaurante Teste',
   cnpj: null,
   email: null,
@@ -80,7 +80,7 @@ const fakeCliente = (overrides: Partial<Cliente> = {}): Cliente => ({
   uf: 'SP',
   regiao: 'Grande SP',
   status: 'ATIVO' as ClienteStatus,
-  omieStatus: 'ATIVO' as ClienteOmieStatus,
+  erpStatus: 'ATIVO' as ClienteErpStatus,
   score: 80,
   prazoPagamento: 30,
   limiteCredito: null,
@@ -108,7 +108,7 @@ const baseCriarCliente: CreateClienteDto = {
   cidade: 'São Paulo',
   uf: 'SP',
   status: 'NOVO',
-  omieStatus: 'ATIVO',
+  erpStatus: 'ATIVO',
   prazoPagamento: 30,
   tagIds: [],
 };

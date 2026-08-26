@@ -5,7 +5,7 @@
 export type PedidoStatus =
   | 'RASCUNHO'
   | 'AGUARDANDO_APROVACAO'
-  | 'ENVIADO_OMIE'
+  | 'ENVIADO_ERP'
   | 'PAGO'
   | 'EM_SEPARACAO'
   | 'ENVIADO'
@@ -15,7 +15,7 @@ export type PedidoStatus =
 export const PEDIDO_STATUSES: PedidoStatus[] = [
   'RASCUNHO',
   'AGUARDANDO_APROVACAO',
-  'ENVIADO_OMIE',
+  'ENVIADO_ERP',
   'PAGO',
   'EM_SEPARACAO',
   'ENVIADO',
@@ -47,7 +47,7 @@ export const VARIANT_LABEL: Record<StatusVariant, string> = {
 export const STATUS_LABEL_DEFAULT: Record<PedidoStatus, string> = {
   RASCUNHO: 'Rascunho',
   AGUARDANDO_APROVACAO: 'Aguardando aprovação',
-  ENVIADO_OMIE: 'Enviado ao OMIE',
+  ENVIADO_ERP: 'Enviado ao ERP',
   PAGO: 'Pago',
   EM_SEPARACAO: 'Em separação',
   ENVIADO: 'Enviado',
@@ -58,7 +58,7 @@ export const STATUS_LABEL_DEFAULT: Record<PedidoStatus, string> = {
 export const STATUS_VARIANT_DEFAULT: Record<PedidoStatus, StatusVariant> = {
   RASCUNHO: 'neutral',
   AGUARDANDO_APROVACAO: 'warning',
-  ENVIADO_OMIE: 'info',
+  ENVIADO_ERP: 'info',
   PAGO: 'success',
   EM_SEPARACAO: 'primary',
   ENVIADO: 'info',

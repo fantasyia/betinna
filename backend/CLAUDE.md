@@ -8,7 +8,7 @@
 **Betinna.ai** — plataforma comercial B2B (indústria de alimentos / químicos / bebidas / embalagens).
 
 - CRM com gestão de carteiras por representante
-- Pedidos de venda integrados ao OMIE (ERP)
+- Pedidos de venda integrados ao ERP (**Tiny/Olist** — ver D50)
 - SAC multicanal (WhatsApp + Marketplaces ML/Shopee/Amazon/TikTok + IG + FB + e-mail)
 - MullerBot (IA com RAG sobre descrições de produtos)
 - Fluxos de automação visuais
@@ -85,7 +85,7 @@
 | # | Decisão | Justificativa |
 |---|---|---|
 | D1 | **Não usar gateway de pagamento (Iugu/Stripe)** | Diretor da empresa-cliente cobra apenas via boleto/Pix emitidos pelo financeiro no OMIE. App só registra a forma escolhida. |
-| D2 | **Cliente.omieStatus binário** (`ATIVO` \| `BLOQUEADO`) | Motivo do bloqueio fica no OMIE; rep não precisa saber. |
+| D2 | **Cliente.erpStatus binário** (`ATIVO` \| `BLOQUEADO`) | Motivo do bloqueio fica no OMIE; rep não precisa saber. |
 | D3 | **Tetos de desconto por rep** configuráveis pelo diretor (Usuario.tetoDesconto) | Cada rep tem seu teto; > teto → fluxo de aprovação |
 | D4 | **Preços negociados por cliente** vêm do OMIE (sync) | Tabela `ClientePrecoEspecial` é fonte espelhada; `PricingService` resolve. |
 | D5 | **Catálogo do rep** = subset de Produtos da empresa, ao preço definido pela empresa (**sem markup do rep**) | Rep cura quais produtos oferece; o preço é o da empresa: tabela, ou negociado por cliente (PricingService). **Markup removido em 2026-06-16** (reps não aplicam markup sobre nada). A coluna `RepCatalogoItem.markup` foi **dropada em 2026-06-17** (migration `20260617120300_drop_repcatalogo_markup`). |
@@ -133,6 +133,7 @@
 | D46 | **Decisões financeiras e fiscais são DIRECTOR-only** — teto de desconto do rep, % de comissão, fechar/pagar/desmarcar comissões, editar/ativar/desativar empresa. ADMIN NÃO bypassa. | Mesma lógica do D45 aplicada a operações que afetam dinheiro ou dados fiscais: definir teto/comissão é cláusula contratual com o rep; fechar mês determina folha; marcar pago libera dinheiro; editar empresa muda CNPJ/razão social. Implementado via `@Roles('DIRECTOR')` nos controllers `users` (teto-desconto + comissao), `comissoes` (fechar-mes + pagar + desmarcar-pago) e `empresas` (PATCH + activate + deactivate). ADMIN continua podendo CRIAR empresa (setup multi-tenant) e CRIAR/EDITAR/ATIVAR/DESATIVAR usuários (operacional, não financeiro), mas NÃO mexe em teto/comissão/folha/dados fiscais da empresa existente. Frontend usa `useRole()` pra esconder esses botões de não-DIRECTOR. |
 | D49 | **Auditoria de permissões concluída — sistema coerente entre backend e frontend**. Frontend `PERMISSION_MATRIX` hardcoded é trade-off consciente (UI hide hint); backend `PermissionsGuard` + `@Roles` + tabela dinâmica `Permissao` são o gate real. Drift entre os dois é tolerável (max few reloads pra refresh frontend hardcoded). Identificados módulos "dead code" na matriz DEFAULT_PERMISSIONS sem controller (`audit_log`, `reps`, `metas`) — não causam bug, ocupam espaço, limpeza fica pra quando o módulo for implementado de verdade. | Audit cobriu: Comissões/Campanhas/Relatórios/Fluxos/Integrações/Empresas/Users. Mistura `@Roles('ADMIN','DIRECTOR')` (gate restritivo D45/D46/D48) com `@RequirePermissions({ module, action })` (matriz dinâmica) funciona como AND — backend valida ambos. Frontend `usePermission` + `useRole` espelham a regra pra esconder botões. Quando há `@Roles` mais estrito, frontend usa `useRole()` direto (ex: `canManage = DIRECTOR \|\| ADMIN`); quando é `@RequirePermissions`, usa `usePermission('modulo.acao')`. |
 | D48 | **Hierarquia ADMIN vs DIRECTOR clarificada** (revisão de D45/D46): ADMIN é master da PLATAFORMA (cross-tenant), DIRECTOR é mandatário do TENANT. Endpoints D45 (integrações empresa) e D46 (decisões financeiras/fiscais) aceitam **ambos** — DIRECTOR pra operação normal do tenant, ADMIN como override de suporte. Outros papéis (GERENTE/SAC/REP) seguem bloqueados nessas operações. | Interpretação inicial de D45/D46 amarrava só DIRECTOR pelo "responsabilidade contratual", mas a leitura correta é: DIRECTOR tem **mandato** sobre as decisões do tenant dele, ADMIN tem **escopo cross-tenant** (master da plataforma). ADMIN não bypassa a regra de negócio — ele opera como suporte da plataforma; audit log registra quem fez. UX-wise, DIRECTOR é o usuário normal nessas telas; ADMIN só entra em emergências (debug/suporte/onboarding). Implementação: controllers voltam pra `@Roles('ADMIN', 'DIRECTOR')`, `IntegracoesService.assertDirectorRequerido` aceita ADMIN, frontend reflete (`canManage = role === 'DIRECTOR' \|\| role === 'ADMIN'`). |
+| D50 | **O ERP é o Tiny (Olist), não mais o OMIE** (26/08/2026). Campos e enums do schema passaram a nomes NEUTROS: `codigoErp`, `numeroErp`, `enviadoErpEm`, `erpStatus`/`ClienteErpStatus`, `PedidoStatus.ENVIADO_ERP`, `PedidoOrigem.ERP` (migration `20260826120000_erp_neutro_omie_para_erp`). O módulo `@integrations/omie` continua no repo até o `@integrations/tiny` assumir, e só então é deletado. | Troca comercial do Léo. Renomear saiu de graça porque o OMIE **nunca foi ligado** (`OMIE_DEMO_MODE=true`, zero conexões/clientes/produtos/pedidos em produção) — e nome neutro sobrevive à próxima troca. **Duas diferenças que mudam o desenho:** o refresh token do Tiny dura **1 dia** (exige cron de renovação + alerta, senão a conexão morre calada — diferente do app_key/secret estático do OMIE), e os **webhooks do Tiny não têm HMAC** (D11 não se aplica: a defesa é segredo no path + re-consultar o recurso na API em vez de confiar no payload). Plano completo em `docs/erp-tiny-olist.md`. |
 | D47 | **Refresh token vive em cookie httpOnly, gerenciado pelo backend** (não em localStorage do frontend). Frontend só vê o access token, e em memória apenas. | Antes: SDK do Supabase guardava refresh em localStorage, vulnerável a XSS — uma vulnerabilidade XSS no frontend exporia o refresh token e permitiria roubo de sessão. Agora o backend é o único que conhece o refresh: `POST /api/v1/auth/login` (chama Supabase Auth REST, seta cookie httpOnly com refresh, retorna access), `POST /api/v1/auth/refresh` (lê cookie, troca por novo access+refresh, atualiza cookie), `POST /api/v1/auth/signout` (revoga no Supabase + apaga cookie). Cookie: `httpOnly + secure + SameSite=None` em prod (cross-origin Railway), `SameSite=Lax` em dev. Path restrito a `/api/v1/auth` (minimiza surface CSRF). Frontend: `bootstrapAuthFromBackend()` no `main.tsx` faz refresh inicial, `auth-store` agenda refresh transparente via setTimeout ~60s antes do exp, `api.ts` faz refresh-on-401 automático com retry uma vez. Bundle do frontend caiu 310KB → 105KB (Supabase SDK saiu do path principal). |
 
 ## 6. Status dos módulos
@@ -169,7 +170,7 @@
 - [x] **PedidoPricingService** (cálculo de totais, descontos, comissão, max desconto)
 - [x] **Propostas** (CRUD + itens + máquina de estados + conversão em pedido)
 - [x] **Comissões** (fechamento de mês agregado REP + GERENTE com snapshot de %; `Comissao.tipo` discrimina; cron mensal `ComissoesFechamentoJob` dia 1/04:00 UTC; anti-órfão ao desativar gerente; resumo pessoal pra REP/GERENTE; pagamento)
-- [x] **Amostras** (CRUD + follow-up auto-calculado + workflow ENVIADA→CONVERTIDA + **P7 remessa OMIE de amostra grátis**: vincula `produtoId` opcional + `quantidade`; `POST /amostras/:id/enviar-omie` → `OmieAmostrasService.enviarAmostra` monta remessa CFOP 5911 (mesma UF) / 6911 (interestadual, resolve por `Empresa.uf` vs `Cliente.uf`) sem destaque de tributos — cenário fiscal opcional via `OMIE_CENARIO_IMPOSTO_AMOSTRA`; persiste `numeroOmie`/`enviadoOmieEm`/`cfop`. Reusa `OmieClientService.incluirPedido` (mesmo endpoint produtos/pedido/). Funciona em demo mode; validação dos códigos fiscais reais fica pro plugue do OMIE real)
+- [x] **Amostras** (CRUD + follow-up auto-calculado + workflow ENVIADA→CONVERTIDA + **P7 remessa de amostra grátis no ERP** (implementação atual é OMIE; refazer no Tiny — ver D50): vincula `produtoId` opcional + `quantidade`; `POST /amostras/:id/enviar-omie` → `OmieAmostrasService.enviarAmostra` monta remessa CFOP 5911 (mesma UF) / 6911 (interestadual, resolve por `Empresa.uf` vs `Cliente.uf`) sem destaque de tributos — cenário fiscal opcional via `OMIE_CENARIO_IMPOSTO_AMOSTRA`; persiste `numeroErp`/`enviadoErpEm`/`cfop`. Reusa `OmieClientService.incluirPedido` (mesmo endpoint produtos/pedido/). Funciona em demo mode; validação dos códigos fiscais reais fica pro plugue do OMIE real)
 
 ### Fase 5 — Pipeline & Atendimento
 - [x] **Leads/Kanban** (CRUD + máquina de estados + won/loss + pipeline ponderado + aging)
@@ -211,12 +212,12 @@
 - Mídia recebida: marca `tipo=IMAGE/AUDIO/etc` e `mediaMime`, mas conteúdo fica como placeholder (`[imagem]`, `[áudio]`) — download de mídia + Supabase Storage entra depois
 - Risco de ban do número pela Meta — usar número dedicado, não pessoal
 
-**OMIE — modo de operação**
+**OMIE — modo de operação** (⚠️ legado: substituído pelo Tiny, ver D50 — mantido só até o módulo `tiny` assumir)
 - `OMIE_DEMO_MODE=true` (default): retorna dados mock (3 clientes/3 produtos) sem chamar API real — permite dev sem credenciais
 - `OMIE_DEMO_MODE=false` + `OMIE_APP_KEY`/`OMIE_APP_SECRET` no env (OU `IntegracaoConexao` por empresa, que tem precedência): chama API real
 - `OMIE_WEBHOOK_SECRET` ativo → webhook exige `x-omie-signature` válido (HMAC SHA-256 do body cru). Sem secret: aceita com warning (apenas dev)
-- Pedido vai a OMIE via `POST /pedidos/:id/enviar-omie` → `OmiePedidosService.enviarPedido` (status → ENVIADO_OMIE, persiste numeroOmie + enviadoOmieEm)
-- Webhook `cliente-status` atualiza `Cliente.omieStatus` (ATIVO|BLOQUEADO) sem disparar lógica adicional
+- Pedido vai a OMIE via `POST /pedidos/:id/enviar-omie` → `OmiePedidosService.enviarPedido` (status → ENVIADO_ERP, persiste numeroErp + enviadoErpEm)
+- Webhook `cliente-status` atualiza `Cliente.erpStatus` (ATIVO|BLOQUEADO) sem disparar lógica adicional
 
 ### Fase 7 — Automação (concluída)
 - [x] **Fluxos de Automação** (`@modules/fluxos`) — sistema completo com BullMQ (D44):

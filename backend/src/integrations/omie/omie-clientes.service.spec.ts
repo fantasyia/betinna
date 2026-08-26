@@ -34,10 +34,10 @@ vi.mock('./omie.mapper', () => ({
   OmieMapper: {
     clienteToPrismaUpsert: vi.fn((_empresaId: string, o: { codigo_cliente_omie?: number }) => {
       if (!o.codigo_cliente_omie) return null;
-      const codigoOmie = String(o.codigo_cliente_omie);
+      const codigoErp = String(o.codigo_cliente_omie);
       return {
-        where: { empresaId_codigoOmie: { empresaId: _empresaId, codigoOmie } },
-        create: { empresaId: _empresaId, codigoOmie, nome: 'Cliente' },
+        where: { empresaId_codigoErp: { empresaId: _empresaId, codigoErp } },
+        create: { empresaId: _empresaId, codigoErp, nome: 'Cliente' },
         update: { nome: 'Cliente' },
       };
     }),

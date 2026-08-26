@@ -10,7 +10,7 @@ export interface MullerBotResposta {
     id: string;
     nome: string;
     sku: string | null;
-    codigoOmie: string | null;
+    codigoErp: string | null;
     precoTabela: number;
     score: number;
   }>;

@@ -30,7 +30,7 @@ import type {
 
 /** Status de pedido que contam como "faturados" pra média kg/mês do cliente. */
 const PEDIDO_STATUS_FATURADOS = [
-  'ENVIADO_OMIE',
+  'ENVIADO_ERP',
   'PAGO',
   'EM_SEPARACAO',
   'ENVIADO',
@@ -39,7 +39,7 @@ const PEDIDO_STATUS_FATURADOS = [
 
 const amostraInclude = {
   cliente: { select: { id: true, nome: true, cnpj: true } },
-  produto: { select: { id: true, nome: true, codigoOmie: true, sku: true, unidade: true } },
+  produto: { select: { id: true, nome: true, codigoErp: true, sku: true, unidade: true } },
 } satisfies Prisma.AmostraInclude;
 
 type AmostraWithRel = Prisma.AmostraGetPayload<{ include: typeof amostraInclude }>;
@@ -359,8 +359,8 @@ export class AmostrasService {
    * P7 — Envia a amostra como remessa de amostra grátis pro OMIE.
    *
    * findById valida tenant + carteira do rep. As pré-condições fiscais
-   * (produto vinculado com codigoOmie, cliente ATIVO com codigoOmie, etc.)
-   * ficam no OmieAmostrasService, que também persiste numeroOmie/enviadoOmieEm/cfop.
+   * (produto vinculado com codigoErp, cliente ATIVO com codigoErp, etc.)
+   * ficam no OmieAmostrasService, que também persiste numeroErp/enviadoErpEm/cfop.
    */
   async enviarParaOmie(
     user: AuthenticatedUser,

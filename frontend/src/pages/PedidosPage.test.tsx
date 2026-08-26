@@ -16,10 +16,10 @@ const LISTA = {
     {
       id: 'ped-1',
       numero: 'PED-2026-001',
-      status: 'ENVIADO_OMIE',
+      status: 'ENVIADO_ERP',
       total: 15000.5,
       criadoEm: '2026-08-01T12:00:00.000Z',
-      cliente: { id: 'cli-1', nome: 'Padaria do João', cnpj: null, cidade: 'SP', omieStatus: 'ATIVO' },
+      cliente: { id: 'cli-1', nome: 'Padaria do João', cnpj: null, cidade: 'SP', erpStatus: 'ATIVO' },
       representante: { id: 'rep-1', nome: 'João', email: 'j@x.com', tetoDesconto: 10 },
       aprovador: null,
       pedidoOrigem: null,

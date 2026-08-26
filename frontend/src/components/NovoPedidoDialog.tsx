@@ -49,7 +49,7 @@ interface ProdutoOpt {
   nome: string;
   sku?: string | null;
   precoTabela?: number;
-  /** Estoque atual sincronizado do OMIE (sync 30min ou webhook). */
+  /** Estoque atual sincronizado do ERP (sync 30min ou webhook). */
   estoque?: number;
   /** ISO timestamp do último sync. */
   estoqueAtualizadoEm?: string | null;
@@ -582,8 +582,8 @@ function ItemRow({
 }) {
   const estoque = item.produto?.estoque;
   // Avisos:
-  //  - vermelho: produto selecionado com estoque 0 → OMIE vai gerar OP de reposição
-  //  - amarelo : quantidade > estoque disponível → vende mais do que tem; OMIE puxa pra produção
+  //  - vermelho: produto selecionado com estoque 0 → o ERP gera OP de reposição
+  //  - amarelo : quantidade > estoque disponível → vende mais do que tem; o ERP puxa pra produção
   const semEstoque = item.produto !== null && (estoque ?? 0) <= 0;
   const excedeEstoque =
     item.produto !== null && estoque !== undefined && estoque > 0 && item.quantidade > estoque;
@@ -693,7 +693,7 @@ function estoqueLabel(estoque: number): string {
  * Hint inline com semáforo de estoque.
  *
  * NÃO bloqueia o pedido em nenhum caso — só sinaliza. Por design (D-estoque):
- * mesmo sem estoque, o pedido vai pro OMIE e o OMIE gera Ordem de Produção
+ * mesmo sem estoque, o pedido vai pro ERP e o ERP gera Ordem de Produção
  * (OP) pra repor ou produzir sob demanda.
  */
 function StockHint({
@@ -723,7 +723,7 @@ function StockHint({
         className="flex items-center gap-1 text-[10px] text-danger px-1"
       >
         <PackageX className="h-2.5 w-2.5" />
-        <strong>Sem estoque</strong> — pode lançar; OMIE gera OP de reposição
+        <strong>Sem estoque</strong> — pode lançar; o ERP gera OP de reposição
       </div>
     );
   }
@@ -734,7 +734,7 @@ function StockHint({
         className="flex items-center gap-1 text-[10px] text-warning px-1"
       >
         <AlertTriangle className="h-2.5 w-2.5" />
-        Quantidade ({quantidade}) maior que estoque ({estoque}) — OMIE produz o restante
+        Quantidade ({quantidade}) maior que estoque ({estoque}) — o ERP produz o restante
       </div>
     );
   }

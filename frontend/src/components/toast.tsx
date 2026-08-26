@@ -8,7 +8,7 @@ import { colors } from './styles';
  *   const toast = useToast();
  *   toast.success('Cliente salvo');
  *   toast.error('Falha ao salvar', err.message);
- *   toast.info('Sync OMIE iniciado');
+ *   toast.info('Sync do ERP iniciado');
  *
  * Renderização no root via <ToastProvider>:
  *   <ToastProvider>

@@ -1,4 +1,4 @@
-import type { ClienteOmieStatus, Prisma } from '@prisma/client';
+import type { ClienteErpStatus, Prisma } from '@prisma/client';
 import type { OmieCliente, OmiePedidoItem, OmieProduto } from './omie.types';
 
 /**
@@ -19,26 +19,26 @@ export class OmieMapper {
     create: Prisma.ClienteUncheckedCreateInput;
     update: Prisma.ClienteUncheckedUpdateInput;
   } | null {
-    const codigoOmie = o.codigo_cliente_omie?.toString();
-    if (!codigoOmie) return null;
+    const codigoErp = o.codigo_cliente_omie?.toString();
+    if (!codigoErp) return null;
 
-    const omieStatus: ClienteOmieStatus = o.bloqueado === 'S' ? 'BLOQUEADO' : 'ATIVO';
+    const erpStatus: ClienteErpStatus = o.bloqueado === 'S' ? 'BLOQUEADO' : 'ATIVO';
     const telefone = this.formatTelefone(o.telefone1_ddd, o.telefone1_numero);
     const data = {
       empresaId,
-      codigoOmie,
+      codigoErp,
       nome: o.razao_social,
       cnpj: o.cnpj_cpf || null,
       email: o.email || null,
       telefone,
       cidade: o.cidade || null,
       uf: o.estado || null,
-      omieStatus,
+      erpStatus,
       // status interno baseado em sinais do OMIE
       status: o.inativo === 'S' ? ('INATIVO' as const) : ('ATIVO' as const),
     };
     return {
-      where: { empresaId_codigoOmie: { empresaId, codigoOmie } },
+      where: { empresaId_codigoErp: { empresaId, codigoErp } },
       create: data,
       update: {
         nome: data.nome,
@@ -47,7 +47,7 @@ export class OmieMapper {
         telefone: data.telefone,
         cidade: data.cidade,
         uf: data.uf,
-        omieStatus: data.omieStatus,
+        erpStatus: data.erpStatus,
         status: data.status,
       },
     };
@@ -55,7 +55,7 @@ export class OmieMapper {
 
   /**
    * Converte um OmieProduto em payload de upsert.
-   * Usa codigo (SKU) + codigo_produto (codigoOmie) pra identificar.
+   * Usa codigo (SKU) + codigo_produto (codigoErp) pra identificar.
    *
    * NÃO preenche o custo (precoFabrica): o OMIE só manda o preço de venda, não o
    * custo. Em produto NOVO o custo fica null; em produto EXISTENTE não é tocado
@@ -70,8 +70,8 @@ export class OmieMapper {
     create: Prisma.ProdutoUncheckedCreateInput;
     update: Prisma.ProdutoUncheckedUpdateInput;
   } | null {
-    const codigoOmie = o.codigo_produto?.toString();
-    if (!codigoOmie) return null;
+    const codigoErp = o.codigo_produto?.toString();
+    if (!codigoErp) return null;
 
     const precoTabela = o.valor_unitario ?? 0;
 
@@ -86,10 +86,10 @@ export class OmieMapper {
       ? { estoque: o.quantidade_estoque as number, estoqueAtualizadoEm: now }
       : {};
     return {
-      where: { empresaId_codigoOmie: { empresaId, codigoOmie } },
+      where: { empresaId_codigoErp: { empresaId, codigoErp } },
       create: {
         empresaId,
-        codigoOmie,
+        codigoErp,
         sku: o.codigo || null,
         nome: o.descricao,
         descricao: o.descricao_detalhada || null,

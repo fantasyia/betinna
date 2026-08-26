@@ -288,7 +288,7 @@ describe('PropostasService', () => {
         id: 'cli-1',
         empresaId: 'emp-1',
         representanteId: null,
-        omieStatus: 'ATIVO',
+        erpStatus: 'ATIVO',
       });
       prisma.produto.findMany.mockResolvedValue([
         { id: 'p-1', nome: 'Produto A', ativo: true, precoTabela: 50 },
@@ -309,7 +309,7 @@ describe('PropostasService', () => {
         id: 'cli-1',
         empresaId: 'emp-1',
         representanteId: 'rep-77',
-        omieStatus: 'ATIVO',
+        erpStatus: 'ATIVO',
       });
       prisma.produto.findMany.mockResolvedValue([
         { id: 'p-1', nome: 'Produto A', ativo: true, precoTabela: 50 },
@@ -327,7 +327,7 @@ describe('PropostasService', () => {
         id: 'cli-1',
         empresaId: 'emp-1',
         representanteId: 'rep-77',
-        omieStatus: 'ATIVO',
+        erpStatus: 'ATIVO',
       });
       prisma.produto.findMany.mockResolvedValue([
         { id: 'p-1', nome: 'Produto A', ativo: true, precoTabela: 50 },
@@ -355,7 +355,7 @@ describe('PropostasService', () => {
         id: 'cli-1',
         empresaId: 'emp-1',
         representanteId: 'rep-outro',
-        omieStatus: 'ATIVO',
+        erpStatus: 'ATIVO',
       });
 
       await expect(
@@ -368,7 +368,7 @@ describe('PropostasService', () => {
         id: 'cli-1',
         empresaId: 'emp-1',
         representanteId: null,
-        omieStatus: 'ATIVO',
+        erpStatus: 'ATIVO',
       });
       // resolveItens: findMany retorna 0 produtos de 1 pedido
       prisma.produto.findMany.mockResolvedValue([]);

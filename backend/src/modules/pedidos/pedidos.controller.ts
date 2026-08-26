@@ -168,7 +168,7 @@ export class PedidosController {
   @Audit({ action: 'avancar_status', resource: 'pedido', resourceIdFrom: 'params.id' })
   @ApiOperation({
     summary:
-      'Avança status do pedido (ENVIADO_OMIE→PAGO→EM_SEPARACAO→ENVIADO→ENTREGUE). Dispara trigger PEDIDO_ENTREGUE.',
+      'Avança status do pedido (ENVIADO_ERP→PAGO→EM_SEPARACAO→ENVIADO→ENTREGUE). Dispara trigger PEDIDO_ENTREGUE.',
   })
   avancarStatus(@CurrentUser() user: AuthenticatedUser, @Param('id') id: string) {
     return this.pedidos.avancarStatus(user, id);

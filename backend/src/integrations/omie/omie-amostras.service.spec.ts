@@ -49,19 +49,19 @@ const fakeAmostra = (overrides: Record<string, unknown> = {}) => ({
   empresaId: 'emp-1',
   valor: 0,
   quantidade: 2,
-  numeroOmie: null,
+  numeroErp: null,
   produto: {
     id: 'prod-1',
     nome: 'Óleo de Girassol 5L',
-    codigoOmie: '2001',
+    codigoErp: '2001',
     sku: 'OLE-GIR-5L',
     precoTabela: 48,
   },
   cliente: {
     id: 'cli-1',
     nome: 'Restaurante X',
-    codigoOmie: '1001',
-    omieStatus: 'ATIVO',
+    codigoErp: '1001',
+    erpStatus: 'ATIVO',
     uf: 'SP',
   },
   empresa: { id: 'emp-1', uf: 'SP' },
@@ -107,8 +107,8 @@ describe('OmieAmostrasService', () => {
       await expect(service.enviarAmostra('am-999')).rejects.toBeInstanceOf(BusinessRuleException);
     });
 
-    it('lança quando amostra já foi enviada (numeroOmie preenchido)', async () => {
-      prisma.amostra.findFirst.mockResolvedValue(fakeAmostra({ numeroOmie: '999' }));
+    it('lança quando amostra já foi enviada (numeroErp preenchido)', async () => {
+      prisma.amostra.findFirst.mockResolvedValue(fakeAmostra({ numeroErp: '999' }));
       await expect(service.enviarAmostra('am-1')).rejects.toBeInstanceOf(BusinessRuleException);
       expect(omie.incluirPedido).not.toHaveBeenCalled();
     });
@@ -118,19 +118,19 @@ describe('OmieAmostrasService', () => {
       await expect(service.enviarAmostra('am-1')).rejects.toBeInstanceOf(BusinessRuleException);
     });
 
-    it('lança quando produto não tem codigoOmie nem sku', async () => {
+    it('lança quando produto não tem codigoErp nem sku', async () => {
       prisma.amostra.findFirst.mockResolvedValue(
         fakeAmostra({
-          produto: { id: 'p', nome: 'X', codigoOmie: null, sku: null, precoTabela: 1 },
+          produto: { id: 'p', nome: 'X', codigoErp: null, sku: null, precoTabela: 1 },
         }),
       );
       await expect(service.enviarAmostra('am-1')).rejects.toBeInstanceOf(BusinessRuleException);
     });
 
-    it('lança quando cliente não tem codigoOmie', async () => {
+    it('lança quando cliente não tem codigoErp', async () => {
       prisma.amostra.findFirst.mockResolvedValue(
         fakeAmostra({
-          cliente: { id: 'c', nome: 'X', codigoOmie: null, omieStatus: 'ATIVO', uf: 'SP' },
+          cliente: { id: 'c', nome: 'X', codigoErp: null, erpStatus: 'ATIVO', uf: 'SP' },
         }),
       );
       await expect(service.enviarAmostra('am-1')).rejects.toBeInstanceOf(BusinessRuleException);
@@ -139,7 +139,7 @@ describe('OmieAmostrasService', () => {
     it('lança quando cliente está bloqueado no OMIE', async () => {
       prisma.amostra.findFirst.mockResolvedValue(
         fakeAmostra({
-          cliente: { id: 'c', nome: 'X', codigoOmie: '1001', omieStatus: 'BLOQUEADO', uf: 'SP' },
+          cliente: { id: 'c', nome: 'X', codigoErp: '1001', erpStatus: 'BLOQUEADO', uf: 'SP' },
         }),
       );
       await expect(service.enviarAmostra('am-1')).rejects.toBeInstanceOf(BusinessRuleException);
@@ -153,7 +153,7 @@ describe('OmieAmostrasService', () => {
   });
 
   describe('enviarAmostra — envio', () => {
-    it('envia remessa, persiste numeroOmie/enviadoOmieEm/cfop e retorna resultado', async () => {
+    it('envia remessa, persiste numeroErp/enviadoErpEm/cfop e retorna resultado', async () => {
       prisma.amostra.findFirst.mockResolvedValue(fakeAmostra());
       omie.incluirPedido.mockResolvedValue(fakeOmieResponse());
 
@@ -164,13 +164,13 @@ describe('OmieAmostrasService', () => {
         expect.objectContaining({
           where: { id: 'am-1' },
           data: expect.objectContaining({
-            numeroOmie: '700123',
-            enviadoOmieEm: expect.any(Date),
+            numeroErp: '700123',
+            enviadoErpEm: expect.any(Date),
             cfop: '5911',
           }),
         }),
       );
-      expect(result).toMatchObject({ amostraId: 'am-1', numeroOmie: '700123', cfop: '5911' });
+      expect(result).toMatchObject({ amostraId: 'am-1', numeroErp: '700123', cfop: '5911' });
     });
 
     it('heal idempotente: envio falha mas já existe no OMIE → reconcilia (não duplica)', async () => {
@@ -181,7 +181,7 @@ describe('OmieAmostrasService', () => {
       const result = await service.enviarAmostra('am-1', 'emp-1');
 
       expect(omie.consultarPedidoPorIntegracao).toHaveBeenCalledWith('emp-1', 'AMO-am-1');
-      expect(result.numeroOmie).toBe('700123');
+      expect(result.numeroErp).toBe('700123');
       expect(prisma.amostra.update).toHaveBeenCalled(); // reconciliou (persistiu o número real)
     });
 
@@ -208,7 +208,7 @@ describe('OmieAmostrasService', () => {
       prisma.amostra.findFirst.mockResolvedValue(
         fakeAmostra({
           empresa: { id: 'emp-1', uf: 'SP' },
-          cliente: { id: 'c', nome: 'X', codigoOmie: '1001', omieStatus: 'ATIVO', uf: 'RJ' },
+          cliente: { id: 'c', nome: 'X', codigoErp: '1001', erpStatus: 'ATIVO', uf: 'RJ' },
         }),
       );
       omie.incluirPedido.mockResolvedValue(fakeOmieResponse());
@@ -272,7 +272,7 @@ describe('OmieAmostrasService', () => {
 
       const result = await service.enviarAmostra('am-1');
 
-      expect(result.numeroOmie).toBe('555555');
+      expect(result.numeroErp).toBe('555555');
     });
   });
 });

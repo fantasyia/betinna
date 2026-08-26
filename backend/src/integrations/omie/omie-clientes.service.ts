@@ -20,7 +20,7 @@ export interface OmieClientesSyncResult {
 /**
  * Sync de clientes do OMIE para nossa base local.
  *
- * Estratégia: pull paginado. Upsert por `(empresaId, codigoOmie)`.
+ * Estratégia: pull paginado. Upsert por `(empresaId, codigoErp)`.
  * OMIE é fonte da verdade — qualquer alteração local é sobrescrita.
  *
  * Modo `incremental` (default): pula clientes cuja `data_alteracao` é anterior
@@ -80,12 +80,12 @@ export class OmieClientesService {
         const payload = OmieMapper.clienteToPrismaUpsert(empresaId, o);
         if (!payload) continue;
 
-        // ALTA-A1: codigoOmie agora é unique composto (empresaId, codigoOmie).
+        // ALTA-A1: codigoErp agora é unique composto (empresaId, codigoErp).
         // Busca apenas dentro desta empresa — sem risco de colisão cross-tenant.
-        const codigoOmie = payload.create.codigoOmie;
-        const existing = codigoOmie
+        const codigoErp = payload.create.codigoErp;
+        const existing = codigoErp
           ? await this.prisma.cliente.findUnique({
-              where: { empresaId_codigoOmie: { empresaId, codigoOmie } },
+              where: { empresaId_codigoErp: { empresaId, codigoErp } },
               select: { id: true },
             })
           : null;

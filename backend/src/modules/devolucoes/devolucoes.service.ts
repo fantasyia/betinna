@@ -215,7 +215,7 @@ export class DevolucoesService {
         valorDevolvido: true,
         empresaId: true,
         representanteId: true,
-        enviadoOmieEm: true,
+        enviadoErpEm: true,
       },
     });
     if (!pedido) return;
@@ -266,18 +266,18 @@ export class DevolucoesService {
     pedido: {
       empresaId: string;
       representanteId: string | null;
-      enviadoOmieEm: Date | null;
+      enviadoErpEm: Date | null;
     },
     estorno: number,
     valorDev: number,
     devNumero: string | number,
   ): Promise<void> {
-    if (!pedido.representanteId || !pedido.enviadoOmieEm || estorno <= 0) return;
+    if (!pedido.representanteId || !pedido.enviadoErpEm || estorno <= 0) return;
 
     // MESMO offset BRT do fecharMes — senão pedido de virada de mês cai no mês
     // errado e o ajuste bate na linha vizinha.
     const OFFSET_BRT_MS = 3 * 60 * 60 * 1000;
-    const ref = new Date(pedido.enviadoOmieEm.getTime() - OFFSET_BRT_MS);
+    const ref = new Date(pedido.enviadoErpEm.getTime() - OFFSET_BRT_MS);
     const ano = ref.getUTCFullYear();
     const mes = ref.getUTCMonth() + 1;
 

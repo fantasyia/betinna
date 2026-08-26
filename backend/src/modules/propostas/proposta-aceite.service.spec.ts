@@ -153,12 +153,12 @@ describe('PropostaAceiteService — cliente BLOQUEADO no OMIE não aceita (audit
   it('ACEITE de cliente bloqueado é barrado ANTES de criar pedido', async () => {
     // Cenário do achado: cliente vira BLOQUEADO no ERP depois do envio da
     // proposta. O link público já revalidava validade e produto inativo, mas não
-    // o omieStatus — o pedido era criado, o rep notificado "aceita!", e a falha
+    // o erpStatus — o pedido era criado, o rep notificado "aceita!", e a falha
     // só aparecia no envio ao OMIE.
     const { svc, prisma, tx } = makeService(1);
     prisma.proposta.findUnique.mockResolvedValue({
       ...PROPOSTA,
-      cliente: { omieStatus: 'BLOQUEADO' },
+      cliente: { erpStatus: 'BLOQUEADO' },
     });
 
     await expect(svc.registrarDecisao(TOKEN, 'ACEITA', '203.0.113.9')).rejects.toThrow(
@@ -171,7 +171,7 @@ describe('PropostaAceiteService — cliente BLOQUEADO no OMIE não aceita (audit
     const { svc, prisma } = makeService(1);
     prisma.proposta.findUnique.mockResolvedValue({
       ...PROPOSTA,
-      cliente: { omieStatus: 'BLOQUEADO' },
+      cliente: { erpStatus: 'BLOQUEADO' },
     });
 
     const r = await svc.registrarDecisao(TOKEN, 'RECUSADA', '203.0.113.9');
@@ -182,7 +182,7 @@ describe('PropostaAceiteService — cliente BLOQUEADO no OMIE não aceita (audit
     const { svc, prisma, tx } = makeService(1);
     prisma.proposta.findUnique.mockResolvedValue({
       ...PROPOSTA,
-      cliente: { omieStatus: 'ATIVO' },
+      cliente: { erpStatus: 'ATIVO' },
     });
 
     const r = await svc.registrarDecisao(TOKEN, 'ACEITA', '203.0.113.9');

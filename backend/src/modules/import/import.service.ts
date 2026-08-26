@@ -121,7 +121,7 @@ export class ImportService {
           uf,
           segmento,
           status: 'ATIVO',
-          omieStatus: 'ATIVO',
+          erpStatus: 'ATIVO',
         };
 
         // #71: mesma chave do dedup do banco (CNPJ só-dígitos > e-mail).
@@ -132,8 +132,8 @@ export class ImportService {
         if (existenteId) {
           // Cliente que JÁ EXISTE: o import não pode reativar quem o financeiro
           // bloqueou no OMIE (D2) nem apagar campo que a planilha não trouxe.
-          // status/omieStatus são do OMIE/gestão — só valem no CREATE.
-          const { status: _s, omieStatus: _o, empresaId: _e, ...resto } = data;
+          // status/erpStatus são do OMIE/gestão — só valem no CREATE.
+          const { status: _s, erpStatus: _o, empresaId: _e, ...resto } = data;
           void _s;
           void _o;
           void _e;

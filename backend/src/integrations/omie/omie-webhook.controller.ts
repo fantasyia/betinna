@@ -132,51 +132,51 @@ export class OmieWebhookController {
       return { ok: false };
     }
 
-    const codigoOmie = parsed.data.codigo_cliente_omie.toString();
+    const codigoErp = parsed.data.codigo_cliente_omie.toString();
     const novoOmieStatus = parsed.data.bloqueado === 'S' ? 'BLOQUEADO' : 'ATIVO';
 
-    // codigoOmie agora é único dentro de cada empresa (@@unique [empresaId, codigoOmie]).
+    // codigoErp agora é único dentro de cada empresa (@@unique [empresaId, codigoErp]).
     // O webhook OMIE não inclui empresaId no payload, então usamos findFirst.
     // Em ambiente multi-tenant real, diferentes empresas OMIE têm suas próprias
     // sequências de código — colisão entre tenants é improvável, mas caso ocorra,
     // o primeiro match será atualizado. Evolução futura: endpoint por empresa
     // `/webhooks/omie/:empresaToken/cliente-status`.
     // ISOLAMENTO MULTI-TENANT: o payload do OMIE NÃO traz empresaId e o segredo
-    // do webhook é global. Se o mesmo codigoOmie existir em 2 empresas, não dá
+    // do webhook é global. Se o mesmo codigoErp existir em 2 empresas, não dá
     // pra saber a qual o evento pertence — então RECUSAMOS em vez de adivinhar e
     // mexer no cliente da empresa errada. (`take: 2` só pra detectar duplicidade.)
     // O cron de sync reconcilia o estado de quem ficou de fora. Fix durável:
     // endpoint por empresa com token na URL (`/webhooks/omie/<token>/...`).
     const clientes = await this.prisma.cliente.findMany({
-      where: { codigoOmie },
-      select: { id: true, empresaId: true, omieStatus: true, nome: true },
+      where: { codigoErp },
+      select: { id: true, empresaId: true, erpStatus: true, nome: true },
       take: 2,
     });
     if (clientes.length === 0) {
       this.logger.warn(
-        `Webhook OMIE: cliente ${codigoOmie} não encontrado localmente — sync primeiro`,
+        `Webhook OMIE: cliente ${codigoErp} não encontrado localmente — sync primeiro`,
       );
       return { ok: false };
     }
     if (clientes.length > 1) {
       this.logger.warn(
-        `Webhook OMIE: codigoOmie ${codigoOmie} existe em múltiplas empresas — ambíguo, ignorado (evita tocar o tenant errado). Configure webhook por empresa.`,
+        `Webhook OMIE: codigoErp ${codigoErp} existe em múltiplas empresas — ambíguo, ignorado (evita tocar o tenant errado). Configure webhook por empresa.`,
       );
       return { ok: false };
     }
     const cliente = clientes[0];
 
-    if (cliente.omieStatus === novoOmieStatus) {
+    if (cliente.erpStatus === novoOmieStatus) {
       return { ok: true }; // sem mudança, idempotente
     }
 
     await this.prisma.cliente.update({
       where: { id: cliente.id },
-      data: { omieStatus: novoOmieStatus },
+      data: { erpStatus: novoOmieStatus },
     });
 
     this.logger.log(
-      `Cliente ${cliente.nome} (${codigoOmie}) → omieStatus=${novoOmieStatus} via webhook`,
+      `Cliente ${cliente.nome} (${codigoErp}) → erpStatus=${novoOmieStatus} via webhook`,
     );
 
     // Notifica REP responsável quando cliente foi bloqueado (precisa ação)
@@ -194,7 +194,7 @@ export class OmieWebhookController {
           titulo: 'Cliente bloqueado no OMIE',
           mensagem: `${cliente.nome} foi bloqueado. Pedidos novos não passam até resolver com o financeiro.`,
           link: `/clientes/${cliente.id}`,
-          metadata: { clienteId: cliente.id, codigoOmie },
+          metadata: { clienteId: cliente.id, codigoErp },
         });
       }
     }
@@ -206,7 +206,7 @@ export class OmieWebhookController {
    * Webhook de produto/estoque alterado no OMIE.
    *
    * Estratégia: ao receber o evento, identificamos o produto pelo `codigo_produto`
-   * (codigoOmie local). Como o payload do OMIE pode ser parcial ou stale, disparamos
+   * (codigoErp local). Como o payload do OMIE pode ser parcial ou stale, disparamos
    * um sync incremental da empresa correspondente em vez de confiar nos valores do
    * payload. Isso garante consistência com o cron de 30min (fallback).
    *
@@ -234,30 +234,30 @@ export class OmieWebhookController {
       return { ok: false };
     }
 
-    const codigoOmie = parsed.data.codigo_produto?.toString();
-    if (!codigoOmie) {
+    const codigoErp = parsed.data.codigo_produto?.toString();
+    if (!codigoErp) {
       this.logger.warn('Webhook OMIE produto sem codigo_produto — ignorado');
       return { ok: false };
     }
 
     // ISOLAMENTO MULTI-TENANT (igual ao cliente-status): o payload não traz
-    // empresaId. Se o codigoOmie existir em 2 empresas, recusa em vez de
+    // empresaId. Se o codigoErp existir em 2 empresas, recusa em vez de
     // sincronizar a empresa errada. `take: 2` só pra detectar duplicidade.
     const produtos = await this.prisma.produto.findMany({
-      where: { codigoOmie },
+      where: { codigoErp },
       select: { id: true, empresaId: true, nome: true, estoque: true },
       take: 2,
     });
     if (produtos.length === 0) {
       this.logger.warn(
-        `Webhook OMIE produto ${codigoOmie} não encontrado localmente — deixa o cron 30min capturar`,
+        `Webhook OMIE produto ${codigoErp} não encontrado localmente — deixa o cron 30min capturar`,
       );
       // Sem produto local, não temos empresaId. Skip e deixa o cron 30min capturar.
       return { ok: false };
     }
     if (produtos.length > 1) {
       this.logger.warn(
-        `Webhook OMIE produto ${codigoOmie} existe em múltiplas empresas — ambíguo, ignorado (evita sync no tenant errado).`,
+        `Webhook OMIE produto ${codigoErp} existe em múltiplas empresas — ambíguo, ignorado (evita sync no tenant errado).`,
       );
       return { ok: false };
     }
@@ -269,7 +269,7 @@ export class OmieWebhookController {
       .sync(produto.empresaId, { modo: 'incremental' })
       .then((r) =>
         this.logger.log(
-          `Webhook OMIE produto ${codigoOmie} (${produto.nome}) → sync disparado: ${r.atualizados} atualizados`,
+          `Webhook OMIE produto ${codigoErp} (${produto.nome}) → sync disparado: ${r.atualizados} atualizados`,
         ),
       )
       .catch((err) => {

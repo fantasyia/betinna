@@ -43,7 +43,7 @@ const fakeProduto = (overrides: Record<string, unknown> = {}) => ({
   empresaId: 'emp-1',
   nome: 'Óleo 5L',
   sku: 'OLE-5L',
-  codigoOmie: null,
+  codigoErp: null,
   marca: 'Soya',
   linha: 'Alimentos',
   categoria: 'Óleos',
@@ -114,7 +114,7 @@ describe('ProdutosService', () => {
       expect(firstCond).toEqual({ empresaId: 'emp-5' });
     });
 
-    it('filtra por search em nome/sku/codigoOmie/marca (OR)', async () => {
+    it('filtra por search em nome/sku/codigoErp/marca (OR)', async () => {
       prisma.produto.count.mockResolvedValue(0);
       prisma.produto.findMany.mockResolvedValue([]);
 
@@ -246,12 +246,12 @@ describe('ProdutosService', () => {
       expect(prisma.produto.create).not.toHaveBeenCalled();
     });
 
-    it('lança BusinessRuleException para codigoOmie duplicado', async () => {
+    it('lança BusinessRuleException para codigoErp duplicado', async () => {
       // create sem sku → apenas assertCodigoOmieUnico é chamado (1 findUnique)
       prisma.produto.findUnique.mockResolvedValueOnce({ id: 'p-existente' }); // omie check: conflito
 
       await expect(
-        service.create(fakeUser(), { ...baseDto, codigoOmie: '12345' }),
+        service.create(fakeUser(), { ...baseDto, codigoErp: '12345' }),
       ).rejects.toBeInstanceOf(BusinessRuleException);
     });
   });

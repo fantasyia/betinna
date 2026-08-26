@@ -92,7 +92,7 @@ interface Cliente {
   uf?: string | null;
   segmento?: string | null;
   status: ClienteStatus;
-  omieStatus: OmieStatus;
+  erpStatus: OmieStatus;
   representante?: { id: string; nome: string } | null;
   tags?: Array<{ id: string; nome: string; cor?: string | null }>;
   criadoEm?: string;
@@ -161,7 +161,7 @@ export default function ClientesPage() {
     qs.set('limit', '20');
     if (buscaDebounced.trim()) qs.set('search', buscaDebounced.trim());
     if (status) qs.set('status', status);
-    if (omie) qs.set('omieStatus', omie);
+    if (omie) qs.set('erpStatus', omie);
     if (lista) qs.set('lista', lista);
     return `/clientes?${qs.toString()}`;
   }, [page, buscaDebounced, status, omie, lista]);
@@ -224,7 +224,7 @@ export default function ClientesPage() {
       const query: Record<string, string> = {};
       if (search.trim()) query.search = search.trim();
       if (status) query.status = status;
-      if (omie) query.omieStatus = omie;
+      if (omie) query.erpStatus = omie;
       if (lista) query.lista = lista;
       const data = new Date().toISOString().slice(0, 10);
       const columns = [
@@ -236,7 +236,7 @@ export default function ClientesPage() {
         { header: 'UF', value: (c: Cliente) => c.uf ?? '' },
         { header: 'Segmento', value: (c: Cliente) => c.segmento ?? '' },
         { header: 'Status', value: (c: Cliente) => c.status },
-        { header: 'OMIE', value: (c: Cliente) => c.omieStatus },
+        { header: 'OMIE', value: (c: Cliente) => c.erpStatus },
         { header: 'Representante', value: (c: Cliente) => c.representante?.nome ?? '' },
       ];
       const filename = `clientes-${data}.${formato}`;
@@ -508,8 +508,8 @@ export default function ClientesPage() {
                             <Badge variant={STATUS_VARIANT[c.status]}>{STATUS_LABEL[c.status]}</Badge>
                           </Td>
                           <Td>
-                            <Badge variant={OMIE_VARIANT[c.omieStatus]} size="sm">
-                              {c.omieStatus === 'ATIVO' ? 'Ativo' : 'Bloqueado'}
+                            <Badge variant={OMIE_VARIANT[c.erpStatus]} size="sm">
+                              {c.erpStatus === 'ATIVO' ? 'Ativo' : 'Bloqueado'}
                             </Badge>
                           </Td>
                           <Td onClick={(e) => e.stopPropagation()}>
@@ -957,8 +957,8 @@ function ClienteDetailDrawer({
               </h3>
               <div className="flex items-center gap-2 mt-1">
                 <Badge variant={STATUS_VARIANT[data.status]}>{STATUS_LABEL[data.status]}</Badge>
-                <Badge variant={OMIE_VARIANT[data.omieStatus]} size="sm">
-                  OMIE {data.omieStatus === 'ATIVO' ? 'ativo' : 'bloqueado'}
+                <Badge variant={OMIE_VARIANT[data.erpStatus]} size="sm">
+                  OMIE {data.erpStatus === 'ATIVO' ? 'ativo' : 'bloqueado'}
                 </Badge>
               </div>
             </div>
@@ -1487,7 +1487,7 @@ interface FormState {
   cidade: string;
   uf: string;
   status: ClienteStatus;
-  omieStatus: OmieStatus;
+  erpStatus: OmieStatus;
   prazoPagamento: number;
 }
 
@@ -1524,7 +1524,7 @@ function emptyForm(c?: Cliente | null): FormState {
     cidade: cc.cidade ?? '',
     uf: cc.uf ?? '',
     status: cc.status ?? 'NOVO',
-    omieStatus: cc.omieStatus ?? 'ATIVO',
+    erpStatus: cc.erpStatus ?? 'ATIVO',
     prazoPagamento: 30,
   };
 }
@@ -1651,7 +1651,7 @@ function ClienteFormModal({
     const payload: Record<string, unknown> = {
       nome: form.nome.trim(),
       status: form.status,
-      omieStatus: form.omieStatus,
+      erpStatus: form.erpStatus,
       prazoPagamento: form.prazoPagamento,
     };
     const optional = [
@@ -1857,8 +1857,8 @@ function ClienteFormModal({
             </Field>
             <Field label="OMIE">
               <Select
-                value={form.omieStatus}
-                onChange={(e) => setField('omieStatus', e.target.value as OmieStatus)}
+                value={form.erpStatus}
+                onChange={(e) => setField('erpStatus', e.target.value as OmieStatus)}
               >
                 <option value="ATIVO">Ativo</option>
                 <option value="BLOQUEADO">Bloqueado</option>

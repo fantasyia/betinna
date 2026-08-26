@@ -199,13 +199,13 @@ export class MetasService {
       empresaId,
       // Considera apenas pedidos válidos (não cancelado/rascunho)
       status: {
-        in: ['ENVIADO_OMIE', 'PAGO', 'EM_SEPARACAO', 'ENVIADO', 'ENTREGUE'],
+        in: ['ENVIADO_ERP', 'PAGO', 'EM_SEPARACAO', 'ENVIADO', 'ENTREGUE'],
       },
-      // `enviadoOmieEm` (não `criadoEm`): é a data que a FOLHA DE COMISSÃO usa
+      // `enviadoErpEm` (não `criadoEm`): é a data que a FOLHA DE COMISSÃO usa
       // pra fechar o mês. Com criadoEm, um pedido criado em 30/jun e enviado em
       // 01/jul contava em meses diferentes nos dois lugares — o rep batia a meta
       // e não via a comissão (ou o contrário).
-      enviadoOmieEm: { gte: meta.inicio, lte: meta.fim },
+      enviadoErpEm: { gte: meta.inicio, lte: meta.fim },
     };
 
     if (meta.alvoTipo === 'REP' && meta.alvoId) {

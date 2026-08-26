@@ -91,14 +91,14 @@ export class ClientesService {
           { nome: { contains: term, mode: 'insensitive' } },
           { cnpj: { contains: term } },
           { email: { contains: term, mode: 'insensitive' } },
-          { codigoOmie: { contains: term } },
+          { codigoErp: { contains: term } },
         ],
       });
     }
     if (params.segmento) conditions.push({ segmento: params.segmento });
     if (params.regiao) conditions.push({ regiao: params.regiao });
     if (params.status) conditions.push({ status: params.status });
-    if (params.omieStatus) conditions.push({ omieStatus: params.omieStatus });
+    if (params.erpStatus) conditions.push({ erpStatus: params.erpStatus });
     if (params.representanteId) conditions.push({ representanteId: params.representanteId });
     if (params.tagId) conditions.push({ tags: { some: { tagId: params.tagId } } });
 
@@ -219,7 +219,7 @@ export class ClientesService {
     }
 
     if (dto.cnpj) await this.assertCnpjUnico(user.empresaIdAtiva, dto.cnpj);
-    if (dto.codigoOmie) await this.assertCodigoOmieUnico(user.empresaIdAtiva, dto.codigoOmie);
+    if (dto.codigoErp) await this.assertCodigoOmieUnico(user.empresaIdAtiva, dto.codigoErp);
     if (dto.tagIds && dto.tagIds.length > 0) {
       await this.assertTagsValidas(user.empresaIdAtiva, dto.tagIds);
     }
@@ -247,8 +247,8 @@ export class ClientesService {
     // Sem isso o PATCH geral era a porta dos fundos pro REP se desbloquear.
     if (
       user.role === 'REP' &&
-      dto.omieStatus !== undefined &&
-      dto.omieStatus !== existing.omieStatus
+      dto.erpStatus !== undefined &&
+      dto.erpStatus !== existing.erpStatus
     ) {
       throw new ForbiddenException(
         'REP não pode alterar o status OMIE do cliente — apenas ADMIN/DIRECTOR/GERENTE',
@@ -281,8 +281,8 @@ export class ClientesService {
     if (dto.cnpj && dto.cnpj !== existing.cnpj) {
       await this.assertCnpjUnico(existing.empresaId, dto.cnpj);
     }
-    if (dto.codigoOmie && dto.codigoOmie !== existing.codigoOmie) {
-      await this.assertCodigoOmieUnico(existing.empresaId, dto.codigoOmie);
+    if (dto.codigoErp && dto.codigoErp !== existing.codigoErp) {
+      await this.assertCodigoOmieUnico(existing.empresaId, dto.codigoErp);
     }
     if (dto.tagIds) await this.assertTagsValidas(existing.empresaId, dto.tagIds);
 
@@ -481,7 +481,7 @@ export class ClientesService {
     const existing = await this.findById(user, id);
     await this.prisma.cliente.updateMany({
       where: { id, empresaId: existing.empresaId },
-      data: { omieStatus: dto.omieStatus },
+      data: { erpStatus: dto.erpStatus },
     });
     return this.prisma.cliente.findUniqueOrThrow({ where: { id }, include: clienteInclude });
   }
@@ -516,14 +516,14 @@ export class ClientesService {
     }
   }
 
-  private async assertCodigoOmieUnico(empresaId: string, codigoOmie: string): Promise<void> {
+  private async assertCodigoOmieUnico(empresaId: string, codigoErp: string): Promise<void> {
     const existe = await this.prisma.cliente.findUnique({
-      where: { empresaId_codigoOmie: { empresaId, codigoOmie } },
+      where: { empresaId_codigoErp: { empresaId, codigoErp } },
       select: { id: true },
     });
     if (existe) {
       throw new BusinessRuleException(
-        `Já existe cliente com código OMIE ${codigoOmie} nesta empresa`,
+        `Já existe cliente com código OMIE ${codigoErp} nesta empresa`,
         ErrorCode.ALREADY_EXISTS,
       );
     }

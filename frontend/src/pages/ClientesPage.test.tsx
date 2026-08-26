@@ -21,7 +21,7 @@ const LISTA = {
       uf: 'SP',
       segmento: 'Padaria',
       status: 'ATIVO',
-      omieStatus: 'ATIVO',
+      erpStatus: 'ATIVO',
       score: 70,
       email: 'j@x.com',
       telefone: '11999990000',

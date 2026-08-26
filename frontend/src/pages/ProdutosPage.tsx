@@ -18,7 +18,7 @@ interface Produto {
   id: string;
   nome: string;
   sku?: string | null;
-  codigoOmie?: string | null;
+  codigoErp?: string | null;
   descricao?: string | null;
   marca?: string | null;
   linha?: string | null;
@@ -130,7 +130,7 @@ export default function ProdutosPage() {
           <div>
             <div className="font-semibold">{p.nome}</div>
             <div className="text-[11px] text-muted">
-              {[p.sku ?? p.codigoOmie, p.marca].filter(Boolean).join(' · ') || '—'}
+              {[p.sku ?? p.codigoErp, p.marca].filter(Boolean).join(' · ') || '—'}
             </div>
           </div>
         </div>
@@ -359,7 +359,7 @@ export default function ProdutosPage() {
 interface FormState {
   nome: string;
   sku: string;
-  codigoOmie: string;
+  codigoErp: string;
   descricao: string;
   marca: string;
   linha: string;
@@ -390,7 +390,7 @@ function initial(p?: Produto | null): FormState {
   return {
     nome: p?.nome ?? '',
     sku: p?.sku ?? '',
-    codigoOmie: p?.codigoOmie ?? '',
+    codigoErp: p?.codigoErp ?? '',
     descricao: p?.descricao ?? '',
     marca: p?.marca ?? '',
     linha: p?.linha ?? '',
@@ -473,7 +473,7 @@ function ProdutoFormModal({
       popularidade: form.popularidade,
       ativo: form.ativo,
     };
-    for (const k of ['sku', 'codigoOmie', 'descricao', 'marca', 'linha', 'categoria', 'unidade', 'imagem'] as const) {
+    for (const k of ['sku', 'codigoErp', 'descricao', 'marca', 'linha', 'categoria', 'unidade', 'imagem'] as const) {
       const v = form[k].trim();
       if (v) payload[k] = v;
     }
@@ -594,7 +594,7 @@ function ProdutoFormModal({
             <Input id="p-sku" value={form.sku} onChange={(e) => setF('sku', e.target.value)} />
           </FormField>
           <FormField label="Código OMIE" htmlFor="p-omie">
-            <Input id="p-omie" value={form.codigoOmie} onChange={(e) => setF('codigoOmie', e.target.value)} />
+            <Input id="p-omie" value={form.codigoErp} onChange={(e) => setF('codigoErp', e.target.value)} />
           </FormField>
           <FormField label="Unidade" htmlFor="p-un">
             <Input id="p-un" placeholder="cx, un, kg…" value={form.unidade} onChange={(e) => setF('unidade', e.target.value)} />

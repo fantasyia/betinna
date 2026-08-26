@@ -55,7 +55,7 @@ import { formatMoeda as fmtBRL, formatPercent } from '@/lib/masks';
 type PedidoStatus =
   | 'RASCUNHO'
   | 'AGUARDANDO_APROVACAO'
-  | 'ENVIADO_OMIE'
+  | 'ENVIADO_ERP'
   | 'PAGO'
   | 'EM_SEPARACAO'
   | 'ENVIADO'
@@ -70,8 +70,8 @@ interface PedidoDetail {
   cliente?: { id: string; nome: string; cnpj?: string | null };
   representante?: { id: string; nome: string };
   criadoEm: string;
-  numeroOmie?: string | null;
-  enviadoOmieEm?: string | null;
+  numeroErp?: string | null;
+  enviadoErpEm?: string | null;
   /** Quando este pedido foi criado via Duplicar, aponta pro original. */
   pedidoOrigem?: { id: string; numero: string | number } | null;
   pedidoOrigemId?: string | null;
@@ -108,7 +108,7 @@ interface PedidoDetail {
 const STATUS_LABEL: Record<PedidoStatus, string> = {
   RASCUNHO: 'Rascunho',
   AGUARDANDO_APROVACAO: 'Aguardando aprovação',
-  ENVIADO_OMIE: 'Enviado ao OMIE',
+  ENVIADO_ERP: 'Enviado ao OMIE',
   PAGO: 'Pago',
   EM_SEPARACAO: 'Em separação',
   ENVIADO: 'Enviado',
@@ -122,7 +122,7 @@ const STATUS_VARIANT: Record<
 > = {
   RASCUNHO: 'neutral',
   AGUARDANDO_APROVACAO: 'warning',
-  ENVIADO_OMIE: 'info',
+  ENVIADO_ERP: 'info',
   PAGO: 'success',
   EM_SEPARACAO: 'primary',
   ENVIADO: 'info',
@@ -133,7 +133,7 @@ const STATUS_VARIANT: Record<
 const STATUS_ICON: Record<PedidoStatus, typeof Pencil> = {
   RASCUNHO: Pencil,
   AGUARDANDO_APROVACAO: CircleDashed,
-  ENVIADO_OMIE: Send,
+  ENVIADO_ERP: Send,
   PAGO: CreditCard,
   EM_SEPARACAO: Receipt,
   ENVIADO: Truck,
@@ -143,7 +143,7 @@ const STATUS_ICON: Record<PedidoStatus, typeof Pencil> = {
 
 const FLOW_STEPS: PedidoStatus[] = [
   'RASCUNHO',
-  'ENVIADO_OMIE',
+  'ENVIADO_ERP',
   'PAGO',
   'EM_SEPARACAO',
   'ENVIADO',
@@ -266,7 +266,7 @@ export default function PedidoDetailPage() {
     <PageLayout
       title={data ? `Pedido #${data.numero}` : 'Pedido'}
       description={
-        data?.numeroOmie ? `OMIE ${data.numeroOmie}` : data?.cliente?.nome ?? undefined
+        data?.numeroErp ? `OMIE ${data.numeroErp}` : data?.cliente?.nome ?? undefined
       }
       actions={
         <div className="flex flex-wrap items-center gap-2">
@@ -320,7 +320,7 @@ export default function PedidoDetailPage() {
             </Button>
           )}
           {data &&
-            ['ENVIADO_OMIE', 'PAGO', 'EM_SEPARACAO', 'ENVIADO'].includes(data.status) && (
+            ['ENVIADO_ERP', 'PAGO', 'EM_SEPARACAO', 'ENVIADO'].includes(data.status) && (
               <Button
                 data-testid="pedido-page-avancar"
                 onClick={avancar}
@@ -551,14 +551,14 @@ export default function PedidoDetailPage() {
                 </h4>
                 <div className="grid grid-cols-1 gap-2">
                   <InfoCell icon={<Calendar />} label="Criado em" value={fmtDateTime(data.criadoEm)} />
-                  {data.numeroOmie && (
-                    <InfoCell icon={<Hash />} label="OMIE" value={data.numeroOmie} mono />
+                  {data.numeroErp && (
+                    <InfoCell icon={<Hash />} label="OMIE" value={data.numeroErp} mono />
                   )}
-                  {data.enviadoOmieEm && (
+                  {data.enviadoErpEm && (
                     <InfoCell
                       icon={<Send />}
                       label="Enviado ao OMIE"
-                      value={fmtDateTime(data.enviadoOmieEm)}
+                      value={fmtDateTime(data.enviadoErpEm)}
                     />
                   )}
                   <InfoCell
@@ -774,8 +774,8 @@ function stepDate(p: PedidoDetail, step: PedidoStatus): string | null | undefine
   switch (step) {
     case 'RASCUNHO':
       return p.criadoEm;
-    case 'ENVIADO_OMIE':
-      return p.enviadoOmieEm;
+    case 'ENVIADO_ERP':
+      return p.enviadoErpEm;
     case 'PAGO':
       return p.pagoEm;
     case 'EM_SEPARACAO':

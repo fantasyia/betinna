@@ -17,7 +17,7 @@ import { z } from 'zod';
  */
 export const FILTRO_CAMPOS = [
   'status',
-  'omieStatus',
+  'erpStatus',
   'segmento',
   'cidade',
   'uf',

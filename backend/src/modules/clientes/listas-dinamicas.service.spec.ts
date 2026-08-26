@@ -35,9 +35,9 @@ describe('ListasDinamicasService', () => {
       });
     });
 
-    it('inadimplentes — omieStatus BLOQUEADO', () => {
+    it('inadimplentes — erpStatus BLOQUEADO', () => {
       const where = service.whereFor('inadimplentes');
-      expect(where).toEqual({ omieStatus: 'BLOQUEADO' });
+      expect(where).toEqual({ erpStatus: 'BLOQUEADO' });
     });
 
     it('nenhuma definição usa o campo score (removido no Lote 7)', () => {

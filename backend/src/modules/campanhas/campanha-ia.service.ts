@@ -448,12 +448,12 @@ Retorne JSON: {"mensagemWa": "...", "mensagemEmail": "..."}`;
       }),
       this.prisma.cliente.groupBy({
         by: ['segmento'],
-        where: { empresaId, omieStatus: 'ATIVO', segmento: { not: null } },
+        where: { empresaId, erpStatus: 'ATIVO', segmento: { not: null } },
         _count: { _all: true },
         orderBy: { _count: { segmento: 'desc' } },
         take: 5,
       }),
-      this.prisma.cliente.count({ where: { empresaId, omieStatus: 'ATIVO' } }),
+      this.prisma.cliente.count({ where: { empresaId, erpStatus: 'ATIVO' } }),
     ]);
 
     return {

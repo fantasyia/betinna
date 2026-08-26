@@ -520,7 +520,7 @@ export class CampanhasService {
 
     const where: Prisma.ClienteWhereInput = {
       empresaId: campanha.empresaId,
-      omieStatus: 'ATIVO',
+      erpStatus: 'ATIVO',
     };
 
     // Recorte de carteira do CRIADOR (não de quem dispara — o cron roda como

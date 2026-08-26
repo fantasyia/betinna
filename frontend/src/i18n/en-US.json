@@ -85,7 +85,7 @@
       "RASCUNHO": "Draft",
       "AGUARDANDO_APROVACAO": "Awaiting approval",
       "APROVADO": "Approved",
-      "ENVIADO_OMIE": "Sent to ERP",
+      "ENVIADO_ERP": "Sent to ERP",
       "CANCELADO": "Cancelled"
     }
   },

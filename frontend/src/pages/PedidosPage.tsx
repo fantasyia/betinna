@@ -89,8 +89,8 @@ interface Pedido {
   cliente?: { id: string; nome: string };
   representante?: { id: string; nome: string };
   criadoEm: string;
-  numeroOmie?: string | null;
-  enviadoOmieEm?: string | null;
+  numeroErp?: string | null;
+  enviadoErpEm?: string | null;
 }
 
 interface PedidoDetail extends Pedido {
@@ -121,7 +121,7 @@ interface PedidoDetail extends Pedido {
 const STATUS_ICON: Record<PedidoStatus, typeof Pencil> = {
   RASCUNHO: Pencil,
   AGUARDANDO_APROVACAO: CircleDashed,
-  ENVIADO_OMIE: Send,
+  ENVIADO_ERP: Send,
   PAGO: CreditCard,
   EM_SEPARACAO: Receipt,
   ENVIADO: Truck,
@@ -132,7 +132,7 @@ const STATUS_ICON: Record<PedidoStatus, typeof Pencil> = {
 /** Fluxo principal — usado pra timeline (Cancelado é estado terminal off-flow). */
 const FLOW_STEPS: PedidoStatus[] = [
   'RASCUNHO',
-  'ENVIADO_OMIE',
+  'ENVIADO_ERP',
   'PAGO',
   'EM_SEPARACAO',
   'ENVIADO',
@@ -248,7 +248,7 @@ export default function PedidosPage() {
       const filename = `pedidos-${new Date().toISOString().slice(0, 10)}.${formato}`;
       const columns = [
         { header: 'Número', value: (p: Pedido) => String(p.numero) },
-        { header: 'Número OMIE', value: (p: Pedido) => p.numeroOmie ?? '' },
+        { header: 'Número OMIE', value: (p: Pedido) => p.numeroErp ?? '' },
         { header: 'Cliente', value: (p: Pedido) => p.cliente?.nome ?? '' },
         { header: 'Representante', value: (p: Pedido) => p.representante?.nome ?? '' },
         {
@@ -641,9 +641,9 @@ export default function PedidosPage() {
                               <strong className="text-sm text-text tabular font-semibold">
                                 #{p.numero}
                               </strong>
-                              {p.numeroOmie && (
+                              {p.numeroErp && (
                                 <span className="text-[11px] text-muted tabular">
-                                  OMIE {p.numeroOmie}
+                                  OMIE {p.numeroErp}
                                 </span>
                               )}
                             </div>
@@ -949,7 +949,7 @@ function PedidoDetailDrawer({
       open
       onClose={onClose}
       title={data ? `Pedido #${data.numero}` : 'Pedido'}
-      description={data?.numeroOmie ? `OMIE ${data.numeroOmie}` : undefined}
+      description={data?.numeroErp ? `OMIE ${data.numeroErp}` : undefined}
       width="lg"
       footer={
         data && (
@@ -974,7 +974,7 @@ function PedidoDetailDrawer({
                 Enviar pro OMIE
               </Button>
             )}
-            {['ENVIADO_OMIE', 'PAGO', 'EM_SEPARACAO', 'ENVIADO'].includes(data.status) && (
+            {['ENVIADO_ERP', 'PAGO', 'EM_SEPARACAO', 'ENVIADO'].includes(data.status) && (
               <Button
                 data-testid="pedido-avancar"
                 onClick={avancar}
@@ -1066,8 +1066,8 @@ function PedidoDetailDrawer({
                   label="Criado em"
                   value={fmtDateTime(data.criadoEm)}
                 />
-                {data.numeroOmie && (
-                  <InfoCell icon={<Hash />} label="OMIE" value={data.numeroOmie} mono />
+                {data.numeroErp && (
+                  <InfoCell icon={<Hash />} label="OMIE" value={data.numeroErp} mono />
                 )}
                 <InfoCell
                   icon={<Receipt />}
@@ -1252,7 +1252,7 @@ function PedidoDetailDrawer({
 
 function StatusTimeline({ pedido }: { pedido: PedidoDetail }) {
   const currentIdx = FLOW_STEPS.indexOf(pedido.status);
-  // AGUARDANDO_APROVACAO fica entre RASCUNHO e ENVIADO_OMIE — branca da linha principal
+  // AGUARDANDO_APROVACAO fica entre RASCUNHO e ENVIADO_ERP — branca da linha principal
   const isAwaiting = pedido.status === 'AGUARDANDO_APROVACAO';
   const { data: cfgRaw } = useApiQuery<Record<string, unknown>>('/empresas/config');
   const statusCfg = (cfgRaw?.pedidoStatusLabels ?? {}) as PedidoStatusConfig;
@@ -1351,8 +1351,8 @@ function stepDate(p: PedidoDetail, step: PedidoStatus): string | null | undefine
   switch (step) {
     case 'RASCUNHO':
       return p.criadoEm;
-    case 'ENVIADO_OMIE':
-      return p.enviadoOmieEm;
+    case 'ENVIADO_ERP':
+      return p.enviadoErpEm;
     case 'PAGO':
       return p.pagoEm;
     case 'EM_SEPARACAO':

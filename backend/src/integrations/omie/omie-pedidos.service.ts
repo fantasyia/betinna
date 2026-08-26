@@ -12,7 +12,7 @@ import type { OmieIncluirPedidoParam } from './omie.types';
 
 export interface OmiePedidoEnvioResult {
   pedidoId: string;
-  numeroOmie: string;
+  numeroErp: string;
   codigoStatusOmie: string;
   descricaoStatusOmie: string;
 }
@@ -29,9 +29,9 @@ type PedidoComItens = Pedido & {
  * Aqui assumimos que o pedido está pronto pra enviar.
  *
  * Persiste:
- *  - numeroOmie atualizado em Pedido
- *  - enviadoOmieEm = agora
- *  - status → ENVIADO_OMIE
+ *  - numeroErp atualizado em Pedido
+ *  - enviadoErpEm = agora
+ *  - status → ENVIADO_ERP
  */
 @Injectable()
 export class OmiePedidosService {
@@ -64,9 +64,9 @@ export class OmiePedidosService {
     if (!pedido) {
       throw new BusinessRuleException(`Pedido ${pedidoId} não encontrado`);
     }
-    if (!pedido.cliente.codigoOmie) {
+    if (!pedido.cliente.codigoErp) {
       throw new BusinessRuleException(
-        `Cliente ${pedido.cliente.id} não possui codigoOmie. Sincronize com OMIE primeiro.`,
+        `Cliente ${pedido.cliente.id} não possui codigoErp. Sincronize com OMIE primeiro.`,
         ErrorCode.OMIE_ERROR,
       );
     }
@@ -87,7 +87,7 @@ export class OmiePedidosService {
       // Heal idempotente (ITEM 1): o envio pode ter falhado porque uma tentativa
       // ANTERIOR já criou o pedido no OMIE e a resposta se perdeu (timeout) — aí o
       // OMIE recusa o reenvio com "já cadastrado". Em vez de falhar e deixar o
-      // pedido preso fora de ENVIADO_OMIE, consultamos o OMIE pelo
+      // pedido preso fora de ENVIADO_ERP, consultamos o OMIE pelo
       // codigo_pedido_integracao (= pedido.numero). Se ele REALMENTE existe lá,
       // reconciliamos (marca como enviado com o número de lá). Se NÃO existe, é
       // erro real (validação, credencial, etc.) → propaga o erro original.
@@ -108,34 +108,34 @@ export class OmiePedidosService {
     stopTimer();
     this.metrics.omiePush.inc({ empresa: pedido.empresaId, status: 'success' });
 
-    const numeroOmie = response.numero_pedido?.toString() ?? response.codigo_pedido.toString();
+    const numeroErp = response.numero_pedido?.toString() ?? response.codigo_pedido.toString();
 
     addBreadcrumb('omie', 'push-success', {
       pedidoId,
-      numeroOmie,
+      numeroErp,
       codigoStatusOmie: response.codigo_status,
     });
 
     await this.prisma.pedido.update({
       where: { id: pedidoId },
       data: {
-        status: 'ENVIADO_OMIE',
-        numeroOmie,
+        status: 'ENVIADO_ERP',
+        numeroErp,
         // CAÇADA-BUG #4 (defesa em profundidade): preserva o carimbo do PRIMEIRO envio — é ele que
         // determina o mês de comissão no fecharMes. Sobrescrever num reenvio jogaria a comissão pra
         // outro mês (folha duplicada). O gate de enviarParaOmie já bloqueia reenvio; isto protege
         // callers diretos e o heal idempotente.
-        enviadoOmieEm: pedido.enviadoOmieEm ?? new Date(),
+        enviadoErpEm: pedido.enviadoErpEm ?? new Date(),
       },
     });
 
     await this.integracoes.registrarSaudeOk(pedido.empresaId, 'omie').catch(() => {});
 
-    this.logger.log(`Pedido ${pedido.numero} → OMIE ${numeroOmie} (${response.descricao_status})`);
+    this.logger.log(`Pedido ${pedido.numero} → OMIE ${numeroErp} (${response.descricao_status})`);
 
     return {
       pedidoId,
-      numeroOmie,
+      numeroErp,
       codigoStatusOmie: response.codigo_status,
       descricaoStatusOmie: response.descricao_status,
     };
@@ -157,14 +157,14 @@ export class OmiePedidosService {
 
     return {
       cabecalho: {
-        codigo_cliente: Number(pedido.cliente.codigoOmie),
+        codigo_cliente: Number(pedido.cliente.codigoErp),
         codigo_pedido_integracao: pedido.numero,
         data_previsao: dataPrevisao,
         quantidade_itens: pedido.itens.length,
       },
       det: pedido.itens.map((item, i) =>
         OmieMapper.pedidoItemToOmie({
-          produtoCodigoOmie: item.produto.codigoOmie,
+          produtoCodigoOmie: item.produto.codigoErp,
           produtoSku: item.produto.sku,
           quantidade: item.quantidade,
           precoUnitario: Number(item.precoUnitario), // #17 — Decimal→number pro payload OMIE

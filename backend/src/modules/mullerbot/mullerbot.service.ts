@@ -277,7 +277,7 @@ export class MullerBotService {
         id: p.id,
         nome: p.nome,
         sku: p.sku,
-        codigoOmie: p.codigoOmie,
+        codigoErp: p.codigoErp,
         precoTabela: p.precoTabela,
         score: p.score,
       })),

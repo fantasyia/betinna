@@ -84,8 +84,8 @@ describe('ComissoesService', () => {
       await svc.fecharMes(fakeUser(), { mes: 7, ano: 2026, reprocessar: false });
       const where = prisma.pedido.groupBy.mock.calls[0][0].where;
       // Julho/2026: início 01/07 00:00 BRT = 01/07 03:00 UTC; fim 01/08 00:00 BRT = 01/08 03:00 UTC.
-      expect((where.enviadoOmieEm.gte as Date).toISOString()).toBe('2026-07-01T03:00:00.000Z');
-      expect((where.enviadoOmieEm.lt as Date).toISOString()).toBe('2026-08-01T03:00:00.000Z');
+      expect((where.enviadoErpEm.gte as Date).toISOString()).toBe('2026-07-01T03:00:00.000Z');
+      expect((where.enviadoErpEm.lt as Date).toISOString()).toBe('2026-08-01T03:00:00.000Z');
     });
 
     it('grava comissão REP por representanteId agregado', async () => {

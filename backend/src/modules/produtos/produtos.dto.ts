@@ -2,7 +2,7 @@ import { z } from 'zod';
 import { boolQuery } from '@shared/validators/query.schema';
 
 export const createProdutoSchema = z.object({
-  codigoOmie: z.string().trim().max(50).optional(),
+  codigoErp: z.string().trim().max(50).optional(),
   sku: z.string().trim().max(50).optional(),
   nome: z.string().trim().min(2).max(200),
   descricao: z.string().max(5000).optional(),

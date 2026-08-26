@@ -63,7 +63,7 @@ export function CrmTabs() {
     tabs.push({ to: '/tags', label: 'Tags', icon: <Tags size={14} /> });
   }
   // "Listas dinâmicas" (ex-Segmentação) está FORA do menu de propósito: ela só
-  // opera sobre Cliente, e a carteira ainda vem do OMIE (hoje: 0 clientes) — uma
+  // opera sobre Cliente, e a carteira ainda vem do ERP (hoje: 0 clientes) — uma
   // aba que só sabe mostrar vazio ensina o time a ignorar o menu. A rota segue
   // viva em /segmentos; basta remover este bloco de comentário e restaurar o
   // tabs.push quando a carteira existir. Não apagar o módulo: a diferença dele

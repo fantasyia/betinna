@@ -70,8 +70,8 @@ export class OmieProdutosService {
       totalPaginas = response.total_de_paginas;
 
       // 1ª passada: filtro incremental + mapper → junta os payloads válidos da
-      // página com seu codigoOmie (sem tocar no banco ainda).
-      const validos: { codigoOmie: string; payload: ProdutoUpsertPayload }[] = [];
+      // página com seu codigoErp (sem tocar no banco ainda).
+      const validos: { codigoErp: string; payload: ProdutoUpsertPayload }[] = [];
       for (const o of response.produto_servico_cadastro) {
         // Filtro incremental: pula se data_alteracao <= desde
         if (modo === 'incremental' && desde) {
@@ -84,27 +84,27 @@ export class OmieProdutosService {
 
         const payload = OmieMapper.produtoToPrismaUpsert(empresaId, o);
         if (!payload) continue;
-        const where = payload.where as { empresaId_codigoOmie?: { codigoOmie?: string } };
-        const codigoOmie = where.empresaId_codigoOmie?.codigoOmie;
-        if (!codigoOmie) continue;
-        validos.push({ codigoOmie, payload });
+        const where = payload.where as { empresaId_codigoErp?: { codigoErp?: string } };
+        const codigoErp = where.empresaId_codigoErp?.codigoErp;
+        if (!codigoErp) continue;
+        validos.push({ codigoErp, payload });
       }
 
       // Busca em LOTE o estado anterior dos produtos da página — 1 query em vez de
       // 1 findUnique por registro. Precisamos do estoque ANTIGO pra: (a) detectar a
       // transição estoque>0 → 0 (notificação) e (b) contar inseridos vs atualizados.
-      const codigos = validos.map((v) => v.codigoOmie);
+      const codigos = validos.map((v) => v.codigoErp);
       const antesList = codigos.length
         ? await this.prisma.produto.findMany({
-            where: { empresaId, codigoOmie: { in: codigos } },
-            select: { id: true, codigoOmie: true, estoque: true, nome: true },
+            where: { empresaId, codigoErp: { in: codigos } },
+            select: { id: true, codigoErp: true, estoque: true, nome: true },
           })
         : [];
-      const antesPorCodigo = new Map(antesList.map((p) => [p.codigoOmie, p]));
+      const antesPorCodigo = new Map(antesList.map((p) => [p.codigoErp, p]));
 
       // 2ª passada: 1 upsert por registro (em vez de find + create/update em série).
-      for (const { codigoOmie, payload } of validos) {
-        const antes = antesPorCodigo.get(codigoOmie);
+      for (const { codigoErp, payload } of validos) {
+        const antes = antesPorCodigo.get(codigoErp);
         const novoEstoque =
           typeof payload.update.estoque === 'number' ? payload.update.estoque : null;
 

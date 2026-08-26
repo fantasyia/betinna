@@ -36,7 +36,7 @@ import { cn } from '@/lib/cn';
 type Logic = 'AND' | 'OR';
 type FiltroCampo =
   | 'status'
-  | 'omieStatus'
+  | 'erpStatus'
   | 'segmento'
   | 'cidade'
   | 'uf'
@@ -82,7 +82,7 @@ interface PreviewResult {
 
 const CAMPO_LABEL: Record<FiltroCampo, string> = {
   status: 'Status',
-  omieStatus: 'Status OMIE',
+  erpStatus: 'Status OMIE',
   segmento: 'Segmento',
   cidade: 'Cidade',
   uf: 'UF',
@@ -105,7 +105,7 @@ const OP_LABEL: Record<FiltroOp, string> = {
 
 const CAMPO_OPS: Record<FiltroCampo, FiltroOp[]> = {
   status: ['eq', 'neq', 'in'],
-  omieStatus: ['eq', 'neq'],
+  erpStatus: ['eq', 'neq'],
   segmento: ['eq', 'neq', 'contains'],
   cidade: ['eq', 'neq', 'contains'],
   uf: ['eq', 'neq', 'in'],

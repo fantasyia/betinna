@@ -27,13 +27,13 @@ describe('OmieMapper.clienteToPrismaUpsert', () => {
   it('mapeia ATIVO quando bloqueado=N', () => {
     const r = OmieMapper.clienteToPrismaUpsert('emp-1', baseCliente);
     expect(r).not.toBeNull();
-    expect(r!.create.omieStatus).toBe('ATIVO');
+    expect(r!.create.erpStatus).toBe('ATIVO');
     expect(r!.create.status).toBe('ATIVO');
   });
 
   it('mapeia BLOQUEADO quando bloqueado=S', () => {
     const r = OmieMapper.clienteToPrismaUpsert('emp-1', { ...baseCliente, bloqueado: 'S' });
-    expect(r!.create.omieStatus).toBe('BLOQUEADO');
+    expect(r!.create.erpStatus).toBe('BLOQUEADO');
   });
 
   it('mapeia INATIVO quando inativo=S', () => {
@@ -53,7 +53,7 @@ describe('OmieMapper.clienteToPrismaUpsert', () => {
 
   it('converte codigo_cliente_omie pra string no upsert key (multi-tenant composite)', () => {
     const r = OmieMapper.clienteToPrismaUpsert('emp-1', baseCliente);
-    expect(r!.where).toEqual({ empresaId_codigoOmie: { empresaId: 'emp-1', codigoOmie: '1001' } });
+    expect(r!.where).toEqual({ empresaId_codigoErp: { empresaId: 'emp-1', codigoErp: '1001' } });
   });
 
   it('campos opcionais ausentes viram null', () => {
@@ -126,14 +126,14 @@ describe('OmieMapper.produtoToPrismaUpsert', () => {
     expect(r!.update.estoque).toBe(0);
   });
 
-  it('upsert key combina empresaId + codigoOmie (multi-tenant)', () => {
+  it('upsert key combina empresaId + codigoErp (multi-tenant)', () => {
     const r = OmieMapper.produtoToPrismaUpsert('emp-1', baseProduto);
-    expect(r!.where).toEqual({ empresaId_codigoOmie: { empresaId: 'emp-1', codigoOmie: '2001' } });
+    expect(r!.where).toEqual({ empresaId_codigoErp: { empresaId: 'emp-1', codigoErp: '2001' } });
   });
 });
 
 describe('OmieMapper.pedidoItemToOmie', () => {
-  it('usa codigo_produto quando codigoOmie disponível', () => {
+  it('usa codigo_produto quando codigoErp disponível', () => {
     const r = OmieMapper.pedidoItemToOmie({
       produtoCodigoOmie: '2001',
       produtoSku: 'OLE-GIR-5L',
@@ -148,7 +148,7 @@ describe('OmieMapper.pedidoItemToOmie', () => {
     expect(r.produto.percentual_desconto).toBe(5);
   });
 
-  it('cai pra codigo_produto_integracao (SKU) quando codigoOmie ausente', () => {
+  it('cai pra codigo_produto_integracao (SKU) quando codigoErp ausente', () => {
     const r = OmieMapper.pedidoItemToOmie({
       produtoCodigoOmie: null,
       produtoSku: 'OLE-GIR-5L',

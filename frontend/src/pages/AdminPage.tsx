@@ -836,7 +836,7 @@ function QuickLinksSection() {
       to: '/integracoes',
       emoji: '🔌',
       title: 'Integrações',
-      description: 'OMIE, Meta, Mercado Livre, Shopee, Amazon, TikTok, WhatsApp',
+      description: 'ERP (Tiny), Meta, Mercado Livre, Shopee, Amazon, TikTok, WhatsApp',
     },
     {
       to: '/tags',

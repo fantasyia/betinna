@@ -48,13 +48,13 @@ const fakePedido = (overrides: Record<string, unknown> = {}) => ({
   status: 'APROVADO',
   observacoes: null,
   prazoEntrega: null,
-  enviadoOmieEm: null,
-  numeroOmie: null,
+  enviadoErpEm: null,
+  numeroErp: null,
   cliente: {
     id: 'cli-1',
-    codigoOmie: '12345',
+    codigoErp: '12345',
     nome: 'Cliente Teste',
-    omieStatus: 'ATIVO',
+    erpStatus: 'ATIVO',
   },
   // total do pedido = Σ item.total quando não há desconto de cabeçalho (1 item, 10×25.5).
   total: 255,
@@ -67,7 +67,7 @@ const fakePedido = (overrides: Record<string, unknown> = {}) => ({
       total: 255,
       produto: {
         id: 'prod-1',
-        codigoOmie: '789',
+        codigoErp: '789',
         sku: 'SKU-001',
         nome: 'Produto A',
       },
@@ -112,9 +112,9 @@ describe('OmiePedidosService', () => {
       await expect(service.enviarPedido('ped-999')).rejects.toBeInstanceOf(BusinessRuleException);
     });
 
-    it('lança BusinessRuleException quando cliente não tem codigoOmie', async () => {
+    it('lança BusinessRuleException quando cliente não tem codigoErp', async () => {
       prisma.pedido.findFirst.mockResolvedValue(
-        fakePedido({ cliente: { id: 'cli-1', codigoOmie: null, nome: 'X' } }),
+        fakePedido({ cliente: { id: 'cli-1', codigoErp: null, nome: 'X' } }),
       );
 
       await expect(service.enviarPedido('ped-1')).rejects.toBeInstanceOf(BusinessRuleException);
@@ -132,14 +132,14 @@ describe('OmiePedidosService', () => {
         expect.objectContaining({
           where: { id: 'ped-1' },
           data: expect.objectContaining({
-            status: 'ENVIADO_OMIE',
-            numeroOmie: '99999',
-            enviadoOmieEm: expect.any(Date),
+            status: 'ENVIADO_ERP',
+            numeroErp: '99999',
+            enviadoErpEm: expect.any(Date),
           }),
         }),
       );
       expect(result.pedidoId).toBe('ped-1');
-      expect(result.numeroOmie).toBe('99999');
+      expect(result.numeroErp).toBe('99999');
       expect(result.codigoStatusOmie).toBe('101');
     });
 
@@ -149,7 +149,7 @@ describe('OmiePedidosService', () => {
 
       const result = await service.enviarPedido('ped-1');
 
-      expect(result.numeroOmie).toBe('555555');
+      expect(result.numeroErp).toBe('555555');
     });
 
     it('payload inclui cabeçalho com codigo_cliente e codigo_pedido_integracao', async () => {
@@ -198,9 +198,9 @@ describe('OmiePedidosService', () => {
     it('mapeia 1 item de pedido = 1 entrada det no payload', async () => {
       const pedidoTresItens = fakePedido({
         itens: [
-          { quantidade: 1, precoUnitario: 10, desconto: 0, produto: { codigoOmie: '1', sku: 'A' } },
-          { quantidade: 2, precoUnitario: 20, desconto: 0, produto: { codigoOmie: '2', sku: 'B' } },
-          { quantidade: 3, precoUnitario: 30, desconto: 0, produto: { codigoOmie: '3', sku: 'C' } },
+          { quantidade: 1, precoUnitario: 10, desconto: 0, produto: { codigoErp: '1', sku: 'A' } },
+          { quantidade: 2, precoUnitario: 20, desconto: 0, produto: { codigoErp: '2', sku: 'B' } },
+          { quantidade: 3, precoUnitario: 30, desconto: 0, produto: { codigoErp: '3', sku: 'C' } },
         ],
       });
       prisma.pedido.findFirst.mockResolvedValue(pedidoTresItens);
@@ -225,7 +225,7 @@ describe('OmiePedidosService', () => {
             precoUnitario: 100,
             desconto: 0,
             total: 1000,
-            produto: { codigoOmie: '1', sku: 'A' },
+            produto: { codigoErp: '1', sku: 'A' },
           },
         ],
       });
@@ -252,14 +252,14 @@ describe('OmiePedidosService', () => {
             precoUnitario: 100,
             desconto: 20,
             total: 80,
-            produto: { codigoOmie: '1', sku: 'A' },
+            produto: { codigoErp: '1', sku: 'A' },
           },
           {
             quantidade: 1,
             precoUnitario: 100,
             desconto: 0,
             total: 100,
-            produto: { codigoOmie: '2', sku: 'B' },
+            produto: { codigoErp: '2', sku: 'B' },
           },
         ],
       });
@@ -290,13 +290,13 @@ describe('OmiePedidosService', () => {
 
       // Consultou pelo codigo_pedido_integracao (= pedido.numero)
       expect(omie.consultarPedidoPorIntegracao).toHaveBeenCalledWith('emp-1', 'PED-2026-001');
-      // Reconciliou: status local vira ENVIADO_OMIE com o número de lá (em vez de falhar)
+      // Reconciliou: status local vira ENVIADO_ERP com o número de lá (em vez de falhar)
       expect(prisma.pedido.update).toHaveBeenCalledWith(
         expect.objectContaining({
-          data: expect.objectContaining({ status: 'ENVIADO_OMIE', numeroOmie: '77777' }),
+          data: expect.objectContaining({ status: 'ENVIADO_ERP', numeroErp: '77777' }),
         }),
       );
-      expect(result.numeroOmie).toBe('77777');
+      expect(result.numeroErp).toBe('77777');
     });
 
     it('HEAL: propaga o erro original quando o pedido NÃO existe no OMIE', async () => {

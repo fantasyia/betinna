@@ -52,7 +52,7 @@ interface Cliente {
   uf?: string | null;
   segmento?: string | null;
   status: ClienteStatus;
-  omieStatus: OmieStatus;
+  erpStatus: OmieStatus;
   score: number;
   prazoPagamento?: number;
   limiteCredito?: number | null;
@@ -123,7 +123,7 @@ interface PedidoLite {
   status:
     | 'RASCUNHO'
     | 'AGUARDANDO_APROVACAO'
-    | 'ENVIADO_OMIE'
+    | 'ENVIADO_ERP'
     | 'PAGO'
     | 'EM_SEPARACAO'
     | 'ENVIADO'
@@ -131,13 +131,13 @@ interface PedidoLite {
     | 'CANCELADO';
   total: number;
   criadoEm: string;
-  numeroOmie?: string | null;
+  numeroErp?: string | null;
 }
 
 const PEDIDO_STATUS_LABEL: Record<PedidoLite['status'], string> = {
   RASCUNHO: 'Rascunho',
   AGUARDANDO_APROVACAO: 'Aguardando aprovação',
-  ENVIADO_OMIE: 'Enviado OMIE',
+  ENVIADO_ERP: 'Enviado ao ERP',
   PAGO: 'Pago',
   EM_SEPARACAO: 'Em separação',
   ENVIADO: 'Enviado',
@@ -148,7 +148,7 @@ const PEDIDO_STATUS_LABEL: Record<PedidoLite['status'], string> = {
 const PEDIDO_STATUS_COLOR: Record<PedidoLite['status'], string> = {
   RASCUNHO: 'var(--muted)',
   AGUARDANDO_APROVACAO: 'var(--warning)',
-  ENVIADO_OMIE: 'var(--info)',
+  ENVIADO_ERP: 'var(--info)',
   PAGO: 'var(--success)',
   EM_SEPARACAO: 'var(--primary)',
   ENVIADO: 'var(--info)',
@@ -219,8 +219,8 @@ export default function ClienteDetailPage() {
               <span className={badgeCls} style={badgeStyle(STATUS_COLOR[cliente.status])}>
                 {cliente.status}
               </span>
-              <span className={badgeCls} style={badgeStyle(OMIE_COLOR[cliente.omieStatus])}>
-                OMIE {cliente.omieStatus}
+              <span className={badgeCls} style={badgeStyle(OMIE_COLOR[cliente.erpStatus])}>
+                OMIE {cliente.erpStatus}
               </span>
               {cliente.cnpj && (
                 <span className="text-[13px] text-muted">CNPJ {cliente.cnpj}</span>
@@ -356,7 +356,7 @@ function DadosTab({
     uf: cliente.uf ?? '',
     segmento: cliente.segmento ?? '',
     status: cliente.status,
-    omieStatus: cliente.omieStatus,
+    erpStatus: cliente.erpStatus,
     score: cliente.score,
     prazoPagamento: cliente.prazoPagamento ?? 30,
   });
@@ -378,7 +378,7 @@ function DadosTab({
     const payload: Record<string, unknown> = {
       nome: form.nome.trim(),
       status: form.status,
-      omieStatus: form.omieStatus,
+      erpStatus: form.erpStatus,
       score: form.score,
       prazoPagamento: form.prazoPagamento,
     };
@@ -480,11 +480,11 @@ function DadosTab({
           </FormField>
           <FormField label="OMIE">
             <Select
-              value={form.omieStatus}
+              value={form.erpStatus}
               disabled={!podeMudarOmie}
               title={podeMudarOmie ? undefined : 'Status OMIE é alterado pela gestão'}
               onChange={(e) =>
-                setForm((s) => ({ ...s, omieStatus: e.target.value as OmieStatus }))
+                setForm((s) => ({ ...s, erpStatus: e.target.value as OmieStatus }))
               }
             >
               <option value="ATIVO">Ativo</option>
@@ -789,8 +789,8 @@ function PedidosTab({ clienteId }: { clienteId: string }) {
               >
                 <td className={pedidoTdCls}>
                   <div className="font-semibold">#{p.numero}</div>
-                  {p.numeroOmie && (
-                    <div className="text-[11px] text-muted">OMIE {p.numeroOmie}</div>
+                  {p.numeroErp && (
+                    <div className="text-[11px] text-muted">OMIE {p.numeroErp}</div>
                   )}
                 </td>
                 <td className={pedidoTdCls}>

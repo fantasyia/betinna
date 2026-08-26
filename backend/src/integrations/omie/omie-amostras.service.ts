@@ -13,7 +13,7 @@ import type { OmieIncluirPedidoParam } from './omie.types';
 
 export interface OmieAmostraEnvioResult {
   amostraId: string;
-  numeroOmie: string;
+  numeroErp: string;
   cfop: string;
   codigoStatusOmie: string;
   descricaoStatusOmie: string;
@@ -38,7 +38,7 @@ type AmostraComRel = Amostra & {
  *    cliente, referenciado por OMIE_CENARIO_IMPOSTO_AMOSTRA — opcional);
  *  - valor de referência (a amostra é grátis, mas o OMIE exige base de cálculo).
  *
- * Persiste em Amostra: numeroOmie, enviadoOmieEm, cfop.
+ * Persiste em Amostra: numeroErp, enviadoErpEm, cfop.
  */
 @Injectable()
 export class OmieAmostrasService {
@@ -81,27 +81,27 @@ export class OmieAmostrasService {
     if (!amostra) {
       throw new BusinessRuleException(`Amostra ${amostraId} não encontrada`);
     }
-    if (amostra.numeroOmie) {
-      throw new BusinessRuleException(`Amostra já enviada ao OMIE (remessa ${amostra.numeroOmie})`);
+    if (amostra.numeroErp) {
+      throw new BusinessRuleException(`Amostra já enviada ao OMIE (remessa ${amostra.numeroErp})`);
     }
     if (!amostra.produto) {
       throw new BusinessRuleException(
         'Vincule um produto do catálogo à amostra antes de enviar ao OMIE (precisa do código OMIE do produto).',
       );
     }
-    if (!amostra.produto.codigoOmie && !amostra.produto.sku) {
+    if (!amostra.produto.codigoErp && !amostra.produto.sku) {
       throw new BusinessRuleException(
         `Produto "${amostra.produto.nome}" não tem código OMIE nem SKU. Sincronize o catálogo com o OMIE primeiro.`,
         ErrorCode.OMIE_ERROR,
       );
     }
-    if (!amostra.cliente.codigoOmie) {
+    if (!amostra.cliente.codigoErp) {
       throw new BusinessRuleException(
-        `Cliente ${amostra.cliente.nome} não possui codigoOmie. Sincronize com OMIE primeiro.`,
+        `Cliente ${amostra.cliente.nome} não possui codigoErp. Sincronize com OMIE primeiro.`,
         ErrorCode.OMIE_ERROR,
       );
     }
-    if (amostra.cliente.omieStatus !== 'ATIVO') {
+    if (amostra.cliente.erpStatus !== 'ATIVO') {
       throw new BusinessRuleException(
         'Cliente bloqueado no OMIE — não é possível enviar a remessa',
         ErrorCode.CLIENTE_BLOQUEADO_OMIE,
@@ -127,7 +127,7 @@ export class OmieAmostrasService {
     } catch (err) {
       // Heal idempotente (ITEM 3): um envio ANTERIOR pode ter criado a remessa no OMIE
       // e a resposta se perdido (timeout) → o reenvio é recusado como "já cadastrado" e a
-      // amostra ficaria presa sem numeroOmie (o retry DUPLICARIA a remessa). Consultamos o
+      // amostra ficaria presa sem numeroErp (o retry DUPLICARIA a remessa). Consultamos o
       // OMIE pelo codigo_pedido_integracao (AMO-<id>): se existe lá, reconciliamos com o
       // número real em vez de falhar/duplicar; se NÃO existe, é erro real → propaga.
       const existente = await this.omie
@@ -147,24 +147,24 @@ export class OmieAmostrasService {
     stopTimer();
     this.metrics.omiePush.inc({ empresa: amostra.empresaId, status: 'success' });
 
-    const numeroOmie = response.numero_pedido?.toString() ?? response.codigo_pedido.toString();
+    const numeroErp = response.numero_pedido?.toString() ?? response.codigo_pedido.toString();
 
-    addBreadcrumb('omie', 'amostra-push-success', { amostraId, numeroOmie });
+    addBreadcrumb('omie', 'amostra-push-success', { amostraId, numeroErp });
 
     await this.prisma.amostra.update({
       where: { id: amostraId },
-      data: { numeroOmie, enviadoOmieEm: new Date(), cfop },
+      data: { numeroErp, enviadoErpEm: new Date(), cfop },
     });
 
     await this.integracoes.registrarSaudeOk(amostra.empresaId, 'omie').catch(() => {});
 
     this.logger.log(
-      `Amostra ${amostraId} → OMIE remessa ${numeroOmie} (CFOP ${cfop}, ${response.descricao_status})`,
+      `Amostra ${amostraId} → OMIE remessa ${numeroErp} (CFOP ${cfop}, ${response.descricao_status})`,
     );
 
     return {
       amostraId,
-      numeroOmie,
+      numeroErp,
       cfop,
       codigoStatusOmie: response.codigo_status,
       descricaoStatusOmie: response.descricao_status,
@@ -177,14 +177,14 @@ export class OmieAmostrasService {
 
     return {
       cabecalho: {
-        codigo_cliente: Number(amostra.cliente.codigoOmie),
+        codigo_cliente: Number(amostra.cliente.codigoErp),
         codigo_pedido_integracao: `AMO-${amostra.id}`,
         data_previsao: OmieMapper.dateToOmie(new Date()),
         quantidade_itens: 1,
       },
       det: [
         OmieMapper.amostraItemToOmie({
-          produtoCodigoOmie: produto.codigoOmie,
+          produtoCodigoOmie: produto.codigoErp,
           produtoSku: produto.sku,
           quantidade: amostra.quantidade,
           // valor de referência: usa o valor da amostra, ou cai no preço de tabela do produto

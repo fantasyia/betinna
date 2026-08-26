@@ -35,7 +35,7 @@ import type {
 } from './pedidos.dto';
 
 const pedidoInclude = {
-  cliente: { select: { id: true, nome: true, cnpj: true, cidade: true, omieStatus: true } },
+  cliente: { select: { id: true, nome: true, cnpj: true, cidade: true, erpStatus: true } },
   representante: { select: { id: true, nome: true, email: true, tetoDesconto: true } },
   aprovador: { select: { id: true, nome: true } },
   itens: {
@@ -56,7 +56,7 @@ type PedidoWithRel = Prisma.PedidoGetPayload<{ include: typeof pedidoInclude }>;
 // isso serializava centenas de PedidoItem + joins por página, inflando o payload da rota quente do
 // rep no celular. Include enxuto: cabeçalho + contagem de itens. Detalhe segue com pedidoInclude.
 const pedidoListInclude = {
-  cliente: { select: { id: true, nome: true, cnpj: true, cidade: true, omieStatus: true } },
+  cliente: { select: { id: true, nome: true, cnpj: true, cidade: true, erpStatus: true } },
   representante: { select: { id: true, nome: true, email: true, tetoDesconto: true } },
   aprovador: { select: { id: true, nome: true } },
   pedidoOrigem: { select: { id: true, numero: true } },
@@ -272,7 +272,7 @@ export class PedidosService {
       conds.push({
         OR: [
           { numero: { contains: params.search, mode: 'insensitive' } },
-          { numeroOmie: { contains: params.search } },
+          { numeroErp: { contains: params.search } },
           { cliente: { nome: { contains: params.search, mode: 'insensitive' } } },
         ],
       });
@@ -542,13 +542,13 @@ export class PedidosService {
   // ─── Avançar status (ENVIADO → ENTREGUE, etc.) ─────────────────────────
   /**
    * Avança o pedido para o próximo status linear do ciclo de vida:
-   * ENVIADO_OMIE → PAGO → EM_SEPARACAO → ENVIADO → ENTREGUE.
+   * ENVIADO_ERP → PAGO → EM_SEPARACAO → ENVIADO → ENTREGUE.
    * Apenas ADMIN/DIRECTOR podem marcar como ENTREGUE; outros status exigem role >= GERENTE.
    */
   async avancarStatus(user: AuthenticatedUser, id: string): Promise<PedidoWithRel> {
     const pedido = await this.findById(user, id);
     const PROXIMOS: Partial<Record<string, string>> = {
-      ENVIADO_OMIE: 'PAGO',
+      ENVIADO_ERP: 'PAGO',
       PAGO: 'EM_SEPARACAO',
       EM_SEPARACAO: 'ENVIADO',
       ENVIADO: 'ENTREGUE',
@@ -618,8 +618,8 @@ export class PedidosService {
     // Pedido JÁ ENVIADO ao OMIE: cancelar aqui só muda o status local — o ERP
     // segue com o pedido e vai faturar. Carimba o aviso na observação pra quem
     // abrir o pedido ver que falta cancelar no OMIE também.
-    const avisoOmie = existing.numeroOmie
-      ? `\n[ATENÇÃO] Pedido já enviado ao OMIE (nº ${existing.numeroOmie}) — cancele TAMBÉM no ERP, senão ele continua faturando.`
+    const avisoOmie = existing.numeroErp
+      ? `\n[ATENÇÃO] Pedido já enviado ao OMIE (nº ${existing.numeroErp}) — cancele TAMBÉM no ERP, senão ele continua faturando.`
       : '';
 
     // CAS: só cancela se ainda não estiver ENTREGUE/CANCELADO (corrida com avançar/cancelar).
@@ -647,9 +647,9 @@ export class PedidosService {
     // Fidelidade removida do projeto Betinna (gerenciada agora no ERP do
     // cliente). Não há mais estorno de pontos em cancelamento — limpo 2026-05-21.
 
-    if (existing.numeroOmie) {
+    if (existing.numeroErp) {
       this.logger.warn(
-        `Pedido ${existing.numero} cancelado no app MAS já estava no OMIE (nº ${existing.numeroOmie}) — ` +
+        `Pedido ${existing.numero} cancelado no app MAS já estava no OMIE (nº ${existing.numeroErp}) — ` +
           `precisa de cancelamento MANUAL no ERP.`,
       );
     }
@@ -763,7 +763,7 @@ export class PedidosService {
             observacoes: true,
             empresaId: true,
             numero: true,
-            numeroOmie: true,
+            numeroErp: true,
           },
         },
       },
@@ -826,11 +826,11 @@ export class PedidosService {
       });
     });
     this.logger.log(`Solicitação #${solicitacaoId} ${dto.decisao} por ${user.nome} (${user.role})`);
-    if (dto.decisao === 'APROVADA' && solicitacao.pedido.numeroOmie) {
+    if (dto.decisao === 'APROVADA' && solicitacao.pedido.numeroErp) {
       // Mesmo aviso do cancelar() direto — o log é o que a operação enxerga.
       this.logger.warn(
         `Pedido ${solicitacao.pedido.numero} cancelado por SOLICITAÇÃO aprovada MAS já estava no ` +
-          `OMIE (nº ${solicitacao.pedido.numeroOmie}) — precisa de cancelamento MANUAL no ERP.`,
+          `OMIE (nº ${solicitacao.pedido.numeroErp}) — precisa de cancelamento MANUAL no ERP.`,
       );
     }
     return updated;
@@ -892,8 +892,8 @@ export class PedidosService {
       throw new BusinessRuleException('Pedido cancelado não pode ser enviado ao OMIE');
     }
     // CAÇADA-BUG #4: só RASCUNHO ou AGUARDANDO_APROVACAO (aprovado) podem ir ao OMIE. Todos os
-    // status pós-envio (ENVIADO_OMIE/PAGO/EM_SEPARACAO/ENVIADO/ENTREGUE) já passaram pelo OMIE —
-    // reenviar regredia o status e resetava `enviadoOmieEm`, fazendo o fecharMes contar a comissão
+    // status pós-envio (ENVIADO_ERP/PAGO/EM_SEPARACAO/ENVIADO/ENTREGUE) já passaram pelo OMIE —
+    // reenviar regredia o status e resetava `enviadoErpEm`, fazendo o fecharMes contar a comissão
     // DE NOVO em outro mês (folha paga em dobro). Whitelist fecha todos os estados pós-envio de uma vez.
     if (pedido.status !== 'RASCUNHO' && pedido.status !== 'AGUARDANDO_APROVACAO') {
       throw new BusinessRuleException(`Pedido já foi enviado ao OMIE (status ${pedido.status})`);
@@ -913,9 +913,9 @@ export class PedidosService {
     // clienteId já tenha vindo de pedido validado pelo tenant.
     const cliente = await this.prisma.cliente.findFirst({
       where: { id: pedido.clienteId, empresaId: pedido.empresaId },
-      select: { omieStatus: true },
+      select: { erpStatus: true },
     });
-    if (!cliente || cliente.omieStatus !== 'ATIVO') {
+    if (!cliente || cliente.erpStatus !== 'ATIVO') {
       throw new BusinessRuleException(
         'Cliente bloqueado no OMIE — não é possível enviar pedido',
         ErrorCode.CLIENTE_BLOQUEADO_OMIE,
@@ -948,7 +948,7 @@ export class PedidosService {
     }
 
     // Push real pro OMIE (demo mode retorna número fake mas o fluxo é idêntico).
-    // OmiePedidosService já atualiza Pedido (status, numeroOmie, enviadoOmieEm)
+    // OmiePedidosService já atualiza Pedido (status, numeroErp, enviadoErpEm)
     // e registra sync OK na IntegracaoConexao.
     // P3 defensive: passa empresaId pro OMIE service filtrar findFirst também.
     // user.empresaIdAtiva pode ser null em system-cron contexts; convertemos pra undefined.
@@ -969,14 +969,14 @@ export class PedidosService {
         id: true,
         empresaId: true,
         nome: true,
-        omieStatus: true,
+        erpStatus: true,
         representanteId: true,
       },
     });
     if (!cliente) {
       throw new NotFoundException('Cliente', clienteId);
     }
-    if (cliente.omieStatus !== 'ATIVO') {
+    if (cliente.erpStatus !== 'ATIVO') {
       throw new BusinessRuleException(
         'Cliente bloqueado no OMIE — não é possível abrir pedido. Acione o financeiro.',
         ErrorCode.CLIENTE_BLOQUEADO_OMIE,

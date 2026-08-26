@@ -184,9 +184,9 @@ describe('MetasService', () => {
       expect(where.empresaId).toBe('emp-1');
       // Janela pela data de ENVIO ao OMIE — a mesma que a folha de comissão usa
       // pra fechar o mês (com criadoEm, meta e comissão divergiam na virada).
-      expect(where.enviadoOmieEm).toEqual({ gte: inicio, lte: fim });
+      expect(where.enviadoErpEm).toEqual({ gte: inicio, lte: fim });
       expect(where.status.in).toEqual([
-        'ENVIADO_OMIE',
+        'ENVIADO_ERP',
         'PAGO',
         'EM_SEPARACAO',
         'ENVIADO',

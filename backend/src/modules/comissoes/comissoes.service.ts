@@ -30,7 +30,7 @@ type ComissaoWithRel = Prisma.ComissaoGetPayload<{ include: typeof comissaoInclu
  * Status de pedido considerados para cálculo de comissão.
  * Após enviado ao OMIE, a venda já conta — comissão é paga ao final do mês.
  */
-const STATUS_COMISSIONAVEL = ['ENVIADO_OMIE', 'PAGO', 'EM_SEPARACAO', 'ENVIADO', 'ENTREGUE'];
+const STATUS_COMISSIONAVEL = ['ENVIADO_ERP', 'PAGO', 'EM_SEPARACAO', 'ENVIADO', 'ENTREGUE'];
 
 // % de comissão do REP quando o usuário não tem `comissaoPadrao` configurada (mesmo default do
 // pedido — pedido-pricing.service usa 5). CAÇADA-BUG #5.
@@ -149,7 +149,7 @@ export class ComissoesService {
       empresaId,
       status: { in: STATUS_COMISSIONAVEL as Prisma.EnumPedidoStatusFilter['in'] },
       representanteId: { not: null },
-      enviadoOmieEm: { gte: inicio, lt: fim },
+      enviadoErpEm: { gte: inicio, lt: fim },
     };
     if (repScopeIds !== null) {
       baseWhere.representanteId = { in: repScopeIds };

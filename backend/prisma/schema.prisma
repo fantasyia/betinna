@@ -39,7 +39,7 @@ enum ClienteStatus {
   INATIVO
 }
 
-enum ClienteOmieStatus {
+enum ClienteErpStatus {
   ATIVO
   BLOQUEADO
 }
@@ -47,7 +47,7 @@ enum ClienteOmieStatus {
 enum PedidoStatus {
   RASCUNHO
   AGUARDANDO_APROVACAO
-  ENVIADO_OMIE
+  ENVIADO_ERP
   PAGO
   EM_SEPARACAO
   ENVIADO
@@ -58,7 +58,7 @@ enum PedidoStatus {
 enum PedidoOrigem {
   REP_APP
   WHATSAPP
-  OMIE
+  ERP
   MARKETPLACE_ML
   MARKETPLACE_SHOPEE
   MARKETPLACE_AMAZON
@@ -447,10 +447,10 @@ model UsuarioPermissao {
 model Cliente {
   id                    String            @id @default(cuid())
   empresaId             String
-  codigoOmie            String?
+  codigoErp            String?
   nome                  String
   // Dados fiscais e contato (obrigatórios via DTO; nullable no schema pra
-  // suportar legado e import OMIE sem todos os campos preenchidos)
+  // suportar legado e import do ERP sem todos os campos preenchidos)
   cnpj                  String?
   email                 String?
   telefone              String?
@@ -465,7 +465,7 @@ model Cliente {
   uf                    String?
   regiao                String?
   status                ClienteStatus     @default(NOVO)
-  omieStatus            ClienteOmieStatus @default(ATIVO) // só ativo/bloqueado importa
+  erpStatus            ClienteErpStatus @default(ATIVO) // só ativo/bloqueado importa
   score                 Int               @default(50)
   prazoPagamento        Int               @default(30) // dias
   limiteCredito         Decimal?          @db.Decimal(14, 2)
@@ -499,10 +499,10 @@ model Cliente {
   saldoFidelidade        SaldoFidelidade?
   movimentosFidelidade   MovimentoFidelidade[]
 
-  @@unique([empresaId, codigoOmie])
+  @@unique([empresaId, codigoErp])
   @@index([representanteId])
   @@index([status])
-  @@index([omieStatus])
+  @@index([erpStatus])
   // Lista "novos clientes" e ordenação cronológica
   @@index([empresaId, criadoEm])
   // Seed demo: filtra/limpa registros do demo rapidamente
@@ -590,7 +590,7 @@ model Documento {
 model Produto {
   id                    String                       @id @default(cuid())
   empresaId             String
-  codigoOmie            String?
+  codigoErp            String?
   sku                   String?
   nome                  String
   descricao             String?                      @db.Text
@@ -600,10 +600,10 @@ model Produto {
   unidade               String? // cx 12un, 1kg, etc
   precoTabela           Decimal                      @db.Decimal(14, 2)
   /// Custo / preço de fábrica. OPCIONAL: fica null quando não há custo REAL
-  /// (ex.: produto importado do OMIE sem tabela de custo). NÃO inventamos mais
+  /// (ex.: produto importado do ERP sem tabela de custo). NÃO inventamos mais
   /// um chute de 70% — null = "não informado", a tela mostra "—" e o catálogo
   /// pede pra definir o custo antes de calcular markup. Preenchido à mão ou
-  /// pelo OMIE quando a tabela de preço real for integrada.
+  /// pelo ERP. No Tiny isso deixa de ser chute: `precos.precoCusto` vem na API.
   precoFabrica          Decimal?                     @db.Decimal(14, 2)
   imagem                String? // emoji ou URL
   /// Camada de MARKETING (editável no app, não vem do ERP). Tier comercial livre por
@@ -616,7 +616,7 @@ model Produto {
   atributos             Json?
   popularidade          Int                          @default(0)
   estoque               Int                          @default(0)
-  /// Timestamp da última vez que estoque foi sincronizado (sync 30min OU webhook OMIE).
+  /// Timestamp da última vez que estoque foi sincronizado (sync 30min OU webhook do ERP).
   /// Usado pelo frontend pra mostrar "atualizado há X min" e detectar dados stale.
   estoqueAtualizadoEm   DateTime?
   ativo                 Boolean                      @default(true)
@@ -642,7 +642,7 @@ model Produto {
 
   // Unicidade por empresa — duas empresas podem ter mesmo SKU
   @@unique([empresaId, sku])
-  @@unique([empresaId, codigoOmie])
+  @@unique([empresaId, codigoErp])
   @@index([empresaId, linha])
   @@index([empresaId, ativo])
   // Seed demo: filtra/limpa registros do demo rapidamente
@@ -751,7 +751,7 @@ model RepCatalogoItem {
 model Pedido {
   id              String  @id @default(cuid())
   numero          String // PED-XXXX — unicidade por empresa (@@unique abaixo)
-  numeroOmie      String? // unicidade POR EMPRESA (@@unique abaixo) — não global
+  numeroErp      String? // unicidade POR EMPRESA (@@unique abaixo) — não global
   empresaId       String
   clienteId       String
   representanteId String?
@@ -781,7 +781,7 @@ model Pedido {
 
   criadoEm      DateTime  @default(now())
   atualizadoEm  DateTime  @updatedAt
-  enviadoOmieEm DateTime?
+  enviadoErpEm DateTime?
   pagoEm        DateTime?
   /// Setado no avancarStatus quando vira ENTREGUE — base da janela de devolução.
   entregueEm    DateTime?
@@ -805,7 +805,7 @@ model Pedido {
   leads                    Lead[]
 
   @@unique([empresaId, numero])
-  @@unique([empresaId, numeroOmie])
+  @@unique([empresaId, numeroErp])
   @@index([clienteId])
   @@index([representanteId])
   @@index([status])
@@ -1387,16 +1387,16 @@ model Amostra {
   /// Marca registros gerados pelo seed-demo.
   isDemo            Boolean       @default(false)
 
-  /// Lote 6 / P7 — Remessa de amostra grátis pro OMIE.
-  /// produtoId (opcional) vincula a um Produto real pra obter codigoOmie/sku —
-  /// obrigatório só na hora de enviar pro OMIE (criação avulsa por nome continua valendo).
+  /// Lote 6 / P7 — Remessa de amostra grátis pro ERP.
+  /// produtoId (opcional) vincula a um Produto real pra obter codigoErp/sku —
+  /// obrigatório só na hora de enviar pro ERP (criação avulsa por nome continua valendo).
   produtoId     String?
   quantidade    Float     @default(1)
   /// CFOP usado na remessa: "5911" (mesma UF) ou "6911" (interestadual). Resolvido no envio.
   cfop          String?
-  /// Número da remessa retornado pelo OMIE após envio (null = ainda não enviada).
-  numeroOmie    String?
-  enviadoOmieEm DateTime?
+  /// Número da remessa retornado pelo ERP após envio (null = ainda não enviada).
+  numeroErp    String?
+  enviadoErpEm DateTime?
 
   empresa Empresa  @relation(fields: [empresaId], references: [id], onDelete: Cascade)
   cliente Cliente  @relation(fields: [clienteId], references: [id])
@@ -2318,7 +2318,7 @@ model AuditLog {
 // Decisões:
 // - 1 programa por empresa (singleton via @unique). DIRECTOR/ADMIN configura.
 // - TTL de pontos em meses (default 12) — expiração rodada por cron.
-// - Trigger automático: pedido ENVIADO_OMIE/ENTREGUE → gera MovimentoFidelidade
+// - Trigger automático: pedido ENVIADO_ERP/ENTREGUE → gera MovimentoFidelidade
 //   GANHO_PEDIDO. Re-cancelamento gera MovimentoFidelidade ESTORNO_PEDIDO.
 // - Idempotência: @@unique([pedidoId, tipo]) impede dupla creditação.
 // - Saldo é DESNORMALIZADO em SaldoFidelidade.pontos. Cada movimento atualiza
@@ -2836,13 +2836,13 @@ enum NotificacaoTipo {
   APROVACAO_RESOLVIDA // rep: sua aprovação foi aprovada/rejeitada
   OCORRENCIA_ABERTA // sac/gerente: nova ocorrência crítica
   OCORRENCIA_RESOLVIDA // criador: sua ocorrência foi resolvida
-  PEDIDO_APROVADO // rep: pedido foi pra OMIE
+  PEDIDO_APROVADO // rep: pedido foi pro ERP
   COMISSAO_FECHADA // rep/gerente: mês fechou, valor disponível
   COMISSAO_PAGA // rep/gerente: marcado como pago
   MENSAGEM_INBOX // qualquer: nova mensagem inbox
   AMOSTRA_FOLLOWUP // rep: amostra precisa follow-up
   LEAD_INATIVO // rep: lead 7 dias na mesma etapa
-  CLIENTE_BLOQUEADO // rep: cliente da carteira ficou BLOQUEADO no OMIE
+  CLIENTE_BLOQUEADO // rep: cliente da carteira ficou BLOQUEADO no ERP
   ESTOQUE_ZERADO // rep: produto que ele vendeu nos últimos 30d zerou o estoque
   GENERICO // notificação manual/admin
 }

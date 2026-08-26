@@ -53,7 +53,7 @@ export class ProdutosService {
         OR: [
           { nome: { contains: term, mode: 'insensitive' } },
           { sku: { contains: term, mode: 'insensitive' } },
-          { codigoOmie: { contains: term } },
+          { codigoErp: { contains: term } },
           { marca: { contains: term, mode: 'insensitive' } },
         ],
       });
@@ -99,7 +99,7 @@ export class ProdutosService {
       throw new BusinessRuleException('Preço de fábrica não pode ser maior que preço de tabela');
     }
     if (dto.sku) await this.assertSkuUnico(empresaId, dto.sku);
-    if (dto.codigoOmie) await this.assertCodigoOmieUnico(empresaId, dto.codigoOmie);
+    if (dto.codigoErp) await this.assertCodigoOmieUnico(empresaId, dto.codigoErp);
 
     // `atributos` é JSON — trata à parte (Prisma não aceita Record direto no spread tipado).
     const { atributos, ...rest } = dto;
@@ -139,8 +139,8 @@ export class ProdutosService {
     if (dto.sku && dto.sku !== existing.sku) {
       await this.assertSkuUnico(existing.empresaId, dto.sku);
     }
-    if (dto.codigoOmie && dto.codigoOmie !== existing.codigoOmie) {
-      await this.assertCodigoOmieUnico(existing.empresaId, dto.codigoOmie);
+    if (dto.codigoErp && dto.codigoErp !== existing.codigoErp) {
+      await this.assertCodigoOmieUnico(existing.empresaId, dto.codigoErp);
     }
 
     const { atributos, ...rest } = dto;
@@ -239,14 +239,14 @@ export class ProdutosService {
     }
   }
 
-  private async assertCodigoOmieUnico(empresaId: string, codigoOmie: string): Promise<void> {
+  private async assertCodigoOmieUnico(empresaId: string, codigoErp: string): Promise<void> {
     const existe = await this.prisma.produto.findUnique({
-      where: { empresaId_codigoOmie: { empresaId, codigoOmie } },
+      where: { empresaId_codigoErp: { empresaId, codigoErp } },
       select: { id: true },
     });
     if (existe) {
       throw new BusinessRuleException(
-        `Já existe produto com código OMIE ${codigoOmie} nesta empresa`,
+        `Já existe produto com código OMIE ${codigoErp} nesta empresa`,
         ErrorCode.ALREADY_EXISTS,
       );
     }

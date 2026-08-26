@@ -551,7 +551,7 @@ describe('ImportService — proteções do onDuplicate=update (auditoria)', () =
     });
 
     const data = prisma.cliente.update.mock.calls[0][0].data;
-    expect(data.omieStatus).toBeUndefined();
+    expect(data.erpStatus).toBeUndefined();
     expect(data.status).toBeUndefined();
   });
 

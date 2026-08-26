@@ -292,9 +292,9 @@ export class PropostasService {
     // fato nasce (mesmo espírito dos checks #23/#24 acima).
     const clienteAtual = await this.prisma.cliente.findFirst({
       where: { id: proposta.clienteId, empresaId },
-      select: { omieStatus: true },
+      select: { erpStatus: true },
     });
-    if (clienteAtual && clienteAtual.omieStatus !== 'ATIVO') {
+    if (clienteAtual && clienteAtual.erpStatus !== 'ATIVO') {
       throw new BusinessRuleException(
         'Cliente bloqueado no OMIE — não é possível converter a proposta em pedido. Acione o financeiro.',
         ErrorCode.CLIENTE_BLOQUEADO_OMIE,
@@ -428,14 +428,14 @@ export class PropostasService {
         id: true,
         empresaId: true,
         representanteId: true,
-        omieStatus: true,
+        erpStatus: true,
       },
     });
     if (!cliente) throw new NotFoundException('Cliente', clienteId);
-    // `omieStatus` era selecionado e nunca checado: dava pra montar proposta e
+    // `erpStatus` era selecionado e nunca checado: dava pra montar proposta e
     // convertê-la em pedido pra cliente BLOQUEADO no OMIE (D2), furando pelo
     // caminho da proposta o bloqueio que o pedido direto aplica.
-    if (cliente.omieStatus !== 'ATIVO') {
+    if (cliente.erpStatus !== 'ATIVO') {
       throw new BusinessRuleException(
         'Cliente bloqueado no OMIE — não é possível abrir proposta. Acione o financeiro.',
         ErrorCode.CLIENTE_BLOQUEADO_OMIE,

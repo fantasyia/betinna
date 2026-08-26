@@ -38,8 +38,8 @@ vi.mock('./omie.mapper', () => ({
     produtoToPrismaUpsert: vi.fn((_empresaId: string, o: { codigo?: number }) => {
       if (!o.codigo) return null;
       return {
-        where: { empresaId_codigoOmie: { empresaId: _empresaId, codigoOmie: String(o.codigo) } },
-        create: { empresaId: _empresaId, codigoOmie: String(o.codigo), nome: 'Produto' },
+        where: { empresaId_codigoErp: { empresaId: _empresaId, codigoErp: String(o.codigo) } },
+        create: { empresaId: _empresaId, codigoErp: String(o.codigo), nome: 'Produto' },
         update: { nome: 'Produto' },
       };
     }),
@@ -116,9 +116,9 @@ describe('OmieProdutosService', () => {
 
     it('atualiza produto quando já existe (upsert; contado como atualizado)', async () => {
       omie.listarProdutos.mockResolvedValue(fakeListarProdutosResponse([fakeProdutoOmie(1)]));
-      // findMany em lote acha o produto existente (codigoOmie casa com o do mapper).
+      // findMany em lote acha o produto existente (codigoErp casa com o do mapper).
       prisma.produto.findMany.mockResolvedValue([
-        { id: 'prod-existente', codigoOmie: '1', estoque: 10, nome: 'Produto' },
+        { id: 'prod-existente', codigoErp: '1', estoque: 10, nome: 'Produto' },
       ]);
 
       const result = await service.sync('emp-1', { modo: 'completo' });

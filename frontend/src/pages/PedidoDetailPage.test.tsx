@@ -15,14 +15,14 @@ import { afterEach, beforeEach, describe, it, expect, vi } from 'vitest';
 const PEDIDO = {
   id: 'ped-1',
   numero: 'PED-2026-001',
-  status: 'ENVIADO_OMIE',
+  status: 'ENVIADO_ERP',
   total: 15000,
   subtotal: 15000,
   descontoGeral: 0,
   comissao: 750,
   observacoes: null,
   criadoEm: '2026-08-01T12:00:00.000Z',
-  cliente: { id: 'cli-1', nome: 'Padaria do João', cnpj: null, cidade: 'SP', omieStatus: 'ATIVO' },
+  cliente: { id: 'cli-1', nome: 'Padaria do João', cnpj: null, cidade: 'SP', erpStatus: 'ATIVO' },
   representante: { id: 'rep-1', nome: 'João', email: 'j@x.com', tetoDesconto: 10 },
   aprovador: null,
   itens: [],
@@ -155,6 +155,6 @@ describe('PedidoDetailPage — cancelamento por papel', () => {
     PEDIDO.status = 'CANCELADO';
     render(<PedidoDetailPage />);
     expect(screen.queryByTestId('pedido-page-cancelar')).toBeNull();
-    PEDIDO.status = 'ENVIADO_OMIE'; // restaura pros demais testes
+    PEDIDO.status = 'ENVIADO_ERP'; // restaura pros demais testes
   });
 });

@@ -221,7 +221,7 @@ export class ContatosService {
               cidade: true,
               uf: true,
               status: true,
-              omieStatus: true,
+              erpStatus: true,
               criadoEm: true,
               representante: repSel,
             },
@@ -352,7 +352,7 @@ export class ContatosService {
       acumularTags(c, tagsPorCliente.get(cl.id) ?? []);
       c.clienteId = cl.id;
       c.clienteStatus = cl.status;
-      c.clienteOmieStatus = cl.omieStatus;
+      c.clienteOmieStatus = cl.erpStatus;
       // Cliente real tem prioridade no nome exibido.
       c.nome = cl.nome || c.nome;
       c.telefone ??= cl.telefone;

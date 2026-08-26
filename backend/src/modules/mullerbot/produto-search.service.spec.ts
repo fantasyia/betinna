@@ -18,7 +18,7 @@ const PROD_OLEO = {
   unidade: 'UN',
   precoTabela: 48,
   sku: 'OLE-GIR-5L',
-  codigoOmie: '2001',
+  codigoErp: '2001',
 };
 const PROD_AZEITE = {
   id: 'p2',
@@ -30,7 +30,7 @@ const PROD_AZEITE = {
   unidade: 'UN',
   precoTabela: 42.5,
   sku: 'AZE-EXT-500',
-  codigoOmie: '2002',
+  codigoErp: '2002',
 };
 const PROD_FARINHA = {
   id: 'p3',
@@ -42,7 +42,7 @@ const PROD_FARINHA = {
   unidade: 'UN',
   precoTabela: 6.9,
   sku: 'FAR-TRI-1K',
-  codigoOmie: '2003',
+  codigoErp: '2003',
 };
 
 describe('ProdutoSearchService.tokenize', () => {

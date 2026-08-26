@@ -16,7 +16,7 @@ export interface ProdutoRelevante {
   unidade: string | null;
   precoTabela: number;
   sku: string | null;
-  codigoOmie: string | null;
+  codigoErp: string | null;
   score: number;
   /** Trechos que casaram com a busca. Útil pra debug e citação na resposta. */
   matches: string[];
@@ -138,12 +138,12 @@ export class ProdutoSearchService {
           unidade: string | null;
           precoTabela: unknown;
           sku: string | null;
-          codigoOmie: string | null;
+          codigoErp: string | null;
           score: number;
         }>
       >`
         SELECT "id", "nome", "descricao", "marca", "linha", "categoria", "unidade",
-               "precoTabela", "sku", "codigoOmie",
+               "precoTabela", "sku", "codigoErp",
                1 - ("embedding" <=> ${literal}::vector) AS score
         FROM "Produto"
         WHERE "empresaId" = ${empresaId} AND "ativo" = true AND "embedding" IS NOT NULL
@@ -161,7 +161,7 @@ export class ProdutoSearchService {
         unidade: r.unidade,
         precoTabela: Number(r.precoTabela),
         sku: r.sku,
-        codigoOmie: r.codigoOmie,
+        codigoErp: r.codigoErp,
         score: Number(r.score),
         matches: ['semantico'],
       }));
@@ -195,7 +195,7 @@ export class ProdutoSearchService {
         unidade: true,
         precoTabela: true,
         sku: true,
-        codigoOmie: true,
+        codigoErp: true,
       },
     });
 

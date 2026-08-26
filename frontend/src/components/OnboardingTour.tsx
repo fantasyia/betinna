@@ -75,8 +75,8 @@ const STEPS_DIRECTOR: Step[] = [
   },
   {
     icon: '🔌',
-    title: 'Primeiro passo: OMIE',
-    body: 'Em /integracoes conecte o OMIE (ERP). É a fonte da verdade fiscal — importa clientes, produtos, preços negociados. Sem OMIE não roda venda.',
+    title: 'Primeiro passo: o ERP',
+    body: 'Em /integracoes conecte o ERP (Tiny). É a fonte da verdade fiscal — importa clientes, produtos, preços negociados. Sem ERP não roda venda.',
     route: '/integracoes',
   },
   {

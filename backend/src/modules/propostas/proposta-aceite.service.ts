@@ -193,8 +193,8 @@ export class PropostaAceiteService {
     const { propostaId, empresaId } = await this.validarToken(token);
     const proposta = await this.prisma.proposta.findUnique({
       where: { id: propostaId },
-      // `cliente.omieStatus` entra pra revalidar o bloqueio no aceite (ver abaixo).
-      include: { itens: true, cliente: { select: { omieStatus: true } } },
+      // `cliente.erpStatus` entra pra revalidar o bloqueio no aceite (ver abaixo).
+      include: { itens: true, cliente: { select: { erpStatus: true } } },
     });
     if (!proposta) throw new NotFoundException('Proposta', propostaId);
     if (proposta.aceiteToken !== token) {
@@ -215,12 +215,12 @@ export class PropostaAceiteService {
         );
       }
       // AUDITORIA (média): validade e produto inativo eram revalidados aqui, mas
-      // o omieStatus NÃO — e ele é revalidado nos outros dois caminhos
+      // o erpStatus NÃO — e ele é revalidado nos outros dois caminhos
       // (assertClienteValido e converterEmPedido). Cenário: cliente é BLOQUEADO
       // no ERP depois do envio da proposta, clica Aceitar no link público, o
       // pedido é criado, o rep é notificado "proposta aceita!" — e a falha só
       // aparece lá na frente, no envio ao OMIE. Barra no mesmo lugar dos outros.
-      if (proposta.cliente?.omieStatus === 'BLOQUEADO') {
+      if (proposta.cliente?.erpStatus === 'BLOQUEADO') {
         throw new BusinessRuleException(
           'Não é possível aceitar esta proposta no momento. Fale com o seu contato comercial.',
         );
