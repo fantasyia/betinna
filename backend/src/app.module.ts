@@ -17,6 +17,7 @@ import { GoogleModule } from '@integrations/google/google.module';
 import { MLModule } from '@integrations/mercadolivre/ml.module';
 import { MetaModule } from '@integrations/meta/meta.module';
 import { OmieModule } from '@integrations/omie/omie.module';
+import { TinyModule } from '@integrations/tiny/tiny.module';
 import { ResendModule } from '@integrations/resend/resend.module';
 import { ShopeeModule } from '@integrations/shopee/shopee.module';
 import { TikTokModule } from '@integrations/tiktok/tiktok.module';
@@ -258,6 +259,7 @@ import { RODAR_BACKGROUND } from '@shared/utils/service-type';
     // Integrações externas
     IntegracoesModule,
     OmieModule,
+    TinyModule,
     ResendModule,
     EmailModule,
     GoogleModule,

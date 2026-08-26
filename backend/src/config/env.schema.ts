@@ -142,6 +142,30 @@ export const envSchema = z
      */
     OMIE_CENARIO_IMPOSTO_AMOSTRA: z.coerce.number().int().min(0).default(0),
 
+    // TINY (Olist) — o ERP a partir de 26/08/2026 (D50). Substitui o OMIE.
+    TINY_BASE_URL: z.string().url().default('https://api.tiny.com.br/public-api/v3'),
+    TINY_OAUTH_AUTH_URL: z
+      .string()
+      .url()
+      .default('https://accounts.tiny.com.br/realms/tiny/protocol/openid-connect/auth'),
+    TINY_OAUTH_TOKEN_URL: z
+      .string()
+      .url()
+      .default('https://accounts.tiny.com.br/realms/tiny/protocol/openid-connect/token'),
+    TINY_CLIENT_ID: z.string().optional().default(''),
+    TINY_CLIENT_SECRET: z.string().optional().default(''),
+    TINY_REDIRECT_URI: z.string().optional().default(''),
+    /**
+     * Segredo que vai NO CAMINHO da URL do webhook, não em header.
+     *
+     * O Tiny NÃO assina os webhooks — não há HMAC nem header de autenticação
+     * (diferente de OMIE/Meta/Shopee, ver D11). Então a URL secreta é metade da
+     * defesa; a outra metade é o receptor nunca confiar no payload e sempre
+     * reconsultar o recurso pela API v3.
+     */
+    TINY_WEBHOOK_SECRET: z.string().optional().default(''),
+    TINY_TIMEOUT_MS: z.coerce.number().int().positive().default(30000),
+
     // WhatsApp Business Cloud
     WHATSAPP_ACCESS_TOKEN: z.string().optional().default(''),
     WHATSAPP_PHONE_NUMBER_ID: z.string().optional().default(''),
