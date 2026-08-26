@@ -1,6 +1,7 @@
 import { Module } from '@nestjs/common';
 import { IntegracoesModule } from '@modules/integracoes/integracoes.module';
 import { TinyClientService } from './tiny-client.service';
+import { TinyContaService } from './tiny-conta.service';
 import { TinyOAuthController } from './tiny-oauth.controller';
 import { TinyOAuthService } from './tiny-oauth.service';
 import { TinyTokenRefreshJob } from './tiny-token-refresh.job';
@@ -16,7 +17,7 @@ import { TinyWebhookController } from './tiny-webhook.controller';
 @Module({
   imports: [IntegracoesModule],
   controllers: [TinyOAuthController, TinyWebhookController],
-  providers: [TinyOAuthService, TinyClientService, TinyTokenRefreshJob],
-  exports: [TinyOAuthService, TinyClientService],
+  providers: [TinyOAuthService, TinyClientService, TinyContaService, TinyTokenRefreshJob],
+  exports: [TinyOAuthService, TinyClientService, TinyContaService],
 })
 export class TinyModule {}

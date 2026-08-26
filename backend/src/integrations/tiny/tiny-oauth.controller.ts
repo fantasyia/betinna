@@ -10,6 +10,7 @@ import type { AuthenticatedUser } from '@shared/types/authenticated-user';
 import { IntegracoesService } from '@modules/integracoes/integracoes.service';
 import { frontendOrigin } from '@shared/utils/frontend-origin';
 import { TinyOAuthService } from './tiny-oauth.service';
+import { TinyContaService } from './tiny-conta.service';
 import type { TinyCredenciais } from './tiny.types';
 
 @ApiTags('integracoes/tiny')
@@ -18,6 +19,7 @@ export class TinyOAuthController {
   constructor(
     private readonly oauth: TinyOAuthService,
     private readonly integracoes: IntegracoesService,
+    private readonly conta: TinyContaService,
   ) {}
 
   @Get('oauth/start')
@@ -65,6 +67,27 @@ export class TinyOAuthController {
         ? new Date(cred.refreshExpiresAt).toISOString()
         : null,
     };
+  }
+
+  /**
+   * Raio-X da conta no Tiny: depósitos, vendedores, formas de envio e produtos.
+   *
+   * Existe pro setup não depender de alguém transcrever id à mão — o
+   * `POST /pedidos` exige `deposito.id` e `vendedor.id`, e id errado faz o
+   * pedido nascer no depósito errado. Também é o teste de fumaça da integração:
+   * se responde, OAuth + refresh + cliente HTTP estão de pé.
+   */
+  @Get('conta')
+  @ApiBearerAuth()
+  @Roles('ADMIN', 'DIRECTOR')
+  @ApiOperation({
+    summary: 'O que está cadastrado no Tiny (depósitos, vendedores, envio, produtos)',
+  })
+  async raioX(@CurrentUser() user: AuthenticatedUser) {
+    if (!user.empresaIdAtiva) {
+      throw new ForbiddenException('Empresa não definida', ErrorCode.TENANT_ACCESS_DENIED);
+    }
+    return this.conta.raioX(user.empresaIdAtiva);
   }
 
   @Public()
