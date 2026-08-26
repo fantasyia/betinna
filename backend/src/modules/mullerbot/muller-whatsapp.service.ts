@@ -31,7 +31,10 @@ import { BotCustoService } from './bot-custo.service';
  *   → monta histórico + prompt da persona DO DONO → chama OpenAI (15s)
  *   → sucesso: envia a resposta · falha/timeout: fallback + marca "precisa humano"
  */
-const FALLBACK_MSG = 'Recebi sua mensagem! Vou conferir e já te respondo. 👍';
+// Sem emoji e sem promessa de prazo — o mesmo tom que os prompts exigem. Quem
+// leva a conversa daqui é gente: o fallback marca `precisaHumano`, então a
+// conversa sobe na inbox junto com o aviso.
+const FALLBACK_MSG = 'Recebi sua mensagem. Estou verificando e já te retorno.';
 const TIMEOUT_MS = 15_000;
 const SPAM_LIMITE = 10; // msgs
 const SPAM_JANELA_MS = 60_000; // por minuto
@@ -369,10 +372,7 @@ export class MullerWhatsappService implements OnModuleInit {
       // esta conversa, o bot geral NÃO responde (evita resposta dupla — quem fala
       // é o motor do fluxo). Dois caminhos: por LEAD (fluxos que já têm lead) e
       // por CONVERSA (triagem — o lead ainda nem existe na 1ª mensagem).
-      if (
-        (leadDoPeer && (await this.fluxoConduzindoLead(params.empresaId, leadDoPeer.id))) ||
-        (await this.fluxoConduzindoConversa(params.empresaId, convId))
-      ) {
+      if (await this.fluxoAssumiu(params.empresaId, convId, leadDoPeer?.id)) {
         this.logger.debug(
           `[bot] conversa conduzida por fluxo de IA — bot geral silencia conv=${convId}`,
         );
@@ -550,6 +550,29 @@ export class MullerWhatsappService implements OnModuleInit {
 
       // 7. Fallback se a IA falhou/demorou/veio vazia
       if (!resposta || !resposta.texto.trim()) {
+        // RE-CHECK igual ao do caminho de sucesso, e pelo mesmo motivo: a chamada
+        // à IA leva até 15s e nesse meio-tempo um fluxo pode ter assumido. Aqui o
+        // estrago era MAIOR que resposta dupla — o fallback também marca
+        // `precisaHumano` e pausa o bot, então uma falha do respondedor GERAL
+        // congelava o atendimento que o FLUXO estava conduzindo (26/08: balão
+        // genérico no meio do C1 + 15min de pausa, sem tarefa pra ninguém).
+        // Fluxo vivo = o geral não fala e não encosta no estado da conversa.
+        if (await this.fluxoAssumiu(params.empresaId, convId, leadDoPeer?.id)) {
+          void this.auditoria.registrar({
+            empresaId: params.empresaId,
+            conversationId: convId,
+            messageId: resultado.messageId,
+            pergunta: mensagemIA,
+            resposta: null,
+            tempoMs,
+            status: 'SEM_RESPOSTA',
+          });
+          this.logger.log(
+            `[bot] IA falhou mas o fluxo conduz a conversa — fallback SUPRIMIDO conv=${convId}`,
+          );
+          return;
+        }
+
         // AUDITORIA (média): o fallback saía SEM passar pelo pacing. Numa falha
         // sistêmica da IA (chave inválida, OpenAI fora), TODA conversa ativa
         // dispara o fallback ao mesmo tempo — uma rajada de mensagens no mesmo
@@ -596,10 +619,7 @@ export class MullerWhatsappService implements OnModuleInit {
       // CRON_AGENDADO, mudança de etapa) passava batido — e os dois respondiam a
       // mesma pessoa. O gate inicial (passo 1.5) já checa os dois; o re-check
       // precisa do mesmo par pra fechar a corrida de verdade.
-      if (
-        (await this.fluxoConduzindoConversa(params.empresaId, convId)) ||
-        (leadDoPeer && (await this.fluxoConduzindoLead(params.empresaId, leadDoPeer.id)))
-      ) {
+      if (await this.fluxoAssumiu(params.empresaId, convId, leadDoPeer?.id)) {
         this.logger.log(
           `[bot] fluxo assumiu a conversa durante a geração — bot geral descarta a resposta conv=${convId}`,
         );
@@ -868,6 +888,17 @@ export class MullerWhatsappService implements OnModuleInit {
    * cala (quem conduz é o motor do fluxo). O lead já vem resolvido por
    * `buscarLeadDoPeer` (não refaz a busca de telefone).
    */
+  /**
+   * Tem fluxo de IA conduzindo esta conversa? Checa os DOIS caminhos — por
+   * CONVERSA (triagem: o lead ainda nem existe na 1ª mensagem) e por LEAD
+   * (fluxos que já têm lead). Ponto único usado pelo gate de entrada, pelo
+   * re-check antes de enviar e pela supressão do fallback.
+   */
+  private async fluxoAssumiu(empresaId: string, convId: string, leadId?: string): Promise<boolean> {
+    if (await this.fluxoConduzindoConversa(empresaId, convId)) return true;
+    return leadId ? this.fluxoConduzindoLead(empresaId, leadId) : false;
+  }
+
   private async fluxoConduzindoLead(empresaId: string, leadId: string): Promise<boolean> {
     try {
       // Espelha o guard por CONVERSA: só AGUARDANDO deixava uma janela em que o
