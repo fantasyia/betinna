@@ -1271,28 +1271,28 @@ export class ConversarIaService {
   }): Promise<void> {
     const { execucaoId, ctx, empresaId, leadId } = p;
     const horas = p.horas;
-    await this.prisma.fluxoExecucao.update({
-      where: { id: execucaoId },
-      data: {
-        status: 'AGUARDANDO',
-        aguardandoNoId: p.noId,
-        timeoutEm: new Date(Date.now() + horas * 3_600_000),
-        // Memória da conversa da IA (no contexto da execução): guarda a abertura
-        // pra a IA NÃO se reapresentar quando o lead responder. O fluxo manda via
-        // whatsapp.enviarTexto (sem gravar na conversa do inbox), então sem isto
-        // o montarHistorico não tinha as mensagens do bot → IA repetia o opener.
-        contexto: toJsonInput({
-          ...ctx,
-          // No REATIVO grava os DOIS turnos (a fala do lead + a resposta): a
-          // memória tem que refletir a conversa como ela aconteceu, senão o
-          // próximo turno lê um diálogo que começa pelo assistant do nada.
-          _iaHistorico: [
-            ...(Array.isArray(ctx._iaHistorico) ? (ctx._iaHistorico as HistoricoMsg[]) : []),
-            ...p.novasFalas,
-          ],
-        }),
-      },
+    const vivaParaEsperar = await this.atualizarSeViva(execucaoId, {
+      status: 'AGUARDANDO',
+      aguardandoNoId: p.noId,
+      timeoutEm: new Date(Date.now() + horas * 3_600_000),
+      // Memória da conversa da IA (no contexto da execução): guarda a abertura
+      // pra a IA NÃO se reapresentar quando o lead responder. O fluxo manda via
+      // whatsapp.enviarTexto (sem gravar na conversa do inbox), então sem isto
+      // o montarHistorico não tinha as mensagens do bot → IA repetia o opener.
+      contexto: toJsonInput({
+        ...ctx,
+        // No REATIVO grava os DOIS turnos (a fala do lead + a resposta): a
+        // memória tem que refletir a conversa como ela aconteceu, senão o
+        // próximo turno lê um diálogo que começa pelo assistant do nada.
+        _iaHistorico: [
+          ...(Array.isArray(ctx._iaHistorico) ? (ctx._iaHistorico as HistoricoMsg[]) : []),
+          ...p.novasFalas,
+        ],
+      }),
     });
+    // Cancelada enquanto o turno rodava: não re-arma a espera nem derruba as
+    // conversas de outros fluxos — quem pausou já assumiu o lead.
+    if (!vivaParaEsperar) return;
     // AUDITORIA (média): duas conversacionais VIVAS no mesmo lead, em fluxos
     // DIFERENTES, ficavam ambas AGUARDANDO. O supersede do bus é escopado por
     // `fluxoId`, então a antiga (E1) nunca era retomada nem cancelada: esperava
@@ -1907,19 +1907,19 @@ export class ConversarIaService {
     // fechar com gentileza, SEM re-disparar tag/aviso). Renova o timeout + memória.
     if (!classificouEfetivo || jaClassificou) {
       const renovaMs = jaClassificou ? esperaMs : (cfg.timeoutHoras ?? 24) * 3_600_000;
-      await this.prisma.fluxoExecucao.update({
-        where: { id: execucaoId },
-        data: {
-          timeoutEm: new Date(Date.now() + renovaMs),
-          // _iaTurno++ persiste pro PRÓXIMO turno ganhar uma chave de idempotência nova
-          // (o turno atual usou :t<n>; o reprocesso do mesmo turno reusa :t<n> e deduplica).
-          contexto: toJsonInput({
-            ...ctx,
-            _iaHistorico: novoHist,
-            _iaTurno: ((ctx._iaTurno as number) ?? 0) + 1,
-          }),
-        },
+      const continua = await this.atualizarSeViva(execucaoId, {
+        timeoutEm: new Date(Date.now() + renovaMs),
+        // _iaTurno++ persiste pro PRÓXIMO turno ganhar uma chave de idempotência nova
+        // (o turno atual usou :t<n>; o reprocesso do mesmo turno reusa :t<n> e deduplica).
+        contexto: toJsonInput({
+          ...ctx,
+          _iaHistorico: novoHist,
+          _iaTurno: ((ctx._iaTurno as number) ?? 0) + 1,
+        }),
       });
+      // `continua` só existe pra deixar explícito no log que a execução foi
+      // cancelada no meio do turno; o caminho é o mesmo (encerrar aqui).
+      void continua;
       return;
     }
 
@@ -2014,20 +2014,20 @@ export class ConversarIaService {
     // SEM janela de encerramento (esperaMs<=0): comportamento clássico — avança o ramo
     // "classificou" na MESMA execução e encerra a conversa do nó de IA.
     if (esperaMs <= 0) {
-      await this.prisma.fluxoExecucao.update({
-        where: { id: execucaoId },
-        data: {
-          status: 'EM_EXECUCAO',
-          aguardandoNoId: null,
-          timeoutEm: null,
-          // O histórico TEM que ser persistido também aqui. Este caminho gravava
-          // só o status, e quem classificava no 1º turno terminava com
-          // `_iaHistorico` VAZIO: ficava impossível auditar o que o bot disse —
-          // a conversa do inbox não tem a saída do fluxo, e a execução também
-          // não tinha. O ramo com janela de encerramento (abaixo) já gravava.
-          contexto: toJsonInput({ ...ctx, _iaHistorico: novoHist }),
-        },
+      const seguiuViva = await this.atualizarSeViva(execucaoId, {
+        status: 'EM_EXECUCAO',
+        aguardandoNoId: null,
+        timeoutEm: null,
+        // O histórico TEM que ser persistido também aqui. Este caminho gravava
+        // só o status, e quem classificava no 1º turno terminava com
+        // `_iaHistorico` VAZIO: ficava impossível auditar o que o bot disse —
+        // a conversa do inbox não tem a saída do fluxo, e a execução também
+        // não tinha. O ramo com janela de encerramento (abaixo) já gravava.
+        contexto: toJsonInput({ ...ctx, _iaHistorico: novoHist }),
       });
+      // Cancelada no meio do turno: não avança o grafo. Era daqui que saía a
+      // SEGUNDA tarefa pro mesmo recado, depois de o envio já ter sido barrado.
+      if (!seguiuViva) return;
       await this.enfileirarSucessores(execucaoId, no.id, 'classificou', true);
       this.logger.log(
         `Execução ${execucaoId} — IA classificou "${classificacaoTurno ?? '?'}" (lead ${leadId})`,
@@ -2039,17 +2039,14 @@ export class ConversarIaService {
     // (tag/aviso em paralelo) e mantém o nó de IA AGUARDANDO por `esperaMs` pra um
     // encerramento educado com o rep. Side-effects rodam UMA vez (marca _iaClassificou).
     await this.dispararRamoClassificou(execucao, no.id, ctx);
-    await this.prisma.fluxoExecucao.update({
-      where: { id: execucaoId },
-      data: {
-        timeoutEm: new Date(Date.now() + esperaMs),
-        contexto: toJsonInput({
-          ...ctx,
-          _iaHistorico: novoHist,
-          _iaClassificou: true,
-          classificacao: classificacaoTurno ?? null,
-        }),
-      },
+    await this.atualizarSeViva(execucaoId, {
+      timeoutEm: new Date(Date.now() + esperaMs),
+      contexto: toJsonInput({
+        ...ctx,
+        _iaHistorico: novoHist,
+        _iaClassificou: true,
+        classificacao: classificacaoTurno ?? null,
+      }),
     });
     this.logger.log(
       `Execução ${execucaoId} — IA classificou "${classificacaoTurno ?? '?'}" (lead ${leadId}); ` +
@@ -2250,6 +2247,36 @@ export class ConversarIaService {
   private donoDaConversa(ctx: ExecucaoContexto): string | null {
     const v = (ctx as Record<string, unknown>)['proprietarioId'];
     return typeof v === 'string' && v ? v : null;
+  }
+
+  /**
+   * Escreve no estado da execução SEM RESSUSCITAR quem já foi cancelada.
+   *
+   * O `update` incondicional era o buraco: o PAUSAR_IA marcava CANCELADO, o
+   * turno voltava do modelo 8s depois e gravava `status: 'EM_EXECUCAO'` por
+   * cima. A partir dali a guarda do executor (`if status === 'CANCELADO'
+   * return`) não pegava mais nada e o grafo seguia até o fim — criando a
+   * segunda tarefa que o Léo via na agenda. É a mesma lição da rodada anterior
+   * deste bug, um nível acima: cancelar não basta se algo depois escreve por
+   * cima. Lá era o envio; aqui é o status.
+   *
+   * Devolve `false` quando nada foi escrito porque a execução está cancelada —
+   * o chamador usa isso pra abortar a continuação ali mesmo.
+   */
+  private async atualizarSeViva(
+    execucaoId: string,
+    data: Record<string, unknown>,
+  ): Promise<boolean> {
+    const { count } = await this.prisma.fluxoExecucao.updateMany({
+      where: { id: execucaoId, status: { not: 'CANCELADO' } },
+      data: data as never,
+    });
+    if (count === 0) {
+      this.logger.warn(
+        `CONVERSAR_IA: execução ${execucaoId} está CANCELADA — atualização de estado ignorada`,
+      );
+    }
+    return count > 0;
   }
 
   /**
@@ -2515,10 +2542,9 @@ export class ConversarIaService {
     const arestas = await this.prisma.fluxoEdge.findMany({ where: { sourceNoId: noId } });
     const alvos = arestas.filter((e) => e.label === label || (incluirSemLabel && !e.label));
     if (alvos.length === 0) {
-      await this.prisma.fluxoExecucao.update({
-        where: { id: execucaoId },
-        data: { status: 'CONCLUIDO', terminouEm: new Date() },
-      });
+      // Sem sucessores, encerra — mas NÃO por cima de um CANCELADO. Foi assim
+      // que a execução pausada terminou como CONCLUIDO no log do T1.11.
+      await this.atualizarSeViva(execucaoId, { status: 'CONCLUIDO', terminouEm: new Date() });
       return;
     }
     for (const e of alvos) {
@@ -2584,15 +2610,15 @@ export class ConversarIaService {
   ): Promise<{ tipo_erro: string; mensagem_erro: string }> {
     const mensagem_erro = err instanceof Error ? err.message : String(err);
     this.logger.warn(`CONVERSAR_IA erro (${tipo_erro}) — exec ${execucaoId}: ${mensagem_erro}`);
-    await this.prisma.fluxoExecucao.update({
-      where: { id: execucaoId },
-      data: {
-        status: 'EM_EXECUCAO',
-        aguardandoNoId: null,
-        timeoutEm: null,
-        contexto: toJsonInput({ ...ctx, tipo_erro, mensagem_erro }),
-      },
+    const viva = await this.atualizarSeViva(execucaoId, {
+      status: 'EM_EXECUCAO',
+      aguardandoNoId: null,
+      timeoutEm: null,
+      contexto: toJsonInput({ ...ctx, tipo_erro, mensagem_erro }),
     });
+    // Execução cancelada não vira ramo de erro nem escala pra humano: quem
+    // pausou já assumiu a conversa.
+    if (!viva) return { tipo_erro, mensagem_erro };
     // A conversa PRECISA DE HUMANO — independente de existir aresta "erro".
     //
     // Sem isto o nó morria calado: em 24/08 a trava de saída bloqueou uma

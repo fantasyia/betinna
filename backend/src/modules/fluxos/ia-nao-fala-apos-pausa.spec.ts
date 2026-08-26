@@ -95,3 +95,68 @@ describe('nó de IA não fala depois da pausa', () => {
     expect(whatsapp.enviarTexto).toHaveBeenCalled();
   });
 });
+
+/**
+ * Segunda rodada do mesmo bug (reteste do T1.11, 26/08 21:45).
+ *
+ * O envio já era barrado — o C1 voltou 8,5s depois da pausa e ficou calado. Mas
+ * a execução TERMINOU COMO CONCLUIDO, não CANCELADO: o turno gravava
+ * `status: 'EM_EXECUCAO'` por cima do CANCELADO, e a partir dali a guarda do
+ * executor não pegava mais nada — o grafo seguia e criava a segunda tarefa.
+ *
+ * A lição, um nível acima da primeira: cancelar não basta se algo depois
+ * escreve por cima. Lá era o envio; aqui é o status.
+ */
+describe('execução cancelada não ressuscita', () => {
+  function comPrisma(count: number) {
+    const prisma = {
+      fluxoExecucao: {
+        findUnique: vi.fn().mockResolvedValue({ status: 'CANCELADO' }),
+        updateMany: vi.fn().mockResolvedValue({ count }),
+      },
+    };
+    const svc = new ConversarIaService(
+      prisma as never,
+      {} as never,
+      {} as never,
+      {} as never,
+      {} as never,
+      {} as never,
+      {} as never,
+      {} as never,
+      {} as never,
+      {} as never,
+      {} as never,
+      {} as never,
+    );
+    const atualizar = () =>
+      (
+        svc as unknown as {
+          atualizarSeViva: (id: string, data: Record<string, unknown>) => Promise<boolean>;
+        }
+      ).atualizarSeViva('exec-c1', { status: 'EM_EXECUCAO' });
+    return { atualizar, prisma };
+  }
+
+  it('a escrita de estado carrega a guarda status != CANCELADO', async () => {
+    const { atualizar, prisma } = comPrisma(1);
+
+    await atualizar();
+
+    expect(prisma.fluxoExecucao.updateMany).toHaveBeenCalledWith(
+      expect.objectContaining({ where: { id: 'exec-c1', status: { not: 'CANCELADO' } } }),
+    );
+  });
+
+  it('nada escrito (count 0) → devolve false, e o chamador aborta a continuação', async () => {
+    // É esse false que impede o grafo de seguir até o nó da tarefa — a segunda
+    // tarefa na agenda do Diretor nascia exatamente aí.
+    const { atualizar } = comPrisma(0);
+    expect(await atualizar()).toBe(false);
+  });
+
+  it('execução viva → devolve true e o fluxo segue normal', async () => {
+    const { atualizar } = comPrisma(1);
+    expect(await atualizar()).toBe(true);
+  });
+});

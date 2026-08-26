@@ -81,6 +81,23 @@ const makeWhatsapp = () => ({
 const makeBus = () => ({ disparar: vi.fn() });
 const makeQueue = () => ({ add: vi.fn().mockResolvedValue({ id: 'job-1' }) });
 
+/**
+ * Escritas de ESTADO da execução, sem o claim de turno.
+ *
+ * O claim (`processandoTurno`) também é `updateMany`, então índice fixo passou
+ * a pegar a chamada errada quando as escritas de estado viraram condicionais
+ * (`where: status != CANCELADO`, pra não ressuscitar execução cancelada).
+ */
+function escritasDeEstado(prisma: {
+  fluxoExecucao: { updateMany: { mock: { calls: unknown[][] } } };
+}): Array<{ data: Record<string, never> }> {
+  return prisma.fluxoExecucao.updateMany.mock.calls
+    .map((c) => c[0] as { data?: Record<string, unknown> })
+    .filter((c): c is { data: Record<string, never> } =>
+      Boolean(c?.data && !('processandoTurno' in c.data)),
+    );
+}
+
 describe('parseTurnoIa', () => {
   it('parseia JSON puro', () => {
     const r = parseTurnoIa('{"resposta":"oi","classificou":true,"classificacao":"X"}');
@@ -305,9 +322,11 @@ describe('ConversarIaService', () => {
         'Olá! Tudo bem?',
         { idempotencyKey: expect.stringMatching(/^fx:exec\-1:no\-ia:opener:b0:[0-9a-f]{12}$/) },
       );
-      expect(prisma.fluxoExecucao.update).toHaveBeenCalledWith(
+      expect(prisma.fluxoExecucao.updateMany).toHaveBeenCalledWith(
         expect.objectContaining({
-          where: { id: 'exec-1' },
+          // A guarda `status != CANCELADO` faz parte do contrato: escrever
+          // estado por cima de uma execução cancelada a ressuscitava.
+          where: { id: 'exec-1', status: { not: 'CANCELADO' } },
           data: expect.objectContaining({ status: 'AGUARDANDO', aguardandoNoId: 'no-ia' }),
         }),
       );
@@ -462,7 +481,7 @@ describe('ConversarIaService', () => {
       expect(r.aguardando).toBe(true);
       expect(muller.gerarRespostaIa).not.toHaveBeenCalled();
       expect(whatsapp.enviarTexto).not.toHaveBeenCalled();
-      expect(prisma.fluxoExecucao.update).toHaveBeenCalledWith(
+      expect(prisma.fluxoExecucao.updateMany).toHaveBeenCalledWith(
         expect.objectContaining({
           data: expect.objectContaining({ status: 'AGUARDANDO', aguardandoNoId: 'no-ia' }),
         }),
@@ -481,7 +500,7 @@ describe('ConversarIaService', () => {
         'emp-1',
       );
 
-      const upd = prisma.fluxoExecucao.update.mock.calls.at(-1)?.[0] as {
+      const upd = prisma.fluxoExecucao.updateMany.mock.calls.at(-1)?.[0] as {
         data?: { contexto?: { _iaHistorico?: unknown[] } };
       };
       expect(JSON.stringify(upd?.data?.contexto?._iaHistorico)).toContain('queimou o CLP');
@@ -627,7 +646,7 @@ describe('ConversarIaService', () => {
 
       // Não parqueia: o ramo "classificou" segue na mesma execução.
       expect(r.aguardando).toBe(false);
-      expect(prisma.fluxoExecucao.update).not.toHaveBeenCalledWith(
+      expect(prisma.fluxoExecucao.updateMany).not.toHaveBeenCalledWith(
         expect.objectContaining({ data: expect.objectContaining({ status: 'AGUARDANDO' }) }),
       );
       // E a classificação não se perde: vai pro lead e pro gatilho.
@@ -779,7 +798,7 @@ describe('ConversarIaService', () => {
         true,
       );
 
-      const upd = prisma.fluxoExecucao.update.mock.calls.at(-1)?.[0];
+      const upd = prisma.fluxoExecucao.updateMany.mock.calls.at(-1)?.[0];
       const hist = upd?.data?.contexto?._iaHistorico as Array<{ role: string; content: string }>;
       expect(hist.map((h) => h.role)).toEqual(['user', 'assistant']);
       expect(hist[0].content).toBe('queimou o CLP');
@@ -857,7 +876,7 @@ describe('ConversarIaService', () => {
         'emp-1',
       );
       expect(r.aguardando).toBe(false);
-      expect(prisma.fluxoExecucao.update).not.toHaveBeenCalled();
+      expect(prisma.fluxoExecucao.updateMany).not.toHaveBeenCalled();
     });
 
     it('pula (sem falhar) quando lead sem telefone', async () => {
@@ -871,7 +890,7 @@ describe('ConversarIaService', () => {
       expect(r.pulado).toBe(true);
       expect(r.motivo).toMatch(/telefone/i);
       expect(whatsapp.enviarTexto).not.toHaveBeenCalled();
-      expect(prisma.fluxoExecucao.update).not.toHaveBeenCalled();
+      expect(prisma.fluxoExecucao.updateMany).not.toHaveBeenCalled();
     });
 
     it('quebra em balões e troca [primeiro_nome] pelo nome real', async () => {
@@ -929,7 +948,7 @@ describe('ConversarIaService', () => {
 
       await svc.iniciar('exec-1', no({ promptId: 'p1' }) as never, { leadId: 'lead-1' }, 'emp-1');
 
-      const upd = prisma.fluxoExecucao.update.mock.calls.at(-1)?.[0];
+      const upd = prisma.fluxoExecucao.updateMany.mock.calls.at(-1)?.[0];
       expect(upd?.data?.status).toBe('AGUARDANDO');
       expect(upd?.data?.contexto?._iaHistorico).toEqual([
         expect.objectContaining({ role: 'assistant', content: 'Olá Ana, aqui é a Betinna…' }),
@@ -953,7 +972,7 @@ describe('ConversarIaService', () => {
       expect(r.roteado).toBe(true);
       expect(r.tipoErro).toBe('ia_sem_chave');
       // Gravou os campos no contexto + saiu de AGUARDANDO
-      const upd = prisma.fluxoExecucao.update.mock.calls.at(-1)?.[0];
+      const upd = prisma.fluxoExecucao.updateMany.mock.calls.at(-1)?.[0];
       expect(upd?.data?.aguardandoNoId).toBeNull();
       expect(upd?.data?.contexto?.tipo_erro).toBe('ia_sem_chave');
       expect(upd?.data?.contexto?.mensagem_erro).toContain('OpenAI não configurada');
@@ -980,7 +999,7 @@ describe('ConversarIaService', () => {
 
       expect(r.roteado).toBe(true);
       expect(r.tipoErro).toBe('whatsapp_falha');
-      const upd = prisma.fluxoExecucao.update.mock.calls.at(-1)?.[0];
+      const upd = prisma.fluxoExecucao.updateMany.mock.calls.at(-1)?.[0];
       expect(upd?.data?.contexto?.tipo_erro).toBe('whatsapp_falha');
     });
 
@@ -1000,7 +1019,7 @@ describe('ConversarIaService', () => {
       expect(r.tipoErro).toBe('ia_indisponivel');
       expect(queue.add).not.toHaveBeenCalled();
       // enfileirarSucessores sem alvos encerra como CONCLUÍDO
-      expect(prisma.fluxoExecucao.update).toHaveBeenCalledWith(
+      expect(prisma.fluxoExecucao.updateMany).toHaveBeenCalledWith(
         expect.objectContaining({ data: expect.objectContaining({ status: 'CONCLUIDO' }) }),
       );
     });
@@ -1190,7 +1209,7 @@ describe('ConversarIaService', () => {
         { execucaoId: 'exec-1', noId: 'no-2' },
         expect.any(Object),
       );
-      expect(prisma.fluxoExecucao.update).toHaveBeenCalledWith(
+      expect(prisma.fluxoExecucao.updateMany).toHaveBeenCalledWith(
         expect.objectContaining({ data: expect.objectContaining({ status: 'EM_EXECUCAO' }) }),
       );
     });
@@ -1229,7 +1248,7 @@ describe('ConversarIaService', () => {
         { execucaoId: 'exec-1', noId: 'no-2' },
         expect.any(Object),
       );
-      expect(prisma.fluxoExecucao.update).toHaveBeenCalledWith(
+      expect(prisma.fluxoExecucao.updateMany).toHaveBeenCalledWith(
         expect.objectContaining({ data: expect.objectContaining({ status: 'EM_EXECUCAO' }) }),
       );
     });
@@ -1256,7 +1275,7 @@ describe('ConversarIaService', () => {
         { execucaoId: 'exec-1', noId: 'no-2' },
         expect.any(Object),
       );
-      expect(prisma.fluxoExecucao.update).toHaveBeenCalledWith(
+      expect(prisma.fluxoExecucao.updateMany).toHaveBeenCalledWith(
         expect.objectContaining({ data: expect.objectContaining({ status: 'EM_EXECUCAO' }) }),
       );
     });
@@ -1286,7 +1305,7 @@ describe('ConversarIaService', () => {
         { execucaoId: 'exec-1', noId: 'no-2' },
         expect.any(Object),
       );
-      expect(prisma.fluxoExecucao.update).toHaveBeenCalledWith(
+      expect(prisma.fluxoExecucao.updateMany).toHaveBeenCalledWith(
         expect.objectContaining({ data: expect.objectContaining({ status: 'EM_EXECUCAO' }) }),
       );
     });
@@ -1311,7 +1330,7 @@ describe('ConversarIaService', () => {
       expect(bus.disparar).not.toHaveBeenCalled();
       expect(queue.add).not.toHaveBeenCalled();
       // Renovou timeout, mas não saiu de AGUARDANDO
-      const upd = prisma.fluxoExecucao.update.mock.calls[0][0];
+      const upd = escritasDeEstado(prisma)[0];
       expect(upd.data.timeoutEm).toBeInstanceOf(Date);
       expect(upd.data.status).toBeUndefined();
     });
@@ -1428,7 +1447,7 @@ describe('ConversarIaService', () => {
         expect.any(Object),
       );
       // O nó de IA SEGUE AGUARDANDO (não vira EM_EXECUCAO) e marca _iaClassificou.
-      const upd = prisma.fluxoExecucao.update.mock.calls.at(-1)?.[0];
+      const upd = escritasDeEstado(prisma).at(-1);
       expect(upd?.data?.status).toBeUndefined();
       expect(upd?.data?.contexto?._iaClassificou).toBe(true);
     });
@@ -1471,7 +1490,7 @@ describe('ConversarIaService', () => {
 
       await svc.retomar('exec-1', 'conv-1', 'oi');
 
-      const upd = prisma.fluxoExecucao.update.mock.calls.at(-1)?.[0];
+      const upd = escritasDeEstado(prisma).at(-1);
       expect(upd?.data?.status).toBe('EM_EXECUCAO');
       expect(upd?.data?.aguardandoNoId).toBeNull();
       expect(upd?.data?.contexto?.tipo_erro).toBe('ia_indisponivel');
