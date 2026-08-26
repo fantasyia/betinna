@@ -12,7 +12,12 @@ import { frontendOrigin } from '@shared/utils/frontend-origin';
 import { TinyOAuthService } from './tiny-oauth.service';
 import { TinyContaService } from './tiny-conta.service';
 import { TinyProdutosService } from './tiny-produtos.service';
-import { importarProdutosSchema, type ImportarProdutosDto } from './tiny.dto';
+import {
+  importarProdutosSchema,
+  listaPrecoSchema,
+  type ImportarProdutosDto,
+  type ListaPrecoDto,
+} from './tiny.dto';
 import { ZodValidationPipe } from '@shared/pipes/zod-validation.pipe';
 import { Audit } from '@shared/decorators/audit.decorator';
 import type { TinyCredenciais } from './tiny.types';
@@ -117,6 +122,25 @@ export class TinyOAuthController {
       throw new ForbiddenException('Empresa não definida', ErrorCode.TENANT_ACCESS_DENIED);
     }
     return this.produtos.importar(user.empresaIdAtiva, dto.produtos);
+  }
+
+  /**
+   * Cria lista de preços (ex.: "Locação mensal"). É como o Tiny separa o mesmo
+   * produto com preço diferente, sem duplicar cadastro nem estoque.
+   */
+  @Post('listas-preco')
+  @ApiBearerAuth()
+  @Roles('ADMIN', 'DIRECTOR')
+  @Audit({ action: 'CRIAR', resource: 'tiny_lista_preco' })
+  @ApiOperation({ summary: 'Cria uma lista de preços no Tiny com preços por SKU' })
+  async criarListaPreco(
+    @CurrentUser() user: AuthenticatedUser,
+    @Body(new ZodValidationPipe(listaPrecoSchema)) dto: ListaPrecoDto,
+  ) {
+    if (!user.empresaIdAtiva) {
+      throw new ForbiddenException('Empresa não definida', ErrorCode.TENANT_ACCESS_DENIED);
+    }
+    return this.produtos.definirListaPreco(user.empresaIdAtiva, dto);
   }
 
   @Public()

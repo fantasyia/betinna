@@ -39,3 +39,17 @@ export const importarProdutosSchema = z.object({
 });
 
 export type ImportarProdutosDto = z.infer<typeof importarProdutosSchema>;
+
+/**
+ * Lista de preços — como o Tiny separa "mesmo produto, outro preço".
+ * Na Somatec: venda × locação mensal do mesmo Master Block.
+ */
+export const listaPrecoSchema = z.object({
+  descricao: z.string().min(1).max(120),
+  itens: z
+    .array(z.object({ sku: z.string().min(1).max(60), preco: z.number().nonnegative() }))
+    .min(1)
+    .max(200),
+});
+
+export type ListaPrecoDto = z.infer<typeof listaPrecoSchema>;

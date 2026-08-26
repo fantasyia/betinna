@@ -207,6 +207,44 @@ export class TinyProdutosService {
     }
   }
 
+  /**
+   * Cria uma LISTA DE PREÇOS com preços por SKU.
+   *
+   * É assim que o Tiny separa "o mesmo produto com outro preço" — o caso da
+   * Somatec é venda × locação mensal do mesmo Master Block. O produto é um só
+   * (mesmo estoque, mesma ficha técnica, mesma OP); o que muda é a lista.
+   *
+   * ⚠️ Preço diferente NÃO é operação fiscal diferente. Locação sai como
+   * serviço/comodato, com tributação própria — a lista resolve o COMERCIAL, não
+   * o fiscal. Ver o card do ERP.
+   */
+  async definirListaPreco(
+    empresaId: string,
+    lista: { descricao: string; itens: Array<{ sku: string; preco: number }> },
+  ): Promise<{ id?: number; itens: Array<{ sku: string; idProduto?: number; erro?: string }> }> {
+    const itens: Array<{ sku: string; idProduto?: number; erro?: string }> = [];
+    const paraTiny: Array<{ idProduto: number; preco: number }> = [];
+    for (const i of lista.itens) {
+      const achado = await this.acharPorSku(empresaId, i.sku);
+      if (!achado) {
+        itens.push({ sku: i.sku, erro: 'SKU não existe no Tiny' });
+        continue;
+      }
+      itens.push({ sku: i.sku, idProduto: achado.id });
+      paraTiny.push({ idProduto: achado.id, preco: i.preco });
+    }
+    const criada = await this.comRetry429(() =>
+      this.client.post<{ id: number }>(empresaId, '/listas-precos', {
+        descricao: lista.descricao,
+        itens: paraTiny,
+      }),
+    );
+    this.logger.log(
+      `[tiny] lista de preços "${lista.descricao}" criada com ${paraTiny.length} item(ns)`,
+    );
+    return { id: criada?.id, itens };
+  }
+
   /** Busca pelo código (o SKU) — é a chave que amarra site ↔ ERP ↔ app. */
   private async acharPorSku(empresaId: string, sku: string): Promise<ProdutoTiny | null> {
     const r = await this.client.get<{ itens?: ProdutoTiny[] }>(empresaId, '/produtos', {

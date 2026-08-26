@@ -198,3 +198,45 @@ describe('embalagem e produto fabricado', () => {
     expect(client.put).not.toHaveBeenCalled();
   });
 });
+
+/**
+ * Venda × locação: o Master Block é o MESMO produto (mesmo estoque, mesma
+ * ficha técnica, mesma OP) com preço diferente. No Tiny isso é lista de preços.
+ */
+describe('lista de preços (locação)', () => {
+  beforeEach(() => vi.clearAllMocks());
+
+  it('resolve os SKUs e cria a lista com os ids do Tiny', async () => {
+    const { svc, client } = build([{ id: 42, sku: 'MB-01' }]);
+    client.post.mockResolvedValue({ id: 7 });
+
+    const r = await svc.definirListaPreco('emp-1', {
+      descricao: 'Locação mensal',
+      itens: [{ sku: 'MB-01', preco: 300 }],
+    });
+
+    expect(client.post).toHaveBeenCalledWith('emp-1', '/listas-precos', {
+      descricao: 'Locação mensal',
+      itens: [{ idProduto: 42, preco: 300 }],
+    });
+    expect(r.id).toBe(7);
+  });
+
+  it('SKU inexistente é reportado e NÃO entra na lista', async () => {
+    // Lista com produto errado é pior que lista incompleta: alguém venderia
+    // pelo preço de outro item.
+    const { svc, client } = build([]);
+    client.post.mockResolvedValue({ id: 7 });
+
+    const r = await svc.definirListaPreco('emp-1', {
+      descricao: 'Locação mensal',
+      itens: [{ sku: 'NAO-EXISTE', preco: 300 }],
+    });
+
+    expect(r.itens[0].erro).toContain('não existe');
+    expect(client.post).toHaveBeenCalledWith('emp-1', '/listas-precos', {
+      descricao: 'Locação mensal',
+      itens: [],
+    });
+  });
+});
