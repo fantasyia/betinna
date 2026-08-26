@@ -22,6 +22,21 @@ export interface ProdutoParaImportar {
   pesoKg?: number;
   /** Feito sob encomenda: não trava venda por saldo zero. */
   sobEncomenda?: boolean;
+  /**
+   * Tipo de embalagem: 1 envelope · 2 pacote/caixa · 3 rolo/cilindro.
+   * A CAIXA é o que o frete cobra, não o produto nu — por isso ela é cadastro
+   * à parte no Tiny (Cadastros › Produtos › Embalagens), com medidas próprias.
+   */
+  embalagemTipo?: 1 | 2 | 3;
+  /** Id de uma embalagem cadastrada no painel (carrega as medidas da caixa). */
+  embalagemId?: number;
+  /**
+   * Estrutura do produto FABRICADO — o que se consome pra produzir uma unidade.
+   * Presente = o produto vira tipo F e passa a aceitar ordem de produção.
+   */
+  componentes?: Array<{ sku: string; quantidade: number }>;
+  /** Etapas de produção (opcional, texto livre). */
+  etapas?: string[];
 }
 
 export interface ResultadoImportacao {
@@ -29,6 +44,8 @@ export interface ResultadoImportacao {
   acao: 'criado' | 'atualizado' | 'erro';
   idTiny?: number;
   erro?: string;
+  /** Preenchido quando a estrutura de produção foi gravada (produto fabricado). */
+  estrutura?: 'definida' | 'falhou';
 }
 
 interface ProdutoTiny {
@@ -84,17 +101,37 @@ export class TinyProdutosService {
       try {
         const existente = await this.acharPorSku(empresaId, p.sku);
         const corpo = this.montarCorpo(p);
+        let idTiny: number | undefined;
+        let acao: 'criado' | 'atualizado';
         if (existente) {
           await this.comRetry429(() =>
             this.client.put(empresaId, `/produtos/${existente.id}`, corpo),
           );
-          itens.push({ sku: p.sku, acao: 'atualizado', idTiny: existente.id });
+          idTiny = existente.id;
+          acao = 'atualizado';
         } else {
           const criado = await this.comRetry429(() =>
             this.client.post<{ id: number }>(empresaId, '/produtos', corpo),
           );
-          itens.push({ sku: p.sku, acao: 'criado', idTiny: criado?.id });
+          idTiny = criado?.id;
+          acao = 'criado';
         }
+
+        // A estrutura vem DEPOIS de o produto existir: o Tiny recusa criar tipo
+        // F sem informações de produção, então o caminho é nascer Simples e
+        // receber a estrutura em seguida — é ela que o converte em Fabricado.
+        let estrutura: 'definida' | 'falhou' | undefined;
+        if (idTiny && p.componentes?.length) {
+          estrutura = await this.definirEstrutura(empresaId, idTiny, p).catch((err: unknown) => {
+            // Produto dentro e estrutura falha é um estado ÚTIL (ele já vende);
+            // por isso não vira erro do item, vira aviso visível no relatório.
+            this.logger.warn(
+              `[tiny] estrutura de ${p.sku} falhou: ${err instanceof Error ? err.message : String(err)}`,
+            );
+            return 'falhou' as const;
+          });
+        }
+        itens.push({ sku: p.sku, acao, idTiny, estrutura });
       } catch (err) {
         // Um SKU que falha não interrompe os outros: metade do catálogo dentro
         // é melhor que nenhum, e o relatório diz exatamente qual faltou.
@@ -115,6 +152,35 @@ export class TinyProdutosService {
       `[tiny] importação de produtos: ${resumo.criados} criados, ${resumo.atualizados} atualizados, ${resumo.erros} erros`,
     );
     return resumo;
+  }
+
+  /**
+   * Grava a estrutura de produção e converte o produto em Fabricado.
+   *
+   * Os componentes são resolvidos por SKU, não por id: quem descreve a ficha
+   * técnica pensa em "MP-CHAPA-2MM", não no número interno do ERP. Componente
+   * que não existe no Tiny faz a estrutura inteira falhar — de propósito, uma
+   * ficha técnica pela metade produziria peça errada.
+   */
+  private async definirEstrutura(
+    empresaId: string,
+    idProduto: number,
+    p: ProdutoParaImportar,
+  ): Promise<'definida'> {
+    const componentes: Array<{ produto: { id: number }; quantidade: number }> = [];
+    for (const c of p.componentes ?? []) {
+      const achado = await this.acharPorSku(empresaId, c.sku);
+      if (!achado) throw new Error(`componente ${c.sku} não existe no Tiny`);
+      componentes.push({ produto: { id: achado.id }, quantidade: c.quantidade });
+    }
+    await this.respirar();
+    await this.comRetry429(() =>
+      this.client.put(empresaId, `/produtos/${idProduto}/fabricado`, {
+        produtos: componentes,
+        ...(p.etapas?.length ? { etapas: p.etapas } : {}),
+      }),
+    );
+    return 'definida';
   }
 
   private respirar(): Promise<void> {
@@ -170,7 +236,7 @@ export class TinyProdutosService {
     if (typeof p.precoCusto === 'number') precos.precoCusto = p.precoCusto;
     if (Object.keys(precos).length > 0) corpo.precos = precos;
 
-    const dim: Record<string, number> = {};
+    const dim: Record<string, number | Record<string, number>> = {};
     if (p.comprimentoCm) dim.comprimento = p.comprimentoCm;
     if (p.larguraCm) dim.largura = p.larguraCm;
     if (p.alturaCm) dim.altura = p.alturaCm;
@@ -179,6 +245,15 @@ export class TinyProdutosService {
     if (p.pesoKg) {
       dim.pesoLiquido = p.pesoKg;
       dim.pesoBruto = p.pesoKg;
+    }
+    // A embalagem é o que o frete cobra: a caixa é maior que o produto nu.
+    // `tipo` sozinho já orienta a cotação; `id` aponta pra uma embalagem
+    // cadastrada no painel, que carrega as medidas reais da caixa.
+    if (p.embalagemTipo || p.embalagemId) {
+      dim.embalagem = {
+        ...(p.embalagemTipo ? { tipo: p.embalagemTipo } : {}),
+        ...(p.embalagemId ? { id: p.embalagemId } : {}),
+      } as never;
     }
     if (Object.keys(dim).length > 0) corpo.dimensoes = dim;
 

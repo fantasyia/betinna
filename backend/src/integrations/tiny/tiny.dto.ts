@@ -23,6 +23,15 @@ export const importarProdutosSchema = z.object({
         alturaCm: z.number().positive().optional(),
         pesoKg: z.number().positive().optional(),
         sobEncomenda: z.boolean().optional(),
+        // 1 envelope · 2 pacote/caixa · 3 rolo/cilindro (valores do Tiny).
+        embalagemTipo: z.union([z.literal(1), z.literal(2), z.literal(3)]).optional(),
+        embalagemId: z.number().int().positive().optional(),
+        // Estrutura do fabricado: presente = o produto passa a aceitar OP.
+        componentes: z
+          .array(z.object({ sku: z.string().min(1).max(60), quantidade: z.number().positive() }))
+          .max(200)
+          .optional(),
+        etapas: z.array(z.string().min(1).max(120)).max(50).optional(),
       }),
     )
     .min(1)

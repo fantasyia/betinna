@@ -129,3 +129,70 @@ describe('importar produtos pro Tiny', () => {
     expect(r.itens[0]).toMatchObject({ sku: 'MB-04', acao: 'erro' });
   });
 });
+
+/**
+ * Embalagem e estrutura de produção — pedidos do Léo em 26/08, os dois com
+ * razão de negócio: a CAIXA é o que o frete cobra (cada modelo tem peso e
+ * tamanho diferentes), e produto fabricado é o que aceita ordem de produção.
+ */
+describe('embalagem e produto fabricado', () => {
+  beforeEach(() => vi.clearAllMocks());
+
+  it('embalagem vai junto das dimensões (2 = pacote/caixa)', async () => {
+    const { svc, client } = build([]);
+
+    await svc.importar('emp-1', [{ ...MB04, embalagemTipo: 2 as const, embalagemId: 77 }]);
+
+    const corpo = client.post.mock.calls[0][2] as { dimensoes: { embalagem: unknown } };
+    expect(corpo.dimensoes.embalagem).toEqual({ tipo: 2, id: 77 });
+  });
+
+  it('com componentes, a estrutura é gravada DEPOIS de o produto existir', async () => {
+    // O Tiny recusa criar tipo F direto ("deve conter informações de produção"),
+    // então o caminho é nascer Simples e receber a estrutura em seguida.
+    const client = {
+      get: vi
+        .fn()
+        .mockResolvedValueOnce({ itens: [] }) // MB-04 ainda não existe
+        .mockResolvedValue({ itens: [{ id: 500, sku: 'MP-TESTE' }] }), // o componente existe
+      post: vi.fn().mockResolvedValue({ id: 999 }),
+      put: vi.fn().mockResolvedValue({}),
+    };
+    const svc = new TinyProdutosService(client as never);
+
+    const r = await svc.importar('emp-1', [
+      { ...MB04, componentes: [{ sku: 'MP-TESTE', quantidade: 1 }], etapas: ['Montagem'] },
+    ]);
+
+    expect(client.put).toHaveBeenCalledWith('emp-1', '/produtos/999/fabricado', {
+      produtos: [{ produto: { id: 500 }, quantidade: 1 }],
+      etapas: ['Montagem'],
+    });
+    expect(r.itens[0].estrutura).toBe('definida');
+  });
+
+  it('componente inexistente derruba a estrutura inteira, não grava pela metade', async () => {
+    // Ficha técnica incompleta produz peça errada — pior que ficha nenhuma.
+    const client = {
+      get: vi.fn().mockResolvedValue({ itens: [] }),
+      post: vi.fn().mockResolvedValue({ id: 999 }),
+      put: vi.fn().mockResolvedValue({}),
+    };
+    const svc = new TinyProdutosService(client as never);
+
+    const r = await svc.importar('emp-1', [
+      { ...MB04, componentes: [{ sku: 'NAO-EXISTE', quantidade: 1 }] },
+    ]);
+
+    // O produto entrou (é útil), mas a estrutura falhou e isso aparece.
+    expect(r.itens[0].acao).toBe('criado');
+    expect(r.itens[0].estrutura).toBe('falhou');
+    expect(client.put).not.toHaveBeenCalled();
+  });
+
+  it('sem componentes, nenhuma chamada de estrutura acontece', async () => {
+    const { svc, client } = build([]);
+    await svc.importar('emp-1', [MB04]);
+    expect(client.put).not.toHaveBeenCalled();
+  });
+});
