@@ -13,6 +13,7 @@ import { TinyOAuthService } from './tiny-oauth.service';
 import { TinyContaService } from './tiny-conta.service';
 import { TinyProdutosService } from './tiny-produtos.service';
 import { TinyPedidosService } from './tiny-pedidos.service';
+import { TinyProdutosSyncService } from './tiny-produtos-sync.service';
 import {
   importarProdutosSchema,
   listaPrecoSchema,
@@ -34,6 +35,7 @@ export class TinyOAuthController {
     private readonly conta: TinyContaService,
     private readonly produtos: TinyProdutosService,
     private readonly pedidos: TinyPedidosService,
+    private readonly sync: TinyProdutosSyncService,
   ) {}
 
   @Get('oauth/start')
@@ -166,6 +168,24 @@ export class TinyOAuthController {
       throw new ForbiddenException('Empresa não definida', ErrorCode.TENANT_ACCESS_DENIED);
     }
     return this.pedidos.criar(user.empresaIdAtiva, dto);
+  }
+
+  /**
+   * Puxa o catálogo do Tiny pra cá. Incremental por padrão (só o que mudou
+   * desde o último sync); `?modo=completo` força tudo.
+   */
+  @Post('sync/produtos')
+  @ApiBearerAuth()
+  @Roles('ADMIN', 'DIRECTOR')
+  @Audit({ action: 'SYNC', resource: 'tiny_produtos' })
+  @ApiOperation({ summary: 'Sincroniza produtos + estoque do Tiny para o app' })
+  async sincronizarProdutos(@CurrentUser() user: AuthenticatedUser, @Query('modo') modo?: string) {
+    if (!user.empresaIdAtiva) {
+      throw new ForbiddenException('Empresa não definida', ErrorCode.TENANT_ACCESS_DENIED);
+    }
+    return this.sync.sync(user.empresaIdAtiva, {
+      modo: modo === 'completo' ? 'completo' : 'incremental',
+    });
   }
 
   @Public()
