@@ -569,8 +569,21 @@ export class ConversarIaService {
     idemBase: string,
     /** Mesma conversa = mesmo número. Ver `donoDaConversa`. */
     proprietarioId?: string | null,
+    /**
+     * Execução dona deste envio. Quando informada, o envio é abortado se a
+     * execução tiver sido CANCELADA enquanto a IA pensava — ver `execucaoViva`.
+     */
+    execucaoId?: string,
   ): Promise<void> {
     if (ids.length === 0) return;
+    // Mesma trava do texto: documento enviado depois da pausa é a mesma quebra
+    // de promessa, só que em anexo.
+    if (execucaoId && !(await this.execucaoViva(execucaoId))) {
+      this.logger.warn(
+        `CONVERSAR_IA: execução ${execucaoId} cancelada — ${ids.length} documento(s) NÃO enviados`,
+      );
+      return;
+    }
     const peerId = `${telefone.replace(/[^\d+]/g, '')}@s.whatsapp.net`;
     for (const id of ids) {
       const doc = await this.prisma.knowledgeDocumento.findFirst({
@@ -1151,6 +1164,7 @@ export class ConversarIaService {
         reativo,
         `fx:${execucaoId}:${no.id}:opener`,
         this.donoDaConversa(ctx),
+        execucaoId,
       );
     } catch (err) {
       // Janela/teto NÃO é falha de WhatsApp — é "ainda não" (auditoria 20/08).
@@ -1700,6 +1714,7 @@ export class ConversarIaService {
         true, // reativo
         undefined, // sem idemKey: aviso pontual
         this.donoDaConversa(ctx),
+        execucaoId,
       ).catch(() => undefined);
       await this.rotearParaErro(
         execucaoId,
@@ -1832,6 +1847,7 @@ export class ConversarIaService {
         true,
         idemTurno,
         this.donoDaConversa(ctx),
+        execucaoId,
       );
     } catch (err) {
       // Mesma regra do opener: porta fechada sobe pro executor (retry +
@@ -1848,6 +1864,7 @@ export class ConversarIaService {
       docIds,
       idemTurno,
       this.donoDaConversa(ctx),
+      execucaoId,
     );
 
     // Atualiza a memória da conversa (pergunta do lead + resposta da IA).
@@ -2235,6 +2252,25 @@ export class ConversarIaService {
     return typeof v === 'string' && v ? v : null;
   }
 
+  /**
+   * A execução ainda pode falar? `false` quando ela foi CANCELADA (ou sumiu).
+   *
+   * Erro de banco devolve `true` de propósito: numa falha de leitura, deixar o
+   * bot mudo seria pior que o risco de uma fala a mais — a conversa em curso
+   * simplesmente pararia, sem ninguém saber.
+   */
+  private async execucaoViva(execucaoId: string): Promise<boolean> {
+    try {
+      const ex = await this.prisma.fluxoExecucao.findUnique({
+        where: { id: execucaoId },
+        select: { status: true },
+      });
+      return ex ? ex.status !== 'CANCELADO' : false;
+    } catch {
+      return true;
+    }
+  }
+
   // ─── Internals ──────────────────────────────────────────────────────
 
   /**
@@ -2256,8 +2292,25 @@ export class ConversarIaService {
      * Null/undefined = número da empresa.
      */
     proprietarioId?: string | null,
+    /**
+     * Execução dona deste envio. Quando informada, o envio é abortado se a
+     * execução tiver sido CANCELADA enquanto a IA pensava — ver `execucaoViva`.
+     */
+    execucaoId?: string,
   ): Promise<void> {
     if (!texto.trim()) return;
+    // ÚLTIMA TRAVA antes de falar. A chamada ao modelo leva de 10 a 90s, e nesse
+    // intervalo um PAUSAR_IA (rep assumiu, pós-venda, transferência) pode ter
+    // cancelado esta execução. Sem esta checagem o bot falava DEPOIS da pausa —
+    // exatamente o que o T1.11 flagrou em 26/08, 14s após o RT pausar. Aqui é o
+    // ponto único por onde TODA fala do nó de IA passa: opener, turno e aviso.
+    if (execucaoId && !(await this.execucaoViva(execucaoId))) {
+      this.logger.warn(
+        `CONVERSAR_IA: execução ${execucaoId} foi cancelada durante a chamada da IA — ` +
+          `envio ABORTADO (bot pausado no meio do turno)`,
+      );
+      return;
+    }
     // Pacing global: espaça este envio dos demais da empresa (nunca tudo de uma vez).
     // `reativo` = resposta a quem escreveu (faixa rápida); opener = proativo (lento).
     await this.pacing.aguardarSlot(empresaId, reativo);

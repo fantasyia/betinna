@@ -17,7 +17,10 @@ const makePrisma = () => ({
   $executeRaw: vi.fn().mockResolvedValue(0),
   lead: { findFirst: vi.fn(), update: vi.fn().mockResolvedValue({}) },
   fluxoExecucao: {
-    findUnique: vi.fn(),
+    // Execução VIVA por padrão: antes de falar, o nó confere se não foi
+    // cancelada no meio da chamada da IA (PAUSAR_IA). Mock devolvendo null
+    // significaria "execução sumiu" e calaria o bot em todos os testes.
+    findUnique: vi.fn().mockResolvedValue({ status: 'EM_EXECUCAO' }),
     findFirst: vi.fn(),
     findMany: vi.fn().mockResolvedValue([]),
     update: vi.fn().mockResolvedValue({}),

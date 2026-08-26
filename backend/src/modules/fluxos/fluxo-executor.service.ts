@@ -1259,7 +1259,7 @@ export class FluxoExecutorService {
         return this.acaoLiberarLote(cfg as LiberarLoteConfig, empresaId, ctx);
 
       case 'PAUSAR_IA':
-        return this.acaoPausarIa(cfg as PausarIaConfig, ctx, empresaId);
+        return this.acaoPausarIa(cfg as PausarIaConfig, ctx, empresaId, execucaoId);
 
       case 'CRIAR_LEAD':
         return this.acaoCriarLead(cfg as CriarLeadConfig, ctx, empresaId, execucaoId);
@@ -2459,6 +2459,7 @@ export class FluxoExecutorService {
     cfg: PausarIaConfig,
     ctx: ExecucaoContexto,
     empresaId: string,
+    execucaoId: string,
   ): Promise<Record<string, unknown>> {
     this.assertEmpresaId(empresaId, 'PAUSAR_IA');
     const leadId = ctx['leadId'] as string | undefined;
@@ -2495,7 +2496,54 @@ export class FluxoExecutorService {
         ? { botLigado: true, botPausadoAte: null, precisaHumano: false }
         : { botLigado: false },
     });
-    return { leadId, sufixo, botLigado: religar, conversasAtualizadas: count };
+
+    // PAUSAR não pode ser só "não comece um turno novo": um turno JÁ dentro da
+    // chamada ao modelo (10 a 90s) continuava e falava DEPOIS da pausa. O caso
+    // real (T1.11, 26/08): o RT pausou às 21:15:56 e o C1 respondeu às 21:16:11
+    // — 14s depois — na conversa pausada, e ainda criou uma segunda tarefa pro
+    // mesmo recado. A ordem dos nós não resolve; a janela é a duração da chamada.
+    //
+    // Então a pausa CANCELA as execuções vivas do lead. Quem está dentro do
+    // modelo não é interrompido no meio (não dá), mas o envio é barrado no
+    // último instante por `execucaoViva` no conversar-ia.
+    const canceladas = religar
+      ? 0
+      : await this.cancelarExecucoesDoLead(empresaId, leadId, execucaoId);
+    return { leadId, sufixo, botLigado: religar, conversasAtualizadas: count, canceladas };
+  }
+
+  /**
+   * Cancela as execuções de fluxo VIVAS do lead — menos a que está pausando.
+   *
+   * ⚠️ A exclusão da própria execução não é detalhe: sem ela o fluxo se mata no
+   * meio e os nós seguintes (criar tarefa, mover etapa) não rodam — a pausa
+   * funcionaria e o resto do ramo sumiria.
+   *
+   * Best-effort: falhar aqui não pode impedir a pausa em si, que é o efeito
+   * principal da ação.
+   */
+  private async cancelarExecucoesDoLead(
+    empresaId: string,
+    leadId: string,
+    execucaoIdAtual: string,
+  ): Promise<number> {
+    try {
+      // Raw como no supersede do conversar-ia: filtro por chave de JSON no
+      // Prisma trata ausente como NULL e casaria zero linha nas execuções-raiz.
+      return await this.prisma.$executeRaw`
+        UPDATE "FluxoExecucao"
+        SET status = 'CANCELADO', "aguardandoNoId" = NULL, "timeoutEm" = NULL, "terminouEm" = now()
+        WHERE "empresaId" = ${empresaId}
+          AND status IN ('PENDENTE', 'EM_EXECUCAO', 'AGUARDANDO')
+          AND (contexto #>> '{leadId}') = ${leadId}
+          AND id <> ${execucaoIdAtual}`;
+    } catch (err) {
+      this.logger.warn(
+        `PAUSAR_IA: falha ao cancelar execuções do lead ${leadId}: ` +
+          `${err instanceof Error ? err.message : String(err)}`,
+      );
+      return 0;
+    }
   }
 
   private async acaoAtribuirRep(
