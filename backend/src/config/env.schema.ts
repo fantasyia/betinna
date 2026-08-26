@@ -289,16 +289,25 @@ export const envSchema = z
   })
   /**
    * Em produção, secrets de webhook são OBRIGATÓRIOS — não aceitamos webhook
-   * sem validação HMAC em prod. Em dev/test, podem ficar vazios (warn-mode).
+   * sem validação em prod. Em dev/test, podem ficar vazios (warn-mode).
    *
-   * Refs auditoria 2026-05-15 — webhooks OMIE/Meta/Shopee/TikTok aceitavam
+   * Refs auditoria 2026-05-15 — webhooks Meta/Shopee/TikTok aceitavam
    * silenciosamente sem secret → atacante podia injetar eventos.
    */
   .superRefine((env, ctx) => {
     if (env.NODE_ENV !== 'production') return;
+    // Só o serviço HTTP recebe webhook. Exigir os secrets no WORKER derrubava o
+    // processo por uma rota que ele nem serve — foi exatamente o que aconteceu
+    // em 26/08, quando as envs do OMIE saíram: a api subiu e o worker morreu no
+    // boot. O gate continua valendo onde ele protege alguma coisa.
+    if (env.SERVICE_TYPE === 'worker') return;
 
     const required: Array<{ key: keyof typeof env; label: string }> = [
-      { key: 'OMIE_WEBHOOK_SECRET', label: 'OMIE' },
+      // ERP: o Tiny é o atual (D50). O OMIE saiu da lista quando deixou de ser
+      // o ERP — exigir secret de uma integração aposentada só derruba o boot.
+      // O Tiny não assina os webhooks, então o secret aqui é o da URL: sem ele
+      // a rota fica aberta, que é justamente o que este gate impede.
+      { key: 'TINY_WEBHOOK_SECRET', label: 'Tiny (segredo na URL)' },
       { key: 'META_GRAPH_APP_SECRET', label: 'Meta (Facebook/Instagram)' },
       { key: 'META_GRAPH_VERIFY_TOKEN', label: 'Meta verify token' },
       { key: 'SHOPEE_PARTNER_KEY', label: 'Shopee' },
