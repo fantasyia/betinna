@@ -46,6 +46,9 @@ export interface ResultadoImportacao {
   erro?: string;
   /** Preenchido quando a estrutura de produção foi gravada (produto fabricado). */
   estrutura?: 'definida' | 'falhou';
+  /** Por que a estrutura falhou. Relatório que diz "falhou" sem dizer o motivo
+   *  obriga quem lê a ir caçar no log — e nem sempre há log à mão. */
+  estruturaErro?: string;
 }
 
 interface ProdutoTiny {
@@ -121,17 +124,18 @@ export class TinyProdutosService {
         // F sem informações de produção, então o caminho é nascer Simples e
         // receber a estrutura em seguida — é ela que o converte em Fabricado.
         let estrutura: 'definida' | 'falhou' | undefined;
+        let estruturaErro: string | undefined;
         if (idTiny && p.componentes?.length) {
           estrutura = await this.definirEstrutura(empresaId, idTiny, p).catch((err: unknown) => {
             // Produto dentro e estrutura falha é um estado ÚTIL (ele já vende);
-            // por isso não vira erro do item, vira aviso visível no relatório.
-            this.logger.warn(
-              `[tiny] estrutura de ${p.sku} falhou: ${err instanceof Error ? err.message : String(err)}`,
-            );
+            // por isso não vira erro do item, vira aviso visível no relatório —
+            // COM o motivo, senão quem lê tem que ir caçar no log.
+            estruturaErro = (err instanceof Error ? err.message : String(err)).slice(0, 300);
+            this.logger.warn(`[tiny] estrutura de ${p.sku} falhou: ${estruturaErro}`);
             return 'falhou' as const;
           });
         }
-        itens.push({ sku: p.sku, acao, idTiny, estrutura });
+        itens.push({ sku: p.sku, acao, idTiny, estrutura, estruturaErro });
       } catch (err) {
         // Um SKU que falha não interrompe os outros: metade do catálogo dentro
         // é melhor que nenhum, e o relatório diz exatamente qual faltou.

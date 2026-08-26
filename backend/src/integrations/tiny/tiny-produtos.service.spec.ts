@@ -187,6 +187,8 @@ describe('embalagem e produto fabricado', () => {
     // O produto entrou (é útil), mas a estrutura falhou e isso aparece.
     expect(r.itens[0].acao).toBe('criado');
     expect(r.itens[0].estrutura).toBe('falhou');
+    // E o relatório diz POR QUÊ: "falhou" sozinho manda quem lê caçar no log.
+    expect(r.itens[0].estruturaErro).toContain('NAO-EXISTE');
     expect(client.put).not.toHaveBeenCalled();
   });
 
