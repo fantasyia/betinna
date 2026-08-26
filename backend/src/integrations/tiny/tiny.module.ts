@@ -1,14 +1,22 @@
 import { Module } from '@nestjs/common';
+import { IntegracoesModule } from '@modules/integracoes/integracoes.module';
+import { TinyClientService } from './tiny-client.service';
+import { TinyOAuthController } from './tiny-oauth.controller';
+import { TinyOAuthService } from './tiny-oauth.service';
+import { TinyTokenRefreshJob } from './tiny-token-refresh.job';
 import { TinyWebhookController } from './tiny-webhook.controller';
 
 /**
  * Integração com o Tiny (Olist) — o ERP a partir de 26/08/2026 (D50).
  *
- * Nasce só com o receptor de webhook, porque o painel do Tiny valida a URL
- * antes de deixar salvar. O cliente HTTP com OAuth, os syncs e o processamento
- * dos eventos entram nos itens 2–7 do plano em `docs/erp-tiny-olist.md`.
+ * Estado: OAuth + cliente HTTP + receptor de webhook. Os syncs (produtos,
+ * estoque, contatos), o push de pedido e o processamento dos eventos são os
+ * itens 4–7 do plano em `docs/erp-tiny-olist.md`.
  */
 @Module({
-  controllers: [TinyWebhookController],
+  imports: [IntegracoesModule],
+  controllers: [TinyOAuthController, TinyWebhookController],
+  providers: [TinyOAuthService, TinyClientService, TinyTokenRefreshJob],
+  exports: [TinyOAuthService, TinyClientService],
 })
 export class TinyModule {}

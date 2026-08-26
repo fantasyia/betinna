@@ -7,6 +7,8 @@
 
 /** Integrações com escopo EMPRESA — uma conexão por empresa. */
 export const SERVICOS_EMPRESA = [
+  // ERP: 'tiny' é o atual (D50); 'omie' fica só até o módulo dele ser removido.
+  'tiny',
   'omie',
   'whatsapp',
   'mercadolivre',
@@ -75,11 +77,20 @@ export const SERVICO_METADATA: Record<
     requerDirector?: boolean;
   }
 > = {
-  omie: {
-    nome: 'OMIE ERP',
+  tiny: {
+    nome: 'Tiny ERP (Olist)',
     tipo: 'erp',
     escopo: 'empresa',
     obrigatorio: true,
+    requerDirector: true,
+  },
+  omie: {
+    // LEGADO (D50): substituído pelo Tiny. Fica registrado só pra o módulo
+    // antigo continuar compilando até ser removido; não conectar mais.
+    nome: 'OMIE ERP (legado)',
+    tipo: 'erp',
+    escopo: 'empresa',
+    obrigatorio: false,
     requerDirector: true,
   },
   whatsapp: {
