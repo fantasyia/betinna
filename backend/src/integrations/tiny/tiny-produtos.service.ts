@@ -55,6 +55,12 @@ interface ProdutoTiny {
 @Injectable()
 export class TinyProdutosService {
   private readonly logger = new Logger(TinyProdutosService.name);
+  /**
+   * Pausa entre escritas. O teto de ESCRITA do Tiny é menor que o de leitura e
+   * vale por conta — 12 POSTs seguidos tomaram 429 no meio da primeira
+   * importação real (26/08), deixando um item de fora sem motivo.
+   */
+  private static readonly PAUSA_ENTRE_ESCRITAS_MS = 400;
 
   constructor(private readonly client: TinyClientService) {}
 
@@ -73,15 +79,20 @@ export class TinyProdutosService {
     // Sequencial de propósito: o rate limit de ESCRITA do Tiny é menor que o de
     // leitura e vale por conta. Um catálogo de dezenas de itens não justifica
     // arriscar 429 no meio e deixar metade cadastrada.
-    for (const p of produtos) {
+    for (const [i, p] of produtos.entries()) {
+      if (i > 0) await this.respirar();
       try {
         const existente = await this.acharPorSku(empresaId, p.sku);
         const corpo = this.montarCorpo(p);
         if (existente) {
-          await this.client.put(empresaId, `/produtos/${existente.id}`, corpo);
+          await this.comRetry429(() =>
+            this.client.put(empresaId, `/produtos/${existente.id}`, corpo),
+          );
           itens.push({ sku: p.sku, acao: 'atualizado', idTiny: existente.id });
         } else {
-          const criado = await this.client.post<{ id: number }>(empresaId, '/produtos', corpo);
+          const criado = await this.comRetry429(() =>
+            this.client.post<{ id: number }>(empresaId, '/produtos', corpo),
+          );
           itens.push({ sku: p.sku, acao: 'criado', idTiny: criado?.id });
         }
       } catch (err) {
@@ -106,6 +117,26 @@ export class TinyProdutosService {
     return resumo;
   }
 
+  private respirar(): Promise<void> {
+    return new Promise((r) => setTimeout(r, TinyProdutosService.PAUSA_ENTRE_ESCRITAS_MS));
+  }
+
+  /**
+   * 429 é "agora não", não "não". Uma única nova tentativa depois de 3s resolve
+   * a rajada sem transformar limite de taxa em item faltando no catálogo.
+   */
+  private async comRetry429<T>(fn: () => Promise<T>): Promise<T> {
+    try {
+      return await fn();
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      if (!/HTTP 429/.test(msg)) throw err;
+      this.logger.warn('[tiny] 429 na escrita — esperando 3s e tentando de novo');
+      await new Promise((r) => setTimeout(r, 3000));
+      return fn();
+    }
+  }
+
   /** Busca pelo código (o SKU) — é a chave que amarra site ↔ ERP ↔ app. */
   private async acharPorSku(empresaId: string, sku: string): Promise<ProdutoTiny | null> {
     const r = await this.client.get<{ itens?: ProdutoTiny[] }>(empresaId, '/produtos', {
@@ -121,8 +152,14 @@ export class TinyProdutosService {
     const corpo: Record<string, unknown> = {
       sku: p.sku,
       descricao: p.descricao,
-      // F = Fabricado: é o tipo que aceita ordem de produção. Simples (S) não.
-      tipo: p.tipo ?? 'F',
+      // SIMPLES por padrão, e não Fabricado, apesar de o alvo ser produzir com
+      // OP: o Tiny RECUSA tipo F sem "informações de produção" — a estrutura
+      // (lista de componentes) tem que vir junto no cadastro (400 na primeira
+      // importação real, 26/08). Inventar uma lista de matéria-prima seria
+      // inventar como a fábrica monta o produto. Então nasce S, que vende,
+      // estoca e fatura, e vira F com um PUT quando a estrutura existir — a
+      // importação é idempotente por SKU, então converter não duplica nada.
+      tipo: p.tipo ?? 'S',
       unidade: p.unidade ?? 'UN',
       situacao: 'A',
     };

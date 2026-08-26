@@ -29,15 +29,36 @@ const MB04 = {
 describe('importar produtos pro Tiny', () => {
   beforeEach(() => vi.clearAllMocks());
 
-  it('SKU novo é CRIADO como Fabricado (é o tipo que aceita ordem de produção)', async () => {
+  it('SKU novo é CRIADO como Simples — o Tiny recusa Fabricado sem estrutura', async () => {
+    // Tentativa real de 26/08: tipo F devolveu 400 "deve conter informações de
+    // produção". A estrutura (lista de componentes) teria que vir junto, e
+    // inventá-la seria inventar como a fábrica monta o produto.
     const { svc, client } = build([]);
 
     const r = await svc.importar('emp-1', [MB04]);
 
     expect(client.post).toHaveBeenCalledTimes(1);
     const corpo = client.post.mock.calls[0][2] as Record<string, unknown>;
-    expect(corpo.tipo).toBe('F');
+    expect(corpo.tipo).toBe('S');
     expect(corpo.sku).toBe('MB-04');
+    expect(r.criados).toBe(1);
+  });
+
+  it('quem quiser Fabricado pede explicitamente (com a estrutura pronta lá)', async () => {
+    const { svc, client } = build([]);
+    await svc.importar('emp-1', [{ ...MB04, tipo: 'F' as const }]);
+    expect((client.post.mock.calls[0][2] as Record<string, unknown>).tipo).toBe('F');
+  });
+
+  it('429 na escrita não vira item faltando: espera e tenta de novo', async () => {
+    // O teto de ESCRITA do Tiny é apertado — 12 POSTs seguidos tomaram 429 na
+    // primeira importação real. Limite de taxa é "agora não", não "não".
+    const { svc, client } = build([]);
+    client.post.mockRejectedValueOnce(new Error('Tiny POST /produtos HTTP 429: '));
+
+    const r = await svc.importar('emp-1', [MB04]);
+
+    expect(client.post).toHaveBeenCalledTimes(2);
     expect(r.criados).toBe(1);
   });
 
