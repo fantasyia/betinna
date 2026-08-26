@@ -168,6 +168,68 @@ O `checkout-ni-spec.md` dizia "frete via ERP, **não** chamada direta ao Melhor 
 
 Ou seja: o código do site está certo e a spec estava certa — cada um sobre uma metade.
 
+### 3.1.1 Frete grátis: o que a cotação passa a servir (decidido 26/08)
+
+Todos os pedidos saem com **frete grátis pro cliente**. Isso muda o propósito da
+cotação, não a arquitetura:
+
+- **Prazo** — é o que o cliente quer saber, e prazo real por CEP só o Melhor
+  Envio dá. A diferença entre a capital e o interior do Norte é grande demais
+  pra tabela fixa.
+- **Custo por pedido** — frete grátis não é frete sem custo: quem paga é a
+  empresa. Ter o valor amarrado ao pedido é o que permite margem de contribuição
+  por venda. Sem isso, o custo só aparece na fatura do mês, sem ligação com a
+  venda que o gerou.
+
+**Regra de escolha do serviço: o MAIS BARATO.** Não existe transportadora
+padrão — o Melhor Envio é hub, e a regra é o critério, não a marca. Consequência
+pro checkout: o prazo mostrado é o **da opção mais barata**, que é a que vai ser
+despachada. Mostrar o prazo da mais rápida e despachar pela mais barata é
+prometer 3 dias e entregar em 9.
+
+### 3.1.2 Onde o custo do frete tem que cair (DRE e margem por venda)
+
+Dois campos DIFERENTES no pedido do Tiny, e a separação é o que faz o DRE fechar:
+
+| Campo | O que é | Com frete grátis |
+|---|---|---|
+| `valorFrete` | o que o CLIENTE pagou | 0 (ou só o extra do expresso) |
+| `fretePagoEmpresa` | o que a EMPRESA desembolsou pela etiqueta | o custo real |
+
+Margem de contribuição por venda = valor da venda − custo dos produtos
+(`precos.precoCusto`, que o Tiny traz de verdade) − `fretePagoEmpresa` − taxa do
+gateway. **A taxa do gateway entra na conta desde o primeiro dia**: sem ela a
+margem parece melhor do que é (num ticket de ~R$ 900 são uns R$ 35 invisíveis).
+
+⚠️ **A verificar no primeiro envio real:** a documentação não diz se o Tiny
+preenche `fretePagoEmpresa` sozinho quando a etiqueta é comprada pela integração
+nativa com o Melhor Envio. Se preencher, nada a fazer. Se não preencher, a saída
+é buscar o valor da etiqueta na própria conta do Melhor Envio pelo código de
+rastreio (é a mesma conta) e gravar no pedido via `PUT /pedidos/{id}/despacho`.
+Não inventar o número: sem o dado, o campo fica vazio e o DRE mostra o buraco em
+vez de um valor errado.
+
+### 3.1.3 Opção expressa paga (aprovada, mas depende do gateway)
+
+O cliente pode escolher receber mais rápido pagando a diferença.
+
+- **Cobra exatamente o delta**, arredondado pra cima: se a mais barata é R$ 38 e
+  a expressa R$ 62, o cliente paga R$ 24. Sem markup — numa loja que anuncia
+  frete grátis, qualquer margem embutida no frete lê como pegadinha.
+- **No máximo duas opções na tela** ("Grátis — chega até dd/mm" · "Expresso —
+  R$ X a mais, chega até dd/mm"), e só quando o ganho é real: menos de 2 dias de
+  diferença, ou delta desproporcional, não entra.
+- **Contabilização:** o extra entra em `valorFrete` (receita) e o custo real em
+  `fretePagoEmpresa` — dá pra ver se o upsell se paga.
+- ⚠️ **O risco é operacional, não técnico.** Quem promete o prazo é o site; quem
+  cumpre é quem compra a etiqueta no Tiny. Se o cliente pagou expresso e alguém
+  despachar pelo mais barato por hábito, a promessa já foi cobrada e foi
+  quebrada. O serviço escolhido tem que chegar VISÍVEL na tela da expedição, não
+  escondido em observação.
+- **Bloqueada pelo gateway:** cobrar o extra exige cobrar, e hoje o checkout
+  fecha como lead. A cotação já devolve preço e prazo de todos os serviços, então
+  quando o gateway entrar o trabalho é de tela, não de integração.
+
 ### 3.2 Ciclo de vida do pedido (mapeamento de status)
 
 | Tiny (`situacao`) | Betinna (`PedidoStatus`) | Site (`STATUS_PEDIDO`) |
