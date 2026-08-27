@@ -1,7 +1,10 @@
 import { Injectable, Logger } from '@nestjs/common';
+import { EnvService } from '@config/env.service';
 import { PrismaService } from '@database/prisma.service';
 import { IntegracoesService } from '@modules/integracoes/integracoes.service';
 import { NotificacoesService } from '@modules/notificacoes/notificacoes.service';
+import { BusinessRuleException } from '@shared/errors/app-exception';
+import { ErrorCode } from '@shared/errors/error-codes';
 import { OmieClientService } from './omie-client.service';
 import { OmieMapper } from './omie.mapper';
 
@@ -42,9 +45,23 @@ export class OmieProdutosService {
     private readonly omie: OmieClientService,
     private readonly integracoes: IntegracoesService,
     private readonly notificacoes: NotificacoesService,
+    private readonly env: EnvService,
   ) {}
 
   async sync(empresaId: string, options: OmieSyncOptions = {}): Promise<OmieProdutosSyncResult> {
+    // DEMO NUNCA ESCREVE EM CATÁLOGO DE PRODUÇÃO.
+    //
+    // Em 27/08 o botão "Sincronizar do ERP" ainda apontava pra cá, o OMIE estava
+    // em `OMIE_DEMO_MODE=true` (o default) e três produtos FICTÍCIOS de
+    // mercearia entraram no catálogo real da Somatec — óleo, azeite e farinha.
+    // Dado de mentira em catálogo vira proposta e pedido; a barreira certa é
+    // não deixar escrever, não lembrar de não clicar.
+    if (this.env.get('OMIE_DEMO_MODE') && this.env.isProduction) {
+      throw new BusinessRuleException(
+        'Sync do OMIE está em modo DEMO — recusado em produção pra não inserir produto fictício no catálogo. O ERP é o Tiny (D50).',
+        ErrorCode.BUSINESS_RULE_VIOLATION,
+      );
+    }
     const start = Date.now();
     // High-water-mark: carimba o INÍCIO do sync (antes do fetch), não o fim.
     const syncStartedAt = new Date();

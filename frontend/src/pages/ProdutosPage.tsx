@@ -72,7 +72,8 @@ export default function ProdutosPage() {
 
   const toast = useToast();
   const role = useRole();
-  const podeSincronizarErp = role === 'ADMIN' || role === 'DIRECTOR'; // D45: OMIE é DIRETOR-only
+  // D45/D50: sincronizar o ERP é ADMIN ou DIRETOR — nunca outro papel.
+  const podeSincronizarErp = role === 'ADMIN' || role === 'DIRECTOR';
   const [sincronizandoErp, setSincronizandoErp] = useState(false);
   const { data: pageResp, loading, error, refetch } = useApiQuery<PaginatedResponse<Produto>>(listPath);
   const { data: facets } = useApiQuery<Facets>('/produtos/facets');
@@ -80,22 +81,26 @@ export default function ProdutosPage() {
   async function sincronizarErp() {
     if (sincronizandoErp) return;
     setSincronizandoErp(true);
-    toast.info('Sincronizando produtos do ERP (Omie)… pode levar alguns segundos.');
+    toast.info('Sincronizando produtos do ERP (Tiny)… pode levar alguns segundos.');
     try {
-      const r = await api.post<{ produtos?: { inseridos?: number; atualizados?: number } }>(
-        '/integracoes/omie/sync/forcar',
-        {},
-      );
-      const p = r.produtos ?? {};
+      // ERP = Tiny (D50). Apontava pro OMIE, que estava em modo DEMO e
+      // despejou três produtos fictícios de mercearia no catálogo real.
+      const r = await api.post<{
+        lidos?: number;
+        criados?: number;
+        atualizados?: number;
+        erros?: number;
+      }>('/integracoes/tiny/sync/produtos?modo=completo', {});
       toast.success(
-        `Produtos sincronizados do ERP — ${p.inseridos ?? 0} novos, ${p.atualizados ?? 0} atualizados.`,
+        `Produtos sincronizados do ERP — ${r.criados ?? 0} novos, ${r.atualizados ?? 0} atualizados` +
+          (r.erros ? `, ${r.erros} com erro` : '.'),
       );
       refetch();
     } catch (err) {
       toast.error(
         err instanceof ApiError
           ? err.message
-          : 'Falha ao sincronizar do ERP. Verifique a integração Omie em Integrações.',
+          : 'Falha ao sincronizar do ERP. Verifique a integração Tiny em Integrações.',
       );
     } finally {
       setSincronizandoErp(false);
@@ -593,8 +598,8 @@ function ProdutoFormModal({
           <FormField label="SKU" htmlFor="p-sku">
             <Input id="p-sku" value={form.sku} onChange={(e) => setF('sku', e.target.value)} />
           </FormField>
-          <FormField label="Código OMIE" htmlFor="p-omie">
-            <Input id="p-omie" value={form.codigoErp} onChange={(e) => setF('codigoErp', e.target.value)} />
+          <FormField label="Código no ERP" htmlFor="p-erp">
+            <Input id="p-erp" value={form.codigoErp} onChange={(e) => setF('codigoErp', e.target.value)} />
           </FormField>
           <FormField label="Unidade" htmlFor="p-un">
             <Input id="p-un" placeholder="cx, un, kg…" value={form.unidade} onChange={(e) => setF('unidade', e.target.value)} />

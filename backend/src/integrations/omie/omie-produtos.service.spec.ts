@@ -86,6 +86,10 @@ describe('OmieProdutosService', () => {
       omie as never,
       integracoes as never,
       notificacoes as never,
+      // env: o sync recusa rodar em modo DEMO dentro de produção — foi assim
+      // que três produtos fictícios de mercearia entraram no catálogo real.
+      // Nos testes o ambiente não é produção, então o gate não interfere.
+      { get: () => true, isProduction: false } as never,
     );
   });
 
