@@ -9,6 +9,7 @@ import {
 } from '@shared/errors/app-exception';
 import { ErrorCode } from '@shared/errors/error-codes';
 import type { AuthenticatedUser } from '@shared/types/authenticated-user';
+import { semCustoParaRep, semCustoParaRepLista } from '@shared/utils/custo-oculto.util';
 import { type Paginated, buildPaginated } from '@shared/types/pagination';
 import type {
   AtivarDto,
@@ -78,7 +79,8 @@ export class ProdutosService {
         include: produtoInclude,
       }),
     ]);
-    return buildPaginated(data, total, params.page, params.limit);
+    // REP não vê custo (regra do Léo, 26/08) — ver custo-oculto.util.
+    return buildPaginated(semCustoParaRepLista(user, data), total, params.page, params.limit);
   }
 
   async findById(user: AuthenticatedUser, id: string): Promise<ProdutoWithRel> {
@@ -88,7 +90,7 @@ export class ProdutosService {
       include: produtoInclude,
     });
     if (!produto) throw new NotFoundException('Produto', id);
-    return produto;
+    return semCustoParaRep(user, produto);
   }
 
   async create(user: AuthenticatedUser, dto: CreateProdutoDto): Promise<ProdutoWithRel> {

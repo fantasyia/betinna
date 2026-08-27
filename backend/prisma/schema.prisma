@@ -606,6 +606,12 @@ model Produto {
   /// pelo ERP. No Tiny isso deixa de ser chute: `precos.precoCusto` vem na API.
   precoFabrica          Decimal?                     @db.Decimal(14, 2)
   imagem                String? // emoji ou URL
+  /// Mensalidade de LOCAÇÃO do equipamento. Null = este produto não é locado
+  /// (ou o preço ainda não foi definido) — e null NÃO cai pro preço de venda:
+  /// o representante trabalha com locação e não pode ver valor de venda, então
+  /// a tela mostra "—" e ninguém negocia com o número errado.
+  /// Vem da lista de preços "Locação mensal" do ERP.
+  precoLocacaoMensal    Decimal?                     @db.Decimal(14, 2)
   /// Camada de MARKETING (editável no app, não vem do ERP). Tier comercial livre por
   /// tenant: entrada / valor_agregado / nobre, etc.
   tierComercial         String?

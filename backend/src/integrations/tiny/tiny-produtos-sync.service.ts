@@ -31,6 +31,14 @@ export interface ResultadoSync {
 const PAGINA = 100;
 
 /**
+ * Nome da lista de preços do ERP que carrega a mensalidade de locação.
+ *
+ * O rep loca e não vê preço de venda, então esta lista não é um detalhe de
+ * catálogo: é o ÚNICO número que aparece pra ele.
+ */
+const LISTA_LOCACAO = 'loca';
+
+/**
  * Traz o catálogo do Tiny PRA CÁ — o sentido normal do dia a dia.
  *
  * A importação (`TinyProdutosService`) foi o bootstrap: a conta do ERP nasceu
@@ -76,6 +84,10 @@ export class TinyProdutosSyncService {
       erros: 0,
     };
 
+    // Preço de locação vem de uma LISTA de preços, não do cadastro do produto —
+    // é assim que o Tiny modela "mesmo produto, outro preço".
+    const locacao = await this.precosDeLocacao(empresaId);
+
     let offset = 0;
     for (;;) {
       const pagina = await this.client.get<{
@@ -94,7 +106,7 @@ export class TinyProdutosSyncService {
 
       for (const p of itens) {
         try {
-          const novo = await this.upsert(empresaId, p);
+          const novo = await this.upsert(empresaId, p, locacao.get(p.id) ?? null);
           if (novo) r.criados += 1;
           else r.atualizados += 1;
           if (opcoes.comEstoque !== false) {
@@ -128,8 +140,43 @@ export class TinyProdutosSyncService {
     return r;
   }
 
+  /**
+   * Lê a lista de preços de LOCAÇÃO do ERP → mapa idProdutoTiny → mensalidade.
+   *
+   * Falha aqui NÃO derruba o sync: catálogo desatualizado é ruim, catálogo
+   * ausente é pior. O produto entra sem locação e a tela mostra "—".
+   */
+  private async precosDeLocacao(empresaId: string): Promise<Map<number, number>> {
+    const mapa = new Map<number, number>();
+    try {
+      const listas = await this.client.get<{
+        itens?: Array<{ id: number; descricao?: string }>;
+      }>(empresaId, '/listas-precos', { limit: 100 });
+      const alvo = (listas.itens ?? []).find((l) =>
+        (l.descricao ?? '').toLowerCase().includes(LISTA_LOCACAO),
+      );
+      if (!alvo) return mapa;
+      const detalhe = await this.client.get<{
+        itens?: Array<{ idProduto?: number; preco?: number }>;
+      }>(empresaId, `/listas-precos/${alvo.id}`);
+      for (const i of detalhe.itens ?? []) {
+        if (i.idProduto && typeof i.preco === 'number') mapa.set(i.idProduto, i.preco);
+      }
+      this.logger.log(`[tiny] lista de locação "${alvo.descricao}": ${mapa.size} preço(s)`);
+    } catch (err) {
+      this.logger.warn(
+        `[tiny] não consegui ler a lista de locação: ${err instanceof Error ? err.message : String(err)}`,
+      );
+    }
+    return mapa;
+  }
+
   /** Devolve `true` quando o produto foi CRIADO (era novo por aqui). */
-  private async upsert(empresaId: string, p: ProdutoTiny): Promise<boolean> {
+  private async upsert(
+    empresaId: string,
+    p: ProdutoTiny,
+    precoLocacao: number | null,
+  ): Promise<boolean> {
     const codigoErp = String(p.id);
     const existente = await this.prisma.produto.findFirst({
       // Casa pelo id do ERP e, na falta dele, pelo SKU — é o caso do produto que
@@ -151,6 +198,9 @@ export class TinyProdutosSyncService {
           ? new Prisma.Decimal(p.precos.precoCusto)
           : null,
       ativo: (p.situacao ?? 'A') === 'A',
+      // Null quando o produto não está na lista de locação. NÃO cai pro preço de
+      // venda: o rep veria o número errado sem ninguém perceber.
+      precoLocacaoMensal: precoLocacao != null ? new Prisma.Decimal(precoLocacao) : null,
     };
 
     if (existente) {

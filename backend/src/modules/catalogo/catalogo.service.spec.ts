@@ -111,16 +111,31 @@ describe('CatalogoService', () => {
   // -------------------------------------------------------------------------
 
   describe('listMyCatalog', () => {
-    it('retorna itens do catálogo (preço da MSM, sem markup)', async () => {
-      prisma.repCatalogoItem.findMany.mockResolvedValue([fakeCatalogoItem()]);
+    it('REP não vê preço de VENDA nem custo — só a mensalidade de locação', async () => {
+      // Regra do Léo (26/08): o rep loca, não vende. Ver custo-oculto.util.
+      prisma.repCatalogoItem.findMany.mockResolvedValue([
+        fakeCatalogoItem({ produto: { precoTabela: 50, precoLocacaoMensal: 9 } }),
+      ]);
 
       const result = await service.listMyCatalog(fakeUser());
 
       expect(result).toHaveLength(1);
       expect(result[0].produtoId).toBe('p-1');
-      expect(result[0].produto.precoTabela).toBe(50);
+      expect(result[0].produto.precoTabela).toBeNull();
+      expect(result[0].produto.precoFabrica).toBeNull();
+      expect(result[0].produto.precoLocacaoMensal).toBe(9);
       // markup foi removido do catálogo do rep — não vaza no retorno
       expect(result[0]).not.toHaveProperty('markup');
+    });
+
+    it('DIRECTOR vê o preço de venda normalmente', async () => {
+      prisma.repCatalogoItem.findMany.mockResolvedValue([
+        fakeCatalogoItem({ produto: { precoTabela: 50 } }),
+      ]);
+
+      const result = await service.listMyCatalog(fakeUser({ role: 'DIRECTOR' as UserRole }));
+
+      expect(result[0].produto.precoTabela).toBe(50);
     });
 
     it('filtra por usuarioId e produto ativo da empresa', async () => {
@@ -277,12 +292,41 @@ describe('CatalogoService', () => {
       ]);
       pricing.priceForClientBatch.mockResolvedValue(new Map()); // sem preço negociado
 
-      const result = await service.previewParaCliente(fakeUser(), 'cli-1');
+      const result = await service.previewParaCliente(
+        fakeUser({ role: 'DIRECTOR' as UserRole }),
+        'cli-1',
+      );
 
       expect(result).toHaveLength(1);
       // tabela MSM = 50, sem markup
       expect(result[0].precoFinal).toBe(50);
       expect(result[0].precoNegociado).toBe(false);
+    });
+
+    it('REP: o preço que o CLIENTE vê é a mensalidade de locação', async () => {
+      // O preview é o que o rep mostra ao cliente. Como ele loca, mostrar preço
+      // de venda ali seria oferecer o que ele não vende.
+      clientes.findById.mockResolvedValue({ id: 'cli-1' });
+      prisma.repCatalogoItem.findMany.mockResolvedValue([
+        fakeCatalogoItem({ produto: { precoTabela: 50, precoLocacaoMensal: 9 } }),
+      ]);
+      pricing.priceForClientBatch.mockResolvedValue(new Map());
+
+      const result = await service.previewParaCliente(fakeUser(), 'cli-1');
+
+      expect(result[0].precoFinal).toBe(9);
+    });
+
+    it('REP sem mensalidade definida: preço vai NULL, não cai pro de venda', async () => {
+      clientes.findById.mockResolvedValue({ id: 'cli-1' });
+      prisma.repCatalogoItem.findMany.mockResolvedValue([
+        fakeCatalogoItem({ produto: { precoTabela: 50, precoLocacaoMensal: null } }),
+      ]);
+      pricing.priceForClientBatch.mockResolvedValue(new Map());
+
+      const result = await service.previewParaCliente(fakeUser(), 'cli-1');
+
+      expect(result[0].precoFinal).toBeNull();
     });
 
     it('usa preço negociado do cliente quando disponível (sem markup por cima)', async () => {
@@ -294,7 +338,11 @@ describe('CatalogoService', () => {
         new Map([['p-1', { precoFinal: 40, negociado: true, vigente: true }]]),
       );
 
-      const result = await service.previewParaCliente(fakeUser(), 'cli-1');
+      // Preço negociado é de VENDA — vale pra quem vende (não pro rep, que loca).
+      const result = await service.previewParaCliente(
+        fakeUser({ role: 'DIRECTOR' as UserRole }),
+        'cli-1',
+      );
 
       // negociado = 40, sem markup
       expect(result[0].precoFinal).toBe(40);

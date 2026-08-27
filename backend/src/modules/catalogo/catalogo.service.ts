@@ -10,6 +10,7 @@ import {
 } from '@shared/errors/app-exception';
 import { ErrorCode } from '@shared/errors/error-codes';
 import type { AuthenticatedUser } from '@shared/types/authenticated-user';
+import { ocultaCusto, precosParaRep } from '@shared/utils/custo-oculto.util';
 import type { BulkUpsertCatalogoDto, ShareCatalogDto, UpsertCatalogoItemDto } from './catalogo.dto';
 
 export interface CatalogoItem {
@@ -23,9 +24,12 @@ export interface CatalogoItem {
     linha: string | null;
     unidade: string | null;
     imagem: string | null;
-    precoTabela: number;
+    /** Preço de VENDA. `null` quando quem lê é REP — ele loca, não vende. */
+    precoTabela: number | null;
     /** Custo. `null` quando não informado (não inventamos mais o chute de 70%). */
     precoFabrica: number | null;
+    /** Mensalidade de locação. É o ÚNICO preço que o REP enxerga. */
+    precoLocacaoMensal: number | null;
     popularidade: number;
     ativo: boolean;
     estoque: number;
@@ -34,7 +38,8 @@ export interface CatalogoItem {
 }
 
 export interface PreviewItem extends CatalogoItem {
-  precoFinal: number;
+  /** `null` quando o rep não tem mensalidade definida pra o item (tela mostra "—"). */
+  precoFinal: number | null;
   precoNegociado: boolean;
 }
 
@@ -50,12 +55,14 @@ export interface PublicShareProduto {
   linha: string | null;
   unidade: string | null;
   imagem: string | null;
-  precoTabela: number;
+  /** `null` quando o catálogo veio de um REP: ele loca, e preço de venda não é
+   *  oferta dele. A tela do cliente mostra o `precoFinal`. */
+  precoTabela: number | null;
 }
 export interface PublicShareItem {
   produtoId: string;
   produto: PublicShareProduto;
-  precoFinal: number;
+  precoFinal: number | null;
   precoNegociado: boolean;
 }
 
@@ -88,6 +95,22 @@ export class CatalogoService {
   }
 
   async listMyCatalog(user: AuthenticatedUser): Promise<CatalogoItem[]> {
+    return (await this.listMyCatalogInterno(user)).map((it) => ({
+      ...it,
+      // Catálogo do REP: locação sim, venda e custo não.
+      produto: precosParaRep(user, it.produto),
+    }));
+  }
+
+  /**
+   * Mesma listagem, SEM a máscara de preços do rep.
+   *
+   * Existe porque o preview PRA O CLIENTE precisa calcular preço, e calcular em
+   * cima do valor mascarado dava zero na tela do cliente — a máscara é de
+   * exibição pro rep, não de dado. (Quebrou o teste do preview na primeira
+   * tentativa; o teste estava certo.)
+   */
+  private async listMyCatalogInterno(user: AuthenticatedUser): Promise<CatalogoItem[]> {
     const empresaId = this.requireEmpresa(user);
     const items = await this.prisma.repCatalogoItem.findMany({
       where: {
@@ -106,6 +129,7 @@ export class CatalogoService {
             imagem: true,
             precoTabela: true,
             precoFabrica: true,
+            precoLocacaoMensal: true,
             popularidade: true,
             ativo: true,
             estoque: true,
@@ -123,6 +147,8 @@ export class CatalogoService {
         ...it.produto,
         precoTabela: Number(it.produto.precoTabela),
         precoFabrica: it.produto.precoFabrica == null ? null : Number(it.produto.precoFabrica),
+        precoLocacaoMensal:
+          it.produto.precoLocacaoMensal == null ? null : Number(it.produto.precoLocacaoMensal),
       },
     }));
   }
@@ -151,6 +177,7 @@ export class CatalogoService {
             imagem: true,
             precoTabela: true,
             precoFabrica: true,
+            precoLocacaoMensal: true,
             popularidade: true,
             ativo: true,
             estoque: true,
@@ -163,11 +190,15 @@ export class CatalogoService {
     return {
       id: item.id,
       produtoId: item.produtoId,
-      produto: {
+      // Mesmo gate do listMyCatalog: adicionar item ao catálogo devolve o
+      // produto, e essa resposta chegava com preço de venda e custo pro rep.
+      produto: precosParaRep(user, {
         ...item.produto,
         precoTabela: Number(item.produto.precoTabela),
         precoFabrica: item.produto.precoFabrica == null ? null : Number(item.produto.precoFabrica),
-      },
+        precoLocacaoMensal:
+          item.produto.precoLocacaoMensal == null ? null : Number(item.produto.precoLocacaoMensal),
+      }),
     };
   }
 
@@ -225,7 +256,7 @@ export class CatalogoService {
    */
   async previewSemCliente(user: AuthenticatedUser): Promise<PreviewItem[]> {
     this.requireEmpresa(user);
-    const catalog = await this.listMyCatalog(user);
+    const catalog = await this.listMyCatalogInterno(user);
     if (catalog.length === 0) return [];
     return catalog.map((c) => ({
       ...c,
@@ -256,9 +287,15 @@ export class CatalogoService {
 
     return catalog.map((c) => {
       const resolved = priceMap.get(c.produtoId);
-      const precoFinal = resolved?.precoFinal ?? Number(c.produto.precoTabela);
+      // REP LOCA: o preço que ele mostra ao cliente é a mensalidade, não o
+      // preço de venda. Sem mensalidade definida vai null — a tela mostra "—"
+      // em vez de exibir um valor de venda que ninguém deveria estar oferecendo.
+      const precoFinal = ocultaCusto(user)
+        ? (c.produto.precoLocacaoMensal ?? null)
+        : (resolved?.precoFinal ?? Number(c.produto.precoTabela));
       return {
         ...c,
+        produto: precosParaRep(user, c.produto),
         precoFinal,
         precoNegociado: Boolean(resolved?.negociado && resolved.vigente),
       };
@@ -421,7 +458,7 @@ export class CatalogoService {
         linha: p.produto.linha,
         unidade: p.produto.unidade,
         imagem: p.produto.imagem,
-        precoTabela: Number(p.produto.precoTabela),
+        precoTabela: p.produto.precoTabela == null ? null : Number(p.produto.precoTabela),
       },
       precoFinal: p.precoFinal,
       precoNegociado: p.precoNegociado,
