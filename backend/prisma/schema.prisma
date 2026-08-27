@@ -2207,7 +2207,7 @@ model MarketplaceOrder {
 model IntegracaoConexao {
   id                String    @id @default(cuid())
   empresaId         String
-  servico           String // omie, ml, shopee, amazon, tiktok, whatsapp, instagram, fb
+  servico           String // tiny, ml, shopee, amazon, tiktok, whatsapp, instagram, fb
   ativo             Boolean   @default(false)
   credenciais       Json // criptografada na app
   /// ID externo da conta vinculada (não-cifrado, indexável). Ex: pageId pro Facebook,
@@ -2235,7 +2235,7 @@ enum IntegracaoStatusValor {
 model IntegracaoStatus {
   id                  String                @id @default(cuid())
   empresaId           String
-  servico             String // omie, whatsapp, mercadolivre, shopee, amazon, tiktok, instagram, facebook
+  servico             String // tiny, whatsapp, mercadolivre, shopee, amazon, tiktok, instagram, facebook
   status              IntegracaoStatusValor @default(ATIVA)
   ultimoErro          String? // mensagem do último erro (pra tooltip/diagnóstico)
   ultimoErroEm        DateTime?
