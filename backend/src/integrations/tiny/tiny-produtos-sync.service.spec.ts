@@ -13,6 +13,13 @@ function build(produtos: unknown[] = [], existente: { id: string } | null = null
       if (caminho.includes('/anexos')) {
         return Promise.resolve([{ id: 1, url: 'https://cdn/mb-01.png', externo: false }]);
       }
+      // Lista de preços: os produtos vêm em `excecoes`, não em `itens`.
+      if (caminho === '/listas-precos') {
+        return Promise.resolve({ itens: [{ id: 1701, descricao: 'Locação mensal' }] });
+      }
+      if (caminho.startsWith('/listas-precos/')) {
+        return Promise.resolve({ excecoes: [{ idProduto: 335240597, preco: 300 }] });
+      }
       return Promise.resolve({ itens: produtos, paginacao: { total: produtos.length } });
     }),
   };
@@ -151,5 +158,28 @@ describe('imagem do produto', () => {
     const r = await svc.sync('emp-1');
 
     expect(r.erros).toBe(0);
+  });
+});
+
+describe('preço de locação', () => {
+  beforeEach(() => vi.clearAllMocks());
+
+  it('lê a lista "Locação mensal" e grava a mensalidade no produto', async () => {
+    // O detalhe da lista vem em `excecoes` — ler `itens` devolvia vazio, e
+    // mensalidade vazia não parece bug, parece cadastro faltando.
+    const { svc, prisma } = build([MB]);
+
+    await svc.sync('emp-1');
+
+    const dados = prisma.produto.create.mock.calls[0][0].data;
+    expect(Number(dados.precoLocacaoMensal)).toBe(300);
+  });
+
+  it('produto fora da lista fica com locação NULL (não herda o preço de venda)', async () => {
+    const { svc, prisma } = build([{ ...MB, id: 999999 }]);
+
+    await svc.sync('emp-1');
+
+    expect(prisma.produto.create.mock.calls[0][0].data.precoLocacaoMensal).toBeNull();
   });
 });

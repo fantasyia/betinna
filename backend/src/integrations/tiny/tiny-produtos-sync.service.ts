@@ -157,10 +157,17 @@ export class TinyProdutosSyncService {
         (l.descricao ?? '').toLowerCase().includes(LISTA_LOCACAO),
       );
       if (!alvo) return mapa;
+      // ⚠️ O detalhe da lista devolve os produtos em `excecoes`, NÃO em `itens`
+      // (é o terceiro formato diferente na mesma API: anexos vêm em array
+      // direto, listagens em `itens`, e a lista de preços em `excecoes`). Ler a
+      // chave errada dava mapa vazio, e preço de locação vazio não parece bug —
+      // parece "ainda não cadastraram".
       const detalhe = await this.client.get<{
+        excecoes?: Array<{ idProduto?: number; preco?: number }>;
         itens?: Array<{ idProduto?: number; preco?: number }>;
       }>(empresaId, `/listas-precos/${alvo.id}`);
-      for (const i of detalhe.itens ?? []) {
+      const linhas = detalhe.excecoes ?? detalhe.itens ?? [];
+      for (const i of linhas) {
         if (i.idProduto && typeof i.preco === 'number') mapa.set(i.idProduto, i.preco);
       }
       this.logger.log(`[tiny] lista de locação "${alvo.descricao}": ${mapa.size} preço(s)`);
