@@ -51,7 +51,7 @@ const makePrisma = () => ({
 // Bus de fluxos: o import só dispara LEAD_CRIADO quando o opt-in vem ligado.
 const makeBus = () => ({ disparar: vi.fn().mockResolvedValue(undefined) });
 
-// #72: o precoFabrica do create usa OMIE_PRECO_FABRICA_RATIO (era 0.7 cravado).
+// #72: o precoFabrica do create usa TINY_TIMEOUT_MS (era 0.7 cravado).
 const makeEnv = () => ({ get: vi.fn().mockReturnValue(0.7) });
 
 describe('ImportService.importarClientes', () => {
@@ -261,7 +261,7 @@ describe('ImportService.importarProdutos', () => {
     expect(r.erros).toBe(1);
   });
 
-  it('precoFabrica = precoTabela × 0.7 (heurística)', async () => {
+  it('precoFabrica fica NULL — custo não se inventa (o ERP manda o real)', async () => {
     const csv = 'nome,preco\nProd,100';
     await svc.importarProdutos(fakeUser(), {
       csv,
@@ -269,7 +269,10 @@ describe('ImportService.importarProdutos', () => {
       onDuplicate: 'skip',
     });
     const arg = prisma.produto.create.mock.calls[0][0];
-    expect(arg.data.precoFabrica).toBeCloseTo(70);
+    // Custo não se inventa: a planilha não traz, então fica null e a tela pede
+    // o número. A estimativa de 70% herdada do ERP saiu com ele (D50) — o Tiny
+    // manda o custo real, e custo chutado vira margem mentirosa.
+    expect(arg.data.precoFabrica).toBeNull();
   });
 
   it('unidade default UN quando não informada', async () => {
@@ -541,7 +544,7 @@ describe('ImportService — proteções do onDuplicate=update (auditoria)', () =
     expect(prisma.lead.create).not.toHaveBeenCalled();
   });
 
-  it('cliente: update NÃO reativa quem está BLOQUEADO no OMIE', async () => {
+  it('cliente: update NÃO reativa quem está BLOQUEADO no ERP', async () => {
     prisma.$queryRaw.mockResolvedValueOnce([{ id: 'cli-bloqueado' }]);
 
     await svc.importarClientes(fakeUser(), {

@@ -91,7 +91,7 @@ export class ImportService {
         const segmento = (linha.segmento ?? linha.ramo ?? '').trim() || null;
 
         // Match: prioriza CNPJ, depois email.
-        // CNPJ compara SÓ DÍGITOS dos dois lados: o sync do OMIE grava formatado
+        // CNPJ compara SÓ DÍGITOS dos dois lados: o sync do ERP grava formatado
         // ("12.345.678/0001-90") e a igualdade crua nunca casava — re-importar a
         // carteira duplicava a base inteira.
         let existente: { id: string } | null = null;
@@ -131,8 +131,8 @@ export class ImportService {
         if (dryRun) return existenteId ?? 'dry-run';
         if (existenteId) {
           // Cliente que JÁ EXISTE: o import não pode reativar quem o financeiro
-          // bloqueou no OMIE (D2) nem apagar campo que a planilha não trouxe.
-          // status/erpStatus são do OMIE/gestão — só valem no CREATE.
+          // bloqueou no ERP (D2) nem apagar campo que a planilha não trouxe.
+          // status/erpStatus são do ERP/gestão — só valem no CREATE.
           const { status: _s, erpStatus: _o, empresaId: _e, ...resto } = data;
           void _s;
           void _o;
@@ -200,12 +200,12 @@ export class ImportService {
           nome,
           sku,
           precoTabela,
-          // AUDITORIA (média): era `* 0.7` cravado, enquanto o env
-          // OMIE_PRECO_FABRICA_RATIO existia e não tinha NENHUM consumidor. Duas
-          // heurísticas pro mesmo número, e a do import ignorava a configuração
-          // do tenant — margem e comissão saíam de bases diferentes conforme o
-          // produto tivesse vindo do OMIE ou de planilha.
-          precoFabrica: precoTabela * this.env.get('OMIE_PRECO_FABRICA_RATIO'),
+          // CUSTO NÃO SE INVENTA. Aqui havia uma estimativa de 70% do preço de
+          // tabela (herdada do ERP, que não mandava custo). O Tiny manda o
+          // custo REAL, então a estimativa deixou de ter desculpa: custo chutado
+          // vira margem mentirosa e comissão calculada sobre base falsa.
+          // `null` = "não informado", e a tela mostra "—" pedindo o número.
+          precoFabrica: null,
           marca,
           linha: linhaCampo,
           categoria,
@@ -219,9 +219,9 @@ export class ImportService {
       async (data, existenteId, dryRun) => {
         if (dryRun) return existenteId ?? 'dry-run';
         if (existenteId) {
-          // precoFabrica FICA DE FORA do update: aqui ele é só heurística (70%),
-          // enquanto o produto existente pode ter o custo REAL vindo do OMIE.
-          // Sobrescrever quebrava margem e comissão da empresa inteira.
+          // precoFabrica FICA DE FORA do update: a planilha não traz custo, e o
+          // produto existente pode ter o custo REAL vindo do ERP. Sobrescrever
+          // com null apagaria o número bom.
           const { precoFabrica: _pf, empresaId: _e, ...resto } = data;
           void _pf;
           void _e;

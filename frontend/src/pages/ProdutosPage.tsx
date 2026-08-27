@@ -88,7 +88,7 @@ export default function ProdutosPage() {
     setSincronizandoErp(true);
     toast.info('Sincronizando produtos do ERP (Tiny)… pode levar alguns segundos.');
     try {
-      // ERP = Tiny (D50). Apontava pro OMIE, que estava em modo DEMO e
+      // ERP = Tiny (D50). Apontava pro ERP, que estava em modo DEMO e
       // despejou três produtos fictícios de mercearia no catálogo real.
       const r = await api.post<{
         lidos?: number;

@@ -106,15 +106,15 @@ export class AmostrasController {
     return this.amostras.rejeitar(user, id, dto);
   }
 
-  @Post(':id/enviar-omie')
+  @Post(':id/enviar-erp')
   @RequirePermissions({ module: 'amostras', action: 'edit' })
-  @Audit({ action: 'enviar_omie', resource: 'amostra', resourceIdFrom: 'params.id' })
+  @Audit({ action: 'enviar_erp', resource: 'amostra', resourceIdFrom: 'params.id' })
   @ApiOperation({
     summary:
-      'P7 — Envia a amostra como remessa de amostra grátis ao OMIE (CFOP 5911/6911, sem destaque de tributos).',
+      'P7 — Envia a amostra como remessa de amostra grátis ao ERP (CFOP 5911/6911, sem destaque de tributos).',
   })
-  enviarOmie(@CurrentUser() user: AuthenticatedUser, @Param('id') id: string) {
-    return this.amostras.enviarParaOmie(user, id);
+  enviarErp(@CurrentUser() user: AuthenticatedUser, @Param('id') id: string) {
+    return this.amostras.enviarParaErp(user, id);
   }
 
   @Delete(':id')

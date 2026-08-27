@@ -41,7 +41,7 @@ interface EvolutionWebhookBody {
 // o tráfego do WhatsApp de UM único IP: numa rajada (sync de histórico, grupo
 // movimentado, campanha) o throttler global devolvia 429 e a mensagem se perdia,
 // porque o Evolution não reentrega indefinidamente. Limite próprio e alto, como os
-// outros webhooks (OMIE 100/min, ML 200/min) — a autenticidade quem garante é o
+// outros webhooks (ERP 100/min, ML 200/min) — a autenticidade quem garante é o
 // segredo no header, não o rate-limit.
 // ⚠️ REVISÃO (11/08): só o @Throttle NÃO bastava. O guard exige `.every()` sobre
 // TODOS os buckets, e o app.module documenta explicitamente que "overrides que

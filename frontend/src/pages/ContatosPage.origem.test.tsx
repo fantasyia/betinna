@@ -30,7 +30,7 @@ const contato = (over: Record<string, unknown> = {}) => ({
   leadEtapa: 'NOVO',
   clienteId: null,
   clienteStatus: null,
-  clienteOmieStatus: null,
+  clienteERPStatus: null,
   conversaId: null,
   canal: null,
   ultimaInteracaoEm: null,

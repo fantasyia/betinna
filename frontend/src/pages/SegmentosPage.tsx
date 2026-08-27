@@ -82,7 +82,7 @@ interface PreviewResult {
 
 const CAMPO_LABEL: Record<FiltroCampo, string> = {
   status: 'Status',
-  erpStatus: 'Status OMIE',
+  erpStatus: 'Status ERP',
   segmento: 'Segmento',
   cidade: 'Cidade',
   uf: 'UF',
@@ -171,7 +171,7 @@ export default function SegmentosPage() {
           <EmptyState
             icon={<PieChart />}
             title="Nenhuma lista dinâmica criada"
-            description="Listas dinâmicas agrupam CLIENTES por regra (status, região, limite). Como a carteira ainda vem do OMIE, esta tela fica vazia até existirem clientes — pra agrupar contatos/leads hoje, use Tags."
+            description="Listas dinâmicas agrupam CLIENTES por regra (status, região, limite). Como a carteira ainda vem do ERP, esta tela fica vazia até existirem clientes — pra agrupar contatos/leads hoje, use Tags."
             action={
               <Button onClick={() => setEditing('new')} leftIcon={<Plus className="h-3.5 w-3.5" />}>
                 Criar primeira lista

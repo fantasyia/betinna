@@ -192,7 +192,7 @@ export function templateAprovacaoResolvida(p: AprovacaoResolvidaParams): {
         }
         <p>${
           isOk
-            ? 'Você pode enviar o pedido ao OMIE agora.'
+            ? 'Você pode enviar o pedido ao ERP agora.'
             : 'O pedido foi cancelado automaticamente. Refaça com desconto compatível com seu teto, ou justifique melhor e refaça a solicitação.'
         }</p>
       `,

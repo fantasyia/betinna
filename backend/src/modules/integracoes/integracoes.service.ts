@@ -182,7 +182,7 @@ export class IntegracoesService {
   }
 
   /**
-   * D45 (revisto D48): serviços com `requerDirector=true` (OMIE, marketplaces,
+   * D45 (revisto D48): serviços com `requerDirector=true` (ERP, marketplaces,
    * social, WhatsApp empresa) só aceitam DIRECTOR ou ADMIN.
    *
    * Hierarquia conceitual:
@@ -301,7 +301,7 @@ export class IntegracoesService {
   async conectar(user: AuthenticatedUser, dto: ConectarDto): Promise<ConexaoPublica> {
     const empresaId = this.requireEmpresa(user);
     // D45 (2026-05-17): integrações marcadas `requerDirector` exigem role
-    // DIRECTOR — nem ADMIN bypassa. OMIE é a primeira (afeta dados
+    // DIRECTOR — nem ADMIN bypassa. ERP é a primeira (afeta dados
     // fiscais/contábeis críticos, decisão contratual do diretor).
     this.assertDirectorRequerido(user, dto.servico);
     const enc = this.crypto.encrypt(JSON.stringify(dto.credenciais));
@@ -478,7 +478,7 @@ export class IntegracoesService {
   }
 
   /**
-   * High-water-mark POR RECURSO (ex.: 'omie:clientes', 'omie:produtos').
+   * High-water-mark POR RECURSO (ex.: 'erp:clientes', 'erp:produtos').
    *
    * Clientes e produtos dividiam o MESMO `ultimoSync`: o job de estoque roda de
    * 30 em 30min e avançava o marco, então o sync diário de clientes lia um

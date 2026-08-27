@@ -1,5 +1,5 @@
 import { Module } from '@nestjs/common';
-import { OmieModule } from '@integrations/omie/omie.module';
+import { TinyModule } from '@integrations/tiny/tiny.module';
 import { FluxosModule } from '@modules/fluxos/fluxos.module';
 import { NotificacoesModule } from '@modules/notificacoes/notificacoes.module';
 import { EmailModule } from '@integrations/email/email.module';
@@ -11,7 +11,7 @@ import { PedidosController } from './pedidos.controller';
 import { PedidosService } from './pedidos.service';
 
 @Module({
-  imports: [ProdutosModule, OmieModule, FluxosModule, NotificacoesModule, EmailModule],
+  imports: [ProdutosModule, TinyModule, FluxosModule, NotificacoesModule, EmailModule],
   controllers: [PedidosController, AprovacoesController],
   providers: [PedidosService, AprovacoesService, PedidoPricingService],
   exports: [PedidosService, AprovacoesService, PedidoPricingService],

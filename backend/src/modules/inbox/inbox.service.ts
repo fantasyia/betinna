@@ -1567,7 +1567,7 @@ export class InboxService {
       const tel = this.normalizarTelefone(telefone);
       if (tel) {
         // Match por sufixo de 8 dígitos (D18). Normaliza o telefone ARMAZENADO
-        // (que vem formatado do OMIE, ex.: "(11) 98765-4321") tirando tudo que não
+        // (que vem formatado do ERP, ex.: "(11) 98765-4321") tirando tudo que não
         // é dígito e comparando os 8 finais por IGUALDADE — robusto a formatação e
         // usa o índice de expressão `Cliente_empresaId_telefoneSufixo_idx`. (O
         // antigo `LIKE '%sufixo%'` fazia seq scan e quebrava quando o número

@@ -38,7 +38,7 @@ export type ListEmpresasDto = z.infer<typeof listEmpresasSchema>;
 
 /** Metadados por status do lifecycle de pedido (1º consumidor). Chave = PedidoStatus. */
 const pedidoStatusMetaSchema = z.object({
-  /** Nome custom exibido pro tenant (ex: "Em produção" no lugar de "Enviado ao OMIE"). */
+  /** Nome custom exibido pro tenant (ex: "Em produção" no lugar de "Enviado ao ERP"). */
   label: z.string().trim().max(40).optional(),
   /** Cor (variant do Badge) — alinhado ao design system do app. */
   variant: z.enum(['neutral', 'warning', 'info', 'success', 'primary', 'danger']).optional(),

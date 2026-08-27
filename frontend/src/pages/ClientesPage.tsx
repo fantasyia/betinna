@@ -75,7 +75,7 @@ interface RepOpt {
 }
 
 type ClienteStatus = 'ATIVO' | 'NOVO' | 'PROSPECT' | 'RISCO' | 'CRITICO' | 'INATIVO';
-type OmieStatus = 'ATIVO' | 'BLOQUEADO';
+type ERPStatus = 'ATIVO' | 'BLOQUEADO';
 
 interface Cliente {
   id: string;
@@ -92,7 +92,7 @@ interface Cliente {
   uf?: string | null;
   segmento?: string | null;
   status: ClienteStatus;
-  erpStatus: OmieStatus;
+  erpStatus: ERPStatus;
   representante?: { id: string; nome: string } | null;
   tags?: Array<{ id: string; nome: string; cor?: string | null }>;
   criadoEm?: string;
@@ -124,7 +124,7 @@ const STATUS_LABEL: Record<ClienteStatus, string> = {
   INATIVO: 'Inativo',
 };
 
-const OMIE_VARIANT: Record<OmieStatus, 'success' | 'danger'> = {
+const ERP_VARIANT: Record<ERPStatus, 'success' | 'danger'> = {
   ATIVO: 'success',
   BLOQUEADO: 'danger',
 };
@@ -147,7 +147,7 @@ export default function ClientesPage() {
   // ~300ms depois de parar de digitar (evita 1 request por tecla).
   const buscaDebounced = useDebouncedValue(search, 300);
   const [status, setStatus] = useState<string>('');
-  const [omie, setOmie] = useState<string>('');
+  const [erp, setERP] = useState<string>('');
   const [lista, setLista] = useState<string>('');
 
   // Volta pra página 1 quando a busca (já debounced) muda.
@@ -161,10 +161,10 @@ export default function ClientesPage() {
     qs.set('limit', '20');
     if (buscaDebounced.trim()) qs.set('search', buscaDebounced.trim());
     if (status) qs.set('status', status);
-    if (omie) qs.set('erpStatus', omie);
+    if (erp) qs.set('erpStatus', erp);
     if (lista) qs.set('lista', lista);
     return `/clientes?${qs.toString()}`;
-  }, [page, buscaDebounced, status, omie, lista]);
+  }, [page, buscaDebounced, status, erp, lista]);
 
   const {
     data: page$,
@@ -192,7 +192,7 @@ export default function ClientesPage() {
   // atingiria clientes que não estão mais visíveis na tela.
   useEffect(() => {
     setSelectedIds(new Set());
-  }, [buscaDebounced, status, omie, lista]);
+  }, [buscaDebounced, status, erp, lista]);
   const currentPageIds = page$?.data.map((c) => c.id) ?? [];
   const allCurrentSelected =
     currentPageIds.length > 0 && currentPageIds.every((id) => selectedIds.has(id));
@@ -224,7 +224,7 @@ export default function ClientesPage() {
       const query: Record<string, string> = {};
       if (search.trim()) query.search = search.trim();
       if (status) query.status = status;
-      if (omie) query.erpStatus = omie;
+      if (erp) query.erpStatus = erp;
       if (lista) query.lista = lista;
       const data = new Date().toISOString().slice(0, 10);
       const columns = [
@@ -236,7 +236,7 @@ export default function ClientesPage() {
         { header: 'UF', value: (c: Cliente) => c.uf ?? '' },
         { header: 'Segmento', value: (c: Cliente) => c.segmento ?? '' },
         { header: 'Status', value: (c: Cliente) => c.status },
-        { header: 'OMIE', value: (c: Cliente) => c.erpStatus },
+        { header: 'ERP', value: (c: Cliente) => c.erpStatus },
         { header: 'Representante', value: (c: Cliente) => c.representante?.nome ?? '' },
       ];
       const filename = `clientes-${data}.${formato}`;
@@ -287,7 +287,7 @@ export default function ClientesPage() {
     }
   }
 
-  const filtersActive = status || omie || lista || search.trim();
+  const filtersActive = status || erp || lista || search.trim();
 
   return (
     <PageLayout
@@ -351,17 +351,17 @@ export default function ClientesPage() {
               ))}
             </Select>
             <Select
-              data-testid="filter-omie"
+              data-testid="filter-erp"
               size="md"
-              value={omie}
+              value={erp}
               onChange={(e) => {
-                setOmie(e.target.value);
+                setERP(e.target.value);
                 setPage(1);
               }}
             >
-              <option value="">Todos OMIE</option>
-              <option value="ATIVO">Ativos OMIE</option>
-              <option value="BLOQUEADO">Bloqueados OMIE</option>
+              <option value="">Todos ERP</option>
+              <option value="ATIVO">Ativos ERP</option>
+              <option value="BLOQUEADO">Bloqueados ERP</option>
             </Select>
             <Select
               data-testid="filter-lista"
@@ -386,7 +386,7 @@ export default function ClientesPage() {
                 onClick={() => {
                   setSearch('');
                   setStatus('');
-                  setOmie('');
+                  setERP('');
                   setLista('');
                   setPage(1);
                 }}
@@ -407,7 +407,7 @@ export default function ClientesPage() {
               description={
                 filtersActive
                   ? 'Tente ajustar os filtros ou limpar a busca.'
-                  : 'Cadastre o primeiro cliente ou importe via OMIE.'
+                  : 'Cadastre o primeiro cliente ou importe via ERP.'
               }
               action={
                 canEdit && !filtersActive ? (
@@ -440,7 +440,7 @@ export default function ClientesPage() {
                       <Th>Local</Th>
                       <Th>Representante</Th>
                       <Th>Status</Th>
-                      <Th>OMIE</Th>
+                      <Th>ERP</Th>
                       <th className="w-10" />
                     </tr>
                   </thead>
@@ -508,7 +508,7 @@ export default function ClientesPage() {
                             <Badge variant={STATUS_VARIANT[c.status]}>{STATUS_LABEL[c.status]}</Badge>
                           </Td>
                           <Td>
-                            <Badge variant={OMIE_VARIANT[c.erpStatus]} size="sm">
+                            <Badge variant={ERP_VARIANT[c.erpStatus]} size="sm">
                               {c.erpStatus === 'ATIVO' ? 'Ativo' : 'Bloqueado'}
                             </Badge>
                           </Td>
@@ -957,8 +957,8 @@ function ClienteDetailDrawer({
               </h3>
               <div className="flex items-center gap-2 mt-1">
                 <Badge variant={STATUS_VARIANT[data.status]}>{STATUS_LABEL[data.status]}</Badge>
-                <Badge variant={OMIE_VARIANT[data.erpStatus]} size="sm">
-                  OMIE {data.erpStatus === 'ATIVO' ? 'ativo' : 'bloqueado'}
+                <Badge variant={ERP_VARIANT[data.erpStatus]} size="sm">
+                  ERP {data.erpStatus === 'ATIVO' ? 'ativo' : 'bloqueado'}
                 </Badge>
               </div>
             </div>
@@ -1487,7 +1487,7 @@ interface FormState {
   cidade: string;
   uf: string;
   status: ClienteStatus;
-  erpStatus: OmieStatus;
+  erpStatus: ERPStatus;
   prazoPagamento: number;
 }
 
@@ -1855,10 +1855,10 @@ function ClienteFormModal({
                 ))}
               </Select>
             </Field>
-            <Field label="OMIE">
+            <Field label="ERP">
               <Select
                 value={form.erpStatus}
-                onChange={(e) => setField('erpStatus', e.target.value as OmieStatus)}
+                onChange={(e) => setField('erpStatus', e.target.value as ERPStatus)}
               >
                 <option value="ATIVO">Ativo</option>
                 <option value="BLOQUEADO">Bloqueado</option>

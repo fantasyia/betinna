@@ -7,7 +7,7 @@
  * Quando rodando como Worker:
  *  - NÃO inicia HTTP server (sem Express, sem listen)
  *  - Mantém BullMQ workers vivos consumindo as queues (campanha-envio, fluxo, dead-letter)
- *  - Mantém cron schedulers ativos (comissoes, omie-sync, etc.)
+ *  - Mantém cron schedulers ativos (comissoes, erp-sync, etc.)
  *  - O `CronLockService` (Redis SETNX) garante que apenas UM processo executa
  *    cada cron — então rodar crons em ambos API + Worker é seguro, mas
  *    convencionamos que Worker é o "owner" canônico.

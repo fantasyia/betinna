@@ -5,7 +5,7 @@ import { RedisService } from '@database/redis.service';
  * Idempotência via Redis SETNX.
  *
  * Para operações com side-effect externo (envio de WhatsApp, email, push pro
- * OMIE), evita duplicação em retry de jobs ou disparos concorrentes.
+ * ERP), evita duplicação em retry de jobs ou disparos concorrentes.
  *
  * Fluxo:
  *  1. Antes do side-effect: `claim(key, ttl)` — se já existe, skip

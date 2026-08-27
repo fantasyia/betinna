@@ -142,7 +142,7 @@ interface DashboardResp {
 const STATUS_LABEL_PT: Record<string, string> = {
   RASCUNHO: 'Rascunho',
   AGUARDANDO_APROVACAO: 'Aguardando aprovação',
-  ENVIADO_ERP: 'Enviado OMIE',
+  ENVIADO_ERP: 'Enviado ERP',
   PAGO: 'Pago',
   EM_SEPARACAO: 'Em separação',
   ENVIADO: 'Enviado',

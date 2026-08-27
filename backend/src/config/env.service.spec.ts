@@ -4,11 +4,11 @@ import { EnvService } from './env.service';
 import type { Env } from './env.schema';
 
 /**
- * Testa a trava de go-live do OMIE em `auditProductionReadiness` /
+ * Testa a trava de go-live do ERP em `auditProductionReadiness` /
  * `enforceProductionReadiness`.
  *
  * Regra: demo em produção é só AVISO por padrão (dormente). Quando
- * `OMIE_REQUIRE_REAL=true`, vira CRÍTICO e o boot deve abortar.
+ * `ERP_REQUIRE_REAL=true`, vira CRÍTICO e o boot deve abortar.
  */
 
 // Chave hex forte (64 chars, não-repetida) pra não disparar o alerta de ENCRYPTION_KEY fraca.
@@ -19,8 +19,6 @@ function makeEnv(overrides: Record<string, unknown>): EnvService {
     NODE_ENV: 'production',
     ENCRYPTION_KEY: STRONG_KEY,
     SUPABASE_JWT_SECRET: 'algum-segredo-jwt',
-    OMIE_DEMO_MODE: true,
-    OMIE_REQUIRE_REAL: false,
     RESEND_API_KEY: 're_test_key',
     RESEND_FROM_EMAIL: 'no-reply@betinna.ai',
     REDIS_URL: 'rediss://default:token@real-redis.upstash.io:6379',
@@ -32,43 +30,9 @@ function makeEnv(overrides: Record<string, unknown>): EnvService {
   return new EnvService(stub);
 }
 
-describe('EnvService — trava OMIE go-live', () => {
-  it('produção + demo=true + require_real=false → só AVISO (não aborta)', () => {
-    const env = makeEnv({ OMIE_DEMO_MODE: true, OMIE_REQUIRE_REAL: false });
-    const issues = env.auditProductionReadiness();
-    const omie = issues.find((i) => i.key === 'OMIE_DEMO_MODE');
-    expect(omie?.severity).toBe('warning');
-    // Não deve lançar (warning não bloqueia boot)
-    expect(() => env.enforceProductionReadiness()).not.toThrow();
-  });
-
-  it('produção + demo=true + require_real=true → CRÍTICO (aborta o boot)', () => {
-    const env = makeEnv({ OMIE_DEMO_MODE: true, OMIE_REQUIRE_REAL: true });
-    const issues = env.auditProductionReadiness();
-    const omie = issues.find((i) => i.key === 'OMIE_DEMO_MODE');
-    expect(omie?.severity).toBe('critical');
-    // Crítico em produção deve lançar erro (abortar boot)
-    expect(() => env.enforceProductionReadiness()).toThrow();
-  });
-
-  it('produção + demo=false → sem alerta de OMIE, mesmo com require_real=true', () => {
-    const env = makeEnv({ OMIE_DEMO_MODE: false, OMIE_REQUIRE_REAL: true });
-    const issues = env.auditProductionReadiness();
-    expect(issues.find((i) => i.key === 'OMIE_DEMO_MODE')).toBeUndefined();
-    expect(() => env.enforceProductionReadiness()).not.toThrow();
-  });
-
-  it('desenvolvimento + demo=true + require_real=true → não aborta (trava só vale em produção)', () => {
-    const env = makeEnv({ NODE_ENV: 'development', OMIE_DEMO_MODE: true, OMIE_REQUIRE_REAL: true });
-    const issues = env.auditProductionReadiness();
-    expect(issues.find((i) => i.key === 'OMIE_DEMO_MODE')).toBeUndefined();
-    expect(() => env.enforceProductionReadiness()).not.toThrow();
-  });
-});
-
 describe('EnvService — aviso de e-mail (Resend) ausente', () => {
   it('produção sem RESEND_API_KEY → AVISO destacado (não aborta)', () => {
-    const env = makeEnv({ OMIE_DEMO_MODE: false, RESEND_API_KEY: '' });
+    const env = makeEnv({ ERP_DEMO_MODE: false, RESEND_API_KEY: '' });
     const issues = env.auditProductionReadiness();
     const resend = issues.find((i) => i.key === 'RESEND_API_KEY');
     expect(resend?.severity).toBe('warning');
@@ -77,14 +41,14 @@ describe('EnvService — aviso de e-mail (Resend) ausente', () => {
   });
 
   it('produção sem RESEND_FROM_EMAIL → AVISO', () => {
-    const env = makeEnv({ OMIE_DEMO_MODE: false, RESEND_FROM_EMAIL: '' });
+    const env = makeEnv({ ERP_DEMO_MODE: false, RESEND_FROM_EMAIL: '' });
     const resend = env.auditProductionReadiness().find((i) => i.key === 'RESEND_API_KEY');
     expect(resend?.severity).toBe('warning');
     expect(resend?.message).toContain('RESEND_FROM_EMAIL');
   });
 
   it('produção com Resend configurado → sem aviso', () => {
-    const env = makeEnv({ OMIE_DEMO_MODE: false });
+    const env = makeEnv({ ERP_DEMO_MODE: false });
     expect(env.auditProductionReadiness().find((i) => i.key === 'RESEND_API_KEY')).toBeUndefined();
   });
 

@@ -101,48 +101,7 @@ export const envSchema = z
         'preço,preco,R$,valor é,valor e,estoque,disponível,disponivel,indisponível,indisponivel,entrega em,prazo de,dias úteis,dias uteis,frete,promoção,promocao,desconto',
       ),
 
-    // OMIE
-    OMIE_APP_KEY: z.string().optional().default(''),
-    OMIE_APP_SECRET: z.string().optional().default(''),
-    OMIE_WEBHOOK_SECRET: z.string().optional().default(''),
-    /** Quando true, OMIE retorna dados mockados em vez de chamar a API real */
-    OMIE_DEMO_MODE: z.union([z.boolean(), z.string().transform((s) => s === 'true')]).default(true),
-    /**
-     * Trava de segurança do go-live do OMIE. DESLIGADA por default (dormente).
-     * Quando você plugar o OMIE REAL, defina `OMIE_REQUIRE_REAL=true` no Railway:
-     * a partir daí, se `OMIE_DEMO_MODE` continuar `true` em produção, o boot
-     * ABORTA com mensagem clara — evita pedidos "fantasma" (que parecem enviados
-     * ao ERP mas não chegam). Enquanto `false`, produção sobe normal mesmo em demo.
-     */
-    OMIE_REQUIRE_REAL: z
-      .union([z.boolean(), z.string().transform((s) => s === 'true')])
-      .default(false),
-    OMIE_BASE_URL: z.string().url().default('https://app.omie.com.br/api/v1'),
-    OMIE_TIMEOUT_MS: z.coerce.number().int().positive().default(30000),
-    /**
-     * Ratio aplicado em precoTabela pra estimar precoFabrica quando o
-     * produto OMIE não tem essa info explícita. Default 0.7 (preço fábrica
-     * = 70% do preço tabela), ajustável por empresa via env. Quando OMIE
-     * tabela_de_preco for integrada, esse fallback fica só pra casos onde
-     * o produto não está em nenhuma tabela auxiliar.
-     */
-    OMIE_PRECO_FABRICA_RATIO: z.coerce.number().min(0).max(1).default(0.7),
-    /**
-     * P7 — Remessa de amostra grátis. CFOP usado quando cliente e empresa
-     * estão na MESMA UF (5911) ou em UFs diferentes (6911). Defaults são os
-     * CFOPs padrão de "remessa de amostra grátis"; ajustáveis se a contabilidade
-     * do cliente usar outros.
-     */
-    OMIE_CFOP_AMOSTRA_UF: z.string().default('5911'),
-    OMIE_CFOP_AMOSTRA_INTERESTADUAL: z.string().default('6911'),
-    /**
-     * Código do cenário fiscal "sem destaque de tributos" cadastrado na conta
-     * OMIE do cliente, aplicado às remessas de amostra. Opcional (0 = não envia
-     * cenário; OMIE usa a tributação padrão do produto com o CFOP informado).
-     */
-    OMIE_CENARIO_IMPOSTO_AMOSTRA: z.coerce.number().int().min(0).default(0),
-
-    // TINY (Olist) — o ERP a partir de 26/08/2026 (D50). Substitui o OMIE.
+    // TINY (Olist) — o ERP a partir de 26/08/2026 (D50). Substitui o ERP.
     TINY_BASE_URL: z.string().url().default('https://api.tiny.com.br/public-api/v3'),
     TINY_OAUTH_AUTH_URL: z
       .string()
@@ -159,7 +118,7 @@ export const envSchema = z
      * Segredo que vai NO CAMINHO da URL do webhook, não em header.
      *
      * O Tiny NÃO assina os webhooks — não há HMAC nem header de autenticação
-     * (diferente de OMIE/Meta/Shopee, ver D11). Então a URL secreta é metade da
+     * (diferente de Meta/Shopee/TikTok, que assinam — ver D11). Então a URL secreta é metade da
      * defesa; a outra metade é o receptor nunca confiar no payload e sempre
      * reconsultar o recurso pela API v3.
      */
@@ -298,12 +257,12 @@ export const envSchema = z
     if (env.NODE_ENV !== 'production') return;
     // Só o serviço HTTP recebe webhook. Exigir os secrets no WORKER derrubava o
     // processo por uma rota que ele nem serve — foi exatamente o que aconteceu
-    // em 26/08, quando as envs do OMIE saíram: a api subiu e o worker morreu no
+    // em 26/08, quando as envs do ERP saíram: a api subiu e o worker morreu no
     // boot. O gate continua valendo onde ele protege alguma coisa.
     if (env.SERVICE_TYPE === 'worker') return;
 
     const required: Array<{ key: keyof typeof env; label: string }> = [
-      // ERP: o Tiny é o atual (D50). O OMIE saiu da lista quando deixou de ser
+      // ERP: o Tiny é o atual (D50). O ERP saiu da lista quando deixou de ser
       // o ERP — exigir secret de uma integração aposentada só derruba o boot.
       // O Tiny não assina os webhooks, então o secret aqui é o da URL: sem ele
       // a rota fica aberta, que é justamente o que este gate impede.

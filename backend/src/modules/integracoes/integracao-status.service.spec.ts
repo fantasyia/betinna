@@ -50,16 +50,16 @@ describe('IntegracaoStatusService', () => {
 
   it('1 erro → DEGRADADA, sem e-mail', async () => {
     const { service, prisma, email } = build();
-    await service.registrarErro('emp-1', 'omie', 'timeout');
+    await service.registrarErro('emp-1', 'erp', 'timeout');
     expect(prisma.store.row?.status).toBe('DEGRADADA');
     expect(email.enviarAlertaSistema).not.toHaveBeenCalled();
   });
 
   it('3 erros seguidos → CAÍDA + 1 e-mail de alerta', async () => {
     const { service, prisma, email } = build();
-    await service.registrarErro('emp-1', 'omie', 'erro 1');
-    await service.registrarErro('emp-1', 'omie', 'erro 2');
-    await service.registrarErro('emp-1', 'omie', 'erro 3');
+    await service.registrarErro('emp-1', 'erp', 'erro 1');
+    await service.registrarErro('emp-1', 'erp', 'erro 2');
+    await service.registrarErro('emp-1', 'erp', 'erro 3');
     expect(prisma.store.row?.status).toBe('CAIDA');
     expect(prisma.store.row?.errosSeguidos).toBe(3);
     expect(email.enviarAlertaSistema).toHaveBeenCalledTimes(1);
@@ -81,8 +81,8 @@ describe('IntegracaoStatusService', () => {
 
   it('sucesso → volta pra ATIVA e zera contador', async () => {
     const { service, prisma } = build();
-    await service.registrarErro('emp-1', 'omie', 'erro');
-    await service.registrarSucesso('emp-1', 'omie');
+    await service.registrarErro('emp-1', 'erp', 'erro');
+    await service.registrarSucesso('emp-1', 'erp');
     expect(prisma.store.row?.status).toBe('ATIVA');
     expect(prisma.store.row?.errosSeguidos).toBe(0);
   });

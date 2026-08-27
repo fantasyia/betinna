@@ -38,7 +38,7 @@ interface Amostra {
   aprovadorNome?: string | null;
   motivoDecisao?: string | null;
   cliente?: { id: string; nome: string };
-  // P7 — remessa OMIE
+  // P7 — remessa ERP
   produtoId?: string | null;
   quantidade?: number;
   produto?: {
@@ -433,15 +433,15 @@ function AmostraDetailModal({
       setBusy(false);
     }
   }
-  // P7 — envia a amostra como remessa de amostra grátis pro OMIE
-  async function doEnviarOmie() {
+  // P7 — envia a amostra como remessa de amostra grátis pro ERP
+  async function doEnviarERP() {
     setBusy(true);
     setActionError(null);
     try {
-      await api.post(`/amostras/${id}/enviar-omie`);
+      await api.post(`/amostras/${id}/enviar-erp`);
       refetch();
     } catch (err) {
-      setActionError(err instanceof ApiError ? err.message : 'Falha ao enviar remessa ao OMIE');
+      setActionError(err instanceof ApiError ? err.message : 'Falha ao enviar remessa ao ERP');
     } finally {
       setBusy(false);
     }
@@ -535,27 +535,27 @@ function AmostraDetailModal({
               <Info label="Follow-up em">{fmtDate(data.followUpEm)}</Info>
             </dl>
 
-            {/* P7 — Remessa de amostra grátis pro OMIE */}
+            {/* P7 — Remessa de amostra grátis pro ERP */}
             <div className="border-t border-border mt-4 pt-4">
-              <h3 className="mt-0 text-sm">Remessa OMIE (amostra grátis)</h3>
+              <h3 className="mt-0 text-sm">Remessa ERP (amostra grátis)</h3>
               {data.numeroErp ? (
                 <div
-                  data-testid="amostra-omie-enviada"
+                  data-testid="amostra-erp-enviada"
                   className="bg-[#e8f5ec] border border-success rounded-[10px] py-2.5 px-3 text-[13px]"
                 >
-                  ✅ Remessa enviada — OMIE <strong>#{data.numeroErp}</strong>
+                  ✅ Remessa enviada — ERP <strong>#{data.numeroErp}</strong>
                   {data.cfop ? ` · CFOP ${data.cfop}` : ''}
                   {data.enviadoErpEm ? ` · ${fmtDate(data.enviadoErpEm)}` : ''}
                 </div>
               ) : (
                 <div>
                   <p className="text-[12px] text-muted mt-0 mx-0 mb-2">
-                    Gera uma remessa de amostra grátis no OMIE (CFOP 5911/6911, sem destaque de
-                    tributos). Requer produto do catálogo vinculado e cliente sincronizado com OMIE.
+                    Gera uma remessa de amostra grátis no ERP (CFOP 5911/6911, sem destaque de
+                    tributos). Requer produto do catálogo vinculado e cliente sincronizado com o ERP.
                   </p>
                   {!data.produto && (
                     <p
-                      data-testid="amostra-omie-sem-produto"
+                      data-testid="amostra-erp-sem-produto"
                       className="text-[12px] text-warning mt-0 mx-0 mb-2"
                     >
                       ⚠️ Esta amostra não tem produto do catálogo vinculado — edite e selecione um
@@ -564,9 +564,9 @@ function AmostraDetailModal({
                   )}
                   <button
                     type="button"
-                    data-testid="amostra-enviar-omie"
+                    data-testid="amostra-enviar-erp"
                     disabled={busy || !data.produto}
-                    onClick={doEnviarOmie}
+                    onClick={doEnviarERP}
                     className={cn(
                       'bg-primary text-primary-contrast rounded-md px-4 py-2 text-[13px] font-semibold tracking-[-0.1px]',
                       busy || !data.produto
@@ -574,7 +574,7 @@ function AmostraDetailModal({
                         : 'opacity-100 cursor-pointer',
                     )}
                   >
-                    {busy ? 'Enviando…' : 'Enviar remessa ao OMIE'}
+                    {busy ? 'Enviando…' : 'Enviar remessa ao ERP'}
                   </button>
                 </div>
               )}
@@ -825,7 +825,7 @@ function AmostraFormModal({
         </FormField>
         <FormField
           label="Produto do catálogo"
-          hint="Opcional. Necessário pra enviar a remessa ao OMIE (puxa o código OMIE do produto)."
+          hint="Opcional. Necessário pra enviar a remessa ao ERP (puxa o código ERP do produto)."
         >
           <AsyncCombobox<ProdutoOpt>
             testId="produto-picker"

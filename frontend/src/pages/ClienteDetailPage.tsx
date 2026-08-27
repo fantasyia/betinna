@@ -40,7 +40,7 @@ const badgeCls =
 // ─── Tipos compartilhados ────────────────────────────────────────────
 
 type ClienteStatus = 'ATIVO' | 'NOVO' | 'PROSPECT' | 'RISCO' | 'CRITICO' | 'INATIVO';
-type OmieStatus = 'ATIVO' | 'BLOQUEADO';
+type ERPStatus = 'ATIVO' | 'BLOQUEADO';
 
 interface Cliente {
   id: string;
@@ -52,7 +52,7 @@ interface Cliente {
   uf?: string | null;
   segmento?: string | null;
   status: ClienteStatus;
-  erpStatus: OmieStatus;
+  erpStatus: ERPStatus;
   score: number;
   prazoPagamento?: number;
   limiteCredito?: number | null;
@@ -102,7 +102,7 @@ const STATUS_COLOR: Record<ClienteStatus, string> = {
   CRITICO: 'var(--danger)',
   INATIVO: 'var(--muted)',
 };
-const OMIE_COLOR: Record<OmieStatus, string> = {
+const ERP_COLOR: Record<ERPStatus, string> = {
   ATIVO: 'var(--success)',
   BLOQUEADO: 'var(--danger)',
 };
@@ -219,8 +219,8 @@ export default function ClienteDetailPage() {
               <span className={badgeCls} style={badgeStyle(STATUS_COLOR[cliente.status])}>
                 {cliente.status}
               </span>
-              <span className={badgeCls} style={badgeStyle(OMIE_COLOR[cliente.erpStatus])}>
-                OMIE {cliente.erpStatus}
+              <span className={badgeCls} style={badgeStyle(ERP_COLOR[cliente.erpStatus])}>
+                ERP {cliente.erpStatus}
               </span>
               {cliente.cnpj && (
                 <span className="text-[13px] text-muted">CNPJ {cliente.cnpj}</span>
@@ -364,9 +364,9 @@ function DadosTab({
   const [error, setError] = useState<string | null>(null);
   const [confirmDel, setConfirmDel] = useState(false);
   const role = useRole();
-  // Espelha o @Roles do PUT :id/omie-status — bloqueio vem do financeiro (D2),
+  // Espelha o @Roles do PUT :id/erp-status — bloqueio vem do financeiro (D2),
   // REP não desbloqueia o próprio cliente pra fechar pedido.
-  const podeMudarOmie = role === 'ADMIN' || role === 'DIRECTOR' || role === 'GERENTE';
+  const podeMudarERP = role === 'ADMIN' || role === 'DIRECTOR' || role === 'GERENTE';
   // Espelha o @Roles do DELETE /clientes/:id — o botão aparecia pra REP/SAC e o
   // clique só devolvia 403 depois da confirmação.
   const podeExcluir = role === 'ADMIN' || role === 'DIRECTOR' || role === 'GERENTE';
@@ -478,13 +478,13 @@ function DadosTab({
               <option value="INATIVO">Inativo</option>
             </Select>
           </FormField>
-          <FormField label="OMIE">
+          <FormField label="ERP">
             <Select
               value={form.erpStatus}
-              disabled={!podeMudarOmie}
-              title={podeMudarOmie ? undefined : 'Status OMIE é alterado pela gestão'}
+              disabled={!podeMudarERP}
+              title={podeMudarERP ? undefined : 'Status ERP é alterado pela gestão'}
               onChange={(e) =>
-                setForm((s) => ({ ...s, erpStatus: e.target.value as OmieStatus }))
+                setForm((s) => ({ ...s, erpStatus: e.target.value as ERPStatus }))
               }
             >
               <option value="ATIVO">Ativo</option>
@@ -790,7 +790,7 @@ function PedidosTab({ clienteId }: { clienteId: string }) {
                 <td className={pedidoTdCls}>
                   <div className="font-semibold">#{p.numero}</div>
                   {p.numeroErp && (
-                    <div className="text-[11px] text-muted">OMIE {p.numeroErp}</div>
+                    <div className="text-[11px] text-muted">ERP {p.numeroErp}</div>
                   )}
                 </td>
                 <td className={pedidoTdCls}>
@@ -1609,7 +1609,7 @@ function PrecosTab({ clienteId }: { clienteId: string }) {
       </header>
 
       <p className="text-[12px] text-muted mt-0">
-        Preço acordado pra este cliente, sobrepõe a tabela. Sync OMIE pode atualizar
+        Preço acordado pra este cliente, sobrepõe a tabela. Sync ERP pode atualizar
         automaticamente.
       </p>
 

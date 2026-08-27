@@ -75,7 +75,7 @@ interface Contato {
   leadEtapa: string | null;
   clienteId: string | null;
   clienteStatus: string | null;
-  clienteOmieStatus: string | null;
+  clienteERPStatus: string | null;
   conversaId: string | null;
   canal: string | null;
   ultimaInteracaoEm: string | null;

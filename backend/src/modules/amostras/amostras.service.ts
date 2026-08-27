@@ -2,10 +2,6 @@ import { Injectable, Logger } from '@nestjs/common';
 import { type AmostraStatus, Prisma } from '@prisma/client';
 import { PrismaService } from '@database/prisma.service';
 import {
-  OmieAmostrasService,
-  type OmieAmostraEnvioResult,
-} from '@integrations/omie/omie-amostras.service';
-import {
   BusinessRuleException,
   ForbiddenException,
   NotFoundException,
@@ -60,7 +56,6 @@ export class AmostrasService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly repScope: RepScopeService,
-    private readonly omieAmostras: OmieAmostrasService,
   ) {}
 
   private requireEmpresa(user: AuthenticatedUser): string {
@@ -356,19 +351,24 @@ export class AmostrasService {
   }
 
   /**
-   * P7 — Envia a amostra como remessa de amostra grátis pro OMIE.
+   * Remessa de amostra grátis pro ERP — **ainda não disponível no Tiny**.
    *
-   * findById valida tenant + carteira do rep. As pré-condições fiscais
-   * (produto vinculado com codigoErp, cliente ATIVO com codigoErp, etc.)
-   * ficam no OmieAmostrasService, que também persiste numeroErp/enviadoErpEm/cfop.
+   * A versão do ERP montava uma remessa com CFOP 5911/6911 e cenário fiscal
+   * sem destaque de tributos. No Tiny a operação existe, mas o desenho fiscal é
+   * outro (pedido + nota, com natureza própria) e **isso é decisão da
+   * contabilidade, não de quem integra** — CFOP errado não dá erro de sistema,
+   * dá problema com o fisco meses depois.
+   *
+   * Falha explícita em vez de silêncio: a amostra continua registrada, com
+   * follow-up e conversão funcionando; só o envio ao ERP é que espera a
+   * definição. Ver `docs/erp-tiny-olist.md` §6.
    */
-  async enviarParaOmie(
-    user: AuthenticatedUser,
-    id: string,
-  ): Promise<{ amostra: AmostraWithRel; omie: OmieAmostraEnvioResult }> {
-    const amostra = await this.findById(user, id);
-    const omie = await this.omieAmostras.enviarAmostra(id, amostra.empresaId);
-    const atualizada = await this.findById(user, id);
-    return { amostra: atualizada, omie };
+  async enviarParaErp(user: AuthenticatedUser, id: string): Promise<never> {
+    await this.findById(user, id);
+    throw new BusinessRuleException(
+      'Remessa de amostra ao ERP ainda não implementada no Tiny — depende da definição fiscal ' +
+        '(natureza da operação e CFOP). A amostra segue registrada normalmente no app.',
+      ErrorCode.INTEGRATION_ERROR,
+    );
   }
 }

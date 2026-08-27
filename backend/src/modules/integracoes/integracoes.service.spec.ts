@@ -65,7 +65,7 @@ const fakeUser = (overrides: Partial<AuthenticatedUser> = {}): AuthenticatedUser
 const fakeConexao = (overrides: Record<string, unknown> = {}) => ({
   id: 'conn-1',
   empresaId: 'emp-1',
-  servico: 'omie',
+  servico: 'tiny',
   ativo: true,
   credenciais: 'enc:{"appKey":"key123","appSecret":"secret"}',
   externalAccountId: null,
@@ -146,10 +146,10 @@ describe('IntegracoesService', () => {
     it('filtra por servico quando passado', async () => {
       prisma.integracaoConexao.findMany.mockResolvedValue([]);
 
-      await service.list(fakeUser(), { servico: 'omie' as never });
+      await service.list(fakeUser(), { servico: 'tiny' as never });
 
       const args = prisma.integracaoConexao.findMany.mock.calls[0][0];
-      expect(args.where.servico).toBe('omie');
+      expect(args.where.servico).toBe('tiny');
     });
 
     it('filtra por ativo quando passado', async () => {
@@ -176,10 +176,10 @@ describe('IntegracoesService', () => {
     it('retorna conexão pública quando encontrada', async () => {
       prisma.integracaoConexao.findUnique.mockResolvedValue(fakeConexao());
 
-      const result = await service.findByServico(fakeUser(), 'omie' as never);
+      const result = await service.findByServico(fakeUser(), 'tiny' as never);
 
       expect(result).not.toBeNull();
-      expect(result!.servico).toBe('omie');
+      expect(result!.servico).toBe('tiny');
     });
 
     it('retorna null quando não existe', async () => {
@@ -204,7 +204,7 @@ describe('IntegracoesService', () => {
       prisma.integracaoConexao.upsert.mockResolvedValue(conn);
 
       const result = await service.conectar(directorUser(), {
-        servico: 'omie' as never,
+        servico: 'tiny' as never,
         credenciais: { appKey: 'k', appSecret: 's' },
       });
 
@@ -221,15 +221,15 @@ describe('IntegracoesService', () => {
 
       // Popula cache manualmente via obterCredenciaisInternas
       prisma.integracaoConexao.findUnique.mockResolvedValue(fakeConexao({ ativo: true }));
-      await service.obterCredenciaisInternas('emp-1', 'omie' as never);
+      await service.obterCredenciaisInternas('emp-1', 'tiny' as never);
       // Agora conectar deve invalidar
       await service.conectar(directorUser(), {
-        servico: 'omie' as never,
+        servico: 'tiny' as never,
         credenciais: { appKey: 'new' },
       });
       // Próximo obterCredenciaisInternas deve ir ao banco de novo
       prisma.integracaoConexao.findUnique.mockResolvedValue(fakeConexao({ ativo: true }));
-      await service.obterCredenciaisInternas('emp-1', 'omie' as never);
+      await service.obterCredenciaisInternas('emp-1', 'tiny' as never);
 
       // findUnique chamado 2x: primeira consulta + após invalidação
       expect(prisma.integracaoConexao.findUnique).toHaveBeenCalledTimes(2);
@@ -238,7 +238,7 @@ describe('IntegracoesService', () => {
     it('lança ForbiddenException sem empresaIdAtiva', async () => {
       await expect(
         service.conectar(directorUser({ empresaIdAtiva: null }), {
-          servico: 'omie' as never,
+          servico: 'tiny' as never,
           credenciais: {},
         }),
       ).rejects.toBeInstanceOf(ForbiddenException);
@@ -249,41 +249,41 @@ describe('IntegracoesService', () => {
     // Outros papéis seguem bloqueados.
     describe('D48: requerDirector aceita DIRECTOR ou ADMIN', () => {
       it.each(['GERENTE', 'REP', 'SAC'] as const)(
-        '%s não pode conectar OMIE (sem escopo cross-tenant nem mandato de tenant)',
+        '%s não pode conectar Tiny (sem escopo cross-tenant nem mandato de tenant)',
         async (role) => {
           await expect(
             service.conectar(fakeUser({ role: role as UserRole }), {
-              servico: 'omie' as never,
+              servico: 'tiny' as never,
               credenciais: {},
             }),
           ).rejects.toBeInstanceOf(ForbiddenException);
         },
       );
 
-      it('DIRECTOR pode conectar OMIE (mandatário do tenant)', async () => {
+      it('DIRECTOR pode conectar Tiny (mandatário do tenant)', async () => {
         prisma.integracaoConexao.upsert.mockResolvedValue(fakeConexao());
 
         await expect(
           service.conectar(fakeUser({ role: 'DIRECTOR' as UserRole }), {
-            servico: 'omie' as never,
+            servico: 'tiny' as never,
             credenciais: { appKey: 'k', appSecret: 's' },
           }),
         ).resolves.toBeDefined();
       });
 
-      it('ADMIN pode conectar OMIE (master da plataforma — cross-tenant override)', async () => {
+      it('ADMIN pode conectar Tiny (master da plataforma — cross-tenant override)', async () => {
         prisma.integracaoConexao.upsert.mockResolvedValue(fakeConexao());
 
         await expect(
           service.conectar(fakeUser({ role: 'ADMIN' as UserRole }), {
-            servico: 'omie' as never,
+            servico: 'tiny' as never,
             credenciais: { appKey: 'k', appSecret: 's' },
           }),
         ).resolves.toBeDefined();
       });
 
       it.each([
-        'omie',
+        'tiny',
         'whatsapp',
         'mercadolivre',
         'shopee',
@@ -313,7 +313,7 @@ describe('IntegracoesService', () => {
       prisma.integracaoConexao.findUnique.mockResolvedValue(fakeConexao({ ativo: true }));
       prisma.integracaoConexao.update.mockResolvedValue(fakeConexao({ ativo: false }));
 
-      const result = await service.desconectar(directorUser(), 'omie' as never);
+      const result = await service.desconectar(directorUser(), 'tiny' as never);
 
       expect(result).toEqual({ ok: true });
       const updateArgs = prisma.integracaoConexao.update.mock.calls[0][0];
@@ -323,26 +323,26 @@ describe('IntegracoesService', () => {
     it('lança NotFoundException quando conexão não existe', async () => {
       prisma.integracaoConexao.findUnique.mockResolvedValue(null);
 
-      await expect(service.desconectar(directorUser(), 'omie' as never)).rejects.toBeInstanceOf(
+      await expect(service.desconectar(directorUser(), 'tiny' as never)).rejects.toBeInstanceOf(
         NotFoundException,
       );
       expect(prisma.integracaoConexao.update).not.toHaveBeenCalled();
     });
 
     // D48 — DIRECTOR ou ADMIN pode desconectar; outros papéis bloqueados
-    it('ADMIN pode desconectar OMIE (master da plataforma)', async () => {
+    it('ADMIN pode desconectar Tiny (master da plataforma)', async () => {
       prisma.integracaoConexao.findUnique.mockResolvedValue(fakeConexao({ ativo: true }));
 
       await expect(
-        service.desconectar(fakeUser({ role: 'ADMIN' as UserRole }), 'omie' as never),
+        service.desconectar(fakeUser({ role: 'ADMIN' as UserRole }), 'tiny' as never),
       ).resolves.toBeDefined();
     });
 
-    it('GERENTE não pode desconectar OMIE (sem escopo cross-tenant)', async () => {
+    it('GERENTE não pode desconectar Tiny (sem escopo cross-tenant)', async () => {
       prisma.integracaoConexao.findUnique.mockResolvedValue(fakeConexao({ ativo: true }));
 
       await expect(
-        service.desconectar(fakeUser({ role: 'GERENTE' as UserRole }), 'omie' as never),
+        service.desconectar(fakeUser({ role: 'GERENTE' as UserRole }), 'tiny' as never),
       ).rejects.toBeInstanceOf(ForbiddenException);
     });
   });
@@ -359,7 +359,7 @@ describe('IntegracoesService', () => {
       });
       prisma.integracaoConexao.findUnique.mockResolvedValue(conn);
 
-      const result = await service.obterCredenciaisInternas('emp-1', 'omie' as never);
+      const result = await service.obterCredenciaisInternas('emp-1', 'tiny' as never);
 
       expect(result.credenciais).toEqual({ appKey: 'key123', appSecret: 's3cr3t' });
     });
@@ -368,8 +368,8 @@ describe('IntegracoesService', () => {
       const conn = fakeConexao({ ativo: true });
       prisma.integracaoConexao.findUnique.mockResolvedValue(conn);
 
-      await service.obterCredenciaisInternas('emp-1', 'omie' as never);
-      await service.obterCredenciaisInternas('emp-1', 'omie' as never); // cache hit
+      await service.obterCredenciaisInternas('emp-1', 'tiny' as never);
+      await service.obterCredenciaisInternas('emp-1', 'tiny' as never); // cache hit
 
       expect(prisma.integracaoConexao.findUnique).toHaveBeenCalledTimes(1);
     });
@@ -378,7 +378,7 @@ describe('IntegracoesService', () => {
       prisma.integracaoConexao.findUnique.mockResolvedValue(null);
 
       await expect(
-        service.obterCredenciaisInternas('emp-1', 'omie' as never),
+        service.obterCredenciaisInternas('emp-1', 'tiny' as never),
       ).rejects.toBeInstanceOf(BusinessRuleException);
     });
 
@@ -387,7 +387,7 @@ describe('IntegracoesService', () => {
       prisma.integracaoConexao.findUnique.mockResolvedValue(conn);
 
       await expect(
-        service.obterCredenciaisInternas('emp-1', 'omie' as never),
+        service.obterCredenciaisInternas('emp-1', 'tiny' as never),
       ).rejects.toBeInstanceOf(BusinessRuleException);
     });
 
@@ -396,7 +396,7 @@ describe('IntegracoesService', () => {
       prisma.integracaoConexao.findUnique.mockResolvedValue(conn);
 
       await expect(
-        service.obterCredenciaisInternas('emp-1', 'omie' as never),
+        service.obterCredenciaisInternas('emp-1', 'tiny' as never),
       ).rejects.toBeInstanceOf(BusinessRuleException);
     });
   });
@@ -456,19 +456,19 @@ describe('IntegracoesService', () => {
       prisma.integracaoConexao.findUnique.mockResolvedValue(
         fakeConexao({ credenciais: 'enc:{"token":"velho"}', ativo: true }),
       );
-      const antes = await service.obterCredenciaisInternas('emp-1', 'omie' as never);
+      const antes = await service.obterCredenciaisInternas('emp-1', 'tiny' as never);
       expect(antes.credenciais).toEqual({ token: 'velho' });
 
       // 2) grava credencial nova (passa por registrarSyncOk → invalidarCache)
       prisma.integracaoConexao.upsert.mockResolvedValue(fakeConexao());
       prisma.integracaoConexao.updateMany.mockResolvedValue({ count: 1 });
-      await service.salvarCredenciaisInternas('emp-1', 'omie' as never, { token: 'novo' }, 'acc-1');
+      await service.salvarCredenciaisInternas('emp-1', 'tiny' as never, { token: 'novo' }, 'acc-1');
 
       // 3) próxima leitura vai ao banco de novo (cache invalidado) e vê a nova
       prisma.integracaoConexao.findUnique.mockResolvedValue(
         fakeConexao({ credenciais: 'enc:{"token":"novo"}', ativo: true }),
       );
-      const depois = await service.obterCredenciaisInternas('emp-1', 'omie' as never);
+      const depois = await service.obterCredenciaisInternas('emp-1', 'tiny' as never);
       expect(depois.credenciais).toEqual({ token: 'novo' });
       expect(prisma.integracaoConexao.findUnique).toHaveBeenCalledTimes(2);
     });
@@ -482,7 +482,7 @@ describe('IntegracoesService', () => {
     it('atualiza ultimoSync e zera errosRecentes', async () => {
       prisma.integracaoConexao.updateMany.mockResolvedValue({ count: 1 });
 
-      await service.registrarSyncOk('emp-1', 'omie' as never);
+      await service.registrarSyncOk('emp-1', 'tiny' as never);
 
       const args = prisma.integracaoConexao.updateMany.mock.calls[0][0];
       expect(args.data.errosRecentes).toBe(0);
@@ -494,7 +494,7 @@ describe('IntegracoesService', () => {
     it('incrementa errosRecentes', async () => {
       prisma.integracaoConexao.updateMany.mockResolvedValue({ count: 1 });
 
-      await service.registrarSyncErro('emp-1', 'omie' as never);
+      await service.registrarSyncErro('emp-1', 'tiny' as never);
 
       const args = prisma.integracaoConexao.updateMany.mock.calls[0][0];
       expect(args.data.errosRecentes).toEqual({ increment: 1 });
@@ -512,7 +512,7 @@ describe('IntegracoesService', () => {
         { id: 'conn-2', empresaId: 'emp-2' },
       ]);
 
-      const result = await service.listarAtivasPorServico('omie' as never);
+      const result = await service.listarAtivasPorServico('tiny' as never);
 
       expect(result).toEqual([
         { empresaId: 'emp-1', conexaoId: 'conn-1' },
@@ -520,7 +520,7 @@ describe('IntegracoesService', () => {
       ]);
 
       const args = prisma.integracaoConexao.findMany.mock.calls[0][0];
-      expect(args.where.servico).toBe('omie');
+      expect(args.where.servico).toBe('tiny');
       expect(args.where.ativo).toBe(true);
     });
   });

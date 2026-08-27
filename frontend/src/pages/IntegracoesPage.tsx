@@ -17,7 +17,7 @@ import { cn } from '@/lib/cn';
 // As de escopo USUÁRIO (google_calendar, openai, whatsapp pessoal de cada rep)
 // NÃO entram nesta lista — cada user mexe nas suas.
 const SERVICOS_REQUEREM_DIRECTOR: ReadonlySet<string> = new Set([
-  'omie',
+  'tiny',
   'whatsapp',
   'mercadolivre',
   'shopee',
@@ -31,7 +31,7 @@ const SERVICOS_REQUEREM_DIRECTOR: ReadonlySet<string> = new Set([
 // ─── Catálogo de serviços empresa ─────────────────────────────────────
 
 type ServicoEmpresa =
-  | 'omie'
+  | 'tiny'
   | 'whatsapp'
   | 'mercadolivre'
   | 'shopee'
@@ -51,7 +51,7 @@ interface ServicoMeta {
   /**
    * Como conectar:
    *  - 'oauth': abre popup pra fluxo OAuth (Meta/ML/Shopee/Amazon/TikTok)
-   *  - 'credentials': formulário simples com appKey/secret (OMIE)
+   *  - 'credentials': formulário simples de chave/segredo (ex.: OpenAI)
    *  - 'qr': pareamento via QR code em página dedicada (WhatsApp da empresa)
    */
   connectMode: 'oauth' | 'credentials' | 'qr';
@@ -64,19 +64,16 @@ interface ServicoMeta {
 }
 
 const SERVICOS: Record<ServicoEmpresa, ServicoMeta> = {
-  omie: {
-    nome: 'OMIE ERP',
+  tiny: {
+    nome: 'Tiny ERP (Olist)',
     tipo: 'erp',
     obrigatorio: true,
     color: '#00b386',
-    icon: 'O',
+    icon: 'T',
     description:
-      'ERP fonte da verdade pra clientes, produtos e pedidos. Sync incremental diária 04:00 UTC.',
-    connectMode: 'credentials',
-    credentialFields: [
-      { name: 'appKey', label: 'App Key', type: 'text' },
-      { name: 'appSecret', label: 'App Secret', type: 'password' },
-    ],
+      'ERP fonte da verdade: produtos, estoque, custo, pedidos, nota e rastreio. O app espelha — cadastro e edição acontecem lá.',
+    connectMode: 'oauth',
+    oauthStart: '/integracoes/tiny/oauth/start',
   },
   whatsapp: {
     nome: 'WhatsApp (número da empresa)',
@@ -164,7 +161,7 @@ const SERVICOS: Record<ServicoEmpresa, ServicoMeta> = {
 };
 
 const SERVICO_ORDER: ServicoEmpresa[] = [
-  'omie',
+  'tiny',
   'whatsapp',
   'openai',
   'mercadolivre',
@@ -469,9 +466,7 @@ function ServicoCard({
             Conectar
           </button>
         )}
-        {podeOperar && conectado && servico === 'omie' && (
-          <TestOmieButton onDone={onRefetch} />
-        )}
+        {podeOperar && conectado && servico === 'tiny' && <SyncTinyButton onDone={onRefetch} />}
         {podeOperar && conectado && (
           <>
             <button
@@ -510,7 +505,7 @@ function ServicoCard({
   );
 }
 
-function TestOmieButton({ onDone }: { onDone: () => void }) {
+function SyncTinyButton({ onDone }: { onDone: () => void }) {
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState<string | null>(null);
 
@@ -518,8 +513,8 @@ function TestOmieButton({ onDone }: { onDone: () => void }) {
     setBusy(true);
     setMsg(null);
     try {
-      await api.post('/integracoes/omie/sync/forcar');
-      setMsg('Sync OMIE disparado.');
+      await api.post('/integracoes/tiny/sync/produtos?modo=completo');
+      setMsg('Sync do ERP disparado.');
       setTimeout(() => setMsg(null), 4000);
       onDone();
     } catch (err) {
@@ -533,7 +528,7 @@ function TestOmieButton({ onDone }: { onDone: () => void }) {
     <>
       <button
         type="button"
-        data-testid="omie-sync"
+        data-testid="tiny-sync"
         onClick={run}
         disabled={busy}
         className="bg-primary text-primary-contrast rounded-md px-4 py-2 text-[13px] font-semibold cursor-pointer tracking-[-0.1px]"

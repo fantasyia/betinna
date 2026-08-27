@@ -221,7 +221,7 @@ describe('ProdutosService', () => {
     };
 
     it('cria produto com empresaId do JWT', async () => {
-      prisma.produto.findUnique.mockResolvedValue(null); // sku/omie únicos
+      prisma.produto.findUnique.mockResolvedValue(null); // sku/erp únicos
       prisma.produto.create.mockResolvedValue(fakeProduto());
 
       await service.create(fakeUser({ empresaIdAtiva: 'emp-1' }), baseDto);
@@ -247,8 +247,8 @@ describe('ProdutosService', () => {
     });
 
     it('lança BusinessRuleException para codigoErp duplicado', async () => {
-      // create sem sku → apenas assertCodigoOmieUnico é chamado (1 findUnique)
-      prisma.produto.findUnique.mockResolvedValueOnce({ id: 'p-existente' }); // omie check: conflito
+      // create sem sku → apenas assertCodigoERPUnico é chamado (1 findUnique)
+      prisma.produto.findUnique.mockResolvedValueOnce({ id: 'p-existente' }); // erp check: conflito
 
       await expect(
         service.create(fakeUser(), { ...baseDto, codigoErp: '12345' }),

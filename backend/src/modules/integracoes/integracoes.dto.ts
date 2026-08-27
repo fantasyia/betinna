@@ -10,7 +10,7 @@ export const conectarSchema = z.object({
   servico: servicoEmpresaEnum,
   /**
    * Credenciais opacas — formato depende do serviço:
-   *  - omie: { appKey, appSecret }
+   *  - erp: { appKey, appSecret }
    *  - whatsapp: { accessToken, phoneNumberId, businessAccountId, appSecret }
    *  - mercadolivre: { clientId, clientSecret, refreshToken }
    *  - etc.

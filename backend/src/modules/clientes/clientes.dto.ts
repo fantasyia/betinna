@@ -13,7 +13,7 @@ const UF_REGEX = /^[A-Z]{2}$/;
  * pelo frontend (form Novo Cliente). Tornar obrigatório aqui evita lixo no DB
  * (clientes sem CNPJ/contato/endereço — impossíveis de atender de verdade).
  *
- * Schema do Prisma mantém nullable: clientes vindos do OMIE sync podem não ter
+ * Schema do Prisma mantém nullable: clientes vindos do ERP sync podem não ter
  * todos os campos (legado), e isso é OK porque é importação automática.
  *
  * Validadores BR (CNPJ, CEP, telefone) verificam dígito + formato.
@@ -100,7 +100,7 @@ export const setTagsSchema = z.object({
 });
 export type SetTagsDto = z.infer<typeof setTagsSchema>;
 
-export const updateOmieStatusSchema = z.object({
+export const updateERPStatusSchema = z.object({
   erpStatus: erpStatusEnum,
 });
-export type UpdateOmieStatusDto = z.infer<typeof updateOmieStatusSchema>;
+export type UpdateERPStatusDto = z.infer<typeof updateERPStatusSchema>;

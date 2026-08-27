@@ -30,7 +30,7 @@ import {
   type ListClientesDto,
   type SetTagsDto,
   type UpdateClienteDto,
-  type UpdateOmieStatusDto,
+  type UpdateERPStatusDto,
   assignRepSchema,
   bulkAssignRepSchema,
   bulkDeleteSchema,
@@ -40,7 +40,7 @@ import {
   listClientesSchema,
   setTagsSchema,
   updateClienteSchema,
-  updateOmieStatusSchema,
+  updateERPStatusSchema,
 } from './clientes.dto';
 import { ListasDinamicasService } from './listas-dinamicas.service';
 
@@ -199,21 +199,21 @@ export class ClientesController {
     return this.clientes.setTags(user, id, dto);
   }
 
-  @Put(':id/omie-status')
-  // Bloqueio vem do financeiro/OMIE (D2) — REP não pode "desbloquear" o próprio
+  @Put(':id/erp-status')
+  // Bloqueio vem do financeiro/ERP (D2) — REP não pode "desbloquear" o próprio
   // cliente pra fechar pedido. Espelho manual é operação de gestão.
   @Roles('ADMIN', 'DIRECTOR', 'GERENTE')
   @RequirePermissions({ module: 'clientes', action: 'edit' })
-  @Audit({ action: 'update_omie_status', resource: 'cliente', resourceIdFrom: 'params.id' })
+  @Audit({ action: 'update_erp_status', resource: 'cliente', resourceIdFrom: 'params.id' })
   @ApiOperation({
-    summary: 'Atualiza status do cliente no OMIE (ATIVO/BLOQUEADO)',
+    summary: 'Atualiza status do cliente no ERP (ATIVO/BLOQUEADO)',
   })
-  updateOmieStatus(
+  updateERPStatus(
     @CurrentUser() user: AuthenticatedUser,
     @Param('id') id: string,
-    @Body(new ZodValidationPipe(updateOmieStatusSchema)) dto: UpdateOmieStatusDto,
+    @Body(new ZodValidationPipe(updateERPStatusSchema)) dto: UpdateERPStatusDto,
   ) {
-    return this.clientes.updateOmieStatus(user, id, dto);
+    return this.clientes.updateERPStatus(user, id, dto);
   }
 
   @Delete(':id')

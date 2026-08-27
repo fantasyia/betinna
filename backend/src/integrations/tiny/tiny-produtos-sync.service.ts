@@ -45,12 +45,12 @@ const LISTA_LOCACAO = 'loca';
  * vazia e alguém tinha que popular. Daqui em diante o Tiny é a fonte da verdade
  * (preço, custo, estoque, situação) e o app espelha.
  *
- * **Incremental por `dataAlteracao`**, igual ao que o OMIE fazia (D21c): o sync
+ * **Incremental por `dataAlteracao`**, igual ao que o ERP fazia (D21c): o sync
  * diário não re-baixa catálogo inteiro, só o que mudou desde o último. O modo
  * completo existe pra quando alguém precisa forçar.
  *
  * **O custo agora é REAL.** O `precoFabrica` deixou de ser o chute de 70% que
- * vinha do OMIE: `precos.precoCusto` chega na API. Quando o Tiny não tem custo
+ * vinha do ERP: `precos.precoCusto` chega na API. Quando o Tiny não tem custo
  * cadastrado, fica `null` — "não informado" é uma resposta honesta; 70% do
  * preço de tabela não era.
  */
@@ -200,7 +200,7 @@ export class TinyProdutosSyncService {
       unidade: p.unidade ?? null,
       precoTabela: new Prisma.Decimal(p.precos?.preco ?? 0),
       // Custo REAL do ERP. Sem custo lá, fica null — "não informado" é honesto;
-      // o chute de 70% do OMIE não era.
+      // o chute de 70% do ERP não era.
       precoFabrica:
         typeof p.precos?.precoCusto === 'number' && p.precos.precoCusto > 0
           ? new Prisma.Decimal(p.precos.precoCusto)

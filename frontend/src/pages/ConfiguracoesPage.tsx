@@ -512,7 +512,7 @@ function PedidoMinimoConfig() {
         📦 Pedido mínimo
       </h2>
       <p className="text-xs text-muted mt-0">
-        Mínimo que um pedido precisa atingir pra ser enviado ao OMIE. Rascunhos podem ficar abaixo.
+        Mínimo que um pedido precisa atingir pra ser enviado ao ERP. Rascunhos podem ficar abaixo.
         O peso usa o peso por unidade cadastrado em cada produto.
       </p>
       {loading ? (
@@ -1873,7 +1873,7 @@ function AvancadoTab() {
       to: '/integracoes',
       emoji: '🔌',
       title: 'Integrações',
-      description: 'OMIE, Meta, ML, Shopee, Amazon, TikTok, WhatsApp',
+      description: 'ERP, Meta, ML, Shopee, Amazon, TikTok, WhatsApp',
       color: BRAND.cyan,
     },
     {

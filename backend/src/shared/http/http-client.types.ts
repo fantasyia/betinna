@@ -21,7 +21,7 @@ export interface HttpRequestOptions {
    */
   retryBaseMs?: number;
   /**
-   * Identificador da integração pra logs (omie, whatsapp, ml, etc).
+   * Identificador da integração pra logs (erp, whatsapp, ml, etc).
    * Não vai no payload, só em logs e métricas.
    */
   integration?: string;

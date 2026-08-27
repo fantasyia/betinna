@@ -3,7 +3,7 @@ import { envSchema } from './env.schema';
 
 /**
  * O gate de secret de webhook em produção derrubou o WORKER em 26/08, quando as
- * variáveis do OMIE foram apagadas (o ERP virou Tiny). O worker não serve rota
+ * variáveis do ERP foram apagadas (o ERP virou Tiny). O worker não serve rota
  * nenhuma de webhook — morreu por um secret que não protegia nada nele.
  *
  * Estes casos fixam as duas metades da regra: continua obrigatório onde protege
@@ -44,11 +44,11 @@ describe('gate de secret de webhook em produção', () => {
     expect(erros({ ...base, SERVICE_TYPE: 'worker' })).toHaveLength(0);
   });
 
-  it('o OMIE saiu da lista: apagar as envs dele não derruba mais o boot', () => {
-    // Era exatamente o crash de 26/08 — o ERP virou Tiny e as envs do OMIE
+  it('o ERP saiu da lista: apagar as envs dele não derruba mais o boot', () => {
+    // Era exatamente o crash de 26/08 — o ERP virou Tiny e as envs do ERP
     // foram removidas, mas o gate ainda cobrava o secret do ERP aposentado.
     expect(erros({ ...base, SERVICE_TYPE: 'api', TINY_WEBHOOK_SECRET: 's' })).not.toContain(
-      'OMIE_WEBHOOK_SECRET',
+      'ERP_WEBHOOK_SECRET',
     );
   });
 });

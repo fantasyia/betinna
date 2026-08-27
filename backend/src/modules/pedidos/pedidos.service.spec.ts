@@ -60,7 +60,7 @@ const fakeUser = (overrides: Partial<AuthenticatedUser> = {}): AuthenticatedUser
 describe('PedidosService', () => {
   let prisma: ReturnType<typeof makePrismaMock>;
   let pricingService: { priceForClientBatch: ReturnType<typeof vi.fn> };
-  let omiePedidos: { enviarPedido: ReturnType<typeof vi.fn> };
+  let erpPedidos: { enviarPedido: ReturnType<typeof vi.fn> };
   let svc: PedidosService;
 
   beforeEach(() => {
@@ -68,15 +68,15 @@ describe('PedidosService', () => {
     pricingService = {
       priceForClientBatch: vi.fn(async () => new Map()),
     };
-    omiePedidos = {
+    erpPedidos = {
       enviarPedido: vi.fn(async (id: string) => ({
         pedidoId: id,
-        numeroErp: 'OMIE-FAKE',
-        codigoStatusOmie: '60',
-        descricaoStatusOmie: 'INCLUIDO',
+        numeroErp: 'ERP-FAKE',
+        codigoStatusERP: '60',
+        descricaoStatusERP: 'INCLUIDO',
       })),
     };
-    const omiePedidosMock = omiePedidos;
+    const erpPedidosMock = erpPedidos;
     const repScopeMock = {
       getRepIds: vi.fn(async (u: { role: string; id: string }) => {
         if (u.role === 'REP') return [u.id];
@@ -93,7 +93,7 @@ describe('PedidosService', () => {
       prisma as never,
       pricingService as never,
       new PedidoPricingService(),
-      omiePedidosMock as never,
+      erpPedidosMock as never,
       repScopeMock as never,
       { disparar: vi.fn() } as never,
       sequenceMock as never,
@@ -104,13 +104,13 @@ describe('PedidosService', () => {
       } as never,
       {
         pedidosCriados: { inc: vi.fn() },
-        omiePush: { inc: vi.fn() },
+        erpPush: { inc: vi.fn() },
         notificacoesEnviadas: { inc: vi.fn() },
       } as never,
     );
   });
 
-  it('bloqueia criação se cliente bloqueado no OMIE', async () => {
+  it('bloqueia criação se cliente bloqueado no ERP', async () => {
     prisma.cliente.findFirst.mockResolvedValue({
       id: 'cli-1',
       empresaId: 'emp-1',
@@ -383,7 +383,7 @@ describe('PedidosService', () => {
     expect(prisma.aprovacaoDesconto.upsert).not.toHaveBeenCalled();
   });
 
-  it('bloqueia envio ao OMIE se pedido está AGUARDANDO_APROVACAO sem aprovação aprovada', async () => {
+  it('bloqueia envio ao ERP se pedido está AGUARDANDO_APROVACAO sem aprovação aprovada', async () => {
     prisma.pedido.findFirst.mockResolvedValue({
       id: 'ped-1',
       empresaId: 'emp-1',
@@ -392,13 +392,13 @@ describe('PedidosService', () => {
       status: 'AGUARDANDO_APROVACAO',
       aprovacaoDesconto: { status: 'PENDENTE' },
     });
-    await expect(svc.enviarParaOmie(fakeUser(), 'ped-1')).rejects.toBeInstanceOf(
+    await expect(svc.enviarParaErp(fakeUser(), 'ped-1')).rejects.toBeInstanceOf(
       BusinessRuleException,
     );
   });
 
-  it('CAÇADA-BUG #4: bloqueia reenvio ao OMIE de pedido em status pós-envio (evita comissão 2x)', async () => {
-    // EM_SEPARACAO/ENVIADO/ENTREGUE já passaram pelo OMIE — o guard antigo só barrava
+  it('CAÇADA-BUG #4: bloqueia reenvio ao ERP de pedido em status pós-envio (evita comissão 2x)', async () => {
+    // EM_SEPARACAO/ENVIADO/ENTREGUE já passaram pelo ERP — o guard antigo só barrava
     // ENVIADO_ERP/PAGO, deixando estes regredirem o status + resetarem enviadoErpEm.
     for (const status of ['EM_SEPARACAO', 'ENVIADO', 'ENTREGUE', 'ENVIADO_ERP', 'PAGO']) {
       prisma.pedido.findFirst.mockResolvedValue({
@@ -409,15 +409,15 @@ describe('PedidosService', () => {
         status,
         aprovacaoDesconto: null,
       });
-      await expect(svc.enviarParaOmie(fakeUser(), 'ped-1')).rejects.toBeInstanceOf(
+      await expect(svc.enviarParaErp(fakeUser(), 'ped-1')).rejects.toBeInstanceOf(
         BusinessRuleException,
       );
     }
-    // Não chegou a chamar o push do OMIE em nenhum caso.
-    expect(omiePedidos.enviarPedido).not.toHaveBeenCalled();
+    // Não chegou a chamar o push do ERP em nenhum caso.
+    expect(erpPedidos.enviarPedido).not.toHaveBeenCalled();
   });
 
-  it('bloqueia envio ao OMIE se cliente foi bloqueado depois da criação', async () => {
+  it('bloqueia envio ao ERP se cliente foi bloqueado depois da criação', async () => {
     prisma.pedido.findFirst.mockResolvedValue({
       id: 'ped-1',
       empresaId: 'emp-1',
@@ -428,12 +428,12 @@ describe('PedidosService', () => {
     });
     prisma.cliente.findFirst.mockResolvedValue({ erpStatus: 'BLOQUEADO' });
 
-    await expect(svc.enviarParaOmie(fakeUser(), 'ped-1')).rejects.toBeInstanceOf(
+    await expect(svc.enviarParaErp(fakeUser(), 'ped-1')).rejects.toBeInstanceOf(
       BusinessRuleException,
     );
   });
 
-  it('envia ao OMIE com sucesso quando status válido', async () => {
+  it('envia ao ERP com sucesso quando status válido', async () => {
     prisma.pedido.findFirst.mockResolvedValue({
       id: 'ped-1',
       empresaId: 'emp-1',
@@ -444,21 +444,21 @@ describe('PedidosService', () => {
     });
     // Sprint 1 ALTA fix: cliente lookup agora usa findFirst({id, empresaId})
     prisma.cliente.findFirst.mockResolvedValue({ erpStatus: 'ATIVO' });
-    // findByIdInternal (chamado depois do push) — OmiePedidosService está mockado,
+    // findByIdInternal (chamado depois do push) — ERPPedidosService está mockado,
     // então simulamos o estado pós-envio direto aqui
     prisma.pedido.findUnique.mockResolvedValue({
       id: 'ped-1',
       status: 'ENVIADO_ERP',
-      numeroErp: 'OMIE-FAKE',
+      numeroErp: 'ERP-FAKE',
       enviadoErpEm: new Date(),
     });
 
-    const r = await svc.enviarParaOmie(fakeUser(), 'ped-1');
+    const r = await svc.enviarParaErp(fakeUser(), 'ped-1');
     expect(r.status).toBe('ENVIADO_ERP');
     expect(r.numeroErp).toBeTruthy();
   });
 
-  it('bloqueia envio ao OMIE quando pedido abaixo do mínimo do tenant', async () => {
+  it('bloqueia envio ao ERP quando pedido abaixo do mínimo do tenant', async () => {
     prisma.pedido.findFirst.mockResolvedValue({
       id: 'ped-1',
       empresaId: 'emp-1',
@@ -473,12 +473,12 @@ describe('PedidosService', () => {
     prisma.empresa.findUnique.mockResolvedValue({
       config: { pedidoMinimo: { tipo: 'por_peso', pesoMin: 250 } },
     });
-    await expect(svc.enviarParaOmie(fakeUser(), 'ped-1')).rejects.toBeInstanceOf(
+    await expect(svc.enviarParaErp(fakeUser(), 'ped-1')).rejects.toBeInstanceOf(
       BusinessRuleException,
     );
   });
 
-  it('permite envio ao OMIE quando atinge o mínimo do tenant', async () => {
+  it('permite envio ao ERP quando atinge o mínimo do tenant', async () => {
     prisma.pedido.findFirst.mockResolvedValue({
       id: 'ped-1',
       empresaId: 'emp-1',
@@ -496,10 +496,10 @@ describe('PedidosService', () => {
     prisma.pedido.findUnique.mockResolvedValue({
       id: 'ped-1',
       status: 'ENVIADO_ERP',
-      numeroErp: 'OMIE-FAKE',
+      numeroErp: 'ERP-FAKE',
       enviadoErpEm: new Date(),
     });
-    const r = await svc.enviarParaOmie(fakeUser(), 'ped-1');
+    const r = await svc.enviarParaErp(fakeUser(), 'ped-1');
     expect(r.status).toBe('ENVIADO_ERP');
   });
 

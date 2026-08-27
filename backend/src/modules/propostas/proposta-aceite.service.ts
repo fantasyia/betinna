@@ -219,7 +219,7 @@ export class PropostaAceiteService {
       // (assertClienteValido e converterEmPedido). Cenário: cliente é BLOQUEADO
       // no ERP depois do envio da proposta, clica Aceitar no link público, o
       // pedido é criado, o rep é notificado "proposta aceita!" — e a falha só
-      // aparece lá na frente, no envio ao OMIE. Barra no mesmo lugar dos outros.
+      // aparece lá na frente, no envio ao ERP. Barra no mesmo lugar dos outros.
       if (proposta.cliente?.erpStatus === 'BLOQUEADO') {
         throw new BusinessRuleException(
           'Não é possível aceitar esta proposta no momento. Fale com o seu contato comercial.',
@@ -266,7 +266,7 @@ export class PropostaAceiteService {
     // números de sequência. A sequência agora é consumida só pelo vencedor.
     // Teto de desconto / aprovação (D3/D46) — MESMO gate do converterEmPedido. Sem isto, o
     // aceite externo criava pedido RASCUNHO direto e BURLAVA a aprovação (o REP definia um
-    // desconto acima do teto e bastava o cliente clicar Aceitar pra ir ao OMIE sem aprovar).
+    // desconto acima do teto e bastava o cliente clicar Aceitar pra ir ao ERP sem aprovar).
     let tetoRep = 100;
     if (proposta.representanteId) {
       const repU = await this.prisma.usuario.findUnique({
@@ -344,7 +344,7 @@ export class PropostaAceiteService {
         select: { id: true },
       });
       // Desconto acima do teto → AGUARDANDO_APROVACAO + AprovacaoDesconto PENDENTE (igual
-      // converterEmPedido). O sink do OMIE bloqueia AGUARDANDO_APROVACAO → não vaza sem aprovar.
+      // converterEmPedido). O sink do ERP bloqueia AGUARDANDO_APROVACAO → não vaza sem aprovar.
       if (requerAprovacao && proposta.representanteId) {
         await tx.aprovacaoDesconto.create({
           data: {

@@ -20,7 +20,7 @@ import type {
   ListClientesDto,
   SetTagsDto,
   UpdateClienteDto,
-  UpdateOmieStatusDto,
+  UpdateERPStatusDto,
 } from './clientes.dto';
 import { ListasDinamicasService } from './listas-dinamicas.service';
 
@@ -219,7 +219,7 @@ export class ClientesService {
     }
 
     if (dto.cnpj) await this.assertCnpjUnico(user.empresaIdAtiva, dto.cnpj);
-    if (dto.codigoErp) await this.assertCodigoOmieUnico(user.empresaIdAtiva, dto.codigoErp);
+    if (dto.codigoErp) await this.assertCodigoERPUnico(user.empresaIdAtiva, dto.codigoErp);
     if (dto.tagIds && dto.tagIds.length > 0) {
       await this.assertTagsValidas(user.empresaIdAtiva, dto.tagIds);
     }
@@ -243,7 +243,7 @@ export class ClientesService {
   ): Promise<ClienteWithRel> {
     const existing = await this.findById(user, id);
 
-    // Mesma regra do PUT :id/omie-status: bloqueio vem do financeiro/OMIE (D2).
+    // Mesma regra do PUT :id/erp-status: bloqueio vem do financeiro/ERP (D2).
     // Sem isso o PATCH geral era a porta dos fundos pro REP se desbloquear.
     if (
       user.role === 'REP' &&
@@ -251,7 +251,7 @@ export class ClientesService {
       dto.erpStatus !== existing.erpStatus
     ) {
       throw new ForbiddenException(
-        'REP não pode alterar o status OMIE do cliente — apenas ADMIN/DIRECTOR/GERENTE',
+        'REP não pode alterar o status ERP do cliente — apenas ADMIN/DIRECTOR/GERENTE',
         ErrorCode.TENANT_ACCESS_DENIED,
       );
     }
@@ -282,7 +282,7 @@ export class ClientesService {
       await this.assertCnpjUnico(existing.empresaId, dto.cnpj);
     }
     if (dto.codigoErp && dto.codigoErp !== existing.codigoErp) {
-      await this.assertCodigoOmieUnico(existing.empresaId, dto.codigoErp);
+      await this.assertCodigoERPUnico(existing.empresaId, dto.codigoErp);
     }
     if (dto.tagIds) await this.assertTagsValidas(existing.empresaId, dto.tagIds);
 
@@ -472,11 +472,11 @@ export class ClientesService {
     });
   }
 
-  // ─── Status OMIE (recebido do webhook do OMIE, manual via admin) ───────
-  async updateOmieStatus(
+  // ─── Status ERP (recebido do webhook do ERP, manual via admin) ───────
+  async updateERPStatus(
     user: AuthenticatedUser,
     id: string,
-    dto: UpdateOmieStatusDto,
+    dto: UpdateERPStatusDto,
   ): Promise<ClienteWithRel> {
     const existing = await this.findById(user, id);
     await this.prisma.cliente.updateMany({
@@ -516,14 +516,14 @@ export class ClientesService {
     }
   }
 
-  private async assertCodigoOmieUnico(empresaId: string, codigoErp: string): Promise<void> {
+  private async assertCodigoERPUnico(empresaId: string, codigoErp: string): Promise<void> {
     const existe = await this.prisma.cliente.findUnique({
       where: { empresaId_codigoErp: { empresaId, codigoErp } },
       select: { id: true },
     });
     if (existe) {
       throw new BusinessRuleException(
-        `Já existe cliente com código OMIE ${codigoErp} nesta empresa`,
+        `Já existe cliente com código ERP ${codigoErp} nesta empresa`,
         ErrorCode.ALREADY_EXISTS,
       );
     }

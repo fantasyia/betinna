@@ -104,32 +104,13 @@ export class EnvService {
       });
     }
 
-    // OMIE em demo mode em produção.
+    // ERP em demo mode em produção.
     //
-    // Por padrão é só AVISO (warning) — no bootstrap, antes do primeiro tenant
-    // configurar OMIE, o sistema sobe em modo mock, o que é esperado (Railway
-    // precisa subir pra você fazer onboarding). Apenas warning preserva o sinal
-    // sem bloquear o deploy inicial.
-    //
-    // TRAVA DE GO-LIVE (dormente): quando você plugar o OMIE REAL e setar
-    // `OMIE_REQUIRE_REAL=true` no Railway, demo em produção vira CRÍTICO e
-    // ABORTA o boot — protege contra pedidos "fantasma" (parecem enviados ao
-    // ERP mas não chegam). Enquanto OMIE_REQUIRE_REAL=false, nada muda.
-    if (env === 'production' && this.get('OMIE_DEMO_MODE') === true) {
-      const requerReal = this.get('OMIE_REQUIRE_REAL') === true;
-      issues.push({
-        key: 'OMIE_DEMO_MODE',
-        severity: requerReal ? 'critical' : 'warning',
-        message: requerReal
-          ? 'OMIE_DEMO_MODE=true em produção com OMIE_REQUIRE_REAL=true — você sinalizou ' +
-            'que o OMIE real está plugado, mas o modo demo ainda está LIGADO. Pedidos ' +
-            'pareceriam enviados ao ERP sem chegar lá. Defina OMIE_DEMO_MODE=false no ' +
-            'Railway (ou OMIE_REQUIRE_REAL=false se ainda estiver em demo de propósito).'
-          : 'OMIE_DEMO_MODE=true em produção — sistema retorna dados mock em vez de ' +
-            'integrar com OMIE real. Quando o primeiro tenant tiver credenciais OMIE, ' +
-            'defina OMIE_DEMO_MODE=false no Railway (e OMIE_REQUIRE_REAL=true pra travar).',
-      });
-    }
+    // O ERP passou a ser o Tiny (D50), que não tem modo demo: ou existe conexão
+    // OAuth viva, ou as chamadas falham na cara. A trava que existia aqui era
+    // do ERP (demo ligado em produção fazia pedido PARECER enviado sem chegar)
+    // e saiu junto com ele. O equivalente no Tiny é o cron de renovação de
+    // token + o alerta de conexão morta, que avisam com nome e sobrenome.
 
     // MullerBot em modo MOCK em produção — CRÍTICO (aborta o boot).
     //
@@ -137,7 +118,7 @@ export class EnvService {
     // OpenAI), transcreve áudio como "(transcrição de teste)" e nem valida a
     // chave do usuário. Em produção isso faz o assistente de vendas responder
     // nonsense a clientes reais. Default da flag é false — só dispara se alguém
-    // setou true no Railway. Mesmo padrão da trava crítica do OMIE_REQUIRE_REAL.
+    // setou true no Railway. Mesmo padrão da trava crítica do ERP_REQUIRE_REAL.
     if (env === 'production' && this.get('MULLERBOT_MOCK') === true) {
       issues.push({
         key: 'MULLERBOT_MOCK',

@@ -1,7 +1,7 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { PrismaService } from '@database/prisma.service';
-import { OmiePedidosService } from '@integrations/omie/omie-pedidos.service';
+import { TinyPedidoPushService } from '@integrations/tiny/tiny-pedido-push.service';
 import { NotificacoesService } from '@modules/notificacoes/notificacoes.service';
 import { MetricsService } from '@shared/observability/metrics.service';
 import { FluxoEventBusService } from '@modules/fluxos/fluxo-event-bus.service';
@@ -75,7 +75,7 @@ export class PedidosService {
     private readonly prisma: PrismaService,
     private readonly pricing: PricingService,
     private readonly pedidoPricing: PedidoPricingService,
-    private readonly omiePedidos: OmiePedidosService,
+    private readonly erpPedidos: TinyPedidoPushService,
     private readonly repScope: RepScopeService,
     private readonly bus: FluxoEventBusService,
     private readonly sequence: SequenceService,
@@ -385,7 +385,7 @@ export class PedidosService {
     // FIX controle de desconto: edição que leva o desconto acima do teto DEVE
     // entrar em aprovação. Antes o update só exigia o motivo mas deixava o status
     // como estava (RASCUNHO) e NÃO criava a AprovacaoDesconto → o pedido ia direto
-    // pro OMIE sem o gerente ver (bypass). Agora replica a transição do create().
+    // pro ERP sem o gerente ver (bypass). Agora replica a transição do create().
     const entrandoEmAprovacao = requerAprovacao && existing.status !== 'AGUARDANDO_APROVACAO';
     const motivoAprovacao =
       camposGenericos.motivoDesconto ?? existing.motivoDesconto ?? 'sem motivo informado';
@@ -615,11 +615,11 @@ export class PedidosService {
     if (['ENTREGUE', 'CANCELADO'].includes(existing.status)) {
       throw new BusinessRuleException(`Pedido em status ${existing.status} não pode ser cancelado`);
     }
-    // Pedido JÁ ENVIADO ao OMIE: cancelar aqui só muda o status local — o ERP
+    // Pedido JÁ ENVIADO ao ERP: cancelar aqui só muda o status local — o ERP
     // segue com o pedido e vai faturar. Carimba o aviso na observação pra quem
-    // abrir o pedido ver que falta cancelar no OMIE também.
-    const avisoOmie = existing.numeroErp
-      ? `\n[ATENÇÃO] Pedido já enviado ao OMIE (nº ${existing.numeroErp}) — cancele TAMBÉM no ERP, senão ele continua faturando.`
+    // abrir o pedido ver que falta cancelar no ERP também.
+    const avisoERP = existing.numeroErp
+      ? `\n[ATENÇÃO] Pedido já enviado ao ERP (nº ${existing.numeroErp}) — cancele TAMBÉM no ERP, senão ele continua faturando.`
       : '';
 
     // CAS: só cancela se ainda não estiver ENTREGUE/CANCELADO (corrida com avançar/cancelar).
@@ -632,8 +632,8 @@ export class PedidosService {
       data: {
         status: 'CANCELADO',
         observacoes:
-          dto.motivo || avisoOmie
-            ? `${existing.observacoes ? existing.observacoes + '\n' : ''}${dto.motivo ? `[Cancelado] ${dto.motivo}` : '[Cancelado]'}${avisoOmie}`
+          dto.motivo || avisoERP
+            ? `${existing.observacoes ? existing.observacoes + '\n' : ''}${dto.motivo ? `[Cancelado] ${dto.motivo}` : '[Cancelado]'}${avisoERP}`
             : existing.observacoes,
       },
     });
@@ -649,7 +649,7 @@ export class PedidosService {
 
     if (existing.numeroErp) {
       this.logger.warn(
-        `Pedido ${existing.numero} cancelado no app MAS já estava no OMIE (nº ${existing.numeroErp}) — ` +
+        `Pedido ${existing.numero} cancelado no app MAS já estava no ERP (nº ${existing.numeroErp}) — ` +
           `precisa de cancelamento MANUAL no ERP.`,
       );
     }
@@ -830,7 +830,7 @@ export class PedidosService {
       // Mesmo aviso do cancelar() direto — o log é o que a operação enxerga.
       this.logger.warn(
         `Pedido ${solicitacao.pedido.numero} cancelado por SOLICITAÇÃO aprovada MAS já estava no ` +
-          `OMIE (nº ${solicitacao.pedido.numeroErp}) — precisa de cancelamento MANUAL no ERP.`,
+          `ERP (nº ${solicitacao.pedido.numeroErp}) — precisa de cancelamento MANUAL no ERP.`,
       );
     }
     return updated;
@@ -839,11 +839,11 @@ export class PedidosService {
   // ─── B2 — Ações em massa (best-effort) ──────────────────────────────────
 
   /**
-   * Envia vários pedidos pro OMIE. Best-effort: processa um por um, captura
-   * falhas individuais e retorna o resumo. Síncrono (sem BullMQ) — OMIE em
+   * Envia vários pedidos pro ERP. Best-effort: processa um por um, captura
+   * falhas individuais e retorna o resumo. Síncrono (sem BullMQ) — ERP em
    * demo e volume baixo no MVP; migra pra fila quando crescer.
    */
-  async bulkEnviarOmie(
+  async bulkEnviarErp(
     user: AuthenticatedUser,
     ids: string[],
   ): Promise<{ ok: number; falhas: Array<{ id: string; erro: string }> }> {
@@ -851,13 +851,13 @@ export class PedidosService {
     let ok = 0;
     for (const id of ids) {
       try {
-        await this.enviarParaOmie(user, id);
+        await this.enviarParaErp(user, id);
         ok += 1;
       } catch (err) {
         falhas.push({ id, erro: err instanceof Error ? err.message : String(err) });
       }
     }
-    this.logger.log(`Bulk OMIE: ${ok} ok, ${falhas.length} falhas (user ${user.nome})`);
+    this.logger.log(`Bulk ERP: ${ok} ok, ${falhas.length} falhas (user ${user.nome})`);
     return { ok, falhas };
   }
 
@@ -884,31 +884,31 @@ export class PedidosService {
     return { ok, falhas };
   }
 
-  // ─── Enviar pra OMIE ────────────────────────────────────────────────────
-  async enviarParaOmie(user: AuthenticatedUser, id: string): Promise<PedidoWithRel> {
+  // ─── Enviar pra ERP ────────────────────────────────────────────────────
+  async enviarParaErp(user: AuthenticatedUser, id: string): Promise<PedidoWithRel> {
     const pedido = await this.findById(user, id);
 
     if (pedido.status === 'CANCELADO') {
-      throw new BusinessRuleException('Pedido cancelado não pode ser enviado ao OMIE');
+      throw new BusinessRuleException('Pedido cancelado não pode ser enviado ao ERP');
     }
-    // CAÇADA-BUG #4: só RASCUNHO ou AGUARDANDO_APROVACAO (aprovado) podem ir ao OMIE. Todos os
-    // status pós-envio (ENVIADO_ERP/PAGO/EM_SEPARACAO/ENVIADO/ENTREGUE) já passaram pelo OMIE —
+    // CAÇADA-BUG #4: só RASCUNHO ou AGUARDANDO_APROVACAO (aprovado) podem ir ao ERP. Todos os
+    // status pós-envio (ENVIADO_ERP/PAGO/EM_SEPARACAO/ENVIADO/ENTREGUE) já passaram pelo ERP —
     // reenviar regredia o status e resetava `enviadoErpEm`, fazendo o fecharMes contar a comissão
     // DE NOVO em outro mês (folha paga em dobro). Whitelist fecha todos os estados pós-envio de uma vez.
     if (pedido.status !== 'RASCUNHO' && pedido.status !== 'AGUARDANDO_APROVACAO') {
-      throw new BusinessRuleException(`Pedido já foi enviado ao OMIE (status ${pedido.status})`);
+      throw new BusinessRuleException(`Pedido já foi enviado ao ERP (status ${pedido.status})`);
     }
     if (pedido.status === 'AGUARDANDO_APROVACAO') {
       const apr = pedido.aprovacaoDesconto;
       if (!apr || apr.status !== 'APROVADA') {
         throw new BusinessRuleException(
-          'Pedido aguardando aprovação de desconto não pode ir ao OMIE',
+          'Pedido aguardando aprovação de desconto não pode ir ao ERP',
           ErrorCode.APROVACAO_PENDENTE,
         );
       }
     }
 
-    // Verifica novamente o status OMIE do cliente (pode ter sido bloqueado).
+    // Verifica novamente a situação do cliente no ERP (pode ter sido bloqueado).
     // Hardening: filtro por empresaId — defesa em profundidade mesmo que
     // clienteId já tenha vindo de pedido validado pelo tenant.
     const cliente = await this.prisma.cliente.findFirst({
@@ -917,13 +917,13 @@ export class PedidosService {
     });
     if (!cliente || cliente.erpStatus !== 'ATIVO') {
       throw new BusinessRuleException(
-        'Cliente bloqueado no OMIE — não é possível enviar pedido',
-        ErrorCode.CLIENTE_BLOQUEADO_OMIE,
+        'Cliente bloqueado no ERP — não é possível enviar pedido',
+        ErrorCode.CLIENTE_BLOQUEADO_ERP,
       );
     }
 
     // Pedido mínimo configurável (Empresa.config.pedidoMinimo): rascunho pode
-    // ficar abaixo, mas não vai ao OMIE sem atingir o mínimo do tenant.
+    // ficar abaixo, mas não vai ao ERP sem atingir o mínimo do tenant.
     const itensPedido = pedido.itens ?? [];
     const produtoIds = itensPedido.map((i) => i.produtoId);
     const pesos = produtoIds.length
@@ -947,12 +947,12 @@ export class PedidosService {
       throw new BusinessRuleException(minimo.mensagem ?? 'Pedido abaixo do mínimo configurado');
     }
 
-    // Push real pro OMIE (demo mode retorna número fake mas o fluxo é idêntico).
-    // OmiePedidosService já atualiza Pedido (status, numeroErp, enviadoErpEm)
+    // Push real pro ERP (demo mode retorna número fake mas o fluxo é idêntico).
+    // ERPPedidosService já atualiza Pedido (status, numeroErp, enviadoErpEm)
     // e registra sync OK na IntegracaoConexao.
-    // P3 defensive: passa empresaId pro OMIE service filtrar findFirst também.
+    // P3 defensive: passa empresaId pro ERP service filtrar findFirst também.
     // user.empresaIdAtiva pode ser null em system-cron contexts; convertemos pra undefined.
-    await this.omiePedidos.enviarPedido(id, user.empresaIdAtiva ?? undefined);
+    await this.erpPedidos.enviarPedido(id, user.empresaIdAtiva ?? undefined);
 
     // Fidelidade removida do projeto Betinna (gerenciada no ERP do cliente).
     // Não há mais crédito automático aqui — limpo 2026-05-21.
@@ -978,8 +978,8 @@ export class PedidosService {
     }
     if (cliente.erpStatus !== 'ATIVO') {
       throw new BusinessRuleException(
-        'Cliente bloqueado no OMIE — não é possível abrir pedido. Acione o financeiro.',
-        ErrorCode.CLIENTE_BLOQUEADO_OMIE,
+        'Cliente bloqueado no ERP — não é possível abrir pedido. Acione o financeiro.',
+        ErrorCode.CLIENTE_BLOQUEADO_ERP,
       );
     }
     const scope = await this.repScope.getRepIds(user);
@@ -1070,7 +1070,7 @@ export class PedidosService {
 
   /**
    * Avalia o pedido mínimo configurado pelo tenant (Empresa.config.pedidoMinimo).
-   * Usado no preview (info p/ UI) e no envio ao OMIE (gate). Sem config → ok.
+   * Usado no preview (info p/ UI) e no envio ao ERP (gate). Sem config → ok.
    * Peso = Σ quantidade × pesoPorUnidade (produto sem peso cadastrado conta 0).
    */
   private async validarPedidoMinimo(

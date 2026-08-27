@@ -12,7 +12,7 @@ const CAP_POR_CICLO = 500;
  * embedding está faltando ou desatualizado (`embeddingAtualizadoEm` NULL ou
  * anterior a `atualizadoEm`) e enfileira a reindexação.
  *
- * É a rede de segurança ERP-AGNÓSTICA: pega o que o sync do OMIE (ou qualquer
+ * É a rede de segurança ERP-AGNÓSTICA: pega o que o sync do ERP (ou qualquer
  * outro ERP, ou cadastro manual) escreveu sem passar pelo enqueue direto, além
  * de fazer o backfill inicial — tudo sem tocar no código de integração.
  */

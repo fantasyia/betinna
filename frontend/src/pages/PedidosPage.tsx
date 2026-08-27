@@ -74,7 +74,7 @@ import {
  *   * Timeline visual do ciclo de vida (Rascunho → ... → Entregue)
  *   * Info grid (cliente, pagamento, subtotal, desconto, total)
  *   * Itens
- *   * Actions contextuais (Enviar OMIE, Avançar status, Cancelar)
+ *   * Actions contextuais (Enviar ERP, Avançar status, Cancelar)
  * - Cancel via Dialog separado
  */
 
@@ -174,7 +174,7 @@ export default function PedidosPage() {
   const [selected, setSelected] = useState<string | null>(null);
   // B2 — seleção múltipla pra ações em massa
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
-  const [bulkBusy, setBulkBusy] = useState<'omie' | 'cancelar' | null>(null);
+  const [bulkBusy, setBulkBusy] = useState<'erp' | 'cancelar' | null>(null);
   const [exporting, setExporting] = useState(false);
   const [periodo, setPeriodo] = useState<'todos' | '30d' | '90d' | '12m' | 'custom'>('todos');
   // Filtro custom de data (P5 — habilitado quando periodo = 'custom')
@@ -248,7 +248,7 @@ export default function PedidosPage() {
       const filename = `pedidos-${new Date().toISOString().slice(0, 10)}.${formato}`;
       const columns = [
         { header: 'Número', value: (p: Pedido) => String(p.numero) },
-        { header: 'Número OMIE', value: (p: Pedido) => p.numeroErp ?? '' },
+        { header: 'Número ERP', value: (p: Pedido) => p.numeroErp ?? '' },
         { header: 'Cliente', value: (p: Pedido) => p.cliente?.nome ?? '' },
         { header: 'Representante', value: (p: Pedido) => p.representante?.nome ?? '' },
         {
@@ -323,15 +323,15 @@ export default function PedidosPage() {
   }
 
   async function runBulk(
-    tipo: 'omie' | 'cancelar',
+    tipo: 'erp' | 'cancelar',
     motivo?: string,
   ): Promise<void> {
     const ids = Array.from(selectedIds);
     if (ids.length === 0) return;
     setBulkBusy(tipo);
     try {
-      const path = tipo === 'omie' ? '/pedidos/bulk/enviar-omie' : '/pedidos/bulk/cancelar';
-      const body = tipo === 'omie' ? { ids } : { ids, motivo };
+      const path = tipo === 'erp' ? '/pedidos/bulk/enviar-erp' : '/pedidos/bulk/cancelar';
+      const body = tipo === 'erp' ? { ids } : { ids, motivo };
       const res = await api.post<{ ok: number; falhas: Array<{ id: string; erro: string }> }>(
         path,
         body,
@@ -340,7 +340,7 @@ export default function PedidosPage() {
       // TypeError (que sugeriria 'falhou' mesmo tendo executado, levando a reexecução/dobra).
       const falhas = res.falhas ?? [];
       const okCount = res.ok ?? 0;
-      const acao = tipo === 'omie' ? 'enviados ao OMIE' : 'cancelados';
+      const acao = tipo === 'erp' ? 'enviados ao ERP' : 'cancelados';
       if (falhas.length === 0) {
         toast.success(`${okCount} pedido(s) ${acao}`);
       } else {
@@ -407,7 +407,7 @@ export default function PedidosPage() {
         <div className="flex flex-wrap items-center gap-2 px-4 py-3 border-b border-border">
           <Input
             leftIcon={<Search />}
-            placeholder="Cliente, número OMIE…"
+            placeholder="Cliente, número ERP…"
             value={search}
             onChange={(e) => setSearch(e.target.value)}
             className="max-w-md flex-1"
@@ -506,13 +506,13 @@ export default function PedidosPage() {
             <Button
               variant="secondary"
               size="sm"
-              data-testid="bulk-enviar-omie"
-              loading={bulkBusy === 'omie'}
+              data-testid="bulk-enviar-erp"
+              loading={bulkBusy === 'erp'}
               disabled={bulkBusy !== null}
-              onClick={() => void runBulk('omie')}
+              onClick={() => void runBulk('erp')}
               leftIcon={<Send className="h-3.5 w-3.5" />}
             >
-              Enviar ao OMIE
+              Enviar ao ERP
             </Button>
             {canCancelBulk && (
               <Button
@@ -643,7 +643,7 @@ export default function PedidosPage() {
                               </strong>
                               {p.numeroErp && (
                                 <span className="text-[11px] text-muted tabular">
-                                  OMIE {p.numeroErp}
+                                  ERP {p.numeroErp}
                                 </span>
                               )}
                             </div>
@@ -928,7 +928,7 @@ function PedidoDetailDrawer({
     }
   }
 
-  const enviarOmie = () => callAction('enviar', () => api.post(`/pedidos/${id}/enviar-omie`));
+  const enviarErp = () => callAction('enviar', () => api.post(`/pedidos/${id}/enviar-erp`));
   const avancar = () => callAction('avancar', () => api.post(`/pedidos/${id}/avancar-status`));
   const doCancel = () =>
     callAction('cancelar', () =>
@@ -949,7 +949,7 @@ function PedidoDetailDrawer({
       open
       onClose={onClose}
       title={data ? `Pedido #${data.numero}` : 'Pedido'}
-      description={data?.numeroErp ? `OMIE ${data.numeroErp}` : undefined}
+      description={data?.numeroErp ? `ERP ${data.numeroErp}` : undefined}
       width="lg"
       footer={
         data && (
@@ -966,12 +966,12 @@ function PedidoDetailDrawer({
             <div className="flex-1" />
             {data.status === 'RASCUNHO' && (
               <Button
-                data-testid="pedido-enviar-omie"
-                onClick={enviarOmie}
+                data-testid="pedido-enviar-erp"
+                onClick={enviarErp}
                 loading={busy === 'enviar'}
                 leftIcon={<Send className="h-3.5 w-3.5" />}
               >
-                Enviar pro OMIE
+                Enviar pro ERP
               </Button>
             )}
             {['ENVIADO_ERP', 'PAGO', 'EM_SEPARACAO', 'ENVIADO'].includes(data.status) && (
@@ -1067,7 +1067,7 @@ function PedidoDetailDrawer({
                   value={fmtDateTime(data.criadoEm)}
                 />
                 {data.numeroErp && (
-                  <InfoCell icon={<Hash />} label="OMIE" value={data.numeroErp} mono />
+                  <InfoCell icon={<Hash />} label="ERP" value={data.numeroErp} mono />
                 )}
                 <InfoCell
                   icon={<Receipt />}
@@ -1265,7 +1265,7 @@ function StatusTimeline({ pedido }: { pedido: PedidoDetail }) {
       {isAwaiting && (
         <div className="mb-3 px-3 py-2 rounded-md bg-warning/10 border border-warning/30 text-warning text-sm flex items-center gap-2">
           <CircleDashed className="h-4 w-4 shrink-0" />
-          Aguardando aprovação de desconto pra ir pro OMIE.
+          Aguardando aprovação de desconto pra ir pro ERP.
         </div>
       )}
       <ol className="flex flex-col gap-0">

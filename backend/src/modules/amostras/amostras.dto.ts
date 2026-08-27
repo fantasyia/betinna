@@ -5,7 +5,7 @@ import { boolQuery } from '@shared/validators/query.schema';
 export const createAmostraSchema = z.object({
   clienteId: z.string().cuid(),
   produtoNome: z.string().trim().min(2).max(200),
-  /** Produto do catálogo (opcional). Obrigatório só pra enviar a remessa ao OMIE (P7). */
+  /** Produto do catálogo (opcional). Obrigatório só pra enviar a remessa ao ERP (P7). */
   produtoId: z.string().cuid().optional(),
   /** Quantidade enviada. Amostra grátis = quantidade reduzida. Default 1. */
   quantidade: z.number().positive().max(100000).default(1),

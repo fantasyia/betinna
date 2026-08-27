@@ -70,7 +70,7 @@ export class ListasDinamicasService {
     {
       key: 'inadimplentes',
       nome: '💸 Inadimplentes',
-      descricao: 'Bloqueados no OMIE',
+      descricao: 'Bloqueados no ERP',
       cor: 'var(--rd)',
       where: { erpStatus: 'BLOQUEADO' },
     },

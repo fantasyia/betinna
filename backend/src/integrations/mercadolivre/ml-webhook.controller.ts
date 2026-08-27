@@ -24,7 +24,7 @@ import type { MLWebhookNotification, MLTopic } from './ml.types';
  *   - messages                : nova mensagem em chat pós-venda
  *   - orders_v2               : pedido novo/atualizado
  *   - claims | post_purchase_claims : reclamação aberta/atualizada
- *   - items                   : produto alterado (ignoramos — OMIE é master)
+ *   - items                   : produto alterado (ignoramos — ERP é master)
  *
  * SEGURANÇA:
  *  - ML não usa HMAC. Validamos por IP whitelist (config via env).
@@ -152,7 +152,7 @@ export class MLWebhookController {
         return;
       }
       case 'items':
-        // OMIE é master pra catálogo. Ignoramos.
+        // ERP é master pra catálogo. Ignoramos.
         return;
       default:
         this.logger.debug(`Webhook ML topic não-tratado: ${topic}`);

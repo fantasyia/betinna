@@ -57,7 +57,7 @@ interface CatalogoItem {
     precoLocacaoMensal?: number | null;
     imagem?: string | null;
     estoque?: number;
-    /** ISO string do timestamp do último sync de estoque (cron 30min ou webhook OMIE). */
+    /** ISO string do timestamp do último sync de estoque (cron 30min ou webhook ERP). */
     estoqueAtualizadoEm?: string | null;
   };
   precoFinal?: number;
@@ -228,7 +228,7 @@ export default function CatalogoPage() {
           value={formatNumero(stats.semEstoque)}
           hint={
             stats.semEstoque > 0
-              ? 'representante pode lançar — OMIE gera OP de reposição'
+              ? 'representante pode lançar — ERP gera OP de reposição'
               : 'tudo disponível'
           }
         />
@@ -340,7 +340,7 @@ function SyncBanner({ oldestSync }: { oldestSync: string | null }) {
     >
       <RefreshCw className={cn('h-3.5 w-3.5 shrink-0', rel.stale && 'animate-pulse')} />
       <span className="flex-1">
-        Estoque sincronizado do OMIE <strong className="font-semibold">{rel.label}</strong>
+        Estoque sincronizado do ERP <strong className="font-semibold">{rel.label}</strong>
         {rel.stale && ' — pode estar desatualizado'}
       </span>
       <span className="text-[10px] uppercase tracking-wider text-muted">

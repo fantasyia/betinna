@@ -61,7 +61,7 @@ describe('raio-X da conta do Tiny', () => {
       sku: 'MB-04',
       nome: 'Master Block 04',
       preco: 1290,
-      // O custo real é o que mata o chute de 70% herdado do OMIE.
+      // O custo real é o que mata o chute de 70% herdado do ERP.
       custo: 700,
     });
   });

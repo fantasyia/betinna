@@ -51,15 +51,15 @@ export class PedidosController {
   // ─── B2 — Ações em massa ───────────────────────────────────────────────
   // Declaradas ANTES de @Get(':id') / rotas paramétricas pra evitar colisão.
 
-  @Post('bulk/enviar-omie')
+  @Post('bulk/enviar-erp')
   @RequirePermissions({ module: 'pedidos', action: 'edit' })
-  @Audit({ action: 'bulk_enviar_omie', resource: 'pedido' })
-  @ApiOperation({ summary: 'Envia vários pedidos ao OMIE (best-effort, máx 100).' })
-  bulkEnviarOmie(
+  @Audit({ action: 'bulk_enviar_erp', resource: 'pedido' })
+  @ApiOperation({ summary: 'Envia vários pedidos ao ERP (best-effort, máx 100).' })
+  bulkEnviarErp(
     @CurrentUser() user: AuthenticatedUser,
     @Body(new ZodValidationPipe(bulkPedidoIdsSchema)) dto: BulkPedidoIdsDto,
   ) {
-    return this.pedidos.bulkEnviarOmie(user, dto.ids);
+    return this.pedidos.bulkEnviarErp(user, dto.ids);
   }
 
   @Post('bulk/cancelar')
@@ -189,14 +189,14 @@ export class PedidosController {
     return this.pedidos.cancelar(user, id, dto);
   }
 
-  @Post(':id/enviar-omie')
+  @Post(':id/enviar-erp')
   @RequirePermissions({ module: 'pedidos', action: 'edit' })
-  @Audit({ action: 'enviar_omie', resource: 'pedido', resourceIdFrom: 'params.id' })
+  @Audit({ action: 'enviar_erp', resource: 'pedido', resourceIdFrom: 'params.id' })
   @ApiOperation({
-    summary: 'Envia pedido ao OMIE (mock até integração real). Bloqueia se cliente bloqueado.',
+    summary: 'Envia pedido ao ERP (mock até integração real). Bloqueia se cliente bloqueado.',
   })
-  enviarOmie(@CurrentUser() user: AuthenticatedUser, @Param('id') id: string) {
-    return this.pedidos.enviarParaOmie(user, id);
+  enviarErp(@CurrentUser() user: AuthenticatedUser, @Param('id') id: string) {
+    return this.pedidos.enviarParaErp(user, id);
   }
 
   // ─── P6.2 — Solicitação de cancelamento (rep/gerente → diretor) ────────

@@ -8,7 +8,7 @@ import { TinyOAuthService } from './tiny-oauth.service';
 
 /**
  * Cliente HTTP da API v3 do Tiny (Olist). REST/JSON de verdade — diferente do
- * OMIE, que era RPC sobre POST com `faultstring` dentro de HTTP 200.
+ * ERP, que era RPC sobre POST com `faultstring` dentro de HTTP 200.
  *
  * Responsabilidades: resolver o access_token da empresa (renovando se preciso),
  * montar a URL, e traduzir erro HTTP em `IntegrationException` preservando o

@@ -28,7 +28,7 @@ type ComissaoWithRel = Prisma.ComissaoGetPayload<{ include: typeof comissaoInclu
 
 /**
  * Status de pedido considerados para cálculo de comissão.
- * Após enviado ao OMIE, a venda já conta — comissão é paga ao final do mês.
+ * Após enviado ao ERP, a venda já conta — comissão é paga ao final do mês.
  */
 const STATUS_COMISSIONAVEL = ['ENVIADO_ERP', 'PAGO', 'EM_SEPARACAO', 'ENVIADO', 'ENTREGUE'];
 
@@ -135,7 +135,7 @@ export class ComissoesService {
     const empresaId = getCallerEmpresaId(user);
     // CAÇADA-BUG #22: a janela do mês é no fuso do tenant (BRT, UTC-3), não em UTC. Meia-noite BRT do
     // dia 1 = 03:00 UTC. Antes usava Date.UTC(ano, mes-1, 1) = 00:00 UTC = 21:00 BRT da VÉSPERA → um
-    // pedido enviado ao OMIE em 30/06 22h BRT (01/07 01h UTC) caía na comissão de JULHO em vez de
+    // pedido enviado ao ERP em 30/06 22h BRT (01/07 01h UTC) caía na comissão de JULHO em vez de
     // JUNHO. O offset +3h alinha a janela ao mês-calendário BRT (Brasil sem DST desde 2019).
     const OFFSET_BRT_H = 3;
     const inicio = new Date(Date.UTC(dto.ano, dto.mes - 1, 1, OFFSET_BRT_H));

@@ -39,7 +39,7 @@ export interface ContatoAgregado {
   leadEtapa: string | null;
   clienteId: string | null;
   clienteStatus: string | null;
-  clienteOmieStatus: string | null;
+  clienteERPStatus: string | null;
   conversaId: string | null;
   canal: string | null;
   ultimaInteracaoEm: string | null;
@@ -301,7 +301,7 @@ export class ContatosService {
         leadEtapa: null,
         clienteId: null,
         clienteStatus: null,
-        clienteOmieStatus: null,
+        clienteERPStatus: null,
         conversaId: null,
         canal: null,
         ultimaInteracaoEm: null,
@@ -352,7 +352,7 @@ export class ContatosService {
       acumularTags(c, tagsPorCliente.get(cl.id) ?? []);
       c.clienteId = cl.id;
       c.clienteStatus = cl.status;
-      c.clienteOmieStatus = cl.erpStatus;
+      c.clienteERPStatus = cl.erpStatus;
       // Cliente real tem prioridade no nome exibido.
       c.nome = cl.nome || c.nome;
       c.telefone ??= cl.telefone;

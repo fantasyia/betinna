@@ -50,7 +50,7 @@ describe('sync de produtos do Tiny', () => {
   beforeEach(() => vi.clearAllMocks());
 
   it('produto novo é criado com preço e CUSTO REAL do ERP', async () => {
-    // O custo deixou de ser o chute de 70% herdado do OMIE.
+    // O custo deixou de ser o chute de 70% herdado do ERP.
     const { svc, prisma } = build([MB]);
 
     const r = await svc.sync('emp-1');

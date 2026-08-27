@@ -9,7 +9,7 @@ import { Counter, Gauge, Histogram, Registry, collectDefaultMetrics } from 'prom
  *  - **HTTP** (count + duration) via interceptor opcional
  *  - **Custom counters** específicos do domínio:
  *      - pedidos_criados_total
- *      - omie_push_total{status}
+ *      - erp_push_total{status}
  *      - notificacoes_enviadas_total{tipo,canal}
  *      - email_enviado_total{template,status}
  *      - mullerbot_request_total{cache_hit}
@@ -34,9 +34,9 @@ export class MetricsService implements OnModuleInit {
     labelNames: ['empresa', 'requer_aprovacao'] as const,
   });
 
-  readonly omiePush = new Counter({
-    name: 'betinna_omie_push_total',
-    help: 'Envios pro OMIE (status: success | error).',
+  readonly erpPush = new Counter({
+    name: 'betinna_erp_push_total',
+    help: 'Envios pro ERP (status: success | error).',
     labelNames: ['empresa', 'status'] as const,
   });
 
@@ -81,9 +81,9 @@ export class MetricsService implements OnModuleInit {
     buckets: [0.005, 0.01, 0.05, 0.1, 0.25, 0.5, 1, 2.5, 5, 10],
   });
 
-  readonly omiePushDuration = new Histogram({
-    name: 'betinna_omie_push_duration_seconds',
-    help: 'Tempo de envio de pedido pro OMIE.',
+  readonly erpPushDuration = new Histogram({
+    name: 'betinna_erp_push_duration_seconds',
+    help: 'Tempo de envio de pedido pro ERP.',
     buckets: [0.1, 0.5, 1, 2, 5, 10, 30],
   });
 
@@ -95,14 +95,14 @@ export class MetricsService implements OnModuleInit {
     // Registra individualmente — TS reclama de variância no array por causa
     // dos labelNames diferentes em cada Counter/Histogram.
     this.registry.registerMetric(this.pedidosCriados);
-    this.registry.registerMetric(this.omiePush);
+    this.registry.registerMetric(this.erpPush);
     this.registry.registerMetric(this.notificacoesEnviadas);
     this.registry.registerMetric(this.emailEnviado);
     this.registry.registerMetric(this.mullerbotRequests);
     this.registry.registerMetric(this.webhookRecebido);
     this.registry.registerMetric(this.bullmqJobsAtivos);
     this.registry.registerMetric(this.httpDuration);
-    this.registry.registerMetric(this.omiePushDuration);
+    this.registry.registerMetric(this.erpPushDuration);
 
     this.logger.log('Prometheus metrics inicializadas (/metrics)');
   }

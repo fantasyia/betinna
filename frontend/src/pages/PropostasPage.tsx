@@ -107,7 +107,7 @@ interface ProdutoOpt {
   nome: string;
   sku?: string | null;
   precoTabela?: number;
-  /** unidade de medida do produto (read-only — vem do Omie). Ex: "cx", "un", "kg". */
+  /** unidade de medida do produto (read-only — vem do ERP). Ex: "cx", "un", "kg". */
   unidade?: string | null;
 }
 
@@ -1337,11 +1337,11 @@ function ItemRow({
           aria-label="Quantidade"
           className="flex-1 min-w-0"
         />
-        {/* Unidade vem do produto (read-only — sincronizado do Omie) */}
+        {/* Unidade vem do produto (read-only — sincronizado do ERP) */}
         <span
           className="text-[11px] text-muted whitespace-nowrap"
           data-testid={`${testId}-unidade`}
-          title="Unidade de medida (vem do Omie)"
+          title="Unidade de medida (vem do ERP)"
         >
           {item.produto?.unidade ?? 'un'}
         </span>

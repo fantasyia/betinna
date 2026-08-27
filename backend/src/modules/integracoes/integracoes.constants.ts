@@ -7,9 +7,7 @@
 
 /** Integrações com escopo EMPRESA — uma conexão por empresa. */
 export const SERVICOS_EMPRESA = [
-  // ERP: 'tiny' é o atual (D50); 'omie' fica só até o módulo dele ser removido.
   'tiny',
-  'omie',
   'whatsapp',
   'mercadolivre',
   'shopee',
@@ -56,9 +54,9 @@ export type ServicoEscopo = 'empresa' | 'usuario' | 'ambos';
  * ADMIN é bypass-all em todas as outras permissões, MAS NÃO neste flag — é um
  * privilégio reservado ao decisor da empresa (não ao operacional/TI).
  *
- * **Política atual**: TODAS as integrações de escopo EMPRESA (omie, whatsapp
+ * **Política atual**: TODAS as integrações de escopo EMPRESA (ERP, whatsapp
  * empresa, marketplaces, social) são DIRECTOR-only. Razões:
- *   - OMIE: dados fiscais/contábeis
+ *   - ERP (Tiny): dados fiscais/contábeis
  *   - Marketplaces (ML/Shopee/Amazon/TikTok): TOS comerciais, comissões, repasse fiscal
  *   - Social (FB/IG): identidade da marca, quem fala em nome da empresa
  *   - WhatsApp empresa: risco de ban Meta, número dedicado da empresa
@@ -82,15 +80,6 @@ export const SERVICO_METADATA: Record<
     tipo: 'erp',
     escopo: 'empresa',
     obrigatorio: true,
-    requerDirector: true,
-  },
-  omie: {
-    // LEGADO (D50): substituído pelo Tiny. Fica registrado só pra o módulo
-    // antigo continuar compilando até ser removido; não conectar mais.
-    nome: 'OMIE ERP (legado)',
-    tipo: 'erp',
-    escopo: 'empresa',
-    obrigatorio: false,
     requerDirector: true,
   },
   whatsapp: {

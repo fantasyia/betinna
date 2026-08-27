@@ -147,14 +147,14 @@ describe('PropostaAceiteService.registrarDecisao — CAS anti duplo-pedido', () 
   });
 });
 
-describe('PropostaAceiteService — cliente BLOQUEADO no OMIE não aceita (auditoria média)', () => {
+describe('PropostaAceiteService — cliente BLOQUEADO no ERP não aceita (auditoria média)', () => {
   beforeEach(() => vi.clearAllMocks());
 
   it('ACEITE de cliente bloqueado é barrado ANTES de criar pedido', async () => {
     // Cenário do achado: cliente vira BLOQUEADO no ERP depois do envio da
     // proposta. O link público já revalidava validade e produto inativo, mas não
     // o erpStatus — o pedido era criado, o rep notificado "aceita!", e a falha
-    // só aparecia no envio ao OMIE.
+    // só aparecia no envio ao ERP.
     const { svc, prisma, tx } = makeService(1);
     prisma.proposta.findUnique.mockResolvedValue({
       ...PROPOSTA,

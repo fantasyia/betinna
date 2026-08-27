@@ -21,7 +21,7 @@ const MAX_TIMESTAMP_SKEW_MS = 5 * 60 * 1000;
 const SIGNATURE_TTL_SECONDS = 10 * 60;
 
 export type WebhookProvider =
-  | 'omie'
+  | 'erp'
   | 'meta'
   | 'shopee'
   | 'tiktok'

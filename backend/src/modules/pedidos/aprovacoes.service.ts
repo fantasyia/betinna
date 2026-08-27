@@ -34,7 +34,7 @@ type AprovacaoWithRel = Prisma.AprovacaoDescontoGetPayload<{ include: typeof apr
  * - Listagem visível a ADMIN, DIRECTOR, GERENTE (filtra por empresa do pedido).
  * - REP vê apenas as próprias solicitações.
  * - Aprovar/rejeitar exige role >= GERENTE.
- * - Aprovação → pedido continua para envio ao OMIE (não envia automaticamente).
+ * - Aprovação → pedido continua para envio ao ERP (não envia automaticamente).
  * - Rejeição → pedido vai para CANCELADO.
  */
 @Injectable()
@@ -155,7 +155,7 @@ export class AprovacoesService {
         tipo: 'APROVACAO_RESOLVIDA',
         prioridade: 'NORMAL',
         titulo: 'Desconto aprovado',
-        mensagem: `Pedido ${result.pedido.numero} foi liberado. Você pode enviar ao OMIE agora.`,
+        mensagem: `Pedido ${result.pedido.numero} foi liberado. Você pode enviar ao ERP agora.`,
         link: `/pedidos/${result.pedido.id}`,
         metadata: { pedidoId: result.pedido.id, status: 'APROVADA' },
       });

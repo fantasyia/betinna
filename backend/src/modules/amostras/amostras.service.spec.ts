@@ -46,11 +46,7 @@ const makePrismaMock = () => ({
   } satisfies MockModel,
 });
 
-/** Mock do OmieAmostrasService (P7 — envio de remessa pro OMIE). */
-const makeOmieAmostras = () => ({
-  enviarAmostra: vi.fn(),
-});
-
+/** Mock do ERPAmostrasService (P7 — envio de remessa pro ERP). */
 /** Replica a regra real de RepScopeService. */
 const makeRepScope = () => ({
   getRepIds: vi.fn(async (u: AuthenticatedUser) => {
@@ -94,14 +90,12 @@ const fakeAmostra = (overrides: Record<string, unknown> = {}) => ({
 describe('AmostrasService', () => {
   let prisma: ReturnType<typeof makePrismaMock>;
   let repScope: ReturnType<typeof makeRepScope>;
-  let omieAmostras: ReturnType<typeof makeOmieAmostras>;
   let service: AmostrasService;
 
   beforeEach(() => {
     prisma = makePrismaMock();
     repScope = makeRepScope();
-    omieAmostras = makeOmieAmostras();
-    service = new AmostrasService(prisma as never, repScope as never, omieAmostras as never);
+    service = new AmostrasService(prisma as never, repScope as never);
   });
 
   // -------------------------------------------------------------------------
@@ -505,38 +499,28 @@ describe('AmostrasService', () => {
   });
 
   // -------------------------------------------------------------------------
-  // enviarParaOmie (P7)
+  // enviarParaErp — remessa de amostra
   // -------------------------------------------------------------------------
 
-  describe('enviarParaOmie', () => {
-    it('delega pro OmieAmostrasService com id + empresaId e retorna { amostra, omie }', async () => {
-      const am = fakeAmostra({ empresaId: 'emp-1' });
-      const enviada = fakeAmostra({ empresaId: 'emp-1', numeroErp: '123456' });
-      // 1ª findById (valida), 2ª findById (atualizada)
-      prisma.amostra.findFirst.mockResolvedValueOnce(am).mockResolvedValueOnce(enviada);
-      const omieResult = {
-        amostraId: 'am-1',
-        numeroErp: '123456',
-        cfop: '5911',
-        codigoStatusOmie: '0',
-        descricaoStatusOmie: 'Pedido incluído com sucesso',
-      };
-      omieAmostras.enviarAmostra.mockResolvedValue(omieResult);
+  describe('enviarParaErp', () => {
+    it('FALHA EXPLÍCITA: remessa de amostra ainda não existe no Tiny', async () => {
+      // A versão do ERP montava CFOP 5911/6911 com cenário fiscal próprio. No
+      // Tiny o desenho é outro e é decisão da CONTABILIDADE — CFOP errado não
+      // dá erro de sistema, dá problema com o fisco meses depois. Falhar dizendo
+      // isso é melhor que enviar errado ou fingir que enviou.
+      prisma.amostra.findFirst.mockResolvedValue(fakeAmostra({ empresaId: 'emp-1' }));
 
-      const result = await service.enviarParaOmie(fakeUser(), 'am-1');
-
-      expect(omieAmostras.enviarAmostra).toHaveBeenCalledWith('am-1', 'emp-1');
-      expect(result.omie).toEqual(omieResult);
-      expect(result.amostra.numeroErp).toBe('123456');
+      await expect(service.enviarParaErp(fakeUser(), 'am-1')).rejects.toThrow(
+        /não implementada no Tiny/,
+      );
     });
 
-    it('lança NotFoundException (via findById) quando amostra não existe', async () => {
+    it('valida a amostra ANTES de falhar — tenant e carteira do rep continuam valendo', async () => {
       prisma.amostra.findFirst.mockResolvedValue(null);
 
-      await expect(service.enviarParaOmie(fakeUser(), 'nao-existe')).rejects.toBeInstanceOf(
+      await expect(service.enviarParaErp(fakeUser(), 'nao-existe')).rejects.toBeInstanceOf(
         NotFoundException,
       );
-      expect(omieAmostras.enviarAmostra).not.toHaveBeenCalled();
     });
   });
 
@@ -656,7 +640,7 @@ describe('Amostra.valor é Decimal (#B20)', () => {
   // Padrão do CLAUDE.md (#17): mock devolve Prisma.Decimal e o teste garante que
   // o valor sai como NUMBER pro consumidor — o ResponseInterceptor converte, mas
   // quem lê no service precisa do Number() explícito (foi o que quebrou o
-  // valorReferencia da remessa fiscal do OMIE no typecheck).
+  // valorReferencia da remessa fiscal do ERP no typecheck).
   it('valor vindo como Decimal do banco vira number utilizável em conta', () => {
     const doBanco = new Prisma.Decimal('123.45');
     expect(Number(doBanco)).toBe(123.45);
@@ -682,11 +666,7 @@ describe('AmostrasService.changeStatus — observação persistida (auditoria m�
     });
     prisma.amostra.updateMany.mockResolvedValue({ count: 1 });
     prisma.amostra.findUniqueOrThrow.mockResolvedValue({ id: 'am-1' });
-    const svc = new AmostrasService(
-      prisma as never,
-      makeRepScope() as never,
-      makeOmieAmostras() as never,
-    );
+    const svc = new AmostrasService(prisma as never, makeRepScope() as never);
 
     await svc.changeStatus(fakeUser(), 'am-1', {
       status: 'NAO_CONVERTEU',
@@ -708,11 +688,7 @@ describe('AmostrasService.changeStatus — observação persistida (auditoria m�
     });
     prisma.amostra.updateMany.mockResolvedValue({ count: 1 });
     prisma.amostra.findUniqueOrThrow.mockResolvedValue({ id: 'am-1' });
-    const svc = new AmostrasService(
-      prisma as never,
-      makeRepScope() as never,
-      makeOmieAmostras() as never,
-    );
+    const svc = new AmostrasService(prisma as never, makeRepScope() as never);
 
     await svc.changeStatus(fakeUser(), 'am-1', { status: 'CONVERTIDA' } as never);
 

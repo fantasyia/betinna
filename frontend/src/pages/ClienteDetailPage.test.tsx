@@ -4,7 +4,7 @@
  *
  * O que estes testes travam:
  *  1. "Excluir cliente" só pra ADMIN/DIRECTOR/GERENTE (backend recusa o resto)
- *  2. Status OMIE (ATIVO/BLOQUEADO) travado pro REP — o bloqueio vem do
+ *  2. Status ERP (ATIVO/BLOQUEADO) travado pro REP — o bloqueio vem do
  *     financeiro (D2); o rep não se desbloqueia pra fechar pedido
  *  3. Preço negociado: criar/remover é ADMIN/DIRECTOR — o rep podia gravar
  *     preço arbitrário e faturar sem passar por aprovação
@@ -138,9 +138,9 @@ describe('ClienteDetailPage — excluir cliente', () => {
   });
 });
 
-describe('ClienteDetailPage — status OMIE', () => {
-  function selectOmie(): HTMLSelectElement | null {
-    // O select de OMIE é o que tem exatamente as opções Ativo/Bloqueado.
+describe('ClienteDetailPage — status ERP', () => {
+  function selectERP(): HTMLSelectElement | null {
+    // O select de ERP é o que tem exatamente as opções Ativo/Bloqueado.
     const selects = Array.from(document.querySelectorAll('select')) as HTMLSelectElement[];
     return (
       selects.find(
@@ -154,13 +154,13 @@ describe('ClienteDetailPage — status OMIE', () => {
   it('REP não consegue mexer (bloqueio vem do financeiro — D2)', () => {
     papel = 'REP';
     render(<ClienteDetailPage />);
-    expect(selectOmie()?.disabled).toBe(true);
+    expect(selectERP()?.disabled).toBe(true);
   });
 
   it('GERENTE consegue mexer', () => {
     papel = 'GERENTE';
     render(<ClienteDetailPage />);
-    expect(selectOmie()?.disabled).toBe(false);
+    expect(selectERP()?.disabled).toBe(false);
   });
 });
 

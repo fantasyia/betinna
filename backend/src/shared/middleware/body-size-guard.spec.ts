@@ -46,7 +46,7 @@ describe('limiteCorpoPara', () => {
   });
 
   it('webhooks públicos → 1MB (superfície de DoS reduzida)', () => {
-    expect(limiteCorpoPara('/api/v1/webhooks/omie/cliente-status')).toBe(LIMITE_CORPO_PADRAO_BYTES);
+    expect(limiteCorpoPara('/api/v1/webhooks/erp/cliente-status')).toBe(LIMITE_CORPO_PADRAO_BYTES);
     expect(limiteCorpoPara('/api/v1/webhooks/meta')).toBe(LIMITE_CORPO_PADRAO_BYTES);
   });
 
@@ -71,7 +71,7 @@ describe('bodySizeGuard', () => {
   });
 
   it('rejeita 413 webhook público com corpo > 1MB (reduz superfície de DoS)', () => {
-    const req = makeReq('/api/v1/webhooks/omie/cliente-status', 5 * 1024 * 1024); // 5MB > 1MB
+    const req = makeReq('/api/v1/webhooks/erp/cliente-status', 5 * 1024 * 1024); // 5MB > 1MB
     const res = makeRes();
     const next = vi.fn();
 

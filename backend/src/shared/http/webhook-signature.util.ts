@@ -5,7 +5,7 @@ import { createHmac, timingSafeEqual } from 'node:crypto';
  *
  * Cada plataforma tem seu próprio formato:
  *  - Meta/WhatsApp: header `x-hub-signature-256: sha256=<hex>`
- *  - OMIE: query param ou header customizado, dependendo da config
+ *  - ERP: query param ou header customizado, dependendo da config
  *  - Mercado Livre: header `x-signature: ts=...,v1=<hex>`
  *
  * Sempre use `timingSafeEqual` pra comparação — evita timing attacks.

@@ -287,7 +287,7 @@ export class PropostasService {
     // sido desativados DEPOIS da criação da proposta).
     this.assertPropostaNoPrazo(proposta.validoAte);
     await this.assertProdutosDaPropostaAtivos(empresaId, proposta.itens);
-    // Revalida o bloqueio no OMIE AQUI também: o cliente pode ter sido bloqueado
+    // Revalida o bloqueio no ERP AQUI também: o cliente pode ter sido bloqueado
     // DEPOIS de a proposta ser criada, e a conversão é o ponto em que a venda de
     // fato nasce (mesmo espírito dos checks #23/#24 acima).
     const clienteAtual = await this.prisma.cliente.findFirst({
@@ -296,8 +296,8 @@ export class PropostasService {
     });
     if (clienteAtual && clienteAtual.erpStatus !== 'ATIVO') {
       throw new BusinessRuleException(
-        'Cliente bloqueado no OMIE — não é possível converter a proposta em pedido. Acione o financeiro.',
-        ErrorCode.CLIENTE_BLOQUEADO_OMIE,
+        'Cliente bloqueado no ERP — não é possível converter a proposta em pedido. Acione o financeiro.',
+        ErrorCode.CLIENTE_BLOQUEADO_ERP,
       );
     }
 
@@ -433,12 +433,12 @@ export class PropostasService {
     });
     if (!cliente) throw new NotFoundException('Cliente', clienteId);
     // `erpStatus` era selecionado e nunca checado: dava pra montar proposta e
-    // convertê-la em pedido pra cliente BLOQUEADO no OMIE (D2), furando pelo
+    // convertê-la em pedido pra cliente BLOQUEADO no ERP (D2), furando pelo
     // caminho da proposta o bloqueio que o pedido direto aplica.
     if (cliente.erpStatus !== 'ATIVO') {
       throw new BusinessRuleException(
-        'Cliente bloqueado no OMIE — não é possível abrir proposta. Acione o financeiro.',
-        ErrorCode.CLIENTE_BLOQUEADO_OMIE,
+        'Cliente bloqueado no ERP — não é possível abrir proposta. Acione o financeiro.',
+        ErrorCode.CLIENTE_BLOQUEADO_ERP,
       );
     }
     const scope = await this.repScope.getRepIds(user);
@@ -480,7 +480,7 @@ export class PropostasService {
       throw new BusinessRuleException('Um ou mais produtos não encontrados nesta empresa');
     }
     // CAÇADA-BUG #24: não deixa montar proposta com produto INATIVO (fora de linha). Antes o `ativo`
-    // era selecionado mas nunca checado — o produto inativo fluía até o pedido/OMIE.
+    // era selecionado mas nunca checado — o produto inativo fluía até o pedido/ERP.
     for (const p of produtos) {
       if (!p.ativo) throw new BusinessRuleException(`Produto "${p.nome}" está inativo`);
     }

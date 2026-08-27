@@ -18,7 +18,7 @@ import { bodySizeGuard } from '@shared/middleware/body-size-guard';
 async function bootstrap(): Promise<void> {
   const app = await NestFactory.create<NestExpressApplication>(AppModule, {
     bufferLogs: true,
-    // Preserva o body raw em req.rawBody — necessário para verificação HMAC em webhooks (OMIE, Meta, etc.)
+    // Preserva o body raw em req.rawBody — necessário para verificação HMAC em webhooks (ERP, Meta, etc.)
     rawBody: true,
   });
 
@@ -31,7 +31,7 @@ async function bootstrap(): Promise<void> {
 
   // Body parser limit explícito — default Express 100KB conflitava com:
   //   • Import CSV (`csvBody.csv` schema aceita até 1MB)
-  //   • Webhooks com payload grande (Meta/OMIE com vários eventos batched)
+  //   • Webhooks com payload grande (Meta/ERP com vários eventos batched)
   //   • Upload de mídia base64 pelo WhatsApp Inbox (imagem/áudio/doc até ~12MB raw)
   // Subido pra 20MB em 2026-05-27 pra cobrir o upload de mídia. O guard acima
   // limita o teto por rota; aqui o parser preserva o req.rawBody pro HMAC.
@@ -43,7 +43,7 @@ async function bootstrap(): Promise<void> {
 
   const env = app.get(EnvService);
 
-  // Audita config (ENCRYPTION_KEY fraca, OMIE em demo em prod, etc).
+  // Audita config (ENCRYPTION_KEY fraca, ERP em demo em prod, etc).
   // Em produção, problemas críticos abortam o boot — corrija antes de subir.
   env.enforceProductionReadiness();
 

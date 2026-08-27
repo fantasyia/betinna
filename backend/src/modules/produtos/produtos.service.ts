@@ -101,7 +101,7 @@ export class ProdutosService {
       throw new BusinessRuleException('Preço de fábrica não pode ser maior que preço de tabela');
     }
     if (dto.sku) await this.assertSkuUnico(empresaId, dto.sku);
-    if (dto.codigoErp) await this.assertCodigoOmieUnico(empresaId, dto.codigoErp);
+    if (dto.codigoErp) await this.assertCodigoERPUnico(empresaId, dto.codigoErp);
 
     // `atributos` é JSON — trata à parte (Prisma não aceita Record direto no spread tipado).
     const { atributos, ...rest } = dto;
@@ -142,7 +142,7 @@ export class ProdutosService {
       await this.assertSkuUnico(existing.empresaId, dto.sku);
     }
     if (dto.codigoErp && dto.codigoErp !== existing.codigoErp) {
-      await this.assertCodigoOmieUnico(existing.empresaId, dto.codigoErp);
+      await this.assertCodigoERPUnico(existing.empresaId, dto.codigoErp);
     }
 
     const { atributos, ...rest } = dto;
@@ -241,14 +241,14 @@ export class ProdutosService {
     }
   }
 
-  private async assertCodigoOmieUnico(empresaId: string, codigoErp: string): Promise<void> {
+  private async assertCodigoERPUnico(empresaId: string, codigoErp: string): Promise<void> {
     const existe = await this.prisma.produto.findUnique({
       where: { empresaId_codigoErp: { empresaId, codigoErp } },
       select: { id: true },
     });
     if (existe) {
       throw new BusinessRuleException(
-        `Já existe produto com código OMIE ${codigoErp} nesta empresa`,
+        `Já existe produto com código ERP ${codigoErp} nesta empresa`,
         ErrorCode.ALREADY_EXISTS,
       );
     }

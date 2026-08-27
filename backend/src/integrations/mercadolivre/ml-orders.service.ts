@@ -7,7 +7,7 @@ import type { MLOrder } from './ml.types';
  * Pedidos do Mercado Livre.
  *
  * Persiste em `MarketplaceOrder` (modelo legacy, mantido) — não no nosso
- * `Pedido` (que é interno OMIE). Marketplace orders são representados
+ * `Pedido` (que é interno ERP). Marketplace orders são representados
  * separadamente porque têm ciclo de vida e status próprios.
  */
 @Injectable()

@@ -64,7 +64,7 @@ export class PrecosEspeciaisController {
     resource: 'cliente',
     resourceIdFrom: 'params.clienteId',
   })
-  @ApiOperation({ summary: 'Upsert em massa (útil pra sync OMIE)' })
+  @ApiOperation({ summary: 'Upsert em massa (útil pra sync ERP)' })
   bulk(
     @CurrentUser() user: AuthenticatedUser,
     @Param('clienteId') clienteId: string,

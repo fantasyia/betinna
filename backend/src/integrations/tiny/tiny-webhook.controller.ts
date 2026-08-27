@@ -32,13 +32,13 @@ const FILA_MAX = 500;
  *
  * **Por que o segredo vai no CAMINHO da URL.** O Tiny não assina os webhooks:
  * não manda HMAC nem header de autenticação (é a exceção ao D11, que vale pra
- * OMIE/Meta/Shopee/TikTok). Sobra o que o painel deixa configurar — a própria
+ * Meta/Shopee/TikTok). Sobra o que o painel deixa configurar — a própria
  * URL. Por isso ela carrega um segredo longo, comparado em tempo constante.
  *
  * **E por que isso NÃO basta.** URL secreta protege contra tráfego aleatório,
  * não contra alguém que a conheça. Então o payload é tratado como DICA, nunca
  * como verdade: quem processa vai reconsultar o pedido/produto na API v3 antes
- * de mudar qualquer coisa. É a mesma escolha que o webhook do OMIE já fazia
+ * de mudar qualquer coisa. É a mesma escolha que o webhook do ERP já fazia
  * ("preferimos pull do estado real em vez de confiar nos valores do evento"),
  * aqui por necessidade e não por preferência.
  *
@@ -69,7 +69,7 @@ export class TinyWebhookController {
    * Compara o segredo da URL em tempo constante.
    *
    * Sem `TINY_WEBHOOK_SECRET` configurado, aceita com warning — mesmo tratamento
-   * que o webhook do OMIE dá em dev. É o que permite cadastrar a URL no painel
+   * que o webhook do ERP dá em dev. É o que permite cadastrar a URL no painel
    * antes de a env existir; assim que ela existe, passa a valer.
    */
   private validarSegredo(segredo: string): void {

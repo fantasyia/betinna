@@ -108,7 +108,7 @@ interface PedidoDetail {
 const STATUS_LABEL: Record<PedidoStatus, string> = {
   RASCUNHO: 'Rascunho',
   AGUARDANDO_APROVACAO: 'Aguardando aprovação',
-  ENVIADO_ERP: 'Enviado ao OMIE',
+  ENVIADO_ERP: 'Enviado ao ERP',
   PAGO: 'Pago',
   EM_SEPARACAO: 'Em separação',
   ENVIADO: 'Enviado',
@@ -190,8 +190,8 @@ export default function PedidoDetailPage() {
     }
   }
 
-  const enviarOmie = () =>
-    callAction('enviar', () => api.post(`/pedidos/${id}/enviar-omie`));
+  const enviarErp = () =>
+    callAction('enviar', () => api.post(`/pedidos/${id}/enviar-erp`));
   const avancar = () =>
     callAction('avancar', () => api.post(`/pedidos/${id}/avancar-status`));
   // DIRECTOR/ADMIN cancelam direto; REP/GERENTE SOLICITAM (P6.2) — o backend
@@ -266,7 +266,7 @@ export default function PedidoDetailPage() {
     <PageLayout
       title={data ? `Pedido #${data.numero}` : 'Pedido'}
       description={
-        data?.numeroErp ? `OMIE ${data.numeroErp}` : data?.cliente?.nome ?? undefined
+        data?.numeroErp ? `ERP ${data.numeroErp}` : data?.cliente?.nome ?? undefined
       }
       actions={
         <div className="flex flex-wrap items-center gap-2">
@@ -311,12 +311,12 @@ export default function PedidoDetailPage() {
           )}
           {data?.status === 'RASCUNHO' && (
             <Button
-              data-testid="pedido-page-enviar-omie"
-              onClick={enviarOmie}
+              data-testid="pedido-page-enviar-erp"
+              onClick={enviarErp}
               loading={busy === 'enviar'}
               leftIcon={<Send className="h-3.5 w-3.5" />}
             >
-              Enviar pro OMIE
+              Enviar pro ERP
             </Button>
           )}
           {data &&
@@ -552,12 +552,12 @@ export default function PedidoDetailPage() {
                 <div className="grid grid-cols-1 gap-2">
                   <InfoCell icon={<Calendar />} label="Criado em" value={fmtDateTime(data.criadoEm)} />
                   {data.numeroErp && (
-                    <InfoCell icon={<Hash />} label="OMIE" value={data.numeroErp} mono />
+                    <InfoCell icon={<Hash />} label="ERP" value={data.numeroErp} mono />
                   )}
                   {data.enviadoErpEm && (
                     <InfoCell
                       icon={<Send />}
-                      label="Enviado ao OMIE"
+                      label="Enviado ao ERP"
                       value={fmtDateTime(data.enviadoErpEm)}
                     />
                   )}
@@ -681,7 +681,7 @@ function StatusTimeline({ pedido }: { pedido: PedidoDetail }) {
       {isAwaiting && (
         <div className="mb-3 px-3 py-2 rounded-md bg-warning/10 border border-warning/30 text-warning text-sm flex items-center gap-2">
           <CircleDashed className="h-4 w-4 shrink-0" />
-          Aguardando aprovação de desconto pra ir pro OMIE.
+          Aguardando aprovação de desconto pra ir pro ERP.
         </div>
       )}
       <Card variant="outline" padding="md">

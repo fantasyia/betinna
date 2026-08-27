@@ -182,7 +182,7 @@ describe('MetasService', () => {
       await svc.list(fakeUser());
       const where = prisma.pedido.aggregate.mock.calls[0][0].where;
       expect(where.empresaId).toBe('emp-1');
-      // Janela pela data de ENVIO ao OMIE — a mesma que a folha de comissão usa
+      // Janela pela data de ENVIO ao ERP — a mesma que a folha de comissão usa
       // pra fechar o mês (com criadoEm, meta e comissão divergiam na virada).
       expect(where.enviadoErpEm).toEqual({ gte: inicio, lte: fim });
       expect(where.status.in).toEqual([
