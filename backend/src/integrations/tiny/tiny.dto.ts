@@ -81,3 +81,13 @@ export const pedidoTinySchema = z.object({
 });
 
 export type PedidoTinyDto = z.infer<typeof pedidoTinySchema>;
+
+/** Imagens de produto — o Tiny recebe URL, não arquivo. */
+export const imagensProdutoSchema = z.object({
+  itens: z
+    .array(z.object({ sku: z.string().min(1).max(60), url: z.string().url().max(500) }))
+    .min(1)
+    .max(200),
+});
+
+export type ImagensProdutoDto = z.infer<typeof imagensProdutoSchema>;

@@ -18,9 +18,11 @@ import {
   importarProdutosSchema,
   listaPrecoSchema,
   pedidoTinySchema,
+  imagensProdutoSchema,
   type ImportarProdutosDto,
   type ListaPrecoDto,
   type PedidoTinyDto,
+  type ImagensProdutoDto,
 } from './tiny.dto';
 import { ZodValidationPipe } from '@shared/pipes/zod-validation.pipe';
 import { Audit } from '@shared/decorators/audit.decorator';
@@ -186,6 +188,21 @@ export class TinyOAuthController {
     return this.sync.sync(user.empresaIdAtiva, {
       modo: modo === 'completo' ? 'completo' : 'incremental',
     });
+  }
+
+  @Post('produtos/imagens')
+  @ApiBearerAuth()
+  @Roles('ADMIN', 'DIRECTOR')
+  @Audit({ action: 'ANEXAR', resource: 'tiny_produto_imagem' })
+  @ApiOperation({ summary: 'Anexa imagens (por URL) aos produtos do Tiny' })
+  async anexarImagens(
+    @CurrentUser() user: AuthenticatedUser,
+    @Body(new ZodValidationPipe(imagensProdutoSchema)) dto: ImagensProdutoDto,
+  ) {
+    if (!user.empresaIdAtiva) {
+      throw new ForbiddenException('Empresa não definida', ErrorCode.TENANT_ACCESS_DENIED);
+    }
+    return this.produtos.anexarImagens(user.empresaIdAtiva, dto.itens);
   }
 
   @Public()

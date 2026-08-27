@@ -245,6 +245,41 @@ export class TinyProdutosService {
     return { id: criada?.id, itens };
   }
 
+  /**
+   * Anexa imagem ao produto. O Tiny recebe **URL**, não arquivo — a imagem
+   * precisa estar publicada em algum lugar alcançável por ele.
+   *
+   * `externo: false` pede pra ele baixar e guardar cópia própria; assim a
+   * imagem no ERP não morre se a hospedagem original sair do ar depois.
+   */
+  async anexarImagens(
+    empresaId: string,
+    itens: Array<{ sku: string; url: string }>,
+  ): Promise<Array<{ sku: string; ok: boolean; erro?: string }>> {
+    const saida: Array<{ sku: string; ok: boolean; erro?: string }> = [];
+    for (const [i, item] of itens.entries()) {
+      if (i > 0) await this.respirar();
+      try {
+        const produto = await this.acharPorSku(empresaId, item.sku);
+        if (!produto) throw new Error('SKU não existe no Tiny');
+        await this.comRetry429(() =>
+          this.client.post(empresaId, `/produtos/${produto.id}/anexos`, [
+            { url: item.url, externo: false },
+          ]),
+        );
+        saida.push({ sku: item.sku, ok: true });
+      } catch (err) {
+        saida.push({
+          sku: item.sku,
+          ok: false,
+          erro: (err instanceof Error ? err.message : String(err)).slice(0, 200),
+        });
+      }
+    }
+    this.logger.log(`[tiny] imagens anexadas: ${saida.filter((s) => s.ok).length}/${saida.length}`);
+    return saida;
+  }
+
   /** Busca pelo código (o SKU) — é a chave que amarra site ↔ ERP ↔ app. */
   private async acharPorSku(empresaId: string, sku: string): Promise<ProdutoTiny | null> {
     const r = await this.client.get<{ itens?: ProdutoTiny[] }>(empresaId, '/produtos', {
