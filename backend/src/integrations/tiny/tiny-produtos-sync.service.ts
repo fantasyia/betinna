@@ -243,10 +243,15 @@ export class TinyProdutosSyncService {
    */
   private async sincronizarImagem(empresaId: string, p: ProdutoTiny): Promise<void> {
     try {
-      const anexos = await this.client.get<{
-        itens?: Array<{ url?: string; externo?: boolean }>;
-      }>(empresaId, `/produtos/${p.id}/anexos`);
-      const url = (anexos.itens ?? []).find((a) => a.url)?.url;
+      // ⚠️ Este endpoint devolve ARRAY DIRETO, não `{ itens: [...] }` como o
+      // resto da API. Ler `.itens` aqui dava vazio sempre — e "sem imagem" não
+      // parece erro, parece produto sem foto. Aceita as duas formas pra não
+      // depender de qual deles o Tiny resolve usar amanhã.
+      const resp = await this.client.get<
+        Array<{ url?: string }> | { itens?: Array<{ url?: string }> }
+      >(empresaId, `/produtos/${p.id}/anexos`);
+      const lista = Array.isArray(resp) ? resp : (resp?.itens ?? []);
+      const url = lista.find((a) => a.url)?.url;
       if (!url) return;
       await this.prisma.produto.updateMany({
         where: { empresaId, codigoErp: String(p.id) },

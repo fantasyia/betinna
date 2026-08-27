@@ -53,7 +53,8 @@ interface CatalogoItem {
     sku?: string;
     marca?: string;
     precoFabrica: number | null; // custo — null quando não informado
-    precoTabela: number;
+    precoTabela: number | null;
+    precoLocacaoMensal?: number | null;
     imagem?: string | null;
     estoque?: number;
     /** ISO string do timestamp do último sync de estoque (cron 30min ou webhook OMIE). */
@@ -67,7 +68,8 @@ interface ProdutoOpt {
   nome: string;
   sku?: string | null;
   precoFabrica?: number | null;
-  precoTabela?: number;
+  precoTabela?: number | null;
+  precoLocacaoMensal?: number | null;
   estoque?: number;
   estoqueAtualizadoEm?: string | null;
 }
@@ -352,7 +354,12 @@ function SyncBanner({ oldestSync }: { oldestSync: string | null }) {
 
 function ProdutoCard({ item, onRemove }: { item: CatalogoItem; onRemove: () => void }) {
   const [confirmDelete, setConfirmDelete] = useState(false);
-  const tabela = item.produto?.precoTabela ?? 0;
+  // O REP loca, não vende: o backend zera o preço de venda pra ele e manda a
+  // mensalidade. Quando não há mensalidade cadastrada vem null — e a tela
+  // mostra "—" em vez de cair pro valor de venda, que seria o número errado
+  // na mão de quem negocia.
+  const locacao = item.produto?.precoLocacaoMensal ?? null;
+  const venda = item.produto?.precoTabela ?? null;
 
   return (
     <Card
@@ -395,10 +402,14 @@ function ProdutoCard({ item, onRemove }: { item: CatalogoItem; onRemove: () => v
         </div>
       </div>
 
-      {/* Preço (tabela definida pela MSM) */}
+      {/* Preço: mensalidade de locação (rep) ou preço de venda (gestão) */}
       <div className="px-3 pb-3 border-t border-border pt-3 bg-bg-alt">
-        <div className="text-[10px] uppercase tracking-wider text-muted mb-1">Preço (tabela MSM)</div>
-        <div className="text-lg font-bold text-text tabular tracking-tight">{fmtBRL(tabela)}</div>
+        <div className="text-[10px] uppercase tracking-wider text-muted mb-1">
+          {venda == null ? 'Locação / mês' : 'Preço (tabela)'}
+        </div>
+        <div className="text-lg font-bold text-text tabular tracking-tight">
+          {venda != null ? fmtBRL(venda) : locacao != null ? fmtBRL(locacao) : '—'}
+        </div>
       </div>
 
       {/* Delete confirm */}
@@ -534,7 +545,14 @@ function AddProdutoDialog({
             placeholder="Buscar produto…"
             getLabel={(p) => p.nome}
             getSubLabel={(p) =>
-              [p.sku, p.precoTabela != null ? `tabela ${fmtBRL(p.precoTabela)}` : null]
+              [
+                p.sku,
+                p.precoTabela != null
+                  ? `tabela ${fmtBRL(p.precoTabela)}`
+                  : p.precoLocacaoMensal != null
+                    ? `locação ${fmtBRL(p.precoLocacaoMensal)}/mês`
+                    : null,
+              ]
                 .filter(Boolean)
                 .join(' · ')
             }
@@ -549,14 +567,23 @@ function AddProdutoDialog({
             Este produto já está no seu catálogo.
           </div>
         )}
-        {produto && produto.precoTabela !== undefined && (
+        {produto && (
           <Card variant="outline" padding="md" className="bg-primary/5 border-primary/30">
             <div className="text-[10px] uppercase tracking-wider text-muted mb-1">
-              Preço pro cliente (tabela MSM)
+              {produto.precoTabela == null ? 'Locação / mês' : 'Preço pro cliente (tabela)'}
             </div>
             <div className="text-2xl font-bold text-text tabular tracking-tight">
-              {fmtBRL(produto.precoTabela)}
+              {produto.precoTabela != null
+                ? fmtBRL(produto.precoTabela)
+                : produto.precoLocacaoMensal != null
+                  ? fmtBRL(produto.precoLocacaoMensal)
+                  : '—'}
             </div>
+            {produto.precoTabela == null && produto.precoLocacaoMensal == null && (
+              <div className="text-[11px] text-muted mt-1">
+                Mensalidade ainda não cadastrada no ERP.
+              </div>
+            )}
           </Card>
         )}
         {error && (

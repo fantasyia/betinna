@@ -9,6 +9,10 @@ function build(produtos: unknown[] = [], existente: { id: string } | null = null
   const client = {
     get: vi.fn((_e: string, caminho: string) => {
       if (caminho.startsWith('/estoque/')) return Promise.resolve({ saldo: 10, disponivel: 7 });
+      // Anexos devolvem ARRAY DIRETO — não `{ itens }` como o resto da API.
+      if (caminho.includes('/anexos')) {
+        return Promise.resolve([{ id: 1, url: 'https://cdn/mb-01.png', externo: false }]);
+      }
       return Promise.resolve({ itens: produtos, paginacao: { total: produtos.length } });
     }),
   };
@@ -115,5 +119,37 @@ describe('sync de produtos do Tiny', () => {
     >;
     expect(query.dataAlteracao).toBeUndefined();
     expect(query.situacao).toBe('A');
+  });
+});
+
+describe('imagem do produto', () => {
+  beforeEach(() => vi.clearAllMocks());
+
+  it('grava a URL da imagem vinda do ERP', async () => {
+    const { svc, prisma } = build([MB]);
+
+    await svc.sync('emp-1');
+
+    // updateMany é usado por estoque E por imagem; a chamada da imagem é a que
+    // carrega `imagem`.
+    const chamadaImagem = prisma.produto.updateMany.mock.calls.find(
+      (c) => (c[0] as { data: Record<string, unknown> }).data.imagem,
+    );
+    expect((chamadaImagem?.[0] as { data: { imagem: string } }).data.imagem).toBe(
+      'https://cdn/mb-01.png',
+    );
+  });
+
+  it('produto sem anexo não quebra o sync — só fica sem imagem', async () => {
+    const { svc, client } = build([MB]);
+    client.get.mockImplementation((_e: string, caminho: string) => {
+      if (caminho.startsWith('/estoque/')) return Promise.resolve({ disponivel: 7 });
+      if (caminho.includes('/anexos')) return Promise.resolve([]);
+      return Promise.resolve({ itens: [MB], paginacao: { total: 1 } });
+    });
+
+    const r = await svc.sync('emp-1');
+
+    expect(r.erros).toBe(0);
   });
 });
