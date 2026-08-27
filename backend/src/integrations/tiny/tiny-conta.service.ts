@@ -8,13 +8,17 @@ interface ListaTiny<T> {
 
 interface DepositoTiny {
   id: number;
-  nome?: string;
+  /** O Tiny chama de `descricao`, não `nome` — mapear errado devolvia vazio. */
+  descricao?: string;
   desconsiderar?: boolean;
   padrao?: boolean;
 }
 interface VendedorTiny {
   id: number;
-  nome?: string;
+  /** O nome do vendedor mora no CONTATO vinculado, não no vendedor. Um vendedor
+   *  no Tiny é um contato + o papel de vendedor — daí não dar pra criar vendedor
+   *  pela API (só o contato). */
+  contato?: { id?: number; nome?: string };
   situacao?: string;
 }
 interface FormaEnvioTiny {
@@ -96,12 +100,12 @@ export class TinyContaService {
       },
       depositos: (depositos.itens ?? []).map((d) => ({
         id: d.id,
-        nome: d.nome ?? '',
+        nome: d.descricao ?? '',
         padrao: d.padrao === true,
       })),
       vendedores: (vendedores.itens ?? []).map((v) => ({
         id: v.id,
-        nome: v.nome ?? '',
+        nome: v.contato?.nome ?? '',
         situacao: v.situacao ?? null,
       })),
       formasEnvio: (formasEnvio.itens ?? []).map((f) => ({ id: f.id, nome: f.nome ?? '' })),

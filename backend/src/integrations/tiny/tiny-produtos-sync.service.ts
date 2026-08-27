@@ -112,6 +112,7 @@ export class TinyProdutosSyncService {
           if (opcoes.comEstoque !== false) {
             if (await this.sincronizarEstoque(empresaId, p)) r.estoqueAtualizado += 1;
           }
+          await this.sincronizarImagem(empresaId, p);
         } catch (err) {
           // Produto que falha não interrompe o catálogo: um SKU problemático não
           // pode deixar os outros 300 desatualizados.
@@ -228,6 +229,34 @@ export class TinyProdutosSyncService {
       data: { estoque: disponivel, estoqueAtualizadoEm: new Date() },
     });
     return count > 0;
+  }
+
+  /**
+   * Traz a imagem do produto do ERP pro app.
+   *
+   * Imagem não vem na listagem — é um recurso à parte (`/produtos/{id}/anexos`),
+   * igual ao estoque. Guardamos a URL, não o arquivo: o Tiny já hospeda, e
+   * duplicar binário aqui só criaria uma segunda cópia pra ficar desatualizada.
+   *
+   * Best-effort: produto sem imagem é produto normal. Falhar aqui não pode
+   * impedir preço e estoque de entrarem.
+   */
+  private async sincronizarImagem(empresaId: string, p: ProdutoTiny): Promise<void> {
+    try {
+      const anexos = await this.client.get<{
+        itens?: Array<{ url?: string; externo?: boolean }>;
+      }>(empresaId, `/produtos/${p.id}/anexos`);
+      const url = (anexos.itens ?? []).find((a) => a.url)?.url;
+      if (!url) return;
+      await this.prisma.produto.updateMany({
+        where: { empresaId, codigoErp: String(p.id) },
+        data: { imagem: url },
+      });
+    } catch (err) {
+      this.logger.debug(
+        `[tiny] imagem de ${p.sku ?? p.id} não veio: ${err instanceof Error ? err.message : String(err)}`,
+      );
+    }
   }
 
   private async ultimoSync(empresaId: string): Promise<Date | null> {

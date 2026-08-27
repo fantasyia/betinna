@@ -22,14 +22,18 @@ describe('raio-X da conta do Tiny', () => {
 
   it('devolve os ids que o POST /pedidos exige', async () => {
     const { svc } = build({
-      '/depositos': { itens: [{ id: 7, nome: 'Geral', padrao: true }] },
-      '/vendedores': { itens: [{ id: 3, nome: 'Site Somatec', situacao: 'A' }] },
+      // Nomes vêm em `descricao` (depósito) e `contato.nome` (vendedor) — mapear
+      // por `nome` devolvia vazio, e por um tempo pareceu cadastro em branco.
+      '/depositos': { itens: [{ id: 7, descricao: 'Geral', padrao: true }] },
+      '/vendedores': {
+        itens: [{ id: 3, contato: { id: 99, nome: 'REP TESTE' }, situacao: 'A' }],
+      },
     });
 
     const r = await svc.raioX('emp-1');
 
     expect(r.depositos).toEqual([{ id: 7, nome: 'Geral', padrao: true }]);
-    expect(r.vendedores).toEqual([{ id: 3, nome: 'Site Somatec', situacao: 'A' }]);
+    expect(r.vendedores).toEqual([{ id: 3, nome: 'REP TESTE', situacao: 'A' }]);
   });
 
   it('produtos: total vem da PAGINAÇÃO, não do tamanho da amostra', async () => {
@@ -66,7 +70,7 @@ describe('raio-X da conta do Tiny', () => {
     // "vendedores falhou" já é informação: normalmente significa permissão que
     // faltou marcar no aplicativo do Tiny.
     const { svc } = build({
-      '/depositos': { itens: [{ id: 7, nome: 'Geral' }] },
+      '/depositos': { itens: [{ id: 7, descricao: 'Geral' }] },
       '/vendedores': new Error('HTTP 403'),
     });
 
