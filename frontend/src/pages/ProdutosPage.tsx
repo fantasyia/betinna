@@ -24,8 +24,11 @@ interface Produto {
   linha?: string | null;
   categoria?: string | null;
   unidade?: string | null;
-  precoTabela: number;
+  /** Preço de VENDA. `null` pro REP — ele loca, não vende. */
+  precoTabela: number | null;
   precoFabrica: number | null; // custo — null quando não informado
+  /** Mensalidade de locação (tabela própria, como no ERP). */
+  precoLocacaoMensal: number | null;
   imagem?: string | null;
   estoque: number;
   popularidade: number;
@@ -74,6 +77,8 @@ export default function ProdutosPage() {
   const role = useRole();
   // D45/D50: sincronizar o ERP é ADMIN ou DIRETOR — nunca outro papel.
   const podeSincronizarErp = role === 'ADMIN' || role === 'DIRECTOR';
+  // REP loca, não vende: a coluna de venda (e o custo dentro dela) não é dele.
+  const podeVerVenda = role !== 'REP';
   const [sincronizandoErp, setSincronizandoErp] = useState(false);
   const { data: pageResp, loading, error, refetch } = useApiQuery<PaginatedResponse<Produto>>(listPath);
   const { data: facets } = useApiQuery<Facets>('/produtos/facets');
@@ -117,7 +122,7 @@ export default function ProdutosPage() {
     }
   }
 
-  const columns: Column<Produto>[] = [
+  const todasColunas: Column<Produto>[] = [
     {
       key: 'nome',
       header: 'Produto',
@@ -153,13 +158,27 @@ export default function ProdutosPage() {
     },
     {
       key: 'preco',
-      header: 'Preço',
+      header: 'Venda',
       render: (p) => (
         <div>
-          <strong>{fmtBRL(p.precoTabela)}</strong>
+          <strong>{p.precoTabela != null ? fmtBRL(p.precoTabela) : '—'}</strong>
           <div className="text-[11px] text-muted">
-            {p.precoFabrica != null ? `fábrica: ${fmtBRL(p.precoFabrica)}` : 'custo não informado'}
+            {p.precoFabrica != null ? `custo: ${fmtBRL(p.precoFabrica)}` : 'custo não informado'}
           </div>
+        </div>
+      ),
+    },
+    {
+      key: 'locacao',
+      header: 'Locação / mês',
+      render: (p) => (
+        <div>
+          <strong>
+            {p.precoLocacaoMensal != null ? fmtBRL(p.precoLocacaoMensal) : '—'}
+          </strong>
+          {p.precoLocacaoMensal == null && (
+            <div className="text-[11px] text-muted">não cadastrado no ERP</div>
+          )}
         </div>
       ),
     },
@@ -204,26 +223,22 @@ export default function ProdutosPage() {
         </button>
       ),
     },
-    {
-      key: 'actions',
-      header: '',
-      render: (p) => (
-        <button
-          type="button"
-          data-testid={`prod-edit-${p.id}`}
-          onClick={() => setEditing(p)}
-          className="bg-surface text-text border border-border-strong rounded-md py-1 px-2.5 text-xs font-medium cursor-pointer tracking-[-0.1px]"
-        >
-          Editar
-        </button>
-      ),
-    },
+    // SEM coluna de ações: produto NÃO se edita pelo app — nem rep, nem
+    // gerente, nem diretor, nem admin. A fonte da verdade é o ERP, e o app
+    // espelha. Botão de editar aqui criaria duas verdades: alguém mudaria o
+    // preço no Betinna, o próximo sync sobrescreveria, e ninguém entenderia
+    // por quê.
   ];
+  const columns: Column<Produto>[] = todasColunas
+    // A coluna de VENDA some inteira pro REP: ele loca, não vende. Esconder a
+    // coluna é mais honesto que mostrar "—" numa coluna chamada "Venda", que só
+    // levanta a pergunta "por que eu não vejo isso?".
+    .filter((c) => podeVerVenda || c.key !== 'preco');
 
   return (
     <PageLayout
       title="Produtos"
-      description="Cadastre produtos aqui no Betinna, ou sincronize do ERP (Omie) quando integrado. Os campos vindos do ERP ficam read-only; a ficha de marketing (foto, tier, atributos) é editável no app."
+      description="Espelho do catálogo do ERP (Tiny). Cadastro, preço e edição acontecem no ERP — aqui é só leitura. Use 'Sincronizar do ERP' pra trazer as mudanças."
     >
       <CatalogoTabs />
       <div className="bg-surface border border-border rounded-[10px] p-6">
@@ -234,20 +249,13 @@ export default function ProdutosPage() {
               data-testid="prod-sync-erp"
               onClick={sincronizarErp}
               disabled={sincronizandoErp}
-              title="Baixa o catálogo completo do ERP (Omie). Campos do ERP ficam read-only."
+              title="Baixa o catálogo completo do ERP (Tiny)."
               className="bg-surface text-text border border-border-strong rounded-md py-2 px-4 text-sm font-semibold cursor-pointer disabled:opacity-60"
             >
               {sincronizandoErp ? 'Sincronizando…' : '↻ Sincronizar do ERP'}
             </button>
           )}
-          <button
-            type="button"
-            data-testid="prod-novo"
-            onClick={() => setCriando(true)}
-            className="bg-primary text-white rounded-md py-2 px-4 text-sm font-semibold cursor-pointer border-none"
-          >
-            + Novo produto
-          </button>
+          {/* Sem "novo produto": cadastro é no ERP. */}
         </div>
         <FilterBar>
           <SearchInput
