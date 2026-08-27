@@ -245,6 +245,52 @@ O cliente pode escolher receber mais rápido pagando a diferença.
 
 ---
 
+### 3.4 Comissões — duas por venda, e o ERP registra as duas (decidido 26/08)
+
+Toda venda gera **duas** comissões: a do representante e a do Léo (que existe
+porque ele trouxe o rep pra base — não é override de gerência sobre volume, é
+comissão de originação).
+
+O Tiny tem **um** vendedor por pedido e a comissão dele nem aparece na API — é
+campo de painel. Então a modelagem correta não é forçar dois vendedores:
+**comissão é conta a pagar**, que é o que ela é contabilmente.
+
+| | Comissão do rep | Comissão do Léo |
+|---|---|---|
+| Contato | o representante | o Léo |
+| Nº do documento | número do pedido | o mesmo |
+| Categoria | Comissões sobre vendas | idem |
+| Competência | mês do faturamento da nota | idem |
+| Vencimento | dia 5 do mês SEGUINTE ao faturamento | idem |
+
+**A regra de vencimento é fixa:** nota faturada em qualquer dia do mês N vence
+dia 05 do mês N+1 (05/01 e 29/01 vencem os dois em 05/02). A **competência**
+fica no mês do faturamento, senão a venda de 29/01 apareceria como custo de
+fevereiro e o resultado de janeiro sairia inflado.
+
+**Percentuais do Léo (definidos em 26/08):**
+
+- **6%** sobre o valor quando é **LOCAÇÃO por representante**
+- **12%** sobre o valor quando é **VENDA pelo site** (linha não-industrial)
+
+A assimetria é do modelo de negócio, não um erro: o site vende, o rep loca.
+
+⚠️ **Em aberto:** na locação, a comissão de 6% incide **uma vez** sobre o
+contrato ou **todo mês** enquanto o equipamento estiver locado? Receita
+recorrente e comissão de uma vez só são coisas diferentes no DRE, e a resposta
+muda quantas contas a pagar nascem por contrato.
+
+**O cálculo fica no Betinna** (que já modela comissão em dois níveis, D41) e o
+ERP recebe as contas a pagar. Não duplicar a regra: dois sistemas calculando
+dinheiro divergem, e aí ninguém sabe qual está certo.
+
+**Cadastro da categoria no painel** (Cadastros → Categorias de receita e
+despesa): "Considera no DRE" = **Como despesas operacionais** (o padrão "Não
+considera" deixaria a comissão fora do DRE) e "Competência padrão" = **Mês
+anterior ao vencimento** (que, com vencimento dia 5 do mês seguinte, cai no mês
+da venda). O default vale pro lançamento manual; o que a integração cria leva a
+competência explícita.
+
 ## 4. Passo a passo pro Léo dentro do Tiny
 
 > Faça na ordem. Os passos 1–3 são pré-requisito pra qualquer linha de código funcionar.
