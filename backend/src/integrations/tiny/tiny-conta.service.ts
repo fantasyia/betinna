@@ -51,6 +51,10 @@ export class TinyContaService {
     depositos: Array<{ id: number; nome: string; padrao: boolean }>;
     vendedores: Array<{ id: number; nome: string; situacao: string | null }>;
     formasEnvio: Array<{ id: number; nome: string }>;
+    /** Resposta CRUA de vendedores/depósitos. O mapeamento por nome de campo
+     *  já enganou uma vez (nome vindo vazio) — com o cru dá pra ver a chave
+     *  real em vez de adivinhar. */
+    cru?: { vendedores: unknown[]; depositos: unknown[]; tiposContato: unknown[] };
     produtos: {
       total: number;
       amostra: Array<{
@@ -64,7 +68,7 @@ export class TinyContaService {
   }> {
     // Em paralelo: são quatro leituras independentes e o rate limit do Tiny é
     // por minuto, não por rajada.
-    const [depositos, vendedores, formasEnvio, produtos] = await Promise.all([
+    const [depositos, vendedores, formasEnvio, produtos, tipos] = await Promise.all([
       this.client
         .get<ListaTiny<DepositoTiny>>(empresaId, '/depositos')
         .catch((e: unknown) => this.vazio<DepositoTiny>('depositos', e)),
@@ -77,9 +81,19 @@ export class TinyContaService {
       this.client
         .get<ListaTiny<ProdutoResumo>>(empresaId, '/produtos', { situacao: 'A', limit: 10 })
         .catch((e: unknown) => this.vazio<ProdutoResumo>('produtos', e)),
+      // Tipos de contato: é aqui que se descobre se "Vendedor" é um TIPO de
+      // contato — o que decidiria se dá pra criar vendedor pela API.
+      this.client
+        .get<ListaTiny<Record<string, unknown>>>(empresaId, '/contatos/tipos')
+        .catch((e: unknown) => this.vazio<Record<string, unknown>>('contatos/tipos', e)),
     ]);
 
     return {
+      cru: {
+        vendedores: vendedores.itens ?? [],
+        depositos: depositos.itens ?? [],
+        tiposContato: tipos.itens ?? [],
+      },
       depositos: (depositos.itens ?? []).map((d) => ({
         id: d.id,
         nome: d.nome ?? '',
