@@ -275,10 +275,34 @@ fevereiro e o resultado de janeiro sairia inflado.
 
 A assimetria é do modelo de negócio, não um erro: o site vende, o rep loca.
 
-⚠️ **Em aberto:** na locação, a comissão de 6% incide **uma vez** sobre o
-contrato ou **todo mês** enquanto o equipamento estiver locado? Receita
-recorrente e comissão de uma vez só são coisas diferentes no DRE, e a resposta
-muda quantas contas a pagar nascem por contrato.
+**Na locação, os 6% incidem MENSALMENTE**, enquanto o contrato estiver ativo
+(decidido 26/08). Quem encerra a recorrência é o **prazo do contrato**, que vem
+na proposta — não é alguém lembrar de parar.
+
+### 3.5 Provisionamento do contrato de locação: as DUAS pontas
+
+Quando um contrato de locação é fechado, o ERP tem que receber **as duas
+pontas**, provisionadas até o fim do prazo:
+
+| | Contas a RECEBER | Contas a PAGAR |
+|---|---|---|
+| O quê | a mensalidade da locação | comissão do rep + 6% do Léo |
+| Contato | o cliente | o rep · o Léo |
+| Parcelas | uma por mês de contrato | uma por mês de contrato |
+| Competência | mês do serviço | mês do serviço |
+
+Provisionar só uma ponta é o erro clássico: o caixa mostra receita futura sem a
+despesa que vem junto, e o resultado projetado sai otimista todo mês.
+
+O Tiny faz isso nativamente — conta a pagar/receber aceita **ocorrência** e
+**quantidade de parcelas**, então um contrato de 12 meses é um lançamento com 12
+parcelas, não 12 lançamentos soltos.
+
+⚠️ **A pendência que sobra é o encerramento ANTECIPADO.** Se o cliente devolver
+o equipamento antes do prazo, as parcelas futuras (a receber E a pagar) precisam
+ser canceladas no ERP — senão ele segue projetando receita e comissão de um
+contrato que acabou. Isso exige que "encerrar contrato" exista como evento no
+Betinna, o que hoje **não** existe.
 
 **O cálculo fica no Betinna** (que já modela comissão em dois níveis, D41) e o
 ERP recebe as contas a pagar. Não duplicar a regra: dois sistemas calculando
