@@ -11,6 +11,7 @@ import { PedidosController } from './pedidos.controller';
 import { PedidosService } from './pedidos.service';
 import { PedidoErpSyncService } from './pedido-erp-sync.service';
 import { ErpSyncDiarioJob } from './erp-sync-diario.job';
+import { ErpWebhooksJob } from './erp-webhooks.job';
 
 @Module({
   imports: [ProdutosModule, TinyModule, FluxosModule, NotificacoesModule, EmailModule],
@@ -21,6 +22,7 @@ import { ErpSyncDiarioJob } from './erp-sync-diario.job';
     PedidoPricingService,
     PedidoErpSyncService,
     ErpSyncDiarioJob,
+    ErpWebhooksJob,
   ],
   exports: [PedidosService, AprovacoesService, PedidoPricingService, PedidoErpSyncService],
 })

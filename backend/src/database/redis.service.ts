@@ -102,6 +102,17 @@ export class RedisService implements OnModuleInit, OnModuleDestroy {
     await pipe.exec();
   }
 
+  /**
+   * RPOP em lote — tira do FIM da lista, que com `lpushCapped` é o item MAIS
+   * ANTIGO. Ordem de chegada importa em fila de evento: aplicar a atualização
+   * nova antes da velha faria o estado final ser o errado.
+   */
+  async rpop(key: string, quantidade: number): Promise<string[]> {
+    if (quantidade <= 0) return [];
+    const r = await this.clientInstance.rpop(key, quantidade);
+    return r ?? [];
+  }
+
   /** LRANGE 0 -1 — retorna a lista inteira como strings. */
   async lrange(key: string): Promise<string[]> {
     return this.clientInstance.lrange(key, 0, -1);

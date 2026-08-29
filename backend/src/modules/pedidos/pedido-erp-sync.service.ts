@@ -257,6 +257,34 @@ export class PedidoErpSyncService {
     return t >= inicio && t <= fim;
   }
 
+  /**
+   * Sincroniza UM pedido, pelo id do ERP — o caminho do webhook.
+   *
+   * Janela larga de propósito: webhook de pedido antigo é legítimo (o ERP pode
+   * faturar hoje algo criado há meses), e a janela existe pra limitar
+   * varredura, não pra recusar fato conhecido.
+   */
+  async sincronizarUm(
+    empresaId: string,
+    idTiny: number,
+  ): Promise<'criado' | 'atualizado' | 'semMudanca' | 'foraDaJanela'> {
+    const detalhe = await this.tiny.obter(empresaId, idTiny);
+    const r: ResultadoSyncPedidos = {
+      lidos: 1,
+      criados: 0,
+      atualizados: 0,
+      semMudanca: 0,
+      foraDaJanela: 0,
+      avisos: [],
+      erros: 0,
+    };
+    const ate = new Date();
+    const de = new Date(ate.getTime() - 365 * 24 * 60 * 60 * 1000);
+    const efeito = await this.aplicar(empresaId, detalhe, r, de, ate);
+    for (const aviso of r.avisos) this.logger.warn(`[erp] ${aviso}`);
+    return efeito;
+  }
+
   // ─── Aplicação de um pedido do ERP ──────────────────────────────────────
 
   private async aplicar(

@@ -142,6 +142,25 @@ export class TinyProdutosSyncService {
   }
 
   /**
+   * Sincroniza UM produto, pelo id do ERP — o caminho do webhook de estoque.
+   *
+   * Reconsulta em vez de acreditar no `saldo` que veio no evento: o payload do
+   * Tiny não é assinado, e o número que interessa é o `disponivel` (saldo menos
+   * reservado), que o evento nem manda.
+   */
+  async sincronizarUm(empresaId: string, idProduto: number): Promise<boolean> {
+    const p = await this.client
+      .get<ProdutoTiny>(empresaId, `/produtos/${idProduto}`)
+      .catch(() => null);
+    if (!p?.id) return false;
+    const locacao = await this.precosDeLocacao(empresaId);
+    await this.upsert(empresaId, p, locacao.get(p.id) ?? null);
+    await this.sincronizarEstoque(empresaId, p);
+    await this.sincronizarImagem(empresaId, p);
+    return true;
+  }
+
+  /**
    * Lê a lista de preços de LOCAÇÃO do ERP → mapa idProdutoTiny → mensalidade.
    *
    * Falha aqui NÃO derruba o sync: catálogo desatualizado é ruim, catálogo

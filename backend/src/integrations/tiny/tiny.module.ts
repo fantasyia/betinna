@@ -14,6 +14,7 @@ import { TinyOAuthController } from './tiny-oauth.controller';
 import { TinyOAuthService } from './tiny-oauth.service';
 import { TinyTokenRefreshJob } from './tiny-token-refresh.job';
 import { TinyWebhookController } from './tiny-webhook.controller';
+import { TinyWebhookProcessorService } from './tiny-webhook-processor.service';
 
 /**
  * Integração com o Tiny (Olist) — o ERP a partir de 26/08/2026 (D50).
@@ -34,6 +35,7 @@ import { TinyWebhookController } from './tiny-webhook.controller';
     TinyContatosService,
     TinyRepsSyncService,
     TinyClientesSyncService,
+    TinyWebhookProcessorService,
     TinyPedidoPushService,
     TinyProdutosSyncService,
     TinyTokenRefreshJob,
@@ -47,6 +49,7 @@ import { TinyWebhookController } from './tiny-webhook.controller';
     TinyContatosService,
     TinyRepsSyncService,
     TinyClientesSyncService,
+    TinyWebhookProcessorService,
     TinyPedidoPushService,
     TinyProdutosSyncService,
   ],

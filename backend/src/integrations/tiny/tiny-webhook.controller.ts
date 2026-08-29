@@ -42,11 +42,10 @@ const FILA_MAX = 500;
  * ("preferimos pull do estado real em vez de confiar nos valores do evento"),
  * aqui por necessidade e não por preferência.
  *
- * **Estado atual: ACK + fila.** O processamento entra junto com o cliente da
- * API v3 (item 7 do plano em `docs/erp-tiny-olist.md`). Até lá o evento é
- * gravado numa lista capada no Redis em vez de descartado — assim um pedido de
- * teste que o Léo criar antes disso não vira evento perdido, e o processamento
- * nasce com histórico pra reprocessar.
+ * **ACK primeiro, aplica depois.** O evento entra numa lista capada no Redis e
+ * o `TinyWebhookProcessorService` drena de minuto em minuto. Responder rápido
+ * é obrigação: o Tiny retenta 10x quando não recebe 200 e depois desiste — e
+ * processar dentro do request faria o timeout dele virar evento perdido.
  *
  * Este endpoint existe agora por um motivo concreto: o painel do Tiny **valida
  * a URL antes de salvar** ("Não foi possível acessar a URL"), então sem um 200
@@ -147,9 +146,7 @@ export class TinyWebhookController {
         );
       });
 
-    // Log em nível alto de propósito enquanto não há processamento: é o único
-    // sinal de que o evento chegou. Sai quando o item 7 entrar.
-    this.logger.log(
+    this.logger.debug(
       `[tiny] webhook ${tipo} recebido (${bruto.length} bytes, hash ${hash.slice(0, 12)})`,
     );
     return { ok: true };
