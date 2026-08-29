@@ -27,6 +27,7 @@ import {
 } from '@/components/ui';
 import { cn } from '@/lib/cn';
 import { formatMoeda as fmtBRL } from '@/lib/masks';
+import { useEstoqueModo, textoMontagem } from '@/hooks/useEstoqueModo';
 
 /**
  * NovoPedidoDialog — modal pra criar pedido novo.
@@ -580,13 +581,23 @@ function ItemRow({
   onRemove: (() => void) | null;
   testId: string;
 }) {
+  const { sobEncomenda, diasMontagem } = useEstoqueModo();
   const estoque = item.produto?.estoque;
   // Avisos:
   //  - vermelho: produto selecionado com estoque 0 → o ERP gera OP de reposição
   //  - amarelo : quantidade > estoque disponível → vende mais do que tem; o ERP puxa pra produção
-  const semEstoque = item.produto !== null && (estoque ?? 0) <= 0;
+  //
+  // Sob encomenda NÃO tem nenhum dos dois: o produto é montado depois do pedido,
+  // então saldo zero é o estado normal e "quantidade maior que o estoque" é a
+  // operação inteira. Pintar a linha de vermelho em toda venda ensina o rep a
+  // ignorar a cor — e aí ela não serve pro dia em que significar algo.
+  const semEstoque = !sobEncomenda && item.produto !== null && (estoque ?? 0) <= 0;
   const excedeEstoque =
-    item.produto !== null && estoque !== undefined && estoque > 0 && item.quantidade > estoque;
+    !sobEncomenda &&
+    item.produto !== null &&
+    estoque !== undefined &&
+    estoque > 0 &&
+    item.quantidade > estoque;
 
   return (
     <div
@@ -611,7 +622,11 @@ function ItemRow({
             [
               p.sku,
               p.precoTabela !== undefined ? fmtBRL(p.precoTabela) : null,
-              p.estoque !== undefined ? estoqueLabel(p.estoque) : null,
+              sobEncomenda
+                ? 'sob encomenda'
+                : p.estoque !== undefined
+                  ? estoqueLabel(p.estoque)
+                  : null,
             ]
               .filter(Boolean)
               .join(' · ')
@@ -624,6 +639,8 @@ function ItemRow({
           <StockHint
             estoque={estoque}
             quantidade={item.quantidade}
+            sobEncomenda={sobEncomenda}
+            diasMontagem={diasMontagem}
             testId={`${testId}-stock-hint`}
           />
         )}
@@ -700,11 +717,25 @@ function StockHint({
   estoque,
   quantidade,
   testId,
+  sobEncomenda = false,
+  diasMontagem = null,
 }: {
   estoque: number | undefined;
   quantidade: number;
   testId?: string;
+  sobEncomenda?: boolean;
+  diasMontagem?: number | null;
 }) {
+  // Sob encomenda, o que interessa ao rep não é saldo: é o PRAZO que ele pode
+  // prometer. O saldo aqui só produziria alarme falso.
+  if (sobEncomenda) {
+    return (
+      <div data-testid={testId} className="flex items-center gap-1 px-1 text-[10px] text-muted">
+        <Package className="h-2.5 w-2.5" />
+        Sob encomenda — {textoMontagem(diasMontagem)}
+      </div>
+    );
+  }
   if (estoque === undefined) {
     return (
       <div
