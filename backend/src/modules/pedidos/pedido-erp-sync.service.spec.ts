@@ -71,11 +71,14 @@ function build(
   return { svc, prisma, tiny, notificacoes, bus, sequence };
 }
 
+/** A janela padrão é de 30 dias — o pedido base é de hoje pra não vencer. */
+const HOJE = new Date().toISOString().slice(0, 10);
+
 const PEDIDO_ERP = {
   id: 900,
   numeroPedido: 55,
   situacao: 3, // aprovada
-  data: '2026-07-15',
+  data: HOJE,
   valorTotalPedido: 3150,
   valorTotalProdutos: 3150,
   cliente: { id: 4242, nome: 'Indústria Alfa', cpfCnpj: '12.345.678/0001-90' },
@@ -86,8 +89,9 @@ const PEDIDO_ERP = {
 describe('pedidos que vêm do ERP', () => {
   beforeEach(() => vi.clearAllMocks());
 
-  it('importa pedido novo com a DATA DO ERP, não a de hoje', async () => {
-    // Importar com a data de agora jogaria venda de julho pro fechamento de agosto.
+  it('importa pedido novo com a DATA DO ERP (e não com o relógio de agora)', async () => {
+    // Importar tudo com a data de hoje jogaria venda de julho pro fechamento
+    // de agosto — o fechamento de comissão fecha por período.
     const { svc, prisma } = build({ detalhe: PEDIDO_ERP });
 
     const r = await svc.sincronizar('emp-1');
@@ -97,7 +101,7 @@ describe('pedidos que vêm do ERP', () => {
     expect(dados.numeroErp).toBe('55');
     expect(dados.origem).toBe('ERP');
     expect(dados.status).toBe('ENVIADO_ERP');
-    expect((dados.criadoEm as Date).toISOString()).toContain('2026-07-15');
+    expect((dados.criadoEm as Date).toISOString()).toContain(HOJE);
     expect(Number(dados.total)).toBe(3150);
   });
 
@@ -238,35 +242,43 @@ describe('pedidos que vêm do ERP', () => {
     expect(segunda.notificacoes.criarParaRole).not.toHaveBeenCalled();
   });
 
-  it('filtro de data vazio → refaz sem filtro e corta a janela aqui', async () => {
-    // O modo de falha real: o ERP devolve lista VAZIA pro filtro de data, com
-    // pedido recente sentado lá. Sem plano B, "0 novos" parece resposta certa.
+  it('pedido que o filtro de data NÃO acha ainda assim entra', async () => {
+    // O furo real, visto em produção: a listagem do Tiny devolve `dataCriacao`
+    // vazia, e pedido sem data não casa com filtro de data nenhum. Como a
+    // passada com filtro trazia OUTROS pedidos, o buraco ficava invisível — a
+    // tela dizia "sincronizado" e faltava um.
     const { svc, tiny, prisma } = build({ detalhe: PEDIDO_ERP });
-    const hoje = new Date().toISOString().slice(0, 10);
     tiny.listar = vi.fn(async (_e: string, f: { dataInicial?: string }) =>
       f.dataInicial
-        ? { itens: [], total: 0 }
-        : { itens: [{ id: 900, numeroPedido: 55, dataCriacao: hoje }], total: 1 },
+        ? { itens: [{ id: 901, numeroPedido: 56 }], total: 1 } // o que TEM data
+        : { itens: [{ id: 900, numeroPedido: 55, dataCriacao: '' }], total: 1 },
     );
 
-    const r = await svc.sincronizar('emp-1');
+    await svc.sincronizar('emp-1');
 
+    // Os dois foram olhados: o do filtro e o que só a passada sem filtro viu.
+    const olhados = tiny.obter.mock.calls.map((c: unknown[]) => c[1]);
+    expect(olhados).toContain(900);
+    expect(olhados).toContain(901);
     expect(prisma.pedido.create).toHaveBeenCalled();
-    expect(r.avisos.join(' ')).toContain('filtro de data');
   });
 
-  it('no plano B, pedido FORA da janela não entra', async () => {
-    const { svc, tiny, prisma } = build({ detalhe: PEDIDO_ERP });
-    tiny.listar = vi.fn(async (_e: string, f: { dataInicial?: string }) =>
-      f.dataInicial
-        ? { itens: [], total: 0 }
-        : { itens: [{ id: 900, numeroPedido: 55, dataCriacao: '2020-01-01' }], total: 1 },
-    );
+  it('pedido velho demais é visto e NÃO entra (quem corta é o detalhe)', async () => {
+    const { svc, prisma } = build({ detalhe: { ...PEDIDO_ERP, data: '2020-01-01' } });
 
     const r = await svc.sincronizar('emp-1', { dias: 30 });
 
     expect(prisma.pedido.create).not.toHaveBeenCalled();
-    expect(r.lidos).toBe(0);
+    expect(r.foraDaJanela).toBe(1);
+  });
+
+  it('pedido SEM data nenhuma entra — sumir em silêncio é pior', async () => {
+    const semData = { ...PEDIDO_ERP, data: undefined, dataCriacao: undefined };
+    const { svc, prisma } = build({ detalhe: semData });
+
+    await svc.sincronizar('emp-1');
+
+    expect(prisma.pedido.create).toHaveBeenCalled();
   });
 
   it('confere por número os pedidos abertos que ficaram fora da janela', async () => {

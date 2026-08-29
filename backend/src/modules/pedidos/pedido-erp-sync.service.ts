@@ -15,6 +15,8 @@ export interface ResultadoSyncPedidos {
   criados: number;
   atualizados: number;
   semMudanca: number;
+  /** Vistos no ERP e deixados de fora por serem mais velhos que a janela. */
+  foraDaJanela: number;
   /** Pedidos que entraram, mas com alguma informação que o app não soube casar. */
   avisos: string[];
   erros: number;
@@ -95,6 +97,7 @@ export class PedidoErpSyncService {
       criados: 0,
       atualizados: 0,
       semMudanca: 0,
+      foraDaJanela: 0,
       avisos: [],
       erros: 0,
     };
@@ -143,9 +146,10 @@ export class PedidoErpSyncService {
       try {
         const detalhe = await this.tiny.obter(empresaId, id);
         r.lidos += 1;
-        const efeito = await this.aplicar(empresaId, detalhe, r);
+        const efeito = await this.aplicar(empresaId, detalhe, r, de, ate);
         if (efeito === 'criado') r.criados += 1;
         else if (efeito === 'atualizado') r.atualizados += 1;
+        else if (efeito === 'foraDaJanela') r.foraDaJanela += 1;
         else r.semMudanca += 1;
       } catch (err) {
         r.erros += 1;
@@ -162,7 +166,8 @@ export class PedidoErpSyncService {
 
     this.logger.log(
       `[erp] sync de pedidos (${dias}d): ${r.lidos} lidos, ${r.criados} criados, ` +
-        `${r.atualizados} atualizados, ${r.semMudanca} sem mudança, ${r.erros} erros`,
+        `${r.atualizados} atualizados, ${r.semMudanca} sem mudança, ` +
+        `${r.foraDaJanela} fora da janela, ${r.erros} erros`,
     );
     return r;
   }
@@ -189,6 +194,8 @@ export class PedidoErpSyncService {
     r: ResultadoSyncPedidos,
   ): Promise<Set<number>> {
     const ids = new Set<number>();
+
+    // Passada 1 — com filtro de data. Rápida e barata quando funciona.
     let offset = 0;
     for (;;) {
       const pagina = await this.tiny.listar(empresaId, {
@@ -201,29 +208,33 @@ export class PedidoErpSyncService {
       if (pagina.itens.length < 100 || ids.size >= MAX_POR_RODADA) break;
       offset += 100;
     }
-    if (ids.size > 0) return ids;
 
-    // Plano B — sem filtro de data, recortando a janela por aqui.
+    // Passada 2 — SEM filtro, sempre. Não é plano B: é rede.
+    //
+    // A listagem do Tiny devolve `dataCriacao` VAZIA, e pedido sem data não casa
+    // com filtro de data nenhum. Foi o que aconteceu no primeiro teste em
+    // produção: dos três pedidos do ERP, o filtro achou os dois com data e
+    // ignorou em silêncio o terceiro. Enquanto a passada 1 devolvesse ALGUMA
+    // coisa, o buraco ficava invisível — a tela dizia "sincronizado".
+    //
+    // Quem decide se o pedido é da janela é o DETALHE (que tem `data`), lá no
+    // `aplicar`. Aqui a regra é simples: na dúvida, olha.
     let offsetB = 0;
     let lidosB = 0;
     for (;;) {
       const pagina = await this.tiny.listar(empresaId, { limit: 100, offset: offsetB });
       lidosB += pagina.itens.length;
-      for (const p of pagina.itens) {
-        if (!p.id) continue;
-        // Sem data no resumo, o pedido ENTRA: quem decide é o detalhe, e um
-        // pedido a mais é barato — um pedido a menos some da tela sem aviso.
-        if (this.dentroDaJanela(p.dataCriacao, de, ate)) ids.add(p.id);
-      }
+      for (const p of pagina.itens) if (p.id) ids.add(p.id);
       if (pagina.itens.length < 100 || ids.size >= MAX_POR_RODADA || lidosB >= 2000) break;
       offsetB += 100;
     }
-    if (lidosB > 0) {
+    if (lidosB >= 2000) {
+      // Parar de ler sem dizer que parou e o mesmo erro de novo, so que maior.
       const aviso =
-        'O filtro de data do ERP não devolveu nada — a janela foi aplicada aqui ' +
-        `(${lidosB} pedido(s) lidos, ${ids.size} dentro do período).`;
+        'A varredura leu 2000 pedidos do ERP e parou ai — conta grande demais pra ' +
+        'passada completa. Reduza a janela (dias) ou me avise pra paginar por data.';
       r.avisos.push(aviso);
-      this.logger.warn(`[erp] ${aviso}`);
+      this.logger.warn('[erp] ' + aviso);
     }
     return ids;
   }
@@ -252,7 +263,9 @@ export class PedidoErpSyncService {
     empresaId: string,
     d: PedidoTinyDetalhe,
     r: ResultadoSyncPedidos,
-  ): Promise<'criado' | 'atualizado' | 'semMudanca'> {
+    de: Date,
+    ate: Date,
+  ): Promise<'criado' | 'atualizado' | 'semMudanca' | 'foraDaJanela'> {
     const numeroErp = String(d.numeroPedido ?? d.id);
     const existente = await this.prisma.pedido.findFirst({
       where: { empresaId, numeroErp },
@@ -303,6 +316,12 @@ export class PedidoErpSyncService {
     }
 
     // ─── Pedido que nasceu no ERP (site, telefone, balcão) ────────────────
+    //
+    // Corte da janela acontece AQUI, com a data do detalhe — a listagem não
+    // devolve data confiável. Pedido velho demais não entra; pedido daqui que
+    // já existe (bloco acima) atualiza sempre, independente de idade.
+    if (!this.dentroDaJanela(d.data ?? d.dataCriacao, de, ate)) return 'foraDaJanela';
+
     const cliente = await this.resolverCliente(empresaId, d);
     const representanteId = await this.resolverRepresentante(empresaId, d);
     if (!representanteId && d.vendedor) {
