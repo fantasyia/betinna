@@ -171,6 +171,11 @@ function build(
     redis as never,
     // Devolve Promise: o fallback (#17) agora encadeia `.catch` no aguardarSlot.
     { aguardarSlot: vi.fn().mockResolvedValue(undefined) } as never,
+    // Status de pedido no contexto: tem spec própria.
+    {
+      ehPerguntaDePedido: vi.fn().mockReturnValue(false),
+      contextoPorTelefone: vi.fn().mockResolvedValue(''),
+    } as never,
   );
   // Expostos pros testes de anti-spam (contador no Redis) e falha de envio.
   (svc as unknown as Record<string, unknown>).__redis = redis;

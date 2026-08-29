@@ -58,6 +58,8 @@ enum PedidoStatus {
 enum PedidoOrigem {
   REP_APP
   WHATSAPP
+  /// Checkout do site próprio (entra por `POST /public/pedidos`).
+  SITE
   ERP
   MARKETPLACE_ML
   MARKETPLACE_SHOPEE
@@ -796,6 +798,10 @@ model Pedido {
   observacoes    String? @db.Text
   motivoDesconto String? // pra aprovação
 
+  /// Número do pedido NO SITE (ex.: SB1234). É por ele que o app avisa o site
+  /// quando a situação ou o rastreio mudam — o site é dono da tela do cliente.
+  numeroSite String?
+
   /// Rastreio do ERP (Tiny → `transportador.codigoRastreamento` / `urlRastreamento`).
   /// Quem despacha é o ERP; aqui é espelho — o app nunca escreve rastreio por conta
   /// própria, senão a tela do cliente e a etiqueta real contariam histórias diferentes.
@@ -841,6 +847,7 @@ model Pedido {
   @@index([empresaId, criadoEm])
   // Seed demo
   @@index([empresaId, isDemo])
+  @@index([empresaId, numeroSite])
 }
 
 model PedidoItem {

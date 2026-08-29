@@ -7,6 +7,7 @@ import { EnvService } from '@config/env.service';
 import { InboxService } from '@modules/inbox/inbox.service';
 import type { MensagemEntranteParams } from '@modules/inbox/inbox.types';
 import { WhatsAppService } from '@integrations/whatsapp/whatsapp.service';
+import { PedidoStatusBotService } from '@modules/pedidos/pedido-status-bot.service';
 import { WhatsappPacingService } from '@shared/whatsapp-pacing/whatsapp-pacing.service';
 import { MullerBotService } from './mullerbot.service';
 import { MullerBotPersonaService } from './persona.service';
@@ -280,6 +281,7 @@ export class MullerWhatsappService implements OnModuleInit {
     private readonly whatsapp: WhatsAppService,
     private readonly redis: RedisService,
     private readonly pacing: WhatsappPacingService,
+    private readonly pedidoStatus: PedidoStatusBotService,
   ) {}
 
   onModuleInit(): void {
@@ -516,7 +518,19 @@ export class MullerWhatsappService implements OnModuleInit {
         usouCatalogo?: boolean;
         produtosIncluidos?: number;
       } | null = null;
+      // "Cadê meu pedido?" era o caso que pausava o bot e chamava gente — a
+      // informação existia aqui e ele não enxergava. Só puxa quando a mensagem
+      // é sobre pedido: anexar sempre gastaria token e colocaria dado de compra
+      // num papo que não pediu.
+      const contextoExtra = this.pedidoStatus.ehPerguntaDePedido(mensagemIA)
+        ? await this.pedidoStatus.contextoPorTelefone(
+            params.empresaId,
+            params.peerTelefone ?? params.peerId,
+          )
+        : '';
+
       const iaPromise = this.muller.responderComoEmpresa(params.empresaId, mensagemIA, historico, {
+        ...(contextoExtra ? { contextoExtra } : {}),
         // Bot pessoal: persona, prompt e CHAVE do rep dono da conversa.
         ...(dono ? { proprietarioId: dono } : {}),
         // Puro conversa por padrão; vira RAG quando MULLERBOT_WHATSAPP_CATALOGO=true.

@@ -318,7 +318,13 @@ export class LeadCaptureService {
    * Valida a chave x-api-key (formato + rate-limit + lookup) → empresaId.
    * 401 uniforme pra chave inexistente/inativa (sem oráculo de existência).
    */
-  private async autenticarChave(chaveApresentada: string | undefined): Promise<string> {
+  /**
+   * Público porque o receptor de PEDIDOS do site usa a MESMA chave.
+   *
+   * Duas autenticações para o mesmo site significariam duas chaves pra girar, e
+   * a que ninguém lembrasse de girar viraria a porta esquecida aberta.
+   */
+  async autenticarChave(chaveApresentada: string | undefined): Promise<string> {
     const chave = (chaveApresentada ?? '').trim();
     if (!chave.startsWith('blc_') || chave.length < 20) {
       throw new UnauthorizedException('Chave de API inválida');

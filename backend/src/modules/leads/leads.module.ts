@@ -9,6 +9,8 @@ import { LeadCaptureService } from './lead-capture.service';
   imports: [FluxosModule],
   controllers: [LeadsController, LeadCaptureController],
   providers: [LeadsService, LeadCaptureService],
-  exports: [LeadsService],
+  // LeadCaptureService sai porque o receptor de PEDIDOS do site usa a MESMA
+  // chave de API — duas chaves pro mesmo site seriam duas coisas pra girar.
+  exports: [LeadsService, LeadCaptureService],
 })
 export class LeadsModule {}

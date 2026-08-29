@@ -7,6 +7,11 @@ import { ProdutosModule } from '@modules/produtos/produtos.module';
 import { AprovacoesController } from './aprovacoes.controller';
 import { AprovacoesService } from './aprovacoes.service';
 import { PedidoPricingService } from './pedido-pricing.service';
+import { PedidoSiteService } from './pedido-site.service';
+import { PedidoStatusBotService } from './pedido-status-bot.service';
+import { SiteStatusService } from './site-status.service';
+import { PedidoSiteController } from './pedido-site.controller';
+import { LeadsModule } from '@modules/leads/leads.module';
 import { PedidosController } from './pedidos.controller';
 import { PedidosService } from './pedidos.service';
 import { PedidoErpSyncService } from './pedido-erp-sync.service';
@@ -14,8 +19,16 @@ import { ErpSyncDiarioJob } from './erp-sync-diario.job';
 import { ErpWebhooksJob } from './erp-webhooks.job';
 
 @Module({
-  imports: [ProdutosModule, TinyModule, FluxosModule, NotificacoesModule, EmailModule],
-  controllers: [PedidosController, AprovacoesController],
+  imports: [
+    ProdutosModule,
+    TinyModule,
+    FluxosModule,
+    NotificacoesModule,
+    EmailModule,
+    // O receptor do checkout usa a MESMA chave de API do formulário de leads.
+    LeadsModule,
+  ],
+  controllers: [PedidosController, AprovacoesController, PedidoSiteController],
   providers: [
     PedidosService,
     AprovacoesService,
@@ -23,7 +36,17 @@ import { ErpWebhooksJob } from './erp-webhooks.job';
     PedidoErpSyncService,
     ErpSyncDiarioJob,
     ErpWebhooksJob,
+    PedidoSiteService,
+    SiteStatusService,
+    PedidoStatusBotService,
   ],
-  exports: [PedidosService, AprovacoesService, PedidoPricingService, PedidoErpSyncService],
+  exports: [
+    PedidosService,
+    AprovacoesService,
+    PedidoPricingService,
+    PedidoErpSyncService,
+    // O bot lê o status do pedido pra responder "cadê minha compra?".
+    PedidoStatusBotService,
+  ],
 })
 export class PedidosModule {}

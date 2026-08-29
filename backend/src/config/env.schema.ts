@@ -57,6 +57,13 @@ export const envSchema = z
     WHATSAPP_PROVIDER: z.enum(['baileys', 'evolution']).default('baileys'),
     /** URL pública do Evolution API (serviço separado no Railway). Vazio = não usa. */
     EVOLUTION_API_URL: z.string().default(''),
+
+    // ── Ponte com o SITE (checkout) ────────────────────────────────────
+    // Pra onde o app avisa que a situação/rastreio do pedido mudou. O site é
+    // dono da tela do cliente; sem isto, o pedido pago some do ponto de vista
+    // dele até alguém responder no WhatsApp. Vazio = tenant sem site.
+    SITE_PEDIDOS_STATUS_URL: z.string().default(''),
+    SITE_PEDIDOS_STATUS_SECRET: z.string().default(''),
     /** AUTHENTICATION_API_KEY global do Evolution (header `apikey`). */
     EVOLUTION_API_KEY: z.string().default(''),
     /** URL pública DESTE backend (com /api/v1), pro Evolution chamar nosso webhook. */

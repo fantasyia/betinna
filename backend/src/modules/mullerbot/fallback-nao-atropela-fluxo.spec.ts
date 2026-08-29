@@ -73,6 +73,11 @@ function build(prisma: ReturnType<typeof makePrisma>, muller: ReturnType<typeof 
       del: vi.fn().mockResolvedValue(1),
     } as never,
     { aguardarSlot: vi.fn().mockResolvedValue(undefined) } as never,
+    // Status de pedido no contexto do bot: fora do escopo destes testes.
+    {
+      ehPerguntaDePedido: vi.fn().mockReturnValue(false),
+      contextoPorTelefone: vi.fn().mockResolvedValue(''),
+    } as never,
   );
   return { svc, inbox, auditoria };
 }

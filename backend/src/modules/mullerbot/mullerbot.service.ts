@@ -334,6 +334,14 @@ export class MullerBotService {
       imagemDataUrl?: string;
       /** Dono do bot: id do rep = bot PESSOAL dele (persona, prompt e CHAVE dele). */
       proprietarioId?: string;
+      /**
+       * Fatos do sistema pra ESTA conversa (ex.: os pedidos deste cliente).
+       *
+       * Entra no system prompt, não na mensagem do usuário: é informação que a
+       * IA deve TRATAR COMO VERDADE, e mensagem de usuário é justamente o que
+       * ela pode questionar. Vazio = nada muda.
+       */
+      contextoExtra?: string;
     } = {},
   ): Promise<{
     texto: string;
@@ -425,6 +433,12 @@ ${REGRAS_CATALOGO}`;
     } else {
       // ── Modo puro conversa (atual): prompt conversacional, sem catálogo ──
       systemPrompt = await this.persona.compilarSystemPromptConversa(empresaId, undefined, dono);
+    }
+
+    // Fatos do sistema (status de pedido, por exemplo) — antes das instruções
+    // de formato, pra a IA lê-los como contexto e não como pedido do cliente.
+    if (opts.contextoExtra?.trim()) {
+      systemPrompt += `\n\n${opts.contextoExtra.trim()}`;
     }
 
     // Quebra de resposta em vários balões (mais humano). Só no WhatsApp — a IA

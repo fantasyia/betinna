@@ -1,4 +1,5 @@
 import { Module } from '@nestjs/common';
+import { PedidosModule } from '@modules/pedidos/pedidos.module';
 import { EmailModule } from '@integrations/email/email.module';
 import { WhatsAppModule } from '@integrations/whatsapp/whatsapp.module';
 import { BotPromptsModule } from '@modules/bot-prompts/bot-prompts.module';
@@ -15,7 +16,8 @@ import { BotCustoService } from './bot-custo.service';
 import { BotAuditoriaController } from './bot-auditoria.controller';
 
 @Module({
-  imports: [EmailModule, WhatsAppModule, BotPromptsModule, RagModule],
+  // PedidosModule: o bot lê o status do pedido pra responder "cadê minha compra?"
+  imports: [EmailModule, WhatsAppModule, BotPromptsModule, RagModule, PedidosModule],
   controllers: [MullerBotController, MullerBotPersonaController, BotAuditoriaController],
   providers: [
     MullerBotService,

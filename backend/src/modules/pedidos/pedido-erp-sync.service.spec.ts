@@ -68,6 +68,8 @@ function build(
     // Ponte vendedor→contato: por padrão não acha (os casos por contato passam
     // o contato dentro do próprio pedido).
     { acharContatoDoVendedor: vi.fn().mockResolvedValue(null) } as never,
+    // Aviso pro site: best-effort e sem site configurado nos testes.
+    { notificar: vi.fn().mockResolvedValue(false), configurado: false } as never,
     notificacoes as never,
     bus as never,
   );

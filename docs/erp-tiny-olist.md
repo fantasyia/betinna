@@ -456,3 +456,54 @@ Enquanto 1–6 não estiverem prontos, **nada quebra**: hoje o OMIE está em mod
 - [Criar pedido](https://api-docs.erp.olist.com/api-reference/pedidos/criar-pedido.md) · [Listar pedidos](https://api-docs.erp.olist.com/api-reference/pedidos/listar-pedidos.md) · [Rastreamento](https://api-docs.erp.olist.com/api-reference/pedidos/atualizar-informações-de-rastreamento-do-pedido.md)
 - [Listar produtos](https://api-docs.erp.olist.com/api-reference/produtos/listar-produtos.md) · [Estoque do produto](https://api-docs.erp.olist.com/api-reference/estoque/obter-o-estoque-de-um-produto.md)
 - [Tiny × Melhor Envio](https://tiny.com.br/integracoes/melhor-envio)
+
+---
+
+## 8. Contrato da ponte site ↔ Betinna (29/08)
+
+O lado do APP está pronto. O que o site precisa fazer:
+
+### 8.1 Mandar o pedido do checkout
+
+```
+POST https://api-production-9426.up.railway.app/api/v1/public/pedidos
+x-api-key: <a MESMA chave de /public/leads>
+
+{
+  "numeroSite": "SB1234",            // o número que o cliente vê; chave de idempotência
+  "cliente": { "nome": "...", "cpfCnpj": "...", "email": "...", "telefone": "..." },
+  "itens": [{ "sku": "MB-01", "quantidade": 1, "valorUnitario": 3150 }],
+  "valorFrete": 50,
+  "observacoes": "opcional"
+}
+
+→ 201 { pedidoId, numero: "PED-0009", numeroErp: "77", duplicado: false }
+```
+
+- **Idempotente pelo `numeroSite`**: reenviar (clique duplo, retry do gateway)
+  devolve o pedido que já existe, com `duplicado: true`. Não cria segundo pedido.
+- **SKU fora do catálogo recusa o pedido inteiro** (400) — item faltando vira
+  nota errada.
+- O pedido nasce com origem `SITE` e **sem representante** — é venda de canal, e
+  é isso que faz a comissão de originação usar a % de canal (12%) em vez da de
+  representante (6%).
+- Se o ERP estiver fora do ar, o pedido é criado mesmo assim (`numeroErp: null`)
+  e sobe na rodada seguinte: o cliente já pagou, derrubar a resposta faria o
+  checkout mostrar erro pra uma compra que aconteceu.
+
+### 8.2 Receber situação e rastreio
+
+O app chama a rota que o site já tem, sempre que a situação ou o rastreio mudam
+(sincronização do ERP ou webhook do Tiny):
+
+```
+POST <SITE_PEDIDOS_STATUS_URL>
+x-pedidos-secret: <SITE_PEDIDOS_STATUS_SECRET>
+
+{ "numero": "SB1234", "status": "ENVIADO", "rastreioCodigo": "BR123", "rastreioUrl": "https://..." }
+```
+
+Configurar no Railway (api **e** worker): `SITE_PEDIDOS_STATUS_URL` e
+`SITE_PEDIDOS_STATUS_SECRET`. Vazio = tenant sem site, e o aviso simplesmente
+não acontece. É best-effort: site fora do ar não derruba a sincronização com o
+ERP — o estado real mora no app e a rodada seguinte reenvia.

@@ -10,6 +10,7 @@ import { IntegracoesService } from '@modules/integracoes/integracoes.service';
 import { FluxoEventBusService } from '@modules/fluxos/fluxo-event-bus.service';
 import { NotificacoesService } from '@modules/notificacoes/notificacoes.service';
 import { SequenceService } from '@shared/utils/sequence.service';
+import { SiteStatusService } from './site-status.service';
 
 export interface ResultadoSyncPedidos {
   lidos: number;
@@ -84,6 +85,7 @@ export class PedidoErpSyncService {
     private readonly integracoes: IntegracoesService,
     private readonly sequence: SequenceService,
     private readonly contatos: TinyContatosService,
+    private readonly site: SiteStatusService,
     private readonly notificacoes: NotificacoesService,
     private readonly bus: FluxoEventBusService,
   ) {}
@@ -308,6 +310,7 @@ export class PedidoErpSyncService {
         rastreioCodigo: true,
         rastreioUrl: true,
         representanteId: true,
+        numeroSite: true,
       },
     });
 
@@ -352,6 +355,14 @@ export class PedidoErpSyncService {
           `${existente.status} → ${status ?? existente.status}`,
       );
       if (viraEntregue) await this.dispararEntregue(empresaId, existente.id);
+      // O site é dono da tela do cliente: sem este aviso, quem comprou lá fica
+      // sem saber que o pedido foi faturado ou despachado.
+      await this.site.notificar({
+        numeroSite: existente.numeroSite ?? '',
+        status: status ?? existente.status,
+        rastreioCodigo,
+        rastreioUrl,
+      });
       return 'atualizado';
     }
 
