@@ -215,6 +215,8 @@ export class CampanhaEnvioProcessor extends WorkerHost {
 
     // Guarda o id da mensagem WA (Baileys) pra casar o recibo de leitura → LIDO.
     let waMessageId: string | undefined;
+    // Id do e-mail no Resend — casa o webhook de engajamento com este destinatário.
+    let resendEmailId: string | null = null;
 
     try {
       const canal = dest.campanha.canal;
@@ -271,6 +273,9 @@ export class CampanhaEnvioProcessor extends WorkerHost {
                 empresaId: dest.campanha.empresaId, // remetente por-tenant
               });
               if (!r.ok) throw new Error(r.motivo ?? 'falha ao enviar e-mail da campanha');
+              // O id do Resend é o ELO com o webhook de engajamento: sem guardar
+              // aqui, o evento de abertura/clique chega e não há onde pendurar.
+              resendEmailId = r.id ?? null;
               this.logger.debug(`Email enviado → ${dest.email} (campanha ${campanhaId})`);
             } catch (sendErr) {
               await this.idempotency.release(idemKey);
@@ -286,7 +291,12 @@ export class CampanhaEnvioProcessor extends WorkerHost {
 
       await this.prisma.campanhaDestinatario.update({
         where: { id: destinatarioId },
-        data: { status: 'ENVIADO', enviadoEm: new Date(), waMessageId },
+        data: {
+          status: 'ENVIADO',
+          enviadoEm: new Date(),
+          waMessageId,
+          ...(resendEmailId ? { resendEmailId } : {}),
+        },
       });
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);

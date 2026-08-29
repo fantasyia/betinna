@@ -1973,6 +1973,21 @@ model CampanhaDestinatario {
   lidoEm      DateTime?
   // ID da mensagem no WhatsApp (Baileys key.id) — casa o recibo de leitura (status READ) → LIDO.
   waMessageId String?
+
+  /// ID do e-mail no Resend. É o elo que casa o evento do webhook (entrega,
+  /// abertura, clique) de volta com ESTE destinatário — sem ele o evento chega e
+  /// não há onde pendurar. `lido`/`lidoEm` acima são do recibo do WhatsApp e não
+  /// servem pra e-mail.
+  resendEmailId String? @unique
+  entregueEm    DateTime?
+  abertoEm      DateTime?
+  clicadoEm     DateTime?
+  bounceEm      DateTime?
+  /// Contadores: a mesma pessoa abre e clica mais de uma vez, e o primeiro toque
+  /// (as datas acima) é uma informação diferente do volume.
+  aberturas Int @default(0)
+  cliques   Int @default(0)
+
   criadoEm    DateTime           @default(now())
 
   campanha Campanha @relation(fields: [campanhaId], references: [id], onDelete: Cascade)
@@ -1982,6 +1997,7 @@ model CampanhaDestinatario {
   @@index([clienteId])
   @@index([campanhaId, status])
   @@index([waMessageId])
+  @@index([resendEmailId])
 }
 
 // ─── MARKETPLACES ─────────────────────────────────────────────────────

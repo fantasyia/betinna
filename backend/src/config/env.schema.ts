@@ -210,6 +210,10 @@ export const envSchema = z
     // Quando RESEND_API_KEY + RESEND_FROM_EMAIL estão presentes, os e-mails
     // sistêmicos (convites, propostas, aprovações, alertas) são enviados.
     RESEND_API_KEY: z.string().optional().default(''),
+    // Signing secret do webhook (prefixo whsec_). Vazio = o /webhooks/resend
+    // recusa TUDO — aceitar sem verificar deixaria qualquer um inflar o
+    // engajamento de uma campanha, e engajamento decide o próximo e-mail.
+    RESEND_WEBHOOK_SECRET: z.string().optional().default(''),
     RESEND_FROM_EMAIL: z.string().email().optional(),
     RESEND_FROM_NAME: z.string().optional(),
 
