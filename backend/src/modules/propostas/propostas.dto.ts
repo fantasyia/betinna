@@ -20,6 +20,14 @@ export const createPropostaSchema = z.object({
   probabilidade: z.number().int().min(0).max(100).default(50),
   validoAte: z.coerce.date().optional(),
   observacoes: z.string().max(2000).optional(),
+  /**
+   * De quem é a venda. Só a gestão escolhe — o rep é sempre ele mesmo.
+   *
+   * Proposta da gestão sem dono viraria pedido sem vendedor no ERP, e comissão
+   * de ninguém. Como o orçamento do Tiny EXIGE vendedor, isso quebraria no
+   * envio; melhor decidir aqui, onde dá pra escolher.
+   */
+  representanteId: usuarioIdSchema.optional(),
 });
 export type CreatePropostaDto = z.infer<typeof createPropostaSchema>;
 

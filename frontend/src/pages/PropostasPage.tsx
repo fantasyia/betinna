@@ -1096,6 +1096,12 @@ interface FormItem {
   precoUnitarioOverride: string;
 }
 
+interface RepOpt {
+  id: string;
+  nome: string;
+  email?: string | null;
+}
+
 function newFormItem(): FormItem {
   return {
     uiKey: Math.random().toString(36).slice(2),
@@ -1114,6 +1120,11 @@ function PropostaFormDialog({
   onSaved: () => void;
 }) {
   const [cliente, setCliente] = useState<ClienteOpt | null>(null);
+  // De quem é a venda. O rep é sempre ele mesmo; a gestão escolhe — proposta da
+  // gestão sem dono viraria orçamento sem vendedor, e o ERP recusa.
+  const roleForm = useRole();
+  const gestao = roleForm !== 'REP';
+  const [representante, setRepresentante] = useState<RepOpt | null>(null);
   const [itens, setItens] = useState<FormItem[]>([newFormItem()]);
   const [formaPagamento, setFormaPagamento] = useState<PagamentoForma>('BOLETO');
   const [condicaoPagamento, setCondicaoPagamento] = useState<CondicaoPgto>('30dias');
@@ -1194,6 +1205,7 @@ function PropostaFormDialog({
     };
     if (validoAte) payload.validoAte = validoAte;
     if (observacoes.trim()) payload.observacoes = observacoes.trim();
+    if (gestao && representante) payload.representanteId = representante.id;
 
     try {
       await api.post('/propostas', payload);
@@ -1241,6 +1253,22 @@ function PropostaFormDialog({
             onChange={setCliente}
           />
         </Field>
+
+        {gestao && (
+          <Field label="Representante (de quem é a venda)">
+            <AsyncCombobox<RepOpt>
+              testId="proposta-rep-picker"
+              endpoint="/users"
+              placeholder="Buscar representante…"
+              getLabel={(r) => r.nome}
+              getSubLabel={(r) => r.email ?? null}
+              getId={(r) => r.id}
+              value={representante}
+              onChange={setRepresentante}
+              extraQuery={{ role: 'REP' }}
+            />
+          </Field>
+        )}
 
         <section>
           <div className="flex items-center justify-between mb-2">

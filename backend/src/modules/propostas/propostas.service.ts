@@ -133,7 +133,12 @@ export class PropostasService {
       dto.condicaoPagamento,
       empresaCfg,
     );
-    const representanteId = user.role === 'REP' ? user.id : null;
+    // O rep é sempre dono da própria proposta; a gestão escolhe de quem é a
+    // venda. Sem dono, o orçamento no ERP não tem vendedor — e o Tiny recusa.
+    const representanteId =
+      user.role === 'REP'
+        ? user.id
+        : await this.validarRepresentante(empresaId, dto.representanteId);
     // #R1 — comissaoEstimada nasce pela % real do rep (folha usa comissaoPadrao); converterEmPedido e
     // aceite externo apenas COPIAM comissaoEstimada, então corrigir aqui conserta os dois caminhos.
     const comissaoPct = await this.resolveComissaoPct(representanteId);
@@ -271,6 +276,26 @@ export class PropostasService {
    * Converte uma proposta ACEITA em pedido. Cria o pedido como RASCUNHO,
    * vincula via Proposta.pedidoId e marca convertidaEm.
    */
+  /** Confere que o dono escolhido é REP/GERENTE da empresa (senão a venda vira de ninguém). */
+  private async validarRepresentante(
+    empresaId: string,
+    representanteId?: string,
+  ): Promise<string | null> {
+    if (!representanteId) return null;
+    const alvo = await this.prisma.usuario.findFirst({
+      where: {
+        id: representanteId,
+        role: { in: ['REP', 'GERENTE'] },
+        empresas: { some: { empresaId } },
+      },
+      select: { id: true },
+    });
+    if (!alvo) {
+      throw new BusinessRuleException('Representante inválido para esta empresa');
+    }
+    return alvo.id;
+  }
+
   async converterEmPedido(
     user: AuthenticatedUser,
     id: string,
