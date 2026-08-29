@@ -9,11 +9,19 @@ import { AprovacoesService } from './aprovacoes.service';
 import { PedidoPricingService } from './pedido-pricing.service';
 import { PedidosController } from './pedidos.controller';
 import { PedidosService } from './pedidos.service';
+import { PedidoErpSyncService } from './pedido-erp-sync.service';
+import { ErpSyncDiarioJob } from './erp-sync-diario.job';
 
 @Module({
   imports: [ProdutosModule, TinyModule, FluxosModule, NotificacoesModule, EmailModule],
   controllers: [PedidosController, AprovacoesController],
-  providers: [PedidosService, AprovacoesService, PedidoPricingService],
-  exports: [PedidosService, AprovacoesService, PedidoPricingService],
+  providers: [
+    PedidosService,
+    AprovacoesService,
+    PedidoPricingService,
+    PedidoErpSyncService,
+    ErpSyncDiarioJob,
+  ],
+  exports: [PedidosService, AprovacoesService, PedidoPricingService, PedidoErpSyncService],
 })
 export class PedidosModule {}

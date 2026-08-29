@@ -4,6 +4,8 @@ import { Audit } from '@shared/decorators/audit.decorator';
 import { CurrentUser } from '@shared/decorators/current-user.decorator';
 import { RequirePermissions } from '@shared/decorators/permissions.decorator';
 import { Roles } from '@shared/decorators/roles.decorator';
+import { ForbiddenException } from '@shared/errors/app-exception';
+import { ErrorCode } from '@shared/errors/error-codes';
 import { ZodValidationPipe } from '@shared/pipes/zod-validation.pipe';
 import type { AuthenticatedUser } from '@shared/types/authenticated-user';
 import {
@@ -29,12 +31,16 @@ import {
   updatePedidoSchema,
 } from './pedidos.dto';
 import { PedidosService } from './pedidos.service';
+import { PedidoErpSyncService } from './pedido-erp-sync.service';
 
 @ApiTags('pedidos')
 @ApiBearerAuth()
 @Controller('pedidos')
 export class PedidosController {
-  constructor(private readonly pedidos: PedidosService) {}
+  constructor(
+    private readonly pedidos: PedidosService,
+    private readonly erpSync: PedidoErpSyncService,
+  ) {}
 
   @Post('preview')
   @RequirePermissions({ module: 'pedidos', action: 'create' })
@@ -50,6 +56,30 @@ export class PedidosController {
 
   // ─── B2 — Ações em massa ───────────────────────────────────────────────
   // Declaradas ANTES de @Get(':id') / rotas paramétricas pra evitar colisão.
+
+  /**
+   * Puxa os pedidos do ERP pra cá — o mesmo que a rodada diária faz, sob demanda.
+   *
+   * Existe porque "amanhã de manhã" não serve quando o cliente está no telefone
+   * perguntando do pedido. O parâmetro dias amplia a janela de varredura (padrão 30).
+   *
+   * ADMIN/DIRECTOR: puxar do ERP mexe no catálogo de pedidos do tenant inteiro,
+   * e o rep não tem por que disparar isso.
+   */
+  @Post('sync-erp')
+  @Roles('ADMIN', 'DIRECTOR')
+  @RequirePermissions({ module: 'pedidos', action: 'view' })
+  @Audit({ action: 'sync_erp', resource: 'pedido' })
+  @ApiOperation({ summary: 'Traz pedidos, status e rastreio do ERP (Tiny) para o app.' })
+  syncErp(@CurrentUser() user: AuthenticatedUser, @Query('dias') dias?: string) {
+    if (!user.empresaIdAtiva) {
+      throw new ForbiddenException('Empresa não definida', ErrorCode.TENANT_ACCESS_DENIED);
+    }
+    const janela = Number(dias);
+    return this.erpSync.sincronizar(user.empresaIdAtiva, {
+      dias: Number.isFinite(janela) && janela > 0 ? janela : undefined,
+    });
+  }
 
   @Post('bulk/enviar-erp')
   @RequirePermissions({ module: 'pedidos', action: 'edit' })

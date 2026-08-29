@@ -1,0 +1,68 @@
+import { Injectable, Logger } from '@nestjs/common';
+import { Cron } from '@nestjs/schedule';
+import { EnvService } from '@config/env.service';
+import { PrismaService } from '@database/prisma.service';
+import { TinyProdutosSyncService } from '@integrations/tiny/tiny-produtos-sync.service';
+import { CronLockService } from '@shared/utils/cron-lock.service';
+import { PedidoErpSyncService } from './pedido-erp-sync.service';
+
+/**
+ * A ÚNICA automação diária do ERP — catálogo e pedidos na mesma rodada.
+ *
+ * Decisão do Léo (28/08): uma automação por dia, não uma por recurso. O ganho
+ * não é de máquina, é de gente — quando algo não aparece no app, existe **um**
+ * horário e **um** log pra olhar, em vez de descobrir qual dos crons falhou.
+ *
+ * Ordem importa: produtos primeiro. O pedido do ERP casa os itens por SKU, e um
+ * SKU criado ontem no Tiny só existe aqui depois do sync de catálogo — invertido,
+ * o pedido entraria sem os itens e ninguém veria motivo.
+ *
+ * 06:00 UTC = 03:00 no Brasil: o dia comercial já fechou lá e ninguém está
+ * mexendo no ERP. Quem tem pressa usa o botão "Sincronizar do ERP" na tela.
+ */
+@Injectable()
+export class ErpSyncDiarioJob {
+  private readonly logger = new Logger(ErpSyncDiarioJob.name);
+
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly env: EnvService,
+    private readonly cronLock: CronLockService,
+    private readonly produtos: TinyProdutosSyncService,
+    private readonly pedidos: PedidoErpSyncService,
+  ) {}
+
+  @Cron('0 6 * * *', { name: 'erp-sync-diario', timeZone: 'UTC' })
+  async sincronizar(): Promise<void> {
+    if (this.env.get('NODE_ENV') === 'test') return;
+    // TTL 1h: a rodada é minutos, e o lock só impede api e worker de puxarem o
+    // mesmo catálogo em paralelo (o que dobraria chamada à API do Tiny à toa).
+    if (!(await this.cronLock.acquire('erp-sync-diario', 3600))) return;
+
+    const conexoes = await this.prisma.integracaoConexao.findMany({
+      where: { servico: 'tiny', ativo: true },
+      select: { empresaId: true },
+    });
+    if (conexoes.length === 0) return;
+
+    for (const { empresaId } of conexoes) {
+      try {
+        const cat = await this.produtos.sync(empresaId, { modo: 'incremental' });
+        const ped = await this.pedidos.sincronizar(empresaId);
+        this.logger.log(
+          `[erp] rodada diária empresa=${empresaId}: ` +
+            `produtos ${cat.criados}+${cat.atualizados}, pedidos ${ped.criados}+${ped.atualizados}` +
+            (ped.avisos.length ? ` — ${ped.avisos.length} aviso(s)` : ''),
+        );
+        for (const aviso of ped.avisos) this.logger.warn(`[erp] ${aviso}`);
+      } catch (err) {
+        // Isolamento por empresa: um tenant com token vencido não pode impedir
+        // o sync dos outros.
+        this.logger.error(
+          `[erp] rodada diária falhou pra empresa=${empresaId}: ` +
+            `${err instanceof Error ? err.message : String(err)}`,
+        );
+      }
+    }
+  }
+}

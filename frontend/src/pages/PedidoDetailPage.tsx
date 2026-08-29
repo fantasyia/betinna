@@ -72,6 +72,9 @@ interface PedidoDetail {
   criadoEm: string;
   numeroErp?: string | null;
   enviadoErpEm?: string | null;
+  /** Rastreio do ERP — quem despacha é o Tiny, aqui é espelho. */
+  rastreioCodigo?: string | null;
+  rastreioUrl?: string | null;
   /** Quando este pedido foi criado via Duplicar, aponta pro original. */
   pedidoOrigem?: { id: string; numero: string | number } | null;
   pedidoOrigemId?: string | null;
@@ -561,6 +564,15 @@ export default function PedidoDetailPage() {
                       value={fmtDateTime(data.enviadoErpEm)}
                     />
                   )}
+                  {data.rastreioCodigo && (
+                    <InfoCell
+                      icon={<Truck />}
+                      label="Rastreio"
+                      value={data.rastreioCodigo}
+                      mono
+                      href={data.rastreioUrl ?? undefined}
+                    />
+                  )}
                   <InfoCell
                     icon={<User />}
                     label="Forma pagto"
@@ -794,11 +806,14 @@ function InfoCell({
   label,
   value,
   mono,
+  href,
 }: {
   icon: ReactNode;
   label: string;
   value?: string | null;
   mono?: boolean;
+  /** Quando o valor leva a algum lugar (ex.: rastreio na transportadora). */
+  href?: string;
 }) {
   const isEmpty = !value || value === '—';
   return (
@@ -814,7 +829,13 @@ function InfoCell({
           mono && 'tabular',
         )}
       >
-        {value ?? '—'}
+        {href && value ? (
+          <a href={href} target="_blank" rel="noreferrer" className="text-info hover:underline">
+            {value}
+          </a>
+        ) : (
+          (value ?? '—')
+        )}
       </div>
     </div>
   );

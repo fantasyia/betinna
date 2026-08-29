@@ -91,6 +91,9 @@ interface Pedido {
   criadoEm: string;
   numeroErp?: string | null;
   enviadoErpEm?: string | null;
+  /** Rastreio do ERP — quem despacha é o Tiny, aqui é espelho. */
+  rastreioCodigo?: string | null;
+  rastreioUrl?: string | null;
 }
 
 interface PedidoDetail extends Pedido {
@@ -235,6 +238,35 @@ export default function PedidosPage() {
   }, [page, filtrosQuery]);
 
   const { data: pageResp, loading, error, refetch } = useApiQuery<PaginatedResponse<Pedido>>(listPath);
+
+  // Puxar do ERP é do admin/diretor: mexe nos pedidos do tenant inteiro.
+  const podeSincronizarErp = role === 'ADMIN' || role === 'DIRECTOR';
+  const [sincronizandoErp, setSincronizandoErp] = useState(false);
+
+  async function sincronizarErp() {
+    if (sincronizandoErp) return;
+    setSincronizandoErp(true);
+    toast.info('Buscando pedidos no ERP (Tiny)… pode levar alguns segundos.');
+    try {
+      const r = await api.post<{
+        criados?: number;
+        atualizados?: number;
+        avisos?: string[];
+        erros?: number;
+      }>('/pedidos/sync-erp', {});
+      toast.success(
+        `ERP sincronizado — ${r.criados ?? 0} novo(s), ${r.atualizados ?? 0} atualizado(s)` +
+          (r.erros ? `, ${r.erros} com erro.` : '.'),
+      );
+      // Aviso é coisa que precisa de gente (SKU sem cadastro, vendedor sem dono).
+      for (const aviso of r.avisos ?? []) toast.info(aviso);
+      refetch();
+    } catch (err) {
+      toast.error('Falha ao sincronizar com o ERP', apiErrorMessage(err));
+    } finally {
+      setSincronizandoErp(false);
+    }
+  }
   // Config do tenant — rótulos/cores custom do lifecycle (ConfiguracaoTenant).
   const { data: cfgRaw } = useApiQuery<Record<string, unknown>>('/empresas/config');
   const statusCfg = (cfgRaw?.pedidoStatusLabels ?? {}) as PedidoStatusConfig;
@@ -368,6 +400,17 @@ export default function PedidosPage() {
       actions={
         <>
           <ExportMenu exporting={exporting} onExport={handleExport} />
+          {podeSincronizarErp && (
+            <Button
+              variant="secondary"
+              data-testid="pedido-sync-erp"
+              onClick={sincronizarErp}
+              disabled={sincronizandoErp}
+              title="Traz do ERP os pedidos novos, o status e o rastreio."
+            >
+              {sincronizandoErp ? 'Sincronizando…' : '↻ Sincronizar do ERP'}
+            </Button>
+          )}
           <Button
             data-testid="pedido-new-btn"
             onClick={() => setCreating(true)}
@@ -1069,6 +1112,15 @@ function PedidoDetailDrawer({
                 {data.numeroErp && (
                   <InfoCell icon={<Hash />} label="ERP" value={data.numeroErp} mono />
                 )}
+                {data.rastreioCodigo && (
+                  <InfoCell
+                    icon={<Truck />}
+                    label="Rastreio"
+                    value={data.rastreioCodigo}
+                    mono
+                    href={data.rastreioUrl ?? undefined}
+                  />
+                )}
                 <InfoCell
                   icon={<Receipt />}
                   label="Subtotal"
@@ -1374,12 +1426,15 @@ function InfoCell({
   value,
   avatar,
   mono,
+  href,
 }: {
   icon: ReactNode;
   label: string;
   value?: string | null;
   avatar?: string;
   mono?: boolean;
+  /** Quando o valor leva a algum lugar (ex.: rastreio na transportadora). */
+  href?: string;
 }) {
   if (!value || value === '—') {
     return (
@@ -1400,7 +1455,22 @@ function InfoCell({
       </div>
       <div className="flex items-center gap-1.5">
         {avatar && <Avatar name={avatar} size="xs" />}
-        <span className={cn('text-sm text-text truncate', mono && 'tabular')}>{value}</span>
+        {href ? (
+          <a
+            href={href}
+            target="_blank"
+            rel="noreferrer"
+            className={cn(
+              'text-sm text-info truncate hover:underline inline-flex items-center gap-1',
+              mono && 'tabular',
+            )}
+          >
+            {value}
+            <ExternalLink className="h-3 w-3 shrink-0" />
+          </a>
+        ) : (
+          <span className={cn('text-sm text-text truncate', mono && 'tabular')}>{value}</span>
+        )}
       </div>
     </div>
   );

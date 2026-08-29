@@ -370,6 +370,53 @@ competência explícita.
 
 ---
 
+### 3.3 Pedidos do ERP dentro do app (implementado 28/08)
+
+Até aqui a ponte era de mão única: o app criava o pedido e empurrava pro Tiny.
+Quem vendia pelo site — ou quem lançava direto no ERP — não existia no app, e o
+pedido empurrado congelava no status do dia em que subiu, porque faturamento,
+despacho e entrega acontecem lá.
+
+**Uma automação por dia, não uma por recurso** (decisão do Léo). A rodada das
+06:00 UTC (03:00 no Brasil) sincroniza catálogo e pedidos na mesma passada —
+produtos primeiro, porque o pedido casa os itens por SKU e um SKU criado ontem
+no Tiny só existe aqui depois do sync de catálogo. O ganho não é de máquina, é
+de gente: quando algo não aparece, há **um** horário e **um** log pra olhar.
+Quem tem pressa usa o botão **Sincronizar do ERP** na aba Vendas (`POST
+/pedidos/sync-erp`, ADMIN/DIRECTOR).
+
+**Duas redes, porque uma só deixa buraco:**
+
+1. varredura por janela de criação (30 dias por padrão) — pega o que nasceu lá;
+2. conferência dirigida, por número, dos pedidos daqui que ainda não terminaram
+   — sem ela, um pedido criado há 60 dias e entregue hoje ficaria "Enviado" pra
+   sempre, porque saiu da janela.
+
+**Quem vê o quê:** admin e diretor veem todos; o rep vê só os dele. Isso não é
+regra nova — é o escopo de rep que já filtra a listagem. O que o sync faz é
+preencher o `representanteId` casando o **vendedor do Tiny** com o usuário do
+app **por nome normalizado** (o Tiny manda só id e nome do vendedor no pedido,
+não o e-mail). Sem casar — ou com dois usuários de mesmo nome — o pedido entra
+**sem dono**, aparecendo só pra admin/diretor, e o resultado do sync devolve um
+aviso. Chutar o dono seria pior: comissão é dinheiro de duas pessoas.
+
+**O que o ERP sobrescreve:** status, valor total e rastreio (`rastreioCodigo` /
+`rastreioUrl`, colunas novas em `Pedido`). O caminho contrário — criar ou
+alterar pedido — continua sendo só o push.
+
+**`9 não entregue` não virou status.** Não existe equivalente no lifecycle
+daqui, e inventar um espalharia regra por comissão, devolução e relatório. O
+tratamento é carimbo na observação + notificação de prioridade alta pro
+admin/diretor, **uma vez** — o ERP responde 9 todo dia até alguém resolver, e
+avisar todo dia é o mesmo que não avisar. Se depois isso precisar virar status
+de verdade, é migration + rótulos no front.
+
+**Webhooks continuam só enfileirando.** Com a rodada diária + botão, o
+processamento em tempo real virou otimização, não necessidade — os eventos
+seguem guardados no Redis pra quando valer a pena.
+
+---
+
 ## 5. Plano de execução (ordem proposta)
 
 | # | Entrega | Depende de |
@@ -380,6 +427,7 @@ competência explícita.
 | 4 | Sync de contatos + situação do cliente | 2 |
 | 5 | Push de pedido (`POST /pedidos`) substituindo `enviarPedido` | 2 + depósito/vendedor |
 | 6 | Webhooks (pedido, rastreio, estoque, nota) com segredo na URL + re-pull | 2 + passo 2 do Léo |
+| 6b | **Pedidos do ERP → app** (feito 28/08): rodada diária única + botão "Sincronizar do ERP" na aba Vendas | 3 + 5 |
 | 7 | Ponte site ↔ Betinna: pedido do site vira pedido no Tiny; status/rastreio voltam pro site (`POST /api/pedidos/status`) | 5 + 6 |
 | 8 | Bot lê status do pedido (fecha o card 📦) | 6 |
 | 9 | Remessa de amostra no Tiny (CFOP) | 5 + decisão fiscal |

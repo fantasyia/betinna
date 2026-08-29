@@ -34,6 +34,51 @@ export interface ResultadoPedido {
   numeroPedido?: string | number;
 }
 
+/** O que a LISTAGEM de pedidos devolve por item (cabeçalho, sem itens). */
+export interface PedidoTinyResumo {
+  id: number;
+  numeroPedido?: string | number;
+  /** 0 aberta · 1 faturada · 2 cancelada · 3 aprovada · 4 preparando envio ·
+   *  5 enviada · 6 entregue · 7 pronto p/ envio · 8 dados incompletos ·
+   *  9 não entregue. */
+  situacao?: number;
+  dataCriacao?: string;
+}
+
+/** `GET /pedidos/{id}` — o cabeçalho acima MAIS itens, valores e transportador. */
+export interface PedidoTinyDetalhe extends PedidoTinyResumo {
+  data?: string;
+  valorTotalPedido?: number;
+  valorTotalProdutos?: number;
+  valorDesconto?: number;
+  valorFrete?: number;
+  observacoes?: string;
+  cliente?: {
+    id?: number;
+    nome?: string;
+    codigo?: string;
+    cpfCnpj?: string;
+    email?: string;
+    fone?: string;
+    celular?: string;
+    cidade?: string;
+    uf?: string;
+  };
+  vendedor?: { id?: number; nome?: string; contato?: { id?: number; nome?: string } };
+  transportador?: {
+    nome?: string;
+    formaEnvio?: { id?: number; nome?: string } | string;
+    codigoRastreamento?: string;
+    urlRastreamento?: string;
+  };
+  ecommerce?: { numeroPedidoEcommerce?: string; numeroPedidoCanalVenda?: string };
+  itens?: Array<{
+    produto?: { id?: number; sku?: string; descricao?: string };
+    quantidade?: number;
+    valorUnitario?: number;
+  }>;
+}
+
 /**
  * Cria pedidos no Tiny.
  *
@@ -149,8 +194,41 @@ export class TinyPedidosService {
   }
 
   /** Consulta um pedido — usado pelo webhook, que nunca acredita no payload. */
-  obter(empresaId: string, idPedido: number) {
-    return this.client.get<Record<string, unknown>>(empresaId, `/pedidos/${idPedido}`);
+  obter(empresaId: string, idPedido: number): Promise<PedidoTinyDetalhe> {
+    return this.client.get<PedidoTinyDetalhe>(empresaId, `/pedidos/${idPedido}`);
+  }
+
+  /**
+   * Lista pedidos do ERP. É o caminho de VOLTA: o que nasceu (ou mudou) lá
+   * precisa aparecer aqui.
+   *
+   * A janela é por data de CRIAÇÃO (`dataInicial`/`dataFinal`, formato
+   * `YYYY-MM-DD`). O filtro por atualização existe na API, mas a semântica dele
+   * não está documentada o bastante pra ser a única rede — quem cuida do pedido
+   * que mudou de situação fora da janela é a busca por número, no sync.
+   */
+  async listar(
+    empresaId: string,
+    filtro: {
+      dataInicial?: string;
+      dataFinal?: string;
+      numero?: string | number;
+      limit?: number;
+      offset?: number;
+    },
+  ): Promise<{ itens: PedidoTinyResumo[]; total: number }> {
+    const r = await this.client.get<{
+      itens?: PedidoTinyResumo[];
+      paginacao?: { total?: number };
+    }>(empresaId, '/pedidos', {
+      ...(filtro.dataInicial ? { dataInicial: filtro.dataInicial } : {}),
+      ...(filtro.dataFinal ? { dataFinal: filtro.dataFinal } : {}),
+      ...(filtro.numero != null ? { numero: filtro.numero } : {}),
+      limit: filtro.limit ?? 100,
+      offset: filtro.offset ?? 0,
+    });
+    const itens = r.itens ?? [];
+    return { itens, total: r.paginacao?.total ?? itens.length };
   }
 
   private async acharPorSku(empresaId: string, sku: string): Promise<{ id: number } | null> {

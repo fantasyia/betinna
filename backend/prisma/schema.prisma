@@ -782,6 +782,12 @@ model Pedido {
   observacoes    String? @db.Text
   motivoDesconto String? // pra aprovação
 
+  /// Rastreio do ERP (Tiny → `transportador.codigoRastreamento` / `urlRastreamento`).
+  /// Quem despacha é o ERP; aqui é espelho — o app nunca escreve rastreio por conta
+  /// própria, senão a tela do cliente e a etiqueta real contariam histórias diferentes.
+  rastreioCodigo String?
+  rastreioUrl    String?
+
   /// Marca registros gerados pelo seed-demo.
   isDemo Boolean @default(false)
 
