@@ -1,11 +1,13 @@
 import { Module } from '@nestjs/common';
 import { IntegracoesModule } from '@modules/integracoes/integracoes.module';
+import { NotificacoesModule } from '@modules/notificacoes/notificacoes.module';
 import { TinyClientService } from './tiny-client.service';
 import { TinyContaService } from './tiny-conta.service';
 import { TinyProdutosService } from './tiny-produtos.service';
 import { TinyPedidosService } from './tiny-pedidos.service';
 import { TinyContatosService } from './tiny-contatos.service';
 import { TinyRepsSyncService } from './tiny-reps-sync.service';
+import { TinyClientesSyncService } from './tiny-clientes-sync.service';
 import { TinyPedidoPushService } from './tiny-pedido-push.service';
 import { TinyProdutosSyncService } from './tiny-produtos-sync.service';
 import { TinyOAuthController } from './tiny-oauth.controller';
@@ -21,7 +23,7 @@ import { TinyWebhookController } from './tiny-webhook.controller';
  * itens 4–7 do plano em `docs/erp-tiny-olist.md`.
  */
 @Module({
-  imports: [IntegracoesModule],
+  imports: [IntegracoesModule, NotificacoesModule],
   controllers: [TinyOAuthController, TinyWebhookController],
   providers: [
     TinyOAuthService,
@@ -31,6 +33,7 @@ import { TinyWebhookController } from './tiny-webhook.controller';
     TinyPedidosService,
     TinyContatosService,
     TinyRepsSyncService,
+    TinyClientesSyncService,
     TinyPedidoPushService,
     TinyProdutosSyncService,
     TinyTokenRefreshJob,
@@ -43,6 +46,7 @@ import { TinyWebhookController } from './tiny-webhook.controller';
     TinyPedidosService,
     TinyContatosService,
     TinyRepsSyncService,
+    TinyClientesSyncService,
     TinyPedidoPushService,
     TinyProdutosSyncService,
   ],

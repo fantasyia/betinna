@@ -4,6 +4,7 @@ import { EnvService } from '@config/env.service';
 import { PrismaService } from '@database/prisma.service';
 import { TinyProdutosSyncService } from '@integrations/tiny/tiny-produtos-sync.service';
 import { TinyRepsSyncService } from '@integrations/tiny/tiny-reps-sync.service';
+import { TinyClientesSyncService } from '@integrations/tiny/tiny-clientes-sync.service';
 import { CronLockService } from '@shared/utils/cron-lock.service';
 import { PedidoErpSyncService } from './pedido-erp-sync.service';
 
@@ -31,6 +32,7 @@ export class ErpSyncDiarioJob {
     private readonly cronLock: CronLockService,
     private readonly produtos: TinyProdutosSyncService,
     private readonly reps: TinyRepsSyncService,
+    private readonly clientes: TinyClientesSyncService,
     private readonly pedidos: PedidoErpSyncService,
   ) {}
 
@@ -54,10 +56,15 @@ export class ErpSyncDiarioJob {
         // Reps novos viram contato no ERP na MESMA rodada — é o que permite
         // marcá-los como vendedor lá e o pedido voltar pro dono certo aqui.
         const reps = await this.reps.sincronizar(empresaId);
+        // Situação do cliente (bloqueado no ERP) — o campo existia desde sempre
+        // e ninguém alimentava: todo cliente era ATIVO aqui, mesmo o barrado lá.
+        const cli = await this.clientes.sincronizar(empresaId);
         this.logger.log(
           `[erp] rodada diária empresa=${empresaId}: ` +
             `produtos ${cat.criados}+${cat.atualizados}, pedidos ${ped.criados}+${ped.atualizados}, ` +
-            `reps ${reps.criados} novo(s)` +
+            `reps ${reps.criados} novo(s), ` +
+            `clientes ${cli.atualizados} com status novo` +
+            (cli.bloqueados ? ` (${cli.bloqueados} bloqueado(s))` : '') +
             (reps.semDocumento ? `, ${reps.semDocumento} sem CPF/CNPJ` : '') +
             (ped.avisos.length ? ` — ${ped.avisos.length} aviso(s)` : ''),
         );
