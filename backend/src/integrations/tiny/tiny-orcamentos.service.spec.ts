@@ -46,16 +46,18 @@ describe('orçamento no Tiny', () => {
     expect(client.post).not.toHaveBeenCalled();
   });
 
-  it('parcelas viajam como tipo+condição (o Tiny recusa o par incompleto)', async () => {
+  it('condição de pagamento viaja na OBSERVAÇÃO (o bloco do Tiny recusa o par)', async () => {
     const { svc, client } = build();
 
-    await svc.criar('emp-1', { ...BASE, parcelas: '30 60' });
+    await svc.criar('emp-1', {
+      ...BASE,
+      observacao: 'Proposta PROP-1',
+      condicaoPagamento: '30 60',
+    });
 
     const corpo = client.post.mock.calls[0][2] as Record<string, unknown>;
-    expect(corpo.condicoesComerciais).toEqual({
-      tipo: 'Parcelas',
-      parcelas: { condicao: '30 60' },
-    });
+    expect(corpo.observacao).toBe('Proposta PROP-1 — Pagamento: 30 60');
+    expect(corpo.condicoesComerciais).toBeUndefined();
   });
 
   it('validade e prazo viajam em condicoesGerais', async () => {

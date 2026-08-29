@@ -20,10 +20,17 @@ export interface OrcamentoParaTiny {
   validadeDias?: number;
   dataPrevistaEntrega?: string;
   /**
-   * Prazos em DIAS, do jeito que o Tiny lê: "30", "30 60", "30 60 90".
-   * Vazio = à vista (aí nem manda condição comercial).
+   * Condição de pagamento em texto ("30/60"). Vai dentro da OBSERVAÇÃO.
+   *
+   * O bloco `condicoesComerciais` do Tiny foi tentado e recusado nas duas
+   * formas documentadas — com `tipo: 'Texto livre'` ele responde "Texto livre
+   * não pode ser preenchido sem especificar o tipo", e com `tipo: 'Parcelas'`,
+   * "Parcelas não podem ser preenchidas sem especificar o tipo". O par
+   * tipo+conteúdo é recusado mesmo escrito como a documentação manda. Como a
+   * condição definitiva é acertada na aprovação, dentro do ERP, ela viaja como
+   * texto na observação — que aparece na proposta impressa do mesmo jeito.
    */
-  parcelas?: string;
+  condicaoPagamento?: string;
   observacao?: string;
   /** Desconto em VALOR (o Tiny não aceita % no orçamento). */
   desconto?: number;
@@ -95,18 +102,7 @@ export class TinyOrcamentosService {
             },
           }
         : {}),
-      // O Tiny valida o par tipo+conteúdo: mandar texto sem o tipo certo derruba
-      // o orçamento inteiro ("Texto livre não pode ser preenchido sem
-      // especificar o tipo"). Parcelas em dias é o formato que ele entende.
-      ...(orcamento.parcelas
-        ? {
-            condicoesComerciais: {
-              tipo: 'Parcelas',
-              parcelas: { condicao: orcamento.parcelas },
-            },
-          }
-        : {}),
-      ...(orcamento.observacao ? { observacao: orcamento.observacao } : {}),
+      ...(this.observacaoFinal(orcamento) ? { observacao: this.observacaoFinal(orcamento) } : {}),
       ...(orcamento.desconto ? { extras: { desconto: orcamento.desconto } } : {}),
     };
 
@@ -116,6 +112,16 @@ export class TinyOrcamentosService {
         `(${itens.length} item(ns))`,
     );
     return r;
+  }
+
+  /** Junta observação e condição de pagamento — ver o comentário do campo. */
+  private observacaoFinal(orcamento: OrcamentoParaTiny): string {
+    return [
+      orcamento.observacao,
+      orcamento.condicaoPagamento ? `Pagamento: ${orcamento.condicaoPagamento}` : '',
+    ]
+      .filter(Boolean)
+      .join(' — ');
   }
 
   obter(empresaId: string, idOrcamento: number): Promise<Record<string, unknown>> {

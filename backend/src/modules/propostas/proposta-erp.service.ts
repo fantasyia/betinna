@@ -100,8 +100,8 @@ export class PropostaErpService {
       ...(proposta.prazoEntrega
         ? { dataPrevistaEntrega: proposta.prazoEntrega.toISOString().slice(0, 10) }
         : {}),
-      ...(this.parcelasDoTiny(proposta.condicaoPagamento)
-        ? { parcelas: this.parcelasDoTiny(proposta.condicaoPagamento)! }
+      ...(this.prazoEmDias(proposta.condicaoPagamento)
+        ? { condicaoPagamento: this.prazoEmDias(proposta.condicaoPagamento)! }
         : {}),
       observacao: [`Proposta ${proposta.numero} (Betinna)`, proposta.observacoes ?? '']
         .filter(Boolean)
@@ -160,13 +160,8 @@ export class PropostaErpService {
     return vendedor ?? undefined;
   }
 
-  /**
-   * Condição de pagamento do app → prazos em dias, como o Tiny lê.
-   *
-   * À vista devolve `null` de propósito: sem parcela não se manda condição
-   * comercial nenhuma (o ERP recusa o par incompleto).
-   */
-  private parcelasDoTiny(condicao: string | null): string | null {
+  /** Condição do app → prazo legível ("30 60"). À vista não vira texto nenhum. */
+  private prazoEmDias(condicao: string | null): string | null {
     const mapa: Record<string, string> = {
       '15dias': '15',
       '30dias': '30',

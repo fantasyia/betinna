@@ -61,8 +61,8 @@ describe('proposta → orçamento no ERP', () => {
     const corpo = orcamentos.criar.mock.calls[0][1];
     expect(corpo.itens).toEqual([{ sku: 'MB-01', quantidade: 2, valorUnitario: 1500 }]);
     expect(corpo.vendedorId).toBe(555);
-    // '30/60' não existe no Tiny; o que ele lê é o prazo em dias.
-    expect(corpo.parcelas).toBeUndefined();
+    // '30/60' não é condição conhecida do app; sem mapa, não vira texto.
+    expect(corpo.condicaoPagamento).toBeUndefined();
   });
 
   it('guarda o id do orçamento (é o que impede a proposta duplicada)', async () => {
