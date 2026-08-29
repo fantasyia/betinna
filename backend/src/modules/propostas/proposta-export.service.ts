@@ -232,10 +232,17 @@ export class PropostaExportService {
           .fontSize(8)
           .fillColor('#999')
           .font('Helvetica')
-          .text(`Gerado por Betinna.ai · ${fmtDate(data.criadoEm)}`, left, doc.y, {
-            width: pageWidth,
-            align: 'center',
-          });
+          // A proposta é documento do CLIENTE: quando a empresa tem rodapé
+          // próprio (site/telefone), é o dela que aparece — não o do sistema.
+          .text(
+            `${data.marca?.rodape ?? 'Gerado por Betinna.ai'} · ${fmtDate(data.criadoEm)}`,
+            left,
+            doc.y,
+            {
+              width: pageWidth,
+              align: 'center',
+            },
+          );
 
         doc.end();
       } catch (err) {

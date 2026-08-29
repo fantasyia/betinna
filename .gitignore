@@ -81,3 +81,7 @@ session/
 
 # Screenshots do shot.mjs (verificação visual via Playwright — outputs descartáveis)
 frontend/*.png
+frontend/api.mjs
+frontend/baixar.mjs
+frontend/upload-logo.mjs
+frontend/*.pdf
