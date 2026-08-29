@@ -407,17 +407,21 @@ export default function ProdutosPage() {
             <option value="true">Apenas ativos</option>
             <option value="false">Apenas inativos</option>
           </Select>
-          <Select
-            data-testid="filter-estoque"
-            value={semEstoque}
-            onChange={(e) => {
-              setSemEstoque(e.target.value);
-              setPage(1);
-            }}
-          >
-            <option value="">Estoque: todos</option>
-            <option value="true">Apenas sem estoque</option>
-          </Select>
+          {/* Sob encomenda, "apenas sem estoque" traria o catálogo inteiro — filtro
+              que não separa nada é só mais um controle pra ignorar. */}
+          {!estoqueModo.sobEncomenda && (
+            <Select
+              data-testid="filter-estoque"
+              value={semEstoque}
+              onChange={(e) => {
+                setSemEstoque(e.target.value);
+                setPage(1);
+              }}
+            >
+              <option value="">Estoque: todos</option>
+              <option value="true">Apenas sem estoque</option>
+            </Select>
+          )}
         </FilterBar>
 
         <div className="flex flex-wrap items-center gap-3 py-2">
