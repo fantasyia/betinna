@@ -96,6 +96,46 @@ function primeiroNomeDe(nome?: string | null): string {
   return (nome ?? '').trim().split(/\s+/)[0] ?? '';
 }
 
+/**
+ * Marcadores que denunciam RAZÃO SOCIAL num campo que deveria ter nome de gente.
+ *
+ * Medido na base real (29/08): de 30.262 leads com `contatoNome`, **27% têm cara
+ * de empresa** — "Electro Aco Altona S.A.", "Soldex Soldagem Industrial",
+ * "Globalfer Máquinas". Saudar essa gente com "Olá Electro." na PRIMEIRA
+ * mensagem de um contato frio é onde a pessoa decide se aquilo é gente ou
+ * disparo de lista.
+ */
+const MARCADORES_EMPRESA =
+  /\b(ltda|s\.?\s?a\.?|eireli|me|epp|mei|cia|c(?:ompanh)?ia|com(?:ercio|ercial)?|ind(?:ustria|ustrial)?|distribuidora|representa(?:c|ç)(?:oes|ões|ao|ão)|maquinas|máquinas|equipamentos|servi(?:c|ç)os|solu(?:c|ç)(?:oes|ões)|tecnologia|engenharia|transportes|materiais|produtos|sistemas|grupo|holding|ferramentas|metalurgica|metalúrgica|usinagem|automa(?:c|ç)(?:ao|ão)|eletr(?:o|ica|ônica)|import(?:adora|acao|ação)?|export(?:adora)?|atacad(?:o|ista)|loja|comercio)\b/i;
+
+/**
+ * O nome cadastrado parece de uma PESSOA?
+ *
+ * Conservador de propósito: na dúvida devolve `false`, porque errar pra cá custa
+ * uma saudação neutra ("Olá!") e errar pro outro lado custa "Olá Electro." num
+ * primeiro contato. Um token só também cai aqui — "Globalfer" sozinho não dá
+ * pra distinguir de "Marcelo".
+ */
+export function pareceNomeDePessoa(nomeCompleto?: string | null): boolean {
+  const nome = (nomeCompleto ?? '').trim();
+  if (!nome) return false;
+  // Dígito, & ou pontuação de razão social: cadastro, não pessoa.
+  if (/[0-9@&/]/.test(nome)) return false;
+  // Começar em minúscula denuncia campo digitado como texto, não como nome
+  // próprio ("kibellaesmaltes ktda", "representação com. ainda não registrada").
+  // MAIÚSCULA TODA passa: base importada costuma vir assim.
+  if (/^[a-zà-ÿ]/.test(nome)) return false;
+  if (MARCADORES_EMPRESA.test(nome)) return false;
+  const tokens = nome.split(/\s+/).filter(Boolean);
+  // Nome de pessoa em cadastro brasileiro vem com sobrenome. Token único é
+  // ambíguo (11% da base) e não vale o risco.
+  if (tokens.length < 2) return false;
+  // Sobrenome de 1–2 letras é cadastro truncado ("Cristiomar Carv" passa, mas
+  // "Fulano C" não é nome, é abreviação cortada).
+  if (tokens[tokens.length - 1].replace(/\W/g, '').length < 2) return false;
+  return true;
+}
+
 /** Mapeia o mimetype do arquivo pro tipo de mídia do WhatsApp (default DOCUMENT). */
 function tipoMidiaDeMime(mime: string): 'IMAGE' | 'VIDEO' | 'AUDIO' | 'DOCUMENT' {
   const m = (mime || '').toLowerCase();
@@ -132,7 +172,12 @@ export function extrairMarcadoresDoc(texto: string): { limpo: string; ids: strin
  * pra esse texto NUNCA chegar assim no cliente.
  */
 export function personalizarNome(texto: string, nome?: string | null): string {
-  const primeiro = primeiroNomeDe(nome);
+  // Aqui o modelo não está no circuito: é substituição literal do template
+  // ("Olá [primeiro_nome]."). Se o cadastro tem nome de empresa, sai
+  // "Olá Electro." sem ninguém pra julgar — então o guard precisa ser
+  // determinístico. Nome de empresa → placeholder vazio, e a limpeza abaixo
+  // conserta a pontuação órfã ("Olá ." → "Olá.").
+  const primeiro = pareceNomeDePessoa(nome) ? primeiroNomeDe(nome) : '';
   const re =
     /\[\s*(?:primeiro[_ ]?nome|first[_ ]?name|nome)\s*\]|\{\{?\s*(?:primeiro[_ ]?nome|first[_ ]?name|nome)\s*\}?\}/gi;
   let out = texto.replace(re, primeiro);
@@ -1056,7 +1101,16 @@ export class ConversarIaService {
           INSTRUCAO_CLASSIFICACAO
         : INSTRUCAO_OPENER) +
       (primeiro
-        ? `\n[Dado] O primeiro nome do lead é "${primeiro}". Use-o na saudação.`
+        ? // O modelo julga isso bem — mas só se ENXERGAR. Antes recebia o token
+          // solto ("Electro") e uma ORDEM ("use na saudação"): não tinha como
+          // perceber que veio de "Electro Aco Altona S.A.". Agora vê o nome
+          // inteiro e decide; a instrução virou condição.
+          `\n[Dado] O cadastro do lead traz o nome "${lead.contatoNome ?? primeiro}" ` +
+          `(primeiro nome: "${primeiro}").` +
+          '\n[Regra] Use o primeiro nome na saudação APENAS se o nome completo for claramente ' +
+          'de uma PESSOA. Se parecer nome de empresa, razão social ou cadastro incompleto ' +
+          '(ex.: "Electro Aco Altona S.A.", "Soldex Soldagem Industrial"), cumprimente SEM ' +
+          'vocativo — "Olá!" resolve. Nunca chame a pessoa pelo nome da empresa dela.'
         : !usarNome
           ? // Sem exemplo de saudação no reativo: o `"Oi! Tudo bem?"` daqui era
             // literalmente o que o cliente recebia depois de descrever o problema
