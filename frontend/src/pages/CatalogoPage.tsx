@@ -18,9 +18,9 @@ import { useApiQuery } from '@/hooks/useApiQuery';
 import { PageLayout } from '@/components/PageLayout';
 import { CatalogoTabs } from '@/components/CatalogoTabs';
 import { StateView } from '@/components/StateView';
-import { AsyncCombobox } from '@/components/AsyncCombobox';
 import { ProdutoPickerDialog } from '@/components/ProdutoPickerDialog';
 import { useEstoqueModo, textoMontagem } from '@/hooks/useEstoqueModo';
+import { useDebouncedValue } from '@/hooks/useDebouncedValue';
 import { useToast } from '@/components/toast';
 import {
   Badge,
@@ -35,7 +35,7 @@ import {
   Stat,
 } from '@/components/ui';
 import { cn } from '@/lib/cn';
-import { formatMoeda as fmtBRL, formatMoedaCompacta as fmtBRLCompact, formatNumero } from '@/lib/masks';
+import { formatMoeda as fmtBRL, formatNumero } from '@/lib/masks';
 
 /**
  * CatalogoPage v2 — design system dark, cards de produtos.
@@ -52,17 +52,18 @@ interface CatalogoItem {
   produto?: {
     id: string;
     nome: string;
-    sku?: string;
-    marca?: string;
+    sku?: string | null;
+    marca?: string | null;
+    linha?: string | null;
     precoFabrica: number | null; // custo — null quando não informado
     precoTabela: number | null;
     precoLocacaoMensal?: number | null;
     imagem?: string | null;
     estoque?: number;
-    /** ISO string do timestamp do último sync de estoque (cron 30min ou webhook ERP). */
+    /** ISO string do timestamp do último sync de estoque (vem do sync do ERP). */
     estoqueAtualizadoEm?: string | null;
   };
-  precoFinal?: number;
+  precoFinal?: number | null;
 }
 
 interface ClienteOpt {
@@ -71,13 +72,19 @@ interface ClienteOpt {
   cnpj?: string | null;
 }
 
-interface PreviewItem {
-  produtoId: string;
-  produto?: { id: string; nome: string; sku?: string };
-  precoFabrica: number | null;
-  precoTabela: number;
-  precoEspecial?: number | null;
-  precoFinal: number;
+/**
+ * O que `GET /catalogo/preview` devolve DE VERDADE: o item do catálogo inteiro
+ * (com produto, foto e estoque) mais o preço resolvido pro cliente.
+ *
+ * A versão anterior inventava `precoFabrica`/`precoTabela`/`precoEspecial` no
+ * topo — campos que a API nunca mandou. A tabela mostrava "—" e "R$ 0,00" em
+ * colunas com nome de dinheiro, que é o pior jeito de errar: parece dado.
+ */
+interface PreviewItem extends CatalogoItem {
+  /** Preço que ESTE cliente vê. `null` quando não há mensalidade definida. */
+  precoFinal: number | null;
+  /** Veio de acordo negociado com o cliente (não é a tabela). */
+  precoNegociado: boolean;
 }
 
 /**
@@ -142,6 +149,7 @@ export default function CatalogoPage() {
   );
 
   const estoqueModo = useEstoqueModo();
+  const [baixandoPdf, setBaixandoPdf] = useState(false);
   const [adding, setAdding] = useState(false);
   const [previewOpen, setPreviewOpen] = useState(false);
   const [shareOpen, setShareOpen] = useState(false);
@@ -172,6 +180,18 @@ export default function CatalogoPage() {
     );
   }, [itens, search]);
 
+  async function baixarPdfDoCatalogo() {
+    setBaixandoPdf(true);
+    try {
+      await baixarCatalogoPdf();
+      toast.success('PDF do catálogo gerado');
+    } catch (err) {
+      toast.error('Falha ao gerar o PDF', err instanceof ApiError ? err.message : undefined);
+    } finally {
+      setBaixandoPdf(false);
+    }
+  }
+
   async function removeItem(produtoId: string) {
     try {
       await api.delete(`/catalogo/item/${produtoId}`);
@@ -196,6 +216,16 @@ export default function CatalogoPage() {
             leftIcon={<Eye className="h-3.5 w-3.5" />}
           >
             Preview
+          </Button>
+          <Button
+            variant="secondary"
+            data-testid="catalogo-pdf"
+            onClick={baixarPdfDoCatalogo}
+            disabled={itens.length === 0 || baixandoPdf}
+            loading={baixandoPdf}
+            leftIcon={<Download className="h-3.5 w-3.5" />}
+          >
+            PDF
           </Button>
           <Button
             data-testid="catalogo-share"
@@ -324,7 +354,13 @@ export default function CatalogoPage() {
           }}
         />
       )}
-      {previewOpen && <PreviewClienteDialog onClose={() => setPreviewOpen(false)} />}
+      {previewOpen && (
+        <PreviewClienteDialog
+          onClose={() => setPreviewOpen(false)}
+          sobEncomenda={estoqueModo.sobEncomenda}
+          diasMontagem={estoqueModo.diasMontagem}
+        />
+      )}
       {shareOpen && <ShareDialog onClose={() => setShareOpen(false)} />}
       {clearOpen && (
         <ClearDialog
@@ -518,26 +554,62 @@ function StockBadge({
 
 // ─── Preview cliente dialog ──────────────────────────────────
 
-function PreviewClienteDialog({ onClose }: { onClose: () => void }) {
+function PreviewClienteDialog({
+  onClose,
+  sobEncomenda,
+  diasMontagem,
+}: {
+  onClose: () => void;
+  sobEncomenda: boolean;
+  diasMontagem: number | null;
+}) {
+  const toast = useToast();
   const [cliente, setCliente] = useState<ClienteOpt | null>(null);
+  const [baixando, setBaixando] = useState(false);
   const previewPath = cliente ? `/catalogo/preview?clienteId=${cliente.id}` : null;
   const { data, loading, error } = useApiQuery<PreviewItem[] | { data: PreviewItem[] }>(previewPath);
-  const itens: PreviewItem[] = Array.isArray(data) ? data : data?.data ?? [];
+  const itens: PreviewItem[] = Array.isArray(data) ? data : (data?.data ?? []);
+
+  async function baixarPdf() {
+    setBaixando(true);
+    try {
+      await baixarCatalogoPdf(cliente?.id);
+      toast.success('PDF gerado');
+    } catch (err) {
+      toast.error('Falha ao gerar o PDF', err instanceof ApiError ? err.message : undefined);
+    } finally {
+      setBaixando(false);
+    }
+  }
 
   return (
-    <Dialog open onClose={onClose} title="Preview do catálogo aplicado a um cliente" size="xl">
-      <Field label="Cliente">
-        <AsyncCombobox<ClienteOpt>
-          testId="preview-cliente-picker"
-          endpoint="/clientes"
-          placeholder="Buscar cliente…"
-          getLabel={(c) => c.nome}
-          getSubLabel={(c) => c.cnpj ?? null}
-          getId={(c) => c.id}
-          value={cliente}
-          onChange={setCliente}
-        />
-      </Field>
+    <Dialog
+      open
+      onClose={onClose}
+      title="Preview do catálogo"
+      description="Escolha o cliente pra ver exatamente o que ele enxerga — com o preço que vale pra ele."
+      size="xl"
+      footer={
+        <>
+          <span className="mr-auto text-sm text-muted">
+            {cliente ? `${itens.length} produto(s)` : 'Nenhum cliente selecionado'}
+          </span>
+          <Button variant="secondary" onClick={onClose}>
+            Fechar
+          </Button>
+          <Button
+            data-testid="preview-pdf"
+            onClick={baixarPdf}
+            loading={baixando}
+            disabled={!cliente || itens.length === 0}
+            leftIcon={<Download className="h-3.5 w-3.5" />}
+          >
+            Baixar PDF
+          </Button>
+        </>
+      }
+    >
+      <ClientePicker value={cliente} onChange={setCliente} />
 
       {cliente && (
         <div className="mt-4">
@@ -547,65 +619,173 @@ function PreviewClienteDialog({ onClose }: { onClose: () => void }) {
               {error}
             </div>
           )}
+          {!loading && !error && itens.length === 0 && (
+            <EmptyState
+              icon={<Package />}
+              title="Catálogo vazio"
+              description="Adicione produtos pra ver o preview deste cliente."
+              className="m-2 border-0"
+            />
+          )}
           {!loading && !error && itens.length > 0 && (
-            <div className="rounded-md border border-border overflow-x-auto">
-              <table className="w-full">
-                <thead>
-                  <tr className="border-b border-border bg-bg-alt">
-                    <th className="text-left text-[10px] font-semibold uppercase tracking-wider text-muted px-3 py-2">
-                      Produto
-                    </th>
-                    <th className="text-right text-[10px] font-semibold uppercase tracking-wider text-muted px-3 py-2">
-                      Fábrica
-                    </th>
-                    <th className="text-right text-[10px] font-semibold uppercase tracking-wider text-muted px-3 py-2">
-                      Tabela
-                    </th>
-                    <th className="text-right text-[10px] font-semibold uppercase tracking-wider text-muted px-3 py-2">
-                      Negociado
-                    </th>
-                    <th className="text-right text-[10px] font-semibold uppercase tracking-wider text-muted px-3 py-2">
-                      Final p/ cliente
-                    </th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {itens.map((i) => (
-                    <tr key={i.produtoId} className="border-b border-border last:border-b-0">
-                      <td className="px-3 py-2">
-                        <div className="text-sm text-text">{i.produto?.nome ?? '—'}</div>
-                        {i.produto?.sku && (
-                          <div className="text-[10px] text-muted tabular">{i.produto.sku}</div>
-                        )}
-                      </td>
-                      <td className="px-3 py-2 text-right text-sm text-text-subtle tabular">
-                        {i.precoFabrica != null ? fmtBRLCompact(i.precoFabrica) : '—'}
-                      </td>
-                      <td className="px-3 py-2 text-right text-sm text-text-subtle tabular">
-                        {fmtBRLCompact(i.precoTabela)}
-                      </td>
-                      <td className="px-3 py-2 text-right">
-                        {i.precoEspecial !== null && i.precoEspecial !== undefined ? (
-                          <Badge variant="warning" size="sm">
-                            {fmtBRL(i.precoEspecial)}
-                          </Badge>
-                        ) : (
-                          <span className="text-muted-light text-sm">—</span>
-                        )}
-                      </td>
-                      <td className="px-3 py-2 text-right text-sm font-bold text-success tabular">
-                        {fmtBRL(i.precoFinal)}
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
+            <ul className="divide-y divide-border rounded-md border border-border">
+              {itens.map((i) => (
+                <li key={i.produtoId} className="flex items-center gap-3 px-3 py-2">
+                  <Thumb src={i.produto?.imagem} alt={i.produto?.nome ?? ''} />
+                  <div className="min-w-0 flex-1">
+                    <div className="truncate text-sm font-semibold text-text">
+                      {i.produto?.nome ?? '—'}
+                    </div>
+                    <div className="truncate text-xs text-muted">
+                      {[i.produto?.sku, i.produto?.marca, i.produto?.linha]
+                        .filter(Boolean)
+                        .join(' · ') || '—'}
+                    </div>
+                  </div>
+                  <span className="hidden text-xs text-muted sm:block w-40 text-right">
+                    {textoDisponibilidade(i.produto?.estoque, sobEncomenda, diasMontagem)}
+                  </span>
+                  <div className="w-32 shrink-0 text-right">
+                    <div className="text-[10px] uppercase tracking-wider text-muted">
+                      {i.produto?.precoTabela == null ? 'Locação / mês' : 'Preço pro cliente'}
+                    </div>
+                    <div className="tabular text-sm font-bold text-text">
+                      {i.precoFinal != null ? fmtBRL(i.precoFinal) : '—'}
+                    </div>
+                    {i.precoNegociado && (
+                      <Badge variant="warning" size="sm">
+                        negociado
+                      </Badge>
+                    )}
+                  </div>
+                </li>
+              ))}
+            </ul>
           )}
         </div>
       )}
     </Dialog>
   );
+}
+
+/**
+ * Escolher cliente por LISTA, não por caixinha de busca.
+ *
+ * O combobox anterior mostrava um item por vez numa caixa estreita: só servia
+ * pra quem já sabia o nome de cor. Aqui a lista aparece, com CNPJ e cidade, e a
+ * busca só filtra.
+ */
+function ClientePicker({
+  value,
+  onChange,
+}: {
+  value: ClienteOpt | null;
+  onChange: (c: ClienteOpt | null) => void;
+}) {
+  const [busca, setBusca] = useState('');
+  const buscaDebounced = useDebouncedValue(busca, 300);
+  const path = useMemo(() => {
+    const qs = new URLSearchParams({ page: '1', limit: '12' });
+    if (buscaDebounced.trim()) qs.set('search', buscaDebounced.trim());
+    return `/clientes?${qs.toString()}`;
+  }, [buscaDebounced]);
+  const { data, loading } = useApiQuery<{ data: ClienteOpt[] } | ClienteOpt[]>(path);
+  const clientes: ClienteOpt[] = Array.isArray(data) ? data : (data?.data ?? []);
+
+  if (value) {
+    return (
+      <div className="flex items-center gap-2 rounded-md border border-primary/40 bg-primary/5 px-3 py-2">
+        <div className="min-w-0 flex-1">
+          <div className="truncate text-sm font-semibold text-text">{value.nome}</div>
+          <div className="truncate text-xs text-muted">{value.cnpj ?? 'sem CNPJ'}</div>
+        </div>
+        <Button variant="ghost" size="sm" onClick={() => onChange(null)}>
+          Trocar cliente
+        </Button>
+      </div>
+    );
+  }
+
+  return (
+    <div className="flex flex-col gap-2">
+      <Input
+        data-testid="preview-cliente-busca"
+        autoFocus
+        placeholder="Buscar cliente por nome ou CNPJ…"
+        value={busca}
+        onChange={(e) => setBusca(e.target.value)}
+      />
+      <div className="max-h-56 overflow-y-auto rounded-md border border-border">
+        {loading && <div className="px-3 py-3 text-sm text-muted">Buscando…</div>}
+        {!loading && clientes.length === 0 && (
+          <div className="px-3 py-3 text-sm text-muted">Nenhum cliente encontrado.</div>
+        )}
+        <ul className="divide-y divide-border">
+          {clientes.map((c) => (
+            <li key={c.id}>
+              <button
+                type="button"
+                data-testid={`preview-cliente-${c.id}`}
+                onClick={() => onChange(c)}
+                className="flex w-full items-center gap-2 px-3 py-2 text-left hover:bg-surface-hover"
+              >
+                <div className="min-w-0 flex-1">
+                  <div className="truncate text-sm text-text">{c.nome}</div>
+                  <div className="truncate text-xs text-muted">{c.cnpj ?? 'sem CNPJ'}</div>
+                </div>
+              </button>
+            </li>
+          ))}
+        </ul>
+      </div>
+    </div>
+  );
+}
+
+/** Miniatura do produto — a foto vem do ERP; sem ela, o ícone neutro. */
+function Thumb({ src, alt }: { src?: string | null; alt: string }) {
+  if (!src) {
+    return (
+      <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-md border border-border bg-bg-alt">
+        <Package className="h-4 w-4 text-muted" />
+      </div>
+    );
+  }
+  return (
+    <img
+      src={src}
+      alt={alt}
+      loading="lazy"
+      className="h-10 w-10 shrink-0 rounded-md border border-border object-cover"
+    />
+  );
+}
+
+/** Mesma frase do PDF: sob encomenda, o que vale é o PRAZO, não o saldo. */
+function textoDisponibilidade(
+  estoque: number | undefined,
+  sobEncomenda: boolean,
+  diasMontagem: number | null,
+): string {
+  if (sobEncomenda) return `Sob encomenda · ${textoMontagem(diasMontagem)}`;
+  if (estoque == null) return 'sem dado';
+  return estoque > 0 ? `${estoque} em estoque` : 'sob consulta';
+}
+
+/** Baixa o PDF do catálogo (com ou sem cliente vinculado). */
+async function baixarCatalogoPdf(clienteId?: string): Promise<void> {
+  const r = await api.get<{ filename: string; base64: string }>(
+    `/catalogo/pdf${clienteId ? `?clienteId=${clienteId}` : ''}`,
+  );
+  const bytes = atob(r.base64);
+  const buf = new Uint8Array(bytes.length);
+  for (let i = 0; i < bytes.length; i += 1) buf[i] = bytes.charCodeAt(i);
+  const url = URL.createObjectURL(new Blob([buf], { type: 'application/pdf' }));
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = r.filename;
+  a.click();
+  URL.revokeObjectURL(url);
 }
 
 // ─── Share dialog ─────────────────────────────────────────────
@@ -615,7 +795,9 @@ function ShareDialog({ onClose }: { onClose: () => void }) {
   const [canal, setCanal] = useState<'whatsapp' | 'pdf'>('whatsapp');
   const [validoAte, setValidoAte] = useState('');
   const [busy, setBusy] = useState(false);
-  const [result, setResult] = useState<{ pdfBase64?: string; sentToWhatsApp?: boolean } | null>(null);
+  const [result, setResult] = useState<{ pdfBaixado?: boolean; sentToWhatsApp?: boolean } | null>(
+    null,
+  );
   const [error, setError] = useState<string | null>(null);
 
   async function share() {
@@ -623,14 +805,18 @@ function ShareDialog({ onClose }: { onClose: () => void }) {
     setError(null);
     setResult(null);
     try {
-      // Cliente é opcional — quando ausente, usa o preço de tabela da MSM.
+      // PDF é ARQUIVO, não link: baixa aqui e pronto. A tela esperava um
+      // `pdfBase64` na resposta do /share que o backend nunca mandou — quem
+      // escolhia PDF via "compartilhado com sucesso" e ficava sem arquivo.
+      if (canal === 'pdf') {
+        await baixarCatalogoPdf(cliente?.id);
+        setResult({ pdfBaixado: true });
+        return;
+      }
       const payload: Record<string, unknown> = { canal };
       if (cliente) payload.clienteId = cliente.id;
       if (validoAte) payload.validoAte = validoAte;
-      const r = await api.post<{ pdfBase64?: string; sentToWhatsApp?: boolean }>(
-        '/catalogo/share',
-        payload,
-      );
+      const r = await api.post<{ sentToWhatsApp?: boolean }>('/catalogo/share', payload);
       setResult(r);
     } catch (err) {
       setError(err instanceof ApiError ? err.message : 'Falha');
@@ -672,16 +858,7 @@ function ShareDialog({ onClose }: { onClose: () => void }) {
             label="Cliente (opcional)"
             hint="Deixe em branco pra enviar pra qualquer pessoa (sem vínculo no sistema)"
           >
-            <AsyncCombobox<ClienteOpt>
-              testId="share-cliente-picker"
-              endpoint="/clientes"
-              placeholder="Buscar cliente…"
-              getLabel={(c) => c.nome}
-              getSubLabel={(c) => c.cnpj ?? null}
-              getId={(c) => c.id}
-              value={cliente}
-              onChange={setCliente}
-            />
+            <ClientePicker value={cliente} onChange={setCliente} />
           </Field>
           <Field label="Canal">
             <Select value={canal} onChange={(e) => setCanal(e.target.value as typeof canal)}>
@@ -707,7 +884,7 @@ function ShareDialog({ onClose }: { onClose: () => void }) {
         <div className="flex flex-col gap-3">
           <div className="px-3 py-2.5 rounded-md bg-success/10 border border-success/30 text-success text-sm flex items-center gap-2">
             <CheckCircle2 className="h-4 w-4 shrink-0" />
-            Catálogo compartilhado com sucesso.
+            {result.pdfBaixado ? 'PDF do catálogo gerado.' : 'Catálogo compartilhado com sucesso.'}
           </div>
 
           {result.sentToWhatsApp && (
@@ -717,15 +894,11 @@ function ShareDialog({ onClose }: { onClose: () => void }) {
             </div>
           )}
 
-          {result.pdfBase64 && (
-            <a
-              href={`data:application/pdf;base64,${result.pdfBase64}`}
-              download={`catalogo-${cliente?.nome.replace(/\s+/g, '_') ?? 'cliente'}.pdf`}
-              className="inline-flex items-center justify-center gap-2 h-10 px-4 rounded-md bg-primary text-primary-contrast font-semibold text-sm hover:bg-primary-hover transition-colors"
-            >
-              <Download className="h-3.5 w-3.5" />
-              Baixar PDF
-            </a>
+          {result.pdfBaixado && (
+            <div className="flex items-center gap-2 px-3 py-2 rounded-md bg-info/10 border border-info/30 text-info text-sm">
+              <Download className="h-4 w-4" />
+              PDF baixado — está na pasta de downloads.
+            </div>
           )}
         </div>
       )}

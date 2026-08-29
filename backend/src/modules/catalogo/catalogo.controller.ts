@@ -96,6 +96,17 @@ export class CatalogoController {
     return this.catalogo.previewParaCliente(user, clienteId);
   }
 
+  @Get('pdf')
+  @RequirePermissions({ module: 'catalogo', action: 'view' })
+  @Audit({ action: 'exportar_pdf', resource: 'catalogo_rep' })
+  @ApiOperation({
+    summary:
+      'PDF do catálogo (foto, dados, preço e disponibilidade). Com clienteId, aplica o preço do cliente.',
+  })
+  exportarPdf(@CurrentUser() user: AuthenticatedUser, @Query('clienteId') clienteId?: string) {
+    return this.catalogo.exportarPdf(user, clienteId || undefined);
+  }
+
   @Post('share')
   @RequirePermissions({ module: 'catalogo', action: 'edit' })
   @Audit({ action: 'share_catalog', resource: 'catalogo_rep' })

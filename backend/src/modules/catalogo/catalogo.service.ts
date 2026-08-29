@@ -3,6 +3,7 @@ import { PrismaService } from '@database/prisma.service';
 import { ClientesService } from '@modules/clientes/clientes.service';
 import { PricingService } from '@modules/produtos/pricing.service';
 import { CatalogShareService } from './catalog-share.service';
+import { CatalogoPdfService, type LinhaCatalogoPdf } from './catalogo-pdf.service';
 import {
   BusinessRuleException,
   ForbiddenException,
@@ -82,6 +83,7 @@ export class CatalogoService {
     private readonly clientes: ClientesService,
     private readonly pricing: PricingService,
     private readonly share: CatalogShareService,
+    private readonly pdf: CatalogoPdfService,
   ) {}
 
   private requireEmpresa(user: AuthenticatedUser): string {
@@ -254,6 +256,107 @@ export class CatalogoService {
    * Usado quando o rep compartilha catálogo "pra qualquer pessoa"
    * (envio livre via link público sem cadastro de cliente).
    */
+  /**
+   * PDF do catálogo — o material que o rep manda pro cliente.
+   *
+   * O preço é resolvido AQUI, com a mesma regra da tela: o representante loca,
+   * então o que sai no papel é a mensalidade; para os outros papéis sai o preço
+   * final do cliente (negociado quando houver). O gerador de PDF não decide
+   * preço — decidir preço em dois lugares é como o número errado chega ao
+   * cliente.
+   */
+  async exportarPdf(
+    user: AuthenticatedUser,
+    clienteId?: string,
+  ): Promise<{ filename: string; base64: string }> {
+    const empresaId = this.requireEmpresa(user);
+    const itens = clienteId
+      ? await this.previewParaCliente(user, clienteId)
+      : await this.previewSemCliente(user);
+    if (itens.length === 0) {
+      throw new BusinessRuleException(
+        'Seu catálogo está vazio. Adicione produtos antes de gerar o PDF.',
+      );
+    }
+
+    const [empresa, rep, cliente] = await Promise.all([
+      this.prisma.empresa.findUnique({
+        where: { id: empresaId },
+        select: { nome: true, cnpj: true, config: true },
+      }),
+      this.prisma.usuario.findUnique({
+        where: { id: user.id },
+        select: { nome: true, email: true, telefone: true },
+      }),
+      clienteId
+        ? this.prisma.cliente.findFirst({
+            where: { id: clienteId, empresaId },
+            select: { nome: true, cnpj: true },
+          })
+        : Promise.resolve(null),
+    ]);
+
+    const cfg = (empresa?.config as Record<string, unknown> | null) ?? {};
+    const estoqueCfg = (cfg.estoque as { modo?: string; diasMontagem?: number } | null) ?? null;
+    const sobEncomenda = estoqueCfg?.modo === 'sob_encomenda';
+    const dias = typeof estoqueCfg?.diasMontagem === 'number' ? estoqueCfg.diasMontagem : null;
+    const repLoca = ocultaCusto(user);
+
+    const linhas: LinhaCatalogoPdf[] = itens.map((i) => ({
+      nome: i.produto.nome,
+      detalhe: [i.produto.sku, i.produto.marca, i.produto.linha].filter(Boolean).join(' · '),
+      imagem: i.produto.imagem,
+      // REP: mensalidade de locação. Demais papéis: o preço final do cliente.
+      preco: repLoca ? i.produto.precoLocacaoMensal : i.precoFinal,
+      precoRotulo: repLoca ? 'Locação / mês' : 'Preço',
+      disponibilidade: this.textoDisponibilidade(i.produto.estoque, sobEncomenda, dias),
+      negociado: i.precoNegociado,
+    }));
+
+    const pdf = await this.pdf.gerar({
+      empresa: { nome: empresa?.nome ?? 'Catálogo', cnpj: empresa?.cnpj ?? null },
+      representante: {
+        nome: rep?.nome ?? '',
+        email: rep?.email ?? null,
+        telefone: rep?.telefone ?? null,
+      },
+      cliente: cliente ? { nome: cliente.nome, cnpj: cliente.cnpj } : null,
+      geradoEm: new Date(),
+      itens: linhas,
+    });
+
+    const nomeArquivo = cliente
+      ? `catalogo-${cliente.nome
+          .replace(/[^\w]+/g, '-')
+          .toLowerCase()
+          .slice(0, 40)}.pdf`
+      : 'catalogo.pdf';
+    return { filename: nomeArquivo, base64: pdf.toString('base64') };
+  }
+
+  /**
+   * O que o cliente lê como disponibilidade.
+   *
+   * Sob encomenda, saldo não diz nada (o produto é montado depois do pedido) —
+   * o que vale é o PRAZO. Mandar "0 em estoque" num catálogo de venda é tiro no
+   * pé: parece falta de produto quando é o modelo de operação.
+   */
+  private textoDisponibilidade(
+    estoque: number,
+    sobEncomenda: boolean,
+    diasMontagem: number | null,
+  ): string {
+    if (sobEncomenda) {
+      if (diasMontagem == null) return 'Sob encomenda';
+      if (diasMontagem === 0) return 'Sob encomenda · montagem no mesmo dia';
+      return `Sob encomenda · ${diasMontagem} dia${diasMontagem === 1 ? '' : 's'} útil${
+        diasMontagem === 1 ? '' : 'eis'
+      }`;
+    }
+    if (estoque <= 0) return 'Sob consulta';
+    return `${estoque} em estoque`;
+  }
+
   async previewSemCliente(user: AuthenticatedUser): Promise<PreviewItem[]> {
     this.requireEmpresa(user);
     const catalog = await this.listMyCatalogInterno(user);

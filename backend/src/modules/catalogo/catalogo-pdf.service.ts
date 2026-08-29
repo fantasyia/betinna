@@ -1,0 +1,280 @@
+import { Injectable, Logger } from '@nestjs/common';
+import PDFDocument from 'pdfkit';
+
+export interface LinhaCatalogoPdf {
+  nome: string;
+  /** SKU · marca · linha — o que couber numa linha só. */
+  detalhe: string;
+  /** URL da imagem do produto (do ERP). Best-effort: sem ela, entra o retângulo vazio. */
+  imagem: string | null;
+  /** O preço que ESTE leitor pode ver (locação pro rep, final pro cliente). */
+  preco: number | null;
+  /** Rótulo do preço — "Locação / mês" ou "Preço". */
+  precoRotulo: string;
+  /** "Sob encomenda · montagem em 1 dia útil" ou "12 un em estoque". */
+  disponibilidade: string;
+  /** Preço veio de acordo negociado com o cliente. */
+  negociado: boolean;
+}
+
+export interface CatalogoPdfData {
+  empresa: { nome: string; cnpj: string | null };
+  representante: { nome: string; email: string | null; telefone: string | null };
+  cliente: { nome: string; cnpj: string | null } | null;
+  geradoEm: Date;
+  itens: LinhaCatalogoPdf[];
+}
+
+const BRAND_NAVY = '#201554';
+const BRAND_CYAN = '#2bcae5';
+const CINZA = '#666666';
+
+const ALTURA_LINHA = 46;
+const LADO_FOTO = 34;
+/** Teto de imagens baixadas por PDF — catálogo grande não pode virar timeout. */
+const MAX_IMAGENS = 60;
+const TIMEOUT_IMAGEM_MS = 4000;
+
+function fmtBRL(v: number): string {
+  return new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(v);
+}
+
+/**
+ * PDF do catálogo do representante — o material que ele manda pro cliente.
+ *
+ * Uma LINHA por produto, e cabe numa linha de propósito: foto pequena, nome,
+ * o essencial (SKU · marca) em texto único, preço e disponibilidade. Catálogo
+ * que ocupa meia página por item vira PDF de 30 páginas que ninguém abre no
+ * celular.
+ *
+ * **As imagens são baixadas aqui, no servidor.** No navegador elas quebrariam:
+ * o arquivo está no S3 do ERP e o canvas do jsPDF esbarra em CORS. Aqui é só
+ * um fetch. Falha de imagem NÃO derruba o PDF — entra o espaço vazio e o
+ * catálogo sai mesmo assim.
+ *
+ * O preço que entra é o que o CHAMADOR já resolveu (locação pro rep, negociado
+ * do cliente quando houver). Este serviço não decide preço — decidir preço em
+ * dois lugares é como o número errado chega no cliente.
+ */
+@Injectable()
+export class CatalogoPdfService {
+  private readonly logger = new Logger(CatalogoPdfService.name);
+
+  async gerar(data: CatalogoPdfData): Promise<Buffer> {
+    const imagens = await this.baixarImagens(data.itens);
+
+    return new Promise((resolve, reject) => {
+      try {
+        const doc = new PDFDocument({ size: 'A4', margin: 40 });
+        const chunks: Buffer[] = [];
+        doc.on('data', (c: Buffer) => chunks.push(c));
+        doc.on('end', () => resolve(Buffer.concat(chunks)));
+        doc.on('error', reject);
+
+        const left = doc.page.margins.left;
+        const largura = doc.page.width - doc.page.margins.left - doc.page.margins.right;
+        const direita = left + largura;
+
+        this.cabecalho(doc, data, left, largura);
+
+        let y = doc.y + 6;
+        this.cabecalhoDaTabela(doc, left, largura, y);
+        y += 18;
+
+        for (const item of data.itens) {
+          // Quebra de página ANTES de desenhar: linha cortada ao meio é o
+          // defeito clássico de PDF montado por posição.
+          if (y + ALTURA_LINHA > doc.page.height - doc.page.margins.bottom - 30) {
+            doc.addPage();
+            y = doc.page.margins.top;
+            this.cabecalhoDaTabela(doc, left, largura, y);
+            y += 18;
+          }
+          this.linha(doc, item, imagens.get(item.imagem ?? ''), left, largura, y);
+          y += ALTURA_LINHA;
+          doc
+            .moveTo(left, y - 6)
+            .lineTo(direita, y - 6)
+            .strokeColor('#e5e5e5')
+            .lineWidth(0.5)
+            .stroke();
+        }
+
+        this.rodape(doc, data, left, largura);
+        doc.end();
+      } catch (err) {
+        reject(err instanceof Error ? err : new Error(String(err)));
+      }
+    });
+  }
+
+  private cabecalho(
+    doc: PDFKit.PDFDocument,
+    data: CatalogoPdfData,
+    left: number,
+    largura: number,
+  ): void {
+    doc.fillColor(BRAND_NAVY).fontSize(20).font('Helvetica-Bold').text(data.empresa.nome, left);
+    if (data.empresa.cnpj) {
+      doc.fontSize(8).font('Helvetica').fillColor(CINZA).text(`CNPJ: ${data.empresa.cnpj}`);
+    }
+    doc.moveDown(0.4);
+    doc.fillColor(BRAND_NAVY).fontSize(14).font('Helvetica-Bold').text('Catálogo de produtos');
+
+    doc.moveDown(0.2);
+    doc.fontSize(9).font('Helvetica').fillColor(CINZA);
+    const contato = [data.representante.nome, data.representante.telefone, data.representante.email]
+      .filter(Boolean)
+      .join(' · ');
+    doc.text(contato);
+    if (data.cliente) {
+      doc
+        .fillColor(BRAND_NAVY)
+        .font('Helvetica-Bold')
+        .text(
+          `Preparado para ${data.cliente.nome}${data.cliente.cnpj ? ` · ${data.cliente.cnpj}` : ''}`,
+        );
+    }
+    doc.moveDown(0.4);
+    doc
+      .moveTo(left, doc.y)
+      .lineTo(left + largura, doc.y)
+      .strokeColor(BRAND_CYAN)
+      .lineWidth(2)
+      .stroke();
+  }
+
+  private cabecalhoDaTabela(
+    doc: PDFKit.PDFDocument,
+    left: number,
+    largura: number,
+    y: number,
+  ): void {
+    const colPreco = left + largura - 100;
+    const colDisp = left + largura - 230;
+    doc.fontSize(7.5).font('Helvetica-Bold').fillColor(CINZA);
+    doc.text('PRODUTO', left, y);
+    doc.text('DISPONIBILIDADE', colDisp, y, { width: 120 });
+    doc.text('PREÇO', colPreco, y, { width: 100, align: 'right' });
+  }
+
+  private linha(
+    doc: PDFKit.PDFDocument,
+    item: LinhaCatalogoPdf,
+    imagem: Buffer | undefined,
+    left: number,
+    largura: number,
+    y: number,
+  ): void {
+    const colPreco = left + largura - 100;
+    const colDisp = left + largura - 230;
+    const textoX = left + LADO_FOTO + 8;
+    const larguraTexto = colDisp - textoX - 8;
+
+    if (imagem) {
+      try {
+        doc.image(imagem, left, y, { fit: [LADO_FOTO, LADO_FOTO], align: 'center' });
+      } catch {
+        /* imagem inválida: segue sem ela — o catálogo importa mais que a foto */
+      }
+    } else {
+      doc.rect(left, y, LADO_FOTO, LADO_FOTO).strokeColor('#e5e5e5').lineWidth(0.5).stroke();
+    }
+
+    doc.fillColor('#111111').fontSize(10).font('Helvetica-Bold');
+    doc.text(item.nome, textoX, y + 3, { width: larguraTexto, ellipsis: true, lineBreak: false });
+    doc.fillColor(CINZA).fontSize(8).font('Helvetica');
+    doc.text(item.detalhe, textoX, y + 17, {
+      width: larguraTexto,
+      ellipsis: true,
+      lineBreak: false,
+    });
+
+    doc.fillColor(CINZA).fontSize(8).font('Helvetica');
+    doc.text(item.disponibilidade, colDisp, y + 10, { width: 120, ellipsis: true });
+
+    doc
+      .fontSize(7)
+      .fillColor(CINZA)
+      .text(item.precoRotulo, colPreco, y + 2, {
+        width: 100,
+        align: 'right',
+      });
+    doc
+      .fontSize(12)
+      .font('Helvetica-Bold')
+      .fillColor(item.preco == null ? CINZA : BRAND_NAVY)
+      .text(item.preco == null ? 'sob consulta' : fmtBRL(item.preco), colPreco, y + 12, {
+        width: 100,
+        align: 'right',
+      });
+    if (item.negociado) {
+      doc
+        .fontSize(6.5)
+        .font('Helvetica')
+        .fillColor(BRAND_CYAN)
+        .text('preço negociado', colPreco, y + 28, { width: 100, align: 'right' });
+    }
+  }
+
+  private rodape(
+    doc: PDFKit.PDFDocument,
+    data: CatalogoPdfData,
+    left: number,
+    largura: number,
+  ): void {
+    const quando = new Intl.DateTimeFormat('pt-BR', {
+      dateStyle: 'short',
+      timeStyle: 'short',
+    }).format(data.geradoEm);
+    doc.moveDown(1);
+    doc
+      .fontSize(7.5)
+      .font('Helvetica')
+      .fillColor(CINZA)
+      .text(
+        `Gerado em ${quando} · ${data.itens.length} produto(s) · preços sujeitos a confirmação`,
+        left,
+        doc.y,
+        { width: largura, align: 'center' },
+      );
+  }
+
+  /**
+   * Baixa as imagens dos produtos (best-effort, em paralelo).
+   *
+   * Sem timeout, um S3 lento seguraria o PDF inteiro; sem teto, um catálogo de
+   * 300 itens viraria 300 downloads. Falhou, some a foto — nunca o catálogo.
+   */
+  private async baixarImagens(itens: LinhaCatalogoPdf[]): Promise<Map<string, Buffer>> {
+    const urls = [...new Set(itens.map((i) => i.imagem).filter((u): u is string => !!u))].slice(
+      0,
+      MAX_IMAGENS,
+    );
+    const mapa = new Map<string, Buffer>();
+    await Promise.all(
+      urls.map(async (url) => {
+        try {
+          const ctrl = new AbortController();
+          const timer = setTimeout(() => ctrl.abort(), TIMEOUT_IMAGEM_MS);
+          const r = await fetch(url, { signal: ctrl.signal });
+          clearTimeout(timer);
+          if (!r.ok) return;
+          const tipo = r.headers.get('content-type') ?? '';
+          // pdfkit só embute PNG e JPEG. Qualquer outra coisa (webp, svg) seria
+          // exceção na hora de desenhar — melhor nem baixar.
+          if (!/png|jpe?g/i.test(tipo)) return;
+          mapa.set(url, Buffer.from(await r.arrayBuffer()));
+        } catch {
+          /* imagem é enfeite: o catálogo sai sem ela */
+        }
+      }),
+    );
+    if (urls.length > mapa.size) {
+      this.logger.warn(
+        `[catalogo-pdf] ${urls.length - mapa.size} de ${urls.length} imagem(ns) não vieram`,
+      );
+    }
+    return mapa;
+  }
+}

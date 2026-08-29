@@ -34,7 +34,15 @@ const makePrismaMock = () => ({
     findFirst: vi.fn(),
   } satisfies MockModel,
   // ...e que o tenant do token segue ATIVO.
-  empresa: { findFirst: vi.fn().mockResolvedValue({ id: 'emp-1' }) } satisfies MockModel,
+  empresa: {
+    findFirst: vi.fn().mockResolvedValue({ id: 'emp-1' }),
+    findUnique: vi.fn().mockResolvedValue({
+      nome: 'Somatec Blocking',
+      cnpj: '16.774.052/0001-55',
+      config: { estoque: { modo: 'sob_encomenda', diasMontagem: 1 } },
+    }),
+  } satisfies MockModel,
+  cliente: { findFirst: vi.fn().mockResolvedValue(null) } satisfies MockModel,
   $transaction: vi.fn(async (ops: unknown[]) => ops), // returns array for batch upsert
 });
 
@@ -84,12 +92,14 @@ describe('CatalogoService', () => {
   let prisma: ReturnType<typeof makePrismaMock>;
   let clientes: ReturnType<typeof makeClientesMock>;
   let pricing: ReturnType<typeof makePricingMock>;
+  let pdf: { gerar: ReturnType<typeof vi.fn> };
   let service: CatalogoService;
 
   beforeEach(() => {
     prisma = makePrismaMock();
     clientes = makeClientesMock();
     pricing = makePricingMock();
+    pdf = { gerar: vi.fn().mockResolvedValue(Buffer.from('pdf-falso')) };
     service = new CatalogoService(
       prisma as never,
       clientes as never,
@@ -103,6 +113,7 @@ describe('CatalogoService', () => {
           empresaId: 'emp-1',
         }),
       } as never,
+      pdf as never,
     );
   });
 
@@ -505,6 +516,7 @@ describe('CatalogoService.shareWithClient — só REP gera link (auditoria médi
         ttlMaximoSegundos: 60 * 60 * 24 * 7,
         validar: vi.fn(),
       } as never,
+      { gerar: vi.fn().mockResolvedValue(Buffer.from('pdf')) } as never,
     );
 
   it.each(['DIRECTOR', 'GERENTE', 'ADMIN', 'SAC'] as const)(
@@ -517,4 +529,88 @@ describe('CatalogoService.shareWithClient — só REP gera link (auditoria médi
       ).rejects.toThrow(/REPRESENTANTE|REP/);
     },
   );
+});
+
+/**
+ * PDF do catálogo — o material que o rep manda pro cliente.
+ *
+ * O risco aqui é o mesmo da tela, com agravante: no papel o número sai da mão
+ * do rep e vai pro cliente. Preço de VENDA num catálogo de locação vira
+ * proposta errada assinada.
+ */
+describe('CatalogoService.exportarPdf', () => {
+  const montarPdf = () => {
+    const prisma = makePrismaMock();
+    const pdf = { gerar: vi.fn().mockResolvedValue(Buffer.from('pdf-falso')) };
+    prisma.repCatalogoItem.findMany.mockResolvedValue([
+      fakeCatalogoItem({
+        produto: {
+          id: 'p-1',
+          nome: 'Master Block MB-01',
+          sku: 'MB-01',
+          marca: 'Somatec',
+          linha: 'Master Block',
+          unidade: 'UN',
+          precoTabela: 3150,
+          precoFabrica: 1800,
+          precoLocacaoMensal: 300,
+          imagem: 'https://cdn/mb-01.png',
+          estoque: 0,
+          ativo: true,
+          popularidade: 5,
+        },
+      }),
+    ]);
+    prisma.usuario.findUnique.mockResolvedValue({
+      nome: 'Rep Teste',
+      email: 'rep@betinna.ai',
+      telefone: '11999990000',
+    });
+    const service = new CatalogoService(
+      prisma as never,
+      makeClientesMock() as never,
+      makePricingMock() as never,
+      { gerar: vi.fn(), ttlMaximoSegundos: 1, validar: vi.fn() } as never,
+      pdf as never,
+    );
+    return { service, pdf, prisma };
+  };
+
+  it('REP: o papel leva a LOCAÇÃO, nunca o preço de venda', async () => {
+    const { service, pdf } = montarPdf();
+
+    await service.exportarPdf(fakeUser());
+
+    const linha = pdf.gerar.mock.calls[0][0].itens[0];
+    expect(linha.preco).toBe(300);
+    expect(linha.precoRotulo).toBe('Locação / mês');
+  });
+
+  it('sob encomenda, disponibilidade é PRAZO — não "0 em estoque"', async () => {
+    // Num catálogo de venda, "0 em estoque" parece falta de produto quando na
+    // verdade é o modelo de operação.
+    const { service, pdf } = montarPdf();
+
+    await service.exportarPdf(fakeUser());
+
+    expect(pdf.gerar.mock.calls[0][0].itens[0].disponibilidade).toContain('Sob encomenda');
+  });
+
+  it('a foto e os dados básicos vão numa linha só', async () => {
+    const { service, pdf } = montarPdf();
+
+    await service.exportarPdf(fakeUser());
+
+    const linha = pdf.gerar.mock.calls[0][0].itens[0];
+    expect(linha.imagem).toBe('https://cdn/mb-01.png');
+    expect(linha.detalhe).toContain('MB-01');
+  });
+
+  it('catálogo vazio não gera PDF em branco — recusa com motivo', async () => {
+    const { service, prisma, pdf } = montarPdf();
+    prisma.repCatalogoItem.findMany.mockResolvedValue([]);
+
+    await expect(service.exportarPdf(fakeUser())).rejects.toThrow(/vazio/i);
+    expect(pdf.gerar).not.toHaveBeenCalled();
+  });
 });
