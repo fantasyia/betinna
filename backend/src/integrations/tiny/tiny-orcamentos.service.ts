@@ -19,7 +19,11 @@ export interface OrcamentoParaTiny {
   /** Dias de validade da proposta (o Tiny conta a partir da data). */
   validadeDias?: number;
   dataPrevistaEntrega?: string;
-  condicaoPagamento?: string;
+  /**
+   * Prazos em DIAS, do jeito que o Tiny lê: "30", "30 60", "30 60 90".
+   * Vazio = à vista (aí nem manda condição comercial).
+   */
+  parcelas?: string;
   observacao?: string;
   /** Desconto em VALOR (o Tiny não aceita % no orçamento). */
   desconto?: number;
@@ -91,11 +95,14 @@ export class TinyOrcamentosService {
             },
           }
         : {}),
-      ...(orcamento.condicaoPagamento
+      // O Tiny valida o par tipo+conteúdo: mandar texto sem o tipo certo derruba
+      // o orçamento inteiro ("Texto livre não pode ser preenchido sem
+      // especificar o tipo"). Parcelas em dias é o formato que ele entende.
+      ...(orcamento.parcelas
         ? {
             condicoesComerciais: {
-              tipo: 'Texto livre',
-              textoLivre: orcamento.condicaoPagamento,
+              tipo: 'Parcelas',
+              parcelas: { condicao: orcamento.parcelas },
             },
           }
         : {}),
