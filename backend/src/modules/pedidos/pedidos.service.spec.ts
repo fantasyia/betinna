@@ -15,6 +15,8 @@ const makePrismaMock = () => {
       count: vi.fn(),
       create: vi.fn(),
       update: vi.fn(),
+      updateMany: vi.fn(),
+      findUniqueOrThrow: vi.fn(),
     },
     cliente: {
       findFirst: vi.fn(),
@@ -75,6 +77,7 @@ describe('PedidosService', () => {
       priceForClientBatch: vi.fn(async () => new Map()),
     };
     erpPedidos = {
+      cancelarNoErp: vi.fn(async () => undefined),
       enviarPedido: vi.fn(async (id: string) => ({
         pedidoId: id,
         numeroErp: 'ERP-FAKE',
@@ -281,6 +284,46 @@ describe('PedidosService', () => {
     const args = prisma.pedido.create.mock.calls[0][0];
     expect(args.data.status).toBe('RASCUNHO');
     expect(prisma.aprovacaoDesconto.create).not.toHaveBeenCalled();
+  });
+
+  it('cancelar no app CANCELA no ERP (senão o sync traz o pedido de volta)', async () => {
+    // Antes só mudava o status local: o ERP seguia com o pedido ativo e a
+    // rodada do dia seguinte reabria — o cancelamento se desfazia sozinho.
+    prisma.pedido.findFirst.mockResolvedValue({
+      id: 'ped-1',
+      empresaId: 'emp-1',
+      numero: 'PED-0005',
+      numeroErp: '5',
+      status: 'ENVIADO_ERP',
+      observacoes: null,
+      representanteId: 'rep-1',
+      itens: [],
+    });
+    prisma.pedido.updateMany.mockResolvedValue({ count: 1 });
+
+    await svc.cancelar(fakeUser({ role: 'ADMIN' }), 'ped-1', { motivo: 'teste' } as never);
+
+    expect(erpPedidos.cancelarNoErp).toHaveBeenCalledWith('emp-1', '5');
+  });
+
+  it('ERP fora do ar não impede o cancelamento — o aviso vai pra observação', async () => {
+    prisma.pedido.findFirst.mockResolvedValue({
+      id: 'ped-1',
+      empresaId: 'emp-1',
+      numero: 'PED-0005',
+      numeroErp: '5',
+      status: 'ENVIADO_ERP',
+      observacoes: null,
+      representanteId: 'rep-1',
+      itens: [],
+    });
+    prisma.pedido.updateMany.mockResolvedValue({ count: 1 });
+    erpPedidos.cancelarNoErp.mockRejectedValueOnce(new Error('502 timeout'));
+
+    await svc.cancelar(fakeUser({ role: 'ADMIN' }), 'ped-1', {} as never);
+
+    const obs = prisma.pedido.updateMany.mock.calls[0][0].data.observacoes as string;
+    expect(obs).toMatch(/Não consegui cancelar no ERP/i);
   });
 
   it('rep NÃO abre pedido quando o tenant não permite (o caminho dele é a proposta)', async () => {

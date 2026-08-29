@@ -163,6 +163,18 @@ export class TinyPedidosService {
     });
   }
 
+  /**
+   * Cancela o pedido no ERP (situação 2).
+   *
+   * Sem isto, cancelar aqui só mudava o status local: o ERP seguia com o pedido
+   * ATIVO e a sincronização do dia seguinte trazia ele de volta como aberto —
+   * o cancelamento se desfazia sozinho, e ninguém entende por quê.
+   */
+  async cancelar(empresaId: string, idPedido: number): Promise<void> {
+    await this.client.put(empresaId, `/pedidos/${idPedido}/situacao`, { situacao: 2 });
+    this.logger.log(`[tiny] pedido ${idPedido} cancelado no ERP`);
+  }
+
   /** Consulta um pedido — usado pelo webhook, que nunca acredita no payload. */
   obter(empresaId: string, idPedido: number): Promise<PedidoTinyDetalhe> {
     return this.client.get<PedidoTinyDetalhe>(empresaId, `/pedidos/${idPedido}`);

@@ -649,12 +649,22 @@ export class PedidosService {
     if (['ENTREGUE', 'CANCELADO'].includes(existing.status)) {
       throw new BusinessRuleException(`Pedido em status ${existing.status} não pode ser cancelado`);
     }
-    // Pedido JÁ ENVIADO ao ERP: cancelar aqui só muda o status local — o ERP
-    // segue com o pedido e vai faturar. Carimba o aviso na observação pra quem
-    // abrir o pedido ver que falta cancelar no ERP também.
-    const avisoERP = existing.numeroErp
-      ? `\n[ATENÇÃO] Pedido já enviado ao ERP (nº ${existing.numeroErp}) — cancele TAMBÉM no ERP, senão ele continua faturando.`
-      : '';
+    // Pedido que já foi pro ERP: cancela LÁ também. Sem isso o cancelamento se
+    // desfazia sozinho — o ERP seguia com o pedido ativo e a sincronização do
+    // dia seguinte trazia ele de volta como aberto.
+    //
+    // Falhar aqui não impede o cancelamento local (o usuário mandou cancelar):
+    // o aviso vai pra observação, que é onde quem abrir o pedido vai olhar.
+    let avisoERP = '';
+    if (existing.numeroErp) {
+      try {
+        await this.erpPedidos.cancelarNoErp(existing.empresaId, existing.numeroErp);
+      } catch (err) {
+        avisoERP =
+          `\n[ATENÇÃO] Não consegui cancelar no ERP (nº ${existing.numeroErp}): ` +
+          `${err instanceof Error ? err.message : String(err)} — cancele lá, senão ele continua faturando.`;
+      }
+    }
 
     // CAS: só cancela se ainda não estiver ENTREGUE/CANCELADO (corrida com avançar/cancelar).
     const cas = await this.prisma.pedido.updateMany({

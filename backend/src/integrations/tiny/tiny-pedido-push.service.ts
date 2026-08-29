@@ -41,6 +41,21 @@ export class TinyPedidoPushService {
     private readonly integracoes: IntegracoesService,
   ) {}
 
+  /**
+   * Cancela no ERP o pedido correspondente ao número guardado aqui.
+   *
+   * Recebe o NÚMERO do ERP (o que o app guarda) e resolve o id interno — são
+   * coisas diferentes lá, e cancelar pelo número errado cancelaria outro pedido.
+   */
+  async cancelarNoErp(empresaId: string, numeroErp: string): Promise<void> {
+    const { itens } = await this.pedidos.listar(empresaId, { numero: numeroErp, limit: 20 });
+    const alvo = itens.find((p) => String(p.numeroPedido) === String(numeroErp));
+    if (!alvo) {
+      throw new Error(`pedido ${numeroErp} não encontrado no ERP`);
+    }
+    await this.pedidos.cancelar(empresaId, alvo.id);
+  }
+
   async enviarPedido(pedidoId: string, empresaId?: string): Promise<ResultadoPush> {
     const pedido = await this.prisma.pedido.findFirst({
       where: empresaId ? { id: pedidoId, empresaId } : { id: pedidoId },
