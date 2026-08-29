@@ -115,6 +115,87 @@ describe('pedidos que vêm do ERP', () => {
     expect(r.avisos.join(' ')).toContain('Marcelo Harada');
   });
 
+  it('casa pelo CONTATO do vendedor antes do nome', async () => {
+    // Bug real de produção (29/08): o vendedor "REP TESTE" não casou com o
+    // usuário "TESTE · Automação" e o pedido entrou sem dono — comissão sem
+    // destinatário. O contato é o id que os dois lados conhecem.
+    const { svc, prisma } = build({
+      detalhe: {
+        ...PEDIDO_ERP,
+        vendedor: { id: 7, nome: 'REP TESTE', contato: { id: 894882031 } },
+      },
+      usuarios: [
+        { id: 'rep-9', nome: 'TESTE · Automação', contatoErpId: '894882031' },
+        { id: 'rep-1', nome: 'Outro', contatoErpId: null },
+      ],
+    });
+
+    await svc.sincronizar('emp-1');
+
+    expect(prisma.pedido.create.mock.calls[0][0].data.representanteId).toBe('rep-9');
+  });
+
+  it('pedido órfão ADOTA o dono quando o cadastro é arrumado depois', async () => {
+    // Sem isto, arrumar o vendedor no ERP (ou vincular o contato) não trazia
+    // dono nenhum pro pedido que já tinha entrado — e a comissão daquela venda
+    // simplesmente não existia.
+    const { svc, prisma } = build({
+      detalhe: {
+        ...PEDIDO_ERP,
+        vendedor: { id: 7, nome: 'REP TESTE', contato: { id: 894882031 } },
+      },
+      pedidoExistente: {
+        id: 'ped-1',
+        numero: 'PED-0005',
+        status: 'ENVIADO_ERP',
+        observacoes: null,
+        total: 3150,
+        rastreioCodigo: null,
+        rastreioUrl: null,
+        representanteId: null,
+      },
+      usuarios: [{ id: 'rep-9', nome: 'Quem seja', contatoErpId: '894882031' }],
+    });
+
+    await svc.sincronizar('emp-1');
+
+    const adocao = prisma.pedido.update.mock.calls.find(
+      (c) => (c[0] as { data: { representanteId?: string } }).data.representanteId,
+    );
+    expect(adocao).toBeDefined();
+    expect((adocao?.[0] as { data: { representanteId: string } }).data.representanteId).toBe(
+      'rep-9',
+    );
+  });
+
+  it('pedido que JÁ tem dono não troca de dono', async () => {
+    // Trocar o dono é mexer na comissão de duas pessoas.
+    const { svc, prisma } = build({
+      detalhe: {
+        ...PEDIDO_ERP,
+        vendedor: { id: 7, nome: 'REP TESTE', contato: { id: 894882031 } },
+      },
+      pedidoExistente: {
+        id: 'ped-1',
+        numero: 'PED-0005',
+        status: 'ENVIADO_ERP',
+        observacoes: null,
+        total: 3150,
+        rastreioCodigo: null,
+        rastreioUrl: null,
+        representanteId: 'rep-antigo',
+      },
+      usuarios: [{ id: 'rep-9', nome: 'Quem seja', contatoErpId: '894882031' }],
+    });
+
+    await svc.sincronizar('emp-1');
+
+    const trocou = prisma.pedido.update.mock.calls.some(
+      (c) => (c[0] as { data: { representanteId?: string } }).data.representanteId,
+    );
+    expect(trocou).toBe(false);
+  });
+
   it('vendedor casa por nome mesmo com acento/caixa diferentes', async () => {
     const { svc, prisma } = build({
       detalhe: PEDIDO_ERP,

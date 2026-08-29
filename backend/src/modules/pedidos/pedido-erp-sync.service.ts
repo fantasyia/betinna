@@ -305,6 +305,7 @@ export class PedidoErpSyncService {
         total: true,
         rastreioCodigo: true,
         rastreioUrl: true,
+        representanteId: true,
       },
     });
 
@@ -314,6 +315,15 @@ export class PedidoErpSyncService {
     const total = new Prisma.Decimal(d.valorTotalPedido ?? d.valorTotalProdutos ?? 0);
 
     if (existente) {
+      // Pedido órfão ADOTA o dono quando ele passa a existir.
+      //
+      // Sem isto, o pedido que entrou sem representante (vendedor ainda não
+      // casado no ERP, ou contato ainda não vinculado) ficava órfão pra sempre:
+      // arrumar o cadastro depois não trazia dono nenhum, e a comissão daquela
+      // venda simplesmente não existia. Só adota quem NÃO tem dono — trocar o
+      // dono de um pedido é mexer na comissão de duas pessoas.
+      const adotouRep = await this.adotarRepresentante(empresaId, d, existente);
+
       const mudou =
         (status !== null && status !== existente.status) ||
         rastreioCodigo !== existente.rastreioCodigo ||
@@ -321,7 +331,7 @@ export class PedidoErpSyncService {
         !new Prisma.Decimal(existente.total).equals(total);
 
       const naoEntregue = await this.tratarNaoEntregue(empresaId, d, existente);
-      if (!mudou) return naoEntregue ? 'atualizado' : 'semMudanca';
+      if (!mudou) return naoEntregue || adotouRep ? 'atualizado' : 'semMudanca';
 
       const viraEntregue = status === 'ENTREGUE' && existente.status !== 'ENTREGUE';
       await this.prisma.pedido.update({
@@ -516,6 +526,33 @@ export class PedidoErpSyncService {
       },
       select: { id: true },
     });
+  }
+
+  /**
+   * Dá dono ao pedido que entrou órfão, quando o ERP já sabe quem é.
+   *
+   * Recalcula a comissão junto: comissão zerada num pedido com rep é pior que
+   * pedido sem rep — parece resolvido e paga nada.
+   */
+  private async adotarRepresentante(
+    empresaId: string,
+    d: PedidoTinyDetalhe,
+    existente: { id: string; numero: string; representanteId: string | null; total: unknown },
+  ): Promise<boolean> {
+    if (existente.representanteId) return false;
+    const representanteId = await this.resolverRepresentante(empresaId, d);
+    if (!representanteId) return false;
+
+    const pct = await this.comissaoPct(representanteId);
+    const total = new Prisma.Decimal(existente.total as Prisma.Decimal);
+    await this.prisma.pedido.update({
+      where: { id: existente.id },
+      data: { representanteId, comissao: total.mul(pct).div(100) },
+    });
+    this.logger.log(
+      `[erp] pedido ${existente.numero} adotou o representante ${representanteId} (comissão ${pct}%)`,
+    );
+    return true;
   }
 
   /**
