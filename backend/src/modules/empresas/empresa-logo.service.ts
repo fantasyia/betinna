@@ -2,6 +2,7 @@ import { Injectable, Logger, OnModuleInit } from '@nestjs/common';
 import { type SupabaseClient, createClient } from '@supabase/supabase-js';
 import { EnvService } from '@config/env.service';
 import { PrismaService } from '@database/prisma.service';
+import { MarcaTenantService } from './marca-tenant.service';
 import {
   BusinessRuleException,
   ForbiddenException,
@@ -38,6 +39,7 @@ export class EmpresaLogoService implements OnModuleInit {
   constructor(
     private readonly prisma: PrismaService,
     private readonly env: EnvService,
+    private readonly marca: MarcaTenantService,
   ) {
     this.storage = createClient(
       this.env.get('SUPABASE_URL'),
@@ -135,6 +137,9 @@ export class EmpresaLogoService implements OnModuleInit {
       throw new IntegrationException(`Falha ao subir logo: ${error.message}`);
     }
 
+    // Sem invalidar, o PDF sairia com o logo antigo por até 10min — e quem
+    // acabou de trocar acha que o upload não funcionou.
+    this.marca.invalidar(empresaId);
     await this.prisma.empresa.update({
       where: { id: empresaId },
       data: { logoUrl: storagePath },

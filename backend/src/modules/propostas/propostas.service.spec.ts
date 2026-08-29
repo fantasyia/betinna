@@ -184,6 +184,8 @@ describe('PropostasService', () => {
       { gerarLink: vi.fn(), resolverPreview: vi.fn(), registrarDecisao: vi.fn() } as never,
       // Regra "rep não abre pedido" mora no PedidosService — aqui só consultamos.
       { repPodeCriarPedido: vi.fn(async () => false) } as never,
+      // Marca do tenant (logo/cores) — não muda os números do PDF.
+      { resolver: vi.fn(async () => ({ primaria: '#201554', secundaria: '#2bcae5' })) } as never,
     );
   });
 

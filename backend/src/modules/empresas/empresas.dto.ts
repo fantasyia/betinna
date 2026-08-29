@@ -290,6 +290,34 @@ const vendasSchema = z
   .partial()
   .optional();
 
+/**
+ * Identidade visual da empresa nos materiais que saem do app (PDF de proposta,
+ * catálogo).
+ *
+ * O logo NÃO vem aqui — ele já tem lugar próprio (`Empresa.logoUrl`, bucket
+ * `empresa-logos`). Aqui ficam só as cores e a linha de rodapé, que são
+ * decisão de marca e mudam sem trocar arquivo.
+ */
+const marcaSchema = z
+  .object({
+    /** Títulos, cabeçalho de tabela e números. Hex, ex. "#00416E". */
+    corPrimaria: z
+      .string()
+      .regex(/^#[0-9a-fA-F]{6}$/, 'cor deve ser hex, ex. #00416E')
+      .nullable()
+      .optional(),
+    /** Fio e destaques finos. */
+    corSecundaria: z
+      .string()
+      .regex(/^#[0-9a-fA-F]{6}$/, 'cor deve ser hex, ex. #008CC8')
+      .nullable()
+      .optional(),
+    /** Uma linha no rodapé: site, telefone — como o cliente responde. */
+    rodape: z.string().max(120).nullable().optional(),
+  })
+  .partial()
+  .optional();
+
 export const tenantConfigPatchSchema = z
   .object({
     // #R4 — cada seção aceita `null` = remover a seção inteira (reset pro default). O merge no service
@@ -307,6 +335,7 @@ export const tenantConfigPatchSchema = z
     estoque: estoqueSchema.nullable(),
     comissaoOriginacao: comissaoOriginacaoSchema.nullable(),
     vendas: vendasSchema.nullable(),
+    marca: marcaSchema.nullable(),
   })
   // .strip() (default zod): DESCARTA chaves desconhecidas em vez de deixá-las entrar no
   // Empresa.config (o front só manda as seções conhecidas; .passthrough deixava lixo crescer).

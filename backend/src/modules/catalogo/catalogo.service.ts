@@ -3,6 +3,7 @@ import { PrismaService } from '@database/prisma.service';
 import { ClientesService } from '@modules/clientes/clientes.service';
 import { PricingService } from '@modules/produtos/pricing.service';
 import { CatalogShareService } from './catalog-share.service';
+import { MarcaTenantService } from '@modules/empresas/marca-tenant.service';
 import { CatalogoPdfService, type LinhaCatalogoPdf } from './catalogo-pdf.service';
 import {
   BusinessRuleException,
@@ -92,6 +93,7 @@ export class CatalogoService {
     private readonly pricing: PricingService,
     private readonly share: CatalogShareService,
     private readonly pdf: CatalogoPdfService,
+    private readonly marca: MarcaTenantService,
   ) {}
 
   private requireEmpresa(user: AuthenticatedUser): string {
@@ -326,6 +328,7 @@ export class CatalogoService {
 
     const pdf = await this.pdf.gerar({
       empresa: { nome: empresa?.nome ?? 'Catálogo', cnpj: empresa?.cnpj ?? null },
+      marca: await this.marca.resolver(empresaId),
       representante: {
         nome: rep?.nome ?? '',
         email: rep?.email ?? null,

@@ -16,6 +16,7 @@ import { type Paginated, buildPaginated } from '@shared/types/pagination';
 import { SequenceService } from '@shared/utils/sequence.service';
 import { vigenteAteFimDoDiaBrt } from '@shared/utils/data-brt.util';
 import { PedidosService } from '@modules/pedidos/pedidos.service';
+import { MarcaTenantService } from '@modules/empresas/marca-tenant.service';
 import { PropostaAceiteService } from './proposta-aceite.service';
 import { PropostaExportService, type PropostaExportData } from './proposta-export.service';
 import type {
@@ -49,6 +50,7 @@ export class PropostasService {
     private readonly emailSvc: TransactionalEmailService,
     private readonly aceiteSvc: PropostaAceiteService,
     private readonly pedidosSvc: PedidosService,
+    private readonly marca: MarcaTenantService,
   ) {}
 
   /**
@@ -634,6 +636,7 @@ export class PropostasService {
       valor: Number(proposta.valor),
       observacoes: proposta.observacoes,
       empresa: { nome: empresa?.nome ?? 'Empresa', cnpj: empresa?.cnpj ?? null },
+      marca: await this.marca.resolver(proposta.empresaId),
       cliente: {
         nome: clienteFull?.nome ?? proposta.cliente.nome,
         cnpj: clienteFull?.cnpj ?? proposta.cliente.cnpj,

@@ -362,7 +362,8 @@ export class PedidoErpSyncService {
     if (!representanteId && d.vendedor) {
       r.avisos.push(
         `Pedido ${numeroErp}: vendedor "${this.nomeVendedor(d) ?? '—'}" não casou com ` +
-          'nenhum usuário do app — entrou sem representante (só admin/diretor enxergam).',
+          'nenhum usuário do app — entrou sem representante (só admin/diretor enxergam). ' +
+          'Vincule o contato do ERP ao usuário (Usuários → contato no ERP) pra casar sem depender do nome.',
       );
     }
 
@@ -518,25 +519,37 @@ export class PedidoErpSyncService {
   }
 
   /**
-   * Casa o VENDEDOR do Tiny com o usuário do app, por nome normalizado.
+   * Casa o VENDEDOR do Tiny com o usuário do app.
    *
-   * O Tiny manda só id e nome do vendedor — não manda e-mail, que seria a chave
-   * boa. Sem casar, o pedido fica sem dono: some da tela do rep e aparece só
-   * pro admin/diretor. É o erro certo pra cometer — atribuir ao rep errado
-   * mexeria na comissão de duas pessoas.
+   * **Pelo CONTATO primeiro.** O vendedor do Tiny é um contato, e o contato tem
+   * id — que é o que `Usuario.contatoErpId` guarda. Nome é a segunda opção
+   * porque é frágil de verdade: no primeiro teste em produção o vendedor
+   * "REP TESTE" não casou com o usuário "TESTE · Automação", e o pedido entrou
+   * sem dono (some da tela do rep, comissão sem destinatário).
+   *
+   * Sem casar de nenhum jeito, o pedido fica sem representante de propósito:
+   * atribuir ao rep errado mexeria na comissão de duas pessoas.
    */
   private async resolverRepresentante(
     empresaId: string,
     d: PedidoTinyDetalhe,
   ): Promise<string | null> {
+    const usuarios = await this.prisma.usuario.findMany({
+      where: { empresas: { some: { empresaId } }, role: { in: ['REP', 'GERENTE'] } },
+      select: { id: true, nome: true, contatoErpId: true },
+    });
+
+    const contatoDoVendedor = d.vendedor?.contato?.id;
+    if (contatoDoVendedor) {
+      const porContato = usuarios.filter(
+        (u) => u.contatoErpId && Number(u.contatoErpId) === Number(contatoDoVendedor),
+      );
+      if (porContato.length === 1) return porContato[0].id;
+    }
+
     const nome = this.nomeVendedor(d);
     if (!nome) return null;
     const alvo = this.normalizar(nome);
-
-    const usuarios = await this.prisma.usuario.findMany({
-      where: { empresas: { some: { empresaId } }, role: { in: ['REP', 'GERENTE'] } },
-      select: { id: true, nome: true },
-    });
     const casados = usuarios.filter((u) => this.normalizar(u.nome) === alvo);
     // Dois usuários com o mesmo nome: não dá pra decidir, e decidir errado é
     // comissão na conta do outro.

@@ -1,5 +1,6 @@
 import { Injectable, Logger } from '@nestjs/common';
 import PDFDocument from 'pdfkit';
+import type { MarcaTenant } from '@modules/empresas/marca-tenant.service';
 
 export interface LinhaCatalogoPdf {
   nome: string;
@@ -23,15 +24,20 @@ export interface LinhaCatalogoPdf {
 
 export interface CatalogoPdfData {
   empresa: { nome: string; cnpj: string | null };
+  /** Marca do TENANT — logo e cores. Ausente = identidade Betinna. */
+  marca?: MarcaTenant;
   representante: { nome: string; email: string | null; telefone: string | null };
   cliente: { nome: string; cnpj: string | null } | null;
   geradoEm: Date;
   itens: LinhaCatalogoPdf[];
 }
 
+/** Identidade Betinna (BRANDBOOK.md) — reserva de quem não configurou a própria. */
 const BRAND_NAVY = '#201554';
 const BRAND_CYAN = '#2bcae5';
 const CINZA = '#666666';
+/** Altura do logo no cabeçalho: alto o bastante pra ler, baixo pra não roubar a página. */
+const ALTURA_LOGO = 34;
 
 const ALTURA_LINHA = 46;
 const LADO_FOTO = 34;
@@ -97,7 +103,7 @@ export class CatalogoPdfService {
             this.cabecalhoDaTabela(doc, left, largura, y, rotulos);
             y += 18;
           }
-          this.linha(doc, item, imagens.get(item.imagem ?? ''), left, largura, y);
+          this.linha(doc, item, imagens.get(item.imagem ?? ''), left, largura, y, data.marca);
           y += ALTURA_LINHA;
           doc
             .moveTo(left, y - 6)
@@ -121,32 +127,56 @@ export class CatalogoPdfService {
     left: number,
     largura: number,
   ): void {
-    doc.fillColor(BRAND_NAVY).fontSize(20).font('Helvetica-Bold').text(data.empresa.nome, left);
-    if (data.empresa.cnpj) {
-      doc.fontSize(8).font('Helvetica').fillColor(CINZA).text(`CNPJ: ${data.empresa.cnpj}`);
+    const primaria = data.marca?.primaria ?? BRAND_NAVY;
+    const secundaria = data.marca?.secundaria ?? BRAND_CYAN;
+
+    // O logo é o que faz o material ser DA EMPRESA e não do sistema. Quando
+    // ele existe, o nome em texto sai de cena — os dois juntos empilham a
+    // mesma informação duas vezes.
+    let alturaTopo = 0;
+    if (data.marca?.logo) {
+      try {
+        doc.image(data.marca.logo, left, doc.y, { fit: [190, ALTURA_LOGO] });
+        alturaTopo = ALTURA_LOGO;
+      } catch {
+        /* logo inválido: cai no nome em texto, como era antes */
+      }
     }
+    if (alturaTopo) {
+      doc.y += alturaTopo + 6;
+      if (data.empresa.cnpj) {
+        doc.fontSize(8).font('Helvetica').fillColor(CINZA).text(`CNPJ: ${data.empresa.cnpj}`, left);
+      }
+    } else {
+      doc.fillColor(primaria).fontSize(20).font('Helvetica-Bold').text(data.empresa.nome, left);
+      if (data.empresa.cnpj) {
+        doc.fontSize(8).font('Helvetica').fillColor(CINZA).text(`CNPJ: ${data.empresa.cnpj}`);
+      }
+    }
+
     doc.moveDown(0.4);
-    doc.fillColor(BRAND_NAVY).fontSize(14).font('Helvetica-Bold').text('Catálogo de produtos');
+    doc.fillColor(primaria).fontSize(14).font('Helvetica-Bold').text('Catálogo de produtos', left);
 
     doc.moveDown(0.2);
     doc.fontSize(9).font('Helvetica').fillColor(CINZA);
     const contato = [data.representante.nome, data.representante.telefone, data.representante.email]
       .filter(Boolean)
       .join(' · ');
-    doc.text(contato);
+    doc.text(contato, left);
     if (data.cliente) {
       doc
-        .fillColor(BRAND_NAVY)
+        .fillColor(primaria)
         .font('Helvetica-Bold')
         .text(
           `Preparado para ${data.cliente.nome}${data.cliente.cnpj ? ` · ${data.cliente.cnpj}` : ''}`,
+          left,
         );
     }
     doc.moveDown(0.4);
     doc
       .moveTo(left, doc.y)
       .lineTo(left + largura, doc.y)
-      .strokeColor(BRAND_CYAN)
+      .strokeColor(secundaria)
       .lineWidth(2)
       .stroke();
   }
@@ -176,7 +206,10 @@ export class CatalogoPdfService {
     left: number,
     largura: number,
     y: number,
+    marca?: MarcaTenant,
   ): void {
+    const primaria = marca?.primaria ?? BRAND_NAVY;
+    const secundaria = marca?.secundaria ?? BRAND_CYAN;
     const duasColunas = item.precos.length > 1;
     const colPreco = left + largura - (duasColunas ? 210 : 100);
     const colDisp = left + largura - (duasColunas ? 320 : 230);
@@ -215,7 +248,7 @@ export class CatalogoPdfService {
       doc
         .fontSize(duasColunas ? 10.5 : 12)
         .font('Helvetica-Bold')
-        .fillColor(preco.valor == null ? CINZA : BRAND_NAVY)
+        .fillColor(preco.valor == null ? CINZA : primaria)
         .text(preco.valor == null ? 'sob consulta' : fmtBRL(preco.valor), x, y + 12, {
           width: 100,
           align: 'right',
@@ -225,7 +258,7 @@ export class CatalogoPdfService {
       doc
         .fontSize(6.5)
         .font('Helvetica')
-        .fillColor(BRAND_CYAN)
+        .fillColor(secundaria)
         .text('preço negociado', colPreco, y + 28, { width: 100, align: 'right' });
     }
   }
@@ -246,7 +279,14 @@ export class CatalogoPdfService {
       .font('Helvetica')
       .fillColor(CINZA)
       .text(
-        `Gerado em ${quando} · ${data.itens.length} produto(s) · preços sujeitos a confirmação`,
+        [
+          `Gerado em ${quando}`,
+          `${data.itens.length} produto(s)`,
+          'preços sujeitos a confirmação',
+          data.marca?.rodape,
+        ]
+          .filter(Boolean)
+          .join(' · '),
         left,
         doc.y,
         { width: largura, align: 'center' },

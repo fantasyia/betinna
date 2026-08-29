@@ -114,6 +114,9 @@ describe('CatalogoService', () => {
         }),
       } as never,
       pdf as never,
+      {
+        resolver: vi.fn().mockResolvedValue({ primaria: '#201554', secundaria: '#2bcae5' }),
+      } as never,
     );
   });
 
@@ -519,6 +522,10 @@ describe('CatalogoService.shareWithClient — gestão também compartilha', () =
         validar: vi.fn(),
       } as never,
       { gerar: vi.fn().mockResolvedValue(Buffer.from('pdf')) } as never,
+      // Marca do tenant (logo/cores) — não muda o conteúdo do PDF.
+      {
+        resolver: vi.fn().mockResolvedValue({ primaria: '#201554', secundaria: '#2bcae5' }),
+      } as never,
     );
   };
 
@@ -581,6 +588,9 @@ describe('CatalogoService.exportarPdf', () => {
       makePricingMock() as never,
       { gerar: vi.fn(), ttlMaximoSegundos: 1, validar: vi.fn() } as never,
       pdf as never,
+      {
+        resolver: vi.fn().mockResolvedValue({ primaria: '#201554', secundaria: '#2bcae5' }),
+      } as never,
     );
     return { service, pdf, prisma };
   };

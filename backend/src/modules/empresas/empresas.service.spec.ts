@@ -57,6 +57,7 @@ describe('EmpresasService', () => {
       } as never,
       { desativar: vi.fn() } as never,
       { del: vi.fn().mockResolvedValue(1) } as never,
+      { invalidar: vi.fn(), resolver: vi.fn() } as never,
     );
   });
 

@@ -1,5 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import PDFDocument from 'pdfkit';
+import type { MarcaTenant } from '@modules/empresas/marca-tenant.service';
 import ExcelJS from 'exceljs';
 
 /**
@@ -18,6 +19,8 @@ export interface PropostaExportData {
   descontoGeral: number; // %
   valor: number; // total final
   observacoes: string | null;
+  /** Marca do TENANT — logo e cores. Ausente = identidade Betinna. */
+  marca?: MarcaTenant;
   empresa: { nome: string; cnpj: string | null };
   cliente: { nome: string; cnpj: string | null; email: string | null };
   itens: Array<{
@@ -29,8 +32,11 @@ export interface PropostaExportData {
   }>;
 }
 
+/** Identidade Betinna (BRANDBOOK.md) — reserva de quem não configurou a própria. */
 const BRAND_NAVY = '#201554';
 const BRAND_CYAN = '#2bcae5';
+/** Altura do logo no cabeçalho da proposta. */
+const ALTURA_LOGO = 38;
 
 function fmtBRL(v: number): string {
   return new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(v);
@@ -64,17 +70,37 @@ export class PropostaExportService {
         const left = doc.page.margins.left;
 
         // ─── Cabeçalho ──────────────────────────────────────────────
-        doc
-          .fillColor(BRAND_NAVY)
-          .fontSize(22)
-          .font('Helvetica-Bold')
-          .text(data.empresa.nome, { continued: false });
+        // Proposta é o documento que vai pro cliente assinar: sai com a marca
+        // DELE (do tenant), não com a do sistema que a gerou.
+        const primaria = data.marca?.primaria ?? BRAND_NAVY;
+        const secundaria = data.marca?.secundaria ?? BRAND_CYAN;
+        let comLogo = false;
+        if (data.marca?.logo) {
+          try {
+            doc.image(data.marca.logo, left, doc.y, { fit: [200, ALTURA_LOGO] });
+            doc.y += ALTURA_LOGO + 6;
+            comLogo = true;
+          } catch {
+            /* logo inválido: cai no nome em texto, como era antes */
+          }
+        }
+        if (!comLogo) {
+          doc
+            .fillColor(primaria)
+            .fontSize(22)
+            .font('Helvetica-Bold')
+            .text(data.empresa.nome, { continued: false });
+        }
         if (data.empresa.cnpj) {
-          doc.fontSize(9).font('Helvetica').fillColor('#666').text(`CNPJ: ${data.empresa.cnpj}`);
+          doc
+            .fontSize(9)
+            .font('Helvetica')
+            .fillColor('#666')
+            .text(`CNPJ: ${data.empresa.cnpj}`, left);
         }
         doc.moveDown(0.5);
         doc
-          .fillColor(BRAND_NAVY)
+          .fillColor(primaria)
           .fontSize(15)
           .font('Helvetica-Bold')
           .text(`Proposta Comercial ${data.numero}`);
@@ -90,7 +116,7 @@ export class PropostaExportService {
         // Linha divisória
         doc.moveDown(0.5);
         doc
-          .strokeColor(BRAND_CYAN)
+          .strokeColor(secundaria)
           .lineWidth(2)
           .moveTo(left, doc.y)
           .lineTo(left + pageWidth, doc.y)
@@ -98,7 +124,7 @@ export class PropostaExportService {
         doc.moveDown(0.8);
 
         // ─── Cliente ────────────────────────────────────────────────
-        doc.fillColor(BRAND_NAVY).fontSize(11).font('Helvetica-Bold').text('Cliente');
+        doc.fillColor(primaria).fontSize(11).font('Helvetica-Bold').text('Cliente');
         doc.fillColor('#222').fontSize(10).font('Helvetica').text(data.cliente.nome);
         if (data.cliente.cnpj) doc.fontSize(9).fillColor('#666').text(`CNPJ: ${data.cliente.cnpj}`);
         if (data.cliente.email) doc.fontSize(9).fillColor('#666').text(data.cliente.email);
@@ -114,7 +140,7 @@ export class PropostaExportService {
         };
         // Header da tabela
         const headerY = doc.y;
-        doc.rect(left, headerY - 2, pageWidth, 18).fill(BRAND_NAVY);
+        doc.rect(left, headerY - 2, pageWidth, 18).fill(primaria);
         doc.fillColor('#fff').fontSize(9).font('Helvetica-Bold');
         doc.text('Produto', cols.produto + 4, headerY + 3, { width: pageWidth * 0.46 });
         doc.text('Qtd', cols.qtd, headerY + 3, { width: pageWidth * 0.1, align: 'right' });
@@ -168,7 +194,7 @@ export class PropostaExportService {
           doc
             .font(bold ? 'Helvetica-Bold' : 'Helvetica')
             .fontSize(bold ? 12 : 9)
-            .fillColor(bold ? BRAND_NAVY : '#444');
+            .fillColor(bold ? primaria : '#444');
           doc.text(label, totalBoxX, y, { width: totalBoxW * 0.55 });
           doc.text(valor, totalBoxX + totalBoxW * 0.55, y, {
             width: totalBoxW * 0.45 - 4,
@@ -185,7 +211,7 @@ export class PropostaExportService {
 
         // ─── Condições + observações ────────────────────────────────
         doc.moveDown(1);
-        doc.fillColor(BRAND_NAVY).fontSize(10).font('Helvetica-Bold').text('Condições');
+        doc.fillColor(primaria).fontSize(10).font('Helvetica-Bold').text('Condições');
         doc
           .fillColor('#444')
           .fontSize(9)
@@ -196,7 +222,7 @@ export class PropostaExportService {
           );
         if (data.observacoes) {
           doc.moveDown(0.5);
-          doc.fillColor(BRAND_NAVY).fontSize(10).font('Helvetica-Bold').text('Observações');
+          doc.fillColor(primaria).fontSize(10).font('Helvetica-Bold').text('Observações');
           doc.fillColor('#444').fontSize(9).font('Helvetica').text(data.observacoes);
         }
 

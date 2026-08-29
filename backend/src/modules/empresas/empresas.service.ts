@@ -1,6 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { PrismaService } from '@database/prisma.service';
+import { MarcaTenantService } from './marca-tenant.service';
 import { RedisService } from '@database/redis.service';
 import { AuthGuard } from '@modules/auth/guards/auth.guard';
 import { ForbiddenException, NotFoundException } from '@shared/errors/app-exception';
@@ -32,6 +33,7 @@ export class EmpresasService {
     private readonly knowledgeConfig: KnowledgeConfigService,
     private readonly evolutionInstancias: EvolutionInstanciaService,
     private readonly redis: RedisService,
+    private readonly marca: MarcaTenantService,
   ) {}
 
   /**
@@ -200,6 +202,10 @@ export class EmpresasService {
       });
       return merged;
     });
+    // A marca fica em cache 10min pros PDFs; sem invalidar, trocar a cor e
+    // gerar o documento na sequência sairia com a cor velha — e ninguém
+    // desconfia do cache, desconfia do salvar.
+    this.marca.invalidar(empresaId);
     // RAG — regenera os chunks de conhecimento derivados da config (best-effort,
     // não derruba o salvar se a indexação falhar).
     await this.knowledgeConfig.sincronizar(empresaId).catch(() => undefined);
