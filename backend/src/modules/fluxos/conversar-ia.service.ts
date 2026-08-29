@@ -1229,6 +1229,17 @@ export class ConversarIaService {
       return { aguardando: false };
     }
 
+    // Mesma regra no turno de abertura: no REATIVO a pessoa já falou, e o que
+    // ela contou na primeira mensagem é justamente o que não pode ser perguntado
+    // de novo lá na frente.
+    await this.gravarVariaveisDoTurno({
+      leadId,
+      leadVariaveis: lead.variaveis,
+      gravaveis: declaradasAbertura.map((v) => v.nome),
+      variaveisTurno: turnoAbertura.variaveis ?? {},
+      execucaoId,
+    });
+
     const aguardar = cfg.aguardarResposta ?? true;
     if (!aguardar) return { aguardando: false };
 
@@ -1906,6 +1917,16 @@ export class ConversarIaService {
     // OU (b) já classificou e está no ENCERRAMENTO EDUCADO (segue respondendo o rep pra
     // fechar com gentileza, SEM re-disparar tag/aviso). Renova o timeout + memória.
     if (!classificouEfetivo || jaClassificou) {
+      // O que a pessoa contou NESTE turno vale mesmo que a conversa siga: é
+      // isto que permite a um fluxo disparado depois saber o que a triagem
+      // ouviu, em vez de perguntar de novo.
+      await this.gravarVariaveisDoTurno({
+        leadId,
+        leadVariaveis: lead.variaveis,
+        gravaveis,
+        variaveisTurno: turno.variaveis ?? {},
+        execucaoId,
+      });
       const renovaMs = jaClassificou ? esperaMs : (cfg.timeoutHoras ?? 24) * 3_600_000;
       const continua = await this.atualizarSeViva(execucaoId, {
         timeoutEm: new Date(Date.now() + renovaMs),
@@ -1936,6 +1957,67 @@ export class ConversarIaService {
       historico: novoHist,
       esperaMs,
     });
+  }
+
+  /**
+   * Grava no lead as variáveis capturadas NESTE turno — na hora, sem esperar a
+   * classificação.
+   *
+   * Antes, `variaveisGravadas` só era persistida quando a IA classificava. Toda
+   * captura no MEIO da conversa era jogada fora: a pessoa dizia "é 220V e o
+   * disjuntor é 100A" no segundo turno, a IA anotava certinho, e o valor sumia
+   * com o fim do turno. Só reaparecia se o turno final repetisse a informação —
+   * ou, pior, quando o fluxo SEGUINTE perguntava tudo de novo e capturava por
+   * conta própria.
+   *
+   * O efeito colateral era invisível e caro: como `{{custom.*}}` é remontado a
+   * partir de `Lead.variaveis` a cada nó, um fluxo disparado no mesmo turno
+   * (T1 move a etapa → C1 acorda em LEAD_ETAPA_MUDOU) lia VAZIO. Nenhuma
+   * CONDICAO conseguia rotear pelo que a triagem tinha acabado de ouvir, e o
+   * cliente repetia o que já havia dito.
+   *
+   * Escreve só quando algo MUDA de verdade: turno sem captura nova não vira
+   * UPDATE, e o lead não ganha uma linha de histórico a cada mensagem.
+   *
+   * @returns o estado novo das variáveis (ou o atual, quando nada mudou).
+   */
+  private async gravarVariaveisDoTurno(p: {
+    leadId: string;
+    leadVariaveis: unknown;
+    gravaveis: string[];
+    variaveisTurno: Record<string, unknown>;
+    execucaoId: string;
+    /** Só no fechamento: carimba `classificacao` junto, na mesma escrita. */
+    classificacao?: string;
+  }): Promise<Record<string, unknown>> {
+    const atuais =
+      p.leadVariaveis && typeof p.leadVariaveis === 'object'
+        ? (p.leadVariaveis as Record<string, unknown>)
+        : {};
+    const gravadas = filtrarVariaveisGravaveis(p.gravaveis, p.variaveisTurno ?? {});
+    // Vazio e string vazia não apagam o que já existe: a IA repetir o schema
+    // com os campos em branco é comum, e sobrescrever com nada apagaria a
+    // captura de um turno anterior.
+    const novasChaves = Object.entries(gravadas).filter(
+      ([k, v]) => v != null && String(v).trim() !== '' && atuais[k] !== v,
+    );
+    if (novasChaves.length === 0 && !p.classificacao) return atuais;
+
+    const novas = {
+      ...atuais,
+      ...Object.fromEntries(novasChaves),
+      ...(p.classificacao ? { classificacao: p.classificacao } : {}),
+    };
+    await this.prisma.lead.update({
+      where: { id: p.leadId },
+      data: { variaveis: toJsonInput(novas) },
+    });
+    const oQue = [
+      ...novasChaves.map(([k]) => k),
+      ...(p.classificacao ? [`classificacao=${p.classificacao}`] : []),
+    ].join(', ');
+    this.logger.log(`CONVERSAR_IA: gravado no lead ${p.leadId} (${oQue}) — exec ${p.execucaoId}`);
+    return novas;
   }
 
   /**
@@ -1972,32 +2054,21 @@ export class ConversarIaService {
     const novoHist = p.historico;
 
     // 1ª vez que a IA classifica — grava variáveis no lead e dispara o gatilho.
-    const variaveisAtuais =
-      lead.variaveis && typeof lead.variaveis === 'object'
-        ? (lead.variaveis as Record<string, unknown>)
-        : {};
-    // Filtra pro conjunto permitido (se o nó restringe as variáveis graváveis).
     //
-    // AUDITORIA (alta): os SINAIS DE ROTEAMENTO passam SEMPRE, mesmo fora da
-    // allowlist. Eles não são "variáveis de negócio" que o nó escolhe coletar —
-    // são o mecanismo pelo qual o motor decide o próximo passo, e boa parte deles
-    // é FORÇADA pelo próprio motor (pedido_remocao quando o lead pede pra sair,
-    // classificacao_final no fallback de despedida), não pela IA.
-    //
-    // Com um nó configurado com `variaveisGravadas: ['tipo_atuacao','regiao']`, o
-    // motor forçava pedido_remocao='sim', logava "forçando…", e a linha seguinte
-    // JOGAVA FORA a chave. O roteador a jusante lia custom.pedido_remocao vazio,
-    // a tag de LGPD não era aplicada e o lead que pediu pra sair continuava sendo
-    // abordado — sem erro em lugar nenhum.
-    const gravadas = filtrarVariaveisGravaveis(gravaveis, turno.variaveis ?? {});
-    const novas: Record<string, unknown> = {
-      ...variaveisAtuais,
-      ...gravadas,
-    };
-    if (classificacaoTurno) novas.classificacao = classificacaoTurno;
-    await this.prisma.lead.update({
-      where: { id: leadId },
-      data: { variaveis: toJsonInput(novas) },
+    // Passa pelo MESMO caminho das capturas do meio da conversa: uma regra só
+    // pro que entra em `Lead.variaveis`. Ali dentro ficam as duas garantias que
+    // importam — os SINAIS DE ROTEAMENTO passam sempre (mesmo fora da allowlist
+    // do nó, porque boa parte é forçada pelo próprio motor: `pedido_remocao`
+    // quando o lead pede pra sair, `classificacao_final` no fallback de
+    // despedida), e valor VAZIO não apaga captura antiga (a IA repetir o schema
+    // em branco no turno final não pode zerar o que ela anotou antes).
+    await this.gravarVariaveisDoTurno({
+      leadId,
+      leadVariaveis: lead.variaveis,
+      gravaveis,
+      variaveisTurno: turno.variaveis ?? {},
+      execucaoId,
+      classificacao: classificacaoTurno,
     });
 
     // `_hops` propaga o corta-loop do bus (auditoria 20/08): este é um

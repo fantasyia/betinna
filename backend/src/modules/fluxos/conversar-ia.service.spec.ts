@@ -1544,6 +1544,117 @@ describe('semMic — dedup de áudio transcrito (#B8)', () => {
   });
 });
 
+/**
+ * O que a IA anota NO MEIO da conversa tem que valer na hora.
+ *
+ * Até 28/08 as `variaveisGravadas` só iam pro lead QUANDO a IA classificava.
+ * A pessoa dizia "é 220V e o disjuntor é 100A" no segundo turno, a IA anotava
+ * certinho — e o valor morria com o turno. Como `{{custom.*}}` é remontado a
+ * partir de `Lead.variaveis` a cada nó, o fluxo disparado logo em seguida
+ * (a triagem move a etapa, o fluxo de atendimento acorda) lia VAZIO: nenhuma
+ * CONDICAO conseguia rotear pelo que a triagem tinha acabado de ouvir, e o
+ * cliente repetia o que já havia dito.
+ */
+describe('ConversarIaService — captura do turno chega no lead na hora', () => {
+  let prisma: ReturnType<typeof makePrisma>;
+  let muller: ReturnType<typeof makeMuller>;
+  let svc: ConversarIaService;
+
+  const execAguardando = {
+    id: 'exec-1',
+    status: 'AGUARDANDO',
+    aguardandoNoId: 'no-ia',
+    empresaId: 'emp-1',
+    contexto: { leadId: 'lead-1' },
+  };
+
+  /** Turno normal de entrevista: a IA responde, anota e NÃO classifica. */
+  const preparar = (turno: Record<string, unknown>, variaveisDoLead: Record<string, unknown>) => {
+    prisma.fluxoExecucao.findUnique.mockResolvedValue(execAguardando);
+    prisma.fluxoNo.findUnique.mockResolvedValue({
+      id: 'no-ia',
+      config: { promptId: 'p1', variaveisGravadas: ['tensao_rede', 'corrente_quadro'] },
+    });
+    prisma.lead.findFirst.mockResolvedValue({
+      contatoTelefone: '11999990000',
+      variaveis: variaveisDoLead,
+    });
+    prisma.fluxoEdge.findMany.mockResolvedValue([{ targetNoId: 'no-2' }]);
+    muller.gerarRespostaIa.mockResolvedValue({
+      texto: JSON.stringify({ resposta: 'certo, e a corrente?', classificou: false, ...turno }),
+      modelo: 'gpt',
+    });
+  };
+
+  const variaveisGravadas = () =>
+    prisma.lead.update.mock.calls.map(
+      (c) => (c[0] as { data: { variaveis: unknown } }).data.variaveis,
+    );
+
+  beforeEach(() => {
+    prisma = makePrisma();
+    muller = makeMuller();
+    svc = new ConversarIaService(
+      prisma as never,
+      makePersona() as never,
+      muller as never,
+      { buscar: vi.fn(async () => []) } as never,
+      { buscar: vi.fn(async () => []) } as never,
+      makeCusto() as never,
+      makeWhatsapp() as never,
+      makeBus() as never,
+      { aguardarSlot: vi.fn() } as never,
+      { suprimido: vi.fn(async () => false) } as never,
+      // inbox: sem ele o envio falha e o turno rota pro ramo de erro ANTES de
+      // chegar na gravação — o teste passaria a medir outra coisa.
+      { processarMensagemEntrante: vi.fn().mockResolvedValue({}) } as never,
+      makeQueue() as never,
+    );
+  });
+
+  it('turno que NÃO classifica já grava o que foi capturado', async () => {
+    preparar({ variaveis: { tensao_rede: '220V' } }, {});
+
+    await svc.retomar('exec-1', 'conv-1', 'a área comum é 220V');
+
+    expect(variaveisGravadas()).toEqual([{ tensao_rede: '220V' }]);
+  });
+
+  it('o turno seguinte SOMA, não substitui', async () => {
+    preparar({ variaveis: { corrente_quadro: '100A' } }, { tensao_rede: '220V' });
+
+    await svc.retomar('exec-1', 'conv-1', 'o disjuntor é 100A');
+
+    expect(variaveisGravadas()).toEqual([{ tensao_rede: '220V', corrente_quadro: '100A' }]);
+  });
+
+  it('valor VAZIO não apaga o que já estava capturado', async () => {
+    // A IA repetir o schema com os campos em branco é rotina; se isso
+    // sobrescrevesse, o dado do turno anterior sumiria sem erro nenhum.
+    preparar({ variaveis: { tensao_rede: '', corrente_quadro: null } }, { tensao_rede: '220V' });
+
+    await svc.retomar('exec-1', 'conv-1', 'entendi');
+
+    expect(prisma.lead.update).not.toHaveBeenCalled();
+  });
+
+  it('turno sem captura nova não escreve no lead', async () => {
+    preparar({ variaveis: { tensao_rede: '220V' } }, { tensao_rede: '220V' });
+
+    await svc.retomar('exec-1', 'conv-1', 'isso mesmo');
+
+    expect(prisma.lead.update).not.toHaveBeenCalled();
+  });
+
+  it('variável fora da allowlist do nó continua sendo descartada', async () => {
+    preparar({ variaveis: { tensao_rede: '220V', orcamento: '10k' } }, {});
+
+    await svc.retomar('exec-1', 'conv-1', 'é 220V, e o orçamento é 10k');
+
+    expect(variaveisGravadas()).toEqual([{ tensao_rede: '220V' }]);
+  });
+});
+
 describe('allowlist de variaveisGravadas NÃO come os sinais de roteamento', () => {
   // Reproduz o filtro do turno (conversar-ia.service, "Filtra pro conjunto
   // permitido"). O bug: `new Set(gravaveis)` jogava fora pedido_remocao e
