@@ -20,6 +20,7 @@ import {
 } from './propostas.dto';
 import { PropostaAceiteService } from './proposta-aceite.service';
 import { PropostasService } from './propostas.service';
+import { PropostaErpService } from './proposta-erp.service';
 
 const decidirAceiteSchema = z.object({
   decisao: z.enum(['ACEITA', 'RECUSADA']),
@@ -32,6 +33,7 @@ export class PropostasController {
   constructor(
     private readonly propostas: PropostasService,
     private readonly aceite: PropostaAceiteService,
+    private readonly erp: PropostaErpService,
   ) {}
 
   // ─── C3 — Aceite externo (PÚBLICO, sem login) ───────────────────────────
@@ -142,6 +144,18 @@ export class PropostasController {
     @Body(new ZodValidationPipe(changeStatusSchema)) dto: ChangeStatusDto,
   ) {
     return this.propostas.changeStatus(user, id, dto);
+  }
+
+  @Post(':id/enviar-erp')
+  @RequirePermissions({ module: 'propostas', action: 'edit' })
+  @Audit({ action: 'enviar_erp', resource: 'proposta', resourceIdFrom: 'params.id' })
+  @ApiOperation({
+    summary:
+      'Sobe a proposta como ORÇAMENTO no ERP. Lá ela vira pedido com um clique, ' +
+      'sem redigitação — o pedido herda o que o cliente aprovou.',
+  })
+  enviarErp(@CurrentUser() user: AuthenticatedUser, @Param('id') id: string) {
+    return this.erp.enviar(id, user.empresaIdAtiva!);
   }
 
   @Post(':id/converter-em-pedido')

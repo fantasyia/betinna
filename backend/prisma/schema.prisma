@@ -932,6 +932,11 @@ model Proposta {
   pedidoId     String?   @unique
   convertidaEm DateTime?
 
+  /// Orçamento correspondente no ERP (Tiny). Presente = já subiu; é o que impede
+  /// o reenvio criar uma segunda proposta pro mesmo negócio.
+  orcamentoErpId String?
+  enviadaErpEm   DateTime?
+
   /// Lote 6 / C3 — Aceite externo do cliente via link público.
   /// Quando o rep "envia pro cliente aprovar", gera token JWT único.
   /// Cliente clica → página pública /proposta/aceite/<token> → aceitar/recusar.

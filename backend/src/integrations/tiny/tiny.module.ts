@@ -5,6 +5,7 @@ import { TinyClientService } from './tiny-client.service';
 import { TinyContaService } from './tiny-conta.service';
 import { TinyProdutosService } from './tiny-produtos.service';
 import { TinyPedidosService } from './tiny-pedidos.service';
+import { TinyOrcamentosService } from './tiny-orcamentos.service';
 import { TinyContatosService } from './tiny-contatos.service';
 import { TinyRepsSyncService } from './tiny-reps-sync.service';
 import { TinyClientesSyncService } from './tiny-clientes-sync.service';
@@ -33,6 +34,7 @@ import { TinyWebhookProcessorService } from './tiny-webhook-processor.service';
     TinyContaService,
     TinyProdutosService,
     TinyPedidosService,
+    TinyOrcamentosService,
     TinyContatosService,
     TinyRepsSyncService,
     TinyClientesSyncService,
@@ -48,6 +50,7 @@ import { TinyWebhookProcessorService } from './tiny-webhook-processor.service';
     TinyContaService,
     TinyProdutosService,
     TinyPedidosService,
+    TinyOrcamentosService,
     TinyContatosService,
     TinyRepsSyncService,
     TinyClientesSyncService,

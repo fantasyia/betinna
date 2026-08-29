@@ -17,6 +17,7 @@ import {
   X as XIcon,
   FileSpreadsheet,
   Mail,
+  Upload,
 } from 'lucide-react';
 import { api, ApiError } from '@/lib/api';
 import { useApiQuery, type PaginatedResponse } from '@/hooks/useApiQuery';
@@ -74,6 +75,7 @@ interface Proposta {
   representante?: { id: string; nome: string };
   criadoEm: string;
   pedidoId?: string | null;
+  orcamentoErpId?: string | null;
 }
 
 interface PropostaItemDetail {
@@ -544,6 +546,29 @@ function PropostaDetailDrawer({
     }
   }
 
+  /**
+   * Sobe a proposta como orçamento no ERP.
+   *
+   * Fica ao lado das outras ações de envio porque é isso que ela é: mais um
+   * destino da mesma proposta. Some depois de subir — reenviar criaria uma
+   * segunda proposta pro mesmo negócio.
+   */
+  async function enviarErp() {
+    setExportBusy('erp');
+    setActionError(null);
+    try {
+      const r = await api.post<{ numeroProposta?: string; orcamentoErpId: string }>(
+        `/propostas/${id}/enviar-erp`,
+      );
+      toast.success(`Proposta no ERP (orçamento ${r.numeroProposta ?? r.orcamentoErpId})`);
+      onChanged();
+    } catch (err) {
+      setActionError(err instanceof ApiError ? err.message : 'Falha ao enviar pro ERP');
+    } finally {
+      setExportBusy(null);
+    }
+  }
+
   async function doConverter() {
     setBusy(true);
     setActionError(null);
@@ -559,7 +584,7 @@ function PropostaDetailDrawer({
   }
 
   // ─── C2 — Exportar / enviar ──────────────────────────────────────────
-  const [exportBusy, setExportBusy] = useState<'pdf' | 'excel' | 'email' | 'aceite' | null>(null);
+  const [exportBusy, setExportBusy] = useState<'pdf' | 'excel' | 'email' | 'aceite' | 'erp' | null>(null);
   // C3 — link de aceite externo gerado
   const [aceiteLink, setAceiteLink] = useState<string | null>(null);
 
@@ -689,6 +714,27 @@ function PropostaDetailDrawer({
               >
                 Enviar por e-mail
               </Button>
+              {data.status !== 'RASCUNHO' && !data.orcamentoErpId && (
+                <Button
+                  variant="secondary"
+                  size="sm"
+                  data-testid="proposta-enviar-erp"
+                  loading={exportBusy === 'erp'}
+                  disabled={exportBusy !== null}
+                  onClick={() => void enviarErp()}
+                  leftIcon={<Upload className="h-3.5 w-3.5" />}
+                >
+                  Enviar pro ERP
+                </Button>
+              )}
+              {data.orcamentoErpId && (
+                <span
+                  className="inline-flex items-center px-2.5 py-1 rounded-md bg-success/10 border border-success/30 text-xs text-text-subtle"
+                  data-testid="proposta-erp-ok"
+                >
+                  No ERP · orçamento {data.orcamentoErpId}
+                </span>
+              )}
               {/* C3 — link de aceite externo (oculto pra propostas já aceitas/recusadas) */}
               {data.status !== 'ACEITA' && data.status !== 'RECUSADA' && (
                 <Button

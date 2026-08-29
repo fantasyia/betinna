@@ -201,7 +201,8 @@ export class TinyPedidosService {
     return { itens, total: r.paginacao?.total ?? itens.length };
   }
 
-  private async acharPorSku(empresaId: string, sku: string): Promise<{ id: number } | null> {
+  /** Público porque o orçamento resolve item pelo MESMO SKU — uma regra só. */
+  async acharPorSku(empresaId: string, sku: string): Promise<{ id: number } | null> {
     const r = await this.client.get<{ itens?: Array<{ id: number; sku?: string }> }>(
       empresaId,
       '/produtos',
