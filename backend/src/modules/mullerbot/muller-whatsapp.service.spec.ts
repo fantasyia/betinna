@@ -270,6 +270,42 @@ describe('MullerWhatsappService — regras do bot', () => {
     expect(inbox.responderComoBot).not.toHaveBeenCalled();
   });
 
+  it('botGeralAtivo=false cala o respondedor geral — a conversa fica com os fluxos', async () => {
+    prisma.empresa.findUnique = vi.fn(async () => ({
+      botWhatsappAtivo: true, // a automação segue ligada (triagem, nó de IA)
+      botGeralAtivo: false, // só o respondedor de fora é que cala
+    }));
+
+    await aoReceber(build(prisma, inbox, muller), { ...baseParams });
+
+    expect(muller.responderComoEmpresa).not.toHaveBeenCalled();
+    expect(inbox.responderComoBot).not.toHaveBeenCalled();
+  });
+
+  it('botGeralAtivo=false NÃO alcança o bot pessoal do rep', async () => {
+    // Os dois passam pelo mesmo handler; se a flag pegasse o pessoal junto,
+    // desligar o geral silenciaria o WhatsApp de todos os representantes.
+    prisma.empresa.findUnique = vi.fn(async () => ({
+      botWhatsappAtivo: true,
+      botGeralAtivo: false,
+    }));
+    const svc = build(prisma, inbox, muller);
+    buildPersona!.botPessoalAtivo.mockResolvedValue(true);
+
+    await aoReceber(svc, { ...baseParams, proprietarioId: 'rep-1' });
+
+    expect(inbox.responderComoBot).toHaveBeenCalled();
+  });
+
+  it('sem a flag no banco (default), o respondedor geral segue respondendo', async () => {
+    // Migração de tenant antigo não pode calar ninguém: ausência = ligado.
+    prisma.empresa.findUnique = vi.fn(async () => ({ botWhatsappAtivo: true }));
+
+    await aoReceber(build(prisma, inbox, muller), { ...baseParams });
+
+    expect(inbox.responderComoBot).toHaveBeenCalled();
+  });
+
   it('não responde se a conversa está pausada (handoff)', async () => {
     prisma.conversation.findUnique = vi.fn(async () => ({
       botPausadoAte: new Date(Date.now() + 3_600_000),

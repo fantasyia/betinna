@@ -274,8 +274,22 @@ model Empresa {
   descontoBoletoAvistaPct Float? @default(0)
 
   /// Fase 2 — liga/desliga global do bot Muller no WhatsApp da empresa.
-  /// Padrão ligado. Quando false, o bot não responde nenhuma conversa.
+  ///
+  /// ⚠️ Gateia a AUTOMAÇÃO INTEIRA, não só o respondedor: o gatilho dos fluxos
+  /// com `apenasComBotLigado` e o nó CONVERSAR_IA leem o mesmo valor. Desligar
+  /// aqui cala a triagem junto. Pra silenciar SÓ o respondedor, use
+  /// `botGeralAtivo`.
   botWhatsappAtivo Boolean @default(true)
+
+  /// Liga/desliga do RESPONDEDOR GERAL — só ele.
+  ///
+  /// Com `false`, a conversa fica 100% nas mãos dos fluxos: a triagem dispara,
+  /// o nó CONVERSAR_IA fala, e o que some é a resposta "de fora" que hoje cobre
+  /// os estados sem nó conversacional.
+  ///
+  /// **Não toca no bot PESSOAL do rep** (`persona.botPessoalAtivo`), que passa
+  /// pelo mesmo handler — os dois juntos silenciariam todos os reps.
+  botGeralAtivo Boolean @default(true)
 
   /// ConfiguracaoTenant (no-code) — JSON com as regras configuráveis pela empresa via
   /// Admin Panel, sem dev. Cada consumidor define sua própria sub-chave. Ex:

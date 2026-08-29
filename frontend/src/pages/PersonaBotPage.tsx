@@ -180,11 +180,21 @@ export default function PersonaBotPage() {
   }, []);
 
   // Liga/desliga global do bot no WhatsApp da empresa
-  const empresaQuery = useApiQuery<{ id: string; botWhatsappAtivo?: boolean }>('/empresas/atual');
+  const empresaQuery = useApiQuery<{
+    id: string;
+    botWhatsappAtivo?: boolean;
+    botGeralAtivo?: boolean;
+  }>('/empresas/atual');
   const [botWhatsappAtivo, setBotWhatsappAtivo] = useState(true);
+  // Respondedor geral: interruptor separado. Desligado, a conversa fica 100%
+  // nos fluxos — a automação (triagem, nó de IA) segue ligada.
+  const [botGeralAtivo, setBotGeralAtivo] = useState(true);
   const [savingBot, setSavingBot] = useState(false);
   useEffect(() => {
-    if (empresaQuery.data) setBotWhatsappAtivo(empresaQuery.data.botWhatsappAtivo ?? true);
+    if (empresaQuery.data) {
+      setBotWhatsappAtivo(empresaQuery.data.botWhatsappAtivo ?? true);
+      setBotGeralAtivo(empresaQuery.data.botGeralAtivo ?? true);
+    }
   }, [empresaQuery.data]);
 
   // Diagnóstico da conexão com a OpenAI
@@ -225,6 +235,34 @@ export default function PersonaBotPage() {
       toast.error(err instanceof ApiError ? err.message : 'Falha ao alterar o bot');
     } finally {
       setSalvandoBotPessoal(false);
+    }
+  }
+
+  /**
+   * Liga/desliga SÓ o respondedor geral.
+   *
+   * Não é o mesmo interruptor do bot da empresa: aquele desliga a automação
+   * inteira (a triagem e o nó Conversar com IA leem o mesmo campo). Este cala
+   * apenas a resposta "de fora" — os fluxos seguem conduzindo a conversa.
+   */
+  async function alternarRespondedorGeral(ativo: boolean) {
+    const empresaId = empresaQuery.data?.id;
+    if (!empresaId) return;
+    setSavingBot(true);
+    setBotGeralAtivo(ativo); // otimista
+    try {
+      await api.patch(`/empresas/${empresaId}`, { botGeralAtivo: ativo });
+      toast.success(
+        ativo
+          ? 'Respondedor geral ligado — ele cobre as conversas que nenhum fluxo está conduzindo'
+          : 'Respondedor geral desligado — a conversa fica 100% nos fluxos',
+      );
+      empresaQuery.refetch();
+    } catch (err) {
+      setBotGeralAtivo(!ativo); // desfaz o otimista
+      toast.error(err instanceof ApiError ? err.message : 'Falha ao salvar');
+    } finally {
+      setSavingBot(false);
     }
   }
 
@@ -403,6 +441,31 @@ export default function PersonaBotPage() {
                 />
               )}
             </Field>
+
+            {/* Só faz sentido pra empresa, e só com a automação ligada: com o bot
+                da empresa desligado não há respondedor nenhum pra separar. */}
+            {!isRep && botWhatsappAtivo && (
+              <Field label="Respondedor geral" className="mb-0">
+                <div>
+                  <Switch
+                    checked={botGeralAtivo}
+                    disabled={savingBot || !empresaQuery.data}
+                    onChange={(e) => void alternarRespondedorGeral(e.target.checked)}
+                    label={
+                      botGeralAtivo
+                        ? 'Ligado — responde as conversas que nenhum fluxo está conduzindo'
+                        : 'Desligado — a conversa fica 100% nos fluxos'
+                    }
+                  />
+                  <p className="text-[12px] text-muted mt-1.5 mb-0">
+                    Desligar aqui NÃO para a automação: a triagem e o nó “Conversar com IA” seguem
+                    funcionando. O que some é a resposta nos estados em que nenhum fluxo está
+                    esperando — aí o cliente fica aguardando um humano. O bot pessoal dos
+                    representantes não é afetado.
+                  </p>
+                </div>
+              </Field>
+            )}
 
             {/* Comportamento da conversa — deixa o bot mais humano.
                 Estes 3 fazem parte da persona; salvam no botão Salvar do topo. */}

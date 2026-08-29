@@ -387,22 +387,48 @@ export class MullerWhatsappService implements OnModuleInit {
       //    · bot pessoal → persona ATIVA do rep. Sem persona = nunca configurou
       //      = off. E sem a chave OpenAI DELE o bot cala (log, não fallback:
       //      fallback mandaria mensagem — exatamente o que não pode sem chave).
-      const [globalLigado, conv] = await Promise.all([
+      const [estadoDoBot, conv] = await Promise.all([
         dono
-          ? this.persona.botPessoalAtivo(params.empresaId, dono)
+          ? this.persona
+              .botPessoalAtivo(params.empresaId, dono)
+              // O bot pessoal tem interruptor próprio: `botGeralAtivo` não o alcança.
+              .then((ativo) => ({ ligado: ativo, geralDesligado: false }))
           : this.prisma.empresa
               .findUnique({
                 where: { id: params.empresaId },
-                select: { botWhatsappAtivo: true },
+                select: { botWhatsappAtivo: true, botGeralAtivo: true },
               })
-              .then((e) => e?.botWhatsappAtivo ?? false),
+              // As duas flags saem da MESMA leitura (uma query só) e viajam
+              // juntas num objeto local — nada de estado no serviço, que é
+              // singleton e atende conversas em paralelo.
+              .then((e) => ({
+                ligado: e?.botWhatsappAtivo ?? false,
+                geralDesligado: e?.botGeralAtivo === false,
+              })),
         this.prisma.conversation.findUnique({
           where: { id: convId },
           select: { botPausadoAte: true, botLigado: true, precisaHumano: true },
         }),
       ]);
-      const ligado = conv?.botLigado ?? globalLigado;
+      const ligado = conv?.botLigado ?? estadoDoBot.ligado;
       if (!ligado) return;
+
+      // 2.1 Respondedor geral desligado no tenant: a conversa é 100% dos fluxos.
+      //
+      // Roda AQUI, depois do anti-spam e do descarte de mensagem antiga (passos
+      // acima), que valem também pras conversas conduzidas por fluxo e não podem
+      // ser puladas.
+      //
+      // Fica acima do override por conversa de propósito: `botLigado` diz "o bot
+      // pode falar NESTA conversa"; a flag diz que este respondedor não fala em
+      // conversa nenhuma. Deixar uma conversa ressuscitar um respondedor
+      // desligado no tenant faria o interruptor não significar nada.
+      if (estadoDoBot.geralDesligado) {
+        this.logger.debug(
+          `[bot] respondedor geral desligado no tenant — conversa segue só nos fluxos conv=${convId}`,
+        );
+        return;
+      }
       if (dono && !(await this.muller.temChaveOpenAI(dono))) {
         this.logger.warn(
           `[bot] bot pessoal de ${dono} ativo mas SEM chave OpenAI — não responde conv=${convId}`,

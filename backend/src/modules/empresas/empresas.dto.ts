@@ -18,6 +18,8 @@ export const createEmpresaSchema = z.object({
   descontoBoletoAvistaPct: z.number().min(0).max(50).optional(),
   // Fase 2 — liga/desliga global do bot Muller no WhatsApp da empresa.
   botWhatsappAtivo: z.boolean().optional(),
+  /** Só o respondedor geral. Não afeta fluxos nem o bot pessoal do rep. */
+  botGeralAtivo: z.boolean().optional(),
 });
 
 export type CreateEmpresaDto = z.infer<typeof createEmpresaSchema>;
