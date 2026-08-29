@@ -111,21 +111,6 @@ export class TinyOrcamentosService {
     return r;
   }
 
-  /**
-   * Transforma o orçamento em PEDIDO dentro do Tiny.
-   *
-   * É a única forma de o pedido herdar o que o cliente aprovou — recriar o
-   * pedido do zero perde o vínculo e deixa dois documentos que ninguém garante
-   * serem iguais.
-   */
-  async gerarPedido(empresaId: string, idOrcamento: number): Promise<{ id: number }> {
-    return this.client.post<{ id: number }>(
-      empresaId,
-      `/orcamentos/${idOrcamento}/gerar-pedido`,
-      {},
-    );
-  }
-
   obter(empresaId: string, idOrcamento: number): Promise<Record<string, unknown>> {
     return this.client.get(empresaId, `/orcamentos/${idOrcamento}`);
   }

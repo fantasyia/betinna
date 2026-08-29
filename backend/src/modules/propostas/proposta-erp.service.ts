@@ -2,6 +2,7 @@ import { Injectable, Logger } from '@nestjs/common';
 import { PrismaService } from '@database/prisma.service';
 import { TinyOrcamentosService } from '@integrations/tiny/tiny-orcamentos.service';
 import { TinyContatosService } from '@integrations/tiny/tiny-contatos.service';
+import { NotificacoesService } from '@modules/notificacoes/notificacoes.service';
 import { BusinessRuleException } from '@shared/errors/app-exception';
 import { ErrorCode } from '@shared/errors/error-codes';
 
@@ -21,10 +22,12 @@ export interface ResultadoPropostaErp {
  * isso, alguém relança à mão e o pedido pode sair com valor diferente do que o
  * cliente assinou.
  *
- * **O vendedor é obrigatório no orçamento** (diferente do pedido, que aceita
- * sem). Então aqui a falta de vendedor é erro explicado, não um 400 cru do
- * Tiny: o rep precisa existir como contato (rodada diária) e estar marcado como
- * vendedor no painel.
+ * **Quem aprova é o DIRETOR, no ERP** (regra do Léo, 29/08) — e é lá, na
+ * aprovação, que ele atribui o representante como vendedor do pedido de venda.
+ * O app não aprova nem decide vendedor: ele sobe a proposta e AVISA que há
+ * demanda esperando. Por isso o vendedor daqui é uma dica (vai junto quando o
+ * rep já é vendedor no painel, poupando um passo), nunca uma trava: travar aqui
+ * seguraria a proposta por causa de um cadastro que a própria aprovação resolve.
  */
 @Injectable()
 export class PropostaErpService {
@@ -34,6 +37,7 @@ export class PropostaErpService {
     private readonly prisma: PrismaService,
     private readonly orcamentos: TinyOrcamentosService,
     private readonly contatos: TinyContatosService,
+    private readonly notificacoes: NotificacoesService,
   ) {}
 
   async enviar(propostaId: string, empresaId: string): Promise<ResultadoPropostaErp> {
@@ -107,6 +111,25 @@ export class PropostaErpService {
       data: { orcamentoErpId: String(r.id), enviadaErpEm: new Date() },
     });
 
+    // O diretor precisa SABER que tem proposta esperando aprovação no ERP —
+    // senão a proposta fica lá parada e o rep cobra o app por algo que só
+    // acontece no Tiny.
+    await this.notificacoes
+      .criarParaRole({
+        empresaId,
+        roles: ['DIRECTOR', 'ADMIN'],
+        tipo: 'APROVACAO_PENDENTE',
+        titulo: `Proposta ${proposta.numero} aguarda aprovação no ERP`,
+        mensagem:
+          `${proposta.cliente.nome} — orçamento ${r.numeroProposta ?? r.id} no Tiny. ` +
+          `Aprove lá e atribua ${proposta.representante?.nome ?? 'o representante'} como vendedor: ` +
+          'é a aprovação que transforma a proposta em pedido de venda.',
+        prioridade: 'ALTA',
+        link: `/propostas?highlight=${proposta.id}`,
+        metadata: { orcamentoErpId: String(r.id), propostaId: proposta.id },
+      })
+      .catch(() => undefined);
+
     this.logger.log(
       `Proposta ${proposta.numero} → orçamento Tiny ${r.numeroProposta ?? r.id} (id ${r.id})`,
     );
@@ -119,56 +142,20 @@ export class PropostaErpService {
   }
 
   /**
-   * Aprova o orçamento: ele vira PEDIDO no ERP.
+   * Vendedor do ERP correspondente ao rep — quando já existir.
    *
-   * O pedido nasce do orçamento aprovado (endpoint do próprio Tiny), então
-   * herda contato, itens, valores e vendedor — nada é redigitado. De lá ele
-   * volta pro app pela sincronização, já com o representante casado, e é esse
-   * pedido que vira comissão.
+   * Devolve `undefined` sem reclamar: o vendedor definitivo é atribuído pelo
+   * diretor na hora de aprovar, no painel do Tiny. Mandar o que já se sabe só
+   * poupa um passo dele.
    */
-  async aprovar(propostaId: string, empresaId: string): Promise<{ pedidoErpId: number }> {
-    const proposta = await this.prisma.proposta.findFirst({
-      where: { id: propostaId, empresaId },
-      select: { id: true, numero: true, orcamentoErpId: true },
-    });
-    if (!proposta) throw new BusinessRuleException('Proposta não encontrada');
-    if (!proposta.orcamentoErpId) {
-      throw new BusinessRuleException(
-        'Proposta ainda não subiu pro ERP — envie o orçamento antes de aprovar.',
-      );
-    }
-    const r = await this.orcamentos.gerarPedido(empresaId, Number(proposta.orcamentoErpId));
-    this.logger.log(
-      `Orçamento ${proposta.orcamentoErpId} (proposta ${proposta.numero}) → pedido ERP ${r?.id}`,
-    );
-    return { pedidoErpId: r?.id };
-  }
-
   private async resolverVendedor(
     empresaId: string,
     rep: { nome: string; contatoErpId: string | null } | null,
   ): Promise<number | undefined> {
     const contato = Number(rep?.contatoErpId ?? 0);
-    if (!contato) {
-      // Sem contato não há como haver vendedor. Dizer isso aqui poupa a caçada
-      // ao 400 do Tiny, que só reclama de "vendedor" sem explicar a origem.
-      throw new BusinessRuleException(
-        rep
-          ? `${rep.nome} ainda não é contato no ERP — o cadastro sobe na rodada diária ` +
-              '(exige CPF/CNPJ no usuário).'
-          : 'Proposta sem representante — o orçamento do Tiny exige vendedor.',
-        ErrorCode.INTEGRATION_ERROR,
-      );
-    }
+    if (!contato) return undefined;
     const vendedor = await this.contatos.acharVendedorPorContato(empresaId, contato);
-    if (!vendedor) {
-      throw new BusinessRuleException(
-        `${rep?.nome ?? 'O representante'} é contato no ERP mas ainda NÃO é vendedor — ` +
-          'marque o papel em Cadastros → Vendedores no Tiny (a API só lê vendedores).',
-        ErrorCode.INTEGRATION_ERROR,
-      );
-    }
-    return vendedor;
+    return vendedor ?? undefined;
   }
 
   /** Validade em DIAS: é assim que o Tiny guarda, e é o que a proposta impressa mostra. */

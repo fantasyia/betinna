@@ -583,24 +583,6 @@ function PropostaDetailDrawer({
     }
   }
 
-  /**
-   * Aprova o orçamento no ERP: ele vira pedido lá, com o vendedor já casado.
-   * Só gestão — é a etapa que atribui a venda ao rep.
-   */
-  async function aprovarErp() {
-    setExportBusy('erp');
-    setActionError(null);
-    try {
-      const r = await api.post<{ pedidoErpId: number }>(`/propostas/${id}/aprovar-erp`);
-      toast.success(`Pedido ${r.pedidoErpId} criado no ERP`);
-      onChanged();
-    } catch (err) {
-      setActionError(err instanceof ApiError ? err.message : 'Falha ao aprovar no ERP');
-    } finally {
-      setExportBusy(null);
-    }
-  }
-
   async function doConverter() {
     setBusy(true);
     setActionError(null);
@@ -759,26 +741,14 @@ function PropostaDetailDrawer({
                   Enviar pro ERP
                 </Button>
               )}
-              {data.orcamentoErpId && podeAprovar && (
-                <Button
-                  variant="primary"
-                  size="sm"
-                  data-testid="proposta-aprovar-erp"
-                  loading={exportBusy === 'erp'}
-                  disabled={exportBusy !== null}
-                  onClick={() => void aprovarErp()}
-                  leftIcon={<CheckCircle2 className="h-3.5 w-3.5" />}
-                  title="Gera o pedido no ERP a partir deste orçamento, atribuindo a venda ao representante."
-                >
-                  Aprovar e gerar pedido no ERP
-                </Button>
-              )}
               {data.orcamentoErpId && (
                 <span
-                  className="inline-flex items-center px-2.5 py-1 rounded-md bg-success/10 border border-success/30 text-xs text-text-subtle"
+                  className="inline-flex items-center px-2.5 py-1 rounded-md bg-info/10 border border-info/30 text-xs text-text-subtle"
                   data-testid="proposta-erp-ok"
+                  title="A aprovação é feita no Tiny: ao aprovar, o diretor atribui o vendedor e o orçamento vira pedido de venda, que volta pro app."
                 >
-                  No ERP · orçamento {data.orcamentoErpId}
+                  No ERP · orçamento {data.orcamentoErpId} ·{' '}
+                  {podeAprovar ? 'aprove no Tiny' : 'aguardando aprovação da gestão'}
                 </span>
               )}
               {/* C3 — link de aceite externo (oculto pra propostas já aceitas/recusadas) */}

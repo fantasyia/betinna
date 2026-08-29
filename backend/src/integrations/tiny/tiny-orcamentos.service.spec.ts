@@ -54,12 +54,4 @@ describe('orçamento no Tiny', () => {
     const corpo = client.post.mock.calls[0][2] as Record<string, unknown>;
     expect(corpo.condicoesGerais).toEqual({ validade: 15, dataPrevistaEntrega: '2026-09-30' });
   });
-
-  it('gerar-pedido usa o endpoint do próprio orçamento (herda o aprovado)', async () => {
-    const { svc, client } = build();
-
-    await svc.gerarPedido('emp-1', 900);
-
-    expect(client.post.mock.calls[0][1]).toBe('/orcamentos/900/gerar-pedido');
-  });
 });

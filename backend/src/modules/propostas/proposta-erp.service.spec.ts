@@ -38,8 +38,14 @@ function build(opts: { proposta?: Record<string, unknown> | null; vendedor?: num
       .fn()
       .mockResolvedValue(opts.vendedor === undefined ? 555 : opts.vendedor),
   };
-  const svc = new PropostaErpService(prisma as never, orcamentos as never, contatos as never);
-  return { svc, prisma, orcamentos, contatos };
+  const notificacoes = { criarParaRole: vi.fn().mockResolvedValue(1) };
+  const svc = new PropostaErpService(
+    prisma as never,
+    orcamentos as never,
+    contatos as never,
+    notificacoes as never,
+  );
+  return { svc, prisma, orcamentos, contatos, notificacoes };
 }
 
 describe('proposta → orçamento no ERP', () => {
@@ -73,24 +79,40 @@ describe('proposta → orçamento no ERP', () => {
     expect(orcamentos.criar).not.toHaveBeenCalled();
   });
 
-  it('rep que ainda não é VENDEDOR no painel para antes de chamar o Tiny', async () => {
-    // O orçamento EXIGE vendedor; sem esta mensagem o erro vira um 400 cru que
-    // não diz onde resolver.
+  it('rep que ainda não é vendedor no painel NÃO segura a proposta', async () => {
+    // Quem atribui o vendedor é o diretor, aprovando no ERP. Travar aqui
+    // seguraria a proposta por causa de um cadastro que a aprovação resolve.
     const { svc, orcamentos } = build({ vendedor: null });
 
-    await expect(svc.enviar('p-1', 'emp-1')).rejects.toThrow(/ainda NÃO é vendedor/i);
-    expect(orcamentos.criar).not.toHaveBeenCalled();
+    await svc.enviar('p-1', 'emp-1');
+
+    expect(orcamentos.criar).toHaveBeenCalledTimes(1);
+    expect(orcamentos.criar.mock.calls[0][1].vendedorId).toBeUndefined();
   });
 
-  it('rep sem contato no ERP explica que falta o cadastro, não o vendedor', async () => {
-    const { svc } = build({
+  it('rep sem contato no ERP também sobe (o vendedor vem na aprovação)', async () => {
+    const { svc, orcamentos } = build({
       proposta: {
         ...PROPOSTA,
         representante: { nome: 'Rep Novo', contatoErpId: null },
       },
     });
 
-    await expect(svc.enviar('p-1', 'emp-1')).rejects.toThrow(/ainda não é contato no ERP/i);
+    await svc.enviar('p-1', 'emp-1');
+
+    expect(orcamentos.criar).toHaveBeenCalledTimes(1);
+  });
+
+  it('avisa o DIRETOR que há proposta esperando aprovação no ERP', async () => {
+    // Sem o aviso a proposta fica parada no Tiny e o rep cobra o app por algo
+    // que só acontece lá.
+    const { svc, notificacoes } = build();
+
+    await svc.enviar('p-1', 'emp-1');
+
+    const chamada = notificacoes.criarParaRole.mock.calls[0][0];
+    expect(chamada.roles).toEqual(['DIRECTOR', 'ADMIN']);
+    expect(chamada.mensagem).toMatch(/atribua Marcelo Harada como vendedor/i);
   });
 
   it('rascunho não sobe', async () => {

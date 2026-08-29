@@ -6,7 +6,6 @@ import { Audit } from '@shared/decorators/audit.decorator';
 import { CurrentUser } from '@shared/decorators/current-user.decorator';
 import { Public } from '@shared/decorators/public.decorator';
 import { RequirePermissions } from '@shared/decorators/permissions.decorator';
-import { Roles } from '@shared/decorators/roles.decorator';
 import { ZodValidationPipe } from '@shared/pipes/zod-validation.pipe';
 import type { AuthenticatedUser } from '@shared/types/authenticated-user';
 import {
@@ -157,18 +156,6 @@ export class PropostasController {
   })
   enviarErp(@CurrentUser() user: AuthenticatedUser, @Param('id') id: string) {
     return this.erp.enviar(id, user.empresaIdAtiva!);
-  }
-
-  @Post(':id/aprovar-erp')
-  @Roles('ADMIN', 'DIRECTOR')
-  @Audit({ action: 'aprovar_erp', resource: 'proposta', resourceIdFrom: 'params.id' })
-  @ApiOperation({
-    summary:
-      'Aprova o orçamento no ERP: ele vira PEDIDO lá, herdando o que o cliente aprovou. ' +
-      'O pedido volta pro app pela sincronização, já com o representante.',
-  })
-  aprovarErp(@CurrentUser() user: AuthenticatedUser, @Param('id') id: string) {
-    return this.erp.aprovar(id, user.empresaIdAtiva!);
   }
 
   @Post(':id/converter-em-pedido')
