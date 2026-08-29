@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { usuarioIdSchema } from '@shared/validators/id.schema';
 import { boolQuery } from '@shared/validators/query.schema';
 
 export const createEmpresaSchema = z.object({
@@ -250,6 +251,27 @@ const estoqueSchema = z
   })
   .optional();
 
+/**
+ * Comissão de ORIGINAÇÃO — a de quem trouxe o representante.
+ *
+ * Não sai do `comissaoPadrao` de ninguém (aquele é do rep que vendeu) e por
+ * isso precisa de configuração própria: quem recebe e quanto, por canal.
+ * Percentuais do Léo: 6% no que veio por representante (locação) e 12% no que
+ * veio sem representante (site).
+ */
+const comissaoOriginacaoSchema = z
+  .object({
+    ativo: z.boolean().default(false),
+    /** Usuário do app que recebe — usamos o contato dele no ERP. */
+    usuarioId: usuarioIdSchema.nullable().optional(),
+    /** Contato no ERP, quando quem recebe não é usuário do app. */
+    contatoErpId: z.string().max(40).nullable().optional(),
+    pctRep: z.number().min(0).max(100).nullable().optional(),
+    pctSemRep: z.number().min(0).max(100).nullable().optional(),
+  })
+  .partial()
+  .optional();
+
 export const tenantConfigPatchSchema = z
   .object({
     // #R4 — cada seção aceita `null` = remover a seção inteira (reset pro default). O merge no service
@@ -265,6 +287,7 @@ export const tenantConfigPatchSchema = z
     emailTransacional: emailTransacionalSchema.nullable(),
     alertaConversaEsquecida: alertaConversaEsquecidaSchema.nullable(),
     estoque: estoqueSchema.nullable(),
+    comissaoOriginacao: comissaoOriginacaoSchema.nullable(),
   })
   // .strip() (default zod): DESCARTA chaves desconhecidas em vez de deixá-las entrar no
   // Empresa.config (o front só manda as seções conhecidas; .passthrough deixava lixo crescer).

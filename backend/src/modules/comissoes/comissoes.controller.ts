@@ -15,12 +15,18 @@ import {
   marcarPagoSchema,
 } from './comissoes.dto';
 import { ComissoesService } from './comissoes.service';
+import { ComissaoErpService } from './comissao-erp.service';
+import { ForbiddenException } from '@shared/errors/app-exception';
+import { ErrorCode } from '@shared/errors/error-codes';
 
 @ApiTags('comissoes')
 @ApiBearerAuth()
 @Controller('comissoes')
 export class ComissoesController {
-  constructor(private readonly comissoes: ComissoesService) {}
+  constructor(
+    private readonly comissoes: ComissoesService,
+    private readonly erp: ComissaoErpService,
+  ) {}
 
   @Get('meu-resumo')
   @RequirePermissions({ module: 'comissoes', action: 'view' })
@@ -42,6 +48,29 @@ export class ComissoesController {
   @RequirePermissions({ module: 'comissoes', action: 'view' })
   findOne(@CurrentUser() user: AuthenticatedUser, @Param('id') id: string) {
     return this.comissoes.findById(user, id);
+  }
+
+  /**
+   * Reprovisiona a folha no financeiro do ERP.
+   *
+   * O fechamento já provisiona sozinho; isto existe pro caso em que o ERP
+   * estava fora do ar (ou o rep ainda não tinha contato lá) e a folha ficou
+   * fechada sem as contas a pagar. É idempotente: quem já tem conta criada não
+   * é lançado de novo.
+   */
+  @Post('provisionar-erp')
+  @Roles('ADMIN', 'DIRECTOR')
+  @Audit({ action: 'provisionar_erp', resource: 'comissao' })
+  @ApiOperation({ summary: 'Cria no ERP as contas a pagar da folha do mês (idempotente).' })
+  provisionarErp(
+    @CurrentUser() user: AuthenticatedUser,
+    @Body(new ZodValidationPipe(fecharMesSchema)) dto: FecharMesDto,
+  ) {
+    const empresaId = user.empresaIdAtiva;
+    if (!empresaId) {
+      throw new ForbiddenException('Empresa não definida', ErrorCode.TENANT_ACCESS_DENIED);
+    }
+    return this.erp.provisionar(empresaId, dto.mes, dto.ano);
   }
 
   @Post('fechar-mes')

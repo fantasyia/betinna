@@ -323,6 +323,7 @@ model Empresa {
   inboxLimpezas         InboxLimpeza[]
 
   @@index([ativo])
+  comissoesOriginacao ComissaoOriginacao[]
 }
 
 // ─── USUÁRIOS / AUTH ──────────────────────────────────────────────────
@@ -1467,6 +1468,26 @@ enum ComissaoTipo {
   GERENTE
 }
 
+/// Comissão de ORIGINAÇÃO — a de quem trouxe o representante, não a de quem
+/// vendeu. Uma linha por mês/empresa: o valor sai do faturamento do período
+/// (percentuais por canal em `Empresa.config.comissaoOriginacao`) e vira uma
+/// conta a pagar no ERP. O `contaPagarErpId` é o que impede provisionar duas
+/// vezes o mesmo mês.
+model ComissaoOriginacao {
+  id              String   @id @default(cuid())
+  empresaId       String
+  ano             Int
+  mes             Int
+  valor           Decimal  @db.Decimal(14, 2)
+  contaPagarErpId String?
+  criadoEm        DateTime @default(now())
+  atualizadoEm    DateTime @updatedAt
+
+  empresa Empresa @relation(fields: [empresaId], references: [id], onDelete: Cascade)
+
+  @@unique([empresaId, ano, mes])
+}
+
 model Comissao {
   id              String       @id @default(cuid())
   /// Tenant da comissão. CRÍTICO pra isolamento multi-tenant em queries.
@@ -1490,6 +1511,9 @@ model Comissao {
   qtdPedidos      Int
   pago            Boolean      @default(false)
   pagoEm          DateTime?
+  /// Id da CONTA A PAGAR criada no ERP pra esta comissão. Presença = já
+  /// provisionada — é o que impede provisionar a mesma folha duas vezes.
+  contaPagarErpId String?
   reciboUrl       String?
   /// Marca registros gerados pelo seed-demo.
   isDemo          Boolean      @default(false)

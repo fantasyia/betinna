@@ -1,0 +1,98 @@
+import { Injectable, Logger } from '@nestjs/common';
+import { TinyClientService } from './tiny-client.service';
+
+export interface LancamentoFinanceiro {
+  /** Contato no ERP que RECEBE (a pagar) ou PAGA (a receber). */
+  idContato: number;
+  valor: number;
+  /** Quando vence — 'YYYY-MM-DD'. */
+  dataVencimento: string;
+  /** Mês a que o lançamento PERTENCE — 'YYYY-MM'. É o que fecha o DRE. */
+  dataCompetencia?: string;
+  numeroDocumento?: string;
+  historico?: string;
+  idCategoria?: number;
+  /** U = única (default), M = mensal… Usado pela locação recorrente. */
+  ocorrencia?: 'U' | 'W' | 'Q' | 'M' | 'T' | 'S' | 'A' | 'P';
+}
+
+/**
+ * Contas a pagar e a receber no ERP.
+ *
+ * É onde a comissão vira dinheiro de verdade: o Tiny tem **um** vendedor por
+ * pedido e não expõe comissão na API (é campo de painel), então a comissão é
+ * modelada como CONTA A PAGAR — que, contabilmente, é o que ela é.
+ *
+ * Dois campos carregam a regra que o Léo definiu e que não pode escorregar:
+ *
+ *  - `dataCompetencia` ('YYYY-MM') é o mês do FATURAMENTO. É ele que decide em
+ *    que mês o custo aparece no resultado. Errar aqui infla um mês e esvazia o
+ *    outro, e o erro só aparece no fechamento contábil.
+ *  - `dataVencimento` é dia 05 do mês SEGUINTE. Nota de 05/01 e de 29/01 vencem
+ *    as duas em 05/02 — vencimento é caixa, competência é resultado, e misturar
+ *    os dois é o erro clássico.
+ */
+@Injectable()
+export class TinyContasService {
+  private readonly logger = new Logger(TinyContasService.name);
+
+  constructor(private readonly client: TinyClientService) {}
+
+  async criarContaPagar(empresaId: string, l: LancamentoFinanceiro): Promise<number> {
+    const r = await this.client.post<{ id: number }>(empresaId, '/contas-pagar', this.corpo(l));
+    this.logger.log(
+      `[tiny] conta a pagar criada id=${r?.id} valor=${l.valor} venc=${l.dataVencimento}`,
+    );
+    return r.id;
+  }
+
+  async criarContaReceber(empresaId: string, l: LancamentoFinanceiro): Promise<number> {
+    const r = await this.client.post<{ id: number }>(empresaId, '/contas-receber', this.corpo(l));
+    this.logger.log(
+      `[tiny] conta a receber criada id=${r?.id} valor=${l.valor} venc=${l.dataVencimento}`,
+    );
+    return r.id;
+  }
+
+  /**
+   * Acha o id de uma categoria de receita/despesa pelo nome.
+   *
+   * Sem categoria o lançamento entra "sem classificação" e some do DRE por
+   * categoria — funciona, mas não serve pro relatório que motivou tudo isso.
+   * Falha aqui NÃO derruba o lançamento: melhor conta a pagar sem categoria do
+   * que comissão não provisionada.
+   */
+  async acharCategoria(empresaId: string, nome: string): Promise<number | null> {
+    try {
+      const r = await this.client.get<{ itens?: Array<{ id: number; descricao?: string }> }>(
+        empresaId,
+        '/categorias-receita-despesa',
+        { limit: 200 },
+      );
+      const alvo = (r.itens ?? []).find(
+        (c) => (c.descricao ?? '').trim().toLowerCase() === nome.trim().toLowerCase(),
+      );
+      return alvo?.id ?? null;
+    } catch (err) {
+      this.logger.warn(
+        `[tiny] não consegui listar categorias: ${err instanceof Error ? err.message : String(err)}`,
+      );
+      return null;
+    }
+  }
+
+  private corpo(l: LancamentoFinanceiro): Record<string, unknown> {
+    return {
+      contato: { id: l.idContato },
+      // Centavos arredondados aqui, uma vez: dinheiro com casa sobrando vira
+      // divergência de um centavo entre o app e o ERP, e isso ninguém concilia.
+      valor: Math.round(l.valor * 100) / 100,
+      dataVencimento: l.dataVencimento,
+      ...(l.dataCompetencia ? { dataCompetencia: l.dataCompetencia } : {}),
+      ...(l.numeroDocumento ? { numeroDocumento: l.numeroDocumento } : {}),
+      ...(l.historico ? { historico: l.historico } : {}),
+      ...(l.idCategoria ? { categoria: { id: l.idCategoria } } : {}),
+      ...(l.ocorrencia ? { ocorrencia: l.ocorrencia } : {}),
+    };
+  }
+}
