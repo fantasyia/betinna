@@ -633,6 +633,19 @@ export class MullerWhatsappService implements OnModuleInit {
       // CRON_AGENDADO, mudança de etapa) passava batido — e os dois respondiam a
       // mesma pessoa. O gate inicial (passo 1.5) já checa os dois; o re-check
       // precisa do mesmo par pra fechar a corrida de verdade.
+      // O guard acima pergunta "tem alguém conduzindo AGORA?". Falta a outra
+      // pergunta: "eu ainda posso falar aqui?". Um fluxo que decide e ENCERRA em
+      // ~1s (condição → PAUSAR_IA → CRIAR_TAREFA) não deixa execução viva pro
+      // `fluxoAssumiu` ver — mas mudou o estado da conversa no meio da geração.
+      // Foi assim que o bot geral prometeu "posso retomar por aqui" 5 segundos
+      // depois de o sistema decidir que quem atende é o representante dono.
+      if (await this.conversaFechouParaOBot(convId)) {
+        this.logger.log(
+          `[bot] conversa foi PAUSADA durante a geração — bot geral descarta a resposta conv=${convId}`,
+        );
+        return;
+      }
+
       if (await this.fluxoAssumiu(params.empresaId, convId, leadDoPeer?.id)) {
         this.logger.log(
           `[bot] fluxo assumiu a conversa durante a geração — bot geral descarta a resposta conv=${convId}`,
@@ -908,6 +921,33 @@ export class MullerWhatsappService implements OnModuleInit {
    * (fluxos que já têm lead). Ponto único usado pelo gate de entrada, pelo
    * re-check antes de enviar e pela supressão do fallback.
    */
+  /**
+   * A conversa deixou de aceitar o bot enquanto a resposta era gerada?
+   *
+   * Relê os MESMOS campos do portão de entrada (`botLigado`, `precisaHumano`,
+   * `botPausadoAte`), que eram lidos uma vez só — antes da chamada à IA, que
+   * leva ~15s. A corrida mora exatamente aí: um `PAUSAR_IA` no meio desse
+   * intervalo desligava o bot e a resposta já em voo saía assim mesmo,
+   * contradizendo a decisão que o sistema acabara de tomar.
+   *
+   * Fail-open: erro aqui não pode calar o bot — o custo de errar pro outro lado
+   * (uma resposta a mais) é menor que o de silenciar o atendimento inteiro.
+   */
+  private async conversaFechouParaOBot(convId: string): Promise<boolean> {
+    try {
+      const conv = await this.prisma.conversation.findUnique({
+        where: { id: convId },
+        select: { botLigado: true, precisaHumano: true, botPausadoAte: true },
+      });
+      if (!conv) return false;
+      if (conv.botLigado === false) return true;
+      if (conv.precisaHumano) return true;
+      return Boolean(conv.botPausadoAte && conv.botPausadoAte.getTime() > Date.now());
+    } catch {
+      return false;
+    }
+  }
+
   private async fluxoAssumiu(empresaId: string, convId: string, leadId?: string): Promise<boolean> {
     if (await this.fluxoConduzindoConversa(empresaId, convId)) return true;
     return leadId ? this.fluxoConduzindoLead(empresaId, leadId) : false;

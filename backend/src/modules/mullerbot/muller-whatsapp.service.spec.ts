@@ -288,6 +288,41 @@ describe('MullerWhatsappService — regras do bot', () => {
     expect(muller.responderComoEmpresa).not.toHaveBeenCalled();
   });
 
+  it('PAUSAR_IA DURANTE a geração descarta a resposta já pronta', async () => {
+    // RT.1 em produção (29/08): o fluxo decidiu que quem atende é o rep dono,
+    // desligou o bot e criou a tarefa — e 5s depois o bot geral mandou "posso
+    // retomar por aqui", o oposto da decisão. O estado da conversa era lido uma
+    // vez só, ANTES da chamada à IA (~15s); a corrida mora nesse intervalo.
+    let leitura = 0;
+    prisma.conversation.findUnique = vi.fn(async () => {
+      leitura += 1;
+      // 1ª leitura = portão de entrada (bot ligado, segue);
+      // 2ª = re-check depois de gerar (fluxo já pausou).
+      return leitura === 1
+        ? { botPausadoAte: null, botLigado: true, precisaHumano: false }
+        : { botPausadoAte: null, botLigado: false, precisaHumano: true };
+    });
+
+    await aoReceber(build(prisma, inbox, muller), { ...baseParams });
+
+    // A IA até gerou (a corrida é essa), mas nada foi enviado ao cliente.
+    expect(muller.responderComoEmpresa).toHaveBeenCalled();
+    expect(inbox.responderComoBot).not.toHaveBeenCalled();
+  });
+
+  it('conversa que segue liberada NÃO é descartada pelo re-check', async () => {
+    // A rede de segurança não pode virar mordaça: sem pausa no meio, responde.
+    prisma.conversation.findUnique = vi.fn(async () => ({
+      botPausadoAte: null,
+      botLigado: true,
+      precisaHumano: false,
+    }));
+
+    await aoReceber(build(prisma, inbox, muller), { ...baseParams });
+
+    expect(inbox.responderComoBot).toHaveBeenCalled();
+  });
+
   it('lead Perdido/Encerrado → bot silencia e marca precisa-humano (busca unificada)', async () => {
     prisma.$queryRaw = vi.fn(async () => [{ id: 'lead-1' }]); // achou o lead por telefone
     prisma.lead.findUnique = vi.fn(async () => ({

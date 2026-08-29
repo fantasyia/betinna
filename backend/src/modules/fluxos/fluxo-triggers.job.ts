@@ -94,17 +94,48 @@ export class FluxoTriggersJob {
     // Destrava o lock de turno órfão: se o worker morreu no meio do retomar (sem rodar o
     // finally), processandoTurno fica preso em true e o bot nunca mais responde o lead.
     // Turno de IA é curto (segundos), então 15min sem progresso = órfão seguro de resetar.
-    const lockOrfaos = await this.prisma.fluxoExecucao.updateMany({
+    //
+    // O claim agora tem TTL próprio (3min, no `ConversarIaService`), então este
+    // reaper virou a rede de baixo: pega o que sobrar. A janela caiu de 15min
+    // pra 5 — e, principalmente, ele passou a VARRER as mensagens perdidas.
+    // Destravar sem varrer é recuperação só no papel: o cliente que escreveu
+    // durante o travamento continuava sem resposta, porque a varredura só
+    // rodava no `finally` de um turno bem-sucedido. Quem mandava duas mensagens
+    // e desistia nunca era respondido (medido em produção, 29/08).
+    const travadas = await this.prisma.fluxoExecucao.findMany({
       where: {
         status: 'AGUARDANDO',
         processandoTurno: true,
         // turnoIniciadoEm (início do TURNO), não iniciouEm (início da execução): senão uma
         // conversa saudável de 24h teria iniciouEm sempre >15min atrás e o reaper resetaria
         // o lock no meio de um turno legítimo → turno em dobro (custo + classificou 2×).
-        turnoIniciadoEm: { lt: new Date(agora - 15 * 60 * 1000) },
+        turnoIniciadoEm: { lt: new Date(agora - 5 * 60 * 1000) },
       },
-      data: { processandoTurno: false },
+      select: { id: true },
+      take: 50,
     });
+    const lockOrfaos = travadas.length
+      ? await this.prisma.fluxoExecucao.updateMany({
+          where: { id: { in: travadas.map((e) => e.id) } },
+          data: { processandoTurno: false },
+        })
+      : { count: 0 };
+    for (const e of travadas) {
+      // Uma falha não pode impedir a varredura das outras — cada conversa
+      // destravada é um cliente esperando.
+      await this.conversarIa.varrerPendentesAposDestravar(e.id).catch((err) => {
+        this.logger.warn(
+          `[reaper] varredura pós-destrave falhou (exec ${e.id}): ` +
+            `${err instanceof Error ? err.message : String(err)}`,
+        );
+        return false;
+      });
+    }
+    if (travadas.length) {
+      this.logger.warn(
+        `[reaper] ${travadas.length} turno(s) preso(s) destravado(s) — mensagens pendentes varridas`,
+      );
+    }
     // Órfãs PENDENTE do cron: o CRON_AGENDADO cria a execução ANTES do dedup por jobId;
     // numa rodada sobreposta o job é deduplicado e a execução fica PENDENTE pra sempre.
     // PENDENTE de cron com >15min (job nunca rodou) é lixo seguro de remover.

@@ -43,6 +43,7 @@ describe('FluxoTriggersJob.reconciliarClaims — execuções abandonadas', () =>
 
   it('marca FALHOU a execução parada SEM job vivo na fila', async () => {
     prisma.fluxoExecucao.findMany
+      .mockResolvedValueOnce([]) // turnos travados (reaper do lock de IA)
       .mockResolvedValueOnce([]) // candidatas de cron (outro trecho)
       .mockResolvedValueOnce([{ id: 'exec-morta' }, { id: 'exec-viva' }]);
     const bus = {
@@ -64,6 +65,7 @@ describe('FluxoTriggersJob.reconciliarClaims — execuções abandonadas', () =>
 
   it('execução com job vivo NÃO é tocada (DELAY longo é legítimo)', async () => {
     prisma.fluxoExecucao.findMany
+      .mockResolvedValueOnce([]) // turnos travados
       .mockResolvedValueOnce([])
       .mockResolvedValueOnce([{ id: 'exec-delay' }]);
     const bus = {
@@ -81,6 +83,7 @@ describe('FluxoTriggersJob.reconciliarClaims — execuções abandonadas', () =>
 
   it('fila inacessível → NÃO varre nada (senão todo delayed viraria abandonada)', async () => {
     prisma.fluxoExecucao.findMany
+      .mockResolvedValueOnce([]) // turnos travados
       .mockResolvedValueOnce([])
       .mockResolvedValueOnce([{ id: 'exec-1' }]);
     const bus = {
@@ -97,7 +100,10 @@ describe('FluxoTriggersJob.reconciliarClaims — execuções abandonadas', () =>
   });
 
   it('o update só pega quem AINDA está PENDENTE/EM_EXECUCAO (corrida com o worker)', async () => {
-    prisma.fluxoExecucao.findMany.mockResolvedValueOnce([]).mockResolvedValueOnce([{ id: 'e1' }]);
+    prisma.fluxoExecucao.findMany
+      .mockResolvedValueOnce([]) // turnos travados
+      .mockResolvedValueOnce([]) // candidatas de cron
+      .mockResolvedValueOnce([{ id: 'e1' }]);
     const bus = {
       execucoesComJobVivo: vi.fn().mockResolvedValue(new Set<string>()),
       jobExiste: vi.fn(),

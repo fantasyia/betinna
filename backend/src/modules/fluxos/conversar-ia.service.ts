@@ -455,6 +455,16 @@ export function mesclarHistorico(
  *  3. `processarTimeouts` (cron): execuções paradas além do timeout disparam
  *     LEAD_SEM_RESPOSTA e são encerradas.
  */
+/**
+ * Vida do claim de turno. Turno de IA leva segundos; passado disso o lock está
+ * morto e outra mensagem pode tomá-lo. É este número — não o cron de 15min —
+ * que define quanto tempo o cliente pode ficar sem resposta.
+ */
+const TTL_CLAIM_MS = 3 * 60 * 1000;
+
+/** Teto de um turno. Existe pra GARANTIR que o `finally` rode e solte o lock. */
+const TIMEOUT_TURNO_MS = 2 * 60 * 1000;
+
 @Injectable()
 export class ConversarIaService {
   private readonly logger = new Logger(ConversarIaService.name);
@@ -1467,8 +1477,22 @@ export class ConversarIaService {
     // AGUARDANDO no fim — e no caminho "continua conversa" nem sai). Sem isto a IA roda
     // 2x, o WhatsApp sai 2x e a classificação dispara em dobro. `processandoTurno` é o
     // lock otimista por execução, liberado no finally — ortogonal ao status.
+    //
+    // O claim tem TTL PRÓPRIO. Antes, um turno que não voltasse (sem erro, sem
+    // log, sem entrada no FluxoExecucaoLog) prendia o lock até o reaper passar:
+    // 15min de TTL + cron de 15min = **até 30 minutos de silêncio** com o bot
+    // ligado, o cliente falando e ninguém respondendo. Medido em produção
+    // (29/08): 23 minutos. Turno de IA leva segundos, então um lock com mais de
+    // TTL_CLAIM_MS está morto e pode ser tomado — sem depender de cron nenhum.
     const claim = await this.prisma.fluxoExecucao.updateMany({
-      where: { id: execucaoId, status: 'AGUARDANDO', processandoTurno: false },
+      where: {
+        id: execucaoId,
+        status: 'AGUARDANDO',
+        OR: [
+          { processandoTurno: false },
+          { turnoIniciadoEm: { lt: new Date(Date.now() - TTL_CLAIM_MS) } },
+        ],
+      },
       data: { processandoTurno: true, turnoIniciadoEm: new Date() },
     });
     if (claim.count === 0) {
@@ -1476,14 +1500,44 @@ export class ConversarIaService {
       // ("oi" + "tudo bem?" em 1s), o 2º recado nunca virava turno e a IA
       // respondia só o primeiro. Quem perde o claim não processa AGORA (senão
       // roda em dobro) — o vencedor varre as mensagens novas no finally.
-      this.logger.debug(
-        `CONVERSAR_IA: turno concorrente na exec ${execucaoId} — o vencedor vai varrer as novas`,
-      );
+      const idade = Date.now() - (execucao.turnoIniciadoEm?.getTime() ?? Date.now());
+      if (idade > TTL_CLAIM_MS / 2) {
+        // Lock velho e ainda de pé é sintoma, não rotina: quem investiga precisa
+        // ver isso em produção, e `debug` não aparece lá.
+        this.logger.warn(
+          `CONVERSAR_IA: claim negado na exec ${execucaoId} com lock de ${Math.round(idade / 1000)}s ` +
+            '— turno anterior demorando ou preso',
+        );
+      } else {
+        this.logger.debug(
+          `CONVERSAR_IA: turno concorrente na exec ${execucaoId} — o vencedor vai varrer as novas`,
+        );
+      }
       return;
     }
     const inicioDoTurno = new Date();
     try {
-      await this.processarTurno(execucao, empresaId, conversationId, textoLead, imagemDataUrl);
+      // Timeout que GARANTE o finally. A causa raiz do lock preso é um turno que
+      // nunca se resolve — nem sucesso, nem erro. Promise pendurada não roda
+      // `finally`, e é assim que o lock some do radar. Com a corrida, o pior
+      // caso vira "um turno perdido", não "a conversa muda".
+      await Promise.race([
+        this.processarTurno(execucao, empresaId, conversationId, textoLead, imagemDataUrl),
+        new Promise<never>((_, reject) =>
+          setTimeout(
+            () => reject(new Error(`turno excedeu ${TIMEOUT_TURNO_MS / 1000}s`)),
+            TIMEOUT_TURNO_MS,
+          ).unref?.(),
+        ),
+      ]);
+    } catch (err) {
+      // Não relança: o turno falho não pode derrubar quem chamou (o inbound já
+      // foi respondido do ponto de vista do WhatsApp). O que importa é liberar o
+      // lock e deixar rastro.
+      this.logger.error(
+        `CONVERSAR_IA: turno falhou na exec ${execucaoId}: ` +
+          `${err instanceof Error ? err.message : String(err)}`,
+      );
     } finally {
       // Libera o claim sem tocar no status (que pode ter virado EM_EXECUCAO no caminho
       // que classifica e avança). Best-effort.
@@ -1508,6 +1562,30 @@ export class ConversarIaService {
         ),
       );
     }
+  }
+
+  /**
+   * Varre as mensagens sem resposta de uma execução destravada.
+   *
+   * Existe pro reaper: destravar o lock, sozinho, é recuperação só no papel —
+   * as mensagens que o cliente mandou enquanto o turno estava preso continuavam
+   * sem resposta, porque a varredura só rodava no `finally` de um turno bem
+   * sucedido. Quem mandava duas mensagens e desistia nunca era respondido.
+   */
+  async varrerPendentesAposDestravar(execucaoId: string): Promise<boolean> {
+    const execucao = await this.prisma.fluxoExecucao.findFirst({
+      where: { id: execucaoId, status: 'AGUARDANDO' },
+      select: { id: true, empresaId: true, contexto: true, turnoIniciadoEm: true },
+    });
+    if (!execucao?.empresaId) return false;
+    const ctx = (execucao.contexto ?? {}) as ExecucaoContexto;
+    const conversationId = typeof ctx.conversationId === 'string' ? ctx.conversationId : null;
+    if (!conversationId) return false;
+    // Janela: desde o início do turno que travou — é exatamente o intervalo em
+    // que o cliente falou e ninguém respondeu.
+    const desde = execucao.turnoIniciadoEm ?? new Date(Date.now() - TTL_CLAIM_MS);
+    await this.processarMensagensPerdidas(execucaoId, execucao.empresaId, conversationId, desde);
+    return true;
   }
 
   /**
