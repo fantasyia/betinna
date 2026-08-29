@@ -36,6 +36,11 @@ function makeService(opts: {
   tipo?: string;
   /** Há quanto tempo o lead mandou a última mensagem (min). undefined = nunca. */
   ultimoInboundMin?: number;
+  /**
+   * Há quanto tempo existe uma Message INBOUND na conversa da EMPRESA (min).
+   * É a FONTE — o campo do Lead acima é só cache, e nasce null no 1º contato.
+   */
+  inboundNaConversaMin?: number;
 }) {
   const prisma = {
     fluxoExecucao: {
@@ -78,6 +83,15 @@ function makeService(opts: {
         ),
     },
     cliente: { findFirst: vi.fn().mockResolvedValue(null) },
+    message: {
+      findFirst: vi
+        .fn()
+        .mockResolvedValue(
+          opts.inboundNaConversaMin === undefined
+            ? null
+            : { criadoEm: new Date(Date.now() - opts.inboundNaConversaMin * 60_000) },
+        ),
+    },
     $transaction: vi.fn(async (ops: unknown[]) => Promise.all(ops as Promise<unknown>[])),
   };
   const queue = { add: vi.fn().mockResolvedValue({ id: 'job-x' }) };
@@ -158,6 +172,63 @@ describe('Janela de envio no motor de fluxos', () => {
       expect.anything(),
       expect.objectContaining({ delay: expect.any(Number) as number }),
     );
+  });
+
+  it('1º contato: lead SEM carimbo mas com inbound na conversa é RESPOSTA', async () => {
+    // O furo que deixava o consultivo cego na abertura: `Lead.ultimaMensagemEm`
+    // nasce null (quem carimba só carimba lead que já existe, e no primeiro
+    // contato o lead ainda não existe). A conversa mais viva que existe era
+    // lida como abordagem fria — o bot abria sem histórico e perguntava o que a
+    // pessoa tinha acabado de responder.
+    const { service, conversarIa, queue } = makeService({
+      esperaMs: 9 * 3600_000,
+      triggerTipo: 'LEAD_ETAPA_MUDOU',
+      acaoTipo: 'CONVERSAR_IA',
+      ultimoInboundMin: undefined, // lead sem carimbo
+      inboundNaConversaMin: 1, // mas a pessoa escreveu agorinha
+    });
+
+    await service.executarPasso('exec-1', 'no-1', 'job-1');
+
+    expect(conversarIa.iniciar).toHaveBeenCalled();
+    // Resposta não espera janela de horário.
+    expect(queue.add).not.toHaveBeenCalledWith(
+      'step',
+      expect.anything(),
+      expect.objectContaining({ delay: expect.any(Number) as number }),
+    );
+    // E entra como REATIVO — é isso que faz o nó montar o histórico.
+    expect(conversarIa.iniciar.mock.calls[0][4]).toBe(true);
+  });
+
+  it('sem carimbo e sem inbound nenhum, continua sendo abordagem (falha fechado)', async () => {
+    const { service, conversarIa, queue } = makeService({
+      esperaMs: 9 * 3600_000,
+      triggerTipo: 'LEAD_ETAPA_MUDOU',
+      acaoTipo: 'CONVERSAR_IA',
+    });
+
+    await service.executarPasso('exec-1', 'no-1', 'job-1');
+
+    expect(conversarIa.iniciar).not.toHaveBeenCalled();
+    expect(queue.add).toHaveBeenCalledWith(
+      'step',
+      { execucaoId: 'exec-1', noId: 'no-1' },
+      expect.objectContaining({ delay: 9 * 3600_000 }),
+    );
+  });
+
+  it('inbound VELHO na conversa não vale como resposta', async () => {
+    const { service, conversarIa } = makeService({
+      esperaMs: 9 * 3600_000,
+      triggerTipo: 'LEAD_ETAPA_MUDOU',
+      acaoTipo: 'CONVERSAR_IA',
+      inboundNaConversaMin: 60 * 48, // dois dias atrás
+    });
+
+    await service.executarPasso('exec-1', 'no-1', 'job-1');
+
+    expect(conversarIa.iniciar).not.toHaveBeenCalled();
   });
 
   it('CONVERSAR_IA proativo também é segurado (o opener é abordagem)', async () => {

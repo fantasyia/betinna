@@ -991,7 +991,28 @@ export class FluxoExecutorService {
         select: { ultimaMensagemEm: true },
       });
       const ultima = lead?.ultimaMensagemEm?.getTime();
-      return !!ultima && Date.now() - ultima <= INBOUND_RECENTE_MS;
+      if (ultima) return Date.now() - ultima <= INBOUND_RECENTE_MS;
+
+      // Sem carimbo, VAI NA FONTE. `Lead.ultimaMensagemEm` é cache, e ele nasce
+      // NULL no primeiro contato: quem carimba só carimba lead que já existe, e
+      // no primeiro contato o lead ainda não existe — é a triagem que o cria,
+      // depois. Resultado: a conversa mais viva que existe (a pessoa acabou de
+      // escrever) era lida como "abordagem fria", o consultivo abria SEM o
+      // histórico e perguntava o que o cliente tinha acabado de responder.
+      //
+      // A conversa da EMPRESA (proprietarioId null) é a mesma que o histórico do
+      // nó de IA usa — se olhasse a do WhatsApp pessoal do rep, o critério aqui
+      // e o texto que a IA lê seriam de conversas diferentes.
+      const inbound = await this.prisma.message.findFirst({
+        where: {
+          direction: 'INBOUND',
+          conversation: { empresaId, leadId, canal: 'WHATSAPP', proprietarioId: null },
+        },
+        orderBy: { criadoEm: 'desc' },
+        select: { criadoEm: true },
+      });
+      const quando = inbound?.criadoEm?.getTime();
+      return !!quando && Date.now() - quando <= INBOUND_RECENTE_MS;
     } catch {
       return false;
     }
@@ -2105,6 +2126,7 @@ export class FluxoExecutorService {
         proprietarioId: true,
         utmCampaign: true,
         metadata: true,
+        ultimaMsgEm: true,
       },
     });
     if (!conversa) {
@@ -2242,6 +2264,12 @@ export class FluxoExecutorService {
         utmMedium: referral ? 'click_to_whatsapp' : null,
         utmCampaign: campanha ?? null,
         variaveis: variaveis as Prisma.InputJsonValue,
+        // O lead nasce de uma mensagem que ACABOU de chegar — então nasce
+        // carimbado. Sem isto o campo ficava null até a SEGUNDA mensagem
+        // (quem carimba só carimba lead existente), e todo mundo que usa o
+        // carimbo pra saber se a conversa está viva lia "fria" justamente no
+        // primeiro contato. Fonte: a própria conversa, não o relógio.
+        ultimaMensagemEm: conversa.ultimaMsgEm ?? new Date(),
       },
       select: { id: true, nome: true, etapa: true },
     });

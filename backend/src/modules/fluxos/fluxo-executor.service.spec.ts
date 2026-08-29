@@ -399,6 +399,27 @@ describe('FluxoExecutorService', () => {
       expect(prisma.lead.create).not.toHaveBeenCalled();
     });
 
+    it('o lead NASCE carimbado com a hora da mensagem que o criou', async () => {
+      // `Lead.ultimaMensagemEm` nascia null: quem carimba só carimba lead que já
+      // existe, e no primeiro contato o lead ainda não existe. Aí todo mundo que
+      // usa o carimbo pra saber se a conversa está viva lia "fria" justamente no
+      // primeiro contato — e o consultivo abria cego, sem o histórico.
+      const quando = new Date('2026-08-29T05:50:25.000Z');
+      prepararNo({ funilEtapaId: 'et-triagem' });
+      prisma.conversation.findFirst.mockResolvedValue(conversaComAnuncio({ ultimaMsgEm: quando }));
+      prisma.funilEtapa.findFirst.mockResolvedValue({
+        id: 'et-triagem',
+        funilId: 'funil-triagem',
+        tipo: 'ATIVA',
+      });
+      prisma.$queryRaw.mockResolvedValueOnce([]);
+
+      await service.executarPasso('exec-1', 'no-1', 'job-1');
+
+      const dados = prisma.lead.create.mock.calls[0][0].data;
+      expect(dados.ultimaMensagemEm).toEqual(quando);
+    });
+
     it('leadId ÓRFÃO (lead apagado) não trava a triagem — limpa o ponteiro e cria de novo', async () => {
       // Bug de prod: Conversation.leadId é campo SOLTO (sem FK). Lead apagado na
       // UI deixava a conversa apontando pra id morto → CRIAR_LEAD dizia "já tem
