@@ -19,6 +19,7 @@ import { PageLayout } from '@/components/PageLayout';
 import { CatalogoTabs } from '@/components/CatalogoTabs';
 import { StateView } from '@/components/StateView';
 import { AsyncCombobox } from '@/components/AsyncCombobox';
+import { ProdutoPickerDialog } from '@/components/ProdutoPickerDialog';
 import { useToast } from '@/components/toast';
 import {
   Badge,
@@ -61,17 +62,6 @@ interface CatalogoItem {
     estoqueAtualizadoEm?: string | null;
   };
   precoFinal?: number;
-}
-
-interface ProdutoOpt {
-  id: string;
-  nome: string;
-  sku?: string | null;
-  precoFabrica?: number | null;
-  precoTabela?: number | null;
-  precoLocacaoMensal?: number | null;
-  estoque?: number;
-  estoqueAtualizadoEm?: string | null;
 }
 
 interface ClienteOpt {
@@ -209,7 +199,7 @@ export default function CatalogoPage() {
             onClick={() => setAdding(true)}
             leftIcon={<Plus className="h-3.5 w-3.5" />}
           >
-            Adicionar produto
+            Adicionar produtos
           </Button>
         </>
       }
@@ -279,7 +269,7 @@ export default function CatalogoPage() {
               action={
                 !search.trim() ? (
                   <Button onClick={() => setAdding(true)} leftIcon={<Plus className="h-3.5 w-3.5" />}>
-                    Adicionar produto
+                    Adicionar produtos
                   </Button>
                 ) : undefined
               }
@@ -300,11 +290,14 @@ export default function CatalogoPage() {
       </Card>
 
       {adding && (
-        <AddProdutoDialog
-          existingIds={new Set(itens.map((i) => i.produtoId))}
+        <ProdutoPickerDialog
+          jaNoCatalogo={new Set(itens.map((i) => i.produtoId))}
           onClose={() => setAdding(false)}
-          onSaved={() => {
+          onAdicionados={(qtd) => {
             setAdding(false);
+            toast.success(
+              `${qtd} produto${qtd === 1 ? '' : 's'} adicionado${qtd === 1 ? '' : 's'} ao catálogo`,
+            );
             refetch();
           }}
         />
@@ -478,122 +471,6 @@ function StockBadge({
       <Icon className="h-2.5 w-2.5" />
       <span className="tabular">{tone.label}</span>
     </div>
-  );
-}
-
-// ─── Add produto dialog ────────────────────────────────────────
-
-function AddProdutoDialog({
-  existingIds,
-  onClose,
-  onSaved,
-}: {
-  existingIds: Set<string>;
-  onClose: () => void;
-  onSaved: () => void;
-}) {
-  const [produto, setProduto] = useState<ProdutoOpt | null>(null);
-  const [busy, setBusy] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-
-  const isDup = produto !== null && existingIds.has(produto.id);
-
-  async function submit(e: React.FormEvent) {
-    e.preventDefault();
-    if (!produto || isDup) return;
-    setBusy(true);
-    setError(null);
-    try {
-      await api.put('/catalogo/item', { produtoId: produto.id });
-      onSaved();
-    } catch (err) {
-      setError(err instanceof ApiError ? err.message : 'Falha');
-    } finally {
-      setBusy(false);
-    }
-  }
-
-  return (
-    <Dialog
-      open
-      onClose={onClose}
-      title="Adicionar produto ao catálogo"
-      size="md"
-      footer={
-        <>
-          <Button variant="secondary" onClick={onClose}>
-            Cancelar
-          </Button>
-          <Button
-            type="submit"
-            form="add-form"
-            data-testid="catalogo-add-save"
-            disabled={!produto || isDup}
-            loading={busy}
-            leftIcon={<Plus className="h-3.5 w-3.5" />}
-          >
-            Adicionar
-          </Button>
-        </>
-      }
-    >
-      <form id="add-form" onSubmit={submit} className="flex flex-col gap-3">
-        <Field label="Produto" required>
-          <AsyncCombobox<ProdutoOpt>
-            testId="add-produto-picker"
-            endpoint="/produtos"
-            placeholder="Buscar produto…"
-            getLabel={(p) => p.nome}
-            getSubLabel={(p) =>
-              [
-                p.sku,
-                p.precoTabela != null
-                  ? `tabela ${fmtBRL(p.precoTabela)}`
-                  : p.precoLocacaoMensal != null
-                    ? `locação ${fmtBRL(p.precoLocacaoMensal)}/mês`
-                    : null,
-              ]
-                .filter(Boolean)
-                .join(' · ')
-            }
-            getId={(p) => p.id}
-            value={produto}
-            onChange={setProduto}
-          />
-        </Field>
-        {isDup && (
-          <div className="px-3 py-2 rounded-md bg-warning/10 border border-warning/30 text-warning text-sm flex items-start gap-2">
-            <AlertCircle className="h-4 w-4 mt-0.5 shrink-0" />
-            Este produto já está no seu catálogo.
-          </div>
-        )}
-        {produto && (
-          <Card variant="outline" padding="md" className="bg-primary/5 border-primary/30">
-            <div className="text-[10px] uppercase tracking-wider text-muted mb-1">
-              {produto.precoTabela == null ? 'Locação / mês' : 'Preço pro cliente (tabela)'}
-            </div>
-            <div className="text-2xl font-bold text-text tabular tracking-tight">
-              {produto.precoTabela != null
-                ? fmtBRL(produto.precoTabela)
-                : produto.precoLocacaoMensal != null
-                  ? fmtBRL(produto.precoLocacaoMensal)
-                  : '—'}
-            </div>
-            {produto.precoTabela == null && produto.precoLocacaoMensal == null && (
-              <div className="text-[11px] text-muted mt-1">
-                Mensalidade ainda não cadastrada no ERP.
-              </div>
-            )}
-          </Card>
-        )}
-        {error && (
-          <div className="px-3 py-2 rounded-md bg-danger/10 border border-danger/30 text-danger text-sm flex items-start gap-2">
-            <AlertCircle className="h-4 w-4 mt-0.5 shrink-0" />
-            {error}
-          </div>
-        )}
-      </form>
-    </Dialog>
   );
 }
 

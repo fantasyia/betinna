@@ -103,19 +103,7 @@ export class PedidoErpSyncService {
     const de = new Date(ate.getTime() - dias * 24 * 60 * 60 * 1000);
 
     // Rede 1 — o que nasceu no ERP dentro da janela.
-    const ids = new Set<number>();
-    let offset = 0;
-    for (;;) {
-      const pagina = await this.tiny.listar(empresaId, {
-        dataInicial: this.dataIso(de),
-        dataFinal: this.dataIso(ate),
-        limit: 100,
-        offset,
-      });
-      for (const p of pagina.itens) if (p.id) ids.add(p.id);
-      if (pagina.itens.length < 100 || ids.size >= MAX_POR_RODADA) break;
-      offset += 100;
-    }
+    const ids = await this.idsDaJanela(empresaId, de, ate, r);
 
     // Rede 2 — pedidos daqui que ainda não terminaram e ficaram fora da janela.
     const pendentes = await this.prisma.pedido.findMany({
@@ -177,6 +165,85 @@ export class PedidoErpSyncService {
         `${r.atualizados} atualizados, ${r.semMudanca} sem mudança, ${r.erros} erros`,
     );
     return r;
+  }
+
+  /**
+   * Ids dos pedidos do ERP na janela — com plano B quando o filtro de data
+   * não responde.
+   *
+   * O filtro por data existe na API (`dataInicial`/`dataFinal`), mas o formato
+   * aceito não está documentado a ponto de merecer confiança cega: na primeira
+   * rodada em produção ele devolveu ZERO com um pedido de dois dias atrás
+   * sentado lá. E o pior modo de falhar é esse — sem erro, sem exceção, só uma
+   * lista vazia que parece "não há pedidos novos".
+   *
+   * Então: tenta com data; se a primeira página vier vazia, refaz SEM filtro e
+   * corta a janela aqui, comparando `dataCriacao`. Custa algumas páginas a mais
+   * e devolve um aviso dizendo qual caminho valeu — silêncio aqui viraria
+   * "sincronizei" com o ERP inteiro fora do app.
+   */
+  private async idsDaJanela(
+    empresaId: string,
+    de: Date,
+    ate: Date,
+    r: ResultadoSyncPedidos,
+  ): Promise<Set<number>> {
+    const ids = new Set<number>();
+    let offset = 0;
+    for (;;) {
+      const pagina = await this.tiny.listar(empresaId, {
+        dataInicial: this.dataIso(de),
+        dataFinal: this.dataIso(ate),
+        limit: 100,
+        offset,
+      });
+      for (const p of pagina.itens) if (p.id) ids.add(p.id);
+      if (pagina.itens.length < 100 || ids.size >= MAX_POR_RODADA) break;
+      offset += 100;
+    }
+    if (ids.size > 0) return ids;
+
+    // Plano B — sem filtro de data, recortando a janela por aqui.
+    let offsetB = 0;
+    let lidosB = 0;
+    for (;;) {
+      const pagina = await this.tiny.listar(empresaId, { limit: 100, offset: offsetB });
+      lidosB += pagina.itens.length;
+      for (const p of pagina.itens) {
+        if (!p.id) continue;
+        // Sem data no resumo, o pedido ENTRA: quem decide é o detalhe, e um
+        // pedido a mais é barato — um pedido a menos some da tela sem aviso.
+        if (this.dentroDaJanela(p.dataCriacao, de, ate)) ids.add(p.id);
+      }
+      if (pagina.itens.length < 100 || ids.size >= MAX_POR_RODADA || lidosB >= 2000) break;
+      offsetB += 100;
+    }
+    if (lidosB > 0) {
+      const aviso =
+        'O filtro de data do ERP não devolveu nada — a janela foi aplicada aqui ' +
+        `(${lidosB} pedido(s) lidos, ${ids.size} dentro do período).`;
+      r.avisos.push(aviso);
+      this.logger.warn(`[erp] ${aviso}`);
+    }
+    return ids;
+  }
+
+  /**
+   * A janela é por DIA, não por hora.
+   *
+   * O ERP manda data pura ('YYYY-MM-DD'), que aqui vira meio-dia UTC. Comparar
+   * isso com o instante exato de agora excluía o pedido feito HOJE de manhã —
+   * meio-dia ainda está no futuro. Um pedido de hoje sumindo do sync é
+   * exatamente o caso que mais dói.
+   */
+  private dentroDaJanela(bruto: string | undefined, de: Date, ate: Date): boolean {
+    if (!bruto) return true;
+    const d = new Date(bruto.length === 10 ? `${bruto}T12:00:00Z` : bruto);
+    if (Number.isNaN(d.getTime())) return true;
+    const inicio = new Date(this.dataIso(de) + 'T00:00:00Z').getTime();
+    const fim = new Date(this.dataIso(ate) + 'T23:59:59Z').getTime();
+    const t = d.getTime();
+    return t >= inicio && t <= fim;
   }
 
   // ─── Aplicação de um pedido do ERP ──────────────────────────────────────

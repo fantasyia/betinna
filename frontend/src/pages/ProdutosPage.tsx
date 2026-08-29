@@ -7,8 +7,9 @@ import { CatalogoTabs } from '@/components/CatalogoTabs';
 import { Table, Pagination, type Column } from '@/components/Table';
 import { StateView } from '@/components/StateView';
 import { FilterBar, SearchInput } from '@/components/FilterBar';
-import { Dialog } from '@/components/ui';
-import { FormField, Input, Select, Textarea } from '@/components/FormField';
+import { Select } from '@/components/FormField';
+import { Checkbox } from '@/components/ui';
+import { Sparkles } from 'lucide-react';
 import { useToast } from '@/components/toast';
 import { useRole } from '@/hooks/usePermission';
 import { cn } from '@/lib/cn';
@@ -54,9 +55,6 @@ export default function ProdutosPage() {
   const [marca, setMarca] = useState('');
   const [ativo, setAtivo] = useState('');
   const [semEstoque, setSemEstoque] = useState('');
-  const [editing, setEditing] = useState<Produto | null>(null);
-  const [criando, setCriando] = useState(false);
-
   // Volta pra página 1 quando a busca (já debounced) muda.
   useEffect(() => {
     setPage(1);
@@ -82,6 +80,68 @@ export default function ProdutosPage() {
   const [sincronizandoErp, setSincronizandoErp] = useState(false);
   const { data: pageResp, loading, error, refetch } = useApiQuery<PaginatedResponse<Produto>>(listPath);
   const { data: facets } = useApiQuery<Facets>('/produtos/facets');
+  // O catálogo do próprio usuário — serve pra marcar aqui o que já está lá e
+  // não deixar ninguém "adicionar" o que já tem.
+  const { data: meuCatalogo, refetch: refetchCatalogo } = useApiQuery<
+    Array<{ produtoId: string }> | { data: Array<{ produtoId: string }> }
+  >('/catalogo');
+  const jaNoCatalogo = useMemo(() => {
+    const lista = Array.isArray(meuCatalogo) ? meuCatalogo : (meuCatalogo?.data ?? []);
+    return new Set(lista.map((i) => i.produtoId));
+  }, [meuCatalogo]);
+
+  const [selecionados, setSelecionados] = useState<Set<string>>(new Set());
+  const [adicionando, setAdicionando] = useState(false);
+
+  const daPagina = pageResp?.data ?? [];
+  const selecionaveis = daPagina.filter((p) => !jaNoCatalogo.has(p.id));
+  const paginaToda =
+    selecionaveis.length > 0 && selecionaveis.every((p) => selecionados.has(p.id));
+
+  function alternarProduto(id: string) {
+    setSelecionados((atual) => {
+      const proximo = new Set(atual);
+      if (proximo.has(id)) proximo.delete(id);
+      else proximo.add(id);
+      return proximo;
+    });
+  }
+
+  function alternarPagina() {
+    setSelecionados((atual) => {
+      const proximo = new Set(atual);
+      if (paginaToda) for (const p of selecionaveis) proximo.delete(p.id);
+      else for (const p of selecionaveis) proximo.add(p.id);
+      return proximo;
+    });
+  }
+
+  /**
+   * Levar produto pro catálogo daqui é o caminho natural: é nesta lista que se
+   * FILTRA e se COMPARA. Antes só dava pra montar catálogo de dentro do
+   * "Meu catálogo", um produto por vez, digitando o nome de cabeça.
+   */
+  async function adicionarAoCatalogo() {
+    if (selecionados.size === 0 || adicionando) return;
+    setAdicionando(true);
+    try {
+      const itens = [...selecionados].map((produtoId) => ({ produtoId }));
+      await api.post('/catalogo/bulk', { itens });
+      toast.success(
+        `${itens.length} produto${itens.length === 1 ? '' : 's'} no seu catálogo`,
+        'Veja em Catálogo → Meu catálogo',
+      );
+      setSelecionados(new Set());
+      refetchCatalogo();
+    } catch (err) {
+      toast.error(
+        'Falha ao adicionar ao catálogo',
+        err instanceof ApiError ? err.message : undefined,
+      );
+    } finally {
+      setAdicionando(false);
+    }
+  }
 
   async function sincronizarErp() {
     if (sincronizandoErp) return;
@@ -112,17 +172,28 @@ export default function ProdutosPage() {
     }
   }
 
-  async function toggleAtivo(p: Produto) {
-    try {
-      await api.put(`/produtos/${p.id}/ativo`, { ativo: !p.ativo });
-      toast.success(p.ativo ? 'Produto desativado' : 'Produto ativado');
-      refetch();
-    } catch (err) {
-      toast.error('Falha ao mudar status', err instanceof ApiError ? err.message : undefined);
-    }
-  }
-
   const todasColunas: Column<Produto>[] = [
+    {
+      key: 'sel',
+      // Cabeçalho vazio de propósito: em telas pequenas a Table repete o
+      // cabeçalho de cada coluna dentro do card, e um "selecionar tudo" por
+      // linha não faz sentido. O selecionar-tudo vive na barra acima.
+      header: '',
+      width: 36,
+      render: (p) =>
+        jaNoCatalogo.has(p.id) ? (
+          <span title="Já está no seu catálogo" className="text-success">
+            ✓
+          </span>
+        ) : (
+          <Checkbox
+            data-testid={`prod-sel-${p.id}`}
+            checked={selecionados.has(p.id)}
+            onChange={() => alternarProduto(p.id)}
+            aria-label={`Selecionar ${p.nome}`}
+          />
+        ),
+    },
     {
       key: 'nome',
       header: 'Produto',
@@ -209,18 +280,21 @@ export default function ProdutosPage() {
     {
       key: 'ativo',
       header: 'Status',
+      // LEITURA. Era um botão que chamava `PUT /produtos/:id/ativo` — rota que
+      // deixou de existir quando o ERP virou fonte da verdade (a21a073). Ficou
+      // clicável, então qualquer papel que apertasse o selo levava erro: a tela
+      // prometia uma ação que o backend já não tinha. Ativar/desativar produto
+      // é no ERP.
       render: (p) => (
-        <button
-          type="button"
-          data-testid={`prod-toggle-${p.id}`}
-          onClick={() => toggleAtivo(p)}
+        <span
+          data-testid={`prod-status-${p.id}`}
           className={cn(
-            'inline-flex items-center rounded-full px-[9px] py-0.5 text-[11px] font-semibold leading-[1.6] tracking-[0.2px] cursor-pointer border-none font-[inherit]',
+            'inline-flex items-center rounded-full px-[9px] py-0.5 text-[11px] font-semibold leading-[1.6] tracking-[0.2px]',
             p.ativo ? 'bg-success/12 text-success' : 'bg-muted/12 text-muted',
           )}
         >
           {p.ativo ? 'Ativo' : 'Inativo'}
-        </button>
+        </span>
       ),
     },
     // SEM coluna de ações: produto NÃO se edita pelo app — nem rep, nem
@@ -333,6 +407,39 @@ export default function ProdutosPage() {
           </Select>
         </FilterBar>
 
+        <div className="flex flex-wrap items-center gap-3 py-2">
+          <Checkbox
+            data-testid="prod-sel-pagina"
+            label="Selecionar todos desta página"
+            checked={paginaToda}
+            disabled={selecionaveis.length === 0}
+            onChange={alternarPagina}
+          />
+          {selecionados.size > 0 && (
+            <>
+              <button
+                type="button"
+                data-testid="prod-add-catalogo"
+                onClick={adicionarAoCatalogo}
+                disabled={adicionando}
+                className="inline-flex items-center gap-1.5 rounded-md border-none bg-primary px-4 py-2 text-sm font-semibold text-white cursor-pointer disabled:opacity-60"
+              >
+                <Sparkles className="h-3.5 w-3.5" />
+                {adicionando
+                  ? 'Adicionando…'
+                  : `Adicionar ${selecionados.size} ao meu catálogo`}
+              </button>
+              <button
+                type="button"
+                onClick={() => setSelecionados(new Set())}
+                className="text-xs text-muted hover:text-text"
+              >
+                Limpar seleção
+              </button>
+            </>
+          )}
+        </div>
+
         <StateView
           loading={loading}
           error={error}
@@ -349,419 +456,6 @@ export default function ProdutosPage() {
         </StateView>
       </div>
 
-      {(editing || criando) && (
-        <ProdutoFormModal
-          produto={editing}
-          onClose={() => {
-            setEditing(null);
-            setCriando(false);
-          }}
-          onSaved={() => {
-            setEditing(null);
-            setCriando(false);
-            refetch();
-          }}
-        />
-      )}
     </PageLayout>
-  );
-}
-
-// ─── Form ─────────────────────────────────────────────────────────────
-
-interface FormState {
-  nome: string;
-  sku: string;
-  codigoErp: string;
-  descricao: string;
-  marca: string;
-  linha: string;
-  categoria: string;
-  unidade: string;
-  precoTabela: string;
-  precoFabrica: string;
-  imagem: string;
-  estoque: number;
-  popularidade: number;
-  ativo: boolean;
-  tierComercial: string;
-  pesoPorUnidade: string;
-  atributos: Array<{ chave: string; valor: string }>;
-}
-
-/** Converte o valor de um atributo pra número/booleano quando faz sentido (senão texto). */
-function parseAttrValor(v: string): unknown {
-  const t = v.trim();
-  if (t === '') return '';
-  if (t === 'true') return true;
-  if (t === 'false') return false;
-  const n = Number(t);
-  return Number.isFinite(n) && t === String(n) ? n : t;
-}
-
-function initial(p?: Produto | null): FormState {
-  return {
-    nome: p?.nome ?? '',
-    sku: p?.sku ?? '',
-    codigoErp: p?.codigoErp ?? '',
-    descricao: p?.descricao ?? '',
-    marca: p?.marca ?? '',
-    linha: p?.linha ?? '',
-    categoria: p?.categoria ?? '',
-    unidade: p?.unidade ?? '',
-    precoTabela: p?.precoTabela?.toString() ?? '',
-    precoFabrica: p?.precoFabrica?.toString() ?? '',
-    imagem: p?.imagem ?? '',
-    estoque: p?.estoque ?? 0,
-    popularidade: p?.popularidade ?? 0,
-    ativo: p?.ativo ?? true,
-    tierComercial: p?.tierComercial ?? '',
-    pesoPorUnidade: p?.pesoPorUnidade?.toString() ?? '',
-    atributos: p?.atributos
-      ? Object.entries(p.atributos).map(([chave, valor]) => ({ chave, valor: String(valor) }))
-      : [],
-  };
-}
-
-function ProdutoFormModal({
-  produto,
-  onClose,
-  onSaved,
-}: {
-  produto: Produto | null;
-  onClose: () => void;
-  onSaved: () => void;
-}) {
-  const isEdit = Boolean(produto);
-  const [form, setForm] = useState<FormState>(initial(produto));
-  const [busy, setBusy] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const [confirmDel, setConfirmDel] = useState(false);
-
-  function setF<K extends keyof FormState>(k: K, v: FormState[K]) {
-    setForm((s) => ({ ...s, [k]: v }));
-  }
-  function setAttr(i: number, field: 'chave' | 'valor', v: string) {
-    setForm((s) => ({
-      ...s,
-      atributos: s.atributos.map((a, idx) => (idx === i ? { ...a, [field]: v } : a)),
-    }));
-  }
-  function addAttr() {
-    setForm((s) => ({ ...s, atributos: [...s.atributos, { chave: '', valor: '' }] }));
-  }
-  function removeAttr(i: number) {
-    setForm((s) => ({ ...s, atributos: s.atributos.filter((_, idx) => idx !== i) }));
-  }
-
-  const precoTabela = Number(form.precoTabela);
-  // Custo é OPCIONAL: vazio = null ("não informado"). Só validamos quando preenchido.
-  const precoFabrica = form.precoFabrica.trim() === '' ? null : Number(form.precoFabrica);
-
-  async function submit(e: React.FormEvent) {
-    e.preventDefault();
-    if (form.nome.trim().length < 2) {
-      setError('Nome do produto precisa ter no mínimo 2 caracteres.');
-      return;
-    }
-    if (!(precoTabela > 0)) {
-      setError('Preço de tabela precisa ser maior que zero.');
-      return;
-    }
-    if (precoFabrica !== null && !(precoFabrica > 0)) {
-      setError('Se informar o custo (preço de fábrica), ele precisa ser maior que zero.');
-      return;
-    }
-    if (precoFabrica !== null && precoFabrica > precoTabela) {
-      setError('Preço de fábrica não pode ser maior que preço de tabela.');
-      return;
-    }
-    setBusy(true);
-    setError(null);
-    const payload: Record<string, unknown> = {
-      nome: form.nome.trim(),
-      precoTabela,
-      precoFabrica,
-      estoque: form.estoque,
-      popularidade: form.popularidade,
-      ativo: form.ativo,
-    };
-    for (const k of ['sku', 'codigoErp', 'descricao', 'marca', 'linha', 'categoria', 'unidade', 'imagem'] as const) {
-      const v = form[k].trim();
-      if (v) payload[k] = v;
-    }
-    // Camada de marketing (Fatia 1 do app do rep).
-    const tier = form.tierComercial.trim();
-    if (tier) payload.tierComercial = tier;
-    const peso = form.pesoPorUnidade.trim();
-    if (peso && Number(peso) > 0) payload.pesoPorUnidade = Number(peso);
-    const attrs = form.atributos.filter((a) => a.chave.trim());
-    payload.atributos = attrs.length
-      ? Object.fromEntries(attrs.map((a) => [a.chave.trim(), parseAttrValor(a.valor)]))
-      : null;
-    try {
-      if (isEdit && produto) {
-        await api.patch(`/produtos/${produto.id}`, payload);
-      } else {
-        await api.post('/produtos', payload);
-      }
-      onSaved();
-    } catch (err) {
-      setError(err instanceof ApiError ? err.message : 'Falha ao salvar');
-    } finally {
-      setBusy(false);
-    }
-  }
-
-  async function doDelete() {
-    if (!produto) return;
-    setBusy(true);
-    setError(null);
-    try {
-      await api.delete(`/produtos/${produto.id}`);
-      onSaved();
-    } catch (err) {
-      setError(err instanceof ApiError ? err.message : 'Falha ao excluir');
-    } finally {
-      setBusy(false);
-    }
-  }
-
-  return (
-    <Dialog
-      open
-      onClose={onClose}
-      size="lg"
-      title={isEdit ? 'Editar produto' : 'Novo produto'}
-      footer={
-        <>
-          <button
-            type="button"
-            onClick={onClose}
-            className="bg-surface text-text border border-border-strong rounded-md px-4 py-2 text-[13px] font-medium cursor-pointer tracking-[-0.1px]"
-          >
-            Cancelar
-          </button>
-          {isEdit && !confirmDel && (
-            <button
-              type="button"
-              data-testid="prod-delete"
-              onClick={() => setConfirmDel(true)}
-              className="bg-danger text-white rounded-md px-4 py-2 text-[13px] font-semibold cursor-pointer tracking-[-0.1px]"
-            >
-              Excluir
-            </button>
-          )}
-          {isEdit && confirmDel && (
-            <>
-              <button
-                type="button"
-                onClick={() => setConfirmDel(false)}
-                className="bg-surface text-text border border-border-strong rounded-md px-4 py-2 text-[13px] font-medium cursor-pointer tracking-[-0.1px]"
-              >
-                Voltar
-              </button>
-              <button
-                type="button"
-                data-testid="prod-delete-confirm"
-                disabled={busy}
-                onClick={doDelete}
-                className="bg-danger text-white rounded-md px-4 py-2 text-[13px] font-semibold cursor-pointer tracking-[-0.1px]"
-              >
-                {busy ? '…' : 'Confirmar'}
-              </button>
-            </>
-          )}
-          {!confirmDel && (
-            <button
-              type="submit"
-              form="prod-form"
-              data-testid="prod-save-btn"
-              disabled={busy}
-              className={cn(
-                'bg-primary text-primary-contrast rounded-md px-4 py-2 text-[13px] font-semibold cursor-pointer tracking-[-0.1px]',
-                busy && 'opacity-60',
-              )}
-            >
-              {busy ? 'Salvando…' : 'Salvar'}
-            </button>
-          )}
-        </>
-      }
-    >
-      <form id="prod-form" onSubmit={submit}>
-        <FormField label="Nome" htmlFor="p-nome" required>
-          <Input
-            id="p-nome"
-            data-testid="prod-nome-input"
-            value={form.nome}
-            onChange={(e) => setF('nome', e.target.value)}
-            minLength={2}
-            maxLength={200}
-            required
-            autoFocus
-          />
-        </FormField>
-        <div className="grid grid-cols-3 gap-3">
-          <FormField label="SKU" htmlFor="p-sku">
-            <Input id="p-sku" value={form.sku} onChange={(e) => setF('sku', e.target.value)} />
-          </FormField>
-          <FormField label="Código no ERP" htmlFor="p-erp">
-            <Input id="p-erp" value={form.codigoErp} onChange={(e) => setF('codigoErp', e.target.value)} />
-          </FormField>
-          <FormField label="Unidade" htmlFor="p-un">
-            <Input id="p-un" placeholder="cx, un, kg…" value={form.unidade} onChange={(e) => setF('unidade', e.target.value)} />
-          </FormField>
-          <FormField label="Marca" htmlFor="p-marca">
-            <Input id="p-marca" value={form.marca} onChange={(e) => setF('marca', e.target.value)} />
-          </FormField>
-          <FormField label="Linha" htmlFor="p-linha">
-            <Input id="p-linha" value={form.linha} onChange={(e) => setF('linha', e.target.value)} />
-          </FormField>
-          <FormField label="Categoria" htmlFor="p-cat">
-            <Input id="p-cat" value={form.categoria} onChange={(e) => setF('categoria', e.target.value)} />
-          </FormField>
-          <FormField label="Tier comercial" htmlFor="p-tier" hint="entrada / valor_agregado / nobre (livre)">
-            <Input
-              id="p-tier"
-              list="tier-opts"
-              placeholder="entrada, valor_agregado, nobre…"
-              value={form.tierComercial}
-              onChange={(e) => setF('tierComercial', e.target.value)}
-            />
-            <datalist id="tier-opts">
-              <option value="entrada" />
-              <option value="valor_agregado" />
-              <option value="nobre" />
-            </datalist>
-          </FormField>
-          <FormField
-            label="Peso por unidade (kg)"
-            htmlFor="p-peso"
-            hint="só p/ produto não-kg, converte no mínimo por peso"
-          >
-            <Input
-              id="p-peso"
-              type="number"
-              min={0}
-              step="0.001"
-              placeholder="ex: 0.95 (molho em L)"
-              value={form.pesoPorUnidade}
-              onChange={(e) => setF('pesoPorUnidade', e.target.value)}
-            />
-          </FormField>
-          <FormField label="Preço tabela" htmlFor="p-pt" required>
-            <Input
-              id="p-pt"
-              data-testid="prod-preco-tabela-input"
-              type="number"
-              min={0.01}
-              step="0.01"
-              value={form.precoTabela}
-              onChange={(e) => setF('precoTabela', e.target.value)}
-              required
-            />
-          </FormField>
-          <FormField label="Preço fábrica (custo — opcional)" htmlFor="p-pf">
-            <Input
-              id="p-pf"
-              type="number"
-              min={0.01}
-              step="0.01"
-              placeholder="deixe em branco se não souber o custo"
-              value={form.precoFabrica}
-              onChange={(e) => setF('precoFabrica', e.target.value)}
-            />
-          </FormField>
-          <FormField label="Estoque" htmlFor="p-est">
-            <Input
-              id="p-est"
-              type="number"
-              min={0}
-              value={form.estoque}
-              onChange={(e) => setF('estoque', Number(e.target.value))}
-            />
-          </FormField>
-          <FormField label="Popularidade (0–100)" htmlFor="p-pop">
-            <Input
-              id="p-pop"
-              type="number"
-              min={0}
-              max={100}
-              value={form.popularidade}
-              onChange={(e) => setF('popularidade', Number(e.target.value))}
-            />
-          </FormField>
-          <FormField label="Status" htmlFor="p-at">
-            <Select
-              id="p-at"
-              value={form.ativo ? 'true' : 'false'}
-              onChange={(e) => setF('ativo', e.target.value === 'true')}
-            >
-              <option value="true">Ativo</option>
-              <option value="false">Inativo</option>
-            </Select>
-          </FormField>
-        </div>
-        <FormField label="Imagem (URL)" htmlFor="p-img">
-          <Input
-            id="p-img"
-            type="url"
-            value={form.imagem}
-            onChange={(e) => setF('imagem', e.target.value)}
-            placeholder="https://…"
-          />
-        </FormField>
-        <FormField label="Descrição" htmlFor="p-desc" hint="Pode incluir composição, modo de uso, etc.">
-          <Textarea
-            id="p-desc"
-            value={form.descricao}
-            onChange={(e) => setF('descricao', e.target.value)}
-            style={{ minHeight: 100 }}
-            maxLength={5000}
-          />
-        </FormField>
-        <FormField
-          label="Atributos customizados"
-          hint="Dados livres do produto (ex: shelf_life_meses = 12). Chave + valor."
-        >
-          <div className="flex flex-col gap-2">
-            {form.atributos.map((a, i) => (
-              <div key={i} className="flex gap-2">
-                <Input
-                  placeholder="chave (ex: shelf_life_meses)"
-                  value={a.chave}
-                  onChange={(e) => setAttr(i, 'chave', e.target.value)}
-                />
-                <Input
-                  placeholder="valor (ex: 12)"
-                  value={a.valor}
-                  onChange={(e) => setAttr(i, 'valor', e.target.value)}
-                />
-                <button
-                  type="button"
-                  className="text-danger text-[13px] px-2"
-                  onClick={() => removeAttr(i)}
-                >
-                  remover
-                </button>
-              </div>
-            ))}
-            <button
-              type="button"
-              className="text-primary text-[13px] self-start"
-              onClick={addAttr}
-            >
-              + adicionar atributo
-            </button>
-          </div>
-        </FormField>
-        {error && (
-          <p data-testid="form-error" className="text-danger text-[13px]">
-            {error}
-          </p>
-        )}
-      </form>
-    </Dialog>
   );
 }

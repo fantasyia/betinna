@@ -10,7 +10,13 @@ function envLocal(chave) {
     const linha = readFileSync(new URL('./.env.local', import.meta.url), 'utf8')
       .split(/\r?\n/)
       .find((l) => l.startsWith(chave + '='));
-    return linha ? linha.slice(chave.length + 1).trim() : undefined;
+    if (!linha) return undefined;
+    // Tira as aspas quando existem: a senha do admin tem '#', e sem aspas o
+    // dotenv do backend trataria o resto como comentário. Este parser aqui é
+    // outro — mandava as aspas junto e o login falhava com a senha certa.
+    const valor = linha.slice(chave.length + 1).trim();
+    const comAspas = /^(['"])(.*)$/.exec(valor);
+    return comAspas ? comAspas[2] : valor;
   } catch {
     return undefined;
   }

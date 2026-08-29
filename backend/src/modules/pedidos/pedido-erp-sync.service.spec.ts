@@ -238,6 +238,37 @@ describe('pedidos que vêm do ERP', () => {
     expect(segunda.notificacoes.criarParaRole).not.toHaveBeenCalled();
   });
 
+  it('filtro de data vazio → refaz sem filtro e corta a janela aqui', async () => {
+    // O modo de falha real: o ERP devolve lista VAZIA pro filtro de data, com
+    // pedido recente sentado lá. Sem plano B, "0 novos" parece resposta certa.
+    const { svc, tiny, prisma } = build({ detalhe: PEDIDO_ERP });
+    const hoje = new Date().toISOString().slice(0, 10);
+    tiny.listar = vi.fn(async (_e: string, f: { dataInicial?: string }) =>
+      f.dataInicial
+        ? { itens: [], total: 0 }
+        : { itens: [{ id: 900, numeroPedido: 55, dataCriacao: hoje }], total: 1 },
+    );
+
+    const r = await svc.sincronizar('emp-1');
+
+    expect(prisma.pedido.create).toHaveBeenCalled();
+    expect(r.avisos.join(' ')).toContain('filtro de data');
+  });
+
+  it('no plano B, pedido FORA da janela não entra', async () => {
+    const { svc, tiny, prisma } = build({ detalhe: PEDIDO_ERP });
+    tiny.listar = vi.fn(async (_e: string, f: { dataInicial?: string }) =>
+      f.dataInicial
+        ? { itens: [], total: 0 }
+        : { itens: [{ id: 900, numeroPedido: 55, dataCriacao: '2020-01-01' }], total: 1 },
+    );
+
+    const r = await svc.sincronizar('emp-1', { dias: 30 });
+
+    expect(prisma.pedido.create).not.toHaveBeenCalled();
+    expect(r.lidos).toBe(0);
+  });
+
   it('confere por número os pedidos abertos que ficaram fora da janela', async () => {
     // Sem esta rede, pedido antigo entregue hoje ficaria "Enviado" pra sempre.
     const { svc, tiny } = build({
