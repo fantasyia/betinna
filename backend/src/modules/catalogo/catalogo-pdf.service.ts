@@ -7,10 +7,14 @@ export interface LinhaCatalogoPdf {
   detalhe: string;
   /** URL da imagem do produto (do ERP). Best-effort: sem ela, entra o retângulo vazio. */
   imagem: string | null;
-  /** O preço que ESTE leitor pode ver (locação pro rep, final pro cliente). */
-  preco: number | null;
-  /** Rótulo do preço — "Locação / mês" ou "Preço". */
-  precoRotulo: string;
+  /**
+   * Os preços que ESTE material mostra — um ou dois.
+   *
+   * Array, não campo fixo: o rep leva só a locação, e a gestão escolhe entre
+   * locação, venda ou AS DUAS na mesma tabela. Com dois campos fixos ("preco" e
+   * "precoAlternativo") a coluna vazia teria que ser adivinhada aqui dentro.
+   */
+  precos: Array<{ rotulo: string; valor: number | null }>;
   /** "Sob encomenda · montagem em 1 dia útil" ou "12 un em estoque". */
   disponibilidade: string;
   /** Preço veio de acordo negociado com o cliente. */
@@ -77,8 +81,11 @@ export class CatalogoPdfService {
 
         this.cabecalho(doc, data, left, largura);
 
+        // Os rótulos das colunas de preço saem do primeiro item: é o mesmo
+        // conjunto pro catálogo inteiro (quem escolheu foi o usuário, uma vez).
+        const rotulos = (data.itens[0]?.precos ?? []).map((x) => x.rotulo);
         let y = doc.y + 6;
-        this.cabecalhoDaTabela(doc, left, largura, y);
+        this.cabecalhoDaTabela(doc, left, largura, y, rotulos);
         y += 18;
 
         for (const item of data.itens) {
@@ -87,7 +94,7 @@ export class CatalogoPdfService {
           if (y + ALTURA_LINHA > doc.page.height - doc.page.margins.bottom - 30) {
             doc.addPage();
             y = doc.page.margins.top;
-            this.cabecalhoDaTabela(doc, left, largura, y);
+            this.cabecalhoDaTabela(doc, left, largura, y, rotulos);
             y += 18;
           }
           this.linha(doc, item, imagens.get(item.imagem ?? ''), left, largura, y);
@@ -149,13 +156,17 @@ export class CatalogoPdfService {
     left: number,
     largura: number,
     y: number,
+    rotulos: string[],
   ): void {
-    const colPreco = left + largura - 100;
-    const colDisp = left + largura - 230;
+    const duas = rotulos.length > 1;
+    const colPreco = left + largura - (duas ? 210 : 100);
+    const colDisp = left + largura - (duas ? 320 : 230);
     doc.fontSize(7.5).font('Helvetica-Bold').fillColor(CINZA);
     doc.text('PRODUTO', left, y);
-    doc.text('DISPONIBILIDADE', colDisp, y, { width: 120 });
-    doc.text('PREÇO', colPreco, y, { width: 100, align: 'right' });
+    doc.text('DISPONIBILIDADE', colDisp, y, { width: 100 });
+    rotulos.forEach((r, idx) => {
+      doc.text(r.toUpperCase(), colPreco + idx * 110, y, { width: 100, align: 'right' });
+    });
   }
 
   private linha(
@@ -166,8 +177,9 @@ export class CatalogoPdfService {
     largura: number,
     y: number,
   ): void {
-    const colPreco = left + largura - 100;
-    const colDisp = left + largura - 230;
+    const duasColunas = item.precos.length > 1;
+    const colPreco = left + largura - (duasColunas ? 210 : 100);
+    const colDisp = left + largura - (duasColunas ? 320 : 230);
     const textoX = left + LADO_FOTO + 8;
     const larguraTexto = colDisp - textoX - 8;
 
@@ -193,21 +205,22 @@ export class CatalogoPdfService {
     doc.fillColor(CINZA).fontSize(8).font('Helvetica');
     doc.text(item.disponibilidade, colDisp, y + 10, { width: 120, ellipsis: true });
 
-    doc
-      .fontSize(7)
-      .fillColor(CINZA)
-      .text(item.precoRotulo, colPreco, y + 2, {
-        width: 100,
-        align: 'right',
-      });
-    doc
-      .fontSize(12)
-      .font('Helvetica-Bold')
-      .fillColor(item.preco == null ? CINZA : BRAND_NAVY)
-      .text(item.preco == null ? 'sob consulta' : fmtBRL(item.preco), colPreco, y + 12, {
-        width: 100,
-        align: 'right',
-      });
+    item.precos.forEach((preco, idx) => {
+      const x = colPreco + idx * 110;
+      doc
+        .fontSize(7)
+        .font('Helvetica')
+        .fillColor(CINZA)
+        .text(preco.rotulo, x, y + 2, { width: 100, align: 'right' });
+      doc
+        .fontSize(duasColunas ? 10.5 : 12)
+        .font('Helvetica-Bold')
+        .fillColor(preco.valor == null ? CINZA : BRAND_NAVY)
+        .text(preco.valor == null ? 'sob consulta' : fmtBRL(preco.valor), x, y + 12, {
+          width: 100,
+          align: 'right',
+        });
+    });
     if (item.negociado) {
       doc
         .fontSize(6.5)

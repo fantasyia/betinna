@@ -29,7 +29,7 @@ import {
   upsertCatalogoItemSchema,
 } from './catalogo.dto';
 import { CatalogShareService } from './catalog-share.service';
-import { CatalogoService } from './catalogo.service';
+import { CatalogoService, type TabelaDePrecos } from './catalogo.service';
 
 @ApiTags('catalogo')
 @ApiBearerAuth()
@@ -103,8 +103,15 @@ export class CatalogoController {
     summary:
       'PDF do catálogo (foto, dados, preço e disponibilidade). Com clienteId, aplica o preço do cliente.',
   })
-  exportarPdf(@CurrentUser() user: AuthenticatedUser, @Query('clienteId') clienteId?: string) {
-    return this.catalogo.exportarPdf(user, clienteId || undefined);
+  exportarPdf(
+    @CurrentUser() user: AuthenticatedUser,
+    @Query('clienteId') clienteId?: string,
+    @Query('precos') precos?: string,
+  ) {
+    // Valor inválido cai no default em vez de estourar: é parâmetro de tela.
+    const tabela: TabelaDePrecos =
+      precos === 'locacao' || precos === 'ambos' || precos === 'venda' ? precos : 'venda';
+    return this.catalogo.exportarPdf(user, clienteId || undefined, tabela);
   }
 
   @Post('share')

@@ -14,6 +14,14 @@ import type { AuthenticatedUser } from '@shared/types/authenticated-user';
 import { ocultaCusto, precosParaRep } from '@shared/utils/custo-oculto.util';
 import type { BulkUpsertCatalogoDto, ShareCatalogDto, UpsertCatalogoItemDto } from './catalogo.dto';
 
+/**
+ * Qual tabela de preços o material mostra.
+ *
+ * O REP fica preso em `locacao` (ele loca, não vende — regra do Léo). Gestão
+ * escolhe: venda, locação ou as duas juntas.
+ */
+export type TabelaDePrecos = 'venda' | 'locacao' | 'ambos';
+
 export interface CatalogoItem {
   id: string;
   produtoId: string;
@@ -268,6 +276,7 @@ export class CatalogoService {
   async exportarPdf(
     user: AuthenticatedUser,
     clienteId?: string,
+    precos: TabelaDePrecos = 'venda',
   ): Promise<{ filename: string; base64: string }> {
     const empresaId = this.requireEmpresa(user);
     const itens = clienteId
@@ -302,13 +311,15 @@ export class CatalogoService {
     const dias = typeof estoqueCfg?.diasMontagem === 'number' ? estoqueCfg.diasMontagem : null;
     const repLoca = ocultaCusto(user);
 
+    // O REP não escolhe: ele loca, então o papel dele manda — mesmo que a
+    // requisição peça outra coisa. Quem escolhe é gestão (admin/diretor/gerente).
+    const tabela: TabelaDePrecos = repLoca ? 'locacao' : precos;
+
     const linhas: LinhaCatalogoPdf[] = itens.map((i) => ({
       nome: i.produto.nome,
       detalhe: [i.produto.sku, i.produto.marca, i.produto.linha].filter(Boolean).join(' · '),
       imagem: i.produto.imagem,
-      // REP: mensalidade de locação. Demais papéis: o preço final do cliente.
-      preco: repLoca ? i.produto.precoLocacaoMensal : i.precoFinal,
-      precoRotulo: repLoca ? 'Locação / mês' : 'Preço',
+      precos: this.colunasDePreco(tabela, i),
       disponibilidade: this.textoDisponibilidade(i.produto.estoque, sobEncomenda, dias),
       negociado: i.precoNegociado,
     }));
@@ -332,6 +343,25 @@ export class CatalogoService {
           .slice(0, 40)}.pdf`
       : 'catalogo.pdf';
     return { filename: nomeArquivo, base64: pdf.toString('base64') };
+  }
+
+  /**
+   * As colunas de preço do material, na ordem em que aparecem.
+   *
+   * `venda` usa o preço FINAL do cliente (negociado quando existe) — é o número
+   * que vale na proposta. `locacao` usa a mensalidade do produto. `ambos` mostra
+   * os dois lado a lado, que é o caso de quem apresenta as duas modalidades na
+   * mesma reunião.
+   */
+  private colunasDePreco(
+    tabela: TabelaDePrecos,
+    item: PreviewItem,
+  ): Array<{ rotulo: string; valor: number | null }> {
+    const venda = { rotulo: 'Venda', valor: item.precoFinal };
+    const locacao = { rotulo: 'Locação / mês', valor: item.produto.precoLocacaoMensal };
+    if (tabela === 'locacao') return [locacao];
+    if (tabela === 'ambos') return [venda, locacao];
+    return [venda];
   }
 
   /**

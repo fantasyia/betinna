@@ -21,6 +21,7 @@ import { StateView } from '@/components/StateView';
 import { ProdutoPickerDialog } from '@/components/ProdutoPickerDialog';
 import { useEstoqueModo, textoMontagem } from '@/hooks/useEstoqueModo';
 import { useDebouncedValue } from '@/hooks/useDebouncedValue';
+import { useRole } from '@/hooks/usePermission';
 import { useToast } from '@/components/toast';
 import {
   Badge,
@@ -138,6 +139,14 @@ function stockTone(
 
 // ─── Page principal ──────────────────────────────────────────
 
+/**
+ * Qual tabela de preços o material mostra.
+ *
+ * O REP fica preso em locação (ele loca, não vende) — e isso é decidido no
+ * backend, não aqui: esconder o seletor é conforto de tela, não regra.
+ */
+type TabelaDePrecos = 'venda' | 'locacao' | 'ambos';
+
 export default function CatalogoPage() {
   const toast = useToast();
   const { data, loading, error, refetch } = useApiQuery<CatalogoItem[] | { data: CatalogoItem[] }>(
@@ -149,6 +158,10 @@ export default function CatalogoPage() {
   );
 
   const estoqueModo = useEstoqueModo();
+  const role = useRole();
+  // Quem loca não escolhe tabela: o rep sai sempre com a mensalidade.
+  const podeEscolherTabela = role !== 'REP';
+  const [tabelaPrecos, setTabelaPrecos] = useState<TabelaDePrecos>('venda');
   const [baixandoPdf, setBaixandoPdf] = useState(false);
   const [adding, setAdding] = useState(false);
   const [previewOpen, setPreviewOpen] = useState(false);
@@ -183,7 +196,7 @@ export default function CatalogoPage() {
   async function baixarPdfDoCatalogo() {
     setBaixandoPdf(true);
     try {
-      await baixarCatalogoPdf();
+      await baixarCatalogoPdf(undefined, tabelaPrecos);
       toast.success('PDF do catálogo gerado');
     } catch (err) {
       toast.error('Falha ao gerar o PDF', err instanceof ApiError ? err.message : undefined);
@@ -217,6 +230,19 @@ export default function CatalogoPage() {
           >
             Preview
           </Button>
+          {podeEscolherTabela && (
+            <Select
+              data-testid="catalogo-tabela-precos"
+              aria-label="Tabela de preços do PDF"
+              value={tabelaPrecos}
+              onChange={(e) => setTabelaPrecos(e.target.value as TabelaDePrecos)}
+              className="w-[168px]"
+            >
+              <option value="venda">Preço de venda</option>
+              <option value="locacao">Locação / mês</option>
+              <option value="ambos">Venda + locação</option>
+            </Select>
+          )}
           <Button
             variant="secondary"
             data-testid="catalogo-pdf"
@@ -564,6 +590,11 @@ function PreviewClienteDialog({
   diasMontagem: number | null;
 }) {
   const toast = useToast();
+  const role = useRole();
+  const podeEscolherTabela = role !== 'REP';
+  const [tabela, setTabela] = useState<TabelaDePrecos>(
+    podeEscolherTabela ? 'venda' : 'locacao',
+  );
   const [cliente, setCliente] = useState<ClienteOpt | null>(null);
   const [baixando, setBaixando] = useState(false);
   const previewPath = cliente ? `/catalogo/preview?clienteId=${cliente.id}` : null;
@@ -573,7 +604,7 @@ function PreviewClienteDialog({
   async function baixarPdf() {
     setBaixando(true);
     try {
-      await baixarCatalogoPdf(cliente?.id);
+      await baixarCatalogoPdf(cliente?.id, tabela);
       toast.success('PDF gerado');
     } catch (err) {
       toast.error('Falha ao gerar o PDF', err instanceof ApiError ? err.message : undefined);
@@ -594,6 +625,19 @@ function PreviewClienteDialog({
           <span className="mr-auto text-sm text-muted">
             {cliente ? `${itens.length} produto(s)` : 'Nenhum cliente selecionado'}
           </span>
+          {podeEscolherTabela && (
+            <Select
+              data-testid="preview-tabela-precos"
+              aria-label="Tabela de preços"
+              value={tabela}
+              onChange={(e) => setTabela(e.target.value as TabelaDePrecos)}
+              className="w-[168px]"
+            >
+              <option value="venda">Preço de venda</option>
+              <option value="locacao">Locação / mês</option>
+              <option value="ambos">Venda + locação</option>
+            </Select>
+          )}
           <Button variant="secondary" onClick={onClose}>
             Fechar
           </Button>
@@ -645,13 +689,17 @@ function PreviewClienteDialog({
                   <span className="hidden text-xs text-muted sm:block w-40 text-right">
                     {textoDisponibilidade(i.produto?.estoque, sobEncomenda, diasMontagem)}
                   </span>
-                  <div className="w-32 shrink-0 text-right">
-                    <div className="text-[10px] uppercase tracking-wider text-muted">
-                      {i.produto?.precoTabela == null ? 'Locação / mês' : 'Preço pro cliente'}
-                    </div>
-                    <div className="tabular text-sm font-bold text-text">
-                      {i.precoFinal != null ? fmtBRL(i.precoFinal) : '—'}
-                    </div>
+                  <div className="flex shrink-0 gap-3 text-right">
+                    {colunasDePreco(tabela, i).map((c) => (
+                      <div key={c.rotulo} className="w-28">
+                        <div className="text-[10px] uppercase tracking-wider text-muted">
+                          {c.rotulo}
+                        </div>
+                        <div className="tabular text-sm font-bold text-text">
+                          {c.valor != null ? fmtBRL(c.valor) : '—'}
+                        </div>
+                      </div>
+                    ))}
                     {i.precoNegociado && (
                       <Badge variant="warning" size="sm">
                         negociado
@@ -772,10 +820,28 @@ function textoDisponibilidade(
   return estoque > 0 ? `${estoque} em estoque` : 'sob consulta';
 }
 
+/**
+ * Mesmas colunas que o PDF mostra — a tela e o papel não podem divergir.
+ * (Pro REP o backend força locação, então aqui é só o reflexo.)
+ */
+function colunasDePreco(
+  tabela: TabelaDePrecos,
+  item: PreviewItem,
+): Array<{ rotulo: string; valor: number | null }> {
+  const venda = { rotulo: 'Venda', valor: item.precoFinal ?? null };
+  const locacao = { rotulo: 'Locação / mês', valor: item.produto?.precoLocacaoMensal ?? null };
+  if (tabela === 'locacao') return [locacao];
+  if (tabela === 'ambos') return [venda, locacao];
+  return [venda];
+}
+
 /** Baixa o PDF do catálogo (com ou sem cliente vinculado). */
-async function baixarCatalogoPdf(clienteId?: string): Promise<void> {
+async function baixarCatalogoPdf(clienteId?: string, precos?: TabelaDePrecos): Promise<void> {
+  const qs = new URLSearchParams();
+  if (clienteId) qs.set('clienteId', clienteId);
+  if (precos) qs.set('precos', precos);
   const r = await api.get<{ filename: string; base64: string }>(
-    `/catalogo/pdf${clienteId ? `?clienteId=${clienteId}` : ''}`,
+    `/catalogo/pdf${qs.toString() ? `?${qs.toString()}` : ''}`,
   );
   const bytes = atob(r.base64);
   const buf = new Uint8Array(bytes.length);

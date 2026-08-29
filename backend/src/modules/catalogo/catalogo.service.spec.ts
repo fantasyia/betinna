@@ -582,8 +582,37 @@ describe('CatalogoService.exportarPdf', () => {
     await service.exportarPdf(fakeUser());
 
     const linha = pdf.gerar.mock.calls[0][0].itens[0];
-    expect(linha.preco).toBe(300);
-    expect(linha.precoRotulo).toBe('Locação / mês');
+    expect(linha.precos).toEqual([{ rotulo: 'Locação / mês', valor: 300 }]);
+  });
+
+  it('REP pedindo "venda" continua levando LOCAÇÃO — o papel manda', async () => {
+    // O parâmetro vem da tela; a regra não. Sem isto, bastaria trocar a query
+    // string pra o rep sair com o preço de venda na mão do cliente.
+    const { service, pdf } = montarPdf();
+
+    await service.exportarPdf(fakeUser(), undefined, 'ambos');
+
+    expect(pdf.gerar.mock.calls[0][0].itens[0].precos).toHaveLength(1);
+  });
+
+  it('gestão escolhe: "ambos" traz venda E locação lado a lado', async () => {
+    const { service, pdf } = montarPdf();
+
+    await service.exportarPdf(fakeUser({ role: 'DIRECTOR' as UserRole }), undefined, 'ambos');
+
+    const precos = pdf.gerar.mock.calls[0][0].itens[0].precos;
+    expect(precos.map((x: { rotulo: string }) => x.rotulo)).toEqual(['Venda', 'Locação / mês']);
+    expect(precos[1].valor).toBe(300);
+  });
+
+  it('gestão com "locacao" leva só a mensalidade', async () => {
+    const { service, pdf } = montarPdf();
+
+    await service.exportarPdf(fakeUser({ role: 'GERENTE' as UserRole }), undefined, 'locacao');
+
+    expect(pdf.gerar.mock.calls[0][0].itens[0].precos).toEqual([
+      { rotulo: 'Locação / mês', valor: 300 },
+    ]);
   });
 
   it('sob encomenda, disponibilidade é PRAZO — não "0 em estoque"', async () => {
