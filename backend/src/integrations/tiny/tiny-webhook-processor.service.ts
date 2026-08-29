@@ -9,7 +9,7 @@ export interface AplicadorDePedido {
   sincronizarUm(
     empresaId: string,
     idTiny: number,
-  ): Promise<'criado' | 'atualizado' | 'semMudanca' | 'foraDaJanela'>;
+  ): Promise<'criado' | 'atualizado' | 'semMudanca' | 'foraDaJanela' | 'jaCancelado'>;
 }
 
 interface EventoNaFila {
@@ -147,7 +147,9 @@ export class TinyWebhookProcessorService {
       if (!Number.isFinite(id) || id <= 0) return false;
       const efeito = await aplicadorDePedido.sincronizarUm(empresaId, id);
       this.logger.log(`[tiny] webhook ${tipo}: pedido ${id} → ${efeito}`);
-      return efeito !== 'foraDaJanela';
+      // "Não aplicado" aqui não é falha: pedido velho demais, ou que já chega
+      // cancelado do ERP, não vira registro novo — e o log diz qual dos dois.
+      return efeito !== 'foraDaJanela' && efeito !== 'jaCancelado';
     }
 
     if (tipo.includes('estoque') || tipo.includes('produto')) {

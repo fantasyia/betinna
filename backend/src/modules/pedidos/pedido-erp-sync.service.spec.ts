@@ -293,6 +293,14 @@ describe('pedidos que vêm do ERP', () => {
     expect(prisma.pedido.update.mock.calls[0][0].data.status).toBe('CANCELADO');
   });
 
+  it('sincronizarUm (webhook) devolve o motivo certo pro pedido já cancelado', async () => {
+    // Motivo errado em log engana quem for investigar: "fora da janela" e "já
+    // veio cancelado" são fatos diferentes.
+    const { svc } = build({ detalhe: { ...PEDIDO_ERP, situacao: 2 } });
+
+    await expect(svc.sincronizarUm('emp-1', 900)).resolves.toBe('jaCancelado');
+  });
+
   it('pedido velho demais é visto e NÃO entra (quem corta é o detalhe)', async () => {
     const { svc, prisma } = build({ detalhe: { ...PEDIDO_ERP, data: '2020-01-01' } });
 

@@ -149,7 +149,7 @@ export class PedidoErpSyncService {
         const efeito = await this.aplicar(empresaId, detalhe, r, de, ate);
         if (efeito === 'criado') r.criados += 1;
         else if (efeito === 'atualizado') r.atualizados += 1;
-        else if (efeito === 'foraDaJanela') r.foraDaJanela += 1;
+        else if (efeito === 'foraDaJanela' || efeito === 'jaCancelado') r.foraDaJanela += 1;
         else r.semMudanca += 1;
       } catch (err) {
         r.erros += 1;
@@ -267,7 +267,7 @@ export class PedidoErpSyncService {
   async sincronizarUm(
     empresaId: string,
     idTiny: number,
-  ): Promise<'criado' | 'atualizado' | 'semMudanca' | 'foraDaJanela'> {
+  ): Promise<'criado' | 'atualizado' | 'semMudanca' | 'foraDaJanela' | 'jaCancelado'> {
     const detalhe = await this.tiny.obter(empresaId, idTiny);
     const r: ResultadoSyncPedidos = {
       lidos: 1,
@@ -293,7 +293,7 @@ export class PedidoErpSyncService {
     r: ResultadoSyncPedidos,
     de: Date,
     ate: Date,
-  ): Promise<'criado' | 'atualizado' | 'semMudanca' | 'foraDaJanela'> {
+  ): Promise<'criado' | 'atualizado' | 'semMudanca' | 'foraDaJanela' | 'jaCancelado'> {
     const numeroErp = String(d.numeroPedido ?? d.id);
     const existente = await this.prisma.pedido.findFirst({
       where: { empresaId, numeroErp },
@@ -355,7 +355,7 @@ export class PedidoErpSyncService {
     // CANCELADO normalmente — o que importa é não NASCER morto.) Sem isto, todo
     // pedido cancelado lá volta a aparecer aqui a cada rodada, e apagar do app
     // não adianta nada: o sync seguinte traz de volta.
-    if (status === 'CANCELADO') return 'foraDaJanela';
+    if (status === 'CANCELADO') return 'jaCancelado';
 
     const cliente = await this.resolverCliente(empresaId, d);
     const representanteId = await this.resolverRepresentante(empresaId, d);
