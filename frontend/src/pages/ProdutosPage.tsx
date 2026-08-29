@@ -10,6 +10,7 @@ import { FilterBar, SearchInput } from '@/components/FilterBar';
 import { Select } from '@/components/FormField';
 import { Checkbox } from '@/components/ui';
 import { Sparkles } from 'lucide-react';
+import { useEstoqueModo, textoMontagem } from '@/hooks/useEstoqueModo';
 import { useToast } from '@/components/toast';
 import { useRole } from '@/hooks/usePermission';
 import { cn } from '@/lib/cn';
@@ -90,6 +91,7 @@ export default function ProdutosPage() {
     return new Set(lista.map((i) => i.produtoId));
   }, [meuCatalogo]);
 
+  const estoqueModo = useEstoqueModo();
   const [selecionados, setSelecionados] = useState<Set<string>>(new Set());
   const [adicionando, setAdicionando] = useState(false);
 
@@ -256,7 +258,18 @@ export default function ProdutosPage() {
     {
       key: 'estoque',
       header: 'Estoque',
-      render: (p) => (
+      // Sob encomenda o produto e montado DEPOIS do pedido (uma OP por pedido),
+      // entao saldo zero e o estado normal — pintar de vermelho todo dia ensina
+      // o time a ignorar a cor.
+      render: (p) =>
+        estoqueModo.sobEncomenda ? (
+          <span className="text-[12px] text-muted">
+            {p.estoque > 0 ? `${p.estoque} pronto(s)` : 'sob encomenda'}
+            <span className="block text-[10px] text-muted-light">
+              {textoMontagem(estoqueModo.diasMontagem)}
+            </span>
+          </span>
+        ) : (
         <span
           className="font-semibold"
           style={{
@@ -270,7 +283,7 @@ export default function ProdutosPage() {
         >
           {p.estoque} {p.unidade ?? 'un'}
         </span>
-      ),
+        ),
     },
     {
       key: 'pop',

@@ -9,6 +9,7 @@ import { Badge, Button, Checkbox, Dialog, EmptyState, Input } from '@/components
 import { Pagination } from '@/components/Table';
 import { cn } from '@/lib/cn';
 import { formatMoeda as fmtBRL } from '@/lib/masks';
+import { useEstoqueModo } from '@/hooks/useEstoqueModo';
 
 export interface ProdutoDoPicker {
   id: string;
@@ -50,6 +51,7 @@ export function ProdutoPickerDialog({
   onAdicionados: (quantidade: number) => void;
 }) {
   const toast = useToast();
+  const { sobEncomenda } = useEstoqueModo();
   const [busca, setBusca] = useState('');
   const buscaDebounced = useDebouncedValue(busca, 300);
   const [page, setPage] = useState(1);
@@ -162,12 +164,15 @@ export function ProdutoPickerDialog({
             leftIcon={<Search className="h-3.5 w-3.5" />}
             className="min-w-[220px] flex-1"
           />
-          <Checkbox
-            data-testid="picker-so-estoque"
-            label="Só com estoque"
-            checked={somenteComEstoque}
-            onChange={(e) => setSomenteComEstoque(e.target.checked)}
-          />
+          {/* Sob encomenda o filtro esconderia TUDO (saldo é zero por definição). */}
+          {!sobEncomenda && (
+            <Checkbox
+              data-testid="picker-so-estoque"
+              label="Só com estoque"
+              checked={somenteComEstoque}
+              onChange={(e) => setSomenteComEstoque(e.target.checked)}
+            />
+          )}
         </div>
 
         <div className="flex items-center justify-between px-1">
@@ -233,7 +238,7 @@ export function ProdutoPickerDialog({
                           </div>
                         </div>
                         <PrecoDoProduto produto={p} />
-                        <EstoqueBadge estoque={p.estoque} />
+                        <EstoqueBadge estoque={p.estoque} sobEncomenda={sobEncomenda} />
                         {jaTem && (
                           <Badge variant="success" className="shrink-0">
                             <Check className="mr-1 h-3 w-3" />
@@ -299,7 +304,22 @@ function PrecoDoProduto({ produto }: { produto: ProdutoDoPicker }) {
   );
 }
 
-function EstoqueBadge({ estoque }: { estoque?: number }) {
+function EstoqueBadge({
+  estoque,
+  sobEncomenda = false,
+}: {
+  estoque?: number;
+  sobEncomenda?: boolean;
+}) {
+  // Sob encomenda o saldo não decide nada: quem monta é a OP disparada pelo
+  // pedido. Mostrar "0 un" em vermelho aqui empurraria o rep pra fora da venda.
+  if (sobEncomenda) {
+    return (
+      <span className="hidden w-16 shrink-0 text-center text-[10px] text-muted sm:inline-block">
+        sob encomenda
+      </span>
+    );
+  }
   if (estoque == null) return <span className="w-16 shrink-0" />;
   const variant = estoque <= 0 ? 'danger' : estoque < 10 ? 'warning' : 'success';
   return (

@@ -20,6 +20,7 @@ import { CatalogoTabs } from '@/components/CatalogoTabs';
 import { StateView } from '@/components/StateView';
 import { AsyncCombobox } from '@/components/AsyncCombobox';
 import { ProdutoPickerDialog } from '@/components/ProdutoPickerDialog';
+import { useEstoqueModo, textoMontagem } from '@/hooks/useEstoqueModo';
 import { useToast } from '@/components/toast';
 import {
   Badge,
@@ -105,11 +106,21 @@ function fmtRelativo(iso: string | null | undefined): { label: string; stale: bo
  *  - 10+     → verde (success)
  *  - undefined → cinza (sem dado, ainda não sincronizado)
  */
-function stockTone(estoque: number | undefined): {
+function stockTone(
+  estoque: number | undefined,
+  sobEncomenda = false,
+): {
   variant: 'success' | 'warning' | 'danger' | 'neutral';
   label: string;
   icon: typeof Package;
 } {
+  // Sob encomenda, saldo zero (ou negativo, quando o ERP já reservou pra uma OP)
+  // e o estado NORMAL — alarme aqui so ensina o time a ignorar alarme.
+  if (sobEncomenda) {
+    return estoque !== undefined && estoque !== null && estoque > 0
+      ? { variant: 'success', label: `${estoque} pronto(s)`, icon: PackageCheck }
+      : { variant: 'neutral', label: 'sob encomenda', icon: Package };
+  }
   if (estoque === undefined || estoque === null) {
     return { variant: 'neutral', label: 'sem dado', icon: Package };
   }
@@ -130,6 +141,7 @@ export default function CatalogoPage() {
     [data],
   );
 
+  const estoqueModo = useEstoqueModo();
   const [adding, setAdding] = useState(false);
   const [previewOpen, setPreviewOpen] = useState(false);
   const [shareOpen, setShareOpen] = useState(false);
@@ -212,21 +224,30 @@ export default function CatalogoPage() {
           icon={<Package className="text-info" />}
           value={formatNumero(stats.totalItens)}
         />
-        <Stat
-          label="Sem estoque"
-          icon={<PackageX className={stats.semEstoque > 0 ? 'text-danger' : 'text-muted'} />}
-          value={formatNumero(stats.semEstoque)}
-          hint={
-            stats.semEstoque > 0
-              ? 'representante pode lançar — ERP gera OP de reposição'
-              : 'tudo disponível'
-          }
-        />
+        {estoqueModo.sobEncomenda ? (
+          <Stat
+            label="Entrega"
+            icon={<PackageCheck className="text-info" />}
+            value={textoMontagem(estoqueModo.diasMontagem)}
+            hint="cada pedido vira uma OP no ERP — não depende de saldo"
+          />
+        ) : (
+          <Stat
+            label="Sem estoque"
+            icon={<PackageX className={stats.semEstoque > 0 ? 'text-danger' : 'text-muted'} />}
+            value={formatNumero(stats.semEstoque)}
+            hint={
+              stats.semEstoque > 0
+                ? 'representante pode lançar — ERP gera OP de reposição'
+                : 'tudo disponível'
+            }
+          />
+        )}
       </div>
 
       {/* Banner de sync (mostra "atualizado há X" + alerta de stale) */}
       {itens.length > 0 && (
-        <SyncBanner oldestSync={stats.oldestSync} />
+        <SyncBanner oldestSync={stats.oldestSync} sobEncomenda={estoqueModo.sobEncomenda} />
       )}
 
       {/* Toolbar */}
@@ -281,6 +302,7 @@ export default function CatalogoPage() {
                 <ProdutoCard
                   key={item.produtoId}
                   item={item}
+                  sobEncomenda={estoqueModo.sobEncomenda}
                   onRemove={() => removeItem(item.produtoId)}
                 />
               ))}
@@ -319,25 +341,35 @@ export default function CatalogoPage() {
 
 // ─── Sync banner ───────────────────────────────────────────────
 
-function SyncBanner({ oldestSync }: { oldestSync: string | null }) {
+function SyncBanner({
+  oldestSync,
+  sobEncomenda = false,
+}: {
+  oldestSync: string | null;
+  sobEncomenda?: boolean;
+}) {
   const rel = fmtRelativo(oldestSync);
+  // Sob encomenda o saldo nao decide venda nenhuma — avisar que ele "pode estar
+  // desatualizado" e assustar com um numero que ninguem usa pra decidir.
+  const alerta = rel.stale && !sobEncomenda;
   return (
     <div
       className={cn(
         'mb-4 px-3 py-2 rounded-md text-sm flex items-center gap-2 border',
-        rel.stale
+        alerta
           ? 'bg-warning/10 border-warning/30 text-warning'
           : 'bg-success/5 border-success/20 text-success',
       )}
       data-testid="catalogo-sync-banner"
     >
-      <RefreshCw className={cn('h-3.5 w-3.5 shrink-0', rel.stale && 'animate-pulse')} />
+      <RefreshCw className={cn('h-3.5 w-3.5 shrink-0', alerta && 'animate-pulse')} />
       <span className="flex-1">
         Estoque sincronizado do ERP <strong className="font-semibold">{rel.label}</strong>
-        {rel.stale && ' — pode estar desatualizado'}
+        {alerta && ' — pode estar desatualizado'}
+        {sobEncomenda && ' — produtos sob encomenda, o saldo não trava venda'}
       </span>
       <span className="text-[10px] uppercase tracking-wider text-muted">
-        sync auto 30min + webhook
+        1 sync por dia + botão
       </span>
     </div>
   );
@@ -345,7 +377,15 @@ function SyncBanner({ oldestSync }: { oldestSync: string | null }) {
 
 // ─── Produto card ──────────────────────────────────────────────
 
-function ProdutoCard({ item, onRemove }: { item: CatalogoItem; onRemove: () => void }) {
+function ProdutoCard({
+  item,
+  onRemove,
+  sobEncomenda = false,
+}: {
+  item: CatalogoItem;
+  onRemove: () => void;
+  sobEncomenda?: boolean;
+}) {
   const [confirmDelete, setConfirmDelete] = useState(false);
   // O REP loca, não vende: o backend zera o preço de venda pra ele e manda a
   // mensalidade. Quando não há mensalidade cadastrada vem null — e a tela
@@ -373,7 +413,7 @@ function ProdutoCard({ item, onRemove }: { item: CatalogoItem; onRemove: () => v
         ) : (
           <Package className="h-8 w-8 text-muted-light" />
         )}
-        <StockBadge produto={item.produto} testId={`stock-${item.produtoId}`} />
+        <StockBadge produto={item.produto} sobEncomenda={sobEncomenda} testId={`stock-${item.produtoId}`} />
       </div>
 
       {/* Header */}
@@ -444,11 +484,13 @@ function ProdutoCard({ item, onRemove }: { item: CatalogoItem; onRemove: () => v
 function StockBadge({
   produto,
   testId,
+  sobEncomenda = false,
 }: {
   produto?: CatalogoItem['produto'];
   testId?: string;
+  sobEncomenda?: boolean;
 }) {
-  const tone = stockTone(produto?.estoque);
+  const tone = stockTone(produto?.estoque, sobEncomenda);
   const rel = fmtRelativo(produto?.estoqueAtualizadoEm);
   const Icon = tone.icon;
   const colorClass =

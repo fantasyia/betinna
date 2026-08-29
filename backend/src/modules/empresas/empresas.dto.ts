@@ -230,6 +230,26 @@ const alertaConversaEsquecidaSchema = z
   .partial()
   .optional();
 
+/**
+ * Como esta empresa trata ESTOQUE.
+ *
+ * `controlado` é o mundo de quem vende de prateleira: saldo baixo é alerta,
+ * saldo zero é problema. `sob_encomenda` é o oposto — a Somatec monta o Master
+ * Block DEPOIS do pedido (uma OP por pedido, montagem no mesmo dia ou no
+ * seguinte), então saldo zero é o estado NORMAL e pintá-lo de vermelho ensina o
+ * time a ignorar o alerta justamente onde ele deveria significar alguma coisa.
+ *
+ * Não mexe em nenhuma trava: o app nunca bloqueou venda por estoque. O que muda
+ * é o que a tela AFIRMA — "sem estoque" vira "sob encomenda".
+ */
+const estoqueSchema = z
+  .object({
+    modo: z.enum(['controlado', 'sob_encomenda']).default('controlado'),
+    /** Prazo de montagem prometido, em dias úteis. Vira texto na tela. */
+    diasMontagem: z.number().int().min(0).max(60).nullable().optional(),
+  })
+  .optional();
+
 export const tenantConfigPatchSchema = z
   .object({
     // #R4 — cada seção aceita `null` = remover a seção inteira (reset pro default). O merge no service
@@ -244,6 +264,7 @@ export const tenantConfigPatchSchema = z
     envioWhatsapp: envioWhatsappSchema.nullable(),
     emailTransacional: emailTransacionalSchema.nullable(),
     alertaConversaEsquecida: alertaConversaEsquecidaSchema.nullable(),
+    estoque: estoqueSchema.nullable(),
   })
   // .strip() (default zod): DESCARTA chaves desconhecidas em vez de deixá-las entrar no
   // Empresa.config (o front só manda as seções conhecidas; .passthrough deixava lixo crescer).
