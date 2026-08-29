@@ -65,6 +65,9 @@ function build(
     tiny as never,
     integracoes as never,
     sequence as never,
+    // Ponte vendedor→contato: por padrão não acha (os casos por contato passam
+    // o contato dentro do próprio pedido).
+    { acharContatoDoVendedor: vi.fn().mockResolvedValue(null) } as never,
     notificacoes as never,
     bus as never,
   );

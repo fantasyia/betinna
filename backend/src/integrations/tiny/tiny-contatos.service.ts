@@ -114,6 +114,28 @@ export class TinyContatosService {
     return doc;
   }
 
+  /**
+   * O contato por trás de um VENDEDOR.
+   *
+   * O pedido do Tiny traz `vendedor.id` e o nome, mas nem sempre o contato — e
+   * é o contato que o app guarda (`Usuario.contatoErpId`). Sem esta ponte, o
+   * casamento cai no NOME, que erra: "REP TESTE" no ERP e "TESTE · Automação"
+   * no app são a mesma pessoa e não casam por texto.
+   */
+  async acharContatoDoVendedor(empresaId: string, vendedorId: number): Promise<number | null> {
+    try {
+      const r = await this.client.get<{
+        itens?: Array<{ id: number; contato?: { id?: number } }>;
+      }>(empresaId, '/vendedores', { limit: 100 });
+      return (r.itens ?? []).find((v) => v.id === vendedorId)?.contato?.id ?? null;
+    } catch (err) {
+      this.logger.warn(
+        `[tiny] não consegui listar vendedores: ${err instanceof Error ? err.message : String(err)}`,
+      );
+      return null;
+    }
+  }
+
   async criar(empresaId: string, contato: ContatoParaTiny): Promise<number> {
     const doc = (contato.cpfCnpj ?? '').replace(/\D/g, '');
     const criado = await this.client.post<{ id: number }>(empresaId, '/contatos', {

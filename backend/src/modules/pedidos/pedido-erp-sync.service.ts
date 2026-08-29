@@ -5,6 +5,7 @@ import {
   TinyPedidosService,
   type PedidoTinyDetalhe,
 } from '@integrations/tiny/tiny-pedidos.service';
+import { TinyContatosService } from '@integrations/tiny/tiny-contatos.service';
 import { IntegracoesService } from '@modules/integracoes/integracoes.service';
 import { FluxoEventBusService } from '@modules/fluxos/fluxo-event-bus.service';
 import { NotificacoesService } from '@modules/notificacoes/notificacoes.service';
@@ -82,6 +83,7 @@ export class PedidoErpSyncService {
     private readonly tiny: TinyPedidosService,
     private readonly integracoes: IntegracoesService,
     private readonly sequence: SequenceService,
+    private readonly contatos: TinyContatosService,
     private readonly notificacoes: NotificacoesService,
     private readonly bus: FluxoEventBusService,
   ) {}
@@ -576,7 +578,11 @@ export class PedidoErpSyncService {
       select: { id: true, nome: true, contatoErpId: true },
     });
 
-    const contatoDoVendedor = d.vendedor?.contato?.id;
+    const contatoDoVendedor =
+      d.vendedor?.contato?.id ??
+      (d.vendedor?.id
+        ? await this.contatos.acharContatoDoVendedor(empresaId, d.vendedor.id)
+        : null);
     if (contatoDoVendedor) {
       const porContato = usuarios.filter(
         (u) => u.contatoErpId && Number(u.contatoErpId) === Number(contatoDoVendedor),
