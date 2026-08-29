@@ -4,6 +4,8 @@ import { TinyClientService } from './tiny-client.service';
 import { TinyContaService } from './tiny-conta.service';
 import { TinyProdutosService } from './tiny-produtos.service';
 import { TinyPedidosService } from './tiny-pedidos.service';
+import { TinyContatosService } from './tiny-contatos.service';
+import { TinyRepsSyncService } from './tiny-reps-sync.service';
 import { TinyPedidoPushService } from './tiny-pedido-push.service';
 import { TinyProdutosSyncService } from './tiny-produtos-sync.service';
 import { TinyOAuthController } from './tiny-oauth.controller';
@@ -27,6 +29,8 @@ import { TinyWebhookController } from './tiny-webhook.controller';
     TinyContaService,
     TinyProdutosService,
     TinyPedidosService,
+    TinyContatosService,
+    TinyRepsSyncService,
     TinyPedidoPushService,
     TinyProdutosSyncService,
     TinyTokenRefreshJob,
@@ -37,6 +41,8 @@ import { TinyWebhookController } from './tiny-webhook.controller';
     TinyContaService,
     TinyProdutosService,
     TinyPedidosService,
+    TinyContatosService,
+    TinyRepsSyncService,
     TinyPedidoPushService,
     TinyProdutosSyncService,
   ],

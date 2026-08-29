@@ -968,6 +968,7 @@ function ConvidarUsuarioModal({
   const [nome, setNome] = useState('');
   const [email, setEmail] = useState('');
   const [telefone, setTelefone] = useState('');
+  const [cpfCnpj, setCpfCnpj] = useState('');
   const [novoRole, setNovoRole] = useState<UserRole>('REP');
   const [regiao, setRegiao] = useState('');
   const [empresaIds, setEmpresaIds] = useState<string[]>(
@@ -1008,6 +1009,18 @@ function ConvidarUsuarioModal({
       setErr('Região é obrigatória para representantes.');
       return;
     }
+    // O REP vira CONTATO no ERP (e depois vendedor). Sem telefone e documento,
+    // a rodada diária não consegue subir — e descobrir isso semanas depois, com
+    // o pedido dele entrando sem dono, é o caro.
+    if (novoRole === 'REP' && !telefone.trim()) {
+      setErr('Telefone é obrigatório para representantes.');
+      return;
+    }
+    const digitos = cpfCnpj.replace(/\D/g, '');
+    if (novoRole === 'REP' && digitos.length !== 11 && digitos.length !== 14) {
+      setErr('CPF (11 dígitos) ou CNPJ (14) é obrigatório para representantes.');
+      return;
+    }
     setBusy(true);
     try {
       const payload: Record<string, unknown> = {
@@ -1017,6 +1030,7 @@ function ConvidarUsuarioModal({
         empresaIds,
       };
       if (telefone.trim()) payload.telefone = telefone.trim();
+      if (digitos) payload.cpfCnpj = digitos;
       if (regiao.trim()) payload.regiao = regiao.trim();
       if (novoRole === 'REP') {
         payload.tetoDesconto = tetoDesconto;
@@ -1102,12 +1116,38 @@ function ConvidarUsuarioModal({
             required
           />
         </FormField>
-        <FormField label="Telefone (opcional)" htmlFor="inv-tel">
+        <FormField
+          label={novoRole === 'REP' ? 'Telefone' : 'Telefone (opcional)'}
+          htmlFor="inv-tel"
+          required={novoRole === 'REP'}
+        >
           <Input
             id="inv-tel"
+            data-testid="user-invite-telefone"
             value={telefone}
             onChange={(e) => setTelefone(e.target.value)}
             placeholder="+55 11 91234-5678"
+          />
+        </FormField>
+        {/* O REP vira CONTATO no ERP (e lá, vendedor). O documento é a chave que
+            evita cadastro duplicado — nome varia demais. Por isso é pedido na
+            criação, não descoberto depois com o pedido dele já sem dono. */}
+        <FormField
+          label={novoRole === 'REP' ? 'CPF ou CNPJ' : 'CPF ou CNPJ (opcional)'}
+          htmlFor="inv-doc"
+          required={novoRole === 'REP'}
+          hint={
+            novoRole === 'REP'
+              ? 'Vai virar o contato do representante no ERP'
+              : undefined
+          }
+        >
+          <Input
+            id="inv-doc"
+            data-testid="user-invite-cpfcnpj"
+            value={cpfCnpj}
+            onChange={(e) => setCpfCnpj(e.target.value)}
+            placeholder="000.000.000-00"
           />
         </FormField>
         <FormField label="Papel" htmlFor="inv-role" required>

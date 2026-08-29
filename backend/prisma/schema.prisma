@@ -339,6 +339,14 @@ model Usuario {
   criadoEm     DateTime   @default(now())
   atualizadoEm DateTime   @updatedAt
 
+  /// CPF ou CNPJ (só dígitos). É a chave que amarra o usuário ao CONTATO do ERP:
+  /// nome varia ("Marcelo", "Marcelo Harada", "M. Harada") e cada variação viraria
+  /// um contato novo lá. Pedido no cadastro do REP, que é quem vira contato.
+  cpfCnpj             String?
+  /// Id do contato correspondente no ERP. Preenchido pela rodada diária —
+  /// presença = já subiu, e é o que impede de criar o mesmo contato duas vezes.
+  contatoErpId        String?
+
   // se for rep
   regiao              String?
   tetoDesconto        Float?  @default(5) // % máximo sem aprovação

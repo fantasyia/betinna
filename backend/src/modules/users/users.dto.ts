@@ -5,11 +5,26 @@ import { usuarioIdSchema } from '@shared/validators/id.schema';
 const roleEnum = z.nativeEnum(UserRole);
 const statusEnum = z.nativeEnum(UserStatus);
 
+/** CPF (11) ou CNPJ (14) — máscara é aceita, mas o que fica é só dígito. */
+const documentoSchema = z
+  .string()
+  .transform((v) => v.replace(/\D/g, ''))
+  .refine((v) => v.length === 11 || v.length === 14, {
+    message: 'CPF (11 dígitos) ou CNPJ (14 dígitos)',
+  });
+
 export const createUserSchema = z
   .object({
     nome: z.string().min(2).max(150),
     email: z.string().email(),
     telefone: z.string().min(8).max(30).optional(),
+    /**
+     * CPF ou CNPJ (aceita com ou sem máscara; guardamos só os dígitos).
+     *
+     * É a chave que amarra o rep ao CONTATO do ERP — nome varia demais e cada
+     * variação criaria um contato novo lá.
+     */
+    cpfCnpj: documentoSchema.optional(),
     role: roleEnum,
     regiao: z.string().max(100).optional(),
     tetoDesconto: z.number().min(0).max(100).optional(),
@@ -19,6 +34,23 @@ export const createUserSchema = z
     gerenteId: usuarioIdSchema.nullable().optional(),
   })
   .superRefine((data, ctx) => {
+    // O REP vira CONTATO no ERP (e depois vendedor). Sem documento, a rodada
+    // diária não consegue subir sem risco de duplicar cadastro — então o campo
+    // é pedido na hora de criar, não descoberto depois.
+    if (data.role === 'REP' && !data.cpfCnpj) {
+      ctx.addIssue({
+        code: 'custom',
+        path: ['cpfCnpj'],
+        message: 'CPF/CNPJ é obrigatório para representantes (vira contato no ERP)',
+      });
+    }
+    if (data.role === 'REP' && !data.telefone) {
+      ctx.addIssue({
+        code: 'custom',
+        path: ['telefone'],
+        message: 'Telefone é obrigatório para representantes',
+      });
+    }
     if (data.role === 'REP' && !data.regiao) {
       ctx.addIssue({
         code: 'custom',
@@ -40,6 +72,8 @@ export type CreateUserDto = z.infer<typeof createUserSchema>;
 export const updateUserSchema = z.object({
   nome: z.string().min(2).max(150).optional(),
   telefone: z.string().min(8).max(30).optional(),
+  /** Corrigir documento é comum (digitação); o vínculo com o ERP se refaz sozinho. */
+  cpfCnpj: documentoSchema.optional(),
   role: roleEnum.optional(),
   status: statusEnum.optional(),
   regiao: z.string().max(100).optional(),

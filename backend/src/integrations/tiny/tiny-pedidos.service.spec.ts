@@ -25,7 +25,17 @@ function build(
       string,
       Record<string, unknown>,
     ];
-  return { svc: new TinyPedidosService(client as never), client, pedidoPost };
+  // O contato é resolvido pelo TinyContatosService (mesma regra usada pelo
+  // cadastro de rep) — aqui ele é mock: o alvo do teste é o PEDIDO.
+  // O contato é resolvido pelo TinyContatosService (a MESMA regra que o cadastro
+  // de rep usa). Aqui ele é mock: o alvo destes testes é o PEDIDO.
+  const svcContatos = { garantir: vi.fn().mockResolvedValue(894881870) };
+  return {
+    svc: new TinyPedidosService(client as never, svcContatos as never),
+    client,
+    svcContatos,
+    pedidoPost,
+  };
 }
 
 const pedido = {
@@ -102,42 +112,37 @@ describe('criar pedido no Tiny', () => {
 describe('contato do cliente', () => {
   beforeEach(() => vi.clearAllMocks());
 
-  it('reaproveita contato existente pelo CPF/CNPJ, sem criar duplicado', async () => {
-    const { svc, client, pedidoPost } = build(
-      [{ id: 42, sku: 'MB-01' }],
-      [{ id: 77, cpfCnpj: '12.345.678/9000-99' }],
-    );
+  // A regra de achar-ou-criar (documento antes de nome, F/J pelo tamanho) mora
+  // no TinyContatosService e é testada lá — porque o cadastro de REPRESENTANTE
+  // usa a mesma. Duas cópias da dedup significam duas verdades, e a que errar
+  // cria o contato duplicado.
+  it('delega a resolução do contato e usa o id no pedido', async () => {
+    const { svc, svcContatos, pedidoPost } = build([{ id: 42, sku: 'MB-01' }]);
 
     await svc.criar('emp-1', {
-      cliente: { nome: 'Somatec', cpfCnpj: '12345678900099' },
+      cliente: { nome: 'Somatec', cpfCnpj: '12345678900099', email: 'a@b.c' },
       itens: [{ sku: 'MB-01', quantidade: 1 }],
     });
 
-    expect(client.post.mock.calls.some((c) => c[1] === '/contatos')).toBe(false);
-    expect((pedidoPost()[2] as unknown as { idContato: number }).idContato).toBe(77);
+    expect(svcContatos.garantir).toHaveBeenCalledWith('emp-1', {
+      nome: 'Somatec',
+      cpfCnpj: '12345678900099',
+      email: 'a@b.c',
+      telefone: undefined,
+    });
+    expect((pedidoPost()[2] as unknown as { idContato: number }).idContato).toBe(894881870);
   });
 
-  it('cria o contato quando não existe e usa o id novo no pedido', async () => {
-    const { svc, client, pedidoPost } = build([{ id: 42, sku: 'MB-01' }], []);
+  it('contato que falha derruba o pedido — melhor não criar do que criar sem dono', async () => {
+    const { svc, svcContatos, client } = build([{ id: 42, sku: 'MB-01' }]);
+    svcContatos.garantir.mockRejectedValueOnce(new Error('contato inválido'));
 
-    await svc.criar('emp-1', {
-      cliente: { nome: 'Cliente Novo', cpfCnpj: '12345678909' },
-      itens: [{ sku: 'MB-01', quantidade: 1 }],
-    });
-
-    const contato = client.post.mock.calls.find((c) => c[1] === '/contatos');
-    // 11 dígitos = pessoa física; 14 seria jurídica.
-    expect((contato?.[2] as { tipoPessoa: string }).tipoPessoa).toBe('F');
-    expect((pedidoPost()[2] as unknown as { idContato: number }).idContato).toBe(555);
-  });
-
-  it('CNPJ (14 dígitos) entra como pessoa jurídica', async () => {
-    const { svc, client } = build([{ id: 42, sku: 'MB-01' }], []);
-    await svc.criar('emp-1', {
-      cliente: { nome: 'Empresa', cpfCnpj: '12.345.678/0001-99' },
-      itens: [{ sku: 'MB-01', quantidade: 1 }],
-    });
-    const contato = client.post.mock.calls.find((c) => c[1] === '/contatos');
-    expect((contato?.[2] as { tipoPessoa: string }).tipoPessoa).toBe('J');
+    await expect(
+      svc.criar('emp-1', {
+        cliente: { nome: 'X' },
+        itens: [{ sku: 'MB-01', quantidade: 1 }],
+      }),
+    ).rejects.toThrow(/contato/i);
+    expect(client.post.mock.calls.some((c) => c[1] === '/pedidos')).toBe(false);
   });
 });

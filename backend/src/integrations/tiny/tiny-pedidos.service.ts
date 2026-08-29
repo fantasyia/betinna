@@ -1,5 +1,6 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { TinyClientService } from './tiny-client.service';
+import { TinyContatosService } from './tiny-contatos.service';
 
 export interface ItemPedidoTiny {
   /** SKU — a chave que amarra site ↔ ERP ↔ app. */
@@ -96,7 +97,10 @@ export interface PedidoTinyDetalhe extends PedidoTinyResumo {
 export class TinyPedidosService {
   private readonly logger = new Logger(TinyPedidosService.name);
 
-  constructor(private readonly client: TinyClientService) {}
+  constructor(
+    private readonly client: TinyClientService,
+    private readonly contatos: TinyContatosService,
+  ) {}
 
   async criar(empresaId: string, pedido: PedidoParaTiny): Promise<ResultadoPedido> {
     const itens = [];
@@ -143,54 +147,20 @@ export class TinyPedidosService {
   }
 
   /**
-   * Acha o contato do cliente ou cria — nesta ordem: CPF/CNPJ, depois nome.
+   * Acha o contato do cliente ou cria.
    *
-   * Documento primeiro porque é o único identificador que não muda: nome
-   * pode vir "Somatec", "Somatec Blocking" ou "SOMATEC LTDA" na mesma pessoa,
-   * e cada variação viraria um contato novo — e contato duplicado espalha
-   * histórico, cobrança e nota por cadastros diferentes.
+   * A regra em si (documento antes de nome, tipo pessoa pelo tamanho do
+   * documento) mora no `TinyContatosService` — o cadastro de representante
+   * precisa da MESMA regra, e duas cópias significam duas deduplicações, das
+   * quais uma vai errar e criar contato duplicado.
    */
-  private async resolverContato(
-    empresaId: string,
-    cliente: PedidoParaTiny['cliente'],
-  ): Promise<number> {
-    const doc = (cliente.cpfCnpj ?? '').replace(/\D/g, '');
-    if (doc) {
-      const achado = await this.client
-        .get<{ itens?: Array<{ id: number; cpfCnpj?: string }> }>(empresaId, '/contatos', {
-          cpfCnpj: doc,
-          limit: 20,
-        })
-        .catch(() => ({ itens: [] }));
-      const exato = (achado.itens ?? []).find((c) => (c.cpfCnpj ?? '').replace(/\D/g, '') === doc);
-      if (exato) return exato.id;
-    } else {
-      // Sem documento, nome exato é o que sobra — pior chave, mas melhor que
-      // criar um contato novo a cada pedido do mesmo cliente.
-      const achado = await this.client
-        .get<{ itens?: Array<{ id: number; nome?: string }> }>(empresaId, '/contatos', {
-          nome: cliente.nome,
-          limit: 20,
-        })
-        .catch(() => ({ itens: [] }));
-      const exato = (achado.itens ?? []).find(
-        (c) => (c.nome ?? '').trim().toLowerCase() === cliente.nome.trim().toLowerCase(),
-      );
-      if (exato) return exato.id;
-    }
-
-    const criado = await this.client.post<{ id: number }>(empresaId, '/contatos', {
+  private resolverContato(empresaId: string, cliente: PedidoParaTiny['cliente']): Promise<number> {
+    return this.contatos.garantir(empresaId, {
       nome: cliente.nome,
-      // F/J pelo tamanho do documento; sem documento, pessoa física é o padrão
-      // menos danoso (não exige inscrição estadual).
-      tipoPessoa: doc.length > 11 ? 'J' : 'F',
-      ...(doc ? { cpfCnpj: doc } : {}),
-      ...(cliente.email ? { email: cliente.email } : {}),
-      ...(cliente.telefone ? { celular: cliente.telefone } : {}),
-      situacao: 'A',
+      cpfCnpj: cliente.cpfCnpj,
+      email: cliente.email,
+      telefone: cliente.telefone,
     });
-    this.logger.log(`[tiny] contato criado id=${criado?.id} (${cliente.nome})`);
-    return criado.id;
   }
 
   /** Consulta um pedido — usado pelo webhook, que nunca acredita no payload. */

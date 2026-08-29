@@ -3,6 +3,7 @@ import { Cron } from '@nestjs/schedule';
 import { EnvService } from '@config/env.service';
 import { PrismaService } from '@database/prisma.service';
 import { TinyProdutosSyncService } from '@integrations/tiny/tiny-produtos-sync.service';
+import { TinyRepsSyncService } from '@integrations/tiny/tiny-reps-sync.service';
 import { CronLockService } from '@shared/utils/cron-lock.service';
 import { PedidoErpSyncService } from './pedido-erp-sync.service';
 
@@ -29,6 +30,7 @@ export class ErpSyncDiarioJob {
     private readonly env: EnvService,
     private readonly cronLock: CronLockService,
     private readonly produtos: TinyProdutosSyncService,
+    private readonly reps: TinyRepsSyncService,
     private readonly pedidos: PedidoErpSyncService,
   ) {}
 
@@ -49,9 +51,14 @@ export class ErpSyncDiarioJob {
       try {
         const cat = await this.produtos.sync(empresaId, { modo: 'incremental' });
         const ped = await this.pedidos.sincronizar(empresaId);
+        // Reps novos viram contato no ERP na MESMA rodada — é o que permite
+        // marcá-los como vendedor lá e o pedido voltar pro dono certo aqui.
+        const reps = await this.reps.sincronizar(empresaId);
         this.logger.log(
           `[erp] rodada diária empresa=${empresaId}: ` +
-            `produtos ${cat.criados}+${cat.atualizados}, pedidos ${ped.criados}+${ped.atualizados}` +
+            `produtos ${cat.criados}+${cat.atualizados}, pedidos ${ped.criados}+${ped.atualizados}, ` +
+            `reps ${reps.criados} novo(s)` +
+            (reps.semDocumento ? `, ${reps.semDocumento} sem CPF/CNPJ` : '') +
             (ped.avisos.length ? ` — ${ped.avisos.length} aviso(s)` : ''),
         );
         for (const aviso of ped.avisos) this.logger.warn(`[erp] ${aviso}`);

@@ -111,6 +111,8 @@ export class UsersService {
     nome: string;
     role: UserRole;
     status: 'ATIVO' | 'PENDENTE' | 'INATIVO';
+    /** Documento atual — o update compara pra saber se o vínculo com o ERP caiu. */
+    cpfCnpj: string | null;
     empresas: Array<{ empresaId: string }>;
   }> {
     const user = await this.prisma.usuario.findUnique({
@@ -321,6 +323,7 @@ export class UsersService {
           email: dto.email,
           nome: dto.nome,
           telefone: dto.telefone,
+          cpfCnpj: dto.cpfCnpj ?? null,
           role: dto.role,
           status: 'PENDENTE',
           regiao: dto.regiao,
@@ -404,6 +407,12 @@ export class UsersService {
     }
     // Trocar role pra algo != REP zera gerenteId
     const dataPatch: Prisma.UsuarioUpdateInput = { ...rest };
+    // Documento corrigido = o vínculo com o contato do ERP pode estar apontando
+    // pra pessoa errada. Zera o `contatoErpId` pra rodada diária refazer o
+    // casamento pelo documento novo, em vez de manter o cadastro errado.
+    if (dto.cpfCnpj !== undefined && dto.cpfCnpj !== user.cpfCnpj) {
+      dataPatch.contatoErpId = null;
+    }
     if (gerenteId !== undefined)
       dataPatch.gerente = gerenteId ? { connect: { id: gerenteId } } : { disconnect: true };
     if (dto.role && dto.role !== 'REP') {
