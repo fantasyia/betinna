@@ -39,14 +39,23 @@ export class TinyContatosService {
   async achar(empresaId: string, contato: ContatoParaTiny): Promise<number | null> {
     const doc = (contato.cpfCnpj ?? '').replace(/\D/g, '');
     if (doc) {
-      const achado = await this.client
-        .get<{ itens?: Array<{ id: number; cpfCnpj?: string }> }>(empresaId, '/contatos', {
-          cpfCnpj: doc,
-          limit: 20,
-        })
-        .catch(() => ({ itens: [] }));
-      const exato = (achado.itens ?? []).find((c) => (c.cpfCnpj ?? '').replace(/\D/g, '') === doc);
-      if (exato) return exato.id;
+      // O Tiny guarda o documento FORMATADO e a busca compara texto: procurar
+      // só por dígitos não acha ninguém, e o efeito é pior que um "não achei" —
+      // o passo seguinte tenta CRIAR e o ERP recusa com "contato já existe",
+      // derrubando o pedido inteiro de um cliente que estava lá o tempo todo.
+      // Por isso as duas formas, e a conferência sempre por dígitos.
+      for (const busca of [this.formatarDocumento(doc), doc]) {
+        const achado = await this.client
+          .get<{ itens?: Array<{ id: number; cpfCnpj?: string }> }>(empresaId, '/contatos', {
+            cpfCnpj: busca,
+            limit: 20,
+          })
+          .catch(() => ({ itens: [] }));
+        const exato = (achado.itens ?? []).find(
+          (c) => (c.cpfCnpj ?? '').replace(/\D/g, '') === doc,
+        );
+        if (exato) return exato.id;
+      }
       // Com documento em mãos, NÃO cai pro nome: documento que não existe lá
       // significa contato novo, e casar por nome aqui juntaria duas pessoas
       // diferentes num cadastro só.
@@ -89,6 +98,20 @@ export class TinyContatosService {
       );
       return null;
     }
+  }
+
+  /** 11 dígitos → CPF, 14 → CNPJ; qualquer outro tamanho volta como veio. */
+  private formatarDocumento(doc: string): string {
+    if (doc.length === 11) {
+      return `${doc.slice(0, 3)}.${doc.slice(3, 6)}.${doc.slice(6, 9)}-${doc.slice(9)}`;
+    }
+    if (doc.length === 14) {
+      return (
+        `${doc.slice(0, 2)}.${doc.slice(2, 5)}.${doc.slice(5, 8)}/` +
+        `${doc.slice(8, 12)}-${doc.slice(12)}`
+      );
+    }
+    return doc;
   }
 
   async criar(empresaId: string, contato: ContatoParaTiny): Promise<number> {

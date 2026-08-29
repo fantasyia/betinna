@@ -29,6 +29,41 @@ describe('contatos no Tiny', () => {
     expect(client.post).not.toHaveBeenCalled();
   });
 
+  it('procura pelo documento FORMATADO (é assim que o Tiny guarda)', async () => {
+    // Bug real de produção (29/08): buscando só por dígitos, o Tiny não achava
+    // o contato existente; o passo seguinte tentava criar e o ERP respondia
+    // "Contato com CPF ... já existe" — derrubando o pedido de um cliente que
+    // estava cadastrado lá o tempo todo.
+    const client = {
+      get: vi.fn(async (_e: string, _c: string, q: Record<string, unknown>) =>
+        q.cpfCnpj === '111.444.777-35'
+          ? { itens: [{ id: 91, cpfCnpj: '111.444.777-35' }] }
+          : { itens: [] },
+      ),
+      post: vi.fn().mockResolvedValue({ id: 555 }),
+    };
+    const svc = new TinyContatosService(client as never);
+
+    const id = await svc.garantir('emp-1', { nome: 'Cliente', cpfCnpj: '11144477735' });
+
+    expect(id).toBe(91);
+    expect(client.post).not.toHaveBeenCalled();
+  });
+
+  it('CNPJ também é procurado formatado', async () => {
+    const client = {
+      get: vi.fn(async (_e: string, _c: string, q: Record<string, unknown>) =>
+        q.cpfCnpj === '16.774.052/0001-55'
+          ? { itens: [{ id: 92, cpfCnpj: '16.774.052/0001-55' }] }
+          : { itens: [] },
+      ),
+      post: vi.fn().mockResolvedValue({ id: 555 }),
+    };
+    const svc = new TinyContatosService(client as never);
+
+    expect(await svc.garantir('emp-1', { nome: 'Somatec', cpfCnpj: '16774052000155' })).toBe(92);
+  });
+
   it('com documento que não existe lá, CRIA — não cai pro nome', async () => {
     // Cair pro nome aqui juntaria duas pessoas diferentes num cadastro só:
     // "Marcelo" da empresa A e "Marcelo" da empresa B viram o mesmo contato.
