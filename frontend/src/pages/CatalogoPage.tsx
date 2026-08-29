@@ -247,6 +247,12 @@ export default function CatalogoPage() {
             variant="secondary"
             data-testid="catalogo-pdf"
             onClick={baixarPdfDoCatalogo}
+            // Botão desabilitado sem explicação vira "não funciona". Diz por quê.
+            title={
+              itens.length === 0
+                ? 'Adicione produtos ao catálogo pra gerar o PDF'
+                : 'Baixa o catálogo em PDF (foto, preço e disponibilidade)'
+            }
             disabled={itens.length === 0 || baixandoPdf}
             loading={baixandoPdf}
             leftIcon={<Download className="h-3.5 w-3.5" />}
@@ -645,6 +651,7 @@ function PreviewClienteDialog({
             data-testid="preview-pdf"
             onClick={baixarPdf}
             loading={baixando}
+            title={!cliente ? 'Escolha um cliente primeiro' : 'Baixa o catálogo com o preço deste cliente'}
             disabled={!cliente || itens.length === 0}
             leftIcon={<Download className="h-3.5 w-3.5" />}
           >
@@ -850,7 +857,12 @@ async function baixarCatalogoPdf(clienteId?: string, precos?: TabelaDePrecos): P
   const a = document.createElement('a');
   a.href = url;
   a.download = r.filename;
+  // O <a> PRECISA estar no documento antes do clique: âncora solta é ignorada
+  // por parte dos navegadores, e o download não acontece — sem erro nenhum,
+  // que é como isto passou despercebido. (Mesmo caminho já usado na proposta.)
+  document.body.appendChild(a);
   a.click();
+  a.remove();
   URL.revokeObjectURL(url);
 }
 

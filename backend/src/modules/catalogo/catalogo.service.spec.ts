@@ -492,8 +492,8 @@ describe('CatalogoService', () => {
       expect(out.produtos[0].produtoId).toBe('p-1');
     });
 
-    it('rejeita link de rep inativo', async () => {
-      prisma.usuario.findFirst.mockResolvedValue(null); // não casa ATIVO/REP/vínculo
+    it('rejeita link de dono inativo ou fora da empresa', async () => {
+      prisma.usuario.findFirst.mockResolvedValue(null); // não casa ATIVO/vínculo
       await expect(service.resolverShareToken('token')).rejects.toBeInstanceOf(
         BusinessRuleException,
       );
@@ -501,14 +501,16 @@ describe('CatalogoService', () => {
   });
 });
 
-describe('CatalogoService.shareWithClient — só REP gera link (auditoria média)', () => {
-  // O resolverShareToken exige `role: 'REP'` no dono do catálogo. Sem gate na
-  // geração, DIRECTOR/GERENTE recebiam ok:true + previewUrl e o cliente batia em
-  // "Representante não encontrado" — link nascia morto e quem gerou só descobria
-  // pelo cliente reclamando.
-  const montar = () =>
-    new CatalogoService(
-      makePrismaMock() as never,
+describe('CatalogoService.shareWithClient — gestão também compartilha', () => {
+  // Por um tempo isto recusava quem não fosse REP, e o motivo era real: o
+  // resolver exigia `role: 'REP'` no dono, então link de diretor nascia morto.
+  // A correção certa foi no RESOLVER (o catálogo é de quem o montou) — e estes
+  // testes existem pra ninguém "restaurar" o gate por engano.
+  const montar = (itens: Array<Record<string, unknown>> = [fakeCatalogoItem()]) => {
+    const prisma = makePrismaMock();
+    prisma.repCatalogoItem.findMany.mockResolvedValue(itens);
+    return new CatalogoService(
+      prisma as never,
       makeClientesMock() as never,
       makePricingMock() as never,
       {
@@ -518,17 +520,24 @@ describe('CatalogoService.shareWithClient — só REP gera link (auditoria médi
       } as never,
       { gerar: vi.fn().mockResolvedValue(Buffer.from('pdf')) } as never,
     );
+  };
 
-  it.each(['DIRECTOR', 'GERENTE', 'ADMIN', 'SAC'] as const)(
-    '%s é recusado com mensagem acionável',
-    async (role) => {
-      await expect(
-        montar().shareWithClient(fakeUser({ role: role as UserRole }), {
-          clienteId: undefined,
-        } as never),
-      ).rejects.toThrow(/REPRESENTANTE|REP/);
-    },
-  );
+  it.each(['DIRECTOR', 'GERENTE', 'ADMIN', 'REP'] as const)('%s consegue gerar', async (role) => {
+    const r = await montar().shareWithClient(fakeUser({ role: role as UserRole }), {
+      canal: 'whatsapp',
+    } as never);
+
+    expect(r.ok).toBe(true);
+    expect(r.token).toBe('fake.jwt.token');
+  });
+
+  it('catálogo vazio recusa com motivo, em vez de link que não mostra nada', async () => {
+    await expect(
+      montar([]).shareWithClient(fakeUser({ role: 'DIRECTOR' as UserRole }), {
+        canal: 'whatsapp',
+      } as never),
+    ).rejects.toThrow(/vazio/i);
+  });
 });
 
 /**

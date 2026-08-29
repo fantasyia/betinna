@@ -464,19 +464,13 @@ export class CatalogoService {
     if (!user.empresaIdAtiva) {
       throw new BusinessRuleException('Empresa não definida');
     }
-    // AUDITORIA (média): a GERAÇÃO não checava papel, mas o `resolverShareToken`
-    // exige `role: 'REP'` no dono do catálogo. DIRECTOR/GERENTE geravam o link,
-    // recebiam `ok:true` + previewUrl, mandavam pro cliente — e o cliente batia
-    // em "Representante não encontrado ou inativo". Link nascia morto, e quem
-    // gerou só descobria pelo cliente reclamando. Erro agora sai de cara, no
-    // lado de quem pode agir. (O catálogo é uma curadoria POR REP — não existe
-    // catálogo de diretor; por isso o gate é aqui, não no resolver.)
-    if (user.role !== 'REP') {
-      throw new BusinessRuleException(
-        'O catálogo compartilhável é do REPRESENTANTE — só um REP pode gerar o link. ' +
-          'Peça ao rep responsável pela carteira, ou compartilhe o catálogo dele.',
-      );
-    }
+    // HISTÓRICO, pra não voltar atrás sem entender: por um tempo isto recusava
+    // quem não fosse REP. O motivo era real — o `resolverShareToken` exigia
+    // `role: 'REP'` no dono, então link de diretor nascia morto e o cliente
+    // batia em "Representante não encontrado". A correção certa, feita em
+    // 29/08, foi tirar a exigência de papel do RESOLVER: o catálogo é de quem o
+    // montou, e diretor/gerente também apresentam catálogo a cliente. O gate
+    // que sobra é o que importa — usuário ATIVO e vinculado à empresa do token.
     // Vínculo com cliente é OPCIONAL — share livre quando dto.clienteId vazio.
     let clienteId: string | undefined;
     let items: PreviewItem[];
@@ -538,17 +532,16 @@ export class CatalogoService {
     // usuário troca os vínculos SEM desativar, então um rep movido de tenant
     // (ou removido da empresa) seguia com o link vivo, servindo o catálogo e os
     // preços negociados da empresa que ele deixou.
-    const rep = await this.prisma.usuario.findFirst({
+    const dono = await this.prisma.usuario.findFirst({
       where: {
         id: payload.repId,
         status: 'ATIVO',
-        role: 'REP',
         empresas: { some: { empresaId: payload.empresaId } },
       },
-      select: { id: true, nome: true },
+      select: { id: true, nome: true, role: true },
     });
-    if (!rep) {
-      throw new BusinessRuleException('Representante não encontrado ou inativo. Link inválido.');
+    if (!dono) {
+      throw new BusinessRuleException('Este link não está mais disponível.');
     }
     // Tenant desativado (churn/inadimplência) não serve mais catálogo público.
     const empresa = await this.prisma.empresa.findFirst({
@@ -558,11 +551,15 @@ export class CatalogoService {
     if (!empresa) {
       throw new BusinessRuleException('Este link não está mais disponível.');
     }
+    // O papel REAL do dono entra aqui de propósito: é ele que decide o preço que
+    // o link mostra. Catálogo de REP sai com a mensalidade de locação (ele não
+    // vende); catálogo de diretor/gerente sai com o preço de venda. Fixar 'REP'
+    // faria o link do diretor exibir locação — o número errado pro cliente dele.
     const fakeAuth: AuthenticatedUser = {
-      id: rep.id,
+      id: dono.id,
       email: '',
-      nome: rep.nome,
-      role: 'REP',
+      nome: dono.nome,
+      role: dono.role,
       empresaIds: [payload.empresaId],
       empresaIdAtiva: payload.empresaId,
     };
@@ -571,7 +568,7 @@ export class CatalogoService {
       ? await this.previewParaCliente(fakeAuth, payload.clienteId)
       : await this.previewSemCliente(fakeAuth);
     return {
-      rep: { id: rep.id, nome: rep.nome },
+      rep: { id: dono.id, nome: dono.nome },
       // CAÇADA-BUG #6: este endpoint é @Public() — o CLIENTE final vê o JSON. Projetar só campos
       // públicos: NUNCA vazar precoFabrica (custo = margem da empresa), estoque, popularidade nem
       // flags internas. Só nome/preço/identificação do produto + preço final da negociação.
