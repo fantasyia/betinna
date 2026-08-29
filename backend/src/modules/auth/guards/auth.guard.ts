@@ -137,6 +137,10 @@ export class AuthGuard implements CanActivate {
    *  - `/inbox` e `/contatos`/`/users` são SOMENTE LEITURA, com UMA exceção:
    *    `DELETE /inbox/:id/mensagens` (Zerar conversa) — liberado por rota
    *    exata pro reset entre casos de teste. Responder/atribuir seguem barrados.
+   *  - `/campanhas` libera ESCRITA de template e rascunho (o e-mail que o
+   *    agente escreve), mas **`disparar`, `agendar` e `reenviar-erros` NUNCA**:
+   *    os três fazem e-mail sair pra base real e não têm desfazer — é decisão
+   *    de gente, na tela.
    *  - Carrega o dono (com role/empresa) e injeta req.user — assim @Roles e o
    *    filtro multi-tenant dos controllers continuam valendo sem mudança.
    *  - Atualiza ultimoUso com throttle de 60s (best-effort).
@@ -161,6 +165,7 @@ export class AuthGuard implements CanActivate {
       | 'conhecimento'
       | 'tags'
       | 'inbox'
+      | 'campanhas'
       | null = null;
     // ANCORADO no 1º segmento — o regex de "contém" casava /leads/kanban, então
     // um token de escopo `kanban` (quadros estilo Trello) lia o PIPELINE DE LEADS
@@ -191,10 +196,19 @@ export class AuthGuard implements CanActivate {
     // (/perguntar etc.) segue FORA do alcance do PAT.
     else if (/^\/mullerbot\/(prompts|persona|bot\/modelos)(\/|$)/.test(rel))
       moduloRequerido = 'prompts';
+    // /campanhas + /campanha-templates = conteúdo de campanha. ESCRITA liberada:
+    // é o e-mail que o Claude escreve e sobe. O DISPARO fica FORA (abaixo) — sai
+    // mensagem pra base real e não tem desfazer.
+    //
+    // Os DOIS prefixos porque o template tem controller próprio: com ele dentro
+    // de /campanhas, o `@Get(':id')` de campanha capturava "templates" e a rota
+    // do template nunca era alcançada. Casar só /campanhas deixaria o escopo sem
+    // acesso justamente ao que o agente vem escrever.
+    else if (/^\/(campanhas|campanha-templates)(\/|$)/.test(rel)) moduloRequerido = 'campanhas';
     if (!moduloRequerido) {
       throw new ForbiddenException(
         'Token de API só acessa rotas /kanban, /fluxos, /funis, /contatos, /crm, /users, ' +
-          '/conhecimento, /tags, /inbox e /mullerbot/prompts|persona',
+          '/conhecimento, /tags, /inbox, /campanhas e /mullerbot/prompts|persona',
       );
     }
 
@@ -217,6 +231,24 @@ export class AuthGuard implements CanActivate {
       moduloRequerido === 'inbox' &&
       (request.method ?? 'GET').toUpperCase() === 'DELETE' &&
       /^\/inbox\/[^/]+\/mensagens\/?$/.test(rel);
+
+    // DISPARO de campanha nunca por token. Escrever e revisar o e-mail é
+    // trabalho de agente; apertar o botão que manda pra base real é decisão de
+    // gente — sai mensagem pra cliente e não existe desfazer. Bloqueio por ROTA
+    // EXATA (mesmo padrão do "zerar conversa"), pra não fechar o resto do
+    // módulo junto.
+    // Tudo que faz e-mail SAIR fica de fora — `disparar` é o óbvio, mas
+    // `agendar` dispara depois (sem ninguém apertar nada) e `reenviar-erros`
+    // manda de novo pra quem falhou. Bloquear só o `disparar` deixaria duas
+    // portas abertas pro mesmo estrago.
+    if (
+      moduloRequerido === 'campanhas' &&
+      /^\/campanhas\/[^/]+\/(disparar|agendar|reenviar-erros)\/?$/.test(rel)
+    ) {
+      throw new ForbiddenException(
+        'Token de API não dispara nem agenda campanha — escreva e revise por aqui, e envie pelo app.',
+      );
+    }
 
     if (
       (moduloRequerido === 'contatos' ||

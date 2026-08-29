@@ -223,6 +223,11 @@ export const API_TOKEN_ESCOPOS = [
   // É PII: serve pra analisar o histórico de um lead e ajustar prompt, não pra
   // responder nem reatribuir — isso é de quem atende.
   'inbox',
+  // campanhas = conteúdo de e-mail marketing (/campanhas): template e rascunho.
+  // ESCRITA liberada — é o e-mail que o agente escreve e sobe pro app. Disparar,
+  // agendar e reenviar seguem barrados no guard: fazem e-mail sair pra base real
+  // e não têm desfazer.
+  'campanhas',
 ] as const;
 
 export const createApiTokenSchema = z.object({

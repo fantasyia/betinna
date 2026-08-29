@@ -50,6 +50,11 @@ const ESCOPOS: Array<{ key: string; label: string; badge: string }> = [
     label: 'Inbox (somente leitura · CONVERSA DE CLIENTE)',
     badge: 'Inbox (leitura)',
   },
+  {
+    key: 'campanhas',
+    label: 'Campanhas — escrita de conteúdo (template e rascunho; NÃO dispara)',
+    badge: 'Campanhas',
+  },
 ];
 
 const rotuloEscopo = (key: string) =>

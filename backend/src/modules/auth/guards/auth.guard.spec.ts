@@ -228,3 +228,101 @@ describe('AuthGuard — escopo do bkt_ não vaza por rota que CONTÉM o nome', (
     }
   });
 });
+
+describe('AuthGuard — token de API (bkt_) em /campanhas', () => {
+  let guard: AuthGuard;
+  let prisma: {
+    kanbanApiToken: { findUnique: ReturnType<typeof vi.fn>; update: ReturnType<typeof vi.fn> };
+    usuario: { findUnique: ReturnType<typeof vi.fn> };
+  };
+
+  beforeEach(() => {
+    prisma = {
+      kanbanApiToken: {
+        findUnique: vi.fn().mockResolvedValue({
+          id: 'tok-1',
+          empresaId: 'emp-1',
+          usuarioId: 'u1',
+          escopo: ['campanhas'],
+          revogado: false,
+        }),
+        update: vi.fn().mockResolvedValue({}),
+      },
+      usuario: { findUnique: vi.fn().mockResolvedValue(bktUser) },
+    };
+    const redis = {
+      get: vi.fn().mockResolvedValue(null),
+      setNxEx: vi.fn().mockResolvedValue(true),
+      eval: vi.fn().mockResolvedValue(1),
+      setEx: vi.fn().mockResolvedValue(undefined),
+    };
+    const reflector = { getAllAndOverride: vi.fn().mockReturnValue(false) } as unknown as Reflector;
+    guard = new AuthGuard(
+      reflector,
+      {} as never, // SupabaseAuthService — não usado no caminho bkt_
+      prisma as never,
+      redis as never,
+      { get: () => 300 } as never,
+    );
+  });
+
+  it('POST em /campanha-templates PASSA — é o e-mail que o agente escreve', async () => {
+    // O template tem controller PRÓPRIO (/campanha-templates): dentro de
+    // /campanhas o @Get(":id") capturava "templates". Casar só /campanhas
+    // deixaria o escopo sem acesso ao que o agente vem escrever.
+    const ctx = fakeContext({
+      method: 'POST',
+      path: '/campanha-templates',
+      headers: { authorization: 'Bearer bkt_abc' },
+    });
+
+    await expect(guard.canActivate(ctx)).resolves.toBe(true);
+  });
+
+  it('POST em /campanhas/:id/disparar é BLOQUEADO — sai e-mail pra base real', async () => {
+    const ctx = fakeContext({
+      method: 'POST',
+      path: '/campanhas/c1/disparar',
+      headers: { authorization: 'Bearer bkt_abc' },
+    });
+
+    await expect(guard.canActivate(ctx)).rejects.toBeInstanceOf(ForbiddenException);
+  });
+
+  it('AGENDAR também é bloqueado — dispara depois, sem ninguém apertar nada', async () => {
+    const ctx = fakeContext({
+      method: 'POST',
+      path: '/campanhas/c1/agendar',
+      headers: { authorization: 'Bearer bkt_abc' },
+    });
+
+    await expect(guard.canActivate(ctx)).rejects.toBeInstanceOf(ForbiddenException);
+  });
+
+  it('REENVIAR-ERROS também — manda de novo pra quem falhou', async () => {
+    const ctx = fakeContext({
+      method: 'POST',
+      path: '/campanhas/c1/reenviar-erros',
+      headers: { authorization: 'Bearer bkt_abc' },
+    });
+
+    await expect(guard.canActivate(ctx)).rejects.toBeInstanceOf(ForbiddenException);
+  });
+
+  it('token SEM o escopo "campanhas" não entra em /campanhas', async () => {
+    prisma.kanbanApiToken.findUnique.mockResolvedValue({
+      id: 'tok-2',
+      empresaId: 'emp-1',
+      usuarioId: 'u1',
+      escopo: ['kanban'],
+      revogado: false,
+    });
+    const ctx = fakeContext({
+      method: 'GET',
+      path: '/campanhas',
+      headers: { authorization: 'Bearer bkt_abc' },
+    });
+
+    await expect(guard.canActivate(ctx)).rejects.toBeInstanceOf(ForbiddenException);
+  });
+});

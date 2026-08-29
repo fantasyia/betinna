@@ -3234,8 +3234,174 @@ server.registerTool(
 
 const transport = new StdioServerTransport();
 await server.connect(transport);
+
+// ─── CAMPANHAS (e-mail marketing) ────────────────────────────────────────────
+//
+// O ciclo que isto destrava: o agente ESCREVE o e-mail aqui, SOBE pro app, e o
+// Léo dispara na tela. O disparo fica de fora de propósito — o guard barra
+// `disparar`, `agendar` e `reenviar-erros` por rota exata. Os três fazem e-mail
+// sair pra base real e não têm desfazer; revisar é trabalho de agente, apertar o
+// botão é decisão de gente.
+
+server.registerTool(
+  'campanha_template_listar',
+  {
+    description:
+      'Lista os TEMPLATES de campanha da empresa (nome, canal, assunto). Use antes de criar, ' +
+      'pra reaproveitar em vez de duplicar. Exige escopo "campanhas".',
+    inputSchema: {},
+    annotations: { readOnlyHint: true, destructiveHint: false },
+  },
+  seguro(async () => {
+    type TemplateApi = {
+      id: string;
+      nome: string;
+      canal?: string;
+      assunto?: string | null;
+      descricao?: string | null;
+      atualizadoEm?: string;
+    };
+    const r = await api.get<TemplateApi[] | { data?: TemplateApi[] }>('/campanha-templates');
+    const arr = Array.isArray(r) ? r : (r?.data ?? []);
+    return ok(
+      arr.map((t) => ({
+        id: t.id,
+        nome: t.nome,
+        canal: t.canal ?? 'EMAIL',
+        assunto: t.assunto ?? null,
+        descricao: t.descricao ?? null,
+        atualizadoEm: t.atualizadoEm,
+      })),
+    );
+  }),
+);
+
+server.registerTool(
+  'campanha_template_criar',
+  {
+    description:
+      'Cria um TEMPLATE de campanha (o e-mail pronto pra reusar). O HTML vai em mensagemEmail. ' +
+      'NÃO envia nada — quem dispara é o Léo, na tela do app. Exige escopo "campanhas".',
+    inputSchema: {
+      nome: z.string().describe('Nome do template (é como ele aparece na lista).'),
+      canal: z.enum(['EMAIL', 'WHATSAPP']).optional().describe('Default EMAIL.'),
+      assunto: z.string().optional().describe('Assunto do e-mail. Até 80 caracteres entrega melhor.'),
+      mensagemEmail: z.string().optional().describe('Corpo em HTML. Markup simples — cliente de e-mail ignora CSS complexo.'),
+      mensagemWa: z.string().optional().describe('Texto, quando o canal é WHATSAPP.'),
+      descricao: z.string().optional().describe('Pra que serve — ajuda a achar depois.'),
+      objetivo: z.string().optional().describe('Contexto pra personalização por IA.'),
+    },
+    annotations: { readOnlyHint: false, destructiveHint: false },
+  },
+  seguro(async (args: Record<string, unknown>) => {
+    const t = await api.post<{ id: string; nome: string }>('/campanha-templates', args);
+    return ok({ id: t.id, nome: t.nome, criado: true });
+  }),
+);
+
+server.registerTool(
+  'campanha_template_atualizar',
+  {
+    description:
+      'Atualiza um TEMPLATE existente (assunto, corpo, nome). Manda só os campos que mudam. ' +
+      'Exige escopo "campanhas".',
+    inputSchema: {
+      templateId: z.string().describe('ID do template (use campanha_template_listar).'),
+      nome: z.string().optional(),
+      assunto: z.string().optional(),
+      mensagemEmail: z.string().optional(),
+      mensagemWa: z.string().optional(),
+      descricao: z.string().optional(),
+      objetivo: z.string().optional(),
+    },
+    annotations: { readOnlyHint: false, destructiveHint: false },
+  },
+  seguro(async (args: { templateId: string } & Record<string, unknown>) => {
+    const { templateId, ...resto } = args;
+    const t = await api.patch<{ id: string; nome: string }>(
+      `/campanha-templates/${templateId}`,
+      resto,
+    );
+    return ok({ id: t.id, nome: t.nome, atualizado: true });
+  }),
+);
+
+server.registerTool(
+  'campanhas_listar',
+  {
+    description:
+      'Lista as CAMPANHAS da empresa com status (rascunho, agendada, enviando, concluída) e ' +
+      'números de envio. Exige escopo "campanhas".',
+    inputSchema: {
+      status: z.string().optional().describe('Filtra por status (ex.: RASCUNHO).'),
+      limit: z.number().optional().describe('Default 20.'),
+    },
+    annotations: { readOnlyHint: true, destructiveHint: false },
+  },
+  seguro(async (args: { status?: string; limit?: number }) => {
+    const qs = new URLSearchParams();
+    if (args.status) qs.set('status', args.status);
+    qs.set('limit', String(args.limit ?? 20));
+    type CampanhaApi = {
+      id: string;
+      nome: string;
+      canal?: string;
+      status?: string;
+      assunto?: string | null;
+      agendadoPara?: string | null;
+      _count?: { destinatarios?: number };
+    };
+    const r = await api.get<{ data?: CampanhaApi[] } | CampanhaApi[]>(`/campanhas?${qs.toString()}`);
+    const arr = Array.isArray(r) ? r : (r?.data ?? []);
+    return ok(
+      arr.map((c) => ({
+        id: c.id,
+        nome: c.nome,
+        canal: c.canal,
+        status: c.status,
+        assunto: c.assunto ?? null,
+        agendadoPara: c.agendadoPara ?? null,
+        destinatarios: c._count?.destinatarios ?? 0,
+      })),
+    );
+  }),
+);
+
+server.registerTool(
+  'campanha_criar_rascunho',
+  {
+    description:
+      'Cria uma CAMPANHA em rascunho, com o conteúdo já dentro. Não agenda e não dispara — o ' +
+      'envio é feito pelo Léo na tela (o token nem consegue chamar disparar/agendar). ' +
+      'Segmentação vazia = toda a base ativa; confirme com ele antes de deixar assim. ' +
+      'Exige escopo "campanhas".',
+    inputSchema: {
+      nome: z.string().describe('Nome interno da campanha.'),
+      canal: z.enum(['EMAIL', 'WHATSAPP']).optional().describe('Default EMAIL.'),
+      assunto: z.string().optional().describe('Assunto do e-mail.'),
+      mensagemEmail: z.string().optional().describe('Corpo em HTML.'),
+      mensagemWa: z.string().optional().describe('Texto, quando WHATSAPP.'),
+      segTagIds: z.array(z.string()).optional().describe('Etiquetas de lead que definem o público.'),
+      objetivo: z.string().optional().describe('Contexto pra personalização por IA.'),
+    },
+    annotations: { readOnlyHint: false, destructiveHint: false },
+  },
+  seguro(async (args: Record<string, unknown>) => {
+    const c = await api.post<{ id: string; nome: string; status?: string }>('/campanhas', {
+      canal: 'EMAIL',
+      ...args,
+    });
+    return ok({
+      id: c.id,
+      nome: c.nome,
+      status: c.status,
+      aviso: 'Rascunho criado. O disparo é na tela do app — o token não envia.',
+    });
+  }),
+);
+
 console.error(
   '[betinna-kanban-mcp] conectado — kanban_* + fluxos_* + funis_/contatos_/crm + prompts_* + ' +
     'bot_config_* + usuarios_* + conhecimento_* (base do RAG) + tags_* (etiquetas de LEAD) + ' +
-    'inbox_* (SÓ leitura)',
+    'inbox_* (SÓ leitura) + campanha_* (conteúdo; NÃO dispara)',
 );
