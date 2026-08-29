@@ -8,7 +8,7 @@
  *  - estado vazio e estado de erro não explodem
  */
 
-import { render, screen, cleanup } from '@testing-library/react';
+import { render, screen, cleanup, fireEvent, waitFor } from '@testing-library/react';
 import { afterEach, describe, it, expect, vi } from 'vitest';
 
 const LISTA = {
@@ -143,5 +143,18 @@ describe('PedidosPage — render de dinheiro', () => {
     carregando = true;
     respostaLista = null;
     expect(() => render(<Pagina />)).not.toThrow();
+  });
+});
+
+describe('PedidosPage — sincronizar com o ERP', () => {
+  it('o botão puxa os pedidos do ERP (rota /pedidos/sync-erp)', async () => {
+    // A rodada diária é de madrugada; quando o cliente liga perguntando do
+    // pedido, é este botão que responde.
+    const { api } = await import('@/lib/api');
+    render(<Pagina />);
+
+    fireEvent.click(screen.getByTestId('pedido-sync-erp'));
+
+    await waitFor(() => expect(api.post).toHaveBeenCalledWith('/pedidos/sync-erp', {}));
   });
 });
