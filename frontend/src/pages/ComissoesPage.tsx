@@ -14,25 +14,37 @@ import { formatMoeda as fmtBRL, formatPercent } from '@/lib/masks';
 
 type ComissaoTipo = 'REP' | 'GERENTE';
 
+/**
+ * Espelha o `Comissao` do banco — nomes IGUAIS aos do backend.
+ *
+ * A tela usava `valor`/`totalVendido`, campos que a API nunca devolveu: o
+ * dinheiro saía como R$ 0,00 na lista e o resumo do rep quebrava a página
+ * inteira. Nome inventado no front é erro que só aparece em produção — o teste
+ * mockava o mesmo chute e passava.
+ */
 interface Comissao {
   id: string;
   mes: number;
   ano: number;
   tipo: ComissaoTipo;
   representante?: { id: string; nome: string };
-  valor: number;
-  totalVendido: number;
-  percentual: number;
+  totalVendas: number;
+  totalComissao: number;
+  qtdPedidos?: number;
+  percentual: number | null;
   pago: boolean;
   pagoEm?: string | null;
   reciboUrl?: string | null;
 }
 
+/** `GET /comissoes/meu-resumo` — o que o REP/GERENTE vê de si. */
 interface Resumo {
-  mesAtual: { valor: number; totalVendido: number; pago: boolean };
-  ultimos12Meses: Array<{ mes: number; ano: number; valor: number; pago: boolean }>;
-  totalReceber: number;
-  totalRecebido: number;
+  representanteId: string;
+  anoAtual: number;
+  totalRecebidoAnoAtual: number;
+  totalAReceberAnoAtual: number;
+  /** Os 12 lançamentos mais recentes (pode ter REP e GERENTE no mesmo mês). */
+  historico: Comissao[];
 }
 
 const MES_NOMES = [
@@ -68,6 +80,17 @@ export default function ComissoesPage() {
 function ResumoPessoal() {
   const { data, loading, error, refetch } = useApiQuery<Resumo>('/comissoes/meu-resumo');
 
+  // "Mês atual" é o lançamento deste mês dentro do histórico — pode não existir
+  // (o mês só vira comissão quando o diretor fecha), e aí mostra zero em vez de
+  // quebrar. Somando REP + GERENTE, que são dois lançamentos do mesmo mês pra
+  // quem acumula os dois papéis.
+  const agora = new Date();
+  const doMes = (data?.historico ?? []).filter(
+    (c) => c.mes === agora.getUTCMonth() + 1 && c.ano === agora.getUTCFullYear(),
+  );
+  const comissaoDoMes = doMes.reduce((s, c) => s + Number(c.totalComissao ?? 0), 0);
+  const vendidoDoMes = doMes.reduce((s, c) => s + Number(c.totalVendas ?? 0), 0);
+
   return (
     <section className="bg-surface border border-border rounded-[10px] p-6 mb-6">
       <h2 className="mt-0 text-[18px]">Meu resumo</h2>
@@ -77,45 +100,56 @@ function ResumoPessoal() {
             <div className="grid grid-cols-[repeat(auto-fit,minmax(160px,1fr))] gap-3 mb-4">
               <StatBox
                 label="Mês atual"
-                value={fmtBRL(data.mesAtual.valor)}
-                hint={`Vendido: ${fmtBRL(data.mesAtual.totalVendido)}`}
+                value={fmtBRL(comissaoDoMes)}
+                hint={
+                  doMes.length > 0
+                    ? `Vendido: ${fmtBRL(vendidoDoMes)}`
+                    : 'mês ainda não fechado'
+                }
               />
               <StatBox
-                label="A receber"
-                value={fmtBRL(data.totalReceber)}
+                label={`A receber em ${data.anoAtual}`}
+                value={fmtBRL(data.totalAReceberAnoAtual ?? 0)}
                 color="var(--warning)"
               />
               <StatBox
-                label="Recebido"
-                value={fmtBRL(data.totalRecebido)}
+                label={`Recebido em ${data.anoAtual}`}
+                value={fmtBRL(data.totalRecebidoAnoAtual ?? 0)}
                 color="var(--success)"
               />
             </div>
-            <h3 className="text-[14px] mb-2">Últimos 12 meses</h3>
-            <div className="flex gap-1 overflow-x-auto pb-1">
-              {data.ultimos12Meses.map((m) => (
-                <div
-                  key={`${m.ano}-${m.mes}`}
-                  data-testid="comissao-historico"
-                  className={cn(
-                    'flex-[1_1_70px] min-w-[70px] p-2 rounded-md text-center border border-border',
-                    m.pago ? 'bg-success/8' : 'bg-bg-alt',
-                  )}
-                >
-                  <div className="text-[11px] text-muted">
-                    {MES_NOMES[m.mes - 1]}/{String(m.ano).slice(2)}
-                  </div>
-                  <div className="font-semibold text-[13px] mt-0.5">
-                    {fmtBRL(m.valor)}
-                  </div>
-                  {m.pago && (
-                    <div className="inline-flex items-center rounded-full px-[9px] py-0.5 text-[9px] font-semibold leading-[1.6] tracking-[0.2px] bg-success/12 text-success border border-success/19 mt-1">
-                      pago
+            <h3 className="text-[14px] mb-2">Últimos lançamentos</h3>
+            {(data.historico ?? []).length === 0 ? (
+              <p className="text-[13px] text-muted m-0">
+                Nenhuma comissão fechada ainda. Elas aparecem aqui quando o mês é fechado.
+              </p>
+            ) : (
+              <div className="flex gap-1 overflow-x-auto pb-1">
+                {data.historico.map((c) => (
+                  <div
+                    key={c.id}
+                    data-testid="comissao-historico"
+                    className={cn(
+                      'flex-[1_1_86px] min-w-[86px] p-2 rounded-md text-center border border-border',
+                      c.pago ? 'bg-success/8' : 'bg-bg-alt',
+                    )}
+                  >
+                    <div className="text-[11px] text-muted">
+                      {MES_NOMES[c.mes - 1]}/{String(c.ano).slice(2)}
                     </div>
-                  )}
-                </div>
-              ))}
-            </div>
+                    <div className="font-semibold text-[13px] mt-0.5">
+                      {fmtBRL(c.totalComissao)}
+                    </div>
+                    <div className="text-[10px] text-muted mt-0.5">{c.tipo}</div>
+                    {c.pago && (
+                      <div className="inline-flex items-center rounded-full px-[9px] py-0.5 text-[9px] font-semibold leading-[1.6] tracking-[0.2px] bg-success/12 text-success border border-success/19 mt-1">
+                        pago
+                      </div>
+                    )}
+                  </div>
+                ))}
+              </div>
+            )}
           </div>
         )}
       </StateView>
@@ -197,7 +231,7 @@ function ListaAdmin() {
     {
       key: 'vendido',
       header: 'Vendido',
-      render: (c) => fmtBRL(c.totalVendido),
+      render: (c) => fmtBRL(c.totalVendas),
     },
     {
       key: 'percentual',
@@ -207,7 +241,7 @@ function ListaAdmin() {
     {
       key: 'valor',
       header: 'Comissão',
-      render: (c) => <strong>{fmtBRL(c.valor)}</strong>,
+      render: (c) => <strong>{fmtBRL(c.totalComissao)}</strong>,
     },
     {
       key: 'status',
@@ -466,7 +500,7 @@ function PagarModal({
     >
       <form id="pagar-form" onSubmit={submit}>
         <p className="mt-0 text-[14px]">
-          <strong>{comissao.representante?.nome}</strong> — {fmtBRL(comissao.valor)}
+          <strong>{comissao.representante?.nome}</strong> — {fmtBRL(comissao.totalComissao)}
         </p>
         <FormField
           label="URL do recibo (opcional)"

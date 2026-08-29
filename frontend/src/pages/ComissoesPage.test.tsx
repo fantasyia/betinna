@@ -20,7 +20,6 @@ const LISTA = {
       ano: 2026,
       totalVendas: 120000.9,
       totalComissao: 6000.05,
-      valor: 6000.05,
       qtdPedidos: 12,
       percentual: 5,
       pago: false,
@@ -67,12 +66,30 @@ vi.mock('@/hooks/useApiQuery', () => ({
       };
     if (path.includes('/listas'))
       return { data: [], loading: false, error: null, refetch: vi.fn() };
-    // Resumo pessoal do rep tem shape próprio (não é lista paginada).
+    // Resumo pessoal do rep: shape REAL de `GET /comissoes/meu-resumo`.
+    // ⚠️ Este mock já foi um chute (`mesAtual`/`ultimos12Meses`, campos que a
+    // API nunca devolveu) — e como o teste mockava o mesmo chute da tela, ele
+    // passava enquanto a página quebrava na mão do rep. Mock de contrato tem
+    // que copiar o backend, não a expectativa do front.
     if (path.includes('meu-resumo'))
       return {
         data: {
-          mesAtual: { valor: 6000.05, mes: 7, ano: 2026 },
-          ultimos12Meses: [{ mes: 7, ano: 2026, valor: 6000.05 }],
+          representanteId: 'rep-1',
+          anoAtual: 2026,
+          totalRecebidoAnoAtual: 12000.1,
+          totalAReceberAnoAtual: 6000.05,
+          historico: [
+            {
+              id: 'com-1',
+              tipo: 'REP',
+              mes: 7,
+              ano: 2026,
+              totalVendas: 120000.9,
+              totalComissao: 6000.05,
+              percentual: 5,
+              pago: false,
+            },
+          ],
         },
         loading: false,
         error: null,
@@ -124,6 +141,19 @@ afterEach(() => {
   respostaLista = LISTA;
   carregando = false;
   erro = null;
+});
+
+describe('ComissoesPage — o resumo do REP', () => {
+  it('renderiza o resumo pessoal com os números da API (sem crash de shape)', async () => {
+    // A regressão real: a tela lia `data.mesAtual.valor`, que não existe no
+    // contrato — e um TypeError derrubava a página inteira do representante.
+    const { render: r2, screen } = await import('@testing-library/react');
+    r2(<Pagina />);
+    expect(screen.getAllByTestId('comissao-historico').length).toBeGreaterThan(0);
+    const texto = document.body.textContent ?? '';
+    expect(texto).toContain('Meu resumo');
+    expect(texto).toContain('A receber em 2026');
+  });
 });
 
 describe('ComissoesPage — render de dinheiro', () => {
