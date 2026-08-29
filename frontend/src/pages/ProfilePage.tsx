@@ -881,7 +881,10 @@ function SetComissaoModal({
     setBusy(true);
     setError(null);
     try {
-      await api.put(`/users/${user.id}/comissao`, { comissaoPercentual: com });
+      // O campo é `comissaoPadrao` — o mesmo nome do banco e do DTO. Enquanto
+      // isto mandava `comissaoPercentual`, a API recusava por validação e a
+      // tela só dizia "Falha": a % do rep não tinha como ser alterada.
+      await api.put(`/users/${user.id}/comissao`, { comissaoPadrao: com });
       onSaved();
     } catch (err) {
       setError(err instanceof ApiError ? err.message : 'Falha');
