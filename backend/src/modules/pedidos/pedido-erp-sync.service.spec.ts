@@ -263,6 +263,36 @@ describe('pedidos que vêm do ERP', () => {
     expect(prisma.pedido.create).toHaveBeenCalled();
   });
 
+  it('pedido que já chega CANCELADO não nasce aqui', async () => {
+    // Ruído histórico do ERP. E tem um efeito prático: sem isto, apagar um
+    // pedido de teste no app não adianta — o sync seguinte traz de volta.
+    const { svc, prisma } = build({ detalhe: { ...PEDIDO_ERP, situacao: 2 } });
+
+    const r = await svc.sincronizar('emp-1');
+
+    expect(prisma.pedido.create).not.toHaveBeenCalled();
+    expect(r.criados).toBe(0);
+  });
+
+  it('mas o pedido que EXISTE aqui vira CANCELADO quando o ERP cancela', async () => {
+    const { svc, prisma } = build({
+      detalhe: { ...PEDIDO_ERP, situacao: 2 },
+      pedidoExistente: {
+        id: 'ped-1',
+        numero: 'PED-0007',
+        status: 'ENVIADO_ERP',
+        observacoes: null,
+        total: 3150,
+        rastreioCodigo: null,
+        rastreioUrl: null,
+      },
+    });
+
+    await svc.sincronizar('emp-1');
+
+    expect(prisma.pedido.update.mock.calls[0][0].data.status).toBe('CANCELADO');
+  });
+
   it('pedido velho demais é visto e NÃO entra (quem corta é o detalhe)', async () => {
     const { svc, prisma } = build({ detalhe: { ...PEDIDO_ERP, data: '2020-01-01' } });
 

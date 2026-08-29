@@ -322,6 +322,13 @@ export class PedidoErpSyncService {
     // já existe (bloco acima) atualiza sempre, independente de idade.
     if (!this.dentroDaJanela(d.data ?? d.dataCriacao, de, ate)) return 'foraDaJanela';
 
+    // Pedido que JÁ chega cancelado e nunca existiu aqui não vira registro: é
+    // ruído histórico do ERP. (Se ele existir aqui, o bloco acima atualiza pra
+    // CANCELADO normalmente — o que importa é não NASCER morto.) Sem isto, todo
+    // pedido cancelado lá volta a aparecer aqui a cada rodada, e apagar do app
+    // não adianta nada: o sync seguinte traz de volta.
+    if (status === 'CANCELADO') return 'foraDaJanela';
+
     const cliente = await this.resolverCliente(empresaId, d);
     const representanteId = await this.resolverRepresentante(empresaId, d);
     if (!representanteId && d.vendedor) {
