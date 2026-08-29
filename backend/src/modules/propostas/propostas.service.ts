@@ -15,6 +15,7 @@ import type { AuthenticatedUser } from '@shared/types/authenticated-user';
 import { type Paginated, buildPaginated } from '@shared/types/pagination';
 import { SequenceService } from '@shared/utils/sequence.service';
 import { vigenteAteFimDoDiaBrt } from '@shared/utils/data-brt.util';
+import { PedidosService } from '@modules/pedidos/pedidos.service';
 import { PropostaAceiteService } from './proposta-aceite.service';
 import { PropostaExportService, type PropostaExportData } from './proposta-export.service';
 import type {
@@ -47,6 +48,7 @@ export class PropostasService {
     private readonly exportSvc: PropostaExportService,
     private readonly emailSvc: TransactionalEmailService,
     private readonly aceiteSvc: PropostaAceiteService,
+    private readonly pedidosSvc: PedidosService,
   ) {}
 
   /**
@@ -274,6 +276,15 @@ export class PropostasService {
     id: string,
   ): Promise<{ pedidoId: string; numero: string }> {
     const empresaId = this.requireEmpresa(user);
+    // Mesma regra do POST /pedidos: onde o rep não abre pedido, ele também não
+    // converte a própria proposta — senão a porta fechada teria uma janela ao lado.
+    if (user.role === 'REP' && !(await this.pedidosSvc.repPodeCriarPedido(empresaId))) {
+      throw new BusinessRuleException(
+        'Representante não converte proposta em pedido: envie a proposta pro ERP. ' +
+          'O pedido nasce quando a gestão aprova o orçamento e atribui a venda a você.',
+        ErrorCode.BUSINESS_RULE_VIOLATION,
+      );
+    }
     const proposta = await this.findById(user, id);
 
     if (proposta.status !== 'ACEITA') {

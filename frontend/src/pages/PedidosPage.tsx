@@ -38,6 +38,7 @@ import {
 } from '@/lib/pedidoStatus';
 import { useDebouncedValue } from '@/hooks/useDebouncedValue';
 import { useRole } from '@/hooks/usePermission';
+import { useRepCriaPedido } from '@/hooks/useVendasConfig';
 import { PageLayout } from '@/components/PageLayout';
 import { VendasTabs } from '@/components/VendasTabs';
 import { StateView } from '@/components/StateView';
@@ -168,6 +169,11 @@ export default function PedidosPage() {
   const role = useRole();
   // B2 — cancelar em massa é DIRECTOR/ADMIN (segue P6)
   const canCancelBulk = role === 'DIRECTOR' || role === 'ADMIN';
+  // O rep vende por PROPOSTA: ela sobe pro ERP, a gestão aprova e atribui a
+  // venda a ele. O backend recusa o pedido do rep; aqui o botão sai de cena e
+  // dá o caminho, senão ele procura um botão que sumiu.
+  const repCriaPedido = useRepCriaPedido();
+  const podeAbrirPedido = role !== 'REP' || repCriaPedido;
   const [searchParams, setSearchParams] = useSearchParams();
   const [page, setPage] = useState(1);
   const [search, setSearch] = useState('');
@@ -411,13 +417,24 @@ export default function PedidosPage() {
               {sincronizandoErp ? 'Sincronizando…' : '↻ Sincronizar do ERP'}
             </Button>
           )}
-          <Button
-            data-testid="pedido-new-btn"
-            onClick={() => setCreating(true)}
-            leftIcon={<Plus className="h-3.5 w-3.5" />}
-          >
-            Novo pedido
-          </Button>
+          {podeAbrirPedido ? (
+            <Button
+              data-testid="pedido-new-btn"
+              onClick={() => setCreating(true)}
+              leftIcon={<Plus className="h-3.5 w-3.5" />}
+            >
+              Novo pedido
+            </Button>
+          ) : (
+            <Button
+              data-testid="pedido-nova-proposta"
+              onClick={() => navigateTable('/propostas?nova=1')}
+              leftIcon={<Plus className="h-3.5 w-3.5" />}
+              title="A venda começa pela proposta: ela sobe pro ERP e vira pedido quando a gestão aprova."
+            >
+              Nova proposta
+            </Button>
+          )}
         </>
       }
     >

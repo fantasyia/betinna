@@ -182,6 +182,8 @@ describe('PropostasService', () => {
       { isConfigured: vi.fn(() => false), enviar: vi.fn() } as never,
       // C3 — aceite service (mock; não exercitado nestes specs)
       { gerarLink: vi.fn(), resolverPreview: vi.fn(), registrarDecisao: vi.fn() } as never,
+      // Regra "rep não abre pedido" mora no PedidosService — aqui só consultamos.
+      { repPodeCriarPedido: vi.fn(async () => false) } as never,
     );
   });
 

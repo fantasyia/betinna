@@ -272,6 +272,24 @@ const comissaoOriginacaoSchema = z
   .partial()
   .optional();
 
+/**
+ * Quem pode abrir pedido — e por onde a venda do rep entra.
+ *
+ * Na Somatec (regra do Léo, 29/08) o representante **não abre pedido**: ele sobe
+ * PROPOSTA. A proposta vai pro ERP como orçamento, o diretor aprova lá e atribui
+ * a venda ao rep — e é o pedido de volta do ERP que vira comissão. Deixar o rep
+ * abrir pedido aqui criaria venda que o ERP não conhece, e comissão sobre ela.
+ *
+ * `repCriaPedido: true` devolve o comportamento antigo pra quem vende de
+ * prateleira, sem aprovação no meio.
+ */
+const vendasSchema = z
+  .object({
+    repCriaPedido: z.boolean().default(false),
+  })
+  .partial()
+  .optional();
+
 export const tenantConfigPatchSchema = z
   .object({
     // #R4 — cada seção aceita `null` = remover a seção inteira (reset pro default). O merge no service
@@ -288,6 +306,7 @@ export const tenantConfigPatchSchema = z
     alertaConversaEsquecida: alertaConversaEsquecidaSchema.nullable(),
     estoque: estoqueSchema.nullable(),
     comissaoOriginacao: comissaoOriginacaoSchema.nullable(),
+    vendas: vendasSchema.nullable(),
   })
   // .strip() (default zod): DESCARTA chaves desconhecidas em vez de deixá-las entrar no
   // Empresa.config (o front só manda as seções conhecidas; .passthrough deixava lixo crescer).

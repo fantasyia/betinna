@@ -66,6 +66,54 @@ vi.mock('@/hooks/useApiQuery', () => ({
       };
     if (path.includes('/listas'))
       return { data: [], loading: false, error: null, refetch: vi.fn() };
+    // Previsao do mes: shape REAL de `GET /comissoes/minha-previsao`.
+    if (path.includes('minha-previsao'))
+      return {
+        data: {
+          mes: 7,
+          ano: 2026,
+          base: 120000.9,
+          valor: 6000.05,
+          qtdPedidos: 2,
+          previsaoPagamentoEm: '2026-08-05',
+          fechado: false,
+          pedidos: [
+            {
+              pedidoId: 'ped-1',
+              numero: 'PED-0001',
+              cliente: 'Industria X',
+              data: '2026-07-10T12:00:00.000Z',
+              totalPedido: 100000,
+              comissao: 5000,
+            },
+          ],
+        },
+        loading: false,
+        error: null,
+        refetch: vi.fn(),
+      };
+    if (path.includes('minhas-recebidas'))
+      return {
+        data: {
+          total: 12000.1,
+          itens: [
+            {
+              id: 'com-9',
+              mes: 6,
+              ano: 2026,
+              tipo: 'REP',
+              totalVendas: 200000,
+              totalComissao: 12000.1,
+              qtdPedidos: 5,
+              pagoEm: '2026-07-05T12:00:00.000Z',
+              previsaoPagamentoEm: '2026-07-05',
+            },
+          ],
+        },
+        loading: false,
+        error: null,
+        refetch: vi.fn(),
+      };
     // Resumo pessoal do rep: shape REAL de `GET /comissoes/meu-resumo`.
     // ⚠️ Este mock já foi um chute (`mesAtual`/`ultimos12Meses`, campos que a
     // API nunca devolveu) — e como o teste mockava o mesmo chute da tela, ele
@@ -151,8 +199,35 @@ describe('ComissoesPage — o resumo do REP', () => {
     r2(<Pagina />);
     expect(screen.getAllByTestId('comissao-historico').length).toBeGreaterThan(0);
     const texto = document.body.textContent ?? '';
-    expect(texto).toContain('Meu resumo');
+    expect(texto).toContain('Minhas comissões');
     expect(texto).toContain('A receber em 2026');
+  });
+
+  it('mostra a PREVISÃO do mês e a data em que ela cai', async () => {
+    // O rep passava o mês inteiro sem ver o que vendeu: o número só existia
+    // depois do fechamento. A data é a outra metade da pergunta dele.
+    const { render: r2, screen } = await import('@testing-library/react');
+    r2(<Pagina />);
+    expect(screen.getByTestId('comissao-previsao-valor').textContent).toContain('6.000,05');
+    expect(document.body.textContent).toContain('05/08/2026');
+  });
+
+  it('visão DETALHADA abre o pedido a pedido (é o que ele confere)', async () => {
+    const { render: r2, screen } = await import('@testing-library/react');
+    const { fireEvent } = await import('@testing-library/react');
+    r2(<Pagina />);
+    expect(screen.queryByTestId('comissao-previsao-detalhe')).toBeNull();
+    fireEvent.click(screen.getByTestId('comissao-visao-detalhado'));
+    expect(screen.getByTestId('comissao-previsao-detalhe').textContent).toContain('PED-0001');
+  });
+
+  it('aba RECEBIDAS lista o que já caiu, com filtro de período', async () => {
+    const { render: r2, screen } = await import('@testing-library/react');
+    const { fireEvent } = await import('@testing-library/react');
+    r2(<Pagina />);
+    fireEvent.click(screen.getByTestId('comissao-aba-recebidas'));
+    expect(screen.getByTestId('comissao-recebidas-de')).toBeTruthy();
+    expect(screen.getByTestId('comissao-recebidas-lista').textContent).toContain('05/07/2026');
   });
 });
 

@@ -34,10 +34,16 @@ const makePrismaMock = () => {
       // B1 — resolveDescontoAVista lê config da empresa. Default desligado (0).
       // empresa.findUnique é chamado com dois `select` distintos (config | descontos),
       // então o default cobre as duas formas pra não estreitar o tipo do mock.
+      // `vendas.repCriaPedido: true` porque a maioria dos casos aqui é o rep
+      // montando pedido — o tenant que NÃO deixa tem teste próprio, abaixo.
       findUnique: vi.fn(
         async (): Promise<
           { descontoPixPct: number; descontoBoletoAvistaPct: number } | { config: unknown }
-        > => ({ descontoPixPct: 0, descontoBoletoAvistaPct: 0 }),
+        > => ({
+          descontoPixPct: 0,
+          descontoBoletoAvistaPct: 0,
+          config: { vendas: { repCriaPedido: true } },
+        }),
       ),
     },
   };
@@ -275,6 +281,25 @@ describe('PedidosService', () => {
     const args = prisma.pedido.create.mock.calls[0][0];
     expect(args.data.status).toBe('RASCUNHO');
     expect(prisma.aprovacaoDesconto.create).not.toHaveBeenCalled();
+  });
+
+  it('rep NÃO abre pedido quando o tenant não permite (o caminho dele é a proposta)', async () => {
+    // Regra do Léo (29/08): o rep sobe proposta, o ERP vira pedido depois da
+    // aprovação. Pedido aberto aqui seria venda que o ERP não conhece — com
+    // comissão calculada em cima dela.
+    prisma.empresa.findUnique = vi.fn(async () => ({
+      descontoPixPct: 0,
+      descontoBoletoAvistaPct: 0,
+      config: {},
+    })) as never;
+
+    await expect(
+      svc.create(fakeUser(), {
+        clienteId: 'cli-1',
+        itens: [{ produtoId: 'prod-1', quantidade: 1 }],
+      } as never),
+    ).rejects.toThrow(/não abre pedido/i);
+    expect(prisma.pedido.create).not.toHaveBeenCalled();
   });
 
   it('#55 — grava comissao pela comissaoPadrao do rep (não 5% fixo)', async () => {

@@ -182,6 +182,16 @@ export default function PropostasPage() {
   const [selected, setSelected] = useState<string | null>(null);
   const [creating, setCreating] = useState(false);
 
+  // ?nova=1 — vem do botão "Nova proposta" da aba de Pedidos, que é o caminho
+  // de venda do rep. Sem isto ele cairia na lista e teria que achar o botão.
+  useEffect(() => {
+    if (searchParams.get('nova') !== '1') return;
+    setCreating(true);
+    const next = new URLSearchParams(searchParams);
+    next.delete('nova');
+    setSearchParams(next, { replace: true });
+  }, [searchParams, setSearchParams]);
+
   // Auto-abre drawer quando vem com ?highlight=ID
   useEffect(() => {
     const highlight = searchParams.get('highlight');

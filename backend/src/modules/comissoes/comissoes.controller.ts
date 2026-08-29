@@ -16,6 +16,7 @@ import {
 } from './comissoes.dto';
 import { ComissoesService } from './comissoes.service';
 import { ComissaoErpService } from './comissao-erp.service';
+import { ComissaoRepVisaoService } from './comissao-rep-visao.service';
 import { ForbiddenException } from '@shared/errors/app-exception';
 import { ErrorCode } from '@shared/errors/error-codes';
 
@@ -26,13 +27,55 @@ export class ComissoesController {
   constructor(
     private readonly comissoes: ComissoesService,
     private readonly erp: ComissaoErpService,
+    private readonly visaoRep: ComissaoRepVisaoService,
   ) {}
+
+  private empresaDe(user: AuthenticatedUser): string {
+    if (!user.empresaIdAtiva) {
+      throw new ForbiddenException('Empresa não definida', ErrorCode.TENANT_ACCESS_DENIED);
+    }
+    return user.empresaIdAtiva;
+  }
 
   @Get('meu-resumo')
   @RequirePermissions({ module: 'comissoes', action: 'view' })
   @ApiOperation({ summary: 'Resumo de comissões do rep autenticado' })
   meuResumo(@CurrentUser() user: AuthenticatedUser) {
     return this.comissoes.resumoDoRep(user);
+  }
+
+  /**
+   * Previsão do mês pro rep — o "quanto vou receber" antes do fechamento.
+   *
+   * Vem com o DETALHE por pedido: comissão que não dá pra conferir vira
+   * discussão no fim do mês, e quem confere é o rep.
+   */
+  @Get('minha-previsao')
+  @RequirePermissions({ module: 'comissoes', action: 'view' })
+  @ApiOperation({ summary: 'Previsão de comissão do mês (consolidado + detalhe por pedido).' })
+  minhaPrevisao(
+    @CurrentUser() user: AuthenticatedUser,
+    @Query('mes') mes?: string,
+    @Query('ano') ano?: string,
+  ) {
+    return this.visaoRep.previsao(
+      user,
+      this.empresaDe(user),
+      mes ? Number(mes) : undefined,
+      ano ? Number(ano) : undefined,
+    );
+  }
+
+  /** Extrato do que já foi pago, filtrado pela DATA DO PAGAMENTO. */
+  @Get('minhas-recebidas')
+  @RequirePermissions({ module: 'comissoes', action: 'view' })
+  @ApiOperation({ summary: 'Comissões já recebidas, com filtro de período (data de pagamento).' })
+  minhasRecebidas(
+    @CurrentUser() user: AuthenticatedUser,
+    @Query('de') de?: string,
+    @Query('ate') ate?: string,
+  ) {
+    return this.visaoRep.recebidas(user, this.empresaDe(user), de, ate);
   }
 
   @Get()

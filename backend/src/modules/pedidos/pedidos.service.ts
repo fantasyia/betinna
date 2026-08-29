@@ -150,9 +150,43 @@ export class PedidosService {
     return { totals, itens: items, requerAprovacao, tetoRep, pedidoMinimo };
   }
 
+  /**
+   * O REP abre pedido nesta empresa?
+   *
+   * Na Somatec, não (regra do Léo, 29/08): o rep sobe PROPOSTA, ela vira
+   * orçamento no ERP, o diretor aprova lá e atribui a venda a ele — e o pedido
+   * volta pro app pela sincronização. Pedido aberto direto aqui seria venda que
+   * o ERP não conhece, com comissão calculada em cima dela.
+   *
+   * É config de tenant (`Empresa.config.vendas.repCriaPedido`), não regra
+   * global: quem vende de prateleira, sem aprovação no meio, liga a chave e
+   * segue como antes.
+   */
+  async repPodeCriarPedido(empresaId: string): Promise<boolean> {
+    const empresa = await this.prisma.empresa.findUnique({
+      where: { id: empresaId },
+      select: { config: true },
+    });
+    const cfg = (empresa?.config as Record<string, unknown> | null)?.vendas as
+      | { repCriaPedido?: boolean }
+      | undefined;
+    return cfg?.repCriaPedido === true;
+  }
+
+  private async assertPodeAbrirPedido(user: AuthenticatedUser, empresaId: string): Promise<void> {
+    if (user.role !== 'REP') return;
+    if (await this.repPodeCriarPedido(empresaId)) return;
+    throw new BusinessRuleException(
+      'Representante não abre pedido: monte uma PROPOSTA e envie pro ERP. ' +
+        'O pedido nasce quando a gestão aprova o orçamento e atribui a venda a você.',
+      ErrorCode.BUSINESS_RULE_VIOLATION,
+    );
+  }
+
   // ─── Criar pedido ───────────────────────────────────────────────────────
   async create(user: AuthenticatedUser, dto: CreatePedidoDto): Promise<PedidoWithRel> {
     const empresaId = this.requireEmpresa(user);
+    await this.assertPodeAbrirPedido(user, empresaId);
     const cliente = await this.assertClienteValido(user, dto.clienteId);
     const items = await this.resolveItens(empresaId, cliente.id, dto.itens);
     // B1 — desconto à vista automático conforme forma/condição + config da empresa
