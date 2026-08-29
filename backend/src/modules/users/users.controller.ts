@@ -21,12 +21,14 @@ import {
   type CreateUserDto,
   type ListUsersDto,
   type UpdateComissaoPercentualDto,
+  type VincularContatoErpDto,
   type UpdateRepDiscountLimitDto,
   type UpdateMeDto,
   type UpdateUserDto,
   createUserSchema,
   listUsersSchema,
   updateComissaoPercentualSchema,
+  vincularContatoErpSchema,
   updateMeSchema,
   updateRepDiscountLimitSchema,
   updateUserSchema,
@@ -135,6 +137,23 @@ export class UsersController {
     @Body(new ZodValidationPipe(updateRepDiscountLimitSchema)) dto: UpdateRepDiscountLimitDto,
   ): Promise<{ ok: true }> {
     await this.users.setRepDiscountLimit(caller, id, dto);
+    return { ok: true };
+  }
+
+  @Put(':id/contato-erp')
+  @Roles('ADMIN', 'DIRECTOR')
+  @Audit({ action: 'vincular_contato_erp', resource: 'usuario', resourceIdFrom: 'params.id' })
+  @ApiOperation({
+    summary:
+      'Amarra o usuário a um contato que já existe no ERP. Sem isso, a rodada diária ' +
+      'criaria um contato duplicado e o pedido nasceria no vendedor errado.',
+  })
+  async vincularContatoErp(
+    @CurrentUser() caller: AuthenticatedUser,
+    @Param('id') id: string,
+    @Body(new ZodValidationPipe(vincularContatoErpSchema)) dto: VincularContatoErpDto,
+  ): Promise<{ ok: true }> {
+    await this.users.vincularContatoErp(caller, id, dto.contatoErpId);
     return { ok: true };
   }
 

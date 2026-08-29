@@ -121,3 +121,16 @@ export const updateComissaoPercentualSchema = z.object({
   comissaoPadrao: z.number().min(0).max(100),
 });
 export type UpdateComissaoPercentualDto = z.infer<typeof updateComissaoPercentualSchema>;
+
+/**
+ * Amarra um usuário a um CONTATO que já existe no ERP.
+ *
+ * O caminho normal é a rodada diária criar o contato pelo CPF/CNPJ. Isso não
+ * cobre o rep que já estava cadastrado lá antes (comum: quem virou VENDEDOR no
+ * painel, às vezes sem documento). Sem amarrar, a rodada criaria um segundo
+ * contato e o pedido nasceria no vendedor errado.
+ */
+export const vincularContatoErpSchema = z.object({
+  contatoErpId: z.string().trim().min(1).max(40),
+});
+export type VincularContatoErpDto = z.infer<typeof vincularContatoErpSchema>;

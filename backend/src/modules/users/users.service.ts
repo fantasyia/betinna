@@ -513,6 +513,30 @@ export class UsersService {
    * REP    → comissão direta sobre os pedidos da própria carteira
    * GERENTE → comissão sobre o total de vendas dos REPs sob sua gerência
    */
+  /** Amarra o usuário a um contato que JÁ existe no ERP (ver DTO). */
+  async vincularContatoErp(
+    caller: AuthenticatedUser,
+    id: string,
+    contatoErpId: string,
+  ): Promise<void> {
+    const user = await this.loadAndAssertScope(caller, id);
+    if (user.role !== 'REP' && user.role !== 'GERENTE') {
+      throw new BusinessRuleException('Contato no ERP se aplica a REP ou GERENTE');
+    }
+    const jaUsado = await this.prisma.usuario.findFirst({
+      where: { contatoErpId, id: { not: id } },
+      select: { id: true, nome: true },
+    });
+    if (jaUsado) {
+      // Dois usuários no mesmo contato fariam a comissão de um cair no outro.
+      throw new BusinessRuleException(
+        `Contato ${contatoErpId} já está vinculado a ${jaUsado.nome}`,
+      );
+    }
+    await this.prisma.usuario.update({ where: { id }, data: { contatoErpId } });
+    this.logger.log(`[erp] ${user.nome} vinculado ao contato ${contatoErpId}`);
+  }
+
   async setComissaoPercentual(
     caller: AuthenticatedUser,
     id: string,
