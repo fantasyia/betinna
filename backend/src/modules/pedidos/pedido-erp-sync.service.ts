@@ -392,7 +392,12 @@ export class PedidoErpSyncService {
         numeroErp,
         clienteId: cliente.id,
         representanteId,
-        origem: 'ERP',
+        // ORIGEM é o que decide a comissão de originação (6% rep / 12% canal),
+        // então ela precisa dizer a verdade sobre a VENDA, não sobre qual
+        // sistema digitou o pedido. Pedido com vendedor que é representante
+        // daqui é venda por representante — inclusive o que voltou do ERP
+        // depois da aprovação de uma proposta nossa. Sem dono, é canal.
+        origem: representanteId ? 'REP_APP' : 'ERP',
         status: (status ?? 'ENVIADO_ERP') as never,
         subtotal: new Prisma.Decimal(d.valorTotalProdutos ?? d.valorTotalPedido ?? 0),
         total,
@@ -549,7 +554,8 @@ export class PedidoErpSyncService {
     const total = new Prisma.Decimal(existente.total as Prisma.Decimal);
     await this.prisma.pedido.update({
       where: { id: existente.id },
-      data: { representanteId, comissao: total.mul(pct).div(100) },
+      // Ganhou dono → é venda por representante, e a originação enxerga isso.
+      data: { representanteId, origem: 'REP_APP', comissao: total.mul(pct).div(100) },
     });
     this.logger.log(
       `[erp] pedido ${existente.numero} adotou o representante ${representanteId} (comissão ${pct}%)`,

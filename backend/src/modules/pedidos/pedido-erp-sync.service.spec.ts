@@ -136,6 +136,9 @@ describe('pedidos que vêm do ERP', () => {
     await svc.sincronizar('emp-1');
 
     expect(prisma.pedido.create.mock.calls[0][0].data.representanteId).toBe('rep-9');
+    // Com dono, a venda é POR REPRESENTANTE — e é a origem que define os 6%
+    // da comissão de originação (contra 12% do canal).
+    expect(prisma.pedido.create.mock.calls[0][0].data.origem).toBe('REP_APP');
   });
 
   it('pedido órfão ADOTA o dono quando o cadastro é arrumado depois', async () => {
