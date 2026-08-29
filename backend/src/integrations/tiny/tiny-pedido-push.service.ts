@@ -4,6 +4,7 @@ import { IntegracoesService } from '@modules/integracoes/integracoes.service';
 import { BusinessRuleException } from '@shared/errors/app-exception';
 import { ErrorCode } from '@shared/errors/error-codes';
 import { TinyPedidosService } from './tiny-pedidos.service';
+import { TinyContatosService } from './tiny-contatos.service';
 
 export interface ResultadoPush {
   pedidoId: string;
@@ -36,13 +37,18 @@ export class TinyPedidoPushService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly pedidos: TinyPedidosService,
+    private readonly contatos: TinyContatosService,
     private readonly integracoes: IntegracoesService,
   ) {}
 
   async enviarPedido(pedidoId: string, empresaId?: string): Promise<ResultadoPush> {
     const pedido = await this.prisma.pedido.findFirst({
       where: empresaId ? { id: pedidoId, empresaId } : { id: pedidoId },
-      include: { itens: { include: { produto: true } }, cliente: true },
+      include: {
+        itens: { include: { produto: true } },
+        cliente: true,
+        representante: { select: { nome: true, contatoErpId: true } },
+      },
     });
     if (!pedido) throw new BusinessRuleException(`Pedido ${pedidoId} não encontrado`);
 
@@ -54,6 +60,22 @@ export class TinyPedidoPushService {
         `Produto sem SKU no pedido (${semSku.map((i) => i.produto?.nome ?? i.produtoId).join(', ')}) — ` +
           'o SKU é o que amarra o item ao ERP.',
         ErrorCode.INTEGRATION_ERROR,
+      );
+    }
+
+    // VENDEDOR: sem ele, o pedido nasce órfão no ERP e a comissão de lá fica sem
+    // dono — alguém teria que corrigir à mão, pedido a pedido. O rep vira
+    // contato pela rodada diária; virar VENDEDOR é um clique no painel, e
+    // enquanto não for, isto devolve null e o pedido sobe sem vendedor (que é
+    // melhor que subir no vendedor errado).
+    const contatoDoRep = Number(pedido.representante?.contatoErpId ?? 0);
+    const vendedorId = contatoDoRep
+      ? await this.contatos.acharVendedorPorContato(pedido.empresaId, contatoDoRep)
+      : null;
+    if (contatoDoRep && !vendedorId) {
+      this.logger.warn(
+        `[erp] ${pedido.representante?.nome ?? 'rep'} ainda não é VENDEDOR no Tiny — ` +
+          `pedido ${pedido.numero} sobe sem vendedor (marque o papel em Cadastros → Vendedores)`,
       );
     }
 
@@ -72,6 +94,7 @@ export class TinyPedidoPushService {
       // O número do NOSSO pedido viaja junto: é por ele que o webhook de volta
       // casa o pedido do ERP com o daqui, sem depender de ordem de criação.
       numeroPedidoEcommerce: pedido.numero,
+      ...(vendedorId ? { vendedorId } : {}),
       observacoes: pedido.observacoes ?? undefined,
     });
 

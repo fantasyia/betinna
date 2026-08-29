@@ -113,13 +113,13 @@ describe('folha de comissões no financeiro do ERP', () => {
       comissaoOriginacao: { ativo: true, contatoErpId: '894891897', pctRep: 6, pctSemRep: 12 },
     };
 
-    it('6% no que veio por REP e 12% no que veio sem rep', async () => {
+    it('6% no que nasceu no APP (rep) e 12% no que veio de outra origem (site)', async () => {
       const { svc, contas } = build({
         comissoes: [COMISSAO_REP],
         config: CONFIG,
         pedidos: [
-          { representanteId: 'rep-1', _sum: { total: 10000, valorDevolvido: 0 } },
-          { representanteId: null, _sum: { total: 5000, valorDevolvido: 0 } },
+          { origem: 'REP_APP', _sum: { total: 10000, valorDevolvido: 0 } },
+          { origem: 'ERP', _sum: { total: 5000, valorDevolvido: 0 } },
         ],
       });
 
@@ -138,7 +138,7 @@ describe('folha de comissões no financeiro do ERP', () => {
       const { svc } = build({
         comissoes: [COMISSAO_REP],
         config: CONFIG,
-        pedidos: [{ representanteId: 'rep-1', _sum: { total: 10000, valorDevolvido: 4000 } }],
+        pedidos: [{ origem: 'REP_APP', _sum: { total: 10000, valorDevolvido: 4000 } }],
       });
 
       const r = await svc.provisionar('emp-1', 7, 2026);
@@ -151,7 +151,7 @@ describe('folha de comissões no financeiro do ERP', () => {
         comissoes: [],
         config: CONFIG,
         originacao: { id: 'o-1', contaPagarErpId: '111' },
-        pedidos: [{ representanteId: 'rep-1', _sum: { total: 10000, valorDevolvido: 0 } }],
+        pedidos: [{ origem: 'REP_APP', _sum: { total: 10000, valorDevolvido: 0 } }],
       });
 
       const r = await svc.provisionar('emp-1', 7, 2026);

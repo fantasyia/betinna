@@ -153,10 +153,11 @@ export class ComissaoErpService {
    * representante. Percentuais diferentes por canal (6% no que veio por rep,
    * 12% no que veio sem rep) porque a origem do negócio é diferente.
    *
-   * ⚠️ O "não industrial" que o Léo citou pros 12% NÃO está modelado: o app não
-   * sabe classificar o cliente assim. Enquanto não estiver, todo pedido sem
-   * representante entra nos 12%. Está aqui escrito pra ninguém achar que a
-   * regra completa já está no ar.
+   * **Quem decide o percentual é a ORIGEM da venda** (definição do Léo, 29/08):
+   * pedido nascido no app é venda por representante → 6%; qualquer outra origem
+   * é venda de canal (site) → 12%. Origem é campo do pedido, não inferência:
+   * usar "tem representante?" erraria no pedido que o diretor lança pelo app em
+   * nome da casa, e acertaria por acidente no resto.
    */
   private async provisionarOriginacao(
     empresaId: string,
@@ -193,7 +194,7 @@ export class ComissaoErpService {
     const inicio = new Date(Date.UTC(ano, mes - 1, 1, OFFSET_BRT_H));
     const fim = new Date(Date.UTC(ano, mes, 1, OFFSET_BRT_H));
     const pedidos = await this.prisma.pedido.groupBy({
-      by: ['representanteId'],
+      by: ['origem'],
       where: {
         empresaId,
         status: { in: ['ENVIADO_ERP', 'PAGO', 'EM_SEPARACAO', 'ENVIADO', 'ENTREGUE'] as never },
@@ -210,7 +211,10 @@ export class ComissaoErpService {
         0,
         Number(linha._sum.total ?? 0) - Number(linha._sum.valorDevolvido ?? 0),
       );
-      valor += liquido * ((linha.representanteId ? pctRep : pctSemRep) / 100);
+      // REP_APP = nasceu no app, na mão do representante (locação) → 6%.
+      // Qualquer outra origem é canal → 12%. Enquanto a ponte com o site não
+      // existe, o pedido do site chega como ERP e cai nos 12% — que é o certo.
+      valor += liquido * ((linha.origem === 'REP_APP' ? pctRep : pctSemRep) / 100);
     }
     r.originacao.valor = Math.round(valor * 100) / 100;
     if (r.originacao.valor <= 0) {
