@@ -36,8 +36,9 @@ function build(
     criarContaReceber: vi.fn().mockResolvedValue(4243),
     acharCategoria: vi.fn().mockResolvedValue(77),
   };
-  const svc = new ComissaoErpService(prisma as never, contas as never);
-  return { svc, prisma, contas };
+  const contatos = { garantir: vi.fn().mockResolvedValue(894891897) };
+  const svc = new ComissaoErpService(prisma as never, contas as never, contatos as never);
+  return { svc, prisma, contas, contatos };
 }
 
 const COMISSAO_REP = {
@@ -158,6 +159,35 @@ describe('folha de comissões no financeiro do ERP', () => {
 
       expect(contas.criarContaPagar).not.toHaveBeenCalled();
       expect(r.originacao.motivo).toMatch(/já provisionada|nenhuma/i);
+    });
+
+    it('acha (ou cria) o contato pelo CPF quando é assim que está configurado', async () => {
+      // Transcrever o id do contato do painel à mão é o jeito de pagar a
+      // comissão pra outra pessoa sem ninguém perceber.
+      const { svc, contas, contatos } = build({
+        comissoes: [],
+        config: {
+          comissaoOriginacao: {
+            ativo: true,
+            cpfCnpj: '37258545808',
+            nome: 'Leonardo Beltran',
+            pctRep: 6,
+            pctSemRep: 12,
+          },
+        },
+        pedidos: [{ origem: 'REP_APP', _sum: { total: 10000, valorDevolvido: 0 } }],
+      });
+
+      await svc.provisionar('emp-1', 7, 2026);
+
+      expect(contatos.garantir).toHaveBeenCalledWith('emp-1', {
+        nome: 'Leonardo Beltran',
+        cpfCnpj: '37258545808',
+      });
+      const lancamento = contas.criarContaPagar.mock.calls.find((c) =>
+        (c[1] as { numeroDocumento?: string }).numeroDocumento?.startsWith('ORIGINACAO'),
+      );
+      expect((lancamento?.[1] as { idContato: number }).idContato).toBe(894891897);
     });
 
     it('sem configuração, não inventa lançamento — e diz por quê', async () => {

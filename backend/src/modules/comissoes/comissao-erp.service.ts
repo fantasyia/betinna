@@ -1,6 +1,7 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { PrismaService } from '@database/prisma.service';
 import { TinyContasService } from '@integrations/tiny/tiny-contas.service';
+import { TinyContatosService } from '@integrations/tiny/tiny-contatos.service';
 
 export interface ResultadoProvisionamento {
   comissoes: number;
@@ -27,6 +28,10 @@ interface OriginacaoConfig {
   usuarioId?: string;
   /** Contato no ERP, quando quem recebe não é usuário do app. */
   contatoErpId?: string;
+  /** CPF/CNPJ de quem recebe — o provisionamento acha ou cria o contato. */
+  cpfCnpj?: string;
+  /** Nome usado se o contato ainda não existir no ERP. */
+  nome?: string;
   /** % sobre o que veio POR REPRESENTANTE (locação). Léo: 6. */
   pctRep?: number;
   /** % sobre o que veio SEM representante (site). Léo: 12. */
@@ -57,6 +62,7 @@ export class ComissaoErpService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly contas: TinyContasService,
+    private readonly contatos: TinyContatosService,
   ) {}
 
   async provisionar(
@@ -182,7 +188,7 @@ export class ComissaoErpService {
       return;
     }
 
-    const contatoErpId = await this.contatoDoOriginador(cfg);
+    const contatoErpId = await this.contatoDoOriginador(empresaId, cfg);
     if (!contatoErpId) {
       r.originacao.motivo = 'quem recebe não tem contato no ERP';
       return;
@@ -263,14 +269,34 @@ export class ComissaoErpService {
     }
   }
 
-  private async contatoDoOriginador(cfg: OriginacaoConfig): Promise<string | null> {
+  /**
+   * Quem recebe a originação, na ordem: id explícito → usuário do app →
+   * CPF/CNPJ.
+   *
+   * O documento é o caminho que não erra: acha (ou cria) o contato pela MESMA
+   * dedup do resto do sistema. Id transcrito à mão do painel é o jeito de pagar
+   * a comissão pra outra pessoa em silêncio.
+   */
+  private async contatoDoOriginador(
+    empresaId: string,
+    cfg: OriginacaoConfig,
+  ): Promise<string | null> {
     if (cfg.contatoErpId) return cfg.contatoErpId;
-    if (!cfg.usuarioId) return null;
-    const u = await this.prisma.usuario.findUnique({
-      where: { id: cfg.usuarioId },
-      select: { contatoErpId: true },
-    });
-    return u?.contatoErpId ?? null;
+    if (cfg.usuarioId) {
+      const u = await this.prisma.usuario.findUnique({
+        where: { id: cfg.usuarioId },
+        select: { contatoErpId: true },
+      });
+      if (u?.contatoErpId) return u.contatoErpId;
+    }
+    if (cfg.cpfCnpj) {
+      const id = await this.contatos.garantir(empresaId, {
+        nome: cfg.nome ?? 'Comissão de originação',
+        cpfCnpj: cfg.cpfCnpj,
+      });
+      return String(id);
+    }
+    return null;
   }
 
   /**

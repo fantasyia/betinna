@@ -266,6 +266,17 @@ const comissaoOriginacaoSchema = z
     usuarioId: usuarioIdSchema.nullable().optional(),
     /** Contato no ERP, quando quem recebe não é usuário do app. */
     contatoErpId: z.string().max(40).nullable().optional(),
+    /**
+     * CPF/CNPJ de quem recebe — o caminho mais simples.
+     *
+     * Com o documento, o provisionamento acha (ou cria) o contato no ERP pela
+     * MESMA regra de deduplicação do resto do sistema. Sem ele, alguém teria
+     * que caçar o id do contato no painel e transcrever — e id transcrito
+     * errado paga a comissão pra outra pessoa, em silêncio.
+     */
+    cpfCnpj: z.string().max(20).nullable().optional(),
+    /** Nome usado se o contato ainda não existir no ERP. */
+    nome: z.string().max(120).nullable().optional(),
     pctRep: z.number().min(0).max(100).nullable().optional(),
     pctSemRep: z.number().min(0).max(100).nullable().optional(),
   })
