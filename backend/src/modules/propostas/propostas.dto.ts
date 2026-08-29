@@ -1,4 +1,4 @@
-import { PagamentoForma, PropostaStatus } from '@prisma/client';
+import { PagamentoForma, PropostaModalidade, PropostaStatus } from '@prisma/client';
 import { z } from 'zod';
 import { usuarioIdSchema } from '@shared/validators/id.schema';
 
@@ -28,6 +28,13 @@ export const createPropostaSchema = z.object({
    * envio; melhor decidir aqui, onde dá pra escolher.
    */
   representanteId: usuarioIdSchema.optional(),
+  /**
+   * VENDA ou LOCACAO. O REP não escolhe: ele vende locação, sempre.
+   *
+   * A gestão escolhe porque apresenta as duas modalidades. Sem isto a proposta
+   * do rep saía com preço de VENDA — o número errado chegando no cliente.
+   */
+  modalidade: z.nativeEnum(PropostaModalidade).optional(),
 });
 export type CreatePropostaDto = z.infer<typeof createPropostaSchema>;
 

@@ -72,6 +72,11 @@ enum PagamentoForma {
   PIX
 }
 
+enum PropostaModalidade {
+  VENDA
+  LOCACAO
+}
+
 enum PropostaStatus {
   RASCUNHO
   ENVIADA
@@ -907,6 +912,9 @@ model Proposta {
   representanteId String?
 
   status        PropostaStatus @default(RASCUNHO)
+  /// VENDA (preço de tabela) ou LOCACAO (mensalidade). O REP vende locação —
+  /// preço de venda na proposta dele é o erro que chega no cliente.
+  modalidade    PropostaModalidade @default(VENDA)
   probabilidade Int            @default(50)
   validoAte     DateTime?
 

@@ -1,5 +1,5 @@
 import { Injectable, Logger } from '@nestjs/common';
-import { Prisma } from '@prisma/client';
+import { Prisma, type PropostaModalidade } from '@prisma/client';
 import { PrismaService } from '@database/prisma.service';
 import { PricingService } from '@modules/produtos/pricing.service';
 import { PedidoPricingService } from '@modules/pedidos/pedido-pricing.service';
@@ -124,7 +124,11 @@ export class PropostasService {
   async create(user: AuthenticatedUser, dto: CreatePropostaDto): Promise<PropostaWithRel> {
     const empresaId = this.requireEmpresa(user);
     const cliente = await this.assertClienteValido(user, dto.clienteId);
-    const items = await this.resolveItens(empresaId, cliente.id, dto.itens);
+    // O rep vende LOCAÇÃO — não é escolha dele, é o que ele vende. A gestão
+    // escolhe porque apresenta as duas modalidades na mesma reunião.
+    const modalidade: PropostaModalidade =
+      user.role === 'REP' ? 'LOCACAO' : (dto.modalidade ?? 'VENDA');
+    const items = await this.resolveItens(empresaId, cliente.id, dto.itens, modalidade);
     // B1 — desconto à vista automático conforme forma/condição + config da empresa
     const empresaCfg = await this.prisma.empresa.findUnique({
       where: { id: empresaId },
@@ -164,6 +168,7 @@ export class PropostasService {
         clienteId: cliente.id,
         representanteId,
         status: 'RASCUNHO',
+        modalidade,
         probabilidade: dto.probabilidade,
         validoAte: dto.validoAte,
         formaPagamento: dto.formaPagamento,
@@ -496,6 +501,7 @@ export class PropostasService {
     empresaId: string,
     clienteId: string,
     itens: PropostaItemInputDto[],
+    modalidade: PropostaModalidade = 'VENDA',
   ): Promise<
     Array<{
       produtoId: string;
@@ -511,7 +517,13 @@ export class PropostasService {
     // AUDITORIA 2026-05-15 P0: filtra por empresaId
     const produtos = await this.prisma.produto.findMany({
       where: { id: { in: produtoIds }, empresaId },
-      select: { id: true, nome: true, ativo: true, precoTabela: true },
+      select: {
+        id: true,
+        nome: true,
+        ativo: true,
+        precoTabela: true,
+        precoLocacaoMensal: true,
+      },
     });
     const map = new Map(produtos.map((p) => [p.id, p]));
     if (produtos.length !== new Set(produtoIds).size) {
@@ -527,7 +539,14 @@ export class PropostasService {
     return itens.map((i) => {
       const p = map.get(i.produtoId)!;
       const resolved = priceMap.get(i.produtoId);
-      const precoBase = resolved?.precoFinal ?? Number(p.precoTabela);
+      // LOCAÇÃO usa a MENSALIDADE do produto, não o preço de venda — e o preço
+      // negociado do cliente vale só pra venda (é acordo sobre aquele preço).
+      // Sem esta bifurcação, a proposta do rep (que vende locação) saía com o
+      // valor de venda: dez vezes o número certo, direto pro cliente.
+      const precoBase =
+        modalidade === 'LOCACAO'
+          ? this.mensalidadeObrigatoria(p)
+          : (resolved?.precoFinal ?? Number(p.precoTabela));
       // CAÇADA-BUG #2: converte override→desconto EFETIVO (ponto único do PedidoPricingService).
       // Antes guardava precoUnitario=override + desconto=0 → o gate de aprovação (que lê it.desconto)
       // via proposta→pedido enxergava 0% e o REP burlava o teto de desconto.
@@ -545,9 +564,26 @@ export class PropostasService {
         precoUnitario: calc.precoUnitario,
         desconto: calc.desconto,
         total: t.total,
-        negociado: !!resolved?.negociado && resolved.vigente,
+        negociado: modalidade === 'VENDA' && !!resolved?.negociado && resolved.vigente,
       };
     });
+  }
+
+  /**
+   * Mensalidade do produto — obrigatória na proposta de locação.
+   *
+   * Cair pro preço de venda quando falta a mensalidade seria o pior desfecho:
+   * a proposta sai com número plausível e errado. Melhor recusar e dizer qual
+   * produto está sem preço de locação.
+   */
+  private mensalidadeObrigatoria(p: { nome: string; precoLocacaoMensal: unknown }): number {
+    const valor = Number(p.precoLocacaoMensal ?? 0);
+    if (!valor) {
+      throw new BusinessRuleException(
+        `"${p.nome}" não tem preço de locação cadastrado — proposta de locação não pode usar o preço de venda.`,
+      );
+    }
+    return valor;
   }
 
   /**
@@ -636,6 +672,7 @@ export class PropostasService {
       valor: Number(proposta.valor),
       observacoes: proposta.observacoes,
       empresa: { nome: empresa?.nome ?? 'Empresa', cnpj: empresa?.cnpj ?? null },
+      modalidade: proposta.modalidade,
       marca: await this.marca.resolver(proposta.empresaId),
       cliente: {
         nome: clienteFull?.nome ?? proposta.cliente.nome,

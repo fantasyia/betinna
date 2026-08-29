@@ -19,6 +19,8 @@ export interface PropostaExportData {
   descontoGeral: number; // %
   valor: number; // total final
   observacoes: string | null;
+  /** VENDA ou LOCACAO — muda o rótulo do preço e o total (mensal). */
+  modalidade?: string;
   /** Marca do TENANT — logo e cores. Ausente = identidade Betinna. */
   marca?: MarcaTenant;
   empresa: { nome: string; cnpj: string | null };
@@ -99,11 +101,12 @@ export class PropostaExportService {
             .text(`CNPJ: ${data.empresa.cnpj}`, left);
         }
         doc.moveDown(0.5);
+        const locacao = data.modalidade === 'LOCACAO';
         doc
           .fillColor(primaria)
           .fontSize(15)
           .font('Helvetica-Bold')
-          .text(`Proposta Comercial ${data.numero}`);
+          .text(`Proposta Comercial ${data.numero}${locacao ? ' · Locação mensal' : ''}`);
         doc
           .fontSize(9)
           .font('Helvetica')
@@ -144,9 +147,15 @@ export class PropostaExportService {
         doc.fillColor('#fff').fontSize(9).font('Helvetica-Bold');
         doc.text('Produto', cols.produto + 4, headerY + 3, { width: pageWidth * 0.46 });
         doc.text('Qtd', cols.qtd, headerY + 3, { width: pageWidth * 0.1, align: 'right' });
-        doc.text('Preço', cols.preco, headerY + 3, { width: pageWidth * 0.14, align: 'right' });
+        doc.text(locacao ? 'Mensal' : 'Preço', cols.preco, headerY + 3, {
+          width: pageWidth * 0.14,
+          align: 'right',
+        });
         doc.text('Desc%', cols.desc, headerY + 3, { width: pageWidth * 0.08, align: 'right' });
-        doc.text('Total', cols.total, headerY + 3, { width: pageWidth * 0.12 - 4, align: 'right' });
+        doc.text(locacao ? 'Total/mês' : 'Total', cols.total, headerY + 3, {
+          width: pageWidth * 0.12 - 4,
+          align: 'right',
+        });
         doc.y = headerY + 20;
 
         // Linhas

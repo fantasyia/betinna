@@ -103,7 +103,11 @@ export class PropostaErpService {
       ...(this.prazoEmDias(proposta.condicaoPagamento)
         ? { condicaoPagamento: this.prazoEmDias(proposta.condicaoPagamento)! }
         : {}),
-      observacao: [`Proposta ${proposta.numero} (Betinna)`, proposta.observacoes ?? '']
+      observacao: [
+        `Proposta ${proposta.numero} (Betinna)`,
+        proposta.modalidade === 'LOCACAO' ? 'LOCAÇÃO MENSAL (valor por mês)' : 'VENDA',
+        proposta.observacoes ?? '',
+      ]
         .filter(Boolean)
         .join(' — '),
     });

@@ -295,7 +295,7 @@ describe('PropostasService', () => {
         erpStatus: 'ATIVO',
       });
       prisma.produto.findMany.mockResolvedValue([
-        { id: 'p-1', nome: 'Produto A', ativo: true, precoTabela: 50 },
+        { id: 'p-1', nome: 'Produto A', ativo: true, precoTabela: 50, precoLocacaoMensal: 9 },
       ]);
       prisma.proposta.create.mockResolvedValue(
         fakeProposta({ status: 'RASCUNHO', numero: 'PROP-0001' }),
@@ -316,7 +316,7 @@ describe('PropostasService', () => {
         erpStatus: 'ATIVO',
       });
       prisma.produto.findMany.mockResolvedValue([
-        { id: 'p-1', nome: 'Produto A', ativo: true, precoTabela: 50 },
+        { id: 'p-1', nome: 'Produto A', ativo: true, precoTabela: 50, precoLocacaoMensal: 9 },
       ]);
       prisma.proposta.create.mockResolvedValue(fakeProposta({ representanteId: 'rep-77' }));
 
@@ -324,6 +324,65 @@ describe('PropostasService', () => {
 
       const data = prisma.proposta.create.mock.calls[0][0].data;
       expect(data.representanteId).toBe('rep-77');
+    });
+
+    it('proposta do REP usa a MENSALIDADE, não o preço de venda', async () => {
+      // Erro pego em produção (29/08): a proposta do rep subiu pro ERP com
+      // R$ 3.150 (venda) em vez da locação. O rep vende locação — preço de
+      // venda na proposta dele é o número errado chegando no cliente.
+      prisma.cliente.findFirst.mockResolvedValue({
+        id: 'cli-1',
+        empresaId: 'emp-1',
+        representanteId: 'rep-77',
+        erpStatus: 'ATIVO',
+      });
+      prisma.produto.findMany.mockResolvedValue([
+        { id: 'p-1', nome: 'Produto A', ativo: true, precoTabela: 50, precoLocacaoMensal: 9 },
+      ]);
+      prisma.proposta.create.mockResolvedValue(fakeProposta({ representanteId: 'rep-77' }));
+
+      await service.create(fakeUser({ role: 'REP', id: 'rep-77' }), baseDto);
+
+      const data = prisma.proposta.create.mock.calls[0][0].data;
+      expect(data.modalidade).toBe('LOCACAO');
+      expect(data.itens.create[0].precoUnitario).toBe(9);
+    });
+
+    it('gestão continua vendendo (VENDA é o default de quem não é rep)', async () => {
+      prisma.cliente.findFirst.mockResolvedValue({
+        id: 'cli-1',
+        empresaId: 'emp-1',
+        representanteId: null,
+        erpStatus: 'ATIVO',
+      });
+      prisma.produto.findMany.mockResolvedValue([
+        { id: 'p-1', nome: 'Produto A', ativo: true, precoTabela: 50, precoLocacaoMensal: 9 },
+      ]);
+      prisma.proposta.create.mockResolvedValue(fakeProposta({}));
+
+      await service.create(fakeUser(), baseDto);
+
+      const data = prisma.proposta.create.mock.calls[0][0].data;
+      expect(data.modalidade).toBe('VENDA');
+      expect(data.itens.create[0].precoUnitario).toBe(50);
+    });
+
+    it('produto SEM mensalidade recusa a proposta de locação (em vez de usar o de venda)', async () => {
+      // Cair pro preço de venda seria o pior desfecho: sai número plausível e
+      // errado, e ninguém confere um valor que "parece certo".
+      prisma.cliente.findFirst.mockResolvedValue({
+        id: 'cli-1',
+        empresaId: 'emp-1',
+        representanteId: 'rep-77',
+        erpStatus: 'ATIVO',
+      });
+      prisma.produto.findMany.mockResolvedValue([
+        { id: 'p-1', nome: 'Produto A', ativo: true, precoTabela: 50, precoLocacaoMensal: null },
+      ]);
+
+      await expect(
+        service.create(fakeUser({ role: 'REP', id: 'rep-77' }), baseDto),
+      ).rejects.toThrow(/não tem preço de locação/i);
     });
 
     it('#R1: passa a comissaoPadrao do rep ao pedidoTotals, não 5% fixo', async () => {
@@ -334,7 +393,7 @@ describe('PropostasService', () => {
         erpStatus: 'ATIVO',
       });
       prisma.produto.findMany.mockResolvedValue([
-        { id: 'p-1', nome: 'Produto A', ativo: true, precoTabela: 50 },
+        { id: 'p-1', nome: 'Produto A', ativo: true, precoTabela: 50, precoLocacaoMensal: 9 },
       ]);
       // resolveComissaoPct lê comissaoPadrao do rep dono.
       prisma.usuario.findUnique.mockResolvedValue({ comissaoPadrao: 8 });

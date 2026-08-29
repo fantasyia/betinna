@@ -77,6 +77,7 @@ interface Proposta {
   criadoEm: string;
   pedidoId?: string | null;
   orcamentoErpId?: string | null;
+  modalidade?: 'VENDA' | 'LOCACAO';
 }
 
 interface PropostaItemDetail {
@@ -1095,6 +1096,10 @@ function PropostaFormDialog({
   const roleForm = useRole();
   const gestao = roleForm !== 'REP';
   const [representante, setRepresentante] = useState<RepOpt | null>(null);
+  // O rep vende LOCAÇÃO; a gestão apresenta as duas modalidades. O preço do
+  // item vem do produto conforme esta escolha — venda usa a tabela, locação usa
+  // a mensalidade.
+  const [modalidade, setModalidade] = useState<'VENDA' | 'LOCACAO'>('VENDA');
   const [itens, setItens] = useState<FormItem[]>([newFormItem()]);
   const [formaPagamento, setFormaPagamento] = useState<PagamentoForma>('BOLETO');
   const [condicaoPagamento, setCondicaoPagamento] = useState<CondicaoPgto>('30dias');
@@ -1176,6 +1181,7 @@ function PropostaFormDialog({
     if (validoAte) payload.validoAte = validoAte;
     if (observacoes.trim()) payload.observacoes = observacoes.trim();
     if (gestao && representante) payload.representanteId = representante.id;
+    if (gestao) payload.modalidade = modalidade;
 
     try {
       await api.post('/propostas', payload);
@@ -1223,6 +1229,19 @@ function PropostaFormDialog({
             onChange={setCliente}
           />
         </Field>
+
+        {gestao && (
+          <Field label="Modalidade">
+            <Select
+              data-testid="proposta-modalidade"
+              value={modalidade}
+              onChange={(e) => setModalidade(e.target.value as 'VENDA' | 'LOCACAO')}
+            >
+              <option value="VENDA">Venda</option>
+              <option value="LOCACAO">Locação (mensalidade)</option>
+            </Select>
+          </Field>
+        )}
 
         {gestao && (
           <Field label="Representante (de quem é a venda)">
