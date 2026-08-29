@@ -20,6 +20,7 @@ import {
   Upload,
 } from 'lucide-react';
 import { api, ApiError } from '@/lib/api';
+import { useRole } from '@/hooks/usePermission';
 import { useApiQuery, type PaginatedResponse } from '@/hooks/useApiQuery';
 import { useEmpresaConfig, descontoAVistaPct } from '@/hooks/useEmpresaConfig';
 import { useToast } from '@/components/toast';
@@ -533,6 +534,9 @@ function PropostaDetailDrawer({
   onChanged: () => void;
 }) {
   const toast = useToast();
+  const role = useRole();
+  // Aprovar é o passo que ATRIBUI a venda ao rep — por isso é da gestão, não dele.
+  const podeAprovar = role === 'ADMIN' || role === 'DIRECTOR';
   const { data, loading, error, refetch } = useApiQuery<PropostaDetail>(`/propostas/${id}`);
   const [busy, setBusy] = useState(false);
   const [actionError, setActionError] = useState<string | null>(null);
@@ -574,6 +578,24 @@ function PropostaDetailDrawer({
       onChanged();
     } catch (err) {
       setActionError(err instanceof ApiError ? err.message : 'Falha ao enviar pro ERP');
+    } finally {
+      setExportBusy(null);
+    }
+  }
+
+  /**
+   * Aprova o orçamento no ERP: ele vira pedido lá, com o vendedor já casado.
+   * Só gestão — é a etapa que atribui a venda ao rep.
+   */
+  async function aprovarErp() {
+    setExportBusy('erp');
+    setActionError(null);
+    try {
+      const r = await api.post<{ pedidoErpId: number }>(`/propostas/${id}/aprovar-erp`);
+      toast.success(`Pedido ${r.pedidoErpId} criado no ERP`);
+      onChanged();
+    } catch (err) {
+      setActionError(err instanceof ApiError ? err.message : 'Falha ao aprovar no ERP');
     } finally {
       setExportBusy(null);
     }
@@ -735,6 +757,20 @@ function PropostaDetailDrawer({
                   leftIcon={<Upload className="h-3.5 w-3.5" />}
                 >
                   Enviar pro ERP
+                </Button>
+              )}
+              {data.orcamentoErpId && podeAprovar && (
+                <Button
+                  variant="primary"
+                  size="sm"
+                  data-testid="proposta-aprovar-erp"
+                  loading={exportBusy === 'erp'}
+                  disabled={exportBusy !== null}
+                  onClick={() => void aprovarErp()}
+                  leftIcon={<CheckCircle2 className="h-3.5 w-3.5" />}
+                  title="Gera o pedido no ERP a partir deste orçamento, atribuindo a venda ao representante."
+                >
+                  Aprovar e gerar pedido no ERP
                 </Button>
               )}
               {data.orcamentoErpId && (

@@ -118,6 +118,32 @@ export class PropostaErpService {
     };
   }
 
+  /**
+   * Aprova o orçamento: ele vira PEDIDO no ERP.
+   *
+   * O pedido nasce do orçamento aprovado (endpoint do próprio Tiny), então
+   * herda contato, itens, valores e vendedor — nada é redigitado. De lá ele
+   * volta pro app pela sincronização, já com o representante casado, e é esse
+   * pedido que vira comissão.
+   */
+  async aprovar(propostaId: string, empresaId: string): Promise<{ pedidoErpId: number }> {
+    const proposta = await this.prisma.proposta.findFirst({
+      where: { id: propostaId, empresaId },
+      select: { id: true, numero: true, orcamentoErpId: true },
+    });
+    if (!proposta) throw new BusinessRuleException('Proposta não encontrada');
+    if (!proposta.orcamentoErpId) {
+      throw new BusinessRuleException(
+        'Proposta ainda não subiu pro ERP — envie o orçamento antes de aprovar.',
+      );
+    }
+    const r = await this.orcamentos.gerarPedido(empresaId, Number(proposta.orcamentoErpId));
+    this.logger.log(
+      `Orçamento ${proposta.orcamentoErpId} (proposta ${proposta.numero}) → pedido ERP ${r?.id}`,
+    );
+    return { pedidoErpId: r?.id };
+  }
+
   private async resolverVendedor(
     empresaId: string,
     rep: { nome: string; contatoErpId: string | null } | null,
