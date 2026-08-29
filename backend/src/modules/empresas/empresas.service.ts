@@ -100,6 +100,9 @@ export class EmpresasService {
         descontoPixPct: true,
         descontoBoletoAvistaPct: true,
         botWhatsappAtivo: true,
+        // Sem isto o interruptor do respondedor geral não chega na tela — o
+        // select é explícito, então campo novo some em silêncio.
+        botGeralAtivo: true,
         config: true,
       },
     });
