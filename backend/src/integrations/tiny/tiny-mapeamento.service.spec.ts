@@ -164,4 +164,53 @@ describe('mapeamento de produto pro ERP', () => {
 
     expect(await svc.responder('null')).toEqual([]);
   });
+
+  // O arquivo de exemplo da Olist mostra o produto SOZINHO; o envio real vem
+  // embrulhado, como os outros webhooks do Tiny. Ler só a raiz devolvia um item
+  // sem idMapeamento — e o painel repetia "não mapeado" sem dizer por quê.
+  describe('envelope do webhook', () => {
+    it('lê o produto dentro de `dados`', async () => {
+      const { svc } = build([]);
+
+      const r = await svc.responder(
+        JSON.stringify({
+          cnpj: '12345678000190',
+          tipo: 'produto',
+          versao: '1.0.0',
+          dados: { id: '335240597', idMapeamento: '1304432', codigo: 'MB-01' },
+        }),
+      );
+
+      expect(r).toEqual([{ idMapeamento: '1304432', skuMapeamento: 'MB-01' }]);
+    });
+
+    it('`dados` com vários produtos vira vários mapeamentos', async () => {
+      const { svc } = build([]);
+
+      const r = await svc.responder(
+        JSON.stringify({
+          dados: [
+            { idMapeamento: '1', codigo: 'MB-01' },
+            { idMapeamento: '2', codigo: 'MB-02' },
+          ],
+        }),
+      );
+
+      expect(r.map((m) => m.skuMapeamento)).toEqual(['MB-01', 'MB-02']);
+    });
+
+    it('produto na RAIZ continua funcionando (é o formato do arquivo de exemplo)', async () => {
+      const { svc } = build([]);
+
+      const r = await svc.responder(JSON.stringify({ idMapeamento: '9', codigo: 'MB-09' }));
+
+      expect(r).toEqual([{ idMapeamento: '9', skuMapeamento: 'MB-09' }]);
+    });
+
+    it('envelope SEM produto não vira item com erro — seria ruído respondido como produto', async () => {
+      const { svc } = build([]);
+
+      expect(await svc.responder(JSON.stringify({ cnpj: '123', tipo: 'produto' }))).toEqual([]);
+    });
+  });
 });
