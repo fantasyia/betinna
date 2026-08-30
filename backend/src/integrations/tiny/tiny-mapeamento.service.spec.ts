@@ -5,118 +5,163 @@ import { TinyMapeamentoService } from './tiny-mapeamento.service';
  * "Produto não mapeado pelo integrador".
  *
  * O envio de produtos do ERP não é aviso, é PERGUNTA: "este produto meu, como
- * a sua loja chama?". Enquanto a resposta era só `{ ok: true }`, o ERP marcava
- * o envio como não mapeado — e sem mapeamento o produto não entra na lista do
- * canal, que é exatamente onde a cotação de frete procura o item. O sintoma
- * aparecia lá na ponta, como `Item 'MB-01' não encontrado` no /cotar.
+ * a sua loja chama?". Sem a resposta certa, o produto não entra na lista do
+ * canal — e o sintoma aparece duas pontas depois, como `Item 'MB-01' não
+ * encontrado` na cotação de frete.
+ *
+ * O contrato veio dos arquivos de exemplo da própria Olist
+ * (`webhook-produto.json` / `webhook-produto-retorno.json`), e três detalhes
+ * dele não estão no texto da página — cada um destes testes existe porque a
+ * primeira versão errou justamente ali:
+ *
+ *  1. a resposta é um ARRAY PURO;
+ *  2. `idMapeamento` NÃO é o id do produto — vem separado no envio;
+ *  3. o produto está na RAIZ do corpo, não dentro de `dados`.
+ *
+ * O ponto 2 é o mais traiçoeiro: devolver o id do produto é aceito com 200 e
+ * ignorado em silêncio. O painel só repete "não mapeado".
  */
-function build(produtos: Array<{ codigoErp: string; sku: string }> = []) {
+function build(produtos: Array<{ codigoErp: string; sku: string }> = [], conexoes = 1) {
   const prisma = {
     produto: { findMany: vi.fn().mockResolvedValue(produtos) },
-    empresa: {
-      findMany: vi.fn().mockResolvedValue([{ id: 'emp-1', cnpj: '12.345.678/0001-90' }]),
+    integracaoConexao: {
+      findMany: vi
+        .fn()
+        .mockResolvedValue(Array.from({ length: conexoes }, () => ({ empresaId: 'emp-1' }))),
     },
-    integracaoConexao: { findMany: vi.fn().mockResolvedValue([{ empresaId: 'emp-1' }]) },
   };
   return { svc: new TinyMapeamentoService(prisma as never), prisma };
 }
 
-const envio = (dados: unknown, cnpj = '12345678000190') => JSON.stringify({ cnpj, dados });
+/** Como o ERP manda de verdade: produto na raiz, id e idMapeamento separados. */
+const envio = (p: Record<string, unknown>) => JSON.stringify(p);
 
 describe('mapeamento de produto pro ERP', () => {
   beforeEach(() => vi.clearAllMocks());
 
-  it('devolve o id da Olist e o SKU do NOSSO catálogo', async () => {
-    const { svc } = build([{ codigoErp: '335240597', sku: 'MB-01' }]);
+  it('responde um ARRAY PURO — objeto com chave é aceito com 200 e ignorado', async () => {
+    const { svc } = build([{ codigoErp: '441393295', sku: 'MB-01' }]);
 
-    const r = await svc.responder(envio({ id: 335240597, descricao: 'Master Block MB-01' }));
+    const r = await svc.responder(
+      envio({ id: '441393295', idMapeamento: '1304432', codigo: 'MB-01' }),
+    );
 
-    expect(r).toEqual({
-      mapeamentos: [{ mapeamento: { idMapeamento: 335240597, skuMapeamento: 'MB-01' } }],
-    });
+    expect(Array.isArray(r)).toBe(true);
+    expect(r).toEqual([{ idMapeamento: '1304432', skuMapeamento: 'MB-01' }]);
   });
 
-  it('casa pelo codigoErp, não pelo sku que veio no envio', async () => {
-    // O código da loja pode divergir do código do ERP. Quem manda é o nosso
-    // catálogo — é o SKU que o site envia na cotação e no pedido.
-    const { svc } = build([{ codigoErp: '999', sku: 'MB-07' }]);
+  it('devolve o idMapeamento do ENVIO, não o id do produto', async () => {
+    // Os dois vêm lado a lado no payload. Devolver o id do produto passa
+    // batido: 200, e o painel segue dizendo "não mapeado".
+    const { svc } = build([{ codigoErp: '441393295', sku: 'MB-01' }]);
 
-    const r = await svc.responder(envio({ id: 999, sku: 'OUTRO-CODIGO' }));
+    const r = await svc.responder(
+      envio({ id: '441393295', idMapeamento: '1304432', codigo: 'MB-01' }),
+    );
 
-    expect(r.mapeamentos[0].mapeamento.skuMapeamento).toBe('MB-07');
+    expect(r[0].idMapeamento).toBe('1304432');
+    expect(r[0].idMapeamento).not.toBe('441393295');
   });
 
-  it('sem o produto no catálogo, usa o sku que o ERP mandou (os dois lados usam MB-01)', async () => {
+  it('lê o produto da RAIZ do corpo (não existe envelope `dados`)', async () => {
     const { svc } = build([]);
 
-    const r = await svc.responder(envio({ id: 335240597, sku: 'MB-01' }));
+    const r = await svc.responder(envio({ idMapeamento: '99', codigo: 'MB-05' }));
 
-    expect(r.mapeamentos[0].mapeamento.skuMapeamento).toBe('MB-01');
+    expect(r).toEqual([{ idMapeamento: '99', skuMapeamento: 'MB-05' }]);
+  });
+
+  it('mantém os ids como STRING (o contrato é string; converter é risco à toa)', async () => {
+    const { svc } = build([]);
+
+    const r = await svc.responder(envio({ idMapeamento: 1304432, codigo: 'MB-01' }));
+
+    expect(r[0].idMapeamento).toBe('1304432');
+    expect(typeof r[0].idMapeamento).toBe('string');
+  });
+
+  it('o SKU sai do NOSSO catálogo, casando por codigoErp', async () => {
+    // O código da loja pode divergir do código do ERP. Quem manda é o SKU que
+    // o site usa na cotação e no pedido.
+    const { svc } = build([{ codigoErp: '441393295', sku: 'MB-07' }]);
+
+    const r = await svc.responder(
+      envio({ id: '441393295', idMapeamento: '1', codigo: 'OUTRO-CODIGO' }),
+    );
+
+    expect(r[0].skuMapeamento).toBe('MB-07');
+  });
+
+  it('sem o produto no catálogo, cai no `codigo` do envio', async () => {
+    const { svc } = build([]);
+
+    const r = await svc.responder(envio({ id: '999', idMapeamento: '1', codigo: 'MB-03' }));
+
+    expect(r[0].skuMapeamento).toBe('MB-03');
+  });
+
+  it('variações viram itens próprios, cada uma com o SEU idMapeamento', async () => {
+    const { svc } = build([]);
+
+    const r = await svc.responder(
+      envio({
+        id: '441393295',
+        idMapeamento: '1304432',
+        codigo: 'ex-pai',
+        variacoes: [
+          { id: '441393302', idMapeamento: '1304433', codigo: 'ex-pai-1' },
+          { id: '441393310', idMapeamento: '1304434', codigo: 'ex-pai-2' },
+        ],
+      }),
+    );
+
+    expect(r).toEqual([
+      { idMapeamento: '1304432', skuMapeamento: 'ex-pai' },
+      { idMapeamento: '1304433', skuMapeamento: 'ex-pai-1' },
+      { idMapeamento: '1304434', skuMapeamento: 'ex-pai-2' },
+    ]);
   });
 
   it('produto que não dá pra mapear volta com ERRO explicado, não sumido', async () => {
-    // O painel do ERP mostra esta mensagem pra quem clicou em "enviar".
-    // Omitir o item faria o envio parecer bem-sucedido.
+    // O painel mostra esta mensagem pra quem clicou em "enviar". Omitir o item
+    // faria o envio parecer bem-sucedido.
     const { svc } = build([]);
 
-    const r = await svc.responder(envio({ id: 42, descricao: 'Produto Fantasma' }));
+    const r = await svc.responder(envio({ id: '42', idMapeamento: '7', nome: 'Produto Fantasma' }));
 
-    expect(r.mapeamentos[0].mapeamento).toMatchObject({ idMapeamento: 42 });
-    expect(r.mapeamentos[0].mapeamento.error).toContain('Produto Fantasma');
-    expect(r.mapeamentos[0].mapeamento.skuMapeamento).toBeUndefined();
+    expect(r[0].idMapeamento).toBe('7');
+    expect(r[0].skuMapeamento).toBeUndefined();
+    expect(r[0].error).toContain('Produto Fantasma');
   });
 
-  it('envio com VÁRIOS produtos devolve um mapeamento por produto', async () => {
-    const { svc } = build([
-      { codigoErp: '1', sku: 'MB-01' },
-      { codigoErp: '2', sku: 'MB-02' },
-    ]);
-
-    const r = await svc.responder(envio([{ id: 1 }, { id: 2 }]));
-
-    expect(r.mapeamentos.map((m) => m.mapeamento.skuMapeamento)).toEqual(['MB-01', 'MB-02']);
-  });
-
-  it('variações entram como itens próprios (o ERP mapeia cada uma)', async () => {
-    const { svc } = build([
-      { codigoErp: '10', sku: 'MB-10' },
-      { codigoErp: '11', sku: 'MB-10-V1' },
-    ]);
-
-    const r = await svc.responder(envio({ id: 10, variacoes: [{ id: 11 }] }));
-
-    expect(r.mapeamentos).toHaveLength(2);
-    expect(r.mapeamentos[1].mapeamento.skuMapeamento).toBe('MB-10-V1');
-  });
-
-  it('produto sem id não vira mapeamento torto', async () => {
+  it('item sem idMapeamento não inventa chave', async () => {
     const { svc } = build([]);
 
-    const r = await svc.responder(envio({ descricao: 'sem id' }));
+    const r = await svc.responder(envio({ id: '42', codigo: 'MB-01' }));
 
-    expect(r.mapeamentos[0].mapeamento.error).toContain('sem id');
+    expect(r[0].error).toContain('idMapeamento');
+  });
+
+  it('com DUAS empresas conectadas não consulta catálogo — SKU errado é pior que genérico', async () => {
+    const { svc, prisma } = build([{ codigoErp: '441393295', sku: 'MB-01' }], 2);
+
+    const r = await svc.responder(
+      envio({ id: '441393295', idMapeamento: '1', codigo: 'MB-01-DO-ENVIO' }),
+    );
+
+    expect(prisma.produto.findMany).not.toHaveBeenCalled();
+    expect(r[0].skuMapeamento).toBe('MB-01-DO-ENVIO');
   });
 
   it('corpo ilegível não estoura — devolve lista vazia', async () => {
     const { svc } = build([]);
 
-    expect(await svc.responder('não é json')).toEqual({ mapeamentos: [] });
+    expect(await svc.responder('não é json')).toEqual([]);
   });
 
-  it('envio sem dados devolve lista vazia', async () => {
+  it('corpo vazio devolve lista vazia', async () => {
     const { svc } = build([]);
 
-    expect(await svc.responder(JSON.stringify({ cnpj: '123' }))).toEqual({ mapeamentos: [] });
-  });
-
-  it('CNPJ de outra empresa NÃO devolve o SKU do nosso catálogo', async () => {
-    // Multi-tenant: responder o mapeamento de outro tenant seria vazar catálogo
-    // e, pior, amarrar o produto de um cliente na loja de outro.
-    const { svc, prisma } = build([{ codigoErp: '335240597', sku: 'MB-01' }]);
-
-    const r = await svc.responder(envio({ id: 335240597 }, '99999999000199'));
-
-    expect(prisma.produto.findMany).not.toHaveBeenCalled();
-    expect(r.mapeamentos[0].mapeamento.error).toBeTruthy();
+    expect(await svc.responder('null')).toEqual([]);
   });
 });

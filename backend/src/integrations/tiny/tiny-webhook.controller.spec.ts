@@ -15,7 +15,7 @@ const SEGREDO = 'cqPBvP6SQKnKuUnDhzpd5E2b8z6paxug';
 function build(secretConfigurado = SEGREDO) {
   const redis = { lpushCapped: vi.fn().mockResolvedValue(undefined) };
   const env = { get: vi.fn().mockReturnValue(secretConfigurado) };
-  const mapeamento = { responder: vi.fn().mockResolvedValue({ mapeamentos: [] }) };
+  const mapeamento = { responder: vi.fn().mockResolvedValue([]) };
   return {
     ctrl: new TinyWebhookController(env as never, redis as never, mapeamento as never),
     redis,
@@ -139,15 +139,12 @@ describe('webhook do Tiny', () => {
     // "Produto não mapeado pelo integrador" era exatamente isto: o ERP pergunta
     // como a loja chama o produto, e a gente respondia só "ok".
     const { ctrl, mapeamento } = build();
-    mapeamento.responder.mockResolvedValue({
-      mapeamentos: [{ mapeamento: { idMapeamento: 335240597, skuMapeamento: 'MB-01' } }],
-    });
+    mapeamento.responder.mockResolvedValue([{ idMapeamento: '1304432', skuMapeamento: 'MB-01' }]);
     const res = fakeRes();
 
-    await ctrl.receber(SEGREDO, 'produto', req({ dados: { id: 335240597 } }), res as never);
+    await ctrl.receber(SEGREDO, 'produto', req({ id: '1', idMapeamento: '1304432' }), res as never);
 
-    expect(res.corpo()).toEqual({
-      mapeamentos: [{ mapeamento: { idMapeamento: 335240597, skuMapeamento: 'MB-01' } }],
-    });
+    // ARRAY PURO: é o contrato da Olist, e é o que o envelope do app quebraria.
+    expect(res.corpo()).toEqual([{ idMapeamento: '1304432', skuMapeamento: 'MB-01' }]);
   });
 });
