@@ -3400,6 +3400,45 @@ server.registerTool(
   }),
 );
 
+
+server.registerTool(
+  'campanha_template_excluir',
+  {
+    description:
+      'EXCLUI um TEMPLATE de campanha DEFINITIVAMENTE (não é arquivar — não tem desfazer). ' +
+      'Use pra limpar template criado por engano, de teste ou duplicado. Campanhas que já foram ' +
+      'criadas a partir dele NÃO são afetadas: o conteúdo é copiado pra campanha no momento em ' +
+      'que ela nasce. Exige escopo "campanhas".',
+    inputSchema: {
+      templateId: z.string().describe('ID do template (use campanha_template_listar).'),
+    },
+    annotations: { readOnlyHint: false, destructiveHint: true },
+  },
+  seguro(async ({ templateId }: { templateId: string }) => {
+    await api.delete(`/campanha-templates/${templateId}`);
+    return ok({ templateId, excluido: true });
+  }),
+);
+
+server.registerTool(
+  'campanha_excluir',
+  {
+    description:
+      'EXCLUI uma CAMPANHA definitivamente. Só funciona em RASCUNHO ou CANCELADA — o servidor ' +
+      'recusa campanha enviada ou em envio, porque apagar levaria junto o histórico de quem ' +
+      'recebeu (e o engajamento pendurado nele). Use pra limpar rascunho de teste. ' +
+      'Exige escopo "campanhas".',
+    inputSchema: {
+      campanhaId: z.string().describe('ID da campanha (use campanhas_listar).'),
+    },
+    annotations: { readOnlyHint: false, destructiveHint: true },
+  },
+  seguro(async ({ campanhaId }: { campanhaId: string }) => {
+    await api.delete(`/campanhas/${campanhaId}`);
+    return ok({ campanhaId, excluida: true });
+  }),
+);
+
 console.error(
   '[betinna-kanban-mcp] conectado — kanban_* + fluxos_* + funis_/contatos_/crm + prompts_* + ' +
     'bot_config_* + usuarios_* + conhecimento_* (base do RAG) + tags_* (etiquetas de LEAD) + ' +
