@@ -18,8 +18,13 @@ import { PrismaService } from '@database/prisma.service';
  *     lado (`"id": "441393295"`, `"idMapeamento": "1304432"`); o que volta é o
  *     segundo. Devolver o id do produto é aceito com 200 e ignorado — o painel
  *     segue dizendo "não mapeado", sem dizer por quê.
- *  3. **O produto vem na RAIZ do corpo**, não dentro de `dados`. As variações
- *     vêm em `variacoes[]`, cada uma com o próprio `idMapeamento`.
+ *  3. As variações vêm em `variacoes[]`, cada uma com o próprio `idMapeamento`.
+ *
+ * **O arquivo de exemplo mostra só o PRODUTO — o envio real vem embrulhado**
+ * (`{ cnpj, tipo, versao, dados: {...} }`), como os outros webhooks do Tiny.
+ * Ler só a raiz devolvia um item sem `idMapeamento` e o painel repetia "não
+ * mapeado" sem dizer por quê. Por isso aqui aceita as duas formas e registra
+ * as chaves do topo: se o formato mudar de novo, o log conta na hora.
  *
  * Os ids são STRING no contrato. Mantemos string: converter pra número e voltar
  * é chance de perder zero à esquerda por nada.
@@ -58,9 +63,12 @@ export class TinyMapeamentoService {
       return [];
     }
 
+    // As chaves do topo saem no log SEMPRE. Foi a falta disso que custou dois
+    // ciclos: o corpo real nunca aparecia, e cada hipótese exigia um deploy.
+    const chaves = corpo && typeof corpo === 'object' ? Object.keys(corpo).join(',') : typeof corpo;
     const itens = this.achatar(corpo);
     if (itens.length === 0) {
-      this.logger.warn('[tiny] envio de produto sem nenhum item reconhecível');
+      this.logger.warn(`[tiny] envio de produto sem item reconhecível — topo: {${chaves}}`);
       return [];
     }
 
@@ -87,17 +95,36 @@ export class TinyMapeamentoService {
     });
 
     const ok = resposta.filter((m) => m.skuMapeamento).length;
-    this.logger.log(`[tiny] envio de produto: ${ok}/${resposta.length} mapeado(s)`);
+    this.logger.log(
+      `[tiny] envio de produto: ${ok}/${resposta.length} mapeado(s) — topo: {${chaves}}` +
+        (ok < resposta.length ? ` | 1º erro: ${resposta.find((m) => m.error)?.error}` : ''),
+    );
     return resposta;
   }
 
-  /** Produto na raiz (ou lista deles), com as variações viradas em itens. */
+  /**
+   * Acha os produtos no corpo, embrulhados ou não.
+   *
+   * O arquivo de exemplo da Olist mostra o produto sozinho; o envio real vem
+   * dentro de `dados`, como os outros webhooks do Tiny. Aceitar as duas formas
+   * custa três linhas e evita que a diferença volte a custar um deploy.
+   */
   private achatar(corpo: unknown): ProdutoDoErp[] {
     if (!corpo || typeof corpo !== 'object') return [];
-    const lista = Array.isArray(corpo) ? (corpo as ProdutoDoErp[]) : [corpo as ProdutoDoErp];
-    return lista
-      .filter((p) => p && typeof p === 'object')
-      .flatMap((p) => [p, ...(Array.isArray(p.variacoes) ? p.variacoes : [])]);
+
+    const env = corpo as { dados?: unknown; produtos?: unknown };
+    const alvo = env.dados ?? env.produtos ?? corpo;
+    if (!alvo || typeof alvo !== 'object') return [];
+
+    const lista = Array.isArray(alvo) ? (alvo as ProdutoDoErp[]) : [alvo as ProdutoDoErp];
+    return (
+      lista
+        .filter((p) => p && typeof p === 'object')
+        .flatMap((p) => [p, ...(Array.isArray(p.variacoes) ? p.variacoes : [])])
+        // Um envelope sem produto dentro não pode virar item com erro: seria
+        // ruído respondido como se fosse produto.
+        .filter((p) => p.idMapeamento != null || p.id != null || p.codigo != null)
+    );
   }
 
   /**
