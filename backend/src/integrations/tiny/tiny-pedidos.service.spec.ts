@@ -81,11 +81,34 @@ describe('criar pedido no Tiny', () => {
     expect((pedidoPost()[2] as unknown as { situacao: number }).situacao).toBe(0);
   });
 
-  it('leva o número do pedido do SITE — é por ele que o webhook casa de volta', async () => {
+  // O teste antigo afirmava `corpo.numeroPedidoEcommerce` no TOPO — e passava,
+  // porque conferia o formato que a gente inventou em vez do que o Tiny pede.
+  // O Tiny aceita a requisição com campo desconhecido no topo e DESCARTA em
+  // silêncio: o pedido nascia sem número de e-commerce e ninguém achava a
+  // venda pelo número que o cliente diz. O contrato é `ecommerce: { … }`.
+  it('o número do pedido do site vai ANINHADO em ecommerce (solto no topo, o Tiny descarta)', async () => {
     const { svc, pedidoPost } = build([{ id: 42, sku: 'MB-01' }]);
     await svc.criar('emp-1', pedido);
-    const corpo = pedidoPost()[2] as unknown as { numeroPedidoEcommerce: string };
-    expect(corpo.numeroPedidoEcommerce).toBe('SOM-2026-0001');
+    const corpo = pedidoPost()[2] as unknown as {
+      ecommerce?: { numeroPedidoEcommerce?: string };
+      numeroPedidoEcommerce?: string;
+    };
+    expect(corpo.ecommerce?.numeroPedidoEcommerce).toBe('SOM-2026-0001');
+    expect(corpo.numeroPedidoEcommerce).toBeUndefined();
+  });
+
+  it('amarra o pedido ao canal quando o tenant tem e-commerce cadastrado', async () => {
+    const { svc, pedidoPost } = build([{ id: 42, sku: 'MB-01' }]);
+    await svc.criar('emp-1', { ...pedido, ecommerceId: 77 });
+    const corpo = pedidoPost()[2] as unknown as { ecommerce?: { id?: number } };
+    expect(corpo.ecommerce?.id).toBe(77);
+  });
+
+  it('sem canal cadastrado o pedido entra igual — só sem amarração', async () => {
+    const { svc, pedidoPost } = build([{ id: 42, sku: 'MB-01' }]);
+    await svc.criar('emp-1', pedido);
+    const corpo = pedidoPost()[2] as unknown as { ecommerce?: { id?: number } };
+    expect(corpo.ecommerce?.id).toBeUndefined();
   });
 
   it('frete grátis vai como 0, não some do payload', async () => {

@@ -94,6 +94,16 @@ export class TinyPedidoPushService {
       );
     }
 
+    // Canal de e-commerce do tenant (Integrações → e-commerce, no ERP). É
+    // opcional: sem ele o pedido entra igual, só não fica amarrado ao canal.
+    const empresa = await this.prisma.empresa.findUnique({
+      where: { id: pedido.empresaId },
+      select: { config: true },
+    });
+    const erpCfg = ((empresa?.config as Record<string, unknown> | null)?.erp ?? {}) as {
+      ecommerceId?: number;
+    };
+
     const r = await this.pedidos.criar(pedido.empresaId, {
       cliente: {
         nome: pedido.cliente.nome,
@@ -106,9 +116,16 @@ export class TinyPedidoPushService {
         quantidade: i.quantidade,
         valorUnitario: Number(i.precoUnitario),
       })),
-      // O número do NOSSO pedido viaja junto: é por ele que o webhook de volta
-      // casa o pedido do ERP com o daqui, sem depender de ordem de criação.
-      numeroPedidoEcommerce: pedido.numero,
+      // O número que a pessoa vai DIZER quando ligar.
+      //
+      // Pedido nascido no site tem dois números: o SB… que o cliente recebeu
+      // por e-mail e vai citar no WhatsApp, e o PED-… interno daqui. No ERP
+      // vale o primeiro — quem atende procura pelo que o cliente falou, e
+      // `numeroPedidoEcommerce` é campo de busca, diferente da observação.
+      // (O casamento na volta é por `numeroErp`, não por este campo, então
+      // trocar aqui não afeta a sincronização.)
+      numeroPedidoEcommerce: pedido.numeroSite ?? pedido.numero,
+      ...(erpCfg.ecommerceId ? { ecommerceId: Number(erpCfg.ecommerceId) } : {}),
       ...(vendedorId ? { vendedorId } : {}),
       observacoes: pedido.observacoes ?? undefined,
     });

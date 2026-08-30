@@ -15,7 +15,7 @@ function envLocal(chave) {
     // dotenv do backend trataria o resto como comentário. Este parser aqui é
     // outro — mandava as aspas junto e o login falhava com a senha certa.
     const valor = linha.slice(chave.length + 1).trim();
-    const comAspas = /^([\'"])(.*)\1$/.exec(valor);
+    const comAspas = /^(['"])(.*)\1$/.exec(valor);
     return comAspas ? comAspas[2] : valor;
   } catch {
     return undefined;

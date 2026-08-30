@@ -18,8 +18,12 @@ export interface PedidoParaTiny {
     telefone?: string;
   };
   itens: ItemPedidoTiny[];
-  /** Número do pedido no site — é por ele que o webhook volta a casar. */
+  /** Número do pedido no site — o que o cliente diz quando liga. */
   numeroPedidoEcommerce?: string;
+  /** Id do e-commerce CADASTRADO no ERP (Integrações → e-commerce). Amarra o
+   *  pedido ao canal, que é o que faz o ERP tratar a venda como "veio da loja"
+   *  nos relatórios e na expedição. Sem ele o pedido entra sem canal. */
+  ecommerceId?: number;
   /** O que o CLIENTE pagou de frete (0 quando é frete grátis). */
   valorFrete?: number;
   observacoes?: string;
@@ -130,8 +134,18 @@ export class TinyPedidosService {
       itens,
       ...(pedido.depositoId ? { deposito: { id: pedido.depositoId } } : {}),
       ...(pedido.vendedorId ? { vendedor: { id: pedido.vendedorId } } : {}),
-      ...(pedido.numeroPedidoEcommerce
-        ? { numeroPedidoEcommerce: pedido.numeroPedidoEcommerce }
+      // ⚠️ Vai ANINHADO em `ecommerce`. Solto no topo, o Tiny aceita a
+      // requisição e DESCARTA o campo em silêncio — o pedido nasce sem
+      // número de e-commerce e ninguém acha pelo número que o cliente diz.
+      ...(pedido.numeroPedidoEcommerce || pedido.ecommerceId
+        ? {
+            ecommerce: {
+              ...(pedido.ecommerceId ? { id: pedido.ecommerceId } : {}),
+              ...(pedido.numeroPedidoEcommerce
+                ? { numeroPedidoEcommerce: pedido.numeroPedidoEcommerce }
+                : {}),
+            },
+          }
         : {}),
       ...(typeof pedido.valorFrete === 'number' ? { valorFrete: pedido.valorFrete } : {}),
       ...(pedido.observacoes ? { observacoes: pedido.observacoes } : {}),

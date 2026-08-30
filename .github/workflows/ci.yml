@@ -33,7 +33,11 @@ concurrency:
   cancel-in-progress: true
 
 env:
-  NODE_VERSION: '20'
+  # Mesma major do runtime (backend/Dockerfile = node:24-alpine). O CI rodava
+  # 20 e por isso ficou vermelho calado: `@supabase/supabase-js` exige
+  # WebSocket nativo, que só existe do 22 pra cima — teste que passa aqui na
+  # máquina e em produção falhava só no CI, o pior lugar pra divergir.
+  NODE_VERSION: '24'
   HUSKY: '0'
 
 jobs:

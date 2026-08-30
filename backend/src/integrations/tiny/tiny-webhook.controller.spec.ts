@@ -83,4 +83,22 @@ describe('webhook do Tiny', () => {
     const { ctrl } = build('');
     await expect(ctrl.receber('qualquer-coisa', 'nota', req({}))).resolves.toEqual({ ok: true });
   });
+
+  // O cadastro de e-commerce ("Outra Integração") pede CINCO URLs, e duas
+  // delas (produtos, preços) não existiam na lista. O painel testa a URL antes
+  // de salvar, então evento faltando não vira bug sutil: trava o cadastro.
+  describe('eventos do cadastro de e-commerce', () => {
+    it.each(['pedido', 'rastreio', 'estoque', 'nota', 'produto', 'preco'])(
+      'aceita a URL do evento "%s"',
+      (evento) => {
+        const { ctrl } = build();
+        expect(ctrl.verificar(SEGREDO, evento)).toEqual({ ok: true, evento });
+      },
+    );
+
+    it('evento inventado segue dando 404 (erro de digitação aparece na hora de salvar)', () => {
+      const { ctrl } = build();
+      expect(() => ctrl.verificar(SEGREDO, 'inventado')).toThrow();
+    });
+  });
 });
