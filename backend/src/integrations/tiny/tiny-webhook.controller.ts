@@ -7,13 +7,15 @@ import {
   Param,
   Post,
   Req,
+  Res,
   type RawBodyRequest,
 } from '@nestjs/common';
 import { createHash, timingSafeEqual } from 'node:crypto';
 import { Throttle, seconds } from '@nestjs/throttler';
 import { ApiOperation, ApiTags } from '@nestjs/swagger';
-import type { Request } from 'express';
+import type { Request, Response } from 'express';
 import { EnvService } from '@config/env.service';
+import { TinyMapeamentoService } from './tiny-mapeamento.service';
 import { RedisService } from '@database/redis.service';
 import { Public } from '@shared/decorators/public.decorator';
 import { NotFoundException, UnauthorizedException } from '@shared/errors/app-exception';
@@ -69,6 +71,7 @@ export class TinyWebhookController {
   constructor(
     private readonly env: EnvService,
     private readonly redis: RedisService,
+    private readonly mapeamento: TinyMapeamentoService,
   ) {}
 
   /**
@@ -129,7 +132,11 @@ export class TinyWebhookController {
     @Param('segredo') segredo: string,
     @Param('evento') evento: string,
     @Req() req: RawBodyRequest<Request>,
-  ): Promise<{ ok: boolean }> {
+    // Resposta escrita à mão de propósito: o `ResponseInterceptor` envelopa
+    // tudo em `{ success, data, meta }`, e o ERP espera o corpo CRU do
+    // contrato dele. Envelopado, o mapeamento de produto não seria lido.
+    @Res() res: Response,
+  ): Promise<void> {
     this.validarSegredo(segredo);
     const tipo = this.validarEvento(evento);
 
@@ -156,6 +163,16 @@ export class TinyWebhookController {
     this.logger.debug(
       `[tiny] webhook ${tipo} recebido (${bruto.length} bytes, hash ${hash.slice(0, 12)})`,
     );
-    return { ok: true };
+
+    // `produto` não é aviso, é PERGUNTA: "este produto meu, como a sua loja
+    // chama?". Responder só `ok` faz o ERP marcar "Produto não mapeado pelo
+    // integrador" — e sem mapeamento o produto não entra na lista do canal,
+    // que é onde a cotação de frete procura o item.
+    if (tipo === 'produto') {
+      res.status(HttpStatus.OK).json(await this.mapeamento.responder(bruto));
+      return;
+    }
+
+    res.status(HttpStatus.OK).json({ ok: true });
   }
 }

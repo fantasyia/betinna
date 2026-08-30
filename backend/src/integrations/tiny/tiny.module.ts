@@ -16,6 +16,7 @@ import { TinyOAuthController } from './tiny-oauth.controller';
 import { TinyOAuthService } from './tiny-oauth.service';
 import { TinyTokenRefreshJob } from './tiny-token-refresh.job';
 import { TinyWebhookController } from './tiny-webhook.controller';
+import { TinyMapeamentoService } from './tiny-mapeamento.service';
 import { TinyWebhookProcessorService } from './tiny-webhook-processor.service';
 
 /**
@@ -29,6 +30,7 @@ import { TinyWebhookProcessorService } from './tiny-webhook-processor.service';
   imports: [IntegracoesModule, NotificacoesModule],
   controllers: [TinyOAuthController, TinyWebhookController],
   providers: [
+    TinyMapeamentoService,
     TinyOAuthService,
     TinyClientService,
     TinyContaService,

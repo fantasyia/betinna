@@ -15,7 +15,23 @@ const SEGREDO = 'cqPBvP6SQKnKuUnDhzpd5E2b8z6paxug';
 function build(secretConfigurado = SEGREDO) {
   const redis = { lpushCapped: vi.fn().mockResolvedValue(undefined) };
   const env = { get: vi.fn().mockReturnValue(secretConfigurado) };
-  return { ctrl: new TinyWebhookController(env as never, redis as never), redis };
+  const mapeamento = { responder: vi.fn().mockResolvedValue({ mapeamentos: [] }) };
+  return {
+    ctrl: new TinyWebhookController(env as never, redis as never, mapeamento as never),
+    redis,
+    mapeamento,
+  };
+}
+
+/** A resposta é escrita à mão (`@Res()`) pra escapar do ResponseInterceptor —
+ *  o ERP espera o corpo cru do contrato dele, não o envelope do app. */
+function fakeRes() {
+  const res = {
+    status: vi.fn(() => res),
+    json: vi.fn(() => res),
+    corpo: () => (res.json.mock.calls[0]?.[0] ?? null) as unknown,
+  };
+  return res;
 }
 
 const req = (corpo: unknown) =>
@@ -31,7 +47,9 @@ describe('webhook do Tiny', () => {
 
   it('segredo errado na URL é recusado', async () => {
     const { ctrl, redis } = build();
-    await expect(ctrl.receber('outro-segredo-qualquer', 'pedido', req({}))).rejects.toThrow();
+    await expect(
+      ctrl.receber('outro-segredo-qualquer', 'pedido', req({}), fakeRes() as never),
+    ).rejects.toThrow();
     // E não deixa rastro na fila: evento não autenticado não vira trabalho.
     expect(redis.lpushCapped).not.toHaveBeenCalled();
   });
@@ -40,25 +58,36 @@ describe('webhook do Tiny', () => {
     // timingSafeEqual joga exceção se os buffers têm tamanhos diferentes — o
     // guard de length existe pra isso virar 401, não 500.
     const { ctrl } = build();
-    await expect(ctrl.receber('curto', 'pedido', req({}))).rejects.toThrow(/segredo inválido/);
+    await expect(ctrl.receber('curto', 'pedido', req({}), fakeRes() as never)).rejects.toThrow(
+      /segredo inválido/,
+    );
   });
 
   it('evento desconhecido é 404 — erro de digitação no painel aparece na hora', async () => {
     const { ctrl } = build();
-    await expect(ctrl.receber(SEGREDO, 'pedidos', req({}))).rejects.toThrow(/evento desconhecido/);
+    await expect(ctrl.receber(SEGREDO, 'pedidos', req({}), fakeRes() as never)).rejects.toThrow(
+      /evento desconhecido/,
+    );
   });
 
-  it('os quatro toggles do painel são aceitos', async () => {
+  it('os toggles de aviso respondem um ack simples', async () => {
     const { ctrl, redis } = build();
     for (const ev of ['pedido', 'rastreio', 'estoque', 'nota']) {
-      await expect(ctrl.receber(SEGREDO, ev, req({ id: 1 }))).resolves.toEqual({ ok: true });
+      const res = fakeRes();
+      await ctrl.receber(SEGREDO, ev, req({ id: 1 }), res as never);
+      expect(res.corpo()).toEqual({ ok: true });
     }
     expect(redis.lpushCapped).toHaveBeenCalledTimes(4);
   });
 
   it('guarda o corpo CRU + hash na fila, pra o processamento reprocessar e deduplicar', async () => {
     const { ctrl, redis } = build();
-    await ctrl.receber(SEGREDO, 'rastreio', req({ id: 42, codigoRastreamento: 'BR1' }));
+    await ctrl.receber(
+      SEGREDO,
+      'rastreio',
+      req({ id: 42, codigoRastreamento: 'BR1' }),
+      fakeRes() as never,
+    );
 
     const [chave, valor, cap] = redis.lpushCapped.mock.calls[0] as [string, string, number];
     expect(chave).toBe('tiny:webhook:pendentes');
@@ -74,14 +103,18 @@ describe('webhook do Tiny', () => {
   it('Redis fora NÃO vira erro pro Tiny (senão ele retenta 10x e desiste)', async () => {
     const { ctrl, redis } = build();
     redis.lpushCapped.mockRejectedValue(new Error('redis fora'));
-    await expect(ctrl.receber(SEGREDO, 'estoque', req({}))).resolves.toEqual({ ok: true });
+    const res = fakeRes();
+    await ctrl.receber(SEGREDO, 'estoque', req({}), res as never);
+    expect(res.corpo()).toEqual({ ok: true });
   });
 
   it('sem TINY_WEBHOOK_SECRET configurado, aceita com warning', async () => {
     // É o que permite cadastrar a URL no painel antes de a env existir. Assim
     // que ela existe, passa a valer sem mexer em nada.
     const { ctrl } = build('');
-    await expect(ctrl.receber('qualquer-coisa', 'nota', req({}))).resolves.toEqual({ ok: true });
+    const res = fakeRes();
+    await ctrl.receber('qualquer-coisa', 'nota', req({}), res as never);
+    expect(res.corpo()).toEqual({ ok: true });
   });
 
   // O cadastro de e-commerce ("Outra Integração") pede CINCO URLs, e duas
@@ -99,6 +132,22 @@ describe('webhook do Tiny', () => {
     it('evento inventado segue dando 404 (erro de digitação aparece na hora de salvar)', () => {
       const { ctrl } = build();
       expect(() => ctrl.verificar(SEGREDO, 'inventado')).toThrow();
+    });
+  });
+
+  it('o evento `produto` responde o MAPEAMENTO cru, não o ack', async () => {
+    // "Produto não mapeado pelo integrador" era exatamente isto: o ERP pergunta
+    // como a loja chama o produto, e a gente respondia só "ok".
+    const { ctrl, mapeamento } = build();
+    mapeamento.responder.mockResolvedValue({
+      mapeamentos: [{ mapeamento: { idMapeamento: 335240597, skuMapeamento: 'MB-01' } }],
+    });
+    const res = fakeRes();
+
+    await ctrl.receber(SEGREDO, 'produto', req({ dados: { id: 335240597 } }), res as never);
+
+    expect(res.corpo()).toEqual({
+      mapeamentos: [{ mapeamento: { idMapeamento: 335240597, skuMapeamento: 'MB-01' } }],
     });
   });
 });
