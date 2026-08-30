@@ -106,9 +106,15 @@ export class TinyPedidoPushService {
         quantidade: i.quantidade,
         valorUnitario: Number(i.precoUnitario),
       })),
-      // O número do NOSSO pedido viaja junto: é por ele que o webhook de volta
-      // casa o pedido do ERP com o daqui, sem depender de ordem de criação.
-      numeroPedidoEcommerce: pedido.numero,
+      // O número que a pessoa vai DIZER quando ligar.
+      //
+      // Pedido nascido no site tem dois números: o SB… que o cliente recebeu
+      // por e-mail e vai citar no WhatsApp, e o PED-… interno daqui. No ERP
+      // vale o primeiro — quem atende procura pelo que o cliente falou, e
+      // `numeroPedidoEcommerce` é campo de busca, diferente da observação.
+      // (O casamento na volta é por `numeroErp`, não por este campo, então
+      // trocar aqui não afeta a sincronização.)
+      numeroPedidoEcommerce: pedido.numeroSite ?? pedido.numero,
       ...(vendedorId ? { vendedorId } : {}),
       observacoes: pedido.observacoes ?? undefined,
     });
