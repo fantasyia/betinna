@@ -94,6 +94,16 @@ export class TinyPedidoPushService {
       );
     }
 
+    // Canal de e-commerce do tenant (Integrações → e-commerce, no ERP). É
+    // opcional: sem ele o pedido entra igual, só não fica amarrado ao canal.
+    const empresa = await this.prisma.empresa.findUnique({
+      where: { id: pedido.empresaId },
+      select: { config: true },
+    });
+    const erpCfg = ((empresa?.config as Record<string, unknown> | null)?.erp ?? {}) as {
+      ecommerceId?: number;
+    };
+
     const r = await this.pedidos.criar(pedido.empresaId, {
       cliente: {
         nome: pedido.cliente.nome,
@@ -115,6 +125,7 @@ export class TinyPedidoPushService {
       // (O casamento na volta é por `numeroErp`, não por este campo, então
       // trocar aqui não afeta a sincronização.)
       numeroPedidoEcommerce: pedido.numeroSite ?? pedido.numero,
+      ...(erpCfg.ecommerceId ? { ecommerceId: Number(erpCfg.ecommerceId) } : {}),
       ...(vendedorId ? { vendedorId } : {}),
       observacoes: pedido.observacoes ?? undefined,
     });

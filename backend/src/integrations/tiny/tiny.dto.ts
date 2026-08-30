@@ -73,6 +73,7 @@ export const pedidoTinySchema = z.object({
     .min(1)
     .max(100),
   numeroPedidoEcommerce: z.string().max(60).optional(),
+  ecommerceId: z.number().int().positive().optional(),
   valorFrete: z.number().nonnegative().optional(),
   observacoes: z.string().max(2000).optional(),
   marcadores: z.array(z.string().min(1).max(60)).max(20).optional(),
