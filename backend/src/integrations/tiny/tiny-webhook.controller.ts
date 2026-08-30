@@ -19,8 +19,15 @@ import { Public } from '@shared/decorators/public.decorator';
 import { NotFoundException, UnauthorizedException } from '@shared/errors/app-exception';
 import { ErrorCode } from '@shared/errors/error-codes';
 
-/** Os quatro eventos que o painel do Tiny oferece, um por toggle. */
-const EVENTOS = ['pedido', 'rastreio', 'estoque', 'nota'] as const;
+/**
+ * Os eventos que o painel do Tiny oferece, um por campo de URL.
+ *
+ * `produto` e `preco` entraram com o cadastro de e-commerce ("Outra
+ * Integração"), que pede cinco URLs. Evento fora desta lista dá 404 — e como o
+ * painel TESTA a URL antes de salvar, faltar um nome aqui não vira bug sutil:
+ * vira "não foi possível acessar a URL" na cara de quem está cadastrando.
+ */
+const EVENTOS = ['pedido', 'rastreio', 'estoque', 'nota', 'produto', 'preco'] as const;
 type Evento = (typeof EVENTOS)[number];
 
 /** Fila de eventos crus, pra o processamento (item 7) poder reprocessar. */

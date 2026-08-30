@@ -152,7 +152,11 @@ export class TinyWebhookProcessorService {
       return efeito !== 'foraDaJanela' && efeito !== 'jaCancelado';
     }
 
-    if (tipo.includes('estoque') || tipo.includes('produto')) {
+    // Preço entra aqui junto com estoque e produto: os três significam "este
+    // produto mudou", e a resposta é a mesma — reconsultar o produto na API e
+    // regravar. Confiar no valor do payload seria confiar num webhook que não
+    // vem assinado.
+    if (tipo.includes('estoque') || tipo.includes('produto') || tipo.includes('preco')) {
       const id = Number(dados.idProduto ?? dados.id);
       if (!Number.isFinite(id) || id <= 0) return false;
       const ok = await this.produtos.sincronizarUm(empresaId, id);
