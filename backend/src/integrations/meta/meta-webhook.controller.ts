@@ -27,6 +27,8 @@ import {
 import { WebhookSignatureUtil } from '@shared/http/webhook-signature.util';
 import { addBreadcrumb } from '@shared/observability/sentry';
 import { WebhookAntiReplayService } from '@shared/utils/webhook-anti-replay.service';
+import { MetaLeadgenService } from './meta-leadgen.service';
+import type { MetaLeadgenChangeValue } from './meta-leadgen.types';
 import { MetaMediaService } from './meta-media.service';
 import { MetaOAuthService } from './meta-oauth.service';
 import type { MetaMessagingEvent, MetaWebhookEntry, MetaWebhookEnvelope } from './meta.types';
@@ -43,6 +45,9 @@ import type { MetaMessagingEvent, MetaWebhookEntry, MetaWebhookEnvelope } from '
  *   - Routing por (object × entry.id):
  *       object='page'      → entry.id = pageId   → IntegracaoConexao(servico='facebook')
  *       object='instagram' → entry.id = igUserId → IntegracaoConexao(servico='instagram')
+ *   - `entry.changes[].field = 'leadgen'` (Lead Ads) NÃO é mensagem: vai pra
+ *     fila, porque o payload traz só o `leadgen_id` e os dados exigem uma ida à
+ *     Graph API que não cabe no tempo de resposta do webhook.
  *   - Pra cada messaging event, descarta ecos (is_echo) e gera msg entrante
  *     no InboxService.
  *
@@ -61,6 +66,7 @@ export class MetaWebhookController {
     private readonly oauth: MetaOAuthService,
     private readonly antiReplay: WebhookAntiReplayService,
     private readonly media: MetaMediaService,
+    private readonly leadgen: MetaLeadgenService,
   ) {}
 
   // ─── Verificação (GET handshake) ─────────────────────────────────────
@@ -176,6 +182,15 @@ export class MetaWebhookController {
   private async processarEntry(canal: MessageChannel, entry: MetaWebhookEntry): Promise<void> {
     const accountId = entry.id;
     const servico = canal === 'FACEBOOK' ? 'facebook' : 'instagram';
+
+    // Lead Ads chega neste MESMO webhook, mas em `changes` (não em `messaging`)
+    // e sem dado nenhum do lead. Só enfileira: buscar na Graph aqui estouraria o
+    // tempo de resposta que o Meta espera.
+    const mudancasLeadgen = (entry.changes ?? []).filter((c) => c.field === 'leadgen');
+    if (mudancasLeadgen.length) {
+      await this.processarLeadgen(servico, accountId, mudancasLeadgen);
+    }
+
     const resolved = await this.oauth.resolverPorAccount(servico, accountId);
     if (!resolved) {
       this.logger.warn(
@@ -229,6 +244,45 @@ export class MetaWebhookController {
         mediaUrl,
         mediaMime: mimeFinal,
         meta: { accountId, raw: ev.message },
+      });
+    }
+  }
+
+  /**
+   * Enfileira cada lead do formulário nativo. NÃO engole erro: o caller devolve
+   * 5xx e o Meta reentrega — perder um lead pago em silêncio é pior que uma
+   * reentrega.
+   */
+  private async processarLeadgen(
+    servico: 'facebook' | 'instagram',
+    accountId: string,
+    mudancas: Array<{ field: string; value: unknown }>,
+  ): Promise<void> {
+    // Lead Ads é da PÁGINA. `object='instagram'` não entrega leadgen; se vier,
+    // o accountId é um IG user id e não resolveria conexão de facebook.
+    if (servico !== 'facebook') {
+      this.logger.warn(`Webhook leadgen fora de object='page' (${servico}) — ignorado`);
+      return;
+    }
+    const resolved = await this.oauth.resolverPorAccount('facebook', accountId);
+    if (!resolved) {
+      this.logger.warn(`Webhook leadgen: página ${accountId} sem IntegracaoConexao — ignorado`);
+      return;
+    }
+    for (const mudanca of mudancas) {
+      const v = mudanca.value as MetaLeadgenChangeValue | undefined;
+      if (!v?.leadgen_id) {
+        this.logger.warn('Webhook leadgen sem leadgen_id — ignorado');
+        continue;
+      }
+      await this.leadgen.enfileirar({
+        empresaId: resolved.empresaId,
+        leadgenId: String(v.leadgen_id),
+        pageId: String(v.page_id ?? accountId),
+        formId: v.form_id ? String(v.form_id) : undefined,
+        adId: v.ad_id ? String(v.ad_id) : undefined,
+        adgroupId: v.adgroup_id ? String(v.adgroup_id) : undefined,
+        createdTime: typeof v.created_time === 'number' ? v.created_time : undefined,
       });
     }
   }
