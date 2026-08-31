@@ -108,9 +108,13 @@ export class PedidoSiteService {
           .filter(Boolean)
           .join(' — '),
         itens: {
+          // Só COLUNAS reais do PedidoItem. O nome do produto NÃO mora aqui —
+          // vem por `produtoId`. Um campo a mais faz o Prisma recusar a
+          // gravação inteira, e o `tsc` não pega: em `create` aninhado montado
+          // por `.map()`, o excesso de propriedade passa batido pelo
+          // typecheck. Foi assim que dois pedidos reais morreram em 400.
           create: dto.itens.map((i) => ({
             produtoId: porSku.get(i.sku)!.id,
-            produtoNome: porSku.get(i.sku)!.nome,
             quantidade: i.quantidade,
             precoUnitario: new Prisma.Decimal(i.valorUnitario),
             desconto: 0,
