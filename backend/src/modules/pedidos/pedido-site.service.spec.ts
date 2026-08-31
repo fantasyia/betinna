@@ -231,4 +231,73 @@ describe('pedido do site', () => {
       expect(patch.email).toBeUndefined();
     });
   });
+
+  /**
+   * Pegado num teste REAL em produção (31/08): o pedido caiu no cliente errado
+   * e a nota sairia no CPF de outra pessoa.
+   *
+   * O casamento por sufixo de 8 dígitos (D18) ignora o DDD — "11 99999-0000" e
+   * "71 99999-0000" são a MESMA chave. Duas pessoas de estados diferentes
+   * colidem, e o pedido de São Paulo foi parar num cadastro da Bahia.
+   *
+   * Documento é identidade forte; sufixo de telefone é pista. Quando discordam,
+   * quem manda é o documento.
+   */
+  describe('documento veta o casamento por telefone', () => {
+    const COMPRADOR = {
+      ...PEDIDO,
+      cliente: { nome: 'Comprador Novo', cpfCnpj: '37258545808', telefone: '11999990000' },
+    };
+
+    it('telefone bate mas o DOCUMENTO é outro → cria cadastro novo', async () => {
+      const { svc, prisma } = build();
+      prisma.$queryRaw
+        .mockResolvedValueOnce([]) // busca por documento: não achou
+        .mockResolvedValueOnce([{ id: 'cli-bahia', doc: '52998224725' }]); // telefone colidiu
+
+      await svc.receber('blc_chave', COMPRADOR);
+
+      expect(prisma.cliente.create).toHaveBeenCalled();
+      expect(prisma.cliente.update).not.toHaveBeenCalled();
+    });
+
+    it('telefone bate e o documento é o MESMO → é a mesma pessoa, reusa', async () => {
+      const { svc, prisma } = build();
+      prisma.$queryRaw
+        .mockResolvedValueOnce([])
+        .mockResolvedValueOnce([{ id: 'cli-1', doc: '37258545808' }]);
+
+      await svc.receber('blc_chave', COMPRADOR);
+
+      expect(prisma.cliente.create).not.toHaveBeenCalled();
+    });
+
+    it('cliente sem documento no cadastro NÃO é conflito — o telefone ainda vale', async () => {
+      // Quem comprou pelo rep costuma não ter documento no cadastro. Recusar
+      // aqui partiria o histórico e tiraria o cliente da carteira dele.
+      const { svc, prisma } = build();
+      prisma.$queryRaw
+        .mockResolvedValueOnce([])
+        .mockResolvedValueOnce([{ id: 'cli-do-rep', doc: '' }]);
+
+      await svc.receber('blc_chave', COMPRADOR);
+
+      expect(prisma.cliente.create).not.toHaveBeenCalled();
+      expect(prisma.cliente.update).toHaveBeenCalled();
+    });
+
+    it('comprador SEM documento segue casando pelo telefone (nada a vetar)', async () => {
+      // Sem documento, a busca por documento nem acontece: a PRIMEIRA consulta
+      // já é a do telefone.
+      const { svc, prisma } = build();
+      prisma.$queryRaw.mockResolvedValueOnce([{ id: 'cli-1', doc: '52998224725' }]);
+
+      await svc.receber('blc_chave', {
+        ...PEDIDO,
+        cliente: { nome: 'Sem Doc', telefone: '11999990000' },
+      });
+
+      expect(prisma.cliente.create).not.toHaveBeenCalled();
+    });
+  });
 });

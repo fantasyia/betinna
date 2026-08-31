@@ -176,12 +176,31 @@ export class PedidoSiteService {
     const tel = (c.telefone ?? '').replace(/\D/g, '');
     if (tel.length >= 8) {
       const sufixo = tel.slice(-8);
-      const porTel = await this.prisma.$queryRaw<Array<{ id: string }>>`
-        SELECT "id" FROM "Cliente"
+      const porTel = await this.prisma.$queryRaw<Array<{ id: string; doc: string | null }>>`
+        SELECT "id", REGEXP_REPLACE(COALESCE("cnpj", ''), '[^0-9]', '', 'g') AS doc
+        FROM "Cliente"
         WHERE "empresaId" = ${empresaId}
           AND RIGHT(REGEXP_REPLACE(COALESCE("telefone", ''), '[^0-9]', '', 'g'), 8) = ${sufixo}
         LIMIT 1`;
-      if (porTel[0]) return this.completar(porTel[0].id, c, entrega);
+
+      // ⚠️ O DOCUMENTO VETA o casamento por telefone.
+      //
+      // O sufixo de 8 dígitos ignora o DDD (D18), então "11 99999-0000" e
+      // "71 99999-0000" são a MESMA chave: duas pessoas de estados diferentes
+      // colidem. Aconteceu num teste real — o pedido caiu num cliente da Bahia
+      // e a nota sairia no CPF dele.
+      //
+      // Documento é identidade forte; sufixo de telefone é pista. Quando os
+      // dois discordam, quem manda é o documento: melhor criar cadastro novo
+      // (que se funde depois) do que faturar no CPF de outra pessoa.
+      const achado = porTel[0];
+      const conflito = Boolean(doc && achado?.doc && achado.doc !== doc);
+      if (achado && !conflito) return this.completar(achado.id, c, entrega);
+      if (conflito) {
+        this.logger.warn(
+          `[site] telefone bate com cliente ${achado!.id}, mas o documento não — cadastro novo`,
+        );
+      }
     }
     return this.prisma.cliente.create({
       data: {
