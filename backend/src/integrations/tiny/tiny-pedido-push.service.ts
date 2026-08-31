@@ -3,7 +3,7 @@ import { PrismaService } from '@database/prisma.service';
 import { IntegracoesService } from '@modules/integracoes/integracoes.service';
 import { BusinessRuleException } from '@shared/errors/app-exception';
 import { ErrorCode } from '@shared/errors/error-codes';
-import { TinyPedidosService } from './tiny-pedidos.service';
+import { TinyPedidosService, type EnderecoEntregaTiny } from './tiny-pedidos.service';
 import { TinyContatosService } from './tiny-contatos.service';
 
 export interface ResultadoPush {
@@ -40,6 +40,47 @@ export class TinyPedidoPushService {
     private readonly contatos: TinyContatosService,
     private readonly integracoes: IntegracoesService,
   ) {}
+
+  /**
+   * Endereço de entrega do pedido, no formato do ERP.
+   *
+   * Sem CEP e logradouro não adianta mandar: o Tiny recusa endereço pela
+   * metade, e um pedido recusado é pior que um pedido sem endereço (que ao
+   * menos existe e dá pra completar no painel).
+   *
+   * Os nomes dos campos são do contrato da Olist: `enderecoNro` e `municipio`,
+   * não `numero` e `cidade`.
+   */
+  private enderecoDe(c: {
+    nome: string;
+    cep: string | null;
+    endereco: string | null;
+    numero: string | null;
+    complemento: string | null;
+    bairro: string | null;
+    cidade: string | null;
+    uf: string | null;
+    telefone: string | null;
+    cnpj: string | null;
+  }): EnderecoEntregaTiny | null {
+    const cep = (c.cep ?? '').replace(/\D/g, '');
+    if (!cep || !c.endereco) return null;
+    const doc = (c.cnpj ?? '').replace(/\D/g, '');
+    return {
+      endereco: c.endereco,
+      enderecoNro: c.numero ?? 'S/N',
+      ...(c.complemento ? { complemento: c.complemento } : {}),
+      ...(c.bairro ? { bairro: c.bairro } : {}),
+      ...(c.cidade ? { municipio: c.cidade } : {}),
+      cep,
+      ...(c.uf ? { uf: c.uf } : {}),
+      ...(c.telefone ? { fone: c.telefone } : {}),
+      nomeDestinatario: c.nome,
+      ...(doc
+        ? { cpfCnpj: doc, tipoPessoa: doc.length > 11 ? ('J' as const) : ('F' as const) }
+        : {}),
+    };
+  }
 
   /**
    * Cancela no ERP o pedido correspondente ao número guardado aqui.
@@ -125,6 +166,9 @@ export class TinyPedidoPushService {
       // (O casamento na volta é por `numeroErp`, não por este campo, então
       // trocar aqui não afeta a sincronização.)
       numeroPedidoEcommerce: pedido.numeroSite ?? pedido.numero,
+      ...(this.enderecoDe(pedido.cliente)
+        ? { enderecoEntrega: this.enderecoDe(pedido.cliente)! }
+        : {}),
       ...(erpCfg.ecommerceId ? { ecommerceId: Number(erpCfg.ecommerceId) } : {}),
       ...(vendedorId ? { vendedorId } : {}),
       observacoes: pedido.observacoes ?? undefined,

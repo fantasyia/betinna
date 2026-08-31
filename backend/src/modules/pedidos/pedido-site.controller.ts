@@ -30,6 +30,23 @@ const pedidoDoSiteSchema = z.object({
     .min(1),
   valorFrete: z.number().nonnegative().optional(),
   observacoes: z.string().max(2000).optional(),
+  /**
+   * Endereço de ENTREGA. Sem ele o pedido nasce sem destino no ERP e a
+   * expedição não gera etiqueta — endereço em observação é texto, ninguém
+   * imprime a partir dele. Opcional no schema (pedido sem entrega ainda é
+   * pedido válido), mas o checkout sempre manda.
+   */
+  entrega: z
+    .object({
+      cep: z.string().trim().max(12),
+      logradouro: z.string().trim().max(200),
+      numero: z.string().trim().max(20).optional(),
+      complemento: z.string().trim().max(120).optional(),
+      bairro: z.string().trim().max(120).optional(),
+      cidade: z.string().trim().max(120).optional(),
+      uf: z.string().trim().length(2).optional(),
+    })
+    .optional(),
 });
 
 @ApiTags('pedidos')
