@@ -23,7 +23,13 @@ const makePrismaMock = () => ({
 
 const makeRedisMock = () => ({
   incr: vi.fn().mockResolvedValue(1),
+  // true = primeira vez na janela (é o que destrava o aviso de tag inexistente)
+  setNxEx: vi.fn().mockResolvedValue(true),
   client: { expire: vi.fn().mockResolvedValue(1) },
+});
+
+const makeNotificacoesMock = () => ({
+  criarParaRole: vi.fn().mockResolvedValue(1),
 });
 
 const makeLeadsMock = () => ({
@@ -52,6 +58,7 @@ describe('LeadCaptureService', () => {
   let prisma: ReturnType<typeof makePrismaMock>;
   let redis: ReturnType<typeof makeRedisMock>;
   let leads: ReturnType<typeof makeLeadsMock>;
+  let notificacoes: ReturnType<typeof makeNotificacoesMock>;
   let svc: LeadCaptureService;
 
   beforeEach(() => {
@@ -59,7 +66,13 @@ describe('LeadCaptureService', () => {
     prisma = makePrismaMock();
     redis = makeRedisMock();
     leads = makeLeadsMock();
-    svc = new LeadCaptureService(prisma as never, redis as never, leads as never);
+    notificacoes = makeNotificacoesMock();
+    svc = new LeadCaptureService(
+      prisma as never,
+      redis as never,
+      leads as never,
+      notificacoes as never,
+    );
   });
 
   describe('gerarChave', () => {
@@ -438,6 +451,94 @@ describe('LeadCaptureService', () => {
         where: { empresaId: 'emp-1' },
         data: { ativo: false },
       });
+    });
+  });
+
+  /**
+   * Recusar etiqueta que o CRM não tem é DELIBERADO (a chave de captura vive no
+   * JS público do site). O defeito era a recusa ser MUDA: lead residencial e
+   * industrial chegaram semanas sem etiqueta de público — sem erro, sem sinal,
+   * sem roteamento — e ninguém tinha como perceber olhando o CRM.
+   */
+  describe('etiqueta que o CRM não tem', () => {
+    const dtoTag = {
+      nome: 'Casa da Ana',
+      telefone: '(11) 98888-0001',
+      tags: ['publico:residencia'],
+    };
+    const naoExiste = () => {
+      prisma.leadCaptureChave.findUnique.mockResolvedValue({
+        empresaId: 'emp-1',
+        chaveHash: HASH,
+        ativo: true,
+      });
+      leads.aplicarTagExistentePorNome.mockResolvedValue(false);
+    };
+
+    it('continua NÃO criando a etiqueta — a chave é pública, nome livre polui a base', async () => {
+      naoExiste();
+
+      await svc.capturar(CHAVE, dtoTag as never);
+
+      expect(leads.aplicarTagPorNome).not.toHaveBeenCalled();
+    });
+
+    it('devolve a etiqueta recusada em tagsIgnoradas — quem chamou fica sabendo', async () => {
+      naoExiste();
+
+      const r = await svc.capturar(CHAVE, dtoTag as never);
+
+      expect(r.tagsIgnoradas).toEqual(['publico:residencia']);
+    });
+
+    it('avisa ADMIN/DIRECTOR no sino, dizendo QUAL etiqueta e apontando pro lead', async () => {
+      naoExiste();
+
+      await svc.capturar(CHAVE, dtoTag as never);
+
+      const aviso = notificacoes.criarParaRole.mock.calls[0][0];
+      expect(aviso.roles).toEqual(['ADMIN', 'DIRECTOR']);
+      expect(aviso.titulo).toContain('publico:residencia');
+      expect(aviso.link).toBe('/leads/lead-novo');
+      expect(aviso.metadata).toMatchObject({ tag: 'publico:residencia' });
+    });
+
+    it('NÃO avisa de novo dentro da janela — senão cada lead residencial vira notificação', async () => {
+      naoExiste();
+      redis.setNxEx.mockResolvedValue(false); // já avisou nas últimas 24h
+
+      await svc.capturar(CHAVE, dtoTag as never);
+
+      expect(notificacoes.criarParaRole).not.toHaveBeenCalled();
+    });
+
+    it('o lead ENTRA mesmo assim — perder o lead é pior que perder a etiqueta', async () => {
+      naoExiste();
+
+      const r = await svc.capturar(CHAVE, dtoTag as never);
+
+      expect(r.ok).toBe(true);
+      expect(r.leadId).toBe('lead-novo');
+    });
+
+    it('aviso que falha não derruba a captura', async () => {
+      naoExiste();
+      notificacoes.criarParaRole.mockRejectedValue(new Error('sino fora do ar'));
+
+      await expect(svc.capturar(CHAVE, dtoTag as never)).resolves.toMatchObject({ ok: true });
+    });
+
+    it('etiqueta que EXISTE não gera aviso nem entra em tagsIgnoradas', async () => {
+      prisma.leadCaptureChave.findUnique.mockResolvedValue({
+        empresaId: 'emp-1',
+        chaveHash: HASH,
+        ativo: true,
+      });
+
+      const r = await svc.capturar(CHAVE, { ...dtoTag, tags: ['publico:comercio'] } as never);
+
+      expect(r.tagsIgnoradas).toBeUndefined();
+      expect(notificacoes.criarParaRole).not.toHaveBeenCalled();
     });
   });
 });
