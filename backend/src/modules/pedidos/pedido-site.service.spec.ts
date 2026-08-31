@@ -118,4 +118,26 @@ describe('pedido do site', () => {
 
     await expect(svc.receber('errada', PEDIDO)).rejects.toThrow(/inválida/i);
   });
+
+  /**
+   * Dois pedidos REAIS morreram em `400 dados inválidos para o banco` porque o
+   * item era criado com `produtoNome`, que NÃO é coluna do `PedidoItem`.
+   *
+   * O `tsc` não pega: em `create` aninhado montado por `.map()`, o TypeScript
+   * não aplica checagem de propriedade em excesso. O CI passou, o mock do
+   * Prisma aceitou qualquer objeto, e só um pedido de verdade denunciou.
+   *
+   * Este teste fecha o buraco no único lugar onde dá: afirmando que o payload
+   * do item tem EXATAMENTE as colunas que existem.
+   */
+  it('o item do pedido só leva COLUNAS reais do PedidoItem', async () => {
+    const { svc, prisma } = build();
+
+    await svc.receber('blc_chave', PEDIDO);
+
+    const item = prisma.pedido.create.mock.calls[0][0].data.itens.create[0];
+    expect(Object.keys(item).sort()).toEqual(
+      ['desconto', 'precoUnitario', 'produtoId', 'quantidade', 'total'].sort(),
+    );
+  });
 });
