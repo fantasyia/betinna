@@ -69,17 +69,32 @@ export class ApiError extends Error {
 async function interpretar<T>(res: Response): Promise<T> {
   if (res.status === 204) return undefined as T;
 
+  // O corpo é lido UMA VEZ, como texto.
+  //
+  // Antes: `res.json()` e, no catch, `res.clone().text()` — mas `clone()`
+  // depois de o corpo ter sido consumido estoura "Body has already been
+  // consumed". Ou seja, o caminho de ERRO tinha um erro, e ele escondia o de
+  // verdade: qualquer resposta não-JSON virava exceção de runtime em vez de
+  // mensagem. Foi assim que "contato não encontrado" apareceu como se o
+  // servidor tivesse quebrado.
+  const bruto = await res.text().catch(() => '');
+
+  // Corpo VAZIO com status ok é o "não encontrado" do app: o
+  // ResponseInterceptor devolve `null` cru, sem envelope, e o Nest serializa
+  // como nada. Tratar como ausência (não como erro) é o que deixa a ferramenta
+  // distinguir "não existe" de "quebrou".
+  if (bruto.trim() === '') {
+    if (res.ok) return undefined as T;
+    throw new ApiError(`Erro HTTP ${res.status} (resposta vazia)`, res.status);
+  }
+
   let json: Envelope<T>;
   try {
-    json = (await res.json()) as Envelope<T>;
+    json = JSON.parse(bruto) as Envelope<T>;
   } catch {
     // Não-JSON (HTML de proxy, 502 do Railway): mostra o começo do corpo — sem
     // isso o operador só via "resposta inválida" e não sabia se era o proxy.
-    const corpo = await res
-      .clone()
-      .text()
-      .catch(() => '');
-    const trecho = corpo.trim().slice(0, 200).replace(/\s+/g, ' ');
+    const trecho = bruto.trim().slice(0, 200).replace(/\s+/g, ' ');
     throw new ApiError(
       `Resposta inválida da API (HTTP ${res.status})${trecho ? ` — ${trecho}` : ''}`,
       res.status,

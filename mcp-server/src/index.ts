@@ -2042,7 +2042,13 @@ server.registerTool(
       const qs = new URLSearchParams();
       for (const [k, v] of Object.entries(args)) if (v) qs.set(k, String(v));
       const resp = await api.get<unknown>(`/contatos/detalhe?${qs.toString()}`);
-      if (resp === null) return ok({ encontrado: false });
+      // `== null` cobre null E undefined: contato inexistente volta com corpo
+      // vazio, e o cliente HTTP traduz isso pra `undefined`. Com `=== null` a
+      // ausência escapava e o operador recebia erro de runtime — impossível
+      // distinguir "não existe" de "servidor quebrou".
+      if (resp == null) {
+        return ok({ encontrado: false, buscadoPor: Object.fromEntries(qs) });
+      }
       return ok(resp);
     },
   ),
