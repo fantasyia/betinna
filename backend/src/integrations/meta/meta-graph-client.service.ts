@@ -4,6 +4,7 @@ import { IntegrationException } from '@shared/errors/app-exception';
 import { ErrorCode } from '@shared/errors/error-codes';
 import { HttpClientService } from '@shared/http/http-client.service';
 import { HttpClientError } from '@shared/http/http-client.types';
+import type { MetaAnuncio, MetaLeadgenDados } from './meta-leadgen.types';
 import type {
   MetaInstagramBusinessAccount,
   MetaPage,
@@ -131,6 +132,38 @@ export class MetaGraphClientService {
       `/${encodeURIComponent(params.senderEndpointId)}/messages?${qs}`,
       body,
     );
+  }
+
+  // ─── Lead Ads ────────────────────────────────────────────────────────
+
+  /**
+   * Busca os dados de um lead do formulário nativo (Lead Ads).
+   *
+   * O webhook `leadgen` não traz nome nem telefone — só o `leadgen_id`. Sem esta
+   * chamada o lead entra fantasma. Exige a permissão `leads_retrieval` no app e
+   * o Page Access Token da página dona do formulário.
+   */
+  async obterLead(leadgenId: string, pageAccessToken: string): Promise<MetaLeadgenDados> {
+    const qs = new URLSearchParams({
+      access_token: pageAccessToken,
+      fields: 'id,created_time,ad_id,form_id,field_data',
+    });
+    return this.callExpect<MetaLeadgenDados>('GET', `/${encodeURIComponent(leadgenId)}?${qs}`);
+  }
+
+  /**
+   * Resolve `ad_id` → nome da campanha/conjunto/anúncio (vira `utm_campaign`).
+   *
+   * Exige `ads_read`, que é permissão SEPARADA de `leads_retrieval`: dá pra ter
+   * o lead e não ter a atribuição. Por isso quem chama trata a falha como
+   * "sem atribuição", nunca como "sem lead".
+   */
+  async obterAnuncio(adId: string, accessToken: string): Promise<MetaAnuncio> {
+    const qs = new URLSearchParams({
+      access_token: accessToken,
+      fields: 'id,name,campaign{id,name},adset{id,name}',
+    });
+    return this.callExpect<MetaAnuncio>('GET', `/${encodeURIComponent(adId)}?${qs}`);
   }
 
   // ─── Internos ────────────────────────────────────────────────────────

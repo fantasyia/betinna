@@ -43,6 +43,8 @@ const makeAntiReplay = () => ({
   checkAndMarkWebhook: vi.fn(async () => ({ fresh: true, signatureHash: 'h' })),
 });
 
+const makeLeadgen = () => ({ enfileirar: vi.fn(async () => undefined) });
+
 const fakeReq = (raw: string): Request =>
   ({ rawBody: Buffer.from(raw, 'utf8') }) as unknown as Request;
 
@@ -314,5 +316,97 @@ describe('MetaWebhookController.receive (POST events)', () => {
         mediaUrl: 'https://cdn/img.jpg',
       }),
     );
+  });
+});
+
+/**
+ * Lead Ads chega neste MESMO webhook, mas em `entry.changes` (não em
+ * `messaging`) e sem dado nenhum do lead. Antes deste ramo, o payload caía num
+ * `entry.messaging ?? []` vazio e era descartado sem erro nenhum.
+ */
+describe('MetaWebhookController.receive (Lead Ads)', () => {
+  const envelopeLeadgen = (value: Record<string, unknown>): MetaWebhookEnvelope =>
+    ({
+      object: 'page',
+      entry: [{ id: 'page-1', time: 1, changes: [{ field: 'leadgen', value }] }],
+    }) as unknown as MetaWebhookEnvelope;
+
+  const ctrlCom = (leadgen: ReturnType<typeof makeLeadgen>, oauthEmpresa = 'emp-1') =>
+    new MetaWebhookController(
+      makeEnv() as never,
+      makeInbox() as never,
+      makeOAuth(oauthEmpresa ? { empresaId: oauthEmpresa } : undefined) as never,
+      makeAntiReplay() as never,
+      { baixarEArmazenar: vi.fn(async () => null), signedUrl: vi.fn(async () => null) } as never,
+      leadgen as never,
+    );
+
+  it('enfileira o lead com os ponteiros do webhook (o payload não traz os dados)', async () => {
+    const leadgen = makeLeadgen();
+    const env = envelopeLeadgen({
+      leadgen_id: 'lg-1',
+      page_id: 'page-1',
+      form_id: 'form-9',
+      ad_id: 'ad-42',
+      adgroup_id: 'adset-7',
+      created_time: 1_756_600_000,
+    });
+    const raw = JSON.stringify(env);
+
+    await ctrlCom(leadgen).receive(fakeReq(raw), sign(raw), env);
+
+    expect(leadgen.enfileirar).toHaveBeenCalledWith({
+      empresaId: 'emp-1',
+      leadgenId: 'lg-1',
+      pageId: 'page-1',
+      formId: 'form-9',
+      adId: 'ad-42',
+      adgroupId: 'adset-7',
+      createdTime: 1_756_600_000,
+    });
+  });
+
+  it('formulário orgânico (sem ad_id) também entra', async () => {
+    const leadgen = makeLeadgen();
+    const env = envelopeLeadgen({ leadgen_id: 'lg-2', page_id: 'page-1', form_id: 'form-9' });
+    const raw = JSON.stringify(env);
+
+    await ctrlCom(leadgen).receive(fakeReq(raw), sign(raw), env);
+
+    expect(leadgen.enfileirar).toHaveBeenCalledWith(
+      expect.objectContaining({ leadgenId: 'lg-2', adId: undefined }),
+    );
+  });
+
+  it('página sem IntegracaoConexao não enfileira — não saberíamos de que empresa é', async () => {
+    const leadgen = makeLeadgen();
+    const env = envelopeLeadgen({ leadgen_id: 'lg-3', page_id: 'page-desconhecida' });
+    const raw = JSON.stringify(env);
+
+    await ctrlCom(leadgen, '').receive(fakeReq(raw), sign(raw), env);
+
+    expect(leadgen.enfileirar).not.toHaveBeenCalled();
+  });
+
+  it('falha ao enfileirar vira 5xx — o Meta reentrega em vez de o lead sumir', async () => {
+    const leadgen = makeLeadgen();
+    leadgen.enfileirar.mockRejectedValue(new Error('redis fora'));
+    const env = envelopeLeadgen({ leadgen_id: 'lg-4', page_id: 'page-1' });
+    const raw = JSON.stringify(env);
+
+    await expect(ctrlCom(leadgen).receive(fakeReq(raw), sign(raw), env)).rejects.toThrow();
+  });
+
+  it('mudança que não é leadgen não vai pra fila do Lead Ads', async () => {
+    const leadgen = makeLeadgen();
+    const env = {
+      object: 'page',
+      entry: [{ id: 'page-1', time: 1, changes: [{ field: 'feed', value: { post_id: 'p1' } }] }],
+    } as unknown as MetaWebhookEnvelope;
+    const raw = JSON.stringify(env);
+
+    await ctrlCom(leadgen).receive(fakeReq(raw), sign(raw), env);
+
+    expect(leadgen.enfileirar).not.toHaveBeenCalled();
   });
 });
