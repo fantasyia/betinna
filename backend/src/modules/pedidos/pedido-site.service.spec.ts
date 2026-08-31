@@ -27,7 +27,11 @@ function build(
         .fn()
         .mockResolvedValue(opts.produtos ?? [{ id: 'prod-1', sku: 'MB-01', nome: 'Master Block' }]),
     },
-    cliente: { create: vi.fn().mockResolvedValue({ id: 'cli-novo' }) },
+    cliente: {
+      create: vi.fn().mockResolvedValue({ id: 'cli-novo' }),
+      update: vi.fn().mockResolvedValue({}),
+      findUnique: vi.fn().mockResolvedValue({ cnpj: null, email: null, telefone: null }),
+    },
     $queryRaw: vi.fn().mockResolvedValue(opts.clientePorDoc ?? []),
   };
   const captura = { autenticarChave: vi.fn().mockResolvedValue('emp-1') };
@@ -139,5 +143,92 @@ describe('pedido do site', () => {
     expect(Object.keys(item).sort()).toEqual(
       ['desconto', 'precoUnitario', 'produtoId', 'quantidade', 'total'].sort(),
     );
+  });
+
+  /**
+   * O pedido de teste real (31/08) chegou no ERP sem CPF e sem endereço: o
+   * contato ficou sem documento (não emite NF) e `enderecoEntrega` veio NULL
+   * (não gera etiqueta). O endereço ia só como texto na observação — que
+   * ninguém imprime.
+   *
+   * A regra é: tudo que a nota e a etiqueta precisam viaja NO PEDIDO, na hora
+   * da compra. Depois disso o cliente não pode ser incomodado por nada.
+   */
+  describe('o que a NF e a etiqueta exigem', () => {
+    const COM_ENTREGA = {
+      ...PEDIDO,
+      cliente: { nome: 'Fulano de Tal', cpfCnpj: '37258545808', telefone: '11999998888' },
+      entrega: {
+        cep: '01310-100',
+        logradouro: 'Avenida Paulista',
+        numero: '1578',
+        complemento: 'sala 4',
+        bairro: 'Bela Vista',
+        cidade: 'São Paulo',
+        uf: 'sp',
+      },
+    };
+
+    it('cliente NOVO nasce com documento e endereço', async () => {
+      const { svc, prisma } = build();
+      prisma.$queryRaw.mockResolvedValue([]);
+
+      await svc.receber('blc_chave', COM_ENTREGA);
+
+      expect(prisma.cliente.create.mock.calls[0][0].data).toMatchObject({
+        cnpj: '37258545808',
+        cep: '01310-100',
+        endereco: 'Avenida Paulista',
+        numero: '1578',
+        bairro: 'Bela Vista',
+        cidade: 'São Paulo',
+        uf: 'SP',
+      });
+    });
+
+    it('UF vai maiúscula (o ERP recusa "sp")', async () => {
+      const { svc, prisma } = build();
+      prisma.$queryRaw.mockResolvedValue([]);
+
+      await svc.receber('blc_chave', COM_ENTREGA);
+
+      expect(prisma.cliente.create.mock.calls[0][0].data.uf).toBe('SP');
+    });
+
+    it('endereço pela METADE não vira endereço torto (o ERP recusa)', async () => {
+      const { svc, prisma } = build();
+      prisma.$queryRaw.mockResolvedValue([]);
+
+      await svc.receber('blc_chave', { ...COM_ENTREGA, entrega: { cep: '', logradouro: '' } });
+
+      expect(prisma.cliente.create.mock.calls[0][0].data.cep).toBeUndefined();
+    });
+
+    it('cliente que JÁ EXISTE recebe o endereço novo — é pra lá que a etiqueta vai', async () => {
+      const { svc, prisma } = build({ clientePorDoc: [{ id: 'cli-antigo' }] });
+      prisma.cliente.findUnique.mockResolvedValue({ cnpj: null, email: null, telefone: null });
+
+      await svc.receber('blc_chave', COM_ENTREGA);
+
+      expect(prisma.cliente.update.mock.calls[0][0].data).toMatchObject({
+        endereco: 'Avenida Paulista',
+        cnpj: '37258545808',
+      });
+    });
+
+    it('mas NÃO sobrescreve documento que já existe no cadastro', async () => {
+      const { svc, prisma } = build({ clientePorDoc: [{ id: 'cli-antigo' }] });
+      prisma.cliente.findUnique.mockResolvedValue({
+        cnpj: '11111111111',
+        email: 'antigo@x.com',
+        telefone: '1133334444',
+      });
+
+      await svc.receber('blc_chave', COM_ENTREGA);
+
+      const patch = prisma.cliente.update.mock.calls[0][0].data;
+      expect(patch.cnpj).toBeUndefined();
+      expect(patch.email).toBeUndefined();
+    });
   });
 });

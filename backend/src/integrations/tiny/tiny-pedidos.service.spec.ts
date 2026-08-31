@@ -168,4 +168,44 @@ describe('contato do cliente', () => {
     ).rejects.toThrow(/contato/i);
     expect(client.post.mock.calls.some((c) => c[1] === '/pedidos')).toBe(false);
   });
+
+  // O pedido de teste real chegou no ERP com `enderecoEntrega` NULL: o endereço
+  // ia só como texto na observação, e a expedição não imprime etiqueta a
+  // partir de observação.
+  it('leva o endereço de ENTREGA — sem ele não sai etiqueta', async () => {
+    const { svc, pedidoPost } = build([{ id: 42, sku: 'MB-01' }]);
+
+    await svc.criar('emp-1', {
+      ...pedido,
+      enderecoEntrega: {
+        endereco: 'Avenida Paulista',
+        enderecoNro: '1578',
+        bairro: 'Bela Vista',
+        municipio: 'São Paulo',
+        cep: '01310100',
+        uf: 'SP',
+        nomeDestinatario: 'Fulano de Tal',
+        cpfCnpj: '37258545808',
+        tipoPessoa: 'F',
+      },
+    });
+
+    const corpo = pedidoPost()[2] as unknown as {
+      enderecoEntrega?: { municipio?: string; enderecoNro?: string; cep?: string };
+    };
+    // Nomes do contrato da Olist: `municipio` e `enderecoNro`, não `cidade`/`numero`.
+    expect(corpo.enderecoEntrega).toMatchObject({
+      municipio: 'São Paulo',
+      enderecoNro: '1578',
+      cep: '01310100',
+    });
+  });
+
+  it('sem endereço, o campo simplesmente não vai (nulo faria o ERP recusar)', async () => {
+    const { svc, pedidoPost } = build([{ id: 42, sku: 'MB-01' }]);
+
+    await svc.criar('emp-1', pedido);
+
+    expect((pedidoPost()[2] as Record<string, unknown>).enderecoEntrega).toBeUndefined();
+  });
 });

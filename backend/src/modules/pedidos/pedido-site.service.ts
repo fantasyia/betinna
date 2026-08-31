@@ -19,6 +19,15 @@ export interface PedidoDoSiteDto {
   itens: Array<{ sku: string; quantidade: number; valorUnitario: number }>;
   valorFrete?: number;
   observacoes?: string;
+  entrega?: {
+    cep: string;
+    logradouro: string;
+    numero?: string;
+    complemento?: string;
+    bairro?: string;
+    cidade?: string;
+    uf?: string;
+  };
 }
 
 /**
@@ -78,7 +87,7 @@ export class PedidoSiteService {
       );
     }
 
-    const cliente = await this.acharOuCriarCliente(empresaId, dto.cliente);
+    const cliente = await this.acharOuCriarCliente(empresaId, dto.cliente, dto.entrega);
     const subtotal = dto.itens.reduce((s, i) => s + i.quantidade * i.valorUnitario, 0);
     const total = subtotal + (dto.valorFrete ?? 0);
     const seq = await this.sequence.next(empresaId, 'pedido');
@@ -153,6 +162,7 @@ export class PedidoSiteService {
   private async acharOuCriarCliente(
     empresaId: string,
     c: PedidoDoSiteDto['cliente'],
+    entrega?: PedidoDoSiteDto['entrega'],
   ): Promise<{ id: string }> {
     const doc = (c.cpfCnpj ?? '').replace(/\D/g, '');
     if (doc) {
@@ -161,7 +171,7 @@ export class PedidoSiteService {
         WHERE "empresaId" = ${empresaId}
           AND REGEXP_REPLACE(COALESCE("cnpj", ''), '[^0-9]', '', 'g') = ${doc}
         LIMIT 1`;
-      if (porDoc[0]) return porDoc[0];
+      if (porDoc[0]) return this.completar(porDoc[0].id, c, entrega);
     }
     const tel = (c.telefone ?? '').replace(/\D/g, '');
     if (tel.length >= 8) {
@@ -171,7 +181,7 @@ export class PedidoSiteService {
         WHERE "empresaId" = ${empresaId}
           AND RIGHT(REGEXP_REPLACE(COALESCE("telefone", ''), '[^0-9]', '', 'g'), 8) = ${sufixo}
         LIMIT 1`;
-      if (porTel[0]) return porTel[0];
+      if (porTel[0]) return this.completar(porTel[0].id, c, entrega);
     }
     return this.prisma.cliente.create({
       data: {
@@ -180,8 +190,57 @@ export class PedidoSiteService {
         cnpj: c.cpfCnpj ?? null,
         email: c.email ?? null,
         telefone: c.telefone ?? null,
+        ...this.enderecoParaCliente(entrega),
       },
       select: { id: true },
     });
+  }
+
+  /**
+   * Cliente que já existe recebe o que veio novo — sem apagar o que já tinha.
+   *
+   * Duas coisas dependem disto e falham CALADAS quando faltam: o CPF/CNPJ, sem
+   * o qual não se emite nota, e o endereço, sem o qual não se gera etiqueta.
+   * Quem comprou pelo rep e volta pelo site normalmente não tem nem um nem
+   * outro — e é justamente esse cadastro que trava o faturamento depois.
+   *
+   * O endereço é sobrescrito de propósito: é o destino que a pessoa acabou de
+   * digitar pra ESTE pedido, e é pra lá que a etiqueta vai.
+   */
+  private async completar(
+    id: string,
+    c: PedidoDoSiteDto['cliente'],
+    entrega?: PedidoDoSiteDto['entrega'],
+  ): Promise<{ id: string }> {
+    const atual = await this.prisma.cliente.findUnique({
+      where: { id },
+      select: { cnpj: true, email: true, telefone: true },
+    });
+    const patch: Record<string, unknown> = {
+      ...this.enderecoParaCliente(entrega),
+      // Só PREENCHE o que está vazio: sobrescrever documento de cadastro
+      // antigo com o que veio de um formulário é como se perde dado bom.
+      ...(!atual?.cnpj && c.cpfCnpj ? { cnpj: c.cpfCnpj } : {}),
+      ...(!atual?.email && c.email ? { email: c.email } : {}),
+      ...(!atual?.telefone && c.telefone ? { telefone: c.telefone } : {}),
+    };
+    if (Object.keys(patch).length > 0) {
+      await this.prisma.cliente.update({ where: { id }, data: patch });
+    }
+    return { id };
+  }
+
+  /** Endereço do checkout nos campos do Cliente (de onde o ERP vai lê-lo). */
+  private enderecoParaCliente(e?: PedidoDoSiteDto['entrega']): Record<string, string> {
+    if (!e?.cep || !e.logradouro) return {};
+    return {
+      cep: e.cep,
+      endereco: e.logradouro,
+      ...(e.numero ? { numero: e.numero } : {}),
+      ...(e.complemento ? { complemento: e.complemento } : {}),
+      ...(e.bairro ? { bairro: e.bairro } : {}),
+      ...(e.cidade ? { cidade: e.cidade } : {}),
+      ...(e.uf ? { uf: e.uf.toUpperCase() } : {}),
+    };
   }
 }

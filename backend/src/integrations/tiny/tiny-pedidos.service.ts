@@ -32,6 +32,28 @@ export interface PedidoParaTiny {
   /** Ids do ERP; sem eles o Tiny usa o padrão da conta quando permite. */
   depositoId?: number;
   vendedorId?: number;
+  /**
+   * Endereço de ENTREGA. Sem ele o pedido nasce sem destino no ERP e a
+   * expedição não consegue gerar etiqueta — o endereço na observação é texto,
+   * ninguém imprime a partir dele.
+   */
+  enderecoEntrega?: EnderecoEntregaTiny;
+}
+
+/** Nomes conferidos no contrato da Olist — `enderecoNro` e `municipio` NÃO são
+ *  `numero` e `cidade`, que é o que a gente chamaria por instinto. */
+export interface EnderecoEntregaTiny {
+  endereco?: string;
+  enderecoNro?: string;
+  complemento?: string;
+  bairro?: string;
+  municipio?: string;
+  cep?: string;
+  uf?: string;
+  fone?: string;
+  nomeDestinatario?: string;
+  cpfCnpj?: string;
+  tipoPessoa?: 'F' | 'J';
 }
 
 export interface ResultadoPedido {
@@ -147,6 +169,7 @@ export class TinyPedidosService {
             },
           }
         : {}),
+      ...(pedido.enderecoEntrega ? { enderecoEntrega: pedido.enderecoEntrega } : {}),
       ...(typeof pedido.valorFrete === 'number' ? { valorFrete: pedido.valorFrete } : {}),
       ...(pedido.observacoes ? { observacoes: pedido.observacoes } : {}),
       ...(pedido.marcadores?.length ? { marcadores: pedido.marcadores } : {}),
