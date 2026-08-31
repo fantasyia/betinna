@@ -339,6 +339,12 @@ export class PedidoErpSyncService {
       if (!mudou) return naoEntregue || adotouRep ? 'atualizado' : 'semMudanca';
 
       const viraEntregue = status === 'ENTREGUE' && existente.status !== 'ENTREGUE';
+      // O rastreio PASSOU A EXISTIR. É a transição vazio → preenchido, não o
+      // status: o ERP às vezes preenche fora de ordem, e amarrar em `ENVIADO`
+      // perderia esses casos. Comparar com o que estava guardado é o que
+      // garante UMA notificação por pedido — a varredura roda todo dia e
+      // reemitir mandaria o mesmo código pro cliente de novo.
+      const ganhouRastreio = Boolean(rastreioCodigo) && !existente.rastreioCodigo;
       await this.prisma.pedido.update({
         where: { id: existente.id },
         data: {
@@ -355,6 +361,7 @@ export class PedidoErpSyncService {
           `${existente.status} → ${status ?? existente.status}`,
       );
       if (viraEntregue) await this.dispararEntregue(empresaId, existente.id);
+      if (ganhouRastreio) await this.dispararRastreio(empresaId, existente.id);
       // O site é dono da tela do cliente: sem este aviso, quem comprou lá fica
       // sem saber que o pedido foi faturado ou despachado.
       await this.site.notificar({
@@ -471,6 +478,44 @@ export class PedidoErpSyncService {
       })
       .catch(() => 0);
     return true;
+  }
+
+  /**
+   * Avisa que o rastreio existe — no DESPACHO, que é quando o cliente quer.
+   *
+   * Leva `rastreioCodigo` e `rastreioUrl` no payload de propósito: o nó de
+   * WhatsApp interpola do contexto e não vai ao banco. Sem os dois campos aqui,
+   * a mensagem sairia sem o código, que é a única coisa que ela precisa dizer.
+   */
+  private async dispararRastreio(empresaId: string, pedidoId: string): Promise<void> {
+    const p = await this.prisma.pedido.findUnique({
+      where: { id: pedidoId },
+      select: {
+        id: true,
+        numero: true,
+        numeroSite: true,
+        total: true,
+        clienteId: true,
+        representanteId: true,
+        rastreioCodigo: true,
+        rastreioUrl: true,
+        cliente: { select: { id: true, nome: true } },
+      },
+    });
+    if (!p?.rastreioCodigo) return;
+    void this.bus.disparar(empresaId, 'PEDIDO_RASTREIO_DISPONIVEL', {
+      pedidoId: p.id,
+      // `numeroSite` primeiro: quem comprou pelo site conhece o SB…, não o
+      // PED-…. Mandar o número interno faria a mensagem citar algo que a
+      // pessoa nunca viu.
+      pedido: { id: p.id, numero: p.numeroSite ?? p.numero, total: Number(p.total) },
+      clienteId: p.clienteId,
+      cliente: { id: p.cliente.id, nome: p.cliente.nome },
+      representanteId: p.representanteId,
+      rastreioCodigo: p.rastreioCodigo,
+      rastreioUrl: p.rastreioUrl,
+    });
+    this.logger.log(`[erp] pedido ${p.numero}: rastreio disponível (${p.rastreioCodigo})`);
   }
 
   private async dispararEntregue(empresaId: string, pedidoId: string): Promise<void> {

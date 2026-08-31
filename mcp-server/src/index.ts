@@ -1123,6 +1123,10 @@ const FLUXO_TRIGGER_TIPO = z.enum([
   'LEAD_ETAPA_MUDOU',
   'PEDIDO_APROVADO',
   'PEDIDO_ENTREGUE',
+  // Rastreio PASSOU A EXISTIR (vazio → preenchido) — o despacho, dias antes da
+  // entrega. É o momento em que o cliente quer o código; o PEDIDO_ENTREGUE
+  // avisaria depois de a encomenda ter chegado.
+  'PEDIDO_RASTREIO_DISPONIVEL',
   'OCORRENCIA_ABERTA',
   'CLIENTE_INATIVO_30D',
   'AMOSTRA_FOLLOWUP',
