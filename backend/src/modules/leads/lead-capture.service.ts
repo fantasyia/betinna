@@ -6,6 +6,7 @@ import { RedisService } from '@database/redis.service';
 import { AppException, UnauthorizedException } from '@shared/errors/app-exception';
 import { ErrorCode } from '@shared/errors/error-codes';
 import type { AuthenticatedUser } from '@shared/types/authenticated-user';
+import { NotificacoesService } from '@modules/notificacoes/notificacoes.service';
 import { LeadsService } from './leads.service';
 import { leadCapturePublicoSchema, type LeadCapturePublicoDto } from './lead-capture.dto';
 import {
@@ -41,6 +42,7 @@ export class LeadCaptureService {
     private readonly prisma: PrismaService,
     private readonly redis: RedisService,
     private readonly leads: LeadsService,
+    private readonly notificacoes: NotificacoesService,
   ) {}
 
   // ─── Gestão (DIRECTOR/ADMIN, autenticado) ────────────────────────────
@@ -102,7 +104,7 @@ export class LeadCaptureService {
     chaveApresentada: string | undefined,
     dto: LeadCapturePublicoDto,
     rawBody?: Buffer,
-  ): Promise<{ ok: true; leadId: string; duplicado: boolean }> {
+  ): Promise<{ ok: true; leadId: string; duplicado: boolean; tagsIgnoradas?: string[] }> {
     const empresaId = await this.autenticarChave(chaveApresentada);
     dto = this.corrigirEncoding(dto, rawBody);
 
@@ -121,8 +123,13 @@ export class LeadCaptureService {
       await this.aplicarAtribuicaoEmLeadExistente(duplicado, atribuicao);
       // Tags também no reenvio: quem volta pelo formulário marcando OUTRO setor
       // precisa receber a etiqueta nova (o upsert cobre a repetida).
-      await this.aplicarTagsDoSite(empresaId, duplicado, dto.tags);
-      return { ok: true, leadId: duplicado, duplicado: true };
+      const ignoradas = await this.aplicarTagsDoSite(empresaId, duplicado, dto.tags);
+      return {
+        ok: true,
+        leadId: duplicado,
+        duplicado: true,
+        ...(ignoradas.length ? { tagsIgnoradas: ignoradas } : {}),
+      };
     }
 
     const colunas = colunasPrimeiroToque(atribuicao);
@@ -145,9 +152,14 @@ export class LeadCaptureService {
       origemCadastro,
       formularioOrigem: normalizarFormulario(dto.formulario) ?? null,
     });
-    await this.aplicarTagsDoSite(empresaId, lead.id, dto.tags);
+    const ignoradas = await this.aplicarTagsDoSite(empresaId, lead.id, dto.tags);
     this.logger.log(`Lead capturado do site: ${lead.id} (empresa ${empresaId})`);
-    return { ok: true, leadId: lead.id, duplicado: false };
+    return {
+      ok: true,
+      leadId: lead.id,
+      duplicado: false,
+      ...(ignoradas.length ? { tagsIgnoradas: ignoradas } : {}),
+    };
   }
 
   /**
@@ -169,8 +181,9 @@ export class LeadCaptureService {
     empresaId: string,
     leadId: string,
     tags: string[] | undefined,
-  ): Promise<void> {
-    if (!tags?.length) return;
+  ): Promise<string[]> {
+    const ignoradas: string[] = [];
+    if (!tags?.length) return ignoradas;
     // Dedup + normaliza: o site pode repetir a mesma etiqueta em campos diferentes.
     const nomes = [...new Set(tags.map((t) => t.trim()).filter(Boolean))];
     for (const nome of nomes) {
@@ -187,6 +200,7 @@ export class LeadCaptureService {
           'usuario',
         );
         if (!aplicou) {
+          ignoradas.push(nome);
           this.logger.warn(
             `Tag "${nome}" veio da captura pública mas NÃO existe na empresa ${empresaId} — ` +
               `ignorada (crie a etiqueta no CRM antes de usá-la no site).`,
@@ -195,6 +209,52 @@ export class LeadCaptureService {
       } catch (err) {
         this.logger.warn(
           `Falha aplicando tag "${nome}" no lead ${leadId} (empresa ${empresaId}): ` +
+            `${err instanceof Error ? err.message : String(err)}`,
+        );
+      }
+    }
+    if (ignoradas.length) await this.avisarTagsIgnoradas(empresaId, leadId, ignoradas);
+    return ignoradas;
+  }
+
+  /**
+   * Avisa ADMIN/DIRECTOR no sino que o site mandou etiqueta que o CRM não tem.
+   *
+   * A recusa em si é DELIBERADA (ver `aplicarTagsDoSite`), mas até 31/08 ela era
+   * invisível: só uma linha de log. Lead residencial e industrial vinham chegando
+   * sem a etiqueta de público havia semanas — sem erro, sem sinal, sem roteamento,
+   * e ninguém tinha como perceber olhando o CRM.
+   *
+   * DEDUP de 24h por (empresa, etiqueta): senão cada lead residencial viraria uma
+   * notificação e o sino ficaria inútil — que é como se perde um aviso de novo.
+   * Best-effort: aviso que falha não pode derrubar a captura.
+   */
+  private async avisarTagsIgnoradas(
+    empresaId: string,
+    leadId: string,
+    ignoradas: string[],
+  ): Promise<void> {
+    for (const nome of ignoradas) {
+      try {
+        const chave = `lead-capture:tag-inexistente:${empresaId}:${nome}`;
+        const primeira = await this.redis.setNxEx(chave, '1', 24 * 60 * 60);
+        if (!primeira) continue;
+        await this.notificacoes.criarParaRole({
+          empresaId,
+          roles: ['ADMIN', 'DIRECTOR'],
+          tipo: 'GENERICO',
+          prioridade: 'ALTA',
+          titulo: `Etiqueta "${nome}" não existe — lead do site entrou sem roteamento`,
+          mensagem:
+            `O site mandou a etiqueta "${nome}", que não está cadastrada no CRM. ` +
+            `O lead entrou, mas SEM essa etiqueta — nenhum fluxo que escuta ela vai rodar. ` +
+            `Crie a etiqueta em Etiquetas para os próximos leads serem roteados.`,
+          link: `/leads/${leadId}`,
+          metadata: { tag: nome, leadId, origem: 'captura-publica' },
+        });
+      } catch (err) {
+        this.logger.warn(
+          `Falha avisando tag inexistente "${nome}" (empresa ${empresaId}): ` +
             `${err instanceof Error ? err.message : String(err)}`,
         );
       }
