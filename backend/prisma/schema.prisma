@@ -1643,6 +1643,11 @@ enum FluxoTriggerTipo {
   LEAD_ETAPA_MUDOU
   PEDIDO_APROVADO
   PEDIDO_ENTREGUE
+  /// O rastreio PASSOU A EXISTIR (vazio → preenchido). É o momento em que o
+  /// cliente quer saber: o despacho, dias antes da entrega. Não dá pra usar
+  /// PEDIDO_ENTREGUE pra isso — avisaria o código depois de a encomenda ter
+  /// chegado.
+  PEDIDO_RASTREIO_DISPONIVEL
   OCORRENCIA_ABERTA
   CLIENTE_INATIVO_30D // cron-driven — clientes sem pedido há ≥ N dias
   AMOSTRA_FOLLOWUP // cron-driven — amostras no prazo de follow-up

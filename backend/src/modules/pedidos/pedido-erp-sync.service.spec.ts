@@ -30,9 +30,12 @@ function build(
       findUnique: vi.fn().mockResolvedValue({
         id: 'ped-1',
         numero: 'PED-0007',
+        numeroSite: opts.numeroSite ?? null,
         total: 100,
         clienteId: 'cli-1',
         representanteId: null,
+        rastreioCodigo: opts.rastreioGravado ?? 'BR123456789BR',
+        rastreioUrl: 'https://rastreio/BR123456789BR',
         cliente: { id: 'cli-1', nome: 'Cliente X' },
       }),
       create: vi.fn().mockResolvedValue({ id: 'ped-novo', numero: 'PED-0009' }),
@@ -418,5 +421,99 @@ describe('pedidos que vêm do ERP', () => {
     await svc.sincronizar('emp-1', { dias: 7 });
 
     expect(tiny.listar).toHaveBeenCalledWith('emp-1', { numero: '55', limit: 5 });
+  });
+
+  /**
+   * O rastreio aparece no DESPACHO, dias antes da entrega.
+   *
+   * O único evento que existia neste caminho era o de ENTREGUE — então um fluxo
+   * pendurado nele mandaria o código de rastreio DEPOIS de a encomenda ter
+   * chegado na casa da pessoa. O gatilho novo dispara na transição
+   * vazio → preenchido, que é a condição real de "o rastreio existe".
+   */
+  describe('gatilho de rastreio disponível', () => {
+    const COM_RASTREIO = {
+      ...PEDIDO_ERP,
+      situacao: 5,
+      transportador: {
+        codigoRastreamento: 'BR123456789BR',
+        urlRastreamento: 'https://rastreio/BR123456789BR',
+      },
+    };
+    const semRastreio = {
+      id: 'ped-1',
+      numero: 'PED-0007',
+      status: 'EM_SEPARACAO',
+      observacoes: null,
+      total: 3150,
+      rastreioCodigo: null,
+      rastreioUrl: null,
+    };
+
+    it('dispara quando o rastreio passa a existir', async () => {
+      const { svc, bus } = build({ detalhe: COM_RASTREIO, pedidoExistente: semRastreio });
+
+      await svc.sincronizar('emp-1');
+
+      const evento = bus.disparar.mock.calls.find((c) => c[1] === 'PEDIDO_RASTREIO_DISPONIVEL');
+      expect(evento).toBeDefined();
+    });
+
+    it('leva o CÓDIGO e a URL no payload — o nó de WhatsApp interpola do contexto, não vai ao banco', async () => {
+      const { svc, bus } = build({ detalhe: COM_RASTREIO, pedidoExistente: semRastreio });
+
+      await svc.sincronizar('emp-1');
+
+      const evento = bus.disparar.mock.calls.find((c) => c[1] === 'PEDIDO_RASTREIO_DISPONIVEL');
+      expect(evento![2]).toMatchObject({
+        rastreioCodigo: 'BR123456789BR',
+        rastreioUrl: 'https://rastreio/BR123456789BR',
+      });
+    });
+
+    it('usa o número do SITE quando existe — o cliente não conhece o PED-…', async () => {
+      const { svc, bus } = build({
+        detalhe: COM_RASTREIO,
+        pedidoExistente: semRastreio,
+        numeroSite: 'SB2608ABCDEF',
+      });
+
+      await svc.sincronizar('emp-1');
+
+      const evento = bus.disparar.mock.calls.find((c) => c[1] === 'PEDIDO_RASTREIO_DISPONIVEL');
+      expect((evento![2] as { pedido: { numero: string } }).pedido.numero).toBe('SB2608ABCDEF');
+    });
+
+    it('NÃO reemite quando o rastreio já estava gravado — a varredura roda todo dia', async () => {
+      // Sem esta guarda, o cliente receberia o mesmo código a cada rodada.
+      const { svc, bus } = build({
+        detalhe: COM_RASTREIO,
+        pedidoExistente: {
+          ...semRastreio,
+          status: 'ENVIADO',
+          rastreioCodigo: 'BR123456789BR',
+          rastreioUrl: 'https://rastreio/BR123456789BR',
+        },
+      });
+
+      await svc.sincronizar('emp-1');
+
+      expect(
+        bus.disparar.mock.calls.filter((c) => c[1] === 'PEDIDO_RASTREIO_DISPONIVEL'),
+      ).toHaveLength(0);
+    });
+
+    it('pedido sem rastreio nenhum não dispara', async () => {
+      const { svc, bus } = build({
+        detalhe: { ...PEDIDO_ERP, situacao: 5 },
+        pedidoExistente: semRastreio,
+      });
+
+      await svc.sincronizar('emp-1');
+
+      expect(
+        bus.disparar.mock.calls.filter((c) => c[1] === 'PEDIDO_RASTREIO_DISPONIVEL'),
+      ).toHaveLength(0);
+    });
   });
 });
