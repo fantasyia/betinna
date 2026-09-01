@@ -836,7 +836,16 @@ export function PageLayout({
           </header>
         )}
         {isMobile && actions && (
-          <div className="flex items-center gap-2 flex-wrap mb-4">{actions}</div>
+          // Gruda LOGO ABAIXO do MobileTopBar (min-h 52px). No celular a faixa
+          // de ações subia junto com o conteúdo e, num quadro com muitos cards,
+          // voltar pra "Quadros" exigia rolar tudo de volta.
+          //
+          // `-mx-4 px-4` porque o <main> tem `px-4`: sem estourar essa margem, o
+          // fundo do sticky não cobre a largura toda e o conteúdo passa por
+          // baixo aparecendo nas beiradas.
+          <div className="sticky top-[52px] z-30 -mx-4 px-4 py-2 mb-2 bg-bg flex items-center gap-2 flex-wrap">
+            {actions}
+          </div>
         )}
         <FavoritosBar />
         {children}
