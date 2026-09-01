@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
+import { useSensoresDnd } from '@/lib/dnd-sensors';
 import { useNavigate } from 'react-router-dom';
 import {
   Plus,
@@ -15,10 +16,7 @@ import {
 } from 'lucide-react';
 import {
   DndContext,
-  PointerSensor,
   closestCenter,
-  useSensor,
-  useSensors,
   type DragEndEvent,
 } from '@dnd-kit/core';
 import {
@@ -358,7 +356,7 @@ function FunilEditor({
     setOrderedEtapas(funil.etapas);
   }, [funil.etapas]);
 
-  const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 6 } }));
+  const sensors = useSensoresDnd(6);
 
   async function handleDragEnd(event: DragEndEvent) {
     if (bloqueadoPorProtecao) return; // #48: funil protegido não reordena etapas

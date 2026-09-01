@@ -1,4 +1,5 @@
 import { useEffect, useState, useSyncExternalStore, type ReactNode } from 'react';
+import { useSensoresDnd } from '@/lib/dnd-sensors';
 import { Link, useLocation } from 'react-router-dom';
 import {
   KanbanSquare,
@@ -25,10 +26,6 @@ import {
 } from 'lucide-react';
 import {
   DndContext,
-  KeyboardSensor,
-  PointerSensor,
-  useSensor,
-  useSensors,
   closestCenter,
   type DragEndEvent,
 } from '@dnd-kit/core';
@@ -36,7 +33,6 @@ import {
   SortableContext,
   useSortable,
   arrayMove,
-  sortableKeyboardCoordinates,
   verticalListSortingStrategy,
 } from '@dnd-kit/sortable';
 import { clearSession } from '@/lib/auth-store';
@@ -538,10 +534,7 @@ function Sidebar({
     }
   });
   // KeyboardSensor: o punho de reordenar é focável — Enter/Espaço pega, setas movem.
-  const sensors = useSensors(
-    useSensor(PointerSensor, { activationConstraint: { distance: 5 } }),
-    useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates }),
-  );
+  const sensors = useSensoresDnd(5, true);
 
   // Itens visíveis (por papel/permissão), na ordem salva; novos itens vão pro fim.
   const todos = SECTIONS.flatMap((s) => s.items);

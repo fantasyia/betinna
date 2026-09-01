@@ -1,12 +1,10 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
+import { useSensoresDnd } from '@/lib/dnd-sensors';
 import { ArrowDown, ArrowUp, ChevronLeft, ChevronRight, Search } from 'lucide-react';
 import {
   DndContext,
-  PointerSensor,
   useDraggable,
   useDroppable,
-  useSensor,
-  useSensors,
   type DragEndEvent,
 } from '@dnd-kit/core';
 import { api, apiErrorMessage } from '@/lib/api';
@@ -81,7 +79,7 @@ export function CalendarioView({
     refetch();
   }, [refetch]);
 
-  const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 6 } }));
+  const sensors = useSensoresDnd(6);
 
   const [ano, mesNum] = mes.split('-').map(Number);
   const semanas = useMemo(() => {
@@ -387,16 +385,16 @@ export function TabelaView({
       empty={(data ?? []).length === 0}
       emptyMessage="Nenhum card no quadro"
     >
-      <div className="relative mb-3 w-64">
-        <Search className="h-3.5 w-3.5 text-muted absolute left-2.5 top-1/2 -translate-y-1/2 pointer-events-none" />
-        <Input
-          value={filtro}
-          onChange={(e) => setFiltro(e.target.value)}
-          placeholder="Filtrar tabela…"
-          className="pl-8"
-          data-testid="tabela-filtro"
-        />
-      </div>
+      {/* Mesmo conserto da barra do quadro: `leftIcon` do Input, porque o
+          `paddingLeft` inline dele vence o `pl-8` e a lupa caía sobre o texto. */}
+      <Input
+        value={filtro}
+        onChange={(e) => setFiltro(e.target.value)}
+        placeholder="Filtrar tabela…"
+        leftIcon={<Search />}
+        className="mb-3 w-full sm:w-64"
+        data-testid="tabela-filtro"
+      />
       <div className="overflow-x-auto rounded-[10px] border border-border">
         <table className="w-full text-sm" data-testid="kanban-tabela">
           <thead className="bg-surface-elevated border-b border-border">

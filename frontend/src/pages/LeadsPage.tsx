@@ -1,11 +1,9 @@
 import { memo, useEffect, useRef, useState } from 'react';
+import { useSensoresDnd } from '@/lib/dnd-sensors';
 import { Link, useNavigate } from 'react-router-dom';
 import {
   DndContext,
   DragOverlay,
-  PointerSensor,
-  useSensor,
-  useSensors,
   useDraggable,
   useDroppable,
   closestCenter,
@@ -579,11 +577,7 @@ function FunilBoard({
     sourceEtapaId: string;
   } | null>(null);
 
-  const sensors = useSensors(
-    useSensor(PointerSensor, {
-      activationConstraint: { distance: 6 },
-    }),
-  );
+  const sensors = useSensoresDnd(6);
 
   function handleDragStart(event: DragStartEvent) {
     const id = String(event.active.id);

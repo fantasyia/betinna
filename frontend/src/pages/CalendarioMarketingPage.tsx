@@ -1,13 +1,11 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
+import { useSensoresDnd } from '@/lib/dnd-sensors';
 import { useNavigate } from 'react-router-dom';
 import { ChevronLeft, ChevronRight, AlertTriangle } from 'lucide-react';
 import {
   DndContext,
-  PointerSensor,
   useDraggable,
   useDroppable,
-  useSensor,
-  useSensors,
   type DragEndEvent,
 } from '@dnd-kit/core';
 import { api, apiErrorMessage } from '@/lib/api';
@@ -324,7 +322,7 @@ function CalendarioConteudo({
     (c) => !c.dataEntrega && !c.concluido && cardPassa(c.etiquetas, c.lista.nome),
   );
 
-  const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 6 } }));
+  const sensors = useSensoresDnd(6);
   function onDragEnd(ev: DragEndEvent) {
     const cardId = String(ev.active.id).replace('mkcard:', '');
     const diaDestino = ev.over ? String(ev.over.id).replace('mkdia:', '') : null;

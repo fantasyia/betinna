@@ -1,13 +1,11 @@
 import { useMemo, useState } from 'react';
+import { useSensoresDnd } from '@/lib/dnd-sensors';
 import { useNavigate, Link } from 'react-router-dom';
 import { ArrowRight, CalendarRange, ChevronLeft, ChevronRight } from 'lucide-react';
 import {
   DndContext,
-  PointerSensor,
   useDraggable,
   useDroppable,
-  useSensor,
-  useSensors,
   type DragEndEvent,
 } from '@dnd-kit/core';
 import { Button, Card, CardHeader, CardTitle, CardDescription, EmptyState } from '@/components/ui';
@@ -132,7 +130,7 @@ export function CalendarioResumo() {
     return mapa;
   }, [cardsFiltrados]);
 
-  const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 6 } }));
+  const sensors = useSensoresDnd(6);
 
   // Reagendar = MESMO patch da aba plena (não duplica lógica de escrita).
   function onDragEnd(ev: DragEndEvent) {
