@@ -23,11 +23,19 @@ describe('useSensoresDnd', () => {
     expect(usados).toContain(TouchSensor);
   });
 
+  it('a espera cobre a HESITACAO antes de rolar — 250ms era curto e pegava rolagem', () => {
+    const toque = sensores().find((s) => s.sensor === TouchSensor);
+    const delay = (toque?.options as { activationConstraint?: { delay?: number } })
+      ?.activationConstraint?.delay;
+
+    expect(delay).toBeGreaterThanOrEqual(400);
+  });
+
   it('o toque exige SEGURAR — sem delay o swipe vira arrasto', () => {
     const toque = sensores().find((s) => s.sensor === TouchSensor);
 
     expect(toque?.options).toMatchObject({
-      activationConstraint: { delay: 250, tolerance: 8 },
+      activationConstraint: { delay: 400, tolerance: 5 },
     });
   });
 

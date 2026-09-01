@@ -27,10 +27,16 @@ export function useSensoresDnd(distanciaMouse = 6, comTeclado = false) {
     activationConstraint: {
       // SEGURAR pra arrastar. É o que separa "quis mover o card" de "quis rolar
       // a tela" — sem isso qualquer swipe carrega um card junto.
-      delay: 250,
+      //
+      // Era 250ms e ainda pegava rolagem: quem encosta no card, hesita um
+      // instante e SÓ ENTÃO desliza já tinha passado do prazo — o arrasto
+      // ativava no meio do gesto de rolar. 400ms cobre essa hesitação sem
+      // deixar o arrasto lento (é a faixa em que o Trello opera).
+      delay: 400,
       // Quanto o dedo pode andar DURANTE a espera sem cancelar. Baixo demais e
-      // o tremor da mão cancela; alto demais e a rolagem vira arrasto.
-      tolerance: 8,
+      // o tremor da mão cancela o arrasto; alto demais e a rolagem vira
+      // arrasto. 5px cancela qualquer deslize de verdade e ainda tolera tremor.
+      tolerance: 5,
     },
   });
   // Só onde o punho de arrastar é focável (hoje: reordenar seções do
