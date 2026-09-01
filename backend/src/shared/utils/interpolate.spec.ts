@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { interpolate } from './interpolate';
+import { interpolate, placeholdersPendentes } from './interpolate';
 
 describe('interpolate', () => {
   const vars = { cliente: { nome: 'João' }, empresa: { nome: 'Acme' } };
@@ -26,5 +26,25 @@ describe('interpolate', () => {
   it('vars null/não-objeto não quebra', () => {
     expect(interpolate('Oi {{x}}', null)).toBe('Oi {{x}}');
     expect(interpolate('Oi {{x}}', null, { ausenteVazio: true })).toBe('Oi ');
+  });
+});
+
+describe('placeholdersPendentes', () => {
+  it('lista o que sobrou depois de interpolar', () => {
+    const texto = interpolate('Oi {{lead.nome}}, na {{empresa}}', { lead: { nome: 'Ana' } });
+
+    expect(placeholdersPendentes(texto)).toEqual(['empresa']);
+  });
+
+  it('texto totalmente resolvido não tem pendência', () => {
+    expect(placeholdersPendentes('Oi Ana, na Padaria')).toEqual([]);
+  });
+
+  it('não repete a mesma variável usada duas vezes', () => {
+    expect(placeholdersPendentes('{{x}} e {{x}} de novo')).toEqual(['x']);
+  });
+
+  it('chave só com "{" solto não conta — o regex é estreito de propósito', () => {
+    expect(placeholdersPendentes('preço { 10 } e { { a } }')).toEqual([]);
   });
 });

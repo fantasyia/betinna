@@ -30,3 +30,21 @@ export function interpolate(
     return val != null ? String(val) : ausente(match);
   });
 }
+
+/**
+ * Placeholders `{{x}}` que SOBRARAM depois da interpolação — ou seja, variáveis
+ * que o contexto não tinha.
+ *
+ * Existe porque em fluxo a variável ausente MANTÉM o literal (`ausenteVazio:
+ * false`, decisão deliberada acima: placeholder não resolvido fica visível pra
+ * debug). Isso é bom no log e péssimo no texto que vai pro cliente — em 24/08
+ * saiu uma mensagem de WhatsApp com `{{texto_teste}}` literal.
+ *
+ * Quem manda texto pra fora usa isto pra RECUSAR o envio em vez de entregar o
+ * template cru. Não confunda com `ausenteVazio: true`: trocar por vazio também
+ * é errado aqui — "na , máquina travando" não é melhor que "na {{empresa}}",
+ * só é mais difícil de perceber.
+ */
+export function placeholdersPendentes(texto: string): string[] {
+  return [...new Set([...texto.matchAll(/\{\{([\w.]+)\}\}/g)].map((m) => m[1]))];
+}
