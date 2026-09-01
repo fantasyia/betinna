@@ -2029,7 +2029,10 @@ server.registerTool(
     description:
       'Detalhe de UM contato (Lead+Cliente+Conversa unificados) por leadId, clienteId, telefone OU ' +
       'email. Retorna nome, telefone, email, tipos[], tags[], funis[{funilId, funilNome, etapaId, ' +
-      'etapaNome, dataEntrada}] e representante. DADOS PESSOAIS — só o necessário. Somente leitura.',
+      'etapaNome, dataEntrada}] e representante. DADOS PESSOAIS — só o necessário. Somente leitura. ' +
+      'Traz também `nomeOrigem` — de qual campo o `nome` veio (cliente | lead.contatoNome | ' +
+      'lead.nome | conversa | telefone | email | nenhum). É o jeito de conferir se o contatoNome ' +
+      'do lead foi gravado: sem isso, lead COM e SEM contatoNome devolvem o mesmo `nome`.',
     inputSchema: {
       leadId: z.string().optional(),
       clienteId: z.string().optional(),

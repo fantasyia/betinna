@@ -59,10 +59,32 @@ export interface ContatoDetalheFunil {
   dataEntrada: string | null;
 }
 
+/**
+ * De ONDE veio o `nome` do contato.
+ *
+ * O contato é a fusão de Lead+Cliente+Conversa, então `nome` é o vencedor de
+ * uma cascata — e o vencedor some dentro dela. Sem isto não dá pra responder
+ * "esse contato se chama assim porque o `contatoNome` do lead foi gravado, ou
+ * porque caiu no `nome` do lead?": os dois devolvem exatamente a mesma string.
+ *
+ * Nasceu de uma verificação que travou: o site passou a mandar `contatoNome` e
+ * não havia como conferir pelo app se tinha gravado — só abrindo o banco.
+ */
+export type ContatoNomeOrigem =
+  | 'cliente'
+  | 'lead.contatoNome'
+  | 'lead.nome'
+  | 'conversa'
+  | 'telefone'
+  | 'email'
+  | 'nenhum';
+
 /** Detalhe de UM contato agregado (Demanda MCP `contatos_ver`). */
 export interface ContatoDetalhe {
   chave: string;
   nome: string;
+  /** Qual campo ganhou a cascata do `nome` (ver ContatoNomeOrigem). */
+  nomeOrigem: ContatoNomeOrigem;
   telefone: string | null;
   email: string | null;
   tipos: ContatoTipo[];
@@ -749,14 +771,19 @@ export class ContatosService {
     const conversa = conversas[0];
     const telefone = cliente?.telefone ?? lead?.contatoTelefone ?? null;
     const emailFinal = cliente?.email ?? lead?.contatoEmail ?? null;
-    const nome =
-      cliente?.nome ||
-      lead?.contatoNome ||
-      lead?.nome ||
-      conversa?.peerNome ||
-      telefone ||
-      emailFinal ||
-      'Sem nome';
+    // Nome e ORIGEM saem da MESMA cascata, na mesma passada — se fossem dois
+    // trechos separados, um `||` a mais num deles e a origem passaria a mentir.
+    const cascataNome: Array<[ContatoNomeOrigem, string | null | undefined]> = [
+      ['cliente', cliente?.nome],
+      ['lead.contatoNome', lead?.contatoNome],
+      ['lead.nome', lead?.nome],
+      ['conversa', conversa?.peerNome],
+      ['telefone', telefone],
+      ['email', emailFinal],
+    ];
+    const vencedor = cascataNome.find(([, v]) => Boolean(v));
+    const nome = vencedor?.[1] ?? 'Sem nome';
+    const nomeOrigem: ContatoNomeOrigem = vencedor?.[0] ?? 'nenhum';
     const criadoEmVals = [
       ...leads.map((l) => l.criadoEm),
       ...clientes.map((c) => c.criadoEm),
@@ -778,6 +805,7 @@ export class ContatosService {
     return {
       chave: sufixo ?? email ?? (lead ? `lead:${lead.id}` : cliente ? `cliente:${cliente.id}` : ''),
       nome,
+      nomeOrigem,
       telefone,
       email: emailFinal,
       tipos,
