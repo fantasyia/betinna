@@ -86,4 +86,47 @@ describe('raio-X da conta do Tiny', () => {
     const chamada = client.get.mock.calls.find((c) => String(c[1]).startsWith('/produtos'));
     expect(chamada?.[2]).toEqual({ situacao: 'A', limit: 10 });
   });
+
+  /**
+   * A lista `/produtos` traz so o resumo. Campo fiscal (NCM/CEST/origem) so
+   * existe no `GET /produtos/{id}` — e subir dado fiscal sem ver o nome real do
+   * campo seria adivinhar, com o agravante de o Tiny IGNORAR EM SILENCIO o que
+   * nao reconhece.
+   */
+  describe('cru.produto — o produto INTEIRO', () => {
+    // `/produtos/` casa ANTES de `/produtos` no build(), entao a chave mais
+    // especifica define o detalhe.
+    const respostas = {
+      '/produtos/': { id: 335240597, sku: 'MB-01', classificacaoFiscal: '85352900' },
+      '/produtos': { itens: [{ id: 335240597, sku: 'MB-01' }] },
+    };
+
+    it('busca o detalhe do primeiro produto da lista', async () => {
+      const { svc, client } = build(respostas);
+
+      await svc.raioX('emp-1');
+
+      expect(client.get).toHaveBeenCalledWith('emp-1', '/produtos/335240597');
+    });
+
+    it('devolve o produto inteiro em cru.produto', async () => {
+      const { svc } = build(respostas);
+
+      const r = await svc.raioX('emp-1');
+
+      expect(r.cru?.produto).toMatchObject({ sku: 'MB-01' });
+    });
+
+    it('falha no detalhe nao derruba o raio-X — o resto do diagnostico continua util', async () => {
+      const { svc } = build({
+        '/produtos/': new Error('500 do Tiny'),
+        '/produtos': { itens: [{ id: 335240597, sku: 'MB-01' }] },
+      });
+
+      const r = await svc.raioX('emp-1');
+
+      expect(r.cru?.produto).toBeUndefined();
+      expect(r.produtos.amostra).toHaveLength(1);
+    });
+  });
 });

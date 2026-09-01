@@ -58,7 +58,21 @@ export class TinyContaService {
     /** Resposta CRUA de vendedores/depósitos. O mapeamento por nome de campo
      *  já enganou uma vez (nome vindo vazio) — com o cru dá pra ver a chave
      *  real em vez de adivinhar. */
-    cru?: { vendedores: unknown[]; depositos: unknown[]; tiposContato: unknown[] };
+    cru?: {
+      vendedores: unknown[];
+      depositos: unknown[];
+      tiposContato: unknown[];
+      /**
+       * UM produto INTEIRO, como o Tiny devolve. A lista `/produtos` traz só o
+       * resumo (sku/descrição/preço) — os campos FISCAIS (NCM, CEST, origem) só
+       * aparecem no `GET /produtos/{id}`.
+       *
+       * Sem isto, subir dado fiscal seria adivinhar nome de campo — e o Tiny
+       * IGNORA EM SILÊNCIO o que não reconhece (foi o que engoliu o `ecommerce`
+       * no push de pedido até alguém notar). Mesma razão do cru de vendedores.
+       */
+      produto?: unknown;
+    };
     produtos: {
       total: number;
       amostra: Array<{
@@ -92,11 +106,22 @@ export class TinyContaService {
         .catch((e: unknown) => this.vazio<Record<string, unknown>>('contatos/tipos', e)),
     ]);
 
+    // O produto INTEIRO vem de uma segunda chamada porque depende do id que a
+    // lista acabou de dar. Best-effort: o raio-X não pode quebrar por causa do
+    // detalhe de um item.
+    const primeiroId = produtos.itens?.[0]?.id;
+    const produtoCru = primeiroId
+      ? await this.client
+          .get<unknown>(empresaId, `/produtos/${primeiroId}`)
+          .catch((e: unknown) => this.vazioSimples(`produtos/${primeiroId}`, e))
+      : undefined;
+
     return {
       cru: {
         vendedores: vendedores.itens ?? [],
         depositos: depositos.itens ?? [],
         tiposContato: tipos.itens ?? [],
+        produto: produtoCru,
       },
       depositos: (depositos.itens ?? []).map((d) => ({
         id: d.id,
@@ -129,6 +154,14 @@ export class TinyContaService {
    * diagnóstico, e diagnóstico parcial vale mais que erro total — inclusive
    * porque "vendedores falhou" já é, em si, uma informação de permissão.
    */
+  /** Mesma ideia do `vazio`, para leitura que não é lista. */
+  private vazioSimples(recurso: string, err: unknown): undefined {
+    this.logger.warn(
+      `[tiny] raio-X: ${recurso} falhou — ${err instanceof Error ? err.message : String(err)}`,
+    );
+    return undefined;
+  }
+
   private vazio<T>(recurso: string, err: unknown): ListaTiny<T> {
     this.logger.warn(
       `[tiny] raio-X: ${recurso} falhou — ${err instanceof Error ? err.message : String(err)}`,
