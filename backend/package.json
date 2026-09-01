@@ -37,7 +37,9 @@
   },
   "overrides": {
     "multer": "^2.2.0",
-    "uuid": "^11.1.1"
+    "uuid": "^11.1.1",
+    "deepmerge-ts": "^8.0.0",
+    "pdfjs-dist": "^6.2.108"
   },
   "dependencies": {
     "@nest-lab/throttler-storage-redis": "^1.2.0",
