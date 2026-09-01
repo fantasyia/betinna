@@ -15,11 +15,13 @@ const makePrismaMock = () => ({
   ),
   lead: {
     findMany: vi.fn(),
+    findFirst: vi.fn().mockResolvedValue(null),
     deleteMany: vi.fn(),
     create: vi.fn(),
   },
   cliente: {
     findMany: vi.fn(),
+    findFirst: vi.fn().mockResolvedValue(null),
     delete: vi.fn(),
     deleteMany: vi.fn(),
   },
@@ -867,6 +869,109 @@ describe('ContatosService', () => {
         origemCadastro: 'site',
         formularioOrigem: 'calculadora',
       });
+    });
+  });
+
+  /**
+   * O contato é a fusão de Lead+Cliente+Conversa, então `nome` é o vencedor de
+   * uma cascata — e o vencedor sumia dentro dela. Isso travou uma verificação
+   * real: o site passou a mandar `contatoNome` e não havia como conferir pelo
+   * app se tinha gravado, porque com ou sem ele o `nome` devolvido é o MESMO.
+   */
+  describe('detalhe — nomeOrigem', () => {
+    const D = new Date('2026-09-01T01:08:00Z');
+
+    const prepararLead = (lead: Record<string, unknown>) => {
+      prisma.lead.findFirst.mockResolvedValue({
+        id: 'l1',
+        contatoTelefone: '11970535832',
+        contatoEmail: null,
+      });
+      prisma.lead.findMany.mockResolvedValue([
+        {
+          id: 'l1',
+          nome: 'Padaria Souza',
+          contatoNome: null,
+          contatoTelefone: '11970535832',
+          contatoEmail: null,
+          criadoEm: D,
+          etapaDesde: D,
+          representante: null,
+          funil: null,
+          funilEtapa: null,
+          tags: [],
+          utmSource: null,
+          utmMedium: null,
+          utmCampaign: null,
+          origemCadastro: 'site',
+          formularioOrigem: null,
+          valorFechado: null,
+          variaveis: null,
+          ...lead,
+        },
+      ]);
+      prisma.cliente.findMany.mockResolvedValue([]);
+      prisma.conversation.findMany.mockResolvedValue([]);
+      prisma.$queryRaw.mockResolvedValue([]);
+    };
+
+    it('diz "lead.contatoNome" quando o site gravou o nome da PESSOA', async () => {
+      prepararLead({ contatoNome: 'Ana Souza' });
+
+      const r = await svc.detalhe(fakeUser(), { leadId: 'l1' });
+
+      expect(r?.nome).toBe('Ana Souza');
+      expect(r?.nomeOrigem).toBe('lead.contatoNome');
+    });
+
+    it('diz "lead.nome" quando o contatoNome NÃO foi gravado', async () => {
+      prepararLead({ contatoNome: null });
+
+      const r = await svc.detalhe(fakeUser(), { leadId: 'l1' });
+
+      expect(r?.nome).toBe('Padaria Souza');
+      expect(r?.nomeOrigem).toBe('lead.nome');
+    });
+
+    it('os dois casos devolvem `nome` preenchido — é por isso que a origem precisa existir', async () => {
+      prepararLead({ contatoNome: 'Ana Souza' });
+      const com = await svc.detalhe(fakeUser(), { leadId: 'l1' });
+      prepararLead({ contatoNome: null });
+      const sem = await svc.detalhe(fakeUser(), { leadId: 'l1' });
+
+      // Sem `nomeOrigem`, nada no retorno distingue os dois — só o valor, que
+      // quem confere não sabe de antemão qual deveria ser.
+      expect(com?.nome).toBeTruthy();
+      expect(sem?.nome).toBeTruthy();
+      expect(com?.nomeOrigem).not.toBe(sem?.nomeOrigem);
+    });
+
+    it('cliente ganha do lead na cascata', async () => {
+      prepararLead({ contatoNome: 'Ana Souza' });
+      prisma.cliente.findMany.mockResolvedValue([
+        {
+          id: 'c1',
+          nome: 'PADARIA SOUZA LTDA',
+          telefone: '11970535832',
+          email: null,
+          criadoEm: D,
+          representante: null,
+          tags: [],
+        },
+      ]);
+
+      // O detalhe descobre as entidades do contato pelo sufixo do telefone:
+      // lead, CLIENTE e conversa, nessa ordem de $queryRaw.
+      prisma.$queryRaw
+        .mockReset()
+        .mockResolvedValueOnce([{ id: 'l1' }])
+        .mockResolvedValueOnce([{ id: 'c1' }])
+        .mockResolvedValue([]);
+
+      const r = await svc.detalhe(fakeUser(), { leadId: 'l1' });
+
+      expect(r?.nome).toBe('PADARIA SOUZA LTDA');
+      expect(r?.nomeOrigem).toBe('cliente');
     });
   });
 });
