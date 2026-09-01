@@ -4,6 +4,7 @@ import { useSyncExternalStore } from 'react';
 import { getSession, subscribe } from '@/lib/auth-store';
 import { api, ApiError } from '@/lib/api';
 import { cn } from '@/lib/cn';
+import { ehRotaInterna } from '@/lib/rota-interna';
 
 /**
  * NotificationBell — ícone de notificações com dropdown.
@@ -150,9 +151,14 @@ export function NotificationBell() {
 
   function onItemClick(n: Notificacao) {
     if (!n.lidaEm) void marcarLida(n.id);
-    if (n.link) {
+    // Só caminho interno. O backend já recusa link fora do padrão, mas linha
+    // gravada ANTES daquela trava não foi revalidada — e é aqui que ela viraria
+    // uma saída da origem (ver ehRotaInterna).
+    if (n.link && ehRotaInterna(n.link)) {
       setOpen(false);
       navigate(n.link);
+    } else if (n.link) {
+      console.warn('notificação com link não-interno — navegação bloqueada:', n.link);
     }
   }
 
