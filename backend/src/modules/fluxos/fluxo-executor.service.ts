@@ -21,8 +21,9 @@ import { KanbanTarefaService } from '@modules/kanban/kanban-tarefa.service';
 import { NotificacoesService } from '@modules/notificacoes/notificacoes.service';
 import { InboxService } from '@modules/inbox/inbox.service';
 import { Prisma } from '@prisma/client';
+import { BusinessRuleException } from '@shared/errors/app-exception';
 import { safeRequest, SsrfBlockedError } from '@shared/utils/safe-request';
-import { interpolate } from '@shared/utils/interpolate';
+import { interpolate, placeholdersPendentes } from '@shared/utils/interpolate';
 import { registrarTransicaoEtapa } from '@modules/leads/lead-etapa-historico.util';
 import {
   type CtwaReferral,
@@ -1309,6 +1310,7 @@ export class FluxoExecutorService {
   ): Promise<Record<string, unknown>> {
     this.assertEmpresaId(empresaId, 'ENVIAR_WHATSAPP');
     const mensagem = interpolate(cfg.mensagem, ctx);
+    this.assertSemPlaceholder('ENVIAR_WHATSAPP', { mensagem });
     const modo = cfg.destinatarioModo ?? 'lead';
 
     // Supressão LGPD: se o destino é o PRÓPRIO lead (modo 'lead') e ele tem a tag
@@ -1583,6 +1585,7 @@ export class FluxoExecutorService {
 
     const assunto = interpolate(cfg.assunto, ctx);
     const corpo = interpolate(cfg.corpo, ctx);
+    this.assertSemPlaceholder('ENVIAR_EMAIL', { assunto, corpo });
 
     // MODO SECO do teste, mesma regra do WhatsApp: e-mail de teste chegaria na
     // caixa de uma pessoa real. O card falava de WhatsApp, mas deixar o e-mail
@@ -2655,6 +2658,38 @@ export class FluxoExecutorService {
    * de executar qualquer DB write. Auditoria 2026-05-15: FluxoExecutor era
    * silenciosamente cross-tenant quando empresaId vinha vazio.
    */
+
+  /**
+   * Recusa o envio quando sobrou `{{variavel}}` no texto.
+   *
+   * Em fluxo, variável ausente MANTÉM o literal (`ausenteVazio: false` — ver
+   * `@shared/utils/interpolate`). Isso é ótimo pra debug e inaceitável no texto
+   * que sai pro cliente: em 24/08 uma mensagem foi entregue com
+   * `{{texto_teste}}` literal no WhatsApp.
+   *
+   * Trocar por vazio (o que a CAMPANHA faz) NÃO serve aqui: "na , máquina
+   * travando" é tão errado quanto "na {{empresa}}" e ainda por cima passa
+   * despercebido. Então falha, e o motivo fica no log do passo — o passo vira
+   * FALHOU (vermelho no histórico) nomeando exatamente a variável que faltou.
+   *
+   * Só nas duas ações que mandam texto pra FORA. Título de tarefa, URL de
+   * webhook e afins seguem com o literal: são internos, e ali o placeholder
+   * visível continua sendo o melhor sinal de debug.
+   */
+  private assertSemPlaceholder(acao: string, campos: Record<string, string>): void {
+    const faltando = new Set<string>();
+    for (const texto of Object.values(campos)) {
+      for (const ph of placeholdersPendentes(texto ?? '')) faltando.add(ph);
+    }
+    if (!faltando.size) return;
+    const lista = [...faltando].map((v) => `{{${v}}}`).join(', ');
+    throw new BusinessRuleException(
+      `${acao} NÃO enviado: o texto ficou com variável sem valor (${lista}). ` +
+        `Corrija o nó — variáveis do lead são {{lead.*}}, as gravadas pela IA ` +
+        `são {{custom.*}}, e nome cru só resolve se o gatilho mandar essa chave.`,
+    );
+  }
+
   private assertEmpresaId(empresaId: string | undefined | null, acao: string): void {
     if (!empresaId || empresaId.length === 0) {
       throw new Error(

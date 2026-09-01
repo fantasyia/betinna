@@ -1218,6 +1218,23 @@ describe('FluxoExecutorService', () => {
   // -------------------------------------------------------------------------
 
   describe('ação ENVIAR_WHATSAPP', () => {
+    it('NÃO manda WhatsApp com template cru — já saiu "{{texto_teste}}" pra um número real', async () => {
+      const acaoNo = fakeNo({
+        tipo: 'ACAO',
+        acaoTipo: 'ENVIAR_WHATSAPP',
+        config: { mensagem: 'Oi {{nome}}, sobre a {{empresa}}' },
+      });
+      prisma.fluxoExecucao.findUnique.mockResolvedValue(
+        fakeExecucao({ status: 'EM_EXECUCAO', contexto: { leadId: 'lead-1', nome: 'Maria' } }),
+      );
+      prisma.fluxoNo.findUnique.mockResolvedValue(acaoNo);
+      prisma.fluxoEdge.findMany.mockResolvedValue([]);
+
+      await expect(service.executarPasso('exec-1', 'no-1', 'job-test')).rejects.toThrow();
+
+      expect(whatsapp.enviarTexto).not.toHaveBeenCalled();
+    });
+
     const setupWhatsappPasso = (contexto: Record<string, unknown> = { clienteId: 'cli-1' }) => {
       const acaoNo = fakeNo({
         id: 'no-wa',
@@ -1434,6 +1451,85 @@ describe('FluxoExecutorService', () => {
           html: 'Conteúdo para Maria',
         }),
       );
+    });
+
+    /**
+     * Em fluxo, variável ausente MANTÉM o literal (`ausenteVazio: false`, pra
+     * debug). Em 24/08 isso virou uma mensagem entregue com `{{texto_teste}}`
+     * literal no WhatsApp. Texto que sai pra FORA não pode carregar template
+     * cru — nem cru, nem trocado por vazio ("na , máquina travando" é igual de
+     * errado e mais difícil de notar).
+     */
+    it('NÃO envia e-mail quando sobrou variável sem valor', async () => {
+      const acaoNo = fakeNo({
+        id: 'no-email',
+        tipo: 'ACAO',
+        acaoTipo: 'ENVIAR_EMAIL',
+        config: {
+          destinatario: 'dest@test.com',
+          assunto: 'Olá {{nome}}',
+          corpo: 'Pergunta direta: na {{empresa}}, máquina travando?',
+        },
+      });
+      prisma.fluxoExecucao.findUnique.mockResolvedValue(
+        fakeExecucao({ status: 'EM_EXECUCAO', contexto: { nome: 'Maria' } }),
+      );
+      prisma.fluxoNo.findUnique.mockResolvedValue(acaoNo);
+      prisma.fluxoEdge.findMany.mockResolvedValue([]);
+
+      await expect(service.executarPasso('exec-1', 'no-email', 'job-test')).rejects.toThrow();
+
+      expect(emailSvc.enviarHtmlLivre).not.toHaveBeenCalled();
+    });
+
+    /**
+     * A guarda é SÓ pras duas ações que mandam texto pra fora. Título de tarefa
+     * é interno: ali o `{{x}}` visível continua sendo o melhor sinal de debug, e
+     * bloquear a tarefa por causa dele seria pior que criá-la com o literal.
+     */
+    it('ação INTERNA (CRIAR_TAREFA) segue com o literal — a guarda não vaza pra ela', async () => {
+      const acaoNo = fakeNo({
+        tipo: 'ACAO',
+        acaoTipo: 'CRIAR_TAREFA',
+        config: { titulo: 'Ligar pra {{empresa}}' },
+      });
+      // Sem responsável no nó, o executor cai no ADMIN/DIRECTOR da empresa.
+      prisma.usuario.findFirst.mockResolvedValue({ id: 'admin-1' });
+      prisma.fluxoExecucao.findUnique.mockResolvedValue(
+        fakeExecucao({ status: 'EM_EXECUCAO', contexto: { leadId: 'lead-1' } }),
+      );
+      prisma.fluxoNo.findUnique.mockResolvedValue(acaoNo);
+      prisma.fluxoEdge.findMany.mockResolvedValue([]);
+
+      await expect(service.executarPasso('exec-1', 'no-1', 'job-test')).resolves.toBeUndefined();
+
+      const log = prisma.fluxoExecucaoLog.create.mock.calls.at(-1)?.[0]?.data;
+      expect(log.status).toBe('CONCLUIDO');
+      expect(prisma.agendaItem.create).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: expect.objectContaining({ titulo: 'Ligar pra {{empresa}}' }),
+        }),
+      );
+    });
+
+    it('o erro NOMEIA a variável que faltou — senão não dá pra achar o nó', async () => {
+      const acaoNo = fakeNo({
+        id: 'no-email',
+        tipo: 'ACAO',
+        acaoTipo: 'ENVIAR_EMAIL',
+        config: { destinatario: 'dest@test.com', assunto: 'oi', corpo: 'na {{empresa}}' },
+      });
+      prisma.fluxoExecucao.findUnique.mockResolvedValue(
+        fakeExecucao({ status: 'EM_EXECUCAO', contexto: {} }),
+      );
+      prisma.fluxoNo.findUnique.mockResolvedValue(acaoNo);
+      prisma.fluxoEdge.findMany.mockResolvedValue([]);
+
+      await service.executarPasso('exec-1', 'no-email', 'job-test').catch(() => undefined);
+
+      const log = prisma.fluxoExecucaoLog.create.mock.calls.at(-1)?.[0]?.data;
+      expect(log.status).toBe('FALHOU');
+      expect(String(log.erroMsg)).toContain('{{empresa}}');
     });
   });
 
