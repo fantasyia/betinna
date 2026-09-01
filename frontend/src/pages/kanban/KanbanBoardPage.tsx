@@ -24,7 +24,7 @@ import {
 import {
   DndContext,
   DragOverlay,
-  PointerSensor,
+  MouseSensor,
   TouchSensor,
   closestCorners,
   useSensor,
@@ -288,9 +288,16 @@ export default function KanbanBoardPage() {
   }, [listas, temFiltro, textoDebounced, fEtiqueta, fMembro, fVencimento]);
 
   const sensors = useSensors(
-    useSensor(PointerSensor, { activationConstraint: { distance: 6 } }),
-    // Mobile: segurar 200ms pra arrastar; swipe rápido continua rolando as colunas
-    useSensor(TouchSensor, { activationConstraint: { delay: 200, tolerance: 8 } }),
+    // MouseSensor, NÃO PointerSensor. O PointerSensor escuta pointer events, que
+    // incluem TOQUE — então no celular ele vencia o TouchSensor e o card saía
+    // arrastando com 6px de movimento, antes de os 200ms de espera correrem.
+    // Era o "só de encostar já se mexe": qualquer rolagem da tela virava drag.
+    // Separando por dispositivo, cada um fica com a sua regra.
+    useSensor(MouseSensor, { activationConstraint: { distance: 6 } }),
+    // Toque: segurar 250ms pra arrastar (o Trello fica nessa faixa). `tolerance`
+    // é o quanto o dedo pode andar DURANTE a espera sem cancelar — é o que
+    // deixa o swipe rolar a lista em vez de carregar o card junto.
+    useSensor(TouchSensor, { activationConstraint: { delay: 250, tolerance: 8 } }),
   );
 
   const cardAtivo = useMemo(() => {
@@ -491,7 +498,10 @@ export default function KanbanBoardPage() {
       description={board?.descricao ?? undefined}
       actionsBelow
       actions={
-        <div className="flex gap-2">
+        // `flex-wrap`: são 4 botões e, sem quebrar linha, o último ("Atividade")
+        // saía cortado na borda da tela do celular — sem scroll nem indício de
+        // que havia mais coisa ali.
+        <div className="flex flex-wrap gap-2">
           <Button
             variant="ghost"
             leftIcon={<ArrowLeft className="h-4 w-4" />}
@@ -573,21 +583,30 @@ export default function KanbanBoardPage() {
         {view === 'quadro' && (
           <>
         {/* Barra de filtros */}
+        {/*
+          Larguras FIXAS quebravam no celular: `w-48` + `w-36` não cabem lado a
+          lado em 360px, e o que sobrava aparecia cortado. Aqui cada campo ocupa
+          a linha inteira no telefone e volta ao tamanho fixo a partir do `sm`.
+        */}
         <div className="flex flex-wrap items-center gap-2 mb-3">
-          <div className="relative">
-            <Search className="h-3.5 w-3.5 text-muted absolute left-2.5 top-1/2 -translate-y-1/2 pointer-events-none" />
-            <Input
-              value={fTexto}
-              onChange={(e) => setFTexto(e.target.value)}
-              placeholder="Filtrar cards…"
-              className="pl-8 w-48"
-              data-testid="kanban-filtro-texto"
-            />
-          </div>
+          {/*
+            `leftIcon` do próprio Input, não ícone absoluto + `pl-8`: quando não
+            há ícone, o Input aplica `paddingLeft` por STYLE INLINE, que vence a
+            classe — o `pl-8` era ignorado e a lupa caía em cima do texto
+            ("⌕iltrar cards"). Com `leftIcon` o componente monta o flex certo.
+          */}
+          <Input
+            value={fTexto}
+            onChange={(e) => setFTexto(e.target.value)}
+            placeholder="Filtrar cards…"
+            leftIcon={<Search />}
+            className="w-full sm:w-48"
+            data-testid="kanban-filtro-texto"
+          />
           <Select
             value={fEtiqueta}
             onChange={(e) => setFEtiqueta(e.target.value)}
-            className="w-36"
+            className="flex-1 min-w-[9rem] sm:flex-none sm:w-36"
             data-testid="kanban-filtro-etiqueta"
           >
             <option value="">Etiqueta: todas</option>
@@ -600,7 +619,7 @@ export default function KanbanBoardPage() {
           <Select
             value={fMembro}
             onChange={(e) => setFMembro(e.target.value)}
-            className="w-40"
+            className="flex-1 min-w-[9rem] sm:flex-none sm:w-40"
             data-testid="kanban-filtro-membro"
           >
             <option value="">Membro: todos</option>
@@ -613,7 +632,7 @@ export default function KanbanBoardPage() {
           <Select
             value={fVencimento}
             onChange={(e) => setFVencimento(e.target.value)}
-            className="w-44"
+            className="flex-1 min-w-[9rem] sm:flex-none sm:w-44"
             data-testid="kanban-filtro-vencimento"
           >
             <option value="">Vencimento: todos</option>

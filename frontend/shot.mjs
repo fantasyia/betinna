@@ -36,7 +36,16 @@ const CLICK = process.argv[4] || ''; // texto de um botão pra clicar antes do p
 const TEMA = process.env.TEMA || 'light'; // TEMA=dark valida o modo escuro
 
 const browser = await chromium.launch();
-const page = await browser.newPage({ viewport: { width: 1600, height: 1000 } });
+// VIEWPORT=mobile (ou LARGURA/ALTURA) — sem isso so dava pra ver o desktop, e
+// os defeitos que o Leo reporta do celular (filtro cortado, barra de acoes sem
+// quebra de linha, drag sensivel demais) nao apareciam em nenhuma verificacao.
+const MOBILE = process.env.VIEWPORT === 'mobile';
+const LARGURA = Number(process.env.LARGURA) || (MOBILE ? 390 : 1600);
+const ALTURA = Number(process.env.ALTURA) || (MOBILE ? 844 : 1000);
+const page = await browser.newPage({
+  viewport: { width: LARGURA, height: ALTURA },
+  ...(MOBILE ? { isMobile: true, hasTouch: true, deviceScaleFactor: 2 } : {}),
+});
 await page.addInitScript((tema) => localStorage.setItem('betinna:theme', tema), TEMA);
 page.on('console', (m) => {
   if (m.type() === 'error') console.log('  [console.error]', m.text().slice(0, 200));
