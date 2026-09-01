@@ -1068,6 +1068,22 @@ export class FluxoExecutorService {
       /* ignora — sem defaults */
     }
 
+    // Evento de PEDIDO traz `clienteId` e NUNCA `leadId` — e tres acoes exigem
+    // lead: MOVER_LEAD_ETAPA e PAUSAR_IA lancam, CONVERSAR_IA pula em silencio.
+    // Resultado pratico: quem compra pelo site fica com o bot pausado desde a
+    // compra (o ramo do pedido pausa de proposito) e NENHUM fluxo de pedido
+    // consegue religar — o P3 pergunta "chegou tudo bem?", a pessoa responde, e
+    // ninguem e avisado.
+    //
+    // Resolver AQUI, e nao no payload de cada disparo, pega todos os fluxos de
+    // pedido de uma vez — presentes e futuros — sem depender de quem emite o
+    // evento lembrar de incluir o campo.
+    if (typeof ctx.leadId !== 'string' && typeof ctx.clienteId === 'string') {
+      const doCliente = await this.leadDoCliente(empresaId, ctx.clienteId);
+      // Escreve NO CONTEXTO: e daqui que as acoes leem, nao do payload.
+      if (doCliente) ctx.leadId = doCliente;
+    }
+
     // {{lead.*}} — dados estruturados do lead; leadVars alimenta {{custom.*}}/{{conversa.*}}.
     const leadId = typeof ctx.leadId === 'string' ? ctx.leadId : undefined;
     let leadVars: Record<string, unknown> = {};
@@ -2688,6 +2704,54 @@ export class FluxoExecutorService {
         `Corrija o nó — variáveis do lead são {{lead.*}}, as gravadas pela IA ` +
         `são {{custom.*}}, e nome cru só resolve se o gatilho mandar essa chave.`,
     );
+  }
+
+  /**
+   * Lead do cliente — usado quando o evento so tem `clienteId` (todo evento de
+   * PEDIDO). O vinculo ja existe no schema: `Lead.clienteId`, populado quando
+   * o lead ganho vira cliente.
+   *
+   * DESEMPATE: pode haver mais de um lead apontando pro mesmo cliente (a dedup
+   * por telefone junta, mas nem sempre). Ganha o que tem conversa viva no
+   * WhatsApp da EMPRESA — mesmo criterio do `conversaDaEmpresaDoLead`, porque e
+   * a conversa em que a pessoa esta de fato falando. Sem nenhuma, o mais
+   * recente.
+   *
+   * `proprietarioId: null` no desempate NAO e detalhe: o lead pode ter conversa
+   * no WhatsApp da empresa E no pessoal de um rep. Pegar a do rep escolheria o
+   * lead pela conversa particular dele.
+   *
+   * Best-effort: cliente SEM lead continua sem lead, e as acoes que nao
+   * precisam de um seguem funcionando igual.
+   */
+  private async leadDoCliente(empresaId: string, clienteId: string): Promise<string | undefined> {
+    try {
+      const leads = await this.prisma.lead.findMany({
+        where: { empresaId, clienteId },
+        orderBy: { criadoEm: 'desc' },
+        select: { id: true },
+      });
+      if (leads.length <= 1) return leads[0]?.id;
+
+      const conversa = await this.prisma.conversation.findFirst({
+        where: {
+          empresaId,
+          canal: 'WHATSAPP',
+          proprietarioId: null,
+          leadId: { in: leads.map((l) => l.id) },
+        },
+        orderBy: { ultimaMsgEm: 'desc' },
+        select: { leadId: true },
+      });
+      // `leads[0]` e o mais recente (orderBy criadoEm desc).
+      return conversa?.leadId ?? leads[0].id;
+    } catch (err) {
+      this.logger.warn(
+        `Falha resolvendo lead do cliente ${clienteId}: ` +
+          `${err instanceof Error ? err.message : String(err)}`,
+      );
+      return undefined;
+    }
   }
 
   private assertEmpresaId(empresaId: string | undefined | null, acao: string): void {

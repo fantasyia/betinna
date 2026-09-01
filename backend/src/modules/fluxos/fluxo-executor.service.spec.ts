@@ -2201,3 +2201,139 @@ describe('FluxoExecutorService', () => {
     });
   });
 });
+
+/**
+ * Evento de PEDIDO traz `clienteId` e nunca `leadId`. Tres acoes exigem lead:
+ * MOVER_LEAD_ETAPA e PAUSAR_IA lancam, CONVERSAR_IA pula em silencio.
+ *
+ * O efeito real: quem compra pelo site fica com o bot pausado desde a compra, e
+ * nenhum fluxo de pedido consegue religar — o fluxo pergunta "chegou tudo bem?"
+ * e nao consegue receber a resposta.
+ */
+describe('FluxoExecutorService — lead resolvido pelo cliente', () => {
+  let prisma: ReturnType<typeof makePrismaMock>;
+  let whatsapp: ReturnType<typeof makeWhatsappMock>;
+  let emailSvc: ReturnType<typeof makeEmailSvcMock>;
+  let queue: ReturnType<typeof makeQueueMock>;
+  let bus: ReturnType<typeof makeBusMock>;
+  let conversarIa: ReturnType<typeof makeConversarIaMock>;
+  let service: FluxoExecutorService;
+
+  const LEAD_VELHO = { id: 'lead-velho' };
+  const LEAD_NOVO = { id: 'lead-novo' };
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    prisma = makePrismaMock();
+    whatsapp = makeWhatsappMock();
+    emailSvc = makeEmailSvcMock();
+    queue = makeQueueMock();
+    bus = makeBusMock();
+    conversarIa = makeConversarIaMock();
+    service = new FluxoExecutorService(
+      prisma as never,
+      makeEnvMock() as never,
+      {} as never,
+      whatsapp as never,
+      emailSvc as never,
+      conversarIa as never,
+      bus as never,
+      { aguardarSlot: vi.fn(), esperaAntesDoProativoMs: vi.fn().mockResolvedValue(0) } as never,
+      { marcarDesconectado: vi.fn() } as never,
+      queue as never,
+      { criarCardsDeTarefa: vi.fn(async () => ({})) } as never,
+      { suprimido: vi.fn(async () => false) } as never,
+      { criarParaUsuario: vi.fn(), criarParaRole: vi.fn() } as never,
+      { processarMensagemEntrante: vi.fn() } as never,
+    );
+  });
+
+  /** Nó que EXIGE lead: sem ele, o executor lança. */
+  const prepararMoverEtapa = (contexto: Record<string, unknown>) => {
+    prisma.fluxoExecucao.findUnique.mockResolvedValue(
+      fakeExecucao({ status: 'EM_EXECUCAO', contexto }),
+    );
+    prisma.fluxoNo.findUnique.mockResolvedValue(
+      fakeNo({ tipo: 'ACAO', acaoTipo: 'MOVER_LEAD_ETAPA', config: { etapa: 'GANHO' } }),
+    );
+    prisma.fluxoEdge.findMany.mockResolvedValue([]);
+  };
+
+  it('evento de pedido (só clienteId) passa a mover o lead do cliente', async () => {
+    prisma.lead.findMany.mockResolvedValue([LEAD_NOVO]);
+    prepararMoverEtapa({ clienteId: 'cli-1' });
+
+    await service.executarPasso('exec-1', 'no-1', 'job-test');
+
+    expect(prisma.lead.updateMany).toHaveBeenCalledWith(
+      expect.objectContaining({ where: { id: 'lead-novo', empresaId: 'emp-1' } }),
+    );
+  });
+
+  it('com DOIS leads no mesmo cliente, ganha o que tem conversa viva no WhatsApp da EMPRESA', async () => {
+    // leads[0] é o mais recente; a conversa aponta pro OUTRO — de propósito,
+    // senão o teste passaria só pelo fallback.
+    prisma.lead.findMany.mockResolvedValue([LEAD_NOVO, LEAD_VELHO]);
+    prisma.conversation.findFirst.mockResolvedValue({ leadId: 'lead-velho' });
+    prepararMoverEtapa({ clienteId: 'cli-1' });
+
+    await service.executarPasso('exec-1', 'no-1', 'job-test');
+
+    expect(prisma.lead.updateMany).toHaveBeenCalledWith(
+      expect.objectContaining({ where: { id: 'lead-velho', empresaId: 'emp-1' } }),
+    );
+  });
+
+  it('o desempate ignora WhatsApp PESSOAL de rep — conversa particular não escolhe lead', async () => {
+    prisma.lead.findMany.mockResolvedValue([LEAD_NOVO, LEAD_VELHO]);
+    prisma.conversation.findFirst.mockResolvedValue(null);
+    prepararMoverEtapa({ clienteId: 'cli-1' });
+
+    await service.executarPasso('exec-1', 'no-1', 'job-test');
+
+    expect(prisma.conversation.findFirst.mock.calls[0][0].where).toMatchObject({
+      proprietarioId: null,
+      canal: 'WHATSAPP',
+    });
+  });
+
+  it('sem conversa nenhuma, cai no lead MAIS RECENTE', async () => {
+    prisma.lead.findMany.mockResolvedValue([LEAD_NOVO, LEAD_VELHO]);
+    prisma.conversation.findFirst.mockResolvedValue(null);
+    prepararMoverEtapa({ clienteId: 'cli-1' });
+
+    await service.executarPasso('exec-1', 'no-1', 'job-test');
+
+    expect(prisma.lead.updateMany).toHaveBeenCalledWith(
+      expect.objectContaining({ where: { id: 'lead-novo', empresaId: 'emp-1' } }),
+    );
+  });
+
+  it('UM lead só não gasta a consulta de desempate', async () => {
+    prisma.lead.findMany.mockResolvedValue([LEAD_NOVO]);
+    prepararMoverEtapa({ clienteId: 'cli-1' });
+
+    await service.executarPasso('exec-1', 'no-1', 'job-test');
+
+    expect(prisma.conversation.findFirst).not.toHaveBeenCalled();
+  });
+
+  it('cliente SEM lead continua como antes — a ação que exige lead falha, não inventa um', async () => {
+    prisma.lead.findMany.mockResolvedValue([]);
+    prepararMoverEtapa({ clienteId: 'cli-sem-lead' });
+
+    await expect(service.executarPasso('exec-1', 'no-1', 'job-test')).rejects.toThrow();
+    expect(prisma.lead.updateMany).not.toHaveBeenCalled();
+  });
+
+  it('quando o evento JÁ traz leadId, não vai atrás do cliente', async () => {
+    prepararMoverEtapa({ leadId: 'lead-do-evento', clienteId: 'cli-1' });
+
+    await service.executarPasso('exec-1', 'no-1', 'job-test');
+
+    expect(prisma.lead.findMany).not.toHaveBeenCalled();
+    expect(prisma.lead.updateMany).toHaveBeenCalledWith(
+      expect.objectContaining({ where: { id: 'lead-do-evento', empresaId: 'emp-1' } }),
+    );
+  });
+});
