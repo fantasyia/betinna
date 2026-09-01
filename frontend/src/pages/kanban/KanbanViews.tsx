@@ -1,12 +1,10 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
+import { useSensoresDnd } from '@/lib/dnd-sensors';
 import { ArrowDown, ArrowUp, ChevronLeft, ChevronRight, Search } from 'lucide-react';
 import {
   DndContext,
-  PointerSensor,
   useDraggable,
   useDroppable,
-  useSensor,
-  useSensors,
   type DragEndEvent,
 } from '@dnd-kit/core';
 import { api, apiErrorMessage } from '@/lib/api';
@@ -81,7 +79,7 @@ export function CalendarioView({
     refetch();
   }, [refetch]);
 
-  const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 6 } }));
+  const sensors = useSensoresDnd(6);
 
   const [ano, mesNum] = mes.split('-').map(Number);
   const semanas = useMemo(() => {

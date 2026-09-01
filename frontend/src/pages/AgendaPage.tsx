@@ -1,9 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
+import { useSensoresDnd } from '@/lib/dnd-sensors';
 import {
   DndContext,
-  PointerSensor,
-  useSensor,
-  useSensors,
   useDraggable,
   useDroppable,
   type DragEndEvent,
@@ -387,7 +385,7 @@ export default function AgendaPage() {
   }
 
   // Sensor: começa drag só após 8px de movimento (evita conflito com click pra editar)
-  const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 8 } }));
+  const sensors = useSensoresDnd(8);
 
   const weekStart = startOfWeek(dataRef);
   const days = Array.from({ length: 7 }, (_, i) => addDays(weekStart, i));

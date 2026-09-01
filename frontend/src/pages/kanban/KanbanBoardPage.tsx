@@ -1,4 +1,5 @@
 import { type MouseEvent as ReactMouseEvent, useEffect, useMemo, useRef, useState } from 'react';
+import { useSensoresDnd } from '@/lib/dnd-sensors';
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import {
   Activity,
@@ -17,6 +18,7 @@ import {
   Pencil,
   Plus,
   Search,
+  SlidersHorizontal,
   Tag,
   User,
   X,
@@ -24,11 +26,7 @@ import {
 import {
   DndContext,
   DragOverlay,
-  MouseSensor,
-  TouchSensor,
   closestCorners,
-  useSensor,
-  useSensors,
   type DragEndEvent,
   type DragOverEvent,
   type DragStartEvent,
@@ -45,7 +43,17 @@ import { useApiQuery } from '@/hooks/useApiQuery';
 import { useToast } from '@/components/toast';
 import { PageLayout } from '@/components/PageLayout';
 import { StateView } from '@/components/StateView';
-import { Avatar, Button, Dialog, Field, IconButton, Input, Select, Textarea } from '@/components/ui';
+import {
+  Avatar,
+  Button,
+  Dialog,
+  Drawer,
+  Field,
+  IconButton,
+  Input,
+  Select,
+  Textarea,
+} from '@/components/ui';
 import { useDebouncedValue } from '@/hooks/useDebouncedValue';
 import { cn } from '@/lib/cn';
 import { AtividadeDrawer } from './AtividadeDrawer';
@@ -258,6 +266,17 @@ export default function KanbanBoardPage() {
   const [fVencimento, setFVencimento] = useState('');
   const textoDebounced = useDebouncedValue(fTexto, 250);
   const temFiltro = !!(textoDebounced || fEtiqueta || fMembro || fVencimento);
+  const [filtrosAbertos, setFiltrosAbertos] = useState(false);
+  // Conta o que está ATIVO pra o botão dizer isso sem ser aberto — filtro
+  // escondido atrás de um botão é filtro que a pessoa esquece que ligou, e aí
+  // o quadro "perde" cards sem motivo aparente.
+  const qtdFiltros = [textoDebounced, fEtiqueta, fMembro, fVencimento].filter(Boolean).length;
+  const limparFiltros = () => {
+    setFTexto('');
+    setFEtiqueta('');
+    setFMembro('');
+    setFVencimento('');
+  };
 
   const listasVisiveis = useMemo(() => {
     if (!temFiltro) return listas;
@@ -287,18 +306,7 @@ export default function KanbanBoardPage() {
     }));
   }, [listas, temFiltro, textoDebounced, fEtiqueta, fMembro, fVencimento]);
 
-  const sensors = useSensors(
-    // MouseSensor, NÃO PointerSensor. O PointerSensor escuta pointer events, que
-    // incluem TOQUE — então no celular ele vencia o TouchSensor e o card saía
-    // arrastando com 6px de movimento, antes de os 200ms de espera correrem.
-    // Era o "só de encostar já se mexe": qualquer rolagem da tela virava drag.
-    // Separando por dispositivo, cada um fica com a sua regra.
-    useSensor(MouseSensor, { activationConstraint: { distance: 6 } }),
-    // Toque: segurar 250ms pra arrastar (o Trello fica nessa faixa). `tolerance`
-    // é o quanto o dedo pode andar DURANTE a espera sem cancelar — é o que
-    // deixa o swipe rolar a lista em vez de carregar o card junto.
-    useSensor(TouchSensor, { activationConstraint: { delay: 250, tolerance: 8 } }),
-  );
+  const sensors = useSensoresDnd();
 
   const cardAtivo = useMemo(() => {
     if (ativo?.tipo !== 'card') return null;
@@ -582,79 +590,101 @@ export default function KanbanBoardPage() {
 
         {view === 'quadro' && (
           <>
-        {/* Barra de filtros */}
         {/*
-          Larguras FIXAS quebravam no celular: `w-48` + `w-36` não cabem lado a
-          lado em 360px, e o que sobrava aparecia cortado. Aqui cada campo ocupa
-          a linha inteira no telefone e volta ao tamanho fixo a partir do `sm`.
+          Os filtros viviam soltos numa barra de 4 campos. No celular ocupavam
+          duas linhas inteiras antes do primeiro card aparecer — a tela abria
+          mostrando controle, não conteúdo. Agora é UM botão que abre o painel,
+          como o Trello faz, e o contador diz quantos estão ativos sem precisar
+          abrir pra descobrir.
         */}
-        <div className="flex flex-wrap items-center gap-2 mb-3">
-          {/*
-            `leftIcon` do próprio Input, não ícone absoluto + `pl-8`: quando não
-            há ícone, o Input aplica `paddingLeft` por STYLE INLINE, que vence a
-            classe — o `pl-8` era ignorado e a lupa caía em cima do texto
-            ("⌕iltrar cards"). Com `leftIcon` o componente monta o flex certo.
-          */}
-          <Input
-            value={fTexto}
-            onChange={(e) => setFTexto(e.target.value)}
-            placeholder="Filtrar cards…"
-            leftIcon={<Search />}
-            className="w-full sm:w-48"
-            data-testid="kanban-filtro-texto"
-          />
-          <Select
-            value={fEtiqueta}
-            onChange={(e) => setFEtiqueta(e.target.value)}
-            className="flex-1 min-w-[9rem] sm:flex-none sm:w-36"
-            data-testid="kanban-filtro-etiqueta"
+        <div className="flex items-center gap-2 mb-3">
+          <Button
+            size="sm"
+            variant={temFiltro ? 'secondary' : 'ghost'}
+            leftIcon={<SlidersHorizontal className="h-4 w-4" />}
+            onClick={() => setFiltrosAbertos(true)}
+            data-testid="kanban-abrir-filtros"
           >
-            <option value="">Etiqueta: todas</option>
-            {(board?.etiquetas ?? []).map((et) => (
-              <option key={et.id} value={et.id}>
-                {et.nome || et.cor}
-              </option>
-            ))}
-          </Select>
-          <Select
-            value={fMembro}
-            onChange={(e) => setFMembro(e.target.value)}
-            className="flex-1 min-w-[9rem] sm:flex-none sm:w-40"
-            data-testid="kanban-filtro-membro"
-          >
-            <option value="">Membro: todos</option>
-            {(board?.membros ?? []).map(({ usuario }) => (
-              <option key={usuario.id} value={usuario.id}>
-                {usuario.nome}
-              </option>
-            ))}
-          </Select>
-          <Select
-            value={fVencimento}
-            onChange={(e) => setFVencimento(e.target.value)}
-            className="flex-1 min-w-[9rem] sm:flex-none sm:w-44"
-            data-testid="kanban-filtro-vencimento"
-          >
-            <option value="">Vencimento: todos</option>
-            <option value="vencidos">Vencidos</option>
-            <option value="proximos7dias">Próximos 7 dias</option>
-            <option value="sem_data">Sem data</option>
-          </Select>
+            Filtros
+            {qtdFiltros > 0 && (
+              <span
+                className="ml-1.5 inline-flex h-5 min-w-[1.25rem] items-center justify-center rounded-full bg-primary px-1.5 text-[11px] font-semibold text-white"
+                data-testid="kanban-filtros-ativos"
+              >
+                {qtdFiltros}
+              </span>
+            )}
+          </Button>
           {temFiltro && (
-            <Button
-              size="sm"
-              variant="ghost"
-              onClick={() => {
-                setFTexto('');
-                setFEtiqueta('');
-                setFMembro('');
-                setFVencimento('');
-              }}
-            >
+            <Button size="sm" variant="ghost" onClick={limparFiltros} data-testid="kanban-limpar-filtros">
               Limpar
             </Button>
           )}
         </div>
+
+        <Drawer
+          open={filtrosAbertos}
+          onClose={() => setFiltrosAbertos(false)}
+          title="Filtros"
+          description="Vale só para a visão de quadro."
+          width="sm"
+        >
+          <div className="flex flex-col gap-3">
+            {/*
+              `leftIcon` do próprio Input, não ícone absoluto + `pl-8`: sem
+              ícone, o Input aplica `paddingLeft` por STYLE INLINE, que vence a
+              classe — o `pl-8` era ignorado e a lupa caía sobre o texto
+              ("⌕iltrar cards"). Com `leftIcon` o componente monta o flex certo.
+            */}
+            <Input
+              value={fTexto}
+              onChange={(e) => setFTexto(e.target.value)}
+              placeholder="Filtrar cards…"
+              leftIcon={<Search />}
+              data-testid="kanban-filtro-texto"
+            />
+            <Select
+              value={fEtiqueta}
+              onChange={(e) => setFEtiqueta(e.target.value)}
+              data-testid="kanban-filtro-etiqueta"
+            >
+              <option value="">Etiqueta: todas</option>
+              {(board?.etiquetas ?? []).map((et) => (
+                <option key={et.id} value={et.id}>
+                  {et.nome || et.cor}
+                </option>
+              ))}
+            </Select>
+            <Select
+              value={fMembro}
+              onChange={(e) => setFMembro(e.target.value)}
+              data-testid="kanban-filtro-membro"
+            >
+              <option value="">Membro: todos</option>
+              {(board?.membros ?? []).map(({ usuario }) => (
+                <option key={usuario.id} value={usuario.id}>
+                  {usuario.nome}
+                </option>
+              ))}
+            </Select>
+            <Select
+              value={fVencimento}
+              onChange={(e) => setFVencimento(e.target.value)}
+              data-testid="kanban-filtro-vencimento"
+            >
+              <option value="">Vencimento: todos</option>
+              <option value="vencidos">Vencidos</option>
+              <option value="proximos7dias">Próximos 7 dias</option>
+              <option value="sem_data">Sem data</option>
+            </Select>
+            {temFiltro && (
+              <Button variant="ghost" onClick={limparFiltros}>
+                Limpar filtros
+              </Button>
+            )}
+          </div>
+        </Drawer>
+
         <DndContext
           sensors={sensors}
           collisionDetection={closestCorners}
