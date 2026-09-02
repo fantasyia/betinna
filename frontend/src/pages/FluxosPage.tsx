@@ -94,6 +94,7 @@ const TRIGGERS: Record<TriggerTipo, string> = {
   PEDIDO_APROVADO: 'Pedido aprovado',
   PEDIDO_ENTREGUE: 'Pedido entregue',
   PEDIDO_RASTREIO_DISPONIVEL: 'Rastreio disponível',
+  LEAD_REENGAJOU_SITE: 'Lead voltou pelo site',
   OCORRENCIA_ABERTA: 'Ocorrência aberta',
   CLIENTE_INATIVO_30D: 'Cliente inativo 30 dias',
   AMOSTRA_FOLLOWUP: 'Amostra follow-up',

@@ -1648,6 +1648,11 @@ enum FluxoTriggerTipo {
   /// PEDIDO_ENTREGUE pra isso — avisaria o código depois de a encomenda ter
   /// chegado.
   PEDIDO_RASTREIO_DISPONIVEL
+  /// Lead que JÁ EXISTIA preencheu o formulário do site de novo. O caminho mais
+  /// comum do funil real: fala no WhatsApp, vira lead, e depois entra no site
+  /// pedindo orçamento. Sem este gatilho esse segundo toque era invisível —
+  /// LEAD_CRIADO não dispara em update.
+  LEAD_REENGAJOU_SITE
   OCORRENCIA_ABERTA
   CLIENTE_INATIVO_30D // cron-driven — clientes sem pedido há ≥ N dias
   AMOSTRA_FOLLOWUP // cron-driven — amostras no prazo de follow-up

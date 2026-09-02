@@ -6,6 +6,7 @@ import { RedisService } from '@database/redis.service';
 import { AppException, UnauthorizedException } from '@shared/errors/app-exception';
 import { ErrorCode } from '@shared/errors/error-codes';
 import type { AuthenticatedUser } from '@shared/types/authenticated-user';
+import { FluxoEventBusService } from '@modules/fluxos/fluxo-event-bus.service';
 import { NotificacoesService } from '@modules/notificacoes/notificacoes.service';
 import { LeadsService } from './leads.service';
 import { leadCapturePublicoSchema, type LeadCapturePublicoDto } from './lead-capture.dto';
@@ -43,6 +44,7 @@ export class LeadCaptureService {
     private readonly redis: RedisService,
     private readonly leads: LeadsService,
     private readonly notificacoes: NotificacoesService,
+    private readonly bus: FluxoEventBusService,
   ) {}
 
   // ─── Gestão (DIRECTOR/ADMIN, autenticado) ────────────────────────────
@@ -124,6 +126,7 @@ export class LeadCaptureService {
       // Tags também no reenvio: quem volta pelo formulário marcando OUTRO setor
       // precisa receber a etiqueta nova (o upsert cobre a repetida).
       const ignoradas = await this.aplicarTagsDoSite(empresaId, duplicado, dto.tags);
+      await this.completarLeadExistente(empresaId, duplicado, dto, origemCadastro);
       return {
         ok: true,
         leadId: duplicado,
@@ -267,6 +270,98 @@ export class LeadCaptureService {
    * toque é IMUTÁVEL (só grava se as colunas ainda estão vazias). Não toca em mais
    * nada do lead (etapa, dono…). Best-effort: falha aqui não quebra o "duplicado".
    */
+  /**
+   * Lead que JÁ EXISTE preencheu o formulário do site de novo.
+   *
+   * É o caminho mais comum do funil real: fala no WhatsApp, vira lead, e
+   * DEPOIS entra no site pedindo orçamento. Até 02/09 esse segundo toque era
+   * quase invisível — só as etiquetas colavam. O e-mail que a pessoa acabou de
+   * dar se perdia, o formulário que ela escolheu não ficava registrado, e
+   * nenhum fluxo rodava (o gatilho é LEAD_CRIADO, e isto é update). Ela lia
+   * "nossa equipe entrará em contato" e ninguém era avisado.
+   *
+   * Três regras, e as três são deliberadas:
+   *
+   * 1. **Só preenche o que está VAZIO.** Formulário de site não pode
+   *    sobrescrever dado que alguém apurou na conversa — nome corrigido à mão,
+   *    cidade confirmada por telefone. Campo cheio fica como está.
+   * 2. **`origemCadastro` é PORTA DE ENTRADA, não último toque.** Quem entrou
+   *    pelo WhatsApp continua `whatsapp` mesmo voltando pelo site; trocar
+   *    poluiria o CPL de cada canal. Só preenche se estiver vazio.
+   * 3. **NÃO mexe em etapa.** Se o lead já está com um rep negociando, um
+   *    formulário não pode jogá-lo de volta pro começo do funil.
+   *
+   * A mensagem escrita na caixa vira uma linha DATADA em `observacoes` — é o
+   * rastro de que ela preencheu o site, que antes não existia em lugar nenhum.
+   */
+  private async completarLeadExistente(
+    empresaId: string,
+    leadId: string,
+    dto: LeadCapturePublicoDto,
+    origemCadastro: string,
+  ): Promise<void> {
+    try {
+      const atual = await this.prisma.lead.findFirst({
+        where: { id: leadId, empresaId },
+        select: {
+          contatoNome: true,
+          contatoEmail: true,
+          cidade: true,
+          uf: true,
+          segmento: true,
+          origemCadastro: true,
+          formularioOrigem: true,
+          observacoes: true,
+        },
+      });
+      if (!atual) return;
+
+      const formulario = normalizarFormulario(dto.formulario);
+      const mensagem = dto.mensagem?.trim();
+
+      // `??=` só grava onde está vazio (regra 1).
+      const dados: Prisma.LeadUpdateInput = {};
+      if (!atual.contatoNome && dto.contatoNome?.trim()) dados.contatoNome = dto.contatoNome.trim();
+      if (!atual.contatoEmail && dto.email?.trim()) dados.contatoEmail = dto.email.trim();
+      if (!atual.cidade && dto.cidade?.trim()) dados.cidade = dto.cidade.trim();
+      if (!atual.uf && dto.uf?.trim()) dados.uf = dto.uf.trim();
+      if (!atual.segmento && dto.segmento?.trim()) dados.segmento = dto.segmento.trim();
+      if (!atual.origemCadastro) dados.origemCadastro = origemCadastro;
+      if (!atual.formularioOrigem && formulario) dados.formularioOrigem = formulario;
+
+      // O TOQUE é sempre registrado, mesmo quando nada acima mudou: é o que
+      // prova que a pessoa preencheu o site nesta data.
+      const carimbo = [
+        `[${new Date().toLocaleDateString('pt-BR')}] Preencheu o site`,
+        formulario ? `(${formulario})` : null,
+        mensagem ? `— ${mensagem}` : null,
+      ]
+        .filter(Boolean)
+        .join(' ');
+      dados.observacoes = atual.observacoes
+        ? `${atual.observacoes}
+${carimbo}`
+        : carimbo;
+
+      await this.prisma.lead.update({ where: { id: leadId }, data: dados });
+    } catch (err) {
+      // Best-effort: completar é enriquecimento. Falhar aqui não pode derrubar
+      // a captura — perder o lead é pior que perder o complemento.
+      this.logger.warn(
+        `Falha completando lead ${leadId}: ${err instanceof Error ? err.message : String(err)}`,
+      );
+    }
+
+    // Gatilho PRÓPRIO: LEAD_CRIADO não dispara em update, então sem isto o
+    // segundo toque não tem gancho de fluxo nenhum.
+    void this.bus.disparar(empresaId, 'LEAD_REENGAJOU_SITE', {
+      leadId,
+      origemCadastro,
+      formulario: normalizarFormulario(dto.formulario) ?? null,
+      mensagem: dto.mensagem?.trim() ?? null,
+    });
+  }
+
   private async aplicarAtribuicaoEmLeadExistente(
     leadId: string,
     atribuicao?: Atribuicao,
