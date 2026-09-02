@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
+import { useTravaRolagem } from '@/hooks/useTravaRolagem';
 import { useSyncExternalStore } from 'react';
 import { useNavigate } from 'react-router-dom';
 import type { UserRole } from '@/types/auth';
@@ -316,15 +317,8 @@ export function OnboardingTour() {
     return () => window.removeEventListener('keydown', onKey);
   }, [visible]);
 
-  // Lock body scroll quando aberto
-  useEffect(() => {
-    if (!visible) return;
-    const prev = document.body.style.overflow;
-    document.body.style.overflow = 'hidden';
-    return () => {
-      document.body.style.overflow = prev;
-    };
-  }, [visible]);
+  // Lock body scroll quando aberto (contagem no hook — ver useTravaRolagem).
+  useTravaRolagem(visible);
 
   // Refs pra handlers usados via keyboard (evita closure stale)
   const closeRef = useRef<() => void>();
