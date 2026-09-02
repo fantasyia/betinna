@@ -1,4 +1,5 @@
 import { useEffect, useState, useSyncExternalStore, type ReactNode } from 'react';
+import { useTravaRolagem } from '@/hooks/useTravaRolagem';
 import { useSensoresDnd } from '@/lib/dnd-sensors';
 import { Link, useLocation } from 'react-router-dom';
 import {
@@ -763,15 +764,7 @@ export function PageLayout({
     setSidebarOpen(false);
   }, [location.pathname]);
 
-  useEffect(() => {
-    if (isMobile && sidebarOpen) {
-      const prev = document.body.style.overflow;
-      document.body.style.overflow = 'hidden';
-      return () => {
-        document.body.style.overflow = prev;
-      };
-    }
-  }, [isMobile, sidebarOpen]);
+  useTravaRolagem(isMobile && sidebarOpen);
 
   return (
     <div className="bg-bg min-h-screen text-text">

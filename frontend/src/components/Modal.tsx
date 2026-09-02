@@ -1,4 +1,5 @@
 import { useEffect, type ReactNode } from 'react';
+import { useTravaRolagem } from '@/hooks/useTravaRolagem';
 import { colors } from './styles';
 
 export interface ModalProps {
@@ -33,15 +34,9 @@ export function Modal({ open, onClose, title, children, footer, width = 520 }: M
   }, [open, onClose]);
 
   // Trava scroll do body durante modal aberto (evita scroll do conteúdo
-  // de fundo em mobile, que é confuso).
-  useEffect(() => {
-    if (!open) return;
-    const prev = document.body.style.overflow;
-    document.body.style.overflow = 'hidden';
-    return () => {
-      document.body.style.overflow = prev;
-    };
-  }, [open]);
+  // de fundo em mobile, que é confuso). A contagem vive no hook: dois overlays
+  // sobrepostos com salvar-e-restaurar próprio vazavam a trava (ver o hook).
+  useTravaRolagem(open);
 
   const isMobile =
     typeof window !== 'undefined' && window.innerWidth < 768;

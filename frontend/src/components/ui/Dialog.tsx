@@ -1,4 +1,5 @@
 import { useEffect, type ReactNode } from 'react';
+import { useTravaRolagem } from '@/hooks/useTravaRolagem';
 import { createPortal } from 'react-dom';
 import { X } from 'lucide-react';
 import { cn } from '@/lib/cn';
@@ -44,13 +45,14 @@ export function Dialog({
       if (e.key === 'Escape') onClose();
     };
     document.addEventListener('keydown', handler);
-    const prev = document.body.style.overflow;
-    document.body.style.overflow = 'hidden';
     return () => {
       document.removeEventListener('keydown', handler);
-      document.body.style.overflow = prev;
     };
   }, [open, onClose]);
+
+  // Trava a rolagem do fundo. Contagem no hook: Dialog sobre Modal (ou sobre o
+  // tour) com salvar-e-restaurar próprio deixava a trava vazada.
+  useTravaRolagem(open);
 
   if (!open || typeof document === 'undefined') return null;
 
