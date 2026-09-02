@@ -118,6 +118,13 @@ export default function KanbanBoardPage() {
   // Snapshot pra rollback quando a API recusar o movimento
   const snapshotRef = useRef<KLista[] | null>(null);
   const [ativo, setAtivo] = useState<{ tipo: 'card' | 'lista'; id: string } | null>(null);
+  // Id do que está sendo SEGURADO, antes de o arrasto ativar.
+  //
+  // No toque o arrasto só começa depois de 400ms parado. Nesse intervalo nada
+  // acontecia na tela: a pessoa segurava e não sabia se tinha pego o card ou se
+  // o app tinha travado. Era isso que dava sensação de bug. Agora o card reage
+  // ao toque na hora, e o arrasto continua começando só depois da espera.
+  const [segurando, setSegurando] = useState<string | null>(null);
   // Etiquetas ampliadas (com nome) x reduzidas (só cor) — estilo Trello: clicar
   // numa etiqueta alterna TODAS do quadro. Persistido por quadro no localStorage.
   const [etiquetasAmpliadas, setEtiquetasAmpliadas] = useState(false);
@@ -688,10 +695,21 @@ export default function KanbanBoardPage() {
         <DndContext
           sensors={sensors}
           collisionDetection={closestCorners}
-          onDragStart={onDragStart}
+          onDragPending={({ id }) => setSegurando(String(id))}
+          // `abort` = a espera foi cancelada (a pessoa moveu o dedo pra rolar).
+          // Sem limpar aqui, o card ficaria "preso" no estado de segurado.
+          onDragAbort={() => setSegurando(null)}
+          onDragStart={(e) => {
+            setSegurando(null);
+            onDragStart(e);
+          }}
           onDragOver={onDragOver}
-          onDragEnd={onDragEnd}
+          onDragEnd={(e) => {
+            setSegurando(null);
+            onDragEnd(e);
+          }}
           onDragCancel={() => {
+            setSegurando(null);
             setAtivo(null);
             if (snapshotRef.current) setListas(snapshotRef.current);
           }}
@@ -725,6 +743,7 @@ export default function KanbanBoardPage() {
                   etiquetasAmpliadas={etiquetasAmpliadas}
                   onAlternarEtiquetas={alternarEtiquetas}
                   onEtiquetaPessoa={abrirQuadroDoRep}
+                  segurando={segurando}
                 />
               ))}
             </SortableContext>
@@ -834,6 +853,7 @@ function ListaColuna({
   etiquetasAmpliadas,
   onAlternarEtiquetas,
   onEtiquetaPessoa,
+  segurando,
 }: {
   lista: KLista;
   onCriarCard: (titulo: string) => void;
@@ -843,6 +863,8 @@ function ListaColuna({
   etiquetasAmpliadas: boolean;
   onAlternarEtiquetas: () => void;
   onEtiquetaPessoa?: (usuarioId: string) => void;
+  /** Id do card que está sendo SEGURADO (antes de o arrasto ativar). */
+  segurando: string | null;
 }) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
     id: `lista:${lista.id}`,
@@ -926,6 +948,7 @@ function ListaColuna({
               etiquetasAmpliadas={etiquetasAmpliadas}
               onAlternarEtiquetas={onAlternarEtiquetas}
               onEtiquetaPessoa={onEtiquetaPessoa}
+              segurando={segurando === `card:${card.id}`}
             />
           ))}
         </SortableContext>
@@ -945,6 +968,7 @@ function CardSortable({
   etiquetasAmpliadas,
   onAlternarEtiquetas,
   onEtiquetaPessoa,
+  segurando,
 }: {
   card: KCardResumo;
   onAbrir: () => void;
@@ -952,6 +976,8 @@ function CardSortable({
   etiquetasAmpliadas: boolean;
   onAlternarEtiquetas: () => void;
   onEtiquetaPessoa?: (usuarioId: string) => void;
+  /** Dedo em cima, arrasto ainda NÃO ativou (os 400ms de espera do toque). */
+  segurando: boolean;
 }) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
     id: `card:${card.id}`,
@@ -968,7 +994,15 @@ function CardSortable({
       style={{ transform: CSS.Translate.toString(transform), transition }}
       {...attributes}
       {...listeners}
-      className={cn(isDragging && 'opacity-40')}
+      className={cn(
+        'transition-transform duration-150',
+        isDragging && 'opacity-40',
+        // O retorno que faltava: enquanto a espera do toque corre, o card
+        // encolhe de leve e ganha anel. Sem isso a pessoa segurava por 400ms
+        // sem nenhum sinal de que tinha pego — e isso lê como travamento, não
+        // como espera.
+        segurando && !isDragging && 'scale-[0.97] ring-2 ring-primary/60',
+      )}
       onClick={() => {
         if (arrastouRef.current) {
           arrastouRef.current = false;
