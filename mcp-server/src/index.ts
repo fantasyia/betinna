@@ -1224,6 +1224,7 @@ const FLUXO_TRIGGER_TIPO = z.enum([
   // entrega. É o momento em que o cliente quer o código; o PEDIDO_ENTREGUE
   // avisaria depois de a encomenda ter chegado.
   'PEDIDO_RASTREIO_DISPONIVEL',
+  'LEAD_REENGAJOU_SITE',
   'OCORRENCIA_ABERTA',
   'CLIENTE_INATIVO_30D',
   'AMOSTRA_FOLLOWUP',

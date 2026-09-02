@@ -32,6 +32,8 @@ const makeNotificacoesMock = () => ({
   criarParaRole: vi.fn().mockResolvedValue(1),
 });
 
+const makeBusMock = () => ({ disparar: vi.fn().mockResolvedValue(undefined) });
+
 const makeLeadsMock = () => ({
   createPublico: vi.fn().mockResolvedValue({ id: 'lead-novo' }),
   aplicarTagPorNome: vi.fn().mockResolvedValue(undefined),
@@ -59,6 +61,7 @@ describe('LeadCaptureService', () => {
   let redis: ReturnType<typeof makeRedisMock>;
   let leads: ReturnType<typeof makeLeadsMock>;
   let notificacoes: ReturnType<typeof makeNotificacoesMock>;
+  let bus: ReturnType<typeof makeBusMock>;
   let svc: LeadCaptureService;
 
   beforeEach(() => {
@@ -67,11 +70,13 @@ describe('LeadCaptureService', () => {
     redis = makeRedisMock();
     leads = makeLeadsMock();
     notificacoes = makeNotificacoesMock();
+    bus = makeBusMock();
     svc = new LeadCaptureService(
       prisma as never,
       redis as never,
       leads as never,
       notificacoes as never,
+      bus as never,
     );
   });
 
@@ -539,6 +544,127 @@ describe('LeadCaptureService', () => {
 
       expect(r.tagsIgnoradas).toBeUndefined();
       expect(notificacoes.criarParaRole).not.toHaveBeenCalled();
+    });
+  });
+
+  /**
+   * Caminho mais comum do funil real: fala no WhatsApp (vira lead) e DEPOIS
+   * entra no site pedindo orçamento. Até 02/09 esse segundo toque era quase
+   * invisível — só as etiquetas colavam, e nenhum fluxo rodava.
+   */
+  describe('lead que JA EXISTE preenche o site de novo', () => {
+    const DTO = {
+      nome: 'Metalurgica Alfa',
+      contatoNome: 'Ana',
+      telefone: '(11) 99999-1234',
+      email: 'ana@alfa.com.br',
+      cidade: 'Sorocaba',
+      uf: 'SP',
+      segmento: 'Metalurgia',
+      mensagem: 'Quero orçamento do MB-03',
+      formulario: 'contato',
+    };
+
+    const prepararDuplicado = (leadAtual: Record<string, unknown>) => {
+      prisma.leadCaptureChave.findUnique.mockResolvedValue({
+        empresaId: 'emp-1',
+        chaveHash: HASH,
+        ativo: true,
+      });
+      // acharLeadAberto usa $queryRaw pelo sufixo do telefone
+      prisma.$queryRaw.mockResolvedValue([{ id: 'lead-velho' }]);
+      prisma.lead.findFirst.mockResolvedValue({
+        contatoNome: null,
+        contatoEmail: null,
+        cidade: null,
+        uf: null,
+        segmento: null,
+        origemCadastro: 'whatsapp',
+        formularioOrigem: null,
+        observacoes: null,
+        ...leadAtual,
+      });
+    };
+
+    it('preenche o e-mail que estava vazio', async () => {
+      prepararDuplicado({});
+
+      await svc.capturar(CHAVE, DTO as never);
+
+      expect(prisma.lead.update.mock.calls[0][0].data).toMatchObject({
+        contatoEmail: 'ana@alfa.com.br',
+        cidade: 'Sorocaba',
+        segmento: 'Metalurgia',
+        formularioOrigem: 'contato',
+      });
+    });
+
+    it('NAO sobrescreve dado que ja existe — formulario nao apaga o que foi apurado na conversa', async () => {
+      prepararDuplicado({ contatoEmail: 'apurado@alfa.com.br', cidade: 'Votorantim' });
+
+      await svc.capturar(CHAVE, DTO as never);
+
+      const data = prisma.lead.update.mock.calls[0][0].data;
+      expect(data.contatoEmail).toBeUndefined();
+      expect(data.cidade).toBeUndefined();
+    });
+
+    it('origemCadastro e PORTA DE ENTRADA: quem veio do WhatsApp continua whatsapp', async () => {
+      // Trocar pra "site" poluiria o CPL de cada canal.
+      prepararDuplicado({ origemCadastro: 'whatsapp' });
+
+      await svc.capturar(CHAVE, DTO as never);
+
+      expect(prisma.lead.update.mock.calls[0][0].data.origemCadastro).toBeUndefined();
+    });
+
+    it('registra o TOQUE em observacoes, com a mensagem escrita', async () => {
+      prepararDuplicado({});
+
+      await svc.capturar(CHAVE, DTO as never);
+
+      const obs = String(prisma.lead.update.mock.calls[0][0].data.observacoes);
+      expect(obs).toContain('Preencheu o site');
+      expect(obs).toContain('Quero orçamento do MB-03');
+    });
+
+    it('preserva a observacao anterior — o rastro ACUMULA, nao substitui', async () => {
+      prepararDuplicado({ observacoes: 'ligou em 20/08' });
+
+      await svc.capturar(CHAVE, DTO as never);
+
+      expect(String(prisma.lead.update.mock.calls[0][0].data.observacoes)).toContain(
+        'ligou em 20/08',
+      );
+    });
+
+    it('dispara LEAD_REENGAJOU_SITE — LEAD_CRIADO nao dispara em update', async () => {
+      prepararDuplicado({});
+
+      await svc.capturar(CHAVE, DTO as never);
+
+      expect(bus.disparar).toHaveBeenCalledWith(
+        'emp-1',
+        'LEAD_REENGAJOU_SITE',
+        expect.objectContaining({ leadId: 'lead-velho', formulario: 'contato' }),
+      );
+    });
+
+    it('NAO mexe na etapa — lead em negociacao nao volta pro comeco do funil', async () => {
+      prepararDuplicado({});
+
+      await svc.capturar(CHAVE, DTO as never);
+
+      const data = prisma.lead.update.mock.calls[0][0].data;
+      expect(data.etapa).toBeUndefined();
+      expect(data.funilEtapaId).toBeUndefined();
+    });
+
+    it('falha ao completar nao derruba a captura', async () => {
+      prepararDuplicado({});
+      prisma.lead.update.mockRejectedValue(new Error('banco fora'));
+
+      await expect(svc.capturar(CHAVE, DTO as never)).resolves.toMatchObject({ duplicado: true });
     });
   });
 });
