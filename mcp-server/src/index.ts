@@ -151,6 +151,42 @@ async function boardIdDoCard(cardId: string): Promise<{ card: CardCompleto; boar
   return { card, boardId: card.lista.boardId };
 }
 
+/**
+ * Resolve uma etiqueta por ID, NOME (case-insensitive) ou COR.
+ *
+ * Aceitar nome não é conforto: `kanban_ver_board` é a única fonte de IDs e
+ * ESTOURA o limite de tokens em quadro grande (o DEV passa de 60k caracteres).
+ * Quem não consegue o ID acaba criando o card sem etiqueta — foi o que
+ * aconteceu com cards vindos de outras sessões.
+ */
+function resolverEtiqueta(
+  etiquetas: BoardCompleto['etiquetas'],
+  busca: string,
+): { ok: true; alvo: BoardCompleto['etiquetas'][number] } | { ok: false; erro: string } {
+  const porId = etiquetas.find((e) => e.id === busca);
+  if (porId) return { ok: true, alvo: porId };
+
+  const porNome = etiquetas.filter((e) => (e.nome ?? '').toLowerCase() === busca.toLowerCase());
+  if (porNome.length > 1) {
+    return {
+      ok: false,
+      erro: `Há ${porNome.length} etiquetas chamadas "${busca}". Use o id: ${porNome
+        .map((e) => `${e.id} (${e.cor})`)
+        .join(', ')}`,
+    };
+  }
+  const alvo = porNome[0] ?? etiquetas.find((e) => e.cor.toLowerCase() === busca.toLowerCase());
+  if (alvo) return { ok: true, alvo };
+
+  const disponiveis = etiquetas.map((e) => e.nome ?? e.cor).join(', ') || '(nenhuma)';
+  return {
+    ok: false,
+    erro:
+      `Etiqueta "${busca}" não existe no quadro. Disponíveis: ${disponiveis}. ` +
+      'Crie com kanban_criar_etiqueta.',
+  };
+}
+
 /** Resolve e-mail → usuarioId varrendo os membros dos boards acessíveis. */
 async function resolverEmail(email: string): Promise<string> {
   const boards = await api.get<BoardResumo[]>('/kanban/boards');
@@ -191,12 +227,32 @@ server.registerTool(
   'kanban_ver_board',
   {
     description:
-      'Quadro completo: listas na ordem, com os cards resumidos (id, título, entrega, etiquetas, membros, progresso do checklist).',
-    inputSchema: { boardId: z.string().describe('ID do quadro (use kanban_listar_boards)') },
+      'Quadro completo: listas na ordem, com os cards resumidos (id, título, entrega, etiquetas, ' +
+      'membros, progresso do checklist). Em quadro grande isso ESTOURA o limite de tokens — se ' +
+      'você só precisa dos IDs de lista e das etiquetas disponíveis, passe incluirCards=false.',
+    inputSchema: {
+      boardId: z.string().describe('ID do quadro (use kanban_listar_boards)'),
+      incluirCards: z
+        .boolean()
+        .default(true)
+        .describe('false = só listas e etiquetas (resposta curta, pra pegar IDs)'),
+    },
     annotations: { readOnlyHint: true, destructiveHint: false },
   },
-  seguro(async ({ boardId }: { boardId: string }) => {
+  seguro(async ({ boardId, incluirCards }: { boardId: string; incluirCards: boolean }) => {
     const b = await api.get<BoardCompleto>(`/kanban/boards/${boardId}`);
+    // Sem os cards a resposta cabe sempre. Era o buraco que fazia card nascer
+    // sem etiqueta: a ÚNICA fonte de ids falhava por tamanho, e quem não
+    // conseguia o id seguia sem etiqueta.
+    if (!incluirCards) {
+      return ok({
+        id: b.id,
+        nome: b.nome,
+        etiquetasDisponiveis: b.etiquetas.map((e) => ({ id: e.id, nome: e.nome, cor: e.cor })),
+        membros: b.membros.map((m) => `${m.usuario.nome} <${m.usuario.email}>`),
+        listas: b.listas.map((l) => ({ id: l.id, nome: l.nome, cards: l.cards.length })),
+      });
+    }
     return ok({
       id: b.id,
       nome: b.nome,
@@ -389,7 +445,9 @@ server.registerTool(
   'kanban_criar_card',
   {
     description:
-      'Cria um card no fim de uma lista. Aceita descrição, prazo (ISO) e IDs de etiquetas do quadro.',
+      'Cria um card no fim de uma lista. Aceita descrição, prazo (ISO), etiquetas (por NOME, cor ' +
+      '#RRGGBB ou id) e responsáveis (por E-MAIL). Use o NOME da etiqueta: pegar o id exige ' +
+      'kanban_ver_board, que estoura o limite de tokens em quadro grande.',
     inputSchema: {
       listaId: z.string().describe('ID da lista (use kanban_ver_board)'),
       titulo: z.string().min(1).max(200),
@@ -399,7 +457,14 @@ server.registerTool(
         .datetime({ offset: true })
         .optional()
         .describe('Prazo ISO, ex: 2026-07-20T12:00:00Z ou 2026-07-20T12:00:00-03:00'),
-      etiquetas: z.array(z.string()).optional().describe('IDs de etiquetas (kanban_ver_board)'),
+      etiquetas: z
+        .array(z.string())
+        .optional()
+        .describe('Etiquetas por NOME (ex: "Betinna"), cor #RRGGBB ou id'),
+      responsaveis: z
+        .array(z.string().email())
+        .optional()
+        .describe('E-mails de quem fica responsável — NÃO escreva o responsável no título'),
     },
     annotations: { readOnlyHint: false, destructiveHint: false },
   },
@@ -410,37 +475,88 @@ server.registerTool(
       descricao,
       dataEntrega,
       etiquetas,
+      responsaveis,
     }: {
       listaId: string;
       titulo: string;
       descricao?: string;
       dataEntrega?: string;
       etiquetas?: string[];
+      responsaveis?: string[];
     }) => {
       const card = await api.post<{ id: string; titulo: string }>(`/kanban/listas/${listaId}/cards`, {
         titulo,
         descricao,
         dataEntrega,
       });
-      // O card JÁ foi criado. Se aplicar uma etiqueta falhar (id inválido),
-      // NÃO retornamos isError — senão o Claude recria o card e duplica.
-      // Reportamos sucesso com um aviso sobre as etiquetas que falharam.
+      // O card JÁ foi criado. Se aplicar uma etiqueta falhar, NÃO retornamos
+      // isError — senão o Claude recria o card e duplica. Reportamos sucesso
+      // com aviso do que não colou.
       const avisoEtiquetas: string[] = [];
-      for (const etiquetaId of etiquetas ?? []) {
+      // Resolve NOME → id uma vez só: o quadro é o mesmo pra todas as etiquetas.
+      const board = etiquetas?.length
+        ? await api.get<BoardCompleto>(`/kanban/boards/${(await boardIdDoCard(card.id)).boardId}`)
+        : null;
+      for (const busca of etiquetas ?? []) {
+        const r = board ? resolverEtiqueta(board.etiquetas, busca) : null;
+        if (r && !r.ok) {
+          avisoEtiquetas.push(r.erro);
+          continue;
+        }
+        const etiquetaId = r?.ok ? r.alvo.id : busca;
         try {
           await api.post(`/kanban/cards/${card.id}/etiquetas/${etiquetaId}`);
         } catch (err) {
           const msg = err instanceof Error ? err.message : String(err);
-          avisoEtiquetas.push(`Etiqueta "${etiquetaId}" não aplicada: ${msg}`);
+          avisoEtiquetas.push(`Etiqueta "${busca}" não aplicada: ${msg}`);
+        }
+      }
+      // Responsável no CAMPO, não no título. Enquanto nao havia como atribuir
+      // pelo MCP, as sessoes escreviam o nome no titulo — e o quadro perdia o
+      // filtro por membro, que e como se acha "o que e meu".
+      const avisoResponsaveis: string[] = [];
+      for (const email of responsaveis ?? []) {
+        try {
+          const usuarioId = await resolverEmail(email);
+          await api.post(`/kanban/cards/${card.id}/membros/${usuarioId}`);
+        } catch (err) {
+          const msg = err instanceof Error ? err.message : String(err);
+          avisoResponsaveis.push(`Responsável "${email}" não atribuído: ${msg}`);
         }
       }
       return ok({
         id: card.id,
         titulo: card.titulo,
         ...(avisoEtiquetas.length > 0 ? { avisoEtiquetas } : {}),
+        ...(avisoResponsaveis.length > 0 ? { avisoResponsaveis } : {}),
       });
     },
   ),
+);
+
+server.registerTool(
+  'kanban_responsavel_card',
+  {
+    description:
+      'Atribui (ou remove, com remover=true) um RESPONSÁVEL a um card existente, por e-mail. ' +
+      'Use isto em vez de escrever o nome da pessoa no título: só o campo alimenta o filtro ' +
+      '"Membro" do quadro e o kanban_meus_itens.',
+    inputSchema: {
+      cardId: z.string(),
+      email: z.string().email().describe('E-mail de um membro do quadro (kanban_listar_boards)'),
+      remover: z.boolean().default(false),
+    },
+    annotations: { readOnlyHint: false, destructiveHint: false },
+  },
+  seguro(async ({ cardId, email, remover }: { cardId: string; email: string; remover: boolean }) => {
+    const usuarioId = await resolverEmail(email);
+    if (remover) {
+      await api.delete(`/kanban/cards/${cardId}/membros/${usuarioId}`);
+    } else {
+      await api.post(`/kanban/cards/${cardId}/membros/${usuarioId}`);
+    }
+    return ok({ cardId, email, atribuido: !remover });
+  }),
 );
 
 server.registerTool(
@@ -770,28 +886,9 @@ server.registerTool(
     async ({ cardId, etiqueta, remover }: { cardId: string; etiqueta: string; remover: boolean }) => {
       const { boardId } = await boardIdDoCard(cardId);
       const board = await api.get<BoardCompleto>(`/kanban/boards/${boardId}`);
-      // Prioriza id exato; senão nome (case-insensitive); senão cor.
-      let alvo = board.etiquetas.find((e) => e.id === etiqueta);
-      if (!alvo) {
-        const porNome = board.etiquetas.filter(
-          (e) => (e.nome ?? '').toLowerCase() === etiqueta.toLowerCase(),
-        );
-        if (porNome.length > 1) {
-          return erro(
-            `Há ${porNome.length} etiquetas chamadas "${etiqueta}". Use o id: ${porNome
-              .map((e) => `${e.id} (${e.cor})`)
-              .join(', ')}`,
-          );
-        }
-        alvo = porNome[0] ?? board.etiquetas.find((e) => e.cor.toLowerCase() === etiqueta.toLowerCase());
-      }
-      if (!alvo) {
-        const disponiveis = board.etiquetas.map((e) => e.nome ?? e.cor).join(', ') || '(nenhuma)';
-        return erro(
-          `Etiqueta "${etiqueta}" não existe no quadro. Disponíveis: ${disponiveis}. ` +
-            'Crie com kanban_criar_etiqueta.',
-        );
-      }
+      const r = resolverEtiqueta(board.etiquetas, etiqueta);
+      if (!r.ok) return erro(r.erro);
+      const alvo = r.alvo;
       if (remover) {
         await api.delete(`/kanban/cards/${cardId}/etiquetas/${alvo.id}`);
       } else {
