@@ -416,6 +416,7 @@ export class IntegracoesService {
     credenciais: Record<string, unknown>,
     externalAccountId: string,
   ): Promise<void> {
+    await this.assertChaveCasaComOQueJaExiste(empresaId, servico);
     const enc = this.crypto.encrypt(JSON.stringify(credenciais));
     await this.prisma.integracaoConexao.upsert({
       where: { empresaId_servico: { empresaId, servico } },
@@ -436,6 +437,48 @@ export class IntegracoesService {
     // Mesmo comportamento que os services tinham após o upsert: registra sync OK
     // (atualiza ultimoSync, zera erros, invalida cache, semáforo de saúde), best-effort.
     await this.registrarSyncOk(empresaId, servico).catch(() => undefined);
+  }
+
+  /**
+   * Recusa a escrita quando a `ENCRYPTION_KEY` deste processo NÃO decifra a
+   * credencial que já está gravada para esta empresa+serviço.
+   *
+   * O cenário: `backend/.env.local` aponta pro banco de PRODUÇÃO (é assim de
+   * propósito — não existe banco de dev), mas a `ENCRYPTION_KEY` dele é OUTRA,
+   * diferente da do Railway. Medido em 01/09: nenhuma das 4 conexões de
+   * produção decifra com a chave local.
+   *
+   * Leitura falhando é barulhento — a integração aparece quebrada e alguém
+   * investiga. ESCRITA é o problema: subir o backend local e reconectar
+   * qualquer integração (OAuth do Tiny, QR do WhatsApp) gravaria cifrado com a
+   * chave errada NA LINHA DE PRODUÇÃO. Prod para de conseguir ler a própria
+   * credencial, e o sintoma aparece como "a integração caiu" — nunca como
+   * "alguém rodou local".
+   *
+   * A verificação é PRECISA: só bloqueia quando existe linha e ela não abre.
+   * Em produção a chave é a certa, então passa sempre; primeira conexão de um
+   * serviço (sem linha) também passa, porque não há o que corromper.
+   */
+  private async assertChaveCasaComOQueJaExiste(
+    empresaId: string,
+    servico: ServicoEmpresa,
+  ): Promise<void> {
+    const atual = await this.prisma.integracaoConexao.findUnique({
+      where: { empresaId_servico: { empresaId, servico } },
+      select: { credenciais: true },
+    });
+    if (!atual?.credenciais) return;
+
+    try {
+      this.crypto.decrypt(atual.credenciais as unknown as string);
+    } catch {
+      throw new BusinessRuleException(
+        `ENCRYPTION_KEY deste processo NÃO decifra a credencial de "${servico}" já gravada. ` +
+          'Gravar por cima deixaria a produção sem conseguir ler a própria credencial. ' +
+          'Você está rodando local contra o banco de produção? Use a ENCRYPTION_KEY do Railway ' +
+          'ou faça a reconexão pelo app em produção.',
+      );
+    }
   }
 
   /**

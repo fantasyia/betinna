@@ -470,7 +470,67 @@ describe('IntegracoesService', () => {
       );
       const depois = await service.obterCredenciaisInternas('emp-1', 'tiny' as never);
       expect(depois.credenciais).toEqual({ token: 'novo' });
-      expect(prisma.integracaoConexao.findUnique).toHaveBeenCalledTimes(2);
+      // 3 leituras: a 1ª popula o cache, a 2ª é a GUARDA de chave dentro do
+      // salvar (recusa gravar por cima do que a chave atual não decifra), e a
+      // 3ª é esta — que só acontece porque o cache foi invalidado.
+      expect(prisma.integracaoConexao.findUnique).toHaveBeenCalledTimes(3);
+    });
+
+    /**
+     * `.env.local` aponta pro banco de PRODUÇÃO (de propósito), mas a
+     * ENCRYPTION_KEY dele é OUTRA. Ler falhando é barulhento; ESCREVER é o
+     * estrago: gravaria cifrado com a chave errada na linha de produção, e prod
+     * pararia de conseguir ler a própria credencial.
+     */
+    describe('guarda de chave trocada', () => {
+      it('RECUSA gravar por cima do que a chave atual não decifra', async () => {
+        prisma.integracaoConexao.findUnique.mockResolvedValue(
+          fakeConexao({ credenciais: 'cifrado-com-outra-chave', ativo: true }),
+        );
+
+        await expect(
+          service.salvarCredenciaisInternas('emp-1', 'tiny' as never, { token: 'x' }, 'acc-1'),
+        ).rejects.toBeInstanceOf(BusinessRuleException);
+
+        expect(prisma.integracaoConexao.upsert).not.toHaveBeenCalled();
+      });
+
+      it('o erro DIZ o que fazer — senão vira "deu erro" sem saída', async () => {
+        prisma.integracaoConexao.findUnique.mockResolvedValue(
+          fakeConexao({ credenciais: 'cifrado-com-outra-chave', ativo: true }),
+        );
+
+        await expect(
+          service.salvarCredenciaisInternas('emp-1', 'tiny' as never, { token: 'x' }, 'acc-1'),
+        ).rejects.toThrow(/ENCRYPTION_KEY/);
+      });
+
+      it('PRIMEIRA conexão do serviço passa — não há o que corromper', async () => {
+        prisma.integracaoConexao.findUnique.mockResolvedValue(null);
+        prisma.integracaoConexao.upsert.mockResolvedValue(fakeConexao());
+        prisma.integracaoConexao.updateMany.mockResolvedValue({ count: 1 });
+
+        await service.salvarCredenciaisInternas('emp-1', 'tiny' as never, { token: 'x' }, 'acc-1');
+
+        expect(prisma.integracaoConexao.upsert).toHaveBeenCalled();
+      });
+
+      it('chave CERTA grava normalmente — em produção a guarda é invisível', async () => {
+        prisma.integracaoConexao.findUnique.mockResolvedValue(
+          fakeConexao({ credenciais: 'enc:{"token":"velho"}', ativo: true }),
+        );
+        prisma.integracaoConexao.upsert.mockResolvedValue(fakeConexao());
+        prisma.integracaoConexao.updateMany.mockResolvedValue({ count: 1 });
+
+        await service.salvarCredenciaisInternas(
+          'emp-1',
+          'tiny' as never,
+          { token: 'novo' },
+          'acc-1',
+        );
+
+        expect(prisma.integracaoConexao.upsert).toHaveBeenCalled();
+      });
     });
   });
 
